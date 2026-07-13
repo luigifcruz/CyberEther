@@ -1,4 +1,5 @@
 #include <cmath>
+#include <limits>
 
 #include <jetstream/tools/automatic_iterator.hh>
 #include <jetstream/backend/devices/cpu/helpers.hh>
@@ -59,7 +60,9 @@ Result AmplitudeImplNativeCpu::kernelCF32() {
             const F32 real = in.real();
             const F32 imag = in.imag();
             const F32 magnitude = std::sqrt((real * real) + (imag * imag));
-            out = 20.0f * Backend::ApproxLog10(magnitude) + coeff;
+            out = magnitude == 0.0f
+                      ? -std::numeric_limits<F32>::infinity()
+                      : 20.0f * Backend::ApproxLog10(magnitude) + coeff;
         },
     input, output);
 }
@@ -70,7 +73,9 @@ Result AmplitudeImplNativeCpu::kernelF32() {
     return AutomaticIterator<F32, F32>(
         [coeff](const auto& in, auto& out) {
             const F32 magnitude = std::fabs(in);
-            out = 20.0f * Backend::ApproxLog10(magnitude) + coeff;
+            out = magnitude == 0.0f
+                      ? -std::numeric_limits<F32>::infinity()
+                      : 20.0f * Backend::ApproxLog10(magnitude) + coeff;
         },
     input, output);
 }
