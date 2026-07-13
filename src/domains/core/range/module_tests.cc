@@ -55,3 +55,48 @@ TEST_CASE("Range Module - Rejects Invalid Bounds", "[modules][range][error]") {
         }
     }
 }
+
+TEST_CASE("Range Module - Rank 4 Non-Contiguous",
+          "[modules][range][F32][noncontiguous]") {
+    const auto implementations = Registry::ListAvailableModules("range");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("range", impl.device, impl.runtime, impl.provider);
+
+            Modules::Range config;
+            config.min = 0.0f;
+            config.max = 100.0f;
+            ctx.setConfig(config);
+
+            Tensor storage(DeviceType::CPU, DataType::F32, {2, 2, 3, 2, 4});
+            for (U64 i = 0; i < storage.size(); ++i) {
+                storage.data<F32>()[i] = static_cast<F32>(i + 1);
+            }
+
+            Tensor input = storage.clone();
+            REQUIRE(input.slice({Token(1), Token(), Token(), Token(), Token()}) == Result::SUCCESS);
+            REQUIRE(input.permute({1, 0, 3, 2}) == Result::SUCCESS);
+            REQUIRE(input.shape() == Shape{3, 2, 4, 2});
+            REQUIRE(input.offset() != 0);
+            REQUIRE_FALSE(input.contiguous());
+
+            ctx.setInput("signal", input);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("signal");
+            for (U64 i = 0; i < 3; ++i) {
+                for (U64 j = 0; j < 2; ++j) {
+                    for (U64 k = 0; k < 4; ++k) {
+                        for (U64 l = 0; l < 2; ++l) {
+                            const F32 expected = input.at<F32>(i, j, k, l) / 100.0f;
+                            REQUIRE_THAT(out.at<F32>(i, j, k, l),
+                                         Catch::Matchers::WithinAbs(expected, 1e-6f));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
