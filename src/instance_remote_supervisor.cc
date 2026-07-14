@@ -124,6 +124,7 @@ void Instance::Remote::Supervisor::print() const {
     jst::fmt::print("Room ID:      {}\n", remote_->roomId());
     jst::fmt::print("Join URL:     {}\n", remote_->inviteUrl());
     jst::fmt::print("Access Token: {}\n\n", remote_->accessToken());
+    std::fflush(stdout);
 }
 
 bool Instance::Remote::Supervisor::prompt(const std::string& code) const {
