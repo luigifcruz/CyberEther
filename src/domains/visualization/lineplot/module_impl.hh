@@ -18,6 +18,17 @@
 
 namespace Jetstream::Modules {
 
+namespace detail {
+
+constexpr U64 LineplotInputIndex(const U64 batch,
+                                 const U64 index,
+                                 const U64 inputRowWidth,
+                                 const U64 decimation) {
+    return (batch * inputRowWidth) + (index * decimation);
+}
+
+}  // namespace detail
+
 struct LineplotImpl : public Module::Impl, public DynamicConfig<Lineplot> {
  public:
     Result validate() override;
@@ -29,9 +40,11 @@ struct LineplotImpl : public Module::Impl, public DynamicConfig<Lineplot> {
  protected:
     Tensor input;
     Tensor signalPoints;
+    Tensor signalVertices;
 
     U64 numberOfElements = 0;
     U64 numberOfBatches = 0;
+    U64 inputRowWidth = 0;
     F32 normalizationFactor = 0.0f;
 
     // Surface interaction state.
@@ -44,11 +57,11 @@ struct LineplotImpl : public Module::Impl, public DynamicConfig<Lineplot> {
         F32 thickness[2];
         F32 zoom;
         U32 numberOfPoints;
-    } signalUniforms;
+    } signalUniforms{};
 
     struct {
         glm::mat4 transform;
-    } cursorUniforms;
+    } cursorUniforms{};
 
     // Rendering state.
     Extent2D<F32> pixelSize;
@@ -60,7 +73,6 @@ struct LineplotImpl : public Module::Impl, public DynamicConfig<Lineplot> {
     bool updateSignalUniformBufferFlag = false;
 
     // Rendering buffers.
-    Tensor signalVertices;
     Tensor cursorSignalPoint;
 
     std::shared_ptr<Render::Buffer> signalPointsBuffer;
@@ -92,6 +104,8 @@ struct LineplotImpl : public Module::Impl, public DynamicConfig<Lineplot> {
     Result createPresent();
     Result destroyPresent();
     Result present();
+
+    virtual Result readSignalPoint(U64 index, F32* point);
 
     void updateState();
     void updateCursorState();

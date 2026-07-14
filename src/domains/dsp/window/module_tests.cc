@@ -103,6 +103,28 @@ TEST_CASE("Window - invalid size is rejected", "[modules][window][validation]") 
     }
 }
 
+TEST_CASE("Window - singleton is the multiplicative identity",
+          "[modules][window][singleton]") {
+    auto implementations = Registry::ListAvailableModules("window");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("window", impl.device, impl.runtime, impl.provider);
+
+            Modules::Window config;
+            config.size = 1;
+            ctx.setConfig(config);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            auto& out = ctx.output("window");
+            REQUIRE(out.shape() == Shape{1});
+            REQUIRE(out.at<CF32>(0) == CF32(1.0f, 0.0f));
+        }
+    }
+}
+
 TEST_CASE("Window - repeated run keeps baked output stable", "[modules][window][state]") {
     auto implementations = Registry::ListAvailableModules("window");
     REQUIRE(!implementations.empty());

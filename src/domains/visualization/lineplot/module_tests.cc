@@ -4,6 +4,8 @@
 #include "jetstream/registry.hh"
 #include "jetstream/testing.hh"
 
+#include "module_impl.hh"
+
 using namespace Jetstream;
 
 TEST_CASE("Lineplot module accepts valid F32 inputs", "[modules][lineplot]") {
@@ -152,4 +154,24 @@ TEST_CASE("Lineplot module handles repeated runs and config updates",
             REQUIRE(ctx.run() == Result::SUCCESS);
         }
     }
+}
+
+TEST_CASE("Lineplot batched decimation uses the original row width",
+          "[modules][lineplot][decimation][regression]") {
+    const Shape shape = {2, 5};
+    const U64 decimation = 2;
+    const U64 numberOfElements = shape[1] / decimation;
+    const F32 input[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
+                         10.0f, 20.0f, 30.0f, 40.0f, 50.0f};
+    F32 sums[] = {0.0f, 0.0f};
+
+    for (U64 batch = 0; batch < shape[0]; ++batch) {
+        for (U64 index = 0; index < numberOfElements; ++index) {
+            sums[index] += input[Modules::detail::LineplotInputIndex(
+                batch, index, shape[1], decimation)];
+        }
+    }
+
+    REQUIRE(sums[0] == 11.0f);
+    REQUIRE(sums[1] == 33.0f);
 }

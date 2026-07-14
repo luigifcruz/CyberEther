@@ -153,6 +153,32 @@ JST_INLINE Result AutomaticIterator(const Function& function, Args&... args) {
         }
     };
 
+    const auto loopGeneric = [&]() {
+        std::array<U64, N> ptr = {};
+        std::array<Shape, N> coords = {Shape(args.rank(), 0)...};
+
+        const std::array<const U64*, N> backstride = {args.backstride().data()...};
+        const std::array<const U64*, N> shapeM1 = {args.shapeMinusOne().data()...};
+        const std::array<const U64*, N> stride = {args.stride().data()...};
+
+        for (U64 i = 0; i < size; i++) {
+            detail::AutomaticIteratorInvoke(function, dataPtrs, ptr, std::make_index_sequence<N>{});
+
+            for (U64 x = 0; x < N; x++) {
+                for (U64 axis = coords[x].size(); axis-- > 0;) {
+                    if (coords[x][axis] < shapeM1[x][axis]) {
+                        coords[x][axis]++;
+                        ptr[x] += stride[x][axis];
+                        break;
+                    }
+
+                    coords[x][axis] = 0;
+                    ptr[x] -= backstride[x][axis];
+                }
+            }
+        }
+    };
+
     // Iterator implementations (same as main function)
     constexpr detail::AutomaticIterator1D iterator1d{};
     constexpr detail::AutomaticIteratorContiguous iteratorContiguous{};
@@ -261,8 +287,8 @@ JST_INLINE Result AutomaticIterator(const Function& function, Args&... args) {
         return Result::SUCCESS;
     }
 
-    JST_ERROR("Automatic iterator not implemented for rank {}.", rank);
-    return Result::ERROR;
+    loopGeneric();
+    return Result::SUCCESS;
 }
 
 }  // namespace Jetstream

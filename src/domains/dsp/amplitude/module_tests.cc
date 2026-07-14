@@ -126,3 +126,144 @@ TEST_CASE("Amplitude - CF32 Various Magnitudes", "[modules][amplitude][magnitude
         }
     }
 }
+
+TEST_CASE("Amplitude - F32 exact zero is negative infinity",
+          "[modules][amplitude][f32][zero]") {
+    auto implementations = Registry::ListAvailableModules("amplitude");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("amplitude", impl.device, impl.runtime, impl.provider);
+            Modules::Amplitude config;
+            ctx.setConfig(config);
+
+            Tensor input;
+            REQUIRE(input.create(DeviceType::CPU, DataType::F32, {2}) == Result::SUCCESS);
+            input.at<F32>(0) = 0.0f;
+            input.at<F32>(1) = 1.0f;
+            ctx.setInput("signal", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            auto& out = ctx.output("signal");
+            REQUIRE(std::isinf(out.at<F32>(0)));
+            REQUIRE(std::signbit(out.at<F32>(0)));
+            REQUIRE(std::isfinite(out.at<F32>(1)));
+        }
+    }
+}
+
+TEST_CASE("Amplitude - CF32 exact zero is negative infinity",
+          "[modules][amplitude][cf32][zero]") {
+    auto implementations = Registry::ListAvailableModules("amplitude");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("amplitude", impl.device, impl.runtime, impl.provider);
+            Modules::Amplitude config;
+            ctx.setConfig(config);
+
+            Tensor input;
+            REQUIRE(input.create(DeviceType::CPU, DataType::CF32, {2}) == Result::SUCCESS);
+            input.at<CF32>(0) = CF32(0.0f, 0.0f);
+            input.at<CF32>(1) = CF32(0.0f, 1.0f);
+            ctx.setInput("signal", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            auto& out = ctx.output("signal");
+            REQUIRE(std::isinf(out.at<F32>(0)));
+            REQUIRE(std::signbit(out.at<F32>(0)));
+            REQUIRE(std::isfinite(out.at<F32>(1)));
+        }
+    }
+}
+
+TEST_CASE("Amplitude - Rank 4 Non-Contiguous F32",
+          "[modules][amplitude][f32][noncontiguous]") {
+    const auto implementations = Registry::ListAvailableModules("amplitude");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("amplitude", impl.device, impl.runtime, impl.provider);
+
+            Tensor storage(DeviceType::CPU, DataType::F32, {2, 2, 3, 2, 4});
+            for (U64 i = 0; i < storage.size(); ++i) {
+                storage.data<F32>()[i] = 0.5f + static_cast<F32>(i) * 0.125f;
+            }
+
+            Tensor input = storage.clone();
+            REQUIRE(input.slice({Token(1), Token(), Token(), Token(), Token()}) == Result::SUCCESS);
+            REQUIRE(input.permute({1, 0, 3, 2}) == Result::SUCCESS);
+            REQUIRE(input.shape() == Shape{3, 2, 4, 2});
+            REQUIRE(input.offset() != 0);
+            REQUIRE_FALSE(input.contiguous());
+
+            ctx.setInput("signal", input);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("signal");
+            const F32 scalingCoeff = 20.0f * std::log10(0.5f);
+            for (U64 i = 0; i < 3; ++i) {
+                for (U64 j = 0; j < 2; ++j) {
+                    for (U64 k = 0; k < 4; ++k) {
+                        for (U64 l = 0; l < 2; ++l) {
+                            const F32 expected = 20.0f * std::log10(std::fabs(
+                                input.at<F32>(i, j, k, l))) + scalingCoeff;
+                            REQUIRE_THAT(out.at<F32>(i, j, k, l),
+                                         Catch::Matchers::WithinAbs(expected, 0.1f));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("Amplitude - Rank 4 Non-Contiguous CF32",
+          "[modules][amplitude][cf32][noncontiguous]") {
+    const auto implementations = Registry::ListAvailableModules("amplitude");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("amplitude", impl.device, impl.runtime, impl.provider);
+
+            Tensor storage(DeviceType::CPU, DataType::CF32, {2, 2, 3, 2, 4});
+            for (U64 i = 0; i < storage.size(); ++i) {
+                const F32 value = 0.5f + static_cast<F32>(i) * 0.125f;
+                storage.data<CF32>()[i] = CF32(value, value * 0.5f);
+            }
+
+            Tensor input = storage.clone();
+            REQUIRE(input.slice({Token(1), Token(), Token(), Token(), Token()}) == Result::SUCCESS);
+            REQUIRE(input.permute({1, 0, 3, 2}) == Result::SUCCESS);
+            REQUIRE(input.shape() == Shape{3, 2, 4, 2});
+            REQUIRE(input.offset() != 0);
+            REQUIRE_FALSE(input.contiguous());
+
+            ctx.setInput("signal", input);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("signal");
+            const F32 scalingCoeff = 20.0f * std::log10(0.5f);
+            for (U64 i = 0; i < 3; ++i) {
+                for (U64 j = 0; j < 2; ++j) {
+                    for (U64 k = 0; k < 4; ++k) {
+                        for (U64 l = 0; l < 2; ++l) {
+                            const CF32 value = input.at<CF32>(i, j, k, l);
+                            const F32 magnitude = std::sqrt(
+                                value.real() * value.real() + value.imag() * value.imag());
+                            const F32 expected = 20.0f * std::log10(magnitude) + scalingCoeff;
+                            REQUIRE_THAT(out.at<F32>(i, j, k, l),
+                                         Catch::Matchers::WithinAbs(expected, 0.1f));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
