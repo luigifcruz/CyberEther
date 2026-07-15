@@ -15,6 +15,8 @@ Surface::Surface(const Config& config) : config(config) {
         }
     };
 
+    addTexture(config.framebuffer);
+
     for (const auto& kernel : config.kernels) {
         if (!kernel) {
             continue;

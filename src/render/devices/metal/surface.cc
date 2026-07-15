@@ -75,7 +75,6 @@ Result Implementation::destroy() {
 Result Implementation::createFramebuffer() {
     JST_DEBUG("[METAL] Creating surface framebuffer.");
 
-    JST_CHECK(framebufferResolve->create());
     if (config.multisampled) {
         JST_CHECK(framebuffer->create());
     }
@@ -112,7 +111,6 @@ Result Implementation::destroyFramebuffer() {
     if (config.multisampled) {
         JST_CHECK(framebuffer->destroy());
     }
-    JST_CHECK(framebufferResolve->destroy());
 
     return Result::SUCCESS;
 }
@@ -125,6 +123,8 @@ Result Implementation::prepare() {
         }
 
         JST_CHECK(destroyFramebuffer());
+        JST_CHECK(framebufferResolve->destroy());
+        JST_CHECK(framebufferResolve->create());
         JST_CHECK(createFramebuffer());
     }
 

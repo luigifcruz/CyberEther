@@ -28,9 +28,6 @@ class JETSTREAM_API SurfaceImp<DeviceType::WebGPU> : public Surface {
     Extent2D<U64> requestedSize;
     bool framebufferChanged = false;
 
-    Result createFramebuffer();
-    Result destroyFramebuffer();
-
     friend class WindowImp<DeviceType::WebGPU>;
 };
 

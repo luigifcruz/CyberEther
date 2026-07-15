@@ -155,6 +155,7 @@ class JETSTREAM_API Window {
  private:
     bool shouldDeferAttachmentQueueProcessing();
     bool attachmentQueueEmpty() const;
+    Result destroyInternal();
 
     std::vector<std::shared_ptr<Components::Generic>> components;
 
@@ -175,15 +176,29 @@ class JETSTREAM_API Window {
         std::shared_ptr<WindowAttachment> attachment;
     };
 
+    struct ResourceLease {
+        size_t surfaceReferences = 0;
+        bool root = false;
+        uint32_t rootReleaseExpiration = 0;
+        const Surface* framebufferOwner = nullptr;
+    };
+
     Result processAttachmentQueues();
+    std::vector<std::shared_ptr<WindowAttachment>> surfaceResourceList(const std::shared_ptr<Surface>& surface) const;
+    Result acquireSurfaceResources(const std::shared_ptr<Surface>& surface);
+    Result releaseSurfaceResources(const std::shared_ptr<Surface>& surface);
+    Result releaseSurfaceResource(const std::shared_ptr<WindowAttachment>& resource);
+    Result finalizeAttachmentDestruction(const std::shared_ptr<WindowAttachment>& attachment);
 
     mutable std::mutex attachmentStateMutex;
+    bool destructionInProgress = false;
     std::queue<std::shared_ptr<WindowAttachment>> bindQueue;
     std::queue<std::shared_ptr<WindowAttachment>> unbindQueue;
     std::queue<PendingDestruction> destroyQueue;
 
     std::vector<std::shared_ptr<WindowAttachment>> attachments;
     std::unordered_set<const WindowAttachment*> destroyingAttachments;
+    std::unordered_map<const WindowAttachment*, ResourceLease> resourceLeases;
 };
 
 }  // namespace Jetstream::Render

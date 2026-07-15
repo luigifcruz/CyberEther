@@ -3,7 +3,9 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <limits>
+#include <thread>
 #include <vector>
 
 #include "jetstream/render/base/buffer.hh"
@@ -19,18 +21,35 @@ class TestBuffer final : public Render::Buffer {
  public:
     explicit TestBuffer(const Config& config) : Buffer(config) {}
 
-    Result create() override { return Result::SUCCESS; }
-    Result destroy() override { return Result::SUCCESS; }
+    Result create() override {
+        createCount++;
+        return Result::SUCCESS;
+    }
+    Result destroy() override {
+        destroyCount++;
+        return Result::SUCCESS;
+    }
 
+    U64 createCount = 0;
+    U64 destroyCount = 0;
 };
 
 class TestTexture final : public Render::Texture {
  public:
     explicit TestTexture(const Config& config) : Texture(config) {}
 
-    Result create() override { return Result::SUCCESS; }
-    Result destroy() override { return Result::SUCCESS; }
+    Result create() override {
+        createCount++;
+        return Result::SUCCESS;
+    }
+    Result destroy() override {
+        destroyCount++;
+        return Result::SUCCESS;
+    }
     uint64_t raw() const override { return 0; }
+
+    U64 createCount = 0;
+    U64 destroyCount = 0;
 };
 
 class TestDraw final : public Render::Draw {
@@ -94,10 +113,25 @@ class TestSurface final : public Render::Surface {
     explicit TestSurface(const Config& config) : Surface(config) {}
 
     Result create() override { return Result::SUCCESS; }
-    Result destroy() override { return Result::SUCCESS; }
+    Result destroy() override {
+        destructionStarted.store(true, std::memory_order_release);
+        while (destructionBlocked.load(std::memory_order_acquire)) {
+            std::this_thread::yield();
+        }
+        return Result::SUCCESS;
+    }
     const Extent2D<U64>& size(const Extent2D<U64>&) override { return NullSize2D; }
 
     bool wantsDraw() { return shouldDraw(); }
+    void blockDestruction() { destructionBlocked.store(true, std::memory_order_release); }
+    void resumeDestruction() { destructionBlocked.store(false, std::memory_order_release); }
+    bool hasStartedDestruction() const {
+        return destructionStarted.load(std::memory_order_acquire);
+    }
+
+ private:
+    std::atomic<bool> destructionBlocked = false;
+    std::atomic<bool> destructionStarted = false;
 };
 
 class TestWindow final : public Render::Window {
@@ -193,6 +227,28 @@ std::shared_ptr<TestSurface> MakeRetainedSurface(
     programConfig.textures.push_back(texture);
 
     Render::Surface::Config config;
+    config.programs.push_back(std::make_shared<Render::Program>(programConfig));
+    config.retained = true;
+    return std::make_shared<TestSurface>(config);
+}
+
+std::shared_ptr<TestSurface> MakeFramebufferSurface(const std::shared_ptr<Render::Texture>& texture) {
+    Render::Surface::Config config;
+    config.framebuffer = texture;
+    config.retained = true;
+    return std::make_shared<TestSurface>(config);
+}
+
+std::shared_ptr<TestSurface> MakeRetainedSurface(const std::shared_ptr<Render::Buffer>& buffer,
+                                                 const std::shared_ptr<Render::Texture>& texture) {
+    Render::Kernel::Config kernelConfig;
+    kernelConfig.buffers.push_back({buffer, Render::Kernel::AccessMode::READ});
+
+    Render::Program::Config programConfig;
+    programConfig.textures.push_back(texture);
+
+    Render::Surface::Config config;
+    config.kernels.push_back(std::make_shared<Render::Kernel>(kernelConfig));
     config.programs.push_back(std::make_shared<Render::Program>(programConfig));
     config.retained = true;
     return std::make_shared<TestSurface>(config);
@@ -545,6 +601,136 @@ TEST_CASE("Failed render window creation rolls back its backend", "[render][wind
 
     REQUIRE(replacement.create() == Result::SUCCESS);
     REQUIRE(replacement.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Surfaces lease shared resources once", "[render][window][surface]") {
+    TestWindow window;
+    std::array<U32, 2> source = {10, 20};
+    std::array<U8, 16> textureSource{};
+    auto buffer = MakeBuffer(source);
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{
+        .size = {2, 2},
+        .buffer = textureSource.data(),
+    });
+    auto firstSurface = MakeRetainedSurface(buffer, texture);
+    auto secondSurface = MakeRetainedSurface(buffer, texture);
+
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(firstSurface) == Result::SUCCESS);
+    REQUIRE(window.bind(secondSurface) == Result::SUCCESS);
+    REQUIRE(buffer->createCount == 1);
+    REQUIRE(buffer->destroyCount == 0);
+    REQUIRE(texture->createCount == 1);
+    REQUIRE(texture->destroyCount == 0);
+
+    REQUIRE(window.destroy() == Result::SUCCESS);
+    REQUIRE(buffer->destroyCount == 1);
+    REQUIRE(texture->destroyCount == 1);
+}
+
+TEST_CASE("Surface framebuffers reject sampled sharing", "[render][window][surface]") {
+    TestWindow window;
+    std::array<U8, 16> textureSource{};
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{
+        .size = {2, 2},
+        .buffer = textureSource.data(),
+    });
+    auto producer = MakeFramebufferSurface(texture);
+    auto consumer = MakeRetainedSurface(texture);
+
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(producer) == Result::SUCCESS);
+    REQUIRE(window.bind(consumer) == Result::ERROR);
+    REQUIRE(texture->createCount == 1);
+
+    REQUIRE(window.destroy() == Result::SUCCESS);
+    REQUIRE(texture->destroyCount == 1);
+}
+
+TEST_CASE("Surface resources can become standalone attachments",
+          "[render][window][surface]") {
+    TestWindow window;
+    TestWindow replacement;
+    std::array<U32, 2> source = {10, 20};
+    auto buffer = MakeBuffer(source);
+    auto surface = MakeRetainedSurface(buffer);
+
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(surface) == Result::SUCCESS);
+    REQUIRE(window.bind(buffer) == Result::SUCCESS);
+    REQUIRE(buffer->createCount == 1);
+
+    REQUIRE(window.unbind(surface) == Result::SUCCESS);
+    REQUIRE(window.unbind(buffer) == Result::SUCCESS);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+    REQUIRE(buffer->destroyCount == 1);
+
+    REQUIRE(replacement.create() == Result::SUCCESS);
+    REQUIRE(replacement.bind(buffer) == Result::SUCCESS);
+    REQUIRE(buffer->createCount == 2);
+    REQUIRE(replacement.destroy() == Result::SUCCESS);
+    REQUIRE(buffer->destroyCount == 2);
+}
+
+TEST_CASE("Standalone resource release keeps its own grace period",
+          "[render][window][surface]") {
+    TestWindow window;
+    std::array<U32, 2> source = {10, 20};
+    auto buffer = MakeBuffer(source);
+    auto surface = MakeRetainedSurface(buffer);
+    const auto renderFrame = [&]() {
+        REQUIRE(window.begin() == Result::SUCCESS);
+        REQUIRE(window.end() == Result::SUCCESS);
+    };
+
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(surface) == Result::SUCCESS);
+    REQUIRE(window.bind(buffer) == Result::SUCCESS);
+    REQUIRE(window.start() == Result::SUCCESS);
+    REQUIRE(window.unbind(surface) == Result::SUCCESS);
+
+    renderFrame();
+    renderFrame();
+    renderFrame();
+    REQUIRE(window.unbind(buffer) == Result::SUCCESS);
+
+    renderFrame();
+    renderFrame();
+    renderFrame();
+    renderFrame();
+    REQUIRE(buffer->destroyCount == 0);
+    renderFrame();
+    REQUIRE(buffer->destroyCount == 1);
+
+    REQUIRE(window.stop() == Result::SUCCESS);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Window destruction rejects concurrent resource binding",
+          "[render][window][surface]") {
+    TestWindow window;
+    std::array<U32, 2> source = {10, 20};
+    auto buffer = MakeBuffer(source);
+    auto surface = MakeRetainedSurface(buffer);
+
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(surface) == Result::SUCCESS);
+    surface->blockDestruction();
+
+    Result destructionResult = Result::ERROR;
+    std::thread destructionThread([&]() {
+        destructionResult = window.destroy();
+    });
+    while (!surface->hasStartedDestruction()) {
+        std::this_thread::yield();
+    }
+
+    const Result bindResult = window.bind(buffer);
+    surface->resumeDestruction();
+    destructionThread.join();
+    REQUIRE(bindResult == Result::ERROR);
+    REQUIRE(destructionResult == Result::SUCCESS);
+    REQUIRE(buffer->destroyCount == 1);
 }
 
 TEST_CASE("Cancelled render frames release the window", "[render][window]") {

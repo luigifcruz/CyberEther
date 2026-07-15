@@ -65,7 +65,6 @@ Result FrameImpl::createPresent() {
         cfg.size = 12;
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(fillScreenVerticesBuffer, cfg));
-        JST_CHECK(window->bind(fillScreenVerticesBuffer));
     }
 
     {
@@ -75,7 +74,6 @@ Result FrameImpl::createPresent() {
         cfg.size = 8;
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(fillScreenTextureVerticesBuffer, cfg));
-        JST_CHECK(window->bind(fillScreenTextureVerticesBuffer));
     }
 
     {
@@ -85,7 +83,6 @@ Result FrameImpl::createPresent() {
         cfg.size = 6;
         cfg.target = Render::Buffer::Target::VERTEX_INDICES;
         JST_CHECK(window->build(fillScreenIndicesBuffer, cfg));
-        JST_CHECK(window->bind(fillScreenIndicesBuffer));
     }
 
     {
@@ -113,7 +110,6 @@ Result FrameImpl::createPresent() {
         cfg.target = Render::Buffer::Target::STORAGE;
         cfg.enableZeroCopy = false;
         JST_CHECK(window->build(frameBuffer, cfg));
-        JST_CHECK(window->bind(frameBuffer));
     }
 
     {
@@ -121,7 +117,6 @@ Result FrameImpl::createPresent() {
         cfg.size = {256, 1};
         cfg.buffer = reinterpret_cast<const uint8_t*>(TurboLutBytes);
         JST_CHECK(window->build(lutTexture, cfg));
-        JST_CHECK(window->bind(lutTexture));
     }
 
     {
@@ -131,7 +126,6 @@ Result FrameImpl::createPresent() {
         cfg.size = 1;
         cfg.target = Render::Buffer::Target::UNIFORM;
         JST_CHECK(window->build(frameUniformBuffer, cfg));
-        JST_CHECK(window->bind(frameUniformBuffer));
     }
 
     {
@@ -180,13 +174,6 @@ Result FrameImpl::destroyPresent() {
     }
 
     JST_CHECK(window->unbind(renderSurface));
-    JST_CHECK(window->unbind(lutTexture));
-    JST_CHECK(window->unbind(fillScreenVerticesBuffer));
-    JST_CHECK(window->unbind(fillScreenTextureVerticesBuffer));
-    JST_CHECK(window->unbind(fillScreenIndicesBuffer));
-    JST_CHECK(window->unbind(frameBuffer));
-    JST_CHECK(window->unbind(frameUniformBuffer));
-
     return Result::SUCCESS;
 }
 

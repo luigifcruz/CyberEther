@@ -161,7 +161,6 @@ Result Shapes::create(Window* window) {
         cfg.size = 1;
         cfg.target = Render::Buffer::Target::UNIFORM;
         JST_CHECK(window->build(pimpl->uniformBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->uniformBuffer));
     }
 
     {
@@ -171,7 +170,6 @@ Result Shapes::create(Window* window) {
         cfg.size = pimpl->vertices.size();
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(pimpl->verticesBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->verticesBuffer));
     }
 
     {
@@ -181,7 +179,6 @@ Result Shapes::create(Window* window) {
         cfg.size = pimpl->instances.size();
         cfg.target = Render::Buffer::Target::VERTEX | Render::Buffer::Target::STORAGE;
         JST_CHECK(window->build(pimpl->instanceBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->instanceBuffer));
     }
 
     {
@@ -191,7 +188,6 @@ Result Shapes::create(Window* window) {
         cfg.size = pimpl->indices.size();
         cfg.target = Render::Buffer::Target::VERTEX_INDICES;
         JST_CHECK(window->build(pimpl->indicesBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->indicesBuffer));
     }
 
     // Create compute kernel buffers.
@@ -203,7 +199,6 @@ Result Shapes::create(Window* window) {
         cfg.size = pimpl->properties.size();
         cfg.target = Render::Buffer::Target::STORAGE;
         JST_CHECK(window->build(pimpl->propertiesBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->propertiesBuffer));
     }
 
     {
@@ -218,7 +213,6 @@ Result Shapes::create(Window* window) {
         cfg.enableZeroCopy = pimpl->optimalInstanceColors.device() == window->device();
         cfg.target = Render::Buffer::Target::STORAGE;
         JST_CHECK(window->build(pimpl->colorsBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->colorsBuffer));
     }
 
     {
@@ -233,7 +227,6 @@ Result Shapes::create(Window* window) {
         cfg.enableZeroCopy = pimpl->optimalInstanceRotations.device() == window->device();
         cfg.target = Render::Buffer::Target::STORAGE;
         JST_CHECK(window->build(pimpl->rotationsBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->rotationsBuffer));
     }
 
     {
@@ -248,7 +241,6 @@ Result Shapes::create(Window* window) {
         cfg.enableZeroCopy = pimpl->optimalInstanceSizes.device() == window->device();
         cfg.target = Render::Buffer::Target::STORAGE;
         JST_CHECK(window->build(pimpl->sizesBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->sizesBuffer));
     }
 
     {
@@ -263,7 +255,6 @@ Result Shapes::create(Window* window) {
         cfg.enableZeroCopy = pimpl->optimalInstancePositions.device() == window->device();
         cfg.target = Render::Buffer::Target::STORAGE;
         JST_CHECK(window->build(pimpl->positionsBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->positionsBuffer));
     }
 
     {
@@ -370,20 +361,8 @@ Result Shapes::create(Window* window) {
     return Result::SUCCESS;
 }
 
-Result Shapes::destroy(Window* window) {
+Result Shapes::destroy(Window*) {
     JST_DEBUG("[SHAPES] Unloading shapes.");
-
-    JST_CHECK(window->unbind(pimpl->uniformBuffer));
-    JST_CHECK(window->unbind(pimpl->verticesBuffer));
-    JST_CHECK(window->unbind(pimpl->instanceBuffer));
-    JST_CHECK(window->unbind(pimpl->indicesBuffer));
-
-    // Unbind compute buffers
-    JST_CHECK(window->unbind(pimpl->propertiesBuffer));
-    JST_CHECK(window->unbind(pimpl->colorsBuffer));
-    JST_CHECK(window->unbind(pimpl->rotationsBuffer));
-    JST_CHECK(window->unbind(pimpl->sizesBuffer));
-    JST_CHECK(window->unbind(pimpl->positionsBuffer));
 
     return Result::SUCCESS;
 }

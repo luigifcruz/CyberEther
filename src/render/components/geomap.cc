@@ -401,6 +401,8 @@ GeoMap::~GeoMap() {
 // GPU resources for a merged colored fill layer.
 struct MergedFillLayer {
     std::vector<F32> vertices;   // stride 5: lon, lat, r, g, b
+    std::vector<F32> positions;
+    std::vector<F32> colors;
     std::vector<U32> indices;
     U64 indexCount = 0;
 
@@ -603,7 +605,6 @@ Result GeoMap::create(Window* window) {
         cfg.size = 12;  // 6 vertices * 2 components
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(pimpl->quadBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->quadBuffer));
     }
 
     // Helper lambda to build one line category.
@@ -643,7 +644,6 @@ Result GeoMap::create(Window* window) {
             cfg.size = instanceData.size();
             cfg.target = Render::Buffer::Target::VERTEX;
             JST_CHECK(window->build(instanceBuffer, cfg));
-            JST_CHECK(window->bind(instanceBuffer));
         }
 
         // Uniform buffer.
@@ -654,7 +654,6 @@ Result GeoMap::create(Window* window) {
             cfg.size = 1;
             cfg.target = Render::Buffer::Target::UNIFORM;
             JST_CHECK(window->build(uniformBuffer, cfg));
-            JST_CHECK(window->bind(uniformBuffer));
         }
 
         // Vertex config: quad vertices + instance data.
@@ -758,37 +757,35 @@ Result GeoMap::create(Window* window) {
         // Separate position (lon, lat) and color (r, g, b) buffers
         // from interleaved stride-5 data.
         const U64 vertexCount = layer.vertices.size() / 5;
-        std::vector<F32> posData(vertexCount * 2);
-        std::vector<F32> colorData(vertexCount * 3);
+        layer.positions.resize(vertexCount * 2);
+        layer.colors.resize(vertexCount * 3);
 
         for (U64 i = 0; i < vertexCount; ++i) {
-            posData[i * 2]     = layer.vertices[i * 5];
-            posData[i * 2 + 1] = layer.vertices[i * 5 + 1];
-            colorData[i * 3]     = layer.vertices[i * 5 + 2];
-            colorData[i * 3 + 1] = layer.vertices[i * 5 + 3];
-            colorData[i * 3 + 2] = layer.vertices[i * 5 + 4];
+            layer.positions[i * 2] = layer.vertices[i * 5];
+            layer.positions[i * 2 + 1] = layer.vertices[i * 5 + 1];
+            layer.colors[i * 3] = layer.vertices[i * 5 + 2];
+            layer.colors[i * 3 + 1] = layer.vertices[i * 5 + 3];
+            layer.colors[i * 3 + 2] = layer.vertices[i * 5 + 4];
         }
 
         // Position buffer.
         {
             Render::Buffer::Config cfg;
-            cfg.buffer = posData.data();
+            cfg.buffer = layer.positions.data();
             cfg.elementByteSize = sizeof(F32);
-            cfg.size = posData.size();
+            cfg.size = layer.positions.size();
             cfg.target = Render::Buffer::Target::VERTEX;
             JST_CHECK(window->build(layer.posBuffer, cfg));
-            JST_CHECK(window->bind(layer.posBuffer));
         }
 
         // Color buffer.
         {
             Render::Buffer::Config cfg;
-            cfg.buffer = colorData.data();
+            cfg.buffer = layer.colors.data();
             cfg.elementByteSize = sizeof(F32);
-            cfg.size = colorData.size();
+            cfg.size = layer.colors.size();
             cfg.target = Render::Buffer::Target::VERTEX;
             JST_CHECK(window->build(layer.colorBuffer, cfg));
-            JST_CHECK(window->bind(layer.colorBuffer));
         }
 
         // Index buffer.
@@ -800,7 +797,6 @@ Result GeoMap::create(Window* window) {
             cfg.target =
                 Render::Buffer::Target::VERTEX_INDICES;
             JST_CHECK(window->build(layer.indexBuffer, cfg));
-            JST_CHECK(window->bind(layer.indexBuffer));
         }
 
         // Uniform buffer.
@@ -811,7 +807,6 @@ Result GeoMap::create(Window* window) {
             cfg.size = 1;
             cfg.target = Render::Buffer::Target::UNIFORM;
             JST_CHECK(window->build(layer.uniformBuffer, cfg));
-            JST_CHECK(window->bind(layer.uniformBuffer));
         }
 
         // Vertex config: position + color + indices.
@@ -847,11 +842,10 @@ Result GeoMap::create(Window* window) {
             JST_CHECK(window->build(layer.program, cfg));
         }
 
-        // Free CPU-side vertex data after GPU upload.
+        // The split arrays and indices remain alive until deferred creation has
+        // copied their initial contents.
         layer.vertices.clear();
         layer.vertices.shrink_to_fit();
-        layer.indices.clear();
-        layer.indices.shrink_to_fit();
 
         return Result::SUCCESS;
     };
@@ -896,42 +890,6 @@ Result GeoMap::create(Window* window) {
 }
 
 Result GeoMap::destroy(Window* window) {
-    const U64 totalInstances =
-        pimpl->majorInstanceCount + pimpl->minorInstanceCount +
-        pimpl->riverInstanceCount;
-
-    if (totalInstances > 0) {
-        JST_CHECK(window->unbind(pimpl->quadBuffer));
-
-        if (pimpl->majorInstanceCount > 0) {
-            JST_CHECK(window->unbind(pimpl->majorInstanceBuffer));
-            JST_CHECK(window->unbind(pimpl->majorUniformBuffer));
-        }
-
-        if (pimpl->minorInstanceCount > 0) {
-            JST_CHECK(window->unbind(pimpl->minorInstanceBuffer));
-            JST_CHECK(window->unbind(pimpl->minorUniformBuffer));
-        }
-
-        if (pimpl->riverInstanceCount > 0) {
-            JST_CHECK(window->unbind(pimpl->riverInstanceBuffer));
-            JST_CHECK(window->unbind(pimpl->riverUniformBuffer));
-        }
-    }
-
-    auto unbindMergedFill = [&](MergedFillLayer& layer) -> Result {
-        if (layer.indexCount > 0) {
-            JST_CHECK(window->unbind(layer.posBuffer));
-            JST_CHECK(window->unbind(layer.colorBuffer));
-            JST_CHECK(window->unbind(layer.indexBuffer));
-            JST_CHECK(window->unbind(layer.uniformBuffer));
-        }
-        return Result::SUCCESS;
-    };
-
-    JST_CHECK(unbindMergedFill(pimpl->bathymetry));
-    JST_CHECK(unbindMergedFill(pimpl->landcover));
-
     if (pimpl->text) {
         JST_CHECK(window->unbind(pimpl->text));
     }

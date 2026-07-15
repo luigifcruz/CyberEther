@@ -101,7 +101,6 @@ Result Implementation::create() {
         JST_ERROR("[VULKAN] Failed to create render pass.");
     });
 
-    JST_CHECK(framebufferResolve->create());
     if (config.multisampled) {
         JST_CHECK(framebuffer->create());
     }
@@ -154,7 +153,6 @@ Result Implementation::destroy() {
         JST_CHECK(program->destroy());
     }
 
-    JST_CHECK(framebufferResolve->destroy());
     if (config.multisampled) {
         JST_CHECK(framebuffer->destroy());
     }
@@ -176,6 +174,8 @@ Result Implementation::prepare() {
         }
 
         JST_CHECK(destroy());
+        JST_CHECK(framebufferResolve->destroy());
+        JST_CHECK(framebufferResolve->create());
         JST_CHECK(create());
     }
 

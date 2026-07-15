@@ -28,8 +28,6 @@ Implementation::SurfaceImp(const Config& config) : Surface(config) {
 Result Implementation::create() {
     JST_DEBUG("[WebGPU] Creating surface.");
 
-    JST_CHECK(createFramebuffer());
-
     for (auto& program : programs) {
         JST_CHECK(program->create(framebuffer->getTextureFormat()));
     }
@@ -54,28 +52,14 @@ Result Implementation::destroy() {
         JST_CHECK(program->destroy());
     }
 
-    JST_CHECK(destroyFramebuffer());
-
     return Result::SUCCESS;
-}
-
-Result Implementation::createFramebuffer() {
-    JST_DEBUG("[WebGPU] Creating surface framebuffer.");
-
-    return framebuffer->create();
-}
-
-Result Implementation::destroyFramebuffer() {
-    JST_DEBUG("[WebGPU] Destroying surface framebuffer");
-
-    return framebuffer->destroy();
 }
 
 Result Implementation::prepare() {
     framebufferChanged = framebuffer->size(requestedSize);
     if (framebufferChanged) {
-        JST_CHECK(destroyFramebuffer());
-        JST_CHECK(createFramebuffer());
+        JST_CHECK(framebuffer->destroy());
+        JST_CHECK(framebuffer->create());
     }
 
     return Result::SUCCESS;

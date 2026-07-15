@@ -131,7 +131,6 @@ Result Text::create(Window* window) {
         cfg.size = 1;
         cfg.target = Render::Buffer::Target::UNIFORM;
         JST_CHECK(window->build(pimpl->fontUniformBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->fontUniformBuffer));
     }
 
     {
@@ -141,7 +140,6 @@ Result Text::create(Window* window) {
         cfg.size = pimpl->posVertices.size();
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(pimpl->fontPosVerticesBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->fontPosVerticesBuffer));
     }
 
     {
@@ -151,7 +149,6 @@ Result Text::create(Window* window) {
         cfg.size = pimpl->fillVertices.size();
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(pimpl->fontFillVerticesBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->fontFillVerticesBuffer));
     }
 
     {
@@ -161,7 +158,6 @@ Result Text::create(Window* window) {
         cfg.size = pimpl->instances.size();
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(pimpl->fontInstanceBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->fontInstanceBuffer));
     }
 
     {
@@ -171,7 +167,6 @@ Result Text::create(Window* window) {
         cfg.size = pimpl->indices.size();
         cfg.target = Render::Buffer::Target::VERTEX_INDICES;
         JST_CHECK(window->build(pimpl->fontIndicesBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->fontIndicesBuffer));
     }
 
     {
@@ -235,14 +230,8 @@ Result Text::create(Window* window) {
     return Result::SUCCESS;
 }
 
-Result Text::destroy(Window* window) {
+Result Text::destroy(Window*) {
     JST_DEBUG("[TEXT] Unloading text.");
-
-    JST_CHECK(window->unbind(pimpl->fontUniformBuffer));
-    JST_CHECK(window->unbind(pimpl->fontPosVerticesBuffer));
-    JST_CHECK(window->unbind(pimpl->fontFillVerticesBuffer));
-    JST_CHECK(window->unbind(pimpl->fontInstanceBuffer));
-    JST_CHECK(window->unbind(pimpl->fontIndicesBuffer));
 
     return Result::SUCCESS;
 }
