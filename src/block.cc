@@ -212,6 +212,11 @@ Result Block::reconfigure(const Parser::Map& config) {
 
     JST_CHECK(impl->_candidateConfig->deserialize(config));
 
+    // Errored blocks may no longer have the modules needed for in-place reconfiguration.
+    if (impl->_state == State::Errored) {
+        return Result::RECREATE;
+    }
+
     // Return early if the configuration is unchanged.
 
     if (impl->_candidateConfig->hash() == impl->_stagedConfig->hash()) {

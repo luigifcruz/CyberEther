@@ -23,8 +23,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "Reshape block creates with target shape",
     REQUIRE(viewBlock("reshape_block").outputs.count("buffer") == 1);
 }
 
-TEST_CASE_METHOD(FlowgraphFixture, "Reshape block rejects invalid target shape",
-                 "[modules][reshape][block][validation]") {
+TEST_CASE_METHOD(FlowgraphFixture, "Reshape block recovers from invalid target shape",
+                  "[modules][reshape][block][validation]") {
     Blocks::Window source;
     source.size = 8;
     REQUIRE(flowgraph->blockCreate("reshape_bad_src", source, {}) == Result::SUCCESS);
@@ -36,4 +36,11 @@ TEST_CASE_METHOD(FlowgraphFixture, "Reshape block rejects invalid target shape",
     config.shape = "[7]";
     REQUIRE(flowgraph->blockCreate("reshape_bad", config, inputs) == Result::SUCCESS);
     REQUIRE(viewBlock("reshape_bad").state == Block::State::Errored);
+
+    config.shape = "[8]";
+    Parser::Map updated;
+    REQUIRE(config.serialize(updated) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockReconfigure("reshape_bad", updated) == Result::SUCCESS);
+    REQUIRE(viewBlock("reshape_bad").state == Block::State::Created);
+    REQUIRE(viewBlock("reshape_bad").outputs.count("buffer") == 1);
 }
