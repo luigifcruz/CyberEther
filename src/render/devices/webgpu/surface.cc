@@ -108,7 +108,7 @@ Result Implementation::draw(WGPUCommandEncoder& commandEncoder) {
             continue;
         }
         wgpuRenderPassEncoderSetScissorRect(renderPassEncoder, 0, 0, sz.x, sz.y);
-        JST_CHECK(program->draw(renderPassEncoder));
+        JST_CHECK(program->draw(renderPassEncoder, sz));
     }
 
     wgpuRenderPassEncoderEnd(renderPassEncoder);
