@@ -381,6 +381,7 @@ Result Instance::stop() {
     }
 
     JST_CHECK(impl->render->stop());
+    JST_CHECK(impl->render->synchronize());
 
     impl->started.store(false);
 
