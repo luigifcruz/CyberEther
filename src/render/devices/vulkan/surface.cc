@@ -246,6 +246,9 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
     fullScissor.extent = {static_cast<U32>(framebufferResolve->size().x),
                           static_cast<U32>(framebufferResolve->size().y)};
     for (auto& program : programs) {
+        if (!program->enabled()) {
+            continue;
+        }
         vkCmdSetScissor(commandBuffer, 0, 1, &fullScissor);
         JST_CHECK(program->encode(commandBuffer, renderPass));
     }

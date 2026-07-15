@@ -159,6 +159,9 @@ Result Implementation::draw(MTL::CommandBuffer* commandBuffer) {
     MTL::ScissorRect fullScissor = {0, 0, static_cast<NS::UInteger>(sz.x),
                                           static_cast<NS::UInteger>(sz.y)};
     for (auto& program : programs) {
+        if (!program->enabled()) {
+            continue;
+        }
         renderCmdEncoder->setScissorRect(fullScissor);
         JST_CHECK(program->draw(renderCmdEncoder));
     }

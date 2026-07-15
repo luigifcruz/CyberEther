@@ -120,6 +120,9 @@ Result Implementation::draw(WGPUCommandEncoder& commandEncoder) {
 
     const auto& sz = framebuffer->size();
     for (auto& program : programs) {
+        if (!program->enabled()) {
+            continue;
+        }
         wgpuRenderPassEncoderSetScissorRect(renderPassEncoder, 0, 0, sz.x, sz.y);
         JST_CHECK(program->draw(renderPassEncoder));
     }

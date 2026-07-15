@@ -691,6 +691,16 @@ TEST_CASE("Semantic changes still require explicit retained invalidation",
     REQUIRE(window.destroy() == Result::SUCCESS);
 }
 
+TEST_CASE("Render programs can be enabled and disabled", "[render][program]") {
+    Render::Program program(Render::Program::Config{});
+
+    REQUIRE(program.enabled());
+    program.setEnabled(false);
+    REQUIRE_FALSE(program.enabled());
+    program.setEnabled(true);
+    REQUIRE(program.enabled());
+}
+
 TEST_CASE("Surfaces collect their complete transfer dependency graph",
           "[render][transfer][surface]") {
     TestWindow window;
