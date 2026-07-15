@@ -9,9 +9,11 @@
 #include <thread>
 #include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "jetstream/render/base/window_attachment.hh"
+#include "jetstream/render/base/transfer.hh"
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/parser.hh"
@@ -57,6 +59,7 @@ class JETSTREAM_API Window {
 
     Result begin();
     Result end();
+    Result cancel();
 
     Result synchronize();
 
@@ -131,8 +134,12 @@ class JETSTREAM_API Window {
 
     virtual Result underlyingBegin() = 0;
     virtual Result underlyingEnd() = 0;
+    virtual Result underlyingCancel() { return Result::SUCCESS; }
 
     virtual Result underlyingSynchronize() = 0;
+
+    Result collectTransfers(Transfer::Batch& batch) const;
+    void abortImguiFrame();
 
     // Font.
 
@@ -155,7 +162,9 @@ class JETSTREAM_API Window {
     std::vector<std::function<void(const F32& scalingFactor)>> styleScaleCallbacks;
 
     uint32_t frameCount;
+    bool created = false;
     bool graphicalLoopThreadStarted;
+    bool frameActive = false;
     std::thread::id graphicalLoopThreadId;
     std::mutex newFrameQueueMutex;
 
@@ -174,6 +183,7 @@ class JETSTREAM_API Window {
     std::queue<PendingDestruction> destroyQueue;
 
     std::vector<std::shared_ptr<WindowAttachment>> attachments;
+    std::unordered_set<const WindowAttachment*> destroyingAttachments;
 };
 
 }  // namespace Jetstream::Render

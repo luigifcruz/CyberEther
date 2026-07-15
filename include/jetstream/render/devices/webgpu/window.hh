@@ -3,6 +3,7 @@
 
 #include "jetstream/render/base/surface.hh"
 #include "jetstream/render/base/window.hh"
+#include "jetstream/render/devices/webgpu/transfer.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/render/tools/imgui.h"
 #include "jetstream/viewport/base.hh"
@@ -33,6 +34,7 @@ class JETSTREAM_API WindowImp<DeviceType::WebGPU> : public Window {
 
     Result underlyingBegin() override;
     Result underlyingEnd() override;
+    Result underlyingCancel() override;
 
     Result underlyingSynchronize() override;
 
@@ -40,12 +42,14 @@ class JETSTREAM_API WindowImp<DeviceType::WebGPU> : public Window {
     Stats statsData;
     ImGuiIO* io = nullptr;
     ImGuiStyle* style = nullptr;
-    WGPUCommandEncoder encoder;
-    WGPURenderPassColorAttachment colorAttachments;
-    WGPURenderPassDescriptor renderPassDesc;
-    WGPUQueue queue;
-    WGPUTextureView framebufferTexture;
+    WGPUCommandEncoder encoder = nullptr;
+    WGPURenderPassColorAttachment colorAttachments{};
+    WGPURenderPassDescriptor renderPassDesc{};
+    WGPUQueue queue = nullptr;
+    WGPUTextureView framebufferTexture = nullptr;
+    TransferImp<DeviceType::WebGPU> transferEncoder;
     std::vector<std::shared_ptr<SurfaceImp<DeviceType::WebGPU>>> surfaces;
+    bool imguiCreated = false;
 
     std::shared_ptr<Viewport::Adapter<DeviceType::WebGPU>> viewport;
 

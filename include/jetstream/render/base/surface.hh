@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_BASE_SURFACE_HH
 
 #include <memory>
+#include <unordered_set>
 #include <vector>
 
 #include "jetstream/types.hh"
@@ -26,7 +27,7 @@ class JETSTREAM_API Surface : public WindowAttachment {
         bool retained = false;
     };
 
-    explicit Surface(const Config& config) : config(config) {}
+    explicit Surface(const Config& config);
     virtual ~Surface() = default;
 
     Type type() const override {
@@ -45,26 +46,12 @@ class JETSTREAM_API Surface : public WindowAttachment {
         return config.retained;
     }
 
-    void clearColor(const ColorRGBA<F32>& color) {
-        if (config.clearColor.r != color.r ||
-            config.clearColor.g != color.g ||
-            config.clearColor.b != color.b ||
-            config.clearColor.a != color.a) {
-            invalidate();
-        }
-        config.clearColor = color;
-    }
+    void clearColor(const ColorRGBA<F32>& color);
+    void invalidate();
 
-    void invalidate() {
-        dirty = true;
-    }
+    void commitDraw();
 
-    const Extent2D<U64>& size() const {
-        if (config.framebuffer) {
-            return config.framebuffer->size();
-        }
-        return NullSize2D;
-    }
+    const Extent2D<U64>& size() const;
     virtual const Extent2D<U64>& size(const Extent2D<U64>& size) = 0;
 
     template<DeviceType D>
@@ -76,13 +63,20 @@ class JETSTREAM_API Surface : public WindowAttachment {
     Config config;
     bool dirty = true;
 
-    bool shouldDraw(bool framebufferChanged = false) const {
-        return !config.retained || dirty || framebufferChanged;
-    }
+    bool shouldDraw(bool framebufferChanged = false);
+    void markDrawn();
 
-    void markDrawn() {
-        dirty = false;
-    }
+ private:
+    void prepareFrame();
+    void collectTransfers(Transfer::Batch& batch) const;
+    bool affectedBy(const Transfer::Batch& batch) const;
+
+    bool drawPending = false;
+    std::unordered_set<std::shared_ptr<Buffer>> dependencyBuffers;
+    std::unordered_set<std::shared_ptr<Draw>> dependencyDraws;
+    std::unordered_set<std::shared_ptr<Texture>> dependencyTextures;
+
+    friend class Window;
 };
 
 }  // namespace Jetstream::Render

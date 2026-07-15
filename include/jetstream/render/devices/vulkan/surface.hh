@@ -17,7 +17,9 @@ class JETSTREAM_API SurfaceImp<DeviceType::Vulkan> : public Surface {
     const Extent2D<U64>& size(const Extent2D<U64>& size) override;
 
  protected:
+    Result prepare();
     Result encode(VkCommandBuffer& commandBuffer);
+    void commit();
 
  private:
     std::shared_ptr<TextureImp<DeviceType::Vulkan>> framebufferResolve;
@@ -25,6 +27,7 @@ class JETSTREAM_API SurfaceImp<DeviceType::Vulkan> : public Surface {
     VkFramebuffer framebufferObject;
     VkRenderPass renderPass;
     Extent2D<U64> requestedSize;
+    bool framebufferChanged = false;
 
     std::vector<std::shared_ptr<ProgramImp<DeviceType::Vulkan>>> programs;
     std::vector<std::shared_ptr<KernelImp<DeviceType::Vulkan>>> kernels;

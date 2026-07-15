@@ -71,13 +71,17 @@ Result Implementation::destroyFramebuffer() {
     return framebuffer->destroy();
 }
 
-Result Implementation::draw(WGPUCommandEncoder& commandEncoder) {
-    const bool framebufferChanged = framebuffer->size(requestedSize);
+Result Implementation::prepare() {
+    framebufferChanged = framebuffer->size(requestedSize);
     if (framebufferChanged) {
         JST_CHECK(destroyFramebuffer());
         JST_CHECK(createFramebuffer());
     }
 
+    return Result::SUCCESS;
+}
+
+Result Implementation::draw(WGPUCommandEncoder& commandEncoder) {
     if (!shouldDraw(framebufferChanged)) {
         return Result::SUCCESS;
     }
@@ -121,8 +125,6 @@ Result Implementation::draw(WGPUCommandEncoder& commandEncoder) {
     }
 
     wgpuRenderPassEncoderEnd(renderPassEncoder);
-
-    markDrawn();
 
     return Result::SUCCESS;
 }

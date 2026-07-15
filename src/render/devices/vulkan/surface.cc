@@ -16,6 +16,7 @@ Implementation::SurfaceImp(const Config& config) : Surface(config) {
     if (config.multisampled) {
         auto framebufferConfig = framebufferResolve->getConfig();
         framebufferConfig.multisampled = true;
+        framebufferConfig.buffer = nullptr;
         framebuffer = std::make_shared<TextureImp<DeviceType::Vulkan>>(framebufferConfig);
     }
 
@@ -163,8 +164,8 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-Result Implementation::encode(VkCommandBuffer& commandBuffer) {
-    const bool framebufferChanged = framebufferResolve->size(requestedSize);
+Result Implementation::prepare() {
+    framebufferChanged = framebufferResolve->size(requestedSize);
     if (framebufferChanged) {
         JST_VK_CHECK(vkQueueWaitIdle(Backend::State<DeviceType::Vulkan>()->getGraphicsQueue()), [&]{
             JST_ERROR("[VULKAN] Can't wait for graphics queue to finish for surface destruction.");
@@ -178,6 +179,10 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
         JST_CHECK(create());
     }
 
+    return Result::SUCCESS;
+}
+
+Result Implementation::encode(VkCommandBuffer& commandBuffer) {
     if (!shouldDraw(framebufferChanged)) {
         return Result::SUCCESS;
     }
@@ -247,9 +252,15 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
 
     vkCmdEndRenderPass(commandBuffer);
 
-    markDrawn();
-
     return Result::SUCCESS;
+}
+
+void Implementation::commit() {
+    framebufferResolve->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    if (config.multisampled) {
+        framebuffer->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    }
+    commitDraw();
 }
 
 const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) {

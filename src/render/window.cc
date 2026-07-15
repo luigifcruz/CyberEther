@@ -1,4 +1,6 @@
 #include "jetstream/render/base/surface.hh"
+#include "jetstream/render/base/buffer.hh"
+#include "jetstream/render/base/texture.hh"
 #include "jetstream/render/base/window_attachment.hh"
 #include "jetstream/render/components/font.hh"
 #include "jetstream/render/base/window.hh"
@@ -49,6 +51,8 @@ bool QueueRemove(std::queue<std::shared_ptr<WindowAttachment>>& queue,
 }  // namespace
 
 Result Window::create() {
+    JST_ASSERT(!created, "Window is already created.");
+
     // Set variables.
 
     _scalingFactor = 1.0f;
@@ -56,16 +60,29 @@ Result Window::create() {
     graphicalLoopThreadStarted = false;
     frameCount = 0;
 
-    // Lock the frame queue.
-    newFrameQueueMutex.lock();
+    std::lock_guard<std::mutex> frameLock(newFrameQueueMutex);
 
     // Call underlying create.
-    const auto& res = underlyingCreate();
-
-    // Unlock the frame queue.
-    newFrameQueueMutex.unlock();
-
-    return res;
+    Result result;
+    try {
+        result = underlyingCreate();
+    } catch (...) {
+        try {
+            underlyingDestroy();
+        } catch (...) {
+        }
+        throw;
+    }
+    if (result == Result::SUCCESS || result == Result::RELOAD) {
+        created = true;
+    } else {
+        try {
+            underlyingDestroy();
+        } catch (...) {
+            throw;
+        }
+    }
+    return result;
 }
 
 void Window::setScale(F32 scale) {
@@ -73,6 +90,9 @@ void Window::setScale(F32 scale) {
 }
 
 Result Window::destroy() {
+    JST_ASSERT(created, "Window is not created.");
+    JST_ASSERT(!frameActive, "Cannot destroy a window during an active frame.");
+
     JST_CHECK(processAttachmentQueues());
 
     // Unbind remaining components.
@@ -107,11 +127,7 @@ Result Window::destroy() {
     }
     JST_CHECK(processAttachmentQueues());
 
-    // Lock the frame queue.
-    newFrameQueueMutex.lock();
-
-    // Call underlying destroy.
-    const auto& res = underlyingDestroy();
+    std::lock_guard<std::mutex> frameLock(newFrameQueueMutex);
 
     // Process pending attachment destruction.
 
@@ -124,14 +140,29 @@ Result Window::destroy() {
             }
             attachment = destroyQueue.front().attachment;
             destroyQueue.pop();
+            destroyingAttachments.insert(attachment.get());
         }
 
-        JST_CHECK(attachment->destroy());
+        const Result result = attachment->destroy();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            std::lock_guard<std::mutex> lock(attachmentStateMutex);
+            destroyingAttachments.erase(attachment.get());
+            destroyQueue.push({frameCount, attachment});
+            return result;
+        }
+        {
+            std::lock_guard<std::mutex> lock(attachmentStateMutex);
+            attachment->owner.store(nullptr, std::memory_order_release);
+            destroyingAttachments.erase(attachment.get());
+        }
     }
 
-    // Unlock the frame queue.
-    newFrameQueueMutex.unlock();
+    // Destroy the backend only after attachments no longer need it.
+    const Result res = underlyingDestroy();
 
+    if (res == Result::SUCCESS || res == Result::RELOAD) {
+        created = false;
+    }
     return res;
 }
 
@@ -148,16 +179,22 @@ Result Window::begin() {
     // Process attachment queues.
     JST_CHECK(processAttachmentQueues());
 
-    // Lock the frame queue.
-    newFrameQueueMutex.lock();
+    std::unique_lock<std::mutex> frameLock(newFrameQueueMutex);
 
-    // Call frame begin.
-    const auto& res = underlyingBegin();
+    Result res;
+    try {
+        res = underlyingBegin();
+    } catch (...) {
+        abortImguiFrame();
+        underlyingCancel();
+        throw;
+    }
 
-    // Unlock the frame queue if failed.
-
-    if (res != Result::SUCCESS) {
-        newFrameQueueMutex.unlock();
+    if (res == Result::SUCCESS) {
+        frameActive = true;
+        frameLock.release();
+    } else {
+        abortImguiFrame();
     }
 
     return res;
@@ -184,8 +221,24 @@ Result Window::stop() {
 }
 
 Result Window::end() {
+    JST_ASSERT(frameActive, "Window frame is not active.");
+    std::unique_lock<std::mutex> frameLock(newFrameQueueMutex, std::adopt_lock);
+
     // Call frame end.
-    const auto& res = underlyingEnd();
+    Result res;
+    try {
+        res = underlyingEnd();
+    } catch (...) {
+        abortImguiFrame();
+        frameActive = false;
+        try {
+            underlyingCancel();
+        } catch (...) {
+        }
+        throw;
+    }
+    frameActive = false;
+    abortImguiFrame();
 
     // Process attachment destruction queue.
 
@@ -201,6 +254,7 @@ Result Window::end() {
 
             if (expiration <= frameCount) {
                 expiredAttachments.push_back(attachment);
+                destroyingAttachments.insert(attachment.get());
             } else {
                 destroyQueue.push({expiration, attachment});
             }
@@ -212,38 +266,92 @@ Result Window::end() {
         frameCount++;
     }
 
+    Result result = res;
     for (auto& attachment : expiredAttachments) {
-        JST_CHECK(attachment->destroy());
+        const Result destroyResult = attachment->destroy();
+        std::lock_guard<std::mutex> lock(attachmentStateMutex);
+        destroyingAttachments.erase(attachment.get());
+        if (destroyResult == Result::SUCCESS || destroyResult == Result::RELOAD) {
+            attachment->owner.store(nullptr, std::memory_order_release);
+        } else {
+            destroyQueue.push({frameCount, attachment});
+            if (result == Result::SUCCESS || result == Result::RELOAD) {
+                result = destroyResult;
+            }
+        }
     }
 
-    // Unlock the frame queue.
-    newFrameQueueMutex.unlock();
+    return result;
+}
 
-    return res;
+Result Window::cancel() {
+    JST_ASSERT(frameActive, "Window frame is not active.");
+    std::unique_lock<std::mutex> frameLock(newFrameQueueMutex, std::adopt_lock);
+    frameActive = false;
+
+    abortImguiFrame();
+    return underlyingCancel();
 }
 
 Result Window::synchronize() {
-    // Lock the frame queue.
-    newFrameQueueMutex.lock();
+    std::lock_guard<std::mutex> frameLock(newFrameQueueMutex);
 
     // Call frame synchronize.
-    const auto& res = underlyingSynchronize();
+    return underlyingSynchronize();
+}
 
-    // Unlock the frame queue.
-    newFrameQueueMutex.unlock();
-
-    return res;
+void Window::abortImguiFrame() {
+    ImGuiContext* context = ImGui::GetCurrentContext();
+    if (context && context->WithinFrameScope) {
+        ImGui::EndFrame();
+    }
 }
 
 Result Window::bind(const std::shared_ptr<WindowAttachment>& attachment) {
+    if (!attachment) {
+        return Result::ERROR;
+    }
     // Add attachment to bind queue.
     {
         std::lock_guard<std::mutex> lock(attachmentStateMutex);
+        Window* owner = attachment->owner.load(std::memory_order_acquire);
+        if (owner && owner != this) {
+            JST_ERROR("[WINDOW] Render attachments can only belong to one window.");
+            return Result::ERROR;
+        }
         if (QueueRemove(unbindQueue, attachment)) {
             return Result::SUCCESS;
         }
         if (Contains(attachments, attachment) || QueueContains(bindQueue, attachment)) {
             return Result::SUCCESS;
+        }
+        if (destroyingAttachments.contains(attachment.get())) {
+            JST_ERROR("[WINDOW] Cannot rebind an attachment being destroyed.");
+            return Result::ERROR;
+        }
+
+        auto pendingDestruction = destroyQueue;
+        while (!pendingDestruction.empty()) {
+            if (pendingDestruction.front().attachment == attachment) {
+                JST_ERROR("[WINDOW] Cannot rebind an attachment pending destruction.");
+                return Result::ERROR;
+            }
+            pendingDestruction.pop();
+        }
+
+        if (owner == this) {
+            JST_ERROR("[WINDOW] Cannot rebind an inactive owned attachment.");
+            return Result::ERROR;
+        }
+
+        if (!owner) {
+            Window* expected = nullptr;
+            if (!attachment->owner.compare_exchange_strong(expected,
+                                                           this,
+                                                           std::memory_order_acq_rel)) {
+                JST_ERROR("[WINDOW] Render attachment ownership changed while binding.");
+                return Result::ERROR;
+            }
         }
         bindQueue.push(attachment);
     }
@@ -266,6 +374,7 @@ Result Window::unbind(const std::shared_ptr<WindowAttachment>& attachment) {
     {
         std::lock_guard<std::mutex> lock(attachmentStateMutex);
         if (QueueRemove(bindQueue, attachment)) {
+            attachment->owner.store(nullptr, std::memory_order_release);
             return Result::SUCCESS;
         }
 
@@ -307,6 +416,19 @@ Result Window::processAttachmentQueues() {
     std::vector<std::shared_ptr<WindowAttachment>> belated;
     belated.reserve(unbindQueue.size() + bindQueue.size());
 
+    const auto releaseBelated = [&](const size_t start) {
+        Result cleanupResult = Result::SUCCESS;
+        for (size_t i = start; i < belated.size(); ++i) {
+            const Result result = belated[i]->destroy();
+            if (result == Result::SUCCESS || result == Result::RELOAD) {
+                belated[i]->owner.store(nullptr, std::memory_order_release);
+            } else {
+                cleanupResult = result;
+            }
+        }
+        return cleanupResult;
+    };
+
     // Process unbind attachment queue.
 
     while (!unbindQueue.empty()) {
@@ -343,7 +465,12 @@ Result Window::processAttachmentQueues() {
 
         // Create attachment.
 
-        JST_CHECK(attachment->create());
+        const Result createResult = attachment->create();
+        if (createResult != Result::SUCCESS && createResult != Result::RELOAD) {
+            attachment->owner.store(nullptr, std::memory_order_release);
+            const Result cleanupResult = releaseBelated(0);
+            return cleanupResult == Result::SUCCESS ? createResult : cleanupResult;
+        }
 
         // Belay attachment binding.
 
@@ -357,13 +484,61 @@ Result Window::processAttachmentQueues() {
         }
     }
 
-    for (auto& attachment : belated) {
-        JST_CHECK(bindSurface(std::dynamic_pointer_cast<Surface>(attachment)));
+    for (size_t i = 0; i < belated.size(); ++i) {
+        auto& attachment = belated[i];
+        const Result bindResult = bindSurface(std::dynamic_pointer_cast<Surface>(attachment));
+        if (bindResult != Result::SUCCESS && bindResult != Result::RELOAD) {
+            const Result cleanupResult = releaseBelated(i);
+            return cleanupResult == Result::SUCCESS ? bindResult : cleanupResult;
+        }
         if (!Contains(attachments, attachment)) {
             attachments.push_back(attachment);
         }
     }
     belated.clear();
+
+    return Result::SUCCESS;
+}
+
+Result Window::collectTransfers(Transfer::Batch& batch) const {
+    std::vector<std::shared_ptr<WindowAttachment>> snapshot;
+    {
+        std::lock_guard<std::mutex> lock(attachmentStateMutex);
+        snapshot = attachments;
+    }
+
+    for (const auto& attachment : snapshot) {
+        if (attachment->type() == WindowAttachment::Type::Surface) {
+            std::static_pointer_cast<Surface>(attachment)->prepareFrame();
+        }
+    }
+
+    for (const auto& attachment : snapshot) {
+        switch (attachment->type()) {
+            case WindowAttachment::Type::Buffer:
+                batch.collect(std::static_pointer_cast<Buffer>(attachment));
+                break;
+            case WindowAttachment::Type::Texture:
+                batch.collect(std::static_pointer_cast<Texture>(attachment));
+                break;
+            case WindowAttachment::Type::Surface:
+                std::static_pointer_cast<Surface>(attachment)->collectTransfers(batch);
+                break;
+            default:
+                break;
+        }
+    }
+
+    for (const auto& attachment : snapshot) {
+        if (attachment->type() != WindowAttachment::Type::Surface) {
+            continue;
+        }
+
+        const auto& surface = std::static_pointer_cast<Surface>(attachment);
+        if (surface->retained() && surface->affectedBy(batch)) {
+            surface->invalidate();
+        }
+    }
 
     return Result::SUCCESS;
 }

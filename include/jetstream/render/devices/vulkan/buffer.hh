@@ -17,9 +17,6 @@ class JETSTREAM_API BufferImp<DeviceType::Vulkan> : public Buffer {
     using Render::Buffer::size;
     using Render::Buffer::byteSize;
 
-    Result update() override;
-    Result update(const U64& offset, const U64& size) override;
-
  protected:
     constexpr const VkBuffer& getHandle() const {
         return buffer;
@@ -35,6 +32,7 @@ class JETSTREAM_API BufferImp<DeviceType::Vulkan> : public Buffer {
     friend class KernelImp<DeviceType::Vulkan>;
     friend class TextureImp<DeviceType::Vulkan>;
     friend class DrawImp<DeviceType::Vulkan>;
+    friend class TransferImp<DeviceType::Vulkan>;
 };
 
 }  // namespace Jetstream::Render

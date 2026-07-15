@@ -15,6 +15,7 @@ Implementation::SurfaceImp(const Config& config) : Surface(config) {
     if (config.multisampled) {
         auto framebufferConfig = framebufferResolve->getConfig();
         framebufferConfig.multisampled = true;
+        framebufferConfig.buffer = nullptr;
         framebuffer = std::make_shared<TextureImp<DeviceType::Metal>>(framebufferConfig);
     }
 
@@ -116,8 +117,8 @@ Result Implementation::destroyFramebuffer() {
     return Result::SUCCESS;
 }
 
-Result Implementation::draw(MTL::CommandBuffer* commandBuffer) {
-    const bool framebufferChanged = framebufferResolve->size(requestedSize);
+Result Implementation::prepare() {
+    framebufferChanged = framebufferResolve->size(requestedSize);
     if (framebufferChanged) {
         if (config.multisampled) {
             framebuffer->size(requestedSize);
@@ -127,6 +128,10 @@ Result Implementation::draw(MTL::CommandBuffer* commandBuffer) {
         JST_CHECK(createFramebuffer());
     }
 
+    return Result::SUCCESS;
+}
+
+Result Implementation::draw(MTL::CommandBuffer* commandBuffer) {
     if (!shouldDraw(framebufferChanged)) {
         return Result::SUCCESS;
     }
@@ -158,8 +163,6 @@ Result Implementation::draw(MTL::CommandBuffer* commandBuffer) {
         JST_CHECK(program->draw(renderCmdEncoder));
     }
     renderCmdEncoder->endEncoding();
-
-    markDrawn();
 
     return Result::SUCCESS;
 }

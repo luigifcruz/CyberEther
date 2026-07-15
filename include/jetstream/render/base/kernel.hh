@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_RENDER_BASE_KERNEL_HH
 #define JETSTREAM_RENDER_BASE_KERNEL_HH
 
+#include <atomic>
 #include <utility>
 #include <memory>
 #include <vector>
@@ -35,9 +36,7 @@ class JETSTREAM_API Kernel {
         return config;
     }
 
-    void update() {
-        updated = true;
-    }
+    void update();
 
     template<DeviceType D> 
     static std::shared_ptr<Kernel> Factory(const Config& config) {
@@ -45,8 +44,20 @@ class JETSTREAM_API Kernel {
     }
 
  protected:
+    bool shouldEncode() const;
+    void markScheduled();
+    void commitFrame();
+
     Config config;
-    bool updated;
+
+ private:
+    void prepareForFrame();
+
+    std::atomic_bool updateRequested = false;
+    bool updatePrepared = false;
+    bool updateScheduled = false;
+
+    friend class Surface;
 };
 
 static constexpr Kernel::AccessMode operator&(Kernel::AccessMode lhs, Kernel::AccessMode rhs) {

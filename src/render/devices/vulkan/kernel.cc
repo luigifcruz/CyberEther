@@ -123,9 +123,7 @@ Result Implementation::create() {
 
     vkDestroyShaderModule(device, kernelModule, nullptr);
 
-    // Set update flag.
-
-    this->updated = true;
+    update();
 
     return Result::SUCCESS;
 }
@@ -149,10 +147,9 @@ Result Implementation::destroy() {
 Result Implementation::encode(VkCommandBuffer& commandBuffer) {
     // Check if data needs to be updated.
 
-    if (!this->updated) {
+    if (!shouldEncode()) {
         return Result::SUCCESS;
     }
-    this->updated = false;
 
     // Bind buffers.
 
@@ -174,6 +171,8 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
     }
 
     vkCmdDispatch(commandBuffer, x, y, z);
+
+    markScheduled();
 
     return Result::SUCCESS;
 }
