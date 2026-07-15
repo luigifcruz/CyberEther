@@ -5,6 +5,7 @@ if catch2_dep.found()
     subdir('settings')
     subdir('modules')
     subdir('flowgraph')
+    subdir('render')
 endif
 
 subdir('components')
