@@ -516,44 +516,6 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         });
     }
 
-    // Create staging buffer.
-
-    {
-        VkBufferCreateInfo bufferInfo{};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = config.stagingBufferSize;
-        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-                           VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        JST_VK_CHECK_THROW(vkCreateBuffer(device, &bufferInfo, nullptr, &stagingBuffer), [&]{
-            JST_FATAL("[VULKAN] Failed to create staging buffer.");
-        });
-
-        VkMemoryRequirements memRequirements;
-        vkGetBufferMemoryRequirements(device, stagingBuffer, &memRequirements);
-
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = Backend::FindMemoryType(physicalDevice,
-                                                            memRequirements.memoryTypeBits,
-                                                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                                            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-        JST_VK_CHECK_THROW(vkAllocateMemory(device, &allocInfo, nullptr, &stagingBufferMemory), [&]{
-            JST_FATAL("[VULKAN] Failed to allocate staging buffer memory.");
-        });
-
-        JST_VK_CHECK_THROW(vkBindBufferMemory(device, stagingBuffer, stagingBufferMemory, 0), [&]{
-            JST_FATAL("[VULKAN] Failed to bind memory to staging buffer.");
-        });
-
-        JST_VK_CHECK_THROW(vkMapMemory(device, stagingBufferMemory, 0, config.stagingBufferSize, 0, &stagingBufferMappedMemory), [&]{
-            JST_FATAL("[VULKAN] Failed to map staging buffer memory.");
-        });
-    }
-
     // Create default command pool.
 
     {
@@ -610,7 +572,6 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
     JST_INFO("Unified Memory:   {}", hasUnifiedMemory() ? "YES" : "NO");
     JST_INFO("Processor Count:  {}", getTotalProcessorCount());
     JST_INFO("Device Memory:    {:.2f} GB", static_cast<F32>(getPhysicalMemory()) / (1024*1024*1024));
-    JST_INFO("Staging Buffer:   {:.2f} MB", static_cast<F32>(config.stagingBufferSize) / JST_MB);
     JST_INFO("Interoperability:");
     JST_INFO("  - Can Import Device Memory: {}", canImportDeviceMemory() ? "YES" : "NO");
     JST_INFO("  - Can Export Device Memory: {}", canExportDeviceMemory() ? "YES" : "NO");
@@ -622,9 +583,6 @@ Vulkan::~Vulkan() {
     vkDestroyFence(device, defaultFence, nullptr);
     vkFreeCommandBuffers(device, defaultCommandPool, 1, &defaultCommandBuffer);
     vkDestroyCommandPool(device, defaultCommandPool, nullptr);
-    vkUnmapMemory(device, stagingBufferMemory);
-    vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingBufferMemory, nullptr);
     vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 
     if (debugReportCallback != VK_NULL_HANDLE) {
