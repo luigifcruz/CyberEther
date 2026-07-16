@@ -13,7 +13,7 @@
 namespace Jetstream {
 
 struct BenchmarkActions {
-    using Filter = std::tuple<MailRunBenchmark, MailResetBenchmark>;
+    using Filter = std::tuple<MailRunBenchmark, MailResetBenchmark, MailSetBenchmarkModule>;
 
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
@@ -35,8 +35,9 @@ struct BenchmarkActions {
         state.benchmark.output.clear();
         Benchmark::ResetResults();
         auto* output = &state.benchmark.output;
-        state.benchmark.future = std::async(std::launch::async, [output]() {
-            Benchmark::Run("quiet", *output);
+        const auto moduleType = state.benchmark.selectedModule;
+        state.benchmark.future = std::async(std::launch::async, [output, moduleType]() {
+            Benchmark::Run("quiet", moduleType, *output);
         });
 
         return Result::SUCCESS;
@@ -50,6 +51,16 @@ struct BenchmarkActions {
         Benchmark::ResetResults();
         state.benchmark.progress = 0.0f;
         state.benchmark.results.clear();
+
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetBenchmarkModule& mail) {
+        if (state.benchmark.running) {
+            return Result::SUCCESS;
+        }
+
+        state.benchmark.selectedModule = mail.moduleType;
 
         return Result::SUCCESS;
     }

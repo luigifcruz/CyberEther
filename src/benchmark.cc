@@ -18,7 +18,7 @@ struct Benchmark::Impl {
     void run(const std::string& outputType,
              const std::string& blockType,
              std::ostream& out);
-    U64 totalCount();
+    U64 totalCount(const std::string& blockType);
     U64 currentCount();
     void resetResults();
     const Benchmark::ResultMapType& getResults();
@@ -164,9 +164,9 @@ void Benchmark::Impl::run(const std::string& outputType,
     JST_LOG_SET_DEBUG_LEVEL(previousLogLevel);
 }
 
-U64 Benchmark::Impl::totalCount() {
+U64 Benchmark::Impl::totalCount(const std::string& blockType) {
     U64 count = 0;
-    for (const auto& benchmark : Registry::ListAvailableBenchmarks()) {
+    for (const auto& benchmark : Registry::ListAvailableBenchmarks(blockType)) {
         const auto implementations = Registry::ListAvailableModules(benchmark.moduleType);
         count += benchmark.factory().size() * implementations.size();
     }
@@ -199,8 +199,8 @@ void Benchmark::Run(const std::string& outputType,
     benchmark().run(outputType, blockType, out);
 }
 
-U64 Benchmark::TotalCount() {
-    return benchmark().totalCount();
+U64 Benchmark::TotalCount(const std::string& blockType) {
+    return benchmark().totalCount(blockType);
 }
 
 U64 Benchmark::CurrentCount() {
