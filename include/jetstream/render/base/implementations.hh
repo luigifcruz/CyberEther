@@ -11,6 +11,7 @@ template<DeviceType D> class KernelImp;
 template<DeviceType D> class DrawImp;
 template<DeviceType D> class SurfaceImp;
 template<DeviceType D> class TextureImp;
+template<DeviceType D> class TransferImp;
 template<DeviceType D> class VertexImp;
 template<DeviceType D> class WindowImp;
 

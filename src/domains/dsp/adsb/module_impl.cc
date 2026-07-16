@@ -160,7 +160,6 @@ Result AdsbImpl::createPresent() {
         cfg.size = 12;
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(fillScreenVerticesBuffer, cfg));
-        JST_CHECK(window->bind(fillScreenVerticesBuffer));
     }
 
     {
@@ -170,7 +169,6 @@ Result AdsbImpl::createPresent() {
         cfg.size = 6;
         cfg.target = Render::Buffer::Target::VERTEX_INDICES;
         JST_CHECK(window->build(fillScreenIndicesBuffer, cfg));
-        JST_CHECK(window->bind(fillScreenIndicesBuffer));
     }
 
     // Aircraft instance buffer.
@@ -185,7 +183,6 @@ Result AdsbImpl::createPresent() {
         cfg.target = Render::Buffer::Target::VERTEX;
         cfg.enableZeroCopy = false;
         JST_CHECK(window->build(aircraftBuffer, cfg));
-        JST_CHECK(window->bind(aircraftBuffer));
     }
 
     // Aircraft vertex + draw.
@@ -219,7 +216,6 @@ Result AdsbImpl::createPresent() {
         cfg.size = 1;
         cfg.target = Render::Buffer::Target::UNIFORM;
         JST_CHECK(window->build(aircraftUniformBuffer, cfg));
-        JST_CHECK(window->bind(aircraftUniformBuffer));
     }
 
     // Aircraft dots program.
@@ -256,7 +252,6 @@ Result AdsbImpl::createPresent() {
             cfg.size = 12;  // 6 vertices * 2 components
             cfg.target = Render::Buffer::Target::VERTEX;
             JST_CHECK(window->build(trackQuadBuffer, cfg));
-            JST_CHECK(window->bind(trackQuadBuffer));
         }
 
         // Instance buffer (dynamic, max capacity).
@@ -271,7 +266,6 @@ Result AdsbImpl::createPresent() {
             cfg.target = Render::Buffer::Target::VERTEX;
             cfg.enableZeroCopy = false;
             JST_CHECK(window->build(trackInstanceBuffer, cfg));
-            JST_CHECK(window->bind(trackInstanceBuffer));
         }
 
         // Uniform buffer.
@@ -294,7 +288,6 @@ Result AdsbImpl::createPresent() {
             cfg.size = 1;
             cfg.target = Render::Buffer::Target::UNIFORM;
             JST_CHECK(window->build(trackUniformBuffer, cfg));
-            JST_CHECK(window->bind(trackUniformBuffer));
         }
 
         // Vertex config: quad vertices + instance data.
@@ -395,13 +388,6 @@ Result AdsbImpl::destroyPresent() {
     }
 
     JST_CHECK(window->unbind(renderSurface));
-    JST_CHECK(window->unbind(fillScreenVerticesBuffer));
-    JST_CHECK(window->unbind(fillScreenIndicesBuffer));
-    JST_CHECK(window->unbind(aircraftBuffer));
-    JST_CHECK(window->unbind(aircraftUniformBuffer));
-    JST_CHECK(window->unbind(trackQuadBuffer));
-    JST_CHECK(window->unbind(trackInstanceBuffer));
-    JST_CHECK(window->unbind(trackUniformBuffer));
     if (hoverText) {
         JST_CHECK(window->unbind(hoverText));
     }

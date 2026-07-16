@@ -17,6 +17,7 @@ class JETSTREAM_API SurfaceImp<DeviceType::WebGPU> : public Surface {
     const Extent2D<U64>& size(const Extent2D<U64>& size) override;
 
  protected:
+    Result prepare();
     Result draw(WGPUCommandEncoder& commandEncoder);
 
  private:
@@ -25,9 +26,7 @@ class JETSTREAM_API SurfaceImp<DeviceType::WebGPU> : public Surface {
     std::vector<std::shared_ptr<KernelImp<DeviceType::WebGPU>>> kernels;
     std::vector<std::shared_ptr<BufferImp<DeviceType::WebGPU>>> buffers;
     Extent2D<U64> requestedSize;
-
-    Result createFramebuffer();
-    Result destroyFramebuffer();
+    bool framebufferChanged = false;
 
     friend class WindowImp<DeviceType::WebGPU>;
 };

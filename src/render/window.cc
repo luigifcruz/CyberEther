@@ -1,4 +1,6 @@
 #include "jetstream/render/base/surface.hh"
+#include "jetstream/render/base/buffer.hh"
+#include "jetstream/render/base/texture.hh"
 #include "jetstream/render/base/window_attachment.hh"
 #include "jetstream/render/components/font.hh"
 #include "jetstream/render/base/window.hh"
@@ -49,6 +51,8 @@ bool QueueRemove(std::queue<std::shared_ptr<WindowAttachment>>& queue,
 }  // namespace
 
 Result Window::create() {
+    JST_ASSERT(!created, "Window is already created.");
+
     // Set variables.
 
     _scalingFactor = 1.0f;
@@ -56,16 +60,29 @@ Result Window::create() {
     graphicalLoopThreadStarted = false;
     frameCount = 0;
 
-    // Lock the frame queue.
-    newFrameQueueMutex.lock();
+    std::lock_guard<std::mutex> frameLock(newFrameQueueMutex);
 
     // Call underlying create.
-    const auto& res = underlyingCreate();
-
-    // Unlock the frame queue.
-    newFrameQueueMutex.unlock();
-
-    return res;
+    Result result;
+    try {
+        result = underlyingCreate();
+    } catch (...) {
+        try {
+            underlyingDestroy();
+        } catch (...) {
+        }
+        throw;
+    }
+    if (result == Result::SUCCESS || result == Result::RELOAD) {
+        created = true;
+    } else {
+        try {
+            underlyingDestroy();
+        } catch (...) {
+            throw;
+        }
+    }
+    return result;
 }
 
 void Window::setScale(F32 scale) {
@@ -73,6 +90,35 @@ void Window::setScale(F32 scale) {
 }
 
 Result Window::destroy() {
+    JST_ASSERT(created, "Window is not created.");
+    JST_ASSERT(!frameActive, "Cannot destroy a window during an active frame.");
+
+    {
+        std::lock_guard<std::mutex> lock(attachmentStateMutex);
+        if (destructionInProgress) {
+            JST_ERROR("[WINDOW] Window destruction is already in progress.");
+            return Result::ERROR;
+        }
+        destructionInProgress = true;
+    }
+
+    const auto resetDestructionState = [&]() {
+        std::lock_guard<std::mutex> lock(attachmentStateMutex);
+        destructionInProgress = false;
+    };
+
+    Result result;
+    try {
+        result = destroyInternal();
+    } catch (...) {
+        resetDestructionState();
+        throw;
+    }
+    resetDestructionState();
+    return result;
+}
+
+Result Window::destroyInternal() {
     JST_CHECK(processAttachmentQueues());
 
     // Unbind remaining components.
@@ -107,11 +153,7 @@ Result Window::destroy() {
     }
     JST_CHECK(processAttachmentQueues());
 
-    // Lock the frame queue.
-    newFrameQueueMutex.lock();
-
-    // Call underlying destroy.
-    const auto& res = underlyingDestroy();
+    std::lock_guard<std::mutex> frameLock(newFrameQueueMutex);
 
     // Process pending attachment destruction.
 
@@ -124,14 +166,33 @@ Result Window::destroy() {
             }
             attachment = destroyQueue.front().attachment;
             destroyQueue.pop();
+            destroyingAttachments.insert(attachment.get());
         }
 
-        JST_CHECK(attachment->destroy());
+        const Result result = attachment->destroy();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            std::lock_guard<std::mutex> lock(attachmentStateMutex);
+            destroyingAttachments.erase(attachment.get());
+            destroyQueue.push({frameCount, attachment});
+            return result;
+        }
+        {
+            std::lock_guard<std::mutex> lock(attachmentStateMutex);
+            destroyingAttachments.erase(attachment.get());
+            const Result finalizeResult = finalizeAttachmentDestruction(attachment);
+            if (finalizeResult != Result::SUCCESS &&
+                finalizeResult != Result::RELOAD) {
+                return finalizeResult;
+            }
+        }
     }
 
-    // Unlock the frame queue.
-    newFrameQueueMutex.unlock();
+    // Destroy the backend only after attachments no longer need it.
+    const Result res = underlyingDestroy();
 
+    if (res == Result::SUCCESS || res == Result::RELOAD) {
+        created = false;
+    }
     return res;
 }
 
@@ -148,16 +209,22 @@ Result Window::begin() {
     // Process attachment queues.
     JST_CHECK(processAttachmentQueues());
 
-    // Lock the frame queue.
-    newFrameQueueMutex.lock();
+    std::unique_lock<std::mutex> frameLock(newFrameQueueMutex);
 
-    // Call frame begin.
-    const auto& res = underlyingBegin();
+    Result res;
+    try {
+        res = underlyingBegin();
+    } catch (...) {
+        abortImguiFrame();
+        underlyingCancel();
+        throw;
+    }
 
-    // Unlock the frame queue if failed.
-
-    if (res != Result::SUCCESS) {
-        newFrameQueueMutex.unlock();
+    if (res == Result::SUCCESS) {
+        frameActive = true;
+        frameLock.release();
+    } else {
+        abortImguiFrame();
     }
 
     return res;
@@ -184,8 +251,24 @@ Result Window::stop() {
 }
 
 Result Window::end() {
+    JST_ASSERT(frameActive, "Window frame is not active.");
+    std::unique_lock<std::mutex> frameLock(newFrameQueueMutex, std::adopt_lock);
+
     // Call frame end.
-    const auto& res = underlyingEnd();
+    Result res;
+    try {
+        res = underlyingEnd();
+    } catch (...) {
+        abortImguiFrame();
+        frameActive = false;
+        try {
+            underlyingCancel();
+        } catch (...) {
+        }
+        throw;
+    }
+    frameActive = false;
+    abortImguiFrame();
 
     // Process attachment destruction queue.
 
@@ -201,6 +284,7 @@ Result Window::end() {
 
             if (expiration <= frameCount) {
                 expiredAttachments.push_back(attachment);
+                destroyingAttachments.insert(attachment.get());
             } else {
                 destroyQueue.push({expiration, attachment});
             }
@@ -212,38 +296,123 @@ Result Window::end() {
         frameCount++;
     }
 
+    Result result = res;
     for (auto& attachment : expiredAttachments) {
-        JST_CHECK(attachment->destroy());
+        const Result destroyResult = attachment->destroy();
+        std::lock_guard<std::mutex> lock(attachmentStateMutex);
+        destroyingAttachments.erase(attachment.get());
+        if (destroyResult == Result::SUCCESS || destroyResult == Result::RELOAD) {
+            const Result finalizeResult = finalizeAttachmentDestruction(attachment);
+            if (finalizeResult != Result::SUCCESS &&
+                finalizeResult != Result::RELOAD &&
+                (result == Result::SUCCESS || result == Result::RELOAD)) {
+                result = finalizeResult;
+            }
+        } else {
+            destroyQueue.push({frameCount, attachment});
+            if (result == Result::SUCCESS || result == Result::RELOAD) {
+                result = destroyResult;
+            }
+        }
     }
 
-    // Unlock the frame queue.
-    newFrameQueueMutex.unlock();
+    return result;
+}
 
-    return res;
+Result Window::cancel() {
+    JST_ASSERT(frameActive, "Window frame is not active.");
+    std::unique_lock<std::mutex> frameLock(newFrameQueueMutex, std::adopt_lock);
+    frameActive = false;
+
+    abortImguiFrame();
+    return underlyingCancel();
 }
 
 Result Window::synchronize() {
-    // Lock the frame queue.
-    newFrameQueueMutex.lock();
+    std::lock_guard<std::mutex> frameLock(newFrameQueueMutex);
 
     // Call frame synchronize.
-    const auto& res = underlyingSynchronize();
+    return underlyingSynchronize();
+}
 
-    // Unlock the frame queue.
-    newFrameQueueMutex.unlock();
-
-    return res;
+void Window::abortImguiFrame() {
+    ImGuiContext* context = ImGui::GetCurrentContext();
+    if (context && context->WithinFrameScope) {
+        ImGui::EndFrame();
+    }
 }
 
 Result Window::bind(const std::shared_ptr<WindowAttachment>& attachment) {
+    if (!attachment) {
+        return Result::ERROR;
+    }
     // Add attachment to bind queue.
     {
         std::lock_guard<std::mutex> lock(attachmentStateMutex);
+        if (destructionInProgress) {
+            JST_ERROR("[WINDOW] Cannot bind an attachment during window destruction.");
+            return Result::ERROR;
+        }
+        Window* owner = attachment->owner.load(std::memory_order_acquire);
+        if (owner && owner != this) {
+            JST_ERROR("[WINDOW] Render attachments can only belong to one window.");
+            return Result::ERROR;
+        }
         if (QueueRemove(unbindQueue, attachment)) {
             return Result::SUCCESS;
         }
         if (Contains(attachments, attachment) || QueueContains(bindQueue, attachment)) {
             return Result::SUCCESS;
+        }
+        if (destroyingAttachments.contains(attachment.get())) {
+            JST_ERROR("[WINDOW] Cannot rebind an attachment being destroyed.");
+            return Result::ERROR;
+        }
+
+        auto pendingDestruction = destroyQueue;
+        while (!pendingDestruction.empty()) {
+            if (pendingDestruction.front().attachment == attachment) {
+                JST_ERROR("[WINDOW] Cannot rebind an attachment pending destruction.");
+                return Result::ERROR;
+            }
+            pendingDestruction.pop();
+        }
+
+        const bool leasedResource =
+            (attachment->type() == WindowAttachment::Type::Buffer ||
+             attachment->type() == WindowAttachment::Type::Texture) &&
+            resourceLeases.contains(attachment.get());
+        if (leasedResource) {
+            if (!owner) {
+                Window* expected = nullptr;
+                if (!attachment->owner.compare_exchange_strong(expected,
+                                                               this,
+                                                               std::memory_order_acq_rel)) {
+                    JST_ERROR("[WINDOW] Render attachment ownership changed while binding.");
+                    return Result::ERROR;
+                }
+            }
+
+            resourceLeases.at(attachment.get()).root = true;
+            resourceLeases.at(attachment.get()).rootReleaseExpiration = 0;
+            if (!Contains(attachments, attachment)) {
+                attachments.push_back(attachment);
+            }
+            return Result::SUCCESS;
+        }
+        if (owner == this && !leasedResource) {
+            JST_ERROR("[WINDOW] Cannot rebind an inactive owned attachment.");
+            return Result::ERROR;
+        }
+
+        if (!owner) {
+            Window* expected = nullptr;
+            if (!attachment->owner.compare_exchange_strong(expected,
+                                                           this,
+                                                           std::memory_order_acq_rel)) {
+                JST_ERROR("[WINDOW] Render attachment ownership changed while binding.");
+                return Result::ERROR;
+            }
         }
         bindQueue.push(attachment);
     }
@@ -266,6 +435,7 @@ Result Window::unbind(const std::shared_ptr<WindowAttachment>& attachment) {
     {
         std::lock_guard<std::mutex> lock(attachmentStateMutex);
         if (QueueRemove(bindQueue, attachment)) {
+            attachment->owner.store(nullptr, std::memory_order_release);
             return Result::SUCCESS;
         }
 
@@ -298,6 +468,152 @@ Result Window::unbind(const std::shared_ptr<WindowAttachment>& attachment) {
     return Result::SUCCESS;
 }
 
+std::vector<std::shared_ptr<WindowAttachment>> Window::surfaceResourceList(
+    const std::shared_ptr<Surface>& surface) const {
+    std::vector<std::shared_ptr<WindowAttachment>> resources;
+    resources.reserve(surface->dependencyBuffers.size() + surface->dependencyTextures.size());
+    for (const auto& buffer : surface->dependencyBuffers) {
+        resources.push_back(buffer);
+    }
+    for (const auto& texture : surface->dependencyTextures) {
+        resources.push_back(texture);
+    }
+    return resources;
+}
+
+Result Window::acquireSurfaceResources(const std::shared_ptr<Surface>& surface) {
+    const auto resources = surfaceResourceList(surface);
+
+    std::vector<std::shared_ptr<WindowAttachment>> acquired;
+    acquired.reserve(resources.size());
+
+    const auto rollback = [&]() {
+        Result cleanupResult = Result::SUCCESS;
+        for (auto it = acquired.rbegin(); it != acquired.rend(); ++it) {
+            auto lease = resourceLeases.find(it->get());
+            if (lease != resourceLeases.end() &&
+                lease->second.framebufferOwner == surface.get()) {
+                lease->second.framebufferOwner = nullptr;
+            }
+            const Result result = releaseSurfaceResource(*it);
+            if (result != Result::SUCCESS && result != Result::RELOAD) {
+                cleanupResult = result;
+            }
+        }
+        return cleanupResult;
+    };
+
+    for (const auto& resource : resources) {
+        const bool framebuffer = resource.get() == surface->config.framebuffer.get();
+        auto lease = resourceLeases.find(resource.get());
+        if (lease == resourceLeases.end()) {
+            Window* owner = resource->owner.load(std::memory_order_acquire);
+            if (owner && owner != this) {
+                const Result cleanupResult = rollback();
+                return cleanupResult == Result::SUCCESS ? Result::ERROR : cleanupResult;
+            }
+            if (!owner) {
+                Window* expected = nullptr;
+                if (!resource->owner.compare_exchange_strong(expected,
+                                                             this,
+                                                             std::memory_order_acq_rel)) {
+                    const Result cleanupResult = rollback();
+                    return cleanupResult == Result::SUCCESS ? Result::ERROR : cleanupResult;
+                }
+            }
+
+            const Result createResult = resource->create();
+            if (createResult != Result::SUCCESS && createResult != Result::RELOAD) {
+                resource->owner.store(nullptr, std::memory_order_release);
+                const Result cleanupResult = rollback();
+                return cleanupResult == Result::SUCCESS ? createResult : cleanupResult;
+            }
+
+            lease = resourceLeases.emplace(resource.get(), ResourceLease{}).first;
+        } else if (lease->second.surfaceReferences == 0 && !lease->second.root) {
+            const Result cleanupResult = rollback();
+            return cleanupResult == Result::SUCCESS ? Result::ERROR : cleanupResult;
+        }
+
+        // Resizing recreates backend texture handles, so a framebuffer cannot
+        // safely be cached by another Surface's program or render pass.
+        if ((framebuffer && lease->second.surfaceReferences != 0) ||
+            (!framebuffer && lease->second.framebufferOwner)) {
+            JST_ERROR("[WINDOW] Surface framebuffers cannot be shared between surfaces.");
+            const Result cleanupResult = rollback();
+            return cleanupResult == Result::SUCCESS ? Result::ERROR : cleanupResult;
+        }
+        if (framebuffer) {
+            lease->second.framebufferOwner = surface.get();
+        }
+
+        lease->second.surfaceReferences++;
+        acquired.push_back(resource);
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Window::releaseSurfaceResources(const std::shared_ptr<Surface>& surface) {
+    Result cleanupResult = Result::SUCCESS;
+    for (const auto& resource : surfaceResourceList(surface)) {
+        auto lease = resourceLeases.find(resource.get());
+        if (lease != resourceLeases.end() &&
+            lease->second.framebufferOwner == surface.get()) {
+            lease->second.framebufferOwner = nullptr;
+        }
+        const Result result = releaseSurfaceResource(resource);
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            cleanupResult = result;
+        }
+    }
+
+    return cleanupResult;
+}
+
+Result Window::releaseSurfaceResource(const std::shared_ptr<WindowAttachment>& resource) {
+    auto lease = resourceLeases.find(resource.get());
+    if (lease == resourceLeases.end() || lease->second.surfaceReferences == 0) {
+        return Result::ERROR;
+    }
+
+    lease->second.surfaceReferences--;
+    if (lease->second.surfaceReferences != 0 || lease->second.root) {
+        return Result::SUCCESS;
+    }
+    if (lease->second.rootReleaseExpiration > frameCount) {
+        destroyQueue.push({lease->second.rootReleaseExpiration, resource});
+        return Result::SUCCESS;
+    }
+
+    const Result result = resource->destroy();
+    if (result == Result::SUCCESS || result == Result::RELOAD) {
+        resource->owner.store(nullptr, std::memory_order_release);
+        resourceLeases.erase(lease);
+    } else {
+        destroyQueue.push({frameCount, resource});
+    }
+    return result;
+}
+
+Result Window::finalizeAttachmentDestruction(const std::shared_ptr<WindowAttachment>& attachment) {
+    attachment->owner.store(nullptr, std::memory_order_release);
+
+    if (attachment->type() == WindowAttachment::Type::Surface) {
+        return releaseSurfaceResources(std::static_pointer_cast<Surface>(attachment));
+    }
+
+    if (attachment->type() == WindowAttachment::Type::Buffer ||
+        attachment->type() == WindowAttachment::Type::Texture) {
+        auto lease = resourceLeases.find(attachment.get());
+        if (lease != resourceLeases.end()) {
+            resourceLeases.erase(lease);
+        }
+    }
+
+    return Result::SUCCESS;
+}
+
 Result Window::processAttachmentQueues() {
     std::lock_guard<std::mutex> lock(newFrameQueueMutex);
     std::lock_guard<std::mutex> stateLock(attachmentStateMutex);
@@ -307,11 +623,45 @@ Result Window::processAttachmentQueues() {
     std::vector<std::shared_ptr<WindowAttachment>> belated;
     belated.reserve(unbindQueue.size() + bindQueue.size());
 
+    const auto releaseBelated = [&](const size_t start) {
+        Result cleanupResult = Result::SUCCESS;
+        for (size_t i = start; i < belated.size(); ++i) {
+            const Result result = belated[i]->destroy();
+            if (result == Result::SUCCESS || result == Result::RELOAD) {
+                const Result finalizeResult = finalizeAttachmentDestruction(belated[i]);
+                if (finalizeResult != Result::SUCCESS &&
+                    finalizeResult != Result::RELOAD) {
+                    cleanupResult = finalizeResult;
+                }
+            } else {
+                destroyQueue.push({frameCount, belated[i]});
+                cleanupResult = result;
+            }
+        }
+        return cleanupResult;
+    };
+
     // Process unbind attachment queue.
 
     while (!unbindQueue.empty()) {
         auto attachment = unbindQueue.front();
         unbindQueue.pop();
+
+        const bool resource = attachment->type() == WindowAttachment::Type::Buffer ||
+                              attachment->type() == WindowAttachment::Type::Texture;
+        if (resource) {
+            auto lease = resourceLeases.find(attachment.get());
+            if (lease != resourceLeases.end()) {
+                lease->second.root = false;
+                lease->second.rootReleaseExpiration = frameCount + 4;
+            }
+            attachments.erase(std::remove(attachments.begin(), attachments.end(), attachment),
+                              attachments.end());
+            if (lease == resourceLeases.end() || lease->second.surfaceReferences == 0) {
+                belated.push_back(attachment);
+            }
+            continue;
+        }
 
         // Unregister Surface.
 
@@ -341,9 +691,62 @@ Result Window::processAttachmentQueues() {
         auto attachment = bindQueue.front();
         bindQueue.pop();
 
+        const bool resource = attachment->type() == WindowAttachment::Type::Buffer ||
+                              attachment->type() == WindowAttachment::Type::Texture;
+        if (resource) {
+            Window* owner = attachment->owner.load(std::memory_order_acquire);
+            if (!owner) {
+                Window* expected = nullptr;
+                if (!attachment->owner.compare_exchange_strong(expected,
+                                                               this,
+                                                               std::memory_order_acq_rel)) {
+                    const Result cleanupResult = releaseBelated(0);
+                    return cleanupResult == Result::SUCCESS ? Result::ERROR : cleanupResult;
+                }
+            } else if (owner != this) {
+                const Result cleanupResult = releaseBelated(0);
+                return cleanupResult == Result::SUCCESS ? Result::ERROR : cleanupResult;
+            }
+
+            auto lease = resourceLeases.find(attachment.get());
+            if (lease == resourceLeases.end()) {
+                const Result createResult = attachment->create();
+                if (createResult != Result::SUCCESS && createResult != Result::RELOAD) {
+                    attachment->owner.store(nullptr, std::memory_order_release);
+                    const Result cleanupResult = releaseBelated(0);
+                    return cleanupResult == Result::SUCCESS ? createResult : cleanupResult;
+                }
+                lease = resourceLeases.emplace(attachment.get(), ResourceLease{}).first;
+            }
+            lease->second.root = true;
+            lease->second.rootReleaseExpiration = 0;
+            if (!Contains(attachments, attachment)) {
+                attachments.push_back(attachment);
+            }
+            continue;
+        }
+
+        auto surface = std::dynamic_pointer_cast<Surface>(attachment);
+        if (surface) {
+            const Result acquireResult = acquireSurfaceResources(surface);
+            if (acquireResult != Result::SUCCESS && acquireResult != Result::RELOAD) {
+                attachment->owner.store(nullptr, std::memory_order_release);
+                const Result cleanupResult = releaseBelated(0);
+                return cleanupResult == Result::SUCCESS ? acquireResult : cleanupResult;
+            }
+        }
+
         // Create attachment.
 
-        JST_CHECK(attachment->create());
+        const Result createResult = attachment->create();
+        if (createResult != Result::SUCCESS && createResult != Result::RELOAD) {
+            if (surface) {
+                releaseSurfaceResources(surface);
+            }
+            attachment->owner.store(nullptr, std::memory_order_release);
+            const Result cleanupResult = releaseBelated(0);
+            return cleanupResult == Result::SUCCESS ? createResult : cleanupResult;
+        }
 
         // Belay attachment binding.
 
@@ -357,13 +760,61 @@ Result Window::processAttachmentQueues() {
         }
     }
 
-    for (auto& attachment : belated) {
-        JST_CHECK(bindSurface(std::dynamic_pointer_cast<Surface>(attachment)));
+    for (size_t i = 0; i < belated.size(); ++i) {
+        auto& attachment = belated[i];
+        const Result bindResult = bindSurface(std::dynamic_pointer_cast<Surface>(attachment));
+        if (bindResult != Result::SUCCESS && bindResult != Result::RELOAD) {
+            const Result cleanupResult = releaseBelated(i);
+            return cleanupResult == Result::SUCCESS ? bindResult : cleanupResult;
+        }
         if (!Contains(attachments, attachment)) {
             attachments.push_back(attachment);
         }
     }
     belated.clear();
+
+    return Result::SUCCESS;
+}
+
+Result Window::collectTransfers(Transfer::Batch& batch) const {
+    std::vector<std::shared_ptr<WindowAttachment>> snapshot;
+    {
+        std::lock_guard<std::mutex> lock(attachmentStateMutex);
+        snapshot = attachments;
+    }
+
+    for (const auto& attachment : snapshot) {
+        if (attachment->type() == WindowAttachment::Type::Surface) {
+            std::static_pointer_cast<Surface>(attachment)->prepareFrame();
+        }
+    }
+
+    for (const auto& attachment : snapshot) {
+        switch (attachment->type()) {
+            case WindowAttachment::Type::Buffer:
+                batch.collect(std::static_pointer_cast<Buffer>(attachment));
+                break;
+            case WindowAttachment::Type::Texture:
+                batch.collect(std::static_pointer_cast<Texture>(attachment));
+                break;
+            case WindowAttachment::Type::Surface:
+                std::static_pointer_cast<Surface>(attachment)->collectTransfers(batch);
+                break;
+            default:
+                break;
+        }
+    }
+
+    for (const auto& attachment : snapshot) {
+        if (attachment->type() != WindowAttachment::Type::Surface) {
+            continue;
+        }
+
+        const auto& surface = std::static_pointer_cast<Surface>(attachment);
+        if (surface->retained() && surface->affectedBy(batch)) {
+            surface->invalidate();
+        }
+    }
 
     return Result::SUCCESS;
 }

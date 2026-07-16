@@ -1,9 +1,13 @@
 #ifndef JETSTREAM_RENDER_BASE_WINDOW_ATTACHMENT_HH
 #define JETSTREAM_RENDER_BASE_WINDOW_ATTACHMENT_HH
 
+#include <atomic>
+
 #include "jetstream/backend/base.hh"
 
 namespace Jetstream::Render {
+
+class Window;
 
 class JETSTREAM_API WindowAttachment {
  public:
@@ -21,6 +25,11 @@ class JETSTREAM_API WindowAttachment {
 
     virtual Result create() = 0;
     virtual Result destroy() = 0;
+
+ private:
+    std::atomic<Window*> owner = nullptr;
+
+    friend class Window;
 };
 
 }  // namespace Jetstream::Render

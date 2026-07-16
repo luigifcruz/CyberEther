@@ -85,7 +85,6 @@ Result WaterfallImpl::createPresent() {
         cfg.size = 12;
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(fillScreenVerticesBuffer, cfg));
-        JST_CHECK(window->bind(fillScreenVerticesBuffer));
     }
 
     {
@@ -95,7 +94,6 @@ Result WaterfallImpl::createPresent() {
         cfg.size = 8;
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(fillScreenTextureVerticesBuffer, cfg));
-        JST_CHECK(window->bind(fillScreenTextureVerticesBuffer));
     }
 
     {
@@ -105,7 +103,6 @@ Result WaterfallImpl::createPresent() {
         cfg.size = 6;
         cfg.target = Render::Buffer::Target::VERTEX_INDICES;
         JST_CHECK(window->build(fillScreenIndicesBuffer, cfg));
-        JST_CHECK(window->bind(fillScreenIndicesBuffer));
     }
 
     {
@@ -135,7 +132,6 @@ Result WaterfallImpl::createPresent() {
         cfg.target = Render::Buffer::Target::STORAGE;
         cfg.enableZeroCopy = false;
         JST_CHECK(window->build(signalBuffer, cfg));
-        JST_CHECK(window->bind(signalBuffer));
     }
 
     // LUT texture.
@@ -145,7 +141,6 @@ Result WaterfallImpl::createPresent() {
         cfg.size = {256, 1};
         cfg.buffer = (uint8_t*)TurboLutBytes;
         JST_CHECK(window->build(lutTexture, cfg));
-        JST_CHECK(window->bind(lutTexture));
     }
 
     // Uniform buffer.
@@ -157,7 +152,6 @@ Result WaterfallImpl::createPresent() {
         cfg.size = 1;
         cfg.target = Render::Buffer::Target::UNIFORM;
         JST_CHECK(window->build(signalUniformBuffer, cfg));
-        JST_CHECK(window->bind(signalUniformBuffer));
     }
 
     // Signal program.
@@ -227,13 +221,6 @@ Result WaterfallImpl::destroyPresent() {
 
     JST_CHECK(window->unbind(renderSurface));
     JST_CHECK(window->unbind(axis));
-    JST_CHECK(window->unbind(lutTexture));
-    JST_CHECK(window->unbind(fillScreenVerticesBuffer));
-    JST_CHECK(window->unbind(fillScreenTextureVerticesBuffer));
-    JST_CHECK(window->unbind(fillScreenIndicesBuffer));
-    JST_CHECK(window->unbind(signalBuffer));
-    JST_CHECK(window->unbind(signalUniformBuffer));
-
     return Result::SUCCESS;
 }
 

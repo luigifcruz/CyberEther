@@ -15,6 +15,7 @@ Implementation::SurfaceImp(const Config& config) : Surface(config) {
     if (config.multisampled) {
         auto framebufferConfig = framebufferResolve->getConfig();
         framebufferConfig.multisampled = true;
+        framebufferConfig.buffer = nullptr;
         framebuffer = std::make_shared<TextureImp<DeviceType::Metal>>(framebufferConfig);
     }
 
@@ -74,7 +75,6 @@ Result Implementation::destroy() {
 Result Implementation::createFramebuffer() {
     JST_DEBUG("[METAL] Creating surface framebuffer.");
 
-    JST_CHECK(framebufferResolve->create());
     if (config.multisampled) {
         JST_CHECK(framebuffer->create());
     }
@@ -111,22 +111,27 @@ Result Implementation::destroyFramebuffer() {
     if (config.multisampled) {
         JST_CHECK(framebuffer->destroy());
     }
-    JST_CHECK(framebufferResolve->destroy());
 
     return Result::SUCCESS;
 }
 
-Result Implementation::draw(MTL::CommandBuffer* commandBuffer) {
-    const bool framebufferChanged = framebufferResolve->size(requestedSize);
+Result Implementation::prepare() {
+    framebufferChanged = framebufferResolve->size(requestedSize);
     if (framebufferChanged) {
         if (config.multisampled) {
             framebuffer->size(requestedSize);
         }
 
         JST_CHECK(destroyFramebuffer());
+        JST_CHECK(framebufferResolve->destroy());
+        JST_CHECK(framebufferResolve->create());
         JST_CHECK(createFramebuffer());
     }
 
+    return Result::SUCCESS;
+}
+
+Result Implementation::draw(MTL::CommandBuffer* commandBuffer) {
     if (!shouldDraw(framebufferChanged)) {
         return Result::SUCCESS;
     }
@@ -154,12 +159,13 @@ Result Implementation::draw(MTL::CommandBuffer* commandBuffer) {
     MTL::ScissorRect fullScissor = {0, 0, static_cast<NS::UInteger>(sz.x),
                                           static_cast<NS::UInteger>(sz.y)};
     for (auto& program : programs) {
+        if (!program->enabled()) {
+            continue;
+        }
         renderCmdEncoder->setScissorRect(fullScissor);
         JST_CHECK(program->draw(renderCmdEncoder));
     }
     renderCmdEncoder->endEncoding();
-
-    markDrawn();
 
     return Result::SUCCESS;
 }

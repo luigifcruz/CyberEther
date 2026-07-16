@@ -10,6 +10,10 @@ Implementation::BufferImp(const Config& config) : Buffer(config) {
 Result Implementation::create() {
     JST_DEBUG("[METAL] Creating buffer.");
 
+    if (config.buffer && !config.enableZeroCopy) {
+        JST_CHECK(validateUpdate(0, config.size));
+    }
+
     // TODO: Add usage hints.
     auto device = Backend::State<DeviceType::Metal>()->getDevice();
     const auto& byteSize = config.size * config.elementByteSize;
@@ -18,11 +22,13 @@ Result Implementation::create() {
         buffer = static_cast<MTL::Buffer*>(config.buffer);
         buffer->retain();
     } else {
-        buffer = device->newBuffer(config.buffer,
-                                   byteSize,
-                                   MTL::ResourceStorageModeShared);
+        buffer = device->newBuffer(byteSize, MTL::ResourceStorageModeShared);
     }
     JST_ASSERT(buffer, "Failed to create buffer.");
+
+    if (config.buffer && !config.enableZeroCopy) {
+        JST_CHECK(update());
+    }
 
     return Result::SUCCESS;
 }
@@ -34,27 +40,6 @@ Result Implementation::destroy() {
         buffer->release();
     }
     buffer = nullptr;
-
-    return Result::SUCCESS;
-}
-
-Result Implementation::update() {
-    return update(0, config.size);
-}
-
-Result Implementation::update(const U64& offset, const U64& size) {
-    if (size == 0 || config.enableZeroCopy) {
-        return Result::SUCCESS;
-    }
-
-    const auto& byteOffset = offset * config.elementByteSize;
-    const auto& byteSize = size * config.elementByteSize;
-
-    uint8_t* ptr = static_cast<uint8_t*>(buffer->contents());
-    memcpy(ptr + byteOffset, (uint8_t*)config.buffer + byteOffset, byteSize);
-#if !defined(TARGET_OS_IOS)
-    buffer->didModifyRange(NS::Range(byteOffset, byteSize));
-#endif
 
     return Result::SUCCESS;
 }

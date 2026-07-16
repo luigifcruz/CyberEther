@@ -16,6 +16,7 @@ Implementation::SurfaceImp(const Config& config) : Surface(config) {
     if (config.multisampled) {
         auto framebufferConfig = framebufferResolve->getConfig();
         framebufferConfig.multisampled = true;
+        framebufferConfig.buffer = nullptr;
         framebuffer = std::make_shared<TextureImp<DeviceType::Vulkan>>(framebufferConfig);
     }
 
@@ -100,7 +101,6 @@ Result Implementation::create() {
         JST_ERROR("[VULKAN] Failed to create render pass.");
     });
 
-    JST_CHECK(framebufferResolve->create());
     if (config.multisampled) {
         JST_CHECK(framebuffer->create());
     }
@@ -153,7 +153,6 @@ Result Implementation::destroy() {
         JST_CHECK(program->destroy());
     }
 
-    JST_CHECK(framebufferResolve->destroy());
     if (config.multisampled) {
         JST_CHECK(framebuffer->destroy());
     }
@@ -163,8 +162,8 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-Result Implementation::encode(VkCommandBuffer& commandBuffer) {
-    const bool framebufferChanged = framebufferResolve->size(requestedSize);
+Result Implementation::prepare() {
+    framebufferChanged = framebufferResolve->size(requestedSize);
     if (framebufferChanged) {
         JST_VK_CHECK(vkQueueWaitIdle(Backend::State<DeviceType::Vulkan>()->getGraphicsQueue()), [&]{
             JST_ERROR("[VULKAN] Can't wait for graphics queue to finish for surface destruction.");
@@ -175,9 +174,15 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
         }
 
         JST_CHECK(destroy());
+        JST_CHECK(framebufferResolve->destroy());
+        JST_CHECK(framebufferResolve->create());
         JST_CHECK(create());
     }
 
+    return Result::SUCCESS;
+}
+
+Result Implementation::encode(VkCommandBuffer& commandBuffer) {
     if (!shouldDraw(framebufferChanged)) {
         return Result::SUCCESS;
     }
@@ -241,15 +246,24 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
     fullScissor.extent = {static_cast<U32>(framebufferResolve->size().x),
                           static_cast<U32>(framebufferResolve->size().y)};
     for (auto& program : programs) {
+        if (!program->enabled()) {
+            continue;
+        }
         vkCmdSetScissor(commandBuffer, 0, 1, &fullScissor);
         JST_CHECK(program->encode(commandBuffer, renderPass));
     }
 
     vkCmdEndRenderPass(commandBuffer);
 
-    markDrawn();
-
     return Result::SUCCESS;
+}
+
+void Implementation::commit() {
+    framebufferResolve->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    if (config.multisampled) {
+        framebuffer->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    }
+    commitDraw();
 }
 
 const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) {

@@ -92,7 +92,6 @@ Result Axis::create(Window* window) {
         cfg.size = 1;
         cfg.target = Render::Buffer::Target::UNIFORM;
         JST_CHECK(window->build(pimpl->gridUniformBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->gridUniformBuffer));
     }
 
     // Grid points storage buffer.
@@ -104,7 +103,6 @@ Result Axis::create(Window* window) {
         cfg.target = Render::Buffer::Target::STORAGE;
         cfg.enableZeroCopy = false;
         JST_CHECK(window->build(pimpl->gridPointsBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->gridPointsBuffer));
     }
 
     // Grid vertices buffer (compute output + vertex input).
@@ -117,7 +115,6 @@ Result Axis::create(Window* window) {
                      Render::Buffer::Target::STORAGE;
         cfg.enableZeroCopy = false;
         JST_CHECK(window->build(pimpl->gridVerticesBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->gridVerticesBuffer));
     }
 
     // Thick-lines compute kernel.
@@ -237,10 +234,6 @@ Result Axis::create(Window* window) {
 
 Result Axis::destroy(Window* window) {
     JST_CHECK(window->unbind(pimpl->text));
-    JST_CHECK(window->unbind(pimpl->gridPointsBuffer));
-    JST_CHECK(window->unbind(pimpl->gridVerticesBuffer));
-    JST_CHECK(window->unbind(pimpl->gridUniformBuffer));
-
     return Result::SUCCESS;
 }
 

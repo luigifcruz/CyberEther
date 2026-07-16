@@ -1,7 +1,5 @@
 #include "jetstream/render/devices/vulkan/window.hh"
 #include "jetstream/render/devices/vulkan/surface.hh"
-#include "jetstream/render/devices/vulkan/buffer.hh"
-#include "jetstream/render/devices/vulkan/texture.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 
 #include "tools/imgui_impl_vulkan.h"
@@ -40,6 +38,7 @@ Result Implementation::underlyingCreate() {
 
     statsData.droppedFrames = 0;
     statsData.recreatedFrames = 0;
+    transferEncoder.create(MAX_FRAMES_IN_FLIGHT);
 
     // Create render pass.
 
@@ -80,9 +79,14 @@ Result Implementation::underlyingCreate() {
     renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = &dependency;
 
-    JST_VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass), [&]{
+    VkRenderPass createdRenderPass = VK_NULL_HANDLE;
+    JST_VK_CHECK(vkCreateRenderPass(device,
+                                    &renderPassInfo,
+                                    nullptr,
+                                    &createdRenderPass), [&]{
         JST_ERROR("[VULKAN] Failed to create render pass.");
     });
+    renderPass = createdRenderPass;
 
     // Create command pool.
 
@@ -93,9 +97,14 @@ Result Implementation::underlyingCreate() {
     poolInfo.queueFamilyIndex = indices.graphicFamily.value();
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
-    JST_VK_CHECK(vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool), [&]{
+    VkCommandPool createdCommandPool = VK_NULL_HANDLE;
+    JST_VK_CHECK(vkCreateCommandPool(device,
+                                     &poolInfo,
+                                     nullptr,
+                                     &createdCommandPool), [&]{
         JST_ERROR("[VULKAN] Failed to create graphics command pool.");
     });
+    commandPool = createdCommandPool;
 
     // Create command buffers.
 
@@ -110,6 +119,7 @@ Result Implementation::underlyingCreate() {
     JST_VK_CHECK(vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()), [&]{
         JST_ERROR("[VULKAN] Can't create render command buffers.");
     });
+    commandBuffersAllocated = true;
 
     // Create submodules.
 
@@ -117,6 +127,7 @@ Result Implementation::underlyingCreate() {
     JST_CHECK(createFramebuffer());
     JST_CHECK(createSynchronizationObjects());
 
+    windowCreated = true;
     return Result::SUCCESS;
 }
 
@@ -125,18 +136,46 @@ Result Implementation::underlyingDestroy() {
 
     // Release resources.
 
-    JST_CHECK(underlyingSynchronize());
+    Result result = Result::SUCCESS;
+    if (windowCreated) {
+        result = underlyingSynchronize();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return result;
+        }
+    }
 
-    JST_CHECK(destroySynchronizationObjects());
-    JST_CHECK(destroyFramebuffer());
-    JST_CHECK(destroyImgui());
+    destroySynchronizationObjects();
+    destroyFramebuffer();
+    if (imguiCreated) {
+        const Result imguiResult = destroyImgui();
+        if ((result == Result::SUCCESS || result == Result::RELOAD) &&
+            imguiResult != Result::SUCCESS && imguiResult != Result::RELOAD) {
+            result = imguiResult;
+        }
+    }
+
+    transferEncoder.destroy();
 
     auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
-    vkFreeCommandBuffers(device, commandPool, commandBuffers.size(), commandBuffers.data());
-    vkDestroyCommandPool(device, commandPool, nullptr);
-    vkDestroyRenderPass(device, renderPass, nullptr);
+    if (commandBuffersAllocated) {
+        vkFreeCommandBuffers(device,
+                             commandPool,
+                             static_cast<U32>(commandBuffers.size()),
+                             commandBuffers.data());
+        commandBuffersAllocated = false;
+    }
+    commandBuffers.clear();
+    if (commandPool != VK_NULL_HANDLE) {
+        vkDestroyCommandPool(device, commandPool, nullptr);
+        commandPool = VK_NULL_HANDLE;
+    }
+    if (renderPass != VK_NULL_HANDLE) {
+        vkDestroyRenderPass(device, renderPass, nullptr);
+        renderPass = VK_NULL_HANDLE;
+    }
+    windowCreated = false;
 
-    return Result::SUCCESS;
+    return result;
 }
 
 Result Implementation::recreate() {
@@ -171,9 +210,14 @@ Result Implementation::createFramebuffer() {
         framebufferInfo.height = swapchainExtent.y;
         framebufferInfo.layers = 1;
 
-        JST_VK_CHECK(vkCreateFramebuffer(device, &framebufferInfo, nullptr, &swapchainFramebuffers[i]), [&]{
+        VkFramebuffer framebuffer = VK_NULL_HANDLE;
+        JST_VK_CHECK(vkCreateFramebuffer(device,
+                                         &framebufferInfo,
+                                         nullptr,
+                                         &framebuffer), [&]{
             JST_ERROR("[VULKAN] Failed to create swapchain framebuffer.");
         });
+        swapchainFramebuffers[i] = framebuffer;
     }
 
     return Result::SUCCESS;
@@ -182,10 +226,10 @@ Result Implementation::createFramebuffer() {
 Result Implementation::destroyFramebuffer() {
     auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
 
-    JST_CHECK(underlyingSynchronize());
     for (auto framebuffer : swapchainFramebuffers) {
         vkDestroyFramebuffer(device, framebuffer, nullptr);
     }
+    swapchainFramebuffers.clear();
 
     return Result::SUCCESS;
 }
@@ -202,24 +246,47 @@ Result Implementation::createImgui() {
 
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-    JST_CHECK(viewport->createImgui());
+    Result viewportResult;
+    try {
+        viewportResult = viewport->createImgui();
+    } catch (...) {
+        ImGui::DestroyContext();
+        io = nullptr;
+        style = nullptr;
+        throw;
+    }
+    if (viewportResult != Result::SUCCESS && viewportResult != Result::RELOAD) {
+        ImGui::DestroyContext();
+        io = nullptr;
+        style = nullptr;
+        return viewportResult;
+    }
 
-    this->updateScalingFactor(*viewport);
+    try {
+        this->updateScalingFactor(*viewport);
 
-    auto& backend = Backend::State<DeviceType::Vulkan>();
+        auto& backend = Backend::State<DeviceType::Vulkan>();
 
-    ImGui_ImplVulkan_InitInfo init_info{};
-    init_info.Instance = backend->getInstance();
-    init_info.PhysicalDevice = backend->getPhysicalDevice();
-    init_info.Device = backend->getDevice();
-    init_info.QueueFamily = Backend::FindQueueFamilies(backend->getPhysicalDevice()).graphicFamily.value();
-    init_info.Queue = backend->getGraphicsQueue();
-    init_info.DescriptorPool = backend->getDescriptorPool();
-    init_info.RenderPass = renderPass;
-    init_info.MinImageCount = static_cast<U32>(viewport->getSwapchainImageViewsCount());
-    init_info.ImageCount = static_cast<U32>(viewport->getSwapchainImageViewsCount());
-    init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-    ImGui_ImplVulkan_Init(&init_info);
+        ImGui_ImplVulkan_InitInfo init_info{};
+        init_info.Instance = backend->getInstance();
+        init_info.PhysicalDevice = backend->getPhysicalDevice();
+        init_info.Device = backend->getDevice();
+        init_info.QueueFamily = Backend::FindQueueFamilies(backend->getPhysicalDevice()).graphicFamily.value();
+        init_info.Queue = backend->getGraphicsQueue();
+        init_info.DescriptorPool = backend->getDescriptorPool();
+        init_info.RenderPass = renderPass;
+        init_info.MinImageCount = static_cast<U32>(viewport->getSwapchainImageViewsCount());
+        init_info.ImageCount = static_cast<U32>(viewport->getSwapchainImageViewsCount());
+        init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+        ImGui_ImplVulkan_Init(&init_info);
+    } catch (...) {
+        viewport->destroyImgui();
+        ImGui::DestroyContext();
+        io = nullptr;
+        style = nullptr;
+        throw;
+    }
+    imguiCreated = true;
 
     return Result::SUCCESS;
 }
@@ -228,10 +295,13 @@ Result Implementation::destroyImgui() {
     JST_DEBUG("[VULKAN] Destroying ImGui.");
 
     ImGui_ImplVulkan_Shutdown();
-    JST_CHECK(viewport->destroyImgui());
+    const Result result = viewport->destroyImgui();
     ImGui::DestroyContext();
+    io = nullptr;
+    style = nullptr;
+    imguiCreated = false;
 
-    return Result::SUCCESS;
+    return result;
 }
 
 Result Implementation::beginImgui() {
@@ -256,7 +326,13 @@ Result Implementation::underlyingBegin() {
 
     // Wait for a frame to be available.
 
-    vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
+    JST_VK_CHECK(vkWaitForFences(device,
+                                 1,
+                                 &inFlightFences[currentFrame],
+                                 VK_TRUE,
+                                 UINT64_MAX), [&]{
+        JST_ERROR("[VULKAN] Failed to wait for an in-flight frame.");
+    });
 
     // Get next viewport framebuffer.
 
@@ -278,22 +354,70 @@ Result Implementation::underlyingBegin() {
         return Result::ERROR;
     }
 
-    // Reset fences before using them.
+    const auto abortFrame = [&](const Result& abortResult) {
+        const Result recovery = underlyingCancel();
+        return recovery == Result::SUCCESS ? abortResult : recovery;
+    };
 
-    vkResetFences(device, 1, &inFlightFences[currentFrame]);
+    // Refresh command buffer.
 
-    // Refresh command buffer and begin new render pass.
-
-    JST_VK_CHECK(vkResetCommandBuffer(commandBuffers[currentFrame], 0), [&]{
+    if (vkResetCommandBuffer(commandBuffers[currentFrame], 0) != VK_SUCCESS) {
         JST_ERROR("[VULKAN] Can't reset command buffer.");
-    });
+        return abortFrame(Result::ERROR);
+    }
 
     VkCommandBufferBeginInfo commandBufferBeginInfo = {};
     commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    JST_VK_CHECK(vkBeginCommandBuffer(commandBuffers[currentFrame], &commandBufferBeginInfo), [&]{
+    if (vkBeginCommandBuffer(commandBuffers[currentFrame], &commandBufferBeginInfo) != VK_SUCCESS) {
         JST_ERROR("[VULKAN] Can't begin command buffer.");
-    });
+        return abortFrame(Result::ERROR);
+    }
+
+    for (auto& surface : surfaces) {
+        const Result prepareResult = surface->prepare();
+        if (prepareResult != Result::SUCCESS && prepareResult != Result::RELOAD) {
+            return abortFrame(prepareResult);
+        }
+    }
+
+    // Begin secondary renders.
+
+    const Result beginResult = beginImgui();
+    if (beginResult != Result::SUCCESS && beginResult != Result::RELOAD) {
+        return abortFrame(beginResult);
+    }
+
+    return Result::SUCCESS;
+}
+
+Result Implementation::underlyingEnd() {
+    Transfer::Batch transfers;
+
+    const auto abortFrame = [&](const Result& result) {
+        const Result recovery = underlyingCancel();
+        return recovery == Result::SUCCESS ? result : recovery;
+    };
+
+    Result result = collectTransfers(transfers);
+    if (result != Result::SUCCESS && result != Result::RELOAD) {
+        return abortFrame(result);
+    }
+    if (!transfers.empty()) {
+        result = transferEncoder.encode(transfers,
+                                        commandBuffers[currentFrame],
+                                        currentFrame);
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return abortFrame(result);
+        }
+    }
+
+    for (auto& surface : surfaces) {
+        result = surface->encode(commandBuffers[currentFrame]);
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return abortFrame(result);
+        }
+    }
 
     VkRenderPassBeginInfo renderPassBeginInfo = {};
     renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -306,32 +430,23 @@ Result Implementation::underlyingBegin() {
     VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
     renderPassBeginInfo.clearValueCount = 1;
     renderPassBeginInfo.pClearValues = &clearColor;
-
-    for (auto &surface : surfaces) {
-        JST_CHECK(surface->encode(commandBuffers[currentFrame]));
-    }
-
     vkCmdBeginRenderPass(commandBuffers[currentFrame], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-    // Begin secondary renders.
-
-    JST_CHECK(beginImgui());
-
-    return Result::SUCCESS;
-}
-
-Result Implementation::underlyingEnd() {
     // End secondary renders.
 
-    JST_CHECK(endImgui());
+    result = endImgui();
+    if (result != Result::SUCCESS && result != Result::RELOAD) {
+        return abortFrame(result);
+    }
 
     // End render pass and command buffer.
 
     vkCmdEndRenderPass(commandBuffers[currentFrame]);
 
-    JST_VK_CHECK(vkEndCommandBuffer(commandBuffers[currentFrame]), [&]{
+    if (vkEndCommandBuffer(commandBuffers[currentFrame]) != VK_SUCCESS) {
         JST_ERROR("[VULKAN] Can't end command buffer.");
-    });
+        return abortFrame(Result::ERROR);
+    }
 
     // Reset synchronization fences and submit to queue.
 
@@ -351,24 +466,37 @@ Result Implementation::underlyingEnd() {
     submitInfo.pSignalSemaphores = signalSemaphores.data();
     submitInfo.signalSemaphoreCount = signalSemaphores.size();
 
-    auto& graphicsQueue = Backend::State<DeviceType::Vulkan>()->getGraphicsQueue();
+    auto& backend = Backend::State<DeviceType::Vulkan>();
+    auto& graphicsQueue = backend->getGraphicsQueue();
+    auto& device = backend->getDevice();
+    if (vkResetFences(device, 1, &inFlightFences[currentFrame]) != VK_SUCCESS) {
+        JST_ERROR("[VULKAN] Failed to reset an in-flight fence.");
+        return abortFrame(Result::ERROR);
+    }
     if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
         JST_ERROR("[VULKAN] Failed to submit draw command buffer.");
-        return Result::ERROR;
+        return abortFrame(Result::ERROR);
     }
+
+    transferEncoder.commit(transfers);
+    for (auto& surface : surfaces) {
+        surface->commit();
+    }
+    transfers.commit();
 
     // Commit framebuffer to viewport.
 
-    const auto& result = viewport->commitDrawable(signalSemaphores);
+    const auto& presentResult = viewport->commitDrawable(signalSemaphores);
 
-    if (result == Result::RECREATE) {
+    if (presentResult == Result::RECREATE) {
         statsData.recreatedFrames += 1;
         JST_CHECK(recreate());
         return Result::SKIP;
     }
 
-    if (result != Result::SUCCESS) {
-        return result;
+    if (presentResult != Result::SUCCESS) {
+        const Result recovery = recreate();
+        return recovery == Result::SUCCESS ? presentResult : recovery;
     }
 
     // Increment frame counter.
@@ -376,6 +504,16 @@ Result Implementation::underlyingEnd() {
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 
     return Result::SUCCESS;
+}
+
+Result Implementation::underlyingCancel() {
+    const bool reset = vkResetCommandBuffer(commandBuffers[currentFrame], 0) == VK_SUCCESS;
+    if (!reset) {
+        JST_ERROR("[VULKAN] Can't reset cancelled command buffer.");
+    }
+    const Result recovery = recreate();
+    return reset ? recovery
+                 : (recovery == Result::SUCCESS ? Result::ERROR : recovery);
 }
 
 Result Implementation::underlyingSynchronize() {
@@ -402,12 +540,32 @@ Result Implementation::createSynchronizationObjects() {
     fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
-            vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
-            vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS) {
+        VkSemaphore imageAvailable = VK_NULL_HANDLE;
+        if (vkCreateSemaphore(device,
+                              &semaphoreInfo,
+                              nullptr,
+                              &imageAvailable) != VK_SUCCESS) {
             JST_ERROR("[VULKAN] Failed to create synchronization objects.");
             return Result::ERROR;
         }
+        imageAvailableSemaphores[i] = imageAvailable;
+
+        VkSemaphore renderFinished = VK_NULL_HANDLE;
+        if (vkCreateSemaphore(device,
+                              &semaphoreInfo,
+                              nullptr,
+                              &renderFinished) != VK_SUCCESS) {
+            JST_ERROR("[VULKAN] Failed to create synchronization objects.");
+            return Result::ERROR;
+        }
+        renderFinishedSemaphores[i] = renderFinished;
+
+        VkFence inFlight = VK_NULL_HANDLE;
+        if (vkCreateFence(device, &fenceInfo, nullptr, &inFlight) != VK_SUCCESS) {
+            JST_ERROR("[VULKAN] Failed to create synchronization objects.");
+            return Result::ERROR;
+        }
+        inFlightFences[i] = inFlight;
     }
 
     return Result::SUCCESS;
@@ -416,11 +574,19 @@ Result Implementation::createSynchronizationObjects() {
 Result Implementation::destroySynchronizationObjects() {
     auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
 
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
-        vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
-        vkDestroyFence(device, inFlightFences[i], nullptr);
+    for (const auto semaphore : renderFinishedSemaphores) {
+        vkDestroySemaphore(device, semaphore, nullptr);
     }
+    for (const auto semaphore : imageAvailableSemaphores) {
+        vkDestroySemaphore(device, semaphore, nullptr);
+    }
+    for (const auto fence : inFlightFences) {
+        vkDestroyFence(device, fence, nullptr);
+    }
+    renderFinishedSemaphores.clear();
+    imageAvailableSemaphores.clear();
+    inFlightFences.clear();
+    imagesInFlight.clear();
 
     return Result::SUCCESS;
 }

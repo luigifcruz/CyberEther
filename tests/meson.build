@@ -5,6 +5,7 @@ if catch2_dep.found()
     subdir('settings')
     subdir('modules')
     subdir('flowgraph')
+    subdir('render')
 endif
 
 # TODO: Re-enable after CLI output capture supports separate Windows static CRTs.

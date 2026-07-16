@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_BASE_DRAW_HH
 
 #include <memory>
+#include <vector>
 
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
@@ -45,6 +46,10 @@ class JETSTREAM_API Draw {
 
  protected:
     Config config;
+    std::vector<std::shared_ptr<Buffer>> transferBuffers;
+
+ private:
+    friend class Surface;
 };
 
 }  // namespace Jetstream::Render

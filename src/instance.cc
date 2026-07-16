@@ -97,7 +97,13 @@ Result Instance::create(const Config& config) {
             JST_CHECK(viewport->create());
 
             auto render = std::make_shared<Render::WindowImp<D>>(renderConfig, viewport);
-            JST_CHECK(render->create());
+            const Result renderResult = render->create();
+            if (renderResult != Result::SUCCESS && renderResult != Result::RELOAD) {
+                const Result cleanupResult = viewport->destroy();
+                return cleanupResult == Result::SUCCESS || cleanupResult == Result::RELOAD
+                    ? renderResult
+                    : cleanupResult;
+            }
 
             impl->viewport = std::move(viewport);
             impl->render = std::move(render);
@@ -114,7 +120,13 @@ Result Instance::create(const Config& config) {
             JST_CHECK(viewport->create());
 
             auto render = std::make_shared<Render::WindowImp<D>>(renderConfig, viewport);
-            JST_CHECK(render->create());
+            const Result renderResult = render->create();
+            if (renderResult != Result::SUCCESS && renderResult != Result::RELOAD) {
+                const Result cleanupResult = viewport->destroy();
+                return cleanupResult == Result::SUCCESS || cleanupResult == Result::RELOAD
+                    ? renderResult
+                    : cleanupResult;
+            }
 
             impl->viewport = std::move(viewport);
             impl->render = std::move(render);
@@ -165,9 +177,36 @@ Result Instance::create(const Config& config) {
         JST_CHECK(result.value());
     }
 
+    struct CreateGuard {
+        Impl& impl;
+        bool active = true;
+
+        ~CreateGuard() {
+            if (!active) {
+                return;
+            }
+            try {
+                if (impl.compositor) {
+                    impl.compositor->destroy();
+                    impl.compositor.reset();
+                }
+                if (impl.render) {
+                    impl.render->destroy();
+                    impl.render.reset();
+                }
+                if (impl.viewport) {
+                    impl.viewport->destroy();
+                    impl.viewport.reset();
+                }
+            } catch (...) {
+            }
+        }
+    } createGuard{*impl};
+
     if (config.compositor.has_value()) {
-        impl->compositor = std::make_shared<Compositor>(config.compositor.value());
-        JST_CHECK(impl->compositor->create(shared_from_this(), impl->render, impl->viewport));
+        auto compositor = std::make_shared<Compositor>(config.compositor.value());
+        JST_CHECK(compositor->create(shared_from_this(), impl->render, impl->viewport));
+        impl->compositor = std::move(compositor);
     }
 
     // Load default fonts.
@@ -226,6 +265,7 @@ Result Instance::create(const Config& config) {
 
     impl->stopping.store(false);
     impl->created.store(true);
+    createGuard.active = false;
     return Result::SUCCESS;
 }
 
@@ -347,6 +387,7 @@ Result Instance::stop() {
     }
 
     JST_CHECK(impl->render->stop());
+    JST_CHECK(impl->render->synchronize());
 
     impl->started.store(false);
 
@@ -423,6 +464,30 @@ Result Instance::present(const std::function<Result()>& callback) {
         return beginRes;
     }
 
+    struct FrameGuard {
+        std::shared_ptr<Render::Window> window;
+        bool active = true;
+
+        ~FrameGuard() noexcept {
+            if (active) {
+                try {
+                    window->cancel();
+                } catch (...) {
+                    JST_ERROR("[INSTANCE] Failed to cancel an exceptional render frame.");
+                }
+            }
+        }
+    } frameGuard{impl->render};
+
+    const auto cancelFrame = [&](const Result result) {
+        frameGuard.active = false;
+        const Result cancelResult = impl->render->cancel();
+        impl->presenting.store(false);
+        return cancelResult == Result::SUCCESS || cancelResult == Result::RELOAD
+            ? result
+            : cancelResult;
+    };
+
     // Update the modules present logic.
 
     std::vector<std::shared_ptr<Flowgraph>> flowgraphs;
@@ -435,22 +500,32 @@ Result Instance::present(const std::function<Result()>& callback) {
     }
 
     for (const auto& flowgraph : flowgraphs) {
-        JST_CHECK(flowgraph->present());
+        const Result result = flowgraph->present();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return cancelFrame(result);
+        }
     }
 
     // Render the inferface via compositor and callback.
 
     if (callback) {
-        JST_CHECK(callback());
+        const Result result = callback();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return cancelFrame(result);
+        }
     }
 
     if (impl->compositor) {
-        JST_CHECK(impl->compositor->present());
+        const Result result = impl->compositor->present();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return cancelFrame(result);
+        }
     }
 
     // Finish the render frame.
 
     const auto& endRes = impl->render->end();
+    frameGuard.active = false;
     if (endRes == Result::SKIP) {
         return Result::SUCCESS;
     }

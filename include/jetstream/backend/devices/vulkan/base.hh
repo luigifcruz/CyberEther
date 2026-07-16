@@ -91,22 +91,6 @@ class Vulkan {
         return descriptorPool;
     }
 
-    constexpr void* getStagingBufferMappedMemory() {
-        return stagingBufferMappedMemory;
-    }
-
-    constexpr VkDeviceMemory& getStagingBufferMemory() {
-        return stagingBufferMemory;
-    }
-
-    constexpr VkBuffer& getStagingBuffer() {
-        return stagingBuffer;
-    }
-
-    constexpr const U64& getStagingBufferSize() {
-        return config.stagingBufferSize;
-    }
-
     constexpr VkFence& getDefaultFence() {
         return defaultFence;
     }
@@ -126,9 +110,6 @@ class Vulkan {
     VkPhysicalDevice physicalDevice;
     VkPhysicalDeviceProperties properties;
     VkDescriptorPool descriptorPool;
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-    void* stagingBufferMappedMemory;
     VkFence defaultFence;
     VkCommandBuffer defaultCommandBuffer;
     VkCommandPool defaultCommandPool;

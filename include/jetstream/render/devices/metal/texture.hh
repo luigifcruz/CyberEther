@@ -15,11 +15,6 @@ class JETSTREAM_API TextureImp<DeviceType::Metal> : public Texture {
     Result destroy() override;
 
     using Render::Texture::size;
-    bool size(const Extent2D<U64>& size) override;
-
-    Result fill() override;
-    Result fillRow(const U64& y, const U64& height) override;
-
     uint64_t raw() const override {
         return texture ? (uint64_t)(void*)texture : 0;
     }
@@ -48,6 +43,7 @@ class JETSTREAM_API TextureImp<DeviceType::Metal> : public Texture {
 
     friend class SurfaceImp<DeviceType::Metal>;
     friend class ProgramImp<DeviceType::Metal>;
+    friend class TransferImp<DeviceType::Metal>;
 };
 
 }  // namespace Jetstream::Render

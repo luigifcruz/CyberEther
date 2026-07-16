@@ -154,7 +154,6 @@ Result LineplotImpl::createPresent() {
         cfg.size = 1;
         cfg.target = Render::Buffer::Target::UNIFORM;
         JST_CHECK(window->build(cursorUniformBuffer, cfg));
-        JST_CHECK(window->bind(cursorUniformBuffer));
     }
 
     {
@@ -164,7 +163,6 @@ Result LineplotImpl::createPresent() {
         cfg.size = 12;
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(cursorVerticesBuffer, cfg));
-        JST_CHECK(window->bind(cursorVerticesBuffer));
     }
 
     {
@@ -174,7 +172,6 @@ Result LineplotImpl::createPresent() {
         cfg.size = 6;
         cfg.target = Render::Buffer::Target::VERTEX_INDICES;
         JST_CHECK(window->build(cursorIndicesBuffer, cfg));
-        JST_CHECK(window->bind(cursorIndicesBuffer));
     }
 
     {
@@ -213,7 +210,6 @@ Result LineplotImpl::createPresent() {
         cfg.size = 1;
         cfg.target = Render::Buffer::Target::UNIFORM;
         JST_CHECK(window->build(signalUniformBuffer, cfg));
-        JST_CHECK(window->bind(signalUniformBuffer));
     }
 
     {
@@ -224,7 +220,6 @@ Result LineplotImpl::createPresent() {
         cfg.target = Render::Buffer::Target::STORAGE;
         cfg.enableZeroCopy = false;
         JST_CHECK(window->build(signalPointsBuffer, cfg));
-        JST_CHECK(window->bind(signalPointsBuffer));
     }
 
     {
@@ -235,7 +230,6 @@ Result LineplotImpl::createPresent() {
         cfg.target = Render::Buffer::Target::VERTEX | Render::Buffer::Target::STORAGE;
         cfg.enableZeroCopy = false;
         JST_CHECK(window->build(signalVerticesBuffer, cfg));
-        JST_CHECK(window->bind(signalVerticesBuffer));
     }
 
     {
@@ -270,7 +264,6 @@ Result LineplotImpl::createPresent() {
         cfg.size = {256, 1};
         cfg.buffer = (uint8_t*)TurboLutBytes;
         JST_CHECK(window->build(lutTexture, cfg));
-        JST_CHECK(window->bind(lutTexture));
     }
 
     {
@@ -349,14 +342,6 @@ Result LineplotImpl::destroyPresent() {
     JST_CHECK(window->unbind(renderSurface));
     JST_CHECK(window->unbind(text));
     JST_CHECK(window->unbind(axis));
-    JST_CHECK(window->unbind(lutTexture));
-    JST_CHECK(window->unbind(signalPointsBuffer));
-    JST_CHECK(window->unbind(signalVerticesBuffer));
-    JST_CHECK(window->unbind(signalUniformBuffer));
-    JST_CHECK(window->unbind(cursorUniformBuffer));
-    JST_CHECK(window->unbind(cursorVerticesBuffer));
-    JST_CHECK(window->unbind(cursorIndicesBuffer));
-
     return Result::SUCCESS;
 }
 

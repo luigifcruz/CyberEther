@@ -12,6 +12,12 @@ Implementation::TextureImp(const Config& config) : Texture(config) {
 Result Implementation::create() {
     JST_DEBUG("[VULKAN] Creating texture.");
 
+    layout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    if (config.buffer) {
+        JST_CHECK(validateFillRow(0, config.size.y));
+    }
+
     auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
     auto& physicalDevice = Backend::State<DeviceType::Vulkan>()->getPhysicalDevice();
 
@@ -220,92 +226,7 @@ Result Implementation::destroy() {
         memory = VK_NULL_HANDLE;
     }
 
-    return Result::SUCCESS;
-}
-
-bool Implementation::size(const Extent2D<U64>& size) {
-    if (size <= Extent2D<U64>{1, 1}) {
-        return false;
-    }
-
-    if (config.size != size) {
-        config.size = size;
-        return true;
-    }
-
-    return false;
-}
-
-Result Implementation::fill() {
-    return fillRow(0, config.size.y);
-}
-
-Result Implementation::fillRow(const U64& y, const U64& height) {
-    if (height < 1) {
-        return Result::SUCCESS;
-    }
-
-    // TODO: Implement zero-copy option.
-
-    auto& backend = Backend::State<DeviceType::Vulkan>();
-
-    uint8_t* mappedData = static_cast<uint8_t*>(backend->getStagingBufferMappedMemory());
-    const uint8_t* hostData = static_cast<const uint8_t*>(config.buffer);
-    const auto rowByteSize = config.size.x * GetPixelByteSize(pixelFormat);
-    const auto bufferByteOffset = rowByteSize * y;
-    const auto bufferByteSize = rowByteSize * height;
-
-    if (bufferByteSize >= backend->getStagingBufferSize()) {
-        JST_ERROR("[VULKAN] Memory copy is larger than the staging buffer.");
-        return Result::ERROR;
-    }
-
-    memcpy(mappedData, hostData + bufferByteOffset, bufferByteSize);
-
-    JST_CHECK(Backend::ExecuteOnce(backend->getDevice(),
-                                   backend->getComputeQueue(),
-                                   backend->getDefaultFence(),
-                                   backend->getDefaultCommandBuffer(),
-        [&](VkCommandBuffer& commandBuffer){
-            JST_CHECK(Backend::TransitionImageLayout(commandBuffer, 
-                                                     texture, 
-                                                     VK_IMAGE_LAYOUT_UNDEFINED,
-                                                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL));
-            VkBufferImageCopy region{};
-            region.bufferOffset = 0;
-            region.bufferRowLength = 0;
-            region.bufferImageHeight = 0;
-            region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            region.imageSubresource.mipLevel = 0;
-            region.imageSubresource.baseArrayLayer = 0;
-            region.imageSubresource.layerCount = 1;
-            region.imageOffset = {
-                    0,
-                    static_cast<I32>(y),
-                    0
-                };
-            region.imageExtent.width = config.size.x;
-            region.imageExtent.height = height;
-            region.imageExtent.depth = 1;
-
-            vkCmdCopyBufferToImage(
-                commandBuffer,
-                backend->getStagingBuffer(),
-                texture,
-                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                1,
-                &region
-            );
-
-            JST_CHECK(Backend::TransitionImageLayout(commandBuffer, 
-                                                     texture, 
-                                                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                                                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
-
-            return Result::SUCCESS;
-        }
-    ));
-
+    layout = VK_IMAGE_LAYOUT_UNDEFINED;
     return Result::SUCCESS;
 }
 

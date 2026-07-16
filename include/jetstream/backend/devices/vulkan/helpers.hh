@@ -132,28 +132,16 @@ inline QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice& device) {
     std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
 
-    int i = 0;
-    for (const auto& queueFamily : queueFamilies) {
-        if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+    constexpr VkQueueFlags required = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT;
+    for (uint32_t i = 0; i < queueFamilies.size(); ++i) {
+        const auto& queueFamily = queueFamilies[i];
+        if (queueFamily.queueCount > 0 &&
+            (queueFamily.queueFlags & required) == required) {
             indices.graphicFamily = i;
-        }
-
-        if (queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT) {
             indices.computeFamily = i;
-        }
-
-        indices.presentFamily = i;
-
-        if (indices.isComplete()) {
+            indices.presentFamily = i;
             break;
         }
-
-        i++;
-    }
-
-    if (!indices.computeFamily.has_value()) {
-        indices.computeFamily = indices.graphicFamily;
-        JST_WARN("[VULKAN] Compute queue not found. Using graphics queue instead. This may cause issues.");
     }
 
     return indices;
