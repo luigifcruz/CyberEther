@@ -15,5 +15,3 @@ if catch2_dep.found() and \
    not jst_is_windows
     subdir('cli')
 endif
-
-subdir('components')
