@@ -13,6 +13,7 @@
 #include "tensor.hh"
 #include "text.hh"
 #include "types.hh"
+#include "uint.hh"
 #include "vector.hh"
 #include "vector_inline.hh"
 
@@ -29,6 +30,8 @@ struct FlowgraphConfigFieldInstance {
             floatField.update(std::move(config));
         } else if (kind == "int") {
             intField.update(std::move(config));
+        } else if (kind == "uint") {
+            uintField.update(std::move(config));
         } else if (kind == "vector") {
             vectorField.update(std::move(config));
         } else if (kind == "vector-inline") {
@@ -71,6 +74,8 @@ struct FlowgraphConfigFieldInstance {
             floatField.render(ctx);
         } else if (kind == "int") {
             intField.render(ctx);
+        } else if (kind == "uint") {
+            uintField.render(ctx);
         } else if (kind == "vector") {
             vectorField.render(ctx);
         } else if (kind == "vector-inline") {
@@ -103,6 +108,7 @@ struct FlowgraphConfigFieldInstance {
     FlowgraphConfigDropdownField dropdown;
     FlowgraphConfigFloatField floatField;
     FlowgraphConfigIntField intField;
+    FlowgraphConfigUIntField uintField;
     FlowgraphConfigVectorField vectorField;
     FlowgraphConfigVectorInlineField vectorInline;
     FlowgraphConfigPathField path;

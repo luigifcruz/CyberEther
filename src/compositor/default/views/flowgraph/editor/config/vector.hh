@@ -17,12 +17,12 @@ struct FlowgraphConfigVectorField {
         }
         if (this->config.encoded != parsedEncoded) {
             floatValues.clear();
-            intValues.clear();
+            uintValues.clear();
             if (!this->config.encoded.empty()) {
                 if (valueType == "float") {
                     Parser::StringToTyped(this->config.encoded, floatValues);
-                } else {
-                    Parser::StringToTyped(this->config.encoded, intValues);
+                } else if (valueType == "uint") {
+                    Parser::StringToTyped(this->config.encoded, uintValues);
                 }
             }
             parsedEncoded = this->config.encoded;
@@ -37,10 +37,10 @@ struct FlowgraphConfigVectorField {
                     floatInputs[i].render(ctx);
                 });
             }
-        } else if (valueType == "int") {
-            for (U64 i = 0; i < intInputs.size(); ++i) {
-                intFrames[i].render(ctx, [this, i](const Sakura::Context& ctx) {
-                    intInputs[i].render(ctx);
+        } else if (valueType == "uint") {
+            for (U64 i = 0; i < uintInputs.size(); ++i) {
+                uintFrames[i].render(ctx, [this, i](const Sakura::Context& ctx) {
+                    uintInputs[i].render(ctx);
                 });
             }
         }
@@ -58,8 +58,8 @@ struct FlowgraphConfigVectorField {
     void updateChildren() {
         floatFrames.clear();
         floatInputs.clear();
-        intFrames.clear();
-        intInputs.clear();
+        uintFrames.clear();
+        uintInputs.clear();
 
         if (valueType == "float") {
             floatFrames.resize(floatValues.size());
@@ -89,22 +89,22 @@ struct FlowgraphConfigVectorField {
                     },
                 });
             }
-        } else if (valueType == "int") {
-            intFrames.resize(intValues.size());
-            intInputs.resize(intValues.size());
-            for (U64 i = 0; i < intValues.size(); ++i) {
-                intFrames[i].update({
+        } else if (valueType == "uint") {
+            uintFrames.resize(uintValues.size());
+            uintInputs.resize(uintValues.size());
+            for (U64 i = 0; i < uintValues.size(); ++i) {
+                uintFrames[i].update({
                     .id = config.id + "Frame" + std::to_string(i),
                     .label = config.label,
                     .help = config.help,
                 });
-                intInputs[i].update({
-                    .id = config.id + "Int" + std::to_string(i),
-                    .value = intValues[i],
+                uintInputs[i].update({
+                    .id = config.id + "UInt" + std::to_string(i),
+                    .value = uintValues[i],
                     .unit = unit,
                     .onChange = [this, i](U64 value) {
                         Parser::Map patch;
-                        auto nextValues = intValues;
+                        auto nextValues = uintValues;
                         if (i < nextValues.size()) {
                             nextValues[i] = value;
                         }
@@ -125,11 +125,11 @@ struct FlowgraphConfigVectorField {
     std::string unit;
     int precision = 2;
     std::vector<F32> floatValues;
-    std::vector<U64> intValues;
+    std::vector<U64> uintValues;
     std::vector<Sakura::NodeField> floatFrames;
     std::vector<Sakura::NodeFloatInput> floatInputs;
-    std::vector<Sakura::NodeField> intFrames;
-    std::vector<Sakura::NodeIntInput> intInputs;
+    std::vector<Sakura::NodeField> uintFrames;
+    std::vector<Sakura::NodeUIntInput> uintInputs;
 };
 
 }  // namespace Jetstream

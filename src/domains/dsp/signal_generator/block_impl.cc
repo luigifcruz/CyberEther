@@ -60,7 +60,7 @@ Result SignalGeneratorImpl::define() {
     JST_CHECK(defineInterfaceConfig("bufferSize",
                                     "Buffer Size",
                                     "Number of samples to generate per processing cycle.",
-                                    "int:samples"));
+                                    "uint:samples"));
 
     JST_CHECK(defineInterfaceConfig("sampleRate",
                                     "Sample Rate",

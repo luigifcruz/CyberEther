@@ -69,7 +69,7 @@ struct FlowgraphConfigVectorInlineField {
                     }
                     return jst::fmt::format("[{}]", jst::fmt::join(formattedValues, ", "));
                 }
-            } else if (valueType == "int") {
+            } else if (valueType == "uint") {
                 std::vector<U64> values;
                 if (Parser::StringToTyped(config.encoded, values) == Result::SUCCESS) {
                     return jst::fmt::format("[{}]", jst::fmt::join(values, ", "));
@@ -149,7 +149,7 @@ struct FlowgraphConfigVectorInlineField {
                 patch[config.name] = parsedValues;
                 changed = true;
             }
-        } else if (valueType == "int") {
+        } else if (valueType == "uint") {
             std::vector<U64> parsedValues;
             if (error.empty()) {
                 try {

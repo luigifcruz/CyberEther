@@ -1,13 +1,11 @@
-#ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_CONFIG_INT_HH
-#define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_CONFIG_INT_HH
+#ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_CONFIG_UINT_HH
+#define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_CONFIG_UINT_HH
 
 #include "types.hh"
 
-// TODO: Cleanup parsing.
-
 namespace Jetstream {
 
-struct FlowgraphConfigIntField {
+struct FlowgraphConfigUIntField {
     using Config = FlowgraphConfigFieldConfig;
 
     void update(Config config) {
@@ -33,7 +31,7 @@ struct FlowgraphConfigIntField {
             .id = this->config.id + "Input",
             .value = value,
             .unit = unit,
-            .onChange = [this](I64 nextValue) {
+            .onChange = [this](U64 nextValue) {
                 Parser::Map patch;
                 patch[this->config.name] = nextValue;
                 if (this->config.onApply) {
@@ -54,11 +52,11 @@ struct FlowgraphConfigIntField {
     std::string parsedFormat;
     std::string parsedEncoded;
     std::string unit;
-    I64 value = 0;
+    U64 value = 0;
     Sakura::NodeField frame;
-    Sakura::NodeIntInput input;
+    Sakura::NodeUIntInput input;
 };
 
 }  // namespace Jetstream
 
-#endif  // JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_CONFIG_INT_HH
+#endif  // JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_CONFIG_UINT_HH

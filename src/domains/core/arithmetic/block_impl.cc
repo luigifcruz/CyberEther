@@ -41,7 +41,7 @@ Result ArithmeticImpl::define() {
     JST_CHECK(defineInterfaceConfig("axis",
                                     "Axis",
                                     "Axis along which to reduce.",
-                                    "int:"));
+                                    "uint:"));
 
     JST_CHECK(defineInterfaceConfig("squeeze",
                                     "Squeeze",

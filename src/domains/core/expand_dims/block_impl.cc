@@ -28,7 +28,7 @@ Result ExpandDimsImpl::define() {
     JST_CHECK(defineInterfaceConfig("axis",
                                     "Axis",
                                     "Position to insert the new dimension (0-indexed).",
-                                    "int:"));
+                                    "uint:"));
 
     return Result::SUCCESS;
 }

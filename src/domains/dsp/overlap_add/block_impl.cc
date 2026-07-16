@@ -39,7 +39,7 @@ Result OverlapAddImpl::define() {
                                     "Axis",
                                     "Dimension along which the "
                                     "overlap is applied.",
-                                    "int:axis"));
+                                    "uint:axis"));
 
     return Result::SUCCESS;
 }

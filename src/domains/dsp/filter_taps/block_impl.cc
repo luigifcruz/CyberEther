@@ -63,7 +63,7 @@ Result FilterTapsImpl::define() {
     JST_CHECK(defineInterfaceConfig("heads",
                                     "Heads",
                                     "Number of filter heads.",
-                                    "int:heads"));
+                                    "uint:heads"));
 
     JST_CHECK(defineInterfaceConfig("center",
                                     "Center",
@@ -73,7 +73,7 @@ Result FilterTapsImpl::define() {
     JST_CHECK(defineInterfaceConfig("taps",
                                     "Taps",
                                     "Number of filter coefficients (must be odd).",
-                                    "int:taps"));
+                                    "uint:taps"));
 
     return Result::SUCCESS;
 }

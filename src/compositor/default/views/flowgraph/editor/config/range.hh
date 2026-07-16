@@ -20,10 +20,10 @@ struct FlowgraphConfigRangeField {
         if (this->config.encoded != parsedEncoded) {
             value = minValue;
             if (!this->config.encoded.empty()) {
-                if (integer) {
-                    U64 intValue = 0;
-                    Parser::StringToTyped(this->config.encoded, intValue);
-                    value = static_cast<F32>(intValue);
+                if (unsignedInteger) {
+                    U64 uintValue = 0;
+                    Parser::StringToTyped(this->config.encoded, uintValue);
+                    value = static_cast<F32>(uintValue);
                 } else {
                     Parser::StringToTyped(this->config.encoded, value);
                 }
@@ -40,11 +40,11 @@ struct FlowgraphConfigRangeField {
             .min = minValue,
             .max = maxValue,
             .value = value,
-            .integer = integer,
+            .integer = unsignedInteger,
             .unit = unit,
             .onChange = [this](F32 nextValue) {
                 Parser::Map patch;
-                if (integer) {
+                if (unsignedInteger) {
                     patch[this->config.name] = static_cast<U64>(std::round(nextValue));
                 } else {
                     patch[this->config.name] = nextValue;
@@ -68,8 +68,8 @@ struct FlowgraphConfigRangeField {
         const auto parts = Parser::SplitString(config.format, ":");
         unit = (parts.size() > 3) ? parts[3] : "";
         const std::string type = (parts.size() > 4) ? parts[4] : "";
-        integer = type == "int";
-        if (integer) {
+        unsignedInteger = type == "uint";
+        if (unsignedInteger) {
             minValue = static_cast<F32>((parts.size() > 1 && !parts[1].empty()) ? std::stoull(parts[1]) : 0);
             maxValue = static_cast<F32>((parts.size() > 2 && !parts[2].empty()) ? std::stoull(parts[2]) : 100);
         } else {
@@ -85,7 +85,7 @@ struct FlowgraphConfigRangeField {
     F32 minValue = 0.0f;
     F32 maxValue = 1.0f;
     F32 value = 0.0f;
-    bool integer = false;
+    bool unsignedInteger = false;
     Sakura::NodeField frame;
     Sakura::NodeRangeInput input;
 };

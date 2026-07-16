@@ -83,5 +83,6 @@
 #include <jetstream/render/sakura/components/node/text_area.hh>
 #include <jetstream/render/sakura/components/node/text_input.hh>
 #include <jetstream/render/sakura/components/node/title.hh>
+#include <jetstream/render/sakura/components/node/uint_input.hh>
 
 #endif  // JETSTREAM_RENDER_SAKURA_BASE_HH

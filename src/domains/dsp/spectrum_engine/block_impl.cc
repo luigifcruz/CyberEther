@@ -70,7 +70,7 @@ Result SpectrumEngineImpl::define() {
     JST_CHECK(defineInterfaceConfig("axis",
                                     "Axis",
                                     "Axis along which to compute the spectrum.",
-                                    "int:"));
+                                    "uint:"));
 
     JST_CHECK(defineInterfaceConfig("enableAgc",
                                     "Enable AGC",

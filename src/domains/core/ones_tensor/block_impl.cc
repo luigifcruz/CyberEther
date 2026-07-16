@@ -27,7 +27,7 @@ Result OnesTensorImpl::define() {
     JST_CHECK(defineInterfaceConfig("shape",
                                     "Shape",
                                     "Output tensor shape as a list of positive dimensions.",
-                                    "vector-inline:int:dim"));
+                                    "vector-inline:uint:dim"));
 
     JST_CHECK(defineInterfaceConfig("dataType",
                                     "Data Type",
