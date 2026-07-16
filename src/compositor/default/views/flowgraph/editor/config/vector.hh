@@ -77,14 +77,14 @@ struct FlowgraphConfigVectorField {
                     .unit = unit,
                     .precision = precision,
                     .onChange = [this, i](F32 value) {
-                        auto values = config.values;
+                        Parser::Map patch;
                         auto nextValues = floatValues;
                         if (i < nextValues.size()) {
                             nextValues[i] = value * ConfigUnitMultiplier(unit);
                         }
-                        values[config.name] = nextValues;
+                        patch[config.name] = nextValues;
                         if (config.onApply) {
-                            config.onApply(std::move(values), false);
+                            config.onApply(std::move(patch), false);
                         }
                     },
                 });
@@ -103,14 +103,14 @@ struct FlowgraphConfigVectorField {
                     .value = intValues[i],
                     .unit = unit,
                     .onChange = [this, i](U64 value) {
-                        auto values = config.values;
+                        Parser::Map patch;
                         auto nextValues = intValues;
                         if (i < nextValues.size()) {
                             nextValues[i] = value;
                         }
-                        values[config.name] = nextValues;
+                        patch[config.name] = nextValues;
                         if (config.onApply) {
-                            config.onApply(std::move(values), false);
+                            config.onApply(std::move(patch), false);
                         }
                     },
                 });

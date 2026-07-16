@@ -34,10 +34,10 @@ struct FlowgraphConfigIntField {
             .value = value,
             .unit = unit,
             .onChange = [this](U64 nextValue) {
-                auto values = this->config.values;
-                values[this->config.name] = nextValue;
+                Parser::Map patch;
+                patch[this->config.name] = nextValue;
                 if (this->config.onApply) {
-                    this->config.onApply(std::move(values), false);
+                    this->config.onApply(std::move(patch), false);
                 }
             },
         });

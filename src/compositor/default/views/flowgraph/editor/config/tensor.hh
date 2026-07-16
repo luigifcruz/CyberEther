@@ -129,12 +129,12 @@ struct FlowgraphConfigTensorField {
     }
 
     void apply(std::vector<TensorSpec> nextSpecs) const {
-        auto values = config.values;
-        if (Parser::Serialize(values, TensorSpecsKey, nextSpecs) != Result::SUCCESS) {
+        Parser::Map patch;
+        if (Parser::Serialize(patch, TensorSpecsKey, nextSpecs) != Result::SUCCESS) {
             return;
         }
         if (config.onApply) {
-            config.onApply(std::move(values), false);
+            config.onApply(std::move(patch), false);
         }
     }
 

@@ -43,14 +43,14 @@ struct FlowgraphConfigRangeField {
             .integer = integer,
             .unit = unit,
             .onChange = [this](F32 nextValue) {
-                auto values = this->config.values;
+                Parser::Map patch;
                 if (integer) {
-                    values[this->config.name] = static_cast<U64>(std::round(nextValue));
+                    patch[this->config.name] = static_cast<U64>(std::round(nextValue));
                 } else {
-                    values[this->config.name] = nextValue;
+                    patch[this->config.name] = nextValue;
                 }
                 if (this->config.onApply) {
-                    this->config.onApply(std::move(values), true);
+                    this->config.onApply(std::move(patch), true);
                 }
             },
         });

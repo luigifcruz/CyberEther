@@ -47,20 +47,20 @@ struct FlowgraphConfigFloatField {
             .precision = precision,
             .step = hasStep ? std::optional<F32>(step / multiplier) : std::nullopt,
             .onChange = [this](F32 nextValue) {
-                auto values = this->config.values;
-                values[this->config.name] = nextValue * ConfigUnitMultiplier(unit);
+                Parser::Map patch;
+                patch[this->config.name] = nextValue * ConfigUnitMultiplier(unit);
                 if (this->config.onApply) {
-                    this->config.onApply(std::move(values), false);
+                    this->config.onApply(std::move(patch), false);
                 }
             },
             .onStepChange = [this](F32 nextStep) {
                 if (stepConfig.empty()) {
                     return;
                 }
-                auto values = this->config.values;
-                values[stepConfig] = nextStep * ConfigUnitMultiplier(unit);
+                Parser::Map patch;
+                patch[stepConfig] = nextStep * ConfigUnitMultiplier(unit);
                 if (this->config.onApply) {
-                    this->config.onApply(std::move(values), false);
+                    this->config.onApply(std::move(patch), false);
                 }
             },
         });
