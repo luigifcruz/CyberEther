@@ -6,10 +6,12 @@
 namespace Jetstream::Blocks {
 
 struct Amplitude : public Block::Config {
+    I64 axis = -1;
+
     JST_BLOCK_TYPE(amplitude);
     JST_BLOCK_DOMAIN("DSP");
     JST_BLOCK_NODE_SIZE(XS);
-    JST_BLOCK_PARAMS();
+    JST_BLOCK_PARAMS(axis);
     JST_BLOCK_DESCRIPTION(
         "Amplitude",
         "Calculates the amplitude of a signal in decibels.",
@@ -17,7 +19,11 @@ struct Amplitude : public Block::Config {
         "The Amplitude block computes the magnitude of complex or real signals and converts "
         "the result to decibels (dB). For complex inputs, it calculates sqrt(real^2 + imag^2). "
         "For real inputs, it takes the absolute value. The output is normalized using a "
-        "scaling coefficient based on the signal length.\n\n"
+        "scaling coefficient based on the selected axis length.\n\n"
+
+        "## Arguments\n"
+        "- **Axis**: Axis whose length is used to normalize the output. Negative axes "
+        "count from the end.\n\n"
 
         "## Useful For\n"
         "- Spectrum visualization and analysis.\n"

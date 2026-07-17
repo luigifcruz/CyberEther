@@ -59,6 +59,7 @@ Result SpectrumEngineImpl::validate() {
 Result SpectrumEngineImpl::configure() {
     fftConfig->forward = true;
     fftConfig->axis = static_cast<I64>(axis);
+    amplitudeConfig->axis = static_cast<I64>(axis);
     rangeConfig->min = rangeMin;
     rangeConfig->max = rangeMax;
 

@@ -63,7 +63,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
                  "Spectrum engine applies window and FFT along a non-last axis",
                  "[modules][dsp][spectrum_engine][block][axis]") {
     Blocks::OnesTensor source;
-    source.shape = {5, 3};
+    source.shape = {4, 3};
     source.dataType = "CF32";
     REQUIRE(flowgraph->blockCreate("src", source, {}) == Result::SUCCESS);
 
@@ -77,14 +77,12 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
 
     const Tensor out = viewBlock("spec").outputs.at("buffer").tensor;
-    REQUIRE(out.shape() == Shape{5, 3});
+    REQUIRE(out.shape() == Shape{4, 3});
     REQUIRE(out.dtype() == DataType::F32);
-    for (U64 row = 0; row < out.shape(0); ++row) {
-        const F32 expected = out.at<F32>(row, 0);
-        REQUIRE(std::isfinite(expected));
-        for (U64 column = 1; column < out.shape(1); ++column) {
-            REQUIRE_THAT(out.at<F32>(row, column),
-                         Catch::Matchers::WithinAbs(expected, 1e-5f));
-        }
+
+    const F32 expectedPeak = 20.0f * std::log10((0.42f * 3.0f) / 4.0f);
+    for (U64 column = 0; column < out.shape(1); ++column) {
+        REQUIRE_THAT(out.at<F32>(2, column),
+                     Catch::Matchers::WithinAbs(expectedPeak, 0.1f));
     }
 }

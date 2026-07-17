@@ -88,6 +88,56 @@ TEST_CASE("Amplitude - F32 Signal", "[modules][amplitude][f32]") {
     }
 }
 
+TEST_CASE("Amplitude - Arbitrary Axis Normalization",
+          "[modules][amplitude][axis]") {
+    const auto implementations = Registry::ListAvailableModules("amplitude");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("amplitude", impl.device, impl.runtime, impl.provider);
+
+            Modules::Amplitude config;
+            config.axis = 0;
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({5, 3});
+            for (U64 index = 0; index < input.size(); ++index) {
+                input.data()[index] = 5.0f;
+            }
+            ctx.setInput("signal", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("signal");
+            for (U64 index = 0; index < out.size(); ++index) {
+                REQUIRE_THAT(out.data<F32>()[index],
+                             Catch::Matchers::WithinAbs(0.0f, 0.1f));
+            }
+        }
+    }
+}
+
+TEST_CASE("Amplitude - Invalid Axis Error", "[modules][amplitude][axis][error]") {
+    const auto implementations = Registry::ListAvailableModules("amplitude");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("amplitude", impl.device, impl.runtime, impl.provider);
+
+            Modules::Amplitude config;
+            config.axis = 2;
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({2, 3});
+            ctx.setInput("signal", input);
+
+            REQUIRE(ctx.run() == Result::ERROR);
+        }
+    }
+}
+
 TEST_CASE("Amplitude - CF32 Various Magnitudes", "[modules][amplitude][magnitude]") {
     auto implementations = Registry::ListAvailableModules("amplitude");
     REQUIRE(!implementations.empty());
