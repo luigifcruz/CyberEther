@@ -901,6 +901,7 @@ Result Flowgraph::blockReconfigure(const std::string name, const Parser::Map& co
     std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
 
     Result result = Result::SUCCESS;
+    Parser::Map mergedConfig;
     const auto reconfigure = [&]() -> Result {
         std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
 
@@ -909,7 +910,13 @@ Result Flowgraph::blockReconfigure(const std::string name, const Parser::Map& co
             return Result::ERROR;
         }
 
-        result = impl->blocks.at(name)->reconfigure(config);
+        const auto& block = impl->blocks.at(name);
+        JST_CHECK(block->config(mergedConfig));
+        for (const auto& entry : config) {
+            mergedConfig[entry.key] = entry.value;
+        }
+
+        result = block->reconfigure(mergedConfig);
         return result == Result::RECREATE ? Result::SUCCESS : result;
     };
 
@@ -921,7 +928,7 @@ Result Flowgraph::blockReconfigure(const std::string name, const Parser::Map& co
 
     if (result == Result::RECREATE) {
         JST_INFO("[FLOWGRAPH] Block '{}' requested recreation.", name);
-        return blockRecreate(name, config);
+        return blockRecreate(name, mergedConfig);
     }
 
     JST_CHECK(result);

@@ -28,7 +28,7 @@ Result WindowImpl::define() {
     JST_CHECK(defineInterfaceConfig("size",
                                     "Size",
                                     "Number of samples in the window.",
-                                    "int:samples"));
+                                    "uint:samples"));
 
     return Result::SUCCESS;
 }

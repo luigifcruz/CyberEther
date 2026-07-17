@@ -72,7 +72,7 @@ Result ComparatorImpl::define() {
     JST_CHECK(defineInterfaceConfig("inputCount",
                                     "Input Count",
                                     "Number of tensors to compare (2 to 16).",
-                                    "int:"));
+                                    "uint:"));
     JST_CHECK(defineInterfaceConfig("tolerance",
                                     "Tolerance",
                                     "Maximum allowed absolute difference for a PASS result.",

@@ -65,12 +65,12 @@ Result DecimatorImpl::define() {
     JST_CHECK(defineInterfaceConfig("axis",
                                     "Axis",
                                     "Axis along which to decimate.",
-                                    "int:"));
+                                    "uint:"));
 
     JST_CHECK(defineInterfaceConfig("ratio",
                                     "Ratio",
                                     "Decimation ratio.",
-                                    "int:"));
+                                    "uint:"));
 
     return Result::SUCCESS;
 }

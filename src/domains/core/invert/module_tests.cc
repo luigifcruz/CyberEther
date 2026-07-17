@@ -3,6 +3,7 @@
 
 #include "jetstream/registry.hh"
 #include "jetstream/testing.hh"
+#include "jetstream/domains/core/invert/module.hh"
 
 using namespace Jetstream;
 
@@ -42,6 +43,106 @@ TEST_CASE("Invert Module - Unsupported DType Error", "[modules][invert][error]")
             TestContext ctx("invert", impl.device, impl.runtime, impl.provider);
 
             auto input = ctx.createTensor<F32>({4});
+            ctx.setInput("signal", input);
+            REQUIRE(ctx.run() == Result::ERROR);
+        }
+    }
+}
+
+TEST_CASE("Invert Module - Axis Restarts For Each Line",
+          "[modules][invert][axis][lines]") {
+    const auto implementations = Registry::ListAvailableModules("invert");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("invert", impl.device, impl.runtime, impl.provider);
+
+            Modules::Invert config;
+            config.axis = -1;
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<CF32>({2, 3});
+            for (U64 row = 0; row < input.shape(0); ++row) {
+                for (U64 column = 0; column < input.shape(1); ++column) {
+                    input.at(row, column) = CF32(static_cast<F32>((row * 3) + column + 1),
+                                                  static_cast<F32>(column + 1));
+                }
+            }
+
+            ctx.setInput("signal", input);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("signal");
+            for (U64 row = 0; row < out.shape(0); ++row) {
+                for (U64 column = 0; column < out.shape(1); ++column) {
+                    const F32 sign = (column & 1ULL) != 0 ? -1.0f : 1.0f;
+                    REQUIRE(out.at<CF32>(row, column) == input.at(row, column) * sign);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("Invert Module - Negative Axis Strided View And Attributes",
+          "[modules][invert][axis][strided][attributes]") {
+    const auto implementations = Registry::ListAvailableModules("invert");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Tensor storage;
+            REQUIRE(storage.create(DeviceType::CPU, DataType::CF32, {3, 2, 2}) ==
+                    Result::SUCCESS);
+            for (U64 row = 0; row < 3; ++row) {
+                for (U64 column = 0; column < 2; ++column) {
+                    const F32 value = static_cast<F32>((row * 2) + column + 1);
+                    storage.at<CF32>(row, column, 1) = CF32(value, -value);
+                }
+            }
+
+            Tensor input = storage.clone();
+            REQUIRE(input.slice({Token(), Token(), Token(1)}) == Result::SUCCESS);
+            REQUIRE(input.shape() == Shape{3, 2});
+            REQUIRE(input.offset() != 0);
+            REQUIRE_FALSE(input.contiguous());
+            REQUIRE(input.setAttribute("source", std::string("strided-view")) ==
+                    Result::SUCCESS);
+
+            TestContext ctx("invert", impl.device, impl.runtime, impl.provider);
+            Modules::Invert config;
+            config.axis = -2;
+            ctx.setConfig(config);
+            ctx.setInput("signal", input);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("signal");
+            REQUIRE(out.shape() == input.shape());
+            REQUIRE(out.dtype() == input.dtype());
+            REQUIRE(out.hasAttribute("source"));
+            REQUIRE(std::any_cast<std::string>(out.attribute("source")) == "strided-view");
+
+            for (U64 row = 0; row < out.shape(0); ++row) {
+                const F32 sign = (row & 1ULL) != 0 ? -1.0f : 1.0f;
+                for (U64 column = 0; column < out.shape(1); ++column) {
+                    REQUIRE(out.at<CF32>(row, column) == input.at<CF32>(row, column) * sign);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("Invert Module - Invalid Axis Error", "[modules][invert][axis][error]") {
+    const auto implementations = Registry::ListAvailableModules("invert");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("invert", impl.device, impl.runtime, impl.provider);
+            Modules::Invert config;
+            config.axis = -3;
+            ctx.setConfig(config);
+            auto input = ctx.createTensor<CF32>({2, 3});
             ctx.setInput("signal", input);
             REQUIRE(ctx.run() == Result::ERROR);
         }

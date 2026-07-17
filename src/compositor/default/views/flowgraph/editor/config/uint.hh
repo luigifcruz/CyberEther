@@ -1,19 +1,25 @@
-#ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_CONFIG_BOOL_HH
-#define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_CONFIG_BOOL_HH
+#ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_CONFIG_UINT_HH
+#define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_CONFIG_UINT_HH
 
 #include "types.hh"
 
-// TODO: Cleanup parsing.
-
 namespace Jetstream {
 
-struct FlowgraphConfigBoolField {
+struct FlowgraphConfigUIntField {
     using Config = FlowgraphConfigFieldConfig;
 
     void update(Config config) {
         this->config = std::move(config);
+        if (this->config.format != parsedFormat) {
+            const auto parts = Parser::SplitString(this->config.format, ":");
+            unit = (parts.size() > 1) ? parts[1] : "";
+            parsedFormat = this->config.format;
+        }
         if (this->config.encoded != parsedEncoded) {
-            value = this->config.encoded == "true" || this->config.encoded == "1";
+            value = 0;
+            if (!this->config.encoded.empty()) {
+                Parser::StringToTyped(this->config.encoded, value);
+            }
             parsedEncoded = this->config.encoded;
         }
         frame.update({
@@ -24,7 +30,8 @@ struct FlowgraphConfigBoolField {
         input.update({
             .id = this->config.id + "Input",
             .value = value,
-            .onChange = [this](bool nextValue) {
+            .unit = unit,
+            .onChange = [this](U64 nextValue) {
                 Parser::Map patch;
                 patch[this->config.name] = nextValue;
                 if (this->config.onApply) {
@@ -42,12 +49,14 @@ struct FlowgraphConfigBoolField {
 
  private:
     Config config;
+    std::string parsedFormat;
     std::string parsedEncoded;
-    bool value = false;
+    std::string unit;
+    U64 value = 0;
     Sakura::NodeField frame;
-    Sakura::NodeBoolInput input;
+    Sakura::NodeUIntInput input;
 };
 
 }  // namespace Jetstream
 
-#endif  // JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_CONFIG_BOOL_HH
+#endif  // JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_CONFIG_UINT_HH

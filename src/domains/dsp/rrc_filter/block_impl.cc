@@ -56,7 +56,7 @@ Result RrcFilterImpl::define() {
                                     "Taps",
                                     "Number of filter coefficients "
                                     "(must be odd, >= 3).",
-                                    "int:taps"));
+                                    "uint:taps"));
 
     return Result::SUCCESS;
 }

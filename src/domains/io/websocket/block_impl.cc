@@ -76,17 +76,17 @@ Result WebsocketImpl::define() {
     JST_CHECK(defineInterfaceConfig("numberOfBatches",
                                     "Batches",
                                     "Number of batches in output buffer.",
-                                    "int:batches"));
+                                    "uint:batches"));
 
     JST_CHECK(defineInterfaceConfig("numberOfTimeSamples",
                                     "Samples",
                                     "Number of samples per batch.",
-                                    "int:samples"));
+                                    "uint:samples"));
 
     JST_CHECK(defineInterfaceConfig("bufferMultiplier",
                                     "Buffer Multiplier",
                                     "Internal buffer size multiplier.",
-                                    "int:x"));
+                                    "uint:x"));
 
     JST_CHECK(defineInterfaceMetric("bufferHealth",
                                     "Buffer Health",

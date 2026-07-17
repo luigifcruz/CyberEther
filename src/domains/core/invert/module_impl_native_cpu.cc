@@ -20,12 +20,20 @@ struct InvertImplNativeCpu : public InvertImpl,
     Result kernelCF32();
 
     std::function<Result()> kernel;
+    U64 axisInnerSize = 1;
+    U64 axisLength = 1;
 };
 
 Result InvertImplNativeCpu::create() {
     // Create parent.
 
     JST_CHECK(InvertImpl::create());
+
+    axisInnerSize = 1;
+    for (Index axisIndex = resolvedAxis + 1; axisIndex < input.rank(); ++axisIndex) {
+        axisInnerSize *= input.shape(axisIndex);
+    }
+    axisLength = input.shape(resolvedAxis);
 
     // Register compute kernel.
 
@@ -43,18 +51,18 @@ Result InvertImplNativeCpu::computeSubmit() {
 }
 
 Result InvertImplNativeCpu::kernelCF32() {
-    const CF32* in = input.data<CF32>();
-    CF32* out = output.data<CF32>();
-    const U64 size = input.size();
+    U64 index = 0;
+    const U64 innerSize = axisInnerSize;
+    const U64 length = axisLength;
 
-    for (U64 i = 0; i < size; i += 2) {
-        out[i] = in[i];
-        if (i + 1 < size) {
-            out[i + 1] = -in[i + 1];
-        }
-    }
-
-    return Result::SUCCESS;
+    return AutomaticIterator<const CF32, CF32>(
+        [&index, innerSize, length](const auto& in, auto& out) {
+            const U64 axisCoordinate = (index / innerSize) % length;
+            out = (axisCoordinate & 1ULL) != 0 ? -in : in;
+            ++index;
+        },
+        input,
+        output);
 }
 
 JST_REGISTER_MODULE(InvertImplNativeCpu, DeviceType::CPU, RuntimeType::NATIVE, "generic");

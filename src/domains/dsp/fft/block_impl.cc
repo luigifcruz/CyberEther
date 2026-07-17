@@ -16,6 +16,8 @@ struct FftImpl : public Block::Impl, public DynamicConfig<Blocks::Fft> {
 
 Result FftImpl::configure() {
     fftConfig->forward = forward;
+    fftConfig->axis = axis;
+    fftConfig->invert = invert;
 
     return Result::SUCCESS;
 }
@@ -34,6 +36,16 @@ Result FftImpl::define() {
                                     "Transform direction: Forward converts time-domain to "
                                     "frequency-domain, Inverse converts back.",
                                     "dropdown:true(Forward),false(Inverse)"));
+
+    JST_CHECK(defineInterfaceConfig("axis",
+                                    "Axis",
+                                    "Axis along which to transform. Negative axes count from the end.",
+                                    "int:"));
+
+    JST_CHECK(defineInterfaceConfig("invert",
+                                    "Invert",
+                                    "Apply alternating signs along the selected axis before transforming.",
+                                    "bool"));
 
     return Result::SUCCESS;
 }

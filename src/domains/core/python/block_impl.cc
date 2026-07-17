@@ -253,11 +253,11 @@ Result PythonImpl::define() {
     JST_CHECK(defineInterfaceConfig("inputCount",
                                     "Input Count",
                                     "Number of input tensor ports.",
-                                    "int:"));
+                                    "uint:"));
     JST_CHECK(defineInterfaceConfig("outputCount",
                                     "Output Count",
                                     "Number of output tensor ports.",
-                                    "int:"));
+                                    "uint:"));
     JST_CHECK(defineInterfaceConfig("throttled",
                                     "Throttled",
                                     "Run compute at a slow fixed rate instead of every cycle.",

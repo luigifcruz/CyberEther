@@ -1,35 +1,35 @@
-#include <jetstream/render/sakura/components/node/int_input.hh>
+#include <jetstream/render/sakura/components/node/uint_input.hh>
 
 #include "base.hh"
 
 namespace Jetstream::Sakura {
 
-struct NodeIntInput::Impl {
+struct NodeUIntInput::Impl {
     Config config;
 };
 
-NodeIntInput::NodeIntInput() {
+NodeUIntInput::NodeUIntInput() {
     this->impl = std::make_unique<Impl>();
 }
 
-NodeIntInput::~NodeIntInput() = default;
-NodeIntInput::NodeIntInput(NodeIntInput&&) noexcept = default;
-NodeIntInput& NodeIntInput::operator=(NodeIntInput&&) noexcept = default;
+NodeUIntInput::~NodeUIntInput() = default;
+NodeUIntInput::NodeUIntInput(NodeUIntInput&&) noexcept = default;
+NodeUIntInput& NodeUIntInput::operator=(NodeUIntInput&&) noexcept = default;
 
-bool NodeIntInput::update(Config config) {
+bool NodeUIntInput::update(Config config) {
     this->impl->config = std::move(config);
     return true;
 }
 
-void NodeIntInput::render(const Context& ctx) const {
+void NodeUIntInput::render(const Context& ctx) const {
     const auto& config = this->impl->config;
 
-    I64 value = config.value;
+    U64 value = config.value;
     ImGui::PushID(config.id.c_str());
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Scale(ctx, 6.0f), Scale(ctx, 3.0f)));
     ImGui::SetNextItemWidth(-FLT_MIN);
-    const bool changed = ImGui::InputScalar("##int",
-                                            ImGuiDataType_S64,
+    const bool changed = ImGui::InputScalar("##uint",
+                                            ImGuiDataType_U64,
                                             &value,
                                             nullptr,
                                             nullptr,

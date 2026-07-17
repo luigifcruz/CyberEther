@@ -16,6 +16,7 @@ src_lst += files([
     'table.cc',
     'float_input.cc',
     'int_input.cc',
+    'uint_input.cc',
     'bool_input.cc',
     'range_input.cc',
     'path_input.cc',

@@ -69,7 +69,7 @@ struct FlowgraphConfigVectorInlineField {
                     }
                     return jst::fmt::format("[{}]", jst::fmt::join(formattedValues, ", "));
                 }
-            } else if (valueType == "int") {
+            } else if (valueType == "uint") {
                 std::vector<U64> values;
                 if (Parser::StringToTyped(config.encoded, values) == Result::SUCCESS) {
                     return jst::fmt::format("[{}]", jst::fmt::join(values, ", "));
@@ -127,7 +127,7 @@ struct FlowgraphConfigVectorInlineField {
         std::string error;
         normalizeVectorInput(buffer, normalizedBuffer, error);
 
-        auto values = config.values;
+        Parser::Map patch;
         bool changed = false;
         if (valueType == "float") {
             std::vector<F32> parsedValues;
@@ -146,10 +146,10 @@ struct FlowgraphConfigVectorInlineField {
                 for (auto& value : parsedValues) {
                     value *= multiplier;
                 }
-                values[config.name] = parsedValues;
+                patch[config.name] = parsedValues;
                 changed = true;
             }
-        } else if (valueType == "int") {
+        } else if (valueType == "uint") {
             std::vector<U64> parsedValues;
             if (error.empty()) {
                 try {
@@ -162,7 +162,7 @@ struct FlowgraphConfigVectorInlineField {
             }
 
             if (error.empty()) {
-                values[config.name] = parsedValues;
+                patch[config.name] = parsedValues;
                 changed = true;
             }
         } else {
@@ -180,7 +180,7 @@ struct FlowgraphConfigVectorInlineField {
         }
 
         if (config.onApply) {
-            config.onApply(std::move(values), false);
+            config.onApply(std::move(patch), false);
         }
         return true;
     }

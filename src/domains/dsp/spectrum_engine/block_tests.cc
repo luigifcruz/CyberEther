@@ -1,8 +1,12 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <cmath>
 #include <string>
 
 #include "flowgraph_fixture.hh"
+#include "jetstream/domains/core/ones_tensor/block.hh"
+#include "jetstream/domains/dsp/spectrum_engine/block.hh"
 
 using namespace Jetstream;
 
@@ -53,4 +57,32 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockCreate("spec_bad", "spectrum_engine", engineConfig, inputs) ==
             Result::SUCCESS);
     REQUIRE(viewBlock("spec_bad").state == Block::State::Errored);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Spectrum engine applies window and FFT along a non-last axis",
+                 "[modules][dsp][spectrum_engine][block][axis]") {
+    Blocks::OnesTensor source;
+    source.shape = {4, 3};
+    source.dataType = "CF32";
+    REQUIRE(flowgraph->blockCreate("src", source, {}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["buffer"].requested("src", "buffer");
+
+    Blocks::SpectrumEngine config;
+    config.axis = 0;
+    REQUIRE(flowgraph->blockCreate("spec", config, inputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("spec").state == Block::State::Created);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    const Tensor out = viewBlock("spec").outputs.at("buffer").tensor;
+    REQUIRE(out.shape() == Shape{4, 3});
+    REQUIRE(out.dtype() == DataType::F32);
+
+    const F32 expectedPeak = 20.0f * std::log10((0.42f * 3.0f) / 4.0f);
+    for (U64 column = 0; column < out.shape(1); ++column) {
+        REQUIRE_THAT(out.at<F32>(2, column),
+                     Catch::Matchers::WithinAbs(expectedPeak, 0.1f));
+    }
 }

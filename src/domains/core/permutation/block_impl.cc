@@ -41,7 +41,7 @@ Result PermutationImpl::define() {
     JST_CHECK(defineInterfaceConfig("permutation",
                                     "Permutation",
                                     "Output axis order as zero-based input axis indices.",
-                                    "vector-inline:int:axis"));
+                                    "vector-inline:uint:axis"));
 
     JST_CHECK(defineInterfaceConfig("contiguous",
                                     "Contiguous",

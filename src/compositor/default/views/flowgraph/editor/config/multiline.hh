@@ -37,10 +37,10 @@ struct FlowgraphConfigMultilineField {
             },
             .onSubmit = [this](std::string nextValue) {
                 buffer = std::move(nextValue);
-                auto values = this->config.values;
-                values[this->config.name] = buffer;
+                Parser::Map patch;
+                patch[this->config.name] = buffer;
                 if (this->config.onApply) {
-                    this->config.onApply(std::move(values), false);
+                    this->config.onApply(std::move(patch), false);
                 }
             },
         });

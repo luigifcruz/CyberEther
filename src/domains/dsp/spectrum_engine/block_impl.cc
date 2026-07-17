@@ -8,6 +8,7 @@
 #include <jetstream/domains/core/invert/module.hh>
 #include <jetstream/domains/core/multiply/module.hh>
 #include <jetstream/domains/core/range/module.hh>
+#include <jetstream/domains/core/reshape/module.hh>
 
 namespace Jetstream::Blocks {
 
@@ -23,6 +24,8 @@ struct SpectrumEngineImpl : public Block::Impl,
         std::make_shared<Modules::Window>();
     std::shared_ptr<Modules::Invert> invertConfig =
         std::make_shared<Modules::Invert>();
+    std::shared_ptr<Modules::Reshape> reshapeWindowConfig =
+        std::make_shared<Modules::Reshape>();
     std::shared_ptr<Modules::Multiply> multiplyConfig =
         std::make_shared<Modules::Multiply>();
     std::shared_ptr<Modules::Fft> fftConfig =
@@ -55,6 +58,8 @@ Result SpectrumEngineImpl::validate() {
 
 Result SpectrumEngineImpl::configure() {
     fftConfig->forward = true;
+    fftConfig->axis = static_cast<I64>(axis);
+    amplitudeConfig->axis = static_cast<I64>(axis);
     rangeConfig->min = rangeMin;
     rangeConfig->max = rangeMax;
 
@@ -70,7 +75,7 @@ Result SpectrumEngineImpl::define() {
     JST_CHECK(defineInterfaceConfig("axis",
                                     "Axis",
                                     "Axis along which to compute the spectrum.",
-                                    "int:"));
+                                    "uint:"));
 
     JST_CHECK(defineInterfaceConfig("enableAgc",
                                     "Enable AGC",
@@ -113,6 +118,16 @@ Result SpectrumEngineImpl::create() {
 
     windowConfig->size = inputTensor.shape(axis);
 
+    std::string windowShape = "[";
+    for (Index dimension = 0; dimension < inputTensor.rank(); ++dimension) {
+        if (dimension > 0) {
+            windowShape += ", ";
+        }
+        windowShape += std::to_string(dimension == axis ? windowConfig->size : 1);
+    }
+    windowShape += "]";
+    reshapeWindowConfig->shape = windowShape;
+
     // Create window coefficients.
 
     JST_CHECK(moduleCreate("window", windowConfig, {}));
@@ -123,11 +138,17 @@ Result SpectrumEngineImpl::create() {
         {"signal", moduleGetOutput({"window", "window"})}
     }));
 
+    // Align the 1D window with the selected input axis for broadcasting.
+
+    JST_CHECK(moduleCreate("reshape_window", reshapeWindowConfig, {
+        {"buffer", moduleGetOutput({"invert", "signal"})}
+    }));
+
     // Multiply input signal by shifted window.
 
     JST_CHECK(moduleCreate("multiply", multiplyConfig, {
         {"a", inputPort},
-        {"b", moduleGetOutput({"invert", "signal"})}
+        {"b", moduleGetOutput({"reshape_window", "buffer"})}
     }));
 
     // Forward FFT.

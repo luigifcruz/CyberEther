@@ -25,8 +25,7 @@ struct SpectrumEngine : public Block::Config {
         "produce the final spectrum output in decibels.\n\n"
 
         "## Arguments\n"
-        "- **Axis**: The axis along which to compute the spectrum (determines "
-        "window size).\n"
+        "- **Axis**: The axis along which to apply the window and compute the spectrum.\n"
         "- **Enable AGC**: Whether to apply automatic gain control after the FFT.\n"
         "- **Enable Scale**: Whether to apply range scaling to the output.\n"
         "- **Range Min**: Minimum value of the scale range (dBFS). Only used "
