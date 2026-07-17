@@ -214,6 +214,10 @@ struct MailRunBenchmark {};
 
 struct MailResetBenchmark {};
 
+struct MailSetBenchmarkModule {
+    std::string moduleType;
+};
+
 struct MailSetFlowgraphInfo {
     std::string flowgraph;
     std::optional<std::string> title;
@@ -414,6 +418,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailFilePickerCancel,
                           MailRunBenchmark,
                           MailResetBenchmark,
+                          MailSetBenchmarkModule,
                           MailSetFlowgraphInfo,
                           MailOpenRenameBlock,
                           MailRenameBlock,

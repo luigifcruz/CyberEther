@@ -111,6 +111,7 @@ struct DefaultCompositorState {
     struct BenchmarkState {
         bool running = false;
         F32 progress = 0.0f;
+        std::string selectedModule;
         Benchmark::ResultMapType results;
         std::future<void> future;
         std::stringstream output;

@@ -300,7 +300,7 @@ void DefaultCompositor::updateBenchmarkState() {
     }
 
     const U64 current = Benchmark::CurrentCount();
-    const U64 total = Benchmark::TotalCount();
+    const U64 total = Benchmark::TotalCount(state.benchmark.selectedModule);
     state.benchmark.progress = total > 0 ? static_cast<F32>(current) / static_cast<F32>(total) : 0.0f;
     state.benchmark.results = Benchmark::GetResults();
 }
