@@ -22,6 +22,7 @@ This is a standalone CyberEther plugin blueprint. Copy this directory, rename
 |           |-- block_impl.cc
 |           |-- block_tests.cc
 |           |-- meson.build
+|           |-- module_benchmarks.cc
 |           |-- module_impl.cc
 |           |-- module_impl.hh
 |           |-- module_impl_native_cpu.cc
@@ -65,6 +66,10 @@ Tests follow CyberEther's module convention and live beside each component. Add
 `module_tests.cc` or `block_tests.cc` to that component's `plugin_test_lst`; the
 shared `tests/meson.build` creates and registers a separate executable for every
 listed source.
+
+Module benchmarks use `JST_BENCHMARKS` and compile into the plugin alongside the
+implementation. The gain example registers F32 and CF32 cases at several input
+sizes for CyberEther's benchmark runner.
 
 The `.cep` bundle can be loaded with CyberEther's plugin loader.
 
