@@ -450,7 +450,6 @@ TEST_CASE("A corrupt path does not damage settings cached for another path",
 
     Settings restored;
     REQUIRE(Settings::Get(restored) == Result::SUCCESS);
-    // Expected to fail currently: a failed load resets the settings cached for the prior path.
     REQUIRE(restored.interface.themeKey == "Retained");
     REQUIRE(restored.runtime.python.path == "/retained/libpython.so");
 }
@@ -473,7 +472,6 @@ TEST_CASE("A failed persistent update preserves the in-memory settings",
 
     Settings restored;
     REQUIRE(Settings::Get(restored) == Result::SUCCESS);
-    // Expected to fail currently: Set updates the cache before persistence succeeds.
     REQUIRE(restored.interface.themeKey == "Retained");
     REQUIRE(restored.runtime.python.path == "/retained/libpython.so");
 }

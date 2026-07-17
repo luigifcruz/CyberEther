@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <utility>
 
 #include "jetstream/platform.hh"
 
@@ -135,9 +136,12 @@ Result Settings::Get(Settings& settings) {
     Impl& impl = Impl::Instance();
     std::lock_guard lock(impl.mutex);
     if (!impl.loaded || impl.path != path) {
-        JST_CHECK(Impl::LoadFile(path, impl.settings));
+        Settings candidate;
+        JST_CHECK(Impl::LoadFile(path, candidate));
+
+        impl.settings = std::move(candidate);
+        impl.path = std::move(path);
         impl.loaded = true;
-        impl.path = path;
     }
 
     settings = impl.settings;
@@ -147,16 +151,18 @@ Result Settings::Get(Settings& settings) {
 Result Settings::Set(const Settings& settings, bool persist) {
     std::filesystem::path path;
     JST_CHECK(Impl::ResolvePath(path));
+    Settings candidate = settings;
 
     Impl& impl = Impl::Instance();
     std::lock_guard lock(impl.mutex);
-    impl.settings = settings;
-    impl.loaded = true;
-    impl.path = path;
 
     if (persist) {
-        JST_CHECK(Impl::SaveFile(path, impl.settings));
+        JST_CHECK(Impl::SaveFile(path, candidate));
     }
+
+    impl.settings = std::move(candidate);
+    impl.path = std::move(path);
+    impl.loaded = true;
 
     return Result::SUCCESS;
 }
