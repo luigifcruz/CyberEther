@@ -169,10 +169,11 @@ TEST_CASE("Flowgraph import reports non-string input references instead of throw
     CreatedFlowgraph test;
     auto& flowgraph = test.flowgraph;
     Result result = Result::SUCCESS;
+    REQUIRE(flowgraph.setTitle("before") == Result::SUCCESS);
 
-    // Defect: import unchecked-any-casts non-string input values instead of returning ERROR.
     REQUIRE_NOTHROW(result = Import(flowgraph, R"(---
 version: 2
+title: after
 graph:
   - name: sink
     module: flowgraph_test_merge
@@ -183,6 +184,7 @@ graph:
 )"));
     REQUIRE(result == Result::ERROR);
     REQUIRE(flowgraph.view().empty());
+    REQUIRE(flowgraph.title() == "before");
 }
 
 TEST_CASE("Flowgraph import validates references, uniqueness, dependencies, and acyclicity",

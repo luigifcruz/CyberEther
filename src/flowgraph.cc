@@ -1283,6 +1283,21 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
         return Result::ERROR;
     }
 
+    for (const auto& blockEntry : document.graph) {
+        if (!blockEntry.input.has_value()) {
+            continue;
+        }
+
+        for (const auto& [slot, encodedSource] : *blockEntry.input) {
+            if (encodedSource.type() != typeid(std::string)) {
+                JST_ERROR("[FLOWGRAPH] Block '{}' input '{}' reference must be a string.",
+                          blockEntry.name,
+                          slot);
+                return Result::ERROR;
+            }
+        }
+    }
+
     {
         std::unique_lock metadataLock(impl->metadataMutex);
 
