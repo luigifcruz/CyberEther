@@ -43,10 +43,13 @@ class JETSTREAM_API Buffer {
     void* backend() const;
 
  private:
+    friend class Tensor;
+
     struct Impl;
     std::shared_ptr<Impl> impl;
 
     void ensureImpl();
+    std::shared_ptr<void> ownershipToken() const;
 };
 
 }  // namespace Jetstream

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <limits>
 #include <numeric>
 #include <stdexcept>
 #include <string>
@@ -12,17 +13,53 @@
 #include "jetstream/logger.hh"
 #include "jetstream/macros.hh"
 
-// TODO: Centralize singleton-aware contiguity detection for slice() and permute().
-
 namespace Jetstream {
 
 namespace {
 std::atomic<Index> g_tensor_counter{1};
+
+bool CheckedMultiply(const U64 lhs, const U64 rhs, U64& result) {
+    if (lhs != 0 && rhs > std::numeric_limits<U64>::max() / lhs) {
+        return false;
+    }
+
+    result = lhs * rhs;
+    return true;
+}
+
+bool CheckedAdd(const U64 lhs, const U64 rhs, U64& result) {
+    if (rhs > std::numeric_limits<U64>::max() - lhs) {
+        return false;
+    }
+
+    result = lhs + rhs;
+    return true;
+}
+
+bool PointerRangesOverlap(const void* lhs, const U64 lhsSize,
+                          const void* rhs, const U64 rhsSize) {
+    if (!lhs || !rhs || lhsSize == 0 || rhsSize == 0) {
+        return false;
+    }
+
+    const auto lhsStart = reinterpret_cast<std::uintptr_t>(lhs);
+    const auto rhsStart = reinterpret_cast<std::uintptr_t>(rhs);
+    const auto limit = std::numeric_limits<std::uintptr_t>::max();
+    if (lhsSize > limit - lhsStart || rhsSize > limit - rhsStart) {
+        return true;
+    }
+
+    const auto lhsEnd = lhsStart + static_cast<std::uintptr_t>(lhsSize);
+    const auto rhsEnd = rhsStart + static_cast<std::uintptr_t>(rhsSize);
+    return lhsStart < rhsEnd && rhsStart < lhsEnd;
+}
 }
 
 struct Tensor::Impl {
     struct Storage {
         DeviceType rootDevice = DeviceType::None;
+        std::shared_ptr<Storage> backingStorage;
+        std::vector<std::shared_ptr<void>> backingOwners;
         std::unordered_map<DeviceType, Buffer> buffers;
     };
 
@@ -45,10 +82,11 @@ struct Tensor::Impl {
         U64 offsetBytes = 0;
         U64 elementSize = 0;
         bool contiguous = true;
+        bool initialized = false;
 
-        void computeDefaultStrides();
-        void updateCache();
-        void initialize(const Shape& shape, U64 elementSize);
+        Result computeDefaultStrides();
+        Result updateCache();
+        Result initialize(const Shape& shape, U64 elementSize);
         Result expand(Index axis);
         Result squeeze(Index axis);
         Result reshape(const Shape& newShape);
@@ -59,53 +97,103 @@ struct Tensor::Impl {
     } layout;
 };
 
-void Tensor::Impl::Layout::computeDefaultStrides() {
+Result Tensor::Impl::Layout::computeDefaultStrides() {
     const auto rank = shape.size();
-    stride.resize(rank);
-    if (rank == 0) {
-        return;
-    }
+    Shape candidate(rank);
 
     U64 strideVal = 1;
     for (std::size_t i = rank; i-- > 0;) {
-        stride[i] = strideVal;
-        strideVal *= shape[i];
+        candidate[i] = strideVal;
+        if (!CheckedMultiply(strideVal, shape[i], strideVal)) {
+            JST_ERROR("[MEMORY:TENSOR] Shape exceeds the supported layout range.");
+            return Result::ERROR;
+        }
     }
+
+    stride = std::move(candidate);
+    return Result::SUCCESS;
 }
 
-void Tensor::Impl::Layout::updateCache() {
+Result Tensor::Impl::Layout::updateCache() {
     const auto rank = shape.size();
-    shapeMinusOne.resize(rank);
-    backstride.resize(rank);
+    if (stride.size() != rank) {
+        JST_ERROR("[MEMORY:TENSOR] Shape and stride ranks do not match.");
+        return Result::ERROR;
+    }
 
-    if (rank == 0) {
+    if (!initialized) {
+        if (rank != 0 || elementSize != 0 || offset != 0) {
+            JST_ERROR("[MEMORY:TENSOR] Cannot cache a partially initialized layout.");
+            return Result::ERROR;
+        }
+
+        shapeMinusOne.clear();
+        backstride.clear();
         size = 0;
         sizeBytes = 0;
-        offsetBytes = offset * elementSize;
-        return;
+        offsetBytes = 0;
+        contiguous = true;
+        return Result::SUCCESS;
     }
 
-    size = 1;
+    Shape candidateShapeMinusOne(rank);
+    Shape candidateBackstride(rank);
+    const bool hasZeroExtent = std::find(shape.begin(), shape.end(), 0) != shape.end();
+    U64 candidateSize = hasZeroExtent ? 0 : 1;
     for (std::size_t i = 0; i < rank; ++i) {
         const U64 dim = shape[i];
-        shapeMinusOne[i] = dim > 0 ? dim - 1 : 0;
-        const U64 strideVal = stride.size() > i ? stride[i] : 0;
-        backstride[i] = strideVal * shapeMinusOne[i];
-
-        size *= dim;
+        candidateShapeMinusOne[i] = dim > 0 ? dim - 1 : 0;
+        if (!CheckedMultiply(stride[i], candidateShapeMinusOne[i],
+                             candidateBackstride[i]) ||
+            !CheckedMultiply(candidateSize, dim, candidateSize)) {
+            JST_ERROR("[MEMORY:TENSOR] Shape exceeds the supported layout range.");
+            return Result::ERROR;
+        }
     }
 
-    sizeBytes = size * elementSize;
-    offsetBytes = offset * elementSize;
+    U64 candidateSizeBytes = 0;
+    U64 candidateOffsetBytes = 0;
+    if (!CheckedMultiply(candidateSize, elementSize, candidateSizeBytes) ||
+        !CheckedMultiply(offset, elementSize, candidateOffsetBytes)) {
+        JST_ERROR("[MEMORY:TENSOR] Tensor byte range exceeds the supported layout range.");
+        return Result::ERROR;
+    }
+
+    bool candidateContiguous = true;
+    U64 expectedStride = 1;
+    for (std::size_t i = rank; i-- > 0;) {
+        if (shape[i] == 1) {
+            continue;
+        }
+        if (stride[i] != expectedStride) {
+            candidateContiguous = false;
+            break;
+        }
+        if (!CheckedMultiply(expectedStride, shape[i], expectedStride)) {
+            JST_ERROR("[MEMORY:TENSOR] Shape exceeds the supported layout range.");
+            return Result::ERROR;
+        }
+    }
+
+    shapeMinusOne = std::move(candidateShapeMinusOne);
+    backstride = std::move(candidateBackstride);
+    size = candidateSize;
+    sizeBytes = candidateSizeBytes;
+    offsetBytes = candidateOffsetBytes;
+    contiguous = candidateContiguous;
+    return Result::SUCCESS;
 }
 
-void Tensor::Impl::Layout::initialize(const Shape& shape, U64 elementSize) {
-    this->shape = shape;
-    this->elementSize = elementSize;
-    offset = 0;
-    contiguous = true;
-    computeDefaultStrides();
-    updateCache();
+Result Tensor::Impl::Layout::initialize(const Shape& shape, U64 elementSize) {
+    Layout candidate;
+    candidate.shape = shape;
+    candidate.elementSize = elementSize;
+    candidate.initialized = true;
+    JST_CHECK(candidate.computeDefaultStrides());
+    JST_CHECK(candidate.updateCache());
+
+    *this = std::move(candidate);
+    return Result::SUCCESS;
 }
 
 Result Tensor::Impl::Layout::expand(Index axis) {
@@ -125,11 +213,8 @@ Result Tensor::Impl::Layout::expand(Index axis) {
 
     shape.insert(shape.begin() + axis, 1);
     stride.insert(stride.begin() + axis, newStride);
-    shapeMinusOne.insert(shapeMinusOne.begin() + axis, 0);
-    backstride.insert(backstride.begin() + axis, 0);
 
-    updateCache();
-    return Result::SUCCESS;
+    return updateCache();
 }
 
 Result Tensor::Impl::Layout::squeeze(Index axis) {
@@ -145,11 +230,8 @@ Result Tensor::Impl::Layout::squeeze(Index axis) {
 
     shape.erase(shape.begin() + axis);
     stride.erase(stride.begin() + axis);
-    shapeMinusOne.erase(shapeMinusOne.begin() + axis);
-    backstride.erase(backstride.begin() + axis);
 
-    updateCache();
-    return Result::SUCCESS;
+    return updateCache();
 }
 
 Result Tensor::Impl::Layout::reshape(const Shape& newShape) {
@@ -170,7 +252,10 @@ Result Tensor::Impl::Layout::reshape(const Shape& newShape) {
             JST_ERROR("[MEMORY:TENSOR] Reshape dimension cannot be zero.");
             return Result::ERROR;
         }
-        newSize *= dim;
+        if (!CheckedMultiply(newSize, dim, newSize)) {
+            JST_ERROR("[MEMORY:TENSOR] Reshape exceeds the supported layout range.");
+            return Result::ERROR;
+        }
     }
 
     if (originalSize != newSize) {
@@ -179,10 +264,8 @@ Result Tensor::Impl::Layout::reshape(const Shape& newShape) {
     }
 
     shape = newShape;
-    computeDefaultStrides();
-    contiguous = true;
-    updateCache();
-    return Result::SUCCESS;
+    JST_CHECK(computeDefaultStrides());
+    return updateCache();
 }
 
 Result Tensor::Impl::Layout::broadcast(const Shape& targetShape) {
@@ -196,7 +279,6 @@ Result Tensor::Impl::Layout::broadcast(const Shape& targetShape) {
         JST_CHECK(expand(0));
     }
 
-    bool contiguousFlag = contiguous;
     Shape newShape(targetShape.size());
     Shape newStride(targetShape.size());
 
@@ -210,7 +292,6 @@ Result Tensor::Impl::Layout::broadcast(const Shape& targetShape) {
         } else if (currentDim == 1) {
             newShape[i] = targetDim;
             newStride[i] = 0;
-            contiguousFlag = false;
         } else if (targetDim == 1) {
             newShape[i] = currentDim;
             newStride[i] = stride[i];
@@ -222,9 +303,7 @@ Result Tensor::Impl::Layout::broadcast(const Shape& targetShape) {
 
     shape = std::move(newShape);
     stride = std::move(newStride);
-    contiguous = contiguousFlag;
-    updateCache();
-    return Result::SUCCESS;
+    return updateCache();
 }
 
 Result Tensor::Impl::Layout::slice(const std::vector<Token>& slice) {
@@ -248,7 +327,12 @@ Result Tensor::Impl::Layout::slice(const std::vector<Token>& slice) {
                     return Result::ERROR;
                 }
 
-                offsetVal += index * stride[dim];
+                U64 indexOffset = 0;
+                if (!CheckedMultiply(index, stride[dim], indexOffset) ||
+                    !CheckedAdd(offsetVal, indexOffset, offsetVal)) {
+                    JST_ERROR("[MEMORY:TENSOR] Slice offset exceeds the supported layout range.");
+                    return Result::ERROR;
+                }
                 dim++;
                 break;
             }
@@ -281,9 +365,18 @@ Result Tensor::Impl::Layout::slice(const std::vector<Token>& slice) {
                     return Result::ERROR;
                 }
 
-                newShape.push_back((end - start + step - 1) / step);
-                newStride.push_back(stride[dim] * step);
-                offsetVal += start * stride[dim];
+                const U64 range = end - start;
+                newShape.push_back((range - 1) / step + 1);
+
+                U64 slicedStride = 0;
+                U64 startOffset = 0;
+                if (!CheckedMultiply(stride[dim], step, slicedStride) ||
+                    !CheckedMultiply(start, stride[dim], startOffset) ||
+                    !CheckedAdd(offsetVal, startOffset, offsetVal)) {
+                    JST_ERROR("[MEMORY:TENSOR] Slice exceeds the supported layout range.");
+                    return Result::ERROR;
+                }
+                newStride.push_back(slicedStride);
                 dim++;
                 break;
             }
@@ -313,25 +406,10 @@ Result Tensor::Impl::Layout::slice(const std::vector<Token>& slice) {
         }
     }
 
-    bool isContiguous = true;
-    if (!newShape.empty()) {
-        U64 expectedStride = 1;
-        for (std::size_t i = newShape.size(); i-- > 0;) {
-            if (newStride[i] != expectedStride) {
-                isContiguous = false;
-                break;
-            }
-            expectedStride *= newShape[i];
-        }
-    }
-
     shape = std::move(newShape);
     stride = std::move(newStride);
     offset = offsetVal;
-    contiguous = isContiguous;
-    updateCache();
-
-    return Result::SUCCESS;
+    return updateCache();
 }
 
 Result Tensor::Impl::Layout::permute(const Shape& axes) {
@@ -369,23 +447,9 @@ Result Tensor::Impl::Layout::permute(const Shape& axes) {
         newStride[i] = stride[axis];
     }
 
-    bool isContiguous = true;
-    U64 expectedStride = 1;
-    for (std::size_t i = newShape.size(); i-- > 0;) {
-        if (newStride[i] != expectedStride) {
-            isContiguous = false;
-            break;
-        }
-
-        expectedStride *= newShape[i];
-    }
-
     shape = std::move(newShape);
     stride = std::move(newStride);
-    contiguous = isContiguous;
-    updateCache();
-
-    return Result::SUCCESS;
+    return updateCache();
 }
 
 U64 Tensor::Impl::Layout::shapeToOffset(const std::initializer_list<U64>& coordinates) const {
@@ -458,16 +522,21 @@ Result Tensor::create(const DeviceType& device, const DataType& dtype, const Sha
         return Result::ERROR;
     }
 
-    impl->dtype = dtype;
-    impl->layout.initialize(shape, DataTypeSize(dtype));
-    impl->storage = std::make_shared<Impl::Storage>();
-    impl->storage->rootDevice = device;
-    impl->currentDevice = device;
-    impl->identifier = g_tensor_counter.fetch_add(1, std::memory_order_relaxed);
+    Impl::Layout candidateLayout;
+    JST_CHECK(candidateLayout.initialize(shape, DataTypeSize(dtype)));
 
     Buffer buffer;
-    JST_CHECK(buffer.create(device, impl->layout.sizeBytes, config));
-    impl->storage->buffers.emplace(device, std::move(buffer));
+    JST_CHECK(buffer.create(device, candidateLayout.sizeBytes, config));
+
+    auto candidateStorage = std::make_shared<Impl::Storage>();
+    candidateStorage->rootDevice = device;
+    candidateStorage->buffers.emplace(device, std::move(buffer));
+
+    impl->dtype = dtype;
+    impl->layout = std::move(candidateLayout);
+    impl->storage = std::move(candidateStorage);
+    impl->currentDevice = device;
+    impl->identifier = g_tensor_counter.fetch_add(1, std::memory_order_relaxed);
 
     return Result::SUCCESS;
 }
@@ -485,16 +554,31 @@ Result Tensor::create(void* pointer, const DeviceType& device, const DataType& d
         return Result::ERROR;
     }
 
-    impl->dtype = dtype;
-    impl->layout.initialize(shape, DataTypeSize(dtype));
-    impl->storage = std::make_shared<Impl::Storage>();
-    impl->storage->rootDevice = device;
-    impl->currentDevice = device;
-    impl->identifier = g_tensor_counter.fetch_add(1, std::memory_order_relaxed);
+    Impl::Layout candidateLayout;
+    JST_CHECK(candidateLayout.initialize(shape, DataTypeSize(dtype)));
+
+    if (impl->storage) {
+        for (const auto& [_, existingBuffer] : impl->storage->buffers) {
+            if (PointerRangesOverlap(pointer, candidateLayout.sizeBytes,
+                                     existingBuffer.data(), existingBuffer.sizeBytes())) {
+                JST_ERROR("[MEMORY:TENSOR] Cannot recreate a tensor by borrowing its current storage.");
+                return Result::ERROR;
+            }
+        }
+    }
 
     Buffer buffer;
-    JST_CHECK(buffer.create(device, pointer, impl->layout.sizeBytes));
-    impl->storage->buffers.emplace(device, std::move(buffer));
+    JST_CHECK(buffer.create(device, pointer, candidateLayout.sizeBytes));
+
+    auto candidateStorage = std::make_shared<Impl::Storage>();
+    candidateStorage->rootDevice = device;
+    candidateStorage->buffers.emplace(device, std::move(buffer));
+
+    impl->dtype = dtype;
+    impl->layout = std::move(candidateLayout);
+    impl->storage = std::move(candidateStorage);
+    impl->currentDevice = device;
+    impl->identifier = g_tensor_counter.fetch_add(1, std::memory_order_relaxed);
 
     return Result::SUCCESS;
 }
@@ -502,23 +586,23 @@ Result Tensor::create(void* pointer, const DeviceType& device, const DataType& d
 Result Tensor::create(const DeviceType& device, const Tensor& source) {
     ensureImpl();
 
+    if (!source.impl || impl == source.impl) {
+        JST_ERROR("[MEMORY:TENSOR] Cannot map a tensor from itself or a value alias.");
+        return Result::ERROR;
+    }
+
     Buffer buffer;
     JST_CHECK(buffer.create(device, source.buffer()));
-    impl->storage = std::make_shared<Impl::Storage>();
-    impl->storage->buffers.emplace(device, std::move(buffer));
+
+    auto candidateStorage = std::make_shared<Impl::Storage>();
+    candidateStorage->rootDevice = source.nativeDevice();
+    candidateStorage->buffers.emplace(device, std::move(buffer));
+    candidateStorage->backingStorage = source.impl->storage;
+    candidateStorage->backingOwners.push_back(source.buffer().ownershipToken());
 
     impl->dtype = source.dtype();
-    impl->layout.shape = source.impl->layout.shape;
-    impl->layout.stride = source.impl->layout.stride;
-    impl->layout.shapeMinusOne = source.impl->layout.shapeMinusOne;
-    impl->layout.backstride = source.impl->layout.backstride;
-    impl->layout.offset = source.impl->layout.offset;
-    impl->layout.size = source.impl->layout.size;
-    impl->layout.sizeBytes = source.impl->layout.sizeBytes;
-    impl->layout.offsetBytes = source.impl->layout.offsetBytes;
-    impl->layout.elementSize = source.impl->layout.elementSize;
-    impl->layout.contiguous = source.impl->layout.contiguous;
-    impl->storage->rootDevice = source.nativeDevice();
+    impl->layout = source.impl->layout;
+    impl->storage = std::move(candidateStorage);
     impl->currentDevice = device;
     impl->identifier = g_tensor_counter.fetch_add(1, std::memory_order_relaxed);
     impl->attributeSource = source.impl;
@@ -539,16 +623,7 @@ Tensor Tensor::clone() const {
     copy.impl->identifier = g_tensor_counter.fetch_add(1, std::memory_order_relaxed);
     copy.impl->attributeSource = impl;
 
-    copy.impl->layout.shape = impl->layout.shape;
-    copy.impl->layout.stride = impl->layout.stride;
-    copy.impl->layout.shapeMinusOne = impl->layout.shapeMinusOne;
-    copy.impl->layout.backstride = impl->layout.backstride;
-    copy.impl->layout.offset = impl->layout.offset;
-    copy.impl->layout.size = impl->layout.size;
-    copy.impl->layout.sizeBytes = impl->layout.sizeBytes;
-    copy.impl->layout.offsetBytes = impl->layout.offsetBytes;
-    copy.impl->layout.elementSize = impl->layout.elementSize;
-    copy.impl->layout.contiguous = impl->layout.contiguous;
+    copy.impl->layout = impl->layout;
 
     return copy;
 }
@@ -592,7 +667,7 @@ bool Tensor::empty() const {
 }
 
 bool Tensor::validShape() const {
-    return impl ? !impl->layout.shape.empty() : false;
+    return impl && impl->layout.initialized;
 }
 
 const U64& Tensor::offset() const {
@@ -652,42 +727,60 @@ Result Tensor::expandDims(Index axis) {
     if (!impl) {
         return Result::ERROR;
     }
-    return impl->layout.expand(axis);
+    auto candidate = impl->layout;
+    JST_CHECK(candidate.expand(axis));
+    impl->layout = std::move(candidate);
+    return Result::SUCCESS;
 }
 
 Result Tensor::squeezeDims(Index axis) {
     if (!impl) {
         return Result::ERROR;
     }
-    return impl->layout.squeeze(axis);
+    auto candidate = impl->layout;
+    JST_CHECK(candidate.squeeze(axis));
+    impl->layout = std::move(candidate);
+    return Result::SUCCESS;
 }
 
 Result Tensor::reshape(const Shape& newShape) {
     if (!impl) {
         return Result::ERROR;
     }
-    return impl->layout.reshape(newShape);
+    auto candidate = impl->layout;
+    JST_CHECK(candidate.reshape(newShape));
+    impl->layout = std::move(candidate);
+    return Result::SUCCESS;
 }
 
 Result Tensor::broadcastTo(const Shape& newShape) {
     if (!impl) {
         return Result::ERROR;
     }
-    return impl->layout.broadcast(newShape);
+    auto candidate = impl->layout;
+    JST_CHECK(candidate.broadcast(newShape));
+    impl->layout = std::move(candidate);
+    return Result::SUCCESS;
 }
 
 Result Tensor::slice(const std::vector<Token>& tokens) {
     if (!impl) {
         return Result::ERROR;
     }
-    return impl->layout.slice(tokens);
+    auto candidate = impl->layout;
+    JST_CHECK(candidate.slice(tokens));
+    impl->layout = std::move(candidate);
+    return Result::SUCCESS;
 }
 
 Result Tensor::permute(const Shape& axes) {
     if (!impl) {
         return Result::ERROR;
     }
-    return impl->layout.permute(axes);
+    auto candidate = impl->layout;
+    JST_CHECK(candidate.permute(axes));
+    impl->layout = std::move(candidate);
+    return Result::SUCCESS;
 }
 
 bool Tensor::hasDevice(const DeviceType& device) {

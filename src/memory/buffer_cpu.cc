@@ -88,7 +88,7 @@ class CpuBackend final : public Backend {
             return Result::ERROR;
         }
 
-        dataPtr = pointer;
+        dataPtr = bytes == 0 ? nullptr : pointer;
         sizeBytes = bytes;
         borrowed = true;
         ownsMemory = false;

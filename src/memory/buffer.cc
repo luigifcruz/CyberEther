@@ -35,7 +35,7 @@ std::unique_ptr<detail::Backend> MakeBackend(DeviceType device) {
 
 struct Buffer::Impl {
     DeviceType nativeDevice = DeviceType::None;
-    std::unique_ptr<detail::Backend> backend;
+    std::shared_ptr<detail::Backend> backend;
 };
 
 Buffer::Buffer() {
@@ -209,6 +209,10 @@ const void* Buffer::data() const {
 
 void* Buffer::backend() const {
     return impl && impl->backend ? dynamic_cast<void*>(impl->backend.get()) : nullptr;
+}
+
+std::shared_ptr<void> Buffer::ownershipToken() const {
+    return impl ? impl->backend : nullptr;
 }
 
 }  // namespace Jetstream

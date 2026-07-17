@@ -97,7 +97,7 @@ TEST_CASE("Buffer can borrow external CPU memory", "[core][memory][buffer][borro
     REQUIRE(storage == std::array<U8, 8>{1, 2, 42, 4, 5, 99, 7, 8});
 
     Buffer emptyBorrow;
-    REQUIRE(emptyBorrow.create(DeviceType::CPU, nullptr, 0) == Result::SUCCESS);
+    REQUIRE(emptyBorrow.create(DeviceType::CPU, storage.data(), 0) == Result::SUCCESS);
     REQUIRE(emptyBorrow.valid());
     REQUIRE(emptyBorrow.isBorrowed());
     REQUIRE(emptyBorrow.data() == nullptr);

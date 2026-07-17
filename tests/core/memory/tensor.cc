@@ -95,6 +95,20 @@ TEST_CASE("Tensor default and CPU creation state is coherent",
         REQUIRE(tensor.data() == nullptr);
     }
 
+    SECTION("zero-byte recreation clears borrowed storage") {
+        Tensor tensor(DeviceType::CPU, DataType::F32, {2});
+        void* const storage = tensor.data();
+        REQUIRE(storage != nullptr);
+
+        REQUIRE(tensor.create(storage, DeviceType::CPU, DataType::F32, {0}) ==
+                Result::SUCCESS);
+        REQUIRE(tensor.validShape());
+        REQUIRE(tensor.empty());
+        REQUIRE(tensor.buffer().valid());
+        REQUIRE(tensor.buffer().isBorrowed());
+        REQUIRE(tensor.data() == nullptr);
+    }
+
     SECTION("invalid type and shape") {
         Tensor tensor;
 
@@ -223,7 +237,19 @@ TEST_CASE("Failed Tensor creation preserves the complete existing state",
 
     REQUIRE(tensor.create(static_cast<void*>(nullptr), DeviceType::CPU, DataType::I32, {7}) ==
             Result::ERROR);
-    // Current failure: create replaces tensor metadata before CPU borrowing fails.
+    REQUIRE(tensor.dtype() == dtype);
+    REQUIRE(tensor.shape() == shape);
+    REQUIRE(tensor.stride() == stride);
+    REQUIRE(tensor.size() == size);
+    REQUIRE(tensor.sizeBytes() == sizeBytes);
+    REQUIRE(tensor.offset() == offset);
+    REQUIRE(tensor.offsetBytes() == offsetBytes);
+    REQUIRE(tensor.contiguous() == contiguous);
+    REQUIRE(tensor.id() == id);
+    REQUIRE(tensor.data() == data);
+
+    REQUIRE(tensor.create(tensor.data(), DeviceType::CPU, DataType::F32, {2, 2}) ==
+            Result::ERROR);
     REQUIRE(tensor.dtype() == dtype);
     REQUIRE(tensor.shape() == shape);
     REQUIRE(tensor.stride() == stride);
@@ -238,11 +264,22 @@ TEST_CASE("Failed Tensor creation preserves the complete existing state",
 
 TEST_CASE("Tensor rejects size arithmetic overflow before allocation",
           "[core][memory][tensor][creation][overflow][errors]") {
+    SECTION("zero extent short-circuits element count") {
+        Tensor tensor;
+
+        REQUIRE(tensor.create(DeviceType::CPU, DataType::F32,
+                              {std::numeric_limits<U64>::max(), 2, 0}) ==
+                Result::SUCCESS);
+        REQUIRE(tensor.validShape());
+        REQUIRE(tensor.empty());
+        REQUIRE(tensor.stride() == Shape{0, 0, 1});
+        REQUIRE(tensor.sizeBytes() == 0);
+    }
+
     SECTION("element count overflow") {
         Tensor tensor;
         const U64 halfRangePlusOne = std::numeric_limits<U64>::max() / 2 + 1;
 
-        // Current failure: shape multiplication wraps to zero and creates a zero-byte buffer.
         REQUIRE(tensor.create(DeviceType::CPU, DataType::F32, {halfRangePlusOne, 2}) ==
                 Result::ERROR);
         REQUIRE_FALSE(tensor.validShape());
@@ -252,9 +289,22 @@ TEST_CASE("Tensor rejects size arithmetic overflow before allocation",
         Tensor tensor;
         const U64 elements = std::numeric_limits<U64>::max() / sizeof(F64) + 1;
 
-        // Current failure: element-size multiplication wraps to zero before Buffer creation.
         REQUIRE(tensor.create(DeviceType::CPU, DataType::F64, {elements}) == Result::ERROR);
         REQUIRE_FALSE(tensor.validShape());
+    }
+
+    SECTION("overflow preserves existing state") {
+        Tensor tensor(DeviceType::CPU, DataType::F32, {2, 3});
+        const Shape shape = tensor.shape();
+        const Index id = tensor.id();
+        void* const data = tensor.data();
+        const U64 halfRangePlusOne = std::numeric_limits<U64>::max() / 2 + 1;
+
+        REQUIRE(tensor.create(DeviceType::CPU, DataType::F32, {halfRangePlusOne, 2}) ==
+                Result::ERROR);
+        REQUIRE(tensor.shape() == shape);
+        REQUIRE(tensor.id() == id);
+        REQUIRE(tensor.data() == data);
     }
 }
 
@@ -271,6 +321,13 @@ TEST_CASE("Tensor value copies and clones have distinct semantics",
         alias.at<F32>(1, 2) = 42.0f;
         REQUIRE(source.at<F32>(1, 2) == 42.0f);
         REQUIRE(alias.reshape({3, 2}) == Result::SUCCESS);
+        REQUIRE(source.shape() == Shape{3, 2});
+
+        const Index id = source.id();
+        void* const data = source.data();
+        REQUIRE(source.create(DeviceType::CPU, alias) == Result::ERROR);
+        REQUIRE(source.id() == id);
+        REQUIRE(source.data() == data);
         REQUIRE(source.shape() == Shape{3, 2});
     }
 
@@ -652,11 +709,11 @@ TEST_CASE("Tensor slicing produces a scalar when every axis is indexed",
 
     REQUIRE(tensor.slice({Token(U64{1}), Token(U64{2})}) == Result::SUCCESS);
     REQUIRE(tensor.rank() == 0);
+    REQUIRE(tensor.validShape());
     REQUIRE(tensor.shape().empty());
     REQUIRE(tensor.stride().empty());
     REQUIRE(tensor.offset() == 5);
     REQUIRE(tensor.offsetBytes() == 5 * sizeof(F32));
-    // Current failure: rank-zero slices are cached as empty instead of one-element scalars.
     REQUIRE(tensor.size() == 1);
     REQUIRE(tensor.sizeBytes() == sizeof(F32));
     REQUIRE_FALSE(tensor.empty());
@@ -738,7 +795,6 @@ TEST_CASE("Tensor singleton permutations retain logical contiguity",
 
     REQUIRE(tensor.permute({1, 0}) == Result::SUCCESS);
     REQUIRE(tensor.shape() == Shape{3, 1});
-    // Current failure: contiguity calculation treats singleton-axis stride as significant.
     REQUIRE(tensor.contiguous());
 }
 
