@@ -490,7 +490,6 @@ TEST_CASE("Benchmark handles registry module factory failures",
                     }) == Result::SUCCESS);
 
         std::shared_ptr<Module> module;
-        // Current defect: BuildModule reports success when a factory returns null.
         CHECK(Registry::BuildModule(type,
                                     DeviceType::CPU,
                                     RuntimeType::NATIVE,

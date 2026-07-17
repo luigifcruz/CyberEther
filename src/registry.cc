@@ -175,6 +175,10 @@ Result Registry::Impl::registerModule(const std::string& type,
         JST_ERROR("[REGISTRY] Empty provider for module '{}'.", type);
         return Result::ERROR;
     }
+    if (!factory) {
+        JST_ERROR("[REGISTRY] Empty factory for module '{}'.", type);
+        return Result::ERROR;
+    }
 
     std::lock_guard<std::mutex> guard(registrationsMutex);
 
@@ -208,6 +212,10 @@ Result Registry::Impl::registerBlock(const std::string& type,
     }
     if (domain.empty()) {
         JST_ERROR("[REGISTRY] Empty domain for block '{}'.", type);
+        return Result::ERROR;
+    }
+    if (!factory) {
+        JST_ERROR("[REGISTRY] Empty factory for block '{}'.", type);
         return Result::ERROR;
     }
 
@@ -460,7 +468,14 @@ Result Registry::Impl::buildModule(const std::string& type,
     });
 
     if (it != modules.end()) {
-        module = it->factory(environment, view);
+        auto candidate = it->factory(environment, view);
+        if (!candidate) {
+            JST_ERROR("[REGISTRY] Module factory returned null [Type: {}, Device: {}, Runtime: {}, Provider: {}].",
+                      type, device, runtime, provider);
+            return Result::ERROR;
+        }
+
+        module = std::move(candidate);
         return Result::SUCCESS;
     }
 
@@ -477,7 +492,13 @@ Result Registry::Impl::buildBlock(const std::string& type, std::shared_ptr<Block
     });
 
     if (it != blocks.end()) {
-        block = it->factory();
+        auto candidate = it->factory();
+        if (!candidate) {
+            JST_ERROR("[REGISTRY] Block factory returned null [Type: {}].", type);
+            return Result::ERROR;
+        }
+
+        block = std::move(candidate);
         return Result::SUCCESS;
     }
 

@@ -156,12 +156,17 @@ TEST_CASE("Registry validates direct registrations", "[core][registry][validatio
                    DeviceType::CPU,
                    RuntimeType::NATIVE,
                    "__ce_registry_test_provider");
-    // Expected to fail currently: Registry accepts an empty module factory that will throw when built.
     CHECK(Registry::RegisterModule(noModuleFactory,
                                    DeviceType::CPU,
                                    RuntimeType::NATIVE,
                                    "__ce_registry_test_provider",
                                    {}) == Result::ERROR);
+    REQUIRE(Registry::ListAvailableModules(noModuleFactory).empty());
+    REQUIRE(Registry::RegisterModule(noModuleFactory,
+                                     DeviceType::CPU,
+                                     RuntimeType::NATIVE,
+                                     "__ce_registry_test_provider",
+                                     moduleFactory) == Result::SUCCESS);
 
     cleanup.block("");
     REQUIRE(Registry::RegisterBlock("",
@@ -182,7 +187,19 @@ TEST_CASE("Registry validates direct registrations", "[core][registry][validatio
 
     const std::string noBlockFactory = "__ce_registry_test_validation_no_block_factory";
     cleanup.block(noBlockFactory);
-    // Expected to fail currently: Registry accepts an empty block factory that will throw when built.
+    CHECK(Registry::RegisterBlock(noBlockFactory,
+                                  "__ce_registry_test_domain",
+                                  "Title",
+                                  "Summary",
+                                  "Description",
+                                  {}) == Result::ERROR);
+    REQUIRE(Registry::ListAvailableBlocks(noBlockFactory).empty());
+    REQUIRE(Registry::RegisterBlock(noBlockFactory,
+                                    "__ce_registry_test_domain",
+                                    "Title",
+                                    "Summary",
+                                    "Description",
+                                    blockFactory) == Result::SUCCESS);
     CHECK(Registry::RegisterBlock(noBlockFactory,
                                   "__ce_registry_test_domain",
                                   "Title",
@@ -537,7 +554,6 @@ TEST_CASE("Registry contains invalid module and block factory results",
                                                         RuntimeType::NATIVE,
                                                         provider,
                                                         nullModule);
-    // Expected to fail currently: a null module is accepted and clears the output.
     CHECK(nullModuleResult == Result::ERROR);
     CHECK(nullModule == moduleSentinel);
 
@@ -557,7 +573,6 @@ TEST_CASE("Registry contains invalid module and block factory results",
 
     auto nullBlock = blockSentinel;
     const auto nullBlockResult = Registry::BuildBlock(nullBlockType, nullBlock);
-    // Expected to fail currently: a null block is accepted and clears the output.
     CHECK(nullBlockResult == Result::ERROR);
     CHECK(nullBlock == blockSentinel);
 }
