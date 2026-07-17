@@ -8,6 +8,7 @@ namespace Jetstream::Modules {
 
 struct FftImpl : public Module::Impl, public DynamicConfig<Fft> {
  public:
+    Result validate() override;
     Result define() override;
     Result create() override;
     Result destroy() override;
@@ -16,6 +17,7 @@ struct FftImpl : public Module::Impl, public DynamicConfig<Fft> {
  protected:
     Tensor input;
     Tensor output;
+    Index resolvedAxis = 0;
 };
 
 }  // namespace Jetstream::Modules
