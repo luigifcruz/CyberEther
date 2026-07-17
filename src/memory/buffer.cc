@@ -1,5 +1,7 @@
 #include "jetstream/memory/buffer.hh"
 
+#include <utility>
+
 #include "jetstream/logger.hh"
 #include "buffer_backend.hh"
 #include "jetstream/types.hh"
@@ -56,13 +58,15 @@ Result Buffer::create(const DeviceType& device, const U64& sizeBytes, const Conf
         return Result::ERROR;
     }
 
-    if (!(impl->backend = MakeBackend(device))) {
+    auto backend = MakeBackend(device);
+    if (!backend) {
         JST_ERROR("[MEMORY:BUFFER] Unsupported device {}.", device);
         return Result::ERROR;
     }
 
+    JST_CHECK(backend->create(sizeBytes, config));
     impl->nativeDevice = device;
-    JST_CHECK(impl->backend->create(sizeBytes, config));
+    impl->backend = std::move(backend);
 
     return Result::SUCCESS;
 }
@@ -75,13 +79,15 @@ Result Buffer::create(const DeviceType& device, void* pointer, const U64& sizeBy
         return Result::ERROR;
     }
 
-    if (!(impl->backend = MakeBackend(device))) {
+    auto backend = MakeBackend(device);
+    if (!backend) {
         JST_ERROR("[MEMORY:BUFFER] Unsupported device {}.", device);
         return Result::ERROR;
     }
 
+    JST_CHECK(backend->create(pointer, sizeBytes));
     impl->nativeDevice = device;
-    JST_CHECK(impl->backend->create(pointer, sizeBytes));
+    impl->backend = std::move(backend);
 
     return Result::SUCCESS;
 }
@@ -104,16 +110,17 @@ Result Buffer::create(const DeviceType& device, const Buffer& source) {
         return Result::ERROR;
     }
 
-    if (!(impl->backend = MakeBackend(device))) {
+    auto backend = MakeBackend(device);
+    if (!backend) {
         return Result::ERROR;
     }
 
-    impl->nativeDevice = source.nativeDevice();
-
-    if (source.sizeBytes() == 0) {
-        return Result::SUCCESS;
+    if (source.sizeBytes() != 0) {
+        JST_CHECK(backend->create(*source.impl->backend));
     }
-    JST_CHECK(impl->backend->create(*source.impl->backend));
+
+    impl->nativeDevice = source.nativeDevice();
+    impl->backend = std::move(backend);
 
     return Result::SUCCESS;
 }

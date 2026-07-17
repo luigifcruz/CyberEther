@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <limits>
 
 #include "jetstream/config.hh"
 
@@ -33,18 +34,29 @@ inline std::size_t SystemPageSize() {
 #endif
 }
 
+inline bool CheckedRoundUp(const std::uint64_t value, const std::uint64_t alignment, std::uint64_t& rounded) {
+    if (alignment == 0) {
+        return false;
+    }
+
+    const auto remainder = value % alignment;
+    const auto padding = remainder == 0 ? 0 : alignment - remainder;
+    if (value > std::numeric_limits<std::uint64_t>::max() - padding) {
+        return false;
+    }
+
+    rounded = value + padding;
+    return true;
+}
+
+inline bool CheckedPageAlignedSize(const std::uint64_t bytes, std::uint64_t& alignedBytes) {
+    return CheckedRoundUp(bytes, SystemPageSize(), alignedBytes);
+}
+
 }  // namespace Jetstream::detail
 
 #ifndef JST_PAGESIZE
 #define JST_PAGESIZE() ::Jetstream::detail::SystemPageSize()
-#endif
-
-#ifndef JST_ROUND_UP
-#define JST_ROUND_UP(X, Y) (((X) + (Y) - 1) / (Y)) * (Y)
-#endif
-
-#ifndef JST_PAGE_ALIGNED_SIZE
-#define JST_PAGE_ALIGNED_SIZE(X) JST_ROUND_UP(X, JST_PAGESIZE())
 #endif
 
 #ifndef JST_IS_ALIGNED

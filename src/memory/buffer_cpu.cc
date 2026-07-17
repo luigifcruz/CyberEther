@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 
 #include "jetstream/logger.hh"
 #include "jetstream/memory/macros.hh"
@@ -54,15 +55,22 @@ class CpuBackend final : public Backend {
             return Result::SUCCESS;
         }
 
+        U64 alignedBytes = 0;
+        if (!CheckedPageAlignedSize(bytes, alignedBytes) || alignedBytes > std::numeric_limits<std::size_t>::max()) {
+            JST_ERROR("[MEMORY:BUFFER:CPU] Allocation size {} is too large.", bytes);
+            return Result::ERROR;
+        }
+        const auto allocationSize = static_cast<std::size_t>(alignedBytes);
+
 #ifdef JST_OS_WINDOWS
-        dataPtr = VirtualAlloc(nullptr, JST_PAGE_ALIGNED_SIZE(bytes), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        dataPtr = VirtualAlloc(nullptr, allocationSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
         if (!dataPtr) {
             JST_ERROR("[MEMORY:BUFFER:CPU] Failed to allocate {} bytes.", bytes);
             return Result::ERROR;
         }
 #else
         void* ptr = nullptr;
-        if (posix_memalign(&ptr, JST_PAGESIZE(), JST_PAGE_ALIGNED_SIZE(bytes)) != 0) {
+        if (posix_memalign(&ptr, JST_PAGESIZE(), allocationSize) != 0) {
             JST_ERROR("[MEMORY:BUFFER:CPU] Failed to allocate {} bytes.", bytes);
             return Result::ERROR;
         }

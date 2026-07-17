@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <limits>
 #include <utility>
 
 #include "jetstream/memory/buffer.hh"
@@ -330,7 +331,6 @@ TEST_CASE("Failed Buffer creation does not initialize the object",
     REQUIRE(buffer.create(DeviceType::CPU, nullptr, 4) == Result::ERROR);
     REQUIRE(buffer.data() == nullptr);
     REQUIRE(buffer.sizeBytes() == 0);
-    // Current failure: Buffer retains the CPU backend after its backend create call fails.
     REQUIRE_FALSE(buffer.valid());
 }
 
@@ -339,10 +339,17 @@ TEST_CASE("Buffer is reusable after a failed CPU creation",
     Buffer buffer;
 
     REQUIRE(buffer.create(DeviceType::CPU, nullptr, 4) == Result::ERROR);
-    // Current failure: the failed backend remains installed and rejects the next create call.
     REQUIRE(buffer.create(DeviceType::CPU, 4) == Result::SUCCESS);
     REQUIRE(buffer.valid());
     REQUIRE(buffer.sizeBytes() == 4);
+}
+
+TEST_CASE("Buffer rejects allocation size overflow atomically", "[core][memory][buffer][errors]") {
+    Buffer buffer;
+
+    REQUIRE(buffer.create(DeviceType::CPU, std::numeric_limits<U64>::max()) == Result::ERROR);
+    REQUIRE_FALSE(buffer.valid());
+    REQUIRE(buffer.create(DeviceType::CPU, 4) == Result::SUCCESS);
 }
 
 }  // namespace
