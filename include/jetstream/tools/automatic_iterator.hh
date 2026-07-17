@@ -1,7 +1,6 @@
 #ifndef JETSTREAM_TOOLS_AUTOMATIC_ITERATOR_HH
 #define JETSTREAM_TOOLS_AUTOMATIC_ITERATOR_HH
 
-#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <tuple>
@@ -111,15 +110,67 @@ JST_INLINE Result AutomaticIterator(const Function& function, Args&... args) {
     static_assert(sizeof...(Elem) == sizeof...(Args),
                   "Number of element types must match number of tensor arguments.");
 
+    constexpr size_t N = sizeof...(Args);
+    static_assert(N > 0, "AutomaticIterator requires at least one tensor argument.");
+
+    const auto argsTuple = std::forward_as_tuple(args...);
+    const auto& reference = std::get<0>(argsTuple);
+
+    if (!(args.validShape() && ...)) {
+        JST_ERROR("AutomaticIterator requires initialized tensor shapes.");
+        return Result::ERROR;
+    }
+
     if (!((args.device() == DeviceType::CPU) && ...)) {
         JST_ERROR("AutomaticIterator only supports CPU tensors.");
         return Result::ERROR;
     }
 
-    constexpr size_t N = sizeof...(Args);
+    if (!((args.rank() == reference.rank()) && ...)) {
+        JST_ERROR("AutomaticIterator requires tensors with matching ranks.");
+        return Result::ERROR;
+    }
 
-    const U64 size = std::max({args.size()...});
-    const Index rank = std::get<0>(std::forward_as_tuple(args...)).rank();
+    if (!((args.size() == reference.size()) && ...)) {
+        JST_ERROR("AutomaticIterator requires tensors with matching sizes.");
+        return Result::ERROR;
+    }
+
+    if (!((args.shape() == reference.shape()) && ...)) {
+        JST_ERROR("AutomaticIterator requires tensors with matching shapes.");
+        return Result::ERROR;
+    }
+
+    if (!(((TypeToDataType<std::remove_cvref_t<Elem>>() != DataType::None && args.dtype() == TypeToDataType<std::remove_cvref_t<Elem>>())) && ...)) {
+        JST_ERROR("AutomaticIterator tensor dtypes do not match their element types.");
+        return Result::ERROR;
+    }
+
+    const auto validCpuStorage = [](const Tensor& tensor) {
+        try {
+            const auto& buffer = tensor.buffer();
+            return buffer.valid() && buffer.device() == DeviceType::CPU;
+        } catch (...) {
+            return false;
+        }
+    };
+
+    if (!(validCpuStorage(args) && ...)) {
+        JST_ERROR("AutomaticIterator requires valid CPU tensor storage.");
+        return Result::ERROR;
+    }
+
+    const U64 size = reference.size();
+    if (size == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (!((args.data() != nullptr) && ...)) {
+        JST_ERROR("AutomaticIterator cannot access tensor storage.");
+        return Result::ERROR;
+    }
+
+    const Index rank = reference.rank();
 
     // Pre-cast data pointers to typed pointers
     auto dataPtrs = std::tuple<std::add_pointer_t<std::remove_reference_t<Elem>>...>{

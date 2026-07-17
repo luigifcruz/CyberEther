@@ -716,16 +716,74 @@ bool Tensor::hasDevice(const DeviceType& device) {
 }
 
 Result Tensor::copyFrom(const Tensor& source, void* context) {
-    ensureImpl();
+    if (!impl || !source.impl || !validShape() || !source.validShape() || dtype() == DataType::None || source.dtype() == DataType::None) {
+        JST_ERROR("[MEMORY:TENSOR] Cannot copy uninitialized tensors.");
+        return Result::ERROR;
+    }
 
-    if (!contiguous()) {
+    if (shape() != source.shape()) {
+        JST_ERROR("[MEMORY:TENSOR] Source tensor shape does not match destination tensor shape.");
+        return Result::ERROR;
+    }
+
+    if (dtype() != source.dtype()) {
+        JST_ERROR("[MEMORY:TENSOR] Source tensor dtype does not match destination tensor dtype.");
+        return Result::ERROR;
+    }
+
+    if (size() != source.size() || sizeBytes() != source.sizeBytes()) {
+        JST_ERROR("[MEMORY:TENSOR] Source tensor size does not match destination tensor size.");
+        return Result::ERROR;
+    }
+
+    if (!source.contiguous()) {
         JST_ERROR("[MEMORY:TENSOR] Source tensor is not contiguous.");
         return Result::ERROR;
     }
 
-    if (source.size() != size()) {
-        JST_ERROR("[MEMORY:BUFFER] Source tensor size does not match destination tensor size.");
+    if (!contiguous()) {
+        JST_ERROR("[MEMORY:TENSOR] Destination tensor is not contiguous.");
         return Result::ERROR;
+    }
+
+    if (source.offset() != 0 || offset() != 0) {
+        JST_ERROR("[MEMORY:TENSOR] Cannot copy offset tensor views.");
+        return Result::ERROR;
+    }
+
+    if (device() == DeviceType::None || source.device() == DeviceType::None || !impl->storage || !source.impl->storage) {
+        JST_ERROR("[MEMORY:TENSOR] Cannot copy tensors without initialized storage.");
+        return Result::ERROR;
+    }
+
+    const auto validBuffer = [](const std::shared_ptr<Impl::Storage>& storage, const DeviceType device, const U64 expectedSize) {
+        const auto buffer = storage->buffers.find(device);
+        return buffer != storage->buffers.end() && buffer->second.valid() && buffer->second.device() == device && buffer->second.sizeBytes() == expectedSize;
+    };
+
+    if (!validBuffer(source.impl->storage, source.device(), source.sizeBytes())) {
+        JST_ERROR("[MEMORY:TENSOR] Source tensor buffer is invalid or does not cover its logical storage.");
+        return Result::ERROR;
+    }
+
+    if (!validBuffer(impl->storage, device(), sizeBytes())) {
+        JST_ERROR("[MEMORY:TENSOR] Destination tensor buffer is invalid or does not cover its logical storage.");
+        return Result::ERROR;
+    }
+
+    const auto target = impl->storage->buffers.find(source.device());
+    if (target != impl->storage->buffers.end() && (!target->second.valid() || target->second.device() != source.device() || target->second.sizeBytes() != sizeBytes())) {
+        JST_ERROR("[MEMORY:TENSOR] Destination tensor mapping is invalid or does not cover its logical storage.");
+        return Result::ERROR;
+    }
+
+    if (target == impl->storage->buffers.end() && !validBuffer(impl->storage, impl->storage->rootDevice, sizeBytes())) {
+        JST_ERROR("[MEMORY:TENSOR] Destination tensor root buffer cannot provide the requested mapping.");
+        return Result::ERROR;
+    }
+
+    if (impl->storage == source.impl->storage) {
+        return Result::SUCCESS;
     }
 
     // Try to map the buffer to the source device.
@@ -735,7 +793,7 @@ Result Tensor::copyFrom(const Tensor& source, void* context) {
     }
 
     // Copy the buffer from the source device to the current device.
-    JST_CHECK(impl->storage->buffers.at(source.device()).copyFrom(source.buffer(), context));
+    JST_CHECK(impl->storage->buffers.at(source.device()).copyFrom(source.impl->storage->buffers.at(source.device()), context));
 
     return Result::SUCCESS;
 }

@@ -326,6 +326,15 @@ TEST_CASE("Tensor copyFrom copies compatible CPU storage",
                         [](F32 value) { return value == -1.0f; }));
 }
 
+TEST_CASE("Tensor copyFrom safely copies overlapping borrowed CPU storage", "[core][memory][tensor][copy]") {
+    std::array<F32, 6> storage = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    Tensor source(storage.data(), DeviceType::CPU, DataType::F32, {4});
+    Tensor destination(storage.data() + 1, DeviceType::CPU, DataType::F32, {4});
+
+    REQUIRE(destination.copyFrom(source) == Result::SUCCESS);
+    REQUIRE(storage == std::array<F32, 6>{1.0f, 1.0f, 2.0f, 3.0f, 4.0f, 6.0f});
+}
+
 TEST_CASE("Tensor copyFrom rejects a different logical shape",
           "[core][memory][tensor][copy][errors]") {
     Tensor source(DeviceType::CPU, DataType::F32, {2, 3});
@@ -337,7 +346,6 @@ TEST_CASE("Tensor copyFrom rejects a different logical shape",
     const Shape stride = destination.stride();
     const U64 offset = destination.offset();
 
-    // Current failure: copyFrom compares element counts but not tensor shapes.
     REQUIRE(destination.copyFrom(source) == Result::ERROR);
     REQUIRE(destination.shape() == shape);
     REQUIRE(destination.stride() == stride);
@@ -359,7 +367,6 @@ TEST_CASE("Tensor copyFrom rejects a different dtype atomically",
     const bool contiguous = destination.contiguous();
     const U64 offset = destination.offset();
 
-    // Current failure: equal-size buffers are copied without checking tensor dtypes.
     REQUIRE(destination.copyFrom(source) == Result::ERROR);
     REQUIRE(destination.dtype() == dtype);
     REQUIRE(destination.shape() == shape);
@@ -379,7 +386,6 @@ TEST_CASE("Tensor copyFrom rejects non-contiguous sources",
     REQUIRE(source.permute({1, 0}) == Result::SUCCESS);
     REQUIRE_FALSE(source.contiguous());
 
-    // Current failure: copyFrom checks destination contiguity instead of source contiguity.
     REQUIRE(destination.copyFrom(source) == Result::ERROR);
     REQUIRE(std::all_of(destination.data<F32>(),
                         destination.data<F32>() + destination.size(),
@@ -403,13 +409,75 @@ TEST_CASE("Tensor copyFrom rejects offset views atomically",
     REQUIRE(source.contiguous());
     REQUIRE(destination.contiguous());
 
-    // Current failure: copyFrom ignores view offsets and copies the complete backing buffers.
     REQUIRE(destination.copyFrom(source) == Result::ERROR);
     REQUIRE(destination.offset() == 0);
     REQUIRE(destination.shape() == Shape{4});
     REQUIRE(std::all_of(destinationStorage.data<F32>(),
                         destinationStorage.data<F32>() + destinationStorage.size(),
                         [](F32 value) { return value == -1.0f; }));
+}
+
+TEST_CASE("Tensor copyFrom rejects incompatible destination storage atomically", "[core][memory][tensor][copy][errors]") {
+    SECTION("non-contiguous destination") {
+        Tensor source(DeviceType::CPU, DataType::F32, {3, 2});
+        Tensor destination(DeviceType::CPU, DataType::F32, {2, 3});
+        FillLinear(source, 1.0f);
+        std::fill(destination.data<F32>(), destination.data<F32>() + destination.size(), -1.0f);
+        REQUIRE(destination.permute({1, 0}) == Result::SUCCESS);
+        REQUIRE_FALSE(destination.contiguous());
+
+        REQUIRE(destination.copyFrom(source) == Result::ERROR);
+        REQUIRE(std::all_of(destination.data<F32>(), destination.data<F32>() + destination.size(), [](F32 value) { return value == -1.0f; }));
+    }
+
+    SECTION("destination offset") {
+        Tensor source(DeviceType::CPU, DataType::F32, {4});
+        Tensor destinationStorage(DeviceType::CPU, DataType::F32, {2, 4});
+        FillLinear(source, 1.0f);
+        std::fill(destinationStorage.data<F32>(), destinationStorage.data<F32>() + destinationStorage.size(), -1.0f);
+        Tensor destination = destinationStorage.clone();
+        REQUIRE(destination.slice({Token(U64{1})}) == Result::SUCCESS);
+        REQUIRE(destination.offset() == 4);
+
+        REQUIRE(destination.copyFrom(source) == Result::ERROR);
+        REQUIRE(std::all_of(destinationStorage.data<F32>(), destinationStorage.data<F32>() + destinationStorage.size(), [](F32 value) { return value == -1.0f; }));
+    }
+
+    SECTION("partial backing storage") {
+        Tensor sourceStorage(DeviceType::CPU, DataType::F32, {2, 4});
+        Tensor destinationStorage(DeviceType::CPU, DataType::F32, {2, 4});
+        FillLinear(sourceStorage, 1.0f);
+        std::fill(destinationStorage.data<F32>(), destinationStorage.data<F32>() + destinationStorage.size(), -1.0f);
+        Tensor source = sourceStorage.clone();
+        Tensor destination = destinationStorage.clone();
+        REQUIRE(source.slice({Token(U64{0})}) == Result::SUCCESS);
+        REQUIRE(destination.slice({Token(U64{0})}) == Result::SUCCESS);
+        REQUIRE(source.offset() == 0);
+        REQUIRE(destination.offset() == 0);
+
+        REQUIRE(destination.copyFrom(source) == Result::ERROR);
+        REQUIRE(std::all_of(destinationStorage.data<F32>(), destinationStorage.data<F32>() + destinationStorage.size(), [](F32 value) { return value == -1.0f; }));
+    }
+
+    SECTION("invalid source storage") {
+        Tensor source(DeviceType::CPU, DataType::F32, {4});
+        Tensor destination(DeviceType::CPU, DataType::F32, {4});
+        std::fill(destination.data<F32>(), destination.data<F32>() + destination.size(), -1.0f);
+        REQUIRE(source.buffer().destroy() == Result::SUCCESS);
+
+        REQUIRE(destination.copyFrom(source) == Result::ERROR);
+        REQUIRE(std::all_of(destination.data<F32>(), destination.data<F32>() + destination.size(), [](F32 value) { return value == -1.0f; }));
+    }
+
+    SECTION("invalid destination storage") {
+        Tensor source(DeviceType::CPU, DataType::F32, {4});
+        Tensor destination(DeviceType::CPU, DataType::F32, {4});
+        FillLinear(source, 1.0f);
+        REQUIRE(destination.buffer().destroy() == Result::SUCCESS);
+
+        REQUIRE(destination.copyFrom(source) == Result::ERROR);
+        REQUIRE_FALSE(destination.buffer().valid());
+    }
 }
 
 TEST_CASE("Tensor dimension operations update cached layout",
@@ -876,6 +944,17 @@ TEST_CASE("AutomaticIterator accepts empty CPU tensors",
     REQUIRE(invocations == 0);
 }
 
+TEST_CASE("AutomaticIterator accepts cv-qualified element types", "[core][memory][iterator][types]") {
+    Tensor input(DeviceType::CPU, DataType::F32, {3});
+    Tensor output(DeviceType::CPU, DataType::F32, {3});
+    FillLinear(input, 1.0f);
+
+    REQUIRE(AutomaticIterator<const F32&, F32&>([](const F32& value, F32& destination) { destination = value * 2.0f; }, input, output) == Result::SUCCESS);
+    REQUIRE(output.data<F32>()[0] == 2.0f);
+    REQUIRE(output.data<F32>()[1] == 4.0f);
+    REQUIRE(output.data<F32>()[2] == 6.0f);
+}
+
 TEST_CASE("AutomaticIterator rejects incompatible tensor metadata before iteration",
           "[core][memory][iterator][validation][errors]") {
     SECTION("rank mismatch") {
@@ -892,7 +971,6 @@ TEST_CASE("AutomaticIterator rejects incompatible tensor metadata before iterati
             },
             input, output);
 
-        // Current failure: AutomaticIterator uses the first rank without validating peers.
         REQUIRE(result == Result::ERROR);
         REQUIRE(invocations == 0);
         REQUIRE(outputStorage == std::array<F32, 4>{-1.0f, -1.0f, -1.0f, -1.0f});
@@ -912,7 +990,6 @@ TEST_CASE("AutomaticIterator rejects incompatible tensor metadata before iterati
             },
             input, output);
 
-        // Current failure: equal element counts bypass shape compatibility validation.
         REQUIRE(result == Result::ERROR);
         REQUIRE(invocations == 0);
         REQUIRE(outputStorage == std::array<F32, 4>{-1.0f, -1.0f, -1.0f, -1.0f});
@@ -933,7 +1010,6 @@ TEST_CASE("AutomaticIterator rejects incompatible tensor metadata before iterati
             },
             input, output);
 
-        // Current failure: iteration uses the largest size without validating smaller tensors.
         REQUIRE(result == Result::ERROR);
         REQUIRE(invocations == 0);
         REQUIRE(outputStorage == std::array<F32, 3>{-1.0f, -1.0f, -1.0f});
@@ -954,7 +1030,6 @@ TEST_CASE("AutomaticIterator rejects incompatible tensor metadata before iterati
             },
             input, output);
 
-        // Current failure: template element types are never checked against tensor dtypes.
         REQUIRE(result == Result::ERROR);
         REQUIRE(invocations == 0);
         REQUIRE(outputStorage == std::array<F32, 3>{-1.0f, -1.0f, -1.0f});
@@ -986,7 +1061,6 @@ TEST_CASE("AutomaticIterator rejects incompatible tensor metadata before iterati
             },
             input, output);
 
-        // Current failure: CPU metadata is accepted even when its backing Buffer is invalid.
         REQUIRE(result == Result::ERROR);
         REQUIRE(invocations == 0);
     }
