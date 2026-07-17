@@ -20,14 +20,23 @@ This is a standalone CyberEther plugin blueprint. Copy this directory, rename
 |   `-- blueprint/
 |       `-- gain/
 |           |-- block_impl.cc
+|           |-- block_tests.cc
 |           |-- meson.build
 |           |-- module_impl.cc
 |           |-- module_impl.hh
-|           `-- module_impl_native_cpu.cc
+|           |-- module_impl_native_cpu.cc
+|           `-- module_tests.cc
+|-- subprojects/
+|   |-- catch2.wrap
+|   `-- cyberether.wrap
+|-- tests/
+|   |-- main.cc
+|   `-- meson.build
 |-- tools/
 |   |-- bundler.py
 |   `-- merger.py
-`-- meson.build
+|-- meson.build
+`-- meson_options.txt
 ```
 
 The `src/plugin.cc` exports the CyberEther plugin ABI symbol for the target shared
@@ -45,9 +54,17 @@ fallback CyberEther subproject from `subprojects/cyberether.wrap`.
 cd examples/plugins/blueprint
 meson setup build
 meson compile -C build
+meson test -C build --suite plugin --print-errorlogs
 ```
 
 The compiled plugin bundle is written to `build/cyberether_blueprint_plugin.cep`.
+The build also creates separate module and block test executables. Disable them
+with `meson setup build -Dtests=false` when Catch2 is not needed.
+
+Tests follow CyberEther's module convention and live beside each component. Add
+`module_tests.cc` or `block_tests.cc` to that component's `plugin_test_lst`; the
+shared `tests/meson.build` creates and registers a separate executable for every
+listed source.
 
 The `.cep` bundle can be loaded with CyberEther's plugin loader.
 
