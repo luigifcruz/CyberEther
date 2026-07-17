@@ -141,15 +141,35 @@ TEST_CASE("Parser YAML rejects non-map document roots", "[core][serialization][y
 
         REQUIRE(Parser::YamlDecode("scalar\n", data) == Result::ERROR);
         REQUIRE(std::any_cast<std::string>(data.at("label")) == "unchanged");
+        REQUIRE(Parser::YamlDecode("---\nscalar\n", data) == Result::ERROR);
+        REQUIRE(std::any_cast<std::string>(data.at("label")) == "unchanged");
     }
 
     SECTION("sequence roots") {
         Parser::Map data;
         data["label"] = std::string("unchanged");
 
-        // Defect: a root sequence is silently decoded as only its first map entry.
         REQUIRE(Parser::YamlDecode("- label: first\n- label: second\n", data) == Result::ERROR);
         REQUIRE(std::any_cast<std::string>(data.at("label")) == "unchanged");
+        REQUIRE(Parser::YamlDecode("---\n- label: first\n- label: second\n", data) ==
+                Result::ERROR);
+        REQUIRE(std::any_cast<std::string>(data.at("label")) == "unchanged");
+    }
+
+    SECTION("null roots") {
+        Parser::Map data;
+        data["label"] = std::string("unchanged");
+
+        REQUIRE(Parser::YamlDecode("---\n", data) == Result::ERROR);
+        REQUIRE(std::any_cast<std::string>(data.at("label")) == "unchanged");
+    }
+
+    SECTION("explicit map roots") {
+        Parser::Map data;
+        data["label"] = std::string("unchanged");
+
+        REQUIRE(Parser::YamlDecode("---\nlabel: decoded\n", data) == Result::SUCCESS);
+        REQUIRE(std::any_cast<std::string>(data.at("label")) == "decoded");
     }
 }
 
