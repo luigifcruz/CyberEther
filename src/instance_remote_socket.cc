@@ -9,6 +9,11 @@ namespace Jetstream {
 Result Instance::Remote::Impl::createBroker() {
     JST_INFO("[REMOTE] Connecting to broker at '{}'.", config.broker);
 
+    if (!IsRemoteBrokerSchemeSupported(config.broker)) {
+        JST_ERROR("[REMOTE] Broker URL must use HTTP or HTTPS.");
+        return Result::ERROR;
+    }
+
     std::string brokerOrigin = config.broker;
     while (brokerOrigin.size() > 1 && brokerOrigin.back() == '/') {
         brokerOrigin.pop_back();
@@ -17,12 +22,9 @@ Result Instance::Remote::Impl::createBroker() {
     std::string websocketOrigin;
     if (brokerOrigin.starts_with("https://")) {
         websocketOrigin = jst::fmt::format("wss://{}", brokerOrigin.substr(8));
-    } else if (brokerOrigin.starts_with("http://")) {
+    } else {
         websocketOrigin = jst::fmt::format("ws://{}", brokerOrigin.substr(7));
         JST_WARN("[REMOTE] Broker '{}' uses an unencrypted connection.", config.broker);
-    } else {
-        JST_ERROR("[REMOTE] Broker URL must use HTTP or HTTPS.");
-        return Result::ERROR;
     }
 
     signallerUrl = jst::fmt::format("{}/api/v1/remote/signaller", websocketOrigin);

@@ -535,6 +535,10 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
             if (!takeValue(value)) {
                 return PrintUsageError(argv[0], "Missing value for --broker. Expected a URL.");
             }
+            if (!IsRemoteBrokerSchemeSupported(value)) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --broker: '{}'. Expected an HTTP or HTTPS URL.", value));
+            }
             settings.remote.brokerUrl = value;
             runOption = arg;
             remoteSettingOption = arg;
@@ -644,6 +648,11 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
 
     Instance::Remote::Config remoteConfig;
     if (remoteEnabled) {
+        if (!IsRemoteBrokerSchemeSupported(settings.remote.brokerUrl)) {
+            return PrintUsageError(argv[0], jst::fmt::format(
+                "Invalid value for --broker: '{}'. Expected an HTTP or HTTPS URL.",
+                settings.remote.brokerUrl));
+        }
         try {
             remoteConfig = BuildRemoteConfig(settings);
         } catch (const Result&) {

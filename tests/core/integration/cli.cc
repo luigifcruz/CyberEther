@@ -853,10 +853,25 @@ TEST_CASE("CLI rejects broker URLs unsupported by remote transport", "[core][int
     CAPTURE(result.code, result.out, result.err);
     CHECK(result.sandboxUntouched);
 
-    // Expected failure: broker scheme validation is deferred until network startup.
     CHECK(result.code == 2);
     CHECK(result.out.empty());
     CHECK(result.err.find("Invalid value for --broker") != std::string::npos);
+}
+
+TEST_CASE("CLI rejects invalid retained broker settings before backend startup",
+          "[core][integration][cli]") {
+    SettingsGuard settings;
+    Jetstream::Settings invalid = settings.previous();
+    invalid.remote.brokerUrl = "ftp://example.com";
+    REQUIRE(Jetstream::Settings::Set(invalid, false) == Jetstream::Result::SUCCESS);
+
+    const InvocationResult result = Invoke({"--remote"});
+    CAPTURE(result.code, result.out, result.err);
+    CHECK(result.code == 2);
+    CHECK(result.out.empty());
+    CHECK(result.err == UsageError(
+        "Invalid value for --broker: 'ftp://example.com'. Expected an HTTP or HTTPS URL."));
+    CHECK(result.sandboxUntouched);
 }
 
 int main(int argc, char* argv[]) {

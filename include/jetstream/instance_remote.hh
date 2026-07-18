@@ -72,6 +72,8 @@ JETSTREAM_API std::string GetRemoteCodecName(const Instance::Remote::CodecType& 
 JETSTREAM_API Instance::Remote::CodecType StringToRemoteCodec(const std::string& codec);
 JETSTREAM_API const char* GetRemoteCodecPrettyName(const Instance::Remote::CodecType& codec);
 
+JETSTREAM_API bool IsRemoteBrokerSchemeSupported(const std::string& broker);
+
 JETSTREAM_API std::string GetRemoteEncoderName(const Instance::Remote::EncoderType& encoder);
 JETSTREAM_API Instance::Remote::EncoderType StringToRemoteEncoder(const std::string& encoder);
 JETSTREAM_API const char* GetRemoteEncoderPrettyName(const Instance::Remote::EncoderType& encoder);

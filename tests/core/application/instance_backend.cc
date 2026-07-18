@@ -13,6 +13,7 @@
 #include "jetstream/detail/instance_remote_supervisor.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/instance_remote.hh"
+#include "jetstream/logger.hh"
 
 using namespace Jetstream;
 
@@ -573,6 +574,26 @@ TEST_CASE("Remote without a viewport is inert and reports unsupported operations
     REQUIRE(remote.create({}) == Result::ERROR);
     REQUIRE(remote.destroy() == Result::SUCCESS);
     requireInertState();
+}
+
+TEST_CASE("Remote broker scheme validation matches the transport",
+          "[core][application][instance][remote]") {
+    REQUIRE(IsRemoteBrokerSchemeSupported("https://example.com"));
+    REQUIRE(IsRemoteBrokerSchemeSupported("http://localhost:8080/root"));
+    REQUIRE(IsRemoteBrokerSchemeSupported("https://example.com/path?key=value"));
+    REQUIRE_FALSE(IsRemoteBrokerSchemeSupported("ftp://example.com"));
+    REQUIRE_FALSE(IsRemoteBrokerSchemeSupported("wss://example.com"));
+    REQUIRE_FALSE(IsRemoteBrokerSchemeSupported("HTTPS://example.com"));
+    REQUIRE_FALSE(IsRemoteBrokerSchemeSupported("https:/example.com"));
+    REQUIRE_FALSE(IsRemoteBrokerSchemeSupported(" https://example.com"));
+    REQUIRE_FALSE(IsRemoteBrokerSchemeSupported(""));
+
+    Instance::Remote remote(nullptr);
+    Instance::Remote::Config config;
+    config.broker = "ftp://example.com";
+    JST_LOG_LAST_ERROR().clear();
+    REQUIRE(remote.create(config) == Result::ERROR);
+    REQUIRE(JST_LOG_LAST_ERROR() == "[REMOTE] Broker URL must use HTTP or HTTPS.");
 }
 
 TEST_CASE("Remote supervisor treats a null remote as a stopped transport",

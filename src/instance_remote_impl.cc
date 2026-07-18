@@ -47,6 +47,14 @@ std::vector<Instance::Remote::EncoderType> Instance::Remote::available(CodecType
 }
 
 Result Instance::Remote::create(const Config& config) {
+    if (config.broker.empty()) {
+        JST_ERROR("[REMOTE] Missing broker address.");
+        return Result::ERROR;
+    }
+    if (!IsRemoteBrokerSchemeSupported(config.broker)) {
+        JST_ERROR("[REMOTE] Broker URL must use HTTP or HTTPS.");
+        return Result::ERROR;
+    }
     return impl->create(config);
 }
 
@@ -114,11 +122,6 @@ Result Instance::Remote::Impl::create(const Instance::Remote::Config& config) {
 
     if (this->size.x == 0 || this->size.y == 0) {
         JST_ERROR("[REMOTE] Failed to get viewport size.");
-        return Result::ERROR;
-    }
-
-    if (this->config.broker.empty()) {
-        JST_ERROR("[REMOTE] Missing broker address.");
         return Result::ERROR;
     }
 
