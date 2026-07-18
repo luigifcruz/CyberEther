@@ -30,6 +30,7 @@ Result SliceImpl::validate() {
 Result SliceImpl::configure() {
     sliceModuleConfig->slice = slice;
     duplicateModuleConfig->hostAccessible = true;
+    duplicateModuleConfig->outputDevice = GetDeviceName(device());
 
     return Result::SUCCESS;
 }

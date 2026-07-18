@@ -73,6 +73,61 @@ TEST_CASE("Duplicate Module - Full dtype coverage", "[modules][duplicate][all]")
     expectDuplicateSuccess<CU64>("CU64", {{1024, 2048}, {4096, 8192}});
 }
 
+TEST_CASE("Duplicate Module - None preserves input device",
+          "[modules][duplicate][output-device]") {
+    const auto implementations = Registry::ListAvailableModules("duplicate");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            std::shared_ptr<Module> module;
+            REQUIRE(Registry::BuildModule("duplicate",
+                                          impl.device,
+                                          impl.runtime,
+                                          impl.provider,
+                                          module) == Result::SUCCESS);
+
+            TypedTensor<I32> cpuInput(DeviceType::CPU, {2});
+            cpuInput.at(0) = 10;
+            cpuInput.at(1) = 20;
+
+            Tensor input = cpuInput;
+            if (impl.device != DeviceType::CPU) {
+                input = Tensor(impl.device, cpuInput);
+            }
+
+            Modules::Duplicate config;
+            config.outputDevice = "NoNe";
+
+            TensorMap inputs;
+            inputs["buffer"].requested("test", "buffer");
+            inputs["buffer"].tensor = input;
+            REQUIRE(module->create("test", config, inputs) == Result::SUCCESS);
+
+            Runtime runtime("test", impl.device, impl.runtime);
+            REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
+
+            std::unordered_set<std::string> skippedModules;
+            std::unordered_set<std::string> failedModules;
+            REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+            REQUIRE(skippedModules.empty());
+
+            const auto& output = module->outputs().at("buffer").tensor;
+            REQUIRE(output.device() == impl.device);
+
+            Tensor cpuOutput = output;
+            if (output.device() != DeviceType::CPU) {
+                cpuOutput = Tensor(DeviceType::CPU, output);
+            }
+            REQUIRE(cpuOutput.at<I32>(0) == 10);
+            REQUIRE(cpuOutput.at<I32>(1) == 20);
+
+            REQUIRE(runtime.destroy() == Result::SUCCESS);
+            REQUIRE(module->destroy() == Result::SUCCESS);
+        }
+    }
+}
+
 TEST_CASE("Duplicate Module - CUDA preserves non-contiguous views", "[modules][duplicate][CUDA][view]") {
     const auto implementations = Registry::ListAvailableModules("duplicate", DeviceType::CUDA);
     if (implementations.empty()) {

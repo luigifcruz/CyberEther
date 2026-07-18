@@ -10,7 +10,7 @@ Result DuplicateImpl::validate() {
         return Result::ERROR;
     }
 
-    if (StringToDevice(config.outputDevice) == DeviceType::None) {
+    if (!IsDeviceName(config.outputDevice)) {
         JST_ERROR("[DUPLICATE] Invalid output device: {}.", config.outputDevice);
         return Result::ERROR;
     }
@@ -34,9 +34,14 @@ Result DuplicateImpl::create() {
 
     // Setup output buffer.
 
+    const auto configuredOutputDevice = StringToDevice(outputDevice);
+    const auto targetDevice = (configuredOutputDevice == DeviceType::None)
+        ? input.device()
+        : configuredOutputDevice;
+
     Buffer::Config outputConfig{};
     outputConfig.hostAccessible = hostAccessible;
-    JST_CHECK(output.create(StringToDevice(outputDevice), input.dtype(), input.shape(), outputConfig));
+    JST_CHECK(output.create(targetDevice, input.dtype(), input.shape(), outputConfig));
     JST_CHECK(output.propagateAttributes(input));
 
     outputs()["buffer"].produced(name(), "buffer", output);
@@ -54,7 +59,7 @@ Result DuplicateImpl::create() {
     }
 
     JST_ERROR("[DUPLICATE] Cannot copy tensor from DeviceType::{} to DeviceType::{}.", input.device(),
-                                                                                       StringToDevice(outputDevice));
+                                                                                       targetDevice);
     return Result::ERROR;
 }
 

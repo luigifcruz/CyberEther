@@ -761,11 +761,11 @@ Result Superluminal::Impl::createGraph() {
             std::string deviceNameStr;
 
             if ((recipe.buffer.device() == DeviceType::CUDA) && (config.preferredDevice == DeviceType::CPU)) {
-                deviceNameStr = "cuda";
+                deviceNameStr = GetDeviceName(recipe.buffer.device());
             }
 
             if ((recipe.buffer.device() == DeviceType::CPU) && (config.preferredDevice == DeviceType::CUDA)) {
-                deviceNameStr = "cuda";
+                deviceNameStr = GetDeviceName(recipe.buffer.device());
             }
 
             if (deviceNameStr.empty()) {
@@ -777,7 +777,8 @@ Result Superluminal::Impl::createGraph() {
             auto blob = GraphToYaml({
                 {jst::fmt::format("data_{}_{}_{}", GetDeviceName(config.preferredDevice), sourceDomain, hash),
                     {"duplicate", deviceNameStr, {std::string(dtypeName)}, {
-                        {{"hostAccessible", "true"}}},
+                        {{"hostAccessible", "true"},
+                         {"outputDevice", GetDeviceName(config.preferredDevice)}}},
                         {{"buffer", jst::fmt::format("${{graph.{}.output.buffer}}", blockName)}}}},
             });
 
@@ -1015,7 +1016,8 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
 
         graph.push_back({
             "duplicate",
-            {"duplicate", GetDeviceName(config.preferredDevice), {"CF32"}, {},
+            {"duplicate", GetDeviceName(config.preferredDevice), {"CF32"},
+                {{"outputDevice", GetDeviceName(config.preferredDevice)}},
                 {{"buffer", "${domain.slice.output.buffer}"}}},
         });
 
@@ -1115,7 +1117,8 @@ Result Superluminal::Impl::buildScatterPlotGraph(PlotState& state) {
 
         graph.push_back({
             "duplicate",
-            {"duplicate", GetDeviceName(config.preferredDevice), {"CF32"}, {},
+            {"duplicate", GetDeviceName(config.preferredDevice), {"CF32"},
+                {{"outputDevice", GetDeviceName(config.preferredDevice)}},
                 {{"buffer", "${domain.slice.output.buffer}"}}},
         });
 

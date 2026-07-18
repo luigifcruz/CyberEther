@@ -30,6 +30,7 @@ Result PermutationImpl::validate() {
 Result PermutationImpl::configure() {
     permutationModuleConfig->permutation = permutation;
     duplicateModuleConfig->hostAccessible = true;
+    duplicateModuleConfig->outputDevice = GetDeviceName(device());
 
     return Result::SUCCESS;
 }

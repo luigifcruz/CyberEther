@@ -4,6 +4,28 @@
 
 namespace Jetstream {
 
+namespace {
+
+const std::unordered_map<std::string, DeviceType>& DeviceNames() {
+    static const std::unordered_map<std::string, DeviceType> deviceNames = {
+        {"none",   DeviceType::None},
+        {"cpu",    DeviceType::CPU},
+        {"cuda",   DeviceType::CUDA},
+        {"metal",  DeviceType::Metal},
+        {"vulkan", DeviceType::Vulkan},
+        {"webgpu", DeviceType::WebGPU}
+    };
+    return deviceNames;
+}
+
+std::string NormalizeDeviceName(const std::string& device) {
+    std::string normalized = device;
+    std::transform(normalized.begin(), normalized.end(), normalized.begin(), ::tolower);
+    return normalized;
+}
+
+}  // namespace
+
 const char* GetDeviceName(const DeviceType& device) {
     static const std::unordered_map<DeviceType, const char*> deviceNames = {
         {DeviceType::None,   "none"},
@@ -31,21 +53,16 @@ const char* GetDevicePrettyName(const DeviceType& device) {
     return deviceNames.at(device);
 }
 
+bool IsDeviceName(const std::string& device) {
+    return DeviceNames().contains(NormalizeDeviceName(device));
+}
+
 DeviceType StringToDevice(const std::string& device) {
-    std::string deviceL = device;
-    std::transform(deviceL.begin(), deviceL.end(), deviceL.begin(), ::tolower);
-    static const std::unordered_map<std::string, DeviceType> deviceNames = {
-        {"none",   DeviceType::None},
-        {"cpu",    DeviceType::CPU},
-        {"cuda",   DeviceType::CUDA},
-        {"metal",  DeviceType::Metal},
-        {"vulkan", DeviceType::Vulkan},
-        {"webgpu", DeviceType::WebGPU}
-    };
-    if (!deviceNames.contains(deviceL)) {
+    const auto normalized = NormalizeDeviceName(device);
+    if (!DeviceNames().contains(normalized)) {
         return DeviceType::None;
     }
-    return deviceNames.at(deviceL);
+    return DeviceNames().at(normalized);
 }
 
 std::string_view LocationName(const Location& loc) {
