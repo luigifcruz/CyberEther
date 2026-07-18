@@ -738,6 +738,7 @@ Result Flowgraph::blockConnect(const std::string blockName,
 
     // 1. Collect target state and downstream blocks.
 
+    std::vector<std::string> downstreamNames;
     std::vector<BlockState> downstreamStates;
     BlockState targetState;
 
@@ -751,6 +752,18 @@ Result Flowgraph::blockConnect(const std::string blockName,
 
         if (!impl->blocks.contains(sourceBlock)) {
             JST_ERROR("[FLOWGRAPH] Source block '{}' doesn't exist.", sourceBlock);
+            return Result::ERROR;
+        }
+
+        if (sourceBlock == blockName) {
+            JST_ERROR("[FLOWGRAPH] Cannot connect block '{}' to itself.", blockName);
+            return Result::ERROR;
+        }
+
+        downstreamNames = impl->collectDownstream(blockName);
+        if (std::ranges::find(downstreamNames, sourceBlock) != downstreamNames.end()) {
+            JST_ERROR("[FLOWGRAPH] Connecting '{}.{}' to '{}.{}' would create a cycle.",
+                      sourceBlock, sourcePort, blockName, inputPort);
             return Result::ERROR;
         }
 
@@ -770,7 +783,7 @@ Result Flowgraph::blockConnect(const std::string blockName,
         targetState.inputs = block->inputs();
         targetState.inputs[inputPort].requested(sourceBlock, sourcePort);
 
-        for (const auto& depName : impl->collectDownstream(blockName)) {
+        for (const auto& depName : downstreamNames) {
             const auto& dep = impl->blocks.at(depName);
 
             BlockState state;

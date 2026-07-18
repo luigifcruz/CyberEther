@@ -438,30 +438,29 @@ TEST_CASE_METHOD(FlowgraphFixture,
                   "[core][flowgraph][mutation][cycle][atomicity]") {
     CreateChain(*flowgraph);
     const auto before = GraphKeys(*flowgraph);
+    const auto sourceOutputId = ViewBlock(*flowgraph, "source").outputs.at("signal").tensor.id();
+    const auto middleOutputId = ViewBlock(*flowgraph, "middle").outputs.at("buffer").tensor.id();
+    const auto leafOutputId = ViewBlock(*flowgraph, "leaf").outputs.at("buffer").tensor.id();
 
     SECTION("self-cycle") {
         REQUIRE(flowgraph->blockConnect("middle", "buffer", "middle", "buffer") == Result::ERROR);
         const auto after = GraphKeys(*flowgraph);
 
-        // Expected to fail currently: rejecting a self-cycle destroys the target and its leaf.
-        CHECK((after == before &&
-               IsCreated(*flowgraph, "source") &&
-               IsCreated(*flowgraph, "middle") &&
-               IsCreated(*flowgraph, "leaf") &&
-               IsConnected(*flowgraph, "middle", "buffer", "source", "signal") &&
-               IsConnected(*flowgraph, "leaf", "buffer", "middle", "buffer")));
+        REQUIRE(after == before);
+        RequireIntactChain(*flowgraph);
+        REQUIRE(ViewBlock(*flowgraph, "source").outputs.at("signal").tensor.id() == sourceOutputId);
+        REQUIRE(ViewBlock(*flowgraph, "middle").outputs.at("buffer").tensor.id() == middleOutputId);
+        REQUIRE(ViewBlock(*flowgraph, "leaf").outputs.at("buffer").tensor.id() == leafOutputId);
     }
 
     SECTION("back edge") {
         REQUIRE(flowgraph->blockConnect("middle", "buffer", "leaf", "buffer") == Result::ERROR);
         const auto after = GraphKeys(*flowgraph);
 
-        // Expected to fail currently: rejecting a back edge destroys the cycle participants.
-        CHECK((after == before &&
-               IsCreated(*flowgraph, "source") &&
-               IsCreated(*flowgraph, "middle") &&
-               IsCreated(*flowgraph, "leaf") &&
-               IsConnected(*flowgraph, "middle", "buffer", "source", "signal") &&
-               IsConnected(*flowgraph, "leaf", "buffer", "middle", "buffer")));
+        REQUIRE(after == before);
+        RequireIntactChain(*flowgraph);
+        REQUIRE(ViewBlock(*flowgraph, "source").outputs.at("signal").tensor.id() == sourceOutputId);
+        REQUIRE(ViewBlock(*flowgraph, "middle").outputs.at("buffer").tensor.id() == middleOutputId);
+        REQUIRE(ViewBlock(*flowgraph, "leaf").outputs.at("buffer").tensor.id() == leafOutputId);
     }
 }
