@@ -667,14 +667,30 @@ TEST_CASE("Tensor dimension operations update cached layout",
         REQUIRE(tensor.at<F32>(1, 0) == 3.0f);
         REQUIRE(tensor.at<F32>(1, 2) == 7.0f);
     }
+
+    SECTION("broadcast pads lower ranks from the left") {
+        Tensor tensor(DeviceType::CPU, DataType::F32, {3});
+        tensor.at<F32>(0) = 3.0f;
+        tensor.at<F32>(1) = 5.0f;
+        tensor.at<F32>(2) = 7.0f;
+
+        REQUIRE(tensor.broadcastTo({2, 1, 3}) == Result::SUCCESS);
+        REQUIRE(tensor.shape() == Shape{2, 1, 3});
+        REQUIRE(tensor.stride() == Shape{0, 1, 1});
+        REQUIRE(tensor.backstride() == Shape{0, 0, 2});
+        REQUIRE(tensor.at<F32>(1, 0, 2) == 7.0f);
+    }
 }
 
 TEST_CASE("Tensor broadcast rejects shrinking dimensions",
           "[core][memory][tensor][broadcast][errors]") {
     Tensor tensor(DeviceType::CPU, DataType::F32, {2, 3});
+    const Shape shape = tensor.shape();
+    const Shape stride = tensor.stride();
 
-    // Current failure: broadcast accepts a target extent of one and keeps the larger extent.
     REQUIRE(tensor.broadcastTo({1, 3}) == Result::ERROR);
+    REQUIRE(tensor.shape() == shape);
+    REQUIRE(tensor.stride() == stride);
 }
 
 TEST_CASE("Failed Tensor broadcast preserves its original layout",
@@ -682,11 +698,27 @@ TEST_CASE("Failed Tensor broadcast preserves its original layout",
     Tensor tensor(DeviceType::CPU, DataType::F32, {2, 3});
     const Shape shape = tensor.shape();
     const Shape stride = tensor.stride();
+    const Shape shapeMinusOne = tensor.shapeMinusOne();
+    const Shape backstride = tensor.backstride();
+    const U64 size = tensor.size();
+    const U64 sizeBytes = tensor.sizeBytes();
+    const bool contiguous = tensor.contiguous();
 
     REQUIRE(tensor.broadcastTo({2, 2, 4}) == Result::ERROR);
-    // Current failure: rank expansion mutates the layout before compatibility is validated.
     REQUIRE(tensor.shape() == shape);
     REQUIRE(tensor.stride() == stride);
+
+    REQUIRE(tensor.broadcastTo({std::numeric_limits<U64>::max(),
+                                std::numeric_limits<U64>::max(),
+                                2,
+                                3}) == Result::ERROR);
+    REQUIRE(tensor.shape() == shape);
+    REQUIRE(tensor.stride() == stride);
+    REQUIRE(tensor.shapeMinusOne() == shapeMinusOne);
+    REQUIRE(tensor.backstride() == backstride);
+    REQUIRE(tensor.size() == size);
+    REQUIRE(tensor.sizeBytes() == sizeBytes);
+    REQUIRE(tensor.contiguous() == contiguous);
 }
 
 TEST_CASE("Tensor slicing tracks offsets, strides, and values",

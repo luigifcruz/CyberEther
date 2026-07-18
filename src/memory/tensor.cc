@@ -257,35 +257,37 @@ Result Tensor::Impl::Layout::broadcast(const Shape& targetShape) {
     }
 
     const auto diff = targetShape.size() - shape.size();
-    for (std::size_t i = 0; i < diff; ++i) {
-        JST_CHECK(expand(0));
-    }
+    Shape paddedShape(targetShape.size(), 1);
+    Shape paddedStride(targetShape.size(), stride.empty() ? 1 : stride.front());
+    std::copy(shape.begin(), shape.end(), paddedShape.begin() + diff);
+    std::copy(stride.begin(), stride.end(), paddedStride.begin() + diff);
 
     Shape newShape(targetShape.size());
     Shape newStride(targetShape.size());
 
     for (std::size_t i = 0; i < targetShape.size(); ++i) {
-        const U64 currentDim = shape[i];
+        const U64 currentDim = paddedShape[i];
         const U64 targetDim = targetShape[i];
 
         if (currentDim == targetDim) {
             newShape[i] = currentDim;
-            newStride[i] = stride[i];
+            newStride[i] = paddedStride[i];
         } else if (currentDim == 1) {
             newShape[i] = targetDim;
             newStride[i] = 0;
-        } else if (targetDim == 1) {
-            newShape[i] = currentDim;
-            newStride[i] = stride[i];
         } else {
             JST_ERROR("[MEMORY:TENSOR] Cannot broadcast dimension {} -> {} (axis {}).", currentDim, targetDim, i);
             return Result::ERROR;
         }
     }
 
-    shape = std::move(newShape);
-    stride = std::move(newStride);
-    return updateCache();
+    Layout candidate = *this;
+    candidate.shape = std::move(newShape);
+    candidate.stride = std::move(newStride);
+    JST_CHECK(candidate.updateCache());
+
+    *this = std::move(candidate);
+    return Result::SUCCESS;
 }
 
 Result Tensor::Impl::Layout::slice(const std::vector<Token>& slice) {
