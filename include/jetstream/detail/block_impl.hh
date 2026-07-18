@@ -100,10 +100,10 @@ struct JETSTREAM_API Block::Impl {
     // Identity
 
     std::string _name;
-    DeviceType _device;
-    RuntimeType _runtime;
+    DeviceType _device = DeviceType::None;
+    RuntimeType _runtime = RuntimeType::NONE;
     ProviderType _provider;
-    Block::State _state;
+    Block::State _state = Block::State::None;
     std::string _diagnostic;
 
     // Timing

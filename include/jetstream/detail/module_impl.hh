@@ -83,10 +83,10 @@ struct JETSTREAM_API Module::Impl {
     // Identity
 
     std::string _name;
-    DeviceType _device;
-    RuntimeType _runtime;
+    DeviceType _device = DeviceType::None;
+    RuntimeType _runtime = RuntimeType::NONE;
     ProviderType _provider;
-    Taint _taint;
+    Taint _taint = Taint::CLEAN;
 
     // Timing
 

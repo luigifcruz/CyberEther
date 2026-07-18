@@ -843,7 +843,6 @@ TEST_CASE("Block and Module start from inert lifecycle defaults", "[core][lifecy
     REQUIRE(block.block->config().description() == "Exercises generic block orchestration.");
     REQUIRE(block.block->config().nodeSize() == Block::NodeSize::S);
 
-    // Expected failure: Block::Impl does not initialize the device to DeviceType::None.
     CHECK(block.block->device() == DeviceType::None);
 
     const auto module = MakeModule();
