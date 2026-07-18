@@ -1,7 +1,10 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
 #include <limits>
+#include <ostream>
+#include <streambuf>
 
 #include "fixture.hh"
 
@@ -35,6 +38,22 @@ void RequireIntegerRoundTrip(const T input) {
     REQUIRE(Parser::StringToTyped<T>(encoded, decoded) == Result::SUCCESS);
     REQUIRE(decoded == input);
 }
+
+struct ResultThrowingLogBuffer : std::streambuf {
+    bool attempted = false;
+
+    int_type overflow(int_type) override {
+        attempted = true;
+        throw Result::FATAL;
+    }
+};
+
+struct LogSinkRestore {
+    explicit LogSinkRestore(std::ostream& sink) : sink(&sink) {}
+    ~LogSinkRestore() { JST_LOG_SET_SINK(sink); }
+
+    std::ostream* sink;
+};
 
 }  // namespace
 
@@ -104,7 +123,7 @@ TEST_CASE("Parser string conversions round-trip scalar values", "[core][serializ
         REQUIRE(Parser::TypedToString(std::any(input), encoded) == Result::SUCCESS);
         REQUIRE(encoded == "-42");
 
-        I32 decoded = 0;
+        I32 decoded;
         REQUIRE(Parser::StringToTyped<I32>(encoded, decoded) == Result::SUCCESS);
         REQUIRE(decoded == input);
     }
@@ -326,6 +345,23 @@ TEST_CASE("Parser string conversions round-trip aggregates", "[core][serializati
         REQUIRE(decoded.real() == Catch::Approx(input.real()));
         REQUIRE(decoded.imag() == Catch::Approx(input.imag()));
     }
+
+    SECTION("non-finite complex components") {
+        const CF64 infiniteInput{std::numeric_limits<F64>::infinity(), 2.0};
+        std::string encoded;
+        REQUIRE(Parser::TypedToString(std::any(infiniteInput), encoded) == Result::SUCCESS);
+
+        CF64 decoded{};
+        REQUIRE(Parser::StringToTyped<CF64>(encoded, decoded) == Result::SUCCESS);
+        REQUIRE(std::isinf(decoded.real()));
+        REQUIRE(decoded.imag() == 2.0);
+
+        const CF64 nanInput{1.0, std::numeric_limits<F64>::quiet_NaN()};
+        REQUIRE(Parser::TypedToString(std::any(nanInput), encoded) == Result::SUCCESS);
+        REQUIRE(Parser::StringToTyped<CF64>(encoded, decoded) == Result::SUCCESS);
+        REQUIRE(decoded.real() == 1.0);
+        REQUIRE(std::isnan(decoded.imag()));
+    }
 }
 
 TEST_CASE("Parser::TypedToString serializes nested parser values", "[core][serialization][conversions]") {
@@ -369,6 +405,9 @@ TEST_CASE("Parser::StringToTyped<bool> accepts common truthy values", "[core][se
     REQUIRE(Parser::StringToTyped<bool>("false", value) == Result::SUCCESS);
     REQUIRE(!value);
 
+    REQUIRE(Parser::StringToTyped<bool>("FALSE", value) == Result::SUCCESS);
+    REQUIRE(!value);
+
     REQUIRE(Parser::StringToTyped<bool>("0", value) == Result::SUCCESS);
     REQUIRE(!value);
 }
@@ -378,7 +417,6 @@ TEST_CASE("Parser::StringToTyped rejects malformed scalar input", "[core][serial
         I32 value = 17;
         Result result = Result::SUCCESS;
 
-        // Defect: numeric conversion exceptions escape the Result-based API.
         REQUIRE_NOTHROW(result = Parser::StringToTyped<I32>("not-a-number", value));
         REQUIRE(result == Result::ERROR);
         REQUIRE(value == 17);
@@ -387,15 +425,29 @@ TEST_CASE("Parser::StringToTyped rejects malformed scalar input", "[core][serial
     SECTION("numeric suffixes are not silently ignored") {
         I32 value = 17;
 
-        // Defect: std::stoi's parsed length is ignored, accepting trailing junk.
         REQUIRE(Parser::StringToTyped<I32>("42junk", value) == Result::ERROR);
+        REQUIRE(value == 17);
+    }
+
+    SECTION("floating-point suffixes are not silently ignored") {
+        F32 value = 1.5f;
+
+        REQUIRE(Parser::StringToTyped<F32>("2.5junk", value) == Result::ERROR);
+        REQUIRE(value == 1.5f);
+    }
+
+    SECTION("out-of-range integers do not throw") {
+        I32 value = 17;
+        Result result = Result::SUCCESS;
+
+        REQUIRE_NOTHROW(result = Parser::StringToTyped<I32>("999999999999999999999", value));
+        REQUIRE(result == Result::ERROR);
         REQUIRE(value == 17);
     }
 
     SECTION("unknown boolean spellings return an error") {
         bool value = true;
 
-        // Defect: every non-truthy string is accepted as false.
         REQUIRE(Parser::StringToTyped<bool>("not-a-bool", value) == Result::ERROR);
         REQUIRE(value);
     }
@@ -403,9 +455,40 @@ TEST_CASE("Parser::StringToTyped rejects malformed scalar input", "[core][serial
     SECTION("malformed complex values return an error") {
         CF32 value{1.0f, 2.0f};
 
-        // Defect: stream extraction failures are ignored and produce zero.
         REQUIRE(Parser::StringToTyped<CF32>("not-complex", value) == Result::ERROR);
         REQUIRE(value == CF32{1.0f, 2.0f});
+    }
+
+    SECTION("complex suffixes are not silently ignored") {
+        CF32 value{1.0f, 2.0f};
+
+        REQUIRE(Parser::StringToTyped<CF32>("3+4junk", value) == Result::ERROR);
+        REQUIRE(value == CF32{1.0f, 2.0f});
+    }
+
+    SECTION("complex components reject doubled signs") {
+        for (const std::string encoded : {"3++4", "3+-4", "3--4", "3-+4"}) {
+            CAPTURE(encoded);
+            CF32 value{1.0f, 2.0f};
+
+            REQUIRE(Parser::StringToTyped<CF32>(encoded, value) == Result::ERROR);
+            REQUIRE(value == CF32{1.0f, 2.0f});
+        }
+    }
+
+    SECTION("logger exceptions remain contained") {
+        ResultThrowingLogBuffer buffer;
+        std::ostream sink(&buffer);
+        sink.exceptions(std::ios::badbit | std::ios::failbit);
+        LogSinkRestore restore(JST_LOG_SINK());
+        JST_LOG_SET_SINK(&sink);
+        bool value = true;
+        Result result = Result::SUCCESS;
+
+        REQUIRE_NOTHROW(result = Parser::StringToTyped<bool>("not-a-bool", value));
+        REQUIRE(buffer.attempted);
+        REQUIRE(result == Result::ERROR);
+        REQUIRE(value);
     }
 }
 
@@ -424,11 +507,50 @@ TEST_CASE("Parser::StringToTyped validates narrow and unsigned ranges", "[core][
 }
 
 TEST_CASE("Parser vector conversion is atomic on element errors", "[core][serialization][conversions][errors]") {
-    std::vector<U64> value = {8, 13};
+    SECTION("unsigned integers") {
+        std::vector<U64> value = {8, 13};
 
-    REQUIRE(Parser::StringToTyped<std::vector<U64>>("[1, -2]", value) == Result::ERROR);
-    // Defect: vector decoding mutates the destination before all entries validate.
-    REQUIRE(value == std::vector<U64>({8, 13}));
+        REQUIRE(Parser::StringToTyped<std::vector<U64>>("[1, -2]", value) == Result::ERROR);
+        REQUIRE(value == std::vector<U64>({8, 13}));
+    }
+
+    SECTION("floating point") {
+        std::vector<F32> value = {8.0f, 13.0f};
+
+        REQUIRE(Parser::StringToTyped<std::vector<F32>>("[1.0, bad]", value) == Result::ERROR);
+        REQUIRE(value == std::vector<F32>({8.0f, 13.0f}));
+    }
+
+    SECTION("complex") {
+        std::vector<CF64> value = {{8.0, 13.0}};
+
+        REQUIRE(Parser::StringToTyped<std::vector<CF64>>("[1+2, bad]", value) == Result::ERROR);
+        REQUIRE(value == std::vector<CF64>({{8.0, 13.0}}));
+    }
+}
+
+TEST_CASE("Parser aggregate conversion is atomic on element errors", "[core][serialization][conversions][errors]") {
+    SECTION("range") {
+        Range<F32> value{8.0f, 13.0f};
+
+        REQUIRE(Parser::StringToTyped<Range<F32>>("[1.0, 2.0junk]", value) == Result::ERROR);
+        REQUIRE(value.min == 8.0f);
+        REQUIRE(value.max == 13.0f);
+    }
+
+    SECTION("unsigned extent") {
+        Extent2D<U64> value{8, 13};
+
+        REQUIRE(Parser::StringToTyped<Extent2D<U64>>("[1, -2]", value) == Result::ERROR);
+        REQUIRE(value == Extent2D<U64>{8, 13});
+    }
+
+    SECTION("floating-point extent") {
+        Extent2D<F32> value{8.0f, 13.0f};
+
+        REQUIRE(Parser::StringToTyped<Extent2D<F32>>("[1.0, bad]", value) == Result::ERROR);
+        REQUIRE(value == Extent2D<F32>{8.0f, 13.0f});
+    }
 }
 
 TEST_CASE("Parser::TypedToString rejects unsupported values", "[core][serialization][conversions]") {
