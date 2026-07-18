@@ -2,6 +2,7 @@
 
 #include "jetstream/domains/core/reshape/block.hh"
 #include "jetstream/domains/dsp/window/block.hh"
+#include "jetstream/registry.hh"
 #include "flowgraph_fixture.hh"
 
 using namespace Jetstream;
@@ -21,6 +22,34 @@ TEST_CASE_METHOD(FlowgraphFixture, "Reshape block creates with target shape",
     REQUIRE(flowgraph->blockCreate("reshape_block", config, inputs) == Result::SUCCESS);
     REQUIRE(viewBlock("reshape_block").state == Block::State::Created);
     REQUIRE(viewBlock("reshape_block").outputs.count("buffer") == 1);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture, "Reshape block keeps contiguous copies on CUDA",
+                 "[modules][reshape][block][CUDA]") {
+    if (Registry::ListAvailableModules("window", DeviceType::CUDA).empty() ||
+        Registry::ListAvailableModules("duplicate", DeviceType::CUDA).empty() ||
+        Registry::ListAvailableModules("reshape", DeviceType::CUDA).empty()) {
+        SUCCEED("Required CUDA modules are unavailable in this build.");
+        return;
+    }
+
+    Blocks::Window source;
+    source.size = 8;
+    REQUIRE(flowgraph->blockCreate("reshape_cuda_src", source, {}, DeviceType::CUDA) ==
+            Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["buffer"].requested("reshape_cuda_src", "window");
+
+    Blocks::Reshape config;
+    config.shape = "[2, 4]";
+    config.contiguous = true;
+    REQUIRE(flowgraph->blockCreate("reshape_cuda", config, inputs, DeviceType::CUDA) ==
+            Result::SUCCESS);
+
+    const auto block = viewBlock("reshape_cuda");
+    REQUIRE(block.state == Block::State::Created);
+    REQUIRE(block.outputs.at("buffer").tensor.device() == DeviceType::CUDA);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Reshape block recovers from invalid target shape",
