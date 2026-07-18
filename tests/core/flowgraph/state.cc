@@ -565,7 +565,6 @@ TEST_CASE("Flowgraph view exposes consistent block state through every accessor"
     REQUIRE(block.interfaceConfigs[1].label == "Value");
     REQUIRE(block.interfaceConfigs[1].format == "float");
     REQUIRE(block.interfaceConfigs[1].help == "Output tensor value.");
-    // Defect: View::block omits metrics from its BlockData snapshot.
     CHECK((block.metrics.size() == 1 &&
            block.metrics[0].name == "runtime:source" &&
            block.metrics[0].label == "source" &&

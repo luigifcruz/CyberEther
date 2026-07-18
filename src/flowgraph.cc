@@ -117,50 +117,6 @@ void CopyRequestedInputs(const TensorMap& source,
     }
 }
 
-void CopyInterfaceEntries(const Block::Interface::EntryList& source,
-                          std::vector<Flowgraph::View::InterfaceEntry>& target) {
-    target.clear();
-    target.reserve(source.size());
-    for (const auto& [name, entry] : source) {
-        target.push_back({
-            .name = name,
-            .label = entry.label,
-            .format = entry.format,
-            .help = entry.help,
-        });
-    }
-}
-
-Result CopyBlockViewData(const std::string& name,
-                         const std::shared_ptr<Block>& block,
-                         Block::State state,
-                         Flowgraph::View::BlockData& data) {
-    data = {};
-    data.name = name;
-    data.type = block->config().type();
-    data.title = block->config().title();
-    data.summary = block->config().summary();
-    data.description = block->config().description();
-    data.device = block->device();
-    data.runtime = block->runtime();
-    data.provider = block->provider();
-    data.state = state;
-    data.nodeSize = block->config().nodeSize();
-    data.diagnostic = block->diagnostic();
-    data.inputs = block->inputs();
-    data.outputs = block->outputs();
-    JST_CHECK(block->config(data.config));
-
-    const auto& interface = block->interface();
-    if (interface) {
-        CopyInterfaceEntries(interface->inputs(), data.interfaceInputs);
-        CopyInterfaceEntries(interface->outputs(), data.interfaceOutputs);
-        CopyInterfaceEntries(interface->configs(), data.interfaceConfigs);
-    }
-
-    return Result::SUCCESS;
-}
-
 std::optional<Parser::Map> CompactMetadataMap(const Parser::Map& meta) {
     Parser::Map compact;
 
@@ -602,7 +558,8 @@ Result Flowgraph::blockDestroy(const std::string name, bool propagate) {
 
         block = impl->blocks.at(name);
         Flowgraph::View::BlockData transient;
-        JST_CHECK(CopyBlockViewData(name, block, Block::State::Destroying, transient));
+        JST_CHECK(impl->view->block(name, transient));
+        transient.state = Block::State::Destroying;
         impl->transientBlocks[name] = std::move(transient);
         impl->blocks.erase(name);
     }
@@ -1133,7 +1090,8 @@ Result Flowgraph::blockSetErroredFromModules(const std::unordered_set<std::strin
 
         for (const auto& [name, block] : failedBlocks) {
             Flowgraph::View::BlockData transient;
-            JST_CHECK(CopyBlockViewData(name, block, Block::State::Errored, transient));
+            JST_CHECK(impl->view->block(name, transient));
+            transient.state = Block::State::Errored;
             transient.diagnostic = diagnostic;
             transient.outputs.clear();
             impl->transientBlocks[name] = std::move(transient);
