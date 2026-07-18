@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 
 #include <jetstream/tools/automatic_iterator.hh>
 #include <jetstream/runtime_context_native_cpu.hh>
@@ -85,7 +86,7 @@ Result LineplotImplNativeCpu::computeSubmit() {
 
     for (U64 i = 0; i < numberOfElements; i++) {
         // Get amplitude.
-        const auto amplitude = (sumsData[i] * normalizationFactor) - 1.0f;
+        const auto amplitude = std::fmin(std::fmax((sumsData[i] * normalizationFactor) - 1.0f, -1.0f), 1.0f);
 
         // Calculate moving average.
         auto& average = avgData[i];
