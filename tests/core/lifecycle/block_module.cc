@@ -1163,7 +1163,17 @@ TEST_CASE("Block input validation distinguishes incomplete and invalid wiring",
                                      {},
                                      MakeBlockContext()) == Result::INCOMPLETE);
         REQUIRE_FALSE(bundle.block->diagnostic().empty());
+        const auto diagnostic = bundle.block->diagnostic();
         REQUIRE(bundle.block->destroy() == Result::SUCCESS);
+
+        REQUIRE(bundle.block->create("lifecycle-block",
+                                     DeviceType::CPU,
+                                     RuntimeType::NATIVE,
+                                     kLifecycleProvider,
+                                     {},
+                                     {},
+                                     nullptr) == Result::ERROR);
+        REQUIRE(bundle.block->diagnostic() == diagnostic);
 
         bundle.probe->declareInput = false;
         REQUIRE(bundle.block->create("lifecycle-block",
@@ -1174,7 +1184,6 @@ TEST_CASE("Block input validation distinguishes incomplete and invalid wiring",
                                      {},
                                      MakeBlockContext()) == Result::SUCCESS);
 
-        // Expected failure: Block::create does not clear a diagnostic from the prior lifecycle.
         REQUIRE(bundle.block->diagnostic().empty());
     }
 }

@@ -25,6 +25,8 @@ Result Block::create(const std::string& name,
                "[BLOCK] Cannot create block '{}' in state '{}'.", name, impl->_state);
     JST_ASSERT(context != nullptr, "[BLOCK] Cannot create block '{}' without a context.", name);
 
+    impl->_diagnostic.clear();
+
     // Set implementation variables.
 
     impl->_state = State::Creating;
