@@ -1,17 +1,8 @@
 #include "module_impl.hh"
 
+#include <algorithm>
+
 namespace Jetstream::Modules {
-
-Result RangeImpl::validate() {
-    const auto& config = *candidate();
-
-    if (config.min >= config.max) {
-        JST_ERROR("[MODULE_RANGE] Min ({}) must be less than max ({}).", config.min, config.max);
-        return Result::ERROR;
-    }
-
-    return Result::SUCCESS;
-}
 
 Result RangeImpl::define() {
     JST_CHECK(defineTaint(Module::Taint::DISCONTIGUOUS));
@@ -58,8 +49,17 @@ Result RangeImpl::reconfigure() {
 }
 
 void RangeImpl::updateCoefficients() {
-    scalingCoeff = 1.0f / (max - min);
-    offsetCoeff = -min * scalingCoeff;
+    const F32 lower = std::min(min, max);
+    const F32 upper = std::max(min, max);
+
+    if (lower == upper) {
+        scalingCoeff = 0.0f;
+        offsetCoeff = 0.5f;
+        return;
+    }
+
+    scalingCoeff = 1.0f / (upper - lower);
+    offsetCoeff = -lower * scalingCoeff;
 }
 
 }  // namespace Jetstream::Modules

@@ -33,7 +33,12 @@ extern "C" __global__ void range_kernel(const float* input, float* output, float
         inputIndex += coordinate * kInputStride[axis];
     }
 
-    output[index] = input[inputIndex] * scale + offset;
+    if (scale == 0.0f) {
+        output[index] = 0.5f;
+    } else {
+        const float normalized = input[inputIndex] * scale + offset;
+        output[index] = 0.5f + 0.5f * tanhf(4.0f * (normalized - 0.5f));
+    }
 }
 )";
 
