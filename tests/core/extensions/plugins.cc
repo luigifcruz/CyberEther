@@ -156,6 +156,38 @@ void EnsurePluginCacheSandbox() {
     (void)sandbox;
 }
 
+std::size_t CountExtractionDirectories() {
+    EnsurePluginCacheSandbox();
+
+    std::string cachePath;
+    if (Platform::CachePath(cachePath) != Result::SUCCESS) {
+        throw std::runtime_error("failed to resolve plugin cache path");
+    }
+
+    const auto root = Platform::PathFromUtf8(cachePath) / "registry-plugins";
+    std::error_code ec;
+    if (!std::filesystem::exists(root, ec)) {
+        if (ec) {
+            throw std::runtime_error("failed to inspect plugin cache path");
+        }
+        return 0;
+    }
+
+    std::size_t count = 0;
+    for (std::filesystem::recursive_directory_iterator entry(root, ec), end;
+         entry != end && !ec;
+         entry.increment(ec)) {
+        if (entry->is_directory(ec) &&
+            Platform::PathToUtf8(entry->path().filename()).ends_with(".contents")) {
+            ++count;
+        }
+    }
+    if (ec) {
+        throw std::runtime_error("failed to inspect plugin extraction directories");
+    }
+    return count;
+}
+
 void WriteBytes(const std::filesystem::path& path, const std::vector<std::uint8_t>& bytes) {
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
     if (!file) {
@@ -480,10 +512,19 @@ TEST_CASE("Plugin loader rejects malformed CEP compression and tar structure",
     }
 
     SECTION("single-block tar terminator") {
+        const auto extractionCount = CountExtractionDirectories();
         WriteBundle(archivePath, ManifestSpec{}, {}, 1);
         RequirePluginRejected(archivePathUtf8);
-        // Current defect: extraction accepts one zero block instead of a complete tar terminator.
-        CHECK(JST_LOG_LAST_ERROR().find("missing an end marker") != std::string::npos);
+        REQUIRE(JST_LOG_LAST_ERROR().find("missing an end marker") != std::string::npos);
+        REQUIRE(CountExtractionDirectories() == extractionCount);
+    }
+
+    SECTION("partial second tar terminator block") {
+        auto archive = TarArchive({{"manifest.yml", "metadata: {}\n"}}, 1);
+        archive.insert(archive.end(), 511, 0);
+        WriteBytes(archivePath, Gzip(archive));
+        RequirePluginRejected(archivePathUtf8);
+        REQUIRE(JST_LOG_LAST_ERROR().find("missing an end marker") != std::string::npos);
     }
 }
 

@@ -471,7 +471,14 @@ Result Plugin::Impl::extractCepArchive(const std::string& sourcePath,
             return value == 0;
         });
         if (emptyBlock) {
-            return Result::SUCCESS;
+            const bool completeEndMarker = tar.size() - offset >= 1024 &&
+                std::all_of(header + 512, header + 1024, [](uint8_t value) {
+                    return value == 0;
+                });
+            if (completeEndMarker) {
+                return Result::SUCCESS;
+            }
+            break;
         }
 
         uint64_t storedChecksum = 0;
