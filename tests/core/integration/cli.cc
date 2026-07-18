@@ -785,9 +785,8 @@ TEST_CASE("CLI restores the process log level after parser exits",
         CAPTURE(arguments, result.code, result.out, result.err, result.logLevelAfterRun);
         REQUIRE(result.code == 0);
 
-        // Expected failure: Run leaves its settings or verbosity level installed.
-        CHECK(result.logLevelAfterRun == sentinel);
-        CHECK(_JST_LOG_DEBUG_LEVEL() == sentinel);
+        REQUIRE(result.logLevelAfterRun == sentinel);
+        REQUIRE(_JST_LOG_DEBUG_LEVEL() == sentinel);
     }
 }
 

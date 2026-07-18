@@ -280,6 +280,8 @@ static void printUsage(const char* program,
 }
 
 int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn pluginDestroy) {
+    LogLevelGuard runLogLevel(_JST_LOG_DEBUG_LEVEL());
+
     CommandType command = CommandType::Run;
     bool commandSelected = false;
     bool remoteEnabled = false;
