@@ -18,24 +18,6 @@ namespace Jetstream {
 namespace {
 std::atomic<Index> g_tensor_counter{1};
 
-bool CheckedMultiply(const U64 lhs, const U64 rhs, U64& result) {
-    if (lhs != 0 && rhs > std::numeric_limits<U64>::max() / lhs) {
-        return false;
-    }
-
-    result = lhs * rhs;
-    return true;
-}
-
-bool CheckedAdd(const U64 lhs, const U64 rhs, U64& result) {
-    if (rhs > std::numeric_limits<U64>::max() - lhs) {
-        return false;
-    }
-
-    result = lhs + rhs;
-    return true;
-}
-
 bool PointerRangesOverlap(const void* lhs, const U64 lhsSize,
                           const void* rhs, const U64 rhsSize) {
     if (!lhs || !rhs || lhsSize == 0 || rhsSize == 0) {
@@ -104,7 +86,7 @@ Result Tensor::Impl::Layout::computeDefaultStrides() {
     U64 strideVal = 1;
     for (std::size_t i = rank; i-- > 0;) {
         candidate[i] = strideVal;
-        if (!CheckedMultiply(strideVal, shape[i], strideVal)) {
+        if (!detail::CheckedMultiply(strideVal, shape[i], strideVal)) {
             JST_ERROR("[MEMORY:TENSOR] Shape exceeds the supported layout range.");
             return Result::ERROR;
         }
@@ -143,9 +125,9 @@ Result Tensor::Impl::Layout::updateCache() {
     for (std::size_t i = 0; i < rank; ++i) {
         const U64 dim = shape[i];
         candidateShapeMinusOne[i] = dim > 0 ? dim - 1 : 0;
-        if (!CheckedMultiply(stride[i], candidateShapeMinusOne[i],
-                             candidateBackstride[i]) ||
-            !CheckedMultiply(candidateSize, dim, candidateSize)) {
+        if (!detail::CheckedMultiply(stride[i], candidateShapeMinusOne[i],
+                                     candidateBackstride[i]) ||
+            !detail::CheckedMultiply(candidateSize, dim, candidateSize)) {
             JST_ERROR("[MEMORY:TENSOR] Shape exceeds the supported layout range.");
             return Result::ERROR;
         }
@@ -153,8 +135,8 @@ Result Tensor::Impl::Layout::updateCache() {
 
     U64 candidateSizeBytes = 0;
     U64 candidateOffsetBytes = 0;
-    if (!CheckedMultiply(candidateSize, elementSize, candidateSizeBytes) ||
-        !CheckedMultiply(offset, elementSize, candidateOffsetBytes)) {
+    if (!detail::CheckedMultiply(candidateSize, elementSize, candidateSizeBytes) ||
+        !detail::CheckedMultiply(offset, elementSize, candidateOffsetBytes)) {
         JST_ERROR("[MEMORY:TENSOR] Tensor byte range exceeds the supported layout range.");
         return Result::ERROR;
     }
@@ -169,7 +151,7 @@ Result Tensor::Impl::Layout::updateCache() {
             candidateContiguous = false;
             break;
         }
-        if (!CheckedMultiply(expectedStride, shape[i], expectedStride)) {
+        if (!detail::CheckedMultiply(expectedStride, shape[i], expectedStride)) {
             JST_ERROR("[MEMORY:TENSOR] Shape exceeds the supported layout range.");
             return Result::ERROR;
         }
@@ -252,7 +234,7 @@ Result Tensor::Impl::Layout::reshape(const Shape& newShape) {
             JST_ERROR("[MEMORY:TENSOR] Reshape dimension cannot be zero.");
             return Result::ERROR;
         }
-        if (!CheckedMultiply(newSize, dim, newSize)) {
+        if (!detail::CheckedMultiply(newSize, dim, newSize)) {
             JST_ERROR("[MEMORY:TENSOR] Reshape exceeds the supported layout range.");
             return Result::ERROR;
         }
@@ -328,8 +310,8 @@ Result Tensor::Impl::Layout::slice(const std::vector<Token>& slice) {
                 }
 
                 U64 indexOffset = 0;
-                if (!CheckedMultiply(index, stride[dim], indexOffset) ||
-                    !CheckedAdd(offsetVal, indexOffset, offsetVal)) {
+                if (!detail::CheckedMultiply(index, stride[dim], indexOffset) ||
+                    !detail::CheckedAdd(offsetVal, indexOffset, offsetVal)) {
                     JST_ERROR("[MEMORY:TENSOR] Slice offset exceeds the supported layout range.");
                     return Result::ERROR;
                 }
@@ -370,9 +352,9 @@ Result Tensor::Impl::Layout::slice(const std::vector<Token>& slice) {
 
                 U64 slicedStride = 0;
                 U64 startOffset = 0;
-                if (!CheckedMultiply(stride[dim], step, slicedStride) ||
-                    !CheckedMultiply(start, stride[dim], startOffset) ||
-                    !CheckedAdd(offsetVal, startOffset, offsetVal)) {
+                if (!detail::CheckedMultiply(stride[dim], step, slicedStride) ||
+                    !detail::CheckedMultiply(start, stride[dim], startOffset) ||
+                    !detail::CheckedAdd(offsetVal, startOffset, offsetVal)) {
                     JST_ERROR("[MEMORY:TENSOR] Slice exceeds the supported layout range.");
                     return Result::ERROR;
                 }

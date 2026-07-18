@@ -1,6 +1,7 @@
 #include "jetstream/render/base/buffer.hh"
 #include "jetstream/render/base/texture.hh"
 #include "jetstream/render/base/transfer.hh"
+#include "jetstream/tools/numeric.hh"
 
 #include <algorithm>
 #include <cstring>
@@ -39,14 +40,6 @@ bool PendingUploadRange(const Transfer::PendingUpload& upload,
     }
 
     end = upload.start + extent;
-    return true;
-}
-
-bool CheckedMultiply(const U64 lhs, const U64 rhs, U64& result) {
-    if (lhs != 0 && rhs > std::numeric_limits<U64>::max() / lhs) {
-        return false;
-    }
-    result = lhs * rhs;
     return true;
 }
 
@@ -347,9 +340,9 @@ Result Transfer::PendingUploadQueue::queueLocked(const U64& start,
     }
 
     U64 mergedByteSize = 0;
-    if (!CheckedMultiply(mergedEnd - mergedStart,
-                         unitByteSize,
-                         mergedByteSize) ||
+    if (!::Jetstream::detail::CheckedMultiply(mergedEnd - mergedStart,
+                                              unitByteSize,
+                                              mergedByteSize) ||
         mergedByteSize > std::numeric_limits<size_t>::max()) {
         return Result::ERROR;
     }
@@ -371,9 +364,9 @@ Result Transfer::PendingUploadQueue::queueLocked(const U64& start,
 
     for (auto upload = first; upload != last; ++upload) {
         U64 offset = 0;
-        if (!CheckedMultiply(upload->start - mergedStart,
-                             unitByteSize,
-                             offset) ||
+        if (!::Jetstream::detail::CheckedMultiply(upload->start - mergedStart,
+                                                  unitByteSize,
+                                                  offset) ||
             offset > mergedByteSize ||
             upload->data.size() > mergedByteSize - offset) {
             return Result::ERROR;
@@ -384,7 +377,7 @@ Result Transfer::PendingUploadQueue::queueLocked(const U64& start,
     }
 
     U64 offset = 0;
-    if (!CheckedMultiply(start - mergedStart, unitByteSize, offset) ||
+    if (!::Jetstream::detail::CheckedMultiply(start - mergedStart, unitByteSize, offset) ||
         offset > mergedByteSize || byteSize > mergedByteSize - offset) {
         return Result::ERROR;
     }

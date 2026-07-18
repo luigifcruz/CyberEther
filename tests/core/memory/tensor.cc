@@ -188,21 +188,81 @@ TEST_CASE("Tensor borrows CPU storage and provides typed access",
 TEST_CASE("Custom TypedTensor supports multidimensional and empty layouts",
           "[core][memory][tensor][typed]") {
     SECTION("multidimensional indexing uses logical object coordinates") {
-        // Keep the current incorrect offset in bounds while asserting the logical offset.
-        constexpr U64 incorrectOffset = 3 * sizeof(Pixel) + 2;
-        std::array<Pixel, incorrectOffset + 1> storage{};
+        std::array<Pixel, 6> storage{};
         TypedTensor<Pixel> pixels(storage.data(), DeviceType::CPU, DataType::U8,
                                   {2, 3 * sizeof(Pixel)});
         storage[5] = Pixel{11, 29};
-        storage[incorrectOffset] = Pixel{97, 101};
 
         REQUIRE(pixels.shape() == Shape{2, 3 * sizeof(Pixel)});
         REQUIRE(pixels.size() == 6);
         REQUIRE(pixels.sizeBytes() == 6 * sizeof(Pixel));
-        // Current failure: custom TypedTensor indexing applies byte strides as object strides.
         REQUIRE(&pixels.at(1, 2) == pixels.data() + 5);
         REQUIRE(pixels.at(1, 2).red == 11);
         REQUIRE(pixels.at(1, 2).green == 29);
+
+        const auto& constPixels = pixels;
+        REQUIRE(&constPixels.at(1, 2) == constPixels.data() + 5);
+        REQUIRE_THROWS_AS(pixels.at(2, 0), std::out_of_range);
+        REQUIRE_THROWS_AS(pixels.at(0, 3), std::out_of_range);
+        REQUIRE_THROWS_AS(pixels.at(0), std::out_of_range);
+        REQUIRE_THROWS_AS(pixels.at(std::numeric_limits<U64>::max(), 0),
+                          std::out_of_range);
+    }
+
+    SECTION("offset views apply their storage offset once") {
+        std::array<Pixel, 6> storage{};
+        TypedTensor<Pixel> pixels(storage.data(), DeviceType::CPU, DataType::U8,
+                                  {2, 3 * sizeof(Pixel)});
+        storage[5] = Pixel{37, 41};
+
+        REQUIRE(pixels.slice({Token(U64{1}), Token()}) == Result::SUCCESS);
+        REQUIRE(pixels.shape() == Shape{3 * sizeof(Pixel)});
+        REQUIRE(&pixels.at(2) == storage.data() + 5);
+        REQUIRE(pixels.at(2).red == 37);
+        REQUIRE(pixels.at(2).green == 41);
+    }
+
+    SECTION("layouts with a moved packed axis are rejected") {
+        TypedTensor<Pixel> pixels(DeviceType::CPU, {4, 2});
+
+        REQUIRE(pixels.permute({1, 0}) == Result::SUCCESS);
+        REQUIRE_THROWS_AS(pixels.at(2, 0), std::logic_error);
+    }
+
+    SECTION("byte-sliced object offsets are rejected") {
+        TypedTensor<Pixel> pixels(DeviceType::CPU, {2});
+
+        REQUIRE(pixels.slice({Token(U64{2}, U64{6})}) == Result::SUCCESS);
+        REQUIRE_THROWS_AS(pixels.at(0), std::logic_error);
+    }
+
+    SECTION("malformed backing storage is rejected") {
+        std::array<Pixel, 2> storage{};
+        TypedTensor<Pixel> pixels(storage.data(), DeviceType::CPU, DataType::U8,
+                                  {2 * sizeof(Pixel)});
+
+        Buffer undersized;
+        REQUIRE(undersized.create(DeviceType::CPU, sizeof(Pixel)) == Result::SUCCESS);
+        pixels.buffer() = undersized;
+        REQUIRE_THROWS_AS(pixels.at(1), std::out_of_range);
+
+        REQUIRE(pixels.buffer().destroy() == Result::SUCCESS);
+        REQUIRE_THROWS_AS(pixels.at(0), std::logic_error);
+    }
+
+    SECTION("incompatible runtime storage is rejected") {
+        std::array<F32, 1> storage{};
+        TypedTensor<Pixel> pixels(storage.data(), DeviceType::CPU, DataType::F32, {1});
+
+        REQUIRE_THROWS_AS(pixels.at(0), std::logic_error);
+    }
+
+    SECTION("misaligned borrowed storage is rejected") {
+        alignas(Pixel) std::array<std::uint8_t, sizeof(Pixel) + 1> storage{};
+        TypedTensor<Pixel> pixels(storage.data() + 1, DeviceType::CPU, DataType::U8,
+                                  {sizeof(Pixel)});
+
+        REQUIRE_THROWS_AS(pixels.at(0), std::runtime_error);
     }
 
     SECTION("zero extent") {
@@ -214,6 +274,20 @@ TEST_CASE("Custom TypedTensor supports multidimensional and empty layouts",
         REQUIRE(pixels.size() == 0);
         REQUIRE(pixels.sizeBytes() == 0);
         REQUIRE(pixels.data() == nullptr);
+        REQUIRE_THROWS_AS(pixels.at(0, 0, 0), std::out_of_range);
+    }
+
+    SECTION("shape conversion overflow preserves existing storage") {
+        TypedTensor<Pixel> pixels(DeviceType::CPU, {2});
+        const Shape shape = pixels.shape();
+        const Index id = pixels.id();
+        void* const data = pixels.data();
+        const U64 overflowingExtent = std::numeric_limits<U64>::max() / sizeof(Pixel) + 1;
+
+        REQUIRE(pixels.create(DeviceType::CPU, {overflowingExtent}) == Result::ERROR);
+        REQUIRE(pixels.shape() == shape);
+        REQUIRE(pixels.id() == id);
+        REQUIRE(pixels.data() == data);
     }
 }
 

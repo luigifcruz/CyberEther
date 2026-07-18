@@ -4,9 +4,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
-#include <limits>
 
 #include "jetstream/config.hh"
+#include "jetstream/tools/numeric.hh"
 
 #if defined(JST_OS_WINDOWS)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -41,12 +41,7 @@ inline bool CheckedRoundUp(const std::uint64_t value, const std::uint64_t alignm
 
     const auto remainder = value % alignment;
     const auto padding = remainder == 0 ? 0 : alignment - remainder;
-    if (value > std::numeric_limits<std::uint64_t>::max() - padding) {
-        return false;
-    }
-
-    rounded = value + padding;
-    return true;
+    return CheckedAdd(value, padding, rounded);
 }
 
 inline bool CheckedPageAlignedSize(const std::uint64_t bytes, std::uint64_t& alignedBytes) {
