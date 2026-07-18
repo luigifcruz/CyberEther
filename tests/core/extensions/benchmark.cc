@@ -523,9 +523,7 @@ TEST_CASE("Benchmark handles registry module factory failures",
 
         std::ostringstream output;
         REQUIRE_THROWS_AS(Benchmark::Run("quiet", type, output), std::runtime_error);
-        // Current defect: Benchmark::Run leaves logging disabled when a module factory throws.
-        CHECK(_JST_LOG_DEBUG_LEVEL() == debugLevel.original());
-        JST_LOG_SET_DEBUG_LEVEL(debugLevel.original());
+        REQUIRE(_JST_LOG_DEBUG_LEVEL() == debugLevel.original());
         REQUIRE(Benchmark::CurrentCount() == 0);
         REQUIRE(Benchmark::GetResults().empty());
     }
@@ -603,9 +601,7 @@ TEST_CASE("Benchmark orchestration validates output and restores process state",
 
         std::ostringstream output;
         REQUIRE_THROWS_AS(Benchmark::Run("quiet", type, output), std::runtime_error);
-        // Current defect: Benchmark::Run leaves logging disabled when a factory throws.
-        CHECK(_JST_LOG_DEBUG_LEVEL() == debugLevel.original());
-        JST_LOG_SET_DEBUG_LEVEL(debugLevel.original());
+        REQUIRE(_JST_LOG_DEBUG_LEVEL() == debugLevel.original());
         REQUIRE(Benchmark::GetResults().empty());
     }
 
@@ -638,9 +634,7 @@ TEST_CASE("Benchmark orchestration validates output and restores process state",
         REQUIRE_THROWS(Benchmark::Run("csv", type, output));
 
         RequireCompletedLifecycle(state);
-        // Current defect: Benchmark::Run leaves logging disabled when output rendering throws.
-        CHECK(_JST_LOG_DEBUG_LEVEL() == debugLevel.original());
-        JST_LOG_SET_DEBUG_LEVEL(debugLevel.original());
+        REQUIRE(_JST_LOG_DEBUG_LEVEL() == debugLevel.original());
         REQUIRE(Benchmark::CurrentCount() == 0);
         REQUIRE(Benchmark::GetResults().empty());
     }
