@@ -391,10 +391,6 @@ Result Transfer::PendingUploadQueue::queueLocked(const U64& start,
 Transfer::Batch::Batch() = default;
 
 Transfer::Batch::~Batch() {
-    if (committed) {
-        return;
-    }
-
     for (auto& transfer : bufferTransfers) {
         std::vector<PendingUpload> uploads;
         uploads.push_back(std::move(transfer.upload));
@@ -460,7 +456,6 @@ void Transfer::Batch::collect(const std::shared_ptr<Texture>& texture) {
 }
 
 void Transfer::Batch::commit() {
-    committed = true;
     bufferTransfers.clear();
     textureTransfers.clear();
     collectedBuffers.clear();

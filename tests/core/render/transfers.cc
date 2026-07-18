@@ -570,13 +570,41 @@ TEST_CASE("Transfer batches restore work accepted after an earlier commit",
         REQUIRE(buffer->update() == Result::SUCCESS);
         batch.collect(buffer);
         REQUIRE(batch.buffers().size() == 1);
-        // Product defect: accepted post-commit work is dropped instead of restored.
     }
 
     Render::Transfer::Batch restored;
     restored.collect(buffer);
     REQUIRE(restored.buffers().size() == 1);
+    const auto* bufferBytes = reinterpret_cast<const U8*>(source.data());
+    const std::vector<U8> expectedBufferData(bufferBytes, bufferBytes + sizeof(source));
+    REQUIRE(restored.buffers()[0].upload.data == expectedBufferData);
     restored.commit();
+
+    std::array<U8, 16> textureSource{};
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{
+        .size = {2, 2},
+        .buffer = textureSource.data(),
+    });
+
+    REQUIRE(texture->fill() == Result::SUCCESS);
+    {
+        Render::Transfer::Batch batch;
+        batch.collect(texture);
+        REQUIRE(batch.textures().size() == 1);
+        batch.commit();
+
+        textureSource.fill(42);
+        REQUIRE(texture->fill() == Result::SUCCESS);
+        batch.collect(texture);
+        REQUIRE(batch.textures().size() == 1);
+    }
+
+    Render::Transfer::Batch restoredTexture;
+    restoredTexture.collect(texture);
+    REQUIRE(restoredTexture.textures().size() == 1);
+    REQUIRE(restoredTexture.textures()[0].upload.data ==
+            std::vector<U8>(textureSource.begin(), textureSource.end()));
+    restoredTexture.commit();
 }
 
 TEST_CASE("Standalone attachments do not make transfer collection order-dependent",
