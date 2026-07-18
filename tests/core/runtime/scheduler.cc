@@ -682,15 +682,14 @@ TEST_CASE("Scheduler presents only modules with surface taint",
     auto surface = fixture.module("present_surface");
     REQUIRE(fixture.scheduler.add(computeOnly) == Result::SUCCESS);
     REQUIRE(fixture.scheduler.add(surface) == Result::SUCCESS);
-    // Current defect: add initializes presentation for modules without SURFACE taint.
-    CHECK(state.count("present_initialize", "present_compute_only") == 0);
+    REQUIRE(state.count("present_initialize", "present_compute_only") == 0);
+    REQUIRE(state.count("present_initialize", "present_surface") == 1);
 
     state.clearEvents();
     std::unordered_set<std::string> failedModules;
     REQUIRE(fixture.scheduler.present(failedModules) == Result::SUCCESS);
     REQUIRE(failedModules.empty());
     REQUIRE(state.count("present", "present_surface") == 1);
-    // Current defect: rebuildOrder checks the always-allocated Surface object, not the SURFACE taint.
     REQUIRE(state.count("present", "present_compute_only") == 0);
 }
 

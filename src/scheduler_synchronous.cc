@@ -148,7 +148,9 @@ Result SynchronousScheduler::stop() {
 }
 
 Result SynchronousScheduler::add(const std::shared_ptr<Module>& module) {
-    JST_CHECK(module->context()->scheduler()->presentInitialize());
+    if ((module->taint() & Module::Taint::SURFACE) != Module::Taint::CLEAN) {
+        JST_CHECK(module->context()->scheduler()->presentInitialize());
+    }
 
     JST_CHECK(lockState([&]{
         if (modules.contains(module->name())) {
@@ -573,7 +575,7 @@ Result SynchronousScheduler::rebuildOrder() {
             sourceModules.push_back(name);
         }
 
-        if (modules.at(name)->surface()) {
+        if ((modules.at(name)->taint() & Module::Taint::SURFACE) != Module::Taint::CLEAN) {
             presentModules.push_back(name);
         }
     }
