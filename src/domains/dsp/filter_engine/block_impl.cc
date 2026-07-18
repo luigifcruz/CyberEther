@@ -315,6 +315,13 @@ bool FilterEngineImpl::calculateResampleHeuristics(const Tensor& filterTensor,
     return true;
 }
 
-JST_REGISTER_BLOCK(FilterEngineImpl);
+JST_REGISTER_BLOCK(FilterEngineImpl,
+                   {"pad"},
+                   {"fft"},
+                   {"multiply"},
+                   {"unpad"},
+                   {"overlap_add"},
+                   {"expand_dims", true},
+                   {"fold", true});
 
 }  // namespace Jetstream::Blocks

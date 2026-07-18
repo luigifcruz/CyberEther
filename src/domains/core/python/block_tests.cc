@@ -67,7 +67,7 @@ struct PythonMetricsSourceTestBlock : Block::Impl,
     }
 };
 
-JST_REGISTER_BLOCK(PythonMetricsSourceTestBlock);
+JST_REGISTER_BLOCK_NO_MODULES(PythonMetricsSourceTestBlock);
 
 }  // namespace
 

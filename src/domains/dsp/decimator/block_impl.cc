@@ -159,6 +159,10 @@ Result DecimatorImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(DecimatorImpl);
+JST_REGISTER_BLOCK(DecimatorImpl,
+                   {"reshape"},
+                   {"arithmetic"},
+                   {"squeeze_dims"},
+                   {"duplicate"});
 
 }  // namespace Jetstream::Blocks

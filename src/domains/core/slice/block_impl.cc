@@ -68,6 +68,8 @@ Result SliceImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(SliceImpl);
+JST_REGISTER_BLOCK(SliceImpl,
+                   {"slice"},
+                   {"duplicate", true});
 
 }  // namespace Jetstream::Blocks

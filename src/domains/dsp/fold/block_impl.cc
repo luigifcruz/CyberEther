@@ -59,6 +59,6 @@ Result FoldImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(FoldImpl);
+JST_REGISTER_BLOCK(FoldImpl, {"fold"});
 
 }  // namespace Jetstream::Blocks

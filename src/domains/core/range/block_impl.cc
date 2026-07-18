@@ -52,6 +52,6 @@ Result RangeImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(RangeImpl);
+JST_REGISTER_BLOCK(RangeImpl, {"range"});
 
 }  // namespace Jetstream::Blocks

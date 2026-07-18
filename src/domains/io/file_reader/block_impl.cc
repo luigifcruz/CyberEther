@@ -102,6 +102,6 @@ Result FileReaderImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(FileReaderImpl);
+JST_REGISTER_BLOCK(FileReaderImpl, {"file_reader"});
 
 }  // namespace Jetstream::Blocks

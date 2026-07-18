@@ -46,6 +46,6 @@ Result ThrottleImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(ThrottleImpl);
+JST_REGISTER_BLOCK(ThrottleImpl, {"throttle"});
 
 }  // namespace Jetstream::Blocks

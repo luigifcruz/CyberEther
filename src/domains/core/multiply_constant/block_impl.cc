@@ -42,6 +42,6 @@ Result MultiplyConstantImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(MultiplyConstantImpl);
+JST_REGISTER_BLOCK(MultiplyConstantImpl, {"multiply_constant"});
 
 }  // namespace Jetstream::Blocks

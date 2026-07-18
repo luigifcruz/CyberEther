@@ -22,6 +22,6 @@ Result NoteImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(NoteImpl);
+JST_REGISTER_BLOCK_NO_MODULES(NoteImpl);
 
 }  // namespace Jetstream::Blocks

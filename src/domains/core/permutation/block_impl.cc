@@ -68,6 +68,8 @@ Result PermutationImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(PermutationImpl);
+JST_REGISTER_BLOCK(PermutationImpl,
+                   {"permutation"},
+                   {"duplicate", true});
 
 }  // namespace Jetstream::Blocks

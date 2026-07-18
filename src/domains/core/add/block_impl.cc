@@ -32,6 +32,6 @@ Result AddImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(AddImpl);
+JST_REGISTER_BLOCK(AddImpl, {"add"});
 
 }  // namespace Jetstream::Blocks

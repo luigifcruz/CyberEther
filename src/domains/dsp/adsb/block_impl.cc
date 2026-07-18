@@ -46,6 +46,6 @@ Result AdsbImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(AdsbImpl);
+JST_REGISTER_BLOCK(AdsbImpl, {"adsb"});
 
 }  // namespace Jetstream::Blocks
