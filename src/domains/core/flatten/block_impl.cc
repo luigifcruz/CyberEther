@@ -29,6 +29,7 @@ Result FlattenImpl::validate() {
 
 Result FlattenImpl::configure() {
     duplicateModuleConfig->hostAccessible = true;
+    duplicateModuleConfig->outputDevice = GetDeviceName(device());
 
     return Result::SUCCESS;
 }

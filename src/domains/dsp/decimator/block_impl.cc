@@ -50,6 +50,7 @@ Result DecimatorImpl::configure() {
     arithmeticConfig->axis = axis + 1;
     squeezeDimsConfig->axis = axis + 1;
     duplicateConfig->hostAccessible = true;
+    duplicateConfig->outputDevice = GetDeviceName(device());
 
     return Result::SUCCESS;
 }

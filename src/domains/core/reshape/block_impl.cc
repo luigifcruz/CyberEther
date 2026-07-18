@@ -30,6 +30,7 @@ Result ReshapeImpl::validate() {
 Result ReshapeImpl::configure() {
     reshapeModuleConfig->shape = shape;
     duplicateModuleConfig->hostAccessible = true;
+    duplicateModuleConfig->outputDevice = GetDeviceName(device());
 
     return Result::SUCCESS;
 }
