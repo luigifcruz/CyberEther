@@ -58,22 +58,42 @@ class JETSTREAM_API Parser {
 
     template<typename T>
     static Result Deserialize(const Map& map, const std::string& name, T& variable) {
-        if (map.contains(name) == 0) {
-            if constexpr (detail::Optional<std::remove_cvref_t<T>>) {
-                variable.reset();
+        try {
+            if (map.contains(name) == 0) {
+                if constexpr (detail::Optional<std::remove_cvref_t<T>>) {
+                    variable.reset();
+                }
+
+                JST_TRACE("[PARSER] Variable name '{}' not found inside map.", name);
+                return Result::SUCCESS;
             }
 
-            JST_TRACE("[PARSER] Variable name '{}' not found inside map.", name);
-            return Result::SUCCESS;
-        }
+            const auto& encoded = map.at(name);
+            if (!encoded.has_value()) {
+                JST_ERROR("[PARSER] Variable '{}' not initialized.", name);
+                return Result::ERROR;
+            }
 
-        const auto& encoded = map.at(name);
-        if (!encoded.has_value()) {
-            JST_ERROR("[PARSER] Variable '{}' not initialized.", name);
+            return Decode(encoded, name, variable);
+        } catch (const Result& status) {
+            try {
+                JST_ERROR("[PARSER] Failed to deserialize variable '{}': {}.", name, status);
+            } catch (...) {
+            }
+            return Result::ERROR;
+        } catch (const std::exception& e) {
+            try {
+                JST_ERROR("[PARSER] Failed to deserialize variable '{}': {}.", name, e.what());
+            } catch (...) {
+            }
+            return Result::ERROR;
+        } catch (...) {
+            try {
+                JST_ERROR("[PARSER] Unknown exception while deserializing variable '{}'.", name);
+            } catch (...) {
+            }
             return Result::ERROR;
         }
-
-        return Decode(encoded, name, variable);
     }
 
     template<typename T>

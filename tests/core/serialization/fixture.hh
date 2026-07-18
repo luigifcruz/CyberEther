@@ -74,6 +74,18 @@ struct ThrowingDeserializeConfig {
     }
 };
 
+struct ResultThrowingDeserializeConfig {
+    Result deserialize(const Parser::Map&) {
+        throw Result::FATAL;
+    }
+};
+
+struct UnknownThrowingDeserializeConfig {
+    Result deserialize(const Parser::Map&) {
+        throw 42;
+    }
+};
+
 struct UnsupportedValue {};
 
 inline Parser::Map MakeInnerMap(const U64 gain, const bool enabled) {

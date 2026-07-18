@@ -1,6 +1,10 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <ostream>
+#include <stdexcept>
+#include <streambuf>
+
 #include "fixture.hh"
 
 using namespace Jetstream;
@@ -29,6 +33,25 @@ struct ComplexSerdesConfig {
     CF64 offset = {};
 
     JST_SERDES(gain, offset);
+};
+
+struct ThrowingLogBuffer : std::streambuf {
+    bool attempted = false;
+
+    int_type overflow(int_type) override {
+        attempted = true;
+        throw std::runtime_error("log failure");
+    }
+};
+
+struct LogSinkRestore {
+    explicit LogSinkRestore(std::ostream& sink) : sink(&sink) {}
+
+    ~LogSinkRestore() {
+        JST_LOG_SET_SINK(sink);
+    }
+
+    std::ostream* sink;
 };
 
 }  // namespace
@@ -440,10 +463,42 @@ TEST_CASE("Parser::Serialize propagates custom serializer failures", "[core][ser
 TEST_CASE("Parser::Deserialize contains custom deserializer exceptions", "[core][serialization][serdes][errors]") {
     Parser::Map data;
     data["value"] = Parser::Map{};
-    ThrowingDeserializeConfig value;
-    Result result = Result::SUCCESS;
 
-    // Defect: deserializer exceptions escape instead of becoming Result::ERROR.
-    REQUIRE_NOTHROW(result = Parser::Deserialize(data, "value", value));
-    REQUIRE(result == Result::ERROR);
+    SECTION("standard exception") {
+        ThrowingDeserializeConfig value;
+        Result result = Result::SUCCESS;
+
+        REQUIRE_NOTHROW(result = Parser::Deserialize(data, "value", value));
+        REQUIRE(result == Result::ERROR);
+    }
+
+    SECTION("Result exception") {
+        ResultThrowingDeserializeConfig value;
+        Result result = Result::SUCCESS;
+
+        REQUIRE_NOTHROW(result = Parser::Deserialize(data, "value", value));
+        REQUIRE(result == Result::ERROR);
+    }
+
+    SECTION("unknown exception") {
+        UnknownThrowingDeserializeConfig value;
+        Result result = Result::SUCCESS;
+
+        REQUIRE_NOTHROW(result = Parser::Deserialize(data, "value", value));
+        REQUIRE(result == Result::ERROR);
+    }
+
+    SECTION("logger exception") {
+        ThrowingDeserializeConfig value;
+        ThrowingLogBuffer buffer;
+        std::ostream sink(&buffer);
+        sink.exceptions(std::ios::badbit | std::ios::failbit);
+        LogSinkRestore restore(JST_LOG_SINK());
+        JST_LOG_SET_SINK(&sink);
+        Result result = Result::SUCCESS;
+
+        REQUIRE_NOTHROW(result = Parser::Deserialize(data, "value", value));
+        REQUIRE(buffer.attempted);
+        REQUIRE(result == Result::ERROR);
+    }
 }
