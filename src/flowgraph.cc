@@ -1311,34 +1311,6 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
         }
     }
 
-    {
-        std::unique_lock metadataLock(impl->metadataMutex);
-
-        if (document.title.has_value()) {
-            impl->title = *document.title;
-        }
-        if (document.summary.has_value()) {
-            impl->summary = *document.summary;
-        }
-        if (document.author.has_value()) {
-            impl->author = *document.author;
-        }
-        if (document.license.has_value()) {
-            impl->license = *document.license;
-        }
-        if (document.description.has_value()) {
-            impl->description = *document.description;
-        }
-
-        if (document.meta.has_value()) {
-            impl->metadataValues = *document.meta;
-        }
-    }
-
-    if (document.graph.empty()) {
-        return Result::SUCCESS;
-    }
-
     struct NodeDef {
         std::string type;
         DeviceType device = DeviceType::CPU;
@@ -1414,6 +1386,10 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
     }
 
     for (const auto& name : nodeOrder) {
+        if (existingBlocks.contains(name)) {
+            JST_ERROR("[FLOWGRAPH] Block '{}' already exists.", name);
+            return Result::ERROR;
+        }
         indegree[name] = 0;
     }
 
@@ -1464,6 +1440,9 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
                (dependent == dependents.end() || dependent->second.empty());
     });
 
+    std::vector<std::string> createdBlocks;
+    createdBlocks.reserve(order.size());
+
     for (const auto& name : order) {
         const auto& def = nodes.at(name);
 
@@ -1472,12 +1451,57 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
             requestedInputs[slot].requested(ref.block, ref.port);
         }
 
-        if (!def.meta.empty()) {
-            std::unique_lock metadataLock(impl->metadataMutex);
-            impl->blockMetadataValues[name] = def.meta;
+        const auto result = blockCreate(name,
+                                        def.type,
+                                        def.config,
+                                        requestedInputs,
+                                        def.device,
+                                        def.runtime,
+                                        def.provider);
+        if (result != Result::SUCCESS) {
+            for (auto created = createdBlocks.rbegin();
+                 created != createdBlocks.rend();
+                 ++created) {
+                if (blockDestroy(*created, false) != Result::SUCCESS) {
+                    JST_ERROR("[FLOWGRAPH] Failed to roll back imported block '{}'.",
+                              *created);
+                }
+            }
+            return result;
         }
 
-        JST_CHECK(blockCreate(name, def.type, def.config, requestedInputs, def.device, def.runtime, def.provider));
+        createdBlocks.push_back(name);
+    }
+
+    {
+        std::unique_lock metadataLock(impl->metadataMutex);
+
+        if (document.title.has_value()) {
+            impl->title = *document.title;
+        }
+        if (document.summary.has_value()) {
+            impl->summary = *document.summary;
+        }
+        if (document.author.has_value()) {
+            impl->author = *document.author;
+        }
+        if (document.license.has_value()) {
+            impl->license = *document.license;
+        }
+        if (document.description.has_value()) {
+            impl->description = *document.description;
+        }
+
+        if (document.meta.has_value()) {
+            impl->metadataValues = *document.meta;
+        }
+
+        for (const auto& name : order) {
+            const auto& meta = nodes.at(name).meta;
+            if (!meta.empty()) {
+                impl->blockMetadataValues[name] = meta;
+            }
+        }
     }
 
     return Result::SUCCESS;

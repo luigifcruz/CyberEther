@@ -292,9 +292,7 @@ graph:
         Parser::Map layout;
         REQUIRE(flowgraph.metadata().get("layout", layout) == Result::SUCCESS);
 
-        // Defect: import applies document fields before validating the complete graph.
         CHECK(flowgraph.title() == "before");
-        // Defect: import replaces graph metadata before validating the complete graph.
         CHECK(StateValue(layout) == "before");
         REQUIRE(flowgraph.view().size() == 1);
         REQUIRE(flowgraph.view().has("seed"));
@@ -317,13 +315,10 @@ graph:
         value: broken
 )") == Result::ERROR);
 
-        // Defect: import leaves blocks created before a later block creation fails.
         CHECK(flowgraph.view().size() == 1);
-        // Defect: import does not remove a block created by the failed transaction.
         CHECK_FALSE(flowgraph.view().has("imported"));
         REQUIRE(flowgraph.view().has("seed"));
         REQUIRE(ViewBlock(flowgraph, "seed").outputs.at("signal").tensor.id() == seedOutputId);
-        // Defect: import leaves metadata for blocks touched by the failed transaction.
         CHECK_FALSE(flowgraph.metadata().has("marker", "imported"));
         CHECK_FALSE(flowgraph.metadata().has("marker", "broken"));
     }
