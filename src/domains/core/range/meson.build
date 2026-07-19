@@ -2,6 +2,7 @@ src_lst += files([
     'block_impl.cc',
     'module_impl.cc',
     'module_impl_native_cpu.cc',
+    'module_benchmarks.cc',
 ])
 
 if cfg_lst.get('JETSTREAM_BACKEND_CUDA_AVAILABLE', false)
