@@ -408,6 +408,10 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
             if (!takeValue(value)) {
                 return PrintUsageError(argv[0], "Missing value for --plugin. Expected a .cep path.");
             }
+            if (!Plugin::IsCepPath(value)) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --plugin: '{}'. Expected a .cep path.", value));
+            }
             commandLinePlugins.push_back(value);
             continue;
         }

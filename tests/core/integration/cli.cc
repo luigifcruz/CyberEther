@@ -756,17 +756,20 @@ TEST_CASE("CLI rejects removed commands and options", "[core][integration][cli]"
 }
 
 TEST_CASE("CLI validates plugin paths before startup", "[core][integration][cli]") {
-    const InvocationResult result = Invoke({"--plugin=archive.tar.gz", "--help"});
-    CAPTURE(result.code, result.out, result.err);
-    CHECK(result.sandboxUntouched);
+    const InvocationResult invalid = Invoke({"--plugin=archive.tar.gz", "--help"});
+    CAPTURE(invalid.code, invalid.out, invalid.err);
+    CHECK(invalid.sandboxUntouched);
+    CHECK(invalid.code == 2);
+    CHECK(invalid.out.empty());
+    CHECK(invalid.err == UsageError(
+        "Invalid value for --plugin: 'archive.tar.gz'. Expected a .cep path."));
 
-    // Expected failure: .cep extension validation is deferred until plugin startup.
-    CHECK(result.code == 2);
-    if (result.code == 2) {
-        CHECK(result.out.empty());
-        CHECK(result.err == UsageError(
-            "Invalid value for --plugin: 'archive.tar.gz'. Expected a .cep path."));
-    }
+    const InvocationResult mixedCase = Invoke({"--plugin=archive.CeP", "--help"});
+    CAPTURE(mixedCase.code, mixedCase.out, mixedCase.err);
+    CHECK(mixedCase.sandboxUntouched);
+    CHECK(mixedCase.code == 0);
+    CHECK_FALSE(mixedCase.out.empty());
+    CHECK(mixedCase.err.empty());
 }
 
 TEST_CASE("CLI restores the process log level after parser exits",
