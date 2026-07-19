@@ -60,10 +60,20 @@ Result Instance::Remote::Impl::destroyBroker() {
 }
 
 Result Instance::Remote::Impl::createRoom() {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     {
-        std::lock_guard<std::mutex> lock(roomMutex);
-        roomReady = false;
-        roomFailed = false;
+        std::unique_lock<std::mutex> lock(roomMutex);
+        const bool completed = roomCondition.wait_until(lock, deadline, [this]() {
+            return signallerReady || roomFailed || !signallerRunning;
+        });
+        if (!completed) {
+            JST_ERROR("[REMOTE] Timed out while waiting for the signaller welcome message.");
+            return Result::ERROR;
+        }
+        if (!signallerReady) {
+            JST_ERROR("[REMOTE] Signaller failed before becoming ready.");
+            return Result::ERROR;
+        }
     }
 
     if (!sendSignallerMessage({{"type", "createRoom"}})) {
@@ -72,11 +82,15 @@ Result Instance::Remote::Impl::createRoom() {
     }
 
     std::unique_lock<std::mutex> lock(roomMutex);
-    const bool completed = roomCondition.wait_for(lock, std::chrono::seconds(10), [this]() {
+    const bool completed = roomCondition.wait_until(lock, deadline, [this]() {
         return roomReady || roomFailed || !signallerRunning;
     });
-    if (!completed || !roomReady) {
-        JST_ERROR("[REMOTE] Timed out or failed while creating the remote room.");
+    if (!completed) {
+        JST_ERROR("[REMOTE] Timed out while creating the remote room.");
+        return Result::ERROR;
+    }
+    if (!roomReady) {
+        JST_ERROR("[REMOTE] Signaller failed while creating the remote room.");
         return Result::ERROR;
     }
 
@@ -86,6 +100,13 @@ Result Instance::Remote::Impl::createRoom() {
 
 Result Instance::Remote::Impl::startSignaller() {
     JST_DEBUG("[REMOTE] Starting WebRTC signaller.");
+
+    {
+        std::lock_guard<std::mutex> lock(roomMutex);
+        signallerReady = false;
+        roomReady = false;
+        roomFailed = false;
+    }
 
     signallerClient = std::make_unique<httplib::ws::WebSocketClient>(signallerUrl);
     signallerClient->set_connection_timeout(5);
