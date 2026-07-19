@@ -106,6 +106,6 @@ Result FileWriterImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(FileWriterImpl);
+JST_REGISTER_BLOCK(FileWriterImpl, {"file_writer"});
 
 }  // namespace Jetstream::Blocks

@@ -40,6 +40,6 @@ Result WindowImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(WindowImpl);
+JST_REGISTER_BLOCK(WindowImpl, {"window"});
 
 }  // namespace Jetstream::Blocks

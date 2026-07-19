@@ -119,6 +119,6 @@ Result SignalGeneratorImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(SignalGeneratorImpl);
+JST_REGISTER_BLOCK(SignalGeneratorImpl, {"signal_generator"});
 
 }  // namespace Jetstream::Blocks

@@ -4,16 +4,62 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <vector>
 
 #include "flowgraph_fixture.hh"
 #include "jetstream/domains/core/ones_tensor/block.hh"
 #include "jetstream/domains/dsp/spectrum_engine/block.hh"
+#include "jetstream/registry.hh"
 
 using namespace Jetstream;
 
 TEST_CASE("Spectrum engine axis defaults to the last dimension",
           "[modules][dsp][spectrum_engine][config]") {
     REQUIRE(Blocks::SpectrumEngine{}.axis == -1);
+}
+
+TEST_CASE("Spectrum engine declares conditional module requirements",
+          "[modules][dsp][spectrum_engine][requirements]") {
+    const std::vector<Registry::BlockModuleRequirement> expected = {
+        {"window"},
+        {"invert"},
+        {"reshape"},
+        {"multiply"},
+        {"fft"},
+        {"amplitude"},
+        {"agc", true},
+        {"range", true},
+    };
+
+    const auto registrations = Registry::ListAvailableBlocks("spectrum_engine");
+    REQUIRE(registrations.size() == 1);
+    REQUIRE(registrations.front().moduleRequirements == expected);
+}
+
+TEST_CASE("Spectrum engine targets require only unconditional modules",
+          "[modules][dsp][spectrum_engine][requirements]") {
+    const auto targets = Registry::ListAvailableBlockTargets("spectrum_engine");
+    const auto cpu = std::find_if(
+        targets.begin(), targets.end(), [](const auto& target) {
+            return target.device == DeviceType::CPU &&
+                   target.runtime == RuntimeType::NATIVE &&
+                   target.provider == "generic";
+        });
+    REQUIRE(cpu != targets.end());
+
+    const auto cudaWindow = Registry::ListAvailableModules("window",
+                                                            DeviceType::CUDA,
+                                                            RuntimeType::NATIVE,
+                                                            "generic");
+    if (!cudaWindow.empty()) {
+        const auto cuda = std::find_if(
+            targets.begin(), targets.end(), [](const auto& target) {
+                return target.device == DeviceType::CUDA &&
+                       target.runtime == RuntimeType::NATIVE &&
+                       target.provider == "generic";
+            });
+        REQUIRE(cuda != targets.end());
+    }
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,

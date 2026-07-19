@@ -60,6 +60,6 @@ Result ArithmeticImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(ArithmeticImpl);
+JST_REGISTER_BLOCK(ArithmeticImpl, {"arithmetic"});
 
 }  // namespace Jetstream::Blocks

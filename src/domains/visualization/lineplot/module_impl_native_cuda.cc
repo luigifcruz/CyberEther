@@ -37,7 +37,7 @@ extern "C" __global__ void lineplot_update(const float* input,
         sum += input[(batch * inputRowWidth) + (index * decimation)];
     }
 
-    const float amplitude = (sum * normalizationFactor) - 1.0f;
+    const float amplitude = fminf(fmaxf((sum * normalizationFactor) - 1.0f, -1.0f), 1.0f);
     float average = averagingBuffer[index];
     average -= average / static_cast<float>(averaging);
     average += amplitude / static_cast<float>(averaging);

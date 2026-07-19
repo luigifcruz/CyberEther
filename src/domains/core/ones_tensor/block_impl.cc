@@ -44,6 +44,6 @@ Result OnesTensorImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(OnesTensorImpl);
+JST_REGISTER_BLOCK(OnesTensorImpl, {"ones_tensor"});
 
 }  // namespace Jetstream::Blocks

@@ -30,6 +30,7 @@ Result ReshapeImpl::validate() {
 Result ReshapeImpl::configure() {
     reshapeModuleConfig->shape = shape;
     duplicateModuleConfig->hostAccessible = true;
+    duplicateModuleConfig->outputDevice = GetDeviceName(device());
 
     return Result::SUCCESS;
 }
@@ -70,6 +71,8 @@ Result ReshapeImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(ReshapeImpl);
+JST_REGISTER_BLOCK(ReshapeImpl,
+                   {"reshape"},
+                   {"duplicate", true});
 
 }  // namespace Jetstream::Blocks

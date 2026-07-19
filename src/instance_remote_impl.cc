@@ -1397,9 +1397,19 @@ void Instance::Remote::Impl::handleSignallerMessage(const std::string& payload) 
     if (type == "welcome") {
         if (!j.contains("peerId") || !j["peerId"].is_string()) {
             JST_ERROR("[REMOTE] Invalid signaller welcome message.");
+            {
+                std::lock_guard<std::mutex> lock(roomMutex);
+                roomFailed = true;
+            }
+            roomCondition.notify_all();
             return;
         }
 
+        {
+            std::lock_guard<std::mutex> lock(roomMutex);
+            signallerReady = true;
+        }
+        roomCondition.notify_all();
         return;
     }
 

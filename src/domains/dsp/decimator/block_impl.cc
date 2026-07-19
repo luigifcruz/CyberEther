@@ -49,6 +49,7 @@ Result DecimatorImpl::validate() {
 Result DecimatorImpl::configure() {
     arithmeticConfig->operation = "add";
     duplicateConfig->hostAccessible = true;
+    duplicateConfig->outputDevice = GetDeviceName(device());
 
     return Result::SUCCESS;
 }
@@ -164,6 +165,10 @@ Result DecimatorImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(DecimatorImpl);
+JST_REGISTER_BLOCK(DecimatorImpl,
+                   {"reshape"},
+                   {"arithmetic"},
+                   {"squeeze_dims"},
+                   {"duplicate"});
 
 }  // namespace Jetstream::Blocks

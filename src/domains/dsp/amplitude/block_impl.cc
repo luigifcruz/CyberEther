@@ -46,6 +46,6 @@ Result AmplitudeImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(AmplitudeImpl);
+JST_REGISTER_BLOCK(AmplitudeImpl, {"amplitude"});
 
 }  // namespace Jetstream::Blocks

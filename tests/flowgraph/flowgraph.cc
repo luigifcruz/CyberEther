@@ -292,10 +292,10 @@ struct EnvironmentGateSinkTestBlock : Block::Impl,
 JST_REGISTER_MODULE(RuntimeErrorTestModule, DeviceType::CPU, RuntimeType::NATIVE, "generic");
 JST_REGISTER_MODULE(RuntimeErrorSinkTestModule, DeviceType::CPU, RuntimeType::NATIVE, "generic");
 JST_REGISTER_MODULE(EnvironmentGateTestModule, DeviceType::CPU, RuntimeType::NATIVE, "generic");
-JST_REGISTER_BLOCK(RuntimeErrorTestBlock);
-JST_REGISTER_BLOCK(RuntimeErrorSinkTestBlock);
-JST_REGISTER_BLOCK(EnvironmentGateTestBlock);
-JST_REGISTER_BLOCK(EnvironmentGateSinkTestBlock);
+JST_REGISTER_BLOCK(RuntimeErrorTestBlock, {"runtime_error_test_module"});
+JST_REGISTER_BLOCK(RuntimeErrorSinkTestBlock, {"runtime_error_sink_test_module"});
+JST_REGISTER_BLOCK(EnvironmentGateTestBlock, {"environment_gate_test_module"});
+JST_REGISTER_BLOCK(EnvironmentGateSinkTestBlock, {"runtime_error_sink_test_module"});
 
 }  // namespace
 

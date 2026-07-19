@@ -37,6 +37,6 @@ Result DynamicTensorImportImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(DynamicTensorImportImpl);
+JST_REGISTER_BLOCK(DynamicTensorImportImpl, {"dynamic_tensor_import"});
 
 }  // namespace Jetstream::Blocks

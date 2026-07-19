@@ -55,6 +55,6 @@ Result OverlapAddImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(OverlapAddImpl);
+JST_REGISTER_BLOCK(OverlapAddImpl, {"overlap_add"});
 
 }  // namespace Jetstream::Blocks

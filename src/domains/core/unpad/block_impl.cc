@@ -49,6 +49,6 @@ Result UnpadImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(UnpadImpl);
+JST_REGISTER_BLOCK(UnpadImpl, {"unpad"});
 
 }  // namespace Jetstream::Blocks

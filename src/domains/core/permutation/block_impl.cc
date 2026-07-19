@@ -30,6 +30,7 @@ Result PermutationImpl::validate() {
 Result PermutationImpl::configure() {
     permutationModuleConfig->permutation = permutation;
     duplicateModuleConfig->hostAccessible = true;
+    duplicateModuleConfig->outputDevice = GetDeviceName(device());
 
     return Result::SUCCESS;
 }
@@ -68,6 +69,8 @@ Result PermutationImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(PermutationImpl);
+JST_REGISTER_BLOCK(PermutationImpl,
+                   {"permutation"},
+                   {"duplicate", true});
 
 }  // namespace Jetstream::Blocks

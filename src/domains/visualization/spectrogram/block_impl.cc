@@ -41,6 +41,6 @@ Result SpectrogramImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(SpectrogramImpl);
+JST_REGISTER_BLOCK(SpectrogramImpl, {"spectrogram"});
 
 }  // namespace Jetstream::Blocks

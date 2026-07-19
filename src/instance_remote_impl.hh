@@ -70,6 +70,7 @@ struct Instance::Remote::Impl {
     std::string signallerUrl;
     std::mutex roomMutex;
     std::condition_variable roomCondition;
+    bool signallerReady = false;
     bool roomReady = false;
     bool roomFailed = false;
 

@@ -347,6 +347,14 @@ bool FilterImpl::calculateResampleHeuristics(U64 filterSize,
     return true;
 }
 
-JST_REGISTER_BLOCK(FilterImpl);
+JST_REGISTER_BLOCK(FilterImpl,
+                   {"filter_taps"},
+                   {"pad"},
+                   {"fft"},
+                   {"multiply"},
+                   {"unpad"},
+                   {"overlap_add"},
+                   {"expand_dims", true},
+                   {"fold", true});
 
 }  // namespace Jetstream::Blocks

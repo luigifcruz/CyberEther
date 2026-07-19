@@ -302,6 +302,6 @@ Result PythonImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(PythonImpl);
+JST_REGISTER_BLOCK(PythonImpl, {"python"});
 
 }  // namespace Jetstream::Blocks

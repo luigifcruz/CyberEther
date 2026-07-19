@@ -70,6 +70,6 @@ Result RrcFilterImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(RrcFilterImpl);
+JST_REGISTER_BLOCK(RrcFilterImpl, {"rrc_filter"});
 
 }  // namespace Jetstream::Blocks

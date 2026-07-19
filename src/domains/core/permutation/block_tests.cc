@@ -3,6 +3,7 @@
 #include "jetstream/domains/core/permutation/block.hh"
 #include "jetstream/domains/core/expand_dims/block.hh"
 #include "jetstream/domains/dsp/window/block.hh"
+#include "jetstream/registry.hh"
 #include "flowgraph_fixture.hh"
 
 using namespace Jetstream;
@@ -89,6 +90,41 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(output.shape(0) == 1);
     REQUIRE(output.shape(1) == 16);
     REQUIRE(output.contiguous());
+}
+
+TEST_CASE_METHOD(FlowgraphFixture, "Permutation block keeps contiguous copies on CUDA",
+                 "[modules][permutation][block][CUDA]") {
+    if (Registry::ListAvailableModules("window", DeviceType::CUDA).empty() ||
+        Registry::ListAvailableModules("expand_dims", DeviceType::CUDA).empty() ||
+        Registry::ListAvailableModules("permutation", DeviceType::CUDA).empty() ||
+        Registry::ListAvailableModules("duplicate", DeviceType::CUDA).empty()) {
+        SUCCEED("Required CUDA modules are unavailable in this build.");
+        return;
+    }
+
+    Blocks::Window source;
+    source.size = 16;
+    REQUIRE(flowgraph->blockCreate("perm_cuda_src", source, {}, DeviceType::CUDA) ==
+            Result::SUCCESS);
+
+    Blocks::ExpandDims expand;
+    expand.axis = 1;
+    TensorMap expandInputs;
+    expandInputs["buffer"].requested("perm_cuda_src", "window");
+    REQUIRE(flowgraph->blockCreate("perm_cuda_expand", expand, expandInputs,
+                                   DeviceType::CUDA) == Result::SUCCESS);
+
+    Blocks::Permutation config;
+    config.permutation = {1, 0};
+    config.contiguous = true;
+    TensorMap inputs;
+    inputs["buffer"].requested("perm_cuda_expand", "buffer");
+    REQUIRE(flowgraph->blockCreate("perm_cuda", config, inputs, DeviceType::CUDA) ==
+            Result::SUCCESS);
+
+    const auto block = viewBlock("perm_cuda");
+    REQUIRE(block.state == Block::State::Created);
+    REQUIRE(block.outputs.at("buffer").tensor.device() == DeviceType::CUDA);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,

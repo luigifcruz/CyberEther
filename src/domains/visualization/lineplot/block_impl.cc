@@ -48,6 +48,6 @@ Result LineplotImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(LineplotImpl);
+JST_REGISTER_BLOCK(LineplotImpl, {"lineplot"});
 
 }  // namespace Jetstream::Blocks

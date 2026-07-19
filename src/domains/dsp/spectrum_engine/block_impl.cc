@@ -192,6 +192,14 @@ Result SpectrumEngineImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(SpectrumEngineImpl);
+JST_REGISTER_BLOCK(SpectrumEngineImpl,
+                   {"window"},
+                   {"invert"},
+                   {"reshape"},
+                   {"multiply"},
+                   {"fft"},
+                   {"amplitude"},
+                   {"agc", true},
+                   {"range", true});
 
 }  // namespace Jetstream::Blocks

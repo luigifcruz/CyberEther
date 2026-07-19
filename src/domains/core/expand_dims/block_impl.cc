@@ -43,6 +43,6 @@ Result ExpandDimsImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(ExpandDimsImpl);
+JST_REGISTER_BLOCK(ExpandDimsImpl, {"expand_dims"});
 
 }  // namespace Jetstream::Blocks
