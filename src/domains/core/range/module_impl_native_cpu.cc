@@ -1,3 +1,5 @@
+#include <cmath>
+
 #include <jetstream/tools/automatic_iterator.hh>
 #include <jetstream/runtime_context_native_cpu.hh>
 #include <jetstream/scheduler_context.hh>
@@ -52,7 +54,13 @@ Result RangeImplNativeCpu::kernelF32() {
 
     return AutomaticIterator<F32, F32>(
         [scale, offset](const auto& in, auto& out) {
-            out = in * scale + offset;
+            if (scale == 0.0f) {
+                out = 0.5f;
+                return;
+            }
+
+            const F32 normalized = in * scale + offset;
+            out = 0.5f + 0.5f * std::tanh(4.0f * (normalized - 0.5f));
         },
     input, output);
 }

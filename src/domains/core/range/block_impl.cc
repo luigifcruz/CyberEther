@@ -32,13 +32,13 @@ Result RangeImpl::define() {
 
     JST_CHECK(defineInterfaceConfig("min",
                                     "Min",
-                                    "Minimum value of the input range.",
-                                    "range:-100:0:dBFS:float"));
+                                    "Lower soft-knee value of the input range.",
+                                    "range:-300:0:dBFS:float"));
 
     JST_CHECK(defineInterfaceConfig("max",
                                     "Max",
-                                    "Maximum value of the input range.",
-                                    "range:-100:0:dBFS:float"));
+                                    "Upper soft-knee value of the input range.",
+                                    "range:-300:0:dBFS:float"));
 
     return Result::SUCCESS;
 }
