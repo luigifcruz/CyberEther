@@ -559,7 +559,6 @@ TEST_CASE("Benchmark does not publish failed runtime computations",
 
     RequireCompletedLifecycle(state);
     REQUIRE(output.str().empty());
-    // Current defect: Benchmark::Run records measurements after compute reports failure.
     CHECK(Benchmark::CurrentCount() == 0);
     CHECK(Benchmark::GetResults().empty());
     Benchmark::ResetResults();

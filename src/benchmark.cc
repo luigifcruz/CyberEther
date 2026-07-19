@@ -33,6 +33,8 @@ class LogLevelGuard {
     int previous_;
 };
 
+struct ComputeFailed {};
+
 }  // namespace
 
 struct Benchmark::Impl {
@@ -150,11 +152,17 @@ void Benchmark::Impl::run(const std::string& outputType,
 
                 const std::string benchName = spec.variant;
 
-                bench.run(benchName, [&]() {
-                    std::unordered_set<std::string> skippedModules;
-                    std::unordered_set<std::string> failedModules;
-                    runtime.compute({}, skippedModules, failedModules);
-                });
+                try {
+                    bench.run(benchName, [&]() {
+                        std::unordered_set<std::string> skippedModules;
+                        std::unordered_set<std::string> failedModules;
+                        if (runtime.compute({}, skippedModules, failedModules) != Result::SUCCESS) {
+                            throw ComputeFailed{};
+                        }
+                    });
+                } catch (const ComputeFailed&) {
+                    // Aborted cases intentionally leave no nanobench result.
+                }
 
                 runtime.destroy();
                 module->destroy();
