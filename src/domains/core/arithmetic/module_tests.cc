@@ -41,6 +41,37 @@ TEST_CASE("Arithmetic Module - Add F32", "[modules][arithmetic][F32]") {
     }
 }
 
+TEST_CASE("Arithmetic Module - Negative Axis", "[modules][arithmetic][F32][axis]") {
+    auto implementations = Registry::ListAvailableModules("arithmetic");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("arithmetic", impl.device, impl.runtime, impl.provider);
+
+            Modules::Arithmetic config;
+            config.operation = "add";
+            REQUIRE(config.axis == -1);
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({2, 3});
+            for (U64 i = 0; i < 6; ++i) {
+                input.at(i / 3, i % 3) = static_cast<F32>(i + 1);
+            }
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("buffer");
+            REQUIRE(out.shape() == Shape{2, 1});
+            REQUIRE_THAT(out.at<F32>(0, 0),
+                         Catch::Matchers::WithinAbs(6.0f, 1e-6f));
+            REQUIRE_THAT(out.at<F32>(1, 0),
+                         Catch::Matchers::WithinAbs(15.0f, 1e-6f));
+        }
+    }
+}
+
 TEST_CASE("Arithmetic Module - Sub F32", "[modules][arithmetic][F32]") {
     auto implementations = Registry::ListAvailableModules("arithmetic");
     REQUIRE(!implementations.empty());
@@ -165,18 +196,21 @@ TEST_CASE("Arithmetic Module - Invalid Axis", "[modules][arithmetic]") {
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
-        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
-            TestContext ctx("arithmetic", impl.device, impl.runtime, impl.provider);
+        for (const I64 axis : {I64{5}, I64{-2}}) {
+            DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime
+                            << " Axis: " << axis) {
+                TestContext ctx("arithmetic", impl.device, impl.runtime, impl.provider);
 
-            Modules::Arithmetic config;
-            config.operation = "add";
-            config.axis = 5;
-            ctx.setConfig(config);
+                Modules::Arithmetic config;
+                config.operation = "add";
+                config.axis = axis;
+                ctx.setConfig(config);
 
-            auto input = ctx.createTensor<F32>({4});
-            ctx.setInput("buffer", input);
+                auto input = ctx.createTensor<F32>({4});
+                ctx.setInput("buffer", input);
 
-            REQUIRE(ctx.run() == Result::ERROR);
+                REQUIRE(ctx.run() == Result::ERROR);
+            }
         }
     }
 }

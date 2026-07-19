@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <any>
+#include <exception>
 #include <functional>
 #include <string>
 #include <type_traits>
@@ -28,7 +29,12 @@ class JETSTREAM_API Parser {
 
     template<typename T>
     static Result StringToTyped(const std::string& encoded, T& variable) {
-        return StringToTypedValue(encoded, variable);
+        try {
+            return StringToTypedValue(encoded, variable);
+        } catch (const std::exception& e) {
+            JST_ERROR("[PARSER] Failed to convert value '{}': {}", encoded, e.what());
+            return Result::ERROR;
+        }
     }
     static Result TypedToString(const std::any& variable, std::string& encoded);
 

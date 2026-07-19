@@ -1,5 +1,7 @@
 #include "module_impl.hh"
 
+#include <jetstream/memory/axis.hh>
+
 namespace Jetstream::Modules {
 
 Result FoldImpl::validate() {
@@ -25,35 +27,36 @@ Result FoldImpl::create() {
 
     input = inputTensor;
 
-    // Validate axis bounds.
-    if (input.rank() <= axis) {
+    const auto candidateAxis = ResolveAxis(axis, input.rank());
+    if (!candidateAxis) {
         JST_ERROR("[MODULE_FOLD] Axis ({}) is out of bounds for "
                   "input rank ({}).", axis, input.rank());
         return Result::ERROR;
     }
+    resolvedAxis = *candidateAxis;
 
     // Validate size divides input dimension evenly.
-    if (input.shape(axis) % size != 0) {
+    if (input.shape(resolvedAxis) % size != 0) {
         JST_ERROR("[MODULE_FOLD] Size ({}) is not a divisor of "
                   "the input shape ({}) along axis ({}).",
-                  size, input.shape(axis), axis);
+                  size, input.shape(resolvedAxis), resolvedAxis);
         return Result::ERROR;
     }
 
     // Validate offset bounds.
-    if (input.shape(axis) < offset) {
+    if (input.shape(resolvedAxis) < offset) {
         JST_ERROR("[MODULE_FOLD] Offset ({}) is greater than the "
                   "input shape ({}) along axis ({}).",
-                  offset, input.shape(axis), axis);
+                  offset, input.shape(resolvedAxis), resolvedAxis);
         return Result::ERROR;
     }
 
     // Calculate decimation factor.
-    decimationFactor = input.shape(axis) / size;
+    decimationFactor = input.shape(resolvedAxis) / size;
 
     // Build output shape.
     auto outputShape = input.shape();
-    outputShape[axis] = size;
+    outputShape[resolvedAxis] = size;
 
     // Allocate output tensor with same dtype.
     JST_CHECK(output.create(input.device(), input.dtype(), outputShape));

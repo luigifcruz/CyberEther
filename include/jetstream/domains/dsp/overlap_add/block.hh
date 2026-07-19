@@ -6,7 +6,7 @@
 namespace Jetstream::Blocks {
 
 struct OverlapAdd : public Block::Config {
-    U64 axis = 0;
+    I64 axis = -1;
 
     JST_BLOCK_TYPE(overlap_add);
     JST_BLOCK_DOMAIN("DSP");
@@ -22,8 +22,9 @@ struct OverlapAdd : public Block::Config {
         "streaming FIR filtering using the overlap-add method.\n\n"
 
         "## Arguments\n"
-        "- **Axis**: Dimension along which the overlap is "
-        "applied.\n\n"
+        "- **Axis**: Dimension along which the overlap is applied. Negative axes "
+        "count from the end. For multidimensional inputs, axis 0 is reserved for "
+        "batch sequencing and cannot be selected.\n\n"
 
         "## Useful For\n"
         "- Overlap-add FIR filtering pipelines.\n"

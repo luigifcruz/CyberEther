@@ -2,6 +2,8 @@
 
 #include <limits>
 
+#include <jetstream/memory/axis.hh>
+
 namespace Jetstream::Modules {
 
 Result FftImpl::validate() {
@@ -17,12 +19,11 @@ Result FftImpl::validate() {
     }
 
     const auto& config = *candidate();
-    const I64 rank = static_cast<I64>(inputTensor.rank());
-    const I64 normalizedAxis = config.axis < 0 ? rank + config.axis : config.axis;
-    if (normalizedAxis < 0 || normalizedAxis >= rank) {
+    const auto candidateAxis = ResolveAxis(config.axis, inputTensor.rank());
+    if (!candidateAxis) {
         JST_ERROR("[MODULE_FFT] Axis {} is out of bounds for a rank-{} tensor.",
                   config.axis,
-                  rank);
+                  inputTensor.rank());
         return Result::ERROR;
     }
 
@@ -49,13 +50,14 @@ Result FftImpl::create() {
         return Result::ERROR;
     }
 
-    const I64 rank = static_cast<I64>(input.rank());
-    const I64 normalizedAxis = axis < 0 ? rank + axis : axis;
-    if (normalizedAxis < 0 || normalizedAxis >= rank) {
-        JST_ERROR("[MODULE_FFT] Axis {} is out of bounds for a rank-{} tensor.", axis, rank);
+    const auto candidateAxis = ResolveAxis(axis, input.rank());
+    if (!candidateAxis) {
+        JST_ERROR("[MODULE_FFT] Axis {} is out of bounds for a rank-{} tensor.",
+                  axis,
+                  input.rank());
         return Result::ERROR;
     }
-    resolvedAxis = static_cast<Index>(normalizedAxis);
+    resolvedAxis = *candidateAxis;
 
     if (input.size() == 0 || input.shape(resolvedAxis) == 0) {
         JST_ERROR("[MODULE_FFT] Cannot transform an empty tensor.");

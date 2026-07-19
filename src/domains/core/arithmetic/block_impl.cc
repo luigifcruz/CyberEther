@@ -40,8 +40,8 @@ Result ArithmeticImpl::define() {
 
     JST_CHECK(defineInterfaceConfig("axis",
                                     "Axis",
-                                    "Axis along which to reduce.",
-                                    "uint:"));
+                                    "Axis along which to reduce. Negative axes count from the end.",
+                                    "int:"));
 
     JST_CHECK(defineInterfaceConfig("squeeze",
                                     "Squeeze",

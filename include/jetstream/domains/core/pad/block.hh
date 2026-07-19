@@ -8,7 +8,7 @@ namespace Jetstream::Blocks {
 
 struct Pad : public Block::Config {
     U64 size = 0;
-    U64 axis = 0;
+    I64 axis = -1;
 
     JST_BLOCK_TYPE(pad);
     JST_BLOCK_DOMAIN("Core");
@@ -23,7 +23,8 @@ struct Pad : public Block::Config {
 
         "## Arguments\n"
         "- **Pad Size**: Number of zeros to append to the specified axis.\n"
-        "- **Pad Axis**: The dimension along which to add padding (0-indexed).\n\n"
+        "- **Pad Axis**: The dimension along which to add padding. Negative axes "
+        "count from the end.\n\n"
 
         "## Useful For\n"
         "- Zero-padding for FFT operations to increase frequency resolution.\n"

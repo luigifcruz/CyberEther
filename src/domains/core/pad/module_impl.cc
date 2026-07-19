@@ -1,5 +1,7 @@
 #include "module_impl.hh"
 
+#include <jetstream/memory/axis.hh>
+
 namespace Jetstream::Modules {
 
 Result PadImpl::define() {
@@ -12,20 +14,21 @@ Result PadImpl::define() {
 Result PadImpl::create() {
     const Tensor& inputTensor = inputs().at("unpadded").tensor;
 
-    // Validate axis is within valid range.
-    if (axis >= inputTensor.rank()) {
+    const auto maybeResolvedAxis = ResolveAxis(axis, inputTensor.rank());
+    if (!maybeResolvedAxis) {
         JST_ERROR("[MODULE_PAD] Axis {} out of range for tensor with {} dimensions.",
                   axis, inputTensor.rank());
         return Result::ERROR;
     }
+    resolvedAxis = *maybeResolvedAxis;
 
     input = inputTensor;
-    inputAxisSize = input.shape(axis);
+    inputAxisSize = input.shape(resolvedAxis);
     outputAxisSize = inputAxisSize + size;
 
     // Build output shape with padding applied to the specified axis.
     Shape outputShape = input.shape();
-    outputShape[axis] = outputAxisSize;
+    outputShape[resolvedAxis] = outputAxisSize;
 
     JST_CHECK(output.create(input.device(), input.dtype(), outputShape));
     JST_CHECK(output.propagateAttributes(input));

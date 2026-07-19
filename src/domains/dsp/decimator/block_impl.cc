@@ -5,6 +5,7 @@
 #include <jetstream/domains/core/arithmetic/module.hh>
 #include <jetstream/domains/core/squeeze_dims/module.hh>
 #include <jetstream/domains/core/duplicate/module.hh>
+#include <jetstream/memory/axis.hh>
 
 namespace Jetstream::Blocks {
 
@@ -47,8 +48,6 @@ Result DecimatorImpl::validate() {
 
 Result DecimatorImpl::configure() {
     arithmeticConfig->operation = "add";
-    arithmeticConfig->axis = axis + 1;
-    squeezeDimsConfig->axis = axis + 1;
     duplicateConfig->hostAccessible = true;
     duplicateConfig->outputDevice = GetDeviceName(device());
 
@@ -65,8 +64,9 @@ Result DecimatorImpl::define() {
 
     JST_CHECK(defineInterfaceConfig("axis",
                                     "Axis",
-                                    "Axis along which to decimate.",
-                                    "uint:"));
+                                    "Axis along which to decimate. Negative axes count "
+                                    "from the end.",
+                                    "int:"));
 
     JST_CHECK(defineInterfaceConfig("ratio",
                                     "Ratio",
@@ -80,17 +80,17 @@ Result DecimatorImpl::create() {
     const auto& inputPort = inputs().at("buffer");
     const Tensor& inputTensor = inputPort.tensor;
 
-    // Validate axis against input rank.
-
-    if (axis >= inputTensor.rank()) {
+    const auto candidateAxis = ResolveAxis(axis, inputTensor.rank());
+    if (!candidateAxis) {
         JST_ERROR("[BLOCK_DECIMATOR] Axis {} is out of bounds for "
                   "input tensor rank {}.", axis, inputTensor.rank());
         return Result::ERROR;
     }
+    const Index resolvedAxis = *candidateAxis;
 
     // Validate axis is divisible by ratio.
 
-    const U64 axisSize = inputTensor.shape(axis);
+    const U64 axisSize = inputTensor.shape(resolvedAxis);
     if (axisSize % ratio != 0) {
         JST_ERROR("[BLOCK_DECIMATOR] Axis size {} is not divisible "
                   "by ratio {}.", axisSize, ratio);
@@ -107,7 +107,7 @@ Result DecimatorImpl::create() {
         if (d > 0) {
             shapeStr += ", ";
         }
-        if (d == axis) {
+        if (d == resolvedAxis) {
             shapeStr += std::to_string(shape[d] / ratio);
             shapeStr += ", ";
             shapeStr += std::to_string(ratio);
@@ -118,6 +118,11 @@ Result DecimatorImpl::create() {
     shapeStr += "]";
 
     reshapeConfig->shape = shapeStr;
+
+    // ResolveAxis guarantees this nonnegative child axis fits in I64.
+    const I64 childAxis = static_cast<I64>(resolvedAxis) + 1;
+    arithmeticConfig->axis = childAxis;
+    squeezeDimsConfig->axis = childAxis;
 
     // Create reshape module.
 

@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+
 #include "jetstream/domains/core/expand_dims/block.hh"
 #include "jetstream/domains/dsp/window/block.hh"
 #include "flowgraph_fixture.hh"
@@ -8,6 +10,8 @@ using namespace Jetstream;
 
 TEST_CASE_METHOD(FlowgraphFixture, "ExpandDims block applies axis configuration",
                  "[modules][expand_dims][block]") {
+    REQUIRE(Blocks::ExpandDims{}.axis == -1);
+
     Blocks::Window source;
     source.size = 12;
     REQUIRE(flowgraph->blockCreate("expand_src", source, {}) == Result::SUCCESS);
@@ -18,8 +22,20 @@ TEST_CASE_METHOD(FlowgraphFixture, "ExpandDims block applies axis configuration"
     Blocks::ExpandDims config;
     config.axis = 1;
     REQUIRE(flowgraph->blockCreate("expand_block", config, inputs) == Result::SUCCESS);
-    REQUIRE(viewBlock("expand_block").state == Block::State::Created);
-    REQUIRE(viewBlock("expand_block").outputs.count("buffer") == 1);
+    const auto block = viewBlock("expand_block");
+    REQUIRE(block.state == Block::State::Created);
+    REQUIRE(block.outputs.count("buffer") == 1);
+
+    const auto axis = std::find_if(block.interfaceConfigs.begin(),
+                                   block.interfaceConfigs.end(),
+                                   [](const auto& entry) { return entry.name == "axis"; });
+    REQUIRE(axis != block.interfaceConfigs.end());
+    REQUIRE(axis->format == "int:");
+
+    Parser::Map saved;
+    REQUIRE(flowgraph->blockConfig("expand_block", saved) == Result::SUCCESS);
+    REQUIRE(saved.at("axis").type() == typeid(I64));
+    REQUIRE(std::any_cast<I64>(saved.at("axis")) == 1);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "ExpandDims block rejects invalid axis",

@@ -114,6 +114,37 @@ TEST_CASE("ExpandDims Module - Expand 2D to 3D at axis 1 F32", "[modules][expand
     }
 }
 
+TEST_CASE("ExpandDims Module - Negative Axes", "[modules][expand_dims][F32][axis]") {
+    auto implementations = Registry::ListAvailableModules("expand_dims");
+    REQUIRE(!implementations.empty());
+    REQUIRE(Modules::ExpandDims{}.axis == -1);
+
+    for (const auto& impl : implementations) {
+        for (const I64 axis : {I64{-1}, I64{-3}}) {
+            DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime
+                            << " Axis: " << axis) {
+                TestContext ctx("expand_dims", impl.device, impl.runtime, impl.provider);
+
+                Modules::ExpandDims config;
+                config.axis = axis;
+                ctx.setConfig(config);
+
+                auto input = ctx.createTensor<F32>({2, 4});
+                ctx.setInput("buffer", input);
+
+                REQUIRE(ctx.run() == Result::SUCCESS);
+
+                const auto& out = ctx.output("buffer");
+                if (axis == -1) {
+                    REQUIRE(out.shape() == Shape{2, 4, 1});
+                } else {
+                    REQUIRE(out.shape() == Shape{1, 2, 4});
+                }
+            }
+        }
+    }
+}
+
 TEST_CASE("ExpandDims Module - CF32", "[modules][expand_dims][CF32]") {
     auto implementations = Registry::ListAvailableModules("expand_dims");
     REQUIRE(!implementations.empty());
@@ -160,18 +191,21 @@ TEST_CASE("ExpandDims Module - Axis Out of Range Error", "[modules][expand_dims]
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
-        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
-            TestContext ctx("expand_dims", impl.device, impl.runtime, impl.provider);
+        for (const I64 axis : {I64{5}, I64{-3}}) {
+            DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime
+                            << " Axis: " << axis) {
+                TestContext ctx("expand_dims", impl.device, impl.runtime, impl.provider);
 
-            Modules::ExpandDims config;
-            config.axis = 5;  // Out of range for 1D tensor
+                Modules::ExpandDims config;
+                config.axis = axis;
 
-            ctx.setConfig(config);
+                ctx.setConfig(config);
 
-            auto input = ctx.createTensor<F32>({4});
-            ctx.setInput("buffer", input);
+                auto input = ctx.createTensor<F32>({4});
+                ctx.setInput("buffer", input);
 
-            REQUIRE(ctx.run() == Result::ERROR);
+                REQUIRE(ctx.run() == Result::ERROR);
+            }
         }
     }
 }

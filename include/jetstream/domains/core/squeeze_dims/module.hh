@@ -7,7 +7,7 @@
 namespace Jetstream::Modules {
 
 struct SqueezeDims : public Module::Config {
-    U64 axis = 0;
+    I64 axis = -1;
 
     JST_MODULE_TYPE(squeeze_dims);
     JST_MODULE_PARAMS(axis);
