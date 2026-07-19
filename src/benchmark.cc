@@ -7,7 +7,6 @@
 #include "jetstream/memory/types.hh"
 
 #include <chrono>
-#include <cstring>
 #include <unordered_set>
 
 #include <nanobench.h>
@@ -105,8 +104,7 @@ void Benchmark::Impl::run(const std::string& outputType,
                         break;
                     }
 
-                    std::memset(tensor.data(), 0, tensor.sizeBytes());
-
+                    // Owned tensor buffers are zero-initialized by each device backend.
                     inputs[inputSpec.name].requested("benchmark", inputSpec.name);
                     inputs[inputSpec.name].tensor = tensor;
                 }
