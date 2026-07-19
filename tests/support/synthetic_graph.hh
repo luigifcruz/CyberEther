@@ -2,6 +2,7 @@
 #define JETSTREAM_TESTS_SUPPORT_SYNTHETIC_GRAPH_HH
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -47,6 +48,7 @@ struct SyntheticFaultState {
     U64 moduleDestroyCalls = 0;
     U64 moduleReconfigureCalls = 0;
     U64 modulePresentCalls = 0;
+    std::function<void()> onBlockCreate;
 
     void reset() {
         *this = {};
@@ -407,6 +409,9 @@ struct SyntheticFaultBlock : Block::Impl,
     Result create() override {
         auto& state = syntheticFaultState();
         state.blockCreateCalls += 1;
+        if (state.onBlockCreate) {
+            state.onBlockCreate();
+        }
         if (state.consume(SyntheticFaultPoint::BlockCreate)) {
             JST_ERROR("[FLOWGRAPH_TEST_FAULT] Forced block create failure.");
             return Result::ERROR;

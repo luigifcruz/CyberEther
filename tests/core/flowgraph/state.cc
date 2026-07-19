@@ -322,6 +322,44 @@ graph:
         CHECK_FALSE(flowgraph.metadata().has("marker", "imported"));
         CHECK_FALSE(flowgraph.metadata().has("marker", "broken"));
     }
+
+    SECTION("block metadata is visible during creation and restored on failure") {
+        REQUIRE(flowgraph.metadata().set("marker", StateValue("before"), "observed") ==
+                Result::SUCCESS);
+
+        bool blockWasVisible = false;
+        std::string observedMarker;
+        auto& faults = TestFlowgraph::syntheticFaultState();
+        faults.onBlockCreate = [&] {
+            blockWasVisible = flowgraph.view().has("observed");
+            Parser::Map marker;
+            if (flowgraph.metadata().get("marker", marker, "observed") == Result::SUCCESS &&
+                marker.contains("value")) {
+                observedMarker = StateValue(marker);
+            }
+        };
+
+        REQUIRE(Import(flowgraph, R"(---
+version: 2
+graph:
+  - name: observed
+    module: flowgraph_test_fault
+    meta:
+      marker:
+        value: during
+  - name: broken
+    module: definitely_missing_block_type
+)") == Result::ERROR);
+
+        REQUIRE(blockWasVisible);
+        REQUIRE(observedMarker == "during");
+        REQUIRE_FALSE(flowgraph.view().has("observed"));
+
+        Parser::Map restoredMarker;
+        REQUIRE(flowgraph.metadata().get("marker", restoredMarker, "observed") ==
+                Result::SUCCESS);
+        REQUIRE(StateValue(restoredMarker) == "before");
+    }
 }
 
 TEST_CASE("Flowgraph environment tracks epochs, versions, ranges, and replacements",

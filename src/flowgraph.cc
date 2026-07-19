@@ -1400,6 +1400,8 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
 
     std::vector<std::string> createdBlocks;
     createdBlocks.reserve(order.size());
+    std::vector<std::pair<std::string, std::optional<Parser::Map>>> previousBlockMetadata;
+    previousBlockMetadata.reserve(order.size());
 
     for (const auto& name : order) {
         const auto& def = nodes.at(name);
@@ -1407,6 +1409,18 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
         TensorMap requestedInputs;
         for (const auto& [slot, ref] : def.inputs) {
             requestedInputs[slot].requested(ref.block, ref.port);
+        }
+
+        if (!def.meta.empty()) {
+            std::unique_lock metadataLock(impl->metadataMutex);
+            const auto previous = impl->blockMetadataValues.find(name);
+            previousBlockMetadata.push_back({
+                name,
+                previous == impl->blockMetadataValues.end()
+                    ? std::nullopt
+                    : std::optional<Parser::Map>{previous->second},
+            });
+            impl->blockMetadataValues[name] = def.meta;
         }
 
         const auto result = blockCreate(name,
@@ -1423,6 +1437,17 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
                 if (blockDestroy(*created, false) != Result::SUCCESS) {
                     JST_ERROR("[FLOWGRAPH] Failed to roll back imported block '{}'.",
                               *created);
+                }
+            }
+
+            {
+                std::unique_lock metadataLock(impl->metadataMutex);
+                for (auto& [metadataName, previous] : previousBlockMetadata) {
+                    if (previous.has_value()) {
+                        impl->blockMetadataValues[metadataName] = std::move(*previous);
+                    } else {
+                        impl->blockMetadataValues.erase(metadataName);
+                    }
                 }
             }
             return result;
@@ -1454,12 +1479,6 @@ Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
             impl->metadataValues = *document.meta;
         }
 
-        for (const auto& name : order) {
-            const auto& meta = nodes.at(name).meta;
-            if (!meta.empty()) {
-                impl->blockMetadataValues[name] = meta;
-            }
-        }
     }
 
     return Result::SUCCESS;
