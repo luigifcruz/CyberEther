@@ -396,7 +396,6 @@ std::vector<Registry::ModuleRegistration> Registry::Impl::listModules(const std:
                                                                       std::optional<DeviceType> device,
                                                                       std::optional<RuntimeType> runtime,
                                                                       const ProviderType& provider) {
-    JST_TRACE("[REGISTRY] Listing modules.");
     std::lock_guard<std::mutex> guard(registrationsMutex);
 
     std::vector<Registry::ModuleRegistration> filtered;
@@ -529,7 +528,6 @@ std::vector<Registry::BlockTarget> Registry::Impl::listBlockTargets(const std::s
 }
 
 std::vector<Registry::BenchmarkRegistration> Registry::Impl::listBenchmarks(const std::string& moduleType) {
-    JST_TRACE("[REGISTRY] Listing benchmarks.");
     std::lock_guard<std::mutex> guard(registrationsMutex);
 
     std::vector<Registry::BenchmarkRegistration> filtered;
