@@ -280,7 +280,10 @@ bool Plugin::Impl::parseVersion(const std::string& version, uint32_t& encoded) {
 
     uint32_t values[3] = {0, 0, 0};
     for (std::size_t i = 0; i < 3; ++i) {
-        if (parts[i].empty()) {
+        if (parts[i].empty() ||
+            !std::all_of(parts[i].begin(), parts[i].end(), [](unsigned char character) {
+                return character >= '0' && character <= '9';
+            })) {
             return false;
         }
 
@@ -579,6 +582,14 @@ Result Plugin::Impl::loadManifest(const std::filesystem::path& bundlePath, Manif
 Result Plugin::Impl::validateManifest(const std::string& sourcePath, const Manifest& manifest) {
     if (manifest.metadata.name.empty() || manifest.metadata.version.empty()) {
         JST_ERROR("[PLUGIN] Plugin '{}' has incomplete metadata.", sourcePath);
+        return Result::ERROR;
+    }
+
+    uint32_t version = 0;
+    if (!parseVersion(manifest.metadata.version, version)) {
+        JST_ERROR("[PLUGIN] Plugin '{}' has invalid version '{}'.",
+                  sourcePath,
+                  manifest.metadata.version);
         return Result::ERROR;
     }
 

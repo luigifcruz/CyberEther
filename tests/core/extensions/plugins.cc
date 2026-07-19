@@ -607,14 +607,30 @@ TEST_CASE("Plugin manifests are rejected before target loading",
         RequirePluginRejected(archivePathUtf8);
     }
 
-    SECTION("malformed plugin version") {
-        auto spec = ManifestSpec{};
-        spec.version = "not-a-version";
-        WriteBundle(archivePath, spec);
-        RequirePluginRejected(archivePathUtf8);
-        // Current defect: metadata.version syntax is not validated before target selection.
-        CHECK((JST_LOG_LAST_ERROR().find("invalid") != std::string::npos &&
-               JST_LOG_LAST_ERROR().find("version") != std::string::npos));
+    SECTION("malformed plugin versions") {
+        const std::array<std::string, 6> versions = {
+            "1.2", "1..2", "+1.2.3", "1.2.3-alpha", "256.0.0", "not-a-version",
+        };
+        for (const auto& version : versions) {
+            CAPTURE(version);
+            auto spec = CompatibleManifest();
+            spec.version = version;
+            WriteBundle(archivePath, spec);
+            RequirePluginRejected(archivePathUtf8);
+            CHECK((JST_LOG_LAST_ERROR().find("invalid") != std::string::npos &&
+                   JST_LOG_LAST_ERROR().find("version") != std::string::npos));
+        }
+    }
+
+    SECTION("plugin version boundaries reach target loading") {
+        for (const auto& version : {"0.0.0", "255.255.255"}) {
+            CAPTURE(version);
+            auto spec = CompatibleManifest();
+            spec.version = version;
+            WriteBundle(archivePath, spec);
+            RequirePluginRejected(archivePathUtf8);
+            CHECK(JST_LOG_LAST_ERROR().find("Failed to load plugin") != std::string::npos);
+        }
     }
 
     SECTION("well-formed bundle without a compatible target") {

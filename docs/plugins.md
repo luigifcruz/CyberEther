@@ -88,8 +88,8 @@ examples:
 | Field | Purpose |
 |-------|---------|
 | `metadata.name` | Plugin bundle name. |
-| `metadata.version` | Plugin bundle version. |
-| `metadata.minimumJetstreamVersion` | Minimum CyberEther/Jetstream version required to load the bundle. |
+| `metadata.version` | Plugin bundle version in `x.y.z` form. |
+| `metadata.minimumJetstreamVersion` | Minimum CyberEther/Jetstream version required to load the bundle, in `x.y.z` form. |
 | `targets[].path` | Shared library path inside the bundle. |
 | `targets[].system` | Target system, such as `macos`, `linux`, or `windows`. |
 | `targets[].device` | Device backend, such as `cpu`, `cuda`, `metal`, `vulkan`, or `webgpu`. |
@@ -99,7 +99,8 @@ examples:
 CyberEther loads every target that matches the current system, architecture,
 and compiled device backends. Development builds usually package one target;
 release automation can package multiple systems, architectures, and devices in
-the same `.cep`.
+the same `.cep`. Both version fields contain exactly three decimal components
+between 0 and 255. Prerelease and build suffixes are not supported.
 
 ## Plugin ABI
 
