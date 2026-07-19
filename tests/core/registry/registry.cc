@@ -216,8 +216,6 @@ TEST_CASE("Registry validates direct registrations", "[core][registry][validatio
     auto mismatchedFlowgraph = MakeFlowgraph(metadataKey, "Mismatched key");
     cleanup.flowgraph(argumentKey);
     cleanup.flowgraph(metadataKey);
-    // Expected to fail currently: Registry stores metadata.key verbatim, making
-    // mismatched records unreachable by argumentKey.
     CHECK(Registry::RegisterFlowgraph(argumentKey, mismatchedFlowgraph) == Result::ERROR);
 
     cleanup.benchmark("", &benchmarkOwner);

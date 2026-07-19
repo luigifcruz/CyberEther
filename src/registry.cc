@@ -249,6 +249,12 @@ Result Registry::Impl::registerFlowgraph(const std::string& key,
         JST_ERROR("[REGISTRY] Empty key for flowgraph registration.");
         return Result::ERROR;
     }
+    if (metadata.key != key) {
+        JST_ERROR("[REGISTRY] Flowgraph metadata key '{}' does not match registration key '{}'.",
+                  metadata.key,
+                  key);
+        return Result::ERROR;
+    }
 
     std::lock_guard<std::mutex> guard(registrationsMutex);
 
