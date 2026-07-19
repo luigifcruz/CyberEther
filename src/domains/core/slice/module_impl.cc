@@ -1,3 +1,5 @@
+#include <exception>
+
 #include "module_impl.hh"
 
 namespace Jetstream::Modules {
@@ -46,22 +48,32 @@ Result SliceImpl::create() {
 
 Result SliceImpl::parseSliceString(const std::string& sliceStr,
                                    std::vector<Token>& tokens) {
-    // Return empty if the slice content is empty.
     std::string inner = sliceStr.substr(1, sliceStr.size() - 2);
-    if (inner.empty()) {
+    constexpr auto whitespace = " \t\n\r\f\v";
+    const auto contentStart = inner.find_first_not_of(whitespace);
+    if (contentStart == std::string::npos) {
         tokens.emplace_back("...");
         return Result::SUCCESS;
     }
+    inner = inner.substr(contentStart, inner.find_last_not_of(whitespace) - contentStart + 1);
 
-    // Split the slice string into token strings.
     std::vector<std::string> elements;
-    std::regex pattern(R"([^,\s\[\]]+)");
-    auto words_begin = std::sregex_iterator(sliceStr.begin(), sliceStr.end(), pattern);
-    auto words_end = std::sregex_iterator();
+    std::size_t elementStart = 0;
+    while (elementStart <= inner.size()) {
+        const auto comma = inner.find(',', elementStart);
+        std::string element = inner.substr(elementStart, comma - elementStart);
+        const auto tokenStart = element.find_first_not_of(whitespace);
+        if (tokenStart == std::string::npos) {
+            JST_ERROR("[MODULE_SLICE] Invalid slice syntax: Empty token.");
+            return Result::ERROR;
+        }
+        element = element.substr(tokenStart, element.find_last_not_of(whitespace) - tokenStart + 1);
+        elements.push_back(std::move(element));
 
-    for (std::sregex_iterator i = words_begin; i != words_end; ++i) {
-        std::smatch match = *i;
-        elements.push_back(match.str());
+        if (comma == std::string::npos) {
+            break;
+        }
+        elementStart = comma + 1;
     }
 
     JST_TRACE("[MODULE_SLICE] Found {} elements in slice string: {}", elements.size(), elements);
@@ -76,26 +88,32 @@ Result SliceImpl::parseSliceString(const std::string& sliceStr,
         }
 
         // Parse Colon notation (start:stop:step).
-        if (std::regex_match(element,
-                std::regex(R"(^(\d+:\d+:\d+|\d+:\d+|:\d+|\d+:|:|::\d+)$)"))) {
+        if (std::regex_match(element, std::regex(R"(^(\d+:\d+:\d+|:\d+:\d+|\d+::\d+|\d+:\d+|:\d+|\d+:|:|::\d+)$)"))) {
             std::regex colonPattern(R"((\d*):(\d*):?(\d*))");
             std::smatch matches;
 
             U64 a = 0, b = 0, c = 1;
+            bool hasEnd = false;
 
-            if (std::regex_match(element, matches, colonPattern)) {
-                if (matches.size() > 1 && matches[1].matched && !matches[1].str().empty()) {
-                    a = std::stoull(matches[1].str());
-                }
-                if (matches.size() > 2 && matches[2].matched && !matches[2].str().empty()) {
-                    b = std::stoull(matches[2].str());
-                }
-                if (matches.size() > 3 && matches[3].matched && !matches[3].str().empty()) {
-                    c = std::stoull(matches[3].str());
-                }
+            try {
+                if (std::regex_match(element, matches, colonPattern)) {
+                    if (matches.size() > 1 && matches[1].matched && !matches[1].str().empty()) {
+                        a = std::stoull(matches[1].str());
+                    }
+                    if (matches.size() > 2 && matches[2].matched && !matches[2].str().empty()) {
+                        b = std::stoull(matches[2].str());
+                        hasEnd = true;
+                    }
+                    if (matches.size() > 3 && matches[3].matched && !matches[3].str().empty()) {
+                        c = std::stoull(matches[3].str());
+                    }
 
-                tokens.emplace_back(a, b, c);
-                JST_TRACE("[MODULE_SLICE] Found colon token: {}.", element);
+                    tokens.emplace_back(a, b, c, hasEnd);
+                    JST_TRACE("[MODULE_SLICE] Found colon token: {}.", element);
+                }
+            } catch (const std::exception&) {
+                JST_ERROR("[MODULE_SLICE] Invalid numeric value in token '{}'.", element);
+                return Result::ERROR;
             }
 
             continue;
@@ -103,7 +121,12 @@ Result SliceImpl::parseSliceString(const std::string& sliceStr,
 
         // Parse Numbers.
         if (std::regex_match(element, std::regex(R"(\d+)"))) {
-            tokens.emplace_back(static_cast<U64>(std::stoull(element)));
+            try {
+                tokens.emplace_back(static_cast<U64>(std::stoull(element)));
+            } catch (const std::exception&) {
+                JST_ERROR("[MODULE_SLICE] Invalid numeric value in token '{}'.", element);
+                return Result::ERROR;
+            }
             JST_TRACE("[MODULE_SLICE] Found number token: {}.", element);
             continue;
         }

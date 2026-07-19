@@ -63,6 +63,7 @@ struct Tensor::Impl {
         U64 sizeBytes = 0;
         U64 offsetBytes = 0;
         U64 elementSize = 0;
+        U64 offsetLimit = 0;
         bool contiguous = true;
         bool initialized = false;
 
@@ -142,18 +143,20 @@ Result Tensor::Impl::Layout::updateCache() {
     }
 
     bool candidateContiguous = true;
-    U64 expectedStride = 1;
-    for (std::size_t i = rank; i-- > 0;) {
-        if (shape[i] == 1) {
-            continue;
-        }
-        if (stride[i] != expectedStride) {
-            candidateContiguous = false;
-            break;
-        }
-        if (!detail::CheckedMultiply(expectedStride, shape[i], expectedStride)) {
-            JST_ERROR("[MEMORY:TENSOR] Shape exceeds the supported layout range.");
-            return Result::ERROR;
+    if (!hasZeroExtent) {
+        U64 expectedStride = 1;
+        for (std::size_t i = rank; i-- > 0;) {
+            if (shape[i] == 1) {
+                continue;
+            }
+            if (stride[i] != expectedStride) {
+                candidateContiguous = false;
+                break;
+            }
+            if (!detail::CheckedMultiply(expectedStride, shape[i], expectedStride)) {
+                JST_ERROR("[MEMORY:TENSOR] Shape exceeds the supported layout range.");
+                return Result::ERROR;
+            }
         }
     }
 
@@ -173,6 +176,7 @@ Result Tensor::Impl::Layout::initialize(const Shape& shape, U64 elementSize) {
     candidate.initialized = true;
     JST_CHECK(candidate.computeDefaultStrides());
     JST_CHECK(candidate.updateCache());
+    candidate.offsetLimit = candidate.size;
 
     *this = std::move(candidate);
     return Result::SUCCESS;
@@ -291,11 +295,39 @@ Result Tensor::Impl::Layout::broadcast(const Shape& targetShape) {
 }
 
 Result Tensor::Impl::Layout::slice(const std::vector<Token>& slice) {
+    const auto consumingTokens = static_cast<std::size_t>(std::count_if(
+        slice.begin(), slice.end(), [](const auto& token) {
+            return token.getType() != Token::Type::Ellipsis;
+        }));
+    const auto ellipsisCount = slice.size() - consumingTokens;
+    if (ellipsisCount > 1) {
+        JST_ERROR("[MEMORY:TENSOR] Ellipsis can only appear once in slice.");
+        return Result::ERROR;
+    }
+    if (consumingTokens > shape.size()) {
+        JST_ERROR("[MEMORY:TENSOR] Slice index exceeds dimensions.");
+        return Result::ERROR;
+    }
+
     Shape newShape;
     Shape newStride;
     U64 offsetVal = offset;
     Index dim = 0;
     bool ellipsisUsed = false;
+    bool emptyResult = size == 0;
+
+    const auto addOffset = [&](U64 coordinate, U64 axisStride, bool canSaturate) {
+        U64 coordinateOffset = 0;
+        if (detail::CheckedMultiply(coordinate, axisStride, coordinateOffset) &&
+            detail::CheckedAdd(offsetVal, coordinateOffset, offsetVal)) {
+            return true;
+        }
+        if (canSaturate) {
+            offsetVal = offsetLimit;
+            return true;
+        }
+        return false;
+    };
 
     for (const auto& token : slice) {
         switch (token.getType()) {
@@ -311,16 +343,15 @@ Result Tensor::Impl::Layout::slice(const std::vector<Token>& slice) {
                     return Result::ERROR;
                 }
 
-                U64 indexOffset = 0;
-                if (!detail::CheckedMultiply(index, stride[dim], indexOffset) ||
-                    !detail::CheckedAdd(offsetVal, indexOffset, offsetVal)) {
+                if (!addOffset(index, stride[dim], emptyResult)) {
                     JST_ERROR("[MEMORY:TENSOR] Slice offset exceeds the supported layout range.");
                     return Result::ERROR;
                 }
                 dim++;
                 break;
             }
-            case Token::Type::Colon: {
+            case Token::Type::Colon:
+            case Token::Type::ColonZeroEnd: {
                 if (dim >= shape.size()) {
                     JST_ERROR("[MEMORY:TENSOR] Slice index exceeds dimensions.");
                     return Result::ERROR;
@@ -330,7 +361,7 @@ Result Tensor::Impl::Layout::slice(const std::vector<Token>& slice) {
                 U64 end = token.getB();
                 const U64 step = token.getC();
 
-                if (end == 0) {
+                if (!token.hasEnd()) {
                     end = shape[dim];
                 }
 
@@ -339,28 +370,29 @@ Result Tensor::Impl::Layout::slice(const std::vector<Token>& slice) {
                     return Result::ERROR;
                 }
 
-                if (start >= shape[dim] || end > shape[dim]) {
+                if (start > shape[dim] || end > shape[dim]) {
                     JST_ERROR("[MEMORY:TENSOR] Slice range [{}:{}] exceeds dimension {}.", start, end, shape[dim]);
                     return Result::ERROR;
                 }
 
-                if (start >= end) {
-                    JST_ERROR("[MEMORY:TENSOR] Slice start must be less than end.");
-                    return Result::ERROR;
-                }
-
-                const U64 range = end - start;
-                newShape.push_back((range - 1) / step + 1);
+                const U64 range = end > start ? end - start : 0;
+                const U64 slicedExtent = range == 0 ? 0 : (range - 1) / step + 1;
+                newShape.push_back(slicedExtent);
 
                 U64 slicedStride = 0;
-                U64 startOffset = 0;
-                if (!detail::CheckedMultiply(stride[dim], step, slicedStride) ||
-                    !detail::CheckedMultiply(start, stride[dim], startOffset) ||
-                    !detail::CheckedAdd(offsetVal, startOffset, offsetVal)) {
+                if (!detail::CheckedMultiply(stride[dim], step, slicedStride)) {
+                    if (slicedExtent > 1) {
+                        JST_ERROR("[MEMORY:TENSOR] Slice exceeds the supported layout range.");
+                        return Result::ERROR;
+                    }
+                    slicedStride = stride[dim];
+                }
+                if (!addOffset(start, stride[dim], emptyResult || range == 0)) {
                     JST_ERROR("[MEMORY:TENSOR] Slice exceeds the supported layout range.");
                     return Result::ERROR;
                 }
                 newStride.push_back(slicedStride);
+                emptyResult = emptyResult || range == 0;
                 dim++;
                 break;
             }
@@ -371,8 +403,8 @@ Result Tensor::Impl::Layout::slice(const std::vector<Token>& slice) {
                 }
                 ellipsisUsed = true;
 
-                const U64 remainingDims = shape.size() - (slice.size() - 1);
-                while (dim < remainingDims) {
+                const auto expandedDims = shape.size() - consumingTokens;
+                for (std::size_t i = 0; i < expandedDims; ++i) {
                     newShape.push_back(shape[dim]);
                     newStride.push_back(stride[dim]);
                     dim++;
@@ -390,10 +422,18 @@ Result Tensor::Impl::Layout::slice(const std::vector<Token>& slice) {
         }
     }
 
-    shape = std::move(newShape);
-    stride = std::move(newStride);
-    offset = offsetVal;
-    return updateCache();
+    if (emptyResult) {
+        offsetVal = std::min(offsetVal, offsetLimit);
+    }
+
+    Layout candidate = *this;
+    candidate.shape = std::move(newShape);
+    candidate.stride = std::move(newStride);
+    candidate.offset = offsetVal;
+    JST_CHECK(candidate.updateCache());
+
+    *this = std::move(candidate);
+    return Result::SUCCESS;
 }
 
 Result Tensor::Impl::Layout::permute(const Shape& axes) {
@@ -892,6 +932,13 @@ Result Tensor::swapBuffers(Tensor& other) {
         return Result::SUCCESS;
     }
 
+    if (impl->storage->backingStorage || other.impl->storage->backingStorage ||
+        !impl->storage->backingOwners.empty() ||
+        !other.impl->storage->backingOwners.empty()) {
+        JST_ERROR("[MEMORY:TENSOR] Cannot swap mapped tensor storage.");
+        return Result::ERROR;
+    }
+
     if (dtype() == DataType::None || other.dtype() == DataType::None) {
         JST_ERROR("[MEMORY:TENSOR] Cannot swap buffers for uninitialized tensors.");
         return Result::ERROR;
@@ -906,7 +953,8 @@ Result Tensor::swapBuffers(Tensor& other) {
     if (shape() != other.shape() ||
         stride() != other.stride() ||
         offset() != other.offset() ||
-        sizeBytes() != other.sizeBytes()) {
+        sizeBytes() != other.sizeBytes() ||
+        impl->layout.offsetLimit != other.impl->layout.offsetLimit) {
         JST_ERROR("[MEMORY:TENSOR] Cannot swap buffers for tensors with different layouts.");
         return Result::ERROR;
     }
@@ -942,6 +990,25 @@ Result Tensor::swapBuffers(Tensor& other) {
         }
     }
 
+    U64 requiredBytes = 0;
+    if (!detail::CheckedMultiply(impl->layout.offsetLimit,
+                                 impl->layout.elementSize,
+                                 requiredBytes)) {
+        JST_ERROR("[MEMORY:TENSOR] Cannot swap buffers with invalid storage bounds.");
+        return Result::ERROR;
+    }
+    const auto storageValid = [&](const auto& buffers) {
+        return std::all_of(buffers.begin(), buffers.end(), [&](const auto& entry) {
+            return entry.second.valid() &&
+                   entry.second.device() == entry.first &&
+                   entry.second.sizeBytes() == requiredBytes;
+        });
+    };
+    if (!storageValid(lhsBuffers) || !storageValid(rhsBuffers)) {
+        JST_ERROR("[MEMORY:TENSOR] Cannot swap invalid or undersized buffers.");
+        return Result::ERROR;
+    }
+
     std::swap(impl->storage->rootDevice, other.impl->storage->rootDevice);
     std::swap(impl->storage->buffers, other.impl->storage->buffers);
 
@@ -958,6 +1025,16 @@ void* Tensor::data() {
     }
 
     auto& buf = impl->storage->buffers.at(impl->currentDevice);
+    U64 requiredBytes = 0;
+    if (!buf.valid() || buf.device() != impl->currentDevice ||
+        !detail::CheckedMultiply(impl->layout.offsetLimit,
+                                 impl->layout.elementSize,
+                                 requiredBytes) ||
+        buf.sizeBytes() < requiredBytes ||
+        impl->layout.offsetBytes > buf.sizeBytes()) {
+        return nullptr;
+    }
+
     void* base = buf.data();
     if (!base) {
         return nullptr;
@@ -981,6 +1058,16 @@ const void* Tensor::data() const {
     }
 
     const auto& buf = impl->storage->buffers.at(impl->currentDevice);
+    U64 requiredBytes = 0;
+    if (!buf.valid() || buf.device() != impl->currentDevice ||
+        !detail::CheckedMultiply(impl->layout.offsetLimit,
+                                 impl->layout.elementSize,
+                                 requiredBytes) ||
+        buf.sizeBytes() < requiredBytes ||
+        impl->layout.offsetBytes > buf.sizeBytes()) {
+        return nullptr;
+    }
+
     const void* base = buf.data();
     if (!base) {
         return nullptr;

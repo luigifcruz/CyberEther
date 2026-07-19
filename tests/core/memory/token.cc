@@ -17,6 +17,7 @@ TEST_CASE("Token constructors expose slice components", "[core][memory][token]")
         REQUIRE(token.getA() == 0);
         REQUIRE(token.getB() == 0);
         REQUIRE(token.getC() == 1);
+        REQUIRE_FALSE(token.hasEnd());
     }
 
     SECTION("unsigned index") {
@@ -31,15 +32,22 @@ TEST_CASE("Token constructors expose slice components", "[core][memory][token]")
     SECTION("unsigned ranges") {
         const Token range(U64{2}, U64{9});
         const Token stepped(U64{2}, U64{9}, U64{3});
+        const Token omittedEnd(U64{0}, U64{0}, U64{2}, false);
+        const Token zeroEnd(U64{0}, U64{0});
 
         REQUIRE(range.getType() == Token::Type::Colon);
         REQUIRE(range.getA() == 2);
         REQUIRE(range.getB() == 9);
         REQUIRE(range.getC() == 1);
+        REQUIRE(range.hasEnd());
         REQUIRE(stepped.getType() == Token::Type::Colon);
         REQUIRE(stepped.getA() == 2);
         REQUIRE(stepped.getB() == 9);
         REQUIRE(stepped.getC() == 3);
+        REQUIRE(stepped.hasEnd());
+        REQUIRE_FALSE(omittedEnd.hasEnd());
+        REQUIRE(zeroEnd.getType() == Token::Type::ColonZeroEnd);
+        REQUIRE(zeroEnd.hasEnd());
     }
 
     SECTION("signed overloads") {
@@ -82,9 +90,10 @@ TEST_CASE("Token streams use slice notation", "[core][memory][token][format]") {
     SECTION("default and unit-step ranges omit the step") {
         std::ostringstream stream;
 
-        stream << Token() << ' ' << Token(U64{1}, U64{6}, U64{1});
+        stream << Token() << ' ' << Token(U64{0}, U64{0}) << ' '
+               << Token(U64{1}, U64{6}, U64{1});
 
-        REQUIRE(stream.str() == "0:0 1:6");
+        REQUIRE(stream.str() == "0: 0:0 1:6");
     }
 
     SECTION("token lists") {
@@ -97,7 +106,7 @@ TEST_CASE("Token streams use slice notation", "[core][memory][token][format]") {
         populated << tokens;
         empty << std::vector<Token>{};
 
-        REQUIRE(populated.str() == "{3, ..., 0:8:2, 0:0}");
+        REQUIRE(populated.str() == "{3, ..., 0:8:2, 0:}");
         REQUIRE(empty.str() == "{}");
     }
 }

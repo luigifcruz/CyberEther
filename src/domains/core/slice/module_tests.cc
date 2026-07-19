@@ -42,6 +42,34 @@ TEST_CASE("Slice Module - Basic Range F32", "[modules][slice][F32]") {
     }
 }
 
+TEST_CASE("Slice Module - Explicit Empty Range F32", "[modules][slice][F32][empty]") {
+    auto implementations = Registry::ListAvailableModules("slice");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            for (const U64 start : {U64{0}, U64{1}}) {
+                CAPTURE(start);
+                TestContext ctx("slice", impl.device, impl.runtime, impl.provider);
+
+                Modules::Slice config;
+                config.slice = "[" + std::to_string(start) + ":0]";
+                ctx.setConfig(config);
+
+                auto input = ctx.createTensor<F32>({4});
+                ctx.setInput("buffer", input);
+                REQUIRE(ctx.run() == Result::SUCCESS);
+
+                const auto& out = ctx.output("buffer");
+                REQUIRE(out.shape() == Shape{0});
+                REQUIRE(out.size() == 0);
+                REQUIRE(out.offset() == start);
+                REQUIRE(out.contiguous());
+            }
+        }
+    }
+}
+
 TEST_CASE("Slice Module - Step F32", "[modules][slice][F32][step]") {
     auto implementations = Registry::ListAvailableModules("slice");
     REQUIRE(!implementations.empty());
@@ -51,7 +79,7 @@ TEST_CASE("Slice Module - Step F32", "[modules][slice][F32][step]") {
             TestContext ctx("slice", impl.device, impl.runtime, impl.provider);
 
             Modules::Slice config;
-            config.slice = "[0:8:2]";
+            config.slice = "[:8:2]";
 
             ctx.setConfig(config);
 
@@ -73,6 +101,30 @@ TEST_CASE("Slice Module - Step F32", "[modules][slice][F32][step]") {
             REQUIRE_THAT(out.at<F32>(1), Catch::Matchers::WithinAbs(2.0f, 1e-6f));
             REQUIRE_THAT(out.at<F32>(2), Catch::Matchers::WithinAbs(4.0f, 1e-6f));
             REQUIRE_THAT(out.at<F32>(3), Catch::Matchers::WithinAbs(6.0f, 1e-6f));
+        }
+    }
+}
+
+TEST_CASE("Slice Module - Omitted Stop Step F32", "[modules][slice][F32][step]") {
+    auto implementations = Registry::ListAvailableModules("slice");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("slice", impl.device, impl.runtime, impl.provider);
+
+            Modules::Slice config;
+            config.slice = "[1::2]";
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({8});
+            ctx.setInput("buffer", input);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("buffer");
+            REQUIRE(out.shape() == Shape{4});
+            REQUIRE(out.offset() == 1);
+            REQUIRE(out.stride() == Shape{2});
         }
     }
 }
@@ -264,6 +316,33 @@ TEST_CASE("Slice Module - Validation rejects malformed slice strings",
             auto input = ctx.createTensor<F32>({8});
             ctx.setInput("buffer", input);
             REQUIRE(ctx.run() == Result::ERROR);
+        }
+
+        SECTION("overflowing numeric token") {
+            TestContext ctx("slice", impl.device, impl.runtime, impl.provider);
+
+            Modules::Slice config;
+            config.slice = "[18446744073709551616:]";
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({8});
+            ctx.setInput("buffer", input);
+            REQUIRE(ctx.run() == Result::ERROR);
+        }
+
+        SECTION("invalid delimiters") {
+            for (const auto* malformed : {"[0,,1]", "[0 1]", "[[]]"}) {
+                CAPTURE(malformed);
+                TestContext ctx("slice", impl.device, impl.runtime, impl.provider);
+
+                Modules::Slice config;
+                config.slice = malformed;
+                ctx.setConfig(config);
+
+                auto input = ctx.createTensor<F32>({8});
+                ctx.setInput("buffer", input);
+                REQUIRE(ctx.run() == Result::ERROR);
+            }
         }
     }
 }

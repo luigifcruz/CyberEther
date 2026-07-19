@@ -788,7 +788,6 @@ TEST_CASE("Tensor trailing ellipsis preserves all remaining dimensions",
     Tensor tensor(DeviceType::CPU, DataType::F32, {2, 3, 4});
 
     REQUIRE(tensor.slice({Token(U64{1}), Token("...")}) == Result::SUCCESS);
-    // Current failure: a trailing ellipsis drops the final unconsumed dimension.
     REQUIRE(tensor.shape() == Shape{3, 4});
     REQUIRE(tensor.stride() == Shape{4, 1});
 }
@@ -798,14 +797,28 @@ TEST_CASE("Tensor slicing validates token count and bounds atomically",
     Tensor tensor(DeviceType::CPU, DataType::F32, {2, 3});
     const Shape shape = tensor.shape();
     const Shape stride = tensor.stride();
+    const Shape shapeMinusOne = tensor.shapeMinusOne();
+    const Shape backstride = tensor.backstride();
+    const U64 size = tensor.size();
+    const U64 sizeBytes = tensor.sizeBytes();
+    const U64 offsetBytes = tensor.offsetBytes();
+    const bool contiguous = tensor.contiguous();
 
     REQUIRE(tensor.slice({Token(U64{0}), Token(U64{0}), Token(U64{0})}) ==
+            Result::ERROR);
+    REQUIRE(tensor.slice({Token("..."), Token(U64{0}), Token(U64{0}), Token(U64{0})}) ==
             Result::ERROR);
     REQUIRE(tensor.slice({Token(U64{0}, U64{3}), Token()}) == Result::ERROR);
     REQUIRE(tensor.slice({Token(), Token(U64{0}, U64{4})}) == Result::ERROR);
     REQUIRE(tensor.shape() == shape);
     REQUIRE(tensor.stride() == stride);
+    REQUIRE(tensor.shapeMinusOne() == shapeMinusOne);
+    REQUIRE(tensor.backstride() == backstride);
+    REQUIRE(tensor.size() == size);
+    REQUIRE(tensor.sizeBytes() == sizeBytes);
     REQUIRE(tensor.offset() == 0);
+    REQUIRE(tensor.offsetBytes() == offsetBytes);
+    REQUIRE(tensor.contiguous() == contiguous);
 }
 
 TEST_CASE("Tensor slicing produces a scalar when every axis is indexed",
@@ -832,7 +845,6 @@ TEST_CASE("Tensor slicing preserves zero extents",
     SECTION("full slice of an empty axis") {
         Tensor tensor(DeviceType::CPU, DataType::F32, {2, 0, 3});
 
-        // Current failure: a full slice rejects a zero-sized dimension as out of bounds.
         REQUIRE(tensor.slice({Token(), Token(), Token()}) == Result::SUCCESS);
         REQUIRE(tensor.shape() == Shape{2, 0, 3});
         REQUIRE(tensor.size() == 0);
@@ -842,11 +854,116 @@ TEST_CASE("Tensor slicing preserves zero extents",
     SECTION("empty range at the upper bound") {
         Tensor tensor(DeviceType::CPU, DataType::F32, {4});
 
-        // Current failure: Python-style empty boundary ranges are rejected.
         REQUIRE(tensor.slice({Token(U64{4}, U64{4})}) == Result::SUCCESS);
         REQUIRE(tensor.shape() == Shape{0});
         REQUIRE(tensor.size() == 0);
         REQUIRE(tensor.offset() == 4);
+        REQUIRE(tensor.contiguous());
+    }
+
+    SECTION("explicit zero stop is empty") {
+        Tensor tensor(DeviceType::CPU, DataType::F32, {4});
+
+        REQUIRE(tensor.slice({Token(U64{0}, U64{0})}) == Result::SUCCESS);
+        REQUIRE(tensor.shape() == Shape{0});
+        REQUIRE(tensor.size() == 0);
+        REQUIRE(tensor.offset() == 0);
+        REQUIRE(tensor.contiguous());
+    }
+
+    SECTION("a stop before the start is empty") {
+        Tensor tensor(DeviceType::CPU, DataType::F32, {4});
+        auto* const base = tensor.data<F32>();
+
+        REQUIRE(tensor.slice({Token(U64{1}, U64{0})}) == Result::SUCCESS);
+        REQUIRE(tensor.shape() == Shape{0});
+        REQUIRE(tensor.offset() == 1);
+        REQUIRE(tensor.data<F32>() == base + 1);
+        REQUIRE(tensor.contiguous());
+    }
+
+    SECTION("stepped empty ranges are contiguous") {
+        Tensor tensor(DeviceType::CPU, DataType::F32, {4});
+
+        REQUIRE(tensor.slice({Token(U64{4}, U64{4}, U64{2})}) == Result::SUCCESS);
+        REQUIRE(tensor.shape() == Shape{0});
+        REQUIRE(tensor.stride() == Shape{2});
+        REQUIRE(tensor.size() == 0);
+        REQUIRE(tensor.contiguous());
+    }
+
+    SECTION("overflowing empty offsets saturate to storage") {
+        Tensor tensor(DeviceType::CPU, DataType::F32, {2});
+        auto* const base = tensor.data<F32>();
+
+        REQUIRE(tensor.slice({Token(U64{1}, U64{2}, std::numeric_limits<U64>::max())}) ==
+                Result::SUCCESS);
+        REQUIRE(tensor.shape() == Shape{1});
+        REQUIRE(tensor.stride() == Shape{std::numeric_limits<U64>::max()});
+        REQUIRE(tensor.offset() == 1);
+
+        REQUIRE(tensor.slice({Token(U64{1}, U64{1},
+                                    std::numeric_limits<U64>::max())}) == Result::SUCCESS);
+        REQUIRE(tensor.shape() == Shape{0});
+        REQUIRE(tensor.offset() == 2);
+        REQUIRE(tensor.data<F32>() == base + 2);
+        REQUIRE(tensor.contiguous());
+    }
+
+    SECTION("empty ranges keep multi-axis offsets within storage") {
+        Tensor tensor(DeviceType::CPU, DataType::F32, {4, 5});
+        auto* const base = tensor.data<F32>();
+
+        REQUIRE(tensor.slice({Token(U64{4}, U64{4}), Token(U64{1}, U64{5})}) ==
+                Result::SUCCESS);
+        REQUIRE(tensor.shape() == Shape{0, 4});
+        REQUIRE(tensor.offset() == 20);
+        REQUIRE(tensor.data<F32>() == base + 20);
+
+        REQUIRE(tensor.slice({Token(), Token(U64{1}, U64{4})}) == Result::SUCCESS);
+        REQUIRE(tensor.shape() == Shape{0, 3});
+        REQUIRE(tensor.offset() == 20);
+        REQUIRE(tensor.data<F32>() == base + 20);
+    }
+
+    SECTION("empty ranges clamp offset and strided views to storage") {
+        Tensor offsetView(DeviceType::CPU, DataType::F32, {4, 5});
+        auto* const offsetBase = offsetView.data<F32>();
+        REQUIRE(offsetView.slice({Token(), Token(U64{1}, U64{5})}) == Result::SUCCESS);
+        REQUIRE(offsetView.offset() == 1);
+        REQUIRE(offsetView.slice({Token(U64{4}, U64{4})}) == Result::SUCCESS);
+        REQUIRE(offsetView.shape() == Shape{0, 4});
+        REQUIRE(offsetView.offset() == 20);
+        REQUIRE(offsetView.data<F32>() == offsetBase + 20);
+
+        Tensor stridedView(DeviceType::CPU, DataType::F32, {4});
+        auto* const stridedBase = stridedView.data<F32>();
+        REQUIRE(stridedView.slice({Token(U64{1}, U64{4}, U64{2})}) == Result::SUCCESS);
+        REQUIRE(stridedView.offset() == 1);
+        REQUIRE(stridedView.slice({Token(U64{2}, U64{2})}) == Result::SUCCESS);
+        REQUIRE(stridedView.shape() == Shape{0});
+        REQUIRE(stridedView.offset() == 4);
+        REQUIRE(stridedView.data<F32>() == stridedBase + 4);
+    }
+
+    SECTION("combined and repeated empty slices have identical offsets") {
+        Tensor storage(DeviceType::CPU, DataType::F32, {4, 5});
+        Tensor combined = storage.clone();
+        Tensor repeated = storage.clone();
+
+        REQUIRE(combined.slice({Token(U64{2}, U64{2}), Token(U64{1}, U64{5})}) ==
+                Result::SUCCESS);
+        REQUIRE(repeated.slice({Token(U64{2}, U64{2}), Token()}) == Result::SUCCESS);
+        REQUIRE(repeated.slice({Token(), Token(U64{1}, U64{5})}) == Result::SUCCESS);
+
+        REQUIRE(combined.shape() == Shape{0, 4});
+        REQUIRE(repeated.shape() == combined.shape());
+        REQUIRE(repeated.stride() == combined.stride());
+        REQUIRE(combined.offset() == 11);
+        REQUIRE(repeated.offset() == combined.offset());
+        REQUIRE(repeated.data<F32>() == combined.data<F32>());
+        REQUIRE(combined.contiguous());
+        REQUIRE(repeated.contiguous());
     }
 }
 
@@ -962,6 +1079,20 @@ TEST_CASE("Tensor swaps compatible storage without replacing metadata",
     Tensor wrongType(DeviceType::CPU, DataType::I32, {2, 2});
     REQUIRE(left.swapBuffers(wrongShape) == Result::ERROR);
     REQUIRE(left.swapBuffers(wrongType) == Result::ERROR);
+
+    Tensor undersized(DeviceType::CPU, DataType::F32, {2, 2});
+    REQUIRE(undersized.buffer().destroy() == Result::SUCCESS);
+    REQUIRE(undersized.buffer().create(DeviceType::CPU, sizeof(F32)) == Result::SUCCESS);
+    REQUIRE(left.swapBuffers(undersized) == Result::ERROR);
+    REQUIRE(left.buffer().sizeBytes() == 4 * sizeof(F32));
+    REQUIRE(undersized.buffer().sizeBytes() == sizeof(F32));
+
+    Tensor damagedView(DeviceType::CPU, DataType::F32, {4});
+    REQUIRE(damagedView.slice({Token(U64{1}, U64{4})}) == Result::SUCCESS);
+    REQUIRE(damagedView.buffer().destroy() == Result::SUCCESS);
+    REQUIRE(damagedView.buffer().create(DeviceType::CPU, sizeof(F32)) == Result::SUCCESS);
+    REQUIRE(damagedView.data() == nullptr);
+    REQUIRE(std::as_const(damagedView).data() == nullptr);
 }
 
 TEST_CASE("AutomaticIterator honors one-dimensional sliced strides",
