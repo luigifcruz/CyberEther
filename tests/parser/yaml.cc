@@ -39,6 +39,18 @@ TEST_CASE("Parser YAML round-trips mixed maps and sequences", "[parser][yaml]") 
     REQUIRE(decodedSteps.at(1).type() == typeid(Parser::Map));
 }
 
+TEST_CASE("Parser YAML preserves negative axis scalars", "[parser][yaml][axis]") {
+    Parser::Map source;
+    source["axis"] = I64{-1};
+
+    std::string yaml;
+    REQUIRE(Parser::YamlEncode(source, yaml) == Result::SUCCESS);
+
+    Parser::Map restored;
+    REQUIRE(Parser::YamlDecode(yaml, restored) == Result::SUCCESS);
+    REQUIRE(std::any_cast<std::string>(restored.at("axis")) == "-1");
+}
+
 TEST_CASE("Parser::YamlDecode handles empty and quoted input", "[parser][yaml]") {
     SECTION("empty documents clear the destination map") {
         Parser::Map data;

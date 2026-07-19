@@ -42,6 +42,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "Invert block input reconnect lifecycle",
 
 TEST_CASE_METHOD(FlowgraphFixture, "Integer config formats preserve signedness",
                  "[modules][invert][block][config][integer]") {
+    REQUIRE(Blocks::Invert{}.axis == -1);
+
     Blocks::Window source;
     REQUIRE(flowgraph->blockCreate("integer_src", source, {}) == Result::SUCCESS);
 

@@ -2,6 +2,8 @@
 
 #include <limits>
 
+#include <jetstream/memory/axis.hh>
+
 namespace Jetstream::Modules {
 
 Result InvertImpl::define() {
@@ -18,19 +20,19 @@ Result InvertImpl::create() {
 
     input = inputTensor;
 
-    if (input.rank() == 0 ||
-        input.rank() > static_cast<U64>(std::numeric_limits<I64>::max())) {
-        JST_ERROR("[MODULE_INVERT] Expected an input tensor with at least one dimension.");
-        return Result::ERROR;
-    }
+    const auto maybeResolvedAxis = ResolveAxis(axis, input.rank());
+    if (!maybeResolvedAxis) {
+        if (input.rank() == 0 ||
+            input.rank() > static_cast<U64>(std::numeric_limits<I64>::max())) {
+            JST_ERROR("[MODULE_INVERT] Expected an input tensor with at least one dimension.");
+            return Result::ERROR;
+        }
 
-    const I64 rank = static_cast<I64>(input.rank());
-    const I64 normalizedAxis = axis < 0 ? rank + axis : axis;
-    if (normalizedAxis < 0 || normalizedAxis >= rank) {
+        const I64 rank = static_cast<I64>(input.rank());
         JST_ERROR("[MODULE_INVERT] Axis {} is out of bounds for a rank-{} tensor.", axis, rank);
         return Result::ERROR;
     }
-    resolvedAxis = static_cast<Index>(normalizedAxis);
+    resolvedAxis = *maybeResolvedAxis;
 
     JST_CHECK(output.create(input.device(), input.dtype(), input.shape()));
     JST_CHECK(output.propagateAttributes(input));

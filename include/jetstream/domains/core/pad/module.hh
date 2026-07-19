@@ -8,7 +8,7 @@ namespace Jetstream::Modules {
 
 struct Pad : public Module::Config {
     U64 size = 0;
-    U64 axis = 0;
+    I64 axis = -1;
 
     JST_MODULE_TYPE(pad);
     JST_MODULE_PARAMS(size, axis);

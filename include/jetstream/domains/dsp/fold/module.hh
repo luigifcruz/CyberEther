@@ -6,7 +6,7 @@
 namespace Jetstream::Modules {
 
 struct Fold : public Module::Config {
-    U64 axis = 0;
+    I64 axis = -1;
     U64 offset = 0;
     U64 size = 0;
 

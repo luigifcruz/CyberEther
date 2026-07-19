@@ -34,8 +34,9 @@ Result FoldImpl::define() {
 
     JST_CHECK(defineInterfaceConfig("axis",
                                     "Axis",
-                                    "Dimension along which to fold.",
-                                    "uint:axis"));
+                                    "Dimension along which to fold. Negative axes count "
+                                    "from the end.",
+                                    "int:axis"));
 
     JST_CHECK(defineInterfaceConfig("offset",
                                     "Offset",

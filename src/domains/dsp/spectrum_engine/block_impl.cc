@@ -9,6 +9,7 @@
 #include <jetstream/domains/core/multiply/module.hh>
 #include <jetstream/domains/core/range/module.hh>
 #include <jetstream/domains/core/reshape/module.hh>
+#include <jetstream/memory/axis.hh>
 
 namespace Jetstream::Blocks {
 
@@ -58,8 +59,6 @@ Result SpectrumEngineImpl::validate() {
 
 Result SpectrumEngineImpl::configure() {
     fftConfig->forward = true;
-    fftConfig->axis = static_cast<I64>(axis);
-    amplitudeConfig->axis = static_cast<I64>(axis);
     rangeConfig->min = rangeMin;
     rangeConfig->max = rangeMax;
 
@@ -74,8 +73,9 @@ Result SpectrumEngineImpl::define() {
 
     JST_CHECK(defineInterfaceConfig("axis",
                                     "Axis",
-                                    "Axis along which to compute the spectrum.",
-                                    "uint:"));
+                                    "Axis along which to compute the spectrum. Negative axes "
+                                    "count from the end.",
+                                    "int:"));
 
     JST_CHECK(defineInterfaceConfig("enableAgc",
                                     "Enable AGC",
@@ -106,24 +106,28 @@ Result SpectrumEngineImpl::create() {
     const auto& inputPort = inputs().at("buffer");
     const Tensor& inputTensor = inputPort.tensor;
 
-    // Validate axis against input rank.
-
-    if (axis >= inputTensor.rank()) {
+    const auto candidateAxis = ResolveAxis(axis, inputTensor.rank());
+    if (!candidateAxis) {
         JST_ERROR("[BLOCK_SPECTRUM_ENGINE] Axis {} is out of bounds for "
                   "input tensor rank {}.", axis, inputTensor.rank());
         return Result::ERROR;
     }
+    const Index resolvedAxis = *candidateAxis;
+
+    const I64 childAxis = static_cast<I64>(resolvedAxis);
+    fftConfig->axis = childAxis;
+    amplitudeConfig->axis = childAxis;
 
     // Derive window size from input shape at specified axis.
 
-    windowConfig->size = inputTensor.shape(axis);
+    windowConfig->size = inputTensor.shape(resolvedAxis);
 
     std::string windowShape = "[";
     for (Index dimension = 0; dimension < inputTensor.rank(); ++dimension) {
         if (dimension > 0) {
             windowShape += ", ";
         }
-        windowShape += std::to_string(dimension == axis ? windowConfig->size : 1);
+        windowShape += std::to_string(dimension == resolvedAxis ? windowConfig->size : 1);
     }
     windowShape += "]";
     reshapeWindowConfig->shape = windowShape;

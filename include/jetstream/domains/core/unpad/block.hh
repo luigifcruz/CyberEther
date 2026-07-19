@@ -8,7 +8,7 @@ namespace Jetstream::Blocks {
 
 struct Unpad : public Block::Config {
     U64 size = 0;
-    U64 axis = 0;
+    I64 axis = -1;
 
     JST_BLOCK_TYPE(unpad);
     JST_BLOCK_DOMAIN("Core");
@@ -24,7 +24,8 @@ struct Unpad : public Block::Config {
 
         "## Arguments\n"
         "- **Pad Size**: Number of elements to remove from the end of the specified axis.\n"
-        "- **Pad Axis**: The dimension along which to remove padding (0-indexed).\n\n"
+        "- **Pad Axis**: The dimension along which to remove padding. Negative axes "
+        "count from the end.\n\n"
 
         "## Useful For\n"
         "- Removing zero-padding after FFT/IFFT operations.\n"

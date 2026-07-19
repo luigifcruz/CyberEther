@@ -1,5 +1,7 @@
 #include "module_impl.hh"
 
+#include <jetstream/memory/axis.hh>
+
 namespace Jetstream::Modules {
 
 Result ArithmeticImpl::validate() {
@@ -36,13 +38,15 @@ Result ArithmeticImpl::create() {
         return Result::ERROR;
     }
 
-    if (input.rank() <= axis) {
-        JST_ERROR("[MODULE_ARITHMETIC] Input buffer rank {} is less than or "
-                  "equal to axis {}.", input.rank(), axis);
+    const auto maybeResolvedAxis = ResolveAxis(axis, input.rank());
+    if (!maybeResolvedAxis) {
+        JST_ERROR("[MODULE_ARITHMETIC] Axis {} out of range for input buffer rank {}.",
+                  axis, input.rank());
         return Result::ERROR;
     }
+    const Index resolvedAxis = *maybeResolvedAxis;
 
-    if (input.shape(axis) == 0) {
+    if (input.shape(resolvedAxis) == 0) {
         JST_ERROR("[MODULE_ARITHMETIC] Input buffer axis {} is 0.", axis);
         return Result::ERROR;
     }
@@ -50,7 +54,7 @@ Result ArithmeticImpl::create() {
     // Calculate output shape.
 
     Shape outputShape(input.shape());
-    outputShape[axis] = 1;
+    outputShape[resolvedAxis] = 1;
 
     const DeviceType device = input.device();
     const DataType dtype = input.dtype();
@@ -67,7 +71,7 @@ Result ArithmeticImpl::create() {
     // Apply squeeze if requested.
 
     if (squeeze) {
-        JST_CHECK(output.squeezeDims(axis));
+        JST_CHECK(output.squeezeDims(resolvedAxis));
     }
 
     JST_CHECK(output.propagateAttributes(input));

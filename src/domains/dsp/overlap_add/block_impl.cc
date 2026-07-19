@@ -38,8 +38,8 @@ Result OverlapAddImpl::define() {
     JST_CHECK(defineInterfaceConfig("axis",
                                     "Axis",
                                     "Dimension along which the "
-                                    "overlap is applied.",
-                                    "uint:axis"));
+                                    "overlap is applied. Negative axes count from the end.",
+                                    "int:axis"));
 
     return Result::SUCCESS;
 }

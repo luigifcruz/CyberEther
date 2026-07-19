@@ -32,8 +32,8 @@ Result PadImpl::define() {
 
     JST_CHECK(defineInterfaceConfig("axis",
                                     "Pad Axis",
-                                    "Dimension along which to add padding.",
-                                    "uint:"));
+                                    "Dimension along which to add padding. Negative axes count from the end.",
+                                    "int:"));
 
     return Result::SUCCESS;
 }

@@ -15,6 +15,7 @@ struct PadImpl : public Module::Impl, public DynamicConfig<Pad> {
     Tensor input;
     Tensor output;
 
+    Index resolvedAxis = 0;
     U64 inputAxisSize = 0;
     U64 outputAxisSize = 0;
 };

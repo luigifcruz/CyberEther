@@ -517,13 +517,17 @@ TEST_CASE("FFT - Invalid Axis Error", "[modules][fft][axis][error]") {
 
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
-            TestContext ctx("fft", impl.device, impl.runtime, impl.provider);
-            Modules::Fft config;
-            config.axis = 2;
-            ctx.setConfig(config);
-            auto input = ctx.createTensor<CF32>({2, 3});
-            ctx.setInput("signal", input);
-            REQUIRE(ctx.run() == Result::ERROR);
+            for (const I64 invalidAxis : {I64{2}, I64{-3}}) {
+                DYNAMIC_SECTION("Axis: " << invalidAxis) {
+                    TestContext ctx("fft", impl.device, impl.runtime, impl.provider);
+                    Modules::Fft config;
+                    config.axis = invalidAxis;
+                    ctx.setConfig(config);
+                    auto input = ctx.createTensor<CF32>({2, 3});
+                    ctx.setInput("signal", input);
+                    REQUIRE(ctx.run() == Result::ERROR);
+                }
+            }
         }
     }
 }

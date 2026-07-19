@@ -118,7 +118,8 @@ TEST_CASE("Amplitude - Arbitrary Axis Normalization",
     }
 }
 
-TEST_CASE("Amplitude - Invalid Axis Error", "[modules][amplitude][axis][error]") {
+TEST_CASE("Amplitude - Negative Axis Normalization",
+          "[modules][amplitude][axis]") {
     const auto implementations = Registry::ListAvailableModules("amplitude");
     REQUIRE(!implementations.empty());
 
@@ -127,13 +128,45 @@ TEST_CASE("Amplitude - Invalid Axis Error", "[modules][amplitude][axis][error]")
             TestContext ctx("amplitude", impl.device, impl.runtime, impl.provider);
 
             Modules::Amplitude config;
-            config.axis = 2;
+            config.axis = -2;
             ctx.setConfig(config);
 
-            auto input = ctx.createTensor<F32>({2, 3});
+            auto input = ctx.createTensor<F32>({5, 3});
+            for (U64 index = 0; index < input.size(); ++index) {
+                input.data()[index] = 5.0f;
+            }
             ctx.setInput("signal", input);
 
-            REQUIRE(ctx.run() == Result::ERROR);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+            const auto& out = ctx.output("signal");
+            for (U64 index = 0; index < out.size(); ++index) {
+                REQUIRE_THAT(out.data<F32>()[index],
+                             Catch::Matchers::WithinAbs(0.0f, 0.1f));
+            }
+        }
+    }
+}
+
+TEST_CASE("Amplitude - Invalid Axis Error", "[modules][amplitude][axis][error]") {
+    const auto implementations = Registry::ListAvailableModules("amplitude");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            for (const I64 invalidAxis : {I64{2}, I64{-3}}) {
+                DYNAMIC_SECTION("Axis: " << invalidAxis) {
+                    TestContext ctx("amplitude", impl.device, impl.runtime, impl.provider);
+
+                    Modules::Amplitude config;
+                    config.axis = invalidAxis;
+                    ctx.setConfig(config);
+
+                    auto input = ctx.createTensor<F32>({2, 3});
+                    ctx.setInput("signal", input);
+
+                    REQUIRE(ctx.run() == Result::ERROR);
+                }
+            }
         }
     }
 }

@@ -15,6 +15,10 @@ TEST_CASE("Invert Module - Alternating Sign", "[modules][invert][CF32]") {
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
             TestContext ctx("invert", impl.device, impl.runtime, impl.provider);
 
+            Modules::Invert config;
+            config.axis = 0;
+            ctx.setConfig(config);
+
             auto input = ctx.createTensor<CF32>({5});
             input.at(0) = {1.0f, 1.0f};
             input.at(1) = {2.0f, -2.0f};
@@ -53,6 +57,7 @@ TEST_CASE("Invert Module - Axis Restarts For Each Line",
           "[modules][invert][axis][lines]") {
     const auto implementations = Registry::ListAvailableModules("invert");
     REQUIRE(!implementations.empty());
+    REQUIRE(Modules::Invert{}.axis == -1);
 
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {

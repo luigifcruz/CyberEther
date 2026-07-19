@@ -209,6 +209,42 @@ TEST_CASE("Fold - 2D F32 Along Axis 1", "[modules][fold][axis]") {
     }
 }
 
+TEST_CASE("Fold - 2D F32 Along Negative Axis", "[modules][fold][axis]") {
+    const auto implementations = Registry::ListAvailableModules("fold");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device
+                        << " Runtime: " << impl.runtime) {
+            TestContext ctx("fold", impl.device, impl.runtime, impl.provider);
+
+            Modules::Fold config;
+            config.axis = -1;
+            config.size = 4;
+            ctx.setConfig(config);
+
+            Tensor input;
+            REQUIRE(input.create(DeviceType::CPU, DataType::F32,
+                                 {2, 8}) == Result::SUCCESS);
+            for (U64 i = 0; i < 8; ++i) {
+                input.at<F32>(0, i) = static_cast<F32>(i);
+                input.at<F32>(1, i) = static_cast<F32>(10 + i);
+            }
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+            const auto& out = ctx.output("buffer");
+            REQUIRE(out.shape() == Shape{2, 4});
+            for (U64 i = 0; i < 4; ++i) {
+                REQUIRE_THAT(out.at<F32>(0, i),
+                    Catch::Matchers::WithinAbs(static_cast<F32>(2 + i), 1e-5f));
+                REQUIRE_THAT(out.at<F32>(1, i),
+                    Catch::Matchers::WithinAbs(static_cast<F32>(12 + i), 1e-5f));
+            }
+        }
+    }
+}
+
 TEST_CASE("Fold - Invalid Axis Out Of Bounds", "[modules][fold][error]") {
     auto implementations = Registry::ListAvailableModules("fold");
     REQUIRE(!implementations.empty());
@@ -230,6 +266,30 @@ TEST_CASE("Fold - Invalid Axis Out Of Bounds", "[modules][fold][error]") {
             REQUIRE(input.create(DeviceType::CPU, DataType::F32,
                                  {8}) == Result::SUCCESS);
 
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() != Result::SUCCESS);
+        }
+    }
+}
+
+TEST_CASE("Fold - Too-Negative Axis Out Of Bounds", "[modules][fold][error]") {
+    const auto implementations = Registry::ListAvailableModules("fold");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device
+                        << " Runtime: " << impl.runtime) {
+            TestContext ctx("fold", impl.device, impl.runtime, impl.provider);
+
+            Modules::Fold config;
+            config.axis = -3;
+            config.size = 2;
+            ctx.setConfig(config);
+
+            Tensor input;
+            REQUIRE(input.create(DeviceType::CPU, DataType::F32,
+                                 {2, 4}) == Result::SUCCESS);
             ctx.setInput("buffer", input);
 
             REQUIRE(ctx.run() != Result::SUCCESS);

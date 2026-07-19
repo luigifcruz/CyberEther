@@ -145,6 +145,109 @@ TEST_CASE("OverlapAdd - 2D CF32 Batched",
     }
 }
 
+TEST_CASE("OverlapAdd - Negative Axis",
+          "[modules][overlap_add][axis]") {
+    const auto implementations = Registry::ListAvailableModules("overlap_add");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device
+                        << " Runtime: " << impl.runtime) {
+            TestContext ctx("overlap_add", impl.device,
+                            impl.runtime, impl.provider);
+
+            Modules::OverlapAdd config;
+            config.axis = -1;
+            ctx.setConfig(config);
+
+            Tensor buffer;
+            REQUIRE(buffer.create(DeviceType::CPU, DataType::F32,
+                                  {2, 8}) == Result::SUCCESS);
+            Tensor overlap;
+            REQUIRE(overlap.create(DeviceType::CPU, DataType::F32,
+                                   {2, 3}) == Result::SUCCESS);
+            for (U64 index = 0; index < buffer.size(); ++index) {
+                buffer.data<F32>()[index] = 1.0f;
+            }
+            for (U64 column = 0; column < overlap.shape(1); ++column) {
+                overlap.at<F32>(0, column) = 10.0f;
+                overlap.at<F32>(1, column) = 20.0f;
+            }
+            ctx.setInput("buffer", buffer);
+            ctx.setInput("overlap", overlap);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+            const auto& output = ctx.output("buffer");
+            REQUIRE(output.shape() == Shape{2, 8});
+            for (U64 column = 0; column < output.shape(1); ++column) {
+                REQUIRE(output.at<F32>(0, column) == 1.0f);
+                REQUIRE(output.at<F32>(1, column) ==
+                        (column < overlap.shape(1) ? 11.0f : 1.0f));
+            }
+        }
+    }
+}
+
+TEST_CASE("OverlapAdd - Too-Negative Axis Error",
+          "[modules][overlap_add][axis][error]") {
+    const auto implementations = Registry::ListAvailableModules("overlap_add");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device
+                        << " Runtime: " << impl.runtime) {
+            TestContext ctx("overlap_add", impl.device,
+                            impl.runtime, impl.provider);
+
+            Modules::OverlapAdd config;
+            config.axis = -3;
+            ctx.setConfig(config);
+
+            Tensor buffer;
+            REQUIRE(buffer.create(DeviceType::CPU, DataType::F32,
+                                  {2, 8}) == Result::SUCCESS);
+            Tensor overlap;
+            REQUIRE(overlap.create(DeviceType::CPU, DataType::F32,
+                                   {2, 3}) == Result::SUCCESS);
+            ctx.setInput("buffer", buffer);
+            ctx.setInput("overlap", overlap);
+
+            REQUIRE(ctx.run() != Result::SUCCESS);
+        }
+    }
+}
+
+TEST_CASE("OverlapAdd - Batch Axis Error",
+          "[modules][overlap_add][axis][error]") {
+    const auto implementations = Registry::ListAvailableModules("overlap_add");
+    REQUIRE(!implementations.empty());
+
+    for (const auto axis : {I64{0}, I64{-2}}) {
+        for (const auto& impl : implementations) {
+            DYNAMIC_SECTION("Axis: " << axis << " Device: " << impl.device
+                            << " Runtime: " << impl.runtime) {
+                TestContext ctx("overlap_add", impl.device,
+                                impl.runtime, impl.provider);
+
+                Modules::OverlapAdd config;
+                config.axis = axis;
+                ctx.setConfig(config);
+
+                Tensor buffer;
+                REQUIRE(buffer.create(DeviceType::CPU, DataType::F32,
+                                      {4, 3}) == Result::SUCCESS);
+                Tensor overlap;
+                REQUIRE(overlap.create(DeviceType::CPU, DataType::F32,
+                                       {2, 3}) == Result::SUCCESS);
+                ctx.setInput("buffer", buffer);
+                ctx.setInput("overlap", overlap);
+
+                REQUIRE(ctx.run() != Result::SUCCESS);
+            }
+        }
+    }
+}
+
 TEST_CASE("OverlapAdd - Rank Mismatch Error",
           "[modules][overlap_add][error]") {
     auto implementations =

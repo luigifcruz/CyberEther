@@ -33,8 +33,8 @@ Result UnpadImpl::define() {
 
     JST_CHECK(defineInterfaceConfig("axis",
                                     "Pad Axis",
-                                    "Dimension along which to remove padding.",
-                                    "uint:"));
+                                    "Dimension along which to remove padding. Negative axes count from the end.",
+                                    "int:"));
 
     return Result::SUCCESS;
 }

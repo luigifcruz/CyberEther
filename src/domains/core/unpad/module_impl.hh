@@ -16,6 +16,7 @@ struct UnpadImpl : public Module::Impl, public DynamicConfig<Unpad> {
     Tensor outputUnpadded;
     Tensor outputPad;
 
+    Index resolvedAxis = 0;
     U64 inputAxisSize = 0;
     U64 unpadAxisSize = 0;
 };

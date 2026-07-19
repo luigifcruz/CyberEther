@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 
@@ -9,6 +10,11 @@
 #include "jetstream/domains/dsp/spectrum_engine/block.hh"
 
 using namespace Jetstream;
+
+TEST_CASE("Spectrum engine axis defaults to the last dimension",
+          "[modules][dsp][spectrum_engine][config]") {
+    REQUIRE(Blocks::SpectrumEngine{}.axis == -1);
+}
 
 TEST_CASE_METHOD(FlowgraphFixture,
                  "Spectrum engine block creates and exposes scaled spectrum",
@@ -31,9 +37,21 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(flowgraph->blockCreate("spec", "spectrum_engine", engineConfig, inputs) ==
             Result::SUCCESS);
-    REQUIRE(viewBlock("spec").state == Block::State::Created);
+    const auto block = viewBlock("spec");
+    REQUIRE(block.state == Block::State::Created);
 
-    const Tensor out = viewBlock("spec").outputs.at("buffer").tensor;
+    const auto axis = std::find_if(block.interfaceConfigs.begin(),
+                                   block.interfaceConfigs.end(),
+                                   [](const auto& entry) { return entry.name == "axis"; });
+    REQUIRE(axis != block.interfaceConfigs.end());
+    REQUIRE(axis->format == "int:");
+
+    Parser::Map saved;
+    REQUIRE(flowgraph->blockConfig("spec", saved) == Result::SUCCESS);
+    REQUIRE(saved.at("axis").type() == typeid(I64));
+    REQUIRE(std::any_cast<I64>(saved.at("axis")) == 0);
+
+    const Tensor out = block.outputs.at("buffer").tensor;
     REQUIRE(out.dtype() == DataType::F32);
     REQUIRE(out.shape(0) == 256);
 }
@@ -57,6 +75,11 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockCreate("spec_bad", "spectrum_engine", engineConfig, inputs) ==
             Result::SUCCESS);
     REQUIRE(viewBlock("spec_bad").state == Block::State::Errored);
+
+    engineConfig["axis"] = std::string("-2");
+    REQUIRE(flowgraph->blockCreate("spec_too_negative", "spectrum_engine", engineConfig, inputs) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("spec_too_negative").state == Block::State::Errored);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
@@ -74,15 +97,26 @@ TEST_CASE_METHOD(FlowgraphFixture,
     config.axis = 0;
     REQUIRE(flowgraph->blockCreate("spec", config, inputs) == Result::SUCCESS);
     REQUIRE(viewBlock("spec").state == Block::State::Created);
+
+    config.axis = -2;
+    REQUIRE(flowgraph->blockCreate("spec_negative", config, inputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("spec_negative").state == Block::State::Created);
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
 
-    const Tensor out = viewBlock("spec").outputs.at("buffer").tensor;
-    REQUIRE(out.shape() == Shape{4, 3});
-    REQUIRE(out.dtype() == DataType::F32);
+    const Tensor positiveOut = viewBlock("spec").outputs.at("buffer").tensor;
+    const Tensor negativeOut = viewBlock("spec_negative").outputs.at("buffer").tensor;
+    REQUIRE(positiveOut.shape() == Shape{4, 3});
+    REQUIRE(negativeOut.shape() == positiveOut.shape());
+    REQUIRE(positiveOut.dtype() == DataType::F32);
+    REQUIRE(negativeOut.dtype() == positiveOut.dtype());
 
     const F32 expectedPeak = 20.0f * std::log10((0.42f * 3.0f) / 4.0f);
-    for (U64 column = 0; column < out.shape(1); ++column) {
-        REQUIRE_THAT(out.at<F32>(2, column),
+    for (U64 column = 0; column < positiveOut.shape(1); ++column) {
+        REQUIRE_THAT(positiveOut.at<F32>(2, column),
                      Catch::Matchers::WithinAbs(expectedPeak, 0.1f));
+        REQUIRE_THAT(negativeOut.at<F32>(2, column),
+                     Catch::Matchers::WithinAbs(expectedPeak, 0.1f));
+        REQUIRE_THAT(negativeOut.at<F32>(2, column),
+                     Catch::Matchers::WithinAbs(positiveOut.at<F32>(2, column), 1e-4f));
     }
 }
