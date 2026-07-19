@@ -322,8 +322,6 @@ TEST_CASE("Backend manager rejects identifiers that cannot name one backend",
     Backend::Config config;
 
     for (const auto id : InvalidBackendIds) {
-        // Current defect: configure accepts sentinel, combined, and out-of-range
-        // identifiers even though no typed backend state can use those keys.
         CHECK(backend.configure(id, config) == Result::ERROR);
         CHECK_FALSE(backend.initialized(id));
     }

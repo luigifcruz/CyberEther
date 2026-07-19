@@ -83,6 +83,17 @@ struct GetBackend<DeviceType::CUDA> {
 class JETSTREAM_API Instance {
  public:
     Result configure(const DeviceType& id, const Config& config) {
+        switch (id) {
+            case DeviceType::CPU:
+            case DeviceType::CUDA:
+            case DeviceType::Metal:
+            case DeviceType::Vulkan:
+            case DeviceType::WebGPU:
+                break;
+            default:
+                return Result::ERROR;
+        }
+
         std::lock_guard lock(mutex);
         if (backends.contains(id)) {
             return Result::SUCCESS;
