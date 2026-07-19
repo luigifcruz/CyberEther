@@ -76,6 +76,6 @@ Result PskDemodImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(PskDemodImpl);
+JST_REGISTER_BLOCK(PskDemodImpl, {"psk_demod"});
 
 }  // namespace Jetstream::Blocks

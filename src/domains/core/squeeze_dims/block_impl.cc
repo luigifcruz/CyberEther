@@ -43,6 +43,6 @@ Result SqueezeDimsImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(SqueezeDimsImpl);
+JST_REGISTER_BLOCK(SqueezeDimsImpl, {"squeeze_dims"});
 
 }  // namespace Jetstream::Blocks

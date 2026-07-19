@@ -102,7 +102,7 @@ struct GainBlock : Block::Impl, DynamicConfig<GainConfig> {
     }
 };
 
-JST_REGISTER_BLOCK(GainBlock);
+JST_REGISTER_BLOCK(GainBlock, {"gain"});
 ```
 
 The building vocabulary inside `create()`:
@@ -206,9 +206,11 @@ Modules also declare traits through `defineTaint` when they deviate from the def
 Registration is static. Placing the macros at namespace scope in a translation unit queues the registration, and both the main binary and loaded plugins drain into the same registry:
 
 ```cpp
-JST_REGISTER_BLOCK(GainBlock);
+JST_REGISTER_BLOCK(GainBlock, {"gain"});
 JST_REGISTER_MODULE(GainModuleNativeCpu, DeviceType::CPU, RuntimeType::NATIVE, "generic");
 ```
+
+A block registration lists every module type its implementation may create. Requirements used only by a configuration-dependent path are marked conditional, for example `{"agc", true}`. Blocks with no child modules use `JST_REGISTER_BLOCK_NO_MODULES`. The picker advertises targets that provide every unconditional requirement, while module resolution during block creation remains authoritative.
 
 A block is looked up by its type string alone. A module is looked up by four keys: its config type string plus the device, runtime, and provider of the block that is creating it. This is the dispatch mechanism, and it is why one block works across backends: registering a second module under the same type with `DeviceType::CUDA` makes the same block work on a CUDA device with no block changes.
 

@@ -40,6 +40,6 @@ Result InvertImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(InvertImpl);
+JST_REGISTER_BLOCK(InvertImpl, {"invert"});
 
 }  // namespace Jetstream::Blocks

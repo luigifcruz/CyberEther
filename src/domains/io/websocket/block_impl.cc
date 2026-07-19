@@ -125,6 +125,6 @@ Result WebsocketImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(WebsocketImpl);
+JST_REGISTER_BLOCK(WebsocketImpl, {"websocket"});
 
 }  // namespace Jetstream::Blocks

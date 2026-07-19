@@ -132,7 +132,7 @@ with a native CPU implementation that accepts `F32` and `CF32` tensors.
 The key registration points are:
 
 ```cpp
-JST_REGISTER_BLOCK(BlueprintGainImpl);
+JST_REGISTER_BLOCK(BlueprintGainImpl, {"blueprint_gain"});
 ```
 
 and:

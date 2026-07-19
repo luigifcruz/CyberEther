@@ -59,6 +59,6 @@ Result FftImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(FftImpl);
+JST_REGISTER_BLOCK(FftImpl, {"fft"});
 
 }  // namespace Jetstream::Blocks

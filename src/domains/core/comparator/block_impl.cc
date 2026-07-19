@@ -140,6 +140,6 @@ Result ComparatorImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(ComparatorImpl);
+JST_REGISTER_BLOCK(ComparatorImpl, {"comparator"});
 
 }  // namespace Jetstream::Blocks

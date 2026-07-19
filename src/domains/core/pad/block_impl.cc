@@ -47,6 +47,6 @@ Result PadImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(PadImpl);
+JST_REGISTER_BLOCK(PadImpl, {"pad"});
 
 }  // namespace Jetstream::Blocks

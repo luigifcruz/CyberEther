@@ -85,6 +85,6 @@ Result FilterTapsImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(FilterTapsImpl);
+JST_REGISTER_BLOCK(FilterTapsImpl, {"filter_taps"});
 
 }  // namespace Jetstream::Blocks

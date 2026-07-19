@@ -187,6 +187,6 @@ Result SoapyImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(SoapyImpl);
+JST_REGISTER_BLOCK(SoapyImpl, {"soapy"});
 
 }  // namespace Jetstream::Blocks
