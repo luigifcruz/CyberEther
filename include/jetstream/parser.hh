@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <any>
+#include <array>
 #include <functional>
 #include <string>
 #include <type_traits>
@@ -157,7 +158,28 @@ class JETSTREAM_API Parser {
                 return 0;
             }
 
-            return std::hash<std::string>{}(encoded);
+            static const std::array encodedTypes = {
+                &typeid(std::string), &typeid(I8), &typeid(I16), &typeid(I32),
+                &typeid(U8), &typeid(U16), &typeid(U32), &typeid(I64), &typeid(U64),
+                &typeid(F32), &typeid(F64), &typeid(CF32), &typeid(CF64), &typeid(bool),
+                &typeid(DeviceType), &typeid(RuntimeType), &typeid(SchedulerType),
+                &typeid(std::vector<U64>), &typeid(std::vector<F32>),
+                &typeid(std::vector<CF32>), &typeid(std::vector<CF64>),
+                &typeid(std::vector<F64>), &typeid(Range<F32>),
+                &typeid(Extent2D<U64>), &typeid(Extent2D<F32>),
+            };
+            const auto type = std::find_if(encodedTypes.begin(), encodedTypes.end(), [&](const auto* candidate) {
+                return *candidate == variable.type();
+            });
+            if (type == encodedTypes.end()) {
+                JST_ERROR("[PARSER] Missing type discriminator for 'std::any' hash.");
+                return 0;
+            }
+
+            std::size_t seed = std::hash<std::string>{}(encoded);
+            const auto discriminator = static_cast<std::size_t>(type - encodedTypes.begin()) + 1;
+            seed ^= discriminator + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+            return seed;
         } else if constexpr (detail::Vector<ValueType>) {
             std::size_t seed = variable.size();
             for (const auto& entry : variable) {

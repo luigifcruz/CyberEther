@@ -97,7 +97,6 @@ TEST_CASE("Parser::Hash handles std::any values", "[core][serialization][hash]")
     }
 
     SECTION("scalar types remain distinct") {
-        // Defect: std::any hashing discards the type and hashes only rendered text.
         REQUIRE(Parser::Hash(std::any(U64{42})) != Parser::Hash(std::any(std::string("42"))));
     }
 }
