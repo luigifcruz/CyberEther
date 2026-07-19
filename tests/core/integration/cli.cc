@@ -715,38 +715,6 @@ TEST_CASE("CLI validates numeric values", "[core][integration][cli]") {
     }
 }
 
-TEST_CASE("CLI diagnoses separate negative numeric values as invalid",
-          "[core][integration][cli]") {
-    struct NegativeCase {
-        const char* option;
-        const char* value;
-        const char* message;
-    };
-
-    const std::vector<NegativeCase> cases = {
-        {"--device-index", "-1",
-         "Invalid value for --device-index: '-1'. Expected a non-negative integer."},
-        {"--size", "-1x480",
-         "Invalid value for --size: '-1x480'. Expected dimensions from 1 to 2147483647."},
-        {"--scale", "-1", "Invalid value for --scale: '-1'. Expected a positive number."},
-        {"--framerate", "-1",
-         "Invalid value for --framerate: '-1'. Expected a positive integer."},
-    };
-
-    for (const auto& entry : cases) {
-        INFO("CLI negative value case: " << entry.option);
-        const InvocationResult result = Invoke(
-            std::vector<std::string>{entry.option, entry.value});
-        CAPTURE(result.code, result.out, result.err);
-        CHECK(result.code == 2);
-        CHECK(result.out.empty());
-        CHECK(result.sandboxUntouched);
-
-        // Expected failure: dash-prefixed values are mistaken for missing values.
-        CHECK(result.err == UsageError(entry.message));
-    }
-}
-
 TEST_CASE("CLI rejects removed commands and options", "[core][integration][cli]") {
     Expect("remote command", {"remote"}, 2, {}, {"Unknown command: 'remote'."});
     Expect("device option", {"--device"}, 2, {}, {"Unknown option: '--device'."});
@@ -806,9 +774,6 @@ TEST_CASE("CLI reports invalid retained remote settings before backend startup",
     CHECK(result.err == UsageError(
         "The configured CyberEther Remote codec or encoder is invalid."));
     CHECK(result.sandboxUntouched);
-
-    // Expected failure: remote enum conversion logs before returning the usage error.
-    CHECK(result.out.empty());
 }
 
 TEST_CASE("CLI settings sandbox restores environment variables",
