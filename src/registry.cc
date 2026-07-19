@@ -27,6 +27,28 @@ class ActiveQueueScope {
     std::vector<std::function<Result()>>* previousQueue;
 };
 
+template<typename Output, typename Factory>
+Result InvokeFactory(const char* kind, Output& output, Factory&& factory) {
+    try {
+        auto candidate = factory();
+        if (!candidate) {
+            JST_ERROR("[REGISTRY] {} factory returned null.", kind);
+            return Result::ERROR;
+        }
+
+        output = std::move(candidate);
+        return Result::SUCCESS;
+    } catch (const Result& status) {
+        JST_ERROR("[REGISTRY] {} factory threw status {}.", kind, status);
+    } catch (const std::exception& e) {
+        JST_ERROR("[REGISTRY] {} factory threw an exception: {}", kind, e.what());
+    } catch (...) {
+        JST_ERROR("[REGISTRY] {} factory threw an unknown exception.", kind);
+    }
+
+    return Result::ERROR;
+}
+
 }  // namespace
 
 struct Registry::Impl {
@@ -464,52 +486,41 @@ Result Registry::Impl::buildModule(const std::string& type,
         return Result::ERROR;
     }
 
-    std::lock_guard<std::mutex> guard(registrationsMutex);
-
-    const auto it = std::find_if(modules.begin(), modules.end(), [&](const auto& entry) {
-        return entry.type == type &&
-               entry.device == device &&
-               entry.runtime == runtime &&
-               entry.provider == provider;
-    });
-
-    if (it != modules.end()) {
-        auto candidate = it->factory(environment, view);
-        if (!candidate) {
-            JST_ERROR("[REGISTRY] Module factory returned null [Type: {}, Device: {}, Runtime: {}, Provider: {}].",
-                      type, device, runtime, provider);
+    Registry::ModuleFactory factory;
+    {
+        std::lock_guard<std::mutex> guard(registrationsMutex);
+        const auto it = std::find_if(modules.begin(), modules.end(), [&](const auto& entry) {
+            return entry.type == type &&
+                   entry.device == device &&
+                   entry.runtime == runtime &&
+                   entry.provider == provider;
+        });
+        if (it == modules.end()) {
+            JST_ERROR("[REGISTRY] Module not found [Type: {}, Device: {}, Runtime: {}, Provider: {}].", type, device, runtime, provider);
             return Result::ERROR;
         }
-
-        module = std::move(candidate);
-        return Result::SUCCESS;
+        factory = it->factory;
     }
 
-    JST_ERROR("[REGISTRY] Module not found [Type: {}, Device: {}, Runtime: {}, Provider: {}].", type, device, runtime, provider);
-    return Result::ERROR;
+    return InvokeFactory("Module", module, [&]() { return factory(environment, view); });
 }
 
 Result Registry::Impl::buildBlock(const std::string& type, std::shared_ptr<Block>& block) {
     JST_TRACE("[REGISTRY] Creating block [Type: {}]", type);
-    std::lock_guard<std::mutex> guard(registrationsMutex);
-
-    const auto it = std::find_if(blocks.begin(), blocks.end(), [&](const auto& entry) {
-        return entry.type == type;
-    });
-
-    if (it != blocks.end()) {
-        auto candidate = it->factory();
-        if (!candidate) {
-            JST_ERROR("[REGISTRY] Block factory returned null [Type: {}].", type);
+    Registry::BlockFactory factory;
+    {
+        std::lock_guard<std::mutex> guard(registrationsMutex);
+        const auto it = std::find_if(blocks.begin(), blocks.end(), [&](const auto& entry) {
+            return entry.type == type;
+        });
+        if (it == blocks.end()) {
+            JST_ERROR("[REGISTRY] Block not found [Type: {}]", type);
             return Result::ERROR;
         }
-
-        block = std::move(candidate);
-        return Result::SUCCESS;
+        factory = it->factory;
     }
 
-    JST_ERROR("[REGISTRY] Block not found [Type: {}]", type);
-    return Result::ERROR;
+    return InvokeFactory("Block", block, [&]() { return factory(); });
 }
 
 Result Registry::QueueStaticRegistration(std::function<Result()> callback) {

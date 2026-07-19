@@ -498,7 +498,7 @@ TEST_CASE("Benchmark handles registry module factory failures",
         REQUIRE(module == nullptr);
     }
 
-    SECTION("throwing module factory propagates and restores the logger level") {
+    SECTION("throwing module factory is contained and restores the logger level") {
         Benchmark::ResetResults();
         const auto type = UniqueName("throwing_module");
         const auto provider = UniqueName("provider");
@@ -522,7 +522,7 @@ TEST_CASE("Benchmark handles registry module factory failures",
                     }) == Result::SUCCESS);
 
         std::ostringstream output;
-        REQUIRE_THROWS_AS(Benchmark::Run("quiet", type, output), std::runtime_error);
+        REQUIRE_NOTHROW(Benchmark::Run("quiet", type, output));
         REQUIRE(_JST_LOG_DEBUG_LEVEL() == debugLevel.original());
         REQUIRE(Benchmark::CurrentCount() == 0);
         REQUIRE(Benchmark::GetResults().empty());
@@ -585,7 +585,7 @@ TEST_CASE("Benchmark orchestration validates output and restores process state",
         REQUIRE(output.str().empty());
     }
 
-    SECTION("throwing factory restores the logger level") {
+    SECTION("throwing benchmark factory beyond Registry restores the logger level") {
         const auto type = UniqueName("throwing");
         const int owner = 0;
         RegistryCleanup cleanup;

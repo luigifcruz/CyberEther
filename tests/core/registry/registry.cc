@@ -489,6 +489,8 @@ TEST_CASE("Registry contains invalid module and block factory results",
     const ProviderType provider = "__ce_registry_test_invalid_factory_provider";
     const std::string throwingBlockType = "__ce_registry_test_throwing_block_factory";
     const std::string nullBlockType = "__ce_registry_test_null_block_factory";
+    int moduleFactoryCalls = 0;
+    int blockFactoryCalls = 0;
     RegistryCleanup cleanup;
     cleanup.module(throwingModuleType, DeviceType::CPU, RuntimeType::NATIVE, provider);
     cleanup.module(nullModuleType, DeviceType::CPU, RuntimeType::NATIVE, provider);
@@ -500,8 +502,12 @@ TEST_CASE("Registry contains invalid module and block factory results",
                 DeviceType::CPU,
                 RuntimeType::NATIVE,
                 provider,
-                [](const auto&, const auto&) -> std::shared_ptr<Module> {
-                    throw std::runtime_error("throwing module factory");
+                [&](const auto&, const auto&) -> std::shared_ptr<Module> {
+                    switch (moduleFactoryCalls++) {
+                        case 0: throw std::runtime_error("throwing module factory");
+                        case 1: throw Result::FATAL;
+                        default: throw 42;
+                    }
                 }) == Result::SUCCESS);
     REQUIRE(Registry::RegisterModule(
                 nullModuleType,
@@ -516,8 +522,12 @@ TEST_CASE("Registry contains invalid module and block factory results",
                                     "Throwing Block Factory",
                                     "Throwing factory summary",
                                     "Throwing factory description",
-                                    []() -> std::shared_ptr<Block> {
-                                        throw std::runtime_error("throwing block factory");
+                                    [&]() -> std::shared_ptr<Block> {
+                                        switch (blockFactoryCalls++) {
+                                            case 0: throw std::runtime_error("throwing block factory");
+                                            case 1: throw Result::FATAL;
+                                            default: throw 42;
+                                        }
                                     }) == Result::SUCCESS);
     REQUIRE(Registry::RegisterBlock(nullBlockType,
                                     "__ce_registry_test_domain",
@@ -529,22 +539,16 @@ TEST_CASE("Registry contains invalid module and block factory results",
                                     }) == Result::SUCCESS);
 
     auto moduleSentinel = MakeTestModule();
-    auto throwingModule = moduleSentinel;
-    Result throwingModuleResult = Result::ERROR;
-    bool moduleExceptionEscaped = false;
-    try {
-        throwingModuleResult = Registry::BuildModule(throwingModuleType,
-                                                      DeviceType::CPU,
-                                                      RuntimeType::NATIVE,
-                                                      provider,
-                                                      throwingModule);
-    } catch (...) {
-        moduleExceptionEscaped = true;
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        CAPTURE(attempt);
+        auto throwingModule = moduleSentinel;
+        CHECK(Registry::BuildModule(throwingModuleType,
+                                    DeviceType::CPU,
+                                    RuntimeType::NATIVE,
+                                    provider,
+                                    throwingModule) == Result::ERROR);
+        CHECK(throwingModule == moduleSentinel);
     }
-    // Expected to fail currently: module factory exceptions escape BuildModule.
-    CHECK_FALSE(moduleExceptionEscaped);
-    CHECK(throwingModuleResult == Result::ERROR);
-    CHECK(throwingModule == moduleSentinel);
 
     auto nullModule = moduleSentinel;
     const auto nullModuleResult = Registry::BuildModule(nullModuleType,
@@ -556,18 +560,12 @@ TEST_CASE("Registry contains invalid module and block factory results",
     CHECK(nullModule == moduleSentinel);
 
     auto blockSentinel = MakeTestBlock();
-    auto throwingBlock = blockSentinel;
-    Result throwingBlockResult = Result::ERROR;
-    bool blockExceptionEscaped = false;
-    try {
-        throwingBlockResult = Registry::BuildBlock(throwingBlockType, throwingBlock);
-    } catch (...) {
-        blockExceptionEscaped = true;
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        CAPTURE(attempt);
+        auto throwingBlock = blockSentinel;
+        CHECK(Registry::BuildBlock(throwingBlockType, throwingBlock) == Result::ERROR);
+        CHECK(throwingBlock == blockSentinel);
     }
-    // Expected to fail currently: block factory exceptions escape BuildBlock.
-    CHECK_FALSE(blockExceptionEscaped);
-    CHECK(throwingBlockResult == Result::ERROR);
-    CHECK(throwingBlock == blockSentinel);
 
     auto nullBlock = blockSentinel;
     const auto nullBlockResult = Registry::BuildBlock(nullBlockType, nullBlock);
