@@ -134,7 +134,7 @@ Result Block::create(const std::string& name,
 
         while (!impl->_moduleOrder.empty()) {
             const auto moduleName = impl->_moduleOrder.back();
-            const auto result = impl->moduleDestroy(moduleName);
+            const auto result = impl->moduleDestroy(moduleName, false);
             if (result != Result::SUCCESS && result != Result::RELOAD && cleanupResult == Result::SUCCESS) {
                 cleanupResult = result;
             }

@@ -323,8 +323,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
         REQUIRE(std::any_cast<U64>(retained.config.at("revision")) == 0);
         REQUIRE(retained.outputs.contains("out"));
         REQUIRE(retained.outputs.at("out").resolved());
-        // Defect: failed module destruction restores an errored block with its module removed.
-        CHECK(retained.state == Block::State::Created);
+        REQUIRE(retained.state == Block::State::Created);
         REQUIRE(faults.moduleDestroyCalls == 1);
 
         REQUIRE(flowgraph->blockDestroy("fault") == Result::SUCCESS);

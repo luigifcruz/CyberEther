@@ -89,7 +89,7 @@ struct JETSTREAM_API Block::Impl {
     Result moduleCreate(const std::string name,
                         const std::shared_ptr<Module::Config>& config,
                         const TensorMap& inputs);
-    Result moduleDestroy(const std::string name);
+    Result moduleDestroy(const std::string name, bool retainOnFailure = true);
     Result moduleExposeOutput(const std::string blockPort,
                               const std::pair<std::string, std::string>& moduleOutput);
     TensorLink moduleGetOutput(const std::pair<std::string, std::string>& moduleOutput);
@@ -126,6 +126,7 @@ struct JETSTREAM_API Block::Impl {
     struct ModuleEntry {
         std::shared_ptr<Module> module;
         std::shared_ptr<Module::Config> config;
+        bool scheduled = true;
     };
     std::unordered_map<std::string, ModuleEntry> _modules;
     std::vector<std::string> _moduleOrder;

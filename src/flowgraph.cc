@@ -566,8 +566,33 @@ Result Flowgraph::blockDestroy(const std::string name, bool propagate) {
 
     // Destroy block and remove it from state.
 
+    const auto previousState = block->state();
+    const auto previousModuleOrder = block->impl->_moduleOrder;
+    std::vector<bool> previousScheduling;
+    previousScheduling.reserve(previousModuleOrder.size());
+    for (const auto& moduleName : previousModuleOrder) {
+        previousScheduling.push_back(block->impl->_modules.at(moduleName).scheduled);
+    }
+
     const auto result = block->destroy();
     if (result != Result::SUCCESS) {
+        // Restore the visible state only when every child teardown was rolled back.
+        bool rollbackComplete = !previousModuleOrder.empty() &&
+                                block->impl->_moduleOrder == previousModuleOrder;
+        if (rollbackComplete) {
+            for (std::size_t i = 0; i < previousModuleOrder.size(); ++i) {
+                const auto entry = block->impl->_modules.find(previousModuleOrder[i]);
+                if (entry == block->impl->_modules.end() ||
+                    entry->second.scheduled != previousScheduling[i]) {
+                    rollbackComplete = false;
+                    break;
+                }
+            }
+        }
+        if (rollbackComplete) {
+            block->impl->_state = previousState;
+        }
+
         std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
         impl->transientBlocks.erase(name);
         impl->blocks[name] = block;
@@ -1103,7 +1128,7 @@ Result Flowgraph::blockSetErroredFromModules(const std::unordered_set<std::strin
     for (const auto& [_, block] : failedBlocks) {
         while (!block->impl->_moduleOrder.empty()) {
             const auto childModuleName = block->impl->_moduleOrder.back();
-            const auto result = block->impl->moduleDestroy(childModuleName);
+            const auto result = block->impl->moduleDestroy(childModuleName, false);
             if (result != Result::SUCCESS && result != Result::RELOAD && cleanupResult == Result::SUCCESS) {
                 cleanupResult = result;
             }

@@ -65,7 +65,7 @@ Result Block::Impl::moduleCreate(const std::string name,
     const auto createResult = module->create(blockModuleName, *config, clonedInputs, render());
     if (createResult != Result::SUCCESS && createResult != Result::RELOAD) {
         if (createResult == Result::INCOMPLETE) {
-            _modules[name] = {module, config};
+            _modules[name] = {module, config, false};
             _moduleOrder.push_back(name);
             return createResult;
         }
@@ -102,7 +102,7 @@ Result Block::Impl::moduleCreate(const std::string name,
     return Result::SUCCESS;
 };
 
-Result Block::Impl::moduleDestroy(const std::string name) {
+Result Block::Impl::moduleDestroy(const std::string name, bool retainOnFailure) {
     JST_DEBUG("[BLOCK] Destroying module '{}' inside block '{}'.", name, _name);
 
     // Check if module exists.
@@ -118,25 +118,51 @@ Result Block::Impl::moduleDestroy(const std::string name) {
         JST_ERROR("[BLOCK] Module '{}' must be destroyed in reverse creation order.", name);
         return Result::ERROR;
     }
-    _moduleOrder.pop_back();
-
-    // Get module and remove from list.
-
-    auto entry = std::move(_modules[name]);
-    _modules.erase(name);
+    const auto module = _modules.at(name).module;
+    const auto surface = module->surface();
+    const auto releaseOwnership = [&]() {
+        _surfaces.erase(std::remove(_surfaces.begin(), _surfaces.end(), surface),
+                        _surfaces.end());
+        _moduleOrder.pop_back();
+        _modules.erase(name);
+    };
 
     // Remove module from scheduler.
 
-    JST_CHECK(scheduler()->remove(entry.module));
-
-    // Remove from surface providers cache.
-
-    _surfaces.erase(std::remove(_surfaces.begin(), _surfaces.end(), entry.module->surface()),
-                    _surfaces.end());
+    const bool wasScheduled = _modules.at(name).scheduled;
+    if (wasScheduled) {
+        _modules.at(name).scheduled = false;
+        const auto removeResult = scheduler()->remove(module);
+        if (removeResult != Result::SUCCESS && removeResult != Result::RELOAD) {
+            if (!retainOnFailure) {
+                releaseOwnership();
+            }
+            return removeResult;
+        }
+    }
 
     // Destroy module.
 
-    JST_CHECK(entry.module->destroy());
+    const auto destroyResult = module->destroy();
+    if (destroyResult != Result::SUCCESS && destroyResult != Result::RELOAD) {
+        if (!retainOnFailure) {
+            releaseOwnership();
+            return destroyResult;
+        }
+
+        if (wasScheduled) {
+            const auto restoreResult = scheduler()->add(module);
+            if (restoreResult == Result::SUCCESS || restoreResult == Result::RELOAD) {
+                _modules.at(name).scheduled = true;
+            } else {
+                JST_ERROR("[BLOCK] Failed to restore module '{}' after destruction failure inside block '{}'.",
+                          name, _name);
+            }
+        }
+        return destroyResult;
+    }
+
+    releaseOwnership();
 
     return Result::SUCCESS;
 }

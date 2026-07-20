@@ -1915,7 +1915,7 @@ TEST_CASE("Block cleans child modules in reverse creation order", "[core][lifecy
 
         REQUIRE(bundle.block->destroy() == Result::ERROR);
         REQUIRE(bundle.block->state() == Block::State::Errored);
-        REQUIRE(bundle.block->modules() == std::vector<std::string>{"first"});
+        REQUIRE(bundle.block->modules() == std::vector<std::string>{"first", "second"});
         REQUIRE(bundle.probe->events ==
                 std::vector<std::string>{"child.destroy:lifecycle-block-second"});
 
@@ -2142,8 +2142,7 @@ TEST_CASE("Block preserves child ownership across scheduler remove failure",
     REQUIRE(EventsStartingWith(bundle.probe->events, "child.initialize:") ==
             std::vector<std::string>{"child.initialize:lifecycle-block-first"});
 
-    // Expected failure: moduleDestroy erases the child before scheduler removal succeeds.
-    CHECK(bundle.block->modules() == std::vector<std::string>{"first", "second"});
+    REQUIRE(bundle.block->modules() == std::vector<std::string>{"first", "second"});
 
     bundle.probe->failingChildInitialize.clear();
     REQUIRE(bundle.block->destroy() == Result::SUCCESS);
@@ -2151,10 +2150,9 @@ TEST_CASE("Block preserves child ownership across scheduler remove failure",
     REQUIRE(std::count(bundle.probe->events.begin(),
                        bundle.probe->events.end(),
                        "child.destroy:lifecycle-block-first") == 1);
-    // Expected failure: the child lost on scheduler removal failure cannot be cleaned on retry.
-    CHECK(std::count(bundle.probe->events.begin(),
-                     bundle.probe->events.end(),
-                     "child.destroy:lifecycle-block-second") == 1);
+    REQUIRE(std::count(bundle.probe->events.begin(),
+                       bundle.probe->events.end(),
+                       "child.destroy:lifecycle-block-second") == 1);
 }
 
 TEST_CASE("Block retries child destruction after a partial cleanup failure",
@@ -2179,16 +2177,14 @@ TEST_CASE("Block retries child destruction after a partial cleanup failure",
     REQUIRE(bundle.block->destroy() == Result::ERROR);
     REQUIRE(bundle.block->state() == Block::State::Errored);
 
-    // Expected failure: moduleDestroy discards ownership of a child whose destroy hook failed.
-    CHECK(bundle.block->modules() == std::vector<std::string>{"first", "second"});
+    REQUIRE(bundle.block->modules() == std::vector<std::string>{"first", "second"});
 
     bundle.probe->failingChildDestroy.clear();
     REQUIRE(bundle.block->destroy() == Result::SUCCESS);
     REQUIRE(bundle.block->modules().empty());
-    // Expected failure: retry cannot revisit the child erased by the first destroy attempt.
-    CHECK(std::count(bundle.probe->events.begin(),
-                     bundle.probe->events.end(),
-                     "child.destroy:lifecycle-block-second") == 2);
+    REQUIRE(std::count(bundle.probe->events.begin(),
+                       bundle.probe->events.end(),
+                       "child.destroy:lifecycle-block-second") == 2);
     REQUIRE(std::count(bundle.probe->events.begin(),
                        bundle.probe->events.end(),
                        "child.destroy:lifecycle-block-first") == 1);
