@@ -1375,10 +1375,10 @@ TEST_CASE("Module creation failures stop orchestration", "[core][lifecycle][modu
         REQUIRE(bundle.module->create("lifecycle-module",
                                        ConfigWithValue("active"),
                                        {}) == Result::ERROR);
-        REQUIRE(bundle.probe->events.back() == "module.create:active");
-
-        REQUIRE(bundle.module->destroy() == Result::SUCCESS);
         REQUIRE(bundle.probe->events.back() == "module.destroy:active");
+        REQUIRE(std::count(bundle.probe->events.begin(),
+                           bundle.probe->events.end(),
+                           "module.destroy:active") == 1);
     }
 
     SECTION("declared output is required") {
@@ -1387,7 +1387,10 @@ TEST_CASE("Module creation failures stop orchestration", "[core][lifecycle][modu
         REQUIRE(bundle.module->create("lifecycle-module",
                                       ConfigWithValue("active"),
                                       {}) == Result::ERROR);
-        REQUIRE(bundle.probe->events.back() == "module.create:active");
+        REQUIRE(bundle.probe->events.back() == "module.destroy:active");
+        REQUIRE(std::count(bundle.probe->events.begin(),
+                           bundle.probe->events.end(),
+                           "module.destroy:active") == 1);
         REQUIRE(bundle.module->outputs().empty());
     }
 
@@ -1503,14 +1506,13 @@ TEST_CASE("Module post-create failures invoke deterministic cleanup",
     SECTION("create hook failure invokes destroy") {
         auto bundle = MakeModule();
         bundle.probe->createResult = Result::ERROR;
+        bundle.probe->destroyResult = Result::FATAL;
 
         REQUIRE(bundle.module->create("lifecycle-module", Parser::Map{}, {}) == Result::ERROR);
-
-        // Expected failure: Module::create returns without invoking destroy after hook failure.
-        CHECK(bundle.probe->events.back() == "module.destroy:initial");
-        if (bundle.probe->events.back() != "module.destroy:initial") {
-            REQUIRE(bundle.module->destroy() == Result::SUCCESS);
-        }
+        REQUIRE(bundle.probe->events.back() == "module.destroy:initial");
+        REQUIRE(std::count(bundle.probe->events.begin(),
+                           bundle.probe->events.end(),
+                           "module.destroy:initial") == 1);
     }
 
     SECTION("output validation failure invokes destroy") {
@@ -1518,12 +1520,10 @@ TEST_CASE("Module post-create failures invoke deterministic cleanup",
         bundle.probe->declareOutput = true;
 
         REQUIRE(bundle.module->create("lifecycle-module", Parser::Map{}, {}) == Result::ERROR);
-
-        // Expected failure: Module::create does not clean up after output validation fails.
-        CHECK(bundle.probe->events.back() == "module.destroy:initial");
-        if (bundle.probe->events.back() != "module.destroy:initial") {
-            REQUIRE(bundle.module->destroy() == Result::SUCCESS);
-        }
+        REQUIRE(bundle.probe->events.back() == "module.destroy:initial");
+        REQUIRE(std::count(bundle.probe->events.begin(),
+                           bundle.probe->events.end(),
+                           "module.destroy:initial") == 1);
     }
 
     SECTION("incomplete create remains explicitly destroyable") {
@@ -1876,6 +1876,12 @@ TEST_CASE("Block cleans child modules in reverse creation order", "[core][lifecy
         REQUIRE(bundle.probe->events[bundle.probe->events.size() - 2] ==
                 "child.destroy:lifecycle-block-second");
         REQUIRE(bundle.probe->events.back() == "child.destroy:lifecycle-block-first");
+        REQUIRE(std::count(bundle.probe->events.begin(),
+                           bundle.probe->events.end(),
+                           "child.destroy:lifecycle-block-second") == 1);
+        REQUIRE(std::count(bundle.probe->events.begin(),
+                           bundle.probe->events.end(),
+                           "child.destroy:lifecycle-block-first") == 1);
     }
 
     SECTION("failure cleanup continues after a child destroy error") {

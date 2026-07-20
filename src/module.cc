@@ -121,31 +121,42 @@ Result Module::create(const std::string& name,
 
     // Creating module.
 
+    Result createResult;
 #ifdef JST_OS_BROWSER
     if ((impl->_taint & Taint::BROWSER_MAIN_THREAD) == Taint::BROWSER_MAIN_THREAD) {
-        Result result;
-        std::pair<Impl*, Result*> ctx{impl.get(), &result};
+        std::pair<Impl*, Result*> ctx{impl.get(), &createResult};
         emscripten_proxy_sync(
             emscripten_proxy_get_system_queue(),
             emscripten_main_runtime_thread_id(),
             Impl::proxyCreate,
             &ctx);
-        JST_CHECK(result);
     } else {
-        JST_CHECK(impl->create());
+        createResult = impl->create();
     }
 #else
-    JST_CHECK(impl->create());
+    createResult = impl->create();
 #endif
 
     // Check if module provides all requested outputs.
 
-    for (const auto& key : impl->_interface->outputs()) {
-        if (!impl->_outputs.contains(key)) {
-            JST_ERROR("[MODULE] Module '{}' didn't create an expected output '{}'.", impl->_name, key);
-            return Result::ERROR;
+    if (createResult == Result::SUCCESS || createResult == Result::RELOAD) {
+        for (const auto& key : impl->_interface->outputs()) {
+            if (!impl->_outputs.contains(key)) {
+                JST_ERROR("[MODULE] Module '{}' didn't create an expected output '{}'.", impl->_name, key);
+                createResult = Result::ERROR;
+                break;
+            }
         }
     }
+
+    if (createResult == Result::ERROR) {
+        const auto destroyResult = destroy();
+        if (destroyResult != Result::SUCCESS && destroyResult != Result::RELOAD) {
+            JST_ERROR("[MODULE] Failed to clean up module '{}' after creation failure.", impl->_name);
+        }
+    }
+
+    JST_CHECK(createResult);
 
     return Result::SUCCESS;
 }

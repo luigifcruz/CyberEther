@@ -70,9 +70,11 @@ Result Block::Impl::moduleCreate(const std::string name,
             return createResult;
         }
 
-        const auto destroyResult = module->destroy();
-        if (destroyResult != Result::SUCCESS && destroyResult != Result::RELOAD) {
-            JST_ERROR("[BLOCK] Failed to clean up module '{}' inside block '{}'.", name, _name);
+        if (createResult != Result::ERROR) {
+            const auto destroyResult = module->destroy();
+            if (destroyResult != Result::SUCCESS && destroyResult != Result::RELOAD) {
+                JST_ERROR("[BLOCK] Failed to clean up module '{}' inside block '{}'.", name, _name);
+            }
         }
         return createResult;
     }
