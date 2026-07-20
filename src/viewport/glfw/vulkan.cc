@@ -52,12 +52,17 @@ Result Implementation::create() {
 
     // Initialize and configure GLFW.
 
+    glfwSetErrorCallback(&PrintGLFWError);
+
     if (!glfwInit()) {
-        JST_ERROR("[VULKAN] Failed to initialize GLFW.");
+        const int error = glfwGetError(nullptr);
+        if (error == GLFW_PLATFORM_UNAVAILABLE) {
+            JST_ERROR("[VULKAN] No graphical display is available. Run with '--headless' when no desktop session is present.");
+        } else {
+            JST_ERROR("[VULKAN] Failed to initialize GLFW.");
+        }
         return Result::ERROR;
     }
-
-    glfwSetErrorCallback(&PrintGLFWError);
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
