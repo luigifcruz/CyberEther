@@ -204,6 +204,12 @@ Result Block::destroy() {
                  impl->_name, impl->_modules.size());
     }
 
+    const auto result = impl->destroy();
+    if (result != Result::SUCCESS && result != Result::RELOAD) {
+        impl->_state = State::Errored;
+        return result;
+    }
+
     impl->_state = State::Destroyed;
 
     return Result::SUCCESS;

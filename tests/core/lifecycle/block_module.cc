@@ -1923,7 +1923,9 @@ TEST_CASE("Block cleans child modules in reverse creation order", "[core][lifecy
         REQUIRE(bundle.block->destroy() == Result::SUCCESS);
         REQUIRE(bundle.block->state() == Block::State::Destroyed);
         REQUIRE(bundle.block->modules().empty());
-        REQUIRE(bundle.probe->events.back() == "child.destroy:lifecycle-block-first");
+        REQUIRE(bundle.probe->events[bundle.probe->events.size() - 2] ==
+                "child.destroy:lifecycle-block-first");
+        REQUIRE(bundle.probe->events.back() == "block.destroy");
     }
 
     SECTION("explicit destruction runs children before the block hook") {
@@ -1944,7 +1946,6 @@ TEST_CASE("Block cleans child modules in reverse creation order", "[core][lifecy
         REQUIRE(bundle.probe->events[0] == "child.destroy:lifecycle-block-second");
         REQUIRE(bundle.probe->events[1] == "child.destroy:lifecycle-block-first");
 
-        // Expected failure: Block::destroy skips the implementation hook after child cleanup.
         REQUIRE(bundle.probe->events == std::vector<std::string>{
             "child.destroy:lifecycle-block-second",
             "child.destroy:lifecycle-block-first",
@@ -1961,18 +1962,30 @@ TEST_CASE("Block cleans child modules in reverse creation order", "[core][lifecy
                                      {},
                                      MakeBlockContext(scheduler.scheduler)) == Result::SUCCESS);
         bundle.probe->events.clear();
-        bundle.probe->destroyResult = Result::ERROR;
+        bundle.probe->destroyResult = Result::FATAL;
 
         const auto result = bundle.block->destroy();
 
-        // Expected failure: Block::destroy never calls or propagates the implementation hook.
-        CHECK(result == Result::ERROR);
-        CHECK(bundle.block->state() == Block::State::Errored);
-        CHECK(bundle.probe->events == std::vector<std::string>{
+        REQUIRE(result == Result::FATAL);
+        REQUIRE(bundle.block->state() == Block::State::Errored);
+        REQUIRE(bundle.probe->events == std::vector<std::string>{
             "child.destroy:lifecycle-block-second",
             "child.destroy:lifecycle-block-first",
             "block.destroy",
         });
+
+        bundle.probe->destroyResult = Result::SUCCESS;
+        REQUIRE(bundle.block->destroy() == Result::SUCCESS);
+        REQUIRE(bundle.block->state() == Block::State::Destroyed);
+        REQUIRE(std::count(bundle.probe->events.begin(),
+                           bundle.probe->events.end(),
+                           "child.destroy:lifecycle-block-second") == 1);
+        REQUIRE(std::count(bundle.probe->events.begin(),
+                           bundle.probe->events.end(),
+                           "child.destroy:lifecycle-block-first") == 1);
+        REQUIRE(std::count(bundle.probe->events.begin(),
+                           bundle.probe->events.end(),
+                           "block.destroy") == 2);
     }
 }
 
@@ -2045,7 +2058,9 @@ TEST_CASE("Block child creation handles duplicates registry errors and incomplet
         REQUIRE(bundle.block->destroy() == Result::SUCCESS);
         REQUIRE(bundle.block->state() == Block::State::Destroyed);
         REQUIRE(bundle.block->modules().empty());
-        REQUIRE(bundle.probe->events.back() == "child.destroy:lifecycle-block-pending");
+        REQUIRE(bundle.probe->events[bundle.probe->events.size() - 2] ==
+                "child.destroy:lifecycle-block-pending");
+        REQUIRE(bundle.probe->events.back() == "block.destroy");
     }
 
     SECTION("incomplete block create retains successful children") {
@@ -2065,9 +2080,11 @@ TEST_CASE("Block child creation handles duplicates registry errors and incomplet
 
         REQUIRE(bundle.block->destroy() == Result::SUCCESS);
         REQUIRE(bundle.block->modules().empty());
-        REQUIRE(bundle.probe->events[bundle.probe->events.size() - 2] ==
+        REQUIRE(bundle.probe->events[bundle.probe->events.size() - 3] ==
                 "child.destroy:lifecycle-block-second");
-        REQUIRE(bundle.probe->events.back() == "child.destroy:lifecycle-block-first");
+        REQUIRE(bundle.probe->events[bundle.probe->events.size() - 2] ==
+                "child.destroy:lifecycle-block-first");
+        REQUIRE(bundle.probe->events.back() == "block.destroy");
     }
 
     SECTION("scheduler presentation add error destroys the untracked child") {
