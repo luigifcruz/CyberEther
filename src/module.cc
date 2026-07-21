@@ -262,8 +262,21 @@ Result Module::reconfigure(const Parser::Map& config, const bool& validateOnly) 
         }
     }
     if (!validateOnly) {
+        Parser::Map previousConfig;
+        {
+            const auto result = impl->_stagedConfig->serialize(previousConfig);
+            if (result != Result::SUCCESS && result != Result::RELOAD) {
+                return result;
+            }
+        }
+
         const auto result = impl->reconfigure();
         if (result != Result::SUCCESS && result != Result::RELOAD) {
+            const auto rollbackResult = impl->_stagedConfig->deserialize(previousConfig);
+            if (rollbackResult != Result::SUCCESS && rollbackResult != Result::RELOAD) {
+                impl->_state = State::ERRORED;
+                JST_ERROR("[MODULE] Failed to restore module '{}' after reconfiguration failure.", impl->_name);
+            }
             return result;
         }
     }

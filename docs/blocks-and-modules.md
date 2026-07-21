@@ -183,6 +183,8 @@ Result RrcFilterImpl::reconfigure() {
 
 Two details make this work. The implementation inherits its config fields through `DynamicConfig`, so the members being assigned are the applied configuration itself, and `candidate()` holds the not-yet-applied edit to compare against. And returning `SUCCESS` means the module took full responsibility for the change, so everything the changed fields influence, such as the coefficient table here, must be refreshed before returning. When in doubt about whether an in-place path covers a field, return `RECREATE` and let the flowgraph rebuild.
 
+The Module snapshots its serialized applied configuration before invoking the hook and attempts to restore that configuration if the hook fails. If restoration fails, the Module enters `ERRORED` and requires recreation. This rollback covers configuration fields only; implementations remain responsible for any runtime, hardware, or other external side effects.
+
 ### Compute Contract
 
 The compute hooks come from the runtime context, for example `computeInitialize`, `computeSubmit`, and `computeDeinitialize` on `NativeCpuRuntimeContext`. The scheduler executes modules in topological order once per cycle, and what `computeSubmit` returns matters:

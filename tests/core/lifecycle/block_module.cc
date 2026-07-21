@@ -394,11 +394,11 @@ struct SyntheticModuleConfig : Module::Config {
         probe->events.push_back(role == ConfigRole::Staged
                                     ? "module.staged.serialize"
                                     : "module.candidate.serialize");
-        if (serializeResult != Result::SUCCESS) {
+        if (serializeResult != Result::SUCCESS && serializeResult != Result::RELOAD) {
             return serializeResult;
         }
         data["value"] = value;
-        return Result::SUCCESS;
+        return serializeResult;
     }
 
     Result deserialize(const Parser::Map& data) override {
@@ -410,11 +410,15 @@ struct SyntheticModuleConfig : Module::Config {
         const auto result = candidate
                                 ? probe->candidateDeserializeResult
                                 : probe->stagedDeserializeResult;
-        if (result != Result::SUCCESS) {
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
             return result;
         }
 
-        return DeserializeValue(data, value);
+        const auto deserializeResult = DeserializeValue(data, value);
+        if (deserializeResult != Result::SUCCESS && deserializeResult != Result::RELOAD) {
+            return deserializeResult;
+        }
+        return result;
     }
 
     std::size_t hash() const override {
@@ -2530,6 +2534,7 @@ TEST_CASE("Module reconfiguration separates validation from commit", "[core][lif
         REQUIRE(bundle.probe->events == std::vector<std::string>{
             "module.candidate.deserialize",
             "module.validate:after:before",
+            "module.staged.serialize",
             "module.reconfigure:after:before",
         });
         REQUIRE(bundle.module->state() == Module::State::CREATED);
@@ -2566,7 +2571,13 @@ TEST_CASE("Module reconfiguration separates validation from commit", "[core][lif
 
         REQUIRE(bundle.module->reconfigure(ConfigWithValue("after")) == Result::ERROR);
         REQUIRE(bundle.module->state() == Module::State::CREATED);
-        REQUIRE(bundle.probe->events.back() == "module.reconfigure:after:before");
+        REQUIRE(bundle.probe->events == std::vector<std::string>{
+            "module.candidate.deserialize",
+            "module.validate:after:before",
+            "module.staged.serialize",
+            "module.reconfigure:after:before",
+            "module.staged.deserialize",
+        });
         REQUIRE(bundle.staged->value == "before");
     }
 
@@ -2576,10 +2587,14 @@ TEST_CASE("Module reconfiguration separates validation from commit", "[core][lif
 
         REQUIRE(bundle.module->reconfigure(ConfigWithValue("after")) == Result::ERROR);
         REQUIRE(bundle.module->state() == Module::State::CREATED);
-        REQUIRE(bundle.probe->events.back() == "module.reconfigure:after:before");
-
-        // Expected failure: Module::reconfigure has no snapshot for partial hook mutation.
-        CHECK(bundle.staged->value == "before");
+        REQUIRE(bundle.probe->events == std::vector<std::string>{
+            "module.candidate.deserialize",
+            "module.validate:after:before",
+            "module.staged.serialize",
+            "module.reconfigure:after:before",
+            "module.staged.deserialize",
+        });
+        REQUIRE(bundle.staged->value == "before");
     }
 
     SECTION("recreate hook result preserves the staged configuration") {
@@ -2587,7 +2602,62 @@ TEST_CASE("Module reconfiguration separates validation from commit", "[core][lif
 
         REQUIRE(bundle.module->reconfigure(ConfigWithValue("after")) == Result::RECREATE);
         REQUIRE(bundle.module->state() == Module::State::CREATED);
-        REQUIRE(bundle.probe->events.back() == "module.reconfigure:after:before");
+        REQUIRE(bundle.probe->events == std::vector<std::string>{
+            "module.candidate.deserialize",
+            "module.validate:after:before",
+            "module.staged.serialize",
+            "module.reconfigure:after:before",
+            "module.staged.deserialize",
+        });
         REQUIRE(bundle.staged->value == "before");
+    }
+
+    SECTION("snapshot failure stops before the hook") {
+        bundle.staged->serializeResult = Result::ERROR;
+
+        REQUIRE(bundle.module->reconfigure(ConfigWithValue("after")) == Result::ERROR);
+        REQUIRE(bundle.module->state() == Module::State::CREATED);
+        REQUIRE(bundle.probe->events == std::vector<std::string>{
+            "module.candidate.deserialize",
+            "module.validate:after:before",
+            "module.staged.serialize",
+        });
+        REQUIRE(bundle.staged->value == "before");
+    }
+
+    SECTION("reload snapshot and rollback results remain success-like") {
+        bundle.staged->serializeResult = Result::RELOAD;
+        bundle.probe->reconfigureResult = Result::ERROR;
+        bundle.probe->commitBeforeReconfigureFailure = true;
+        bundle.probe->stagedDeserializeResult = Result::RELOAD;
+
+        REQUIRE(bundle.module->reconfigure(ConfigWithValue("after")) == Result::ERROR);
+        REQUIRE(bundle.module->state() == Module::State::CREATED);
+        REQUIRE(bundle.probe->events == std::vector<std::string>{
+            "module.candidate.deserialize",
+            "module.validate:after:before",
+            "module.staged.serialize",
+            "module.reconfigure:after:before",
+            "module.staged.deserialize",
+        });
+        REQUIRE(bundle.staged->value == "before");
+    }
+
+    SECTION("rollback failure preserves the hook result and requires recreation") {
+        bundle.probe->reconfigureResult = Result::FATAL;
+        bundle.probe->commitBeforeReconfigureFailure = true;
+        bundle.probe->stagedDeserializeResult = Result::ERROR;
+
+        REQUIRE(bundle.module->reconfigure(ConfigWithValue("after")) == Result::FATAL);
+        REQUIRE(bundle.module->state() == Module::State::ERRORED);
+        REQUIRE(bundle.probe->events == std::vector<std::string>{
+            "module.candidate.deserialize",
+            "module.validate:after:before",
+            "module.staged.serialize",
+            "module.reconfigure:after:before",
+            "module.staged.deserialize",
+        });
+        REQUIRE(bundle.staged->value == "after");
+        REQUIRE(bundle.module->reconfigure(ConfigWithValue("before")) == Result::RECREATE);
     }
 }
