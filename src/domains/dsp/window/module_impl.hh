@@ -14,7 +14,6 @@ struct WindowImpl : public Module::Impl, public DynamicConfig<Window> {
 
  protected:
     Tensor output;
-    bool baked = false;
 };
 
 }  // namespace Jetstream::Modules

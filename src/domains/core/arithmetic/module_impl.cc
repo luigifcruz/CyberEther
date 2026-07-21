@@ -19,7 +19,7 @@ Result ArithmeticImpl::validate() {
 }
 
 Result ArithmeticImpl::define() {
-    JST_CHECK(defineTaint(Module::Taint::DISCONTIGUOUS));
+    JST_CHECK(defineTaint(Module::Taint::DISCONTIGUOUS | Module::Taint::STATELESS));
 
     JST_CHECK(defineInterfaceInput("buffer"));
     JST_CHECK(defineInterfaceOutput("buffer"));

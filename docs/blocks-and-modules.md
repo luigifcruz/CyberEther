@@ -190,8 +190,10 @@ The compute hooks come from the runtime context, for example `computeInitialize`
 | Return | Meaning |
 |---|---|
 | `SUCCESS` | Normal completion. |
+| `RELOAD` | Accepted as successful progress by the runtime. |
 | `SKIP` | Nothing to do this cycle. The module is skipped and the skip propagates to every downstream module for the rest of the cycle. |
 | `YIELD` | Abort the rest of the cycle quietly. Used when a precondition disappeared mid-cycle. |
+| `TIMEOUT` | Abort the rest of the cycle quietly after a bounded wait or unavailable resource. |
 | `ERROR` | The module failed. Its block becomes errored with the last log message as the diagnostic, and downstream blocks are recreated as incomplete. The rest of the flowgraph keeps running. |
 
 Two rules govern the whole design:
@@ -199,7 +201,81 @@ Two rules govern the whole design:
 - **Compute must never block.** The scheduler is synchronous, so a stalled `computeSubmit` stalls every block in the flowgraph. Anything that waits on the outside world belongs in a background thread that `computeSubmit` drains.
 - **Sources pace the graph.** A module with no inputs is a source, and before each cycle the scheduler polls every source's `hasPendingCompute()` from `Scheduler::Context`. The default returns immediately, which makes the graph free-running. A real ingest source blocks there until data is available, which is what gives a flowgraph its natural rate. Note that the scheduler waits for all sources, so a slow source paces everything.
 
-Modules also declare traits through `defineTaint` when they deviate from the defaults: `IN_PLACE` for modules that overwrite their input, `DISCONTIGUOUS` for modules that accept strided input tensors, `CROSS_DEVICE` for modules that accept input living on another device, and `SURFACE` for modules that render into the window.
+### Module Taints
+
+Taints are opt-in capability and behavior contracts declared from the module's `define()` hook with `defineTaint`. The framework uses them while validating inputs, constructing the runtime plan, scheduling compute, and presenting surfaces.
+
+| Taint | Module contract | Framework behavior |
+|---|---|---|
+| `CLEAN` | No special capabilities or scheduling guarantees. | Applies the default validation and executes the module every eligible cycle. It is represented by zero, so it does not need to be declared. |
+| `IN_PLACE` | The module may overwrite storage belonging to one or more input tensors. | Static settlement is conservatively disabled for a graph containing the module because retained or aliased static buffers could otherwise be mutated. |
+| `DISCONTIGUOUS` | The implementation correctly handles input tensor shapes, strides, and offsets instead of assuming tightly packed storage. | Allows non-contiguous input tensors during module creation. Without it, non-contiguous inputs are rejected. |
+| `SURFACE` | The module owns a renderable surface and implements the presentation lifecycle. | Initializes the presentation context and includes the module in scheduler `present()` submissions. Compute settlement does not stop presentation. |
+| `BROWSER_MAIN_THREAD` | Browser-side creation and destruction must execute on the browser's main runtime thread. | Proxies the module's create and destroy hooks to the main thread in browser builds. It has no effect on native builds. |
+| `CROSS_DEVICE` | The implementation can directly consume input tensors whose device differs from the module's device. | Allows cross-device input during module creation. Without it, device mismatch is rejected and the block must provide an explicit bridge. |
+| `THROTTLED` | Compute should run at the scheduler's slower fixed cadence rather than every loop cycle. | Defers the module until its deadline. While it is not due, the module is added to the cycle's skipped set and its downstream dependents are skipped. |
+| `STATIC_OUTPUT` | After one successful compute, every output remains valid and unchanged for the current scheduler state epoch, and omitting later compute calls has no observable side effects. | Treats the module as an explicit static root. After successful materialization, the scheduler omits it without adding it to the skipped set and stops polling it as a source. |
+| `STATELESS` | For fixed configuration and logical input values, compute has the same outputs and return behavior and has no externally observable side effects. | Allows staticness to propagate from static inputs. A stateless module settles only when every input has a known static producer. The `STATELESS` trait alone does not make a zero-input module a static root. |
+
+Multiple traits can be combined in one declaration:
+
+```cpp
+Result MultiplyImpl::define() {
+    JST_CHECK(defineTaint(Module::Taint::DISCONTIGUOUS |
+                          Module::Taint::STATELESS));
+    // Define ports...
+    return Result::SUCCESS;
+}
+```
+
+Traits belong to the concrete module implementation. A declaration in a shared implementation base applies to every CPU, CUDA, or other backend implementation that inherits that `define()` hook, so the contract must hold for all of them.
+
+#### Static Settlement
+
+The `STATIC_OUTPUT` and `STATELESS` traits avoid redundant compute without changing the meaning of `SKIP`. Staticness is derived from explicit static roots through stateless transformations. For example, a static Window can feed stateless Invert and Reshape modules before the result is combined with a live signal by a stateless Multiply and passed to a stateless FFT. Window, Invert, and Reshape settle after their first successful cycle. Multiply remains dynamic because one input comes from the live signal, and FFT remains dynamic because its Multiply input is dynamic.
+
+The scheduler applies these rules:
+
+- The `STATIC_OUTPUT` trait starts a static branch regardless of whether the module has inputs.
+- The `STATELESS` trait propagates staticness only when the module has inputs and every input producer is known and static.
+- Missing producers, producerless inputs, live producers, and unannotated modules stop propagation. Resolved cross-block links retain their module producer and can propagate staticness.
+- A static candidate settles only after its runtime segment completes successfully and the module was not skipped.
+- The `SKIP`, `YIELD`, `TIMEOUT`, and failure results do not settle a module. The scheduler retries it on a later cycle.
+- Settled modules are omitted from runtime submission and source polling, but are never added to `skippedModules`. Their retained output remains available to dynamic consumers and across runtime or device segment boundaries.
+- Timing presentation reports zero current compute cost for settled modules. Before invalidation, the scheduler restores its pre-settlement timing snapshot. A runtime rebuild that follows initializes fresh timing.
+- If every module is settled, the scheduler idles instead of spinning at full speed.
+
+Settlement lasts for a scheduler state epoch:
+
+| Event | Settlement behavior |
+|---|---|
+| Successful compute followed by another cycle | Preserved because settled modules are omitted. |
+| Scheduler `stop()` followed by `start()` | Preserved because runtime and module state remain initialized. |
+| Synchronized state mutation | Cleared so static roots and descendants can refresh. |
+| Module add, remove, or scheduler reload | Cleared while the runtime plan is rebuilt. |
+| Block recreation or configuration change requiring recreation | Cleared through module removal and re-addition. |
+| Presentation of a settled `SURFACE` module | Presentation continues while only compute submission is settled. |
+
+The `STATIC_OUTPUT` contract is stronger than "usually does not change." The annotation is incorrect if output can change because of time, randomness, mutable external memory, input changes, or retained history. A static module may use internal caches, compiled kernels, plans, or scratch resources, but those implementation details cannot make its observable output vary after materialization.
+
+Static-root examples include Window, FilterTaps, and OnesTensor. These modules derive their output from configuration and retain it after the first successful compute.
+
+#### Stateless Contract
+
+A module may declare `STATELESS` only when all of the following are true:
+
+- Output values and compute return behavior depend only on the current configuration and input values.
+- Compute does not depend on previous invocations, wall-clock time, random state, files, devices, queues, environment state, or externally mutable memory.
+- Compute does not publish metrics, write files, render, perform I/O, mutate inputs, or cause other observable side effects.
+- Repeating compute with the same inputs is semantically equivalent even if the implementation reuses internal plans, kernels, or scratch buffers.
+
+Stateless transform examples include Invert, Reshape, Multiply, FFT, Duplicate, Cast, MultiplyConstant, Pad, Unpad, Arithmetic, Range, AGC, Amplitude, and Fold. They can still execute every cycle when connected to live input. The trait only makes them eligible to inherit staticness.
+
+Examples that must not declare `STATELESS` include SignalGenerator because it advances sample state and may use randomness, FileReader because it advances an external stream, RrcFilter and OverlapAdd because they retain history, Throttle because it depends on time, Squelch because it publishes metrics and controls downstream scheduling, and Python because user code may perform arbitrary stateful operations.
+
+The `STATELESS` and `IN_PLACE` traits are conceptually incompatible because mutating an input is an observable side effect. The scheduler currently disables static settlement whenever `IN_PLACE` appears in the graph because tensor views can alias storage across more than one module.
+
+Most importantly, settlement is not `SKIP`. A `SKIP` result means output is unavailable for the current cycle and therefore propagates to downstream modules. Settlement means a previously computed output is still valid, so downstream modules continue normally.
 
 ## Registration And Dispatch
 

@@ -24,6 +24,19 @@ TEST_CASE_METHOD(FlowgraphFixture, "Filter taps uses heads over center length", 
     REQUIRE(coeffs.rank() == 2);
     REQUIRE(coeffs.shape(0) == 1);
     REQUIRE(coeffs.shape(1) == 51);
+
+    for (U64 cycle = 0; cycle < 3; ++cycle) {
+        REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    }
+
+    std::vector<Flowgraph::View::MetricEntry> metrics;
+    REQUIRE(flowgraph->view().metrics("taps", metrics) == Result::SUCCESS);
+    REQUIRE(metrics.size() == 1);
+    REQUIRE(metrics.front().name == "runtime:filter_taps");
+    const auto* timing = std::any_cast<Module::Timing>(&metrics.front().value);
+    REQUIRE(timing != nullptr);
+    REQUIRE(timing->cycles == 1);
+    REQUIRE(timing->computeTime == 0.0f);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Filter taps heads can shrink stale center vector", "[modules][dsp][filter_taps][reconfigure]") {

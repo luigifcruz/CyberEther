@@ -48,6 +48,8 @@ class JETSTREAM_API Module {
         BROWSER_MAIN_THREAD = 1 << 3, ///< Requires main thread for create and destroy when running in the browser.
         CROSS_DEVICE        = 1 << 4, ///< Accepts input tensors living on a different device than the module.
         THROTTLED           = 1 << 5, ///< Compute runs at a slow fixed cadence instead of the loop rate.
+        STATIC_OUTPUT       = 1 << 6, ///< Output remains valid and unchanged after a successful compute.
+        STATELESS           = 1 << 7, ///< Deterministic and side-effect-free for fixed inputs and configuration.
     };
 
     // Constructor

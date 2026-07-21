@@ -62,10 +62,6 @@ Result WindowImplNativeCuda::computeInitialize() {
 }
 
 Result WindowImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
-    if (baked) {
-        return Result::SUCCESS;
-    }
-
     U64 elementCount = output.size();
     if (elementCount == 0) {
         return Result::SUCCESS;
@@ -88,7 +84,6 @@ Result WindowImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
     };
     JST_CHECK(scheduleKernel(kWindowKernelName, stream, grid, block, arguments));
 
-    baked = true;
     return Result::SUCCESS;
 }
 
@@ -97,7 +92,6 @@ Result WindowImplNativeCuda::computeDeinitialize() {
         JST_CHECK(destroyKernel(kWindowKernelName));
     }
     kernelCreated = false;
-    baked = false;
     return Result::SUCCESS;
 }
 

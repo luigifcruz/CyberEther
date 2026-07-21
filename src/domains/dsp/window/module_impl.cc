@@ -14,6 +14,8 @@ Result WindowImpl::validate() {
 }
 
 Result WindowImpl::define() {
+    JST_CHECK(defineTaint(Module::Taint::STATIC_OUTPUT));
+
     JST_CHECK(defineInterfaceOutput("window"));
 
     return Result::SUCCESS;
@@ -24,9 +26,6 @@ Result WindowImpl::create() {
     JST_CHECK(output.create(device(), DataType::CF32, {size}));
 
     outputs()["window"].produced(name(), "window", output);
-
-    // Configure initial state.
-    baked = false;
 
     return Result::SUCCESS;
 }

@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "flowgraph_fixture.hh"
@@ -100,6 +101,36 @@ TEST_CASE_METHOD(FlowgraphFixture,
     const Tensor out = block.outputs.at("buffer").tensor;
     REQUIRE(out.dtype() == DataType::F32);
     REQUIRE(out.shape(0) == 256);
+
+    for (U64 cycle = 0; cycle < 3; ++cycle) {
+        REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    }
+
+    std::vector<Flowgraph::View::MetricEntry> sourceMetrics;
+    REQUIRE(flowgraph->view().metrics("src", sourceMetrics) == Result::SUCCESS);
+    REQUIRE(sourceMetrics.size() == 1);
+    const auto* sourceTiming = std::any_cast<Module::Timing>(&sourceMetrics.front().value);
+    REQUIRE(sourceTiming != nullptr);
+    REQUIRE(sourceTiming->cycles == 3);
+
+    std::vector<Flowgraph::View::MetricEntry> engineMetrics;
+    REQUIRE(flowgraph->view().metrics("spec", engineMetrics) == Result::SUCCESS);
+
+    std::unordered_map<std::string, U64> cycles;
+    std::unordered_map<std::string, F32> computeTimes;
+    for (const auto& metric : engineMetrics) {
+        const auto* timing = std::any_cast<Module::Timing>(&metric.value);
+        REQUIRE(timing != nullptr);
+        cycles[metric.name] = timing->cycles;
+        computeTimes[metric.name] = timing->computeTime;
+    }
+
+    REQUIRE(cycles.at("runtime:window") == 1);
+    REQUIRE(cycles.at("runtime:invert") == 1);
+    REQUIRE(cycles.at("runtime:multiply") == 3);
+    REQUIRE(cycles.at("runtime:fft") == 3);
+    REQUIRE(computeTimes.at("runtime:window") == 0.0f);
+    REQUIRE(computeTimes.at("runtime:invert") == 0.0f);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,

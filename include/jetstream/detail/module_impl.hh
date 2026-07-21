@@ -86,7 +86,7 @@ struct JETSTREAM_API Module::Impl {
     DeviceType _device;
     RuntimeType _runtime;
     ProviderType _provider;
-    Taint _taint;
+    Taint _taint = Taint::CLEAN;
 
     // Timing
 

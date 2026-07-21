@@ -15,7 +15,7 @@ struct OnesTensorImplNativeCpu : public OnesTensorImpl,
 };
 
 Result OnesTensorImplNativeCpu::computeSubmit() {
-    return Result::SUCCESS;
+    return fillOutput();
 }
 
 JST_REGISTER_MODULE(OnesTensorImplNativeCpu, DeviceType::CPU, RuntimeType::NATIVE, "generic");

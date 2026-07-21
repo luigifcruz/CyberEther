@@ -18,18 +18,12 @@ struct WindowImplNativeCpu : public WindowImpl,
 };
 
 Result WindowImplNativeCpu::computeSubmit() {
-    // Window only needs to be computed once.
-    if (baked) {
-        return Result::SUCCESS;
-    }
-
     // Generate Blackman window.
     const U64 N = size;
     CF32* windowData = output.data<CF32>();
 
     if (N == 1) {
         windowData[0] = CF32(1.0f, 0.0f);
-        baked = true;
         return Result::SUCCESS;
     }
 
@@ -38,8 +32,6 @@ Result WindowImplNativeCpu::computeSubmit() {
                         0.08 * std::cos(4.0 * JST_PI * i / (N - 1));
         windowData[i] = CF32(static_cast<F32>(tap), 0.0f);
     }
-
-    baked = true;
 
     return Result::SUCCESS;
 }

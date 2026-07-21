@@ -39,6 +39,8 @@ Result OnesTensorImpl::validate() {
 }
 
 Result OnesTensorImpl::define() {
+    JST_CHECK(defineTaint(Module::Taint::STATIC_OUTPUT));
+
     JST_CHECK(defineInterfaceOutput("buffer"));
 
     return Result::SUCCESS;
@@ -49,7 +51,14 @@ Result OnesTensorImpl::create() {
     outputConfig.hostAccessible = true;
 
     JST_CHECK(output.create(device(), NameToDataType(dataType), shape, outputConfig));
+    JST_CHECK(fillOutput());
 
+    outputs()["buffer"].produced(name(), "buffer", output);
+
+    return Result::SUCCESS;
+}
+
+Result OnesTensorImpl::fillOutput() {
     if (output.dtype() == DataType::F32) {
         FillTensor(output, 1.0f);
     } else if (output.dtype() == DataType::CF32) {
@@ -57,13 +66,11 @@ Result OnesTensorImpl::create() {
     } else if (output.dtype() == DataType::F64) {
         FillTensor(output, 1.0);
     } else if (output.dtype() == DataType::CF64) {
-        FillTensor(output, CF32(1.0, 0.0));
+        FillTensor(output, CF64(1.0, 0.0));
     } else {
         JST_ERROR("[MODULE_ONES_TENSOR] Unsupported data type '{}'.", output.dtype());
         return Result::ERROR;
     }
-
-    outputs()["buffer"].produced(name(), "buffer", output);
 
     return Result::SUCCESS;
 }

@@ -19,8 +19,6 @@ struct FilterTapsImplNativeCpu : public FilterTapsImpl,
     Result computeSubmit() override;
 
  private:
-    bool baked = false;
-
     Result generateCoeffs();
 };
 
@@ -32,19 +30,11 @@ Result FilterTapsImplNativeCpu::create() {
         return Result::ERROR;
     }
 
-    baked = false;
-
     return Result::SUCCESS;
 }
 
 Result FilterTapsImplNativeCpu::computeSubmit() {
-    if (baked) {
-        return Result::SUCCESS;
-    }
-
     JST_CHECK(generateCoeffs());
-
-    baked = true;
 
     return Result::SUCCESS;
 }

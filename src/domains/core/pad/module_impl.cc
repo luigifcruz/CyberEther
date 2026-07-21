@@ -5,6 +5,8 @@
 namespace Jetstream::Modules {
 
 Result PadImpl::define() {
+    JST_CHECK(defineTaint(Module::Taint::STATELESS));
+
     JST_CHECK(defineInterfaceInput("unpadded"));
     JST_CHECK(defineInterfaceOutput("padded"));
 

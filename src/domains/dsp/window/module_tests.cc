@@ -6,6 +6,7 @@
 #include "jetstream/domains/dsp/window/module.hh"
 
 #include <cmath>
+#include <unordered_set>
 #include <vector>
 
 using namespace Jetstream;
@@ -125,7 +126,7 @@ TEST_CASE("Window - singleton is the multiplicative identity",
     }
 }
 
-TEST_CASE("Window - repeated run keeps baked output stable", "[modules][window][state]") {
+TEST_CASE("Window - repeated construction keeps output stable", "[modules][window][state]") {
     auto implementations = Registry::ListAvailableModules("window");
     REQUIRE(!implementations.empty());
 
@@ -156,4 +157,36 @@ TEST_CASE("Window - repeated run keeps baked output stable", "[modules][window][
             }
         }
     }
+}
+
+TEST_CASE("Window - direct runtime rematerializes output", "[modules][window][state]") {
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("window",
+                                  DeviceType::CPU,
+                                  RuntimeType::NATIVE,
+                                  "generic",
+                                  module) == Result::SUCCESS);
+
+    Modules::Window config;
+    config.size = 64;
+    REQUIRE(module->create("window_rematerialize", config, {}) == Result::SUCCESS);
+
+    Runtime runtime("window_rematerialize", DeviceType::CPU, RuntimeType::NATIVE);
+    REQUIRE(runtime.create({{"window_rematerialize", module}}) == Result::SUCCESS);
+
+    std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(runtime.compute({"window_rematerialize"}, skippedModules, failedModules) ==
+            Result::SUCCESS);
+
+    Tensor output = module->outputs().at("window").tensor;
+    const CF32 expected = output.at<CF32>(17);
+    output.at<CF32>(17) = CF32(123.0f, 456.0f);
+
+    REQUIRE(runtime.compute({"window_rematerialize"}, skippedModules, failedModules) ==
+            Result::SUCCESS);
+    REQUIRE(output.at<CF32>(17) == expected);
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
 }

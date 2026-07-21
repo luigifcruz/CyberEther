@@ -16,6 +16,8 @@ Result FoldImpl::validate() {
 }
 
 Result FoldImpl::define() {
+    JST_CHECK(defineTaint(Module::Taint::STATELESS));
+
     JST_CHECK(defineInterfaceInput("buffer"));
     JST_CHECK(defineInterfaceOutput("buffer"));
 

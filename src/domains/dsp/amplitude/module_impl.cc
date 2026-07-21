@@ -32,7 +32,7 @@ Result AmplitudeImpl::validate() {
 }
 
 Result AmplitudeImpl::define() {
-    JST_CHECK(defineTaint(Module::Taint::DISCONTIGUOUS));
+    JST_CHECK(defineTaint(Module::Taint::DISCONTIGUOUS | Module::Taint::STATELESS));
 
     JST_CHECK(defineInterfaceInput("signal"));
     JST_CHECK(defineInterfaceOutput("signal"));

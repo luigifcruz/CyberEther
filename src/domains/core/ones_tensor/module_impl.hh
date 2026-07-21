@@ -13,6 +13,8 @@ struct OnesTensorImpl : public Module::Impl, public DynamicConfig<OnesTensor> {
     Result create() override;
 
  protected:
+    Result fillOutput();
+
     Tensor output;
 };
 
