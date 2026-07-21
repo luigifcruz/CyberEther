@@ -40,7 +40,7 @@ Result ArithmeticImpl::define() {
 
     JST_CHECK(defineInterfaceConfig("axis",
                                     "Axis",
-                                    "Axis along which to reduce.",
+                                    "Axis along which to reduce. Negative axes count from the end.",
                                     "int:"));
 
     JST_CHECK(defineInterfaceConfig("squeeze",
@@ -60,6 +60,6 @@ Result ArithmeticImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(ArithmeticImpl);
+JST_REGISTER_BLOCK(ArithmeticImpl, {"arithmetic"});
 
 }  // namespace Jetstream::Blocks

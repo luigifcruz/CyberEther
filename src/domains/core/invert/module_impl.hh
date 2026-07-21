@@ -16,6 +16,7 @@ struct InvertImpl : public Module::Impl, public DynamicConfig<Invert> {
  protected:
     Tensor input;
     Tensor output;
+    Index resolvedAxis = 0;
 };
 
 }  // namespace Jetstream::Modules

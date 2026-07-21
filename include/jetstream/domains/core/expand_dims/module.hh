@@ -7,7 +7,7 @@
 namespace Jetstream::Modules {
 
 struct ExpandDims : public Module::Config {
-    U64 axis = 0;
+    I64 axis = -1;
 
     JST_MODULE_TYPE(expand_dims);
     JST_MODULE_PARAMS(axis);

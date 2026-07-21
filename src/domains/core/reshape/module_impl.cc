@@ -27,6 +27,8 @@ Result ReshapeImpl::validate() {
 }
 
 Result ReshapeImpl::define() {
+    JST_CHECK(defineTaint(Module::Taint::STATELESS));
+
     JST_CHECK(defineInterfaceInput("buffer"));
     JST_CHECK(defineInterfaceOutput("buffer"));
 

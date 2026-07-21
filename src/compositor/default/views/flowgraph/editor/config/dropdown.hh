@@ -37,10 +37,10 @@ struct FlowgraphConfigDropdownField {
             .onChange = [this](const std::string& label) {
                 for (U64 i = 0; i < labels.size(); ++i) {
                     if (labels[i] == label) {
-                        auto values = this->config.values;
-                        values[this->config.name] = keys[i];
+                        Parser::Map patch;
+                        patch[this->config.name] = keys[i];
                         if (this->config.onApply) {
-                            this->config.onApply(std::move(values), false);
+                            this->config.onApply(std::move(patch), false);
                         }
                         return;
                     }

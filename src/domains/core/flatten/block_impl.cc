@@ -29,6 +29,7 @@ Result FlattenImpl::validate() {
 
 Result FlattenImpl::configure() {
     duplicateModuleConfig->hostAccessible = true;
+    duplicateModuleConfig->outputDevice = GetDeviceName(device());
 
     return Result::SUCCESS;
 }
@@ -64,6 +65,8 @@ Result FlattenImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(FlattenImpl);
+JST_REGISTER_BLOCK(FlattenImpl,
+                   {"flatten"},
+                   {"duplicate", true});
 
 }  // namespace Jetstream::Blocks

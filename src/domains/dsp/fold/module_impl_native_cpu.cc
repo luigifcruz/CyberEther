@@ -74,7 +74,7 @@ Result FoldImplNativeCpu::computeSubmit() {
 template<typename T>
 static Result foldKernel(const Tensor& input,
                          Tensor& output,
-                         const U64 foldAxis,
+                         const Index foldAxis,
                          const U64 foldOffset,
                          const U64 foldSize,
                          const U64 decimFactor,
@@ -127,7 +127,7 @@ static Result foldKernel(const Tensor& input,
 Result FoldImplNativeCpu::kernelCF32() {
     return foldKernel<CF32>(input,
                             output,
-                            axis,
+                            resolvedAxis,
                             offset,
                             size,
                             decimationFactor,
@@ -138,7 +138,7 @@ Result FoldImplNativeCpu::kernelCF32() {
 Result FoldImplNativeCpu::kernelF32() {
     return foldKernel<F32>(input,
                            output,
-                           axis,
+                           resolvedAxis,
                            offset,
                            size,
                            decimationFactor,

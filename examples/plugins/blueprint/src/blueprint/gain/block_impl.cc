@@ -41,6 +41,6 @@ Result BlueprintGainImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(BlueprintGainImpl);
+JST_REGISTER_BLOCK(BlueprintGainImpl, {"blueprint_gain"});
 
 }  // namespace Jetstream::Blocks

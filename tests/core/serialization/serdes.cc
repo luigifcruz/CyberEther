@@ -369,6 +369,15 @@ TEST_CASE("Parser::Deserialize handles missing and uninitialized values", "[core
         U64 gain = 0;
         REQUIRE(Parser::Deserialize(data, "gain", gain) == Result::ERROR);
     }
+
+    SECTION("returns an error for an out-of-range signed integer") {
+        Parser::Map data;
+        data["axis"] = std::string("-9223372036854775809");
+
+        I64 axis = -1;
+        REQUIRE(Parser::Deserialize(data, "axis", axis) == Result::ERROR);
+        REQUIRE(axis == -1);
+    }
 }
 
 TEST_CASE("Parser::Deserialize reports incompatible types", "[core][serialization][serdes]") {

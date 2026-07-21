@@ -116,7 +116,7 @@ Result FilterImpl::define() {
     JST_CHECK(defineInterfaceConfig("heads",
                                     "Heads",
                                     "Number of filter heads.",
-                                    "int:heads"));
+                                    "uint:heads"));
 
     JST_CHECK(defineInterfaceConfig("center",
                                     "Center",
@@ -126,7 +126,7 @@ Result FilterImpl::define() {
     JST_CHECK(defineInterfaceConfig("taps",
                                     "Taps",
                                     "Number of filter coefficients (must be odd).",
-                                    "int:taps"));
+                                    "uint:taps"));
 
     return Result::SUCCESS;
 }
@@ -347,6 +347,14 @@ bool FilterImpl::calculateResampleHeuristics(U64 filterSize,
     return true;
 }
 
-JST_REGISTER_BLOCK(FilterImpl);
+JST_REGISTER_BLOCK(FilterImpl,
+                   {"filter_taps"},
+                   {"pad"},
+                   {"fft"},
+                   {"multiply"},
+                   {"unpad"},
+                   {"overlap_add"},
+                   {"expand_dims", true},
+                   {"fold", true});
 
 }  // namespace Jetstream::Blocks

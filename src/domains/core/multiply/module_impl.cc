@@ -5,7 +5,7 @@
 namespace Jetstream::Modules {
 
 Result MultiplyImpl::define() {
-    JST_CHECK(defineTaint(Module::Taint::DISCONTIGUOUS));
+    JST_CHECK(defineTaint(Module::Taint::DISCONTIGUOUS | Module::Taint::STATELESS));
 
     JST_CHECK(defineInterfaceOutput("product"));
 

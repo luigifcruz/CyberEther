@@ -184,6 +184,40 @@ TEST_CASE("Pad Module - 2D Axis 1 F32", "[modules][pad][F32][2d]") {
     }
 }
 
+TEST_CASE("Pad Module - Negative Axis F32", "[modules][pad][F32][2d][axis]") {
+    auto implementations = Registry::ListAvailableModules("pad");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("pad", impl.device, impl.runtime, impl.provider);
+
+            Modules::Pad config;
+            config.size = 2;
+            REQUIRE(config.axis == -1);
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({2, 3});
+            for (U64 i = 0; i < 6; ++i) {
+                input.at(i / 3, i % 3) = static_cast<F32>(i + 1);
+            }
+            ctx.setInput("unpadded", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("padded");
+            REQUIRE(out.shape() == Shape{2, 5});
+            for (U64 row = 0; row < 2; ++row) {
+                for (U64 column = 0; column < 3; ++column) {
+                    REQUIRE(out.at<F32>(row, column) == input.at(row, column));
+                }
+                REQUIRE(out.at<F32>(row, 3) == 0.0f);
+                REQUIRE(out.at<F32>(row, 4) == 0.0f);
+            }
+        }
+    }
+}
+
 TEST_CASE("Pad Module - CF32", "[modules][pad][CF32]") {
     auto implementations = Registry::ListAvailableModules("pad");
     REQUIRE(!implementations.empty());
@@ -232,19 +266,21 @@ TEST_CASE("Pad Module - Validation rejects invalid axis",
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
-        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: "
-                        << impl.runtime) {
-            TestContext ctx("pad", impl.device, impl.runtime, impl.provider);
+        for (const I64 axis : {I64{2}, I64{-3}}) {
+            DYNAMIC_SECTION("Device: " << impl.device << " Runtime: "
+                            << impl.runtime << " Axis: " << axis) {
+                TestContext ctx("pad", impl.device, impl.runtime, impl.provider);
 
-            Modules::Pad config;
-            config.size = 2;
-            config.axis = 2;
-            ctx.setConfig(config);
+                Modules::Pad config;
+                config.size = 2;
+                config.axis = axis;
+                ctx.setConfig(config);
 
-            auto input = ctx.createTensor<F32>({2, 3});
-            ctx.setInput("unpadded", input);
+                auto input = ctx.createTensor<F32>({2, 3});
+                ctx.setInput("unpadded", input);
 
-            REQUIRE(ctx.run() == Result::ERROR);
+                REQUIRE(ctx.run() == Result::ERROR);
+            }
         }
     }
 }

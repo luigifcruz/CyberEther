@@ -1,12 +1,50 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <stdexcept>
+#include <unordered_set>
+#include <vector>
+
 #include "jetstream/domains/visualization/lineplot/module.hh"
 #include "jetstream/registry.hh"
+#include "jetstream/runtime.hh"
 #include "jetstream/testing.hh"
 
 #include "module_impl.hh"
 
 using namespace Jetstream;
+
+namespace {
+
+struct LineplotImplAccess : Modules::LineplotImpl {
+    static auto signalPointsMember() {
+        return &LineplotImplAccess::signalPoints;
+    }
+};
+
+std::vector<F32> ReadSignalPoints(const std::shared_ptr<Module>& module) {
+    const auto* impl = module->getImpl<Modules::LineplotImpl>();
+    if (!impl) {
+        throw std::runtime_error("lineplot implementation is unavailable");
+    }
+
+    const Tensor& signalPoints = impl->*LineplotImplAccess::signalPointsMember();
+    Tensor hostSignalPoints;
+    const Tensor* readableSignalPoints = &signalPoints;
+    if (signalPoints.device() != DeviceType::CPU) {
+        if (hostSignalPoints.create(DeviceType::CPU, signalPoints) != Result::SUCCESS) {
+            throw std::runtime_error("lineplot signal points are not host accessible");
+        }
+        readableSignalPoints = &hostSignalPoints;
+    }
+
+    const F32* data = readableSignalPoints->data<F32>();
+    return {data, data + readableSignalPoints->size()};
+}
+
+}  // namespace
 
 TEST_CASE("Lineplot module accepts valid F32 inputs", "[modules][lineplot]") {
     auto implementations = Registry::ListAvailableModules("lineplot");
@@ -152,6 +190,78 @@ TEST_CASE("Lineplot module handles repeated runs and config updates",
             config.decimation = 2;
             ctx.setConfig(config);
             REQUIRE(ctx.run() == Result::SUCCESS);
+        }
+    }
+}
+
+TEST_CASE("Lineplot clamps amplitudes before averaging",
+          "[modules][lineplot][averaging][nonfinite][regression]") {
+    const auto implementations = Registry::ListAvailableModules("lineplot");
+
+    for (const auto& implementation : implementations) {
+        DYNAMIC_SECTION("Device: " << implementation.device
+                        << " Runtime: " << implementation.runtime) {
+            Tensor cpuInput(DeviceType::CPU, DataType::F32, {2, 4});
+            std::fill_n(cpuInput.data<F32>(),
+                        cpuInput.size(),
+                        -std::numeric_limits<F32>::infinity());
+
+            Tensor input;
+            if (implementation.device == DeviceType::CPU) {
+                input = cpuInput;
+            } else {
+                REQUIRE(input.create(implementation.device, cpuInput) == Result::SUCCESS);
+            }
+
+            TensorMap inputs;
+            inputs["signal"].requested("source", "signal");
+            inputs["signal"].tensor = input;
+
+            std::shared_ptr<Module> module;
+            REQUIRE(Registry::BuildModule("lineplot",
+                                          implementation.device,
+                                          implementation.runtime,
+                                          implementation.provider,
+                                          module) == Result::SUCCESS);
+
+            Modules::Lineplot config;
+            config.averaging = 2;
+            REQUIRE(module->create("lineplot", config, inputs) == Result::SUCCESS);
+
+            Runtime runtime("lineplot", implementation.device, implementation.runtime);
+            REQUIRE(runtime.create({{"lineplot", module}}) == Result::SUCCESS);
+
+            std::unordered_set<std::string> skippedModules;
+            std::unordered_set<std::string> failedModules;
+            REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+
+            const auto firstPoints = ReadSignalPoints(module);
+            for (U64 index = 0; index < firstPoints.size(); ++index) {
+                REQUIRE(std::isfinite(firstPoints[index]));
+            }
+
+            std::fill_n(cpuInput.data<F32>(), cpuInput.size(), 1.0f);
+            REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+
+            const auto recoveredPoints = ReadSignalPoints(module);
+            for (U64 index = 0; index < recoveredPoints.size(); ++index) {
+                REQUIRE(std::isfinite(recoveredPoints[index]));
+            }
+            for (U64 index = 0; index < input.shape(1); ++index) {
+                REQUIRE(recoveredPoints[(index * 2) + 1] >
+                        firstPoints[(index * 2) + 1]);
+            }
+
+            std::fill_n(cpuInput.data<F32>(), cpuInput.size(), 2.0f);
+            REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+
+            const auto finiteOutOfRangePoints = ReadSignalPoints(module);
+            for (U64 index = 0; index < input.shape(1); ++index) {
+                REQUIRE(finiteOutOfRangePoints[(index * 2) + 1] <= 1.0f);
+            }
+
+            REQUIRE(runtime.destroy() == Result::SUCCESS);
+            REQUIRE(module->destroy() == Result::SUCCESS);
         }
     }
 }

@@ -30,6 +30,7 @@ Result PermutationImpl::validate() {
 Result PermutationImpl::configure() {
     permutationModuleConfig->permutation = permutation;
     duplicateModuleConfig->hostAccessible = true;
+    duplicateModuleConfig->outputDevice = GetDeviceName(device());
 
     return Result::SUCCESS;
 }
@@ -41,7 +42,7 @@ Result PermutationImpl::define() {
     JST_CHECK(defineInterfaceConfig("permutation",
                                     "Permutation",
                                     "Output axis order as zero-based input axis indices.",
-                                    "vector-inline:int:axis"));
+                                    "vector-inline:uint:axis"));
 
     JST_CHECK(defineInterfaceConfig("contiguous",
                                     "Contiguous",
@@ -68,6 +69,8 @@ Result PermutationImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(PermutationImpl);
+JST_REGISTER_BLOCK(PermutationImpl,
+                   {"permutation"},
+                   {"duplicate", true});
 
 }  // namespace Jetstream::Blocks

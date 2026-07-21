@@ -1,5 +1,7 @@
 #include "module_impl.hh"
 
+#include <jetstream/memory/axis.hh>
+
 namespace Jetstream::Modules {
 
 Result SqueezeDimsImpl::define() {
@@ -12,25 +14,26 @@ Result SqueezeDimsImpl::define() {
 Result SqueezeDimsImpl::create() {
     const Tensor& inputTensor = inputs().at("buffer").tensor;
 
-    // Validate axis is within valid range [0, ndim-1].
-    if (axis >= inputTensor.rank()) {
+    const auto maybeResolvedAxis = ResolveAxis(axis, inputTensor.rank());
+    if (!maybeResolvedAxis) {
         JST_ERROR("[MODULE_SQUEEZE_DIMS] Axis {} out of range for tensor with {} dimensions.",
                   axis, inputTensor.rank());
         return Result::ERROR;
     }
+    const Index resolvedAxis = *maybeResolvedAxis;
 
     // Validate dimension at axis has size 1.
-    if (inputTensor.shape(axis) != 1) {
+    if (inputTensor.shape(resolvedAxis) != 1) {
         JST_ERROR("[MODULE_SQUEEZE_DIMS] Cannot squeeze dimension {} (size {}). "
                   "Dimension must have size 1.",
-                  axis, inputTensor.shape(axis));
+                  axis, inputTensor.shape(resolvedAxis));
         return Result::ERROR;
     }
 
     input = inputTensor;
     output = input;
 
-    JST_CHECK(output.squeezeDims(axis));
+    JST_CHECK(output.squeezeDims(resolvedAxis));
     JST_CHECK(output.propagateAttributes(input));
 
     outputs()["buffer"].produced(name(), "buffer", output);

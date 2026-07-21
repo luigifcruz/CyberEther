@@ -6,7 +6,7 @@
 namespace Jetstream::Blocks {
 
 struct Fold : public Block::Config {
-    U64 axis = 0;
+    I64 axis = -1;
     U64 offset = 0;
     U64 size = 0;
 
@@ -23,7 +23,7 @@ struct Fold : public Block::Config {
         "shifts the folding origin along the axis.\n\n"
 
         "## Arguments\n"
-        "- **Axis**: Dimension along which to fold.\n"
+        "- **Axis**: Dimension along which to fold. Negative axes count from the end.\n"
         "- **Offset**: Sample offset applied before folding.\n"
         "- **Size**: Output size along the folded axis. Must evenly "
         "divide the input size along that axis.\n\n"

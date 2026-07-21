@@ -1,31 +1,31 @@
 #include "jetstream/benchmark.hh"
-#include "jetstream/domains/core/flatten/module.hh"
 #include "jetstream/registry.hh"
+#include "jetstream/domains/core/invert/module.hh"
 
 namespace Jetstream::Modules {
 
-JST_BENCHMARKS("flatten") {
-    Flatten config;
+JST_BENCHMARKS("invert") {
+    Invert config;
 
     return {
         {
-            .variant = "F32-flatten-1024",
+            .variant = "CF32-1024",
             .inputs = {
-                JST_BENCHMARK_INPUT("buffer", F32, 32, 32),
+                JST_BENCHMARK_INPUT("signal", CF32, 1024),
             },
             .config = JST_BENCHMARK_CONFIG(config),
         },
         {
-            .variant = "F32-flatten-8192",
+            .variant = "CF32-8192",
             .inputs = {
-                JST_BENCHMARK_INPUT("buffer", F32, 8, 32, 32),
+                JST_BENCHMARK_INPUT("signal", CF32, 8192),
             },
             .config = JST_BENCHMARK_CONFIG(config),
         },
         {
-            .variant = "CF32-flatten-1024",
+            .variant = "CF32-65536",
             .inputs = {
-                JST_BENCHMARK_INPUT("buffer", CF32, 32, 32),
+                JST_BENCHMARK_INPUT("signal", CF32, 65536),
             },
             .config = JST_BENCHMARK_CONFIG(config),
         },

@@ -7,9 +7,11 @@ namespace Jetstream::Modules {
 
 struct Fft : public Module::Config {
     bool forward = true;
+    I64 axis = -1;
+    bool invert = false;
 
     JST_MODULE_TYPE(fft);
-    JST_MODULE_PARAMS(forward);
+    JST_MODULE_PARAMS(forward, axis, invert);
 };
 
 }  // namespace Jetstream::Modules

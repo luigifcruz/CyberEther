@@ -34,18 +34,19 @@ Result FoldImpl::define() {
 
     JST_CHECK(defineInterfaceConfig("axis",
                                     "Axis",
-                                    "Dimension along which to fold.",
+                                    "Dimension along which to fold. Negative axes count "
+                                    "from the end.",
                                     "int:axis"));
 
     JST_CHECK(defineInterfaceConfig("offset",
                                     "Offset",
                                     "Sample offset before folding.",
-                                    "int:samples"));
+                                    "uint:samples"));
 
     JST_CHECK(defineInterfaceConfig("size",
                                     "Size",
                                     "Output size along the folded axis.",
-                                    "int:samples"));
+                                    "uint:samples"));
 
     return Result::SUCCESS;
 }
@@ -59,6 +60,6 @@ Result FoldImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(FoldImpl);
+JST_REGISTER_BLOCK(FoldImpl, {"fold"});
 
 }  // namespace Jetstream::Blocks

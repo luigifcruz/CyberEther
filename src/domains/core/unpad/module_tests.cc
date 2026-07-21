@@ -207,6 +207,38 @@ TEST_CASE("Unpad Module - 2D Axis 1 F32", "[modules][unpad][F32][2d]") {
     }
 }
 
+TEST_CASE("Unpad Module - Negative Axis F32", "[modules][unpad][F32][2d][axis]") {
+    auto implementations = Registry::ListAvailableModules("unpad");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("unpad", impl.device, impl.runtime, impl.provider);
+
+            Modules::Unpad config;
+            config.size = 2;
+            REQUIRE(config.axis == -1);
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({2, 5});
+            for (U64 i = 0; i < 10; ++i) {
+                input.at(i / 5, i % 5) = static_cast<F32>(i + 1);
+            }
+            ctx.setInput("padded", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& outUnpadded = ctx.output("unpadded");
+            const auto& outPad = ctx.output("pad");
+            REQUIRE(outUnpadded.shape() == Shape{2, 3});
+            REQUIRE(outPad.shape() == Shape{2, 2});
+            REQUIRE(outUnpadded.at<F32>(1, 2) == 8.0f);
+            REQUIRE(outPad.at<F32>(0, 0) == 4.0f);
+            REQUIRE(outPad.at<F32>(1, 1) == 10.0f);
+        }
+    }
+}
+
 TEST_CASE("Unpad Module - CF32", "[modules][unpad][CF32]") {
     auto implementations = Registry::ListAvailableModules("unpad");
     REQUIRE(!implementations.empty());
@@ -307,6 +339,20 @@ TEST_CASE("Unpad Module - Validation rejects invalid axis and size",
             Modules::Unpad config;
             config.size = 1;
             config.axis = 3;
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({2, 3});
+            ctx.setInput("padded", input);
+
+            REQUIRE(ctx.run() == Result::ERROR);
+        }
+
+        SECTION("axis too negative") {
+            TestContext ctx("unpad", impl.device, impl.runtime, impl.provider);
+
+            Modules::Unpad config;
+            config.size = 1;
+            config.axis = -3;
             ctx.setConfig(config);
 
             auto input = ctx.createTensor<F32>({2, 3});

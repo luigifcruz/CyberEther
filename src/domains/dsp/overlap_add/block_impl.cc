@@ -38,7 +38,7 @@ Result OverlapAddImpl::define() {
     JST_CHECK(defineInterfaceConfig("axis",
                                     "Axis",
                                     "Dimension along which the "
-                                    "overlap is applied.",
+                                    "overlap is applied. Negative axes count from the end.",
                                     "int:axis"));
 
     return Result::SUCCESS;
@@ -55,6 +55,6 @@ Result OverlapAddImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(OverlapAddImpl);
+JST_REGISTER_BLOCK(OverlapAddImpl, {"overlap_add"});
 
 }  // namespace Jetstream::Blocks

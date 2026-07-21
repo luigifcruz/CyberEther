@@ -39,6 +39,6 @@ Result FrameImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(FrameImpl);
+JST_REGISTER_BLOCK(FrameImpl, {"frame"});
 
 }  // namespace Jetstream::Blocks

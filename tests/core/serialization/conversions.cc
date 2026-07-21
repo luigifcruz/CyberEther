@@ -128,6 +128,17 @@ TEST_CASE("Parser string conversions round-trip scalar values", "[core][serializ
         REQUIRE(decoded == input);
     }
 
+    SECTION("I64") {
+        constexpr I64 input = -1;
+        std::string encoded;
+        REQUIRE(Parser::TypedToString(std::any(input), encoded) == Result::SUCCESS);
+        REQUIRE(encoded == "-1");
+
+        I64 decoded = 0;
+        REQUIRE(Parser::StringToTyped<I64>(encoded, decoded) == Result::SUCCESS);
+        REQUIRE(decoded == input);
+    }
+
     SECTION("U64") {
         constexpr U64 input = 42;
         std::string encoded;
@@ -168,6 +179,26 @@ TEST_CASE("Parser string conversions round-trip scalar values", "[core][serializ
         REQUIRE(Parser::StringToTyped<bool>(encoded, decoded) == Result::SUCCESS);
         REQUIRE(decoded);
     }
+}
+
+TEST_CASE("Parser string conversions reject invalid I64 values",
+          "[core][serialization][conversions][errors]") {
+    I64 decoded = 0;
+    REQUIRE(Parser::StringToTyped<I64>("9223372036854775807", decoded) == Result::SUCCESS);
+    REQUIRE(decoded == std::numeric_limits<I64>::max());
+    REQUIRE(Parser::StringToTyped<I64>("-9223372036854775808", decoded) == Result::SUCCESS);
+    REQUIRE(decoded == std::numeric_limits<I64>::min());
+
+    decoded = 7;
+
+    REQUIRE(Parser::StringToTyped<I64>("not-a-number", decoded) == Result::ERROR);
+    REQUIRE(decoded == 7);
+
+    REQUIRE(Parser::StringToTyped<I64>("9223372036854775808", decoded) == Result::ERROR);
+    REQUIRE(decoded == 7);
+
+    REQUIRE(Parser::StringToTyped<I64>("-9223372036854775809", decoded) == Result::ERROR);
+    REQUIRE(decoded == 7);
 }
 
 TEST_CASE("Parser string conversions round-trip enums", "[core][serialization][conversions]") {

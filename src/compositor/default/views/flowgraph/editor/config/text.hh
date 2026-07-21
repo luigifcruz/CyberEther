@@ -24,10 +24,10 @@ struct FlowgraphConfigTextField {
             .value = value,
             .submit = Sakura::TextInput::Submit::OnEnter,
             .onChange = [this](const std::string& nextValue) {
-                auto values = this->config.values;
-                values[this->config.name] = nextValue;
+                Parser::Map patch;
+                patch[this->config.name] = nextValue;
                 if (this->config.onApply) {
-                    this->config.onApply(std::move(values), false);
+                    this->config.onApply(std::move(patch), false);
                 }
             },
         });

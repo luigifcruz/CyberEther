@@ -3,6 +3,8 @@
 namespace Jetstream::Modules {
 
 Result AgcImpl::define() {
+    JST_CHECK(defineTaint(Module::Taint::STATELESS));
+
     JST_CHECK(defineInterfaceInput("signal"));
     JST_CHECK(defineInterfaceOutput("signal"));
 

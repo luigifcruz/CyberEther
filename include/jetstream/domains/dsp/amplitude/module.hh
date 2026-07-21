@@ -6,8 +6,10 @@
 namespace Jetstream::Modules {
 
 struct Amplitude : public Module::Config {
+    I64 axis = -1;
+
     JST_MODULE_TYPE(amplitude);
-    JST_MODULE_PARAMS();
+    JST_MODULE_PARAMS(axis);
 };
 
 }  // namespace Jetstream::Modules

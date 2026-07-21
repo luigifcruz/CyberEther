@@ -64,6 +64,6 @@ Result DuplicateImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(DuplicateImpl);
+JST_REGISTER_BLOCK(DuplicateImpl, {"duplicate"});
 
 }  // namespace Jetstream::Blocks

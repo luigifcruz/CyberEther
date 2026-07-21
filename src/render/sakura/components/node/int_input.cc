@@ -24,12 +24,12 @@ bool NodeIntInput::update(Config config) {
 void NodeIntInput::render(const Context& ctx) const {
     const auto& config = this->impl->config;
 
-    U64 value = config.value;
+    I64 value = config.value;
     ImGui::PushID(config.id.c_str());
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Scale(ctx, 6.0f), Scale(ctx, 3.0f)));
     ImGui::SetNextItemWidth(-FLT_MIN);
     const bool changed = ImGui::InputScalar("##int",
-                                            ImGuiDataType_U64,
+                                            ImGuiDataType_S64,
                                             &value,
                                             nullptr,
                                             nullptr,

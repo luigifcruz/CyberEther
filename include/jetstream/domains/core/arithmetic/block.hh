@@ -10,7 +10,7 @@ namespace Jetstream::Blocks {
 
 struct Arithmetic : public Block::Config {
     std::string operation = "add";
-    U64 axis = 0;
+    I64 axis = -1;
     bool squeeze = false;
 
     JST_BLOCK_TYPE(arithmetic);
@@ -27,7 +27,7 @@ struct Arithmetic : public Block::Config {
 
         "## Arguments\n"
         "- **Operation**: The arithmetic operation to apply (add, sub, mul, div).\n"
-        "- **Axis**: The axis along which to reduce.\n"
+        "- **Axis**: The axis along which to reduce. Negative axes count from the end.\n"
         "- **Squeeze**: Whether to remove the reduced dimension from the output.\n\n"
 
         "## Useful For\n"

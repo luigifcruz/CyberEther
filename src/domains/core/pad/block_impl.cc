@@ -28,11 +28,11 @@ Result PadImpl::define() {
     JST_CHECK(defineInterfaceConfig("size",
                                     "Pad Size",
                                     "Number of zeros to append.",
-                                    "int:samples"));
+                                    "uint:samples"));
 
     JST_CHECK(defineInterfaceConfig("axis",
                                     "Pad Axis",
-                                    "Dimension along which to add padding.",
+                                    "Dimension along which to add padding. Negative axes count from the end.",
                                     "int:"));
 
     return Result::SUCCESS;
@@ -47,6 +47,6 @@ Result PadImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(PadImpl);
+JST_REGISTER_BLOCK(PadImpl, {"pad"});
 
 }  // namespace Jetstream::Blocks

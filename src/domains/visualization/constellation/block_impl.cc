@@ -31,6 +31,6 @@ Result ConstellationImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(ConstellationImpl);
+JST_REGISTER_BLOCK(ConstellationImpl, {"constellation"});
 
 }  // namespace Jetstream::Blocks

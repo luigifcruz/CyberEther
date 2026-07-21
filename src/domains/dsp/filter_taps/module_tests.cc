@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <complex>
+#include <unordered_set>
 
 using namespace Jetstream;
 
@@ -186,4 +187,40 @@ TEST_CASE("Filter Taps - Center Tap Matches Normalized Bandwidth", "[modules][fi
                          Catch::Matchers::WithinAbs(0.0f, 1e-6f));
         }
     }
+}
+
+TEST_CASE("Filter Taps - direct runtime rematerializes output",
+          "[modules][filter_taps][state]") {
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("filter_taps",
+                                  DeviceType::CPU,
+                                  RuntimeType::NATIVE,
+                                  "generic",
+                                  module) == Result::SUCCESS);
+
+    Modules::FilterTaps config;
+    config.sampleRate = 2.0e6;
+    config.bandwidth = 0.5e6;
+    config.center = {0.0};
+    config.taps = 51;
+    REQUIRE(module->create("filter_taps_rematerialize", config, {}) == Result::SUCCESS);
+
+    Runtime runtime("filter_taps_rematerialize", DeviceType::CPU, RuntimeType::NATIVE);
+    REQUIRE(runtime.create({{"filter_taps_rematerialize", module}}) == Result::SUCCESS);
+
+    std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(runtime.compute({"filter_taps_rematerialize"}, skippedModules, failedModules) ==
+            Result::SUCCESS);
+
+    Tensor output = module->outputs().at("coeffs").tensor;
+    const CF32 expected = output.at<CF32>(0, 17);
+    output.at<CF32>(0, 17) = CF32(123.0f, 456.0f);
+
+    REQUIRE(runtime.compute({"filter_taps_rematerialize"}, skippedModules, failedModules) ==
+            Result::SUCCESS);
+    REQUIRE(output.at<CF32>(0, 17) == expected);
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
 }

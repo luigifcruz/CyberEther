@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <any>
 #include <array>
+#include <exception>
 #include <functional>
 #include <string>
 #include <type_traits>
@@ -31,6 +32,12 @@ class JETSTREAM_API Parser {
     static Result StringToTyped(const std::string& encoded, T& variable) {
         try {
             return StringToTypedValue(encoded, variable);
+        } catch (const std::exception& e) {
+            try {
+                JST_ERROR("[PARSER] Failed to convert value '{}': {}", encoded, e.what());
+            } catch (...) {
+            }
+            return Result::ERROR;
         } catch (...) {
             return Result::ERROR;
         }

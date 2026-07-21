@@ -75,6 +75,35 @@ TEST_CASE("SqueezeDims Module - Squeeze 2D to 1D at axis 1 F32", "[modules][sque
     }
 }
 
+TEST_CASE("SqueezeDims Module - Negative Axis", "[modules][squeeze_dims][F32][axis]") {
+    auto implementations = Registry::ListAvailableModules("squeeze_dims");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("squeeze_dims", impl.device, impl.runtime, impl.provider);
+
+            Modules::SqueezeDims config;
+            REQUIRE(config.axis == -1);
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({4, 1});
+            for (U64 i = 0; i < 4; ++i) {
+                input.at(i, 0) = static_cast<F32>(i);
+            }
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("buffer");
+            REQUIRE(out.shape() == Shape{4});
+            for (U64 i = 0; i < 4; ++i) {
+                REQUIRE(out.at<F32>(i) == static_cast<F32>(i));
+            }
+        }
+    }
+}
+
 TEST_CASE("SqueezeDims Module - Squeeze 3D to 2D at axis 1 F32", "[modules][squeeze_dims][F32]") {
     auto implementations = Registry::ListAvailableModules("squeeze_dims");
     REQUIRE(!implementations.empty());
@@ -156,18 +185,21 @@ TEST_CASE("SqueezeDims Module - Axis Out of Range Error", "[modules][squeeze_dim
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
-        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
-            TestContext ctx("squeeze_dims", impl.device, impl.runtime, impl.provider);
+        for (const I64 axis : {I64{5}, I64{-3}}) {
+            DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime
+                            << " Axis: " << axis) {
+                TestContext ctx("squeeze_dims", impl.device, impl.runtime, impl.provider);
 
-            Modules::SqueezeDims config;
-            config.axis = 5;  // Out of range for 2D tensor
+                Modules::SqueezeDims config;
+                config.axis = axis;
 
-            ctx.setConfig(config);
+                ctx.setConfig(config);
 
-            auto input = ctx.createTensor<F32>({1, 4});
-            ctx.setInput("buffer", input);
+                auto input = ctx.createTensor<F32>({1, 4});
+                ctx.setInput("buffer", input);
 
-            REQUIRE(ctx.run() == Result::ERROR);
+                REQUIRE(ctx.run() == Result::ERROR);
+            }
         }
     }
 }

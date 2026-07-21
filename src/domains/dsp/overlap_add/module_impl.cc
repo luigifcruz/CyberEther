@@ -2,6 +2,8 @@
 
 #include <cstring>
 
+#include <jetstream/memory/axis.hh>
+
 namespace Jetstream::Modules {
 
 Result OverlapAddImpl::define() {
@@ -19,37 +21,44 @@ Result OverlapAddImpl::create() {
     inputBuffer = bufferTensor;
     inputOverlap = overlapTensor;
 
-    // Validate axis bounds.
-    if (axis >= inputBuffer.rank()) {
+    const auto candidateAxis = ResolveAxis(axis, inputBuffer.rank());
+    if (!candidateAxis) {
         JST_ERROR("[MODULE_OVERLAP_ADD] Axis ({}) is out of "
                   "bounds for input rank ({}).",
                   axis,
                   inputBuffer.rank());
         return Result::ERROR;
     }
+    const Index resolvedAxis = *candidateAxis;
 
     // Validate rank consistency.
     if (inputBuffer.rank() != inputOverlap.rank()) {
         JST_ERROR("[MODULE_OVERLAP_ADD] Buffer rank ({}) does "
-                  "not match overlap rank ({}).",
-                  inputBuffer.rank(),
-                  inputOverlap.rank());
+                   "not match overlap rank ({}).",
+                   inputBuffer.rank(),
+                   inputOverlap.rank());
+        return Result::ERROR;
+    }
+
+    if (inputBuffer.rank() > 1 && resolvedAxis == 0) {
+        JST_ERROR("[MODULE_OVERLAP_ADD] Axis 0 is reserved for batch sequencing "
+                  "for inputs with more than one dimension.");
         return Result::ERROR;
     }
 
     // Validate overlap size.
-    if (inputBuffer.shape(axis) < inputOverlap.shape(axis)) {
+    if (inputBuffer.shape(resolvedAxis) < inputOverlap.shape(resolvedAxis)) {
         JST_ERROR("[MODULE_OVERLAP_ADD] Overlap size ({}) is "
                   "larger than buffer size ({}) along axis ({}).",
-                  inputOverlap.shape(axis),
-                  inputBuffer.shape(axis),
-                  axis);
+                  inputOverlap.shape(resolvedAxis),
+                  inputBuffer.shape(resolvedAxis),
+                  resolvedAxis);
         return Result::ERROR;
     }
 
     // Validate shape consistency on non-overlap axes.
-    for (U64 d = 0; d < inputBuffer.rank(); ++d) {
-        if (d == axis) {
+    for (Index d = 0; d < inputBuffer.rank(); ++d) {
+        if (d == resolvedAxis) {
             continue;
         }
 

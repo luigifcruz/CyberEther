@@ -46,6 +46,6 @@ Result FmImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(FmImpl);
+JST_REGISTER_BLOCK(FmImpl, {"fm"});
 
 }  // namespace Jetstream::Blocks

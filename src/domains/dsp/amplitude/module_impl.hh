@@ -8,6 +8,7 @@ namespace Jetstream::Modules {
 
 struct AmplitudeImpl : public Module::Impl, public DynamicConfig<Amplitude> {
  public:
+    Result validate() override;
     Result define() override;
     Result create() override;
     Result destroy() override;

@@ -46,14 +46,14 @@ TEST_CASE_METHOD(FlowgraphFixture, "Window block reconfigure behavior", "[module
     REQUIRE(flowgraph->blockCreate("window_recfg", config, {}) == Result::SUCCESS);
 
     Parser::Map unchanged;
-    unchanged["size"] = std::string("64");
+    unchanged["size"] = U64{64};
     REQUIRE(flowgraph->blockReconfigure("window_recfg", unchanged) == Result::SUCCESS);
 
     const Tensor unchangedOut = viewBlock("window_recfg").outputs.at("window").tensor;
     REQUIRE(unchangedOut.shape(0) == 64);
 
     Parser::Map changed;
-    changed["size"] = std::string("128");
+    changed["size"] = U64{128};
     REQUIRE(flowgraph->blockReconfigure("window_recfg", changed) == Result::SUCCESS);
 
     const Tensor outAfterReconfigure =

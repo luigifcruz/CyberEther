@@ -13,9 +13,9 @@ namespace Jetstream::Sakura {
 struct NodeIntInput {
     struct Config {
         std::string id;
-        U64 value = 0;
+        I64 value = 0;
         std::string unit;
-        std::function<void(U64)> onChange;
+        std::function<void(I64)> onChange;
     };
 
     NodeIntInput();

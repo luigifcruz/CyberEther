@@ -50,6 +50,8 @@ Result FilterTapsImpl::validate() {
 }
 
 Result FilterTapsImpl::define() {
+    JST_CHECK(defineTaint(Module::Taint::STATIC_OUTPUT));
+
     JST_CHECK(defineInterfaceOutput("coeffs"));
 
     return Result::SUCCESS;

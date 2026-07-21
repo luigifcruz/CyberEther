@@ -60,7 +60,7 @@ Result SignalGeneratorImpl::define() {
     JST_CHECK(defineInterfaceConfig("bufferSize",
                                     "Buffer Size",
                                     "Number of samples to generate per processing cycle.",
-                                    "int:samples"));
+                                    "uint:samples"));
 
     JST_CHECK(defineInterfaceConfig("sampleRate",
                                     "Sample Rate",
@@ -119,6 +119,6 @@ Result SignalGeneratorImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(SignalGeneratorImpl);
+JST_REGISTER_BLOCK(SignalGeneratorImpl, {"signal_generator"});
 
 }  // namespace Jetstream::Blocks

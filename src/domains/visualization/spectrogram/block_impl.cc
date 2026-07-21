@@ -28,7 +28,7 @@ Result SpectrogramImpl::define() {
     JST_CHECK(defineInterfaceConfig("height",
                                     "Height",
                                     "Number of frequency bins in the vertical axis.",
-                                    "int:bins"));
+                                    "uint:bins"));
 
     return Result::SUCCESS;
 }
@@ -41,6 +41,6 @@ Result SpectrogramImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(SpectrogramImpl);
+JST_REGISTER_BLOCK(SpectrogramImpl, {"spectrogram"});
 
 }  // namespace Jetstream::Blocks

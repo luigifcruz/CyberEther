@@ -59,12 +59,12 @@ Result UnpadImplNativeCpu::kernelF32() {
 
     // Calculate the number of slices before the axis and the size of each slice.
     U64 outerSize = 1;
-    for (U64 i = 0; i < axis; ++i) {
+    for (U64 i = 0; i < resolvedAxis; ++i) {
         outerSize *= inShape[i];
     }
 
     U64 innerSize = 1;
-    for (U64 i = axis + 1; i < rank; ++i) {
+    for (U64 i = resolvedAxis + 1; i < rank; ++i) {
         innerSize *= inShape[i];
     }
 
@@ -95,12 +95,12 @@ Result UnpadImplNativeCpu::kernelCF32() {
 
     // Calculate the number of slices before the axis and the size of each slice.
     U64 outerSize = 1;
-    for (U64 i = 0; i < axis; ++i) {
+    for (U64 i = 0; i < resolvedAxis; ++i) {
         outerSize *= inShape[i];
     }
 
     U64 innerSize = 1;
-    for (U64 i = axis + 1; i < rank; ++i) {
+    for (U64 i = resolvedAxis + 1; i < rank; ++i) {
         innerSize *= inShape[i];
     }
 

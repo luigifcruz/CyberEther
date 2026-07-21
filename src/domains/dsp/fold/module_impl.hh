@@ -15,6 +15,7 @@ struct FoldImpl : public Module::Impl, public DynamicConfig<Fold> {
  protected:
     Tensor input;
     Tensor output;
+    Index resolvedAxis = 0;
     U64 decimationFactor = 0;
 };
 

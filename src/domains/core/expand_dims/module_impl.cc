@@ -1,5 +1,7 @@
 #include "module_impl.hh"
 
+#include <jetstream/memory/axis.hh>
+
 namespace Jetstream::Modules {
 
 Result ExpandDimsImpl::define() {
@@ -12,17 +14,18 @@ Result ExpandDimsImpl::define() {
 Result ExpandDimsImpl::create() {
     const Tensor& inputTensor = inputs().at("buffer").tensor;
 
-    // Validate axis is within valid range [0, ndim].
-    if (axis > inputTensor.rank()) {
+    const auto maybeResolvedAxis = ResolveInsertionAxis(axis, inputTensor.rank());
+    if (!maybeResolvedAxis) {
         JST_ERROR("[MODULE_EXPAND_DIMS] Axis {} out of range for tensor with {} dimensions.",
                   axis, inputTensor.rank());
         return Result::ERROR;
     }
+    const Index resolvedAxis = *maybeResolvedAxis;
 
     input = inputTensor;
     output = input;
 
-    JST_CHECK(output.expandDims(axis));
+    JST_CHECK(output.expandDims(resolvedAxis));
     JST_CHECK(output.propagateAttributes(input));
 
     outputs()["buffer"].produced(name(), "buffer", output);

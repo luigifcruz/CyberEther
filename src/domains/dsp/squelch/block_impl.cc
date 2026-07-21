@@ -69,6 +69,6 @@ Result SquelchImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(SquelchImpl);
+JST_REGISTER_BLOCK(SquelchImpl, {"squelch"});
 
 }  // namespace Jetstream::Blocks

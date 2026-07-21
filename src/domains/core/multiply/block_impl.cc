@@ -32,6 +32,6 @@ Result MultiplyImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(MultiplyImpl);
+JST_REGISTER_BLOCK(MultiplyImpl, {"multiply"});
 
 }  // namespace Jetstream::Blocks

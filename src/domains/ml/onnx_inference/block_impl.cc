@@ -250,6 +250,6 @@ Result OnnxInferenceImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(OnnxInferenceImpl);
+JST_REGISTER_BLOCK(OnnxInferenceImpl, {"onnx_inference"});
 
 }  // namespace Jetstream::Blocks

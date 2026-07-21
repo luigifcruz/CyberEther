@@ -39,7 +39,9 @@ extern "C" __global__ void invert_kernel(const KernelComplex* input, KernelCompl
     }
 
     KernelComplex value = input[inputIndex];
-    if ((index & 1ULL) != 0) {
+    const unsigned long long axisCoordinate =
+        (index / kAxisInnerSize) % kAxisLength;
+    if ((axisCoordinate & 1ULL) != 0) {
         value.real = -value.real;
         value.imag = -value.imag;
     }
@@ -60,14 +62,27 @@ std::string MakeU64ArrayLiteral(const Shape& values) {
     return jst::fmt::format("{{{}}}", jst::fmt::join(formattedValues, ", "));
 }
 
-std::string BuildKernelConstants(const Tensor& input) {
+std::string BuildKernelConstants(const Tensor& input, const Index axis) {
+    U64 axisInnerSize = 1;
+    for (Index axisIndex = axis + 1; axisIndex < input.rank(); ++axisIndex) {
+        axisInnerSize *= input.shape(axisIndex);
+    }
+    if (axisInnerSize == 0) {
+        axisInnerSize = 1;
+    }
+    const U64 axisLength = input.shape(axis) == 0 ? 1 : input.shape(axis);
+
     return jst::fmt::format(
         "static constexpr unsigned long long kElementCount = {}ULL;\n"
         "static constexpr int kRank = {};\n"
+        "static constexpr unsigned long long kAxisLength = {}ULL;\n"
+        "static constexpr unsigned long long kAxisInnerSize = {}ULL;\n"
         "static constexpr unsigned long long kShape[] = {};\n"
         "static constexpr unsigned long long kInputStride[] = {};\n",
         input.size(),
         input.rank(),
+        axisLength,
+        axisInnerSize,
         MakeU64ArrayLiteral(input.shape()),
         MakeU64ArrayLiteral(input.stride())
     );
@@ -98,7 +113,7 @@ Result InvertImplNativeCuda::create() {
         return Result::ERROR;
     }
 
-    kernelPieces["KERNEL_CONSTANTS"] = BuildKernelConstants(input);
+    kernelPieces["KERNEL_CONSTANTS"] = BuildKernelConstants(input, resolvedAxis);
     return Result::SUCCESS;
 }
 

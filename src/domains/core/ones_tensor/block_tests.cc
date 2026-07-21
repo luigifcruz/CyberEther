@@ -40,13 +40,14 @@ TEST_CASE_METHOD(FlowgraphFixture, "Ones Tensor block creates a non-default CF32
     REQUIRE_THAT(out.at<CF32>(1, 2).imag(), Catch::Matchers::WithinAbs(0.0f, 1e-6f));
 }
 
-TEST_CASE_METHOD(FlowgraphFixture, "Ones Tensor block recreates on config change",
-                 "[modules][ones_tensor][block][reconfigure]") {
-    REQUIRE(flowgraph->blockCreate("ones_recfg", "ones_tensor", {}, {}) == Result::SUCCESS);
+TEST_CASE_METHOD(FlowgraphFixture, "Ones Tensor sparse shape update preserves dtype",
+                  "[modules][ones_tensor][block][reconfigure]") {
+    Blocks::OnesTensor config;
+    config.dataType = "CF32";
+    REQUIRE(flowgraph->blockCreate("ones_recfg", config, {}) == Result::SUCCESS);
 
     Parser::Map update;
     update["shape"] = std::vector<U64>{2, 2};
-    update["dataType"] = std::string("CF32");
 
     REQUIRE(flowgraph->blockReconfigure("ones_recfg", update) == Result::SUCCESS);
     REQUIRE(viewBlock("ones_recfg").state == Block::State::Created);

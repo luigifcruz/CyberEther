@@ -29,6 +29,6 @@ Result AgcImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(AgcImpl);
+JST_REGISTER_BLOCK(AgcImpl, {"agc"});
 
 }  // namespace Jetstream::Blocks

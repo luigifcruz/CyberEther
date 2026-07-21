@@ -33,11 +33,11 @@ struct FlowgraphConfigIntField {
             .id = this->config.id + "Input",
             .value = value,
             .unit = unit,
-            .onChange = [this](U64 nextValue) {
-                auto values = this->config.values;
-                values[this->config.name] = nextValue;
+            .onChange = [this](I64 nextValue) {
+                Parser::Map patch;
+                patch[this->config.name] = nextValue;
                 if (this->config.onApply) {
-                    this->config.onApply(std::move(values), false);
+                    this->config.onApply(std::move(patch), false);
                 }
             },
         });
@@ -54,7 +54,7 @@ struct FlowgraphConfigIntField {
     std::string parsedFormat;
     std::string parsedEncoded;
     std::string unit;
-    U64 value = 0;
+    I64 value = 0;
     Sakura::NodeField frame;
     Sakura::NodeIntInput input;
 };

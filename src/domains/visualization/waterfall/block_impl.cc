@@ -27,7 +27,7 @@ Result WaterfallImpl::define() {
     JST_CHECK(defineInterfaceConfig("height",
                                     "Height",
                                     "Number of rows in the waterfall history buffer.",
-                                    "int:rows"));
+                                    "uint:rows"));
 
     JST_CHECK(defineInterfaceConfig("interpolate",
                                     "Interpolate",
@@ -45,6 +45,6 @@ Result WaterfallImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(WaterfallImpl);
+JST_REGISTER_BLOCK(WaterfallImpl, {"waterfall"});
 
 }  // namespace Jetstream::Blocks

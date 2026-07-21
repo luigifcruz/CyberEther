@@ -6,7 +6,7 @@
 namespace Jetstream::Blocks {
 
 struct Decimator : public Block::Config {
-    U64 axis = 1;
+    I64 axis = -1;
     U64 ratio = 4;
 
     JST_BLOCK_TYPE(decimator);
@@ -22,7 +22,8 @@ struct Decimator : public Block::Config {
         "preserving accumulated energy.\n\n"
 
         "## Arguments\n"
-        "- **Axis**: The axis along which to decimate the input tensor.\n"
+        "- **Axis**: The axis along which to decimate the input tensor. Negative axes "
+        "count from the end.\n"
         "- **Ratio**: The decimation factor that determines chunk size.\n\n"
 
         "## Useful For\n"
@@ -32,7 +33,7 @@ struct Decimator : public Block::Config {
 
         "## Examples\n"
         "- Time-domain decimation:\n"
-        "  Config: Axis=1, Ratio=4\n"
+        "  Config: Axis=-1, Ratio=4\n"
         "  Input: CF32[8192] -> Output: CF32[2048]\n\n"
 
         "## Implementation\n"

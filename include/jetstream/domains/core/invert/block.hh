@@ -6,10 +6,12 @@
 namespace Jetstream::Blocks {
 
 struct Invert : public Block::Config {
+    I64 axis = -1;
+
     JST_BLOCK_TYPE(invert);
     JST_BLOCK_DOMAIN("Core");
     JST_BLOCK_NODE_SIZE(XS);
-    JST_BLOCK_PARAMS();
+    JST_BLOCK_PARAMS(axis);
     JST_BLOCK_DESCRIPTION(
         "Invert",
         "Alternating sign inversion for FFT shift.",
@@ -17,7 +19,12 @@ struct Invert : public Block::Config {
         "The Invert block performs alternating sign inversion on the input signal, "
         "negating every other element. This operation is equivalent to multiplying "
         "the signal by [1, -1, 1, -1, ...] and is commonly used for FFT shift "
-        "operations to center the spectrum.\n\n"
+        "operations to center the spectrum. The pattern restarts for every line "
+        "along the selected axis.\n\n"
+
+        "## Arguments\n"
+        "- **Axis**: Axis along which to alternate signs. Negative axes count from "
+        "the end.\n\n"
 
         "## Useful For\n"
         "- Centering FFT output for spectrum visualization.\n"
