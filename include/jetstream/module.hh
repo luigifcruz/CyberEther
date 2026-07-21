@@ -40,6 +40,16 @@ class JETSTREAM_API Module {
         virtual std::size_t hash() const = 0;
     };
 
+    enum class State : U8 {
+        NONE = 0,
+        CREATING,
+        CREATED,
+        INCOMPLETE,
+        ERRORED,
+        DESTROYING,
+        DESTROYED,
+    };
+
     enum class Taint : U64 {
         CLEAN               = 0 << 0, ///< No taint set, data is in its original state.
         IN_PLACE            = 1 << 0, ///< Module will overwrite input, modifying it directly.
@@ -84,6 +94,7 @@ class JETSTREAM_API Module {
     const DeviceType& device() const;
     const RuntimeType& runtime() const;
     const ProviderType& provider() const;
+    const State& state() const;
     const Module::Taint& taint() const;
 
     // Timing

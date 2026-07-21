@@ -851,6 +851,7 @@ TEST_CASE("Block and Module start from inert lifecycle defaults", "[core][lifecy
     REQUIRE(module.module->device() == DeviceType::CPU);
     REQUIRE(module.module->runtime() == RuntimeType::NATIVE);
     REQUIRE(module.module->provider() == kLifecycleProvider);
+    REQUIRE(module.module->state() == Module::State::NONE);
     REQUIRE(module.module->taint() == Module::Taint::CLEAN);
     REQUIRE(module.module->inputs().empty());
     REQUIRE(module.module->outputs().empty());
@@ -984,6 +985,7 @@ TEST_CASE("Module lifecycle hooks observe committed state in order", "[core][lif
     REQUIRE(bundle.module->create("lifecycle-module",
                                   ConfigWithValue("active"),
                                   {}) == Result::SUCCESS);
+    REQUIRE(bundle.module->state() == Module::State::CREATED);
     REQUIRE(bundle.probe->events == std::vector<std::string>{
         "module.candidate.deserialize",
         "module.validate:active:initial",
@@ -1003,6 +1005,7 @@ TEST_CASE("Module lifecycle hooks observe committed state in order", "[core][lif
     REQUIRE(bundle.probe->events.back() == "module.staged.serialize");
 
     REQUIRE(bundle.module->destroy() == Result::SUCCESS);
+    REQUIRE(bundle.module->state() == Module::State::DESTROYED);
     REQUIRE(bundle.probe->events.back() == "module.destroy:active");
     REQUIRE(bundle.probe->identityReady.back());
 }
@@ -1509,6 +1512,7 @@ TEST_CASE("Module post-create failures invoke deterministic cleanup",
         bundle.probe->destroyResult = Result::FATAL;
 
         REQUIRE(bundle.module->create("lifecycle-module", Parser::Map{}, {}) == Result::ERROR);
+        REQUIRE(bundle.module->state() == Module::State::ERRORED);
         REQUIRE(bundle.probe->events.back() == "module.destroy:initial");
         REQUIRE(std::count(bundle.probe->events.begin(),
                            bundle.probe->events.end(),
@@ -1520,6 +1524,7 @@ TEST_CASE("Module post-create failures invoke deterministic cleanup",
         bundle.probe->declareOutput = true;
 
         REQUIRE(bundle.module->create("lifecycle-module", Parser::Map{}, {}) == Result::ERROR);
+        REQUIRE(bundle.module->state() == Module::State::DESTROYED);
         REQUIRE(bundle.probe->events.back() == "module.destroy:initial");
         REQUIRE(std::count(bundle.probe->events.begin(),
                            bundle.probe->events.end(),
@@ -1532,8 +1537,10 @@ TEST_CASE("Module post-create failures invoke deterministic cleanup",
 
         REQUIRE(bundle.module->create("lifecycle-module", Parser::Map{}, {}) ==
                 Result::INCOMPLETE);
+        REQUIRE(bundle.module->state() == Module::State::INCOMPLETE);
         REQUIRE(bundle.probe->events.back() == "module.create:initial");
         REQUIRE(bundle.module->destroy() == Result::SUCCESS);
+        REQUIRE(bundle.module->state() == Module::State::DESTROYED);
         REQUIRE(bundle.probe->events.back() == "module.destroy:initial");
     }
 }
@@ -1563,6 +1570,7 @@ TEST_CASE("Module configuration sources propagate serialization results",
         config.serializeResult = Result::ERROR;
 
         REQUIRE(bundle.module->create("lifecycle-module", config, {}) == Result::ERROR);
+        REQUIRE(bundle.module->state() == Module::State::NONE);
         REQUIRE(bundle.probe->events == std::vector<std::string>{"module.candidate.serialize"});
         REQUIRE(bundle.module->name().empty());
         REQUIRE(bundle.module->interface() == nullptr);
@@ -1593,26 +1601,26 @@ TEST_CASE("Module destroy propagates implementation errors",
     bundle.probe->destroyResult = Result::ERROR;
 
     REQUIRE(bundle.module->destroy() == Result::ERROR);
+    REQUIRE(bundle.module->state() == Module::State::ERRORED);
     REQUIRE(bundle.probe->events == std::vector<std::string>{"module.destroy:initial"});
     REQUIRE(bundle.probe->identityReady == std::vector<bool>{true});
 
     bundle.probe->destroyResult = Result::SUCCESS;
     REQUIRE(bundle.module->destroy() == Result::SUCCESS);
+    REQUIRE(bundle.module->state() == Module::State::DESTROYED);
     REQUIRE(bundle.probe->events.back() == "module.destroy:initial");
 }
 
 TEST_CASE("Module repeated lifecycle calls preserve explicit state semantics",
           "[core][lifecycle][module][state]") {
-    // TODO: Assert a concrete lifecycle state once Module exposes a state machine or accessor.
     SECTION("destroy before create is rejected without calling the hook") {
         auto bundle = MakeModule();
 
         const auto result = bundle.module->destroy();
 
-        // Expected failure: Module has no guard against destruction before creation.
-        CHECK(result == Result::ERROR);
-        // Expected failure: uncreated Module destruction still invokes the implementation hook.
-        CHECK(bundle.probe->events.empty());
+        REQUIRE(result == Result::ERROR);
+        REQUIRE(bundle.module->state() == Module::State::NONE);
+        REQUIRE(bundle.probe->events.empty());
     }
 
     SECTION("a second create is rejected without replacing live state") {
@@ -1626,14 +1634,11 @@ TEST_CASE("Module repeated lifecycle calls preserve explicit state semantics",
                                                    ConfigWithValue("after"),
                                                    {});
 
-        // Expected failure: Module::create permits creation over a live module.
-        CHECK(result == Result::ERROR);
-        // Expected failure: repeated creation reruns lifecycle hooks.
-        CHECK(bundle.probe->events.empty());
-        // Expected failure: repeated creation replaces the live module identity.
-        CHECK(bundle.module->name() == "lifecycle-module");
-        // Expected failure: repeated creation commits the replacement configuration.
-        CHECK(bundle.staged->value == "before");
+        REQUIRE(result == Result::ERROR);
+        REQUIRE(bundle.module->state() == Module::State::CREATED);
+        REQUIRE(bundle.probe->events.empty());
+        REQUIRE(bundle.module->name() == "lifecycle-module");
+        REQUIRE(bundle.staged->value == "before");
         REQUIRE(bundle.module->destroy() == Result::SUCCESS);
     }
 
@@ -1645,10 +1650,9 @@ TEST_CASE("Module repeated lifecycle calls preserve explicit state semantics",
 
         const auto result = bundle.module->destroy();
 
-        // Expected failure: Module has no guard against repeated destruction.
-        CHECK(result == Result::ERROR);
-        // Expected failure: repeated destruction reruns the implementation hook.
-        CHECK(bundle.probe->events.empty());
+        REQUIRE(result == Result::ERROR);
+        REQUIRE(bundle.module->state() == Module::State::DESTROYED);
+        REQUIRE(bundle.probe->events.empty());
     }
 
     SECTION("reconfigure before create is rejected without committing") {
@@ -1656,12 +1660,10 @@ TEST_CASE("Module repeated lifecycle calls preserve explicit state semantics",
 
         const auto result = bundle.module->reconfigure(ConfigWithValue("after"));
 
-        // Expected failure: Module reconfigures before it has been created.
-        CHECK(result == Result::ERROR);
-        // Expected failure: pre-create reconfiguration commits staged state.
-        CHECK(bundle.staged->value == kInitialValue);
-        // Expected failure: pre-create reconfiguration invokes lifecycle hooks.
-        CHECK(bundle.probe->events.empty());
+        REQUIRE(result == Result::ERROR);
+        REQUIRE(bundle.module->state() == Module::State::NONE);
+        REQUIRE(bundle.staged->value == kInitialValue);
+        REQUIRE(bundle.probe->events.empty());
     }
 
     SECTION("reconfigure after destroy requires recreation") {
@@ -1674,12 +1676,10 @@ TEST_CASE("Module repeated lifecycle calls preserve explicit state semantics",
 
         const auto result = bundle.module->reconfigure(ConfigWithValue("after"));
 
-        // Expected failure: destroyed Module reconfiguration is not rejected as recreation.
-        CHECK(result == Result::RECREATE);
-        // Expected failure: destroyed Module reconfiguration commits staged state.
-        CHECK(bundle.staged->value == "before");
-        // Expected failure: destroyed Module reconfiguration invokes lifecycle hooks.
-        CHECK(bundle.probe->events.empty());
+        REQUIRE(result == Result::RECREATE);
+        REQUIRE(bundle.module->state() == Module::State::DESTROYED);
+        REQUIRE(bundle.staged->value == "before");
+        REQUIRE(bundle.probe->events.empty());
     }
 
     SECTION("create after destroy starts a fresh lifecycle") {
@@ -1693,8 +1693,43 @@ TEST_CASE("Module repeated lifecycle calls preserve explicit state semantics",
         REQUIRE(bundle.module->create("lifecycle-module",
                                       ConfigWithValue("after"),
                                       {}) == Result::SUCCESS);
+        REQUIRE(bundle.module->state() == Module::State::CREATED);
         REQUIRE(bundle.staged->value == "after");
         REQUIRE(bundle.probe->events.back() == "module.create:after");
+        REQUIRE(bundle.module->destroy() == Result::SUCCESS);
+        REQUIRE(bundle.module->state() == Module::State::DESTROYED);
+    }
+}
+
+TEST_CASE("Module lifecycle normalizes reload results",
+          "[core][lifecycle][module][state][result]") {
+    SECTION("create") {
+        auto bundle = MakeModule();
+        bundle.probe->createResult = Result::RELOAD;
+
+        REQUIRE(bundle.module->create("lifecycle-module", Parser::Map{}, {}) == Result::SUCCESS);
+        REQUIRE(bundle.module->state() == Module::State::CREATED);
+        REQUIRE(bundle.module->destroy() == Result::SUCCESS);
+    }
+
+    SECTION("destroy") {
+        auto bundle = MakeModule();
+        REQUIRE(bundle.module->create("lifecycle-module", Parser::Map{}, {}) == Result::SUCCESS);
+        bundle.probe->destroyResult = Result::RELOAD;
+
+        REQUIRE(bundle.module->destroy() == Result::SUCCESS);
+        REQUIRE(bundle.module->state() == Module::State::DESTROYED);
+    }
+
+    SECTION("reconfigure") {
+        auto bundle = MakeModule();
+        REQUIRE(bundle.module->create("lifecycle-module",
+                                      ConfigWithValue("before"),
+                                      {}) == Result::SUCCESS);
+        bundle.probe->reconfigureResult = Result::RELOAD;
+
+        REQUIRE(bundle.module->reconfigure(ConfigWithValue("after")) == Result::SUCCESS);
+        REQUIRE(bundle.module->state() == Module::State::CREATED);
         REQUIRE(bundle.module->destroy() == Result::SUCCESS);
     }
 }
@@ -2459,6 +2494,7 @@ TEST_CASE("Module reconfiguration separates validation from commit", "[core][lif
     REQUIRE(bundle.module->create("lifecycle-module",
                                   ConfigWithValue("before"),
                                   {}) == Result::SUCCESS);
+    REQUIRE(bundle.module->state() == Module::State::CREATED);
     bundle.probe->events.clear();
     bundle.probe->identityReady.clear();
 
@@ -2474,6 +2510,7 @@ TEST_CASE("Module reconfiguration separates validation from commit", "[core][lif
         REQUIRE(bundle.module->reconfigure(ConfigWithValue("after")) == Result::ERROR);
         REQUIRE(bundle.probe->events ==
                 std::vector<std::string>{"module.candidate.deserialize"});
+        REQUIRE(bundle.module->state() == Module::State::CREATED);
         REQUIRE(bundle.staged->value == "before");
         REQUIRE(bundle.probe->identityReady.empty());
     }
@@ -2484,6 +2521,7 @@ TEST_CASE("Module reconfiguration separates validation from commit", "[core][lif
             "module.candidate.deserialize",
             "module.validate:after:before",
         });
+        REQUIRE(bundle.module->state() == Module::State::CREATED);
         REQUIRE(bundle.staged->value == "before");
     }
 
@@ -2494,6 +2532,7 @@ TEST_CASE("Module reconfiguration separates validation from commit", "[core][lif
             "module.validate:after:before",
             "module.reconfigure:after:before",
         });
+        REQUIRE(bundle.module->state() == Module::State::CREATED);
         REQUIRE(bundle.staged->value == "after");
         REQUIRE(bundle.probe->identityReady == std::vector<bool>{true, true});
     }
@@ -2506,6 +2545,7 @@ TEST_CASE("Module reconfiguration separates validation from commit", "[core][lif
             "module.candidate.deserialize",
             "module.validate:after:before",
         });
+        REQUIRE(bundle.module->state() == Module::State::CREATED);
         REQUIRE(bundle.staged->value == "before");
     }
 
@@ -2517,6 +2557,7 @@ TEST_CASE("Module reconfiguration separates validation from commit", "[core][lif
             "module.candidate.deserialize",
             "module.validate:after:before",
         });
+        REQUIRE(bundle.module->state() == Module::State::CREATED);
         REQUIRE(bundle.staged->value == "before");
     }
 
@@ -2524,6 +2565,7 @@ TEST_CASE("Module reconfiguration separates validation from commit", "[core][lif
         bundle.probe->reconfigureResult = Result::ERROR;
 
         REQUIRE(bundle.module->reconfigure(ConfigWithValue("after")) == Result::ERROR);
+        REQUIRE(bundle.module->state() == Module::State::CREATED);
         REQUIRE(bundle.probe->events.back() == "module.reconfigure:after:before");
         REQUIRE(bundle.staged->value == "before");
     }
@@ -2533,6 +2575,7 @@ TEST_CASE("Module reconfiguration separates validation from commit", "[core][lif
         bundle.probe->commitBeforeReconfigureFailure = true;
 
         REQUIRE(bundle.module->reconfigure(ConfigWithValue("after")) == Result::ERROR);
+        REQUIRE(bundle.module->state() == Module::State::CREATED);
         REQUIRE(bundle.probe->events.back() == "module.reconfigure:after:before");
 
         // Expected failure: Module::reconfigure has no snapshot for partial hook mutation.
@@ -2543,6 +2586,7 @@ TEST_CASE("Module reconfiguration separates validation from commit", "[core][lif
         bundle.probe->reconfigureResult = Result::RECREATE;
 
         REQUIRE(bundle.module->reconfigure(ConfigWithValue("after")) == Result::RECREATE);
+        REQUIRE(bundle.module->state() == Module::State::CREATED);
         REQUIRE(bundle.probe->events.back() == "module.reconfigure:after:before");
         REQUIRE(bundle.staged->value == "before");
     }

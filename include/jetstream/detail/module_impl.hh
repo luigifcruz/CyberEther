@@ -80,12 +80,15 @@ struct JETSTREAM_API Module::Impl {
     std::vector<SurfaceEvent> surfaceConsumeSurfaceEvents();
 
  private:
+    Result destroyImplementation();
+
     // Identity
 
     std::string _name;
     DeviceType _device = DeviceType::None;
     RuntimeType _runtime = RuntimeType::NONE;
     ProviderType _provider;
+    Module::State _state = Module::State::NONE;
     Taint _taint = Taint::CLEAN;
 
     // Timing

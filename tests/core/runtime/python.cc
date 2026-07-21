@@ -245,6 +245,14 @@ void destroyPythonCompute(const std::shared_ptr<Module>& module) {
     REQUIRE(pythonContext->destroyCompute() == Result::SUCCESS);
 }
 
+void destroyUnavailablePythonModule(const std::shared_ptr<Module>& module,
+                                    const Result createResult) {
+    destroyPythonCompute(module);
+    if (createResult != Result::ERROR) {
+        REQUIRE(module->destroy() == Result::SUCCESS);
+    }
+}
+
 }  // namespace
 
 TEST_CASE("Python runtime rolls back partial initialization", "[core][runtime][python]") {
@@ -317,8 +325,7 @@ TEST_CASE("Python runtime executes compute() with tensor inputs and outputs", "[
     const auto createResult = module->create("python_runtime_smoke", config, inputs);
 
     if (!pythonRuntimeAvailable(createResult)) {
-        destroyPythonCompute(module);
-        REQUIRE(module->destroy() == Result::SUCCESS);
+        destroyUnavailablePythonModule(module, createResult);
         SKIP("Optional Python runtime is unavailable: " << JST_LOG_LAST_ERROR());
     }
 
@@ -367,8 +374,7 @@ def compute(ctx):
     const auto createResult = module->create("python_runtime_piece_smoke", config, inputs);
 
     if (!pythonRuntimeAvailable(createResult)) {
-        destroyPythonCompute(module);
-        REQUIRE(module->destroy() == Result::SUCCESS);
+        destroyUnavailablePythonModule(module, createResult);
         SKIP("Optional Python runtime is unavailable: " << JST_LOG_LAST_ERROR());
     }
 
@@ -412,8 +418,7 @@ TEST_CASE("Python runtime compute can run on a different thread than creation", 
     const auto createResult = module->create("python_runtime_smoke", config, inputs);
 
     if (!pythonRuntimeAvailable(createResult)) {
-        destroyPythonCompute(module);
-        REQUIRE(module->destroy() == Result::SUCCESS);
+        destroyUnavailablePythonModule(module, createResult);
         SKIP("Optional Python runtime is unavailable: " << JST_LOG_LAST_ERROR());
     }
 
@@ -491,8 +496,7 @@ def compute(ctx):
     const auto createResult = module->create("python_runtime_numpy_buffer", config, inputs);
 
     if (!pythonRuntimeAvailable(createResult)) {
-        destroyPythonCompute(module);
-        REQUIRE(module->destroy() == Result::SUCCESS);
+        destroyUnavailablePythonModule(module, createResult);
         SKIP("Optional Python runtime is unavailable: " << JST_LOG_LAST_ERROR());
     }
 
@@ -555,8 +559,7 @@ def cleanup():
     const auto createResult = module->create("python_runtime_cleanup", config, inputs);
 
     if (!pythonRuntimeAvailable(createResult)) {
-        destroyPythonCompute(module);
-        REQUIRE(module->destroy() == Result::SUCCESS);
+        destroyUnavailablePythonModule(module, createResult);
         SKIP("Optional Python runtime is unavailable: " << JST_LOG_LAST_ERROR());
     }
 
@@ -611,8 +614,7 @@ def compute(ctx):
     const auto createResult = module->create("python_runtime_multiprocessing_cleanup", config, inputs);
 
     if (!pythonRuntimeAvailable(createResult)) {
-        destroyPythonCompute(module);
-        REQUIRE(module->destroy() == Result::SUCCESS);
+        destroyUnavailablePythonModule(module, createResult);
         SKIP("Optional Python runtime is unavailable: " << JST_LOG_LAST_ERROR());
     }
 
