@@ -1,0 +1,9 @@
+[wrap-file]
+directory = SoapyHackRF-soapy-hackrf-0.3.4
+source_url = https://github.com/pothosware/SoapyHackRF/archive/refs/tags/soapy-hackrf-0.3.4.tar.gz
+source_filename = SoapyHackRF-soapy-hackrf-0.3.4.tar.gz
+source_hash = c7a1b8aee7af9d9e11e42aa436eae8508f19775cdc8bc52e565a5d7f2e2e43ed
+patch_directory = soapyhackrf
+
+[provide]
+soapyhackrf = soapyhackrf_dep
