@@ -1,10 +1,12 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <functional>
 #include <initializer_list>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -14,6 +16,7 @@
 #include "jetstream/module_context.hh"
 #include "jetstream/runtime.hh"
 #include "jetstream/runtime_context_native_cpu.hh"
+#include "jetstream/runtime_context_python.hh"
 #include "jetstream/scheduler.hh"
 #include "jetstream/scheduler_context.hh"
 
@@ -24,6 +27,8 @@ using namespace Jetstream;
 struct SyntheticSpec {
     std::vector<std::string> inputs;
     bool surface = false;
+    Module::Taint taint = Module::Taint::CLEAN;
+    std::chrono::milliseconds computeDelay{0};
     std::vector<Result> initializeResults;
     std::vector<Result> deinitializeResults;
     std::vector<Result> pendingComputeResults;
@@ -114,15 +119,19 @@ struct SyntheticConfig : Module::Config {
     }
 };
 
-struct SyntheticModule : Module::Impl,
-                         DynamicConfig<SyntheticConfig>,
-                         NativeCpuRuntimeContext,
-                         Scheduler::Context {
+template<typename RuntimeContext>
+struct SyntheticModuleBase : Module::Impl,
+                             DynamicConfig<SyntheticConfig>,
+                             RuntimeContext,
+                             Scheduler::Context {
     Result define() override {
         const auto& spec = syntheticState().spec(name());
 
         if (spec.surface) {
             JST_CHECK(defineTaint(Module::Taint::SURFACE));
+        }
+        if (spec.taint != Module::Taint::CLEAN) {
+            JST_CHECK(defineTaint(spec.taint));
         }
 
         for (const auto& input : spec.inputs) {
@@ -156,6 +165,9 @@ struct SyntheticModule : Module::Impl,
 
     Result computeSubmit() override {
         const auto& spec = syntheticState().spec(name());
+        if (spec.computeDelay.count() > 0) {
+            std::this_thread::sleep_for(spec.computeDelay);
+        }
         return syntheticState().invoke("compute", name(), spec.computeResults);
     }
 
@@ -185,6 +197,9 @@ struct SyntheticModule : Module::Impl,
     Tensor output;
 };
 
+using SyntheticModule = SyntheticModuleBase<NativeCpuRuntimeContext>;
+using SyntheticPythonModule = SyntheticModuleBase<PythonRuntimeContext>;
+
 Tensor makeTensor() {
     Tensor tensor;
     if (tensor.create(DeviceType::CPU, DataType::F32, {1}) != Result::SUCCESS) {
@@ -204,8 +219,11 @@ TensorMap makeInputs(std::initializer_list<std::pair<std::string, std::string>> 
     return inputs;
 }
 
-std::shared_ptr<Module> makeModule(const std::string& name, const TensorMap& inputs = {}) {
-    auto impl = std::make_shared<SyntheticModule>();
+template<typename SyntheticModuleType>
+std::shared_ptr<Module> makeModuleForRuntime(const std::string& name,
+                                             const TensorMap& inputs,
+                                             RuntimeType runtime) {
+    auto impl = std::make_shared<SyntheticModuleType>();
     auto runtimeContext = std::static_pointer_cast<Runtime::Context>(impl);
     auto schedulerContext = std::static_pointer_cast<Scheduler::Context>(impl);
     auto context = std::make_shared<Module::Context>(runtimeContext,
@@ -215,7 +233,7 @@ std::shared_ptr<Module> makeModule(const std::string& name, const TensorMap& inp
     auto stagedConfig = std::static_pointer_cast<Module::Config>(impl);
     auto candidateConfig = std::static_pointer_cast<Module::Config>(impl->candidate());
     auto module = std::make_shared<Module>(DeviceType::CPU,
-                                           RuntimeType::NATIVE,
+                                           runtime,
                                            "generic",
                                            impl,
                                            context,
@@ -230,6 +248,19 @@ std::shared_ptr<Module> makeModule(const std::string& name, const TensorMap& inp
     return module;
 }
 
+std::shared_ptr<Module> makeModule(const std::string& name,
+                                   const TensorMap& inputs = {},
+                                   RuntimeType runtime = RuntimeType::NATIVE) {
+    if (runtime == RuntimeType::NATIVE) {
+        return makeModuleForRuntime<SyntheticModule>(name, inputs, runtime);
+    }
+    if (runtime == RuntimeType::PYTHON) {
+        return makeModuleForRuntime<SyntheticPythonModule>(name, inputs, runtime);
+    }
+
+    throw std::runtime_error("unsupported synthetic module runtime");
+}
+
 struct SchedulerFixture {
     SchedulerFixture() : scheduler(SchedulerType::SYNCHRONOUS) {
         if (scheduler.create(nullptr) != Result::SUCCESS) {
@@ -241,8 +272,10 @@ struct SchedulerFixture {
         shutdown();
     }
 
-    std::shared_ptr<Module> module(const std::string& name, const TensorMap& inputs = {}) {
-        auto value = makeModule(name, inputs);
+    std::shared_ptr<Module> module(const std::string& name,
+                                   const TensorMap& inputs = {},
+                                   RuntimeType runtime = RuntimeType::NATIVE) {
+        auto value = makeModule(name, inputs, runtime);
         modules.push_back(value);
         return value;
     }
@@ -832,4 +865,230 @@ TEST_CASE("Scheduler propagates CPU Runtime destruction failures",
 
     // Current defect: scheduler destruction discards Runtime::destroy() failures.
     REQUIRE(fixture.shutdown() == Result::ERROR);
+}
+
+TEST_CASE("Scheduler settles fully static branches without stopping mixed inputs",
+          "[core][runtime][scheduler][static]") {
+    auto& state = syntheticState();
+    state.reset();
+    state.configure("static_left").taint = Module::Taint::STATIC_OUTPUT;
+    state.configure("static_transform").taint = Module::Taint::STATELESS;
+    state.configure("static_transform").inputs = {"in"};
+    state.configure("static_right").taint = Module::Taint::STATIC_OUTPUT;
+    state.configure("static_merge").taint = Module::Taint::STATELESS;
+    state.configure("static_merge").inputs = {"left", "right"};
+    state.configure("live_source");
+    state.configure("mixed_merge").taint = Module::Taint::STATELESS;
+    state.configure("mixed_merge").inputs = {"left", "right"};
+    state.configure("mixed_sink").taint = Module::Taint::STATELESS;
+    state.configure("mixed_sink").inputs = {"in"};
+
+    SchedulerFixture fixture;
+    auto staticLeft = fixture.module("static_left");
+    auto staticTransform = fixture.module(
+        "static_transform",
+        makeInputs({{"in", "static_left"}}));
+    auto staticRight = fixture.module("static_right");
+    auto staticMerge = fixture.module(
+        "static_merge",
+        makeInputs({{"left", "static_transform"}, {"right", "static_right"}}));
+    auto liveSource = fixture.module("live_source");
+    auto mixedMerge = fixture.module(
+        "mixed_merge",
+        makeInputs({{"left", "static_merge"}, {"right", "live_source"}}));
+    auto mixedSink = fixture.module(
+        "mixed_sink",
+        makeInputs({{"in", "mixed_merge"}}));
+
+    std::vector<std::shared_ptr<Module>> modules = {
+        staticLeft,
+        staticTransform,
+        staticRight,
+        staticMerge,
+        liveSource,
+        mixedMerge,
+        mixedSink,
+    };
+    for (const auto& module : modules) {
+        REQUIRE(fixture.scheduler.add(module) == Result::SUCCESS);
+    }
+
+    std::unordered_set<std::string> failedModules;
+    for (U64 cycle = 0; cycle < 3; ++cycle) {
+        REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+        REQUIRE(failedModules.empty());
+    }
+
+    REQUIRE(state.count("compute", "static_left") == 1);
+    REQUIRE(state.count("compute", "static_transform") == 1);
+    REQUIRE(state.count("compute", "static_right") == 1);
+    REQUIRE(state.count("compute", "static_merge") == 1);
+    REQUIRE(state.count("compute", "live_source") == 3);
+    REQUIRE(state.count("compute", "mixed_merge") == 3);
+    REQUIRE(state.count("compute", "mixed_sink") == 3);
+    REQUIRE(staticLeft->timing().computeTime == 0.0f);
+    REQUIRE(staticTransform->timing().computeTime == 0.0f);
+    REQUIRE(staticMerge->timing().computeTime == 0.0f);
+
+    REQUIRE(fixture.shutdown() == Result::SUCCESS);
+}
+
+TEST_CASE("Scheduler retries static modules until output is usable",
+          "[core][runtime][scheduler][static]") {
+    for (const auto initialResult : {Result::SKIP, Result::YIELD, Result::TIMEOUT}) {
+        DYNAMIC_SECTION("Initial result: " << initialResult) {
+            auto& state = syntheticState();
+            state.reset();
+            state.configure("retry_static_source").taint = Module::Taint::STATIC_OUTPUT;
+            state.configure("retry_static_source").computeResults = {
+                initialResult,
+                Result::SUCCESS,
+            };
+            state.configure("retry_static_sink").taint = Module::Taint::STATELESS;
+            state.configure("retry_static_sink").inputs = {"in"};
+
+            SchedulerFixture fixture;
+            auto source = fixture.module("retry_static_source");
+            auto sink = fixture.module(
+                "retry_static_sink",
+                makeInputs({{"in", "retry_static_source"}}));
+            REQUIRE(fixture.scheduler.add(source) == Result::SUCCESS);
+            REQUIRE(fixture.scheduler.add(sink) == Result::SUCCESS);
+
+            std::unordered_set<std::string> failedModules;
+            REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+            REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+            REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+            REQUIRE(state.count("compute", "retry_static_source") == 2);
+            REQUIRE(state.count("compute", "retry_static_sink") == 1);
+
+            REQUIRE(fixture.shutdown() == Result::SUCCESS);
+        }
+    }
+}
+
+TEST_CASE("Scheduler invalidates settlement only for state mutations",
+          "[core][runtime][scheduler][static]") {
+    auto& state = syntheticState();
+
+    SECTION("stop and start preserve settlement while synchronize clears it") {
+        state.reset();
+        auto& sourceSpec = state.configure("lifecycle_static");
+        sourceSpec.taint = Module::Taint::STATIC_OUTPUT;
+        sourceSpec.computeDelay = std::chrono::milliseconds(1);
+
+        SchedulerFixture fixture;
+        auto source = fixture.module("lifecycle_static");
+        REQUIRE(fixture.scheduler.add(source) == Result::SUCCESS);
+
+        std::unordered_set<std::string> failedModules;
+        REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+        REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+        REQUIRE(state.count("compute", "lifecycle_static") == 1);
+
+        REQUIRE(fixture.scheduler.stop() == Result::SUCCESS);
+        REQUIRE(fixture.scheduler.start() == Result::SUCCESS);
+        REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+        REQUIRE(state.count("compute", "lifecycle_static") == 1);
+
+        REQUIRE(fixture.scheduler.synchronize([] { return Result::SUCCESS; }) == Result::SUCCESS);
+        REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+        REQUIRE(state.count("compute", "lifecycle_static") == 2);
+
+        REQUIRE(fixture.shutdown() == Result::SUCCESS);
+        REQUIRE(source->timing().computeTime > 0.0f);
+    }
+
+    SECTION("input mutation disables settlement for the whole graph") {
+        state.reset();
+        state.configure("in_place_static").taint = Module::Taint::STATIC_OUTPUT;
+        state.configure("in_place_consumer").taint = Module::Taint::IN_PLACE;
+        state.configure("in_place_consumer").inputs = {"in"};
+
+        SchedulerFixture fixture;
+        auto source = fixture.module("in_place_static");
+        auto consumer = fixture.module(
+            "in_place_consumer",
+            makeInputs({{"in", "in_place_static"}}));
+        REQUIRE(fixture.scheduler.add(source) == Result::SUCCESS);
+        REQUIRE(fixture.scheduler.add(consumer) == Result::SUCCESS);
+
+        std::unordered_set<std::string> failedModules;
+        REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+        REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+        REQUIRE(state.count("compute", "in_place_static") == 2);
+        REQUIRE(state.count("compute", "in_place_consumer") == 2);
+
+        REQUIRE(fixture.shutdown() == Result::SUCCESS);
+    }
+}
+
+TEST_CASE("Scheduler keeps settled surfaces presentable across compute cycles",
+          "[core][runtime][scheduler][static]") {
+    auto& state = syntheticState();
+    state.reset();
+    auto& surfaceSpec = state.configure("static_surface");
+    surfaceSpec.surface = true;
+    surfaceSpec.taint = Module::Taint::STATIC_OUTPUT | Module::Taint::THROTTLED;
+    state.configure("static_surface_sink").inputs = {"in"};
+
+    SchedulerFixture fixture;
+    auto surface = fixture.module("static_surface");
+    auto sink = fixture.module(
+        "static_surface_sink",
+        makeInputs({{"in", "static_surface"}}));
+    REQUIRE(fixture.scheduler.add(surface) == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.add(sink) == Result::SUCCESS);
+
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.present(failedModules) == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.present(failedModules) == Result::SUCCESS);
+    REQUIRE(state.count("pending_compute", "static_surface") == 1);
+    REQUIRE(state.count("compute", "static_surface") == 1);
+    REQUIRE(state.count("compute", "static_surface_sink") == 2);
+    REQUIRE(state.count("present", "static_surface") == 2);
+
+    REQUIRE(fixture.shutdown() == Result::SUCCESS);
+}
+
+TEST_CASE("Scheduler preserves settlement across runtime segments",
+          "[core][runtime][scheduler][static]") {
+    auto& state = syntheticState();
+    state.reset();
+    state.configure("boundary_native_source").taint = Module::Taint::STATIC_OUTPUT;
+    state.configure("boundary_native_source").computeResults = {
+        Result::YIELD,
+        Result::SUCCESS,
+    };
+    state.configure("boundary_python").taint = Module::Taint::STATELESS;
+    state.configure("boundary_python").inputs = {"in"};
+    state.configure("boundary_native_sink").inputs = {"in"};
+
+    SchedulerFixture fixture;
+    auto source = fixture.module("boundary_native_source");
+    auto python = fixture.module(
+        "boundary_python",
+        makeInputs({{"in", "boundary_native_source"}}),
+        RuntimeType::PYTHON);
+    auto sink = fixture.module(
+        "boundary_native_sink",
+        makeInputs({{"in", "boundary_python"}}));
+    REQUIRE(fixture.scheduler.add(source) == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.add(python) == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.add(sink) == Result::SUCCESS);
+
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(state.count("compute", "boundary_native_source") == 1);
+    REQUIRE(state.count("compute", "boundary_python") == 0);
+    REQUIRE(state.count("compute", "boundary_native_sink") == 0);
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(state.count("compute", "boundary_native_source") == 2);
+    REQUIRE(state.count("compute", "boundary_python") == 1);
+    REQUIRE(state.count("compute", "boundary_native_sink") == 2);
+
+    REQUIRE(fixture.shutdown() == Result::SUCCESS);
 }

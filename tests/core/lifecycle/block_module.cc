@@ -1508,6 +1508,23 @@ TEST_CASE("Module validates real CPU tensor inputs and explicit taints",
     }
 }
 
+TEST_CASE("Module composes static scheduler taints",
+          "[core][lifecycle][module][taint][static]") {
+    auto bundle = MakeModule();
+    bundle.probe->taint = Module::Taint::STATIC_OUTPUT |
+                          Module::Taint::STATELESS |
+                          Module::Taint::DISCONTIGUOUS;
+
+    REQUIRE(bundle.module->create("static_taint_source", Parser::Map{}, {}) == Result::SUCCESS);
+    REQUIRE((bundle.module->taint() & Module::Taint::STATIC_OUTPUT) ==
+            Module::Taint::STATIC_OUTPUT);
+    REQUIRE((bundle.module->taint() & Module::Taint::STATELESS) ==
+            Module::Taint::STATELESS);
+    REQUIRE((bundle.module->taint() & Module::Taint::DISCONTIGUOUS) ==
+            Module::Taint::DISCONTIGUOUS);
+    REQUIRE(bundle.module->destroy() == Result::SUCCESS);
+}
+
 TEST_CASE("Module post-create failures invoke deterministic cleanup",
           "[core][lifecycle][module][cleanup][failure]") {
     SECTION("create hook failure invokes destroy") {

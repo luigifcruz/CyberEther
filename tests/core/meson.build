@@ -17,6 +17,7 @@ core_test_domains = {
     ],
     'lifecycle': ['lifecycle/block_module.cc'],
     'memory': [
+        'memory/axis.cc',
         'memory/token.cc',
         'memory/snapshot.cc',
         'memory/buffer.cc',
