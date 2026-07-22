@@ -7,6 +7,8 @@
 #include <SoapySDR/Device.hpp>
 #include <SoapySDR/Types.hpp>
 
+#include <cmath>
+
 namespace Jetstream::Blocks {
 
 using DeviceEntry = std::map<std::string, std::string>;
@@ -44,18 +46,14 @@ struct SoapyImpl : public Block::Impl, public DynamicConfig<Blocks::Soapy> {
 Result SoapyImpl::validate() {
     const auto& config = *candidate();
 
-    if (config.numberOfBatches == 0) {
-        JST_ERROR("[BLOCK_SOAPY] Number of batches cannot be zero.");
-        return Result::ERROR;
-    }
+    JST_CHECK(Modules::ValidateSoapyConfig(config.frequency,
+                                           config.sampleRate,
+                                           config.numberOfBatches,
+                                           config.numberOfTimeSamples,
+                                           config.bufferMultiplier));
 
-    if (config.numberOfTimeSamples == 0) {
-        JST_ERROR("[BLOCK_SOAPY] Number of time samples cannot be zero.");
-        return Result::ERROR;
-    }
-
-    if (config.bufferMultiplier == 0) {
-        JST_ERROR("[BLOCK_SOAPY] Buffer multiplier cannot be zero.");
+    if (!std::isfinite(config.frequencyStep) || config.frequencyStep <= 0.0f) {
+        JST_ERROR("[BLOCK_SOAPY] Frequency step must be finite and positive.");
         return Result::ERROR;
     }
 
