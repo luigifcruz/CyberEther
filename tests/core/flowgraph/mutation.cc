@@ -212,6 +212,36 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
+                 "Rename metadata is visible during reconstruction",
+                 "[core][flowgraph][mutation][rename][metadata]") {
+    auto& faults = syntheticFaultState();
+    REQUIRE(flowgraph->blockCreate("fault", kSyntheticFaultType, {}, {}) == Result::SUCCESS);
+    SetTag(*flowgraph, "fault", "fault-tag");
+    SetTag(*flowgraph, "renamed", "destination-tag");
+
+    bool renamedWasVisible = false;
+    std::string observedTag;
+    faults.onBlockCreate = [&] {
+        renamedWasVisible = flowgraph->view().has("renamed");
+        Parser::Map tag;
+        if (flowgraph->metadata().get("tag", tag, "renamed") == Result::SUCCESS &&
+            tag.contains("value")) {
+            observedTag = std::any_cast<std::string>(tag.at("value"));
+        }
+    };
+
+    REQUIRE(flowgraph->blockRename("fault", "renamed") == Result::SUCCESS);
+
+    REQUIRE(renamedWasVisible);
+    REQUIRE(observedTag == "fault-tag");
+    REQUIRE_FALSE(flowgraph->view().has("fault"));
+    REQUIRE(GraphKeys(*flowgraph) == std::vector<std::string>{"renamed"});
+    RequireState(*flowgraph, "renamed", Block::State::Created);
+    REQUIRE_FALSE(flowgraph->metadata().has("tag", "fault"));
+    RequireTag(*flowgraph, "renamed", "fault-tag");
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
                   "Flowgraph connect disconnect and destroy propagate topology",
                   "[core][flowgraph][mutation][propagation]") {
     CreateChain(*flowgraph);
@@ -270,6 +300,21 @@ TEST_CASE_METHOD(FlowgraphFixture,
         RequireState(*flowgraph, "replacement", Block::State::Created);
         RequireState(*flowgraph, "leaf", Block::State::Incomplete);
         RequireNoConnection(*flowgraph, "leaf", "buffer");
+    }
+
+    SECTION("unresolved empty source ports survive reconstruction") {
+        REQUIRE(flowgraph->blockConnect("middle", "buffer", "replacement", "") ==
+                Result::SUCCESS);
+        RequireState(*flowgraph, "middle", Block::State::Incomplete);
+        RequireState(*flowgraph, "leaf", Block::State::Incomplete);
+        RequireConnection(*flowgraph, "middle", "buffer", "replacement", "");
+
+        REQUIRE(flowgraph->blockRecreate("middle", ViewBlock(*flowgraph, "middle").config) ==
+                Result::SUCCESS);
+        RequireConnection(*flowgraph, "middle", "buffer", "replacement", "");
+
+        REQUIRE(flowgraph->blockDisconnect("middle", "buffer") == Result::SUCCESS);
+        RequireNoConnection(*flowgraph, "middle", "buffer");
     }
 }
 
@@ -359,17 +404,145 @@ TEST_CASE_METHOD(FlowgraphFixture,
     SECTION("cascading recreation failure restores destroyed descendants") {
         REQUIRE(flowgraph->blockCreate("leaf", kSyntheticPassType, {},
                                        RequestedInput("buffer", "fault", "out")) == Result::SUCCESS);
+        REQUIRE(flowgraph->blockCreate("spectator", kSyntheticSourceType, {}, {}) == Result::SUCCESS);
+        SetTag(*flowgraph, "fault", "fault-tag");
+        SetTag(*flowgraph, "leaf", "leaf-tag");
         const auto before = GraphKeys(*flowgraph);
+        auto updatedConfig = original.config;
+        updatedConfig["revision"] = U64{1};
 
         faults.failNext(SyntheticFaultPoint::ModuleDestroy);
+        REQUIRE(flowgraph->blockRecreate("fault", updatedConfig) == Result::ERROR);
+
+        REQUIRE(GraphKeys(*flowgraph) == before);
+        REQUIRE(IsCreated(*flowgraph, "fault"));
+        REQUIRE(IsCreated(*flowgraph, "leaf"));
+        REQUIRE(IsCreated(*flowgraph, "spectator"));
+        REQUIRE(IsConnected(*flowgraph, "leaf", "buffer", "fault", "out"));
+        REQUIRE(std::any_cast<U64>(viewBlock("fault").config.at("revision")) == 0);
+        RequireTag(*flowgraph, "fault", "fault-tag");
+        RequireTag(*flowgraph, "leaf", "leaf-tag");
+    }
+
+    SECTION("rollback reconstructs a target degraded by its destroy hook") {
+        REQUIRE(flowgraph->blockCreate("leaf", kSyntheticPassType, {},
+                                       RequestedInput("buffer", "fault", "out")) == Result::SUCCESS);
+        REQUIRE(flowgraph->blockCreate("spectator", kSyntheticSourceType, {}, {}) == Result::SUCCESS);
+        const auto before = GraphKeys(*flowgraph);
+
+        faults.failNext(SyntheticFaultPoint::BlockDestroy);
         REQUIRE(flowgraph->blockRecreate("fault", original.config) == Result::ERROR);
 
-        // Defect: a failed target destroy does not restore descendants removed earlier in the mutation.
-        CHECK((GraphKeys(*flowgraph) == before &&
-               IsCreated(*flowgraph, "fault") &&
-               IsCreated(*flowgraph, "leaf") &&
-               IsConnected(*flowgraph, "leaf", "buffer", "fault", "out")));
+        REQUIRE(GraphKeys(*flowgraph) == before);
+        REQUIRE(IsCreated(*flowgraph, "fault"));
+        REQUIRE(IsCreated(*flowgraph, "leaf"));
+        REQUIRE(IsCreated(*flowgraph, "spectator"));
+        REQUIRE(IsConnected(*flowgraph, "leaf", "buffer", "fault", "out"));
+        REQUIRE(faults.blockDestroyCalls == 2);
     }
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Failed composite mutations restore the original topology",
+                 "[core][flowgraph][mutation][fault][atomicity][journal]") {
+    auto& faults = syntheticFaultState();
+    REQUIRE(flowgraph->blockCreate("source", kSyntheticSourceType, {}, {}) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockCreate("replacement", kSyntheticSourceType, {}, {}) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockCreate("target", kSyntheticFaultPassType, {},
+                                   RequestedInput("buffer", "source", "signal")) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockCreate("leaf", kSyntheticPassType, {},
+                                   RequestedInput("buffer", "target", "out")) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockCreate("spectator", kSyntheticSourceType, {}, {}) == Result::SUCCESS);
+    SetTag(*flowgraph, "target", "target-tag");
+    SetTag(*flowgraph, "leaf", "leaf-tag");
+
+    const std::vector<std::string> before = {
+        "source", "replacement", "target", "leaf", "spectator",
+    };
+
+    const auto requireOriginalTopology = [&]() {
+        REQUIRE(GraphKeys(*flowgraph) == before);
+        for (const auto* name : {"source", "replacement", "target", "leaf", "spectator"}) {
+            RequireState(*flowgraph, name, Block::State::Created);
+        }
+        RequireConnection(*flowgraph, "target", "buffer", "source", "signal");
+        RequireConnection(*flowgraph, "leaf", "buffer", "target", "out");
+        RequireTag(*flowgraph, "target", "target-tag");
+        RequireTag(*flowgraph, "leaf", "leaf-tag");
+    };
+
+    SECTION("connect rollback restores the old dependency edge") {
+        faults.failNext(SyntheticFaultPoint::ModuleDestroy);
+        REQUIRE(flowgraph->blockConnect("target", "buffer", "replacement", "signal") ==
+                Result::ERROR);
+        requireOriginalTopology();
+
+        REQUIRE(flowgraph->blockDestroy("replacement") == Result::SUCCESS);
+        RequireState(*flowgraph, "target", Block::State::Created);
+        RequireState(*flowgraph, "leaf", Block::State::Created);
+        RequireConnection(*flowgraph, "target", "buffer", "source", "signal");
+
+        REQUIRE(flowgraph->blockDestroy("source") == Result::SUCCESS);
+        RequireState(*flowgraph, "target", Block::State::Incomplete);
+        RequireState(*flowgraph, "leaf", Block::State::Incomplete);
+    }
+
+    SECTION("disconnect rollback restores the removed input") {
+        faults.failNext(SyntheticFaultPoint::ModuleDestroy);
+        REQUIRE(flowgraph->blockDisconnect("target", "buffer") == Result::ERROR);
+        requireOriginalTopology();
+    }
+
+    SECTION("rename rollback preserves names links order and metadata") {
+        SetTag(*flowgraph, "renamed-target", "destination-tag");
+
+        faults.failNext(SyntheticFaultPoint::ModuleDestroy);
+        REQUIRE(flowgraph->blockRename("target", "renamed-target") == Result::ERROR);
+        requireOriginalTopology();
+        REQUIRE_FALSE(flowgraph->view().has("renamed-target"));
+        RequireTag(*flowgraph, "renamed-target", "destination-tag");
+    }
+
+    SECTION("propagating destroy rollback restores descendants") {
+        faults.failNext(SyntheticFaultPoint::ModuleDestroy);
+        REQUIRE(flowgraph->blockDestroy("target") == Result::ERROR);
+        requireOriginalTopology();
+    }
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Forward reconstruction failure restores previously replaced blocks",
+                 "[core][flowgraph][mutation][fault][atomicity][journal][creation]") {
+    auto& faults = syntheticFaultState();
+    REQUIRE(flowgraph->blockCreate("source", kSyntheticSourceType, {}, {}) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockCreate("target", kSyntheticPassType, {},
+                                   RequestedInput("buffer", "source", "signal")) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockCreate("fault-child", kSyntheticFaultPassType, {},
+                                   RequestedInput("buffer", "target", "buffer")) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockCreate("leaf", kSyntheticPassType, {},
+                                   RequestedInput("buffer", "fault-child", "out")) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockCreate("spectator", kSyntheticSourceType, {}, {}) == Result::SUCCESS);
+    const auto targetConfig = ViewBlock(*flowgraph, "target").config;
+    const std::vector<std::string> before = {
+        "source", "target", "fault-child", "leaf", "spectator",
+    };
+
+    faults.failNext(SyntheticFaultPoint::BlockCreateFatal);
+    REQUIRE(flowgraph->blockRecreate("target", targetConfig) == Result::FATAL);
+
+    REQUIRE(GraphKeys(*flowgraph) == before);
+    for (const auto* name : {"source", "target", "fault-child", "leaf", "spectator"}) {
+        RequireState(*flowgraph, name, Block::State::Created);
+    }
+    RequireConnection(*flowgraph, "target", "buffer", "source", "signal");
+    RequireConnection(*flowgraph, "fault-child", "buffer", "target", "buffer");
+    RequireConnection(*flowgraph, "leaf", "buffer", "fault-child", "out");
+    REQUIRE(faults.blockCreateCalls == 3);
+
+    REQUIRE(flowgraph->blockDestroy("source") == Result::SUCCESS);
+    RequireState(*flowgraph, "target", Block::State::Incomplete);
+    RequireState(*flowgraph, "fault-child", Block::State::Incomplete);
+    RequireState(*flowgraph, "leaf", Block::State::Incomplete);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,

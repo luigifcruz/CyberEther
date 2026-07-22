@@ -22,6 +22,7 @@ inline constexpr auto kSyntheticPassType = "flowgraph_test_pass";
 inline constexpr auto kSyntheticMergeType = "flowgraph_test_merge";
 inline constexpr auto kSyntheticIsolatedType = "flowgraph_test_isolated";
 inline constexpr auto kSyntheticFaultType = "flowgraph_test_fault";
+inline constexpr auto kSyntheticFaultPassType = "flowgraph_test_fault_pass";
 inline constexpr auto kSyntheticSourceTestProvider = "flowgraph-test-alt";
 
 enum class SyntheticFaultPoint {
@@ -29,6 +30,7 @@ enum class SyntheticFaultPoint {
     BlockConfigure,
     BlockDefine,
     BlockCreate,
+    BlockCreateFatal,
     BlockDestroy,
     ModuleDefine,
     ModuleCreate,
@@ -139,6 +141,18 @@ struct SyntheticFaultBlockConfig : Block::Config {
                           "Flowgraph fixture fault source block.")
 };
 
+struct SyntheticFaultPassBlockConfig : Block::Config {
+    JST_BLOCK_TYPE(flowgraph_test_fault_pass)
+    JST_BLOCK_DOMAIN("Test")
+    JST_BLOCK_DESCRIPTION("Synthetic Fault Pass",
+                          "Passes a test tensor with injectable lifecycle failures.",
+                          "Flowgraph fixture fault pass-through block.")
+
+    Result serialize(Parser::Map&) const override { return Result::SUCCESS; }
+    Result deserialize(const Parser::Map&) override { return Result::SUCCESS; }
+    std::size_t hash() const override { return 0; }
+};
+
 namespace Detail {
 
 struct SyntheticSourceModuleConfig : Module::Config {
@@ -170,6 +184,14 @@ struct SyntheticFaultModuleConfig : Module::Config {
 
     JST_MODULE_TYPE(flowgraph_test_fault)
     JST_MODULE_PARAMS(revision)
+};
+
+struct SyntheticFaultPassModuleConfig : Module::Config {
+    JST_MODULE_TYPE(flowgraph_test_fault_pass)
+
+    Result serialize(Parser::Map&) const override { return Result::SUCCESS; }
+    Result deserialize(const Parser::Map&) override { return Result::SUCCESS; }
+    std::size_t hash() const override { return 0; }
 };
 
 struct SyntheticSourceModule : Module::Impl,
@@ -316,6 +338,39 @@ struct SyntheticFaultModule : Module::Impl,
     Tensor output;
 };
 
+struct SyntheticFaultPassModule : Module::Impl,
+                                  DynamicConfig<SyntheticFaultPassModuleConfig>,
+                                  NativeCpuRuntimeContext,
+                                  Scheduler::Context {
+    Result define() override {
+        JST_CHECK(defineInterfaceInput("buffer"));
+        return defineInterfaceOutput("out");
+    }
+
+    Result create() override {
+        output = inputs().at("buffer").tensor.clone();
+        outputs()["out"].produced(name(), "out", output);
+        return Result::SUCCESS;
+    }
+
+    Result destroy() override {
+        auto& state = syntheticFaultState();
+        state.moduleDestroyCalls += 1;
+        if (state.consume(SyntheticFaultPoint::ModuleDestroy)) {
+            JST_ERROR("[FLOWGRAPH_TEST_FAULT] Forced module destroy failure.");
+            return Result::ERROR;
+        }
+
+        return Result::SUCCESS;
+    }
+
+    Result computeSubmit() override {
+        return Result::SUCCESS;
+    }
+
+    Tensor output;
+};
+
 struct SyntheticSourceBlock : Block::Impl,
                               DynamicConfig<SyntheticSourceBlockConfig> {
     Result configure() override {
@@ -437,6 +492,27 @@ struct SyntheticFaultBlock : Block::Impl,
         std::make_shared<SyntheticFaultModuleConfig>();
 };
 
+struct SyntheticFaultPassBlock : Block::Impl,
+                                 DynamicConfig<SyntheticFaultPassBlockConfig> {
+    Result define() override {
+        JST_CHECK(defineInterfaceInput("buffer", "Input", "Synthetic input tensor."));
+        return defineInterfaceOutput("out", "Output", "Synthetic fault output tensor.");
+    }
+
+    Result create() override {
+        auto& state = syntheticFaultState();
+        state.blockCreateCalls += 1;
+        if (state.consume(SyntheticFaultPoint::BlockCreateFatal)) {
+            JST_ERROR("[FLOWGRAPH_TEST_FAULT] Forced fatal block create failure.");
+            return Result::FATAL;
+        }
+
+        const auto config = std::make_shared<SyntheticFaultPassModuleConfig>();
+        JST_CHECK(moduleCreate("fault-pass", config, {{"buffer", inputs().at("buffer")}}));
+        return moduleExposeOutput("out", {"fault-pass", "out"});
+    }
+};
+
 template<typename Impl>
 std::shared_ptr<Module> BuildModule(
     const DeviceType device,
@@ -509,11 +585,13 @@ inline Result RegisterSyntheticGraph() {
         JST_CHECK(Detail::RegisterModule<Detail::SyntheticPassModule>("generic"));
         JST_CHECK(Detail::RegisterModule<Detail::SyntheticMergeModule>("generic"));
         JST_CHECK(Detail::RegisterModule<Detail::SyntheticFaultModule>("generic"));
+        JST_CHECK(Detail::RegisterModule<Detail::SyntheticFaultPassModule>("generic"));
         JST_CHECK(Detail::RegisterBlock<Detail::SyntheticSourceBlock>());
         JST_CHECK(Detail::RegisterBlock<Detail::SyntheticPassBlock>());
         JST_CHECK(Detail::RegisterBlock<Detail::SyntheticMergeBlock>());
         JST_CHECK(Detail::RegisterBlock<Detail::SyntheticIsolatedBlock>());
         JST_CHECK(Detail::RegisterBlock<Detail::SyntheticFaultBlock>());
+        JST_CHECK(Detail::RegisterBlock<Detail::SyntheticFaultPassBlock>());
         return Result::SUCCESS;
     }();
 
