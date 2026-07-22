@@ -57,7 +57,7 @@ Creation runs `validate`, `configure`, and `define` in that order, then checks t
 
 The deliberate `INCOMPLETE` return is the gating pattern: a block whose `create()` needs a value that arrives later, such as an environment key delivered by a server connection, returns incomplete and is automatically destroyed and recreated when a new environment key becomes visible. The full pattern, with example code, is in [Flowgraph Environment](/docs/metadata#flowgraph-environment).
 
-Configuration edits go through `reconfigure`, which validates the candidate configuration and applies it. When a change cannot be applied in place, for example a buffer size that shaped an allocation, return `Result::RECREATE` and the flowgraph destroys and recreates the block along with everything downstream of it.
+Configuration edits go through `reconfigure`, which validates the candidate configuration and applies it. Rejected candidates leave the current configuration unchanged. If applying a validated edit fails, the flowgraph restores the previous working state and returns the error. When a change cannot be applied in place, for example a buffer size that shaped an allocation, return `Result::RECREATE` and let the flowgraph rebuild the affected blocks.
 
 ## Defining The Block
 

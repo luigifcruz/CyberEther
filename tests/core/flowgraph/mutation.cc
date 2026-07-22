@@ -375,20 +375,33 @@ TEST_CASE_METHOD(FlowgraphFixture,
         REQUIRE_FALSE(flowgraph->view().has("fault"));
     }
 
-    SECTION("block configure failure restores the committed configuration") {
+    SECTION("block configure failure reconstructs the previous graph") {
+        REQUIRE(flowgraph->blockCreate("leaf", kSyntheticPassType, {},
+                                       RequestedInput("buffer", "fault", "out")) == Result::SUCCESS);
+        REQUIRE(flowgraph->blockCreate("spectator", kSyntheticSourceType, {}, {}) == Result::SUCCESS);
+        const auto before = GraphKeys(*flowgraph);
+        const auto faultOutputId = original.outputs.at("out").tensor.id();
+        const auto leafOutputId = viewBlock("leaf").outputs.at("buffer").tensor.id();
+        const auto spectatorOutputId = viewBlock("spectator").outputs.at("signal").tensor.id();
+
         Parser::Map update;
         update["revision"] = U64{1};
         faults.failNext(SyntheticFaultPoint::BlockConfigure);
         REQUIRE(flowgraph->blockReconfigure("fault", update) == Result::ERROR);
 
         const auto retained = viewBlock("fault");
+        REQUIRE(GraphKeys(*flowgraph) == before);
         REQUIRE(retained.state == Block::State::Created);
-        // Defect: failed block configuration leaves the staged block config mutated.
-        CHECK(std::any_cast<U64>(retained.config.at("revision")) == 0);
-        REQUIRE(faults.blockConfigureCalls == 2);
+        REQUIRE(std::any_cast<U64>(retained.config.at("revision")) == 0);
+        REQUIRE(retained.outputs.at("out").tensor.id() != faultOutputId);
+        REQUIRE(viewBlock("leaf").outputs.at("buffer").tensor.id() != leafOutputId);
+        REQUIRE(viewBlock("spectator").outputs.at("signal").tensor.id() == spectatorOutputId);
+        REQUIRE(IsConnected(*flowgraph, "leaf", "buffer", "fault", "out"));
+        REQUIRE(faults.blockConfigureCalls == 3);
     }
 
-    SECTION("module reconfigure failure restores the committed configuration") {
+    SECTION("module reconfigure failure reconstructs the previous block") {
+        const auto outputId = original.outputs.at("out").tensor.id();
         Parser::Map update;
         update["revision"] = U64{1};
         faults.failNext(SyntheticFaultPoint::ModuleReconfigure);
@@ -396,8 +409,9 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
         const auto retained = viewBlock("fault");
         REQUIRE(retained.state == Block::State::Created);
-        // Defect: failed module reconfiguration leaves the staged block config mutated.
-        CHECK(std::any_cast<U64>(retained.config.at("revision")) == 0);
+        REQUIRE(std::any_cast<U64>(retained.config.at("revision")) == 0);
+        REQUIRE(retained.outputs.at("out").tensor.id() != outputId);
+        REQUIRE(faults.blockConfigureCalls == 3);
         REQUIRE(faults.moduleReconfigureCalls == 1);
     }
 

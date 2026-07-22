@@ -163,7 +163,8 @@ bool ReconstructionStepSucceeded(const Result result, const bool allowIncomplete
 Result ReconstructBlocks(Flowgraph& flowgraph,
                          const std::shared_ptr<Flowgraph::Impl>& impl,
                          const std::vector<BlockState>& previousStates,
-                         const std::vector<BlockState>& nextStates) {
+                         const std::vector<BlockState>& nextStates,
+                         const bool restorePreviousJournal = false) {
     std::vector<std::string> previousOrder;
     std::unordered_map<std::string, std::vector<std::string>> previousEdges;
     {
@@ -273,6 +274,12 @@ Result ReconstructBlocks(Flowgraph& flowgraph,
             return rollback(result);
         }
         createdNext.push_back(state.name);
+    }
+
+    if (restorePreviousJournal) {
+        std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+        impl->blockOrder = previousOrder;
+        impl->edges = previousEdges;
     }
 
     return Result::SUCCESS;
@@ -920,6 +927,8 @@ Result Flowgraph::blockReconfigure(const std::string name, const Parser::Map& co
     std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
 
     Result result = Result::SUCCESS;
+    bool recoverPrevious = false;
+    std::vector<BlockState> previousStates;
     Parser::Map mergedConfig;
     const auto reconfigure = [&]() -> Result {
         std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
@@ -929,30 +938,45 @@ Result Flowgraph::blockReconfigure(const std::string name, const Parser::Map& co
             return Result::ERROR;
         }
 
-        const auto& block = impl->blocks.at(name);
-        JST_CHECK(block->config(mergedConfig));
+        JST_CHECK(CaptureAffectedBlockStates(*impl, name, previousStates));
+
+        mergedConfig = previousStates.front().config;
         for (const auto& entry : config) {
             mergedConfig[entry.key] = entry.value;
         }
 
+        const auto block = impl->blocks.at(name);
         result = block->reconfigure(mergedConfig);
+        recoverPrevious = result != Result::SUCCESS && result != Result::RELOAD &&
+                          result != Result::RECREATE &&
+                          block->state() == Block::State::Errored;
         return result == Result::RECREATE ? Result::SUCCESS : result;
     };
 
+    Result synchronizedResult;
     if (impl->scheduler) {
-        JST_CHECK(impl->scheduler->synchronize(reconfigure));
+        synchronizedResult = impl->scheduler->synchronize(reconfigure);
     } else {
-        JST_CHECK(reconfigure());
+        synchronizedResult = reconfigure();
     }
 
     if (result == Result::RECREATE) {
         JST_INFO("[FLOWGRAPH] Block '{}' requested recreation.", name);
-        return blockRecreate(name, mergedConfig);
+        auto nextStates = previousStates;
+        nextStates.front().config = std::move(mergedConfig);
+        return ReconstructBlocks(*this, impl, previousStates, nextStates);
     }
 
-    JST_CHECK(result);
+    if (recoverPrevious) {
+        const auto recoveryResult = ReconstructBlocks(*this, impl, previousStates,
+                                                      previousStates, true);
+        if (!ReconstructionStepSucceeded(recoveryResult)) {
+            JST_ERROR("[FLOWGRAPH] Failed to restore block '{}' after reconfiguration failure.", name);
+        }
+        return result;
+    }
 
-    return Result::SUCCESS;
+    return synchronizedResult;
 }
 
 Result Flowgraph::blockRecreate(const std::string name, const Parser::Map& config) {

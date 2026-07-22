@@ -2263,7 +2263,8 @@ TEST_CASE("Block retries child destruction after a partial cleanup failure",
                        "child.destroy:lifecycle-block-first") == 1);
 }
 
-TEST_CASE("Block reconfiguration is validated and atomic", "[core][lifecycle][reconfigure]") {
+TEST_CASE("Block reconfiguration separates validation from application failures",
+          "[core][lifecycle][reconfigure]") {
     auto bundle = MakeBlock();
     bundle.probe->declareOutput = true;
     bundle.probe->produceOutput = true;
@@ -2334,7 +2335,7 @@ TEST_CASE("Block reconfiguration is validated and atomic", "[core][lifecycle][re
         REQUIRE(bundle.block->state() == Block::State::Created);
     }
 
-    SECTION("configuration backup serialization failure stops before commit") {
+    SECTION("configuration backup serialization failure requires recreation") {
         bundle.staged->serializeResult = Result::ERROR;
 
         REQUIRE(bundle.block->reconfigure(ConfigWithValue("after")) == Result::ERROR);
@@ -2344,10 +2345,10 @@ TEST_CASE("Block reconfiguration is validated and atomic", "[core][lifecycle][re
             "block.staged.serialize",
         });
         REQUIRE(bundle.staged->value == "before");
-        REQUIRE(bundle.block->state() == Block::State::Created);
+        REQUIRE(bundle.block->state() == Block::State::Errored);
     }
 
-    SECTION("staged deserialization failure stops before configuration") {
+    SECTION("staged deserialization failure requires recreation") {
         bundle.probe->stagedDeserializeResult = Result::ERROR;
 
         REQUIRE(bundle.block->reconfigure(ConfigWithValue("after")) == Result::ERROR);
@@ -2358,28 +2359,24 @@ TEST_CASE("Block reconfiguration is validated and atomic", "[core][lifecycle][re
             "block.staged.deserialize",
         });
         REQUIRE(bundle.staged->value == "before");
-        REQUIRE(bundle.block->state() == Block::State::Created);
+        REQUIRE(bundle.block->state() == Block::State::Errored);
     }
 
-    SECTION("configuration failure rolls back the staged configuration") {
+    SECTION("configuration failure leaves the block errored") {
         bundle.probe->configureResult = Result::ERROR;
 
         REQUIRE(bundle.block->reconfigure(ConfigWithValue("after")) == Result::ERROR);
-        REQUIRE(bundle.block->state() == Block::State::Created);
-
-        // Expected failure: Block::reconfigure keeps the candidate after configure fails.
-        REQUIRE(bundle.staged->value == "before");
+        REQUIRE(bundle.block->state() == Block::State::Errored);
+        REQUIRE(bundle.staged->value == "after");
     }
 
-    SECTION("interface refresh failure rolls back configuration and interface") {
+    SECTION("interface refresh failure leaves the block errored") {
         bundle.probe->defineResult = Result::ERROR;
 
         REQUIRE(bundle.block->reconfigure(ConfigWithValue("after")) == Result::ERROR);
-        REQUIRE(bundle.block->state() == Block::State::Created);
-
-        // Expected failure: Block::reconfigure does not roll back after interface definition fails.
-        CHECK(bundle.staged->value == "before");
-        CHECK(bundle.block->interface()->outputs().size() == 1);
+        REQUIRE(bundle.block->state() == Block::State::Errored);
+        REQUIRE(bundle.staged->value == "after");
+        REQUIRE(bundle.block->interface()->outputs().empty());
     }
 
     SECTION("stored configuration serialization failure is returned") {
@@ -2451,7 +2448,7 @@ TEST_CASE("Block reconfigures nested children in validation and commit phases",
         REQUIRE(bundle.block->state() == Block::State::Created);
     }
 
-    SECTION("partial child commit failure rolls back parent and committed siblings") {
+    SECTION("partial child commit failure leaves the block errored") {
         bundle.probe->failingChildReconfigure = "second";
 
         REQUIRE(bundle.block->reconfigure(ConfigWithValue("after")) == Result::ERROR);
@@ -2465,14 +2462,10 @@ TEST_CASE("Block reconfigures nested children in validation and commit phases",
                     "child.reconfigure:lifecycle-block-second:after:before",
                 });
         REQUIRE(bundle.impl->childStagedValue("second") == "before");
-        REQUIRE(bundle.block->state() == Block::State::Created);
-
-        // Expected failure: a child commit error leaves the parent configuration committed.
-        CHECK(bundle.staged->value == "before");
-        // Expected failure: child source configurations are not rolled back after partial commit.
-        CHECK(bundle.impl->childConfigValue("first") == "before");
-        // Expected failure: an already committed sibling is not rolled back.
-        CHECK(bundle.impl->childStagedValue("first") == "before");
+        REQUIRE(bundle.block->state() == Block::State::Errored);
+        REQUIRE(bundle.staged->value == "after");
+        REQUIRE(bundle.impl->childConfigValue("first") == "after");
+        REQUIRE(bundle.impl->childStagedValue("first") == "after");
     }
 
     SECTION("rollback deserialization failure leaves an explicit errored state") {
@@ -2483,10 +2476,8 @@ TEST_CASE("Block reconfigures nested children in validation and commit phases",
         REQUIRE(bundle.impl->childStagedValue("first") == "before");
         REQUIRE(bundle.impl->childStagedValue("second") == "before");
 
-        // Expected failure: failed rollback leaves the newly committed parent configuration.
-        CHECK(bundle.staged->value == "before");
-        // Expected failure: failed rollback is not reflected in the block lifecycle state.
-        CHECK(bundle.block->state() == Block::State::Errored);
+        REQUIRE(bundle.staged->value == "after");
+        REQUIRE(bundle.block->state() == Block::State::Errored);
     }
 }
 
