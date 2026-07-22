@@ -181,3 +181,23 @@ TEST_CASE("Soapy module validates same-device candidates against cached capabili
         REQUIRE(validate(false) == Result::SUCCESS);
     }
 }
+
+TEST_CASE("Soapy device lists preserve duplicate and missing labels",
+          "[modules][soapy][devices]") {
+    const SoapySDR::KwargsList entries = {
+        {{"driver", "rtlsdr"}, {"label", "RTL-SDR"}, {"serial", "A"}},
+        {{"driver", "rtlsdr"}, {"label", "RTL-SDR"}, {"serial", "B"}},
+        {{"driver", "rtlsdr"}, {"label", "RTL-SDR"}, {"serial", "B"}},
+        {{"driver", "remote"}},
+        {{"driver", "remote"}},
+    };
+
+    const auto devices = Modules::SoapyImpl::DeviceListFromEntries(entries);
+
+    REQUIRE(devices.size() == entries.size());
+    REQUIRE(devices.at("RTL-SDR").at("serial") == "A");
+    REQUIRE(devices.at("RTL-SDR [B]").at("serial") == "B");
+    REQUIRE(devices.at("RTL-SDR [B] #2").at("serial") == "B");
+    REQUIRE(devices.contains("remote"));
+    REQUIRE(devices.contains("remote #2"));
+}

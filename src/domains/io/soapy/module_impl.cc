@@ -300,20 +300,17 @@ SoapyImpl::DeviceList SoapyImpl::ListAvailableDevices(const std::string& filter)
     }
 #endif
 
-    DeviceList deviceMap;
     const SoapySDR::Kwargs args = SoapySDR::KwargsFromString(filter);
 
     try {
-        for (const auto& device : SoapySDR::Device::enumerate(args)) {
-            deviceMap[device.at("label")] = device;
-        }
+        return DeviceListFromEntries(SoapySDR::Device::enumerate(args));
     } catch (const std::exception& e) {
         JST_ERROR("[MODULE_SOAPY] Failed to enumerate devices: {}", e.what());
     } catch (...) {
         JST_ERROR("[MODULE_SOAPY] Failed to enumerate devices.");
     }
 
-    return deviceMap;
+    return {};
 }
 
 std::string SoapyImpl::DeviceEntryToString(const DeviceEntry& entry) {

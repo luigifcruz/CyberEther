@@ -107,6 +107,38 @@ struct SoapyImpl : public Module::Impl, public DynamicConfig<Soapy> {
     using DeviceEntry = std::map<std::string, std::string>;
     using DeviceList = std::map<std::string, DeviceEntry>;
 
+    static DeviceList DeviceListFromEntries(const SoapySDR::KwargsList& entries) {
+        DeviceList devices;
+        for (const auto& entry : entries) {
+            const auto labelIt = entry.find("label");
+            const auto driverIt = entry.find("driver");
+            std::string label = "SoapySDR Device";
+            if (labelIt != entry.end() && !labelIt->second.empty()) {
+                label = labelIt->second;
+            } else if (driverIt != entry.end() && !driverIt->second.empty()) {
+                label = driverIt->second;
+            }
+
+            std::string uniqueLabel = label;
+            if (devices.contains(uniqueLabel)) {
+                const auto serialIt = entry.find("serial");
+                if (serialIt != entry.end() && !serialIt->second.empty() &&
+                    label.find(serialIt->second) == std::string::npos) {
+                    uniqueLabel = label + " [" + serialIt->second + "]";
+                }
+
+                const std::string uniqueLabelBase = uniqueLabel;
+                U64 suffix = 2;
+                while (devices.contains(uniqueLabel)) {
+                    uniqueLabel = uniqueLabelBase + " #" + std::to_string(suffix++);
+                }
+            }
+
+            devices.emplace(std::move(uniqueLabel), entry);
+        }
+        return devices;
+    }
+
     Result validate() override;
     Result define() override;
     Result create() override;
