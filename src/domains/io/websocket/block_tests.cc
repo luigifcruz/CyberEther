@@ -55,8 +55,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Websocket block reconfigure updates output dimensions",
-                 "[modules][io][websocket][block][reconfigure]") {
+                 "Websocket block validates before recreation",
+                 "[modules][io][websocket][block][validation][reconfigure]") {
     if (Registry::ListAvailableModules("websocket").empty()) {
         SUCCEED("Websocket module is unavailable in this build.");
         return;
@@ -70,11 +70,14 @@ TEST_CASE_METHOD(FlowgraphFixture,
             Block::State::Incomplete);
 
     Parser::Map reconfigure;
-    reconfigure["url"] = std::string("ws://localhost:9000");
+    reconfigure["url"] = std::string("http://localhost:9000");
     reconfigure["dataType"] = std::string("CU8");
     reconfigure["numberOfBatches"] = std::string("2");
     reconfigure["numberOfTimeSamples"] = std::string("256");
     reconfigure["bufferMultiplier"] = std::string("2");
-    REQUIRE(flowgraph->blockReconfigure("ws_cfg", reconfigure) == Result::SUCCESS);
-    REQUIRE(flowgraph->view().has("ws_cfg"));
+    REQUIRE(flowgraph->blockReconfigure("ws_cfg", reconfigure) == Result::ERROR);
+
+    const auto retained = viewBlock("ws_cfg");
+    REQUIRE(retained.state == Block::State::Incomplete);
+    REQUIRE(std::any_cast<std::string>(retained.config.at("url")).empty());
 }

@@ -1,44 +1,15 @@
 #include "module_impl.hh"
 
-#ifndef JST_OS_BROWSER
-#include <regex>
-#endif
-
 namespace Jetstream::Modules {
 
 Result WebsocketImpl::validate() {
     const auto& config = *candidate();
 
-    if (config.numberOfBatches == 0) {
-        JST_ERROR("[MODULE_WEBSOCKET] Number of batches cannot be zero.");
-        return Result::ERROR;
-    }
-
-    if (config.numberOfTimeSamples == 0) {
-        JST_ERROR("[MODULE_WEBSOCKET] Number of time samples cannot be zero.");
-        return Result::ERROR;
-    }
-
-    if (config.bufferMultiplier == 0) {
-        JST_ERROR("[MODULE_WEBSOCKET] Buffer multiplier cannot be zero.");
-        return Result::ERROR;
-    }
-
-    if (config.dataType != "CF32" &&
-        config.dataType != "F32" &&
-        config.dataType != "CI8" &&
-        config.dataType != "I8" &&
-        config.dataType != "CU8" &&
-        config.dataType != "U8" &&
-        config.dataType != "CI16" &&
-        config.dataType != "I16" &&
-        config.dataType != "CU16" &&
-        config.dataType != "U16") {
-        JST_ERROR("[MODULE_WEBSOCKET] Invalid data type '{}'.", config.dataType);
-        return Result::ERROR;
-    }
-
-    return Result::SUCCESS;
+    return ValidateWebsocketConfig(config.url,
+                                   config.dataType,
+                                   config.numberOfBatches,
+                                   config.numberOfTimeSamples,
+                                   config.bufferMultiplier);
 }
 
 Result WebsocketImpl::define() {
@@ -50,11 +21,6 @@ Result WebsocketImpl::define() {
 }
 
 Result WebsocketImpl::create() {
-    if (url.empty()) {
-        JST_ERROR("[MODULE_WEBSOCKET] URL is empty.");
-        return Result::INCOMPLETE;
-    }
-
     errored = false;
     connected = false;
     bufferHealth.publish(0.0f);

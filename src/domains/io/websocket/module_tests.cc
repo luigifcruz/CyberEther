@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <limits>
 
 #include "jetstream/domains/io/websocket/module.hh"
 #include "jetstream/registry.hh"
@@ -60,6 +61,24 @@ TEST_CASE("Websocket module rejects invalid configuration",
             config.url = "";
             ctx.setConfig(config);
             REQUIRE(ctx.run() == Result::INCOMPLETE);
+        }
+
+        SECTION("url syntax must be valid") {
+            TestContext ctx("websocket", impl.device, impl.runtime,
+                            impl.provider);
+            Modules::Websocket config;
+            config.url = "http://localhost:8765";
+            ctx.setConfig(config);
+            REQUIRE(ctx.run() == Result::ERROR);
+        }
+
+        SECTION("buffer dimensions must not overflow") {
+            TestContext ctx("websocket", impl.device, impl.runtime,
+                            impl.provider);
+            Modules::Websocket config;
+            config.numberOfBatches = std::numeric_limits<U64>::max();
+            ctx.setConfig(config);
+            REQUIRE(ctx.run() == Result::ERROR);
         }
 
         SECTION("supported data types pass validation") {
