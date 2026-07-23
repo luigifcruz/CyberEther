@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <limits>
 #include <string>
 
 #include "flowgraph_fixture.hh"
@@ -65,7 +66,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     const auto outputId = viewBlock("gen").outputs.at("signal").tensor.id();
 
     Parser::Map invalidUpdate;
-    invalidUpdate["sampleRate"] = 0.0f;
+    invalidUpdate["sampleRate"] = std::numeric_limits<F32>::quiet_NaN();
     REQUIRE(flowgraph->blockReconfigure("gen", invalidUpdate) == Result::ERROR);
     REQUIRE(viewBlock("gen").state == Block::State::Created);
     REQUIRE(viewBlock("gen").outputs.at("signal").tensor.id() == outputId);

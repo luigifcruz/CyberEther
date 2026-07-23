@@ -1,7 +1,10 @@
 #include <cmath>
+#include <limits>
 #include <random>
+#include <utility>
 
 #include <jetstream/tools/automatic_iterator.hh>
+#include <jetstream/memory/macros.hh>
 #include <jetstream/runtime_context_native_cpu.hh>
 #include <jetstream/scheduler_context.hh>
 #include <jetstream/module_context.hh>
@@ -11,10 +14,20 @@
 
 namespace Jetstream::Modules {
 
+namespace {
+
+F64 WrapPhase(const F64 value, const F64 period) {
+    const F64 wrapped = std::fmod(value, period);
+    return wrapped < 0.0 ? wrapped + period : wrapped;
+}
+
+}  // namespace
+
 struct SignalGeneratorImplNativeCpu : public SignalGeneratorImpl,
                                       public NativeCpuRuntimeContext,
                                       public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeSubmit() override;
@@ -45,6 +58,19 @@ struct SignalGeneratorImplNativeCpu : public SignalGeneratorImpl,
     std::normal_distribution<F64> normalDist;
 };
 
+Result SignalGeneratorImplNativeCpu::validate() {
+    JST_CHECK(SignalGeneratorImpl::validate());
+
+    U64 alignedOutputSize = 0;
+    if (!detail::CheckedPageAlignedSize(validatedOutputSizeBytes, alignedOutputSize) ||
+        alignedOutputSize > std::numeric_limits<std::size_t>::max()) {
+        JST_ERROR("[MODULE_SIGNAL_GENERATOR_NATIVE_CPU] Output allocation size is too large.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 Result SignalGeneratorImplNativeCpu::create() {
     // Create parent.
 
@@ -54,92 +80,46 @@ Result SignalGeneratorImplNativeCpu::create() {
 
     sampleIndex = 0;
     rng = std::mt19937(std::random_device{}());
-    normalDist = std::normal_distribution<F64>(0.0, std::sqrt(noiseVariance));
+    normalDist = std::normal_distribution<F64>();
+    if (noiseVariance > 0.0) {
+        normalDist = std::normal_distribution<F64>(0.0, std::sqrt(noiseVariance));
+    }
 
     // Register compute kernel.
 
-    if (signalType == "sine" && signalDataType == "F32") {
-        kernel = [this]() { return kernelSineF32(); };
-        return Result::SUCCESS;
+    const bool isF32 = signalDataType == "F32";
+    const auto selectKernel = [&](std::function<Result()> f32,
+                                  std::function<Result()> cf32) {
+        kernel = isF32 ? std::move(f32) : std::move(cf32);
+    };
+
+    if (signalType == "sine") {
+        selectKernel([this]() { return kernelSineF32(); },
+                     [this]() { return kernelSineCF32(); });
+    } else if (signalType == "cosine") {
+        selectKernel([this]() { return kernelCosineF32(); },
+                     [this]() { return kernelCosineCF32(); });
+    } else if (signalType == "square") {
+        selectKernel([this]() { return kernelSquareF32(); },
+                     [this]() { return kernelSquareCF32(); });
+    } else if (signalType == "sawtooth") {
+        selectKernel([this]() { return kernelSawtoothF32(); },
+                     [this]() { return kernelSawtoothCF32(); });
+    } else if (signalType == "triangle") {
+        selectKernel([this]() { return kernelTriangleF32(); },
+                     [this]() { return kernelTriangleCF32(); });
+    } else if (signalType == "noise") {
+        selectKernel([this]() { return kernelNoiseF32(); },
+                     [this]() { return kernelNoiseCF32(); });
+    } else if (signalType == "dc") {
+        selectKernel([this]() { return kernelDcF32(); },
+                     [this]() { return kernelDcCF32(); });
+    } else {
+        selectKernel([this]() { return kernelChirpF32(); },
+                     [this]() { return kernelChirpCF32(); });
     }
 
-    if (signalType == "sine" && signalDataType == "CF32") {
-        kernel = [this]() { return kernelSineCF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (signalType == "cosine" && signalDataType == "F32") {
-        kernel = [this]() { return kernelCosineF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (signalType == "cosine" && signalDataType == "CF32") {
-        kernel = [this]() { return kernelCosineCF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (signalType == "square" && signalDataType == "F32") {
-        kernel = [this]() { return kernelSquareF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (signalType == "square" && signalDataType == "CF32") {
-        kernel = [this]() { return kernelSquareCF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (signalType == "sawtooth" && signalDataType == "F32") {
-        kernel = [this]() { return kernelSawtoothF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (signalType == "sawtooth" && signalDataType == "CF32") {
-        kernel = [this]() { return kernelSawtoothCF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (signalType == "triangle" && signalDataType == "F32") {
-        kernel = [this]() { return kernelTriangleF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (signalType == "triangle" && signalDataType == "CF32") {
-        kernel = [this]() { return kernelTriangleCF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (signalType == "noise" && signalDataType == "F32") {
-        kernel = [this]() { return kernelNoiseF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (signalType == "noise" && signalDataType == "CF32") {
-        kernel = [this]() { return kernelNoiseCF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (signalType == "dc" && signalDataType == "F32") {
-        kernel = [this]() { return kernelDcF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (signalType == "dc" && signalDataType == "CF32") {
-        kernel = [this]() { return kernelDcCF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (signalType == "chirp" && signalDataType == "F32") {
-        kernel = [this]() { return kernelChirpF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (signalType == "chirp" && signalDataType == "CF32") {
-        kernel = [this]() { return kernelChirpCF32(); };
-        return Result::SUCCESS;
-    }
-
-    JST_ERROR("[MODULE_SIGNAL_GENERATOR_NATIVE_CPU] Unsupported signal type '{}' with data type '{}'.", signalType, signalDataType);
-    return Result::ERROR;
+    return Result::SUCCESS;
 }
 
 Result SignalGeneratorImplNativeCpu::computeSubmit() {
@@ -212,7 +192,8 @@ Result SignalGeneratorImplNativeCpu::kernelSquareF32() {
     return AutomaticIterator<F32>(
         [&](auto& out) {
             const F64 t = (sampleIndex + idx) * dt;
-            const F64 phaseVal = std::fmod(2.0 * JST_PI * frequency * t + phase, 2.0 * JST_PI);
+            const F64 phaseVal = WrapPhase(2.0 * JST_PI * frequency * t + phase,
+                                           2.0 * JST_PI);
             const F64 value = amplitude * ((phaseVal < JST_PI) ? 1.0 : -1.0) + dcOffset;
             out = static_cast<F32>(value);
             ++idx;
@@ -227,7 +208,8 @@ Result SignalGeneratorImplNativeCpu::kernelSquareCF32() {
     return AutomaticIterator<CF32>(
         [&](auto& out) {
             const F64 t = (sampleIndex + idx) * dt;
-            const F64 phaseVal = std::fmod(2.0 * JST_PI * frequency * t + phase, 2.0 * JST_PI);
+            const F64 phaseVal = WrapPhase(2.0 * JST_PI * frequency * t + phase,
+                                           2.0 * JST_PI);
             const F64 value = amplitude * ((phaseVal < JST_PI) ? 1.0 : -1.0) + dcOffset;
             out = CF32(static_cast<F32>(value), 0.0f);
             ++idx;
@@ -242,7 +224,7 @@ Result SignalGeneratorImplNativeCpu::kernelSawtoothF32() {
     return AutomaticIterator<F32>(
         [&](auto& out) {
             const F64 t = (sampleIndex + idx) * dt;
-            const F64 phaseVal = std::fmod(frequency * t + phase / (2.0 * JST_PI), 1.0);
+            const F64 phaseVal = WrapPhase(frequency * t + phase / (2.0 * JST_PI), 1.0);
             const F64 value = amplitude * (2.0 * phaseVal - 1.0) + dcOffset;
             out = static_cast<F32>(value);
             ++idx;
@@ -257,7 +239,7 @@ Result SignalGeneratorImplNativeCpu::kernelSawtoothCF32() {
     return AutomaticIterator<CF32>(
         [&](auto& out) {
             const F64 t = (sampleIndex + idx) * dt;
-            const F64 phaseVal = std::fmod(frequency * t + phase / (2.0 * JST_PI), 1.0);
+            const F64 phaseVal = WrapPhase(frequency * t + phase / (2.0 * JST_PI), 1.0);
             const F64 value = amplitude * (2.0 * phaseVal - 1.0) + dcOffset;
             out = CF32(static_cast<F32>(value), 0.0f);
             ++idx;
@@ -272,7 +254,7 @@ Result SignalGeneratorImplNativeCpu::kernelTriangleF32() {
     return AutomaticIterator<F32>(
         [&](auto& out) {
             const F64 t = (sampleIndex + idx) * dt;
-            const F64 phaseVal = std::fmod(frequency * t + phase / (2.0 * JST_PI), 1.0);
+            const F64 phaseVal = WrapPhase(frequency * t + phase / (2.0 * JST_PI), 1.0);
             const F64 value = amplitude * ((phaseVal < 0.5) ? (4.0 * phaseVal - 1.0) : (3.0 - 4.0 * phaseVal)) + dcOffset;
             out = static_cast<F32>(value);
             ++idx;
@@ -287,7 +269,7 @@ Result SignalGeneratorImplNativeCpu::kernelTriangleCF32() {
     return AutomaticIterator<CF32>(
         [&](auto& out) {
             const F64 t = (sampleIndex + idx) * dt;
-            const F64 phaseVal = std::fmod(frequency * t + phase / (2.0 * JST_PI), 1.0);
+            const F64 phaseVal = WrapPhase(frequency * t + phase / (2.0 * JST_PI), 1.0);
             const F64 value = amplitude * ((phaseVal < 0.5) ? (4.0 * phaseVal - 1.0) : (3.0 - 4.0 * phaseVal)) + dcOffset;
             out = CF32(static_cast<F32>(value), 0.0f);
             ++idx;
@@ -298,7 +280,8 @@ Result SignalGeneratorImplNativeCpu::kernelTriangleCF32() {
 Result SignalGeneratorImplNativeCpu::kernelNoiseF32() {
     return AutomaticIterator<F32>(
         [&](auto& out) {
-            const F64 value = amplitude * normalDist(rng) + dcOffset;
+            const F64 noise = noiseVariance > 0.0 ? normalDist(rng) : 0.0;
+            const F64 value = amplitude * noise + dcOffset;
             out = static_cast<F32>(value);
         },
         signal);
@@ -307,8 +290,10 @@ Result SignalGeneratorImplNativeCpu::kernelNoiseF32() {
 Result SignalGeneratorImplNativeCpu::kernelNoiseCF32() {
     return AutomaticIterator<CF32>(
         [&](auto& out) {
-            const F64 iVal = amplitude * normalDist(rng) + dcOffset;
-            const F64 qVal = amplitude * normalDist(rng);
+            const F64 iNoise = noiseVariance > 0.0 ? normalDist(rng) : 0.0;
+            const F64 qNoise = noiseVariance > 0.0 ? normalDist(rng) : 0.0;
+            const F64 iVal = amplitude * iNoise + dcOffset;
+            const F64 qVal = amplitude * qNoise;
             out = CF32(static_cast<F32>(iVal), static_cast<F32>(qVal));
         },
         signal);
