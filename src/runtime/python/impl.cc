@@ -46,7 +46,26 @@ Result PythonRuntime::create(const Runtime::Modules& modules) {
             return Result::ERROR;
         }
 
-        JST_CHECK(context->computeInitialize());
+        const auto initializeResult = context->computeInitialize();
+        if (initializeResult != Result::SUCCESS &&
+            initializeResult != Result::RELOAD) {
+            const auto cleanup = [&](const std::string& moduleName,
+                                     const std::shared_ptr<PythonRuntimeContext>& moduleContext) {
+                const auto result = moduleContext->computeDeinitialize();
+                if (result != Result::SUCCESS && result != Result::RELOAD) {
+                    JST_ERROR("[RUNTIME_IMPL_PYTHON] Failed to roll back module '{}' "
+                              "while creating runtime '{}'.", moduleName, this->name);
+                }
+            };
+
+            cleanup(name, context);
+            for (auto it = moduleNames.rbegin(); it != moduleNames.rend(); ++it) {
+                cleanup(*it, getRuntimeContext(modulesMap.at(*it)));
+            }
+            modulesMap.clear();
+            moduleNames.clear();
+            return initializeResult;
+        }
 
         Module::Timing timing;
         timing.runtime = this->name;

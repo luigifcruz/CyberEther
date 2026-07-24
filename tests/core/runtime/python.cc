@@ -275,7 +275,6 @@ TEST_CASE("Python runtime rolls back partial initialization", "[core][runtime][p
     REQUIRE(second->destroy() == Result::SUCCESS);
     REQUIRE(first->destroy() == Result::SUCCESS);
 
-    // Current defect: Python runtime creation leaves the rejected context initialized.
     REQUIRE(deinitializeCount == 2);
 }
 
