@@ -25,25 +25,34 @@ using namespace Jetstream;
 struct SyntheticPythonState {
     std::unordered_map<std::string, U64> initializes;
     std::unordered_map<std::string, U64> deinitializes;
+    std::unordered_map<std::string, Result> deinitializeResults;
+    std::vector<std::string> initializationOrder;
+    std::vector<std::string> deinitializationOrder;
     U64 initializeCount = 0;
     U64 failInitializeAt = 0;
 
     void reset() {
         initializes.clear();
         deinitializes.clear();
+        deinitializeResults.clear();
+        initializationOrder.clear();
+        deinitializationOrder.clear();
         initializeCount = 0;
         failInitializeAt = 0;
     }
 
     Result initialize(const std::string& name) {
         initializes[name] += 1;
+        initializationOrder.push_back(name);
         initializeCount += 1;
         return initializeCount == failInitializeAt ? Result::ERROR : Result::SUCCESS;
     }
 
     Result deinitialize(const std::string& name) {
         deinitializes[name] += 1;
-        return Result::SUCCESS;
+        deinitializationOrder.push_back(name);
+        const auto result = deinitializeResults.find(name);
+        return result == deinitializeResults.end() ? Result::SUCCESS : result->second;
     }
 
     U64 deinitializeCount() const {
@@ -276,6 +285,63 @@ TEST_CASE("Python runtime rolls back partial initialization", "[core][runtime][p
     REQUIRE(first->destroy() == Result::SUCCESS);
 
     REQUIRE(deinitializeCount == 2);
+}
+
+TEST_CASE("Python runtime tears modules down in reverse initialization order",
+          "[core][runtime][python]") {
+    auto& state = syntheticPythonState();
+    state.reset();
+
+    auto first = makeSyntheticPythonModule("python_teardown_first");
+    auto second = makeSyntheticPythonModule("python_teardown_second");
+    auto third = makeSyntheticPythonModule("python_teardown_third");
+
+    Runtime runtime("python_teardown", DeviceType::CPU, RuntimeType::PYTHON);
+    REQUIRE(runtime.create({
+        {"python_teardown_first", first},
+        {"python_teardown_second", second},
+        {"python_teardown_third", third},
+    }) == Result::SUCCESS);
+
+    auto expected = state.initializationOrder;
+    std::ranges::reverse(expected);
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(state.deinitializationOrder == expected);
+
+    REQUIRE(third->destroy() == Result::SUCCESS);
+    REQUIRE(second->destroy() == Result::SUCCESS);
+    REQUIRE(first->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Python runtime continues teardown after deinitialization failures",
+          "[core][runtime][python]") {
+    auto& state = syntheticPythonState();
+    state.reset();
+
+    auto first = makeSyntheticPythonModule("python_teardown_error_first");
+    auto second = makeSyntheticPythonModule("python_teardown_error_second");
+    auto third = makeSyntheticPythonModule("python_teardown_error_third");
+
+    Runtime runtime("python_teardown_error", DeviceType::CPU, RuntimeType::PYTHON);
+    REQUIRE(runtime.create({
+        {"python_teardown_error_first", first},
+        {"python_teardown_error_second", second},
+        {"python_teardown_error_third", third},
+    }) == Result::SUCCESS);
+
+    state.deinitializeResults["python_teardown_error_first"] = Result::ERROR;
+    state.deinitializeResults["python_teardown_error_second"] = Result::ERROR;
+    state.deinitializeResults["python_teardown_error_third"] = Result::ERROR;
+    state.deinitializeResults[state.initializationOrder.back()] = Result::WARNING;
+
+    REQUIRE(runtime.destroy() == Result::WARNING);
+    REQUIRE(state.deinitializeCount() == 3);
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(state.deinitializeCount() == 3);
+
+    REQUIRE(third->destroy() == Result::SUCCESS);
+    REQUIRE(second->destroy() == Result::SUCCESS);
+    REQUIRE(first->destroy() == Result::SUCCESS);
 }
 
 TEST_CASE("Python runtime discovery removes executable aliases", "[core][runtime][python]") {

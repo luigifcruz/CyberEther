@@ -863,7 +863,6 @@ TEST_CASE("Scheduler propagates CPU Runtime destruction failures",
     auto module = fixture.module("destroy_failure");
     REQUIRE(fixture.scheduler.add(module) == Result::SUCCESS);
 
-    // Current defect: scheduler destruction discards Runtime::destroy() failures.
     REQUIRE(fixture.shutdown() == Result::ERROR);
 }
 

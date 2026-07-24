@@ -692,7 +692,6 @@ TEST_CASE("Native runtime tears modules down in reverse initialization order",
     state.clearLifecycleEvents();
 
     REQUIRE(runtime.destroy() == Result::SUCCESS);
-    // Current defect: Native CPU teardown follows unordered storage instead of reverse initialization order.
     CHECK(state.lifecycleCalls("deinitialize") == expected);
     destroyModules(modules);
 }
@@ -720,7 +719,6 @@ TEST_CASE("Native runtime continues teardown after deinitialization failures",
     state.clearLifecycleEvents();
 
     REQUIRE(runtime.destroy() == Result::ERROR);
-    // Current defect: Native CPU teardown returns after the first failure and leaves later contexts initialized.
     CHECK(state.totalDeinitializeCallCount() == 3);
     destroyModules(modules);
 }

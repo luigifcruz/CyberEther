@@ -112,9 +112,15 @@ Result SynchronousScheduler::destroy() {
 
         // Destroy runtimes in reverse order.
 
+        Result result = Result::SUCCESS;
         for (auto& segment : std::ranges::reverse_view(runtimes)) {
             if (segment.runtime) {
-                segment.runtime->destroy();
+                const auto destroyResult = segment.runtime->destroy();
+                if (result == Result::SUCCESS && 
+                    destroyResult != Result::SUCCESS &&
+                    destroyResult != Result::RELOAD) {
+                    result = destroyResult;
+                }
             }
         }
 
@@ -129,7 +135,7 @@ Result SynchronousScheduler::destroy() {
         throttleDeadlines.clear();
         modules.clear();
 
-        return Result::SUCCESS;
+        return result;
     }));
 
     return Result::SUCCESS;

@@ -81,14 +81,20 @@ Result PythonRuntime::create(const Runtime::Modules& modules) {
 }
 
 Result PythonRuntime::destroy() {
-    for (auto& [_, module] : modulesMap) {
-        JST_CHECK(getRuntimeContext(module)->computeDeinitialize());
+    Result result = Result::SUCCESS;
+    for (auto it = moduleNames.rbegin(); it != moduleNames.rend(); ++it) {
+        const auto deinitializeResult =
+            getRuntimeContext(modulesMap.at(*it))->computeDeinitialize();
+        if (result == Result::SUCCESS && deinitializeResult != Result::SUCCESS &&
+            deinitializeResult != Result::RELOAD) {
+            result = deinitializeResult;
+        }
     }
 
     modulesMap.clear();
     moduleNames.clear();
 
-    return Result::SUCCESS;
+    return result;
 }
 
 Result PythonRuntime::compute(const std::vector<std::string>& modules,
