@@ -128,6 +128,10 @@ Result ConfigPath(std::string& path) {
         JST_ERROR("Failed to resolve app path because HOME is not set.");
         return Result::ERROR;
     }
+    if (!homePath.is_absolute()) {
+        JST_ERROR("Failed to resolve app path because HOME is not an absolute path.");
+        return Result::ERROR;
+    }
     path = PathToUtf8(homePath / ".config" / "cyberether");
     return Result::SUCCESS;
 }
@@ -148,6 +152,10 @@ Result CachePath(std::string& path) {
         JST_ERROR("Failed to resolve app path because HOME is not set.");
         return Result::ERROR;
     }
+    if (!homePath.is_absolute()) {
+        JST_ERROR("Failed to resolve app path because HOME is not an absolute path.");
+        return Result::ERROR;
+    }
     path = PathToUtf8(homePath / ".cache" / "cyberether");
     return Result::SUCCESS;
 }
@@ -160,6 +168,10 @@ Result ConfigPath(std::string& path) {
         JST_ERROR("Failed to resolve config path because APPDATA is not set.");
         return Result::ERROR;
     }
+    if (!appData.is_absolute()) {
+        JST_ERROR("Failed to resolve config path because APPDATA is not an absolute path.");
+        return Result::ERROR;
+    }
 
     path = PathToUtf8(appData / L"CyberEther");
     return Result::SUCCESS;
@@ -170,11 +182,19 @@ Result CachePath(std::string& path) {
     std::filesystem::path localAppData;
 
     if (EnvironmentPath("LOCALAPPDATA", localAppData) == Result::SUCCESS) {
+        if (!localAppData.is_absolute()) {
+            JST_ERROR("Failed to resolve cache path because LOCALAPPDATA is not an absolute path.");
+            return Result::ERROR;
+        }
         path = PathToUtf8(localAppData / L"CyberEther" / L"Cache");
         return Result::SUCCESS;
     }
 
     if (EnvironmentPath("APPDATA", appData) == Result::SUCCESS) {
+        if (!appData.is_absolute()) {
+            JST_ERROR("Failed to resolve cache path because APPDATA is not an absolute path.");
+            return Result::ERROR;
+        }
         path = PathToUtf8(appData / L"CyberEther" / L"Cache");
         return Result::SUCCESS;
     }
