@@ -253,6 +253,14 @@ TEST_CASE("Reshape Module - Validation rejects malformed shapes",
             RequireReshapeValidationError(impl, "4,4", {16});
         }
 
+        SECTION("shape with no dimensions") {
+            RequireReshapeValidationError(impl, "[]", {4});
+        }
+
+        SECTION("shape with trailing comma") {
+            RequireReshapeValidationError(impl, "[4,]", {4});
+        }
+
         SECTION("shape with zero dimension") {
             RequireReshapeValidationError(impl, "[0,4]", {4});
         }

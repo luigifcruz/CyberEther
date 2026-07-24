@@ -42,6 +42,17 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
+                 "Filter block rejects zero heads before define",
+                 "[modules][dsp][filter][block][validation]") {
+    Blocks::Filter config;
+    config.heads = 0;
+
+    REQUIRE(flowgraph->blockCreate("filter_zero_heads", config, {}) ==
+            Result::SUCCESS);
+    RequireRejectedBeforeDefine(viewBlock("filter_zero_heads"));
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
                  "Filter block uses heads over center length",
                  "[modules][dsp][filter][block]") {
     Parser::Map sourceConfig;

@@ -40,6 +40,23 @@ TEST_CASE_METHOD(FlowgraphFixture, "Filter taps uses heads over center length", 
     REQUIRE(timing->computeTime == 0.0f);
 }
 
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Filter taps rejects zero heads before define",
+                 "[modules][dsp][filter_taps][validation]") {
+    Blocks::FilterTaps config;
+    config.heads = 0;
+
+    REQUIRE(flowgraph->blockCreate("taps_zero_heads", config, {}) ==
+            Result::SUCCESS);
+
+    const auto block = viewBlock("taps_zero_heads");
+    REQUIRE(block.state == Block::State::Errored);
+    REQUIRE(block.interfaceInputs.empty());
+    REQUIRE(block.interfaceOutputs.empty());
+    REQUIRE(block.interfaceConfigs.empty());
+    REQUIRE(block.outputs.empty());
+}
+
 TEST_CASE_METHOD(FlowgraphFixture, "Filter taps heads can shrink stale center vector", "[modules][dsp][filter_taps][reconfigure]") {
     Blocks::FilterTaps config;
     config.taps = 51;

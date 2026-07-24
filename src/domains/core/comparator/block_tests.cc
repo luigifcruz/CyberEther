@@ -9,6 +9,7 @@
 #include "jetstream/domains/core/comparator/block.hh"
 #include "jetstream/domains/dsp/signal_generator/block.hh"
 #include "jetstream/domains/dsp/window/block.hh"
+#include "jetstream/logger.hh"
 #include "flowgraph_fixture.hh"
 
 using namespace Jetstream;
@@ -29,6 +30,31 @@ TEST_CASE_METHOD(FlowgraphFixture, "Comparator block creates and exposes output"
     REQUIRE(flowgraph->blockCreate("cmp_block", config, inputs) == Result::SUCCESS);
     REQUIRE(viewBlock("cmp_block").state == Block::State::Created);
     REQUIRE(viewBlock("cmp_block").outputs.count("error") == 1);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture, "Comparator block rejects input count bounds",
+                 "[modules][comparator][block][validation]") {
+    Blocks::Comparator config;
+    std::string name;
+
+    SECTION("fewer than two inputs") {
+        config.inputCount = 1;
+        name = "cmp_too_few";
+    }
+    SECTION("more than sixteen inputs") {
+        config.inputCount = 17;
+        name = "cmp_too_many";
+    }
+
+    REQUIRE(flowgraph->blockCreate(name, config, {}) == Result::SUCCESS);
+
+    const auto block = viewBlock(name);
+    REQUIRE(block.state == Block::State::Errored);
+    REQUIRE(block.interfaceInputs.empty());
+    REQUIRE(block.interfaceOutputs.empty());
+    REQUIRE(block.interfaceConfigs.empty());
+    REQUIRE(block.outputs.empty());
+    REQUIRE(JST_LOG_LAST_ERROR().find("[BLOCK_COMPARATOR]") != std::string::npos);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Comparator block handles disconnect and reconnect",

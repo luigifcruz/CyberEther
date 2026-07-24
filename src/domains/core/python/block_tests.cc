@@ -93,6 +93,38 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
+                 "Python block rejects unsupported runtime and excessive port counts",
+                 "[modules][python][block][validation]") {
+    Blocks::Python config;
+    RuntimeType runtime = RuntimeType::PYTHON;
+    std::string name;
+
+    SECTION("native runtime") {
+        runtime = RuntimeType::NATIVE;
+        name = "python_native";
+    }
+    SECTION("too many inputs") {
+        config.inputCount = 65;
+        name = "python_inputs_limit";
+    }
+    SECTION("too many outputs") {
+        config.outputCount = 65;
+        name = "python_outputs_limit";
+    }
+
+    REQUIRE(flowgraph->blockCreate(name, config, {}, DeviceType::CPU, runtime) ==
+            Result::SUCCESS);
+
+    const auto block = viewBlock(name);
+    REQUIRE(block.state == Block::State::Errored);
+    REQUIRE(block.interfaceInputs.empty());
+    REQUIRE(block.interfaceOutputs.empty());
+    REQUIRE(block.interfaceConfigs.empty());
+    REQUIRE(block.outputs.empty());
+    REQUIRE(JST_LOG_LAST_ERROR().find("[PYTHON]") != std::string::npos);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
                  "Python block can create and reconfigure a zero-port compute module",
                  "[modules][python][block]") {
     Blocks::Python config;

@@ -109,6 +109,12 @@ TEST_CASE("Duplicate Module - Full dtype coverage", "[modules][duplicate][all]")
 
 TEST_CASE("Duplicate Module - Validation contract",
           "[modules][duplicate][validation]") {
+    SECTION("empty output device is rejected") {
+        Modules::Duplicate config;
+        config.outputDevice.clear();
+        RequireCpuDuplicateValidationError(config);
+    }
+
     SECTION("invalid spelling stops before define and create") {
         Modules::Duplicate config;
         config.outputDevice = "invalid";
