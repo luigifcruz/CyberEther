@@ -75,6 +75,7 @@ struct BlockProbe {
     bool exposeChildOutput = false;
     bool recordChildReconfigureEvents = false;
     bool recordSchedulerEvents = false;
+    bool surfaceChild = false;
     std::vector<std::string> children;
     std::string childModuleType = kChildModuleType;
     std::string failingChildCreate;
@@ -577,6 +578,9 @@ struct LifecycleChildModule : Module::Impl,
     }
 
     Result define() override {
+        if (probe->surfaceChild) {
+            JST_CHECK(defineTaint(Module::Taint::SURFACE));
+        }
         if (probe->produceChildOutput) {
             JST_CHECK(defineInterfaceOutput("out"));
         }
@@ -1452,12 +1456,12 @@ TEST_CASE("Module validates real CPU tensor inputs and explicit taints",
         REQUIRE(bundle.module->destroy() == Result::SUCCESS);
     }
 
-    SECTION("invalid CPU shape stops before size validation and create") {
+    SECTION("invalid shape stops before size validation and create") {
         auto bundle = MakeModule();
         bundle.probe->declareInput = true;
-        Tensor tensor(DeviceType::CPU, DataType::F32, {1});
-        REQUIRE(tensor.squeezeDims(0) == Result::SUCCESS);
-        REQUIRE(tensor.device() == DeviceType::CPU);
+        bundle.probe->taint = Module::Taint::CROSS_DEVICE;
+        Tensor tensor;
+        REQUIRE(tensor.device() == DeviceType::None);
         REQUIRE_FALSE(tensor.validShape());
 
         REQUIRE(bundle.module->create("lifecycle-module",
@@ -2146,6 +2150,7 @@ TEST_CASE("Block child creation handles duplicates registry errors and incomplet
     SECTION("scheduler presentation add error destroys the untracked child") {
         bundle.probe->children = {"rejected"};
         bundle.probe->recordSchedulerEvents = true;
+        bundle.probe->surfaceChild = true;
         bundle.probe->failingChildPresentInitialize = "rejected";
 
         REQUIRE(bundle.block->create("lifecycle-block",
@@ -2168,6 +2173,7 @@ TEST_CASE("Block child creation handles duplicates registry errors and incomplet
     SECTION("scheduler runtime add error deinitializes and destroys the child") {
         bundle.probe->children = {"rejected"};
         bundle.probe->recordSchedulerEvents = true;
+        bundle.probe->surfaceChild = true;
         bundle.probe->failingChildInitialize = "rejected";
 
         REQUIRE(bundle.block->create("lifecycle-block",
