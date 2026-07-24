@@ -17,6 +17,7 @@ struct AmplitudeImpl : public Module::Impl, public DynamicConfig<Amplitude> {
  protected:
     Tensor input;
     Tensor output;
+    Index validatedResolvedAxis = 0;
     F32 scalingCoeff = 0.0f;
 };
 

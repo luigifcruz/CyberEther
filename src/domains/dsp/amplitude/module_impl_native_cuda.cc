@@ -4,6 +4,7 @@
 #include <jetstream/scheduler_context.hh>
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -15,6 +16,7 @@ namespace Jetstream::Modules {
 namespace {
 
 constexpr U64 kThreadsPerBlock = 256;
+constexpr U64 kMaxGridSizeX = std::numeric_limits<I32>::max();
 constexpr const char* kAmplitudeKernelName = "amplitude_kernel";
 constexpr const char* kAmplitudeKernelSource = R"(
 struct alignas(8) KernelComplex {
@@ -98,16 +100,12 @@ __device__ __forceinline__ float Magnitude(const InputValue value) {
 )";
     }
 
-    if (dtype == DataType::CF32) {
-        return R"(
+    return R"(
 using InputValue = KernelComplex;
 __device__ __forceinline__ float Magnitude(const InputValue value) {
     return sqrtf((value.real * value.real) + (value.imag * value.imag));
 }
 )";
-    }
-
-    return nullptr;
 }
 
 }  // namespace
@@ -116,6 +114,7 @@ struct AmplitudeImplNativeCuda : public AmplitudeImpl,
                                  public NativeCudaRuntimeContext,
                                  public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeInitialize() override;
@@ -127,17 +126,40 @@ struct AmplitudeImplNativeCuda : public AmplitudeImpl,
     std::unordered_map<std::string, std::string> kernelPieces;
 };
 
-Result AmplitudeImplNativeCuda::create() {
-    JST_CHECK(AmplitudeImpl::create());
+Result AmplitudeImplNativeCuda::validate() {
+    JST_CHECK(AmplitudeImpl::validate());
 
-    const char* inputDecls = BuildInputDecls(input.dtype());
-    if (!inputDecls) {
-        JST_ERROR("[MODULE_AMPLITUDE_NATIVE_CUDA] Unsupported input data type: {}.", input.dtype());
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::F32 &&
+        inputTensor.dtype() != DataType::CF32) {
+        JST_ERROR("[MODULE_AMPLITUDE_NATIVE_CUDA] Unsupported input data type: {}.",
+                  inputTensor.dtype());
         return Result::ERROR;
     }
 
+    const U64 blockCount = inputTensor.size() / kThreadsPerBlock +
+                           (inputTensor.size() % kThreadsPerBlock != 0);
+    if (blockCount > kMaxGridSizeX) {
+        JST_ERROR("[MODULE_AMPLITUDE_NATIVE_CUDA] Input size exceeds the CUDA grid limit.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
+Result AmplitudeImplNativeCuda::create() {
+    JST_CHECK(AmplitudeImpl::create());
+
     kernelPieces["KERNEL_CONSTANTS"] = BuildKernelConstants(input);
-    kernelPieces["INPUT_DECLS"] = inputDecls;
+    kernelPieces["INPUT_DECLS"] = BuildInputDecls(input.dtype());
     return Result::SUCCESS;
 }
 

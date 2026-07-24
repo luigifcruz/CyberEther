@@ -7,6 +7,9 @@
 #include <jetstream/domains/core/duplicate/module.hh>
 #include <jetstream/memory/axis.hh>
 
+#include <optional>
+#include <utility>
+
 namespace Jetstream::Blocks {
 
 struct DecimatorImpl : public Block::Impl,
@@ -17,6 +20,13 @@ struct DecimatorImpl : public Block::Impl,
     Result create() override;
 
  protected:
+    struct CandidatePlan {
+        std::string reshapeShape;
+        I64 childAxis;
+        bool deriveSampleRate = false;
+    };
+
+    std::optional<CandidatePlan> candidatePlan;
     std::shared_ptr<Modules::Reshape> reshapeConfig =
         std::make_shared<Modules::Reshape>();
     std::shared_ptr<Modules::Arithmetic> arithmeticConfig =
@@ -29,10 +39,61 @@ struct DecimatorImpl : public Block::Impl,
 
 Result DecimatorImpl::validate() {
     const auto& config = *candidate();
+    candidatePlan.reset();
 
     if (config.ratio == 0) {
         JST_ERROR("[BLOCK_DECIMATOR] Ratio must be greater than 0.");
         return Result::ERROR;
+    }
+
+    const auto input = inputs().find("buffer");
+    if (input != inputs().end() && input->second.resolved()) {
+        const Tensor& inputTensor = input->second.tensor;
+        const auto resolvedAxis = ResolveAxis(config.axis, inputTensor.rank());
+        if (!resolvedAxis) {
+            JST_ERROR("[BLOCK_DECIMATOR] Axis {} is out of bounds for "
+                      "input tensor rank {}.", config.axis, inputTensor.rank());
+            return Result::ERROR;
+        }
+
+        const U64 axisSize = inputTensor.shape(*resolvedAxis);
+        if (axisSize % config.ratio != 0) {
+            JST_ERROR("[BLOCK_DECIMATOR] Axis size {} is not divisible "
+                      "by ratio {}.", axisSize, config.ratio);
+            return Result::ERROR;
+        }
+
+        CandidatePlan plan;
+        plan.reshapeShape = "[";
+        for (U64 dimension = 0; dimension < inputTensor.shape().size(); ++dimension) {
+            if (dimension > 0) {
+                plan.reshapeShape += ", ";
+            }
+            if (dimension == *resolvedAxis) {
+                plan.reshapeShape += std::to_string(inputTensor.shape(dimension) /
+                                                    config.ratio);
+                plan.reshapeShape += ", ";
+                plan.reshapeShape += std::to_string(config.ratio);
+            } else {
+                plan.reshapeShape += std::to_string(inputTensor.shape(dimension));
+            }
+        }
+        plan.reshapeShape += "]";
+
+        // ResolveAxis guarantees this nonnegative child axis fits in I64.
+        plan.childAxis = static_cast<I64>(*resolvedAxis) + 1;
+
+        if (inputTensor.hasAttribute("sampleRate")) {
+            const std::any sampleRate = inputTensor.attribute("sampleRate");
+            const auto* sampleRateF32 = std::any_cast<F32>(&sampleRate);
+            if (sampleRateF32 == nullptr) {
+                JST_ERROR("[BLOCK_DECIMATOR] Sample rate attribute must be F32.");
+                return Result::ERROR;
+            }
+            plan.deriveSampleRate = true;
+        }
+
+        candidatePlan = std::move(plan);
     }
 
     if (axis != config.axis) {
@@ -78,51 +139,14 @@ Result DecimatorImpl::define() {
 
 Result DecimatorImpl::create() {
     const auto& inputPort = inputs().at("buffer");
-    const Tensor& inputTensor = inputPort.tensor;
-
-    const auto candidateAxis = ResolveAxis(axis, inputTensor.rank());
-    if (!candidateAxis) {
-        JST_ERROR("[BLOCK_DECIMATOR] Axis {} is out of bounds for "
-                  "input tensor rank {}.", axis, inputTensor.rank());
-        return Result::ERROR;
-    }
-    const Index resolvedAxis = *candidateAxis;
-
-    // Validate axis is divisible by ratio.
-
-    const U64 axisSize = inputTensor.shape(resolvedAxis);
-    if (axisSize % ratio != 0) {
-        JST_ERROR("[BLOCK_DECIMATOR] Axis size {} is not divisible "
-                  "by ratio {}.", axisSize, ratio);
+    if (!candidatePlan) {
+        JST_ERROR("[BLOCK_DECIMATOR] Input validation plan is unavailable.");
         return Result::ERROR;
     }
 
-    // Build reshape target shape.
-    // e.g. [8192] with axis=0, ratio=4 -> [2048, 4]
-    // e.g. [10, 8192] with axis=1, ratio=4 -> [10, 2048, 4]
-
-    const auto& shape = inputTensor.shape();
-    std::string shapeStr = "[";
-    for (U64 d = 0; d < shape.size(); ++d) {
-        if (d > 0) {
-            shapeStr += ", ";
-        }
-        if (d == resolvedAxis) {
-            shapeStr += std::to_string(shape[d] / ratio);
-            shapeStr += ", ";
-            shapeStr += std::to_string(ratio);
-        } else {
-            shapeStr += std::to_string(shape[d]);
-        }
-    }
-    shapeStr += "]";
-
-    reshapeConfig->shape = shapeStr;
-
-    // ResolveAxis guarantees this nonnegative child axis fits in I64.
-    const I64 childAxis = static_cast<I64>(resolvedAxis) + 1;
-    arithmeticConfig->axis = childAxis;
-    squeezeDimsConfig->axis = childAxis;
+    reshapeConfig->shape = candidatePlan->reshapeShape;
+    arithmeticConfig->axis = candidatePlan->childAxis;
+    squeezeDimsConfig->axis = candidatePlan->childAxis;
 
     // Create reshape module.
 
@@ -152,15 +176,20 @@ Result DecimatorImpl::create() {
                                  {"duplicate", "buffer"}));
 
     auto& outputTensor = outputs()["buffer"].tensor;
-    Tensor inputCopy = inputPort.tensor;
-    F32 decimationRatio = static_cast<F32>(ratio);
-
-    outputTensor.setDerivedAttribute("sampleRate", [inputCopy, decimationRatio]() -> std::any {
-        if (inputCopy.hasAttribute("sampleRate")) {
-            return std::any(std::any_cast<F32>(inputCopy.attribute("sampleRate")) / decimationRatio);
-        }
-        return std::any(0.0f);
-    });
+    if (candidatePlan->deriveSampleRate) {
+        const Tensor inputCopy = inputPort.tensor;
+        const F32 decimationRatio = static_cast<F32>(ratio);
+        JST_CHECK(outputTensor.setDerivedAttribute(
+            "sampleRate",
+            [inputCopy, decimationRatio]() -> std::any {
+                const std::any sampleRate = inputCopy.attribute("sampleRate");
+                const auto* sampleRateF32 = std::any_cast<F32>(&sampleRate);
+                if (sampleRateF32 == nullptr) {
+                    return {};
+                }
+                return std::any(*sampleRateF32 / decimationRatio);
+            }));
+    }
 
     return Result::SUCCESS;
 }

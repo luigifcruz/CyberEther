@@ -71,6 +71,10 @@ Module benchmarks use `JST_BENCHMARKS` and compile into the plugin alongside the
 implementation. The gain example registers F32 and CF32 cases at several input
 sizes for CyberEther's benchmark runner.
 
+Provider `validate()` hooks own backend capability checks before `create()` has
+side effects. Missing, malformed, and empty inputs remain framework-owned so
+provider validation should defer them to the common lifecycle checks.
+
 The `.cep` bundle can be loaded with CyberEther's plugin loader.
 
 For more details, see the [CyberEther plugin documentation](https://cyberether.org/docs/plugins).

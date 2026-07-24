@@ -1,8 +1,10 @@
 #include <jetstream/backend/devices/cuda/helpers.hh>
+#include <jetstream/memory/macros.hh>
 #include <jetstream/module_context.hh>
 #include <jetstream/registry.hh>
 #include <jetstream/runtime_context_native_cuda.hh>
 #include <jetstream/scheduler_context.hh>
+#include <jetstream/tools/numeric.hh>
 
 #include <cstdint>
 #include <limits>
@@ -15,6 +17,7 @@ namespace Jetstream::Modules {
 namespace {
 
 constexpr U64 kThreadsPerBlock = 256;
+constexpr U64 kMaxGridSizeX = std::numeric_limits<I32>::max();
 constexpr const char* kLayoutKernelName = "fft_layout";
 
 static_assert(sizeof(CF32) == sizeof(cufftComplex));
@@ -176,6 +179,7 @@ struct FftImplNativeCuda : public FftImpl,
                            public NativeCudaRuntimeContext,
                            public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeInitialize() override;
@@ -206,6 +210,78 @@ struct FftImplNativeCuda : public FftImpl,
     Tensor strideTensor;
 };
 
+Result FftImplNativeCuda::validate() {
+    JST_CHECK(FftImpl::validate());
+
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::F32 &&
+        inputTensor.dtype() != DataType::CF32) {
+        JST_ERROR("[MODULE_FFT_NATIVE_CUDA] Unsupported input data type: {}.",
+                  inputTensor.dtype());
+        return Result::ERROR;
+    }
+
+    const U64 candidateTransformLength = inputTensor.shape(validatedResolvedAxis);
+    const U64 candidateBatchSize =
+        validatedOutputElementCount / candidateTransformLength;
+    if (inputTensor.rank() > std::numeric_limits<I32>::max() ||
+        candidateTransformLength >
+            static_cast<U64>(std::numeric_limits<long long>::max()) ||
+        candidateBatchSize >
+            static_cast<U64>(std::numeric_limits<long long>::max())) {
+        JST_ERROR("[MODULE_FFT_NATIVE_CUDA] Transform dimensions exceed cuFFT limits.");
+        return Result::ERROR;
+    }
+
+    U64 alignedOutputSize = 0;
+    if (!detail::CheckedPageAlignedSize(validatedOutputSizeBytes,
+                                        alignedOutputSize)) {
+        JST_ERROR("[MODULE_FFT_NATIVE_CUDA] Output allocation size is too large.");
+        return Result::ERROR;
+    }
+
+    if (inputTensor.dtype() == DataType::F32) {
+        const U64 candidateSpectrumLength = (candidateTransformLength / 2) + 1;
+        U64 candidateSpectrumElementCount = 0;
+        U64 candidateSpectrumSizeBytes = 0;
+        U64 alignedSpectrumSize = 0;
+        if (!detail::CheckedMultiply(candidateBatchSize,
+                                     candidateSpectrumLength,
+                                     candidateSpectrumElementCount) ||
+            !detail::CheckedMultiply(candidateSpectrumElementCount,
+                                     static_cast<U64>(sizeof(CF32)),
+                                     candidateSpectrumSizeBytes) ||
+            !detail::CheckedPageAlignedSize(candidateSpectrumSizeBytes,
+                                            alignedSpectrumSize)) {
+            JST_ERROR("[MODULE_FFT_NATIVE_CUDA] Spectrum dimensions exceed CUDA limits.");
+            return Result::ERROR;
+        }
+    }
+
+    const bool requiresLayout =
+        inputTensor.dtype() == DataType::F32 || candidate()->invert ||
+        !inputTensor.contiguous() ||
+        validatedResolvedAxis != inputTensor.rank() - 1;
+    if (requiresLayout) {
+        const U64 blockCount = validatedOutputElementCount / kThreadsPerBlock +
+                               (validatedOutputElementCount % kThreadsPerBlock != 0);
+        if (blockCount > kMaxGridSizeX) {
+            JST_ERROR("[MODULE_FFT_NATIVE_CUDA] Input size exceeds the CUDA grid limit.");
+            return Result::ERROR;
+        }
+    }
+
+    return Result::SUCCESS;
+}
+
 Result FftImplNativeCuda::create() {
     JST_CHECK(FftImpl::create());
 
@@ -217,31 +293,18 @@ Result FftImplNativeCuda::create() {
     spectrumLength = (transformLength / 2) + 1;
     batchSize = input.size() / transformLength;
 
-    if (input.rank() > std::numeric_limits<I32>::max() ||
-        transformLength > static_cast<U64>(std::numeric_limits<long long>::max()) ||
-        batchSize > static_cast<U64>(std::numeric_limits<long long>::max())) {
-        JST_ERROR("[MODULE_FFT_NATIVE_CUDA] Transform dimensions exceed cuFFT limits.");
-        return Result::ERROR;
-    }
-
     if (input.dtype() == DataType::CF32 && output.dtype() == DataType::CF32) {
         transformType = TransformType::C2C;
         useDirectC2C = !invert && input.contiguous() &&
                        resolvedAxis == input.rank() - 1;
         useOutputC2C = !useDirectC2C && resolvedAxis == input.rank() - 1;
-        return Result::SUCCESS;
-    }
-
-    if (input.dtype() == DataType::F32 && output.dtype() == DataType::F32) {
+    } else {
         transformType = TransformType::R2R;
         useDirectR2R = !invert && input.contiguous() &&
                        resolvedAxis == input.rank() - 1;
-        return Result::SUCCESS;
     }
 
-    JST_ERROR("[MODULE_FFT_NATIVE_CUDA] Unsupported data type combination: {} -> {}.",
-              input.dtype(), output.dtype());
-    return Result::ERROR;
+    return Result::SUCCESS;
 }
 
 Result FftImplNativeCuda::computeInitialize() {

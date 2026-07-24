@@ -69,3 +69,19 @@ TEST_CASE_METHOD(FlowgraphFixture,
             Result::SUCCESS);
     REQUIRE(viewBlock("frame_invalid").state == Block::State::Errored);
 }
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Frame block delegates dtype validation to its module",
+                 "[modules][frame][block][validation]") {
+    Blocks::OnesTensor source;
+    source.shape = {16, 32};
+    source.dataType = "F64";
+    REQUIRE(flowgraph->blockCreate("frame_dtype_src", source, {}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["frame"].requested("frame_dtype_src", "buffer");
+
+    REQUIRE(flowgraph->blockCreate("frame_dtype", Blocks::Frame{}, inputs) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("frame_dtype").state == Block::State::Errored);
+}

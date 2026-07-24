@@ -15,14 +15,23 @@ struct FmImplNativeCpu : public FmImpl,
                          public NativeCpuRuntimeContext,
                          public Scheduler::Context {
  public:
-    Result create() override;
+    Result validate() override;
     Result computeSubmit() override;
 };
 
-Result FmImplNativeCpu::create() {
-    JST_CHECK(FmImpl::create());
+Result FmImplNativeCpu::validate() {
+    JST_CHECK(FmImpl::validate());
 
-    if (input.dtype() != DataType::CF32) {
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::CF32) {
         JST_ERROR("[MODULE_FM_NATIVE_CPU] Input must be complex (CF32).");
         return Result::ERROR;
     }

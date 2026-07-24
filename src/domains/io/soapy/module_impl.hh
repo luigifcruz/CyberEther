@@ -4,7 +4,6 @@
 #include <atomic>
 #include <cmath>
 #include <cstddef>
-#include <limits>
 #include <map>
 #include <thread>
 #include <vector>
@@ -39,67 +38,6 @@ inline bool SoapyRangeContains(const std::vector<SoapySDR::Range>& ranges, const
         }
     }
     return false;
-}
-
-inline Result ValidateSoapyConfig(const F32 frequency,
-                                  const F32 sampleRate,
-                                  const U64 numberOfBatches,
-                                  const U64 numberOfTimeSamples,
-                                  const U64 bufferMultiplier,
-                                  const std::vector<SoapySDR::Range>* sampleRateRanges = nullptr,
-                                  const std::vector<SoapySDR::Range>* frequencyRanges = nullptr) {
-    if (!std::isfinite(frequency)) {
-        JST_ERROR("[MODULE_SOAPY] Frequency must be finite.");
-        return Result::ERROR;
-    }
-
-    if (!std::isfinite(sampleRate) || sampleRate <= 0.0f) {
-        JST_ERROR("[MODULE_SOAPY] Sample rate must be finite and positive.");
-        return Result::ERROR;
-    }
-
-    if (numberOfBatches == 0) {
-        JST_ERROR("[MODULE_SOAPY] Number of batches cannot be zero.");
-        return Result::ERROR;
-    }
-
-    if (numberOfTimeSamples == 0) {
-        JST_ERROR("[MODULE_SOAPY] Number of time samples cannot be zero.");
-        return Result::ERROR;
-    }
-
-    if (bufferMultiplier == 0) {
-        JST_ERROR("[MODULE_SOAPY] Buffer multiplier cannot be zero.");
-        return Result::ERROR;
-    }
-
-    constexpr U64 maxElements = std::numeric_limits<std::size_t>::max() / sizeof(CF32);
-    if (numberOfBatches > maxElements / numberOfTimeSamples) {
-        JST_ERROR("[MODULE_SOAPY] Output buffer dimensions are too large.");
-        return Result::ERROR;
-    }
-
-    const U64 outputElements = numberOfBatches * numberOfTimeSamples;
-    if (outputElements > maxElements / bufferMultiplier) {
-        JST_ERROR("[MODULE_SOAPY] Internal buffer dimensions are too large.");
-        return Result::ERROR;
-    }
-
-    if (sampleRateRanges != nullptr && !sampleRateRanges->empty() &&
-        !SoapyRangeContains(*sampleRateRanges, sampleRate)) {
-        JST_ERROR("[MODULE_SOAPY] Sample rate ({:.2f} MHz) not supported.",
-                  sampleRate / 1e6);
-        return Result::ERROR;
-    }
-
-    if (frequencyRanges != nullptr && !frequencyRanges->empty() &&
-        !SoapyRangeContains(*frequencyRanges, frequency)) {
-        JST_ERROR("[MODULE_SOAPY] Frequency ({:.2f} MHz) not supported.",
-                  frequency / 1e6);
-        return Result::ERROR;
-    }
-
-    return Result::SUCCESS;
 }
 
 struct SoapyImpl : public Module::Impl, public DynamicConfig<Soapy> {
@@ -163,6 +101,10 @@ struct SoapyImpl : public Module::Impl, public DynamicConfig<Soapy> {
 
     std::vector<SoapySDR::Range> sampleRateRanges;
     std::vector<SoapySDR::Range> frequencyRanges;
+
+    U64 validatedOutputSizeBytes = 0;
+    U64 validatedInternalElements = 0;
+    U64 validatedInternalSizeBytes = 0;
 
     std::thread producer;
     std::atomic<bool> errored{false};

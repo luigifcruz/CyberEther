@@ -6,8 +6,31 @@
 #include "jetstream/domains/dsp/psk_demod/module.hh"
 
 #include <cmath>
+#include <limits>
 
 using namespace Jetstream;
+
+namespace {
+
+void RequirePskDemodValidationError(const Registry::ModuleRegistration& impl,
+                                    const Modules::PskDemod& config,
+                                    const TensorMap& inputs = {}) {
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("psk_demod", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
+TensorMap PskDemodInput(const Tensor& input) {
+    TensorMap inputs;
+    inputs["signal"].requested("test", "signal");
+    inputs["signal"].tensor = input;
+    return inputs;
+}
+
+}  // namespace
 
 TEST_CASE("PskDemod - Output Size Decimation", "[modules][psk_demod]") {
     auto implementations = Registry::ListAvailableModules("psk_demod");
@@ -231,6 +254,161 @@ TEST_CASE("PskDemod - Invalid Configuration", "[modules][psk_demod][validation]"
 
                 REQUIRE(ctx.run() == Result::ERROR);
             }
+        }
+    }
+}
+
+TEST_CASE("PskDemod - Direct configuration validation is input-phase independent",
+          "[modules][psk_demod][validation][config]") {
+    const auto implementations = Registry::ListAvailableModules("psk_demod");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            SECTION("sample rate must be finite") {
+                Modules::PskDemod config;
+                config.sampleRate = std::numeric_limits<F64>::quiet_NaN();
+                RequirePskDemodValidationError(impl, config);
+            }
+
+            SECTION("symbol rate must be finite") {
+                Modules::PskDemod config;
+                config.symbolRate = std::numeric_limits<F64>::infinity();
+                RequirePskDemodValidationError(impl, config);
+            }
+
+            SECTION("frequency bandwidth must be finite") {
+                Modules::PskDemod config;
+                config.frequencyLoopBandwidth =
+                    std::numeric_limits<F64>::quiet_NaN();
+                RequirePskDemodValidationError(impl, config);
+            }
+
+            SECTION("timing bandwidth must be finite") {
+                Modules::PskDemod config;
+                config.timingLoopBandwidth = std::numeric_limits<F64>::infinity();
+                RequirePskDemodValidationError(impl, config);
+            }
+
+            SECTION("damping factor must be finite") {
+                Modules::PskDemod config;
+                config.dampingFactor = std::numeric_limits<F64>::quiet_NaN();
+                RequirePskDemodValidationError(impl, config);
+            }
+
+            SECTION("effective samples per symbol must be at least two") {
+                Modules::PskDemod config;
+                config.sampleRate = 1999999.0;
+                config.symbolRate = 1000000.0;
+                RequirePskDemodValidationError(impl, config);
+            }
+
+            SECTION("samples per symbol must be safely representable") {
+                Modules::PskDemod config;
+                config.sampleRate = std::numeric_limits<F64>::max();
+                config.symbolRate = std::numeric_limits<F64>::min();
+                RequirePskDemodValidationError(impl, config);
+            }
+
+            SECTION("loop coefficients must remain usable") {
+                Modules::PskDemod config;
+                config.frequencyLoopBandwidth =
+                    std::numeric_limits<F64>::denorm_min();
+                RequirePskDemodValidationError(impl, config);
+            }
+
+            SECTION("constellation must be supported") {
+                Modules::PskDemod config;
+                config.pskType = "16psk";
+                RequirePskDemodValidationError(impl, config);
+            }
+        }
+    }
+}
+
+TEST_CASE("PskDemod - Direct input metadata validation precedes create",
+          "[modules][psk_demod][validation][input]") {
+    const auto implementations = Registry::ListAvailableModules("psk_demod");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Modules::PskDemod config;
+
+            SECTION("rank zero") {
+                Tensor input;
+                REQUIRE(input.create(impl.device, DataType::CF32, {1}) ==
+                        Result::SUCCESS);
+                REQUIRE(input.squeezeDims(0) == Result::SUCCESS);
+                REQUIRE(input.rank() == 0);
+                RequirePskDemodValidationError(impl, config, PskDemodInput(input));
+            }
+
+            SECTION("rank two") {
+                Tensor input;
+                REQUIRE(input.create(impl.device, DataType::CF32, {2, 2}) ==
+                        Result::SUCCESS);
+                RequirePskDemodValidationError(impl, config, PskDemodInput(input));
+            }
+
+            SECTION("insufficient backing capacity") {
+                Tensor input;
+                REQUIRE(input.create(impl.device, DataType::CF32, {1}) ==
+                        Result::SUCCESS);
+                REQUIRE(input.broadcastTo({8}) == Result::SUCCESS);
+                REQUIRE(input.rank() == 1);
+                REQUIRE(input.sizeBytes() > input.buffer().sizeBytes());
+                RequirePskDemodValidationError(impl, config, PskDemodInput(input));
+            }
+
+            SECTION("unsupported dtype") {
+                Tensor input;
+                REQUIRE(input.create(impl.device, DataType::F64, {8}) ==
+                        Result::SUCCESS);
+                RequirePskDemodValidationError(impl, config, PskDemodInput(input));
+            }
+
+            if constexpr (sizeof(std::size_t) < sizeof(U64)) {
+                SECTION("CPU allocation size") {
+                    const U64 inputSize =
+                        (static_cast<U64>(std::numeric_limits<std::size_t>::max()) /
+                         sizeof(CF32)) * 4;
+                    Tensor input;
+                    REQUIRE(input.create(reinterpret_cast<void*>(0x1000),
+                                         impl.device,
+                                         DataType::CF32,
+                                         {inputSize}) == Result::SUCCESS);
+                    RequirePskDemodValidationError(impl, config, PskDemodInput(input));
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("PskDemod - Exact ratio two is valid",
+          "[modules][psk_demod][validation][boundary]") {
+    const auto implementations = Registry::ListAvailableModules("psk_demod");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("psk_demod", impl.device, impl.runtime, impl.provider);
+
+            Modules::PskDemod config;
+            config.sampleRate = 2000000.0;
+            config.symbolRate = 1000000.0;
+            ctx.setConfig(config);
+
+            Tensor input;
+            REQUIRE(input.create(DeviceType::CPU, DataType::CF32, {8}) ==
+                    Result::SUCCESS);
+            for (U64 i = 0; i < input.size(); ++i) {
+                input.at<CF32>(i) = CF32(1.0f, 0.0f);
+            }
+            ctx.setInput("signal", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+            REQUIRE(ctx.output("signal").shape() == Shape{4});
         }
     }
 }

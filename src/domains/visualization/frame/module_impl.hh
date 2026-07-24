@@ -15,6 +15,7 @@ namespace Jetstream::Modules {
 
 struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
  public:
+    Result validate() override;
     Result define() override;
     Result create() override;
     Result destroy() override;

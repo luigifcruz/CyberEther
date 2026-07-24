@@ -597,8 +597,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Python block rejects malformed output tensor specs",
-                 "[modules][python][block]") {
+                 "Python block delegates malformed output tensor specs to its module",
+                 "[modules][python][block][validation]") {
     Blocks::Python config;
     config.code = "def compute(ctx):\n    pass\n";
     config.inputCount = 0;
@@ -610,4 +610,55 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     const auto block = viewBlock("python_bad_tensor_spec");
     REQUIRE(block.state == Block::State::Errored);
+    REQUIRE(block.outputs.empty());
+    REQUIRE(block.diagnostic.find("[PYTHON]") != std::string::npos);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Python block preserves live output after provider validation rejection",
+                 "[modules][python][block][validation][reconfigure]") {
+    Blocks::Python config;
+    config.code = "def compute(ctx):\n    ctx.outputs[0][...] = 9.0\n";
+    config.inputCount = 0;
+    config.outputCount = 1;
+    config.outputTensorSpecs = {{.shape = "[2]"}};
+
+    REQUIRE(flowgraph->blockCreate("python_rollback", config, {},
+                                   DeviceType::CPU, RuntimeType::PYTHON) == Result::SUCCESS);
+
+    auto block = viewBlock("python_rollback");
+    if (block.state == Block::State::Errored && OptionalPythonRuntimeUnavailableForBlock()) {
+        SUCCEED("Skipping Python block rollback test because the local Python runtime is unavailable.");
+        return;
+    }
+
+    REQUIRE(block.state == Block::State::Created);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    const auto outputId = block.outputs.at("output0").tensor.id();
+
+    Blocks::Python rejected = config;
+    rejected.outputTensorSpecs = {{.shape = "[2]", .device = "metal"}};
+    Parser::Map rejectedConfig;
+    REQUIRE(rejected.serialize(rejectedConfig) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockReconfigure("python_rollback", rejectedConfig) == Result::ERROR);
+
+    block = viewBlock("python_rollback");
+    REQUIRE(block.state == Block::State::Created);
+    REQUIRE(block.outputs.at("output0").tensor.id() == outputId);
+
+    Parser::Map saved;
+    REQUIRE(flowgraph->blockConfig("python_rollback", saved) == Result::SUCCESS);
+    Blocks::Python applied;
+    REQUIRE(applied.deserialize(saved) == Result::SUCCESS);
+    REQUIRE(applied.outputTensorSpecs == config.outputTensorSpecs);
+
+    Tensor output = block.outputs.at("output0").tensor;
+    for (Index i = 0; i < output.size(); ++i) {
+        output.at<F32>(i) = -1.0f;
+    }
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(viewBlock("python_rollback").outputs.at("output0").tensor.id() == outputId);
+    for (Index i = 0; i < output.size(); ++i) {
+        REQUIRE(std::abs(output.at<F32>(i) - 9.0f) < 1e-5f);
+    }
 }

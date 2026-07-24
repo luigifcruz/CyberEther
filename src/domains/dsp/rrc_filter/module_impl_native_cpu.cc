@@ -1,6 +1,8 @@
 #include <cstring>
+#include <limits>
 
 #include <jetstream/backend/devices/cpu/helpers.hh>
+#include <jetstream/memory/macros.hh>
 #include <jetstream/runtime_context_native_cpu.hh>
 #include <jetstream/scheduler_context.hh>
 #include <jetstream/module_context.hh>
@@ -14,6 +16,7 @@ struct RrcFilterImplNativeCpu : public RrcFilterImpl,
                                 public NativeCpuRuntimeContext,
                                 public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeSubmit() override;
@@ -25,6 +28,45 @@ struct RrcFilterImplNativeCpu : public RrcFilterImpl,
     std::function<Result()> kernel;
 };
 
+Result RrcFilterImplNativeCpu::validate() {
+    JST_CHECK(RrcFilterImpl::validate());
+
+    if (!inputs().contains("buffer")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("buffer").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::CF32 &&
+        inputTensor.dtype() != DataType::F32) {
+        JST_ERROR("[MODULE_RRC_FILTER_NATIVE_CPU] Unsupported input data type: {}.",
+                  inputTensor.dtype());
+        return Result::ERROR;
+    }
+
+    U64 coefficientBytes = 0;
+    U64 historyBytes = 0;
+    U64 alignedBytes = 0;
+    if (!detail::CheckedMultiply(candidate()->taps,
+                                 static_cast<U64>(sizeof(F32)),
+                                 coefficientBytes) ||
+        !detail::CheckedPageAlignedSize(coefficientBytes, alignedBytes) ||
+        alignedBytes > std::numeric_limits<std::size_t>::max() ||
+        !detail::CheckedMultiply(candidate()->taps,
+                                 static_cast<U64>(DataTypeSize(inputTensor.dtype())),
+                                 historyBytes) ||
+        !detail::CheckedPageAlignedSize(historyBytes, alignedBytes) ||
+        alignedBytes > std::numeric_limits<std::size_t>::max()) {
+        JST_ERROR("[MODULE_RRC_FILTER_NATIVE_CPU] Tap buffers exceed the supported allocation range.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 Result RrcFilterImplNativeCpu::create() {
     // Create parent.
 
@@ -34,17 +76,11 @@ Result RrcFilterImplNativeCpu::create() {
 
     if (input.dtype() == DataType::CF32) {
         kernel = [this]() { return kernelCF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (input.dtype() == DataType::F32) {
+    } else {
         kernel = [this]() { return kernelF32(); };
-        return Result::SUCCESS;
     }
 
-    JST_ERROR("[MODULE_RRC_FILTER_NATIVE_CPU] Unsupported input "
-              "data type: {}.", input.dtype());
-    return Result::ERROR;
+    return Result::SUCCESS;
 }
 
 Result RrcFilterImplNativeCpu::computeSubmit() {

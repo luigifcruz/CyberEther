@@ -30,6 +30,27 @@ void cleanupTestDirectory(const std::filesystem::path& path) {
     }
 }
 
+void requireFileWriterDtypeValidationError(const Registry::ModuleRegistration& impl,
+                                           const std::filesystem::path& path) {
+    Tensor input;
+    REQUIRE(input.create(impl.device, DataType::I32, {4}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["buffer"].requested("test", "buffer");
+    inputs["buffer"].tensor = input;
+
+    Modules::FileWriter config;
+    config.filepath = Platform::PathToUtf8(path);
+    config.overwrite = true;
+    config.recording = true;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("file_writer", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+}
+
 template<typename T>
 void expectFileWriterSuccess(const std::string& suffix,
                              const std::vector<T>& expectedData) {
@@ -251,19 +272,25 @@ TEST_CASE("FileWriter Module - Unsupported input dtype",
             const auto testPath = getTestFilePath("bad_dtype");
             cleanupTestFile(testPath);
 
-            TestContext ctx("file_writer", impl.device,
-                            impl.runtime, impl.provider);
+            requireFileWriterDtypeValidationError(impl, testPath);
+            REQUIRE(!std::filesystem::exists(testPath));
 
-            Modules::FileWriter config;
-            config.filepath = Platform::PathToUtf8(testPath);
-            config.overwrite = true;
-            config.recording = true;
-            ctx.setConfig(config);
+            const std::string existingData = "existing file contents";
+            {
+                std::ofstream file(testPath, std::ios::binary);
+                file.write(existingData.data(),
+                           static_cast<std::streamsize>(existingData.size()));
+            }
+            REQUIRE(std::filesystem::file_size(testPath) == existingData.size());
 
-            auto input = ctx.createTensor<I32>({4});
-            ctx.setInput("buffer", input);
+            requireFileWriterDtypeValidationError(impl, testPath);
+            REQUIRE(std::filesystem::file_size(testPath) == existingData.size());
 
-            REQUIRE(ctx.run() == Result::ERROR);
+            std::ifstream verify(testPath, std::ios::binary);
+            std::string actualData(existingData.size(), '\0');
+            verify.read(actualData.data(),
+                        static_cast<std::streamsize>(actualData.size()));
+            REQUIRE(actualData == existingData);
 
             cleanupTestFile(testPath);
         }

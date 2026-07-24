@@ -1,33 +1,38 @@
 #include "module_impl.hh"
 
 #include "jetstream/platform.hh"
+#include "jetstream/tools/numeric.hh"
 
 namespace Jetstream::Modules {
 
 Result FileReaderImpl::validate() {
     const auto& config = *candidate();
+    validatedDataType = DataType::None;
+    validatedOutputSizeBytes = 0;
 
     if (config.fileFormat != "raw") {
         JST_ERROR("[MODULE_FILE_READER] Invalid file format '{}'.", config.fileFormat);
         return Result::ERROR;
     }
 
-    const bool isDoubleType = config.dataType == "CF64" ||
-                              config.dataType == "F64";
-    const bool isFloatType = config.dataType == "CF32" ||
-                             config.dataType == "F32";
-    const bool isI8Type = config.dataType == "CI8" ||
-                          config.dataType == "I8";
-    const bool isU8Type = config.dataType == "CU8" ||
-                          config.dataType == "U8";
-    const bool isI16Type = config.dataType == "CI16" ||
-                           config.dataType == "I16";
-    const bool isU16Type = config.dataType == "CU16" ||
-                           config.dataType == "U16";
-
-    if (!isDoubleType && !isFloatType && !isI8Type && !isU8Type && !isI16Type && !isU16Type) {
-        JST_ERROR("[MODULE_FILE_READER] Invalid data type '{}'.", config.dataType);
-        return Result::ERROR;
+    const DataType dataType = NameToDataType(config.dataType);
+    switch (dataType) {
+        case DataType::CF64:
+        case DataType::F64:
+        case DataType::CF32:
+        case DataType::F32:
+        case DataType::CI8:
+        case DataType::I8:
+        case DataType::CU8:
+        case DataType::U8:
+        case DataType::CI16:
+        case DataType::I16:
+        case DataType::CU16:
+        case DataType::U16:
+            break;
+        default:
+            JST_ERROR("[MODULE_FILE_READER] Invalid data type '{}'.", config.dataType);
+            return Result::ERROR;
     }
 
     if (config.batchSize == 0) {
@@ -35,6 +40,17 @@ Result FileReaderImpl::validate() {
         return Result::ERROR;
     }
 
+    U64 outputSizeBytes = 0;
+    if (!detail::CheckedMultiply(config.batchSize,
+                                 static_cast<U64>(DataTypeSize(dataType)),
+                                 outputSizeBytes)) {
+        JST_ERROR("[MODULE_FILE_READER] Output byte size exceeds the supported "
+                  "range.");
+        return Result::ERROR;
+    }
+
+    validatedDataType = dataType;
+    validatedOutputSizeBytes = outputSizeBytes;
     return Result::SUCCESS;
 }
 
@@ -45,7 +61,7 @@ Result FileReaderImpl::define() {
 }
 
 Result FileReaderImpl::create() {
-    JST_CHECK(buffer.create(device(), NameToDataType(dataType), {batchSize}));
+    JST_CHECK(buffer.create(device(), validatedDataType, {batchSize}));
 
     outputs()["signal"].produced(name(), "signal", buffer);
     fileSize.publish(0);

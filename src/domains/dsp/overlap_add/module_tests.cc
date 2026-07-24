@@ -1,11 +1,45 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <limits>
+#include <memory>
+#include <unordered_set>
+
 #include "jetstream/testing.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/domains/dsp/overlap_add/module.hh"
 
 using namespace Jetstream;
+
+namespace {
+
+Tensor MakeOverlapAddTensor(const Registry::ModuleRegistration& impl,
+                            const DataType dtype,
+                            const Shape& shape) {
+    Tensor tensor;
+    REQUIRE(tensor.create(impl.device, dtype, shape) == Result::SUCCESS);
+    return tensor;
+}
+
+void RequireOverlapAddValidationError(const Registry::ModuleRegistration& impl,
+                                      const Modules::OverlapAdd& config,
+                                      const Tensor& buffer,
+                                      const Tensor& overlap) {
+    TensorMap inputs;
+    inputs["buffer"].requested("test", "buffer");
+    inputs["buffer"].tensor = buffer;
+    inputs["overlap"].requested("test", "overlap");
+    inputs["overlap"].tensor = overlap;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("overlap_add", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
+}  // namespace
 
 TEST_CASE("OverlapAdd - 1D F32 Basic",
           "[modules][overlap_add][f32]") {
@@ -188,158 +222,197 @@ TEST_CASE("OverlapAdd - Negative Axis",
     }
 }
 
-TEST_CASE("OverlapAdd - Too-Negative Axis Error",
-          "[modules][overlap_add][axis][error]") {
+TEST_CASE("OverlapAdd - Validation rejects out-of-range axes",
+          "[modules][overlap_add][validation][axis]") {
     const auto implementations = Registry::ListAvailableModules("overlap_add");
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
-        DYNAMIC_SECTION("Device: " << impl.device
-                        << " Runtime: " << impl.runtime) {
-            TestContext ctx("overlap_add", impl.device,
-                            impl.runtime, impl.provider);
-
-            Modules::OverlapAdd config;
-            config.axis = -3;
-            ctx.setConfig(config);
-
-            Tensor buffer;
-            REQUIRE(buffer.create(DeviceType::CPU, DataType::F32,
-                                  {2, 8}) == Result::SUCCESS);
-            Tensor overlap;
-            REQUIRE(overlap.create(DeviceType::CPU, DataType::F32,
-                                   {2, 3}) == Result::SUCCESS);
-            ctx.setInput("buffer", buffer);
-            ctx.setInput("overlap", overlap);
-
-            REQUIRE(ctx.run() != Result::SUCCESS);
-        }
-    }
-}
-
-TEST_CASE("OverlapAdd - Batch Axis Error",
-          "[modules][overlap_add][axis][error]") {
-    const auto implementations = Registry::ListAvailableModules("overlap_add");
-    REQUIRE(!implementations.empty());
-
-    for (const auto axis : {I64{0}, I64{-2}}) {
-        for (const auto& impl : implementations) {
-            DYNAMIC_SECTION("Axis: " << axis << " Device: " << impl.device
-                            << " Runtime: " << impl.runtime) {
-                TestContext ctx("overlap_add", impl.device,
-                                impl.runtime, impl.provider);
+        for (const I64 axis : {I64{2}, I64{-3}}) {
+            DYNAMIC_SECTION("Device: " << impl.device << " Runtime: "
+                            << impl.runtime << " Axis: " << axis) {
+                const Tensor buffer = MakeOverlapAddTensor(
+                    impl, DataType::F32, {2, 8});
+                const Tensor overlap = MakeOverlapAddTensor(
+                    impl, DataType::F32, {2, 3});
 
                 Modules::OverlapAdd config;
                 config.axis = axis;
-                ctx.setConfig(config);
-
-                Tensor buffer;
-                REQUIRE(buffer.create(DeviceType::CPU, DataType::F32,
-                                      {4, 3}) == Result::SUCCESS);
-                Tensor overlap;
-                REQUIRE(overlap.create(DeviceType::CPU, DataType::F32,
-                                       {2, 3}) == Result::SUCCESS);
-                ctx.setInput("buffer", buffer);
-                ctx.setInput("overlap", overlap);
-
-                REQUIRE(ctx.run() != Result::SUCCESS);
+                RequireOverlapAddValidationError(impl, config, buffer, overlap);
             }
         }
     }
 }
 
-TEST_CASE("OverlapAdd - Rank Mismatch Error",
-          "[modules][overlap_add][error]") {
-    auto implementations =
-        Registry::ListAvailableModules("overlap_add");
+TEST_CASE("OverlapAdd - Validation rejects the reserved batch axis",
+          "[modules][overlap_add][validation][axis]") {
+    const auto implementations = Registry::ListAvailableModules("overlap_add");
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
-        DYNAMIC_SECTION("Device: " << impl.device
-                        << " Runtime: " << impl.runtime) {
-            TestContext ctx("overlap_add", impl.device,
-                           impl.runtime, impl.provider);
+        for (const I64 axis : {I64{0}, I64{-2}}) {
+            DYNAMIC_SECTION("Device: " << impl.device << " Runtime: "
+                            << impl.runtime << " Axis: " << axis) {
+                const Tensor buffer = MakeOverlapAddTensor(
+                    impl, DataType::F32, {2, 4});
+                const Tensor overlap = MakeOverlapAddTensor(
+                    impl, DataType::F32, {1, 4});
 
+                Modules::OverlapAdd config;
+                config.axis = axis;
+                RequireOverlapAddValidationError(impl, config, buffer, overlap);
+            }
+        }
+    }
+}
+
+TEST_CASE("OverlapAdd - Validation rejects rank, shape, and extent mismatches",
+          "[modules][overlap_add][validation][shape]") {
+    const auto implementations = Registry::ListAvailableModules("overlap_add");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: "
+                        << impl.runtime) {
+            Modules::OverlapAdd config;
+            config.axis = 1;
+
+            SECTION("ranks must match") {
+                const Tensor buffer = MakeOverlapAddTensor(
+                    impl, DataType::F32, {2, 4});
+                const Tensor overlap = MakeOverlapAddTensor(
+                    impl, DataType::F32, {2});
+                RequireOverlapAddValidationError(impl, config, buffer, overlap);
+            }
+
+            SECTION("non-overlap dimensions must match") {
+                const Tensor buffer = MakeOverlapAddTensor(
+                    impl, DataType::F32, {2, 4});
+                const Tensor overlap = MakeOverlapAddTensor(
+                    impl, DataType::F32, {3, 2});
+                RequireOverlapAddValidationError(impl, config, buffer, overlap);
+            }
+
+            SECTION("overlap extent must not exceed buffer extent") {
+                const Tensor buffer = MakeOverlapAddTensor(
+                    impl, DataType::F32, {2, 2});
+                const Tensor overlap = MakeOverlapAddTensor(
+                    impl, DataType::F32, {2, 3});
+                RequireOverlapAddValidationError(impl, config, buffer, overlap);
+            }
+        }
+    }
+}
+
+TEST_CASE("OverlapAdd - CPU validation rejects dtype and allocation errors",
+          "[modules][overlap_add][validation][cpu]") {
+    const auto implementations = Registry::ListAvailableModules("overlap_add");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        if (impl.device != DeviceType::CPU) {
+            continue;
+        }
+
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: "
+                        << impl.runtime) {
             Modules::OverlapAdd config;
             config.axis = 0;
 
-            ctx.setConfig(config);
+            SECTION("input dtypes must match exactly") {
+                const Tensor buffer = MakeOverlapAddTensor(
+                    impl, DataType::F32, {4});
+                const Tensor overlap = MakeOverlapAddTensor(
+                    impl, DataType::CF32, {2});
+                RequireOverlapAddValidationError(impl, config, buffer, overlap);
+            }
 
-            Tensor buffer;
-            REQUIRE(buffer.create(DeviceType::CPU, DataType::F32,
-                                  {4, 8}) == Result::SUCCESS);
-            Tensor overlap;
-            REQUIRE(overlap.create(DeviceType::CPU, DataType::F32,
-                                   {3}) == Result::SUCCESS);
+            SECTION("input dtype must be supported") {
+                const Tensor buffer = MakeOverlapAddTensor(
+                    impl, DataType::F64, {4});
+                const Tensor overlap = MakeOverlapAddTensor(
+                    impl, DataType::F64, {2});
+                RequireOverlapAddValidationError(impl, config, buffer, overlap);
+            }
 
-            ctx.setInput("buffer", buffer);
-            ctx.setInput("overlap", overlap);
-
-            REQUIRE(ctx.run() != Result::SUCCESS);
+            SECTION("allocation alignment must be representable") {
+                F32 storage = 0.0f;
+                const U64 extent = std::numeric_limits<U64>::max() / sizeof(F32);
+                Tensor buffer;
+                Tensor overlap;
+                REQUIRE(buffer.create(&storage, DeviceType::CPU, DataType::F32,
+                                      {extent}) == Result::SUCCESS);
+                REQUIRE(overlap.create(&storage, DeviceType::CPU, DataType::F32,
+                                       {1}) == Result::SUCCESS);
+                RequireOverlapAddValidationError(impl, config, buffer, overlap);
+            }
         }
     }
 }
 
-TEST_CASE("OverlapAdd - Non-Axis Shape Mismatch Error",
-          "[modules][overlap_add][error]") {
-    auto implementations =
-        Registry::ListAvailableModules("overlap_add");
+TEST_CASE("OverlapAdd - Equal overlap boundary preserves state across computes",
+          "[modules][overlap_add][state]") {
+    const auto implementations = Registry::ListAvailableModules("overlap_add");
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
-        DYNAMIC_SECTION("Device: " << impl.device
-                        << " Runtime: " << impl.runtime) {
-            TestContext ctx("overlap_add", impl.device,
-                           impl.runtime, impl.provider);
-
-            Modules::OverlapAdd config;
-            config.axis = 1;
-
-            ctx.setConfig(config);
-
-            Tensor buffer;
-            REQUIRE(buffer.create(DeviceType::CPU, DataType::F32,
-                                  {2, 8}) == Result::SUCCESS);
-            Tensor overlap;
-            REQUIRE(overlap.create(DeviceType::CPU, DataType::F32,
-                                   {3, 3}) == Result::SUCCESS);
-
-            ctx.setInput("buffer", buffer);
-            ctx.setInput("overlap", overlap);
-
-            REQUIRE(ctx.run() != Result::SUCCESS);
+        if (impl.device != DeviceType::CPU) {
+            continue;
         }
-    }
-}
 
-TEST_CASE("OverlapAdd - Dtype Mismatch Error",
-          "[modules][overlap_add][error]") {
-    auto implementations =
-        Registry::ListAvailableModules("overlap_add");
-    REQUIRE(!implementations.empty());
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: "
+                        << impl.runtime) {
+            Tensor buffer = MakeOverlapAddTensor(impl, DataType::F32, {3});
+            Tensor overlap = MakeOverlapAddTensor(impl, DataType::F32, {3});
+            buffer.at<F32>(0) = 1.0f;
+            buffer.at<F32>(1) = 2.0f;
+            buffer.at<F32>(2) = 3.0f;
+            overlap.at<F32>(0) = 10.0f;
+            overlap.at<F32>(1) = 20.0f;
+            overlap.at<F32>(2) = 30.0f;
 
-    for (const auto& impl : implementations) {
-        DYNAMIC_SECTION("Device: " << impl.device
-                        << " Runtime: " << impl.runtime) {
-            TestContext ctx("overlap_add", impl.device,
-                           impl.runtime, impl.provider);
+            TensorMap inputs;
+            inputs["buffer"].requested("test", "buffer");
+            inputs["buffer"].tensor = buffer;
+            inputs["overlap"].requested("test", "overlap");
+            inputs["overlap"].tensor = overlap;
 
             Modules::OverlapAdd config;
-            config.axis = 1;
+            config.axis = 0;
+            std::shared_ptr<Module> module;
+            REQUIRE(Registry::BuildModule("overlap_add", impl.device, impl.runtime,
+                                          impl.provider, module) == Result::SUCCESS);
+            REQUIRE(module->create("test", config, inputs) == Result::SUCCESS);
+            REQUIRE(module->state() == Module::State::CREATED);
+            REQUIRE(module->outputs().at("buffer").tensor.shape() == Shape{3});
 
-            ctx.setConfig(config);
+            Runtime runtime("test", impl.device, impl.runtime);
+            REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
+            std::unordered_set<std::string> skippedModules;
+            std::unordered_set<std::string> failedModules;
+            REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
 
-            Tensor buffer;
-            REQUIRE(buffer.create(DeviceType::CPU, DataType::F32,
-                                  {2, 8}) == Result::SUCCESS);
-            Tensor overlap;
-            REQUIRE(overlap.create(DeviceType::CPU, DataType::CF32,
-                                   {2, 3}) == Result::SUCCESS);
+            Tensor output = module->outputs().at("buffer").tensor;
+            REQUIRE(output.at<F32>(0) == 1.0f);
+            REQUIRE(output.at<F32>(1) == 2.0f);
+            REQUIRE(output.at<F32>(2) == 3.0f);
 
-            ctx.setInput("buffer", buffer);
-            ctx.setInput("overlap", overlap);
+            buffer.at<F32>(0) = 4.0f;
+            buffer.at<F32>(1) = 5.0f;
+            buffer.at<F32>(2) = 6.0f;
+            overlap.at<F32>(0) = 40.0f;
+            overlap.at<F32>(1) = 50.0f;
+            overlap.at<F32>(2) = 60.0f;
+            skippedModules.clear();
+            failedModules.clear();
+            REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
 
-            REQUIRE(ctx.run() != Result::SUCCESS);
+            REQUIRE(output.at<F32>(0) == 14.0f);
+            REQUIRE(output.at<F32>(1) == 25.0f);
+            REQUIRE(output.at<F32>(2) == 36.0f);
+
+            REQUIRE(runtime.destroy() == Result::SUCCESS);
+            REQUIRE(module->destroy() == Result::SUCCESS);
         }
     }
 }

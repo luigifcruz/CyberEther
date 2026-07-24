@@ -2,12 +2,15 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <limits>
 #include <stdexcept>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
 #include "jetstream/domains/visualization/lineplot/module.hh"
+#include "jetstream/module_interface.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/runtime.hh"
 #include "jetstream/testing.hh"
@@ -42,6 +45,41 @@ std::vector<F32> ReadSignalPoints(const std::shared_ptr<Module>& module) {
 
     const F32* data = readableSignalPoints->data<F32>();
     return {data, data + readableSignalPoints->size()};
+}
+
+void RequireLineplotValidationError(const Registry::ModuleRegistration& impl,
+                                    const Modules::Lineplot& config,
+                                    const Tensor& input) {
+    TensorMap inputs;
+    inputs["signal"].requested("test", "signal");
+    inputs["signal"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("lineplot", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->interface()->inputs().empty());
+}
+
+void RequireLineplotValidationError(const Registry::ModuleRegistration& impl,
+                                    const Modules::Lineplot& config,
+                                    const DataType dtype,
+                                    const Shape& shape,
+                                    const bool broadcast = false) {
+    Tensor input;
+    if (broadcast) {
+        REQUIRE(input.create(impl.device, dtype, Shape(shape.size(), 1)) ==
+                Result::SUCCESS);
+        REQUIRE(input.broadcastTo(shape) == Result::SUCCESS);
+    } else if (shape.empty()) {
+        REQUIRE(input.create(impl.device, dtype, {1}) == Result::SUCCESS);
+        REQUIRE(input.squeezeDims(0) == Result::SUCCESS);
+    } else {
+        REQUIRE(input.create(impl.device, dtype, shape) == Result::SUCCESS);
+    }
+
+    RequireLineplotValidationError(impl, config, input);
 }
 
 }  // namespace
@@ -81,49 +119,41 @@ TEST_CASE("Lineplot module rejects invalid configuration values",
 
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
-            Tensor input;
-            REQUIRE(input.create(DeviceType::CPU, DataType::F32, {64}) ==
-                    Result::SUCCESS);
-
             SECTION("averaging must be positive") {
-                TestContext ctx("lineplot", impl.device, impl.runtime, impl.provider);
                 Modules::Lineplot config;
                 config.averaging = 0;
-                ctx.setConfig(config);
-                ctx.setInput("signal", input);
-                REQUIRE(ctx.run() == Result::ERROR);
+                RequireLineplotValidationError(impl, config, DataType::F32, {64});
             }
 
             SECTION("decimation must be positive") {
-                TestContext ctx("lineplot", impl.device, impl.runtime, impl.provider);
                 Modules::Lineplot config;
                 config.decimation = 0;
-                ctx.setConfig(config);
-                ctx.setInput("signal", input);
-                REQUIRE(ctx.run() == Result::ERROR);
+                RequireLineplotValidationError(impl, config, DataType::F32, {64});
             }
 
             SECTION("grid dimensions must be at least two") {
-                TestContext ctx("lineplot", impl.device, impl.runtime, impl.provider);
                 Modules::Lineplot config;
                 config.numberOfVerticalLines = 1;
-                ctx.setConfig(config);
-                ctx.setInput("signal", input);
-                REQUIRE(ctx.run() == Result::ERROR);
+                RequireLineplotValidationError(impl, config, DataType::F32, {64});
 
                 config.numberOfVerticalLines = 11;
                 config.numberOfHorizontalLines = 1;
-                ctx.setConfig(config);
-                REQUIRE(ctx.run() == Result::ERROR);
+                RequireLineplotValidationError(impl, config, DataType::F32, {64});
             }
 
-            SECTION("thickness must be positive") {
-                TestContext ctx("lineplot", impl.device, impl.runtime, impl.provider);
-                Modules::Lineplot config;
-                config.thickness = 0.0f;
-                ctx.setConfig(config);
-                ctx.setInput("signal", input);
-                REQUIRE(ctx.run() == Result::ERROR);
+            SECTION("thickness must be finite and positive") {
+                for (const F32 thickness : {
+                         0.0f,
+                         -1.0f,
+                         std::numeric_limits<F32>::quiet_NaN(),
+                         std::numeric_limits<F32>::infinity(),
+                         -std::numeric_limits<F32>::infinity(),
+                     }) {
+                    Modules::Lineplot config;
+                    config.thickness = thickness;
+                    RequireLineplotValidationError(impl, config,
+                                                   DataType::F32, {64});
+                }
             }
         }
     }
@@ -137,31 +167,72 @@ TEST_CASE("Lineplot module rejects invalid input dtype and shape",
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
             SECTION("dtype must be F32") {
-                TestContext ctx("lineplot", impl.device, impl.runtime, impl.provider);
-                Tensor input;
-                REQUIRE(input.create(DeviceType::CPU, DataType::CF32, {64}) ==
-                        Result::SUCCESS);
-                ctx.setInput("signal", input);
-                REQUIRE(ctx.run() == Result::ERROR);
+                RequireLineplotValidationError(impl, Modules::Lineplot{},
+                                               DataType::CF32, {64});
             }
 
             SECTION("rank must be one or two") {
-                TestContext ctx("lineplot", impl.device, impl.runtime, impl.provider);
-                Tensor input;
-                REQUIRE(input.create(DeviceType::CPU, DataType::F32, {2, 2, 2}) ==
-                        Result::SUCCESS);
-                ctx.setInput("signal", input);
-                REQUIRE(ctx.run() == Result::ERROR);
+                RequireLineplotValidationError(impl, Modules::Lineplot{},
+                                               DataType::F32, {});
+                RequireLineplotValidationError(impl, Modules::Lineplot{},
+                                               DataType::F32, {2, 2, 2});
             }
 
             SECTION("effective number of elements must be at least two") {
-                TestContext ctx("lineplot", impl.device, impl.runtime, impl.provider);
-                Tensor input;
-                REQUIRE(input.create(DeviceType::CPU, DataType::F32, {1}) ==
-                        Result::SUCCESS);
-                ctx.setInput("signal", input);
-                REQUIRE(ctx.run() == Result::ERROR);
+                Modules::Lineplot config;
+                config.decimation = 2;
+                RequireLineplotValidationError(impl, config,
+                                               DataType::F32, {3});
             }
+        }
+    }
+}
+
+TEST_CASE("Lineplot module rejects malformed optional metadata during validation",
+          "[modules][lineplot][validation][metadata]") {
+    const auto implementations = Registry::ListAvailableModules("lineplot");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            for (const std::string& key : {std::string("frequency"),
+                                           std::string("sampleRate")}) {
+                Tensor input;
+                REQUIRE(input.create(impl.device, DataType::F32, {64}) ==
+                        Result::SUCCESS);
+                REQUIRE(input.setAttribute(key, F64{1000000.0}) ==
+                        Result::SUCCESS);
+                RequireLineplotValidationError(impl, Modules::Lineplot{}, input);
+            }
+        }
+    }
+}
+
+TEST_CASE("Lineplot module rejects unsupported rendering geometry during validation",
+          "[modules][lineplot][validation][size]") {
+    const auto implementations = Registry::ListAvailableModules("lineplot");
+    REQUIRE(!implementations.empty());
+
+    const U64 maxRenderScalarCount = std::min(
+        static_cast<U64>(std::numeric_limits<std::size_t>::max()) / sizeof(F32),
+        static_cast<U64>(std::numeric_limits<std::ptrdiff_t>::max()) / sizeof(F32));
+    const U64 maxElementCount = std::min({
+        static_cast<U64>(std::numeric_limits<U32>::max()),
+        static_cast<U64>(std::numeric_limits<U32>::max()) / 4 + 1,
+        maxRenderScalarCount / 2,
+        maxRenderScalarCount / 16 + 1,
+    });
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            RequireLineplotValidationError(impl, Modules::Lineplot{},
+                                           DataType::F32,
+                                           {maxElementCount + 1}, true);
+
+            Modules::Lineplot gridConfig;
+            gridConfig.numberOfVerticalLines = std::numeric_limits<U32>::max();
+            RequireLineplotValidationError(impl, gridConfig,
+                                           DataType::F32, {64});
         }
     }
 }

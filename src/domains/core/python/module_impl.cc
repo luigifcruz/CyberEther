@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <cctype>
-#include <exception>
+#include <charconv>
 #include <sstream>
+
+#include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Modules {
 
@@ -33,13 +35,6 @@ std::string ToUpper(std::string value) {
         return static_cast<char>(std::toupper(ch));
     });
     return value;
-}
-
-bool IsUnsignedInteger(const std::string& value) {
-    return !value.empty() &&
-           std::all_of(value.begin(), value.end(), [](const unsigned char ch) {
-               return std::isdigit(ch);
-           });
 }
 
 bool PythonDataTypeSupported(const DataType dtype) {
@@ -142,65 +137,22 @@ Result ParseShapeSpec(const std::string& spec,
             return Result::ERROR;
         }
 
-        if (!IsUnsignedInteger(token)) {
+        Index dimension = 0;
+        const auto* end = token.data() + token.size();
+        const auto [position, error] = std::from_chars(token.data(), end, dimension);
+        if (error != std::errc{} || position != end) {
             JST_ERROR("[PYTHON] Invalid {} shape dimension '{}'.", label, token);
             return Result::ERROR;
         }
 
-        try {
-            const auto dimension = static_cast<Index>(std::stoull(token));
-            if (dimension == 0) {
-                JST_ERROR("[PYTHON] {} shape dimensions must be greater than zero.", label);
-                return Result::ERROR;
-            }
-            parsed.push_back(dimension);
-        } catch (const std::exception&) {
-            JST_ERROR("[PYTHON] Invalid {} shape dimension '{}'.", label, token);
+        if (dimension == 0) {
+            JST_ERROR("[PYTHON] {} shape dimensions must be greater than zero.", label);
             return Result::ERROR;
         }
+        parsed.push_back(dimension);
     }
 
     shape = std::move(parsed);
-    return Result::SUCCESS;
-}
-
-Result ValidatePortSpecs(const Python& config) {
-    for (U64 i = 0; i < config.outputCount; ++i) {
-        const auto label = "output" + std::to_string(i);
-        const auto& spec = config.outputTensorSpecs.at(i);
-
-        DataType dtype = DataType::None;
-        JST_CHECK(ParseDataTypeSpec(spec.dtype, label, dtype));
-
-        Shape shape;
-        JST_CHECK(ParseShapeSpec(spec.shape, label, shape));
-
-        DeviceType device = DeviceType::None;
-        JST_CHECK(ParseDeviceSpec(spec.device, label, device));
-    }
-
-    return Result::SUCCESS;
-}
-
-Result ResolveOutputSpec(const U64 index,
-                         const std::vector<Python::TensorSpec>& specs,
-                         DataType& dtype,
-                         Shape& shape,
-                         DeviceType& device) {
-    const auto label = "output" + std::to_string(index);
-    const auto& spec = specs.at(index);
-
-    JST_CHECK(ParseDataTypeSpec(spec.dtype, label, dtype));
-
-    JST_CHECK(ParseShapeSpec(spec.shape, label, shape));
-
-    JST_CHECK(ParseDeviceSpec(spec.device, label, device));
-
-    if (device != DeviceType::CPU && device != DeviceType::CUDA) {
-        JST_ERROR("[PYTHON] Python tensor {} device must be CPU or CUDA (got {}).", label, device);
-        return Result::ERROR;
-    }
-
     return Result::SUCCESS;
 }
 
@@ -241,8 +193,39 @@ Result PythonImpl::validate() {
 
     normalizeOutputSpecs(config);
 
-    JST_CHECK(ValidatePortSpecs(config));
+    std::vector<OutputPlan> outputPlan;
+    outputPlan.reserve(config.outputCount);
+    for (U64 i = 0; i < config.outputCount; ++i) {
+        const auto label = "output" + std::to_string(i);
+        const auto& spec = config.outputTensorSpecs.at(i);
+        OutputPlan output;
 
+        JST_CHECK(ParseDataTypeSpec(spec.dtype, label, output.dtype));
+        JST_CHECK(ParseShapeSpec(spec.shape, label, output.shape));
+        JST_CHECK(ParseDeviceSpec(spec.device, label, output.device));
+
+        U64 elementCount = 1;
+        for (const U64 dimension : output.shape) {
+            if (!detail::CheckedMultiply(elementCount, dimension, elementCount)) {
+                JST_ERROR("[PYTHON] {} shape exceeds the supported layout range.", label);
+                return Result::ERROR;
+            }
+        }
+
+        U64 sizeBytes = 0;
+        if (!detail::CheckedMultiply(elementCount,
+                                     static_cast<U64>(DataTypeSize(output.dtype)),
+                                     sizeBytes)) {
+            JST_ERROR("[PYTHON] {} exceeds the supported byte range.", label);
+            return Result::ERROR;
+        }
+
+        output.elementCount = elementCount;
+        output.sizeBytes = sizeBytes;
+        outputPlan.push_back(std::move(output));
+    }
+
+    candidateOutputPlan = std::move(outputPlan);
     return Result::SUCCESS;
 }
 
@@ -268,20 +251,10 @@ Result PythonImpl::define() {
 }
 
 Result PythonImpl::create() {
-    normalizeOutputSpecs(*this);
-
-    if (outputCount == 0) {
-        return Result::SUCCESS;
-    }
-
-    for (U64 i = 0; i < outputCount; ++i) {
-        DataType outputDataType = DataType::None;
-        Shape outputShape;
-        DeviceType outputDevice = DeviceType::None;
-        JST_CHECK(ResolveOutputSpec(i, outputTensorSpecs, outputDataType, outputShape, outputDevice));
-
+    for (U64 i = 0; i < candidateOutputPlan.size(); ++i) {
+        const auto& plan = candidateOutputPlan[i];
         Tensor output;
-        JST_CHECK(output.create(outputDevice, outputDataType, outputShape));
+        JST_CHECK(output.create(plan.device, plan.dtype, plan.shape));
         outputs()[outputPortName(i)].produced(name(), outputPortName(i), output);
     }
 

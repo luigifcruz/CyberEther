@@ -1,5 +1,7 @@
 #include <any>
 #include <cmath>
+#include <limits>
+#include <optional>
 
 #include <jetstream/domains/dsp/filter_engine/block.hh>
 #include <jetstream/detail/block_impl.hh>
@@ -11,15 +13,148 @@
 #include <jetstream/domains/dsp/fft/module.hh>
 #include <jetstream/domains/dsp/fold/module.hh>
 #include <jetstream/domains/dsp/overlap_add/module.hh>
+#include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Blocks {
 
+namespace {
+
+struct FilterEngineCandidatePlan {
+    bool resample = false;
+    U64 padSize = 0;
+    U64 resamplerOffset = 0;
+    U64 resamplerSize = 0;
+};
+
+Result CalculateResampleHeuristics(const std::optional<F32>& sampleRateAttribute,
+                                    const std::optional<F32>& bandwidthAttribute,
+                                    const std::optional<F32>& centerAttribute,
+                                    U64 combinedSize,
+                                    FilterEngineCandidatePlan& plan) {
+    // Check if filter has all necessary attributes.
+
+    if (!sampleRateAttribute || !bandwidthAttribute || !centerAttribute) {
+        JST_WARN("[BLOCK_FILTER_ENGINE] Bypassing resampling because "
+                 "filter is not passing necessary attributes.");
+        return Result::SUCCESS;
+    }
+
+    const F32 sampleRate = *sampleRateAttribute;
+    const F32 bandwidth = *bandwidthAttribute;
+    const F32 center = *centerAttribute;
+
+    if (sampleRate <= 0.0f || bandwidth <= 0.0f) {
+        JST_WARN("[BLOCK_FILTER_ENGINE] Bypassing resampling because "
+                 "sampleRate ({}) or bandwidth ({}) is invalid.",
+                 sampleRate, bandwidth);
+        return Result::SUCCESS;
+    }
+
+    const F32 resamplerRatio = sampleRate / bandwidth;
+
+    if (!std::isfinite(resamplerRatio) || resamplerRatio <= 0.0f) {
+        JST_WARN("[BLOCK_FILTER_ENGINE] Bypassing resampling because "
+                 "resampler ratio ({}) is invalid.",
+                 resamplerRatio);
+        return Result::SUCCESS;
+    }
+
+    const F64 u64UpperBound =
+        std::ldexp(1.0, std::numeric_limits<U64>::digits);
+    if (resamplerRatio != std::floor(resamplerRatio)) {
+        JST_WARN("[BLOCK_FILTER_ENGINE] Bypassing resampling because "
+                 "filter bandwidth ({:.2f} MHz) is not a multiple "
+                 "of the signal sample rate ({:.2f} MHz).",
+                 bandwidth / 1e6f, sampleRate / 1e6f);
+        return Result::SUCCESS;
+    }
+
+    if (static_cast<F64>(resamplerRatio) >= u64UpperBound) {
+        JST_WARN("[BLOCK_FILTER_ENGINE] Bypassing resampling because "
+                 "resampler ratio ({}) exceeds the supported index range.",
+                 resamplerRatio);
+        return Result::SUCCESS;
+    }
+
+    const U64 integerRatio = static_cast<U64>(resamplerRatio);
+    if (plan.padSize % integerRatio != 0) {
+        JST_WARN("[BLOCK_FILTER_ENGINE] Bypassing resampling because "
+                 "filter tap size minus one ({}) is not a multiple "
+                 "of the resampler ratio ({}).",
+                 plan.padSize,
+                 integerRatio);
+        return Result::SUCCESS;
+    }
+
+    if (combinedSize % integerRatio != 0) {
+        JST_WARN("[BLOCK_FILTER_ENGINE] Bypassing resampling because "
+                 "filter tap size minus one ({}) plus signal "
+                 "size ({}) is not a multiple of the resampler "
+                 "ratio ({}).",
+                 plan.padSize, combinedSize - plan.padSize,
+                 integerRatio);
+        return Result::SUCCESS;
+    }
+
+    if (center != 0.0f) {
+        const F32 frequencyPerBin =
+            sampleRate / static_cast<F32>(combinedSize);
+        const F32 centerBin = center / frequencyPerBin;
+        const F64 roundedCenterBin = static_cast<F64>(std::round(centerBin));
+
+        if (!std::isfinite(centerBin) || !std::isfinite(roundedCenterBin) ||
+            roundedCenterBin <= -u64UpperBound || roundedCenterBin >= u64UpperBound) {
+            JST_ERROR("[BLOCK_FILTER_ENGINE] Filter center ({}) cannot be "
+                      "represented as a fold index.", center);
+            return Result::ERROR;
+        }
+
+        if (roundedCenterBin < 0.0) {
+            const F64 centerBinMagnitude = -roundedCenterBin;
+            if (!std::isfinite(centerBinMagnitude) ||
+                centerBinMagnitude >= u64UpperBound) {
+                JST_ERROR("[BLOCK_FILTER_ENGINE] Filter center ({}) cannot be "
+                          "represented as a fold index.", center);
+                return Result::ERROR;
+            }
+
+            const U64 magnitude = static_cast<U64>(centerBinMagnitude);
+            const U64 remainder = magnitude % combinedSize;
+            plan.resamplerOffset =
+                remainder == 0 ? 0 : combinedSize - remainder;
+        } else {
+            plan.resamplerOffset = static_cast<U64>(roundedCenterBin);
+        }
+
+        if (centerBin != std::floor(centerBin)) {
+            JST_WARN("[BLOCK_FILTER_ENGINE] Output will be shifted by "
+                     "{} MHz because filter center frequency "
+                     "({:.2f} MHz) is not a multiple of the "
+                     "frequency per bin ({} MHz).",
+                     (centerBin - std::floor(centerBin)) *
+                         frequencyPerBin / 1e6f,
+                     center / 1e6f,
+                     frequencyPerBin / 1e6f);
+        }
+    }
+
+    plan.resamplerSize = combinedSize / integerRatio;
+    plan.padSize /= integerRatio;
+    plan.resample = true;
+
+    return Result::SUCCESS;
+}
+
+}  // namespace
+
 struct FilterEngineImpl : public Block::Impl,
-                          public DynamicConfig<Blocks::FilterEngine> {
+                           public DynamicConfig<Blocks::FilterEngine> {
+    Result validate() override;
     Result define() override;
     Result create() override;
 
  protected:
+    std::optional<FilterEngineCandidatePlan> candidatePlan;
     std::shared_ptr<Modules::ExpandDims> expandDimsConfig =
         std::make_shared<Modules::ExpandDims>();
     std::shared_ptr<Modules::Pad> padSignalConfig =
@@ -40,15 +175,90 @@ struct FilterEngineImpl : public Block::Impl,
         std::make_shared<Modules::Unpad>();
     std::shared_ptr<Modules::OverlapAdd> overlapConfig =
         std::make_shared<Modules::OverlapAdd>();
-
- private:
-    bool calculateResampleHeuristics(const Tensor& filterTensor,
-                                     U64 filterSize,
-                                     U64 signalSize,
-                                     U64& padSize,
-                                     U64& resamplerOffset,
-                                     U64& resamplerSize);
 };
+
+Result FilterEngineImpl::validate() {
+    candidatePlan.reset();
+
+    const Tensor* signalTensor = nullptr;
+    const auto signal = inputs().find("signal");
+    if (signal != inputs().end() && signal->second.tensor.validShape()) {
+        signalTensor = &signal->second.tensor;
+        if (signalTensor->rank() == 0) {
+            JST_ERROR("[BLOCK_FILTER_ENGINE] Signal input must have at least "
+                      "one dimension.");
+            return Result::ERROR;
+        }
+        if (signalTensor->shape(signalTensor->rank() - 1) == 0) {
+            JST_ERROR("[BLOCK_FILTER_ENGINE] Signal input's last dimension "
+                      "cannot be zero.");
+            return Result::ERROR;
+        }
+    }
+
+    const Tensor* filterTensor = nullptr;
+    std::optional<F32> sampleRate;
+    std::optional<F32> bandwidth;
+    std::optional<F32> center;
+    const auto filter = inputs().find("filter");
+    if (filter != inputs().end() && filter->second.tensor.validShape()) {
+        filterTensor = &filter->second.tensor;
+        if (filterTensor->rank() == 0) {
+            JST_ERROR("[BLOCK_FILTER_ENGINE] Filter input must have at least "
+                      "one dimension.");
+            return Result::ERROR;
+        }
+        if (filterTensor->shape(filterTensor->rank() - 1) == 0) {
+            JST_ERROR("[BLOCK_FILTER_ENGINE] Filter input's last dimension "
+                      "cannot be zero.");
+            return Result::ERROR;
+        }
+
+        const auto readAttribute = [&](const char* key,
+                                       std::optional<F32>& value) -> Result {
+            if (!filterTensor->hasAttribute(key)) {
+                return Result::SUCCESS;
+            }
+
+            const std::any attribute = filterTensor->attribute(key);
+            const auto* typedAttribute = std::any_cast<F32>(&attribute);
+            if (typedAttribute == nullptr) {
+                JST_ERROR("[BLOCK_FILTER_ENGINE] Filter attribute '{}' must be "
+                          "F32.", key);
+                return Result::ERROR;
+            }
+
+            value = *typedAttribute;
+            return Result::SUCCESS;
+        };
+
+        JST_CHECK(readAttribute("sampleRate", sampleRate));
+        JST_CHECK(readAttribute("bandwidth", bandwidth));
+        JST_CHECK(readAttribute("center", center));
+    }
+
+    if (signalTensor != nullptr && filterTensor != nullptr) {
+        const U64 signalSize = signalTensor->shape(signalTensor->rank() - 1);
+        const U64 filterSize = filterTensor->shape(filterTensor->rank() - 1);
+        U64 combinedSize = 0;
+        if (!detail::CheckedAdd(signalSize, filterSize - 1, combinedSize)) {
+            JST_ERROR("[BLOCK_FILTER_ENGINE] Combined signal and filter extent "
+                      "exceeds the supported range.");
+            return Result::ERROR;
+        }
+
+        FilterEngineCandidatePlan plan;
+        plan.padSize = filterSize - 1;
+        JST_CHECK(CalculateResampleHeuristics(sampleRate,
+                                              bandwidth,
+                                              center,
+                                              combinedSize,
+                                              plan));
+        candidatePlan = plan;
+    }
+
+    return Result::SUCCESS;
+}
 
 Result FilterEngineImpl::define() {
     JST_CHECK(defineInterfaceInput("signal",
@@ -70,15 +280,8 @@ Result FilterEngineImpl::create() {
     const Tensor& signalTensor = signalPort.tensor;
     const Tensor& filterTensor = filterPort.tensor;
 
-    if (signalTensor.rank() == 0) {
-        JST_ERROR("[BLOCK_FILTER_ENGINE] Signal input must have at least "
-                  "one dimension.");
-        return Result::ERROR;
-    }
-
-    if (filterTensor.rank() == 0) {
-        JST_ERROR("[BLOCK_FILTER_ENGINE] Filter input must have at least "
-                  "one dimension.");
+    if (!candidatePlan) {
+        JST_ERROR("[BLOCK_FILTER_ENGINE] Input validation plan is unavailable.");
         return Result::ERROR;
     }
 
@@ -94,16 +297,10 @@ Result FilterEngineImpl::create() {
 
     // Calculate resampling parameters.
 
-    U64 padSize = filterSize - 1;
-    U64 resamplerOffset = 0;
-    U64 resamplerSize = 0;
-
-    const bool resample = calculateResampleHeuristics(filterTensor,
-                                                      filterSize,
-                                                      signalSize,
-                                                      padSize,
-                                                      resamplerOffset,
-                                                      resamplerSize);
+    const bool resample = candidatePlan->resample;
+    const U64 padSize = candidatePlan->padSize;
+    const U64 resamplerOffset = candidatePlan->resamplerOffset;
+    const U64 resamplerSize = candidatePlan->resamplerSize;
 
     // Expand signal dimensions for multi-head broadcasting.
 
@@ -218,101 +415,6 @@ Result FilterEngineImpl::create() {
                                  {"overlap", "buffer"}));
 
     return Result::SUCCESS;
-}
-
-bool FilterEngineImpl::calculateResampleHeuristics(const Tensor& filterTensor,
-                                                   U64 filterSize,
-                                                   U64 signalSize,
-                                                   U64& padSize,
-                                                   U64& resamplerOffset,
-                                                   U64& resamplerSize) {
-    // Check if filter has all necessary attributes.
-
-    if (!filterTensor.hasAttribute("sampleRate") ||
-        !filterTensor.hasAttribute("bandwidth") ||
-        !filterTensor.hasAttribute("center")) {
-        JST_WARN("[BLOCK_FILTER_ENGINE] Bypassing resampling because "
-                 "filter is not passing necessary attributes.");
-        return false;
-    }
-
-    const F32 sampleRate = std::any_cast<F32>(filterTensor.attribute("sampleRate"));
-    const F32 bandwidth = std::any_cast<F32>(filterTensor.attribute("bandwidth"));
-    const F32 center = std::any_cast<F32>(filterTensor.attribute("center"));
-
-    if (sampleRate <= 0.0f || bandwidth <= 0.0f) {
-        JST_WARN("[BLOCK_FILTER_ENGINE] Bypassing resampling because "
-                 "sampleRate ({}) or bandwidth ({}) is invalid.",
-                 sampleRate, bandwidth);
-        return false;
-    }
-
-    const F32 resamplerRatio = sampleRate / bandwidth;
-
-    if (!std::isfinite(resamplerRatio) || resamplerRatio <= 0.0f) {
-        JST_WARN("[BLOCK_FILTER_ENGINE] Bypassing resampling because "
-                 "resampler ratio ({}) is invalid.",
-                 resamplerRatio);
-        return false;
-    }
-
-    if (resamplerRatio != std::floor(resamplerRatio)) {
-        JST_WARN("[BLOCK_FILTER_ENGINE] Bypassing resampling because "
-                 "filter bandwidth ({:.2f} MHz) is not a multiple "
-                 "of the signal sample rate ({:.2f} MHz).",
-                 bandwidth / 1e6f, sampleRate / 1e6f);
-        return false;
-    }
-
-    if (static_cast<F32>(padSize) /
-        resamplerRatio != std::floor(
-        static_cast<F32>(padSize) / resamplerRatio)) {
-        JST_WARN("[BLOCK_FILTER_ENGINE] Bypassing resampling because "
-                 "filter tap size minus one ({}) is not a multiple "
-                 "of the resampler ratio ({}).",
-                 padSize,
-                 static_cast<U64>(resamplerRatio));
-        return false;
-    }
-
-    resamplerSize = filterSize + signalSize - 1;
-
-    if (static_cast<F32>(resamplerSize) /
-        resamplerRatio != std::floor(
-        static_cast<F32>(resamplerSize) / resamplerRatio)) {
-        JST_WARN("[BLOCK_FILTER_ENGINE] Bypassing resampling because "
-                 "filter tap size minus one ({}) plus signal "
-                 "size ({}) is not a multiple of the resampler "
-                 "ratio ({}).",
-                 padSize, signalSize,
-                 static_cast<U64>(resamplerRatio));
-        return false;
-    }
-
-    if (center != 0.0f) {
-        const F32 frequencyPerBin =
-            sampleRate / static_cast<F32>(resamplerSize);
-        const F32 centerBin = center / frequencyPerBin;
-
-        if (centerBin != std::floor(centerBin)) {
-            JST_WARN("[BLOCK_FILTER_ENGINE] Output will be shifted by "
-                     "{} MHz because filter center frequency "
-                     "({:.2f} MHz) is not a multiple of the "
-                     "frequency per bin ({} MHz).",
-                     (centerBin - std::floor(centerBin)) *
-                         frequencyPerBin / 1e6f,
-                     center / 1e6f,
-                     frequencyPerBin / 1e6f);
-        }
-
-        resamplerOffset =
-            static_cast<U64>(std::round(centerBin));
-    }
-
-    resamplerSize /= static_cast<U64>(resamplerRatio);
-    padSize /= static_cast<U64>(resamplerRatio);
-
-    return true;
 }
 
 JST_REGISTER_BLOCK(FilterEngineImpl,

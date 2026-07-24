@@ -8,13 +8,13 @@ namespace Jetstream::Modules {
 Result RrcFilterImpl::validate() {
     const auto& config = *candidate();
 
-    if (config.symbolRate <= 0.0f) {
+    if (!std::isfinite(config.symbolRate) || config.symbolRate <= 0.0f) {
         JST_ERROR("[MODULE_RRC_FILTER] Symbol rate must be "
                   "positive ({}).", config.symbolRate);
         return Result::ERROR;
     }
 
-    if (config.sampleRate <= 0.0f) {
+    if (!std::isfinite(config.sampleRate) || config.sampleRate <= 0.0f) {
         JST_ERROR("[MODULE_RRC_FILTER] Sample rate must be "
                   "positive ({}).", config.sampleRate);
         return Result::ERROR;
@@ -27,7 +27,8 @@ Result RrcFilterImpl::validate() {
         return Result::ERROR;
     }
 
-    if (config.rollOff < 0.0f || config.rollOff > 1.0f) {
+    if (!std::isfinite(config.rollOff) ||
+        config.rollOff < 0.0f || config.rollOff > 1.0f) {
         JST_ERROR("[MODULE_RRC_FILTER] Roll-off factor must be "
                   "between 0.0 and 1.0 ({}).", config.rollOff);
         return Result::ERROR;

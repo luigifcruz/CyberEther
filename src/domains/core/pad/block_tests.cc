@@ -2,7 +2,9 @@
 
 #include <algorithm>
 
+#include "jetstream/domains/core/ones_tensor/block.hh"
 #include "jetstream/domains/core/pad/block.hh"
+#include "jetstream/domains/dsp/signal_generator/block.hh"
 #include "jetstream/domains/dsp/window/block.hh"
 #include "flowgraph_fixture.hh"
 
@@ -52,4 +54,60 @@ TEST_CASE_METHOD(FlowgraphFixture, "Pad block rejects invalid axis",
     config.size = 1;
     REQUIRE(flowgraph->blockCreate("pad_bad", config, inputs) == Result::SUCCESS);
     REQUIRE(viewBlock("pad_bad").state == Block::State::Errored);
+    REQUIRE(viewBlock("pad_bad").outputs.empty());
+}
+
+TEST_CASE_METHOD(FlowgraphFixture, "Pad block delegates dtype validation to its module",
+                 "[modules][pad][block][validation]") {
+    Blocks::OnesTensor source;
+    source.shape = {4};
+    source.dataType = "F64";
+    REQUIRE(flowgraph->blockCreate("pad_dtype_src", source, {}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["unpadded"].requested("pad_dtype_src", "buffer");
+
+    Blocks::Pad config;
+    config.size = 1;
+    REQUIRE(flowgraph->blockCreate("pad_dtype", config, inputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("pad_dtype").state == Block::State::Errored);
+    REQUIRE(viewBlock("pad_dtype").outputs.empty());
+}
+
+TEST_CASE_METHOD(FlowgraphFixture, "Pad block preserves execution after rejected update",
+                 "[modules][pad][block][reconfigure][validation]") {
+    Blocks::SignalGenerator source;
+    source.signalType = "dc";
+    source.bufferSize = 3;
+    REQUIRE(flowgraph->blockCreate("pad_update_src", source, {}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["unpadded"].requested("pad_update_src", "signal");
+
+    Blocks::Pad config;
+    config.axis = 0;
+    config.size = 2;
+    REQUIRE(flowgraph->blockCreate("pad_update", config, inputs) == Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    Parser::Map update;
+    update["axis"] = I64{1};
+    REQUIRE(flowgraph->blockReconfigure("pad_update", update) == Result::ERROR);
+    REQUIRE(viewBlock("pad_update").state == Block::State::Created);
+
+    Parser::Map saved;
+    REQUIRE(flowgraph->blockConfig("pad_update", saved) == Result::SUCCESS);
+    REQUIRE(std::any_cast<I64>(saved.at("axis")) == config.axis);
+    REQUIRE(std::any_cast<U64>(saved.at("size")) == config.size);
+
+    Tensor output = viewBlock("pad_update").outputs.at("padded").tensor;
+    std::fill(output.data<F32>(), output.data<F32>() + output.size(), -1.0f);
+
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(output.shape() == Shape{5});
+    for (U64 index = 0; index < 3; ++index) {
+        REQUIRE(output.at<F32>(index) == 1.0f);
+    }
+    REQUIRE(output.at<F32>(3) == 0.0f);
+    REQUIRE(output.at<F32>(4) == 0.0f);
 }

@@ -9,19 +9,72 @@
 #include <new>
 #include <stdexcept>
 
+#include <jetstream/tools/numeric.hh>
+
 namespace Jetstream::Modules {
 
 Result SoapyImpl::validate() {
     const auto& config = *candidate();
-    const bool sameDevice = config.deviceString == deviceString;
+    validatedOutputSizeBytes = 0;
+    validatedInternalElements = 0;
+    validatedInternalSizeBytes = 0;
 
-    JST_CHECK(ValidateSoapyConfig(config.frequency,
-                                  config.sampleRate,
-                                  config.numberOfBatches,
-                                  config.numberOfTimeSamples,
-                                  config.bufferMultiplier,
-                                  sameDevice ? &sampleRateRanges : nullptr,
-                                  sameDevice ? &frequencyRanges : nullptr));
+    if (!std::isfinite(config.frequency)) {
+        JST_ERROR("[MODULE_SOAPY] Frequency must be finite.");
+        return Result::ERROR;
+    }
+
+    if (!std::isfinite(config.sampleRate) || config.sampleRate <= 0.0f) {
+        JST_ERROR("[MODULE_SOAPY] Sample rate must be finite and positive.");
+        return Result::ERROR;
+    }
+
+    if (config.numberOfBatches == 0) {
+        JST_ERROR("[MODULE_SOAPY] Number of batches cannot be zero.");
+        return Result::ERROR;
+    }
+
+    if (config.numberOfTimeSamples == 0) {
+        JST_ERROR("[MODULE_SOAPY] Number of time samples cannot be zero.");
+        return Result::ERROR;
+    }
+
+    if (config.bufferMultiplier == 0) {
+        JST_ERROR("[MODULE_SOAPY] Buffer multiplier cannot be zero.");
+        return Result::ERROR;
+    }
+
+    U64 outputElements = 0;
+    if (!detail::CheckedMultiply(config.numberOfBatches,
+                                 config.numberOfTimeSamples,
+                                 outputElements)) {
+        JST_ERROR("[MODULE_SOAPY] Output buffer dimensions are too large.");
+        return Result::ERROR;
+    }
+
+    U64 outputSizeBytes = 0;
+    if (!detail::CheckedMultiply(outputElements,
+                                 static_cast<U64>(sizeof(CF32)),
+                                 outputSizeBytes)) {
+        JST_ERROR("[MODULE_SOAPY] Output buffer layout is too large.");
+        return Result::ERROR;
+    }
+
+    U64 internalElements = 0;
+    U64 internalSizeBytes = 0;
+    if (!detail::CheckedMultiply(outputElements,
+                                 config.bufferMultiplier,
+                                 internalElements) ||
+        !detail::CheckedMultiply(internalElements,
+                                 static_cast<U64>(sizeof(CF32)),
+                                 internalSizeBytes)) {
+        JST_ERROR("[MODULE_SOAPY] Internal buffer layout is too large.");
+        return Result::ERROR;
+    }
+
+    validatedOutputSizeBytes = outputSizeBytes;
+    validatedInternalElements = internalElements;
+    validatedInternalSizeBytes = internalSizeBytes;
 
     return Result::SUCCESS;
 }
@@ -111,7 +164,7 @@ Result SoapyImpl::create() {
 
     try {
         JST_CHECK(buffer.create(device(), DataType::CF32, {numberOfBatches, numberOfTimeSamples}));
-        JST_CHECK(circularBuffer.resize(buffer.size() * bufferMultiplier));
+        JST_CHECK(circularBuffer.resize(validatedInternalElements));
     } catch (const std::bad_array_new_length&) {
         JST_ERROR("[MODULE_SOAPY] Internal buffer dimensions are too large.");
         return Result::ERROR;

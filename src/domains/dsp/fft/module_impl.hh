@@ -17,6 +17,10 @@ struct FftImpl : public Module::Impl, public DynamicConfig<Fft> {
  protected:
     Tensor input;
     Tensor output;
+    Index validatedResolvedAxis = 0;
+    Shape validatedOutputShape;
+    U64 validatedOutputElementCount = 0;
+    U64 validatedOutputSizeBytes = 0;
     Index resolvedAxis = 0;
 };
 

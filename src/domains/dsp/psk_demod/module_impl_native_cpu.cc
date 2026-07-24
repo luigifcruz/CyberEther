@@ -1,8 +1,10 @@
 #include <cmath>
 #include <complex>
 #include <algorithm>
+#include <limits>
 
 #include <jetstream/backend/devices/cpu/helpers.hh>
+#include <jetstream/memory/macros.hh>
 #include <jetstream/runtime_context_native_cpu.hh>
 #include <jetstream/scheduler_context.hh>
 #include <jetstream/module_context.hh>
@@ -18,15 +20,31 @@ struct PskDemodImplNativeCpu : public PskDemodImpl,
                                public NativeCpuRuntimeContext,
                                public Scheduler::Context {
  public:
-    Result create() override;
+    Result validate() final;
     Result computeSubmit() override;
 };
 
-Result PskDemodImplNativeCpu::create() {
-    JST_CHECK(PskDemodImpl::create());
+Result PskDemodImplNativeCpu::validate() {
+    JST_CHECK(PskDemodImpl::validate());
 
-    if (input.dtype() != DataType::CF32) {
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::CF32) {
         JST_ERROR("[MODULE_PSK_DEMOD_NATIVE_CPU] Input must be complex (CF32).");
+        return Result::ERROR;
+    }
+
+    U64 alignedOutputSize = 0;
+    if (!detail::CheckedPageAlignedSize(validatedOutputSizeBytes, alignedOutputSize) ||
+        alignedOutputSize > std::numeric_limits<std::size_t>::max()) {
+        JST_ERROR("[MODULE_PSK_DEMOD_NATIVE_CPU] Output allocation size is too large.");
         return Result::ERROR;
     }
 
@@ -60,9 +78,8 @@ Result PskDemodImplNativeCpu::computeSubmit() {
     CF32 prevSymbol = lastSymbol;
     CF32 prevDecision = lastDecision;
 
-    // Safety counter prevents infinite loops if configuration is pathological.
+    // Safety counter prevents infinite loops if state is disrupted.
     U64 iterations = 0;
-    const U64 maxIterations = outputSize * (samplesPerSymbol + 4);
 
     while (outputIndex < outputSize && iterations < maxIterations) {
         iterations++;

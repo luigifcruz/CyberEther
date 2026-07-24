@@ -22,16 +22,6 @@ struct WebsocketImpl : public Block::Impl,
 Result WebsocketImpl::validate() {
     const auto& config = *candidate();
 
-    const Result validationResult = Modules::ValidateWebsocketConfig(config.url,
-                                                                     config.dataType,
-                                                                     config.numberOfBatches,
-                                                                     config.numberOfTimeSamples,
-                                                                     config.bufferMultiplier);
-    if (validationResult != Result::SUCCESS &&
-        validationResult != Result::INCOMPLETE) {
-        return validationResult;
-    }
-
     if (url != config.url ||
         dataType != config.dataType ||
         numberOfBatches != config.numberOfBatches ||

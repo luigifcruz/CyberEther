@@ -29,6 +29,16 @@ Result PermutationImpl::validate() {
         seen[inputAxis] = true;
     }
 
+    if (inputs().contains("buffer")) {
+        const Tensor& inputTensor = inputs().at("buffer").tensor;
+        if (inputTensor.validShape() && inputTensor.size() > 0 &&
+            inputTensor.rank() != config.permutation.size()) {
+            JST_ERROR("[MODULE_PERMUTATION] Input tensor rank {} does not match permutation size {}.",
+                      inputTensor.rank(), config.permutation.size());
+            return Result::ERROR;
+        }
+    }
+
     return Result::SUCCESS;
 }
 
@@ -43,12 +53,6 @@ Result PermutationImpl::define() {
 
 Result PermutationImpl::create() {
     const Tensor& inputTensor = inputs().at("buffer").tensor;
-
-    if (inputTensor.rank() != permutation.size()) {
-        JST_ERROR("[MODULE_PERMUTATION] Input tensor rank {} does not match permutation size {}.",
-                  inputTensor.rank(), permutation.size());
-        return Result::ERROR;
-    }
 
     input = inputTensor;
     output = input.clone();

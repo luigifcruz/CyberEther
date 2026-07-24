@@ -26,6 +26,13 @@ struct ComparatorImpl : public Module::Impl, public DynamicConfig<Comparator> {
  protected:
     static std::string inputPortName(U64 index);
 
+    std::vector<Tensor> validatedInputTensors;
+    DeviceType validatedOutputDevice = DeviceType::None;
+    DataType validatedErrorDtype = DataType::None;
+    Shape validatedOutputShape;
+    U64 validatedOutputSizeBytes = 0;
+    bool validatedInputsReady = false;
+
     std::vector<Tensor> inputTensors;
     Tensor error;
 

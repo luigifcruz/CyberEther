@@ -2,6 +2,7 @@
 
 #include "jetstream/domains/core/range/block.hh"
 #include "jetstream/domains/dsp/amplitude/block.hh"
+#include "jetstream/domains/dsp/signal_generator/block.hh"
 #include "jetstream/domains/dsp/window/block.hh"
 #include "flowgraph_fixture.hh"
 
@@ -53,4 +54,19 @@ TEST_CASE_METHOD(FlowgraphFixture, "Range block orders reversed min/max",
     config.max = -1.0f;
     REQUIRE(flowgraph->blockCreate("range_reverse", config, rangeInputs) == Result::SUCCESS);
     REQUIRE(viewBlock("range_reverse").state == Block::State::Created);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Range block delegates input dtype validation to its module",
+                 "[modules][range][block][validation]") {
+    Blocks::SignalGenerator source;
+    source.signalDataType = "CF32";
+    REQUIRE(flowgraph->blockCreate("range_bad_src", source, {}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].requested("range_bad_src", "signal");
+
+    REQUIRE(flowgraph->blockCreate("range_bad", "range", {}, inputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("range_bad").state == Block::State::Errored);
+    REQUIRE(viewBlock("range_bad").outputs.empty());
 }

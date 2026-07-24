@@ -26,12 +26,6 @@ struct SoapyImpl : public Block::Impl, public DynamicConfig<Blocks::Soapy> {
 Result SoapyImpl::validate() {
     const auto& config = *candidate();
 
-    JST_CHECK(Modules::ValidateSoapyConfig(config.frequency,
-                                           config.sampleRate,
-                                           config.numberOfBatches,
-                                           config.numberOfTimeSamples,
-                                           config.bufferMultiplier));
-
     if (!std::isfinite(config.frequencyStep) || config.frequencyStep <= 0.0f) {
         JST_ERROR("[BLOCK_SOAPY] Frequency step must be finite and positive.");
         return Result::ERROR;

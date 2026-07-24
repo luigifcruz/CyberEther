@@ -8,8 +8,8 @@
 
 using namespace Jetstream;
 
-TEST_CASE("Blueprint gain block creates and computes",
-          "[blueprint][gain][block]") {
+TEST_CASE("Blueprint gain block computes after an in-place update",
+          "[blueprint][gain][block][reconfigure]") {
     Flowgraph flowgraph;
     REQUIRE(flowgraph.create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
 
@@ -39,6 +39,50 @@ TEST_CASE("Blueprint gain block creates and computes",
         REQUIRE_THAT(output.at<F32>(index),
                      Catch::Matchers::WithinAbs(3.0f, 1e-6f));
     }
+
+    const auto outputId = output.id();
+    Parser::Map update;
+    update["gain"] = F32{1.5f};
+    REQUIRE(flowgraph.blockReconfigure("gain", update) == Result::SUCCESS);
+
+    REQUIRE(flowgraph.view().block("gain", gain) == Result::SUCCESS);
+    REQUIRE(gain.state == Block::State::Created);
+    REQUIRE(gain.outputs.at("signal").tensor.id() == outputId);
+
+    REQUIRE(flowgraph.compute() == Result::SUCCESS);
+
+    REQUIRE(flowgraph.view().block("gain", gain) == Result::SUCCESS);
+    const Tensor updatedOutput = gain.outputs.at("signal").tensor;
+    for (U64 index = 0; index < updatedOutput.size(); ++index) {
+        REQUIRE_THAT(updatedOutput.at<F32>(index),
+                     Catch::Matchers::WithinAbs(1.5f, 1e-6f));
+    }
+
+    REQUIRE(flowgraph.blockDestroy("gain", false) == Result::SUCCESS);
+    REQUIRE(flowgraph.blockDestroy("source", false) == Result::SUCCESS);
+    REQUIRE(flowgraph.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Blueprint gain block propagates unsupported input validation",
+          "[blueprint][gain][block][validation]") {
+    Flowgraph flowgraph;
+    REQUIRE(flowgraph.create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+
+    Blocks::OnesTensor source;
+    source.shape = {4};
+    source.dataType = "F64";
+    REQUIRE(flowgraph.blockCreate("source", source, {}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].requested("source", "buffer");
+
+    Blocks::BlueprintGain config;
+    REQUIRE(flowgraph.blockCreate("gain", config, inputs) == Result::SUCCESS);
+
+    Flowgraph::View::BlockData gain;
+    REQUIRE(flowgraph.view().block("gain", gain) == Result::SUCCESS);
+    REQUIRE(gain.state == Block::State::Errored);
+    REQUIRE(gain.outputs.empty());
 
     REQUIRE(flowgraph.blockDestroy("gain", false) == Result::SUCCESS);
     REQUIRE(flowgraph.blockDestroy("source", false) == Result::SUCCESS);

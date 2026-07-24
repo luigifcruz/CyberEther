@@ -46,7 +46,7 @@ struct WaterfallImplNativeCuda : public WaterfallImpl,
                                  public NativeCudaRuntimeContext,
                                  public Scheduler::Context {
  public:
-    Result create() final;
+    Result validate() final;
 
     Result presentInitialize() override;
     Result presentSubmit() override;
@@ -58,22 +58,30 @@ struct WaterfallImplNativeCuda : public WaterfallImpl,
     bool kernelCreated = false;
 };
 
-Result WaterfallImplNativeCuda::create() {
-    JST_CHECK(WaterfallImpl::create());
+Result WaterfallImplNativeCuda::validate() {
+    JST_CHECK(WaterfallImpl::validate());
 
-    if (input.dtype() != DataType::F32) {
-        JST_ERROR("[MODULE_WATERFALL_NATIVE_CUDA] Unsupported input data type: {}.", input.dtype());
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::F32) {
+        JST_ERROR("[MODULE_WATERFALL_NATIVE_CUDA] Unsupported input data type: {}.",
+                  inputTensor.dtype());
         return Result::ERROR;
     }
 
-    if (numberOfElements == 0 || numberOfBatches == 0 || height == 0) {
-        JST_ERROR("[MODULE_WATERFALL_NATIVE_CUDA] Invalid zero-sized waterfall state.");
-        return Result::ERROR;
-    }
-
-    const U64 retainedBatches = std::min(numberOfBatches, height);
+    const U64 numberOfElements = inputTensor.shape(inputTensor.rank() - 1);
+    const U64 numberOfBatches = inputTensor.rank() == 2 ? inputTensor.shape(0) : 1;
+    const U64 retainedBatches = std::min(numberOfBatches, candidate()->height);
     const U64 elementCount = retainedBatches * numberOfElements;
-    const U64 blockCount = (elementCount + kThreadsPerBlock - 1) / kThreadsPerBlock;
+    const U64 blockCount = elementCount / kThreadsPerBlock +
+                           (elementCount % kThreadsPerBlock != 0);
     if (blockCount > std::numeric_limits<U32>::max()) {
         JST_ERROR("[MODULE_WATERFALL_NATIVE_CUDA] Waterfall size exceeds the CUDA grid limit.");
         return Result::ERROR;

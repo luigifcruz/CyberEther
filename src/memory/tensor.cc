@@ -77,7 +77,16 @@ struct Tensor::Impl {
         Result slice(const std::vector<Token>& slice);
         Result permute(const Shape& axes);
         U64 shapeToOffset(const std::initializer_list<U64>& coordinates) const;
+
+        bool operator==(const Layout&) const = default;
     } layout;
+
+    struct SlicePlanData {
+        Layout sourceLayout;
+        Layout resultLayout;
+        std::weak_ptr<Storage> storage;
+        DataType dtype = DataType::None;
+    };
 };
 
 Result Tensor::Impl::Layout::computeDefaultStrides() {
@@ -787,12 +796,48 @@ Result Tensor::broadcastTo(const Shape& newShape) {
     return Result::SUCCESS;
 }
 
+Result Tensor::planSlice(const std::vector<Token>& tokens, SlicePlan& plan) const {
+    if (!impl) {
+        return Result::ERROR;
+    }
+
+    auto candidate = impl->layout;
+    JST_CHECK(candidate.slice(tokens));
+
+    auto data = std::make_shared<Impl::SlicePlanData>();
+    data->sourceLayout = impl->layout;
+    data->resultLayout = std::move(candidate);
+    data->storage = impl->storage;
+    data->dtype = impl->dtype;
+    plan.data = std::move(data);
+
+    return Result::SUCCESS;
+}
+
 Result Tensor::slice(const std::vector<Token>& tokens) {
     if (!impl) {
         return Result::ERROR;
     }
+
     auto candidate = impl->layout;
     JST_CHECK(candidate.slice(tokens));
+    impl->layout = std::move(candidate);
+    return Result::SUCCESS;
+}
+
+Result Tensor::applySlicePlan(const SlicePlan& plan) {
+    if (!impl || !plan.data) {
+        return Result::ERROR;
+    }
+
+    const auto data = std::static_pointer_cast<const Impl::SlicePlanData>(plan.data);
+    if (data->storage.lock() != impl->storage || data->dtype != impl->dtype ||
+        data->sourceLayout != impl->layout) {
+        JST_ERROR("[MEMORY:TENSOR] Slice plan does not match tensor layout.");
+        return Result::ERROR;
+    }
+
+    auto candidate = data->resultLayout;
     impl->layout = std::move(candidate);
     return Result::SUCCESS;
 }

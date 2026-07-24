@@ -2,6 +2,7 @@
 #include <functional>
 #include <limits>
 
+#include <jetstream/memory/macros.hh>
 #include <jetstream/tools/automatic_iterator.hh>
 #include <jetstream/runtime_context_native_cpu.hh>
 #include <jetstream/scheduler_context.hh>
@@ -16,6 +17,7 @@ struct ComparatorImplNativeCpu : public ComparatorImpl,
                                  public NativeCpuRuntimeContext,
                                  public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeSubmit() override;
@@ -35,6 +37,30 @@ struct ComparatorImplNativeCpu : public ComparatorImpl,
     std::function<Result()> kernel;
 };
 
+Result ComparatorImplNativeCpu::validate() {
+    JST_CHECK(ComparatorImpl::validate());
+
+    if (!validatedInputsReady) {
+        return Result::SUCCESS;
+    }
+
+    const DataType dtype = validatedInputTensors.front().dtype();
+    if (dtype != DataType::F32 && dtype != DataType::CF32 &&
+        dtype != DataType::F64 && dtype != DataType::CF64) {
+        JST_ERROR("[MODULE_COMPARATOR_NATIVE_CPU] Unsupported data type '{}'.", dtype);
+        return Result::ERROR;
+    }
+
+    U64 alignedOutputSize = 0;
+    if (!detail::CheckedPageAlignedSize(validatedOutputSizeBytes, alignedOutputSize) ||
+        alignedOutputSize > std::numeric_limits<std::size_t>::max()) {
+        JST_ERROR("[MODULE_COMPARATOR_NATIVE_CPU] Output allocation size is too large.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 Result ComparatorImplNativeCpu::create() {
     JST_CHECK(ComparatorImpl::create());
 
@@ -42,26 +68,15 @@ Result ComparatorImplNativeCpu::create() {
 
     if (dtype == DataType::F32) {
         kernel = [this]() { return kernelF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (dtype == DataType::F64) {
+    } else if (dtype == DataType::F64) {
         kernel = [this]() { return kernelF64(); };
-        return Result::SUCCESS;
-    }
-
-    if (dtype == DataType::CF32) {
+    } else if (dtype == DataType::CF32) {
         kernel = [this]() { return kernelCF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (dtype == DataType::CF64) {
+    } else {
         kernel = [this]() { return kernelCF64(); };
-        return Result::SUCCESS;
     }
 
-    JST_ERROR("[MODULE_COMPARATOR_NATIVE_CPU] Unsupported data type '{}'.", dtype);
-    return Result::ERROR;
+    return Result::SUCCESS;
 }
 
 Result ComparatorImplNativeCpu::computeSubmit() {

@@ -42,6 +42,14 @@ struct SpectrumEngineImpl : public Block::Impl,
 Result SpectrumEngineImpl::validate() {
     const auto& config = *candidate();
 
+    const auto input = inputs().find("buffer");
+    if (input != inputs().end() && input->second.resolved() &&
+        !ResolveAxis(config.axis, input->second.tensor.rank())) {
+        JST_ERROR("[BLOCK_SPECTRUM_ENGINE] Axis {} is out of bounds for "
+                  "input tensor rank {}.", config.axis, input->second.tensor.rank());
+        return Result::ERROR;
+    }
+
     if (enableAgc != config.enableAgc) {
         return Result::RECREATE;
     }

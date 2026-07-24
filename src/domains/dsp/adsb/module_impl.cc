@@ -1,6 +1,7 @@
 #include "module_impl.hh"
 
 #include <algorithm>
+#include <any>
 #include <cmath>
 #include <limits>
 
@@ -9,6 +10,35 @@
 #include "resources/shaders/map_shaders.hh"
 
 namespace Jetstream::Modules {
+
+Result AdsbImpl::validate() {
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.hasAttribute("frequency")) {
+        const std::any value = inputTensor.attribute("frequency");
+        if (!std::any_cast<F32>(&value)) {
+            JST_ERROR("[MODULE_ADSB] Input frequency metadata must have type F32.");
+            return Result::ERROR;
+        }
+    }
+
+    if (inputTensor.hasAttribute("sampleRate")) {
+        const std::any value = inputTensor.attribute("sampleRate");
+        if (!std::any_cast<F32>(&value)) {
+            JST_ERROR("[MODULE_ADSB] Input sample rate metadata must have type F32.");
+            return Result::ERROR;
+        }
+    }
+
+    return Result::SUCCESS;
+}
 
 Result AdsbImpl::define() {
     JST_CHECK(defineTaint(Module::Taint::SURFACE));
@@ -22,19 +52,20 @@ Result AdsbImpl::create() {
 
     input = inputTensor;
 
-    if (input.size() == 0) {
-        JST_ERROR("[MODULE_ADSB] Input tensor cannot be empty.");
-        return Result::ERROR;
-    }
-
     if (input.hasAttribute("frequency")) {
-        JST_INFO("[MODULE_ADSB] Input frequency: {:.2f} MHz",
-                 std::any_cast<F32>(input.attribute("frequency")) / 1e6f);
+        const std::any value = input.attribute("frequency");
+        if (const auto* frequency = std::any_cast<F32>(&value)) {
+            JST_INFO("[MODULE_ADSB] Input frequency: {:.2f} MHz",
+                     *frequency / 1e6f);
+        }
     }
 
     if (input.hasAttribute("sampleRate")) {
-        JST_INFO("[MODULE_ADSB] Input sample rate: {:.2f} MHz",
-                 std::any_cast<F32>(input.attribute("sampleRate")) / 1e6f);
+        const std::any value = input.attribute("sampleRate");
+        if (const auto* sampleRate = std::any_cast<F32>(&value)) {
+            JST_INFO("[MODULE_ADSB] Input sample rate: {:.2f} MHz",
+                     *sampleRate / 1e6f);
+        }
     }
 
     // Allocate output tensors.

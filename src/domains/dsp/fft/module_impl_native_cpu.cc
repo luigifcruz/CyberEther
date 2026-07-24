@@ -2,11 +2,16 @@
 #define POCKETFFT_NO_MULTITHREADING
 #include "pocketfft.hh"
 
+#include <cstddef>
+#include <limits>
+
+#include <jetstream/memory/macros.hh>
 #include <jetstream/runtime_context_native_cpu.hh>
 #include <jetstream/scheduler_context.hh>
 #include <jetstream/module_context.hh>
 #include <jetstream/registry.hh>
 #include <jetstream/tools/automatic_iterator.hh>
+#include <jetstream/tools/numeric.hh>
 
 #include "module_impl.hh"
 
@@ -16,6 +21,7 @@ struct FftImplNativeCpu : public FftImpl,
                           public NativeCpuRuntimeContext,
                           public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeSubmit() override;
@@ -38,6 +44,57 @@ struct FftImplNativeCpu : public FftImpl,
     pocketfft::stride_t outputStride;
     pocketfft::shape_t axes;
 };
+
+Result FftImplNativeCpu::validate() {
+    JST_CHECK(FftImpl::validate());
+
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::F32 &&
+        inputTensor.dtype() != DataType::CF32) {
+        JST_ERROR("[MODULE_FFT_NATIVE_CPU] Unsupported input data type: {}.",
+                  inputTensor.dtype());
+        return Result::ERROR;
+    }
+
+    if (validatedOutputElementCount > std::numeric_limits<std::size_t>::max() ||
+        validatedOutputSizeBytes >
+            static_cast<U64>(std::numeric_limits<std::ptrdiff_t>::max())) {
+        JST_ERROR("[MODULE_FFT_NATIVE_CPU] Transform dimensions exceed pocketfft limits.");
+        return Result::ERROR;
+    }
+
+    U64 alignedOutputSize = 0;
+    if (!detail::CheckedPageAlignedSize(validatedOutputSizeBytes,
+                                        alignedOutputSize) ||
+        alignedOutputSize > std::numeric_limits<std::size_t>::max()) {
+        JST_ERROR("[MODULE_FFT_NATIVE_CPU] Output allocation size is too large.");
+        return Result::ERROR;
+    }
+
+    if (!candidate()->invert) {
+        for (Index axis = 0; axis < inputTensor.rank(); ++axis) {
+            U64 strideBytes = 0;
+            if (!detail::CheckedMultiply(inputTensor.stride(axis),
+                                         inputTensor.elementSize(),
+                                         strideBytes) ||
+                strideBytes >
+                    static_cast<U64>(std::numeric_limits<std::ptrdiff_t>::max())) {
+                JST_ERROR("[MODULE_FFT_NATIVE_CPU] Input strides exceed pocketfft limits.");
+                return Result::ERROR;
+            }
+        }
+    }
+
+    return Result::SUCCESS;
+}
 
 Result FftImplNativeCpu::create() {
     // Create parent.
@@ -76,22 +133,13 @@ Result FftImplNativeCpu::create() {
 
     if (input.dtype() == DataType::CF32 && output.dtype() == DataType::CF32) {
         kernel = [this]() { return kernelC2C(); };
-        return Result::SUCCESS;
-    }
-
-    if (input.dtype() == DataType::F32 && output.dtype() == DataType::CF32) {
+    } else if (input.dtype() == DataType::F32 && output.dtype() == DataType::CF32) {
         kernel = [this]() { return kernelR2C(); };
-        return Result::SUCCESS;
-    }
-
-    if (input.dtype() == DataType::F32 && output.dtype() == DataType::F32) {
+    } else {
         kernel = [this]() { return kernelR2R(); };
-        return Result::SUCCESS;
     }
 
-    JST_ERROR("[MODULE_FFT_NATIVE_CPU] Unsupported data type combination: {} -> {}.",
-              input.dtype(), output.dtype());
-    return Result::ERROR;
+    return Result::SUCCESS;
 }
 
 Result FftImplNativeCpu::computeSubmit() {

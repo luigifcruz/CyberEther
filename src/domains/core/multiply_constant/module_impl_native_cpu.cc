@@ -12,6 +12,7 @@ struct MultiplyConstantImplNativeCpu : public MultiplyConstantImpl,
                                        public NativeCpuRuntimeContext,
                                        public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeSubmit() override;
@@ -25,30 +26,53 @@ struct MultiplyConstantImplNativeCpu : public MultiplyConstantImpl,
     std::function<Result()> kernel;
 };
 
+Result MultiplyConstantImplNativeCpu::validate() {
+    JST_CHECK(MultiplyConstantImpl::validate());
+
+    if (!inputs().contains("factor")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("factor").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() == DataType::F32) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() == DataType::CF32) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() == DataType::F64) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() == DataType::CF64) {
+        return Result::SUCCESS;
+    }
+
+    JST_ERROR("[MODULE_MULTIPLY_CONSTANT_NATIVE_CPU] Unsupported data type '{}'.",
+              inputTensor.dtype());
+    return Result::ERROR;
+}
+
 Result MultiplyConstantImplNativeCpu::create() {
     JST_CHECK(MultiplyConstantImpl::create());
 
-    if (input.dtype() == DataType::F32 && output.dtype() == DataType::F32) {
+    if (input.dtype() == DataType::F32) {
         kernel = [this]() { return kernelF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (input.dtype() == DataType::CF32 && output.dtype() == DataType::CF32) {
+    } else if (input.dtype() == DataType::CF32) {
         kernel = [this]() { return kernelCF32(); };
-        return Result::SUCCESS;
-    }
-    if (input.dtype() == DataType::F64 && output.dtype() == DataType::F64) {
+    } else if (input.dtype() == DataType::F64) {
         kernel = [this]() { return kernelF64(); };
-        return Result::SUCCESS;
-    }
-
-    if (input.dtype() == DataType::CF64 && output.dtype() == DataType::CF64) {
+    } else {
         kernel = [this]() { return kernelCF64(); };
-        return Result::SUCCESS;
     }
 
-    JST_ERROR("[MODULE_MULTIPLY_CONSTANT_NATIVE_CPU] Unsupported data type '{}'.", input.dtype());
-    return Result::ERROR;
+    return Result::SUCCESS;
 }
 
 Result MultiplyConstantImplNativeCpu::computeSubmit() {

@@ -1,3 +1,6 @@
+#include <limits>
+
+#include <jetstream/memory/macros.hh>
 #include <jetstream/module_context.hh>
 #include <jetstream/registry.hh>
 #include <jetstream/runtime_context_python.hh>
@@ -30,6 +33,7 @@ struct PythonImplPython : public PythonImpl,
                           public PythonRuntimeContext,
                           public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
     Result destroy() final;
     Result reconfigure() final;
@@ -37,6 +41,43 @@ struct PythonImplPython : public PythonImpl,
  private:
     Result loadCompute(const std::string& source);
 };
+
+Result PythonImplPython::validate() {
+    const auto previousOutputPlan = candidateOutputPlan;
+    JST_CHECK(PythonImpl::validate());
+
+    for (U64 i = 0; i < candidateOutputPlan.size(); ++i) {
+        const auto& output = candidateOutputPlan[i];
+        const auto label = "output" + std::to_string(i);
+        if (output.device != DeviceType::CPU && output.device != DeviceType::CUDA) {
+            JST_ERROR("[PYTHON] Python tensor {} device must be CPU or CUDA (got {}).",
+                      label, output.device);
+            candidateOutputPlan = previousOutputPlan;
+            return Result::ERROR;
+        }
+
+#ifndef JETSTREAM_BACKEND_CUDA_AVAILABLE
+        if (output.device == DeviceType::CUDA) {
+            JST_ERROR("[PYTHON] Python tensor {} requires the unavailable CUDA backend.",
+                      label);
+            candidateOutputPlan = previousOutputPlan;
+            return Result::ERROR;
+        }
+#endif
+
+        if (output.device == DeviceType::CPU || output.device == DeviceType::CUDA) {
+            U64 alignedSize = 0;
+            if (!detail::CheckedPageAlignedSize(output.sizeBytes, alignedSize) ||
+                alignedSize > std::numeric_limits<std::size_t>::max()) {
+                JST_ERROR("[PYTHON] Python tensor {} allocation size is too large.", label);
+                candidateOutputPlan = previousOutputPlan;
+                return Result::ERROR;
+            }
+        }
+    }
+
+    return Result::SUCCESS;
+}
 
 Result PythonImplPython::loadCompute(const std::string& source) {
     const auto computeResult = createCompute(source,

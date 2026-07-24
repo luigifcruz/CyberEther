@@ -53,4 +53,11 @@ TEST_CASE_METHOD(FlowgraphFixture, "Arithmetic block rejects invalid operation",
     config.operation = "invalid";
     REQUIRE(flowgraph->blockCreate("arith_bad", config, inputs) == Result::SUCCESS);
     REQUIRE(viewBlock("arith_bad").state == Block::State::Errored);
+    REQUIRE(viewBlock("arith_bad").outputs.empty());
+
+    config.operation = "add";
+    config.axis = 1;
+    REQUIRE(flowgraph->blockCreate("arith_axis_bad", config, inputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("arith_axis_bad").state == Block::State::Errored);
+    REQUIRE(viewBlock("arith_axis_bad").outputs.empty());
 }

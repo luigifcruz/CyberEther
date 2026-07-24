@@ -7,6 +7,28 @@
 
 using namespace Jetstream;
 
+namespace {
+
+void RequireInvertValidationError(const Registry::ModuleRegistration& impl,
+                                  const Modules::Invert& config,
+                                  const DataType dtype) {
+    Tensor input;
+    REQUIRE(input.create(impl.device, dtype, {2, 3}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].requested("test", "signal");
+    inputs["signal"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("invert", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
+}  // namespace
+
 TEST_CASE("Invert Module - Alternating Sign", "[modules][invert][CF32]") {
     const auto implementations = Registry::ListAvailableModules("invert");
     REQUIRE(!implementations.empty());
@@ -44,11 +66,7 @@ TEST_CASE("Invert Module - Unsupported DType Error", "[modules][invert][error]")
 
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
-            TestContext ctx("invert", impl.device, impl.runtime, impl.provider);
-
-            auto input = ctx.createTensor<F32>({4});
-            ctx.setInput("signal", input);
-            REQUIRE(ctx.run() == Result::ERROR);
+            RequireInvertValidationError(impl, Modules::Invert{}, DataType::F32);
         }
     }
 }
@@ -143,13 +161,9 @@ TEST_CASE("Invert Module - Invalid Axis Error", "[modules][invert][axis][error]"
 
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
-            TestContext ctx("invert", impl.device, impl.runtime, impl.provider);
             Modules::Invert config;
             config.axis = -3;
-            ctx.setConfig(config);
-            auto input = ctx.createTensor<CF32>({2, 3});
-            ctx.setInput("signal", input);
-            REQUIRE(ctx.run() == Result::ERROR);
+            RequireInvertValidationError(impl, config, DataType::CF32);
         }
     }
 }

@@ -11,6 +11,7 @@ struct FrameImplNativeCpu : public FrameImpl,
                             public NativeCpuRuntimeContext,
                             public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result presentInitialize() override;
@@ -18,14 +19,29 @@ struct FrameImplNativeCpu : public FrameImpl,
     Result computeSubmit() override;
 };
 
-Result FrameImplNativeCpu::create() {
-    JST_CHECK(FrameImpl::create());
+Result FrameImplNativeCpu::validate() {
+    JST_CHECK(FrameImpl::validate());
 
-    if (input.dtype() != DataType::F32) {
-        JST_ERROR("[MODULE_FRAME_NATIVE_CPU] Unsupported input data type: {}.", input.dtype());
+    if (!inputs().contains("frame")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("frame").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::F32) {
+        JST_ERROR("[MODULE_FRAME_NATIVE_CPU] Unsupported input data type: {}.",
+                  inputTensor.dtype());
         return Result::ERROR;
     }
 
+    return Result::SUCCESS;
+}
+
+Result FrameImplNativeCpu::create() {
+    JST_CHECK(FrameImpl::create());
     return Result::SUCCESS;
 }
 

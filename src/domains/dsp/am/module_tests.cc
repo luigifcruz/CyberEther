@@ -6,8 +6,31 @@
 #include "jetstream/domains/dsp/am/module.hh"
 
 #include <cmath>
+#include <limits>
 
 using namespace Jetstream;
+
+namespace {
+
+void RequireAmValidationError(const Registry::ModuleRegistration& impl,
+                              const Modules::AM& config,
+                              const DataType dtype) {
+    Tensor input;
+    REQUIRE(input.create(impl.device, dtype, {16}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].requested("test", "signal");
+    inputs["signal"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("am", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
+}  // namespace
 
 TEST_CASE("AM - Constant Envelope Input", "[modules][am]") {
     auto implementations = Registry::ListAvailableModules("am");
@@ -46,6 +69,42 @@ TEST_CASE("AM - Constant Envelope Input", "[modules][am]") {
             const F32 lastSample = out.at<F32>(bufferSize - 1);
             REQUIRE_THAT(lastSample,
                          Catch::Matchers::WithinAbs(0.0f, 0.1f));
+        }
+    }
+}
+
+TEST_CASE("AM - Validation Rejects Invalid Configuration Before Create",
+          "[modules][am][validation]") {
+    auto implementations = Registry::ListAvailableModules("am");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            SECTION("sample rate must be finite and positive") {
+                Modules::AM config;
+                config.sampleRate = 0.0f;
+                RequireAmValidationError(impl, config, DataType::CF32);
+
+                config.sampleRate = std::numeric_limits<F32>::quiet_NaN();
+                RequireAmValidationError(impl, config, DataType::CF32);
+            }
+
+            SECTION("DC alpha must be finite and in range") {
+                Modules::AM config;
+                for (const F32 dcAlpha : {
+                         -0.1f,
+                         1.0f,
+                         std::numeric_limits<F32>::quiet_NaN(),
+                     }) {
+                    config.dcAlpha = dcAlpha;
+                    RequireAmValidationError(impl, config, DataType::CF32);
+                }
+            }
+
+            SECTION("native CPU input must be CF32") {
+                Modules::AM config;
+                RequireAmValidationError(impl, config, DataType::F32);
+            }
         }
     }
 }

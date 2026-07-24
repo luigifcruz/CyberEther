@@ -1,6 +1,8 @@
 #include <algorithm>
+#include <limits>
 
 #include <jetstream/backend/devices/cpu/helpers.hh>
+#include <jetstream/memory/macros.hh>
 #include <jetstream/runtime_context_native_cpu.hh>
 #include <jetstream/scheduler_context.hh>
 #include <jetstream/module_context.hh>
@@ -14,6 +16,7 @@ struct FoldImplNativeCpu : public FoldImpl,
                            public NativeCpuRuntimeContext,
                            public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeSubmit() override;
@@ -28,6 +31,35 @@ struct FoldImplNativeCpu : public FoldImpl,
     std::vector<U64> inputStrides;
     std::vector<U64> outputStrides;
 };
+
+Result FoldImplNativeCpu::validate() {
+    JST_CHECK(FoldImpl::validate());
+
+    if (!inputs().contains("buffer")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("buffer").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::CF32 &&
+        inputTensor.dtype() != DataType::F32) {
+        JST_ERROR("[MODULE_FOLD_NATIVE_CPU] Unsupported input data type: {}.",
+                  inputTensor.dtype());
+        return Result::ERROR;
+    }
+
+    U64 alignedOutputSize = 0;
+    if (!detail::CheckedPageAlignedSize(validatedOutputSizeBytes, alignedOutputSize) ||
+        alignedOutputSize > std::numeric_limits<std::size_t>::max()) {
+        JST_ERROR("[MODULE_FOLD_NATIVE_CPU] Output allocation size is too large.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
 
 Result FoldImplNativeCpu::create() {
     // Create parent.
@@ -54,17 +86,11 @@ Result FoldImplNativeCpu::create() {
 
     if (input.dtype() == DataType::CF32) {
         kernel = [this]() { return kernelCF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (input.dtype() == DataType::F32) {
+    } else {
         kernel = [this]() { return kernelF32(); };
-        return Result::SUCCESS;
     }
 
-    JST_ERROR("[MODULE_FOLD_NATIVE_CPU] Unsupported input "
-              "data type: {}.", input.dtype());
-    return Result::ERROR;
+    return Result::SUCCESS;
 }
 
 Result FoldImplNativeCpu::computeSubmit() {

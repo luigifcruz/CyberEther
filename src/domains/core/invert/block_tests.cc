@@ -40,6 +40,22 @@ TEST_CASE_METHOD(FlowgraphFixture, "Invert block input reconnect lifecycle",
     REQUIRE(viewBlock("invert_life").state == Block::State::Created);
 }
 
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Invert block delegates axis validation to its module",
+                 "[modules][invert][block][validation]") {
+    Blocks::Window source;
+    REQUIRE(flowgraph->blockCreate("invert_bad_src", source, {}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].requested("invert_bad_src", "window");
+
+    Blocks::Invert config;
+    config.axis = 1;
+    REQUIRE(flowgraph->blockCreate("invert_bad", config, inputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("invert_bad").state == Block::State::Errored);
+    REQUIRE(viewBlock("invert_bad").outputs.empty());
+}
+
 TEST_CASE_METHOD(FlowgraphFixture, "Integer config formats preserve signedness",
                  "[modules][invert][block][config][integer]") {
     REQUIRE(Blocks::Invert{}.axis == -1);

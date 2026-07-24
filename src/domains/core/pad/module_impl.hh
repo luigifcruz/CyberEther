@@ -8,12 +8,18 @@ namespace Jetstream::Modules {
 
 struct PadImpl : public Module::Impl, public DynamicConfig<Pad> {
  public:
+    Result validate() override;
     Result define() override;
     Result create() override;
 
  protected:
     Tensor input;
     Tensor output;
+
+    Index validatedResolvedAxis = 0;
+    U64 validatedInputAxisSize = 0;
+    U64 validatedOutputAxisSize = 0;
+    U64 validatedOutputSizeBytes = 0;
 
     Index resolvedAxis = 0;
     U64 inputAxisSize = 0;

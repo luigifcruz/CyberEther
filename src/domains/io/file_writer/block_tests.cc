@@ -128,6 +128,43 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
+                 "FileWriter block propagates module dtype validation",
+                 "[modules][io][file_writer][block][validation]") {
+    const auto inputPath = OutputPath("dtype_input");
+    const auto outputPath = OutputPath("dtype_output");
+    Cleanup(inputPath);
+    Cleanup(outputPath);
+
+    WriteRawFile(inputPath, std::vector<F64>{1.0});
+
+    Parser::Map readerConfig;
+    readerConfig["filepath"] = Platform::PathToUtf8(inputPath);
+    readerConfig["dataType"] = std::string("F64");
+    readerConfig["batchSize"] = std::string("1");
+    readerConfig["loop"] = std::string("false");
+    REQUIRE(flowgraph->blockCreate("writer_dtype_src", "file_reader",
+                                   readerConfig, {}) == Result::SUCCESS);
+
+    Parser::Map writerConfig;
+    writerConfig["filepath"] = Platform::PathToUtf8(outputPath);
+    writerConfig["overwrite"] = std::string("true");
+    writerConfig["recording"] = std::string("true");
+
+    TensorMap inputs;
+    inputs["buffer"].requested("writer_dtype_src", "signal");
+    REQUIRE(flowgraph->blockCreate("writer_dtype", "file_writer", writerConfig,
+                                   inputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("writer_dtype").state == Block::State::Errored);
+    REQUIRE(!std::filesystem::exists(outputPath));
+
+    REQUIRE(flowgraph->blockDestroy("writer_dtype", false) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockDestroy("writer_dtype_src", false) == Result::SUCCESS);
+
+    Cleanup(inputPath);
+    Cleanup(outputPath);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
                  "FileWriter block current bandwidth metric updates after a write",
                  "[modules][io][file_writer][block][metrics]") {
     const auto inputPath = OutputPath("bandwidth_input");

@@ -15,6 +15,7 @@ namespace Jetstream::Modules {
 namespace {
 
 constexpr U64 kThreadsPerBlock = 256;
+constexpr U64 kMaxGridSizeX = std::numeric_limits<I32>::max();
 constexpr const char* kLineplotKernelName = "lineplot_update";
 constexpr const char* kLineplotKernelSource = R"(
 extern "C" __global__ void lineplot_update(const float* input,
@@ -53,6 +54,7 @@ struct LineplotImplNativeCuda : public LineplotImpl,
                                 public NativeCudaRuntimeContext,
                                 public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result presentInitialize() override;
@@ -68,24 +70,37 @@ struct LineplotImplNativeCuda : public LineplotImpl,
     bool kernelCreated = false;
 };
 
+Result LineplotImplNativeCuda::validate() {
+    JST_CHECK(LineplotImpl::validate());
+
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::F32) {
+        JST_ERROR("[MODULE_LINEPLOT_NATIVE_CUDA] Unsupported input data type: {}.",
+                  inputTensor.dtype());
+        return Result::ERROR;
+    }
+
+    const U64 blockCount = validatedNumberOfElements / kThreadsPerBlock +
+                           (validatedNumberOfElements % kThreadsPerBlock != 0);
+    if (blockCount > kMaxGridSizeX) {
+        JST_ERROR("[MODULE_LINEPLOT_NATIVE_CUDA] Lineplot size exceeds the CUDA "
+                  "grid limit.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 Result LineplotImplNativeCuda::create() {
     JST_CHECK(LineplotImpl::create());
-
-    if (input.dtype() != DataType::F32) {
-        JST_ERROR("[MODULE_LINEPLOT_NATIVE_CUDA] Unsupported input data type: {}.", input.dtype());
-        return Result::ERROR;
-    }
-
-    if (numberOfElements == 0 || numberOfBatches == 0 || averaging == 0 || decimation == 0) {
-        JST_ERROR("[MODULE_LINEPLOT_NATIVE_CUDA] Invalid zero-sized lineplot state.");
-        return Result::ERROR;
-    }
-
-    const U64 blockCount = (numberOfElements + kThreadsPerBlock - 1) / kThreadsPerBlock;
-    if (blockCount > std::numeric_limits<U32>::max()) {
-        JST_ERROR("[MODULE_LINEPLOT_NATIVE_CUDA] Lineplot size exceeds the CUDA grid limit.");
-        return Result::ERROR;
-    }
 
     JST_CHECK(averagingBuffer.create(device(), DataType::F32, {numberOfElements}));
 

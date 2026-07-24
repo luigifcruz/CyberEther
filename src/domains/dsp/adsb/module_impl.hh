@@ -25,6 +25,7 @@ namespace Jetstream::Modules {
 
 struct AdsbImpl : public Module::Impl, public DynamicConfig<Adsb> {
  public:
+    Result validate() override;
     Result define() override;
     Result create() override;
     Result destroy() override;

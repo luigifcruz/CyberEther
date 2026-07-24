@@ -8,7 +8,7 @@
 using namespace Jetstream;
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Soapy block rejects invalid batch dimensions",
+                 "Soapy block delegates module configuration validation",
                  "[modules][io][soapy][block][validation]") {
     if (Registry::ListAvailableModules("soapy").empty()) {
         SUCCEED("Soapy module is unavailable in this build.");
@@ -16,37 +16,15 @@ TEST_CASE_METHOD(FlowgraphFixture,
     }
 
     Parser::Map config;
-    config["numberOfBatches"] = std::string("0");
+    config["sampleRate"] = 0.0f;
 
-    REQUIRE(flowgraph->blockCreate("soapy_invalid", "soapy", config, {}) ==
+    REQUIRE(flowgraph->blockCreate("soapy_bad_module_config", "soapy", config, {}) ==
             Result::SUCCESS);
-    REQUIRE(viewBlock("soapy_invalid").state ==
-            Block::State::Errored);
-}
-
-TEST_CASE_METHOD(FlowgraphFixture,
-                 "Soapy block rejects invalid sample dimensions",
-                 "[modules][io][soapy][block][validation]") {
-    if (Registry::ListAvailableModules("soapy").empty()) {
-        SUCCEED("Soapy module is unavailable in this build.");
-        return;
-    }
-
-    Parser::Map badSamples;
-    badSamples["numberOfTimeSamples"] = std::string("0");
-
-    REQUIRE(flowgraph->blockCreate("soapy_bad_samples", "soapy", badSamples,
-                                   {}) == Result::SUCCESS);
-    REQUIRE(viewBlock("soapy_bad_samples").state ==
-            Block::State::Errored);
-
-    Parser::Map badMultiplier;
-    badMultiplier["bufferMultiplier"] = std::string("0");
-
-    REQUIRE(flowgraph->blockCreate("soapy_bad_multiplier", "soapy",
-                                   badMultiplier, {}) == Result::SUCCESS);
-    REQUIRE(viewBlock("soapy_bad_multiplier").state ==
-            Block::State::Errored);
+    const auto block = viewBlock("soapy_bad_module_config");
+    REQUIRE(block.state == Block::State::Errored);
+    REQUIRE(block.outputs.empty());
+    REQUIRE_FALSE(block.interfaceConfigs.empty());
+    REQUIRE(block.diagnostic.find("[MODULE_SOAPY]") != std::string::npos);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
@@ -62,5 +40,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(flowgraph->blockCreate("soapy_bad_step", "soapy", config, {}) ==
             Result::SUCCESS);
-    REQUIRE(viewBlock("soapy_bad_step").state == Block::State::Errored);
+    const auto block = viewBlock("soapy_bad_step");
+    REQUIRE(block.state == Block::State::Errored);
+    REQUIRE(block.interfaceConfigs.empty());
+    REQUIRE(block.outputs.empty());
 }

@@ -1,8 +1,12 @@
 #include "module_impl.hh"
 
+#include <algorithm>
 #include <any>
+#include <cstddef>
+#include <limits>
 
 #include "jetstream/constants.hh"
+#include "jetstream/tools/numeric.hh"
 #include "resources/shaders/waterfall_shaders.hh"
 
 namespace Jetstream::Modules {
@@ -12,6 +16,39 @@ Result WaterfallImpl::validate() {
 
     if (config.height == 0 || config.height > 2048) {
         JST_ERROR("[MODULE_WATERFALL] Invalid height value '{}', must be between 1 and 2048.", config.height);
+        return Result::ERROR;
+    }
+
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.rank() == 0) {
+        JST_ERROR("[MODULE_WATERFALL] Input buffer rank is 0.");
+        return Result::ERROR;
+    }
+
+    if (inputTensor.rank() > 2) {
+        JST_ERROR("[MODULE_WATERFALL] Invalid input rank ({}), expected 1 or 2.",
+                  inputTensor.rank());
+        return Result::ERROR;
+    }
+
+    const U64 width = inputTensor.shape(inputTensor.rank() - 1);
+    U64 renderBinCount = 0;
+    const U64 maxRenderBinCount = std::min({
+        static_cast<U64>(std::numeric_limits<I32>::max()),
+        static_cast<U64>(std::numeric_limits<std::size_t>::max()) / sizeof(F32),
+        static_cast<U64>(std::numeric_limits<std::ptrdiff_t>::max()) / sizeof(F32),
+    });
+    if (!detail::CheckedMultiply(width, config.height, renderBinCount) ||
+        renderBinCount > maxRenderBinCount) {
+        JST_ERROR("[MODULE_WATERFALL] Render bin count exceeds the supported range.");
         return Result::ERROR;
     }
 
@@ -30,13 +67,6 @@ Result WaterfallImpl::create() {
     // Get input tensor.
 
     input = inputs().at("signal").tensor;
-
-    // Check input rank.
-
-    if (input.rank() > 2) {
-        JST_ERROR("[MODULE_WATERFALL] Invalid input rank ({}), expected 1 or 2.", input.rank());
-        return Result::ERROR;
-    }
 
     // Calculate parameters.
 
@@ -62,8 +92,14 @@ Result WaterfallImpl::destroy() {
 }
 
 Result WaterfallImpl::reconfigure() {
-    // TODO: Implement update logic for WaterfallImpl.
-    return Result::RECREATE;
+    const auto& config = *candidate();
+
+    if (config.height != height) {
+        return Result::RECREATE;
+    }
+
+    interpolate = config.interpolate;
+    return Result::SUCCESS;
 }
 
 Result WaterfallImpl::createPresent() {

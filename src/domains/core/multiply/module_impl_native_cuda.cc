@@ -4,6 +4,7 @@
 #include <jetstream/scheduler_context.hh>
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -15,6 +16,7 @@ namespace Jetstream::Modules {
 namespace {
 
 constexpr U64 kThreadsPerBlock = 256;
+constexpr U64 kMaxGridSizeX = std::numeric_limits<I32>::max();
 constexpr const char* kMultiplyKernelName = "multiply_kernel";
 constexpr const char* kMultiplyKernelSource = R"(
 struct alignas(8) KernelComplex {
@@ -83,8 +85,7 @@ __device__ __forceinline__ Value MultiplyValue(const Value a, const Value b) {
 )";
     }
 
-    if (dtype == DataType::CF32) {
-        return R"(
+    return R"(
 using Value = KernelComplex;
 __device__ __forceinline__ Value MultiplyValue(const Value a, const Value b) {
     Value result;
@@ -93,9 +94,6 @@ __device__ __forceinline__ Value MultiplyValue(const Value a, const Value b) {
     return result;
 }
 )";
-    }
-
-    return nullptr;
 }
 
 }  // namespace
@@ -104,6 +102,7 @@ struct MultiplyImplNativeCuda : public MultiplyImpl,
                                 public NativeCudaRuntimeContext,
                                 public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeInitialize() override;
@@ -115,22 +114,47 @@ struct MultiplyImplNativeCuda : public MultiplyImpl,
     std::unordered_map<std::string, std::string> kernelPieces;
 };
 
+Result MultiplyImplNativeCuda::validate() {
+    JST_CHECK(MultiplyImpl::validate());
+
+    if (!inputs().contains("a") || !inputs().contains("b")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& tensorA = inputs().at("a").tensor;
+    const Tensor& tensorB = inputs().at("b").tensor;
+    if (!tensorA.validShape() || !tensorB.validShape() ||
+        tensorA.size() == 0 || tensorB.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (tensorA.dtype() != tensorB.dtype()) {
+        JST_ERROR("[MODULE_MULTIPLY_NATIVE_CUDA] Input data types '{}' and '{}' do not match.",
+                  tensorA.dtype(), tensorB.dtype());
+        return Result::ERROR;
+    }
+
+    if (tensorA.dtype() != DataType::F32 && tensorA.dtype() != DataType::CF32) {
+        JST_ERROR("[MODULE_MULTIPLY_NATIVE_CUDA] Unsupported data type '{}'.",
+                  tensorA.dtype());
+        return Result::ERROR;
+    }
+
+    const U64 blockCount = validatedOutputElementCount / kThreadsPerBlock +
+                           (validatedOutputElementCount % kThreadsPerBlock != 0);
+    if (blockCount > kMaxGridSizeX) {
+        JST_ERROR("[MODULE_MULTIPLY_NATIVE_CUDA] Output size exceeds the CUDA grid limit.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 Result MultiplyImplNativeCuda::create() {
     JST_CHECK(MultiplyImpl::create());
 
-    if (a.dtype() != b.dtype() || a.dtype() != c.dtype()) {
-        JST_ERROR("[MODULE_MULTIPLY_NATIVE_CUDA] Input and output data types must match.");
-        return Result::ERROR;
-    }
-
-    const char* valueDecls = BuildValueDecls(a.dtype());
-    if (!valueDecls) {
-        JST_ERROR("[MODULE_MULTIPLY_NATIVE_CUDA] Unsupported data type '{}'.", a.dtype());
-        return Result::ERROR;
-    }
-
     kernelPieces["KERNEL_CONSTANTS"] = BuildKernelConstants(a, b, c);
-    kernelPieces["VALUE_DECLS"] = valueDecls;
+    kernelPieces["VALUE_DECLS"] = BuildValueDecls(a.dtype());
     return Result::SUCCESS;
 }
 
@@ -163,7 +187,7 @@ Result MultiplyImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
 
     const Extent3D<U64> block = {kThreadsPerBlock, 1, 1};
     const Extent3D<U64> grid = {
-        (elementCount + kThreadsPerBlock - 1) / kThreadsPerBlock,
+        elementCount / kThreadsPerBlock + (elementCount % kThreadsPerBlock != 0),
         1,
         1,
     };

@@ -2,21 +2,38 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
+
+#include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Modules {
 
 static constexpr F32 kPi = static_cast<F32>(JST_PI);
 
 Result PskDemodImpl::validate() {
+    validatedSamplesPerSymbol = 0;
+    validatedConstellationOrder = 0;
+    validatedOutputSize = 0;
+    validatedOutputSizeBytes = 0;
+    validatedMaxIterations = 0;
+    validatedOutputShape.clear();
+    validatedFreqAlpha = 0.0;
+    validatedFreqBeta = 0.0;
+    validatedTimingAlpha = 0.0;
+    validatedTimingBeta = 0.0;
+    validatedTimingOmegaNominal = 0.0;
+    validatedTimingOmegaMin = 0.0;
+    validatedTimingOmegaMax = 0.0;
+
     const auto& config = *candidate();
 
-    if (config.sampleRate <= 0.0) {
-        JST_ERROR("[MODULE_PSK_DEMOD] Sample rate must be positive.");
+    if (!std::isfinite(config.sampleRate) || config.sampleRate <= 0.0) {
+        JST_ERROR("[MODULE_PSK_DEMOD] Sample rate must be finite and positive.");
         return Result::ERROR;
     }
 
-    if (config.symbolRate <= 0.0) {
-        JST_ERROR("[MODULE_PSK_DEMOD] Symbol rate must be positive.");
+    if (!std::isfinite(config.symbolRate) || config.symbolRate <= 0.0) {
+        JST_ERROR("[MODULE_PSK_DEMOD] Symbol rate must be finite and positive.");
         return Result::ERROR;
     }
 
@@ -25,25 +42,172 @@ Result PskDemodImpl::validate() {
         return Result::ERROR;
     }
 
-    if (config.frequencyLoopBandwidth <= 0.0 || config.frequencyLoopBandwidth >= 1.0) {
+    if (!std::isfinite(config.frequencyLoopBandwidth) ||
+        config.frequencyLoopBandwidth <= 0.0 || config.frequencyLoopBandwidth >= 1.0) {
         JST_ERROR("[MODULE_PSK_DEMOD] Frequency loop bandwidth must be between 0 and 1.");
         return Result::ERROR;
     }
 
-    if (config.timingLoopBandwidth <= 0.0 || config.timingLoopBandwidth >= 1.0) {
+    if (!std::isfinite(config.timingLoopBandwidth) ||
+        config.timingLoopBandwidth <= 0.0 || config.timingLoopBandwidth >= 1.0) {
         JST_ERROR("[MODULE_PSK_DEMOD] Timing loop bandwidth must be between 0 and 1.");
         return Result::ERROR;
     }
 
-    if (config.dampingFactor <= 0.0) {
-        JST_ERROR("[MODULE_PSK_DEMOD] Damping factor must be positive.");
+    if (!std::isfinite(config.dampingFactor) || config.dampingFactor <= 0.0) {
+        JST_ERROR("[MODULE_PSK_DEMOD] Damping factor must be finite and positive.");
         return Result::ERROR;
     }
 
-    if (config.pskType != "bpsk" && config.pskType != "qpsk" && config.pskType != "8psk") {
+    U64 candidateConstellationOrder = 0;
+    if (config.pskType == "bpsk") {
+        candidateConstellationOrder = 2;
+    } else if (config.pskType == "qpsk") {
+        candidateConstellationOrder = 4;
+    } else if (config.pskType == "8psk") {
+        candidateConstellationOrder = 8;
+    } else {
         JST_ERROR("[MODULE_PSK_DEMOD] Unsupported PSK type: {}.", config.pskType);
         return Result::ERROR;
     }
+
+    const F64 candidateTimingOmegaNominal = config.sampleRate / config.symbolRate;
+    const F64 samplesPerSymbolLimit = std::ldexp(
+        1.0, std::numeric_limits<U64>::digits);
+    if (!std::isfinite(candidateTimingOmegaNominal) ||
+        candidateTimingOmegaNominal < 2.0 ||
+        candidateTimingOmegaNominal >= samplesPerSymbolLimit) {
+        JST_ERROR("[MODULE_PSK_DEMOD] Samples per symbol must be at least 2 and representable.");
+        return Result::ERROR;
+    }
+
+    const U64 candidateSamplesPerSymbol =
+        static_cast<U64>(candidateTimingOmegaNominal);
+    if (candidateSamplesPerSymbol < 2) {
+        JST_ERROR("[MODULE_PSK_DEMOD] Samples per symbol must be at least 2.");
+        return Result::ERROR;
+    }
+
+    const auto deriveLoopCoefficients = [&](const F64 bandwidth,
+                                            F64& alpha,
+                                            F64& beta) {
+        F64 denominator = 0.0;
+        if (config.dampingFactor > std::numeric_limits<F64>::max() / 4.0) {
+            denominator = (1.0 + bandwidth * bandwidth) / config.dampingFactor +
+                          2.0 * bandwidth;
+            alpha = (4.0 * bandwidth) / denominator;
+            beta = ((4.0 * bandwidth) * bandwidth / config.dampingFactor) /
+                   denominator;
+        } else {
+            denominator = 1.0 +
+                          (2.0 * config.dampingFactor) * bandwidth +
+                          bandwidth * bandwidth;
+            alpha = ((4.0 * config.dampingFactor) * bandwidth) / denominator;
+            beta = ((4.0 * bandwidth) * bandwidth) / denominator;
+        }
+        return std::isfinite(denominator) && denominator > 0.0 &&
+               std::isfinite(alpha) && alpha > 0.0 &&
+               std::isfinite(beta) && beta > 0.0;
+    };
+
+    F64 candidateFreqAlpha = 0.0;
+    F64 candidateFreqBeta = 0.0;
+    F64 candidateTimingAlpha = 0.0;
+    F64 candidateTimingBeta = 0.0;
+    if (!deriveLoopCoefficients(config.frequencyLoopBandwidth,
+                                candidateFreqAlpha,
+                                candidateFreqBeta) ||
+        !deriveLoopCoefficients(config.timingLoopBandwidth,
+                                candidateTimingAlpha,
+                                candidateTimingBeta)) {
+        JST_ERROR("[MODULE_PSK_DEMOD] Loop parameters do not produce usable finite coefficients.");
+        return Result::ERROR;
+    }
+
+    const F64 candidateTimingOmegaMin =
+        std::max(0.5, candidateTimingOmegaNominal * 0.5);
+    const F64 candidateTimingOmegaMax =
+        std::max(candidateTimingOmegaMin + 1e-6,
+                 candidateTimingOmegaNominal * 1.5);
+    if (!std::isfinite(candidateTimingOmegaMin) || candidateTimingOmegaMin <= 0.0 ||
+        !std::isfinite(candidateTimingOmegaMax) ||
+        candidateTimingOmegaNominal < candidateTimingOmegaMin ||
+        candidateTimingOmegaNominal > candidateTimingOmegaMax) {
+        JST_ERROR("[MODULE_PSK_DEMOD] Timing loop geometry is not usable.");
+        return Result::ERROR;
+    }
+
+    validatedSamplesPerSymbol = candidateSamplesPerSymbol;
+    validatedConstellationOrder = candidateConstellationOrder;
+    validatedFreqAlpha = candidateFreqAlpha;
+    validatedFreqBeta = candidateFreqBeta;
+    validatedTimingAlpha = candidateTimingAlpha;
+    validatedTimingBeta = candidateTimingBeta;
+    validatedTimingOmegaNominal = candidateTimingOmegaNominal;
+    validatedTimingOmegaMin = candidateTimingOmegaMin;
+    validatedTimingOmegaMax = candidateTimingOmegaMax;
+
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.rank() != 1) {
+        JST_ERROR("[MODULE_PSK_DEMOD] Input must be a rank-one tensor.");
+        return Result::ERROR;
+    }
+
+    U64 requiredInputBytes = 0;
+    if (!detail::CheckedMultiply(inputTensor.size(),
+                                 static_cast<U64>(sizeof(CF32)),
+                                 requiredInputBytes) ||
+        inputTensor.sizeBytes() < requiredInputBytes) {
+        JST_ERROR("[MODULE_PSK_DEMOD] Input metadata cannot hold its CF32 samples.");
+        return Result::ERROR;
+    }
+
+    const Buffer& inputBuffer = inputTensor.buffer();
+    const U64 inputCapacityBytes = inputBuffer.sizeBytes();
+    if (!inputBuffer.valid() || inputTensor.offsetBytes() > inputCapacityBytes ||
+        requiredInputBytes > inputCapacityBytes - inputTensor.offsetBytes()) {
+        JST_ERROR("[MODULE_PSK_DEMOD] Input buffer does not cover its CF32 sample range.");
+        return Result::ERROR;
+    }
+
+    const U64 candidateOutputSize = inputTensor.size() / candidateSamplesPerSymbol;
+    if (candidateOutputSize == 0) {
+        JST_ERROR("[MODULE_PSK_DEMOD] Input buffer too small to produce any symbols.");
+        return Result::ERROR;
+    }
+
+    U64 candidateOutputSizeBytes = 0;
+    if (!detail::CheckedMultiply(candidateOutputSize,
+                                 static_cast<U64>(sizeof(CF32)),
+                                 candidateOutputSizeBytes) ||
+        candidateOutputSizeBytes == 0) {
+        JST_ERROR("[MODULE_PSK_DEMOD] Output exceeds the supported byte range.");
+        return Result::ERROR;
+    }
+
+    U64 iterationWidth = 0;
+    U64 candidateMaxIterations = 0;
+    if (!detail::CheckedAdd(candidateSamplesPerSymbol, 4, iterationWidth) ||
+        !detail::CheckedMultiply(candidateOutputSize,
+                                 iterationWidth,
+                                 candidateMaxIterations) ||
+        candidateMaxIterations == 0) {
+        JST_ERROR("[MODULE_PSK_DEMOD] Iteration geometry exceeds the supported range.");
+        return Result::ERROR;
+    }
+
+    validatedOutputSize = candidateOutputSize;
+    validatedOutputSizeBytes = candidateOutputSizeBytes;
+    validatedMaxIterations = candidateMaxIterations;
+    validatedOutputShape = {candidateOutputSize};
 
     return Result::SUCCESS;
 }
@@ -59,47 +223,21 @@ Result PskDemodImpl::create() {
     const Tensor& inputTensor = inputs().at("signal").tensor;
     input = inputTensor;
 
-    // Calculate samples per symbol.
-    samplesPerSymbol = static_cast<U64>(sampleRate / symbolRate);
-    if (samplesPerSymbol < 2) {
-        JST_ERROR("[MODULE_PSK_DEMOD] Samples per symbol must be at least 2.");
-        return Result::ERROR;
-    }
-
-    // Calculate output size.
-    const U64 inputSamples = input.size();
-    outputSize = inputSamples / samplesPerSymbol;
-    if (outputSize == 0) {
-        JST_ERROR("[MODULE_PSK_DEMOD] Input buffer too small to produce any symbols.");
-        return Result::ERROR;
-    }
-
-    // Determine constellation order from PSK type.
-    if (pskType == "bpsk") {
-        constellationOrder = 2;
-    } else if (pskType == "qpsk") {
-        constellationOrder = 4;
-    } else if (pskType == "8psk") {
-        constellationOrder = 8;
-    }
-
-    // Calculate output shape.
-    std::vector<U64> outputShape = input.shape();
-    outputShape[outputShape.size() - 1] = outputSize;
+    samplesPerSymbol = validatedSamplesPerSymbol;
+    constellationOrder = validatedConstellationOrder;
+    outputSize = validatedOutputSize;
+    maxIterations = validatedMaxIterations;
+    freqAlpha = validatedFreqAlpha;
+    freqBeta = validatedFreqBeta;
+    timingAlpha = validatedTimingAlpha;
+    timingBeta = validatedTimingBeta;
+    timingOmegaNominal = validatedTimingOmegaNominal;
+    timingOmegaMin = validatedTimingOmegaMin;
+    timingOmegaMax = validatedTimingOmegaMax;
 
     // Allocate output tensor.
-    JST_CHECK(output.create(input.device(), DataType::CF32, outputShape));
+    JST_CHECK(output.create(input.device(), DataType::CF32, validatedOutputShape));
     JST_CHECK(output.propagateAttributes(input));
-
-    // Initialize timing parameters.
-    const F64 nominalOmega = sampleRate / symbolRate;
-    timingOmegaNominal = nominalOmega;
-    timingOmega = nominalOmega;
-    timingOmegaMin = std::max(0.5, nominalOmega * 0.5);
-    timingOmegaMax = std::max(timingOmegaMin + 1e-6, nominalOmega * 1.5);
-
-    // Update loop filter coefficients.
-    updateLoopCoefficients();
 
     // Initialize state.
     initializeState();
@@ -120,28 +258,15 @@ Result PskDemodImpl::reconfigure() {
         frequencyLoopBandwidth = config.frequencyLoopBandwidth;
         timingLoopBandwidth = config.timingLoopBandwidth;
         dampingFactor = config.dampingFactor;
-        updateLoopCoefficients();
+        freqAlpha = validatedFreqAlpha;
+        freqBeta = validatedFreqBeta;
+        timingAlpha = validatedTimingAlpha;
+        timingBeta = validatedTimingBeta;
         return Result::SUCCESS;
     }
 
     // Core parameters changed, need recreation.
     return Result::RECREATE;
-}
-
-void PskDemodImpl::updateLoopCoefficients() {
-    const F64 damp = dampingFactor;
-
-    // Frequency loop coefficients.
-    F64 bw = frequencyLoopBandwidth;
-    F64 denominator = 1.0 + 2.0 * damp * bw + bw * bw;
-    freqAlpha = (4.0 * damp * bw) / denominator;
-    freqBeta = (4.0 * bw * bw) / denominator;
-
-    // Timing loop coefficients.
-    bw = timingLoopBandwidth;
-    denominator = 1.0 + 2.0 * damp * bw + bw * bw;
-    timingAlpha = (4.0 * damp * bw) / denominator;
-    timingBeta = (4.0 * bw * bw) / denominator;
 }
 
 void PskDemodImpl::initializeState() {

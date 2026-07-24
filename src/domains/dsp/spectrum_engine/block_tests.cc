@@ -160,6 +160,149 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
+                 "Spectrum engine defers axis validation for incomplete input",
+                 "[modules][dsp][spectrum_engine][block][validation]") {
+    Blocks::SpectrumEngine config;
+    config.axis = 2;
+
+    SECTION("absent input") {
+        REQUIRE(flowgraph->blockCreate("spec_absent", config, {}) == Result::SUCCESS);
+        REQUIRE(viewBlock("spec_absent").state == Block::State::Incomplete);
+        REQUIRE(viewBlock("spec_absent").outputs.empty());
+    }
+
+    SECTION("unresolved input") {
+        Blocks::OnesTensor source;
+        source.shape = {4};
+        source.dataType = "CF32";
+        REQUIRE(flowgraph->blockCreate("spec_unresolved_src", source, {}) ==
+                Result::SUCCESS);
+
+        TensorMap inputs;
+        inputs["buffer"].requested("spec_unresolved_src", "missing");
+
+        REQUIRE(flowgraph->blockCreate("spec_unresolved", config, inputs) ==
+                Result::SUCCESS);
+        REQUIRE(viewBlock("spec_unresolved").state == Block::State::Incomplete);
+        REQUIRE(viewBlock("spec_unresolved").outputs.empty());
+    }
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Spectrum engine rejects invalid axis before topology recreation",
+                 "[modules][dsp][spectrum_engine][block][reconfigure][validation]") {
+    Blocks::OnesTensor source;
+    source.shape = {4, 3};
+    source.dataType = "CF32";
+    REQUIRE(flowgraph->blockCreate("spec_update_src", source, {}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["buffer"].requested("spec_update_src", "buffer");
+
+    Blocks::SpectrumEngine config;
+    config.axis = 1;
+    config.rangeMin = -90.0f;
+    config.rangeMax = -5.0f;
+    REQUIRE(flowgraph->blockCreate("spec_update", config, inputs) == Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    const Tensor originalOutput = viewBlock("spec_update").outputs.at("buffer").tensor;
+    const auto originalOutputId = originalOutput.id();
+
+    Parser::Map update;
+    update["axis"] = I64{2};
+    update["enableScale"] = true;
+    REQUIRE(flowgraph->blockReconfigure("spec_update", update) == Result::ERROR);
+
+    const auto retained = viewBlock("spec_update");
+    REQUIRE(retained.state == Block::State::Created);
+    REQUIRE(retained.outputs.at("buffer").tensor.id() == originalOutputId);
+    REQUIRE(retained.outputs.at("buffer").tensor.shape() == Shape{4, 3});
+    REQUIRE(retained.outputs.at("buffer").tensor.dtype() == DataType::F32);
+
+    Parser::Map savedMap;
+    REQUIRE(flowgraph->blockConfig("spec_update", savedMap) == Result::SUCCESS);
+    Blocks::SpectrumEngine saved;
+    REQUIRE(saved.deserialize(savedMap) == Result::SUCCESS);
+    REQUIRE(saved.axis == config.axis);
+    REQUIRE(saved.enableAgc == config.enableAgc);
+    REQUIRE(saved.enableScale == config.enableScale);
+    REQUIRE(saved.rangeMin == config.rangeMin);
+    REQUIRE(saved.rangeMax == config.rangeMax);
+
+    Tensor output = retained.outputs.at("buffer").tensor;
+    std::fill(output.data<F32>(), output.data<F32>() + output.size(), 12345.0f);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    for (U64 index = 0; index < output.size(); ++index) {
+        REQUIRE(output.data<F32>()[index] != 12345.0f);
+    }
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Spectrum engine recreates for valid axis and topology changes",
+                 "[modules][dsp][spectrum_engine][block][reconfigure]") {
+    Blocks::OnesTensor source;
+    source.shape = {4, 3};
+    source.dataType = "CF32";
+    REQUIRE(flowgraph->blockCreate("spec_recreate_src", source, {}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["buffer"].requested("spec_recreate_src", "buffer");
+
+    Blocks::SpectrumEngine config;
+    config.axis = 1;
+    REQUIRE(flowgraph->blockCreate("spec_recreate", config, inputs) == Result::SUCCESS);
+    const auto originalOutputId =
+        viewBlock("spec_recreate").outputs.at("buffer").tensor.id();
+
+    Parser::Map update;
+    update["axis"] = I64{0};
+    update["enableScale"] = true;
+    update["rangeMin"] = -100.0f;
+    update["rangeMax"] = -10.0f;
+    REQUIRE(flowgraph->blockReconfigure("spec_recreate", update) == Result::SUCCESS);
+
+    const auto recreated = viewBlock("spec_recreate");
+    REQUIRE(recreated.state == Block::State::Created);
+    REQUIRE(recreated.outputs.at("buffer").tensor.id() != originalOutputId);
+    REQUIRE(recreated.outputs.at("buffer").tensor.shape() == Shape{4, 3});
+    REQUIRE(recreated.outputs.at("buffer").tensor.dtype() == DataType::F32);
+
+    Parser::Map savedMap;
+    REQUIRE(flowgraph->blockConfig("spec_recreate", savedMap) == Result::SUCCESS);
+    Blocks::SpectrumEngine saved;
+    REQUIRE(saved.deserialize(savedMap) == Result::SUCCESS);
+    REQUIRE(saved.axis == 0);
+    REQUIRE(saved.enableScale);
+    REQUIRE(saved.rangeMin == -100.0f);
+    REQUIRE(saved.rangeMax == -10.0f);
+
+    Tensor output = recreated.outputs.at("buffer").tensor;
+    std::fill(output.data<F32>(), output.data<F32>() + output.size(), 12345.0f);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(std::any_of(output.data<F32>(), output.data<F32>() + output.size(),
+                        [](const F32 value) { return value != 12345.0f; }));
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Spectrum engine delegates dtype validation to child modules",
+                 "[modules][dsp][spectrum_engine][block][validation]") {
+    Blocks::OnesTensor source;
+    source.shape = {4};
+    source.dataType = "F64";
+    REQUIRE(flowgraph->blockCreate("spec_dtype_src", source, {}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["buffer"].requested("spec_dtype_src", "buffer");
+
+    Blocks::SpectrumEngine config;
+    config.axis = 0;
+    REQUIRE(flowgraph->blockCreate("spec_dtype", config, inputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("spec_dtype").state == Block::State::Errored);
+    REQUIRE(viewBlock("spec_dtype").outputs.empty());
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
                  "Spectrum engine applies window and FFT along a non-last axis",
                  "[modules][dsp][spectrum_engine][block][axis]") {
     Blocks::OnesTensor source;

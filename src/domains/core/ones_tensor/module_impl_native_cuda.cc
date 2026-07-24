@@ -1,9 +1,11 @@
 #include <jetstream/module_context.hh>
+#include <jetstream/memory/macros.hh>
 #include <jetstream/registry.hh>
 #include <jetstream/runtime_context_native_cuda.hh>
 #include <jetstream/scheduler_context.hh>
 
 #include <cstdint>
+#include <limits>
 
 #include "module_impl.hh"
 
@@ -12,6 +14,7 @@ namespace Jetstream::Modules {
 namespace {
 
 constexpr U64 kThreadsPerBlock = 256;
+constexpr U64 kMaxGridSizeX = std::numeric_limits<I32>::max();
 constexpr const char* kOnesTensorKernelName = "ones_tensor_kernel";
 static_assert(sizeof(CF32) == 2 * sizeof(F32));
 static_assert(sizeof(CF64) == 2 * sizeof(F64));
@@ -48,6 +51,7 @@ struct OnesTensorImplNativeCuda : public OnesTensorImpl,
                                   public NativeCudaRuntimeContext,
                                   public Scheduler::Context {
  public:
+    Result validate() final;
     Result computeInitialize() override;
     Result computeSubmit(const cudaStream_t& stream) override;
     Result computeDeinitialize() override;
@@ -55,6 +59,25 @@ struct OnesTensorImplNativeCuda : public OnesTensorImpl,
  private:
     bool kernelCreated = false;
 };
+
+Result OnesTensorImplNativeCuda::validate() {
+    JST_CHECK(OnesTensorImpl::validate());
+
+    U64 alignedOutputSize = 0;
+    if (!detail::CheckedPageAlignedSize(validatedOutputSizeBytes, alignedOutputSize)) {
+        JST_ERROR("[MODULE_ONES_TENSOR_NATIVE_CUDA] Output allocation size is too large.");
+        return Result::ERROR;
+    }
+
+    const U64 blockCount = validatedElementCount / kThreadsPerBlock +
+                           (validatedElementCount % kThreadsPerBlock != 0);
+    if (blockCount > kMaxGridSizeX) {
+        JST_ERROR("[MODULE_ONES_TENSOR_NATIVE_CUDA] Tensor size exceeds the CUDA grid limit.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
 
 Result OnesTensorImplNativeCuda::computeInitialize() {
     JST_CHECK(createKernel(kOnesTensorKernelName, kOnesTensorKernelSource));

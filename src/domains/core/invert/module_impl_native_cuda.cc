@@ -94,6 +94,7 @@ struct InvertImplNativeCuda : public InvertImpl,
                               public NativeCudaRuntimeContext,
                               public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeInitialize() override;
@@ -105,13 +106,29 @@ struct InvertImplNativeCuda : public InvertImpl,
     std::unordered_map<std::string, std::string> kernelPieces;
 };
 
-Result InvertImplNativeCuda::create() {
-    JST_CHECK(InvertImpl::create());
+Result InvertImplNativeCuda::validate() {
+    JST_CHECK(InvertImpl::validate());
 
-    if (input.dtype() != DataType::CF32 || output.dtype() != DataType::CF32) {
-        JST_ERROR("[MODULE_INVERT_NATIVE_CUDA] Unsupported data type '{}'.", input.dtype());
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::CF32) {
+        JST_ERROR("[MODULE_INVERT_NATIVE_CUDA] Unsupported data type '{}'.",
+                  inputTensor.dtype());
         return Result::ERROR;
     }
+
+    return Result::SUCCESS;
+}
+
+Result InvertImplNativeCuda::create() {
+    JST_CHECK(InvertImpl::create());
 
     kernelPieces["KERNEL_CONSTANTS"] = BuildKernelConstants(input, resolvedAxis);
     return Result::SUCCESS;

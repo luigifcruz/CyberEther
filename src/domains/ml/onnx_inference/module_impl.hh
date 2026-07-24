@@ -14,6 +14,7 @@ namespace Jetstream::Modules {
 
 struct OnnxInferenceImpl : public Module::Impl, public DynamicConfig<OnnxInference> {
  public:
+    Result validate() override;
     Result define() override;
     Result create() override;
     Result destroy() override;

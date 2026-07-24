@@ -23,6 +23,13 @@ namespace Jetstream {
 
 class JETSTREAM_API Tensor : public std::enable_shared_from_this<Tensor> {
  public:
+    struct SlicePlan {
+     private:
+        std::shared_ptr<const void> data;
+
+        friend class Tensor;
+    };
+
     Tensor();
     Tensor(void* pointer, const DeviceType& device, const DataType& dtype, const Shape& shape);
     Tensor(const DeviceType& device, const DataType& dtype, const Shape& shape);
@@ -78,7 +85,9 @@ class JETSTREAM_API Tensor : public std::enable_shared_from_this<Tensor> {
     Result squeezeDims(Index axis);
     Result reshape(const Shape& newShape);
     Result broadcastTo(const Shape& newShape);
+    Result planSlice(const std::vector<Token>& tokens, SlicePlan& plan) const;
     Result slice(const std::vector<Token>& tokens);
+    Result applySlicePlan(const SlicePlan& plan);
     Result permute(const Shape& axes);
 
     bool hasAttribute(const std::string& key) const;

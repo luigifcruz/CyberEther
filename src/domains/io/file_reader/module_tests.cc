@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <filesystem>
+#include <limits>
 
 #include "jetstream/platform.hh"
 #include <fstream>
@@ -25,6 +26,31 @@ void Cleanup(const std::filesystem::path& path) {
     if (std::filesystem::exists(path)) {
         std::filesystem::remove(path);
     }
+}
+
+void RequireFileReaderValidationError(const Registry::ModuleRegistration& impl,
+                                      const Modules::FileReader& config) {
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("file_reader", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", config, {}) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
+void RequireFileReaderCreateIncomplete(const Registry::ModuleRegistration& impl,
+                                       const Modules::FileReader& config) {
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("file_reader", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", config, {}) == Result::INCOMPLETE);
+    REQUIRE(module->state() == Module::State::INCOMPLETE);
+    REQUIRE(module->outputs().contains("signal"));
+
+    const Tensor& output = module->outputs().at("signal").tensor;
+    REQUIRE(output.dtype() == NameToDataType(config.dataType));
+    REQUIRE(output.shape() == Shape{config.batchSize});
+    REQUIRE(module->destroy() == Result::SUCCESS);
 }
 
 template<typename T>
@@ -166,41 +192,65 @@ TEST_CASE("FileReader module validation rejects invalid config",
 
     for (const auto& impl : implementations) {
         SECTION("invalid file format") {
-            TestContext ctx("file_reader", impl.device, impl.runtime,
-                            impl.provider);
             Modules::FileReader config;
             config.fileFormat = "wav";
-            ctx.setConfig(config);
-            REQUIRE(ctx.run() == Result::ERROR);
+            RequireFileReaderValidationError(impl, config);
         }
 
         SECTION("invalid data type") {
-            TestContext ctx("file_reader", impl.device, impl.runtime,
-                            impl.provider);
             Modules::FileReader config;
             config.dataType = "I32";
-            ctx.setConfig(config);
-            REQUIRE(ctx.run() == Result::ERROR);
+            RequireFileReaderValidationError(impl, config);
         }
 
-        SECTION("new data types pass validation") {
-            for (const auto& dataType : {"CI8", "I8", "CU8", "U8", "CI16", "I16", "CU16", "U16"}) {
-                TestContext ctx("file_reader", impl.device, impl.runtime,
-                                impl.provider);
+        SECTION("supported data types reach create with an empty path") {
+            for (const auto& dataType : {"CI8", "I8", "CU8", "U8",
+                                         "CI16", "I16", "CU16", "U16"}) {
                 Modules::FileReader config;
                 config.dataType = dataType;
-                ctx.setConfig(config);
-                REQUIRE(ctx.run() != Result::ERROR);
+                RequireFileReaderCreateIncomplete(impl, config);
             }
         }
 
         SECTION("zero batch size") {
-            TestContext ctx("file_reader", impl.device, impl.runtime,
-                            impl.provider);
             Modules::FileReader config;
             config.batchSize = 0;
-            ctx.setConfig(config);
-            REQUIRE(ctx.run() == Result::ERROR);
+            RequireFileReaderValidationError(impl, config);
+        }
+    }
+}
+
+TEST_CASE("FileReader module validation rejects unrepresentable output",
+          "[modules][file_reader][validation][overflow]") {
+    auto implementations = Registry::ListAvailableModules("file_reader");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device
+                        << " Runtime: " << impl.runtime) {
+            Modules::FileReader config;
+            config.dataType = "CF64";
+            config.batchSize = std::numeric_limits<U64>::max();
+            RequireFileReaderValidationError(impl, config);
+
+            if (impl.device == DeviceType::CPU) {
+                config = {};
+                config.dataType = "F32";
+                config.batchSize = std::numeric_limits<U64>::max() /
+                                   DataTypeSize(DataType::F32);
+                RequireFileReaderValidationError(impl, config);
+
+                if constexpr (std::numeric_limits<std::streamsize>::digits <
+                                  std::numeric_limits<U64>::digits &&
+                              std::numeric_limits<std::streamsize>::digits <
+                                  std::numeric_limits<std::size_t>::digits) {
+                    config = {};
+                    config.dataType = "U8";
+                    config.batchSize = static_cast<U64>(
+                        std::numeric_limits<std::streamsize>::max()) + 1;
+                    RequireFileReaderValidationError(impl, config);
+                }
+            }
         }
     }
 }
@@ -216,15 +266,11 @@ TEST_CASE("FileReader module reports incomplete when file is missing",
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device
                         << " Runtime: " << impl.runtime) {
-            TestContext ctx("file_reader", impl.device, impl.runtime,
-                            impl.provider);
             Modules::FileReader config;
             config.filepath = Platform::PathToUtf8(missing);
             config.dataType = "CF32";
             config.batchSize = 4;
-            ctx.setConfig(config);
-
-            REQUIRE(ctx.run() == Result::INCOMPLETE);
+            RequireFileReaderCreateIncomplete(impl, config);
         }
     }
 }

@@ -1,5 +1,3 @@
-#include <cmath>
-
 #include <jetstream/domains/core/comparator/block.hh>
 #include <jetstream/detail/block_impl.hh>
 
@@ -35,10 +33,15 @@ Result ComparatorImpl::validate() {
         return Result::ERROR;
     }
 
-    if (!std::isfinite(config.tolerance) || config.tolerance < 0.0) {
-        JST_ERROR("[BLOCK_COMPARATOR] Tolerance must be finite and non-negative (got {}).",
-                  config.tolerance);
-        return Result::ERROR;
+    if (config.inputCount < inputCount) {
+        for (U64 i = config.inputCount; i < inputCount; ++i) {
+            const auto port = jst::fmt::format("input{}", i);
+            if (inputs().contains(port)) {
+                JST_ERROR("[BLOCK_COMPARATOR] Disconnect '{}' before reducing input count.",
+                          port);
+                return Result::ERROR;
+            }
+        }
     }
 
     if (inputCount != config.inputCount) {

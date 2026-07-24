@@ -9,4 +9,6 @@ if cfg_lst.get('JETSTREAM_BACKEND_CPU_AVAILABLE', false)
         'dmi_module_impl_native_cpu.cc',
         'dmi_block_impl.cc',
     ])
+
+    module_test_lst += files(['module_tests.cc', 'block_tests.cc'])
 endif

@@ -9,11 +9,19 @@ namespace Jetstream::Modules {
 struct OverlapAddImpl : public Module::Impl,
                         public DynamicConfig<OverlapAdd> {
  public:
+    Result validate() override;
     Result define() override;
     Result create() override;
     Result destroy() override;
 
  protected:
+    Tensor validatedInputBuffer;
+    Tensor validatedInputOverlap;
+    Index validatedResolvedAxis = 0;
+    Shape validatedPreviousOverlapShape;
+    U64 validatedOutputSizeBytes = 0;
+    U64 validatedPreviousOverlapSizeBytes = 0;
+
     Tensor inputBuffer;
     Tensor inputOverlap;
     Tensor output;

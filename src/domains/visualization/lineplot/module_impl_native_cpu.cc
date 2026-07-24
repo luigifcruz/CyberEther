@@ -15,6 +15,7 @@ struct LineplotImplNativeCpu : public LineplotImpl,
                                public NativeCpuRuntimeContext,
                                public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result presentInitialize() override;
@@ -26,17 +27,31 @@ struct LineplotImplNativeCpu : public LineplotImpl,
     Tensor averagingBuffer;
 };
 
+Result LineplotImplNativeCpu::validate() {
+    JST_CHECK(LineplotImpl::validate());
+
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::F32) {
+        JST_ERROR("[MODULE_LINEPLOT_NATIVE_CPU] Unsupported input data type: {}.",
+                  inputTensor.dtype());
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 Result LineplotImplNativeCpu::create() {
     // Create parent.
 
     JST_CHECK(LineplotImpl::create());
-
-    // Validate input dtype.
-
-    if (input.dtype() != DataType::F32) {
-        JST_ERROR("[MODULE_LINEPLOT_NATIVE_CPU] Unsupported input data type: {}.", input.dtype());
-        return Result::ERROR;
-    }
 
     // Allocate averaging buffers.
 

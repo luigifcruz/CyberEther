@@ -7,6 +7,86 @@
 
 using namespace Jetstream;
 
+TEST_CASE("Blueprint gain module rejects unsupported input during validation",
+          "[blueprint][gain][module][validation]") {
+    const auto implementations =
+        Registry::ListAvailableModules("blueprint_gain");
+    REQUIRE_FALSE(implementations.empty());
+
+    for (const auto& implementation : implementations) {
+        for (const DataType dtype : {DataType::F64, DataType::U8}) {
+            DYNAMIC_SECTION("Device: " << implementation.device
+                                        << " Runtime: " << implementation.runtime
+                                        << " Dtype: " << dtype) {
+                Tensor input;
+                REQUIRE(input.create(implementation.device, dtype, {4}) ==
+                        Result::SUCCESS);
+
+                TensorMap inputs;
+                inputs["signal"].requested("test", "signal");
+                inputs["signal"].tensor = input;
+
+                std::shared_ptr<Module> module;
+                REQUIRE(Registry::BuildModule("blueprint_gain",
+                                              implementation.device,
+                                              implementation.runtime,
+                                              implementation.provider,
+                                              module) == Result::SUCCESS);
+
+                Modules::BlueprintGain config;
+                REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+                REQUIRE(module->state() == Module::State::ERRORED);
+                REQUIRE(module->outputs().empty());
+            }
+        }
+    }
+}
+
+TEST_CASE("Blueprint gain module validates candidates without changing live config",
+          "[blueprint][gain][module][reconfigure][validation]") {
+    const auto implementations =
+        Registry::ListAvailableModules("blueprint_gain");
+    REQUIRE_FALSE(implementations.empty());
+
+    for (const auto& implementation : implementations) {
+        DYNAMIC_SECTION("Device: " << implementation.device
+                                    << " Runtime: " << implementation.runtime) {
+            Tensor input;
+            REQUIRE(input.create(implementation.device, DataType::F32, {4}) ==
+                    Result::SUCCESS);
+
+            TensorMap inputs;
+            inputs["signal"].requested("test", "signal");
+            inputs["signal"].tensor = input;
+
+            std::shared_ptr<Module> module;
+            REQUIRE(Registry::BuildModule("blueprint_gain",
+                                          implementation.device,
+                                          implementation.runtime,
+                                          implementation.provider,
+                                          module) == Result::SUCCESS);
+
+            Modules::BlueprintGain config;
+            config.gain = 2.0f;
+            REQUIRE(module->create("test", config, inputs) == Result::SUCCESS);
+            const auto outputId = module->outputs().at("signal").tensor.id();
+
+            Parser::Map candidate;
+            candidate["gain"] = F32{4.0f};
+            REQUIRE(module->reconfigure(candidate, true) == Result::SUCCESS);
+            REQUIRE(static_cast<const Modules::BlueprintGain&>(module->config()).gain ==
+                    2.0f);
+            REQUIRE(module->outputs().at("signal").tensor.id() == outputId);
+
+            REQUIRE(module->reconfigure(candidate) == Result::SUCCESS);
+            REQUIRE(static_cast<const Modules::BlueprintGain&>(module->config()).gain ==
+                    4.0f);
+            REQUIRE(module->outputs().at("signal").tensor.id() == outputId);
+            REQUIRE(module->destroy() == Result::SUCCESS);
+        }
+    }
+}
+
 TEST_CASE("Blueprint gain module scales F32 samples",
           "[blueprint][gain][module][f32]") {
     const auto implementations =

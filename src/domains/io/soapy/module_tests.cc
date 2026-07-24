@@ -4,186 +4,176 @@
 
 #include "jetstream/domains/io/soapy/module.hh"
 #include "jetstream/registry.hh"
-#include "jetstream/testing.hh"
 #include "module_impl.hh"
 
 using namespace Jetstream;
 
-TEST_CASE("Soapy module rejects invalid batch dimensions",
-          "[modules][soapy][validation]") {
-    auto implementations = Registry::ListAvailableModules("soapy");
+namespace {
+
+struct SoapyCachedRangeProbe : Modules::SoapyImpl {
+    void setCachedRanges(const std::vector<SoapySDR::Range>& sampleRates,
+                         const std::vector<SoapySDR::Range>& frequencies) {
+        sampleRateRanges = sampleRates;
+        frequencyRanges = frequencies;
+    }
+};
+
+Modules::Soapy NonDefaultSoapyConfig() {
+    Modules::Soapy config;
+    config.deviceString = "driver=validation-must-precede-discovery";
+    config.streamString = "bufflen=4096";
+    config.frequency = 100.5e6f;
+    config.sampleRate = 1.5e6f;
+    config.automaticGain = false;
+    config.numberOfBatches = 3;
+    config.numberOfTimeSamples = 17;
+    config.bufferMultiplier = 2;
+    return config;
+}
+
+void RequireSoapyValidationError(const Registry::ModuleRegistration& impl,
+                                 const Modules::Soapy& config) {
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("soapy", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", config, {}) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->interface()->outputs().empty());
+    REQUIRE(module->outputs().empty());
+
+    const auto defaults = Modules::Soapy{};
+    const auto& applied = static_cast<const Modules::Soapy&>(module->config());
+    REQUIRE(applied.deviceString == defaults.deviceString);
+    REQUIRE(applied.streamString == defaults.streamString);
+    REQUIRE(applied.frequency == defaults.frequency);
+    REQUIRE(applied.sampleRate == defaults.sampleRate);
+    REQUIRE(applied.automaticGain == defaults.automaticGain);
+    REQUIRE(applied.numberOfBatches == defaults.numberOfBatches);
+    REQUIRE(applied.numberOfTimeSamples == defaults.numberOfTimeSamples);
+    REQUIRE(applied.bufferMultiplier == defaults.bufferMultiplier);
+}
+
+}  // namespace
+
+TEST_CASE("Soapy module rejects candidates before hardware access and preserves staging",
+          "[modules][soapy][validation][rollback]") {
+    const auto implementations = Registry::ListAvailableModules("soapy");
     if (implementations.empty()) {
         SUCCEED("Soapy module is unavailable in this build.");
         return;
     }
 
     for (const auto& impl : implementations) {
-        SECTION("numberOfBatches must be > 0") {
-            TestContext ctx("soapy", impl.device, impl.runtime, impl.provider);
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            SECTION("frequency must be finite") {
+                auto config = NonDefaultSoapyConfig();
+                config.frequency = std::numeric_limits<F32>::quiet_NaN();
+                RequireSoapyValidationError(impl, config);
+            }
 
-            Modules::Soapy config;
-            config.numberOfBatches = 0;
-            ctx.setConfig(config);
+            SECTION("sample rate must be finite and positive") {
+                auto config = NonDefaultSoapyConfig();
+                config.sampleRate = std::numeric_limits<F32>::infinity();
+                RequireSoapyValidationError(impl, config);
 
-            REQUIRE(ctx.run() == Result::ERROR);
-        }
+                config.sampleRate = 0.0f;
+                RequireSoapyValidationError(impl, config);
+            }
 
-        SECTION("numberOfTimeSamples must be > 0") {
-            TestContext ctx("soapy", impl.device, impl.runtime, impl.provider);
+            SECTION("dimensions and multiplier must be nonzero") {
+                auto config = NonDefaultSoapyConfig();
+                config.numberOfBatches = 0;
+                RequireSoapyValidationError(impl, config);
 
-            Modules::Soapy config;
-            config.numberOfTimeSamples = 0;
-            ctx.setConfig(config);
+                config = NonDefaultSoapyConfig();
+                config.numberOfTimeSamples = 0;
+                RequireSoapyValidationError(impl, config);
 
-            REQUIRE(ctx.run() == Result::ERROR);
-        }
+                config = NonDefaultSoapyConfig();
+                config.bufferMultiplier = 0;
+                RequireSoapyValidationError(impl, config);
+            }
 
-        SECTION("bufferMultiplier must be > 0") {
-            TestContext ctx("soapy", impl.device, impl.runtime, impl.provider);
+            SECTION("output element product must not overflow") {
+                auto config = NonDefaultSoapyConfig();
+                config.numberOfBatches = std::numeric_limits<U64>::max();
+                config.numberOfTimeSamples = 2;
+                config.bufferMultiplier = 1;
+                RequireSoapyValidationError(impl, config);
+            }
 
-            Modules::Soapy config;
-            config.bufferMultiplier = 0;
-            ctx.setConfig(config);
+            SECTION("output byte layout must not overflow") {
+                auto config = NonDefaultSoapyConfig();
+                config.numberOfBatches =
+                    std::numeric_limits<U64>::max() / sizeof(CF32) + 1;
+                config.numberOfTimeSamples = 1;
+                config.bufferMultiplier = 1;
+                RequireSoapyValidationError(impl, config);
+            }
 
-            REQUIRE(ctx.run() == Result::ERROR);
-        }
+            SECTION("internal layout must not overflow") {
+                auto config = NonDefaultSoapyConfig();
+                config.numberOfBatches = 2;
+                config.numberOfTimeSamples = 1;
+                config.bufferMultiplier = std::numeric_limits<U64>::max();
+                RequireSoapyValidationError(impl, config);
 
-        SECTION("non-default params still validate dimensions") {
-            TestContext ctx("soapy", impl.device, impl.runtime, impl.provider);
+                config = NonDefaultSoapyConfig();
+                config.numberOfBatches = 1;
+                config.numberOfTimeSamples = 1;
+                config.bufferMultiplier =
+                    std::numeric_limits<U64>::max() / sizeof(CF32) + 1;
+                RequireSoapyValidationError(impl, config);
+            }
 
-            Modules::Soapy config;
-            config.deviceString = "driver=mock";
-            config.streamString = "bufflen=4096";
-            config.frequency = 100.5e6f;
-            config.sampleRate = 1.5e6f;
-            config.automaticGain = false;
-            config.numberOfBatches = 0;
-            ctx.setConfig(config);
-
-            REQUIRE(ctx.run() == Result::ERROR);
+            SECTION("compile-target allocation must be representable") {
+                auto config = NonDefaultSoapyConfig();
+                config.numberOfBatches =
+                    std::numeric_limits<U64>::max() / sizeof(CF32);
+                config.numberOfTimeSamples = 1;
+                config.bufferMultiplier = 1;
+                RequireSoapyValidationError(impl, config);
+            }
         }
     }
 }
 
-TEST_CASE("Soapy module validates scalar configuration before device access",
-          "[modules][soapy][validation]") {
-    Modules::Soapy config;
-    const auto validate = [&] {
-        return Modules::ValidateSoapyConfig(config.frequency,
-                                            config.sampleRate,
-                                            config.numberOfBatches,
-                                            config.numberOfTimeSamples,
-                                            config.bufferMultiplier);
+TEST_CASE("Soapy runtime ranges retain stepped capability checks",
+          "[modules][soapy][devices]") {
+    const std::vector ranges{SoapySDR::Range(1.0e6, 3.0e6, 1.0e6)};
+
+    REQUIRE(Modules::SoapyRangeContains(ranges, 2.0e6f));
+    REQUIRE_FALSE(Modules::SoapyRangeContains(ranges, 2.5e6f));
+
+    const std::vector largeOffsetRange{
+        SoapySDR::Range(0.0, 1.0e9, 1.0e9),
     };
+    REQUIRE_FALSE(Modules::SoapyRangeContains(largeOffsetRange, 64.0f));
 
-    SECTION("frequency must be finite") {
-        config.frequency = std::numeric_limits<F32>::quiet_NaN();
-        REQUIRE(validate() == Result::ERROR);
-    }
-
-    SECTION("sample rate must be finite and positive") {
-        config.sampleRate = -1.0f;
-        REQUIRE(validate() == Result::ERROR);
-
-        config.sampleRate = std::numeric_limits<F32>::infinity();
-        REQUIRE(validate() == Result::ERROR);
-    }
-
-    SECTION("buffer dimensions must not overflow") {
-        config.numberOfBatches = std::numeric_limits<U64>::max();
-        REQUIRE(validate() == Result::ERROR);
-    }
-
-    SECTION("internal buffer dimensions must not overflow") {
-        config.bufferMultiplier = std::numeric_limits<U64>::max();
-        REQUIRE(validate() == Result::ERROR);
-    }
+    const std::vector endpointRange{
+        SoapySDR::Range(1000000000.1, 1000000000.1, 1.0),
+    };
+    const F32 endpoint = static_cast<F32>(endpointRange.front().minimum());
+    REQUIRE(Modules::SoapyRangeContains(endpointRange, endpoint));
 }
 
-TEST_CASE("Soapy module validates same-device candidates against cached capabilities",
-          "[modules][soapy][validation][reconfigure]") {
-    Modules::Soapy config;
-    config.sampleRate = 1.5e6f;
-    config.frequency = 100.0e6f;
-    const std::vector sampleRates{SoapySDR::Range(1.0e6, 2.0e6)};
-    const std::vector frequencies{SoapySDR::Range(90.0e6, 110.0e6)};
-    const auto validate = [&](const bool useCachedRanges) {
-        return Modules::ValidateSoapyConfig(config.frequency,
-                                            config.sampleRate,
-                                            config.numberOfBatches,
-                                            config.numberOfTimeSamples,
-                                            config.bufferMultiplier,
-                                            useCachedRanges ? &sampleRates : nullptr,
-                                            useCachedRanges ? &frequencies : nullptr);
-    };
-    REQUIRE(validate(true) == Result::SUCCESS);
+TEST_CASE("Soapy validation ignores cached ranges while live setters enforce them",
+          "[modules][soapy][validation][devices]") {
+    SoapyCachedRangeProbe probe;
+    probe.setCachedRanges({SoapySDR::Range(1.0e6, 2.0e6)},
+                          {SoapySDR::Range(90.0e6, 110.0e6)});
 
-    SECTION("unsupported sample rate is rejected") {
-        config.sampleRate = 3.0e6f;
-        REQUIRE(validate(true) == Result::ERROR);
-    }
+    auto& candidate = *probe.candidate();
+    candidate.sampleRate = 3.0e6f;
+    candidate.frequency = 120.0e6f;
 
-    SECTION("unsupported frequency is rejected") {
-        config.frequency = 120.0e6f;
-        REQUIRE(validate(true) == Result::ERROR);
-    }
-
-    SECTION("sample rate must match a stepped range") {
-        const std::vector steppedSampleRates{SoapySDR::Range(1.0e6, 3.0e6, 1.0e6)};
-        config.sampleRate = 2.0e6f;
-        REQUIRE(Modules::ValidateSoapyConfig(config.frequency,
-                                             config.sampleRate,
-                                             config.numberOfBatches,
-                                             config.numberOfTimeSamples,
-                                             config.bufferMultiplier,
-                                             &steppedSampleRates,
-                                             &frequencies) == Result::SUCCESS);
-
-        config.sampleRate = 2.5e6f;
-        REQUIRE(Modules::ValidateSoapyConfig(config.frequency,
-                                             config.sampleRate,
-                                             config.numberOfBatches,
-                                             config.numberOfTimeSamples,
-                                             config.bufferMultiplier,
-                                             &steppedSampleRates,
-                                             &frequencies) == Result::ERROR);
-    }
-
-    SECTION("stepped ranges do not accept magnitude-scaled offsets") {
-        const std::vector steppedSampleRates{SoapySDR::Range(0.0, 1.0e9, 1.0e9)};
-        config.sampleRate = 64.0f;
-        REQUIRE(Modules::ValidateSoapyConfig(config.frequency,
-                                             config.sampleRate,
-                                             config.numberOfBatches,
-                                             config.numberOfTimeSamples,
-                                             config.bufferMultiplier,
-                                             &steppedSampleRates,
-                                             &frequencies) == Result::ERROR);
-    }
-
-    SECTION("range endpoints are compared at configuration precision") {
-        const std::vector steppedSampleRates{
-            SoapySDR::Range(1000000000.1, 1000000000.1, 1.0),
-        };
-        config.sampleRate = static_cast<F32>(steppedSampleRates.front().minimum());
-        REQUIRE(Modules::ValidateSoapyConfig(config.frequency,
-                                             config.sampleRate,
-                                             config.numberOfBatches,
-                                             config.numberOfTimeSamples,
-                                             config.bufferMultiplier,
-                                             &steppedSampleRates,
-                                             &frequencies) == Result::SUCCESS);
-    }
-
-    SECTION("capabilities from another device are ignored") {
-        config.sampleRate = 3.0e6f;
-        config.frequency = 120.0e6f;
-        REQUIRE(validate(false) == Result::SUCCESS);
-    }
+    REQUIRE(probe.validate() == Result::SUCCESS);
+    REQUIRE(probe.setSampleRate(candidate.sampleRate) == Result::WARNING);
+    REQUIRE(probe.setTunerFrequency(candidate.frequency) == Result::WARNING);
 }
 
 TEST_CASE("Soapy device lists preserve duplicate and missing labels",
-          "[modules][soapy][devices]") {
+           "[modules][soapy][devices]") {
     const SoapySDR::KwargsList entries = {
         {{"driver", "rtlsdr"}, {"label", "RTL-SDR"}, {"serial", "A"}},
         {{"driver", "rtlsdr"}, {"label", "RTL-SDR"}, {"serial", "B"}},
