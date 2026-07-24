@@ -179,6 +179,91 @@ TEST_CASE("FFT - FFTPACK Real Signal F32", "[modules][fft][real][fftpack]") {
     }
 }
 
+TEST_CASE("FFT - Complex Real Signal F32", "[modules][fft][real][complex]") {
+    auto implementations = Registry::ListAvailableModules("fft");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("fft", impl.device, impl.runtime, impl.provider);
+
+            Modules::Fft config;
+            config.complexOutput = true;
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({4});
+            input.at(0) = 1.0f;
+            input.at(1) = 2.0f;
+            input.at(2) = 3.0f;
+            input.at(3) = 4.0f;
+            ctx.setInput("signal", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("signal");
+            REQUIRE(out.dtype() == DataType::CF32);
+            REQUIRE(out.shape() == Shape{3});
+
+            const CF32 expected[] = {
+                {10.0f, 0.0f},
+                {-2.0f, 2.0f},
+                {-2.0f, 0.0f},
+            };
+            for (U64 index = 0; index < out.size(); ++index) {
+                REQUIRE_THAT(out.at<CF32>(index).real(),
+                             Catch::Matchers::WithinAbs(expected[index].real(), 1e-4f));
+                REQUIRE_THAT(out.at<CF32>(index).imag(),
+                             Catch::Matchers::WithinAbs(expected[index].imag(), 1e-4f));
+            }
+        }
+    }
+}
+
+TEST_CASE("FFT - Complex Real Signal Arbitrary Axis F32",
+          "[modules][fft][real][complex][axis]") {
+    auto implementations = Registry::ListAvailableModules("fft");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("fft", impl.device, impl.runtime, impl.provider);
+
+            Modules::Fft config;
+            config.axis = 0;
+            config.complexOutput = true;
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({4, 2});
+            for (U64 row = 0; row < input.shape(0); ++row) {
+                input.at(row, 0) = static_cast<F32>(row + 1);
+                input.at(row, 1) = static_cast<F32>((row + 1) * 2);
+            }
+            ctx.setInput("signal", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("signal");
+            REQUIRE(out.dtype() == DataType::CF32);
+            REQUIRE(out.shape() == Shape{3, 2});
+
+            const CF32 expected[] = {
+                {10.0f, 0.0f},
+                {-2.0f, 2.0f},
+                {-2.0f, 0.0f},
+            };
+            for (U64 frequency = 0; frequency < out.shape(0); ++frequency) {
+                for (U64 column = 0; column < out.shape(1); ++column) {
+                    const CF32 value = expected[frequency] * static_cast<F32>(column + 1);
+                    REQUIRE_THAT(out.at<CF32>(frequency, column).real(),
+                                 Catch::Matchers::WithinAbs(value.real(), 1e-4f));
+                    REQUIRE_THAT(out.at<CF32>(frequency, column).imag(),
+                                 Catch::Matchers::WithinAbs(value.imag(), 1e-4f));
+                }
+            }
+        }
+    }
+}
+
 TEST_CASE("FFT - FFTPACK Real Inverse F32", "[modules][fft][real][fftpack][inverse]") {
     auto implementations = Registry::ListAvailableModules("fft");
     REQUIRE(!implementations.empty());

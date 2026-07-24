@@ -10,6 +10,7 @@ namespace Jetstream::Modules {
 Result FftImpl::validate() {
     validatedResolvedAxis = 0;
     validatedOutputShape.clear();
+    validatedOutputDataType = DataType::None;
     validatedOutputElementCount = 0;
     validatedOutputSizeBytes = 0;
 
@@ -37,8 +38,17 @@ Result FftImpl::validate() {
         return Result::ERROR;
     }
 
+    validatedOutputDataType = inputTensor.dtype();
+    validatedOutputShape = inputTensor.shape();
+    if (inputTensor.dtype() == DataType::F32 && config.forward &&
+        config.complexOutput) {
+        validatedOutputDataType = DataType::CF32;
+        validatedOutputShape[*candidateAxis] =
+            (inputTensor.shape(*candidateAxis) / 2) + 1;
+    }
+
     U64 outputElementCount = 1;
-    for (const U64 dimension : inputTensor.shape()) {
+    for (const U64 dimension : validatedOutputShape) {
         if (!detail::CheckedMultiply(outputElementCount,
                                      dimension,
                                      outputElementCount)) {
@@ -49,14 +59,13 @@ Result FftImpl::validate() {
 
     U64 outputSizeBytes = 0;
     if (!detail::CheckedMultiply(outputElementCount,
-                                 static_cast<U64>(DataTypeSize(inputTensor.dtype())),
+                                 static_cast<U64>(DataTypeSize(validatedOutputDataType)),
                                  outputSizeBytes)) {
         JST_ERROR("[MODULE_FFT] Output shape exceeds the supported byte range.");
         return Result::ERROR;
     }
 
     validatedResolvedAxis = *candidateAxis;
-    validatedOutputShape = inputTensor.shape();
     validatedOutputElementCount = outputElementCount;
     validatedOutputSizeBytes = outputSizeBytes;
 
@@ -78,7 +87,7 @@ Result FftImpl::create() {
     input = inputTensor;
     resolvedAxis = validatedResolvedAxis;
 
-    JST_CHECK(output.create(input.device(), input.dtype(), validatedOutputShape));
+    JST_CHECK(output.create(input.device(), validatedOutputDataType, validatedOutputShape));
     JST_CHECK(output.propagateAttributes(input));
 
     outputs()["signal"].produced(name(), "signal", output);

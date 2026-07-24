@@ -18,6 +18,7 @@ Result FftImpl::configure() {
     fftConfig->forward = forward;
     fftConfig->axis = axis;
     fftConfig->invert = invert;
+    fftConfig->complexOutput = complexOutput;
 
     return Result::SUCCESS;
 }
@@ -46,6 +47,17 @@ Result FftImpl::define() {
                                     "Invert",
                                     "Apply alternating signs along the selected axis before transforming.",
                                     "bool"));
+
+    const auto input = inputs().find("signal");
+    if (forward &&
+        input != inputs().end() &&
+        input->second.resolved() &&
+        input->second.tensor.dtype() == DataType::F32) {
+        JST_CHECK(defineInterfaceConfig("complexOutput",
+                                        "Complex Output",
+                                        "Output N/2 + 1 complex frequency bins.",
+                                        "bool"));
+    }
 
     return Result::SUCCESS;
 }

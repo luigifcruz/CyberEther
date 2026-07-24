@@ -29,6 +29,13 @@ TEST_CASE_METHOD(FlowgraphFixture,
     const Tensor out = viewBlock("fft").outputs.at("signal").tensor;
     REQUIRE(out.dtype() == DataType::CF32);
     REQUIRE(out.shape(0) == 64);
+
+    const auto& interfaceConfigs = viewBlock("fft").interfaceConfigs;
+    const auto complexOutput = std::find_if(
+        interfaceConfigs.begin(),
+        interfaceConfigs.end(),
+        [](const auto& field) { return field.name == "complexOutput"; });
+    REQUIRE(complexOutput == interfaceConfigs.end());
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
@@ -46,6 +53,56 @@ TEST_CASE_METHOD(FlowgraphFixture,
             Result::SUCCESS);
     REQUIRE(viewBlock("fft_dtype").state == Block::State::Errored);
     REQUIRE(viewBlock("fft_dtype").outputs.empty());
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "FFT block exposes complex output for real input",
+                 "[modules][dsp][fft][block][real][complex]") {
+    Blocks::OnesTensor source;
+    source.shape = {4};
+    source.dataType = "F32";
+    REQUIRE(flowgraph->blockCreate("fft_real_src", source, {}) == Result::SUCCESS);
+
+    Blocks::Fft config;
+    config.complexOutput = true;
+
+    TensorMap inputs;
+    inputs["signal"].requested("fft_real_src", "buffer");
+    REQUIRE(flowgraph->blockCreate("fft_real", config, inputs) == Result::SUCCESS);
+    const auto block = viewBlock("fft_real");
+    REQUIRE(block.state == Block::State::Created);
+    const auto complexOutput = std::find_if(
+        block.interfaceConfigs.begin(),
+        block.interfaceConfigs.end(),
+        [](const auto& field) { return field.name == "complexOutput"; });
+    REQUIRE(complexOutput != block.interfaceConfigs.end());
+
+    Tensor output = viewBlock("fft_real").outputs.at("signal").tensor;
+    REQUIRE(output.dtype() == DataType::CF32);
+    REQUIRE(output.shape() == Shape{3});
+
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE_THAT(output.at<CF32>(0).real(),
+                 Catch::Matchers::WithinAbs(4.0f, 1e-4f));
+    REQUIRE_THAT(output.at<CF32>(0).imag(),
+                 Catch::Matchers::WithinAbs(0.0f, 1e-4f));
+    for (U64 index = 1; index < output.size(); ++index) {
+        REQUIRE_THAT(std::abs(output.at<CF32>(index)),
+                     Catch::Matchers::WithinAbs(0.0f, 1e-4f));
+    }
+
+    Blocks::Fft inverseConfig;
+    inverseConfig.forward = false;
+    REQUIRE(flowgraph->blockCreate("fft_real_inverse", inverseConfig, inputs) ==
+            Result::SUCCESS);
+
+    const auto inverse = viewBlock("fft_real_inverse");
+    const auto inverseComplexOutput = std::find_if(
+        inverse.interfaceConfigs.begin(),
+        inverse.interfaceConfigs.end(),
+        [](const auto& field) { return field.name == "complexOutput"; });
+    REQUIRE(inverseComplexOutput == inverse.interfaceConfigs.end());
+    REQUIRE(inverse.outputs.at("signal").tensor.dtype() == DataType::F32);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
