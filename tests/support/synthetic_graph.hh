@@ -281,6 +281,7 @@ struct SyntheticFaultModule : Module::Impl,
             return Result::ERROR;
         }
 
+        JST_CHECK(defineTaint(Module::Taint::SURFACE));
         return defineInterfaceOutput("out");
     }
 
