@@ -2,6 +2,7 @@
 #define JETSTREAM_PLATFORM_HH
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -32,6 +33,10 @@ JETSTREAM_API bool InstallInterruptHandler(void (*handler)() noexcept);
 JETSTREAM_API void UninstallInterruptHandler();
 JETSTREAM_API void WriteInterruptMessage(const char* message, std::size_t size) noexcept;
 [[noreturn]] JETSTREAM_API void ForceTerminate(I32 status) noexcept;
+#endif
+
+#if !defined(JST_OS_BROWSER)
+JETSTREAM_API bool ShutdownSocketRead(std::uintptr_t socket) noexcept;
 #endif
 
 JETSTREAM_API Result RunProcess(const std::string& executable,
