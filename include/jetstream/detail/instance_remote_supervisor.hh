@@ -3,6 +3,8 @@
 #include "jetstream/instance_remote.hh"
 
 #include <atomic>
+#include <condition_variable>
+#include <mutex>
 #include <set>
 #include <string>
 #include <thread>
@@ -25,6 +27,8 @@ struct Instance::Remote::Supervisor {
     bool autoJoin = false;
     std::set<std::string> seenSessions;
     std::atomic<bool> running_{false};
+    std::mutex waitMutex;
+    std::condition_variable waitCondition;
     std::thread worker_;
 };
 
