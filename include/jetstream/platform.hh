@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_PLATFORM_HH
 #define JETSTREAM_PLATFORM_HH
 
+#include <cstddef>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -25,6 +26,13 @@ JETSTREAM_API Result EnvironmentVariable(const std::string& name, std::string& v
 JETSTREAM_API Result EnvironmentPath(const std::string& name, std::filesystem::path& path);
 
 JETSTREAM_API bool PrepareStandardOutputForAnsi();
+
+#if defined(JST_OS_LINUX) || defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
+JETSTREAM_API bool InstallInterruptHandler(void (*handler)() noexcept);
+JETSTREAM_API void UninstallInterruptHandler();
+JETSTREAM_API void WriteInterruptMessage(const char* message, std::size_t size) noexcept;
+[[noreturn]] JETSTREAM_API void ForceTerminate(I32 status) noexcept;
+#endif
 
 JETSTREAM_API Result RunProcess(const std::string& executable,
                                 const std::vector<std::string>& arguments,

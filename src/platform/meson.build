@@ -8,6 +8,10 @@ src_lst += files([
     'url.cc',
 ])
 
+if jst_is_linux or jst_is_macos or jst_is_windows
+    src_lst += files('interrupt.cc')
+endif
+
 if jst_is_ios
     dep_lst += [
         dependency('appleframeworks', modules: ['Foundation', 'UIKit']),
