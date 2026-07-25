@@ -29,6 +29,7 @@ struct Instance::Impl {
     std::atomic<bool> started = false;
     std::atomic<bool> computing = false;
     std::atomic<bool> presenting = false;
+    std::atomic<bool> stopRequested = false;
     std::atomic<bool> stopping = false;
 
     DeviceType device;
@@ -359,8 +360,20 @@ Result Instance::start() {
     impl->started.store(true);
     impl->computing.store(true);
     impl->presenting.store(true);
+    impl->stopRequested.store(false);
     impl->stopping.store(false);
 
+    return Result::SUCCESS;
+}
+
+Result Instance::requestStop() {
+    JST_ASSERT(impl->created.load(), "[INSTANCE] Instance not created.");
+    if (impl->stopping.load()) {
+        return Result::SUCCESS;
+    }
+    JST_ASSERT(impl->started.load(), "[INSTANCE] Instance not started.");
+
+    impl->stopRequested.store(true);
     return Result::SUCCESS;
 }
 
@@ -372,6 +385,7 @@ Result Instance::stop() {
     impl->stopping.store(true);
     impl->computing.store(false);
     impl->presenting.store(false);
+    impl->stopRequested.store(false);
 
     std::vector<std::shared_ptr<Flowgraph>> flowgraphs;
     {
@@ -442,6 +456,10 @@ bool Instance::presenting() const {
 Result Instance::present(const std::function<Result()>& callback) {
     JST_ASSERT(impl->created.load(), "[INSTANCE] Instance not created.");
     if (impl->stopping.load()) {
+        return Result::SUCCESS;
+    }
+    if (impl->stopRequested.load()) {
+        impl->presenting.store(false);
         return Result::SUCCESS;
     }
 
@@ -544,6 +562,10 @@ Result Instance::present(const std::function<Result()>& callback) {
 
     if (impl->compositor) {
         JST_CHECK(impl->compositor->poll());
+    }
+
+    if (impl->stopRequested.load()) {
+        impl->presenting.store(false);
     }
 
     return Result::SUCCESS;

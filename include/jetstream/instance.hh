@@ -37,6 +37,7 @@ class JETSTREAM_API Instance : public std::enable_shared_from_this<Instance> {
 
     Result create(const Config& config);
     Result start();
+    Result requestStop();
     Result stop();
     Result destroy();
 
