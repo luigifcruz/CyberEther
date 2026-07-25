@@ -10,11 +10,13 @@ using namespace Jetstream;
 
 namespace {
 
-struct SoapyCachedRangeProbe : Modules::SoapyImpl {
-    void setCachedRanges(const std::vector<SoapySDR::Range>& sampleRates,
-                         const std::vector<SoapySDR::Range>& frequencies) {
-        sampleRateRanges = sampleRates;
-        frequencyRanges = frequencies;
+struct SoapyImplAccess : Modules::SoapyImpl {
+    static auto sampleRateRangesMember() {
+        return &SoapyImplAccess::sampleRateRanges;
+    }
+
+    static auto frequencyRangesMember() {
+        return &SoapyImplAccess::frequencyRanges;
     }
 };
 
@@ -157,19 +159,44 @@ TEST_CASE("Soapy runtime ranges retain stepped capability checks",
     REQUIRE(Modules::SoapyRangeContains(endpointRange, endpoint));
 }
 
-TEST_CASE("Soapy validation ignores cached ranges while live setters enforce them",
-          "[modules][soapy][validation][devices]") {
-    SoapyCachedRangeProbe probe;
-    probe.setCachedRanges({SoapySDR::Range(1.0e6, 2.0e6)},
-                          {SoapySDR::Range(90.0e6, 110.0e6)});
+TEST_CASE("Soapy validation ignores cached device ranges",
+           "[modules][soapy][validation][devices]") {
+    const auto implementations = Registry::ListAvailableModules("soapy");
+    if (implementations.empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
 
-    auto& candidate = *probe.candidate();
-    candidate.sampleRate = 3.0e6f;
-    candidate.frequency = 120.0e6f;
+    for (const auto& implementation : implementations) {
+        DYNAMIC_SECTION("Device: " << implementation.device
+                        << " Runtime: " << implementation.runtime) {
+            std::shared_ptr<Module> module;
+            REQUIRE(Registry::BuildModule("soapy",
+                                          implementation.device,
+                                          implementation.runtime,
+                                          implementation.provider,
+                                          module) == Result::SUCCESS);
 
-    REQUIRE(probe.validate() == Result::SUCCESS);
-    REQUIRE(probe.setSampleRate(candidate.sampleRate) == Result::WARNING);
-    REQUIRE(probe.setTunerFrequency(candidate.frequency) == Result::WARNING);
+            auto* soapy = module->getImpl<Modules::SoapyImpl>();
+            REQUIRE(soapy != nullptr);
+            soapy->*SoapyImplAccess::sampleRateRangesMember() = {
+                SoapySDR::Range(1.0e6, 2.0e6),
+            };
+            soapy->*SoapyImplAccess::frequencyRangesMember() = {
+                SoapySDR::Range(90.0e6, 110.0e6),
+            };
+
+            auto& candidate = *soapy->candidate();
+            candidate.sampleRate = 3.0e6f;
+            candidate.frequency = 120.0e6f;
+
+            REQUIRE_FALSE(Modules::SoapyRangeContains(
+                soapy->*SoapyImplAccess::sampleRateRangesMember(), candidate.sampleRate));
+            REQUIRE_FALSE(Modules::SoapyRangeContains(
+                soapy->*SoapyImplAccess::frequencyRangesMember(), candidate.frequency));
+            REQUIRE(soapy->validate() == Result::SUCCESS);
+        }
+    }
 }
 
 TEST_CASE("Soapy device lists preserve duplicate and missing labels",

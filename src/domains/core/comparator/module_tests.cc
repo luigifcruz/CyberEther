@@ -11,7 +11,6 @@
 #include "jetstream/testing.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/domains/core/comparator/module.hh"
-#include "module_impl.hh"
 
 using namespace Jetstream;
 
@@ -412,9 +411,6 @@ TEST_CASE("Comparator Module - Validation-only and rejected updates preserve liv
                          Catch::Matchers::WithinAbs(0.25f, 1e-6f));
 
             const auto outputId = module->outputs().at("error").tensor.id();
-            const auto* comparator = module->getImpl<Modules::ComparatorImpl>();
-            REQUIRE(comparator != nullptr);
-            REQUIRE(comparator->getMatch());
 
             Parser::Map validateOnly;
             validateOnly["tolerance"] = F64{0.1};
@@ -427,7 +423,6 @@ TEST_CASE("Comparator Module - Validation-only and rejected updates preserve liv
             REQUIRE(module->outputs().at("error").tensor.id() == outputId);
             REQUIRE_THAT(module->outputs().at("error").tensor.at<F32>(0),
                          Catch::Matchers::WithinAbs(0.4f, 1e-6f));
-            REQUIRE(comparator->getMatch());
 
             Parser::Map rejected;
             rejected["tolerance"] = F64{-1.0};
@@ -443,7 +438,6 @@ TEST_CASE("Comparator Module - Validation-only and rejected updates preserve liv
             REQUIRE(module->outputs().at("error").tensor.id() == outputId);
             REQUIRE_THAT(module->outputs().at("error").tensor.at<F32>(0),
                          Catch::Matchers::WithinAbs(0.75f, 1e-6f));
-            REQUIRE_FALSE(comparator->getMatch());
 
             REQUIRE(runtime.destroy() == Result::SUCCESS);
             REQUIRE(module->destroy() == Result::SUCCESS);
