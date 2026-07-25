@@ -895,10 +895,6 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
             supervisor->stop();
         }
 
-        if (remoteEnabled && instance->remote()->started()) {
-            (void)instance->remote()->destroy();
-        }
-
         if (instance->computing() || instance->presenting()) {
             (void)instance->stop();
         }
@@ -909,6 +905,10 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
 
         if (graphicalThread.joinable()) {
             graphicalThread.join();
+        }
+
+        if (remoteEnabled && instance->remote()->started()) {
+            (void)instance->remote()->destroy();
         }
 
         if (pluginDestroy) {
