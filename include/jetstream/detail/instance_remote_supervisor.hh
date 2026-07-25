@@ -9,7 +9,7 @@
 
 namespace Jetstream {
 
-struct Instance::Remote::Supervisor {
+struct JETSTREAM_API Instance::Remote::Supervisor {
     Supervisor(Instance::Remote* remote, bool autoJoin);
     ~Supervisor();
 
