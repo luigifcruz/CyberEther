@@ -1,6 +1,7 @@
 #include "instance_remote_impl.hh"
 
 #include "jetstream/logger.hh"
+#include "jetstream/platform.hh"
 
 #include <chrono>
 
@@ -118,11 +119,15 @@ Result Instance::Remote::Impl::startSignaller() {
     }
 
     for (std::size_t attempt = 1; attempt <= kSignallerConnectAttempts; ++attempt) {
+        signallerSocket.store(INVALID_SOCKET, std::memory_order_release);
         auto client = std::make_unique<httplib::ws::WebSocketClient>(signallerUrl);
         client->set_connection_timeout(5);
         client->set_write_timeout(1);
         client->set_websocket_ping_interval(20);
         client->set_tcp_nodelay(true);
+        client->set_socket_options([this](const socket_t socket) {
+            signallerSocket.store(socket, std::memory_order_release);
+        });
 
         if (!client->is_valid()) {
             JST_ERROR("[REMOTE] Invalid signaller URL '{}'.", signallerUrl);
@@ -133,6 +138,8 @@ Result Instance::Remote::Impl::startSignaller() {
             signallerClient = std::move(client);
             break;
         }
+
+        signallerSocket.store(INVALID_SOCKET, std::memory_order_release);
 
         if (attempt == kSignallerConnectAttempts) {
             JST_ERROR("[REMOTE] Failed to connect to signaller '{}' after {} attempts.",
@@ -167,11 +174,9 @@ Result Instance::Remote::Impl::stopSignaller() {
     }
     roomCondition.notify_all();
 
-    {
-        std::lock_guard<std::mutex> lock(signallerMutex);
-        if (signallerClient) {
-            signallerClient->close();
-        }
+    const socket_t socket = signallerSocket.exchange(INVALID_SOCKET, std::memory_order_acq_rel);
+    if (socket != INVALID_SOCKET) {
+        (void)Platform::ShutdownSocketRead(static_cast<std::uintptr_t>(socket));
     }
 
     if (signallerThread.joinable()) {
@@ -180,6 +185,12 @@ Result Instance::Remote::Impl::stopSignaller() {
 
     {
         std::lock_guard<std::mutex> lock(signallerMutex);
+        if (signallerClient) {
+            signallerClient->close();
+            // close() is a no-op when read() marked the WebSocket closed. send()
+            // still takes the write lock, draining any in-flight heartbeat.
+            (void)signallerClient->send("", 0);
+        }
         signallerClient.reset();
     }
 

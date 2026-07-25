@@ -91,6 +91,7 @@ struct Instance::Remote::Impl {
     std::unique_ptr<httplib::ws::WebSocketClient> signallerClient;
     std::thread signallerThread;
     std::atomic<bool> signallerRunning = false;
+    std::atomic<socket_t> signallerSocket = INVALID_SOCKET;
     std::mutex signallerMutex;
 
     struct WebRtcSession {
