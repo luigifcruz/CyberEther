@@ -7,6 +7,7 @@
 
 #include "jetstream/detail/instance_remote_supervisor.hh"
 #include "jetstream/flowgraph_view.hh"
+#include "jetstream/platform.hh"
 #include "jetstream/superluminal.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/module_surface.hh"
@@ -16,12 +17,34 @@
 
 namespace Jetstream {
 
+namespace {
+
+std::atomic_flag shutdownRequested = ATOMIC_FLAG_INIT;
+
+void HandleInterrupt() noexcept {
+    constexpr char ShutdownMessage[] =
+        "\n[SUPERLUMINAL] Shutdown requested. Press Ctrl+C again to force termination.\n";
+    constexpr char ForceShutdownMessage[] =
+        "\n[SUPERLUMINAL] Forcing immediate shutdown.\n";
+
+    if (!shutdownRequested.test_and_set(std::memory_order_relaxed)) {
+        Platform::WriteInterruptMessage(ShutdownMessage, sizeof(ShutdownMessage) - 1);
+        return;
+    }
+
+    Platform::WriteInterruptMessage(ForceShutdownMessage, sizeof(ForceShutdownMessage) - 1);
+    Platform::ForceTerminate(130);
+}
+
+}  // namespace
+
 struct Superluminal::Impl {
     InstanceConfig config;
     std::shared_ptr<Instance> instance;
     std::shared_ptr<Flowgraph> flowgraph;
     bool initialized;
     bool running;
+    bool interruptHandlerInstalled = false;
 
     std::atomic_flag computeSync = ATOMIC_FLAG_INIT;
 
@@ -170,6 +193,10 @@ Result Superluminal::terminate() {
         JST_CHECK(stop());
     }
 
+    if (impl->interruptHandlerInstalled) {
+        shutdownRequested.test_and_set(std::memory_order_relaxed);
+    }
+
     if (impl->supervisor) {
         impl->supervisor->stop();
         impl->supervisor.reset();
@@ -193,6 +220,12 @@ Result Superluminal::terminate() {
     impl->initialized = false;
     impl->running = false;
 
+    if (impl->interruptHandlerInstalled) {
+        Platform::UninstallInterruptHandler();
+        impl->interruptHandlerInstalled = false;
+    }
+    shutdownRequested.clear(std::memory_order_relaxed);
+
     JST_INFO("[SUPERLUMINAL] Instance terminated.");
     return Result::SUCCESS;
 }
@@ -211,6 +244,8 @@ Result Superluminal::start() {
         JST_WARN("[SUPERLUMINAL] Instance is already running.");
         return Result::SUCCESS;
     }
+
+    shutdownRequested.clear(std::memory_order_relaxed);
 
     // Create graph.
 
@@ -231,6 +266,13 @@ Result Superluminal::start() {
             impl->instance->remote().get(),
             impl->config.remoteAutoJoin);
         impl->supervisor->start();
+    }
+
+    if (!impl->interruptHandlerInstalled) {
+        impl->interruptHandlerInstalled = Platform::InstallInterruptHandler(HandleInterrupt);
+        if (!impl->interruptHandlerInstalled) {
+            JST_WARN("[SUPERLUMINAL] Interrupt handling is unavailable.");
+        }
     }
 
     // Start the compute, present, and input threads.
@@ -398,6 +440,10 @@ Result Superluminal::stop() {
         return Result::SUCCESS;
     }
 
+    if (impl->interruptHandlerInstalled) {
+        shutdownRequested.test_and_set(std::memory_order_relaxed);
+    }
+
     // Update the state.
 
     impl->running = false;
@@ -427,6 +473,8 @@ Result Superluminal::stop() {
 
     JST_CHECK(impl->destroyGraph());
 
+    shutdownRequested.clear(std::memory_order_relaxed);
+
     JST_INFO("[SUPERLUMINAL] Instance stopped successfully.");
     return Result::SUCCESS;
 }
@@ -441,7 +489,7 @@ Result Superluminal::update(const std::string&) {
 }
 
 bool Superluminal::presenting() {
-    return impl->instance->polling();
+    return !shutdownRequested.test(std::memory_order_relaxed) && impl->instance->polling();
 }
 
 Result Superluminal::block() {
@@ -459,7 +507,7 @@ Result Superluminal::block() {
 
     // Block until the instance is done.
 
-    while (impl->instance->polling()) {
+    while (!shutdownRequested.test(std::memory_order_relaxed) && impl->instance->polling()) {
         JST_CHECK(impl->instance->poll());
     }
 
@@ -474,6 +522,10 @@ Result Superluminal::pollEvents(const bool& wait) {
     }
 
     if (!impl->running) {
+        return Result::SUCCESS;
+    }
+
+    if (shutdownRequested.test(std::memory_order_relaxed)) {
         return Result::SUCCESS;
     }
 
