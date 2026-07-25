@@ -202,6 +202,13 @@ Result Instance::Remote::Impl::rollbackCreate() {
     if (this->frameCapture && this->frameCapture->stop() != Result::SUCCESS) {
         result = Result::ERROR;
     }
+
+    // Pipeline teardown releases any frame still retained by GStreamer, which
+    // wakes the submission thread before it is joined below.
+    if (this->destroyBroker() != Result::SUCCESS) {
+        result = Result::ERROR;
+    }
+
     if (this->frameSubmissionThread.joinable()) {
         this->frameSubmissionThread.join();
     }
@@ -213,9 +220,6 @@ Result Instance::Remote::Impl::rollbackCreate() {
         this->frameCapture.reset();
     }
 
-    if (this->destroyBroker() != Result::SUCCESS) {
-        result = Result::ERROR;
-    }
     if (this->destroyStream() != Result::SUCCESS) {
         result = Result::ERROR;
     }
