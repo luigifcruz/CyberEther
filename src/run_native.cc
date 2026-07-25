@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -13,6 +14,7 @@
 #include "jetstream/detail/instance_remote_supervisor.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/instance_remote.hh"
+#include "jetstream/platform.hh"
 #include "jetstream/plugin.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/backend/base.hh"
@@ -21,6 +23,46 @@
 namespace Jetstream {
 
 namespace {
+
+std::atomic_flag shutdownRequested = ATOMIC_FLAG_INIT;
+
+void HandleInterrupt() noexcept {
+    constexpr char ShutdownMessage[] =
+        "\n[CYBERETHER] Shutdown requested. Press Ctrl+C again to force termination.\n";
+    constexpr char ForceShutdownMessage[] =
+        "\n[CYBERETHER] Forcing immediate shutdown.\n";
+
+    if (!shutdownRequested.test_and_set(std::memory_order_relaxed)) {
+        Platform::WriteInterruptMessage(ShutdownMessage, sizeof(ShutdownMessage) - 1);
+        return;
+    }
+
+    Platform::WriteInterruptMessage(ForceShutdownMessage, sizeof(ForceShutdownMessage) - 1);
+    Platform::ForceTerminate(130);
+}
+
+class InterruptHandlerGuard {
+ public:
+    InterruptHandlerGuard() {
+        shutdownRequested.clear(std::memory_order_relaxed);
+        handlerInstalled = Platform::InstallInterruptHandler(HandleInterrupt);
+    }
+
+    ~InterruptHandlerGuard() {
+        if (installed()) {
+            Platform::UninstallInterruptHandler();
+        }
+        shutdownRequested.clear(std::memory_order_relaxed);
+    }
+
+    InterruptHandlerGuard(const InterruptHandlerGuard&) = delete;
+    InterruptHandlerGuard& operator=(const InterruptHandlerGuard&) = delete;
+
+    bool installed() const { return handlerInstalled; }
+
+ private:
+    bool handlerInstalled = false;
+};
 
 Instance::Config BuildInstanceConfig(const Settings& settings) {
     Instance::Config config = {
@@ -714,6 +756,11 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
     //
 
     if (command == CommandType::Run) {
+        InterruptHandlerGuard interruptHandler;
+        if (!interruptHandler.installed()) {
+            JST_WARN("[CYBERETHER] Interrupt handling is unavailable.");
+        }
+
         const Instance::Config config = BuildInstanceConfig(settings);
 
         if (Settings::Set(settings, false) != Result::SUCCESS) {
@@ -833,12 +880,16 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
             supervisor->start();
         }
 
-        while (instance->polling()) {
+        while (!shutdownRequested.test(std::memory_order_relaxed) && instance->polling()) {
             if (instance->poll() != Result::SUCCESS) {
                 code.store(-1);
                 break;
             }
         }
+
+        // Treat Ctrl+C during teardown as a force-shutdown request even when
+        // shutdown began through a window close or worker failure.
+        shutdownRequested.test_and_set(std::memory_order_relaxed);
 
         if (supervisor) {
             supervisor->stop();
