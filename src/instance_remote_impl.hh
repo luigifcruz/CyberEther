@@ -30,6 +30,7 @@ struct Instance::Remote::Impl {
     bool supported() const;
     Result create(const Instance::Remote::Config& config);
     Result destroy();
+    Result rollbackCreate();
     Result captureFrame();
     Result approveClient(const std::string& code);
 

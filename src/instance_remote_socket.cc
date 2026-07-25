@@ -39,15 +39,18 @@ Result Instance::Remote::Impl::createBroker() {
     clientDomain = jst::fmt::format("{}/remote", brokerOrigin);
 
     JST_INFO("[REMOTE] Signaller URL: '{}'.", signallerUrl);
-    JST_CHECK(startSignaller());
+    if (startSignaller() != Result::SUCCESS) {
+        (void)destroyBroker();
+        return Result::ERROR;
+    }
     if (createRoom() != Result::SUCCESS) {
-        (void)stopSignaller();
+        (void)destroyBroker();
         return Result::ERROR;
     }
     inviteUrl_ = jst::fmt::format("{}#{}", clientDomain, consumerToken);
 
     if (startStream() != Result::SUCCESS) {
-        (void)stopSignaller();
+        (void)destroyBroker();
         return Result::ERROR;
     }
 
@@ -56,17 +59,27 @@ Result Instance::Remote::Impl::createBroker() {
 
 Result Instance::Remote::Impl::destroyBroker() {
     JST_DEBUG("[REMOTE] Closing broker connection.");
-    JST_CHECK(stopSignaller());
-    JST_CHECK(stopStream());
+    const Result signallerResult = stopSignaller();
+    const Result streamResult = stopStream();
     roomId_.clear();
     consumerToken.clear();
     inviteUrl_.clear();
+    clientDomain.clear();
+    signallerUrl.clear();
+    {
+        std::lock_guard<std::mutex> lock(roomMutex);
+        signallerReady = false;
+        roomReady = false;
+        roomFailed = false;
+    }
     {
         std::lock_guard<std::mutex> lock(remoteStateMutex);
         waitlist_.clear();
         clients_.clear();
     }
-    return Result::SUCCESS;
+    return signallerResult == Result::SUCCESS && streamResult == Result::SUCCESS
+        ? Result::SUCCESS
+        : Result::ERROR;
 }
 
 Result Instance::Remote::Impl::createRoom() {
@@ -159,7 +172,13 @@ Result Instance::Remote::Impl::startSignaller() {
     }
 
     signallerRunning = true;
-    signallerThread = std::thread([this]() { signallerLoop(); });
+    try {
+        signallerThread = std::thread([this]() { signallerLoop(); });
+    } catch (const std::exception& e) {
+        JST_ERROR("[REMOTE] Failed to start signaller thread: {}", e.what());
+        (void)stopSignaller();
+        return Result::ERROR;
+    }
 
     return Result::SUCCESS;
 }
