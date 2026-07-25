@@ -158,7 +158,13 @@ TEST_CASE("Duplicate Module - Validation contract",
     }
 #else
     SECTION("CPU input follows the selected Vulkan memory model") {
-        const auto& vulkan = Backend::State<DeviceType::Vulkan>();
+        const Backend::Vulkan* vulkan = nullptr;
+        try {
+            vulkan = Backend::State<DeviceType::Vulkan>().get();
+        } catch (const Result&) {
+            SUCCEED("Vulkan is compiled but unavailable at runtime.");
+            return;
+        }
         REQUIRE(vulkan != nullptr);
 
         Tensor input;
@@ -174,7 +180,7 @@ TEST_CASE("Duplicate Module - Validation contract",
         candidate["outputDevice"] = std::string("vulkan");
 
         const auto result = module->reconfigure(candidate, true);
-        if (!vulkan->isAvailable() || vulkan->hasUnifiedMemory()) {
+        if (vulkan->hasUnifiedMemory()) {
             REQUIRE(result == Result::SUCCESS);
         } else {
             REQUIRE(result == Result::ERROR);

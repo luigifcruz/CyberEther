@@ -286,11 +286,13 @@ TEST_CASE("FileWriter Module - Unsupported input dtype",
             requireFileWriterDtypeValidationError(impl, testPath);
             REQUIRE(std::filesystem::file_size(testPath) == existingData.size());
 
-            std::ifstream verify(testPath, std::ios::binary);
-            std::string actualData(existingData.size(), '\0');
-            verify.read(actualData.data(),
-                        static_cast<std::streamsize>(actualData.size()));
-            REQUIRE(actualData == existingData);
+            {
+                std::ifstream verify(testPath, std::ios::binary);
+                std::string actualData(existingData.size(), '\0');
+                verify.read(actualData.data(),
+                            static_cast<std::streamsize>(actualData.size()));
+                REQUIRE(actualData == existingData);
+            }
 
             cleanupTestFile(testPath);
         }

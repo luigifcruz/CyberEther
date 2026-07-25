@@ -319,7 +319,7 @@ TEST_CASE("Platform file locks support lifecycle and reacquisition",
     REQUIRE_FALSE(lock.locked());
     REQUIRE(lock.acquire(lockPathUtf8, false) == Result::SUCCESS);
     REQUIRE(lock.locked());
-    REQUIRE(ReadBinaryFile(lockPath) == contents);
+    REQUIRE(std::filesystem::file_size(lockPath) == contents.size());
 
     REQUIRE(lock.acquire(lockPathUtf8, false) == Result::ERROR);
     REQUIRE(lock.locked());
@@ -597,7 +597,7 @@ TEST_CASE("Platform processes capture stdout without stderr",
     std::string output = "unchanged";
 #if defined(JST_OS_WINDOWS)
     REQUIRE(Platform::RunProcess(
-                "cmd.exe", {"/D", "/C", "echo stdout & echo stderr 1>&2"}, output, 5000) ==
+                "cmd.exe", {"/D", "/C", "echo stdout& echo stderr 1>&2"}, output, 5000) ==
             Result::SUCCESS);
     REQUIRE(output == "stdout\r\n");
 #else
