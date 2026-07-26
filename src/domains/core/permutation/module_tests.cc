@@ -7,6 +7,28 @@
 
 using namespace Jetstream;
 
+namespace {
+
+void RequirePermutationValidationError(const Registry::ModuleRegistration& impl,
+                                       const Modules::Permutation& config,
+                                       const Shape& shape) {
+    Tensor input;
+    REQUIRE(input.create(impl.device, DataType::F32, shape) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["buffer"].requested("test", "buffer");
+    inputs["buffer"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("permutation", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
+}  // namespace
+
 TEST_CASE("Permutation Module - Transpose F32", "[modules][permutation][F32]") {
     auto implementations = Registry::ListAvailableModules("permutation");
     REQUIRE(!implementations.empty());
@@ -204,15 +226,9 @@ TEST_CASE("Permutation Module - Validation rejects invalid permutations",
         }
 
         SECTION("rank mismatch") {
-            TestContext ctx("permutation", impl.device, impl.runtime, impl.provider);
-
             Modules::Permutation config;
             config.permutation = {1, 0};
-            ctx.setConfig(config);
-
-            auto input = ctx.createTensor<F32>({2, 3, 4});
-            ctx.setInput("buffer", input);
-            REQUIRE(ctx.run() == Result::ERROR);
+            RequirePermutationValidationError(impl, config, {2, 3, 4});
         }
     }
 }

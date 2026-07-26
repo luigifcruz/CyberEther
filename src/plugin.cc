@@ -105,7 +105,6 @@ struct Plugin::Impl {
     static std::string lowercase(std::string value);
     static std::string currentSystem();
     static std::string currentArch();
-    static bool isCepPath(const std::string& path);
     static bool isDeviceAvailable(DeviceType device);
     static bool parseVersion(const std::string& version, uint32_t& encoded);
     static bool safeRelativePath(const std::string& rawPath, std::filesystem::path& relativePath);
@@ -231,10 +230,6 @@ std::string Plugin::Impl::currentArch() {
 #endif
 }
 
-bool Plugin::Impl::isCepPath(const std::string& path) {
-    return lowercase(Platform::PathToUtf8(Platform::PathFromUtf8(path).extension())) == ".cep";
-}
-
 bool Plugin::Impl::isDeviceAvailable(DeviceType device) {
     switch (device) {
         case DeviceType::CPU:
@@ -280,7 +275,10 @@ bool Plugin::Impl::parseVersion(const std::string& version, uint32_t& encoded) {
 
     uint32_t values[3] = {0, 0, 0};
     for (std::size_t i = 0; i < 3; ++i) {
-        if (parts[i].empty()) {
+        if (parts[i].empty() ||
+            !std::all_of(parts[i].begin(), parts[i].end(), [](unsigned char character) {
+                return character >= '0' && character <= '9';
+            })) {
             return false;
         }
 
@@ -471,7 +469,14 @@ Result Plugin::Impl::extractCepArchive(const std::string& sourcePath,
             return value == 0;
         });
         if (emptyBlock) {
-            return Result::SUCCESS;
+            const bool completeEndMarker = tar.size() - offset >= 1024 &&
+                std::all_of(header + 512, header + 1024, [](uint8_t value) {
+                    return value == 0;
+                });
+            if (completeEndMarker) {
+                return Result::SUCCESS;
+            }
+            break;
         }
 
         uint64_t storedChecksum = 0;
@@ -572,6 +577,14 @@ Result Plugin::Impl::loadManifest(const std::filesystem::path& bundlePath, Manif
 Result Plugin::Impl::validateManifest(const std::string& sourcePath, const Manifest& manifest) {
     if (manifest.metadata.name.empty() || manifest.metadata.version.empty()) {
         JST_ERROR("[PLUGIN] Plugin '{}' has incomplete metadata.", sourcePath);
+        return Result::ERROR;
+    }
+
+    uint32_t version = 0;
+    if (!parseVersion(manifest.metadata.version, version)) {
+        JST_ERROR("[PLUGIN] Plugin '{}' has invalid version '{}'.",
+                  sourcePath,
+                  manifest.metadata.version);
         return Result::ERROR;
     }
 
@@ -924,7 +937,7 @@ Result Plugin::Impl::load(const std::string& path) {
         return Result::ERROR;
     }
 
-    if (!isCepPath(path)) {
+    if (!Plugin::IsCepPath(path)) {
         JST_ERROR("[PLUGIN] Plugin '{}' is not a .cep bundle.", path);
         return Result::ERROR;
     }
@@ -958,7 +971,7 @@ Result Plugin::Impl::reload(const std::string& path) {
         return Result::ERROR;
     }
 
-    if (!isCepPath(path)) {
+    if (!Plugin::IsCepPath(path)) {
         JST_ERROR("[PLUGIN] Plugin '{}' is not a .cep bundle.", path);
         return Result::ERROR;
     }
@@ -1027,7 +1040,7 @@ std::vector<Plugin::Info> Plugin::Impl::list() {
 }
 
 Result Plugin::Impl::loadPluginCopy(const std::string& sourcePath, Record& plugin) {
-    if (!isCepPath(sourcePath)) {
+    if (!Plugin::IsCepPath(sourcePath)) {
         JST_ERROR("[PLUGIN] Plugin '{}' is not a .cep bundle.", sourcePath);
         return Result::ERROR;
     }
@@ -1280,6 +1293,14 @@ void Plugin::Impl::cleanup() {
 Plugin::Impl& Plugin::plugin() {
     static Impl impl;
     return impl;
+}
+
+bool Plugin::IsCepPath(const std::string& path) {
+    auto extension = Platform::PathToUtf8(Platform::PathFromUtf8(path).extension());
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    return extension == ".cep";
 }
 
 Result Plugin::Load(const std::string& path) {

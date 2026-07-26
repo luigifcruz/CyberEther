@@ -14,22 +14,28 @@ struct WaterfallImplNativeCpu : public WaterfallImpl,
                                 public NativeCpuRuntimeContext,
                                 public Scheduler::Context {
  public:
-    Result create() final;
+    Result validate() final;
 
     Result presentInitialize() override;
     Result presentSubmit() override;
     Result computeSubmit() override;
 };
 
-Result WaterfallImplNativeCpu::create() {
-    // Create parent.
+Result WaterfallImplNativeCpu::validate() {
+    JST_CHECK(WaterfallImpl::validate());
 
-    JST_CHECK(WaterfallImpl::create());
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
 
-    // Validate input dtype.
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
 
-    if (input.dtype() != DataType::F32) {
-        JST_ERROR("[MODULE_WATERFALL_NATIVE_CPU] Unsupported input data type: {}.", input.dtype());
+    if (inputTensor.dtype() != DataType::F32) {
+        JST_ERROR("[MODULE_WATERFALL_NATIVE_CPU] Unsupported input data type: {}.",
+                  inputTensor.dtype());
         return Result::ERROR;
     }
 

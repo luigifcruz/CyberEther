@@ -1,11 +1,49 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <limits>
+
 #include "jetstream/testing.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/domains/dsp/fold/module.hh"
 
 using namespace Jetstream;
+
+namespace {
+
+Tensor MakeFoldTensor(const Registry::ModuleRegistration& impl,
+                      const DataType dtype,
+                      const Shape& shape,
+                      const bool broadcast = false) {
+    Tensor tensor;
+    if (broadcast) {
+        REQUIRE(tensor.create(impl.device, dtype, Shape(shape.size(), 1)) == Result::SUCCESS);
+        REQUIRE(tensor.broadcastTo(shape) == Result::SUCCESS);
+    } else if (shape.empty()) {
+        REQUIRE(tensor.create(impl.device, dtype, {1}) == Result::SUCCESS);
+        REQUIRE(tensor.squeezeDims(0) == Result::SUCCESS);
+    } else {
+        REQUIRE(tensor.create(impl.device, dtype, shape) == Result::SUCCESS);
+    }
+    return tensor;
+}
+
+void RequireFoldValidationError(const Registry::ModuleRegistration& impl,
+                                const Modules::Fold& config,
+                                const Tensor& input) {
+    TensorMap inputs;
+    inputs["buffer"].requested("test", "buffer");
+    inputs["buffer"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("fold", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
+}  // namespace
 
 TEST_CASE("Fold - 1D CF32 Uniform", "[modules][fold][cf32]") {
     auto implementations = Registry::ListAvailableModules("fold");
@@ -245,138 +283,86 @@ TEST_CASE("Fold - 2D F32 Along Negative Axis", "[modules][fold][axis]") {
     }
 }
 
-TEST_CASE("Fold - Invalid Axis Out Of Bounds", "[modules][fold][error]") {
-    auto implementations = Registry::ListAvailableModules("fold");
-    REQUIRE(!implementations.empty());
-
-    for (const auto& impl : implementations) {
-        DYNAMIC_SECTION("Device: " << impl.device
-                        << " Runtime: " << impl.runtime) {
-            TestContext ctx("fold", impl.device,
-                           impl.runtime, impl.provider);
-
-            Modules::Fold config;
-            config.axis = 1;  // Input is 1D.
-            config.offset = 0;
-            config.size = 4;
-
-            ctx.setConfig(config);
-
-            Tensor input;
-            REQUIRE(input.create(DeviceType::CPU, DataType::F32,
-                                 {8}) == Result::SUCCESS);
-
-            ctx.setInput("buffer", input);
-
-            REQUIRE(ctx.run() != Result::SUCCESS);
-        }
-    }
-}
-
-TEST_CASE("Fold - Too-Negative Axis Out Of Bounds", "[modules][fold][error]") {
+TEST_CASE("Fold - Validation rejects invalid axes",
+          "[modules][fold][validation][axis]") {
     const auto implementations = Registry::ListAvailableModules("fold");
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
-        DYNAMIC_SECTION("Device: " << impl.device
-                        << " Runtime: " << impl.runtime) {
-            TestContext ctx("fold", impl.device, impl.runtime, impl.provider);
-
-            Modules::Fold config;
-            config.axis = -3;
-            config.size = 2;
-            ctx.setConfig(config);
-
-            Tensor input;
-            REQUIRE(input.create(DeviceType::CPU, DataType::F32,
-                                 {2, 4}) == Result::SUCCESS);
-            ctx.setInput("buffer", input);
-
-            REQUIRE(ctx.run() != Result::SUCCESS);
+        for (const I64 axis : {I64{2}, I64{-3}}) {
+            DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime
+                            << " Axis: " << axis) {
+                const Tensor input = MakeFoldTensor(impl, DataType::F32, {2, 4});
+                Modules::Fold config;
+                config.axis = axis;
+                config.size = 2;
+                RequireFoldValidationError(impl, config, input);
+            }
         }
     }
 }
 
-TEST_CASE("Fold - Invalid Size Not Divisor", "[modules][fold][error]") {
-    auto implementations = Registry::ListAvailableModules("fold");
+TEST_CASE("Fold - Validation rejects invalid size and offset",
+          "[modules][fold][validation][config]") {
+    const auto implementations = Registry::ListAvailableModules("fold");
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
-        DYNAMIC_SECTION("Device: " << impl.device
-                        << " Runtime: " << impl.runtime) {
-            TestContext ctx("fold", impl.device,
-                           impl.runtime, impl.provider);
-
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            const Tensor input = MakeFoldTensor(impl, DataType::F32, {8});
             Modules::Fold config;
             config.axis = 0;
-            config.offset = 0;
-            config.size = 3;  // 8 % 3 != 0
 
-            ctx.setConfig(config);
-
-            Tensor input;
-            REQUIRE(input.create(DeviceType::CPU, DataType::F32,
-                                 {8}) == Result::SUCCESS);
-
-            ctx.setInput("buffer", input);
-
-            REQUIRE(ctx.run() != Result::SUCCESS);
-        }
-    }
-}
-
-TEST_CASE("Fold - Invalid Offset Out Of Bounds", "[modules][fold][error]") {
-    auto implementations = Registry::ListAvailableModules("fold");
-    REQUIRE(!implementations.empty());
-
-    for (const auto& impl : implementations) {
-        DYNAMIC_SECTION("Device: " << impl.device
-                        << " Runtime: " << impl.runtime) {
-            TestContext ctx("fold", impl.device,
-                           impl.runtime, impl.provider);
-
-            Modules::Fold config;
-            config.axis = 0;
-            config.offset = 9;  // Input axis size is 8.
-            config.size = 4;
-
-            ctx.setConfig(config);
-
-            Tensor input;
-            REQUIRE(input.create(DeviceType::CPU, DataType::F32,
-                                 {8}) == Result::SUCCESS);
-
-            ctx.setInput("buffer", input);
-
-            REQUIRE(ctx.run() != Result::SUCCESS);
-        }
-    }
-}
-
-TEST_CASE("Fold - Invalid Size Zero", "[modules][fold][error]") {
-    auto implementations = Registry::ListAvailableModules("fold");
-    REQUIRE(!implementations.empty());
-
-    for (const auto& impl : implementations) {
-        DYNAMIC_SECTION("Device: " << impl.device
-                        << " Runtime: " << impl.runtime) {
-            TestContext ctx("fold", impl.device,
-                           impl.runtime, impl.provider);
-
-            Modules::Fold config;
-            config.axis = 0;
-            config.offset = 0;
             config.size = 0;
+            RequireFoldValidationError(impl, config, input);
 
-            ctx.setConfig(config);
+            config.size = 3;
+            RequireFoldValidationError(impl, config, input);
 
-            Tensor input;
-            REQUIRE(input.create(DeviceType::CPU, DataType::F32,
-                                 {8}) == Result::SUCCESS);
+            config.size = 4;
+            config.offset = 9;
+            RequireFoldValidationError(impl, config, input);
+        }
+    }
+}
 
-            ctx.setInput("buffer", input);
+TEST_CASE("Fold - Validation rejects rank zero and unsupported dtype",
+          "[modules][fold][validation]") {
+    const auto implementations = Registry::ListAvailableModules("fold");
+    REQUIRE(!implementations.empty());
 
-            REQUIRE(ctx.run() != Result::SUCCESS);
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Modules::Fold config;
+            config.axis = 0;
+            config.size = 1;
+            const Tensor scalar = MakeFoldTensor(impl, DataType::F32, {});
+            RequireFoldValidationError(impl, config, scalar);
+
+            const Tensor f64 = MakeFoldTensor(impl, DataType::F64, {8});
+            config.size = 4;
+            RequireFoldValidationError(impl, config, f64);
+        }
+    }
+}
+
+TEST_CASE("Fold - CPU validation rejects unsupported allocation size",
+          "[modules][fold][validation][allocation]") {
+    const auto implementations = Registry::ListAvailableModules("fold");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        if (impl.device != DeviceType::CPU) {
+            continue;
+        }
+
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            const U64 size = std::numeric_limits<U64>::max() / sizeof(F32);
+            const Tensor input = MakeFoldTensor(impl, DataType::F32, {size}, true);
+            Modules::Fold config;
+            config.axis = 0;
+            config.size = size;
+            RequireFoldValidationError(impl, config, input);
         }
     }
 }

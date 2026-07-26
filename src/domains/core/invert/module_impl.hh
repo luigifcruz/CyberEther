@@ -8,6 +8,7 @@ namespace Jetstream::Modules {
 
 struct InvertImpl : public Module::Impl, public DynamicConfig<Invert> {
  public:
+    Result validate() override;
     Result define() override;
     Result create() override;
     Result destroy() override;

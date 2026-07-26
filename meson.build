@@ -224,7 +224,10 @@ endif
 # Optional
 #
 
-if get_option('tests') and not jst_is_browser
+if get_option('tests') and \
+   not jst_is_browser and \
+   not jst_is_ios and \
+   not jst_is_android
     subdir('tests')
 endif
 

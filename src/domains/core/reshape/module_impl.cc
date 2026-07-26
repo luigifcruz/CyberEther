@@ -1,28 +1,127 @@
 #include "module_impl.hh"
 
+#include <charconv>
+#include <cctype>
+#include <system_error>
+
+#include <jetstream/tools/numeric.hh>
+
 namespace Jetstream::Modules {
 
-Result ReshapeImpl::validate() {
-    const auto& config = *candidate();
+namespace {
 
-    if (config.shape.empty()) {
-        JST_ERROR("[MODULE_RESHAPE] Shape string cannot be empty.");
+Result ParseShapeString(const std::string& shapeStr, Shape& result) {
+    if (shapeStr.size() < 2 || shapeStr.front() != '[' || shapeStr.back() != ']') {
+        JST_ERROR("[MODULE_RESHAPE] Shape must use bracket notation.");
         return Result::ERROR;
     }
 
-    if (config.shape.front() != '[' || config.shape.back() != ']') {
-        JST_ERROR("[MODULE_RESHAPE] Invalid shape syntax: Missing brackets.");
-        return Result::ERROR;
-    }
+    Shape parsed;
+    std::size_t position = 1;
+    const std::size_t closingBracket = shapeStr.size() - 1;
+    const auto skipWhitespace = [&]() {
+        while (position < closingBracket &&
+               std::isspace(static_cast<unsigned char>(shapeStr[position]))) {
+            ++position;
+        }
+    };
 
-    Shape tempShape;
-    JST_CHECK(parseShapeString(config.shape, tempShape));
-
-    if (tempShape.empty()) {
+    skipWhitespace();
+    if (position == closingBracket) {
         JST_ERROR("[MODULE_RESHAPE] Shape must have at least one dimension.");
         return Result::ERROR;
     }
 
+    while (position < closingBracket) {
+        const std::size_t numberBegin = position;
+        while (position < closingBracket && shapeStr[position] >= '0' &&
+               shapeStr[position] <= '9') {
+            ++position;
+        }
+
+        if (numberBegin == position) {
+            JST_ERROR("[MODULE_RESHAPE] Invalid shape syntax '{}'.", shapeStr);
+            return Result::ERROR;
+        }
+
+        U64 dimension = 0;
+        const char* begin = shapeStr.data() + numberBegin;
+        const char* end = shapeStr.data() + position;
+        const auto conversion = std::from_chars(begin, end, dimension);
+        if (conversion.ec == std::errc::result_out_of_range) {
+            JST_ERROR("[MODULE_RESHAPE] Shape dimension exceeds the supported "
+                      "numeric range.");
+            return Result::ERROR;
+        }
+        if (conversion.ec != std::errc{} || conversion.ptr != end) {
+            JST_ERROR("[MODULE_RESHAPE] Invalid shape dimension.");
+            return Result::ERROR;
+        }
+
+        if (dimension == 0) {
+            JST_ERROR("[MODULE_RESHAPE] Shape dimensions cannot be zero.");
+            return Result::ERROR;
+        }
+        parsed.push_back(dimension);
+
+        skipWhitespace();
+        if (position == closingBracket) {
+            break;
+        }
+        if (shapeStr[position] != ',') {
+            JST_ERROR("[MODULE_RESHAPE] Invalid shape syntax '{}'.", shapeStr);
+            return Result::ERROR;
+        }
+
+        ++position;
+        skipWhitespace();
+        if (position == closingBracket) {
+            JST_ERROR("[MODULE_RESHAPE] Invalid shape syntax '{}'.", shapeStr);
+            return Result::ERROR;
+        }
+    }
+
+    result = parsed;
+    JST_TRACE("[MODULE_RESHAPE] Parsed shape string '{}' to {}.", shapeStr, result);
+
+    return Result::SUCCESS;
+}
+
+}  // namespace
+
+Result ReshapeImpl::validate() {
+    const auto& config = *candidate();
+
+    Shape candidateShape;
+    JST_CHECK(ParseShapeString(config.shape, candidateShape));
+
+    U64 targetSize = 1;
+    for (const U64 dimension : candidateShape) {
+        if (!detail::CheckedMultiply(targetSize, dimension, targetSize)) {
+            JST_ERROR("[MODULE_RESHAPE] Shape exceeds the supported layout range.");
+            return Result::ERROR;
+        }
+    }
+
+    if (inputs().contains("buffer")) {
+        const Tensor& inputTensor = inputs().at("buffer").tensor;
+        if (inputTensor.validShape() && inputTensor.size() > 0) {
+            if (!inputTensor.contiguous()) {
+                JST_ERROR("[MODULE_RESHAPE] Cannot reshape non-contiguous tensor. "
+                          "Use the contiguous option or duplicate the tensor first.");
+                return Result::ERROR;
+            }
+
+            if (inputTensor.size() != targetSize) {
+                JST_ERROR("[MODULE_RESHAPE] Cannot reshape tensor with {} elements "
+                          "to shape with {} elements.",
+                          inputTensor.size(), targetSize);
+                return Result::ERROR;
+            }
+        }
+    }
+
+    parsedShape = candidateShape;
     return Result::SUCCESS;
 }
 
@@ -36,33 +135,7 @@ Result ReshapeImpl::define() {
 }
 
 Result ReshapeImpl::create() {
-    JST_CHECK(parseShapeString(shape, parsedShape));
-
     const Tensor& inputTensor = inputs().at("buffer").tensor;
-
-    if (!inputTensor.contiguous()) {
-        JST_ERROR("[MODULE_RESHAPE] Cannot reshape non-contiguous tensor. "
-                  "Use the contiguous option or duplicate the tensor first.");
-        return Result::ERROR;
-    }
-
-    // Calculate total elements in input.
-    U64 inputSize = 1;
-    for (const auto dim : inputTensor.shape()) {
-        inputSize *= dim;
-    }
-
-    // Calculate total elements in target shape.
-    U64 targetSize = 1;
-    for (const auto dim : parsedShape) {
-        targetSize *= dim;
-    }
-
-    if (inputSize != targetSize) {
-        JST_ERROR("[MODULE_RESHAPE] Cannot reshape tensor with {} elements to shape with {} elements.",
-                  inputSize, targetSize);
-        return Result::ERROR;
-    }
 
     input = inputTensor;
     output = input;
@@ -71,35 +144,6 @@ Result ReshapeImpl::create() {
     JST_CHECK(output.propagateAttributes(input));
 
     outputs()["buffer"].produced(name(), "buffer", output);
-
-    return Result::SUCCESS;
-}
-
-Result ReshapeImpl::parseShapeString(const std::string& shapeStr, Shape& result) {
-    result.clear();
-
-    // Return empty if the shape content is empty (just "[]").
-    std::string inner = shapeStr.substr(1, shapeStr.size() - 2);
-    if (inner.empty()) {
-        return Result::SUCCESS;
-    }
-
-    // Extract all numbers from the shape string.
-    std::regex pattern(R"(\d+)");
-    auto numbers_begin = std::sregex_iterator(inner.begin(), inner.end(), pattern);
-    auto numbers_end = std::sregex_iterator();
-
-    for (std::sregex_iterator i = numbers_begin; i != numbers_end; ++i) {
-        std::smatch match = *i;
-        U64 dim = std::stoull(match.str());
-        if (dim == 0) {
-            JST_ERROR("[MODULE_RESHAPE] Shape dimensions cannot be zero.");
-            return Result::ERROR;
-        }
-        result.push_back(dim);
-    }
-
-    JST_TRACE("[MODULE_RESHAPE] Parsed shape string '{}' to {}.", shapeStr, result);
 
     return Result::SUCCESS;
 }

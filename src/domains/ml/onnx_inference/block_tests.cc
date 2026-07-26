@@ -85,3 +85,20 @@ TEST_CASE_METHOD(FlowgraphFixture, "ONNX inference block keeps config UI when mo
     REQUIRE(HasInterfaceKey(block.interfaceConfigs, "modelPath"));
     REQUIRE(HasInterfaceKey(block.interfaceConfigs, "executionProvider"));
 }
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "ONNX inference block defers provider semantics until module creation",
+                 "[modules][onnx_inference][block][validation]") {
+    Blocks::OnnxInference config;
+    config.executionProvider = "unknown";
+
+    REQUIRE(flowgraph->blockCreate("onnx_provider_empty", config, {}) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("onnx_provider_empty").state == Block::State::Incomplete);
+
+    config.modelPath = "missing-jetstream-onnx-provider-test.onnx";
+    REQUIRE_FALSE(std::filesystem::exists(Platform::PathFromUtf8(config.modelPath)));
+    REQUIRE(flowgraph->blockCreate("onnx_provider_missing", config, {}) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("onnx_provider_missing").state == Block::State::Incomplete);
+}

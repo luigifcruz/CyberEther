@@ -1,10 +1,37 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <limits>
+#include <utility>
+
 #include "jetstream/testing.hh"
 #include "jetstream/registry.hh"
+#include "jetstream/domains/core/add/module.hh"
 
 using namespace Jetstream;
+
+namespace {
+
+void RequireAddValidationError(const Registry::ModuleRegistration& impl,
+                               Tensor tensorA,
+                               Tensor tensorB) {
+    TensorMap inputs;
+    inputs["a"].requested("test", "a");
+    inputs["a"].tensor = std::move(tensorA);
+    inputs["b"].requested("test", "b");
+    inputs["b"].tensor = std::move(tensorB);
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("add", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+
+    Modules::Add config;
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
+}  // namespace
 
 TEST_CASE("Add Module - F32", "[modules][add][F32]") {
     auto implementations = Registry::ListAvailableModules("add");
@@ -92,6 +119,8 @@ TEST_CASE("Add Module - Broadcast F32", "[modules][add][broadcast]") {
             REQUIRE(out.shape(0) == 2);
             REQUIRE(out.shape(1) == 3);
             REQUIRE_THAT(out.at<F32>(1, 2), Catch::Matchers::WithinAbs(62.0f, 1e-6f));
+            REQUIRE(a.shape() == Shape{2, 1});
+            REQUIRE(b.shape() == Shape{2, 3});
         }
     }
 }
@@ -102,15 +131,68 @@ TEST_CASE("Add Module - Non Broadcastable Shapes Error", "[modules][add][error]"
 
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
-            TestContext ctx("add", impl.device, impl.runtime, impl.provider);
+            Tensor a;
+            Tensor b;
+            REQUIRE(a.create(impl.device, DataType::F32, {2, 3}) == Result::SUCCESS);
+            REQUIRE(b.create(impl.device, DataType::F32, {2, 2}) == Result::SUCCESS);
 
-            auto a = ctx.createTensor<F32>({2, 3});
-            auto b = ctx.createTensor<F32>({2, 2});
+            RequireAddValidationError(impl, std::move(a), std::move(b));
+        }
+    }
+}
 
-            ctx.setInput("a", a);
-            ctx.setInput("b", b);
+TEST_CASE("Add Module - Provider Validation Rejects Unsupported Types",
+          "[modules][add][validation]") {
+    auto implementations = Registry::ListAvailableModules("add");
+    REQUIRE(!implementations.empty());
 
-            REQUIRE(ctx.run() == Result::ERROR);
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            SECTION("input types must match") {
+                Tensor a;
+                Tensor b;
+                REQUIRE(a.create(impl.device, DataType::F32, {4}) == Result::SUCCESS);
+                REQUIRE(b.create(impl.device, DataType::CF32, {4}) == Result::SUCCESS);
+
+                RequireAddValidationError(impl, std::move(a), std::move(b));
+            }
+
+            SECTION("input type must be supported") {
+                Tensor a;
+                Tensor b;
+                REQUIRE(a.create(impl.device, DataType::I32, {4}) == Result::SUCCESS);
+                REQUIRE(b.create(impl.device, DataType::I32, {4}) == Result::SUCCESS);
+
+                RequireAddValidationError(impl, std::move(a), std::move(b));
+            }
+
+            if (impl.device == DeviceType::CPU) {
+                SECTION("broadcast output layout must not overflow") {
+                    F32 storage = 0.0f;
+                    constexpr U64 extent = U64{1} << 32;
+                    Tensor a;
+                    Tensor b;
+                    REQUIRE(a.create(&storage, DeviceType::CPU, DataType::F32,
+                                     {extent, 1}) == Result::SUCCESS);
+                    REQUIRE(b.create(&storage, DeviceType::CPU, DataType::F32,
+                                     {1, extent}) == Result::SUCCESS);
+
+                    RequireAddValidationError(impl, std::move(a), std::move(b));
+                }
+
+                SECTION("output allocation alignment must not overflow") {
+                    F32 storage = 0.0f;
+                    constexpr U64 extent = std::numeric_limits<U64>::max() / 4;
+                    Tensor a;
+                    Tensor b;
+                    REQUIRE(a.create(&storage, DeviceType::CPU, DataType::F32,
+                                     {extent}) == Result::SUCCESS);
+                    REQUIRE(b.create(&storage, DeviceType::CPU, DataType::F32,
+                                     {extent}) == Result::SUCCESS);
+
+                    RequireAddValidationError(impl, std::move(a), std::move(b));
+                }
+            }
         }
     }
 }

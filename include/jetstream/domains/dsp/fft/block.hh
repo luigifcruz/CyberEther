@@ -9,10 +9,11 @@ struct Fft : public Block::Config {
     bool forward = true;
     I64 axis = -1;
     bool invert = false;
+    bool complexOutput = false;
 
     JST_BLOCK_TYPE(fft);
     JST_BLOCK_DOMAIN("DSP");
-    JST_BLOCK_PARAMS(forward, axis, invert);
+    JST_BLOCK_PARAMS(forward, axis, invert, complexOutput);
     JST_BLOCK_DESCRIPTION(
         "FFT",
         "Performs the Fast Fourier Transform.",
@@ -27,6 +28,8 @@ struct Fft : public Block::Config {
         "- **Axis**: Axis along which to transform. Negative axes count from the end.\n"
         "- **Invert**: Multiply each line along the selected axis by "
         "[1, -1, 1, -1, ...] before transforming.\n\n"
+        "- **Complex Output**: For forward real-input transforms, output "
+        "N/2 + 1 complex CF32 bins instead of packed F32 values.\n\n"
 
         "## Useful For\n"
         "- Spectral analysis of signals.\n"
@@ -38,7 +41,9 @@ struct Fft : public Block::Config {
         "- Complex FFT:\n"
         "  Input: CF32[1024] -> Output: CF32[1024]\n"
         "- Real FFTPACK transform:\n"
-        "  Input: F32[1024] -> Output: F32[1024]\n\n"
+        "  Input: F32[1024] -> Output: F32[1024]\n"
+        "- Real-to-complex transform:\n"
+        "  Input: F32[1024] -> Output: CF32[513]\n\n"
 
         "## Implementation\n"
         "Input Buffer -> FFT Module -> Output Buffer\n"

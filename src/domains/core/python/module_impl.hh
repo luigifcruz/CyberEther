@@ -15,11 +15,21 @@ struct PythonImpl : public Module::Impl, public DynamicConfig<Python> {
     Result reconfigure() override;
 
  protected:
+    struct OutputPlan {
+        DataType dtype = DataType::None;
+        Shape shape;
+        DeviceType device = DeviceType::None;
+        U64 elementCount = 0;
+        U64 sizeBytes = 0;
+    };
+
     static std::string inputPortName(U64 index);
     static std::string outputPortName(U64 index);
     static void normalizeOutputSpecs(Python& config);
     Module::Interface::EntryList inputPortOrder() const;
     Module::Interface::EntryList outputPortOrder() const;
+
+    std::vector<OutputPlan> candidateOutputPlan;
 };
 
 }  // namespace Jetstream::Modules

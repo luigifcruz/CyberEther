@@ -14,7 +14,7 @@
 
 namespace Jetstream {
 
-struct Compositor::Impl {
+struct JETSTREAM_API Compositor::Impl {
  public:
     virtual ~Impl() = default;
 

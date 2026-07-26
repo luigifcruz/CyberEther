@@ -1,9 +1,52 @@
 #include "module_impl.hh"
 
+#include <algorithm>
+#include <limits>
+
 #include "jetstream/constants.hh"
 #include "resources/shaders/frame_shaders.hh"
 
 namespace Jetstream::Modules {
+
+Result FrameImpl::validate() {
+    if (!inputs().contains("frame")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("frame").tensor;
+    if (!inputTensor.validShape()) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.rank() < 2 || inputTensor.rank() > 3) {
+        JST_ERROR("[MODULE_FRAME] Invalid input rank ({}), expected 2 or 3.",
+                  inputTensor.rank());
+        return Result::ERROR;
+    }
+
+    if (inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    const U64 maxElementCount = std::min({
+        static_cast<U64>(std::numeric_limits<I32>::max()),
+        static_cast<U64>(std::numeric_limits<std::size_t>::max()) / sizeof(F32),
+        static_cast<U64>(std::numeric_limits<std::ptrdiff_t>::max()) / sizeof(F32),
+    });
+    if (inputTensor.size() > maxElementCount) {
+        JST_ERROR("[MODULE_FRAME] Frame size exceeds the supported rendering range.");
+        return Result::ERROR;
+    }
+
+    const U64 channelCount = inputTensor.rank() == 3 ? inputTensor.shape(2) : 1;
+    if (channelCount != 1 && channelCount != 3 && channelCount != 4) {
+        JST_ERROR("[MODULE_FRAME] Invalid channel count ({}), expected 1, 3, or 4.",
+                  channelCount);
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
 
 Result FrameImpl::define() {
     JST_CHECK(defineTaint(Module::Taint::SURFACE));
@@ -16,24 +59,9 @@ Result FrameImpl::define() {
 Result FrameImpl::create() {
     input = inputs().at("frame").tensor;
 
-    if (input.rank() < 2 || input.rank() > 3) {
-        JST_ERROR("[MODULE_FRAME] Invalid input rank ({}), expected 2 or 3.", input.rank());
-        return Result::ERROR;
-    }
-
     height = input.shape()[0];
     width = input.shape()[1];
     channels = (input.rank() == 3) ? input.shape()[2] : 1;
-
-    if (width == 0 || height == 0) {
-        JST_ERROR("[MODULE_FRAME] Frame dimensions must be non-zero.");
-        return Result::ERROR;
-    }
-
-    if (channels != 1 && channels != 3 && channels != 4) {
-        JST_ERROR("[MODULE_FRAME] Invalid channel count ({}), expected 1, 3, or 4.", channels);
-        return Result::ERROR;
-    }
 
     return Result::SUCCESS;
 }

@@ -80,6 +80,10 @@ class JETSTREAM_API Flowgraph::View {
     Result block(const std::string& block, BlockData& data) const;
 
  private:
+    Result snapshot(const std::string& block,
+                    BlockData& data,
+                    bool includeMetrics) const;
+
     std::weak_ptr<Flowgraph::Impl> impl;
 
     friend class Flowgraph;

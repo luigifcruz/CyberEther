@@ -31,6 +31,11 @@ Result Module::create(const std::string& name,
                       const Config& config,
                       const TensorMap& inputs,
                       const std::shared_ptr<Render::Window>& render) {
+    if (impl->_state != State::NONE && impl->_state != State::DESTROYED) {
+        JST_ERROR("[MODULE] Cannot create module '{}' in its current lifecycle state.", name);
+        return Result::ERROR;
+    }
+
     Parser::Map serializedConfig;
     JST_CHECK(config.serialize(serializedConfig));
     return Module::create(name,
@@ -43,6 +48,13 @@ Result Module::create(const std::string& name,
                       const Parser::Map& config,
                       const TensorMap& inputs,
                       const std::shared_ptr<Render::Window>& render) {
+    if (impl->_state != State::NONE && impl->_state != State::DESTROYED) {
+        JST_ERROR("[MODULE] Cannot create module '{}' in its current lifecycle state.", name);
+        return Result::ERROR;
+    }
+
+    impl->_state = State::CREATING;
+
     // Set implementation variables.
 
     impl->_inputs = inputs;
@@ -54,18 +66,44 @@ Result Module::create(const std::string& name,
 
     JST_DEBUG("[MODULE] Creating module '{}'.", impl->_name);
 
+    const auto stopCreating = [&](const Result result) {
+        impl->_state = (result == Result::INCOMPLETE) ? State::INCOMPLETE : State::ERRORED;
+        return result;
+    };
+
     // Validate configuration.
 
-    JST_CHECK(impl->_candidateConfig->deserialize(config));
-    JST_CHECK(impl->validate());
+    {
+        const auto result = impl->_candidateConfig->deserialize(config);
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return stopCreating(result);
+        }
+    }
+
+    {
+        const auto result = impl->validate();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return stopCreating(result);
+        }
+    }
 
     // Commit candidate.
 
-    JST_CHECK(impl->_stagedConfig->deserialize(config));
+    {
+        const auto result = impl->_stagedConfig->deserialize(config);
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return stopCreating(result);
+        }
+    }
 
     // Define module interface.
 
-    JST_CHECK(impl->define());
+    {
+        const auto result = impl->define();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return stopCreating(result);
+        }
+    }
 
     // Verify module taints.
 
@@ -89,7 +127,7 @@ Result Module::create(const std::string& name,
     for (const auto& key : impl->_interface->inputs()) {
         if (!impl->_inputs.contains(key)) {
             JST_ERROR("[MODULE] Module '{}' requested missing input '{}'.", impl->_name, key);
-            return Result::ERROR;
+            return stopCreating(Result::ERROR);
         }
     }
 
@@ -100,81 +138,114 @@ Result Module::create(const std::string& name,
             JST_ERROR("[MODULE] Input tensor device ('{}', DeviceType::{})"
                       " doesn't match the module device ('{}', DeviceType::{}).",
                       inputName, link.tensor.device(), impl->_name, impl->_device);
-            return Result::ERROR;
+            return stopCreating(Result::ERROR);
         }
 
         if (!link.tensor.validShape()) {
             JST_ERROR("[MODULE] Input tensor ('{}') is invalid.", inputName);
-            return Result::ERROR;
+            return stopCreating(Result::ERROR);
         }
 
         if (link.tensor.size() == 0) {
             JST_ERROR("[MODULE] Module ('{}') input tensor ('{}') size is zero.", impl->_name, inputName);
-            return Result::ERROR;
+            return stopCreating(Result::ERROR);
         }
 
         if (!link.tensor.contiguous() && !taintDiscontiguous) {
             JST_ERROR("[MODULE] Contiguous tensor expected for module ('{}') input tensor ('{}').", impl->_name, inputName);
-            return Result::ERROR;
+            return stopCreating(Result::ERROR);
         }
     }
 
     // Creating module.
 
+    Result createResult;
 #ifdef JST_OS_BROWSER
     if ((impl->_taint & Taint::BROWSER_MAIN_THREAD) == Taint::BROWSER_MAIN_THREAD) {
-        Result result;
-        std::pair<Impl*, Result*> ctx{impl.get(), &result};
+        std::pair<Impl*, Result*> ctx{impl.get(), &createResult};
         emscripten_proxy_sync(
             emscripten_proxy_get_system_queue(),
             emscripten_main_runtime_thread_id(),
             Impl::proxyCreate,
             &ctx);
-        JST_CHECK(result);
     } else {
-        JST_CHECK(impl->create());
+        createResult = impl->create();
     }
 #else
-    JST_CHECK(impl->create());
+    createResult = impl->create();
 #endif
 
     // Check if module provides all requested outputs.
 
-    for (const auto& key : impl->_interface->outputs()) {
-        if (!impl->_outputs.contains(key)) {
-            JST_ERROR("[MODULE] Module '{}' didn't create an expected output '{}'.", impl->_name, key);
-            return Result::ERROR;
+    if (createResult == Result::SUCCESS || createResult == Result::RELOAD) {
+        for (const auto& key : impl->_interface->outputs()) {
+            if (!impl->_outputs.contains(key)) {
+                JST_ERROR("[MODULE] Module '{}' didn't create an expected output '{}'.", impl->_name, key);
+                createResult = Result::ERROR;
+                break;
+            }
         }
     }
 
+    if (createResult == Result::ERROR) {
+        impl->_state = State::DESTROYING;
+        const auto destroyResult = impl->destroyImplementation();
+        if (destroyResult != Result::SUCCESS && destroyResult != Result::RELOAD) {
+            impl->_state = State::ERRORED;
+            JST_ERROR("[MODULE] Failed to clean up module '{}' after creation failure.", impl->_name);
+        } else {
+            impl->_state = State::DESTROYED;
+        }
+    }
+
+    if (createResult != Result::SUCCESS && createResult != Result::RELOAD) {
+        if (createResult != Result::ERROR) {
+            impl->_state = (createResult == Result::INCOMPLETE)
+                               ? State::INCOMPLETE
+                               : State::ERRORED;
+        }
+        return createResult;
+    }
+
+    impl->_state = State::CREATED;
     return Result::SUCCESS;
 }
 
 Result Module::destroy() {
-#ifdef JST_OS_BROWSER
-    if ((impl->_taint & Taint::BROWSER_MAIN_THREAD) == Taint::BROWSER_MAIN_THREAD) {
-        Result result;
-        std::pair<Impl*, Result*> ctx{impl.get(), &result};
-        emscripten_proxy_sync(
-            emscripten_proxy_get_system_queue(),
-            emscripten_main_runtime_thread_id(),
-            Impl::proxyDestroy,
-            &ctx);
-        JST_CHECK(result);
-    } else {
-        JST_CHECK(impl->destroy());
+    if (impl->_state != State::CREATED &&
+        impl->_state != State::INCOMPLETE &&
+        impl->_state != State::ERRORED) {
+        JST_ERROR("[MODULE] Cannot destroy module '{}' in its current lifecycle state.", impl->_name);
+        return Result::ERROR;
     }
-#else
-    JST_CHECK(impl->destroy());
-#endif
 
+    impl->_state = State::DESTROYING;
+    const auto result = impl->destroyImplementation();
+    if (result != Result::SUCCESS && result != Result::RELOAD) {
+        impl->_state = State::ERRORED;
+        return result;
+    }
+
+    impl->_state = State::DESTROYED;
     return Result::SUCCESS;
 }
 
 Result Module::reconfigure(const Parser::Map& config, const bool& validateOnly) {
+    if (impl->_state == State::DESTROYED || impl->_state == State::ERRORED) {
+        return Result::RECREATE;
+    }
+    if (impl->_state != State::CREATED) {
+        return Result::ERROR;
+    }
+
     // Deserialize new configuration.
 
-    JST_CHECK(impl->_candidateConfig->deserialize(config));
+    {
+        const auto result = impl->_candidateConfig->deserialize(config);
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return result;
+        }
+    }
 
     // Return early if the configuration is unchanged.
 
@@ -184,9 +255,30 @@ Result Module::reconfigure(const Parser::Map& config, const bool& validateOnly) 
 
     // Validate configuration and reconfigure the module if something changed.
 
-    JST_CHECK(impl->validate());
+    {
+        const auto result = impl->validate();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return result;
+        }
+    }
     if (!validateOnly) {
-        JST_CHECK(impl->reconfigure());
+        Parser::Map previousConfig;
+        {
+            const auto result = impl->_stagedConfig->serialize(previousConfig);
+            if (result != Result::SUCCESS && result != Result::RELOAD) {
+                return result;
+            }
+        }
+
+        const auto result = impl->reconfigure();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            const auto rollbackResult = impl->_stagedConfig->deserialize(previousConfig);
+            if (rollbackResult != Result::SUCCESS && rollbackResult != Result::RELOAD) {
+                impl->_state = State::ERRORED;
+                JST_ERROR("[MODULE] Failed to restore module '{}' after reconfiguration failure.", impl->_name);
+            }
+            return result;
+        }
     }
 
     return Result::SUCCESS;
@@ -242,6 +334,10 @@ const RuntimeType& Module::runtime() const {
 
 const ProviderType& Module::provider() const {
     return impl->_provider;
+}
+
+const Module::State& Module::state() const {
+    return impl->_state;
 }
 
 const std::shared_ptr<Module::Surface>& Module::surface() {

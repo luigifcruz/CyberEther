@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <any>
 #include <cmath>
+#include <limits>
 
 #include "jetstream/render/utils.hh"
 #include "jetstream/constants.hh"
+#include "jetstream/tools/numeric.hh"
 #include "resources/shaders/spectrogram_shaders.hh"
 
 namespace Jetstream::Modules {
@@ -15,6 +17,39 @@ Result SpectrogramImpl::validate() {
 
     if (config.height == 0 || config.height > 2048) {
         JST_ERROR("[MODULE_SPECTROGRAM] Invalid height value '{}', must be between 1 and 2048.", config.height);
+        return Result::ERROR;
+    }
+
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.rank() == 0) {
+        JST_ERROR("[MODULE_SPECTROGRAM] Input buffer rank is 0.");
+        return Result::ERROR;
+    }
+
+    if (inputTensor.rank() > 2) {
+        JST_ERROR("[MODULE_SPECTROGRAM] Invalid input rank ({}), expected 1 or 2.",
+                  inputTensor.rank());
+        return Result::ERROR;
+    }
+
+    const U64 width = inputTensor.shape(inputTensor.rank() - 1);
+    U64 renderBinCount = 0;
+    const U64 maxRenderBinCount = std::min({
+        static_cast<U64>(std::numeric_limits<U32>::max()),
+        static_cast<U64>(std::numeric_limits<std::size_t>::max()) / sizeof(F32),
+        static_cast<U64>(std::numeric_limits<std::ptrdiff_t>::max()) / sizeof(F32),
+    });
+    if (!detail::CheckedMultiply(width, config.height, renderBinCount) ||
+        renderBinCount > maxRenderBinCount) {
+        JST_ERROR("[MODULE_SPECTROGRAM] Render bin count exceeds the supported range.");
         return Result::ERROR;
     }
 
@@ -34,13 +69,6 @@ Result SpectrogramImpl::create() {
 
     input = inputs().at("signal").tensor;
 
-    // Check input rank.
-
-    if (input.rank() > 2) {
-        JST_ERROR("[MODULE_SPECTROGRAM] Invalid input rank ({}), expected 1 or 2.", input.rank());
-        return Result::ERROR;
-    }
-
     // Calculate parameters.
 
     const U64 lastAxis = input.rank() - 1;
@@ -51,6 +79,9 @@ Result SpectrogramImpl::create() {
     // Allocate internal buffers.
 
     JST_CHECK(frequencyBins.create(device(), DataType::F32, {numberOfElements, height}));
+
+    signalUniforms.width = static_cast<U32>(numberOfElements);
+    signalUniforms.height = static_cast<U32>(height);
 
     return Result::SUCCESS;
 }
@@ -242,8 +273,6 @@ Result SpectrogramImpl::present() {
 
     signalBuffer->update();
 
-    signalUniforms.width = numberOfElements;
-    signalUniforms.height = height;
     signalUniforms.zoom = interaction.zoom;
     signalUniforms.offset = interaction.offset + 0.5f * (1.0f - 1.0f / interaction.zoom);
     signalUniforms.paddingScaleX = axis->paddingScale().x;

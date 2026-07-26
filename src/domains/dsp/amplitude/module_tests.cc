@@ -6,8 +6,41 @@
 #include "jetstream/domains/dsp/amplitude/module.hh"
 
 #include <cmath>
+#include <limits>
 
 using namespace Jetstream;
+
+namespace {
+
+void RequireAmplitudeValidationError(const Registry::ModuleRegistration& impl,
+                                     const Modules::Amplitude& config,
+                                     const DataType dtype,
+                                     const Shape& shape,
+                                     const bool broadcast = false) {
+    Tensor input;
+    if (broadcast) {
+        REQUIRE(input.create(impl.device, dtype, {1}) == Result::SUCCESS);
+        REQUIRE(input.broadcastTo(shape) == Result::SUCCESS);
+    } else if (shape.empty()) {
+        REQUIRE(input.create(impl.device, dtype, {1}) == Result::SUCCESS);
+        REQUIRE(input.squeezeDims(0) == Result::SUCCESS);
+    } else {
+        REQUIRE(input.create(impl.device, dtype, shape) == Result::SUCCESS);
+    }
+
+    TensorMap inputs;
+    inputs["signal"].requested("test", "signal");
+    inputs["signal"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("amplitude", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
+}  // namespace
 
 TEST_CASE("Amplitude - CF32 DC Signal", "[modules][amplitude][cf32]") {
     auto implementations = Registry::ListAvailableModules("amplitude");
@@ -155,18 +188,57 @@ TEST_CASE("Amplitude - Invalid Axis Error", "[modules][amplitude][axis][error]")
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
             for (const I64 invalidAxis : {I64{2}, I64{-3}}) {
                 DYNAMIC_SECTION("Axis: " << invalidAxis) {
-                    TestContext ctx("amplitude", impl.device, impl.runtime, impl.provider);
-
                     Modules::Amplitude config;
                     config.axis = invalidAxis;
-                    ctx.setConfig(config);
-
-                    auto input = ctx.createTensor<F32>({2, 3});
-                    ctx.setInput("signal", input);
-
-                    REQUIRE(ctx.run() == Result::ERROR);
+                    RequireAmplitudeValidationError(impl, config, DataType::F32, {2, 3});
                 }
             }
+        }
+    }
+}
+
+TEST_CASE("Amplitude - Validation rejects rank zero",
+          "[modules][amplitude][validation][rank]") {
+    const auto implementations = Registry::ListAvailableModules("amplitude");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Modules::Amplitude config;
+            RequireAmplitudeValidationError(impl, config, DataType::F32, {});
+        }
+    }
+}
+
+TEST_CASE("Amplitude - Validation rejects unsupported dtype",
+          "[modules][amplitude][validation][dtype]") {
+    const auto implementations = Registry::ListAvailableModules("amplitude");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Modules::Amplitude config;
+            RequireAmplitudeValidationError(impl, config, DataType::F64, {4});
+        }
+    }
+}
+
+TEST_CASE("Amplitude - CUDA validation rejects unsupported grid size",
+          "[modules][amplitude][validation][cuda]") {
+    const auto implementations = Registry::ListAvailableModules("amplitude");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        if (impl.device != DeviceType::CUDA) {
+            continue;
+        }
+
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Modules::Amplitude config;
+            const Shape shape = {
+                static_cast<U64>(std::numeric_limits<I32>::max()) * 256 + 1,
+            };
+            RequireAmplitudeValidationError(impl, config, DataType::F32, shape, true);
         }
     }
 }

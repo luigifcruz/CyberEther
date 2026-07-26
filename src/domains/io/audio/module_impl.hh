@@ -37,6 +37,13 @@ struct AudioImpl : public Module::Impl, public DynamicConfig<Audio> {
 
     std::string resolvedDeviceName;
 
+    U32 validatedInSampleRate = 0;
+    U32 validatedOutSampleRate = 0;
+    U64 validatedOutputSize = 0;
+    U64 validatedOutputSizeBytes = 0;
+    U64 validatedCircularBufferSize = 0;
+    U64 validatedCircularBufferSizeBytes = 0;
+
     Tools::CircularBuffer<F32> circularBuffer;
 };
 

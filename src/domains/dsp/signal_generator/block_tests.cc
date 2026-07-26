@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <limits>
 #include <string>
 
 #include "flowgraph_fixture.hh"
@@ -55,4 +56,24 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(saved.frequency == 3000.0f);
     REQUIRE(saved.amplitude == 0.75f);
     REQUIRE(saved.phase == 0.5f);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Signal generator rejects invalid updates without changing applied config",
+                 "[modules][dsp][signal_generator][block][reconfigure][validation]") {
+    Blocks::SignalGenerator config;
+    REQUIRE(flowgraph->blockCreate("gen", config, {}) == Result::SUCCESS);
+    const auto outputId = viewBlock("gen").outputs.at("signal").tensor.id();
+
+    Parser::Map invalidUpdate;
+    invalidUpdate["sampleRate"] = std::numeric_limits<F32>::quiet_NaN();
+    REQUIRE(flowgraph->blockReconfigure("gen", invalidUpdate) == Result::ERROR);
+    REQUIRE(viewBlock("gen").state == Block::State::Created);
+    REQUIRE(viewBlock("gen").outputs.at("signal").tensor.id() == outputId);
+
+    Parser::Map savedMap;
+    REQUIRE(flowgraph->blockConfig("gen", savedMap) == Result::SUCCESS);
+    Blocks::SignalGenerator saved;
+    REQUIRE(saved.deserialize(savedMap) == Result::SUCCESS);
+    REQUIRE(saved.sampleRate == config.sampleRate);
 }

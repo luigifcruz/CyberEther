@@ -1,7 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <any>
+#include <limits>
 #include <string>
 
+#include "jetstream/domains/core/ones_tensor/block.hh"
 #include "jetstream/domains/dsp/signal_generator/block.hh"
 #include "jetstream/domains/visualization/lineplot/block.hh"
 #include "flowgraph_fixture.hh"
@@ -66,4 +69,59 @@ TEST_CASE_METHOD(FlowgraphFixture,
             Result::SUCCESS);
     REQUIRE(viewBlock("lineplot_invalid").state ==
             Block::State::Errored);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Lineplot block delegates dtype validation to its module",
+                 "[modules][lineplot][block][validation]") {
+    Blocks::OnesTensor source;
+    source.shape = {64};
+    source.dataType = "F64";
+    REQUIRE(flowgraph->blockCreate("lineplot_dtype_src", source, {}) ==
+            Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].requested("lineplot_dtype_src", "buffer");
+    REQUIRE(flowgraph->blockCreate("lineplot_dtype", Blocks::Lineplot{}, inputs) ==
+            Result::SUCCESS);
+
+    const auto block = viewBlock("lineplot_dtype");
+    REQUIRE(block.state == Block::State::Errored);
+    REQUIRE(block.outputs.empty());
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Lineplot block rolls back a rejected module update",
+                 "[modules][lineplot][block][reconfigure][validation]") {
+    Blocks::SignalGenerator source;
+    source.signalDataType = "F32";
+    source.bufferSize = 64;
+    REQUIRE(flowgraph->blockCreate("lineplot_update_src", source, {}) ==
+            Result::SUCCESS);
+
+    Blocks::Lineplot config;
+    config.averaging = 2;
+    config.thickness = 1.5f;
+    TensorMap inputs;
+    inputs["signal"].requested("lineplot_update_src", "signal");
+    REQUIRE(flowgraph->blockCreate("lineplot_update", config, inputs) ==
+            Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    Parser::Map invalidUpdate;
+    invalidUpdate["thickness"] = std::numeric_limits<F32>::infinity();
+    REQUIRE(flowgraph->blockReconfigure("lineplot_update", invalidUpdate) ==
+            Result::ERROR);
+    REQUIRE(viewBlock("lineplot_update").state == Block::State::Created);
+
+    Parser::Map validSparseUpdate;
+    validSparseUpdate["averaging"] = U64{8};
+    REQUIRE(flowgraph->blockReconfigure("lineplot_update", validSparseUpdate) ==
+            Result::SUCCESS);
+
+    Parser::Map saved;
+    REQUIRE(flowgraph->blockConfig("lineplot_update", saved) == Result::SUCCESS);
+    REQUIRE(std::any_cast<U64>(saved.at("averaging")) == 8);
+    REQUIRE(std::any_cast<F32>(saved.at("thickness")) == config.thickness);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
 }

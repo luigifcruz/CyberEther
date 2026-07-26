@@ -19,10 +19,26 @@ struct PskDemodImpl : public Module::Impl, public DynamicConfig<PskDemod> {
     Tensor input;
     Tensor output;
 
+    // Candidate configuration derivations populated by validation.
+    U64 validatedSamplesPerSymbol = 0;
+    U64 validatedConstellationOrder = 0;
+    U64 validatedOutputSize = 0;
+    U64 validatedOutputSizeBytes = 0;
+    U64 validatedMaxIterations = 0;
+    Shape validatedOutputShape;
+    F64 validatedFreqAlpha = 0.0;
+    F64 validatedFreqBeta = 0.0;
+    F64 validatedTimingAlpha = 0.0;
+    F64 validatedTimingBeta = 0.0;
+    F64 validatedTimingOmegaNominal = 0.0;
+    F64 validatedTimingOmegaMin = 0.0;
+    F64 validatedTimingOmegaMax = 0.0;
+
     // Configuration-derived values.
     U64 samplesPerSymbol = 0;
     U64 constellationOrder = 0;
     U64 outputSize = 0;
+    U64 maxIterations = 0;
 
     // PLL state for frequency/phase recovery.
     F64 phaseAccumulator = 0.0;
@@ -55,7 +71,6 @@ struct PskDemodImpl : public Module::Impl, public DynamicConfig<PskDemod> {
     static constexpr F64 MIN_FREQUENCY_ERROR = -1.0;
 
     // Helper methods.
-    void updateLoopCoefficients();
     void initializeState();
     CF32 interpolate(const CF32& a, const CF32& b, F64 mu) const;
     CF32 decision(const CF32& sample) const;

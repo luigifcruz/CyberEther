@@ -1,9 +1,15 @@
 #include "module_impl.hh"
 
+#include <algorithm>
 #include <any>
+#include <cmath>
+#include <cstddef>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/vec2.hpp>
+#include <limits>
 
 #include "jetstream/constants.hh"
+#include "jetstream/tools/numeric.hh"
 #include "resources/shaders/global_shaders.hh"
 #include "resources/shaders/lineplot_shaders.hh"
 
@@ -32,11 +38,122 @@ Result LineplotImpl::validate() {
         return Result::ERROR;
     }
 
-    if (config.thickness <= 0.0f) {
-        JST_ERROR("[MODULE_LINEPLOT] Thickness must be positive.");
+    if (!std::isfinite(config.thickness) || config.thickness <= 0.0f) {
+        JST_ERROR("[MODULE_LINEPLOT] Thickness must be finite and positive.");
         return Result::ERROR;
     }
 
+    const U64 maxRenderScalarCount = std::min(
+        static_cast<U64>(std::numeric_limits<std::size_t>::max()) / sizeof(F32),
+        static_cast<U64>(std::numeric_limits<std::ptrdiff_t>::max()) / sizeof(F32));
+
+    // Preflight Axis's line strips and fixed 128-character label buffers.
+    U64 totalGridLines = 0;
+    U64 gridPointScalarCount = 0;
+    U64 gridVertexScalarCount = 0;
+    U64 gridVertexCount = 0;
+    U64 textVertexCount = 0;
+    const U64 maxTextVertexCount = std::min(
+        static_cast<U64>(std::numeric_limits<std::size_t>::max()) /
+            sizeof(glm::vec2),
+        static_cast<U64>(std::numeric_limits<std::ptrdiff_t>::max()) /
+            sizeof(glm::vec2));
+    if (!Jetstream::detail::CheckedAdd(config.numberOfVerticalLines,
+                                       config.numberOfHorizontalLines,
+                                       totalGridLines) ||
+        !Jetstream::detail::CheckedMultiply(totalGridLines, 4,
+                                            gridPointScalarCount) ||
+        !Jetstream::detail::CheckedMultiply(totalGridLines, 24,
+                                            gridVertexScalarCount) ||
+        !Jetstream::detail::CheckedMultiply(totalGridLines, 6,
+                                            gridVertexCount) ||
+        !Jetstream::detail::CheckedMultiply(totalGridLines - 2, 128 * 4,
+                                            textVertexCount) ||
+        totalGridLines > std::numeric_limits<U32>::max() ||
+        gridVertexCount > std::numeric_limits<U32>::max() ||
+        gridPointScalarCount > maxRenderScalarCount ||
+        gridVertexScalarCount > maxRenderScalarCount ||
+        textVertexCount > maxTextVertexCount) {
+        JST_ERROR("[MODULE_LINEPLOT] Grid geometry exceeds the supported "
+                  "rendering range.");
+        return Result::ERROR;
+    }
+
+    if (!inputs().contains("signal")) {
+        validatedNumberOfElements = 0;
+        validatedNumberOfBatches = 0;
+        validatedInputRowWidth = 0;
+        validatedNormalizationFactor = 0.0f;
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape()) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.rank() == 0 || inputTensor.rank() > 2) {
+        JST_ERROR("[MODULE_LINEPLOT] Invalid input rank ({}), expected 1 or 2.",
+                  inputTensor.rank());
+        return Result::ERROR;
+    }
+
+    if (inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    const U64 candidateInputRowWidth = inputTensor.shape(inputTensor.rank() - 1);
+    const U64 candidateNumberOfElements = candidateInputRowWidth / config.decimation;
+    if (candidateNumberOfElements < 2) {
+        JST_ERROR("[MODULE_LINEPLOT] Invalid number of elements ({}), need at least 2.",
+                  candidateNumberOfElements);
+        return Result::ERROR;
+    }
+
+    U64 signalPointScalarCount = 0;
+    U64 signalVertexScalarCount = 0;
+    U64 signalVertexCount = 0;
+    if (!Jetstream::detail::CheckedMultiply(candidateNumberOfElements,
+                                            2,
+                                            signalPointScalarCount) ||
+        !Jetstream::detail::CheckedMultiply(candidateNumberOfElements - 1,
+                                            16,
+                                            signalVertexScalarCount) ||
+        !Jetstream::detail::CheckedMultiply(candidateNumberOfElements - 1,
+                                            4,
+                                            signalVertexCount) ||
+        candidateNumberOfElements > std::numeric_limits<U32>::max() ||
+        signalVertexCount > std::numeric_limits<U32>::max() ||
+        signalPointScalarCount > maxRenderScalarCount ||
+        signalVertexScalarCount > maxRenderScalarCount) {
+        JST_ERROR("[MODULE_LINEPLOT] Signal geometry exceeds the supported "
+                  "rendering range.");
+        return Result::ERROR;
+    }
+
+    if (inputTensor.hasAttribute("frequency")) {
+        const std::any value = inputTensor.attribute("frequency");
+        if (!std::any_cast<F32>(&value)) {
+            JST_ERROR("[MODULE_LINEPLOT] Input frequency metadata must have type F32.");
+            return Result::ERROR;
+        }
+    }
+
+    if (inputTensor.hasAttribute("sampleRate")) {
+        const std::any value = inputTensor.attribute("sampleRate");
+        if (!std::any_cast<F32>(&value)) {
+            JST_ERROR("[MODULE_LINEPLOT] Input sample rate metadata must have type F32.");
+            return Result::ERROR;
+        }
+    }
+
+    const U64 candidateNumberOfBatches =
+        inputTensor.rank() == 2 ? inputTensor.shape(0) : 1;
+    validatedNumberOfElements = candidateNumberOfElements;
+    validatedNumberOfBatches = candidateNumberOfBatches;
+    validatedInputRowWidth = candidateInputRowWidth;
+    validatedNormalizationFactor =
+        1.0f / (0.5f * static_cast<F32>(candidateNumberOfBatches));
 
     return Result::SUCCESS;
 }
@@ -55,33 +172,24 @@ Result LineplotImpl::create() {
     input = inputs().at("signal").tensor;
 
     if (input.hasAttribute("frequency")) {
-        JST_DEBUG("[MODULE_LINEPLOT] Input frequency: {:.02f} MHz", std::any_cast<F32>(input.attribute("frequency")) / 1e6f);
+        const std::any value = input.attribute("frequency");
+        if (const auto* frequency = std::any_cast<F32>(&value)) {
+            JST_DEBUG("[MODULE_LINEPLOT] Input frequency: {:.02f} MHz",
+                      *frequency / 1e6f);
+        }
     }
     if (input.hasAttribute("sampleRate")) {
-        JST_DEBUG("[MODULE_LINEPLOT] Input sample rate: {:.02f} MHz", std::any_cast<F32>(input.attribute("sampleRate")) / 1e6f);
+        const std::any value = input.attribute("sampleRate");
+        if (const auto* sampleRate = std::any_cast<F32>(&value)) {
+            JST_DEBUG("[MODULE_LINEPLOT] Input sample rate: {:.02f} MHz",
+                      *sampleRate / 1e6f);
+        }
     }
 
-    // Check input rank.
-
-    if (input.rank() > 2) {
-        JST_ERROR("[MODULE_LINEPLOT] Invalid input rank ({}), expected 1 or 2.", input.rank());
-        return Result::ERROR;
-    }
-
-    // Calculate parameters.
-
-    const U64 lastAxis = input.rank() - 1;
-    inputRowWidth = input.shape()[lastAxis];
-    numberOfElements = inputRowWidth / decimation;
-    numberOfBatches = (input.rank() == 2) ? input.shape()[0] : 1;
-    normalizationFactor = 1.0f / (0.5f * numberOfBatches);
-
-    // Check shape.
-
-    if (numberOfElements < 2) {
-        JST_ERROR("[MODULE_LINEPLOT] Invalid number of elements ({}), need at least 2.", numberOfElements);
-        return Result::ERROR;
-    }
+    numberOfElements = validatedNumberOfElements;
+    numberOfBatches = validatedNumberOfBatches;
+    inputRowWidth = validatedInputRowWidth;
+    normalizationFactor = validatedNormalizationFactor;
 
     // Allocate internal buffers.
 
@@ -474,6 +582,21 @@ void LineplotImpl::updateCursorState() {
     const auto cursorValueX = cursorData[0] * paddingScale.x;
     const auto cursorValueY = cursorData[1] * paddingScale.y;
 
+    F32 centerFrequency = 0.0f;
+    F32 inputSampleRate = 0.0f;
+    bool hasFrequencyMetadata = false;
+    if (input.hasAttribute("frequency") && input.hasAttribute("sampleRate")) {
+        const std::any frequency = input.attribute("frequency");
+        const std::any sampleRate = input.attribute("sampleRate");
+        const auto* typedFrequency = std::any_cast<F32>(&frequency);
+        const auto* typedSampleRate = std::any_cast<F32>(&sampleRate);
+        if (typedFrequency && typedSampleRate) {
+            centerFrequency = *typedFrequency;
+            inputSampleRate = *typedSampleRate;
+            hasFrequencyMetadata = true;
+        }
+    }
+
     const F32 translation = std::clamp(
         -2.0f * interaction.offset,
         -std::abs((1.0f / interaction.zoom) - 1.0f),
@@ -502,17 +625,15 @@ void LineplotImpl::updateCursorState() {
         const U64 tickStep = std::max(U64{1},
             static_cast<U64>(std::ceil(65.0f / tickSpacingPx)));
 
-        const bool hasFreqAttrs = input.hasAttribute("frequency") && input.hasAttribute("sampleRate");
-        const F32 centerFreq = hasFreqAttrs ? std::any_cast<F32>(input.attribute("frequency")) : 0.0f;
-        const F32 sampleRate = hasFreqAttrs ? std::any_cast<F32>(input.attribute("sampleRate")) : 0.0f;
-
         std::vector<std::string> xLabels(numberOfVerticalLines - 2);
         for (U64 i = 1; i < numberOfVerticalLines - 1; i++) {
             if ((i - 1) % tickStep == 0) {
                 const F32 tickX = (2.0f * paddingScale.x / (numberOfVerticalLines - 1)) * i - paddingScale.x;
                 const F32 normalizedPos = ((tickX / interaction.zoom) - translation) / paddingScale.x;
-                if (hasFreqAttrs) {
-                    const F32 freq = (centerFreq + normalizedPos * sampleRate / 2.0f) / 1e6f;
+                if (hasFrequencyMetadata) {
+                    const F32 freq =
+                        (centerFrequency + normalizedPos * inputSampleRate / 2.0f) /
+                        1e6f;
                     xLabels[i - 1] = jst::fmt::format("{:.02f}", freq);
                 } else {
                     xLabels[i - 1] = jst::fmt::format("{:.02f}", normalizedPos);
@@ -530,11 +651,10 @@ void LineplotImpl::updateCursorState() {
 
         auto element = text->get("amplitude");
 
-        const bool hasFreqAttrs = input.hasAttribute("frequency") && input.hasAttribute("sampleRate");
-        if (hasFreqAttrs) {
-            const F32 centerFreq = std::any_cast<F32>(input.attribute("frequency"));
-            const F32 sampleRate = std::any_cast<F32>(input.attribute("sampleRate"));
-            const F32 freq = (centerFreq + cursorData[0] * sampleRate / 2.0f) / 1e6f;
+        if (hasFrequencyMetadata) {
+            const F32 freq =
+                (centerFrequency + cursorData[0] * inputSampleRate / 2.0f) /
+                1e6f;
             element.fill = jst::fmt::format("{:.03f} MHz, {:.02f} dBFS", freq, cursorData[1]);
         } else {
             element.fill = jst::fmt::format("{:.04f}, {:.04f}", cursorData[0], cursorData[1]);

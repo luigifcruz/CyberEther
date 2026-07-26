@@ -7,7 +7,7 @@ namespace Jetstream::Modules {
 Result SquelchImpl::validate() {
     const auto& config = *candidate();
 
-    if (config.threshold < 0.0f) {
+    if (!std::isfinite(config.threshold) || config.threshold < 0.0f) {
         JST_ERROR("[MODULE_SQUELCH] Invalid threshold '{}', must be non-negative.", config.threshold);
         return Result::ERROR;
     }

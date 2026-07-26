@@ -13,6 +13,12 @@ struct CastImpl : public Module::Impl, public DynamicConfig<Cast> {
     Result create() override;
 
  protected:
+    DataType validatedOutputDtype = DataType::None;
+    F32 validatedScaler = 1.0f;
+    bool validatedBypass = false;
+    U64 validatedOutputElementCount = 0;
+    U64 validatedOutputSizeBytes = 0;
+
     Tensor input;
     Tensor output;
     DataType outputDtype = DataType::CF32;

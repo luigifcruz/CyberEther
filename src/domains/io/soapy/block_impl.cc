@@ -7,27 +7,9 @@
 #include <SoapySDR/Device.hpp>
 #include <SoapySDR/Types.hpp>
 
+#include <cmath>
+
 namespace Jetstream::Blocks {
-
-using DeviceEntry = std::map<std::string, std::string>;
-using DeviceList = std::map<std::string, DeviceEntry>;
-
-static DeviceList ListAvailableDevices(const std::string& filter) {
-    DeviceList deviceMap;
-    const SoapySDR::Kwargs args = SoapySDR::KwargsFromString(filter);
-
-    try {
-        for (const auto& device : SoapySDR::Device::enumerate(args)) {
-            deviceMap[device.at("label")] = device;
-        }
-    } catch (const std::exception& e) {
-        JST_ERROR("[BLOCK_SOAPY] Failed to enumerate devices: {}", e.what());
-    } catch (...) {
-        JST_ERROR("[BLOCK_SOAPY] Failed to enumerate devices.");
-    }
-
-    return deviceMap;
-}
 
 struct SoapyImpl : public Block::Impl, public DynamicConfig<Blocks::Soapy> {
     Result validate() override;
@@ -44,18 +26,8 @@ struct SoapyImpl : public Block::Impl, public DynamicConfig<Blocks::Soapy> {
 Result SoapyImpl::validate() {
     const auto& config = *candidate();
 
-    if (config.numberOfBatches == 0) {
-        JST_ERROR("[BLOCK_SOAPY] Number of batches cannot be zero.");
-        return Result::ERROR;
-    }
-
-    if (config.numberOfTimeSamples == 0) {
-        JST_ERROR("[BLOCK_SOAPY] Number of time samples cannot be zero.");
-        return Result::ERROR;
-    }
-
-    if (config.bufferMultiplier == 0) {
-        JST_ERROR("[BLOCK_SOAPY] Buffer multiplier cannot be zero.");
+    if (!std::isfinite(config.frequencyStep) || config.frequencyStep <= 0.0f) {
+        JST_ERROR("[BLOCK_SOAPY] Frequency step must be finite and positive.");
         return Result::ERROR;
     }
 
@@ -64,8 +36,8 @@ Result SoapyImpl::validate() {
 
 Result SoapyImpl::configure() {
     std::string resolvedDeviceString;
-    const auto availableDeviceList = ListAvailableDevices(hintString);
-    const auto selectFirstAvailable = [&](const DeviceList& devices) -> bool {
+    const auto availableDeviceList = Modules::SoapyImpl::ListAvailableDevices(hintString);
+    const auto selectFirstAvailable = [&](const Modules::SoapyImpl::DeviceList& devices) -> bool {
         if (devices.empty()) {
             return false;
         }
@@ -79,7 +51,7 @@ Result SoapyImpl::configure() {
     if (const auto it = availableDeviceList.find(deviceString); it != availableDeviceList.end()) {
         resolvedDeviceString = SoapySDR::KwargsToString(it->second);
     } else if (!deviceString.empty()) {
-        const auto explicitDeviceList = ListAvailableDevices(deviceString);
+        const auto explicitDeviceList = Modules::SoapyImpl::ListAvailableDevices(deviceString);
         if (!selectFirstAvailable(explicitDeviceList)) {
             selectFirstAvailable(availableDeviceList);
         }
@@ -105,7 +77,7 @@ Result SoapyImpl::define() {
                                     "The output buffer containing samples from the SDR device."));
 
     std::vector<std::string> deviceOptions;
-    for (const auto& [label, _] : ListAvailableDevices(hintString)) {
+    for (const auto& [label, _] : Modules::SoapyImpl::ListAvailableDevices(hintString)) {
         deviceOptions.push_back(jst::fmt::format("{}({})", label, label));
     }
     deviceDropdown = jst::fmt::format("dropdown:{}", jst::fmt::join(deviceOptions, ","));

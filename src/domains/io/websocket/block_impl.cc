@@ -22,21 +22,6 @@ struct WebsocketImpl : public Block::Impl,
 Result WebsocketImpl::validate() {
     const auto& config = *candidate();
 
-    if (config.numberOfBatches == 0) {
-        JST_ERROR("[BLOCK_WEBSOCKET] Number of batches cannot be zero.");
-        return Result::ERROR;
-    }
-
-    if (config.numberOfTimeSamples == 0) {
-        JST_ERROR("[BLOCK_WEBSOCKET] Number of time samples cannot be zero.");
-        return Result::ERROR;
-    }
-
-    if (config.bufferMultiplier == 0) {
-        JST_ERROR("[BLOCK_WEBSOCKET] Buffer multiplier cannot be zero.");
-        return Result::ERROR;
-    }
-
     if (url != config.url ||
         dataType != config.dataType ||
         numberOfBatches != config.numberOfBatches ||

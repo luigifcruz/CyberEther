@@ -8,6 +8,7 @@ namespace Jetstream::Modules {
 
 struct AddImpl : public Module::Impl, public DynamicConfig<Add> {
  public:
+    Result validate() override;
     Result define() override;
     Result create() override;
     Result destroy() override;
@@ -17,6 +18,10 @@ struct AddImpl : public Module::Impl, public DynamicConfig<Add> {
     Tensor a;
     Tensor b;
     Tensor c;
+    Tensor validatedA;
+    Tensor validatedB;
+    Shape validatedOutputShape;
+    U64 validatedOutputSizeBytes = 0;
 };
 
 }  // namespace Jetstream::Modules

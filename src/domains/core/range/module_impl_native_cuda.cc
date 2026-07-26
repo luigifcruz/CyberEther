@@ -74,6 +74,7 @@ struct RangeImplNativeCuda : public RangeImpl,
                              public NativeCudaRuntimeContext,
                              public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeInitialize() override;
@@ -85,13 +86,29 @@ struct RangeImplNativeCuda : public RangeImpl,
     std::unordered_map<std::string, std::string> kernelPieces;
 };
 
-Result RangeImplNativeCuda::create() {
-    JST_CHECK(RangeImpl::create());
+Result RangeImplNativeCuda::validate() {
+    JST_CHECK(RangeImpl::validate());
 
-    if (input.dtype() != DataType::F32 || output.dtype() != DataType::F32) {
-        JST_ERROR("[MODULE_RANGE_NATIVE_CUDA] Unsupported data type '{}'.", input.dtype());
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::F32) {
+        JST_ERROR("[MODULE_RANGE_NATIVE_CUDA] Unsupported data type '{}'.",
+                  inputTensor.dtype());
         return Result::ERROR;
     }
+
+    return Result::SUCCESS;
+}
+
+Result RangeImplNativeCuda::create() {
+    JST_CHECK(RangeImpl::create());
 
     kernelPieces["KERNEL_CONSTANTS"] = BuildKernelConstants(input);
     return Result::SUCCESS;

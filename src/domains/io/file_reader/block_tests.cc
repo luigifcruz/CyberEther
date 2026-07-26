@@ -3,6 +3,7 @@
 #include <any>
 #include <chrono>
 #include <filesystem>
+#include <limits>
 
 #include "jetstream/platform.hh"
 #include <fstream>
@@ -11,6 +12,7 @@
 #include <vector>
 
 #include "jetstream/block_interface.hh"
+#include "jetstream/domains/io/file_reader/block.hh"
 
 #include "flowgraph_fixture.hh"
 
@@ -161,6 +163,22 @@ TEST_CASE_METHOD(FlowgraphFixture,
     const Tensor out = viewBlock("reader").outputs.at("signal").tensor;
     REQUIRE(out.shape(0) == 2);
 
+    const auto outputId = out.id();
+    Parser::Map invalidResize;
+    invalidResize["batchSize"] =
+        std::to_string(std::numeric_limits<U64>::max());
+    REQUIRE(flowgraph->blockReconfigure("reader", invalidResize) ==
+            Result::ERROR);
+    REQUIRE(viewBlock("reader").state == Block::State::Created);
+    REQUIRE(viewBlock("reader").outputs.at("signal").tensor.id() == outputId);
+    REQUIRE(viewBlock("reader").outputs.at("signal").tensor.shape(0) == 2);
+
+    Parser::Map saved;
+    REQUIRE(flowgraph->blockConfig("reader", saved) == Result::SUCCESS);
+    Blocks::FileReader savedConfig;
+    REQUIRE(savedConfig.deserialize(saved) == Result::SUCCESS);
+    REQUIRE(savedConfig.batchSize == 2);
+
     REQUIRE(flowgraph->blockDestroy("reader", false) == Result::SUCCESS);
 
     Cleanup(path);
@@ -176,4 +194,5 @@ TEST_CASE_METHOD(FlowgraphFixture,
                                    {}) == Result::SUCCESS);
     REQUIRE(viewBlock("reader_invalid").state ==
             Block::State::Errored);
+    REQUIRE(viewBlock("reader_invalid").outputs.empty());
 }

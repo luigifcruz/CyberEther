@@ -1,8 +1,10 @@
 #include <jetstream/backend/devices/cuda/helpers.hh>
+#include <jetstream/memory/macros.hh>
 #include <jetstream/module_context.hh>
 #include <jetstream/registry.hh>
 #include <jetstream/runtime_context_native_cuda.hh>
 #include <jetstream/scheduler_context.hh>
+#include <jetstream/tools/numeric.hh>
 
 #include <cstdint>
 #include <limits>
@@ -15,6 +17,7 @@ namespace Jetstream::Modules {
 namespace {
 
 constexpr U64 kThreadsPerBlock = 256;
+constexpr U64 kMaxGridSizeX = std::numeric_limits<I32>::max();
 constexpr const char* kLayoutKernelName = "fft_layout";
 
 static_assert(sizeof(CF32) == sizeof(cufftComplex));
@@ -77,14 +80,16 @@ extern "C" __global__ void fft_layout(const unsigned char* input,
         return;
     }
 
-    if (mode == 2) {
+    if (mode == 2 || mode == 4) {
         unsigned long long remaining = index;
         unsigned long long line = 0;
         unsigned long long lineStride = 1;
         unsigned long long axisCoordinate = 0;
         for (int axis = rank - 1; axis >= 0; --axis) {
-            const unsigned long long coordinate = remaining % shape[axis];
-            remaining /= shape[axis];
+            const unsigned long long extent =
+                mode == 4 && axis == transformAxis ? spectrumLength : shape[axis];
+            const unsigned long long coordinate = remaining % extent;
+            remaining /= extent;
             if (axis == transformAxis) {
                 axisCoordinate = coordinate;
             } else {
@@ -94,7 +99,8 @@ extern "C" __global__ void fft_layout(const unsigned char* input,
         }
 
         const unsigned long long sourceIndex =
-            (line * transformLength) + axisCoordinate;
+            (line * (mode == 4 ? spectrumLength : transformLength)) +
+            axisCoordinate;
         const unsigned char* source = input + (sourceIndex * elementSize);
         unsigned char* destination = output + (index * elementSize);
         for (unsigned long long byte = 0; byte < elementSize; ++byte) {
@@ -149,6 +155,7 @@ extern "C" __global__ void fft_layout(const unsigned char* input,
 
 enum class TransformType {
     C2C,
+    R2C,
     R2R,
 };
 
@@ -157,6 +164,7 @@ enum class LayoutMode : I32 {
     PackReal = 1,
     Scatter = 2,
     UnpackReal = 3,
+    ScatterSpectrum = 4,
 };
 
 Result CheckCufft(const cufftResult status, const std::string_view operation) {
@@ -176,6 +184,7 @@ struct FftImplNativeCuda : public FftImpl,
                            public NativeCudaRuntimeContext,
                            public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeInitialize() override;
@@ -194,6 +203,7 @@ struct FftImplNativeCuda : public FftImpl,
     bool kernelCreated = false;
     bool useDirectC2C = false;
     bool useOutputC2C = false;
+    bool useDirectR2C = false;
     bool useDirectR2R = false;
 
     U64 transformLength = 0;
@@ -206,42 +216,108 @@ struct FftImplNativeCuda : public FftImpl,
     Tensor strideTensor;
 };
 
+Result FftImplNativeCuda::validate() {
+    JST_CHECK(FftImpl::validate());
+
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::F32 &&
+        inputTensor.dtype() != DataType::CF32) {
+        JST_ERROR("[MODULE_FFT_NATIVE_CUDA] Unsupported input data type: {}.",
+                  inputTensor.dtype());
+        return Result::ERROR;
+    }
+
+    const U64 candidateTransformLength = inputTensor.shape(validatedResolvedAxis);
+    const U64 candidateBatchSize =
+        inputTensor.size() / candidateTransformLength;
+    if (inputTensor.rank() > std::numeric_limits<I32>::max() ||
+        candidateTransformLength >
+            static_cast<U64>(std::numeric_limits<long long>::max()) ||
+        candidateBatchSize >
+            static_cast<U64>(std::numeric_limits<long long>::max())) {
+        JST_ERROR("[MODULE_FFT_NATIVE_CUDA] Transform dimensions exceed cuFFT limits.");
+        return Result::ERROR;
+    }
+
+    U64 alignedOutputSize = 0;
+    if (!detail::CheckedPageAlignedSize(validatedOutputSizeBytes,
+                                        alignedOutputSize)) {
+        JST_ERROR("[MODULE_FFT_NATIVE_CUDA] Output allocation size is too large.");
+        return Result::ERROR;
+    }
+
+    if (inputTensor.dtype() == DataType::F32) {
+        const U64 candidateSpectrumLength = (candidateTransformLength / 2) + 1;
+        U64 candidateSpectrumElementCount = 0;
+        U64 candidateSpectrumSizeBytes = 0;
+        U64 alignedSpectrumSize = 0;
+        if (!detail::CheckedMultiply(candidateBatchSize,
+                                     candidateSpectrumLength,
+                                     candidateSpectrumElementCount) ||
+            !detail::CheckedMultiply(candidateSpectrumElementCount,
+                                     static_cast<U64>(sizeof(CF32)),
+                                     candidateSpectrumSizeBytes) ||
+            !detail::CheckedPageAlignedSize(candidateSpectrumSizeBytes,
+                                            alignedSpectrumSize)) {
+            JST_ERROR("[MODULE_FFT_NATIVE_CUDA] Spectrum dimensions exceed CUDA limits.");
+            return Result::ERROR;
+        }
+    }
+
+    const bool requiresLayout =
+        inputTensor.dtype() == DataType::F32 || candidate()->invert ||
+        !inputTensor.contiguous() ||
+        validatedResolvedAxis != inputTensor.rank() - 1;
+    if (requiresLayout) {
+        const U64 inputElementCount = inputTensor.size();
+        const U64 blockCount = inputElementCount / kThreadsPerBlock +
+                               (inputElementCount % kThreadsPerBlock != 0);
+        if (blockCount > kMaxGridSizeX) {
+            JST_ERROR("[MODULE_FFT_NATIVE_CUDA] Input size exceeds the CUDA grid limit.");
+            return Result::ERROR;
+        }
+    }
+
+    return Result::SUCCESS;
+}
+
 Result FftImplNativeCuda::create() {
     JST_CHECK(FftImpl::create());
 
     useDirectC2C = false;
     useOutputC2C = false;
+    useDirectR2C = false;
     useDirectR2R = false;
 
     transformLength = input.shape(resolvedAxis);
     spectrumLength = (transformLength / 2) + 1;
     batchSize = input.size() / transformLength;
 
-    if (input.rank() > std::numeric_limits<I32>::max() ||
-        transformLength > static_cast<U64>(std::numeric_limits<long long>::max()) ||
-        batchSize > static_cast<U64>(std::numeric_limits<long long>::max())) {
-        JST_ERROR("[MODULE_FFT_NATIVE_CUDA] Transform dimensions exceed cuFFT limits.");
-        return Result::ERROR;
-    }
-
     if (input.dtype() == DataType::CF32 && output.dtype() == DataType::CF32) {
         transformType = TransformType::C2C;
         useDirectC2C = !invert && input.contiguous() &&
                        resolvedAxis == input.rank() - 1;
         useOutputC2C = !useDirectC2C && resolvedAxis == input.rank() - 1;
-        return Result::SUCCESS;
-    }
-
-    if (input.dtype() == DataType::F32 && output.dtype() == DataType::F32) {
+    } else if (input.dtype() == DataType::F32 &&
+               output.dtype() == DataType::CF32) {
+        transformType = TransformType::R2C;
+        useDirectR2C = !invert && input.contiguous() &&
+                       resolvedAxis == input.rank() - 1;
+    } else {
         transformType = TransformType::R2R;
         useDirectR2R = !invert && input.contiguous() &&
                        resolvedAxis == input.rank() - 1;
-        return Result::SUCCESS;
     }
 
-    JST_ERROR("[MODULE_FFT_NATIVE_CUDA] Unsupported data type combination: {} -> {}.",
-              input.dtype(), output.dtype());
-    return Result::ERROR;
+    return Result::SUCCESS;
 }
 
 Result FftImplNativeCuda::computeInitialize() {
@@ -276,8 +352,13 @@ Result FftImplNativeCuda::computeInitialize() {
         return Result::SUCCESS;
     }
 
-    if (transformType == TransformType::R2R) {
+    if (transformType == TransformType::R2R ||
+        (transformType == TransformType::R2C && !useDirectR2C)) {
         JST_CHECK(spectrum.create(device(), DataType::CF32, {batchSize, spectrumLength}));
+    }
+
+    if (useDirectR2C) {
+        return Result::SUCCESS;
     }
 
     if (useDirectR2R) {
@@ -315,8 +396,9 @@ Result FftImplNativeCuda::scheduleLayout(const cudaStream_t& stream,
                                          void* destination,
                                          const LayoutMode mode) {
     void* sourceArgument = const_cast<void*>(source);
-    U64 elementCount = input.size();
-    U64 elementSize = input.elementSize();
+    const bool scatterSpectrum = mode == LayoutMode::ScatterSpectrum;
+    U64 elementCount = scatterSpectrum ? output.size() : input.size();
+    U64 elementSize = scatterSpectrum ? output.elementSize() : input.elementSize();
     U64 offset = input.offset();
     I32 rank = static_cast<I32>(input.rank());
     I32 transformAxis = static_cast<I32>(resolvedAxis);
@@ -367,6 +449,16 @@ Result FftImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
             const_cast<std::uint8_t*>(inputBase + input.offsetBytes()));
         auto* transformOutput = reinterpret_cast<cufftComplex*>(outputData);
         return CheckCufft(cufftExecC2C(plan, inputData, transformOutput, direction), "cufftExecC2C");
+    }
+
+    if (useDirectR2C) {
+        auto* inputData = reinterpret_cast<cufftReal*>(
+            const_cast<std::uint8_t*>(inputBase + input.offsetBytes()));
+        return CheckCufft(cufftExecR2C(
+                              plan,
+                              inputData,
+                              reinterpret_cast<cufftComplex*>(outputData)),
+                          "cufftExecR2C");
     }
 
     if (useOutputC2C) {
@@ -432,6 +524,13 @@ Result FftImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
     JST_CHECK(CheckCufft(cufftExecR2C(plan,
                                       reinterpret_cast<cufftReal*>(stagingData),
                                       reinterpret_cast<cufftComplex*>(spectrumData)), "cufftExecR2C"));
+
+    if (transformType == TransformType::R2C) {
+        return scheduleLayout(stream,
+                              spectrumData,
+                              outputData,
+                              LayoutMode::ScatterSpectrum);
+    }
 
     JST_CHECK(scheduleLayout(stream, spectrumData, stagingData, LayoutMode::PackReal));
     return scheduleLayout(stream, stagingData, outputData, LayoutMode::Scatter);

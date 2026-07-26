@@ -1,3 +1,7 @@
+#include <limits>
+#include <utility>
+
+#include <jetstream/memory/macros.hh>
 #include <jetstream/runtime_context_native_cpu.hh>
 #include <jetstream/scheduler_context.hh>
 #include <jetstream/module_context.hh>
@@ -11,10 +15,32 @@ struct FileReaderImplNativeCpu : public FileReaderImpl,
                                  public NativeCpuRuntimeContext,
                                  public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeSubmit() override;
 };
+
+Result FileReaderImplNativeCpu::validate() {
+    JST_CHECK(FileReaderImpl::validate());
+
+    U64 alignedOutputSize = 0;
+    if (!detail::CheckedPageAlignedSize(validatedOutputSizeBytes,
+                                        alignedOutputSize) ||
+        alignedOutputSize > std::numeric_limits<std::size_t>::max()) {
+        JST_ERROR("[MODULE_FILE_READER_NATIVE_CPU] Output allocation size is "
+                  "too large.");
+        return Result::ERROR;
+    }
+
+    if (!std::in_range<std::streamsize>(validatedOutputSizeBytes)) {
+        JST_ERROR("[MODULE_FILE_READER_NATIVE_CPU] Output size exceeds the "
+                  "supported file read range.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
 
 Result FileReaderImplNativeCpu::create() {
     JST_CHECK(FileReaderImpl::create());

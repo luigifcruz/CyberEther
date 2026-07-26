@@ -158,4 +158,10 @@ TEST_CASE_METHOD(FlowgraphFixture,
     config.permutation = {1, 1};
     REQUIRE(flowgraph->blockCreate("perm_bad", config, inputs) == Result::SUCCESS);
     REQUIRE(viewBlock("perm_bad").state == Block::State::Errored);
+    REQUIRE(viewBlock("perm_bad").outputs.empty());
+
+    config.permutation = {1, 0};
+    REQUIRE(flowgraph->blockCreate("perm_rank_bad", config, inputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("perm_rank_bad").state == Block::State::Errored);
+    REQUIRE(viewBlock("perm_rank_bad").outputs.empty());
 }

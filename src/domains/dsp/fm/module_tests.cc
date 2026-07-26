@@ -6,8 +6,31 @@
 #include "jetstream/domains/dsp/fm/module.hh"
 
 #include <cmath>
+#include <limits>
 
 using namespace Jetstream;
+
+namespace {
+
+void RequireFmValidationError(const Registry::ModuleRegistration& impl,
+                              const Modules::FM& config,
+                              const DataType dtype) {
+    Tensor input;
+    REQUIRE(input.create(impl.device, dtype, {16}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].requested("test", "signal");
+    inputs["signal"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("fm", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
+}  // namespace
 
 TEST_CASE("FM - Constant Phase Input", "[modules][fm]") {
     auto implementations = Registry::ListAvailableModules("fm");
@@ -41,6 +64,30 @@ TEST_CASE("FM - Constant Phase Input", "[modules][fm]") {
             // With constant phase, output should be near zero (no frequency deviation).
             for (U64 i = 1; i < bufferSize; ++i) {
                 REQUIRE_THAT(out.at<F32>(i), Catch::Matchers::WithinAbs(0.0f, 1e-5f));
+            }
+        }
+    }
+}
+
+TEST_CASE("FM - Validation Rejects Invalid Configuration Before Create",
+          "[modules][fm][validation]") {
+    auto implementations = Registry::ListAvailableModules("fm");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            SECTION("sample rate must be finite and positive") {
+                Modules::FM config;
+                config.sampleRate = 0.0f;
+                RequireFmValidationError(impl, config, DataType::CF32);
+
+                config.sampleRate = std::numeric_limits<F32>::quiet_NaN();
+                RequireFmValidationError(impl, config, DataType::CF32);
+            }
+
+            SECTION("native CPU input must be CF32") {
+                Modules::FM config;
+                RequireFmValidationError(impl, config, DataType::F32);
             }
         }
     }

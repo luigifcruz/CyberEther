@@ -15,6 +15,29 @@ Result ArithmeticImpl::validate() {
         return Result::ERROR;
     }
 
+    if (!inputs().contains("buffer")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("buffer").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.rank() == 0) {
+        JST_ERROR("[MODULE_ARITHMETIC] Input buffer rank is 0.");
+        return Result::ERROR;
+    }
+
+    const auto candidateAxis = ResolveAxis(config.axis, inputTensor.rank());
+    if (!candidateAxis) {
+        JST_ERROR("[MODULE_ARITHMETIC] Axis {} out of range for input buffer rank {}.",
+                  config.axis, inputTensor.rank());
+        return Result::ERROR;
+    }
+
+    resolvedAxis = *candidateAxis;
+
     return Result::SUCCESS;
 }
 
@@ -30,26 +53,6 @@ Result ArithmeticImpl::define() {
 Result ArithmeticImpl::create() {
     const Tensor& inputTensor = inputs().at("buffer").tensor;
     input = inputTensor;
-
-    // Check input rank.
-
-    if (input.rank() == 0) {
-        JST_ERROR("[MODULE_ARITHMETIC] Input buffer rank is 0.");
-        return Result::ERROR;
-    }
-
-    const auto maybeResolvedAxis = ResolveAxis(axis, input.rank());
-    if (!maybeResolvedAxis) {
-        JST_ERROR("[MODULE_ARITHMETIC] Axis {} out of range for input buffer rank {}.",
-                  axis, input.rank());
-        return Result::ERROR;
-    }
-    const Index resolvedAxis = *maybeResolvedAxis;
-
-    if (input.shape(resolvedAxis) == 0) {
-        JST_ERROR("[MODULE_ARITHMETIC] Input buffer axis {} is 0.", axis);
-        return Result::ERROR;
-    }
 
     // Calculate output shape.
 

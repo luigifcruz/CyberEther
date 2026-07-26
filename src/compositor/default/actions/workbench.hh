@@ -9,7 +9,6 @@
 #include "jetstream/settings.hh"
 #include "jetstream/platform.hh"
 
-#include <cstdlib>
 #include <string>
 #include <tuple>
 
@@ -131,8 +130,7 @@ struct WorkbenchActions {
     }
 
     Result handle(const MailQuit&) {
-        std::exit(0);
-        return Result::SUCCESS;
+        return state.system.instance->requestStop();
     }
 };
 

@@ -16,6 +16,7 @@ struct AmplitudeImplNativeCpu : public AmplitudeImpl,
                                 public NativeCpuRuntimeContext,
                                 public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeSubmit() override;
@@ -27,6 +28,28 @@ struct AmplitudeImplNativeCpu : public AmplitudeImpl,
     std::function<Result()> kernel;
 };
 
+Result AmplitudeImplNativeCpu::validate() {
+    JST_CHECK(AmplitudeImpl::validate());
+
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::F32 &&
+        inputTensor.dtype() != DataType::CF32) {
+        JST_ERROR("[MODULE_AMPLITUDE_NATIVE_CPU] Unsupported input data type: {}.",
+                  inputTensor.dtype());
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 Result AmplitudeImplNativeCpu::create() {
     // Create parent.
 
@@ -36,16 +59,11 @@ Result AmplitudeImplNativeCpu::create() {
 
     if (input.dtype() == DataType::CF32) {
         kernel = [this]() { return kernelCF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (input.dtype() == DataType::F32) {
+    } else {
         kernel = [this]() { return kernelF32(); };
-        return Result::SUCCESS;
     }
 
-    JST_ERROR("[MODULE_AMPLITUDE_NATIVE_CPU] Unsupported input data type: {}.", input.dtype());
-    return Result::ERROR;
+    return Result::SUCCESS;
 }
 
 Result AmplitudeImplNativeCpu::computeSubmit() {

@@ -120,9 +120,6 @@ struct FlowgraphEditorPresenter {
             if (flowgraph->view().block(blockName, blockData) != Result::SUCCESS) {
                 continue;
             }
-            if (flowgraph->view().metrics(blockName, blockData.metrics) != Result::SUCCESS) {
-                continue;
-            }
 
             config.graph.push_back(node.build(flowgraphId, flowgraph, blockName, blockData));
         }

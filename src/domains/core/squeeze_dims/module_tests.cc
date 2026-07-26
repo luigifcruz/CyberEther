@@ -7,6 +7,31 @@
 
 using namespace Jetstream;
 
+namespace {
+
+void RequireSqueezeDimsValidationError(const Registry::ModuleRegistration& impl,
+                                       const I64 axis,
+                                       const Shape& shape) {
+    Tensor input;
+    REQUIRE(input.create(impl.device, DataType::F32, shape) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["buffer"].requested("test", "buffer");
+    inputs["buffer"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("squeeze_dims", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+
+    Modules::SqueezeDims config;
+    config.axis = axis;
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
+}  // namespace
+
 TEST_CASE("SqueezeDims Module - Squeeze 2D to 1D at axis 0 F32", "[modules][squeeze_dims][F32]") {
     auto implementations = Registry::ListAvailableModules("squeeze_dims");
     REQUIRE(!implementations.empty());
@@ -188,17 +213,7 @@ TEST_CASE("SqueezeDims Module - Axis Out of Range Error", "[modules][squeeze_dim
         for (const I64 axis : {I64{5}, I64{-3}}) {
             DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime
                             << " Axis: " << axis) {
-                TestContext ctx("squeeze_dims", impl.device, impl.runtime, impl.provider);
-
-                Modules::SqueezeDims config;
-                config.axis = axis;
-
-                ctx.setConfig(config);
-
-                auto input = ctx.createTensor<F32>({1, 4});
-                ctx.setInput("buffer", input);
-
-                REQUIRE(ctx.run() == Result::ERROR);
+                RequireSqueezeDimsValidationError(impl, axis, {1, 4});
             }
         }
     }
@@ -210,17 +225,7 @@ TEST_CASE("SqueezeDims Module - Dimension Not Size 1 Error", "[modules][squeeze_
 
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
-            TestContext ctx("squeeze_dims", impl.device, impl.runtime, impl.provider);
-
-            Modules::SqueezeDims config;
-            config.axis = 1;  // Axis 1 has size 4, not 1
-
-            ctx.setConfig(config);
-
-            auto input = ctx.createTensor<F32>({1, 4});
-            ctx.setInput("buffer", input);
-
-            REQUIRE(ctx.run() == Result::ERROR);
+            RequireSqueezeDimsValidationError(impl, 1, {1, 4});
         }
     }
 }

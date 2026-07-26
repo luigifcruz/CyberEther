@@ -7,6 +7,8 @@
 
 #ifdef JST_OS_BROWSER
 #include <utility>
+#include <emscripten/proxying.h>
+#include <emscripten/threading.h>
 #endif
 
 namespace Jetstream {
@@ -22,6 +24,23 @@ void Module::Impl::proxyDestroy(void* arg) {
     *ctx->second = ctx->first->destroy();
 }
 #endif
+
+Result Module::Impl::destroyImplementation() {
+#ifdef JST_OS_BROWSER
+    if ((_taint & Taint::BROWSER_MAIN_THREAD) == Taint::BROWSER_MAIN_THREAD) {
+        Result result;
+        std::pair<Impl*, Result*> ctx{this, &result};
+        emscripten_proxy_sync(
+            emscripten_proxy_get_system_queue(),
+            emscripten_main_runtime_thread_id(),
+            Impl::proxyDestroy,
+            &ctx);
+        return result;
+    }
+#endif
+
+    return destroy();
+}
 
 Result Module::Impl::validate() {
     return Result::SUCCESS;

@@ -1,7 +1,11 @@
 #include "module_impl.hh"
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numeric>
+
+#include <jetstream/tools/numeric.hh>
 
 #include "miniaudio.h"
 
@@ -10,6 +14,48 @@
 #endif
 
 namespace Jetstream::Modules {
+
+namespace {
+
+bool DeriveBufferSizes(const U64 inputSize,
+                       const U32 inputSampleRate,
+                       const U32 outputSampleRate,
+                       U64& outputSize,
+                       U64& circularBufferSize) {
+    outputSize = 0;
+    circularBufferSize = 0;
+    if (inputSampleRate == 0 || outputSampleRate == 0) {
+        return false;
+    }
+
+    U64 outputWhole = 0;
+    U64 outputRemainder = 0;
+    if (!detail::CheckedMultiply(inputSize / inputSampleRate,
+                                 outputSampleRate,
+                                 outputWhole) ||
+        !detail::CheckedMultiply(inputSize % inputSampleRate,
+                                 outputSampleRate,
+                                 outputRemainder)) {
+        return false;
+    }
+
+    const U64 roundedRemainder = outputRemainder == 0 ?
+        0 : 1 + (outputRemainder - 1) / inputSampleRate;
+    U64 candidateOutputSize = 0;
+    U64 bufferedInputSize = 0;
+    if (!detail::CheckedAdd(outputWhole,
+                            roundedRemainder,
+                            candidateOutputSize) ||
+        !detail::CheckedMultiply(inputSize, 20, bufferedInputSize)) {
+        return false;
+    }
+
+    outputSize = candidateOutputSize;
+    circularBufferSize = std::max(bufferedInputSize, candidateOutputSize);
+    return true;
+}
+
+}  // namespace
 
 AudioImpl::AudioImpl() = default;
 AudioImpl::~AudioImpl() = default;
@@ -132,16 +178,80 @@ AudioImpl::DeviceList AudioImpl::ListAvailableDevices() {
 
 Result AudioImpl::validate() {
     const auto& config = *candidate();
+    validatedInSampleRate = 0;
+    validatedOutSampleRate = 0;
+    validatedOutputSize = 0;
+    validatedOutputSizeBytes = 0;
+    validatedCircularBufferSize = 0;
+    validatedCircularBufferSizeBytes = 0;
 
-    if (config.inSampleRate <= 0) {
-        JST_ERROR("[MODULE_AUDIO] Input sample rate must be positive.");
+    constexpr F64 maxSampleRate =
+        static_cast<F64>(std::numeric_limits<U32>::max());
+
+    if (!std::isfinite(config.inSampleRate) ||
+        config.inSampleRate < 1.0f ||
+        static_cast<F64>(config.inSampleRate) > maxSampleRate) {
+        JST_ERROR("[MODULE_AUDIO] Input sample rate must be finite and within "
+                  "the U32 range.");
         return Result::ERROR;
     }
 
-    if (config.outSampleRate <= 0) {
-        JST_ERROR("[MODULE_AUDIO] Output sample rate must be positive.");
+    if (!std::isfinite(config.outSampleRate) ||
+        config.outSampleRate < 1.0f ||
+        static_cast<F64>(config.outSampleRate) > maxSampleRate) {
+        JST_ERROR("[MODULE_AUDIO] Output sample rate must be finite and within "
+                  "the U32 range.");
         return Result::ERROR;
     }
+
+    const U32 candidateInSampleRate = static_cast<U32>(config.inSampleRate);
+    const U32 candidateOutSampleRate = static_cast<U32>(config.outSampleRate);
+
+    if (!inputs().contains("buffer")) {
+        validatedInSampleRate = candidateInSampleRate;
+        validatedOutSampleRate = candidateOutSampleRate;
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputBuffer = inputs().at("buffer").tensor;
+    if (!inputBuffer.validShape() || inputBuffer.size() == 0) {
+        validatedInSampleRate = candidateInSampleRate;
+        validatedOutSampleRate = candidateOutSampleRate;
+        return Result::SUCCESS;
+    }
+
+    const U64 inputSize = inputBuffer.size();
+    U64 outputSize = 0;
+    U64 circularBufferSize = 0;
+    if (!DeriveBufferSizes(inputSize,
+                           candidateInSampleRate,
+                           candidateOutSampleRate,
+                           outputSize,
+                           circularBufferSize)) {
+        JST_ERROR("[MODULE_AUDIO] Output or circular buffer size exceeds "
+                  "the supported range.");
+        return Result::ERROR;
+    }
+
+    U64 outputSizeBytes = 0;
+    U64 circularBufferSizeBytes = 0;
+    if (!detail::CheckedMultiply(outputSize,
+                                 static_cast<U64>(sizeof(F32)),
+                                 outputSizeBytes) ||
+        !detail::CheckedMultiply(circularBufferSize,
+                                 static_cast<U64>(sizeof(F32)),
+                                 circularBufferSizeBytes)) {
+        JST_ERROR("[MODULE_AUDIO] Output or circular buffer layout exceeds "
+                  "the supported range.");
+        return Result::ERROR;
+    }
+
+    validatedInSampleRate = candidateInSampleRate;
+    validatedOutSampleRate = candidateOutSampleRate;
+    validatedOutputSize = outputSize;
+    validatedOutputSizeBytes = outputSizeBytes;
+    validatedCircularBufferSize = circularBufferSize;
+    validatedCircularBufferSizeBytes = circularBufferSizeBytes;
 
     return Result::SUCCESS;
 }
@@ -157,15 +267,13 @@ Result AudioImpl::define() {
 Result AudioImpl::create() {
     pimpl = std::make_unique<Impl>();
 
-    const auto& inputBuffer = inputs().at("buffer").tensor;
-
     // Configure audio resampler.
 
     pimpl->resamplerConfig = ma_resampler_config_init(
         ma_format_f32,
         1,
-        static_cast<U32>(inSampleRate),
-        static_cast<U32>(outSampleRate),
+        validatedInSampleRate,
+        validatedOutSampleRate,
         ma_resample_algorithm_linear
     );
     pimpl->resamplerConfig.linear.lpfOrder = 8;
@@ -214,7 +322,7 @@ Result AudioImpl::create() {
                                               nullptr : &selectedDeviceId;
     pimpl->deviceConfig.playback.format = ma_format_f32;
     pimpl->deviceConfig.playback.channels = 1;
-    pimpl->deviceConfig.sampleRate = static_cast<U32>(outSampleRate);
+    pimpl->deviceConfig.sampleRate = validatedOutSampleRate;
     pimpl->deviceConfig.dataCallback = Impl::callback;
     pimpl->deviceConfig.pUserData = &circularBuffer;
 
@@ -238,12 +346,11 @@ Result AudioImpl::create() {
 
     // Allocate resampler scratch buffer.
 
-    const U64 outputSize = static_cast<U64>(inputBuffer.size() * (outSampleRate / inSampleRate));
-    JST_CHECK(buffer.create(device(), DataType::F32, {outputSize}));
+    JST_CHECK(buffer.create(device(), DataType::F32, {validatedOutputSize}));
 
     // Initialize circular buffer.
 
-    circularBuffer.resize(inputBuffer.size() * 20);
+    circularBuffer.resize(validatedCircularBufferSize);
 
     return Result::SUCCESS;
 }

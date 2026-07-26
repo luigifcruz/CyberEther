@@ -68,8 +68,11 @@ struct FlowgraphConfigDropdownField {
         keys.clear();
         labels.clear();
 
-        const auto parts = Parser::SplitString(config.format, ":");
-        const std::string options = (parts.size() > 1) ? parts[1] : "";
+        const auto separator = config.format.find(':');
+        std::string options;
+        if (separator != std::string::npos) {
+            options = config.format.substr(separator + 1);
+        }
         for (auto token : Parser::SplitString(options, ",")) {
             if (token.empty()) continue;
 

@@ -7,8 +7,8 @@ namespace Jetstream::Modules {
 Result FmImpl::validate() {
     const auto& config = *candidate();
 
-    if (config.sampleRate <= 0.0f) {
-        JST_ERROR("[MODULE_FM] Sample rate must be positive.");
+    if (!std::isfinite(config.sampleRate) || config.sampleRate <= 0.0f) {
+        JST_ERROR("[MODULE_FM] Sample rate must be finite and positive.");
         return Result::ERROR;
     }
 

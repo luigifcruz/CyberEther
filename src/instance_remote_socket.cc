@@ -1,6 +1,7 @@
 #include "instance_remote_impl.hh"
 
 #include "jetstream/logger.hh"
+#include "jetstream/platform.hh"
 
 #include <chrono>
 
@@ -16,6 +17,11 @@ constexpr std::chrono::milliseconds kSignallerRetryDelay{250};
 Result Instance::Remote::Impl::createBroker() {
     JST_INFO("[REMOTE] Connecting to broker at '{}'.", config.broker);
 
+    if (!IsRemoteBrokerSchemeSupported(config.broker)) {
+        JST_ERROR("[REMOTE] Broker URL must use HTTP or HTTPS.");
+        return Result::ERROR;
+    }
+
     std::string brokerOrigin = config.broker;
     while (brokerOrigin.size() > 1 && brokerOrigin.back() == '/') {
         brokerOrigin.pop_back();
@@ -24,27 +30,27 @@ Result Instance::Remote::Impl::createBroker() {
     std::string websocketOrigin;
     if (brokerOrigin.starts_with("https://")) {
         websocketOrigin = jst::fmt::format("wss://{}", brokerOrigin.substr(8));
-    } else if (brokerOrigin.starts_with("http://")) {
+    } else {
         websocketOrigin = jst::fmt::format("ws://{}", brokerOrigin.substr(7));
         JST_WARN("[REMOTE] Broker '{}' uses an unencrypted connection.", config.broker);
-    } else {
-        JST_ERROR("[REMOTE] Broker URL must use HTTP or HTTPS.");
-        return Result::ERROR;
     }
 
     signallerUrl = jst::fmt::format("{}/api/v1/remote/signaller", websocketOrigin);
     clientDomain = jst::fmt::format("{}/remote", brokerOrigin);
 
     JST_INFO("[REMOTE] Signaller URL: '{}'.", signallerUrl);
-    JST_CHECK(startSignaller());
+    if (startSignaller() != Result::SUCCESS) {
+        (void)destroyBroker();
+        return Result::ERROR;
+    }
     if (createRoom() != Result::SUCCESS) {
-        (void)stopSignaller();
+        (void)destroyBroker();
         return Result::ERROR;
     }
     inviteUrl_ = jst::fmt::format("{}#{}", clientDomain, consumerToken);
 
     if (startStream() != Result::SUCCESS) {
-        (void)stopSignaller();
+        (void)destroyBroker();
         return Result::ERROR;
     }
 
@@ -53,17 +59,27 @@ Result Instance::Remote::Impl::createBroker() {
 
 Result Instance::Remote::Impl::destroyBroker() {
     JST_DEBUG("[REMOTE] Closing broker connection.");
-    JST_CHECK(stopSignaller());
-    JST_CHECK(stopStream());
+    const Result signallerResult = stopSignaller();
+    const Result streamResult = stopStream();
     roomId_.clear();
     consumerToken.clear();
     inviteUrl_.clear();
+    clientDomain.clear();
+    signallerUrl.clear();
+    {
+        std::lock_guard<std::mutex> lock(roomMutex);
+        signallerReady = false;
+        roomReady = false;
+        roomFailed = false;
+    }
     {
         std::lock_guard<std::mutex> lock(remoteStateMutex);
         waitlist_.clear();
         clients_.clear();
     }
-    return Result::SUCCESS;
+    return signallerResult == Result::SUCCESS && streamResult == Result::SUCCESS
+        ? Result::SUCCESS
+        : Result::ERROR;
 }
 
 Result Instance::Remote::Impl::createRoom() {
@@ -116,11 +132,15 @@ Result Instance::Remote::Impl::startSignaller() {
     }
 
     for (std::size_t attempt = 1; attempt <= kSignallerConnectAttempts; ++attempt) {
+        signallerSocket.store(INVALID_SOCKET, std::memory_order_release);
         auto client = std::make_unique<httplib::ws::WebSocketClient>(signallerUrl);
         client->set_connection_timeout(5);
         client->set_write_timeout(1);
         client->set_websocket_ping_interval(20);
         client->set_tcp_nodelay(true);
+        client->set_socket_options([this](const socket_t socket) {
+            signallerSocket.store(socket, std::memory_order_release);
+        });
 
         if (!client->is_valid()) {
             JST_ERROR("[REMOTE] Invalid signaller URL '{}'.", signallerUrl);
@@ -131,6 +151,8 @@ Result Instance::Remote::Impl::startSignaller() {
             signallerClient = std::move(client);
             break;
         }
+
+        signallerSocket.store(INVALID_SOCKET, std::memory_order_release);
 
         if (attempt == kSignallerConnectAttempts) {
             JST_ERROR("[REMOTE] Failed to connect to signaller '{}' after {} attempts.",
@@ -150,7 +172,13 @@ Result Instance::Remote::Impl::startSignaller() {
     }
 
     signallerRunning = true;
-    signallerThread = std::thread([this]() { signallerLoop(); });
+    try {
+        signallerThread = std::thread([this]() { signallerLoop(); });
+    } catch (const std::exception& e) {
+        JST_ERROR("[REMOTE] Failed to start signaller thread: {}", e.what());
+        (void)stopSignaller();
+        return Result::ERROR;
+    }
 
     return Result::SUCCESS;
 }
@@ -165,11 +193,9 @@ Result Instance::Remote::Impl::stopSignaller() {
     }
     roomCondition.notify_all();
 
-    {
-        std::lock_guard<std::mutex> lock(signallerMutex);
-        if (signallerClient) {
-            signallerClient->close();
-        }
+    const socket_t socket = signallerSocket.exchange(INVALID_SOCKET, std::memory_order_acq_rel);
+    if (socket != INVALID_SOCKET) {
+        (void)Platform::ShutdownSocketRead(static_cast<std::uintptr_t>(socket));
     }
 
     if (signallerThread.joinable()) {
@@ -178,6 +204,12 @@ Result Instance::Remote::Impl::stopSignaller() {
 
     {
         std::lock_guard<std::mutex> lock(signallerMutex);
+        if (signallerClient) {
+            signallerClient->close();
+            // close() is a no-op when read() marked the WebSocket closed. send()
+            // still takes the write lock, draining any in-flight heartbeat.
+            (void)signallerClient->send("", 0);
+        }
         signallerClient.reset();
     }
 

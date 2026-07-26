@@ -39,7 +39,11 @@ class MetalBackend final : public Backend {
             return Result::ERROR;
         }
 
-        const auto aligned = JST_PAGE_ALIGNED_SIZE(bytes);
+        U64 aligned = 0;
+        if (!CheckedPageAlignedSize(bytes, aligned)) {
+            JST_ERROR("[MEMORY:BUFFER:METAL] Allocation size {} is too large.", bytes);
+            return Result::ERROR;
+        }
         buffer = metalDevice->newBuffer(aligned, MTL::ResourceStorageModeShared);
         if (!buffer) {
             JST_ERROR("[MEMORY:BUFFER:METAL] Failed to allocate {} bytes.", bytes);
@@ -75,7 +79,11 @@ class MetalBackend final : public Backend {
             if (!metalDevice) {
                 return Result::ERROR;
             }
-            const auto aligned = JST_PAGE_ALIGNED_SIZE(source.size());
+            U64 aligned = 0;
+            if (!CheckedPageAlignedSize(source.size(), aligned)) {
+                JST_ERROR("[MEMORY:BUFFER:METAL] Source buffer is too large to mirror.");
+                return Result::ERROR;
+            }
             buffer = metalDevice->newBuffer(const_cast<void*>(source.rawHandle()), aligned, MTL::ResourceStorageModeShared, nullptr);
             if (!buffer) {
                 JST_ERROR("[MEMORY:BUFFER:METAL] Failed to wrap shared host memory.");

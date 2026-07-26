@@ -29,6 +29,43 @@ std::string DtypeMismatchMessage(const std::string& tensorName,
 
 }  // namespace
 
+Result OnnxInferenceImpl::validate() {
+    const auto& config = *candidate();
+
+    if (config.executionProvider != "cpu" &&
+        config.executionProvider != "coreml" &&
+        config.executionProvider != "tensorrt") {
+        JST_ERROR("[MODULE_ONNX_INFERENCE] Unknown execution provider '{}'.",
+                  config.executionProvider);
+        return Result::ERROR;
+    }
+
+    for (size_t i = 0; i < config.inputNames.size(); ++i) {
+        const std::string inputKey = jst::fmt::format("input_{}", i);
+        if (!inputs().contains(inputKey)) {
+            continue;
+        }
+
+        const Tensor& input = inputs().at(inputKey).tensor;
+        if (!input.validShape() || input.size() == 0) {
+            continue;
+        }
+        if (!IsSupportedOnnxInferenceTensorType(input.dtype())) {
+            JST_ERROR("[MODULE_ONNX_INFERENCE] Input port '{}' uses unsupported "
+                      "dtype '{}'. Supported dtypes: {}.",
+                      inputKey, input.dtype(), SupportedDtypes());
+            return Result::ERROR;
+        }
+        if (input.rank() == 0) {
+            JST_ERROR("[MODULE_ONNX_INFERENCE] Input port '{}' has an empty shape.",
+                      inputKey);
+            return Result::ERROR;
+        }
+    }
+
+    return Result::SUCCESS;
+}
+
 Result OnnxInferenceImpl::define() {
     for (size_t i = 0; i < inputNames.size(); ++i) {
         JST_CHECK(defineInterfaceInput(jst::fmt::format("input_{}", i)));
@@ -70,9 +107,6 @@ Result OnnxInferenceImpl::configureSessionOptions() {
             OrtCUDAProviderOptions cudaOptions{};
             sessionOptions.AppendExecutionProvider_CUDA(cudaOptions);
             JST_DEBUG("[MODULE_ONNX_INFERENCE] Using TensorRT execution provider.");
-        } else if (executionProvider != "cpu") {
-            JST_ERROR("[MODULE_ONNX_INFERENCE] Unknown execution provider '{}'.", executionProvider);
-            return Result::ERROR;
         }
     } catch (const Ort::Exception& e) {
         JST_ERROR("[MODULE_ONNX_INFERENCE] Failed to configure execution provider '{}': {}",
@@ -87,18 +121,8 @@ Result OnnxInferenceImpl::readModelShapes() {
     inputShapes.assign(inputTensors.size(), {});
     inputDtypes.assign(inputTensors.size(), DataType::None);
     for (size_t i = 0; i < inputTensors.size(); ++i) {
-        const std::string inputKey = jst::fmt::format("input_{}", i);
-        if (!IsSupportedOnnxInferenceTensorType(inputTensors[i].dtype())) {
-            JST_ERROR("[MODULE_ONNX_INFERENCE] Input port '{}' uses unsupported dtype '{}'. Supported dtypes: {}.",
-                      inputKey, inputTensors[i].dtype(), SupportedDtypes());
-            return Result::ERROR;
-        }
         for (const auto d : inputTensors[i].shape()) {
             inputShapes[i].push_back(static_cast<int64_t>(d));
-        }
-        if (inputShapes[i].empty()) {
-            JST_ERROR("[MODULE_ONNX_INFERENCE] Input port '{}' has an empty shape.", inputKey);
-            return Result::ERROR;
         }
     }
 

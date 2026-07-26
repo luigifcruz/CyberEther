@@ -7,7 +7,7 @@
 
 namespace Jetstream::Backend {
 
-class CPU {
+class JETSTREAM_API CPU {
  public:
     explicit CPU(const Config& config);
 

@@ -1,6 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <limits>
+
 #include "flowgraph_fixture.hh"
 #include "jetstream/domains/core/ones_tensor/block.hh"
 
@@ -66,4 +68,36 @@ TEST_CASE_METHOD(FlowgraphFixture, "Ones Tensor block rejects invalid config",
 
     REQUIRE(flowgraph->blockCreate("ones_bad", config, {}) == Result::SUCCESS);
     REQUIRE(viewBlock("ones_bad").state == Block::State::Errored);
+    REQUIRE(viewBlock("ones_bad").outputs.empty());
+}
+
+TEST_CASE_METHOD(FlowgraphFixture, "Ones Tensor block propagates layout validation",
+                 "[modules][ones_tensor][block][validation]") {
+    Blocks::OnesTensor config;
+    config.shape = {std::numeric_limits<U64>::max(), 2};
+
+    REQUIRE(flowgraph->blockCreate("ones_overflow", config, {}) == Result::SUCCESS);
+    REQUIRE(viewBlock("ones_overflow").state == Block::State::Errored);
+    REQUIRE(viewBlock("ones_overflow").outputs.empty());
+}
+
+TEST_CASE_METHOD(FlowgraphFixture, "Ones Tensor block preserves applied state after rejected update",
+                 "[modules][ones_tensor][block][reconfigure][validation]") {
+    Blocks::OnesTensor config;
+    config.shape = {2};
+    REQUIRE(flowgraph->blockCreate("ones_update", config, {}) == Result::SUCCESS);
+    const auto outputId = viewBlock("ones_update").outputs.at("buffer").tensor.id();
+
+    Parser::Map update;
+    update["shape"] = Shape{std::numeric_limits<U64>::max(), 2};
+    REQUIRE(flowgraph->blockReconfigure("ones_update", update) == Result::ERROR);
+    REQUIRE(viewBlock("ones_update").state == Block::State::Created);
+
+    Parser::Map saved;
+    REQUIRE(flowgraph->blockConfig("ones_update", saved) == Result::SUCCESS);
+    REQUIRE(std::any_cast<Shape>(saved.at("shape")) == config.shape);
+
+    const Tensor output = viewBlock("ones_update").outputs.at("buffer").tensor;
+    REQUIRE(output.id() == outputId);
+    REQUIRE(output.shape() == Shape{2});
 }

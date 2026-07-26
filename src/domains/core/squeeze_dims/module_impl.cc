@@ -4,6 +4,35 @@
 
 namespace Jetstream::Modules {
 
+Result SqueezeDimsImpl::validate() {
+    if (!inputs().contains("buffer")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("buffer").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    const auto& config = *candidate();
+    const auto candidateAxis = ResolveAxis(config.axis, inputTensor.rank());
+    if (!candidateAxis) {
+        JST_ERROR("[MODULE_SQUEEZE_DIMS] Axis {} out of range for tensor with {} dimensions.",
+                  config.axis, inputTensor.rank());
+        return Result::ERROR;
+    }
+
+    if (inputTensor.shape(*candidateAxis) != 1) {
+        JST_ERROR("[MODULE_SQUEEZE_DIMS] Cannot squeeze dimension {} (size {}). "
+                  "Dimension must have size 1.",
+                  config.axis, inputTensor.shape(*candidateAxis));
+        return Result::ERROR;
+    }
+
+    resolvedAxis = *candidateAxis;
+    return Result::SUCCESS;
+}
+
 Result SqueezeDimsImpl::define() {
     JST_CHECK(defineInterfaceInput("buffer"));
     JST_CHECK(defineInterfaceOutput("buffer"));
@@ -13,22 +42,6 @@ Result SqueezeDimsImpl::define() {
 
 Result SqueezeDimsImpl::create() {
     const Tensor& inputTensor = inputs().at("buffer").tensor;
-
-    const auto maybeResolvedAxis = ResolveAxis(axis, inputTensor.rank());
-    if (!maybeResolvedAxis) {
-        JST_ERROR("[MODULE_SQUEEZE_DIMS] Axis {} out of range for tensor with {} dimensions.",
-                  axis, inputTensor.rank());
-        return Result::ERROR;
-    }
-    const Index resolvedAxis = *maybeResolvedAxis;
-
-    // Validate dimension at axis has size 1.
-    if (inputTensor.shape(resolvedAxis) != 1) {
-        JST_ERROR("[MODULE_SQUEEZE_DIMS] Cannot squeeze dimension {} (size {}). "
-                  "Dimension must have size 1.",
-                  axis, inputTensor.shape(resolvedAxis));
-        return Result::ERROR;
-    }
 
     input = inputTensor;
     output = input;

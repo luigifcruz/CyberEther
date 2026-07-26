@@ -6,8 +6,48 @@
 #include "jetstream/domains/dsp/fft/module.hh"
 
 #include <cmath>
+#include <cstddef>
+#include <limits>
+#include <utility>
 
 using namespace Jetstream;
+
+namespace {
+
+Tensor MakeFftTensor(const Registry::ModuleRegistration& impl,
+                     const DataType dtype,
+                     const Shape& shape,
+                     const bool broadcast = false) {
+    Tensor input;
+    if (shape.empty()) {
+        REQUIRE(input.create(impl.device, dtype, {1}) == Result::SUCCESS);
+        REQUIRE(input.squeezeDims(0) == Result::SUCCESS);
+    } else if (broadcast) {
+        REQUIRE(input.create(impl.device, dtype, Shape(shape.size(), 1)) ==
+                Result::SUCCESS);
+        REQUIRE(input.broadcastTo(shape) == Result::SUCCESS);
+    } else {
+        REQUIRE(input.create(impl.device, dtype, shape) == Result::SUCCESS);
+    }
+    return input;
+}
+
+void RequireFftValidationError(const Registry::ModuleRegistration& impl,
+                               const Modules::Fft& config,
+                               Tensor input) {
+    TensorMap inputs;
+    inputs["signal"].requested("test", "signal");
+    inputs["signal"].tensor = std::move(input);
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("fft", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
+}  // namespace
 
 TEST_CASE("FFT - DC Signal CF32", "[modules][fft][dc]") {
     auto implementations = Registry::ListAvailableModules("fft");
@@ -134,6 +174,91 @@ TEST_CASE("FFT - FFTPACK Real Signal F32", "[modules][fft][real][fftpack]") {
             REQUIRE(out.shape() == Shape{4});
             for (U64 i = 0; i < out.size(); ++i) {
                 REQUIRE_THAT(out.at<F32>(i), Catch::Matchers::WithinAbs(expected[i], 1e-4f));
+            }
+        }
+    }
+}
+
+TEST_CASE("FFT - Complex Real Signal F32", "[modules][fft][real][complex]") {
+    auto implementations = Registry::ListAvailableModules("fft");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("fft", impl.device, impl.runtime, impl.provider);
+
+            Modules::Fft config;
+            config.complexOutput = true;
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({4});
+            input.at(0) = 1.0f;
+            input.at(1) = 2.0f;
+            input.at(2) = 3.0f;
+            input.at(3) = 4.0f;
+            ctx.setInput("signal", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("signal");
+            REQUIRE(out.dtype() == DataType::CF32);
+            REQUIRE(out.shape() == Shape{3});
+
+            const CF32 expected[] = {
+                {10.0f, 0.0f},
+                {-2.0f, 2.0f},
+                {-2.0f, 0.0f},
+            };
+            for (U64 index = 0; index < out.size(); ++index) {
+                REQUIRE_THAT(out.at<CF32>(index).real(),
+                             Catch::Matchers::WithinAbs(expected[index].real(), 1e-4f));
+                REQUIRE_THAT(out.at<CF32>(index).imag(),
+                             Catch::Matchers::WithinAbs(expected[index].imag(), 1e-4f));
+            }
+        }
+    }
+}
+
+TEST_CASE("FFT - Complex Real Signal Arbitrary Axis F32",
+          "[modules][fft][real][complex][axis]") {
+    auto implementations = Registry::ListAvailableModules("fft");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("fft", impl.device, impl.runtime, impl.provider);
+
+            Modules::Fft config;
+            config.axis = 0;
+            config.complexOutput = true;
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({4, 2});
+            for (U64 row = 0; row < input.shape(0); ++row) {
+                input.at(row, 0) = static_cast<F32>(row + 1);
+                input.at(row, 1) = static_cast<F32>((row + 1) * 2);
+            }
+            ctx.setInput("signal", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("signal");
+            REQUIRE(out.dtype() == DataType::CF32);
+            REQUIRE(out.shape() == Shape{3, 2});
+
+            const CF32 expected[] = {
+                {10.0f, 0.0f},
+                {-2.0f, 2.0f},
+                {-2.0f, 0.0f},
+            };
+            for (U64 frequency = 0; frequency < out.shape(0); ++frequency) {
+                for (U64 column = 0; column < out.shape(1); ++column) {
+                    const CF32 value = expected[frequency] * static_cast<F32>(column + 1);
+                    REQUIRE_THAT(out.at<CF32>(frequency, column).real(),
+                                 Catch::Matchers::WithinAbs(value.real(), 1e-4f));
+                    REQUIRE_THAT(out.at<CF32>(frequency, column).imag(),
+                                 Catch::Matchers::WithinAbs(value.imag(), 1e-4f));
+                }
             }
         }
     }
@@ -511,24 +636,77 @@ TEST_CASE("FFT - Arbitrary Axis Invert FFTPACK F32",
     }
 }
 
-TEST_CASE("FFT - Invalid Axis Error", "[modules][fft][axis][error]") {
+TEST_CASE("FFT - Validation rejects rank, axis, and dtype before create",
+          "[modules][fft][validation]") {
     const auto implementations = Registry::ListAvailableModules("fft");
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Modules::Fft config;
+            RequireFftValidationError(impl, config,
+                                      MakeFftTensor(impl, DataType::F32, {}));
+
             for (const I64 invalidAxis : {I64{2}, I64{-3}}) {
-                DYNAMIC_SECTION("Axis: " << invalidAxis) {
-                    TestContext ctx("fft", impl.device, impl.runtime, impl.provider);
-                    Modules::Fft config;
-                    config.axis = invalidAxis;
-                    ctx.setConfig(config);
-                    auto input = ctx.createTensor<CF32>({2, 3});
-                    ctx.setInput("signal", input);
-                    REQUIRE(ctx.run() == Result::ERROR);
-                }
+                config.axis = invalidAxis;
+                RequireFftValidationError(
+                    impl, config, MakeFftTensor(impl, DataType::CF32, {2, 3}));
             }
+
+            config.axis = -1;
+            RequireFftValidationError(impl, config,
+                                      MakeFftTensor(impl, DataType::F64, {4}));
         }
+    }
+}
+
+TEST_CASE("FFT - CPU validation rejects static pocketfft bounds",
+          "[modules][fft][validation][cpu][bounds]") {
+    const auto implementations = Registry::ListAvailableModules("fft");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        if (impl.device != DeviceType::CPU) {
+            continue;
+        }
+
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            const U64 extent =
+                static_cast<U64>(std::numeric_limits<std::ptrdiff_t>::max()) /
+                    sizeof(F32) +
+                1;
+            RequireFftValidationError(
+                impl,
+                Modules::Fft{},
+                MakeFftTensor(impl, DataType::F32, {extent}, true));
+        }
+    }
+}
+
+TEST_CASE("FFT - CUDA validation rejects static layout grid bounds",
+          "[modules][fft][validation][cuda][bounds]") {
+    const auto implementations = Registry::ListAvailableModules("fft");
+    REQUIRE(!implementations.empty());
+
+    bool cudaAvailable = false;
+    for (const auto& impl : implementations) {
+        if (impl.device != DeviceType::CUDA) {
+            continue;
+        }
+        cudaAvailable = true;
+
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            const U64 extent =
+                static_cast<U64>(std::numeric_limits<I32>::max()) * 256 + 1;
+            RequireFftValidationError(
+                impl,
+                Modules::Fft{},
+                MakeFftTensor(impl, DataType::F32, {extent}, true));
+        }
+    }
+
+    if (!cudaAvailable) {
+        SUCCEED("CUDA FFT module is unavailable in this build.");
     }
 }
 

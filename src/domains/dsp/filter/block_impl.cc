@@ -1,7 +1,9 @@
 #include <cmath>
+#include <limits>
 
 #include <jetstream/domains/dsp/filter/block.hh>
 #include <jetstream/detail/block_impl.hh>
+#include <jetstream/tools/numeric.hh>
 
 #include <jetstream/domains/dsp/filter_taps/module.hh>
 #include <jetstream/domains/core/expand_dims/module.hh>
@@ -14,6 +16,133 @@
 #include <jetstream/domains/core/duplicate/module.hh>
 
 namespace Jetstream::Blocks {
+
+namespace {
+
+struct FilterCandidatePlan {
+    bool resample = false;
+    U64 padSize = 0;
+    U64 resamplerOffset = 0;
+    U64 resamplerSize = 0;
+};
+
+Result CalculateCandidatePlan(const Blocks::Filter& config,
+                               U64 signalSize,
+                               FilterCandidatePlan& candidatePlan) {
+    const U64 filterSize = config.taps;
+    candidatePlan.padSize = filterSize - 1;
+
+    U64 convolutionSize = 0;
+    if (!detail::CheckedAdd(filterSize, signalSize - 1, convolutionSize)) {
+        JST_ERROR("[BLOCK_FILTER] Combined signal and filter extent exceeds "
+                  "the supported range.");
+        return Result::ERROR;
+    }
+
+    const F64 sr = config.sampleRate;
+    const F64 bw = config.bandwidth;
+    const F64 ct = config.center.empty() ? 0.0 : config.center.front();
+
+    const F64 resamplerRatio = sr / bw;
+
+    const F64 u64Limit = std::ldexp(1.0, std::numeric_limits<U64>::digits);
+    if (!std::isfinite(resamplerRatio) || resamplerRatio <= 0.0 ||
+        resamplerRatio >= u64Limit) {
+        return Result::SUCCESS;
+    }
+
+    if (resamplerRatio != std::floor(resamplerRatio)) {
+        JST_WARN("[BLOCK_FILTER] Bypassing resampling because "
+                 "filter bandwidth ({:.2f} MHz) is not a multiple "
+                 "of the signal sample rate ({:.2f} MHz).",
+                 bw / 1e6, sr / 1e6);
+        return Result::SUCCESS;
+    }
+
+    const U64 resamplerRatioInteger = static_cast<U64>(resamplerRatio);
+    if (candidatePlan.padSize % resamplerRatioInteger != 0) {
+        JST_WARN("[BLOCK_FILTER] Bypassing resampling because "
+                 "filter tap size minus one ({}) is not a multiple "
+                 "of the resampler ratio ({}).",
+                 candidatePlan.padSize,
+                 resamplerRatioInteger);
+        return Result::SUCCESS;
+    }
+
+    if (convolutionSize % resamplerRatioInteger != 0) {
+        JST_WARN("[BLOCK_FILTER] Bypassing resampling because "
+                 "filter tap size minus one ({}) plus signal "
+                 "size ({}) is not a multiple of the resampler "
+                 "ratio ({}).",
+                 candidatePlan.padSize, signalSize,
+                 resamplerRatioInteger);
+        return Result::SUCCESS;
+    }
+
+    if (ct != 0.0) {
+        const F64 frequencyPerBin =
+            sr / static_cast<F64>(convolutionSize);
+        const F64 centerBin = ct / frequencyPerBin;
+
+        if (!std::isfinite(centerBin)) {
+            JST_ERROR("[BLOCK_FILTER] Center frequency ({}) cannot be mapped "
+                      "to a finite resampler bin.", ct);
+            return Result::ERROR;
+        }
+
+        const F64 roundedCenterBin = std::round(centerBin);
+
+        if (centerBin != std::floor(centerBin)) {
+            JST_WARN("[BLOCK_FILTER] Output will be shifted by "
+                     "{} MHz because filter center frequency "
+                     "({:.2f} MHz) is not a multiple of the "
+                     "frequency per bin ({} MHz).",
+                     (centerBin - std::floor(centerBin)) *
+                         frequencyPerBin / 1e6,
+                     ct / 1e6,
+                     frequencyPerBin / 1e6);
+        }
+
+        if (roundedCenterBin < 0.0) {
+            const F64 centerBinMagnitude = -roundedCenterBin;
+            if (!std::isfinite(centerBinMagnitude) ||
+                centerBinMagnitude >= u64Limit) {
+                JST_ERROR("[BLOCK_FILTER] Center frequency ({}) cannot be mapped "
+                          "to a representable resampler bin.", ct);
+                return Result::ERROR;
+            }
+
+            const U64 centerBinMagnitudeInteger =
+                static_cast<U64>(centerBinMagnitude);
+            const U64 remainder = centerBinMagnitudeInteger % convolutionSize;
+            candidatePlan.resamplerOffset =
+                remainder == 0 ? 0 : convolutionSize - remainder;
+        } else {
+            const long double convolutionExtent =
+                static_cast<long double>(convolutionSize);
+            const long double wrappedCenterBin = std::fmod(
+                static_cast<long double>(roundedCenterBin), convolutionExtent);
+            const long double u64LimitLongDouble =
+                std::ldexp(1.0L, std::numeric_limits<U64>::digits);
+            if (!std::isfinite(wrappedCenterBin) || wrappedCenterBin < 0.0L ||
+                wrappedCenterBin >= u64LimitLongDouble) {
+                JST_ERROR("[BLOCK_FILTER] Center frequency ({}) cannot be mapped "
+                          "to a representable resampler bin.", ct);
+                return Result::ERROR;
+            }
+
+            candidatePlan.resamplerOffset = static_cast<U64>(wrappedCenterBin);
+        }
+    }
+
+    candidatePlan.resamplerSize = convolutionSize / resamplerRatioInteger;
+    candidatePlan.padSize /= resamplerRatioInteger;
+    candidatePlan.resample = true;
+
+    return Result::SUCCESS;
+}
+
+}  // namespace
 
 struct FilterImpl : public Block::Impl,
                     public DynamicConfig<Blocks::Filter> {
@@ -47,19 +176,36 @@ struct FilterImpl : public Block::Impl,
         std::make_shared<Modules::OverlapAdd>();
 
  private:
-    bool calculateResampleHeuristics(U64 filterSize,
-                                     U64 signalSize,
-                                     U64& padSize,
-                                     U64& resamplerOffset,
-                                     U64& resamplerSize);
+    FilterCandidatePlan candidatePlan;
 };
 
 Result FilterImpl::validate() {
     const auto& config = *candidate();
+    candidatePlan = {};
 
     if (config.heads == 0) {
         JST_ERROR("[BLOCK_FILTER] Heads must be greater than 0.");
         return Result::ERROR;
+    }
+
+    const auto signal = inputs().find("signal");
+    if (signal != inputs().end() && signal->second.tensor.validShape()) {
+        const Tensor& signalTensor = signal->second.tensor;
+        if (signalTensor.rank() == 0) {
+            JST_ERROR("[BLOCK_FILTER] Signal input must have at least one dimension.");
+            return Result::ERROR;
+        }
+
+        const U64 signalSize = signalTensor.shape(signalTensor.rank() - 1);
+        if (signalSize == 0) {
+            JST_ERROR("[BLOCK_FILTER] Signal input's last dimension cannot be zero.");
+            return Result::ERROR;
+        }
+
+        // Filter Taps remains responsible for rejecting an invalid tap count.
+        if (config.taps != 0) {
+            JST_CHECK(CalculateCandidatePlan(config, signalSize, candidatePlan));
+        }
     }
 
     if (heads != config.heads) {
@@ -152,15 +298,10 @@ Result FilterImpl::create() {
 
     // Calculate resampling parameters.
 
-    U64 padSize = filterSize - 1;
-    U64 resamplerOffset = 0;
-    U64 resamplerSize = 0;
-
-    const bool resample = calculateResampleHeuristics(filterSize,
-                                                      signalSize,
-                                                      padSize,
-                                                      resamplerOffset,
-                                                      resamplerSize);
+    const bool resample = candidatePlan.resample;
+    const U64 padSize = candidatePlan.padSize;
+    const U64 resamplerOffset = candidatePlan.resamplerOffset;
+    const U64 resamplerSize = candidatePlan.resamplerSize;
 
     // Expand signal dimensions for multi-head broadcasting.
 
@@ -275,76 +416,6 @@ Result FilterImpl::create() {
                                  {"overlap", "buffer"}));
 
     return Result::SUCCESS;
-}
-
-bool FilterImpl::calculateResampleHeuristics(U64 filterSize,
-                                             U64 signalSize,
-                                             U64& padSize,
-                                             U64& resamplerOffset,
-                                             U64& resamplerSize) {
-    const F64 sr = filterTapsConfig->sampleRate;
-    const F64 bw = filterTapsConfig->bandwidth;
-    const F64 ct = filterTapsConfig->center[0];
-
-    const F64 resamplerRatio = sr / bw;
-
-    if (resamplerRatio != std::floor(resamplerRatio)) {
-        JST_WARN("[BLOCK_FILTER] Bypassing resampling because "
-                 "filter bandwidth ({:.2f} MHz) is not a multiple "
-                 "of the signal sample rate ({:.2f} MHz).",
-                 bw / 1e6, sr / 1e6);
-        return false;
-    }
-
-    if (static_cast<F64>(padSize) /
-        resamplerRatio != std::floor(
-        static_cast<F64>(padSize) / resamplerRatio)) {
-        JST_WARN("[BLOCK_FILTER] Bypassing resampling because "
-                 "filter tap size minus one ({}) is not a multiple "
-                 "of the resampler ratio ({}).",
-                 padSize,
-                 static_cast<U64>(resamplerRatio));
-        return false;
-    }
-
-    resamplerSize = filterSize + signalSize - 1;
-
-    if (static_cast<F64>(resamplerSize) /
-        resamplerRatio != std::floor(
-        static_cast<F64>(resamplerSize) / resamplerRatio)) {
-        JST_WARN("[BLOCK_FILTER] Bypassing resampling because "
-                 "filter tap size minus one ({}) plus signal "
-                 "size ({}) is not a multiple of the resampler "
-                 "ratio ({}).",
-                 padSize, signalSize,
-                 static_cast<U64>(resamplerRatio));
-        return false;
-    }
-
-    if (ct != 0.0) {
-        const F64 frequencyPerBin =
-            sr / static_cast<F64>(resamplerSize);
-        const F64 centerBin = ct / frequencyPerBin;
-
-        if (centerBin != std::floor(centerBin)) {
-            JST_WARN("[BLOCK_FILTER] Output will be shifted by "
-                     "{} MHz because filter center frequency "
-                     "({:.2f} MHz) is not a multiple of the "
-                     "frequency per bin ({} MHz).",
-                     (centerBin - std::floor(centerBin)) *
-                         frequencyPerBin / 1e6,
-                     ct / 1e6,
-                     frequencyPerBin / 1e6);
-        }
-
-        resamplerOffset =
-            static_cast<U64>(std::round(centerBin));
-    }
-
-    resamplerSize /= static_cast<U64>(resamplerRatio);
-    padSize /= static_cast<U64>(resamplerRatio);
-
-    return true;
 }
 
 JST_REGISTER_BLOCK(FilterImpl,

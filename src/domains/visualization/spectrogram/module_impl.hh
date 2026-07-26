@@ -38,13 +38,13 @@ struct SpectrogramImpl : public Module::Impl, public DynamicConfig<Spectrogram> 
     // Rendering members.
 
     struct {
-        int width;
-        int height;
+        U32 width;
+        U32 height;
         float offset;
         float zoom;
         float paddingScaleX;
         float paddingScaleY;
-    } signalUniforms;
+    } signalUniforms{};
 
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;

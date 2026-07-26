@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <any>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -39,6 +40,23 @@ TEST_CASE_METHOD(FlowgraphFixture, "Filter taps uses heads over center length", 
     REQUIRE(timing->computeTime == 0.0f);
 }
 
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Filter taps rejects zero heads before define",
+                 "[modules][dsp][filter_taps][validation]") {
+    Blocks::FilterTaps config;
+    config.heads = 0;
+
+    REQUIRE(flowgraph->blockCreate("taps_zero_heads", config, {}) ==
+            Result::SUCCESS);
+
+    const auto block = viewBlock("taps_zero_heads");
+    REQUIRE(block.state == Block::State::Errored);
+    REQUIRE(block.interfaceInputs.empty());
+    REQUIRE(block.interfaceOutputs.empty());
+    REQUIRE(block.interfaceConfigs.empty());
+    REQUIRE(block.outputs.empty());
+}
+
 TEST_CASE_METHOD(FlowgraphFixture, "Filter taps heads can shrink stale center vector", "[modules][dsp][filter_taps][reconfigure]") {
     Blocks::FilterTaps config;
     config.taps = 51;
@@ -67,4 +85,41 @@ TEST_CASE_METHOD(FlowgraphFixture, "Filter taps heads can shrink stale center ve
     REQUIRE(flowgraph->blockConfig("taps_shrink", saved) == Result::SUCCESS);
     REQUIRE(std::any_cast<U64>(saved.at("heads")) == 1);
     REQUIRE(std::any_cast<std::vector<F32>>(saved.at("center")).size() == 1);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Filter taps block delegates scalar validation to its module",
+                 "[modules][dsp][filter_taps][validation]") {
+    Blocks::FilterTaps config;
+    config.sampleRate = std::numeric_limits<F32>::quiet_NaN();
+
+    REQUIRE(flowgraph->blockCreate("taps_bad", config, {}) == Result::SUCCESS);
+    REQUIRE(viewBlock("taps_bad").state == Block::State::Errored);
+    REQUIRE(viewBlock("taps_bad").outputs.empty());
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Filter taps block rolls back a module-rejected update",
+                 "[modules][dsp][filter_taps][reconfigure][validation]") {
+    Blocks::FilterTaps config;
+    config.bandwidth = 0.2e6f;
+    config.taps = 5;
+    REQUIRE(flowgraph->blockCreate("taps_update", config, {}) == Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    const Tensor output = viewBlock("taps_update").outputs.at("coeffs").tensor;
+    const auto outputId = output.id();
+    const CF32 centerCoeff = output.at<CF32>(0, config.taps / 2);
+
+    Parser::Map update;
+    update["bandwidth"] = std::numeric_limits<F32>::infinity();
+    REQUIRE(flowgraph->blockReconfigure("taps_update", update) == Result::ERROR);
+    REQUIRE(viewBlock("taps_update").state == Block::State::Created);
+    REQUIRE(viewBlock("taps_update").outputs.at("coeffs").tensor.id() == outputId);
+    REQUIRE(output.at<CF32>(0, config.taps / 2) == centerCoeff);
+
+    Parser::Map saved;
+    REQUIRE(flowgraph->blockConfig("taps_update", saved) == Result::SUCCESS);
+    REQUIRE(std::any_cast<F32>(saved.at("bandwidth")) == config.bandwidth);
+    REQUIRE(std::any_cast<U64>(saved.at("taps")) == config.taps);
 }

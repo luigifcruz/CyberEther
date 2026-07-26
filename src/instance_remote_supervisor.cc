@@ -9,6 +9,12 @@
 
 namespace Jetstream {
 
+namespace {
+
+constexpr auto SupervisorPollInterval = std::chrono::milliseconds(100);
+
+}  // namespace
+
 Instance::Remote::Supervisor::Supervisor(Instance::Remote* remote, bool autoJoin_)
     : remote_(remote), autoJoin(autoJoin_) {}
 
@@ -26,7 +32,11 @@ void Instance::Remote::Supervisor::start() {
 }
 
 void Instance::Remote::Supervisor::stop() {
-    running_ = false;
+    {
+        std::lock_guard<std::mutex> lock(waitMutex);
+        running_ = false;
+    }
+    waitCondition.notify_all();
     if (worker_.joinable()) {
         worker_.join();
     }
@@ -34,11 +44,11 @@ void Instance::Remote::Supervisor::stop() {
 
 void Instance::Remote::Supervisor::run() {
     while (running_) {
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-
-        if (!running_) {
+        std::unique_lock<std::mutex> lock(waitMutex);
+        if (waitCondition.wait_for(lock, SupervisorPollInterval, [this] { return !running_; })) {
             break;
         }
+        lock.unlock();
 
         const auto waitlist = remote_->waitlist();
         if (waitlist.empty()) {

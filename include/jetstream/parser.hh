@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <any>
+#include <array>
 #include <exception>
 #include <functional>
 #include <string>
@@ -32,7 +33,12 @@ class JETSTREAM_API Parser {
         try {
             return StringToTypedValue(encoded, variable);
         } catch (const std::exception& e) {
-            JST_ERROR("[PARSER] Failed to convert value '{}': {}", encoded, e.what());
+            try {
+                JST_ERROR("[PARSER] Failed to convert value '{}': {}", encoded, e.what());
+            } catch (...) {
+            }
+            return Result::ERROR;
+        } catch (...) {
             return Result::ERROR;
         }
     }
@@ -64,22 +70,42 @@ class JETSTREAM_API Parser {
 
     template<typename T>
     static Result Deserialize(const Map& map, const std::string& name, T& variable) {
-        if (map.contains(name) == 0) {
-            if constexpr (detail::Optional<std::remove_cvref_t<T>>) {
-                variable.reset();
+        try {
+            if (map.contains(name) == 0) {
+                if constexpr (detail::Optional<std::remove_cvref_t<T>>) {
+                    variable.reset();
+                }
+
+                JST_TRACE("[PARSER] Variable name '{}' not found inside map.", name);
+                return Result::SUCCESS;
             }
 
-            JST_TRACE("[PARSER] Variable name '{}' not found inside map.", name);
-            return Result::SUCCESS;
-        }
+            const auto& encoded = map.at(name);
+            if (!encoded.has_value()) {
+                JST_ERROR("[PARSER] Variable '{}' not initialized.", name);
+                return Result::ERROR;
+            }
 
-        const auto& encoded = map.at(name);
-        if (!encoded.has_value()) {
-            JST_ERROR("[PARSER] Variable '{}' not initialized.", name);
+            return Decode(encoded, name, variable);
+        } catch (const Result& status) {
+            try {
+                JST_ERROR("[PARSER] Failed to deserialize variable '{}': {}.", name, status);
+            } catch (...) {
+            }
+            return Result::ERROR;
+        } catch (const std::exception& e) {
+            try {
+                JST_ERROR("[PARSER] Failed to deserialize variable '{}': {}.", name, e.what());
+            } catch (...) {
+            }
+            return Result::ERROR;
+        } catch (...) {
+            try {
+                JST_ERROR("[PARSER] Unknown exception while deserializing variable '{}'.", name);
+            } catch (...) {
+            }
             return Result::ERROR;
         }
-
-        return Decode(encoded, name, variable);
     }
 
     template<typename T>
@@ -139,7 +165,28 @@ class JETSTREAM_API Parser {
                 return 0;
             }
 
-            return std::hash<std::string>{}(encoded);
+            static const std::array encodedTypes = {
+                &typeid(std::string), &typeid(I8), &typeid(I16), &typeid(I32),
+                &typeid(U8), &typeid(U16), &typeid(U32), &typeid(I64), &typeid(U64),
+                &typeid(F32), &typeid(F64), &typeid(CF32), &typeid(CF64), &typeid(bool),
+                &typeid(DeviceType), &typeid(RuntimeType), &typeid(SchedulerType),
+                &typeid(std::vector<U64>), &typeid(std::vector<F32>),
+                &typeid(std::vector<CF32>), &typeid(std::vector<CF64>),
+                &typeid(std::vector<F64>), &typeid(Range<F32>),
+                &typeid(Extent2D<U64>), &typeid(Extent2D<F32>),
+            };
+            const auto type = std::find_if(encodedTypes.begin(), encodedTypes.end(), [&](const auto* candidate) {
+                return *candidate == variable.type();
+            });
+            if (type == encodedTypes.end()) {
+                JST_ERROR("[PARSER] Missing type discriminator for 'std::any' hash.");
+                return 0;
+            }
+
+            std::size_t seed = std::hash<std::string>{}(encoded);
+            const auto discriminator = static_cast<std::size_t>(type - encodedTypes.begin()) + 1;
+            seed ^= discriminator + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+            return seed;
         } else if constexpr (detail::Vector<ValueType>) {
             std::size_t seed = variable.size();
             for (const auto& entry : variable) {

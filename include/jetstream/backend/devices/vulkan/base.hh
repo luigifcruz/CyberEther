@@ -34,7 +34,7 @@
 
 namespace Jetstream::Backend {
 
-class Vulkan {
+class JETSTREAM_API Vulkan {
  public:
     explicit Vulkan(const Config& config);
     ~Vulkan();

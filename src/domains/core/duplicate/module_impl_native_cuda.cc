@@ -48,6 +48,7 @@ struct DuplicateImplNativeCuda : public DuplicateImpl,
                                  public NativeCudaRuntimeContext,
                                  public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeInitialize() override;
@@ -60,6 +61,27 @@ struct DuplicateImplNativeCuda : public DuplicateImpl,
     Tensor shapeTensor;
     Tensor strideTensor;
 };
+
+Result DuplicateImplNativeCuda::validate() {
+    const auto previousTargetDevice = validatedTargetDevice;
+    JST_CHECK(DuplicateImpl::validate());
+
+    if (validatedTargetDevice == DeviceType::CPU ||
+        validatedTargetDevice == DeviceType::CUDA) {
+        return Result::SUCCESS;
+    }
+
+#if defined(JETSTREAM_BACKEND_VULKAN_AVAILABLE) && !defined(JST_OS_WINDOWS)
+    if (validatedTargetDevice == DeviceType::Vulkan) {
+        return Result::SUCCESS;
+    }
+#endif
+
+    JST_ERROR("[DUPLICATE] Cannot map {} output to a CUDA input.",
+              validatedTargetDevice);
+    validatedTargetDevice = previousTargetDevice;
+    return Result::ERROR;
+}
 
 Result DuplicateImplNativeCuda::create() {
     return DuplicateImpl::create();

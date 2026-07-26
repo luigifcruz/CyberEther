@@ -6,8 +6,31 @@
 #include "jetstream/domains/dsp/rrc_filter/module.hh"
 
 #include <cmath>
+#include <limits>
 
 using namespace Jetstream;
+
+namespace {
+
+void RequireRrcFilterValidationError(const Registry::ModuleRegistration& impl,
+                                     const Modules::RrcFilter& config,
+                                     const DataType dtype) {
+    Tensor input;
+    REQUIRE(input.create(impl.device, dtype, {64}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["buffer"].requested("test", "buffer");
+    inputs["buffer"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("rrc_filter", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
+}  // namespace
 
 TEST_CASE("RRC Filter - CF32 Impulse Response",
           "[modules][rrc_filter][cf32]") {
@@ -169,6 +192,67 @@ TEST_CASE("RRC Filter - Invalid Sample Rate",
             ctx.setInput("buffer", input);
 
             REQUIRE(ctx.run() != Result::SUCCESS);
+        }
+    }
+}
+
+TEST_CASE("RRC Filter - Rejects invalid candidates during validation",
+          "[modules][rrc_filter][validation]") {
+    auto implementations = Registry::ListAvailableModules("rrc_filter");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        SECTION("numeric configuration must be finite") {
+            Modules::RrcFilter config;
+            config.symbolRate = std::numeric_limits<F32>::quiet_NaN();
+            RequireRrcFilterValidationError(impl, config, DataType::F32);
+        }
+
+        SECTION("symbol rate must be positive") {
+            Modules::RrcFilter config;
+            config.symbolRate = 0.0f;
+            RequireRrcFilterValidationError(impl, config, DataType::F32);
+        }
+
+        SECTION("sample rate must be positive") {
+            Modules::RrcFilter config;
+            config.sampleRate = 0.0f;
+            RequireRrcFilterValidationError(impl, config, DataType::F32);
+        }
+
+        SECTION("roll-off must be finite") {
+            Modules::RrcFilter config;
+            config.rollOff = std::numeric_limits<F32>::quiet_NaN();
+            RequireRrcFilterValidationError(impl, config, DataType::F32);
+        }
+
+        SECTION("roll-off cannot be negative") {
+            Modules::RrcFilter config;
+            config.rollOff = -0.01f;
+            RequireRrcFilterValidationError(impl, config, DataType::F32);
+        }
+
+        SECTION("roll-off cannot exceed one") {
+            Modules::RrcFilter config;
+            config.rollOff = 1.01f;
+            RequireRrcFilterValidationError(impl, config, DataType::F32);
+        }
+
+        SECTION("tap count must be at least three") {
+            Modules::RrcFilter config;
+            config.taps = 1;
+            RequireRrcFilterValidationError(impl, config, DataType::F32);
+        }
+
+        SECTION("input dtype must be supported") {
+            Modules::RrcFilter config;
+            RequireRrcFilterValidationError(impl, config, DataType::U8);
+        }
+
+        SECTION("tap buffer size must be representable") {
+            Modules::RrcFilter config;
+            config.taps = std::numeric_limits<U64>::max();
+            RequireRrcFilterValidationError(impl, config, DataType::F32);
         }
     }
 }

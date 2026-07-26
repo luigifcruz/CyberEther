@@ -34,6 +34,19 @@ def yaml_quote(value):
     return "'" + value.replace("'", "''") + "'"
 
 
+def parse_version(value):
+    parts = value.split(".")
+    if (
+        len(parts) != 3
+        or any(not part.isascii() or not part.isdigit() for part in parts)
+        or any(int(part) > 255 for part in parts)
+    ):
+        raise argparse.ArgumentTypeError(
+            "version must use x.y.z with each component between 0 and 255"
+        )
+    return value
+
+
 def parse_target(value):
     fields = {}
     for part in value.split(","):
@@ -119,12 +132,15 @@ def main():
     parser = argparse.ArgumentParser(description="Create a CyberEther .cep plugin bundle.")
     parser.add_argument("--output", required=True, help="Output .cep path.")
     parser.add_argument("--name", required=True, help="Plugin name.")
-    parser.add_argument("--version", required=True, help="Plugin version.")
+    parser.add_argument(
+        "--version", required=True, type=parse_version, help="Plugin version as x.y.z."
+    )
     parser.add_argument(
         "--minimum-jetstream-version",
         "--min-jetstream-version",
         dest="minimum_jetstream_version",
         required=True,
+        type=parse_version,
         help="Minimum CyberEther/Jetstream version, for example 1.7.0.",
     )
     parser.add_argument(

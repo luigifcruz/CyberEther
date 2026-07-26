@@ -47,6 +47,11 @@ struct LineplotImpl : public Module::Impl, public DynamicConfig<Lineplot> {
     U64 inputRowWidth = 0;
     F32 normalizationFactor = 0.0f;
 
+    U64 validatedNumberOfElements = 0;
+    U64 validatedNumberOfBatches = 0;
+    U64 validatedInputRowWidth = 0;
+    F32 validatedNormalizationFactor = 0.0f;
+
     // Surface interaction state.
     SurfaceInteractionState interaction;
 

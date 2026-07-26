@@ -1,6 +1,8 @@
 #include <cstring>
+#include <limits>
 
 #include <jetstream/backend/devices/cpu/helpers.hh>
+#include <jetstream/memory/macros.hh>
 #include <jetstream/runtime_context_native_cpu.hh>
 #include <jetstream/scheduler_context.hh>
 #include <jetstream/module_context.hh>
@@ -14,6 +16,7 @@ struct OverlapAddImplNativeCpu : public OverlapAddImpl,
                                  public NativeCpuRuntimeContext,
                                  public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeSubmit() override;
@@ -30,18 +33,56 @@ struct OverlapAddImplNativeCpu : public OverlapAddImpl,
     std::vector<U64> prevOverlapStrides;
 };
 
+Result OverlapAddImplNativeCpu::validate() {
+    JST_CHECK(OverlapAddImpl::validate());
+
+    if (!inputs().contains("buffer") || !inputs().contains("overlap")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& bufferTensor = inputs().at("buffer").tensor;
+    const Tensor& overlapTensor = inputs().at("overlap").tensor;
+    if (!bufferTensor.validShape() || !overlapTensor.validShape() ||
+        bufferTensor.size() == 0 || overlapTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (bufferTensor.dtype() != overlapTensor.dtype()) {
+        JST_ERROR("[MODULE_OVERLAP_ADD_NATIVE_CPU] Input dtype mismatch: "
+                  "buffer is {}, overlap is {}.",
+                  bufferTensor.dtype(),
+                  overlapTensor.dtype());
+        return Result::ERROR;
+    }
+
+    if (bufferTensor.dtype() != DataType::F32 &&
+        bufferTensor.dtype() != DataType::CF32) {
+        JST_ERROR("[MODULE_OVERLAP_ADD_NATIVE_CPU] Unsupported input "
+                  "data type: {}.",
+                  bufferTensor.dtype());
+        return Result::ERROR;
+    }
+
+    U64 alignedOutputSize = 0;
+    U64 alignedPreviousOverlapSize = 0;
+    if (!detail::CheckedPageAlignedSize(validatedOutputSizeBytes,
+                                        alignedOutputSize) ||
+        alignedOutputSize > std::numeric_limits<std::size_t>::max() ||
+        !detail::CheckedPageAlignedSize(validatedPreviousOverlapSizeBytes,
+                                        alignedPreviousOverlapSize) ||
+        alignedPreviousOverlapSize > std::numeric_limits<std::size_t>::max()) {
+        JST_ERROR("[MODULE_OVERLAP_ADD_NATIVE_CPU] Output or previous-state "
+                  "allocation size is too large.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 Result OverlapAddImplNativeCpu::create() {
     // Create parent.
 
     JST_CHECK(OverlapAddImpl::create());
-
-    if (inputBuffer.dtype() != inputOverlap.dtype()) {
-        JST_ERROR("[MODULE_OVERLAP_ADD_NATIVE_CPU] Input dtype mismatch: "
-                  "buffer is {}, overlap is {}.",
-                  inputBuffer.dtype(),
-                  inputOverlap.dtype());
-        return Result::ERROR;
-    }
 
     // Precompute row-major strides.
 
@@ -65,18 +106,11 @@ Result OverlapAddImplNativeCpu::create() {
 
     if (inputBuffer.dtype() == DataType::CF32) {
         kernel = [this]() { return kernelCF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (inputBuffer.dtype() == DataType::F32) {
+    } else {
         kernel = [this]() { return kernelF32(); };
-        return Result::SUCCESS;
     }
 
-    JST_ERROR("[MODULE_OVERLAP_ADD_NATIVE_CPU] Unsupported input "
-              "data type: {}.",
-              inputBuffer.dtype());
-    return Result::ERROR;
+    return Result::SUCCESS;
 }
 
 Result OverlapAddImplNativeCpu::computeSubmit() {

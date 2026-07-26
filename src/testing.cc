@@ -88,7 +88,11 @@ Result TestContext::run() {
     auto createResult = pimpl->module->create("test", pimpl->config, deviceInputs);
     if (createResult != Result::SUCCESS) {
         JST_ERROR("[TESTING] Failed to create module: {}", pimpl->moduleType);
-        pimpl->cleanup();
+        if (createResult == Result::ERROR) {
+            pimpl->module.reset();
+        } else {
+            pimpl->cleanup();
+        }
         return createResult;
     }
 

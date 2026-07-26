@@ -2,8 +2,10 @@
 #define JETSTREAM_DOMAINS_IO_WEBSOCKET_MODULE_IMPL_HH
 
 #include <atomic>
+#include <cstddef>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
 
 #include <jetstream/domains/io/websocket/module.hh>
@@ -38,6 +40,14 @@ struct WebsocketImpl : public Module::Impl, public DynamicConfig<Websocket> {
     Tools::CircularBuffer<I8> circularBuffer;
     Tools::Snapshot<F32> bufferHealth{0.0f};
     Tools::Snapshot<F32> throughputMBs{0.0f};
+
+    DataType validatedDataType = DataType::None;
+    U64 validatedCircularBufferSize = 0;
+    std::string validatedUrl;
+
+#ifndef JST_OS_BROWSER
+    std::unique_ptr<httplib::ws::WebSocketClient> validatedClient;
+#endif
 
     void receiveBinaryData(const I8* data, U64 numBytes);
 

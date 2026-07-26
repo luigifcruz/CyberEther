@@ -84,7 +84,6 @@ class JETSTREAM_API Transfer {
         const std::vector<TextureTransfer>& textures() const;
 
      private:
-        bool committed = false;
         std::vector<BufferTransfer> bufferTransfers;
         std::vector<TextureTransfer> textureTransfers;
         std::unordered_set<const Buffer*> collectedBuffers;

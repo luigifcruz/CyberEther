@@ -12,6 +12,7 @@ struct InvertImplNativeCpu : public InvertImpl,
                              public NativeCpuRuntimeContext,
                              public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeSubmit() override;
@@ -23,6 +24,27 @@ struct InvertImplNativeCpu : public InvertImpl,
     U64 axisInnerSize = 1;
     U64 axisLength = 1;
 };
+
+Result InvertImplNativeCpu::validate() {
+    JST_CHECK(InvertImpl::validate());
+
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::CF32) {
+        JST_ERROR("[MODULE_INVERT_NATIVE_CPU] Unsupported data type '{}'.",
+                  inputTensor.dtype());
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
 
 Result InvertImplNativeCpu::create() {
     // Create parent.
@@ -37,13 +59,8 @@ Result InvertImplNativeCpu::create() {
 
     // Register compute kernel.
 
-    if (input.dtype() == DataType::CF32) {
-        kernel = [this]() { return kernelCF32(); };
-        return Result::SUCCESS;
-    }
-
-    JST_ERROR("[MODULE_INVERT_NATIVE_CPU] Unsupported data type '{}'.", input.dtype());
-    return Result::ERROR;
+    kernel = [this]() { return kernelCF32(); };
+    return Result::SUCCESS;
 }
 
 Result InvertImplNativeCpu::computeSubmit() {

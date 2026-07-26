@@ -36,6 +36,7 @@ class JETSTREAM_API Plugin {
     static Result Load(const std::string& path);
     static Result Reload(const std::string& path);
     static std::vector<Info> List();
+    static bool IsCepPath(const std::string& path);
 
  private:
     struct Impl;

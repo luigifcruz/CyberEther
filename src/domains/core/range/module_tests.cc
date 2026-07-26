@@ -17,6 +17,23 @@ F32 SoftRange(const F32 value, const F32 min, const F32 max) {
     return 0.5f + 0.5f * std::tanh(4.0f * (normalized - 0.5f));
 }
 
+void RequireRangeValidationError(const Registry::ModuleRegistration& impl) {
+    Tensor input;
+    REQUIRE(input.create(impl.device, DataType::CF32, {16}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].requested("test", "signal");
+    inputs["signal"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("range", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    Modules::Range config;
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
 }  // namespace
 
 TEST_CASE("Range Module - Scales Into Unit Interval", "[modules][range][F32]") {
@@ -189,6 +206,18 @@ TEST_CASE("Range Module - Rank 4 Non-Contiguous",
                     }
                 }
             }
+        }
+    }
+}
+
+TEST_CASE("Range Module - Rejects unsupported dtype during validation",
+          "[modules][range][validation]") {
+    const auto implementations = Registry::ListAvailableModules("range");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            RequireRangeValidationError(impl);
         }
     }
 }

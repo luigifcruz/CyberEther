@@ -1,11 +1,7 @@
-#include <csignal>
-
 #include "jetstream/viewport/platforms/headless/vulkan.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 
 #include "imgui.h"
-
-static bool keepRunningFlag;
 
 namespace Jetstream::Viewport {
 
@@ -20,17 +16,6 @@ Implementation::~Headless() {
 }
 
 Result Implementation::create() {
-    // Register signal handler.
-
-    keepRunningFlag = true;
-    std::signal(SIGINT, [](int){
-        if (!keepRunningFlag) {
-            JST_DEBUG("[HEADLESS-VULKAN] Exiting via SIGINT...");
-            std::exit(0);
-        }
-        keepRunningFlag = false;
-    });
-
     // Set extent from config.
 
     extent.width = static_cast<U32>(config.size.x);
@@ -255,7 +240,7 @@ Result Implementation::pollEvents() {
 }
 
 bool Implementation::keepRunning() {
-    return keepRunningFlag && running.load();
+    return running.load();
 }
 
 Result Implementation::createSwapchain() {

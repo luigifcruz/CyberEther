@@ -13,6 +13,10 @@ cyberether_dep = dependency(
     'jetstream',
     required: false,
     fallback: ['cyberether', 'libjetstream_dep'],
+    default_options: [
+        'tests=false',
+        'examples=false',
+    ],
 )
 
 if not cyberether_dep.found()
@@ -21,6 +25,7 @@ endif
 
 plugin_inc = include_directories('include', 'src')
 plugin_sources = []
+plugin_test_lst = []
 plugin_example = files('examples/blueprint_gain.yml')
 plugin_bundler = files('tools/bundler.py')
 
@@ -29,11 +34,29 @@ py = pymod.find_installation(required: true)
 
 subdir('src')
 
-plugin_module = shared_module(
-    'cyberether_blueprint_plugin',
+plugin_library = static_library(
+    'cyberether_blueprint_plugin_code',
     plugin_sources,
     include_directories: plugin_inc,
     dependencies: cyberether_dep,
+    gnu_symbol_visibility: 'hidden',
+    pic: true,
+    install: false,
+)
+plugin_code_dep = declare_dependency(
+    include_directories: plugin_inc,
+    dependencies: cyberether_dep,
+    link_whole: plugin_library,
+)
+
+if get_option('tests')
+    subdir('tests')
+endif
+
+plugin_module = shared_module(
+    'cyberether_blueprint_plugin',
+    [],
+    dependencies: plugin_code_dep,
     gnu_symbol_visibility: 'hidden',
     name_prefix: '',
     build_by_default: false,

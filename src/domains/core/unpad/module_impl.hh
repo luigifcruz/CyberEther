@@ -8,6 +8,7 @@ namespace Jetstream::Modules {
 
 struct UnpadImpl : public Module::Impl, public DynamicConfig<Unpad> {
  public:
+    Result validate() override;
     Result define() override;
     Result create() override;
 
@@ -15,6 +16,10 @@ struct UnpadImpl : public Module::Impl, public DynamicConfig<Unpad> {
     Tensor input;
     Tensor outputUnpadded;
     Tensor outputPad;
+
+    Index validatedResolvedAxis = 0;
+    U64 validatedInputAxisSize = 0;
+    U64 validatedUnpadAxisSize = 0;
 
     Index resolvedAxis = 0;
     U64 inputAxisSize = 0;

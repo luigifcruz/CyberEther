@@ -1,9 +1,48 @@
 #include <mutex>
+#include <unordered_set>
 #include <utility>
 
 #include <jetstream/detail/flowgraph_impl.hh>
 
 namespace Jetstream {
+
+namespace {
+
+thread_local std::unordered_set<const Block*> EvaluatingMetrics;
+
+void CopyMetricEntries(const std::shared_ptr<Block>& block,
+                       std::vector<Flowgraph::View::MetricEntry>& target) {
+    target.clear();
+
+    const auto& interface = block->interface();
+    if (!interface || !EvaluatingMetrics.insert(block.get()).second) {
+        return;
+    }
+
+    struct EvaluationGuard {
+        const Block* block;
+        ~EvaluationGuard() { EvaluatingMetrics.erase(block); }
+    } guard{block.get()};
+
+    const auto& source = interface->metrics();
+    target.reserve(source.size());
+    for (const auto& [name, entry] : source) {
+        std::any value;
+        if (entry.metric) {
+            value = entry.metric();
+        }
+
+        target.push_back({
+            .name = name,
+            .label = entry.label,
+            .format = entry.format,
+            .help = entry.help,
+            .value = std::move(value),
+        });
+    }
+}
+
+}  // namespace
 
 Flowgraph::View::View(const std::shared_ptr<Flowgraph::Impl>& impl) : impl(impl) {}
 
@@ -59,7 +98,7 @@ Result Flowgraph::View::keys(std::vector<std::string>& keys) const {
 
 Result Flowgraph::View::info(const std::string& block, BlockInfo& info) const {
     BlockData data;
-    JST_CHECK(this->block(block, data));
+    JST_CHECK(snapshot(block, data, false));
 
     info = data;
     return Result::SUCCESS;
@@ -67,7 +106,7 @@ Result Flowgraph::View::info(const std::string& block, BlockInfo& info) const {
 
 Result Flowgraph::View::config(const std::string& block, Parser::Map& config) const {
     BlockData data;
-    JST_CHECK(this->block(block, data));
+    JST_CHECK(snapshot(block, data, false));
 
     config = std::move(data.config);
     return Result::SUCCESS;
@@ -75,7 +114,7 @@ Result Flowgraph::View::config(const std::string& block, Parser::Map& config) co
 
 Result Flowgraph::View::inputs(const std::string& block, TensorMap& inputs) const {
     BlockData data;
-    JST_CHECK(this->block(block, data));
+    JST_CHECK(snapshot(block, data, false));
 
     inputs = std::move(data.inputs);
     return Result::SUCCESS;
@@ -83,7 +122,7 @@ Result Flowgraph::View::inputs(const std::string& block, TensorMap& inputs) cons
 
 Result Flowgraph::View::outputs(const std::string& block, TensorMap& outputs) const {
     BlockData data;
-    JST_CHECK(this->block(block, data));
+    JST_CHECK(snapshot(block, data, false));
 
     outputs = std::move(data.outputs);
     return Result::SUCCESS;
@@ -92,7 +131,7 @@ Result Flowgraph::View::outputs(const std::string& block, TensorMap& outputs) co
 Result Flowgraph::View::interfaceInputs(const std::string& block,
                                         std::vector<InterfaceEntry>& inputs) const {
     BlockData data;
-    JST_CHECK(this->block(block, data));
+    JST_CHECK(snapshot(block, data, false));
 
     inputs = std::move(data.interfaceInputs);
     return Result::SUCCESS;
@@ -101,7 +140,7 @@ Result Flowgraph::View::interfaceInputs(const std::string& block,
 Result Flowgraph::View::interfaceOutputs(const std::string& block,
                                          std::vector<InterfaceEntry>& outputs) const {
     BlockData data;
-    JST_CHECK(this->block(block, data));
+    JST_CHECK(snapshot(block, data, false));
 
     outputs = std::move(data.interfaceOutputs);
     return Result::SUCCESS;
@@ -110,7 +149,7 @@ Result Flowgraph::View::interfaceOutputs(const std::string& block,
 Result Flowgraph::View::interfaceConfigs(const std::string& block,
                                          std::vector<InterfaceEntry>& configs) const {
     BlockData data;
-    JST_CHECK(this->block(block, data));
+    JST_CHECK(snapshot(block, data, false));
 
     configs = std::move(data.interfaceConfigs);
     return Result::SUCCESS;
@@ -127,7 +166,7 @@ Result Flowgraph::View::metrics(const std::string& block, std::vector<MetricEntr
 
     if (!graph->blocks.contains(block)) {
         if (graph->transientBlocks.contains(block)) {
-            metrics.clear();
+            metrics = graph->transientBlocks.at(block).metrics;
             return Result::SUCCESS;
         }
 
@@ -135,43 +174,26 @@ Result Flowgraph::View::metrics(const std::string& block, std::vector<MetricEntr
         return Result::ERROR;
     }
 
-    metrics.clear();
-
-    const auto& interface = graph->blocks.at(block)->interface();
-    if (!interface) {
-        return Result::SUCCESS;
-    }
-
-    const auto& source = interface->metrics();
-    metrics.reserve(source.size());
-    for (const auto& [name, entry] : source) {
-        std::any value;
-        if (entry.metric) {
-            value = entry.metric();
-        }
-
-        metrics.push_back({
-            .name = name,
-            .label = entry.label,
-            .format = entry.format,
-            .help = entry.help,
-            .value = std::move(value),
-        });
-    }
-
+    CopyMetricEntries(graph->blocks.at(block), metrics);
     return Result::SUCCESS;
 }
 
 Result Flowgraph::View::surfaces(const std::string& block,
                                  std::vector<std::shared_ptr<Module::Surface>>& surfaces) const {
     BlockData data;
-    JST_CHECK(this->block(block, data));
+    JST_CHECK(snapshot(block, data, false));
 
     surfaces = std::move(data.surfaces);
     return Result::SUCCESS;
 }
 
 Result Flowgraph::View::block(const std::string& block, BlockData& data) const {
+    return snapshot(block, data, true);
+}
+
+Result Flowgraph::View::snapshot(const std::string& block,
+                                 BlockData& data,
+                                 const bool includeMetrics) const {
     const auto graph = impl.lock();
     if (!graph) {
         JST_ERROR("[FLOWGRAPH] View is no longer attached to a flowgraph.");
@@ -227,6 +249,10 @@ Result Flowgraph::View::block(const std::string& block, BlockData& data) const {
         copyInterfaceEntries(interface->inputs(), data.interfaceInputs);
         copyInterfaceEntries(interface->outputs(), data.interfaceOutputs);
         copyInterfaceEntries(interface->configs(), data.interfaceConfigs);
+    }
+
+    if (includeMetrics) {
+        CopyMetricEntries(blockPtr, data.metrics);
     }
 
     return Result::SUCCESS;

@@ -8,6 +8,8 @@
 namespace Jetstream::Modules {
 
 Result AmplitudeImpl::validate() {
+    validatedResolvedAxis = 0;
+
     if (!inputs().contains("signal")) {
         return Result::SUCCESS;
     }
@@ -20,14 +22,15 @@ Result AmplitudeImpl::validate() {
     }
 
     const auto& config = *candidate();
-    const auto resolvedAxis = ResolveAxis(config.axis, inputTensor.rank());
-    if (!resolvedAxis) {
+    const auto candidateAxis = ResolveAxis(config.axis, inputTensor.rank());
+    if (!candidateAxis) {
         JST_ERROR("[MODULE_AMPLITUDE] Axis {} is out of bounds for a rank-{} tensor.",
                   config.axis,
                   inputTensor.rank());
         return Result::ERROR;
     }
 
+    validatedResolvedAxis = *candidateAxis;
     return Result::SUCCESS;
 }
 
@@ -45,22 +48,9 @@ Result AmplitudeImpl::create() {
 
     input = inputTensor;
 
-    if (input.rank() == 0 ||
-        input.rank() > static_cast<U64>(std::numeric_limits<I64>::max())) {
-        JST_ERROR("[MODULE_AMPLITUDE] Expected an input tensor with at least one dimension.");
-        return Result::ERROR;
-    }
-
-    const auto resolvedAxis = ResolveAxis(axis, input.rank());
-    if (!resolvedAxis) {
-        JST_ERROR("[MODULE_AMPLITUDE] Axis {} is out of bounds for a rank-{} tensor.",
-                  axis,
-                  input.rank());
-        return Result::ERROR;
-    }
-
     scalingCoeff = 20.0f *
-                   std::log10(1.0f / static_cast<F32>(input.shape(*resolvedAxis)));
+                    std::log10(1.0f /
+                               static_cast<F32>(input.shape(validatedResolvedAxis)));
 
     // Create output tensor with same shape but F32 type.
     JST_CHECK(output.create(input.device(), DataType::F32, input.shape()));

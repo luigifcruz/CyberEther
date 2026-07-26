@@ -9,6 +9,7 @@ namespace Jetstream::Modules {
 struct DynamicTensorImportImpl : public Module::Impl,
                                  public DynamicConfig<DynamicTensorImport> {
  public:
+    Result validate() override;
     Result define() override;
     Result create() override;
 

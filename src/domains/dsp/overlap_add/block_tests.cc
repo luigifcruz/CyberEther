@@ -4,6 +4,7 @@
 #include <string>
 
 #include "flowgraph_fixture.hh"
+#include "jetstream/domains/core/ones_tensor/block.hh"
 #include "jetstream/domains/dsp/overlap_add/block.hh"
 #include "jetstream/domains/dsp/overlap_add/module.hh"
 
@@ -50,4 +51,71 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockConfig("overlap_add", saved) == Result::SUCCESS);
     REQUIRE(saved.at("axis").type() == typeid(I64));
     REQUIRE(std::any_cast<I64>(saved.at("axis")) == -1);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Overlap-add block delegates shape validation to its module",
+                 "[modules][dsp][overlap_add][block][validation]") {
+    Blocks::OnesTensor bufferSource;
+    bufferSource.shape = {2};
+    REQUIRE(flowgraph->blockCreate("overlap_bad_buffer", bufferSource, {}) ==
+            Result::SUCCESS);
+
+    Blocks::OnesTensor overlapSource;
+    overlapSource.shape = {3};
+    REQUIRE(flowgraph->blockCreate("overlap_bad_overlap", overlapSource, {}) ==
+            Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["buffer"].requested("overlap_bad_buffer", "buffer");
+    inputs["overlap"].requested("overlap_bad_overlap", "buffer");
+
+    Blocks::OverlapAdd config;
+    config.axis = 0;
+    REQUIRE(flowgraph->blockCreate("overlap_bad", config, inputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("overlap_bad").state == Block::State::Errored);
+    REQUIRE(viewBlock("overlap_bad").outputs.empty());
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Overlap-add block preserves state after rejected update",
+                 "[modules][dsp][overlap_add][block][reconfigure][validation]") {
+    Blocks::OnesTensor bufferSource;
+    bufferSource.shape = {4};
+    REQUIRE(flowgraph->blockCreate("overlap_update_buffer", bufferSource, {}) ==
+            Result::SUCCESS);
+
+    Blocks::OnesTensor overlapSource;
+    overlapSource.shape = {2};
+    REQUIRE(flowgraph->blockCreate("overlap_update_overlap", overlapSource, {}) ==
+            Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["buffer"].requested("overlap_update_buffer", "buffer");
+    inputs["overlap"].requested("overlap_update_overlap", "buffer");
+
+    Blocks::OverlapAdd config;
+    config.axis = 0;
+    REQUIRE(flowgraph->blockCreate("overlap_update", config, inputs) ==
+            Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    Parser::Map update;
+    update["axis"] = I64{1};
+    REQUIRE(flowgraph->blockReconfigure("overlap_update", update) == Result::ERROR);
+    REQUIRE(viewBlock("overlap_update").state == Block::State::Created);
+
+    Parser::Map saved;
+    REQUIRE(flowgraph->blockConfig("overlap_update", saved) == Result::SUCCESS);
+    REQUIRE(std::any_cast<I64>(saved.at("axis")) == config.axis);
+
+    Tensor output = viewBlock("overlap_update").outputs.at("buffer").tensor;
+    std::fill(output.data<F32>(), output.data<F32>() + output.size(), -1.0f);
+
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(output.shape() == Shape{4});
+    REQUIRE(output.at<F32>(0) == 2.0f);
+    REQUIRE(output.at<F32>(1) == 2.0f);
+    REQUIRE(output.at<F32>(2) == 1.0f);
+    REQUIRE(output.at<F32>(3) == 1.0f);
 }

@@ -6,7 +6,6 @@
 namespace Jetstream::Blocks {
 
 struct DuplicateImpl : public Block::Impl, public DynamicConfig<Blocks::Duplicate> {
-    Result validate() override;
     Result configure() override;
     Result define() override;
     Result create() override;
@@ -14,20 +13,6 @@ struct DuplicateImpl : public Block::Impl, public DynamicConfig<Blocks::Duplicat
  protected:
     std::shared_ptr<Modules::Duplicate> moduleConfig = std::make_shared<Modules::Duplicate>();
 };
-
-Result DuplicateImpl::validate() {
-    const auto& config = *candidate();
-
-    if (hostAccessible != config.hostAccessible) {
-        return Result::RECREATE;
-    }
-
-    if (outputDevice != config.outputDevice) {
-        return Result::RECREATE;
-    }
-
-    return Result::SUCCESS;
-}
 
 Result DuplicateImpl::configure() {
     moduleConfig->hostAccessible = hostAccessible;

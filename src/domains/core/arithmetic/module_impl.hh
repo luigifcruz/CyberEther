@@ -17,6 +17,7 @@ struct ArithmeticImpl : public Module::Impl,
     Tensor input;
     Tensor output;
     Tensor broadcastedOutput;
+    Index resolvedAxis = 0;
 };
 
 }  // namespace Jetstream::Modules

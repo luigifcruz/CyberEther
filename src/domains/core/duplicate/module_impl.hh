@@ -13,6 +13,7 @@ struct DuplicateImpl : public Module::Impl, public DynamicConfig<Duplicate> {
     Result create() override;
 
  protected:
+    DeviceType validatedTargetDevice = DeviceType::None;
     Tensor input;
     Tensor staging;
     Tensor output;

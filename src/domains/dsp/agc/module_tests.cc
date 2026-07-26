@@ -9,6 +9,27 @@
 
 using namespace Jetstream;
 
+namespace {
+
+void RequireAgcValidationError(const Registry::ModuleRegistration& impl) {
+    Tensor input;
+    REQUIRE(input.create(impl.device, DataType::U8, {16}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].requested("test", "signal");
+    inputs["signal"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("agc", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    Modules::Agc config;
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
+}  // namespace
+
 TEST_CASE("AGC - Normalizes CF32 peak", "[modules][agc][cf32]") {
     auto implementations = Registry::ListAvailableModules("agc");
     REQUIRE(!implementations.empty());
@@ -81,14 +102,7 @@ TEST_CASE("AGC - Rejects unsupported dtype", "[modules][agc][validation]") {
 
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
-            TestContext ctx("agc", impl.device, impl.runtime, impl.provider);
-            ctx.setConfig(Modules::Agc{});
-
-            Tensor input;
-            REQUIRE(input.create(DeviceType::CPU, DataType::U8, {16}) == Result::SUCCESS);
-
-            ctx.setInput("signal", input);
-            REQUIRE(ctx.run() == Result::ERROR);
+            RequireAgcValidationError(impl);
         }
     }
 }

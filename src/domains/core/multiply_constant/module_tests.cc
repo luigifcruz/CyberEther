@@ -7,6 +7,27 @@
 
 using namespace Jetstream;
 
+namespace {
+
+void RequireMultiplyConstantValidationError(const Registry::ModuleRegistration& impl) {
+    Tensor input;
+    REQUIRE(input.create(impl.device, DataType::U8, {16}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["factor"].requested("test", "factor");
+    inputs["factor"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("multiply_constant", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    Modules::MultiplyConstant config;
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
+}  // namespace
+
 TEST_CASE("MultiplyConstant Module - Basic F32", "[modules][multiply_constant][F32]") {
     auto implementations = Registry::ListAvailableModules("multiply_constant");
     REQUIRE(!implementations.empty());
@@ -205,6 +226,18 @@ TEST_CASE("MultiplyConstant Module - Zero Constant F32", "[modules][multiply_con
             for (U64 i = 0; i < 4; ++i) {
                 REQUIRE_THAT(out.at<F32>(i), Catch::Matchers::WithinAbs(0.0f, 1e-6f));
             }
+        }
+    }
+}
+
+TEST_CASE("MultiplyConstant Module - Rejects unsupported dtype during validation",
+          "[modules][multiply_constant][validation]") {
+    auto implementations = Registry::ListAvailableModules("multiply_constant");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            RequireMultiplyConstantValidationError(impl);
         }
     }
 }

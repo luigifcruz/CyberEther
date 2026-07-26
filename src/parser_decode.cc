@@ -1,5 +1,5 @@
 #include <cctype>
-#include <limits>
+#include <utility>
 
 #include "jetstream/parser.hh"
 #include "jetstream/memory/types.hh"
@@ -13,26 +13,6 @@ namespace Jetstream {
 // Helper Functions
 //
 
-template<typename T>
-static T StringToComplex(const std::string& s) {
-    using ST = typename NumericTypeInfo<T>::subtype;
-
-    ST real = 0.0;
-    ST imag = 0.0;
-    char op = '+';
-
-    std::stringstream ss(s);
-    ss >> real;      // Extract real part
-    ss >> op;        // Extract '+' or '-'
-    ss >> imag;      // Extract imaginary part
-
-    if (op == '-') {
-        imag = -imag;
-    }
-
-    return T(real, imag);
-}
-
 static bool StringIsNegative(const std::string& encoded) {
     for (const auto& ch : encoded) {
         if (std::isspace(static_cast<unsigned char>(ch))) {
@@ -41,6 +21,107 @@ static bool StringIsNegative(const std::string& encoded) {
         return ch == '-';
     }
     return false;
+}
+
+static bool StringIsFullyConsumed(const std::string& encoded, const std::size_t consumed) {
+    return std::all_of(encoded.begin() + static_cast<std::ptrdiff_t>(consumed),
+                       encoded.end(),
+                       [](const unsigned char ch) { return std::isspace(ch); });
+}
+
+template<typename T>
+static Result StringToInteger(const std::string& encoded, T& variable, const char* type) {
+    if constexpr (std::is_unsigned_v<T>) {
+        if (StringIsNegative(encoded)) {
+            JST_ERROR("[PARSER] Value '{}' is out of range for '{}'.", encoded, type);
+            return Result::ERROR;
+        }
+    }
+
+    std::size_t consumed = 0;
+    const auto value = [&] {
+        if constexpr (std::is_unsigned_v<T>) {
+            return std::stoull(encoded, &consumed);
+        } else if constexpr (sizeof(T) <= sizeof(int)) {
+            return std::stoi(encoded, &consumed);
+        } else {
+            return std::stoll(encoded, &consumed);
+        }
+    }();
+
+    if (!StringIsFullyConsumed(encoded, consumed)) {
+        JST_ERROR("[PARSER] Value '{}' is not a valid '{}'.", encoded, type);
+        return Result::ERROR;
+    }
+    if (!std::in_range<T>(value)) {
+        JST_ERROR("[PARSER] Value '{}' is out of range for '{}'.", encoded, type);
+        return Result::ERROR;
+    }
+
+    variable = static_cast<T>(value);
+    return Result::SUCCESS;
+}
+
+template<typename T>
+static Result StringToFloating(const std::string& encoded, T& variable, const char* type) {
+    std::size_t consumed = 0;
+    const T value = [&] {
+        if constexpr (std::is_same_v<T, F32>) {
+            return std::stof(encoded, &consumed);
+        } else {
+            return std::stod(encoded, &consumed);
+        }
+    }();
+
+    if (!StringIsFullyConsumed(encoded, consumed)) {
+        JST_ERROR("[PARSER] Value '{}' is not a valid '{}'.", encoded, type);
+        return Result::ERROR;
+    }
+
+    variable = value;
+    return Result::SUCCESS;
+}
+
+template<typename T>
+static Result StringToComplex(const std::string& encoded, T& variable) {
+    using ST = typename NumericTypeInfo<T>::subtype;
+
+    std::size_t realEnd = 0;
+    ST real = [&] {
+        if constexpr (std::is_same_v<ST, F32>) {
+            return std::stof(encoded, &realEnd);
+        } else {
+            return std::stod(encoded, &realEnd);
+        }
+    }();
+
+    const auto operatorPosition = std::find_if_not(
+        encoded.begin() + static_cast<std::ptrdiff_t>(realEnd),
+        encoded.end(),
+        [](const unsigned char ch) { return std::isspace(ch); });
+    if (operatorPosition == encoded.end() ||
+        (*operatorPosition != '+' && *operatorPosition != '-')) {
+        JST_ERROR("[PARSER] Value '{}' is not a valid complex number.", encoded);
+        return Result::ERROR;
+    }
+
+    const std::string imaginary = encoded.substr(
+        static_cast<std::size_t>(std::distance(encoded.begin(), operatorPosition)) + 1);
+    const auto imaginaryValue = std::find_if_not(
+        imaginary.begin(), imaginary.end(), [](const unsigned char ch) { return std::isspace(ch); });
+    if (imaginaryValue == imaginary.end() || *imaginaryValue == '+' || *imaginaryValue == '-') {
+        JST_ERROR("[PARSER] Value '{}' is not a valid complex number.", encoded);
+        return Result::ERROR;
+    }
+
+    ST imag = 0.0;
+    JST_CHECK(StringToFloating(imaginary, imag, "complex component"));
+    if (*operatorPosition == '-') {
+        imag = -imag;
+    }
+
+    variable = T(real, imag);
+    return Result::SUCCESS;
 }
 
 static std::string NormalizeListString(const std::string& encoded) {
@@ -57,6 +138,22 @@ static std::vector<std::string> ParseListValues(const std::string& encoded) {
     }
 
     return Parser::SplitString(normalized, ", ");
+}
+
+template<typename T>
+static Result StringToVector(const std::string& encoded, std::vector<T>& variable) {
+    const auto values = ParseListValues(encoded);
+    std::vector<T> candidate;
+    candidate.reserve(values.size());
+
+    for (const auto& encodedValue : values) {
+        T value{};
+        JST_CHECK(Parser::StringToTyped(encodedValue, value));
+        candidate.push_back(value);
+    }
+
+    variable = std::move(candidate);
+    return Result::SUCCESS;
 }
 
 std::vector<std::string> Parser::SplitString(const std::string& str, const std::string& delimiter) {
@@ -92,123 +189,81 @@ Result Parser::StringToTypedValue(const std::string& encoded, std::string& varia
 
 Result Parser::StringToTypedValue(const std::string& encoded, I8& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'I8'.");
-    const auto value = std::stoi(encoded);
-    if (value < std::numeric_limits<I8>::min() || value > std::numeric_limits<I8>::max()) {
-        JST_ERROR("[PARSER] Value '{}' is out of range for 'I8'.", encoded);
-        return Result::ERROR;
-    }
-    variable = static_cast<I8>(value);
-    return Result::SUCCESS;
+    return StringToInteger(encoded, variable, "I8");
 }
 
 Result Parser::StringToTypedValue(const std::string& encoded, I16& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'I16'.");
-    const auto value = std::stoi(encoded);
-    if (value < std::numeric_limits<I16>::min() || value > std::numeric_limits<I16>::max()) {
-        JST_ERROR("[PARSER] Value '{}' is out of range for 'I16'.", encoded);
-        return Result::ERROR;
-    }
-    variable = static_cast<I16>(value);
-    return Result::SUCCESS;
+    return StringToInteger(encoded, variable, "I16");
 }
 
 Result Parser::StringToTypedValue(const std::string& encoded, I32& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'I32'.");
-    variable = std::stoi(encoded);
-    return Result::SUCCESS;
+    return StringToInteger(encoded, variable, "I32");
 }
 
 Result Parser::StringToTypedValue(const std::string& encoded, U8& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'U8'.");
-    if (StringIsNegative(encoded)) {
-        JST_ERROR("[PARSER] Value '{}' is out of range for 'U8'.", encoded);
-        return Result::ERROR;
-    }
-    const auto value = std::stoull(encoded);
-    if (value > std::numeric_limits<U8>::max()) {
-        JST_ERROR("[PARSER] Value '{}' is out of range for 'U8'.", encoded);
-        return Result::ERROR;
-    }
-    variable = static_cast<U8>(value);
-    return Result::SUCCESS;
+    return StringToInteger(encoded, variable, "U8");
 }
 
 Result Parser::StringToTypedValue(const std::string& encoded, U16& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'U16'.");
-    if (StringIsNegative(encoded)) {
-        JST_ERROR("[PARSER] Value '{}' is out of range for 'U16'.", encoded);
-        return Result::ERROR;
-    }
-    const auto value = std::stoull(encoded);
-    if (value > std::numeric_limits<U16>::max()) {
-        JST_ERROR("[PARSER] Value '{}' is out of range for 'U16'.", encoded);
-        return Result::ERROR;
-    }
-    variable = static_cast<U16>(value);
-    return Result::SUCCESS;
+    return StringToInteger(encoded, variable, "U16");
 }
 
 Result Parser::StringToTypedValue(const std::string& encoded, U32& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'U32'.");
-    if (StringIsNegative(encoded)) {
-        JST_ERROR("[PARSER] Value '{}' is out of range for 'U32'.", encoded);
-        return Result::ERROR;
-    }
-    const auto value = std::stoull(encoded);
-    if (value > std::numeric_limits<U32>::max()) {
-        JST_ERROR("[PARSER] Value '{}' is out of range for 'U32'.", encoded);
-        return Result::ERROR;
-    }
-    variable = static_cast<U32>(value);
-    return Result::SUCCESS;
+    return StringToInteger(encoded, variable, "U32");
 }
 
 Result Parser::StringToTypedValue(const std::string& encoded, I64& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'I64'.");
-    variable = std::stoll(encoded);
-    return Result::SUCCESS;
+    return StringToInteger(encoded, variable, "I64");
 }
 
 Result Parser::StringToTypedValue(const std::string& encoded, U64& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'U64'.");
-    if (StringIsNegative(encoded)) {
-        JST_ERROR("[PARSER] Value '{}' is out of range for 'U64'.", encoded);
-        return Result::ERROR;
-    }
-    variable = std::stoull(encoded);
-    return Result::SUCCESS;
+    return StringToInteger(encoded, variable, "U64");
 }
 
 Result Parser::StringToTypedValue(const std::string& encoded, F32& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'F32'.");
-    variable = std::stof(encoded);
-    return Result::SUCCESS;
+    return StringToFloating(encoded, variable, "F32");
 }
 
 Result Parser::StringToTypedValue(const std::string& encoded, F64& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'F64'.");
-    variable = std::stod(encoded);
-    return Result::SUCCESS;
+    return StringToFloating(encoded, variable, "F64");
 }
 
 Result Parser::StringToTypedValue(const std::string& encoded, CF32& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'CF32'.");
-    variable = StringToComplex<CF32>(encoded);
-    return Result::SUCCESS;
+    return StringToComplex(encoded, variable);
 }
 
 Result Parser::StringToTypedValue(const std::string& encoded, CF64& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'CF64'.");
-    variable = StringToComplex<CF64>(encoded);
-    return Result::SUCCESS;
+    return StringToComplex(encoded, variable);
 }
 
 Result Parser::StringToTypedValue(const std::string& encoded, bool& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'bool'.");
-    std::string lower_s = encoded;
-    std::transform(lower_s.begin(), lower_s.end(), lower_s.begin(), ::tolower);
-    variable = (lower_s == "true" || lower_s == "1");
-    return Result::SUCCESS;
+    std::string normalized = encoded;
+    std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](const unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    if (normalized == "true" || normalized == "1") {
+        variable = true;
+        return Result::SUCCESS;
+    }
+    if (normalized == "false" || normalized == "0") {
+        variable = false;
+        return Result::SUCCESS;
+    }
+
+    JST_ERROR("[PARSER] Value '{}' is not a valid 'bool'.", encoded);
+    return Result::ERROR;
 }
 
 Result Parser::StringToTypedValue(const std::string& encoded, DeviceType& variable) {
@@ -231,56 +286,37 @@ Result Parser::StringToTypedValue(const std::string& encoded, SchedulerType& var
 
 Result Parser::StringToTypedValue(const std::string& encoded, std::vector<U64>& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'std::vector<U64>'.");
-    const auto values = ParseListValues(encoded);
-    variable.clear();
-    variable.reserve(values.size());
-    for (const auto& value : values) {
-        if (StringIsNegative(value)) {
-            JST_ERROR("[PARSER] Value '{}' is out of range for 'std::vector<U64>'.", value);
-            return Result::ERROR;
-        }
-        variable.push_back(std::stoull(value));
-    }
-    return Result::SUCCESS;
+    return StringToVector(encoded, variable);
 }
 
 Result Parser::StringToTypedValue(const std::string& encoded, std::vector<F64>& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'std::vector<F64>'.");
-    const auto values = ParseListValues(encoded);
-    variable = std::vector<F64>(values.size());
-    std::transform(values.begin(), values.end(), variable.begin(), [](const std::string& s){ return std::stod(s); });
-    return Result::SUCCESS;
+    return StringToVector(encoded, variable);
 }
 
 Result Parser::StringToTypedValue(const std::string& encoded, std::vector<F32>& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'std::vector<F32>'.");
-    const auto values = ParseListValues(encoded);
-    variable = std::vector<F32>(values.size());
-    std::transform(values.begin(), values.end(), variable.begin(), [](const std::string& s){ return std::stof(s); });
-    return Result::SUCCESS;
+    return StringToVector(encoded, variable);
 }
 
 Result Parser::StringToTypedValue(const std::string& encoded, std::vector<CF32>& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'std::vector<CF32>'.");
-    const auto values = ParseListValues(encoded);
-    variable = std::vector<CF32>(values.size());
-    std::transform(values.begin(), values.end(), variable.begin(), [](const std::string& s){ return StringToComplex<CF32>(s); });
-    return Result::SUCCESS;
+    return StringToVector(encoded, variable);
 }
 
 Result Parser::StringToTypedValue(const std::string& encoded, std::vector<CF64>& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'std::vector<CF64>'.");
-    const auto values = ParseListValues(encoded);
-    variable = std::vector<CF64>(values.size());
-    std::transform(values.begin(), values.end(), variable.begin(), [](const std::string& s){ return StringToComplex<CF64>(s); });
-    return Result::SUCCESS;
+    return StringToVector(encoded, variable);
 }
 
 Result Parser::StringToTypedValue(const std::string& encoded, Range<F32>& variable) {
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'Range<F32>'.");
     const auto values = ParseListValues(encoded);
     JST_ASSERT(values.size() == 2, "Unexpected number of values.");
-    variable = Range<F32>{std::stof(values[0]), std::stof(values[1])};
+    Range<F32> candidate{};
+    JST_CHECK(Parser::StringToTyped(values[0], candidate.min));
+    JST_CHECK(Parser::StringToTyped(values[1], candidate.max));
+    variable = candidate;
     return Result::SUCCESS;
 }
 
@@ -288,11 +324,10 @@ Result Parser::StringToTypedValue(const std::string& encoded, Extent2D<U64>& var
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'Extent2D<U64>'.");
     const auto values = ParseListValues(encoded);
     JST_ASSERT(values.size() == 2, "Unexpected number of values.");
-    if (StringIsNegative(values[0]) || StringIsNegative(values[1])) {
-        JST_ERROR("[PARSER] Value '{}' is out of range for 'Extent2D<U64>'.", encoded);
-        return Result::ERROR;
-    }
-    variable = Extent2D<U64>{std::stoull(values[0]), std::stoull(values[1])};
+    Extent2D<U64> candidate{};
+    JST_CHECK(Parser::StringToTyped(values[0], candidate.x));
+    JST_CHECK(Parser::StringToTyped(values[1], candidate.y));
+    variable = candidate;
     return Result::SUCCESS;
 }
 
@@ -300,7 +335,10 @@ Result Parser::StringToTypedValue(const std::string& encoded, Extent2D<F32>& var
     JST_TRACE("Deserializing: Trying to convert 'std::any' into 'Extent2D<F32>'.");
     const auto values = ParseListValues(encoded);
     JST_ASSERT(values.size() == 2, "Unexpected number of values.");
-    variable = Extent2D<F32>{std::stof(values[0]), std::stof(values[1])};
+    Extent2D<F32> candidate{};
+    JST_CHECK(Parser::StringToTyped(values[0], candidate.x));
+    JST_CHECK(Parser::StringToTyped(values[1], candidate.y));
+    variable = candidate;
     return Result::SUCCESS;
 }
 

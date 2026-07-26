@@ -30,6 +30,7 @@ struct Instance::Remote::Impl {
     bool supported() const;
     Result create(const Instance::Remote::Config& config);
     Result destroy();
+    Result rollbackCreate();
     Result captureFrame();
     Result approveClient(const std::string& code);
 
@@ -91,6 +92,7 @@ struct Instance::Remote::Impl {
     std::unique_ptr<httplib::ws::WebSocketClient> signallerClient;
     std::thread signallerThread;
     std::atomic<bool> signallerRunning = false;
+    std::atomic<socket_t> signallerSocket = INVALID_SOCKET;
     std::mutex signallerMutex;
 
     struct WebRtcSession {

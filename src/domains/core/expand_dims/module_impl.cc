@@ -4,6 +4,28 @@
 
 namespace Jetstream::Modules {
 
+Result ExpandDimsImpl::validate() {
+    if (!inputs().contains("buffer")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("buffer").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    const auto& config = *candidate();
+    const auto candidateAxis = ResolveInsertionAxis(config.axis, inputTensor.rank());
+    if (!candidateAxis) {
+        JST_ERROR("[MODULE_EXPAND_DIMS] Axis {} out of range for tensor with {} dimensions.",
+                  config.axis, inputTensor.rank());
+        return Result::ERROR;
+    }
+
+    resolvedAxis = *candidateAxis;
+    return Result::SUCCESS;
+}
+
 Result ExpandDimsImpl::define() {
     JST_CHECK(defineInterfaceInput("buffer"));
     JST_CHECK(defineInterfaceOutput("buffer"));
@@ -13,14 +35,6 @@ Result ExpandDimsImpl::define() {
 
 Result ExpandDimsImpl::create() {
     const Tensor& inputTensor = inputs().at("buffer").tensor;
-
-    const auto maybeResolvedAxis = ResolveInsertionAxis(axis, inputTensor.rank());
-    if (!maybeResolvedAxis) {
-        JST_ERROR("[MODULE_EXPAND_DIMS] Axis {} out of range for tensor with {} dimensions.",
-                  axis, inputTensor.rank());
-        return Result::ERROR;
-    }
-    const Index resolvedAxis = *maybeResolvedAxis;
 
     input = inputTensor;
     output = input;

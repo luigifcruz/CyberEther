@@ -8,12 +8,19 @@ namespace Jetstream::Modules {
 
 struct MultiplyImpl : public Module::Impl, public DynamicConfig<Multiply> {
  public:
+    Result validate() override;
     Result define() override;
     Result create() override;
     Result destroy() override;
     Result reconfigure() override;
 
  protected:
+    Tensor validatedA;
+    Tensor validatedB;
+    Shape validatedOutputShape;
+    U64 validatedOutputElementCount = 0;
+    U64 validatedOutputSizeBytes = 0;
+
     Tensor a;
     Tensor b;
     Tensor c;

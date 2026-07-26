@@ -24,6 +24,9 @@ static constexpr F64 CprDlatOdd  = 360.0 / 59.0;
 static constexpr F64 CprMaxVal   = 131072.0;  // 2^17
 static constexpr U64 CprPairWindowMs = 10000;
 
+// libmodes requires enough data for one complete Mode S message.
+static constexpr U64 ModeSMinimumSamples = 240;
+
 static F64 cprMod(F64 a, F64 b) {
     F64 res = std::fmod(a, b);
     if (res < 0.0) {
@@ -115,6 +118,7 @@ struct AdsbImplNativeCpu : public AdsbImpl,
                            public NativeCpuRuntimeContext,
                            public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
     Result destroy() final;
 
@@ -131,6 +135,39 @@ struct AdsbImplNativeCpu : public AdsbImpl,
 };
 
 static thread_local AdsbImplNativeCpu* tls_instance = nullptr;
+
+Result AdsbImplNativeCpu::validate() {
+    JST_CHECK(AdsbImpl::validate());
+
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::CF32) {
+        JST_ERROR("[MODULE_ADSB_NATIVE_CPU] Unsupported input data "
+                  "type: {}.", inputTensor.dtype());
+        return Result::ERROR;
+    }
+
+    if (inputTensor.size() < ModeSMinimumSamples) {
+        JST_ERROR("[MODULE_ADSB_NATIVE_CPU] Input requires at least {} samples.",
+                  ModeSMinimumSamples);
+        return Result::ERROR;
+    }
+
+    if (inputTensor.size() > std::numeric_limits<U32>::max()) {
+        JST_ERROR("[MODULE_ADSB_NATIVE_CPU] Input size exceeds the libmodes "
+                  "sample-count range.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
 
 void AdsbImplNativeCpu::messageCallback(mode_s_t*, struct mode_s_msg* mm) {
     if (!tls_instance || !mm->crcok) {
@@ -224,14 +261,6 @@ Result AdsbImplNativeCpu::create() {
     // Create parent.
 
     JST_CHECK(AdsbImpl::create());
-
-    // Validate input dtype.
-
-    if (input.dtype() != DataType::CF32) {
-        JST_ERROR("[MODULE_ADSB_NATIVE_CPU] Unsupported input data "
-                  "type: {}.", input.dtype());
-        return Result::ERROR;
-    }
 
     // Initialize libmodes.
 

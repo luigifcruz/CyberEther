@@ -10,21 +10,11 @@
 #include <filesystem>
 #endif
 
-#include <algorithm>
-
 #include <onnxruntime_cxx_api.h>
 
 namespace Jetstream::Blocks {
 
 namespace {
-
-bool HasProvider(const std::vector<std::string>& providers, const std::string& name) {
-    return std::find(providers.begin(), providers.end(), name) != providers.end();
-}
-
-bool IsExecutionProvider(const std::string& name) {
-    return name == "cpu" || name == "coreml" || name == "tensorrt";
-}
 
 std::string FormatShape(const std::vector<int64_t>& shape) {
     std::vector<std::string> dims;
@@ -33,25 +23,6 @@ std::string FormatShape(const std::vector<int64_t>& shape) {
         dims.push_back(dim < 0 ? "?" : jst::fmt::format("{}", dim));
     }
     return jst::fmt::format("[{}]", jst::fmt::join(dims, ", "));
-}
-
-std::string ExecutionProviderDropdown() {
-    std::vector<std::string> options{"cpu(CPU)"};
-
-    try {
-        const auto providers = Ort::GetAvailableProviders();
-        if (HasProvider(providers, "CoreMLExecutionProvider")) {
-            options.emplace_back("coreml(Core ML)");
-        }
-        if (HasProvider(providers, "TensorrtExecutionProvider") &&
-            HasProvider(providers, "CUDAExecutionProvider")) {
-            options.emplace_back("tensorrt(TensorRT)");
-        }
-    } catch (const Ort::Exception& e) {
-        JST_ERROR("[BLOCK_ONNX_INFERENCE] Failed to enumerate ONNX Runtime providers: {}", e.what());
-    }
-
-    return jst::fmt::format("dropdown:{}", jst::fmt::join(options, ","));
 }
 
 }  // namespace
@@ -169,11 +140,6 @@ Result OnnxInferenceImpl::readModelTensorNames() {
 Result OnnxInferenceImpl::validate() {
     const auto& config = *candidate();
 
-    if (!IsExecutionProvider(config.executionProvider)) {
-        JST_ERROR("[BLOCK_ONNX_INFERENCE] Unknown execution provider '{}'.", config.executionProvider);
-        return Result::ERROR;
-    }
-
     if (modelPath != config.modelPath ||
         executionProvider != config.executionProvider) {
         return Result::RECREATE;
@@ -220,7 +186,8 @@ Result OnnxInferenceImpl::define() {
     JST_CHECK(defineInterfaceConfig("executionProvider",
                                     "Execution Provider",
                                     "Execution backend for running the ONNX model.",
-                                    ExecutionProviderDropdown()));
+                                    "dropdown:cpu(CPU),coreml(Core ML),"
+                                    "tensorrt(TensorRT)"));
 
     return Result::SUCCESS;
 }

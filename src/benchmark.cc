@@ -13,6 +13,29 @@
 
 namespace Jetstream {
 
+namespace {
+
+class LogLevelGuard {
+ public:
+    explicit LogLevelGuard(int level) : previous_(_JST_LOG_DEBUG_LEVEL()) {
+        JST_LOG_SET_DEBUG_LEVEL(level);
+    }
+
+    LogLevelGuard(const LogLevelGuard&) = delete;
+    LogLevelGuard& operator=(const LogLevelGuard&) = delete;
+
+    ~LogLevelGuard() {
+        JST_LOG_SET_DEBUG_LEVEL(previous_);
+    }
+
+ private:
+    int previous_;
+};
+
+struct ComputeFailed {};
+
+}  // namespace
+
 struct Benchmark::Impl {
     void run(const std::string& outputType,
              const std::string& blockType,
@@ -44,8 +67,7 @@ void Benchmark::Impl::run(const std::string& outputType,
         JST_CHECK_THROW(Result::FATAL);
     }
 
-    const int previousLogLevel = _JST_LOG_DEBUG_LEVEL();
-    JST_LOG_SET_DEBUG_LEVEL(-1);
+    LogLevelGuard logLevel(-1);
 
     resetResults();
 
@@ -128,11 +150,17 @@ void Benchmark::Impl::run(const std::string& outputType,
 
                 const std::string benchName = spec.variant;
 
-                bench.run(benchName, [&]() {
-                    std::unordered_set<std::string> skippedModules;
-                    std::unordered_set<std::string> failedModules;
-                    runtime.compute({}, skippedModules, failedModules);
-                });
+                try {
+                    bench.run(benchName, [&]() {
+                        std::unordered_set<std::string> skippedModules;
+                        std::unordered_set<std::string> failedModules;
+                        if (runtime.compute({}, skippedModules, failedModules) != Result::SUCCESS) {
+                            throw ComputeFailed{};
+                        }
+                    });
+                } catch (const ComputeFailed&) {
+                    // Aborted cases intentionally leave no nanobench result.
+                }
 
                 runtime.destroy();
                 module->destroy();
@@ -159,7 +187,6 @@ void Benchmark::Impl::run(const std::string& outputType,
         }
     }
 
-    JST_LOG_SET_DEBUG_LEVEL(previousLogLevel);
 }
 
 U64 Benchmark::Impl::totalCount(const std::string& blockType) {

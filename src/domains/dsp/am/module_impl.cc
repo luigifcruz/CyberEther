@@ -7,12 +7,13 @@ namespace Jetstream::Modules {
 Result AmImpl::validate() {
     const auto& config = *candidate();
 
-    if (config.sampleRate <= 0.0f) {
-        JST_ERROR("[MODULE_AM] Sample rate must be positive.");
+    if (!std::isfinite(config.sampleRate) || config.sampleRate <= 0.0f) {
+        JST_ERROR("[MODULE_AM] Sample rate must be finite and positive.");
         return Result::ERROR;
     }
 
-    if (config.dcAlpha < 0.0f || config.dcAlpha >= 1.0f) {
+    if (!std::isfinite(config.dcAlpha) ||
+        config.dcAlpha < 0.0f || config.dcAlpha >= 1.0f) {
         JST_ERROR("[MODULE_AM] DC alpha must be in range [0, 1).");
         return Result::ERROR;
     }

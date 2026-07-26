@@ -25,6 +25,8 @@ Result Block::create(const std::string& name,
                "[BLOCK] Cannot create block '{}' in state '{}'.", name, impl->_state);
     JST_ASSERT(context != nullptr, "[BLOCK] Cannot create block '{}' without a context.", name);
 
+    impl->_diagnostic.clear();
+
     // Set implementation variables.
 
     impl->_state = State::Creating;
@@ -132,7 +134,7 @@ Result Block::create(const std::string& name,
 
         while (!impl->_moduleOrder.empty()) {
             const auto moduleName = impl->_moduleOrder.back();
-            const auto result = impl->moduleDestroy(moduleName);
+            const auto result = impl->moduleDestroy(moduleName, false);
             if (result != Result::SUCCESS && result != Result::RELOAD && cleanupResult == Result::SUCCESS) {
                 cleanupResult = result;
             }
@@ -202,6 +204,12 @@ Result Block::destroy() {
                  impl->_name, impl->_modules.size());
     }
 
+    const auto result = impl->destroy();
+    if (result != Result::SUCCESS && result != Result::RELOAD) {
+        impl->_state = State::Errored;
+        return result;
+    }
+
     impl->_state = State::Destroyed;
 
     return Result::SUCCESS;
@@ -228,39 +236,86 @@ Result Block::reconfigure(const Parser::Map& config) {
 
     JST_CHECK(impl->validate());
 
+    const auto failReconfiguration = [&](const Result result) {
+        impl->_diagnostic = JST_LOG_LAST_ERROR();
+        impl->_state = State::Errored;
+        return result;
+    };
+
     // Backup previous configuration and commit.
 
     Parser::Map previousConfig;
-    JST_CHECK(impl->_stagedConfig->serialize(previousConfig));
-    JST_CHECK(impl->_stagedConfig->deserialize(config));
+    {
+        const auto result = impl->_stagedConfig->serialize(previousConfig);
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return result == Result::RECREATE ? result : failReconfiguration(result);
+        }
+    }
+    {
+        const auto result = impl->_stagedConfig->deserialize(config);
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return result == Result::RECREATE ? result : failReconfiguration(result);
+        }
+    }
 
     // Run block configuration.
 
-    JST_CHECK(impl->configure());
+    {
+        const auto result = impl->configure();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return result == Result::RECREATE ? result : failReconfiguration(result);
+        }
+    }
 
     // Validate all internal modules configurations.
 
     for (const auto& module : impl->_moduleOrder) {
-        if (impl->moduleReconfigure(module, true) != Result::SUCCESS) {
+        const auto validationResult = impl->moduleReconfigure(module, true);
+        if (validationResult != Result::SUCCESS && validationResult != Result::RELOAD) {
             // Failed, reverting block to previous state.
 
-            JST_CHECK(impl->_stagedConfig->deserialize(previousConfig));
-            JST_CHECK(impl->configure());
-            return Result::ERROR;
+            const auto restoreConfigResult = impl->_stagedConfig->deserialize(previousConfig);
+            if (restoreConfigResult != Result::SUCCESS && restoreConfigResult != Result::RELOAD) {
+                JST_ERROR("[BLOCK] Failed to restore block '{}' after child validation failure.", impl->_name);
+                failReconfiguration(restoreConfigResult);
+                return validationResult;
+            }
+
+            const auto restoreSourcesResult = impl->configure();
+            if (restoreSourcesResult != Result::SUCCESS && restoreSourcesResult != Result::RELOAD) {
+                JST_ERROR("[BLOCK] Failed to restore child configuration sources for block '{}'.", impl->_name);
+                failReconfiguration(restoreSourcesResult);
+                return validationResult;
+            }
+
+            return validationResult;
         }
     }
 
     // Reconfigure all internal modules.
 
     for (const auto& module : impl->_moduleOrder) {
-        JST_CHECK(impl->moduleReconfigure(module));
+        const auto result = impl->moduleReconfigure(module);
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return result == Result::RECREATE ? result : failReconfiguration(result);
+        }
     }
 
     // Refresh interface.
 
     impl->_interface = std::make_shared<Interface>();
-    JST_CHECK(impl->define());
-    JST_CHECK(impl->defineModuleTiming());
+    {
+        const auto result = impl->define();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return result == Result::RECREATE ? result : failReconfiguration(result);
+        }
+    }
+    {
+        const auto result = impl->defineModuleTiming();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return result == Result::RECREATE ? result : failReconfiguration(result);
+        }
+    }
 
     return Result::SUCCESS;
 }

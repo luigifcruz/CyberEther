@@ -2,12 +2,15 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
+#include <limits>
 #include <numeric>
 #include <stdexcept>
 #include <unordered_set>
 #include <vector>
 
 #include "jetstream/domains/visualization/waterfall/module.hh"
+#include "jetstream/module_interface.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/runtime.hh"
 #include "jetstream/testing.hh"
@@ -53,6 +56,36 @@ std::vector<F32> ReadFrequencyBins(const std::shared_ptr<Module>& module) {
 
     const F32* data = readableFrequencyBins->data<F32>();
     return {data, data + readableFrequencyBins->size()};
+}
+
+void RequireWaterfallValidationError(const Registry::ModuleRegistration& impl,
+                                     const Modules::Waterfall& config,
+                                     const DataType dtype,
+                                     const Shape& shape,
+                                     const bool broadcast = false) {
+    Tensor input;
+    if (broadcast) {
+        REQUIRE(input.create(impl.device, dtype, Shape(shape.size(), 1)) ==
+                Result::SUCCESS);
+        REQUIRE(input.broadcastTo(shape) == Result::SUCCESS);
+    } else if (shape.empty()) {
+        REQUIRE(input.create(impl.device, dtype, {1}) == Result::SUCCESS);
+        REQUIRE(input.squeezeDims(0) == Result::SUCCESS);
+    } else {
+        REQUIRE(input.create(impl.device, dtype, shape) == Result::SUCCESS);
+    }
+
+    TensorMap inputs;
+    inputs["signal"].requested("test", "signal");
+    inputs["signal"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("waterfall", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->interface()->inputs().empty());
+    REQUIRE(module->outputs().empty());
 }
 
 void ApplyReferenceRows(std::vector<F32>& ring,
@@ -276,39 +309,92 @@ TEST_CASE("Waterfall module rejects invalid config and inputs",
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
             SECTION("height must be in range") {
-                TestContext ctx("waterfall", impl.device, impl.runtime, impl.provider);
-                Tensor input;
-                REQUIRE(input.create(DeviceType::CPU, DataType::F32, {32}) ==
-                        Result::SUCCESS);
-                ctx.setInput("signal", input);
-
                 Modules::Waterfall config;
                 config.height = 0;
-                ctx.setConfig(config);
-                REQUIRE(ctx.run() == Result::ERROR);
+                RequireWaterfallValidationError(impl, config, DataType::F32, {32});
 
                 config.height = 2049;
-                ctx.setConfig(config);
-                REQUIRE(ctx.run() == Result::ERROR);
+                RequireWaterfallValidationError(impl, config, DataType::F32, {32});
             }
 
             SECTION("dtype must be F32") {
-                TestContext ctx("waterfall", impl.device, impl.runtime, impl.provider);
-                Tensor input;
-                REQUIRE(input.create(DeviceType::CPU, DataType::CF32, {32}) ==
-                        Result::SUCCESS);
-                ctx.setInput("signal", input);
-                REQUIRE(ctx.run() == Result::ERROR);
+                RequireWaterfallValidationError(impl, Modules::Waterfall{},
+                                                DataType::CF32, {32});
             }
 
             SECTION("rank must be one or two") {
-                TestContext ctx("waterfall", impl.device, impl.runtime, impl.provider);
-                Tensor input;
-                REQUIRE(input.create(DeviceType::CPU, DataType::F32, {2, 2, 2}) ==
-                        Result::SUCCESS);
-                ctx.setInput("signal", input);
-                REQUIRE(ctx.run() == Result::ERROR);
+                RequireWaterfallValidationError(impl, Modules::Waterfall{},
+                                                DataType::F32, {});
+                RequireWaterfallValidationError(impl, Modules::Waterfall{},
+                                                DataType::F32, {2, 2, 2});
             }
+
+            SECTION("logical render size must be supported") {
+                const U64 maxRenderBinCount = std::min({
+                    static_cast<U64>(std::numeric_limits<I32>::max()),
+                    static_cast<U64>(std::numeric_limits<std::size_t>::max()) /
+                        sizeof(F32),
+                    static_cast<U64>(std::numeric_limits<std::ptrdiff_t>::max()) /
+                        sizeof(F32),
+                });
+                Modules::Waterfall config;
+                config.height = 2;
+                const Shape shape = {maxRenderBinCount / config.height + 1};
+                RequireWaterfallValidationError(impl, config, DataType::F32,
+                                                shape, true);
+            }
+        }
+    }
+}
+
+TEST_CASE("Waterfall module reconfigure preserves live state on rejection",
+          "[modules][waterfall][validation][reconfigure]") {
+    const auto implementations = Registry::ListAvailableModules("waterfall");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Tensor input;
+            REQUIRE(input.create(impl.device, DataType::F32, {2, 8}) ==
+                    Result::SUCCESS);
+
+            TensorMap inputs;
+            inputs["signal"].requested("test", "signal");
+            inputs["signal"].tensor = input;
+
+            std::shared_ptr<Module> module;
+            REQUIRE(Registry::BuildModule("waterfall", impl.device, impl.runtime,
+                                          impl.provider, module) == Result::SUCCESS);
+
+            Modules::Waterfall config;
+            config.height = 4;
+            config.interpolate = true;
+            REQUIRE(module->create("test", config, inputs) == Result::SUCCESS);
+
+            Parser::Map update;
+            update["height"] = config.height;
+            update["interpolate"] = false;
+            REQUIRE(module->reconfigure(update) == Result::SUCCESS);
+            const auto& applied =
+                static_cast<const Modules::Waterfall&>(module->config());
+            REQUIRE(applied.height == config.height);
+            REQUIRE_FALSE(applied.interpolate);
+
+            Parser::Map recreate;
+            recreate["height"] = U64{8};
+            recreate["interpolate"] = true;
+            REQUIRE(module->reconfigure(recreate) == Result::RECREATE);
+            REQUIRE(applied.height == config.height);
+            REQUIRE_FALSE(applied.interpolate);
+
+            Parser::Map rejected;
+            rejected["height"] = U64{0};
+            rejected["interpolate"] = true;
+            REQUIRE(module->reconfigure(rejected) == Result::ERROR);
+            REQUIRE(module->state() == Module::State::CREATED);
+            REQUIRE(applied.height == config.height);
+            REQUIRE_FALSE(applied.interpolate);
+            REQUIRE(module->destroy() == Result::SUCCESS);
         }
     }
 }

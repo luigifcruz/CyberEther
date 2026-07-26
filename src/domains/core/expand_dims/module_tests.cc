@@ -7,6 +7,30 @@
 
 using namespace Jetstream;
 
+namespace {
+
+void RequireExpandDimsValidationError(const Registry::ModuleRegistration& impl,
+                                      const I64 axis) {
+    Tensor input;
+    REQUIRE(input.create(impl.device, DataType::F32, {4}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["buffer"].requested("test", "buffer");
+    inputs["buffer"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("expand_dims", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+
+    Modules::ExpandDims config;
+    config.axis = axis;
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
+}  // namespace
+
 TEST_CASE("ExpandDims Module - Expand 1D to 2D at axis 0 F32", "[modules][expand_dims][F32]") {
     auto implementations = Registry::ListAvailableModules("expand_dims");
     REQUIRE(!implementations.empty());
@@ -194,17 +218,7 @@ TEST_CASE("ExpandDims Module - Axis Out of Range Error", "[modules][expand_dims]
         for (const I64 axis : {I64{5}, I64{-3}}) {
             DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime
                             << " Axis: " << axis) {
-                TestContext ctx("expand_dims", impl.device, impl.runtime, impl.provider);
-
-                Modules::ExpandDims config;
-                config.axis = axis;
-
-                ctx.setConfig(config);
-
-                auto input = ctx.createTensor<F32>({4});
-                ctx.setInput("buffer", input);
-
-                REQUIRE(ctx.run() == Result::ERROR);
+                RequireExpandDimsValidationError(impl, axis);
             }
         }
     }

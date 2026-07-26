@@ -122,30 +122,54 @@ Result NativeCudaRuntime::destroy() {
 
     // Deinitalize modules.
 
-    for (auto& [name, module] : modulesMap) {
+    Result result = Result::SUCCESS;
+    for (auto it = moduleNames.rbegin(); it != moduleNames.rend(); ++it) {
+        const auto& name = *it;
+        const auto& module = modulesMap.at(name);
+
         // Deinitialize module.
 
-        JST_CHECK(getRuntimeContext(module)->computeDeinitialize());
+        const auto deinitializeResult =
+            getRuntimeContext(module)->computeDeinitialize();
+        if (result == Result::SUCCESS && deinitializeResult != Result::SUCCESS &&
+            deinitializeResult != Result::RELOAD) {
+            result = deinitializeResult;
+        }
 
         // Destroy events.
 
-        auto& [startEvent, endEvent] = eventMap[name];
+        auto& [startEvent, endEvent] = eventMap.at(name);
 
-        JST_CUDA_CHECK(cudaEventDestroy(startEvent), [&]{
-            JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Can't destroy start event for '{}': {}", name, err);
-        });
+        const auto startEventResult = cudaEventDestroy(startEvent);
+        if (startEventResult != cudaSuccess) {
+            if (result == Result::SUCCESS) {
+                result = Result::ERROR;
+            }
+            JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Can't destroy start event for '{}': {}",
+                      name, cudaGetErrorString(startEventResult));
+        }
 
-        JST_CUDA_CHECK(cudaEventDestroy(endEvent), [&]{
-            JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Can't destroy end event for '{}': {}", name, err);
-        });
+        const auto endEventResult = cudaEventDestroy(endEvent);
+        if (endEventResult != cudaSuccess) {
+            if (result == Result::SUCCESS) {
+                result = Result::ERROR;
+            }
+            JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Can't destroy end event for '{}': {}",
+                      name, cudaGetErrorString(endEventResult));
+        }
     }
 
     // Destroy stream.
 
     if (stream != nullptr) {
-        JST_CUDA_CHECK(cudaStreamDestroy(stream), [&]{
-            JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Can't destroy stream: {}", err);
-        });
+        const auto streamResult = cudaStreamDestroy(stream);
+        if (streamResult != cudaSuccess) {
+            if (result == Result::SUCCESS) {
+                result = Result::ERROR;
+            }
+            JST_ERROR("[RUNTIME_IMPL_NATIVE_CUDA] Can't destroy stream: {}",
+                      cudaGetErrorString(streamResult));
+        }
         stream = nullptr;
     }
 
@@ -155,7 +179,7 @@ Result NativeCudaRuntime::destroy() {
     moduleNames.clear();
     eventMap.clear();
 
-    return Result::SUCCESS;
+    return result;
 }
 
 Result NativeCudaRuntime::compute(const std::vector<std::string>& modules,

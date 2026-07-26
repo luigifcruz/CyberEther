@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -13,6 +14,7 @@
 #include "jetstream/detail/instance_remote_supervisor.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/instance_remote.hh"
+#include "jetstream/platform.hh"
 #include "jetstream/plugin.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/backend/base.hh"
@@ -21,6 +23,46 @@
 namespace Jetstream {
 
 namespace {
+
+std::atomic_flag shutdownRequested = ATOMIC_FLAG_INIT;
+
+void HandleInterrupt() noexcept {
+    constexpr char ShutdownMessage[] =
+        "\n[CYBERETHER] Shutdown requested. Press Ctrl+C again to force termination.\n";
+    constexpr char ForceShutdownMessage[] =
+        "\n[CYBERETHER] Forcing immediate shutdown.\n";
+
+    if (!shutdownRequested.test_and_set(std::memory_order_relaxed)) {
+        Platform::WriteInterruptMessage(ShutdownMessage, sizeof(ShutdownMessage) - 1);
+        return;
+    }
+
+    Platform::WriteInterruptMessage(ForceShutdownMessage, sizeof(ForceShutdownMessage) - 1);
+    Platform::ForceTerminate(130);
+}
+
+class InterruptHandlerGuard {
+ public:
+    InterruptHandlerGuard() {
+        shutdownRequested.clear(std::memory_order_relaxed);
+        handlerInstalled = Platform::InstallInterruptHandler(HandleInterrupt);
+    }
+
+    ~InterruptHandlerGuard() {
+        if (installed()) {
+            Platform::UninstallInterruptHandler();
+        }
+        shutdownRequested.clear(std::memory_order_relaxed);
+    }
+
+    InterruptHandlerGuard(const InterruptHandlerGuard&) = delete;
+    InterruptHandlerGuard& operator=(const InterruptHandlerGuard&) = delete;
+
+    bool installed() const { return handlerInstalled; }
+
+ private:
+    bool handlerInstalled = false;
+};
 
 Instance::Config BuildInstanceConfig(const Settings& settings) {
     Instance::Config config = {
@@ -280,6 +322,8 @@ static void printUsage(const char* program,
 }
 
 int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn pluginDestroy) {
+    LogLevelGuard runLogLevel(_JST_LOG_DEBUG_LEVEL());
+
     CommandType command = CommandType::Run;
     bool commandSelected = false;
     bool remoteEnabled = false;
@@ -405,6 +449,10 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
             std::string value;
             if (!takeValue(value)) {
                 return PrintUsageError(argv[0], "Missing value for --plugin. Expected a .cep path.");
+            }
+            if (!Plugin::IsCepPath(value)) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --plugin: '{}'. Expected a .cep path.", value));
             }
             commandLinePlugins.push_back(value);
             continue;
@@ -533,6 +581,10 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
             if (!takeValue(value)) {
                 return PrintUsageError(argv[0], "Missing value for --broker. Expected a URL.");
             }
+            if (!IsRemoteBrokerSchemeSupported(value)) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --broker: '{}'. Expected an HTTP or HTTPS URL.", value));
+            }
             settings.remote.brokerUrl = value;
             runOption = arg;
             remoteSettingOption = arg;
@@ -642,6 +694,11 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
 
     Instance::Remote::Config remoteConfig;
     if (remoteEnabled) {
+        if (!IsRemoteBrokerSchemeSupported(settings.remote.brokerUrl)) {
+            return PrintUsageError(argv[0], jst::fmt::format(
+                "Invalid value for --broker: '{}'. Expected an HTTP or HTTPS URL.",
+                settings.remote.brokerUrl));
+        }
         try {
             remoteConfig = BuildRemoteConfig(settings);
         } catch (const Result&) {
@@ -699,6 +756,11 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
     //
 
     if (command == CommandType::Run) {
+        InterruptHandlerGuard interruptHandler;
+        if (!interruptHandler.installed()) {
+            JST_WARN("[CYBERETHER] Interrupt handling is unavailable.");
+        }
+
         const Instance::Config config = BuildInstanceConfig(settings);
 
         if (Settings::Set(settings, false) != Result::SUCCESS) {
@@ -818,19 +880,19 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
             supervisor->start();
         }
 
-        while (instance->polling()) {
+        while (!shutdownRequested.test(std::memory_order_relaxed) && instance->polling()) {
             if (instance->poll() != Result::SUCCESS) {
                 code.store(-1);
                 break;
             }
         }
 
+        // Treat Ctrl+C during teardown as a force-shutdown request even when
+        // shutdown began through a window close or worker failure.
+        shutdownRequested.test_and_set(std::memory_order_relaxed);
+
         if (supervisor) {
             supervisor->stop();
-        }
-
-        if (remoteEnabled && instance->remote()->started()) {
-            (void)instance->remote()->destroy();
         }
 
         if (instance->computing() || instance->presenting()) {
@@ -843,6 +905,10 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
 
         if (graphicalThread.joinable()) {
             graphicalThread.join();
+        }
+
+        if (remoteEnabled && instance->remote()->started()) {
+            (void)instance->remote()->destroy();
         }
 
         if (pluginDestroy) {

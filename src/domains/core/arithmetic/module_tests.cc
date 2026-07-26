@@ -7,6 +7,28 @@
 
 using namespace Jetstream;
 
+namespace {
+
+void RequireArithmeticValidationError(const Registry::ModuleRegistration& impl,
+                                      const Modules::Arithmetic& config,
+                                      const DataType dtype) {
+    Tensor input;
+    REQUIRE(input.create(impl.device, dtype, {4}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["buffer"].requested("test", "buffer");
+    inputs["buffer"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("arithmetic", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
+}  // namespace
+
 TEST_CASE("Arithmetic Module - Add F32", "[modules][arithmetic][F32]") {
     auto implementations = Registry::ListAvailableModules("arithmetic");
     REQUIRE(!implementations.empty());
@@ -177,16 +199,9 @@ TEST_CASE("Arithmetic Module - Invalid Operation", "[modules][arithmetic]") {
 
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
-            TestContext ctx("arithmetic", impl.device, impl.runtime, impl.provider);
-
             Modules::Arithmetic config;
             config.operation = "invalid";
-            ctx.setConfig(config);
-
-            auto input = ctx.createTensor<F32>({4});
-            ctx.setInput("buffer", input);
-
-            REQUIRE(ctx.run() == Result::ERROR);
+            RequireArithmeticValidationError(impl, config, DataType::F32);
         }
     }
 }
@@ -199,18 +214,24 @@ TEST_CASE("Arithmetic Module - Invalid Axis", "[modules][arithmetic]") {
         for (const I64 axis : {I64{5}, I64{-2}}) {
             DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime
                             << " Axis: " << axis) {
-                TestContext ctx("arithmetic", impl.device, impl.runtime, impl.provider);
-
                 Modules::Arithmetic config;
                 config.operation = "add";
                 config.axis = axis;
-                ctx.setConfig(config);
-
-                auto input = ctx.createTensor<F32>({4});
-                ctx.setInput("buffer", input);
-
-                REQUIRE(ctx.run() == Result::ERROR);
+                RequireArithmeticValidationError(impl, config, DataType::F32);
             }
+        }
+    }
+}
+
+TEST_CASE("Arithmetic Module - Rejects unsupported dtype during validation",
+          "[modules][arithmetic][validation]") {
+    auto implementations = Registry::ListAvailableModules("arithmetic");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Modules::Arithmetic config;
+            RequireArithmeticValidationError(impl, config, DataType::I32);
         }
     }
 }

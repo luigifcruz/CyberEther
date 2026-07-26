@@ -2,6 +2,7 @@
 
 #include <any>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <string>
 #include <unordered_set>
@@ -30,6 +31,16 @@ bool OptionalPythonRuntimeUnavailable() {
 
 void ConfigureF32Output(Modules::Python& config, const std::string& shape) {
     config.outputTensorSpecs = {{.shape = shape}};
+}
+
+void RequirePythonValidationError(const Modules::Python& config) {
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("python", DeviceType::CPU, RuntimeType::PYTHON,
+                                  "generic", module) == Result::SUCCESS);
+    REQUIRE(module->create("python_validation", config, {}) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+    REQUIRE(JST_LOG_LAST_ERROR().find("[PYTHON]") != std::string::npos);
 }
 
 }  // namespace
@@ -282,7 +293,7 @@ TEST_CASE("Python module creates a configured output without inputs", "[modules]
 )PY";
     config.inputCount = 0;
     config.outputCount = 1;
-    config.outputTensorSpecs = {{.shape = "[2, 3]", .dtype = "F64"}};
+    config.outputTensorSpecs = {{.shape = "[2, 3,]", .dtype = "F64"}};
 
     const auto createResult = module->create("python_configured_source", config, {});
     if (createResult != Result::SUCCESS && OptionalPythonRuntimeUnavailable()) {
@@ -502,27 +513,91 @@ TEST_CASE("Python module captures stdout for the active module", "[modules][pyth
     REQUIRE(secondModule->destroy() == Result::SUCCESS);
 }
 
-TEST_CASE("Python module rejects malformed output tensor specs", "[modules][python][module]") {
+TEST_CASE("Python module validation rejects code and malformed output specs before create",
+          "[modules][python][module][validation]") {
+    Modules::Python emptyCode;
+    emptyCode.code.clear();
+    emptyCode.inputCount = 0;
+    emptyCode.outputCount = 0;
+    RequirePythonValidationError(emptyCode);
+
     const std::vector<Modules::Python::TensorSpec> invalidSpecs = {
         {.shape = "[1x]"},
         {.shape = "[-1]"},
         {.shape = "[0]"},
+        {.shape = "[1,,]"},
         {.dtype = "BAD"},
-        {.device = "metal"},
         {.device = ""},
     };
 
     for (const auto& spec : invalidSpecs) {
-        std::shared_ptr<Module> module;
-        REQUIRE(Registry::BuildModule("python", DeviceType::CPU, RuntimeType::PYTHON, "generic", module) ==
-                Result::SUCCESS);
-
         Modules::Python config;
         config.code = "def compute(ctx):\n    pass\n";
         config.inputCount = 0;
         config.outputCount = 1;
         config.outputTensorSpecs = {spec};
 
-        REQUIRE(module->create("python_bad_tensor_spec", config, {}) == Result::ERROR);
+        RequirePythonValidationError(config);
     }
+}
+
+TEST_CASE("Python module validation rejects output layout and byte overflow",
+          "[modules][python][module][validation][overflow]") {
+    Modules::Python config;
+    config.code = "def compute(ctx):\n    pass\n";
+    config.inputCount = 0;
+    config.outputCount = 1;
+
+    Modules::Python::TensorSpec spec;
+    spec.dtype = "U8";
+    spec.shape = "[" + std::to_string(std::numeric_limits<U64>::max()) + ", 2]";
+    config.outputTensorSpecs = {spec};
+    RequirePythonValidationError(config);
+
+    spec.dtype = "F64";
+    spec.shape = "[" + std::to_string(std::numeric_limits<U64>::max()) + "]";
+    config.outputTensorSpecs = {spec};
+    RequirePythonValidationError(config);
+}
+
+TEST_CASE("Python provider validation rejects incompatible output devices",
+          "[modules][python][module][validation][provider]") {
+    Modules::Python config;
+    config.code = "def compute(ctx):\n    pass\n";
+    config.inputCount = 0;
+    config.outputCount = 1;
+    config.outputTensorSpecs = {{.device = "metal"}};
+    RequirePythonValidationError(config);
+}
+
+#ifndef JETSTREAM_BACKEND_CUDA_AVAILABLE
+TEST_CASE("Python provider validation rejects an unavailable CUDA output backend",
+          "[modules][python][module][validation][provider]") {
+    Modules::Python config;
+    config.code = "def compute(ctx):\n    pass\n";
+    config.inputCount = 0;
+    config.outputCount = 1;
+    config.outputTensorSpecs = {{.device = "cuda"}};
+    RequirePythonValidationError(config);
+}
+#endif
+
+TEST_CASE("Python provider validation rejects unsupported allocation sizes",
+          "[modules][python][module][validation][allocation]") {
+    Modules::Python config;
+    config.code = "def compute(ctx):\n    pass\n";
+    config.inputCount = 0;
+    config.outputCount = 1;
+    Modules::Python::TensorSpec spec;
+    spec.shape = "[" +
+                 std::to_string(std::numeric_limits<U64>::max() / sizeof(F32)) +
+                 "]";
+    config.outputTensorSpecs = {spec};
+    RequirePythonValidationError(config);
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    spec.device = "cuda";
+    config.outputTensorSpecs = {spec};
+    RequirePythonValidationError(config);
+#endif
 }

@@ -14,6 +14,7 @@ struct SquelchImplNativeCpu : public SquelchImpl,
                               public NativeCpuRuntimeContext,
                               public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeSubmit() override;
@@ -25,21 +26,41 @@ struct SquelchImplNativeCpu : public SquelchImpl,
     std::function<Result()> kernel;
 };
 
+Result SquelchImplNativeCpu::validate() {
+    JST_CHECK(SquelchImpl::validate());
+
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() == DataType::CF32) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() == DataType::F32) {
+        return Result::SUCCESS;
+    }
+
+    JST_ERROR("[MODULE_SQUELCH_NATIVE_CPU] Unsupported data type '{}'.",
+              inputTensor.dtype());
+    return Result::ERROR;
+}
+
 Result SquelchImplNativeCpu::create() {
     JST_CHECK(SquelchImpl::create());
 
     if (input.dtype() == DataType::CF32) {
         kernel = [this]() { return kernelCF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (input.dtype() == DataType::F32) {
+    } else {
         kernel = [this]() { return kernelF32(); };
-        return Result::SUCCESS;
     }
 
-    JST_ERROR("[MODULE_SQUELCH_NATIVE_CPU] Unsupported data type '{}'.", input.dtype());
-    return Result::ERROR;
+    return Result::SUCCESS;
 }
 
 Result SquelchImplNativeCpu::computeSubmit() {
