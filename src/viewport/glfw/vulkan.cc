@@ -1,5 +1,3 @@
-#include <csignal>
-
 #include "jetstream/viewport/platforms/glfw/vulkan.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 
@@ -21,8 +19,6 @@ static bool IsWaylandPlatform() {
 }
 #endif
 
-static bool keepRunningFlag;
-
 namespace Jetstream::Viewport {
 
 using Implementation = GLFW<DeviceType::Vulkan>;
@@ -36,17 +32,6 @@ Implementation::~GLFW() {
 }
 
 Result Implementation::create() {
-    // Register signal handler.
-
-    keepRunningFlag = true;
-    std::signal(SIGINT, [](int){
-        if (!keepRunningFlag) {
-            JST_DEBUG("[METAL] Exiting via SIGINT...");
-            std::exit(0);
-        }
-        keepRunningFlag = false;
-    });
-
     // Check if we are running in headless mode.
     JST_ASSERT(!Backend::State<DeviceType::Vulkan>()->headless(), "Headless mode is not supported.");
 
@@ -456,7 +441,7 @@ Result Implementation::pollEvents() {
 }
 
 bool Implementation::keepRunning() {
-    return (!glfwWindowShouldClose(window)) && keepRunningFlag;
+    return !glfwWindowShouldClose(window);
 }
 
 }  // namespace Jetstream::Viewport

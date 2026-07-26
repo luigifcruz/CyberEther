@@ -1,5 +1,3 @@
-#include <csignal>
-
 #include "jetstream/viewport/platforms/glfw/metal.hh"
 
 #define GLFW_INCLUDE_NONE
@@ -15,8 +13,6 @@ static void PrintGLFWError(int, const char* description) {
     JST_FATAL("[METAL] GLFW error: {}", description);
 }
 
-static bool keepRunningFlag;
-
 using Implementation = GLFW<DeviceType::Metal>;
 
 Implementation::GLFW(const Config& config) : Adapter(config) {
@@ -28,17 +24,6 @@ Implementation::~GLFW() {
 }
 
 Result Implementation::create() {
-    // Register signal handler.
-
-    keepRunningFlag = true;
-    std::signal(SIGINT, [](int){
-        if (!keepRunningFlag) {
-            JST_DEBUG("[METAL] Exiting via SIGINT...");
-            std::exit(0);
-        }
-        keepRunningFlag = false;
-    });
-
     // Initialize and configure GLFW.
 
     if (!glfwInit()) {
@@ -132,7 +117,7 @@ Result Implementation::pollEvents() {
 }
 
 bool Implementation::keepRunning() {
-    return !glfwWindowShouldClose(window) && keepRunningFlag;
+    return !glfwWindowShouldClose(window);
 }
 
 }  // namespace Jetstream::Viewport

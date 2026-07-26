@@ -402,6 +402,7 @@ TEST_CASE("Instance guards resources before create and after rejected destroy",
 
         bool callbackCalled = false;
         REQUIRE(instance->start() == Result::ERROR);
+        REQUIRE(instance->requestStop() == Result::ERROR);
         REQUIRE(instance->stop() == Result::ERROR);
         REQUIRE(instance->compute() == Result::ERROR);
         REQUIRE(instance->present([&] {
