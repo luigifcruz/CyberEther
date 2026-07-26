@@ -21,6 +21,7 @@ namespace {
 
 std::atomic_flag shutdownRequested = ATOMIC_FLAG_INIT;
 
+#if defined(JST_OS_LINUX) || defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
 void HandleInterrupt() noexcept {
     constexpr char ShutdownMessage[] =
         "\n[SUPERLUMINAL] Shutdown requested. Press Ctrl+C again to force termination.\n";
@@ -35,6 +36,7 @@ void HandleInterrupt() noexcept {
     Platform::WriteInterruptMessage(ForceShutdownMessage, sizeof(ForceShutdownMessage) - 1);
     Platform::ForceTerminate(130);
 }
+#endif
 
 }  // namespace
 
@@ -220,10 +222,12 @@ Result Superluminal::terminate() {
     impl->initialized = false;
     impl->running = false;
 
+#if defined(JST_OS_LINUX) || defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
     if (impl->interruptHandlerInstalled) {
         Platform::UninstallInterruptHandler();
         impl->interruptHandlerInstalled = false;
     }
+#endif
     shutdownRequested.clear(std::memory_order_relaxed);
 
     JST_INFO("[SUPERLUMINAL] Instance terminated.");
@@ -268,12 +272,14 @@ Result Superluminal::start() {
         impl->supervisor->start();
     }
 
+#if defined(JST_OS_LINUX) || defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
     if (!impl->interruptHandlerInstalled) {
         impl->interruptHandlerInstalled = Platform::InstallInterruptHandler(HandleInterrupt);
         if (!impl->interruptHandlerInstalled) {
             JST_WARN("[SUPERLUMINAL] Interrupt handling is unavailable.");
         }
     }
+#endif
 
     // Start the compute, present, and input threads.
 
