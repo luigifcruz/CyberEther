@@ -48,6 +48,13 @@ if jst_is_browser
     meson.override_dependency('threads', threads_dep)
 endif
 
+browser_exe_link_args = []
+if jst_is_browser
+    browser_exe_link_args = [
+        '--js-library', meson.current_source_dir() / 'src/platform/emscripten_sync_library.js',
+    ]
+endif
+
 if jst_is_windows
     add_project_arguments(
         '/Zc:preprocessor',
@@ -215,6 +222,7 @@ if not jst_is_wheel and \
         cyberether_src_lst,
         include_directories: inc_lst,
         dependencies: libjetstream_dep,
+        link_args: browser_exe_link_args,
         win_subsystem: 'windows',
         install: true,
     )
