@@ -321,7 +321,7 @@ static void printUsage(const char* program,
     }
 }
 
-int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn pluginDestroy) {
+int Run(int argc, char* argv[]) {
     LogLevelGuard runLogLevel(_JST_LOG_DEBUG_LEVEL());
 
     CommandType command = CommandType::Run;
@@ -781,31 +781,18 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
             return -1;
         }
 
-        if (pluginCreate) {
-            pluginCreate(instance.get());
-        }
-
         if (!flowgraphPath.empty()) {
             if (instance->flowgraphCreate("main", {}, flowgraph) != Result::SUCCESS) {
-                if (pluginDestroy) {
-                    pluginDestroy(instance.get());
-                }
                 (void)instance->destroy();
                 return -1;
             }
             if (flowgraph->importFromFile(flowgraphPath) != Result::SUCCESS) {
-                if (pluginDestroy) {
-                    pluginDestroy(instance.get());
-                }
                 (void)instance->destroy();
                 return -1;
             }
         }
 
         if (instance->start() != Result::SUCCESS) {
-            if (pluginDestroy) {
-                pluginDestroy(instance.get());
-            }
             (void)instance->destroy();
             return -1;
         }
@@ -813,9 +800,6 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
         if (remoteEnabled) {
             if (instance->remote()->create(remoteConfig) != Result::SUCCESS) {
                 (void)instance->stop();
-                if (pluginDestroy) {
-                    pluginDestroy(instance.get());
-                }
                 (void)instance->destroy();
                 return -1;
             }
@@ -909,10 +893,6 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
 
         if (remoteEnabled && instance->remote()->started()) {
             (void)instance->remote()->destroy();
-        }
-
-        if (pluginDestroy) {
-            pluginDestroy(instance.get());
         }
 
         (void)instance->destroy();

@@ -11,15 +11,7 @@ JETSTREAM_API int Stop();
 #endif
 
 #if defined(JST_OS_LINUX) || defined(JST_OS_WINDOWS) || defined(JST_OS_MAC)
-class Instance;
-
-using PluginCreateFn = void (*)(Instance* instance);
-using PluginDestroyFn = void (*)(Instance* instance);
-
-JETSTREAM_API int Run(int argc,
-                      char* argv[],
-                      PluginCreateFn pluginCreate = nullptr,
-                      PluginDestroyFn pluginDestroy = nullptr);
+JETSTREAM_API int Run(int argc, char* argv[]);
 #endif
 
 }  // namespace Jetstream

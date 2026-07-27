@@ -812,9 +812,9 @@ TEST_CASE("CLI settings sandbox restores environment variables",
 // Backend::Initialize<CPU>, Backend::DestroyAll, and Plugin::Load, plus fakeable
 // Instance, Flowgraph, and Remote factories. Controllable create,
 // flowgraphCreate/importFromFile, start, Remote::create, poll, stop, and destroy
-// results are required to assert pluginDestroy, Instance::stop/destroy, and
-// Backend::DestroyAll ordering after every acquired resource without touching
-// drivers, windows, hardware, or the network.
+// results are required to assert Instance::stop/destroy and Backend::DestroyAll
+// ordering after every acquired resource without touching drivers, windows,
+// hardware, or the network.
 
 TEST_CASE("CLI rejects broker URLs unsupported by remote transport", "[core][integration][cli]") {
     const InvocationResult result = Invoke({"--remote", "--broker=ftp://example.com", "--help"});

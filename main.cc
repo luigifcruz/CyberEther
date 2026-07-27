@@ -8,11 +8,6 @@
 
 using namespace Jetstream;
 
-#if defined(JST_OS_LINUX)
-extern "C" void CyberEtherPluginCreate(Instance* instance) __attribute__((weak));
-extern "C" void CyberEtherPluginDestroy(Instance* instance) __attribute__((weak));
-#endif
-
 #if defined(JST_OS_BROWSER)
 extern "C" {
 EMSCRIPTEN_KEEPALIVE
@@ -31,10 +26,7 @@ int CyberEtherMain(int argc, char* argv[]) {
         (void)argv;
         return Run();
 #endif
-#if defined(JST_OS_LINUX)
-        return Run(argc, argv, CyberEtherPluginCreate, CyberEtherPluginDestroy);
-#endif
-#if defined(JST_OS_WINDOWS) || defined(JST_OS_MAC)
+#if defined(JST_OS_LINUX) || defined(JST_OS_WINDOWS) || defined(JST_OS_MAC)
         return Run(argc, argv);
 #endif
     } catch (const Result& status) {
