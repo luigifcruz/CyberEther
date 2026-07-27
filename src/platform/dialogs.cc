@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -13,17 +15,17 @@
 
 static bool _filePicking = false;
 static std::function<void(std::string)> _fileCallback;
+static std::atomic<std::string*> _fileResult{nullptr};
 
 extern "C" {
 EMSCRIPTEN_KEEPALIVE
 void jst_on_file_picked(const char* path, int status) {
-    _filePicking = false;
-    if (status == 1 && path && _fileCallback) {
-        auto callback = std::move(_fileCallback);
-        callback("/storage/" + std::string(path));
-    } else {
-        _fileCallback = nullptr;
-    }
+    auto selectedPath = std::make_unique<std::string>(status == 1 && path
+        ? "/storage/" + std::string(path)
+        : std::string{});
+    auto* previousResult = _fileResult.exchange(selectedPath.release(),
+                                                std::memory_order_acq_rel);
+    delete previousResult;
 }
 }
 
@@ -318,6 +320,18 @@ Result SaveFile(std::string&, std::function<void(std::string)>) {
 
 #if defined(JST_OS_BROWSER)
 bool IsFilePending() {
+    std::unique_ptr<std::string> selectedPath(
+        _fileResult.exchange(nullptr, std::memory_order_acq_rel));
+    if (selectedPath) {
+        _filePicking = false;
+        if (!selectedPath->empty() && _fileCallback) {
+            auto callback = std::move(_fileCallback);
+            callback(std::move(*selectedPath));
+        } else {
+            _fileCallback = nullptr;
+        }
+    }
+
     return _filePicking;
 }
 #else

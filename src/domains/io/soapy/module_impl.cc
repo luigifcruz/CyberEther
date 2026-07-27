@@ -87,7 +87,7 @@ Result SoapyImpl::define() {
 
 Result SoapyImpl::create() {
 #ifdef JST_OS_BROWSER
-    if (EM_ASM_INT({ return 'usb' in navigator; }) == 0) {
+    if (MAIN_THREAD_EM_ASM_INT({ return 'usb' in navigator; }) == 0) {
         JST_ERROR("[MODULE_SOAPY] Browser not compatible with WebUSB.");
         return Result::ERROR;
     }
@@ -347,7 +347,7 @@ Result SoapyImpl::soapyThreadLoop() {
 
 SoapyImpl::DeviceList SoapyImpl::ListAvailableDevices(const std::string& filter) {
 #ifdef JST_OS_BROWSER
-    if (EM_ASM_INT({ return 'usb' in navigator; }) == 0) {
+    if (MAIN_THREAD_EM_ASM_INT({ return 'usb' in navigator; }) == 0) {
         JST_ERROR("[MODULE_SOAPY] Browser not compatible with WebUSB.");
         return {};
     }

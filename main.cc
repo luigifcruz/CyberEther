@@ -12,7 +12,7 @@ using namespace Jetstream;
 extern "C" {
 EMSCRIPTEN_KEEPALIVE
 void cyberether_shutdown() {
-    (void)Stop();
+    RequestShutdown();
 }
 }
 #endif

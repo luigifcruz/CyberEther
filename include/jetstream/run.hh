@@ -7,7 +7,7 @@ namespace Jetstream {
 
 #if defined(JST_OS_BROWSER)
 JETSTREAM_API int Run();
-JETSTREAM_API int Stop();
+JETSTREAM_API void RequestShutdown();
 #endif
 
 #if defined(JST_OS_LINUX) || defined(JST_OS_WINDOWS) || defined(JST_OS_MAC)

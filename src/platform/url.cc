@@ -3,7 +3,7 @@
 #include <cstdlib>
 
 #if defined(JST_OS_BROWSER)
-#include <emscripten.h>
+#include <GLFW/emscripten_glfw3.h>
 #elif defined(JST_OS_WINDOWS)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -21,7 +21,7 @@ namespace Jetstream::Platform {
 #elif defined(JST_OS_BROWSER)
 
 Result OpenUrl(const std::string& url) {
-    emscripten_run_script(jst::fmt::format("window.open('{}', '_blank');", url).c_str());
+    emscripten::glfw3::OpenURL(url, "_blank");
     return Result::SUCCESS;
 }
 
