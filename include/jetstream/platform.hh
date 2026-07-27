@@ -29,6 +29,12 @@ JETSTREAM_API Result ConfigPath(std::string& path);
 JETSTREAM_API Result CachePath(std::string& path);
 
 //
+// Storage
+//
+
+JETSTREAM_API Result InitializePersistentStorage();
+
+//
 // Terminal
 //
 

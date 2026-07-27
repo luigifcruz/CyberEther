@@ -4,6 +4,7 @@ src_lst += files([
     'file_lock.cc',
     'paths.cc',
     'process.cc',
+    'storage.cc',
     'terminal.cc',
     'url.cc',
 ])

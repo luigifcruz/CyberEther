@@ -23,7 +23,10 @@ core_test_domains = {
         'memory/buffer.cc',
         'memory/tensor.cc',
     ],
-    'platform': ['platform/paths.cc'],
+    'platform': [
+        'platform/paths.cc',
+        'platform/storage.cc',
+    ],
     'registry': ['registry/registry.cc'],
     'render': ['render/transfers.cc'],
     'runtime': [
