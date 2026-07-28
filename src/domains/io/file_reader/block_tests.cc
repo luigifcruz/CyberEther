@@ -127,6 +127,30 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
+                 "FileReader block recovers after selecting a path",
+                 "[modules][io][file_reader][block][reconfigure]") {
+    const auto path = TestFilePath("select");
+    Cleanup(path);
+    WriteRawFile(path, std::vector<F32>{0.0f, 1.0f, 2.0f, 3.0f});
+
+    REQUIRE(flowgraph->blockCreate("reader", "file_reader", {}, {}) == Result::SUCCESS);
+    REQUIRE(viewBlock("reader").state == Block::State::Incomplete);
+    REQUIRE(viewBlock("reader").diagnostic.find("[MODULE_FILE_READER]") != std::string::npos);
+
+    Parser::Map selection;
+    selection["filepath"] = Platform::PathToUtf8(path);
+    selection["dataType"] = std::string("F32");
+    selection["batchSize"] = std::string("4");
+
+    REQUIRE(flowgraph->blockReconfigure("reader", selection) == Result::SUCCESS);
+    REQUIRE(viewBlock("reader").state == Block::State::Created);
+    REQUIRE(viewBlock("reader").outputs.at("signal").tensor.shape(0) == 4);
+
+    REQUIRE(flowgraph->blockDestroy("reader", false) == Result::SUCCESS);
+    Cleanup(path);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
                  "FileReader block reconfigure updates without recreate for loop",
                  "[modules][io][file_reader][block][reconfigure]") {
     const auto path = TestFilePath("reconfigure");

@@ -1568,6 +1568,30 @@ TEST_CASE("Module post-create failures invoke deterministic cleanup",
         REQUIRE(bundle.module->state() == Module::State::DESTROYED);
         REQUIRE(bundle.probe->events.back() == "module.destroy:initial");
     }
+
+    SECTION("incomplete create remains reconfigurable") {
+        auto bundle = MakeModule();
+        bundle.probe->createResult = Result::INCOMPLETE;
+
+        REQUIRE(bundle.module->create("lifecycle-module",
+                                      ConfigWithValue("before"),
+                                      {}) == Result::INCOMPLETE);
+        REQUIRE(bundle.module->state() == Module::State::INCOMPLETE);
+        bundle.probe->events.clear();
+        bundle.probe->reconfigureResult = Result::RECREATE;
+
+        REQUIRE(bundle.module->reconfigure(ConfigWithValue("after")) == Result::RECREATE);
+        REQUIRE(bundle.module->state() == Module::State::INCOMPLETE);
+        REQUIRE(bundle.staged->value == "before");
+        REQUIRE(bundle.probe->events == std::vector<std::string>{
+            "module.candidate.deserialize",
+            "module.validate:after:before",
+            "module.staged.serialize",
+            "module.reconfigure:after:before",
+            "module.staged.deserialize",
+        });
+        REQUIRE(bundle.module->destroy() == Result::SUCCESS);
+    }
 }
 
 TEST_CASE("Module configuration sources propagate serialization results",

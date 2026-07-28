@@ -234,7 +234,7 @@ Result Module::reconfigure(const Parser::Map& config, const bool& validateOnly) 
     if (impl->_state == State::DESTROYED || impl->_state == State::ERRORED) {
         return Result::RECREATE;
     }
-    if (impl->_state != State::CREATED) {
+    if (impl->_state != State::CREATED && impl->_state != State::INCOMPLETE) {
         return Result::ERROR;
     }
 

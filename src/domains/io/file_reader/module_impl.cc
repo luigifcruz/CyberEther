@@ -71,28 +71,28 @@ Result FileReaderImpl::create() {
     lastMeasurementTime = std::chrono::steady_clock::now();
 
     if (filepath.empty()) {
-        JST_WARN("[MODULE_FILE_READER] File path is empty.");
+        JST_ERROR("[MODULE_FILE_READER] File path is empty.");
         return Result::INCOMPLETE;
     }
 
     filePath = Platform::PathFromUtf8(filepath);
 
     if (!std::filesystem::exists(filePath)) {
-        JST_WARN("[MODULE_FILE_READER] File '{}' does not exist.", filepath);
+        JST_ERROR("[MODULE_FILE_READER] File '{}' does not exist.", filepath);
         return Result::INCOMPLETE;
     }
 
     std::error_code ec;
     const U64 inputFileSize = std::filesystem::file_size(filePath, ec);
     if (ec) {
-        JST_WARN("[MODULE_FILE_READER] Failed to get file size for '{}'.", filepath);
+        JST_ERROR("[MODULE_FILE_READER] Failed to get file size for '{}'.", filepath);
         return Result::INCOMPLETE;
     }
     fileSize.publish(inputFileSize);
 
     dataFile.open(filePath, std::ios::in | std::ios::binary);
     if (!dataFile.is_open()) {
-        JST_WARN("[MODULE_FILE_READER] Failed to open '{}' for reading.", filepath);
+        JST_ERROR("[MODULE_FILE_READER] Failed to open '{}' for reading.", filepath);
         return Result::INCOMPLETE;
     }
 
