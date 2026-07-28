@@ -99,6 +99,7 @@ bool MarkdownView::update(Config config) {
         .autoHeight = true,
         .onLayout = [impl = this->impl.get()](const Canvas::Layout& layout) {
             impl->fontSizePixels = impl->config.fontSize * layout.pixelRatio;
+            impl->body.fontSizePixels = impl->fontSizePixels;
         },
     });
 

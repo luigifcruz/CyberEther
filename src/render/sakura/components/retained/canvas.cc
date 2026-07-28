@@ -8,6 +8,7 @@
 #include "../../retained/drawable.hh"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <utility>
 
@@ -18,6 +19,14 @@ namespace {
 constexpr U64 kDefaultFramebufferWidth = 512;
 constexpr U64 kDefaultFramebufferHeight = 512;
 constexpr const char* kRequiredFontName = "default_mono";
+
+bool SameSurfaceResize(const SurfaceResize& lhs, const SurfaceResize& rhs) {
+    return lhs.logicalSize.x == rhs.logicalSize.x &&
+           lhs.logicalSize.y == rhs.logicalSize.y &&
+           lhs.framebufferSize.x == rhs.framebufferSize.x &&
+           lhs.framebufferSize.y == rhs.framebufferSize.y &&
+           std::abs(lhs.scale - rhs.scale) <= 1e-6f;
+}
 
 MouseEvent ConvertMouse(const MouseEvent& event, const Extent2D<U64>& framebufferSize) {
     MouseEvent out = event;
@@ -215,7 +224,10 @@ struct Canvas::Impl {
         return Result::SUCCESS;
     }
 
-    void handleResize(const SurfaceResize& resize) {
+    bool handleResize(const SurfaceResize& resize) {
+        if (lastResize.has_value() && SameSurfaceResize(*lastResize, resize)) {
+            return false;
+        }
         lastResize = resize;
         if (surface) {
             surface->size(resize.framebufferSize);
@@ -224,6 +236,7 @@ struct Canvas::Impl {
         context.pixelRatio = currentPixelRatio();
         runLayout();
         invalidateSurface();
+        return true;
     }
 
     void handleMouse(const MouseEvent& rawEvent) {
@@ -277,6 +290,26 @@ void Canvas::render(const Sakura::Context& ctx) {
     impl->renderWindow = ctx.render;
 
     Extent2D<F32> surfaceSize = impl->config.size;
+    const Extent2D<F32> availableLogicalSize =
+        Unscale(ctx, Private::ToExtent2D(ImGui::GetContentRegionAvail()));
+    if (surfaceSize.x <= 0.0f) {
+        surfaceSize.x = std::max(0.0f, availableLogicalSize.x);
+    }
+    if (surfaceSize.y <= 0.0f) {
+        surfaceSize.y = std::max(0.0f, availableLogicalSize.y);
+    }
+
+    // Resolve the actual panel width and DPI before allocating the first
+    // retained surface instead of laying it out against the 512px fallback.
+    if (!impl->bound) {
+        Extent2D<F32> preflightSize = surfaceSize;
+        if (impl->config.autoHeight && impl->lastResize.has_value()) {
+            preflightSize.y = static_cast<F32>(impl->lastResize->logicalSize.y);
+        }
+        if (const auto resize = ResolveSurfaceResize(ctx, preflightSize)) {
+            impl->handleResize(*resize);
+        }
+    }
 
     if (impl->root) {
         if (impl->context.framebufferSize.x == 0 || impl->context.framebufferSize.y == 0) {
@@ -307,6 +340,19 @@ void Canvas::render(const Sakura::Context& ctx) {
             };
             const F32 desiredPx = Impl::measure(*impl->root, rctx, available).y;
             surfaceSize.y = desiredPx / std::max(1e-3f, impl->currentPixelRatio());
+
+            if (!impl->bound) {
+                if (const auto resize = ResolveSurfaceResize(ctx, surfaceSize);
+                    resize.has_value() && impl->handleResize(*resize)) {
+                    const Context resizedContext = impl->retainedContext(ctx);
+                    const Rect resizedViewport = {
+                        0.0f, 0.0f,
+                        static_cast<F32>(impl->context.framebufferSize.x),
+                        static_cast<F32>(impl->context.framebufferSize.y),
+                    };
+                    Impl::frame(*impl->root, resizedViewport, resizedContext);
+                }
+            }
         }
 
         if (Impl::resourceDirty(*impl->root) || Impl::paintDirty(*impl->root)) {
