@@ -359,7 +359,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     const auto original = viewBlock("fault");
     REQUIRE(std::any_cast<U64>(original.config.at("revision")) == 0);
 
-    SECTION("module destroy failure retains a usable block") {
+    SECTION("module destroy failure retains an errored block for cleanup retry") {
         faults.failNext(SyntheticFaultPoint::ModuleDestroy);
         REQUIRE(flowgraph->blockDestroy("fault") == Result::ERROR);
 
@@ -368,8 +368,17 @@ TEST_CASE_METHOD(FlowgraphFixture,
         REQUIRE(std::any_cast<U64>(retained.config.at("revision")) == 0);
         REQUIRE(retained.outputs.contains("out"));
         REQUIRE(retained.outputs.at("out").resolved());
-        REQUIRE(retained.state == Block::State::Created);
+        REQUIRE(retained.state == Block::State::Errored);
         REQUIRE(faults.moduleDestroyCalls == 1);
+
+        TensorMap cachedInput;
+        cachedInput["buffer"] = retained.outputs.at("out");
+        REQUIRE(flowgraph->blockCreate("consumer", kSyntheticPassType, {}, cachedInput) ==
+                Result::SUCCESS);
+        const auto consumer = viewBlock("consumer");
+        REQUIRE(consumer.state == Block::State::Incomplete);
+        REQUIRE_FALSE(consumer.inputs.at("buffer").resolved());
+        REQUIRE(flowgraph->blockDestroy("consumer", false) == Result::SUCCESS);
 
         REQUIRE(flowgraph->blockDestroy("fault") == Result::SUCCESS);
         REQUIRE_FALSE(flowgraph->view().has("fault"));

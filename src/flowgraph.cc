@@ -371,7 +371,14 @@ Result Flowgraph::Impl::resolveInputs(const TensorMap& requested, TensorMap& res
             return Result::ERROR;
         }
 
-        const auto& outputs = blocks.at(ext.block)->outputs();
+        const auto& producer = blocks.at(ext.block);
+        if (producer->state() != Block::State::Created) {
+            resolved[slot].requested(ext.block, ext.port);
+            result = Result::INCOMPLETE;
+            continue;
+        }
+
+        const auto& outputs = producer->outputs();
 
         if (!outputs.contains(ext.port)) {
             JST_WARN("[FLOWGRAPH] Block '{}' has no output '{}' to satisfy connection '{}'.", ext.block,
