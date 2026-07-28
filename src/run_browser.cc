@@ -7,6 +7,7 @@
 #include "jetstream/instance.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/platform.hh"
+#include "jetstream/settings.hh"
 
 #include <emscripten.h>
 #include <emscripten/html5.h>
@@ -24,10 +25,17 @@ static void OnWebGPUInitialized(const Result webgpuResult) {
         return;
     }
 
-    instance = std::make_shared<Instance>();
+    Settings settings;
+    if (Settings::Get(settings) != Result::SUCCESS) {
+        JST_WARN("[CYBERETHER] Failed to load settings. Using defaults.");
+        settings = {};
+        (void)Settings::Set(settings, false);
+    }
 
+    instance = std::make_shared<Instance>();
     Instance::Config config = {
         .compositor = CompositorType::DEFAULT,
+        .pythonRuntimePath = settings.runtime.python.path,
     };
 
     if (instance->create(config) != Result::SUCCESS) {
