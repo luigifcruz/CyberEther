@@ -19,7 +19,7 @@ Result FlattenImpl::create() {
     }
 
     input = inputTensor;
-    output = input;
+    output = input.clone();
 
     JST_CHECK(output.reshape({inputTensor.size()}));
     JST_CHECK(output.propagateAttributes(input));

@@ -284,3 +284,35 @@ TEST_CASE("Reshape Module - Validation rejects malformed shapes",
         }
     }
 }
+
+TEST_CASE("Reshape Module - Validation retains the original input layout",
+          "[modules][reshape][validation][reconfigure]") {
+    const auto implementations = Registry::ListAvailableModules("reshape");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Tensor input;
+            REQUIRE(input.create(impl.device, DataType::F32, {2, 4}) ==
+                    Result::SUCCESS);
+
+            TensorMap inputs;
+            inputs["buffer"].requested("test", "buffer");
+            inputs["buffer"].tensor = input;
+
+            std::shared_ptr<Module> module;
+            REQUIRE(Registry::BuildModule("reshape", impl.device, impl.runtime,
+                                          impl.provider, module) == Result::SUCCESS);
+
+            Modules::Reshape config;
+            config.shape = "[8]";
+            REQUIRE(module->create("test", config, inputs) == Result::SUCCESS);
+
+            Parser::Map update;
+            update["shape"] = std::string("[4, 2]");
+            REQUIRE(module->reconfigure(update, true) == Result::SUCCESS);
+            REQUIRE(module->inputs().at("buffer").tensor.shape() == Shape{2, 4});
+            REQUIRE(module->destroy() == Result::SUCCESS);
+        }
+    }
+}

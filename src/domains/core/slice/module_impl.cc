@@ -197,7 +197,7 @@ Result SliceImpl::create() {
     const Tensor& inputTensor = inputs().at("buffer").tensor;
 
     input = inputTensor;
-    output = input;
+    output = input.clone();
 
     JST_CHECK(output.applySlicePlan(slicePlan));
 

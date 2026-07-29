@@ -37,7 +37,7 @@ Result ExpandDimsImpl::create() {
     const Tensor& inputTensor = inputs().at("buffer").tensor;
 
     input = inputTensor;
-    output = input;
+    output = input.clone();
 
     JST_CHECK(output.expandDims(resolvedAxis));
     JST_CHECK(output.propagateAttributes(input));

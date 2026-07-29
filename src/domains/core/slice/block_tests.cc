@@ -2,8 +2,10 @@
 
 #include <any>
 
+#include "jetstream/domains/core/ones_tensor/block.hh"
 #include "jetstream/domains/core/slice/block.hh"
 #include "jetstream/domains/dsp/window/block.hh"
+#include "jetstream/logger.hh"
 #include "jetstream/registry.hh"
 #include "flowgraph_fixture.hh"
 
@@ -103,4 +105,33 @@ TEST_CASE_METHOD(FlowgraphFixture, "Slice block preserves topology after rejecte
     REQUIRE(flowgraph->blockConfig("slice_update", saved) == Result::SUCCESS);
     REQUIRE(std::any_cast<std::string>(saved.at("slice")) == config.slice);
     REQUIRE(std::any_cast<bool>(saved.at("contiguous")) == config.contiguous);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Slice block changes a rank-three index without diagnostics",
+                 "[modules][slice][block][reconfigure]") {
+    Blocks::OnesTensor source;
+    source.shape = {8, 2, 2024};
+    REQUIRE(flowgraph->blockCreate("slice_rank3_src", source, {}) ==
+            Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["buffer"].requested("slice_rank3_src", "buffer");
+
+    Blocks::Slice config;
+    config.slice = "[:, 0, :]";
+    config.contiguous = true;
+    REQUIRE(flowgraph->blockCreate("slice_rank3", config, inputs) ==
+            Result::SUCCESS);
+
+    JST_LOG_LAST_ERROR().clear();
+    Parser::Map update;
+    update["slice"] = std::string("[:, 1, :]");
+    REQUIRE(flowgraph->blockReconfigure("slice_rank3", update) ==
+            Result::SUCCESS);
+    REQUIRE(JST_LOG_LAST_ERROR().empty());
+
+    const auto output = viewBlock("slice_rank3").outputs.at("buffer").tensor;
+    REQUIRE(output.shape() == Shape{8, 2024});
+    REQUIRE(output.contiguous());
 }

@@ -113,3 +113,31 @@ TEST_CASE("Flatten Module - CF32", "[modules][flatten][CF32]") {
         }
     }
 }
+
+TEST_CASE("Flatten Module - Retains its input layout",
+          "[modules][flatten][lifecycle]") {
+    const auto implementations = Registry::ListAvailableModules("flatten");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Tensor input;
+            REQUIRE(input.create(impl.device, DataType::F32, {2, 4}) ==
+                    Result::SUCCESS);
+
+            TensorMap inputs;
+            inputs["buffer"].requested("test", "buffer");
+            inputs["buffer"].tensor = input;
+
+            std::shared_ptr<Module> module;
+            REQUIRE(Registry::BuildModule("flatten", impl.device, impl.runtime,
+                                          impl.provider, module) == Result::SUCCESS);
+            REQUIRE(module->create("test", Modules::Flatten{}, inputs) ==
+                    Result::SUCCESS);
+
+            REQUIRE(module->inputs().at("buffer").tensor.shape() == Shape{2, 4});
+            REQUIRE(module->outputs().at("buffer").tensor.shape() == Shape{8});
+            REQUIRE(module->destroy() == Result::SUCCESS);
+        }
+    }
+}

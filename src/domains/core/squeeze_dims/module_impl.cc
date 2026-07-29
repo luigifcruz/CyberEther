@@ -44,7 +44,7 @@ Result SqueezeDimsImpl::create() {
     const Tensor& inputTensor = inputs().at("buffer").tensor;
 
     input = inputTensor;
-    output = input;
+    output = input.clone();
 
     JST_CHECK(output.squeezeDims(resolvedAxis));
     JST_CHECK(output.propagateAttributes(input));

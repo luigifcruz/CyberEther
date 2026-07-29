@@ -138,7 +138,7 @@ Result ReshapeImpl::create() {
     const Tensor& inputTensor = inputs().at("buffer").tensor;
 
     input = inputTensor;
-    output = input;
+    output = input.clone();
 
     JST_CHECK(output.reshape(parsedShape));
     JST_CHECK(output.propagateAttributes(input));
