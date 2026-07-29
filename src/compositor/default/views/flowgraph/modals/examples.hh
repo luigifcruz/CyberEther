@@ -44,7 +44,6 @@ struct FlowgraphExampleCell {
             .id = this->config.id + "Subtitle",
             .str = this->config.summary,
             .tone = Sakura::Text::Tone::Secondary,
-            .wrapped = true,
         });
     }
 
