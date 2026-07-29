@@ -12,6 +12,7 @@ def normalize_system(value):
     value = value.lower()
     aliases = {
         "darwin": "macos",
+        "emscripten": "browser",
         "mac": "macos",
         "osx": "macos",
         "win32": "windows",

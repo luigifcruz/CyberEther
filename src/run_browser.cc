@@ -7,6 +7,7 @@
 #include "jetstream/instance.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/platform.hh"
+#include "jetstream/plugin.hh"
 #include "jetstream/settings.hh"
 
 #include <emscripten.h>
@@ -30,6 +31,12 @@ static void OnWebGPUInitialized(const Result webgpuResult) {
         JST_WARN("[CYBERETHER] Failed to load settings. Using defaults.");
         settings = {};
         (void)Settings::Set(settings, false);
+    }
+
+    for (const auto& path : settings.registry.plugins) {
+        if (Plugin::Load(path) != Result::SUCCESS) {
+            JST_WARN("[CYBERETHER] Failed to load plugin '{}'. Continuing startup.", path);
+        }
     }
 
     instance = std::make_shared<Instance>();
