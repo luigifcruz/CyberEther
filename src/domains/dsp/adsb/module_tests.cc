@@ -229,11 +229,13 @@ TEST_CASE("ADS-B - Metadata Validation Preserves Live State",
             REQUIRE(aircraft.id() == aircraftId);
             REQUIRE(aircraftCount.id() == aircraftCountId);
 
-            REQUIRE(input.setAttribute("sampleRate", F32{4e6f}) ==
-                    Result::SUCCESS);
-            REQUIRE(adsb->validate() == Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleRate", F32{4e6f}) == Result::SUCCESS);
+            REQUIRE(adsb->validate() == Result::ERROR);
             REQUIRE(std::any_cast<F32>(activeInput.attribute("sampleRate")) ==
                     4e6f);
+
+            REQUIRE(input.setAttribute("sampleRate", F32{2e6f}) == Result::SUCCESS);
+            REQUIRE(adsb->validate() == Result::SUCCESS);
             REQUIRE(module->destroy() == Result::SUCCESS);
         }
     }

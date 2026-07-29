@@ -287,10 +287,17 @@ Result AdsbImplNativeCpu::computeSubmit() {
     const U64 numSamples = input.size();
 
     for (U64 i = 0; i < numSamples; ++i) {
-        const F32 real = iqData[i].real() * 128.0f;
-        const F32 imag = iqData[i].imag() * 128.0f;
-        const F32 mag = std::sqrt(real * real + imag * imag) * 360.0f;
-        magBuf[i] = static_cast<U16>(std::min(mag, static_cast<F32>(std::numeric_limits<U16>::max())));
+        if (!std::isfinite(iqData[i].real()) ||
+            !std::isfinite(iqData[i].imag())) {
+            magBuf[i] = U16{0};
+            continue;
+        }
+
+        const F64 real = static_cast<F64>(iqData[i].real()) * 128.0;
+        const F64 imag = static_cast<F64>(iqData[i].imag()) * 128.0;
+        const F64 magnitude = std::hypot(real, imag) * 360.0;
+        magBuf[i] = static_cast<U16>(std::min(
+            magnitude, static_cast<F64>(std::numeric_limits<U16>::max())));
     }
 
     tls_instance = this;

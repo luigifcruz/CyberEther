@@ -31,8 +31,14 @@ Result AdsbImpl::validate() {
 
     if (inputTensor.hasAttribute("sampleRate")) {
         const std::any value = inputTensor.attribute("sampleRate");
-        if (!std::any_cast<F32>(&value)) {
+        const auto* sampleRate = std::any_cast<F32>(&value);
+        if (!sampleRate) {
             JST_ERROR("[MODULE_ADSB] Input sample rate metadata must have type F32.");
+            return Result::ERROR;
+        }
+        if (!std::isfinite(*sampleRate) || *sampleRate != 2.0e6f) {
+            JST_ERROR("[MODULE_ADSB] Input sample rate must be 2 MHz ({}).",
+                      *sampleRate);
             return Result::ERROR;
         }
     }
