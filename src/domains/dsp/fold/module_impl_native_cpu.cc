@@ -1,5 +1,7 @@
 #include <algorithm>
+#include <complex>
 #include <limits>
+#include <type_traits>
 
 #include <jetstream/backend/devices/cpu/helpers.hh>
 #include <jetstream/memory/macros.hh>
@@ -107,44 +109,58 @@ static Result foldKernel(const Tensor& input,
                          const std::vector<U64>& inStrides,
                          const std::vector<U64>& outStrides) {
     const U64 rank = input.rank();
-    const U64 totalIn = input.size();
     const U64 totalOut = output.size();
     const auto& inShape = input.shape();
 
     T* outPtr = output.data<T>();
     const T* inPtr = input.data<T>();
-
-    // Zero output buffer.
-    std::fill(outPtr, outPtr + totalOut, T{});
-
-    // Fold input into output.
+    const F64 divisor = static_cast<F64>(decimFactor);
+    const U64 axisSize = inShape[foldAxis];
+    const U64 normalizedOffset = foldOffset % axisSize;
     std::vector<U64> coords(rank);
 
-    for (U64 i = 0; i < totalIn; ++i) {
-        // Convert linear index to coordinates.
-        U64 rem = i;
+    for (U64 outputIndex = 0; outputIndex < totalOut; ++outputIndex) {
+        U64 rem = outputIndex;
         for (U64 d = 0; d < rank; ++d) {
-            coords[d] = rem / inStrides[d];
-            rem %= inStrides[d];
+            coords[d] = rem / outStrides[d];
+            rem %= outStrides[d];
         }
 
-        // Apply offset and fold along axis.
-        coords[foldAxis] = (coords[foldAxis] + foldOffset) % inShape[foldAxis];
-        coords[foldAxis] %= foldSize;
-
-        // Convert coordinates to output linear index.
-        U64 outIdx = 0;
+        U64 inputBaseIndex = 0;
         for (U64 d = 0; d < rank; ++d) {
-            outIdx += coords[d] * outStrides[d];
+            if (d != foldAxis) {
+                inputBaseIndex += coords[d] * inStrides[d];
+            }
         }
 
-        outPtr[outIdx] += inPtr[i];
-    }
-
-    // Average by decimation factor.
-    const T divisor = static_cast<T>(decimFactor);
-    for (U64 i = 0; i < totalOut; ++i) {
-        outPtr[i] /= divisor;
+        if constexpr (std::is_same_v<T, F32>) {
+            F64 sum = 0.0;
+            for (U64 group = 0; group < decimFactor; ++group) {
+                const U64 shiftedAxis = coords[foldAxis] + group * foldSize;
+                const U64 inputAxis = shiftedAxis >= normalizedOffset
+                    ? shiftedAxis - normalizedOffset
+                    : axisSize - (normalizedOffset - shiftedAxis);
+                const U64 inputIndex = inputBaseIndex +
+                                       inputAxis * inStrides[foldAxis];
+                sum += static_cast<F64>(inPtr[inputIndex]);
+            }
+            outPtr[outputIndex] = static_cast<F32>(sum / divisor);
+        } else {
+            std::complex<F64> sum{0.0, 0.0};
+            for (U64 group = 0; group < decimFactor; ++group) {
+                const U64 shiftedAxis = coords[foldAxis] + group * foldSize;
+                const U64 inputAxis = shiftedAxis >= normalizedOffset
+                    ? shiftedAxis - normalizedOffset
+                    : axisSize - (normalizedOffset - shiftedAxis);
+                const U64 inputIndex = inputBaseIndex +
+                                       inputAxis * inStrides[foldAxis];
+                sum += std::complex<F64>{inPtr[inputIndex].real(),
+                                         inPtr[inputIndex].imag()};
+            }
+            sum /= divisor;
+            outPtr[outputIndex] = T{static_cast<F32>(sum.real()),
+                                    static_cast<F32>(sum.imag())};
+        }
     }
 
     return Result::SUCCESS;

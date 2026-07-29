@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <cmath>
 #include <limits>
 
 #include "jetstream/testing.hh"
@@ -137,6 +138,34 @@ TEST_CASE("Fold - 1D F32 Ramp", "[modules][fold][f32]") {
                 Catch::Matchers::WithinAbs(4.0f, 1e-5f));
             REQUIRE_THAT(out.at<F32>(3),
                 Catch::Matchers::WithinAbs(5.0f, 1e-5f));
+        }
+    }
+}
+
+TEST_CASE("Fold - Avoids intermediate overflow while averaging",
+          "[modules][fold][f32][numeric]") {
+    const auto implementations = Registry::ListAvailableModules("fold");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("fold", impl.device, impl.runtime, impl.provider);
+            Modules::Fold config;
+            config.axis = 0;
+            config.size = 1;
+            ctx.setConfig(config);
+
+            Tensor input;
+            REQUIRE(input.create(DeviceType::CPU, DataType::F32, {2}) ==
+                    Result::SUCCESS);
+            input.at<F32>(0) = std::numeric_limits<F32>::max();
+            input.at<F32>(1) = std::numeric_limits<F32>::max();
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+            const auto& output = ctx.output("buffer");
+            REQUIRE(std::isfinite(output.at<F32>(0)));
+            REQUIRE(output.at<F32>(0) == std::numeric_limits<F32>::max());
         }
     }
 }
