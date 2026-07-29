@@ -121,8 +121,6 @@ Result OverlapAddImpl::create() {
                             inputBuffer.shape()));
     JST_CHECK(output.propagateAttributes(inputBuffer));
 
-    outputs()["buffer"].produced(name(), "buffer", output);
-
     // Allocate previous overlap state tensor.
     // Shape matches overlap but with batch dimension (dim 0) = 1.
     JST_CHECK(previousOverlap.create(inputBuffer.device(),
@@ -131,6 +129,8 @@ Result OverlapAddImpl::create() {
 
     // Zero the previous overlap.
     std::memset(previousOverlap.data(), 0, previousOverlap.sizeBytes());
+
+    outputs()["buffer"].produced(name(), "buffer", output);
 
     return Result::SUCCESS;
 }
