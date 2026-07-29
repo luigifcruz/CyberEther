@@ -127,7 +127,7 @@ TEST_CASE("Constellation module rejects unsupported rendering size",
     }
 }
 
-TEST_CASE("Constellation module stays stable across repeated runs",
+TEST_CASE("Constellation module stays stable across repeated computes",
           "[modules][constellation][state]") {
     auto implementations = Registry::ListAvailableModules("constellation");
     REQUIRE(!implementations.empty());
@@ -145,8 +145,10 @@ TEST_CASE("Constellation module stays stable across repeated runs",
             }
 
             ctx.setInput("signal", input);
-            REQUIRE(ctx.run() == Result::SUCCESS);
-            REQUIRE(ctx.run() == Result::SUCCESS);
+            REQUIRE(ctx.start() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(ctx.stop() == Result::SUCCESS);
         }
     }
 }

@@ -35,6 +35,10 @@ class JETSTREAM_API TestContext {
     void setConfig(const Module::Config& config);
 
     Result run();
+    Result start();
+    Result compute();
+    Result reconfigure(const Module::Config& config, bool validateOnly = false);
+    Result stop();
     Tensor& output(const std::string& name);
 
     DeviceType device() const;

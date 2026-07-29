@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
+
 #include "jetstream/domains/core/throttle/module.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/testing.hh"
@@ -25,7 +27,7 @@ TEST_CASE("Throttle Module - Rejects Zero Interval", "[modules][throttle][error]
     }
 }
 
-TEST_CASE("Throttle Module - Pass Through Across Multiple Runs",
+TEST_CASE("Throttle Module - Pass Through Across Persistent Computes",
           "[modules][throttle][timing]") {
     const auto implementations = Registry::ListAvailableModules("throttle");
     REQUIRE(!implementations.empty());
@@ -35,7 +37,7 @@ TEST_CASE("Throttle Module - Pass Through Across Multiple Runs",
             TestContext ctx("throttle", impl.device, impl.runtime, impl.provider);
 
             Modules::Throttle config;
-            config.intervalMs = 10;
+            config.intervalMs = 50;
             ctx.setConfig(config);
 
             auto input = ctx.createTensor<F32>({8});
@@ -44,12 +46,20 @@ TEST_CASE("Throttle Module - Pass Through Across Multiple Runs",
             }
             ctx.setInput("buffer", input);
 
-            REQUIRE(ctx.run() == Result::SUCCESS);
+            REQUIRE(ctx.start() == Result::SUCCESS);
+            const auto computeStart = std::chrono::steady_clock::now();
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            const auto computeElapsed = std::chrono::steady_clock::now() - computeStart;
+            REQUIRE(computeElapsed >= std::chrono::milliseconds(25));
 
-            REQUIRE(ctx.run() == Result::SUCCESS);
             auto& out = ctx.output("buffer");
             REQUIRE(out.rank() == 1);
             REQUIRE(out.shape(0) == 8);
+            for (U64 i = 0; i < 8; ++i) {
+                REQUIRE(out.at<F32>(i) == static_cast<F32>(i));
+            }
+            REQUIRE(ctx.stop() == Result::SUCCESS);
         }
     }
 }

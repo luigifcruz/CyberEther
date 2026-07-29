@@ -122,7 +122,7 @@ TEST_CASE("Spectrogram module rejects invalid config and inputs",
     }
 }
 
-TEST_CASE("Spectrogram module supports repeated runs and reconfigure",
+TEST_CASE("Spectrogram module supports repeated computes and reconfigure",
           "[modules][spectrogram][state]") {
     auto implementations = Registry::ListAvailableModules("spectrogram");
     REQUIRE(!implementations.empty());
@@ -136,13 +136,18 @@ TEST_CASE("Spectrogram module supports repeated runs and reconfigure",
                     Result::SUCCESS);
             ctx.setInput("signal", input);
 
-            REQUIRE(ctx.run() == Result::SUCCESS);
-            REQUIRE(ctx.run() == Result::SUCCESS);
+            REQUIRE(ctx.start() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
 
             Modules::Spectrogram config;
             config.height = 64;
-            ctx.setConfig(config);
-            REQUIRE(ctx.run() == Result::SUCCESS);
+            REQUIRE(ctx.reconfigure(config) == Result::RECREATE);
+            REQUIRE(ctx.stop() == Result::SUCCESS);
+
+            REQUIRE(ctx.start() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(ctx.stop() == Result::SUCCESS);
         }
     }
 }

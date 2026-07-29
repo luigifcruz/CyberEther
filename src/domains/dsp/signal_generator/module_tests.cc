@@ -256,7 +256,7 @@ TEST_CASE("Signal Generator - Negative phase remains normalized",
     }
 }
 
-TEST_CASE("Signal Generator - Sine phase continuity across runs",
+TEST_CASE("Signal Generator - Sine phase continuity across computes",
           "[modules][signal_generator][state]") {
     auto implementations = Registry::ListAvailableModules("signal_generator");
     REQUIRE(!implementations.empty());
@@ -270,7 +270,7 @@ TEST_CASE("Signal Generator - Sine phase continuity across runs",
             Modules::SignalGenerator config;
             config.signalType = "sine";
             config.signalDataType = "F32";
-            config.bufferSize = 32;
+            config.bufferSize = 31;
             config.sampleRate = 2048.0;
             config.frequency = 128.0;
             config.amplitude = 1.0;
@@ -278,18 +278,30 @@ TEST_CASE("Signal Generator - Sine phase continuity across runs",
             config.dcOffset = 0.0;
             ctx.setConfig(config);
 
-            REQUIRE(ctx.run() == Result::SUCCESS);
+            REQUIRE(ctx.start() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
             auto& out = ctx.output("signal");
+            const F32 firstRunFirst = out.at<F32>(0);
 
             const F64 dt = 1.0 / config.sampleRate;
             const F64 t0 = static_cast<F64>(config.bufferSize) * dt;
             const F64 expectedSecondRunFirst = config.amplitude *
                 std::sin(2.0 * JST_PI * config.frequency * t0 + config.phase);
 
-            REQUIRE(ctx.run() == Result::SUCCESS);
-            REQUIRE_THAT(out.at<F32>(0),
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            const F32 secondRunFirst = out.at<F32>(0);
+            REQUIRE_THAT(secondRunFirst,
                          Catch::Matchers::WithinAbs(
                              static_cast<F32>(expectedSecondRunFirst), 1e-5f));
+            REQUIRE(std::abs(secondRunFirst - firstRunFirst) > 1e-5f);
+
+            config.bufferSize = 17;
+            REQUIRE(ctx.reconfigure(config) == Result::RECREATE);
+            REQUIRE(ctx.stop() == Result::SUCCESS);
+            REQUIRE(ctx.start() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(ctx.output("signal").shape(0) == 17);
+            REQUIRE(ctx.stop() == Result::SUCCESS);
         }
     }
 }
