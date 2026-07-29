@@ -29,8 +29,9 @@ struct Filter : public Block::Config {
         "Supports multiple center frequencies (heads) to extract multiple "
         "channels simultaneously from a wideband capture.\n\n"
 
-        "When the resampler ratio (sample rate / bandwidth) is an integer, the "
-        "output will be automatically resampled to the filter bandwidth.\n\n"
+        "When the resampler ratio (sample rate / bandwidth) is an integer and "
+        "the signal and overlap extents are divisible by that ratio, the output "
+        "will be automatically resampled to the filter bandwidth.\n\n"
 
         "## Arguments\n"
         "- **Sample Rate**: The sampling rate of the input signal in MHz.\n"
@@ -47,10 +48,10 @@ struct Filter : public Block::Config {
         "## Examples\n"
         "- Single-channel filter with resampling:\n"
         "  Config: Sample Rate=2 MHz, Bandwidth=0.2 MHz, Heads=1, Taps=101\n"
-        "  Input: CF32[8192] -> Output: CF32[819]\n"
+        "  Input: CF32[8190] -> Output: CF32[819]\n"
         "- Multi-head extraction:\n"
         "  Config: Sample Rate=2 MHz, Bandwidth=0.2 MHz, Heads=3, Center=[0, 0.4, -0.4]\n"
-        "  Input: CF32[8192] -> Output: CF32[3, 819]\n\n"
+        "  Input: CF32[8190] -> Output: CF32[3, 819]\n\n"
 
         "## Implementation\n"
         "FilterTaps -> Pad -> FFT -> Multiply -> (Fold) -> IFFT -> Unpad -> "
