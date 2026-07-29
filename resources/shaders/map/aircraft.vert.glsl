@@ -30,7 +30,17 @@ float mercatorX(float lon) {
 float mercatorY(float lat) {
     lat = clamp(lat, -MAX_MERCATOR_LAT, MAX_MERCATOR_LAT);
     float r = radians(lat);
-    return (1.0 - log(tan(r) + 1.0 / cos(r)) / PI) / 2.0;
+    return (1.0 - asinh(tan(r)) / PI) / 2.0;
+}
+
+float wrapMercatorDelta(float delta) {
+    if (delta > 0.5) {
+        return delta - 1.0;
+    }
+    if (delta < -0.5) {
+        return delta + 1.0;
+    }
+    return delta;
 }
 
 void main() {
@@ -44,7 +54,8 @@ void main() {
     float acMx = mercatorX(acLon);
     float acMy = mercatorY(acLat);
 
-    float acNdcX = (acMx - cx) * scale * 2.0 / uniforms.aspectRatio;
+    float acNdcX = wrapMercatorDelta(acMx - cx) * scale * 2.0 /
+                   uniforms.aspectRatio;
     float acNdcY = (cy - acMy) * scale * 2.0;
 
     float safeViewWidth = float(max(uniforms.viewWidth, 1));

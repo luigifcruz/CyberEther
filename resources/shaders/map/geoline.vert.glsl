@@ -18,7 +18,7 @@ layout(set = 0, binding = 0) uniform ShaderUniforms {
 // Quad vertex: x = endpoint selector (0 or 1), y = side (-1 or +1).
 layout(location = 0) in vec2 inQuad;
 
-// Instance data: (lon1, lat1, lon2, lat2) per segment.
+// Instance data: (x1, y1, x2, y2) in Mercator space.
 layout(location = 1) in vec4 inSegment;
 
 layout(location = 0) out vec2 vNormal;
@@ -47,13 +47,15 @@ float wrapMercatorDelta(float delta) {
 }
 
 void main() {
-    // Project both endpoints through Web Mercator.
+    vec2 a = inSegment.xy;
+    vec2 b = inSegment.zw;
+
     float cx = mercatorX(uniforms.centerLon);
     float cy = mercatorY(uniforms.centerLat);
     float scale = pow(2.0, uniforms.zoom);
 
-    float ax = wrapMercatorDelta(mercatorX(inSegment.x) - cx);
-    float bx = wrapMercatorDelta(mercatorX(inSegment.z) - cx);
+    float ax = wrapMercatorDelta(a.x - cx);
+    float bx = wrapMercatorDelta(b.x - cx);
     if (bx - ax > 0.5) {
         bx -= 1.0;
     } else if (bx - ax < -0.5) {
@@ -61,36 +63,28 @@ void main() {
     }
 
     vec2 start = vec2(ax * scale * 2.0 / uniforms.aspectRatio,
-                      (cy - mercatorY(inSegment.y)) * scale * 2.0);
+                      (cy - a.y) * scale * 2.0);
     vec2 end = vec2(bx * scale * 2.0 / uniforms.aspectRatio,
-                    (cy - mercatorY(inSegment.w)) * scale * 2.0);
+                    (cy - b.y) * scale * 2.0);
     vec2 current = mix(start, end, inQuad.x);
 
-    // Direction along the line in NDC.
-    vec2 dir = end - start;
-    float len = length(dir);
-
-    // Degenerate segment guard.
-    if (len < 1e-7) {
+    vec2 direction = end - start;
+    float segmentLength = length(direction);
+    if (segmentLength < 1e-7) {
         gl_Position = vec4(current, 0.0, 1.0);
-        vNormal = vec2(0.0, 0.0);
+        vNormal = vec2(0.0);
         return;
     }
 
-    dir /= len;
-
-    // Perpendicular in NDC.
-    vec2 perp = vec2(-dir.y, dir.x);
-
-    // Convert thickness from pixels to NDC — same as thicklines.
-    vec2 pixToNDC = vec2((2.0 * uniforms.surfaceScale) / uniforms.viewportWidth,
-                         (2.0 * uniforms.surfaceScale) / uniforms.viewportHeight);
-    vec2 thickness = vec2(uniforms.lineWidth * 0.5) * pixToNDC;
-    vec2 offset = perp * thickness * inQuad.y;
+    direction /= segmentLength;
+    vec2 perpendicular = vec2(-direction.y, direction.x);
+    vec2 pixelToNdc = vec2(
+        (2.0 * uniforms.surfaceScale) / uniforms.viewportWidth,
+        (2.0 * uniforms.surfaceScale) / uniforms.viewportHeight
+    );
+    vec2 thickness = vec2(uniforms.lineWidth * 0.5) * pixelToNdc;
+    vec2 offset = perpendicular * thickness * inQuad.y;
 
     gl_Position = vec4(current + offset, 0.0, 1.0);
-
-    // Normal for AA: same encoding as thicklines.
-    // inQuad.y = -1 → normal = (0, 0), inQuad.y = +1 → normal = (0, 1).
     vNormal = vec2(0.0, (inQuad.y + 1.0) * 0.5);
 }

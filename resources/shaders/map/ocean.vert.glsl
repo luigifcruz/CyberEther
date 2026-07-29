@@ -28,7 +28,7 @@ float mercatorX(float lon) {
 float mercatorY(float lat) {
     lat = clamp(lat, -MAX_MERCATOR_LAT, MAX_MERCATOR_LAT);
     float r = radians(lat);
-    return (1.0 - log(tan(r) + 1.0 / cos(r)) / PI) / 2.0;
+    return (1.0 - asinh(tan(r)) / PI) / 2.0;
 }
 
 void main() {

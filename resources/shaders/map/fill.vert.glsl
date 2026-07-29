@@ -13,9 +13,11 @@ layout(set = 0, binding = 0) uniform ShaderUniforms {
     float colorB;
     float viewportWidth;
     float viewportHeight;
+    float _pad0;
+    vec4 worldOffsets;
 } uniforms;
 
-// Per-vertex: (lon, lat, r, g, b).
+// Per-vertex: (Mercator x, Mercator y, r, g, b).
 layout(location = 0) in vec2 inPosition;
 layout(location = 1) in vec3 inColor;
 
@@ -31,7 +33,7 @@ float mercatorX(float lon) {
 float mercatorY(float lat) {
     lat = clamp(lat, -MAX_MERCATOR_LAT, MAX_MERCATOR_LAT);
     float r = radians(lat);
-    return (1.0 - log(tan(r) + 1.0 / cos(r)) / PI) / 2.0;
+    return (1.0 - asinh(tan(r)) / PI) / 2.0;
 }
 
 void main() {
@@ -39,8 +41,9 @@ void main() {
     float cy = mercatorY(uniforms.centerLat);
     float scale = pow(2.0, uniforms.zoom);
 
-    float vx = (mercatorX(inPosition.x) - cx) * scale * 2.0;
-    float vy = (cy - mercatorY(inPosition.y)) * scale * 2.0;
+    float worldX = inPosition.x + uniforms.worldOffsets[gl_InstanceIndex];
+    float vx = (worldX - cx) * scale * 2.0;
+    float vy = (cy - inPosition.y) * scale * 2.0;
     vx /= uniforms.aspectRatio;
 
     gl_Position = vec4(vx, vy, 0.0, 1.0);

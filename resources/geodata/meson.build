@@ -23,6 +23,14 @@ if py.found()
         'ne_10m_lakes',
     ])
 
+    line_segment_list = ','.join([
+        'ne_10m_rivers_lake_centerlines',
+        'ne_10m_coastline',
+        'ne_10m_admin_0_boundary_lines_land',
+        'ne_10m_admin_1_states_provinces_lines',
+        'ne_10m_geographic_lines',
+    ])
+
     geodata_dir = meson.current_source_dir()
 
     geodata_files = [
@@ -45,6 +53,7 @@ if py.found()
         'ne_10m_coastline.geojson',
         'ne_10m_admin_0_boundary_lines_land.geojson',
         'ne_10m_admin_1_states_provinces_lines.geojson',
+        'ne_10m_geographic_lines.geojson',
         'ne_10m_populated_places_simple.geojson',
     ]
 
@@ -57,7 +66,8 @@ if py.found()
         'geodata',
         output : ['geodata.hh'],
         command : [python_with_modules, files('parser.py'), meson.project_build_root(), '@OUTPUT@',
-                   '--triangulate=' + triangulate_list] + geodata_paths,
+                   '--triangulate=' + triangulate_list,
+                   '--line-segments=' + line_segment_list] + geodata_paths,
     )
 
     dep_lst += declare_dependency(

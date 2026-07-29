@@ -2,6 +2,7 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <vector>
 
 #include <zlib.h>
@@ -23,6 +24,34 @@ static constexpr F32 MaxMercatorLatitude = 85.05112878f;
 
 static inline F32 ClampMercatorLatitude(const F32 lat) {
     return std::clamp(lat, -MaxMercatorLatitude, MaxMercatorLatitude);
+}
+
+static inline F32 MercatorX(const F32 lon) {
+    return (lon + 180.0f) / 360.0f;
+}
+
+static inline F32 WrapLongitude(const F32 longitude) {
+    F32 wrapped = std::fmod(longitude + 180.0f, 360.0f);
+    if (wrapped < 0.0f) {
+        wrapped += 360.0f;
+    }
+    return wrapped - 180.0f;
+}
+
+static inline F32 WrapMercatorDelta(F32 delta) {
+    if (delta > 0.5f) {
+        delta -= 1.0f;
+    } else if (delta < -0.5f) {
+        delta += 1.0f;
+    }
+    return delta;
+}
+
+static inline F32 MercatorY(const F32 lat) {
+    const F32 radians = ClampMercatorLatitude(lat) * kPi / 180.0f;
+    const F32 projected =
+        (1.0f - std::asinh(std::tan(radians)) / kPi) / 2.0f;
+    return std::clamp(projected, 0.0f, 1.0f);
 }
 
 // Gzip decompression helper.
@@ -54,113 +83,111 @@ static bool DecompressGzip(const uint8_t* src,
     return true;
 }
 
-// GeoJSON parsing helpers.
+// Static line binary loader.
+// Binary format: [U32 float_count]
+//                [F32 lon1,lat1,lon2,lat2 * segment_count]
+//                [F32 x1,y1,x2,y2 * segment_count]
 
-static void ParseLineString(const nlohmann::json& coords,
-                            std::vector<F32>& vertices) {
-    for (U64 i = 0; i + 1 < coords.size(); ++i) {
-        const auto& a = coords[i];
-        const auto& b = coords[i + 1];
-
-        vertices.push_back(a[0].get<F32>());
-        vertices.push_back(a[1].get<F32>());
-        vertices.push_back(b[0].get<F32>());
-        vertices.push_back(b[1].get<F32>());
-    }
-}
-
-static void ParsePolygon(const nlohmann::json& rings,
-                         std::vector<F32>& vertices) {
-    for (const auto& ring : rings) {
-        ParseLineString(ring, vertices);
-    }
-}
-
-static void ParseGeometry(const nlohmann::json& geometry,
-                          std::vector<F32>& vertices) {
-    if (geometry.is_null() || !geometry.is_object()) {
-        return;
-    }
-    if (!geometry.contains("type") || !geometry.contains("coordinates")) {
-        return;
-    }
-    if (geometry["coordinates"].is_null()) {
-        return;
-    }
-
-    const auto type = geometry["type"].get<std::string>();
-    const auto& coords = geometry["coordinates"];
-
-    if (type == "LineString") {
-        ParseLineString(coords, vertices);
-    } else if (type == "MultiLineString") {
-        for (const auto& line : coords) {
-            ParseLineString(line, vertices);
-        }
-    } else if (type == "Polygon") {
-        ParsePolygon(coords, vertices);
-    } else if (type == "MultiPolygon") {
-        for (const auto& polygon : coords) {
-            ParsePolygon(polygon, vertices);
-        }
-    }
-}
-
-static void ParseGeoJson(const nlohmann::json& geojson,
-                         std::vector<F32>& vertices) {
-    if (geojson.contains("features") &&
-        geojson["features"].is_array()) {
-        for (const auto& feature : geojson["features"]) {
-            if (!feature.contains("geometry")) {
-                continue;
-            }
-            ParseGeometry(feature["geometry"], vertices);
-        }
-    } else {
-        ParseGeometry(geojson, vertices);
-    }
-}
-
-static void LoadGeoJsonFromMemory(const uint8_t* gz, uint32_t gzLen,
-                                  uint32_t rawLen,
-                                  std::vector<F32>& vertices) {
+static Result LoadLineSegmentsFromMemory(const uint8_t* gz,
+                                         uint32_t gzLen,
+                                         uint32_t rawLen,
+                                         std::vector<F32>& geographicVertices,
+                                         std::vector<F32>& projectedVertices) {
     std::vector<uint8_t> raw;
     if (!DecompressGzip(gz, gzLen, raw, rawLen)) {
-        JST_ERROR("[GEOMAP] Failed to decompress embedded geodata.");
-        return;
+        JST_ERROR("[GEOMAP] Failed to decompress line data.");
+        return Result::ERROR;
     }
 
-    nlohmann::json geojson;
-    try {
-        geojson = nlohmann::json::parse(raw.begin(), raw.end());
-    } catch (const nlohmann::json::parse_error& e) {
-        JST_ERROR("[GEOMAP] Failed to parse embedded GeoJSON: {}",
-                  e.what());
-        return;
+    if (raw.size() < sizeof(U32)) {
+        JST_ERROR("[GEOMAP] Line data is too small.");
+        return Result::ERROR;
     }
 
-    ParseGeoJson(geojson, vertices);
+    U32 floatCount;
+    std::memcpy(&floatCount, raw.data(), sizeof(U32));
+    if (floatCount == 0 || floatCount % 4 != 0) {
+        JST_ERROR("[GEOMAP] Line data has an invalid size.");
+        return Result::ERROR;
+    }
+
+    const U64 dataBytes = static_cast<U64>(floatCount) * sizeof(F32);
+    if (dataBytes > (std::numeric_limits<U64>::max() - sizeof(U32)) / 2) {
+        JST_ERROR("[GEOMAP] Line data size overflow.");
+        return Result::ERROR;
+    }
+    const U64 expectedSize = sizeof(U32) + dataBytes * 2;
+    if (raw.size() != expectedSize) {
+        JST_ERROR("[GEOMAP] Line data size mismatch.");
+        return Result::ERROR;
+    }
+
+    const U64 initialGeographicSize = geographicVertices.size();
+    const U64 initialProjectedSize = projectedVertices.size();
+    if (initialGeographicSize != initialProjectedSize) {
+        JST_ERROR("[GEOMAP] Existing line coordinate streams are misaligned.");
+        return Result::ERROR;
+    }
+    geographicVertices.resize(initialGeographicSize + floatCount);
+    projectedVertices.resize(initialProjectedSize + floatCount);
+    std::memcpy(geographicVertices.data() + initialGeographicSize,
+                raw.data() + sizeof(U32),
+                static_cast<size_t>(dataBytes));
+    std::memcpy(projectedVertices.data() + initialProjectedSize,
+                raw.data() + sizeof(U32) + dataBytes,
+                static_cast<size_t>(dataBytes));
+
+    for (U64 i = initialGeographicSize;
+         i < geographicVertices.size(); i += 2) {
+        const F32 lon = geographicVertices[i];
+        const F32 lat = geographicVertices[i + 1];
+        if (!std::isfinite(lon) || !std::isfinite(lat) ||
+            lon < -180.0f || lon > 180.0f ||
+            lat < -90.0f || lat > 90.0f) {
+            geographicVertices.resize(initialGeographicSize);
+            projectedVertices.resize(initialProjectedSize);
+            JST_ERROR("[GEOMAP] Line data has an invalid lon/lat position.");
+            return Result::ERROR;
+        }
+    }
+
+    for (U64 i = initialProjectedSize;
+         i < projectedVertices.size(); ++i) {
+        const F32 position = projectedVertices[i];
+        if (!std::isfinite(position) ||
+            position < 0.0f || position > 1.0f) {
+            geographicVertices.resize(initialGeographicSize);
+            projectedVertices.resize(initialProjectedSize);
+            JST_ERROR("[GEOMAP] Line data has an invalid Mercator position.");
+            return Result::ERROR;
+        }
+    }
+
+    return Result::SUCCESS;
 }
 
 // Pre-triangulated binary loader.
 // Binary format: [U32 vertex_count][U32 index_count]
-//                [F32 lon,lat * vertex_count][U32 * index_count]
+//                [F32 lon,lat * vertex_count]
+//                [F32 mercator_x,mercator_y * vertex_count]
+//                [U32 * index_count]
 
-static void LoadPreTriangulatedFromMemory(const uint8_t* gz,
-                                          uint32_t gzLen,
-                                          uint32_t rawLen,
-                                          std::vector<F32>& vertices,
-                                          std::vector<U32>& indices) {
+static Result LoadPreTriangulatedFromMemory(const uint8_t* gz,
+                                            uint32_t gzLen,
+                                            uint32_t rawLen,
+                                            std::vector<F32>& geographicVertices,
+                                            std::vector<F32>& projectedVertices,
+                                            std::vector<U32>& indices) {
     std::vector<uint8_t> raw;
     if (!DecompressGzip(gz, gzLen, raw, rawLen)) {
         JST_ERROR("[GEOMAP] Failed to decompress "
                   "pre-triangulated data.");
-        return;
+        return Result::ERROR;
     }
 
     if (raw.size() < 8) {
         JST_ERROR("[GEOMAP] Pre-triangulated data too small.");
-        return;
+        return Result::ERROR;
     }
 
     const uint8_t* ptr = raw.data();
@@ -171,20 +198,77 @@ static void LoadPreTriangulatedFromMemory(const uint8_t* gz,
     std::memcpy(&indexCount, ptr, sizeof(U32));
     ptr += sizeof(U32);
 
-    const U64 expectedSize = 8 + vertexCount * 2 * sizeof(F32) +
-                             indexCount * sizeof(U32);
-    if (raw.size() < expectedSize) {
-        JST_ERROR("[GEOMAP] Pre-triangulated data size "
-                  "mismatch.");
-        return;
+    if (vertexCount == 0 || indexCount == 0) {
+        JST_ERROR("[GEOMAP] Pre-triangulated data is empty.");
+        return Result::ERROR;
     }
 
-    vertices.resize(vertexCount * 2);
-    std::memcpy(vertices.data(), ptr, vertexCount * 2 * sizeof(F32));
-    ptr += vertexCount * 2 * sizeof(F32);
+    const U64 vertexBytes = static_cast<U64>(vertexCount) * 2 * sizeof(F32);
+    const U64 indexBytes = static_cast<U64>(indexCount) * sizeof(U32);
+    if (vertexBytes > (std::numeric_limits<U64>::max() - 8) / 2 ||
+        indexBytes > std::numeric_limits<U64>::max() - 8 - vertexBytes * 2) {
+        JST_ERROR("[GEOMAP] Pre-triangulated data size overflow.");
+        return Result::ERROR;
+    }
+
+    const U64 expectedSize = 8 + vertexBytes * 2 + indexBytes;
+    if (raw.size() != expectedSize || indexCount % 3 != 0) {
+        JST_ERROR("[GEOMAP] Pre-triangulated data size "
+                  "mismatch.");
+        return Result::ERROR;
+    }
+
+    geographicVertices.resize(static_cast<U64>(vertexCount) * 2);
+    std::memcpy(geographicVertices.data(), ptr,
+                static_cast<size_t>(vertexBytes));
+    ptr += vertexBytes;
+
+    projectedVertices.resize(static_cast<U64>(vertexCount) * 2);
+    std::memcpy(projectedVertices.data(), ptr,
+                static_cast<size_t>(vertexBytes));
+    ptr += vertexBytes;
+
+    for (U64 i = 0; i < geographicVertices.size(); i += 2) {
+        const F32 lon = geographicVertices[i];
+        const F32 lat = geographicVertices[i + 1];
+        if (!std::isfinite(lon) || !std::isfinite(lat) ||
+            lon < -180.0f || lon > 180.0f ||
+            lat < -90.0f || lat > 90.0f) {
+            JST_ERROR("[GEOMAP] Pre-triangulated data has an invalid "
+                      "lon/lat position.");
+            geographicVertices.clear();
+            projectedVertices.clear();
+            return Result::ERROR;
+        }
+    }
+
+    if (std::any_of(projectedVertices.begin(), projectedVertices.end(),
+                    [](const F32 position) {
+                        return !std::isfinite(position) ||
+                               position < 0.0f || position > 1.0f;
+                    })) {
+        JST_ERROR("[GEOMAP] Pre-triangulated data has an invalid "
+                  "Mercator position.");
+        geographicVertices.clear();
+        projectedVertices.clear();
+        return Result::ERROR;
+    }
 
     indices.resize(indexCount);
-    std::memcpy(indices.data(), ptr, indexCount * sizeof(U32));
+    std::memcpy(indices.data(), ptr, static_cast<size_t>(indexBytes));
+
+    if (std::any_of(indices.begin(), indices.end(),
+                    [vertexCount](const U32 index) {
+                        return index >= vertexCount;
+                    })) {
+        JST_ERROR("[GEOMAP] Pre-triangulated data contains an invalid index.");
+        geographicVertices.clear();
+        projectedVertices.clear();
+        indices.clear();
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
 }
 
 // Place label data.
@@ -198,14 +282,14 @@ struct PlaceInfo {
     I32 scalerank;
 };
 
-static void LoadPlacesFromMemory(const uint8_t* gz,
-                                 uint32_t gzLen,
-                                 uint32_t rawLen,
-                                 std::vector<PlaceInfo>& places) {
+static Result LoadPlacesFromMemory(const uint8_t* gz,
+                                   uint32_t gzLen,
+                                   uint32_t rawLen,
+                                   std::vector<PlaceInfo>& places) {
     std::vector<uint8_t> raw;
     if (!DecompressGzip(gz, gzLen, raw, rawLen)) {
         JST_ERROR("[GEOMAP] Failed to decompress places geodata.");
-        return;
+        return Result::ERROR;
     }
 
     nlohmann::json geojson;
@@ -214,75 +298,81 @@ static void LoadPlacesFromMemory(const uint8_t* gz,
     } catch (const nlohmann::json::parse_error& e) {
         JST_ERROR("[GEOMAP] Failed to parse places GeoJSON: {}",
                   e.what());
-        return;
+        return Result::ERROR;
     }
 
     if (!geojson.contains("features") ||
         !geojson["features"].is_array()) {
-        return;
+        JST_ERROR("[GEOMAP] Places GeoJSON has no feature collection.");
+        return Result::ERROR;
     }
 
-    for (const auto& feature : geojson["features"]) {
-        if (!feature.contains("properties") ||
-            !feature.contains("geometry")) {
-            continue;
+    const U64 initialSize = places.size();
+    try {
+        for (const auto& feature : geojson["features"]) {
+            if (!feature.contains("properties") ||
+                !feature.contains("geometry")) {
+                continue;
+            }
+
+            const auto& props = feature["properties"];
+            const auto& geom = feature["geometry"];
+
+            if (!props.contains("name") ||
+                !props.contains("scalerank")) {
+                continue;
+            }
+
+            // Prefer ASCII name for SDF text renderer (ASCII 32-127).
+            std::string name;
+            if (props.contains("nameascii") &&
+                props["nameascii"].is_string()) {
+                name = props["nameascii"].get<std::string>();
+            } else {
+                name = props["name"].get<std::string>();
+            }
+            if (name.empty()) {
+                continue;
+            }
+
+            F32 lon = 0.0f;
+            F32 lat = 0.0f;
+
+            // Use geometry coordinates (Point type).
+            if (geom.contains("coordinates") &&
+                geom["coordinates"].is_array() &&
+                geom["coordinates"].size() >= 2) {
+                lon = geom["coordinates"][0].get<F32>();
+                lat = geom["coordinates"][1].get<F32>();
+            } else if (props.contains("longitude") &&
+                       props.contains("latitude")) {
+                lon = props["longitude"].get<F32>();
+                lat = props["latitude"].get<F32>();
+            } else {
+                continue;
+            }
+
+            // Truncate long names at load time.
+            if (name.size() > 19) {
+                name = name.substr(0, 19);
+            }
+
+            const F32 mx = MercatorX(lon);
+            const F32 my = MercatorY(lat);
+
+            places.push_back({
+                .lon = lon,
+                .lat = lat,
+                .mercX = mx,
+                .mercY = my,
+                .name = name,
+                .scalerank = props["scalerank"].get<I32>(),
+            });
         }
-
-        const auto& props = feature["properties"];
-        const auto& geom = feature["geometry"];
-
-        if (!props.contains("name") ||
-            !props.contains("scalerank")) {
-            continue;
-        }
-
-        // Prefer ASCII name for SDF text renderer (ASCII 32-127).
-        std::string name;
-        if (props.contains("nameascii") &&
-            props["nameascii"].is_string()) {
-            name = props["nameascii"].get<std::string>();
-        } else {
-            name = props["name"].get<std::string>();
-        }
-        if (name.empty()) {
-            continue;
-        }
-
-        F32 lon = 0.0f;
-        F32 lat = 0.0f;
-
-        // Use geometry coordinates (Point type).
-        if (geom.contains("coordinates") &&
-            geom["coordinates"].is_array() &&
-            geom["coordinates"].size() >= 2) {
-            lon = geom["coordinates"][0].get<F32>();
-            lat = geom["coordinates"][1].get<F32>();
-        } else if (props.contains("longitude") &&
-                   props.contains("latitude")) {
-            lon = props["longitude"].get<F32>();
-            lat = props["latitude"].get<F32>();
-        } else {
-            continue;
-        }
-
-        // Truncate long names at load time.
-        if (name.size() > 19) {
-            name = name.substr(0, 19);
-        }
-
-        const F32 mx = (lon + 180.0f) / 360.0f;
-        const F32 r = ClampMercatorLatitude(lat) * kPi / 180.0f;
-        const F32 my = (1.0f - std::log(std::tan(r) +
-            1.0f / std::cos(r)) / kPi) / 2.0f;
-
-        places.push_back({
-            .lon = lon,
-            .lat = lat,
-            .mercX = mx,
-            .mercY = my,
-            .name = name,
-            .scalerank = props["scalerank"].get<I32>(),
-        });
+    } catch (const nlohmann::json::exception& e) {
+        places.resize(initialSize);
+        JST_ERROR("[GEOMAP] Failed to load place feature: {}", e.what());
+        return Result::ERROR;
     }
 
     // Sort by scalerank ascending (most important first).
@@ -292,6 +382,7 @@ static void LoadPlacesFromMemory(const uint8_t* gz,
               });
 
     JST_INFO("[GEOMAP] Loaded {} place labels.", places.size());
+    return Result::SUCCESS;
 }
 
 // Internal GPU uniform struct (per-program).
@@ -308,6 +399,8 @@ struct GpuUniforms {
     float colorB;
     float viewportWidth;
     float viewportHeight;
+    float _pad0 = 0.0f;
+    std::array<float, 4> worldOffsets{};
 };
 
 // Bathymetry depth layer descriptor.
@@ -322,7 +415,7 @@ struct BathymetrySource {
 
 // Color palette: 12 levels from shallow (0m) to deep (10000m).
 // Lighter blue at surface, progressively darker navy at depth.
-static const BathymetrySource BathymetrySources[] = {
+static constexpr BathymetrySource BathymetrySources[] = {
     {Resources::ne_10m_bathymetry_L_0_tri_gz,
      Resources::ne_10m_bathymetry_L_0_tri_gz_len,
      Resources::ne_10m_bathymetry_L_0_tri_raw_len,
@@ -376,6 +469,18 @@ static const BathymetrySource BathymetrySources[] = {
 static constexpr U64 NumBathymetryLayers =
     sizeof(BathymetrySources) / sizeof(BathymetrySources[0]);
 
+static constexpr bool BathymetryLayersAreOrdered() {
+    for (U64 i = 1; i < NumBathymetryLayers; ++i) {
+        if (BathymetrySources[i - 1].depth >= BathymetrySources[i].depth) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static_assert(BathymetryLayersAreOrdered(),
+              "Bathymetry layers must be ordered from shallow to deep.");
+
 // Static quad vertices: 6 vertices forming 2 triangles.
 // x = endpoint selector (0=start, 1=end), y = side offset (-1 or +1).
 static const F32 QuadVertices[] = {
@@ -400,14 +505,14 @@ GeoMap::~GeoMap() {
 
 // GPU resources for a merged colored fill layer.
 struct MergedFillLayer {
-    std::vector<F32> vertices;   // stride 5: lon, lat, r, g, b
-    std::vector<F32> positions;
-    std::vector<F32> colors;
+    std::vector<F32> geographicPositions;  // longitude, latitude
+    std::vector<F32> positions;            // exact Mercator x, y
+    std::vector<F32> colors;               // r, g, b
     std::vector<U32> indices;
     U64 indexCount = 0;
 
-    GpuUniforms gpuUniforms;
-    std::shared_ptr<Render::Buffer> posBuffer;     // lon, lat
+    GpuUniforms gpuUniforms{};
+    std::shared_ptr<Render::Buffer> posBuffer;     // Mercator x, y
     std::shared_ptr<Render::Buffer> colorBuffer;   // r, g, b
     std::shared_ptr<Render::Buffer> indexBuffer;
     std::shared_ptr<Render::Buffer> uniformBuffer;
@@ -421,21 +526,29 @@ struct GeoMap::Impl {
     bool updateUniformsFlag = false;
 
     // Separate geodata categories.
-    std::vector<F32> majorVertices;  // coastlines + country borders
-    std::vector<F32> minorVertices;  // state/province lines
-    std::vector<F32> riverVertices;  // rivers
+    std::vector<F32> majorVertices;  // lon/lat coastline + country borders
+    std::vector<F32> minorVertices;  // lon/lat state/province lines
+    std::vector<F32> riverVertices;  // lon/lat rivers
+    std::vector<F32> geographicLineVertices;
+    // Exact flat-map coordinates generated alongside the source positions.
+    std::vector<F32> majorProjectedVertices;
+    std::vector<F32> minorProjectedVertices;
+    std::vector<F32> riverProjectedVertices;
+    std::vector<F32> geographicLineProjectedVertices;
     U64 majorInstanceCount = 0;
     U64 minorInstanceCount = 0;
     U64 riverInstanceCount = 0;
+    U64 geographicLineInstanceCount = 0;
 
     // Merged fill layers (single draw call each).
     MergedFillLayer bathymetry;  // all 12 depth levels merged
     MergedFillLayer landcover;   // land + urban + lakes merged
 
     // GPU uniforms per program.
-    GpuUniforms majorGpuUniforms;
-    GpuUniforms minorGpuUniforms;
-    GpuUniforms riverGpuUniforms;
+    GpuUniforms majorGpuUniforms{};
+    GpuUniforms minorGpuUniforms{};
+    GpuUniforms riverGpuUniforms{};
+    GpuUniforms geographicLineGpuUniforms{};
 
     // Shared quad vertex buffer.
     std::shared_ptr<Render::Buffer> quadBuffer;
@@ -461,6 +574,13 @@ struct GeoMap::Impl {
     std::shared_ptr<Render::Draw> riverDraw;
     std::shared_ptr<Render::Program> riverProgram;
 
+    // Geographic reference lines resources.
+    std::shared_ptr<Render::Buffer> geographicLineInstanceBuffer;
+    std::shared_ptr<Render::Buffer> geographicLineUniformBuffer;
+    std::shared_ptr<Render::Vertex> geographicLineVertex;
+    std::shared_ptr<Render::Draw> geographicLineDraw;
+    std::shared_ptr<Render::Program> geographicLineProgram;
+
     // Place labels.
     std::vector<PlaceInfo> places;
     std::shared_ptr<Render::Components::Text> text;
@@ -470,33 +590,58 @@ struct GeoMap::Impl {
     U64 previousSlotCount = 0;
 };
 
-// Append triangulated polygons with a color to a merged layer.
-// Vertices are interleaved: (lon, lat, r, g, b) per vertex.
-static void AppendColoredFill(const uint8_t* gz,
-                              uint32_t gzLen,
-                              uint32_t rawLen,
-                              float r,
-                              float g,
-                              float b,
-                              MergedFillLayer& layer) {
-    std::vector<F32> tmpVerts;
+// Append triangulated polygons with one color to a merged layer.
+static Result AppendColoredFill(const uint8_t* gz,
+                                uint32_t gzLen,
+                                uint32_t rawLen,
+                                float r,
+                                float g,
+                                float b,
+                                MergedFillLayer& layer) {
+    std::vector<F32> tmpGeographic;
+    std::vector<F32> tmpProjected;
     std::vector<U32> tmpIndices;
-    LoadPreTriangulatedFromMemory(gz,
-                                  gzLen,
-                                  rawLen,
-                                  tmpVerts,
-                                  tmpIndices);
+    JST_CHECK(LoadPreTriangulatedFromMemory(gz,
+                                            gzLen,
+                                            rawLen,
+                                            tmpGeographic,
+                                            tmpProjected,
+                                            tmpIndices));
 
-    // tmpVerts has stride 2 (lon, lat). Convert to stride 5.
-    const U32 baseVertex =
-        static_cast<U32>(layer.vertices.size() / 5);
+    const U64 vertexCount = tmpGeographic.size() / 2;
+    const U64 currentVertexCount = layer.positions.size() / 2;
+    if (tmpGeographic.size() != tmpProjected.size() ||
+        layer.geographicPositions.size() != layer.positions.size()) {
+        JST_ERROR("[GEOMAP] Fill coordinate streams are misaligned.");
+        return Result::ERROR;
+    }
+    if (currentVertexCount > std::numeric_limits<U32>::max() ||
+        vertexCount > std::numeric_limits<U32>::max() - currentVertexCount) {
+        JST_ERROR("[GEOMAP] Merged fill layer has too many vertices.");
+        return Result::ERROR;
+    }
+    if (layer.indices.size() > std::numeric_limits<U32>::max() ||
+        tmpIndices.size() > std::numeric_limits<U32>::max() -
+                            layer.indices.size()) {
+        JST_ERROR("[GEOMAP] Merged fill layer has too many indices.");
+        return Result::ERROR;
+    }
 
-    for (U64 i = 0; i < tmpVerts.size(); i += 2) {
-        layer.vertices.push_back(tmpVerts[i]);      // lon
-        layer.vertices.push_back(tmpVerts[i + 1]);  // lat
-        layer.vertices.push_back(r);
-        layer.vertices.push_back(g);
-        layer.vertices.push_back(b);
+    const U32 baseVertex = static_cast<U32>(currentVertexCount);
+    layer.geographicPositions.reserve(
+        layer.geographicPositions.size() + tmpGeographic.size());
+    layer.positions.reserve(layer.positions.size() + tmpProjected.size());
+    layer.colors.reserve(layer.colors.size() + vertexCount * 3);
+    layer.indices.reserve(layer.indices.size() + tmpIndices.size());
+
+    for (U64 i = 0; i < tmpGeographic.size(); i += 2) {
+        layer.geographicPositions.push_back(tmpGeographic[i]);
+        layer.geographicPositions.push_back(tmpGeographic[i + 1]);
+        layer.positions.push_back(tmpProjected[i]);
+        layer.positions.push_back(tmpProjected[i + 1]);
+        layer.colors.push_back(r);
+        layer.colors.push_back(g);
+        layer.colors.push_back(b);
     }
 
     for (U32 idx : tmpIndices) {
@@ -504,85 +649,106 @@ static void AppendColoredFill(const uint8_t* gz,
     }
 
     layer.indexCount = layer.indices.size();
+    return Result::SUCCESS;
 }
 
 Result GeoMap::create(Window* window) {
     JST_INFO("[GEOMAP] Loading embedded coastline and provinces data.");
 
     // Load major lines: coastlines + country borders.
-    LoadGeoJsonFromMemory(Resources::ne_10m_coastline_gz,
-                          Resources::ne_10m_coastline_gz_len,
-                          Resources::ne_10m_coastline_raw_len,
-                          pimpl->majorVertices);
+    JST_CHECK(LoadLineSegmentsFromMemory(
+        Resources::ne_10m_coastline_segments_gz,
+        Resources::ne_10m_coastline_segments_gz_len,
+        Resources::ne_10m_coastline_segments_raw_len,
+        pimpl->majorVertices,
+        pimpl->majorProjectedVertices));
 
-    LoadGeoJsonFromMemory(Resources::ne_10m_admin_0_boundary_lines_land_gz,
-                          Resources::ne_10m_admin_0_boundary_lines_land_gz_len,
-                          Resources::ne_10m_admin_0_boundary_lines_land_raw_len,
-                          pimpl->majorVertices);
+    JST_CHECK(LoadLineSegmentsFromMemory(
+        Resources::ne_10m_admin_0_boundary_lines_land_segments_gz,
+        Resources::ne_10m_admin_0_boundary_lines_land_segments_gz_len,
+        Resources::ne_10m_admin_0_boundary_lines_land_segments_raw_len,
+        pimpl->majorVertices,
+        pimpl->majorProjectedVertices));
 
     // Load minor lines: state/province borders.
-    LoadGeoJsonFromMemory(Resources::ne_10m_admin_1_states_provinces_lines_gz,
-                          Resources::ne_10m_admin_1_states_provinces_lines_gz_len,
-                          Resources::ne_10m_admin_1_states_provinces_lines_raw_len,
-                          pimpl->minorVertices);
+    JST_CHECK(LoadLineSegmentsFromMemory(
+        Resources::ne_10m_admin_1_states_provinces_lines_segments_gz,
+        Resources::ne_10m_admin_1_states_provinces_lines_segments_gz_len,
+        Resources::ne_10m_admin_1_states_provinces_lines_segments_raw_len,
+        pimpl->minorVertices,
+        pimpl->minorProjectedVertices));
 
-    // Load all bathymetry depth layers into a single merged buffer.
+    // Load the equator, tropics, polar circles, and date line.
+    JST_CHECK(LoadLineSegmentsFromMemory(
+        Resources::ne_10m_geographic_lines_segments_gz,
+        Resources::ne_10m_geographic_lines_segments_gz_len,
+        Resources::ne_10m_geographic_lines_segments_raw_len,
+        pimpl->geographicLineVertices,
+        pimpl->geographicLineProjectedVertices));
+
+    // These polygons are nested. Appending shallow to deep preserves painter
+    // order while assigning exactly one color to every source layer.
     for (U64 i = 0; i < NumBathymetryLayers; ++i) {
         const auto& src = BathymetrySources[i];
-        AppendColoredFill(src.gz,
-                          src.gzLen,
-                          src.rawLen,
-                          src.r,
-                          src.g,
-                          src.b,
-                          pimpl->bathymetry);
+        JST_CHECK(AppendColoredFill(src.gz,
+                                    src.gzLen,
+                                    src.rawLen,
+                                    src.r,
+                                    src.g,
+                                    src.b,
+                                    pimpl->bathymetry));
     }
 
     // Load land + urban + lakes into a single merged buffer.
     // Draw order: land first, urban on top, lakes on top.
-    AppendColoredFill(Resources::ne_10m_land_tri_gz,
-                      Resources::ne_10m_land_tri_gz_len,
-                      Resources::ne_10m_land_tri_raw_len,
-                      0.094f,
-                      0.098f,
-                      0.090f,  // land: dark gray-green
-                      pimpl->landcover);
+    JST_CHECK(AppendColoredFill(Resources::ne_10m_land_tri_gz,
+                                Resources::ne_10m_land_tri_gz_len,
+                                Resources::ne_10m_land_tri_raw_len,
+                                0.094f,
+                                0.098f,
+                                0.090f,  // land: dark gray-green
+                                pimpl->landcover));
 
-    AppendColoredFill(Resources::ne_10m_urban_areas_tri_gz,
-                      Resources::ne_10m_urban_areas_tri_gz_len,
-                      Resources::ne_10m_urban_areas_tri_raw_len,
-                      0.133f,
-                      0.133f,
-                      0.122f,  // urban: slightly lighter
-                      pimpl->landcover);
+    JST_CHECK(AppendColoredFill(Resources::ne_10m_urban_areas_tri_gz,
+                                Resources::ne_10m_urban_areas_tri_gz_len,
+                                Resources::ne_10m_urban_areas_tri_raw_len,
+                                0.133f,
+                                0.133f,
+                                0.122f,  // urban: slightly lighter
+                                pimpl->landcover));
 
-    AppendColoredFill(Resources::ne_10m_lakes_tri_gz,
-                      Resources::ne_10m_lakes_tri_gz_len,
-                      Resources::ne_10m_lakes_tri_raw_len,
-                      0.106f,
-                      0.176f,
-                      0.310f,  // lakes: water blue
-                      pimpl->landcover);
+    JST_CHECK(AppendColoredFill(Resources::ne_10m_lakes_tri_gz,
+                                Resources::ne_10m_lakes_tri_gz_len,
+                                Resources::ne_10m_lakes_tri_raw_len,
+                                0.106f,
+                                0.176f,
+                                0.310f,  // lakes: water blue
+                                pimpl->landcover));
 
     // Load rivers (line data).
-    LoadGeoJsonFromMemory(Resources::ne_10m_rivers_lake_centerlines_gz,
-                          Resources::ne_10m_rivers_lake_centerlines_gz_len,
-                          Resources::ne_10m_rivers_lake_centerlines_raw_len,
-                          pimpl->riverVertices);
+    JST_CHECK(LoadLineSegmentsFromMemory(
+        Resources::ne_10m_rivers_lake_centerlines_segments_gz,
+        Resources::ne_10m_rivers_lake_centerlines_segments_gz_len,
+        Resources::ne_10m_rivers_lake_centerlines_segments_raw_len,
+        pimpl->riverVertices,
+        pimpl->riverProjectedVertices));
 
-    // Each instance = 4 floats (lon1, lat1, lon2, lat2).
-    pimpl->majorInstanceCount = pimpl->majorVertices.size() / 4;
-    pimpl->minorInstanceCount = pimpl->minorVertices.size() / 4;
-    pimpl->riverInstanceCount = pimpl->riverVertices.size() / 4;
+    // Flat rendering uses exact precomputed Mercator segment endpoints.
+    pimpl->majorInstanceCount = pimpl->majorProjectedVertices.size() / 4;
+    pimpl->minorInstanceCount = pimpl->minorProjectedVertices.size() / 4;
+    pimpl->riverInstanceCount = pimpl->riverProjectedVertices.size() / 4;
+    pimpl->geographicLineInstanceCount =
+        pimpl->geographicLineProjectedVertices.size() / 4;
 
     const U64 totalInstances =
         pimpl->majorInstanceCount + pimpl->minorInstanceCount +
-        pimpl->riverInstanceCount;
+        pimpl->riverInstanceCount + pimpl->geographicLineInstanceCount;
 
-    JST_INFO("[GEOMAP] Loaded {} major + {} minor + {} river "
-             "line segments ({} total).",
+    JST_INFO("[GEOMAP] Loaded {} major + {} minor + {} river + {} "
+             "geographic line segments ({} total).",
              pimpl->majorInstanceCount, pimpl->minorInstanceCount,
-             pimpl->riverInstanceCount, totalInstances);
+             pimpl->riverInstanceCount,
+             pimpl->geographicLineInstanceCount, totalInstances);
 
     JST_INFO("[GEOMAP] Merged bathymetry: {} triangles (1 draw call).",
              pimpl->bathymetry.indexCount / 3);
@@ -593,8 +759,8 @@ Result GeoMap::create(Window* window) {
     if (totalInstances == 0 &&
         pimpl->bathymetry.indexCount == 0 &&
         pimpl->landcover.indexCount == 0) {
-        JST_WARN("[GEOMAP] No geometry found.");
-        return Result::SUCCESS;
+        JST_ERROR("[GEOMAP] No geometry found.");
+        return Result::ERROR;
     }
 
     // Build shared quad vertex buffer (for line rendering).
@@ -680,7 +846,7 @@ Result GeoMap::create(Window* window) {
         // Program.
         {
             Render::Program::Config cfg;
-            cfg.shaders = ShadersPackage["map"];
+            cfg.shaders = ShadersPackage["geoline"];
             cfg.draws = {draw};
             cfg.buffers = {
                 {uniformBuffer, Render::Program::Target::VERTEX |
@@ -694,7 +860,7 @@ Result GeoMap::create(Window* window) {
     };
 
     // Build major lines (coastlines + borders): thick, bright.
-    JST_CHECK(buildCategory(pimpl->majorVertices,
+    JST_CHECK(buildCategory(pimpl->majorProjectedVertices,
                             pimpl->majorInstanceCount,
                             pimpl->majorGpuUniforms,
                             5.0f,  // lineWidth
@@ -708,7 +874,7 @@ Result GeoMap::create(Window* window) {
                             pimpl->majorProgram));
 
     // Build minor lines (state/province): thin, dimmer.
-    JST_CHECK(buildCategory(pimpl->minorVertices,
+    JST_CHECK(buildCategory(pimpl->minorProjectedVertices,
                             pimpl->minorInstanceCount,
                             pimpl->minorGpuUniforms,
                             2.0f,  // lineWidth
@@ -722,7 +888,7 @@ Result GeoMap::create(Window* window) {
                             pimpl->minorProgram));
 
     // Build river lines: thin, water-colored.
-    JST_CHECK(buildCategory(pimpl->riverVertices,
+    JST_CHECK(buildCategory(pimpl->riverProjectedVertices,
                             pimpl->riverInstanceCount,
                             pimpl->riverGpuUniforms,
                             2.0f,  // lineWidth
@@ -735,10 +901,32 @@ Result GeoMap::create(Window* window) {
                             pimpl->riverDraw,
                             pimpl->riverProgram));
 
+    // Build geographic reference lines: thin and subdued.
+    JST_CHECK(buildCategory(pimpl->geographicLineProjectedVertices,
+                            pimpl->geographicLineInstanceCount,
+                            pimpl->geographicLineGpuUniforms,
+                            1.0f,
+                            0.28f,
+                            0.34f,
+                            0.38f,
+                            pimpl->geographicLineInstanceBuffer,
+                            pimpl->geographicLineUniformBuffer,
+                            pimpl->geographicLineVertex,
+                            pimpl->geographicLineDraw,
+                            pimpl->geographicLineProgram));
+
     // Helper lambda to build a merged fill layer pipeline.
     auto buildMergedFill = [&](MergedFillLayer& layer) -> Result {
         if (layer.indexCount == 0) {
             return Result::SUCCESS;
+        }
+
+        if (layer.geographicPositions.size() != layer.positions.size() ||
+            layer.positions.size() % 2 != 0 ||
+            layer.colors.size() % 3 != 0 ||
+            layer.positions.size() / 2 != layer.colors.size() / 3) {
+            JST_ERROR("[GEOMAP] Fill positions and colors are misaligned.");
+            return Result::ERROR;
         }
 
         layer.gpuUniforms.centerLon = pimpl->uniforms.centerLon;
@@ -753,20 +941,6 @@ Result GeoMap::create(Window* window) {
             pimpl->uniforms.viewportWidth;
         layer.gpuUniforms.viewportHeight =
             pimpl->uniforms.viewportHeight;
-
-        // Separate position (lon, lat) and color (r, g, b) buffers
-        // from interleaved stride-5 data.
-        const U64 vertexCount = layer.vertices.size() / 5;
-        layer.positions.resize(vertexCount * 2);
-        layer.colors.resize(vertexCount * 3);
-
-        for (U64 i = 0; i < vertexCount; ++i) {
-            layer.positions[i * 2] = layer.vertices[i * 5];
-            layer.positions[i * 2 + 1] = layer.vertices[i * 5 + 1];
-            layer.colors[i * 3] = layer.vertices[i * 5 + 2];
-            layer.colors[i * 3 + 1] = layer.vertices[i * 5 + 3];
-            layer.colors[i * 3 + 2] = layer.vertices[i * 5 + 4];
-        }
 
         // Position buffer.
         {
@@ -825,6 +999,7 @@ Result GeoMap::create(Window* window) {
             Render::Draw::Config cfg;
             cfg.buffer = layer.vertex;
             cfg.mode = Render::Draw::Mode::TRIANGLES;
+            cfg.numberOfInstances = 1;
             JST_CHECK(window->build(layer.draw, cfg));
         }
 
@@ -842,11 +1017,6 @@ Result GeoMap::create(Window* window) {
             JST_CHECK(window->build(layer.program, cfg));
         }
 
-        // The split arrays and indices remain alive until deferred creation has
-        // copied their initial contents.
-        layer.vertices.clear();
-        layer.vertices.shrink_to_fit();
-
         return Result::SUCCESS;
     };
 
@@ -854,10 +1024,11 @@ Result GeoMap::create(Window* window) {
     JST_CHECK(buildMergedFill(pimpl->landcover));
 
     // Load place labels.
-    LoadPlacesFromMemory(Resources::ne_10m_populated_places_simple_gz,
-                         Resources::ne_10m_populated_places_simple_gz_len,
-                         Resources::ne_10m_populated_places_simple_raw_len,
-                         pimpl->places);
+    JST_CHECK(LoadPlacesFromMemory(
+        Resources::ne_10m_populated_places_simple_gz,
+        Resources::ne_10m_populated_places_simple_gz_len,
+        Resources::ne_10m_populated_places_simple_raw_len,
+        pimpl->places));
 
     // Build Text component for labels.
     if (!pimpl->places.empty() && window->hasFont("default_mono")) {
@@ -909,6 +1080,10 @@ Result GeoMap::surface(Render::Surface::Config& config) {
     }
 
     // Rivers render on top of landcover.
+    if (pimpl->geographicLineInstanceCount > 0) {
+        config.programs.push_back(pimpl->geographicLineProgram);
+    }
+
     if (pimpl->riverInstanceCount > 0) {
         config.programs.push_back(pimpl->riverProgram);
     }
@@ -982,8 +1157,26 @@ Result GeoMap::present() {
             pimpl->riverUniformBuffer->update();
         }
 
+        if (pimpl->geographicLineInstanceCount > 0) {
+            pimpl->geographicLineGpuUniforms.centerLon =
+                pimpl->uniforms.centerLon;
+            pimpl->geographicLineGpuUniforms.centerLat =
+                pimpl->uniforms.centerLat;
+            pimpl->geographicLineGpuUniforms.zoom =
+                pimpl->uniforms.zoom;
+            pimpl->geographicLineGpuUniforms.aspectRatio =
+                pimpl->uniforms.aspectRatio;
+            pimpl->geographicLineGpuUniforms.surfaceScale =
+                pimpl->uniforms.surfaceScale;
+            pimpl->geographicLineGpuUniforms.viewportWidth =
+                pimpl->uniforms.viewportWidth;
+            pimpl->geographicLineGpuUniforms.viewportHeight =
+                pimpl->uniforms.viewportHeight;
+            pimpl->geographicLineUniformBuffer->update();
+        }
+
         // Update merged fill layer uniforms.
-        auto updateFillUniforms = [&](MergedFillLayer& layer) {
+        auto updateFillUniforms = [&](MergedFillLayer& layer) -> Result {
             if (layer.indexCount > 0) {
                 layer.gpuUniforms.centerLon =
                     pimpl->uniforms.centerLon;
@@ -999,12 +1192,28 @@ Result GeoMap::present() {
                     pimpl->uniforms.viewportWidth;
                 layer.gpuUniforms.viewportHeight =
                     pimpl->uniforms.viewportHeight;
+
+                const F32 scale = std::pow(2.0f, pimpl->uniforms.zoom);
+                const F32 centerX = MercatorX(pimpl->uniforms.centerLon);
+                const F32 halfExtentX =
+                    pimpl->uniforms.aspectRatio / (2.0f * scale);
+                U64 worldCopyCount = 0;
+                if (centerX - halfExtentX < 0.0f) {
+                    layer.gpuUniforms.worldOffsets[worldCopyCount++] = -1.0f;
+                }
+                layer.gpuUniforms.worldOffsets[worldCopyCount++] = 0.0f;
+                if (centerX + halfExtentX > 1.0f) {
+                    layer.gpuUniforms.worldOffsets[worldCopyCount++] = 1.0f;
+                }
+
                 layer.uniformBuffer->update();
+                JST_CHECK(layer.draw->updateInstanceCount(worldCopyCount));
             }
+            return Result::SUCCESS;
         };
 
-        updateFillUniforms(pimpl->bathymetry);
-        updateFillUniforms(pimpl->landcover);
+        JST_CHECK(updateFillUniforms(pimpl->bathymetry));
+        JST_CHECK(updateFillUniforms(pimpl->landcover));
 
         // Update place labels.
         if (pimpl->text && !pimpl->places.empty()) {
@@ -1018,14 +1227,8 @@ Result GeoMap::present() {
 
             const F32 scale =
                 std::pow(2.0f, pimpl->uniforms.zoom);
-            const F32 r =
-                ClampMercatorLatitude(pimpl->uniforms.centerLat) * kPi / 180.0f;
-            const F32 cx =
-                (pimpl->uniforms.centerLon + 180.0f) /
-                360.0f;
-            const F32 cy =
-                (1.0f - std::log(std::tan(r) +
-                    1.0f / std::cos(r)) / kPi) / 2.0f;
+            const F32 cx = MercatorX(pimpl->uniforms.centerLon);
+            const F32 cy = MercatorY(pimpl->uniforms.centerLat);
             const F32 ar = pimpl->uniforms.aspectRatio;
 
             // Visibility threshold based on zoom level.
@@ -1045,7 +1248,7 @@ Result GeoMap::present() {
 
                 // Project using pre-computed Mercator.
                 const F32 ndcX =
-                    (place.mercX - cx) * scale *
+                    WrapMercatorDelta(place.mercX - cx) * scale *
                     2.0f / ar;
                 const F32 ndcY =
                     (cy - place.mercY) * scale * 2.0f;
@@ -1100,7 +1303,32 @@ Result GeoMap::present() {
 }
 
 Result GeoMap::updateUniforms(const Uniforms& uniforms) {
+    if (!std::isfinite(uniforms.centerLon) ||
+        !std::isfinite(uniforms.centerLat) ||
+        !std::isfinite(uniforms.zoom) ||
+        uniforms.zoom < 0.0f || uniforms.zoom > 24.0f ||
+        !std::isfinite(uniforms.surfaceScale) ||
+        uniforms.surfaceScale <= 0.0f || uniforms.surfaceScale > 64.0f) {
+        JST_ERROR("[GEOMAP] Map uniforms are outside valid ranges.");
+        return Result::ERROR;
+    }
+
     pimpl->uniforms = uniforms;
+    pimpl->uniforms.centerLon = WrapLongitude(uniforms.centerLon);
+    pimpl->uniforms.centerLat = ClampMercatorLatitude(uniforms.centerLat);
+    pimpl->uniforms.viewportWidth =
+        std::isfinite(uniforms.viewportWidth)
+            ? std::max(uniforms.viewportWidth, 1.0f)
+            : 1.0f;
+    pimpl->uniforms.viewportHeight =
+        std::isfinite(uniforms.viewportHeight)
+            ? std::max(uniforms.viewportHeight, 1.0f)
+            : 1.0f;
+    if (!std::isfinite(uniforms.aspectRatio) ||
+        uniforms.aspectRatio < std::numeric_limits<F32>::epsilon()) {
+        pimpl->uniforms.aspectRatio =
+            pimpl->uniforms.viewportWidth / pimpl->uniforms.viewportHeight;
+    }
     pimpl->updateUniformsFlag = true;
     return Result::SUCCESS;
 }

@@ -11,6 +11,23 @@
 
 namespace Jetstream::Modules {
 
+static F32 WrapLongitude(const F32 longitude) {
+    F32 wrapped = std::fmod(longitude + 180.0f, 360.0f);
+    if (wrapped < 0.0f) {
+        wrapped += 360.0f;
+    }
+    return wrapped - 180.0f;
+}
+
+static F32 WrapMercatorDelta(F32 delta) {
+    if (delta > 0.5f) {
+        delta -= 1.0f;
+    } else if (delta < -0.5f) {
+        delta += 1.0f;
+    }
+    return delta;
+}
+
 Result AdsbImpl::validate() {
     if (!inputs().contains("signal")) {
         return Result::SUCCESS;
@@ -286,7 +303,7 @@ Result AdsbImpl::createPresent() {
         }
 
         // Instance buffer (dynamic, max capacity).
-        const U64 maxSegments = maxAircraft * maxTrackPoints;
+        const U64 maxSegments = maxAircraft * maxTrackPoints * 2;
         trackSegments.resize(maxSegments * 4, 0.0f);
 
         {
@@ -445,9 +462,9 @@ Result AdsbImpl::present() {
     }
 
     // Update GeoMap component uniforms.
-    const F32 w = static_cast<F32>(mapInteraction.viewSize.x);
-    const F32 h = static_cast<F32>(mapInteraction.viewSize.y);
-    const F32 aspectRatio = (h > 0.0f) ? (w / h) : 1.0f;
+    const F32 w = std::max(static_cast<F32>(mapInteraction.viewSize.x), 1.0f);
+    const F32 h = std::max(static_cast<F32>(mapInteraction.viewSize.y), 1.0f);
+    const F32 aspectRatio = w / h;
 
     if (geoMapComponent) {
         JST_CHECK(geoMapComponent->updateUniforms({
@@ -469,18 +486,55 @@ Result AdsbImpl::present() {
         std::lock_guard<std::mutex> lock(aircraftMutex);
 
         U64 segIdx = 0;
-        const U64 maxSegments = maxAircraft * maxTrackPoints;
+        const U64 maxSegments = maxAircraft * maxTrackPoints * 2;
+
+        auto appendTrackSegment = [&](const F32 lon1, const F32 lat1,
+                                      const F32 lon2, const F32 lat2) {
+            if (segIdx >= maxSegments) {
+                return;
+            }
+            trackSegments[segIdx * 4 + 0] = lon1;
+            trackSegments[segIdx * 4 + 1] = lat1;
+            trackSegments[segIdx * 4 + 2] = lon2;
+            trackSegments[segIdx * 4 + 3] = lat2;
+            ++segIdx;
+        };
 
         for (const auto& [icao, ac] : aircraftMap) {
             if (!ac.hasPosition || ac.track.size() < 2) {
                 continue;
             }
             for (U64 i = 0; i + 1 < ac.track.size() &&
-                 segIdx < maxSegments; ++i, ++segIdx) {
-                trackSegments[segIdx * 4 + 0] = static_cast<F32>(ac.track[i].second);      // lon1
-                trackSegments[segIdx * 4 + 1] = static_cast<F32>(ac.track[i].first);       // lat1
-                trackSegments[segIdx * 4 + 2] = static_cast<F32>(ac.track[i + 1].second);  // lon2
-                trackSegments[segIdx * 4 + 3] = static_cast<F32>(ac.track[i + 1].first);   // lat2
+                 segIdx < maxSegments; ++i) {
+                const F32 lon1 = static_cast<F32>(ac.track[i].second);
+                const F32 lat1 = static_cast<F32>(ac.track[i].first);
+                const F32 lon2 = static_cast<F32>(ac.track[i + 1].second);
+                const F32 lat2 = static_cast<F32>(ac.track[i + 1].first);
+                const F32 delta = lon2 - lon1;
+
+                if (std::abs(delta) <= 180.0f) {
+                    appendTrackSegment(lon1, lat1, lon2, lat2);
+                    continue;
+                }
+
+                const F32 unwrappedLon2 =
+                    lon2 + (delta < 0.0f ? 360.0f : -360.0f);
+                const F32 unwrappedDelta = unwrappedLon2 - lon1;
+                if (std::abs(unwrappedDelta) < 1e-7f) {
+                    continue;
+                }
+
+                const F32 boundaryLon =
+                    unwrappedLon2 > 180.0f ? 180.0f : -180.0f;
+                const F32 fraction =
+                    (boundaryLon - lon1) / unwrappedDelta;
+                const F32 boundaryLat =
+                    lat1 + (lat2 - lat1) * fraction;
+
+                appendTrackSegment(lon1, lat1,
+                                   boundaryLon, boundaryLat);
+                appendTrackSegment(-boundaryLon, boundaryLat,
+                                   lon2, lat2);
             }
         }
 
@@ -507,8 +561,14 @@ Result AdsbImpl::present() {
     aircraftUniforms.zoom = mapInteraction.zoom;
     aircraftUniforms.aspectRatio = aspectRatio;
     aircraftUniforms.surfaceScale = mapInteraction.scale;
-    aircraftUniforms.viewWidth = static_cast<int>(mapInteraction.viewSize.x);
-    aircraftUniforms.viewHeight = static_cast<int>(mapInteraction.viewSize.y);
+    aircraftUniforms.viewWidth = static_cast<int>(std::clamp<U64>(
+        mapInteraction.viewSize.x,
+        1,
+        static_cast<U64>(std::numeric_limits<int>::max())));
+    aircraftUniforms.viewHeight = static_cast<int>(std::clamp<U64>(
+        mapInteraction.viewSize.y,
+        1,
+        static_cast<U64>(std::numeric_limits<int>::max())));
 
     const U64* countPtr = static_cast<const U64*>(aircraftCount.data());
     const U64 countValue = std::min<U64>(countPtr[0], maxAircraft);
@@ -597,27 +657,24 @@ Result AdsbImpl::present() {
 }
 
 void AdsbImpl::clampMapView() {
-    const F32 ar = static_cast<F32>(mapInteraction.viewSize.x) /
-                   std::max(static_cast<F32>(mapInteraction.viewSize.y), 1.0f);
+    const F32 ar =
+        std::max(static_cast<F32>(mapInteraction.viewSize.x), 1.0f) /
+        std::max(static_cast<F32>(mapInteraction.viewSize.y), 1.0f);
 
     // Minimum zoom so map fills the viewport on both axes.
     // Visible half-extent in Mercator: X = ar / (2*scale), Y = 1 / (2*scale).
     // Map Mercator range is [0,1] on both axes, so we need:
     //   ar / (2*scale) <= 0.5  →  scale >= ar
     //   1 / (2*scale) <= 0.5  →  scale >= 1
-    const F32 minZoom = std::log2(std::max(ar, 1.0f));
+    const F32 minZoom =
+        std::min(std::log2(std::max(ar, 1.0f)), 18.0f);
     mapInteraction.zoom = std::clamp(mapInteraction.zoom, minZoom, 18.0f);
 
     const F32 scale = std::pow(2.0f, mapInteraction.zoom);
 
-    // Clamp center in Mercator X so left/right edges stay in view.
-    // Visible range: [cx - ar/(2*scale), cx + ar/(2*scale)] must be in [0,1].
-    auto mercX = [](F32 lon) {
-        return (lon + 180.0f) / 360.0f;
-    };
     auto mercY = [&](F32 lat) {
         const F32 r = lat * static_cast<F32>(JST_PI) / 180.0f;
-        return (1.0f - std::log(std::tan(r) + 1.0f / std::cos(r)) /
+        return (1.0f - std::asinh(std::tan(r)) /
                        static_cast<F32>(JST_PI)) / 2.0f;
     };
     auto invMercY = [&](F32 my) {
@@ -625,11 +682,8 @@ void AdsbImpl::clampMapView() {
                180.0f / static_cast<F32>(JST_PI);
     };
 
-    const F32 halfExtentX = ar / (2.0f * scale);
-    const F32 cx = std::clamp(mercX(mapInteraction.centerLon),
-                              halfExtentX,
-                              1.0f - halfExtentX);
-    mapInteraction.centerLon = cx * 360.0f - 180.0f;
+    // Longitude wraps continuously across the antimeridian.
+    mapInteraction.centerLon = WrapLongitude(mapInteraction.centerLon);
 
     // Clamp center in Mercator Y so top/bottom edges stay in view.
     const F32 halfExtentY = 1.0f / (2.0f * scale);
@@ -651,7 +705,7 @@ void AdsbImpl::updateHoveredFlightFromCursor(const Extent2D<F32>& cursorPosNorma
     };
     auto mercY = [&](F32 lat) {
         const F32 r = lat * static_cast<F32>(JST_PI) / 180.0f;
-        return (1.0f - std::log(std::tan(r) + 1.0f / std::cos(r)) /
+        return (1.0f - std::asinh(std::tan(r)) /
                        static_cast<F32>(JST_PI)) / 2.0f;
     };
 
@@ -677,7 +731,8 @@ void AdsbImpl::updateHoveredFlightFromCursor(const Extent2D<F32>& cursorPosNorma
         const F32 acMx = mercX(static_cast<F32>(ac.longitude));
         const F32 acMy = mercY(static_cast<F32>(ac.latitude));
 
-        const F32 acNdcX = (acMx - cx) * scale * 2.0f / aspectRatio;
+        const F32 acNdcX = WrapMercatorDelta(acMx - cx) * scale * 2.0f /
+                           aspectRatio;
         const F32 acNdcY = (cy - acMy) * scale * 2.0f;
 
         const F32 dx = (cursorNdcX - acNdcX);
@@ -713,7 +768,7 @@ void AdsbImpl::processMapInteraction(std::vector<SurfaceEvent>&& surfaceEvents,
     };
     auto mercY = [&](F32 lat) {
         const F32 r = lat * static_cast<F32>(JST_PI) / 180.0f;
-        return (1.0f - std::log(std::tan(r) + 1.0f / std::cos(r)) /
+        return (1.0f - std::asinh(std::tan(r)) /
                        static_cast<F32>(JST_PI)) / 2.0f;
     };
     auto invMercY = [&](F32 my) {
@@ -752,10 +807,12 @@ void AdsbImpl::processMapInteraction(std::vector<SurfaceEvent>&& surfaceEvents,
 
         switch (event.type) {
             case MouseEventType::Scroll: {
-                const F32 ar = static_cast<F32>(mapInteraction.viewSize.x) /
-                               std::max(static_cast<F32>(mapInteraction.viewSize.y), 1.0f);
+                const F32 ar =
+                    std::max(static_cast<F32>(mapInteraction.viewSize.x), 1.0f) /
+                    std::max(static_cast<F32>(mapInteraction.viewSize.y), 1.0f);
 
-                const F32 minZoom = std::log2(std::max(ar, 1.0f));
+                const F32 minZoom =
+                    std::min(std::log2(std::max(ar, 1.0f)), 18.0f);
                 const F32 oldZoom = mapInteraction.zoom;
                 const F32 newZoom = std::clamp(oldZoom + event.scroll.y * 0.15f, minZoom, 18.0f);
 
@@ -798,8 +855,9 @@ void AdsbImpl::processMapInteraction(std::vector<SurfaceEvent>&& surfaceEvents,
                 if (mapInteraction.dragging) {
                     const F32 dx = event.position.x - mapInteraction.dragAnchorX;
                     const F32 dy = event.position.y - mapInteraction.dragAnchorY;
-                    const F32 ar = static_cast<F32>(mapInteraction.viewSize.x) /
-                                   std::max(static_cast<F32>(mapInteraction.viewSize.y), 1.0f);
+                    const F32 ar =
+                        std::max(static_cast<F32>(mapInteraction.viewSize.x), 1.0f) /
+                        std::max(static_cast<F32>(mapInteraction.viewSize.y), 1.0f);
 
                     // Pan in Mercator space: convert delta pixels
                     // to Mercator units then back to lon/lat.
