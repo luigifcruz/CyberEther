@@ -245,40 +245,42 @@ TEST_CASE("Reshape Module - Validation rejects malformed shapes",
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
-        SECTION("empty shape string") {
-            RequireReshapeValidationError(impl, "", {4});
-        }
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            SECTION("empty shape string") {
+                RequireReshapeValidationError(impl, "", {4});
+            }
 
-        SECTION("missing shape brackets") {
-            RequireReshapeValidationError(impl, "4,4", {16});
-        }
+            SECTION("missing shape brackets") {
+                RequireReshapeValidationError(impl, "4,4", {16});
+            }
 
-        SECTION("shape with no dimensions") {
-            RequireReshapeValidationError(impl, "[]", {4});
-        }
+            SECTION("shape with no dimensions") {
+                RequireReshapeValidationError(impl, "[]", {4});
+            }
 
-        SECTION("shape with trailing comma") {
-            RequireReshapeValidationError(impl, "[4,]", {4});
-        }
+            SECTION("shape with trailing comma") {
+                RequireReshapeValidationError(impl, "[4,]", {4});
+            }
 
-        SECTION("shape with zero dimension") {
-            RequireReshapeValidationError(impl, "[0,4]", {4});
-        }
+            SECTION("shape with zero dimension") {
+                RequireReshapeValidationError(impl, "[0,4]", {4});
+            }
 
-        SECTION("shape with no parseable dimensions") {
-            RequireReshapeValidationError(impl, "[a,b]", {4});
-        }
+            SECTION("shape with no parseable dimensions") {
+                RequireReshapeValidationError(impl, "[a,b]", {4});
+            }
 
-        SECTION("digit-containing malformed shape") {
-            RequireReshapeValidationError(impl, "[2x, 2]", {4});
-        }
+            SECTION("digit-containing malformed shape") {
+                RequireReshapeValidationError(impl, "[2x, 2]", {4});
+            }
 
-        SECTION("dimension outside U64 range") {
-            RequireReshapeValidationError(impl, "[18446744073709551616]", {4});
-        }
+            SECTION("dimension outside U64 range") {
+                RequireReshapeValidationError(impl, "[18446744073709551616]", {4});
+            }
 
-        SECTION("target layout product overflow") {
-            RequireReshapeValidationError(impl, "[18446744073709551615, 2]", {4});
+            SECTION("target layout product overflow") {
+                RequireReshapeValidationError(impl, "[18446744073709551615, 2]", {4});
+            }
         }
     }
 }

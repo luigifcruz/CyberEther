@@ -312,143 +312,145 @@ TEST_CASE("Signal Generator - Validation rejects invalid config",
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
-        SECTION("invalid signalType") {
-            Modules::SignalGenerator config;
-            config.signalType = "unknown";
-            RequireSignalGeneratorValidationError(impl, config);
-        }
-
-        SECTION("invalid signalDataType") {
-            Modules::SignalGenerator config;
-            config.signalDataType = "I16";
-            RequireSignalGeneratorValidationError(impl, config);
-        }
-
-        SECTION("sample rate must be finite and positive") {
-            Modules::SignalGenerator config;
-            config.sampleRate = std::numeric_limits<F64>::quiet_NaN();
-            RequireSignalGeneratorValidationError(impl, config);
-
-            config = {};
-            config.sampleRate = 0.0;
-            RequireSignalGeneratorValidationError(impl, config);
-
-            config = {};
-            config.sampleRate = std::numeric_limits<F64>::max();
-            RequireSignalGeneratorValidationError(impl, config);
-
-            config = {};
-            config.sampleRate = std::numeric_limits<F64>::denorm_min();
-            RequireSignalGeneratorValidationError(impl, config);
-        }
-
-        SECTION("frequency must be finite and non-negative") {
-            Modules::SignalGenerator config;
-            config.frequency = std::numeric_limits<F64>::infinity();
-            RequireSignalGeneratorValidationError(impl, config);
-
-            config = {};
-            config.frequency = -1.0;
-            RequireSignalGeneratorValidationError(impl, config);
-        }
-
-        SECTION("amplitude must be finite and non-negative") {
-            Modules::SignalGenerator config;
-            config.amplitude = std::numeric_limits<F64>::quiet_NaN();
-            RequireSignalGeneratorValidationError(impl, config);
-
-            config = {};
-            config.amplitude = -1.0;
-            RequireSignalGeneratorValidationError(impl, config);
-
-            config = {};
-            config.amplitude = std::numeric_limits<F64>::max();
-            RequireSignalGeneratorValidationError(impl, config);
-        }
-
-        SECTION("phase must be finite") {
-            Modules::SignalGenerator config;
-            config.phase = std::numeric_limits<F64>::infinity();
-            RequireSignalGeneratorValidationError(impl, config);
-        }
-
-        SECTION("DC offset must be finite") {
-            Modules::SignalGenerator config;
-            config.dcOffset = std::numeric_limits<F64>::quiet_NaN();
-            RequireSignalGeneratorValidationError(impl, config);
-
-            config = {};
-            config.amplitude = std::numeric_limits<F32>::max();
-            config.dcOffset = std::numeric_limits<F32>::max();
-            RequireSignalGeneratorValidationError(impl, config);
-        }
-
-        SECTION("buffer size must be nonzero and representable") {
-            Modules::SignalGenerator config;
-            config.bufferSize = 0;
-            RequireSignalGeneratorValidationError(impl, config);
-
-            config = {};
-            config.bufferSize = std::numeric_limits<U64>::max();
-            RequireSignalGeneratorValidationError(impl, config);
-
-            if (impl.device == DeviceType::CPU) {
-                config = {};
-                config.bufferSize = std::numeric_limits<U64>::max() /
-                                    DataTypeSize(DataType::F32);
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            SECTION("invalid signalType") {
+                Modules::SignalGenerator config;
+                config.signalType = "unknown";
                 RequireSignalGeneratorValidationError(impl, config);
             }
-        }
 
-        SECTION("noise variance must be finite and non-negative") {
-            Modules::SignalGenerator config;
-            config.noiseVariance = std::numeric_limits<F64>::infinity();
-            RequireSignalGeneratorValidationError(impl, config);
+            SECTION("invalid signalDataType") {
+                Modules::SignalGenerator config;
+                config.signalDataType = "I16";
+                RequireSignalGeneratorValidationError(impl, config);
+            }
 
-            config = {};
-            config.noiseVariance = -0.1;
-            RequireSignalGeneratorValidationError(impl, config);
-        }
+            SECTION("sample rate must be finite and positive") {
+                Modules::SignalGenerator config;
+                config.sampleRate = std::numeric_limits<F64>::quiet_NaN();
+                RequireSignalGeneratorValidationError(impl, config);
 
-        SECTION("chirp duration must be finite and positive") {
-            Modules::SignalGenerator config;
-            config.signalType = "chirp";
-            config.chirpDuration = std::numeric_limits<F64>::quiet_NaN();
-            RequireSignalGeneratorValidationError(impl, config);
+                config = {};
+                config.sampleRate = 0.0;
+                RequireSignalGeneratorValidationError(impl, config);
 
-            config = {};
-            config.signalType = "chirp";
-            config.chirpDuration = 0.0;
-            RequireSignalGeneratorValidationError(impl, config);
+                config = {};
+                config.sampleRate = std::numeric_limits<F64>::max();
+                RequireSignalGeneratorValidationError(impl, config);
 
-            config = {};
-            config.signalType = "chirp";
-            config.chirpDuration = std::numeric_limits<F64>::denorm_min();
-            RequireSignalGeneratorValidationError(impl, config);
-        }
+                config = {};
+                config.sampleRate = std::numeric_limits<F64>::denorm_min();
+                RequireSignalGeneratorValidationError(impl, config);
+            }
 
-        SECTION("chirp start frequency must be finite and non-negative") {
-            Modules::SignalGenerator config;
-            config.signalType = "chirp";
-            config.chirpStartFreq = std::numeric_limits<F64>::infinity();
-            RequireSignalGeneratorValidationError(impl, config);
+            SECTION("frequency must be finite and non-negative") {
+                Modules::SignalGenerator config;
+                config.frequency = std::numeric_limits<F64>::infinity();
+                RequireSignalGeneratorValidationError(impl, config);
 
-            config = {};
-            config.signalType = "chirp";
-            config.chirpStartFreq = -1.0;
-            RequireSignalGeneratorValidationError(impl, config);
-        }
+                config = {};
+                config.frequency = -1.0;
+                RequireSignalGeneratorValidationError(impl, config);
+            }
 
-        SECTION("chirp end frequency must be finite and non-negative") {
-            Modules::SignalGenerator config;
-            config.signalType = "chirp";
-            config.chirpEndFreq = std::numeric_limits<F64>::quiet_NaN();
-            RequireSignalGeneratorValidationError(impl, config);
+            SECTION("amplitude must be finite and non-negative") {
+                Modules::SignalGenerator config;
+                config.amplitude = std::numeric_limits<F64>::quiet_NaN();
+                RequireSignalGeneratorValidationError(impl, config);
 
-            config = {};
-            config.signalType = "chirp";
-            config.chirpEndFreq = -1.0;
-            RequireSignalGeneratorValidationError(impl, config);
+                config = {};
+                config.amplitude = -1.0;
+                RequireSignalGeneratorValidationError(impl, config);
+
+                config = {};
+                config.amplitude = std::numeric_limits<F64>::max();
+                RequireSignalGeneratorValidationError(impl, config);
+            }
+
+            SECTION("phase must be finite") {
+                Modules::SignalGenerator config;
+                config.phase = std::numeric_limits<F64>::infinity();
+                RequireSignalGeneratorValidationError(impl, config);
+            }
+
+            SECTION("DC offset must be finite") {
+                Modules::SignalGenerator config;
+                config.dcOffset = std::numeric_limits<F64>::quiet_NaN();
+                RequireSignalGeneratorValidationError(impl, config);
+
+                config = {};
+                config.amplitude = std::numeric_limits<F32>::max();
+                config.dcOffset = std::numeric_limits<F32>::max();
+                RequireSignalGeneratorValidationError(impl, config);
+            }
+
+            SECTION("buffer size must be nonzero and representable") {
+                Modules::SignalGenerator config;
+                config.bufferSize = 0;
+                RequireSignalGeneratorValidationError(impl, config);
+
+                config = {};
+                config.bufferSize = std::numeric_limits<U64>::max();
+                RequireSignalGeneratorValidationError(impl, config);
+
+                if (impl.device == DeviceType::CPU) {
+                    config = {};
+                    config.bufferSize = std::numeric_limits<U64>::max() /
+                                        DataTypeSize(DataType::F32);
+                    RequireSignalGeneratorValidationError(impl, config);
+                }
+            }
+
+            SECTION("noise variance must be finite and non-negative") {
+                Modules::SignalGenerator config;
+                config.noiseVariance = std::numeric_limits<F64>::infinity();
+                RequireSignalGeneratorValidationError(impl, config);
+
+                config = {};
+                config.noiseVariance = -0.1;
+                RequireSignalGeneratorValidationError(impl, config);
+            }
+
+            SECTION("chirp duration must be finite and positive") {
+                Modules::SignalGenerator config;
+                config.signalType = "chirp";
+                config.chirpDuration = std::numeric_limits<F64>::quiet_NaN();
+                RequireSignalGeneratorValidationError(impl, config);
+
+                config = {};
+                config.signalType = "chirp";
+                config.chirpDuration = 0.0;
+                RequireSignalGeneratorValidationError(impl, config);
+
+                config = {};
+                config.signalType = "chirp";
+                config.chirpDuration = std::numeric_limits<F64>::denorm_min();
+                RequireSignalGeneratorValidationError(impl, config);
+            }
+
+            SECTION("chirp start frequency must be finite and non-negative") {
+                Modules::SignalGenerator config;
+                config.signalType = "chirp";
+                config.chirpStartFreq = std::numeric_limits<F64>::infinity();
+                RequireSignalGeneratorValidationError(impl, config);
+
+                config = {};
+                config.signalType = "chirp";
+                config.chirpStartFreq = -1.0;
+                RequireSignalGeneratorValidationError(impl, config);
+            }
+
+            SECTION("chirp end frequency must be finite and non-negative") {
+                Modules::SignalGenerator config;
+                config.signalType = "chirp";
+                config.chirpEndFreq = std::numeric_limits<F64>::quiet_NaN();
+                RequireSignalGeneratorValidationError(impl, config);
+
+                config = {};
+                config.signalType = "chirp";
+                config.chirpEndFreq = -1.0;
+                RequireSignalGeneratorValidationError(impl, config);
+            }
         }
     }
 }
