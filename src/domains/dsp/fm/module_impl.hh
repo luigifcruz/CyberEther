@@ -17,6 +17,8 @@ struct FmImpl : public Module::Impl, public DynamicConfig<FM> {
     Tensor output;
     F32 kf = 0.0f;
     F32 ref = 0.0f;
+    CF32 previousSample = CF32{0.0f, 0.0f};
+    bool hasPreviousSample = false;
 
     void updateCoefficients();
 };

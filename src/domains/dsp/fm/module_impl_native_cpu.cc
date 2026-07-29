@@ -45,14 +45,19 @@ Result FmImplNativeCpu::computeSubmit() {
     const U64 size = input.size();
     const F32 refCoeff = ref;
 
-    // First sample has no previous sample, set to zero.
     if (size > 0) {
-        outputData[0] = 0.0f;
+        outputData[0] = hasPreviousSample
+            ? std::arg(std::conj(previousSample) * inputData[0]) * refCoeff
+            : 0.0f;
     }
 
-    // Quadrature demodulation.
     for (U64 n = 1; n < size; n++) {
         outputData[n] = std::arg(std::conj(inputData[n - 1]) * inputData[n]) * refCoeff;
+    }
+
+    if (size > 0) {
+        previousSample = inputData[size - 1];
+        hasPreviousSample = true;
     }
 
     return Result::SUCCESS;

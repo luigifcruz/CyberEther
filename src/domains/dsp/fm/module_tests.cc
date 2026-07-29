@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <limits>
+#include <unordered_set>
 
 using namespace Jetstream;
 
@@ -136,6 +137,70 @@ TEST_CASE("FM - Linear Phase Ramp", "[modules][fm][phase]") {
             for (U64 i = 1; i < bufferSize; ++i) {
                 REQUIRE_THAT(out.at<F32>(i), Catch::Matchers::WithinAbs(expected, 0.01f));
             }
+        }
+    }
+}
+
+TEST_CASE("FM - Preserves phase differences across submissions",
+          "[modules][fm][phase][state]") {
+    const auto implementations = Registry::ListAvailableModules("fm");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        if (impl.device != DeviceType::CPU) {
+            continue;
+        }
+
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            constexpr F32 sampleRate = 240e3f;
+            constexpr F32 frequencyOffset = 10e3f;
+            const F32 phaseIncrement = 2.0f * static_cast<F32>(JST_PI) *
+                                       frequencyOffset / sampleRate;
+
+            Tensor input;
+            REQUIRE(input.create(DeviceType::CPU, DataType::CF32, {4}) ==
+                    Result::SUCCESS);
+            for (U64 i = 0; i < input.size(); ++i) {
+                const F32 phase = static_cast<F32>(i) * phaseIncrement;
+                input.at<CF32>(i) = std::polar(1.0f, phase);
+            }
+
+            TensorMap inputs;
+            inputs["signal"].requested("test", "signal");
+            inputs["signal"].tensor = input;
+
+            Modules::FM config;
+            config.sampleRate = sampleRate;
+            std::shared_ptr<Module> module;
+            REQUIRE(Registry::BuildModule("fm", impl.device, impl.runtime,
+                                          impl.provider, module) == Result::SUCCESS);
+            REQUIRE(module->create("test", config, inputs) == Result::SUCCESS);
+
+            Runtime runtime("test", impl.device, impl.runtime);
+            REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
+            std::unordered_set<std::string> skippedModules;
+            std::unordered_set<std::string> failedModules;
+            REQUIRE(runtime.compute({}, skippedModules, failedModules) ==
+                    Result::SUCCESS);
+
+            for (U64 i = 0; i < input.size(); ++i) {
+                const F32 phase = static_cast<F32>(i + input.size()) *
+                                  phaseIncrement;
+                input.at<CF32>(i) = std::polar(1.0f, phase);
+            }
+            skippedModules.clear();
+            failedModules.clear();
+            REQUIRE(runtime.compute({}, skippedModules, failedModules) ==
+                    Result::SUCCESS);
+
+            const F32 kf = 100e3f / sampleRate;
+            const F32 ref = 1.0f / (2.0f * static_cast<F32>(JST_PI) * kf);
+            const Tensor output = module->outputs().at("signal").tensor;
+            REQUIRE_THAT(output.at<F32>(0),
+                         Catch::Matchers::WithinAbs(phaseIncrement * ref, 0.01f));
+
+            REQUIRE(runtime.destroy() == Result::SUCCESS);
+            REQUIRE(module->destroy() == Result::SUCCESS);
         }
     }
 }

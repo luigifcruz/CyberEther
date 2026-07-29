@@ -28,6 +28,8 @@ Result FmImpl::create() {
 
     // Initialize coefficients.
     updateCoefficients();
+    previousSample = CF32{0.0f, 0.0f};
+    hasPreviousSample = false;
 
     // Allocate output tensor (real F32).
     JST_CHECK(output.create(input.device(), DataType::F32, input.shape()));
