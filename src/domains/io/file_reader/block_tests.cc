@@ -137,6 +137,12 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(viewBlock("reader").state == Block::State::Incomplete);
     REQUIRE(viewBlock("reader").diagnostic.find("[MODULE_FILE_READER]") != std::string::npos);
 
+    TensorMap consumerInputs;
+    consumerInputs["buffer"].requested("reader", "signal");
+    REQUIRE(flowgraph->blockCreate("consumer", TestFlowgraph::kSyntheticPassType,
+                                   {}, consumerInputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("consumer").state == Block::State::Incomplete);
+
     Parser::Map selection;
     selection["filepath"] = Platform::PathToUtf8(path);
     selection["dataType"] = std::string("F32");
@@ -145,7 +151,14 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockReconfigure("reader", selection) == Result::SUCCESS);
     REQUIRE(viewBlock("reader").state == Block::State::Created);
     REQUIRE(viewBlock("reader").outputs.at("signal").tensor.shape(0) == 4);
+    const auto consumer = viewBlock("consumer");
+    REQUIRE(consumer.state == Block::State::Created);
+    REQUIRE(consumer.inputs.at("buffer").resolved());
+    REQUIRE(consumer.inputs.at("buffer").external.has_value());
+    REQUIRE(consumer.inputs.at("buffer").external->block == "reader");
+    REQUIRE(consumer.inputs.at("buffer").external->port == "signal");
 
+    REQUIRE(flowgraph->blockDestroy("consumer", false) == Result::SUCCESS);
     REQUIRE(flowgraph->blockDestroy("reader", false) == Result::SUCCESS);
     Cleanup(path);
 }

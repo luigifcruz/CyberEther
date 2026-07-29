@@ -261,6 +261,9 @@ Result Module::reconfigure(const Parser::Map& config, const bool& validateOnly) 
             return result;
         }
     }
+    if (!validateOnly && impl->_state == State::INCOMPLETE) {
+        return Result::RECREATE;
+    }
     if (!validateOnly) {
         Parser::Map previousConfig;
         {

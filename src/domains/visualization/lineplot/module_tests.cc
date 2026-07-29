@@ -237,7 +237,7 @@ TEST_CASE("Lineplot module rejects unsupported rendering geometry during validat
     }
 }
 
-TEST_CASE("Lineplot module handles repeated runs and config updates",
+TEST_CASE("Lineplot module handles repeated computes and config updates",
           "[modules][lineplot][state]") {
     auto implementations = Registry::ListAvailableModules("lineplot");
     REQUIRE(!implementations.empty());
@@ -250,17 +250,22 @@ TEST_CASE("Lineplot module handles repeated runs and config updates",
             REQUIRE(input.create(DeviceType::CPU, DataType::F32, {64}) ==
                     Result::SUCCESS);
             ctx.setInput("signal", input);
-            REQUIRE(ctx.run() == Result::SUCCESS);
-            REQUIRE(ctx.run() == Result::SUCCESS);
+            REQUIRE(ctx.start() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
 
             Modules::Lineplot config;
             config.averaging = 8;
-            ctx.setConfig(config);
-            REQUIRE(ctx.run() == Result::SUCCESS);
+            REQUIRE(ctx.reconfigure(config) == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
 
             config.decimation = 2;
-            ctx.setConfig(config);
-            REQUIRE(ctx.run() == Result::SUCCESS);
+            REQUIRE(ctx.reconfigure(config) == Result::RECREATE);
+            REQUIRE(ctx.stop() == Result::SUCCESS);
+
+            REQUIRE(ctx.start() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(ctx.stop() == Result::SUCCESS);
         }
     }
 }

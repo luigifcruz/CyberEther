@@ -399,7 +399,7 @@ TEST_CASE("Waterfall module reconfigure preserves live state on rejection",
     }
 }
 
-TEST_CASE("Waterfall module supports repeated runs and config updates",
+TEST_CASE("Waterfall module supports repeated computes and config updates",
           "[modules][waterfall][state]") {
     auto implementations = Registry::ListAvailableModules("waterfall");
     REQUIRE(!implementations.empty());
@@ -416,16 +416,21 @@ TEST_CASE("Waterfall module supports repeated runs and config updates",
             REQUIRE(input.create(DeviceType::CPU, DataType::F32, {2, 8}) ==
                     Result::SUCCESS);
             ctx.setInput("signal", input);
-            REQUIRE(ctx.run() == Result::SUCCESS);
-            REQUIRE(ctx.run() == Result::SUCCESS);
+            REQUIRE(ctx.start() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
 
             config.interpolate = false;
-            ctx.setConfig(config);
-            REQUIRE(ctx.run() == Result::SUCCESS);
+            REQUIRE(ctx.reconfigure(config) == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
 
             config.height = 8;
-            ctx.setConfig(config);
-            REQUIRE(ctx.run() == Result::SUCCESS);
+            REQUIRE(ctx.reconfigure(config) == Result::RECREATE);
+            REQUIRE(ctx.stop() == Result::SUCCESS);
+
+            REQUIRE(ctx.start() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(ctx.stop() == Result::SUCCESS);
         }
     }
 }

@@ -65,6 +65,7 @@ struct AudioImpl::Impl {
     ma_device deviceCtx;
     ma_resampler_config resamplerConfig;
     ma_resampler resamplerCtx;
+    bool resamplerInitialized = false;
 
     static void callback(ma_device* pDevice, void* pOutput, const void* pInput,
                          ma_uint32 frameCount);
@@ -282,6 +283,7 @@ Result AudioImpl::create() {
         JST_ERROR("[MODULE_AUDIO] Failed to create audio resampler.");
         return Result::ERROR;
     }
+    pimpl->resamplerInitialized = true;
 
     // Get available audio devices.
 
@@ -329,6 +331,7 @@ Result AudioImpl::create() {
     if (ma_device_init(nullptr, &pimpl->deviceConfig, &pimpl->deviceCtx) != MA_SUCCESS) {
         JST_ERROR("[MODULE_AUDIO] Failed to open audio device.");
         ma_resampler_uninit(&pimpl->resamplerCtx, nullptr);
+        pimpl->resamplerInitialized = false;
         return Result::INCOMPLETE;
     }
 
@@ -338,6 +341,7 @@ Result AudioImpl::create() {
         JST_ERROR("[MODULE_AUDIO] Failed to start playback device.");
         ma_device_uninit(&pimpl->deviceCtx);
         ma_resampler_uninit(&pimpl->resamplerCtx, nullptr);
+        pimpl->resamplerInitialized = false;
         return Result::ERROR;
     }
 
@@ -358,7 +362,9 @@ Result AudioImpl::create() {
 Result AudioImpl::destroy() {
     if (pimpl) {
         ma_device_uninit(&pimpl->deviceCtx);
-        ma_resampler_uninit(&pimpl->resamplerCtx, nullptr);
+        if (pimpl->resamplerInitialized) {
+            ma_resampler_uninit(&pimpl->resamplerCtx, nullptr);
+        }
         pimpl.reset();
     }
 

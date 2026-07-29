@@ -147,17 +147,6 @@ Result Block::Impl::moduleDestroy(const std::string name, bool retainOnFailure) 
     if (destroyResult != Result::SUCCESS && destroyResult != Result::RELOAD) {
         if (!retainOnFailure) {
             releaseOwnership();
-            return destroyResult;
-        }
-
-        if (wasScheduled) {
-            const auto restoreResult = scheduler()->add(module);
-            if (restoreResult == Result::SUCCESS || restoreResult == Result::RELOAD) {
-                _modules.at(name).scheduled = true;
-            } else {
-                JST_ERROR("[BLOCK] Failed to restore module '{}' after destruction failure inside block '{}'.",
-                          name, _name);
-            }
         }
         return destroyResult;
     }
