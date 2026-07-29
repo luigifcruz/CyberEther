@@ -120,9 +120,9 @@ Result PskDemodImplNativeCpu::computeSubmit() {
         }
 
         F64 freqErrSample = costasLoopError(corrected);
-        freqAcc += freqAlpha * freqErrSample;
+        freqAcc += freqBeta * freqErrSample;
         freqAcc = std::clamp(freqAcc, -kPi, kPi);
-        phase += freqAcc + freqBeta * freqErrSample;
+        phase += freqAcc + freqAlpha * freqErrSample;
         phase = std::remainder(phase, 2.0 * kPi);
 
         outputData[outputIndex++] = corrected;

@@ -5,12 +5,25 @@
 #include "jetstream/registry.hh"
 #include "jetstream/domains/dsp/psk_demod/module.hh"
 
+#include "module_impl.hh"
+
 #include <cmath>
 #include <limits>
+#include <unordered_set>
 
 using namespace Jetstream;
 
 namespace {
+
+struct PskDemodImplAccess : Modules::PskDemodImpl {
+    static auto frequencyErrorMember() {
+        return &PskDemodImplAccess::frequencyError;
+    }
+
+    static auto frequencyBetaMember() {
+        return &PskDemodImplAccess::freqBeta;
+    }
+};
 
 void RequirePskDemodValidationError(const Registry::ModuleRegistration& impl,
                                     const Modules::PskDemod& config,
@@ -31,6 +44,56 @@ TensorMap PskDemodInput(const Tensor& input) {
 }
 
 }  // namespace
+
+TEST_CASE("PskDemod - Costas frequency state uses integral gain",
+          "[modules][psk_demod][costas]") {
+    const auto implementations = Registry::ListAvailableModules("psk_demod");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        if (impl.device != DeviceType::CPU) {
+            continue;
+        }
+
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Modules::PskDemod config;
+            config.pskType = "bpsk";
+            config.sampleRate = 2.0;
+            config.symbolRate = 1.0;
+
+            constexpr F32 phase = 0.2f;
+            Tensor input;
+            REQUIRE(input.create(DeviceType::CPU, DataType::CF32, {2}) ==
+                    Result::SUCCESS);
+            input.at<CF32>(0) = std::polar(1.0f, phase);
+            input.at<CF32>(1) = input.at<CF32>(0);
+
+            std::shared_ptr<Module> module;
+            REQUIRE(Registry::BuildModule("psk_demod", impl.device, impl.runtime,
+                                          impl.provider, module) == Result::SUCCESS);
+            REQUIRE(module->create("test", config, PskDemodInput(input)) ==
+                    Result::SUCCESS);
+
+            auto* psk = module->getImpl<Modules::PskDemodImpl>();
+            REQUIRE(psk != nullptr);
+            const F64 beta = psk->*PskDemodImplAccess::frequencyBetaMember();
+
+            Runtime runtime("test", impl.device, impl.runtime);
+            REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
+            std::unordered_set<std::string> skippedModules;
+            std::unordered_set<std::string> failedModules;
+            REQUIRE(runtime.compute({}, skippedModules, failedModules) ==
+                    Result::SUCCESS);
+
+            const F64 expected = beta * static_cast<F64>(input.at<CF32>(0).imag());
+            const F64 actual = psk->*PskDemodImplAccess::frequencyErrorMember();
+            REQUIRE_THAT(actual, Catch::Matchers::WithinAbs(expected, 1e-12));
+
+            REQUIRE(runtime.destroy() == Result::SUCCESS);
+            REQUIRE(module->destroy() == Result::SUCCESS);
+        }
+    }
+}
 
 TEST_CASE("PskDemod - Output Size Decimation", "[modules][psk_demod]") {
     auto implementations = Registry::ListAvailableModules("psk_demod");
