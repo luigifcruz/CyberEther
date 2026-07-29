@@ -39,6 +39,7 @@ Result AmImpl::create() {
     // Allocate output tensor (real F32).
     JST_CHECK(output.create(input.device(), DataType::F32, input.shape()));
     JST_CHECK(output.propagateAttributes(input));
+    JST_CHECK(output.setAttribute("frequency", F32{0.0f}));
 
     outputs()["signal"].produced(name(), "signal", output);
 

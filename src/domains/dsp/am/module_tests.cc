@@ -5,6 +5,8 @@
 #include "jetstream/registry.hh"
 #include "jetstream/domains/dsp/am/module.hh"
 
+#include <algorithm>
+#include <any>
 #include <cmath>
 #include <limits>
 
@@ -199,6 +201,36 @@ TEST_CASE("AM - Output Size Matches Input", "[modules][am][size]") {
             auto& out = ctx.output("signal");
 
             REQUIRE(out.size() == bufferSize);
+        }
+    }
+}
+
+TEST_CASE("AM - Publishes baseband frequency metadata",
+          "[modules][am][metadata]") {
+    const auto implementations = Registry::ListAvailableModules("am");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("am", impl.device, impl.runtime, impl.provider);
+            ctx.setConfig(Modules::AM{});
+
+            Tensor input;
+            REQUIRE(input.create(DeviceType::CPU, DataType::CF32, {16}) ==
+                    Result::SUCCESS);
+            std::fill(input.data<CF32>(), input.data<CF32>() + input.size(),
+                      CF32{0.0f, 0.0f});
+            REQUIRE(input.setAttribute("frequency", F32{100.0e6f}) ==
+                    Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleRate", F32{240.0e3f}) ==
+                    Result::SUCCESS);
+            ctx.setInput("signal", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+            const auto& output = ctx.output("signal");
+            REQUIRE(std::any_cast<F32>(output.attribute("frequency")) == 0.0f);
+            REQUIRE(std::any_cast<F32>(output.attribute("sampleRate")) ==
+                    240.0e3f);
         }
     }
 }
