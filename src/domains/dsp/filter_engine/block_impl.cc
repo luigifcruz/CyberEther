@@ -10,6 +10,7 @@
 #include <jetstream/domains/core/pad/module.hh>
 #include <jetstream/domains/core/unpad/module.hh>
 #include <jetstream/domains/core/multiply/module.hh>
+#include <jetstream/domains/core/multiply_constant/module.hh>
 #include <jetstream/domains/dsp/fft/module.hh>
 #include <jetstream/domains/dsp/fold/module.hh>
 #include <jetstream/domains/dsp/overlap_add/module.hh>
@@ -171,6 +172,8 @@ struct FilterEngineImpl : public Block::Impl,
         std::make_shared<Modules::Fold>();
     std::shared_ptr<Modules::Fft> ifftConfig =
         std::make_shared<Modules::Fft>();
+    std::shared_ptr<Modules::MultiplyConstant> normalizeConfig =
+        std::make_shared<Modules::MultiplyConstant>();
     std::shared_ptr<Modules::Unpad> unpadConfig =
         std::make_shared<Modules::Unpad>();
     std::shared_ptr<Modules::OverlapAdd> overlapConfig =
@@ -387,17 +390,27 @@ Result FilterEngineImpl::create() {
         {"signal", ifftInput}
     }));
 
-    // Unpad.
-
     const U64 maxRank = multiHead
         ? std::max(filterMaxRank, expandedSignalMaxRank)
         : std::max(filterMaxRank, signalMaxRank);
+
+    // Normalize the unscaled inverse FFT.
+
+    const auto& ifftOutput = moduleGetOutput({"ifft", "signal"});
+    normalizeConfig->constant =
+        1.0f / static_cast<F32>(ifftOutput.tensor.shape(maxRank));
+
+    JST_CHECK(moduleCreate("normalize", normalizeConfig, {
+        {"factor", ifftOutput}
+    }));
+
+    // Unpad.
 
     unpadConfig->size = padSize;
     unpadConfig->axis = maxRank;
 
     JST_CHECK(moduleCreate("unpad", unpadConfig, {
-        {"padded", moduleGetOutput({"ifft", "signal"})}
+        {"padded", moduleGetOutput({"normalize", "product"})}
     }));
 
     // Overlap-add.
@@ -421,6 +434,7 @@ JST_REGISTER_BLOCK(FilterEngineImpl,
                    {"pad"},
                    {"fft"},
                    {"multiply"},
+                   {"multiply_constant"},
                    {"unpad"},
                    {"overlap_add"},
                    {"expand_dims", true},

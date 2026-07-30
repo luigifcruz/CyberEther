@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <any>
 #include <cmath>
@@ -287,4 +288,37 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockConfig("rollback_filter", saved) == Result::SUCCESS);
     REQUIRE(std::any_cast<std::vector<F32>>(saved.at("center")) ==
             std::vector<F32>{-100000.0f});
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Filter block normalizes folded inverse FFT output",
+                 "[modules][dsp][filter][block][numeric]") {
+    Blocks::OnesTensor source;
+    source.shape = {4};
+    source.dataType = "CF32";
+    REQUIRE(flowgraph->blockCreate("normalize_src", source, {}) ==
+            Result::SUCCESS);
+
+    Blocks::Filter config;
+    config.sampleRate = 8.0f;
+    config.bandwidth = 4.0f;
+    config.taps = 3;
+
+    TensorMap inputs;
+    inputs["signal"].requested("normalize_src", "buffer");
+    REQUIRE(flowgraph->blockCreate("normalize_filter", config, inputs) ==
+            Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    const Tensor output =
+        viewBlock("normalize_filter").outputs.at("buffer").tensor;
+    REQUIRE(output.shape() == Shape{1, 2});
+    REQUIRE_THAT(output.at<CF32>(0, 0).real(),
+                 Catch::Matchers::WithinAbs(0.0f, 1e-5f));
+    REQUIRE_THAT(output.at<CF32>(0, 1).real(),
+                 Catch::Matchers::WithinAbs(0.5f, 1e-5f));
+    REQUIRE_THAT(output.at<CF32>(0, 0).imag(),
+                 Catch::Matchers::WithinAbs(0.0f, 1e-5f));
+    REQUIRE_THAT(output.at<CF32>(0, 1).imag(),
+                 Catch::Matchers::WithinAbs(0.0f, 1e-5f));
 }

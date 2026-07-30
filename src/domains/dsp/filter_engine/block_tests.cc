@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <algorithm>
 #include <any>
@@ -375,4 +376,39 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(std::any_of(output.data<CF32>(),
                         output.data<CF32>() + output.size(),
                         [&](const CF32 value) { return value != sentinel; }));
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Filter engine normalizes inverse FFT output",
+                 "[modules][dsp][filter_engine][numeric]") {
+    Blocks::OnesTensor signalSource;
+    signalSource.shape = {4};
+    signalSource.dataType = "CF32";
+    REQUIRE(flowgraph->blockCreate("normalize_signal", signalSource, {}) ==
+            Result::SUCCESS);
+
+    Blocks::OnesTensor filterSource;
+    filterSource.shape = {3};
+    filterSource.dataType = "CF32";
+    REQUIRE(flowgraph->blockCreate("normalize_taps", filterSource, {}) ==
+            Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].requested("normalize_signal", "buffer");
+    inputs["filter"].requested("normalize_taps", "buffer");
+    REQUIRE(flowgraph->blockCreate("normalize_engine",
+                                   Blocks::FilterEngine{},
+                                   inputs) == Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    const Tensor output =
+        viewBlock("normalize_engine").outputs.at("buffer").tensor;
+    REQUIRE(output.shape() == Shape{4});
+    constexpr F32 expected[] = {1.0f, 2.0f, 3.0f, 3.0f};
+    for (U64 i = 0; i < output.size(); ++i) {
+        REQUIRE_THAT(output.at<CF32>(i).real(),
+                     Catch::Matchers::WithinAbs(expected[i], 1e-5f));
+        REQUIRE_THAT(output.at<CF32>(i).imag(),
+                     Catch::Matchers::WithinAbs(0.0f, 1e-5f));
+    }
 }
