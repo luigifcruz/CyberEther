@@ -111,6 +111,7 @@ Result WebsocketImpl::create() {
 
     JST_CHECK(buffer.create(device(), validatedDataType,
                             {numberOfBatches, numberOfTimeSamples}));
+    JST_CHECK(buffer.setAttribute("batchAxis", Index{0}));
 
     outputs()["signal"].produced(name(), "signal", buffer);
 

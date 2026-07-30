@@ -164,6 +164,7 @@ Result SoapyImpl::create() {
 
     try {
         JST_CHECK(buffer.create(device(), DataType::CF32, {numberOfBatches, numberOfTimeSamples}));
+        JST_CHECK(buffer.setAttribute("batchAxis", Index{0}));
         JST_CHECK(circularBuffer.resize(validatedInternalElements));
     } catch (const std::bad_array_new_length&) {
         JST_ERROR("[MODULE_SOAPY] Internal buffer dimensions are too large.");

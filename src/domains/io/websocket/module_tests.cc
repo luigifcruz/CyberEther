@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <any>
 #include <array>
 #include <limits>
 #include <string>
@@ -209,7 +210,10 @@ TEST_CASE("Websocket module rolls back native URL validation rejection",
             config.numberOfTimeSamples = 1;
             config.bufferMultiplier = 1;
             REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
-            const auto outputId = module->outputs().at("signal").tensor.id();
+            const auto& output = module->outputs().at("signal").tensor;
+            REQUIRE(output.hasAttribute("batchAxis"));
+            REQUIRE(std::any_cast<Index>(output.attribute("batchAxis")) == 0);
+            const auto outputId = output.id();
 
             Parser::Map rejected;
             rejected["url"] = std::string("ws://localhost:not-a-port/feed");
