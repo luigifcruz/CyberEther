@@ -44,11 +44,22 @@ Result Block::create(const std::string& name,
 
     JST_DEBUG("[BLOCK] Creating block '{}'.", impl->_name);
 
-    // Validate configuration.
+    // Deserialize and define the candidate interface before validation so an
+    // errored block remains connected and editable.
 
     {
         const auto result = impl->_candidateConfig->deserialize(config);
         if (result != Result::SUCCESS) {
+            impl->_diagnostic = JST_LOG_LAST_ERROR();
+            impl->_state = State::Errored;
+            return result;
+        }
+    }
+
+    {
+        const auto result = impl->define();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            impl->_diagnostic = JST_LOG_LAST_ERROR();
             impl->_state = State::Errored;
             return result;
         }
@@ -57,6 +68,14 @@ Result Block::create(const std::string& name,
     {
         const auto result = impl->validate();
         if (result != Result::SUCCESS && result != Result::RECREATE) {
+            const std::string diagnostic = JST_LOG_LAST_ERROR();
+            const auto commitResult = impl->_stagedConfig->deserialize(config);
+            if (commitResult != Result::SUCCESS && commitResult != Result::RELOAD) {
+                impl->_diagnostic = JST_LOG_LAST_ERROR();
+                impl->_state = State::Errored;
+                return commitResult;
+            }
+            impl->_diagnostic = diagnostic;
             impl->_state = State::Errored;
             return result;
         }
@@ -74,16 +93,6 @@ Result Block::create(const std::string& name,
 
     {
         const auto result = impl->configure();
-        if (result != Result::SUCCESS) {
-            impl->_state = State::Errored;
-            return result;
-        }
-    }
-
-    // Define block interface.
-
-    {
-        const auto result = impl->define();
         if (result != Result::SUCCESS) {
             impl->_state = State::Errored;
             return result;
@@ -232,9 +241,36 @@ Result Block::reconfigure(const Parser::Map& config) {
         return Result::SUCCESS;
     }
 
-    // Validate candidate configuration.
+    // Build the candidate interface without replacing the active one.
 
-    JST_CHECK(impl->validate());
+    const auto activeInterface = impl->_interface;
+    impl->_interface = std::make_shared<Interface>();
+    Result definitionResult = Result::ERROR;
+    std::shared_ptr<Interface> candidateInterface;
+    try {
+        definitionResult = impl->define();
+        candidateInterface = impl->_interface;
+    } catch (...) {
+        impl->_interface = activeInterface;
+        throw;
+    }
+    impl->_interface = activeInterface;
+    if (definitionResult != Result::SUCCESS && definitionResult != Result::RELOAD) {
+        return definitionResult;
+    }
+
+    // A semantically invalid edit is still a valid graph mutation. Recreate
+    // the block so the candidate config and interface can be published errored.
+
+    {
+        const auto validationResult = impl->validate();
+        if (validationResult == Result::ERROR) {
+            return Result::RECREATE;
+        }
+        if (validationResult != Result::SUCCESS && validationResult != Result::RELOAD) {
+            return validationResult;
+        }
+    }
 
     const auto failReconfiguration = [&](const Result result) {
         impl->_diagnostic = JST_LOG_LAST_ERROR();
@@ -288,7 +324,9 @@ Result Block::reconfigure(const Parser::Map& config) {
                 return validationResult;
             }
 
-            return validationResult;
+            return validationResult == Result::ERROR
+                       ? Result::RECREATE
+                       : validationResult;
         }
     }
 
@@ -301,15 +339,9 @@ Result Block::reconfigure(const Parser::Map& config) {
         }
     }
 
-    // Refresh interface.
+    // Publish the interface that was defined from the validated candidate.
 
-    impl->_interface = std::make_shared<Interface>();
-    {
-        const auto result = impl->define();
-        if (result != Result::SUCCESS && result != Result::RELOAD) {
-            return result == Result::RECREATE ? result : failReconfiguration(result);
-        }
-    }
+    impl->_interface = candidateInterface;
     {
         const auto result = impl->defineModuleTiming();
         if (result != Result::SUCCESS && result != Result::RELOAD) {

@@ -42,6 +42,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
             Result::SUCCESS);
     const auto block = viewBlock("soapy_bad_step");
     REQUIRE(block.state == Block::State::Errored);
-    REQUIRE(block.interfaceConfigs.empty());
+    REQUIRE_FALSE(block.interfaceOutputs.empty());
+    REQUIRE_FALSE(block.interfaceConfigs.empty());
     REQUIRE(block.outputs.empty());
 }

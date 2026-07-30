@@ -56,6 +56,32 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
+                 "FFT block uses candidate direction before delegated validation",
+                 "[modules][dsp][fft][block][validation][interface]") {
+    Blocks::OnesTensor source;
+    source.shape = {4};
+    source.dataType = "F32";
+    REQUIRE(flowgraph->blockCreate("fft_inverse_src", source, {}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].requested("fft_inverse_src", "buffer");
+
+    Blocks::Fft config;
+    config.forward = false;
+    config.axis = 1;
+    REQUIRE(flowgraph->blockCreate("fft_inverse_bad", config, inputs) ==
+            Result::SUCCESS);
+
+    const auto block = viewBlock("fft_inverse_bad");
+    REQUIRE(block.state == Block::State::Errored);
+    const auto complexOutput = std::find_if(
+        block.interfaceConfigs.begin(),
+        block.interfaceConfigs.end(),
+        [](const auto& field) { return field.name == "complexOutput"; });
+    REQUIRE(complexOutput == block.interfaceConfigs.end());
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
                  "FFT block exposes complex output for real input",
                  "[modules][dsp][fft][block][real][complex]") {
     Blocks::OnesTensor source;
@@ -139,16 +165,22 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     Parser::Map invalidUpdate;
     invalidUpdate["axis"] = I64{1};
-    REQUIRE(flowgraph->blockReconfigure("fft", invalidUpdate) == Result::ERROR);
-    REQUIRE(viewBlock("fft").state == Block::State::Created);
+    REQUIRE(flowgraph->blockReconfigure("fft", invalidUpdate) == Result::SUCCESS);
+    REQUIRE(viewBlock("fft").state == Block::State::Errored);
+    REQUIRE(viewBlock("fft").outputs.empty());
 
-    Parser::Map unchangedMap;
-    REQUIRE(flowgraph->blockConfig("fft", unchangedMap) == Result::SUCCESS);
-    Blocks::Fft unchanged;
-    REQUIRE(unchanged.deserialize(unchangedMap) == Result::SUCCESS);
-    REQUIRE_FALSE(unchanged.forward);
-    REQUIRE(unchanged.axis == -1);
-    REQUIRE(unchanged.invert);
+    Parser::Map invalidMap;
+    REQUIRE(flowgraph->blockConfig("fft", invalidMap) == Result::SUCCESS);
+    Blocks::Fft invalid;
+    REQUIRE(invalid.deserialize(invalidMap) == Result::SUCCESS);
+    REQUIRE_FALSE(invalid.forward);
+    REQUIRE(invalid.axis == 1);
+    REQUIRE(invalid.invert);
+
+    Parser::Map recovery;
+    recovery["axis"] = I64{-1};
+    REQUIRE(flowgraph->blockReconfigure("fft", recovery) == Result::SUCCESS);
+    REQUIRE(viewBlock("fft").state == Block::State::Created);
 
     Tensor output = viewBlock("fft").outputs.at("signal").tensor;
     std::fill(output.data<CF32>(), output.data<CF32>() + output.size(), CF32{});

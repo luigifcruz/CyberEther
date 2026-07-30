@@ -81,23 +81,27 @@ TEST_CASE_METHOD(FlowgraphFixture, "Ones Tensor block propagates layout validati
     REQUIRE(viewBlock("ones_overflow").outputs.empty());
 }
 
-TEST_CASE_METHOD(FlowgraphFixture, "Ones Tensor block preserves applied state after rejected update",
+TEST_CASE_METHOD(FlowgraphFixture, "Ones Tensor block preserves invalid shape for recovery",
                  "[modules][ones_tensor][block][reconfigure][validation]") {
     Blocks::OnesTensor config;
     config.shape = {2};
     REQUIRE(flowgraph->blockCreate("ones_update", config, {}) == Result::SUCCESS);
-    const auto outputId = viewBlock("ones_update").outputs.at("buffer").tensor.id();
-
     Parser::Map update;
     update["shape"] = Shape{std::numeric_limits<U64>::max(), 2};
-    REQUIRE(flowgraph->blockReconfigure("ones_update", update) == Result::ERROR);
-    REQUIRE(viewBlock("ones_update").state == Block::State::Created);
+    REQUIRE(flowgraph->blockReconfigure("ones_update", update) == Result::SUCCESS);
+    REQUIRE(viewBlock("ones_update").state == Block::State::Errored);
+    REQUIRE(viewBlock("ones_update").outputs.empty());
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("ones_update", saved) == Result::SUCCESS);
-    REQUIRE(std::any_cast<Shape>(saved.at("shape")) == config.shape);
+    REQUIRE(std::any_cast<Shape>(saved.at("shape")) ==
+            Shape{std::numeric_limits<U64>::max(), 2});
+
+    Parser::Map recovery;
+    recovery["shape"] = config.shape;
+    REQUIRE(flowgraph->blockReconfigure("ones_update", recovery) == Result::SUCCESS);
+    REQUIRE(viewBlock("ones_update").state == Block::State::Created);
 
     const Tensor output = viewBlock("ones_update").outputs.at("buffer").tensor;
-    REQUIRE(output.id() == outputId);
     REQUIRE(output.shape() == Shape{2});
 }

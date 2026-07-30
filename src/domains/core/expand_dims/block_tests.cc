@@ -54,7 +54,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "ExpandDims block rejects invalid axis",
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "ExpandDims block rejects an axis valid only for its output rank",
+                  "ExpandDims block preserves an invalid axis for recovery",
                  "[modules][expand_dims][block][reconfigure][validation]") {
     Blocks::OnesTensor source;
     source.shape = {2, 4};
@@ -68,15 +68,17 @@ TEST_CASE_METHOD(FlowgraphFixture,
     config.axis = 0;
     REQUIRE(flowgraph->blockCreate("expand_recfg", config, inputs) ==
             Result::SUCCESS);
-    const auto outputId =
-        viewBlock("expand_recfg").outputs.at("buffer").tensor.id();
-
     Parser::Map update;
     update["axis"] = I64{3};
-    REQUIRE(flowgraph->blockReconfigure("expand_recfg", update) == Result::ERROR);
+    REQUIRE(flowgraph->blockReconfigure("expand_recfg", update) == Result::SUCCESS);
 
-    const auto block = viewBlock("expand_recfg");
-    REQUIRE(block.state == Block::State::Created);
-    REQUIRE(block.outputs.at("buffer").tensor.id() == outputId);
-    REQUIRE(block.outputs.at("buffer").tensor.shape() == Shape{1, 2, 4});
+    REQUIRE(viewBlock("expand_recfg").state == Block::State::Errored);
+    REQUIRE(viewBlock("expand_recfg").outputs.empty());
+
+    Parser::Map recovery;
+    recovery["axis"] = I64{0};
+    REQUIRE(flowgraph->blockReconfigure("expand_recfg", recovery) == Result::SUCCESS);
+    const auto recovered = viewBlock("expand_recfg");
+    REQUIRE(recovered.state == Block::State::Created);
+    REQUIRE(recovered.outputs.at("buffer").tensor.shape() == Shape{1, 2, 4});
 }

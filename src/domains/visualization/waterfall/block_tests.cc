@@ -87,7 +87,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Waterfall block preserves applied config after rejected update",
+                  "Waterfall block preserves invalid config for recovery",
                  "[modules][waterfall][block][reconfigure][validation]") {
     Blocks::SignalGenerator source;
     source.signalDataType = "F32";
@@ -108,12 +108,17 @@ TEST_CASE_METHOD(FlowgraphFixture,
     Parser::Map update;
     update["height"] = U64{0};
     update["interpolate"] = true;
-    REQUIRE(flowgraph->blockReconfigure("waterfall_update", update) == Result::ERROR);
-    REQUIRE(viewBlock("waterfall_update").state == Block::State::Created);
+    REQUIRE(flowgraph->blockReconfigure("waterfall_update", update) == Result::SUCCESS);
+    REQUIRE(viewBlock("waterfall_update").state == Block::State::Errored);
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("waterfall_update", saved) == Result::SUCCESS);
-    REQUIRE(std::any_cast<U64>(saved.at("height")) == config.height);
-    REQUIRE(std::any_cast<bool>(saved.at("interpolate")) == config.interpolate);
+    REQUIRE(std::any_cast<U64>(saved.at("height")) == 0);
+    REQUIRE(std::any_cast<bool>(saved.at("interpolate")));
+
+    Parser::Map recovery;
+    recovery["height"] = config.height;
+    REQUIRE(flowgraph->blockReconfigure("waterfall_update", recovery) == Result::SUCCESS);
+    REQUIRE(viewBlock("waterfall_update").state == Block::State::Created);
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
 }

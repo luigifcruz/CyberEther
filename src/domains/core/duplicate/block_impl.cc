@@ -22,6 +22,8 @@ Result DuplicateImpl::configure() {
 }
 
 Result DuplicateImpl::define() {
+    const auto& config = *candidate();
+
     JST_CHECK(defineInterfaceInput("buffer", "Input", "Signal to be duplicated."));
     JST_CHECK(defineInterfaceOutput("buffer", "Output", "Duplicated signal."));
 
@@ -30,7 +32,7 @@ Result DuplicateImpl::define() {
                                     "Selects the output device for the duplicated buffer.",
                                     "dropdown:none(None),cpu(CPU),cuda(CUDA),metal(Metal),vulkan(Vulkan)"));
 
-    if (StringToDevice(outputDevice) != DeviceType::CPU) {
+    if (StringToDevice(config.outputDevice) != DeviceType::CPU) {
         JST_CHECK(defineInterfaceConfig("hostAccessible",
                                         "Host Accessible",
                                         "When enabled, the output buffer can be accessed from the CPU.",

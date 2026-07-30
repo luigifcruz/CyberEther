@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <cmath>
 #include <limits>
 #include <string>
 
@@ -59,21 +61,46 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Signal generator rejects invalid updates without changing applied config",
+                  "Signal generator preserves invalid updates for recovery",
                  "[modules][dsp][signal_generator][block][reconfigure][validation]") {
     Blocks::SignalGenerator config;
     REQUIRE(flowgraph->blockCreate("gen", config, {}) == Result::SUCCESS);
-    const auto outputId = viewBlock("gen").outputs.at("signal").tensor.id();
-
     Parser::Map invalidUpdate;
     invalidUpdate["sampleRate"] = std::numeric_limits<F32>::quiet_NaN();
-    REQUIRE(flowgraph->blockReconfigure("gen", invalidUpdate) == Result::ERROR);
-    REQUIRE(viewBlock("gen").state == Block::State::Created);
-    REQUIRE(viewBlock("gen").outputs.at("signal").tensor.id() == outputId);
+    REQUIRE(flowgraph->blockReconfigure("gen", invalidUpdate) == Result::SUCCESS);
+    REQUIRE(viewBlock("gen").state == Block::State::Errored);
+    REQUIRE(viewBlock("gen").outputs.empty());
 
     Parser::Map savedMap;
     REQUIRE(flowgraph->blockConfig("gen", savedMap) == Result::SUCCESS);
     Blocks::SignalGenerator saved;
     REQUIRE(saved.deserialize(savedMap) == Result::SUCCESS);
-    REQUIRE(saved.sampleRate == config.sampleRate);
+    REQUIRE(std::isnan(saved.sampleRate));
+
+    Parser::Map recovery;
+    recovery["sampleRate"] = config.sampleRate;
+    REQUIRE(flowgraph->blockReconfigure("gen", recovery) == Result::SUCCESS);
+    REQUIRE(viewBlock("gen").state == Block::State::Created);
+    REQUIRE(viewBlock("gen").outputs.contains("signal"));
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Signal generator exposes candidate chirp fields before validation fails",
+                 "[modules][dsp][signal_generator][block][validation][interface]") {
+    Blocks::SignalGenerator config;
+    config.signalType = "chirp";
+    config.sampleRate = std::numeric_limits<F32>::quiet_NaN();
+    REQUIRE(flowgraph->blockCreate("chirp_bad", config, {}) == Result::SUCCESS);
+
+    const auto block = viewBlock("chirp_bad");
+    REQUIRE(block.state == Block::State::Errored);
+    REQUIRE(std::any_of(block.interfaceConfigs.begin(),
+                        block.interfaceConfigs.end(),
+                        [](const auto& field) { return field.name == "chirpStartFreq"; }));
+    REQUIRE(std::any_of(block.interfaceConfigs.begin(),
+                        block.interfaceConfigs.end(),
+                        [](const auto& field) { return field.name == "chirpEndFreq"; }));
+    REQUIRE(std::any_of(block.interfaceConfigs.begin(),
+                        block.interfaceConfigs.end(),
+                        [](const auto& field) { return field.name == "chirpDuration"; }));
 }

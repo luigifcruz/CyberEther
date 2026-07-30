@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <any>
+#include <cmath>
 #include <limits>
 #include <string>
 #include <vector>
@@ -13,11 +14,11 @@ using namespace Jetstream;
 
 namespace {
 
-void RequireRejectedBeforeDefine(const Flowgraph::View::BlockData& block) {
+void RequireErroredWithInterface(const Flowgraph::View::BlockData& block) {
     REQUIRE(block.state == Block::State::Errored);
-    REQUIRE(block.interfaceInputs.empty());
-    REQUIRE(block.interfaceOutputs.empty());
-    REQUIRE(block.interfaceConfigs.empty());
+    REQUIRE_FALSE(block.interfaceInputs.empty());
+    REQUIRE_FALSE(block.interfaceOutputs.empty());
+    REQUIRE_FALSE(block.interfaceConfigs.empty());
     REQUIRE(block.outputs.empty());
 }
 
@@ -49,7 +50,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(flowgraph->blockCreate("filter_zero_heads", config, {}) ==
             Result::SUCCESS);
-    RequireRejectedBeforeDefine(viewBlock("filter_zero_heads"));
+    RequireErroredWithInterface(viewBlock("filter_zero_heads"));
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
@@ -132,7 +133,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     inputs["signal"].requested("geometry_src", "buffer");
     REQUIRE(flowgraph->blockCreate("geometry_bad", Blocks::Filter{}, inputs) ==
             Result::SUCCESS);
-    RequireRejectedBeforeDefine(viewBlock("geometry_bad"));
+    RequireErroredWithInterface(viewBlock("geometry_bad"));
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
@@ -154,7 +155,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     TensorMap inputs;
     inputs["signal"].requested("center_src", "buffer");
     REQUIRE(flowgraph->blockCreate("center_bad", config, inputs) == Result::SUCCESS);
-    RequireRejectedBeforeDefine(viewBlock("center_bad"));
+    RequireErroredWithInterface(viewBlock("center_bad"));
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
@@ -192,7 +193,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     inputs["signal"].requested("overflow_src", "buffer");
     REQUIRE(flowgraph->blockCreate("overflow_filter", config, inputs) ==
             Result::SUCCESS);
-    RequireRejectedBeforeDefine(viewBlock("overflow_filter"));
+    RequireErroredWithInterface(viewBlock("overflow_filter"));
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
@@ -241,7 +242,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                  "Filter block rolls back non-finite mapping before valid recreation",
+                   "Filter block preserves non-finite mapping before valid recovery",
                   "[modules][dsp][filter][block][reconfigure][validation]") {
     Blocks::OnesTensor source;
     source.shape = {512};
@@ -260,16 +261,17 @@ TEST_CASE_METHOD(FlowgraphFixture,
     Parser::Map invalidUpdate;
     invalidUpdate["center"] =
         std::vector<F32>{std::numeric_limits<F32>::quiet_NaN()};
-    REQUIRE(flowgraph->blockReconfigure("rollback_filter", invalidUpdate) == Result::ERROR);
+    REQUIRE(flowgraph->blockReconfigure("rollback_filter", invalidUpdate) == Result::SUCCESS);
 
     auto block = viewBlock("rollback_filter");
-    REQUIRE(block.state == Block::State::Created);
-    REQUIRE(block.outputs.at("buffer").tensor.id() == initialOutputId);
+    REQUIRE(block.state == Block::State::Errored);
+    REQUIRE(block.outputs.empty());
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("rollback_filter", saved) == Result::SUCCESS);
-    REQUIRE(std::any_cast<std::vector<F32>>(saved.at("center")) == config.center);
-    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    const auto invalidCenter = std::any_cast<std::vector<F32>>(saved.at("center"));
+    REQUIRE(invalidCenter.size() == 1);
+    REQUIRE(std::isnan(invalidCenter.front()));
 
     Parser::Map validUpdate;
     validUpdate["center"] = std::vector<F32>{-100000.0f};

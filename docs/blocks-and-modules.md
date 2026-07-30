@@ -42,22 +42,22 @@ A block implementation derives from `Block::Impl` and overrides some of four hoo
 
 | Hook | Purpose |
 |---|---|
-| `validate()` | Reject bad configurations before anything is built. Returning `RECREATE` is also accepted here. |
+| `validate()` | Check candidate configuration semantics after its interface has been declared. Returning `RECREATE` is also accepted here. |
 | `configure()` | Derive internal state from the validated configuration. |
-| `define()` | Declare the interface: inputs, outputs, configuration fields, and metrics. |
+| `define()` | Declare the candidate interface: inputs, outputs, configuration fields, and metrics. |
 | `create()` | Build the modules and wire them to the block ports. |
 
 There is no block-level destroy hook in practice. Destruction tears down the child modules automatically in reverse creation order, so anything that needs cleanup belongs in a module's own `destroy()`.
 
-Creation runs `validate`, `configure`, and `define` in that order, then checks that every declared input is connected and resolved, runs `create()`, and finally checks that every declared output was produced. The result is one of three user-visible states:
+Creation deserializes the candidate, runs `define()` and then `validate()`, commits the candidate, and runs `configure()`. It then checks that every declared input is connected and resolved, runs `create()`, and finally checks that every declared output was produced. Defining before validation keeps a best-effort interface available even when the candidate is invalid. A configuration-dependent `define()` must therefore read `candidate()`, remain side-effect-free, and bound any candidate-controlled work or number of ports. The result is one of three user-visible states:
 
 - **Created.** Everything succeeded and the block participates in compute.
 - **Incomplete.** The block is valid but cannot run yet. This happens automatically when a declared input is unconnected or its upstream is not producing, and deliberately when `create()` returns `Result::INCOMPLETE`. Incomplete is not an error, it is a waiting state.
-- **Errored.** A hook failed, an undeclared input arrived, an expected output was missing, or a module later failed during compute. The failure message is kept as the block diagnostic. When a module fails at runtime, its block becomes errored and downstream blocks are recreated into the incomplete state.
+- **Errored.** A hook failed, an undeclared input arrived, an expected output was missing, or a module later failed during compute. The failure message is kept as the block diagnostic. Validation errors retain the candidate configuration and declared interface so the node remains editable. When a module fails at runtime, its block becomes errored and downstream blocks are recreated into the incomplete state.
 
 The deliberate `INCOMPLETE` return is the gating pattern: a block whose `create()` needs a value that arrives later, such as an environment key delivered by a server connection, returns incomplete and is automatically destroyed and recreated when a new environment key becomes visible. The full pattern, with example code, is in [Flowgraph Environment](/docs/metadata#flowgraph-environment).
 
-Configuration edits go through `reconfigure`, which validates the candidate configuration and applies it. Rejected candidates leave the current configuration unchanged. If applying a validated edit fails, the flowgraph restores the previous working state and returns the error. When a change cannot be applied in place, for example a buffer size that shaped an allocation, return `Result::RECREATE` and let the flowgraph rebuild the affected blocks.
+Configuration edits go through `reconfigure`, which defines a temporary candidate interface before validation. A semantic validation error is accepted as a graph edit: the flowgraph rebuilds the affected blocks with the candidate configuration, publishes the edited block as errored, and keeps downstream connections as unresolved links until the candidate is repaired. Failures while applying an already validated edit are different: the flowgraph restores the previous working state and returns the error. When a valid change cannot be applied in place, for example a buffer size that shaped an allocation, return `Result::RECREATE` and let the flowgraph rebuild the affected blocks.
 
 ## Defining The Block
 

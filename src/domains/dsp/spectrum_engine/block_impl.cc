@@ -74,6 +74,8 @@ Result SpectrumEngineImpl::configure() {
 }
 
 Result SpectrumEngineImpl::define() {
+    const auto& config = *candidate();
+
     JST_CHECK(defineInterfaceInput("buffer", "Input",
                                    "Input signal to compute the spectrum of."));
     JST_CHECK(defineInterfaceOutput("buffer", "Output",
@@ -95,7 +97,7 @@ Result SpectrumEngineImpl::define() {
                                     "Apply range scaling to the output.",
                                     "bool"));
 
-    if (enableScale) {
+    if (config.enableScale) {
         JST_CHECK(defineInterfaceConfig("rangeMin",
                                         "Range Min",
                                         "Minimum value of the scale range.",

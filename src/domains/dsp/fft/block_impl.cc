@@ -24,6 +24,8 @@ Result FftImpl::configure() {
 }
 
 Result FftImpl::define() {
+    const auto& config = *candidate();
+
     JST_CHECK(defineInterfaceInput("signal",
                                    "Input",
                                    "Input signal to transform."));
@@ -49,7 +51,7 @@ Result FftImpl::define() {
                                     "bool"));
 
     const auto input = inputs().find("signal");
-    if (forward &&
+    if (config.forward &&
         input != inputs().end() &&
         input->second.resolved() &&
         input->second.tensor.dtype() == DataType::F32) {

@@ -97,6 +97,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
                  "[modules][python][block][validation]") {
     Blocks::Python config;
     RuntimeType runtime = RuntimeType::PYTHON;
+    U64 expectedInputs = 1;
+    U64 expectedOutputs = 1;
     std::string name;
 
     SECTION("native runtime") {
@@ -105,10 +107,12 @@ TEST_CASE_METHOD(FlowgraphFixture,
     }
     SECTION("too many inputs") {
         config.inputCount = 65;
+        expectedInputs = 64;
         name = "python_inputs_limit";
     }
     SECTION("too many outputs") {
         config.outputCount = 65;
+        expectedOutputs = 64;
         name = "python_outputs_limit";
     }
 
@@ -117,9 +121,25 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     const auto block = viewBlock(name);
     REQUIRE(block.state == Block::State::Errored);
-    REQUIRE(block.interfaceInputs.empty());
-    REQUIRE(block.interfaceOutputs.empty());
-    REQUIRE(block.interfaceConfigs.empty());
+    REQUIRE(block.interfaceInputs.size() == expectedInputs);
+    REQUIRE(block.interfaceInputs.front().name == "input0");
+    REQUIRE(block.interfaceInputs.back().name ==
+            "input" + std::to_string(expectedInputs - 1));
+    REQUIRE(block.interfaceOutputs.size() == expectedOutputs);
+    REQUIRE(block.interfaceOutputs.front().name == "output0");
+    REQUIRE(block.interfaceOutputs.back().name ==
+            "output" + std::to_string(expectedOutputs - 1));
+    REQUIRE(block.interfaceConfigs.size() == 4 + expectedOutputs);
+    REQUIRE(block.interfaceConfigs.at(0).name == "code");
+    REQUIRE(block.interfaceConfigs.at(1).name == "inputCount");
+    REQUIRE(block.interfaceConfigs.at(2).name == "outputCount");
+    REQUIRE(block.interfaceConfigs.at(3).name == "throttled");
+    REQUIRE(block.interfaceConfigs.back().name ==
+            "outputTensor" + std::to_string(expectedOutputs - 1));
+    REQUIRE(block.metrics.size() == 1);
+    const auto diagnostic =
+        std::any_cast<Runtime::Context::Diagnostic>(block.metrics.front().value);
+    REQUIRE(diagnostic.console.empty());
     REQUIRE(block.outputs.empty());
     REQUIRE(JST_LOG_LAST_ERROR().find("[PYTHON]") != std::string::npos);
 }
@@ -647,7 +667,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Python block preserves live output after provider validation rejection",
+                  "Python block preserves provider validation errors for recovery",
                  "[modules][python][block][validation][reconfigure]") {
     Blocks::Python config;
     config.code = "def compute(ctx):\n    ctx.outputs[0][...] = 9.0\n";
@@ -666,30 +686,36 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(block.state == Block::State::Created);
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
-    const auto outputId = block.outputs.at("output0").tensor.id();
+    REQUIRE(block.outputs.contains("output0"));
 
     Blocks::Python rejected = config;
     rejected.outputTensorSpecs = {{.shape = "[2]", .device = "metal"}};
     Parser::Map rejectedConfig;
     REQUIRE(rejected.serialize(rejectedConfig) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockReconfigure("python_rollback", rejectedConfig) == Result::ERROR);
+    REQUIRE(flowgraph->blockReconfigure("python_rollback", rejectedConfig) == Result::SUCCESS);
 
     block = viewBlock("python_rollback");
-    REQUIRE(block.state == Block::State::Created);
-    REQUIRE(block.outputs.at("output0").tensor.id() == outputId);
+    REQUIRE(block.state == Block::State::Errored);
+    REQUIRE(block.outputs.empty());
+    REQUIRE(block.interfaceOutputs.size() == 1);
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("python_rollback", saved) == Result::SUCCESS);
     Blocks::Python applied;
     REQUIRE(applied.deserialize(saved) == Result::SUCCESS);
-    REQUIRE(applied.outputTensorSpecs == config.outputTensorSpecs);
+    REQUIRE(applied.outputTensorSpecs == rejected.outputTensorSpecs);
+
+    Parser::Map recovery;
+    REQUIRE(config.serialize(recovery) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockReconfigure("python_rollback", recovery) == Result::SUCCESS);
+    block = viewBlock("python_rollback");
+    REQUIRE(block.state == Block::State::Created);
 
     Tensor output = block.outputs.at("output0").tensor;
     for (Index i = 0; i < output.size(); ++i) {
         output.at<F32>(i) = -1.0f;
     }
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
-    REQUIRE(viewBlock("python_rollback").outputs.at("output0").tensor.id() == outputId);
     for (Index i = 0; i < output.size(); ++i) {
         REQUIRE(std::abs(output.at<F32>(i) - 9.0f) < 1e-5f);
     }

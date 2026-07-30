@@ -94,7 +94,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Amplitude block preserves execution after rejected update",
+                  "Amplitude block preserves invalid axis for recovery",
                  "[modules][dsp][amplitude][block][reconfigure][validation]") {
     Blocks::SignalGenerator source;
     source.signalType = "dc";
@@ -111,12 +111,18 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     Parser::Map update;
     update["axis"] = I64{1};
-    REQUIRE(flowgraph->blockReconfigure("amp_update", update) == Result::ERROR);
-    REQUIRE(viewBlock("amp_update").state == Block::State::Created);
+    REQUIRE(flowgraph->blockReconfigure("amp_update", update) == Result::SUCCESS);
+    REQUIRE(viewBlock("amp_update").state == Block::State::Errored);
+    REQUIRE(viewBlock("amp_update").outputs.empty());
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("amp_update", saved) == Result::SUCCESS);
-    REQUIRE(std::any_cast<I64>(saved.at("axis")) == config.axis);
+    REQUIRE(std::any_cast<I64>(saved.at("axis")) == 1);
+
+    Parser::Map recovery;
+    recovery["axis"] = config.axis;
+    REQUIRE(flowgraph->blockReconfigure("amp_update", recovery) == Result::SUCCESS);
+    REQUIRE(viewBlock("amp_update").state == Block::State::Created);
 
     Tensor output = viewBlock("amp_update").outputs.at("signal").tensor;
     std::fill(output.data<F32>(), output.data<F32>() + output.size(), 12345.0f);

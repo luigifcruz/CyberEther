@@ -12,11 +12,11 @@ using namespace Jetstream;
 
 namespace {
 
-void RequireRejectedBeforeDefine(const Flowgraph::View::BlockData& block) {
+void RequireErroredWithInterface(const Flowgraph::View::BlockData& block) {
     REQUIRE(block.state == Block::State::Errored);
-    REQUIRE(block.interfaceInputs.empty());
-    REQUIRE(block.interfaceOutputs.empty());
-    REQUIRE(block.interfaceConfigs.empty());
+    REQUIRE_FALSE(block.interfaceInputs.empty());
+    REQUIRE_FALSE(block.interfaceOutputs.empty());
+    REQUIRE_FALSE(block.interfaceConfigs.empty());
     REQUIRE(block.outputs.empty());
 }
 
@@ -94,7 +94,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     }
 
     REQUIRE(flowgraph->blockCreate("geometry_bad", config, inputs) == Result::SUCCESS);
-    RequireRejectedBeforeDefine(viewBlock("geometry_bad"));
+    RequireErroredWithInterface(viewBlock("geometry_bad"));
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
@@ -240,7 +240,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
         inputs["buffer"].requested("f64_rate_src", "buffer");
         REQUIRE(flowgraph->blockCreate("f64_rate_decimator", config, inputs) ==
                 Result::SUCCESS);
-        RequireRejectedBeforeDefine(viewBlock("f64_rate_decimator"));
+        RequireErroredWithInterface(viewBlock("f64_rate_decimator"));
     }
 }
 
@@ -285,7 +285,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Decimator block rolls back a rejected update before a later sparse update",
+                  "Decimator block recovers from an invalid candidate with a sparse update",
                  "[modules][dsp][decimator][block][reconfigure][validation]") {
     Blocks::SignalGenerator source;
     source.signalType = "dc";
@@ -300,31 +300,19 @@ TEST_CASE_METHOD(FlowgraphFixture,
     inputs["buffer"].requested("rollback_src", "signal");
     REQUIRE(flowgraph->blockCreate("rollback_decimator", config, inputs) == Result::SUCCESS);
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
-    const Index initialOutputId =
-        viewBlock("rollback_decimator").outputs.at("buffer").tensor.id();
-
     Parser::Map invalidUpdate;
     invalidUpdate["ratio"] = U64{3};
-    REQUIRE(flowgraph->blockReconfigure("rollback_decimator", invalidUpdate) == Result::ERROR);
+    REQUIRE(flowgraph->blockReconfigure("rollback_decimator", invalidUpdate) == Result::SUCCESS);
 
     auto block = viewBlock("rollback_decimator");
-    REQUIRE(block.state == Block::State::Created);
-    REQUIRE(block.outputs.at("buffer").tensor.id() == initialOutputId);
-    REQUIRE(block.outputs.at("buffer").tensor.shape() == Shape{4});
+    REQUIRE(block.state == Block::State::Errored);
+    REQUIRE(block.outputs.empty());
+    REQUIRE_FALSE(block.interfaceOutputs.empty());
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("rollback_decimator", saved) == Result::SUCCESS);
     REQUIRE(std::any_cast<I64>(saved.at("axis")) == 0);
-    REQUIRE(std::any_cast<U64>(saved.at("ratio")) == 2);
-
-    Tensor retainedOutput = block.outputs.at("buffer").tensor;
-    std::fill(retainedOutput.data<CF32>(),
-              retainedOutput.data<CF32>() + retainedOutput.size(),
-              CF32{-1.0f, -1.0f});
-    REQUIRE(flowgraph->compute() == Result::SUCCESS);
-    for (U64 index = 0; index < retainedOutput.size(); ++index) {
-        REQUIRE(retainedOutput.at<CF32>(index) == CF32(2.0f, 0.0f));
-    }
+    REQUIRE(std::any_cast<U64>(saved.at("ratio")) == 3);
 
     Parser::Map validSparseUpdate;
     validSparseUpdate["ratio"] = U64{4};

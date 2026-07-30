@@ -92,7 +92,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Fold block preserves execution after rejected update",
+                  "Fold block preserves invalid size for recovery",
                  "[modules][dsp][fold][block][reconfigure][validation]") {
     Blocks::SignalGenerator source;
     source.signalType = "dc";
@@ -110,12 +110,18 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     Parser::Map update;
     update["size"] = U64{3};
-    REQUIRE(flowgraph->blockReconfigure("fold_update", update) == Result::ERROR);
-    REQUIRE(viewBlock("fold_update").state == Block::State::Created);
+    REQUIRE(flowgraph->blockReconfigure("fold_update", update) == Result::SUCCESS);
+    REQUIRE(viewBlock("fold_update").state == Block::State::Errored);
+    REQUIRE(viewBlock("fold_update").outputs.empty());
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("fold_update", saved) == Result::SUCCESS);
-    REQUIRE(std::any_cast<U64>(saved.at("size")) == config.size);
+    REQUIRE(std::any_cast<U64>(saved.at("size")) == 3);
+
+    Parser::Map recovery;
+    recovery["size"] = config.size;
+    REQUIRE(flowgraph->blockReconfigure("fold_update", recovery) == Result::SUCCESS);
+    REQUIRE(viewBlock("fold_update").state == Block::State::Created);
 
     Tensor output = viewBlock("fold_update").outputs.at("buffer").tensor;
     std::fill(output.data<F32>(), output.data<F32>() + output.size(), -1.0f);

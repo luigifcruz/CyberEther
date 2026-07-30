@@ -43,6 +43,8 @@ Result SignalGeneratorImpl::configure() {
 }
 
 Result SignalGeneratorImpl::define() {
+    const auto& config = *candidate();
+
     JST_CHECK(defineInterfaceOutput("signal",
                                     "Output",
                                     "The generated signal."));
@@ -92,7 +94,7 @@ Result SignalGeneratorImpl::define() {
                                     "Variance of Gaussian noise (for noise signal type).",
                                     "float::2"));
 
-    if (signalType == "chirp") {
+    if (config.signalType == "chirp") {
         JST_CHECK(defineInterfaceConfig("chirpStartFreq",
                                         "Chirp Start Frequency",
                                         "Start frequency for chirp signals in MHz.",

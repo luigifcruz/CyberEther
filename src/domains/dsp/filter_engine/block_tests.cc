@@ -15,10 +15,10 @@ using namespace Jetstream;
 
 namespace {
 
-void RequireRejectedBeforeDefine(const Flowgraph::View::BlockData& block) {
+void RequireErroredWithInterface(const Flowgraph::View::BlockData& block) {
     REQUIRE(block.state == Block::State::Errored);
-    REQUIRE(block.interfaceInputs.empty());
-    REQUIRE(block.interfaceOutputs.empty());
+    REQUIRE(block.interfaceInputs.size() == 2);
+    REQUIRE(block.interfaceOutputs.size() == 1);
     REQUIRE(block.interfaceConfigs.empty());
     REQUIRE(block.outputs.empty());
 }
@@ -140,7 +140,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     inputs["filter"].requested("geometry_filter", "buffer");
     REQUIRE(flowgraph->blockCreate("geometry_bad", Blocks::FilterEngine{}, inputs) ==
             Result::SUCCESS);
-    RequireRejectedBeforeDefine(viewBlock("geometry_bad"));
+    RequireErroredWithInterface(viewBlock("geometry_bad"));
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
@@ -181,7 +181,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     inputs["filter"].requested("metadata_filter", "buffer");
     REQUIRE(flowgraph->blockCreate("metadata_bad", Blocks::FilterEngine{}, inputs) ==
             Result::SUCCESS);
-    RequireRejectedBeforeDefine(viewBlock("metadata_bad"));
+    RequireErroredWithInterface(viewBlock("metadata_bad"));
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
@@ -217,7 +217,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     inputs["filter"].requested("center_filter", "buffer");
     REQUIRE(flowgraph->blockCreate("center_bad", Blocks::FilterEngine{}, inputs) ==
             Result::SUCCESS);
-    RequireRejectedBeforeDefine(viewBlock("center_bad"));
+    RequireErroredWithInterface(viewBlock("center_bad"));
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,

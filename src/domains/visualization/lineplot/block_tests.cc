@@ -91,7 +91,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Lineplot block rolls back a rejected module update",
+                  "Lineplot block preserves a rejected module update for recovery",
                  "[modules][lineplot][block][reconfigure][validation]") {
     Blocks::SignalGenerator source;
     source.signalDataType = "F32";
@@ -111,11 +111,12 @@ TEST_CASE_METHOD(FlowgraphFixture,
     Parser::Map invalidUpdate;
     invalidUpdate["thickness"] = std::numeric_limits<F32>::infinity();
     REQUIRE(flowgraph->blockReconfigure("lineplot_update", invalidUpdate) ==
-            Result::ERROR);
-    REQUIRE(viewBlock("lineplot_update").state == Block::State::Created);
+            Result::SUCCESS);
+    REQUIRE(viewBlock("lineplot_update").state == Block::State::Errored);
 
     Parser::Map validSparseUpdate;
     validSparseUpdate["averaging"] = U64{8};
+    validSparseUpdate["thickness"] = config.thickness;
     REQUIRE(flowgraph->blockReconfigure("lineplot_update", validSparseUpdate) ==
             Result::SUCCESS);
 

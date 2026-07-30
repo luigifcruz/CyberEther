@@ -189,7 +189,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Spectrum engine rejects invalid axis before topology recreation",
+                  "Spectrum engine preserves invalid axis for recovery",
                  "[modules][dsp][spectrum_engine][block][reconfigure][validation]") {
     Blocks::OnesTensor source;
     source.shape = {4, 3};
@@ -206,31 +206,34 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockCreate("spec_update", config, inputs) == Result::SUCCESS);
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
 
-    const Tensor originalOutput = viewBlock("spec_update").outputs.at("buffer").tensor;
-    const auto originalOutputId = originalOutput.id();
-
     Parser::Map update;
     update["axis"] = I64{2};
     update["enableScale"] = true;
-    REQUIRE(flowgraph->blockReconfigure("spec_update", update) == Result::ERROR);
+    REQUIRE(flowgraph->blockReconfigure("spec_update", update) == Result::SUCCESS);
 
-    const auto retained = viewBlock("spec_update");
-    REQUIRE(retained.state == Block::State::Created);
-    REQUIRE(retained.outputs.at("buffer").tensor.id() == originalOutputId);
-    REQUIRE(retained.outputs.at("buffer").tensor.shape() == Shape{4, 3});
-    REQUIRE(retained.outputs.at("buffer").tensor.dtype() == DataType::F32);
+    const auto errored = viewBlock("spec_update");
+    REQUIRE(errored.state == Block::State::Errored);
+    REQUIRE(errored.outputs.empty());
+    REQUIRE(errored.interfaceInputs.size() == 1);
+    REQUIRE(errored.interfaceOutputs.size() == 1);
+    REQUIRE(errored.interfaceConfigs.size() == 5);
 
     Parser::Map savedMap;
     REQUIRE(flowgraph->blockConfig("spec_update", savedMap) == Result::SUCCESS);
     Blocks::SpectrumEngine saved;
     REQUIRE(saved.deserialize(savedMap) == Result::SUCCESS);
-    REQUIRE(saved.axis == config.axis);
+    REQUIRE(saved.axis == 2);
     REQUIRE(saved.enableAgc == config.enableAgc);
-    REQUIRE(saved.enableScale == config.enableScale);
+    REQUIRE(saved.enableScale);
     REQUIRE(saved.rangeMin == config.rangeMin);
     REQUIRE(saved.rangeMax == config.rangeMax);
 
-    Tensor output = retained.outputs.at("buffer").tensor;
+    Parser::Map recovery;
+    recovery["axis"] = I64{1};
+    REQUIRE(flowgraph->blockReconfigure("spec_update", recovery) == Result::SUCCESS);
+    const auto recovered = viewBlock("spec_update");
+    REQUIRE(recovered.state == Block::State::Created);
+    Tensor output = recovered.outputs.at("buffer").tensor;
     std::fill(output.data<F32>(), output.data<F32>() + output.size(), 12345.0f);
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
     for (U64 index = 0; index < output.size(); ++index) {
@@ -297,9 +300,17 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     Blocks::SpectrumEngine config;
     config.axis = 0;
+    config.enableScale = true;
     REQUIRE(flowgraph->blockCreate("spec_dtype", config, inputs) == Result::SUCCESS);
-    REQUIRE(viewBlock("spec_dtype").state == Block::State::Errored);
-    REQUIRE(viewBlock("spec_dtype").outputs.empty());
+    const auto block = viewBlock("spec_dtype");
+    REQUIRE(block.state == Block::State::Errored);
+    REQUIRE(block.outputs.empty());
+    REQUIRE(std::any_of(block.interfaceConfigs.begin(),
+                        block.interfaceConfigs.end(),
+                        [](const auto& field) { return field.name == "rangeMin"; }));
+    REQUIRE(std::any_of(block.interfaceConfigs.begin(),
+                        block.interfaceConfigs.end(),
+                        [](const auto& field) { return field.name == "rangeMax"; }));
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
