@@ -50,10 +50,8 @@ endif
 
 browser_exe_link_args = []
 if jst_is_browser
-    browser_exe_link_args = [
-        '--bind',
+    browser_exe_link_args = meson.get_external_property('main_module_link_args') + [
         '--js-library', meson.current_source_dir() / 'src/platform/emscripten_sync_library.js',
-        '-s', 'MAIN_MODULE=1',
         '-Wl,--whole-archive',
     ]
 endif

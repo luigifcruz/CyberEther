@@ -376,6 +376,12 @@ void AddPathEnvironmentExecutables(std::vector<std::string>& paths) {
 }
 
 void AddCommonPythonExecutables(std::vector<std::string>& paths) {
+#if defined(JST_OS_BROWSER)
+    AddPath(paths, "/storage/cyberether-python-runtime.wasm");
+    AddPath(paths, "/cyberether-python-runtime.wasm");
+    return;
+#endif
+
     AddPathEnvironmentExecutables(paths);
 
     for (const char* variable : {"VIRTUAL_ENV", "CONDA_PREFIX"}) {

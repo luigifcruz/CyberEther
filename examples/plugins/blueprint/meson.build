@@ -9,6 +9,8 @@ project(
     ]
 )
 
+jst_is_browser = host_machine.system().startswith('emscripten')
+
 cyberether_dep = dependency(
     'jetstream',
     required: false,
@@ -21,6 +23,13 @@ cyberether_dep = dependency(
 
 if not cyberether_dep.found()
     error('CyberEther dependency not found.')
+endif
+
+if jst_is_browser
+    cyberether_dep = cyberether_dep.partial_dependency(
+        compile_args: true,
+        includes: true,
+    )
 endif
 
 plugin_inc = include_directories('include', 'src')
@@ -39,7 +48,7 @@ plugin_library = static_library(
     plugin_sources,
     include_directories: plugin_inc,
     dependencies: cyberether_dep,
-    gnu_symbol_visibility: 'hidden',
+    gnu_symbol_visibility: jst_is_browser ? 'default' : 'hidden',
     pic: true,
     install: false,
 )
@@ -49,19 +58,33 @@ plugin_code_dep = declare_dependency(
     link_whole: plugin_library,
 )
 
-if get_option('tests')
+if get_option('tests') and not jst_is_browser
     subdir('tests')
 endif
 
-plugin_module = shared_module(
-    'cyberether_blueprint_plugin',
-    [],
-    dependencies: plugin_code_dep,
-    gnu_symbol_visibility: 'hidden',
-    name_prefix: '',
-    build_by_default: false,
-    install: false,
-)
+if jst_is_browser
+    plugin_module = shared_module(
+        'cyberether_blueprint_plugin',
+        [],
+        dependencies: plugin_code_dep,
+        link_args: meson.get_external_property('side_module_link_args'),
+        gnu_symbol_visibility: 'default',
+        name_prefix: '',
+        name_suffix: 'wasm',
+        build_by_default: false,
+        install: false,
+    )
+else
+    plugin_module = shared_module(
+        'cyberether_blueprint_plugin',
+        [],
+        dependencies: plugin_code_dep,
+        gnu_symbol_visibility: 'hidden',
+        name_prefix: '',
+        build_by_default: false,
+        install: false,
+    )
+endif
 
 custom_target(
     'cyberether_blueprint_plugin_cep',

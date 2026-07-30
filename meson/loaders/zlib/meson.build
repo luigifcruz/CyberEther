@@ -1,5 +1,8 @@
 if jst_is_browser
-    zlib_dep = declare_dependency(link_args: ['-sUSE_ZLIB=1'])
+    zlib_dep = declare_dependency(
+        compile_args: ['-sUSE_ZLIB=1'],
+        link_args: ['-sUSE_ZLIB=1'],
+    )
 else
     zlib_dep = subproject(
         'zlib',

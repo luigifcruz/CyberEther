@@ -62,6 +62,21 @@ The compiled plugin bundle is written to `build/cyberether_blueprint_plugin.cep`
 The build also creates separate module and block test executables. Disable them
 with `meson setup build -Dtests=false` when Catch2 is not needed.
 
+For the browser, build with Emscripten and the same CyberEther cross file
+used by the host so their dynamic-linking settings match:
+
+```sh
+meson setup build-wasm \
+  --cross-file ../../../meson/crosscompile/emscripten.ini \
+  -Dbuildtype=release \
+  -Dtests=false
+meson compile -C build-wasm cyberether_blueprint_plugin_cep
+```
+
+This produces a `.cep` bundle containing a `browser-wasm32` WebAssembly side
+module. When using a copied blueprint, adjust the cross-file path to the
+CyberEther source tree used to build the browser host.
+
 Tests follow CyberEther's module convention and live beside each component. Add
 `module_tests.cc` or `block_tests.cc` to that component's `plugin_test_lst`; the
 shared `tests/meson.build` creates and registers a separate executable for every

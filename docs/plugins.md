@@ -225,23 +225,20 @@ build/cyberether_blueprint_plugin.cep
 The blueprint includes `subprojects/cyberether.wrap`, so Meson can fetch
 CyberEther as a fallback when it cannot find an installed CyberEther dependency.
 
-## Building From The CyberEther Tree
-
-When building CyberEther itself with examples enabled, the blueprint is also
-available as a root build target:
+For a browser plugin, use Emscripten and CyberEther's cross file so the
+side module uses the same threading, exception, SIMD, and LTO settings as the
+browser host:
 
 ```sh
-meson compile -C build-release cyberether_blueprint_plugin_cep
+meson setup build-wasm examples/plugins/blueprint \
+  --cross-file meson/crosscompile/emscripten.ini \
+  -Dbuildtype=release \
+  -Dtests=false
+meson compile -C build-wasm cyberether_blueprint_plugin_cep
 ```
 
-On Linux, the output is:
-
-```text
-build-release/examples/plugins/cyberether_blueprint_plugin.cep
-```
-
-The shared library in the build tree is an intermediate target. The `.cep` file
-is the user-facing plugin artifact.
+The shared library in the build directory is an intermediate target. The `.cep`
+file is the user-facing plugin artifact.
 
 ## Loading A Plugin
 

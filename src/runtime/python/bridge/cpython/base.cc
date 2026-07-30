@@ -49,7 +49,12 @@ std::string ConfiguredPythonPath() {
 }
 
 bool TryOpenLibrary(const std::string& path, void*& handle, std::string& error) {
-    handle = Platform::OpenDynamicLibrary(path, Platform::DynamicLibraryVisibility::Global, error);
+#if defined(JST_OS_BROWSER)
+    constexpr auto visibility = Platform::DynamicLibraryVisibility::Local;
+#else
+    constexpr auto visibility = Platform::DynamicLibraryVisibility::Global;
+#endif
+    handle = Platform::OpenDynamicLibrary(path, visibility, error);
     return handle != nullptr;
 }
 
@@ -76,6 +81,7 @@ Result OpenPythonLibrary(PythonRuntimeContext::Validation& validation, void*& ha
 
 using PyInitializeFn = void (*)();
 using PyIsInitializedFn = int (*)();
+using PythonRuntimeReadyFn = int (*)();
 using PySetProgramNameFn = void (*)(const wchar_t*);
 using PyDecodeLocaleFn = wchar_t* (*)(const char*, size_t*);
 using PyGILStateEnsureFn = int (*)();
@@ -314,6 +320,15 @@ Result Py_Load() {
     PythonRuntimeContext::Validation validation;
     void* handle = nullptr;
     JST_CHECK(OpenPythonLibrary(validation, handle));
+
+    PythonRuntimeReadyFn runtimeReady = nullptr;
+    LoadOptionalSymbol(handle, runtimeReady, "CyberEther_PythonRuntimeReady");
+    if (runtimeReady && !runtimeReady()) {
+        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Python runtime '{}' failed to install its standard library.",
+                  validation.libraryPath);
+        CloseLibrary(handle);
+        return Result::ERROR;
+    }
 
     PythonApi api;
     const auto symbolsResult = LoadSymbols(handle, api);
