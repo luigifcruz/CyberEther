@@ -69,7 +69,6 @@ graph:
       enableAgc: false
       rangeMax: 1
       enableScale: true
-      axis: 1
     input:
       buffer: '${graph.soapy.output.signal}'
     meta:
@@ -170,7 +169,6 @@ graph:
       enableAgc: true
       rangeMax: 1
       enableScale: true
-      axis: 1
     input:
       buffer: '${graph.slice.output.buffer}'
     meta:
@@ -227,7 +225,6 @@ graph:
       enableAgc: true
       rangeMax: 1
       enableScale: true
-      axis: 1
     input:
       buffer: '${graph.sli23.output.buffer}'
     meta:

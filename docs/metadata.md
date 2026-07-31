@@ -75,6 +75,7 @@ Attributes are named values attached to a tensor, and they travel wherever the t
 ```cpp
 Result create() override {
     JST_CHECK(buffer.create(device(), DataType::CF32, {size}));
+    JST_CHECK(SetSignalAxes(buffer, {.sample = Index{0}}));
     buffer.setAttribute("sampleRate", sampleRate);
     buffer.setAttribute("frequency", frequency);
     outputs()["signal"].produced(name(), "signal", buffer);
@@ -92,6 +93,16 @@ if (signal.hasAttribute("sampleRate")) {
 ```
 
 Attributes do not propagate through a block automatically. A block that transforms a stream and wants to preserve its description copies what applies, either selectively with `setAttribute` or wholesale with `propagateAttributes(source)`, and then overrides what it changed. A decimator, for example, propagates the input attributes and rewrites `sampleRate`.
+
+### Signal Axes
+
+Signal tensors describe their layout with three standard attributes. The `sampleAxis` attribute identifies the dimension processed as signal samples and is mandatory when rank is greater than one. A rank-one tensor implicitly uses axis `0` when the attribute is absent. The `batchAxis` attribute optionally identifies ordered sample windows processed together, while `channelAxis` optionally identifies independent channels. No other axis meaning is inferred from tensor shape.
+
+Each value is a zero-based axis index stored as exactly `Index` (the `U64` index type). Values must be in range and two roles cannot refer to the same axis. For example, `[batch, channels, samples]` uses `batchAxis=Index{0}`, `channelAxis=Index{1}`, and `sampleAxis=Index{2}`. A rank-one producer may still publish `sampleAxis=Index{0}` explicitly. Other integer types, including `I64`, do not satisfy the contract.
+
+Signal-processing modules resolve this metadata with `ResolveSignalAxes` instead of guessing from rank or position. They process `sampleAxis` independently across other dimensions unless they explicitly sequence batches or consume channels. Producers and shape-preserving modules use `SetSignalAxes` to publish or preserve the roles.
+
+Structural tensor operators remain explicitly axis-configured because selecting, inserting, removing, or reordering dimensions is their operation. Built-in structural blocks remap `sampleAxis`, `batchAxis`, and `channelAxis` to the output axes, or remove a role when its dimension no longer exists or a reshape makes the correspondence ambiguous. Custom blocks must do the same rather than copying positional attributes unchanged.
 
 Hints:
 
