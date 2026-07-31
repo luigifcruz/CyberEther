@@ -10,7 +10,7 @@ namespace Jetstream::Modules {
 Result OverlapAddImpl::validate() {
     validatedInputBuffer = Tensor();
     validatedInputOverlap = Tensor();
-    validatedResolvedAxis = 0;
+    validatedBatchAxis.reset();
     validatedPreviousOverlapShape.clear();
     validatedOutputSizeBytes = 0;
     validatedPreviousOverlapSizeBytes = 0;
@@ -26,15 +26,6 @@ Result OverlapAddImpl::validate() {
         return Result::SUCCESS;
     }
 
-    const auto candidateAxis = ResolveAxis(candidate()->axis, bufferTensor.rank());
-    if (!candidateAxis) {
-        JST_ERROR("[MODULE_OVERLAP_ADD] Axis ({}) is out of "
-                  "bounds for input rank ({}).",
-                  candidate()->axis,
-                  bufferTensor.rank());
-        return Result::ERROR;
-    }
-
     if (bufferTensor.rank() != overlapTensor.rank()) {
         JST_ERROR("[MODULE_OVERLAP_ADD] Buffer rank ({}) does "
                   "not match overlap rank ({}).",
@@ -43,23 +34,34 @@ Result OverlapAddImpl::validate() {
         return Result::ERROR;
     }
 
-    if (bufferTensor.rank() > 1 && *candidateAxis == 0) {
-        JST_ERROR("[MODULE_OVERLAP_ADD] Axis 0 is reserved for batch sequencing "
-                  "for inputs with more than one dimension.");
+    SignalAxes bufferAxes;
+    SignalAxes overlapAxes;
+    if (ResolveSignalAxes(bufferTensor, bufferAxes) != Result::SUCCESS ||
+        ResolveSignalAxes(overlapTensor, overlapAxes) != Result::SUCCESS) {
+        JST_ERROR("[MODULE_OVERLAP_ADD] Input signal axis metadata is invalid.");
         return Result::ERROR;
     }
 
-    if (bufferTensor.shape(*candidateAxis) < overlapTensor.shape(*candidateAxis)) {
+    if (bufferAxes.sample != overlapAxes.sample ||
+        bufferAxes.batch != overlapAxes.batch ||
+        bufferAxes.channel != overlapAxes.channel) {
+        JST_ERROR("[MODULE_OVERLAP_ADD] Buffer and overlap sample, batch, and "
+                  "channel axes must match.");
+        return Result::ERROR;
+    }
+
+    if (bufferTensor.shape(*bufferAxes.sample) <
+        overlapTensor.shape(*overlapAxes.sample)) {
         JST_ERROR("[MODULE_OVERLAP_ADD] Overlap size ({}) is "
                   "larger than buffer size ({}) along axis ({}).",
-                  overlapTensor.shape(*candidateAxis),
-                  bufferTensor.shape(*candidateAxis),
-                  *candidateAxis);
+                  overlapTensor.shape(*overlapAxes.sample),
+                  bufferTensor.shape(*bufferAxes.sample),
+                  *bufferAxes.sample);
         return Result::ERROR;
     }
 
     for (Index dimension = 0; dimension < bufferTensor.rank(); ++dimension) {
-        if (dimension == *candidateAxis) {
+        if (dimension == *bufferAxes.sample) {
             continue;
         }
 
@@ -76,9 +78,9 @@ Result OverlapAddImpl::validate() {
 
     Shape previousOverlapShape = overlapTensor.shape();
     U64 previousOverlapElementCount = overlapTensor.size();
-    if (bufferTensor.rank() > 1) {
-        previousOverlapElementCount /= previousOverlapShape[0];
-        previousOverlapShape[0] = 1;
+    if (bufferAxes.batch) {
+        previousOverlapElementCount /= previousOverlapShape[*bufferAxes.batch];
+        previousOverlapShape[*bufferAxes.batch] = 1;
     }
 
     U64 outputSizeBytes = 0;
@@ -95,7 +97,7 @@ Result OverlapAddImpl::validate() {
 
     validatedInputBuffer = bufferTensor;
     validatedInputOverlap = overlapTensor;
-    validatedResolvedAxis = *candidateAxis;
+    validatedBatchAxis = bufferAxes.batch;
     validatedPreviousOverlapShape = previousOverlapShape;
     validatedOutputSizeBytes = outputSizeBytes;
     validatedPreviousOverlapSizeBytes = previousOverlapSizeBytes;
@@ -114,6 +116,7 @@ Result OverlapAddImpl::define() {
 Result OverlapAddImpl::create() {
     inputBuffer = validatedInputBuffer;
     inputOverlap = validatedInputOverlap;
+    batchAxis = validatedBatchAxis;
 
     // Allocate output tensor matching input buffer.
     JST_CHECK(output.create(inputBuffer.device(),
@@ -122,7 +125,7 @@ Result OverlapAddImpl::create() {
     JST_CHECK(output.propagateAttributes(inputBuffer));
 
     // Allocate previous overlap state tensor.
-    // Shape matches overlap but with batch dimension (dim 0) = 1.
+    // Shape matches overlap with the optional batch dimension reduced to one.
     JST_CHECK(previousOverlap.create(inputBuffer.device(),
                                      inputBuffer.dtype(),
                                      validatedPreviousOverlapShape));

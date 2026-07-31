@@ -112,6 +112,8 @@ TEST_CASE("ADS-B - Random Noise Input",
                 const F32 q = static_cast<F32>(i % 11) * 0.001f - 0.005f;
                 input.at<CF32>(i) = CF32(r, q);
             }
+            REQUIRE(input.setAttribute("sampleAxis", Index{0}) ==
+                    Result::SUCCESS);
 
             ctx.setInput("signal", input);
             REQUIRE(ctx.run() == Result::SUCCESS);
@@ -131,6 +133,8 @@ TEST_CASE("ADS-B - Invalid Input DType",
             Tensor input;
             REQUIRE(input.create(impl.device, DataType::F32,
                                   {8192}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleAxis", Index{0}) ==
+                    Result::SUCCESS);
             RequireAdsbValidationError(impl, input);
         }
     }
@@ -151,6 +155,8 @@ TEST_CASE("ADS-B - Malformed Metadata",
                                      {8192}) == Result::SUCCESS);
                 const F64 value = key == "frequency" ? 1090e6 : 2e6;
                 REQUIRE(input.setAttribute(key, value) == Result::SUCCESS);
+                REQUIRE(input.setAttribute("sampleAxis", Index{0}) ==
+                        Result::SUCCESS);
                 RequireAdsbValidationError(impl, input);
             }
         }
@@ -172,6 +178,8 @@ TEST_CASE("ADS-B - Input Size Boundaries",
                                      DataType::CF32,
                                      {239}) == Result::SUCCESS);
                 REQUIRE(input.contiguous());
+                REQUIRE(input.setAttribute("sampleAxis", Index{0}) ==
+                        Result::SUCCESS);
                 RequireAdsbValidationError(impl, input);
             }
 
@@ -185,6 +193,8 @@ TEST_CASE("ADS-B - Input Size Boundaries",
                                      {inputSize}) == Result::SUCCESS);
                 REQUIRE(input.contiguous());
                 REQUIRE(input.size() == inputSize);
+                REQUIRE(input.setAttribute("sampleAxis", Index{0}) ==
+                        Result::SUCCESS);
                 RequireAdsbValidationError(impl, input);
             }
         }
@@ -205,6 +215,8 @@ TEST_CASE("ADS-B - Metadata Validation Preserves Live State",
             REQUIRE(input.setAttribute("frequency", F32{1090e6f}) ==
                     Result::SUCCESS);
             REQUIRE(input.setAttribute("sampleRate", F32{2e6f}) ==
+                    Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleAxis", Index{0}) ==
                     Result::SUCCESS);
 
             std::shared_ptr<Module> module;
@@ -237,6 +249,93 @@ TEST_CASE("ADS-B - Metadata Validation Preserves Live State",
             REQUIRE(input.setAttribute("sampleRate", F32{2e6f}) == Result::SUCCESS);
             REQUIRE(adsb->validate() == Result::SUCCESS);
             REQUIRE(module->destroy() == Result::SUCCESS);
+        }
+    }
+}
+
+TEST_CASE("ADS-B - Signal Axis Validation",
+          "[modules][adsb][validation][layout]") {
+    const auto implementations = Registry::ListAvailableModules("adsb");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device
+                        << " Runtime: " << impl.runtime) {
+            SECTION("multi-axis sample role is required") {
+                Tensor input;
+                REQUIRE(input.create(impl.device, DataType::CF32, {2, 240}) ==
+                        Result::SUCCESS);
+                RequireAdsbValidationError(impl, input);
+            }
+
+            SECTION("sample role type must be exact") {
+                Tensor input;
+                REQUIRE(input.create(impl.device, DataType::CF32, {240}) ==
+                        Result::SUCCESS);
+                REQUIRE(input.setAttribute("sampleAxis", I64{0}) ==
+                        Result::SUCCESS);
+                RequireAdsbValidationError(impl, input);
+            }
+
+            SECTION("roles must be distinct") {
+                Tensor input;
+                REQUIRE(input.create(impl.device, DataType::CF32, {240}) ==
+                        Result::SUCCESS);
+                REQUIRE(input.setAttribute("sampleAxis", Index{0}) ==
+                        Result::SUCCESS);
+                REQUIRE(input.setAttribute("batchAxis", Index{0}) ==
+                        Result::SUCCESS);
+                RequireAdsbValidationError(impl, input);
+            }
+
+            SECTION("channels are unsupported") {
+                Tensor input;
+                REQUIRE(input.create(impl.device, DataType::CF32, {2, 240}) ==
+                        Result::SUCCESS);
+                REQUIRE(input.setAttribute("channelAxis", Index{0}) ==
+                        Result::SUCCESS);
+                REQUIRE(input.setAttribute("sampleAxis", Index{1}) ==
+                        Result::SUCCESS);
+                RequireAdsbValidationError(impl, input);
+            }
+
+            SECTION("unidentified auxiliary dimensions are unsupported") {
+                Tensor input;
+                REQUIRE(input.create(impl.device, DataType::CF32, {2, 240}) ==
+                        Result::SUCCESS);
+                REQUIRE(input.setAttribute("sampleAxis", Index{1}) ==
+                        Result::SUCCESS);
+                RequireAdsbValidationError(impl, input);
+            }
+        }
+    }
+}
+
+TEST_CASE("ADS-B - Ordered Batch Layouts",
+          "[modules][adsb][layout][batch]") {
+    const auto implementations = Registry::ListAvailableModules("adsb");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device
+                        << " Runtime: " << impl.runtime) {
+            for (const bool sampleFirst : {false, true}) {
+                TestContext ctx("adsb", impl.device, impl.runtime, impl.provider);
+                ctx.setConfig(Modules::Adsb{});
+
+                Tensor input;
+                const Shape shape = sampleFirst ? Shape{240, 2} : Shape{2, 240};
+                REQUIRE(input.create(impl.device, DataType::CF32, shape) ==
+                        Result::SUCCESS);
+                REQUIRE(input.setAttribute(
+                            "sampleAxis", static_cast<Index>(sampleFirst ? 0 : 1)) ==
+                        Result::SUCCESS);
+                REQUIRE(input.setAttribute(
+                            "batchAxis", static_cast<Index>(sampleFirst ? 1 : 0)) ==
+                        Result::SUCCESS);
+                ctx.setInput("signal", input);
+                REQUIRE(ctx.run() == Result::SUCCESS);
+            }
         }
     }
 }

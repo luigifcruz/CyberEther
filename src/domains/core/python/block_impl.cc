@@ -112,7 +112,7 @@ Result PythonImpl::define() {
         const auto index = std::to_string(i);
         JST_CHECK(defineInterfaceConfig("outputTensor" + index,
                                         "Output " + index,
-                                        "Tensor shape, data type, and device for output " + index + ".",
+                                        "Tensor shape, data type, device, and signal axes for output " + index + ".",
                                         "tensor-config:" + index));
     }
     JST_CHECK(defineInterfaceMetric("pythonDiagnostic",

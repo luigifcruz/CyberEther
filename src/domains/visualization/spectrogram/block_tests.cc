@@ -70,7 +70,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Spectrogram block delegates rank validation to its module",
+                  "Spectrogram block rejects inputs without signal roles",
                  "[modules][spectrogram][block][validation]") {
     Blocks::OnesTensor source;
     source.shape = {2, 2, 2};
@@ -89,14 +89,14 @@ TEST_CASE_METHOD(FlowgraphFixture,
 TEST_CASE_METHOD(FlowgraphFixture,
                  "Spectrogram block delegates dtype validation to its module",
                  "[modules][spectrogram][block][validation]") {
-    Blocks::OnesTensor source;
-    source.shape = {8};
-    source.dataType = "F64";
+    Blocks::SignalGenerator source;
+    source.bufferSize = 8;
+    source.signalDataType = "CF32";
     REQUIRE(flowgraph->blockCreate("spectrogram_dtype_src", source, {}) ==
             Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["signal"].requested("spectrogram_dtype_src", "buffer");
+    inputs["signal"].requested("spectrogram_dtype_src", "signal");
 
     REQUIRE(flowgraph->blockCreate("spectrogram_dtype",
                                    Blocks::Spectrogram{}, inputs) == Result::SUCCESS);

@@ -11,6 +11,8 @@
 #include <jetstream/domains/core/reshape/module.hh>
 #include <jetstream/memory/axis.hh>
 
+#include <optional>
+
 namespace Jetstream::Blocks {
 
 struct SpectrumEngineImpl : public Block::Impl,
@@ -37,17 +39,21 @@ struct SpectrumEngineImpl : public Block::Impl,
         std::make_shared<Modules::Amplitude>();
     std::shared_ptr<Modules::Range> rangeConfig =
         std::make_shared<Modules::Range>();
+    std::optional<Index> candidateSampleAxis;
 };
 
 Result SpectrumEngineImpl::validate() {
     const auto& config = *candidate();
+    candidateSampleAxis.reset();
 
     const auto input = inputs().find("buffer");
-    if (input != inputs().end() && input->second.resolved() &&
-        !ResolveAxis(config.axis, input->second.tensor.rank())) {
-        JST_ERROR("[BLOCK_SPECTRUM_ENGINE] Axis {} is out of bounds for "
-                  "input tensor rank {}.", config.axis, input->second.tensor.rank());
-        return Result::ERROR;
+    if (input != inputs().end() && input->second.resolved()) {
+        SignalAxes axes;
+        if (ResolveSignalAxes(input->second.tensor, axes) != Result::SUCCESS) {
+            JST_ERROR("[BLOCK_SPECTRUM_ENGINE] Input signal axis metadata is invalid.");
+            return Result::ERROR;
+        }
+        candidateSampleAxis = *axes.sample;
     }
 
     if (enableAgc != config.enableAgc) {
@@ -55,10 +61,6 @@ Result SpectrumEngineImpl::validate() {
     }
 
     if (enableScale != config.enableScale) {
-        return Result::RECREATE;
-    }
-
-    if (axis != config.axis) {
         return Result::RECREATE;
     }
 
@@ -80,12 +82,6 @@ Result SpectrumEngineImpl::define() {
                                    "Input signal to compute the spectrum of."));
     JST_CHECK(defineInterfaceOutput("buffer", "Output",
                                     "Spectrum output in decibels."));
-
-    JST_CHECK(defineInterfaceConfig("axis",
-                                    "Axis",
-                                    "Axis along which to compute the spectrum. Negative axes "
-                                    "count from the end.",
-                                    "int:"));
 
     JST_CHECK(defineInterfaceConfig("enableAgc",
                                     "Enable AGC",
@@ -116,17 +112,11 @@ Result SpectrumEngineImpl::create() {
     const auto& inputPort = inputs().at("buffer");
     const Tensor& inputTensor = inputPort.tensor;
 
-    const auto candidateAxis = ResolveAxis(axis, inputTensor.rank());
-    if (!candidateAxis) {
-        JST_ERROR("[BLOCK_SPECTRUM_ENGINE] Axis {} is out of bounds for "
-                  "input tensor rank {}.", axis, inputTensor.rank());
+    if (!candidateSampleAxis) {
+        JST_ERROR("[BLOCK_SPECTRUM_ENGINE] Input validation plan is unavailable.");
         return Result::ERROR;
     }
-    const Index resolvedAxis = *candidateAxis;
-
-    const I64 childAxis = static_cast<I64>(resolvedAxis);
-    fftConfig->axis = childAxis;
-    amplitudeConfig->axis = childAxis;
+    const Index resolvedAxis = *candidateSampleAxis;
 
     // Derive window size from input shape at specified axis.
 
@@ -145,11 +135,15 @@ Result SpectrumEngineImpl::create() {
     // Create window coefficients.
 
     JST_CHECK(moduleCreate("window", windowConfig, {}));
+    auto windowOutput = moduleGetOutput({"window", "window"});
+    JST_CHECK(SetSignalAxes(windowOutput.tensor, {
+        .sample = Index{0},
+    }));
 
     // Invert window (FFT shift).
 
     JST_CHECK(moduleCreate("invert", invertConfig, {
-        {"signal", moduleGetOutput({"window", "window"})}
+        {"signal", windowOutput}
     }));
 
     // Align the 1D window with the selected input axis for broadcasting.
@@ -157,12 +151,16 @@ Result SpectrumEngineImpl::create() {
     JST_CHECK(moduleCreate("reshape_window", reshapeWindowConfig, {
         {"buffer", moduleGetOutput({"invert", "signal"})}
     }));
+    auto reshapedWindow = moduleGetOutput({"reshape_window", "buffer"});
+    JST_CHECK(SetSignalAxes(reshapedWindow.tensor, {
+        .sample = resolvedAxis,
+    }));
 
     // Multiply input signal by shifted window.
 
     JST_CHECK(moduleCreate("multiply", multiplyConfig, {
         {"a", inputPort},
-        {"b", moduleGetOutput({"reshape_window", "buffer"})}
+        {"b", reshapedWindow}
     }));
 
     // Forward FFT.

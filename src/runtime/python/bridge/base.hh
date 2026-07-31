@@ -29,6 +29,8 @@ struct Bridge {
     Result run();
     Runtime::Context::Diagnostic diagnostic() const;
 
+    void setImmutableOutputAttributes(const std::vector<std::unordered_set<std::string>>& keys);
+
  protected:
     Bridge() = default;
     ~Bridge();
@@ -93,6 +95,9 @@ struct Bridge {
     void refreshAttributes();
     void flushAttributes();
     void destroyAttributePorts();
+
+    std::vector<std::unordered_set<std::string>> immutableOutputKeys;
+    std::unordered_set<std::string> warnedImmutableKeys;
 
     //
     // Environment IO [bridge/environment.cc]

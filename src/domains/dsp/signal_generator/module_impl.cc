@@ -3,6 +3,7 @@
 #include <cmath>
 #include <limits>
 
+#include <jetstream/memory/axis.hh>
 #include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Modules {
@@ -121,6 +122,9 @@ Result SignalGeneratorImpl::define() {
 
 Result SignalGeneratorImpl::create() {
     JST_CHECK(signal.create(device(), validatedDataType, {bufferSize}));
+    JST_CHECK(SetSignalAxes(signal, {
+        .sample = Index{0},
+    }));
 
     signal.setAttribute("frequency", static_cast<F32>(frequency));
     signal.setAttribute("sampleRate", static_cast<F32>(sampleRate));

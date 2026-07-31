@@ -9,6 +9,51 @@
 
 namespace Jetstream::Modules {
 
+namespace {
+
+template<typename T>
+void NormalizeLanes(const Tensor& input,
+                    Tensor& output,
+                    const Index sampleAxis,
+                    const U64 laneCount) {
+    const T* in = input.data<T>();
+    T* out = output.data<T>();
+    const U64 sampleCount = input.shape(sampleAxis);
+    const U64 inputSampleStride = input.stride(sampleAxis);
+    const U64 outputSampleStride = output.stride(sampleAxis);
+
+    for (U64 lane = 0; lane < laneCount; ++lane) {
+        U64 coordinates = lane;
+        U64 inputLaneOffset = 0;
+        U64 outputLaneOffset = 0;
+        for (Index axis = input.rank(); axis-- > 0;) {
+            if (axis == sampleAxis) {
+                continue;
+            }
+            const U64 coordinate = coordinates % input.shape(axis);
+            coordinates /= input.shape(axis);
+            inputLaneOffset += coordinate * input.stride(axis);
+            outputLaneOffset += coordinate * output.stride(axis);
+        }
+
+        F32 currentMax = 0.0f;
+        for (U64 sample = 0; sample < sampleCount; ++sample) {
+            currentMax = std::max(
+                currentMax,
+                static_cast<F32>(std::abs(
+                    in[inputLaneOffset + sample * inputSampleStride])));
+        }
+
+        const F32 gain = currentMax != 0.0f ? 1.0f / currentMax : 1.0f;
+        for (U64 sample = 0; sample < sampleCount; ++sample) {
+            out[outputLaneOffset + sample * outputSampleStride] =
+                in[inputLaneOffset + sample * inputSampleStride] * gain;
+        }
+    }
+}
+
+}  // namespace
+
 struct AgcImplNativeCpu : public AgcImpl,
                           public NativeCpuRuntimeContext,
                           public Scheduler::Context {
@@ -66,50 +111,12 @@ Result AgcImplNativeCpu::computeSubmit() {
 }
 
 Result AgcImplNativeCpu::kernelCF32() {
-    const CF32* in = input.data<CF32>();
-    CF32* out = output.data<CF32>();
-    const U64 size = input.size();
-
-    constexpr F32 desiredLevel = 1.0f;
-
-    // Find maximum absolute value.
-    F32 currentMax = 0.0f;
-    for (U64 i = 0; i < size; i++) {
-        currentMax = std::max(currentMax, std::abs(in[i]));
-    }
-
-    // Calculate gain.
-    const F32 gain = (currentMax != 0.0f) ? (desiredLevel / currentMax) : 1.0f;
-
-    // Apply gain.
-    for (U64 i = 0; i < size; i++) {
-        out[i] = in[i] * gain;
-    }
-
+    NormalizeLanes<CF32>(input, output, sampleAxis, laneCount);
     return Result::SUCCESS;
 }
 
 Result AgcImplNativeCpu::kernelF32() {
-    const F32* in = input.data<F32>();
-    F32* out = output.data<F32>();
-    const U64 size = input.size();
-
-    constexpr F32 desiredLevel = 1.0f;
-
-    // Find maximum absolute value.
-    F32 currentMax = 0.0f;
-    for (U64 i = 0; i < size; i++) {
-        currentMax = std::max(currentMax, std::fabs(in[i]));
-    }
-
-    // Calculate gain.
-    const F32 gain = (currentMax != 0.0f) ? (desiredLevel / currentMax) : 1.0f;
-
-    // Apply gain.
-    for (U64 i = 0; i < size; i++) {
-        out[i] = in[i] * gain;
-    }
-
+    NormalizeLanes<F32>(input, output, sampleAxis, laneCount);
     return Result::SUCCESS;
 }
 

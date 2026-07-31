@@ -5,6 +5,8 @@
 #include "jetstream/registry.hh"
 #include "jetstream/domains/dsp/rrc_filter/module.hh"
 
+#include <algorithm>
+#include <any>
 #include <cmath>
 #include <limits>
 
@@ -17,6 +19,7 @@ void RequireRrcFilterValidationError(const Registry::ModuleRegistration& impl,
                                      const DataType dtype) {
     Tensor input;
     REQUIRE(input.create(impl.device, dtype, {64}) == Result::SUCCESS);
+    REQUIRE(input.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
 
     TensorMap inputs;
     inputs["buffer"].requested("test", "buffer");
@@ -26,6 +29,21 @@ void RequireRrcFilterValidationError(const Registry::ModuleRegistration& impl,
     REQUIRE(Registry::BuildModule("rrc_filter", impl.device, impl.runtime,
                                   impl.provider, module) == Result::SUCCESS);
     REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
+void RequireRrcFilterSignalValidationError(
+    const Registry::ModuleRegistration& impl,
+    const Tensor& input) {
+    TensorMap inputs;
+    inputs["buffer"].requested("test", "buffer");
+    inputs["buffer"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("rrc_filter", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", Modules::RrcFilter{}, inputs) == Result::ERROR);
     REQUIRE(module->state() == Module::State::ERRORED);
     REQUIRE(module->outputs().empty());
 }
@@ -57,6 +75,7 @@ TEST_CASE("RRC Filter - CF32 Impulse Response",
             Tensor input;
             REQUIRE(input.create(DeviceType::CPU, DataType::CF32,
                                  {bufferSize}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
 
             for (U64 i = 0; i < bufferSize; ++i) {
                 input.at<CF32>(i) = CF32(0.0f, 0.0f);
@@ -86,6 +105,7 @@ TEST_CASE("RRC Filter - CF32 Impulse Response",
             // Peak should be at index taps/2 = 5.
             REQUIRE(maxIdx == config.taps / 2);
             REQUIRE(maxMag > 0.0f);
+            REQUIRE(std::any_cast<Index>(out.attribute("sampleAxis")) == Index{0});
         }
     }
 }
@@ -115,6 +135,7 @@ TEST_CASE("RRC Filter - F32 DC Passthrough",
             Tensor input;
             REQUIRE(input.create(DeviceType::CPU, DataType::F32,
                                  {bufferSize}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
 
             for (U64 i = 0; i < bufferSize; ++i) {
                 input.at<F32>(i) = 1.0f;
@@ -159,6 +180,7 @@ TEST_CASE("RRC Filter - Invalid Even Taps",
             Tensor input;
             REQUIRE(input.create(DeviceType::CPU, DataType::CF32,
                                  {64}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
 
             ctx.setInput("buffer", input);
 
@@ -188,10 +210,136 @@ TEST_CASE("RRC Filter - Invalid Sample Rate",
             Tensor input;
             REQUIRE(input.create(DeviceType::CPU, DataType::CF32,
                                  {64}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
 
             ctx.setInput("buffer", input);
 
             REQUIRE(ctx.run() != Result::SUCCESS);
+        }
+    }
+}
+
+TEST_CASE("RRC Filter - Keeps channels independent for either sample-axis placement",
+          "[modules][rrc_filter][axes]") {
+    const auto implementations = Registry::ListAvailableModules("rrc_filter");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        for (const bool sampleFirst : {false, true}) {
+            DYNAMIC_SECTION("Device: " << impl.device << " Runtime: "
+                            << impl.runtime << " sampleFirst: " << sampleFirst) {
+                TestContext ctx("rrc_filter", impl.device, impl.runtime,
+                                impl.provider);
+                Modules::RrcFilter config;
+                config.taps = 5;
+                ctx.setConfig(config);
+
+                Tensor input;
+                REQUIRE(input.create(DeviceType::CPU, DataType::F32,
+                                     sampleFirst ? Shape{8, 2} : Shape{2, 8}) ==
+                        Result::SUCCESS);
+                const Index sampleAxis = sampleFirst ? 0 : 1;
+                const Index channelAxis = sampleFirst ? 1 : 0;
+                REQUIRE(input.setAttribute("sampleAxis", sampleAxis) ==
+                        Result::SUCCESS);
+                REQUIRE(input.setAttribute("channelAxis", channelAxis) ==
+                        Result::SUCCESS);
+                std::fill(input.data<F32>(), input.data<F32>() + input.size(), 0.0f);
+                if (sampleFirst) {
+                    input.at<F32>(7, 0) = 1.0f;
+                } else {
+                    input.at<F32>(0, 7) = 1.0f;
+                }
+                ctx.setInput("buffer", input);
+
+                REQUIRE(ctx.run() == Result::SUCCESS);
+                const auto& output = ctx.output("buffer");
+                for (U64 sample = 0; sample < 8; ++sample) {
+                    const F32 value = sampleFirst
+                        ? output.at<F32>(sample, 1)
+                        : output.at<F32>(1, sample);
+                    REQUIRE_THAT(value,
+                                 Catch::Matchers::WithinAbs(0.0f, 1.0e-6f));
+                }
+                REQUIRE(std::any_cast<Index>(output.attribute("sampleAxis")) ==
+                        sampleAxis);
+                REQUIRE(std::any_cast<Index>(output.attribute("channelAxis")) ==
+                        channelAxis);
+            }
+        }
+    }
+}
+
+TEST_CASE("RRC Filter - Sequences batches independently per channel",
+          "[modules][rrc_filter][axes][batch]") {
+    const auto implementations = Registry::ListAvailableModules("rrc_filter");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("rrc_filter", impl.device, impl.runtime, impl.provider);
+            Modules::RrcFilter config;
+            config.taps = 5;
+            ctx.setConfig(config);
+
+            Tensor input;
+            REQUIRE(input.create(DeviceType::CPU, DataType::F32, {2, 2, 4}) ==
+                    Result::SUCCESS);
+            REQUIRE(input.setAttribute("batchAxis", Index{0}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("channelAxis", Index{1}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleAxis", Index{2}) == Result::SUCCESS);
+            std::fill(input.data<F32>(), input.data<F32>() + input.size(), 0.0f);
+            input.at<F32>(0, 0, 3) = 1.0f;
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+            const auto& output = ctx.output("buffer");
+            REQUIRE(std::abs(output.at<F32>(1, 0, 0)) > 1.0e-4f);
+            for (U64 batch = 0; batch < 2; ++batch) {
+                for (U64 sample = 0; sample < 4; ++sample) {
+                    REQUIRE_THAT(output.at<F32>(batch, 1, sample),
+                                 Catch::Matchers::WithinAbs(0.0f, 1.0e-6f));
+                }
+            }
+            REQUIRE(std::any_cast<Index>(output.attribute("batchAxis")) == Index{0});
+            REQUIRE(std::any_cast<Index>(output.attribute("channelAxis")) == Index{1});
+            REQUIRE(std::any_cast<Index>(output.attribute("sampleAxis")) == Index{2});
+        }
+    }
+}
+
+TEST_CASE("RRC Filter - Rejects missing or malformed signal roles",
+          "[modules][rrc_filter][validation][axes]") {
+    const auto implementations = Registry::ListAvailableModules("rrc_filter");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Tensor missing;
+            REQUIRE(missing.create(impl.device, DataType::F32, {2, 4}) ==
+                    Result::SUCCESS);
+            RequireRrcFilterSignalValidationError(impl, missing);
+
+            Tensor wrongType;
+            REQUIRE(wrongType.create(impl.device, DataType::F32, {2, 4}) ==
+                    Result::SUCCESS);
+            REQUIRE(wrongType.setAttribute("sampleAxis", I64{1}) == Result::SUCCESS);
+            RequireRrcFilterSignalValidationError(impl, wrongType);
+
+            Tensor duplicate;
+            REQUIRE(duplicate.create(impl.device, DataType::F32, {2, 4}) ==
+                    Result::SUCCESS);
+            REQUIRE(duplicate.setAttribute("sampleAxis", Index{1}) == Result::SUCCESS);
+            REQUIRE(duplicate.setAttribute("channelAxis", Index{1}) ==
+                    Result::SUCCESS);
+            RequireRrcFilterSignalValidationError(impl, duplicate);
+
+            Tensor outOfRange;
+            REQUIRE(outOfRange.create(impl.device, DataType::F32, {2, 4}) ==
+                    Result::SUCCESS);
+            REQUIRE(outOfRange.setAttribute("sampleAxis", Index{2}) ==
+                    Result::SUCCESS);
+            RequireRrcFilterSignalValidationError(impl, outOfRange);
         }
     }
 }

@@ -42,22 +42,56 @@ Result FmImplNativeCpu::validate() {
 Result FmImplNativeCpu::computeSubmit() {
     const CF32* inputData = input.data<CF32>();
     F32* outputData = output.data<F32>();
-    const U64 size = input.size();
     const F32 refCoeff = ref;
+    const Index sampleAxis = *signalAxes.sample;
+    const U64 sampleCount = input.shape(sampleAxis);
+    const U64 inputSampleStride = input.stride(sampleAxis);
+    const U64 outputSampleStride = output.stride(sampleAxis);
+    const U64 batchCount = signalAxes.batch
+        ? input.shape(*signalAxes.batch) : 1;
+    const U64 inputBatchStride = signalAxes.batch
+        ? input.stride(*signalAxes.batch) : 0;
+    const U64 outputBatchStride = signalAxes.batch
+        ? output.stride(*signalAxes.batch) : 0;
 
-    if (size > 0) {
-        outputData[0] = hasPreviousSample
-            ? std::arg(std::conj(previousSample) * inputData[0]) * refCoeff
-            : 0.0f;
-    }
+    for (U64 lane = 0; lane < laneCount; ++lane) {
+        U64 coordinates = lane;
+        U64 inputLaneOffset = 0;
+        U64 outputLaneOffset = 0;
+        for (Index axis = input.rank(); axis-- > 0;) {
+            if (axis == sampleAxis ||
+                (signalAxes.batch && axis == *signalAxes.batch)) {
+                continue;
+            }
+            const U64 coordinate = coordinates % input.shape(axis);
+            coordinates /= input.shape(axis);
+            inputLaneOffset += coordinate * input.stride(axis);
+            outputLaneOffset += coordinate * output.stride(axis);
+        }
 
-    for (U64 n = 1; n < size; n++) {
-        outputData[n] = std::arg(std::conj(inputData[n - 1]) * inputData[n]) * refCoeff;
-    }
+        CF32 previous = previousSample[lane];
+        bool hasPrevious = hasPreviousSample[lane] != 0;
+        for (U64 batch = 0; batch < batchCount; ++batch) {
+            const U64 inputBatchOffset = inputLaneOffset +
+                                         batch * inputBatchStride;
+            const U64 outputBatchOffset = outputLaneOffset +
+                                          batch * outputBatchStride;
+            for (U64 sample = 0; sample < sampleCount; ++sample) {
+                const U64 inputOffset = inputBatchOffset +
+                                        sample * inputSampleStride;
+                const U64 outputOffset = outputBatchOffset +
+                                         sample * outputSampleStride;
+                const CF32 current = inputData[inputOffset];
+                outputData[outputOffset] = hasPrevious
+                    ? std::arg(std::conj(previous) * current) * refCoeff
+                    : 0.0f;
+                previous = current;
+                hasPrevious = true;
+            }
+        }
 
-    if (size > 0) {
-        previousSample = inputData[size - 1];
-        hasPreviousSample = true;
+        previousSample[lane] = previous;
+        hasPreviousSample[lane] = U8{1};
     }
 
     return Result::SUCCESS;

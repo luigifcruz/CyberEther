@@ -16,6 +16,11 @@ Result PskDemodImpl::validate() {
     validatedOutputSize = 0;
     validatedOutputSizeBytes = 0;
     validatedMaxIterations = 0;
+    validatedInputSampleSize = 0;
+    validatedOutputSampleSize = 0;
+    validatedBatchSize = 1;
+    validatedLaneCount = 1;
+    validatedSignalAxes = {};
     validatedOutputShape.clear();
     validatedFreqAlpha = 0.0;
     validatedFreqBeta = 0.0;
@@ -156,8 +161,9 @@ Result PskDemodImpl::validate() {
         return Result::SUCCESS;
     }
 
-    if (inputTensor.rank() != 1) {
-        JST_ERROR("[MODULE_PSK_DEMOD] Input must be a rank-one tensor.");
+    SignalAxes axes;
+    if (ResolveSignalAxes(inputTensor, axes) != Result::SUCCESS) {
+        JST_ERROR("[MODULE_PSK_DEMOD] Input must contain valid signal axis metadata.");
         return Result::ERROR;
     }
 
@@ -178,10 +184,40 @@ Result PskDemodImpl::validate() {
         return Result::ERROR;
     }
 
-    const U64 candidateOutputSize = inputTensor.size() / candidateSamplesPerSymbol;
-    if (candidateOutputSize == 0) {
-        JST_ERROR("[MODULE_PSK_DEMOD] Input buffer too small to produce any symbols.");
+    const U64 inputSampleSize = inputTensor.shape(*axes.sample);
+    const U64 completeOutputSamples =
+        inputSampleSize / candidateSamplesPerSymbol;
+    if (completeOutputSamples == 0) {
+        JST_ERROR("[MODULE_PSK_DEMOD] Sample axis is too short to produce any symbols.");
         return Result::ERROR;
+    }
+    const U64 outputSampleSize = completeOutputSamples +
+        (inputSampleSize % candidateSamplesPerSymbol != 0 ? 1 : 0);
+
+    Shape candidateOutputShape = inputTensor.shape();
+    candidateOutputShape[*axes.sample] = outputSampleSize;
+
+    U64 candidateOutputSize = 1;
+    for (const U64 dimension : candidateOutputShape) {
+        if (!detail::CheckedMultiply(candidateOutputSize,
+                                     dimension,
+                                     candidateOutputSize)) {
+            JST_ERROR("[MODULE_PSK_DEMOD] Output shape exceeds the supported range.");
+            return Result::ERROR;
+        }
+    }
+
+    U64 candidateLaneCount = 1;
+    for (Index axis = 0; axis < inputTensor.rank(); ++axis) {
+        if (axis == *axes.sample || (axes.batch && axis == *axes.batch)) {
+            continue;
+        }
+        if (!detail::CheckedMultiply(candidateLaneCount,
+                                     inputTensor.shape(axis),
+                                     candidateLaneCount)) {
+            JST_ERROR("[MODULE_PSK_DEMOD] Independent lane count exceeds the supported range.");
+            return Result::ERROR;
+        }
     }
 
     U64 candidateOutputSizeBytes = 0;
@@ -196,9 +232,9 @@ Result PskDemodImpl::validate() {
     U64 iterationWidth = 0;
     U64 candidateMaxIterations = 0;
     if (!detail::CheckedAdd(candidateSamplesPerSymbol, 4, iterationWidth) ||
-        !detail::CheckedMultiply(candidateOutputSize,
-                                 iterationWidth,
-                                 candidateMaxIterations) ||
+        !detail::CheckedMultiply(outputSampleSize,
+                                  iterationWidth,
+                                  candidateMaxIterations) ||
         candidateMaxIterations == 0) {
         JST_ERROR("[MODULE_PSK_DEMOD] Iteration geometry exceeds the supported range.");
         return Result::ERROR;
@@ -207,7 +243,12 @@ Result PskDemodImpl::validate() {
     validatedOutputSize = candidateOutputSize;
     validatedOutputSizeBytes = candidateOutputSizeBytes;
     validatedMaxIterations = candidateMaxIterations;
-    validatedOutputShape = {candidateOutputSize};
+    validatedInputSampleSize = inputSampleSize;
+    validatedOutputSampleSize = outputSampleSize;
+    validatedBatchSize = axes.batch ? inputTensor.shape(*axes.batch) : 1;
+    validatedLaneCount = candidateLaneCount;
+    validatedSignalAxes = axes;
+    validatedOutputShape = std::move(candidateOutputShape);
 
     return Result::SUCCESS;
 }
@@ -227,6 +268,12 @@ Result PskDemodImpl::create() {
     constellationOrder = validatedConstellationOrder;
     outputSize = validatedOutputSize;
     maxIterations = validatedMaxIterations;
+    inputSampleSize = validatedInputSampleSize;
+    outputSampleSize = validatedOutputSampleSize;
+    batchSize = validatedBatchSize;
+    laneCount = validatedLaneCount;
+    sampleAxis = *validatedSignalAxes.sample;
+    batchAxis = validatedSignalAxes.batch;
     freqAlpha = validatedFreqAlpha;
     freqBeta = validatedFreqBeta;
     timingAlpha = validatedTimingAlpha;
@@ -238,9 +285,20 @@ Result PskDemodImpl::create() {
     // Allocate output tensor.
     JST_CHECK(output.create(input.device(), DataType::CF32, validatedOutputShape));
     JST_CHECK(output.propagateAttributes(input));
+    JST_CHECK(SetSignalAxes(output, validatedSignalAxes));
 
-    // Initialize state.
-    initializeState();
+    laneAxes.clear();
+    for (Index axis = 0; axis < input.rank(); ++axis) {
+        if (axis != sampleAxis && (!batchAxis || axis != *batchAxis)) {
+            laneAxes.push_back(axis);
+        }
+    }
+
+    laneStates.resize(laneCount);
+    for (auto& state : laneStates) {
+        initializeState(state);
+    }
+    frequencyError = 0.0;
 
     outputs()["signal"].produced(name(), "signal", output);
 
@@ -269,16 +327,16 @@ Result PskDemodImpl::reconfigure() {
     return Result::RECREATE;
 }
 
-void PskDemodImpl::initializeState() {
-    phaseAccumulator = 0.0;
-    frequencyError = 0.0;
-    timingMu = 0.0;
-    timingOmega = timingOmegaNominal;
-    timingIndex = 0;
-    hasLastSymbol = false;
-    lastSymbol = CF32{0.0f, 0.0f};
-    lastDecision = CF32{0.0f, 0.0f};
-    sampleHistory.clear();
+void PskDemodImpl::initializeState(DemodState& state) {
+    state.phaseAccumulator = 0.0;
+    state.frequencyError = 0.0;
+    state.timingMu = 0.0;
+    state.timingOmega = timingOmegaNominal;
+    state.timingIndex = 0;
+    state.hasLastSymbol = false;
+    state.lastSymbol = CF32{0.0f, 0.0f};
+    state.lastDecision = CF32{0.0f, 0.0f};
+    state.sampleHistory.clear();
 }
 
 CF32 PskDemodImpl::interpolate(const CF32& a, const CF32& b, F64 mu) const {

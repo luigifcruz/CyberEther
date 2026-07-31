@@ -1,18 +1,30 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <any>
+
 #include "jetstream/testing.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/domains/core/expand_dims/module.hh"
+#include "jetstream/memory/axis.hh"
 
 using namespace Jetstream;
 
 namespace {
 
 void RequireExpandDimsValidationError(const Registry::ModuleRegistration& impl,
-                                      const I64 axis) {
+                                       const I64 axis,
+                                       const std::string& attribute = {},
+                                       const std::any& attributeValue = {}) {
     Tensor input;
     REQUIRE(input.create(impl.device, DataType::F32, {4}) == Result::SUCCESS);
+    if (attributeValue.has_value()) {
+        if (attribute != SampleAxisAttribute) {
+            REQUIRE(input.setAttribute(std::string(SampleAxisAttribute), Index{0}) ==
+                    Result::SUCCESS);
+        }
+        REQUIRE(input.setAttribute(attribute, attributeValue) == Result::SUCCESS);
+    }
 
     TensorMap inputs;
     inputs["buffer"].requested("test", "buffer");
@@ -27,6 +39,33 @@ void RequireExpandDimsValidationError(const Registry::ModuleRegistration& impl,
     REQUIRE(module->create("test", config, inputs) == Result::ERROR);
     REQUIRE(module->state() == Module::State::ERRORED);
     REQUIRE(module->outputs().empty());
+}
+
+void RequireExpandedSignalAxes(const Registry::ModuleRegistration& impl,
+                               const I64 axis,
+                               const SignalAxes& expectedAxes) {
+    TestContext ctx("expand_dims", impl.device, impl.runtime, impl.provider);
+
+    Modules::ExpandDims config;
+    config.axis = axis;
+    ctx.setConfig(config);
+
+    auto input = ctx.createTensor<F32>({2, 3, 4});
+    REQUIRE(SetSignalAxes(input, {
+        .sample = Index{2},
+        .batch = Index{0},
+        .channel = Index{1},
+    }) == Result::SUCCESS);
+    ctx.setInput("buffer", input);
+
+    REQUIRE(ctx.run() == Result::SUCCESS);
+
+    const auto& out = ctx.output("buffer");
+    SignalAxes outputAxes;
+    REQUIRE(ResolveSignalAxes(out, outputAxes) == Result::SUCCESS);
+    REQUIRE(outputAxes.sample == expectedAxes.sample);
+    REQUIRE(outputAxes.batch == expectedAxes.batch);
+    REQUIRE(outputAxes.channel == expectedAxes.channel);
 }
 
 }  // namespace
@@ -220,6 +259,42 @@ TEST_CASE("ExpandDims Module - Axis Out of Range Error", "[modules][expand_dims]
                             << " Axis: " << axis) {
                 RequireExpandDimsValidationError(impl, axis);
             }
+        }
+    }
+}
+
+TEST_CASE("ExpandDims Module - Remaps Signal Axes",
+          "[modules][expand_dims][metadata]") {
+    const auto implementations = Registry::ListAvailableModules("expand_dims");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            RequireExpandedSignalAxes(impl, 1, {
+                .sample = Index{3},
+                .batch = Index{0},
+                .channel = Index{2},
+            });
+            RequireExpandedSignalAxes(impl, 3, {
+                .sample = Index{2},
+                .batch = Index{0},
+                .channel = Index{1},
+            });
+        }
+    }
+}
+
+TEST_CASE("ExpandDims Module - Invalid Signal Axis Metadata Error",
+          "[modules][expand_dims][metadata][error]") {
+    const auto implementations = Registry::ListAvailableModules("expand_dims");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            RequireExpandDimsValidationError(
+                impl, 0, std::string(SampleAxisAttribute), I64{0});
+            RequireExpandDimsValidationError(
+                impl, 0, std::string(ChannelAxisAttribute), Index{1});
         }
     }
 }

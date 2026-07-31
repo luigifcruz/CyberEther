@@ -6,6 +6,7 @@
 #include <numeric>
 
 #include <jetstream/tools/numeric.hh>
+#include <jetstream/memory/axis.hh>
 
 #include "miniaudio.h"
 
@@ -185,6 +186,8 @@ Result AudioImpl::validate() {
     validatedOutputSizeBytes = 0;
     validatedCircularBufferSize = 0;
     validatedCircularBufferSizeBytes = 0;
+    validatedSampleAxis = 0;
+    validatedBatchAxis.reset();
 
     constexpr F64 maxSampleRate =
         static_cast<F64>(std::numeric_limits<U32>::max());
@@ -221,6 +224,22 @@ Result AudioImpl::validate() {
         return Result::SUCCESS;
     }
 
+    SignalAxes axes;
+    if (ResolveSignalAxes(inputBuffer, axes) != Result::SUCCESS) {
+        JST_ERROR("[MODULE_AUDIO] Input must contain valid signal axis metadata.");
+        return Result::ERROR;
+    }
+    if (axes.channel) {
+        JST_ERROR("[MODULE_AUDIO] Channel inputs are not supported.");
+        return Result::ERROR;
+    }
+    const Index expectedRank = axes.batch ? 2 : 1;
+    if (inputBuffer.rank() != expectedRank) {
+        JST_ERROR("[MODULE_AUDIO] Input must contain only a sample axis and "
+                  "an optional batch axis.");
+        return Result::ERROR;
+    }
+
     const U64 inputSize = inputBuffer.size();
     U64 outputSize = 0;
     U64 circularBufferSize = 0;
@@ -253,6 +272,8 @@ Result AudioImpl::validate() {
     validatedOutputSizeBytes = outputSizeBytes;
     validatedCircularBufferSize = circularBufferSize;
     validatedCircularBufferSizeBytes = circularBufferSizeBytes;
+    validatedSampleAxis = *axes.sample;
+    validatedBatchAxis = axes.batch;
 
     return Result::SUCCESS;
 }
@@ -267,6 +288,8 @@ Result AudioImpl::define() {
 
 Result AudioImpl::create() {
     pimpl = std::make_unique<Impl>();
+    sampleAxis = validatedSampleAxis;
+    batchAxis = validatedBatchAxis;
 
     // Configure audio resampler.
 
@@ -351,6 +374,14 @@ Result AudioImpl::create() {
     // Allocate resampler scratch buffer.
 
     JST_CHECK(buffer.create(device(), DataType::F32, {validatedOutputSize}));
+    const Tensor& input = inputs().at("buffer").tensor;
+    gatherInput = input.stride(sampleAxis) != 1 ||
+                  (batchAxis && input.stride(*batchAxis) != input.shape(sampleAxis));
+    if (gatherInput) {
+        orderedInput.resize(input.size());
+    } else {
+        orderedInput.clear();
+    }
 
     // Initialize circular buffer.
 
@@ -398,12 +429,27 @@ const std::string& AudioImpl::getDeviceName() const {
 Result AudioImpl::resample() {
     const auto& input = inputs().at("buffer").tensor;
 
+    const F32* inputData = input.data<F32>();
+    if (gatherInput) {
+        U64 orderedIndex = 0;
+        const U64 batchCount = batchAxis ? input.shape(*batchAxis) : 1;
+        const U64 batchStride = batchAxis ? input.stride(*batchAxis) : 0;
+        const U64 sampleCount = input.shape(sampleAxis);
+        const U64 sampleStride = input.stride(sampleAxis);
+        for (U64 batch = 0; batch < batchCount; ++batch) {
+            for (U64 sample = 0; sample < sampleCount; ++sample) {
+                orderedInput[orderedIndex++] =
+                    inputData[batch * batchStride + sample * sampleStride];
+            }
+        }
+    }
+
     ma_uint64 frameCountIn = input.size();
     ma_uint64 frameCountOut = buffer.size();
 
     ma_result result = ma_resampler_process_pcm_frames(
         &pimpl->resamplerCtx,
-        input.data(),
+        gatherInput ? orderedInput.data() : inputData,
         &frameCountIn,
         buffer.data(),
         &frameCountOut

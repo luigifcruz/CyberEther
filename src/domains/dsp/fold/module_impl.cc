@@ -26,25 +26,24 @@ Result FoldImpl::validate() {
         return Result::SUCCESS;
     }
 
-    const auto candidateAxis = ResolveAxis(config.axis, inputTensor.rank());
-    if (!candidateAxis) {
-        JST_ERROR("[MODULE_FOLD] Axis ({}) is out of bounds for input rank ({}).",
-                  config.axis, inputTensor.rank());
+    SignalAxes axes;
+    if (ResolveSignalAxes(inputTensor, axes) != Result::SUCCESS) {
+        JST_ERROR("[MODULE_FOLD] Input must contain valid signal axis metadata.");
         return Result::ERROR;
     }
 
-    const U64 axisSize = inputTensor.shape(*candidateAxis);
+    const U64 axisSize = inputTensor.shape(*axes.sample);
     if (axisSize % config.size != 0) {
         JST_ERROR("[MODULE_FOLD] Size ({}) is not a divisor of "
                   "the input shape ({}) along axis ({}).",
-                  config.size, axisSize, *candidateAxis);
+                  config.size, axisSize, *axes.sample);
         return Result::ERROR;
     }
 
     if (axisSize < config.offset) {
         JST_ERROR("[MODULE_FOLD] Offset ({}) is greater than the "
                   "input shape ({}) along axis ({}).",
-                  config.offset, axisSize, *candidateAxis);
+                  config.offset, axisSize, *axes.sample);
         return Result::ERROR;
     }
 
@@ -58,7 +57,7 @@ Result FoldImpl::validate() {
         return Result::ERROR;
     }
 
-    validatedResolvedAxis = *candidateAxis;
+    validatedResolvedAxis = *axes.sample;
     validatedDecimationFactor = decimationFactor;
     validatedOutputSizeBytes = outputSizeBytes;
     return Result::SUCCESS;

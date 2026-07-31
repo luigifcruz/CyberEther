@@ -8,6 +8,7 @@
 #include "jetstream/domains/dsp/spectrum_engine/block.hh"
 #include "jetstream/domains/dsp/window/block.hh"
 #include "jetstream/logger.hh"
+#include "jetstream/memory/axis.hh"
 #include "jetstream/registry.hh"
 #include "flowgraph_fixture.hh"
 
@@ -145,13 +146,19 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Slice reconfiguration preserves invalid downstream interfaces for recovery",
+                 "Slice reconfiguration updates downstream batch metadata",
                  "[modules][slice][block][reconfigure][lifecycle]") {
     Blocks::OnesTensor source;
     source.shape = {8, 2, 16};
     source.dataType = "CF32";
     REQUIRE(flowgraph->blockCreate("slice_lifecycle_src", source, {}) ==
             Result::SUCCESS);
+    Tensor sourceTensor = viewBlock("slice_lifecycle_src").outputs.at("buffer").tensor;
+    REQUIRE(SetSignalAxes(sourceTensor, {
+        .sample = Index{2},
+        .batch = Index{0},
+        .channel = Index{1},
+    }) == Result::SUCCESS);
 
     Blocks::Slice sliceConfig;
     sliceConfig.slice = "[:,0,:]";
@@ -161,7 +168,6 @@ TEST_CASE_METHOD(FlowgraphFixture,
             Result::SUCCESS);
 
     Blocks::SpectrumEngine spectrumConfig;
-    spectrumConfig.axis = 1;
     spectrumConfig.enableScale = true;
     spectrumConfig.rangeMin = -100.0f;
     spectrumConfig.rangeMax = -10.0f;
@@ -179,57 +185,67 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(viewBlock("slice_lifecycle").state == Block::State::Created);
     REQUIRE(viewBlock("slice_lifecycle_spectrum").state == Block::State::Created);
     REQUIRE(viewBlock("slice_lifecycle_throttle").state == Block::State::Created);
+    const Tensor initialSpectrumOutput =
+        viewBlock("slice_lifecycle_spectrum").outputs.at("buffer").tensor;
+    REQUIRE(initialSpectrumOutput.attribute("batchAxis").type() == typeid(Index));
+    REQUIRE(std::any_cast<Index>(initialSpectrumOutput.attribute("batchAxis")) == 0);
 
     Parser::Map sliceUpdate;
-    sliceUpdate["slice"] = std::string("[0,:,0]");
+    sliceUpdate["slice"] = std::string("[0,0,:]");
     REQUIRE(flowgraph->blockReconfigure("slice_lifecycle", sliceUpdate) ==
             Result::SUCCESS);
 
     const auto slice = viewBlock("slice_lifecycle");
     REQUIRE(slice.state == Block::State::Created);
-    REQUIRE(slice.outputs.at("buffer").tensor.shape() == Shape{2});
+    REQUIRE(slice.outputs.at("buffer").tensor.shape() == Shape{16});
+    REQUIRE_FALSE(slice.outputs.at("buffer").tensor.hasAttribute("batchAxis"));
 
     const auto spectrum = viewBlock("slice_lifecycle_spectrum");
-    REQUIRE(spectrum.state == Block::State::Errored);
+    REQUIRE(spectrum.state == Block::State::Created);
     Blocks::SpectrumEngine candidate;
     REQUIRE(candidate.deserialize(spectrum.config) == Result::SUCCESS);
-    REQUIRE(candidate.axis == 1);
     REQUIRE_FALSE(candidate.enableAgc);
     REQUIRE(candidate.enableScale);
     REQUIRE(candidate.rangeMin == -100.0f);
     REQUIRE(candidate.rangeMax == -10.0f);
-    REQUIRE(spectrum.diagnostic.find("[BLOCK_SPECTRUM_ENGINE]") !=
-            std::string::npos);
     REQUIRE(spectrum.interfaceInputs.size() == 1);
     REQUIRE(spectrum.interfaceInputs.at(0).name == "buffer");
     REQUIRE(spectrum.interfaceOutputs.size() == 1);
     REQUIRE(spectrum.interfaceOutputs.at(0).name == "buffer");
-    REQUIRE(spectrum.interfaceConfigs.size() == 5);
-    REQUIRE(spectrum.interfaceConfigs.at(0).name == "axis");
-    REQUIRE(spectrum.interfaceConfigs.at(1).name == "enableAgc");
-    REQUIRE(spectrum.interfaceConfigs.at(2).name == "enableScale");
-    REQUIRE(spectrum.interfaceConfigs.at(3).name == "rangeMin");
-    REQUIRE(spectrum.interfaceConfigs.at(4).name == "rangeMax");
+    REQUIRE(spectrum.interfaceConfigs.size() == 4);
+    REQUIRE(spectrum.interfaceConfigs.at(0).name == "enableAgc");
+    REQUIRE(spectrum.interfaceConfigs.at(1).name == "enableScale");
+    REQUIRE(spectrum.interfaceConfigs.at(2).name == "rangeMin");
+    REQUIRE(spectrum.interfaceConfigs.at(3).name == "rangeMax");
     REQUIRE(spectrum.inputs.at("buffer").resolved());
     REQUIRE(spectrum.inputs.at("buffer").external.has_value());
     REQUIRE(spectrum.inputs.at("buffer").external->block == "slice_lifecycle");
     REQUIRE(spectrum.inputs.at("buffer").external->port == "buffer");
+    REQUIRE_FALSE(spectrum.outputs.at("buffer").tensor.hasAttribute("batchAxis"));
 
     const auto throttle = viewBlock("slice_lifecycle_throttle");
-    REQUIRE(throttle.state == Block::State::Incomplete);
-    REQUIRE_FALSE(throttle.inputs.at("buffer").resolved());
+    REQUIRE(throttle.state == Block::State::Created);
+    REQUIRE(throttle.inputs.at("buffer").resolved());
     REQUIRE(throttle.inputs.at("buffer").external.has_value());
     REQUIRE(throttle.inputs.at("buffer").external->block ==
             "slice_lifecycle_spectrum");
     REQUIRE(throttle.inputs.at("buffer").external->port == "buffer");
 
-    Parser::Map spectrumUpdate;
-    spectrumUpdate["axis"] = I64{0};
-    REQUIRE(flowgraph->blockReconfigure("slice_lifecycle_spectrum", spectrumUpdate) ==
+    Parser::Map sliceRecovery;
+    sliceRecovery["slice"] = sliceConfig.slice;
+    REQUIRE(flowgraph->blockReconfigure("slice_lifecycle", sliceRecovery) ==
             Result::SUCCESS);
+
+    const auto recoveredSlice = viewBlock("slice_lifecycle");
+    REQUIRE(recoveredSlice.state == Block::State::Created);
+    REQUIRE(recoveredSlice.outputs.at("buffer").tensor.shape() == Shape{8, 16});
 
     const auto recoveredSpectrum = viewBlock("slice_lifecycle_spectrum");
     REQUIRE(recoveredSpectrum.state == Block::State::Created);
+    REQUIRE(recoveredSpectrum.outputs.at("buffer").tensor.attribute("batchAxis").type() ==
+            typeid(Index));
+    REQUIRE(std::any_cast<Index>(
+                recoveredSpectrum.outputs.at("buffer").tensor.attribute("batchAxis")) == 0);
     REQUIRE(recoveredSpectrum.inputs.at("buffer").resolved());
     REQUIRE(recoveredSpectrum.inputs.at("buffer").external.has_value());
     REQUIRE(recoveredSpectrum.inputs.at("buffer").external->block ==

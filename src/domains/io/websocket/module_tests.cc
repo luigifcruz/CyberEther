@@ -211,8 +211,13 @@ TEST_CASE("Websocket module rolls back native URL validation rejection",
             config.bufferMultiplier = 1;
             REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
             const auto& output = module->outputs().at("signal").tensor;
+            REQUIRE(output.hasAttribute("sampleAxis"));
+            REQUIRE(output.attribute("sampleAxis").type() == typeid(Index));
+            REQUIRE(std::any_cast<Index>(output.attribute("sampleAxis")) == Index{1});
             REQUIRE(output.hasAttribute("batchAxis"));
-            REQUIRE(std::any_cast<Index>(output.attribute("batchAxis")) == 0);
+            REQUIRE(output.attribute("batchAxis").type() == typeid(Index));
+            REQUIRE(std::any_cast<Index>(output.attribute("batchAxis")) == Index{0});
+            REQUIRE_FALSE(output.hasAttribute("channelAxis"));
             const auto outputId = output.id();
 
             Parser::Map rejected;

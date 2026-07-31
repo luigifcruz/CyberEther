@@ -6,12 +6,11 @@
 namespace Jetstream::Modules {
 
 struct Fold : public Module::Config {
-    I64 axis = -1;
     U64 offset = 0;
     U64 size = 0;
 
     JST_MODULE_TYPE(fold);
-    JST_MODULE_PARAMS(axis, offset, size);
+    JST_MODULE_PARAMS(offset, size);
 };
 
 }  // namespace Jetstream::Modules

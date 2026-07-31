@@ -24,14 +24,13 @@ Tensor MakeAudioInput(const Registry::ModuleRegistration& impl,
     return input;
 }
 
-void RequireAudioValidationError(const Registry::ModuleRegistration& impl,
-                                 const Modules::Audio& config,
-                                 const DataType dtype = DataType::F32,
-                                 const U64 inputSize = 64,
-                                 const bool broadcast = false) {
+void RequireAudioInputValidationError(
+    const Registry::ModuleRegistration& impl,
+    const Modules::Audio& config,
+    const Tensor& input) {
     TensorMap inputs;
     inputs["buffer"].requested("test", "buffer");
-    inputs["buffer"].tensor = MakeAudioInput(impl, dtype, inputSize, broadcast);
+    inputs["buffer"].tensor = input;
 
     std::shared_ptr<Module> module;
     REQUIRE(Registry::BuildModule("audio", impl.device, impl.runtime,
@@ -39,6 +38,74 @@ void RequireAudioValidationError(const Registry::ModuleRegistration& impl,
     REQUIRE(module->create("test", config, inputs) == Result::ERROR);
     REQUIRE(module->state() == Module::State::ERRORED);
     REQUIRE(module->interface()->inputs().empty());
+}
+
+void RequireAudioValidationError(const Registry::ModuleRegistration& impl,
+                                 const Modules::Audio& config,
+                                 const DataType dtype = DataType::F32,
+                                 const U64 inputSize = 64,
+                                 const bool broadcast = false) {
+    RequireAudioInputValidationError(
+        impl, config, MakeAudioInput(impl, dtype, inputSize, broadcast));
+}
+
+TEST_CASE("Audio module rejects malformed or unsupported signal layouts",
+          "[modules][audio][validation][layout]") {
+    const auto implementations = Registry::ListAvailableModules("audio");
+    if (implementations.empty()) {
+        SUCCEED("Audio module is unavailable in this build.");
+        return;
+    }
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device
+                        << " Runtime: " << impl.runtime) {
+            Modules::Audio config;
+
+            SECTION("multi-axis sample role is required") {
+                Tensor input;
+                REQUIRE(input.create(impl.device, DataType::F32, {2, 64}) ==
+                        Result::SUCCESS);
+                RequireAudioInputValidationError(impl, config, input);
+            }
+
+            SECTION("sample role type must be exact") {
+                Tensor input;
+                REQUIRE(input.create(impl.device, DataType::F32, {64}) ==
+                        Result::SUCCESS);
+                REQUIRE(input.setAttribute("sampleAxis", I64{0}) ==
+                        Result::SUCCESS);
+                RequireAudioInputValidationError(impl, config, input);
+            }
+
+            SECTION("roles must be distinct") {
+                Tensor input = MakeAudioInput(impl, DataType::F32, 64);
+                REQUIRE(input.setAttribute("batchAxis", Index{0}) ==
+                        Result::SUCCESS);
+                RequireAudioInputValidationError(impl, config, input);
+            }
+
+            SECTION("channels are unsupported") {
+                Tensor input;
+                REQUIRE(input.create(impl.device, DataType::F32, {2, 64}) ==
+                        Result::SUCCESS);
+                REQUIRE(input.setAttribute("channelAxis", Index{0}) ==
+                        Result::SUCCESS);
+                REQUIRE(input.setAttribute("sampleAxis", Index{1}) ==
+                        Result::SUCCESS);
+                RequireAudioInputValidationError(impl, config, input);
+            }
+
+            SECTION("unidentified auxiliary dimensions are unsupported") {
+                Tensor input;
+                REQUIRE(input.create(impl.device, DataType::F32, {2, 64}) ==
+                        Result::SUCCESS);
+                REQUIRE(input.setAttribute("sampleAxis", Index{1}) ==
+                        Result::SUCCESS);
+                RequireAudioInputValidationError(impl, config, input);
+            }
+        }
+    }
 }
 
 }  // namespace

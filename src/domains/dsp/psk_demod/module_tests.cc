@@ -65,6 +65,8 @@ TEST_CASE("PskDemod - Costas frequency state uses integral gain",
             Tensor input;
             REQUIRE(input.create(DeviceType::CPU, DataType::CF32, {2}) ==
                     Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleAxis", Index{0}) ==
+                    Result::SUCCESS);
             input.at<CF32>(0) = std::polar(1.0f, phase);
             input.at<CF32>(1) = input.at<CF32>(0);
 
@@ -115,6 +117,8 @@ TEST_CASE("PskDemod - Output Size Decimation", "[modules][psk_demod]") {
 
             Tensor input;
             REQUIRE(input.create(DeviceType::CPU, DataType::CF32, {inputSize}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleAxis", Index{0}) ==
+                    Result::SUCCESS);
 
             for (U64 i = 0; i < inputSize; ++i) {
                 input.at<CF32>(i) = CF32(1.0f, 0.0f);
@@ -127,6 +131,48 @@ TEST_CASE("PskDemod - Output Size Decimation", "[modules][psk_demod]") {
             auto& out = ctx.output("signal");
 
             REQUIRE(out.size() == expectedOutputSize);
+        }
+    }
+}
+
+TEST_CASE("PskDemod - Independent Lanes And Ordered Batches",
+          "[modules][psk_demod][layout][metadata]") {
+    const auto implementations = Registry::ListAvailableModules("psk_demod");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("psk_demod", impl.device, impl.runtime, impl.provider);
+
+            Modules::PskDemod config;
+            config.pskType = "bpsk";
+            config.sampleRate = 2.0;
+            config.symbolRate = 1.0;
+            ctx.setConfig(config);
+
+            Tensor input;
+            REQUIRE(input.create(impl.device, DataType::CF32, {3, 2, 3, 2}) ==
+                    Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("batchAxis", Index{1}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("channelAxis", Index{2}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("layoutMarker", U64{17}) == Result::SUCCESS);
+            for (U64 i = 0; i < input.size(); ++i) {
+                input.data<CF32>()[i] = CF32{1.0f, 0.0f};
+            }
+
+            ctx.setInput("signal", input);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const Tensor& out = ctx.output("signal");
+            REQUIRE(out.shape() == Shape{2, 2, 3, 2});
+            REQUIRE(std::any_cast<U64>(out.attribute("layoutMarker")) == U64{17});
+
+            SignalAxes axes;
+            REQUIRE(ResolveSignalAxes(out, axes) == Result::SUCCESS);
+            REQUIRE(axes.sample == Index{0});
+            REQUIRE(axes.batch == Index{1});
+            REQUIRE(axes.channel == Index{2});
         }
     }
 }
@@ -152,6 +198,8 @@ TEST_CASE("PskDemod - BPSK Constant Phase", "[modules][psk_demod][bpsk]") {
             const U64 inputSize = 1024;
             Tensor input;
             REQUIRE(input.create(DeviceType::CPU, DataType::CF32, {inputSize}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleAxis", Index{0}) ==
+                    Result::SUCCESS);
 
             // Create constant positive phase BPSK signal.
             for (U64 i = 0; i < inputSize; ++i) {
@@ -193,6 +241,8 @@ TEST_CASE("PskDemod - QPSK Quadrants", "[modules][psk_demod][qpsk]") {
             const U64 inputSize = 4096;
             Tensor input;
             REQUIRE(input.create(DeviceType::CPU, DataType::CF32, {inputSize}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleAxis", Index{0}) ==
+                    Result::SUCCESS);
 
             // Create first quadrant QPSK signal.
             constexpr F32 INV_SQRT2 = 0.7071067811865475f;
@@ -236,6 +286,8 @@ TEST_CASE("PskDemod - 8PSK Basic", "[modules][psk_demod][8psk]") {
             const U64 inputSize = 8192;
             Tensor input;
             REQUIRE(input.create(DeviceType::CPU, DataType::CF32, {inputSize}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleAxis", Index{0}) ==
+                    Result::SUCCESS);
 
             // Create 8-PSK signal at 0 degrees.
             for (U64 i = 0; i < inputSize; ++i) {
@@ -275,6 +327,8 @@ TEST_CASE("PskDemod - Invalid Configuration", "[modules][psk_demod][validation]"
 
                 Tensor input;
                 REQUIRE(input.create(DeviceType::CPU, DataType::CF32, {1024}) == Result::SUCCESS);
+                REQUIRE(input.setAttribute("sampleAxis", Index{0}) ==
+                        Result::SUCCESS);
 
                 ctx.setInput("signal", input);
 
@@ -293,6 +347,8 @@ TEST_CASE("PskDemod - Invalid Configuration", "[modules][psk_demod][validation]"
 
                 Tensor input;
                 REQUIRE(input.create(DeviceType::CPU, DataType::CF32, {1024}) == Result::SUCCESS);
+                REQUIRE(input.setAttribute("sampleAxis", Index{0}) ==
+                        Result::SUCCESS);
 
                 ctx.setInput("signal", input);
 
@@ -312,6 +368,8 @@ TEST_CASE("PskDemod - Invalid Configuration", "[modules][psk_demod][validation]"
 
                 Tensor input;
                 REQUIRE(input.create(DeviceType::CPU, DataType::CF32, {1024}) == Result::SUCCESS);
+                REQUIRE(input.setAttribute("sampleAxis", Index{0}) ==
+                        Result::SUCCESS);
 
                 ctx.setInput("signal", input);
 
@@ -407,9 +465,38 @@ TEST_CASE("PskDemod - Direct input metadata validation precedes create",
                 RequirePskDemodValidationError(impl, config, PskDemodInput(input));
             }
 
-            SECTION("rank two") {
+            SECTION("missing sample role on rank two") {
                 Tensor input;
                 REQUIRE(input.create(impl.device, DataType::CF32, {2, 2}) ==
+                        Result::SUCCESS);
+                RequirePskDemodValidationError(impl, config, PskDemodInput(input));
+            }
+
+            SECTION("sample role type must be exact") {
+                Tensor input;
+                REQUIRE(input.create(impl.device, DataType::CF32, {8}) ==
+                        Result::SUCCESS);
+                REQUIRE(input.setAttribute("sampleAxis", I64{0}) ==
+                        Result::SUCCESS);
+                RequirePskDemodValidationError(impl, config, PskDemodInput(input));
+            }
+
+            SECTION("sample role must be in range") {
+                Tensor input;
+                REQUIRE(input.create(impl.device, DataType::CF32, {8}) ==
+                        Result::SUCCESS);
+                REQUIRE(input.setAttribute("sampleAxis", Index{1}) ==
+                        Result::SUCCESS);
+                RequirePskDemodValidationError(impl, config, PskDemodInput(input));
+            }
+
+            SECTION("roles must be distinct") {
+                Tensor input;
+                REQUIRE(input.create(impl.device, DataType::CF32, {8}) ==
+                        Result::SUCCESS);
+                REQUIRE(input.setAttribute("sampleAxis", Index{0}) ==
+                        Result::SUCCESS);
+                REQUIRE(input.setAttribute("batchAxis", Index{0}) ==
                         Result::SUCCESS);
                 RequirePskDemodValidationError(impl, config, PskDemodInput(input));
             }
@@ -421,12 +508,16 @@ TEST_CASE("PskDemod - Direct input metadata validation precedes create",
                 REQUIRE(input.broadcastTo({8}) == Result::SUCCESS);
                 REQUIRE(input.rank() == 1);
                 REQUIRE(input.sizeBytes() > input.buffer().sizeBytes());
+                REQUIRE(input.setAttribute("sampleAxis", Index{0}) ==
+                        Result::SUCCESS);
                 RequirePskDemodValidationError(impl, config, PskDemodInput(input));
             }
 
             SECTION("unsupported dtype") {
                 Tensor input;
                 REQUIRE(input.create(impl.device, DataType::F64, {8}) ==
+                        Result::SUCCESS);
+                REQUIRE(input.setAttribute("sampleAxis", Index{0}) ==
                         Result::SUCCESS);
                 RequirePskDemodValidationError(impl, config, PskDemodInput(input));
             }
@@ -441,6 +532,8 @@ TEST_CASE("PskDemod - Direct input metadata validation precedes create",
                                          impl.device,
                                          DataType::CF32,
                                          {inputSize}) == Result::SUCCESS);
+                    REQUIRE(input.setAttribute("sampleAxis", Index{0}) ==
+                            Result::SUCCESS);
                     RequirePskDemodValidationError(impl, config, PskDemodInput(input));
                 }
             }
@@ -464,6 +557,8 @@ TEST_CASE("PskDemod - Exact ratio two is valid",
 
             Tensor input;
             REQUIRE(input.create(DeviceType::CPU, DataType::CF32, {8}) ==
+                    Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleAxis", Index{0}) ==
                     Result::SUCCESS);
             for (U64 i = 0; i < input.size(); ++i) {
                 input.at<CF32>(i) = CF32(1.0f, 0.0f);

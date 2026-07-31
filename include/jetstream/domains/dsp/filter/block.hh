@@ -26,8 +26,11 @@ struct Filter : public Block::Config {
         "It combines the Filter Taps and Filter Engine functionality into a single "
         "block for convenience.\n\n"
 
+        "The input must provide `sampleAxis` metadata and may provide `batchAxis`. "
         "Supports multiple center frequencies (heads) to extract multiple "
-        "channels simultaneously from a wideband capture.\n\n"
+        "channels simultaneously from a wideband capture. The generated head "
+        "dimension is published as `channelAxis`. Inputs that already have a "
+        "channel role are rejected.\n\n"
 
         "When the resampler ratio (sample rate / bandwidth) is an integer and "
         "the signal and overlap extents are divisible by that ratio, the output "
@@ -48,7 +51,7 @@ struct Filter : public Block::Config {
         "## Examples\n"
         "- Single-channel filter with resampling:\n"
         "  Config: Sample Rate=2 MHz, Bandwidth=0.2 MHz, Heads=1, Taps=101\n"
-        "  Input: CF32[8190] -> Output: CF32[819]\n"
+        "  Input: CF32[8190] -> Output: CF32[1, 819]\n"
         "- Multi-head extraction:\n"
         "  Config: Sample Rate=2 MHz, Bandwidth=0.2 MHz, Heads=3, Center=[0, 0.4, -0.4]\n"
         "  Input: CF32[8190] -> Output: CF32[3, 819]\n\n"

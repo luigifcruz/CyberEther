@@ -2,15 +2,110 @@
 
 #include <algorithm>
 #include <limits>
+#include <stdexcept>
+#include <unordered_set>
+#include <vector>
 
 #include "jetstream/domains/visualization/spectrogram/module.hh"
+#include "jetstream/memory/axis.hh"
 #include "jetstream/module_interface.hh"
 #include "jetstream/registry.hh"
+#include "jetstream/runtime.hh"
 #include "jetstream/testing.hh"
+
+#include "module_impl.hh"
 
 using namespace Jetstream;
 
 namespace {
+
+struct SpectrogramImplAccess : Modules::SpectrogramImpl {
+    static auto frequencyBinsMember() {
+        return &SpectrogramImplAccess::frequencyBins;
+    }
+};
+
+std::vector<F32> ReadFrequencyBins(const std::shared_ptr<Module>& module) {
+    const auto* impl = module->getImpl<Modules::SpectrogramImpl>();
+    if (!impl) {
+        throw std::runtime_error("spectrogram implementation is unavailable");
+    }
+
+    const Tensor& frequencyBins = impl->*SpectrogramImplAccess::frequencyBinsMember();
+    Tensor hostFrequencyBins;
+    const Tensor* readableFrequencyBins = &frequencyBins;
+    if (frequencyBins.device() != DeviceType::CPU) {
+        if (hostFrequencyBins.create(DeviceType::CPU, frequencyBins) != Result::SUCCESS) {
+            throw std::runtime_error("spectrogram frequency bins are not host accessible");
+        }
+        readableFrequencyBins = &hostFrequencyBins;
+    }
+
+    const F32* data = readableFrequencyBins->data<F32>();
+    return {data, data + readableFrequencyBins->size()};
+}
+
+void SetDefaultSignalAxes(Tensor& input) {
+    if (input.rank() <= 1) {
+        return;
+    }
+
+    SignalAxes axes{.sample = input.rank() - 1};
+    if (input.rank() > 1) {
+        axes.batch = 0;
+    }
+    REQUIRE(SetSignalAxes(input, axes) == Result::SUCCESS);
+}
+
+void RequireSpectrogramValidationError(const Registry::ModuleRegistration& impl,
+                                       const Modules::Spectrogram& config,
+                                       const Tensor& input) {
+    TensorMap inputs;
+    inputs["signal"].requested("test", "signal");
+    inputs["signal"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("spectrogram", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->interface()->inputs().empty());
+}
+
+std::vector<F32> ComputeSpectrogramBins(
+    const Registry::ModuleRegistration& implementation,
+    const Tensor& cpuInput) {
+    Tensor input;
+    if (implementation.device == DeviceType::CPU) {
+        input = cpuInput;
+    } else {
+        REQUIRE(input.create(implementation.device, cpuInput) == Result::SUCCESS);
+    }
+
+    TensorMap inputs;
+    inputs["signal"].requested("source", "signal");
+    inputs["signal"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("spectrogram", implementation.device,
+                                  implementation.runtime, implementation.provider,
+                                  module) == Result::SUCCESS);
+
+    Modules::Spectrogram config;
+    config.height = 4;
+    REQUIRE(module->create("spectrogram", config, inputs) == Result::SUCCESS);
+
+    Runtime runtime("spectrogram", implementation.device, implementation.runtime);
+    REQUIRE(runtime.create({{"spectrogram", module}}) == Result::SUCCESS);
+    std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+
+    auto bins = ReadFrequencyBins(module);
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+    return bins;
+}
 
 void RequireSpectrogramValidationError(const Registry::ModuleRegistration& impl,
                                        const Modules::Spectrogram& config,
@@ -28,17 +123,9 @@ void RequireSpectrogramValidationError(const Registry::ModuleRegistration& impl,
     } else {
         REQUIRE(input.create(impl.device, dtype, shape) == Result::SUCCESS);
     }
+    SetDefaultSignalAxes(input);
 
-    TensorMap inputs;
-    inputs["signal"].requested("test", "signal");
-    inputs["signal"].tensor = input;
-
-    std::shared_ptr<Module> module;
-    REQUIRE(Registry::BuildModule("spectrogram", impl.device, impl.runtime,
-                                  impl.provider, module) == Result::SUCCESS);
-    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
-    REQUIRE(module->state() == Module::State::ERRORED);
-    REQUIRE(module->interface()->inputs().empty());
+    RequireSpectrogramValidationError(impl, config, input);
 }
 
 }  // namespace
@@ -62,12 +149,18 @@ TEST_CASE("Spectrogram module accepts valid height boundaries and input ranks",
                     Tensor input;
                     REQUIRE(input.create(DeviceType::CPU, DataType::F32, {64}) ==
                             Result::SUCCESS);
+                    REQUIRE(SetSignalAxes(input, {.sample = Index{0}}) ==
+                            Result::SUCCESS);
                     ctx.setInput("signal", input);
                     REQUIRE(ctx.run() == Result::SUCCESS);
 
                     Tensor batched;
                     REQUIRE(batched.create(DeviceType::CPU, DataType::F32, {2, 64}) ==
                             Result::SUCCESS);
+                    REQUIRE(SetSignalAxes(batched, {
+                        .sample = Index{1},
+                        .batch = Index{0},
+                    }) == Result::SUCCESS);
                     ctx.setInput("signal", batched);
                     REQUIRE(ctx.run() == Result::SUCCESS);
                 }
@@ -104,6 +197,30 @@ TEST_CASE("Spectrogram module rejects invalid config and inputs",
                                                    DataType::F32, {2, 2, 2});
             }
 
+            SECTION("multi-axis signal roles must be present and well formed") {
+                Tensor missing(impl.device, DataType::F32, {2, 32});
+                RequireSpectrogramValidationError(impl, Modules::Spectrogram{}, missing);
+
+                Tensor malformed(impl.device, DataType::F32, {32});
+                REQUIRE(malformed.setAttribute(std::string(SampleAxisAttribute),
+                                               I64{0}) == Result::SUCCESS);
+                RequireSpectrogramValidationError(impl, Modules::Spectrogram{}, malformed);
+            }
+
+            SECTION("channel and auxiliary dimensions are unsupported") {
+                Tensor channel(impl.device, DataType::F32, {2, 32});
+                REQUIRE(SetSignalAxes(channel, {
+                    .sample = Index{1},
+                    .channel = Index{0},
+                }) == Result::SUCCESS);
+                RequireSpectrogramValidationError(impl, Modules::Spectrogram{}, channel);
+
+                Tensor auxiliary(impl.device, DataType::F32, {2, 32});
+                REQUIRE(SetSignalAxes(auxiliary, {.sample = Index{1}}) ==
+                        Result::SUCCESS);
+                RequireSpectrogramValidationError(impl, Modules::Spectrogram{}, auxiliary);
+            }
+
             SECTION("logical render size must be supported") {
                 const U64 maxRenderBinCount = std::min({
                     static_cast<U64>(std::numeric_limits<U32>::max()),
@@ -134,6 +251,7 @@ TEST_CASE("Spectrogram module supports repeated computes and reconfigure",
             Tensor input;
             REQUIRE(input.create(DeviceType::CPU, DataType::F32, {64}) ==
                     Result::SUCCESS);
+            REQUIRE(SetSignalAxes(input, {.sample = Index{0}}) == Result::SUCCESS);
             ctx.setInput("signal", input);
 
             REQUIRE(ctx.start() == Result::SUCCESS);
@@ -148,6 +266,45 @@ TEST_CASE("Spectrogram module supports repeated computes and reconfigure",
             REQUIRE(ctx.start() == Result::SUCCESS);
             REQUIRE(ctx.compute() == Result::SUCCESS);
             REQUIRE(ctx.stop() == Result::SUCCESS);
+        }
+    }
+}
+
+TEST_CASE("Spectrogram indexes leading and trailing batch layouts equivalently",
+          "[modules][spectrogram][layout]") {
+    const auto implementations = Registry::ListAvailableModules("spectrogram");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& implementation : implementations) {
+        DYNAMIC_SECTION("Device: " << implementation.device
+                        << " Runtime: " << implementation.runtime) {
+            Tensor leading(DeviceType::CPU, DataType::F32, {2, 3});
+            const F32 leadingData[] = {
+                0.25f, 0.50f, 0.75f,
+                0.25f, 0.75f, 0.50f,
+            };
+            std::copy(std::begin(leadingData), std::end(leadingData),
+                      leading.data<F32>());
+            REQUIRE(SetSignalAxes(leading, {
+                .sample = Index{1},
+                .batch = Index{0},
+            }) == Result::SUCCESS);
+
+            Tensor trailing(DeviceType::CPU, DataType::F32, {3, 2});
+            const F32 trailingData[] = {
+                0.25f, 0.25f,
+                0.50f, 0.75f,
+                0.75f, 0.50f,
+            };
+            std::copy(std::begin(trailingData), std::end(trailingData),
+                      trailing.data<F32>());
+            REQUIRE(SetSignalAxes(trailing, {
+                .sample = Index{0},
+                .batch = Index{1},
+            }) == Result::SUCCESS);
+
+            REQUIRE(ComputeSpectrogramBins(implementation, trailing) ==
+                    ComputeSpectrogramBins(implementation, leading));
         }
     }
 }

@@ -473,6 +473,12 @@ void Bridge::refreshAttributes() {
     }
 }
 
+void Bridge::setImmutableOutputAttributes(
+    const std::vector<std::unordered_set<std::string>>& keys) {
+    immutableOutputKeys = keys;
+    warnedImmutableKeys.clear();
+}
+
 void Bridge::flushAttributes() {
     if (outputAttributePorts.empty() || !globals) {
         return;
@@ -484,7 +490,10 @@ void Bridge::flushAttributes() {
         return;
     }
 
-    for (auto& port : outputAttributePorts) {
+    for (std::size_t portIndex = 0; portIndex < outputAttributePorts.size(); ++portIndex) {
+        auto& port = outputAttributePorts[portIndex];
+        const bool hasImmutableKeys =
+            portIndex < immutableOutputKeys.size() && !immutableOutputKeys[portIndex].empty();
         PyObject* key = nullptr;
         PyObject* value = nullptr;
         Py_ssize_t position = 0;
@@ -493,6 +502,23 @@ void Bridge::flushAttributes() {
             const char* keyStr = PyUnicode_AsUTF8(key);
             if (!keyStr) {
                 (void)ClearPythonError();
+                continue;
+            }
+
+            if (hasImmutableKeys && immutableOutputKeys[portIndex].contains(keyStr)) {
+                std::any existing;
+                if (port.tensor.hasAttribute(keyStr)) {
+                    existing = port.tensor.attribute(keyStr);
+                }
+                std::any converted;
+                if (PyObjectToAny(classify, value, existing, converted) == Result::SUCCESS &&
+                    !AnyDeepEquals(converted, existing) &&
+                    !warnedImmutableKeys.contains(keyStr)) {
+                    warnedImmutableKeys.insert(keyStr);
+                    JST_WARN("[RUNTIME_CONTEXT_PYTHON] Output attribute '{}' is declared in "
+                             "the tensor spec and cannot be changed at runtime.",
+                             keyStr);
+                }
                 continue;
             }
 

@@ -7,6 +7,7 @@
 #include "jetstream/block_interface.hh"
 #include "jetstream/detail/block_impl.hh"
 #include "jetstream/domains/core/python/block.hh"
+#include "jetstream/domains/dsp/fft/block.hh"
 #include "jetstream/flowgraph_environment.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/runtime_context.hh"
@@ -240,6 +241,42 @@ TEST_CASE_METHOD(FlowgraphFixture,
     for (Index i = 0; i < computed.size(); ++i) {
         REQUIRE(std::abs(computed.at<F32>(i) - 3.0f) < 1e-5f);
     }
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Python block publishes declared signal axes before downstream validation",
+                 "[modules][python][block][attributes]") {
+    Blocks::Python config;
+    config.code = "def compute(ctx):\n    ctx.outputs[0][...] = 1.0\n";
+    config.inputCount = 0;
+    config.outputCount = 1;
+    config.outputTensorSpecs = {{
+        .shape = "[2, 64]",
+        .axes = "[C, S]",
+    }};
+
+    REQUIRE(flowgraph->blockCreate("python_axes", config, {}, DeviceType::CPU, RuntimeType::PYTHON) ==
+            Result::SUCCESS);
+
+    auto block = viewBlock("python_axes");
+    if (block.state == Block::State::Errored && OptionalPythonRuntimeUnavailableForBlock()) {
+        SUCCEED("Skipping Python block signal axes test because the local Python runtime is unavailable.");
+        return;
+    }
+
+    REQUIRE(block.state == Block::State::Created);
+
+    const Tensor& output = block.outputs.at("output0").tensor;
+    REQUIRE(output.rank() == 2);
+    REQUIRE(std::any_cast<Index>(output.attribute("sampleAxis")) == Index{1});
+    REQUIRE(std::any_cast<Index>(output.attribute("channelAxis")) == Index{0});
+
+    TensorMap inputs;
+    inputs["signal"].requested("python_axes", "output0");
+    REQUIRE(flowgraph->blockCreate("python_axes_fft", Blocks::Fft{}, inputs) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("python_axes_fft").state == Block::State::Created);
+    REQUIRE(viewBlock("python_axes_fft").outputs.at("signal").tensor.shape() == Shape{2, 64});
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,

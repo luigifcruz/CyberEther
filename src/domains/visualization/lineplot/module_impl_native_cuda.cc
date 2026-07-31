@@ -21,10 +21,11 @@ constexpr const char* kLineplotKernelSource = R"(
 extern "C" __global__ void lineplot_update(const float* input,
                                            float* signalPoints,
                                            float* averagingBuffer,
-                                           unsigned long long numberOfElements,
-                                           unsigned long long numberOfBatches,
-                                           unsigned long long inputRowWidth,
-                                           unsigned long long decimation,
+                                            unsigned long long numberOfElements,
+                                            unsigned long long numberOfBatches,
+                                            unsigned long long inputBatchStride,
+                                            unsigned long long inputSampleStride,
+                                            unsigned long long decimation,
                                            float normalizationFactor,
                                            unsigned long long averaging) {
     const unsigned long long index =
@@ -35,7 +36,8 @@ extern "C" __global__ void lineplot_update(const float* input,
 
     float sum = 0.0f;
     for (unsigned long long batch = 0; batch < numberOfBatches; ++batch) {
-        sum += input[(batch * inputRowWidth) + (index * decimation)];
+        sum += input[(batch * inputBatchStride) +
+                     (index * decimation * inputSampleStride)];
     }
 
     const float amplitude = fminf(fmaxf((sum * normalizationFactor) - 1.0f, -1.0f), 1.0f);
@@ -162,7 +164,8 @@ Result LineplotImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
         &averageData,
         &numberOfElements,
         &numberOfBatches,
-        &inputRowWidth,
+        &inputBatchStride,
+        &inputSampleStride,
         &decimation,
         &normalizationFactor,
         &averagingValue,

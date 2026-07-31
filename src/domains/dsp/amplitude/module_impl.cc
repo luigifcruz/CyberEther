@@ -1,8 +1,6 @@
 #include "module_impl.hh"
 
 #include <cmath>
-#include <limits>
-
 #include <jetstream/memory/axis.hh>
 
 namespace Jetstream::Modules {
@@ -15,22 +13,13 @@ Result AmplitudeImpl::validate() {
     }
 
     const Tensor& inputTensor = inputs().at("signal").tensor;
-    if (inputTensor.rank() == 0 ||
-        inputTensor.rank() > static_cast<U64>(std::numeric_limits<I64>::max())) {
-        JST_ERROR("[MODULE_AMPLITUDE] Expected an input tensor with at least one dimension.");
+    SignalAxes axes;
+    if (ResolveSignalAxes(inputTensor, axes) != Result::SUCCESS) {
+        JST_ERROR("[MODULE_AMPLITUDE] Input must contain valid signal axis metadata.");
         return Result::ERROR;
     }
 
-    const auto& config = *candidate();
-    const auto candidateAxis = ResolveAxis(config.axis, inputTensor.rank());
-    if (!candidateAxis) {
-        JST_ERROR("[MODULE_AMPLITUDE] Axis {} is out of bounds for a rank-{} tensor.",
-                  config.axis,
-                  inputTensor.rank());
-        return Result::ERROR;
-    }
-
-    validatedResolvedAxis = *candidateAxis;
+    validatedResolvedAxis = *axes.sample;
     return Result::SUCCESS;
 }
 

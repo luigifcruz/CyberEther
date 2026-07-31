@@ -10,6 +10,9 @@ Result SqueezeDimsImpl::validate() {
     }
 
     const Tensor& inputTensor = inputs().at("buffer").tensor;
+    SignalAxes inputAxes;
+    JST_CHECK(MapSignalAxes(inputTensor, IdentityAxisMap(inputTensor.rank()), inputAxes));
+
     if (!inputTensor.validShape() || inputTensor.size() == 0) {
         return Result::SUCCESS;
     }
@@ -48,6 +51,18 @@ Result SqueezeDimsImpl::create() {
 
     JST_CHECK(output.squeezeDims(resolvedAxis));
     JST_CHECK(output.propagateAttributes(input));
+
+    AxisMap axisMap(input.rank());
+    for (Index inputAxis = 0; inputAxis < input.rank(); ++inputAxis) {
+        if (inputAxis < resolvedAxis) {
+            axisMap[inputAxis] = inputAxis;
+        } else if (inputAxis > resolvedAxis) {
+            axisMap[inputAxis] = inputAxis - 1;
+        }
+    }
+    SignalAxes outputAxes;
+    JST_CHECK(MapSignalAxes(input, axisMap, outputAxes));
+    JST_CHECK(SetSignalAxes(output, outputAxes));
 
     outputs()["buffer"].produced(name(), "buffer", output);
 

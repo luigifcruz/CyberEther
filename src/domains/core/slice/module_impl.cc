@@ -6,6 +6,8 @@
 #include <system_error>
 #include <utility>
 
+#include <jetstream/memory/axis.hh>
+
 namespace Jetstream::Modules {
 
 namespace {
@@ -164,6 +166,45 @@ Result ParseSliceString(const std::string& sliceStr,
     return Result::SUCCESS;
 }
 
+AxisMap SliceAxisMap(const Index inputRank,
+                     const std::vector<Token>& tokens) {
+    AxisMap axisMap(inputRank);
+    const auto consumingTokens = static_cast<Index>(std::count_if(
+        tokens.begin(), tokens.end(), [](const auto& token) {
+            return token.getType() != Token::Type::Ellipsis;
+        }));
+
+    Index inputAxis = 0;
+    Index outputAxis = 0;
+    for (const auto& token : tokens) {
+        switch (token.getType()) {
+            case Token::Type::Number:
+                ++inputAxis;
+                break;
+            case Token::Type::Colon:
+            case Token::Type::ColonZeroEnd:
+                axisMap[inputAxis] = outputAxis;
+                ++inputAxis;
+                ++outputAxis;
+                break;
+            case Token::Type::Ellipsis: {
+                const Index expandedAxes = inputRank - consumingTokens;
+                for (Index axis = 0; axis < expandedAxes; ++axis) {
+                    axisMap[inputAxis + axis] = outputAxis + axis;
+                }
+                inputAxis += expandedAxes;
+                outputAxis += expandedAxes;
+                break;
+            }
+        }
+    }
+
+    while (inputAxis < inputRank) {
+        axisMap[inputAxis++] = outputAxis++;
+    }
+    return axisMap;
+}
+
 }  // namespace
 
 Result SliceImpl::validate() {
@@ -175,11 +216,14 @@ Result SliceImpl::validate() {
     Tensor::SlicePlan candidateSlicePlan;
     if (inputs().contains("buffer")) {
         const Tensor& inputTensor = inputs().at("buffer").tensor;
+        SignalAxes inputAxes;
+        JST_CHECK(MapSignalAxes(inputTensor, IdentityAxisMap(inputTensor.rank()), inputAxes));
         if (inputTensor.validShape() && inputTensor.size() > 0) {
             JST_CHECK(inputTensor.planSlice(candidatePlan, candidateSlicePlan));
         }
     }
 
+    sliceTokens = std::move(candidatePlan);
     slicePlan = std::move(candidateSlicePlan);
     return Result::SUCCESS;
 }
@@ -200,6 +244,10 @@ Result SliceImpl::create() {
     output = input.clone();
 
     JST_CHECK(output.applySlicePlan(slicePlan));
+    SignalAxes outputAxes;
+    JST_CHECK(MapSignalAxes(input, SliceAxisMap(input.rank(), sliceTokens),
+                            outputAxes));
+    JST_CHECK(SetSignalAxes(output, outputAxes));
 
     outputs()["buffer"].produced(name(), "buffer", output);
 

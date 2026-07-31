@@ -73,7 +73,8 @@ Result SpectrogramImplNativeCpu::computeSubmit() {
 
     for (U64 b = 0; b < numberOfBatches; ++b) {
         for (U64 x = 0; x < numberOfElements; ++x) {
-            const U64 index = static_cast<U64>(inputData[b * numberOfElements + x] * height);
+            const U64 inputIndex = b * inputBatchStride + x * inputSampleStride;
+            const U64 index = static_cast<U64>(inputData[inputIndex] * height);
 
             if (index > 0 && index < height) {
                 F32& val = freqData[x + (index * numberOfElements)];

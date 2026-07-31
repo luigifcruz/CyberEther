@@ -1,12 +1,15 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <any>
 #include <limits>
+#include <optional>
 #include <utility>
 
 #include "jetstream/testing.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/domains/core/add/module.hh"
+#include "jetstream/memory/axis.hh"
 
 using namespace Jetstream;
 
@@ -29,6 +32,40 @@ void RequireAddValidationError(const Registry::ModuleRegistration& impl,
     REQUIRE(module->create("test", config, inputs) == Result::ERROR);
     REQUIRE(module->state() == Module::State::ERRORED);
     REQUIRE(module->outputs().empty());
+}
+
+void RequireAddSignalAxes(const Registry::ModuleRegistration& impl,
+                          const Shape& shapeA,
+                          const SignalAxes& axesA,
+                          const Shape& shapeB,
+                          const SignalAxes& axesB,
+                          const SignalAxes& expectedAxes) {
+    TestContext ctx("add", impl.device, impl.runtime, impl.provider);
+    auto a = ctx.createTensor<F32>(shapeA);
+    auto b = ctx.createTensor<F32>(shapeB);
+    for (U64 i = 0; i < a.size(); ++i) {
+        a.data()[i] = 1.0f;
+    }
+    for (U64 i = 0; i < b.size(); ++i) {
+        b.data()[i] = 2.0f;
+    }
+    if (axesA.sample || axesA.batch || axesA.channel) {
+        REQUIRE(SetSignalAxes(a, axesA) == Result::SUCCESS);
+    }
+    if (axesB.sample || axesB.batch || axesB.channel) {
+        REQUIRE(SetSignalAxes(b, axesB) == Result::SUCCESS);
+    }
+
+    ctx.setInput("a", a);
+    ctx.setInput("b", b);
+    REQUIRE(ctx.run() == Result::SUCCESS);
+
+    const auto& out = ctx.output("sum");
+    SignalAxes outputAxes;
+    REQUIRE(ResolveSignalAxes(out, outputAxes) == Result::SUCCESS);
+    REQUIRE(outputAxes.sample == expectedAxes.sample);
+    REQUIRE(outputAxes.batch == expectedAxes.batch);
+    REQUIRE(outputAxes.channel == expectedAxes.channel);
 }
 
 }  // namespace
@@ -121,6 +158,87 @@ TEST_CASE("Add Module - Broadcast F32", "[modules][add][broadcast]") {
             REQUIRE_THAT(out.at<F32>(1, 2), Catch::Matchers::WithinAbs(62.0f, 1e-6f));
             REQUIRE(a.shape() == Shape{2, 1});
             REQUIRE(b.shape() == Shape{2, 3});
+        }
+    }
+}
+
+TEST_CASE("Add Module - Merges Broadcast Signal Axes",
+          "[modules][add][broadcast][metadata]") {
+    const auto implementations = Registry::ListAvailableModules("add");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            SECTION("roles from input a are right aligned") {
+                RequireAddSignalAxes(impl, {1}, {.sample = Index{0}},
+                                     {1, 1, 1}, {},
+                                     {.sample = Index{2}});
+            }
+
+            SECTION("roles from input b are right aligned") {
+                RequireAddSignalAxes(
+                    impl, {1, 1, 1}, {},
+                    {1, 1}, {.sample = Index{1}, .channel = Index{0}},
+                    {.sample = Index{2}, .channel = Index{1}});
+            }
+
+            SECTION("matching roles merge from both inputs") {
+                RequireAddSignalAxes(
+                    impl,
+                    {1, 1, 1},
+                    {.sample = Index{2}, .batch = Index{0}, .channel = Index{1}},
+                    {1, 1},
+                    {.sample = Index{1}, .channel = Index{0}},
+                    {.sample = Index{2}, .batch = Index{0}, .channel = Index{1}});
+            }
+
+            SECTION("same roles mapped to different axes conflict") {
+                Tensor a;
+                Tensor b;
+                REQUIRE(a.create(impl.device, DataType::F32, {1, 1}) == Result::SUCCESS);
+                REQUIRE(b.create(impl.device, DataType::F32, {1, 1, 1}) == Result::SUCCESS);
+                REQUIRE(SetSignalAxes(a, {.sample = Index{0}}) == Result::SUCCESS);
+                REQUIRE(SetSignalAxes(b, {.sample = Index{0}}) == Result::SUCCESS);
+                RequireAddValidationError(impl, std::move(a), std::move(b));
+            }
+
+            SECTION("different roles mapped to the same axis conflict") {
+                Tensor a;
+                Tensor b;
+                REQUIRE(a.create(impl.device, DataType::F32, {1, 1}) == Result::SUCCESS);
+                REQUIRE(b.create(impl.device, DataType::F32, {1, 1, 1}) == Result::SUCCESS);
+                REQUIRE(SetSignalAxes(
+                    a, {.sample = Index{1}, .channel = Index{0}}) == Result::SUCCESS);
+                REQUIRE(SetSignalAxes(
+                    b, {.sample = Index{2}, .batch = Index{1}}) == Result::SUCCESS);
+                RequireAddValidationError(impl, std::move(a), std::move(b));
+            }
+
+            SECTION("malformed signal metadata") {
+                Tensor wrongTypeA;
+                Tensor wrongTypeB;
+                REQUIRE(wrongTypeA.create(impl.device, DataType::F32, {1, 1}) ==
+                        Result::SUCCESS);
+                REQUIRE(wrongTypeB.create(impl.device, DataType::F32, {1, 1}) ==
+                        Result::SUCCESS);
+                REQUIRE(wrongTypeA.setAttribute(
+                    std::string(SampleAxisAttribute), Index{1}) == Result::SUCCESS);
+                REQUIRE(wrongTypeA.setAttribute(
+                    std::string(ChannelAxisAttribute), I64{0}) == Result::SUCCESS);
+                RequireAddValidationError(impl, std::move(wrongTypeA),
+                                          std::move(wrongTypeB));
+
+                Tensor outOfRangeA;
+                Tensor outOfRangeB;
+                REQUIRE(outOfRangeA.create(impl.device, DataType::F32, {1}) == Result::SUCCESS);
+                REQUIRE(outOfRangeB.create(impl.device, DataType::F32, {1}) == Result::SUCCESS);
+                REQUIRE(outOfRangeB.setAttribute(
+                    std::string(SampleAxisAttribute), Index{0}) == Result::SUCCESS);
+                REQUIRE(outOfRangeB.setAttribute(
+                    std::string(ChannelAxisAttribute), Index{1}) == Result::SUCCESS);
+                RequireAddValidationError(impl, std::move(outOfRangeA),
+                                          std::move(outOfRangeB));
+            }
         }
     }
 }

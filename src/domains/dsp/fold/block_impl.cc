@@ -16,7 +16,6 @@ struct FoldImpl : public Block::Impl, public DynamicConfig<Blocks::Fold> {
 };
 
 Result FoldImpl::configure() {
-    foldConfig->axis = axis;
     foldConfig->offset = offset;
     foldConfig->size = size;
 
@@ -31,12 +30,6 @@ Result FoldImpl::define() {
     JST_CHECK(defineInterfaceOutput("buffer",
                                     "Output",
                                     "Folded output signal."));
-
-    JST_CHECK(defineInterfaceConfig("axis",
-                                    "Axis",
-                                    "Dimension along which to fold. Negative axes count "
-                                    "from the end.",
-                                    "int:axis"));
 
     JST_CHECK(defineInterfaceConfig("offset",
                                     "Offset",

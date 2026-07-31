@@ -3,6 +3,9 @@
 
 #include <jetstream/domains/dsp/rrc_filter/module.hh>
 #include <jetstream/detail/module_impl.hh>
+#include <jetstream/memory/axis.hh>
+
+#include <vector>
 
 namespace Jetstream::Modules {
 
@@ -19,7 +22,13 @@ struct RrcFilterImpl : public Module::Impl,
     Tensor output;
     Tensor coeffs;
     Tensor history;
-    U64 historyIndex = 0;
+
+    SignalAxes validatedSignalAxes;
+    U64 validatedLaneCount = 0;
+
+    SignalAxes signalAxes;
+    U64 laneCount = 0;
+    std::vector<U64> historyIndex;
 
     Result generateCoefficients();
 };

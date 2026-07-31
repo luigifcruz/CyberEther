@@ -93,7 +93,8 @@ Result LineplotImplNativeCpu::computeSubmit() {
 
     for (U64 b = 0; b < numberOfBatches; b++) {
         for (U64 i = 0; i < numberOfElements; i++) {
-            sumsData[i] += inputData[detail::LineplotInputIndex(b, i, inputRowWidth, decimation)];
+            sumsData[i] += inputData[detail::LineplotInputIndex(
+                b, i, inputBatchStride, inputSampleStride, decimation)];
         }
     }
 

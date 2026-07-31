@@ -4,6 +4,8 @@
 #include <jetstream/domains/dsp/overlap_add/module.hh>
 #include <jetstream/detail/module_impl.hh>
 
+#include <optional>
+
 namespace Jetstream::Modules {
 
 struct OverlapAddImpl : public Module::Impl,
@@ -17,7 +19,7 @@ struct OverlapAddImpl : public Module::Impl,
  protected:
     Tensor validatedInputBuffer;
     Tensor validatedInputOverlap;
-    Index validatedResolvedAxis = 0;
+    std::optional<Index> validatedBatchAxis;
     Shape validatedPreviousOverlapShape;
     U64 validatedOutputSizeBytes = 0;
     U64 validatedPreviousOverlapSizeBytes = 0;
@@ -26,6 +28,7 @@ struct OverlapAddImpl : public Module::Impl,
     Tensor inputOverlap;
     Tensor output;
     Tensor previousOverlap;
+    std::optional<Index> batchAxis;
 };
 
 }  // namespace Jetstream::Modules

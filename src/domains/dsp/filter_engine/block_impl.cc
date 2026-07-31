@@ -2,18 +2,21 @@
 #include <cmath>
 #include <limits>
 #include <optional>
+#include <string>
 
 #include <jetstream/domains/dsp/filter_engine/block.hh>
 #include <jetstream/detail/block_impl.hh>
 
 #include <jetstream/domains/core/expand_dims/module.hh>
 #include <jetstream/domains/core/pad/module.hh>
+#include <jetstream/domains/core/reshape/module.hh>
 #include <jetstream/domains/core/unpad/module.hh>
 #include <jetstream/domains/core/multiply/module.hh>
 #include <jetstream/domains/core/multiply_constant/module.hh>
 #include <jetstream/domains/dsp/fft/module.hh>
 #include <jetstream/domains/dsp/fold/module.hh>
 #include <jetstream/domains/dsp/overlap_add/module.hh>
+#include <jetstream/memory/axis.hh>
 #include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Blocks {
@@ -22,9 +25,14 @@ namespace {
 
 struct FilterEngineCandidatePlan {
     bool resample = false;
+    Index sampleAxis = 0;
+    Index filterSampleAxis = 0;
+    bool multiHead = false;
+    SignalAxes outputAxes;
     U64 padSize = 0;
     U64 resamplerOffset = 0;
     U64 resamplerSize = 0;
+    F32 resampledSampleRate = 0.0f;
 };
 
 Result CalculateResampleHeuristics(const std::optional<F32>& sampleRateAttribute,
@@ -141,6 +149,7 @@ Result CalculateResampleHeuristics(const std::optional<F32>& sampleRateAttribute
 
     plan.resamplerSize = combinedSize / integerRatio;
     plan.padSize /= integerRatio;
+    plan.resampledSampleRate = sampleRate / static_cast<F32>(integerRatio);
     plan.resample = true;
 
     return Result::SUCCESS;
@@ -156,7 +165,7 @@ struct FilterEngineImpl : public Block::Impl,
 
  protected:
     std::optional<FilterEngineCandidatePlan> candidatePlan;
-    std::shared_ptr<Modules::ExpandDims> expandDimsConfig =
+    std::shared_ptr<Modules::ExpandDims> expandSignalConfig =
         std::make_shared<Modules::ExpandDims>();
     std::shared_ptr<Modules::Pad> padSignalConfig =
         std::make_shared<Modules::Pad>();
@@ -166,6 +175,8 @@ struct FilterEngineImpl : public Block::Impl,
         std::make_shared<Modules::Fft>();
     std::shared_ptr<Modules::Fft> fftFilterConfig =
         std::make_shared<Modules::Fft>();
+    std::shared_ptr<Modules::Reshape> reshapeFilterConfig =
+        std::make_shared<Modules::Reshape>();
     std::shared_ptr<Modules::Multiply> multiplyConfig =
         std::make_shared<Modules::Multiply>();
     std::shared_ptr<Modules::Fold> foldConfig =
@@ -184,35 +195,49 @@ Result FilterEngineImpl::validate() {
     candidatePlan.reset();
 
     const Tensor* signalTensor = nullptr;
+    std::optional<SignalAxes> signalAxes;
     const auto signal = inputs().find("signal");
     if (signal != inputs().end() && signal->second.tensor.validShape()) {
         signalTensor = &signal->second.tensor;
-        if (signalTensor->rank() == 0) {
-            JST_ERROR("[BLOCK_FILTER_ENGINE] Signal input must have at least "
-                      "one dimension.");
+        SignalAxes axes;
+        if (ResolveSignalAxes(*signalTensor, axes) != Result::SUCCESS) {
+            JST_ERROR("[BLOCK_FILTER_ENGINE] Signal axis metadata is invalid.");
             return Result::ERROR;
         }
-        if (signalTensor->shape(signalTensor->rank() - 1) == 0) {
-            JST_ERROR("[BLOCK_FILTER_ENGINE] Signal input's last dimension "
+        signalAxes = axes;
+        if (signalTensor->shape(*signalAxes->sample) == 0) {
+            JST_ERROR("[BLOCK_FILTER_ENGINE] Signal input's sample dimension "
                       "cannot be zero.");
             return Result::ERROR;
         }
     }
 
     const Tensor* filterTensor = nullptr;
+    std::optional<SignalAxes> filterAxes;
     std::optional<F32> sampleRate;
     std::optional<F32> bandwidth;
     std::optional<F32> center;
     const auto filter = inputs().find("filter");
     if (filter != inputs().end() && filter->second.tensor.validShape()) {
         filterTensor = &filter->second.tensor;
-        if (filterTensor->rank() == 0) {
-            JST_ERROR("[BLOCK_FILTER_ENGINE] Filter input must have at least "
-                      "one dimension.");
+        if (filterTensor->rank() < 1 || filterTensor->rank() > 2) {
+            JST_ERROR("[BLOCK_FILTER_ENGINE] Filter input must be rank 1 or 2.");
             return Result::ERROR;
         }
-        if (filterTensor->shape(filterTensor->rank() - 1) == 0) {
-            JST_ERROR("[BLOCK_FILTER_ENGINE] Filter input's last dimension "
+        SignalAxes axes;
+        if (ResolveSignalAxes(*filterTensor, axes) != Result::SUCCESS ||
+            (filterTensor->rank() == 1 &&
+             (*axes.sample != 0 || axes.batch || axes.channel)) ||
+            (filterTensor->rank() == 2 &&
+             (*axes.sample != 1 || axes.batch || axes.channel != Index{0}))) {
+            JST_ERROR("[BLOCK_FILTER_ENGINE] Filter coefficients must be [T] with "
+                      "sampleAxis=0 or [C,T] with channelAxis=0 and sampleAxis=1.");
+            return Result::ERROR;
+        }
+        filterAxes = axes;
+        const Index filterSampleAxis = *axes.sample;
+        if (filterTensor->shape(filterSampleAxis) == 0) {
+            JST_ERROR("[BLOCK_FILTER_ENGINE] Filter input's sample dimension "
                       "cannot be zero.");
             return Result::ERROR;
         }
@@ -241,8 +266,16 @@ Result FilterEngineImpl::validate() {
     }
 
     if (signalTensor != nullptr && filterTensor != nullptr) {
-        const U64 signalSize = signalTensor->shape(signalTensor->rank() - 1);
-        const U64 filterSize = filterTensor->shape(filterTensor->rank() - 1);
+        const bool multiHead = filterAxes->channel.has_value();
+        if (multiHead && signalAxes->channel) {
+            JST_ERROR("[BLOCK_FILTER_ENGINE] Cannot add filter channels to a "
+                      "signal that already carries channelAxis.");
+            return Result::ERROR;
+        }
+        const Index signalSampleAxis = *signalAxes->sample;
+        const U64 signalSize = signalTensor->shape(signalSampleAxis);
+        const Index filterSampleAxis = *filterAxes->sample;
+        const U64 filterSize = filterTensor->shape(filterSampleAxis);
         U64 combinedSize = 0;
         if (!detail::CheckedAdd(signalSize, filterSize - 1, combinedSize)) {
             JST_ERROR("[BLOCK_FILTER_ENGINE] Combined signal and filter extent "
@@ -251,6 +284,19 @@ Result FilterEngineImpl::validate() {
         }
 
         FilterEngineCandidatePlan plan;
+        plan.sampleAxis = signalSampleAxis;
+        plan.filterSampleAxis = filterSampleAxis;
+        plan.multiHead = multiHead;
+        plan.outputAxes = *signalAxes;
+        if (multiHead) {
+            plan.outputAxes.sample = signalSampleAxis + 1;
+            plan.outputAxes.channel = signalSampleAxis;
+            if (signalAxes->batch) {
+                plan.outputAxes.batch = *signalAxes->batch >= signalSampleAxis
+                                            ? *signalAxes->batch + 1
+                                            : *signalAxes->batch;
+            }
+        }
         plan.padSize = filterSize - 1;
         JST_CHECK(CalculateResampleHeuristics(sampleRate,
                                               bandwidth,
@@ -288,15 +334,13 @@ Result FilterEngineImpl::create() {
         return Result::ERROR;
     }
 
-    const U64 signalMaxRank = signalTensor.rank() - 1;
-    const U64 filterMaxRank = filterTensor.rank() - 1;
-
-    const U64 signalSize = signalTensor.shape(signalMaxRank);
-    const U64 filterSize = filterTensor.shape(filterMaxRank);
-
-    // Detect multi-head filter (2D filter tensor).
-
-    const bool multiHead = (filterTensor.rank() == 2);
+    const Index signalSampleAxis = candidatePlan->sampleAxis;
+    const Index filterSampleAxis = candidatePlan->filterSampleAxis;
+    const bool multiHead = candidatePlan->multiHead;
+    const SignalAxes& outputAxes = candidatePlan->outputAxes;
+    Index sampleAxis = signalSampleAxis;
+    const U64 signalSize = signalTensor.shape(signalSampleAxis);
+    const U64 filterSize = filterTensor.shape(filterSampleAxis);
 
     // Calculate resampling parameters.
 
@@ -305,27 +349,24 @@ Result FilterEngineImpl::create() {
     const U64 resamplerOffset = candidatePlan->resamplerOffset;
     const U64 resamplerSize = candidatePlan->resamplerSize;
 
-    // Expand signal dimensions for multi-head broadcasting.
-
     auto signalInput = signalPort;
-
     if (multiHead) {
-        expandDimsConfig->axis = signalMaxRank;
+        const Index headAxis = signalSampleAxis;
+        expandSignalConfig->axis = static_cast<I64>(headAxis);
 
-        JST_CHECK(moduleCreate("expandDims", expandDimsConfig, {
+        JST_CHECK(moduleCreate("expand_signal", expandSignalConfig, {
             {"buffer", signalPort}
         }));
 
-        signalInput = moduleGetOutput({"expandDims", "buffer"});
+        signalInput = moduleGetOutput({"expand_signal", "buffer"});
+        JST_CHECK(SetSignalAxes(signalInput.tensor, outputAxes));
+        ++sampleAxis;
     }
-
-    const U64 expandedSignalMaxRank =
-        multiHead ? signalMaxRank + 1 : signalMaxRank;
 
     // Pad signal.
 
     padSignalConfig->size = filterSize - 1;
-    padSignalConfig->axis = expandedSignalMaxRank;
+    padSignalConfig->axis = static_cast<I64>(sampleAxis);
 
     JST_CHECK(moduleCreate("padSignal", padSignalConfig, {
         {"unpadded", signalInput}
@@ -334,7 +375,7 @@ Result FilterEngineImpl::create() {
     // Pad filter.
 
     padFilterConfig->size = signalSize - 1;
-    padFilterConfig->axis = filterMaxRank;
+    padFilterConfig->axis = static_cast<I64>(filterSampleAxis);
 
     JST_CHECK(moduleCreate("padFilter", padFilterConfig, {
         {"unpadded", filterPort}
@@ -356,27 +397,56 @@ Result FilterEngineImpl::create() {
         {"signal", moduleGetOutput({"padFilter", "padded"})}
     }));
 
+    auto filterSpectrum = moduleGetOutput({"fftFilter", "signal"});
+    Shape filterSpectrumShape(signalInput.tensor.rank(), 1);
+    if (multiHead) {
+        filterSpectrumShape[signalSampleAxis] = filterTensor.shape(0);
+    }
+    filterSpectrumShape[sampleAxis] =
+        filterSpectrum.tensor.shape(filterSampleAxis);
+
+    if (filterSpectrum.tensor.shape() != filterSpectrumShape) {
+        reshapeFilterConfig->shape = "[";
+        for (Index dimension = 0; dimension < filterSpectrumShape.size(); ++dimension) {
+            if (dimension > 0) {
+                reshapeFilterConfig->shape += ", ";
+            }
+            reshapeFilterConfig->shape +=
+                std::to_string(filterSpectrumShape[dimension]);
+        }
+        reshapeFilterConfig->shape += "]";
+
+        JST_CHECK(moduleCreate("reshape_filter", reshapeFilterConfig, {
+            {"buffer", filterSpectrum}
+        }));
+        filterSpectrum = moduleGetOutput({"reshape_filter", "buffer"});
+    }
+    SignalAxes alignedFilterAxes;
+    alignedFilterAxes.sample = sampleAxis;
+    if (multiHead) {
+        alignedFilterAxes.channel = signalSampleAxis;
+    }
+    JST_CHECK(SetSignalAxes(filterSpectrum.tensor, alignedFilterAxes));
+
     // Multiply spectra.
 
     JST_CHECK(moduleCreate("multiply", multiplyConfig, {
         {"a", moduleGetOutput({"fftSignal", "signal"})},
-        {"b", moduleGetOutput({"fftFilter", "signal"})}
+        {"b", filterSpectrum}
     }));
+    auto product = moduleGetOutput({"multiply", "product"});
+    JST_CHECK(SetSignalAxes(product.tensor, outputAxes));
 
     // Optional fold for resampling.
 
-    auto ifftInput = moduleGetOutput({"multiply", "product"});
+    auto ifftInput = product;
 
     if (resample) {
-        const U64 maxRank = multiHead
-            ? std::max(filterMaxRank, expandedSignalMaxRank)
-            : std::max(filterMaxRank, signalMaxRank);
-        foldConfig->axis = maxRank;
         foldConfig->offset = resamplerOffset;
         foldConfig->size = resamplerSize;
 
         JST_CHECK(moduleCreate("fold", foldConfig, {
-            {"buffer", moduleGetOutput({"multiply", "product"})}
+            {"buffer", product}
         }));
 
         ifftInput = moduleGetOutput({"fold", "buffer"});
@@ -390,15 +460,11 @@ Result FilterEngineImpl::create() {
         {"signal", ifftInput}
     }));
 
-    const U64 maxRank = multiHead
-        ? std::max(filterMaxRank, expandedSignalMaxRank)
-        : std::max(filterMaxRank, signalMaxRank);
-
     // Normalize the unscaled inverse FFT.
 
     const auto& ifftOutput = moduleGetOutput({"ifft", "signal"});
     normalizeConfig->constant =
-        1.0f / static_cast<F32>(ifftOutput.tensor.shape(maxRank));
+        1.0f / static_cast<F32>(ifftOutput.tensor.shape(sampleAxis));
 
     JST_CHECK(moduleCreate("normalize", normalizeConfig, {
         {"factor", ifftOutput}
@@ -407,15 +473,13 @@ Result FilterEngineImpl::create() {
     // Unpad.
 
     unpadConfig->size = padSize;
-    unpadConfig->axis = maxRank;
+    unpadConfig->axis = static_cast<I64>(sampleAxis);
 
     JST_CHECK(moduleCreate("unpad", unpadConfig, {
         {"padded", moduleGetOutput({"normalize", "product"})}
     }));
 
     // Overlap-add.
-
-    overlapConfig->axis = maxRank;
 
     JST_CHECK(moduleCreate("overlap", overlapConfig, {
         {"buffer", moduleGetOutput({"unpad", "unpadded"})},
@@ -426,18 +490,24 @@ Result FilterEngineImpl::create() {
 
     JST_CHECK(moduleExposeOutput("buffer",
                                  {"overlap", "buffer"}));
+    JST_CHECK(SetSignalAxes(outputs().at("buffer").tensor, outputAxes));
+    if (resample) {
+        JST_CHECK(outputs().at("buffer").tensor.setAttribute(
+            "sampleRate", candidatePlan->resampledSampleRate));
+    }
 
     return Result::SUCCESS;
 }
 
 JST_REGISTER_BLOCK(FilterEngineImpl,
+                   {"expand_dims", true},
                    {"pad"},
                    {"fft"},
+                   {"reshape", true},
                    {"multiply"},
                    {"multiply_constant"},
                    {"unpad"},
                    {"overlap_add"},
-                   {"expand_dims", true},
                    {"fold", true});
 
 }  // namespace Jetstream::Blocks

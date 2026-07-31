@@ -1,9 +1,12 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <any>
 #include <limits>
+#include <optional>
 
 #include "jetstream/domains/core/multiply/module.hh"
+#include "jetstream/memory/axis.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/testing.hh"
 
@@ -40,6 +43,40 @@ void RequireMultiplyValidationError(const Registry::ModuleRegistration& impl,
     REQUIRE(module->create("test", Modules::Multiply{}, inputs) == Result::ERROR);
     REQUIRE(module->state() == Module::State::ERRORED);
     REQUIRE(module->outputs().empty());
+}
+
+void RequireMultiplySignalAxes(const Registry::ModuleRegistration& impl,
+                               const Shape& shapeA,
+                               const SignalAxes& axesA,
+                               const Shape& shapeB,
+                               const SignalAxes& axesB,
+                               const SignalAxes& expectedAxes) {
+    TestContext ctx("multiply", impl.device, impl.runtime, impl.provider);
+    auto a = ctx.createTensor<F32>(shapeA);
+    auto b = ctx.createTensor<F32>(shapeB);
+    for (U64 i = 0; i < a.size(); ++i) {
+        a.data()[i] = 2.0f;
+    }
+    for (U64 i = 0; i < b.size(); ++i) {
+        b.data()[i] = 3.0f;
+    }
+    if (axesA.sample || axesA.batch || axesA.channel) {
+        REQUIRE(SetSignalAxes(a, axesA) == Result::SUCCESS);
+    }
+    if (axesB.sample || axesB.batch || axesB.channel) {
+        REQUIRE(SetSignalAxes(b, axesB) == Result::SUCCESS);
+    }
+
+    ctx.setInput("a", a);
+    ctx.setInput("b", b);
+    REQUIRE(ctx.run() == Result::SUCCESS);
+
+    const auto& out = ctx.output("product");
+    SignalAxes outputAxes;
+    REQUIRE(ResolveSignalAxes(out, outputAxes) == Result::SUCCESS);
+    REQUIRE(outputAxes.sample == expectedAxes.sample);
+    REQUIRE(outputAxes.batch == expectedAxes.batch);
+    REQUIRE(outputAxes.channel == expectedAxes.channel);
 }
 
 }  // namespace
@@ -106,6 +143,85 @@ TEST_CASE("Multiply Module - Broadcast Shape", "[modules][multiply][broadcast]")
             REQUIRE(out.shape(0) == 2);
             REQUIRE(out.shape(1) == 3);
             REQUIRE_THAT(out.at<F32>(1, 2), Catch::Matchers::WithinAbs(18.0f, 1e-6f));
+        }
+    }
+}
+
+TEST_CASE("Multiply Module - Merges Broadcast Signal Axes",
+          "[modules][multiply][broadcast][metadata]") {
+    const auto implementations = Registry::ListAvailableModules("multiply");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            SECTION("roles from input a are right aligned") {
+                RequireMultiplySignalAxes(impl, {1}, {.sample = Index{0}},
+                                          {1, 1, 1}, {},
+                                          {.sample = Index{2}});
+            }
+
+            SECTION("roles from input b are right aligned") {
+                RequireMultiplySignalAxes(
+                    impl, {1, 1, 1}, {},
+                    {1, 1}, {.sample = Index{1}, .channel = Index{0}},
+                    {.sample = Index{2}, .channel = Index{1}});
+            }
+
+            SECTION("matching roles merge from both inputs") {
+                RequireMultiplySignalAxes(
+                    impl,
+                    {1, 1, 1},
+                    {.sample = Index{2}, .batch = Index{0}, .channel = Index{1}},
+                    {1, 1},
+                    {.sample = Index{1}, .channel = Index{0}},
+                    {.sample = Index{2}, .batch = Index{0}, .channel = Index{1}});
+            }
+
+            SECTION("same roles mapped to different axes conflict") {
+                Tensor a;
+                Tensor b;
+                REQUIRE(a.create(impl.device, DataType::F32, {1, 1}) == Result::SUCCESS);
+                REQUIRE(b.create(impl.device, DataType::F32, {1, 1, 1}) == Result::SUCCESS);
+                REQUIRE(SetSignalAxes(a, {.sample = Index{0}}) == Result::SUCCESS);
+                REQUIRE(SetSignalAxes(b, {.sample = Index{0}}) == Result::SUCCESS);
+                RequireMultiplyValidationError(impl, a, b);
+            }
+
+            SECTION("different roles mapped to the same axis conflict") {
+                Tensor a;
+                Tensor b;
+                REQUIRE(a.create(impl.device, DataType::F32, {1, 1}) == Result::SUCCESS);
+                REQUIRE(b.create(impl.device, DataType::F32, {1, 1, 1}) == Result::SUCCESS);
+                REQUIRE(SetSignalAxes(
+                    a, {.sample = Index{1}, .channel = Index{0}}) == Result::SUCCESS);
+                REQUIRE(SetSignalAxes(
+                    b, {.sample = Index{2}, .batch = Index{1}}) == Result::SUCCESS);
+                RequireMultiplyValidationError(impl, a, b);
+            }
+
+            SECTION("malformed signal metadata") {
+                Tensor wrongTypeA;
+                Tensor wrongTypeB;
+                REQUIRE(wrongTypeA.create(impl.device, DataType::F32, {1, 1}) ==
+                        Result::SUCCESS);
+                REQUIRE(wrongTypeB.create(impl.device, DataType::F32, {1, 1}) ==
+                        Result::SUCCESS);
+                REQUIRE(wrongTypeA.setAttribute(
+                    std::string(SampleAxisAttribute), Index{1}) == Result::SUCCESS);
+                REQUIRE(wrongTypeA.setAttribute(
+                    std::string(ChannelAxisAttribute), I64{0}) == Result::SUCCESS);
+                RequireMultiplyValidationError(impl, wrongTypeA, wrongTypeB);
+
+                Tensor outOfRangeA;
+                Tensor outOfRangeB;
+                REQUIRE(outOfRangeA.create(impl.device, DataType::F32, {1}) == Result::SUCCESS);
+                REQUIRE(outOfRangeB.create(impl.device, DataType::F32, {1}) == Result::SUCCESS);
+                REQUIRE(outOfRangeB.setAttribute(
+                    std::string(SampleAxisAttribute), Index{0}) == Result::SUCCESS);
+                REQUIRE(outOfRangeB.setAttribute(
+                    std::string(ChannelAxisAttribute), Index{1}) == Result::SUCCESS);
+                RequireMultiplyValidationError(impl, outOfRangeA, outOfRangeB);
+            }
         }
     }
 }

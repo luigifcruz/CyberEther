@@ -15,8 +15,11 @@ struct FilterEngine : public Block::Config {
         "Filters a signal using FIR filter coefficients.",
         "# Filter Engine\n"
         "The Filter Engine block applies a frequency-domain FIR filter to an "
-        "input signal using the overlap-add method. It takes a signal and filter "
-        "coefficients (typically from the Filter Taps block) as inputs.\n\n"
+        "input signal using the overlap-add method. Signal inputs require explicit "
+        "`sampleAxis` metadata. Filter coefficients must be rank-1 `[T]` with "
+        "`sampleAxis=0`, or a rank-2 `[C,T]` bank with `channelAxis=0` and "
+        "`sampleAxis=1`. Filter banks add a channel dimension immediately before "
+        "the signal's sample dimension.\n\n"
 
         "When the filter coefficients carry sample rate, bandwidth, and center "
         "frequency attributes, the engine will attempt to resample the output "
@@ -30,7 +33,10 @@ struct FilterEngine : public Block::Config {
         "## Examples\n"
         "- Apply filter taps to a signal:\n"
         "  Signal Input: CF32[8192], Filter Input: CF32[101]\n"
-        "  Output: CF32[8192] (or resampled if bandwidth attributes are set)\n\n"
+        "  Output: CF32[8192] (or resampled if bandwidth attributes are set)\n"
+        "- Apply three filter heads to a leading batch:\n"
+        "  Signal Input: CF32[8, 8192], Filter Input: CF32[3, 101]\n"
+        "  Output: CF32[8, 3, 8192]\n\n"
 
         "## Implementation\n"
         "Signal + Filter -> Pad -> FFT -> Multiply -> (Fold) -> IFFT -> "

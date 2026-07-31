@@ -16,8 +16,8 @@ struct Agc : public Block::Config {
         "# AGC\n"
         "The AGC block automatically adjusts the gain of the input signal to "
         "maintain a constant output level. It normalizes the signal amplitude by "
-        "finding the maximum value and scaling all elements to achieve a target "
-        "level of 1.0.\n\n"
+        "finding the maximum value along `sampleAxis` and scaling each independent "
+        "lane to achieve a target level of 1.0.\n\n"
 
         "## Useful For\n"
         "- Stabilizing signal amplitude for consistent visualization.\n"
@@ -32,9 +32,9 @@ struct Agc : public Block::Config {
 
         "## Implementation\n"
         "Input -> Find Max -> Calculate Gain -> Apply Gain -> Output\n"
-        "1. Find the maximum absolute value in the input buffer.\n"
-        "2. Calculate gain as 1.0 / max_value.\n"
-        "3. Multiply all elements by the calculated gain.\n"
+        "1. Find the maximum absolute value along each sample lane.\n"
+        "2. Calculate each lane's gain as 1.0 / max_value.\n"
+        "3. Multiply each lane by its calculated gain.\n"
         "4. Output has the same shape as input with normalized amplitude.";
     );
 };
