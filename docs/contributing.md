@@ -110,7 +110,7 @@ One of the following `JST_OS_*` flags will be defined based on the target platfo
 
 ## Licensing and Attribution
 
-CyberEther is licensed under the [MIT License](/LICENSE). All contributions to this project will be released under the MIT License. By submitting a pull request, you are agreeing to comply with this license and for any contributions to be released under it.
+CyberEther is licensed under the [MIT License](/docs/license). All contributions to this project will be released under the MIT License. By submitting a pull request, you are agreeing to comply with this license and for any contributions to be released under it.
 
 Don't forget to add yourself to the [Acknowledgments](/docs/acknowledgments) page!
 
