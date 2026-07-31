@@ -33,6 +33,12 @@ JETSTREAM_API Result MapSignalAxes(const Tensor& tensor,
                                    const AxisMap& axisMap,
                                    SignalAxes& axes);
 
+JETSTREAM_API AxisMap RightAlignedAxisMap(Index inputRank, Index outputRank);
+JETSTREAM_API AxisMap IdentityAxisMap(Index rank);
+JETSTREAM_API Result MergeBroadcastSignalAxes(const Tensor& tensorA,
+                                              const Tensor& tensorB,
+                                              Tensor& output);
+
 }  // namespace Jetstream
 
 #endif  // JETSTREAM_MEMORY_AXIS_HH

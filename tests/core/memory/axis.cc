@@ -160,3 +160,68 @@ TEST_CASE("MapSignalAxes remaps and removes roles", "[core][memory][axis]") {
     REQUIRE(MapSignalAxes(input, {Index{0}}, axes) == Result::ERROR);
 
 }
+
+TEST_CASE("RightAlignedAxisMap aligns axes to the output rank",
+          "[core][memory][axis]") {
+    REQUIRE(RightAlignedAxisMap(0, 3).empty());
+    REQUIRE(RightAlignedAxisMap(1, 1) == AxisMap(1, Index{0}));
+    REQUIRE(RightAlignedAxisMap(1, 3) == AxisMap(1, Index{2}));
+    REQUIRE(RightAlignedAxisMap(2, 2) == AxisMap({Index{0}, Index{1}}));
+    REQUIRE(RightAlignedAxisMap(2, 4) == AxisMap({Index{2}, Index{3}}));
+}
+
+TEST_CASE("IdentityAxisMap preserves axis positions", "[core][memory][axis]") {
+    REQUIRE(IdentityAxisMap(0).empty());
+    REQUIRE(IdentityAxisMap(1) == AxisMap(1, Index{0}));
+    REQUIRE(IdentityAxisMap(4) ==
+            AxisMap({Index{0}, Index{1}, Index{2}, Index{3}}));
+}
+
+TEST_CASE("MergeBroadcastSignalAxes merges roles across broadcast inputs",
+          "[core][memory][axis]") {
+    Tensor scalar(DeviceType::CPU, DataType::F32, {8});
+    Tensor batched(DeviceType::CPU, DataType::F32, {5, 8});
+    REQUIRE(SetSignalAxes(batched, {
+        .sample = Index{1},
+        .batch = Index{0},
+    }) == Result::SUCCESS);
+
+    SignalAxes axes;
+    Tensor output(DeviceType::CPU, DataType::F32, {5, 8});
+    REQUIRE(MergeBroadcastSignalAxes(scalar, batched, output) ==
+            Result::SUCCESS);
+    REQUIRE(ResolveSignalAxes(output, axes) == Result::SUCCESS);
+    REQUIRE(axes.sample == Index{1});
+    REQUIRE(axes.batch == Index{0});
+    REQUIRE_FALSE(axes.channel);
+}
+
+TEST_CASE("MergeBroadcastSignalAxes rejects conflicting roles",
+          "[core][memory][axis]") {
+    Tensor inputA(DeviceType::CPU, DataType::F32, {8, 5});
+    Tensor inputB(DeviceType::CPU, DataType::F32, {8, 5});
+    REQUIRE(SetSignalAxes(inputA, {.sample = Index{1}}) == Result::SUCCESS);
+    REQUIRE(SetSignalAxes(inputB, {.sample = Index{0}}) == Result::SUCCESS);
+
+    Tensor output(DeviceType::CPU, DataType::F32, {8, 5});
+    REQUIRE(MergeBroadcastSignalAxes(inputA, inputB, output) == Result::ERROR);
+}
+
+TEST_CASE("MergeBroadcastSignalAxes carries roles present on one input",
+          "[core][memory][axis]") {
+    Tensor inputA(DeviceType::CPU, DataType::F32, {5, 8});
+    Tensor inputB(DeviceType::CPU, DataType::F32, {5, 8});
+    REQUIRE(SetSignalAxes(inputA, {.sample = Index{1}}) == Result::SUCCESS);
+    REQUIRE(SetSignalAxes(inputB, {
+        .sample = Index{1},
+        .channel = Index{0},
+    }) == Result::SUCCESS);
+
+    SignalAxes axes;
+    Tensor output(DeviceType::CPU, DataType::F32, {5, 8});
+    REQUIRE(MergeBroadcastSignalAxes(inputA, inputB, output) == Result::SUCCESS);
+    REQUIRE(ResolveSignalAxes(output, axes) == Result::SUCCESS);
+    REQUIRE(axes.sample == Index{1});
+    REQUIRE_FALSE(axes.batch);
+    REQUIRE(axes.channel == Index{0});
+}

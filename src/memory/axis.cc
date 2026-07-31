@@ -199,4 +199,50 @@ Result MapSignalAxes(const Tensor& tensor,
     return Result::SUCCESS;
 }
 
+AxisMap RightAlignedAxisMap(const Index inputRank, const Index outputRank) {
+    AxisMap axisMap(inputRank);
+    const Index offset = outputRank - inputRank;
+    for (Index axis = 0; axis < inputRank; ++axis) {
+        axisMap[axis] = offset + axis;
+    }
+    return axisMap;
+}
+
+AxisMap IdentityAxisMap(const Index rank) {
+    AxisMap axisMap(rank);
+    for (Index axis = 0; axis < rank; ++axis) {
+        axisMap[axis] = axis;
+    }
+    return axisMap;
+}
+
+Result MergeBroadcastSignalAxes(const Tensor& tensorA,
+                                const Tensor& tensorB,
+                                Tensor& output) {
+    SignalAxes axesA;
+    SignalAxes axesB;
+    JST_CHECK(MapSignalAxes(
+        tensorA, RightAlignedAxisMap(tensorA.rank(), output.rank()), axesA));
+    JST_CHECK(MapSignalAxes(
+        tensorB, RightAlignedAxisMap(tensorB.rank(), output.rank()), axesB));
+
+    SignalAxes outputAxes;
+    const auto mergeRole = [](const std::optional<Index>& axisA,
+                              const std::optional<Index>& axisB,
+                              std::optional<Index>& outputAxis) -> Result {
+        if (axisA && axisB && axisA != axisB) {
+            JST_ERROR("[MEMORY:AXIS] Signal roles map to conflicting output axes.");
+            return Result::ERROR;
+        }
+        outputAxis = axisA ? axisA : axisB;
+        return Result::SUCCESS;
+    };
+
+    JST_CHECK(mergeRole(axesA.sample, axesB.sample, outputAxes.sample));
+    JST_CHECK(mergeRole(axesA.batch, axesB.batch, outputAxes.batch));
+    JST_CHECK(mergeRole(axesA.channel, axesB.channel, outputAxes.channel));
+
+    return SetSignalAxes(output, outputAxes);
+}
+
 }  // namespace Jetstream
