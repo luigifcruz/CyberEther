@@ -49,6 +49,30 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
+                 "Filter block promotes F32 input to CF32",
+                 "[modules][dsp][filter][block][F32]") {
+    Blocks::OnesTensor source;
+    source.shape = {512};
+    source.dataType = "F32";
+    REQUIRE(flowgraph->blockCreate("real_src", source, {}) == Result::SUCCESS);
+    TagSamples(viewBlock("real_src").outputs.at("buffer").tensor, 0);
+
+    TensorMap inputs;
+    inputs["signal"].requested("real_src", "buffer");
+    REQUIRE(flowgraph->blockCreate("real_filter", Blocks::Filter{}, inputs) ==
+            Result::SUCCESS);
+
+    const auto block = viewBlock("real_filter");
+    REQUIRE(block.state == Block::State::Created);
+    const Tensor output = block.outputs.at("buffer").tensor;
+    REQUIRE(output.dtype() == DataType::CF32);
+    REQUIRE(output.shape() == Shape{1, 256});
+    REQUIRE(std::any_cast<Index>(output.attribute("channelAxis")) == 0);
+    REQUIRE(std::any_cast<Index>(output.attribute("sampleAxis")) == 1);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
                   "Filter block rejects zero heads before define",
                   "[modules][dsp][filter][block][validation]") {
     Blocks::Filter config;

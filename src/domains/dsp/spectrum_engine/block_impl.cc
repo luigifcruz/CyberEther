@@ -5,6 +5,7 @@
 #include <jetstream/domains/dsp/fft/module.hh>
 #include <jetstream/domains/dsp/agc/module.hh>
 #include <jetstream/domains/dsp/amplitude/module.hh>
+#include <jetstream/domains/core/cast/module.hh>
 #include <jetstream/domains/core/invert/module.hh>
 #include <jetstream/domains/core/multiply/module.hh>
 #include <jetstream/domains/core/range/module.hh>
@@ -25,6 +26,8 @@ struct SpectrumEngineImpl : public Block::Impl,
  protected:
     std::shared_ptr<Modules::Window> windowConfig =
         std::make_shared<Modules::Window>();
+    std::shared_ptr<Modules::Cast> castInputConfig =
+        std::make_shared<Modules::Cast>();
     std::shared_ptr<Modules::Invert> invertConfig =
         std::make_shared<Modules::Invert>();
     std::shared_ptr<Modules::Reshape> reshapeWindowConfig =
@@ -48,6 +51,11 @@ Result SpectrumEngineImpl::validate() {
 
     const auto input = inputs().find("buffer");
     if (input != inputs().end() && input->second.resolved()) {
+        if (input->second.tensor.dtype() != DataType::F32 &&
+            input->second.tensor.dtype() != DataType::CF32) {
+            JST_ERROR("[BLOCK_SPECTRUM_ENGINE] Input must have data type F32 or CF32.");
+            return Result::ERROR;
+        }
         SignalAxes axes;
         if (ResolveSignalAxes(input->second.tensor, axes) != Result::SUCCESS) {
             JST_ERROR("[BLOCK_SPECTRUM_ENGINE] Input signal axis metadata is invalid.");
@@ -68,6 +76,7 @@ Result SpectrumEngineImpl::validate() {
 }
 
 Result SpectrumEngineImpl::configure() {
+    castInputConfig->outputType = "CF32";
     fftConfig->forward = true;
     rangeConfig->min = rangeMin;
     rangeConfig->max = rangeMax;
@@ -118,6 +127,11 @@ Result SpectrumEngineImpl::create() {
     }
     const Index resolvedAxis = *candidateSampleAxis;
 
+    JST_CHECK(moduleCreate("cast_input", castInputConfig, {
+        {"buffer", inputPort}
+    }));
+    const auto complexInput = moduleGetOutput({"cast_input", "buffer"});
+
     // Derive window size from input shape at specified axis.
 
     windowConfig->size = inputTensor.shape(resolvedAxis);
@@ -159,7 +173,7 @@ Result SpectrumEngineImpl::create() {
     // Multiply input signal by shifted window.
 
     JST_CHECK(moduleCreate("multiply", multiplyConfig, {
-        {"a", inputPort},
+        {"a", complexInput},
         {"b", reshapedWindow}
     }));
 
@@ -201,6 +215,7 @@ Result SpectrumEngineImpl::create() {
 }
 
 JST_REGISTER_BLOCK(SpectrumEngineImpl,
+                   {"cast"},
                    {"window"},
                    {"invert"},
                    {"reshape"},

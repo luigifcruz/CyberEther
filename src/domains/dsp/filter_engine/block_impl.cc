@@ -7,6 +7,7 @@
 #include <jetstream/domains/dsp/filter_engine/block.hh>
 #include <jetstream/detail/block_impl.hh>
 
+#include <jetstream/domains/core/cast/module.hh>
 #include <jetstream/domains/core/expand_dims/module.hh>
 #include <jetstream/domains/core/pad/module.hh>
 #include <jetstream/domains/core/reshape/module.hh>
@@ -165,6 +166,10 @@ struct FilterEngineImpl : public Block::Impl,
 
  protected:
     std::optional<FilterEngineCandidatePlan> candidatePlan;
+    std::shared_ptr<Modules::Cast> castSignalConfig =
+        std::make_shared<Modules::Cast>();
+    std::shared_ptr<Modules::Cast> castFilterConfig =
+        std::make_shared<Modules::Cast>();
     std::shared_ptr<Modules::ExpandDims> expandSignalConfig =
         std::make_shared<Modules::ExpandDims>();
     std::shared_ptr<Modules::Pad> padSignalConfig =
@@ -199,6 +204,11 @@ Result FilterEngineImpl::validate() {
     const auto signal = inputs().find("signal");
     if (signal != inputs().end() && signal->second.tensor.validShape()) {
         signalTensor = &signal->second.tensor;
+        if (signalTensor->dtype() != DataType::F32 &&
+            signalTensor->dtype() != DataType::CF32) {
+            JST_ERROR("[BLOCK_FILTER_ENGINE] Signal input must have data type F32 or CF32.");
+            return Result::ERROR;
+        }
         SignalAxes axes;
         if (ResolveSignalAxes(*signalTensor, axes) != Result::SUCCESS) {
             JST_ERROR("[BLOCK_FILTER_ENGINE] Signal axis metadata is invalid.");
@@ -220,6 +230,11 @@ Result FilterEngineImpl::validate() {
     const auto filter = inputs().find("filter");
     if (filter != inputs().end() && filter->second.tensor.validShape()) {
         filterTensor = &filter->second.tensor;
+        if (filterTensor->dtype() != DataType::F32 &&
+            filterTensor->dtype() != DataType::CF32) {
+            JST_ERROR("[BLOCK_FILTER_ENGINE] Filter input must have data type F32 or CF32.");
+            return Result::ERROR;
+        }
         if (filterTensor->rank() < 1 || filterTensor->rank() > 2) {
             JST_ERROR("[BLOCK_FILTER_ENGINE] Filter input must be rank 1 or 2.");
             return Result::ERROR;
@@ -349,13 +364,22 @@ Result FilterEngineImpl::create() {
     const U64 resamplerOffset = candidatePlan->resamplerOffset;
     const U64 resamplerSize = candidatePlan->resamplerSize;
 
-    auto signalInput = signalPort;
+    JST_CHECK(moduleCreate("cast_signal", castSignalConfig, {
+        {"buffer", signalPort}
+    }));
+    auto signalInput = moduleGetOutput({"cast_signal", "buffer"});
+
+    JST_CHECK(moduleCreate("cast_filter", castFilterConfig, {
+        {"buffer", filterPort}
+    }));
+    const auto filterInput = moduleGetOutput({"cast_filter", "buffer"});
+
     if (multiHead) {
         const Index headAxis = signalSampleAxis;
         expandSignalConfig->axis = static_cast<I64>(headAxis);
 
         JST_CHECK(moduleCreate("expand_signal", expandSignalConfig, {
-            {"buffer", signalPort}
+            {"buffer", signalInput}
         }));
 
         signalInput = moduleGetOutput({"expand_signal", "buffer"});
@@ -378,7 +402,7 @@ Result FilterEngineImpl::create() {
     padFilterConfig->axis = static_cast<I64>(filterSampleAxis);
 
     JST_CHECK(moduleCreate("padFilter", padFilterConfig, {
-        {"unpadded", filterPort}
+        {"unpadded", filterInput}
     }));
 
     // Forward FFT signal.
@@ -500,6 +524,7 @@ Result FilterEngineImpl::create() {
 }
 
 JST_REGISTER_BLOCK(FilterEngineImpl,
+                   {"cast"},
                    {"expand_dims", true},
                    {"pad"},
                    {"fft"},

@@ -181,6 +181,20 @@ std::string BuildConversionDecls(const DataType& inputDtype,
         );
     }
 
+    if (inputDtype == DataType::F32) {
+        return R"(
+using InputValue = float;
+using OutputValue = KernelComplex<float>;
+
+__device__ __forceinline__ OutputValue ConvertValue(const InputValue in) {
+    OutputValue out;
+    out.real = in;
+    out.imag = 0.0f;
+    return out;
+}
+)";
+    }
+
     const char* inputType = ComplexTypeName(inputDtype);
     const char* reciprocal = ReciprocalExpression(inputDtype);
 
@@ -241,7 +255,8 @@ Result CastImplNativeCuda::validate() {
           inputDtype == DataType::I16 || inputDtype == DataType::U16 ||
           inputDtype == DataType::I32 || inputDtype == DataType::U32)) ||
         (validatedOutputDtype == DataType::CF32 &&
-         (inputDtype == DataType::CI8 || inputDtype == DataType::CU8 ||
+         (inputDtype == DataType::F32 ||
+          inputDtype == DataType::CI8 || inputDtype == DataType::CU8 ||
           inputDtype == DataType::CI16 || inputDtype == DataType::CU16 ||
           inputDtype == DataType::CI32 || inputDtype == DataType::CU32));
     if (!supportedPair) {

@@ -43,7 +43,7 @@ void TagSignal(Tensor tensor,
 TEST_CASE_METHOD(FlowgraphFixture, "Filter engine chain", "[modules][dsp][filter_engine]") {
     Blocks::OnesTensor signalSource;
     signalSource.shape = {512};
-    signalSource.dataType = "CF32";
+    signalSource.dataType = "F32";
     REQUIRE(flowgraph->blockCreate("taps_signal", signalSource, {}) == Result::SUCCESS);
     TagSignal(viewBlock("taps_signal").outputs.at("buffer").tensor, 0);
     REQUIRE(flowgraph->blockCreate("taps_filter", "filter_taps", {}, {}) == Result::SUCCESS);
@@ -689,18 +689,33 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Filter engine normalizes inverse FFT output",
-                 "[modules][dsp][filter_engine][numeric]") {
+                 "Filter engine promotes F32 operands and normalizes inverse FFT output",
+                 "[modules][dsp][filter_engine][numeric][F32]") {
+    const char* signalDataType = nullptr;
+    const char* filterDataType = nullptr;
+    SECTION("F32 signal and CF32 filter") {
+        signalDataType = "F32";
+        filterDataType = "CF32";
+    }
+    SECTION("F32 signal and F32 filter") {
+        signalDataType = "F32";
+        filterDataType = "F32";
+    }
+    SECTION("CF32 signal and F32 filter") {
+        signalDataType = "CF32";
+        filterDataType = "F32";
+    }
+
     Blocks::OnesTensor signalSource;
     signalSource.shape = {4};
-    signalSource.dataType = "CF32";
+    signalSource.dataType = signalDataType;
     REQUIRE(flowgraph->blockCreate("normalize_signal", signalSource, {}) ==
             Result::SUCCESS);
     TagSignal(viewBlock("normalize_signal").outputs.at("buffer").tensor, 0);
 
     Blocks::OnesTensor filterSource;
     filterSource.shape = {3};
-    filterSource.dataType = "CF32";
+    filterSource.dataType = filterDataType;
     REQUIRE(flowgraph->blockCreate("normalize_taps", filterSource, {}) ==
             Result::SUCCESS);
     TagSignal(viewBlock("normalize_taps").outputs.at("buffer").tensor, 0);

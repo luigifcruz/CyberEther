@@ -8,6 +8,7 @@
 #include <jetstream/tools/numeric.hh>
 
 #include <jetstream/domains/dsp/filter_taps/module.hh>
+#include <jetstream/domains/core/cast/module.hh>
 #include <jetstream/domains/core/expand_dims/module.hh>
 #include <jetstream/domains/core/pad/module.hh>
 #include <jetstream/domains/core/reshape/module.hh>
@@ -162,6 +163,8 @@ struct FilterImpl : public Block::Impl,
  protected:
     std::shared_ptr<Modules::FilterTaps> filterTapsConfig =
         std::make_shared<Modules::FilterTaps>();
+    std::shared_ptr<Modules::Cast> castSignalConfig =
+        std::make_shared<Modules::Cast>();
     std::shared_ptr<Modules::ExpandDims> expandSignalConfig =
         std::make_shared<Modules::ExpandDims>();
     std::shared_ptr<Modules::Pad> padSignalConfig =
@@ -205,6 +208,11 @@ Result FilterImpl::validate() {
     const auto signal = inputs().find("signal");
     if (signal != inputs().end() && signal->second.tensor.validShape()) {
         const Tensor& signalTensor = signal->second.tensor;
+        if (signalTensor.dtype() != DataType::F32 &&
+            signalTensor.dtype() != DataType::CF32) {
+            JST_ERROR("[BLOCK_FILTER] Signal input must have data type F32 or CF32.");
+            return Result::ERROR;
+        }
         SignalAxes axes;
         if (ResolveSignalAxes(signalTensor, axes) != Result::SUCCESS) {
             JST_ERROR("[BLOCK_FILTER] Signal axis metadata is invalid.");
@@ -259,6 +267,8 @@ Result FilterImpl::validate() {
 
 Result FilterImpl::configure() {
     center.resize(heads);
+
+    castSignalConfig->outputType = "CF32";
 
     filterTapsConfig->sampleRate = sampleRate;
     filterTapsConfig->bandwidth = bandwidth;
@@ -341,12 +351,19 @@ Result FilterImpl::create() {
     const U64 resamplerOffset = candidatePlan.resamplerOffset;
     const U64 resamplerSize = candidatePlan.resamplerSize;
 
+    // Promote real inputs before entering the complex convolution pipeline.
+
+    JST_CHECK(moduleCreate("cast_signal", castSignalConfig, {
+        {"buffer", signalPort}
+    }));
+    const auto complexSignal = moduleGetOutput({"cast_signal", "buffer"});
+
     // Insert the generated filter head immediately before the sample axis.
 
     expandSignalConfig->axis = static_cast<I64>(headAxis);
 
     JST_CHECK(moduleCreate("expand_signal", expandSignalConfig, {
-        {"buffer", signalPort}
+        {"buffer", complexSignal}
     }));
 
     auto signalInput = moduleGetOutput({"expand_signal", "buffer"});
@@ -482,6 +499,7 @@ Result FilterImpl::create() {
 
 JST_REGISTER_BLOCK(FilterImpl,
                    {"filter_taps"},
+                   {"cast"},
                    {"expand_dims"},
                    {"pad"},
                    {"fft"},
