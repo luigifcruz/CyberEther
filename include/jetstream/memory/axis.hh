@@ -1,47 +1,37 @@
 #ifndef JETSTREAM_MEMORY_AXIS_HH
 #define JETSTREAM_MEMORY_AXIS_HH
 
-#include <limits>
 #include <optional>
+#include <string_view>
+#include <vector>
 
+#include "jetstream/types.hh"
 #include "jetstream/memory/types.hh"
 
 namespace Jetstream {
 
-inline std::optional<Index> ResolveAxis(const I64 axis, const Index rank) {
-    if (rank == 0 || rank > static_cast<Index>(std::numeric_limits<I64>::max())) {
-        return std::nullopt;
-    }
+class Tensor;
 
-    const I64 signedRank = static_cast<I64>(rank);
-    const I64 resolvedAxis = axis < 0 ? signedRank + axis : axis;
-    if (resolvedAxis < 0 || resolvedAxis >= signedRank) {
-        return std::nullopt;
-    }
+inline constexpr std::string_view SampleAxisAttribute = "sampleAxis";
+inline constexpr std::string_view BatchAxisAttribute = "batchAxis";
+inline constexpr std::string_view ChannelAxisAttribute = "channelAxis";
 
-    return static_cast<Index>(resolvedAxis);
-}
+struct SignalAxes {
+    std::optional<Index> sample;
+    std::optional<Index> batch;
+    std::optional<Index> channel;
+};
 
-inline std::optional<Index> ResolveInsertionAxis(const I64 axis, const Index rank) {
-    if (rank > static_cast<Index>(std::numeric_limits<I64>::max())) {
-        return std::nullopt;
-    }
+using AxisMap = std::vector<std::optional<Index>>;
 
-    const I64 signedRank = static_cast<I64>(rank);
-    if (axis >= 0) {
-        if (axis > signedRank) {
-            return std::nullopt;
-        }
-        return static_cast<Index>(axis);
-    }
+JETSTREAM_API std::optional<Index> ResolveAxis(I64 axis, Index rank);
+JETSTREAM_API std::optional<Index> ResolveInsertionAxis(I64 axis, Index rank);
 
-    const I64 resolvedAxisMinusOne = signedRank + axis;
-    if (resolvedAxisMinusOne < -1) {
-        return std::nullopt;
-    }
-
-    return static_cast<Index>(resolvedAxisMinusOne + 1);
-}
+JETSTREAM_API Result ResolveSignalAxes(const Tensor& tensor, SignalAxes& axes);
+JETSTREAM_API Result SetSignalAxes(Tensor& tensor, const SignalAxes& axes);
+JETSTREAM_API Result MapSignalAxes(const Tensor& tensor,
+                                   const AxisMap& axisMap,
+                                   SignalAxes& axes);
 
 }  // namespace Jetstream
 
