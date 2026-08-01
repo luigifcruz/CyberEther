@@ -61,13 +61,14 @@ struct Filter : public Block::Config {
         "  Input: CF32[8190] -> Output: CF32[3, 819]\n\n"
 
         "## Implementation\n"
-        "Cast -> FilterTaps -> Pad -> FFT -> Multiply -> (Fold) -> IFFT -> Unpad -> "
+        "Cast to CF32 -> FilterTaps -> Pad -> FFT -> Multiply -> (Fold) -> IFFT -> Unpad -> "
         "Overlap-Add -> Output\n"
-        "1. Generates FIR filter coefficients internally.\n"
-        "2. Pads the signal and filter to the combined length.\n"
-        "3. Multiplies spectra in the frequency domain.\n"
+        "1. Generates CF32 FIR filter coefficients and promotes real input to CF32.\n"
+        "2. Pads both operands and transforms them into full-length CF32 spectra.\n"
+        "3. Multiplies corresponding bins using complex multiplication. Packed F32 "
+        "spectra are never passed to generic arithmetic.\n"
         "4. Optionally folds (decimates) for resampling.\n"
-        "5. Inverse FFTs and applies overlap-add for continuity."
+        "5. Inverse FFTs, normalizes once, and applies overlap-add for continuity."
     );
 };
 

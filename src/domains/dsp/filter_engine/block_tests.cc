@@ -10,6 +10,7 @@
 
 #include "jetstream/domains/dsp/filter_engine/block.hh"
 #include "jetstream/domains/dsp/filter_taps/block.hh"
+#include "jetstream/domains/core/cast/block.hh"
 #include "jetstream/domains/core/ones_tensor/block.hh"
 #include "flowgraph_fixture.hh"
 
@@ -36,6 +37,52 @@ void TagSignal(Tensor tensor,
     if (channelAxis) {
         REQUIRE(tensor.setAttribute("channelAxis", *channelAxis) == Result::SUCCESS);
     }
+}
+
+void SetRealValues(Tensor tensor, const std::vector<F32>& values) {
+    REQUIRE(tensor.size() == values.size());
+    REQUIRE((tensor.dtype() == DataType::F32 || tensor.dtype() == DataType::CF32));
+    for (U64 i = 0; i < values.size(); ++i) {
+        if (tensor.dtype() == DataType::F32) {
+            tensor.at<F32>(i) = values[i];
+        } else {
+            tensor.at<CF32>(i) = CF32{values[i], 0.0f};
+        }
+    }
+}
+
+void RequireRealValues(const Tensor& tensor, const std::vector<F32>& expected) {
+    REQUIRE(tensor.dtype() == DataType::CF32);
+    REQUIRE(tensor.size() == expected.size());
+    for (U64 i = 0; i < expected.size(); ++i) {
+        REQUIRE_THAT(tensor.at<CF32>(i).real(),
+                     Catch::Matchers::WithinAbs(expected[i], 1e-5f));
+        REQUIRE_THAT(tensor.at<CF32>(i).imag(),
+                     Catch::Matchers::WithinAbs(0.0f, 1e-5f));
+    }
+}
+
+std::pair<std::string, std::string> CreateRealSource(Flowgraph& flowgraph,
+                                                     const std::string& name,
+                                                     const std::string& dataType,
+                                                     const std::vector<F32>& values) {
+    REQUIRE((dataType == "F32" || dataType == "CF32"));
+
+    TestFlowgraph::SyntheticSourceBlockConfig sourceConfig;
+    sourceConfig.bufferSize = values.size();
+    sourceConfig.value = 0.0f;
+    const std::string sourceName = name + "_source";
+    REQUIRE(flowgraph.blockCreate(sourceName, sourceConfig, {}) == Result::SUCCESS);
+    Tensor source = ViewBlock(flowgraph, sourceName).outputs.at("signal").tensor;
+    TagSignal(source, 0);
+    SetRealValues(source, values);
+
+    Blocks::Cast castConfig;
+    castConfig.outputType = dataType;
+    TensorMap castInputs;
+    castInputs["buffer"].requested(sourceName, "signal");
+    REQUIRE(flowgraph.blockCreate(name, castConfig, castInputs) == Result::SUCCESS);
+    return {name, "buffer"};
 }
 
 }  // namespace
@@ -689,40 +736,51 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Filter engine promotes F32 operands and normalizes inverse FFT output",
-                 "[modules][dsp][filter_engine][numeric][F32]") {
+                  "Filter engine uses full complex spectra for every operand type",
+                  "[modules][dsp][filter_engine][numeric][F32]") {
     const char* signalDataType = nullptr;
     const char* filterDataType = nullptr;
-    SECTION("F32 signal and CF32 filter") {
-        signalDataType = "F32";
-        filterDataType = "CF32";
-    }
+    std::vector<F32> signalValues = {1.0f, 2.0f, 3.0f};
+    std::vector<F32> filterValues;
+    std::vector<F32> firstExpected;
+    std::vector<F32> secondExpected;
     SECTION("F32 signal and F32 filter") {
         signalDataType = "F32";
         filterDataType = "F32";
+        filterValues = {4.0f, 5.0f};
+        firstExpected = {4.0f, 13.0f, 22.0f};
+        secondExpected = {19.0f, 13.0f, 22.0f};
+    }
+    SECTION("F32 signal and CF32 filter") {
+        signalDataType = "F32";
+        filterDataType = "CF32";
+        filterValues = {4.0f, 5.0f, 6.0f};
+        firstExpected = {4.0f, 13.0f, 28.0f};
+        secondExpected = {31.0f, 31.0f, 28.0f};
     }
     SECTION("CF32 signal and F32 filter") {
         signalDataType = "CF32";
         filterDataType = "F32";
+        filterValues = {4.0f, 5.0f};
+        firstExpected = {4.0f, 13.0f, 22.0f};
+        secondExpected = {19.0f, 13.0f, 22.0f};
+    }
+    SECTION("CF32 signal and CF32 filter") {
+        signalDataType = "CF32";
+        filterDataType = "CF32";
+        filterValues = {4.0f, 5.0f, 6.0f};
+        firstExpected = {4.0f, 13.0f, 28.0f};
+        secondExpected = {31.0f, 31.0f, 28.0f};
     }
 
-    Blocks::OnesTensor signalSource;
-    signalSource.shape = {4};
-    signalSource.dataType = signalDataType;
-    REQUIRE(flowgraph->blockCreate("normalize_signal", signalSource, {}) ==
-            Result::SUCCESS);
-    TagSignal(viewBlock("normalize_signal").outputs.at("buffer").tensor, 0);
-
-    Blocks::OnesTensor filterSource;
-    filterSource.shape = {3};
-    filterSource.dataType = filterDataType;
-    REQUIRE(flowgraph->blockCreate("normalize_taps", filterSource, {}) ==
-            Result::SUCCESS);
-    TagSignal(viewBlock("normalize_taps").outputs.at("buffer").tensor, 0);
+    const auto signalOutput = CreateRealSource(
+        *flowgraph, "normalize_signal", signalDataType, signalValues);
+    const auto filterOutput = CreateRealSource(
+        *flowgraph, "normalize_taps", filterDataType, filterValues);
 
     TensorMap inputs;
-    inputs["signal"].requested("normalize_signal", "buffer");
-    inputs["filter"].requested("normalize_taps", "buffer");
+    inputs["signal"].requested(signalOutput.first, signalOutput.second);
+    inputs["filter"].requested(filterOutput.first, filterOutput.second);
     REQUIRE(flowgraph->blockCreate("normalize_engine",
                                    Blocks::FilterEngine{},
                                    inputs) == Result::SUCCESS);
@@ -730,15 +788,42 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     const Tensor output =
         viewBlock("normalize_engine").outputs.at("buffer").tensor;
-    REQUIRE(output.shape() == Shape{4});
+    REQUIRE(output.shape() == Shape{3});
     REQUIRE(std::any_cast<Index>(output.attribute("sampleAxis")) == 0);
     REQUIRE_FALSE(output.hasAttribute("batchAxis"));
     REQUIRE_FALSE(output.hasAttribute("channelAxis"));
-    constexpr F32 expected[] = {1.0f, 2.0f, 3.0f, 3.0f};
-    for (U64 i = 0; i < output.size(); ++i) {
-        REQUIRE_THAT(output.at<CF32>(i).real(),
-                     Catch::Matchers::WithinAbs(expected[i], 1e-5f));
-        REQUIRE_THAT(output.at<CF32>(i).imag(),
-                     Catch::Matchers::WithinAbs(0.0f, 1e-5f));
-    }
+    RequireRealValues(output, firstExpected);
+
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    RequireRealValues(output, secondExpected);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                  "Filter engine keeps F32 resampling on full complex spectra",
+                  "[modules][dsp][filter_engine][numeric][F32][resample]") {
+    const auto signalOutput = CreateRealSource(
+        *flowgraph, "resample_signal", "F32", {1.0f, 2.0f, 3.0f, 0.0f});
+    const auto filterOutput = CreateRealSource(
+        *flowgraph, "resample_taps", "F32", {4.0f, 5.0f, 6.0f});
+    Tensor filter = viewBlock(filterOutput.first).outputs.at(filterOutput.second).tensor;
+    REQUIRE(filter.setAttribute("sampleRate", F32{8.0f}) == Result::SUCCESS);
+    REQUIRE(filter.setAttribute("bandwidth", F32{4.0f}) == Result::SUCCESS);
+    REQUIRE(filter.setAttribute("center", F32{0.0f}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].requested(signalOutput.first, signalOutput.second);
+    inputs["filter"].requested(filterOutput.first, filterOutput.second);
+    REQUIRE(flowgraph->blockCreate("resample_engine",
+                                   Blocks::FilterEngine{},
+                                   inputs) == Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    const Tensor output =
+        viewBlock("resample_engine").outputs.at("buffer").tensor;
+    REQUIRE(output.shape() == Shape{2});
+    REQUIRE(std::any_cast<F32>(output.attribute("sampleRate")) == 4.0f);
+    RequireRealValues(output, {4.0f, 28.0f});
+
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    RequireRealValues(output, {22.0f, 28.0f});
 }

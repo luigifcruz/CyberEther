@@ -27,6 +27,7 @@ namespace {
 struct FilterCandidatePlan {
     bool resample = false;
     SignalAxes outputAxes;
+    U64 convolutionSize = 0;
     U64 padSize = 0;
     U64 resamplerOffset = 0;
     U64 resamplerSize = 0;
@@ -45,6 +46,7 @@ Result CalculateCandidatePlan(const Blocks::Filter& config,
                   "the supported range.");
         return Result::ERROR;
     }
+    candidatePlan.convolutionSize = convolutionSize;
 
     const F64 sr = config.sampleRate;
     const F64 bw = config.bandwidth;
@@ -357,6 +359,11 @@ Result FilterImpl::create() {
         {"buffer", signalPort}
     }));
     const auto complexSignal = moduleGetOutput({"cast_signal", "buffer"});
+    if (complexSignal.tensor.dtype() != DataType::CF32 ||
+        filterPort.tensor.dtype() != DataType::CF32) {
+        JST_ERROR("[BLOCK_FILTER] Internal convolution inputs must be CF32.");
+        return Result::ERROR;
+    }
 
     // Insert the generated filter head immediately before the sample axis.
 
@@ -403,7 +410,15 @@ Result FilterImpl::create() {
         {"signal", moduleGetOutput({"padFilter", "padded"})}
     }));
 
+    const auto signalFftOutput = moduleGetOutput({"fftSignal", "signal"});
     const auto filterFftOutput = moduleGetOutput({"fftFilter", "signal"});
+    if (signalFftOutput.tensor.dtype() != DataType::CF32 ||
+        filterFftOutput.tensor.dtype() != DataType::CF32 ||
+        signalFftOutput.tensor.shape(sampleAxis) != candidatePlan.convolutionSize ||
+        filterFftOutput.tensor.shape(1) != candidatePlan.convolutionSize) {
+        JST_ERROR("[BLOCK_FILTER] The FFT operands must use full-length CF32 spectra.");
+        return Result::ERROR;
+    }
     Shape filterSpectrumShape(signalInput.tensor.rank(), 1);
     filterSpectrumShape[headAxis] = filterTensor.shape(0);
     filterSpectrumShape[sampleAxis] = filterFftOutput.tensor.shape(1);
@@ -429,10 +444,15 @@ Result FilterImpl::create() {
     // Multiply spectra.
 
     JST_CHECK(moduleCreate("multiply", multiplyConfig, {
-        {"a", moduleGetOutput({"fftSignal", "signal"})},
+        {"a", signalFftOutput},
         {"b", alignedFilterSpectrum}
     }));
     auto product = moduleGetOutput({"multiply", "product"});
+    if (product.tensor.dtype() != DataType::CF32 ||
+        product.tensor.shape(sampleAxis) != candidatePlan.convolutionSize) {
+        JST_ERROR("[BLOCK_FILTER] Spectral product must remain full-length CF32.");
+        return Result::ERROR;
+    }
     JST_CHECK(SetSignalAxes(product.tensor, outputAxes));
 
     // Optional fold for resampling.
@@ -461,6 +481,13 @@ Result FilterImpl::create() {
     // Normalize the unscaled inverse FFT.
 
     const auto& ifftOutput = moduleGetOutput({"ifft", "signal"});
+    const U64 expectedIfftSize =
+        resample ? resamplerSize : candidatePlan.convolutionSize;
+    if (ifftOutput.tensor.dtype() != DataType::CF32 ||
+        ifftOutput.tensor.shape(sampleAxis) != expectedIfftSize) {
+        JST_ERROR("[BLOCK_FILTER] Inverse FFT must consume the complete CF32 spectrum.");
+        return Result::ERROR;
+    }
     normalizeConfig->constant =
         1.0f / static_cast<F32>(ifftOutput.tensor.shape(sampleAxis));
 
