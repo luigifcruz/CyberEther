@@ -17,6 +17,7 @@ using namespace Jetstream;
 TEST_CASE("Spectrum engine declares conditional module requirements",
           "[modules][dsp][spectrum_engine][requirements]") {
     const std::vector<Registry::BlockModuleRequirement> expected = {
+        {"cast"},
         {"window"},
         {"invert"},
         {"reshape"},
@@ -62,7 +63,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
                  "Spectrum engine block creates and exposes scaled spectrum",
                  "[modules][dsp][spectrum_engine][block]") {
     Parser::Map sourceConfig;
-    sourceConfig["signalDataType"] = std::string("CF32");
+    sourceConfig["signalDataType"] = std::string("F32");
     sourceConfig["bufferSize"] = std::string("256");
 
     REQUIRE(flowgraph->blockCreate("src", "signal_generator", sourceConfig, {}) ==
