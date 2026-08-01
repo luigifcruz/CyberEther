@@ -6,7 +6,6 @@
 namespace Jetstream::Blocks {
 
 struct InvertImpl : public Block::Impl, public DynamicConfig<Blocks::Invert> {
-    Result configure() override;
     Result define() override;
     Result create() override;
 
@@ -14,19 +13,9 @@ struct InvertImpl : public Block::Impl, public DynamicConfig<Blocks::Invert> {
     std::shared_ptr<Modules::Invert> moduleConfig = std::make_shared<Modules::Invert>();
 };
 
-Result InvertImpl::configure() {
-    moduleConfig->axis = axis;
-    return Result::SUCCESS;
-}
-
 Result InvertImpl::define() {
     JST_CHECK(defineInterfaceInput("signal", "Input", "Signal to be inverted."));
     JST_CHECK(defineInterfaceOutput("signal", "Output", "Inverted signal."));
-
-    JST_CHECK(defineInterfaceConfig("axis",
-                                    "Axis",
-                                    "Axis along which to alternate signs. Negative axes count from the end.",
-                                    "int:"));
 
     return Result::SUCCESS;
 }

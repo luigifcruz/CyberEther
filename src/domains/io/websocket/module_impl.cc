@@ -3,6 +3,7 @@
 #include <limits>
 #include <utility>
 
+#include <jetstream/memory/axis.hh>
 #include <jetstream/memory/macros.hh>
 #include <jetstream/tools/numeric.hh>
 
@@ -111,6 +112,10 @@ Result WebsocketImpl::create() {
 
     JST_CHECK(buffer.create(device(), validatedDataType,
                             {numberOfBatches, numberOfTimeSamples}));
+    JST_CHECK(SetSignalAxes(buffer, {
+        .sample = Index{1},
+        .batch = Index{0},
+    }));
 
     outputs()["signal"].produced(name(), "signal", buffer);
 

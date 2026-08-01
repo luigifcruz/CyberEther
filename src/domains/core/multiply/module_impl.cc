@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include <jetstream/memory/axis.hh>
 #include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Modules {
@@ -43,6 +44,10 @@ Result MultiplyImpl::validate() {
 
         outputShape[outputShape.size() - 1 - i] = std::max(dimA, dimB);
     }
+
+    Tensor mappedAxes(DeviceType::CPU, DataType::F32,
+                      Shape(outputShape.size(), 1));
+    JST_CHECK(MergeBroadcastSignalAxes(tensorA, tensorB, mappedAxes));
 
     U64 outputElementCount = 1;
     for (const U64 dimension : outputShape) {
@@ -95,7 +100,9 @@ Result MultiplyImpl::create() {
 
     JST_CHECK(c.create(a.device(), a.dtype(), validatedOutputShape));
 
-    c.propagateAttributes(a);
+    JST_CHECK(c.propagateAttributes(a));
+    JST_CHECK(MergeBroadcastSignalAxes(inputs().at("a").tensor,
+                                       inputs().at("b").tensor, c));
 
     {
         Tensor inputA = a;

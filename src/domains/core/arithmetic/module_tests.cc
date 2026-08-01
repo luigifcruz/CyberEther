@@ -1,9 +1,12 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <optional>
+
 #include "jetstream/testing.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/domains/core/arithmetic/module.hh"
+#include "jetstream/memory/axis.hh"
 
 using namespace Jetstream;
 
@@ -232,6 +235,99 @@ TEST_CASE("Arithmetic Module - Rejects unsupported dtype during validation",
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
             Modules::Arithmetic config;
             RequireArithmeticValidationError(impl, config, DataType::I32);
+        }
+    }
+}
+
+TEST_CASE("Arithmetic Module - Maps Signal Axes Across Reduction",
+          "[modules][arithmetic][metadata]") {
+    const auto implementations = Registry::ListAvailableModules("arithmetic");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Modules::Arithmetic config;
+            config.operation = "add";
+            Shape shape{2, 3, 4};
+            SignalAxes inputAxes{
+                .sample = Index{2},
+                .batch = Index{0},
+                .channel = Index{1},
+            };
+            SignalAxes expectedAxes = inputAxes;
+
+            SECTION("reduction without squeeze preserves every role") {
+                config.axis = 2;
+            }
+            SECTION("squeezing the batch axis removes only that role") {
+                config.axis = 0;
+                config.squeeze = true;
+                expectedAxes = {
+                    .sample = Index{1},
+                    .channel = Index{0},
+                };
+            }
+            SECTION("squeezing the channel axis removes only that role") {
+                config.axis = 1;
+                config.squeeze = true;
+                expectedAxes = {
+                    .sample = Index{1},
+                    .batch = Index{0},
+                };
+            }
+            SECTION("squeezing an opaque preceding axis shifts every role") {
+                config.axis = 0;
+                config.squeeze = true;
+                shape = {2, 3, 4, 5};
+                inputAxes = {
+                    .sample = Index{3},
+                    .batch = Index{2},
+                    .channel = Index{1},
+                };
+                expectedAxes = {
+                    .sample = Index{2},
+                    .batch = Index{1},
+                    .channel = Index{0},
+                };
+            }
+
+            TestContext ctx("arithmetic", impl.device, impl.runtime, impl.provider);
+            ctx.setConfig(config);
+            auto input = ctx.createTensor<F32>(shape);
+            REQUIRE(SetSignalAxes(input, inputAxes) == Result::SUCCESS);
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+            const auto& output = ctx.output("buffer");
+            SignalAxes outputAxes;
+            REQUIRE(ResolveSignalAxes(output, outputAxes) == Result::SUCCESS);
+            REQUIRE(outputAxes.sample == expectedAxes.sample);
+            REQUIRE(outputAxes.batch == expectedAxes.batch);
+            REQUIRE(outputAxes.channel == expectedAxes.channel);
+        }
+    }
+}
+
+TEST_CASE("Arithmetic Module - Rejects Malformed Signal Axis Metadata",
+          "[modules][arithmetic][metadata][validation]") {
+    const auto implementations = Registry::ListAvailableModules("arithmetic");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("arithmetic", impl.device, impl.runtime, impl.provider);
+            Modules::Arithmetic config;
+            config.axis = 1;
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({2, 3});
+            REQUIRE(input.setAttribute(std::string(SampleAxisAttribute), Index{1}) ==
+                    Result::SUCCESS);
+            REQUIRE(input.setAttribute(std::string(ChannelAxisAttribute), I64{0}) ==
+                    Result::SUCCESS);
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::ERROR);
         }
     }
 }

@@ -46,13 +46,13 @@ The signal processing chain: transforms, filters, demodulators, and generators.
 | AGC | `agc` | Automatic Gain Control. |
 | AM Demodulator | `am` | Demodulates an amplitude modulated signal. |
 | Amplitude | `amplitude` | Calculates the amplitude of a signal in decibels. |
-| Decimator | `decimator` | Decimates a signal by summing along an axis. |
+| Decimator | `decimator` | Decimates a signal along its sample axis. |
 | FFT | `fft` | Performs the Fast Fourier Transform. |
 | FM Demodulator | `fm` | Demodulates a frequency modulated signal. |
 | Filter | `filter` | Filters input signal with a FIR bandpass filter. |
 | Filter Engine | `filter_engine` | Filters a signal using FIR filter coefficients. |
 | Filter Taps | `filter_taps` | Generates FIR bandpass filter coefficients. |
-| Fold | `fold` | Folds the input signal along a specified axis. |
+| Fold | `fold` | Folds the input signal along its sample axis. |
 | Overlap Add | `overlap_add` | Sums overlap with buffer for streaming convolution. |
 | PSK Demodulator | `psk_demod` | Demodulates PSK signals with carrier and timing recovery. |
 | RRC Filter | `rrc_filter` | Root raised cosine matched filter for PSK modulation. |

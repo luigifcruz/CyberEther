@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <optional>
 
 #include <jetstream/domains/io/audio/module.hh>
 #include <jetstream/detail/module_impl.hh>
@@ -43,8 +44,15 @@ struct AudioImpl : public Module::Impl, public DynamicConfig<Audio> {
     U64 validatedOutputSizeBytes = 0;
     U64 validatedCircularBufferSize = 0;
     U64 validatedCircularBufferSizeBytes = 0;
+    Index validatedSampleAxis = 0;
+    std::optional<Index> validatedBatchAxis;
+
+    Index sampleAxis = 0;
+    std::optional<Index> batchAxis;
 
     Tools::CircularBuffer<F32> circularBuffer;
+    bool gatherInput = false;
+    std::vector<F32> orderedInput;
 };
 
 }  // namespace Jetstream::Modules

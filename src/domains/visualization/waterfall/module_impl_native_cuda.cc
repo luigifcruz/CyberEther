@@ -17,12 +17,14 @@ constexpr U64 kThreadsPerBlock = 256;
 constexpr const char* kWaterfallKernelName = "waterfall_update";
 constexpr const char* kWaterfallKernelSource = R"(
 extern "C" __global__ void waterfall_update(const float* input,
-                                            float* frequencyBins,
-                                            unsigned long long numberOfElements,
-                                            unsigned long long retainedBatches,
-                                            unsigned long long height,
-                                            unsigned long long sourceRow,
-                                            unsigned long long destinationRow) {
+                                             float* frequencyBins,
+                                             unsigned long long numberOfElements,
+                                             unsigned long long inputSampleStride,
+                                             unsigned long long inputBatchStride,
+                                             unsigned long long retainedBatches,
+                                              unsigned long long height,
+                                              unsigned long long sourceRow,
+                                              unsigned long long destinationRow) {
     const unsigned long long index =
         (static_cast<unsigned long long>(blockIdx.x) * blockDim.x) + threadIdx.x;
     const unsigned long long elementCount = retainedBatches * numberOfElements;
@@ -36,7 +38,7 @@ extern "C" __global__ void waterfall_update(const float* input,
     const unsigned long long destinationBatch = (destinationRow + retainedBatch) % height;
 
     frequencyBins[(destinationBatch * numberOfElements) + column] =
-        input[(sourceBatch * numberOfElements) + column];
+        input[(sourceBatch * inputBatchStride) + (column * inputSampleStride)];
 }
 )";
 
@@ -76,10 +78,9 @@ Result WaterfallImplNativeCuda::validate() {
         return Result::ERROR;
     }
 
-    const U64 numberOfElements = inputTensor.shape(inputTensor.rank() - 1);
-    const U64 numberOfBatches = inputTensor.rank() == 2 ? inputTensor.shape(0) : 1;
-    const U64 retainedBatches = std::min(numberOfBatches, candidate()->height);
-    const U64 elementCount = retainedBatches * numberOfElements;
+    const U64 retainedBatches = std::min(validatedNumberOfBatches,
+                                         candidate()->height);
+    const U64 elementCount = retainedBatches * validatedNumberOfElements;
     const U64 blockCount = elementCount / kThreadsPerBlock +
                            (elementCount % kThreadsPerBlock != 0);
     if (blockCount > std::numeric_limits<U32>::max()) {
@@ -127,6 +128,8 @@ Result WaterfallImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
         &inputArgument,
         &frequencyData,
         &numberOfElements,
+        &inputSampleStride,
+        &inputBatchStride,
         &plan.rowCount,
         &height,
         &plan.sourceRow,

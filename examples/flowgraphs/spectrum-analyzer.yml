@@ -59,8 +59,8 @@ graph:
     runtime: native
     provider: generic
     input:
-      a: '${graph.invert.output.signal}'
-      b: '${graph.soapy.output.signal}'
+      a: '${graph.soapy.output.signal}'
+      b: '${graph.invert.output.signal}'
     meta:
       node:
         y: 63

@@ -1,20 +1,24 @@
 #include <cmath>
 #include <limits>
+#include <optional>
+#include <string>
 
 #include <jetstream/domains/dsp/filter/block.hh>
 #include <jetstream/detail/block_impl.hh>
 #include <jetstream/tools/numeric.hh>
 
 #include <jetstream/domains/dsp/filter_taps/module.hh>
+#include <jetstream/domains/core/cast/module.hh>
 #include <jetstream/domains/core/expand_dims/module.hh>
 #include <jetstream/domains/core/pad/module.hh>
+#include <jetstream/domains/core/reshape/module.hh>
 #include <jetstream/domains/core/unpad/module.hh>
 #include <jetstream/domains/core/multiply/module.hh>
 #include <jetstream/domains/core/multiply_constant/module.hh>
 #include <jetstream/domains/dsp/fft/module.hh>
 #include <jetstream/domains/dsp/fold/module.hh>
 #include <jetstream/domains/dsp/overlap_add/module.hh>
-#include <jetstream/domains/core/duplicate/module.hh>
+#include <jetstream/memory/axis.hh>
 
 namespace Jetstream::Blocks {
 
@@ -22,9 +26,11 @@ namespace {
 
 struct FilterCandidatePlan {
     bool resample = false;
+    SignalAxes outputAxes;
     U64 padSize = 0;
     U64 resamplerOffset = 0;
     U64 resamplerSize = 0;
+    F32 resampledSampleRate = 0.0f;
 };
 
 Result CalculateCandidatePlan(const Blocks::Filter& config,
@@ -138,6 +144,8 @@ Result CalculateCandidatePlan(const Blocks::Filter& config,
 
     candidatePlan.resamplerSize = convolutionSize / resamplerRatioInteger;
     candidatePlan.padSize /= resamplerRatioInteger;
+    candidatePlan.resampledSampleRate = static_cast<F32>(
+        sr / static_cast<F64>(resamplerRatioInteger));
     candidatePlan.resample = true;
 
     return Result::SUCCESS;
@@ -155,7 +163,9 @@ struct FilterImpl : public Block::Impl,
  protected:
     std::shared_ptr<Modules::FilterTaps> filterTapsConfig =
         std::make_shared<Modules::FilterTaps>();
-    std::shared_ptr<Modules::ExpandDims> expandDimsConfig =
+    std::shared_ptr<Modules::Cast> castSignalConfig =
+        std::make_shared<Modules::Cast>();
+    std::shared_ptr<Modules::ExpandDims> expandSignalConfig =
         std::make_shared<Modules::ExpandDims>();
     std::shared_ptr<Modules::Pad> padSignalConfig =
         std::make_shared<Modules::Pad>();
@@ -165,6 +175,8 @@ struct FilterImpl : public Block::Impl,
         std::make_shared<Modules::Fft>();
     std::shared_ptr<Modules::Fft> fftFilterConfig =
         std::make_shared<Modules::Fft>();
+    std::shared_ptr<Modules::Reshape> reshapeFilterConfig =
+        std::make_shared<Modules::Reshape>();
     std::shared_ptr<Modules::Multiply> multiplyConfig =
         std::make_shared<Modules::Multiply>();
     std::shared_ptr<Modules::Fold> foldConfig =
@@ -180,11 +192,13 @@ struct FilterImpl : public Block::Impl,
 
  private:
     FilterCandidatePlan candidatePlan;
+    std::optional<SignalAxes> candidateSignalAxes;
 };
 
 Result FilterImpl::validate() {
     const auto& config = *candidate();
     candidatePlan = {};
+    candidateSignalAxes.reset();
 
     if (config.heads == 0) {
         JST_ERROR("[BLOCK_FILTER] Heads must be greater than 0.");
@@ -194,20 +208,41 @@ Result FilterImpl::validate() {
     const auto signal = inputs().find("signal");
     if (signal != inputs().end() && signal->second.tensor.validShape()) {
         const Tensor& signalTensor = signal->second.tensor;
-        if (signalTensor.rank() == 0) {
-            JST_ERROR("[BLOCK_FILTER] Signal input must have at least one dimension.");
+        if (signalTensor.dtype() != DataType::F32 &&
+            signalTensor.dtype() != DataType::CF32) {
+            JST_ERROR("[BLOCK_FILTER] Signal input must have data type F32 or CF32.");
             return Result::ERROR;
         }
+        SignalAxes axes;
+        if (ResolveSignalAxes(signalTensor, axes) != Result::SUCCESS) {
+            JST_ERROR("[BLOCK_FILTER] Signal axis metadata is invalid.");
+            return Result::ERROR;
+        }
+        if (axes.channel) {
+            JST_ERROR("[BLOCK_FILTER] Signal already has channelAxis. Generated "
+                      "filter channels cannot be nested.");
+            return Result::ERROR;
+        }
+        candidateSignalAxes = axes;
 
-        const U64 signalSize = signalTensor.shape(signalTensor.rank() - 1);
+        const Index signalSampleAxis = *axes.sample;
+        const U64 signalSize = signalTensor.shape(signalSampleAxis);
         if (signalSize == 0) {
-            JST_ERROR("[BLOCK_FILTER] Signal input's last dimension cannot be zero.");
+            JST_ERROR("[BLOCK_FILTER] Signal input's sample dimension cannot be zero.");
             return Result::ERROR;
         }
 
         // Filter Taps remains responsible for rejecting an invalid tap count.
         if (config.taps != 0) {
             JST_CHECK(CalculateCandidatePlan(config, signalSize, candidatePlan));
+        }
+
+        candidatePlan.outputAxes.sample = signalSampleAxis + 1;
+        candidatePlan.outputAxes.channel = signalSampleAxis;
+        if (axes.batch) {
+            candidatePlan.outputAxes.batch = *axes.batch >= signalSampleAxis
+                                                 ? *axes.batch + 1
+                                                 : *axes.batch;
         }
     }
 
@@ -232,6 +267,8 @@ Result FilterImpl::validate() {
 
 Result FilterImpl::configure() {
     center.resize(heads);
+
+    castSignalConfig->outputType = "CF32";
 
     filterTapsConfig->sampleRate = sampleRate;
     filterTapsConfig->bandwidth = bandwidth;
@@ -284,20 +321,28 @@ Result FilterImpl::create() {
     const auto& signalPort = inputs().at("signal");
     const Tensor& signalTensor = signalPort.tensor;
 
-    const U64 signalMaxRank = signalTensor.rank() - 1;
-    const U64 signalSize = signalTensor.shape(signalMaxRank);
+    if (!candidateSignalAxes) {
+        JST_ERROR("[BLOCK_FILTER] Input validation plan is unavailable.");
+        return Result::ERROR;
+    }
+
+    const Index signalSampleAxis = *candidateSignalAxes->sample;
+    const Index headAxis = signalSampleAxis;
+    const Index sampleAxis = signalSampleAxis + 1;
+    const SignalAxes& outputAxes = candidatePlan.outputAxes;
+    const U64 signalSize = signalTensor.shape(signalSampleAxis);
 
     // Create filter taps.
 
     JST_CHECK(moduleCreate("filter_taps", filterTapsConfig, {}));
 
-    const Tensor& filterTensor = moduleGetOutput({"filter_taps", "coeffs"}).tensor;
-    const U64 filterMaxRank = filterTensor.rank() - 1;
-    const U64 filterSize = filterTensor.shape(filterMaxRank);
-
-    // Detect multi-head filter (2D filter tensor).
-
-    const bool multiHead = (filterTensor.rank() == 2);
+    auto filterPort = moduleGetOutput({"filter_taps", "coeffs"});
+    JST_CHECK(SetSignalAxes(filterPort.tensor, {
+        .sample = Index{1},
+        .channel = Index{0},
+    }));
+    const Tensor& filterTensor = filterPort.tensor;
+    const U64 filterSize = filterTensor.shape(1);
 
     // Calculate resampling parameters.
 
@@ -306,27 +351,28 @@ Result FilterImpl::create() {
     const U64 resamplerOffset = candidatePlan.resamplerOffset;
     const U64 resamplerSize = candidatePlan.resamplerSize;
 
-    // Expand signal dimensions for multi-head broadcasting.
+    // Promote real inputs before entering the complex convolution pipeline.
 
-    auto signalInput = signalPort;
+    JST_CHECK(moduleCreate("cast_signal", castSignalConfig, {
+        {"buffer", signalPort}
+    }));
+    const auto complexSignal = moduleGetOutput({"cast_signal", "buffer"});
 
-    if (multiHead) {
-        expandDimsConfig->axis = signalMaxRank;
+    // Insert the generated filter head immediately before the sample axis.
 
-        JST_CHECK(moduleCreate("expandDims", expandDimsConfig, {
-            {"buffer", signalPort}
-        }));
+    expandSignalConfig->axis = static_cast<I64>(headAxis);
 
-        signalInput = moduleGetOutput({"expandDims", "buffer"});
-    }
+    JST_CHECK(moduleCreate("expand_signal", expandSignalConfig, {
+        {"buffer", complexSignal}
+    }));
 
-    const U64 expandedSignalMaxRank =
-        multiHead ? signalMaxRank + 1 : signalMaxRank;
+    auto signalInput = moduleGetOutput({"expand_signal", "buffer"});
+    JST_CHECK(SetSignalAxes(signalInput.tensor, outputAxes));
 
     // Pad signal.
 
     padSignalConfig->size = filterSize - 1;
-    padSignalConfig->axis = expandedSignalMaxRank;
+    padSignalConfig->axis = static_cast<I64>(sampleAxis);
 
     JST_CHECK(moduleCreate("padSignal", padSignalConfig, {
         {"unpadded", signalInput}
@@ -335,10 +381,10 @@ Result FilterImpl::create() {
     // Pad filter.
 
     padFilterConfig->size = signalSize - 1;
-    padFilterConfig->axis = filterMaxRank;
+    padFilterConfig->axis = 1;
 
     JST_CHECK(moduleCreate("padFilter", padFilterConfig, {
-        {"unpadded", moduleGetOutput({"filter_taps", "coeffs"})}
+        {"unpadded", filterPort}
     }));
 
     // Forward FFT signal.
@@ -357,27 +403,48 @@ Result FilterImpl::create() {
         {"signal", moduleGetOutput({"padFilter", "padded"})}
     }));
 
+    const auto filterFftOutput = moduleGetOutput({"fftFilter", "signal"});
+    Shape filterSpectrumShape(signalInput.tensor.rank(), 1);
+    filterSpectrumShape[headAxis] = filterTensor.shape(0);
+    filterSpectrumShape[sampleAxis] = filterFftOutput.tensor.shape(1);
+
+    reshapeFilterConfig->shape = "[";
+    for (Index dimension = 0; dimension < filterSpectrumShape.size(); ++dimension) {
+        if (dimension > 0) {
+            reshapeFilterConfig->shape += ", ";
+        }
+        reshapeFilterConfig->shape += std::to_string(filterSpectrumShape[dimension]);
+    }
+    reshapeFilterConfig->shape += "]";
+
+    JST_CHECK(moduleCreate("reshape_filter", reshapeFilterConfig, {
+        {"buffer", filterFftOutput}
+    }));
+    auto alignedFilterSpectrum = moduleGetOutput({"reshape_filter", "buffer"});
+    JST_CHECK(SetSignalAxes(alignedFilterSpectrum.tensor, {
+        .sample = sampleAxis,
+        .channel = headAxis,
+    }));
+
     // Multiply spectra.
 
     JST_CHECK(moduleCreate("multiply", multiplyConfig, {
         {"a", moduleGetOutput({"fftSignal", "signal"})},
-        {"b", moduleGetOutput({"fftFilter", "signal"})}
+        {"b", alignedFilterSpectrum}
     }));
+    auto product = moduleGetOutput({"multiply", "product"});
+    JST_CHECK(SetSignalAxes(product.tensor, outputAxes));
 
     // Optional fold for resampling.
 
-    auto ifftInput = moduleGetOutput({"multiply", "product"});
+    auto ifftInput = product;
 
     if (resample) {
-        const U64 maxRank = multiHead
-            ? std::max(filterMaxRank, expandedSignalMaxRank)
-            : std::max(filterMaxRank, signalMaxRank);
-        foldConfig->axis = maxRank;
         foldConfig->offset = resamplerOffset;
         foldConfig->size = resamplerSize;
 
         JST_CHECK(moduleCreate("fold", foldConfig, {
-            {"buffer", moduleGetOutput({"multiply", "product"})}
+            {"buffer", product}
         }));
 
         ifftInput = moduleGetOutput({"fold", "buffer"});
@@ -391,15 +458,11 @@ Result FilterImpl::create() {
         {"signal", ifftInput}
     }));
 
-    const U64 maxRank = multiHead
-        ? std::max(filterMaxRank, expandedSignalMaxRank)
-        : std::max(filterMaxRank, signalMaxRank);
-
     // Normalize the unscaled inverse FFT.
 
     const auto& ifftOutput = moduleGetOutput({"ifft", "signal"});
     normalizeConfig->constant =
-        1.0f / static_cast<F32>(ifftOutput.tensor.shape(maxRank));
+        1.0f / static_cast<F32>(ifftOutput.tensor.shape(sampleAxis));
 
     JST_CHECK(moduleCreate("normalize", normalizeConfig, {
         {"factor", ifftOutput}
@@ -408,15 +471,13 @@ Result FilterImpl::create() {
     // Unpad.
 
     unpadConfig->size = padSize;
-    unpadConfig->axis = maxRank;
+    unpadConfig->axis = static_cast<I64>(sampleAxis);
 
     JST_CHECK(moduleCreate("unpad", unpadConfig, {
         {"padded", moduleGetOutput({"normalize", "product"})}
     }));
 
     // Overlap-add.
-
-    overlapConfig->axis = maxRank;
 
     JST_CHECK(moduleCreate("overlap", overlapConfig, {
         {"buffer", moduleGetOutput({"unpad", "unpadded"})},
@@ -427,19 +488,26 @@ Result FilterImpl::create() {
 
     JST_CHECK(moduleExposeOutput("buffer",
                                  {"overlap", "buffer"}));
+    JST_CHECK(SetSignalAxes(outputs().at("buffer").tensor, outputAxes));
+    if (resample) {
+        JST_CHECK(outputs().at("buffer").tensor.setAttribute(
+            "sampleRate", candidatePlan.resampledSampleRate));
+    }
 
     return Result::SUCCESS;
 }
 
 JST_REGISTER_BLOCK(FilterImpl,
                    {"filter_taps"},
+                   {"cast"},
+                   {"expand_dims"},
                    {"pad"},
                    {"fft"},
+                   {"reshape"},
                    {"multiply"},
                    {"multiply_constant"},
                    {"unpad"},
                    {"overlap_add"},
-                   {"expand_dims", true},
                    {"fold", true});
 
 }  // namespace Jetstream::Blocks

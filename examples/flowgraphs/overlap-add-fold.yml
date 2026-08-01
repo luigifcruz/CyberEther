@@ -145,8 +145,8 @@ graph:
     runtime: native
     provider: generic
     input:
-      b: '${graph.exp_dims27.output.buffer}'
-      a: '${graph.fft_flt.output.signal}'
+      a: '${graph.exp_dims27.output.buffer}'
+      b: '${graph.fft_flt.output.signal}'
     meta:
       node:
         y: 18.99997
@@ -161,7 +161,6 @@ graph:
     config:
       size: 810
       offset: 0
-      axis: 2
     input:
       buffer: '${graph.mul.output.product}'
     meta:
@@ -206,8 +205,6 @@ graph:
     device: cpu
     runtime: native
     provider: generic
-    config:
-      axis: 2
     input:
       overlap: '${graph.unpad.output.pad}'
       buffer: '${graph.unpad.output.unpadded}'
@@ -243,7 +240,6 @@ graph:
       enableAgc: true
       rangeMax: -0.0002682209
       enableScale: true
-      axis: 1
     input:
       buffer: '${graph.sli51.output.buffer}'
     meta:

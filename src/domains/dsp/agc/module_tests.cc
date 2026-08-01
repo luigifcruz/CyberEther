@@ -4,6 +4,7 @@
 #include <algorithm>
 
 #include "jetstream/domains/dsp/agc/module.hh"
+#include "jetstream/memory/axis.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/testing.hh"
 
@@ -92,6 +93,40 @@ TEST_CASE("AGC - Normalizes F32 peak", "[modules][agc][f32]") {
             }
 
             REQUIRE_THAT(peak, Catch::Matchers::WithinAbs(1.0f, 1e-5f));
+        }
+    }
+}
+
+TEST_CASE("AGC - Normalizes sample lanes independently",
+          "[modules][agc][f32][metadata]") {
+    const auto implementations = Registry::ListAvailableModules("agc");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("agc", impl.device, impl.runtime, impl.provider);
+            ctx.setConfig(Modules::Agc{});
+
+            Tensor input(DeviceType::CPU, DataType::F32, {2, 3});
+            REQUIRE(SetSignalAxes(input, {
+                .sample = Index{1},
+                .channel = Index{0},
+            }) == Result::SUCCESS);
+            input.at<F32>(0, 0) = 1.0f;
+            input.at<F32>(0, 1) = 2.0f;
+            input.at<F32>(0, 2) = 4.0f;
+            input.at<F32>(1, 0) = 10.0f;
+            input.at<F32>(1, 1) = 20.0f;
+            input.at<F32>(1, 2) = 20.0f;
+
+            ctx.setInput("signal", input);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("signal");
+            REQUIRE_THAT(out.at<F32>(0, 2),
+                         Catch::Matchers::WithinAbs(1.0f, 1e-5f));
+            REQUIRE_THAT(out.at<F32>(1, 1),
+                         Catch::Matchers::WithinAbs(1.0f, 1e-5f));
         }
     }
 }

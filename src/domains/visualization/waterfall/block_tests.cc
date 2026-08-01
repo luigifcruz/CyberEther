@@ -3,7 +3,6 @@
 #include <any>
 #include <string>
 
-#include "jetstream/domains/core/ones_tensor/block.hh"
 #include "jetstream/domains/dsp/signal_generator/block.hh"
 #include "jetstream/domains/visualization/waterfall/block.hh"
 #include "flowgraph_fixture.hh"
@@ -72,14 +71,14 @@ TEST_CASE_METHOD(FlowgraphFixture,
 TEST_CASE_METHOD(FlowgraphFixture,
                  "Waterfall block delegates dtype validation to its module",
                  "[modules][waterfall][block][validation]") {
-    Blocks::OnesTensor source;
-    source.shape = {8};
-    source.dataType = "F64";
+    Blocks::SignalGenerator source;
+    source.bufferSize = 8;
+    source.signalDataType = "CF32";
     REQUIRE(flowgraph->blockCreate("waterfall_dtype_src", source, {}) ==
             Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["signal"].requested("waterfall_dtype_src", "buffer");
+    inputs["signal"].requested("waterfall_dtype_src", "signal");
 
     REQUIRE(flowgraph->blockCreate("waterfall_dtype", Blocks::Waterfall{}, inputs) ==
             Result::SUCCESS);

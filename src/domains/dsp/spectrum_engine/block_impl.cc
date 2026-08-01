@@ -5,11 +5,14 @@
 #include <jetstream/domains/dsp/fft/module.hh>
 #include <jetstream/domains/dsp/agc/module.hh>
 #include <jetstream/domains/dsp/amplitude/module.hh>
+#include <jetstream/domains/core/cast/module.hh>
 #include <jetstream/domains/core/invert/module.hh>
 #include <jetstream/domains/core/multiply/module.hh>
 #include <jetstream/domains/core/range/module.hh>
 #include <jetstream/domains/core/reshape/module.hh>
 #include <jetstream/memory/axis.hh>
+
+#include <optional>
 
 namespace Jetstream::Blocks {
 
@@ -23,6 +26,8 @@ struct SpectrumEngineImpl : public Block::Impl,
  protected:
     std::shared_ptr<Modules::Window> windowConfig =
         std::make_shared<Modules::Window>();
+    std::shared_ptr<Modules::Cast> castInputConfig =
+        std::make_shared<Modules::Cast>();
     std::shared_ptr<Modules::Invert> invertConfig =
         std::make_shared<Modules::Invert>();
     std::shared_ptr<Modules::Reshape> reshapeWindowConfig =
@@ -37,17 +42,26 @@ struct SpectrumEngineImpl : public Block::Impl,
         std::make_shared<Modules::Amplitude>();
     std::shared_ptr<Modules::Range> rangeConfig =
         std::make_shared<Modules::Range>();
+    std::optional<Index> candidateSampleAxis;
 };
 
 Result SpectrumEngineImpl::validate() {
     const auto& config = *candidate();
+    candidateSampleAxis.reset();
 
     const auto input = inputs().find("buffer");
-    if (input != inputs().end() && input->second.resolved() &&
-        !ResolveAxis(config.axis, input->second.tensor.rank())) {
-        JST_ERROR("[BLOCK_SPECTRUM_ENGINE] Axis {} is out of bounds for "
-                  "input tensor rank {}.", config.axis, input->second.tensor.rank());
-        return Result::ERROR;
+    if (input != inputs().end() && input->second.resolved()) {
+        if (input->second.tensor.dtype() != DataType::F32 &&
+            input->second.tensor.dtype() != DataType::CF32) {
+            JST_ERROR("[BLOCK_SPECTRUM_ENGINE] Input must have data type F32 or CF32.");
+            return Result::ERROR;
+        }
+        SignalAxes axes;
+        if (ResolveSignalAxes(input->second.tensor, axes) != Result::SUCCESS) {
+            JST_ERROR("[BLOCK_SPECTRUM_ENGINE] Input signal axis metadata is invalid.");
+            return Result::ERROR;
+        }
+        candidateSampleAxis = *axes.sample;
     }
 
     if (enableAgc != config.enableAgc) {
@@ -58,14 +72,11 @@ Result SpectrumEngineImpl::validate() {
         return Result::RECREATE;
     }
 
-    if (axis != config.axis) {
-        return Result::RECREATE;
-    }
-
     return Result::SUCCESS;
 }
 
 Result SpectrumEngineImpl::configure() {
+    castInputConfig->outputType = "CF32";
     fftConfig->forward = true;
     rangeConfig->min = rangeMin;
     rangeConfig->max = rangeMax;
@@ -80,12 +91,6 @@ Result SpectrumEngineImpl::define() {
                                    "Input signal to compute the spectrum of."));
     JST_CHECK(defineInterfaceOutput("buffer", "Output",
                                     "Spectrum output in decibels."));
-
-    JST_CHECK(defineInterfaceConfig("axis",
-                                    "Axis",
-                                    "Axis along which to compute the spectrum. Negative axes "
-                                    "count from the end.",
-                                    "int:"));
 
     JST_CHECK(defineInterfaceConfig("enableAgc",
                                     "Enable AGC",
@@ -116,17 +121,16 @@ Result SpectrumEngineImpl::create() {
     const auto& inputPort = inputs().at("buffer");
     const Tensor& inputTensor = inputPort.tensor;
 
-    const auto candidateAxis = ResolveAxis(axis, inputTensor.rank());
-    if (!candidateAxis) {
-        JST_ERROR("[BLOCK_SPECTRUM_ENGINE] Axis {} is out of bounds for "
-                  "input tensor rank {}.", axis, inputTensor.rank());
+    if (!candidateSampleAxis) {
+        JST_ERROR("[BLOCK_SPECTRUM_ENGINE] Input validation plan is unavailable.");
         return Result::ERROR;
     }
-    const Index resolvedAxis = *candidateAxis;
+    const Index resolvedAxis = *candidateSampleAxis;
 
-    const I64 childAxis = static_cast<I64>(resolvedAxis);
-    fftConfig->axis = childAxis;
-    amplitudeConfig->axis = childAxis;
+    JST_CHECK(moduleCreate("cast_input", castInputConfig, {
+        {"buffer", inputPort}
+    }));
+    const auto complexInput = moduleGetOutput({"cast_input", "buffer"});
 
     // Derive window size from input shape at specified axis.
 
@@ -145,11 +149,15 @@ Result SpectrumEngineImpl::create() {
     // Create window coefficients.
 
     JST_CHECK(moduleCreate("window", windowConfig, {}));
+    auto windowOutput = moduleGetOutput({"window", "window"});
+    JST_CHECK(SetSignalAxes(windowOutput.tensor, {
+        .sample = Index{0},
+    }));
 
     // Invert window (FFT shift).
 
     JST_CHECK(moduleCreate("invert", invertConfig, {
-        {"signal", moduleGetOutput({"window", "window"})}
+        {"signal", windowOutput}
     }));
 
     // Align the 1D window with the selected input axis for broadcasting.
@@ -157,12 +165,16 @@ Result SpectrumEngineImpl::create() {
     JST_CHECK(moduleCreate("reshape_window", reshapeWindowConfig, {
         {"buffer", moduleGetOutput({"invert", "signal"})}
     }));
+    auto reshapedWindow = moduleGetOutput({"reshape_window", "buffer"});
+    JST_CHECK(SetSignalAxes(reshapedWindow.tensor, {
+        .sample = resolvedAxis,
+    }));
 
     // Multiply input signal by shifted window.
 
     JST_CHECK(moduleCreate("multiply", multiplyConfig, {
-        {"a", inputPort},
-        {"b", moduleGetOutput({"reshape_window", "buffer"})}
+        {"a", complexInput},
+        {"b", reshapedWindow}
     }));
 
     // Forward FFT.
@@ -203,6 +215,7 @@ Result SpectrumEngineImpl::create() {
 }
 
 JST_REGISTER_BLOCK(SpectrumEngineImpl,
+                   {"cast"},
                    {"window"},
                    {"invert"},
                    {"reshape"},

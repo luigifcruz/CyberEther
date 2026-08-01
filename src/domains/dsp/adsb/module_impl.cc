@@ -7,11 +7,15 @@
 
 #include "jetstream/render/utils.hh"
 #include "jetstream/constants.hh"
+#include "jetstream/memory/axis.hh"
 #include "resources/shaders/map_shaders.hh"
 
 namespace Jetstream::Modules {
 
 Result AdsbImpl::validate() {
+    validatedSampleAxis = 0;
+    validatedBatchAxis.reset();
+
     if (!inputs().contains("signal")) {
         return Result::SUCCESS;
     }
@@ -19,6 +23,22 @@ Result AdsbImpl::validate() {
     const Tensor& inputTensor = inputs().at("signal").tensor;
     if (!inputTensor.validShape() || inputTensor.size() == 0) {
         return Result::SUCCESS;
+    }
+
+    SignalAxes axes;
+    if (ResolveSignalAxes(inputTensor, axes) != Result::SUCCESS) {
+        JST_ERROR("[MODULE_ADSB] Input must contain valid signal axis metadata.");
+        return Result::ERROR;
+    }
+    if (axes.channel) {
+        JST_ERROR("[MODULE_ADSB] Channel inputs are not supported.");
+        return Result::ERROR;
+    }
+    const Index expectedRank = axes.batch ? 2 : 1;
+    if (inputTensor.rank() != expectedRank) {
+        JST_ERROR("[MODULE_ADSB] Input must contain only a sample axis and "
+                  "an optional batch axis.");
+        return Result::ERROR;
     }
 
     if (inputTensor.hasAttribute("frequency")) {
@@ -43,6 +63,9 @@ Result AdsbImpl::validate() {
         }
     }
 
+    validatedSampleAxis = *axes.sample;
+    validatedBatchAxis = axes.batch;
+
     return Result::SUCCESS;
 }
 
@@ -57,6 +80,8 @@ Result AdsbImpl::create() {
     const Tensor& inputTensor = inputs().at("signal").tensor;
 
     input = inputTensor;
+    sampleAxis = validatedSampleAxis;
+    batchAxis = validatedBatchAxis;
 
     if (input.hasAttribute("frequency")) {
         const std::any value = input.attribute("frequency");

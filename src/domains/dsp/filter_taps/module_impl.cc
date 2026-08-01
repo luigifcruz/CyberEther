@@ -3,6 +3,7 @@
 #include <cmath>
 #include <limits>
 
+#include <jetstream/memory/axis.hh>
 #include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Modules {
@@ -134,6 +135,10 @@ Result FilterTapsImpl::create() {
     const U64 heads = center.size();
 
     JST_CHECK(coeffs.create(device(), DataType::CF32, {heads, taps}));
+    JST_CHECK(SetSignalAxes(coeffs, {
+        .sample = Index{1},
+        .channel = Index{0},
+    }));
 
     outputs()["coeffs"].produced(name(), "coeffs", coeffs);
 

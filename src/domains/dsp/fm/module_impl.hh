@@ -3,6 +3,9 @@
 
 #include <jetstream/domains/dsp/fm/module.hh>
 #include <jetstream/detail/module_impl.hh>
+#include <jetstream/memory/axis.hh>
+
+#include <vector>
 
 namespace Jetstream::Modules {
 
@@ -17,8 +20,14 @@ struct FmImpl : public Module::Impl, public DynamicConfig<FM> {
     Tensor output;
     F32 kf = 0.0f;
     F32 ref = 0.0f;
-    CF32 previousSample = CF32{0.0f, 0.0f};
-    bool hasPreviousSample = false;
+
+    SignalAxes validatedSignalAxes;
+    U64 validatedLaneCount = 0;
+
+    SignalAxes signalAxes;
+    U64 laneCount = 0;
+    std::vector<CF32> previousSample;
+    std::vector<U8> hasPreviousSample;
 
     void updateCoefficients();
 };

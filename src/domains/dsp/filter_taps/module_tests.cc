@@ -119,6 +119,13 @@ TEST_CASE("Filter Taps - Tensor Attributes", "[modules][filter_taps]") {
             REQUIRE(out.hasAttribute("sampleRate"));
             REQUIRE(out.hasAttribute("bandwidth"));
             REQUIRE(out.hasAttribute("center"));
+            REQUIRE(out.hasAttribute("sampleAxis"));
+            REQUIRE(out.attribute("sampleAxis").type() == typeid(Index));
+            REQUIRE(std::any_cast<Index>(out.attribute("sampleAxis")) == Index{1});
+            REQUIRE(out.hasAttribute("channelAxis"));
+            REQUIRE(out.attribute("channelAxis").type() == typeid(Index));
+            REQUIRE(std::any_cast<Index>(out.attribute("channelAxis")) == Index{0});
+            REQUIRE_FALSE(out.hasAttribute("batchAxis"));
 
             REQUIRE_THAT(std::any_cast<F32>(out.attribute("sampleRate")),
                          Catch::Matchers::WithinAbs(2.0e6f, 1.0f));

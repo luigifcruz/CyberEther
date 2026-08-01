@@ -4,7 +4,6 @@
 #include <limits>
 #include <string>
 
-#include "jetstream/domains/core/ones_tensor/block.hh"
 #include "jetstream/domains/dsp/signal_generator/block.hh"
 #include "jetstream/domains/visualization/lineplot/block.hh"
 #include "flowgraph_fixture.hh"
@@ -74,14 +73,14 @@ TEST_CASE_METHOD(FlowgraphFixture,
 TEST_CASE_METHOD(FlowgraphFixture,
                  "Lineplot block delegates dtype validation to its module",
                  "[modules][lineplot][block][validation]") {
-    Blocks::OnesTensor source;
-    source.shape = {64};
-    source.dataType = "F64";
+    Blocks::SignalGenerator source;
+    source.bufferSize = 64;
+    source.signalDataType = "CF32";
     REQUIRE(flowgraph->blockCreate("lineplot_dtype_src", source, {}) ==
             Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["signal"].requested("lineplot_dtype_src", "buffer");
+    inputs["signal"].requested("lineplot_dtype_src", "signal");
     REQUIRE(flowgraph->blockCreate("lineplot_dtype", Blocks::Lineplot{}, inputs) ==
             Result::SUCCESS);
 

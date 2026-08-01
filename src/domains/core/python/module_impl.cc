@@ -5,6 +5,7 @@
 #include <charconv>
 #include <sstream>
 
+#include <jetstream/memory/axis.hh>
 #include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Modules {
@@ -156,6 +157,86 @@ Result ParseShapeSpec(const std::string& spec,
     return Result::SUCCESS;
 }
 
+Result ParseSignalAxesSpec(const std::string& spec,
+                           const std::string& label,
+                           const Shape& shape,
+                           std::map<std::string, std::any>& attributes) {
+    auto normalized = Trim(spec);
+    if (normalized.empty()) {
+        return Result::SUCCESS;
+    }
+
+    if (normalized.front() != '[' || normalized.back() != ']') {
+        JST_ERROR("[PYTHON] Signal axes '{}' of {} must use the [B, C, S] form.", spec, label);
+        return Result::ERROR;
+    }
+    normalized = Trim(normalized.substr(1, normalized.size() - 2));
+    if (normalized.empty()) {
+        JST_ERROR("[PYTHON] Signal axes of {} cannot be empty.", label);
+        return Result::ERROR;
+    }
+    if (normalized.back() == ',') {
+        JST_ERROR("[PYTHON] Signal axes of {} contain an empty entry.", label);
+        return Result::ERROR;
+    }
+
+    std::vector<std::pair<char, Index>> roles;
+    std::stringstream stream(normalized);
+    std::string token;
+    Index axis = 0;
+    while (std::getline(stream, token, ',')) {
+        token = Trim(token);
+        if (token.empty()) {
+            JST_ERROR("[PYTHON] Signal axes of {} contain an empty entry.", label);
+            return Result::ERROR;
+        }
+        if (token.size() != 1 ||
+            (token[0] != 'B' && token[0] != 'C' && token[0] != 'S' && token[0] != '_')) {
+            JST_ERROR("[PYTHON] Signal axes entry '{}' of {} must be one of B, C, S, or _.", token, label);
+            return Result::ERROR;
+        }
+        if (token[0] != '_') {
+            for (const auto& [role, _] : roles) {
+                if (role == token[0]) {
+                    JST_ERROR("[PYTHON] Signal axes of {} use role '{}' more than once.", label, token[0]);
+                    return Result::ERROR;
+                }
+            }
+        }
+        roles.emplace_back(token[0], axis++);
+    }
+
+    bool hasRole = false;
+    for (const auto& [role, _] : roles) {
+        hasRole = hasRole || role != '_';
+    }
+    if (!hasRole) {
+        JST_ERROR("[PYTHON] Signal axes of {} must declare at least one of B, C, or S.", label);
+        return Result::ERROR;
+    }
+    if (axis > shape.size()) {
+        JST_ERROR("[PYTHON] Signal axes of {} describe {} axes but shape has rank {}.",
+                  label, axis, shape.size());
+        return Result::ERROR;
+    }
+
+    for (const auto& [role, index] : roles) {
+        switch (role) {
+            case 'B':
+                attributes[std::string(BatchAxisAttribute)] = Index{index};
+                break;
+            case 'C':
+                attributes[std::string(ChannelAxisAttribute)] = Index{index};
+                break;
+            case 'S':
+                attributes[std::string(SampleAxisAttribute)] = Index{index};
+                break;
+        }
+    }
+
+    return Result::SUCCESS;
+}
+
 }  // namespace
 
 std::string PythonImpl::inputPortName(const U64 index) {
@@ -203,6 +284,7 @@ Result PythonImpl::validate() {
         JST_CHECK(ParseDataTypeSpec(spec.dtype, label, output.dtype));
         JST_CHECK(ParseShapeSpec(spec.shape, label, output.shape));
         JST_CHECK(ParseDeviceSpec(spec.device, label, output.device));
+        JST_CHECK(ParseSignalAxesSpec(spec.axes, label, output.shape, output.attributes));
 
         U64 elementCount = 1;
         for (const U64 dimension : output.shape) {
@@ -255,6 +337,11 @@ Result PythonImpl::create() {
         const auto& plan = candidateOutputPlan[i];
         Tensor output;
         JST_CHECK(output.create(plan.device, plan.dtype, plan.shape));
+
+        for (const auto& [key, value] : plan.attributes) {
+            JST_CHECK(output.setAttribute(key, value));
+        }
+
         outputs()[outputPortName(i)].produced(name(), outputPortName(i), output);
     }
 

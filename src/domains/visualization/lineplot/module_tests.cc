@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "jetstream/domains/visualization/lineplot/module.hh"
+#include "jetstream/memory/axis.hh"
 #include "jetstream/module_interface.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/runtime.hh"
@@ -47,6 +48,53 @@ std::vector<F32> ReadSignalPoints(const std::shared_ptr<Module>& module) {
     return {data, data + readableSignalPoints->size()};
 }
 
+void SetDefaultSignalAxes(Tensor& input) {
+    if (input.rank() <= 1) {
+        return;
+    }
+
+    SignalAxes axes{.sample = input.rank() - 1};
+    if (input.rank() > 1) {
+        axes.batch = 0;
+    }
+    REQUIRE(SetSignalAxes(input, axes) == Result::SUCCESS);
+}
+
+std::vector<F32> ComputeLineplotPoints(
+    const Registry::ModuleRegistration& implementation,
+    const Tensor& cpuInput) {
+    Tensor input;
+    if (implementation.device == DeviceType::CPU) {
+        input = cpuInput;
+    } else {
+        REQUIRE(input.create(implementation.device, cpuInput) == Result::SUCCESS);
+    }
+
+    TensorMap inputs;
+    inputs["signal"].requested("source", "signal");
+    inputs["signal"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("lineplot", implementation.device,
+                                  implementation.runtime, implementation.provider,
+                                  module) == Result::SUCCESS);
+
+    Modules::Lineplot config;
+    config.averaging = 1;
+    REQUIRE(module->create("lineplot", config, inputs) == Result::SUCCESS);
+
+    Runtime runtime("lineplot", implementation.device, implementation.runtime);
+    REQUIRE(runtime.create({{"lineplot", module}}) == Result::SUCCESS);
+    std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+
+    auto points = ReadSignalPoints(module);
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+    return points;
+}
+
 void RequireLineplotValidationError(const Registry::ModuleRegistration& impl,
                                     const Modules::Lineplot& config,
                                     const Tensor& input) {
@@ -79,6 +127,8 @@ void RequireLineplotValidationError(const Registry::ModuleRegistration& impl,
         REQUIRE(input.create(impl.device, dtype, shape) == Result::SUCCESS);
     }
 
+    SetDefaultSignalAxes(input);
+
     RequireLineplotValidationError(impl, config, input);
 }
 
@@ -100,12 +150,17 @@ TEST_CASE("Lineplot module accepts valid F32 inputs", "[modules][lineplot]") {
             Tensor input;
             REQUIRE(input.create(DeviceType::CPU, DataType::F32, {128}) ==
                     Result::SUCCESS);
+            REQUIRE(SetSignalAxes(input, {.sample = Index{0}}) == Result::SUCCESS);
             ctx.setInput("signal", input);
             REQUIRE(ctx.run() == Result::SUCCESS);
 
             Tensor batched;
             REQUIRE(batched.create(DeviceType::CPU, DataType::F32, {2, 128}) ==
                     Result::SUCCESS);
+            REQUIRE(SetSignalAxes(batched, {
+                .sample = Index{1},
+                .batch = Index{0},
+            }) == Result::SUCCESS);
             ctx.setInput("signal", batched);
             REQUIRE(ctx.run() == Result::SUCCESS);
         }
@@ -178,6 +233,30 @@ TEST_CASE("Lineplot module rejects invalid input dtype and shape",
                                                DataType::F32, {2, 2, 2});
             }
 
+            SECTION("multi-axis signal roles must be present and well formed") {
+                Tensor missing(impl.device, DataType::F32, {2, 64});
+                RequireLineplotValidationError(impl, Modules::Lineplot{}, missing);
+
+                Tensor malformed(impl.device, DataType::F32, {64});
+                REQUIRE(malformed.setAttribute(std::string(SampleAxisAttribute),
+                                               I64{0}) == Result::SUCCESS);
+                RequireLineplotValidationError(impl, Modules::Lineplot{}, malformed);
+            }
+
+            SECTION("channel and auxiliary dimensions are unsupported") {
+                Tensor channel(impl.device, DataType::F32, {2, 64});
+                REQUIRE(SetSignalAxes(channel, {
+                    .sample = Index{1},
+                    .channel = Index{0},
+                }) == Result::SUCCESS);
+                RequireLineplotValidationError(impl, Modules::Lineplot{}, channel);
+
+                Tensor auxiliary(impl.device, DataType::F32, {2, 64});
+                REQUIRE(SetSignalAxes(auxiliary, {.sample = Index{1}}) ==
+                        Result::SUCCESS);
+                RequireLineplotValidationError(impl, Modules::Lineplot{}, auxiliary);
+            }
+
             SECTION("effective number of elements must be at least two") {
                 Modules::Lineplot config;
                 config.decimation = 2;
@@ -199,6 +278,8 @@ TEST_CASE("Lineplot module rejects malformed optional metadata during validation
                                            std::string("sampleRate")}) {
                 Tensor input;
                 REQUIRE(input.create(impl.device, DataType::F32, {64}) ==
+                        Result::SUCCESS);
+                REQUIRE(SetSignalAxes(input, {.sample = Index{0}}) ==
                         Result::SUCCESS);
                 REQUIRE(input.setAttribute(key, F64{1000000.0}) ==
                         Result::SUCCESS);
@@ -249,6 +330,7 @@ TEST_CASE("Lineplot module handles repeated computes and config updates",
             Tensor input;
             REQUIRE(input.create(DeviceType::CPU, DataType::F32, {64}) ==
                     Result::SUCCESS);
+            REQUIRE(SetSignalAxes(input, {.sample = Index{0}}) == Result::SUCCESS);
             ctx.setInput("signal", input);
             REQUIRE(ctx.start() == Result::SUCCESS);
             REQUIRE(ctx.compute() == Result::SUCCESS);
@@ -278,6 +360,10 @@ TEST_CASE("Lineplot clamps amplitudes before averaging",
         DYNAMIC_SECTION("Device: " << implementation.device
                         << " Runtime: " << implementation.runtime) {
             Tensor cpuInput(DeviceType::CPU, DataType::F32, {2, 4});
+            REQUIRE(SetSignalAxes(cpuInput, {
+                .sample = Index{1},
+                .batch = Index{0},
+            }) == Result::SUCCESS);
             std::fill_n(cpuInput.data<F32>(),
                         cpuInput.size(),
                         -std::numeric_limits<F32>::infinity());
@@ -354,10 +440,50 @@ TEST_CASE("Lineplot batched decimation uses the original row width",
     for (U64 batch = 0; batch < shape[0]; ++batch) {
         for (U64 index = 0; index < numberOfElements; ++index) {
             sums[index] += input[Modules::detail::LineplotInputIndex(
-                batch, index, shape[1], decimation)];
+                batch, index, shape[1], 1, decimation)];
         }
     }
 
     REQUIRE(sums[0] == 11.0f);
     REQUIRE(sums[1] == 33.0f);
+}
+
+TEST_CASE("Lineplot indexes leading and trailing batch layouts equivalently",
+          "[modules][lineplot][layout]") {
+    const auto implementations = Registry::ListAvailableModules("lineplot");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& implementation : implementations) {
+        DYNAMIC_SECTION("Device: " << implementation.device
+                        << " Runtime: " << implementation.runtime) {
+            Tensor leading(DeviceType::CPU, DataType::F32, {2, 4});
+            const F32 leadingData[] = {
+                0.1f, 0.2f, 0.3f, 0.4f,
+                0.2f, 0.2f, 0.2f, 0.2f,
+            };
+            std::copy(std::begin(leadingData), std::end(leadingData),
+                      leading.data<F32>());
+            REQUIRE(SetSignalAxes(leading, {
+                .sample = Index{1},
+                .batch = Index{0},
+            }) == Result::SUCCESS);
+
+            Tensor trailing(DeviceType::CPU, DataType::F32, {4, 2});
+            const F32 trailingData[] = {
+                0.1f, 0.2f,
+                0.2f, 0.2f,
+                0.3f, 0.2f,
+                0.4f, 0.2f,
+            };
+            std::copy(std::begin(trailingData), std::end(trailingData),
+                      trailing.data<F32>());
+            REQUIRE(SetSignalAxes(trailing, {
+                .sample = Index{0},
+                .batch = Index{1},
+            }) == Result::SUCCESS);
+
+            REQUIRE(ComputeLineplotPoints(implementation, trailing) ==
+                    ComputeLineplotPoints(implementation, leading));
+        }
+    }
 }

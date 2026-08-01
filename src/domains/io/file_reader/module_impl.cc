@@ -1,5 +1,6 @@
 #include "module_impl.hh"
 
+#include "jetstream/memory/axis.hh"
 #include "jetstream/platform.hh"
 #include "jetstream/tools/numeric.hh"
 
@@ -62,6 +63,9 @@ Result FileReaderImpl::define() {
 
 Result FileReaderImpl::create() {
     JST_CHECK(buffer.create(device(), validatedDataType, {batchSize}));
+    JST_CHECK(SetSignalAxes(buffer, {
+        .sample = Index{0},
+    }));
 
     outputs()["signal"].produced(name(), "signal", buffer);
     fileSize.publish(0);

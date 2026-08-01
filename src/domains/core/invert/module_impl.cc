@@ -1,7 +1,5 @@
 #include "module_impl.hh"
 
-#include <limits>
-
 #include <jetstream/memory/axis.hh>
 
 namespace Jetstream::Modules {
@@ -16,21 +14,13 @@ Result InvertImpl::validate() {
         return Result::SUCCESS;
     }
 
-    const auto& config = *candidate();
-    const auto candidateAxis = ResolveAxis(config.axis, inputTensor.rank());
-    if (!candidateAxis) {
-        if (inputTensor.rank() == 0 ||
-            inputTensor.rank() > static_cast<U64>(std::numeric_limits<I64>::max())) {
-            JST_ERROR("[MODULE_INVERT] Expected an input tensor with at least one dimension.");
-            return Result::ERROR;
-        }
-
-        JST_ERROR("[MODULE_INVERT] Axis {} is out of bounds for a rank-{} tensor.",
-                  config.axis, inputTensor.rank());
+    SignalAxes axes;
+    if (ResolveSignalAxes(inputTensor, axes) != Result::SUCCESS) {
+        JST_ERROR("[MODULE_INVERT] Input must contain valid signal axis metadata.");
         return Result::ERROR;
     }
 
-    resolvedAxis = *candidateAxis;
+    resolvedAxis = *axes.sample;
     return Result::SUCCESS;
 }
 

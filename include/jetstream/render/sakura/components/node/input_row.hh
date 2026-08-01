@@ -20,11 +20,18 @@ struct NodeInputRow {
 
     struct Config {
         std::string id;
-        std::string value;
-        std::string hint;
-        F32 minInputWidth = 56.0f;
+
+        std::string shape;
+        std::string shapeHint;
+        F32 shapeMinWidth = 56.0f;
+        std::function<void(const std::string&)> onShapeChange;
+
+        std::string axes;
+        std::string axesHint;
+        F32 axesMinWidth = 56.0f;
+        std::function<void(const std::string&)> onAxesChange;
+
         std::vector<Combo> combos;
-        std::function<void(const std::string&)> onChange;
     };
 
     NodeInputRow();

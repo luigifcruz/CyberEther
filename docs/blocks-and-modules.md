@@ -137,7 +137,8 @@ struct GainModuleNativeCpu : Module::Impl,
 
     Result create() override {
         const auto& input = inputs().at("signal").tensor;
-        JST_CHECK(output.create(device(), input.dtype(), {input.size()}));
+        JST_CHECK(output.create(device(), input.dtype(), input.shape()));
+        JST_CHECK(output.propagateAttributes(input));
         outputs()["signal"].produced(name(), "signal", output);
         return Result::SUCCESS;
     }

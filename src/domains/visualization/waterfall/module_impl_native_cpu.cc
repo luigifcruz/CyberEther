@@ -54,23 +54,20 @@ Result WaterfallImplNativeCpu::computeSubmit() {
     const auto plan = PlanWaterfallWrite(ringState.writeIndex,
                                          numberOfBatches,
                                          height);
-    const U64 firstRowCount = std::min(plan.rowCount,
-                                       height - plan.destinationRow);
 
     // Copy input data to frequency bins buffer (circular buffer pattern).
 
     F32* freqData = static_cast<F32*>(frequencyBins.data());
     const F32* inputData = static_cast<const F32*>(input.data());
 
-    std::copy_n(inputData + plan.sourceRow * numberOfElements,
-                firstRowCount * numberOfElements,
-                freqData + plan.destinationRow * numberOfElements);
-
-    const U64 secondRowCount = plan.rowCount - firstRowCount;
-    if (secondRowCount > 0) {
-        std::copy_n(inputData + (plan.sourceRow + firstRowCount) * numberOfElements,
-                    secondRowCount * numberOfElements,
-                    freqData);
+    for (U64 row = 0; row < plan.rowCount; ++row) {
+        const U64 sourceBatch = plan.sourceRow + row;
+        const U64 destinationBatch = (plan.destinationRow + row) % height;
+        for (U64 column = 0; column < numberOfElements; ++column) {
+            freqData[destinationBatch * numberOfElements + column] =
+                inputData[sourceBatch * inputBatchStride +
+                          column * inputSampleStride];
+        }
     }
 
     // Update write index.

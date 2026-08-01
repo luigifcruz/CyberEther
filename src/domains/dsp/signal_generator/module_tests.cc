@@ -5,6 +5,7 @@
 #include "jetstream/registry.hh"
 #include "jetstream/domains/dsp/signal_generator/module.hh"
 
+#include <any>
 #include <cmath>
 #include <limits>
 
@@ -45,6 +46,11 @@ TEST_CASE("Signal Generator - DC F32", "[modules][signal_generator][dc]") {
 
             auto& out = ctx.output("signal");
             const F32 expected = static_cast<F32>(config.amplitude + config.dcOffset);
+            REQUIRE(out.hasAttribute("sampleAxis"));
+            REQUIRE(out.attribute("sampleAxis").type() == typeid(Index));
+            REQUIRE(std::any_cast<Index>(out.attribute("sampleAxis")) == Index{0});
+            REQUIRE_FALSE(out.hasAttribute("batchAxis"));
+            REQUIRE_FALSE(out.hasAttribute("channelAxis"));
 
             for (U64 i = 0; i < config.bufferSize; ++i) {
                 REQUIRE_THAT(out.at<F32>(i), Catch::Matchers::WithinAbs(expected, 1e-6f));

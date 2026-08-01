@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <limits>
+#include <string>
 
 #include "jetstream/testing.hh"
 #include "jetstream/registry.hh"
@@ -57,7 +58,6 @@ TEST_CASE("Fold - 1D CF32 Uniform", "[modules][fold][cf32]") {
                            impl.runtime, impl.provider);
 
             Modules::Fold config;
-            config.axis = 0;
             config.offset = 0;
             config.size = 4;
 
@@ -103,7 +103,6 @@ TEST_CASE("Fold - 1D F32 Ramp", "[modules][fold][f32]") {
                            impl.runtime, impl.provider);
 
             Modules::Fold config;
-            config.axis = 0;
             config.offset = 0;
             config.size = 4;
 
@@ -114,6 +113,7 @@ TEST_CASE("Fold - 1D F32 Ramp", "[modules][fold][f32]") {
             Tensor input;
             REQUIRE(input.create(DeviceType::CPU, DataType::F32,
                                  {inputSize}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
 
             for (U64 i = 0; i < inputSize; ++i) {
                 input.at<F32>(i) = static_cast<F32>(i);
@@ -151,13 +151,13 @@ TEST_CASE("Fold - Avoids intermediate overflow while averaging",
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
             TestContext ctx("fold", impl.device, impl.runtime, impl.provider);
             Modules::Fold config;
-            config.axis = 0;
             config.size = 1;
             ctx.setConfig(config);
 
             Tensor input;
             REQUIRE(input.create(DeviceType::CPU, DataType::F32, {2}) ==
                     Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
             input.at<F32>(0) = std::numeric_limits<F32>::max();
             input.at<F32>(1) = std::numeric_limits<F32>::max();
             ctx.setInput("buffer", input);
@@ -181,7 +181,6 @@ TEST_CASE("Fold - 1D F32 With Offset", "[modules][fold][offset]") {
                            impl.runtime, impl.provider);
 
             Modules::Fold config;
-            config.axis = 0;
             config.offset = 2;
             config.size = 4;
 
@@ -192,6 +191,7 @@ TEST_CASE("Fold - 1D F32 With Offset", "[modules][fold][offset]") {
             Tensor input;
             REQUIRE(input.create(DeviceType::CPU, DataType::F32,
                                  {inputSize}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
 
             for (U64 i = 0; i < inputSize; ++i) {
                 input.at<F32>(i) = static_cast<F32>(i);
@@ -228,7 +228,7 @@ TEST_CASE("Fold - 1D F32 With Offset", "[modules][fold][offset]") {
     }
 }
 
-TEST_CASE("Fold - 2D F32 Along Axis 1", "[modules][fold][axis]") {
+TEST_CASE("Fold - 2D F32 Heads Fold Independently", "[modules][fold][heads]") {
     auto implementations = Registry::ListAvailableModules("fold");
     REQUIRE(!implementations.empty());
 
@@ -239,7 +239,6 @@ TEST_CASE("Fold - 2D F32 Along Axis 1", "[modules][fold][axis]") {
                            impl.runtime, impl.provider);
 
             Modules::Fold config;
-            config.axis = 1;
             config.offset = 0;
             config.size = 4;
 
@@ -249,8 +248,9 @@ TEST_CASE("Fold - 2D F32 Along Axis 1", "[modules][fold][axis]") {
             // row0 = [0..7], row1 = [10..17]
             Tensor input;
             REQUIRE(input.create(DeviceType::CPU, DataType::F32,
-                                 {2, 8}) == Result::SUCCESS);
-
+                                  {2, 8}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleAxis", Index{1}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("channelAxis", Index{0}) == Result::SUCCESS);
             for (U64 i = 0; i < 8; ++i) {
                 input.at<F32>(0, i) = static_cast<F32>(i);
                 input.at<F32>(1, i) = static_cast<F32>(10 + i);
@@ -264,8 +264,11 @@ TEST_CASE("Fold - 2D F32 Along Axis 1", "[modules][fold][axis]") {
             REQUIRE(out.shape().size() == 2);
             REQUIRE(out.shape(0) == 2);
             REQUIRE(out.shape(1) == 4);
+            REQUIRE(std::any_cast<Index>(out.attribute("sampleAxis")) == Index{1});
+            REQUIRE(std::any_cast<Index>(out.attribute("channelAxis")) == Index{0});
+            REQUIRE_FALSE(out.hasAttribute("batchAxis"));
 
-            // Decimation factor = 8 / 4 = 2 on axis 1.
+            // Decimation factor = 8 / 4 = 2 on the sample axis.
             for (U64 i = 0; i < 4; ++i) {
                 REQUIRE_THAT(out.at<F32>(0, i),
                     Catch::Matchers::WithinAbs(static_cast<F32>(2 + i), 1e-5f));
@@ -276,7 +279,8 @@ TEST_CASE("Fold - 2D F32 Along Axis 1", "[modules][fold][axis]") {
     }
 }
 
-TEST_CASE("Fold - 2D F32 Along Negative Axis", "[modules][fold][axis]") {
+TEST_CASE("Fold - 4D F32 Batched Heads With Opaque Planes",
+          "[modules][fold][batch][heads][opaque]") {
     const auto implementations = Registry::ListAvailableModules("fold");
     REQUIRE(!implementations.empty());
 
@@ -286,45 +290,143 @@ TEST_CASE("Fold - 2D F32 Along Negative Axis", "[modules][fold][axis]") {
             TestContext ctx("fold", impl.device, impl.runtime, impl.provider);
 
             Modules::Fold config;
-            config.axis = -1;
             config.size = 4;
             ctx.setConfig(config);
 
             Tensor input;
             REQUIRE(input.create(DeviceType::CPU, DataType::F32,
-                                 {2, 8}) == Result::SUCCESS);
+                                 {2, 2, 8, 2}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleAxis", Index{2}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("batchAxis", Index{0}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("channelAxis", Index{1}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("layout", std::string("batched-heads")) ==
+                    Result::SUCCESS);
+            for (U64 batch = 0; batch < 2; ++batch) {
+                for (U64 head = 0; head < 2; ++head) {
+                    for (U64 sample = 0; sample < 8; ++sample) {
+                        for (U64 plane = 0; plane < 2; ++plane) {
+                            input.at<F32>(batch, head, sample, plane) =
+                                static_cast<F32>(1000 * batch + 100 * head +
+                                                 10 * plane + sample);
+                        }
+                    }
+                }
+            }
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+            const auto& output = ctx.output("buffer");
+            REQUIRE(output.shape() == Shape{2, 2, 4, 2});
+            REQUIRE(std::any_cast<Index>(output.attribute("sampleAxis")) == Index{2});
+            REQUIRE(output.hasAttribute("batchAxis"));
+            REQUIRE(output.attribute("batchAxis").type() == typeid(Index));
+            REQUIRE(std::any_cast<Index>(output.attribute("batchAxis")) == Index{0});
+            REQUIRE(std::any_cast<Index>(output.attribute("channelAxis")) == Index{1});
+            REQUIRE(std::any_cast<std::string>(output.attribute("layout")) ==
+                    "batched-heads");
+            for (U64 batch = 0; batch < 2; ++batch) {
+                for (U64 head = 0; head < 2; ++head) {
+                    for (U64 sample = 0; sample < 4; ++sample) {
+                        for (U64 plane = 0; plane < 2; ++plane) {
+                            REQUIRE_THAT(output.at<F32>(batch, head, sample, plane),
+                                Catch::Matchers::WithinAbs(static_cast<F32>(
+                                    1000 * batch + 100 * head + 10 * plane +
+                                    2 + sample), 1e-5f));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("Fold - 2D F32 With Trailing Batch", "[modules][fold][batch]") {
+    const auto implementations = Registry::ListAvailableModules("fold");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device
+                        << " Runtime: " << impl.runtime) {
+            TestContext ctx("fold", impl.device, impl.runtime, impl.provider);
+
+            Modules::Fold config;
+            config.size = 4;
+            ctx.setConfig(config);
+
+            Tensor input;
+            REQUIRE(input.create(DeviceType::CPU, DataType::F32,
+                                  {8, 2}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("batchAxis", Index{1}) == Result::SUCCESS);
             for (U64 i = 0; i < 8; ++i) {
-                input.at<F32>(0, i) = static_cast<F32>(i);
-                input.at<F32>(1, i) = static_cast<F32>(10 + i);
+                input.at<F32>(i, 0) = static_cast<F32>(i);
+                input.at<F32>(i, 1) = static_cast<F32>(10 + i);
             }
             ctx.setInput("buffer", input);
 
             REQUIRE(ctx.run() == Result::SUCCESS);
             const auto& out = ctx.output("buffer");
-            REQUIRE(out.shape() == Shape{2, 4});
+            REQUIRE(out.shape() == Shape{4, 2});
+            REQUIRE(std::any_cast<Index>(out.attribute("sampleAxis")) == Index{0});
+            REQUIRE(out.hasAttribute("batchAxis"));
+            REQUIRE(out.attribute("batchAxis").type() == typeid(Index));
+            REQUIRE(std::any_cast<Index>(out.attribute("batchAxis")) == Index{1});
             for (U64 i = 0; i < 4; ++i) {
-                REQUIRE_THAT(out.at<F32>(0, i),
+                REQUIRE_THAT(out.at<F32>(i, 0),
                     Catch::Matchers::WithinAbs(static_cast<F32>(2 + i), 1e-5f));
-                REQUIRE_THAT(out.at<F32>(1, i),
+                REQUIRE_THAT(out.at<F32>(i, 1),
                     Catch::Matchers::WithinAbs(static_cast<F32>(12 + i), 1e-5f));
             }
         }
     }
 }
 
-TEST_CASE("Fold - Validation rejects invalid axes",
-          "[modules][fold][validation][axis]") {
+TEST_CASE("Fold - Validation rejects missing or malformed signal metadata",
+          "[modules][fold][validation][metadata]") {
     const auto implementations = Registry::ListAvailableModules("fold");
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
-        for (const I64 axis : {I64{2}, I64{-3}}) {
-            DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime
-                            << " Axis: " << axis) {
-                const Tensor input = MakeFoldTensor(impl, DataType::F32, {2, 4});
-                Modules::Fold config;
-                config.axis = axis;
-                config.size = 2;
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Modules::Fold config;
+            config.size = 2;
+
+            SECTION("untagged multidimensional input") {
+                RequireFoldValidationError(
+                    impl, config, MakeFoldTensor(impl, DataType::F32, {2, 4}));
+            }
+
+            SECTION("batch axis type must be exact") {
+                Tensor input = MakeFoldTensor(impl, DataType::F32, {2, 4});
+                REQUIRE(input.setAttribute("sampleAxis", Index{1}) == Result::SUCCESS);
+                REQUIRE(input.setAttribute("batchAxis", I64{0}) == Result::SUCCESS);
+                RequireFoldValidationError(impl, config, input);
+            }
+
+            SECTION("batch axis must be in range") {
+                Tensor input = MakeFoldTensor(impl, DataType::F32, {2, 4});
+                REQUIRE(input.setAttribute("sampleAxis", Index{1}) == Result::SUCCESS);
+                REQUIRE(input.setAttribute("batchAxis", Index{2}) == Result::SUCCESS);
+                RequireFoldValidationError(impl, config, input);
+            }
+
+            SECTION("signal roles must not share an axis") {
+                Tensor input = MakeFoldTensor(impl, DataType::F32, {4});
+                REQUIRE(input.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
+                REQUIRE(input.setAttribute("batchAxis", Index{0}) == Result::SUCCESS);
+                RequireFoldValidationError(impl, config, input);
+            }
+
+            SECTION("sample axis type must be exact") {
+                Tensor input = MakeFoldTensor(impl, DataType::F32, {2, 4});
+                REQUIRE(input.setAttribute("sampleAxis", I64{1}) == Result::SUCCESS);
+                RequireFoldValidationError(impl, config, input);
+            }
+
+            SECTION("sample and channel roles must not share an axis") {
+                Tensor input = MakeFoldTensor(impl, DataType::F32, {2, 4});
+                REQUIRE(input.setAttribute("sampleAxis", Index{1}) == Result::SUCCESS);
+                REQUIRE(input.setAttribute("channelAxis", Index{1}) == Result::SUCCESS);
                 RequireFoldValidationError(impl, config, input);
             }
         }
@@ -338,9 +440,9 @@ TEST_CASE("Fold - Validation rejects invalid size and offset",
 
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
-            const Tensor input = MakeFoldTensor(impl, DataType::F32, {8});
+            Tensor input = MakeFoldTensor(impl, DataType::F32, {8});
+            REQUIRE(input.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
             Modules::Fold config;
-            config.axis = 0;
 
             config.size = 0;
             RequireFoldValidationError(impl, config, input);
@@ -363,12 +465,12 @@ TEST_CASE("Fold - Validation rejects rank zero and unsupported dtype",
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
             Modules::Fold config;
-            config.axis = 0;
             config.size = 1;
             const Tensor scalar = MakeFoldTensor(impl, DataType::F32, {});
             RequireFoldValidationError(impl, config, scalar);
 
-            const Tensor f64 = MakeFoldTensor(impl, DataType::F64, {8});
+            Tensor f64 = MakeFoldTensor(impl, DataType::F64, {8});
+            REQUIRE(f64.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
             config.size = 4;
             RequireFoldValidationError(impl, config, f64);
         }
@@ -387,9 +489,9 @@ TEST_CASE("Fold - CPU validation rejects unsupported allocation size",
 
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
             const U64 size = std::numeric_limits<U64>::max() / sizeof(F32);
-            const Tensor input = MakeFoldTensor(impl, DataType::F32, {size}, true);
+            Tensor input = MakeFoldTensor(impl, DataType::F32, {size}, true);
+            REQUIRE(input.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
             Modules::Fold config;
-            config.axis = 0;
             config.size = size;
             RequireFoldValidationError(impl, config, input);
         }
