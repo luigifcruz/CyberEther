@@ -88,6 +88,9 @@ Result CalculateCandidatePlan(const Blocks::Filter& config,
         return Result::SUCCESS;
     }
 
+    // TODO: Fix Filter and Filter Engine resampling together: Fold needs the
+    // negated center-bin offset, per-head offsets, and phase continuity across
+    // overlap-add batches and submissions.
     if (ct != 0.0) {
         const F64 frequencyPerBin =
             sr / static_cast<F64>(convolutionSize);
