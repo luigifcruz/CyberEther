@@ -18,6 +18,9 @@ Result PskDemodImpl::validate() {
     validatedMaxIterations = 0;
     validatedInputSampleSize = 0;
     validatedOutputSampleSize = 0;
+    validatedSampleHistoryCapacity = 0;
+    validatedOutputSymbolsPerLane = 0;
+    validatedPendingSymbolsCapacity = 0;
     validatedBatchSize = 1;
     validatedLaneCount = 1;
     validatedSignalAxes = {};
@@ -29,6 +32,7 @@ Result PskDemodImpl::validate() {
     validatedTimingOmegaNominal = 0.0;
     validatedTimingOmegaMin = 0.0;
     validatedTimingOmegaMax = 0.0;
+    validatedOutputSampleRate = 0.0f;
 
     const auto& config = *candidate();
 
@@ -39,6 +43,17 @@ Result PskDemodImpl::validate() {
 
     if (!std::isfinite(config.symbolRate) || config.symbolRate <= 0.0) {
         JST_ERROR("[MODULE_PSK_DEMOD] Symbol rate must be finite and positive.");
+        return Result::ERROR;
+    }
+
+    constexpr F64 maxF32 = static_cast<F64>(std::numeric_limits<F32>::max());
+    if (config.symbolRate > maxF32) {
+        JST_ERROR("[MODULE_PSK_DEMOD] Symbol rate must be representable as nonzero F32 metadata.");
+        return Result::ERROR;
+    }
+    const F32 candidateOutputSampleRate = static_cast<F32>(config.symbolRate);
+    if (candidateOutputSampleRate <= 0.0f) {
+        JST_ERROR("[MODULE_PSK_DEMOD] Symbol rate must be representable as nonzero F32 metadata.");
         return Result::ERROR;
     }
 
@@ -151,6 +166,7 @@ Result PskDemodImpl::validate() {
     validatedTimingOmegaNominal = candidateTimingOmegaNominal;
     validatedTimingOmegaMin = candidateTimingOmegaMin;
     validatedTimingOmegaMax = candidateTimingOmegaMax;
+    validatedOutputSampleRate = candidateOutputSampleRate;
 
     if (!inputs().contains("signal")) {
         return Result::SUCCESS;
@@ -185,14 +201,34 @@ Result PskDemodImpl::validate() {
     }
 
     const U64 inputSampleSize = inputTensor.shape(*axes.sample);
-    const U64 completeOutputSamples =
-        inputSampleSize / candidateSamplesPerSymbol;
-    if (completeOutputSamples == 0) {
+    if (inputSampleSize < candidateSamplesPerSymbol) {
         JST_ERROR("[MODULE_PSK_DEMOD] Sample axis is too short to produce any symbols.");
         return Result::ERROR;
     }
-    const U64 outputSampleSize = completeOutputSamples +
-        (inputSampleSize % candidateSamplesPerSymbol != 0 ? 1 : 0);
+
+    const long double candidateOutputSampleSize =
+        static_cast<long double>(inputSampleSize) *
+        static_cast<long double>(config.symbolRate) /
+        static_cast<long double>(config.sampleRate);
+    if (!std::isfinite(candidateOutputSampleSize) ||
+        candidateOutputSampleSize <= 0.0L ||
+        candidateOutputSampleSize >
+            static_cast<long double>(std::numeric_limits<U64>::max())) {
+        JST_ERROR("[MODULE_PSK_DEMOD] Output sample geometry is not representable.");
+        return Result::ERROR;
+    }
+    const U64 outputSampleSize =
+        static_cast<U64>(std::ceil(candidateOutputSampleSize));
+
+    U64 candidateSampleHistoryCapacity = 0;
+    if (!detail::CheckedAdd(inputSampleSize,
+                            U64{1},
+                            candidateSampleHistoryCapacity) ||
+        candidateSampleHistoryCapacity >
+            static_cast<U64>(std::numeric_limits<std::size_t>::max())) {
+        JST_ERROR("[MODULE_PSK_DEMOD] Sample history capacity exceeds the supported range.");
+        return Result::ERROR;
+    }
 
     Shape candidateOutputShape = inputTensor.shape();
     candidateOutputShape[*axes.sample] = outputSampleSize;
@@ -240,12 +276,34 @@ Result PskDemodImpl::validate() {
         return Result::ERROR;
     }
 
+    const U64 candidateBatchSize = axes.batch ? inputTensor.shape(*axes.batch) : 1;
+    U64 candidateOutputSymbolsPerLane = 0;
+    U64 candidateMaxRecoveredSymbolsPerLane = 0;
+    U64 candidatePendingSymbolsCapacity = 0;
+    if (!detail::CheckedMultiply(outputSampleSize,
+                                 candidateBatchSize,
+                                 candidateOutputSymbolsPerLane) ||
+        !detail::CheckedMultiply(candidateMaxIterations,
+                                 candidateBatchSize,
+                                 candidateMaxRecoveredSymbolsPerLane) ||
+        !detail::CheckedAdd(candidateOutputSymbolsPerLane,
+                            candidateMaxRecoveredSymbolsPerLane,
+                            candidatePendingSymbolsCapacity) ||
+        candidatePendingSymbolsCapacity >
+            static_cast<U64>(std::numeric_limits<std::size_t>::max())) {
+        JST_ERROR("[MODULE_PSK_DEMOD] Pending symbol capacity exceeds the supported range.");
+        return Result::ERROR;
+    }
+
     validatedOutputSize = candidateOutputSize;
     validatedOutputSizeBytes = candidateOutputSizeBytes;
     validatedMaxIterations = candidateMaxIterations;
     validatedInputSampleSize = inputSampleSize;
     validatedOutputSampleSize = outputSampleSize;
-    validatedBatchSize = axes.batch ? inputTensor.shape(*axes.batch) : 1;
+    validatedSampleHistoryCapacity = candidateSampleHistoryCapacity;
+    validatedOutputSymbolsPerLane = candidateOutputSymbolsPerLane;
+    validatedPendingSymbolsCapacity = candidatePendingSymbolsCapacity;
+    validatedBatchSize = candidateBatchSize;
     validatedLaneCount = candidateLaneCount;
     validatedSignalAxes = axes;
     validatedOutputShape = std::move(candidateOutputShape);
@@ -270,6 +328,9 @@ Result PskDemodImpl::create() {
     maxIterations = validatedMaxIterations;
     inputSampleSize = validatedInputSampleSize;
     outputSampleSize = validatedOutputSampleSize;
+    sampleHistoryCapacity = validatedSampleHistoryCapacity;
+    outputSymbolsPerLane = validatedOutputSymbolsPerLane;
+    pendingSymbolsCapacity = validatedPendingSymbolsCapacity;
     batchSize = validatedBatchSize;
     laneCount = validatedLaneCount;
     sampleAxis = *validatedSignalAxes.sample;
@@ -286,6 +347,7 @@ Result PskDemodImpl::create() {
     JST_CHECK(output.create(input.device(), DataType::CF32, validatedOutputShape));
     JST_CHECK(output.propagateAttributes(input));
     JST_CHECK(SetSignalAxes(output, validatedSignalAxes));
+    JST_CHECK(output.setAttribute("sampleRate", validatedOutputSampleRate));
 
     laneAxes.clear();
     for (Index axis = 0; axis < input.rank(); ++axis) {
@@ -296,7 +358,7 @@ Result PskDemodImpl::create() {
 
     laneStates.resize(laneCount);
     for (auto& state : laneStates) {
-        initializeState(state);
+        JST_CHECK(initializeState(state));
     }
     frequencyError = 0.0;
 
@@ -327,7 +389,7 @@ Result PskDemodImpl::reconfigure() {
     return Result::RECREATE;
 }
 
-void PskDemodImpl::initializeState(DemodState& state) {
+Result PskDemodImpl::initializeState(DemodState& state) {
     state.phaseAccumulator = 0.0;
     state.frequencyError = 0.0;
     state.timingMu = 0.0;
@@ -336,7 +398,8 @@ void PskDemodImpl::initializeState(DemodState& state) {
     state.hasLastSymbol = false;
     state.lastSymbol = CF32{0.0f, 0.0f};
     state.lastDecision = CF32{0.0f, 0.0f};
-    state.sampleHistory.clear();
+    JST_CHECK(state.sampleHistory.resize(sampleHistoryCapacity));
+    return state.pendingSymbols.resize(pendingSymbolsCapacity);
 }
 
 CF32 PskDemodImpl::interpolate(const CF32& a, const CF32& b, F64 mu) const {

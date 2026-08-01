@@ -210,17 +210,20 @@ void WebsocketImpl::receiveBinaryData(const I8* data, const U64 numBytes) {
         return;
     }
 
-    circularBuffer.put(data, numBytes);
+    if (circularBuffer.push(data, numBytes) != Result::SUCCESS) {
+        errored = true;
+        return;
+    }
 
-    const U64 capacity = circularBuffer.getCapacity();
+    const U64 capacity = circularBuffer.capacity();
     if (capacity > 0) {
-        const F32 newHealth = static_cast<F32>(circularBuffer.getOccupancy()) /
+        const F32 newHealth = static_cast<F32>(circularBuffer.size()) /
                               static_cast<F32>(capacity);
         const F32 smoothedHealth = bufferHealth.get() * 0.99f + newHealth * 0.01f;
         bufferHealth.publish(smoothedHealth);
     }
 
-    throughputMBs.publish(static_cast<F32>(circularBuffer.getThroughput()) / 1e6f);
+    throughputMBs.publish(static_cast<F32>(circularBuffer.throughput()) / 1e6f);
 }
 
 #ifdef JST_OS_BROWSER

@@ -162,8 +162,9 @@ void AudioImpl::Impl::callback(ma_device* pDevice, void* pOutput, const void*,
                                ma_uint32 frameCount) {
     auto* audioCircularBuffer = reinterpret_cast<Tools::CircularBuffer<F32>*>(pDevice->pUserData);
 
-    if (frameCount < audioCircularBuffer->getOccupancy()) {
-        audioCircularBuffer->get(reinterpret_cast<F32*>(pOutput), frameCount);
+    if (audioCircularBuffer->size() >= frameCount) {
+        (void)audioCircularBuffer->pop(
+            reinterpret_cast<F32*>(pOutput), frameCount);
     }
 }
 
@@ -385,7 +386,7 @@ Result AudioImpl::create() {
 
     // Initialize circular buffer.
 
-    circularBuffer.resize(validatedCircularBufferSize);
+    JST_CHECK(circularBuffer.resize(validatedCircularBufferSize));
 
     return Result::SUCCESS;
 }
@@ -460,7 +461,8 @@ Result AudioImpl::resample() {
         return Result::ERROR;
     }
 
-    circularBuffer.put(reinterpret_cast<F32*>(buffer.data()), frameCountOut);
+    JST_CHECK(circularBuffer.push(
+        reinterpret_cast<F32*>(buffer.data()), frameCountOut));
 
     return Result::SUCCESS;
 }

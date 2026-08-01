@@ -1,3 +1,4 @@
+#include <array>
 #include <cmath>
 #include <complex>
 #include <algorithm>
@@ -65,28 +66,53 @@ Result PskDemodImplNativeCpu::computeSubmit() {
     const U64 inputBatchStride = batchAxis ? input.stride(*batchAxis) : 0;
     const U64 outputBatchStride = batchAxis ? output.stride(*batchAxis) : 0;
 
-    for (U64 lane = 0; lane < laneCount; ++lane) {
-        U64 inputLaneOffset = 0;
-        U64 outputLaneOffset = 0;
+    const auto laneOffset = [&](const Tensor& tensor, const U64 lane) {
+        U64 offset = 0;
         U64 remainder = lane;
         for (auto axis = laneAxes.rbegin(); axis != laneAxes.rend(); ++axis) {
-            const U64 coordinate = remainder % input.shape(*axis);
-            remainder /= input.shape(*axis);
-            inputLaneOffset += coordinate * input.stride(*axis);
-            outputLaneOffset += coordinate * output.stride(*axis);
+            const U64 coordinate = remainder % tensor.shape(*axis);
+            remainder /= tensor.shape(*axis);
+            offset += coordinate * tensor.stride(*axis);
         }
+        return offset;
+    };
+
+    const auto hasCompleteOutput = [&]() {
+        return std::all_of(laneStates.begin(), laneStates.end(), [&](const auto& state) {
+            return state.pendingSymbols.size() >= outputSymbolsPerLane;
+        });
+    };
+
+    const auto emitOutput = [&]() -> Result {
+        for (U64 lane = 0; lane < laneCount; ++lane) {
+            const U64 outputLaneOffset = laneOffset(output, lane);
+            auto& pendingSymbols = laneStates[lane].pendingSymbols;
+            for (U64 batch = 0; batch < batchSize; ++batch) {
+                const U64 outputOffset =
+                    outputLaneOffset + batch * outputBatchStride;
+                JST_CHECK(pendingSymbols.popStrided(outputData + outputOffset,
+                                                    outputSampleSize,
+                                                    outputSampleStride));
+            }
+        }
+        return Result::SUCCESS;
+    };
+
+    const bool emittedQueuedOutput = hasCompleteOutput();
+    if (emittedQueuedOutput) {
+        JST_CHECK(emitOutput());
+    }
+
+    for (U64 lane = 0; lane < laneCount; ++lane) {
+        const U64 inputLaneOffset = laneOffset(input, lane);
 
         auto& state = laneStates[lane];
         for (U64 batch = 0; batch < batchSize; ++batch) {
             const U64 inputOffset = inputLaneOffset + batch * inputBatchStride;
-            const U64 outputOffset = outputLaneOffset + batch * outputBatchStride;
 
-            for (U64 sample = 0; sample < inputSampleSize; ++sample) {
-                state.sampleHistory.push_back(
-                    inputData[inputOffset + sample * inputSampleStride]);
-            }
+            JST_CHECK(state.sampleHistory.pushStrided(
+                inputData + inputOffset, inputSampleSize, inputSampleStride));
 
-            U64 outputIndex = 0;
             F64 mu = state.timingMu;
             F64 omega = state.timingOmega;
             U64 index = state.timingIndex;
@@ -96,11 +122,11 @@ Result PskDemodImplNativeCpu::computeSubmit() {
             CF32 prevSymbol = state.lastSymbol;
             CF32 prevDecision = state.lastDecision;
             U64 iterations = 0;
+            const U64 historySize = state.sampleHistory.size();
+            bool historyExhausted = false;
 
-            while (outputIndex < outputSampleSize && iterations < maxIterations) {
+            while (iterations < maxIterations) {
                 ++iterations;
-                const U64 historySize =
-                    static_cast<U64>(state.sampleHistory.size());
 
                 while (mu >= 1.0 && index + 1 < historySize) {
                     mu -= 1.0;
@@ -114,13 +140,15 @@ Result PskDemodImplNativeCpu::computeSubmit() {
                     mu = 0.0;
                 }
                 if (index + 1 >= historySize) {
+                    historyExhausted = true;
                     break;
                 }
 
-                const CF32& earlySample = state.sampleHistory[index];
-                const CF32& lateSample = state.sampleHistory[index + 1];
+                std::array<CF32, 2> interpolationSamples;
+                JST_CHECK(state.sampleHistory.peek(
+                    index, interpolationSamples.data(), interpolationSamples.size()));
                 const CF32 interpolatedSample =
-                    interpolate(earlySample, lateSample, mu);
+                    interpolate(interpolationSamples[0], interpolationSamples[1], mu);
                 const CF32 corrected = correctFrequency(interpolatedSample, phase);
                 const CF32 decisionPoint = decision(corrected);
 
@@ -140,26 +168,28 @@ Result PskDemodImplNativeCpu::computeSubmit() {
                 phase += freqAcc + freqAlpha * freqErrSample;
                 phase = std::remainder(phase, 2.0 * kPi);
 
-                outputData[outputOffset + outputIndex * outputSampleStride] =
-                    corrected;
-                ++outputIndex;
+                if (state.pendingSymbols.push(&corrected, 1) != Result::SUCCESS) {
+                    JST_ERROR("[MODULE_PSK_DEMOD_NATIVE_CPU] Pending symbol capacity was exceeded.");
+                    return Result::ERROR;
+                }
                 prevSymbol = corrected;
                 prevDecision = decisionPoint;
                 hasPrevSymbol = true;
                 mu += omega;
             }
 
-            const std::size_t historySize = state.sampleHistory.size();
-            std::size_t pruneCount = 0;
+            if (!historyExhausted) {
+                JST_ERROR("[MODULE_PSK_DEMOD_NATIVE_CPU] Timing recovery exceeded its iteration limit.");
+                return Result::ERROR;
+            }
+
+            U64 pruneCount = 0;
             if (historySize > 1) {
-                pruneCount = std::min<std::size_t>(
-                    static_cast<std::size_t>(index), historySize - 1);
-                for (std::size_t i = 0; i < pruneCount; ++i) {
-                    state.sampleHistory.pop_front();
-                }
+                pruneCount = std::min(index, historySize - 1);
+                JST_CHECK(state.sampleHistory.discard(pruneCount));
             }
             if (pruneCount > 0) {
-                index -= static_cast<U64>(pruneCount);
+                index -= pruneCount;
             }
 
             state.timingMu = mu;
@@ -170,19 +200,19 @@ Result PskDemodImplNativeCpu::computeSubmit() {
             state.hasLastSymbol = hasPrevSymbol;
             state.lastSymbol = prevSymbol;
             state.lastDecision = prevDecision;
-
-            while (outputIndex < outputSampleSize) {
-                outputData[outputOffset + outputIndex * outputSampleStride] =
-                    CF32{0.0f, 0.0f};
-                ++outputIndex;
-            }
         }
     }
 
     // Keep the legacy observable field synchronized with the first lane.
     frequencyError = laneStates.empty() ? 0.0 : laneStates.front().frequencyError;
 
-    return Result::SUCCESS;
+    if (emittedQueuedOutput) {
+        return Result::SUCCESS;
+    }
+    if (!hasCompleteOutput()) {
+        return Result::SKIP;
+    }
+    return emitOutput();
 }
 
 JST_REGISTER_MODULE(PskDemodImplNativeCpu, DeviceType::CPU, RuntimeType::NATIVE, "generic");
