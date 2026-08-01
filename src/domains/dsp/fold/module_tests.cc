@@ -381,6 +381,50 @@ TEST_CASE("Fold - 2D F32 With Trailing Batch", "[modules][fold][batch]") {
     }
 }
 
+TEST_CASE("Fold - Output sample rate is decimated", "[modules][fold][metadata]") {
+    const auto implementations = Registry::ListAvailableModules("fold");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device
+                        << " Runtime: " << impl.runtime) {
+            TestContext ctx("fold", impl.device,
+                           impl.runtime, impl.provider);
+
+            Modules::Fold config;
+            config.size = 4;
+            ctx.setConfig(config);
+
+            Tensor input;
+            REQUIRE(input.create(DeviceType::CPU, DataType::F32,
+                                  {16}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
+            ctx.setInput("buffer", input);
+
+            SECTION("inherits decimated rate") {
+                REQUIRE(input.setAttribute("sampleRate", F32{8.0f}) ==
+                        Result::SUCCESS);
+
+                REQUIRE(ctx.run() == Result::SUCCESS);
+                const auto& out = ctx.output("buffer");
+                REQUIRE(out.shape() == Shape{4});
+                REQUIRE(std::any_cast<Index>(out.attribute("sampleAxis")) ==
+                        Index{0});
+                REQUIRE(std::any_cast<F32>(out.attribute("sampleRate")) == 2.0f);
+            }
+
+            SECTION("without sample rate") {
+                REQUIRE(ctx.run() == Result::SUCCESS);
+                const auto& out = ctx.output("buffer");
+                REQUIRE(out.shape() == Shape{4});
+                REQUIRE(std::any_cast<Index>(out.attribute("sampleAxis")) ==
+                        Index{0});
+                REQUIRE_FALSE(out.hasAttribute("sampleRate"));
+            }
+        }
+    }
+}
+
 TEST_CASE("Fold - Validation rejects missing or malformed signal metadata",
           "[modules][fold][validation][metadata]") {
     const auto implementations = Registry::ListAvailableModules("fold");
@@ -427,6 +471,13 @@ TEST_CASE("Fold - Validation rejects missing or malformed signal metadata",
                 Tensor input = MakeFoldTensor(impl, DataType::F32, {2, 4});
                 REQUIRE(input.setAttribute("sampleAxis", Index{1}) == Result::SUCCESS);
                 REQUIRE(input.setAttribute("channelAxis", Index{1}) == Result::SUCCESS);
+                RequireFoldValidationError(impl, config, input);
+            }
+
+            SECTION("sample rate attribute must be F32") {
+                Tensor input = MakeFoldTensor(impl, DataType::F32, {2, 4});
+                REQUIRE(input.setAttribute("sampleAxis", Index{1}) == Result::SUCCESS);
+                REQUIRE(input.setAttribute("sampleRate", F64{48000.0}) == Result::SUCCESS);
                 RequireFoldValidationError(impl, config, input);
             }
         }

@@ -87,6 +87,21 @@ Result FoldImpl::create() {
     JST_CHECK(output.create(input.device(), input.dtype(), outputShape));
     JST_CHECK(output.propagateAttributes(input));
 
+    if (input.hasAttribute("sampleRate")) {
+        const Tensor inputCopy = input;
+        const F32 foldDecimation = static_cast<F32>(decimationFactor);
+        JST_CHECK(output.setDerivedAttribute(
+            "sampleRate",
+            [inputCopy, foldDecimation]() -> std::any {
+                const std::any sampleRate = inputCopy.attribute("sampleRate");
+                const auto* sampleRateF32 = std::any_cast<F32>(&sampleRate);
+                if (sampleRateF32 == nullptr) {
+                    return {};
+                }
+                return std::any(*sampleRateF32 / foldDecimation);
+            }));
+    }
+
     outputs()["buffer"].produced(name(), "buffer", output);
 
     return Result::SUCCESS;
