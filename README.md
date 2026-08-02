@@ -21,8 +21,12 @@ CyberEther is a high-performance GPU-accelerated framework for real-time signal 
 - 🐍 Python API for custom signal visualization via **Superluminal**.
 
 <p align="center">
-<img src="docs/assets/images/cyberether-banner.png" />
+<img width="1847" height="1133" alt="CyberEtherPythonDemo" src="https://github.com/user-attachments/assets/372d7803-1b35-4ade-a038-ce3a6458c579" />
 </p>
+
+https://github.com/user-attachments/assets/9987cf2d-8b0b-4367-8ec3-869343026ee6
+
+https://github.com/user-attachments/assets/05f9007b-13b7-4d64-864f-3236e28e284d
 
 <p align="center">
 <samp>More demos on the website: <a href="https://cyberether.org">cyberether.org</a></samp>
