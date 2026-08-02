@@ -41,9 +41,24 @@ extern "C" __global__ void invert_kernel(const KernelComplex* input, KernelCompl
     KernelComplex value = input[inputIndex];
     const unsigned long long axisCoordinate =
         (index / kAxisInnerSize) % kAxisLength;
-    if ((axisCoordinate & 1ULL) != 0) {
-        value.real = -value.real;
-        value.imag = -value.imag;
+    if ((kAxisLength & 1ULL) == 0) {
+        if ((axisCoordinate & 1ULL) != 0) {
+            value.real = -value.real;
+            value.imag = -value.imag;
+        }
+    } else {
+        // Odd lengths need an integer-bin phasor instead of (-1)^n.
+        const double pi = 3.14159265358979323846;
+        const double phase = 2.0 * pi *
+                             static_cast<double>(kAxisLength / 2ULL) *
+                             static_cast<double>(axisCoordinate) /
+                             static_cast<double>(kAxisLength);
+        const float phaseReal = static_cast<float>(cos(phase));
+        const float phaseImag = static_cast<float>(sin(phase));
+        const float real = value.real;
+        const float imag = value.imag;
+        value.real = (real * phaseReal) - (imag * phaseImag);
+        value.imag = (real * phaseImag) + (imag * phaseReal);
     }
     output[index] = value;
 }

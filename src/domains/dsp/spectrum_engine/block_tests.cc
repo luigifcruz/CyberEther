@@ -123,6 +123,34 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
+                 "Spectrum engine centers odd lengths on an FFT bin",
+                 "[modules][dsp][spectrum_engine][block]") {
+    Blocks::OnesTensor source;
+    source.shape = {5};
+    source.dataType = "CF32";
+    REQUIRE(flowgraph->blockCreate("odd_src", source, {}) == Result::SUCCESS);
+
+    Tensor sourceTensor = viewBlock("odd_src").outputs.at("buffer").tensor;
+    REQUIRE(sourceTensor.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["buffer"].requested("odd_src", "buffer");
+    REQUIRE(flowgraph->blockCreate("odd_spec", Blocks::SpectrumEngine{}, inputs) ==
+            Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    const Tensor output = viewBlock("odd_spec").outputs.at("buffer").tensor;
+    const U64 center = output.shape(0) / 2;
+    const F32 expectedPeak = 20.0f * std::log10((0.42f * 4.0f) / 5.0f);
+    REQUIRE_THAT(output.at<F32>(center),
+                 Catch::Matchers::WithinAbs(expectedPeak, 0.1f));
+
+    const auto peak = std::max_element(output.data<F32>(),
+                                       output.data<F32>() + output.size());
+    REQUIRE(static_cast<U64>(peak - output.data<F32>()) == center);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
                   "Spectrum engine block rejects invalid signal metadata",
                   "[modules][dsp][spectrum_engine][block][validation]") {
     Blocks::OnesTensor source;

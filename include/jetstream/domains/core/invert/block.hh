@@ -12,12 +12,12 @@ struct Invert : public Block::Config {
     JST_BLOCK_PARAMS();
     JST_BLOCK_DESCRIPTION(
         "Invert",
-        "Alternating sign inversion for FFT shift.",
+        "Time-domain modulation for FFT shift.",
         "# Invert\n"
-        "The Invert block performs alternating sign inversion on the input signal, "
-        "negating every other element. This operation is equivalent to multiplying "
-        "the signal by [1, -1, 1, -1, ...] and is commonly used for FFT shift "
-        "operations to center the spectrum. The pattern runs along the dimension "
+        "The Invert block modulates the input signal to center a subsequent FFT. "
+        "Even-length signals use [1, -1, 1, -1, ...]. Odd-length signals use the "
+        "equivalent integer-bin complex phasor to avoid a half-bin shift. The pattern "
+        "runs along the dimension "
         "identified by `sampleAxis` and restarts for every combination of the remaining "
         "dimensions. Optional `batchAxis` and `channelAxis` metadata, along with all other "
         "axis metadata, are preserved.\n\n"
@@ -33,10 +33,10 @@ struct Invert : public Block::Config {
         "  [c0, c1, c2, c3, ...] -> [c0, -c1, c2, -c3, ...]\n\n"
 
         "## Implementation\n"
-        "Input -> Alternating Sign -> Output\n"
+        "Input -> FFT Shift Modulation -> Output\n"
         "1. Input signal is processed element by element.\n"
-        "2. Even-indexed elements are kept unchanged.\n"
-        "3. Odd-indexed elements are negated.\n"
+        "2. Even lengths use alternating sign inversion.\n"
+        "3. Odd lengths use an exact integer-bin complex phasor.\n"
         "4. Output has the same shape as input.";
     );
 };

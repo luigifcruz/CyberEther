@@ -1,3 +1,5 @@
+#include <cmath>
+
 #include <jetstream/tools/automatic_iterator.hh>
 #include <jetstream/runtime_context_native_cpu.hh>
 #include <jetstream/scheduler_context.hh>
@@ -75,7 +77,17 @@ Result InvertImplNativeCpu::kernelCF32() {
     return AutomaticIterator<const CF32, CF32>(
         [&index, innerSize, length](const auto& in, auto& out) {
             const U64 axisCoordinate = (index / innerSize) % length;
-            out = (axisCoordinate & 1ULL) != 0 ? -in : in;
+            if ((length & 1ULL) == 0) {
+                out = (axisCoordinate & 1ULL) != 0 ? -in : in;
+            } else {
+                // Odd lengths need an integer-bin phasor instead of (-1)^n.
+                const F64 phase = 2.0 * JST_PI *
+                                  static_cast<F64>(length / 2) *
+                                  static_cast<F64>(axisCoordinate) /
+                                  static_cast<F64>(length);
+                out = in * CF32(static_cast<F32>(std::cos(phase)),
+                                static_cast<F32>(std::sin(phase)));
+            }
             ++index;
         },
         input,

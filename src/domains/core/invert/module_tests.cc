@@ -2,6 +2,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <any>
+#include <cmath>
 #include <string>
 
 #include "jetstream/registry.hh"
@@ -44,7 +45,33 @@ void RequireInvertValidationError(const Registry::ModuleRegistration& impl,
 
 }  // namespace
 
-TEST_CASE("Invert Module - Alternating Sign", "[modules][invert][CF32]") {
+TEST_CASE("Invert Module - Even Length Alternating Sign", "[modules][invert][CF32]") {
+    const auto implementations = Registry::ListAvailableModules("invert");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("invert", impl.device, impl.runtime, impl.provider);
+
+            auto input = ctx.createTensor<CF32>({4});
+            input.at(0) = {1.0f, 1.0f};
+            input.at(1) = {2.0f, -2.0f};
+            input.at(2) = {3.0f, 3.0f};
+            input.at(3) = {4.0f, -4.0f};
+
+            ctx.setInput("signal", input);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("signal");
+            for (U64 sample = 0; sample < input.size(); ++sample) {
+                const F32 sign = (sample & 1ULL) != 0 ? -1.0f : 1.0f;
+                REQUIRE(out.at<CF32>(sample) == input.at(sample) * sign);
+            }
+        }
+    }
+}
+
+TEST_CASE("Invert Module - Odd Length Integer Bin Shift", "[modules][invert][CF32]") {
     const auto implementations = Registry::ListAvailableModules("invert");
     REQUIRE(!implementations.empty());
 
@@ -53,20 +80,29 @@ TEST_CASE("Invert Module - Alternating Sign", "[modules][invert][CF32]") {
             TestContext ctx("invert", impl.device, impl.runtime, impl.provider);
 
             auto input = ctx.createTensor<CF32>({5});
-            input.at(0) = {1.0f, 1.0f};
-            input.at(1) = {2.0f, -2.0f};
-            input.at(2) = {3.0f, 3.0f};
-            input.at(3) = {4.0f, -4.0f};
-            input.at(4) = {5.0f, 5.0f};
+            for (U64 sample = 0; sample < input.size(); ++sample) {
+                const F32 value = static_cast<F32>(sample + 1);
+                input.at(sample) = {value, -0.5f * value};
+            }
 
             ctx.setInput("signal", input);
             REQUIRE(ctx.run() == Result::SUCCESS);
 
-            auto& out = ctx.output("signal");
-            REQUIRE_THAT(out.at<CF32>(0).real(), Catch::Matchers::WithinAbs(1.0f, 1e-6f));
-            REQUIRE_THAT(out.at<CF32>(1).real(), Catch::Matchers::WithinAbs(-2.0f, 1e-6f));
-            REQUIRE_THAT(out.at<CF32>(2).real(), Catch::Matchers::WithinAbs(3.0f, 1e-6f));
-            REQUIRE_THAT(out.at<CF32>(3).real(), Catch::Matchers::WithinAbs(-4.0f, 1e-6f));
+            const auto& out = ctx.output("signal");
+            const U64 binShift = input.size() / 2;
+            for (U64 sample = 0; sample < input.size(); ++sample) {
+                const F64 phase = 2.0 * JST_PI *
+                                  static_cast<F64>(binShift) *
+                                  static_cast<F64>(sample) /
+                                  static_cast<F64>(input.size());
+                const CF32 phasor{static_cast<F32>(std::cos(phase)),
+                                  static_cast<F32>(std::sin(phase))};
+                const CF32 expected = input.at(sample) * phasor;
+                REQUIRE_THAT(out.at<CF32>(sample).real(),
+                             Catch::Matchers::WithinAbs(expected.real(), 1e-5f));
+                REQUIRE_THAT(out.at<CF32>(sample).imag(),
+                             Catch::Matchers::WithinAbs(expected.imag(), 1e-5f));
+            }
         }
     }
 }
@@ -108,10 +144,19 @@ TEST_CASE("Invert Module - Leading Batch Restarts For Each Batch",
             REQUIRE(std::any_cast<Index>(out.attribute("sampleAxis")) == Index{1});
             REQUIRE(out.hasAttribute("batchAxis"));
             REQUIRE(std::any_cast<Index>(out.attribute("batchAxis")) == 0);
+            const F64 phaseStep = 2.0 * JST_PI *
+                                  static_cast<F64>(input.shape(1) / 2) /
+                                  static_cast<F64>(input.shape(1));
             for (U64 row = 0; row < out.shape(0); ++row) {
                 for (U64 column = 0; column < out.shape(1); ++column) {
-                    const F32 sign = (column & 1ULL) != 0 ? -1.0f : 1.0f;
-                    REQUIRE(out.at<CF32>(row, column) == input.at(row, column) * sign);
+                    const F64 phase = phaseStep * static_cast<F64>(column);
+                    const CF32 phasor{static_cast<F32>(std::cos(phase)),
+                                      static_cast<F32>(std::sin(phase))};
+                    const CF32 expected = input.at(row, column) * phasor;
+                    REQUIRE_THAT(out.at<CF32>(row, column).real(),
+                                 Catch::Matchers::WithinAbs(expected.real(), 1e-5f));
+                    REQUIRE_THAT(out.at<CF32>(row, column).imag(),
+                                 Catch::Matchers::WithinAbs(expected.imag(), 1e-5f));
                 }
             }
         }
@@ -247,10 +292,19 @@ TEST_CASE("Invert Module - Trailing Batch Strided View And Attributes",
             REQUIRE(out.hasAttribute("source"));
             REQUIRE(std::any_cast<std::string>(out.attribute("source")) == "strided-view");
 
+            const F64 phaseStep = 2.0 * JST_PI *
+                                  static_cast<F64>(input.shape(0) / 2) /
+                                  static_cast<F64>(input.shape(0));
             for (U64 row = 0; row < out.shape(0); ++row) {
-                const F32 sign = (row & 1ULL) != 0 ? -1.0f : 1.0f;
+                const F64 phase = phaseStep * static_cast<F64>(row);
+                const CF32 phasor{static_cast<F32>(std::cos(phase)),
+                                  static_cast<F32>(std::sin(phase))};
                 for (U64 column = 0; column < out.shape(1); ++column) {
-                    REQUIRE(out.at<CF32>(row, column) == input.at<CF32>(row, column) * sign);
+                    const CF32 expected = input.at<CF32>(row, column) * phasor;
+                    REQUIRE_THAT(out.at<CF32>(row, column).real(),
+                                 Catch::Matchers::WithinAbs(expected.real(), 1e-5f));
+                    REQUIRE_THAT(out.at<CF32>(row, column).imag(),
+                                 Catch::Matchers::WithinAbs(expected.imag(), 1e-5f));
                 }
             }
         }
