@@ -62,14 +62,14 @@ struct Filter : public Block::Config {
 
         "## Implementation\n"
         "Cast to CF32 -> FilterTaps -> Pad -> FFT -> Multiply -> (Fold) -> IFFT -> "
-        "(Unpad -> Overlap-Add) -> Output\n"
+        "(Phase Correction) -> (Unpad -> Overlap-Add) -> Output\n"
         "1. Generates CF32 FIR filter coefficients and promotes real input to CF32.\n"
         "2. Pads both operands and transforms them into full-length CF32 spectra.\n"
         "3. Multiplies corresponding bins using complex multiplication. Packed F32 "
         "spectra are never passed to generic arithmetic.\n"
         "4. Optionally folds (decimates) for resampling.\n"
-        "5. Inverse FFTs and normalizes once. Multi-tap filters remove padding and "
-        "apply overlap-add for continuity."
+        "5. Inverse FFTs and normalizes once. Centered resampling preserves phase "
+        "across blocks before multi-tap filters apply overlap-add."
     );
 };
 

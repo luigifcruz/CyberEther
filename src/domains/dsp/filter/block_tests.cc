@@ -382,6 +382,21 @@ TEST_CASE_METHOD(FlowgraphFixture,
                  Catch::Matchers::WithinAbs(0.125f, 1e-5f));
     REQUIRE_THAT(output.at<CF32>(0, 1).imag(),
                  Catch::Matchers::WithinAbs(imaginarySign * 0.21650635f, 1e-5f));
+
+    const F32 nextSignalValues[] = {-0.5f, -0.5f, 1.0f, -0.5f};
+    for (U64 sample = 0; sample < signal.size(); ++sample) {
+        signal.at<F32>(sample) = nextSignalValues[sample];
+    }
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    REQUIRE_THAT(output.at<CF32>(0, 0).real(),
+                 Catch::Matchers::WithinAbs(-0.25f, 1e-5f));
+    REQUIRE_THAT(output.at<CF32>(0, 0).imag(),
+                 Catch::Matchers::WithinAbs(imaginarySign * 0.4330127f, 1e-5f));
+    REQUIRE_THAT(output.at<CF32>(0, 1).real(),
+                 Catch::Matchers::WithinAbs(-0.25f, 1e-5f));
+    REQUIRE_THAT(output.at<CF32>(0, 1).imag(),
+                 Catch::Matchers::WithinAbs(0.0f, 1e-5f));
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,

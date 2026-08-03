@@ -612,6 +612,20 @@ TEST_CASE_METHOD(FlowgraphFixture,
                  Catch::Matchers::WithinAbs(0.25f, 1e-5f));
     REQUIRE_THAT(output.at<CF32>(1).imag(),
                  Catch::Matchers::WithinAbs(imaginarySign * 0.4330127f, 1e-5f));
+
+    Tensor nextSignal =
+        viewBlock("center_signal_source").outputs.at("signal").tensor;
+    SetRealValues(nextSignal, {-0.5f, -0.5f, 1.0f, -0.5f});
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    REQUIRE_THAT(output.at<CF32>(0).real(),
+                 Catch::Matchers::WithinAbs(0.25f, 1e-5f));
+    REQUIRE_THAT(output.at<CF32>(0).imag(),
+                 Catch::Matchers::WithinAbs(-imaginarySign * 0.4330127f, 1e-5f));
+    REQUIRE_THAT(output.at<CF32>(1).real(),
+                 Catch::Matchers::WithinAbs(1.0f, 1e-5f));
+    REQUIRE_THAT(output.at<CF32>(1).imag(),
+                 Catch::Matchers::WithinAbs(0.0f, 1e-5f));
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,

@@ -19,6 +19,7 @@
 #include <jetstream/domains/dsp/fft/module.hh>
 #include <jetstream/domains/dsp/fold/module.hh>
 #include <jetstream/domains/dsp/overlap_add/module.hh>
+#include <jetstream/domains/dsp/phase_correction/module.hh>
 #include <jetstream/memory/axis.hh>
 
 namespace Jetstream::Blocks {
@@ -89,8 +90,7 @@ Result CalculateCandidatePlan(const Blocks::Filter& config,
         return Result::SUCCESS;
     }
 
-    // TODO: Add per-head offsets and phase continuity across overlap-add
-    // batches and submissions.
+    // TODO: Add per-head offsets.
     if (ct != 0.0) {
         const F64 frequencyPerBin =
             sr / static_cast<F64>(convolutionSize);
@@ -191,6 +191,8 @@ struct FilterImpl : public Block::Impl,
         std::make_shared<Modules::Fft>();
     std::shared_ptr<Modules::MultiplyConstant> normalizeConfig =
         std::make_shared<Modules::MultiplyConstant>();
+    std::shared_ptr<Modules::PhaseCorrection> phaseCorrectionConfig =
+        std::make_shared<Modules::PhaseCorrection>();
     std::shared_ptr<Modules::Unpad> unpadConfig =
         std::make_shared<Modules::Unpad>();
     std::shared_ptr<Modules::OverlapAdd> overlapConfig =
@@ -478,6 +480,11 @@ Result FilterImpl::create() {
     if (resample) {
         foldConfig->offset = resamplerOffset;
         foldConfig->size = resamplerSize;
+        phaseCorrectionConfig->phaseIncrement = std::remainder(
+            2.0 * JST_PI * static_cast<F64>(resamplerOffset) *
+                static_cast<F64>(signalSize) /
+                static_cast<F64>(candidatePlan.convolutionSize),
+            2.0 * JST_PI);
 
         JST_CHECK(moduleCreate("fold", foldConfig, {
             {"buffer", product}
@@ -511,8 +518,20 @@ Result FilterImpl::create() {
         {"factor", ifftOutput}
     }));
 
+    auto normalizedOutput = moduleGetOutput({"normalize", "product"});
+    if (resample && resamplerOffset != 0) {
+        JST_CHECK(moduleCreate("phase_correction", phaseCorrectionConfig, {
+            {"signal", normalizedOutput}
+        }));
+        normalizedOutput = moduleGetOutput({"phase_correction", "signal"});
+    }
+
     if (padSize == 0) {
-        JST_CHECK(moduleExposeOutput("buffer", {"normalize", "product"}));
+        if (resample && resamplerOffset != 0) {
+            JST_CHECK(moduleExposeOutput("buffer", {"phase_correction", "signal"}));
+        } else {
+            JST_CHECK(moduleExposeOutput("buffer", {"normalize", "product"}));
+        }
     } else {
         // Unpad.
 
@@ -520,7 +539,7 @@ Result FilterImpl::create() {
         unpadConfig->axis = static_cast<I64>(sampleAxis);
 
         JST_CHECK(moduleCreate("unpad", unpadConfig, {
-            {"padded", moduleGetOutput({"normalize", "product"})}
+            {"padded", normalizedOutput}
         }));
 
         // Overlap-add.
@@ -550,6 +569,7 @@ JST_REGISTER_BLOCK(FilterImpl,
                    {"reshape"},
                    {"multiply"},
                    {"multiply_constant"},
+                   {"phase_correction", true},
                    {"unpad", true},
                    {"overlap_add", true},
                    {"fold", true});
