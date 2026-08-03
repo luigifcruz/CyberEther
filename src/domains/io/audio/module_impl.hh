@@ -46,13 +46,18 @@ struct AudioImpl : public Module::Impl, public DynamicConfig<Audio> {
     U64 validatedCircularBufferSizeBytes = 0;
     Index validatedSampleAxis = 0;
     std::optional<Index> validatedBatchAxis;
+    std::optional<Index> validatedChannelAxis;
+    U32 validatedChannelCount = 1;
 
     Index sampleAxis = 0;
     std::optional<Index> batchAxis;
+    std::optional<Index> channelAxis;
+    U32 channelCount = 1;
 
     Tools::CircularBuffer<F32> circularBuffer;
     bool gatherInput = false;
     std::vector<F32> orderedInput;
+    std::vector<F32> pendingInput;
 };
 
 }  // namespace Jetstream::Modules
