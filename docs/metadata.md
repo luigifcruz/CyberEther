@@ -109,6 +109,7 @@ Hints:
 - **Stick to the established names.** Blocks across the tree already use `sampleRate` and `frequency`, and the UI pin tooltips display whatever is attached. Inventing a second spelling for an existing concept breaks interoperability silently.
 - **Attributes are per tensor, not per cycle.** They describe the stream, not the current buffer. Update them when the property changes, such as after a retune, and leave them alone otherwise. Change detection downstream can then key off the value cheaply.
 - **Mind the stored width when reading.** An attribute holds exactly the type the producer stored, and `std::any_cast` throws on a mismatch, so an `F32` sample rate cannot be read as `F64`. Check the type or agree on widths for shared names. Blocks in the tree store `sampleRate` and `frequency` at different widths today, so defensive reads are the safe habit.
+- **Python assignments use their concrete type.** Writing `np.float32` to `ctx.output_attrs` stores `F32`, just as passing `F32` to C++ `setAttribute` does. Reassignment replaces the previous type rather than coercing to it; plain Python `float` stores `F64`.
 
 Python code sees the same values through `ctx.input_attrs` and `ctx.output_attrs`, described in [Tensor Attributes](/docs/python-block#tensor-attributes).
 
