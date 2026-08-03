@@ -720,8 +720,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                  "Filter engine uses full complex spectra for every operand type",
-                  "[modules][dsp][filter_engine][numeric][F32]") {
+                   "Filter engine uses full complex spectra for every operand type",
+                   "[modules][dsp][filter_engine][numeric][F32]") {
     const char* signalDataType = nullptr;
     const char* filterDataType = nullptr;
     std::vector<F32> signalValues = {1.0f, 2.0f, 3.0f};
@@ -783,7 +783,38 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                  "Filter engine keeps F32 resampling on full complex spectra",
+                 "Filter engine supports one tap without overlap-add",
+                 "[modules][dsp][filter_engine][numeric]") {
+    const auto signalOutput = CreateRealSource(
+        *flowgraph, "one_tap_signal", "CF32", {1.0f, 2.0f, 3.0f, 4.0f});
+    const auto filterOutput = CreateRealSource(
+        *flowgraph, "one_tap_filter", "CF32", {1.0f});
+    Tensor filter = viewBlock(filterOutput.first).outputs.at(filterOutput.second).tensor;
+    REQUIRE(filter.setAttribute("sampleRate", F32{8.0f}) == Result::SUCCESS);
+    REQUIRE(filter.setAttribute("bandwidth", F32{4.0f}) == Result::SUCCESS);
+    REQUIRE(filter.setAttribute("center", F32{0.0f}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].requested(signalOutput.first, signalOutput.second);
+    inputs["filter"].requested(filterOutput.first, filterOutput.second);
+    REQUIRE(flowgraph->blockCreate("one_tap_engine",
+                                   Blocks::FilterEngine{},
+                                   inputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("one_tap_engine").state == Block::State::Created);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    const Tensor output =
+        viewBlock("one_tap_engine").outputs.at("buffer").tensor;
+    REQUIRE(output.shape() == Shape{2});
+    REQUIRE(std::any_cast<Index>(output.attribute("sampleAxis")) == 0);
+    REQUIRE_FALSE(output.hasAttribute("batchAxis"));
+    REQUIRE_FALSE(output.hasAttribute("channelAxis"));
+    REQUIRE(std::any_cast<F32>(output.attribute("sampleRate")) == 4.0f);
+    RequireRealValues(output, {1.0f, 3.0f});
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                   "Filter engine keeps F32 resampling on full complex spectra",
                   "[modules][dsp][filter_engine][numeric][F32][resample]") {
     const auto signalOutput = CreateRealSource(
         *flowgraph, "resample_signal", "F32", {1.0f, 2.0f, 3.0f, 0.0f});

@@ -500,8 +500,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Filter block normalizes folded inverse FFT output",
-                 "[modules][dsp][filter][block][numeric]") {
+                  "Filter block normalizes folded inverse FFT output",
+                  "[modules][dsp][filter][block][numeric]") {
     Blocks::OnesTensor source;
     source.shape = {4};
     source.dataType = "CF32";
@@ -531,4 +531,41 @@ TEST_CASE_METHOD(FlowgraphFixture,
                  Catch::Matchers::WithinAbs(0.0f, 1e-5f));
     REQUIRE_THAT(output.at<CF32>(0, 1).imag(),
                  Catch::Matchers::WithinAbs(0.0f, 1e-5f));
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Filter block supports one tap without overlap-add",
+                 "[modules][dsp][filter][block][numeric]") {
+    Blocks::OnesTensor source;
+    source.shape = {4};
+    source.dataType = "CF32";
+    REQUIRE(flowgraph->blockCreate("one_tap_src", source, {}) ==
+            Result::SUCCESS);
+    TagSamples(viewBlock("one_tap_src").outputs.at("buffer").tensor, 0);
+
+    Blocks::Filter config;
+    config.sampleRate = 8.0f;
+    config.bandwidth = 4.0f;
+    config.taps = 1;
+
+    TensorMap inputs;
+    inputs["signal"].requested("one_tap_src", "buffer");
+    REQUIRE(flowgraph->blockCreate("one_tap_filter", config, inputs) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("one_tap_filter").state == Block::State::Created);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    const Tensor output =
+        viewBlock("one_tap_filter").outputs.at("buffer").tensor;
+    REQUIRE(output.shape() == Shape{1, 2});
+    REQUIRE(std::any_cast<Index>(output.attribute("channelAxis")) == 0);
+    REQUIRE(std::any_cast<Index>(output.attribute("sampleAxis")) == 1);
+    REQUIRE_FALSE(output.hasAttribute("batchAxis"));
+    REQUIRE(std::any_cast<F32>(output.attribute("sampleRate")) == 4.0f);
+    for (U64 sample = 0; sample < output.shape(1); ++sample) {
+        REQUIRE_THAT(output.at<CF32>(0, sample).real(),
+                     Catch::Matchers::WithinAbs(0.5f, 1e-5f));
+        REQUIRE_THAT(output.at<CF32>(0, sample).imag(),
+                     Catch::Matchers::WithinAbs(0.0f, 1e-5f));
+    }
 }

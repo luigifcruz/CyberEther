@@ -48,7 +48,7 @@ struct FilterEngine : public Block::Config {
 
         "## Implementation\n"
         "Signal + Filter -> (Cast to CF32) -> Pad -> FFT -> Multiply -> (Fold) -> IFFT -> "
-        "Unpad -> Overlap-Add -> Output\n"
+        "(Unpad -> Overlap-Add) -> Output\n"
         "1. Promotes both operands to CF32 before entering spectral arithmetic.\n"
         "2. Pads the signal and filter to the combined length.\n"
         "3. Transforms both into full-length CF32 spectra.\n"
@@ -56,7 +56,7 @@ struct FilterEngine : public Block::Config {
         "spectra are never passed to generic arithmetic.\n"
         "5. Optionally folds (decimates) the spectrum for resampling.\n"
         "6. Inverse FFTs back to time domain and normalizes once.\n"
-        "7. Removes padding and applies overlap-add for continuity."
+        "7. Multi-tap filters remove padding and apply overlap-add for continuity."
     );
 };
 

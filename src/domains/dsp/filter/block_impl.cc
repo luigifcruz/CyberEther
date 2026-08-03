@@ -511,26 +511,27 @@ Result FilterImpl::create() {
         {"factor", ifftOutput}
     }));
 
-    // Unpad.
+    if (padSize == 0) {
+        JST_CHECK(moduleExposeOutput("buffer", {"normalize", "product"}));
+    } else {
+        // Unpad.
 
-    unpadConfig->size = padSize;
-    unpadConfig->axis = static_cast<I64>(sampleAxis);
+        unpadConfig->size = padSize;
+        unpadConfig->axis = static_cast<I64>(sampleAxis);
 
-    JST_CHECK(moduleCreate("unpad", unpadConfig, {
-        {"padded", moduleGetOutput({"normalize", "product"})}
-    }));
+        JST_CHECK(moduleCreate("unpad", unpadConfig, {
+            {"padded", moduleGetOutput({"normalize", "product"})}
+        }));
 
-    // Overlap-add.
+        // Overlap-add.
 
-    JST_CHECK(moduleCreate("overlap", overlapConfig, {
-        {"buffer", moduleGetOutput({"unpad", "unpadded"})},
-        {"overlap", moduleGetOutput({"unpad", "pad"})}
-    }));
+        JST_CHECK(moduleCreate("overlap", overlapConfig, {
+            {"buffer", moduleGetOutput({"unpad", "unpadded"})},
+            {"overlap", moduleGetOutput({"unpad", "pad"})}
+        }));
 
-    // Expose output.
-
-    JST_CHECK(moduleExposeOutput("buffer",
-                                 {"overlap", "buffer"}));
+        JST_CHECK(moduleExposeOutput("buffer", {"overlap", "buffer"}));
+    }
     JST_CHECK(SetSignalAxes(outputs().at("buffer").tensor, outputAxes));
     if (resample) {
         JST_CHECK(outputs().at("buffer").tensor.setAttribute(
@@ -549,8 +550,8 @@ JST_REGISTER_BLOCK(FilterImpl,
                    {"reshape"},
                    {"multiply"},
                    {"multiply_constant"},
-                   {"unpad"},
-                   {"overlap_add"},
+                   {"unpad", true},
+                   {"overlap_add", true},
                    {"fold", true});
 
 }  // namespace Jetstream::Blocks
