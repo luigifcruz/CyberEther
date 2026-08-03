@@ -120,8 +120,9 @@ Result CalculateResampleHeuristics(const std::optional<F32>& sampleRateAttribute
             return Result::ERROR;
         }
 
-        if (roundedCenterBin < 0.0) {
-            const F64 centerBinMagnitude = -roundedCenterBin;
+        const F64 foldOffsetBin = -roundedCenterBin;
+        if (foldOffsetBin < 0.0) {
+            const F64 centerBinMagnitude = -foldOffsetBin;
             if (!std::isfinite(centerBinMagnitude) ||
                 centerBinMagnitude >= u64UpperBound) {
                 JST_ERROR("[BLOCK_FILTER_ENGINE] Filter center ({}) cannot be "
@@ -134,15 +135,16 @@ Result CalculateResampleHeuristics(const std::optional<F32>& sampleRateAttribute
             plan.resamplerOffset =
                 remainder == 0 ? 0 : combinedSize - remainder;
         } else {
-            plan.resamplerOffset = static_cast<U64>(roundedCenterBin);
+            plan.resamplerOffset =
+                static_cast<U64>(foldOffsetBin) % combinedSize;
         }
 
-        if (centerBin != std::floor(centerBin)) {
+        if (centerBin != roundedCenterBin) {
             JST_WARN("[BLOCK_FILTER_ENGINE] Output will be shifted by "
                      "{} MHz because filter center frequency "
                      "({:.2f} MHz) is not a multiple of the "
                      "frequency per bin ({} MHz).",
-                     (centerBin - std::floor(centerBin)) *
+                     (centerBin - roundedCenterBin) *
                          frequencyPerBin / 1e6f,
                      center / 1e6f,
                      frequencyPerBin / 1e6f);

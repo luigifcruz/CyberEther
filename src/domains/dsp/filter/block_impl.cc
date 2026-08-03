@@ -89,9 +89,8 @@ Result CalculateCandidatePlan(const Blocks::Filter& config,
         return Result::SUCCESS;
     }
 
-    // TODO: Fix Filter and Filter Engine resampling together: Fold needs the
-    // negated center-bin offset, per-head offsets, and phase continuity across
-    // overlap-add batches and submissions.
+    // TODO: Add per-head offsets and phase continuity across overlap-add
+    // batches and submissions.
     if (ct != 0.0) {
         const F64 frequencyPerBin =
             sr / static_cast<F64>(convolutionSize);
@@ -105,19 +104,20 @@ Result CalculateCandidatePlan(const Blocks::Filter& config,
 
         const F64 roundedCenterBin = std::round(centerBin);
 
-        if (centerBin != std::floor(centerBin)) {
+        if (centerBin != roundedCenterBin) {
             JST_WARN("[BLOCK_FILTER] Output will be shifted by "
                      "{} MHz because filter center frequency "
                      "({:.2f} MHz) is not a multiple of the "
                      "frequency per bin ({} MHz).",
-                     (centerBin - std::floor(centerBin)) *
+                     (centerBin - roundedCenterBin) *
                          frequencyPerBin / 1e6,
                      ct / 1e6,
                      frequencyPerBin / 1e6);
         }
 
-        if (roundedCenterBin < 0.0) {
-            const F64 centerBinMagnitude = -roundedCenterBin;
+        const F64 foldOffsetBin = -roundedCenterBin;
+        if (foldOffsetBin < 0.0) {
+            const F64 centerBinMagnitude = -foldOffsetBin;
             if (!std::isfinite(centerBinMagnitude) ||
                 centerBinMagnitude >= u64Limit) {
                 JST_ERROR("[BLOCK_FILTER] Center frequency ({}) cannot be mapped "
@@ -134,7 +134,7 @@ Result CalculateCandidatePlan(const Blocks::Filter& config,
             const long double convolutionExtent =
                 static_cast<long double>(convolutionSize);
             const long double wrappedCenterBin = std::fmod(
-                static_cast<long double>(roundedCenterBin), convolutionExtent);
+                static_cast<long double>(foldOffsetBin), convolutionExtent);
             const long double u64LimitLongDouble =
                 std::ldexp(1.0L, std::numeric_limits<U64>::digits);
             if (!std::isfinite(wrappedCenterBin) || wrappedCenterBin < 0.0L ||

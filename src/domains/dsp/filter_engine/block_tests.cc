@@ -566,68 +566,52 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Filter engine negative center wrapping changes the filtered output",
-                 "[modules][dsp][filter_engine][metadata]") {
-    Blocks::OnesTensor signalSource;
-    signalSource.shape = {8};
-    signalSource.dataType = "CF32";
-    REQUIRE(flowgraph->blockCreate("negative_center_signal", signalSource, {}) ==
-            Result::SUCCESS);
-    Tensor signal =
-        viewBlock("negative_center_signal").outputs.at("buffer").tensor;
-    TagSignal(signal, 0);
-    REQUIRE(signal.setAttribute("sampleRate", F32{8.0f}) == Result::SUCCESS);
+                 "Filter engine translates rounded center bins with negated fold offsets",
+                 "[modules][dsp][filter_engine][numeric][resample]") {
+    const auto signalOutput = CreateRealSource(
+        *flowgraph,
+        "center_signal",
+        "CF32",
+        {1.0f, -0.5f, -0.5f, 1.0f});
+    const auto filterOutput = CreateRealSource(
+        *flowgraph, "center_taps", "CF32", {1.0f, 0.0f, 0.0f});
 
-    Blocks::OnesTensor filterSource;
-    filterSource.shape = {3};
-    filterSource.dataType = "CF32";
-    REQUIRE(flowgraph->blockCreate("zero_center_filter", filterSource, {}) ==
-            Result::SUCCESS);
-    REQUIRE(flowgraph->blockCreate("negative_center_filter", filterSource, {}) ==
-            Result::SUCCESS);
-    TagSignal(viewBlock("zero_center_filter").outputs.at("buffer").tensor, 0);
-    TagSignal(viewBlock("negative_center_filter").outputs.at("buffer").tensor, 0);
+    F32 center = 0.0f;
+    F32 imaginarySign = 0.0f;
+    SECTION("positive center") {
+        center = 1.6f;
+        imaginarySign = -1.0f;
+    }
+    SECTION("negative center") {
+        center = -1.6f;
+        imaginarySign = 1.0f;
+    }
+    SECTION("wrapped negative center") {
+        center = -7.0f;
+        imaginarySign = -1.0f;
+    }
 
-    Tensor zeroFilter = viewBlock("zero_center_filter").outputs.at("buffer").tensor;
-    REQUIRE(zeroFilter.setAttribute("sampleRate", F32{8.0f}) == Result::SUCCESS);
-    REQUIRE(zeroFilter.setAttribute("bandwidth", F32{4.0f}) == Result::SUCCESS);
-    REQUIRE(zeroFilter.setAttribute("center", F32{0.0f}) == Result::SUCCESS);
+    Tensor filter = viewBlock(filterOutput.first).outputs.at(filterOutput.second).tensor;
+    REQUIRE(filter.setAttribute("sampleRate", F32{6.0f}) == Result::SUCCESS);
+    REQUIRE(filter.setAttribute("bandwidth", F32{3.0f}) == Result::SUCCESS);
+    REQUIRE(filter.setAttribute("center", center) == Result::SUCCESS);
 
-    Tensor negativeFilter =
-        viewBlock("negative_center_filter").outputs.at("buffer").tensor;
-    REQUIRE(negativeFilter.setAttribute("sampleRate", F32{8.0f}) == Result::SUCCESS);
-    REQUIRE(negativeFilter.setAttribute("bandwidth", F32{4.0f}) == Result::SUCCESS);
-    REQUIRE(negativeFilter.setAttribute("center", F32{-1.6f}) == Result::SUCCESS);
-
-    TensorMap zeroInputs;
-    zeroInputs["signal"].requested("negative_center_signal", "buffer");
-    zeroInputs["filter"].requested("zero_center_filter", "buffer");
-    REQUIRE(flowgraph->blockCreate("zero_center_engine",
+    TensorMap inputs;
+    inputs["signal"].requested(signalOutput.first, signalOutput.second);
+    inputs["filter"].requested(filterOutput.first, filterOutput.second);
+    REQUIRE(flowgraph->blockCreate("center_engine",
                                    Blocks::FilterEngine{},
-                                   zeroInputs) == Result::SUCCESS);
-
-    TensorMap negativeInputs;
-    negativeInputs["signal"].requested("negative_center_signal", "buffer");
-    negativeInputs["filter"].requested("negative_center_filter", "buffer");
-    REQUIRE(flowgraph->blockCreate("negative_center_engine",
-                                   Blocks::FilterEngine{},
-                                   negativeInputs) == Result::SUCCESS);
-
-    REQUIRE(viewBlock("zero_center_engine").state == Block::State::Created);
-    REQUIRE(viewBlock("negative_center_engine").state == Block::State::Created);
+                                   inputs) == Result::SUCCESS);
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
 
-    const Tensor zeroOutput =
-        viewBlock("zero_center_engine").outputs.at("buffer").tensor;
-    const Tensor negativeOutput =
-        viewBlock("negative_center_engine").outputs.at("buffer").tensor;
-    REQUIRE(zeroOutput.shape() == Shape{4});
-    REQUIRE(negativeOutput.shape() == zeroOutput.shape());
-    REQUIRE(std::any_cast<F32>(zeroOutput.attribute("sampleRate")) == 4.0f);
-    REQUIRE(std::any_cast<F32>(negativeOutput.attribute("sampleRate")) == 4.0f);
-    REQUIRE_FALSE(std::equal(negativeOutput.data<CF32>(),
-                             negativeOutput.data<CF32>() + negativeOutput.size(),
-                             zeroOutput.data<CF32>()));
+    const Tensor output = viewBlock("center_engine").outputs.at("buffer").tensor;
+    REQUIRE(output.shape() == Shape{2});
+    REQUIRE_THAT(output.at<CF32>(0).real(),
+                 Catch::Matchers::WithinAbs(1.0f, 1e-5f));
+    REQUIRE_THAT(output.at<CF32>(1).real(),
+                 Catch::Matchers::WithinAbs(0.25f, 1e-5f));
+    REQUIRE_THAT(output.at<CF32>(1).imag(),
+                 Catch::Matchers::WithinAbs(imaginarySign * 0.4330127f, 1e-5f));
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,

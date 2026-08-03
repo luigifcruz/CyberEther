@@ -341,24 +341,47 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                  "Filter block wraps negative centers during active resampling",
-                  "[modules][dsp][filter][block][validation]") {
-    Blocks::OnesTensor source;
-    source.shape = {512};
-    source.dataType = "CF32";
-    REQUIRE(flowgraph->blockCreate("negative_src", source, {}) == Result::SUCCESS);
-    TagSamples(viewBlock("negative_src").outputs.at("buffer").tensor, 0);
+                 "Filter block translates rounded center bins with negated fold offsets",
+                 "[modules][dsp][filter][block][numeric][resample]") {
+    TestFlowgraph::SyntheticSourceBlockConfig source;
+    source.bufferSize = 4;
+    source.value = 0.0f;
+    REQUIRE(flowgraph->blockCreate("center_src", source, {}) == Result::SUCCESS);
+    Tensor signal = viewBlock("center_src").outputs.at("signal").tensor;
+    TagSamples(signal, 0);
+    const F32 signalValues[] = {1.0f, -0.5f, -0.5f, 1.0f};
+    for (U64 sample = 0; sample < signal.size(); ++sample) {
+        signal.at<F32>(sample) = signalValues[sample];
+    }
 
     Blocks::Filter config;
-    config.center = {-100000.0f};
+    config.sampleRate = 6.0f;
+    config.bandwidth = 3.0f;
+    config.taps = 3;
+
+    F32 imaginarySign = 0.0f;
+    SECTION("positive center") {
+        config.center = {1.6f};
+        imaginarySign = -1.0f;
+    }
+    SECTION("negative center") {
+        config.center = {-1.6f};
+        imaginarySign = 1.0f;
+    }
 
     TensorMap inputs;
-    inputs["signal"].requested("negative_src", "buffer");
-    REQUIRE(flowgraph->blockCreate("negative_filter", config, inputs) == Result::SUCCESS);
-    const auto block = viewBlock("negative_filter");
-    REQUIRE(block.state == Block::State::Created);
-    REQUIRE(block.outputs.at("buffer").tensor.shape() == Shape{1, 256});
+    inputs["signal"].requested("center_src", "signal");
+    REQUIRE(flowgraph->blockCreate("center_filter", config, inputs) == Result::SUCCESS);
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    const Tensor output = viewBlock("center_filter").outputs.at("buffer").tensor;
+    REQUIRE(output.shape() == Shape{1, 2});
+    REQUIRE_THAT(output.at<CF32>(0, 0).real(),
+                 Catch::Matchers::WithinAbs(0.0f, 1e-5f));
+    REQUIRE_THAT(output.at<CF32>(0, 1).real(),
+                 Catch::Matchers::WithinAbs(0.125f, 1e-5f));
+    REQUIRE_THAT(output.at<CF32>(0, 1).imag(),
+                 Catch::Matchers::WithinAbs(imaginarySign * 0.21650635f, 1e-5f));
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
