@@ -22,7 +22,7 @@ Tensor manipulation and general plumbing: shaping, casting, arithmetic, and the 
 | Duplicate | `duplicate` | Copies and transfers signal data. |
 | Expand Dims | `expand_dims` | Inserts a new dimension of size 1 at a specified axis. |
 | Flatten | `flatten` | Flattens a tensor to one dimension. |
-| Invert | `invert` | Alternating sign inversion for FFT shift. |
+| Invert | `invert` | Time-domain modulation for FFT shift. |
 | Multiply | `multiply` | Element-wise multiplication. |
 | Multiply Constant | `multiply_constant` | Multiplies input by a constant value. |
 | Ones Tensor | `ones_tensor` | Creates a tensor filled with ones. |

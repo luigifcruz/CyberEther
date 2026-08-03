@@ -32,6 +32,14 @@ Result FoldImpl::validate() {
         return Result::ERROR;
     }
 
+    if (inputTensor.hasAttribute("sampleRate")) {
+        const std::any value = inputTensor.attribute("sampleRate");
+        if (!std::any_cast<F32>(&value)) {
+            JST_ERROR("[MODULE_FOLD] Input sample rate metadata must have type F32.");
+            return Result::ERROR;
+        }
+    }
+
     const U64 axisSize = inputTensor.shape(*axes.sample);
     if (axisSize % config.size != 0) {
         JST_ERROR("[MODULE_FOLD] Size ({}) is not a divisor of "

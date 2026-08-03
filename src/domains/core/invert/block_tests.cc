@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "jetstream/domains/core/invert/block.hh"
+#include "jetstream/domains/core/ones_tensor/block.hh"
 #include "jetstream/domains/dsp/window/block.hh"
 #include "flowgraph_fixture.hh"
 
@@ -21,6 +22,27 @@ TEST_CASE_METHOD(FlowgraphFixture, "Invert block creates with complex input",
     REQUIRE(flowgraph->blockCreate("invert_block", config, inputs) == Result::SUCCESS);
     REQUIRE(viewBlock("invert_block").state == Block::State::Created);
     REQUIRE(viewBlock("invert_block").outputs.count("signal") == 1);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture, "Invert block promotes real input to complex",
+                 "[modules][invert][block][F32][CF32]") {
+    Blocks::OnesTensor source;
+    source.shape = {5};
+    source.dataType = "F32";
+    REQUIRE(flowgraph->blockCreate("invert_real_src", source, {}) == Result::SUCCESS);
+
+    Tensor sourceTensor = viewBlock("invert_real_src").outputs.at("buffer").tensor;
+    REQUIRE(sourceTensor.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].requested("invert_real_src", "buffer");
+    REQUIRE(flowgraph->blockCreate("invert_real", Blocks::Invert{}, inputs) ==
+            Result::SUCCESS);
+
+    const Tensor output = viewBlock("invert_real").outputs.at("signal").tensor;
+    REQUIRE(output.shape() == Shape{5});
+    REQUIRE(output.dtype() == DataType::CF32);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Invert block input reconnect lifecycle",

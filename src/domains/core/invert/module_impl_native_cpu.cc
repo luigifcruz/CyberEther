@@ -20,7 +20,8 @@ struct InvertImplNativeCpu : public InvertImpl,
     Result computeSubmit() override;
 
  private:
-    Result kernelCF32();
+    template<typename T>
+    Result kernelTyped();
 
     std::function<Result()> kernel;
     U64 axisInnerSize = 1;
@@ -39,7 +40,8 @@ Result InvertImplNativeCpu::validate() {
         return Result::SUCCESS;
     }
 
-    if (inputTensor.dtype() != DataType::CF32) {
+    if (inputTensor.dtype() != DataType::F32 &&
+        inputTensor.dtype() != DataType::CF32) {
         JST_ERROR("[MODULE_INVERT_NATIVE_CPU] Unsupported data type '{}'.",
                   inputTensor.dtype());
         return Result::ERROR;
@@ -61,7 +63,11 @@ Result InvertImplNativeCpu::create() {
 
     // Register compute kernel.
 
-    kernel = [this]() { return kernelCF32(); };
+    if (input.dtype() == DataType::F32) {
+        kernel = [this]() { return kernelTyped<F32>(); };
+    } else {
+        kernel = [this]() { return kernelTyped<CF32>(); };
+    }
     return Result::SUCCESS;
 }
 
@@ -69,24 +75,26 @@ Result InvertImplNativeCpu::computeSubmit() {
     return kernel();
 }
 
-Result InvertImplNativeCpu::kernelCF32() {
+template<typename T>
+Result InvertImplNativeCpu::kernelTyped() {
     U64 index = 0;
     const U64 innerSize = axisInnerSize;
     const U64 length = axisLength;
 
-    return AutomaticIterator<const CF32, CF32>(
+    return AutomaticIterator<const T, CF32>(
         [&index, innerSize, length](const auto& in, auto& out) {
             const U64 axisCoordinate = (index / innerSize) % length;
+            const CF32 value(in);
             if ((length & 1ULL) == 0) {
-                out = (axisCoordinate & 1ULL) != 0 ? -in : in;
+                out = (axisCoordinate & 1ULL) != 0 ? -value : value;
             } else {
                 // Odd lengths need an integer-bin phasor instead of (-1)^n.
                 const F64 phase = 2.0 * JST_PI *
                                   static_cast<F64>(length / 2) *
                                   static_cast<F64>(axisCoordinate) /
                                   static_cast<F64>(length);
-                out = in * CF32(static_cast<F32>(std::cos(phase)),
-                                static_cast<F32>(std::sin(phase)));
+                out = value * CF32(static_cast<F32>(std::cos(phase)),
+                                   static_cast<F32>(std::sin(phase)));
             }
             ++index;
         },

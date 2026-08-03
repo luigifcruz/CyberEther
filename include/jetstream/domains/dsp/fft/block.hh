@@ -7,12 +7,11 @@ namespace Jetstream::Blocks {
 
 struct Fft : public Block::Config {
     bool forward = true;
-    bool invert = false;
     bool complexOutput = false;
 
     JST_BLOCK_TYPE(fft);
     JST_BLOCK_DOMAIN("DSP");
-    JST_BLOCK_PARAMS(forward, invert, complexOutput);
+    JST_BLOCK_PARAMS(forward, complexOutput);
     JST_BLOCK_DESCRIPTION(
         "FFT",
         "Performs the Fast Fourier Transform.",
@@ -24,8 +23,6 @@ struct Fft : public Block::Config {
         "## Arguments\n"
         "- **Direction**: Forward FFT converts time-domain to frequency-domain. "
         "Inverse FFT converts frequency-domain back to time-domain.\n"
-        "- **Invert**: Multiply each sample line by "
-        "[1, -1, 1, -1, ...] before transforming.\n\n"
         "- **Complex Output**: For forward real-input transforms, output "
         "N/2 + 1 complex CF32 bins instead of packed F32 values.\n\n"
 

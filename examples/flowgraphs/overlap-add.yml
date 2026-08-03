@@ -170,7 +170,6 @@ graph:
     provider: generic
     config:
       forward: true
-      invert: false
       complexOutput: false
     input:
       signal: '${graph.pad_soapy.output.padded}'
@@ -187,7 +186,6 @@ graph:
     provider: generic
     config:
       forward: true
-      invert: false
       complexOutput: false
     input:
       signal: '${graph.pad_flt.output.padded}'
@@ -234,7 +232,6 @@ graph:
     provider: generic
     config:
       forward: false
-      invert: false
       complexOutput: false
     input:
       signal: '${graph.mul.output.product}'

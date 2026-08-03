@@ -39,7 +39,7 @@ Result InvertImpl::create() {
 
     input = inputTensor;
 
-    JST_CHECK(output.create(input.device(), input.dtype(), input.shape()));
+    JST_CHECK(output.create(input.device(), DataType::CF32, input.shape()));
     JST_CHECK(output.propagateAttributes(input));
 
     outputs()["signal"].produced(name(), "signal", output);

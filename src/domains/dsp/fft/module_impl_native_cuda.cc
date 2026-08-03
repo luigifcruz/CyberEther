@@ -39,8 +39,7 @@ extern "C" __global__ void fft_layout(const unsigned char* input,
                                       int transformAxis,
                                       const unsigned long long* shape,
                                       const unsigned long long* stride,
-                                      int mode,
-                                      int invert) {
+                                      int mode) {
     const unsigned long long index =
         (static_cast<unsigned long long>(blockIdx.x) * blockDim.x) + threadIdx.x;
     if (index >= elementCount) {
@@ -63,19 +62,8 @@ extern "C" __global__ void fft_layout(const unsigned char* input,
 
         const unsigned char* source = input + (sourceIndex * elementSize);
         unsigned char* destination = output + (index * elementSize);
-        if (elementSize == sizeof(float)) {
-            float value = *reinterpret_cast<const float*>(source);
-            if (invert != 0 && (axisCoordinate & 1ULL) != 0) {
-                value = -value;
-            }
-            *reinterpret_cast<float*>(destination) = value;
-        } else {
-            KernelComplex value = *reinterpret_cast<const KernelComplex*>(source);
-            if (invert != 0 && (axisCoordinate & 1ULL) != 0) {
-                value.real = -value.real;
-                value.imag = -value.imag;
-            }
-            *reinterpret_cast<KernelComplex*>(destination) = value;
+        for (unsigned long long byte = 0; byte < elementSize; ++byte) {
+            destination[byte] = source[byte];
         }
         return;
     }
@@ -273,8 +261,7 @@ Result FftImplNativeCuda::validate() {
     }
 
     const bool requiresLayout =
-        inputTensor.dtype() == DataType::F32 || candidate()->invert ||
-        !inputTensor.contiguous() ||
+        inputTensor.dtype() == DataType::F32 || !inputTensor.contiguous() ||
         validatedResolvedAxis != inputTensor.rank() - 1;
     if (requiresLayout) {
         const U64 inputElementCount = inputTensor.size();
@@ -303,18 +290,15 @@ Result FftImplNativeCuda::create() {
 
     if (input.dtype() == DataType::CF32 && output.dtype() == DataType::CF32) {
         transformType = TransformType::C2C;
-        useDirectC2C = !invert && input.contiguous() &&
-                       resolvedAxis == input.rank() - 1;
+        useDirectC2C = input.contiguous() && resolvedAxis == input.rank() - 1;
         useOutputC2C = !useDirectC2C && resolvedAxis == input.rank() - 1;
     } else if (input.dtype() == DataType::F32 &&
                output.dtype() == DataType::CF32) {
         transformType = TransformType::R2C;
-        useDirectR2C = !invert && input.contiguous() &&
-                       resolvedAxis == input.rank() - 1;
+        useDirectR2C = input.contiguous() && resolvedAxis == input.rank() - 1;
     } else {
         transformType = TransformType::R2R;
-        useDirectR2R = !invert && input.contiguous() &&
-                       resolvedAxis == input.rank() - 1;
+        useDirectR2R = input.contiguous() && resolvedAxis == input.rank() - 1;
     }
 
     return Result::SUCCESS;
@@ -405,7 +389,6 @@ Result FftImplNativeCuda::scheduleLayout(const cudaStream_t& stream,
     void* shapeData = shapeTensor.data();
     void* strideData = strideTensor.data();
     I32 modeValue = static_cast<I32>(mode);
-    I32 invertValue = invert ? 1 : 0;
 
     void* arguments[] = {
         &sourceArgument,
@@ -420,7 +403,6 @@ Result FftImplNativeCuda::scheduleLayout(const cudaStream_t& stream,
         &shapeData,
         &strideData,
         &modeValue,
-        &invertValue,
     };
 
     const Extent3D<U64> block = {kThreadsPerBlock, 1, 1};

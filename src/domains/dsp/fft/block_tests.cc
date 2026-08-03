@@ -34,6 +34,11 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(out.shape(0) == 64);
 
     const auto& interfaceConfigs = viewBlock("fft").interfaceConfigs;
+    const auto invert = std::find_if(
+        interfaceConfigs.begin(),
+        interfaceConfigs.end(),
+        [](const auto& field) { return field.name == "invert"; });
+    REQUIRE(invert == interfaceConfigs.end());
     const auto complexOutput = std::find_if(
         interfaceConfigs.begin(),
         interfaceConfigs.end(),

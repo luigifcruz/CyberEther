@@ -28,6 +28,8 @@ struct Invert : public Block::Config {
         "- Pre-processing signals before spectral analysis.\n\n"
 
         "## Examples\n"
+        "- Real signal modulation:\n"
+        "  Input: F32[1024] -> Output: CF32[1024]\n"
         "- Complex signal inversion:\n"
         "  Input: CF32[1024] -> Output: CF32[1024]\n"
         "  [c0, c1, c2, c3, ...] -> [c0, -c1, c2, -c3, ...]\n\n"
@@ -37,7 +39,7 @@ struct Invert : public Block::Config {
         "1. Input signal is processed element by element.\n"
         "2. Even lengths use alternating sign inversion.\n"
         "3. Odd lengths use an exact integer-bin complex phasor.\n"
-        "4. Output has the same shape as input.";
+        "4. Output has the same shape as input and CF32 data type.";
     );
 };
 

@@ -63,9 +63,37 @@ TEST_CASE("Invert Module - Even Length Alternating Sign", "[modules][invert][CF3
             REQUIRE(ctx.run() == Result::SUCCESS);
 
             const auto& out = ctx.output("signal");
+            REQUIRE(out.dtype() == DataType::CF32);
             for (U64 sample = 0; sample < input.size(); ++sample) {
                 const F32 sign = (sample & 1ULL) != 0 ? -1.0f : 1.0f;
                 REQUIRE(out.at<CF32>(sample) == input.at(sample) * sign);
+            }
+        }
+    }
+}
+
+TEST_CASE("Invert Module - Even Length F32 Promotes To CF32",
+          "[modules][invert][F32][CF32]") {
+    const auto implementations = Registry::ListAvailableModules("invert");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("invert", impl.device, impl.runtime, impl.provider);
+
+            auto input = ctx.createTensor<F32>({4});
+            for (U64 sample = 0; sample < input.size(); ++sample) {
+                input.at(sample) = static_cast<F32>(sample + 1);
+            }
+
+            ctx.setInput("signal", input);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("signal");
+            REQUIRE(out.dtype() == DataType::CF32);
+            for (U64 sample = 0; sample < input.size(); ++sample) {
+                const F32 sign = (sample & 1ULL) != 0 ? -1.0f : 1.0f;
+                REQUIRE(out.at<CF32>(sample) == CF32(input.at(sample) * sign, 0.0f));
             }
         }
     }
@@ -89,6 +117,7 @@ TEST_CASE("Invert Module - Odd Length Integer Bin Shift", "[modules][invert][CF3
             REQUIRE(ctx.run() == Result::SUCCESS);
 
             const auto& out = ctx.output("signal");
+            REQUIRE(out.dtype() == DataType::CF32);
             const U64 binShift = input.size() / 2;
             for (U64 sample = 0; sample < input.size(); ++sample) {
                 const F64 phase = 2.0 * JST_PI *
@@ -107,13 +136,51 @@ TEST_CASE("Invert Module - Odd Length Integer Bin Shift", "[modules][invert][CF3
     }
 }
 
+TEST_CASE("Invert Module - Odd Length F32 Promotes To CF32",
+          "[modules][invert][F32][CF32]") {
+    const auto implementations = Registry::ListAvailableModules("invert");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("invert", impl.device, impl.runtime, impl.provider);
+
+            auto input = ctx.createTensor<F32>({5});
+            for (U64 sample = 0; sample < input.size(); ++sample) {
+                input.at(sample) = static_cast<F32>(sample + 1);
+            }
+
+            ctx.setInput("signal", input);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("signal");
+            REQUIRE(out.dtype() == DataType::CF32);
+            const U64 binShift = input.size() / 2;
+            for (U64 sample = 0; sample < input.size(); ++sample) {
+                const F64 phase = 2.0 * JST_PI *
+                                  static_cast<F64>(binShift) *
+                                  static_cast<F64>(sample) /
+                                  static_cast<F64>(input.size());
+                const CF32 expected =
+                    CF32(input.at(sample), 0.0f) *
+                    CF32(static_cast<F32>(std::cos(phase)),
+                         static_cast<F32>(std::sin(phase)));
+                REQUIRE_THAT(out.at<CF32>(sample).real(),
+                             Catch::Matchers::WithinAbs(expected.real(), 1e-5f));
+                REQUIRE_THAT(out.at<CF32>(sample).imag(),
+                             Catch::Matchers::WithinAbs(expected.imag(), 1e-5f));
+            }
+        }
+    }
+}
+
 TEST_CASE("Invert Module - Unsupported DType Error", "[modules][invert][error]") {
     const auto implementations = Registry::ListAvailableModules("invert");
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
-            RequireInvertValidationError(impl, DataType::F32, {3}, Index{0});
+            RequireInvertValidationError(impl, DataType::F64, {3}, Index{0});
         }
     }
 }

@@ -699,86 +699,6 @@ TEST_CASE("FFT - Trailing Batch Strided CF32",
     }
 }
 
-TEST_CASE("FFT - Trailing Batch Invert CF32",
-          "[modules][fft][batch][metadata][invert][CF32]") {
-    const auto implementations = Registry::ListAvailableModules("fft");
-    REQUIRE(!implementations.empty());
-
-    for (const auto& impl : implementations) {
-        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
-            TestContext ctx("fft", impl.device, impl.runtime, impl.provider);
-            Modules::Fft config;
-            config.invert = true;
-            ctx.setConfig(config);
-
-            auto input = ctx.createTensor<CF32>({4, 2});
-            REQUIRE(input.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
-            REQUIRE(input.setAttribute("batchAxis", Index{1}) == Result::SUCCESS);
-            for (U64 row = 0; row < input.shape(0); ++row) {
-                for (U64 column = 0; column < input.shape(1); ++column) {
-                    input.at(row, column) = CF32(1.0f, 0.0f);
-                }
-            }
-            ctx.setInput("signal", input);
-            REQUIRE(ctx.run() == Result::SUCCESS);
-
-            const auto& out = ctx.output("signal");
-            REQUIRE(out.shape() == Shape{4, 2});
-            REQUIRE(out.dtype() == DataType::CF32);
-            REQUIRE(out.hasAttribute("batchAxis"));
-            REQUIRE(std::any_cast<Index>(out.attribute("batchAxis")) == Index{1});
-            for (U64 row = 0; row < out.shape(0); ++row) {
-                const F32 expected = row == 2 ? 4.0f : 0.0f;
-                for (U64 column = 0; column < out.shape(1); ++column) {
-                    REQUIRE_THAT(out.at<CF32>(row, column).real(),
-                                 Catch::Matchers::WithinAbs(expected, 1e-4f));
-                    REQUIRE_THAT(out.at<CF32>(row, column).imag(),
-                                 Catch::Matchers::WithinAbs(0.0f, 1e-4f));
-                }
-            }
-        }
-    }
-}
-
-TEST_CASE("FFT - Trailing Batch Invert FFTPACK F32",
-          "[modules][fft][batch][metadata][invert][real][fftpack]") {
-    const auto implementations = Registry::ListAvailableModules("fft");
-    REQUIRE(!implementations.empty());
-
-    for (const auto& impl : implementations) {
-        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
-            TestContext ctx("fft", impl.device, impl.runtime, impl.provider);
-            Modules::Fft config;
-            config.invert = true;
-            ctx.setConfig(config);
-
-            auto input = ctx.createTensor<F32>({4, 2});
-            REQUIRE(input.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
-            REQUIRE(input.setAttribute("batchAxis", Index{1}) == Result::SUCCESS);
-            for (U64 row = 0; row < input.shape(0); ++row) {
-                for (U64 column = 0; column < input.shape(1); ++column) {
-                    input.at(row, column) = 1.0f;
-                }
-            }
-            ctx.setInput("signal", input);
-            REQUIRE(ctx.run() == Result::SUCCESS);
-
-            const auto& out = ctx.output("signal");
-            REQUIRE(out.shape() == Shape{4, 2});
-            REQUIRE(out.dtype() == DataType::F32);
-            REQUIRE(out.hasAttribute("batchAxis"));
-            REQUIRE(std::any_cast<Index>(out.attribute("batchAxis")) == Index{1});
-            for (U64 row = 0; row < out.shape(0); ++row) {
-                const F32 expected = row == 3 ? 4.0f : 0.0f;
-                for (U64 column = 0; column < out.shape(1); ++column) {
-                    REQUIRE_THAT(out.at<F32>(row, column),
-                                 Catch::Matchers::WithinAbs(expected, 1e-4f));
-                }
-            }
-        }
-    }
-}
-
 TEST_CASE("FFT - Validation rejects missing or malformed signal metadata",
           "[modules][fft][validation]") {
     const auto implementations = Registry::ListAvailableModules("fft");
@@ -996,9 +916,9 @@ TEST_CASE("FFT - CUDA Recreation Resets Execution Path",
 
             TypedTensor<CF32> complexInput(DeviceType::CPU, {2, 4});
             REQUIRE(complexInput.setAttribute("sampleAxis", Index{1}) ==
-                    Result::SUCCESS);
+                     Result::SUCCESS);
             REQUIRE(complexInput.setAttribute("batchAxis", Index{0}) ==
-                    Result::SUCCESS);
+                     Result::SUCCESS);
             for (U64 index = 0; index < complexInput.size(); ++index) {
                 complexInput.at(index) = CF32(1.0f, 0.0f);
             }
@@ -1009,7 +929,6 @@ TEST_CASE("FFT - CUDA Recreation Resets Execution Path",
             complexInputs["signal"].tensor = complexDeviceInput;
 
             Modules::Fft complexConfig;
-            complexConfig.invert = true;
             REQUIRE(module->create("test", complexConfig, complexInputs) == Result::SUCCESS);
 
             Runtime complexRuntime("test", impl.device, impl.runtime);
