@@ -103,7 +103,9 @@ template<typename T>
 static Result foldKernel(const Tensor& input,
                          Tensor& output,
                          const Index foldAxis,
+                         const std::optional<Index> channelAxis,
                          const U64 foldOffset,
+                         const std::vector<U64>& channelOffsets,
                          const U64 foldSize,
                          const U64 decimFactor,
                          const std::vector<U64>& inStrides,
@@ -116,7 +118,7 @@ static Result foldKernel(const Tensor& input,
     const T* inPtr = input.data<T>();
     const F64 divisor = static_cast<F64>(decimFactor);
     const U64 axisSize = inShape[foldAxis];
-    const U64 normalizedOffset = foldOffset % axisSize;
+    const U64 normalizedScalarOffset = foldOffset % axisSize;
     std::vector<U64> coords(rank);
 
     for (U64 outputIndex = 0; outputIndex < totalOut; ++outputIndex) {
@@ -125,6 +127,9 @@ static Result foldKernel(const Tensor& input,
             coords[d] = rem / outStrides[d];
             rem %= outStrides[d];
         }
+        const U64 normalizedOffset = channelOffsets.empty()
+            ? normalizedScalarOffset
+            : channelOffsets[coords[*channelAxis]] % axisSize;
 
         U64 inputBaseIndex = 0;
         for (U64 d = 0; d < rank; ++d) {
@@ -170,7 +175,9 @@ Result FoldImplNativeCpu::kernelCF32() {
     return foldKernel<CF32>(input,
                             output,
                             resolvedAxis,
+                            channelAxis,
                             offset,
+                            channelOffsets,
                             size,
                             decimationFactor,
                             inputStrides,
@@ -181,7 +188,9 @@ Result FoldImplNativeCpu::kernelF32() {
     return foldKernel<F32>(input,
                            output,
                            resolvedAxis,
+                           channelAxis,
                            offset,
+                           channelOffsets,
                            size,
                            decimationFactor,
                            inputStrides,

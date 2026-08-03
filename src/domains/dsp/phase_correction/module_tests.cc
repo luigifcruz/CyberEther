@@ -33,8 +33,12 @@ TEST_CASE("Phase correction advances across batches and submissions",
             ctx.setInput("signal", input);
 
             REQUIRE(ctx.start() == Result::SUCCESS);
+            REQUIRE(input.setAttribute(
+                "channelPhaseIncrements",
+                std::vector<F64>{JST_PI / 2.0}) == Result::SUCCESS);
             REQUIRE(ctx.compute() == Result::SUCCESS);
             const auto& output = ctx.output("signal");
+            REQUIRE_FALSE(output.hasAttribute("channelPhaseIncrements"));
             for (U64 sample = 0; sample < output.shape(1); ++sample) {
                 REQUIRE_THAT(output.at<CF32>(0, sample).real(),
                              Catch::Matchers::WithinAbs(1.0f, 1e-5f));
@@ -49,6 +53,57 @@ TEST_CASE("Phase correction advances across batches and submissions",
                 REQUIRE_THAT(output.at<CF32>(1, sample).imag(),
                              Catch::Matchers::WithinAbs(-1.0f, 1e-5f));
             }
+        }
+    }
+}
+
+TEST_CASE("Phase correction tracks independent channel phases",
+          "[modules][phase_correction][channel]") {
+    const auto implementations = Registry::ListAvailableModules("phase_correction");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("phase_correction", impl.device, impl.runtime, impl.provider);
+            Modules::PhaseCorrection config;
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<CF32>({2, 2, 1});
+            REQUIRE(input.setAttribute("sampleAxis", Index{2}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("channelAxis", Index{0}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("batchAxis", Index{1}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute(
+                "channelPhaseIncrements",
+                std::vector<F64>{JST_PI / 2.0, -JST_PI / 2.0}) == Result::SUCCESS);
+            for (U64 channel = 0; channel < input.shape(0); ++channel) {
+                for (U64 batch = 0; batch < input.shape(1); ++batch) {
+                    input.at(channel, batch, 0) = CF32{1.0f, 0.0f};
+                }
+            }
+            ctx.setInput("signal", input);
+
+            REQUIRE(ctx.start() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            const auto& output = ctx.output("signal");
+            REQUIRE_FALSE(output.hasAttribute("channelPhaseIncrements"));
+            REQUIRE_THAT(output.at<CF32>(0, 0, 0).real(),
+                         Catch::Matchers::WithinAbs(1.0f, 1e-5f));
+            REQUIRE_THAT(output.at<CF32>(0, 1, 0).imag(),
+                         Catch::Matchers::WithinAbs(1.0f, 1e-5f));
+            REQUIRE_THAT(output.at<CF32>(1, 0, 0).real(),
+                         Catch::Matchers::WithinAbs(1.0f, 1e-5f));
+            REQUIRE_THAT(output.at<CF32>(1, 1, 0).imag(),
+                         Catch::Matchers::WithinAbs(-1.0f, 1e-5f));
+
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE_THAT(output.at<CF32>(0, 0, 0).real(),
+                         Catch::Matchers::WithinAbs(-1.0f, 1e-5f));
+            REQUIRE_THAT(output.at<CF32>(0, 1, 0).imag(),
+                         Catch::Matchers::WithinAbs(-1.0f, 1e-5f));
+            REQUIRE_THAT(output.at<CF32>(1, 0, 0).real(),
+                         Catch::Matchers::WithinAbs(-1.0f, 1e-5f));
+            REQUIRE_THAT(output.at<CF32>(1, 1, 0).imag(),
+                         Catch::Matchers::WithinAbs(1.0f, 1e-5f));
         }
     }
 }

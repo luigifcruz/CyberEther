@@ -1,6 +1,7 @@
 #include "module_impl.hh"
 
 #include <cmath>
+#include <exception>
 #include <limits>
 
 #include <jetstream/memory/axis.hh>
@@ -13,7 +14,7 @@ Result FilterTapsImpl::validate() {
     validatedOutputSizeBytes = 0;
     validatedSampleRateMetadata = 0.0f;
     validatedBandwidthMetadata = 0.0f;
-    validatedCenterMetadata = 0.0f;
+    validatedCenterMetadata.clear();
     const auto narrowMetadata = [](const F64 value, F32& narrowed) {
         constexpr F64 maxF32 = static_cast<F64>(std::numeric_limits<F32>::max());
         if (value < -maxF32 || value > maxF32) {
@@ -68,8 +69,14 @@ Result FilterTapsImpl::validate() {
         return Result::ERROR;
     }
 
+    try {
+        validatedCenterMetadata.resize(config.center.size());
+    } catch (const std::exception&) {
+        JST_ERROR("[MODULE_FILTER_TAPS] Failed to allocate center metadata.");
+        return Result::ERROR;
+    }
+
     const F64 halfSampleRate = config.sampleRate / 2.0;
-    F32 centerMetadata = 0.0f;
     for (U64 i = 0; i < config.center.size(); ++i) {
         if (!std::isfinite(config.center[i])) {
             JST_ERROR("[MODULE_FILTER_TAPS] Center frequency #{} ({:.2f} MHz) must be "
@@ -96,9 +103,7 @@ Result FilterTapsImpl::validate() {
                       halfSampleRate / 1e6);
             return Result::ERROR;
         }
-        if (i == 0) {
-            centerMetadata = narrowedCenter;
-        }
+        validatedCenterMetadata[i] = narrowedCenter;
     }
 
     U64 outputElementCount = 0;
@@ -119,7 +124,6 @@ Result FilterTapsImpl::validate() {
     validatedOutputSizeBytes = outputSizeBytes;
     validatedSampleRateMetadata = sampleRateMetadata;
     validatedBandwidthMetadata = bandwidthMetadata;
-    validatedCenterMetadata = centerMetadata;
     return Result::SUCCESS;
 }
 
@@ -146,7 +150,11 @@ Result FilterTapsImpl::create() {
     // blocks (e.g. FilterEngine) can read them.
     coeffs.setAttribute("sampleRate", validatedSampleRateMetadata);
     coeffs.setAttribute("bandwidth", validatedBandwidthMetadata);
-    coeffs.setAttribute("center", validatedCenterMetadata);
+    if (validatedCenterMetadata.size() == 1) {
+        coeffs.setAttribute("center", validatedCenterMetadata.front());
+    } else {
+        coeffs.setAttribute("center", validatedCenterMetadata);
+    }
 
     return Result::SUCCESS;
 }

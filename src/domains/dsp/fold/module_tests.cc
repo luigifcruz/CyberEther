@@ -75,9 +75,13 @@ TEST_CASE("Fold - 1D CF32 Uniform", "[modules][fold][cf32]") {
 
             ctx.setInput("buffer", input);
 
-            REQUIRE(ctx.run() == Result::SUCCESS);
+            REQUIRE(ctx.start() == Result::SUCCESS);
+            REQUIRE(input.setAttribute(
+                "channelOffsets", std::vector<U64>{0}) == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
 
             auto& out = ctx.output("buffer");
+            REQUIRE_FALSE(out.hasAttribute("channelOffsets"));
 
             // Decimation factor = 16 / 4 = 4.
             // Each output element accumulates 4 inputs of 1.0,
@@ -228,7 +232,7 @@ TEST_CASE("Fold - 1D F32 With Offset", "[modules][fold][offset]") {
     }
 }
 
-TEST_CASE("Fold - 2D F32 Heads Fold Independently", "[modules][fold][heads]") {
+TEST_CASE("Fold - 2D F32 Heads Use Channel Offsets", "[modules][fold][heads]") {
     auto implementations = Registry::ListAvailableModules("fold");
     REQUIRE(!implementations.empty());
 
@@ -251,6 +255,8 @@ TEST_CASE("Fold - 2D F32 Heads Fold Independently", "[modules][fold][heads]") {
                                   {2, 8}) == Result::SUCCESS);
             REQUIRE(input.setAttribute("sampleAxis", Index{1}) == Result::SUCCESS);
             REQUIRE(input.setAttribute("channelAxis", Index{0}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute(
+                "channelOffsets", std::vector<U64>{0, 2}) == Result::SUCCESS);
             for (U64 i = 0; i < 8; ++i) {
                 input.at<F32>(0, i) = static_cast<F32>(i);
                 input.at<F32>(1, i) = static_cast<F32>(10 + i);
@@ -267,14 +273,17 @@ TEST_CASE("Fold - 2D F32 Heads Fold Independently", "[modules][fold][heads]") {
             REQUIRE(std::any_cast<Index>(out.attribute("sampleAxis")) == Index{1});
             REQUIRE(std::any_cast<Index>(out.attribute("channelAxis")) == Index{0});
             REQUIRE_FALSE(out.hasAttribute("batchAxis"));
+            REQUIRE_FALSE(out.hasAttribute("channelOffsets"));
 
             // Decimation factor = 8 / 4 = 2 on the sample axis.
             for (U64 i = 0; i < 4; ++i) {
                 REQUIRE_THAT(out.at<F32>(0, i),
                     Catch::Matchers::WithinAbs(static_cast<F32>(2 + i), 1e-5f));
-                REQUIRE_THAT(out.at<F32>(1, i),
-                    Catch::Matchers::WithinAbs(static_cast<F32>(12 + i), 1e-5f));
             }
+            REQUIRE_THAT(out.at<F32>(1, 0), Catch::Matchers::WithinAbs(14.0f, 1e-5f));
+            REQUIRE_THAT(out.at<F32>(1, 1), Catch::Matchers::WithinAbs(15.0f, 1e-5f));
+            REQUIRE_THAT(out.at<F32>(1, 2), Catch::Matchers::WithinAbs(12.0f, 1e-5f));
+            REQUIRE_THAT(out.at<F32>(1, 3), Catch::Matchers::WithinAbs(13.0f, 1e-5f));
         }
     }
 }

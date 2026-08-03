@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <exception>
 #include <limits>
@@ -31,7 +32,7 @@ struct FilterCandidatePlan {
     SignalAxes outputAxes;
     U64 convolutionSize = 0;
     U64 padSize = 0;
-    U64 resamplerOffset = 0;
+    std::vector<U64> resamplerOffsets;
     U64 resamplerSize = 0;
     F32 resampledSampleRate = 0.0f;
 };
@@ -52,8 +53,6 @@ Result CalculateCandidatePlan(const Blocks::Filter& config,
 
     const F64 sr = config.sampleRate;
     const F64 bw = config.bandwidth;
-    const F64 ct = config.center.empty() ? 0.0 : config.center.front();
-
     const F64 resamplerRatio = sr / bw;
 
     const F64 u64Limit = std::ldexp(1.0, std::numeric_limits<U64>::digits);
@@ -90,10 +89,20 @@ Result CalculateCandidatePlan(const Blocks::Filter& config,
         return Result::SUCCESS;
     }
 
-    // TODO: Add per-head offsets.
-    if (ct != 0.0) {
-        const F64 frequencyPerBin =
-            sr / static_cast<F64>(convolutionSize);
+    try {
+        candidatePlan.resamplerOffsets.assign(config.heads, 0);
+    } catch (const std::exception&) {
+        JST_ERROR("[BLOCK_FILTER] Failed to allocate resampler offsets for {} heads.",
+                  config.heads);
+        return Result::ERROR;
+    }
+
+    const F64 frequencyPerBin = sr / static_cast<F64>(convolutionSize);
+    for (U64 head = 0; head < config.heads; ++head) {
+        const F64 ct = head < config.center.size() ? config.center[head] : 0.0;
+        if (ct == 0.0) {
+            continue;
+        }
         const F64 centerBin = ct / frequencyPerBin;
 
         if (!std::isfinite(centerBin)) {
@@ -128,7 +137,7 @@ Result CalculateCandidatePlan(const Blocks::Filter& config,
             const U64 centerBinMagnitudeInteger =
                 static_cast<U64>(centerBinMagnitude);
             const U64 remainder = centerBinMagnitudeInteger % convolutionSize;
-            candidatePlan.resamplerOffset =
+            candidatePlan.resamplerOffsets[head] =
                 remainder == 0 ? 0 : convolutionSize - remainder;
         } else {
             const long double convolutionExtent =
@@ -144,7 +153,8 @@ Result CalculateCandidatePlan(const Blocks::Filter& config,
                 return Result::ERROR;
             }
 
-            candidatePlan.resamplerOffset = static_cast<U64>(wrappedCenterBin);
+            candidatePlan.resamplerOffsets[head] =
+                static_cast<U64>(wrappedCenterBin);
         }
     }
 
@@ -368,8 +378,12 @@ Result FilterImpl::create() {
 
     const bool resample = candidatePlan.resample;
     const U64 padSize = candidatePlan.padSize;
-    const U64 resamplerOffset = candidatePlan.resamplerOffset;
+    const auto& resamplerOffsets = candidatePlan.resamplerOffsets;
     const U64 resamplerSize = candidatePlan.resamplerSize;
+    const bool applyPhaseCorrection = resample &&
+        std::any_of(resamplerOffsets.begin(),
+                    resamplerOffsets.end(),
+                    [](const U64 offset) { return offset != 0; });
 
     // Promote real inputs before entering the complex convolution pipeline.
 
@@ -478,13 +492,10 @@ Result FilterImpl::create() {
     auto ifftInput = product;
 
     if (resample) {
-        foldConfig->offset = resamplerOffset;
+        foldConfig->offset = 0;
         foldConfig->size = resamplerSize;
-        phaseCorrectionConfig->phaseIncrement = std::remainder(
-            2.0 * JST_PI * static_cast<F64>(resamplerOffset) *
-                static_cast<F64>(signalSize) /
-                static_cast<F64>(candidatePlan.convolutionSize),
-            2.0 * JST_PI);
+        phaseCorrectionConfig->phaseIncrement = 0.0;
+        JST_CHECK(product.tensor.setAttribute("channelOffsets", resamplerOffsets));
 
         JST_CHECK(moduleCreate("fold", foldConfig, {
             {"buffer", product}
@@ -519,7 +530,17 @@ Result FilterImpl::create() {
     }));
 
     auto normalizedOutput = moduleGetOutput({"normalize", "product"});
-    if (resample && resamplerOffset != 0) {
+    if (applyPhaseCorrection) {
+        std::vector<F64> channelPhaseIncrements(resamplerOffsets.size());
+        for (U64 head = 0; head < resamplerOffsets.size(); ++head) {
+            channelPhaseIncrements[head] = std::remainder(
+                2.0 * JST_PI * static_cast<F64>(resamplerOffsets[head]) *
+                    static_cast<F64>(signalSize) /
+                    static_cast<F64>(candidatePlan.convolutionSize),
+                2.0 * JST_PI);
+        }
+        JST_CHECK(normalizedOutput.tensor.setAttribute(
+            "channelPhaseIncrements", channelPhaseIncrements));
         JST_CHECK(moduleCreate("phase_correction", phaseCorrectionConfig, {
             {"signal", normalizedOutput}
         }));
@@ -527,7 +548,7 @@ Result FilterImpl::create() {
     }
 
     if (padSize == 0) {
-        if (resample && resamplerOffset != 0) {
+        if (applyPhaseCorrection) {
             JST_CHECK(moduleExposeOutput("buffer", {"phase_correction", "signal"}));
         } else {
             JST_CHECK(moduleExposeOutput("buffer", {"normalize", "product"}));

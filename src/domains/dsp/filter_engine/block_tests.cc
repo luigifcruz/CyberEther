@@ -433,28 +433,41 @@ TEST_CASE_METHOD(FlowgraphFixture,
     signalSource.dataType = "CF32";
     REQUIRE(flowgraph->blockCreate("channel_signal", signalSource, {}) ==
             Result::SUCCESS);
-    TagSignal(viewBlock("channel_signal").outputs.at("buffer").tensor,
-              2, 0, 1);
+    Tensor channelSignal =
+        viewBlock("channel_signal").outputs.at("buffer").tensor;
+    TagSignal(channelSignal, 2, 0, 1);
+    REQUIRE(channelSignal.setAttribute(
+        "channelOffsets", std::string("unrelated")) == Result::SUCCESS);
+    REQUIRE(channelSignal.setAttribute(
+        "channelPhaseIncrements", std::string("unrelated")) == Result::SUCCESS);
 
     Blocks::OnesTensor filterSource;
     filterSource.shape = {3};
     filterSource.dataType = "CF32";
     REQUIRE(flowgraph->blockCreate("channel_filter", filterSource, {}) ==
             Result::SUCCESS);
-    TagSignal(viewBlock("channel_filter").outputs.at("buffer").tensor, 0);
+    Tensor channelFilter =
+        viewBlock("channel_filter").outputs.at("buffer").tensor;
+    TagSignal(channelFilter, 0);
+    REQUIRE(channelFilter.setAttribute("sampleRate", F32{4.0f}) == Result::SUCCESS);
+    REQUIRE(channelFilter.setAttribute("bandwidth", F32{2.0f}) == Result::SUCCESS);
+    REQUIRE(channelFilter.setAttribute("center", F32{0.8f}) == Result::SUCCESS);
 
     TensorMap inputs;
     inputs["signal"].requested("channel_signal", "buffer");
     inputs["filter"].requested("channel_filter", "buffer");
     REQUIRE(flowgraph->blockCreate("channel_engine", Blocks::FilterEngine{}, inputs) ==
             Result::SUCCESS);
+    REQUIRE(viewBlock("channel_engine").state == Block::State::Created);
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
 
     const Tensor output = viewBlock("channel_engine").outputs.at("buffer").tensor;
-    REQUIRE(output.shape() == Shape{3, 2, 8});
+    REQUIRE(output.shape() == Shape{3, 2, 4});
     REQUIRE(std::any_cast<Index>(output.attribute("sampleAxis")) == 2);
     REQUIRE(std::any_cast<Index>(output.attribute("batchAxis")) == 0);
     REQUIRE(std::any_cast<Index>(output.attribute("channelAxis")) == 1);
+    REQUIRE_FALSE(output.hasAttribute("channelOffsets"));
+    REQUIRE_FALSE(output.hasAttribute("channelPhaseIncrements"));
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
@@ -512,6 +525,9 @@ TEST_CASE_METHOD(FlowgraphFixture,
     }
     SECTION("center is not F32") {
         center = F64{0.0};
+    }
+    SECTION("center vector does not match filter channels") {
+        center = std::vector<F32>{0.0f, 0.0f};
     }
 
     Tensor filter = viewBlock("metadata_filter").outputs.at("buffer").tensor;
@@ -626,6 +642,84 @@ TEST_CASE_METHOD(FlowgraphFixture,
                  Catch::Matchers::WithinAbs(1.0f, 1e-5f));
     REQUIRE_THAT(output.at<CF32>(1).imag(),
                  Catch::Matchers::WithinAbs(0.0f, 1e-5f));
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Filter engine translates distinct per-head center metadata",
+                 "[modules][dsp][filter_engine][numeric][resample][heads]") {
+    const auto signalOutput = CreateRealSource(
+        *flowgraph,
+        "head_center_signal",
+        "CF32",
+        {1.0f, -0.5f, -0.5f, 1.0f});
+    TestFlowgraph::SyntheticSourceBlockConfig filterSource;
+    filterSource.bufferSize = 6;
+    filterSource.value = 0.0f;
+    REQUIRE(flowgraph->blockCreate(
+        "head_center_taps_source", filterSource, {}) == Result::SUCCESS);
+    Tensor rawFilter =
+        viewBlock("head_center_taps_source").outputs.at("signal").tensor;
+    REQUIRE(rawFilter.reshape({2, 3}) == Result::SUCCESS);
+    TagSignal(rawFilter, 1, std::nullopt, 0);
+    for (U64 head = 0; head < rawFilter.shape(0); ++head) {
+        rawFilter.at<F32>(head, 0) = 1.0f;
+        rawFilter.at<F32>(head, 1) = 0.0f;
+        rawFilter.at<F32>(head, 2) = 0.0f;
+    }
+
+    Blocks::Cast filterCast;
+    filterCast.outputType = "CF32";
+    TensorMap filterInputs;
+    filterInputs["buffer"].requested("head_center_taps_source", "signal");
+    REQUIRE(flowgraph->blockCreate(
+        "head_center_taps", filterCast, filterInputs) == Result::SUCCESS);
+    Tensor filter = viewBlock("head_center_taps").outputs.at("buffer").tensor;
+    REQUIRE(filter.setAttribute("sampleRate", F32{6.0f}) == Result::SUCCESS);
+    REQUIRE(filter.setAttribute("bandwidth", F32{3.0f}) == Result::SUCCESS);
+    REQUIRE(filter.setAttribute(
+        "center", std::vector<F32>{1.6f, -1.6f}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].requested(signalOutput.first, signalOutput.second);
+    inputs["filter"].requested("head_center_taps", "buffer");
+    REQUIRE(flowgraph->blockCreate("head_center_engine",
+                                   Blocks::FilterEngine{},
+                                   inputs) == Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    const Tensor output =
+        viewBlock("head_center_engine").outputs.at("buffer").tensor;
+    REQUIRE(output.shape() == Shape{2, 2});
+    for (U64 head = 0; head < output.shape(0); ++head) {
+        const F32 imaginarySign = head == 0 ? -1.0f : 1.0f;
+        REQUIRE_THAT(output.at<CF32>(head, 0).real(),
+                     Catch::Matchers::WithinAbs(1.0f, 1e-5f));
+        REQUIRE_THAT(output.at<CF32>(head, 0).imag(),
+                     Catch::Matchers::WithinAbs(0.0f, 1e-5f));
+        REQUIRE_THAT(output.at<CF32>(head, 1).real(),
+                     Catch::Matchers::WithinAbs(0.25f, 1e-5f));
+        REQUIRE_THAT(output.at<CF32>(head, 1).imag(),
+                     Catch::Matchers::WithinAbs(
+                         imaginarySign * 0.4330127f, 1e-5f));
+    }
+
+    Tensor nextSignal =
+        viewBlock("head_center_signal_source").outputs.at("signal").tensor;
+    SetRealValues(nextSignal, {-0.5f, -0.5f, 1.0f, -0.5f});
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    for (U64 head = 0; head < output.shape(0); ++head) {
+        const F32 imaginarySign = head == 0 ? 1.0f : -1.0f;
+        REQUIRE_THAT(output.at<CF32>(head, 0).real(),
+                     Catch::Matchers::WithinAbs(0.25f, 1e-5f));
+        REQUIRE_THAT(output.at<CF32>(head, 0).imag(),
+                     Catch::Matchers::WithinAbs(
+                         imaginarySign * 0.4330127f, 1e-5f));
+        REQUIRE_THAT(output.at<CF32>(head, 1).real(),
+                     Catch::Matchers::WithinAbs(1.0f, 1e-5f));
+        REQUIRE_THAT(output.at<CF32>(head, 1).imag(),
+                     Catch::Matchers::WithinAbs(0.0f, 1e-5f));
+    }
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,

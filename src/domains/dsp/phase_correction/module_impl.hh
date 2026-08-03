@@ -2,6 +2,7 @@
 #define JETSTREAM_DOMAINS_DSP_PHASE_CORRECTION_MODULE_IMPL_HH
 
 #include <optional>
+#include <vector>
 
 #include <jetstream/detail/module_impl.hh>
 #include <jetstream/domains/dsp/phase_correction/module.hh>
@@ -16,9 +17,13 @@ struct PhaseCorrectionImpl : public Module::Impl,
 
  protected:
     std::optional<Index> validatedBatchAxis;
+    std::optional<Index> validatedChannelAxis;
+    std::vector<F64> validatedChannelPhaseIncrements;
     Tensor input;
     Tensor output;
     std::optional<Index> batchAxis;
+    std::optional<Index> channelAxis;
+    std::vector<F64> channelPhaseIncrements;
 };
 
 }  // namespace Jetstream::Modules

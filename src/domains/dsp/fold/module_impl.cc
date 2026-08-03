@@ -7,6 +7,8 @@ namespace Jetstream::Modules {
 
 Result FoldImpl::validate() {
     validatedResolvedAxis = 0;
+    validatedChannelAxis.reset();
+    validatedChannelOffsets.clear();
     validatedDecimationFactor = 0;
     validatedOutputSizeBytes = 0;
 
@@ -48,11 +50,46 @@ Result FoldImpl::validate() {
         return Result::ERROR;
     }
 
-    if (axisSize < config.offset) {
-        JST_ERROR("[MODULE_FOLD] Offset ({}) is greater than the "
-                  "input shape ({}) along axis ({}).",
-                  config.offset, axisSize, *axes.sample);
-        return Result::ERROR;
+    std::vector<U64> channelOffsets;
+    if (inputTensor.hasAttribute("channelOffsets")) {
+        const std::any value = inputTensor.attribute("channelOffsets");
+        const auto* typedOffsets = std::any_cast<std::vector<U64>>(&value);
+        if (typedOffsets == nullptr) {
+            JST_ERROR("[MODULE_FOLD] Input channelOffsets metadata must have "
+                      "type vector<U64>.");
+            return Result::ERROR;
+        }
+        if (typedOffsets->empty()) {
+            JST_ERROR("[MODULE_FOLD] Input channelOffsets metadata cannot be empty.");
+            return Result::ERROR;
+        }
+        channelOffsets = *typedOffsets;
+    }
+
+    if (channelOffsets.empty()) {
+        if (axisSize < config.offset) {
+            JST_ERROR("[MODULE_FOLD] Offset ({}) is greater than the "
+                      "input shape ({}) along axis ({}).",
+                      config.offset, axisSize, *axes.sample);
+            return Result::ERROR;
+        }
+    } else {
+        if (!axes.channel ||
+            channelOffsets.size() != inputTensor.shape(*axes.channel)) {
+            JST_ERROR("[MODULE_FOLD] Channel offsets must match channelAxis extent.");
+            return Result::ERROR;
+        }
+        for (U64 channel = 0; channel < channelOffsets.size(); ++channel) {
+            if (axisSize < channelOffsets[channel]) {
+                JST_ERROR("[MODULE_FOLD] Channel offset #{} ({}) is greater than "
+                          "the input shape ({}) along axis ({}).",
+                          channel,
+                          channelOffsets[channel],
+                          axisSize,
+                          *axes.sample);
+                return Result::ERROR;
+            }
+        }
     }
 
     const U64 decimationFactor = axisSize / config.size;
@@ -66,6 +103,10 @@ Result FoldImpl::validate() {
     }
 
     validatedResolvedAxis = *axes.sample;
+    if (!channelOffsets.empty()) {
+        validatedChannelAxis = axes.channel;
+        validatedChannelOffsets = channelOffsets;
+    }
     validatedDecimationFactor = decimationFactor;
     validatedOutputSizeBytes = outputSizeBytes;
     return Result::SUCCESS;
@@ -85,6 +126,8 @@ Result FoldImpl::create() {
 
     input = inputTensor;
     resolvedAxis = validatedResolvedAxis;
+    channelAxis = validatedChannelAxis;
+    channelOffsets = validatedChannelOffsets;
     decimationFactor = validatedDecimationFactor;
 
     // Build output shape.
@@ -94,6 +137,7 @@ Result FoldImpl::create() {
     // Allocate output tensor with same dtype.
     JST_CHECK(output.create(input.device(), input.dtype(), outputShape));
     JST_CHECK(output.propagateAttributes(input));
+    JST_CHECK(output.removeAttribute("channelOffsets"));
 
     if (input.hasAttribute("sampleRate")) {
         const Tensor inputCopy = input;

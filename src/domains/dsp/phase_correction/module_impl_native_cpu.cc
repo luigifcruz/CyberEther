@@ -20,8 +20,10 @@ struct PhaseCorrectionImplNativeCpu : public PhaseCorrectionImpl,
  private:
     U64 batchCount = 1;
     U64 batchInnerSize = 1;
-    F64 phase = 0.0;
-    F64 wrappedPhaseIncrement = 0.0;
+    U64 channelCount = 1;
+    U64 channelInnerSize = 1;
+    std::vector<F64> phases;
+    std::vector<F64> wrappedPhaseIncrements;
     std::vector<CF32> corrections;
 };
 
@@ -48,8 +50,6 @@ Result PhaseCorrectionImplNativeCpu::validate() {
 Result PhaseCorrectionImplNativeCpu::create() {
     JST_CHECK(PhaseCorrectionImpl::create());
 
-    phase = 0.0;
-    wrappedPhaseIncrement = std::remainder(phaseIncrement, 2.0 * JST_PI);
     batchCount = batchAxis ? input.shape(*batchAxis) : 1;
     batchInnerSize = 1;
     if (batchAxis) {
@@ -57,35 +57,60 @@ Result PhaseCorrectionImplNativeCpu::create() {
             batchInnerSize *= input.shape(axis);
         }
     }
-    corrections.resize(batchCount);
+    channelCount = channelAxis ? input.shape(*channelAxis) : 1;
+    channelInnerSize = 1;
+    if (channelAxis) {
+        for (Index axis = *channelAxis + 1; axis < input.rank(); ++axis) {
+            channelInnerSize *= input.shape(axis);
+        }
+    }
+
+    phases.assign(channelCount, 0.0);
+    wrappedPhaseIncrements.resize(channelCount);
+    for (U64 channel = 0; channel < channelCount; ++channel) {
+        const F64 increment = channelPhaseIncrements.empty()
+            ? phaseIncrement
+            : channelPhaseIncrements[channel];
+        wrappedPhaseIncrements[channel] =
+            std::remainder(increment, 2.0 * JST_PI);
+    }
+    corrections.resize(channelCount * batchCount);
     return Result::SUCCESS;
 }
 
 Result PhaseCorrectionImplNativeCpu::computeSubmit() {
-    for (U64 batch = 0; batch < batchCount; ++batch) {
-        const F64 batchPhase =
-            phase + wrappedPhaseIncrement * static_cast<F64>(batch);
-        corrections[batch] = {
-            static_cast<F32>(std::cos(batchPhase)),
-            static_cast<F32>(std::sin(batchPhase)),
-        };
+    for (U64 channel = 0; channel < channelCount; ++channel) {
+        for (U64 batch = 0; batch < batchCount; ++batch) {
+            const F64 batchPhase = phases[channel] +
+                wrappedPhaseIncrements[channel] * static_cast<F64>(batch);
+            corrections[channel * batchCount + batch] = {
+                static_cast<F32>(std::cos(batchPhase)),
+                static_cast<F32>(std::sin(batchPhase)),
+            };
+        }
     }
 
     U64 index = 0;
-    const U64 innerSize = batchInnerSize;
-    const U64 count = batchCount;
     JST_CHECK(AutomaticIterator<const CF32, CF32>(
-        [&index, innerSize, count, this](const auto& in, auto& out) {
-            const U64 batch = count == 1 ? 0 : (index / innerSize) % count;
-            out = in * corrections[batch];
+        [&index, this](const auto& in, auto& out) {
+            const U64 batch = batchCount == 1
+                ? 0
+                : (index / batchInnerSize) % batchCount;
+            const U64 channel = channelCount == 1
+                ? 0
+                : (index / channelInnerSize) % channelCount;
+            out = in * corrections[channel * batchCount + batch];
             ++index;
         },
         input,
         output));
 
-    phase = std::remainder(
-        phase + wrappedPhaseIncrement * static_cast<F64>(batchCount),
-        2.0 * JST_PI);
+    for (U64 channel = 0; channel < channelCount; ++channel) {
+        phases[channel] = std::remainder(
+            phases[channel] +
+                wrappedPhaseIncrements[channel] * static_cast<F64>(batchCount),
+            2.0 * JST_PI);
+    }
     return Result::SUCCESS;
 }
 

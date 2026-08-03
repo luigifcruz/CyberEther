@@ -161,6 +161,8 @@ TEST_CASE("Filter Taps - Multi-Head", "[modules][filter_taps]") {
             REQUIRE(out.rank() == 2);
             REQUIRE(out.shape(0) == 3);
             REQUIRE(out.shape(1) == 51);
+            REQUIRE(std::any_cast<std::vector<F32>>(out.attribute("center")) ==
+                    std::vector<F32>{0.0f, 0.2e6f, -0.4e6f});
 
             // First head (center=0) should have real-valued coefficients.
             for (U64 i = 0; i < config.taps; ++i) {

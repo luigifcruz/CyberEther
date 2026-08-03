@@ -1,5 +1,7 @@
+#include <algorithm>
 #include <any>
 #include <cmath>
+#include <exception>
 #include <limits>
 #include <optional>
 #include <string>
@@ -33,14 +35,14 @@ struct FilterEngineCandidatePlan {
     SignalAxes outputAxes;
     U64 convolutionSize = 0;
     U64 padSize = 0;
-    U64 resamplerOffset = 0;
+    std::vector<U64> resamplerOffsets;
     U64 resamplerSize = 0;
     F32 resampledSampleRate = 0.0f;
 };
 
 Result CalculateResampleHeuristics(const std::optional<F32>& sampleRateAttribute,
                                     const std::optional<F32>& bandwidthAttribute,
-                                    const std::optional<F32>& centerAttribute,
+                                    const std::optional<std::vector<F32>>& centerAttribute,
                                     U64 combinedSize,
                                     FilterEngineCandidatePlan& plan) {
     // Check if filter has all necessary attributes.
@@ -53,7 +55,7 @@ Result CalculateResampleHeuristics(const std::optional<F32>& sampleRateAttribute
 
     const F32 sampleRate = *sampleRateAttribute;
     const F32 bandwidth = *bandwidthAttribute;
-    const F32 center = *centerAttribute;
+    const auto& centers = *centerAttribute;
 
     if (sampleRate <= 0.0f || bandwidth <= 0.0f) {
         JST_WARN("[BLOCK_FILTER_ENGINE] Bypassing resampling because "
@@ -108,9 +110,19 @@ Result CalculateResampleHeuristics(const std::optional<F32>& sampleRateAttribute
         return Result::SUCCESS;
     }
 
-    if (center != 0.0f) {
-        const F32 frequencyPerBin =
-            sampleRate / static_cast<F32>(combinedSize);
+    try {
+        plan.resamplerOffsets.assign(centers.size(), 0);
+    } catch (const std::exception&) {
+        JST_ERROR("[BLOCK_FILTER_ENGINE] Failed to allocate resampler offsets.");
+        return Result::ERROR;
+    }
+
+    const F32 frequencyPerBin = sampleRate / static_cast<F32>(combinedSize);
+    for (U64 head = 0; head < centers.size(); ++head) {
+        const F32 center = centers[head];
+        if (center == 0.0f) {
+            continue;
+        }
         const F32 centerBin = center / frequencyPerBin;
         const F64 roundedCenterBin = static_cast<F64>(std::round(centerBin));
 
@@ -133,10 +145,10 @@ Result CalculateResampleHeuristics(const std::optional<F32>& sampleRateAttribute
 
             const U64 magnitude = static_cast<U64>(centerBinMagnitude);
             const U64 remainder = magnitude % combinedSize;
-            plan.resamplerOffset =
+            plan.resamplerOffsets[head] =
                 remainder == 0 ? 0 : combinedSize - remainder;
         } else {
-            plan.resamplerOffset =
+            plan.resamplerOffsets[head] =
                 static_cast<U64>(foldOffsetBin) % combinedSize;
         }
 
@@ -233,7 +245,8 @@ Result FilterEngineImpl::validate() {
     std::optional<SignalAxes> filterAxes;
     std::optional<F32> sampleRate;
     std::optional<F32> bandwidth;
-    std::optional<F32> center;
+    std::optional<std::vector<F32>> centers;
+    bool scalarCenter = false;
     const auto filter = inputs().find("filter");
     if (filter != inputs().end() && filter->second.tensor.validShape()) {
         filterTensor = &filter->second.tensor;
@@ -284,7 +297,25 @@ Result FilterEngineImpl::validate() {
 
         JST_CHECK(readAttribute("sampleRate", sampleRate));
         JST_CHECK(readAttribute("bandwidth", bandwidth));
-        JST_CHECK(readAttribute("center", center));
+        if (filterTensor->hasAttribute("center")) {
+            const std::any attribute = filterTensor->attribute("center");
+            if (const auto* scalar = std::any_cast<F32>(&attribute)) {
+                centers = std::vector<F32>{*scalar};
+                scalarCenter = true;
+            } else if (const auto* vector =
+                           std::any_cast<std::vector<F32>>(&attribute)) {
+                if (vector->empty()) {
+                    JST_ERROR("[BLOCK_FILTER_ENGINE] Filter attribute 'center' "
+                              "cannot be empty.");
+                    return Result::ERROR;
+                }
+                centers = *vector;
+            } else {
+                JST_ERROR("[BLOCK_FILTER_ENGINE] Filter attribute 'center' must "
+                          "be F32 or vector<F32>.");
+                return Result::ERROR;
+            }
+        }
     }
 
     if (signalTensor != nullptr && filterTensor != nullptr) {
@@ -298,6 +329,22 @@ Result FilterEngineImpl::validate() {
         const U64 signalSize = signalTensor->shape(signalSampleAxis);
         const Index filterSampleAxis = *filterAxes->sample;
         const U64 filterSize = filterTensor->shape(filterSampleAxis);
+        const U64 headCount = multiHead ? filterTensor->shape(0) : 1;
+        if (centers) {
+            if (scalarCenter && multiHead) {
+                try {
+                    centers->resize(headCount, centers->front());
+                } catch (const std::exception&) {
+                    JST_ERROR("[BLOCK_FILTER_ENGINE] Failed to expand scalar "
+                              "center metadata across filter channels.");
+                    return Result::ERROR;
+                }
+            } else if (centers->size() != headCount) {
+                JST_ERROR("[BLOCK_FILTER_ENGINE] Filter center metadata must match "
+                          "the filter channel extent.");
+                return Result::ERROR;
+            }
+        }
         U64 combinedSize = 0;
         if (!detail::CheckedAdd(signalSize, filterSize - 1, combinedSize)) {
             JST_ERROR("[BLOCK_FILTER_ENGINE] Combined signal and filter extent "
@@ -323,7 +370,7 @@ Result FilterEngineImpl::validate() {
         plan.padSize = filterSize - 1;
         JST_CHECK(CalculateResampleHeuristics(sampleRate,
                                               bandwidth,
-                                              center,
+                                              centers,
                                               combinedSize,
                                               plan));
         candidatePlan = plan;
@@ -375,8 +422,12 @@ Result FilterEngineImpl::create() {
 
     const bool resample = candidatePlan->resample;
     const U64 padSize = candidatePlan->padSize;
-    const U64 resamplerOffset = candidatePlan->resamplerOffset;
+    const auto& resamplerOffsets = candidatePlan->resamplerOffsets;
     const U64 resamplerSize = candidatePlan->resamplerSize;
+    const bool applyPhaseCorrection = resample &&
+        std::any_of(resamplerOffsets.begin(),
+                    resamplerOffsets.end(),
+                    [](const U64 offset) { return offset != 0; });
 
     JST_CHECK(moduleCreate("cast_signal", castSignalConfig, {
         {"buffer", signalPort}
@@ -498,15 +549,16 @@ Result FilterEngineImpl::create() {
     // Optional fold for resampling.
 
     auto ifftInput = product;
+    if (resample && multiHead) {
+        JST_CHECK(product.tensor.setAttribute(
+            "channelOffsets", resamplerOffsets));
+    } else {
+        JST_CHECK(product.tensor.removeAttribute("channelOffsets"));
+    }
 
     if (resample) {
-        foldConfig->offset = resamplerOffset;
+        foldConfig->offset = multiHead ? 0 : resamplerOffsets.front();
         foldConfig->size = resamplerSize;
-        phaseCorrectionConfig->phaseIncrement = std::remainder(
-            2.0 * JST_PI * static_cast<F64>(resamplerOffset) *
-                static_cast<F64>(signalSize) /
-                static_cast<F64>(candidatePlan->convolutionSize),
-            2.0 * JST_PI);
 
         JST_CHECK(moduleCreate("fold", foldConfig, {
             {"buffer", product}
@@ -541,7 +593,30 @@ Result FilterEngineImpl::create() {
     }));
 
     auto normalizedOutput = moduleGetOutput({"normalize", "product"});
-    if (resample && resamplerOffset != 0) {
+    if (!applyPhaseCorrection || !multiHead) {
+        JST_CHECK(normalizedOutput.tensor.removeAttribute(
+            "channelPhaseIncrements"));
+    }
+    if (applyPhaseCorrection) {
+        if (multiHead) {
+            std::vector<F64> channelPhaseIncrements(resamplerOffsets.size());
+            for (U64 head = 0; head < resamplerOffsets.size(); ++head) {
+                channelPhaseIncrements[head] = std::remainder(
+                    2.0 * JST_PI * static_cast<F64>(resamplerOffsets[head]) *
+                        static_cast<F64>(signalSize) /
+                        static_cast<F64>(candidatePlan->convolutionSize),
+                    2.0 * JST_PI);
+            }
+            JST_CHECK(normalizedOutput.tensor.setAttribute(
+                "channelPhaseIncrements", channelPhaseIncrements));
+            phaseCorrectionConfig->phaseIncrement = 0.0;
+        } else {
+            phaseCorrectionConfig->phaseIncrement = std::remainder(
+                2.0 * JST_PI * static_cast<F64>(resamplerOffsets.front()) *
+                    static_cast<F64>(signalSize) /
+                    static_cast<F64>(candidatePlan->convolutionSize),
+                2.0 * JST_PI);
+        }
         JST_CHECK(moduleCreate("phase_correction", phaseCorrectionConfig, {
             {"signal", normalizedOutput}
         }));
@@ -549,7 +624,7 @@ Result FilterEngineImpl::create() {
     }
 
     if (padSize == 0) {
-        if (resample && resamplerOffset != 0) {
+        if (applyPhaseCorrection) {
             JST_CHECK(moduleExposeOutput("buffer", {"phase_correction", "signal"}));
         } else {
             JST_CHECK(moduleExposeOutput("buffer", {"normalize", "product"}));

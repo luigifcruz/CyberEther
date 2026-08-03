@@ -341,7 +341,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Filter block translates rounded center bins with negated fold offsets",
+                 "Filter block translates per-head centers with negated fold offsets",
                  "[modules][dsp][filter][block][numeric][resample]") {
     TestFlowgraph::SyntheticSourceBlockConfig source;
     source.bufferSize = 4;
@@ -358,16 +358,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
     config.sampleRate = 6.0f;
     config.bandwidth = 3.0f;
     config.taps = 3;
-
-    F32 imaginarySign = 0.0f;
-    SECTION("positive center") {
-        config.center = {1.6f};
-        imaginarySign = -1.0f;
-    }
-    SECTION("negative center") {
-        config.center = {-1.6f};
-        imaginarySign = 1.0f;
-    }
+    config.heads = 2;
+    config.center = {1.6f, -1.6f};
 
     TensorMap inputs;
     inputs["signal"].requested("center_src", "signal");
@@ -375,13 +367,17 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
 
     const Tensor output = viewBlock("center_filter").outputs.at("buffer").tensor;
-    REQUIRE(output.shape() == Shape{1, 2});
-    REQUIRE_THAT(output.at<CF32>(0, 0).real(),
-                 Catch::Matchers::WithinAbs(0.0f, 1e-5f));
-    REQUIRE_THAT(output.at<CF32>(0, 1).real(),
-                 Catch::Matchers::WithinAbs(0.125f, 1e-5f));
-    REQUIRE_THAT(output.at<CF32>(0, 1).imag(),
-                 Catch::Matchers::WithinAbs(imaginarySign * 0.21650635f, 1e-5f));
+    REQUIRE(output.shape() == Shape{2, 2});
+    for (U64 head = 0; head < output.shape(0); ++head) {
+        const F32 imaginarySign = head == 0 ? -1.0f : 1.0f;
+        REQUIRE_THAT(output.at<CF32>(head, 0).real(),
+                     Catch::Matchers::WithinAbs(0.0f, 1e-5f));
+        REQUIRE_THAT(output.at<CF32>(head, 1).real(),
+                     Catch::Matchers::WithinAbs(0.125f, 1e-5f));
+        REQUIRE_THAT(output.at<CF32>(head, 1).imag(),
+                     Catch::Matchers::WithinAbs(
+                         imaginarySign * 0.21650635f, 1e-5f));
+    }
 
     const F32 nextSignalValues[] = {-0.5f, -0.5f, 1.0f, -0.5f};
     for (U64 sample = 0; sample < signal.size(); ++sample) {
@@ -389,14 +385,18 @@ TEST_CASE_METHOD(FlowgraphFixture,
     }
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
 
-    REQUIRE_THAT(output.at<CF32>(0, 0).real(),
-                 Catch::Matchers::WithinAbs(-0.25f, 1e-5f));
-    REQUIRE_THAT(output.at<CF32>(0, 0).imag(),
-                 Catch::Matchers::WithinAbs(imaginarySign * 0.4330127f, 1e-5f));
-    REQUIRE_THAT(output.at<CF32>(0, 1).real(),
-                 Catch::Matchers::WithinAbs(-0.25f, 1e-5f));
-    REQUIRE_THAT(output.at<CF32>(0, 1).imag(),
-                 Catch::Matchers::WithinAbs(0.0f, 1e-5f));
+    for (U64 head = 0; head < output.shape(0); ++head) {
+        const F32 imaginarySign = head == 0 ? -1.0f : 1.0f;
+        REQUIRE_THAT(output.at<CF32>(head, 0).real(),
+                     Catch::Matchers::WithinAbs(-0.25f, 1e-5f));
+        REQUIRE_THAT(output.at<CF32>(head, 0).imag(),
+                     Catch::Matchers::WithinAbs(
+                         imaginarySign * 0.4330127f, 1e-5f));
+        REQUIRE_THAT(output.at<CF32>(head, 1).real(),
+                     Catch::Matchers::WithinAbs(-0.25f, 1e-5f));
+        REQUIRE_THAT(output.at<CF32>(head, 1).imag(),
+                     Catch::Matchers::WithinAbs(0.0f, 1e-5f));
+    }
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
