@@ -189,7 +189,7 @@ TEST_CASE("Circular buffer wait unblocks when producer pushes data",
           "[tools][circular_buffer][blocking]") {
     Tools::CircularBuffer<F32> buffer(2);
     Result producerResult = Result::ERROR;
-    std::jthread producer([&] {
+    std::thread producer([&] {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
         const F32 value = 7.0f;
         producerResult = buffer.push(&value, 1);
@@ -207,7 +207,7 @@ TEST_CASE("Circular buffer wait observes capacity changes",
           "[tools][circular_buffer][blocking][resize]") {
     Tools::CircularBuffer<F32> buffer(2);
     Result resizeResult = Result::ERROR;
-    std::jthread resizer([&] {
+    std::thread resizer([&] {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
         resizeResult = buffer.resize(1);
     });
@@ -253,7 +253,7 @@ TEST_CASE("Circular buffer preserves ordering under concurrent reuse",
     Tools::CircularBuffer<F32> buffer(31, OverflowPolicy::Reject);
     std::atomic<bool> producerFailed{false};
 
-    std::jthread producer([&] {
+    std::thread producer([&] {
         for (U64 i = 0; i < transferCount; ++i) {
             const F32 value = static_cast<F32>(i);
             while (true) {
