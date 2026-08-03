@@ -57,6 +57,19 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(block.outputs.empty());
 }
 
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Filter taps rejects unrepresentable heads without throwing",
+                 "[modules][dsp][filter_taps][validation]") {
+    Blocks::FilterTaps config;
+    config.heads = std::numeric_limits<U64>::max();
+
+    REQUIRE(flowgraph->blockCreate("taps_huge_heads", config, {}) ==
+            Result::SUCCESS);
+    const auto block = viewBlock("taps_huge_heads");
+    REQUIRE(block.state == Block::State::Errored);
+    REQUIRE(block.outputs.empty());
+}
+
 TEST_CASE_METHOD(FlowgraphFixture, "Filter taps heads can shrink stale center vector", "[modules][dsp][filter_taps][reconfigure]") {
     Blocks::FilterTaps config;
     config.taps = 51;

@@ -84,6 +84,17 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
+                 "Filter block rejects unrepresentable heads without throwing",
+                 "[modules][dsp][filter][block][validation]") {
+    Blocks::Filter config;
+    config.heads = std::numeric_limits<U64>::max();
+
+    REQUIRE(flowgraph->blockCreate("filter_huge_heads", config, {}) ==
+            Result::SUCCESS);
+    RequireErroredWithInterface(viewBlock("filter_huge_heads"));
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
                  "Filter block uses heads over center length",
                  "[modules][dsp][filter][block]") {
     Parser::Map sourceConfig;

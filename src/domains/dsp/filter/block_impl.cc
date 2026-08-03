@@ -1,4 +1,5 @@
 #include <cmath>
+#include <exception>
 #include <limits>
 #include <optional>
 #include <string>
@@ -271,13 +272,25 @@ Result FilterImpl::validate() {
 }
 
 Result FilterImpl::configure() {
-    center.resize(heads);
+    if (heads > center.max_size() ||
+        heads > filterTapsConfig->center.max_size()) {
+        JST_ERROR("[BLOCK_FILTER] Heads ({}) exceed the supported configuration size.",
+                  heads);
+        return Result::ERROR;
+    }
+
+    try {
+        center.resize(heads);
+        filterTapsConfig->center.resize(center.size());
+    } catch (const std::exception&) {
+        JST_ERROR("[BLOCK_FILTER] Failed to allocate configuration for {} heads.", heads);
+        return Result::ERROR;
+    }
 
     castSignalConfig->outputType = "CF32";
 
     filterTapsConfig->sampleRate = sampleRate;
     filterTapsConfig->bandwidth = bandwidth;
-    filterTapsConfig->center.resize(center.size());
     for (U64 i = 0; i < center.size(); ++i) {
         filterTapsConfig->center[i] = center[i];
     }
