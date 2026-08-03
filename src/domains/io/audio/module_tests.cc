@@ -11,7 +11,8 @@
 #include "jetstream/runtime.hh"
 #include "jetstream/testing.hh"
 
-#include "miniaudio.h"
+// Do not call miniaudio APIs from this test binary. They are private to
+// jetstream.dll and are not exported on Windows; test through AudioImpl instead.
 #include "module_impl.hh"
 
 using namespace Jetstream;
@@ -191,28 +192,6 @@ TEST_CASE("Audio module interleaves batched planar stereo input",
             const auto& output = audio->*AudioImplAccess::bufferMember();
             REQUIRE(orderedInput == expected);
             REQUIRE(output.size() == expected.size());
-
-            ma_resampler_config referenceConfig = ma_resampler_config_init(
-                ma_format_f32, 2, 48000, 48000,
-                ma_resample_algorithm_linear);
-            referenceConfig.linear.lpfOrder = 8;
-            ma_resampler reference;
-            REQUIRE(ma_resampler_init(&referenceConfig, nullptr, &reference) ==
-                    MA_SUCCESS);
-            ma_uint64 referenceFrameCountIn = expected.size() / 2;
-            ma_uint64 referenceFrameCountOut = expected.size() / 2;
-            std::vector<F32> referenceOutput(expected.size());
-            REQUIRE(ma_resampler_process_pcm_frames(
-                        &reference,
-                        expected.data(),
-                        &referenceFrameCountIn,
-                        referenceOutput.data(),
-                        &referenceFrameCountOut) == MA_SUCCESS);
-            ma_resampler_uninit(&reference, nullptr);
-
-            for (U64 index = 0; index < output.size(); ++index) {
-                REQUIRE(output.at<F32>(index) == referenceOutput[index]);
-            }
             REQUIRE((audio->*AudioImplAccess::pendingInputMember()).empty());
 
             REQUIRE(runtime.destroy() == Result::SUCCESS);
@@ -293,43 +272,57 @@ TEST_CASE("Audio module preserves stereo frames across downsampling calls",
                                  secondOutput.data<F32>(),
                                  secondOutput.data<F32>() + secondOutput.size());
 
-            std::vector<F32> continuousInput;
-            continuousInput.reserve(framesPerChunk * 4);
+            REQUIRE(runtime.destroy() == Result::SUCCESS);
+            REQUIRE(module->destroy() == Result::SUCCESS);
+
+            Tensor continuousInput;
+            REQUIRE(continuousInput.create(
+                        impl.device, DataType::F32,
+                        {2, framesPerChunk * 2}) == Result::SUCCESS);
+            REQUIRE(SetSignalAxes(continuousInput, {
+                .sample = Index{1},
+                .channel = Index{0},
+            }) == Result::SUCCESS);
             for (U64 frame = 0; frame < framesPerChunk * 2; ++frame) {
-                continuousInput.push_back(static_cast<F32>(frame));
-                continuousInput.push_back(static_cast<F32>(1000 + frame));
+                continuousInput.data<F32>()[frame] = static_cast<F32>(frame);
+                continuousInput.data<F32>()[framesPerChunk * 2 + frame] =
+                    static_cast<F32>(1000 + frame);
             }
 
-            ma_resampler_config referenceConfig = ma_resampler_config_init(
-                ma_format_f32, 2, 48000, 24000,
-                ma_resample_algorithm_linear);
-            referenceConfig.linear.lpfOrder = 8;
-            ma_resampler reference;
-            REQUIRE(ma_resampler_init(&referenceConfig, nullptr, &reference) ==
-                    MA_SUCCESS);
+            TensorMap referenceInputs;
+            referenceInputs["buffer"].requested("reference", "buffer");
+            referenceInputs["buffer"].tensor = continuousInput;
 
-            ma_uint64 referenceFrameCountIn = framesPerChunk * 2;
-            ma_uint64 referenceFrameCountOut = framesPerChunk;
-            std::vector<F32> referenceOutput(referenceFrameCountOut * 2);
-            REQUIRE(ma_resampler_process_pcm_frames(
-                        &reference,
-                        continuousInput.data(),
-                        &referenceFrameCountIn,
-                        referenceOutput.data(),
-                        &referenceFrameCountOut) == MA_SUCCESS);
-            ma_resampler_uninit(&reference, nullptr);
+            std::shared_ptr<Module> referenceModule;
+            REQUIRE(Registry::BuildModule("audio", impl.device, impl.runtime,
+                                          impl.provider, referenceModule) ==
+                    Result::SUCCESS);
+            REQUIRE(referenceModule->create("reference", config,
+                                            referenceInputs) == Result::SUCCESS);
 
-            REQUIRE(referenceFrameCountIn == framesPerChunk * 2 - 1);
-            REQUIRE(referenceFrameCountOut == framesPerChunk);
+            auto* referenceAudio =
+                referenceModule->getImpl<Modules::AudioImpl>();
+            REQUIRE(referenceAudio != nullptr);
+
+            Runtime referenceRuntime("reference", impl.device, impl.runtime);
+            REQUIRE(referenceRuntime.create({{"reference", referenceModule}}) ==
+                    Result::SUCCESS);
+            REQUIRE(referenceRuntime.compute({}, skippedModules, failedModules) ==
+                    Result::SUCCESS);
+
+            const auto& referenceOutput =
+                referenceAudio->*AudioImplAccess::bufferMember();
+            REQUIRE((referenceAudio->*AudioImplAccess::pendingInputMember()) ==
+                    std::vector<F32>{127.0f, 1127.0f});
             REQUIRE(chunkedOutput.size() == referenceOutput.size());
             for (U64 index = 0; index < referenceOutput.size(); ++index) {
                 REQUIRE_THAT(chunkedOutput[index],
                              Catch::Matchers::WithinAbs(
-                                 referenceOutput[index], 1e-6f));
+                                 referenceOutput.at<F32>(index), 1e-6f));
             }
 
-            REQUIRE(runtime.destroy() == Result::SUCCESS);
-            REQUIRE(module->destroy() == Result::SUCCESS);
+            REQUIRE(referenceRuntime.destroy() == Result::SUCCESS);
+            REQUIRE(referenceModule->destroy() == Result::SUCCESS);
         }
     }
 }
