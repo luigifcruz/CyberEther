@@ -4,6 +4,7 @@
 #include <chrono>
 #include <memory>
 
+#include "jetstream/macros.hh"
 #include "jetstream/types.hh"
 
 namespace Jetstream::Tools {
@@ -14,7 +15,7 @@ enum class CircularBufferOverflowPolicy {
 };
 
 template<class T>
-class CircularBuffer {
+class JETSTREAM_API CircularBuffer {
  public:
     CircularBuffer();
     explicit CircularBuffer(U64 capacity,
