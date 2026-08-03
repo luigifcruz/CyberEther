@@ -1,5 +1,6 @@
 #include <cmath>
 #include <complex>
+#include <limits>
 
 #include <jetstream/backend/devices/cpu/helpers.hh>
 #include <jetstream/runtime_context_native_cpu.hh>
@@ -53,6 +54,7 @@ Result FmImplNativeCpu::computeSubmit() {
         ? input.stride(*signalAxes.batch) : 0;
     const U64 outputBatchStride = signalAxes.batch
         ? output.stride(*signalAxes.batch) : 0;
+    const U64 outputChannelStride = wideBand ? output.stride(input.rank()) : 0;
 
     for (U64 lane = 0; lane < laneCount; ++lane) {
         U64 coordinates = lane;
@@ -82,9 +84,84 @@ Result FmImplNativeCpu::computeSubmit() {
                 const U64 outputOffset = outputBatchOffset +
                                          sample * outputSampleStride;
                 const CF32 current = inputData[inputOffset];
-                outputData[outputOffset] = hasPrevious
-                    ? std::arg(std::conj(previous) * current) * refCoeff
-                    : 0.0f;
+                const bool finiteCurrent = std::isfinite(current.real()) &&
+                                           std::isfinite(current.imag());
+                const bool finitePrevious = std::isfinite(previous.real()) &&
+                                            std::isfinite(previous.imag());
+                const F32 demodulated = !hasPrevious ? 0.0f :
+                    (finiteCurrent && finitePrevious
+                        ? std::arg(std::conj(previous) * current) * refCoeff
+                        : std::numeric_limits<F32>::quiet_NaN());
+
+                if (!std::isfinite(demodulated)) {
+                    outputData[outputOffset] = demodulated;
+                    if (wideBand) {
+                        outputData[outputOffset + outputChannelStride] =
+                            demodulated;
+                        auto& state = stereoState[lane];
+                        state.pilotPhase += pilotPhaseIncrement;
+                        if (state.pilotPhase >= 2.0f * JST_PI) {
+                            state.pilotPhase -= 2.0f * JST_PI;
+                        }
+                    }
+                    previous = current;
+                    hasPrevious = true;
+                    continue;
+                }
+
+                if (!wideBand) {
+                    if (!deemphasisEnabled) {
+                        outputData[outputOffset] = demodulated;
+                    } else {
+                        auto& deemphasized = narrowDeemphasisState[lane];
+                        deemphasized += deemphasisAlpha *
+                            (demodulated - deemphasized);
+                        outputData[outputOffset] = deemphasized;
+                    }
+                } else {
+                    auto& state = stereoState[lane];
+                    const F32 pilotCosine = std::cos(state.pilotPhase);
+                    const F32 pilotSine = std::sin(state.pilotPhase);
+                    state.pilotCosStage += pilotAlpha *
+                        (demodulated * pilotCosine - state.pilotCosStage);
+                    state.pilotSinStage += pilotAlpha *
+                        (demodulated * pilotSine - state.pilotSinStage);
+                    state.pilotCos += pilotAlpha *
+                        (state.pilotCosStage - state.pilotCos);
+                    state.pilotSin += pilotAlpha *
+                        (state.pilotSinStage - state.pilotSin);
+
+                    const F32 sum = applyAudioLowPass(applyBiquad(
+                        demodulated, pilotNotch, state.sumNotch),
+                        state.sumFilter);
+                    const F32 pilotOffset = std::atan2(state.pilotCos,
+                                                       state.pilotSin);
+                    const F32 differenceCarrier = std::sin(
+                        2.0f * (state.pilotPhase + pilotOffset));
+                    const F32 difference = applyAudioLowPass(applyBiquad(
+                        2.0f * demodulated * differenceCarrier,
+                        pilotNotch, state.differenceNotch),
+                        state.differenceFilter);
+
+                    F32 left = sum + difference;
+                    F32 right = sum - difference;
+                    if (deemphasisEnabled) {
+                        state.leftDeemphasis += deemphasisAlpha *
+                            (left - state.leftDeemphasis);
+                        state.rightDeemphasis += deemphasisAlpha *
+                            (right - state.rightDeemphasis);
+                        left = state.leftDeemphasis;
+                        right = state.rightDeemphasis;
+                    }
+
+                    outputData[outputOffset] = left;
+                    outputData[outputOffset + outputChannelStride] = right;
+
+                    state.pilotPhase += pilotPhaseIncrement;
+                    if (state.pilotPhase >= 2.0f * JST_PI) {
+                        state.pilotPhase -= 2.0f * JST_PI;
+                    }
+                }
                 previous = current;
                 hasPrevious = true;
             }
