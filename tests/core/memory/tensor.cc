@@ -1060,6 +1060,18 @@ TEST_CASE("Tensor attributes inherit through clones and propagation",
     REQUIRE_FALSE(destination.hasAttribute("sampleRate"));
 }
 
+TEST_CASE("Tensor contains invalid derived attribute casts",
+          "[core][memory][tensor][attributes]") {
+    Tensor tensor(DeviceType::CPU, DataType::F32, {1});
+    REQUIRE(tensor.setDerivedAttribute("invalid", []() -> std::any {
+                const std::any value = F64{1.0};
+                return std::any_cast<F32>(value);
+            }) == Result::SUCCESS);
+
+    REQUIRE(tensor.hasAttribute("invalid"));
+    REQUIRE_FALSE(tensor.attribute("invalid").has_value());
+}
+
 TEST_CASE("Tensor swaps compatible storage without replacing metadata",
           "[core][memory][tensor][swap]") {
     Tensor left(DeviceType::CPU, DataType::F32, {2, 2});

@@ -1273,7 +1273,11 @@ std::any Tensor::attribute(const std::string& key) const {
         }
         auto dit = current->derivedAttributes.find(key);
         if (dit != current->derivedAttributes.end()) {
-            return dit->second();
+            try {
+                return dit->second();
+            } catch (const std::bad_any_cast&) {
+                return {};
+            }
         }
         auto ait = current->attributes.find(key);
         if (ait != current->attributes.end()) {
