@@ -1,4 +1,6 @@
+#include <algorithm>
 #include <cmath>
+#include <limits>
 
 #include <jetstream/runtime_context_native_cpu.hh>
 #include <jetstream/scheduler_context.hh>
@@ -11,11 +13,74 @@ namespace Jetstream::Modules {
 
 namespace {
 
+constexpr F64 kMaxF32 = std::numeric_limits<F32>::max();
+const F64 kMaxSafeCF32Magnitude = static_cast<F64>(
+    std::nextafter(std::numeric_limits<F32>::max(), 0.0f));
+
+F64 SamplePower(const F32 sample) {
+    const F64 value = sample;
+    return value * value;
+}
+
+F64 SamplePower(const CF32 sample) {
+    const F64 real = sample.real();
+    const F64 imag = sample.imag();
+    return real * real + imag * imag;
+}
+
+F64 LimitGainToFiniteRange(const F64 magnitude,
+                           const F64 gain,
+                           const F64 limit = kMaxF32) {
+    return magnitude > limit / gain
+        ? std::nextafter(limit / magnitude, 0.0)
+        : gain;
+}
+
+F32 ClampToF32(const F64 value) {
+    return static_cast<F32>(std::clamp(value, -kMaxF32, kMaxF32));
+}
+
+F32 ApplyGain(const F32 sample, const F64 gain) {
+    const F64 value = sample;
+    const F64 safeGain = LimitGainToFiniteRange(std::abs(value), gain);
+    return ClampToF32(value * safeGain);
+}
+
+CF32 ApplyGain(const CF32 sample, const F64 gain) {
+    const F64 real = sample.real();
+    const F64 imag = sample.imag();
+    const F64 safeGain = LimitGainToFiniteRange(
+        std::hypot(real, imag), gain, kMaxSafeCF32Magnitude);
+    return {
+        ClampToF32(real * safeGain),
+        ClampToF32(imag * safeGain),
+    };
+}
+
+F64 LimitGainChange(const F64 gain,
+                    const F64 previousGain,
+                    const F64 minGain,
+                    const F64 maxGain,
+                    const F64 maxGainChange) {
+    const F64 minimumAllowed = std::max(
+        minGain, previousGain / maxGainChange);
+    const F64 maximumAllowed = previousGain > maxGain / maxGainChange
+        ? maxGain
+        : previousGain * maxGainChange;
+    return std::clamp(gain, minimumAllowed, maximumAllowed);
+}
+
 template<typename T>
-void NormalizeLanes(const Tensor& input,
-                    Tensor& output,
-                    const Index sampleAxis,
-                    const U64 laneCount) {
+void ApplyTiledRmsAgc(const Tensor& input,
+                      Tensor& output,
+                      const Index sampleAxis,
+                      const U64 laneCount,
+                      const U64 tileSize,
+                      const F64 reference,
+                      const F64 epsilon,
+                      const F64 minGain,
+                      const F64 maxGain,
+                      const F64 maxGainChange) {
     const T* in = input.data<T>();
     T* out = output.data<T>();
     const U64 sampleCount = input.shape(sampleAxis);
@@ -36,18 +101,44 @@ void NormalizeLanes(const Tensor& input,
             outputLaneOffset += coordinate * output.stride(axis);
         }
 
-        F32 currentMax = 0.0f;
-        for (U64 sample = 0; sample < sampleCount; ++sample) {
-            currentMax = std::max(
-                currentMax,
-                static_cast<F32>(std::abs(
-                    in[inputLaneOffset + sample * inputSampleStride])));
-        }
+        const U64 tileCount = 1 + (sampleCount - 1) / tileSize;
+        const auto calculateGain = [&](const U64 tile) {
+            const U64 tileStart = tile * tileSize;
+            const U64 tileLength = std::min(tileSize, sampleCount - tileStart);
 
-        const F32 gain = currentMax != 0.0f ? 1.0f / currentMax : 1.0f;
-        for (U64 sample = 0; sample < sampleCount; ++sample) {
-            out[outputLaneOffset + sample * outputSampleStride] =
-                in[inputLaneOffset + sample * inputSampleStride] * gain;
+            F64 powerSum = 0.0;
+            for (U64 sample = 0; sample < tileLength; ++sample) {
+                powerSum += SamplePower(
+                    in[inputLaneOffset +
+                       (tileStart + sample) * inputSampleStride]);
+            }
+
+            const F64 meanPower = powerSum / static_cast<F64>(tileLength);
+            return std::clamp(
+                reference / std::sqrt(meanPower + epsilon), minGain, maxGain);
+        };
+
+        F64 startGain = calculateGain(0);
+        for (U64 tile = 0; tile < tileCount; ++tile) {
+            const U64 tileStart = tile * tileSize;
+            const U64 tileLength = std::min(tileSize, sampleCount - tileStart);
+            const F64 endGain = tile + 1 < tileCount
+                ? LimitGainChange(calculateGain(tile + 1), startGain,
+                                  minGain, maxGain, maxGainChange)
+                : startGain;
+            const F64 gainStep =
+                (endGain - startGain) / static_cast<F64>(tileLength);
+
+            for (U64 sample = 0; sample < tileLength; ++sample) {
+                const U64 sampleIndex = tileStart + sample;
+                const F64 gain = startGain + gainStep * static_cast<F64>(sample);
+                out[outputLaneOffset + sampleIndex * outputSampleStride] =
+                    ApplyGain(
+                        in[inputLaneOffset + sampleIndex * inputSampleStride],
+                        gain);
+            }
+
+            startGain = endGain;
         }
     }
 }
@@ -111,12 +202,14 @@ Result AgcImplNativeCpu::computeSubmit() {
 }
 
 Result AgcImplNativeCpu::kernelCF32() {
-    NormalizeLanes<CF32>(input, output, sampleAxis, laneCount);
+    ApplyTiledRmsAgc<CF32>(input, output, sampleAxis, laneCount, tileSize,
+                           reference, epsilon, minGain, maxGain, maxGainChange);
     return Result::SUCCESS;
 }
 
 Result AgcImplNativeCpu::kernelF32() {
-    NormalizeLanes<F32>(input, output, sampleAxis, laneCount);
+    ApplyTiledRmsAgc<F32>(input, output, sampleAxis, laneCount, tileSize,
+                          reference, epsilon, minGain, maxGain, maxGainChange);
     return Result::SUCCESS;
 }
 

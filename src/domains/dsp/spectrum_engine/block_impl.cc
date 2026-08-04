@@ -186,6 +186,8 @@ Result SpectrumEngineImpl::create() {
     // Optional AGC.
 
     if (enableAgc) {
+        // Preserve relative FFT-bin levels by using one RMS tile per spectrum.
+        agcConfig->tileSize = inputTensor.shape(resolvedAxis);
         JST_CHECK(moduleCreate("agc", agcConfig, {
             {"signal", moduleGetOutput({"fft", "signal"})}
         }));
