@@ -326,11 +326,12 @@ TEST_CASE_METHOD(FlowgraphFixture,
         Parser::Map sourceConfig;
         sourceConfig["bufferSize"] = U64{8};
         sourceConfig["sampleRate"] = F32{48000.0f};
-        sourceConfig["frequency"] = F32{6000.0f};
         REQUIRE(flowgraph->blockCreate("metadata_src", "signal_generator", sourceConfig, {}) ==
                 Result::SUCCESS);
         Tensor sourceTensor = viewBlock("metadata_src").outputs.at("signal").tensor;
         REQUIRE(sourceTensor.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
+        REQUIRE(sourceTensor.setAttribute("frequency", F32{6000.0f}) ==
+                Result::SUCCESS);
 
         Blocks::Decimator config;
         config.ratio = 4;
