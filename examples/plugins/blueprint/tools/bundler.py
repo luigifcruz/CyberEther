@@ -142,7 +142,7 @@ def main():
         dest="minimum_jetstream_version",
         required=True,
         type=parse_version,
-        help="Minimum CyberEther/Jetstream version, for example 1.8.0.",
+        help="Minimum CyberEther/Jetstream version, for example 1.8.1.",
     )
     parser.add_argument(
         "--target",

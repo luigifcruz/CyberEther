@@ -96,7 +96,7 @@ custom_target(
         '--output', '@OUTPUT@',
         '--name', 'cyberether-blueprint-plugin',
         '--version', meson.project_version(),
-        '--minimum-jetstream-version', '1.8.0',
+        '--minimum-jetstream-version', '1.8.1',
         '--target', 'path=@INPUT0@,system=' + host_machine.system() + ',device=cpu,arch=' + host_machine.cpu_family(),
         '--example', '@INPUT1@',
     ],
