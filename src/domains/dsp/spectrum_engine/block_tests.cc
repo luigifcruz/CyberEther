@@ -123,8 +123,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Spectrum engine centers odd lengths on an FFT bin",
-                 "[modules][dsp][spectrum_engine][block]") {
+                  "Spectrum engine centers odd lengths on an FFT bin",
+                  "[modules][dsp][spectrum_engine][block]") {
     Blocks::OnesTensor source;
     source.shape = {5};
     source.dataType = "CF32";
@@ -148,6 +148,32 @@ TEST_CASE_METHOD(FlowgraphFixture,
     const auto peak = std::max_element(output.data<F32>(),
                                        output.data<F32>() + output.size());
     REQUIRE(static_cast<U64>(peak - output.data<F32>()) == center);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Spectrum engine executes the optional AGC path",
+                 "[modules][dsp][spectrum_engine][block][agc]") {
+    Blocks::OnesTensor source;
+    source.shape = {2048};
+    source.dataType = "CF32";
+    REQUIRE(flowgraph->blockCreate("agc_src", source, {}) == Result::SUCCESS);
+
+    Tensor sourceTensor = viewBlock("agc_src").outputs.at("buffer").tensor;
+    REQUIRE(sourceTensor.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["buffer"].requested("agc_src", "buffer");
+    Blocks::SpectrumEngine config;
+    config.enableAgc = true;
+    REQUIRE(flowgraph->blockCreate("agc_spec", config, inputs) == Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    const Tensor output = viewBlock("agc_spec").outputs.at("buffer").tensor;
+    REQUIRE(output.dtype() == DataType::F32);
+    REQUIRE(output.shape() == source.shape);
+    for (U64 i = 0; i < output.size(); ++i) {
+        REQUIRE_FALSE(std::isnan(output.at<F32>(i)));
+    }
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,

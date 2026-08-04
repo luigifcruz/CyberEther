@@ -30,7 +30,7 @@ struct SpectrumEngine : public Block::Config {
         "spectrum.\n\n"
 
         "## Arguments\n"
-        "- **Enable AGC**: Whether to apply automatic gain control after the FFT.\n"
+        "- **Enable AGC**: Apply one RMS gain across all FFT bins.\n"
         "- **Enable Scale**: Whether to apply range scaling to the output.\n"
         "- **Range Min**: Minimum value of the scale range (dBFS). Only used "
         "when Enable Scale is true.\n"
@@ -57,7 +57,7 @@ struct SpectrumEngine : public Block::Config {
         "2. Invert module applies FFT shift to center the window.\n"
         "3. Multiply module applies the shifted window to the input signal.\n"
         "4. The FFT module computes the forward Fourier transform.\n"
-        "5. Optional AGC module normalizes signal amplitude.\n"
+        "5. Optional AGC module applies one RMS gain across the spectrum.\n"
         "6. Amplitude module computes the magnitude in decibels.\n"
         "7. Optional Range module scales the output to the specified range.";
     );
