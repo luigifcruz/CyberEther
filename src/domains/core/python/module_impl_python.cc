@@ -1,4 +1,9 @@
+#include <array>
 #include <limits>
+#include <unordered_set>
+#include <vector>
+
+#include <jetstream/memory/axis.hh>
 
 #include <jetstream/memory/macros.hh>
 #include <jetstream/module_context.hh>
@@ -106,6 +111,26 @@ Result PythonImplPython::loadCompute(const std::string& source) {
 
 Result PythonImplPython::create() {
     JST_CHECK(PythonImpl::create());
+
+    const std::array<std::string_view, 3> axisAttributes = {
+        SampleAxisAttribute,
+        BatchAxisAttribute,
+        ChannelAxisAttribute,
+    };
+
+    std::vector<std::unordered_set<std::string>> immutableKeys;
+    immutableKeys.reserve(candidateOutputPlan.size());
+    for (const auto& plan : candidateOutputPlan) {
+        std::unordered_set<std::string> keys;
+        if (!plan.attributes.empty()) {
+            for (const auto& name : axisAttributes) {
+                keys.insert(std::string(name));
+            }
+        }
+        immutableKeys.push_back(std::move(keys));
+    }
+    setImmutableOutputAttributes(immutableKeys);
+
     JST_CHECK(loadCompute(code));
 
     return Result::SUCCESS;

@@ -6,10 +6,8 @@
 namespace Jetstream::Modules {
 
 struct Invert : public Module::Config {
-    I64 axis = -1;
-
     JST_MODULE_TYPE(invert);
-    JST_MODULE_PARAMS(axis);
+    JST_MODULE_PARAMS();
 };
 
 }  // namespace Jetstream::Modules

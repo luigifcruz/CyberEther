@@ -9,6 +9,7 @@
 #include <limits>
 
 #include "jetstream/constants.hh"
+#include "jetstream/memory/axis.hh"
 #include "jetstream/tools/numeric.hh"
 #include "resources/shaders/global_shaders.hh"
 #include "resources/shaders/lineplot_shaders.hh"
@@ -16,6 +17,12 @@
 namespace Jetstream::Modules {
 
 Result LineplotImpl::validate() {
+    validatedNumberOfElements = 0;
+    validatedNumberOfBatches = 0;
+    validatedInputSampleStride = 0;
+    validatedInputBatchStride = 0;
+    validatedNormalizationFactor = 0.0f;
+
     const auto& config = *candidate();
 
     if (config.decimation == 0) {
@@ -80,10 +87,6 @@ Result LineplotImpl::validate() {
     }
 
     if (!inputs().contains("signal")) {
-        validatedNumberOfElements = 0;
-        validatedNumberOfBatches = 0;
-        validatedInputRowWidth = 0;
-        validatedNormalizationFactor = 0.0f;
         return Result::SUCCESS;
     }
 
@@ -92,18 +95,27 @@ Result LineplotImpl::validate() {
         return Result::SUCCESS;
     }
 
-    if (inputTensor.rank() == 0 || inputTensor.rank() > 2) {
-        JST_ERROR("[MODULE_LINEPLOT] Invalid input rank ({}), expected 1 or 2.",
-                  inputTensor.rank());
+    SignalAxes axes;
+    if (ResolveSignalAxes(inputTensor, axes) != Result::SUCCESS) {
+        JST_ERROR("[MODULE_LINEPLOT] Input must contain valid signal axis metadata.");
         return Result::ERROR;
     }
 
-    if (inputTensor.size() == 0) {
-        return Result::SUCCESS;
+    if (axes.channel) {
+        JST_ERROR("[MODULE_LINEPLOT] channelAxis is not supported.");
+        return Result::ERROR;
     }
 
-    const U64 candidateInputRowWidth = inputTensor.shape(inputTensor.rank() - 1);
-    const U64 candidateNumberOfElements = candidateInputRowWidth / config.decimation;
+    for (Index axis = 0; axis < inputTensor.rank(); ++axis) {
+        if (axis != *axes.sample && (!axes.batch || axis != *axes.batch)) {
+            JST_ERROR("[MODULE_LINEPLOT] Unsupported auxiliary input axis {}. "
+                      "Every dimension must be sampleAxis or batchAxis.", axis);
+            return Result::ERROR;
+        }
+    }
+
+    const U64 sampleSize = inputTensor.shape(*axes.sample);
+    const U64 candidateNumberOfElements = sampleSize / config.decimation;
     if (candidateNumberOfElements < 2) {
         JST_ERROR("[MODULE_LINEPLOT] Invalid number of elements ({}), need at least 2.",
                   candidateNumberOfElements);
@@ -148,10 +160,11 @@ Result LineplotImpl::validate() {
     }
 
     const U64 candidateNumberOfBatches =
-        inputTensor.rank() == 2 ? inputTensor.shape(0) : 1;
+        axes.batch ? inputTensor.shape(*axes.batch) : 1;
     validatedNumberOfElements = candidateNumberOfElements;
     validatedNumberOfBatches = candidateNumberOfBatches;
-    validatedInputRowWidth = candidateInputRowWidth;
+    validatedInputSampleStride = inputTensor.stride(*axes.sample);
+    validatedInputBatchStride = axes.batch ? inputTensor.stride(*axes.batch) : 0;
     validatedNormalizationFactor =
         1.0f / (0.5f * static_cast<F32>(candidateNumberOfBatches));
 
@@ -188,7 +201,8 @@ Result LineplotImpl::create() {
 
     numberOfElements = validatedNumberOfElements;
     numberOfBatches = validatedNumberOfBatches;
-    inputRowWidth = validatedInputRowWidth;
+    inputSampleStride = validatedInputSampleStride;
+    inputBatchStride = validatedInputBatchStride;
     normalizationFactor = validatedNormalizationFactor;
 
     // Allocate internal buffers.

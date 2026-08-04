@@ -55,7 +55,6 @@ graph:
       enableAgc: false
       rangeMax: 0
       enableScale: true
-      axis: 1
     input:
       buffer: '${graph.soapy.output.signal}'
     meta:

@@ -1,12 +1,10 @@
 ---
 version: 2
-
-title: 'Overlap-Add'
+title: Overlap-Add
 summary: Frequency domain FIR filter.
 author: Luigi
 license: MIT
 description: Shows how to filter a signal in the frequency domain with FIR. Uses multiply and add to reduce blocking artifacts.
-
 graph:
   - name: not41
     module: note
@@ -17,15 +15,15 @@ graph:
       content: |-
         # 4. Unpadding
         Now that the signal is now back to the time domain, the padding added previously can be removed and added to the beginning of the next block. This will smooth out the effects of the discrete convolution performed. Remember, a multiplication in the frequency domain corresponds to a convolution in the time domain!
-
+        
         ### Reference
         A nice visualization is available here in [Wikipedia](https://en.wikipedia.org/wiki/Overlap%E2%80%93add_method).
     meta:
       node:
-        y: 517
         x: 1316
-        height: 332
-        width: 324
+        y: 565
+        width: 455
+        height: 0
   - name: not36
     module: note
     device: cpu
@@ -35,14 +33,14 @@ graph:
       content: |-
         # 2. Padding
         First, the signal and the filter are padded to the same length. The size of the padding will depend on multiple factors. For the sake of simplicity, here the pad size will be set to `50`.
-
+        
         The Pad block will add 50 zeros to the end of the signal resulting in 8050 elements. However, for the filter taps, the padding will be of size `(SIGNAL_SIZE - 1) == 7999` resulting in 8050. Both tensors now have 8050 elements and are ready for the next step.
     meta:
       node:
-        y: 162.59863
-        x: 471.0805
-        height: 331.40137
+        x: 598.0805
+        y: 209.59863
         width: 337
+        height: 0
   - name: not40
     module: note
     device: cpu
@@ -54,10 +52,10 @@ graph:
         This is the visualization branch, it will only display a waterfall of the filtered signal and nothing else. The pipeline is also very simple. First, the time domain data is inverted to show a linear frequency, then a forward FFT is applied to transform the data to the frequency domain, the gain is automatically adjusted, the amplitude is calculated, and the signal is displayed.
     meta:
       node:
-        y: 34.332886
-        x: 1351.103
-        height: 287.6671
+        x: 1480.103
+        y: 36.332886
         width: 290
+        height: 0
   - name: not39
     module: note
     device: cpu
@@ -67,34 +65,15 @@ graph:
       content: |-
         # 3. Fast Convolution
         After multiplying the signal and the filter in the frequency domain the resulting signal is now ready to be brought back to the time-domain for playback. This will be done with the same FFT block but now configured in the backward direction.
-
+        
         ### Suggestion
         This is also a good place to do some extra processing. For example, the signal now can be resampled to the desired output sample rate. This is shown in the `Overlap-Add-Fold` example flowgraph.
     meta:
       node:
-        y: 539
-        x: 858.99994
-        height: 310
+        x: 860.99994
+        y: 562
         width: 400.00006
-  - name: soapy
-    module: soapy
-    device: cpu
-    runtime: native
-    provider: generic
-    config:
-      bufferMultiplier: 1024
-      sampleRate: 2000000
-      frequency: 9.73e+07
-      numberOfTimeSamples: 8000
-      numberOfBatches: 8
-      automaticGain: true
-      deviceString: 'driver=rtlsdr,serial=00000001'
-    meta:
-      node:
-        y: 272
-        x: -97
-        height: 391
-        width: 140
+        height: 0
   - name: not38
     module: note
     device: cpu
@@ -104,79 +83,86 @@ graph:
       content: |-
         # 1. Overlap-Add Example
         This is the filter design block. This will need some parameters from the signal coming from the SDR like the sample rate and bandwidth. The rest of the parameters should look familiar if you designed a FIR filter before.
-
+        
         ### Suggestion
         Other examples will use more features from this block. Like the `multi-fm` example showing how to create multiple filters for different frequencies to demodulate multiple FM stations at once.
     meta:
       node:
-        y: 440
         x: 86
-        height: 332
+        y: 440
         width: 329
+        height: 0
+  - name: soapy
+    module: soapy
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      hintString: ''
+      deviceString: 'Generic RTL2832U OEM :: 00000001'
+      streamString: ''
+      frequency: 9.73e+07
+      frequencyStep: 1000000
+      sampleRate: 2000000
+      automaticGain: true
+      numberOfBatches: 8
+      numberOfTimeSamples: 8000
+      bufferMultiplier: 1024
+    meta:
+      node:
+        x: -97
+        y: 272
+        width: 140
+        height: 0
   - name: flt
     module: filter_taps
     device: cpu
     runtime: native
     provider: generic
     config:
+      sampleRate: 2000000
+      bandwidth: 200000
+      center: '[0]'
       taps: 51
       heads: 1
-      center: '[0]'
-      bandwidth: 200000
-      sampleRate: 2000000
     meta:
       node:
-        y: -3
         x: -97
-        height: 206
+        y: -3
         width: 140
-  - name: pad_flt
-    module: pad
-    device: cpu
-    runtime: native
-    provider: generic
-    config:
-      axis: 1
-      size: 7999
-    input:
-      unpadded: '${graph.flt.output.coeffs}'
-    meta:
-      node:
-        y: -5.9999847
-        x: 86
-        height: 128.99998
-        width: 140
-  - name: fft_flt
-    module: fft
-    device: cpu
-    runtime: native
-    provider: generic
-    config:
-      forward: true
-    input:
-      signal: '${graph.pad_flt.output.padded}'
-    meta:
-      node:
-        y: -2.9999847
-        x: 263
-        height: 95.999985
-        width: 140
+        height: 0
   - name: pad_soapy
     module: pad
     device: cpu
     runtime: native
     provider: generic
     config:
-      axis: 1
       size: 50
+      axis: 1
     input:
       unpadded: '${graph.soapy.output.signal}'
     meta:
       node:
-        y: 273
         x: 88
-        height: 129
+        y: 273
         width: 140
+        height: 0
+  - name: pad_flt
+    module: pad
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      size: 7999
+      axis: 1
+    input:
+      unpadded: '${graph.flt.output.coeffs}'
+    meta:
+      node:
+        x: 86
+        y: -5.9999847
+        width: 140
+        height: 0
   - name: fft_soapy
     module: fft
     device: cpu
@@ -184,28 +170,61 @@ graph:
     provider: generic
     config:
       forward: true
+      complexOutput: false
     input:
       signal: '${graph.pad_soapy.output.padded}'
     meta:
       node:
-        y: 271
         x: 268
-        height: 96
+        y: 271
         width: 140
+        height: 0
+  - name: fft_flt
+    module: fft
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      forward: true
+      complexOutput: false
+    input:
+      signal: '${graph.pad_flt.output.padded}'
+    meta:
+      node:
+        x: 263
+        y: -2.9999847
+        width: 140
+        height: 0
+  - name: slice
+    module: slice
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      slice: '[0, :]'
+      contiguous: false
+    input:
+      buffer: '${graph.fft_flt.output.signal}'
+    meta:
+      node:
+        x: 443
+        y: -2
+        width: 120
+        height: 0
   - name: mul
     module: multiply
     device: cpu
     runtime: native
     provider: generic
     input:
-      a: '${graph.fft_flt.output.signal}'
       b: '${graph.fft_soapy.output.signal}'
+      a: '${graph.slice.output.buffer}'
     meta:
       node:
-        y: 38
-        x: 474
-        height: 85
+        x: 603
+        y: 40
         width: 140
+        height: 0
   - name: ifft
     module: fft
     device: cpu
@@ -213,87 +232,85 @@ graph:
     provider: generic
     config:
       forward: false
+      complexOutput: false
     input:
       signal: '${graph.mul.output.product}'
     meta:
       node:
-        y: 34
-        x: 665.99994
-        height: 96
+        x: 794.99994
+        y: 36
         width: 140
+        height: 0
   - name: unpad
     module: unpad
     device: cpu
     runtime: native
     provider: generic
     config:
-      axis: 1
       size: 50
+      axis: 1
     input:
       padded: '${graph.ifft.output.signal}'
     meta:
       node:
-        y: 361
-        x: 864
-        height: 151
+        x: 993
+        y: 363
         width: 140
+        height: 0
   - name: spectrum_engine
     module: spectrum_engine
     device: cpu
     runtime: native
     provider: generic
     config:
-      rangeMin: -145.71428
       enableAgc: true
-      rangeMax: 0
       enableScale: true
-      axis: 1
+      rangeMin: -145.71428
+      rangeMax: 0
     input:
       buffer: '${graph.ifft.output.signal}'
     meta:
       node:
-        y: 34.644485
-        x: 863.08154
-        height: 227.35551
+        x: 992.08154
+        y: 36.644485
         width: 140
+        height: 0
   - name: overlap_add
     module: overlap_add
     device: cpu
     runtime: native
     provider: generic
-    config:
-      axis: 1
     input:
       buffer: '${graph.unpad.output.unpadded}'
       overlap: '${graph.unpad.output.pad}'
     meta:
       node:
-        y: 361
-        x: 1086
-        height: 118
+        x: 1215
+        y: 363
         width: 140
+        height: 0
   - name: wtf
     module: waterfall
     device: cpu
     runtime: native
     provider: generic
     config:
-      interpolate: true
       height: 512
+      interpolate: true
     input:
       signal: '${graph.spectrum_engine.output.buffer}'
     meta:
       surface_default:
-        detachedWidth: 512
         attachedWidth: 269
-        detached: false
-        attachedHeight: 125
+        attachedHeight: 114
+        detachedWidth: 512
         detachedHeight: 512
+        detached: false
       node:
-        y: 35.000015
-        x: 1047
-        height: 240.64447
+        x: 1176
+        y: 37.000015
         width: 269
+        height: 240.64447
   - name: fm
     module: fm
     device: cpu
@@ -305,24 +322,25 @@ graph:
       signal: '${graph.overlap_add.output.buffer}'
     meta:
       node:
-        y: 360
-        x: 1299
-        height: 96
+        x: 1430
+        y: 362
         width: 126
+        height: 0
   - name: audio
     module: audio
     device: cpu
     runtime: native
     provider: generic
     config:
-      outSampleRate: 48000
-      inSampleRate: 2000000
       deviceName: Default
+      inSampleRate: 2000000
+      outSampleRate: 48000
+      volume: 1
     input:
       buffer: '${graph.fm.output.signal}'
     meta:
       node:
-        y: 354
-        x: 1492
-        height: 107
+        x: 1631
+        y: 355
         width: 140
+        height: 0

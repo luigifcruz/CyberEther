@@ -1,7 +1,5 @@
 #include "module_impl.hh"
 
-#include <limits>
-
 #include <jetstream/memory/axis.hh>
 #include <jetstream/tools/numeric.hh>
 
@@ -23,18 +21,10 @@ Result FftImpl::validate() {
         return Result::SUCCESS;
     }
 
-    if (inputTensor.rank() == 0 ||
-        inputTensor.rank() > static_cast<U64>(std::numeric_limits<I64>::max())) {
-        JST_ERROR("[MODULE_FFT] Expected an input tensor with at least one dimension.");
-        return Result::ERROR;
-    }
-
     const auto& config = *candidate();
-    const auto candidateAxis = ResolveAxis(config.axis, inputTensor.rank());
-    if (!candidateAxis) {
-        JST_ERROR("[MODULE_FFT] Axis {} is out of bounds for a rank-{} tensor.",
-                  config.axis,
-                  inputTensor.rank());
+    SignalAxes axes;
+    if (ResolveSignalAxes(inputTensor, axes) != Result::SUCCESS) {
+        JST_ERROR("[MODULE_FFT] Input must contain valid signal axis metadata.");
         return Result::ERROR;
     }
 
@@ -43,8 +33,8 @@ Result FftImpl::validate() {
     if (inputTensor.dtype() == DataType::F32 && config.forward &&
         config.complexOutput) {
         validatedOutputDataType = DataType::CF32;
-        validatedOutputShape[*candidateAxis] =
-            (inputTensor.shape(*candidateAxis) / 2) + 1;
+        validatedOutputShape[*axes.sample] =
+            (inputTensor.shape(*axes.sample) / 2) + 1;
     }
 
     U64 outputElementCount = 1;
@@ -65,7 +55,7 @@ Result FftImpl::validate() {
         return Result::ERROR;
     }
 
-    validatedResolvedAxis = *candidateAxis;
+    validatedResolvedAxis = *axes.sample;
     validatedOutputElementCount = outputElementCount;
     validatedOutputSizeBytes = outputSizeBytes;
 

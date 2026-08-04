@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <any>
 #include <filesystem>
 #include <limits>
 
@@ -50,6 +51,11 @@ void RequireFileReaderCreateIncomplete(const Registry::ModuleRegistration& impl,
     const Tensor& output = module->outputs().at("signal").tensor;
     REQUIRE(output.dtype() == NameToDataType(config.dataType));
     REQUIRE(output.shape() == Shape{config.batchSize});
+    REQUIRE(output.hasAttribute("sampleAxis"));
+    REQUIRE(output.attribute("sampleAxis").type() == typeid(Index));
+    REQUIRE(std::any_cast<Index>(output.attribute("sampleAxis")) == Index{0});
+    REQUIRE_FALSE(output.hasAttribute("batchAxis"));
+    REQUIRE_FALSE(output.hasAttribute("channelAxis"));
     REQUIRE(module->destroy() == Result::SUCCESS);
 }
 

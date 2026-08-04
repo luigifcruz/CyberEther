@@ -6,12 +6,18 @@
 #include <limits>
 
 #include "jetstream/constants.hh"
+#include "jetstream/memory/axis.hh"
 #include "jetstream/tools/numeric.hh"
 #include "resources/shaders/waterfall_shaders.hh"
 
 namespace Jetstream::Modules {
 
 Result WaterfallImpl::validate() {
+    validatedNumberOfElements = 0;
+    validatedNumberOfBatches = 0;
+    validatedInputSampleStride = 0;
+    validatedInputBatchStride = 0;
+
     const auto& config = *candidate();
 
     if (config.height == 0 || config.height > 2048) {
@@ -28,18 +34,26 @@ Result WaterfallImpl::validate() {
         return Result::SUCCESS;
     }
 
-    if (inputTensor.rank() == 0) {
-        JST_ERROR("[MODULE_WATERFALL] Input buffer rank is 0.");
+    SignalAxes axes;
+    if (ResolveSignalAxes(inputTensor, axes) != Result::SUCCESS) {
+        JST_ERROR("[MODULE_WATERFALL] Input must contain valid signal axis metadata.");
         return Result::ERROR;
     }
 
-    if (inputTensor.rank() > 2) {
-        JST_ERROR("[MODULE_WATERFALL] Invalid input rank ({}), expected 1 or 2.",
-                  inputTensor.rank());
+    if (axes.channel) {
+        JST_ERROR("[MODULE_WATERFALL] channelAxis is not supported.");
         return Result::ERROR;
     }
 
-    const U64 width = inputTensor.shape(inputTensor.rank() - 1);
+    for (Index axis = 0; axis < inputTensor.rank(); ++axis) {
+        if (axis != *axes.sample && (!axes.batch || axis != *axes.batch)) {
+            JST_ERROR("[MODULE_WATERFALL] Unsupported auxiliary input axis {}. "
+                      "Every dimension must be sampleAxis or batchAxis.", axis);
+            return Result::ERROR;
+        }
+    }
+
+    const U64 width = inputTensor.shape(*axes.sample);
     U64 renderBinCount = 0;
     const U64 maxRenderBinCount = std::min({
         static_cast<U64>(std::numeric_limits<I32>::max()),
@@ -51,6 +65,11 @@ Result WaterfallImpl::validate() {
         JST_ERROR("[MODULE_WATERFALL] Render bin count exceeds the supported range.");
         return Result::ERROR;
     }
+
+    validatedNumberOfElements = width;
+    validatedNumberOfBatches = axes.batch ? inputTensor.shape(*axes.batch) : 1;
+    validatedInputSampleStride = inputTensor.stride(*axes.sample);
+    validatedInputBatchStride = axes.batch ? inputTensor.stride(*axes.batch) : 0;
 
     return Result::SUCCESS;
 }
@@ -70,9 +89,10 @@ Result WaterfallImpl::create() {
 
     // Calculate parameters.
 
-    const U64 lastAxis = input.rank() - 1;
-    numberOfElements = input.shape()[lastAxis];
-    numberOfBatches = (input.rank() == 2) ? input.shape()[0] : 1;
+    numberOfElements = validatedNumberOfElements;
+    numberOfBatches = validatedNumberOfBatches;
+    inputSampleStride = validatedInputSampleStride;
+    inputBatchStride = validatedInputBatchStride;
     ringState = {};
 
     // Allocate internal buffers.

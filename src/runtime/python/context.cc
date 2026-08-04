@@ -42,6 +42,11 @@ Result PythonRuntimeContext::destroyCompute() {
     return pimpl->stop();
 }
 
+void PythonRuntimeContext::setImmutableOutputAttributes(
+    const std::vector<std::unordered_set<std::string>>& keys) {
+    pimpl->setImmutableOutputAttributes(keys);
+}
+
 Result PythonRuntimeContext::computeInitialize() {
     return Result::SUCCESS;
 }

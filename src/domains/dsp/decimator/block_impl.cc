@@ -23,6 +23,8 @@ struct DecimatorImpl : public Block::Impl,
     struct CandidatePlan {
         std::string reshapeShape;
         I64 childAxis;
+        SignalAxes signalAxes;
+        SignalAxes reshapedSignalAxes;
         bool deriveSampleRate = false;
     };
 
@@ -49,14 +51,14 @@ Result DecimatorImpl::validate() {
     const auto input = inputs().find("buffer");
     if (input != inputs().end() && input->second.resolved()) {
         const Tensor& inputTensor = input->second.tensor;
-        const auto resolvedAxis = ResolveAxis(config.axis, inputTensor.rank());
-        if (!resolvedAxis) {
-            JST_ERROR("[BLOCK_DECIMATOR] Axis {} is out of bounds for "
-                      "input tensor rank {}.", config.axis, inputTensor.rank());
+        SignalAxes axes;
+        if (ResolveSignalAxes(inputTensor, axes) != Result::SUCCESS) {
+            JST_ERROR("[BLOCK_DECIMATOR] Input signal axis metadata is invalid.");
             return Result::ERROR;
         }
+        const Index sampleAxis = *axes.sample;
 
-        const U64 axisSize = inputTensor.shape(*resolvedAxis);
+        const U64 axisSize = inputTensor.shape(sampleAxis);
         if (axisSize % config.ratio != 0) {
             JST_ERROR("[BLOCK_DECIMATOR] Axis size {} is not divisible "
                       "by ratio {}.", axisSize, config.ratio);
@@ -69,7 +71,7 @@ Result DecimatorImpl::validate() {
             if (dimension > 0) {
                 plan.reshapeShape += ", ";
             }
-            if (dimension == *resolvedAxis) {
+            if (dimension == sampleAxis) {
                 plan.reshapeShape += std::to_string(inputTensor.shape(dimension) /
                                                     config.ratio);
                 plan.reshapeShape += ", ";
@@ -80,8 +82,16 @@ Result DecimatorImpl::validate() {
         }
         plan.reshapeShape += "]";
 
-        // ResolveAxis guarantees this nonnegative child axis fits in I64.
-        plan.childAxis = static_cast<I64>(*resolvedAxis) + 1;
+        plan.childAxis = static_cast<I64>(sampleAxis) + 1;
+        plan.signalAxes = axes;
+        plan.reshapedSignalAxes = axes;
+        const auto shiftAfterSample = [sampleAxis](std::optional<Index>& axis) {
+            if (axis && *axis > sampleAxis) {
+                ++*axis;
+            }
+        };
+        shiftAfterSample(plan.reshapedSignalAxes.batch);
+        shiftAfterSample(plan.reshapedSignalAxes.channel);
 
         if (inputTensor.hasAttribute("sampleRate")) {
             const std::any sampleRate = inputTensor.attribute("sampleRate");
@@ -94,10 +104,6 @@ Result DecimatorImpl::validate() {
         }
 
         candidatePlan = std::move(plan);
-    }
-
-    if (axis != config.axis) {
-        return Result::RECREATE;
     }
 
     if (ratio != config.ratio) {
@@ -123,12 +129,6 @@ Result DecimatorImpl::define() {
                                     "Output",
                                     "Decimated output signal."));
 
-    JST_CHECK(defineInterfaceConfig("axis",
-                                    "Axis",
-                                    "Axis along which to decimate. Negative axes count "
-                                    "from the end.",
-                                    "int:"));
-
     JST_CHECK(defineInterfaceConfig("ratio",
                                     "Ratio",
                                     "Decimation ratio.",
@@ -153,11 +153,13 @@ Result DecimatorImpl::create() {
     JST_CHECK(moduleCreate("reshape", reshapeConfig, {
         {"buffer", inputPort}
     }));
+    auto reshaped = moduleGetOutput({"reshape", "buffer"});
+    JST_CHECK(SetSignalAxes(reshaped.tensor, candidatePlan->reshapedSignalAxes));
 
     // Create arithmetic module (sum along ratio axis).
 
     JST_CHECK(moduleCreate("arithmetic", arithmeticConfig, {
-        {"buffer", moduleGetOutput({"reshape", "buffer"})}
+        {"buffer", reshaped}
     }));
 
     // Create squeeze_dims module to remove the reduced axis.
@@ -165,17 +167,21 @@ Result DecimatorImpl::create() {
     JST_CHECK(moduleCreate("squeeze_dims", squeezeDimsConfig, {
         {"buffer", moduleGetOutput({"arithmetic", "buffer"})}
     }));
+    auto squeezed = moduleGetOutput({"squeeze_dims", "buffer"});
+    JST_CHECK(SetSignalAxes(squeezed.tensor, candidatePlan->signalAxes));
 
     // Create duplicate module for host accessibility.
 
     JST_CHECK(moduleCreate("duplicate", duplicateConfig, {
-        {"buffer", moduleGetOutput({"squeeze_dims", "buffer"})}
+        {"buffer", squeezed}
     }));
 
     JST_CHECK(moduleExposeOutput("buffer",
                                  {"duplicate", "buffer"}));
 
     auto& outputTensor = outputs()["buffer"].tensor;
+    JST_CHECK(SetSignalAxes(outputTensor, candidatePlan->signalAxes));
+
     if (candidatePlan->deriveSampleRate) {
         const Tensor inputCopy = inputPort.tensor;
         const F32 decimationRatio = static_cast<F32>(ratio);

@@ -39,7 +39,7 @@ A useful rule of thumb: if `python -c "import numpy"` works in your terminal, se
 | **Code** | Python source defining `compute(ctx)`. |
 | **Input Count** | Number of input ports (`input0`, `input1`, ...). |
 | **Output Count** | Number of output ports (`output0`, `output1`, ...). |
-| **Output Tensor Specs** | Per-output shape, data type, and device. |
+| **Output Tensor Specs** | Per-output shape, data type, device, and signal axes. |
 
 Each output tensor is allocated by the block from its spec. The Python code cannot change an output's shape, dtype, or device at runtime. Supported spec dtypes are `F32`, `CF32`, `F64`, `CF64`, `I8`, `I16`, `I32`, `I64`, `U8`, `U16`, `U32`, and `U64`. Supported devices are `cpu` and `cuda`. Blocks with zero inputs (sources) and zero outputs (sinks) are both valid.
 
@@ -81,7 +81,7 @@ Work submitted on custom CuPy streams is likewise the user's responsibility to s
 Tensors carry named metadata such as `sampleRate` and `frequency`. The block exposes them per port:
 
 - `ctx.input_attrs[i]`: read-only mapping of the input tensor's attributes, including values inherited through upstream propagation and derived attributes, refreshed at the start of every cycle.
-- `ctx.output_attrs[i]`: writable dict for the output tensor. Writes are published when `compute` returns and become visible to downstream blocks in the same cycle, and to pin tooltips in the UI.
+- Output tensor attributes (`ctx.output_attrs[i]`): writable dict for the output tensor. Writes are published when `compute` returns and become visible to downstream blocks in the same cycle, and to pin tooltips in the UI. Axes declared in the output tensor spec are excluded (see [Declaring Signal Axes](#declaring-signal-axes)).
 
 ```python
 def compute(ctx):
@@ -89,11 +89,25 @@ def compute(ctx):
 
     ctx.outputs[0][...] = ctx.inputs[0][::2]
 
+    ctx.output_attrs[0].update(ctx.input_attrs[0])
     ctx.output_attrs[0]["sampleRate"] = rate / 2.0
     ctx.output_attrs[0]["decimation"] = 2
 ```
 
-Editing a container-valued attribute in place (for example `ctx.output_attrs[0]["meta"]["stage"] = 2`) is detected and published as well. Attributes the block does not touch are left as-is. The block does not automatically propagate input attributes to outputs, so copy the ones you want. Attribute values follow the same width-preserving rules as the environment (see [Type Conversion](#type-conversion)), so halving an F32 sample rate keeps it F32.
+Editing a container-valued attribute in place (for example `ctx.output_attrs[0]["meta"]["stage"] = 2`) is detected and published as well. Attributes the block does not touch are left as-is. The block does not automatically propagate input attributes to outputs, so copy every attribute that still describes the output. Signal outputs must preserve or remap `sampleAxis`, `batchAxis`, and `channelAxis`. Newly assigned axis values must use `numpy.uint64` so they retain the required `Index`/`U64` type. Output attribute assignment mirrors C++ `setAttribute`: every write stores the assigned value's type, so `numpy.float32` stores `F32` while a plain Python `float` stores `F64`.
+
+### Declaring Signal Axes
+
+Downstream blocks validate their inputs when they are created, before any compute cycle runs. A rank-two Python output therefore cannot rely on `compute` alone to publish the required `sampleAxis` metadata in time. Declare the signal axes in the output's tensor spec using the same `[B, C, S]` notation as the shape editor: each comma-separated role sits at the position of its axis (`B` batch, `C` channel, `S` sample). Use `_` for an axis that carries no role, and trailing axes may simply be omitted. Axis roles cannot repeat:
+
+| Spec | Meaning |
+|---|---|
+| `[S]` | Rank-one signal, `sampleAxis=0`. |
+| `[C, S]` | Channel-major stream, `channelAxis=0`, `sampleAxis=1`. |
+| `[B, C, S]` | Batched channels of samples, `batchAxis=0`, `channelAxis=1`, `sampleAxis=2`. |
+| `[B, _, S]` | Batched samples with an unlabeled middle axis. |
+
+The declared axes are published as `sampleAxis`, `batchAxis`, and `channelAxis` attributes when the block is created, so downstream blocks see them while validating, before the first `compute` runs. Blank axes receive no attribute. The declared roles remain visible to the user code as the initial contents of `ctx.output_attrs[i]` and are immutable: compute writes to `sampleAxis`, `batchAxis`, or `channelAxis` are ignored with a console warning, because downstream blocks resolve the declared roles when they are created.
 
 ## Flowgraph Environment
 
@@ -179,10 +193,11 @@ Reading (C++ to Python):
 
 Typed vectors cross as raw buffers in both directions: reads hand NumPy the underlying bytes directly, and writes of native contiguous one-dimensional arrays copy their buffer straight into the store. One copy each way, with no per-element Python objects. The arrays are read-only, so copy before modifying.
 
-Writing (Python to C++) follows two rules:
+Writing (Python to C++) follows these rules:
 
-- **Numeric entries keep their type.** A numeric write onto a numeric entry is coerced to the stored type: an `F32` entry stays `F32`, integer targets are range-checked exactly, floats only land in integer slots when they are integral, and a complex value with a non-zero imaginary part is rejected when the target is real. Rejections are rolled back with a console warning rather than truncated. Writes that change the kind of value, for example a number over a string or a mapping over a scalar, replace the entry instead.
-- **New entries take the value's native width.** Plain Python values default to `bool`, `I64` (`U64` above the signed range), `F64`, `CF64`, and `str`. NumPy scalars store at their exact width, so `np.float32` becomes `F32`, `np.int16` becomes `I16`, and `np.complex64` becomes `CF32`. Homogeneous lists and one-dimensional arrays of floats and complex values become typed vectors of the matching width. Integer content becomes a vector of `U64` when every element is non-negative, since no narrower integer vectors exist. Anything mixed becomes a generic sequence.
+- **Environment numeric entries keep their type.** A numeric write onto an existing environment entry is coerced to the stored type: an `F32` entry stays `F32`, integer targets are range-checked exactly, floats only land in integer slots when they are integral, and a complex value with a non-zero imaginary part is rejected when the target is real. Rejections are rolled back with a console warning rather than truncated. Writes that change the kind of value, for example a number over a string or a mapping over a scalar, replace the entry instead.
+- **Tensor output attributes use the assigned type.** Like C++ `setAttribute`, assigning an output attribute replaces both its value and its type. Reassigning an `F64` attribute with `np.float32`, for example, stores `F32`.
+- **Values without an environment schema take their native width.** Plain Python values default to `bool`, `I64` (`U64` above the signed range), `F64`, `CF64`, and `str`. NumPy scalars store at their exact width, so `np.float32` becomes `F32`, `np.int16` becomes `I16`, and `np.complex64` becomes `CF32`. Homogeneous lists and one-dimensional arrays of floats and complex values become typed vectors of the matching width. Integer content becomes a vector of `U64` when every element is non-negative, since no narrower integer vectors exist. Anything mixed becomes a generic sequence.
 
 Writing `None` stores a null regardless of what the entry previously held, at top level of a value, nested in a dict, or inside a sequence.
 

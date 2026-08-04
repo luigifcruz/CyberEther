@@ -1,6 +1,9 @@
 #ifndef JETSTREAM_DOMAINS_CORE_PYTHON_MODULE_IMPL_HH
 #define JETSTREAM_DOMAINS_CORE_PYTHON_MODULE_IMPL_HH
 
+#include <any>
+#include <map>
+
 #include <jetstream/detail/module_impl.hh>
 #include <jetstream/domains/core/python/module.hh>
 
@@ -21,6 +24,7 @@ struct PythonImpl : public Module::Impl, public DynamicConfig<Python> {
         DeviceType device = DeviceType::None;
         U64 elementCount = 0;
         U64 sizeBytes = 0;
+        std::map<std::string, std::any> attributes;
     };
 
     static std::string inputPortName(U64 index);

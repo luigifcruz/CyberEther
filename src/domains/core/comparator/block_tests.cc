@@ -35,14 +35,17 @@ TEST_CASE_METHOD(FlowgraphFixture, "Comparator block creates and exposes output"
 TEST_CASE_METHOD(FlowgraphFixture, "Comparator block rejects input count bounds",
                  "[modules][comparator][block][validation]") {
     Blocks::Comparator config;
+    U64 expectedInputs = 0;
     std::string name;
 
     SECTION("fewer than two inputs") {
         config.inputCount = 1;
+        expectedInputs = 1;
         name = "cmp_too_few";
     }
     SECTION("more than sixteen inputs") {
         config.inputCount = 17;
+        expectedInputs = 16;
         name = "cmp_too_many";
     }
 
@@ -50,9 +53,20 @@ TEST_CASE_METHOD(FlowgraphFixture, "Comparator block rejects input count bounds"
 
     const auto block = viewBlock(name);
     REQUIRE(block.state == Block::State::Errored);
-    REQUIRE(block.interfaceInputs.empty());
-    REQUIRE(block.interfaceOutputs.empty());
-    REQUIRE(block.interfaceConfigs.empty());
+    REQUIRE(block.interfaceInputs.size() == expectedInputs);
+    REQUIRE(block.interfaceInputs.front().name == "input0");
+    REQUIRE(block.interfaceInputs.back().name ==
+            "input" + std::to_string(expectedInputs - 1));
+    REQUIRE(block.interfaceOutputs.size() == 1);
+    REQUIRE(block.interfaceOutputs.front().name == "error");
+    REQUIRE(block.interfaceConfigs.size() == 2);
+    REQUIRE(block.interfaceConfigs.at(0).name == "inputCount");
+    REQUIRE(block.interfaceConfigs.at(1).name == "tolerance");
+    REQUIRE(block.metrics.size() == 4);
+    for (const auto& metric : block.metrics) {
+        REQUIRE(std::any_cast<std::string>(metric.value) ==
+                (metric.name == "match" ? "N/A" : "n/a"));
+    }
     REQUIRE(block.outputs.empty());
     REQUIRE(JST_LOG_LAST_ERROR().find("[BLOCK_COMPARATOR]") != std::string::npos);
 }
@@ -122,7 +136,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Comparator block delegates tolerance validat
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Comparator block preserves tolerance and compute after rejected update",
+                  "Comparator block preserves invalid tolerance for recovery",
                  "[modules][comparator][block][reconfigure][validation]") {
     Blocks::SignalGenerator sourceA;
     sourceA.signalType = "dc";
@@ -145,15 +159,22 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     Parser::Map rejected;
     rejected["tolerance"] = F32{-0.25f};
-    REQUIRE(flowgraph->blockReconfigure("cmp_update", rejected) == Result::ERROR);
+    REQUIRE(flowgraph->blockReconfigure("cmp_update", rejected) == Result::SUCCESS);
 
-    const auto block = viewBlock("cmp_update");
-    REQUIRE(block.state == Block::State::Created);
-    REQUIRE(block.interfaceInputs.size() == config.inputCount);
+    const auto errored = viewBlock("cmp_update");
+    REQUIRE(errored.state == Block::State::Errored);
+    REQUIRE(errored.outputs.empty());
+    REQUIRE(errored.interfaceInputs.size() == config.inputCount);
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("cmp_update", saved) == Result::SUCCESS);
-    REQUIRE(std::any_cast<F32>(saved.at("tolerance")) == config.tolerance);
+    REQUIRE(std::any_cast<F32>(saved.at("tolerance")) == -0.25f);
+
+    Parser::Map recovery;
+    recovery["tolerance"] = config.tolerance;
+    REQUIRE(flowgraph->blockReconfigure("cmp_update", recovery) == Result::SUCCESS);
+    const auto block = viewBlock("cmp_update");
+    REQUIRE(block.state == Block::State::Created);
 
     Tensor output = block.outputs.at("error").tensor;
     std::fill(output.data<F32>(), output.data<F32>() + output.size(), -1.0f);
@@ -194,14 +215,12 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     Parser::Map update;
     update["inputCount"] = U64{2};
-    REQUIRE(flowgraph->blockReconfigure("cmp_shrink", update) == Result::ERROR);
-    REQUIRE(viewBlock("cmp_shrink").state == Block::State::Created);
+    REQUIRE(flowgraph->blockReconfigure("cmp_shrink", update) == Result::SUCCESS);
+    REQUIRE(viewBlock("cmp_shrink").state == Block::State::Errored);
+    REQUIRE(viewBlock("cmp_shrink").interfaceInputs.size() == 2);
     REQUIRE(viewBlock("cmp_shrink").inputs.size() == 3);
 
     REQUIRE(flowgraph->blockDisconnect("cmp_shrink", "input2") == Result::SUCCESS);
-    REQUIRE(viewBlock("cmp_shrink").state == Block::State::Incomplete);
-
-    REQUIRE(flowgraph->blockReconfigure("cmp_shrink", update) == Result::SUCCESS);
 
     const auto block = viewBlock("cmp_shrink");
     REQUIRE(block.state == Block::State::Created);

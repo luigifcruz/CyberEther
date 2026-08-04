@@ -48,7 +48,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "PSK demod block preserves loop configuration after rejected update",
+                  "PSK demod block preserves invalid symbol rate for recovery",
                  "[modules][dsp][psk_demod][block][reconfigure][validation]") {
     Parser::Map sourceConfig;
     sourceConfig["signalDataType"] = std::string("CF32");
@@ -75,18 +75,22 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     Parser::Map invalidUpdate;
     invalidUpdate["symbolRate"] = F32{1500000.0f};
-    REQUIRE(flowgraph->blockReconfigure("psk_update", invalidUpdate) == Result::ERROR);
-    REQUIRE(viewBlock("psk_update").state == Block::State::Created);
-    REQUIRE(viewBlock("psk_update").outputs.at("signal").tensor.id() == outputId);
+    REQUIRE(flowgraph->blockReconfigure("psk_update", invalidUpdate) == Result::SUCCESS);
+    REQUIRE(viewBlock("psk_update").state == Block::State::Errored);
+    REQUIRE(viewBlock("psk_update").outputs.empty());
 
     Parser::Map savedMap;
     REQUIRE(flowgraph->blockConfig("psk_update", savedMap) == Result::SUCCESS);
     Blocks::PskDemod saved;
     REQUIRE(saved.deserialize(savedMap) == Result::SUCCESS);
-    REQUIRE(saved.symbolRate == config.symbolRate);
+    REQUIRE(saved.symbolRate == 1500000.0f);
     REQUIRE(saved.frequencyLoopBandwidth == 0.1f);
     REQUIRE(saved.timingLoopBandwidth == 0.1f);
     REQUIRE(saved.dampingFactor == 1.0f);
 
+    Parser::Map recovery;
+    recovery["symbolRate"] = config.symbolRate;
+    REQUIRE(flowgraph->blockReconfigure("psk_update", recovery) == Result::SUCCESS);
+    REQUIRE(viewBlock("psk_update").state == Block::State::Created);
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
 }

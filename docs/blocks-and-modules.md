@@ -42,22 +42,48 @@ A block implementation derives from `Block::Impl` and overrides some of four hoo
 
 | Hook | Purpose |
 |---|---|
-| `validate()` | Reject bad configurations before anything is built. Returning `RECREATE` is also accepted here. |
+| `validate()` | Check block-specific candidate semantics that affect its interface or orchestration. Do not duplicate child module validation. Returning `RECREATE` is also accepted here. |
 | `configure()` | Derive internal state from the validated configuration. |
-| `define()` | Declare the interface: inputs, outputs, configuration fields, and metrics. |
+| `define()` | Declare the candidate interface: inputs, outputs, configuration fields, and metrics. |
 | `create()` | Build the modules and wire them to the block ports. |
+
+Block creation follows this order:
+
+```text
+Block::create
+├── Deserialize the candidate configuration
+├── define() the candidate interface
+├── validate() candidate semantics
+├── Commit the candidate configuration
+├── configure() derived block state
+├── Verify declared input links
+├── create() child modules and wiring
+└── Verify declared outputs
+```
 
 There is no block-level destroy hook in practice. Destruction tears down the child modules automatically in reverse creation order, so anything that needs cleanup belongs in a module's own `destroy()`.
 
-Creation runs `validate`, `configure`, and `define` in that order, then checks that every declared input is connected and resolved, runs `create()`, and finally checks that every declared output was produced. The result is one of three user-visible states:
+Defining before validation keeps a best-effort interface available even when the candidate is invalid. A configuration-dependent `define()` must therefore read `candidate()`, remain side-effect-free, and bound any candidate-controlled work or number of ports.
 
-- **Created.** Everything succeeded and the block participates in compute.
-- **Incomplete.** The block is valid but cannot run yet. This happens automatically when a declared input is unconnected or its upstream is not producing, and deliberately when `create()` returns `Result::INCOMPLETE`. Incomplete is not an error, it is a waiting state.
-- **Errored.** A hook failed, an undeclared input arrived, an expected output was missing, or a module later failed during compute. The failure message is kept as the block diagnostic. When a module fails at runtime, its block becomes errored and downstream blocks are recreated into the incomplete state.
+| Block structure | Validation placement |
+|---|---|
+| One block wrapping one module | Keep configuration and input validation in the module. The block should define ports, translate configuration, create the module, and expose its outputs. |
+| One block orchestrating multiple modules | Let each module validate its own configuration and inputs. Add block validation only for interface choices, module selection, topology, or constraints that span modules. |
+| The same rule is visible to both layers | Implement it once in the module and allow module creation or validate-only reconfiguration to report the failure through the block. |
+
+A one-to-one block/module pair must not repeat the same range, dtype, shape, or axis checks in both layers. Duplicate validation can drift as implementations evolve and can produce different diagnostics depending on which path runs first. The module is the authoritative boundary because it can also be built directly, selected through another block, or implemented by multiple providers. Block validation remains appropriate when the block owns behavior that no individual module can see, especially when it chooses or coordinates several child modules.
+
+| State | Meaning |
+|---|---|
+| **Created** | Everything succeeded and the block participates in compute. |
+| **Incomplete** | The block is valid but cannot run yet. A declared input may be unconnected or unresolved, or `create()` may deliberately return `Result::INCOMPLETE`. This is a waiting state, not an error. |
+| **Errored** | A hook failed, an undeclared input arrived, an expected output was missing, or a module later failed during compute. The last failure is retained as the block diagnostic. |
+
+Validation errors retain the candidate configuration and declared interface so the node remains editable. When a module fails at runtime, its block becomes errored and downstream blocks are recreated into the incomplete state.
 
 The deliberate `INCOMPLETE` return is the gating pattern: a block whose `create()` needs a value that arrives later, such as an environment key delivered by a server connection, returns incomplete and is automatically destroyed and recreated when a new environment key becomes visible. The full pattern, with example code, is in [Flowgraph Environment](/docs/metadata#flowgraph-environment).
 
-Configuration edits go through `reconfigure`, which validates the candidate configuration and applies it. Rejected candidates leave the current configuration unchanged. If applying a validated edit fails, the flowgraph restores the previous working state and returns the error. When a change cannot be applied in place, for example a buffer size that shaped an allocation, return `Result::RECREATE` and let the flowgraph rebuild the affected blocks.
+Configuration edits go through `reconfigure`, which defines a temporary candidate interface before validation. A semantic validation error is accepted as a graph edit: the flowgraph rebuilds the affected blocks with the candidate configuration, publishes the edited block as errored, and keeps downstream connections as unresolved links until the candidate is repaired. Failures while applying an already validated edit are different: the flowgraph restores the previous working state and returns the error. When a valid change cannot be applied in place, for example a buffer size that shaped an allocation, return `Result::RECREATE` and let the flowgraph rebuild the affected blocks.
 
 ## Defining The Block
 
@@ -118,6 +144,47 @@ Blocks may also access `environment()`, `view()`, `scheduler()`, and `render()` 
 
 A module implementation derives from `Module::Impl`, a runtime context that carries the compute hooks for its runtime, and `Scheduler::Context` for the scheduling hooks:
 
+| Hook | Purpose |
+|---|---|
+| `validate()` | Check candidate configuration semantics and implementation-specific compatibility of available inputs before side effects. |
+| `define()` | Declare taints and the input/output interface. |
+| `create()` | Allocate resources, initialize external state, and publish output tensors. |
+| `destroy()` | Release resources and external state created by the module. |
+| `reconfigure()` | Apply a validated candidate in place or return `RECREATE`. |
+
+Module creation follows a different order from block creation:
+
+```text
+Module::create
+├── Store the provided inputs
+├── Deserialize the candidate configuration
+├── validate()
+├── Commit the candidate configuration
+├── define() taints and ports
+├── Run framework input checks
+│   ├── Every declared input is present
+│   ├── Device matches unless CROSS_DEVICE
+│   ├── Tensor shape is initialized and non-empty
+│   └── Storage is contiguous unless DISCONTIGUOUS
+├── create()
+└── Verify every declared output was produced
+```
+
+Validation ownership is split deliberately:
+
+| Owner | Checks |
+|---|---|
+| Shared implementation `validate()` | Candidate ranges and relationships, signal axes, rank, dimensions, derived sizes, and other backend-independent semantics. |
+| Provider `validate()` | Supported dtypes, backend limits, allocation representability, and other device/runtime capabilities. Provider overrides should call the shared implementation first. |
+| Framework input checks | Missing declared inputs, device mismatch, invalid or empty tensors, and contiguity. Taints opt into the supported exceptions. |
+| `create()` | No deterministic validation. It consumes validated values while allocating resources, initializing devices, and publishing outputs. |
+
+The `validate()` hook runs before the framework input checks in the tree above. An implementation must therefore tolerate a missing input or a tensor whose shape is invalid or empty, return success for that case, and let the framework report the common lifecycle error. Candidate configuration checks still run even when an input is unavailable. This preserves consistent diagnostics and keeps framework-owned failures independent of a provider.
+
+Implementation-specific input semantics do belong in `validate()`. Examples include supported dtypes, accepted ranks, required signal-axis metadata, channel limits, backend grid limits, and whether derived allocation sizes are representable. These checks read pending fields through `candidate()` rather than the currently applied configuration.
+
+Validation may calculate and retain bounded derived values for `create()` to consume, but it must not allocate module resources, initialize hardware, or cause other external side effects. This boundary allows initial creation and validate-only reconfiguration to reject a candidate without disturbing live state.
+
 ```cpp
 struct GainModuleConfig : Module::Config {
     F32 gain = 1.0f;
@@ -137,7 +204,8 @@ struct GainModuleNativeCpu : Module::Impl,
 
     Result create() override {
         const auto& input = inputs().at("signal").tensor;
-        JST_CHECK(output.create(device(), input.dtype(), {input.size()}));
+        JST_CHECK(output.create(device(), input.dtype(), input.shape()));
+        JST_CHECK(output.propagateAttributes(input));
         outputs()["signal"].produced(name(), "signal", output);
         return Result::SUCCESS;
     }
@@ -157,7 +225,7 @@ struct GainModuleNativeCpu : Module::Impl,
 JST_REGISTER_MODULE(GainModuleNativeCpu, DeviceType::CPU, RuntimeType::NATIVE, "generic");
 ```
 
-The module lifecycle mirrors the block with `validate`, `define`, `create`, `destroy`, and `reconfigure`. Outputs are real tensors owned by the module and published with `produced()`. The `reconfigure` hook can apply cheap changes in place or return `RECREATE` to force a rebuild.
+Outputs are real tensors owned by the module and published with `produced()`. The `reconfigure` hook can apply cheap changes in place or return `RECREATE` to force a rebuild.
 
 ### Reconfiguring In Place
 

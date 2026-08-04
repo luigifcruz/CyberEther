@@ -6,18 +6,12 @@
 namespace Jetstream::Blocks {
 
 struct AmplitudeImpl : public Block::Impl, public DynamicConfig<Blocks::Amplitude> {
-    Result configure() override;
     Result define() override;
     Result create() override;
 
  protected:
     std::shared_ptr<Modules::Amplitude> amplitudeConfig = std::make_shared<Modules::Amplitude>();
 };
-
-Result AmplitudeImpl::configure() {
-    amplitudeConfig->axis = axis;
-    return Result::SUCCESS;
-}
 
 Result AmplitudeImpl::define() {
     JST_CHECK(defineInterfaceInput("signal",
@@ -27,12 +21,6 @@ Result AmplitudeImpl::define() {
     JST_CHECK(defineInterfaceOutput("signal",
                                     "Output",
                                     "Amplitude output in decibels."));
-
-    JST_CHECK(defineInterfaceConfig("axis",
-                                    "Axis",
-                                    "Axis whose length is used for normalization. "
-                                    "Negative axes count from the end.",
-                                    "int:"));
 
     return Result::SUCCESS;
 }

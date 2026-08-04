@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "jetstream/flowgraph.hh"
@@ -47,6 +48,8 @@ struct JETSTREAM_API PythonRuntimeContext : Runtime::Context {
                          const std::shared_ptr<Flowgraph::Environment>& environment = nullptr,
                          const std::shared_ptr<Flowgraph::View>& view = nullptr);
     Result destroyCompute();
+
+    void setImmutableOutputAttributes(const std::vector<std::unordered_set<std::string>>& keys);
 
     virtual Result computeInitialize();
     virtual Result computeSubmit();

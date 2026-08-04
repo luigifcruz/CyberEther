@@ -37,7 +37,10 @@ struct Cast : public Block::Config {
         "  Input: I16[4096] -> Output: F32[4096]\n"
         "- CI8 normalization:\n"
         "  Config: OutputType=CF32\n"
-        "  Input: CI8[4096] -> Output: CF32[4096]\n\n"
+        "  Input: CI8[4096] -> Output: CF32[4096]\n"
+        "- Real-to-complex promotion:\n"
+        "  Config: OutputType=CF32\n"
+        "  Input: F32[4096] -> Output: CF32[4096]\n\n"
 
         "## Implementation\n"
         "For each element, the input value or components are converted to the "

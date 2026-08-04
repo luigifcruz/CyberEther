@@ -23,7 +23,7 @@ struct alignas(8) KernelComplex {
 };
 
 <<<KERNEL_CONSTANTS>>>
-extern "C" __global__ void invert_kernel(const KernelComplex* input, KernelComplex* output) {
+extern "C" __global__ void invert_kernel(const unsigned char* input, KernelComplex* output) {
     const unsigned long long index =
         (static_cast<unsigned long long>(blockIdx.x) * blockDim.x) + threadIdx.x;
     if (index >= kElementCount) {
@@ -38,12 +38,32 @@ extern "C" __global__ void invert_kernel(const KernelComplex* input, KernelCompl
         inputIndex += coordinate * kInputStride[axis];
     }
 
-    KernelComplex value = input[inputIndex];
+    KernelComplex value = {0.0f, 0.0f};
+    if (kInputIsComplex != 0) {
+        value = reinterpret_cast<const KernelComplex*>(input)[inputIndex];
+    } else {
+        value.real = reinterpret_cast<const float*>(input)[inputIndex];
+    }
     const unsigned long long axisCoordinate =
         (index / kAxisInnerSize) % kAxisLength;
-    if ((axisCoordinate & 1ULL) != 0) {
-        value.real = -value.real;
-        value.imag = -value.imag;
+    if ((kAxisLength & 1ULL) == 0) {
+        if ((axisCoordinate & 1ULL) != 0) {
+            value.real = -value.real;
+            value.imag = -value.imag;
+        }
+    } else {
+        // Odd lengths need an integer-bin phasor instead of (-1)^n.
+        const double pi = 3.14159265358979323846;
+        const double phase = 2.0 * pi *
+                             static_cast<double>(kAxisLength / 2ULL) *
+                             static_cast<double>(axisCoordinate) /
+                             static_cast<double>(kAxisLength);
+        const float phaseReal = static_cast<float>(cos(phase));
+        const float phaseImag = static_cast<float>(sin(phase));
+        const float real = value.real;
+        const float imag = value.imag;
+        value.real = (real * phaseReal) - (imag * phaseImag);
+        value.imag = (real * phaseImag) + (imag * phaseReal);
     }
     output[index] = value;
 }
@@ -75,12 +95,14 @@ std::string BuildKernelConstants(const Tensor& input, const Index axis) {
     return jst::fmt::format(
         "static constexpr unsigned long long kElementCount = {}ULL;\n"
         "static constexpr int kRank = {};\n"
+        "static constexpr int kInputIsComplex = {};\n"
         "static constexpr unsigned long long kAxisLength = {}ULL;\n"
         "static constexpr unsigned long long kAxisInnerSize = {}ULL;\n"
         "static constexpr unsigned long long kShape[] = {};\n"
         "static constexpr unsigned long long kInputStride[] = {};\n",
         input.size(),
         input.rank(),
+        input.dtype() == DataType::CF32 ? 1 : 0,
         axisLength,
         axisInnerSize,
         MakeU64ArrayLiteral(input.shape()),
@@ -118,7 +140,8 @@ Result InvertImplNativeCuda::validate() {
         return Result::SUCCESS;
     }
 
-    if (inputTensor.dtype() != DataType::CF32) {
+    if (inputTensor.dtype() != DataType::F32 &&
+        inputTensor.dtype() != DataType::CF32) {
         JST_ERROR("[MODULE_INVERT_NATIVE_CUDA] Unsupported data type '{}'.",
                   inputTensor.dtype());
         return Result::ERROR;

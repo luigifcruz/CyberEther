@@ -285,12 +285,27 @@ Result AdsbImplNativeCpu::destroy() {
 Result AdsbImplNativeCpu::computeSubmit() {
     const CF32* iqData = reinterpret_cast<const CF32*>(input.data());
     const U64 numSamples = input.size();
+    const U64 batchCount = batchAxis ? input.shape(*batchAxis) : 1;
+    const U64 batchStride = batchAxis ? input.stride(*batchAxis) : 0;
+    const U64 sampleCount = input.shape(sampleAxis);
+    const U64 sampleStride = input.stride(sampleAxis);
 
-    for (U64 i = 0; i < numSamples; ++i) {
-        const F32 real = iqData[i].real() * 128.0f;
-        const F32 imag = iqData[i].imag() * 128.0f;
-        const F32 mag = std::sqrt(real * real + imag * imag) * 360.0f;
-        magBuf[i] = static_cast<U16>(std::min(mag, static_cast<F32>(std::numeric_limits<U16>::max())));
+    U64 orderedIndex = 0;
+    for (U64 batch = 0; batch < batchCount; ++batch) {
+        for (U64 sample = 0; sample < sampleCount; ++sample) {
+            const CF32& iq =
+                iqData[batch * batchStride + sample * sampleStride];
+            if (!std::isfinite(iq.real()) || !std::isfinite(iq.imag())) {
+                magBuf[orderedIndex++] = U16{0};
+                continue;
+            }
+
+            const F64 real = static_cast<F64>(iq.real()) * 128.0;
+            const F64 imag = static_cast<F64>(iq.imag()) * 128.0;
+            const F64 magnitude = std::hypot(real, imag) * 360.0;
+            magBuf[orderedIndex++] = static_cast<U16>(std::min(
+                magnitude, static_cast<F64>(std::numeric_limits<U16>::max())));
+        }
     }
 
     tls_instance = this;

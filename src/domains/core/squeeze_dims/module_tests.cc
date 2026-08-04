@@ -1,9 +1,13 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <any>
+#include <optional>
+
 #include "jetstream/testing.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/domains/core/squeeze_dims/module.hh"
+#include "jetstream/memory/axis.hh"
 
 using namespace Jetstream;
 
@@ -11,9 +15,18 @@ namespace {
 
 void RequireSqueezeDimsValidationError(const Registry::ModuleRegistration& impl,
                                        const I64 axis,
-                                       const Shape& shape) {
+                                       const Shape& shape,
+                                       const std::string& attribute = {},
+                                       const std::any& attributeValue = {}) {
     Tensor input;
     REQUIRE(input.create(impl.device, DataType::F32, shape) == Result::SUCCESS);
+    if (attributeValue.has_value()) {
+        if (attribute != SampleAxisAttribute) {
+            REQUIRE(input.setAttribute(std::string(SampleAxisAttribute), Index{0}) ==
+                    Result::SUCCESS);
+        }
+        REQUIRE(input.setAttribute(attribute, attributeValue) == Result::SUCCESS);
+    }
 
     TensorMap inputs;
     inputs["buffer"].requested("test", "buffer");
@@ -28,6 +41,32 @@ void RequireSqueezeDimsValidationError(const Registry::ModuleRegistration& impl,
     REQUIRE(module->create("test", config, inputs) == Result::ERROR);
     REQUIRE(module->state() == Module::State::ERRORED);
     REQUIRE(module->outputs().empty());
+}
+
+void RequireSqueezedSignalAxes(const Registry::ModuleRegistration& impl,
+                               const I64 axis,
+                               const Shape& shape,
+                               const SignalAxes& inputAxes,
+                               const SignalAxes& expectedAxes) {
+    TestContext ctx("squeeze_dims", impl.device, impl.runtime, impl.provider);
+
+    Modules::SqueezeDims config;
+    config.axis = axis;
+    ctx.setConfig(config);
+
+    Tensor input;
+    REQUIRE(input.create(DeviceType::CPU, DataType::F32, shape) == Result::SUCCESS);
+    REQUIRE(SetSignalAxes(input, inputAxes) == Result::SUCCESS);
+    ctx.setInput("buffer", input);
+
+    REQUIRE(ctx.run() == Result::SUCCESS);
+
+    const auto& out = ctx.output("buffer");
+    SignalAxes outputAxes;
+    REQUIRE(ResolveSignalAxes(out, outputAxes) == Result::SUCCESS);
+    REQUIRE(outputAxes.sample == expectedAxes.sample);
+    REQUIRE(outputAxes.batch == expectedAxes.batch);
+    REQUIRE(outputAxes.channel == expectedAxes.channel);
 }
 
 }  // namespace
@@ -226,6 +265,44 @@ TEST_CASE("SqueezeDims Module - Dimension Not Size 1 Error", "[modules][squeeze_
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
             RequireSqueezeDimsValidationError(impl, 1, {1, 4});
+        }
+    }
+}
+
+TEST_CASE("SqueezeDims Module - Remaps And Removes Signal Axes",
+          "[modules][squeeze_dims][metadata]") {
+    const auto implementations = Registry::ListAvailableModules("squeeze_dims");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            RequireSqueezedSignalAxes(
+                impl, 0, {1, 2, 3, 4},
+                {.sample = Index{3}, .batch = Index{1}, .channel = Index{2}},
+                {.sample = Index{2}, .batch = Index{0}, .channel = Index{1}});
+            RequireSqueezedSignalAxes(
+                impl, 3, {2, 3, 4, 1},
+                {.sample = Index{1}, .batch = Index{0}, .channel = Index{2}},
+                {.sample = Index{1}, .batch = Index{0}, .channel = Index{2}});
+            RequireSqueezedSignalAxes(
+                impl, 1, {2, 1, 3},
+                {.sample = Index{2}, .batch = Index{0}, .channel = Index{1}},
+                {.sample = Index{1}, .batch = Index{0}});
+        }
+    }
+}
+
+TEST_CASE("SqueezeDims Module - Invalid Signal Axis Metadata Error",
+          "[modules][squeeze_dims][metadata][error]") {
+    const auto implementations = Registry::ListAvailableModules("squeeze_dims");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            RequireSqueezeDimsValidationError(
+                impl, 0, {1, 4}, std::string(SampleAxisAttribute), I64{0});
+            RequireSqueezeDimsValidationError(
+                impl, 0, {1, 4}, std::string(ChannelAxisAttribute), Index{2});
         }
     }
 }

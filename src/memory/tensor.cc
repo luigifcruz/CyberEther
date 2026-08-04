@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 #include "jetstream/logger.hh"
@@ -51,6 +52,7 @@ struct Tensor::Impl {
     Index identifier = 0;
     std::unordered_map<std::string, std::any> attributes;
     std::unordered_map<std::string, std::function<std::any()>> derivedAttributes;
+    std::unordered_set<std::string> removedAttributes;
     std::shared_ptr<Impl> attributeSource;
 
     struct Layout {
@@ -1171,6 +1173,9 @@ bool Tensor::hasAttribute(const std::string& key) const {
 
     const Impl* current = impl.get();
     while (current) {
+        if (current->removedAttributes.contains(key)) {
+            return false;
+        }
         if (current->derivedAttributes.contains(key)) {
             return true;
         }
@@ -1185,6 +1190,7 @@ bool Tensor::hasAttribute(const std::string& key) const {
 
 std::vector<std::string> Tensor::attributeKeys() const {
     std::vector<std::string> keys;
+    std::unordered_set<std::string> resolved;
 
     if (!impl) {
         return keys;
@@ -1192,14 +1198,18 @@ std::vector<std::string> Tensor::attributeKeys() const {
 
     const Impl* current = impl.get();
     while (current) {
+        for (const auto& key : current->removedAttributes) {
+            resolved.insert(key);
+        }
+
         for (const auto& [key, _] : current->derivedAttributes) {
-            if (std::find(keys.begin(), keys.end(), key) == keys.end()) {
+            if (resolved.insert(key).second) {
                 keys.push_back(key);
             }
         }
 
         for (const auto& [key, _] : current->attributes) {
-            if (std::find(keys.begin(), keys.end(), key) == keys.end()) {
+            if (resolved.insert(key).second) {
                 keys.push_back(key);
             }
         }
@@ -1219,6 +1229,20 @@ Result Tensor::setAttribute(const std::string& key, const std::any& value) {
     }
 
     impl->attributes[key] = value;
+    impl->removedAttributes.erase(key);
+
+    return Result::SUCCESS;
+}
+
+Result Tensor::removeAttribute(const std::string& key) {
+    if (!impl) {
+        JST_ERROR("[MEMORY:TENSOR] Tensor not initialized.");
+        return Result::ERROR;
+    }
+
+    impl->attributes.erase(key);
+    impl->derivedAttributes.erase(key);
+    impl->removedAttributes.insert(key);
 
     return Result::SUCCESS;
 }
@@ -1231,6 +1255,7 @@ Result Tensor::setDerivedAttribute(const std::string& key,
     }
 
     impl->derivedAttributes[key] = std::move(compute);
+    impl->removedAttributes.erase(key);
 
     return Result::SUCCESS;
 }
@@ -1243,9 +1268,16 @@ std::any Tensor::attribute(const std::string& key) const {
 
     const Impl* current = impl.get();
     while (current) {
+        if (current->removedAttributes.contains(key)) {
+            break;
+        }
         auto dit = current->derivedAttributes.find(key);
         if (dit != current->derivedAttributes.end()) {
-            return dit->second();
+            try {
+                return dit->second();
+            } catch (const std::bad_any_cast&) {
+                return {};
+            }
         }
         auto ait = current->attributes.find(key);
         if (ait != current->attributes.end()) {

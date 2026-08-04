@@ -9,6 +9,7 @@
 #include <new>
 #include <stdexcept>
 
+#include <jetstream/memory/axis.hh>
 #include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Modules {
@@ -164,6 +165,10 @@ Result SoapyImpl::create() {
 
     try {
         JST_CHECK(buffer.create(device(), DataType::CF32, {numberOfBatches, numberOfTimeSamples}));
+        JST_CHECK(SetSignalAxes(buffer, {
+            .sample = Index{1},
+            .batch = Index{0},
+        }));
         JST_CHECK(circularBuffer.resize(validatedInternalElements));
     } catch (const std::bad_array_new_length&) {
         JST_ERROR("[MODULE_SOAPY] Internal buffer dimensions are too large.");
@@ -313,21 +318,21 @@ Result SoapyImpl::soapyThreadLoop() {
     CF32 tmp[temporaryBufferSize];
     void* tmp_buffers[] = {tmp};
     const auto readSize = std::min<std::size_t>(temporaryBufferSize,
-                                                circularBuffer.getCapacity());
+                                                circularBuffer.capacity());
 
     while (streaming) {
         try {
             int ret = soapyDevice->readStream(soapyStream, tmp_buffers, readSize, flags, timeNs, 1e5);
             if (ret > 0 && streaming && !errored) {
-                JST_CHECK(circularBuffer.put(tmp, ret));
-                const U64 capacity = circularBuffer.getCapacity();
+                JST_CHECK(circularBuffer.push(tmp, ret));
+                const U64 capacity = circularBuffer.capacity();
                 if (capacity > 0) {
-                    const F32 newHealth = static_cast<F32>(circularBuffer.getOccupancy()) /
+                    const F32 newHealth = static_cast<F32>(circularBuffer.size()) /
                                           static_cast<F32>(capacity);
                     const F32 smoothedHealth = bufferHealth.get() * 0.99f + newHealth * 0.01f;
                     bufferHealth.publish(smoothedHealth);
                 }
-                const F32 actualMB = static_cast<F32>(circularBuffer.getThroughput() * sizeof(CF32)) / 1e6f;
+                const F32 actualMB = static_cast<F32>(circularBuffer.throughput() * sizeof(CF32)) / 1e6f;
                 const F32 expectedMB = (activeSampleRate.load() * sizeof(CF32)) / 1e6f;
                 throughput.publish({actualMB, expectedMB});
             }

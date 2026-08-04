@@ -33,13 +33,15 @@ struct FlowgraphConfigTensorField {
     static constexpr F32 DataTypeWidth = 84.0f;
     static constexpr F32 DeviceWidth = 84.0f;
     static constexpr F32 MinShapeWidth = 56.0f;
+    static constexpr F32 MinSignalAxesWidth = 88.0f;
 
     struct TensorSpec {
         std::string shape = "[1]";
+        std::string axes = "";
         std::string dtype = "F32";
         std::string device = "cpu";
 
-        JST_SERDES(shape, dtype, device);
+        JST_SERDES(shape, axes, dtype, device);
     };
 
     struct Option {
@@ -162,15 +164,32 @@ struct FlowgraphConfigTensorField {
         apply(std::move(nextSpecs));
     }
 
+    void applySignalAxes(const U64 index, const std::string& value) const {
+        auto nextSpecs = tensorSpecs;
+        if (index < nextSpecs.size()) {
+            nextSpecs[index].axes = value;
+        }
+        apply(std::move(nextSpecs));
+    }
+
     void updateRow() {
         const U64 index = entryIndex;
         const auto spec = index < tensorSpecs.size() ? tensorSpecs[index] : TensorSpec{};
 
         row.update({
             .id = config.id,
-            .value = spec.shape,
-            .hint = "shape",
-            .minInputWidth = MinShapeWidth,
+            .shape = spec.shape,
+            .shapeHint = "shape",
+            .shapeMinWidth = MinShapeWidth,
+            .onShapeChange = [this, index](const std::string& value) {
+                applyShape(index, value);
+            },
+            .axes = spec.axes,
+            .axesHint = "[B, C, S]",
+            .axesMinWidth = MinSignalAxesWidth,
+            .onAxesChange = [this, index](const std::string& value) {
+                applySignalAxes(index, value);
+            },
             .combos = {
                 {
                     .options = labelsForOptions(DataTypeOptions()),
@@ -188,9 +207,6 @@ struct FlowgraphConfigTensorField {
                         applyDevice(index, label);
                     },
                 },
-            },
-            .onChange = [this, index](const std::string& value) {
-                applyShape(index, value);
             },
         });
     }

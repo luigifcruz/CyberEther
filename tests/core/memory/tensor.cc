@@ -1046,10 +1046,30 @@ TEST_CASE("Tensor attributes inherit through clones and propagation",
     REQUIRE(clone.setAttribute("name", std::string("clone")) == Result::SUCCESS);
     REQUIRE(std::any_cast<std::string>(clone.attribute("name")) == "clone");
     REQUIRE(std::any_cast<std::string>(source.attribute("name")) == "source");
+    REQUIRE(clone.removeAttribute("sampleRate") == Result::SUCCESS);
+    REQUIRE_FALSE(clone.hasAttribute("sampleRate"));
+    REQUIRE(clone.attributeKeys() == std::vector<std::string>{"generation", "name"});
+    REQUIRE(source.hasAttribute("sampleRate"));
+    REQUIRE(clone.setAttribute("sampleRate", F32{96'000.0f}) == Result::SUCCESS);
+    REQUIRE(std::any_cast<F32>(clone.attribute("sampleRate")) == 96'000.0f);
 
     Tensor destination(DeviceType::CPU, DataType::F32, {2});
     REQUIRE(destination.propagateAttributes(source) == Result::SUCCESS);
     REQUIRE(std::any_cast<F32>(destination.attribute("sampleRate")) == 48'000.0f);
+    REQUIRE(destination.removeAttribute("sampleRate") == Result::SUCCESS);
+    REQUIRE_FALSE(destination.hasAttribute("sampleRate"));
+}
+
+TEST_CASE("Tensor contains invalid derived attribute casts",
+          "[core][memory][tensor][attributes]") {
+    Tensor tensor(DeviceType::CPU, DataType::F32, {1});
+    REQUIRE(tensor.setDerivedAttribute("invalid", []() -> std::any {
+                const std::any value = F64{1.0};
+                return std::any_cast<F32>(value);
+            }) == Result::SUCCESS);
+
+    REQUIRE(tensor.hasAttribute("invalid"));
+    REQUIRE_FALSE(tensor.attribute("invalid").has_value());
 }
 
 TEST_CASE("Tensor swaps compatible storage without replacing metadata",

@@ -10,6 +10,9 @@ Result ExpandDimsImpl::validate() {
     }
 
     const Tensor& inputTensor = inputs().at("buffer").tensor;
+    SignalAxes inputAxes;
+    JST_CHECK(MapSignalAxes(inputTensor, IdentityAxisMap(inputTensor.rank()), inputAxes));
+
     if (!inputTensor.validShape() || inputTensor.size() == 0) {
         return Result::SUCCESS;
     }
@@ -37,10 +40,18 @@ Result ExpandDimsImpl::create() {
     const Tensor& inputTensor = inputs().at("buffer").tensor;
 
     input = inputTensor;
-    output = input;
+    output = input.clone();
 
     JST_CHECK(output.expandDims(resolvedAxis));
     JST_CHECK(output.propagateAttributes(input));
+
+    AxisMap axisMap(input.rank());
+    for (Index inputAxis = 0; inputAxis < input.rank(); ++inputAxis) {
+        axisMap[inputAxis] = inputAxis >= resolvedAxis ? inputAxis + 1 : inputAxis;
+    }
+    SignalAxes outputAxes;
+    JST_CHECK(MapSignalAxes(input, axisMap, outputAxes));
+    JST_CHECK(SetSignalAxes(output, outputAxes));
 
     outputs()["buffer"].produced(name(), "buffer", output);
 

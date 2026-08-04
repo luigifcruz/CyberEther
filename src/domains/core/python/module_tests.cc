@@ -222,6 +222,102 @@ TEST_CASE("Python module exposes tensor attributes", "[modules][python][module]"
     REQUIRE(module->destroy() == Result::SUCCESS);
 }
 
+TEST_CASE("Python module uses assigned Python types for tensor attributes",
+          "[modules][python][module][attributes]") {
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("python", DeviceType::CPU, RuntimeType::PYTHON,
+                                  "generic", module) == Result::SUCCESS);
+
+    Tensor input;
+    REQUIRE(input.create(DeviceType::CPU, DataType::F32, {1}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["input0"].produced("source", "output", input);
+
+    Modules::Python config;
+    config.code = R"PY(try:
+    import numpy as np
+except Exception:
+    np = None
+
+_cycle = 0
+
+def compute(ctx):
+    global _cycle
+    ctx.outputs[0][...] = ctx.inputs[0]
+    ctx.output_attrs[0]["numpyAvailable"] = np is not None
+    if np is None:
+        return
+    _cycle += 1
+    if _cycle == 1:
+        ctx.output_attrs[0]["frequency"] = np.float64(1.0)
+        ctx.output_attrs[0]["counter"] = np.int64(7)
+        ctx.output_attrs[0]["phase"] = np.complex128(1 + 2j)
+        ctx.output_attrs[0]["window"] = np.array([1.0, 2.0], dtype=np.float64)
+    else:
+        ctx.output_attrs[0]["frequency"] = np.float32(2.0)
+        ctx.output_attrs[0]["counter"] = np.int16(-7)
+        ctx.output_attrs[0]["phase"] = np.complex64(3 + 4j)
+        ctx.output_attrs[0]["window"] = np.array([3.0, 4.0], dtype=np.float32)
+)PY";
+    config.inputCount = 1;
+    config.outputCount = 1;
+    ConfigureF32Output(config, "[1]");
+
+    const auto createResult = module->create("python_numpy_attribute_width",
+                                             config, inputs);
+    if (createResult != Result::SUCCESS && OptionalPythonRuntimeUnavailable()) {
+        SUCCEED("Skipping Python NumPy attribute test because the runtime is unavailable.");
+        return;
+    }
+    REQUIRE(createResult == Result::SUCCESS);
+
+    Runtime runtime("python", DeviceType::CPU, RuntimeType::PYTHON);
+    REQUIRE(runtime.create({{"python_numpy_attribute_width", module}}) ==
+            Result::SUCCESS);
+
+    std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(runtime.compute({"python_numpy_attribute_width"},
+                            skippedModules, failedModules) == Result::SUCCESS);
+
+    const Tensor& output = module->outputs().at("output0").tensor;
+    REQUIRE(output.hasAttribute("numpyAvailable"));
+    if (!std::any_cast<bool>(output.attribute("numpyAvailable"))) {
+        REQUIRE(runtime.destroy() == Result::SUCCESS);
+        REQUIRE(module->destroy() == Result::SUCCESS);
+        SUCCEED("Skipping Python NumPy attribute test because NumPy is unavailable.");
+        return;
+    }
+
+    REQUIRE(output.attribute("frequency").type() == typeid(F64));
+    REQUIRE(std::any_cast<F64>(output.attribute("frequency")) == 1.0);
+    REQUIRE(output.attribute("counter").type() == typeid(I64));
+    REQUIRE(std::any_cast<I64>(output.attribute("counter")) == 7);
+    REQUIRE(output.attribute("phase").type() == typeid(CF64));
+    REQUIRE(std::any_cast<CF64>(output.attribute("phase")) == CF64(1.0, 2.0));
+    REQUIRE(output.attribute("window").type() == typeid(std::vector<F64>));
+    const auto wideWindow = std::any_cast<std::vector<F64>>(output.attribute("window"));
+    const std::vector<F64> expectedWideWindow{1.0, 2.0};
+    REQUIRE(wideWindow == expectedWideWindow);
+
+    REQUIRE(runtime.compute({"python_numpy_attribute_width"},
+                            skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(output.attribute("frequency").type() == typeid(F32));
+    REQUIRE(std::any_cast<F32>(output.attribute("frequency")) == 2.0f);
+    REQUIRE(output.attribute("counter").type() == typeid(I16));
+    REQUIRE(std::any_cast<I16>(output.attribute("counter")) == -7);
+    REQUIRE(output.attribute("phase").type() == typeid(CF32));
+    REQUIRE(std::any_cast<CF32>(output.attribute("phase")) == CF32(3.0f, 4.0f));
+    REQUIRE(output.attribute("window").type() == typeid(std::vector<F32>));
+    const auto narrowWindow = std::any_cast<std::vector<F32>>(output.attribute("window"));
+    const std::vector<F32> expectedNarrowWindow{3.0f, 4.0f};
+    REQUIRE(narrowWindow == expectedNarrowWindow);
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
 TEST_CASE("Python module publishes nested attribute mutations", "[modules][python][module]") {
     std::shared_ptr<Module> module;
     REQUIRE(Registry::BuildModule("python", DeviceType::CPU, RuntimeType::PYTHON, "generic", module) ==
@@ -539,6 +635,190 @@ TEST_CASE("Python module validation rejects code and malformed output specs befo
 
         RequirePythonValidationError(config);
     }
+}
+
+TEST_CASE("Python module validation rejects malformed signal axes specs",
+          "[modules][python][module][validation][attributes]") {
+    const std::vector<Modules::Python::TensorSpec> invalidSpecs = {
+        {.shape = "[2, 3]", .axes = "[B, C, S]"},
+        {.shape = "[2, 3]", .axes = "[B, B]"},
+        {.shape = "[2, 3]", .axes = "[X, S]"},
+        {.shape = "[2, 3]", .axes = "[S"},
+        {.shape = "[2, 3]", .axes = "[S,]"},
+        {.shape = "[2, 3]", .axes = "S"},
+        {.shape = "[2, 3]", .axes = "[]"},
+        {.shape = "[2, 3]", .axes = "[_, _]"},
+    };
+
+    for (const auto& spec : invalidSpecs) {
+        Modules::Python config;
+        config.code = "def compute(ctx):\n    pass\n";
+        config.inputCount = 0;
+        config.outputCount = 1;
+        config.outputTensorSpecs = {spec};
+
+        RequirePythonValidationError(config);
+    }
+}
+
+TEST_CASE("Python module publishes declared signal axes on created outputs",
+          "[modules][python][module][attributes]") {
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("python", DeviceType::CPU, RuntimeType::PYTHON, "generic", module) ==
+            Result::SUCCESS);
+
+    Modules::Python config;
+    config.code = "def compute(ctx):\n    ctx.outputs[0][...] = 1.0\n";
+    config.inputCount = 0;
+    config.outputCount = 1;
+    config.outputTensorSpecs = {{
+        .shape = "[2, 3, 4]",
+        .axes = "[B, C, S]",
+    }};
+
+    const auto createResult = module->create("python_axes", config, {});
+    if (createResult != Result::SUCCESS && OptionalPythonRuntimeUnavailable()) {
+        SUCCEED("Skipping Python module signal axes test because the local Python runtime is unavailable.");
+        return;
+    }
+    REQUIRE(createResult == Result::SUCCESS);
+
+    const Tensor& output = module->outputs().at("output0").tensor;
+    REQUIRE(output.rank() == 3);
+    REQUIRE(std::any_cast<Index>(output.attribute("batchAxis")) == 0);
+    REQUIRE(std::any_cast<Index>(output.attribute("channelAxis")) == 1);
+    REQUIRE(std::any_cast<Index>(output.attribute("sampleAxis")) == 2);
+
+    Runtime runtime("python", DeviceType::CPU, RuntimeType::PYTHON);
+    REQUIRE(runtime.create({{"python_axes", module}}) == Result::SUCCESS);
+
+    std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(runtime.compute({"python_axes"}, skippedModules, failedModules) == Result::SUCCESS);
+
+    REQUIRE(std::any_cast<Index>(output.attribute("batchAxis")) == 0);
+    REQUIRE(std::any_cast<Index>(output.attribute("channelAxis")) == 1);
+    REQUIRE(std::any_cast<Index>(output.attribute("sampleAxis")) == 2);
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Python module leaves blank signal axes untagged",
+          "[modules][python][module][attributes]") {
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("python", DeviceType::CPU, RuntimeType::PYTHON, "generic", module) ==
+            Result::SUCCESS);
+
+    Modules::Python config;
+    config.code = "def compute(ctx):\n    ctx.outputs[0][...] = 1.0\n";
+    config.inputCount = 0;
+    config.outputCount = 1;
+    config.outputTensorSpecs = {{
+        .shape = "[4, 2, 8]",
+        .axes = "[B, _, S]",
+    }};
+
+    const auto createResult = module->create("python_axes_blank", config, {});
+    if (createResult != Result::SUCCESS && OptionalPythonRuntimeUnavailable()) {
+        SUCCEED("Skipping Python module blank signal axes test because the local Python runtime is unavailable.");
+        return;
+    }
+    REQUIRE(createResult == Result::SUCCESS);
+
+    const Tensor& output = module->outputs().at("output0").tensor;
+    REQUIRE(std::any_cast<Index>(output.attribute("batchAxis")) == 0);
+    REQUIRE(std::any_cast<Index>(output.attribute("sampleAxis")) == 2);
+    REQUIRE_FALSE(output.hasAttribute("channelAxis"));
+
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Python module ignores compute writes to declared signal axes",
+          "[modules][python][module][attributes]") {
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("python", DeviceType::CPU, RuntimeType::PYTHON, "generic", module) ==
+            Result::SUCCESS);
+
+    Modules::Python config;
+    config.code = R"PY(def compute(ctx):
+    ctx.outputs[0][...] = 1.0
+    s = ctx.output_attrs[0]["sampleAxis"]
+    c = ctx.output_attrs[0]["channelAxis"]
+    ctx.output_attrs[0]["sampleAxis"] = c
+    ctx.output_attrs[0]["channelAxis"] = s
+    ctx.output_attrs[0]["label"] = "changed"
+)PY";
+    config.inputCount = 0;
+    config.outputCount = 1;
+    config.outputTensorSpecs = {{
+        .shape = "[2, 3]",
+        .axes = "[C, S]",
+    }};
+
+    const auto createResult = module->create("python_axes_edit", config, {});
+    if (createResult != Result::SUCCESS && OptionalPythonRuntimeUnavailable()) {
+        SUCCEED("Skipping Python module signal axes edit test because the local Python runtime is unavailable.");
+        return;
+    }
+    REQUIRE(createResult == Result::SUCCESS);
+
+    Runtime runtime("python", DeviceType::CPU, RuntimeType::PYTHON);
+    REQUIRE(runtime.create({{"python_axes_edit", module}}) == Result::SUCCESS);
+
+    std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(runtime.compute({"python_axes_edit"}, skippedModules, failedModules) == Result::SUCCESS);
+
+    const Tensor& output = module->outputs().at("output0").tensor;
+    REQUIRE(std::any_cast<Index>(output.attribute("sampleAxis")) == 1);
+    REQUIRE(std::any_cast<Index>(output.attribute("channelAxis")) == 0);
+    REQUIRE(std::any_cast<std::string>(output.attribute("label")) == "changed");
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Python module ignores compute writes that introduce omitted signal axes roles",
+          "[modules][python][module][attributes]") {
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("python", DeviceType::CPU, RuntimeType::PYTHON, "generic", module) ==
+            Result::SUCCESS);
+
+    Modules::Python config;
+    config.code = R"PY(def compute(ctx):
+    ctx.outputs[0][...] = 1.0
+    ctx.output_attrs[0]["batchAxis"] = 0
+    ctx.output_attrs[0]["channelAxis"] = 1
+)PY";
+    config.inputCount = 0;
+    config.outputCount = 1;
+    config.outputTensorSpecs = {{
+        .shape = "[2, 3]",
+        .axes = "[_, S]",
+    }};
+
+    const auto createResult = module->create("python_axes_omit", config, {});
+    if (createResult != Result::SUCCESS && OptionalPythonRuntimeUnavailable()) {
+        SUCCEED("Skipping Python module omitted signal axes test because the local Python runtime is unavailable.");
+        return;
+    }
+    REQUIRE(createResult == Result::SUCCESS);
+
+    Runtime runtime("python", DeviceType::CPU, RuntimeType::PYTHON);
+    REQUIRE(runtime.create({{"python_axes_omit", module}}) == Result::SUCCESS);
+
+    std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(runtime.compute({"python_axes_omit"}, skippedModules, failedModules) == Result::SUCCESS);
+
+    const Tensor& output = module->outputs().at("output0").tensor;
+    REQUIRE_FALSE(output.hasAttribute("batchAxis"));
+    REQUIRE_FALSE(output.hasAttribute("channelAxis"));
+    REQUIRE(std::any_cast<Index>(output.attribute("sampleAxis")) == 1);
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
 }
 
 TEST_CASE("Python module validation rejects output layout and byte overflow",

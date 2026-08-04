@@ -18,7 +18,7 @@ struct FilterTapsImpl : public Module::Impl, public DynamicConfig<FilterTaps> {
     U64 validatedOutputSizeBytes = 0;
     F32 validatedSampleRateMetadata = 0.0f;
     F32 validatedBandwidthMetadata = 0.0f;
-    F32 validatedCenterMetadata = 0.0f;
+    std::vector<F32> validatedCenterMetadata;
 };
 
 }  // namespace Jetstream::Modules

@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "jetstream/domains/core/expand_dims/block.hh"
+#include "jetstream/domains/core/ones_tensor/block.hh"
 #include "jetstream/domains/core/squeeze_dims/block.hh"
 #include "jetstream/domains/dsp/window/block.hh"
 #include "flowgraph_fixture.hh"
@@ -57,4 +58,29 @@ TEST_CASE_METHOD(FlowgraphFixture, "SqueezeDims block rejects non-singleton axis
     config.axis = 0;
     REQUIRE(flowgraph->blockCreate("sq_bad", config, inputs) == Result::SUCCESS);
     REQUIRE(viewBlock("sq_bad").state == Block::State::Errored);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "SqueezeDims block switches between valid input axes",
+                 "[modules][squeeze_dims][block][reconfigure]") {
+    Blocks::OnesTensor source;
+    source.shape = {1, 1, 8};
+    REQUIRE(flowgraph->blockCreate("sq_recfg_src", source, {}) ==
+            Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["buffer"].requested("sq_recfg_src", "buffer");
+
+    Blocks::SqueezeDims config;
+    config.axis = 0;
+    REQUIRE(flowgraph->blockCreate("sq_recfg", config, inputs) ==
+            Result::SUCCESS);
+
+    Parser::Map update;
+    update["axis"] = I64{1};
+    REQUIRE(flowgraph->blockReconfigure("sq_recfg", update) ==
+            Result::SUCCESS);
+
+    REQUIRE(viewBlock("sq_recfg").outputs.at("buffer").tensor.shape() ==
+            Shape{1, 8});
 }

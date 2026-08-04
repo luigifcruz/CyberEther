@@ -6,24 +6,24 @@
 namespace Jetstream::Blocks {
 
 struct Fold : public Block::Config {
-    I64 axis = -1;
     U64 offset = 0;
     U64 size = 0;
 
     JST_BLOCK_TYPE(fold);
     JST_BLOCK_DOMAIN("DSP");
-    JST_BLOCK_PARAMS(axis, offset, size);
+    JST_BLOCK_PARAMS(offset, size);
     JST_BLOCK_DESCRIPTION(
         "Fold",
-        "Folds the input signal along a specified axis.",
+        "Folds the input signal along its sample axis.",
         "# Fold\n"
-        "The Fold block accumulates (folds) signal data along a given axis, "
+        "The Fold block accumulates (folds) signal data along its sample axis, "
         "reducing its size by a decimation factor. Each output element is the "
         "average of the corresponding folded input elements. An optional offset "
-        "shifts the folding origin along the axis.\n\n"
+        "shifts the folding origin along that axis. The input must identify this dimension "
+        "with `sampleAxis`. Optional `batchAxis` and `channelAxis` metadata describe those "
+        "roles. All remaining dimensions and all axis metadata are preserved.\n\n"
 
         "## Arguments\n"
-        "- **Axis**: Dimension along which to fold. Negative axes count from the end.\n"
         "- **Offset**: Sample offset applied before folding.\n"
         "- **Size**: Output size along the folded axis. Must evenly "
         "divide the input size along that axis.\n\n"
@@ -35,7 +35,7 @@ struct Fold : public Block::Config {
 
         "## Examples\n"
         "- Fold a 1D signal of 8192 samples into 1024:\n"
-        "  Config: Axis=0, Offset=0, Size=1024\n"
+        "  Config: Offset=0, Size=1024\n"
         "  Input: CF32[8192] -> Output: CF32[1024]\n\n"
 
         "## Implementation\n"

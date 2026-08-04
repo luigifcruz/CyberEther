@@ -3,6 +3,9 @@
 
 #include <jetstream/domains/dsp/am/module.hh>
 #include <jetstream/detail/module_impl.hh>
+#include <jetstream/memory/axis.hh>
+
+#include <vector>
 
 namespace Jetstream::Modules {
 
@@ -16,8 +19,13 @@ struct AmImpl : public Module::Impl, public DynamicConfig<AM> {
     Tensor input;
     Tensor output;
 
-    F32 prevEnvelope = 0.0f;
-    F32 prevOutput = 0.0f;
+    SignalAxes validatedSignalAxes;
+    U64 validatedLaneCount = 0;
+
+    SignalAxes signalAxes;
+    U64 laneCount = 0;
+    std::vector<F32> prevEnvelope;
+    std::vector<F32> prevOutput;
 };
 
 }  // namespace Jetstream::Modules

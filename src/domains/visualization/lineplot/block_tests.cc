@@ -4,7 +4,6 @@
 #include <limits>
 #include <string>
 
-#include "jetstream/domains/core/ones_tensor/block.hh"
 #include "jetstream/domains/dsp/signal_generator/block.hh"
 #include "jetstream/domains/visualization/lineplot/block.hh"
 #include "flowgraph_fixture.hh"
@@ -74,14 +73,14 @@ TEST_CASE_METHOD(FlowgraphFixture,
 TEST_CASE_METHOD(FlowgraphFixture,
                  "Lineplot block delegates dtype validation to its module",
                  "[modules][lineplot][block][validation]") {
-    Blocks::OnesTensor source;
-    source.shape = {64};
-    source.dataType = "F64";
+    Blocks::SignalGenerator source;
+    source.bufferSize = 64;
+    source.signalDataType = "CF32";
     REQUIRE(flowgraph->blockCreate("lineplot_dtype_src", source, {}) ==
             Result::SUCCESS);
 
     TensorMap inputs;
-    inputs["signal"].requested("lineplot_dtype_src", "buffer");
+    inputs["signal"].requested("lineplot_dtype_src", "signal");
     REQUIRE(flowgraph->blockCreate("lineplot_dtype", Blocks::Lineplot{}, inputs) ==
             Result::SUCCESS);
 
@@ -91,7 +90,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Lineplot block rolls back a rejected module update",
+                  "Lineplot block preserves a rejected module update for recovery",
                  "[modules][lineplot][block][reconfigure][validation]") {
     Blocks::SignalGenerator source;
     source.signalDataType = "F32";
@@ -111,11 +110,12 @@ TEST_CASE_METHOD(FlowgraphFixture,
     Parser::Map invalidUpdate;
     invalidUpdate["thickness"] = std::numeric_limits<F32>::infinity();
     REQUIRE(flowgraph->blockReconfigure("lineplot_update", invalidUpdate) ==
-            Result::ERROR);
-    REQUIRE(viewBlock("lineplot_update").state == Block::State::Created);
+            Result::SUCCESS);
+    REQUIRE(viewBlock("lineplot_update").state == Block::State::Errored);
 
     Parser::Map validSparseUpdate;
     validSparseUpdate["averaging"] = U64{8};
+    validSparseUpdate["thickness"] = config.thickness;
     REQUIRE(flowgraph->blockReconfigure("lineplot_update", validSparseUpdate) ==
             Result::SUCCESS);
 

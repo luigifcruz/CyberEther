@@ -5,6 +5,7 @@
 #include "jetstream/registry.hh"
 #include "jetstream/module_interface.hh"
 #include "jetstream/domains/core/reshape/module.hh"
+#include "jetstream/memory/axis.hh"
 
 using namespace Jetstream;
 
@@ -281,6 +282,108 @@ TEST_CASE("Reshape Module - Validation rejects malformed shapes",
             SECTION("target layout product overflow") {
                 RequireReshapeValidationError(impl, "[18446744073709551615, 2]", {4});
             }
+        }
+    }
+}
+
+TEST_CASE("Reshape Module - Validation retains the original input layout",
+          "[modules][reshape][validation][reconfigure]") {
+    const auto implementations = Registry::ListAvailableModules("reshape");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Tensor input;
+            REQUIRE(input.create(impl.device, DataType::F32, {2, 4}) ==
+                    Result::SUCCESS);
+
+            TensorMap inputs;
+            inputs["buffer"].requested("test", "buffer");
+            inputs["buffer"].tensor = input;
+
+            std::shared_ptr<Module> module;
+            REQUIRE(Registry::BuildModule("reshape", impl.device, impl.runtime,
+                                          impl.provider, module) == Result::SUCCESS);
+
+            Modules::Reshape config;
+            config.shape = "[8]";
+            REQUIRE(module->create("test", config, inputs) == Result::SUCCESS);
+
+            Parser::Map update;
+            update["shape"] = std::string("[4, 2]");
+            REQUIRE(module->reconfigure(update, true) == Result::SUCCESS);
+            REQUIRE(module->inputs().at("buffer").tensor.shape() == Shape{2, 4});
+            REQUIRE(module->destroy() == Result::SUCCESS);
+        }
+    }
+}
+
+TEST_CASE("Reshape Module - Preserves Signal Axes Only For Exact No-Op Shapes",
+          "[modules][reshape][metadata]") {
+    const auto implementations = Registry::ListAvailableModules("reshape");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Modules::Reshape config;
+            bool expectAxes = false;
+
+            SECTION("exact no-op shape") {
+                config.shape = "[2, 3, 4]";
+                expectAxes = true;
+            }
+            SECTION("ambiguous geometry change") {
+                config.shape = "[4, 3, 2]";
+            }
+
+            TestContext ctx("reshape", impl.device, impl.runtime, impl.provider);
+            ctx.setConfig(config);
+            auto input = ctx.createTensor<F32>({2, 3, 4});
+            const SignalAxes inputAxes{
+                .sample = Index{2},
+                .batch = Index{0},
+                .channel = Index{1},
+            };
+            REQUIRE(SetSignalAxes(input, inputAxes) == Result::SUCCESS);
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+            const auto& output = ctx.output("buffer");
+            if (expectAxes) {
+                SignalAxes outputAxes;
+                REQUIRE(ResolveSignalAxes(output, outputAxes) == Result::SUCCESS);
+                REQUIRE(outputAxes.sample == inputAxes.sample);
+                REQUIRE(outputAxes.batch == inputAxes.batch);
+                REQUIRE(outputAxes.channel == inputAxes.channel);
+            } else {
+                REQUIRE_FALSE(output.hasAttribute(std::string(SampleAxisAttribute)));
+                REQUIRE_FALSE(output.hasAttribute(std::string(BatchAxisAttribute)));
+                REQUIRE_FALSE(output.hasAttribute(std::string(ChannelAxisAttribute)));
+            }
+        }
+    }
+}
+
+TEST_CASE("Reshape Module - Rejects Malformed Signal Axis On A No-Op",
+          "[modules][reshape][metadata][validation]") {
+    const auto implementations = Registry::ListAvailableModules("reshape");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("reshape", impl.device, impl.runtime, impl.provider);
+            Modules::Reshape config;
+            config.shape = "[2, 3, 4]";
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({2, 3, 4});
+            REQUIRE(input.setAttribute(std::string(SampleAxisAttribute), Index{2}) ==
+                    Result::SUCCESS);
+            REQUIRE(input.setAttribute(std::string(ChannelAxisAttribute), Index{3}) ==
+                    Result::SUCCESS);
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::ERROR);
         }
     }
 }

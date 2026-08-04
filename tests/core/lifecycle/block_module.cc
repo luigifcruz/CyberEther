@@ -4,6 +4,7 @@
 #include <any>
 #include <functional>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -76,6 +77,7 @@ struct BlockProbe {
     bool recordChildReconfigureEvents = false;
     bool recordSchedulerEvents = false;
     bool surfaceChild = false;
+    bool throwDefine = false;
     std::vector<std::string> children;
     std::string childModuleType = kChildModuleType;
     std::string failingChildCreate;
@@ -216,7 +218,10 @@ struct SyntheticBlockImpl : Block::Impl {
     }
 
     Result define() override {
-        recordHook("block.define:" + staged->value);
+        recordHook("block.define:" + candidate->value);
+        if (probe->throwDefine) {
+            throw std::runtime_error("synthetic define failure");
+        }
         if (probe->defineResult != Result::SUCCESS) {
             return probe->defineResult;
         }
@@ -958,10 +963,10 @@ TEST_CASE("Block lifecycle hooks observe committed state in order", "[core][life
 
     REQUIRE(bundle.probe->events == std::vector<std::string>{
         "block.candidate.deserialize",
+        "block.define:active",
         "block.validate:active:initial",
         "block.staged.deserialize",
         "block.configure:active",
-        "block.define:active",
         "block.create:active",
     });
     REQUIRE(bundle.probe->hookStates == std::vector<Block::State>{
@@ -1128,7 +1133,7 @@ TEST_CASE("Block input validation distinguishes incomplete and invalid wiring",
                                      MakeBlockContext()) == Result::INCOMPLETE);
         REQUIRE(bundle.block->state() == Block::State::Incomplete);
         REQUIRE_FALSE(bundle.block->diagnostic().empty());
-        REQUIRE(bundle.probe->events.back() == "block.define:initial");
+        REQUIRE(bundle.probe->events.back() == "block.configure:initial");
     }
 
     SECTION("unresolved declared input is incomplete") {
@@ -1145,7 +1150,7 @@ TEST_CASE("Block input validation distinguishes incomplete and invalid wiring",
                                      MakeBlockContext()) == Result::INCOMPLETE);
         REQUIRE(bundle.block->state() == Block::State::Incomplete);
         REQUIRE_FALSE(bundle.block->diagnostic().empty());
-        REQUIRE(bundle.probe->events.back() == "block.define:initial");
+        REQUIRE(bundle.probe->events.back() == "block.configure:initial");
     }
 
     SECTION("undeclared input is an error") {
@@ -1161,7 +1166,7 @@ TEST_CASE("Block input validation distinguishes incomplete and invalid wiring",
                                      MakeBlockContext()) == Result::ERROR);
         REQUIRE(bundle.block->state() == Block::State::Errored);
         REQUIRE_FALSE(bundle.block->diagnostic().empty());
-        REQUIRE(bundle.probe->events.back() == "block.define:initial");
+        REQUIRE(bundle.probe->events.back() == "block.configure:initial");
     }
 
     SECTION("successful recreation clears the previous diagnostic") {
@@ -1219,6 +1224,7 @@ TEST_CASE("Block creation failures stop orchestration and set state", "[core][li
 
     SECTION("validation failure") {
         bundle.probe->validateResult = Result::ERROR;
+        bundle.probe->declareConfig = true;
 
         REQUIRE(bundle.block->create("lifecycle-block",
                                      DeviceType::CPU,
@@ -1229,10 +1235,13 @@ TEST_CASE("Block creation failures stop orchestration and set state", "[core][li
                                      MakeBlockContext()) == Result::ERROR);
         REQUIRE(bundle.probe->events == std::vector<std::string>{
             "block.candidate.deserialize",
+            "block.define:active",
             "block.validate:active:initial",
+            "block.staged.deserialize",
         });
         REQUIRE(bundle.block->state() == Block::State::Errored);
-        REQUIRE(bundle.staged->value == kInitialValue);
+        REQUIRE(bundle.staged->value == "active");
+        REQUIRE(bundle.block->interface()->configs().size() == 1);
     }
 
     SECTION("staged deserialization failure") {
@@ -1247,6 +1256,7 @@ TEST_CASE("Block creation failures stop orchestration and set state", "[core][li
                                      MakeBlockContext()) == Result::ERROR);
         REQUIRE(bundle.probe->events == std::vector<std::string>{
             "block.candidate.deserialize",
+            "block.define:active",
             "block.validate:active:initial",
             "block.staged.deserialize",
         });
@@ -1266,6 +1276,7 @@ TEST_CASE("Block creation failures stop orchestration and set state", "[core][li
                                      MakeBlockContext()) == Result::ERROR);
         REQUIRE(bundle.probe->events == std::vector<std::string>{
             "block.candidate.deserialize",
+            "block.define:active",
             "block.validate:active:initial",
             "block.staged.deserialize",
             "block.configure:active",
@@ -2345,11 +2356,11 @@ TEST_CASE("Block reconfiguration separates validation from application failures"
         REQUIRE(bundle.block->reconfigure(ConfigWithValue("after")) == Result::SUCCESS);
         REQUIRE(bundle.probe->events == std::vector<std::string>{
             "block.candidate.deserialize",
+            "block.define:after",
             "block.validate:after:before",
             "block.staged.serialize",
             "block.staged.deserialize",
             "block.configure:after",
-            "block.define:after",
         });
         REQUIRE(bundle.probe->hookStates == std::vector<Block::State>{
             Block::State::Created,
@@ -2361,12 +2372,13 @@ TEST_CASE("Block reconfiguration separates validation from application failures"
         REQUIRE(bundle.block->state() == Block::State::Created);
     }
 
-    SECTION("validation failure preserves the staged configuration") {
+    SECTION("validation failure requests candidate reconstruction") {
         bundle.probe->validateResult = Result::ERROR;
 
-        REQUIRE(bundle.block->reconfigure(ConfigWithValue("after")) == Result::ERROR);
+        REQUIRE(bundle.block->reconfigure(ConfigWithValue("after")) == Result::RECREATE);
         REQUIRE(bundle.probe->events == std::vector<std::string>{
             "block.candidate.deserialize",
+            "block.define:after",
             "block.validate:after:before",
         });
         REQUIRE(bundle.staged->value == "before");
@@ -2387,6 +2399,7 @@ TEST_CASE("Block reconfiguration separates validation from application failures"
         REQUIRE(bundle.block->reconfigure(ConfigWithValue("after")) == Result::ERROR);
         REQUIRE(bundle.probe->events == std::vector<std::string>{
             "block.candidate.deserialize",
+            "block.define:after",
             "block.validate:after:before",
             "block.staged.serialize",
         });
@@ -2400,6 +2413,7 @@ TEST_CASE("Block reconfiguration separates validation from application failures"
         REQUIRE(bundle.block->reconfigure(ConfigWithValue("after")) == Result::ERROR);
         REQUIRE(bundle.probe->events == std::vector<std::string>{
             "block.candidate.deserialize",
+            "block.define:after",
             "block.validate:after:before",
             "block.staged.serialize",
             "block.staged.deserialize",
@@ -2416,13 +2430,24 @@ TEST_CASE("Block reconfiguration separates validation from application failures"
         REQUIRE(bundle.staged->value == "after");
     }
 
-    SECTION("interface refresh failure leaves the block errored") {
+    SECTION("candidate interface failure preserves the active block") {
         bundle.probe->defineResult = Result::ERROR;
 
         REQUIRE(bundle.block->reconfigure(ConfigWithValue("after")) == Result::ERROR);
-        REQUIRE(bundle.block->state() == Block::State::Errored);
-        REQUIRE(bundle.staged->value == "after");
-        REQUIRE(bundle.block->interface()->outputs().empty());
+        REQUIRE(bundle.block->state() == Block::State::Created);
+        REQUIRE(bundle.staged->value == "before");
+        REQUIRE(bundle.block->interface()->outputs().size() == 1);
+    }
+
+    SECTION("throwing candidate definition restores the active interface") {
+        const auto activeInterface = bundle.block->interface();
+        bundle.probe->throwDefine = true;
+
+        REQUIRE_THROWS_AS(bundle.block->reconfigure(ConfigWithValue("after")),
+                          std::runtime_error);
+        REQUIRE(bundle.block->interface() == activeInterface);
+        REQUIRE(bundle.block->state() == Block::State::Created);
+        REQUIRE(bundle.staged->value == "before");
     }
 
     SECTION("stored configuration serialization failure is returned") {
@@ -2478,7 +2503,7 @@ TEST_CASE("Block reconfigures nested children in validation and commit phases",
     SECTION("validation failure rolls parent sources back before any child commit") {
         bundle.probe->failingChildValidate = "second";
 
-        REQUIRE(bundle.block->reconfigure(ConfigWithValue("after")) == Result::ERROR);
+        REQUIRE(bundle.block->reconfigure(ConfigWithValue("after")) == Result::RECREATE);
         REQUIRE(EventsStartingWith(bundle.probe->events, "child.") ==
                 std::vector<std::string>{
                     "child.validate:lifecycle-block-first:after:before",

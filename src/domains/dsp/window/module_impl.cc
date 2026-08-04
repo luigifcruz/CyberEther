@@ -1,5 +1,7 @@
 #include "module_impl.hh"
 
+#include <jetstream/memory/axis.hh>
+
 namespace Jetstream::Modules {
 
 Result WindowImpl::validate() {
@@ -24,6 +26,9 @@ Result WindowImpl::define() {
 Result WindowImpl::create() {
     // Allocate output tensor.
     JST_CHECK(output.create(device(), DataType::CF32, {size}));
+    JST_CHECK(SetSignalAxes(output, {
+        .sample = Index{0},
+    }));
 
     outputs()["window"].produced(name(), "window", output);
 

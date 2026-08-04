@@ -1,3 +1,5 @@
+#include <exception>
+
 #include <jetstream/domains/dsp/filter_taps/block.hh>
 #include <jetstream/detail/block_impl.hh>
 
@@ -32,11 +34,24 @@ Result FilterTapsImpl::validate() {
 }
 
 Result FilterTapsImpl::configure() {
-    center.resize(heads);
+    if (heads > center.max_size() ||
+        heads > filterTapsConfig->center.max_size()) {
+        JST_ERROR("[BLOCK_FILTER_TAPS] Heads ({}) exceed the supported configuration size.",
+                  heads);
+        return Result::ERROR;
+    }
+
+    try {
+        center.resize(heads);
+        filterTapsConfig->center.resize(center.size());
+    } catch (const std::exception&) {
+        JST_ERROR("[BLOCK_FILTER_TAPS] Failed to allocate configuration for {} heads.",
+                  heads);
+        return Result::ERROR;
+    }
 
     filterTapsConfig->sampleRate = sampleRate;
     filterTapsConfig->bandwidth = bandwidth;
-    filterTapsConfig->center.resize(center.size());
     for (U64 i = 0; i < center.size(); ++i) {
         filterTapsConfig->center[i] = center[i];
     }

@@ -22,9 +22,10 @@ namespace detail {
 
 constexpr U64 LineplotInputIndex(const U64 batch,
                                  const U64 index,
-                                 const U64 inputRowWidth,
+                                 const U64 batchStride,
+                                 const U64 sampleStride,
                                  const U64 decimation) {
-    return (batch * inputRowWidth) + (index * decimation);
+    return (batch * batchStride) + (index * decimation * sampleStride);
 }
 
 }  // namespace detail
@@ -44,12 +45,14 @@ struct LineplotImpl : public Module::Impl, public DynamicConfig<Lineplot> {
 
     U64 numberOfElements = 0;
     U64 numberOfBatches = 0;
-    U64 inputRowWidth = 0;
+    U64 inputSampleStride = 0;
+    U64 inputBatchStride = 0;
     F32 normalizationFactor = 0.0f;
 
     U64 validatedNumberOfElements = 0;
     U64 validatedNumberOfBatches = 0;
-    U64 validatedInputRowWidth = 0;
+    U64 validatedInputSampleStride = 0;
+    U64 validatedInputBatchStride = 0;
     F32 validatedNormalizationFactor = 0.0f;
 
     // Surface interaction state.

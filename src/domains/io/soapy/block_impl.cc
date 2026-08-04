@@ -72,12 +72,15 @@ Result SoapyImpl::configure() {
 }
 
 Result SoapyImpl::define() {
+    const auto& config = *candidate();
+
     JST_CHECK(defineInterfaceOutput("signal",
                                     "Output",
                                     "The output buffer containing samples from the SDR device."));
 
     std::vector<std::string> deviceOptions;
-    for (const auto& [label, _] : Modules::SoapyImpl::ListAvailableDevices(hintString)) {
+    for (const auto& [label, _] :
+         Modules::SoapyImpl::ListAvailableDevices(config.hintString)) {
         deviceOptions.push_back(jst::fmt::format("{}({})", label, label));
     }
     deviceDropdown = jst::fmt::format("dropdown:{}", jst::fmt::join(deviceOptions, ","));
@@ -95,7 +98,9 @@ Result SoapyImpl::define() {
     JST_CHECK(defineInterfaceConfig("frequency",
                                     "Frequency",
                                     "Tuner frequency.",
-                                    "float:MHz:3:frequencyStep"));
+                                    std::isfinite(config.frequencyStep) && config.frequencyStep > 0.0f
+                                        ? "float:MHz:3:frequencyStep"
+                                        : "float:MHz:3"));
 
     JST_CHECK(defineInterfaceConfig("sampleRate",
                                     "Sample Rate",
