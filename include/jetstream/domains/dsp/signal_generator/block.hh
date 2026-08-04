@@ -21,31 +21,34 @@ struct SignalGenerator : public Block::Config {
 
     JST_BLOCK_TYPE(signal_generator);
     JST_BLOCK_DOMAIN("DSP");
-    JST_BLOCK_PARAMS(signalType, signalDataType, sampleRate, frequency, amplitude, phase, dcOffset,
-                     noiseVariance, chirpStartFreq, chirpEndFreq, chirpDuration,
-                     bufferSize);
+    JST_BLOCK_PARAMS(signalType, signalDataType, sampleRate, frequency,
+                     amplitude, phase, dcOffset, noiseVariance,
+                     chirpStartFreq, chirpEndFreq, chirpDuration, bufferSize);
     JST_BLOCK_DESCRIPTION(
         "Signal Generator",
         "Generates synthetic waveforms, noise, and chirps.",
         "# Signal Generator\n"
-        "The Signal Generator block creates synthetic signals for testing and simulation purposes. "
-        "It supports multiple waveform types with configurable parameters for frequency, amplitude, "
-        "phase, and other signal-specific properties.\n\n"
+        "The Signal Generator block creates zero-centered synthetic baseband signals "
+        "for testing and simulation. Controls are shown only when they apply to the "
+        "selected waveform.\n\n"
 
         "## Arguments\n"
-        "- **Signal Type**: The waveform to generate (Sine, Cosine, Square, "
-        "Triangle, Sawtooth, Noise, DC, Chirp).\n"
-        "- **Data Type**: The output data type (F32 or CF32).\n"
-        "- **Buffer Size**: Number of samples to generate per processing cycle.\n"
-        "- **Sample Rate**: The sampling frequency in MHz.\n"
-        "- **Frequency**: The fundamental frequency of the signal in MHz.\n"
-        "- **Amplitude**: The amplitude scaling factor.\n"
+        "- **Signal Type**: Sine, Cosine, Square, Triangle, Sawtooth, Noise, "
+        "DC, or Chirp.\n"
+        "- **Data Type**: F32 produces real samples. CF32 sine, cosine, and "
+        "chirp produce analytic IQ; other CF32 waveforms have Q=0.\n"
+        "- **Sample Rate**: Sampling frequency in Hz.\n"
+        "- **Frequency**: Baseband offset in Hz. Analytic CF32 sinusoids support "
+        "signed frequencies; real waveforms use non-negative frequencies.\n"
+        "- **Amplitude**: Linear peak multiplier.\n"
         "- **Phase**: Phase offset in radians.\n"
-        "- **DC Offset**: DC bias added to the signal.\n"
-        "- **Noise Variance**: Variance of Gaussian noise (for noise type).\n"
-        "- **Chirp Start Frequency**: Start frequency for chirp signals in MHz.\n"
-        "- **Chirp End Frequency**: End frequency for chirp signals in MHz.\n"
-        "- **Chirp Duration**: Duration of one chirp sweep in seconds.\n\n"
+        "- **DC Offset**: Real-valued bias added to samples.\n"
+        "- **Noise Variance**: Per-component Gaussian variance before amplitude "
+        "scaling.\n"
+        "- **Start/End Frequency**: Chirp endpoints in Hz. CF32 chirps may "
+        "ascend, descend, or cross zero.\n"
+        "- **Duration**: Duration of each repeated chirp sweep.\n"
+        "- **Buffer Size**: Samples generated per processing cycle.\n\n"
 
         "## Useful For\n"
         "- Creating test signals for system verification and debugging.\n"
@@ -54,8 +57,8 @@ struct SignalGenerator : public Block::Config {
         "- Creating chirp signals for frequency response measurements.\n\n"
 
         "## Examples\n"
-        "- Sine wave generation:\n"
-        "  Config: Signal Type=Sine, Data Type=CF32, Frequency=0.1 MHz, "
+        "- Complex tone generation:\n"
+        "  Config: Signal Type=Cosine, Data Type=CF32, Frequency=-100 kHz, "
         "Sample Rate=2 MHz, Buffer Size=1024\n"
         "  Output: CF32[1024]\n"
         "- Real noise generation:\n"
@@ -65,10 +68,11 @@ struct SignalGenerator : public Block::Config {
 
         "## Implementation\n"
         "SignalGenerator Module -> Output\n"
-        "1. The signal generator module computes the requested waveform using optimized algorithms.\n"
-        "2. For complex outputs (CF32), generates both I and Q components appropriately.\n"
-        "3. For real outputs (F32), generates only the real component.\n"
-        "4. Maintains phase continuity across buffer boundaries for continuous signals."
+        "1. A wrapped F64 phase accumulator maintains long-running precision.\n"
+        "2. Frequencies are constrained to the waveform's Nyquist interval.\n"
+        "3. Repeated chirps preserve carrier phase at sweep boundaries.\n"
+        "4. Frequency, amplitude, phase, and offset updates preserve state.\n"
+        "5. Output metadata reports sampleRate and a zero-Hz stream center."
     );
 };
 
