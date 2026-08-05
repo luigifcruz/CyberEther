@@ -66,7 +66,7 @@ Result WaterfallImplNativeCpu::computeSubmit() {
         for (U64 column = 0; column < numberOfElements; ++column) {
             freqData[destinationBatch * numberOfElements + column] =
                 inputData[sourceBatch * inputBatchStride +
-                          column * inputSampleStride];
+                          column * inputElementStride];
         }
     }
 

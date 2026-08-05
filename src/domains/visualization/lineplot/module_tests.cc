@@ -163,6 +163,14 @@ TEST_CASE("Lineplot module accepts valid F32 inputs", "[modules][lineplot]") {
             }) == Result::SUCCESS);
             ctx.setInput("signal", batched);
             REQUIRE(ctx.run() == Result::SUCCESS);
+
+            Tensor channels;
+            REQUIRE(channels.create(DeviceType::CPU, DataType::F32, {128}) ==
+                    Result::SUCCESS);
+            REQUIRE(SetSignalAxes(channels, {.channel = Index{0}}) ==
+                    Result::SUCCESS);
+            ctx.setInput("signal", channels);
+            REQUIRE(ctx.run() == Result::SUCCESS);
         }
     }
 }
@@ -243,13 +251,13 @@ TEST_CASE("Lineplot module rejects invalid input dtype and shape",
                 RequireLineplotValidationError(impl, Modules::Lineplot{}, malformed);
             }
 
-            SECTION("channel and auxiliary dimensions are unsupported") {
-                Tensor channel(impl.device, DataType::F32, {2, 64});
-                REQUIRE(SetSignalAxes(channel, {
+            SECTION("mixed signal roles and auxiliary dimensions are unsupported") {
+                Tensor mixed(impl.device, DataType::F32, {2, 64});
+                REQUIRE(SetSignalAxes(mixed, {
                     .sample = Index{1},
                     .channel = Index{0},
                 }) == Result::SUCCESS);
-                RequireLineplotValidationError(impl, Modules::Lineplot{}, channel);
+                RequireLineplotValidationError(impl, Modules::Lineplot{}, mixed);
 
                 Tensor auxiliary(impl.device, DataType::F32, {2, 64});
                 REQUIRE(SetSignalAxes(auxiliary, {.sample = Index{1}}) ==
@@ -448,42 +456,53 @@ TEST_CASE("Lineplot batched decimation uses the original row width",
     REQUIRE(sums[1] == 33.0f);
 }
 
-TEST_CASE("Lineplot indexes leading and trailing batch layouts equivalently",
-          "[modules][lineplot][layout]") {
+TEST_CASE("Lineplot indexes sample and channel batch layouts equivalently",
+           "[modules][lineplot][layout]") {
     const auto implementations = Registry::ListAvailableModules("lineplot");
     REQUIRE(!implementations.empty());
 
     for (const auto& implementation : implementations) {
         DYNAMIC_SECTION("Device: " << implementation.device
                         << " Runtime: " << implementation.runtime) {
-            Tensor leading(DeviceType::CPU, DataType::F32, {2, 4});
-            const F32 leadingData[] = {
-                0.1f, 0.2f, 0.3f, 0.4f,
-                0.2f, 0.2f, 0.2f, 0.2f,
-            };
-            std::copy(std::begin(leadingData), std::end(leadingData),
-                      leading.data<F32>());
-            REQUIRE(SetSignalAxes(leading, {
-                .sample = Index{1},
-                .batch = Index{0},
-            }) == Result::SUCCESS);
+            for (const bool useChannelAxis : {false, true}) {
+                DYNAMIC_SECTION("Element axis: "
+                                << (useChannelAxis ? "channel" : "sample")) {
+                    Tensor leading(DeviceType::CPU, DataType::F32, {2, 4});
+                    const F32 leadingData[] = {
+                        0.1f, 0.2f, 0.3f, 0.4f,
+                        0.2f, 0.2f, 0.2f, 0.2f,
+                    };
+                    std::copy(std::begin(leadingData), std::end(leadingData),
+                              leading.data<F32>());
+                    SignalAxes leadingAxes{.batch = Index{0}};
+                    if (useChannelAxis) {
+                        leadingAxes.channel = Index{1};
+                    } else {
+                        leadingAxes.sample = Index{1};
+                    }
+                    REQUIRE(SetSignalAxes(leading, leadingAxes) == Result::SUCCESS);
 
-            Tensor trailing(DeviceType::CPU, DataType::F32, {4, 2});
-            const F32 trailingData[] = {
-                0.1f, 0.2f,
-                0.2f, 0.2f,
-                0.3f, 0.2f,
-                0.4f, 0.2f,
-            };
-            std::copy(std::begin(trailingData), std::end(trailingData),
-                      trailing.data<F32>());
-            REQUIRE(SetSignalAxes(trailing, {
-                .sample = Index{0},
-                .batch = Index{1},
-            }) == Result::SUCCESS);
+                    Tensor trailing(DeviceType::CPU, DataType::F32, {4, 2});
+                    const F32 trailingData[] = {
+                        0.1f, 0.2f,
+                        0.2f, 0.2f,
+                        0.3f, 0.2f,
+                        0.4f, 0.2f,
+                    };
+                    std::copy(std::begin(trailingData), std::end(trailingData),
+                              trailing.data<F32>());
+                    SignalAxes trailingAxes{.batch = Index{1}};
+                    if (useChannelAxis) {
+                        trailingAxes.channel = Index{0};
+                    } else {
+                        trailingAxes.sample = Index{0};
+                    }
+                    REQUIRE(SetSignalAxes(trailing, trailingAxes) == Result::SUCCESS);
 
-            REQUIRE(ComputeLineplotPoints(implementation, trailing) ==
-                    ComputeLineplotPoints(implementation, leading));
+                    REQUIRE(ComputeLineplotPoints(implementation, trailing) ==
+                            ComputeLineplotPoints(implementation, leading));
+                }
+            }
         }
     }
 }
