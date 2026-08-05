@@ -1,7 +1,7 @@
-#ifndef JETSTREAM_DOMAINS_CORE_INVERT_MODULE_IMPL_HH
-#define JETSTREAM_DOMAINS_CORE_INVERT_MODULE_IMPL_HH
+#ifndef JETSTREAM_DOMAINS_DSP_INVERT_MODULE_IMPL_HH
+#define JETSTREAM_DOMAINS_DSP_INVERT_MODULE_IMPL_HH
 
-#include <jetstream/domains/core/invert/module.hh>
+#include <jetstream/domains/dsp/invert/module.hh>
 #include <jetstream/detail/module_impl.hh>
 
 namespace Jetstream::Modules {
@@ -22,4 +22,4 @@ struct InvertImpl : public Module::Impl, public DynamicConfig<Invert> {
 
 }  // namespace Jetstream::Modules
 
-#endif  // JETSTREAM_DOMAINS_CORE_INVERT_MODULE_IMPL_HH
+#endif  // JETSTREAM_DOMAINS_DSP_INVERT_MODULE_IMPL_HH

@@ -22,7 +22,6 @@ Tensor manipulation and general plumbing: shaping, casting, arithmetic, and the 
 | Duplicate | `duplicate` | Copies and transfers signal data. |
 | Expand Dims | `expand_dims` | Inserts a new dimension of size 1 at a specified axis. |
 | Flatten | `flatten` | Flattens a tensor to one dimension. |
-| Invert | `invert` | Time-domain modulation for FFT shift. |
 | Multiply | `multiply` | Element-wise multiplication. |
 | Multiply Constant | `multiply_constant` | Multiplies input by a constant value. |
 | Ones Tensor | `ones_tensor` | Creates a tensor filled with ones. |
@@ -53,6 +52,7 @@ The signal processing chain: transforms, filters, demodulators, and generators.
 | Filter Engine | `filter_engine` | Filters a signal using FIR filter coefficients. |
 | Filter Taps | `filter_taps` | Generates FIR bandpass filter coefficients. |
 | Fold | `fold` | Folds the input signal along its sample axis. |
+| Invert | `invert` | Time-domain modulation for FFT shift. |
 | Overlap Add | `overlap_add` | Sums overlap with buffer for streaming convolution. |
 | PSK Demodulator | `psk_demod` | Demodulates PSK signals with carrier and timing recovery. |
 | RRC Filter | `rrc_filter` | Root raised cosine matched filter for PSK modulation. |

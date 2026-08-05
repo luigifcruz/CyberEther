@@ -5,8 +5,8 @@
 #include <jetstream/domains/dsp/fft/module.hh>
 #include <jetstream/domains/dsp/agc/module.hh>
 #include <jetstream/domains/dsp/amplitude/module.hh>
+#include <jetstream/domains/dsp/invert/module.hh>
 #include <jetstream/domains/core/cast/module.hh>
-#include <jetstream/domains/core/invert/module.hh>
 #include <jetstream/domains/core/multiply/module.hh>
 #include <jetstream/domains/core/range/module.hh>
 #include <jetstream/domains/core/reshape/module.hh>

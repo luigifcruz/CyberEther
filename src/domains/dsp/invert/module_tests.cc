@@ -7,7 +7,7 @@
 
 #include "jetstream/registry.hh"
 #include "jetstream/testing.hh"
-#include "jetstream/domains/core/invert/module.hh"
+#include "jetstream/domains/dsp/invert/module.hh"
 
 using namespace Jetstream;
 
