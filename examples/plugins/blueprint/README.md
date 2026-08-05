@@ -62,6 +62,14 @@ The compiled plugin bundle is written to `build/cyberether_blueprint_plugin.cep`
 The build also creates separate module and block test executables. Disable them
 with `meson setup build -Dtests=false` when Catch2 is not needed.
 
+The `devices` array option defaults to `auto` and currently enables the bundled
+CPU provider. Release builds should select one device explicitly, for example
+`meson setup build -Ddevices=cpu`, then merge the resulting single-target CEPs.
+When adding another backend, extend the option choices and conditionally add its
+provider source beside `module_impl_native_cpu.cc`. Do not advertise one shared
+library under multiple device labels because CyberEther opens every compatible
+target.
+
 For the browser, build with Emscripten and the same CyberEther cross file
 used by the host so their dynamic-linking settings match:
 
@@ -69,6 +77,7 @@ used by the host so their dynamic-linking settings match:
 meson setup build-wasm \
   --cross-file ../../../meson/crosscompile/emscripten.ini \
   -Dbuildtype=release \
+  -Ddevices=cpu \
   -Dtests=false
 meson compile -C build-wasm cyberether_blueprint_plugin_cep
 ```
