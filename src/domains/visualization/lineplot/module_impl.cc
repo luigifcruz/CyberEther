@@ -19,7 +19,7 @@ namespace Jetstream::Modules {
 Result LineplotImpl::validate() {
     validatedNumberOfElements = 0;
     validatedNumberOfBatches = 0;
-    validatedInputSampleStride = 0;
+    validatedInputElementStride = 0;
     validatedInputBatchStride = 0;
     validatedNormalizationFactor = 0.0f;
 
@@ -96,26 +96,33 @@ Result LineplotImpl::validate() {
     }
 
     SignalAxes axes;
-    if (ResolveSignalAxes(inputTensor, axes) != Result::SUCCESS) {
+    if (MapSignalAxes(inputTensor, IdentityAxisMap(inputTensor.rank()), axes) !=
+        Result::SUCCESS) {
         JST_ERROR("[MODULE_LINEPLOT] Input must contain valid signal axis metadata.");
         return Result::ERROR;
     }
 
-    if (axes.channel) {
-        JST_ERROR("[MODULE_LINEPLOT] channelAxis is not supported.");
+    if (axes.sample && axes.channel) {
+        JST_ERROR("[MODULE_LINEPLOT] Input cannot contain both sampleAxis and channelAxis.");
+        return Result::ERROR;
+    }
+
+    const auto elementAxis = axes.sample ? axes.sample : axes.channel;
+    if (!elementAxis) {
+        JST_ERROR("[MODULE_LINEPLOT] Input must contain sampleAxis or channelAxis.");
         return Result::ERROR;
     }
 
     for (Index axis = 0; axis < inputTensor.rank(); ++axis) {
-        if (axis != *axes.sample && (!axes.batch || axis != *axes.batch)) {
+        if (axis != *elementAxis && (!axes.batch || axis != *axes.batch)) {
             JST_ERROR("[MODULE_LINEPLOT] Unsupported auxiliary input axis {}. "
-                      "Every dimension must be sampleAxis or batchAxis.", axis);
+                      "Every dimension must be the element axis or batchAxis.", axis);
             return Result::ERROR;
         }
     }
 
-    const U64 sampleSize = inputTensor.shape(*axes.sample);
-    const U64 candidateNumberOfElements = sampleSize / config.decimation;
+    const U64 elementCount = inputTensor.shape(*elementAxis);
+    const U64 candidateNumberOfElements = elementCount / config.decimation;
     if (candidateNumberOfElements < 2) {
         JST_ERROR("[MODULE_LINEPLOT] Invalid number of elements ({}), need at least 2.",
                   candidateNumberOfElements);
@@ -163,7 +170,7 @@ Result LineplotImpl::validate() {
         axes.batch ? inputTensor.shape(*axes.batch) : 1;
     validatedNumberOfElements = candidateNumberOfElements;
     validatedNumberOfBatches = candidateNumberOfBatches;
-    validatedInputSampleStride = inputTensor.stride(*axes.sample);
+    validatedInputElementStride = inputTensor.stride(*elementAxis);
     validatedInputBatchStride = axes.batch ? inputTensor.stride(*axes.batch) : 0;
     validatedNormalizationFactor =
         1.0f / (0.5f * static_cast<F32>(candidateNumberOfBatches));
@@ -201,7 +208,7 @@ Result LineplotImpl::create() {
 
     numberOfElements = validatedNumberOfElements;
     numberOfBatches = validatedNumberOfBatches;
-    inputSampleStride = validatedInputSampleStride;
+    inputElementStride = validatedInputElementStride;
     inputBatchStride = validatedInputBatchStride;
     normalizationFactor = validatedNormalizationFactor;
 

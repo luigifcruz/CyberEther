@@ -24,7 +24,7 @@ extern "C" __global__ void lineplot_update(const float* input,
                                             unsigned long long numberOfElements,
                                             unsigned long long numberOfBatches,
                                             unsigned long long inputBatchStride,
-                                            unsigned long long inputSampleStride,
+                                            unsigned long long inputElementStride,
                                             unsigned long long decimation,
                                            float normalizationFactor,
                                            unsigned long long averaging) {
@@ -37,7 +37,7 @@ extern "C" __global__ void lineplot_update(const float* input,
     float sum = 0.0f;
     for (unsigned long long batch = 0; batch < numberOfBatches; ++batch) {
         sum += input[(batch * inputBatchStride) +
-                     (index * decimation * inputSampleStride)];
+                     (index * decimation * inputElementStride)];
     }
 
     const float amplitude = fminf(fmaxf((sum * normalizationFactor) - 1.0f, -1.0f), 1.0f);
@@ -165,7 +165,7 @@ Result LineplotImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
         &numberOfElements,
         &numberOfBatches,
         &inputBatchStride,
-        &inputSampleStride,
+        &inputElementStride,
         &decimation,
         &normalizationFactor,
         &averagingValue,

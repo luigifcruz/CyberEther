@@ -19,12 +19,12 @@ constexpr const char* kWaterfallKernelSource = R"(
 extern "C" __global__ void waterfall_update(const float* input,
                                              float* frequencyBins,
                                              unsigned long long numberOfElements,
-                                             unsigned long long inputSampleStride,
+                                             unsigned long long inputElementStride,
                                              unsigned long long inputBatchStride,
                                              unsigned long long retainedBatches,
-                                              unsigned long long height,
-                                              unsigned long long sourceRow,
-                                              unsigned long long destinationRow) {
+                                             unsigned long long height,
+                                             unsigned long long sourceRow,
+                                             unsigned long long destinationRow) {
     const unsigned long long index =
         (static_cast<unsigned long long>(blockIdx.x) * blockDim.x) + threadIdx.x;
     const unsigned long long elementCount = retainedBatches * numberOfElements;
@@ -38,7 +38,7 @@ extern "C" __global__ void waterfall_update(const float* input,
     const unsigned long long destinationBatch = (destinationRow + retainedBatch) % height;
 
     frequencyBins[(destinationBatch * numberOfElements) + column] =
-        input[(sourceBatch * inputBatchStride) + (column * inputSampleStride)];
+        input[(sourceBatch * inputBatchStride) + (column * inputElementStride)];
 }
 )";
 
@@ -128,7 +128,7 @@ Result WaterfallImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
         &inputArgument,
         &frequencyData,
         &numberOfElements,
-        &inputSampleStride,
+        &inputElementStride,
         &inputBatchStride,
         &plan.rowCount,
         &height,
