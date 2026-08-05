@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "jetstream/domains/core/invert/block.hh"
+#include "jetstream/domains/dsp/invert/block.hh"
 #include "jetstream/domains/core/ones_tensor/block.hh"
 #include "jetstream/domains/dsp/window/block.hh"
 #include "flowgraph_fixture.hh"

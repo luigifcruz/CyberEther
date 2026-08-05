@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_DOMAINS_CORE_INVERT_BLOCK_HH
-#define JETSTREAM_DOMAINS_CORE_INVERT_BLOCK_HH
+#ifndef JETSTREAM_DOMAINS_DSP_INVERT_BLOCK_HH
+#define JETSTREAM_DOMAINS_DSP_INVERT_BLOCK_HH
 
 #include "jetstream/block.hh"
 
@@ -7,7 +7,7 @@ namespace Jetstream::Blocks {
 
 struct Invert : public Block::Config {
     JST_BLOCK_TYPE(invert);
-    JST_BLOCK_DOMAIN("Core");
+    JST_BLOCK_DOMAIN("DSP");
     JST_BLOCK_NODE_SIZE(XS);
     JST_BLOCK_PARAMS();
     JST_BLOCK_DESCRIPTION(
@@ -45,4 +45,4 @@ struct Invert : public Block::Config {
 
 }  // namespace Jetstream::Blocks
 
-#endif  // JETSTREAM_DOMAINS_CORE_INVERT_BLOCK_HH
+#endif  // JETSTREAM_DOMAINS_DSP_INVERT_BLOCK_HH
