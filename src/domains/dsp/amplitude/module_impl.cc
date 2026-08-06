@@ -6,7 +6,7 @@
 namespace Jetstream::Modules {
 
 Result AmplitudeImpl::validate() {
-    validatedResolvedAxis = 0;
+    validatedNormalizationSize = 1;
 
     if (!inputs().contains("signal")) {
         return Result::SUCCESS;
@@ -14,12 +14,21 @@ Result AmplitudeImpl::validate() {
 
     const Tensor& inputTensor = inputs().at("signal").tensor;
     SignalAxes axes;
-    if (ResolveSignalAxes(inputTensor, axes) != Result::SUCCESS) {
+    if (MapSignalAxes(inputTensor,
+                      IdentityAxisMap(inputTensor.rank()),
+                      axes) != Result::SUCCESS) {
         JST_ERROR("[MODULE_AMPLITUDE] Input must contain valid signal axis metadata.");
         return Result::ERROR;
     }
 
-    validatedResolvedAxis = *axes.sample;
+    if (!axes.sample && !axes.channel) {
+        JST_ERROR("[MODULE_AMPLITUDE] Input must contain sampleAxis or channelAxis metadata.");
+        return Result::ERROR;
+    }
+
+    if (axes.sample) {
+        validatedNormalizationSize = inputTensor.shape(*axes.sample);
+    }
     return Result::SUCCESS;
 }
 
@@ -39,7 +48,7 @@ Result AmplitudeImpl::create() {
 
     scalingCoeff = 20.0f *
                     std::log10(1.0f /
-                               static_cast<F32>(input.shape(validatedResolvedAxis)));
+                               static_cast<F32>(validatedNormalizationSize));
 
     // Create output tensor with same shape but F32 type.
     JST_CHECK(output.create(input.device(), DataType::F32, input.shape()));
