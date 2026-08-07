@@ -40,6 +40,7 @@ SurfaceInteractionState ProcessSurfaceInteraction(SurfaceInteractionState state,
                 state.viewChanged = true;
             }
             state.backgroundColor = event.backgroundColor;
+            state.placement = event.placement;
         }
     }
 
