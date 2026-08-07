@@ -31,16 +31,20 @@ SurfaceInteractionState ProcessSurfaceInteraction(SurfaceInteractionState state,
             const bool validSize = event.size.x > 0 && event.size.y > 0;
             const bool sizeChanged = validSize && event.size != state.viewSize;
             const bool scaleChanged = std::abs(event.scale - state.scale) > 1e-6f;
+            const bool placementChanged = event.placement != state.placement;
 
-            if (sizeChanged || scaleChanged) {
-                if (sizeChanged) {
-                    state.viewSize = event.size;
-                }
+            if (sizeChanged) {
+                state.viewSize = event.size;
+            }
+            if (scaleChanged) {
                 state.scale = event.scale;
-                state.viewChanged = true;
             }
             state.backgroundColor = event.backgroundColor;
             state.placement = event.placement;
+
+            if (sizeChanged || scaleChanged || placementChanged) {
+                state.viewChanged = true;
+            }
         }
     }
 
