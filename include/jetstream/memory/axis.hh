@@ -22,11 +22,26 @@ struct SignalAxes {
     std::optional<Index> channel;
 };
 
+enum class SignalAxesLayoutMode {
+    Declaration,
+    Transform,
+};
+
+struct SignalAxesLayout {
+    bool specified = false;
+    SignalAxes axes;
+    std::vector<Index> inherited;
+};
+
 using AxisMap = std::vector<std::optional<Index>>;
 
 JETSTREAM_API std::optional<Index> ResolveAxis(I64 axis, Index rank);
 JETSTREAM_API std::optional<Index> ResolveInsertionAxis(I64 axis, Index rank);
 
+JETSTREAM_API Result ParseSignalAxesLayout(std::string_view value,
+                                           Index rank,
+                                           SignalAxesLayoutMode mode,
+                                           SignalAxesLayout& layout);
 JETSTREAM_API Result ResolveSignalAxes(const Tensor& tensor, SignalAxes& axes);
 JETSTREAM_API Result SetSignalAxes(Tensor& tensor, const SignalAxes& axes);
 JETSTREAM_API Result MapSignalAxes(const Tensor& tensor,

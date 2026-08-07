@@ -30,6 +30,7 @@ Tensor manipulation and general plumbing: shaping, casting, arithmetic, and the 
 | Python | `python` | Runs custom Python compute code. |
 | Range | `range` | Scales input to a specified range. |
 | Reshape | `reshape` | Changes the shape of a tensor. |
+| Signal Axes | `signal_axes` | Assigns batch, channel, and sample roles to tensor dimensions. |
 | Slice | `slice` | Extracts a subset of a tensor. |
 | Squeeze Dims | `squeeze_dims` | Removes a dimension of size 1 at a specified axis. |
 | Throttle | `throttle` | Limits data flow rate by introducing time delays. |
