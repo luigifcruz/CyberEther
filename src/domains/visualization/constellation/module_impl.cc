@@ -98,9 +98,10 @@ Result ConstellationImpl::createPresent() {
         Render::Components::Axis::Config cfg;
         cfg.numberOfVerticalLines = 5;
         cfg.numberOfHorizontalLines = 5;
+        cfg.showFrameTicks = true;
         cfg.font = window->font("default_mono");
-        cfg.xTitle = "In-Phase";
-        cfg.yTitle = "Quadrature";
+        cfg.xTitle = xLabel;
+        cfg.yTitle = yLabel;
         JST_CHECK(window->build(axis, cfg));
         JST_CHECK(window->bind(axis));
     }
@@ -240,17 +241,51 @@ Result ConstellationImpl::updateAxisState() {
     JST_CHECK(shapes->updatePixelSize(pixelSize));
 
     const U64 numVert = axis->getConfig().numberOfVerticalLines;
+    const U64 numHorz = axis->getConfig().numberOfHorizontalLines;
     std::vector<std::string> xLabels(numVert - 2);
-
-    for (U64 i = 1; i < numVert - 1; i++) {
-        const F32 value = ((2.0f * static_cast<F32>(i) / static_cast<F32>(numVert - 1)) - 1.0f) /
-                          interaction.zoom;
-        xLabels[i - 1] = jst::fmt::format("{:.2f}", value);
-    }
-
-    JST_CHECK(axis->updateTickLabels(xLabels, {}));
+    std::vector<std::string> yLabels(numHorz - 2);
 
     const auto& paddingScale = axis->paddingScale();
+    const F32 viewWidthPx = interaction.viewSize.x / interaction.scale;
+    const F32 tickSpacingPx = (viewWidthPx * paddingScale.x) / (numVert - 1);
+    const F32 viewHeightPx = interaction.viewSize.y / interaction.scale;
+    const F32 rowSpacingPx = (viewHeightPx * paddingScale.y) / (numHorz - 1);
+
+    auto pickStep = [](U64 interior, F32 spacingPx, F32 targetPx) {
+        if (interior <= 1) return U64{1};
+        U64 s = std::max<U64>(
+            1, static_cast<U64>(std::ceil(targetPx / spacingPx)));
+        while (s < interior - 1 && (interior - 1) % s != 0) {
+            s++;
+        }
+        return s;
+    };
+    const U64 tickStep = pickStep(numVert - 2, tickSpacingPx, 65.0f);
+    const U64 yTickStep = pickStep(numHorz - 2, rowSpacingPx, 40.0f);
+
+    for (U64 i = 1; i < numVert - 1; i++) {
+        if ((i - 1) % tickStep != 0) {
+            continue;
+        }
+        const F32 value =
+            ((2.0f * static_cast<F32>(i) / static_cast<F32>(numVert - 1)) -
+             1.0f) / interaction.zoom;
+        xLabels[i - 1] = jst::fmt::format("{:.2f}", value);
+    }
+    for (U64 i = 1; i < numHorz - 1; i++) {
+        if ((i - 1) % yTickStep != 0) {
+            continue;
+        }
+        const F32 value =
+            ((2.0f * static_cast<F32>(i) / static_cast<F32>(numHorz - 1)) -
+             1.0f) / interaction.zoom;
+        yLabels[i - 1] = jst::fmt::format("{:.2f}", value);
+    }
+
+    axis->setShowFrameTicks(interaction.placement != SurfacePlacementType::Attached);
+
+    JST_CHECK(axis->updateTickLabels(xLabels, yLabels));
+
     const auto& vs = interaction.viewSize;
     Render::ScissorRect plotRect;
     plotRect.x = static_cast<U32>((1.0f - paddingScale.x) / 2.0f * vs.x);

@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <any>
 #include <limits>
 #include <stdexcept>
 #include <unordered_set>
@@ -144,6 +145,14 @@ TEST_CASE("Spectrogram module accepts valid height boundaries and input ranks",
 
                     Modules::Spectrogram config;
                     config.height = height;
+                    config.xLabel = "Time";
+                    config.yLabel = "Frequency";
+                    Parser::Map serialized;
+                    REQUIRE(config.serialize(serialized) == Result::SUCCESS);
+                    REQUIRE(std::any_cast<std::string>(serialized.at("xLabel")) ==
+                            "Time");
+                    REQUIRE(std::any_cast<std::string>(serialized.at("yLabel")) ==
+                            "Frequency");
                     ctx.setConfig(config);
 
                     Tensor input;

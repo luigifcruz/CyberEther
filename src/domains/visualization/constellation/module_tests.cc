@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <any>
 #include <limits>
 
 #include "jetstream/domains/visualization/constellation/module.hh"
@@ -49,6 +50,15 @@ TEST_CASE("Constellation module accepts CF32 rank-1 and rank-2 inputs",
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
             TestContext ctx("constellation", impl.device, impl.runtime, impl.provider);
+            Modules::Constellation config;
+            config.xLabel = "In Phase";
+            config.yLabel = "Quadrature";
+            Parser::Map serialized;
+            REQUIRE(config.serialize(serialized) == Result::SUCCESS);
+            REQUIRE(std::any_cast<std::string>(serialized.at("xLabel")) == "In Phase");
+            REQUIRE(std::any_cast<std::string>(serialized.at("yLabel")) ==
+                    "Quadrature");
+            ctx.setConfig(config);
 
             Tensor input;
             REQUIRE(input.create(DeviceType::CPU, DataType::CF32, {128}) == Result::SUCCESS);

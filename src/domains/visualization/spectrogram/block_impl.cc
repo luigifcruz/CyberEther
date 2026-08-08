@@ -17,6 +17,8 @@ struct SpectrogramImpl : public Block::Impl, public DynamicConfig<Blocks::Spectr
 
 Result SpectrogramImpl::configure() {
     spectrogramConfig->height = height;
+    spectrogramConfig->xLabel = xLabel;
+    spectrogramConfig->yLabel = yLabel;
 
     return Result::SUCCESS;
 }
