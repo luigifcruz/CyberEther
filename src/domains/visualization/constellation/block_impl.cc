@@ -7,6 +7,7 @@ namespace Jetstream::Blocks {
 
 struct ConstellationImpl : public Block::Impl,
                            public DynamicConfig<Blocks::Constellation> {
+    Result configure() override;
     Result define() override;
     Result create() override;
 
@@ -14,6 +15,13 @@ struct ConstellationImpl : public Block::Impl,
     std::shared_ptr<Modules::Constellation> constellationConfig =
         std::make_shared<Modules::Constellation>();
 };
+
+Result ConstellationImpl::configure() {
+    constellationConfig->xLabel = xLabel;
+    constellationConfig->yLabel = yLabel;
+
+    return Result::SUCCESS;
+}
 
 Result ConstellationImpl::define() {
     JST_CHECK(defineInterfaceInput("signal",
