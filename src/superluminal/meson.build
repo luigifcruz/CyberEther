@@ -1,5 +1,5 @@
 # Superluminal requires the CPU backend and core modules (FFT, amplitude,
-# scale, lineplot, etc.) which are always compiled when CPU is available.
+# scale, plot, etc.) which are always compiled when CPU is available.
 if cfg_lst.get('JETSTREAM_BACKEND_CPU_AVAILABLE', false)
     cfg_lst.set('JETSTREAM_SUPERLUMINAL_AVAILABLE', true)
 
@@ -10,5 +10,8 @@ if cfg_lst.get('JETSTREAM_BACKEND_CPU_AVAILABLE', false)
         'dmi_block_impl.cc',
     ])
 
-    module_test_lst += files(['module_tests.cc', 'block_tests.cc'])
+    module_test_lst += files([
+        'module_tests.cc',
+        'block_tests.cc',
+    ])
 endif
