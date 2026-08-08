@@ -3,7 +3,7 @@ name: Windows Build
 on:
   workflow_call:
     inputs:
-      package_msi:
+      package_desktop:
         type: boolean
         default: false
 
@@ -121,7 +121,6 @@ jobs:
           if (!(Test-Path build/jetstream.dll)) {
             throw 'jetstream.dll was not produced.'
           }
-
           meson test -C build --print-errorlogs
 
       - name: Upload Meson test logs
@@ -151,8 +150,8 @@ jobs:
           name: cyberether-bin-windows-x86_64
           path: .dist/artifacts/cyberether-windows-x86_64.tar.gz
 
-  msi:
-    if: ${{ inputs.package_msi }}
+  package:
+    if: ${{ inputs.package_desktop }}
     needs: bin
     runs-on: windows-latest
     env:
@@ -168,6 +167,16 @@ jobs:
           name: cyberether-bin-windows-x86_64
           path: .dist/artifacts
 
+      - name: Read release notes
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release view "$env:GITHUB_REF_NAME" --json body --jq .body > .dist\release-notes.md
+          "RELEASE_NOTES=.dist\release-notes.md" >> $env:GITHUB_ENV
+
       - name: Extract Windows binary archive
         shell: pwsh
         run: |
@@ -180,11 +189,19 @@ jobs:
             throw 'jetstream.dll was not extracted.'
           }
 
-      - name: Package MSI
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Package desktop release
         shell: pwsh
-        run: apps/windows/create-msi.ps1
+        run: apps/windows/create-package.ps1
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: cyberether-msi-windows-x86_64
-          path: .dist/windows/*.msi
+          name: cyberether-release-windows-x86_64
+          path: |
+            .dist/windows/*.exe
+            .dist/windows/*.msi
+            .dist/windows/*.nupkg
+            .dist/windows/*.json

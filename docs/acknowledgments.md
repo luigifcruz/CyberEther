@@ -66,6 +66,7 @@ CyberEther uses the following open-source libraries.
 | [nanobind](https://github.com/wjakob/nanobind) | Python bindings support. | BSD-3-Clause |
 | [robin-map](https://github.com/Tessil/robin-map) | Hash map used internally by nanobind. | MIT |
 | [Google Turbo colormap](https://research.google/blog/turbo-an-improved-rainbow-colormap-for-visualization/) | Colormap used by visualization modules. | Apache-2.0 |
+| [Velopack](https://velopack.io/) | Cross-platform installer and update manager. | MIT |
 | [Natural Earth](https://www.naturalearthdata.com/) | Map datasets used for geodata layers. | Public Domain |
 
 ### Miniaudio
@@ -5895,6 +5896,36 @@ Copyright 2019 Google LLC.
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+```
+</details>
+
+### Velopack
+Cross-platform installer and update manager. Used for automatic updates and packaging. Licensed under MIT. [Website](https://velopack.io/) [GitHub](https://github.com/velopack/velopack)
+
+<details>
+  <summary>View License</summary>
+
+```
+Copyright © 2021 Caelan Sayler
+Copyright © 2024 Velopack Ltd.
+
+Permission is hereby granted,  free of charge,  to any person obtaining a
+copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation
+the rights to  use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 ```
 </details>
 

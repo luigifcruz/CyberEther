@@ -1,4 +1,5 @@
 #include "jetstream/run.hh"
+#include "updater.hh"
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -21,6 +22,7 @@ namespace {
 
 int CyberEtherMain(int argc, char* argv[]) {
     try {
+        Updater::Initialize(argc, argv);
 #if defined(JST_OS_BROWSER)
         (void)argc;
         (void)argv;

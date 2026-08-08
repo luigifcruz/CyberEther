@@ -26,7 +26,13 @@ void ProgressBar::render(const Context& ctx) const {
 
     ImGui::PushID(config.id.c_str());
     ImGui::PushStyleColor(ImGuiCol_PlotHistogram, Private::ImColor(ctx, config.colorKey));
+    if (!config.backgroundColorKey.empty()) {
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, Private::ImColor(ctx, config.backgroundColorKey));
+    }
     ImGui::ProgressBar(config.value, Private::ToImVec2(Scale(ctx, config.size)), config.overlay.c_str());
+    if (!config.backgroundColorKey.empty()) {
+        ImGui::PopStyleColor();
+    }
     ImGui::PopStyleColor();
     ImGui::PopID();
 }

@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <limits>
@@ -19,6 +20,8 @@
 #include "jetstream/registry.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/benchmark.hh"
+
+#include "updater.hh"
 
 namespace Jetstream {
 
@@ -130,6 +133,7 @@ std::string RemoteEncoderOptionsString() {
 enum class CommandType {
     Run,
     Benchmark,
+    Update,
 };
 
 constexpr int CLI_USAGE_ERROR = 2;
@@ -228,6 +232,64 @@ class LogLevelGuard {
     int previous_;
 };
 
+int RunUpdateCommand(bool install) {
+    Updater updater;
+    updater.start();
+
+    auto state = updater.snapshot();
+    if (!state.supported) {
+        jst::fmt::print(stderr, "Error: {}\n", state.message);
+        return 1;
+    }
+
+    jst::fmt::print("Checking for updates...\n");
+    updater.check();
+    do {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        state = updater.snapshot();
+    } while (state.checking);
+
+    if (state.failed) {
+        jst::fmt::print(stderr, "Error: {}\n", state.message);
+        return 1;
+    }
+    if (!state.available) {
+        jst::fmt::print("CyberEther is up to date (v{})!\n", state.currentVersion);
+        return 0;
+    }
+
+    jst::fmt::print("CyberEther v{} is available.\n", state.version);
+    if (!install) {
+        return 0;
+    }
+
+    jst::fmt::print("Downloading CyberEther v{}...\n", state.version);
+    updater.download();
+    do {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        state = updater.snapshot();
+    } while (state.downloading);
+
+    if (state.failed) {
+        jst::fmt::print(stderr, "Error: {}\n", state.message);
+        return 1;
+    }
+    if (!state.ready) {
+        jst::fmt::print(stderr, "Error: The update could not be prepared for installation.\n");
+        return 1;
+    }
+
+    if (!updater.apply(false)) {
+        state = updater.snapshot();
+        jst::fmt::print(stderr, "Error: {}\n",
+                        state.message.empty() ? "The update could not be installed." : state.message);
+        return 1;
+    }
+
+    jst::fmt::print("The update will be installed after CyberEther exits.\n");
+    return 0;
+}
+
 }  // namespace
 
 static void printUsage(const char* program,
@@ -255,12 +317,16 @@ static void printUsage(const char* program,
     if (!command.has_value()) {
         jst::fmt::print("  {} [options] [flowgraph]\n", program);
         jst::fmt::print("  {} run [options] [flowgraph]\n", program);
-        jst::fmt::print("  {} benchmark [options] [block]\n\n", program);
+        jst::fmt::print("  {} benchmark [options] [block]\n", program);
+        jst::fmt::print("  {} update [--install]\n\n", program);
         jst::fmt::print("Commands:\n");
         jst::fmt::print("  run                          Launch CyberEther (default)\n");
-        jst::fmt::print("  benchmark                    Run performance benchmarks\n\n");
+        jst::fmt::print("  benchmark                    Run performance benchmarks\n");
+        jst::fmt::print("  update                       Check for application updates\n\n");
     } else if (*command == CommandType::Benchmark) {
         jst::fmt::print("  {} benchmark [options] [block]\n\n", program);
+    } else if (*command == CommandType::Update) {
+        jst::fmt::print("  {} update [--install]\n\n", program);
     } else {
         jst::fmt::print("  {} run [options] [flowgraph]\n\n", program);
     }
@@ -268,10 +334,14 @@ static void printUsage(const char* program,
     jst::fmt::print("Global Options:\n");
     jst::fmt::print("  -h, --help                   Show this help\n");
     jst::fmt::print("  -v, -vv                      Set debug or trace log level\n");
-    jst::fmt::print("  -V, --version                Show version\n");
-    jst::fmt::print("  --device-index <index>       Vulkan and CUDA device index (current: {})\n",
-                    settings.graphics.deviceId);
-    jst::fmt::print("  --plugin <path>              Load a .cep plugin (repeatable)\n\n");
+    jst::fmt::print("  -V, --version                Show version\n\n");
+
+    if (!command.has_value() || *command != CommandType::Update) {
+        jst::fmt::print("Runtime Options:\n");
+        jst::fmt::print("  --device-index <index>       Vulkan and CUDA device index (current: {})\n",
+                        settings.graphics.deviceId);
+        jst::fmt::print("  --plugin <path>              Load a .cep plugin (repeatable)\n\n");
+    }
 
     if (!command.has_value() || *command == CommandType::Run) {
         jst::fmt::print("Graphics Options:\n");
@@ -311,6 +381,14 @@ static void printUsage(const char* program,
         jst::fmt::print("  {:<29}  Choices: markdown, json, csv\n", "");
     }
 
+    if (!command.has_value() || *command == CommandType::Update) {
+        if (!command.has_value()) {
+            jst::fmt::print("\n");
+        }
+        jst::fmt::print("Update Options:\n");
+        jst::fmt::print("  --install                    Download and install an available update\n");
+    }
+
     jst::fmt::print("\nExamples:\n");
     if (!command.has_value() || *command == CommandType::Run) {
         jst::fmt::print("  {} flowgraph.yaml\n", program);
@@ -318,6 +396,10 @@ static void printUsage(const char* program,
     }
     if (!command.has_value() || *command == CommandType::Benchmark) {
         jst::fmt::print("  {} benchmark fft --format json\n", program);
+    }
+    if (!command.has_value() || *command == CommandType::Update) {
+        jst::fmt::print("  {} update\n", program);
+        jst::fmt::print("  {} update --install\n", program);
     }
 }
 
@@ -353,8 +435,11 @@ int Run(int argc, char* argv[]) {
     std::string runOption;
     std::string remoteSettingOption;
     std::string benchmarkOption;
+    std::string updateOption;
+    std::string runtimeOption;
     std::string benchmarkFilter;
     std::vector<std::string> commandLinePlugins;
+    bool installUpdate = false;
     bool positionalOnly = false;
 
     for (int i = 1; i < argc; i++) {
@@ -413,6 +498,12 @@ int Run(int argc, char* argv[]) {
                 continue;
             }
 
+            if (arg == "update") {
+                command = CommandType::Update;
+                commandSelected = true;
+                continue;
+            }
+
             if (arg == "remote") {
                 return PrintUsageError(argv[0], "Unknown command: 'remote'.");
             }
@@ -432,6 +523,8 @@ int Run(int argc, char* argv[]) {
                 helpCommand = CommandType::Run;
             } else if (!benchmarkOption.empty()) {
                 helpCommand = CommandType::Benchmark;
+            } else if (!updateOption.empty()) {
+                helpCommand = CommandType::Update;
             }
             printUsage(argv[0], settings, helpCommand);
             return 0;
@@ -455,6 +548,7 @@ int Run(int argc, char* argv[]) {
                     "Invalid value for --plugin: '{}'. Expected a .cep path.", value));
             }
             commandLinePlugins.push_back(value);
+            runtimeOption = arg;
             continue;
         }
 
@@ -467,6 +561,17 @@ int Run(int argc, char* argv[]) {
         if (!positionalOnly && arg == "-vv") {
             settings.developer.logLevel = 4;
             JST_LOG_SET_DEBUG_LEVEL(settings.developer.logLevel);
+            continue;
+        }
+
+        // Handle Update Options
+
+        if (!positionalOnly && arg == "--install") {
+            if (const int error = rejectInlineValue()) {
+                return error;
+            }
+            installUpdate = true;
+            updateOption = arg;
             continue;
         }
 
@@ -498,6 +603,7 @@ int Run(int argc, char* argv[]) {
                     "Invalid value for --device-index: '{}'. Expected a non-negative integer.", value));
             }
             settings.graphics.deviceId = deviceId;
+            runtimeOption = arg;
             continue;
         }
 
@@ -669,6 +775,11 @@ int Run(int argc, char* argv[]) {
             continue;
         }
 
+        if (command == CommandType::Update) {
+            return PrintUsageError(argv[0], jst::fmt::format(
+                "The update command does not accept positional arguments; received '{}'.", originalArg));
+        }
+
         if (!flowgraphPath.empty()) {
             return PrintUsageError(argv[0], jst::fmt::format(
                 "Only one flowgraph may be provided; received '{}'.", originalArg));
@@ -685,6 +796,26 @@ int Run(int argc, char* argv[]) {
     if (command == CommandType::Run && !benchmarkOption.empty()) {
         return PrintUsageError(argv[0], jst::fmt::format(
             "Option '{}' is only available for the benchmark command.", benchmarkOption));
+    }
+
+    if (command == CommandType::Update && !runOption.empty()) {
+        return PrintUsageError(argv[0], jst::fmt::format(
+            "Option '{}' is not available for the update command.", runOption));
+    }
+
+    if (command == CommandType::Update && !benchmarkOption.empty()) {
+        return PrintUsageError(argv[0], jst::fmt::format(
+            "Option '{}' is not available for the update command.", benchmarkOption));
+    }
+
+    if (command == CommandType::Update && !runtimeOption.empty()) {
+        return PrintUsageError(argv[0], jst::fmt::format(
+            "Option '{}' is not available for the update command.", runtimeOption));
+    }
+
+    if (command != CommandType::Update && !updateOption.empty()) {
+        return PrintUsageError(argv[0], jst::fmt::format(
+            "Option '{}' is only available for the update command.", updateOption));
     }
 
     if (!remoteEnabled && !remoteSettingOption.empty()) {
@@ -704,6 +835,10 @@ int Run(int argc, char* argv[]) {
         } catch (const Result&) {
             return PrintUsageError(argv[0], "The configured CyberEther Remote codec or encoder is invalid.");
         }
+    }
+
+    if (command == CommandType::Update) {
+        return RunUpdateCommand(installUpdate);
     }
 
     std::optional<LogLevelGuard> benchmarkLogLevel;

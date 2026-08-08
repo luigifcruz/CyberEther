@@ -12,7 +12,7 @@ jobs:
   linux:
     uses: ./.github/workflows/linux.yml
     with:
-      package_appimage: true
+      package_desktop: true
 
   wheel:
     uses: ./.github/workflows/wheel.yml
@@ -20,12 +20,12 @@ jobs:
   windows:
     uses: ./.github/workflows/windows.yml
     with:
-      package_msi: true
+      package_desktop: true
 
   macos:
     uses: ./.github/workflows/macos.yml
     with:
-      package_dmg: true
+      package_desktop: true
     secrets: inherit
 
   emscripten:
@@ -60,7 +60,7 @@ jobs:
 
       - uses: actions/download-artifact@v4.3.0
         with:
-          pattern: 'cyberether-appimage-linux-*'
+          pattern: 'cyberether-release-linux-*'
           path: .dist/artifacts
           merge-multiple: true
 
@@ -71,7 +71,7 @@ jobs:
 
       - uses: actions/download-artifact@v4.3.0
         with:
-          name: cyberether-msi-windows-x86_64
+          name: cyberether-release-windows-x86_64
           path: .dist/artifacts
 
       - uses: actions/download-artifact@v4.3.0
@@ -81,7 +81,7 @@ jobs:
 
       - uses: actions/download-artifact@v4.3.0
         with:
-          name: cyberether-dmg-macos-arm64
+          name: cyberether-release-macos-arm64
           path: .dist/artifacts
 
       - uses: actions/download-artifact@v4.3.0
@@ -89,11 +89,16 @@ jobs:
           name: cyberether-bin-emscripten-wasm32
           path: .dist/artifacts
 
-      - name: Release
-        uses: softprops/action-gh-release@v2.6.2
-        with:
-          files: |
-            .dist/artifacts/*.tar.gz
-            .dist/artifacts/*.dmg
-            .dist/artifacts/*.AppImage
-            .dist/artifacts/*.msi
+      - name: Upload release artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" \
+            .dist/artifacts/* \
+            --clobber \
+            --repo "$GITHUB_REPOSITORY"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false --repo "$GITHUB_REPOSITORY"

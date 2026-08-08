@@ -1,0 +1,7 @@
+[wrap-file]
+directory = velopack-1.2.0
+source_url = https://github.com/velopack/velopack/releases/download/1.2.0/velopack_libc_1.2.0.zip
+source_filename = velopack_libc_1.2.0.zip
+source_hash = 547262ed7a1ab1ff62f580aa53851ede2f1a451ac61b8974eb7bc01117488835
+lead_directory_missing = true
+patch_directory = velopack

@@ -146,16 +146,20 @@ struct AboutPresenter {
 
     AboutSettingsPanel::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
-        const auto openReleases = [enqueue]() {
-            enqueue(MailOpenUrl{
-                .url = "https://github.com/luigifcruz/CyberEther/releases",
-                .notifyResult = true,
-            });
-        };
 
         return AboutSettingsPanel::Config{
+            .updateSupported = context.state.update.supported,
+            .updateUpToDate = context.state.update.upToDate,
+            .updateFailed = context.state.update.failed,
+            .updateChecking = context.state.update.checking,
             .updateAvailable = context.state.update.available,
+            .updateDownloading = context.state.update.downloading,
+            .updateReady = context.state.update.ready,
+            .updateApplying = context.state.update.applying,
+            .updateProgress = context.state.update.progress,
             .updateVersion = context.state.update.version,
+            .updateReleaseNotes = context.state.update.releaseNotes,
+            .updateMessage = context.state.update.message,
             .accentKey = "cyber_blue",
             .infoTables = BuildAboutInfoTables({
                 .viewportName = context.state.system.viewport->name(),
@@ -163,10 +167,14 @@ struct AboutPresenter {
                 .framebufferScale = context.state.system.render->framebufferScale(),
                 .renderScale = context.state.system.render->scalingFactor(),
             }),
-            .onOpenReleases = openReleases,
-            .onDownloadUpdate = openReleases,
-            .onDismissUpdate = [enqueue]() {
-                enqueue(MailDismissUpdate{});
+            .onCheckForUpdates = [enqueue]() {
+                enqueue(MailCheckForUpdates{});
+            },
+            .onDownloadUpdate = [enqueue]() {
+                enqueue(MailDownloadUpdate{});
+            },
+            .onApplyUpdate = [enqueue]() {
+                enqueue(MailApplyUpdate{});
             },
         };
     }

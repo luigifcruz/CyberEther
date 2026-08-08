@@ -46,6 +46,7 @@ subprojects/*
 !subprojects/soapyrtlsdr.wrap
 !subprojects/soapysdr.wrap
 !subprojects/stb.wrap
+!subprojects/velopack.wrap
 !subprojects/vpx.wrap
 !subprojects/zlib.wrap
 
