@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <any>
 #include <string>
 
 #include "jetstream/domains/core/ones_tensor/block.hh"
@@ -22,11 +23,28 @@ TEST_CASE_METHOD(FlowgraphFixture,
     inputs["signal"].requested("src", "signal");
 
     Blocks::Constellation constellationConfig;
+    constellationConfig.xLabel = "In Phase";
+    constellationConfig.yLabel = "Quadrature";
     REQUIRE(flowgraph->blockCreate("constellation", constellationConfig, inputs) ==
             Result::SUCCESS);
-    REQUIRE(viewBlock("constellation").state ==
-            Block::State::Created);
-    REQUIRE(viewBlock("constellation").outputs.empty());
+    const auto block = viewBlock("constellation");
+    REQUIRE(block.state == Block::State::Created);
+    REQUIRE(block.outputs.empty());
+    REQUIRE(std::any_cast<std::string>(block.config.at("xLabel")) == "In Phase");
+    REQUIRE(std::any_cast<std::string>(block.config.at("yLabel")) == "Quadrature");
+    for (const auto& entry : block.interfaceConfigs) {
+        REQUIRE(entry.name != "xLabel");
+        REQUIRE(entry.name != "yLabel");
+    }
+
+    Parser::Map update;
+    update["xLabel"] = std::string("Real");
+    update["yLabel"] = std::string("Imaginary");
+    REQUIRE(flowgraph->blockReconfigure("constellation", update) == Result::SUCCESS);
+    const auto reconfigured = viewBlock("constellation");
+    REQUIRE(std::any_cast<std::string>(reconfigured.config.at("xLabel")) == "Real");
+    REQUIRE(std::any_cast<std::string>(reconfigured.config.at("yLabel")) ==
+            "Imaginary");
 
     auto result = flowgraph->blockDisconnect("constellation", "signal");
     REQUIRE((result == Result::SUCCESS || result == Result::INCOMPLETE));
