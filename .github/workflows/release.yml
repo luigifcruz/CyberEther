@@ -9,29 +9,65 @@ permissions:
   contents: read
 
 jobs:
+  validate-version:
+    name: validate version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.3.1
+
+      - name: Read project version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(awk -F"'" '/^[[:space:]]*version:/ { print $2; exit }' meson.build)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            printf 'Invalid project version in meson.build: %s\n' "$version" >&2
+            exit 1
+          fi
+          printf 'PROJECT_VERSION=%s\n' "$version" >> "$GITHUB_ENV"
+
+      - name: Validate release tag
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_tag="v${PROJECT_VERSION}"
+          if [[ "$GITHUB_REF_NAME" != "$expected_tag" ]]; then
+            printf 'Release tag %s does not match project version %s. Expected %s.\n' \
+              "$GITHUB_REF_NAME" "$PROJECT_VERSION" "$expected_tag" >&2
+            exit 1
+          fi
+          printf 'Validated release version %s (%s).\n' "$PROJECT_VERSION" "$GITHUB_REF_NAME"
+
   linux:
+    needs: validate-version
     uses: ./.github/workflows/linux.yml
     with:
       package_desktop: true
 
   wheel:
+    needs: validate-version
     uses: ./.github/workflows/wheel.yml
 
   windows:
+    needs: validate-version
     uses: ./.github/workflows/windows.yml
     with:
       package_desktop: true
 
   macos:
+    needs: validate-version
     uses: ./.github/workflows/macos.yml
     with:
       package_desktop: true
     secrets: inherit
 
   emscripten:
+    needs: validate-version
     uses: ./.github/workflows/emscripten.yml
 
   containers:
+    needs: validate-version
     uses: ./.github/workflows/container.yml
     permissions:
       contents: read
