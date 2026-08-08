@@ -5,6 +5,7 @@
 #include <jetstream/render/sakura/components/node/node.hh>
 #include <jetstream/types.hh>
 
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -20,6 +21,9 @@ struct NodeTitle {
         std::string title;
         Diagnostic diagnostic;
         F32 titleScale = 1.15f;
+        bool configCollapsed = false;
+        bool configHasFields = false;
+        std::function<void()> onToggleConfigCollapse;
     };
 
     NodeTitle();

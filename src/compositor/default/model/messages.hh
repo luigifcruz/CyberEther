@@ -302,6 +302,12 @@ struct MailSetNodeMeta {
     NodeMeta meta;
 };
 
+struct MailSetNodeConfigCollapsed {
+    std::string flowgraph;
+    std::string block;
+    bool collapsed = false;
+};
+
 struct MailCreateStack {
     std::string flowgraph;
 };
@@ -431,6 +437,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailCopyBlock,
                           MailPasteBlock,
                           MailSetNodeMeta,
+                          MailSetNodeConfigCollapsed,
                           MailCreateStack,
                           MailDeleteStack,
                           MailSetStackGeometry,

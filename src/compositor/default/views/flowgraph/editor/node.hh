@@ -99,6 +99,7 @@ struct FlowgraphNode {
         std::vector<FlowgraphConfigFieldConfig> configFields;
         std::vector<Surface> surfaces;
         std::vector<DeviceOption> deviceOptions;
+        bool configCollapsed = false;
     };
 
     struct Config {
@@ -113,6 +114,7 @@ struct FlowgraphNode {
         std::function<void()> onDelete;
         std::function<void(DeviceType, RuntimeType, ProviderType)> onDeviceSelect;
         std::function<void(F32, F32, F32, F32)> onLayout;
+        std::function<void(bool)> onConfigCollapse;
     };
 
     struct Geometry {
@@ -237,6 +239,13 @@ struct FlowgraphNode {
             .diagnostic = {
                 .state = block.diagnostic.empty() ? Sakura::Node::State::Normal : nodeState,
                 .message = block.diagnostic,
+            },
+            .configCollapsed = block.configCollapsed,
+            .configHasFields = !block.configFields.empty(),
+            .onToggleConfigCollapse = [this]() {
+                if (this->config.onConfigCollapse) {
+                    this->config.onConfigCollapse(!this->config.block.configCollapsed);
+                }
             },
         });
         subtitle.update({.text = block.name});
@@ -409,8 +418,10 @@ struct FlowgraphNode {
                 metricsSpacing.render(ctx);
             }
 
-            for (const auto& field : fields) {
-                field.render(ctx);
+            if (!config.block.configCollapsed) {
+                for (const auto& field : fields) {
+                    field.render(ctx);
+                }
             }
 
             for (U64 i = 0; i < attachedSurfaces.size(); ++i) {

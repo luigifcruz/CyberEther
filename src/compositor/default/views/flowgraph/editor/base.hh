@@ -45,6 +45,7 @@ struct FlowgraphEditor {
         std::function<void(Result, std::string)> onConfigError;
         std::function<void(bool, std::vector<std::string>, std::function<void(std::string)>)> onBrowseConfigPath;
         std::function<void(const std::string&, F32, F32, F32, F32)> onNodeLayout;
+        std::function<void(const std::string&, bool)> onNodeConfigCollapse;
     };
 
     void update(Config config) {
@@ -201,6 +202,11 @@ struct FlowgraphEditor {
                 .onLayout = [this, blockName = block.name](F32 x, F32 y, F32 width, F32 height) {
                     if (this->config.onNodeLayout) {
                         this->config.onNodeLayout(blockName, x, y, width, height);
+                    }
+                },
+                .onConfigCollapse = [this, blockName = block.name](bool collapsed) {
+                    if (this->config.onNodeConfigCollapse) {
+                        this->config.onNodeConfigCollapse(blockName, collapsed);
                     }
                 },
             };

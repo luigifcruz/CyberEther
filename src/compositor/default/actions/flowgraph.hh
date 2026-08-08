@@ -46,6 +46,7 @@ struct FlowgraphActions {
                               MailCopyBlock,
                               MailPasteBlock,
                               MailSetNodeMeta,
+                              MailSetNodeConfigCollapsed,
                               MailSurfaceMouse,
                               MailResizeSurface>;
 
@@ -549,7 +550,25 @@ struct FlowgraphActions {
             return Result::SUCCESS;
         }
 
-        state.flowgraph.items.at(msg.flowgraph)->metadata().set("node", msg.meta, msg.block);
+        auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+        NodeMeta existing;
+        flowgraph->metadata().get("node", existing, msg.block);
+        NodeMeta merged = msg.meta;
+        merged.configCollapsed = existing.configCollapsed;
+        flowgraph->metadata().set("node", merged, msg.block);
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetNodeConfigCollapsed& msg) {
+        if (!state.flowgraph.items.contains(msg.flowgraph)) {
+            return Result::SUCCESS;
+        }
+
+        auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+        NodeMeta existing;
+        flowgraph->metadata().get("node", existing, msg.block);
+        existing.configCollapsed = msg.collapsed;
+        flowgraph->metadata().set("node", existing, msg.block);
         return Result::SUCCESS;
     }
 
@@ -586,6 +605,9 @@ struct FlowgraphActions {
         event.size = msg.resize.framebufferSize;
         event.scale = msg.resize.scale;
         event.backgroundColor = {0.0f, 0.0f, 0.0f, 1.0f};
+        event.placement = (msg.placement == SurfacePlacement::Attached)
+                              ? SurfacePlacementType::Attached
+                              : SurfacePlacementType::Detached;
         msg.surface->pushSurfaceEvent(event);
 
         return Result::SUCCESS;
