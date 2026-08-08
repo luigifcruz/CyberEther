@@ -28,8 +28,8 @@ struct FlowgraphEditorPresenter {
     FlowgraphCatalogPresenter catalog;
     FlowgraphNodePresenter node;
 
-    explicit FlowgraphEditorPresenter(const PresenterContext& context) : context(context),
-                                                                          node(context) {}
+    explicit FlowgraphEditorPresenter(const PresenterContext& context)
+        : context(context), node(context) {}
 
     FlowgraphEditor::Config build(const std::string& flowgraphId,
                                   const std::shared_ptr<Flowgraph>& flowgraph) const {
@@ -45,18 +45,21 @@ struct FlowgraphEditorPresenter {
             .license = flowgraph->license(),
             .description = flowgraph->description(),
             .path = flowgraph->path(),
-            .onCreateBlock = [enqueue, flowgraphId](const std::string& moduleId,
-                                                    std::optional<Extent2D<F32>> gridPosition,
-                                                    DeviceType device,
-                                                    RuntimeType runtime,
-                                                    ProviderType provider) {
-                enqueue(MailCreateBlock{flowgraphId, moduleId, gridPosition, device, runtime, provider});
+            .onCreateBlock =
+                [enqueue, flowgraphId](const std::string& moduleId,
+                                       std::optional<Extent2D<F32>> gridPosition,
+                                       DeviceType device,
+                                       RuntimeType runtime,
+                                       ProviderType provider) {
+                    enqueue(MailCreateBlock{flowgraphId, moduleId, gridPosition,
+                                            device, runtime, provider});
             },
             .onCopyBlock = [enqueue, flowgraphId](const std::string& blockName) {
                 enqueue(MailCopyBlock{flowgraphId, blockName});
             },
-            .onPasteBlock = [enqueue, flowgraphId](std::optional<Extent2D<F32>> gridPosition) {
-                enqueue(MailPasteBlock{flowgraphId, gridPosition});
+            .onPasteBlock =
+                [enqueue, flowgraphId](std::optional<Extent2D<F32>> gridPosition) {
+                    enqueue(MailPasteBlock{flowgraphId, gridPosition});
             },
             .onRenameBlock = [enqueue, flowgraphId](const std::string& blockName) {
                 enqueue(MailOpenRenameBlock{flowgraphId, blockName});
@@ -71,13 +74,15 @@ struct FlowgraphEditorPresenter {
                                                           DeviceType device,
                                                           RuntimeType runtime,
                                                           ProviderType provider) {
-                enqueue(MailChangeBlockDevice{flowgraphId, blockName, device, runtime, provider});
+                enqueue(MailChangeBlockDevice{flowgraphId, blockName, device,
+                                              runtime, provider});
             },
             .onConnectBlock = [enqueue, flowgraphId](const std::string& blockName,
                                                      const std::string& inputPort,
                                                      const std::string& sourceBlock,
                                                      const std::string& sourcePort) {
-                enqueue(MailConnectBlock{flowgraphId, blockName, inputPort, sourceBlock, sourcePort});
+                enqueue(MailConnectBlock{flowgraphId, blockName, inputPort,
+                                         sourceBlock, sourcePort});
             },
             .onDisconnectBlock = [enqueue, flowgraphId](const std::string& blockName,
                                                         const std::string& inputPort) {
@@ -86,10 +91,12 @@ struct FlowgraphEditorPresenter {
             .onReconfigureBlock = [enqueue, flowgraphId](const std::string& blockName,
                                                          Parser::Map blockConfig,
                                                          const bool silent) {
-                enqueue(MailReconfigureBlock{flowgraphId, blockName, std::move(blockConfig), silent});
+                enqueue(MailReconfigureBlock{flowgraphId, blockName,
+                                             std::move(blockConfig), silent});
             },
-            .onConfigError = [enqueue](const Result result, const std::string& message) {
-                enqueue(MailNotifyResult{.result = result, .message = message});
+            .onConfigError =
+                [enqueue](const Result result, const std::string& message) {
+                    enqueue(MailNotifyResult{.result = result, .message = message});
             },
             .onBrowseConfigPath = [enqueue](bool save,
                                             std::vector<std::string> extensions,
@@ -106,7 +113,13 @@ struct FlowgraphEditorPresenter {
                                                    F32 y,
                                                    F32 width,
                                                    F32 height) {
-                enqueue(MailSetNodeMeta{flowgraphId, blockName, NodeMeta{x, y, width, height}});
+                enqueue(MailSetNodeMeta{
+                    flowgraphId, blockName, NodeMeta{x, y, width, height}});
+            },
+            .onNodeConfigCollapse = [enqueue, flowgraphId](const std::string& blockName,
+                                                           bool collapsed) {
+                enqueue(MailSetNodeConfigCollapsed{
+                    flowgraphId, blockName, collapsed});
             },
         };
 
@@ -121,7 +134,8 @@ struct FlowgraphEditorPresenter {
                 continue;
             }
 
-            config.graph.push_back(node.build(flowgraphId, flowgraph, blockName, blockData));
+            config.graph.push_back(node.build(flowgraphId, flowgraph, blockName,
+                                              blockData));
         }
 
         return config;

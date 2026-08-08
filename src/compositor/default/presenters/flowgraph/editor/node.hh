@@ -216,6 +216,7 @@ struct FlowgraphNodePresenter {
             .width = nodeMeta.width,
             .height = nodeMeta.height,
         };
+        block.configCollapsed = nodeMeta.configCollapsed;
 
         buildInputs(block, blockData);
         buildOutputs(block, blockData);
