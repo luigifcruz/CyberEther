@@ -203,6 +203,5 @@ jobs:
           name: cyberether-release-windows-x86_64
           path: |
             .dist/windows/*.exe
-            .dist/windows/*.msi
             .dist/windows/*.nupkg
             .dist/windows/*.json

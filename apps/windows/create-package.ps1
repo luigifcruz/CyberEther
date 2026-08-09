@@ -130,7 +130,6 @@ $Packager = ResolvePackager $OutputDir
     --aumid $Aumid `
     --shortcuts 'Desktop,StartMenuRoot' `
     --noPortable `
-    --msi `
     --instLocation PerUser
 if ($LASTEXITCODE -ne 0) {
     Die 'packaging CLI failed to create the Windows release'
