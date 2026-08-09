@@ -200,22 +200,21 @@ jobs:
       OUTPUT_DIR: .dist/linux
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/download-artifact@v4.3.0
         with:
           name: ${{ matrix.artifact }}
           path: .dist/artifacts
 
-      - name: Read release notes
-        if: github.event_name == 'push' && github.ref_type == 'tag'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          gh release view "$GITHUB_REF_NAME" \
-            --json body \
-            --jq .body > .dist/release-notes.md
-          echo "RELEASE_NOTES=.dist/release-notes.md" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: cyberether-release-notes
+          path: .dist
+
+      - name: Configure release notes
+        run: echo "RELEASE_NOTES=.dist/release-notes.md" >> "$GITHUB_ENV"
 
       - name: Extract Linux binary archive
         run: |

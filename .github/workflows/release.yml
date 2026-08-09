@@ -39,35 +39,62 @@ jobs:
           fi
           printf 'Validated release version %s (%s).\n' "$PROJECT_VERSION" "$GITHUB_REF_NAME"
 
-  linux:
+  prepare-release:
     needs: validate-version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Prepare release notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p .dist
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            gh release view "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json body \
+              --jq .body > .dist/release-notes.md
+          else
+            : > .dist/release-notes.md
+          fi
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cyberether-release-notes
+          path: .dist/release-notes.md
+
+  linux:
+    needs: prepare-release
     uses: ./.github/workflows/linux.yml
     with:
       package_desktop: true
 
   wheel:
-    needs: validate-version
+    needs: prepare-release
     uses: ./.github/workflows/wheel.yml
 
   windows:
-    needs: validate-version
+    needs: prepare-release
     uses: ./.github/workflows/windows.yml
     with:
       package_desktop: true
 
   macos:
-    needs: validate-version
+    needs: prepare-release
     uses: ./.github/workflows/macos.yml
     with:
       package_desktop: true
     secrets: inherit
 
   emscripten:
-    needs: validate-version
+    needs: prepare-release
     uses: ./.github/workflows/emscripten.yml
 
   containers:
-    needs: validate-version
+    needs: prepare-release
     uses: ./.github/workflows/container.yml
     permissions:
       contents: read
