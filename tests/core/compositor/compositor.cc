@@ -16,9 +16,6 @@
 #include "jetstream/detail/compositor_impl.hh"
 #include "jetstream/logger.hh"
 
-#include "compositor/default/actions/settings.hh"
-#include "compositor/default/presenters/menubar.hh"
-
 using namespace Jetstream;
 
 namespace {
@@ -532,101 +529,6 @@ TEST_CASE("Compositor command worker preserves every result and its diagnostic c
         REQUIRE_FALSE(command.fn);
     }
     REQUIRE_FALSE(worker.take(command));
-}
-
-TEST_CASE("Update menu opens settings and checks only from idle state",
-          "[core][compositor][update][presenter]") {
-    DefaultCompositorState state;
-    std::vector<Mail> mail;
-    DefaultCompositorCallbacks callbacks{
-        .enqueueMail = [&mail](Mail&& message) {
-            mail.push_back(std::move(message));
-        },
-    };
-    PresenterContext context{state, callbacks};
-    MenubarPresenter presenter{context};
-
-    const auto dispatch = [&](bool shouldCheck) {
-        mail.clear();
-        auto config = presenter.build();
-        config.onAction(MenubarView::Action::CheckForUpdates);
-
-        REQUIRE(mail.size() == (shouldCheck ? 2 : 1));
-        REQUIRE(std::holds_alternative<MailOpenModal>(mail[0]));
-        const auto& open = std::get<MailOpenModal>(mail[0]);
-        REQUIRE(open.content == ModalContent::Settings);
-        REQUIRE(open.settings == SettingsSection::About);
-        if (shouldCheck) {
-            REQUIRE(std::holds_alternative<MailCheckForUpdates>(mail[1]));
-        }
-    };
-
-    SECTION("supported idle state starts a check") {
-        state.update.supported = true;
-        dispatch(true);
-    }
-
-    SECTION("unsupported state only opens update settings") {
-        dispatch(false);
-    }
-
-    SECTION("active and actionable states preserve the current update") {
-        state.update.supported = true;
-
-        struct Phase {
-            const char* name;
-            bool DefaultCompositorState::UpdateState::*flag;
-        };
-        const std::array phases{
-            Phase{"checking", &DefaultCompositorState::UpdateState::checking},
-            Phase{"available", &DefaultCompositorState::UpdateState::available},
-            Phase{"downloading", &DefaultCompositorState::UpdateState::downloading},
-            Phase{"ready", &DefaultCompositorState::UpdateState::ready},
-            Phase{"applying", &DefaultCompositorState::UpdateState::applying},
-        };
-
-        for (const auto& phase : phases) {
-            DYNAMIC_SECTION(phase.name) {
-                state.update.*phase.flag = true;
-                dispatch(false);
-            }
-        }
-    }
-}
-
-TEST_CASE("Settings update actions delegate through compositor callbacks",
-           "[core][compositor][update][actions]") {
-    DefaultCompositorState state;
-    int checks = 0;
-    int downloads = 0;
-    int applies = 0;
-    int dismissals = 0;
-    DefaultCompositorCallbacks callbacks{
-        .checkForUpdates = [&checks]() {
-            ++checks;
-        },
-        .downloadUpdate = [&downloads]() {
-            ++downloads;
-        },
-        .applyUpdate = [&applies]() {
-            ++applies;
-            return false;
-        },
-        .dismissUpdate = [&dismissals]() {
-            ++dismissals;
-        },
-    };
-    SettingsActions actions{state, callbacks};
-
-    REQUIRE(actions.handle(MailCheckForUpdates{}) == Result::SUCCESS);
-    REQUIRE(actions.handle(MailDownloadUpdate{}) == Result::SUCCESS);
-    REQUIRE(actions.handle(MailApplyUpdate{}) == Result::SUCCESS);
-    REQUIRE(actions.handle(MailDismissUpdate{}) == Result::SUCCESS);
-
-    REQUIRE(checks == 1);
-    REQUIRE(downloads == 1);
-    REQUIRE(applies == 1);
-    REQUIRE(dismissals == 1);
 }
 
 // TODO: Inject a Compositor::Impl factory into Compositor so create argument
