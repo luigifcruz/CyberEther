@@ -86,7 +86,7 @@ fi
 read -r ARCH RUNTIME_ARCH <<< "$(normalize_arch "$ARCH")"
 RUNTIME="linux-$RUNTIME_ARCH"
 CHANNEL="linux-$RUNTIME_ARCH$APPIMAGE_SUFFIX"
-[[ -n "$PACK_ID" ]] || PACK_ID="$APP_ID.$CHANNEL"
+[[ -n "$PACK_ID" ]] || PACK_ID="$APP_ID"
 
 CYBERETHER_BINARY="$(abs_path "$CYBERETHER_BINARY")"
 JETSTREAM_SO="$(abs_path "$JETSTREAM_SO")"
