@@ -3,7 +3,7 @@ name: Windows Build
 on:
   workflow_call:
     inputs:
-      package_msi:
+      package_desktop:
         type: boolean
         default: false
 
@@ -21,6 +21,7 @@ env:
     WS2_32.dll
     COMDLG32.dll
     COMCTL32.dll
+    COMBASE.dll
     ADVAPI32.dll
     RPCRT4.dll
     SHLWAPI.dll
@@ -54,7 +55,7 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - uses: actions/checkout@v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-python@v5
         with:
@@ -121,7 +122,6 @@ jobs:
           if (!(Test-Path build/jetstream.dll)) {
             throw 'jetstream.dll was not produced.'
           }
-
           meson test -C build --print-errorlogs
 
       - name: Upload Meson test logs
@@ -151,8 +151,8 @@ jobs:
           name: cyberether-bin-windows-x86_64
           path: .dist/artifacts/cyberether-windows-x86_64.tar.gz
 
-  msi:
-    if: ${{ inputs.package_msi }}
+  package:
+    if: ${{ inputs.package_desktop }}
     needs: bin
     runs-on: windows-latest
     env:
@@ -161,12 +161,22 @@ jobs:
       JETSTREAM_DLL: .dist\bin\jetstream.dll
       OUTPUT_DIR: .dist\windows
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: cyberether-bin-windows-x86_64
           path: .dist/artifacts
+
+      - name: Read release notes
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release view "$env:GITHUB_REF_NAME" --json body --jq .body > .dist\release-notes.md
+          "RELEASE_NOTES=.dist\release-notes.md" >> $env:GITHUB_ENV
 
       - name: Extract Windows binary archive
         shell: pwsh
@@ -180,11 +190,18 @@ jobs:
             throw 'jetstream.dll was not extracted.'
           }
 
-      - name: Package MSI
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Package desktop release
         shell: pwsh
-        run: apps/windows/create-msi.ps1
+        run: apps/windows/create-package.ps1
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: cyberether-msi-windows-x86_64
-          path: .dist/windows/*.msi
+          name: cyberether-release-windows-x86_64
+          path: |
+            .dist/windows/*.exe
+            .dist/windows/*.nupkg
+            .dist/windows/*.json

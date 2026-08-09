@@ -131,6 +131,7 @@ struct LegalSettingsPanel {
                    "- robin-map - MIT License\n"
                    "- Google Turbo colormap - Apache License 2.0\n"
                    "- Natural Earth - Public Domain\n"
+                   "- Velopack - MIT License\n"
                    // [NEW DEPENDENCY HOOK]
         });
 

@@ -77,6 +77,10 @@ void Text::render(const Context& ctx) const {
     ImGui::PushID(config.id.c_str());
     ImGui::PushStyleColor(ImGuiCol_Text, Private::ImColor(ctx, this->impl->textColorKey()));
 
+    if (config.verticalOffset != 0.0f) {
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + Scale(ctx, config.verticalOffset));
+    }
+
     if (config.font != Font::Current || config.scale != 1.0f) {
         ImGui::PushFont(this->impl->resolveFont(ctx), ImGui::GetStyle().FontSizeBase * config.scale);
     }

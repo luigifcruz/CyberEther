@@ -43,6 +43,7 @@ struct Text {
         std::string colorKey;
         bool wrapped = false;
         F32 scale = 1.0f;
+        F32 verticalOffset = 0.0f;
     };
 
     Text();

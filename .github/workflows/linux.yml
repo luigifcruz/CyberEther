@@ -3,7 +3,7 @@ name: Linux Build
 on:
   workflow_call:
     inputs:
-      package_appimage:
+      package_desktop:
         type: boolean
         default: false
 
@@ -90,7 +90,7 @@ jobs:
       APPIMAGE_SUFFIX: ${{ matrix.appimage_suffix }}
       ARCHIVE: ${{ matrix.archive }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install system dependencies
         run: |
@@ -183,8 +183,8 @@ jobs:
           name: ${{ matrix.artifact }}
           path: .dist/artifacts/${{ matrix.archive }}
 
-  appimage:
-    if: ${{ inputs.package_appimage }}
+  package:
+    if: ${{ inputs.package_desktop }}
     needs: bin
     name: appimage (${{ matrix.tag }})
     runs-on: ${{ matrix.runner }}
@@ -199,12 +199,23 @@ jobs:
       JETSTREAM_SO: .dist/bin/libjetstream.so
       OUTPUT_DIR: .dist/linux
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/download-artifact@v4.3.0
         with:
           name: ${{ matrix.artifact }}
           path: .dist/artifacts
+
+      - name: Read release notes
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" \
+            --json body \
+            --jq .body > .dist/release-notes.md
+          echo "RELEASE_NOTES=.dist/release-notes.md" >> "$GITHUB_ENV"
 
       - name: Extract Linux binary archive
         run: |
@@ -214,16 +225,23 @@ jobs:
           test -f .dist/bin/cyberether
           test -f .dist/bin/libjetstream.so
 
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
       - name: Install packaging dependencies
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y binutils curl patchelf
+          sudo apt-get install -y binutils curl patchelf squashfs-tools
 
-      - name: Package AppImage
-        run: apps/linux/create-appimage.sh
+      - name: Package desktop release
+        run: apps/linux/create-package.sh
 
       - uses: actions/upload-artifact@v7
         with:
-          name: cyberether-appimage-linux-${{ matrix.tag }}
-          path: .dist/linux/*.AppImage
+          name: cyberether-release-linux-${{ matrix.tag }}
+          path: |
+            .dist/linux/*.AppImage
+            .dist/linux/*.nupkg
+            .dist/linux/*.json
