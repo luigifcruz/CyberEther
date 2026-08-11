@@ -48,5 +48,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(std::none_of(block.interfaceConfigs.begin(),
                          block.interfaceConfigs.end(),
                          [](const auto& field) { return field.name == "hintString"; }));
+    REQUIRE(std::none_of(block.interfaceConfigs.begin(),
+                         block.interfaceConfigs.end(),
+                         [](const auto& field) { return field.name == "modulePath"; }));
     REQUIRE(block.outputs.empty());
 }
