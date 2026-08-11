@@ -6,6 +6,7 @@
 namespace Jetstream::Blocks {
 
 struct Soapy : public Block::Config {
+    std::string modulePath = "";
     std::string hintString = "";
     std::string deviceString = "";
     std::string streamString = "";
@@ -19,7 +20,8 @@ struct Soapy : public Block::Config {
 
     JST_BLOCK_TYPE(soapy);
     JST_BLOCK_DOMAIN("IO");
-    JST_BLOCK_PARAMS(hintString, deviceString, streamString, frequency, frequencyStep,
+    JST_BLOCK_PARAMS(modulePath, hintString, deviceString,
+                     streamString, frequency, frequencyStep,
                      sampleRate, automaticGain, numberOfBatches,
                      numberOfTimeSamples, bufferMultiplier);
     JST_BLOCK_DESCRIPTION(

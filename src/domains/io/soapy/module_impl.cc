@@ -3,6 +3,7 @@
 #include <SoapySDR/Device.hpp>
 #include <SoapySDR/Types.hpp>
 #include <SoapySDR/Formats.hpp>
+#include <SoapySDR/Modules.hpp>
 #include <SoapySDR/Registry.hpp>
 
 #include <algorithm>
@@ -13,6 +14,20 @@
 #include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Modules {
+
+Result SoapyImpl::LoadModulePath(const std::string& path) {
+    if (path.empty()) {
+        return Result::SUCCESS;
+    }
+
+    const auto error = SoapySDR::loadModule(path);
+    if (!error.empty() && !error.ends_with(" already loaded")) {
+        JST_ERROR("[MODULE_SOAPY] Failed to load SoapySDR module '{}': {}", path, error);
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
 
 Result SoapyImpl::validate() {
     const auto& config = *candidate();
@@ -93,6 +108,8 @@ Result SoapyImpl::create() {
         return Result::ERROR;
     }
 #endif
+
+    JST_CHECK(LoadModulePath(modulePath));
 
     errored = false;
     streaming = false;
@@ -288,7 +305,8 @@ Result SoapyImpl::destroy() {
 Result SoapyImpl::reconfigure() {
     const auto& newConfig = *candidate();
 
-    if (newConfig.deviceString != deviceString ||
+    if (newConfig.modulePath != modulePath ||
+        newConfig.deviceString != deviceString ||
         newConfig.streamString != streamString ||
         newConfig.numberOfBatches != numberOfBatches ||
         newConfig.numberOfTimeSamples != numberOfTimeSamples ||

@@ -7,6 +7,7 @@
 namespace Jetstream::Modules {
 
 struct Soapy : public Module::Config {
+    std::string modulePath = "";
     std::string deviceString = "";
     std::string streamString = "";
     F32 frequency = 96.9e6;
@@ -17,7 +18,7 @@ struct Soapy : public Module::Config {
     U64 bufferMultiplier = 4;
 
     JST_MODULE_TYPE(soapy);
-    JST_MODULE_PARAMS(deviceString, streamString, frequency, sampleRate,
+    JST_MODULE_PARAMS(modulePath, deviceString, streamString, frequency, sampleRate,
                       automaticGain, numberOfBatches, numberOfTimeSamples,
                       bufferMultiplier);
 };

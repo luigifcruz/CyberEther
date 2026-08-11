@@ -83,6 +83,7 @@ struct SoapyImpl : public Module::Impl, public DynamicConfig<Soapy> {
     Result destroy() override;
     Result reconfigure() override;
 
+    static Result LoadModulePath(const std::string& path);
     static DeviceList ListAvailableDevices(const std::string& filter = "");
     static std::string DeviceEntryToString(const DeviceEntry& entry);
 
