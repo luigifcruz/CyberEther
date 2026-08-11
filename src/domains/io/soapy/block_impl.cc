@@ -64,6 +64,7 @@ Result SoapyImpl::configure() {
     moduleConfig->frequency = frequency;
     moduleConfig->sampleRate = sampleRate;
     moduleConfig->automaticGain = automaticGain;
+    moduleConfig->biasTee = biasTee;
     moduleConfig->numberOfBatches = numberOfBatches;
     moduleConfig->numberOfTimeSamples = numberOfTimeSamples;
     moduleConfig->bufferMultiplier = bufferMultiplier;
@@ -110,6 +111,11 @@ Result SoapyImpl::define() {
     JST_CHECK(defineInterfaceConfig("automaticGain",
                                     "Automatic Gain",
                                     "Enable automatic gain control.",
+                                    "bool"));
+
+    JST_CHECK(defineInterfaceConfig("biasTee",
+                                    "Bias-T",
+                                    "Enable antenna power when supported by the selected device.",
                                     "bool"));
 
     JST_CHECK(defineInterfaceConfig("numberOfBatches",
