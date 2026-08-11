@@ -90,11 +90,6 @@ Result SoapyImpl::define() {
                                     "Select from available SDR devices.",
                                     deviceDropdown));
 
-    JST_CHECK(defineInterfaceConfig("hintString",
-                                    "Device Hint",
-                                    "Filter string for discovering devices.",
-                                    "text"));
-
     JST_CHECK(defineInterfaceConfig("frequency",
                                     "Frequency",
                                     "Tuner frequency.",

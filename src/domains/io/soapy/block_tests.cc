@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <string>
 
 #include "flowgraph_fixture.hh"
@@ -44,5 +45,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(block.state == Block::State::Errored);
     REQUIRE_FALSE(block.interfaceOutputs.empty());
     REQUIRE_FALSE(block.interfaceConfigs.empty());
+    REQUIRE(std::none_of(block.interfaceConfigs.begin(),
+                         block.interfaceConfigs.end(),
+                         [](const auto& field) { return field.name == "hintString"; }));
     REQUIRE(block.outputs.empty());
 }
