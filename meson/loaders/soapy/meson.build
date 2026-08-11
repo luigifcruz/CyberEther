@@ -53,6 +53,11 @@ if jst_is_windows
     ]
     whole_dep_lst += [
         subproject(
+            'soapyairspy',
+            required: true,
+            default_options: soapy_static_options,
+        ).get_variable('soapyairspy_dep').as_link_whole(),
+        subproject(
             'soapyrtlsdr',
             required: true,
             default_options: soapy_static_options,
