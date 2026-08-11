@@ -92,12 +92,15 @@ struct SoapyImpl : public Module::Impl, public DynamicConfig<Soapy> {
     Result setTunerFrequency(const F32& frequency);
     Result setSampleRate(const F32& sampleRate);
     Result setAutomaticGain(const bool& automaticGain);
+    Result setBiasTee(bool enabled);
 
  protected:
     Tensor buffer;
 
     SoapySDR::Device* soapyDevice = nullptr;
     SoapySDR::Stream* soapyStream = nullptr;
+    bool biasTeeSupported = false;
+    bool biasTeeNeedsCleanup = false;
 
     std::vector<SoapySDR::Range> sampleRateRanges;
     std::vector<SoapySDR::Range> frequencyRanges;

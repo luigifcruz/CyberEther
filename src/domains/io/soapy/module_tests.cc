@@ -1,6 +1,14 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <limits>
+#include <stdexcept>
+#include <string>
+#include <thread>
+#include <vector>
+
+#include <SoapySDR/Errors.hpp>
+#include <SoapySDR/Registry.hpp>
 
 #include "jetstream/domains/io/soapy/module.hh"
 #include "jetstream/registry.hh"
@@ -9,6 +17,81 @@
 using namespace Jetstream;
 
 namespace {
+
+constexpr const char* TestSoapyDriver = "cyberether_test";
+
+struct TestSoapyState {
+    bool advertiseBiasTee = true;
+    bool throwOnSettingInfo = false;
+    bool failStreamSetup = false;
+    std::vector<std::string> biasTeeWrites;
+};
+
+TestSoapyState testSoapyState;
+
+class TestSoapyDevice final : public SoapySDR::Device {
+ public:
+    SoapySDR::RangeList getSampleRateRange(const int, const size_t) const override {
+        return {SoapySDR::Range(1.0, 10.0e6)};
+    }
+
+    SoapySDR::RangeList getFrequencyRange(const int, const size_t) const override {
+        return {SoapySDR::Range(1.0, 2.0e9)};
+    }
+
+    SoapySDR::ArgInfoList getSettingInfo() const override {
+        if (testSoapyState.throwOnSettingInfo) {
+            throw std::runtime_error("optional settings unavailable");
+        }
+        if (!testSoapyState.advertiseBiasTee) {
+            return {};
+        }
+
+        SoapySDR::ArgInfo biasTee;
+        biasTee.key = "biastee";
+        biasTee.type = SoapySDR::ArgInfo::BOOL;
+        return {biasTee};
+    }
+
+    void writeSetting(const std::string& key, const std::string& value) override {
+        if (key == "biastee") {
+            testSoapyState.biasTeeWrites.push_back(value);
+        }
+    }
+
+    SoapySDR::Stream* setupStream(const int,
+                                  const std::string&,
+                                  const std::vector<size_t>&,
+                                  const SoapySDR::Kwargs&) override {
+        if (testSoapyState.failStreamSetup) {
+            return nullptr;
+        }
+        return reinterpret_cast<SoapySDR::Stream*>(this);
+    }
+
+    int readStream(SoapySDR::Stream*,
+                   void* const*,
+                   const size_t,
+                   int&,
+                   long long&,
+                   const long) override {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        return SOAPY_SDR_TIMEOUT;
+    }
+};
+
+SoapySDR::KwargsList FindTestSoapyDevice(const SoapySDR::Kwargs&) {
+    return {{{"label", "CyberEther test device"}}};
+}
+
+SoapySDR::Device* MakeTestSoapyDevice(const SoapySDR::Kwargs&) {
+    return new TestSoapyDevice();
+}
+
+const SoapySDR::Registry testSoapyRegistry(TestSoapyDriver,
+                                           FindTestSoapyDevice,
+                                           MakeTestSoapyDevice,
+                                           SOAPY_SDR_ABI_VERSION);
 
 struct SoapyImplAccess : Modules::SoapyImpl {
     static auto sampleRateRangesMember() {
@@ -27,10 +110,35 @@ Modules::Soapy NonDefaultSoapyConfig() {
     config.frequency = 100.5e6f;
     config.sampleRate = 1.5e6f;
     config.automaticGain = false;
+    config.biasTee = true;
     config.numberOfBatches = 3;
     config.numberOfTimeSamples = 17;
     config.bufferMultiplier = 2;
     return config;
+}
+
+Modules::Soapy TestDeviceSoapyConfig() {
+    Modules::Soapy config;
+    config.deviceString = std::string("driver=") + TestSoapyDriver;
+    config.biasTee = true;
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    config.bufferMultiplier = 1;
+    return config;
+}
+
+std::shared_ptr<Module> BuildTestSoapyModule() {
+    const auto implementations = Registry::ListAvailableModules("soapy");
+    REQUIRE_FALSE(implementations.empty());
+
+    const auto& implementation = implementations.front();
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("soapy",
+                                  implementation.device,
+                                  implementation.runtime,
+                                  implementation.provider,
+                                  module) == Result::SUCCESS);
+    return module;
 }
 
 void RequireSoapyValidationError(const Registry::ModuleRegistration& impl,
@@ -50,6 +158,7 @@ void RequireSoapyValidationError(const Registry::ModuleRegistration& impl,
     REQUIRE(applied.frequency == defaults.frequency);
     REQUIRE(applied.sampleRate == defaults.sampleRate);
     REQUIRE(applied.automaticGain == defaults.automaticGain);
+    REQUIRE(applied.biasTee == defaults.biasTee);
     REQUIRE(applied.numberOfBatches == defaults.numberOfBatches);
     REQUIRE(applied.numberOfTimeSamples == defaults.numberOfTimeSamples);
     REQUIRE(applied.bufferMultiplier == defaults.bufferMultiplier);
@@ -157,6 +266,55 @@ TEST_CASE("Soapy runtime ranges retain stepped capability checks",
     };
     const F32 endpoint = static_cast<F32>(endpointRange.front().minimum());
     REQUIRE(Modules::SoapyRangeContains(endpointRange, endpoint));
+}
+
+TEST_CASE("Soapy Bias-T follows the device lifecycle",
+          "[modules][soapy][devices][bias-tee][lifecycle]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    testSoapyState = {};
+    const auto config = TestDeviceSoapyConfig();
+
+    SECTION("normal shutdown disables antenna power") {
+        const auto module = BuildTestSoapyModule();
+        REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+        const auto writesBeforeDestroy = testSoapyState.biasTeeWrites;
+
+        REQUIRE(module->destroy() == Result::SUCCESS);
+        REQUIRE(writesBeforeDestroy == std::vector<std::string>{"true"});
+        REQUIRE(testSoapyState.biasTeeWrites ==
+                std::vector<std::string>{"true", "false"});
+    }
+
+    SECTION("creation failure disables antenna power") {
+        testSoapyState.failStreamSetup = true;
+
+        const auto module = BuildTestSoapyModule();
+        REQUIRE(module->create("test", config, {}) == Result::ERROR);
+        REQUIRE(testSoapyState.biasTeeWrites ==
+                std::vector<std::string>{"true", "false"});
+    }
+
+    SECTION("optional capability failure does not reject the device") {
+        testSoapyState.throwOnSettingInfo = true;
+
+        const auto module = BuildTestSoapyModule();
+        REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+        REQUIRE(module->destroy() == Result::SUCCESS);
+        REQUIRE(testSoapyState.biasTeeWrites.empty());
+    }
+
+    SECTION("unadvertised Bias-T is not written") {
+        testSoapyState.advertiseBiasTee = false;
+
+        const auto module = BuildTestSoapyModule();
+        REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+        REQUIRE(module->destroy() == Result::SUCCESS);
+        REQUIRE(testSoapyState.biasTeeWrites.empty());
+    }
 }
 
 TEST_CASE("Soapy validation ignores cached device ranges",

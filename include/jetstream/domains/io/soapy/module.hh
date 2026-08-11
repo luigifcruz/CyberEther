@@ -12,13 +12,14 @@ struct Soapy : public Module::Config {
     F32 frequency = 96.9e6;
     F32 sampleRate = 2.0e6;
     bool automaticGain = true;
+    bool biasTee = false;
     U64 numberOfBatches = 8;
     U64 numberOfTimeSamples = 8192;
     U64 bufferMultiplier = 4;
 
     JST_MODULE_TYPE(soapy);
     JST_MODULE_PARAMS(deviceString, streamString, frequency, sampleRate,
-                      automaticGain, numberOfBatches, numberOfTimeSamples,
+                      automaticGain, biasTee, numberOfBatches, numberOfTimeSamples,
                       bufferMultiplier);
 };
 
