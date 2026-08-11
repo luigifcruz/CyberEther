@@ -1158,7 +1158,11 @@ void ClickInteractionUpdate(ImNodesEditorContext& editor)
 
         if (dragging)
         {
-            editor.Panning += ImGui::GetIO().MouseDelta;
+            // Touch input may move the cursor before reporting the press in the same frame.
+            if (!GImNodes->LeftMouseClicked)
+            {
+                editor.Panning += ImGui::GetIO().MouseDelta;
+            }
         }
         else
         {
