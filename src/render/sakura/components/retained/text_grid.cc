@@ -1456,7 +1456,7 @@ struct TextGrid::Impl {
                 handledShortcut = true;
             }
             if (config.editable) {
-                if (controlPressed && !commandPressed && !altPressed &&
+                if (!altPressed &&
                     (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false))) {
                     if (config.onSubmit) {
                         config.onSubmit(textValue());

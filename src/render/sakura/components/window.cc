@@ -43,6 +43,10 @@ void Window::render(const Context& ctx, Child content) {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Private::ToImVec2(Scale(ctx, *config.padding)));
         ++styleVarCount;
     }
+    if (config.borderSize.has_value()) {
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, Scale(ctx, *config.borderSize));
+        ++styleVarCount;
+    }
     I32 styleColorCount = 0;
     if (config.backgroundColor.has_value()) {
         ImGui::PushStyleColor(ImGuiCol_WindowBg, Private::ToImVec4(*config.backgroundColor));
