@@ -105,6 +105,7 @@ struct SoapyImplAccess : Modules::SoapyImpl {
 
 Modules::Soapy NonDefaultSoapyConfig() {
     Modules::Soapy config;
+    config.modulePath = "/unused/soapy/module/path";
     config.deviceString = "driver=validation-must-precede-discovery";
     config.streamString = "bufflen=4096";
     config.frequency = 100.5e6f;
@@ -153,6 +154,7 @@ void RequireSoapyValidationError(const Registry::ModuleRegistration& impl,
 
     const auto defaults = Modules::Soapy{};
     const auto& applied = static_cast<const Modules::Soapy&>(module->config());
+    REQUIRE(applied.modulePath == defaults.modulePath);
     REQUIRE(applied.deviceString == defaults.deviceString);
     REQUIRE(applied.streamString == defaults.streamString);
     REQUIRE(applied.frequency == defaults.frequency);

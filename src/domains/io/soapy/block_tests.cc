@@ -59,6 +59,12 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(block.state == Block::State::Errored);
     REQUIRE_FALSE(block.interfaceOutputs.empty());
     REQUIRE_FALSE(block.interfaceConfigs.empty());
+    REQUIRE(std::none_of(block.interfaceConfigs.begin(),
+                         block.interfaceConfigs.end(),
+                         [](const auto& field) { return field.name == "hintString"; }));
+    REQUIRE(std::none_of(block.interfaceConfigs.begin(),
+                         block.interfaceConfigs.end(),
+                         [](const auto& field) { return field.name == "modulePath"; }));
     REQUIRE(block.outputs.empty());
     const auto biasTee = std::find_if(block.interfaceConfigs.begin(),
                                       block.interfaceConfigs.end(),

@@ -35,6 +35,8 @@ Result SoapyImpl::validate() {
 }
 
 Result SoapyImpl::configure() {
+    JST_CHECK(Modules::SoapyImpl::LoadModulePath(modulePath));
+
     std::string resolvedDeviceString;
     const auto availableDeviceList = Modules::SoapyImpl::ListAvailableDevices(hintString);
     const auto selectFirstAvailable = [&](const Modules::SoapyImpl::DeviceList& devices) -> bool {
@@ -59,6 +61,7 @@ Result SoapyImpl::configure() {
         selectFirstAvailable(availableDeviceList);
     }
 
+    moduleConfig->modulePath = modulePath;
     moduleConfig->deviceString = resolvedDeviceString;
     moduleConfig->streamString = streamString;
     moduleConfig->frequency = frequency;
@@ -90,11 +93,6 @@ Result SoapyImpl::define() {
                                     "Device",
                                     "Select from available SDR devices.",
                                     deviceDropdown));
-
-    JST_CHECK(defineInterfaceConfig("hintString",
-                                    "Device Hint",
-                                    "Filter string for discovering devices.",
-                                    "text"));
 
     JST_CHECK(defineInterfaceConfig("frequency",
                                     "Frequency",
