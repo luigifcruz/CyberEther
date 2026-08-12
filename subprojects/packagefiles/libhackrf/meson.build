@@ -19,38 +19,31 @@ libusb_dep = subproject(
 ).get_variable('libusb_dep')
 
 deps = [libusb_dep]
-private_c_args = []
-inc_dirs = [
-  include_directories('host/libhackrf/src'),
-]
+c = meson.get_compiler('c')
 
-if host_machine.system() == 'windows'
-  private_c_args += ['-DPTW32_STATIC_LIB=1']
-  inc_dirs += [include_directories('meson/windows-pthread-shim')]
+if target_machine.system().startswith('windows') and (c.get_id() == 'msvc' or c.get_id() == 'clang-cl')
+  deps += [
+    subproject(
+      'pthreads4w',
+      required: true,
+    ).get_variable('pthreads4w_dep'),
+  ]
+else
+  deps += [dependency('threads')]
 endif
 
 srcs = files('host/libhackrf/src/hackrf.c')
 
-if host_machine.system() == 'windows'
-  srcs += files('meson/windows-pthread-shim/pthread_shim.c')
-endif
-
 libhackrf_lib = library(
   'hackrf',
   srcs,
-  c_args: private_c_args,
-  include_directories: inc_dirs,
+  include_directories: ['host/libhackrf/src'],
   dependencies: deps,
   install: true,
 )
 
-public_inc_dirs = [include_directories('host/libhackrf/src')]
-if host_machine.system() == 'windows'
-  public_inc_dirs += [include_directories('meson/windows-pthread-shim')]
-endif
-
 libhackrf_dep = declare_dependency(
-  include_directories: public_inc_dirs,
+  include_directories: ['host/libhackrf/src'],
   link_with: libhackrf_lib,
   dependencies: deps,
 )
