@@ -7,30 +7,9 @@
 #include <SoapySDR/Device.hpp>
 #include <SoapySDR/Types.hpp>
 
-#include <algorithm>
-#include <cctype>
+#include <cmath>
 
 namespace Jetstream::Blocks {
-
-using DeviceEntry = std::map<std::string, std::string>;
-using DeviceList = std::map<std::string, DeviceEntry>;
-
-static DeviceList ListAvailableDevices(const std::string& filter) {
-    DeviceList deviceMap;
-    const SoapySDR::Kwargs args = SoapySDR::KwargsFromString(filter);
-
-    try {
-        for (const auto& device : SoapySDR::Device::enumerate(args)) {
-            deviceMap[device.at("label")] = device;
-        }
-    } catch (const std::exception& e) {
-        JST_ERROR("[BLOCK_SOAPY] Failed to enumerate devices: {}", e.what());
-    } catch (...) {
-        JST_ERROR("[BLOCK_SOAPY] Failed to enumerate devices.");
-    }
-
-    return deviceMap;
-}
 
 struct SoapyImpl : public Block::Impl, public DynamicConfig<Blocks::Soapy> {
     Result validate() override;
@@ -47,18 +26,8 @@ struct SoapyImpl : public Block::Impl, public DynamicConfig<Blocks::Soapy> {
 Result SoapyImpl::validate() {
     const auto& config = *candidate();
 
-    if (config.numberOfBatches == 0) {
-        JST_ERROR("[BLOCK_SOAPY] Number of batches cannot be zero.");
-        return Result::ERROR;
-    }
-
-    if (config.numberOfTimeSamples == 0) {
-        JST_ERROR("[BLOCK_SOAPY] Number of time samples cannot be zero.");
-        return Result::ERROR;
-    }
-
-    if (config.bufferMultiplier == 0) {
-        JST_ERROR("[BLOCK_SOAPY] Buffer multiplier cannot be zero.");
+    if (!std::isfinite(config.frequencyStep) || config.frequencyStep <= 0.0f) {
+        JST_ERROR("[BLOCK_SOAPY] Frequency step must be finite and positive.");
         return Result::ERROR;
     }
 
@@ -66,9 +35,11 @@ Result SoapyImpl::validate() {
 }
 
 Result SoapyImpl::configure() {
+    JST_CHECK(Modules::SoapyImpl::LoadModulePath(modulePath));
+
     std::string resolvedDeviceString;
-    const auto availableDeviceList = ListAvailableDevices(hintString);
-    const auto selectFirstAvailable = [&](const DeviceList& devices) -> bool {
+    const auto availableDeviceList = Modules::SoapyImpl::ListAvailableDevices(hintString);
+    const auto selectFirstAvailable = [&](const Modules::SoapyImpl::DeviceList& devices) -> bool {
         if (devices.empty()) {
             return false;
         }
@@ -82,7 +53,7 @@ Result SoapyImpl::configure() {
     if (const auto it = availableDeviceList.find(deviceString); it != availableDeviceList.end()) {
         resolvedDeviceString = SoapySDR::KwargsToString(it->second);
     } else if (!deviceString.empty()) {
-        const auto explicitDeviceList = ListAvailableDevices(deviceString);
+        const auto explicitDeviceList = Modules::SoapyImpl::ListAvailableDevices(deviceString);
         if (!selectFirstAvailable(explicitDeviceList)) {
             selectFirstAvailable(availableDeviceList);
         }
@@ -90,25 +61,13 @@ Result SoapyImpl::configure() {
         selectFirstAvailable(availableDeviceList);
     }
 
-    // HackRF supports sample rates from 1 MHz to 20 MHz; enforce minimum of 1 MHz.
-    const auto isHackRF = [](std::string text) {
-        std::transform(text.begin(), text.end(), text.begin(),
-                       [](unsigned char c) { return std::tolower(c); });
-        return text.find("hackrf") != std::string::npos;
-    };
-    if (isHackRF(deviceString) || isHackRF(resolvedDeviceString)) {
-        if (sampleRate < 1.0e6f) {
-            sampleRate = 1.0e6f;
-        } else if (sampleRate > 20.0e6f) {
-            sampleRate = 20.0e6f;
-        }
-    }
-
+    moduleConfig->modulePath = modulePath;
     moduleConfig->deviceString = resolvedDeviceString;
     moduleConfig->streamString = streamString;
     moduleConfig->frequency = frequency;
     moduleConfig->sampleRate = sampleRate;
     moduleConfig->automaticGain = automaticGain;
+    moduleConfig->biasTee = biasTee;
     moduleConfig->numberOfBatches = numberOfBatches;
     moduleConfig->numberOfTimeSamples = numberOfTimeSamples;
     moduleConfig->bufferMultiplier = bufferMultiplier;
@@ -117,12 +76,15 @@ Result SoapyImpl::configure() {
 }
 
 Result SoapyImpl::define() {
+    const auto& config = *candidate();
+
     JST_CHECK(defineInterfaceOutput("signal",
                                     "Output",
                                     "The output buffer containing samples from the SDR device."));
 
     std::vector<std::string> deviceOptions;
-    for (const auto& [label, _] : ListAvailableDevices(hintString)) {
+    for (const auto& [label, _] :
+         Modules::SoapyImpl::ListAvailableDevices(config.hintString)) {
         deviceOptions.push_back(jst::fmt::format("{}({})", label, label));
     }
     deviceDropdown = jst::fmt::format("dropdown:{}", jst::fmt::join(deviceOptions, ","));
@@ -132,15 +94,12 @@ Result SoapyImpl::define() {
                                     "Select from available SDR devices.",
                                     deviceDropdown));
 
-    JST_CHECK(defineInterfaceConfig("hintString",
-                                    "Device Hint",
-                                    "Filter string for discovering devices.",
-                                    "text"));
-
     JST_CHECK(defineInterfaceConfig("frequency",
                                     "Frequency",
                                     "Tuner frequency.",
-                                    "float:MHz:3:frequencyStep"));
+                                    std::isfinite(config.frequencyStep) && config.frequencyStep > 0.0f
+                                        ? "float:MHz:3:frequencyStep"
+                                        : "float:MHz:3"));
 
     JST_CHECK(defineInterfaceConfig("sampleRate",
                                     "Sample Rate",
@@ -152,20 +111,25 @@ Result SoapyImpl::define() {
                                     "Enable automatic gain control.",
                                     "bool"));
 
+    JST_CHECK(defineInterfaceConfig("biasTee",
+                                    "Bias-T",
+                                    "Enable antenna power when supported by the selected device.",
+                                    "bool"));
+
     JST_CHECK(defineInterfaceConfig("numberOfBatches",
                                     "Batches",
                                     "Number of batches in output buffer.",
-                                    "int:batches"));
+                                    "uint:batches"));
 
     JST_CHECK(defineInterfaceConfig("numberOfTimeSamples",
                                     "Samples",
                                     "Number of samples per batch.",
-                                    "int:samples"));
+                                    "uint:samples"));
 
     JST_CHECK(defineInterfaceConfig("bufferMultiplier",
                                     "Buffer Multiplier",
                                     "Internal buffer size multiplier.",
-                                    "int:x"));
+                                    "uint:x"));
 
     JST_CHECK(defineInterfaceMetric("bufferHealth",
                                     "Buffer Health",
@@ -204,6 +168,6 @@ Result SoapyImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(SoapyImpl);
+JST_REGISTER_BLOCK(SoapyImpl, {"soapy"});
 
 }  // namespace Jetstream::Blocks

@@ -1,8 +1,12 @@
 #include "module_impl.hh"
 
-#include <any>
+#include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numeric>
+
+#include <jetstream/tools/numeric.hh>
+#include <jetstream/memory/axis.hh>
 
 #include "miniaudio.h"
 
@@ -12,6 +16,55 @@
 
 namespace Jetstream::Modules {
 
+namespace {
+
+bool DeriveBufferSizes(const U64 inputFrameCount,
+                       const U32 channelCount,
+                       const U32 inputSampleRate,
+                       const U32 outputSampleRate,
+                       U64& outputSize,
+                       U64& circularBufferSize) {
+    outputSize = 0;
+    circularBufferSize = 0;
+    if (inputSampleRate == 0 || outputSampleRate == 0) {
+        return false;
+    }
+
+    U64 outputWhole = 0;
+    U64 outputRemainder = 0;
+    if (!detail::CheckedMultiply(inputFrameCount / inputSampleRate,
+                                 outputSampleRate,
+                                 outputWhole) ||
+        !detail::CheckedMultiply(inputFrameCount % inputSampleRate,
+                                 outputSampleRate,
+                                 outputRemainder)) {
+        return false;
+    }
+
+    const U64 roundedRemainder = outputRemainder == 0 ?
+        0 : 1 + (outputRemainder - 1) / inputSampleRate;
+    U64 candidateOutputFrameCount = 0;
+    U64 bufferedInputFrameCount = 0;
+    if (!detail::CheckedAdd(outputWhole,
+                            roundedRemainder,
+                            candidateOutputFrameCount) ||
+        !detail::CheckedMultiply(inputFrameCount, 20,
+                                 bufferedInputFrameCount)) {
+        return false;
+    }
+
+    const U64 circularBufferFrameCount =
+        std::max(bufferedInputFrameCount, candidateOutputFrameCount);
+    return detail::CheckedMultiply(candidateOutputFrameCount,
+                                   channelCount,
+                                   outputSize) &&
+           detail::CheckedMultiply(circularBufferFrameCount,
+                                   channelCount,
+                                   circularBufferSize);
+}
+
+}  // namespace
+
 AudioImpl::AudioImpl() = default;
 AudioImpl::~AudioImpl() = default;
 
@@ -20,6 +73,7 @@ struct AudioImpl::Impl {
     ma_device deviceCtx;
     ma_resampler_config resamplerConfig;
     ma_resampler resamplerCtx;
+    bool resamplerInitialized = false;
 
     static void callback(ma_device* pDevice, void* pOutput, const void* pInput,
                          ma_uint32 frameCount);
@@ -114,9 +168,12 @@ std::vector<std::pair<ma_device_id, std::string>> AudioImpl::Impl::GetAvailableD
 void AudioImpl::Impl::callback(ma_device* pDevice, void* pOutput, const void*,
                                ma_uint32 frameCount) {
     auto* audioCircularBuffer = reinterpret_cast<Tools::CircularBuffer<F32>*>(pDevice->pUserData);
+    const U64 sampleCount = static_cast<U64>(frameCount) *
+                            pDevice->playback.channels;
 
-    if (frameCount < audioCircularBuffer->getOccupancy()) {
-        audioCircularBuffer->get(reinterpret_cast<F32*>(pOutput), frameCount);
+    if (audioCircularBuffer->size() >= sampleCount) {
+        (void)audioCircularBuffer->pop(
+            reinterpret_cast<F32*>(pOutput), sampleCount);
     }
 }
 
@@ -133,16 +190,110 @@ AudioImpl::DeviceList AudioImpl::ListAvailableDevices() {
 
 Result AudioImpl::validate() {
     const auto& config = *candidate();
+    validatedInSampleRate = 0;
+    validatedOutSampleRate = 0;
+    validatedOutputSize = 0;
+    validatedOutputSizeBytes = 0;
+    validatedCircularBufferSize = 0;
+    validatedCircularBufferSizeBytes = 0;
+    validatedSampleAxis = 0;
+    validatedBatchAxis.reset();
+    validatedChannelAxis.reset();
+    validatedChannelCount = 1;
 
-    if (config.inSampleRate <= 0) {
-        JST_ERROR("[MODULE_AUDIO] Input sample rate must be positive.");
+    constexpr F64 maxSampleRate =
+        static_cast<F64>(std::numeric_limits<U32>::max());
+
+    if (!std::isfinite(config.inSampleRate) ||
+        config.inSampleRate < 1.0f ||
+        static_cast<F64>(config.inSampleRate) > maxSampleRate) {
+        JST_ERROR("[MODULE_AUDIO] Input sample rate must be finite and within "
+                  "the U32 range.");
         return Result::ERROR;
     }
 
-    if (config.outSampleRate <= 0) {
-        JST_ERROR("[MODULE_AUDIO] Output sample rate must be positive.");
+    if (!std::isfinite(config.outSampleRate) ||
+        config.outSampleRate < 1.0f ||
+        static_cast<F64>(config.outSampleRate) > maxSampleRate) {
+        JST_ERROR("[MODULE_AUDIO] Output sample rate must be finite and within "
+                  "the U32 range.");
         return Result::ERROR;
     }
+
+    const U32 candidateInSampleRate = static_cast<U32>(config.inSampleRate);
+    const U32 candidateOutSampleRate = static_cast<U32>(config.outSampleRate);
+
+    if (!inputs().contains("buffer")) {
+        validatedInSampleRate = candidateInSampleRate;
+        validatedOutSampleRate = candidateOutSampleRate;
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputBuffer = inputs().at("buffer").tensor;
+    if (!inputBuffer.validShape() || inputBuffer.size() == 0) {
+        validatedInSampleRate = candidateInSampleRate;
+        validatedOutSampleRate = candidateOutSampleRate;
+        return Result::SUCCESS;
+    }
+
+    SignalAxes axes;
+    if (ResolveSignalAxes(inputBuffer, axes) != Result::SUCCESS) {
+        JST_ERROR("[MODULE_AUDIO] Input must contain valid signal axis metadata.");
+        return Result::ERROR;
+    }
+    const U64 candidateChannelCount = axes.channel ?
+        inputBuffer.shape(*axes.channel) : 1;
+    if (candidateChannelCount != 1 && candidateChannelCount != 2) {
+        JST_ERROR("[MODULE_AUDIO] Input must contain one or two audio channels.");
+        return Result::ERROR;
+    }
+    const Index expectedRank = 1 + static_cast<Index>(axes.batch.has_value()) +
+                               static_cast<Index>(axes.channel.has_value());
+    if (inputBuffer.rank() != expectedRank) {
+        JST_ERROR("[MODULE_AUDIO] Input must contain only a sample axis and "
+                  "optional batch and channel axes.");
+        return Result::ERROR;
+    }
+
+    const U32 candidateChannelCountU32 =
+        static_cast<U32>(candidateChannelCount);
+    const U64 inputFrameCount = inputBuffer.size() / candidateChannelCount;
+    U64 outputSize = 0;
+    U64 circularBufferSize = 0;
+    if (!DeriveBufferSizes(inputFrameCount,
+                           candidateChannelCountU32,
+                           candidateInSampleRate,
+                           candidateOutSampleRate,
+                           outputSize,
+                           circularBufferSize)) {
+        JST_ERROR("[MODULE_AUDIO] Output or circular buffer size exceeds "
+                  "the supported range.");
+        return Result::ERROR;
+    }
+
+    U64 outputSizeBytes = 0;
+    U64 circularBufferSizeBytes = 0;
+    if (!detail::CheckedMultiply(outputSize,
+                                 static_cast<U64>(sizeof(F32)),
+                                 outputSizeBytes) ||
+        !detail::CheckedMultiply(circularBufferSize,
+                                 static_cast<U64>(sizeof(F32)),
+                                 circularBufferSizeBytes)) {
+        JST_ERROR("[MODULE_AUDIO] Output or circular buffer layout exceeds "
+                  "the supported range.");
+        return Result::ERROR;
+    }
+
+    validatedInSampleRate = candidateInSampleRate;
+    validatedOutSampleRate = candidateOutSampleRate;
+    validatedOutputSize = outputSize;
+    validatedOutputSizeBytes = outputSizeBytes;
+    validatedCircularBufferSize = circularBufferSize;
+    validatedCircularBufferSizeBytes = circularBufferSizeBytes;
+    validatedSampleAxis = *axes.sample;
+    validatedBatchAxis = axes.batch;
+    validatedChannelAxis = axes.channel;
+    validatedChannelCount = candidateChannelCountU32;
 
     return Result::SUCCESS;
 }
@@ -157,32 +308,18 @@ Result AudioImpl::define() {
 
 Result AudioImpl::create() {
     pimpl = std::make_unique<Impl>();
-
-    const auto& inputBuffer = inputs().at("buffer").tensor;
-
-    // Derive the effective input sample rate from the incoming buffer when available so
-    // the resampler ratio always matches the actual source rate. Relying solely on the
-    // static config causes a sampling mismatch (slow/distorted audio) when the SDR runs
-    // at a different rate than configured. The config member is left untouched so that
-    // reconfigure() comparisons remain stable.
-    F32 effectiveInSampleRate = inSampleRate;
-    if (inputBuffer.hasAttribute("sampleRate")) {
-        const F32 bufferSampleRate = std::any_cast<F32>(inputBuffer.attribute("sampleRate"));
-        if (bufferSampleRate > 0.0f && bufferSampleRate != effectiveInSampleRate) {
-            JST_DEBUG("[MODULE_AUDIO] Using input buffer sample rate ({:.1f} kHz) "
-                      "instead of configured value ({:.1f} kHz).",
-                      bufferSampleRate / 1e3f, inSampleRate / 1e3f);
-            effectiveInSampleRate = bufferSampleRate;
-        }
-    }
+    sampleAxis = validatedSampleAxis;
+    batchAxis = validatedBatchAxis;
+    channelAxis = validatedChannelAxis;
+    channelCount = validatedChannelCount;
 
     // Configure audio resampler.
 
     pimpl->resamplerConfig = ma_resampler_config_init(
         ma_format_f32,
-        1,
-        static_cast<U32>(effectiveInSampleRate),
-        static_cast<U32>(outSampleRate),
+        channelCount,
+        validatedInSampleRate,
+        validatedOutSampleRate,
         ma_resample_algorithm_linear
     );
     pimpl->resamplerConfig.linear.lpfOrder = 8;
@@ -191,6 +328,7 @@ Result AudioImpl::create() {
         JST_ERROR("[MODULE_AUDIO] Failed to create audio resampler.");
         return Result::ERROR;
     }
+    pimpl->resamplerInitialized = true;
 
     // Get available audio devices.
 
@@ -230,14 +368,15 @@ Result AudioImpl::create() {
     pimpl->deviceConfig.playback.pDeviceID = (!foundConfigDevice || useDefaultDevice) ?
                                               nullptr : &selectedDeviceId;
     pimpl->deviceConfig.playback.format = ma_format_f32;
-    pimpl->deviceConfig.playback.channels = 1;
-    pimpl->deviceConfig.sampleRate = static_cast<U32>(outSampleRate);
+    pimpl->deviceConfig.playback.channels = channelCount;
+    pimpl->deviceConfig.sampleRate = validatedOutSampleRate;
     pimpl->deviceConfig.dataCallback = Impl::callback;
     pimpl->deviceConfig.pUserData = &circularBuffer;
 
     if (ma_device_init(nullptr, &pimpl->deviceConfig, &pimpl->deviceCtx) != MA_SUCCESS) {
         JST_ERROR("[MODULE_AUDIO] Failed to open audio device.");
         ma_resampler_uninit(&pimpl->resamplerCtx, nullptr);
+        pimpl->resamplerInitialized = false;
         return Result::INCOMPLETE;
     }
 
@@ -247,6 +386,7 @@ Result AudioImpl::create() {
         JST_ERROR("[MODULE_AUDIO] Failed to start playback device.");
         ma_device_uninit(&pimpl->deviceCtx);
         ma_resampler_uninit(&pimpl->resamplerCtx, nullptr);
+        pimpl->resamplerInitialized = false;
         return Result::ERROR;
     }
 
@@ -255,12 +395,22 @@ Result AudioImpl::create() {
 
     // Allocate resampler scratch buffer.
 
-    const U64 outputSize = static_cast<U64>(inputBuffer.size() * (outSampleRate / effectiveInSampleRate));
-    JST_CHECK(buffer.create(device(), DataType::F32, {outputSize}));
+    JST_CHECK(buffer.create(device(), DataType::F32, {validatedOutputSize}));
+    const Tensor& input = inputs().at("buffer").tensor;
+    const U64 batchStride = input.shape(sampleAxis) * channelCount;
+    gatherInput = input.stride(sampleAxis) != channelCount ||
+                  (channelAxis && input.stride(*channelAxis) != 1) ||
+                  (batchAxis && input.stride(*batchAxis) != batchStride);
+    if (gatherInput) {
+        orderedInput.resize(input.size());
+    } else {
+        orderedInput.clear();
+    }
+    pendingInput.clear();
 
     // Initialize circular buffer.
 
-    circularBuffer.resize(inputBuffer.size() * 20);
+    JST_CHECK(circularBuffer.resize(validatedCircularBufferSize));
 
     return Result::SUCCESS;
 }
@@ -268,7 +418,9 @@ Result AudioImpl::create() {
 Result AudioImpl::destroy() {
     if (pimpl) {
         ma_device_uninit(&pimpl->deviceCtx);
-        ma_resampler_uninit(&pimpl->resamplerCtx, nullptr);
+        if (pimpl->resamplerInitialized) {
+            ma_resampler_uninit(&pimpl->resamplerCtx, nullptr);
+        }
         pimpl.reset();
     }
 
@@ -302,23 +454,87 @@ const std::string& AudioImpl::getDeviceName() const {
 Result AudioImpl::resample() {
     const auto& input = inputs().at("buffer").tensor;
 
-    ma_uint64 frameCountIn = input.size();
-    ma_uint64 frameCountOut = buffer.size();
-
-    ma_result result = ma_resampler_process_pcm_frames(
-        &pimpl->resamplerCtx,
-        input.data(),
-        &frameCountIn,
-        buffer.data(),
-        &frameCountOut
-    );
-
-    if (result != MA_SUCCESS) {
-        JST_ERROR("[MODULE_AUDIO] Failed to resample audio signal.");
-        return Result::ERROR;
+    const F32* inputData = input.data<F32>();
+    if (gatherInput) {
+        U64 orderedIndex = 0;
+        const U64 batchCount = batchAxis ? input.shape(*batchAxis) : 1;
+        const U64 batchStride = batchAxis ? input.stride(*batchAxis) : 0;
+        const U64 sampleCount = input.shape(sampleAxis);
+        const U64 sampleStride = input.stride(sampleAxis);
+        const U64 channelStride = channelAxis ? input.stride(*channelAxis) : 0;
+        for (U64 batch = 0; batch < batchCount; ++batch) {
+            for (U64 sample = 0; sample < sampleCount; ++sample) {
+                for (U64 channel = 0; channel < channelCount; ++channel) {
+                    orderedInput[orderedIndex++] = inputData[
+                        batch * batchStride + sample * sampleStride +
+                        channel * channelStride];
+                }
+            }
+        }
     }
 
-    circularBuffer.put(reinterpret_cast<F32*>(buffer.data()), frameCountOut);
+    const F32* currentInput = gatherInput ? orderedInput.data() : inputData;
+    const U64 currentFrameCount = input.size() / channelCount;
+    const U64 outputFrameCapacity = buffer.size() / channelCount;
+    U64 outputFrameCount = 0;
+
+    const auto processFrames = [&](const F32* frames,
+                                   const U64 frameCount,
+                                   U64& consumedFrameCount) -> Result {
+        ma_uint64 frameCountIn = frameCount;
+        ma_uint64 frameCountOut = outputFrameCapacity - outputFrameCount;
+        F32* output = reinterpret_cast<F32*>(buffer.data()) +
+                      outputFrameCount * channelCount;
+        const ma_result result = ma_resampler_process_pcm_frames(
+            &pimpl->resamplerCtx,
+            frames,
+            &frameCountIn,
+            output,
+            &frameCountOut
+        );
+        if (result != MA_SUCCESS) {
+            JST_ERROR("[MODULE_AUDIO] Failed to resample audio signal.");
+            return Result::ERROR;
+        }
+
+        consumedFrameCount = frameCountIn;
+        outputFrameCount += frameCountOut;
+        return Result::SUCCESS;
+    };
+
+    if (!pendingInput.empty()) {
+        const U64 pendingFrameCount = pendingInput.size() / channelCount;
+        U64 consumedPendingFrameCount = 0;
+        JST_CHECK(processFrames(pendingInput.data(), pendingFrameCount,
+                                consumedPendingFrameCount));
+
+        const U64 consumedPendingSampleCount =
+            consumedPendingFrameCount * channelCount;
+        pendingInput.erase(pendingInput.begin(),
+                           pendingInput.begin() + consumedPendingSampleCount);
+        if (!pendingInput.empty()) {
+            pendingInput.insert(pendingInput.end(), currentInput,
+                                currentInput + input.size());
+            JST_CHECK(circularBuffer.push(
+                reinterpret_cast<F32*>(buffer.data()),
+                outputFrameCount * channelCount));
+            return Result::SUCCESS;
+        }
+    }
+
+    U64 consumedCurrentFrameCount = 0;
+    JST_CHECK(processFrames(currentInput, currentFrameCount,
+                            consumedCurrentFrameCount));
+    if (consumedCurrentFrameCount < currentFrameCount) {
+        const U64 consumedCurrentSampleCount =
+            consumedCurrentFrameCount * channelCount;
+        pendingInput.assign(currentInput + consumedCurrentSampleCount,
+                            currentInput + input.size());
+    }
+
+    JST_CHECK(circularBuffer.push(
+        reinterpret_cast<F32*>(buffer.data()),
+        outputFrameCount * channelCount));
 
     return Result::SUCCESS;
 }
