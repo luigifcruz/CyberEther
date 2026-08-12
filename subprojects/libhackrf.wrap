@@ -1,0 +1,9 @@
+[wrap-file]
+directory = hackrf-2026.01.3
+source_url = https://github.com/greatscottgadgets/hackrf/archive/refs/tags/v2026.01.3.tar.gz
+source_filename = hackrf-2026.01.3.tar.gz
+source_hash = 48238f3a21189fa8cbe67838584cc045b9e5433767db8c9c30c1da02a1489f2c
+patch_directory = libhackrf
+
+[provide]
+libhackrf = libhackrf_dep
