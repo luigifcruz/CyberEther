@@ -8,6 +8,7 @@
 #include <exception>
 #include <mutex>
 #include <optional>
+#include <regex>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -18,13 +19,25 @@
 
 namespace Jetstream {
 
-#if defined(JETSTREAM_LOADER_VELOPACK_AVAILABLE)
 namespace {
 
-std::vector<std::string> restartArguments;
+std::string NormalizeGithubReleaseNotes(std::string notes) {
+    static const std::regex pullRequestUrl(
+        R"((https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/([0-9]+)))");
+    static const std::regex compareUrl(
+        R"((https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/compare/([^ \t\r\n)]+)))");
+    static const std::regex mention(R"((^|[ \t\r\n])@([A-Za-z0-9-]+))");
 
+    notes = std::regex_replace(notes, pullRequestUrl, "[#$2]($1)");
+    notes = std::regex_replace(notes, compareUrl, "[$2]($1)");
+    return std::regex_replace(notes, mention, "$1[@$2](https://github.com/$2)");
 }
+
+#if defined(JETSTREAM_LOADER_VELOPACK_AVAILABLE)
+std::vector<std::string> restartArguments;
 #endif
+
+}  // namespace
 
 struct Updater::Impl {
     mutable std::mutex mutex;
@@ -85,7 +98,7 @@ Updater::Updater() : pimpl(std::make_shared<Impl>()) {
             pimpl->state.ready = true;
             pimpl->state.progress = 1.0f;
             pimpl->state.version = pimpl->pending->Version;
-            pimpl->state.releaseNotes = pimpl->pending->NotesMarkdown;
+            pimpl->state.releaseNotes = NormalizeGithubReleaseNotes(pimpl->pending->NotesMarkdown);
             pimpl->state.message = "A downloaded update is ready to install.";
         }
     } catch (...) {
@@ -163,7 +176,7 @@ void Updater::check() {
             if (update.has_value()) {
                 impl->state.available = true;
                 impl->state.version = update->TargetFullRelease.Version;
-                impl->state.releaseNotes = update->TargetFullRelease.NotesMarkdown;
+                impl->state.releaseNotes = NormalizeGithubReleaseNotes(update->TargetFullRelease.NotesMarkdown);
                 impl->state.message = "A new CyberEther release is available.";
                 impl->update = std::move(update);
             } else {
