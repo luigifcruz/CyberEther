@@ -1,0 +1,75 @@
+diff --git a/libusb/os/emscripten_webusb.cpp b/libusb/os/emscripten_webusb.cpp
+index 026594f1..a0090890 100644
+--- a/libusb/os/emscripten_webusb.cpp
++++ b/libusb/os/emscripten_webusb.cpp
+@@ -30,6 +30,7 @@ static_assert((__EMSCRIPTEN_major__ * 100 * 100 + __EMSCRIPTEN_minor__ * 100 +
+ #include <emscripten.h>
+ #include <emscripten/val.h>
+ 
++#include <optional>
+ #include <type_traits>
+ #include <utility>
+ 
+@@ -58,7 +59,9 @@ EM_JS(EM_VAL, usbi_em_promise_catch, (EM_VAL handle), {
+ 	promise = promise.then(
+ 		value => ({error : 0, value}),
+ 		error => {
+-			console.error(error);
++			if (!(error instanceof DOMException && error.name === 'AbortError')) {
++				console.error(error);
++			}
+ 			let errorCode = -99; // LIBUSB_ERROR_OTHER
+ 			if (error instanceof DOMException) {
+ 				const ERROR_CODES = {
+@@ -91,6 +94,24 @@ EM_JS(EM_VAL, usbi_em_promise_catch, (EM_VAL handle), {
+ 	return Emval.toHandle(promise);
+ });
+ 
++EM_JS(EM_VAL, usbi_em_make_cancellable_promise, (usbi_transfer* transfer, EM_VAL handle), {
++	const promise = Emval.toValue(handle);
++	let cancel;
++	const cancellation = new Promise(resolve => cancel = resolve);
++	const cancellations = Module.libusbTransferCancellations ||=
++		new Map();
++	cancellations.set(transfer, cancel);
++	return Emval.toHandle(
++		Promise.race([promise, cancellation]).finally(() => cancellations.delete(transfer)));
++});
++
++EM_JS(bool, usbi_em_cancel_promise, (usbi_transfer* transfer), {
++	const cancel = Module.libusbTransferCancellations?.get(transfer);
++	if (!cancel) return false;
++	cancel();
++	return true;
++});
++
+ EM_JS(void, usbi_em_copy_from_dataview, (void* dst, EM_VAL src), {
+ 	src = Emval.toValue(src);
+ 	src = new Uint8Array(src.buffer, src.byteOffset, src.byteLength);
+@@ -793,6 +814,10 @@ int em_submit_transfer(usbi_transfer* itransfer) {
+ 			default:
+ 				return LIBUSB_ERROR_NOT_SUPPORTED;
+ 		}
++		auto cancellable = val::take_ownership(
++			usbi_em_make_cancellable_promise(itransfer, transfer_promise.as_handle()));
++		transfer_promise = std::move(cancellable);
++
+ 		// Not a coroutine because we don't want to block on this promise, just
+ 		// schedule an asynchronous callback.
+ 		promiseThen(CaughtPromise(std::move(transfer_promise)),
+@@ -809,7 +834,14 @@ void em_clear_transfer_priv(usbi_transfer* itransfer) {
+ }
+ 
+ int em_cancel_transfer(usbi_transfer* itransfer) {
+-	return LIBUSB_SUCCESS;
++	// libusb sets this after the backend returns, while resolving the cancellation
++	// promise schedules its completion callback for a later microtask.
++	itransfer->state_flags |= USBI_TRANSFER_CANCELLING;
++	return runOnMain([itransfer] {
++		return usbi_em_cancel_promise(itransfer)
++			? LIBUSB_SUCCESS
++			: LIBUSB_ERROR_NOT_FOUND;
++	});
+ }
+ 
+ int em_handle_transfer_completion(usbi_transfer* itransfer) {
