@@ -1,3 +1,6 @@
+#include <limits>
+
+#include <jetstream/memory/macros.hh>
 #include <jetstream/runtime_context_native_cpu.hh>
 #include <jetstream/scheduler_context.hh>
 #include <jetstream/module_context.hh>
@@ -11,21 +14,31 @@ struct SoapyImplNativeCpu : public SoapyImpl,
                             public NativeCpuRuntimeContext,
                             public Scheduler::Context {
  public:
-    Result create() final;
+    Result validate() final;
 
     Result computeSubmit() override;
     Result hasPendingCompute() override;
 };
 
-Result SoapyImplNativeCpu::create() {
-    JST_CHECK(SoapyImpl::create());
+Result SoapyImplNativeCpu::validate() {
+    JST_CHECK(SoapyImpl::validate());
+
+    U64 alignedOutputSize = 0;
+    if (!detail::CheckedPageAlignedSize(validatedOutputSizeBytes,
+                                        alignedOutputSize) ||
+        alignedOutputSize > std::numeric_limits<std::size_t>::max() ||
+        validatedInternalSizeBytes > std::numeric_limits<std::size_t>::max()) {
+        JST_ERROR("[MODULE_SOAPY_NATIVE_CPU] Output or internal buffer "
+                  "allocation size is too large.");
+        return Result::ERROR;
+    }
 
     return Result::SUCCESS;
 }
 
 Result SoapyImplNativeCpu::hasPendingCompute() {
-    if (circularBuffer.getOccupancy() < buffer.size()) {
-        return circularBuffer.waitBufferOccupancy(buffer.size());
+    if (circularBuffer.size() < buffer.size()) {
+        return circularBuffer.waitForSize(buffer.size());
     }
 
     return Result::SUCCESS;
@@ -36,11 +49,12 @@ Result SoapyImplNativeCpu::computeSubmit() {
         return Result::ERROR;
     }
 
-    if (circularBuffer.getOccupancy() < buffer.size()) {
+    if (circularBuffer.size() < buffer.size()) {
         return Result::YIELD;
     }
 
-    circularBuffer.get(reinterpret_cast<CF32*>(buffer.data()), buffer.size());
+    JST_CHECK(circularBuffer.pop(
+        reinterpret_cast<CF32*>(buffer.data()), buffer.size()));
 
     return Result::SUCCESS;
 }

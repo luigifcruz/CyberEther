@@ -1,5 +1,7 @@
 #include <cstring>
+#include <limits>
 
+#include <jetstream/memory/macros.hh>
 #include <jetstream/runtime_context_native_cpu.hh>
 #include <jetstream/scheduler_context.hh>
 #include <jetstream/module_context.hh>
@@ -13,6 +15,7 @@ struct PadImplNativeCpu : public PadImpl,
                           public NativeCpuRuntimeContext,
                           public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeSubmit() override;
@@ -24,21 +27,45 @@ struct PadImplNativeCpu : public PadImpl,
     std::function<Result()> kernel;
 };
 
+Result PadImplNativeCpu::validate() {
+    JST_CHECK(PadImpl::validate());
+
+    if (!inputs().contains("unpadded")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("unpadded").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::F32 &&
+        inputTensor.dtype() != DataType::CF32) {
+        JST_ERROR("[MODULE_PAD_NATIVE_CPU] Unsupported data type '{}'.",
+                  inputTensor.dtype());
+        return Result::ERROR;
+    }
+
+    U64 alignedOutputSize = 0;
+    if (!detail::CheckedPageAlignedSize(validatedOutputSizeBytes, alignedOutputSize) ||
+        alignedOutputSize > std::numeric_limits<std::size_t>::max()) {
+        JST_ERROR("[MODULE_PAD_NATIVE_CPU] Output allocation size is too large.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 Result PadImplNativeCpu::create() {
     JST_CHECK(PadImpl::create());
 
-    if (input.dtype() == DataType::F32 && output.dtype() == DataType::F32) {
+    if (input.dtype() == DataType::F32) {
         kernel = [this]() { return kernelF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (input.dtype() == DataType::CF32 && output.dtype() == DataType::CF32) {
+    } else {
         kernel = [this]() { return kernelCF32(); };
-        return Result::SUCCESS;
     }
 
-    JST_ERROR("[MODULE_PAD_NATIVE_CPU] Unsupported data type '{}'.", input.dtype());
-    return Result::ERROR;
+    return Result::SUCCESS;
 }
 
 Result PadImplNativeCpu::computeSubmit() {
@@ -54,12 +81,12 @@ Result PadImplNativeCpu::kernelF32() {
 
     // Calculate the number of slices before the axis and the size of each slice.
     U64 outerSize = 1;
-    for (U64 i = 0; i < axis; ++i) {
+    for (U64 i = 0; i < resolvedAxis; ++i) {
         outerSize *= inShape[i];
     }
 
     U64 innerSize = 1;
-    for (U64 i = axis + 1; i < rank; ++i) {
+    for (U64 i = resolvedAxis + 1; i < rank; ++i) {
         innerSize *= inShape[i];
     }
 
@@ -88,12 +115,12 @@ Result PadImplNativeCpu::kernelCF32() {
 
     // Calculate the number of slices before the axis and the size of each slice.
     U64 outerSize = 1;
-    for (U64 i = 0; i < axis; ++i) {
+    for (U64 i = 0; i < resolvedAxis; ++i) {
         outerSize *= inShape[i];
     }
 
     U64 innerSize = 1;
-    for (U64 i = axis + 1; i < rank; ++i) {
+    for (U64 i = resolvedAxis + 1; i < rank; ++i) {
         innerSize *= inShape[i];
     }
 

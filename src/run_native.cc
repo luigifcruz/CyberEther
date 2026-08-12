@@ -1,28 +1,82 @@
 #include <algorithm>
+#include <atomic>
+#include <cctype>
+#include <chrono>
+#include <cmath>
 #include <cstdio>
+#include <limits>
+#include <optional>
+#include <string_view>
 #include <thread>
+#include <vector>
 
 #include "jetstream/run.hh"
 #include "jetstream/config.hh"
 #include "jetstream/detail/instance_remote_supervisor.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/instance_remote.hh"
+#include "jetstream/platform.hh"
 #include "jetstream/plugin.hh"
+#include "jetstream/registry.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/benchmark.hh"
+
+#include "updater.hh"
 
 namespace Jetstream {
 
 namespace {
 
+std::atomic_flag shutdownRequested = ATOMIC_FLAG_INIT;
+
+void HandleInterrupt() noexcept {
+    constexpr char ShutdownMessage[] =
+        "\n[CYBERETHER] Shutdown requested. Press Ctrl+C again to force termination.\n";
+    constexpr char ForceShutdownMessage[] =
+        "\n[CYBERETHER] Forcing immediate shutdown.\n";
+
+    if (!shutdownRequested.test_and_set(std::memory_order_relaxed)) {
+        Platform::WriteInterruptMessage(ShutdownMessage, sizeof(ShutdownMessage) - 1);
+        return;
+    }
+
+    Platform::WriteInterruptMessage(ForceShutdownMessage, sizeof(ForceShutdownMessage) - 1);
+    Platform::ForceTerminate(130);
+}
+
+class InterruptHandlerGuard {
+ public:
+    InterruptHandlerGuard() {
+        shutdownRequested.clear(std::memory_order_relaxed);
+        handlerInstalled = Platform::InstallInterruptHandler(HandleInterrupt);
+    }
+
+    ~InterruptHandlerGuard() {
+        if (installed()) {
+            Platform::UninstallInterruptHandler();
+        }
+        shutdownRequested.clear(std::memory_order_relaxed);
+    }
+
+    InterruptHandlerGuard(const InterruptHandlerGuard&) = delete;
+    InterruptHandlerGuard& operator=(const InterruptHandlerGuard&) = delete;
+
+    bool installed() const { return handlerInstalled; }
+
+ private:
+    bool handlerInstalled = false;
+};
+
 Instance::Config BuildInstanceConfig(const Settings& settings) {
     Instance::Config config = {
         .device = settings.graphics.device,
+        .deviceId = settings.graphics.deviceId,
         .compositor = CompositorType::DEFAULT,
         .headless = settings.graphics.headless,
         .size = {settings.graphics.size.width, settings.graphics.size.height},
         .scale = settings.graphics.scale,
         .framerate = settings.graphics.framerate,
+        .pythonRuntimePath = settings.runtime.python.path,
     };
 
     return config;
@@ -76,49 +130,285 @@ std::string RemoteEncoderOptionsString() {
     return options;
 }
 
-}  // namespace
-
-void printUsage(const char* program) {
-    const std::string codecOptions = RemoteCodecOptionsString();
-    const std::string encoderOptions = RemoteEncoderOptionsString();
-
-    jst::fmt::print("Usage: {} [command] [options] [flowgraph]\n\n", program);
-    jst::fmt::print("Commands:\n");
-    jst::fmt::print("  run                          Run normally (default)\n");
-    jst::fmt::print("  remote                       Run with remote streaming enabled\n");
-    jst::fmt::print("  benchmark                    Run benchmarks\n\n");
-    jst::fmt::print("Global Options:\n");
-    jst::fmt::print("  -h, --help                   Show this help\n");
-    jst::fmt::print("  -v, -vv                      Increase log verbosity (debug, trace)\n");
-    jst::fmt::print("  -V, --version                Show version\n\n");
-    jst::fmt::print("Graphics Options:\n");
-    jst::fmt::print("  --device <type>              Device type (metal, vulkan)\n");
-    jst::fmt::print("  --device-id <id>             Device ID (default: 0)\n");
-    jst::fmt::print("  --headless                   Run in headless mode (no window)\n");
-    jst::fmt::print("  --size <WxH>                 Window size (default: 1920x1080)\n");
-    jst::fmt::print("  --scale <scale>              Interface scale factor (default: 1.0)\n");
-    jst::fmt::print("  --framerate <fps>            Target framerate (default: 60)\n\n");
-    jst::fmt::print("Benchmark Options:\n");
-    jst::fmt::print("  --format <type>             Output format: markdown, json, csv (default: markdown)\n\n");
-    jst::fmt::print("Remote Options:\n");
-    jst::fmt::print("  --endpoint <url>             Broker URL (default: https://cyberether.org)\n");
-    jst::fmt::print("  --auto-join                  Auto-join sessions\n");
-    jst::fmt::print("  --codec <codec>              Codec: {} (default: {})\n",
-                    codecOptions,
-                    GetRemoteCodecName(Instance::Remote::CodecType::H264));
-    jst::fmt::print("  --encoder <type>             Encoder: {} (default: {})\n",
-                    encoderOptions,
-                    GetRemoteEncoderName(Instance::Remote::EncoderType::Auto));
-}
-
 enum class CommandType {
     Run,
-    Remote,
     Benchmark,
+    Update,
 };
 
-int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn pluginDestroy) {
+constexpr int CLI_USAGE_ERROR = 2;
+constexpr U64 MAX_VIEWPORT_DIMENSION = static_cast<U64>(std::numeric_limits<I32>::max());
+
+std::string Lowercase(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return value;
+}
+
+bool IsRemoteCodec(const std::string& value) {
+    return std::any_of(RemoteCodecTypes.begin(), RemoteCodecTypes.end(), [&](const auto codec) {
+        return value == GetRemoteCodecName(codec);
+    });
+}
+
+bool IsRemoteEncoder(const std::string& value) {
+    return std::any_of(RemoteEncoderTypes.begin(), RemoteEncoderTypes.end(), [&](const auto encoder) {
+        return value == GetRemoteEncoderName(encoder);
+    });
+}
+
+bool ParsePositiveInteger(const std::string& value, U64& result) {
+    if (value.empty() || !std::all_of(value.begin(), value.end(), [](unsigned char c) {
+        return std::isdigit(c);
+    })) {
+        return false;
+    }
+
+    try {
+        size_t parsed = 0;
+        const U64 number = std::stoull(value, &parsed);
+        if (parsed != value.size() || number == 0) {
+            return false;
+        }
+        result = number;
+    } catch (const std::exception&) {
+        return false;
+    }
+
+    return true;
+}
+
+bool ParseDeviceId(const std::string& value, U64& result) {
+    if (value.empty() || !std::all_of(value.begin(), value.end(), [](unsigned char c) {
+        return std::isdigit(c);
+    })) {
+        return false;
+    }
+
+    try {
+        size_t parsed = 0;
+        result = std::stoull(value, &parsed);
+        return parsed == value.size();
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+bool ParsePositiveFloat(const std::string& value, F32& result) {
+    try {
+        size_t parsed = 0;
+        const F32 number = std::stof(value, &parsed);
+        if (parsed != value.size() || !std::isfinite(number) || number <= 0.0f) {
+            return false;
+        }
+        result = number;
+    } catch (const std::exception&) {
+        return false;
+    }
+
+    return true;
+}
+
+int PrintUsageError(const char* program, const std::string& message) {
+    jst::fmt::print(stderr, "Error: {}\nTry '{} --help' for more information.\n", message, program);
+    return CLI_USAGE_ERROR;
+}
+
+class LogLevelGuard {
+ public:
+    explicit LogLevelGuard(int level) : previous_(_JST_LOG_DEBUG_LEVEL()) {
+        JST_LOG_SET_DEBUG_LEVEL(level);
+    }
+
+    LogLevelGuard(const LogLevelGuard&) = delete;
+    LogLevelGuard& operator=(const LogLevelGuard&) = delete;
+
+    ~LogLevelGuard() {
+        JST_LOG_SET_DEBUG_LEVEL(previous_);
+    }
+
+ private:
+    int previous_;
+};
+
+int RunUpdateCommand(bool install) {
+    Updater updater;
+    updater.start();
+
+    auto state = updater.snapshot();
+    if (!state.supported) {
+        jst::fmt::print(stderr, "Error: {}\n", state.message);
+        return 1;
+    }
+
+    jst::fmt::print("Checking for updates...\n");
+    updater.check();
+    do {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        state = updater.snapshot();
+    } while (state.checking);
+
+    if (state.failed) {
+        jst::fmt::print(stderr, "Error: {}\n", state.message);
+        return 1;
+    }
+    if (!state.available) {
+        jst::fmt::print("CyberEther is up to date (v{})!\n", state.currentVersion);
+        return 0;
+    }
+
+    jst::fmt::print("CyberEther v{} is available.\n", state.version);
+    if (!install) {
+        return 0;
+    }
+
+    jst::fmt::print("Downloading CyberEther v{}...\n", state.version);
+    updater.download();
+    do {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        state = updater.snapshot();
+    } while (state.downloading);
+
+    if (state.failed) {
+        jst::fmt::print(stderr, "Error: {}\n", state.message);
+        return 1;
+    }
+    if (!state.ready) {
+        jst::fmt::print(stderr, "Error: The update could not be prepared for installation.\n");
+        return 1;
+    }
+
+    if (!updater.apply(false)) {
+        state = updater.snapshot();
+        jst::fmt::print(stderr, "Error: {}\n",
+                        state.message.empty() ? "The update could not be installed." : state.message);
+        return 1;
+    }
+
+    jst::fmt::print("The update will be installed after CyberEther exits.\n");
+    return 0;
+}
+
+}  // namespace
+
+static void printUsage(const char* program,
+                       const Settings& settings,
+                       const std::optional<CommandType> command = std::nullopt) {
+    const std::string codecOptions = RemoteCodecOptionsString();
+    const std::string encoderOptions = RemoteEncoderOptionsString();
+    const std::string renderer = settings.graphics.device.has_value()
+        ? GetDeviceName(*settings.graphics.device)
+        : "automatic";
+    std::string interfaceScale = jst::fmt::format("{}", settings.graphics.scale);
+    if (std::isfinite(settings.graphics.scale) && interfaceScale.find_first_of(".eE") == std::string::npos) {
+        interfaceScale += ".0";
+    }
+
+    std::string encoderChoicesFirst = encoderOptions;
+    std::string encoderChoicesSecond;
+    const size_t encoderWrap = encoderOptions.find(", videotoolbox");
+    if (encoderWrap != std::string::npos) {
+        encoderChoicesFirst = encoderOptions.substr(0, encoderWrap + 1);
+        encoderChoicesSecond = encoderOptions.substr(encoderWrap + 2);
+    }
+
+    jst::fmt::print("Usage:\n");
+    if (!command.has_value()) {
+        jst::fmt::print("  {} [options] [flowgraph]\n", program);
+        jst::fmt::print("  {} run [options] [flowgraph]\n", program);
+        jst::fmt::print("  {} benchmark [options] [block]\n", program);
+        jst::fmt::print("  {} update [--install]\n\n", program);
+        jst::fmt::print("Commands:\n");
+        jst::fmt::print("  run                          Launch CyberEther (default)\n");
+        jst::fmt::print("  benchmark                    Run performance benchmarks\n");
+        jst::fmt::print("  update                       Check for application updates\n\n");
+    } else if (*command == CommandType::Benchmark) {
+        jst::fmt::print("  {} benchmark [options] [block]\n\n", program);
+    } else if (*command == CommandType::Update) {
+        jst::fmt::print("  {} update [--install]\n\n", program);
+    } else {
+        jst::fmt::print("  {} run [options] [flowgraph]\n\n", program);
+    }
+
+    jst::fmt::print("Global Options:\n");
+    jst::fmt::print("  -h, --help                   Show this help\n");
+    jst::fmt::print("  -v, -vv                      Set debug or trace log level\n");
+    jst::fmt::print("  -V, --version                Show version\n\n");
+
+    if (!command.has_value() || *command != CommandType::Update) {
+        jst::fmt::print("Runtime Options:\n");
+        jst::fmt::print("  --device-index <index>       Vulkan and CUDA device index (current: {})\n",
+                        settings.graphics.deviceId);
+        jst::fmt::print("  --plugin <path>              Load a .cep plugin (repeatable)\n\n");
+    }
+
+    if (!command.has_value() || *command == CommandType::Run) {
+        jst::fmt::print("Graphics Options:\n");
+        jst::fmt::print("  --renderer <renderer>        Preferred graphics backend (current: {})\n", renderer);
+        jst::fmt::print("  {:<29}  Choices: metal, vulkan\n", "");
+        jst::fmt::print("  --headless                   Run without a window\n");
+        jst::fmt::print("  --size <WxH>                 Viewport size (current: {}x{})\n",
+                        settings.graphics.size.width,
+                        settings.graphics.size.height);
+        jst::fmt::print("  --scale <factor>             Interface scale factor (current: {})\n",
+                        interfaceScale);
+        jst::fmt::print("  --framerate <fps>            Target frame rate (current: {})\n\n",
+                        settings.graphics.framerate);
+        jst::fmt::print("CyberEther Remote Options:\n");
+        jst::fmt::print("  --remote                     Enable CyberEther Remote\n");
+        jst::fmt::print("  --broker <url>               Broker URL (current: {})\n",
+                        settings.remote.brokerUrl);
+        jst::fmt::print("  --auto-join-sessions         Automatically join remote sessions\n");
+        jst::fmt::print("  --codec <codec>              Streaming codec (current: {})\n",
+                        settings.remote.codec);
+        jst::fmt::print("  {:<29}  Choices: {}\n", "", codecOptions);
+        jst::fmt::print("  --encoder <encoder>          Streaming encoder (current: {})\n",
+                        settings.remote.encoder);
+        jst::fmt::print("  {:<29}  Choices: {}\n", "", encoderChoicesFirst);
+        if (!encoderChoicesSecond.empty()) {
+            jst::fmt::print("  {:<29}           {}\n", "", encoderChoicesSecond);
+        }
+    }
+
+    if (!command.has_value() || *command == CommandType::Benchmark) {
+        if (!command.has_value()) {
+            jst::fmt::print("\n");
+        }
+        jst::fmt::print("Benchmark Options:\n");
+        jst::fmt::print("  --format <format>            Output format (current: {})\n",
+                        settings.benchmark.format);
+        jst::fmt::print("  {:<29}  Choices: markdown, json, csv\n", "");
+    }
+
+    if (!command.has_value() || *command == CommandType::Update) {
+        if (!command.has_value()) {
+            jst::fmt::print("\n");
+        }
+        jst::fmt::print("Update Options:\n");
+        jst::fmt::print("  --install                    Download and install an available update\n");
+    }
+
+    jst::fmt::print("\nExamples:\n");
+    if (!command.has_value() || *command == CommandType::Run) {
+        jst::fmt::print("  {} flowgraph.yaml\n", program);
+        jst::fmt::print("  {} --remote flowgraph.yaml\n", program);
+    }
+    if (!command.has_value() || *command == CommandType::Benchmark) {
+        jst::fmt::print("  {} benchmark fft --format json\n", program);
+    }
+    if (!command.has_value() || *command == CommandType::Update) {
+        jst::fmt::print("  {} update\n", program);
+        jst::fmt::print("  {} update --install\n", program);
+    }
+}
+
+int Run(int argc, char* argv[]) {
+    LogLevelGuard runLogLevel(_JST_LOG_DEBUG_LEVEL());
+
     CommandType command = CommandType::Run;
+    bool commandSelected = false;
+    bool remoteEnabled = false;
 
     Settings settings;
     if (Settings::Get(settings) != Result::SUCCESS) {
@@ -126,6 +416,7 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
         settings = {};
         (void)Settings::Set(settings, false);
     }
+    const Settings retainedSettings = settings;
 
     JST_LOG_SET_DEBUG_LEVEL(settings.developer.logLevel);
 
@@ -141,216 +432,457 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
     // Parse Arguments
     //
 
+    std::string runOption;
+    std::string remoteSettingOption;
+    std::string benchmarkOption;
+    std::string updateOption;
+    std::string runtimeOption;
+    std::string benchmarkFilter;
+    std::vector<std::string> commandLinePlugins;
+    bool installUpdate = false;
+    bool positionalOnly = false;
+
     for (int i = 1; i < argc; i++) {
-        const std::string arg = argv[i];
+        const std::string originalArg = argv[i];
+        std::string arg = originalArg;
+        std::optional<std::string> inlineValue;
+
+        if (!positionalOnly && originalArg != "--" && arg.starts_with("--")) {
+            const size_t separator = arg.find('=');
+            if (separator != std::string::npos) {
+                inlineValue = arg.substr(separator + 1);
+                arg = arg.substr(0, separator);
+            }
+        }
+
+        auto takeValue = [&](std::string& value) {
+            if (inlineValue.has_value()) {
+                if (inlineValue->empty()) {
+                    return false;
+                }
+                value = *inlineValue;
+                return true;
+            }
+
+            if (i + 1 >= argc || std::string_view(argv[i + 1]).starts_with("-")) {
+                return false;
+            }
+
+            value = argv[++i];
+            return !value.empty();
+        };
+
+        auto rejectInlineValue = [&]() {
+            return inlineValue.has_value()
+                ? PrintUsageError(argv[0], jst::fmt::format("Option '{}' does not accept a value.", arg))
+                : 0;
+        };
+
+        if (!positionalOnly && originalArg == "--") {
+            positionalOnly = true;
+            continue;
+        }
 
         // Handle Commands
 
-        if (i == 1) {
+        if (!positionalOnly && flowgraphPath.empty() && !commandSelected) {
             if (arg == "run") {
                 command = CommandType::Run;
-                continue;
-            }
-
-            if (arg == "remote") {
-                command = CommandType::Remote;
+                commandSelected = true;
                 continue;
             }
 
             if (arg == "benchmark") {
                 command = CommandType::Benchmark;
+                commandSelected = true;
                 continue;
             }
+
+            if (arg == "update") {
+                command = CommandType::Update;
+                commandSelected = true;
+                continue;
+            }
+
+            if (arg == "remote") {
+                return PrintUsageError(argv[0], "Unknown command: 'remote'.");
+            }
+
         }
 
         // Handle Global Options
 
-        if (arg == "-h" || arg == "--help") {
-            printUsage(argv[0]);
+        if (!positionalOnly && (arg == "-h" || arg == "--help")) {
+            if (const int error = rejectInlineValue()) {
+                return error;
+            }
+            std::optional<CommandType> helpCommand;
+            if (commandSelected || !flowgraphPath.empty()) {
+                helpCommand = command;
+            } else if (!runOption.empty()) {
+                helpCommand = CommandType::Run;
+            } else if (!benchmarkOption.empty()) {
+                helpCommand = CommandType::Benchmark;
+            } else if (!updateOption.empty()) {
+                helpCommand = CommandType::Update;
+            }
+            printUsage(argv[0], settings, helpCommand);
             return 0;
         }
 
-        if (arg == "-V" || arg == "--version") {
+        if (!positionalOnly && (arg == "-V" || arg == "--version")) {
+            if (const int error = rejectInlineValue()) {
+                return error;
+            }
             jst::fmt::print("CyberEther v{}-{}\n", JETSTREAM_VERSION_STR, JETSTREAM_BUILD_TYPE);
             return 0;
         }
 
-        if (arg == "-v") {
+        if (!positionalOnly && arg == "--plugin") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --plugin. Expected a .cep path.");
+            }
+            if (!Plugin::IsCepPath(value)) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --plugin: '{}'. Expected a .cep path.", value));
+            }
+            commandLinePlugins.push_back(value);
+            runtimeOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "-v") {
             settings.developer.logLevel = 3;
             JST_LOG_SET_DEBUG_LEVEL(settings.developer.logLevel);
             continue;
         }
 
-        if (arg == "-vv") {
+        if (!positionalOnly && arg == "-vv") {
             settings.developer.logLevel = 4;
             JST_LOG_SET_DEBUG_LEVEL(settings.developer.logLevel);
             continue;
         }
 
+        // Handle Update Options
+
+        if (!positionalOnly && arg == "--install") {
+            if (const int error = rejectInlineValue()) {
+                return error;
+            }
+            installUpdate = true;
+            updateOption = arg;
+            continue;
+        }
+
         // Handle Graphics Options
 
-        if (arg == "--device") {
-            if (i + 1 < argc) {
-                settings.graphics.device = StringToDevice(argv[++i]);
+        if (!positionalOnly && arg == "--renderer") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --renderer. Expected: metal or vulkan.");
             }
+            value = Lowercase(value);
+            if (value != "metal" && value != "vulkan") {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --renderer: '{}'. Expected: metal or vulkan.", value));
+            }
+            settings.graphics.device = StringToDevice(value);
+            runOption = arg;
             continue;
         }
 
-        if (arg == "--device-id") {
-            if (i + 1 < argc) {
-                ++i; // TODO: Implement device selection.
+        if (!positionalOnly && arg == "--device-index") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --device-index. Expected a non-negative integer.");
             }
+            U64 deviceId = 0;
+            if (!ParseDeviceId(value, deviceId)) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --device-index: '{}'. Expected a non-negative integer.", value));
+            }
+            settings.graphics.deviceId = deviceId;
+            runtimeOption = arg;
             continue;
         }
 
-        if (arg == "--headless") {
+        if (!positionalOnly && arg == "--headless") {
+            if (const int error = rejectInlineValue()) {
+                return error;
+            }
             settings.graphics.headless = true;
+            runOption = arg;
             continue;
         }
 
-        if (arg == "--size") {
-            if (i + 1 < argc) {
-                std::string sizeStr = argv[++i];
-                size_t xPos = sizeStr.find('x');
-                if (xPos != std::string::npos) {
-                    settings.graphics.size.width = std::stoull(sizeStr.substr(0, xPos));
-                    settings.graphics.size.height = std::stoull(sizeStr.substr(xPos + 1));
-                }
+        if (!positionalOnly && arg == "--size") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --size. Expected: WIDTHxHEIGHT.");
             }
-            continue;
-        }
-
-        if (arg == "--scale") {
-            if (i + 1 < argc) {
-                settings.graphics.scale = std::stof(argv[++i]);
+            const size_t separator = value.find_first_of("xX");
+            U64 width = 0;
+            U64 height = 0;
+            if (separator == std::string::npos ||
+                value.find_first_of("xX", separator + 1) != std::string::npos ||
+                !ParsePositiveInteger(value.substr(0, separator), width) ||
+                !ParsePositiveInteger(value.substr(separator + 1), height) ||
+                width > MAX_VIEWPORT_DIMENSION ||
+                height > MAX_VIEWPORT_DIMENSION) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --size: '{}'. Expected dimensions from 1 to {}.",
+                    value,
+                    MAX_VIEWPORT_DIMENSION));
             }
+            settings.graphics.size.width = width;
+            settings.graphics.size.height = height;
+            runOption = arg;
             continue;
         }
 
-        if (arg == "--framerate") {
-            if (i + 1 < argc) {
-                settings.graphics.framerate = std::stoull(argv[++i]);
+        if (!positionalOnly && arg == "--scale") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --scale. Expected a positive number.");
             }
+            F32 scale = 0.0f;
+            if (!ParsePositiveFloat(value, scale)) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --scale: '{}'. Expected a positive number.", value));
+            }
+            settings.graphics.scale = scale;
+            runOption = arg;
             continue;
         }
 
-        // Handle Command Options
-
-        switch (command) {
-            case CommandType::Benchmark:
-                if (arg == "--format") {
-                    if (i + 1 >= argc) {
-                        jst::fmt::print(stderr,
-                                        "Missing value for --format. Expected one of: markdown, json, csv.\n\n");
-                        printUsage(argv[0]);
-                        return -1;
-                    }
-
-                    settings.benchmark.format = argv[++i];
-                    continue;
-                }
-                break;
-
-            case CommandType::Remote:
-                if (arg == "--endpoint") {
-                    if (i + 1 < argc) {
-                        settings.remote.brokerUrl = argv[++i];
-                    }
-                    continue;
-                }
-
-                if (arg == "--codec") {
-                    if (i + 1 < argc) {
-                        const std::string codec = argv[++i];
-                        try {
-                            settings.remote.codec = GetRemoteCodecName(StringToRemoteCodec(codec));
-                        } catch (const Result&) {
-                            jst::fmt::print(stderr,
-                                            "Invalid value for --codec: '{}'. Expected one of: {}.\n\n",
-                                            codec,
-                                            RemoteCodecOptionsString());
-                            printUsage(argv[0]);
-                            return -1;
-                        }
-                    } else {
-                        jst::fmt::print(stderr,
-                                        "Missing value for --codec. Expected one of: {}.\n\n",
-                                        RemoteCodecOptionsString());
-                        printUsage(argv[0]);
-                        return -1;
-                    }
-                    continue;
-                }
-
-                if (arg == "--encoder") {
-                    if (i + 1 < argc) {
-                        const std::string enc = argv[++i];
-                        try {
-                            settings.remote.encoder = GetRemoteEncoderName(StringToRemoteEncoder(enc));
-                        } catch (const Result&) {
-                            jst::fmt::print(stderr,
-                                            "Invalid value for --encoder: '{}'. Expected one of: {}.\n\n",
-                                            enc,
-                                            RemoteEncoderOptionsString());
-                            printUsage(argv[0]);
-                            return -1;
-                        }
-                    } else {
-                        jst::fmt::print(stderr,
-                                        "Missing value for --encoder. Expected one of: {}.\n\n",
-                                        RemoteEncoderOptionsString());
-                        printUsage(argv[0]);
-                        return -1;
-                    }
-                    continue;
-                }
-
-                if (arg == "--auto-join") {
-                    settings.remote.autoJoinSessions = true;
-                    continue;
-                }
-                break;
-
-            case CommandType::Run:
-                break;
+        if (!positionalOnly && arg == "--framerate") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --framerate. Expected a positive integer.");
+            }
+            U64 framerate = 0;
+            if (!ParsePositiveInteger(value, framerate)) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --framerate: '{}'. Expected a positive integer.", value));
+            }
+            settings.graphics.framerate = framerate;
+            runOption = arg;
+            continue;
         }
 
-        if (arg[0] == '-') {
-            jst::fmt::print(stderr, "Unknown option: '{}'.\n\n", arg);
-            printUsage(argv[0]);
-            return -1;
+        // Handle CyberEther Remote Options
+
+        if (!positionalOnly && arg == "--remote") {
+            if (const int error = rejectInlineValue()) {
+                return error;
+            }
+            remoteEnabled = true;
+            runOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--broker") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --broker. Expected a URL.");
+            }
+            if (!IsRemoteBrokerSchemeSupported(value)) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --broker: '{}'. Expected an HTTP or HTTPS URL.", value));
+            }
+            settings.remote.brokerUrl = value;
+            runOption = arg;
+            remoteSettingOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--codec") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Missing value for --codec. Expected one of: {}.", RemoteCodecOptionsString()));
+            }
+            value = Lowercase(value);
+            if (!IsRemoteCodec(value)) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --codec: '{}'. Expected one of: {}.",
+                    value,
+                    RemoteCodecOptionsString()));
+            }
+            settings.remote.codec = value;
+            runOption = arg;
+            remoteSettingOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--encoder") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Missing value for --encoder. Expected one of: {}.", RemoteEncoderOptionsString()));
+            }
+            value = Lowercase(value);
+            if (!IsRemoteEncoder(value)) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --encoder: '{}'. Expected one of: {}.",
+                    value,
+                    RemoteEncoderOptionsString()));
+            }
+            settings.remote.encoder = value;
+            runOption = arg;
+            remoteSettingOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--auto-join-sessions") {
+            if (const int error = rejectInlineValue()) {
+                return error;
+            }
+            settings.remote.autoJoinSessions = true;
+            runOption = arg;
+            remoteSettingOption = arg;
+            continue;
+        }
+
+        // Handle Benchmark Options
+
+        if (!positionalOnly && arg == "--format") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --format. Expected one of: markdown, json, csv.");
+            }
+            value = Lowercase(value);
+            if (value != "markdown" && value != "json" && value != "csv") {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --format: '{}'. Expected one of: markdown, json, csv.", value));
+            }
+            settings.benchmark.format = value;
+            benchmarkOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg.starts_with("-")) {
+            return PrintUsageError(argv[0], jst::fmt::format("Unknown option: '{}'.", originalArg));
         }
 
         if (command == CommandType::Benchmark) {
-            jst::fmt::print(stderr, "The benchmark command does not accept a flowgraph path: '{}'.\n\n", arg);
-            printUsage(argv[0]);
-            return -1;
+            if (!benchmarkFilter.empty()) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Only one benchmark block may be provided; received '{}'.", originalArg));
+            }
+            benchmarkFilter = Lowercase(originalArg);
+            continue;
         }
 
-        if (arg[0] != '-') {
-            flowgraphPath = arg;
+        if (command == CommandType::Update) {
+            return PrintUsageError(argv[0], jst::fmt::format(
+                "The update command does not accept positional arguments; received '{}'.", originalArg));
+        }
+
+        if (!flowgraphPath.empty()) {
+            return PrintUsageError(argv[0], jst::fmt::format(
+                "Only one flowgraph may be provided; received '{}'.", originalArg));
+        }
+
+        flowgraphPath = originalArg;
+    }
+
+    if (command == CommandType::Benchmark && !runOption.empty()) {
+        return PrintUsageError(argv[0], jst::fmt::format(
+            "Option '{}' is not available for the benchmark command.", runOption));
+    }
+
+    if (command == CommandType::Run && !benchmarkOption.empty()) {
+        return PrintUsageError(argv[0], jst::fmt::format(
+            "Option '{}' is only available for the benchmark command.", benchmarkOption));
+    }
+
+    if (command == CommandType::Update && !runOption.empty()) {
+        return PrintUsageError(argv[0], jst::fmt::format(
+            "Option '{}' is not available for the update command.", runOption));
+    }
+
+    if (command == CommandType::Update && !benchmarkOption.empty()) {
+        return PrintUsageError(argv[0], jst::fmt::format(
+            "Option '{}' is not available for the update command.", benchmarkOption));
+    }
+
+    if (command == CommandType::Update && !runtimeOption.empty()) {
+        return PrintUsageError(argv[0], jst::fmt::format(
+            "Option '{}' is not available for the update command.", runtimeOption));
+    }
+
+    if (command != CommandType::Update && !updateOption.empty()) {
+        return PrintUsageError(argv[0], jst::fmt::format(
+            "Option '{}' is only available for the update command.", updateOption));
+    }
+
+    if (!remoteEnabled && !remoteSettingOption.empty()) {
+        return PrintUsageError(argv[0], jst::fmt::format(
+            "Option '{}' requires --remote.", remoteSettingOption));
+    }
+
+    Instance::Remote::Config remoteConfig;
+    if (remoteEnabled) {
+        if (!IsRemoteBrokerSchemeSupported(settings.remote.brokerUrl)) {
+            return PrintUsageError(argv[0], jst::fmt::format(
+                "Invalid value for --broker: '{}'. Expected an HTTP or HTTPS URL.",
+                settings.remote.brokerUrl));
+        }
+        try {
+            remoteConfig = BuildRemoteConfig(settings);
+        } catch (const Result&) {
+            return PrintUsageError(argv[0], "The configured CyberEther Remote codec or encoder is invalid.");
         }
     }
 
+    if (command == CommandType::Update) {
+        return RunUpdateCommand(installUpdate);
+    }
+
+    std::optional<LogLevelGuard> benchmarkLogLevel;
+    if (command == CommandType::Benchmark) {
+        benchmarkLogLevel.emplace(-1);
+    }
+
     JST_INFO("[CYBERETHER] Running native app.");
+
+    const auto backendConfig = Backend::Config {
+        .deviceId = settings.graphics.deviceId,
+        .headless = settings.graphics.headless,
+        .pythonRuntimePath = settings.runtime.python.path,
+    };
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    if (Backend::Configure<DeviceType::CUDA>(backendConfig) != Result::SUCCESS) {
+        return -1;
+    }
+#endif
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+    if (Backend::Initialize<DeviceType::CPU>(backendConfig) != Result::SUCCESS) {
+        return -1;
+    }
+#endif
+
     LoadRegistryPlugins(settings);
+    for (const auto& path : commandLinePlugins) {
+        if (Plugin::Load(path) != Result::SUCCESS) {
+            jst::fmt::print(stderr, "Error: Failed to load command-line plugin '{}'.\n", path);
+            return -1;
+        }
+    }
 
     //
     // Benchmark Logic
     //
 
     if (command == CommandType::Benchmark) {
-        if (settings.benchmark.format != "markdown" &&
-            settings.benchmark.format != "json" &&
-            settings.benchmark.format != "csv") {
-            jst::fmt::print(stderr,
-                            "Invalid value for --format: '{}'. Expected one of: markdown, json, csv.\n\n",
-                            settings.benchmark.format);
-            printUsage(argv[0]);
-            return -1;
+        if (!benchmarkFilter.empty() &&
+            Registry::ListAvailableBenchmarks(benchmarkFilter).empty()) {
+            return PrintUsageError(argv[0], jst::fmt::format(
+                "No benchmarks found for block '{}'.", benchmarkFilter));
         }
-
-        Benchmark::Run(settings.benchmark.format);
+        Benchmark::Run(settings.benchmark.format, benchmarkFilter);
         return 0;
     }
 
@@ -358,15 +890,10 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
     // Interface Logic
     //
 
-    if (command == CommandType::Run || command == CommandType::Remote) {
-        Instance::Remote::Config remoteConfig;
-        if (command == CommandType::Remote) {
-            try {
-                remoteConfig = BuildRemoteConfig(settings);
-            } catch (const Result&) {
-                printUsage(argv[0]);
-                return -1;
-            }
+    if (command == CommandType::Run) {
+        InterruptHandlerGuard interruptHandler;
+        if (!interruptHandler.installed()) {
+            JST_WARN("[CYBERETHER] Interrupt handling is unavailable.");
         }
 
         const Instance::Config config = BuildInstanceConfig(settings);
@@ -377,45 +904,37 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
 
         instance = std::make_shared<Instance>();
 
-        if (instance->create(config) != Result::SUCCESS) {
+        const Result createResult = instance->create(config);
+
+        // The compositor initializes from the effective CLI settings. Restore
+        // retained settings before later UI changes can persist CLI overrides.
+        if (Settings::Set(retainedSettings, false) != Result::SUCCESS) {
             return -1;
         }
 
-        if (pluginCreate) {
-            pluginCreate(instance.get());
+        if (createResult != Result::SUCCESS) {
+            return -1;
         }
 
         if (!flowgraphPath.empty()) {
             if (instance->flowgraphCreate("main", {}, flowgraph) != Result::SUCCESS) {
-                if (pluginDestroy) {
-                    pluginDestroy(instance.get());
-                }
                 (void)instance->destroy();
                 return -1;
             }
             if (flowgraph->importFromFile(flowgraphPath) != Result::SUCCESS) {
-                if (pluginDestroy) {
-                    pluginDestroy(instance.get());
-                }
                 (void)instance->destroy();
                 return -1;
             }
         }
 
         if (instance->start() != Result::SUCCESS) {
-            if (pluginDestroy) {
-                pluginDestroy(instance.get());
-            }
             (void)instance->destroy();
             return -1;
         }
 
-        if (command == CommandType::Remote) {
+        if (remoteEnabled) {
             if (instance->remote()->create(remoteConfig) != Result::SUCCESS) {
                 (void)instance->stop();
-                if (pluginDestroy) {
-                    pluginDestroy(instance.get());
-                }
                 (void)instance->destroy();
                 return -1;
             }
@@ -471,7 +990,7 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
             }
         });
 
-        if (command == CommandType::Remote && instance->remote()) {
+        if (remoteEnabled && instance->remote()) {
             supervisor = std::make_unique<Instance::Remote::Supervisor>(
                 instance->remote().get(),
                 remoteConfig.autoJoinSessions
@@ -480,19 +999,19 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
             supervisor->start();
         }
 
-        while (instance->polling()) {
+        while (!shutdownRequested.test(std::memory_order_relaxed) && instance->polling()) {
             if (instance->poll() != Result::SUCCESS) {
                 code.store(-1);
                 break;
             }
         }
 
+        // Treat Ctrl+C during teardown as a force-shutdown request even when
+        // shutdown began through a window close or worker failure.
+        shutdownRequested.test_and_set(std::memory_order_relaxed);
+
         if (supervisor) {
             supervisor->stop();
-        }
-
-        if (command == CommandType::Remote && instance->remote()->started()) {
-            (void)instance->remote()->destroy();
         }
 
         if (instance->computing() || instance->presenting()) {
@@ -507,8 +1026,8 @@ int Run(int argc, char* argv[], PluginCreateFn pluginCreate, PluginDestroyFn plu
             graphicalThread.join();
         }
 
-        if (pluginDestroy) {
-            pluginDestroy(instance.get());
+        if (remoteEnabled && instance->remote()->started()) {
+            (void)instance->remote()->destroy();
         }
 
         (void)instance->destroy();

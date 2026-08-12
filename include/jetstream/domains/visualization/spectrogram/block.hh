@@ -10,6 +10,7 @@ struct Spectrogram : public Block::Config {
 
     JST_BLOCK_TYPE(spectrogram);
     JST_BLOCK_DOMAIN("Visualization");
+    JST_BLOCK_NODE_SIZE(L);
     JST_BLOCK_PARAMS(height);
     JST_BLOCK_DESCRIPTION(
         "Spectrogram",

@@ -1,6 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <filesystem>
+
+#include "jetstream/platform.hh"
 #include <fstream>
 #include <string>
 
@@ -43,7 +45,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     }
 
     Parser::Map readerConfig;
-    readerConfig["filepath"] = path.string();
+    readerConfig["filepath"] = Platform::PathToUtf8(path);
     readerConfig["dataType"] = std::string("F32");
     readerConfig["batchSize"] = std::string("64");
     readerConfig["loop"] = std::string("true");
@@ -66,45 +68,30 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Audio block rejects invalid sample rate configuration",
-                 "[modules][io][audio][block][validation]") {
+                  "Audio block delegates input dtype validation to its module",
+                  "[modules][io][audio][block][validation]") {
     if (Registry::ListAvailableModules("audio").empty()) {
         SUCCEED("Audio module is unavailable in this build.");
         return;
     }
 
-    const auto path = AudioInputFilePath();
-    Cleanup(path);
+    Parser::Map sourceConfig;
+    sourceConfig["signalDataType"] = std::string("CF32");
+    sourceConfig["bufferSize"] = std::string("64");
 
-    {
-        std::ofstream out(path, std::ios::binary);
-        F32 data[64] = {};
-        out.write(reinterpret_cast<const char*>(data), sizeof(data));
-    }
-
-    Parser::Map readerConfig;
-    readerConfig["filepath"] = path.string();
-    readerConfig["dataType"] = std::string("F32");
-    readerConfig["batchSize"] = std::string("64");
-    readerConfig["loop"] = std::string("true");
-
-    REQUIRE(flowgraph->blockCreate("reader", "file_reader", readerConfig, {}) ==
-            Result::SUCCESS);
+    REQUIRE(flowgraph->blockCreate("audio_bad_source", "signal_generator",
+                                   sourceConfig, {}) == Result::SUCCESS);
 
     TensorMap audioInputs;
-    audioInputs["buffer"].requested("reader", "signal");
+    audioInputs["buffer"].requested("audio_bad_source", "signal");
 
-    Parser::Map config;
-    config["inSampleRate"] = std::string("0");
+    REQUIRE(flowgraph->blockCreate("audio_bad_dtype", "audio", {},
+                                   audioInputs) == Result::SUCCESS);
+    const auto& block = viewBlock("audio_bad_dtype");
+    REQUIRE(block.state == Block::State::Errored);
+    REQUIRE(block.diagnostic.find("[MODULE_AUDIO_NATIVE_CPU]") !=
+            std::string::npos);
 
-    const auto createResult = flowgraph->blockCreate("audio_invalid", "audio",
-                                                      config, audioInputs);
-    REQUIRE(createResult == Result::SUCCESS);
-    REQUIRE(viewBlock("audio_invalid").state ==
-            Block::State::Errored);
-
-    REQUIRE(flowgraph->blockDestroy("audio_invalid", false) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockDestroy("reader", false) == Result::SUCCESS);
-
-    Cleanup(path);
+    REQUIRE(flowgraph->blockDestroy("audio_bad_dtype", false) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockDestroy("audio_bad_source", false) == Result::SUCCESS);
 }

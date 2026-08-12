@@ -2,14 +2,14 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_MODALS_CLOSE_HH
 
 #include "../../components/modal_header.hh"
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
 #include <functional>
 
 namespace Jetstream {
 
-struct FlowgraphCloseView : public Sakura::Component {
+struct FlowgraphCloseView {
     struct Config {
         std::function<void()> onSave;
         std::function<void()> onDontSave;

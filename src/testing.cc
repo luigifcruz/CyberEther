@@ -6,6 +6,7 @@
 
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 namespace Jetstream {
 
@@ -23,19 +24,57 @@ struct TestContext::Impl {
     std::unique_ptr<Runtime> runtime;
 
     ~Impl() {
-        cleanup();
+        (void)cleanup();
     }
 
-    void cleanup() {
+    Result cleanup() {
+        Result result = Result::SUCCESS;
+
         if (runtime) {
-            (void)runtime->destroy();
+            const auto destroyResult = runtime->destroy();
+            if (destroyResult != Result::SUCCESS && destroyResult != Result::RELOAD) {
+                result = destroyResult;
+            }
             runtime.reset();
         }
 
         if (module) {
-            (void)module->destroy();
+            const auto destroyResult = module->destroy();
+            if (destroyResult != Result::SUCCESS && destroyResult != Result::RELOAD &&
+                (result == Result::SUCCESS || result == Result::RELOAD)) {
+                result = destroyResult;
+            }
             module.reset();
         }
+
+        return result;
+    }
+
+    Result snapshotOutputs() {
+        for (const auto& [name, entry] : module->outputs()) {
+            if (entry.tensor.device() == DeviceType::CPU) {
+                cpuOutputs[name] = entry.tensor;
+            } else if (entry.tensor.device() == DeviceType::CUDA &&
+                       entry.tensor.contiguous() &&
+                       entry.tensor.offset() == 0 &&
+                       entry.tensor.sizeBytes() == entry.tensor.buffer().sizeBytes()) {
+                Tensor cpuOutput;
+                JST_CHECK(cpuOutput.create(DeviceType::CPU,
+                                           entry.tensor.dtype(),
+                                           entry.tensor.shape()));
+
+                Tensor deviceMappedOutput;
+                JST_CHECK(deviceMappedOutput.create(entry.tensor.device(), cpuOutput));
+                JST_CHECK(deviceMappedOutput.copyFrom(entry.tensor));
+                JST_CHECK(cpuOutput.propagateAttributes(entry.tensor));
+
+                cpuOutputs[name] = cpuOutput;
+            } else {
+                cpuOutputs[name] = Tensor(DeviceType::CPU, entry.tensor);
+            }
+        }
+
+        return Result::SUCCESS;
     }
 };
 
@@ -64,7 +103,22 @@ void TestContext::setConfig(const Module::Config& config) {
 }
 
 Result TestContext::run() {
-    pimpl->cleanup();
+    (void)pimpl->cleanup();
+
+    auto result = start();
+    if (result == Result::SUCCESS) {
+        result = compute();
+    }
+
+    (void)pimpl->cleanup();
+    return result;
+}
+
+Result TestContext::start() {
+    if (pimpl->module || pimpl->runtime) {
+        JST_ERROR("[TESTING] Test context session is already active: {}", pimpl->moduleType);
+        return Result::ERROR;
+    }
 
     JST_CHECK(Registry::BuildModule(
         pimpl->moduleType,
@@ -88,7 +142,11 @@ Result TestContext::run() {
     auto createResult = pimpl->module->create("test", pimpl->config, deviceInputs);
     if (createResult != Result::SUCCESS) {
         JST_ERROR("[TESTING] Failed to create module: {}", pimpl->moduleType);
-        pimpl->cleanup();
+        if (createResult == Result::ERROR) {
+            pimpl->module.reset();
+        } else {
+            pimpl->cleanup();
+        }
         return createResult;
     }
 
@@ -100,26 +158,45 @@ Result TestContext::run() {
         return runtimeCreateResult;
     }
 
+    return Result::SUCCESS;
+}
+
+Result TestContext::compute() {
+    if (!pimpl->module || !pimpl->runtime) {
+        JST_ERROR("[TESTING] Test context session is not active: {}", pimpl->moduleType);
+        return Result::ERROR;
+    }
+
     std::unordered_set<std::string> skippedModules;
     std::unordered_set<std::string> failedModules;
-    auto computeResult = pimpl->runtime->compute({}, skippedModules, failedModules);
+    const auto computeResult = pimpl->runtime->compute({}, skippedModules, failedModules);
     if (computeResult != Result::SUCCESS) {
         JST_ERROR("[TESTING] Failed to run compute: {}", pimpl->moduleType);
-        pimpl->cleanup();
         return computeResult;
     }
 
-    for (const auto& [name, entry] : pimpl->module->outputs()) {
-        if (entry.tensor.device() == DeviceType::CPU) {
-            pimpl->cpuOutputs[name] = entry.tensor;
-        } else {
-            pimpl->cpuOutputs[name] = Tensor(DeviceType::CPU, entry.tensor);
-        }
+    return pimpl->snapshotOutputs();
+}
+
+Result TestContext::reconfigure(const Module::Config& config, const bool validateOnly) {
+    if (!pimpl->module || !pimpl->runtime) {
+        JST_ERROR("[TESTING] Test context session is not active: {}", pimpl->moduleType);
+        return Result::ERROR;
     }
 
-    pimpl->cleanup();
+    Parser::Map candidate;
+    JST_CHECK(config.serialize(candidate));
+    const auto result = pimpl->module->reconfigure(candidate, validateOnly);
+    if (!validateOnly && (result == Result::SUCCESS ||
+                          result == Result::RELOAD ||
+                          result == Result::RECREATE)) {
+        pimpl->config = std::move(candidate);
+    }
+    return result;
+}
 
-    return Result::SUCCESS;
+Result TestContext::stop() {
+    return pimpl->cleanup();
 }
 
 Tensor& TestContext::output(const std::string& name) {

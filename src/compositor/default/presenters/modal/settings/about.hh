@@ -11,6 +11,7 @@
 #include "jetstream/types.hh"
 
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace Jetstream {
@@ -39,11 +40,17 @@ inline std::vector<AboutInfoTable::Config> BuildAboutInfoTables(const AboutPrese
 
 #ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
     if (Backend::Initialized<DeviceType::CPU>()) {
+        auto& backend = Backend::State<DeviceType::CPU>();
+        const auto hardwareThreads = std::thread::hardware_concurrency();
+        const auto hardwareThreadsText = hardwareThreads == 0 ? std::string("Unknown") : std::to_string(hardwareThreads);
+        const auto pythonRuntimePath = backend->getPythonRuntimePath().empty() ? std::string("Auto") : backend->getPythonRuntimePath();
         tables.push_back({
             .id = "AboutCpuBackend",
             .title = "CPU Backend",
             .rows = {
                 {"Status", "Initialized"},
+                {"Hardware Threads", hardwareThreadsText},
+                {"Python Runtime", pythonRuntimePath},
             },
         });
     }
@@ -57,13 +64,14 @@ inline std::vector<AboutInfoTable::Config> BuildAboutInfoTables(const AboutPrese
             .title = "CUDA Backend",
             .rows = {
                 {"Device", backend->getDeviceName()},
+                {"Device Index", jst::fmt::format("{}", backend->getDeviceId())},
                 {"API Version", backend->getApiVersion()},
                 {"Compute Capability", backend->getComputeCapability()},
                 {"Physical Memory", jst::fmt::format("{:.0f} GB", static_cast<float>(backend->getPhysicalMemory()) / (1024 * 1024 * 1024))},
                 {"Unified Memory", backend->hasUnifiedMemory() ? "Yes" : "No"},
-                {"Export Device Memory", backend->canExportDeviceMemory() ? "Yes" : "No"},
-                {"Import Device Memory", backend->canImportDeviceMemory() ? "Yes" : "No"},
-                {"Import Host Memory", backend->canImportHostMemory() ? "Yes" : "No"},
+                {"Can Import Device Memory", backend->canImportDeviceMemory() ? "Yes" : "No"},
+                {"Can Export Device Memory", backend->canExportDeviceMemory() ? "Yes" : "No"},
+                {"Can Import Host Memory", backend->canImportHostMemory() ? "Yes" : "No"},
             },
         });
     }
@@ -96,9 +104,13 @@ inline std::vector<AboutInfoTable::Config> BuildAboutInfoTables(const AboutPrese
             .title = "Vulkan Backend",
             .rows = {
                 {"Device", backend->getDeviceName()},
+                {"Device Index", jst::fmt::format("{}", backend->getDeviceId())},
                 {"API Version", backend->getApiVersion()},
                 {"Physical Memory", jst::fmt::format("{:.0f} GB", static_cast<float>(backend->getPhysicalMemory()) / (1024 * 1024 * 1024))},
                 {"Unified Memory", backend->hasUnifiedMemory() ? "Yes" : "No"},
+                {"Can Import Device Memory", backend->canImportDeviceMemory() ? "Yes" : "No"},
+                {"Can Export Device Memory", backend->canExportDeviceMemory() ? "Yes" : "No"},
+                {"Can Import Host Memory", backend->canImportHostMemory() ? "Yes" : "No"},
                 {"Low Power Mode", backend->getLowPowerStatus() ? "Yes" : "No"},
                 {"Thermal State", jst::fmt::format("{}", backend->getThermalState())},
             },
@@ -134,16 +146,20 @@ struct AboutPresenter {
 
     AboutSettingsPanel::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
-        const auto openReleases = [enqueue]() {
-            enqueue(MailOpenUrl{
-                .url = "https://github.com/luigifcruz/CyberEther/releases",
-                .notifyResult = true,
-            });
-        };
 
         return AboutSettingsPanel::Config{
+            .updateSupported = context.state.update.supported,
+            .updateUpToDate = context.state.update.upToDate,
+            .updateFailed = context.state.update.failed,
+            .updateChecking = context.state.update.checking,
             .updateAvailable = context.state.update.available,
+            .updateDownloading = context.state.update.downloading,
+            .updateReady = context.state.update.ready,
+            .updateApplying = context.state.update.applying,
+            .updateProgress = context.state.update.progress,
             .updateVersion = context.state.update.version,
+            .updateReleaseNotes = context.state.update.releaseNotes,
+            .updateMessage = context.state.update.message,
             .accentKey = "cyber_blue",
             .infoTables = BuildAboutInfoTables({
                 .viewportName = context.state.system.viewport->name(),
@@ -151,10 +167,14 @@ struct AboutPresenter {
                 .framebufferScale = context.state.system.render->framebufferScale(),
                 .renderScale = context.state.system.render->scalingFactor(),
             }),
-            .onOpenReleases = openReleases,
-            .onDownloadUpdate = openReleases,
-            .onDismissUpdate = [enqueue]() {
-                enqueue(MailDismissUpdate{});
+            .onCheckForUpdates = [enqueue]() {
+                enqueue(MailCheckForUpdates{});
+            },
+            .onDownloadUpdate = [enqueue]() {
+                enqueue(MailDownloadUpdate{});
+            },
+            .onApplyUpdate = [enqueue]() {
+                enqueue(MailApplyUpdate{});
             },
         };
     }

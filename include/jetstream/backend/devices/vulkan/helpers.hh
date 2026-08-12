@@ -6,11 +6,11 @@
 #include <vector>
 #include <thread>
 #include <functional>
-#include <cstdlib>
 #include <string>
 
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
+#include "jetstream/platform.hh"
 
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
@@ -132,28 +132,16 @@ inline QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice& device) {
     std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
 
-    int i = 0;
-    for (const auto& queueFamily : queueFamilies) {
-        if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+    constexpr VkQueueFlags required = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT;
+    for (uint32_t i = 0; i < queueFamilies.size(); ++i) {
+        const auto& queueFamily = queueFamilies[i];
+        if (queueFamily.queueCount > 0 &&
+            (queueFamily.queueFlags & required) == required) {
             indices.graphicFamily = i;
-        }
-
-        if (queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT) {
             indices.computeFamily = i;
-        }
-
-        indices.presentFamily = i;
-
-        if (indices.isComplete()) {
+            indices.presentFamily = i;
             break;
         }
-
-        i++;
-    }
-
-    if (!indices.computeFamily.has_value()) {
-        indices.computeFamily = indices.graphicFamily;
-        JST_WARN("[VULKAN] Compute queue not found. Using graphics queue instead. This may cause issues.");
     }
 
     return indices;
@@ -300,36 +288,33 @@ inline Result TransitionImageLayout(VkCommandBuffer& commandBuffer,
 }
 
 inline bool WindowMightBeWayland() {
-    // Return false if we are not on Linux.
-
-#ifndef JST_OS_LINUX
-    return false;
-#endif
-
+#ifdef JST_OS_LINUX
     // Try to get the session type from the environment variables.
 
-    const char* xdgSessionType = std::getenv("XDG_SESSION_TYPE");
-    if (xdgSessionType != nullptr) {
-        std::string sessionTypeStr(xdgSessionType);
-        if (sessionTypeStr == "wayland" && std::getenv("WAYLAND_DISPLAY") != nullptr) {
+    std::string environmentValue;
+    if (Platform::EnvironmentVariable("XDG_SESSION_TYPE", environmentValue) == Result::SUCCESS) {
+        if (environmentValue == "wayland" &&
+            Platform::EnvironmentVariable("WAYLAND_DISPLAY", environmentValue) == Result::SUCCESS) {
             return true;
-        } else if (sessionTypeStr == "x11" && std::getenv("DISPLAY") != nullptr) {
+        } else if (environmentValue == "x11" &&
+                   Platform::EnvironmentVariable("DISPLAY", environmentValue) == Result::SUCCESS) {
             return false;
         }
     }
 
-    const char* waylandDisplayEnv = std::getenv("WAYLAND_DISPLAY");
-    if (waylandDisplayEnv != nullptr) {
+    if (Platform::EnvironmentVariable("WAYLAND_DISPLAY", environmentValue) == Result::SUCCESS) {
         return true;
     }
 
-    const char* displayEnv = std::getenv("DISPLAY");
-    if (displayEnv != nullptr) {
+    if (Platform::EnvironmentVariable("DISPLAY", environmentValue) == Result::SUCCESS) {
         return false;
     }
 
     // If we can't get the session type, default to true.
     return true;
+#else
+    return false;
+#endif
 }
 
 }  // namespace Jetstream::Backend

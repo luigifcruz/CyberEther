@@ -10,6 +10,15 @@ Implementation::BufferImp(const Config& config) : Buffer(config) {
 Result Implementation::create() {
     JST_DEBUG("[WebGPU] Creating buffer.");
 
+    if (config.enableZeroCopy) {
+        JST_ERROR("[WebGPU] Zero-copy render buffers are not supported.");
+        return Result::ERROR;
+    }
+
+    if (config.buffer) {
+        JST_CHECK(validateUpdate(0, config.size));
+    }
+
     auto device = Backend::State<DeviceType::WebGPU>()->getDevice();
     const auto& byteSize = config.size * config.elementByteSize;
 
@@ -61,27 +70,11 @@ Result Implementation::create() {
 Result Implementation::destroy() {
     JST_DEBUG("[WebGPU] Destroying buffer.");
 
-    wgpuBufferDestroy(buffer);
-
-    return Result::SUCCESS;
-}
-
-Result Implementation::update() {
-    return update(0, config.size);
-}
-
-Result Implementation::update(const U64& offset, const U64& size) {
-    if (size == 0) {
-        return Result::SUCCESS;
+    if (buffer) {
+        wgpuBufferDestroy(buffer);
+        wgpuBufferRelease(buffer);
+        buffer = nullptr;
     }
-
-    auto device = Backend::State<DeviceType::WebGPU>()->getDevice();
-
-    const auto& byteOffset = offset * config.elementByteSize;
-    const auto& byteSize = size * config.elementByteSize;
-
-    WGPUQueue queue = wgpuDeviceGetQueue(device);
-    wgpuQueueWriteBuffer(queue, buffer, byteOffset, (uint8_t*)config.buffer + byteOffset, byteSize);
 
     return Result::SUCCESS;
 }

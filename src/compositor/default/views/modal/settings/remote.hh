@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_REMOTE_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_REMOTE_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
 #include "jetstream/instance_remote.hh"
@@ -12,7 +12,7 @@
 
 namespace Jetstream {
 
-struct RemoteSettingsPanel : public Sakura::Component {
+struct RemoteSettingsPanel {
     struct Config {
         bool started = false;
         std::string brokerUrl;

@@ -13,6 +13,7 @@ struct ConstellationImplNativeCpu : public ConstellationImpl,
                                     public NativeCpuRuntimeContext,
                                     public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result presentInitialize() override;
@@ -20,20 +21,31 @@ struct ConstellationImplNativeCpu : public ConstellationImpl,
     Result computeSubmit() override;
 };
 
+Result ConstellationImplNativeCpu::validate() {
+    JST_CHECK(ConstellationImpl::validate());
+
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::CF32) {
+        JST_ERROR("[MODULE_CONSTELLATION_NATIVE_CPU] Unsupported input data type: {}.",
+                  inputTensor.dtype());
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 Result ConstellationImplNativeCpu::create() {
     // Create parent.
 
     JST_CHECK(ConstellationImpl::create());
-
-    // Validate input dtype.
-
-    if (input.dtype() != DataType::CF32) {
-        JST_ERROR("[MODULE_CONSTELLATION_NATIVE_CPU] "
-                  "Unsupported input data type: {}.",
-                  input.dtype());
-        return Result::ERROR;
-    }
-
     return Result::SUCCESS;
 }
 

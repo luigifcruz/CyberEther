@@ -1,14 +1,73 @@
 #include "module_impl.hh"
 
 #include <algorithm>
+#include <any>
 #include <cmath>
 #include <limits>
 
 #include "jetstream/render/utils.hh"
 #include "jetstream/constants.hh"
+#include "jetstream/memory/axis.hh"
 #include "resources/shaders/map_shaders.hh"
 
 namespace Jetstream::Modules {
+
+Result AdsbImpl::validate() {
+    validatedSampleAxis = 0;
+    validatedBatchAxis.reset();
+
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    SignalAxes axes;
+    if (ResolveSignalAxes(inputTensor, axes) != Result::SUCCESS) {
+        JST_ERROR("[MODULE_ADSB] Input must contain valid signal axis metadata.");
+        return Result::ERROR;
+    }
+    if (axes.channel) {
+        JST_ERROR("[MODULE_ADSB] Channel inputs are not supported.");
+        return Result::ERROR;
+    }
+    const Index expectedRank = axes.batch ? 2 : 1;
+    if (inputTensor.rank() != expectedRank) {
+        JST_ERROR("[MODULE_ADSB] Input must contain only a sample axis and "
+                  "an optional batch axis.");
+        return Result::ERROR;
+    }
+
+    if (inputTensor.hasAttribute("frequency")) {
+        const std::any value = inputTensor.attribute("frequency");
+        if (!std::any_cast<F32>(&value)) {
+            JST_ERROR("[MODULE_ADSB] Input frequency metadata must have type F32.");
+            return Result::ERROR;
+        }
+    }
+
+    if (inputTensor.hasAttribute("sampleRate")) {
+        const std::any value = inputTensor.attribute("sampleRate");
+        const auto* sampleRate = std::any_cast<F32>(&value);
+        if (!sampleRate) {
+            JST_ERROR("[MODULE_ADSB] Input sample rate metadata must have type F32.");
+            return Result::ERROR;
+        }
+        if (!std::isfinite(*sampleRate) || *sampleRate != 2.0e6f) {
+            JST_ERROR("[MODULE_ADSB] Input sample rate must be 2 MHz ({}).",
+                      *sampleRate);
+            return Result::ERROR;
+        }
+    }
+
+    validatedSampleAxis = *axes.sample;
+    validatedBatchAxis = axes.batch;
+
+    return Result::SUCCESS;
+}
 
 Result AdsbImpl::define() {
     JST_CHECK(defineTaint(Module::Taint::SURFACE));
@@ -21,20 +80,23 @@ Result AdsbImpl::create() {
     const Tensor& inputTensor = inputs().at("signal").tensor;
 
     input = inputTensor;
-
-    if (input.size() == 0) {
-        JST_ERROR("[MODULE_ADSB] Input tensor cannot be empty.");
-        return Result::ERROR;
-    }
+    sampleAxis = validatedSampleAxis;
+    batchAxis = validatedBatchAxis;
 
     if (input.hasAttribute("frequency")) {
-        JST_INFO("[MODULE_ADSB] Input frequency: {:.2f} MHz",
-                 std::any_cast<F32>(input.attribute("frequency")) / 1e6f);
+        const std::any value = input.attribute("frequency");
+        if (const auto* frequency = std::any_cast<F32>(&value)) {
+            JST_INFO("[MODULE_ADSB] Input frequency: {:.2f} MHz",
+                     *frequency / 1e6f);
+        }
     }
 
     if (input.hasAttribute("sampleRate")) {
-        JST_INFO("[MODULE_ADSB] Input sample rate: {:.2f} MHz",
-                 std::any_cast<F32>(input.attribute("sampleRate")) / 1e6f);
+        const std::any value = input.attribute("sampleRate");
+        if (const auto* sampleRate = std::any_cast<F32>(&value)) {
+            JST_INFO("[MODULE_ADSB] Input sample rate: {:.2f} MHz",
+                     *sampleRate / 1e6f);
+        }
     }
 
     // Allocate output tensors.
@@ -160,7 +222,6 @@ Result AdsbImpl::createPresent() {
         cfg.size = 12;
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(fillScreenVerticesBuffer, cfg));
-        JST_CHECK(window->bind(fillScreenVerticesBuffer));
     }
 
     {
@@ -170,7 +231,6 @@ Result AdsbImpl::createPresent() {
         cfg.size = 6;
         cfg.target = Render::Buffer::Target::VERTEX_INDICES;
         JST_CHECK(window->build(fillScreenIndicesBuffer, cfg));
-        JST_CHECK(window->bind(fillScreenIndicesBuffer));
     }
 
     // Aircraft instance buffer.
@@ -185,7 +245,6 @@ Result AdsbImpl::createPresent() {
         cfg.target = Render::Buffer::Target::VERTEX;
         cfg.enableZeroCopy = false;
         JST_CHECK(window->build(aircraftBuffer, cfg));
-        JST_CHECK(window->bind(aircraftBuffer));
     }
 
     // Aircraft vertex + draw.
@@ -219,7 +278,6 @@ Result AdsbImpl::createPresent() {
         cfg.size = 1;
         cfg.target = Render::Buffer::Target::UNIFORM;
         JST_CHECK(window->build(aircraftUniformBuffer, cfg));
-        JST_CHECK(window->bind(aircraftUniformBuffer));
     }
 
     // Aircraft dots program.
@@ -256,7 +314,6 @@ Result AdsbImpl::createPresent() {
             cfg.size = 12;  // 6 vertices * 2 components
             cfg.target = Render::Buffer::Target::VERTEX;
             JST_CHECK(window->build(trackQuadBuffer, cfg));
-            JST_CHECK(window->bind(trackQuadBuffer));
         }
 
         // Instance buffer (dynamic, max capacity).
@@ -271,7 +328,6 @@ Result AdsbImpl::createPresent() {
             cfg.target = Render::Buffer::Target::VERTEX;
             cfg.enableZeroCopy = false;
             JST_CHECK(window->build(trackInstanceBuffer, cfg));
-            JST_CHECK(window->bind(trackInstanceBuffer));
         }
 
         // Uniform buffer.
@@ -294,7 +350,6 @@ Result AdsbImpl::createPresent() {
             cfg.size = 1;
             cfg.target = Render::Buffer::Target::UNIFORM;
             JST_CHECK(window->build(trackUniformBuffer, cfg));
-            JST_CHECK(window->bind(trackUniformBuffer));
         }
 
         // Vertex config: quad vertices + instance data.
@@ -341,7 +396,7 @@ Result AdsbImpl::createPresent() {
             cfg.color = {1.0f, 1.0f, 1.0f, 1.0f};
             cfg.font = window->font("default_mono");
             cfg.elements = {
-                {"flight", {0.9f, {0.0f, 0.0f}, {0, 2}, 0.0f, ""}},
+                {"flight", {.scale = 0.9f, .alignment = {0, 2}}},
             };
             JST_CHECK(window->build(hoverText, cfg));
             JST_CHECK(window->bind(hoverText));
@@ -395,13 +450,6 @@ Result AdsbImpl::destroyPresent() {
     }
 
     JST_CHECK(window->unbind(renderSurface));
-    JST_CHECK(window->unbind(fillScreenVerticesBuffer));
-    JST_CHECK(window->unbind(fillScreenIndicesBuffer));
-    JST_CHECK(window->unbind(aircraftBuffer));
-    JST_CHECK(window->unbind(aircraftUniformBuffer));
-    JST_CHECK(window->unbind(trackQuadBuffer));
-    JST_CHECK(window->unbind(trackInstanceBuffer));
-    JST_CHECK(window->unbind(trackUniformBuffer));
     if (hoverText) {
         JST_CHECK(window->unbind(hoverText));
     }

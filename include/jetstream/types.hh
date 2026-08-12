@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_TYPE_HH
 #define JETSTREAM_TYPE_HH
 
+#include <algorithm>
 #include <any>
 #include <vector>
 #include <complex>
@@ -230,6 +231,62 @@ Extent4D<T> operator/(const Extent4D<T>& a, const F32& b) {
 }
 
 inline Extent4D<U64> NullSize4D = {0, 0, 0, 0};
+
+//
+// Rect
+//
+
+struct Rect {
+    F32 x = 0.0f;
+    F32 y = 0.0f;
+    F32 width = 0.0f;
+    F32 height = 0.0f;
+
+    constexpr F32 right() const {
+        return x + width;
+    }
+
+    constexpr F32 bottom() const {
+        return y + height;
+    }
+
+    constexpr bool empty() const {
+        return width <= 0.0f || height <= 0.0f;
+    }
+
+    constexpr bool contains(F32 px, F32 py) const {
+        return px >= x && px < right() && py >= y && py < bottom();
+    }
+
+    constexpr bool contains(const Extent2D<F32>& point) const {
+        return contains(point.x, point.y);
+    }
+
+    constexpr Rect inset(F32 amount) const {
+        return {
+            x + amount,
+            y + amount,
+            std::max(0.0f, width - 2.0f * amount),
+            std::max(0.0f, height - 2.0f * amount),
+        };
+    }
+
+    constexpr Rect translated(F32 dx, F32 dy) const {
+        return {x + dx, y + dy, width, height};
+    }
+
+    constexpr Extent2D<F32> center() const {
+        return {x + width * 0.5f, y + height * 0.5f};
+    }
+
+    bool operator==(const Rect& a) const {
+        return x == a.x && y == a.y && width == a.width && height == a.height;
+    }
+
+    bool operator!=(const Rect& a) const {
+        return !(*this == a);
+    }
+};
 
 }  // namespace Jetstream
 

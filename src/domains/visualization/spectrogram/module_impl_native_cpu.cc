@@ -14,6 +14,7 @@ struct SpectrogramImplNativeCpu : public SpectrogramImpl,
                                   public NativeCpuRuntimeContext,
                                   public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result presentInitialize() override;
@@ -21,19 +22,31 @@ struct SpectrogramImplNativeCpu : public SpectrogramImpl,
     Result computeSubmit() override;
 };
 
+Result SpectrogramImplNativeCpu::validate() {
+    JST_CHECK(SpectrogramImpl::validate());
+
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::F32) {
+        JST_ERROR("[MODULE_SPECTROGRAM_NATIVE_CPU] Unsupported input data type: {}.",
+                  inputTensor.dtype());
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 Result SpectrogramImplNativeCpu::create() {
     // Create parent.
 
     JST_CHECK(SpectrogramImpl::create());
-
-    // Validate input dtype.
-
-    if (input.dtype() != DataType::F32) {
-        JST_ERROR("[MODULE_SPECTROGRAM_NATIVE_CPU] Unsupported input data type: {}.",
-                  input.dtype());
-        return Result::ERROR;
-    }
-
     return Result::SUCCESS;
 }
 
@@ -60,7 +73,8 @@ Result SpectrogramImplNativeCpu::computeSubmit() {
 
     for (U64 b = 0; b < numberOfBatches; ++b) {
         for (U64 x = 0; x < numberOfElements; ++x) {
-            const U64 index = static_cast<U64>(inputData[b * numberOfElements + x] * height);
+            const U64 inputIndex = b * inputBatchStride + x * inputElementStride;
+            const U64 index = static_cast<U64>(inputData[inputIndex] * height);
 
             if (index > 0 && index < height) {
                 F32& val = freqData[x + (index * numberOfElements)];

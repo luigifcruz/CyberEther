@@ -1,5 +1,7 @@
 #include "module_impl.hh"
 
+#include <jetstream/memory/axis.hh>
+
 namespace Jetstream::Modules {
 
 Result PermutationImpl::validate() {
@@ -29,6 +31,19 @@ Result PermutationImpl::validate() {
         seen[inputAxis] = true;
     }
 
+    if (inputs().contains("buffer")) {
+        const Tensor& inputTensor = inputs().at("buffer").tensor;
+        SignalAxes inputAxes;
+        JST_CHECK(MapSignalAxes(inputTensor, IdentityAxisMap(inputTensor.rank()), inputAxes));
+
+        if (inputTensor.validShape() && inputTensor.size() > 0 &&
+            inputTensor.rank() != config.permutation.size()) {
+            JST_ERROR("[MODULE_PERMUTATION] Input tensor rank {} does not match permutation size {}.",
+                      inputTensor.rank(), config.permutation.size());
+            return Result::ERROR;
+        }
+    }
+
     return Result::SUCCESS;
 }
 
@@ -44,17 +59,19 @@ Result PermutationImpl::define() {
 Result PermutationImpl::create() {
     const Tensor& inputTensor = inputs().at("buffer").tensor;
 
-    if (inputTensor.rank() != permutation.size()) {
-        JST_ERROR("[MODULE_PERMUTATION] Input tensor rank {} does not match permutation size {}.",
-                  inputTensor.rank(), permutation.size());
-        return Result::ERROR;
-    }
-
     input = inputTensor;
     output = input.clone();
 
     JST_CHECK(output.permute(permutation));
     JST_CHECK(output.propagateAttributes(input));
+
+    AxisMap axisMap(input.rank());
+    for (Index outputAxis = 0; outputAxis < permutation.size(); ++outputAxis) {
+        axisMap[permutation[outputAxis]] = outputAxis;
+    }
+    SignalAxes outputAxes;
+    JST_CHECK(MapSignalAxes(input, axisMap, outputAxes));
+    JST_CHECK(SetSignalAxes(output, outputAxes));
 
     outputs()["buffer"].produced(name(), "buffer", output);
 

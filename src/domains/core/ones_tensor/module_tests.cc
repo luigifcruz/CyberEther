@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <limits>
 #include <type_traits>
 #include <unordered_set>
 
@@ -11,6 +12,16 @@
 using namespace Jetstream;
 
 namespace {
+
+void RequireOnesTensorValidationError(const Registry::ModuleRegistration& impl,
+                                      const Modules::OnesTensor& config) {
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("ones_tensor", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", config, {}) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
 
 template<typename T>
 void ExpectOnesTensorSuccess(const std::vector<U64>& shape, const T& expected) {
@@ -36,11 +47,11 @@ void ExpectOnesTensorSuccess(const std::vector<U64>& shape, const T& expected) {
 
             const T* outData = out.data<T>();
             for (U64 i = 0; i < out.size(); ++i) {
-                if constexpr (std::is_same_v<T, F32>) {
-                    REQUIRE_THAT(outData[i], Catch::Matchers::WithinAbs(expected, 1e-6f));
+                if constexpr (std::is_floating_point_v<T>) {
+                    REQUIRE_THAT(outData[i], Catch::Matchers::WithinAbs(expected, 1e-6));
                 } else {
-                    REQUIRE_THAT(outData[i].real(), Catch::Matchers::WithinAbs(expected.real(), 1e-6f));
-                    REQUIRE_THAT(outData[i].imag(), Catch::Matchers::WithinAbs(expected.imag(), 1e-6f));
+                    REQUIRE_THAT(outData[i].real(), Catch::Matchers::WithinAbs(expected.real(), 1e-6));
+                    REQUIRE_THAT(outData[i].imag(), Catch::Matchers::WithinAbs(expected.imag(), 1e-6));
                 }
             }
         }
@@ -57,7 +68,15 @@ TEST_CASE("Ones Tensor Module - CF32", "[modules][ones_tensor][CF32]") {
     ExpectOnesTensorSuccess<CF32>({2, 2, 2}, CF32(1.0f, 0.0f));
 }
 
-TEST_CASE("Ones Tensor Module - Repeated compute keeps the same tensor",
+TEST_CASE("Ones Tensor Module - F64", "[modules][ones_tensor][F64]") {
+    ExpectOnesTensorSuccess<F64>({2, 3}, 1.0);
+}
+
+TEST_CASE("Ones Tensor Module - CF64", "[modules][ones_tensor][CF64]") {
+    ExpectOnesTensorSuccess<CF64>({2, 2, 2}, CF64(1.0, 0.0));
+}
+
+TEST_CASE("Ones Tensor Module - Repeated compute rematerializes the same tensor",
           "[modules][ones_tensor][continuity]") {
     const auto implementations = Registry::ListAvailableModules("ones_tensor");
     REQUIRE(!implementations.empty());
@@ -92,6 +111,10 @@ TEST_CASE("Ones Tensor Module - Repeated compute keeps the same tensor",
             }
             REQUIRE_THAT(firstOutput.at<F32>(0), Catch::Matchers::WithinAbs(1.0f, 1e-6f));
 
+            Tensor corruptedOutput = module->outputs().at("buffer").tensor;
+            corruptedOutput.at<F32>(0) = 0.0f;
+            corruptedOutput.at<F32>(3) = 0.0f;
+
             skippedModules.clear();
             REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
             REQUIRE(skippedModules.empty());
@@ -119,33 +142,72 @@ TEST_CASE("Ones Tensor Module - Validation rejects invalid config",
 
     for (const auto& impl : implementations) {
         SECTION("empty shape") {
-            TestContext ctx("ones_tensor", impl.device, impl.runtime, impl.provider);
-
             Modules::OnesTensor config;
             config.shape = {};
-            ctx.setConfig(config);
-
-            REQUIRE(ctx.run() == Result::ERROR);
+            RequireOnesTensorValidationError(impl, config);
         }
 
         SECTION("zero dimension") {
-            TestContext ctx("ones_tensor", impl.device, impl.runtime, impl.provider);
-
             Modules::OnesTensor config;
             config.shape = {2, 0, 4};
-            ctx.setConfig(config);
-
-            REQUIRE(ctx.run() == Result::ERROR);
+            RequireOnesTensorValidationError(impl, config);
         }
 
         SECTION("invalid dtype") {
-            TestContext ctx("ones_tensor", impl.device, impl.runtime, impl.provider);
-
             Modules::OnesTensor config;
             config.dataType = "I32";
-            ctx.setConfig(config);
+            RequireOnesTensorValidationError(impl, config);
+        }
+    }
+}
 
-            REQUIRE(ctx.run() == Result::ERROR);
+TEST_CASE("Ones Tensor Module - Validation rejects layout overflow",
+          "[modules][ones_tensor][validation][overflow]") {
+    const auto implementations = Registry::ListAvailableModules("ones_tensor");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Modules::OnesTensor config;
+            config.shape = {std::numeric_limits<U64>::max(), 2};
+            RequireOnesTensorValidationError(impl, config);
+
+            config.shape = {std::numeric_limits<U64>::max() / sizeof(F32) + 1};
+            RequireOnesTensorValidationError(impl, config);
+        }
+    }
+}
+
+TEST_CASE("Ones Tensor Module - Validation rejects unsupported allocation size",
+          "[modules][ones_tensor][validation][allocation]") {
+    const auto implementations = Registry::ListAvailableModules("ones_tensor");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Modules::OnesTensor config;
+            config.shape = {std::numeric_limits<U64>::max() / sizeof(F32)};
+            RequireOnesTensorValidationError(impl, config);
+        }
+    }
+}
+
+TEST_CASE("Ones Tensor Module - CUDA validation rejects unsupported grid size",
+          "[modules][ones_tensor][validation][cuda]") {
+    const auto implementations = Registry::ListAvailableModules("ones_tensor");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        if (impl.device != DeviceType::CUDA) {
+            continue;
+        }
+
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Modules::OnesTensor config;
+            config.shape = {
+                static_cast<U64>(std::numeric_limits<I32>::max()) * 256 + 1,
+            };
+            RequireOnesTensorValidationError(impl, config);
         }
     }
 }

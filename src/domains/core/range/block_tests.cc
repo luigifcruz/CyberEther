@@ -2,6 +2,7 @@
 
 #include "jetstream/domains/core/range/block.hh"
 #include "jetstream/domains/dsp/amplitude/block.hh"
+#include "jetstream/domains/dsp/signal_generator/block.hh"
 #include "jetstream/domains/dsp/window/block.hh"
 #include "flowgraph_fixture.hh"
 
@@ -27,24 +28,45 @@ TEST_CASE_METHOD(FlowgraphFixture, "Range block creates with F32 upstream",
             Result::SUCCESS);
     REQUIRE(viewBlock("range_block").state == Block::State::Created);
     REQUIRE(viewBlock("range_block").outputs.count("signal") == 1);
+
+    Parser::Map equalBounds;
+    equalBounds["min"] = F32{-46.666664f};
+    equalBounds["max"] = F32{-46.666664f};
+    REQUIRE(flowgraph->blockReconfigure("range_block", equalBounds) == Result::SUCCESS);
+    REQUIRE(viewBlock("range_block").state == Block::State::Created);
 }
 
-TEST_CASE_METHOD(FlowgraphFixture, "Range block rejects invalid min/max",
-                 "[modules][range][block][validation]") {
+TEST_CASE_METHOD(FlowgraphFixture, "Range block orders reversed min/max",
+                 "[modules][range][block][reversed-bounds]") {
     Blocks::Window window;
-    REQUIRE(flowgraph->blockCreate("range_bad_win", window, {}) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockCreate("range_reverse_win", window, {}) == Result::SUCCESS);
 
     TensorMap amplitudeInputs;
-    amplitudeInputs["signal"].requested("range_bad_win", "window");
-    REQUIRE(flowgraph->blockCreate("range_bad_amp", "amplitude", {}, amplitudeInputs) ==
+    amplitudeInputs["signal"].requested("range_reverse_win", "window");
+    REQUIRE(flowgraph->blockCreate("range_reverse_amp", "amplitude", {}, amplitudeInputs) ==
             Result::SUCCESS);
 
     TensorMap rangeInputs;
-    rangeInputs["signal"].requested("range_bad_amp", "signal");
+    rangeInputs["signal"].requested("range_reverse_amp", "signal");
 
     Blocks::Range config;
     config.min = 1.0f;
     config.max = -1.0f;
-    REQUIRE(flowgraph->blockCreate("range_bad", config, rangeInputs) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockCreate("range_reverse", config, rangeInputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("range_reverse").state == Block::State::Created);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Range block delegates input dtype validation to its module",
+                 "[modules][range][block][validation]") {
+    Blocks::SignalGenerator source;
+    source.signalDataType = "CF32";
+    REQUIRE(flowgraph->blockCreate("range_bad_src", source, {}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].requested("range_bad_src", "signal");
+
+    REQUIRE(flowgraph->blockCreate("range_bad", "range", {}, inputs) == Result::SUCCESS);
     REQUIRE(viewBlock("range_bad").state == Block::State::Errored);
+    REQUIRE(viewBlock("range_bad").outputs.empty());
 }

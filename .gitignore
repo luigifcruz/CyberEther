@@ -39,6 +39,7 @@ subprojects/*
 !subprojects/nlohmann_json.wrap
 !subprojects/openssl.wrap
 !subprojects/pcre2.wrap
+!subprojects/pthreads4w.wrap
 !subprojects/qrencode.wrap
 !subprojects/rapidyaml.wrap
 !subprojects/robin-map.wrap
@@ -48,6 +49,7 @@ subprojects/*
 !subprojects/soapyrtlsdr.wrap
 !subprojects/soapysdr.wrap
 !subprojects/stb.wrap
+!subprojects/velopack.wrap
 !subprojects/vpx.wrap
 !subprojects/zlib.wrap
 

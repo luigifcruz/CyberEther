@@ -49,9 +49,7 @@ Result Implementation::create() {
         return Result::ERROR;
     }
 
-    // Set update flag.
-
-    this->updated = true;
+    update();
 
     return Result::SUCCESS;
 }
@@ -65,10 +63,9 @@ Result Implementation::destroy() {
 Result Implementation::encode(MTL::ComputeCommandEncoder* encoder) {
     // Check if data needs to be updated.
 
-    if (!this->updated) {
+    if (!shouldEncode()) {
         return Result::SUCCESS;
     }
-    this->updated = false;
 
     // Set pipeline state.
 
@@ -92,6 +89,8 @@ Result Implementation::encode(MTL::ComputeCommandEncoder* encoder) {
 
     encoder->dispatchThreads(MTL::Size(x, y, z),
                              MTL::Size(pipelineState->maxTotalThreadsPerThreadgroup(), 1, 1));
+
+    markScheduled();
 
     return Result::SUCCESS;
 }

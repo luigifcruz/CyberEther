@@ -9,10 +9,11 @@ namespace Jetstream::Blocks {
 
 struct Permutation : public Block::Config {
     std::vector<U64> permutation = {0};
+    bool contiguous = false;
 
     JST_BLOCK_TYPE(permutation);
     JST_BLOCK_DOMAIN("Core");
-    JST_BLOCK_PARAMS(permutation);
+    JST_BLOCK_PARAMS(permutation, contiguous);
     JST_BLOCK_DESCRIPTION(
         "Permutation",
         "Reorders tensor axes with a user-defined permutation.",
@@ -22,7 +23,8 @@ struct Permutation : public Block::Config {
         "position. The underlying tensor data is unchanged.\n\n"
 
         "## Arguments\n"
-        "- **Permutation**: The output axis order as zero-based input axis indices.\n\n"
+        "- **Permutation**: The output axis order as zero-based input axis indices.\n"
+        "- **Contiguous**: When enabled, copies data to ensure contiguous memory layout.\n\n"
 
         "## Useful For\n"
         "- Transposing matrix-shaped tensors for downstream processing.\n"
@@ -38,10 +40,11 @@ struct Permutation : public Block::Config {
         "  Input: CF32[8, 64, 1024] -> Output: CF32[64, 1024, 8]\n\n"
 
         "## Implementation\n"
-        "Input -> Permutation -> Output\n"
+        "Input -> Permutation -> (Duplicate) -> Output\n"
         "1. Validates that the configuration is a full axis permutation.\n"
         "2. Reorders tensor shape and stride metadata to build the output view.\n"
-        "3. The output shares the same underlying data as the input."
+        "3. If Contiguous is enabled, a Duplicate module copies the permuted view.\n"
+        "4. By default the output shares the same underlying data as the input."
     );
 };
 

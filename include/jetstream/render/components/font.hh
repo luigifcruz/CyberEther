@@ -29,6 +29,10 @@ class JETSTREAM_API Font : public Generic {
         return config;
     }
 
+    I32 ascent() const;
+    I32 descent() const;
+    I32 lineHeight() const;
+
  protected:
     struct Glyph {
         I32 x0;

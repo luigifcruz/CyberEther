@@ -5,9 +5,14 @@
 #include <jetstream/domains/dsp/fft/module.hh>
 #include <jetstream/domains/dsp/agc/module.hh>
 #include <jetstream/domains/dsp/amplitude/module.hh>
-#include <jetstream/domains/core/invert/module.hh>
+#include <jetstream/domains/dsp/invert/module.hh>
+#include <jetstream/domains/core/cast/module.hh>
 #include <jetstream/domains/core/multiply/module.hh>
 #include <jetstream/domains/core/range/module.hh>
+#include <jetstream/domains/core/reshape/module.hh>
+#include <jetstream/memory/axis.hh>
+
+#include <optional>
 
 namespace Jetstream::Blocks {
 
@@ -21,8 +26,12 @@ struct SpectrumEngineImpl : public Block::Impl,
  protected:
     std::shared_ptr<Modules::Window> windowConfig =
         std::make_shared<Modules::Window>();
+    std::shared_ptr<Modules::Cast> castInputConfig =
+        std::make_shared<Modules::Cast>();
     std::shared_ptr<Modules::Invert> invertConfig =
         std::make_shared<Modules::Invert>();
+    std::shared_ptr<Modules::Reshape> reshapeWindowConfig =
+        std::make_shared<Modules::Reshape>();
     std::shared_ptr<Modules::Multiply> multiplyConfig =
         std::make_shared<Modules::Multiply>();
     std::shared_ptr<Modules::Fft> fftConfig =
@@ -33,10 +42,27 @@ struct SpectrumEngineImpl : public Block::Impl,
         std::make_shared<Modules::Amplitude>();
     std::shared_ptr<Modules::Range> rangeConfig =
         std::make_shared<Modules::Range>();
+    std::optional<Index> candidateSampleAxis;
 };
 
 Result SpectrumEngineImpl::validate() {
     const auto& config = *candidate();
+    candidateSampleAxis.reset();
+
+    const auto input = inputs().find("buffer");
+    if (input != inputs().end() && input->second.resolved()) {
+        if (input->second.tensor.dtype() != DataType::F32 &&
+            input->second.tensor.dtype() != DataType::CF32) {
+            JST_ERROR("[BLOCK_SPECTRUM_ENGINE] Input must have data type F32 or CF32.");
+            return Result::ERROR;
+        }
+        SignalAxes axes;
+        if (ResolveSignalAxes(input->second.tensor, axes) != Result::SUCCESS) {
+            JST_ERROR("[BLOCK_SPECTRUM_ENGINE] Input signal axis metadata is invalid.");
+            return Result::ERROR;
+        }
+        candidateSampleAxis = *axes.sample;
+    }
 
     if (enableAgc != config.enableAgc) {
         return Result::RECREATE;
@@ -46,14 +72,11 @@ Result SpectrumEngineImpl::validate() {
         return Result::RECREATE;
     }
 
-    if (axis != config.axis) {
-        return Result::RECREATE;
-    }
-
     return Result::SUCCESS;
 }
 
 Result SpectrumEngineImpl::configure() {
+    castInputConfig->outputType = "CF32";
     fftConfig->forward = true;
     rangeConfig->min = rangeMin;
     rangeConfig->max = rangeMax;
@@ -62,15 +85,12 @@ Result SpectrumEngineImpl::configure() {
 }
 
 Result SpectrumEngineImpl::define() {
+    const auto& config = *candidate();
+
     JST_CHECK(defineInterfaceInput("buffer", "Input",
                                    "Input signal to compute the spectrum of."));
     JST_CHECK(defineInterfaceOutput("buffer", "Output",
                                     "Spectrum output in decibels."));
-
-    JST_CHECK(defineInterfaceConfig("axis",
-                                    "Axis",
-                                    "Axis along which to compute the spectrum.",
-                                    "int:"));
 
     JST_CHECK(defineInterfaceConfig("enableAgc",
                                     "Enable AGC",
@@ -82,7 +102,7 @@ Result SpectrumEngineImpl::define() {
                                     "Apply range scaling to the output.",
                                     "bool"));
 
-    if (enableScale) {
+    if (config.enableScale) {
         JST_CHECK(defineInterfaceConfig("rangeMin",
                                         "Range Min",
                                         "Minimum value of the scale range.",
@@ -101,33 +121,60 @@ Result SpectrumEngineImpl::create() {
     const auto& inputPort = inputs().at("buffer");
     const Tensor& inputTensor = inputPort.tensor;
 
-    // Validate axis against input rank.
-
-    if (axis >= inputTensor.rank()) {
-        JST_ERROR("[BLOCK_SPECTRUM_ENGINE] Axis {} is out of bounds for "
-                  "input tensor rank {}.", axis, inputTensor.rank());
+    if (!candidateSampleAxis) {
+        JST_ERROR("[BLOCK_SPECTRUM_ENGINE] Input validation plan is unavailable.");
         return Result::ERROR;
     }
+    const Index resolvedAxis = *candidateSampleAxis;
+
+    JST_CHECK(moduleCreate("cast_input", castInputConfig, {
+        {"buffer", inputPort}
+    }));
+    const auto complexInput = moduleGetOutput({"cast_input", "buffer"});
 
     // Derive window size from input shape at specified axis.
 
-    windowConfig->size = inputTensor.shape(axis);
+    windowConfig->size = inputTensor.shape(resolvedAxis);
+
+    std::string windowShape = "[";
+    for (Index dimension = 0; dimension < inputTensor.rank(); ++dimension) {
+        if (dimension > 0) {
+            windowShape += ", ";
+        }
+        windowShape += std::to_string(dimension == resolvedAxis ? windowConfig->size : 1);
+    }
+    windowShape += "]";
+    reshapeWindowConfig->shape = windowShape;
 
     // Create window coefficients.
 
     JST_CHECK(moduleCreate("window", windowConfig, {}));
+    auto windowOutput = moduleGetOutput({"window", "window"});
+    JST_CHECK(SetSignalAxes(windowOutput.tensor, {
+        .sample = Index{0},
+    }));
 
     // Invert window (FFT shift).
 
     JST_CHECK(moduleCreate("invert", invertConfig, {
-        {"signal", moduleGetOutput({"window", "window"})}
+        {"signal", windowOutput}
+    }));
+
+    // Align the 1D window with the selected input axis for broadcasting.
+
+    JST_CHECK(moduleCreate("reshape_window", reshapeWindowConfig, {
+        {"buffer", moduleGetOutput({"invert", "signal"})}
+    }));
+    auto reshapedWindow = moduleGetOutput({"reshape_window", "buffer"});
+    JST_CHECK(SetSignalAxes(reshapedWindow.tensor, {
+        .sample = resolvedAxis,
     }));
 
     // Multiply input signal by shifted window.
 
     JST_CHECK(moduleCreate("multiply", multiplyConfig, {
-        {"a", inputPort},
-        {"b", moduleGetOutput({"invert", "signal"})}
+        {"a", complexInput},
+        {"b", reshapedWindow}
     }));
 
     // Forward FFT.
@@ -139,6 +186,8 @@ Result SpectrumEngineImpl::create() {
     // Optional AGC.
 
     if (enableAgc) {
+        // Preserve relative FFT-bin levels by using one RMS tile per spectrum.
+        agcConfig->tileSize = inputTensor.shape(resolvedAxis);
         JST_CHECK(moduleCreate("agc", agcConfig, {
             {"signal", moduleGetOutput({"fft", "signal"})}
         }));
@@ -167,6 +216,15 @@ Result SpectrumEngineImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(SpectrumEngineImpl);
+JST_REGISTER_BLOCK(SpectrumEngineImpl,
+                   {"cast"},
+                   {"window"},
+                   {"invert"},
+                   {"reshape"},
+                   {"multiply"},
+                   {"fft"},
+                   {"amplitude"},
+                   {"agc", true},
+                   {"range", true});
 
 }  // namespace Jetstream::Blocks

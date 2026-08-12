@@ -17,7 +17,7 @@
 
 namespace Jetstream {
 
-struct FlowgraphWindow : public Sakura::Component {
+struct FlowgraphWindow {
     struct Config {
         std::string id;
         std::string title;

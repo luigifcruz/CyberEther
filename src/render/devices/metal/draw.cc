@@ -18,8 +18,6 @@ Result Implementation::create(MTL::VertexDescriptor* vertDesc, const U64& offset
                              config.numberOfInstances, 
                              offset));
 
-    // Create multi-draw indirect buffer.
-
     if (buffer->isBuffered()) {
         for (U64 i = 0; i < config.numberOfDraws; i++) {
             MTL::DrawIndexedPrimitivesIndirectArguments drawCommand = {};
@@ -32,18 +30,15 @@ Result Implementation::create(MTL::VertexDescriptor* vertDesc, const U64& offset
             indexedDrawCommands.push_back(drawCommand);
         }
 
-        {
-            Render::Buffer::Config cfg;
-            cfg.buffer = indexedDrawCommands.data();
-            cfg.elementByteSize = sizeof(MTL::DrawIndexedPrimitivesIndirectArguments);
-            cfg.size = indexedDrawCommands.size();
-            cfg.target = Render::Buffer::Target::INDIRECT;
+        Render::Buffer::Config cfg;
+        cfg.buffer = indexedDrawCommands.data();
+        cfg.elementByteSize = sizeof(MTL::DrawIndexedPrimitivesIndirectArguments);
+        cfg.size = indexedDrawCommands.size();
+        cfg.target = Render::Buffer::Target::INDIRECT;
 
-            indexedIndirectBuffer = std::make_shared<Render::BufferImp<DeviceType::Metal>>(cfg);
-            indexedIndirectBuffer->create();
-        }
-
-        indexedIndirectBuffer->update();
+        indexedIndirectBuffer = std::make_shared<Render::BufferImp<DeviceType::Metal>>(cfg);
+        JST_CHECK(indexedIndirectBuffer->create());
+        transferBuffers.push_back(indexedIndirectBuffer);
     } else {
         for (U64 i = 0; i < config.numberOfDraws; i++) {
             MTL::DrawPrimitivesIndirectArguments drawCommand = {};
@@ -55,18 +50,15 @@ Result Implementation::create(MTL::VertexDescriptor* vertDesc, const U64& offset
             drawCommands.push_back(drawCommand);
         }
 
-        {
-            Render::Buffer::Config cfg;
-            cfg.buffer = drawCommands.data();
-            cfg.elementByteSize = sizeof(MTL::DrawPrimitivesIndirectArguments);
-            cfg.size = drawCommands.size();
-            cfg.target = Render::Buffer::Target::INDIRECT;
+        Render::Buffer::Config cfg;
+        cfg.buffer = drawCommands.data();
+        cfg.elementByteSize = sizeof(MTL::DrawPrimitivesIndirectArguments);
+        cfg.size = drawCommands.size();
+        cfg.target = Render::Buffer::Target::INDIRECT;
 
-            indirectBuffer = std::make_shared<Render::BufferImp<DeviceType::Metal>>(cfg);
-            indirectBuffer->create();
-        }
-
-        indirectBuffer->update();
+        indirectBuffer = std::make_shared<Render::BufferImp<DeviceType::Metal>>(cfg);
+        JST_CHECK(indirectBuffer->create());
+        transferBuffers.push_back(indirectBuffer);
     }
 
     return Result::SUCCESS;
@@ -82,6 +74,7 @@ Result Implementation::destroy() {
         JST_CHECK(indirectBuffer->destroy());
         drawCommands.clear();
     }
+    transferBuffers.clear();
 
     JST_CHECK(buffer->destroy());
 
@@ -111,16 +104,18 @@ Result Implementation::encode(MTL::RenderCommandEncoder* encoder) {
 
     JST_CHECK(buffer->encode(encoder));
 
-    for (U64 i = 0; i < config.numberOfDraws; i++) {
-        if (buffer->isBuffered()) {
+    if (buffer->isBuffered()) {
+        for (U64 i = 0; i < indexedDrawCommands.size(); ++i) {
             encoder->drawIndexedPrimitives(mode,
-                                           MTL::IndexTypeUInt32, 
-                                           buffer->getIndexBuffer(), 
+                                           MTL::IndexTypeUInt32,
+                                           buffer->getIndexBuffer(),
                                            0,
                                            indexedIndirectBuffer->getHandle(),
                                            i * sizeof(MTL::DrawIndexedPrimitivesIndirectArguments));
-        } else {
-            encoder->drawPrimitives(mode, 
+        }
+    } else {
+        for (U64 i = 0; i < drawCommands.size(); ++i) {
+            encoder->drawPrimitives(mode,
                                     indirectBuffer->getHandle(),
                                     i * sizeof(MTL::DrawPrimitivesIndirectArguments));
         }
@@ -148,7 +143,7 @@ Result Implementation::updateVertexCount(U64 vertexCount) {
         for (auto& drawCommand : indexedDrawCommands) {
             drawCommand.indexCount = vertexCount;
         }
-        indexedIndirectBuffer->update();
+        JST_CHECK(indexedIndirectBuffer->update());
     } else {
         // Check bounds for non-indexed drawing
         const U64 maxVertexCount = buffer->getVertexCount();
@@ -161,9 +156,9 @@ Result Implementation::updateVertexCount(U64 vertexCount) {
         for (auto& drawCommand : drawCommands) {
             drawCommand.vertexCount = vertexCount;
         }
-        indirectBuffer->update();
+        JST_CHECK(indirectBuffer->update());
     }
-    
+
     return Result::SUCCESS;
 }
 
@@ -181,14 +176,14 @@ Result Implementation::updateInstanceCount(U64 instanceCount) {
             drawCommand.instanceCount = instanceCount;
             drawCommand.baseInstance = i * instanceCount;
         }
-        indexedIndirectBuffer->update();
+        JST_CHECK(indexedIndirectBuffer->update());
     } else {
         for (U64 i = 0; i < drawCommands.size(); ++i) {
             auto& drawCommand = drawCommands[i];
             drawCommand.instanceCount = instanceCount;
             drawCommand.baseInstance = i * instanceCount;
         }
-        indirectBuffer->update();
+        JST_CHECK(indirectBuffer->update());
     }
 
     return Result::SUCCESS;

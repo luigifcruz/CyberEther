@@ -7,7 +7,7 @@
 
 namespace Jetstream {
 
-struct FlowgraphConfigPathField : public Sakura::Component {
+struct FlowgraphConfigPathField {
     using Config = FlowgraphConfigFieldConfig;
 
     enum class Mode {
@@ -33,10 +33,10 @@ struct FlowgraphConfigPathField : public Sakura::Component {
             .id = this->config.id + "Path",
             .value = value,
             .onChange = [this](const std::string& nextValue) {
-                auto values = this->config.values;
-                values[this->config.name] = nextValue;
+                Parser::Map patch;
+                patch[this->config.name] = nextValue;
                 if (this->config.onApply) {
-                    this->config.onApply(std::move(values), false);
+                    this->config.onApply(std::move(patch), false);
                 }
             },
             .onBrowse = [this]() {
@@ -63,12 +63,12 @@ struct FlowgraphConfigPathField : public Sakura::Component {
     }
 
     void browse() const {
-        auto applyPath = [values = config.values,
-                          name = config.name,
+        auto applyPath = [name = config.name,
                           onApply = config.onApply](std::string path) mutable {
-            values[name] = std::move(path);
+            Parser::Map patch;
+            patch[name] = std::move(path);
             if (onApply) {
-                onApply(std::move(values), false);
+                onApply(std::move(patch), false);
             }
         };
 

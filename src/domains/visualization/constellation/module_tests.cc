@@ -1,9 +1,46 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <limits>
+
+#include "jetstream/domains/visualization/constellation/module.hh"
+#include "jetstream/memory/axis.hh"
+#include "jetstream/module_interface.hh"
 #include "jetstream/testing.hh"
 #include "jetstream/registry.hh"
 
 using namespace Jetstream;
+
+namespace {
+
+void RequireConstellationValidationError(const Registry::ModuleRegistration& impl,
+                                         const DataType dtype,
+                                         const Shape& shape,
+                                         const bool broadcast = false) {
+    Tensor input;
+    if (broadcast) {
+        REQUIRE(input.create(impl.device, dtype, Shape(shape.size(), 1)) == Result::SUCCESS);
+        REQUIRE(input.broadcastTo(shape) == Result::SUCCESS);
+    } else if (shape.empty()) {
+        REQUIRE(input.create(impl.device, dtype, {1}) == Result::SUCCESS);
+        REQUIRE(input.squeezeDims(0) == Result::SUCCESS);
+    } else {
+        REQUIRE(input.create(impl.device, dtype, shape) == Result::SUCCESS);
+    }
+
+    TensorMap inputs;
+    inputs["signal"].requested("test", "signal");
+    inputs["signal"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("constellation", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", Modules::Constellation{}, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->interface()->inputs().empty());
+}
+
+}  // namespace
 
 TEST_CASE("Constellation module accepts CF32 rank-1 and rank-2 inputs",
           "[modules][constellation]") {
@@ -29,6 +66,34 @@ TEST_CASE("Constellation module accepts CF32 rank-1 and rank-2 inputs",
                     Result::SUCCESS);
             ctx.setInput("signal", batched);
             REQUIRE(ctx.run() == Result::SUCCESS);
+
+            Tensor channels;
+            REQUIRE(channels.create(DeviceType::CPU, DataType::CF32, {128}) ==
+                    Result::SUCCESS);
+            REQUIRE(SetSignalAxes(channels, {.channel = Index{0}}) ==
+                    Result::SUCCESS);
+            ctx.setInput("signal", channels);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            Tensor batchedChannels;
+            REQUIRE(batchedChannels.create(DeviceType::CPU, DataType::CF32,
+                                           {4, 32}) == Result::SUCCESS);
+            REQUIRE(SetSignalAxes(batchedChannels, {
+                .batch = Index{0},
+                .channel = Index{1},
+            }) == Result::SUCCESS);
+            ctx.setInput("signal", batchedChannels);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            Tensor trailingBatchedChannels;
+            REQUIRE(trailingBatchedChannels.create(DeviceType::CPU, DataType::CF32,
+                                                   {32, 4}) == Result::SUCCESS);
+            REQUIRE(SetSignalAxes(trailingBatchedChannels, {
+                .batch = Index{1},
+                .channel = Index{0},
+            }) == Result::SUCCESS);
+            ctx.setInput("signal", trailingBatchedChannels);
+            REQUIRE(ctx.run() == Result::SUCCESS);
         }
     }
 }
@@ -40,13 +105,7 @@ TEST_CASE("Constellation module rejects unsupported input dtype",
 
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
-            TestContext ctx("constellation", impl.device, impl.runtime, impl.provider);
-
-            Tensor input;
-            REQUIRE(input.create(DeviceType::CPU, DataType::F32, {32}) == Result::SUCCESS);
-
-            ctx.setInput("signal", input);
-            REQUIRE(ctx.run() == Result::ERROR);
+            RequireConstellationValidationError(impl, DataType::F32, {32});
         }
     }
 }
@@ -58,19 +117,46 @@ TEST_CASE("Constellation module rejects rank greater than two",
 
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
-            TestContext ctx("constellation", impl.device, impl.runtime, impl.provider);
-
-            Tensor input;
-            REQUIRE(input.create(DeviceType::CPU, DataType::CF32, {2, 2, 2}) ==
-                    Result::SUCCESS);
-
-            ctx.setInput("signal", input);
-            REQUIRE(ctx.run() == Result::ERROR);
+            RequireConstellationValidationError(impl, DataType::CF32, {2, 2, 2});
         }
     }
 }
 
-TEST_CASE("Constellation module stays stable across repeated runs",
+TEST_CASE("Constellation module rejects rank zero during validation",
+          "[modules][constellation][validation]") {
+    const auto implementations = Registry::ListAvailableModules("constellation");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            RequireConstellationValidationError(impl, DataType::CF32, {});
+        }
+    }
+}
+
+TEST_CASE("Constellation module rejects unsupported rendering size",
+          "[modules][constellation][validation][size]") {
+    const auto implementations = Registry::ListAvailableModules("constellation");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            const U64 maxPointCount = std::min({
+                static_cast<U64>(std::numeric_limits<U32>::max()),
+                static_cast<U64>(std::numeric_limits<std::size_t>::max()) /
+                    (32 * sizeof(F32)),
+                static_cast<U64>(std::numeric_limits<std::ptrdiff_t>::max()) /
+                    (32 * sizeof(F32)),
+            });
+            const Shape shape = {
+                maxPointCount + 1,
+            };
+            RequireConstellationValidationError(impl, DataType::CF32, shape, true);
+        }
+    }
+}
+
+TEST_CASE("Constellation module stays stable across repeated computes",
           "[modules][constellation][state]") {
     auto implementations = Registry::ListAvailableModules("constellation");
     REQUIRE(!implementations.empty());
@@ -88,8 +174,10 @@ TEST_CASE("Constellation module stays stable across repeated runs",
             }
 
             ctx.setInput("signal", input);
-            REQUIRE(ctx.run() == Result::SUCCESS);
-            REQUIRE(ctx.run() == Result::SUCCESS);
+            REQUIRE(ctx.start() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(ctx.stop() == Result::SUCCESS);
         }
     }
 }

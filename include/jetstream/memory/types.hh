@@ -42,6 +42,7 @@ inline constexpr bool operator==(DeviceType lhs, DeviceType rhs) {
 
 JETSTREAM_API const char* GetDeviceName(const DeviceType& device);
 JETSTREAM_API const char* GetDevicePrettyName(const DeviceType& device);
+JETSTREAM_API bool IsDeviceName(const std::string& device);
 JETSTREAM_API DeviceType StringToDevice(const std::string& device);
 
 inline std::ostream& operator<<(std::ostream& os, const DeviceType& device) {

@@ -40,6 +40,14 @@ class JETSTREAM_API Program {
         return config;
     }
 
+    bool enabled() const {
+        return enabledState;
+    }
+
+    void setEnabled(bool enabled) {
+        enabledState = enabled;
+    }
+
     void scissorRect(const std::optional<ScissorRect>& rect) {
         config.scissorRect = rect;
     }
@@ -53,6 +61,9 @@ class JETSTREAM_API Program {
     Config config;
 
     uint32_t drawIndex = 0;
+
+ private:
+    bool enabledState = true;
 };
 
 inline constexpr Program::Target operator|(Program::Target lhs, Program::Target rhs) {

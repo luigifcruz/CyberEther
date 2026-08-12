@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_COMPONENTS_HINT_OVERLAY_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_COMPONENTS_HINT_OVERLAY_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
 #include <functional>
@@ -12,7 +12,7 @@
 
 namespace Jetstream {
 
-struct HintOverlay : public Sakura::Component {
+struct HintOverlay {
     struct Config {
         std::string id;
         std::string icon = ICON_FA_LIGHTBULB;

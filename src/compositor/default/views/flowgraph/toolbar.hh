@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_TOOLBAR_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_TOOLBAR_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
 #include <functional>
@@ -10,7 +10,7 @@
 
 namespace Jetstream {
 
-struct FlowgraphToolbar : public Sakura::Component {
+struct FlowgraphToolbar {
     struct Config {
         std::string id;
         std::function<void()> onSave;

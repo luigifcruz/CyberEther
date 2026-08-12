@@ -10,6 +10,10 @@ Implementation::TextureImp(const Config& config) : Texture(config) {
 Result Implementation::create() {
     JST_DEBUG("[METAL] Creating texture.");
 
+    if (config.buffer) {
+        JST_CHECK(validateFillRow(0, config.size.y));
+    }
+
     pixelFormat = ConvertPixelFormat(config.pfmt, config.ptype);
 
     auto textureDesc = MTL::TextureDescriptor::texture2DDescriptor(
@@ -26,6 +30,7 @@ Result Implementation::create() {
     textureDesc->setUsage(MTL::TextureUsagePixelFormatView |
                           MTL::TextureUsageRenderTarget |
                           MTL::TextureUsageShaderRead);
+    textureDesc->setStorageMode(MTL::StorageModePrivate);
     auto device = Backend::State<DeviceType::Metal>()->getDevice();
     texture = device->newTexture(textureDesc);
     JST_ASSERT(texture, "Failed to create texture.");
@@ -55,36 +60,6 @@ Result Implementation::destroy() {
         texture->release();
         texture = nullptr;
     }
-
-    return Result::SUCCESS;
-}
-
-bool Implementation::size(const Extent2D<U64>& size) {
-    if (size <= Extent2D<U64>{1, 1}) {
-        return false;
-    }
-
-    if (config.size != size) {
-        config.size = size;
-        return true;
-    }
-
-    return false;
-}
-
-Result Implementation::fill() {
-    return fillRow(0, config.size.y);
-}
-
-Result Implementation::fillRow(const U64& y, const U64& height) {
-    if (height < 1) {
-        return Result::SUCCESS;
-    }
-
-    auto region = MTL::Region::Make2D(0, y, config.size.x, height);
-    auto rowByteSize = config.size.x * GetPixelByteSize(texture->pixelFormat());
-    auto bufferByteOffset = rowByteSize * y;
-    texture->replaceRegion(region, 0, config.buffer + bufferByteOffset, rowByteSize);
 
     return Result::SUCCESS;
 }

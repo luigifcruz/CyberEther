@@ -2,6 +2,17 @@
 
 namespace Jetstream::Modules {
 
+Result DynamicTensorImportImpl::validate() {
+    const auto& config = *candidate();
+
+    if (!config.buffer.validShape()) {
+        JST_ERROR("[MODULE_DYNAMIC_TENSOR_IMPORT] Buffer tensor is not initialized.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 Result DynamicTensorImportImpl::define() {
     JST_CHECK(defineInterfaceOutput("buffer"));
 

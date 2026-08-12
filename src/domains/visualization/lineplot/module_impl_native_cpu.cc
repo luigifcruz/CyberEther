@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 
 #include <jetstream/tools/automatic_iterator.hh>
 #include <jetstream/runtime_context_native_cpu.hh>
@@ -14,6 +15,7 @@ struct LineplotImplNativeCpu : public LineplotImpl,
                                public NativeCpuRuntimeContext,
                                public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result presentInitialize() override;
@@ -25,17 +27,31 @@ struct LineplotImplNativeCpu : public LineplotImpl,
     Tensor averagingBuffer;
 };
 
+Result LineplotImplNativeCpu::validate() {
+    JST_CHECK(LineplotImpl::validate());
+
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::F32) {
+        JST_ERROR("[MODULE_LINEPLOT_NATIVE_CPU] Unsupported input data type: {}.",
+                  inputTensor.dtype());
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 Result LineplotImplNativeCpu::create() {
     // Create parent.
 
     JST_CHECK(LineplotImpl::create());
-
-    // Validate input dtype.
-
-    if (input.dtype() != DataType::F32) {
-        JST_ERROR("[MODULE_LINEPLOT_NATIVE_CPU] Unsupported input data type: {}.", input.dtype());
-        return Result::ERROR;
-    }
 
     // Allocate averaging buffers.
 
@@ -77,7 +93,8 @@ Result LineplotImplNativeCpu::computeSubmit() {
 
     for (U64 b = 0; b < numberOfBatches; b++) {
         for (U64 i = 0; i < numberOfElements; i++) {
-            sumsData[i] += inputData[(i * decimation) + b * numberOfElements * decimation];
+            sumsData[i] += inputData[detail::LineplotInputIndex(
+                b, i, inputBatchStride, inputElementStride, decimation)];
         }
     }
 
@@ -85,7 +102,7 @@ Result LineplotImplNativeCpu::computeSubmit() {
 
     for (U64 i = 0; i < numberOfElements; i++) {
         // Get amplitude.
-        const auto amplitude = (sumsData[i] * normalizationFactor) - 1.0f;
+        const auto amplitude = std::fmin(std::fmax((sumsData[i] * normalizationFactor) - 1.0f, -1.0f), 1.0f);
 
         // Calculate moving average.
         auto& average = avgData[i];

@@ -3,6 +3,7 @@
 
 #include "config/base.hh"
 #include "documentation.hh"
+#include "inspect.hh"
 #include "menu.hh"
 #include "metrics/base.hh"
 
@@ -27,7 +28,7 @@ inline std::string FlowgraphPinId(const std::string& pinName) {
     return pinName + "pin";
 }
 
-struct FlowgraphNode : public Sakura::Component {
+struct FlowgraphNode {
     struct Port {
         std::string id;
         std::string label;
@@ -88,6 +89,7 @@ struct FlowgraphNode : public Sakura::Component {
         RuntimeType runtime = RuntimeType::NATIVE;
         ProviderType provider = "generic";
         Block::State state = Block::State::None;
+        Block::NodeSize nodeSize = Block::NodeSize::S;
         std::string diagnostic;
         Parser::Map config;
         std::optional<Layout> layout;
@@ -102,12 +104,15 @@ struct FlowgraphNode : public Sakura::Component {
 
     struct Config {
         std::string id;
+        std::string inspectorId;
         BlockData block;
         bool pasteEnabled = false;
         bool timingEnabled = false;
         std::function<void()> onCopy;
         std::function<void(Extent2D<F32>)> onPaste;
+        std::function<void()> onRename;
         std::function<void()> onReload;
+        std::function<void(Parser::Map)> onInspectApply;
         std::function<void()> onDelete;
         std::function<void(DeviceType, RuntimeType, ProviderType)> onDeviceSelect;
         std::function<void(F32, F32, F32, F32)> onLayout;
@@ -118,6 +123,21 @@ struct FlowgraphNode : public Sakura::Component {
         Extent2D<F32> screenPosition;
         Extent2D<F32> dimensions;
     };
+
+    static F32 DefaultNodeWidth(const Block::NodeSize& size) {
+        switch (size) {
+            case Block::NodeSize::XS:
+                return 120.0f;
+            case Block::NodeSize::M:
+                return 220.0f;
+            case Block::NodeSize::L:
+                return 320.0f;
+            case Block::NodeSize::XL:
+                return 460.0f;
+            default:
+                return 140.0f;
+        }
+    }
 
     void update(Config config) {
         this->config = std::move(config);
@@ -141,7 +161,7 @@ struct FlowgraphNode : public Sakura::Component {
         }
 
         if (dimensions.x <= 0.0f) {
-            dimensions.x = 140.0f;
+            dimensions.x = DefaultNodeWidth(block.nodeSize);
         }
 
         if (block.layout.has_value()) {
@@ -260,7 +280,9 @@ struct FlowgraphNode : public Sakura::Component {
             std::vector<std::vector<std::string>> attributeRows;
             for (const auto& key : tensor.attributeKeys()) {
                 std::string encoded;
-                if (Parser::TypedToString(tensor.attribute(key), encoded) != Result::SUCCESS) {
+                const std::any value = tensor.attribute(key);
+                if (!value.has_value() ||
+                    Parser::TypedToString(value, encoded) != Result::SUCCESS) {
                     encoded = "?";
                 }
                 attributeRows.push_back({key, encoded});
@@ -335,6 +357,11 @@ struct FlowgraphNode : public Sakura::Component {
                     this->config.onPaste(pastePosition);
                 }
             },
+            .onRename = this->config.onRename,
+            .onInspect = [this]() {
+                inspector.open();
+                inspectorOpen = true;
+            },
             .onReload = this->config.onReload,
             .onDelete = this->config.onDelete,
             .onDocumentation = [this]() {
@@ -365,12 +392,23 @@ struct FlowgraphNode : public Sakura::Component {
                 documentationOpen = false;
             },
         });
+        inspector.update({
+            .id = this->config.inspectorId,
+            .name = block.name,
+            .value = block.config,
+            .onApply = this->config.onInspectApply,
+            .onClose = [this]() {
+                inspectorOpen = false;
+            },
+        });
     }
 
     void render(const Sakura::Context& ctx) {
         node.render(ctx, [this](const Sakura::Context& ctx) {
-            title.render(ctx);
-            subtitle.render(ctx);
+            if (config.block.module != "note") {
+                title.render(ctx);
+                subtitle.render(ctx);
+            }
 
             for (const auto& pin : pins) {
                 pin.render(ctx);
@@ -405,6 +443,9 @@ struct FlowgraphNode : public Sakura::Component {
         if (documentationOpen) {
             documentation.render(ctx);
         }
+        if (inspectorOpen) {
+            inspector.render(ctx);
+        }
         if (config.timingEnabled) {
             runtimeOverlay.render(ctx);
         }
@@ -412,7 +453,7 @@ struct FlowgraphNode : public Sakura::Component {
 
  private:
     Config config;
-    Extent2D<F32> dimensions = {140.0f, 0.0f};
+    Extent2D<F32> dimensions = {0.0f, 0.0f};
     std::optional<Extent2D<F32>> gridPosition;
     std::optional<Geometry> geometry;
     Sakura::Node node;
@@ -427,8 +468,10 @@ struct FlowgraphNode : public Sakura::Component {
     std::vector<FlowgraphNodeMenu::DeviceOption> deviceOptions;
     FlowgraphNodeMenu menu;
     FlowgraphNodeDocumentation documentation;
+    FlowgraphNodeInspector inspector;
     bool menuOpen = false;
     bool documentationOpen = false;
+    bool inspectorOpen = false;
 };
 
 }  // namespace Jetstream

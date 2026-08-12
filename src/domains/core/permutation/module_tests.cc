@@ -1,11 +1,68 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <any>
+
 #include "jetstream/testing.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/domains/core/permutation/module.hh"
+#include "jetstream/memory/axis.hh"
 
 using namespace Jetstream;
+
+namespace {
+
+void RequirePermutationValidationError(const Registry::ModuleRegistration& impl,
+                                       const Modules::Permutation& config,
+                                       const Shape& shape,
+                                       const std::string& attribute = {},
+                                       const std::any& attributeValue = {}) {
+    Tensor input;
+    REQUIRE(input.create(impl.device, DataType::F32, shape) == Result::SUCCESS);
+    if (attributeValue.has_value()) {
+        if (attribute != SampleAxisAttribute) {
+            REQUIRE(input.setAttribute(std::string(SampleAxisAttribute), Index{0}) ==
+                    Result::SUCCESS);
+        }
+        REQUIRE(input.setAttribute(attribute, attributeValue) == Result::SUCCESS);
+    }
+
+    TensorMap inputs;
+    inputs["buffer"].requested("test", "buffer");
+    inputs["buffer"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("permutation", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
+void RequirePermutedSignalAxes(const Registry::ModuleRegistration& impl,
+                               const SignalAxes& inputAxes,
+                               const SignalAxes& expectedAxes) {
+    TestContext ctx("permutation", impl.device, impl.runtime, impl.provider);
+
+    Modules::Permutation config;
+    config.permutation = {2, 0, 1};
+    ctx.setConfig(config);
+
+    auto input = ctx.createTensor<F32>({2, 3, 4});
+    REQUIRE(SetSignalAxes(input, inputAxes) == Result::SUCCESS);
+    ctx.setInput("buffer", input);
+
+    REQUIRE(ctx.run() == Result::SUCCESS);
+
+    const auto& out = ctx.output("buffer");
+    SignalAxes outputAxes;
+    REQUIRE(ResolveSignalAxes(out, outputAxes) == Result::SUCCESS);
+    REQUIRE(outputAxes.sample == expectedAxes.sample);
+    REQUIRE(outputAxes.batch == expectedAxes.batch);
+    REQUIRE(outputAxes.channel == expectedAxes.channel);
+}
+
+}  // namespace
 
 TEST_CASE("Permutation Module - Transpose F32", "[modules][permutation][F32]") {
     auto implementations = Registry::ListAvailableModules("permutation");
@@ -204,15 +261,46 @@ TEST_CASE("Permutation Module - Validation rejects invalid permutations",
         }
 
         SECTION("rank mismatch") {
-            TestContext ctx("permutation", impl.device, impl.runtime, impl.provider);
-
             Modules::Permutation config;
             config.permutation = {1, 0};
-            ctx.setConfig(config);
+            RequirePermutationValidationError(impl, config, {2, 3, 4});
+        }
+    }
+}
 
-            auto input = ctx.createTensor<F32>({2, 3, 4});
-            ctx.setInput("buffer", input);
-            REQUIRE(ctx.run() == Result::ERROR);
+TEST_CASE("Permutation Module - Remaps Signal Axes",
+          "[modules][permutation][metadata]") {
+    const auto implementations = Registry::ListAvailableModules("permutation");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            RequirePermutedSignalAxes(
+                impl,
+                {.sample = Index{2}, .batch = Index{0}, .channel = Index{1}},
+                {.sample = Index{0}, .batch = Index{1}, .channel = Index{2}});
+            RequirePermutedSignalAxes(
+                impl,
+                {.sample = Index{0}, .batch = Index{2}, .channel = Index{1}},
+                {.sample = Index{1}, .batch = Index{0}, .channel = Index{2}});
+        }
+    }
+}
+
+TEST_CASE("Permutation Module - Invalid Signal Axis Metadata Error",
+          "[modules][permutation][metadata][error]") {
+    const auto implementations = Registry::ListAvailableModules("permutation");
+    REQUIRE(!implementations.empty());
+
+    Modules::Permutation config;
+    config.permutation = {2, 0, 1};
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            RequirePermutationValidationError(
+                impl, config, {2, 3, 4}, std::string(SampleAxisAttribute), I64{0});
+            RequirePermutationValidationError(
+                impl, config, {2, 3, 4}, std::string(ChannelAxisAttribute), Index{3});
         }
     }
 }

@@ -6,10 +6,8 @@
 namespace Jetstream::Modules {
 
 struct OverlapAdd : public Module::Config {
-    U64 axis = 0;
-
     JST_MODULE_TYPE(overlap_add);
-    JST_MODULE_PARAMS(axis);
+    JST_MODULE_PARAMS();
 };
 
 }  // namespace Jetstream::Modules

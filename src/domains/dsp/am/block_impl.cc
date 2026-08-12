@@ -52,6 +52,6 @@ Result AmImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(AmImpl);
+JST_REGISTER_BLOCK(AmImpl, {"am"});
 
 }  // namespace Jetstream::Blocks

@@ -8,6 +8,7 @@ namespace Jetstream::Modules {
 
 struct AmplitudeImpl : public Module::Impl, public DynamicConfig<Amplitude> {
  public:
+    Result validate() override;
     Result define() override;
     Result create() override;
     Result destroy() override;
@@ -16,6 +17,7 @@ struct AmplitudeImpl : public Module::Impl, public DynamicConfig<Amplitude> {
  protected:
     Tensor input;
     Tensor output;
+    U64 validatedNormalizationSize = 1;
     F32 scalingCoeff = 0.0f;
 };
 

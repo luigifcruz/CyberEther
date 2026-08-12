@@ -17,10 +17,12 @@ class JETSTREAM_API SurfaceImp<DeviceType::Metal> : public Surface {
     const Extent2D<U64>& size(const Extent2D<U64>& size) override;
 
  protected:
+    Result prepare();
     Result draw(MTL::CommandBuffer* commandBuffer);
 
  private:
     Extent2D<U64> requestedSize;
+    bool framebufferChanged = false;
     MTL::RenderPassDescriptor* renderPassDescriptor = nullptr;
     std::shared_ptr<TextureImp<DeviceType::Metal>> framebuffer;
     std::shared_ptr<TextureImp<DeviceType::Metal>> framebufferResolve;

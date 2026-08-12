@@ -16,7 +16,7 @@
 
 namespace Jetstream {
 
-struct FlowgraphEditor : public Sakura::Component {
+struct FlowgraphEditor {
     struct Config {
         std::string id;
         bool clipboardHasData = false;
@@ -35,6 +35,7 @@ struct FlowgraphEditor : public Sakura::Component {
         std::function<void(const std::string&, std::optional<Extent2D<F32>>, DeviceType, RuntimeType, ProviderType)> onCreateBlock;
         std::function<void(const std::string&)> onCopyBlock;
         std::function<void(std::optional<Extent2D<F32>>)> onPasteBlock;
+        std::function<void(const std::string&)> onRenameBlock;
         std::function<void(const std::string&)> onReloadBlock;
         std::function<void(const std::string&)> onDeleteBlock;
         std::function<void(const std::string&, DeviceType, RuntimeType, ProviderType)> onChangeBlockDevice;
@@ -160,6 +161,7 @@ struct FlowgraphEditor : public Sakura::Component {
             }
             FlowgraphNode::Config nodeConfig{
                 .id = block.name,
+                .inspectorId = this->config.id + ":" + block.name + ":inspector",
                 .block = std::move(nodeBlock),
                 .pasteEnabled = this->config.clipboardHasData,
                 .timingEnabled = this->config.debugTimingEnabled,
@@ -173,9 +175,19 @@ struct FlowgraphEditor : public Sakura::Component {
                         this->config.onPasteBlock(pastePos);
                     }
                 },
+                .onRename = [this, blockName = block.name]() {
+                    if (this->config.onRenameBlock) {
+                        this->config.onRenameBlock(blockName);
+                    }
+                },
                 .onReload = [this, blockName = block.name]() {
                     if (this->config.onReloadBlock) {
                         this->config.onReloadBlock(blockName);
+                    }
+                },
+                .onInspectApply = [this, blockName = block.name](Parser::Map values) {
+                    if (this->config.onReconfigureBlock) {
+                        this->config.onReconfigureBlock(blockName, std::move(values), false);
                     }
                 },
                 .onDelete = [this, blockName = block.name]() {

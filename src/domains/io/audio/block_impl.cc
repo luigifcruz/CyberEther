@@ -96,6 +96,6 @@ Result AudioImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(AudioImpl);
+JST_REGISTER_BLOCK(AudioImpl, {"audio"});
 
 }  // namespace Jetstream::Blocks

@@ -10,6 +10,9 @@
 #include "jetstream/render/components/font.hh"
 
 #include "resources/fonts/compressed_jbmm.hh"
+#include "resources/fonts/compressed_jbmb.hh"
+#include "resources/fonts/compressed_sg.hh"
+#include "resources/fonts/compressed_inter.hh"
 
 #include <unordered_map>
 #include <chrono>
@@ -26,6 +29,7 @@ struct Instance::Impl {
     std::atomic<bool> started = false;
     std::atomic<bool> computing = false;
     std::atomic<bool> presenting = false;
+    std::atomic<bool> stopRequested = false;
     std::atomic<bool> stopping = false;
 
     DeviceType device;
@@ -67,7 +71,9 @@ Result Instance::create(const Config& config) {
 
     {
         auto backendConfig = Backend::Config {
+            .deviceId = config.deviceId,
             .headless = config.headless,
+            .pythonRuntimePath = config.pythonRuntimePath,
         };
         auto viewportConfig = Viewport::Config {
             .size = config.size,
@@ -77,6 +83,13 @@ Result Instance::create(const Config& config) {
             .scale = config.scale,
         };
 
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+        JST_CHECK(Backend::Initialize<DeviceType::CPU>(backendConfig));
+#endif
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+        JST_CHECK(Backend::Configure<DeviceType::CUDA>(backendConfig));
+#endif
+
 #ifdef JETSTREAM_VIEWPORT_GLFW_AVAILABLE
         auto buildGlfw = [&]<DeviceType D>() -> Result {
             JST_CHECK(Backend::Initialize<D>(backendConfig));
@@ -85,7 +98,13 @@ Result Instance::create(const Config& config) {
             JST_CHECK(viewport->create());
 
             auto render = std::make_shared<Render::WindowImp<D>>(renderConfig, viewport);
-            JST_CHECK(render->create());
+            const Result renderResult = render->create();
+            if (renderResult != Result::SUCCESS && renderResult != Result::RELOAD) {
+                const Result cleanupResult = viewport->destroy();
+                return cleanupResult == Result::SUCCESS || cleanupResult == Result::RELOAD
+                    ? renderResult
+                    : cleanupResult;
+            }
 
             impl->viewport = std::move(viewport);
             impl->render = std::move(render);
@@ -94,6 +113,7 @@ Result Instance::create(const Config& config) {
         };
 #endif  // JETSTREAM_VIEWPORT_GLFW_AVAILABLE
 
+#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
         auto buildHeadless = [&]<DeviceType D>() -> Result {
             JST_CHECK(Backend::Initialize<D>(backendConfig));
 
@@ -101,13 +121,20 @@ Result Instance::create(const Config& config) {
             JST_CHECK(viewport->create());
 
             auto render = std::make_shared<Render::WindowImp<D>>(renderConfig, viewport);
-            JST_CHECK(render->create());
+            const Result renderResult = render->create();
+            if (renderResult != Result::SUCCESS && renderResult != Result::RELOAD) {
+                const Result cleanupResult = viewport->destroy();
+                return cleanupResult == Result::SUCCESS || cleanupResult == Result::RELOAD
+                    ? renderResult
+                    : cleanupResult;
+            }
 
             impl->viewport = std::move(viewport);
             impl->render = std::move(render);
 
             return Result::SUCCESS;
         };
+#endif  // JETSTREAM_RENDER_VULKAN_AVAILABLE
 
         std::optional<Result> result;
 
@@ -151,9 +178,36 @@ Result Instance::create(const Config& config) {
         JST_CHECK(result.value());
     }
 
+    struct CreateGuard {
+        Impl& impl;
+        bool active = true;
+
+        ~CreateGuard() {
+            if (!active) {
+                return;
+            }
+            try {
+                if (impl.compositor) {
+                    impl.compositor->destroy();
+                    impl.compositor.reset();
+                }
+                if (impl.render) {
+                    impl.render->destroy();
+                    impl.render.reset();
+                }
+                if (impl.viewport) {
+                    impl.viewport->destroy();
+                    impl.viewport.reset();
+                }
+            } catch (...) {
+            }
+        }
+    } createGuard{*impl};
+
     if (config.compositor.has_value()) {
-        impl->compositor = std::make_shared<Compositor>(config.compositor.value());
-        JST_CHECK(impl->compositor->create(shared_from_this(), impl->render, impl->viewport));
+        auto compositor = std::make_shared<Compositor>(config.compositor.value());
+        JST_CHECK(compositor->create(shared_from_this(), impl->render, impl->viewport));
+        impl->compositor = std::move(compositor);
     }
 
     // Load default fonts.
@@ -169,10 +223,50 @@ Result Instance::create(const Config& config) {
         JST_CHECK(impl->render->addFont("default_mono", font));
     }
 
+    {
+        std::shared_ptr<Render::Components::Font> font;
+
+        Render::Components::Font::Config cfg;
+        cfg.data = jbmb_compressed_data;
+        cfg.size = 32.0f;
+
+        JST_CHECK(impl->render->build(font, cfg));
+        JST_CHECK(impl->render->addFont("default_mono_bold", font));
+    }
+
+    {
+        std::shared_ptr<Render::Components::Font> font;
+
+        Render::Components::Font::Config cfg;
+        cfg.data = sg_compressed_data;
+        cfg.size = 32.0f;
+
+        JST_CHECK(impl->render->build(font, cfg));
+        JST_CHECK(impl->render->addFont("default_display", font));
+    }
+
+    {
+        const std::pair<const char*, const unsigned int*> faces[] = {
+            {"default_body", inter_regular_compressed_data},
+            {"default_body_italic", inter_italic_compressed_data},
+            {"default_body_bold", inter_bold_compressed_data},
+            {"default_body_bold_italic", inter_bold_italic_compressed_data},
+        };
+        for (const auto& [name, data] : faces) {
+            std::shared_ptr<Render::Components::Font> font;
+            Render::Components::Font::Config cfg;
+            cfg.data = data;
+            cfg.size = 32.0f;
+            JST_CHECK(impl->render->build(font, cfg));
+            JST_CHECK(impl->render->addFont(name, font));
+        }
+    }
+
     impl->remote = std::make_shared<Remote>(impl->viewport.get());
 
     impl->stopping.store(false);
     impl->created.store(true);
+    createGuard.active = false;
     return Result::SUCCESS;
 }
 
@@ -207,6 +301,24 @@ Result Instance::destroy() {
 
     if (impl->render && impl->render->hasFont("default_mono")) {
         JST_CHECK(impl->render->removeFont("default_mono"));
+    }
+    if (impl->render && impl->render->hasFont("default_mono_bold")) {
+        JST_CHECK(impl->render->removeFont("default_mono_bold"));
+    }
+    if (impl->render && impl->render->hasFont("default_display")) {
+        JST_CHECK(impl->render->removeFont("default_display"));
+    }
+    if (impl->render && impl->render->hasFont("default_body")) {
+        JST_CHECK(impl->render->removeFont("default_body"));
+    }
+    if (impl->render && impl->render->hasFont("default_body_italic")) {
+        JST_CHECK(impl->render->removeFont("default_body_italic"));
+    }
+    if (impl->render && impl->render->hasFont("default_body_bold")) {
+        JST_CHECK(impl->render->removeFont("default_body_bold"));
+    }
+    if (impl->render && impl->render->hasFont("default_body_bold_italic")) {
+        JST_CHECK(impl->render->removeFont("default_body_bold_italic"));
     }
 
     // Destroy render and viewport resources.
@@ -248,8 +360,20 @@ Result Instance::start() {
     impl->started.store(true);
     impl->computing.store(true);
     impl->presenting.store(true);
+    impl->stopRequested.store(false);
     impl->stopping.store(false);
 
+    return Result::SUCCESS;
+}
+
+Result Instance::requestStop() {
+    JST_ASSERT(impl->created.load(), "[INSTANCE] Instance not created.");
+    if (impl->stopping.load()) {
+        return Result::SUCCESS;
+    }
+    JST_ASSERT(impl->started.load(), "[INSTANCE] Instance not started.");
+
+    impl->stopRequested.store(true);
     return Result::SUCCESS;
 }
 
@@ -261,6 +385,7 @@ Result Instance::stop() {
     impl->stopping.store(true);
     impl->computing.store(false);
     impl->presenting.store(false);
+    impl->stopRequested.store(false);
 
     std::vector<std::shared_ptr<Flowgraph>> flowgraphs;
     {
@@ -276,6 +401,7 @@ Result Instance::stop() {
     }
 
     JST_CHECK(impl->render->stop());
+    JST_CHECK(impl->render->synchronize());
 
     impl->started.store(false);
 
@@ -332,6 +458,10 @@ Result Instance::present(const std::function<Result()>& callback) {
     if (impl->stopping.load()) {
         return Result::SUCCESS;
     }
+    if (impl->stopRequested.load()) {
+        impl->presenting.store(false);
+        return Result::SUCCESS;
+    }
 
     if (!impl->started.load()) {
         if (impl->stopping.load()) {
@@ -352,6 +482,30 @@ Result Instance::present(const std::function<Result()>& callback) {
         return beginRes;
     }
 
+    struct FrameGuard {
+        std::shared_ptr<Render::Window> window;
+        bool active = true;
+
+        ~FrameGuard() noexcept {
+            if (active) {
+                try {
+                    window->cancel();
+                } catch (...) {
+                    JST_ERROR("[INSTANCE] Failed to cancel an exceptional render frame.");
+                }
+            }
+        }
+    } frameGuard{impl->render};
+
+    const auto cancelFrame = [&](const Result result) {
+        frameGuard.active = false;
+        const Result cancelResult = impl->render->cancel();
+        impl->presenting.store(false);
+        return cancelResult == Result::SUCCESS || cancelResult == Result::RELOAD
+            ? result
+            : cancelResult;
+    };
+
     // Update the modules present logic.
 
     std::vector<std::shared_ptr<Flowgraph>> flowgraphs;
@@ -364,22 +518,32 @@ Result Instance::present(const std::function<Result()>& callback) {
     }
 
     for (const auto& flowgraph : flowgraphs) {
-        JST_CHECK(flowgraph->present());
+        const Result result = flowgraph->present();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return cancelFrame(result);
+        }
     }
 
     // Render the inferface via compositor and callback.
 
     if (callback) {
-        JST_CHECK(callback());
+        const Result result = callback();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return cancelFrame(result);
+        }
     }
 
     if (impl->compositor) {
-        JST_CHECK(impl->compositor->present());
+        const Result result = impl->compositor->present();
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            return cancelFrame(result);
+        }
     }
 
     // Finish the render frame.
 
     const auto& endRes = impl->render->end();
+    frameGuard.active = false;
     if (endRes == Result::SKIP) {
         return Result::SUCCESS;
     }
@@ -398,6 +562,10 @@ Result Instance::present(const std::function<Result()>& callback) {
 
     if (impl->compositor) {
         JST_CHECK(impl->compositor->poll());
+    }
+
+    if (impl->stopRequested.load()) {
+        impl->presenting.store(false);
     }
 
     return Result::SUCCESS;

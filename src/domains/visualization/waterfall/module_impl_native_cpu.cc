@@ -14,31 +14,30 @@ struct WaterfallImplNativeCpu : public WaterfallImpl,
                                 public NativeCpuRuntimeContext,
                                 public Scheduler::Context {
  public:
-    Result create() final;
+    Result validate() final;
 
     Result presentInitialize() override;
     Result presentSubmit() override;
     Result computeSubmit() override;
-
- private:
-    U64 writeIndex = 0;
 };
 
-Result WaterfallImplNativeCpu::create() {
-    // Create parent.
+Result WaterfallImplNativeCpu::validate() {
+    JST_CHECK(WaterfallImpl::validate());
 
-    JST_CHECK(WaterfallImpl::create());
-
-    // Validate input dtype.
-
-    if (input.dtype() != DataType::F32) {
-        JST_ERROR("[MODULE_WATERFALL_NATIVE_CPU] Unsupported input data type: {}.", input.dtype());
-        return Result::ERROR;
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
     }
 
-    // Initialize state.
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
 
-    writeIndex = 0;
+    if (inputTensor.dtype() != DataType::F32) {
+        JST_ERROR("[MODULE_WATERFALL_NATIVE_CPU] Unsupported input data type: {}.",
+                  inputTensor.dtype());
+        return Result::ERROR;
+    }
 
     return Result::SUCCESS;
 }
@@ -52,26 +51,28 @@ Result WaterfallImplNativeCpu::presentSubmit() {
 }
 
 Result WaterfallImplNativeCpu::computeSubmit() {
-    const auto totalSize = input.size();
-    const auto fftSize = numberOfElements;
-    const auto offset = writeIndex * fftSize;
-    const auto size = std::min(totalSize, (height - writeIndex) * fftSize);
+    const auto plan = PlanWaterfallWrite(ringState.writeIndex,
+                                         numberOfBatches,
+                                         height);
 
     // Copy input data to frequency bins buffer (circular buffer pattern).
 
     F32* freqData = static_cast<F32*>(frequencyBins.data());
     const F32* inputData = static_cast<const F32*>(input.data());
 
-    std::copy(inputData, inputData + size, freqData + offset);
-
-    if (size < totalSize) {
-        std::copy(inputData + size, inputData + totalSize, freqData);
+    for (U64 row = 0; row < plan.rowCount; ++row) {
+        const U64 sourceBatch = plan.sourceRow + row;
+        const U64 destinationBatch = (plan.destinationRow + row) % height;
+        for (U64 column = 0; column < numberOfElements; ++column) {
+            freqData[destinationBatch * numberOfElements + column] =
+                inputData[sourceBatch * inputBatchStride +
+                          column * inputElementStride];
+        }
     }
 
     // Update write index.
 
-    writeIndex = (writeIndex + numberOfBatches) % height;
-    inc = writeIndex;
+    ringState.advance(numberOfBatches, height);
 
     return Result::SUCCESS;
 }

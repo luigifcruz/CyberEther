@@ -27,6 +27,11 @@ struct Text::Impl {
         F32 sharpness;
     };
 
+    struct InstanceData {
+        glm::mat4 transform;
+        glm::vec4 color;
+    };
+
     struct Element {
         U64 characterCount = 0;
         const ElementConfig& config;
@@ -34,7 +39,7 @@ struct Text::Impl {
         Extent2D<I32> bounds;
         std::span<glm::vec2> posVertices;
         std::span<glm::vec2> fillVertices;
-        std::span<glm::mat4> instances;
+        std::span<InstanceData> instances;
     };
 
     // Variables.
@@ -55,7 +60,7 @@ struct Text::Impl {
 
     std::vector<glm::vec2> posVertices;
     std::vector<glm::vec2> fillVertices;
-    std::vector<glm::mat4> instances;
+    std::vector<InstanceData> instances;
     std::vector<U32> indices;
 
     std::shared_ptr<Render::Buffer> fontUniformBuffer;
@@ -126,7 +131,6 @@ Result Text::create(Window* window) {
         cfg.size = 1;
         cfg.target = Render::Buffer::Target::UNIFORM;
         JST_CHECK(window->build(pimpl->fontUniformBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->fontUniformBuffer));
     }
 
     {
@@ -136,7 +140,6 @@ Result Text::create(Window* window) {
         cfg.size = pimpl->posVertices.size();
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(pimpl->fontPosVerticesBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->fontPosVerticesBuffer));
     }
 
     {
@@ -146,17 +149,15 @@ Result Text::create(Window* window) {
         cfg.size = pimpl->fillVertices.size();
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(pimpl->fontFillVerticesBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->fontFillVerticesBuffer));
     }
 
     {
         Render::Buffer::Config cfg;
         cfg.buffer = pimpl->instances.data();
-        cfg.elementByteSize = sizeof(glm::mat4);
+        cfg.elementByteSize = sizeof(Impl::InstanceData);
         cfg.size = pimpl->instances.size();
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(pimpl->fontInstanceBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->fontInstanceBuffer));
     }
 
     {
@@ -166,7 +167,6 @@ Result Text::create(Window* window) {
         cfg.size = pimpl->indices.size();
         cfg.target = Render::Buffer::Target::VERTEX_INDICES;
         JST_CHECK(window->build(pimpl->fontIndicesBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->fontIndicesBuffer));
     }
 
     {
@@ -176,7 +176,7 @@ Result Text::create(Window* window) {
             {pimpl->fontFillVerticesBuffer, 2},
         };
         cfg.instances = {
-            {pimpl->fontInstanceBuffer, 16},
+            {pimpl->fontInstanceBuffer, sizeof(Impl::InstanceData) / sizeof(F32)},
         };
         cfg.indices = pimpl->fontIndicesBuffer;
         JST_CHECK(window->build(pimpl->fontVertex, cfg));
@@ -230,14 +230,8 @@ Result Text::create(Window* window) {
     return Result::SUCCESS;
 }
 
-Result Text::destroy(Window* window) {
+Result Text::destroy(Window*) {
     JST_DEBUG("[TEXT] Unloading text.");
-
-    JST_CHECK(window->unbind(pimpl->fontUniformBuffer));
-    JST_CHECK(window->unbind(pimpl->fontPosVerticesBuffer));
-    JST_CHECK(window->unbind(pimpl->fontFillVerticesBuffer));
-    JST_CHECK(window->unbind(pimpl->fontInstanceBuffer));
-    JST_CHECK(window->unbind(pimpl->fontIndicesBuffer));
 
     return Result::SUCCESS;
 }
@@ -278,7 +272,8 @@ Result Text::update(const std::string& elementId, const ElementConfig& elementCo
                                       updatedElement.scale != currentElement.scale ||
                                       updatedElement.position != currentElement.position ||
                                       updatedElement.alignment != currentElement.alignment ||
-                                      updatedElement.rotationDeg != currentElement.rotationDeg;
+                                      updatedElement.rotationDeg != currentElement.rotationDeg ||
+                                      updatedElement.color != currentElement.color;
 
     if (!shouldUpdateInstance) {
         return Result::SUCCESS;
@@ -311,6 +306,37 @@ Result Text::update(const std::string& elementId, const ElementConfig& elementCo
     return Result::SUCCESS;
 }
 
+F32 Text::advance(const std::string& fill) const {
+    if (!config.font) {
+        return 0.0f;
+    }
+
+    F32 x = 0.0f;
+    for (const auto c : fill) {
+        if (c < 32 || c >= 127) {
+            continue;
+        }
+        x += config.font->glyph(c - 32).xAdvance;
+    }
+
+    return x;
+}
+
+std::vector<F32> Text::advances(const std::string& fill) const {
+    std::vector<F32> result(fill.size(), 0.0f);
+    if (!config.font) {
+        return result;
+    }
+    for (U64 i = 0; i < fill.size(); ++i) {
+        const char c = fill[i];
+        if (c < 32 || c >= 127) {
+            continue;
+        }
+        result[i] = config.font->glyph(c - 32).xAdvance;
+    }
+    return result;
+}
+
 Result Text::updatePixelSize(const Extent2D<F32>& pixelSize) {
     // Check if pixel size has changed. Use epsilon to avoid tiny float jitter.
     constexpr F32 pixelSizeEpsilon = 1e-6f;
@@ -331,6 +357,11 @@ Result Text::updatePixelSize(const Extent2D<F32>& pixelSize) {
         JST_CHECK(pimpl->updateInstances());
     }
 
+    return Result::SUCCESS;
+}
+
+Result Text::updateScissorRect(const std::optional<Render::ScissorRect>& rect) {
+    pimpl->fontProgram->scissorRect(rect);
     return Result::SUCCESS;
 }
 
@@ -390,12 +421,12 @@ Result Text::Impl::updateIndices() {
 }
 
 Result Text::Impl::refreshVertexCount() {
-    U64 totalCharacterCount = 0;
+    U64 maxCharacterCount = 0;
     for (const auto& [_, element] : elements) {
-        totalCharacterCount += element.characterCount;
+        maxCharacterCount = std::max(maxCharacterCount, element.characterCount);
     }
 
-    const U64 nextVertexCount = totalCharacterCount * 6;
+    const U64 nextVertexCount = maxCharacterCount * 6;
     if (nextVertexCount == vertexCount) {
         return Result::SUCCESS;
     }
@@ -407,7 +438,8 @@ Result Text::Impl::refreshVertexCount() {
 
 Result Text::Impl::updateElementInstance(Element& element) {
     // Reference transform.
-    auto& transform = element.instances[0];
+    auto& instance = element.instances[0];
+    auto& transform = instance.transform;
 
     // Reset transform.
     transform = glm::mat4(1.0f);
@@ -444,6 +476,9 @@ Result Text::Impl::updateElementInstance(Element& element) {
         }
     }
 
+    const auto color = element.config.color.value_or(config.color);
+    instance.color = glm::vec4(color.r, color.g, color.b, color.a);
+
     return Result::SUCCESS;
 }
 
@@ -479,23 +514,7 @@ Result Text::Impl::updateElementVertex(Element& element) {
     F32 x = 0.0f;
     F32 y = 0.0f;
 
-    I32 minx = 0;
-    I32 miny = 0;
-
-    for (const auto& c : element.config.fill) {
-        if (c >= 32 && c < 127) {
-            if (c == ' ') {
-                continue;
-            }
-
-            // TODO: Check if there is no better way to do this.
-            const auto& b = config.font->glyph(c - 32);
-            minx = std::min(minx, static_cast<I32>(x + b.xOffset));
-            miny = std::max(miny, static_cast<I32>(y - b.yOffset));
-        }
-    }
-
-    const auto& fontSize = config.font->getConfig().size;
+    const I32 baselineY = config.font->ascent();
 
     for (U64 i = 0; i < element.config.fill.size(); ++i) {
         const auto& atlasSize = config.font->atlasSize();
@@ -503,14 +522,14 @@ Result Text::Impl::updateElementVertex(Element& element) {
 
         if (c >= 32 && c < 127) {
             if (c == ' ') {
-                x += (fontSize / 2.0f);
+                x += config.font->glyph(c - 32).xAdvance;
                 continue;
             }
 
             const auto& b = config.font->glyph(c - 32);
 
-            F32 x0 = x + b.xOffset - minx;
-            F32 y0 = y - b.yOffset - miny;
+            F32 x0 = x + b.xOffset;
+            F32 y0 = y - b.yOffset - baselineY;
             F32 x1 = x0 + (b.x1 - b.x0);
             F32 y1 = y0 - (b.y1 - b.y0);
             const U64 base = element.characterCount * 4;
@@ -540,16 +559,13 @@ Result Text::Impl::updateElementVertex(Element& element) {
 
             x += b.xAdvance;
 
-            // Save text height.
-
-            element.bounds.y = std::max(element.bounds.y, static_cast<I32>(b.y1 - b.y0));
-
             // Count actual rendered characters (non-space)
             element.characterCount++;
         }
     }
 
     element.bounds.x = x;
+    element.bounds.y = config.font->lineHeight();
 
     return Result::SUCCESS;
 }
@@ -581,9 +597,8 @@ Result Text::present() {
     }
 
     if (pimpl->updateVertexCountFlag) {
-        const U64 maxIndices = config.maxCharacters * 6;
-        const U64 actualIndices = pimpl->vertexCount;
-        JST_TRACE("[TEXT] Vertex optimization: {}/{}.", actualIndices, maxIndices);
+        JST_TRACE("[TEXT] Vertex optimization: {}/{}.", pimpl->vertexCount,
+                  config.maxCharacters * 6);
         JST_CHECK(pimpl->drawFont->updateVertexCount(pimpl->vertexCount));
         pimpl->updateVertexCountFlag = false;
     }

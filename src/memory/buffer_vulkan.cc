@@ -57,13 +57,21 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
         auto& fence = state->getDefaultFence();
         auto& commandBuffer = state->getDefaultCommandBuffer();
         const auto& unified = state->hasUnifiedMemory();
+#if !defined(JST_OS_WINDOWS)
         const auto& canExport = state->canExportDeviceMemory();
+#endif
+
+        U64 alignedSize = 0;
+        if (!CheckedPageAlignedSize(bytes, alignedSize)) {
+            JST_ERROR("[MEMORY:BUFFER:VULKAN] Allocation size {} is too large.", bytes);
+            return Result::ERROR;
+        }
 
         // Create buffer object.
 
         VkBufferCreateInfo bufferInfo = {};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = JST_PAGE_ALIGNED_SIZE(bytes);
+        bufferInfo.size = alignedSize;
         bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
                            VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
@@ -138,7 +146,7 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
         // Map memory for CPU access if host accessible.
 
         if (hostAccessible) {
-            JST_VK_CHECK(vkMapMemory(device, _memory, 0, JST_PAGE_ALIGNED_SIZE(bytes), 0, &mappedPtr), [&]{
+            JST_VK_CHECK(vkMapMemory(device, _memory, 0, alignedSize, 0, &mappedPtr), [&] {
                 JST_ERROR("[MEMORY:BUFFER:VULKAN] Failed to map buffer memory.");
             });
         }
@@ -170,7 +178,7 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
             // For CPU -> Vulkan, we need to create a new Vulkan buffer
             // that uses the CPU memory. This is not directly supported,
             // so we return an error for now.
-            JST_ERROR("[MEMORY:BUFFER:VULKAN] Cannot mirror from CPU device directly.");
+            JST_TRACE("[MEMORY:BUFFER:VULKAN] Cannot mirror from CPU device directly.");
             return Result::ERROR;
         }
 
@@ -196,6 +204,12 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
                 return Result::ERROR;
             }
 
+            U64 alignedSize = 0;
+            if (!CheckedPageAlignedSize(source.size(), alignedSize)) {
+                JST_ERROR("[MEMORY:BUFFER:VULKAN] Source buffer is too large to import.");
+                return Result::ERROR;
+            }
+
             int fd = -1;
             auto handle = cudaBackend->allocationHandle();
             JST_CUDA_CHECK(cuMemExportToShareableHandle(&fd, handle, CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR, 0), [&] {
@@ -209,10 +223,13 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
 
             VkBufferCreateInfo bufferInfo = {};
             bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-            bufferInfo.size = JST_PAGE_ALIGNED_SIZE(source.size());
+            bufferInfo.size = alignedSize;
             bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
                                VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                               VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+                               VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+                               VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
             bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
             bufferInfo.pNext = &extBufferCreateInfo;
 
@@ -270,7 +287,7 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
             });
 
             if (hostAccessible) {
-                JST_VK_CHECK(vkMapMemory(device, _memory, 0, JST_PAGE_ALIGNED_SIZE(source.size()), 0, &mappedPtr), [&] {
+                JST_VK_CHECK(vkMapMemory(device, _memory, 0, alignedSize, 0, &mappedPtr), [&] {
                     JST_ERROR("[MEMORY:BUFFER:VULKAN] Failed to map imported CUDA memory.");
                 });
             }
@@ -283,7 +300,7 @@ class VulkanBackend final : public VulkanBufferBackend, public Backend {
         }
 #endif
 
-        JST_ERROR("[MEMORY:BUFFER:VULKAN] Cannot mirror from device {}.", source.device());
+        JST_TRACE("[MEMORY:BUFFER:VULKAN] Cannot mirror from device {}.", source.device());
         return Result::ERROR;
     }
 

@@ -3,7 +3,7 @@
 
 #include "components/about_info_table.hh"
 #include "components/about_update_card.hh"
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 
 #include "jetstream/config.hh"
 
@@ -13,15 +13,25 @@
 
 namespace Jetstream {
 
-struct AboutSettingsPanel : public Sakura::Component {
+struct AboutSettingsPanel {
     struct Config {
+        bool updateSupported = false;
+        bool updateUpToDate = false;
+        bool updateFailed = false;
+        bool updateChecking = false;
         bool updateAvailable = false;
+        bool updateDownloading = false;
+        bool updateReady = false;
+        bool updateApplying = false;
+        F32 updateProgress = 0.0f;
         std::string updateVersion;
+        std::string updateReleaseNotes;
+        std::string updateMessage;
         std::string accentKey = "accent_color";
         std::vector<AboutInfoTable::Config> infoTables;
-        std::function<void()> onOpenReleases;
+        std::function<void()> onCheckForUpdates;
         std::function<void()> onDownloadUpdate;
-        std::function<void()> onDismissUpdate;
+        std::function<void()> onApplyUpdate;
     };
 
     void update(Config config) {
@@ -52,13 +62,22 @@ struct AboutSettingsPanel : public Sakura::Component {
 
         updateCard.update({
             .version = jst::fmt::format("CyberEther v{}", JETSTREAM_VERSION_STR),
-            .buildInfo = jst::fmt::format("Built on {} at {}", __DATE__, __TIME__),
+            .supported = this->config.updateSupported,
+            .upToDate = this->config.updateUpToDate,
+            .failed = this->config.updateFailed,
+            .checking = this->config.updateChecking,
             .updateAvailable = this->config.updateAvailable,
+            .downloading = this->config.updateDownloading,
+            .ready = this->config.updateReady,
+            .applying = this->config.updateApplying,
+            .progress = this->config.updateProgress,
             .updateVersion = this->config.updateVersion,
+            .releaseNotes = this->config.updateReleaseNotes,
+            .message = this->config.updateMessage,
             .accentKey = this->config.accentKey,
-            .onOpenReleases = this->config.onOpenReleases,
+            .onCheckForUpdates = this->config.onCheckForUpdates,
             .onDownloadUpdate = this->config.onDownloadUpdate,
-            .onDismissUpdate = this->config.onDismissUpdate,
+            .onApplyUpdate = this->config.onApplyUpdate,
         });
 
         infoTables.resize(this->config.infoTables.size());

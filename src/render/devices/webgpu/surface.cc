@@ -28,8 +28,6 @@ Implementation::SurfaceImp(const Config& config) : Surface(config) {
 Result Implementation::create() {
     JST_DEBUG("[WebGPU] Creating surface.");
 
-    JST_CHECK(createFramebuffer());
-
     for (auto& program : programs) {
         JST_CHECK(program->create(framebuffer->getTextureFormat()));
     }
@@ -54,27 +52,22 @@ Result Implementation::destroy() {
         JST_CHECK(program->destroy());
     }
 
-    JST_CHECK(destroyFramebuffer());
+    return Result::SUCCESS;
+}
+
+Result Implementation::prepare() {
+    framebufferChanged = framebuffer->size(requestedSize);
+    if (framebufferChanged) {
+        JST_CHECK(framebuffer->destroy());
+        JST_CHECK(framebuffer->create());
+    }
 
     return Result::SUCCESS;
 }
 
-Result Implementation::createFramebuffer() {
-    JST_DEBUG("[WebGPU] Creating surface framebuffer.");
-
-    return framebuffer->create();
-}
-
-Result Implementation::destroyFramebuffer() {
-    JST_DEBUG("[WebGPU] Destroying surface framebuffer");
-
-    return framebuffer->destroy();
-}
-
 Result Implementation::draw(WGPUCommandEncoder& commandEncoder) {
-    if (framebuffer->size(requestedSize)) {
-        JST_CHECK(destroyFramebuffer());
-        JST_CHECK(createFramebuffer());
+    if (!shouldDraw(framebufferChanged)) {
+        return Result::SUCCESS;
     }
 
     // Encode kernels.
@@ -111,8 +104,11 @@ Result Implementation::draw(WGPUCommandEncoder& commandEncoder) {
 
     const auto& sz = framebuffer->size();
     for (auto& program : programs) {
+        if (!program->enabled()) {
+            continue;
+        }
         wgpuRenderPassEncoderSetScissorRect(renderPassEncoder, 0, 0, sz.x, sz.y);
-        JST_CHECK(program->draw(renderPassEncoder));
+        JST_CHECK(program->draw(renderPassEncoder, sz));
     }
 
     wgpuRenderPassEncoderEnd(renderPassEncoder);
@@ -126,6 +122,7 @@ const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) {
     }
 
     requestedSize = size;
+    invalidate();
 
     return framebuffer->size();
 }

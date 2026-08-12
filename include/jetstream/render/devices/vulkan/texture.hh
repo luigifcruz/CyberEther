@@ -15,11 +15,6 @@ class JETSTREAM_API TextureImp<DeviceType::Vulkan> : public Texture {
     Result destroy() override;
 
     using Render::Texture::size;
-    bool size(const Extent2D<U64>& size) override;
-
-    Result fill() override;
-    Result fillRow(const U64& y, const U64& height) override;
-
     uint64_t raw() const override {
         return descriptorSet ? (uint64_t)(void*)descriptorSet : 0;
     }
@@ -58,9 +53,11 @@ class JETSTREAM_API TextureImp<DeviceType::Vulkan> : public Texture {
     VkFormat pixelFormat;
     VkDeviceMemory memory = VK_NULL_HANDLE;
     VkExtent2D extent = {};
+    VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
 
     friend class SurfaceImp<DeviceType::Vulkan>;
     friend class ProgramImp<DeviceType::Vulkan>;
+    friend class TransferImp<DeviceType::Vulkan>;
 };
 
 }  // namespace Jetstream::Render

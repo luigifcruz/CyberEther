@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -18,6 +19,10 @@ namespace Jetstream::Backend {
 class WebGPU {
  public:
     explicit WebGPU(const Config& config);
+    ~WebGPU();
+
+    static Result InitializeAsync(std::function<void(Result)> completion);
+    static void CancelInitialization();
 
     std::string getDeviceName() const;
     std::string getApiVersion() const;
@@ -36,12 +41,16 @@ class WebGPU {
         return adapter;
     }
 
+    WGPUInstance getInstance() const {
+        return instance;
+    }
+
  private:
     Config config;
 
-    WGPUAdapter adapter;
-    WGPUDevice device;
-    WGPUSurface surface;
+    WGPUInstance instance = nullptr;
+    WGPUAdapter adapter = nullptr;
+    WGPUDevice device = nullptr;
 
     struct {
         std::string deviceName;

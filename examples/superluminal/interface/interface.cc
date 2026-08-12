@@ -32,7 +32,7 @@ void GenerateTestSignal(Tensor& data, float frequency = 1000.0f, float amplitude
  * Jetstream Superluminal Interface Demo
  *
  * This example demonstrates the key capabilities of Superluminal:
- * - Text and Markdown rendering
+ * - Text rendering
  * - Image display
  * - Interactive controls (sliders, buttons)
  * - Real-time signal plotting with domain transforms
@@ -53,18 +53,18 @@ static Result App() {
 
     // Interactive controls section
     JST_CHECK(Superluminal::Box("Controls", {{1, 0, 0}, {1, 0, 0}}, [&]{
-        // Markdown documentation example
+        // Documentation example
 
-        Superluminal::Markdown(
-            "# Key Features\n"
-            "- **Signal Generation**: Synthetic sine waves with noise.\n"
-            "- **Interactive Controls**: Real-time parameter adjustment.\n"
-            "- **Visualization**: Time to frequency domain transforms.\n"
+        Superluminal::Text(
+            "Key Features\n"
+            "- Signal Generation: Synthetic sine waves with noise.\n"
+            "- Interactive Controls: Real-time parameter adjustment.\n"
+            "- Visualization: Time to frequency domain transforms.\n"
         );
 
         // Interactive sliders for signal parameters
 
-        Superluminal::Markdown("# Signal Parameters");
+        Superluminal::Text("Signal Parameters");
         Superluminal::Slider("Frequency (Hz)", 100.0f, 5000.0f, frequency);
         Superluminal::Slider("Amplitude", 0.1f, 2.0f, amplitude);
         Superluminal::Slider("Noise Level", 0.0f, 0.5f, noise_level);

@@ -1,0 +1,15 @@
+src_lst += files([
+    'canvas.cc',
+    'box.cc',
+    'label.cc',
+    'button.cc',
+    'scroll_view.cc',
+    'list.cc',
+    'text_grid.cc',
+    'text_view.cc',
+    'text_markdown.cc',
+    'text_editor.cc',
+    'markdown_editor.cc',
+    'markdown_view.cc',
+    'code_editor.cc',
+])

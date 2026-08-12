@@ -17,7 +17,7 @@ cyberether
 
 This opens the main window with an empty workspace. From there you can build a flowgraph visually or load an existing one.
 
-To load a flowgraph directly at startup, pass its path as the last argument:
+To load a flowgraph directly at startup, pass its path as the single positional argument:
 
 ```bash
 cyberether examples/flowgraphs/signal-generator.yml

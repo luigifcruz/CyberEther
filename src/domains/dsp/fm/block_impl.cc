@@ -15,6 +15,8 @@ struct FmImpl : public Block::Impl, public DynamicConfig<Blocks::FM> {
 };
 
 Result FmImpl::configure() {
+    fmConfig->mode = mode;
+    fmConfig->deemphasis = deemphasis;
     fmConfig->sampleRate = sampleRate;
 
     return Result::SUCCESS;
@@ -28,6 +30,17 @@ Result FmImpl::define() {
     JST_CHECK(defineInterfaceOutput("signal",
                                     "Output",
                                     "Demodulated audio signal."));
+
+    JST_CHECK(defineInterfaceConfig("mode",
+                                    "Mode",
+                                    "Select mono narrowband or stereo wideband FM.",
+                                    "dropdown:narrow(Narrowband),wide(Wideband)"));
+
+    JST_CHECK(defineInterfaceConfig("deemphasis",
+                                    "De-emphasis",
+                                    "Optional FM de-emphasis time constant.",
+                                    "dropdown:none(None),50us(50 us [Global]),"
+                                    "75us(75 us [USA])"));
 
     JST_CHECK(defineInterfaceConfig("sampleRate",
                                     "Sample Rate",
@@ -46,6 +59,6 @@ Result FmImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(FmImpl);
+JST_REGISTER_BLOCK(FmImpl, {"fm"});
 
 }  // namespace Jetstream::Blocks

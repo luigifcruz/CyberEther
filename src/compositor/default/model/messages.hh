@@ -7,7 +7,7 @@
 #include "jetstream/instance_remote.hh"
 #include "jetstream/module_surface.hh"
 #include "jetstream/parser.hh"
-#include "jetstream/render/sakura/toast.hh"
+#include "jetstream/render/sakura/base.hh"
 #include "jetstream/types.hh"
 
 #include <deque>
@@ -149,6 +149,10 @@ struct MailSetDebugLogLevel {
 
 struct MailCheckForUpdates {};
 
+struct MailDownloadUpdate {};
+
+struct MailApplyUpdate {};
+
 struct MailDismissUpdate {};
 
 struct MailSetRemoteBrokerUrl {
@@ -171,6 +175,10 @@ struct MailSetRemoteAutoJoinSessions {
     bool value = false;
 };
 
+struct MailSetPythonRuntimePath {
+    std::string value;
+};
+
 struct MailSaveFlowgraphPath {
     std::string flowgraph;
     std::string path;
@@ -183,9 +191,36 @@ struct MailBrowseConfigPath {
     std::function<void(std::string)> onSelect;
 };
 
+struct MailFilePickerNavigate {
+    U64 generation = 0;
+    std::string path;
+};
+
+struct MailFilePickerSelect {
+    U64 generation = 0;
+    std::string path;
+};
+
+struct MailFilePickerSetFilename {
+    U64 generation = 0;
+    std::string value;
+};
+
+struct MailFilePickerConfirm {
+    U64 generation = 0;
+};
+
+struct MailFilePickerCancel {
+    U64 generation = 0;
+};
+
 struct MailRunBenchmark {};
 
 struct MailResetBenchmark {};
+
+struct MailSetBenchmarkModule {
+    std::string moduleType;
+};
 
 struct MailSetFlowgraphInfo {
     std::string flowgraph;
@@ -209,6 +244,11 @@ struct MailRenameBlock {
     std::string flowgraph;
     std::string oldId;
     std::string newId;
+};
+
+struct MailOpenRenameBlock {
+    std::string flowgraph;
+    std::string blockId;
 };
 
 struct MailDeleteBlock {
@@ -366,17 +406,27 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetDebugTimingEnabled,
                           MailSetDebugLogLevel,
                           MailCheckForUpdates,
+                          MailDownloadUpdate,
+                          MailApplyUpdate,
                           MailDismissUpdate,
                           MailSetRemoteBrokerUrl,
                           MailSetRemoteCodec,
                           MailSetRemoteFramerate,
                           MailSetRemoteEncoder,
                           MailSetRemoteAutoJoinSessions,
+                          MailSetPythonRuntimePath,
                           MailSaveFlowgraphPath,
                           MailBrowseConfigPath,
+                          MailFilePickerNavigate,
+                          MailFilePickerSelect,
+                          MailFilePickerSetFilename,
+                          MailFilePickerConfirm,
+                          MailFilePickerCancel,
                           MailRunBenchmark,
                           MailResetBenchmark,
+                          MailSetBenchmarkModule,
                           MailSetFlowgraphInfo,
+                          MailOpenRenameBlock,
                           MailRenameBlock,
                           MailDeleteBlock,
                           MailReloadBlock,

@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <utility>
 
 #include "jetstream/platform.hh"
 
@@ -32,7 +33,7 @@ Result Settings::Impl::ResolvePath(std::filesystem::path& path) {
     std::string configPath;
     JST_CHECK(Platform::ConfigPath(configPath));
 
-    path = std::filesystem::u8path(configPath) / Filename;
+    path = Platform::PathFromUtf8(configPath) / Filename;
     return Result::SUCCESS;
 }
 
@@ -48,7 +49,7 @@ Result Settings::Impl::LoadFile(const std::filesystem::path& path, Settings& set
     std::error_code ec;
     const bool exists = std::filesystem::exists(path, ec);
     if (ec) {
-        JST_ERROR("[SETTINGS] Failed to query settings file '{}'.", path.string());
+        JST_ERROR("[SETTINGS] Failed to query settings file '{}'.", Platform::PathToUtf8(path));
         return Result::ERROR;
     }
 
@@ -58,7 +59,7 @@ Result Settings::Impl::LoadFile(const std::filesystem::path& path, Settings& set
 
     std::ifstream file(path, std::ios::binary);
     if (!file) {
-        JST_ERROR("[SETTINGS] Can't open settings file '{}'.", path.string());
+        JST_ERROR("[SETTINGS] Can't open settings file '{}'.", Platform::PathToUtf8(path));
         return Result::ERROR;
     }
 
@@ -76,7 +77,7 @@ Result Settings::Impl::SaveFile(const std::filesystem::path& path, const Setting
         std::error_code ec;
         std::filesystem::create_directories(parent, ec);
         if (ec) {
-            JST_ERROR("[SETTINGS] Cannot create directory '{}'.", parent.string());
+            JST_ERROR("[SETTINGS] Cannot create directory '{}'.", Platform::PathToUtf8(parent));
             return Result::ERROR;
         }
     }
@@ -91,7 +92,7 @@ Result Settings::Impl::SaveFile(const std::filesystem::path& path, const Setting
 
     std::ofstream file(tempPath, std::ios::out | std::ios::binary | std::ios::trunc);
     if (!file) {
-        JST_ERROR("[SETTINGS] Can't open temporary settings file '{}'.", tempPath.string());
+        JST_ERROR("[SETTINGS] Can't open temporary settings file '{}'.", Platform::PathToUtf8(tempPath));
         return Result::ERROR;
     }
 
@@ -102,7 +103,7 @@ Result Settings::Impl::SaveFile(const std::filesystem::path& path, const Setting
         std::error_code cleanupEc;
         (void)std::filesystem::remove(tempPath, cleanupEc);
 
-        JST_ERROR("[SETTINGS] Failed to write temporary settings file '{}'.", tempPath.string());
+        JST_ERROR("[SETTINGS] Failed to write temporary settings file '{}'.", Platform::PathToUtf8(tempPath));
         return Result::ERROR;
     }
 
@@ -111,7 +112,7 @@ Result Settings::Impl::SaveFile(const std::filesystem::path& path, const Setting
         std::error_code cleanupEc;
         (void)std::filesystem::remove(tempPath, cleanupEc);
 
-        JST_ERROR("[SETTINGS] Failed to finalize temporary settings file '{}'.", tempPath.string());
+        JST_ERROR("[SETTINGS] Failed to finalize temporary settings file '{}'.", Platform::PathToUtf8(tempPath));
         return Result::ERROR;
     }
 
@@ -121,7 +122,7 @@ Result Settings::Impl::SaveFile(const std::filesystem::path& path, const Setting
         std::error_code cleanupEc;
         (void)std::filesystem::remove(tempPath, cleanupEc);
 
-        JST_ERROR("[SETTINGS] Failed to replace settings file '{}'.", path.string());
+        JST_ERROR("[SETTINGS] Failed to replace settings file '{}'.", Platform::PathToUtf8(path));
         return Result::ERROR;
     }
 
@@ -135,9 +136,12 @@ Result Settings::Get(Settings& settings) {
     Impl& impl = Impl::Instance();
     std::lock_guard lock(impl.mutex);
     if (!impl.loaded || impl.path != path) {
-        JST_CHECK(Impl::LoadFile(path, impl.settings));
+        Settings candidate;
+        JST_CHECK(Impl::LoadFile(path, candidate));
+
+        impl.settings = std::move(candidate);
+        impl.path = std::move(path);
         impl.loaded = true;
-        impl.path = path;
     }
 
     settings = impl.settings;
@@ -147,16 +151,18 @@ Result Settings::Get(Settings& settings) {
 Result Settings::Set(const Settings& settings, bool persist) {
     std::filesystem::path path;
     JST_CHECK(Impl::ResolvePath(path));
+    Settings candidate = settings;
 
     Impl& impl = Impl::Instance();
     std::lock_guard lock(impl.mutex);
-    impl.settings = settings;
-    impl.loaded = true;
-    impl.path = path;
 
     if (persist) {
-        JST_CHECK(Impl::SaveFile(path, impl.settings));
+        JST_CHECK(Impl::SaveFile(path, candidate));
     }
+
+    impl.settings = std::move(candidate);
+    impl.path = std::move(path);
+    impl.loaded = true;
 
     return Result::SUCCESS;
 }

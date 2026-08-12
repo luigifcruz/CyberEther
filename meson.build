@@ -1,7 +1,7 @@
 project(
     'CyberEther',
     ['cpp'],
-    version: '1.5.0',  # [VERSION HOOK]
+    version: '1.8.4',  # [VERSION HOOK]
     meson_version: '>=1.11.0',
     default_options: [
         'cpp_std=c++20',
@@ -48,8 +48,27 @@ if jst_is_browser
     meson.override_dependency('threads', threads_dep)
 endif
 
+browser_exe_link_args = []
+if jst_is_browser
+    browser_exe_link_args = meson.get_external_property('main_module_link_args') + [
+        '--js-library', meson.current_source_dir() / 'src/platform/emscripten_sync_library.js',
+        '-Wl,--whole-archive',
+    ]
+endif
+
 if jst_is_windows
-    add_project_arguments('/Zc:preprocessor', '/bigobj', language: 'cpp')
+    add_project_arguments(
+        '/Zc:preprocessor',
+        '/bigobj',
+        '/D_SILENCE_NONFLOATING_COMPLEX_DEPRECATION_WARNING',
+        language: 'cpp',
+    )
+endif
+
+cpp = meson.get_compiler('cpp')
+if cpp.has_argument('-Wno-missing-field-initializers')
+    # Config aggregates intentionally rely on defaults for unspecified fields.
+    add_project_arguments('-Wno-missing-field-initializers', language: 'cpp')
 endif
 
 if get_option('native')
@@ -94,8 +113,8 @@ cfg_lst.set('version_minor', version_parts[1])
 cfg_lst.set('version_patch', version_parts[2])
 cfg_lst.set('buildtype', get_option('buildtype'))
 cfg_lst.set('optimization', get_option('optimization'))
-cfg_lst.set('debug', get_option('debug'))
-cfg_lst.set('native', get_option('native'))
+cfg_lst.set('debug', get_option('debug') ? 'true' : 'false')
+cfg_lst.set('native', get_option('native') ? 'true' : 'false')
 
 cfg_lst.set('JST_IS_STATIC', jst_is_static)
 cfg_lst.set('JST_IS_SHARED', not jst_is_static)
@@ -137,7 +156,7 @@ if jst_is_browser or jst_is_static
         link_whole: libjetstream
     )
 else
-    libjetstream = library(
+    libjetstream = shared_library(
         'jetstream',
         src_lst,
         cpp_args: ['-DJST_IS_LIBRARY'],
@@ -171,7 +190,9 @@ if not jst_is_static
     pkg = import('pkgconfig')
     pkg.generate(
         libjetstream,
-        libraries: dep_lst,
+        name: 'jetstream',
+        description: 'CyberEther',
+        version: meson.project_version(),
     )
 endif
 
@@ -202,6 +223,7 @@ if not jst_is_wheel and \
         cyberether_src_lst,
         include_directories: inc_lst,
         dependencies: libjetstream_dep,
+        link_args: browser_exe_link_args,
         win_subsystem: 'windows',
         install: true,
     )
@@ -211,7 +233,10 @@ endif
 # Optional
 #
 
-if get_option('tests') and not jst_is_browser
+if get_option('tests') and \
+   not jst_is_browser and \
+   not jst_is_ios and \
+   not jst_is_android
     subdir('tests')
 endif
 

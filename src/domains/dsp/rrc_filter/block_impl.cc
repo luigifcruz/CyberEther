@@ -56,7 +56,7 @@ Result RrcFilterImpl::define() {
                                     "Taps",
                                     "Number of filter coefficients "
                                     "(must be odd, >= 3).",
-                                    "int:taps"));
+                                    "uint:taps"));
 
     return Result::SUCCESS;
 }
@@ -70,6 +70,6 @@ Result RrcFilterImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(RrcFilterImpl);
+JST_REGISTER_BLOCK(RrcFilterImpl, {"rrc_filter"});
 
 }  // namespace Jetstream::Blocks

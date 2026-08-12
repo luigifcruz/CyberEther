@@ -88,7 +88,7 @@ Result Implementation::create() {
 
     // Clean up.
 
-    this->updated = true;
+    update();
 
     return Result::SUCCESS;
 }
@@ -109,10 +109,9 @@ Result Implementation::destroy() {
 Result Implementation::encode(WGPUComputePassEncoder& computePassEncoder) {
     // Check if data needs to be updated.
 
-    if (!this->updated) {
+    if (!shouldEncode()) {
         return Result::SUCCESS;
     }
-    this->updated = false;
 
     // Create compute pass.
 
@@ -129,6 +128,8 @@ Result Implementation::encode(WGPUComputePassEncoder& computePassEncoder) {
     }
 
     wgpuComputePassEncoderDispatchWorkgroups(computePassEncoder, x, y, z);
+
+    markScheduled();
 
     return Result::SUCCESS;
 }

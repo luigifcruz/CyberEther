@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_DOCUMENTATION_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_DOCUMENTATION_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 
 #include <functional>
 #include <string>
@@ -9,7 +9,7 @@
 
 namespace Jetstream {
 
-struct FlowgraphNodeDocumentation : public Sakura::Component {
+struct FlowgraphNodeDocumentation {
     struct Config {
         std::string id;
         std::string title;
@@ -40,7 +40,7 @@ struct FlowgraphNodeDocumentation : public Sakura::Component {
  private:
     Config config;
     Sakura::Window window;
-    Sakura::Markdown markdown;
+    Sakura::Retained::MarkdownView markdown;
 };
 
 }  // namespace Jetstream

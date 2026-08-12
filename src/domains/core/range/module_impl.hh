@@ -8,7 +8,6 @@ namespace Jetstream::Modules {
 
 struct RangeImpl : public Module::Impl, public DynamicConfig<Range> {
  public:
-    Result validate() override;
     Result define() override;
     Result create() override;
     Result destroy() override;

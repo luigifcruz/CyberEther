@@ -7,7 +7,7 @@
 namespace Jetstream::Blocks {
 
 struct SqueezeDims : public Block::Config {
-    U64 axis = 0;
+    I64 axis = -1;
 
     JST_BLOCK_TYPE(squeeze_dims);
     JST_BLOCK_DOMAIN("Core");
@@ -22,8 +22,8 @@ struct SqueezeDims : public Block::Config {
         "size 1.\n\n"
 
         "## Arguments\n"
-        "- **Axis**: The position of the dimension to remove (0-indexed). The "
-        "dimension at this position must have size 1.\n\n"
+        "- **Axis**: The position of the dimension to remove. Negative axes count "
+        "from the end. The dimension at this position must have size 1.\n\n"
 
         "## Useful For\n"
         "- Removing singleton dimensions after reduction operations.\n"

@@ -1,43 +1,98 @@
 #include "module_impl.hh"
 
-#ifndef JST_OS_BROWSER
-#include <regex>
-#endif
+#include <limits>
+#include <utility>
+
+#include <jetstream/memory/axis.hh>
+#include <jetstream/memory/macros.hh>
+#include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Modules {
+
+namespace {
+
+Result ValidateWebsocketUrl(const std::string& url,
+                            std::string& validatedUrl) {
+    validatedUrl.clear();
+    if (url.empty()) {
+        JST_ERROR("[MODULE_WEBSOCKET] URL is empty.");
+        return Result::INCOMPLETE;
+    }
+    if (url.find('#') != std::string::npos) {
+        JST_ERROR("[MODULE_WEBSOCKET] WebSocket URL cannot contain a fragment.");
+        return Result::ERROR;
+    }
+
+    const bool ws = url.starts_with("ws://");
+    const bool wss = url.starts_with("wss://");
+    const std::size_t authorityStart = wss ? 6 : 5;
+    const std::size_t authorityEnd = url.find_first_of("/?#", authorityStart);
+    if ((!ws && !wss) || authorityStart >= url.size() ||
+        authorityEnd == authorityStart) {
+        JST_ERROR("[MODULE_WEBSOCKET] Invalid WebSocket URL '{}'.", url);
+        return Result::ERROR;
+    }
+
+    validatedUrl = url;
+    return Result::SUCCESS;
+}
+
+}  // namespace
 
 Result WebsocketImpl::validate() {
     const auto& config = *candidate();
 
-    if (config.numberOfBatches == 0) {
-        JST_ERROR("[MODULE_WEBSOCKET] Number of batches cannot be zero.");
+    validatedDataType = DataType::None;
+    validatedCircularBufferSize = 0;
+    validatedUrl.clear();
+
+    if (config.numberOfBatches == 0 || config.numberOfTimeSamples == 0 ||
+        config.bufferMultiplier == 0) {
+        JST_ERROR("[MODULE_WEBSOCKET] Buffer dimensions must be positive.");
         return Result::ERROR;
     }
 
-    if (config.numberOfTimeSamples == 0) {
-        JST_ERROR("[MODULE_WEBSOCKET] Number of time samples cannot be zero.");
-        return Result::ERROR;
-    }
-
-    if (config.bufferMultiplier == 0) {
-        JST_ERROR("[MODULE_WEBSOCKET] Buffer multiplier cannot be zero.");
-        return Result::ERROR;
-    }
-
-    if (config.dataType != "CF32" &&
-        config.dataType != "F32" &&
-        config.dataType != "CI8" &&
-        config.dataType != "I8" &&
-        config.dataType != "CU8" &&
-        config.dataType != "U8" &&
-        config.dataType != "CI16" &&
-        config.dataType != "I16" &&
-        config.dataType != "CU16" &&
-        config.dataType != "U16") {
+    if (config.dataType != "CF32" && config.dataType != "F32" &&
+        config.dataType != "CI8" && config.dataType != "I8" &&
+        config.dataType != "CU8" && config.dataType != "U8" &&
+        config.dataType != "CI16" && config.dataType != "I16" &&
+        config.dataType != "CU16" && config.dataType != "U16") {
         JST_ERROR("[MODULE_WEBSOCKET] Invalid data type '{}'.", config.dataType);
         return Result::ERROR;
     }
 
+    const DataType candidateDataType = NameToDataType(config.dataType);
+    U64 outputElements = 0;
+    U64 outputSizeBytes = 0;
+    U64 circularBufferSize = 0;
+    U64 alignedOutputSize = 0;
+    if (!detail::CheckedMultiply(config.numberOfBatches,
+                                 config.numberOfTimeSamples,
+                                 outputElements) ||
+        !detail::CheckedMultiply(outputElements,
+                                 static_cast<U64>(DataTypeSize(candidateDataType)),
+                                 outputSizeBytes) ||
+        !detail::CheckedMultiply(outputSizeBytes,
+                                 config.bufferMultiplier,
+                                 circularBufferSize)) {
+        JST_ERROR("[MODULE_WEBSOCKET] Buffer dimensions exceed the supported "
+                  "range.");
+        return Result::ERROR;
+    }
+
+    if (!detail::CheckedPageAlignedSize(outputSizeBytes, alignedOutputSize) ||
+        alignedOutputSize > std::numeric_limits<std::size_t>::max() ||
+        circularBufferSize > std::numeric_limits<std::size_t>::max()) {
+        JST_ERROR("[MODULE_WEBSOCKET] Buffer allocation size is too large.");
+        return Result::ERROR;
+    }
+
+    std::string candidateUrl;
+    JST_CHECK(ValidateWebsocketUrl(config.url, candidateUrl));
+
+    validatedDataType = candidateDataType;
+    validatedCircularBufferSize = circularBufferSize;
+    validatedUrl = std::move(candidateUrl);
     return Result::SUCCESS;
 }
 
@@ -50,26 +105,25 @@ Result WebsocketImpl::define() {
 }
 
 Result WebsocketImpl::create() {
-    if (url.empty()) {
-        JST_ERROR("[MODULE_WEBSOCKET] URL is empty.");
-        return Result::INCOMPLETE;
-    }
-
     errored = false;
     connected = false;
     bufferHealth.publish(0.0f);
     throughputMBs.publish(0.0f);
 
-    JST_CHECK(buffer.create(device(), NameToDataType(dataType),
+    JST_CHECK(buffer.create(device(), validatedDataType,
                             {numberOfBatches, numberOfTimeSamples}));
+    JST_CHECK(SetSignalAxes(buffer, {
+        .sample = Index{1},
+        .batch = Index{0},
+    }));
 
     outputs()["signal"].produced(name(), "signal", buffer);
 
-    circularBuffer.resize(buffer.sizeBytes() * bufferMultiplier);
+    JST_CHECK(circularBuffer.resize(validatedCircularBufferSize));
 
 #ifdef JST_OS_BROWSER
     EmscriptenWebSocketCreateAttributes attrs = {
-        url.c_str(),
+        validatedUrl.c_str(),
         nullptr,
         EM_TRUE,
     };
@@ -85,24 +139,19 @@ Result WebsocketImpl::create() {
     emscripten_websocket_set_onclose_callback(websocket, this, onClose);
     emscripten_websocket_set_onerror_callback(websocket, this, onError);
 
-    JST_INFO("[MODULE_WEBSOCKET] Connecting to '{}'.", url);
+    JST_INFO("[MODULE_WEBSOCKET] Connecting to '{}'.", validatedUrl);
 #else
-    // cpp-httplib requires an explicit '/' path; browsers accept ws://host.
-    static const std::regex missingPathRegex(R"(^(wss?://[^/?#]+)([?#].*)?$)");
-    const std::string clientUrl = std::regex_replace(url, missingPathRegex, "$1/$2");
-
-    auto client = std::make_unique<httplib::ws::WebSocketClient>(clientUrl);
+    auto client = std::move(validatedClient);
+    if (!client) {
+        JST_ERROR("[MODULE_WEBSOCKET] Missing validated WebSocket client.");
+        return Result::ERROR;
+    }
     client->set_write_timeout(1);
     client->enable_server_certificate_verification(false);
     client->set_tcp_nodelay(true);
 
-    if (!client->is_valid()) {
-        JST_ERROR("[MODULE_WEBSOCKET] Invalid WebSocket URL '{}'.", url);
-        return Result::ERROR;
-    }
-
     if (!client->connect()) {
-        JST_ERROR("[MODULE_WEBSOCKET] Failed to connect to '{}'.", url);
+        JST_ERROR("[MODULE_WEBSOCKET] Failed to connect to '{}'.", validatedUrl);
         return Result::ERROR;
     }
 
@@ -161,17 +210,20 @@ void WebsocketImpl::receiveBinaryData(const I8* data, const U64 numBytes) {
         return;
     }
 
-    circularBuffer.put(data, numBytes);
+    if (circularBuffer.push(data, numBytes) != Result::SUCCESS) {
+        errored = true;
+        return;
+    }
 
-    const U64 capacity = circularBuffer.getCapacity();
+    const U64 capacity = circularBuffer.capacity();
     if (capacity > 0) {
-        const F32 newHealth = static_cast<F32>(circularBuffer.getOccupancy()) /
+        const F32 newHealth = static_cast<F32>(circularBuffer.size()) /
                               static_cast<F32>(capacity);
         const F32 smoothedHealth = bufferHealth.get() * 0.99f + newHealth * 0.01f;
         bufferHealth.publish(smoothedHealth);
     }
 
-    throughputMBs.publish(static_cast<F32>(circularBuffer.getThroughput()) / 1e6f);
+    throughputMBs.publish(static_cast<F32>(circularBuffer.throughput()) / 1e6f);
 }
 
 #ifdef JST_OS_BROWSER

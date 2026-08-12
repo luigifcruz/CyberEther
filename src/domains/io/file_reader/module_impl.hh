@@ -27,6 +27,8 @@ struct FileReaderImpl : public Module::Impl, public DynamicConfig<FileReader> {
     void updateBandwidth(const U64 deltaBytes);
 
     Tensor buffer;
+    DataType validatedDataType = DataType::None;
+    U64 validatedOutputSizeBytes = 0;
 
     std::ifstream dataFile;
     std::filesystem::path filePath;

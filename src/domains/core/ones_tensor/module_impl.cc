@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include <jetstream/tools/numeric.hh>
+
 namespace Jetstream::Modules {
 
 namespace {
@@ -15,6 +17,10 @@ void FillTensor(Tensor& tensor, const T& value) {
 }  // namespace
 
 Result OnesTensorImpl::validate() {
+    validatedDataType = DataType::None;
+    validatedElementCount = 0;
+    validatedOutputSizeBytes = 0;
+
     const auto& config = *candidate();
 
     if (config.shape.empty()) {
@@ -35,10 +41,31 @@ Result OnesTensorImpl::validate() {
         return Result::ERROR;
     }
 
+    validatedDataType = NameToDataType(config.dataType);
+    U64 elementCount = 1;
+    for (const U64 dimension : config.shape) {
+        if (!detail::CheckedMultiply(elementCount, dimension, elementCount)) {
+            JST_ERROR("[MODULE_ONES_TENSOR] Shape exceeds the supported layout range.");
+            return Result::ERROR;
+        }
+    }
+
+    U64 outputSizeBytes = 0;
+    if (!detail::CheckedMultiply(elementCount,
+                                 static_cast<U64>(DataTypeSize(validatedDataType)),
+                                 outputSizeBytes)) {
+        JST_ERROR("[MODULE_ONES_TENSOR] Tensor exceeds the supported byte range.");
+        return Result::ERROR;
+    }
+
+    validatedElementCount = elementCount;
+    validatedOutputSizeBytes = outputSizeBytes;
     return Result::SUCCESS;
 }
 
 Result OnesTensorImpl::define() {
+    JST_CHECK(defineTaint(Module::Taint::STATIC_OUTPUT));
+
     JST_CHECK(defineInterfaceOutput("buffer"));
 
     return Result::SUCCESS;
@@ -48,8 +75,15 @@ Result OnesTensorImpl::create() {
     Buffer::Config outputConfig{};
     outputConfig.hostAccessible = true;
 
-    JST_CHECK(output.create(device(), NameToDataType(dataType), shape, outputConfig));
+    JST_CHECK(output.create(device(), validatedDataType, shape, outputConfig));
+    JST_CHECK(fillOutput());
 
+    outputs()["buffer"].produced(name(), "buffer", output);
+
+    return Result::SUCCESS;
+}
+
+Result OnesTensorImpl::fillOutput() {
     if (output.dtype() == DataType::F32) {
         FillTensor(output, 1.0f);
     } else if (output.dtype() == DataType::CF32) {
@@ -57,13 +91,11 @@ Result OnesTensorImpl::create() {
     } else if (output.dtype() == DataType::F64) {
         FillTensor(output, 1.0);
     } else if (output.dtype() == DataType::CF64) {
-        FillTensor(output, CF32(1.0, 0.0));
+        FillTensor(output, CF64(1.0, 0.0));
     } else {
         JST_ERROR("[MODULE_ONES_TENSOR] Unsupported data type '{}'.", output.dtype());
         return Result::ERROR;
     }
-
-    outputs()["buffer"].produced(name(), "buffer", output);
 
     return Result::SUCCESS;
 }

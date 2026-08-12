@@ -4,26 +4,17 @@
 #include <jetstream/config.hh>
 #include <jetstream/domains/ml/onnx_inference/module.hh>
 #include <jetstream/domains/ml/onnx_inference/onnx_types.hh>
+#include <jetstream/platform.hh>
 
 #ifdef JST_OS_WINDOWS
 #include <filesystem>
 #endif
-
-#include <algorithm>
 
 #include <onnxruntime_cxx_api.h>
 
 namespace Jetstream::Blocks {
 
 namespace {
-
-bool HasProvider(const std::vector<std::string>& providers, const std::string& name) {
-    return std::find(providers.begin(), providers.end(), name) != providers.end();
-}
-
-bool IsExecutionProvider(const std::string& name) {
-    return name == "cpu" || name == "coreml" || name == "tensorrt";
-}
 
 std::string FormatShape(const std::vector<int64_t>& shape) {
     std::vector<std::string> dims;
@@ -32,25 +23,6 @@ std::string FormatShape(const std::vector<int64_t>& shape) {
         dims.push_back(dim < 0 ? "?" : jst::fmt::format("{}", dim));
     }
     return jst::fmt::format("[{}]", jst::fmt::join(dims, ", "));
-}
-
-std::string ExecutionProviderDropdown() {
-    std::vector<std::string> options{"cpu(CPU)"};
-
-    try {
-        const auto providers = Ort::GetAvailableProviders();
-        if (HasProvider(providers, "CoreMLExecutionProvider")) {
-            options.emplace_back("coreml(Core ML)");
-        }
-        if (HasProvider(providers, "TensorrtExecutionProvider") &&
-            HasProvider(providers, "CUDAExecutionProvider")) {
-            options.emplace_back("tensorrt(TensorRT)");
-        }
-    } catch (const Ort::Exception& e) {
-        JST_ERROR("[BLOCK_ONNX_INFERENCE] Failed to enumerate ONNX Runtime providers: {}", e.what());
-    }
-
-    return jst::fmt::format("dropdown:{}", jst::fmt::join(options, ","));
 }
 
 }  // namespace
@@ -71,10 +43,10 @@ struct OnnxInferenceImpl : public Block::Impl, public DynamicConfig<Blocks::Onnx
     bool unsupportedModelDtypes = false;
 
   private:
-    Result readModelTensorNames();
+    Result readModelTensorNames(const std::string& path);
 };
 
-Result OnnxInferenceImpl::readModelTensorNames() {
+Result OnnxInferenceImpl::readModelTensorNames(const std::string& path) {
     inputNames.clear();
     inputShapes.clear();
     inputDtypes.clear();
@@ -82,7 +54,7 @@ Result OnnxInferenceImpl::readModelTensorNames() {
     outputDtypes.clear();
     unsupportedModelDtypes = false;
 
-    if (modelPath.empty()) {
+    if (path.empty()) {
         return Result::SUCCESS;
     }
 
@@ -91,10 +63,10 @@ Result OnnxInferenceImpl::readModelTensorNames() {
         Ort::SessionOptions sessionOptions;
 
 #ifdef JST_OS_WINDOWS
-        const auto ortModelPath = std::filesystem::path(modelPath).wstring();
+        const auto ortModelPath = Platform::PathFromUtf8(path);
         const ORTCHAR_T* ortModelPathData = ortModelPath.c_str();
 #else
-        const ORTCHAR_T* ortModelPathData = modelPath.c_str();
+        const ORTCHAR_T* ortModelPathData = path.c_str();
 #endif
         Ort::Session session(env, ortModelPathData, sessionOptions);
         Ort::AllocatorWithDefaultOptions allocator;
@@ -168,11 +140,6 @@ Result OnnxInferenceImpl::readModelTensorNames() {
 Result OnnxInferenceImpl::validate() {
     const auto& config = *candidate();
 
-    if (!IsExecutionProvider(config.executionProvider)) {
-        JST_ERROR("[BLOCK_ONNX_INFERENCE] Unknown execution provider '{}'.", config.executionProvider);
-        return Result::ERROR;
-    }
-
     if (modelPath != config.modelPath ||
         executionProvider != config.executionProvider) {
         return Result::RECREATE;
@@ -182,7 +149,7 @@ Result OnnxInferenceImpl::validate() {
 }
 
 Result OnnxInferenceImpl::configure() {
-    if (readModelTensorNames() != Result::SUCCESS) {
+    if (readModelTensorNames(modelPath) != Result::SUCCESS) {
         inputNames.clear();
         inputShapes.clear();
         inputDtypes.clear();
@@ -199,6 +166,14 @@ Result OnnxInferenceImpl::configure() {
 }
 
 Result OnnxInferenceImpl::define() {
+    if (readModelTensorNames(candidate()->modelPath) != Result::SUCCESS) {
+        inputNames.clear();
+        inputShapes.clear();
+        inputDtypes.clear();
+        outputNames.clear();
+        outputDtypes.clear();
+    }
+
     for (size_t i = 0; i < inputNames.size(); ++i) {
         JST_CHECK(defineInterfaceInput(jst::fmt::format("input_{}", i),
                                        inputNames[i],
@@ -219,7 +194,8 @@ Result OnnxInferenceImpl::define() {
     JST_CHECK(defineInterfaceConfig("executionProvider",
                                     "Execution Provider",
                                     "Execution backend for running the ONNX model.",
-                                    ExecutionProviderDropdown()));
+                                    "dropdown:cpu(CPU),coreml(Core ML),"
+                                    "tensorrt(TensorRT)"));
 
     return Result::SUCCESS;
 }
@@ -249,6 +225,6 @@ Result OnnxInferenceImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(OnnxInferenceImpl);
+JST_REGISTER_BLOCK(OnnxInferenceImpl, {"onnx_inference"});
 
 }  // namespace Jetstream::Blocks

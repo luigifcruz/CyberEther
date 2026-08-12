@@ -44,6 +44,6 @@ Result CastImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(CastImpl);
+JST_REGISTER_BLOCK(CastImpl, {"cast"});
 
 }  // namespace Jetstream::Blocks

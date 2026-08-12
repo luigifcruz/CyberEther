@@ -1,6 +1,8 @@
 #include <cstring>
+#include <limits>
 
 #include <jetstream/backend/devices/cpu/helpers.hh>
+#include <jetstream/memory/macros.hh>
 #include <jetstream/runtime_context_native_cpu.hh>
 #include <jetstream/scheduler_context.hh>
 #include <jetstream/module_context.hh>
@@ -14,6 +16,7 @@ struct OverlapAddImplNativeCpu : public OverlapAddImpl,
                                  public NativeCpuRuntimeContext,
                                  public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeSubmit() override;
@@ -30,18 +33,56 @@ struct OverlapAddImplNativeCpu : public OverlapAddImpl,
     std::vector<U64> prevOverlapStrides;
 };
 
+Result OverlapAddImplNativeCpu::validate() {
+    JST_CHECK(OverlapAddImpl::validate());
+
+    if (!inputs().contains("buffer") || !inputs().contains("overlap")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& bufferTensor = inputs().at("buffer").tensor;
+    const Tensor& overlapTensor = inputs().at("overlap").tensor;
+    if (!bufferTensor.validShape() || !overlapTensor.validShape() ||
+        bufferTensor.size() == 0 || overlapTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (bufferTensor.dtype() != overlapTensor.dtype()) {
+        JST_ERROR("[MODULE_OVERLAP_ADD_NATIVE_CPU] Input dtype mismatch: "
+                  "buffer is {}, overlap is {}.",
+                  bufferTensor.dtype(),
+                  overlapTensor.dtype());
+        return Result::ERROR;
+    }
+
+    if (bufferTensor.dtype() != DataType::F32 &&
+        bufferTensor.dtype() != DataType::CF32) {
+        JST_ERROR("[MODULE_OVERLAP_ADD_NATIVE_CPU] Unsupported input "
+                  "data type: {}.",
+                  bufferTensor.dtype());
+        return Result::ERROR;
+    }
+
+    U64 alignedOutputSize = 0;
+    U64 alignedPreviousOverlapSize = 0;
+    if (!detail::CheckedPageAlignedSize(validatedOutputSizeBytes,
+                                        alignedOutputSize) ||
+        alignedOutputSize > std::numeric_limits<std::size_t>::max() ||
+        !detail::CheckedPageAlignedSize(validatedPreviousOverlapSizeBytes,
+                                        alignedPreviousOverlapSize) ||
+        alignedPreviousOverlapSize > std::numeric_limits<std::size_t>::max()) {
+        JST_ERROR("[MODULE_OVERLAP_ADD_NATIVE_CPU] Output or previous-state "
+                  "allocation size is too large.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 Result OverlapAddImplNativeCpu::create() {
     // Create parent.
 
     JST_CHECK(OverlapAddImpl::create());
-
-    if (inputBuffer.dtype() != inputOverlap.dtype()) {
-        JST_ERROR("[MODULE_OVERLAP_ADD_NATIVE_CPU] Input dtype mismatch: "
-                  "buffer is {}, overlap is {}.",
-                  inputBuffer.dtype(),
-                  inputOverlap.dtype());
-        return Result::ERROR;
-    }
 
     // Precompute row-major strides.
 
@@ -65,18 +106,11 @@ Result OverlapAddImplNativeCpu::create() {
 
     if (inputBuffer.dtype() == DataType::CF32) {
         kernel = [this]() { return kernelCF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (inputBuffer.dtype() == DataType::F32) {
+    } else {
         kernel = [this]() { return kernelF32(); };
-        return Result::SUCCESS;
     }
 
-    JST_ERROR("[MODULE_OVERLAP_ADD_NATIVE_CPU] Unsupported input "
-              "data type: {}.",
-              inputBuffer.dtype());
-    return Result::ERROR;
+    return Result::SUCCESS;
 }
 
 Result OverlapAddImplNativeCpu::computeSubmit() {
@@ -88,6 +122,7 @@ static Result overlapAddKernel(const Tensor& inputBuffer,
                                const Tensor& inputOverlap,
                                Tensor& output,
                                Tensor& previousOverlap,
+                               const std::optional<Index> batchAxis,
                                const std::vector<U64>& bufStrides,
                                const std::vector<U64>& ovlStrides,
                                const std::vector<U64>& prevOvlStrides) {
@@ -121,7 +156,7 @@ static Result overlapAddKernel(const Tensor& inputBuffer,
             outIdx += coords[d] * bufStrides[d];
         }
 
-        if (rank == 1 || coords[0] == 0) {
+        if (!batchAxis || coords[*batchAxis] == 0) {
             // First batch: add stored previous overlap.
             U64 prevIdx = 0;
             for (U64 d = 0; d < rank; ++d) {
@@ -130,7 +165,7 @@ static Result overlapAddKernel(const Tensor& inputBuffer,
             outPtr[outIdx] += prevPtr[prevIdx];
         } else {
             // Other batches: add overlap from previous batch.
-            coords[0] -= 1;
+            coords[*batchAxis] -= 1;
             U64 srcIdx = 0;
             for (U64 d = 0; d < rank; ++d) {
                 srcIdx += coords[d] * ovlStrides[d];
@@ -140,10 +175,10 @@ static Result overlapAddKernel(const Tensor& inputBuffer,
     }
 
     // 3. Store last batch of overlap for next invocation.
-    if (rank == 1) {
+    if (!batchAxis) {
         std::memcpy(prevPtr, ovlPtr, totalPrev * sizeof(T));
     } else {
-        const U64 lastBatch = inputOverlap.shape(0) - 1;
+        const U64 lastBatch = inputOverlap.shape(*batchAxis) - 1;
 
         for (U64 i = 0; i < totalPrev; ++i) {
             // Convert linear previousOverlap index to coords.
@@ -154,7 +189,7 @@ static Result overlapAddKernel(const Tensor& inputBuffer,
             }
 
             // Read from last batch of overlap.
-            coords[0] = lastBatch;
+            coords[*batchAxis] = lastBatch;
             U64 srcIdx = 0;
             for (U64 d = 0; d < rank; ++d) {
                 srcIdx += coords[d] * ovlStrides[d];
@@ -171,6 +206,7 @@ Result OverlapAddImplNativeCpu::kernelCF32() {
                                   inputOverlap,
                                   output,
                                   previousOverlap,
+                                  batchAxis,
                                   bufferStrides,
                                   overlapStrides,
                                   prevOverlapStrides);
@@ -178,10 +214,11 @@ Result OverlapAddImplNativeCpu::kernelCF32() {
 
 Result OverlapAddImplNativeCpu::kernelF32() {
     return overlapAddKernel<F32>(inputBuffer,
-                                 inputOverlap,
-                                 output,
-                                 previousOverlap,
-                                 bufferStrides,
+                                  inputOverlap,
+                                  output,
+                                  previousOverlap,
+                                  batchAxis,
+                                  bufferStrides,
                                  overlapStrides,
                                  prevOverlapStrides);
 }

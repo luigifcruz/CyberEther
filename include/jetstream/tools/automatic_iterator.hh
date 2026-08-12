@@ -1,7 +1,6 @@
 #ifndef JETSTREAM_TOOLS_AUTOMATIC_ITERATOR_HH
 #define JETSTREAM_TOOLS_AUTOMATIC_ITERATOR_HH
 
-#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <tuple>
@@ -111,15 +110,67 @@ JST_INLINE Result AutomaticIterator(const Function& function, Args&... args) {
     static_assert(sizeof...(Elem) == sizeof...(Args),
                   "Number of element types must match number of tensor arguments.");
 
+    constexpr size_t N = sizeof...(Args);
+    static_assert(N > 0, "AutomaticIterator requires at least one tensor argument.");
+
+    const auto argsTuple = std::forward_as_tuple(args...);
+    const auto& reference = std::get<0>(argsTuple);
+
+    if (!(args.validShape() && ...)) {
+        JST_ERROR("AutomaticIterator requires initialized tensor shapes.");
+        return Result::ERROR;
+    }
+
     if (!((args.device() == DeviceType::CPU) && ...)) {
         JST_ERROR("AutomaticIterator only supports CPU tensors.");
         return Result::ERROR;
     }
 
-    constexpr size_t N = sizeof...(Args);
+    if (!((args.rank() == reference.rank()) && ...)) {
+        JST_ERROR("AutomaticIterator requires tensors with matching ranks.");
+        return Result::ERROR;
+    }
 
-    const U64 size = std::max({args.size()...});
-    const Index rank = std::get<0>(std::forward_as_tuple(args...)).rank();
+    if (!((args.size() == reference.size()) && ...)) {
+        JST_ERROR("AutomaticIterator requires tensors with matching sizes.");
+        return Result::ERROR;
+    }
+
+    if (!((args.shape() == reference.shape()) && ...)) {
+        JST_ERROR("AutomaticIterator requires tensors with matching shapes.");
+        return Result::ERROR;
+    }
+
+    if (!(((TypeToDataType<std::remove_cvref_t<Elem>>() != DataType::None && args.dtype() == TypeToDataType<std::remove_cvref_t<Elem>>())) && ...)) {
+        JST_ERROR("AutomaticIterator tensor dtypes do not match their element types.");
+        return Result::ERROR;
+    }
+
+    const auto validCpuStorage = [](const Tensor& tensor) {
+        try {
+            const auto& buffer = tensor.buffer();
+            return buffer.valid() && buffer.device() == DeviceType::CPU;
+        } catch (...) {
+            return false;
+        }
+    };
+
+    if (!(validCpuStorage(args) && ...)) {
+        JST_ERROR("AutomaticIterator requires valid CPU tensor storage.");
+        return Result::ERROR;
+    }
+
+    const U64 size = reference.size();
+    if (size == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (!((args.data() != nullptr) && ...)) {
+        JST_ERROR("AutomaticIterator cannot access tensor storage.");
+        return Result::ERROR;
+    }
+
+    const Index rank = reference.rank();
 
     // Pre-cast data pointers to typed pointers
     auto dataPtrs = std::tuple<std::add_pointer_t<std::remove_reference_t<Elem>>...>{
@@ -149,6 +200,32 @@ JST_INLINE Result AutomaticIterator(const Function& function, Args&... args) {
                                               backstride,
                                               shapeM1,
                                               std::make_index_sequence<sizeof...(Iterator)>{});
+            }
+        }
+    };
+
+    const auto loopGeneric = [&]() {
+        std::array<U64, N> ptr = {};
+        std::array<Shape, N> coords = {Shape(args.rank(), 0)...};
+
+        const std::array<const U64*, N> backstride = {args.backstride().data()...};
+        const std::array<const U64*, N> shapeM1 = {args.shapeMinusOne().data()...};
+        const std::array<const U64*, N> stride = {args.stride().data()...};
+
+        for (U64 i = 0; i < size; i++) {
+            detail::AutomaticIteratorInvoke(function, dataPtrs, ptr, std::make_index_sequence<N>{});
+
+            for (U64 x = 0; x < N; x++) {
+                for (U64 axis = coords[x].size(); axis-- > 0;) {
+                    if (coords[x][axis] < shapeM1[x][axis]) {
+                        coords[x][axis]++;
+                        ptr[x] += stride[x][axis];
+                        break;
+                    }
+
+                    coords[x][axis] = 0;
+                    ptr[x] -= backstride[x][axis];
+                }
             }
         }
     };
@@ -261,8 +338,8 @@ JST_INLINE Result AutomaticIterator(const Function& function, Args&... args) {
         return Result::SUCCESS;
     }
 
-    JST_ERROR("Automatic iterator not implemented for rank {}.", rank);
-    return Result::ERROR;
+    loopGeneric();
+    return Result::SUCCESS;
 }
 
 }  // namespace Jetstream

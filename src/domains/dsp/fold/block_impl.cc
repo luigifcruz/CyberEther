@@ -16,7 +16,6 @@ struct FoldImpl : public Block::Impl, public DynamicConfig<Blocks::Fold> {
 };
 
 Result FoldImpl::configure() {
-    foldConfig->axis = axis;
     foldConfig->offset = offset;
     foldConfig->size = size;
 
@@ -32,20 +31,15 @@ Result FoldImpl::define() {
                                     "Output",
                                     "Folded output signal."));
 
-    JST_CHECK(defineInterfaceConfig("axis",
-                                    "Axis",
-                                    "Dimension along which to fold.",
-                                    "int:axis"));
-
     JST_CHECK(defineInterfaceConfig("offset",
                                     "Offset",
                                     "Sample offset before folding.",
-                                    "int:samples"));
+                                    "uint:samples"));
 
     JST_CHECK(defineInterfaceConfig("size",
                                     "Size",
                                     "Output size along the folded axis.",
-                                    "int:samples"));
+                                    "uint:samples"));
 
     return Result::SUCCESS;
 }
@@ -59,6 +53,6 @@ Result FoldImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(FoldImpl);
+JST_REGISTER_BLOCK(FoldImpl, {"fold"});
 
 }  // namespace Jetstream::Blocks

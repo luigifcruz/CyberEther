@@ -1,4 +1,5 @@
 #include <cmath>
+#include <limits>
 
 #include <jetstream/tools/automatic_iterator.hh>
 #include <jetstream/backend/devices/cpu/helpers.hh>
@@ -15,6 +16,7 @@ struct AmplitudeImplNativeCpu : public AmplitudeImpl,
                                 public NativeCpuRuntimeContext,
                                 public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeSubmit() override;
@@ -26,6 +28,28 @@ struct AmplitudeImplNativeCpu : public AmplitudeImpl,
     std::function<Result()> kernel;
 };
 
+Result AmplitudeImplNativeCpu::validate() {
+    JST_CHECK(AmplitudeImpl::validate());
+
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::F32 &&
+        inputTensor.dtype() != DataType::CF32) {
+        JST_ERROR("[MODULE_AMPLITUDE_NATIVE_CPU] Unsupported input data type: {}.",
+                  inputTensor.dtype());
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 Result AmplitudeImplNativeCpu::create() {
     // Create parent.
 
@@ -35,16 +59,11 @@ Result AmplitudeImplNativeCpu::create() {
 
     if (input.dtype() == DataType::CF32) {
         kernel = [this]() { return kernelCF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (input.dtype() == DataType::F32) {
+    } else {
         kernel = [this]() { return kernelF32(); };
-        return Result::SUCCESS;
     }
 
-    JST_ERROR("[MODULE_AMPLITUDE_NATIVE_CPU] Unsupported input data type: {}.", input.dtype());
-    return Result::ERROR;
+    return Result::SUCCESS;
 }
 
 Result AmplitudeImplNativeCpu::computeSubmit() {
@@ -59,7 +78,9 @@ Result AmplitudeImplNativeCpu::kernelCF32() {
             const F32 real = in.real();
             const F32 imag = in.imag();
             const F32 magnitude = std::sqrt((real * real) + (imag * imag));
-            out = 20.0f * Backend::ApproxLog10(magnitude) + coeff;
+            out = magnitude == 0.0f
+                      ? -std::numeric_limits<F32>::infinity()
+                      : 20.0f * Backend::ApproxLog10(magnitude) + coeff;
         },
     input, output);
 }
@@ -70,7 +91,9 @@ Result AmplitudeImplNativeCpu::kernelF32() {
     return AutomaticIterator<F32, F32>(
         [coeff](const auto& in, auto& out) {
             const F32 magnitude = std::fabs(in);
-            out = 20.0f * Backend::ApproxLog10(magnitude) + coeff;
+            out = magnitude == 0.0f
+                      ? -std::numeric_limits<F32>::infinity()
+                      : 20.0f * Backend::ApproxLog10(magnitude) + coeff;
         },
     input, output);
 }

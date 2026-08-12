@@ -8,11 +8,14 @@
 #include "jetstream/instance_remote.hh"
 #include "jetstream/parser.hh"
 #include "jetstream/render/base/window.hh"
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/runtime_context_python.hh"
 #include "jetstream/viewport/adapters/generic.hh"
+
+#include "render/sakura/runtime.hh"
 
 #include "ui.hh"
 #include "meta.hh"
+#include "file_picker.hh"
 
 #include <future>
 #include <memory>
@@ -60,6 +63,13 @@ struct DefaultCompositorState {
         SettingsSection section = SettingsSection::General;
     };
 
+    struct RuntimeState {
+        std::string pythonPath;
+        std::vector<PythonRuntimeContext::Candidate> pythonCandidates;
+        PythonRuntimeContext::Validation pythonValidation;
+        PythonRuntimeContext::Validation initialPythonValidation;
+    };
+
     struct ModalState {
         std::optional<ModalContent> content;
         std::optional<std::string> flowgraph;
@@ -73,9 +83,18 @@ struct DefaultCompositorState {
     };
 
     struct UpdateState {
+        bool supported = false;
+        bool upToDate = false;
+        bool failed = false;
         bool checking = false;
         bool available = false;
+        bool downloading = false;
+        bool ready = false;
+        bool applying = false;
+        F32 progress = 0.0f;
         std::string version;
+        std::string releaseNotes;
+        std::string message;
     };
 
     struct FlowgraphState {
@@ -101,6 +120,7 @@ struct DefaultCompositorState {
     struct BenchmarkState {
         bool running = false;
         F32 progress = 0.0f;
+        std::string selectedModule;
         Benchmark::ResultMapType results;
         std::future<void> future;
         std::stringstream output;
@@ -123,11 +143,26 @@ struct DefaultCompositorState {
         std::vector<std::string> waitlist;
     };
 
+    struct FilePickerState {
+        bool active = false;
+        bool overwritePending = false;
+        U64 generation = 0;
+        FilePickerMode mode = FilePickerMode::Open;
+        std::string root;
+        std::string directory;
+        std::string selectedPath;
+        std::string filename;
+        std::string error;
+        std::vector<std::string> extensions;
+        std::vector<FilePickerEntry> entries;
+    };
+
     SystemState system;
     SakuraState sakura;
     InterfaceState interface;
     GraphicsState graphics;
     SettingsState settings;
+    RuntimeState runtime;
     ModalState modal;
     DebugState debug;
     UpdateState update;
@@ -135,6 +170,7 @@ struct DefaultCompositorState {
     BenchmarkState benchmark;
     ClipboardState clipboard;
     RemoteState remote;
+    FilePickerState filePicker;
 };
 
 }  // namespace Jetstream

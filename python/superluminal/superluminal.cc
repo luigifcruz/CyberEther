@@ -174,7 +174,5 @@ NB_MODULE(_impl, m) {
         return result;
     }, nb::arg("label"), nb::arg("min"), nb::arg("max"), nb::arg("value"));
 
-    m.def("markdown", &Superluminal::Markdown, nb::arg("content"));
-
     m.def("mosaic_layout", &Superluminal::MosaicLayout);
 }

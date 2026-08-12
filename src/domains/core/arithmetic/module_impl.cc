@@ -1,5 +1,7 @@
 #include "module_impl.hh"
 
+#include <jetstream/memory/axis.hh>
+
 namespace Jetstream::Modules {
 
 Result ArithmeticImpl::validate() {
@@ -13,11 +15,36 @@ Result ArithmeticImpl::validate() {
         return Result::ERROR;
     }
 
+    if (!inputs().contains("buffer")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("buffer").tensor;
+    SignalAxes inputAxes;
+    JST_CHECK(MapSignalAxes(inputTensor, IdentityAxisMap(inputTensor.rank()), inputAxes));
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.rank() == 0) {
+        JST_ERROR("[MODULE_ARITHMETIC] Input buffer rank is 0.");
+        return Result::ERROR;
+    }
+
+    const auto candidateAxis = ResolveAxis(config.axis, inputTensor.rank());
+    if (!candidateAxis) {
+        JST_ERROR("[MODULE_ARITHMETIC] Axis {} out of range for input buffer rank {}.",
+                  config.axis, inputTensor.rank());
+        return Result::ERROR;
+    }
+
+    resolvedAxis = *candidateAxis;
+
     return Result::SUCCESS;
 }
 
 Result ArithmeticImpl::define() {
-    JST_CHECK(defineTaint(Module::Taint::DISCONTIGUOUS));
+    JST_CHECK(defineTaint(Module::Taint::DISCONTIGUOUS | Module::Taint::STATELESS));
 
     JST_CHECK(defineInterfaceInput("buffer"));
     JST_CHECK(defineInterfaceOutput("buffer"));
@@ -29,28 +56,10 @@ Result ArithmeticImpl::create() {
     const Tensor& inputTensor = inputs().at("buffer").tensor;
     input = inputTensor;
 
-    // Check input rank.
-
-    if (input.rank() == 0) {
-        JST_ERROR("[MODULE_ARITHMETIC] Input buffer rank is 0.");
-        return Result::ERROR;
-    }
-
-    if (input.rank() <= axis) {
-        JST_ERROR("[MODULE_ARITHMETIC] Input buffer rank {} is less than or "
-                  "equal to axis {}.", input.rank(), axis);
-        return Result::ERROR;
-    }
-
-    if (input.shape(axis) == 0) {
-        JST_ERROR("[MODULE_ARITHMETIC] Input buffer axis {} is 0.", axis);
-        return Result::ERROR;
-    }
-
     // Calculate output shape.
 
     Shape outputShape(input.shape());
-    outputShape[axis] = 1;
+    outputShape[resolvedAxis] = 1;
 
     const DeviceType device = input.device();
     const DataType dtype = input.dtype();
@@ -67,10 +76,22 @@ Result ArithmeticImpl::create() {
     // Apply squeeze if requested.
 
     if (squeeze) {
-        JST_CHECK(output.squeezeDims(axis));
+        JST_CHECK(output.squeezeDims(resolvedAxis));
     }
 
     JST_CHECK(output.propagateAttributes(input));
+
+    AxisMap axisMap(input.rank());
+    for (Index inputAxis = 0; inputAxis < input.rank(); ++inputAxis) {
+        if (!squeeze || inputAxis < resolvedAxis) {
+            axisMap[inputAxis] = inputAxis;
+        } else if (inputAxis > resolvedAxis) {
+            axisMap[inputAxis] = inputAxis - 1;
+        }
+    }
+    SignalAxes outputAxes;
+    JST_CHECK(MapSignalAxes(input, axisMap, outputAxes));
+    JST_CHECK(SetSignalAxes(output, outputAxes));
 
     outputs()["buffer"].produced(name(), "buffer", output);
 

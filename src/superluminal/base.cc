@@ -7,14 +7,38 @@
 
 #include "jetstream/detail/instance_remote_supervisor.hh"
 #include "jetstream/flowgraph_view.hh"
+#include "jetstream/platform.hh"
 #include "jetstream/superluminal.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/module_surface.hh"
-#include "jetstream/render/tools/imgui_markdown.hh"
+#include "imgui.h"
 
 #include "dmi_block.hh"
 
 namespace Jetstream {
+
+namespace {
+
+std::atomic_flag shutdownRequested = ATOMIC_FLAG_INIT;
+
+#if defined(JST_OS_LINUX) || defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
+void HandleInterrupt() noexcept {
+    constexpr char ShutdownMessage[] =
+        "\n[SUPERLUMINAL] Shutdown requested. Press Ctrl+C again to force termination.\n";
+    constexpr char ForceShutdownMessage[] =
+        "\n[SUPERLUMINAL] Forcing immediate shutdown.\n";
+
+    if (!shutdownRequested.test_and_set(std::memory_order_relaxed)) {
+        Platform::WriteInterruptMessage(ShutdownMessage, sizeof(ShutdownMessage) - 1);
+        return;
+    }
+
+    Platform::WriteInterruptMessage(ForceShutdownMessage, sizeof(ForceShutdownMessage) - 1);
+    Platform::ForceTerminate(130);
+}
+#endif
+
+}  // namespace
 
 struct Superluminal::Impl {
     InstanceConfig config;
@@ -22,6 +46,7 @@ struct Superluminal::Impl {
     std::shared_ptr<Flowgraph> flowgraph;
     bool initialized;
     bool running;
+    bool interruptHandlerInstalled = false;
 
     std::atomic_flag computeSync = ATOMIC_FLAG_INIT;
 
@@ -57,6 +82,7 @@ struct Superluminal::Impl {
 
     Result buildLinePlotGraph(PlotState& state);
     Result buildWaterfallPlotGraph(PlotState& state);
+    Result buildScatterPlotGraph(PlotState& state);
 
     struct GraphNode {
         std::string module;
@@ -108,6 +134,7 @@ Result Superluminal::initialize(const InstanceConfig& config) {
     // Initialize the instance.
 
     Instance::Config instanceConfig = {
+        .deviceId = impl->config.deviceId,
         .size = impl->config.interfaceSize,
         .scale = impl->config.interfaceScale,
     };
@@ -168,6 +195,10 @@ Result Superluminal::terminate() {
         JST_CHECK(stop());
     }
 
+    if (impl->interruptHandlerInstalled) {
+        shutdownRequested.test_and_set(std::memory_order_relaxed);
+    }
+
     if (impl->supervisor) {
         impl->supervisor->stop();
         impl->supervisor.reset();
@@ -191,6 +222,14 @@ Result Superluminal::terminate() {
     impl->initialized = false;
     impl->running = false;
 
+#if defined(JST_OS_LINUX) || defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
+    if (impl->interruptHandlerInstalled) {
+        Platform::UninstallInterruptHandler();
+        impl->interruptHandlerInstalled = false;
+    }
+#endif
+    shutdownRequested.clear(std::memory_order_relaxed);
+
     JST_INFO("[SUPERLUMINAL] Instance terminated.");
     return Result::SUCCESS;
 }
@@ -209,6 +248,8 @@ Result Superluminal::start() {
         JST_WARN("[SUPERLUMINAL] Instance is already running.");
         return Result::SUCCESS;
     }
+
+    shutdownRequested.clear(std::memory_order_relaxed);
 
     // Create graph.
 
@@ -230,6 +271,15 @@ Result Superluminal::start() {
             impl->config.remoteAutoJoin);
         impl->supervisor->start();
     }
+
+#if defined(JST_OS_LINUX) || defined(JST_OS_MAC) || defined(JST_OS_WINDOWS)
+    if (!impl->interruptHandlerInstalled) {
+        impl->interruptHandlerInstalled = Platform::InstallInterruptHandler(HandleInterrupt);
+        if (!impl->interruptHandlerInstalled) {
+            JST_WARN("[SUPERLUMINAL] Interrupt handling is unavailable.");
+        }
+    }
+#endif
 
     // Start the compute, present, and input threads.
 
@@ -396,6 +446,10 @@ Result Superluminal::stop() {
         return Result::SUCCESS;
     }
 
+    if (impl->interruptHandlerInstalled) {
+        shutdownRequested.test_and_set(std::memory_order_relaxed);
+    }
+
     // Update the state.
 
     impl->running = false;
@@ -425,6 +479,8 @@ Result Superluminal::stop() {
 
     JST_CHECK(impl->destroyGraph());
 
+    shutdownRequested.clear(std::memory_order_relaxed);
+
     JST_INFO("[SUPERLUMINAL] Instance stopped successfully.");
     return Result::SUCCESS;
 }
@@ -439,7 +495,7 @@ Result Superluminal::update(const std::string&) {
 }
 
 bool Superluminal::presenting() {
-    return impl->instance->polling();
+    return !shutdownRequested.test(std::memory_order_relaxed) && impl->instance->polling();
 }
 
 Result Superluminal::block() {
@@ -457,7 +513,7 @@ Result Superluminal::block() {
 
     // Block until the instance is done.
 
-    while (impl->instance->polling()) {
+    while (!shutdownRequested.test(std::memory_order_relaxed) && impl->instance->polling()) {
         JST_CHECK(impl->instance->poll());
     }
 
@@ -472,6 +528,10 @@ Result Superluminal::pollEvents(const bool& wait) {
     }
 
     if (!impl->running) {
+        return Result::SUCCESS;
+    }
+
+    if (shutdownRequested.test(std::memory_order_relaxed)) {
         return Result::SUCCESS;
     }
 
@@ -759,11 +819,11 @@ Result Superluminal::Impl::createGraph() {
             std::string deviceNameStr;
 
             if ((recipe.buffer.device() == DeviceType::CUDA) && (config.preferredDevice == DeviceType::CPU)) {
-                deviceNameStr = "cuda";
+                deviceNameStr = GetDeviceName(recipe.buffer.device());
             }
 
             if ((recipe.buffer.device() == DeviceType::CPU) && (config.preferredDevice == DeviceType::CUDA)) {
-                deviceNameStr = "cuda";
+                deviceNameStr = GetDeviceName(recipe.buffer.device());
             }
 
             if (deviceNameStr.empty()) {
@@ -775,7 +835,8 @@ Result Superluminal::Impl::createGraph() {
             auto blob = GraphToYaml({
                 {jst::fmt::format("data_{}_{}_{}", GetDeviceName(config.preferredDevice), sourceDomain, hash),
                     {"duplicate", deviceNameStr, {std::string(dtypeName)}, {
-                        {{"hostAccessible", "true"}}},
+                        {{"hostAccessible", "true"},
+                         {"outputDevice", GetDeviceName(config.preferredDevice)}}},
                         {{"buffer", jst::fmt::format("${{graph.{}.output.buffer}}", blockName)}}}},
             });
 
@@ -852,8 +913,10 @@ Result Superluminal::Impl::createGraph() {
                 break;
             case Type::Interface:
                 break;
-            case Type::Heat:
             case Type::Scatter:
+                JST_CHECK(buildScatterPlotGraph(state));
+                break;
+            case Type::Heat:
                 JST_FATAL("[SUPERLUMINAL] Plot type for '{}' not implemented yet.", name);
                 break;
         }
@@ -1011,7 +1074,8 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
 
         graph.push_back({
             "duplicate",
-            {"duplicate", GetDeviceName(config.preferredDevice), {"CF32"}, {},
+            {"duplicate", GetDeviceName(config.preferredDevice), {"CF32"},
+                {{"outputDevice", GetDeviceName(config.preferredDevice)}},
                 {{"buffer", "${domain.slice.output.buffer}"}}},
         });
 
@@ -1057,6 +1121,79 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
     // Update plot state.
 
     state.block = state.name + "_waterfall";
+
+    return Result::SUCCESS;
+}
+
+Result Superluminal::Impl::buildScatterPlotGraph(PlotState& state) {
+    JST_DEBUG("[SUPERLUMINAL] Building scatter plot graph named '{}'.", state.name);
+
+    // Access buffer metadata.
+
+    const auto& buf = state.config.buffer;
+
+    if (buf.dtype() != DataType::CF32) {
+        JST_ERROR("[SUPERLUMINAL] Scatter plot requires a complex (CF32) buffer.");
+        return Result::ERROR;
+    }
+
+    // Build graph.
+
+    auto graph = Graph{};
+    auto hash = std::to_string(BufferKey(buf));
+    auto domain = (state.config.display == Domain::Time) ? "time" : "freq";
+    auto outputPort = (state.config.display == state.config.source) ? "buffer" : "signal";
+    auto port = jst::fmt::format("${{graph.data_{}_{}_{}.output.{}}}", GetDeviceName(config.preferredDevice), domain, hash, outputPort);
+
+    if (state.config.channelAxis != -1 && state.config.channelIndex != -1) {
+        U64 axis = state.config.channelAxis;
+        U64 index = state.config.channelIndex;
+
+        // Parse slice string.
+
+        std::string slice;
+        for (U64 i = 0; i < buf.rank(); i++) {
+            if (i == axis) {
+                slice += jst::fmt::format("{}", index);
+            } else {
+                slice += jst::fmt::format(":");
+            }
+            if (i != buf.rank() - 1) {
+                slice += ",";
+            }
+        }
+        slice = jst::fmt::format("[{}]", slice);
+
+        // Create slice module.
+
+        graph.push_back({
+            "slice",
+            {"slice", GetDeviceName(config.preferredDevice), {"CF32"},
+                {{"slice", slice}},
+                {{"buffer", port}}},
+        });
+
+        graph.push_back({
+            "duplicate",
+            {"duplicate", GetDeviceName(config.preferredDevice), {"CF32"},
+                {{"outputDevice", GetDeviceName(config.preferredDevice)}},
+                {{"buffer", "${domain.slice.output.buffer}"}}},
+        });
+
+        port = jst::fmt::format("${{domain.duplicate.output.buffer}}");
+    }
+
+    graph.push_back({
+        "constellation",
+        {"constellation", GetDeviceName(config.preferredDevice), {"CF32"}, {},
+            {{"signal", port}}},
+    });
+
+    JST_CHECK(flowgraph->importFromBlob(GraphToYaml(graph, state.name)));
+
+    // Update plot state.
+
+    state.block = state.name + "_constellation";
 
     return Result::SUCCESS;
 }
@@ -1197,10 +1334,5 @@ Result Superluminal::slider(const std::string& label, F32 min, F32 max, F32& val
     return Result::SUCCESS;
 }
 
-Result Superluminal::markdown(const std::string& content) {
-    ImGui::MarkdownConfig mdConfig;
-    ImGui::Markdown(content.c_str(), content.length(), mdConfig);
-    return Result::SUCCESS;
-}
 
 }  // namespace Jetstream

@@ -1,5 +1,10 @@
 #include "base.hh"
 
+#include "render/sakura/runtime.hh"
+
+#include "jetstream/render/sakura/clipboard.hh"
+#include "jetstream/render/sakura/toast.hh"
+
 #include "actions/base.hh"
 #include "presenters/base.hh"
 #include "themes.hh"
@@ -43,6 +48,21 @@ DefaultCompositor::DefaultCompositor() :
         },
         .setClipboardText = [](const std::string& value) {
             Sakura::SetClipboardText(value);
+        },
+        .requestFile = [this](FilePickerRequest request) {
+            return actions.requestFile(std::move(request));
+        },
+        .checkForUpdates = [this]() {
+            updater.check();
+        },
+        .downloadUpdate = [this]() {
+            updater.download();
+        },
+        .applyUpdate = [this]() {
+            return updater.apply();
+        },
+        .dismissUpdate = [this]() {
+            updater.dismiss();
         },
     },
     actions(state, callbacks),
@@ -93,6 +113,13 @@ Result DefaultCompositor::create() {
     state.remote.autoJoinSessions = settings.remote.autoJoinSessions;
     state.remote.framerate = static_cast<U32>(settings.remote.framerate);
 
+    // Restore runtime preferences.
+
+    state.runtime.pythonPath = settings.runtime.python.path;
+    state.runtime.pythonCandidates = PythonRuntimeContext::DiscoverRuntimes();
+    state.runtime.pythonValidation = PythonRuntimeContext::ValidateRuntimePath(state.runtime.pythonPath);
+    state.runtime.initialPythonValidation = state.runtime.pythonValidation;
+
     try {
         state.remote.codec = StringToRemoteCodec(settings.remote.codec);
     } catch (const Result&) {
@@ -140,11 +167,17 @@ Result DefaultCompositor::create() {
 
     workbench.update(presenters.build());
 
+    updater.start();
+    updater.check();
+
     return Result::SUCCESS;
 }
 
 Result DefaultCompositor::destroy() {
     JST_INFO("[COMPOSITOR_IMPL_DEFAULT] Destroying compositor.");
+
+    actions.cancelFilePicker();
+    updater.shutdown();
 
     return Result::SUCCESS;
 }
@@ -183,6 +216,8 @@ Result DefaultCompositor::poll() {
     updateFilePendingState();
     updateBenchmarkState();
     updateRemoteState();
+    updateUpdaterState();
+    actions.reconcileFilePicker();
     updateStacksState();
 
     // Build view configs while flowgraph access is confined to poll.
@@ -198,7 +233,8 @@ Result DefaultCompositor::present() {
         .render = state.system.render.get(),
     });
 
-    workbench.render(state.sakura.runtime.context());
+    const auto& ctx = state.sakura.runtime.context();
+    workbench.render(ctx);
 
     return Result::SUCCESS;
 }
@@ -248,10 +284,18 @@ void DefaultCompositor::updateWorkbenchState() {
         return;
     }
 
-    if (state.modal.content == ModalContent::RenameBlock &&
-        (!state.interface.focusedFlowgraph.has_value() || !state.modal.renameBlockOldName.has_value())) {
-        state.modal.content.reset();
-        state.modal.renameBlockOldName.reset();
+    if (state.modal.content == ModalContent::RenameBlock) {
+        const std::optional<std::string> targetFlowgraph = state.modal.flowgraph.has_value()
+            ? state.modal.flowgraph
+            : state.interface.focusedFlowgraph;
+        if (!targetFlowgraph.has_value() ||
+            !state.flowgraph.items.contains(targetFlowgraph.value()) ||
+            !state.modal.renameBlockOldName.has_value() ||
+            !state.flowgraph.items.at(targetFlowgraph.value())->view().has(state.modal.renameBlockOldName.value())) {
+            state.modal.content.reset();
+            state.modal.flowgraph.reset();
+            state.modal.renameBlockOldName.reset();
+        }
     }
 }
 
@@ -273,7 +317,7 @@ void DefaultCompositor::updateBenchmarkState() {
     }
 
     const U64 current = Benchmark::CurrentCount();
-    const U64 total = Benchmark::TotalCount();
+    const U64 total = Benchmark::TotalCount(state.benchmark.selectedModule);
     state.benchmark.progress = total > 0 ? static_cast<F32>(current) / static_cast<F32>(total) : 0.0f;
     state.benchmark.results = Benchmark::GetResults();
 }
@@ -289,6 +333,22 @@ void DefaultCompositor::updateRemoteState() {
     state.remote.accessToken = remoteStarted ? remote->accessToken() : "";
     state.remote.clients = remoteStarted ? remote->clients() : std::vector<Instance::Remote::ClientInfo>{};
     state.remote.waitlist = remoteStarted ? remote->waitlist() : std::vector<std::string>{};
+}
+
+void DefaultCompositor::updateUpdaterState() {
+    const auto update = updater.snapshot();
+    state.update.supported = update.supported;
+    state.update.upToDate = update.upToDate;
+    state.update.failed = update.failed;
+    state.update.checking = update.checking;
+    state.update.available = update.available;
+    state.update.downloading = update.downloading;
+    state.update.ready = update.ready;
+    state.update.applying = update.applying;
+    state.update.progress = update.progress;
+    state.update.version = update.version;
+    state.update.releaseNotes = update.releaseNotes;
+    state.update.message = update.message;
 }
 
 void DefaultCompositor::updateStacksState() {

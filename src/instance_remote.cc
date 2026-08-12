@@ -7,6 +7,10 @@
 
 namespace Jetstream {
 
+bool IsRemoteBrokerSchemeSupported(const std::string& broker) {
+    return broker.starts_with("https://") || broker.starts_with("http://");
+}
+
 std::string GetRemoteCodecName(const Instance::Remote::CodecType& codec) {
     switch (codec) {
         case Instance::Remote::CodecType::AV1:

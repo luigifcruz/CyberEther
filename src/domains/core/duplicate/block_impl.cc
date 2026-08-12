@@ -6,7 +6,6 @@
 namespace Jetstream::Blocks {
 
 struct DuplicateImpl : public Block::Impl, public DynamicConfig<Blocks::Duplicate> {
-    Result validate() override;
     Result configure() override;
     Result define() override;
     Result create() override;
@@ -14,20 +13,6 @@ struct DuplicateImpl : public Block::Impl, public DynamicConfig<Blocks::Duplicat
  protected:
     std::shared_ptr<Modules::Duplicate> moduleConfig = std::make_shared<Modules::Duplicate>();
 };
-
-Result DuplicateImpl::validate() {
-    const auto& config = *candidate();
-
-    if (hostAccessible != config.hostAccessible) {
-        return Result::RECREATE;
-    }
-
-    if (outputDevice != config.outputDevice) {
-        return Result::RECREATE;
-    }
-
-    return Result::SUCCESS;
-}
 
 Result DuplicateImpl::configure() {
     moduleConfig->hostAccessible = hostAccessible;
@@ -37,6 +22,8 @@ Result DuplicateImpl::configure() {
 }
 
 Result DuplicateImpl::define() {
+    const auto& config = *candidate();
+
     JST_CHECK(defineInterfaceInput("buffer", "Input", "Signal to be duplicated."));
     JST_CHECK(defineInterfaceOutput("buffer", "Output", "Duplicated signal."));
 
@@ -45,7 +32,7 @@ Result DuplicateImpl::define() {
                                     "Selects the output device for the duplicated buffer.",
                                     "dropdown:none(None),cpu(CPU),cuda(CUDA),metal(Metal),vulkan(Vulkan)"));
 
-    if (StringToDevice(outputDevice) != DeviceType::CPU) {
+    if (StringToDevice(config.outputDevice) != DeviceType::CPU) {
         JST_CHECK(defineInterfaceConfig("hostAccessible",
                                         "Host Accessible",
                                         "When enabled, the output buffer can be accessed from the CPU.",
@@ -64,6 +51,6 @@ Result DuplicateImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(DuplicateImpl);
+JST_REGISTER_BLOCK(DuplicateImpl, {"duplicate"});
 
 }  // namespace Jetstream::Blocks

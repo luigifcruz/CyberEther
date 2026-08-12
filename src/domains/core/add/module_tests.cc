@@ -1,10 +1,74 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <any>
+#include <limits>
+#include <optional>
+#include <utility>
+
 #include "jetstream/testing.hh"
 #include "jetstream/registry.hh"
+#include "jetstream/domains/core/add/module.hh"
+#include "jetstream/memory/axis.hh"
 
 using namespace Jetstream;
+
+namespace {
+
+void RequireAddValidationError(const Registry::ModuleRegistration& impl,
+                               Tensor tensorA,
+                               Tensor tensorB) {
+    TensorMap inputs;
+    inputs["a"].requested("test", "a");
+    inputs["a"].tensor = std::move(tensorA);
+    inputs["b"].requested("test", "b");
+    inputs["b"].tensor = std::move(tensorB);
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("add", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+
+    Modules::Add config;
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
+void RequireAddSignalAxes(const Registry::ModuleRegistration& impl,
+                          const Shape& shapeA,
+                          const SignalAxes& axesA,
+                          const Shape& shapeB,
+                          const SignalAxes& axesB,
+                          const SignalAxes& expectedAxes) {
+    TestContext ctx("add", impl.device, impl.runtime, impl.provider);
+    auto a = ctx.createTensor<F32>(shapeA);
+    auto b = ctx.createTensor<F32>(shapeB);
+    for (U64 i = 0; i < a.size(); ++i) {
+        a.data()[i] = 1.0f;
+    }
+    for (U64 i = 0; i < b.size(); ++i) {
+        b.data()[i] = 2.0f;
+    }
+    if (axesA.sample || axesA.batch || axesA.channel) {
+        REQUIRE(SetSignalAxes(a, axesA) == Result::SUCCESS);
+    }
+    if (axesB.sample || axesB.batch || axesB.channel) {
+        REQUIRE(SetSignalAxes(b, axesB) == Result::SUCCESS);
+    }
+
+    ctx.setInput("a", a);
+    ctx.setInput("b", b);
+    REQUIRE(ctx.run() == Result::SUCCESS);
+
+    const auto& out = ctx.output("sum");
+    SignalAxes outputAxes;
+    REQUIRE(ResolveSignalAxes(out, outputAxes) == Result::SUCCESS);
+    REQUIRE(outputAxes.sample == expectedAxes.sample);
+    REQUIRE(outputAxes.batch == expectedAxes.batch);
+    REQUIRE(outputAxes.channel == expectedAxes.channel);
+}
+
+}  // namespace
 
 TEST_CASE("Add Module - F32", "[modules][add][F32]") {
     auto implementations = Registry::ListAvailableModules("add");
@@ -92,6 +156,89 @@ TEST_CASE("Add Module - Broadcast F32", "[modules][add][broadcast]") {
             REQUIRE(out.shape(0) == 2);
             REQUIRE(out.shape(1) == 3);
             REQUIRE_THAT(out.at<F32>(1, 2), Catch::Matchers::WithinAbs(62.0f, 1e-6f));
+            REQUIRE(a.shape() == Shape{2, 1});
+            REQUIRE(b.shape() == Shape{2, 3});
+        }
+    }
+}
+
+TEST_CASE("Add Module - Merges Broadcast Signal Axes",
+          "[modules][add][broadcast][metadata]") {
+    const auto implementations = Registry::ListAvailableModules("add");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            SECTION("roles from input a are right aligned") {
+                RequireAddSignalAxes(impl, {1}, {.sample = Index{0}},
+                                     {1, 1, 1}, {},
+                                     {.sample = Index{2}});
+            }
+
+            SECTION("roles from input b are right aligned") {
+                RequireAddSignalAxes(
+                    impl, {1, 1, 1}, {},
+                    {1, 1}, {.sample = Index{1}, .channel = Index{0}},
+                    {.sample = Index{2}, .channel = Index{1}});
+            }
+
+            SECTION("matching roles merge from both inputs") {
+                RequireAddSignalAxes(
+                    impl,
+                    {1, 1, 1},
+                    {.sample = Index{2}, .batch = Index{0}, .channel = Index{1}},
+                    {1, 1},
+                    {.sample = Index{1}, .channel = Index{0}},
+                    {.sample = Index{2}, .batch = Index{0}, .channel = Index{1}});
+            }
+
+            SECTION("same roles mapped to different axes conflict") {
+                Tensor a;
+                Tensor b;
+                REQUIRE(a.create(impl.device, DataType::F32, {1, 1}) == Result::SUCCESS);
+                REQUIRE(b.create(impl.device, DataType::F32, {1, 1, 1}) == Result::SUCCESS);
+                REQUIRE(SetSignalAxes(a, {.sample = Index{0}}) == Result::SUCCESS);
+                REQUIRE(SetSignalAxes(b, {.sample = Index{0}}) == Result::SUCCESS);
+                RequireAddValidationError(impl, std::move(a), std::move(b));
+            }
+
+            SECTION("different roles mapped to the same axis conflict") {
+                Tensor a;
+                Tensor b;
+                REQUIRE(a.create(impl.device, DataType::F32, {1, 1}) == Result::SUCCESS);
+                REQUIRE(b.create(impl.device, DataType::F32, {1, 1, 1}) == Result::SUCCESS);
+                REQUIRE(SetSignalAxes(
+                    a, {.sample = Index{1}, .channel = Index{0}}) == Result::SUCCESS);
+                REQUIRE(SetSignalAxes(
+                    b, {.sample = Index{2}, .batch = Index{1}}) == Result::SUCCESS);
+                RequireAddValidationError(impl, std::move(a), std::move(b));
+            }
+
+            SECTION("malformed signal metadata") {
+                Tensor wrongTypeA;
+                Tensor wrongTypeB;
+                REQUIRE(wrongTypeA.create(impl.device, DataType::F32, {1, 1}) ==
+                        Result::SUCCESS);
+                REQUIRE(wrongTypeB.create(impl.device, DataType::F32, {1, 1}) ==
+                        Result::SUCCESS);
+                REQUIRE(wrongTypeA.setAttribute(
+                    std::string(SampleAxisAttribute), Index{1}) == Result::SUCCESS);
+                REQUIRE(wrongTypeA.setAttribute(
+                    std::string(ChannelAxisAttribute), I64{0}) == Result::SUCCESS);
+                RequireAddValidationError(impl, std::move(wrongTypeA),
+                                          std::move(wrongTypeB));
+
+                Tensor outOfRangeA;
+                Tensor outOfRangeB;
+                REQUIRE(outOfRangeA.create(impl.device, DataType::F32, {1}) == Result::SUCCESS);
+                REQUIRE(outOfRangeB.create(impl.device, DataType::F32, {1}) == Result::SUCCESS);
+                REQUIRE(outOfRangeB.setAttribute(
+                    std::string(SampleAxisAttribute), Index{0}) == Result::SUCCESS);
+                REQUIRE(outOfRangeB.setAttribute(
+                    std::string(ChannelAxisAttribute), Index{1}) == Result::SUCCESS);
+                RequireAddValidationError(impl, std::move(outOfRangeA),
+                                          std::move(outOfRangeB));
+            }
         }
     }
 }
@@ -102,15 +249,68 @@ TEST_CASE("Add Module - Non Broadcastable Shapes Error", "[modules][add][error]"
 
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
-            TestContext ctx("add", impl.device, impl.runtime, impl.provider);
+            Tensor a;
+            Tensor b;
+            REQUIRE(a.create(impl.device, DataType::F32, {2, 3}) == Result::SUCCESS);
+            REQUIRE(b.create(impl.device, DataType::F32, {2, 2}) == Result::SUCCESS);
 
-            auto a = ctx.createTensor<F32>({2, 3});
-            auto b = ctx.createTensor<F32>({2, 2});
+            RequireAddValidationError(impl, std::move(a), std::move(b));
+        }
+    }
+}
 
-            ctx.setInput("a", a);
-            ctx.setInput("b", b);
+TEST_CASE("Add Module - Provider Validation Rejects Unsupported Types",
+          "[modules][add][validation]") {
+    auto implementations = Registry::ListAvailableModules("add");
+    REQUIRE(!implementations.empty());
 
-            REQUIRE(ctx.run() == Result::ERROR);
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            SECTION("input types must match") {
+                Tensor a;
+                Tensor b;
+                REQUIRE(a.create(impl.device, DataType::F32, {4}) == Result::SUCCESS);
+                REQUIRE(b.create(impl.device, DataType::CF32, {4}) == Result::SUCCESS);
+
+                RequireAddValidationError(impl, std::move(a), std::move(b));
+            }
+
+            SECTION("input type must be supported") {
+                Tensor a;
+                Tensor b;
+                REQUIRE(a.create(impl.device, DataType::I32, {4}) == Result::SUCCESS);
+                REQUIRE(b.create(impl.device, DataType::I32, {4}) == Result::SUCCESS);
+
+                RequireAddValidationError(impl, std::move(a), std::move(b));
+            }
+
+            if (impl.device == DeviceType::CPU) {
+                SECTION("broadcast output layout must not overflow") {
+                    F32 storage = 0.0f;
+                    constexpr U64 extent = U64{1} << 32;
+                    Tensor a;
+                    Tensor b;
+                    REQUIRE(a.create(&storage, DeviceType::CPU, DataType::F32,
+                                     {extent, 1}) == Result::SUCCESS);
+                    REQUIRE(b.create(&storage, DeviceType::CPU, DataType::F32,
+                                     {1, extent}) == Result::SUCCESS);
+
+                    RequireAddValidationError(impl, std::move(a), std::move(b));
+                }
+
+                SECTION("output allocation alignment must not overflow") {
+                    F32 storage = 0.0f;
+                    constexpr U64 extent = std::numeric_limits<U64>::max() / 4;
+                    Tensor a;
+                    Tensor b;
+                    REQUIRE(a.create(&storage, DeviceType::CPU, DataType::F32,
+                                     {extent}) == Result::SUCCESS);
+                    REQUIRE(b.create(&storage, DeviceType::CPU, DataType::F32,
+                                     {extent}) == Result::SUCCESS);
+
+                    RequireAddValidationError(impl, std::move(a), std::move(b));
+                }
+            }
         }
     }
 }

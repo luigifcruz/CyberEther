@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_KEY_VALUE_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_KEY_VALUE_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 
 #include <functional>
 #include <string>
@@ -10,7 +10,7 @@
 
 namespace Jetstream {
 
-struct FlowgraphKeyValueWindow : public Sakura::Component {
+struct FlowgraphKeyValueWindow {
     struct Config {
         std::string id;
         std::string title;

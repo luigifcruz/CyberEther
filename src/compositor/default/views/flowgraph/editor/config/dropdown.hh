@@ -7,7 +7,7 @@
 
 namespace Jetstream {
 
-struct FlowgraphConfigDropdownField : public Sakura::Component {
+struct FlowgraphConfigDropdownField {
     using Config = FlowgraphConfigFieldConfig;
 
     void update(Config config) {
@@ -37,10 +37,10 @@ struct FlowgraphConfigDropdownField : public Sakura::Component {
             .onChange = [this](const std::string& label) {
                 for (U64 i = 0; i < labels.size(); ++i) {
                     if (labels[i] == label) {
-                        auto values = this->config.values;
-                        values[this->config.name] = keys[i];
+                        Parser::Map patch;
+                        patch[this->config.name] = keys[i];
                         if (this->config.onApply) {
-                            this->config.onApply(std::move(values), false);
+                            this->config.onApply(std::move(patch), false);
                         }
                         return;
                     }
@@ -68,8 +68,11 @@ struct FlowgraphConfigDropdownField : public Sakura::Component {
         keys.clear();
         labels.clear();
 
-        const auto parts = Parser::SplitString(config.format, ":");
-        const std::string options = (parts.size() > 1) ? parts[1] : "";
+        const auto separator = config.format.find(':');
+        std::string options;
+        if (separator != std::string::npos) {
+            options = config.format.substr(separator + 1);
+        }
         for (auto token : Parser::SplitString(options, ",")) {
             if (token.empty()) continue;
 

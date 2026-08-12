@@ -23,11 +23,13 @@ class JETSTREAM_API Instance : public std::enable_shared_from_this<Instance> {
 
     struct Config {
         std::optional<DeviceType> device{};
+        U64 deviceId{0};
         std::optional<CompositorType> compositor{};
         bool headless{false};
         Extent2D<U64> size{1920, 1080};
         F32 scale{1.0f};
         U64 framerate{60};
+        std::string pythonRuntimePath;
     };
 
     Instance();
@@ -35,6 +37,7 @@ class JETSTREAM_API Instance : public std::enable_shared_from_this<Instance> {
 
     Result create(const Config& config);
     Result start();
+    Result requestStop();
     Result stop();
     Result destroy();
 

@@ -8,12 +8,14 @@ namespace Jetstream::Modules {
 
 struct SqueezeDimsImpl : public Module::Impl, public DynamicConfig<SqueezeDims> {
  public:
+    Result validate() override;
     Result define() override;
     Result create() override;
 
  protected:
     Tensor input;
     Tensor output;
+    Index resolvedAxis = 0;
 };
 
 }  // namespace Jetstream::Modules

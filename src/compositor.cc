@@ -24,7 +24,19 @@ Result Compositor::create(const std::shared_ptr<Instance>& instance,
     impl->viewport = viewport;
 
     impl->startWorker();
-    return impl->create();
+
+    Result result;
+    try {
+        result = impl->create();
+    } catch (...) {
+        impl->stopWorker();
+        throw;
+    }
+
+    if (result != Result::SUCCESS && result != Result::RELOAD) {
+        impl->stopWorker();
+    }
+    return result;
 }
 
 Result Compositor::destroy() {

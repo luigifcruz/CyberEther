@@ -1,0 +1,39 @@
+#ifndef JETSTREAM_RENDER_SAKURA_DEBUG_WINDOW_HH
+#define JETSTREAM_RENDER_SAKURA_DEBUG_WINDOW_HH
+
+#include <jetstream/render/sakura/component.hh>
+#include <jetstream/types.hh>
+
+#include <memory>
+#include <string>
+
+namespace Jetstream::Sakura {
+
+struct DebugWindow {
+    struct Config {
+        std::string id;
+        std::string title = "Latency Debug";
+        Extent2D<F32> size = {200.0f, 120.0f};
+        F32 verticalRatio = 0.25f;
+    };
+
+    DebugWindow();
+    ~DebugWindow();
+
+    DebugWindow(DebugWindow&&) noexcept;
+    DebugWindow& operator=(DebugWindow&&) noexcept;
+
+    DebugWindow(const DebugWindow&) = delete;
+    DebugWindow& operator=(const DebugWindow&) = delete;
+
+    bool update(Config config);
+    void render(const Context& ctx);
+
+ private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+};
+
+}  // namespace Jetstream::Sakura
+
+#endif  // JETSTREAM_RENDER_SAKURA_DEBUG_WINDOW_HH

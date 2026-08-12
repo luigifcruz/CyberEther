@@ -92,7 +92,6 @@ Result Axis::create(Window* window) {
         cfg.size = 1;
         cfg.target = Render::Buffer::Target::UNIFORM;
         JST_CHECK(window->build(pimpl->gridUniformBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->gridUniformBuffer));
     }
 
     // Grid points storage buffer.
@@ -104,7 +103,6 @@ Result Axis::create(Window* window) {
         cfg.target = Render::Buffer::Target::STORAGE;
         cfg.enableZeroCopy = false;
         JST_CHECK(window->build(pimpl->gridPointsBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->gridPointsBuffer));
     }
 
     // Grid vertices buffer (compute output + vertex input).
@@ -117,7 +115,6 @@ Result Axis::create(Window* window) {
                      Render::Buffer::Target::STORAGE;
         cfg.enableZeroCopy = false;
         JST_CHECK(window->build(pimpl->gridVerticesBuffer, cfg));
-        JST_CHECK(window->bind(pimpl->gridVerticesBuffer));
     }
 
     // Thick-lines compute kernel.
@@ -177,23 +174,34 @@ Result Axis::create(Window* window) {
 
         // Axis titles.
         cfg.elements["x-title"] = {
-            0.85f, {0.0f, -0.99f}, {1, 2}, 0.0f, config.xTitle
+            .scale = 0.85f,
+            .position = {0.0f, -0.99f},
+            .alignment = {1, 2},
+            .fill = config.xTitle,
         };
         cfg.elements["y-title"] = {
-            0.85f, {-0.99f, 0.0f}, {1, 0}, 90.0f, config.yTitle
+            .scale = 0.85f,
+            .position = {-0.99f, 0.0f},
+            .alignment = {1, 0},
+            .rotationDeg = 90.0f,
+            .fill = config.yTitle,
         };
 
         // X tick labels (interior lines only).
         for (U64 i = 1; i < config.numberOfVerticalLines - 1; i++) {
             cfg.elements[jst::fmt::format("x{:02d}", i)] = {
-                0.85f, {0.0f, 0.99f}, {1, 0}, 0.0f, ""
+                .scale = 0.85f,
+                .position = {0.0f, 0.99f},
+                .alignment = {1, 0},
             };
         }
 
         // Y tick labels (interior lines only).
         for (U64 i = 1; i < config.numberOfHorizontalLines - 1; i++) {
             cfg.elements[jst::fmt::format("y{:02d}", i)] = {
-                0.85f, {-0.99f, 0.0f}, {2, 1}, 0.0f, ""
+                .scale = 0.85f,
+                .position = {-0.99f, 0.0f},
+                .alignment = {2, 1},
             };
         }
 
@@ -226,10 +234,6 @@ Result Axis::create(Window* window) {
 
 Result Axis::destroy(Window* window) {
     JST_CHECK(window->unbind(pimpl->text));
-    JST_CHECK(window->unbind(pimpl->gridPointsBuffer));
-    JST_CHECK(window->unbind(pimpl->gridVerticesBuffer));
-    JST_CHECK(window->unbind(pimpl->gridUniformBuffer));
-
     return Result::SUCCESS;
 }
 

@@ -5,7 +5,9 @@
 #include "jetstream/registry.hh"
 #include "jetstream/domains/dsp/window/module.hh"
 
+#include <any>
 #include <cmath>
+#include <unordered_set>
 #include <vector>
 
 using namespace Jetstream;
@@ -29,6 +31,11 @@ TEST_CASE("Window - Blackman coefficients match formula", "[modules][window]") {
             REQUIRE(out.dtype() == DataType::CF32);
             REQUIRE(out.rank() == 1);
             REQUIRE(out.shape(0) == config.size);
+            REQUIRE(out.hasAttribute("sampleAxis"));
+            REQUIRE(out.attribute("sampleAxis").type() == typeid(Index));
+            REQUIRE(std::any_cast<Index>(out.attribute("sampleAxis")) == Index{0});
+            REQUIRE_FALSE(out.hasAttribute("batchAxis"));
+            REQUIRE_FALSE(out.hasAttribute("channelAxis"));
 
             for (U64 i = 0; i < config.size; ++i) {
                 const F32 expected = static_cast<F32>(
@@ -103,7 +110,29 @@ TEST_CASE("Window - invalid size is rejected", "[modules][window][validation]") 
     }
 }
 
-TEST_CASE("Window - repeated run keeps baked output stable", "[modules][window][state]") {
+TEST_CASE("Window - singleton is the multiplicative identity",
+          "[modules][window][singleton]") {
+    auto implementations = Registry::ListAvailableModules("window");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("window", impl.device, impl.runtime, impl.provider);
+
+            Modules::Window config;
+            config.size = 1;
+            ctx.setConfig(config);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            auto& out = ctx.output("window");
+            REQUIRE(out.shape() == Shape{1});
+            REQUIRE(out.at<CF32>(0) == CF32(1.0f, 0.0f));
+        }
+    }
+}
+
+TEST_CASE("Window - repeated construction keeps output stable", "[modules][window][state]") {
     auto implementations = Registry::ListAvailableModules("window");
     REQUIRE(!implementations.empty());
 
@@ -134,4 +163,36 @@ TEST_CASE("Window - repeated run keeps baked output stable", "[modules][window][
             }
         }
     }
+}
+
+TEST_CASE("Window - direct runtime rematerializes output", "[modules][window][state]") {
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("window",
+                                  DeviceType::CPU,
+                                  RuntimeType::NATIVE,
+                                  "generic",
+                                  module) == Result::SUCCESS);
+
+    Modules::Window config;
+    config.size = 64;
+    REQUIRE(module->create("window_rematerialize", config, {}) == Result::SUCCESS);
+
+    Runtime runtime("window_rematerialize", DeviceType::CPU, RuntimeType::NATIVE);
+    REQUIRE(runtime.create({{"window_rematerialize", module}}) == Result::SUCCESS);
+
+    std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(runtime.compute({"window_rematerialize"}, skippedModules, failedModules) ==
+            Result::SUCCESS);
+
+    Tensor output = module->outputs().at("window").tensor;
+    const CF32 expected = output.at<CF32>(17);
+    output.at<CF32>(17) = CF32(123.0f, 456.0f);
+
+    REQUIRE(runtime.compute({"window_rematerialize"}, skippedModules, failedModules) ==
+            Result::SUCCESS);
+    REQUIRE(output.at<CF32>(17) == expected);
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
 }

@@ -18,7 +18,10 @@ struct SignalGeneratorImpl : public Block::Impl, public DynamicConfig<Blocks::Si
 Result SignalGeneratorImpl::validate() {
     const auto& config = *candidate();
 
-    if (signalType != config.signalType) {
+    if (signalType != config.signalType ||
+        signalDataType != config.signalDataType ||
+        sampleRate != config.sampleRate ||
+        bufferSize != config.bufferSize) {
         return Result::RECREATE;
     }
 
@@ -43,6 +46,16 @@ Result SignalGeneratorImpl::configure() {
 }
 
 Result SignalGeneratorImpl::define() {
+    const auto& config = *candidate();
+    const bool isPeriodic = config.signalType == "sine" ||
+                            config.signalType == "cosine" ||
+                            config.signalType == "square" ||
+                            config.signalType == "triangle" ||
+                            config.signalType == "sawtooth";
+    const bool isNoise = config.signalType == "noise";
+    const bool isDc = config.signalType == "dc";
+    const bool isChirp = config.signalType == "chirp";
+
     JST_CHECK(defineInterfaceOutput("signal",
                                     "Output",
                                     "The generated signal."));
@@ -50,64 +63,93 @@ Result SignalGeneratorImpl::define() {
     JST_CHECK(defineInterfaceConfig("signalType",
                                     "Signal Type",
                                     "The type of signal to generate.",
-                                    "dropdown:sine(Sine),cosine(Cosine),square(Square),triangle(Triangle),sawtooth(Sawtooth),noise(Noise),dc(DC),chirp(Chirp)"));
+                                    "dropdown:sine(Sine),cosine(Cosine),"
+                                    "square(Square),triangle(Triangle),"
+                                    "sawtooth(Sawtooth),noise(Noise),"
+                                    "dc(DC),chirp(Chirp)"));
 
     JST_CHECK(defineInterfaceConfig("signalDataType",
                                     "Data Type",
-                                    "The data type for the generated signal samples.",
+                                    "CF32 sine, cosine, and chirp use analytic IQ; "
+                                    "other waveforms remain real-valued.",
                                     "dropdown:F32(F32),CF32(CF32)"));
-
-    JST_CHECK(defineInterfaceConfig("bufferSize",
-                                    "Buffer Size",
-                                    "Number of samples to generate per processing cycle.",
-                                    "int:samples"));
 
     JST_CHECK(defineInterfaceConfig("sampleRate",
                                     "Sample Rate",
-                                    "The sampling frequency in MHz.",
-                                    "float:MHz:2"));
+                                    "Sampling frequency. Raw configuration uses Hz.",
+                                    "float:MHz:3"));
 
-    JST_CHECK(defineInterfaceConfig("frequency",
-                                    "Frequency",
-                                    "The fundamental frequency of the generated signal in MHz.",
-                                    "float:MHz:2"));
+    if (isPeriodic) {
+        const std::string frequencyHelp =
+            config.signalDataType == "CF32" &&
+            (config.signalType == "sine" || config.signalType == "cosine") ?
+            "Signed baseband frequency; limited to +/- Nyquist." :
+            "Baseband frequency; limited to the positive Nyquist range.";
+        JST_CHECK(defineInterfaceConfig("frequency",
+                                        "Frequency",
+                                        frequencyHelp,
+                                        "float:MHz:6"));
+    }
 
-    JST_CHECK(defineInterfaceConfig("amplitude",
-                                    "Amplitude",
-                                    "The amplitude scaling factor for the signal.",
-                                    "float:dBFS:2"));
-
-    JST_CHECK(defineInterfaceConfig("phase",
-                                    "Phase",
-                                    "Phase offset in radians.",
-                                    "float:rad:2"));
-
-    JST_CHECK(defineInterfaceConfig("dcOffset",
-                                    "DC Offset",
-                                    "DC bias added to the signal.",
-                                    "float::2"));
-
-    JST_CHECK(defineInterfaceConfig("noiseVariance",
-                                    "Noise Variance",
-                                    "Variance of Gaussian noise (for noise signal type).",
-                                    "float::2"));
-
-    if (signalType == "chirp") {
+    if (isChirp) {
+        const std::string chirpFrequencyHelp =
+            config.signalDataType == "CF32" ?
+            "Signed baseband frequency; limited to +/- Nyquist." :
+            "Baseband frequency; limited to the positive Nyquist range.";
         JST_CHECK(defineInterfaceConfig("chirpStartFreq",
-                                        "Chirp Start Frequency",
-                                        "Start frequency for chirp signals in MHz.",
-                                        "float:MHz:2"));
+                                        "Start Frequency",
+                                        chirpFrequencyHelp,
+                                        "float:MHz:6"));
 
         JST_CHECK(defineInterfaceConfig("chirpEndFreq",
-                                        "Chirp End Frequency",
-                                        "End frequency for chirp signals in MHz.",
-                                        "float:MHz:2"));
+                                        "End Frequency",
+                                        chirpFrequencyHelp,
+                                        "float:MHz:6"));
 
         JST_CHECK(defineInterfaceConfig("chirpDuration",
-                                        "Chirp Duration",
-                                        "Duration of one chirp sweep in seconds.",
-                                        "float:sec:2"));
+                                        "Duration",
+                                        "Duration of each phase-continuous sweep.",
+                                        "float:sec:3"));
     }
+
+    if (isPeriodic || isNoise || isDc || isChirp) {
+        const std::string amplitudeLabel = isDc ? "Level" : "Amplitude";
+        const std::string amplitudeHelp = isNoise ?
+            "Linear noise multiplier; sigma = amplitude * sqrt(variance)." :
+            (isDc ? "DC level before the additional DC offset." :
+                    "Linear peak amplitude multiplier.");
+        JST_CHECK(defineInterfaceConfig("amplitude",
+                                        amplitudeLabel,
+                                        amplitudeHelp,
+                                        "float::3"));
+    }
+
+    if (isNoise) {
+        JST_CHECK(defineInterfaceConfig("noiseVariance",
+                                        "Noise Variance",
+                                        "Per-component Gaussian variance before "
+                                        "amplitude scaling.",
+                                        "float::3"));
+    }
+
+    if (isPeriodic || isChirp) {
+        JST_CHECK(defineInterfaceConfig("phase",
+                                        "Phase",
+                                        "Initial phase offset in radians.",
+                                        "float:rad:3"));
+    }
+
+    if (isPeriodic || isNoise || isDc || isChirp) {
+        JST_CHECK(defineInterfaceConfig("dcOffset",
+                                        isDc ? "Additional Offset" : "DC Offset",
+                                        "Real-valued bias added to generated samples.",
+                                        "float::3"));
+    }
+
+    JST_CHECK(defineInterfaceConfig("bufferSize",
+                                    "Buffer Size",
+                                    "Samples generated per processing cycle.",
+                                    "uint:samples"));
 
     return Result::SUCCESS;
 }
@@ -119,6 +161,6 @@ Result SignalGeneratorImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(SignalGeneratorImpl);
+JST_REGISTER_BLOCK(SignalGeneratorImpl, {"signal_generator"});
 
 }  // namespace Jetstream::Blocks

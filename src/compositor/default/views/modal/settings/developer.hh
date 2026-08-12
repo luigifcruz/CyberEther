@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_DEVELOPER_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_DEVELOPER_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 
 #include "jetstream/logger.hh"
 
@@ -10,7 +10,7 @@
 
 namespace Jetstream {
 
-struct DeveloperSettingsPanel : public Sakura::Component {
+struct DeveloperSettingsPanel {
     struct Config {
         bool latencyEnabled = false;
         bool timingEnabled = false;

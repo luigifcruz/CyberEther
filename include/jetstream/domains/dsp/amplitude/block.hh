@@ -8,6 +8,7 @@ namespace Jetstream::Blocks {
 struct Amplitude : public Block::Config {
     JST_BLOCK_TYPE(amplitude);
     JST_BLOCK_DOMAIN("DSP");
+    JST_BLOCK_NODE_SIZE(XS);
     JST_BLOCK_PARAMS();
     JST_BLOCK_DESCRIPTION(
         "Amplitude",
@@ -16,7 +17,10 @@ struct Amplitude : public Block::Config {
         "The Amplitude block computes the magnitude of complex or real signals and converts "
         "the result to decibels (dB). For complex inputs, it calculates sqrt(real^2 + imag^2). "
         "For real inputs, it takes the absolute value. The output is normalized using a "
-        "scaling coefficient based on the signal length.\n\n"
+        "scaling coefficient based on the `sampleAxis` extent. Channel-only tensors "
+        "are converted directly to dB without normalization by the number of independent "
+        "channels. Optional `batchAxis` metadata describes independent batches. All remaining "
+        "dimensions are processed independently. Output preserves all input axis metadata.\n\n"
 
         "## Useful For\n"
         "- Spectrum visualization and analysis.\n"
@@ -34,7 +38,8 @@ struct Amplitude : public Block::Config {
         "Input Signal -> Magnitude Calculation -> dB Conversion -> Output\n"
         "1. For complex signals: magnitude = sqrt(I^2 + Q^2)\n"
         "2. For real signals: magnitude = |value|\n"
-        "3. Convert to dB: 20 * log10(magnitude) + scaling_coefficient"
+        "3. Convert to dB: 20 * log10(magnitude) + scaling_coefficient. The coefficient "
+        "is zero for channel-only tensors."
     );
 };
 

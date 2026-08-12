@@ -1,8 +1,6 @@
 #ifndef JETSTREAM_DOMAINS_CORE_SLICE_MODULE_IMPL_HH
 #define JETSTREAM_DOMAINS_CORE_SLICE_MODULE_IMPL_HH
 
-#include <regex>
-
 #include <jetstream/domains/core/slice/module.hh>
 #include <jetstream/detail/module_impl.hh>
 
@@ -18,7 +16,8 @@ struct SliceImpl : public Module::Impl, public DynamicConfig<Slice> {
     Tensor input;
     Tensor output;
 
-    Result parseSliceString(const std::string& sliceStr, std::vector<Token>& tokens);
+    std::vector<Token> sliceTokens;
+    Tensor::SlicePlan slicePlan;
 };
 
 }  // namespace Jetstream::Modules

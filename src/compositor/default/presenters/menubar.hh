@@ -25,6 +25,12 @@ struct MenubarPresenter {
         const bool flowgraphEnvironmentVisible = context.state.interface.flowgraphEnvironmentVisible;
         const bool debugLatencyEnabled = context.state.debug.latencyEnabled;
         const bool debugTimingEnabled = context.state.debug.timingEnabled;
+        const bool canCheckForUpdates = context.state.update.supported &&
+                                        !context.state.update.checking &&
+                                        !context.state.update.available &&
+                                        !context.state.update.downloading &&
+                                        !context.state.update.ready &&
+                                        !context.state.update.applying;
 
         return MenubarView::Config{
             .id = "main-menubar",
@@ -37,6 +43,8 @@ struct MenubarPresenter {
             .debugLatencyEnabled = debugLatencyEnabled,
             .debugTimingEnabled = debugTimingEnabled,
             .debugLogLevel = context.state.debug.logLevel,
+            .updateAvailable = context.state.update.available,
+            .updateReady = context.state.update.ready,
             .themes = BuildThemeKeys(),
             .currentThemeKey = context.state.sakura.themeKey,
             .onAction = [enqueue,
@@ -46,7 +54,8 @@ struct MenubarPresenter {
                          flowgraphMetadataVisible,
                          flowgraphEnvironmentVisible,
                          debugLatencyEnabled,
-                         debugTimingEnabled](const MenubarView::Action action) {
+                         debugTimingEnabled,
+                         canCheckForUpdates](const MenubarView::Action action) {
                 switch (action) {
                     case MenubarView::Action::About:
                         enqueue(MailOpenModal{.content = ModalContent::About});
@@ -56,7 +65,13 @@ struct MenubarPresenter {
                         enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::Legal});
                         break;
                     case MenubarView::Action::CheckForUpdates:
-                        enqueue(MailCheckForUpdates{});
+                        enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::About});
+                        if (canCheckForUpdates) {
+                            enqueue(MailCheckForUpdates{});
+                        }
+                        break;
+                    case MenubarView::Action::OpenUpdateModal:
+                        enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::About});
                         break;
                     case MenubarView::Action::Preferences:
                         enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::General});

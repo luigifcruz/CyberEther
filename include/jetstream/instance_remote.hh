@@ -59,11 +59,9 @@ struct JETSTREAM_API Instance::Remote {
     const std::string& roomId() const;
     const std::string& accessToken() const;
     const std::string& inviteUrl() const;
-    const std::vector<ClientInfo>& clients() const;
-    const std::vector<std::string>& waitlist() const;
+    std::vector<ClientInfo> clients() const;
+    std::vector<std::string> waitlist() const;
 
-    Result updateWaitlist();
-    Result updateSessions();
     Result approveClient(const std::string& code);
 
  private:
@@ -73,6 +71,8 @@ struct JETSTREAM_API Instance::Remote {
 JETSTREAM_API std::string GetRemoteCodecName(const Instance::Remote::CodecType& codec);
 JETSTREAM_API Instance::Remote::CodecType StringToRemoteCodec(const std::string& codec);
 JETSTREAM_API const char* GetRemoteCodecPrettyName(const Instance::Remote::CodecType& codec);
+
+JETSTREAM_API bool IsRemoteBrokerSchemeSupported(const std::string& broker);
 
 JETSTREAM_API std::string GetRemoteEncoderName(const Instance::Remote::EncoderType& encoder);
 JETSTREAM_API Instance::Remote::EncoderType StringToRemoteEncoder(const std::string& encoder);

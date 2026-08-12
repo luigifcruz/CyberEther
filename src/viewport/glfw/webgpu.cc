@@ -1,20 +1,10 @@
 #include "jetstream/viewport/platforms/glfw/webgpu.hh"
 
 #include <GLFW/glfw3.h>
+#include <GLFW/emscripten_glfw3.h>
+#include <emscripten/html5.h>
 
 #include "tools/imgui_impl_glfw.h"
-
-EM_JS(int, getWindowWidth, (), {
-    return Module['canvas'].clientWidth;
-});
-
-EM_JS(int, getWindowHeight, (), {
-    return Module['canvas'].clientHeight;
-});
-
-EM_JS(int, getPixelRatio, (), {
-    return window.devicePixelRatio;
-});
 
 static void PrintGLFWError(int, const char* description) {
     JST_FATAL("[WebGPU] GLFW error: {}", description);
@@ -41,21 +31,34 @@ Result Implementation::create() {
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
+    glfwWindowHint(GLFW_SCALE_FRAMEBUFFER, GLFW_TRUE);
 
-    swapchainSize = {
-        static_cast<U64>(getWindowWidth()),
-        static_cast<U64>(getWindowHeight())
-    };
+    double width = 1280.0;
+    double height = 720.0;
+    if (emscripten_get_element_css_size("#canvas", &width, &height) != EMSCRIPTEN_RESULT_SUCCESS) {
+        JST_WARN("[WebGPU] Failed to query canvas size; using default dimensions.");
+    }
 
-    window = glfwCreateWindow(swapchainSize.x, swapchainSize.y, config.title.c_str(), nullptr, nullptr);
+    emscripten::glfw3::SetNextWindowCanvasSelector("#canvas");
+    window = glfwCreateWindow(static_cast<int>(width),
+                              static_cast<int>(height),
+                              config.title.c_str(),
+                              nullptr,
+                              nullptr);
 
     if (!window) {
         glfwTerminate();
         JST_ERROR("[WebGPU] Failed to create window with GLFW.");
         return Result::ERROR;
     }
-    glfwMakeContextCurrent(window);
+
+    int framebufferWidth = 0;
+    int framebufferHeight = 0;
+    glfwGetFramebufferSize(window, &framebufferWidth, &framebufferHeight);
+    swapchainSize = {
+        static_cast<U64>(framebufferWidth),
+        static_cast<U64>(framebufferHeight),
+    };
 
     WGPUSurfaceDescriptor surfaceDesc = WGPU_SURFACE_DESCRIPTOR_INIT;
 
@@ -65,9 +68,15 @@ Result Implementation::create() {
 
     surfaceDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&surfaceSource);
 
-    instance = wgpuCreateInstance(nullptr);
+    instance = Backend::State<DeviceType::WebGPU>()->getInstance();
 
     surface = wgpuInstanceCreateSurface(instance, &surfaceDesc);
+    if (!surface) {
+        glfwDestroyWindow(window);
+        glfwTerminate();
+        JST_ERROR("[WebGPU] Failed to create canvas surface.");
+        return Result::ERROR;
+    }
 
     JST_CHECK(createSwapchain());
 
@@ -79,6 +88,11 @@ Result Implementation::create() {
 Result Implementation::destroy() {
     JST_CHECK(destroySwapchain());
 
+    if (surface) {
+        wgpuSurfaceRelease(surface);
+        surface = nullptr;
+    }
+
     glfwDestroyWindow(window);
     glfwTerminate();
 
@@ -86,16 +100,14 @@ Result Implementation::destroy() {
 }
 
 Result Implementation::createSwapchain() {
-    glfwSetWindowSize(window, swapchainSize.x, swapchainSize.y);
-
     auto device = Backend::State<DeviceType::WebGPU>()->getDevice();
 
     WGPUSurfaceConfiguration conf = WGPU_SURFACE_CONFIGURATION_INIT;
     conf.device = device;
     conf.usage = WGPUTextureUsage_RenderAttachment;
     conf.format = WGPUTextureFormat_BGRA8Unorm;
-    conf.width = swapchainSize.x * getPixelRatio();
-    conf.height = swapchainSize.y * getPixelRatio();
+    conf.width = swapchainSize.x;
+    conf.height = swapchainSize.y;
     conf.presentMode = WGPUPresentMode_Fifo;
     wgpuSurfaceConfigure(surface, &conf);
 
@@ -116,7 +128,10 @@ Result Implementation::createImgui() {
 }
 
 Extent2D<F32> Implementation::displaySize() const {
-    return {static_cast<F32>(getWindowWidth()), static_cast<F32>(getWindowHeight())};
+    int width = 0;
+    int height = 0;
+    glfwGetWindowSize(window, &width, &height);
+    return {static_cast<F32>(width), static_cast<F32>(height)};
 }
 
 F32 Implementation::scale(const F32& scale) const {
@@ -131,11 +146,21 @@ Result Implementation::destroyImgui() {
 }
 
 Result Implementation::nextDrawable() {
-    U64 width = getWindowWidth();
-    U64 height = getWindowHeight();
+    glfwPollEvents();
 
-    if (width != swapchainSize.x || height != swapchainSize.y) {
-       swapchainSize = {static_cast<U64>(width), static_cast<U64>(height)};
+    int framebufferWidth = 0;
+    int framebufferHeight = 0;
+    glfwGetFramebufferSize(window, &framebufferWidth, &framebufferHeight);
+    if (framebufferWidth <= 0 || framebufferHeight <= 0) {
+        return Result::SKIP;
+    }
+
+    if (static_cast<U64>(framebufferWidth) != swapchainSize.x ||
+        static_cast<U64>(framebufferHeight) != swapchainSize.y) {
+       swapchainSize = {
+           static_cast<U64>(framebufferWidth),
+           static_cast<U64>(framebufferHeight),
+       };
        return Result::RECREATE;
     }
 

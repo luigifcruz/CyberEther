@@ -16,6 +16,8 @@ struct SignalGeneratorImpl : public Module::Impl, public DynamicConfig<SignalGen
 
  protected:
     Tensor signal;
+    DataType validatedDataType = DataType::None;
+    U64 validatedOutputSizeBytes = 0;
 };
 
 }  // namespace Jetstream::Modules

@@ -8,6 +8,49 @@
 
 namespace Jetstream::Modules {
 
+namespace {
+
+// Conservatively covers the largest per-point allocation in Shapes.
+constexpr U64 kShapeInstanceAllocationBytes = 32 * sizeof(F32);
+
+}  // namespace
+
+Result ConstellationImpl::validate() {
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.rank() == 0) {
+        JST_ERROR("[MODULE_CONSTELLATION] Input buffer rank is 0.");
+        return Result::ERROR;
+    }
+
+    if (inputTensor.rank() > 2) {
+        JST_ERROR("[MODULE_CONSTELLATION] Invalid input rank ({}), expected 1 or 2.",
+                  inputTensor.rank());
+        return Result::ERROR;
+    }
+
+    const U64 maxPointCount = std::min({
+        static_cast<U64>(std::numeric_limits<U32>::max()),
+        static_cast<U64>(std::numeric_limits<std::size_t>::max()) /
+            kShapeInstanceAllocationBytes,
+        static_cast<U64>(std::numeric_limits<std::ptrdiff_t>::max()) /
+            kShapeInstanceAllocationBytes,
+    });
+    if (inputTensor.size() > maxPointCount) {
+        JST_ERROR("[MODULE_CONSTELLATION] Point count exceeds the supported rendering range.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 Result ConstellationImpl::define() {
     JST_CHECK(defineTaint(Module::Taint::SURFACE));
 
@@ -21,27 +64,9 @@ Result ConstellationImpl::create() {
 
     input = inputs().at("signal").tensor;
 
-    // Check input rank.
-
-    if (input.rank() == 0) {
-        JST_ERROR("[MODULE_CONSTELLATION] Input buffer rank is 0.");
-        return Result::ERROR;
-    }
-
-    if (input.rank() > 2) {
-        JST_ERROR("[MODULE_CONSTELLATION] Invalid input rank ({}), expected 1 or 2.",
-                  input.rank());
-        return Result::ERROR;
-    }
-
     // Calculate number of points.
 
     numberOfPoints = input.size();
-
-    if (numberOfPoints == 0) {
-        JST_ERROR("[MODULE_CONSTELLATION] Input is empty.");
-        return Result::ERROR;
-    }
 
     return Result::SUCCESS;
 }

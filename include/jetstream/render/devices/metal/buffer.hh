@@ -16,9 +16,6 @@ class JETSTREAM_API BufferImp<DeviceType::Metal> : public Buffer {
 
     using Render::Buffer::size;
 
-    Result update() override;
-    Result update(const U64& offset, const U64& size) override;
-
  protected:
     constexpr MTL::Buffer* getHandle() const {
         return buffer;
@@ -33,6 +30,7 @@ class JETSTREAM_API BufferImp<DeviceType::Metal> : public Buffer {
     friend class KernelImp<DeviceType::Metal>;
     friend class TextureImp<DeviceType::Metal>;
     friend class DrawImp<DeviceType::Metal>;
+    friend class TransferImp<DeviceType::Metal>;
 };
 
 }  // namespace Jetstream::Render

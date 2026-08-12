@@ -2,10 +2,89 @@
 
 #include <algorithm>
 
+#include <jetstream/memory/axis.hh>
+#include <jetstream/tools/numeric.hh>
+
 namespace Jetstream::Modules {
 
+Result MultiplyImpl::validate() {
+    validatedA = Tensor();
+    validatedB = Tensor();
+    validatedOutputShape.clear();
+    validatedOutputElementCount = 0;
+    validatedOutputSizeBytes = 0;
+
+    if (!inputs().contains("a") || !inputs().contains("b")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& tensorA = inputs().at("a").tensor;
+    const Tensor& tensorB = inputs().at("b").tensor;
+    if (!tensorA.validShape() || !tensorB.validShape() ||
+        tensorA.size() == 0 || tensorB.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    const Shape& shapeA = tensorA.shape();
+    const Shape& shapeB = tensorB.shape();
+    const U64 rankA = shapeA.size();
+    const U64 rankB = shapeB.size();
+    const U64 maxRank = std::max(rankA, rankB);
+
+    Shape outputShape(maxRank == 0 ? 1 : maxRank, 1);
+    for (U64 i = 0; i < maxRank; ++i) {
+        const U64 dimA = rankA > i ? shapeA[rankA - 1 - i] : 1;
+        const U64 dimB = rankB > i ? shapeB[rankB - 1 - i] : 1;
+
+        if (dimA != dimB && dimA != 1 && dimB != 1) {
+            JST_ERROR("[MODULE_MULTIPLY] Input shapes {} and {} are not broadcastable.",
+                      shapeA, shapeB);
+            return Result::ERROR;
+        }
+
+        outputShape[outputShape.size() - 1 - i] = std::max(dimA, dimB);
+    }
+
+    Tensor mappedAxes(DeviceType::CPU, DataType::F32,
+                      Shape(outputShape.size(), 1));
+    JST_CHECK(MergeBroadcastSignalAxes(tensorA, tensorB, mappedAxes));
+
+    U64 outputElementCount = 1;
+    for (const U64 dimension : outputShape) {
+        if (!detail::CheckedMultiply(outputElementCount,
+                                     dimension,
+                                     outputElementCount)) {
+            JST_ERROR("[MODULE_MULTIPLY] Broadcast output exceeds the supported layout range.");
+            return Result::ERROR;
+        }
+    }
+
+    U64 outputSizeBytes = 0;
+    if (!detail::CheckedMultiply(outputElementCount,
+                                 static_cast<U64>(DataTypeSize(tensorA.dtype())),
+                                 outputSizeBytes)) {
+        JST_ERROR("[MODULE_MULTIPLY] Broadcast output exceeds the supported byte range.");
+        return Result::ERROR;
+    }
+
+    Tensor broadcastA = tensorA.clone();
+    Tensor broadcastB = tensorB.clone();
+    if (broadcastA.broadcastTo(outputShape) != Result::SUCCESS ||
+        broadcastB.broadcastTo(outputShape) != Result::SUCCESS) {
+        JST_ERROR("[MODULE_MULTIPLY] Failed to construct validated broadcast views.");
+        return Result::ERROR;
+    }
+
+    validatedA = std::move(broadcastA);
+    validatedB = std::move(broadcastB);
+    validatedOutputShape = std::move(outputShape);
+    validatedOutputElementCount = outputElementCount;
+    validatedOutputSizeBytes = outputSizeBytes;
+    return Result::SUCCESS;
+}
+
 Result MultiplyImpl::define() {
-    JST_CHECK(defineTaint(Module::Taint::DISCONTIGUOUS));
+    JST_CHECK(defineTaint(Module::Taint::DISCONTIGUOUS | Module::Taint::STATELESS));
 
     JST_CHECK(defineInterfaceOutput("product"));
 
@@ -16,71 +95,14 @@ Result MultiplyImpl::define() {
 }
 
 Result MultiplyImpl::create() {
-    const Tensor& tensorA = inputs().at("a").tensor;
-    const Tensor& tensorB = inputs().at("b").tensor;
+    a = validatedA;
+    b = validatedB;
 
-    const Shape& shapeA = tensorA.shape();
-    const Shape& shapeB = tensorB.shape();
+    JST_CHECK(c.create(a.device(), a.dtype(), validatedOutputShape));
 
-    const U64 rankA = shapeA.size();
-    const U64 rankB = shapeB.size();
-
-    const U64 minRank = std::min(rankA, rankB);
-    const U64 maxRank = std::max(rankA, rankB);
-
-    const U64 padA = maxRank - rankB;
-    const U64 padB = maxRank - rankA;
-
-    JST_TRACE("[MODULE_MULTIPLY] A rank: {}; B rank: {}.", rankA, rankB);
-    JST_TRACE("[MODULE_MULTIPLY] Min rank: {}; Max rank: {}.", minRank, maxRank);
-    JST_TRACE("[MODULE_MULTIPLY] Pad A: {}; Pad B: {}.", padA, padB);
-
-    for (U64 i = 0; i < minRank; ++i) {
-        const U64 dimA = shapeA[padA + i];
-        const U64 dimB = shapeB[padB + i];
-
-        JST_TRACE("[MODULE_MULTIPLY] Checking rank {} -> {} vs {}.", i, dimA, dimB);
-
-        if (dimA != dimB && dimA != 1 && dimB != 1) {
-            JST_ERROR("[MODULE_MULTIPLY] Input shapes {} and {} are not broadcastable.", shapeA, shapeB);
-            return Result::ERROR;
-        }
-    }
-
-    Shape outputShape;
-    if (maxRank == 0) {
-        outputShape.push_back(1);
-    } else {
-        outputShape.resize(maxRank);
-
-        for (U64 i = 0; i < maxRank; ++i) {
-            const U64 indexA = rankA > i ? shapeA[rankA - 1 - i] : 1;
-            const U64 indexB = rankB > i ? shapeB[rankB - 1 - i] : 1;
-
-            if (indexA == 0 || indexB == 0) {
-                JST_ERROR("[MODULE_MULTIPLY] Tensor dimensions cannot be zero ({} vs {}).",
-                          indexA, indexB);
-                return Result::ERROR;
-            }
-
-            outputShape[maxRank - 1 - i] = std::max(indexA, indexB);
-        }
-    }
-
-    JST_TRACE("[MODULE_MULTIPLY] Output shape {}.", outputShape);
-
-    const DeviceType device = tensorA.device();
-    const DataType dtype = tensorA.dtype();
-
-    a = tensorA;
-    b = tensorB;
-
-    JST_CHECK(a.broadcastTo(outputShape));
-    JST_CHECK(b.broadcastTo(outputShape));
-
-    JST_CHECK(c.create(device, dtype, outputShape));
-
-    c.propagateAttributes(a);
+    JST_CHECK(c.propagateAttributes(a));
+    JST_CHECK(MergeBroadcastSignalAxes(inputs().at("a").tensor,
+                                       inputs().at("b").tensor, c));
 
     {
         Tensor inputA = a;

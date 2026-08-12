@@ -9,7 +9,6 @@ from superluminal._module import (
     box,
     text,
     slider,
-    markdown,
     remote_room_id,
     remote_invite_url,
     remote_access_token,

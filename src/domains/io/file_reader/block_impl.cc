@@ -50,7 +50,7 @@ Result FileReaderImpl::define() {
     JST_CHECK(defineInterfaceConfig("batchSize",
                                     "Batch Size",
                                     "Number of samples to read per processing cycle.",
-                                    "int:samples"));
+                                    "uint:samples"));
 
     JST_CHECK(defineInterfaceConfig("loop",
                                     "Loop",
@@ -102,6 +102,6 @@ Result FileReaderImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(FileReaderImpl);
+JST_REGISTER_BLOCK(FileReaderImpl, {"file_reader"});
 
 }  // namespace Jetstream::Blocks

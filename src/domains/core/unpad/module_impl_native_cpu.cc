@@ -13,6 +13,7 @@ struct UnpadImplNativeCpu : public UnpadImpl,
                             public NativeCpuRuntimeContext,
                             public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeSubmit() override;
@@ -24,25 +25,38 @@ struct UnpadImplNativeCpu : public UnpadImpl,
     std::function<Result()> kernel;
 };
 
+Result UnpadImplNativeCpu::validate() {
+    JST_CHECK(UnpadImpl::validate());
+
+    if (!inputs().contains("padded")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("padded").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::F32 &&
+        inputTensor.dtype() != DataType::CF32) {
+        JST_ERROR("[MODULE_UNPAD_NATIVE_CPU] Unsupported data type '{}'.",
+                  inputTensor.dtype());
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 Result UnpadImplNativeCpu::create() {
     JST_CHECK(UnpadImpl::create());
 
-    if (input.dtype() == DataType::F32 &&
-        outputUnpadded.dtype() == DataType::F32 &&
-        outputPad.dtype() == DataType::F32) {
+    if (input.dtype() == DataType::F32) {
         kernel = [this]() { return kernelF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (input.dtype() == DataType::CF32 &&
-        outputUnpadded.dtype() == DataType::CF32 &&
-        outputPad.dtype() == DataType::CF32) {
+    } else {
         kernel = [this]() { return kernelCF32(); };
-        return Result::SUCCESS;
     }
 
-    JST_ERROR("[MODULE_UNPAD_NATIVE_CPU] Unsupported data type '{}'.", input.dtype());
-    return Result::ERROR;
+    return Result::SUCCESS;
 }
 
 Result UnpadImplNativeCpu::computeSubmit() {
@@ -59,12 +73,12 @@ Result UnpadImplNativeCpu::kernelF32() {
 
     // Calculate the number of slices before the axis and the size of each slice.
     U64 outerSize = 1;
-    for (U64 i = 0; i < axis; ++i) {
+    for (U64 i = 0; i < resolvedAxis; ++i) {
         outerSize *= inShape[i];
     }
 
     U64 innerSize = 1;
-    for (U64 i = axis + 1; i < rank; ++i) {
+    for (U64 i = resolvedAxis + 1; i < rank; ++i) {
         innerSize *= inShape[i];
     }
 
@@ -95,12 +109,12 @@ Result UnpadImplNativeCpu::kernelCF32() {
 
     // Calculate the number of slices before the axis and the size of each slice.
     U64 outerSize = 1;
-    for (U64 i = 0; i < axis; ++i) {
+    for (U64 i = 0; i < resolvedAxis; ++i) {
         outerSize *= inShape[i];
     }
 
     U64 innerSize = 1;
-    for (U64 i = axis + 1; i < rank; ++i) {
+    for (U64 i = resolvedAxis + 1; i < rank; ++i) {
         innerSize *= inShape[i];
     }
 

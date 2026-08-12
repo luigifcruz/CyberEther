@@ -7,6 +7,29 @@
 
 using namespace Jetstream;
 
+namespace {
+
+void RequireUnpadValidationError(const Registry::ModuleRegistration& impl,
+                                 const Modules::Unpad& config,
+                                 const DataType dtype,
+                                 const Shape& shape) {
+    Tensor input;
+    REQUIRE(input.create(impl.device, dtype, shape) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["padded"].requested("test", "padded");
+    inputs["padded"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("unpad", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
+}  // namespace
+
 TEST_CASE("Unpad Module - Basic 1D F32", "[modules][unpad][F32]") {
     auto implementations = Registry::ListAvailableModules("unpad");
     REQUIRE(!implementations.empty());
@@ -207,6 +230,38 @@ TEST_CASE("Unpad Module - 2D Axis 1 F32", "[modules][unpad][F32][2d]") {
     }
 }
 
+TEST_CASE("Unpad Module - Negative Axis F32", "[modules][unpad][F32][2d][axis]") {
+    auto implementations = Registry::ListAvailableModules("unpad");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("unpad", impl.device, impl.runtime, impl.provider);
+
+            Modules::Unpad config;
+            config.size = 2;
+            REQUIRE(config.axis == -1);
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({2, 5});
+            for (U64 i = 0; i < 10; ++i) {
+                input.at(i / 5, i % 5) = static_cast<F32>(i + 1);
+            }
+            ctx.setInput("padded", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& outUnpadded = ctx.output("unpadded");
+            const auto& outPad = ctx.output("pad");
+            REQUIRE(outUnpadded.shape() == Shape{2, 3});
+            REQUIRE(outPad.shape() == Shape{2, 2});
+            REQUIRE(outUnpadded.at<F32>(1, 2) == 8.0f);
+            REQUIRE(outPad.at<F32>(0, 0) == 4.0f);
+            REQUIRE(outPad.at<F32>(1, 1) == 10.0f);
+        }
+    }
+}
+
 TEST_CASE("Unpad Module - CF32", "[modules][unpad][CF32]") {
     auto implementations = Registry::ListAvailableModules("unpad");
     REQUIRE(!implementations.empty());
@@ -302,31 +357,38 @@ TEST_CASE("Unpad Module - Validation rejects invalid axis and size",
 
     for (const auto& impl : implementations) {
         SECTION("axis out of range") {
-            TestContext ctx("unpad", impl.device, impl.runtime, impl.provider);
-
             Modules::Unpad config;
             config.size = 1;
             config.axis = 3;
-            ctx.setConfig(config);
+            RequireUnpadValidationError(impl, config, DataType::F32, {2, 3});
+        }
 
-            auto input = ctx.createTensor<F32>({2, 3});
-            ctx.setInput("padded", input);
-
-            REQUIRE(ctx.run() == Result::ERROR);
+        SECTION("axis too negative") {
+            Modules::Unpad config;
+            config.size = 1;
+            config.axis = -3;
+            RequireUnpadValidationError(impl, config, DataType::F32, {2, 3});
         }
 
         SECTION("size larger than axis dimension") {
-            TestContext ctx("unpad", impl.device, impl.runtime, impl.provider);
-
             Modules::Unpad config;
             config.size = 5;
             config.axis = 0;
-            ctx.setConfig(config);
+            RequireUnpadValidationError(impl, config, DataType::F32, {4});
+        }
+    }
+}
 
-            auto input = ctx.createTensor<F32>({4});
-            ctx.setInput("padded", input);
+TEST_CASE("Unpad Module - Validation rejects unsupported dtype",
+          "[modules][unpad][validation][dtype]") {
+    const auto implementations = Registry::ListAvailableModules("unpad");
+    REQUIRE(!implementations.empty());
 
-            REQUIRE(ctx.run() == Result::ERROR);
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Modules::Unpad config;
+            config.size = 1;
+            RequireUnpadValidationError(impl, config, DataType::F64, {4});
         }
     }
 }

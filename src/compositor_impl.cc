@@ -21,6 +21,7 @@ void Compositor::Impl::startWorker() {
                 commandPendingQueue.pop();
             }
 
+            // TODO: Capture command-local diagnostics without clearing global logger state.
             cmd.result = cmd.fn();
 
             if (cmd.result == Result::ERROR ||

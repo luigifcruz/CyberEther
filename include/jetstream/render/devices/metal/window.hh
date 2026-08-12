@@ -3,6 +3,7 @@
 
 #include "jetstream/render/base/surface.hh"
 #include "jetstream/render/base/window.hh"
+#include "jetstream/render/devices/metal/transfer.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/viewport/base.hh"
 
@@ -30,20 +31,27 @@ class JETSTREAM_API WindowImp<DeviceType::Metal> : public Window {
 
     Result underlyingBegin() override;
     Result underlyingEnd() override;
+    Result underlyingCancel() override;
 
     Result underlyingSynchronize() override;
 
  private:
+    static constexpr size_t FramesInFlight = 3;
+
     Stats statsData;
     ImGuiIO* io = nullptr;
     ImGuiStyle* style = nullptr;
     MTL::Device* dev = nullptr;
-    NS::AutoreleasePool* innerPool;
-    NS::AutoreleasePool* outerPool;
+    NS::AutoreleasePool* innerPool = nullptr;
+    NS::AutoreleasePool* outerPool = nullptr;
     CA::MetalDrawable* drawable = nullptr;
     MTL::CommandQueue* commandQueue = nullptr;
     MTL::CommandBuffer* commandBuffer = nullptr;
+    size_t currentFrame = 0;
+    std::array<MTL::CommandBuffer*, FramesInFlight> inFlightCommandBuffers{};
+    TransferImp<DeviceType::Metal> transferEncoder;
     MTL::RenderPassDescriptor* renderPassDescriptor = nullptr;
+    bool imguiCreated = false;
     std::vector<std::shared_ptr<SurfaceImp<DeviceType::Metal>>> surfaces;
     std::shared_ptr<Viewport::Adapter<DeviceType::Metal>> viewport;
 

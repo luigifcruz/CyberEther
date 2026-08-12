@@ -3,7 +3,7 @@ name: macOS Build
 on:
   workflow_call:
     inputs:
-      package_dmg:
+      package_desktop:
         type: boolean
         default: false
 
@@ -12,6 +12,7 @@ permissions:
 
 env:
   HOMEBREW_NO_AUTO_UPDATE: 1
+  MACOSX_DEPLOYMENT_TARGET: '13.0'
   SYSTEM_MACOS_DYLIBS: |
     Metal.framework/Metal
     Foundation.framework/Foundation
@@ -46,11 +47,12 @@ jobs:
   bin:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install system dependencies
         run: |
           set -euo pipefail
+          brew untap aws/tap 2>/dev/null || true
           brew install pkg-config spirv-cross glslang nasm
 
       - name: Install Python dependencies
@@ -78,7 +80,7 @@ jobs:
 
       - name: Upload Meson test logs
         if: failure()
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v7
         with:
           name: macos-meson-test-logs
           path: |
@@ -117,13 +119,13 @@ jobs:
             ${{ env.SYSTEM_MACOS_DYLIBS }}
             ${{ env.BUNDLED_MACOS_DYLIBS }}
 
-      - uses: actions/upload-artifact@v4.6.2
+      - uses: actions/upload-artifact@v7
         with:
           name: cyberether-bin-macos-arm64
           path: .dist/artifacts/cyberether-macos-arm64.tar.gz
 
-  dmg:
-    if: ${{ inputs.package_dmg }}
+  package:
+    if: ${{ inputs.package_desktop }}
     needs: bin
     runs-on: macos-14
     environment: macos-notarization
@@ -131,19 +133,24 @@ jobs:
       CYBERETHER_BINARY: .dist/bin/cyberether
       JETSTREAM_DYLIB: .dist/bin/libjetstream.dylib
       OUTPUT_DIR: .dist/macos
-      APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
-      APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
-      APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
-      APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
-      APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
-      APPLE_NOTARY_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
+      REQUIRE_SIGNING: 1
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: cyberether-bin-macos-arm64
           path: .dist/artifacts
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cyberether-release-notes
+          path: .dist
+
+      - name: Configure release notes
+        run: echo "RELEASE_NOTES=.dist/release-notes.md" >> "$GITHUB_ENV"
 
       - name: Extract macOS binary archive
         run: |
@@ -153,19 +160,27 @@ jobs:
           test -f .dist/bin/cyberether
           test -f .dist/bin/libjetstream.dylib
 
-      - name: Package app bundle
-        run: apps/macos/create-app.sh
-
-      - name: Package app notarization
-        run: apps/macos/sign-notarize-app.sh
-
-      - name: Package DMG
-        run: apps/macos/create-dmg.sh
-
-      - name: Package DMG notarization
-        run: apps/macos/sign-notarize-dmg.sh
-
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
-          name: cyberether-dmg-macos-arm64
-          path: .dist/macos/*.dmg
+          dotnet-version: '8.0.x'
+
+      - name: Package desktop release
+        env:
+          APPLE_APP_CERT_P12_BASE64: ${{ secrets.APPLE_APP_CERT_P12_BASE64 }}
+          APPLE_APP_CERT_PASSWORD: ${{ secrets.APPLE_APP_CERT_PASSWORD }}
+          APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
+          APPLE_INSTALLER_CERT_P12_BASE64: ${{ secrets.APPLE_INSTALLER_CERT_P12_BASE64 }}
+          APPLE_INSTALLER_CERT_PASSWORD: ${{ secrets.APPLE_INSTALLER_CERT_PASSWORD }}
+          APPLE_INSTALLER_IDENTITY: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          APPLE_NOTARY_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
+        run: apps/macos/create-package.sh
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cyberether-release-macos-arm64
+          path: |
+            .dist/macos/*.pkg
+            .dist/macos/*.nupkg
+            .dist/macos/*.json

@@ -3,6 +3,8 @@
 #include <any>
 #include <chrono>
 #include <filesystem>
+
+#include "jetstream/platform.hh"
 #include <fstream>
 #include <string>
 #include <thread>
@@ -24,7 +26,7 @@ std::filesystem::path InputPath() {
 
 std::filesystem::path OutputPath(const std::string& suffix) {
     auto path = std::filesystem::temp_directory_path() /
-                ("jst_test_file_writer_block_" + suffix + ".raw");
+                Platform::PathFromUtf8("jst_test_file_writer_block_" + suffix + ".raw");
     return path;
 }
 
@@ -63,7 +65,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
                  "FileWriter block without input stays incomplete",
                  "[modules][io][file_writer][block]") {
     Parser::Map config;
-    config["filepath"] = OutputPath("no_input").string();
+    config["filepath"] = Platform::PathToUtf8(OutputPath("no_input"));
     config["overwrite"] = std::string("true");
     config["recording"] = std::string("true");
 
@@ -88,7 +90,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     }
 
     Parser::Map readerConfig;
-    readerConfig["filepath"] = inputPath.string();
+    readerConfig["filepath"] = Platform::PathToUtf8(inputPath);
     readerConfig["dataType"] = std::string("F32");
     readerConfig["batchSize"] = std::string("4");
     readerConfig["loop"] = std::string("false");
@@ -96,7 +98,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
             Result::SUCCESS);
 
     Parser::Map writerConfig;
-    writerConfig["filepath"] = outputPath.string();
+    writerConfig["filepath"] = Platform::PathToUtf8(outputPath);
     writerConfig["overwrite"] = std::string("true");
     writerConfig["recording"] = std::string("true");
 
@@ -126,6 +128,43 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
+                 "FileWriter block propagates module dtype validation",
+                 "[modules][io][file_writer][block][validation]") {
+    const auto inputPath = OutputPath("dtype_input");
+    const auto outputPath = OutputPath("dtype_output");
+    Cleanup(inputPath);
+    Cleanup(outputPath);
+
+    WriteRawFile(inputPath, std::vector<F64>{1.0});
+
+    Parser::Map readerConfig;
+    readerConfig["filepath"] = Platform::PathToUtf8(inputPath);
+    readerConfig["dataType"] = std::string("F64");
+    readerConfig["batchSize"] = std::string("1");
+    readerConfig["loop"] = std::string("false");
+    REQUIRE(flowgraph->blockCreate("writer_dtype_src", "file_reader",
+                                   readerConfig, {}) == Result::SUCCESS);
+
+    Parser::Map writerConfig;
+    writerConfig["filepath"] = Platform::PathToUtf8(outputPath);
+    writerConfig["overwrite"] = std::string("true");
+    writerConfig["recording"] = std::string("true");
+
+    TensorMap inputs;
+    inputs["buffer"].requested("writer_dtype_src", "signal");
+    REQUIRE(flowgraph->blockCreate("writer_dtype", "file_writer", writerConfig,
+                                   inputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("writer_dtype").state == Block::State::Errored);
+    REQUIRE(!std::filesystem::exists(outputPath));
+
+    REQUIRE(flowgraph->blockDestroy("writer_dtype", false) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockDestroy("writer_dtype_src", false) == Result::SUCCESS);
+
+    Cleanup(inputPath);
+    Cleanup(outputPath);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
                  "FileWriter block current bandwidth metric updates after a write",
                  "[modules][io][file_writer][block][metrics]") {
     const auto inputPath = OutputPath("bandwidth_input");
@@ -140,7 +179,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     WriteRawFile(inputPath, data);
 
     Parser::Map readerConfig;
-    readerConfig["filepath"] = inputPath.string();
+    readerConfig["filepath"] = Platform::PathToUtf8(inputPath);
     readerConfig["dataType"] = std::string("U8");
     readerConfig["batchSize"] = std::to_string(data.size());
     readerConfig["loop"] = std::string("false");
@@ -148,7 +187,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
             Result::SUCCESS);
 
     Parser::Map writerConfig;
-    writerConfig["filepath"] = outputPath.string();
+    writerConfig["filepath"] = Platform::PathToUtf8(outputPath);
     writerConfig["overwrite"] = std::string("true");
     writerConfig["recording"] = std::string("true");
 
@@ -192,7 +231,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     }
 
     Parser::Map readerConfig;
-    readerConfig["filepath"] = inputPath.string();
+    readerConfig["filepath"] = Platform::PathToUtf8(inputPath);
     readerConfig["dataType"] = std::string("F32");
     readerConfig["batchSize"] = std::string("2");
     readerConfig["loop"] = std::string("true");
@@ -200,7 +239,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
             Result::SUCCESS);
 
     Parser::Map writerConfig;
-    writerConfig["filepath"] = outputPath.string();
+    writerConfig["filepath"] = Platform::PathToUtf8(outputPath);
     writerConfig["overwrite"] = std::string("true");
     writerConfig["recording"] = std::string("true");
 

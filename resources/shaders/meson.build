@@ -4,6 +4,7 @@ shader_pkg_lst = []
 
 subdir('global')
 subdir('constellation')
+subdir('frame')
 subdir('lineplot')
 subdir('map')
 subdir('spectrogram')

@@ -28,7 +28,7 @@ Result WindowImpl::define() {
     JST_CHECK(defineInterfaceConfig("size",
                                     "Size",
                                     "Number of samples in the window.",
-                                    "int:samples"));
+                                    "uint:samples"));
 
     return Result::SUCCESS;
 }
@@ -40,6 +40,6 @@ Result WindowImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(WindowImpl);
+JST_REGISTER_BLOCK(WindowImpl, {"window"});
 
 }  // namespace Jetstream::Blocks

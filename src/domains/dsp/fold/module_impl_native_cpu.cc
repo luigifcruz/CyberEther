@@ -1,6 +1,10 @@
 #include <algorithm>
+#include <complex>
+#include <limits>
+#include <type_traits>
 
 #include <jetstream/backend/devices/cpu/helpers.hh>
+#include <jetstream/memory/macros.hh>
 #include <jetstream/runtime_context_native_cpu.hh>
 #include <jetstream/scheduler_context.hh>
 #include <jetstream/module_context.hh>
@@ -14,6 +18,7 @@ struct FoldImplNativeCpu : public FoldImpl,
                            public NativeCpuRuntimeContext,
                            public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeSubmit() override;
@@ -28,6 +33,35 @@ struct FoldImplNativeCpu : public FoldImpl,
     std::vector<U64> inputStrides;
     std::vector<U64> outputStrides;
 };
+
+Result FoldImplNativeCpu::validate() {
+    JST_CHECK(FoldImpl::validate());
+
+    if (!inputs().contains("buffer")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("buffer").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::CF32 &&
+        inputTensor.dtype() != DataType::F32) {
+        JST_ERROR("[MODULE_FOLD_NATIVE_CPU] Unsupported input data type: {}.",
+                  inputTensor.dtype());
+        return Result::ERROR;
+    }
+
+    U64 alignedOutputSize = 0;
+    if (!detail::CheckedPageAlignedSize(validatedOutputSizeBytes, alignedOutputSize) ||
+        alignedOutputSize > std::numeric_limits<std::size_t>::max()) {
+        JST_ERROR("[MODULE_FOLD_NATIVE_CPU] Output allocation size is too large.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
 
 Result FoldImplNativeCpu::create() {
     // Create parent.
@@ -54,17 +88,11 @@ Result FoldImplNativeCpu::create() {
 
     if (input.dtype() == DataType::CF32) {
         kernel = [this]() { return kernelCF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (input.dtype() == DataType::F32) {
+    } else {
         kernel = [this]() { return kernelF32(); };
-        return Result::SUCCESS;
     }
 
-    JST_ERROR("[MODULE_FOLD_NATIVE_CPU] Unsupported input "
-              "data type: {}.", input.dtype());
-    return Result::ERROR;
+    return Result::SUCCESS;
 }
 
 Result FoldImplNativeCpu::computeSubmit() {
@@ -74,51 +102,70 @@ Result FoldImplNativeCpu::computeSubmit() {
 template<typename T>
 static Result foldKernel(const Tensor& input,
                          Tensor& output,
-                         const U64 foldAxis,
+                         const Index foldAxis,
+                         const std::optional<Index> channelAxis,
                          const U64 foldOffset,
+                         const std::vector<U64>& channelOffsets,
                          const U64 foldSize,
                          const U64 decimFactor,
                          const std::vector<U64>& inStrides,
                          const std::vector<U64>& outStrides) {
     const U64 rank = input.rank();
-    const U64 totalIn = input.size();
     const U64 totalOut = output.size();
     const auto& inShape = input.shape();
 
     T* outPtr = output.data<T>();
     const T* inPtr = input.data<T>();
-
-    // Zero output buffer.
-    std::fill(outPtr, outPtr + totalOut, T{});
-
-    // Fold input into output.
+    const F64 divisor = static_cast<F64>(decimFactor);
+    const U64 axisSize = inShape[foldAxis];
+    const U64 normalizedScalarOffset = foldOffset % axisSize;
     std::vector<U64> coords(rank);
 
-    for (U64 i = 0; i < totalIn; ++i) {
-        // Convert linear index to coordinates.
-        U64 rem = i;
+    for (U64 outputIndex = 0; outputIndex < totalOut; ++outputIndex) {
+        U64 rem = outputIndex;
         for (U64 d = 0; d < rank; ++d) {
-            coords[d] = rem / inStrides[d];
-            rem %= inStrides[d];
+            coords[d] = rem / outStrides[d];
+            rem %= outStrides[d];
+        }
+        const U64 normalizedOffset = channelOffsets.empty()
+            ? normalizedScalarOffset
+            : channelOffsets[coords[*channelAxis]] % axisSize;
+
+        U64 inputBaseIndex = 0;
+        for (U64 d = 0; d < rank; ++d) {
+            if (d != foldAxis) {
+                inputBaseIndex += coords[d] * inStrides[d];
+            }
         }
 
-        // Apply offset and fold along axis.
-        coords[foldAxis] = (coords[foldAxis] + foldOffset) % inShape[foldAxis];
-        coords[foldAxis] %= foldSize;
-
-        // Convert coordinates to output linear index.
-        U64 outIdx = 0;
-        for (U64 d = 0; d < rank; ++d) {
-            outIdx += coords[d] * outStrides[d];
+        if constexpr (std::is_same_v<T, F32>) {
+            F64 sum = 0.0;
+            for (U64 group = 0; group < decimFactor; ++group) {
+                const U64 shiftedAxis = coords[foldAxis] + group * foldSize;
+                const U64 inputAxis = shiftedAxis >= normalizedOffset
+                    ? shiftedAxis - normalizedOffset
+                    : axisSize - (normalizedOffset - shiftedAxis);
+                const U64 inputIndex = inputBaseIndex +
+                                       inputAxis * inStrides[foldAxis];
+                sum += static_cast<F64>(inPtr[inputIndex]);
+            }
+            outPtr[outputIndex] = static_cast<F32>(sum / divisor);
+        } else {
+            std::complex<F64> sum{0.0, 0.0};
+            for (U64 group = 0; group < decimFactor; ++group) {
+                const U64 shiftedAxis = coords[foldAxis] + group * foldSize;
+                const U64 inputAxis = shiftedAxis >= normalizedOffset
+                    ? shiftedAxis - normalizedOffset
+                    : axisSize - (normalizedOffset - shiftedAxis);
+                const U64 inputIndex = inputBaseIndex +
+                                       inputAxis * inStrides[foldAxis];
+                sum += std::complex<F64>{inPtr[inputIndex].real(),
+                                         inPtr[inputIndex].imag()};
+            }
+            sum /= divisor;
+            outPtr[outputIndex] = T{static_cast<F32>(sum.real()),
+                                    static_cast<F32>(sum.imag())};
         }
-
-        outPtr[outIdx] += inPtr[i];
-    }
-
-    // Average by decimation factor.
-    const T divisor = static_cast<T>(decimFactor);
-    for (U64 i = 0; i < totalOut; ++i) {
-        outPtr[i] /= divisor;
     }
 
     return Result::SUCCESS;
@@ -127,8 +174,10 @@ static Result foldKernel(const Tensor& input,
 Result FoldImplNativeCpu::kernelCF32() {
     return foldKernel<CF32>(input,
                             output,
-                            axis,
+                            resolvedAxis,
+                            channelAxis,
                             offset,
+                            channelOffsets,
                             size,
                             decimationFactor,
                             inputStrides,
@@ -138,8 +187,10 @@ Result FoldImplNativeCpu::kernelCF32() {
 Result FoldImplNativeCpu::kernelF32() {
     return foldKernel<F32>(input,
                            output,
-                           axis,
+                           resolvedAxis,
+                           channelAxis,
                            offset,
+                           channelOffsets,
                            size,
                            decimationFactor,
                            inputStrides,

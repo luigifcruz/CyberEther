@@ -1,3 +1,5 @@
+#include <cmath>
+
 #include <jetstream/tools/automatic_iterator.hh>
 #include <jetstream/runtime_context_native_cpu.hh>
 #include <jetstream/scheduler_context.hh>
@@ -12,6 +14,7 @@ struct RangeImplNativeCpu : public RangeImpl,
                             public NativeCpuRuntimeContext,
                             public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeSubmit() override;
@@ -22,6 +25,27 @@ struct RangeImplNativeCpu : public RangeImpl,
     std::function<Result()> kernel;
 };
 
+Result RangeImplNativeCpu::validate() {
+    JST_CHECK(RangeImpl::validate());
+
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::F32) {
+        JST_ERROR("[MODULE_RANGE_NATIVE_CPU] Unsupported data type '{}'.",
+                  inputTensor.dtype());
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 Result RangeImplNativeCpu::create() {
     // Create parent.
 
@@ -29,14 +53,8 @@ Result RangeImplNativeCpu::create() {
 
     // Register compute kernel.
 
-    if ((input.dtype() == DataType::F32) &&
-        (output.dtype() == DataType::F32)) {
-        kernel = [this]() { return kernelF32(); };
-        return Result::SUCCESS;
-    }
-
-    JST_ERROR("[MODULE_RANGE_NATIVE_CPU] Unsupported data type '{}'.", input.dtype());
-    return Result::ERROR;
+    kernel = [this]() { return kernelF32(); };
+    return Result::SUCCESS;
 }
 
 Result RangeImplNativeCpu::computeSubmit() {
@@ -52,7 +70,13 @@ Result RangeImplNativeCpu::kernelF32() {
 
     return AutomaticIterator<F32, F32>(
         [scale, offset](const auto& in, auto& out) {
-            out = in * scale + offset;
+            if (scale == 0.0f) {
+                out = 0.5f;
+                return;
+            }
+
+            const F32 normalized = in * scale + offset;
+            out = 0.5f + 0.5f * std::tanh(4.0f * (normalized - 0.5f));
         },
     input, output);
 }

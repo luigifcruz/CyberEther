@@ -1,11 +1,36 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <limits>
+
 #include "jetstream/testing.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/domains/core/pad/module.hh"
 
 using namespace Jetstream;
+
+namespace {
+
+void RequirePadValidationError(const Registry::ModuleRegistration& impl,
+                               const Modules::Pad& config,
+                               const DataType dtype,
+                               const Shape& shape = {1}) {
+    Tensor input;
+    REQUIRE(input.create(impl.device, dtype, shape) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["unpadded"].requested("test", "unpadded");
+    inputs["unpadded"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("pad", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->outputs().empty());
+}
+
+}  // namespace
 
 TEST_CASE("Pad Module - Basic 1D F32", "[modules][pad][F32]") {
     auto implementations = Registry::ListAvailableModules("pad");
@@ -184,6 +209,40 @@ TEST_CASE("Pad Module - 2D Axis 1 F32", "[modules][pad][F32][2d]") {
     }
 }
 
+TEST_CASE("Pad Module - Negative Axis F32", "[modules][pad][F32][2d][axis]") {
+    auto implementations = Registry::ListAvailableModules("pad");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("pad", impl.device, impl.runtime, impl.provider);
+
+            Modules::Pad config;
+            config.size = 2;
+            REQUIRE(config.axis == -1);
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({2, 3});
+            for (U64 i = 0; i < 6; ++i) {
+                input.at(i / 3, i % 3) = static_cast<F32>(i + 1);
+            }
+            ctx.setInput("unpadded", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("padded");
+            REQUIRE(out.shape() == Shape{2, 5});
+            for (U64 row = 0; row < 2; ++row) {
+                for (U64 column = 0; column < 3; ++column) {
+                    REQUIRE(out.at<F32>(row, column) == input.at(row, column));
+                }
+                REQUIRE(out.at<F32>(row, 3) == 0.0f);
+                REQUIRE(out.at<F32>(row, 4) == 0.0f);
+            }
+        }
+    }
+}
+
 TEST_CASE("Pad Module - CF32", "[modules][pad][CF32]") {
     auto implementations = Registry::ListAvailableModules("pad");
     REQUIRE(!implementations.empty());
@@ -232,19 +291,57 @@ TEST_CASE("Pad Module - Validation rejects invalid axis",
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
-        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: "
-                        << impl.runtime) {
-            TestContext ctx("pad", impl.device, impl.runtime, impl.provider);
+        for (const I64 axis : {I64{2}, I64{-3}}) {
+            DYNAMIC_SECTION("Device: " << impl.device << " Runtime: "
+                            << impl.runtime << " Axis: " << axis) {
+                Modules::Pad config;
+                config.size = 2;
+                config.axis = axis;
+                RequirePadValidationError(impl, config, DataType::F32, {2, 3});
+            }
+        }
+    }
+}
 
+TEST_CASE("Pad Module - Validation rejects output extent overflow",
+          "[modules][pad][validation][overflow]") {
+    const auto implementations = Registry::ListAvailableModules("pad");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
             Modules::Pad config;
-            config.size = 2;
-            config.axis = 2;
-            ctx.setConfig(config);
+            config.axis = 0;
+            config.size = std::numeric_limits<U64>::max();
+            RequirePadValidationError(impl, config, DataType::F32);
+        }
+    }
+}
 
-            auto input = ctx.createTensor<F32>({2, 3});
-            ctx.setInput("unpadded", input);
+TEST_CASE("Pad Module - Validation rejects unsupported dtype",
+          "[modules][pad][validation][dtype]") {
+    const auto implementations = Registry::ListAvailableModules("pad");
+    REQUIRE(!implementations.empty());
 
-            REQUIRE(ctx.run() == Result::ERROR);
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Modules::Pad config;
+            RequirePadValidationError(impl, config, DataType::F64);
+        }
+    }
+}
+
+TEST_CASE("Pad Module - Validation rejects unsupported allocation size",
+          "[modules][pad][validation][allocation]") {
+    const auto implementations = Registry::ListAvailableModules("pad");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Modules::Pad config;
+            config.axis = 0;
+            config.size = std::numeric_limits<U64>::max() / sizeof(F32) - 1;
+            RequirePadValidationError(impl, config, DataType::F32);
         }
     }
 }

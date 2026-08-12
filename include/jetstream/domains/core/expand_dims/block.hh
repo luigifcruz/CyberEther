@@ -7,7 +7,7 @@
 namespace Jetstream::Blocks {
 
 struct ExpandDims : public Block::Config {
-    U64 axis = 0;
+    I64 axis = -1;
 
     JST_BLOCK_TYPE(expand_dims);
     JST_BLOCK_DOMAIN("Core");
@@ -21,8 +21,9 @@ struct ExpandDims : public Block::Config {
         "without copying.\n\n"
 
         "## Arguments\n"
-        "- **Axis**: The position where the new dimension will be inserted "
-        "(0-indexed). A value of 0 inserts at the beginning.\n\n"
+        "- **Axis**: The position where the new dimension will be inserted. Negative "
+        "axes count from the end. An axis of -1 appends the new dimension. A value of 0 inserts "
+        "at the beginning.\n\n"
 
         "## Useful For\n"
         "- Preparing tensors for broadcasting with higher-dimensional data.\n"

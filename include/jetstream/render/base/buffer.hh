@@ -7,12 +7,15 @@
 #include "jetstream/logger.hh"
 #include "jetstream/render/types.hh"
 #include "jetstream/render/base/implementations.hh"
+#include "jetstream/render/base/transfer.hh"
 #include "jetstream/render/base/window_attachment.hh"
 
 namespace Jetstream::Render {
 
 class JETSTREAM_API Buffer : public WindowAttachment {
  public:
+    static constexpr U64 UploadAlignment = 4;
+
     enum class Target : U16 {
         VERTEX          = 1 << 0,
         VERTEX_INDICES  = 1 << 1,
@@ -33,7 +36,7 @@ class JETSTREAM_API Buffer : public WindowAttachment {
         bool enableZeroCopy = false;
     };
 
-    explicit Buffer(const Config& config) : config(config) {}
+    explicit Buffer(const Config& config);
     virtual ~Buffer() = default;
 
     Type type() const override {
@@ -52,8 +55,9 @@ class JETSTREAM_API Buffer : public WindowAttachment {
         return config.size * config.elementByteSize;
     }
 
-    virtual Result update() = 0;
-    virtual Result update(const U64& offset, const U64& size) = 0;
+    // Non-zero-copy updates require byte offsets and sizes aligned to UploadAlignment.
+    Result update();
+    Result update(const U64& offset, const U64& size);
 
     template<DeviceType D>
     static std::shared_ptr<Buffer> Factory(const Config& config) {
@@ -61,7 +65,16 @@ class JETSTREAM_API Buffer : public WindowAttachment {
     }
 
  protected:
+    Result validateUpdate(const U64& offset, const U64& size) const;
+
     Config config;
+
+ private:
+    void restorePendingUploads(std::vector<Transfer::PendingUpload> uploads);
+
+    Transfer::PendingUploadQueue pendingUploads;
+
+    friend class Transfer::Batch;
 };
 
 static constexpr Buffer::Target operator&(Buffer::Target lhs, Buffer::Target rhs) {

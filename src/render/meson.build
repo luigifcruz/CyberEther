@@ -1,4 +1,9 @@
 src_lst += files([
+    'buffer.cc',
+    'kernel.cc',
+    'surface.cc',
+    'texture.cc',
+    'transfer.cc',
     'window.cc',
 ])
 

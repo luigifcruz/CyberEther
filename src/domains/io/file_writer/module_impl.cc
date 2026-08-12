@@ -1,5 +1,7 @@
 #include "module_impl.hh"
 
+#include "jetstream/platform.hh"
+
 namespace Jetstream::Modules {
 
 Result FileWriterImpl::validate() {
@@ -28,7 +30,7 @@ Result FileWriterImpl::create() {
     lastMeasurementTime = std::chrono::steady_clock::now();
 
     if (!filepath.empty()) {
-        filePath = std::filesystem::u8path(filepath);
+        filePath = Platform::PathFromUtf8(filepath);
 
         std::error_code ec;
         if (std::filesystem::exists(filePath, ec) && !ec) {

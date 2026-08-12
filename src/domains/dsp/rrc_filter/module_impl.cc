@@ -6,15 +6,18 @@
 namespace Jetstream::Modules {
 
 Result RrcFilterImpl::validate() {
+    validatedSignalAxes = {};
+    validatedLaneCount = 0;
+
     const auto& config = *candidate();
 
-    if (config.symbolRate <= 0.0f) {
+    if (!std::isfinite(config.symbolRate) || config.symbolRate <= 0.0f) {
         JST_ERROR("[MODULE_RRC_FILTER] Symbol rate must be "
                   "positive ({}).", config.symbolRate);
         return Result::ERROR;
     }
 
-    if (config.sampleRate <= 0.0f) {
+    if (!std::isfinite(config.sampleRate) || config.sampleRate <= 0.0f) {
         JST_ERROR("[MODULE_RRC_FILTER] Sample rate must be "
                   "positive ({}).", config.sampleRate);
         return Result::ERROR;
@@ -27,7 +30,8 @@ Result RrcFilterImpl::validate() {
         return Result::ERROR;
     }
 
-    if (config.rollOff < 0.0f || config.rollOff > 1.0f) {
+    if (!std::isfinite(config.rollOff) ||
+        config.rollOff < 0.0f || config.rollOff > 1.0f) {
         JST_ERROR("[MODULE_RRC_FILTER] Roll-off factor must be "
                   "between 0.0 and 1.0 ({}).", config.rollOff);
         return Result::ERROR;
@@ -45,6 +49,26 @@ Result RrcFilterImpl::validate() {
         return Result::ERROR;
     }
 
+    if (!inputs().contains("buffer")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("buffer").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (ResolveSignalAxes(inputTensor, validatedSignalAxes) != Result::SUCCESS) {
+        JST_ERROR("[MODULE_RRC_FILTER] Input must contain valid signal axis metadata.");
+        return Result::ERROR;
+    }
+
+    validatedLaneCount = inputTensor.size() /
+                         inputTensor.shape(*validatedSignalAxes.sample);
+    if (validatedSignalAxes.batch) {
+        validatedLaneCount /= inputTensor.shape(*validatedSignalAxes.batch);
+    }
+
     return Result::SUCCESS;
 }
 
@@ -59,26 +83,29 @@ Result RrcFilterImpl::create() {
     const Tensor& inputTensor = inputs().at("buffer").tensor;
 
     input = inputTensor;
+    signalAxes = validatedSignalAxes;
+    laneCount = validatedLaneCount;
 
     // Allocate output tensor matching input shape and dtype.
     JST_CHECK(output.create(input.device(), input.dtype(), input.shape()));
     JST_CHECK(output.propagateAttributes(input));
-
-    outputs()["buffer"].produced(name(), "buffer", output);
+    JST_CHECK(SetSignalAxes(output, signalAxes));
 
     // Allocate coefficient buffer (always F32).
     JST_CHECK(coeffs.create(input.device(), DataType::F32, {taps}));
 
     // Allocate history buffer matching input dtype.
-    JST_CHECK(history.create(input.device(), input.dtype(), {taps}));
+    JST_CHECK(history.create(input.device(), input.dtype(), {laneCount, taps}));
 
     // Zero the history buffer.
     std::memset(history.data(), 0, history.size() * history.elementSize());
 
-    historyIndex = 0;
+    historyIndex.assign(laneCount, 0);
 
     // Generate initial RRC coefficients.
     JST_CHECK(generateCoefficients());
+
+    outputs()["buffer"].produced(name(), "buffer", output);
 
     return Result::SUCCESS;
 }

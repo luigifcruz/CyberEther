@@ -11,6 +11,10 @@ Implementation::BufferImp(const Config& config) : Buffer(config) {
 Result Implementation::create() {
     JST_DEBUG("[VULKAN] Creating buffer.");
 
+    if (config.buffer && !config.enableZeroCopy) {
+        JST_CHECK(validateUpdate(0, config.size));
+    }
+
     auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
     auto& physicalDevice = Backend::State<DeviceType::Vulkan>()->getPhysicalDevice();
 
@@ -103,46 +107,6 @@ Result Implementation::destroy() {
         buffer = VK_NULL_HANDLE;
         memory = VK_NULL_HANDLE;
     }
-
-    return Result::SUCCESS;
-}
-
-Result Implementation::update() {
-    return update(0, config.size);
-}
-
-Result Implementation::update(const U64& offset, const U64& size) {
-    if (size == 0 || config.enableZeroCopy) {
-        return Result::SUCCESS;
-    }
-
-    auto& backend = Backend::State<DeviceType::Vulkan>();
-
-    uint8_t* mappedData = static_cast<uint8_t*>(backend->getStagingBufferMappedMemory());
-    const uint8_t* hostData = static_cast<const uint8_t*>(config.buffer);
-    const auto& byteOffset = offset * config.elementByteSize;
-    const auto& byteSize = size * config.elementByteSize;
-
-    if (byteSize >= backend->getStagingBufferSize()) {
-        JST_ERROR("[VULKAN] Memory copy is larger than the staging buffer.");
-        return Result::ERROR;
-    }
-
-    memcpy(mappedData, hostData + byteOffset, byteSize);
-
-    JST_CHECK(Backend::ExecuteOnce(backend->getDevice(),
-                                   backend->getComputeQueue(),
-                                   backend->getDefaultFence(),
-                                   backend->getDefaultCommandBuffer(),
-        [&](VkCommandBuffer& commandBuffer){
-            VkBufferCopy copyRegion{};
-            copyRegion.srcOffset = 0;
-            copyRegion.dstOffset = byteOffset;
-            copyRegion.size = byteSize;
-            vkCmdCopyBuffer(commandBuffer, backend->getStagingBuffer(), buffer, 1, &copyRegion);
-            return Result::SUCCESS;
-        }
-    ));
 
     return Result::SUCCESS;
 }

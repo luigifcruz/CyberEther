@@ -8,15 +8,18 @@
 #include "markdown.hh"
 #include "multiline.hh"
 #include "path.hh"
+#include "python.hh"
 #include "range.hh"
+#include "tensor.hh"
 #include "text.hh"
 #include "types.hh"
+#include "uint.hh"
 #include "vector.hh"
 #include "vector_inline.hh"
 
 namespace Jetstream {
 
-struct FlowgraphConfigFieldInstance : public Sakura::Component {
+struct FlowgraphConfigFieldInstance {
     void update(FlowgraphConfigFieldConfig config) {
         const auto parts = Parser::SplitString(config.format, ":");
         kind = parts.empty() ? "" : parts[0];
@@ -27,6 +30,8 @@ struct FlowgraphConfigFieldInstance : public Sakura::Component {
             floatField.update(std::move(config));
         } else if (kind == "int") {
             intField.update(std::move(config));
+        } else if (kind == "uint") {
+            uintField.update(std::move(config));
         } else if (kind == "vector") {
             vectorField.update(std::move(config));
         } else if (kind == "vector-inline") {
@@ -37,8 +42,12 @@ struct FlowgraphConfigFieldInstance : public Sakura::Component {
             boolField.update(std::move(config));
         } else if (kind == "range") {
             range.update(std::move(config));
+        } else if (kind == "tensor-config") {
+            tensor.update(std::move(config));
         } else if (kind == "markdown") {
             markdown.update(std::move(config));
+        } else if (kind == "python") {
+            python.update(std::move(config));
         } else if (kind == "multiline") {
             multiline.update(std::move(config));
         } else if (kind == "text") {
@@ -65,6 +74,8 @@ struct FlowgraphConfigFieldInstance : public Sakura::Component {
             floatField.render(ctx);
         } else if (kind == "int") {
             intField.render(ctx);
+        } else if (kind == "uint") {
+            uintField.render(ctx);
         } else if (kind == "vector") {
             vectorField.render(ctx);
         } else if (kind == "vector-inline") {
@@ -75,8 +86,12 @@ struct FlowgraphConfigFieldInstance : public Sakura::Component {
             boolField.render(ctx);
         } else if (kind == "range") {
             range.render(ctx);
+        } else if (kind == "tensor-config") {
+            tensor.render(ctx);
         } else if (kind == "markdown") {
             markdown.render(ctx);
+        } else if (kind == "python") {
+            python.render(ctx);
         } else if (kind == "multiline") {
             multiline.render(ctx);
         } else if (kind == "text") {
@@ -93,12 +108,15 @@ struct FlowgraphConfigFieldInstance : public Sakura::Component {
     FlowgraphConfigDropdownField dropdown;
     FlowgraphConfigFloatField floatField;
     FlowgraphConfigIntField intField;
+    FlowgraphConfigUIntField uintField;
     FlowgraphConfigVectorField vectorField;
     FlowgraphConfigVectorInlineField vectorInline;
     FlowgraphConfigPathField path;
     FlowgraphConfigBoolField boolField;
     FlowgraphConfigRangeField range;
+    FlowgraphConfigTensorField tensor;
     FlowgraphConfigMarkdownField markdown;
+    FlowgraphConfigPythonField python;
     FlowgraphConfigMultilineField multiline;
     FlowgraphConfigTextField text;
     Sakura::NodeField unknownFrame;

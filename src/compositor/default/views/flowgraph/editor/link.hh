@@ -16,7 +16,7 @@ inline std::string FlowgraphLinkId(const std::string& consumerName, const std::s
     return consumerName + ":" + inputSlot + "link";
 }
 
-struct FlowgraphLink : public Sakura::Component {
+struct FlowgraphLink {
     struct Connection {
         std::string consumerName;
         std::string inputSlot;
@@ -70,7 +70,9 @@ struct FlowgraphLink : public Sakura::Component {
         std::vector<std::vector<std::string>> attributeRows;
         for (const auto& key : tensor.attributeKeys()) {
             std::string encoded;
-            if (Parser::TypedToString(tensor.attribute(key), encoded) != Result::SUCCESS) {
+            const std::any value = tensor.attribute(key);
+            if (!value.has_value() ||
+                Parser::TypedToString(value, encoded) != Result::SUCCESS) {
                 encoded = "?";
             }
             attributeRows.push_back({key, encoded});

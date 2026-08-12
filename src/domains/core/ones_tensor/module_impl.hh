@@ -13,7 +13,12 @@ struct OnesTensorImpl : public Module::Impl, public DynamicConfig<OnesTensor> {
     Result create() override;
 
  protected:
+    Result fillOutput();
+
     Tensor output;
+    DataType validatedDataType = DataType::None;
+    U64 validatedElementCount = 0;
+    U64 validatedOutputSizeBytes = 0;
 };
 
 }  // namespace Jetstream::Modules

@@ -1,5 +1,3 @@
-#include <csignal>
-
 #include "jetstream/viewport/platforms/glfw/vulkan.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 
@@ -11,6 +9,7 @@ static void PrintGLFWError(int, const char* description) {
     JST_FATAL("[VULKAN] GLFW error: {}", description);
 }
 
+#ifndef JST_OS_WINDOWS
 static bool IsWaylandPlatform() {
 #ifdef GLFW_PLATFORM_WAYLAND
     return glfwGetPlatform() == GLFW_PLATFORM_WAYLAND;
@@ -18,8 +17,7 @@ static bool IsWaylandPlatform() {
     return false;
 #endif
 }
-
-static bool keepRunningFlag;
+#endif
 
 namespace Jetstream::Viewport {
 
@@ -34,28 +32,22 @@ Implementation::~GLFW() {
 }
 
 Result Implementation::create() {
-    // Register signal handler.
-
-    keepRunningFlag = true;
-    std::signal(SIGINT, [](int){
-        if (!keepRunningFlag) {
-            JST_DEBUG("[METAL] Exiting via SIGINT...");
-            std::exit(0);
-        }
-        keepRunningFlag = false;
-    });
-
     // Check if we are running in headless mode.
     JST_ASSERT(!Backend::State<DeviceType::Vulkan>()->headless(), "Headless mode is not supported.");
 
     // Initialize and configure GLFW.
 
+    glfwSetErrorCallback(&PrintGLFWError);
+
     if (!glfwInit()) {
-        JST_ERROR("[VULKAN] Failed to initialize GLFW.");
+        const int error = glfwGetError(nullptr);
+        if (error == GLFW_PLATFORM_UNAVAILABLE) {
+            JST_ERROR("[VULKAN] No graphical display is available. Run with '--headless' when no desktop session is present.");
+        } else {
+            JST_ERROR("[VULKAN] Failed to initialize GLFW.");
+        }
         return Result::ERROR;
     }
-
-    glfwSetErrorCallback(&PrintGLFWError);
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
@@ -373,6 +365,9 @@ VkSurfaceFormatKHR Implementation::chooseSwapSurfaceFormat(const std::vector<VkS
 }
 
 VkPresentModeKHR Implementation::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
+#ifdef JST_OS_WINDOWS
+    static_cast<void>(availablePresentModes);
+#endif
     if (config.vsync) {
         // TODO: Re-evaluate if we want MAILBOX.
 #ifndef JST_OS_WINDOWS
@@ -446,7 +441,7 @@ Result Implementation::pollEvents() {
 }
 
 bool Implementation::keepRunning() {
-    return (!glfwWindowShouldClose(window)) && keepRunningFlag;
+    return !glfwWindowShouldClose(window);
 }
 
 }  // namespace Jetstream::Viewport

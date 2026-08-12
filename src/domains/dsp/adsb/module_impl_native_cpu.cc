@@ -24,6 +24,9 @@ static constexpr F64 CprDlatOdd  = 360.0 / 59.0;
 static constexpr F64 CprMaxVal   = 131072.0;  // 2^17
 static constexpr U64 CprPairWindowMs = 10000;
 
+// libmodes requires enough data for one complete Mode S message.
+static constexpr U64 ModeSMinimumSamples = 240;
+
 static F64 cprMod(F64 a, F64 b) {
     F64 res = std::fmod(a, b);
     if (res < 0.0) {
@@ -115,6 +118,7 @@ struct AdsbImplNativeCpu : public AdsbImpl,
                            public NativeCpuRuntimeContext,
                            public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
     Result destroy() final;
 
@@ -131,6 +135,39 @@ struct AdsbImplNativeCpu : public AdsbImpl,
 };
 
 static thread_local AdsbImplNativeCpu* tls_instance = nullptr;
+
+Result AdsbImplNativeCpu::validate() {
+    JST_CHECK(AdsbImpl::validate());
+
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::CF32) {
+        JST_ERROR("[MODULE_ADSB_NATIVE_CPU] Unsupported input data "
+                  "type: {}.", inputTensor.dtype());
+        return Result::ERROR;
+    }
+
+    if (inputTensor.size() < ModeSMinimumSamples) {
+        JST_ERROR("[MODULE_ADSB_NATIVE_CPU] Input requires at least {} samples.",
+                  ModeSMinimumSamples);
+        return Result::ERROR;
+    }
+
+    if (inputTensor.size() > std::numeric_limits<U32>::max()) {
+        JST_ERROR("[MODULE_ADSB_NATIVE_CPU] Input size exceeds the libmodes "
+                  "sample-count range.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
 
 void AdsbImplNativeCpu::messageCallback(mode_s_t*, struct mode_s_msg* mm) {
     if (!tls_instance || !mm->crcok) {
@@ -225,14 +262,6 @@ Result AdsbImplNativeCpu::create() {
 
     JST_CHECK(AdsbImpl::create());
 
-    // Validate input dtype.
-
-    if (input.dtype() != DataType::CF32) {
-        JST_ERROR("[MODULE_ADSB_NATIVE_CPU] Unsupported input data "
-                  "type: {}.", input.dtype());
-        return Result::ERROR;
-    }
-
     // Initialize libmodes.
 
     mode_s_init(&state);
@@ -256,12 +285,27 @@ Result AdsbImplNativeCpu::destroy() {
 Result AdsbImplNativeCpu::computeSubmit() {
     const CF32* iqData = reinterpret_cast<const CF32*>(input.data());
     const U64 numSamples = input.size();
+    const U64 batchCount = batchAxis ? input.shape(*batchAxis) : 1;
+    const U64 batchStride = batchAxis ? input.stride(*batchAxis) : 0;
+    const U64 sampleCount = input.shape(sampleAxis);
+    const U64 sampleStride = input.stride(sampleAxis);
 
-    for (U64 i = 0; i < numSamples; ++i) {
-        const F32 real = iqData[i].real() * 128.0f;
-        const F32 imag = iqData[i].imag() * 128.0f;
-        const F32 mag = std::sqrt(real * real + imag * imag) * 360.0f;
-        magBuf[i] = static_cast<U16>(std::min(mag, static_cast<F32>(std::numeric_limits<U16>::max())));
+    U64 orderedIndex = 0;
+    for (U64 batch = 0; batch < batchCount; ++batch) {
+        for (U64 sample = 0; sample < sampleCount; ++sample) {
+            const CF32& iq =
+                iqData[batch * batchStride + sample * sampleStride];
+            if (!std::isfinite(iq.real()) || !std::isfinite(iq.imag())) {
+                magBuf[orderedIndex++] = U16{0};
+                continue;
+            }
+
+            const F64 real = static_cast<F64>(iq.real()) * 128.0;
+            const F64 imag = static_cast<F64>(iq.imag()) * 128.0;
+            const F64 magnitude = std::hypot(real, imag) * 360.0;
+            magBuf[orderedIndex++] = static_cast<U16>(std::min(
+                magnitude, static_cast<F64>(std::numeric_limits<U16>::max())));
+        }
     }
 
     tls_instance = this;

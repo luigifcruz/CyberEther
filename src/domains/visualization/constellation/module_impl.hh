@@ -17,6 +17,7 @@ constexpr F32 kConstellationZoomSpeed = 0.15f;
 struct ConstellationImpl : public Module::Impl,
                            public DynamicConfig<Constellation> {
  public:
+    Result validate() override;
     Result define() override;
     Result create() override;
     Result destroy() override;

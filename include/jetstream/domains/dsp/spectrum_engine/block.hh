@@ -6,7 +6,6 @@
 namespace Jetstream::Blocks {
 
 struct SpectrumEngine : public Block::Config {
-    U64 axis = 1;
     bool enableAgc = false;
     bool enableScale = false;
     F32 rangeMin = -120.0f;
@@ -14,7 +13,7 @@ struct SpectrumEngine : public Block::Config {
 
     JST_BLOCK_TYPE(spectrum_engine);
     JST_BLOCK_DOMAIN("DSP");
-    JST_BLOCK_PARAMS(axis, enableAgc, enableScale, rangeMin, rangeMax);
+    JST_BLOCK_PARAMS(enableAgc, enableScale, rangeMin, rangeMax);
     JST_BLOCK_DESCRIPTION(
         "Spectrum Engine",
         "Computes spectra with windowing, FFT, and optional scaling.",
@@ -24,10 +23,14 @@ struct SpectrumEngine : public Block::Config {
         "window, performs FFT, and optionally applies AGC and range scaling to "
         "produce the final spectrum output in decibels.\n\n"
 
+        "The input must identify its sample dimension with `sampleAxis`. Optional "
+        "`batchAxis` and `channelAxis` roles are preserved on the output. Other "
+        "dimensions remain independent. Real inputs in F32 format are promoted "
+        "to CF32 before windowing. Both F32 and CF32 inputs produce an F32 "
+        "spectrum.\n\n"
+
         "## Arguments\n"
-        "- **Axis**: The axis along which to compute the spectrum (determines "
-        "window size).\n"
-        "- **Enable AGC**: Whether to apply automatic gain control after the FFT.\n"
+        "- **Enable AGC**: Apply one RMS gain across all FFT bins.\n"
         "- **Enable Scale**: Whether to apply range scaling to the output.\n"
         "- **Range Min**: Minimum value of the scale range (dBFS). Only used "
         "when Enable Scale is true.\n"
@@ -41,18 +44,20 @@ struct SpectrumEngine : public Block::Config {
 
         "## Examples\n"
         "- Batched spectrum analysis:\n"
-        "  Config: Axis=1, Enable AGC=false, Enable Scale=true, Range Min=-120, "
+        "  Config: Enable AGC=false, Enable Scale=true, Range Min=-120, "
         "Range Max=0\n"
         "  Input: CF32[8, 1024] -> Output: F32[8, 1024]\n\n"
+        "- Real-valued spectrum analysis:\n"
+        "  Input: F32[1024] -> Output: F32[1024]\n\n"
 
         "## Implementation\n"
-        "Input -> Window + Invert -> Multiply -> FFT -> [AGC] -> Amplitude -> "
+        "Input -> Cast -> Window + Invert -> Multiply -> FFT -> [AGC] -> Amplitude -> "
         "[Range] -> Output\n"
-        "1. Window module generates a Blackman window sized to the input axis.\n"
+        "1. Window module generates a Blackman window sized to the sample axis.\n"
         "2. Invert module applies FFT shift to center the window.\n"
         "3. Multiply module applies the shifted window to the input signal.\n"
-        "4. FFT module computes the forward Fourier transform.\n"
-        "5. Optional AGC module normalizes signal amplitude.\n"
+        "4. The FFT module computes the forward Fourier transform.\n"
+        "5. Optional AGC module applies one RMS gain across the spectrum.\n"
         "6. Amplitude module computes the magnitude in decibels.\n"
         "7. Optional Range module scales the output to the specified range.";
     );

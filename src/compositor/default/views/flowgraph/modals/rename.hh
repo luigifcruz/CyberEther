@@ -2,7 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_MODALS_RENAME_HH
 
 #include "../../components/modal_header.hh"
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
 #include <functional>
@@ -10,7 +10,7 @@
 
 namespace Jetstream {
 
-struct RenameBlockView : public Sakura::Component {
+struct RenameBlockView {
     struct Config {
         std::string oldName;
         std::function<void(const std::string&)> onRename;
@@ -18,21 +18,28 @@ struct RenameBlockView : public Sakura::Component {
 
     void update(Config config) {
         if (this->config.oldName != config.oldName) {
-            newName.clear();
+            newName = config.oldName;
         }
         this->config = std::move(config);
 
         header.update({
             .id = "RenameBlockHeader",
-            .title = ICON_FA_PENCIL " Rename Block",
+            .title = ICON_FA_TAG " Rename Block",
             .description = "Enter a new block identifier.",
         });
         input.update({
             .id = "##rename-block-new-id",
             .value = newName,
+            .hint = "Block name",
             .submit = Sakura::TextInput::Submit::OnEdit,
+            .focus = true,
+            .selectAllOnFocus = true,
             .onChange = [this](const std::string& value) {
                 newName = value;
+            },
+            .onSubmit = [this](const std::string& value) {
+                newName = value;
+                submit();
             },
         });
         renameButton.update({
@@ -40,10 +47,9 @@ struct RenameBlockView : public Sakura::Component {
             .str = "Rename Block",
             .size = {-1.0f, 40.0f},
             .variant = Sakura::Button::Variant::Action,
+            .disabled = !canSubmit(),
             .onClick = [this]() {
-                if (this->config.onRename) {
-                    this->config.onRename(newName);
-                }
+                submit();
             },
         });
     }
@@ -56,6 +62,16 @@ struct RenameBlockView : public Sakura::Component {
     }
 
  private:
+    bool canSubmit() const {
+        return newName != config.oldName;
+    }
+
+    void submit() const {
+        if (canSubmit() && config.onRename) {
+            config.onRename(newName);
+        }
+    }
+
     Config config;
     std::string newName;
     ModalHeader header;

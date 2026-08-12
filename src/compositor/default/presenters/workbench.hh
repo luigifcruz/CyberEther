@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_WORKBENCH_HH
 
 #include "context.hh"
+#include "file_picker.hh"
 #include "flowgraph/environment.hh"
 #include "flowgraph/metadata.hh"
 #include "flowgraph/window.hh"
@@ -17,6 +18,7 @@ namespace Jetstream {
 
 struct WorkbenchPresenter {
     const PresenterContext& context;
+    FilePickerPresenter filePicker;
     MenubarPresenter menubar;
     WelcomeHudPresenter welcomeHud;
     InfoHudPresenter infoHud;
@@ -27,6 +29,7 @@ struct WorkbenchPresenter {
     ModalPresenter modal;
 
     explicit WorkbenchPresenter(const PresenterContext& context) : context(context),
+                                                                   filePicker(context),
                                                                    menubar(context),
                                                                    welcomeHud(context),
                                                                    infoHud(context),
@@ -40,7 +43,11 @@ struct WorkbenchPresenter {
         WorkbenchView::Config config;
         config.filePending = context.state.interface.filePending;
         config.backgroundParticles = context.state.interface.backgroundParticles;
-        config.debugLatencyVisible = context.state.debug.latencyEnabled;
+        if (context.state.debug.latencyEnabled) {
+            config.debugWindow = Sakura::DebugWindow::Config{
+                .id = "latency-debug-window",
+            };
+        }
         config.menubar = menubar.build();
         config.welcomeHud = welcomeHud.build();
         config.infoHud = infoHud.build();
@@ -52,6 +59,7 @@ struct WorkbenchPresenter {
         config.flowgraphMetadata = flowgraphMetadata.build();
         config.flowgraphEnvironment = flowgraphEnvironment.build();
         config.modal = modal.build();
+        config.filePicker = filePicker.build();
         return config;
     }
 };

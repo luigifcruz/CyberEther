@@ -13,7 +13,6 @@ JST_BENCHMARKS("fold") {
             },
             .config = JST_BENCHMARK_CONFIG(([]{
                 Fold cfg;
-                cfg.axis = 0;
                 cfg.offset = 0;
                 cfg.size = 1024;
                 return cfg;
@@ -26,7 +25,6 @@ JST_BENCHMARKS("fold") {
             },
             .config = JST_BENCHMARK_CONFIG(([]{
                 Fold cfg;
-                cfg.axis = 0;
                 cfg.offset = 0;
                 cfg.size = 1024;
                 return cfg;
@@ -39,7 +37,6 @@ JST_BENCHMARKS("fold") {
             },
             .config = JST_BENCHMARK_CONFIG(([]{
                 Fold cfg;
-                cfg.axis = 0;
                 cfg.offset = 0;
                 cfg.size = 1024;
                 return cfg;
@@ -52,7 +49,6 @@ JST_BENCHMARKS("fold") {
             },
             .config = JST_BENCHMARK_CONFIG(([]{
                 Fold cfg;
-                cfg.axis = 0;
                 cfg.offset = 0;
                 cfg.size = 1024;
                 return cfg;

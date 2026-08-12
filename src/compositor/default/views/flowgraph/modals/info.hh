@@ -2,7 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_MODALS_INFO_HH
 
 #include "../../components/modal_header.hh"
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
 #include <functional>
@@ -11,7 +11,7 @@
 
 namespace Jetstream {
 
-struct FlowgraphInfoView : public Sakura::Component {
+struct FlowgraphInfoView {
     struct Config {
         std::string flowgraphId;
         std::string title;

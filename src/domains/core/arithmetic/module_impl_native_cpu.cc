@@ -12,6 +12,7 @@ struct ArithmeticImplNativeCpu : public ArithmeticImpl,
                                  public NativeCpuRuntimeContext,
                                  public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeSubmit() override;
@@ -30,6 +31,28 @@ struct ArithmeticImplNativeCpu : public ArithmeticImpl,
     std::function<Result()> zeroKernel;
     std::function<Result()> kernel;
 };
+
+Result ArithmeticImplNativeCpu::validate() {
+    JST_CHECK(ArithmeticImpl::validate());
+
+    if (!inputs().contains("buffer")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("buffer").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() != DataType::F32 &&
+        inputTensor.dtype() != DataType::CF32) {
+        JST_ERROR("[MODULE_ARITHMETIC_NATIVE_CPU] Unsupported data type '{}'.",
+                  inputTensor.dtype());
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
 
 Result ArithmeticImplNativeCpu::create() {
     // Create parent.
@@ -55,10 +78,7 @@ Result ArithmeticImplNativeCpu::create() {
             kernel = [this]() { return kernelDivF32(); };
         }
 
-        return Result::SUCCESS;
-    }
-
-    if (input.dtype() == DataType::CF32) {
+    } else {
         zeroKernel = [this]() {
             return AutomaticIterator<CF32>(
                 [](auto& out) { out = CF32(0.0f, 0.0f); },
@@ -75,12 +95,9 @@ Result ArithmeticImplNativeCpu::create() {
             kernel = [this]() { return kernelDivCF32(); };
         }
 
-        return Result::SUCCESS;
     }
 
-    JST_ERROR("[MODULE_ARITHMETIC_NATIVE_CPU] Unsupported data type '{}'.",
-              input.dtype());
-    return Result::ERROR;
+    return Result::SUCCESS;
 }
 
 Result ArithmeticImplNativeCpu::computeSubmit() {

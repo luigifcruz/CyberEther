@@ -15,29 +15,30 @@ struct Range : public Block::Config {
     JST_BLOCK_PARAMS(min, max);
     JST_BLOCK_DESCRIPTION(
         "Range",
-        "Scales input to a specified range.",
+        "Compresses input into a normalized range.",
         "# Range\n"
-        "The Range block normalizes input data by scaling and offsetting values to fit within a specified "
-        "minimum and maximum range. This is useful for normalizing signal amplitudes or converting between "
-        "different value domains.\n\n"
+        "The Range block normalizes input data with a smooth soft knee. Values outside the selected minimum "
+        "and maximum are compressed toward 0 and 1 instead of being clipped or extending beyond the display.\n\n"
 
         "## Arguments\n"
-        "- **Min**: The minimum value of the input range.\n"
-        "- **Max**: The maximum value of the input range.\n\n"
+        "- **Min**: The lower soft-knee value of the input range.\n"
+        "- **Max**: The upper soft-knee value of the input range.\n"
+        "The bounds are ordered automatically if they cross. Equal bounds produce a constant output of 0.5.\n\n"
 
         "## Useful For\n"
         "- Normalizing signal amplitudes for visualization.\n"
-        "- Converting decibel values to linear scale within bounds.\n"
+        "- Compressing decibel values into display bounds.\n"
         "- Preparing data for display on fixed-range indicators.\n\n"
 
         "## Examples\n"
         "- Normalize dB levels:\n"
         "  Config: Min=-100, Max=0\n"
-        "  Input: F32[1024] with range [-100, 0] dB -> Output: F32[1024] normalized to [0, 1]\n\n"
+        "  Input: F32[1024] around [-100, 0] dB -> Output: F32[1024] softly compressed into [0, 1]\n\n"
 
         "## Implementation\n"
-        "Input -> Scale by 1/(max-min) -> Offset by -min/(max-min) -> Output\n"
-        "The scaling coefficient is computed as: output = (input - min) / (max - min).";
+        "Input -> Normalize -> Apply tanh soft knee -> Output\n"
+        "After ordering the bounds, the transform is: normalized = (input - min) / (max - min), "
+        "output = 0.5 + 0.5 * tanh(4 * (normalized - 0.5)).";
     );
 };
 

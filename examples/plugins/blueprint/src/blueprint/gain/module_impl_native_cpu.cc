@@ -14,6 +14,7 @@ struct BlueprintGainImplNativeCpu : public BlueprintGainImpl,
                                     public NativeCpuRuntimeContext,
                                     public Scheduler::Context {
   public:
+    Result validate() final;
     Result create() final;
 
     Result computeSubmit() override;
@@ -25,21 +26,36 @@ struct BlueprintGainImplNativeCpu : public BlueprintGainImpl,
     std::function<Result()> kernel;
 };
 
+Result BlueprintGainImplNativeCpu::validate() {
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (inputTensor.dtype() == DataType::F32 ||
+        inputTensor.dtype() == DataType::CF32) {
+        return Result::SUCCESS;
+    }
+
+    JST_ERROR("[BLUEPRINT_GAIN_NATIVE_CPU] Unsupported data type '{}'.",
+              inputTensor.dtype());
+    return Result::ERROR;
+}
+
 Result BlueprintGainImplNativeCpu::create() {
     JST_CHECK(BlueprintGainImpl::create());
 
-    if (input.dtype() == DataType::F32 && output.dtype() == DataType::F32) {
+    if (input.dtype() == DataType::F32) {
         kernel = [this]() { return kernelF32(); };
-        return Result::SUCCESS;
-    }
-
-    if (input.dtype() == DataType::CF32 && output.dtype() == DataType::CF32) {
+    } else {
         kernel = [this]() { return kernelCF32(); };
-        return Result::SUCCESS;
     }
 
-    JST_ERROR("[BLUEPRINT_GAIN_NATIVE_CPU] Unsupported data type '{}'.", input.dtype());
-    return Result::ERROR;
+    return Result::SUCCESS;
 }
 
 Result BlueprintGainImplNativeCpu::computeSubmit() {

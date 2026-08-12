@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <mutex>
 #include <shared_mutex>
 
@@ -79,6 +80,32 @@ Result Flowgraph::Environment::keys(std::vector<std::string>& keys) const {
     return Result::SUCCESS;
 }
 
+Result Flowgraph::Environment::versions(std::vector<std::pair<std::string, U64>>& versions) const {
+    const auto graph = impl.lock();
+    if (!graph) {
+        JST_ERROR("[FLOWGRAPH] Environment is no longer attached to a flowgraph.");
+        return Result::ERROR;
+    }
+
+    std::shared_lock lock(graph->environmentMutex);
+
+    versions.clear();
+    versions.reserve(graph->environmentValues.size());
+    for (const auto& [key, entries] : graph->environmentValues) {
+        if (entries.empty()) {
+            continue;
+        }
+
+        U64 version = 0;
+        for (const auto& entry : entries) {
+            version = std::max(version, entry.sequence);
+        }
+        versions.emplace_back(key, version);
+    }
+
+    return Result::SUCCESS;
+}
+
 Result Flowgraph::Environment::set(const std::string& key, const Parser::Map& data, U64 start, U64 end) {
     const auto graph = impl.lock();
     if (!graph) {
@@ -104,7 +131,18 @@ Result Flowgraph::Environment::set(const std::string& key, const Parser::Map& da
     }
 
     entries.push_back({start, end, sequence, data});
+    ++graph->environmentKeySequence;
     return Result::SUCCESS;
+}
+
+U64 Flowgraph::Environment::epoch() const {
+    const auto graph = impl.lock();
+    if (!graph) {
+        return 0;
+    }
+
+    std::shared_lock lock(graph->environmentMutex);
+    return graph->environmentSequence;
 }
 
 Result Flowgraph::Environment::clear(const std::string& key) {
@@ -115,7 +153,10 @@ Result Flowgraph::Environment::clear(const std::string& key) {
     }
 
     std::unique_lock lock(graph->environmentMutex);
-    graph->environmentValues.erase(key);
+    ++graph->environmentSequence;
+    if (graph->environmentValues.erase(key) > 0) {
+        ++graph->environmentKeySequence;
+    }
     return Result::SUCCESS;
 }
 
@@ -127,8 +168,11 @@ Result Flowgraph::Environment::clearAll() {
     }
 
     std::unique_lock lock(graph->environmentMutex);
+    ++graph->environmentSequence;
+    if (!graph->environmentValues.empty()) {
+        ++graph->environmentKeySequence;
+    }
     graph->environmentValues.clear();
-    graph->environmentSequence = 0;
     return Result::SUCCESS;
 }
 

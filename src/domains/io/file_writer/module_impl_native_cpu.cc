@@ -11,15 +11,22 @@ struct FileWriterImplNativeCpu : public FileWriterImpl,
                                  public NativeCpuRuntimeContext,
                                  public Scheduler::Context {
  public:
-    Result create() final;
+    Result validate() final;
 
     Result computeSubmit() override;
 };
 
-Result FileWriterImplNativeCpu::create() {
-    JST_CHECK(FileWriterImpl::create());
+Result FileWriterImplNativeCpu::validate() {
+    JST_CHECK(FileWriterImpl::validate());
+
+    if (!inputs().contains("buffer")) {
+        return Result::SUCCESS;
+    }
 
     const auto& input = inputs().at("buffer").tensor;
+    if (!input.validShape() || input.size() == 0) {
+        return Result::SUCCESS;
+    }
 
     if (input.dtype() != DataType::CF32 &&
         input.dtype() != DataType::F32 &&

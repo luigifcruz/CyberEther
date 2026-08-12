@@ -7,16 +7,40 @@
 #include "jetstream/memory/types.hh"
 
 #include <chrono>
-#include <cstring>
 #include <unordered_set>
 
 #include <nanobench.h>
 
 namespace Jetstream {
 
+namespace {
+
+class LogLevelGuard {
+ public:
+    explicit LogLevelGuard(int level) : previous_(_JST_LOG_DEBUG_LEVEL()) {
+        JST_LOG_SET_DEBUG_LEVEL(level);
+    }
+
+    LogLevelGuard(const LogLevelGuard&) = delete;
+    LogLevelGuard& operator=(const LogLevelGuard&) = delete;
+
+    ~LogLevelGuard() {
+        JST_LOG_SET_DEBUG_LEVEL(previous_);
+    }
+
+ private:
+    int previous_;
+};
+
+struct ComputeFailed {};
+
+}  // namespace
+
 struct Benchmark::Impl {
-    void run(const std::string& outputType, std::ostream& out);
-    U64 totalCount();
+    void run(const std::string& outputType,
+             const std::string& blockType,
+             std::ostream& out);
+    U64 totalCount(const std::string& blockType);
     U64 currentCount();
     void resetResults();
     const Benchmark::ResultMapType& getResults();
@@ -29,7 +53,9 @@ Benchmark::Impl& Benchmark::benchmark() {
     return impl;
 }
 
-void Benchmark::Impl::run(const std::string& outputType, std::ostream& out) {
+void Benchmark::Impl::run(const std::string& outputType,
+                          const std::string& blockType,
+                          std::ostream& out) {
     using namespace ankerl;
     using namespace std::chrono_literals;
 
@@ -41,12 +67,11 @@ void Benchmark::Impl::run(const std::string& outputType, std::ostream& out) {
         JST_CHECK_THROW(Result::FATAL);
     }
 
-    const int previousLogLevel = _JST_LOG_DEBUG_LEVEL();
-    JST_LOG_SET_DEBUG_LEVEL(-1);
+    LogLevelGuard logLevel(-1);
 
     resetResults();
 
-    for (const auto& benchmark : Registry::ListAvailableBenchmarks()) {
+    for (const auto& benchmark : Registry::ListAvailableBenchmarks(blockType)) {
         const auto specs = benchmark.factory();
         if (specs.empty()) {
             continue;
@@ -101,8 +126,7 @@ void Benchmark::Impl::run(const std::string& outputType, std::ostream& out) {
                         break;
                     }
 
-                    std::memset(tensor.data(), 0, tensor.sizeBytes());
-
+                    // Owned tensor buffers are zero-initialized by each device backend.
                     inputs[inputSpec.name].requested("benchmark", inputSpec.name);
                     inputs[inputSpec.name].tensor = tensor;
                 }
@@ -126,11 +150,17 @@ void Benchmark::Impl::run(const std::string& outputType, std::ostream& out) {
 
                 const std::string benchName = spec.variant;
 
-                bench.run(benchName, [&]() {
-                    std::unordered_set<std::string> skippedModules;
-                    std::unordered_set<std::string> failedModules;
-                    runtime.compute({}, skippedModules, failedModules);
-                });
+                try {
+                    bench.run(benchName, [&]() {
+                        std::unordered_set<std::string> skippedModules;
+                        std::unordered_set<std::string> failedModules;
+                        if (runtime.compute({}, skippedModules, failedModules) != Result::SUCCESS) {
+                            throw ComputeFailed{};
+                        }
+                    });
+                } catch (const ComputeFailed&) {
+                    // Aborted cases intentionally leave no nanobench result.
+                }
 
                 runtime.destroy();
                 module->destroy();
@@ -157,12 +187,11 @@ void Benchmark::Impl::run(const std::string& outputType, std::ostream& out) {
         }
     }
 
-    JST_LOG_SET_DEBUG_LEVEL(previousLogLevel);
 }
 
-U64 Benchmark::Impl::totalCount() {
+U64 Benchmark::Impl::totalCount(const std::string& blockType) {
     U64 count = 0;
-    for (const auto& benchmark : Registry::ListAvailableBenchmarks()) {
+    for (const auto& benchmark : Registry::ListAvailableBenchmarks(blockType)) {
         const auto implementations = Registry::ListAvailableModules(benchmark.moduleType);
         count += benchmark.factory().size() * implementations.size();
     }
@@ -186,11 +215,17 @@ const Benchmark::ResultMapType& Benchmark::Impl::getResults() {
 }
 
 void Benchmark::Run(const std::string& outputType, std::ostream& out) {
-    benchmark().run(outputType, out);
+    benchmark().run(outputType, "", out);
 }
 
-U64 Benchmark::TotalCount() {
-    return benchmark().totalCount();
+void Benchmark::Run(const std::string& outputType,
+                    const std::string& blockType,
+                    std::ostream& out) {
+    benchmark().run(outputType, blockType, out);
+}
+
+U64 Benchmark::TotalCount(const std::string& blockType) {
+    return benchmark().totalCount(blockType);
 }
 
 U64 Benchmark::CurrentCount() {

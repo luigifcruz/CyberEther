@@ -21,8 +21,12 @@ CyberEther is a high-performance GPU-accelerated framework for real-time signal 
 - 🐍 Python API for custom signal visualization via **Superluminal**.
 
 <p align="center">
-<img src="docs/assets/images/cyberether-banner.png" />
+<img width="1847" height="1133" alt="CyberEtherPythonDemo" src="https://github.com/user-attachments/assets/372d7803-1b35-4ade-a038-ce3a6458c579" />
 </p>
+
+https://github.com/user-attachments/assets/9987cf2d-8b0b-4367-8ec3-869343026ee6
+
+https://github.com/user-attachments/assets/05f9007b-13b7-4d64-864f-3236e28e284d
 
 <p align="center">
 <samp>More demos on the website: <a href="https://cyberether.org">cyberether.org</a></samp>
@@ -40,7 +44,7 @@ See the current compatibility table in the [Overview](https://cyberether.org/doc
 
 CyberEther runs on macOS, Linux, Windows, iOS/iPadOS, Android, Raspberry Pi, and the browser.
 
-- [**Pre-built Binaries**](https://github.com/luigifcruz/CyberEther/releases): Download official releases for Linux (AppImage & tar.gz), Windows (MSI), and macOS (DMG).
+- [**Pre-built Binaries**](https://github.com/luigifcruz/CyberEther/releases): Download official releases for Linux (AppImage & tar.gz), Windows (MSI), and macOS (PKG).
 - [**Try Online**](https://cyberether.org/web): Run the browser build powered by **WebAssembly** and **WebGPU**.
 - [**Build From Source**](https://cyberether.org/docs/installation): Follow the dependency and build guide for custom builds or unsupported platforms.
 

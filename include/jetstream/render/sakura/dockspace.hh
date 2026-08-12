@@ -1,4 +1,5 @@
-#pragma once
+#ifndef JETSTREAM_RENDER_SAKURA_DOCKSPACE_HH
+#define JETSTREAM_RENDER_SAKURA_DOCKSPACE_HH
 
 #include <jetstream/types.hh>
 
@@ -19,3 +20,5 @@ U64 DockspaceId();
 void Dockspace(const DockspaceConfig& config);
 
 }  // namespace Jetstream::Sakura
+
+#endif  // JETSTREAM_RENDER_SAKURA_DOCKSPACE_HH

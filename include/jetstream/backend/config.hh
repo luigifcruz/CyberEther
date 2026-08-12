@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_BACKEND_CONFIG_HH
 #define JETSTREAM_BACKEND_CONFIG_HH
 
+#include <string>
+
 #include "jetstream/logger.hh"
 #include "jetstream/types.hh"
 
@@ -41,9 +43,9 @@ struct Config {
 #else
     bool validationEnabled = false;
 #endif
-    U64 stagingBufferSize = 64*1024*1024;
     U64 multisampling = 4;
     bool headless = false;
+    std::string pythonRuntimePath;
 };
 
 }  // namespace Jetstream::Backend

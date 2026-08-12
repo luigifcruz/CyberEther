@@ -22,12 +22,6 @@
 
 #include <zlib.h>
 
-#if defined(JST_OS_WINDOWS)
-#include <windows.h>
-#elif !defined(JST_OS_BROWSER)
-#include <dlfcn.h>
-#endif
-
 namespace Jetstream {
 
 struct Plugin::Impl {
@@ -106,19 +100,17 @@ struct Plugin::Impl {
     std::vector<Plugin::Info> list();
 
  private:
-    static std::string pathToUtf8(const std::filesystem::path& path);
     static std::string normalizePath(const std::string& path);
     static std::string cacheFileName(const std::string& sourcePath, uint64_t generation);
     static std::string lowercase(std::string value);
     static std::string currentSystem();
     static std::string currentArch();
-    static bool isCepPath(const std::string& path);
     static bool isDeviceAvailable(DeviceType device);
     static bool parseVersion(const std::string& version, uint32_t& encoded);
     static bool safeRelativePath(const std::string& rawPath, std::filesystem::path& relativePath);
 
     static void closeHandle(void* handle);
-    static const JetstreamPluginAbi* loadAbi(void* handle);
+    static const JetstreamPluginAbi* loadAbi(void* handle, std::string& error);
 
     static Result readFileBytes(const std::filesystem::path& path, std::vector<uint8_t>& bytes);
     static Result readTextFile(const std::filesystem::path& path, std::string& content);
@@ -169,38 +161,26 @@ Plugin::Impl::~Impl() {
     cleanup();
 }
 
-std::string Plugin::Impl::pathToUtf8(const std::filesystem::path& path) {
-    const auto utf8Path = path.u8string();
-
-    std::string value;
-    value.reserve(utf8Path.size());
-    for (const auto ch : utf8Path) {
-        value.push_back(static_cast<char>(ch));
-    }
-
-    return value;
-}
-
 std::string Plugin::Impl::normalizePath(const std::string& path) {
     std::error_code ec;
-    const auto inputPath = std::filesystem::u8path(path);
+    const auto inputPath = Platform::PathFromUtf8(path);
 
     const auto canonicalPath = std::filesystem::weakly_canonical(inputPath, ec);
     if (!ec) {
-        return pathToUtf8(canonicalPath);
+        return Platform::PathToUtf8(canonicalPath);
     }
 
     ec.clear();
     const auto absolutePath = std::filesystem::absolute(inputPath, ec);
     if (!ec) {
-        return pathToUtf8(absolutePath);
+        return Platform::PathToUtf8(absolutePath);
     }
 
     return path;
 }
 
 std::string Plugin::Impl::cacheFileName(const std::string& sourcePath, uint64_t generation) {
-    auto filename = pathToUtf8(std::filesystem::u8path(sourcePath).filename());
+    auto filename = Platform::PathToUtf8(Platform::PathFromUtf8(sourcePath).filename());
     if (filename.empty()) {
         filename = "plugin";
     }
@@ -250,10 +230,6 @@ std::string Plugin::Impl::currentArch() {
 #endif
 }
 
-bool Plugin::Impl::isCepPath(const std::string& path) {
-    return lowercase(std::filesystem::path(path).extension().string()) == ".cep";
-}
-
 bool Plugin::Impl::isDeviceAvailable(DeviceType device) {
     switch (device) {
         case DeviceType::CPU:
@@ -299,7 +275,10 @@ bool Plugin::Impl::parseVersion(const std::string& version, uint32_t& encoded) {
 
     uint32_t values[3] = {0, 0, 0};
     for (std::size_t i = 0; i < 3; ++i) {
-        if (parts[i].empty()) {
+        if (parts[i].empty() ||
+            !std::all_of(parts[i].begin(), parts[i].end(), [](unsigned char character) {
+                return character >= '0' && character <= '9';
+            })) {
             return false;
         }
 
@@ -329,7 +308,7 @@ bool Plugin::Impl::safeRelativePath(const std::string& rawPath, std::filesystem:
         return false;
     }
 
-    std::filesystem::path candidate(rawPath);
+    auto candidate = Platform::PathFromUtf8(rawPath);
     if (candidate.is_absolute() || candidate.has_root_name()) {
         return false;
     }
@@ -350,43 +329,25 @@ bool Plugin::Impl::safeRelativePath(const std::string& rawPath, std::filesystem:
 }
 
 void Plugin::Impl::closeHandle(void* handle) {
-    if (handle == nullptr) {
-        return;
-    }
-
-#if defined(JST_OS_WINDOWS)
-    FreeLibrary(reinterpret_cast<HMODULE>(handle));
-#elif !defined(JST_OS_BROWSER)
-    dlclose(handle);
-#else
-    (void)handle;
-#endif
+    Platform::CloseDynamicLibrary(handle);
 }
 
-const JetstreamPluginAbi* Plugin::Impl::loadAbi(void* handle) {
-#if defined(JST_OS_WINDOWS)
+const JetstreamPluginAbi* Plugin::Impl::loadAbi(void* handle, std::string& error) {
     return reinterpret_cast<const JetstreamPluginAbi*>(
-        GetProcAddress(reinterpret_cast<HMODULE>(handle), JETSTREAM_PLUGIN_ABI_SYMBOL));
-#elif !defined(JST_OS_BROWSER)
-    dlerror();
-    return reinterpret_cast<const JetstreamPluginAbi*>(dlsym(handle, JETSTREAM_PLUGIN_ABI_SYMBOL));
-#else
-    (void)handle;
-    return nullptr;
-#endif
+        Platform::LoadDynamicLibrarySymbol(handle, JETSTREAM_PLUGIN_ABI_SYMBOL, error));
 }
 
 Result Plugin::Impl::readFileBytes(const std::filesystem::path& path, std::vector<uint8_t>& bytes) {
     std::ifstream file(path, std::ios::binary);
     if (!file) {
-        JST_ERROR("[PLUGIN] Failed to open '{}'.", path.string());
+        JST_ERROR("[PLUGIN] Failed to open '{}'.", Platform::PathToUtf8(path));
         return Result::ERROR;
     }
 
     file.seekg(0, std::ios::end);
     const auto size = file.tellg();
     if (size < 0) {
-        JST_ERROR("[PLUGIN] Failed to determine size for '{}'.", path.string());
+        JST_ERROR("[PLUGIN] Failed to determine size for '{}'.", Platform::PathToUtf8(path));
         return Result::ERROR;
     }
 
@@ -395,7 +356,7 @@ Result Plugin::Impl::readFileBytes(const std::filesystem::path& path, std::vecto
     if (!bytes.empty()) {
         file.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
         if (!file) {
-            JST_ERROR("[PLUGIN] Failed to read '{}'.", path.string());
+            JST_ERROR("[PLUGIN] Failed to read '{}'.", Platform::PathToUtf8(path));
             return Result::ERROR;
         }
     }
@@ -455,7 +416,7 @@ Result Plugin::Impl::decompressGzip(const std::vector<uint8_t>& compressed,
 Result Plugin::Impl::extractCepArchive(const std::string& sourcePath,
                                        const std::filesystem::path& destination) {
     std::vector<uint8_t> compressed;
-    JST_CHECK(readFileBytes(std::filesystem::path(sourcePath), compressed));
+    JST_CHECK(readFileBytes(Platform::PathFromUtf8(sourcePath), compressed));
 
     std::vector<uint8_t> tar;
     JST_CHECK(decompressGzip(compressed, tar));
@@ -463,7 +424,8 @@ Result Plugin::Impl::extractCepArchive(const std::string& sourcePath,
     std::error_code ec;
     std::filesystem::create_directories(destination, ec);
     if (ec) {
-        JST_ERROR("[PLUGIN] Failed to create plugin extraction directory '{}'.", destination.string());
+        JST_ERROR("[PLUGIN] Failed to create plugin extraction directory '{}'.",
+                  Platform::PathToUtf8(destination));
         return Result::ERROR;
     }
 
@@ -507,7 +469,14 @@ Result Plugin::Impl::extractCepArchive(const std::string& sourcePath,
             return value == 0;
         });
         if (emptyBlock) {
-            return Result::SUCCESS;
+            const bool completeEndMarker = tar.size() - offset >= 1024 &&
+                std::all_of(header + 512, header + 1024, [](uint8_t value) {
+                    return value == 0;
+                });
+            if (completeEndMarker) {
+                return Result::SUCCESS;
+            }
+            break;
         }
 
         uint64_t storedChecksum = 0;
@@ -558,19 +527,20 @@ Result Plugin::Impl::extractCepArchive(const std::string& sourcePath,
         if (type == '5') {
             std::filesystem::create_directories(outputPath, ec);
             if (ec) {
-                JST_ERROR("[PLUGIN] Failed to create directory '{}'.", outputPath.string());
+                JST_ERROR("[PLUGIN] Failed to create directory '{}'.", Platform::PathToUtf8(outputPath));
                 return Result::ERROR;
             }
         } else if (type == '0') {
             std::filesystem::create_directories(outputPath.parent_path(), ec);
             if (ec) {
-                JST_ERROR("[PLUGIN] Failed to create directory '{}'.", outputPath.parent_path().string());
+                JST_ERROR("[PLUGIN] Failed to create directory '{}'.",
+                          Platform::PathToUtf8(outputPath.parent_path()));
                 return Result::ERROR;
             }
 
             std::ofstream file(outputPath, std::ios::binary | std::ios::trunc);
             if (!file) {
-                JST_ERROR("[PLUGIN] Failed to create file '{}'.", outputPath.string());
+                JST_ERROR("[PLUGIN] Failed to create file '{}'.", Platform::PathToUtf8(outputPath));
                 return Result::ERROR;
             }
 
@@ -578,7 +548,7 @@ Result Plugin::Impl::extractCepArchive(const std::string& sourcePath,
                 file.write(reinterpret_cast<const char*>(tar.data() + dataOffset),
                            static_cast<std::streamsize>(entrySize));
                 if (!file) {
-                    JST_ERROR("[PLUGIN] Failed to write file '{}'.", outputPath.string());
+                    JST_ERROR("[PLUGIN] Failed to write file '{}'.", Platform::PathToUtf8(outputPath));
                     return Result::ERROR;
                 }
             }
@@ -607,6 +577,14 @@ Result Plugin::Impl::loadManifest(const std::filesystem::path& bundlePath, Manif
 Result Plugin::Impl::validateManifest(const std::string& sourcePath, const Manifest& manifest) {
     if (manifest.metadata.name.empty() || manifest.metadata.version.empty()) {
         JST_ERROR("[PLUGIN] Plugin '{}' has incomplete metadata.", sourcePath);
+        return Result::ERROR;
+    }
+
+    uint32_t version = 0;
+    if (!parseVersion(manifest.metadata.version, version)) {
+        JST_ERROR("[PLUGIN] Plugin '{}' has invalid version '{}'.",
+                  sourcePath,
+                  manifest.metadata.version);
         return Result::ERROR;
     }
 
@@ -805,7 +783,7 @@ Result Plugin::Impl::copyToCache(const std::string& sourcePath, std::string& cac
     const auto destination = cacheRunDirectory / cacheFileName(sourcePath, ++cacheGeneration);
 
     std::error_code ec;
-    std::filesystem::copy_file(std::filesystem::u8path(sourcePath),
+    std::filesystem::copy_file(Platform::PathFromUtf8(sourcePath),
                                destination,
                                std::filesystem::copy_options::overwrite_existing,
                                ec);
@@ -815,11 +793,11 @@ Result Plugin::Impl::copyToCache(const std::string& sourcePath, std::string& cac
 
         JST_ERROR("[PLUGIN] Failed to copy plugin '{}' to cache '{}'.",
                   sourcePath,
-                  destination.string());
+                  Platform::PathToUtf8(destination));
         return Result::ERROR;
     }
 
-    cachedPath = pathToUtf8(destination);
+    cachedPath = Platform::PathToUtf8(destination);
     return Result::SUCCESS;
 }
 
@@ -828,25 +806,45 @@ Result Plugin::Impl::ensureCacheReady() {
         return Result::SUCCESS;
     }
 
+#if defined(JST_OS_BROWSER)
+    std::error_code ec;
+    const auto cacheRoot = std::filesystem::temp_directory_path(ec) / "cyberether-registry-plugins";
+    if (ec) {
+        JST_ERROR("[PLUGIN] Failed to resolve the temporary plugin cache directory.");
+        return Result::ERROR;
+    }
+
+    std::filesystem::create_directories(cacheRoot, ec);
+    if (ec) {
+        JST_ERROR("[PLUGIN] Failed to create plugin cache directory '{}'.",
+                  Platform::PathToUtf8(cacheRoot));
+        return Result::ERROR;
+    }
+
+    cacheRunDirectory = cacheRoot;
+    return Result::SUCCESS;
+#else
     std::string cachePath;
     JST_CHECK(Platform::CachePath(cachePath));
 
-    const auto cacheRoot = std::filesystem::u8path(cachePath) / "registry-plugins";
+    const auto cacheRoot = Platform::PathFromUtf8(cachePath) / "registry-plugins";
     const auto runsDirectory = cacheRoot / "runs";
 
     std::error_code ec;
     std::filesystem::create_directories(runsDirectory, ec);
     if (ec) {
-        JST_ERROR("[PLUGIN] Failed to create plugin cache directory '{}'.", runsDirectory.string());
+        JST_ERROR("[PLUGIN] Failed to create plugin cache directory '{}'.",
+                  Platform::PathToUtf8(runsDirectory));
         return Result::ERROR;
     }
 
     Platform::FileLock maintenanceLock;
-    JST_CHECK(maintenanceLock.acquire(pathToUtf8(cacheRoot / "maintenance.lock")));
+    JST_CHECK(maintenanceLock.acquire(Platform::PathToUtf8(cacheRoot / "maintenance.lock")));
 
     sweepCache(runsDirectory);
     JST_CHECK(createCacheRunDirectory(runsDirectory));
     return Result::SUCCESS;
+#endif
 }
 
 Result Plugin::Impl::createCacheRunDirectory(const std::filesystem::path& runsDirectory) {
@@ -859,7 +857,7 @@ Result Plugin::Impl::createCacheRunDirectory(const std::filesystem::path& runsDi
 
         ec.clear();
         if (std::filesystem::create_directory(candidate, ec)) {
-            if (cacheOwnerLock.acquire(pathToUtf8(candidate / "owner.lock")) != Result::SUCCESS) {
+            if (cacheOwnerLock.acquire(Platform::PathToUtf8(candidate / "owner.lock")) != Result::SUCCESS) {
                 std::error_code cleanupEc;
                 (void)std::filesystem::remove_all(candidate, cleanupEc);
                 return Result::ERROR;
@@ -870,7 +868,8 @@ Result Plugin::Impl::createCacheRunDirectory(const std::filesystem::path& runsDi
         }
 
         if (ec) {
-            JST_ERROR("[PLUGIN] Failed to create plugin cache run directory '{}'.", candidate.string());
+            JST_ERROR("[PLUGIN] Failed to create plugin cache run directory '{}'.",
+                      Platform::PathToUtf8(candidate));
             return Result::ERROR;
         }
     }
@@ -896,7 +895,7 @@ Result Plugin::Impl::extractToCache(const std::string& sourcePath, std::string& 
         return Result::ERROR;
     }
 
-    extractedPath = pathToUtf8(destination);
+    extractedPath = Platform::PathToUtf8(destination);
     return Result::SUCCESS;
 }
 
@@ -904,7 +903,8 @@ void Plugin::Impl::sweepCache(const std::filesystem::path& runsDirectory) {
     std::error_code ec;
     std::filesystem::directory_iterator entries(runsDirectory, ec);
     if (ec) {
-        JST_WARN("[PLUGIN] Failed to inspect plugin cache directory '{}'.", runsDirectory.string());
+        JST_WARN("[PLUGIN] Failed to inspect plugin cache directory '{}'.",
+                 Platform::PathToUtf8(runsDirectory));
         return;
     }
 
@@ -915,7 +915,7 @@ void Plugin::Impl::sweepCache(const std::filesystem::path& runsDirectory) {
         }
 
         Platform::FileLock staleOwnerLock;
-        const auto lockResult = staleOwnerLock.acquire(pathToUtf8(entry.path() / "owner.lock"), false);
+        const auto lockResult = staleOwnerLock.acquire(Platform::PathToUtf8(entry.path() / "owner.lock"), false);
         if (lockResult != Result::SUCCESS) {
             continue;
         }
@@ -925,7 +925,8 @@ void Plugin::Impl::sweepCache(const std::filesystem::path& runsDirectory) {
         std::error_code cleanupEc;
         (void)std::filesystem::remove_all(entry.path(), cleanupEc);
         if (cleanupEc) {
-            JST_WARN("[PLUGIN] Failed to remove stale plugin cache directory '{}'.", entry.path().string());
+            JST_WARN("[PLUGIN] Failed to remove stale plugin cache directory '{}'.",
+                     Platform::PathToUtf8(entry.path()));
         }
     }
 }
@@ -942,7 +943,7 @@ void Plugin::Impl::cleanupCache() {
     (void)std::filesystem::remove_all(cacheRunDirectory, ec);
     if (ec) {
         JST_WARN("[PLUGIN] Failed to remove plugin cache run directory '{}'.",
-                 cacheRunDirectory.string());
+                 Platform::PathToUtf8(cacheRunDirectory));
     }
 
     cacheRunDirectory.clear();
@@ -955,7 +956,7 @@ Result Plugin::Impl::load(const std::string& path) {
         return Result::ERROR;
     }
 
-    if (!isCepPath(path)) {
+    if (!Plugin::IsCepPath(path)) {
         JST_ERROR("[PLUGIN] Plugin '{}' is not a .cep bundle.", path);
         return Result::ERROR;
     }
@@ -984,12 +985,17 @@ Result Plugin::Impl::load(const std::string& path) {
 }
 
 Result Plugin::Impl::reload(const std::string& path) {
+#if defined(JST_OS_BROWSER)
+    (void)path;
+    JST_ERROR("[PLUGIN] Browser plugins cannot be reloaded in place. Refresh the page instead.");
+    return Result::ERROR;
+#else
     if (path.empty()) {
         JST_ERROR("[PLUGIN] Cannot reload plugin because path is empty.");
         return Result::ERROR;
     }
 
-    if (!isCepPath(path)) {
+    if (!Plugin::IsCepPath(path)) {
         JST_ERROR("[PLUGIN] Plugin '{}' is not a .cep bundle.", path);
         return Result::ERROR;
     }
@@ -1043,6 +1049,7 @@ Result Plugin::Impl::reload(const std::string& path) {
     std::lock_guard<std::mutex> guard(pluginsMutex);
     plugins.push_back(std::move(newPlugin));
     return Result::SUCCESS;
+#endif
 }
 
 std::vector<Plugin::Info> Plugin::Impl::list() {
@@ -1058,7 +1065,7 @@ std::vector<Plugin::Info> Plugin::Impl::list() {
 }
 
 Result Plugin::Impl::loadPluginCopy(const std::string& sourcePath, Record& plugin) {
-    if (!isCepPath(sourcePath)) {
+    if (!Plugin::IsCepPath(sourcePath)) {
         JST_ERROR("[PLUGIN] Plugin '{}' is not a .cep bundle.", sourcePath);
         return Result::ERROR;
     }
@@ -1093,7 +1100,7 @@ Result Plugin::Impl::loadPluginCopy(const std::string& sourcePath, Record& plugi
         return fail();
     }
 
-    const auto bundlePath = std::filesystem::path(extractedPath);
+    const auto bundlePath = Platform::PathFromUtf8(extractedPath);
     Manifest manifest;
     if (loadManifest(bundlePath, manifest) != Result::SUCCESS ||
         validateManifest(sourcePath, manifest) != Result::SUCCESS) {
@@ -1114,7 +1121,7 @@ Result Plugin::Impl::loadPluginCopy(const std::string& sourcePath, Record& plugi
         }
 
         void* handle = nullptr;
-        const auto libraryPath = pathToUtf8(bundlePath / relativePath);
+        const auto libraryPath = Platform::PathToUtf8(bundlePath / relativePath);
         if (openPlugin(libraryPath, handle) != Result::SUCCESS) {
             if (handle != nullptr) {
                 closeHandle(handle);
@@ -1156,17 +1163,10 @@ Result Plugin::Impl::loadPluginCopy(const std::string& sourcePath, Record& plugi
 
 Result Plugin::Impl::openPlugin(const std::string& path, void*& handle) {
     handle = nullptr;
+    std::string error;
 
     try {
-#if defined(JST_OS_WINDOWS)
-        handle = reinterpret_cast<void*>(LoadLibraryA(path.c_str()));
-#elif defined(JST_OS_BROWSER)
-        JST_ERROR("[PLUGIN] Plugins are not supported in this platform.");
-        return Result::ERROR;
-#else
-        dlerror();
-        handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
-#endif
+        handle = Platform::OpenDynamicLibrary(path, Platform::DynamicLibraryVisibility::Local, error);
     } catch (const Result& status) {
         JST_ERROR("[PLUGIN] Exception while loading plugin '{}': {}", path, status);
         return Result::ERROR;
@@ -1178,35 +1178,23 @@ Result Plugin::Impl::openPlugin(const std::string& path, void*& handle) {
         return Result::ERROR;
     }
 
-#if defined(JST_OS_WINDOWS)
     if (handle == nullptr) {
-        JST_ERROR("[PLUGIN] Failed to load plugin '{}'.", path);
+        JST_ERROR("[PLUGIN] Failed to load plugin '{}': {}", path, error);
         return Result::ERROR;
     }
-#elif !defined(JST_OS_BROWSER)
-    if (handle == nullptr) {
-        const char* error = dlerror();
-        JST_ERROR("[PLUGIN] Failed to load plugin '{}': {}", path, error != nullptr ? error : "unknown error");
-        return Result::ERROR;
-    }
-#endif
 
     JST_CHECK(validatePluginAbi(path, handle));
     return Result::SUCCESS;
 }
 
 Result Plugin::Impl::validatePluginAbi(const std::string& path, void* handle) {
-    const auto abi = loadAbi(handle);
+    std::string error;
+    const auto abi = loadAbi(handle, error);
     if (abi == nullptr) {
-#if defined(JST_OS_WINDOWS)
-        JST_ERROR("[PLUGIN] Plugin '{}' does not export '{}'.", path, JETSTREAM_PLUGIN_ABI_SYMBOL);
-#elif !defined(JST_OS_BROWSER)
-        const char* error = dlerror();
         JST_ERROR("[PLUGIN] Plugin '{}' does not export '{}': {}.",
                   path,
                   JETSTREAM_PLUGIN_ABI_SYMBOL,
-                  error != nullptr ? error : "unknown error");
-#endif
+                  error);
         return Result::ERROR;
     }
 
@@ -1248,9 +1236,9 @@ Result Plugin::Impl::registerExamples(const std::filesystem::path& bundlePath, c
         JST_CHECK(readTextFile(examplePath, content));
 
         Registry::FlowgraphRegistration record;
-        record.key = examplePath.stem().string();
+        record.key = Platform::PathToUtf8(examplePath.stem());
         if (record.key.empty()) {
-            record.key = relativePath.string();
+            record.key = Platform::PathToUtf8(relativePath);
         }
         record.title = record.key;
         record.content = content;
@@ -1292,7 +1280,7 @@ void Plugin::Impl::removeCachedPluginFiles(Record& plugin) {
     std::error_code ec;
 
     if (!plugin.extractedPath.empty()) {
-        (void)std::filesystem::remove_all(std::filesystem::path(plugin.extractedPath), ec);
+        (void)std::filesystem::remove_all(Platform::PathFromUtf8(plugin.extractedPath), ec);
         if (ec) {
             JST_WARN("[PLUGIN] Failed to remove extracted plugin '{}'.", plugin.extractedPath);
         }
@@ -1302,7 +1290,7 @@ void Plugin::Impl::removeCachedPluginFiles(Record& plugin) {
 
     if (!plugin.loadedPath.empty()) {
         ec.clear();
-        (void)std::filesystem::remove(std::filesystem::path(plugin.loadedPath), ec);
+        (void)std::filesystem::remove(Platform::PathFromUtf8(plugin.loadedPath), ec);
         if (ec) {
             JST_WARN("[PLUGIN] Failed to remove cached plugin '{}'.", plugin.loadedPath);
         }
@@ -1330,6 +1318,14 @@ void Plugin::Impl::cleanup() {
 Plugin::Impl& Plugin::plugin() {
     static Impl impl;
     return impl;
+}
+
+bool Plugin::IsCepPath(const std::string& path) {
+    auto extension = Platform::PathToUtf8(Platform::PathFromUtf8(path).extension());
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    return extension == ".cep";
 }
 
 Result Plugin::Load(const std::string& path) {

@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_MENU_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_MENU_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
 #include <functional>
@@ -11,7 +11,7 @@
 
 namespace Jetstream {
 
-struct FlowgraphNodeMenu : public Sakura::Component {
+struct FlowgraphNodeMenu {
     struct DeviceOption {
         std::string label;
         bool selected = false;
@@ -23,6 +23,8 @@ struct FlowgraphNodeMenu : public Sakura::Component {
         std::vector<DeviceOption> devices;
         std::function<void()> onCopy;
         std::function<void()> onPaste;
+        std::function<void()> onRename;
+        std::function<void()> onInspect;
         std::function<void()> onReload;
         std::function<void()> onDelete;
         std::function<void()> onDocumentation;
@@ -49,6 +51,16 @@ struct FlowgraphNodeMenu : public Sakura::Component {
             .shortcut = "CTRL+V",
             .enabled = this->config.pasteEnabled,
             .onClick = this->config.onPaste,
+        });
+        rename.update({
+            .id = this->config.id + ":rename",
+            .label = ICON_FA_TAG " Rename Block",
+            .onClick = this->config.onRename,
+        });
+        inspect.update({
+            .id = this->config.id + ":inspect",
+            .label = ICON_FA_CODE " Inspect & Edit",
+            .onClick = this->config.onInspect,
         });
         deviceSeparator.update({
             .id = this->config.id + ":device-separator",
@@ -87,6 +99,7 @@ struct FlowgraphNodeMenu : public Sakura::Component {
         deleteBlock.update({
             .id = this->config.id + ":delete",
             .label = ICON_FA_XMARK " Delete Block",
+            .colorKey = "error_red",
             .onClick = this->config.onDelete,
         });
         documentationSeparator.update({
@@ -104,17 +117,19 @@ struct FlowgraphNodeMenu : public Sakura::Component {
         popup.render(ctx, [this](const Sakura::Context& ctx) {
             copy.render(ctx);
             paste.render(ctx);
+            rename.render(ctx);
+            inspect.render(ctx);
             deviceSeparator.render(ctx);
             deviceMenu.render(ctx, [this](const Sakura::Context& ctx) {
                 for (const auto& item : deviceItems) {
                     item.render(ctx);
                 }
             });
-            actionSeparator.render(ctx);
             reload.render(ctx);
-            deleteBlock.render(ctx);
             documentationSeparator.render(ctx);
             documentation.render(ctx);
+            actionSeparator.render(ctx);
+            deleteBlock.render(ctx);
         });
     }
 
@@ -123,6 +138,8 @@ struct FlowgraphNodeMenu : public Sakura::Component {
     Sakura::ContextMenu popup;
     Sakura::MenuItem copy;
     Sakura::MenuItem paste;
+    Sakura::MenuItem rename;
+    Sakura::MenuItem inspect;
     Sakura::Divider deviceSeparator;
     Sakura::Menu deviceMenu;
     std::vector<Sakura::MenuItem> deviceItems;

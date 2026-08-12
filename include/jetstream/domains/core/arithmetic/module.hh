@@ -10,7 +10,7 @@ namespace Jetstream::Modules {
 
 struct Arithmetic : public Module::Config {
     std::string operation = "add";
-    U64 axis = 0;
+    I64 axis = -1;
     bool squeeze = false;
 
     JST_MODULE_TYPE(arithmetic);

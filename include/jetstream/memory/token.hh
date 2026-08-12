@@ -11,12 +11,13 @@ namespace Jetstream {
 
 struct JETSTREAM_API Token {
  public:
-    enum class Type { Number, Colon, Ellipsis };
+    enum class Type { Number, Colon, Ellipsis, ColonZeroEnd };
 
     Token();
     Token(U64 _a);
     Token(U64 _a, U64 _b);
     Token(U64 _a, U64 _b, U64 _c);
+    Token(U64 _a, U64 _b, U64 _c, bool _hasEnd);
     Token(I32 _a);
     Token(I32 _a, I32 _b);
     Token(I32 _a, I32 _b, I32 _c);
@@ -36,6 +37,10 @@ struct JETSTREAM_API Token {
 
     constexpr const U64& getC() const {
         return c;
+    }
+
+    constexpr bool hasEnd() const {
+        return b != 0 || type == Type::ColonZeroEnd;
     }
 
  private:

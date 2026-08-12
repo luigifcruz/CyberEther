@@ -1,11 +1,39 @@
 #include "module_impl.hh"
 
 #include <cmath>
+#include <jetstream/memory/axis.hh>
 
 namespace Jetstream::Modules {
 
+Result AmplitudeImpl::validate() {
+    validatedNormalizationSize = 1;
+
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    SignalAxes axes;
+    if (MapSignalAxes(inputTensor,
+                      IdentityAxisMap(inputTensor.rank()),
+                      axes) != Result::SUCCESS) {
+        JST_ERROR("[MODULE_AMPLITUDE] Input must contain valid signal axis metadata.");
+        return Result::ERROR;
+    }
+
+    if (!axes.sample && !axes.channel) {
+        JST_ERROR("[MODULE_AMPLITUDE] Input must contain sampleAxis or channelAxis metadata.");
+        return Result::ERROR;
+    }
+
+    if (axes.sample) {
+        validatedNormalizationSize = inputTensor.shape(*axes.sample);
+    }
+    return Result::SUCCESS;
+}
+
 Result AmplitudeImpl::define() {
-    JST_CHECK(defineTaint(Module::Taint::DISCONTIGUOUS));
+    JST_CHECK(defineTaint(Module::Taint::DISCONTIGUOUS | Module::Taint::STATELESS));
 
     JST_CHECK(defineInterfaceInput("signal"));
     JST_CHECK(defineInterfaceOutput("signal"));
@@ -18,9 +46,9 @@ Result AmplitudeImpl::create() {
 
     input = inputTensor;
 
-    // Calculate scaling coefficient based on last axis size.
-    const U64 lastAxis = input.rank() - 1;
-    scalingCoeff = 20.0f * std::log10(1.0f / static_cast<F32>(input.shape()[lastAxis]));
+    scalingCoeff = 20.0f *
+                    std::log10(1.0f /
+                               static_cast<F32>(validatedNormalizationSize));
 
     // Create output tensor with same shape but F32 type.
     JST_CHECK(output.create(input.device(), DataType::F32, input.shape()));

@@ -10,14 +10,14 @@ jobs:
   static:
     runs-on: ubuntu-latest
     container:
-      image: emscripten/emsdk:5.0.2@sha256:559781dfc5570c6670d74930a04dfe131cff611b4088761662493d537b87976d
+      image: emscripten/emsdk:6.0.5@sha256:76a44fff907397784decc435115d07fcb9587a4f1504977f39f3745e538e3a1e
     defaults:
       run:
         shell: bash
     env:
       DEBIAN_FRONTEND: noninteractive
     steps:
-      - uses: actions/checkout@v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install system dependencies
         run: |

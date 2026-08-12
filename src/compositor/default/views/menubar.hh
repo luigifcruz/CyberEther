@@ -1,7 +1,8 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MENUBAR_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MENUBAR_HH
 
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
+#include "jetstream/render/tools/imgui_icons_ext.hh"
 
 #include <array>
 #include <functional>
@@ -11,12 +12,13 @@
 
 namespace Jetstream {
 
-struct MenubarView : public Sakura::Component {
+struct MenubarView {
     enum class Action {
         About,
         ViewLicense,
         ViewThirdPartyOss,
         CheckForUpdates,
+        OpenUpdateModal,
         Preferences,
         Quit,
         NewFlowgraph,
@@ -56,6 +58,8 @@ struct MenubarView : public Sakura::Component {
         bool debugLatencyEnabled = false;
         bool debugTimingEnabled = false;
         I32 debugLogLevel = 0;
+        bool updateAvailable = false;
+        bool updateReady = false;
         std::vector<std::string> themes;
         std::string currentThemeKey;
         std::function<void(F32)> onHeight;
@@ -356,6 +360,13 @@ struct MenubarView : public Sakura::Component {
                 },
             },
         });
+
+        updateMenu.update({
+            .id = this->config.id + ":update-menu",
+            .label = this->config.updateReady ? "Update Ready" : "Update Available",
+            .scale = 1.04f,
+            .colorKey = "warning_yellow",
+        });
     }
 
     void render(const Sakura::Context& ctx) {
@@ -430,6 +441,12 @@ struct MenubarView : public Sakura::Component {
                 repositoryItem.render(ctx);
                 reportIssueItem.render(ctx);
             });
+
+            if (config.updateAvailable || config.updateReady) {
+                updateMenu.render(ctx, [this](const Sakura::Context&) {
+                    emit(Action::OpenUpdateModal);
+                });
+            }
         });
     }
 
@@ -490,8 +507,10 @@ struct MenubarView : public Sakura::Component {
     Sakura::MenuItem documentationItem;
     Sakura::MenuItem repositoryItem;
     Sakura::MenuItem reportIssueItem;
+    Sakura::Menu updateMenu;
     std::array<Sakura::Divider, 10> dividers;
     Sakura::KeyboardInput shortcuts;
+    Sakura::Button updateBadge;
 };
 
 }  // namespace Jetstream

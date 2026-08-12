@@ -286,10 +286,14 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         }
 
         std::vector<VkPhysicalDevice> physicalDevices(physicalDeviceCount);
-        vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices.data());
+        JST_VK_CHECK_THROW(vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices.data()), [&]{
+            JST_FATAL("[VULKAN] Can't enumerate physical devices.");
+        });
 
         std::vector<VkPhysicalDevice> validPhysicalDevices;
         for (const auto& candidatePhysicalDevice : physicalDevices) {
+            VkPhysicalDeviceProperties candidateProperties;
+            vkGetPhysicalDeviceProperties(candidatePhysicalDevice, &candidateProperties);
             const auto& requiredExtensions = getRequiredDeviceExtensions();
             const auto& supportedExtensions = checkDeviceExtensionSupport(candidatePhysicalDevice, requiredExtensions);
             const auto& extensionCheck = requiredExtensions.size() == supportedExtensions.size();
@@ -297,10 +301,14 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
             const auto& queueFamilyIndices = FindQueueFamilies(candidatePhysicalDevice);
             const auto& queueFamilyCheck = queueFamilyIndices.isComplete();
 
-            JST_DEBUG("[VULKAN] Candidate device - Extension check: {}, Queue family check: {}",
+            JST_DEBUG("[VULKAN] Candidate device '{}' - Extension check: {}, Queue family check: {}",
+                      candidateProperties.deviceName,
                       extensionCheck ? "OK" : "FAIL", queueFamilyCheck ? "OK" : "FAIL");
 
             if (extensionCheck && queueFamilyCheck) {
+                JST_DEBUG("[VULKAN] Device ID {}: {}",
+                          validPhysicalDevices.size(),
+                          candidateProperties.deviceName);
                 validPhysicalDevices.push_back(candidatePhysicalDevice);
             }
         }
@@ -309,7 +317,7 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
             JST_CHECK_THROW(Result::FATAL);
         }
         if (validPhysicalDevices.size() <= config.deviceId) {
-            JST_FATAL("[VULKAN] Can't find desired device ID.");
+            JST_FATAL("[VULKAN] Can't find desired device ID ({}).", config.deviceId);
             JST_CHECK_THROW(Result::FATAL);
         }
         physicalDevice = validPhysicalDevices[config.deviceId];
@@ -491,66 +499,28 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
 
     {
         VkDescriptorPoolSize poolSizes[] = {
-            { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
-            { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
-            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
-            { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
-            { VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
-            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
-            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
-            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
-            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
-            { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
+            { VK_DESCRIPTOR_TYPE_SAMPLER, 8192 },
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 8192 },
+            { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 8192 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 8192 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 8192 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 8192 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 8192 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 8192 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 8192 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 8192 },
+            { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 8192 }
         };
 
         VkDescriptorPoolCreateInfo descriptorPoolInfo{};
         descriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         descriptorPoolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-        descriptorPoolInfo.maxSets = 1000;
+        descriptorPoolInfo.maxSets = 8192;
         descriptorPoolInfo.poolSizeCount = std::size(poolSizes);
         descriptorPoolInfo.pPoolSizes = poolSizes;
 
         JST_VK_CHECK_THROW(vkCreateDescriptorPool(device, &descriptorPoolInfo, nullptr, &descriptorPool), [&]{
             JST_FATAL("[VULKAN] Can't create descriptor pool.")
-        });
-    }
-
-    // Create staging buffer.
-
-    {
-        VkBufferCreateInfo bufferInfo{};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = config.stagingBufferSize;
-        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-                           VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        JST_VK_CHECK_THROW(vkCreateBuffer(device, &bufferInfo, nullptr, &stagingBuffer), [&]{
-            JST_FATAL("[VULKAN] Failed to create staging buffer.");
-        });
-
-        VkMemoryRequirements memRequirements;
-        vkGetBufferMemoryRequirements(device, stagingBuffer, &memRequirements);
-
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = Backend::FindMemoryType(physicalDevice,
-                                                            memRequirements.memoryTypeBits,
-                                                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                                            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-        JST_VK_CHECK_THROW(vkAllocateMemory(device, &allocInfo, nullptr, &stagingBufferMemory), [&]{
-            JST_FATAL("[VULKAN] Failed to allocate staging buffer memory.");
-        });
-
-        JST_VK_CHECK_THROW(vkBindBufferMemory(device, stagingBuffer, stagingBufferMemory, 0), [&]{
-            JST_FATAL("[VULKAN] Failed to bind memory to staging buffer.");
-        });
-
-        JST_VK_CHECK_THROW(vkMapMemory(device, stagingBufferMemory, 0, config.stagingBufferSize, 0, &stagingBufferMappedMemory), [&]{
-            JST_FATAL("[VULKAN] Failed to map staging buffer memory.");
         });
     }
 
@@ -604,17 +574,17 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
     JST_INFO("-----------------------------------------------------");
     JST_INFO("Jetstream Heterogeneous Backend [VULKAN]")
     JST_INFO("-----------------------------------------------------");
+    JST_INFO("Device ID:        {}", getDeviceId());
     JST_INFO("Device Name:      {}", getDeviceName());
     JST_INFO("Device Type:      {}", getPhysicalDeviceType());
     JST_INFO("API Version:      {}", getApiVersion());
     JST_INFO("Unified Memory:   {}", hasUnifiedMemory() ? "YES" : "NO");
     JST_INFO("Processor Count:  {}", getTotalProcessorCount());
     JST_INFO("Device Memory:    {:.2f} GB", static_cast<F32>(getPhysicalMemory()) / (1024*1024*1024));
-    JST_INFO("Staging Buffer:   {:.2f} MB", static_cast<F32>(config.stagingBufferSize) / JST_MB);
     JST_INFO("Interoperability:");
     JST_INFO("  - Can Import Device Memory: {}", canImportDeviceMemory() ? "YES" : "NO");
     JST_INFO("  - Can Export Device Memory: {}", canExportDeviceMemory() ? "YES" : "NO");
-    JST_INFO("  - Can Export Host Memory:   {}", canImportHostMemory() ? "YES" : "NO");
+    JST_INFO("  - Can Import Host Memory:   {}", canImportHostMemory() ? "YES" : "NO");
     JST_INFO("-----------------------------------------------------");
 }
 
@@ -622,9 +592,6 @@ Vulkan::~Vulkan() {
     vkDestroyFence(device, defaultFence, nullptr);
     vkFreeCommandBuffers(device, defaultCommandPool, 1, &defaultCommandBuffer);
     vkDestroyCommandPool(device, defaultCommandPool, nullptr);
-    vkUnmapMemory(device, stagingBufferMemory);
-    vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingBufferMemory, nullptr);
     vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 
     if (debugReportCallback != VK_NULL_HANDLE) {

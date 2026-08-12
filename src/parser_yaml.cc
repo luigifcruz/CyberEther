@@ -187,7 +187,7 @@ Result Parser::YamlDecode(const std::string& yaml, Parser::Map& data) {
     }
 
     auto root = tree.rootref();
-    if (!root.is_map() && root.num_children() > 0) {
+    if (root.is_stream() && root.num_children() > 0) {
         root = root[0];
     }
 

@@ -1,11 +1,60 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <string>
+
 #include "jetstream/testing.hh"
 #include "jetstream/registry.hh"
+#include "jetstream/module_interface.hh"
 #include "jetstream/domains/core/slice/module.hh"
+#include "jetstream/memory/axis.hh"
 
 using namespace Jetstream;
+
+namespace {
+
+void RequireSliceValidationError(const Registry::ModuleRegistration& impl,
+                                 const std::string& slice,
+                                 const Shape& inputShape = {8}) {
+    Tensor input;
+    REQUIRE(input.create(impl.device, DataType::F32, inputShape) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["buffer"].requested("test", "buffer");
+    inputs["buffer"].tensor = input;
+
+    Modules::Slice config;
+    config.slice = slice;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("slice", impl.device, impl.runtime,
+                                  impl.provider, module) == Result::SUCCESS);
+
+    Result result = Result::SUCCESS;
+    REQUIRE_NOTHROW(result = module->create("test", config, inputs));
+    REQUIRE(result == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    REQUIRE(module->interface()->outputs().empty());
+    REQUIRE(module->outputs().empty());
+}
+
+}  // namespace
+
+TEST_CASE("Slice plans bind to their source layout",
+          "[modules][slice][validation][plan]") {
+    Tensor input(DeviceType::CPU, DataType::F32, {4, 4});
+    Tensor::SlicePlan plan;
+    REQUIRE(input.planSlice({Token(1), Token()}, plan) == Result::SUCCESS);
+
+    Tensor output = input.clone();
+    REQUIRE(output.applySlicePlan(plan) == Result::SUCCESS);
+    REQUIRE(output.shape() == Shape{4});
+    REQUIRE(output.offset() == 4);
+
+    Tensor stale = input.clone();
+    REQUIRE(stale.slice({Token(1), Token()}) == Result::SUCCESS);
+    REQUIRE(stale.applySlicePlan(plan) == Result::ERROR);
+}
 
 TEST_CASE("Slice Module - Basic Range F32", "[modules][slice][F32]") {
     auto implementations = Registry::ListAvailableModules("slice");
@@ -42,6 +91,34 @@ TEST_CASE("Slice Module - Basic Range F32", "[modules][slice][F32]") {
     }
 }
 
+TEST_CASE("Slice Module - Explicit Empty Range F32", "[modules][slice][F32][empty]") {
+    auto implementations = Registry::ListAvailableModules("slice");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            for (const U64 start : {U64{0}, U64{1}}) {
+                CAPTURE(start);
+                TestContext ctx("slice", impl.device, impl.runtime, impl.provider);
+
+                Modules::Slice config;
+                config.slice = "[" + std::to_string(start) + ":0]";
+                ctx.setConfig(config);
+
+                auto input = ctx.createTensor<F32>({4});
+                ctx.setInput("buffer", input);
+                REQUIRE(ctx.run() == Result::SUCCESS);
+
+                const auto& out = ctx.output("buffer");
+                REQUIRE(out.shape() == Shape{0});
+                REQUIRE(out.size() == 0);
+                REQUIRE(out.offset() == start);
+                REQUIRE(out.contiguous());
+            }
+        }
+    }
+}
+
 TEST_CASE("Slice Module - Step F32", "[modules][slice][F32][step]") {
     auto implementations = Registry::ListAvailableModules("slice");
     REQUIRE(!implementations.empty());
@@ -51,7 +128,7 @@ TEST_CASE("Slice Module - Step F32", "[modules][slice][F32][step]") {
             TestContext ctx("slice", impl.device, impl.runtime, impl.provider);
 
             Modules::Slice config;
-            config.slice = "[0:8:2]";
+            config.slice = "[:8:2]";
 
             ctx.setConfig(config);
 
@@ -73,6 +150,30 @@ TEST_CASE("Slice Module - Step F32", "[modules][slice][F32][step]") {
             REQUIRE_THAT(out.at<F32>(1), Catch::Matchers::WithinAbs(2.0f, 1e-6f));
             REQUIRE_THAT(out.at<F32>(2), Catch::Matchers::WithinAbs(4.0f, 1e-6f));
             REQUIRE_THAT(out.at<F32>(3), Catch::Matchers::WithinAbs(6.0f, 1e-6f));
+        }
+    }
+}
+
+TEST_CASE("Slice Module - Omitted Stop Step F32", "[modules][slice][F32][step]") {
+    auto implementations = Registry::ListAvailableModules("slice");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("slice", impl.device, impl.runtime, impl.provider);
+
+            Modules::Slice config;
+            config.slice = "[1::2]";
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({8});
+            ctx.setInput("buffer", input);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("buffer");
+            REQUIRE(out.shape() == Shape{4});
+            REQUIRE(out.offset() == 1);
+            REQUIRE(out.stride() == Shape{2});
         }
     }
 }
@@ -225,44 +326,165 @@ TEST_CASE("Slice Module - CF32", "[modules][slice][CF32]") {
 }
 
 TEST_CASE("Slice Module - Validation rejects malformed slice strings",
-          "[modules][slice][validation]") {
+           "[modules][slice][validation]") {
     auto implementations = Registry::ListAvailableModules("slice");
     REQUIRE(!implementations.empty());
 
     for (const auto& impl : implementations) {
-        SECTION("empty slice string") {
-            TestContext ctx("slice", impl.device, impl.runtime, impl.provider);
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            SECTION("basic syntax failures") {
+                for (const auto* malformed : {
+                         "", "1:4", "[foo]", "[-1]", "[0,,1]", "[0 1]", "[[]]",
+                         "[::]", "[1::]", "[1:2:]"}) {
+                    CAPTURE(malformed);
+                    RequireSliceValidationError(impl, malformed);
+                }
+            }
 
-            Modules::Slice config;
-            config.slice = "";
-            ctx.setConfig(config);
+            SECTION("numeric overflow") {
+                RequireSliceValidationError(impl, "[18446744073709551616:]");
+                RequireSliceValidationError(impl, "[::18446744073709551616]");
+            }
 
-            auto input = ctx.createTensor<F32>({8});
-            ctx.setInput("buffer", input);
-            REQUIRE(ctx.run() == Result::ERROR);
+            SECTION("zero step") {
+                RequireSliceValidationError(impl, "[::0]");
+            }
+
+            SECTION("duplicate ellipsis") {
+                RequireSliceValidationError(impl, "[..., ...]", {2, 4});
+            }
+
+            SECTION("excess dimensions") {
+                RequireSliceValidationError(impl, "[:, :]", {8});
+            }
+
+            SECTION("indices and ranges must fit their dimensions") {
+                for (const auto* invalidRange : {"[8]", "[9:]", "[:9]"}) {
+                    CAPTURE(invalidRange);
+                    RequireSliceValidationError(impl, invalidRange, {8});
+                }
+            }
         }
+    }
+}
 
-        SECTION("missing slice brackets") {
-            TestContext ctx("slice", impl.device, impl.runtime, impl.provider);
+TEST_CASE("Slice Module - Direct creation preserves accepted syntax",
+          "[modules][slice][validation][syntax]") {
+    const auto implementations = Registry::ListAvailableModules("slice");
+    REQUIRE(!implementations.empty());
 
-            Modules::Slice config;
-            config.slice = "1:4";
-            ctx.setConfig(config);
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Tensor inputFixture;
+            REQUIRE(inputFixture.create(impl.device, DataType::F32, {4, 4}) ==
+                    Result::SUCCESS);
 
-            auto input = ctx.createTensor<F32>({8});
-            ctx.setInput("buffer", input);
-            REQUIRE(ctx.run() == Result::ERROR);
+            for (const auto* syntax : {
+                     "[]", "[ ]", "[...]", "[1]", "[:]", "[1:]", "[:3]",
+                     "[:4]", "[4:]", "[1:3]", "[::2]", "[1::2]", "[:3:2]",
+                     "[1:3:2]", "[1:0]", "[ 1:3 , ... ]"}) {
+                CAPTURE(syntax);
+
+                Tensor input = inputFixture.clone();
+                TensorMap inputs;
+                inputs["buffer"].requested("test", "buffer");
+                inputs["buffer"].tensor = input;
+
+                Modules::Slice config;
+                config.slice = syntax;
+                std::shared_ptr<Module> module;
+                REQUIRE(Registry::BuildModule("slice", impl.device, impl.runtime,
+                                              impl.provider, module) == Result::SUCCESS);
+
+                Result result = Result::ERROR;
+                REQUIRE_NOTHROW(result = module->create("test", config, inputs));
+                REQUIRE(result == Result::SUCCESS);
+                REQUIRE(module->outputs().contains("buffer"));
+                REQUIRE(module->destroy() == Result::SUCCESS);
+            }
         }
+    }
+}
 
-        SECTION("invalid token") {
-            TestContext ctx("slice", impl.device, impl.runtime, impl.provider);
+TEST_CASE("Slice Module - Maps Signal Axes Through Slice Tokens",
+          "[modules][slice][metadata]") {
+    const auto implementations = Registry::ListAvailableModules("slice");
+    REQUIRE(!implementations.empty());
 
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
             Modules::Slice config;
-            config.slice = "[foo]";
+            Shape inputShape{2, 3, 4, 5};
+            SignalAxes inputAxes;
+            SignalAxes expectedAxes;
+
+            SECTION("integer axes shift every following role") {
+                config.slice = "[1, :, ...]";
+                inputAxes = {
+                    .sample = Index{3},
+                    .batch = Index{2},
+                    .channel = Index{1},
+                };
+                expectedAxes = {
+                    .sample = Index{2},
+                    .batch = Index{1},
+                    .channel = Index{0},
+                };
+            }
+            SECTION("integer-indexed channel axis is removed") {
+                config.slice = "[..., 1, :]";
+                inputAxes = {
+                    .sample = Index{3},
+                    .batch = Index{0},
+                    .channel = Index{2},
+                };
+                expectedAxes = {
+                    .sample = Index{2},
+                    .batch = Index{0},
+                };
+            }
+
+            TestContext ctx("slice", impl.device, impl.runtime, impl.provider);
+            ctx.setConfig(config);
+            auto input = ctx.createTensor<F32>(inputShape);
+            REQUIRE(SetSignalAxes(input, inputAxes) == Result::SUCCESS);
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+            const auto& output = ctx.output("buffer");
+            SignalAxes outputAxes;
+            REQUIRE(ResolveSignalAxes(output, outputAxes) == Result::SUCCESS);
+            REQUIRE(outputAxes.sample == expectedAxes.sample);
+            REQUIRE(outputAxes.batch == expectedAxes.batch);
+            REQUIRE(outputAxes.channel == expectedAxes.channel);
+            if (config.slice == "[1, :, ...]") {
+                REQUIRE(output.shape() == Shape{3, 4, 5});
+            } else {
+                REQUIRE(output.shape() == Shape{2, 3, 5});
+            }
+        }
+    }
+}
+
+TEST_CASE("Slice Module - Rejects Malformed Signal Axis Metadata",
+          "[modules][slice][metadata][validation]") {
+    const auto implementations = Registry::ListAvailableModules("slice");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("slice", impl.device, impl.runtime, impl.provider);
+            Modules::Slice config;
+            config.slice = "[...]";
             ctx.setConfig(config);
 
-            auto input = ctx.createTensor<F32>({8});
+            auto input = ctx.createTensor<F32>({2, 4});
+            REQUIRE(input.setAttribute(std::string(SampleAxisAttribute), Index{1}) ==
+                    Result::SUCCESS);
+            REQUIRE(input.setAttribute(std::string(ChannelAxisAttribute), I64{0}) ==
+                    Result::SUCCESS);
             ctx.setInput("buffer", input);
+
             REQUIRE(ctx.run() == Result::ERROR);
         }
     }

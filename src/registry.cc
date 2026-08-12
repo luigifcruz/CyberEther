@@ -27,6 +27,60 @@ class ActiveQueueScope {
     std::vector<std::function<Result()>>* previousQueue;
 };
 
+template<typename Output, typename Factory>
+Result InvokeFactory(const char* kind, Output& output, Factory&& factory) {
+    try {
+        auto candidate = factory();
+        if (!candidate) {
+            JST_ERROR("[REGISTRY] {} factory returned null.", kind);
+            return Result::ERROR;
+        }
+
+        output = std::move(candidate);
+        return Result::SUCCESS;
+    } catch (const Result& status) {
+        JST_ERROR("[REGISTRY] {} factory threw status {}.", kind, status);
+    } catch (const std::exception& e) {
+        JST_ERROR("[REGISTRY] {} factory threw an exception: {}", kind, e.what());
+    } catch (...) {
+        JST_ERROR("[REGISTRY] {} factory threw an unknown exception.", kind);
+    }
+
+    return Result::ERROR;
+}
+
+bool MatchesTarget(const Registry::ModuleRegistration& module,
+                   const DeviceType device,
+                   const RuntimeType runtime,
+                   const ProviderType& provider) {
+    return module.device == device &&
+           module.runtime == runtime &&
+           module.provider == provider;
+}
+
+bool ProvidesUnconditionalRequirements(const Registry::BlockRegistration& block,
+                                       const std::vector<Registry::ModuleRegistration>& modules,
+                                       const DeviceType device,
+                                       const RuntimeType runtime,
+                                       const ProviderType& provider) {
+    for (const auto& requirement : block.moduleRequirements) {
+        if (requirement.conditional) {
+            continue;
+        }
+
+        const auto available = std::find_if(
+            modules.begin(), modules.end(), [&](const auto& module) {
+                return module.type == requirement.type &&
+                       MatchesTarget(module, device, runtime, provider);
+            });
+        if (available == modules.end()) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 }  // namespace
 
 struct Registry::Impl {
@@ -44,7 +98,8 @@ struct Registry::Impl {
                          const std::string& title,
                          const std::string& summary,
                          const std::string& description,
-                         Registry::BlockFactory factory);
+                         Registry::BlockFactory factory,
+                         const std::vector<Registry::BlockModuleRequirement>& moduleRequirements);
     Result registerFlowgraph(const std::string& key,
                              const Registry::FlowgraphRegistration& metadata);
     Result registerBenchmark(const std::string& moduleType,
@@ -66,6 +121,7 @@ struct Registry::Impl {
                                                           const ProviderType& provider);
     std::vector<Registry::FlowgraphRegistration> listFlowgraphs(const std::string& key);
     std::vector<Registry::BlockRegistration> listBlocks(const std::string& type);
+    std::vector<Registry::BlockTarget> listBlockTargets(const std::string& type);
     std::vector<Registry::BenchmarkRegistration> listBenchmarks(const std::string& moduleType);
 
     Result buildModule(const std::string& type,
@@ -175,6 +231,10 @@ Result Registry::Impl::registerModule(const std::string& type,
         JST_ERROR("[REGISTRY] Empty provider for module '{}'.", type);
         return Result::ERROR;
     }
+    if (!factory) {
+        JST_ERROR("[REGISTRY] Empty factory for module '{}'.", type);
+        return Result::ERROR;
+    }
 
     std::lock_guard<std::mutex> guard(registrationsMutex);
 
@@ -199,7 +259,8 @@ Result Registry::Impl::registerBlock(const std::string& type,
                                      const std::string& title,
                                      const std::string& summary,
                                      const std::string& description,
-                                     Registry::BlockFactory factory) {
+                                     Registry::BlockFactory factory,
+                                     const std::vector<Registry::BlockModuleRequirement>& moduleRequirements) {
     JST_TRACE("[REGISTRY] Registering block [Type: {}, Domain: {}]", type, domain);
 
     if (type.empty()) {
@@ -208,6 +269,19 @@ Result Registry::Impl::registerBlock(const std::string& type,
     }
     if (domain.empty()) {
         JST_ERROR("[REGISTRY] Empty domain for block '{}'.", type);
+        return Result::ERROR;
+    }
+    if (!factory) {
+        JST_ERROR("[REGISTRY] Empty factory for block '{}'.", type);
+        return Result::ERROR;
+    }
+    if (std::any_of(
+            moduleRequirements.begin(),
+            moduleRequirements.end(),
+            [](const auto& requirement) {
+                return requirement.type.empty();
+            })) {
+        JST_ERROR("[REGISTRY] Empty module requirement for block '{}'.", type);
         return Result::ERROR;
     }
 
@@ -221,7 +295,8 @@ Result Registry::Impl::registerBlock(const std::string& type,
         if (duplicate->domain == domain &&
             duplicate->title == title &&
             duplicate->summary == summary &&
-            duplicate->description == description) {
+            duplicate->description == description &&
+            duplicate->moduleRequirements == moduleRequirements) {
             return Result::SUCCESS;
         }
 
@@ -229,7 +304,13 @@ Result Registry::Impl::registerBlock(const std::string& type,
         return Result::ERROR;
     }
 
-    blocks.push_back({type, domain, title, summary, description, std::move(factory)});
+    blocks.push_back({type,
+                      domain,
+                      title,
+                      summary,
+                      description,
+                      moduleRequirements,
+                      std::move(factory)});
     return Result::SUCCESS;
 }
 
@@ -239,6 +320,12 @@ Result Registry::Impl::registerFlowgraph(const std::string& key,
 
     if (key.empty()) {
         JST_ERROR("[REGISTRY] Empty key for flowgraph registration.");
+        return Result::ERROR;
+    }
+    if (metadata.key != key) {
+        JST_ERROR("[REGISTRY] Flowgraph metadata key '{}' does not match registration key '{}'.",
+                  metadata.key,
+                  key);
         return Result::ERROR;
     }
 
@@ -345,7 +432,6 @@ std::vector<Registry::ModuleRegistration> Registry::Impl::listModules(const std:
                                                                       std::optional<DeviceType> device,
                                                                       std::optional<RuntimeType> runtime,
                                                                       const ProviderType& provider) {
-    JST_TRACE("[REGISTRY] Listing modules.");
     std::lock_guard<std::mutex> guard(registrationsMutex);
 
     std::vector<Registry::ModuleRegistration> filtered;
@@ -410,8 +496,74 @@ std::vector<Registry::BlockRegistration> Registry::Impl::listBlocks(const std::s
     return filtered;
 }
 
+std::vector<Registry::BlockTarget> Registry::Impl::listBlockTargets(const std::string& type) {
+    JST_TRACE("[REGISTRY] Listing block targets [Type: {}].", type);
+    std::lock_guard<std::mutex> guard(registrationsMutex);
+
+    const auto block = std::find_if(
+        blocks.begin(), blocks.end(), [&](const auto& entry) {
+            return entry.type == type;
+        });
+    if (block == blocks.end()) {
+        return {};
+    }
+
+    std::vector<Registry::BlockTarget> targets;
+    auto addTarget = [&](const DeviceType device,
+                         const RuntimeType runtime,
+                         const ProviderType& provider) {
+        const auto duplicate = std::find_if(
+            targets.begin(), targets.end(), [&](const auto& target) {
+                return target.device == device &&
+                       target.runtime == runtime &&
+                       target.provider == provider;
+            });
+        if (duplicate == targets.end()) {
+            targets.push_back({device, runtime, provider});
+        }
+    };
+
+    const auto unconditional = std::find_if(block->moduleRequirements.begin(),
+                                             block->moduleRequirements.end(),
+                                             [](const auto& requirement) {
+                                                 return !requirement.conditional;
+                                             });
+    if (block->moduleRequirements.empty()) {
+        addTarget(DeviceType::CPU, RuntimeType::NATIVE, "generic");
+    } else if (unconditional != block->moduleRequirements.end()) {
+        for (const auto& module : modules) {
+            if (module.type == unconditional->type) {
+                addTarget(module.device, module.runtime, module.provider);
+            }
+        }
+    } else {
+        addTarget(DeviceType::CPU, RuntimeType::NATIVE, "generic");
+        for (const auto& module : modules) {
+            const auto required = std::find_if(block->moduleRequirements.begin(),
+                                               block->moduleRequirements.end(),
+                                               [&](const auto& requirement) {
+                                                   return requirement.type == module.type;
+                                               });
+            if (required != block->moduleRequirements.end()) {
+                addTarget(module.device, module.runtime, module.provider);
+            }
+        }
+    }
+
+    targets.erase(
+        std::remove_if(targets.begin(), targets.end(), [&](const auto& target) {
+            return !ProvidesUnconditionalRequirements(*block,
+                                                      modules,
+                                                      target.device,
+                                                      target.runtime,
+                                                      target.provider);
+        }),
+        targets.end());
+
+    return targets;
+}
+
 std::vector<Registry::BenchmarkRegistration> Registry::Impl::listBenchmarks(const std::string& moduleType) {
-    JST_TRACE("[REGISTRY] Listing benchmarks.");
     std::lock_guard<std::mutex> guard(registrationsMutex);
 
     std::vector<Registry::BenchmarkRegistration> filtered;
@@ -450,39 +602,41 @@ Result Registry::Impl::buildModule(const std::string& type,
         return Result::ERROR;
     }
 
-    std::lock_guard<std::mutex> guard(registrationsMutex);
-
-    const auto it = std::find_if(modules.begin(), modules.end(), [&](const auto& entry) {
-        return entry.type == type &&
-               entry.device == device &&
-               entry.runtime == runtime &&
-               entry.provider == provider;
-    });
-
-    if (it != modules.end()) {
-        module = it->factory(environment, view);
-        return Result::SUCCESS;
+    Registry::ModuleFactory factory;
+    {
+        std::lock_guard<std::mutex> guard(registrationsMutex);
+        const auto it = std::find_if(modules.begin(), modules.end(), [&](const auto& entry) {
+            return entry.type == type &&
+                   entry.device == device &&
+                   entry.runtime == runtime &&
+                   entry.provider == provider;
+        });
+        if (it == modules.end()) {
+            JST_ERROR("[REGISTRY] Module not found [Type: {}, Device: {}, Runtime: {}, Provider: {}].", type, device, runtime, provider);
+            return Result::ERROR;
+        }
+        factory = it->factory;
     }
 
-    JST_ERROR("[REGISTRY] Module not found [Type: {}, Device: {}, Runtime: {}, Provider: {}].", type, device, runtime, provider);
-    return Result::ERROR;
+    return InvokeFactory("Module", module, [&]() { return factory(environment, view); });
 }
 
 Result Registry::Impl::buildBlock(const std::string& type, std::shared_ptr<Block>& block) {
     JST_TRACE("[REGISTRY] Creating block [Type: {}]", type);
-    std::lock_guard<std::mutex> guard(registrationsMutex);
-
-    const auto it = std::find_if(blocks.begin(), blocks.end(), [&](const auto& entry) {
-        return entry.type == type;
-    });
-
-    if (it != blocks.end()) {
-        block = it->factory();
-        return Result::SUCCESS;
+    Registry::BlockFactory factory;
+    {
+        std::lock_guard<std::mutex> guard(registrationsMutex);
+        const auto it = std::find_if(blocks.begin(), blocks.end(), [&](const auto& entry) {
+            return entry.type == type;
+        });
+        if (it == blocks.end()) {
+            JST_ERROR("[REGISTRY] Block not found [Type: {}]", type);
+            return Result::ERROR;
+        }
+        factory = it->factory;
     }
 
-    JST_ERROR("[REGISTRY] Block not found [Type: {}]", type);
-    return Result::ERROR;
+    return InvokeFactory("Block", block, [&]() { return factory(); });
 }
 
 Result Registry::QueueStaticRegistration(std::function<Result()> callback) {
@@ -514,8 +668,15 @@ Result Registry::RegisterBlock(const std::string& type,
                                const std::string& title,
                                const std::string& summary,
                                const std::string& description,
-                               BlockFactory factory) {
-    JST_CHECK(registry().registerBlock(type, domain, title, summary, description, std::move(factory)));
+                               BlockFactory factory,
+                               const std::vector<Registry::BlockModuleRequirement>& moduleRequirements) {
+    JST_CHECK(registry().registerBlock(type,
+                                       domain,
+                                       title,
+                                       summary,
+                                       description,
+                                       std::move(factory),
+                                       moduleRequirements));
     return Result::SUCCESS;
 }
 
@@ -571,6 +732,13 @@ std::vector<Registry::BlockRegistration> Registry::ListAvailableBlocks(const std
         std::abort();
     }
     return registry().listBlocks(type);
+}
+
+std::vector<Registry::BlockTarget> Registry::ListAvailableBlockTargets(const std::string& type) {
+    if (registry().drainStaticRegistrations() != Result::SUCCESS) {
+        std::abort();
+    }
+    return registry().listBlockTargets(type);
 }
 
 std::vector<Registry::FlowgraphRegistration> Registry::ListAvailableFlowgraphs(const std::string& key) {

@@ -11,6 +11,10 @@ Implementation::TextureImp(const Config& config) : Texture(config) {
 Result Implementation::create() {
     JST_DEBUG("[WebGPU] Creating texture.");
 
+    if (config.buffer) {
+        JST_CHECK(validateFillRow(0, config.size.y));
+    }
+
     auto device = Backend::State<DeviceType::WebGPU>()->getDevice();
 
     textureFormat = ConvertPixelFormat(config.pfmt, config.ptype);
@@ -78,56 +82,6 @@ Result Implementation::destroy() {
         wgpuTextureRelease(texture);
         texture = nullptr;
     }
-
-    return Result::SUCCESS;
-}
-
-bool Implementation::size(const Extent2D<U64>& size) {
-    if (size <= Extent2D<U64>{1, 1}) {
-        return false;
-    }
-
-    if (config.size != size) {
-        config.size = size;
-        return true;
-    }
-
-    return false;
-}
-
-Result Implementation::fill() {
-    return fillRow(0, config.size.y);
-}
-
-Result Implementation::fillRow(const U64& y, const U64& height) {
-    if (height < 1) {
-        return Result::SUCCESS;
-    }
-
-    WGPUDevice device = Backend::State<DeviceType::WebGPU>()->getDevice();
-    WGPUQueue queue = wgpuDeviceGetQueue(device);
-
-    WGPUTexelCopyBufferLayout layout = WGPU_TEXEL_COPY_BUFFER_LAYOUT_INIT;
-    layout.bytesPerRow = static_cast<uint32_t>(config.size.x * GetPixelByteSize(textureFormat));
-    layout.rowsPerImage = static_cast<uint32_t>(config.size.y);
-
-    WGPUExtent3D extent = {};
-    extent.width = static_cast<uint32_t>(config.size.x);
-    extent.height = static_cast<uint32_t>(height);
-    extent.depthOrArrayLayers = 1u;
-
-    WGPUTexelCopyTextureInfo copyTexture = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
-    copyTexture.texture = texture;
-    copyTexture.mipLevel = 0;
-    copyTexture.origin = WGPUOrigin3D{0, static_cast<uint32_t>(y), 0};
-    copyTexture.aspect = WGPUTextureAspect_All;
-
-    wgpuQueueWriteTexture(queue,
-                          &copyTexture,
-                          static_cast<const void*>(config.buffer),
-                          layout.bytesPerRow * layout.rowsPerImage,
-                          &layout,
-                          &extent);
 
     return Result::SUCCESS;
 }

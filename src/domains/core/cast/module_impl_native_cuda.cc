@@ -4,6 +4,7 @@
 #include <jetstream/scheduler_context.hh>
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <unordered_map>
 
@@ -16,11 +17,12 @@ namespace Jetstream::Modules {
 namespace {
 
 constexpr U64 kThreadsPerBlock = 256;
+constexpr U64 kMaxGridSizeX = std::numeric_limits<I32>::max();
 constexpr const char* kCastKernelName = "cast_kernel";
 
 constexpr const char* kCastContiguousKernelSource = R"(
 template<typename T>
-struct KernelComplex {
+struct alignas(sizeof(T) * 2) KernelComplex {
     T real;
     T imag;
 };
@@ -41,7 +43,7 @@ extern "C" __global__ void cast_kernel(const InputValue* input,
 
 constexpr const char* kCastStridedKernelSource = R"(
 template<typename T>
-struct KernelComplex {
+struct alignas(sizeof(T) * 2) KernelComplex {
     T real;
     T imag;
 };
@@ -67,27 +69,6 @@ extern "C" __global__ void cast_kernel(const InputValue* input,
     output[index] = ConvertValue(input[sourceIndex]);
 }
 )";
-
-template<typename T>
-struct KernelComplexHost {
-    T real;
-    T imag;
-};
-
-static_assert(sizeof(CF32) == sizeof(KernelComplexHost<F32>));
-static_assert(alignof(CF32) == alignof(KernelComplexHost<F32>));
-static_assert(sizeof(CI8) == sizeof(KernelComplexHost<I8>));
-static_assert(alignof(CI8) == alignof(KernelComplexHost<I8>));
-static_assert(sizeof(CI16) == sizeof(KernelComplexHost<I16>));
-static_assert(alignof(CI16) == alignof(KernelComplexHost<I16>));
-static_assert(sizeof(CI32) == sizeof(KernelComplexHost<I32>));
-static_assert(alignof(CI32) == alignof(KernelComplexHost<I32>));
-static_assert(sizeof(CU8) == sizeof(KernelComplexHost<U8>));
-static_assert(alignof(CU8) == alignof(KernelComplexHost<U8>));
-static_assert(sizeof(CU16) == sizeof(KernelComplexHost<U16>));
-static_assert(alignof(CU16) == alignof(KernelComplexHost<U16>));
-static_assert(sizeof(CU32) == sizeof(KernelComplexHost<U32>));
-static_assert(alignof(CU32) == alignof(KernelComplexHost<U32>));
 
 std::string MakeU64Literal(const U64 value) {
     return jst::fmt::format("{}ULL", value);
@@ -184,19 +165,12 @@ const char* ReciprocalExpression(const DataType& dtype) {
     }
 }
 
-Result BuildConversionDecls(const DataType& inputDtype,
-                            const DataType& outputDtype,
-                            std::string& conversionDecls) {
+std::string BuildConversionDecls(const DataType& inputDtype,
+                                 const DataType& outputDtype) {
     if (outputDtype == DataType::F32) {
         const char* inputType = ScalarTypeName(inputDtype);
         const char* reciprocal = ReciprocalExpression(inputDtype);
-        if (!inputType || !reciprocal) {
-            JST_ERROR("[MODULE_CAST_NATIVE_CUDA] Unsupported conversion '{}' -> '{}'.",
-                      inputDtype, outputDtype);
-            return Result::ERROR;
-        }
-
-        conversionDecls = jst::fmt::format(
+        return jst::fmt::format(
             "using InputValue = {};\n"
             "using OutputValue = float;\n\n"
             "__device__ __forceinline__ OutputValue ConvertValue(const InputValue in) {{\n"
@@ -205,39 +179,38 @@ Result BuildConversionDecls(const DataType& inputDtype,
             inputType,
             reciprocal
         );
-
-        return Result::SUCCESS;
     }
 
-    if (outputDtype == DataType::CF32) {
-        const char* inputType = ComplexTypeName(inputDtype);
-        if (!inputType) {
-            JST_ERROR("[MODULE_CAST_NATIVE_CUDA] Unsupported conversion '{}' -> '{}'.",
-                      inputDtype, outputDtype);
-            return Result::ERROR;
-        }
+    if (inputDtype == DataType::F32) {
+        return R"(
+using InputValue = float;
+using OutputValue = KernelComplex<float>;
 
-        const char* reciprocal = ReciprocalExpression(inputDtype);
-
-        conversionDecls = jst::fmt::format(
-            "using InputValue = {};\n"
-            "using OutputValue = KernelComplex<float>;\n\n"
-            "__device__ __forceinline__ OutputValue ConvertValue(const InputValue in) {{\n"
-            "    OutputValue out;\n"
-            "    out.real = static_cast<float>(in.real) * {};\n"
-            "    out.imag = static_cast<float>(in.imag) * {};\n"
-            "    return out;\n"
-            "}}\n",
-            inputType,
-            reciprocal,
-            reciprocal
-        );
-        return Result::SUCCESS;
+__device__ __forceinline__ OutputValue ConvertValue(const InputValue in) {
+    OutputValue out;
+    out.real = in;
+    out.imag = 0.0f;
+    return out;
+}
+)";
     }
 
-    JST_ERROR("[MODULE_CAST_NATIVE_CUDA] Unsupported conversion '{}' -> '{}'.",
-              inputDtype, outputDtype);
-    return Result::ERROR;
+    const char* inputType = ComplexTypeName(inputDtype);
+    const char* reciprocal = ReciprocalExpression(inputDtype);
+
+    return jst::fmt::format(
+        "using InputValue = {};\n"
+        "using OutputValue = KernelComplex<float>;\n\n"
+        "__device__ __forceinline__ OutputValue ConvertValue(const InputValue in) {{\n"
+        "    OutputValue out;\n"
+        "    out.real = static_cast<float>(in.real) * {};\n"
+        "    out.imag = static_cast<float>(in.imag) * {};\n"
+        "    return out;\n"
+        "}}\n",
+        inputType,
+        reciprocal,
+        reciprocal
+    );
 }
 
 }  // namespace
@@ -246,6 +219,7 @@ struct CastImplNativeCuda : public CastImpl,
                             public NativeCudaRuntimeContext,
                             public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeInitialize() override;
@@ -258,6 +232,49 @@ struct CastImplNativeCuda : public CastImpl,
     std::unordered_map<std::string, std::string> kernelPieces;
 };
 
+Result CastImplNativeCuda::validate() {
+    JST_CHECK(CastImpl::validate());
+
+    if (!inputs().contains("buffer")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& candidateInput = inputs().at("buffer").tensor;
+    if (!candidateInput.validShape() || candidateInput.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    if (validatedBypass) {
+        return Result::SUCCESS;
+    }
+
+    const DataType inputDtype = candidateInput.dtype();
+    const bool supportedPair =
+        (validatedOutputDtype == DataType::F32 &&
+         (inputDtype == DataType::I8 || inputDtype == DataType::U8 ||
+          inputDtype == DataType::I16 || inputDtype == DataType::U16 ||
+          inputDtype == DataType::I32 || inputDtype == DataType::U32)) ||
+        (validatedOutputDtype == DataType::CF32 &&
+         (inputDtype == DataType::F32 ||
+          inputDtype == DataType::CI8 || inputDtype == DataType::CU8 ||
+          inputDtype == DataType::CI16 || inputDtype == DataType::CU16 ||
+          inputDtype == DataType::CI32 || inputDtype == DataType::CU32));
+    if (!supportedPair) {
+        JST_ERROR("[MODULE_CAST_NATIVE_CUDA] Unsupported conversion '{}' -> '{}'.",
+                  inputDtype, validatedOutputDtype);
+        return Result::ERROR;
+    }
+
+    const U64 blockCount = validatedOutputElementCount / kThreadsPerBlock +
+                           (validatedOutputElementCount % kThreadsPerBlock != 0);
+    if (blockCount > kMaxGridSizeX) {
+        JST_ERROR("[MODULE_CAST_NATIVE_CUDA] Output size exceeds the CUDA grid limit.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
 Result CastImplNativeCuda::create() {
     JST_CHECK(CastImpl::create());
 
@@ -269,7 +286,7 @@ Result CastImplNativeCuda::create() {
 
     kernelPieces.clear();
     kernelPieces["KERNEL_CONSTANTS"] = BuildKernelConstants(input);
-    JST_CHECK(BuildConversionDecls(input.dtype(), outputDtype, kernelPieces["CONVERSION_DECLS"]));
+    kernelPieces["CONVERSION_DECLS"] = BuildConversionDecls(input.dtype(), outputDtype);
 
     return Result::SUCCESS;
 }

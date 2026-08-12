@@ -32,7 +32,7 @@ Result ThrottleImpl::define() {
     JST_CHECK(defineInterfaceConfig("intervalMs",
                                     "Interval",
                                     "Minimum time between outputs in milliseconds.",
-                                    "int:ms"));
+                                    "uint:ms"));
 
     return Result::SUCCESS;
 }
@@ -46,6 +46,6 @@ Result ThrottleImpl::create() {
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(ThrottleImpl);
+JST_REGISTER_BLOCK(ThrottleImpl, {"throttle"});
 
 }  // namespace Jetstream::Blocks

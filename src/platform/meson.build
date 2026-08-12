@@ -1,6 +1,21 @@
 src_lst += files([
-    'base.cc',
+    'dialogs.cc',
+    'dynamic_library.cc',
+    'file_lock.cc',
+    'paths.cc',
+    'process.cc',
+    'storage.cc',
+    'terminal.cc',
+    'url.cc',
 ])
+
+if jst_is_linux or jst_is_macos or jst_is_windows
+    src_lst += files('interrupt.cc')
+endif
+
+if not jst_is_browser
+    src_lst += files('socket.cc')
+endif
 
 if jst_is_ios
     dep_lst += [
@@ -26,5 +41,6 @@ if jst_is_windows
         compiler.find_library('comdlg32', required: true),
         compiler.find_library('kernel32', required: true),
         compiler.find_library('shell32', required: true),
+        compiler.find_library('ws2_32', required: true),
     ]
 endif

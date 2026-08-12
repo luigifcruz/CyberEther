@@ -6,6 +6,7 @@
 #include "../model/state.hh"
 
 #include "jetstream/logger.hh"
+#include "jetstream/platform.hh"
 #include "jetstream/plugin.hh"
 #include "jetstream/settings.hh"
 
@@ -27,7 +28,10 @@ struct SettingsActions {
                               MailSetDebugTimingEnabled,
                               MailSetDebugLogLevel,
                               MailCheckForUpdates,
+                              MailDownloadUpdate,
+                              MailApplyUpdate,
                               MailDismissUpdate,
+                              MailSetPythonRuntimePath,
                               MailAddPluginPath,
                               MailRemovePluginPath,
                               MailReloadPlugin,
@@ -139,12 +143,40 @@ struct SettingsActions {
     }
 
     Result handle(const MailCheckForUpdates&) {
-        state.update.checking = true;
+        callbacks.checkForUpdates();
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailDownloadUpdate&) {
+        callbacks.downloadUpdate();
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailApplyUpdate&) {
+        if (callbacks.applyUpdate()) {
+            return state.system.instance->requestStop();
+        }
         return Result::SUCCESS;
     }
 
     Result handle(const MailDismissUpdate&) {
-        state.update.available = false;
+        callbacks.dismissUpdate();
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetPythonRuntimePath& msg) {
+        state.runtime.pythonPath = msg.value;
+        state.runtime.pythonValidation = PythonRuntimeContext::ValidateRuntimePath(msg.value);
+
+        if (!state.runtime.pythonValidation.valid) {
+            return Result::SUCCESS;
+        }
+
+        Settings settings;
+        JST_CHECK(Settings::Get(settings));
+        settings.runtime.python.path = msg.value;
+        JST_CHECK(Settings::Set(settings));
+
         return Result::SUCCESS;
     }
 
@@ -154,12 +186,12 @@ struct SettingsActions {
             return Result::SUCCESS;
         }
 
-        if (std::filesystem::path(msg.path).extension() != ".cep") {
+        if (Platform::PathFromUtf8(msg.path).extension() != ".cep") {
             callbacks.notify(Sakura::ToastType::Error, 5000, "Plugins must be .cep bundles.");
             return Result::SUCCESS;
         }
 
-        if (!std::filesystem::exists(msg.path)) {
+        if (!std::filesystem::exists(Platform::PathFromUtf8(msg.path))) {
             callbacks.notify(Sakura::ToastType::Error, 5000, "The selected plugin does not exist.");
             return Result::SUCCESS;
         }
@@ -218,12 +250,12 @@ struct SettingsActions {
             return Result::SUCCESS;
         }
 
-        if (std::filesystem::path(msg.path).extension() != ".cep") {
+        if (Platform::PathFromUtf8(msg.path).extension() != ".cep") {
             callbacks.notify(Sakura::ToastType::Error, 5000, "Plugins must be .cep bundles.");
             return Result::SUCCESS;
         }
 
-        if (!std::filesystem::exists(msg.path)) {
+        if (!std::filesystem::exists(Platform::PathFromUtf8(msg.path))) {
             callbacks.notify(Sakura::ToastType::Error, 5000, "The selected plugin does not exist.");
             return Result::SUCCESS;
         }
@@ -267,13 +299,13 @@ struct SettingsActions {
                                  "Cannot reload plugin because a registered path is empty.");
                 return Result::SUCCESS;
             }
-            if (std::filesystem::path(path).extension() != ".cep") {
+            if (Platform::PathFromUtf8(path).extension() != ".cep") {
                 callbacks.notify(Sakura::ToastType::Error,
                                  5000,
                                  "Registered plugins must be .cep bundles: " + path);
                 return Result::SUCCESS;
             }
-            if (!std::filesystem::exists(path)) {
+            if (!std::filesystem::exists(Platform::PathFromUtf8(path))) {
                 callbacks.notify(Sakura::ToastType::Error,
                                  5000,
                                  "A registered plugin does not exist: " + path);

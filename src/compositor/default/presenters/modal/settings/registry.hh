@@ -7,6 +7,7 @@
 #include "../../../views/modal/settings/registry.hh"
 
 #include "jetstream/registry.hh"
+#include "jetstream/platform.hh"
 #include "jetstream/plugin.hh"
 #include "jetstream/settings.hh"
 
@@ -25,22 +26,23 @@ struct RegistrySettingsPresenter {
 
     static std::string normalizePluginPath(const std::string& path) {
         std::error_code ec;
-        const auto canonical = std::filesystem::weakly_canonical(path, ec);
+        const auto inputPath = Platform::PathFromUtf8(path);
+        const auto canonical = std::filesystem::weakly_canonical(inputPath, ec);
         if (!ec) {
-            return canonical.string();
+            return Platform::PathToUtf8(canonical);
         }
 
         ec.clear();
-        const auto absolute = std::filesystem::absolute(path, ec);
+        const auto absolute = std::filesystem::absolute(inputPath, ec);
         if (!ec) {
-            return absolute.lexically_normal().string();
+            return Platform::PathToUtf8(absolute.lexically_normal());
         }
 
         return path;
     }
 
     static std::string fileName(const std::string& path) {
-        const auto name = std::filesystem::path(path).filename().string();
+        const auto name = Platform::PathToUtf8(Platform::PathFromUtf8(path).filename());
         return name.empty() ? path : name;
     }
 
@@ -87,9 +89,9 @@ struct RegistrySettingsPresenter {
                 }
 
                 std::string status = "Not loaded";
-                if (std::filesystem::path(path).extension() != ".cep") {
+                if (Platform::PathFromUtf8(path).extension() != ".cep") {
                     status = "Invalid extension";
-                } else if (!std::filesystem::exists(path)) {
+                } else if (!std::filesystem::exists(Platform::PathFromUtf8(path))) {
                     status = "Missing";
                 }
 

@@ -1,6 +1,8 @@
 #include <cmath>
 #include <complex>
+#include <limits>
 
+#include <jetstream/memory/macros.hh>
 #include <jetstream/module_context.hh>
 #include <jetstream/registry.hh>
 #include <jetstream/runtime_context_native_cpu.hh>
@@ -14,37 +16,29 @@ struct FilterTapsImplNativeCpu : public FilterTapsImpl,
                                  public NativeCpuRuntimeContext,
                                  public Scheduler::Context {
  public:
-    Result create() final;
+    Result validate() final;
 
     Result computeSubmit() override;
 
  private:
-    bool baked = false;
-
     Result generateCoeffs();
 };
 
-Result FilterTapsImplNativeCpu::create() {
-    JST_CHECK(FilterTapsImpl::create());
+Result FilterTapsImplNativeCpu::validate() {
+    JST_CHECK(FilterTapsImpl::validate());
 
-    if (coeffs.dtype() != DataType::CF32) {
-        JST_ERROR("[MODULE_FILTER_TAPS_NATIVE_CPU] Only CF32 output is supported.");
+    U64 alignedOutputSize = 0;
+    if (!detail::CheckedPageAlignedSize(validatedOutputSizeBytes, alignedOutputSize) ||
+        alignedOutputSize > std::numeric_limits<std::size_t>::max()) {
+        JST_ERROR("[MODULE_FILTER_TAPS_NATIVE_CPU] Output allocation size is too large.");
         return Result::ERROR;
     }
-
-    baked = false;
 
     return Result::SUCCESS;
 }
 
 Result FilterTapsImplNativeCpu::computeSubmit() {
-    if (baked) {
-        return Result::SUCCESS;
-    }
-
     JST_CHECK(generateCoeffs());
-
-    baked = true;
 
     return Result::SUCCESS;
 }
@@ -55,7 +49,7 @@ Result FilterTapsImplNativeCpu::generateCoeffs() {
     const U64 heads = center.size();
 
     for (U64 c = 0; c < heads; ++c) {
-        const F64 filterOffset = (center[c] / (sampleRate / 2.0)) / 2.0;
+        const F64 filterOffset = center[c] / sampleRate;
 
         for (U64 i = 0; i < taps; ++i) {
             const F64 fi = static_cast<F64>(i);
@@ -67,9 +61,9 @@ Result FilterTapsImplNativeCpu::generateCoeffs() {
                 std::sin(2.0 * JST_PI * filterWidth * n) / (JST_PI * n);
 
             // Blackman window.
-            const F64 windowVal = 0.42 -
-                                  0.50 * std::cos(2.0 * JST_PI * fi / (taps - 1)) +
-                                  0.08 * std::cos(4.0 * JST_PI * fi / (taps - 1));
+            const F64 windowVal = (taps == 1) ? 1.0 :
+                0.42 - 0.50 * std::cos(2.0 * JST_PI * fi / (taps - 1)) +
+                0.08 * std::cos(4.0 * JST_PI * fi / (taps - 1));
 
             // Upconversion to center frequency.
             const auto upconvert = std::exp(j * 2.0 * JST_PI * n * filterOffset);

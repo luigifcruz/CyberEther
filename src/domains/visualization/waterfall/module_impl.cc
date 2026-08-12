@@ -1,20 +1,82 @@
 #include "module_impl.hh"
 
+#include <algorithm>
 #include <any>
+#include <cstddef>
+#include <limits>
 
-#include "jetstream/render/utils.hh"
 #include "jetstream/constants.hh"
+#include "jetstream/memory/axis.hh"
+#include "jetstream/tools/numeric.hh"
 #include "resources/shaders/waterfall_shaders.hh"
 
 namespace Jetstream::Modules {
 
 Result WaterfallImpl::validate() {
+    validatedNumberOfElements = 0;
+    validatedNumberOfBatches = 0;
+    validatedInputElementStride = 0;
+    validatedInputBatchStride = 0;
+
     const auto& config = *candidate();
 
     if (config.height == 0 || config.height > 2048) {
         JST_ERROR("[MODULE_WATERFALL] Invalid height value '{}', must be between 1 and 2048.", config.height);
         return Result::ERROR;
     }
+
+    if (!inputs().contains("signal")) {
+        return Result::SUCCESS;
+    }
+
+    const Tensor& inputTensor = inputs().at("signal").tensor;
+    if (!inputTensor.validShape() || inputTensor.size() == 0) {
+        return Result::SUCCESS;
+    }
+
+    SignalAxes axes;
+    if (MapSignalAxes(inputTensor, IdentityAxisMap(inputTensor.rank()), axes) !=
+        Result::SUCCESS) {
+        JST_ERROR("[MODULE_WATERFALL] Input must contain valid signal axis metadata.");
+        return Result::ERROR;
+    }
+
+    if (axes.sample && axes.channel) {
+        JST_ERROR("[MODULE_WATERFALL] Input cannot contain both sampleAxis and channelAxis.");
+        return Result::ERROR;
+    }
+
+    const auto elementAxis = axes.sample ? axes.sample : axes.channel;
+    if (!elementAxis) {
+        JST_ERROR("[MODULE_WATERFALL] Input must contain sampleAxis or channelAxis.");
+        return Result::ERROR;
+    }
+
+    for (Index axis = 0; axis < inputTensor.rank(); ++axis) {
+        if (axis != *elementAxis && (!axes.batch || axis != *axes.batch)) {
+            JST_ERROR("[MODULE_WATERFALL] Unsupported auxiliary input axis {}. "
+                      "Every dimension must be the element axis or batchAxis.", axis);
+            return Result::ERROR;
+        }
+    }
+
+    const U64 width = inputTensor.shape(*elementAxis);
+    U64 renderBinCount = 0;
+    const U64 maxRenderBinCount = std::min({
+        static_cast<U64>(std::numeric_limits<I32>::max()),
+        static_cast<U64>(std::numeric_limits<std::size_t>::max()) / sizeof(F32),
+        static_cast<U64>(std::numeric_limits<std::ptrdiff_t>::max()) / sizeof(F32),
+    });
+    if (!detail::CheckedMultiply(width, config.height, renderBinCount) ||
+        renderBinCount > maxRenderBinCount) {
+        JST_ERROR("[MODULE_WATERFALL] Render bin count exceeds the supported range.");
+        return Result::ERROR;
+    }
+
+    validatedNumberOfElements = width;
+    validatedNumberOfBatches = axes.batch ? inputTensor.shape(*axes.batch) : 1;
+    validatedInputElementStride = inputTensor.stride(*elementAxis);
+    validatedInputBatchStride = axes.batch ? inputTensor.stride(*axes.batch) : 0;
 
     return Result::SUCCESS;
 }
@@ -32,22 +94,21 @@ Result WaterfallImpl::create() {
 
     input = inputs().at("signal").tensor;
 
-    // Check input rank.
-
-    if (input.rank() > 2) {
-        JST_ERROR("[MODULE_WATERFALL] Invalid input rank ({}), expected 1 or 2.", input.rank());
-        return Result::ERROR;
-    }
-
     // Calculate parameters.
 
-    const U64 lastAxis = input.rank() - 1;
-    numberOfElements = input.shape()[lastAxis];
-    numberOfBatches = (input.rank() == 2) ? input.shape()[0] : 1;
+    numberOfElements = validatedNumberOfElements;
+    numberOfBatches = validatedNumberOfBatches;
+    inputElementStride = validatedInputElementStride;
+    inputBatchStride = validatedInputBatchStride;
+    ringState = {};
 
     // Allocate internal buffers.
 
-    JST_CHECK(frequencyBins.create(device(), DataType::F32, {numberOfElements, height}));
+    // TODO: Restore CUDA/Vulkan zero-copy after adding cross-API synchronization.
+    Buffer::Config renderStateConfig{};
+    renderStateConfig.hostAccessible = device() == DeviceType::CUDA;
+
+    JST_CHECK(frequencyBins.create(device(), DataType::F32, {numberOfElements, height}, renderStateConfig));
 
     return Result::SUCCESS;
 }
@@ -58,8 +119,14 @@ Result WaterfallImpl::destroy() {
 }
 
 Result WaterfallImpl::reconfigure() {
-    // TODO: Implement update logic for WaterfallImpl.
-    return Result::RECREATE;
+    const auto& config = *candidate();
+
+    if (config.height != height) {
+        return Result::RECREATE;
+    }
+
+    interpolate = config.interpolate;
+    return Result::SUCCESS;
 }
 
 Result WaterfallImpl::createPresent() {
@@ -81,7 +148,6 @@ Result WaterfallImpl::createPresent() {
         cfg.size = 12;
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(fillScreenVerticesBuffer, cfg));
-        JST_CHECK(window->bind(fillScreenVerticesBuffer));
     }
 
     {
@@ -91,7 +157,6 @@ Result WaterfallImpl::createPresent() {
         cfg.size = 8;
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(fillScreenTextureVerticesBuffer, cfg));
-        JST_CHECK(window->bind(fillScreenTextureVerticesBuffer));
     }
 
     {
@@ -101,7 +166,6 @@ Result WaterfallImpl::createPresent() {
         cfg.size = 6;
         cfg.target = Render::Buffer::Target::VERTEX_INDICES;
         JST_CHECK(window->build(fillScreenIndicesBuffer, cfg));
-        JST_CHECK(window->bind(fillScreenIndicesBuffer));
     }
 
     {
@@ -131,7 +195,6 @@ Result WaterfallImpl::createPresent() {
         cfg.target = Render::Buffer::Target::STORAGE;
         cfg.enableZeroCopy = false;
         JST_CHECK(window->build(signalBuffer, cfg));
-        JST_CHECK(window->bind(signalBuffer));
     }
 
     // LUT texture.
@@ -141,7 +204,6 @@ Result WaterfallImpl::createPresent() {
         cfg.size = {256, 1};
         cfg.buffer = (uint8_t*)TurboLutBytes;
         JST_CHECK(window->build(lutTexture, cfg));
-        JST_CHECK(window->bind(lutTexture));
     }
 
     // Uniform buffer.
@@ -153,7 +215,6 @@ Result WaterfallImpl::createPresent() {
         cfg.size = 1;
         cfg.target = Render::Buffer::Target::UNIFORM;
         JST_CHECK(window->build(signalUniformBuffer, cfg));
-        JST_CHECK(window->bind(signalUniformBuffer));
     }
 
     // Signal program.
@@ -223,13 +284,6 @@ Result WaterfallImpl::destroyPresent() {
 
     JST_CHECK(window->unbind(renderSurface));
     JST_CHECK(window->unbind(axis));
-    JST_CHECK(window->unbind(lutTexture));
-    JST_CHECK(window->unbind(fillScreenVerticesBuffer));
-    JST_CHECK(window->unbind(fillScreenTextureVerticesBuffer));
-    JST_CHECK(window->unbind(fillScreenIndicesBuffer));
-    JST_CHECK(window->unbind(signalBuffer));
-    JST_CHECK(window->unbind(signalUniformBuffer));
-
     return Result::SUCCESS;
 }
 
@@ -253,18 +307,16 @@ Result WaterfallImpl::present() {
         axis->updatePixelSize(pixelSize);
     }
 
-    int start = last;
-    int blocks = (inc - last);
-
-    if (blocks < 0) {
-        blocks = height - last;
-        signalBuffer->update(start * numberOfElements, blocks * numberOfElements);
-        start = 0;
-        blocks = inc;
+    const auto dirtyPlan = ringState.dirtyPlan(height);
+    if (dirtyPlan.firstRowCount > 0) {
+        JST_CHECK(signalBuffer->update(dirtyPlan.startRow * numberOfElements,
+                                       dirtyPlan.firstRowCount * numberOfElements));
     }
-
-    signalBuffer->update(start * numberOfElements, blocks * numberOfElements);
-    last = inc;
+    if (dirtyPlan.secondRowCount > 0) {
+        JST_CHECK(signalBuffer->update(0,
+                                       dirtyPlan.secondRowCount * numberOfElements));
+    }
+    ringState.clearDirty();
 
     const auto& paddingScale = axis->paddingScale();
 
@@ -272,13 +324,13 @@ Result WaterfallImpl::present() {
     signalUniforms.width = numberOfElements;
     signalUniforms.height = height;
     signalUniforms.interpolate = interpolate;
-    signalUniforms.index = inc / (float)signalUniforms.height;
+    signalUniforms.index = ringState.writeIndex / (float)signalUniforms.height;
     signalUniforms.offset = interaction.offset + 0.5f * (1.0f - 1.0f / interaction.zoom);
     signalUniforms.maxSize = signalUniforms.width * signalUniforms.height;
     signalUniforms.paddingScaleX = paddingScale.x;
     signalUniforms.paddingScaleY = paddingScale.y;
 
-    signalUniformBuffer->update();
+    JST_CHECK(signalUniformBuffer->update());
 
     // Update tick labels.
 

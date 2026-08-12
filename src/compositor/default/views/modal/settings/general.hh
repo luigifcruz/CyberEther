@@ -2,7 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_GENERAL_HH
 
 #include "jetstream/memory/types.hh"
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 
 #include <functional>
 #include <iomanip>
@@ -12,7 +12,7 @@
 
 namespace Jetstream {
 
-struct GeneralSettingsPanel : public Sakura::Component {
+struct GeneralSettingsPanel {
     struct Config {
         std::vector<std::string> themes;
         std::string currentThemeKey;

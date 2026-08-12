@@ -45,8 +45,6 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
                              config.numberOfDraws,
                              config.numberOfInstances));
 
-    // Create Multi-Draw Indirect Buffer
-
     if (buffer->isBuffered()) {
         for (uint32_t i = 0; i < config.numberOfDraws; i++) {
             VkDrawIndexedIndirectCommand drawCommand{};
@@ -59,18 +57,15 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
             indexedDrawCommands.push_back(drawCommand);
         }
 
-        {
-            Render::Buffer::Config cfg;
-            cfg.buffer = indexedDrawCommands.data();
-            cfg.elementByteSize = sizeof(VkDrawIndexedIndirectCommand);
-            cfg.size = indexedDrawCommands.size();
-            cfg.target = Render::Buffer::Target::INDIRECT;
+        Render::Buffer::Config cfg;
+        cfg.buffer = indexedDrawCommands.data();
+        cfg.elementByteSize = sizeof(VkDrawIndexedIndirectCommand);
+        cfg.size = indexedDrawCommands.size();
+        cfg.target = Render::Buffer::Target::INDIRECT;
 
-            indexedIndirectBuffer = std::make_shared<Render::BufferImp<DeviceType::Vulkan>>(cfg);
-            indexedIndirectBuffer->create();
-        }
-
-        indexedIndirectBuffer->update();
+        indexedIndirectBuffer = std::make_shared<Render::BufferImp<DeviceType::Vulkan>>(cfg);
+        JST_CHECK(indexedIndirectBuffer->create());
+        transferBuffers.push_back(indexedIndirectBuffer);
     } else {
         for (uint32_t i = 0; i < config.numberOfDraws; i++) {
             VkDrawIndirectCommand drawCommand{};
@@ -82,18 +77,15 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
             drawCommands.push_back(drawCommand);
         }
 
-        {
-            Render::Buffer::Config cfg;
-            cfg.buffer = drawCommands.data();
-            cfg.elementByteSize = sizeof(VkDrawIndirectCommand);
-            cfg.size = drawCommands.size();
-            cfg.target = Render::Buffer::Target::INDIRECT;
+        Render::Buffer::Config cfg;
+        cfg.buffer = drawCommands.data();
+        cfg.elementByteSize = sizeof(VkDrawIndirectCommand);
+        cfg.size = drawCommands.size();
+        cfg.target = Render::Buffer::Target::INDIRECT;
 
-            indirectBuffer = std::make_shared<Render::BufferImp<DeviceType::Vulkan>>(cfg);
-            indirectBuffer->create();
-        }
-
-        indirectBuffer->update();
+        indirectBuffer = std::make_shared<Render::BufferImp<DeviceType::Vulkan>>(cfg);
+        JST_CHECK(indirectBuffer->create());
+        transferBuffers.push_back(indirectBuffer);
     }
 
     return Result::SUCCESS;
@@ -109,6 +101,7 @@ Result Implementation::destroy() {
         JST_CHECK(indirectBuffer->destroy());
         drawCommands.clear();
     }
+    transferBuffers.clear();
 
     JST_CHECK(buffer->destroy());
 
@@ -118,15 +111,18 @@ Result Implementation::destroy() {
 Result Implementation::encode(VkCommandBuffer& commandBuffer) {
     JST_CHECK(buffer->encode(commandBuffer));
 
-    const auto& state = Backend::State<DeviceType::Vulkan>();
-    const bool supportsMultiDrawIndirect = state->supportsMultiDrawIndirect();
+    const bool supportsMultiDrawIndirect =
+        Backend::State<DeviceType::Vulkan>()->supportsMultiDrawIndirect();
 
     if (buffer->isBuffered()) {
         if (supportsMultiDrawIndirect) {
-            vkCmdDrawIndexedIndirect(commandBuffer, indexedIndirectBuffer->getHandle(), 0,
-                                     indexedDrawCommands.size(), sizeof(VkDrawIndexedIndirectCommand));
+            vkCmdDrawIndexedIndirect(commandBuffer,
+                                     indexedIndirectBuffer->getHandle(),
+                                     0,
+                                     indexedDrawCommands.size(),
+                                     sizeof(VkDrawIndexedIndirectCommand));
         } else {
-            for (U64 i = 0; i < indexedDrawCommands.size(); i++) {
+            for (U64 i = 0; i < indexedDrawCommands.size(); ++i) {
                 vkCmdDrawIndexedIndirect(commandBuffer,
                                          indexedIndirectBuffer->getHandle(),
                                          i * sizeof(VkDrawIndexedIndirectCommand),
@@ -134,18 +130,19 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
                                          sizeof(VkDrawIndexedIndirectCommand));
             }
         }
+    } else if (supportsMultiDrawIndirect) {
+        vkCmdDrawIndirect(commandBuffer,
+                          indirectBuffer->getHandle(),
+                          0,
+                          drawCommands.size(),
+                          sizeof(VkDrawIndirectCommand));
     } else {
-        if (supportsMultiDrawIndirect) {
-            vkCmdDrawIndirect(commandBuffer, indirectBuffer->getHandle(), 0,
-                              drawCommands.size(), sizeof(VkDrawIndirectCommand));
-        } else {
-            for (U64 i = 0; i < drawCommands.size(); i++) {
-                vkCmdDrawIndirect(commandBuffer,
-                                  indirectBuffer->getHandle(),
-                                  i * sizeof(VkDrawIndirectCommand),
-                                  1,
-                                  sizeof(VkDrawIndirectCommand));
-            }
+        for (U64 i = 0; i < drawCommands.size(); ++i) {
+            vkCmdDrawIndirect(commandBuffer,
+                              indirectBuffer->getHandle(),
+                              i * sizeof(VkDrawIndirectCommand),
+                              1,
+                              sizeof(VkDrawIndirectCommand));
         }
     }
 
@@ -171,7 +168,7 @@ Result Implementation::updateVertexCount(U64 vertexCount) {
         for (auto& drawCommand : indexedDrawCommands) {
             drawCommand.indexCount = vertexCount;
         }
-        indexedIndirectBuffer->update();
+        JST_CHECK(indexedIndirectBuffer->update());
     } else {
         // Check bounds for non-indexed drawing
         const U64 maxVertexCount = buffer->getVertexCount();
@@ -184,9 +181,9 @@ Result Implementation::updateVertexCount(U64 vertexCount) {
         for (auto& drawCommand : drawCommands) {
             drawCommand.vertexCount = vertexCount;
         }
-        indirectBuffer->update();
+        JST_CHECK(indirectBuffer->update());
     }
-    
+
     return Result::SUCCESS;
 }
 
@@ -204,14 +201,14 @@ Result Implementation::updateInstanceCount(U64 instanceCount) {
             drawCommand.instanceCount = instanceCount;
             drawCommand.firstInstance = i * instanceCount;
         }
-        indexedIndirectBuffer->update();
+        JST_CHECK(indexedIndirectBuffer->update());
     } else {
         for (U64 i = 0; i < drawCommands.size(); ++i) {
             auto& drawCommand = drawCommands[i];
             drawCommand.instanceCount = instanceCount;
             drawCommand.firstInstance = i * instanceCount;
         }
-        indirectBuffer->update();
+        JST_CHECK(indirectBuffer->update());
     }
 
     return Result::SUCCESS;

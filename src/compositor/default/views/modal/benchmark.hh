@@ -2,7 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_BENCHMARK_HH
 
 #include "../components/modal_header.hh"
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
 #include "jetstream/benchmark.hh"
@@ -14,13 +14,16 @@
 
 namespace Jetstream {
 
-struct BenchmarkView : public Sakura::Component {
+struct BenchmarkView {
     struct Config {
         bool running = false;
         F32 progress = 0.0f;
+        std::vector<std::string> moduleOptions;
+        std::string selectedModule;
         Benchmark::ResultMapType results;
         std::function<void()> onRun;
         std::function<void()> onReset;
+        std::function<void(const std::string&)> onModuleChange;
     };
 
     void update(Config config) {
@@ -30,6 +33,23 @@ struct BenchmarkView : public Sakura::Component {
             .id = "BenchmarkHeader",
             .title = ICON_FA_GAUGE_HIGH " Module Benchmarks",
             .description = "Run performance benchmarks for registered modules. Results show operations per second and timing information.",
+        });
+        moduleLabel.update({
+            .id = "BenchmarkModuleLabel",
+            .str = "Module",
+            .font = Sakura::Text::Font::Bold,
+            .scale = 1.0f,
+        });
+        moduleCombo.update({
+            .id = "##benchmark-module",
+            .options = this->config.moduleOptions,
+            .value = this->config.selectedModule,
+            .disabled = this->config.running,
+            .onChange = [this](const std::string& value) {
+                if (this->config.onModuleChange) {
+                    this->config.onModuleChange(value);
+                }
+            },
         });
         runButton.update({
             .id = "BenchmarkRun",
@@ -102,6 +122,8 @@ struct BenchmarkView : public Sakura::Component {
 
     void render(const Sakura::Context& ctx) const {
         header.render(ctx);
+        moduleLabel.render(ctx);
+        moduleCombo.render(ctx);
         runButton.render(ctx);
         resetButton.render(ctx);
         divider.render(ctx);
@@ -125,6 +147,8 @@ struct BenchmarkView : public Sakura::Component {
  private:
     Config config;
     ModalHeader header;
+    Sakura::Text moduleLabel;
+    Sakura::Combo moduleCombo;
     Sakura::Button runButton;
     Sakura::Button resetButton;
     Sakura::ProgressBar progressBar;

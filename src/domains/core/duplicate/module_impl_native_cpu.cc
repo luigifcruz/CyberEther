@@ -3,6 +3,7 @@
 #include <jetstream/scheduler_context.hh>
 #include <jetstream/module_context.hh>
 #include <jetstream/registry.hh>
+#include <jetstream/backend/base.hh>
 
 #include "module_impl.hh"
 
@@ -12,6 +13,7 @@ struct DuplicateImplNativeCpu : public DuplicateImpl,
                                 public NativeCpuRuntimeContext,
                                 public Scheduler::Context {
  public:
+    Result validate() final;
     Result create() final;
 
     Result computeSubmit() override;
@@ -22,6 +24,31 @@ struct DuplicateImplNativeCpu : public DuplicateImpl,
 
     std::function<Result()> kernel;
 };
+
+Result DuplicateImplNativeCpu::validate() {
+    const auto previousTargetDevice = validatedTargetDevice;
+    JST_CHECK(DuplicateImpl::validate());
+
+    bool requiresHostAccessibleOutput =
+        validatedTargetDevice == DeviceType::CUDA;
+#ifdef JETSTREAM_BACKEND_VULKAN_AVAILABLE
+    if (validatedTargetDevice == DeviceType::Vulkan &&
+        Backend::Initialized<DeviceType::Vulkan>()) {
+        const auto& vulkan = Backend::State<DeviceType::Vulkan>();
+        requiresHostAccessibleOutput = vulkan->isAvailable() &&
+                                       !vulkan->hasUnifiedMemory();
+    }
+#endif
+
+    if (requiresHostAccessibleOutput && !candidate()->hostAccessible) {
+        JST_ERROR("[DUPLICATE] {} output must be host accessible for a CPU input.",
+                  validatedTargetDevice);
+        validatedTargetDevice = previousTargetDevice;
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
 
 Result DuplicateImplNativeCpu::create() {
     JST_CHECK(DuplicateImpl::create());

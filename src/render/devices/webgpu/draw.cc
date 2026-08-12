@@ -46,8 +46,6 @@ Result Implementation::create(WGPURenderPipelineDescriptor& renderDescriptor) {
     renderDescriptor.vertex.bufferCount = vertexLayouts.size();
     renderDescriptor.vertex.buffers = vertexLayouts.data();
 
-    // Create multi-draw indirect buffer.
-
     if (buffer->isBuffered()) {
         for (U64 i = 0; i < config.numberOfDraws; i++) {
             IndexedDrawCommand drawCommand = {};
@@ -60,18 +58,6 @@ Result Implementation::create(WGPURenderPipelineDescriptor& renderDescriptor) {
             indexedDrawCommands.push_back(drawCommand);
         }
 
-        {
-            Render::Buffer::Config cfg;
-            cfg.buffer = indexedDrawCommands.data();
-            cfg.elementByteSize = sizeof(IndexedDrawCommand);
-            cfg.size = indexedDrawCommands.size();
-            cfg.target = Render::Buffer::Target::INDIRECT;
-
-            indexedIndirectBuffer = std::make_shared<Render::BufferImp<DeviceType::WebGPU>>(cfg);
-            indexedIndirectBuffer->create();
-        }
-
-        indexedIndirectBuffer->update();
     } else {
         for (U64 i = 0; i < config.numberOfDraws; i++) {
             DrawCommand drawCommand = {};
@@ -83,18 +69,6 @@ Result Implementation::create(WGPURenderPipelineDescriptor& renderDescriptor) {
             drawCommands.push_back(drawCommand);
         }
 
-        {
-            Render::Buffer::Config cfg;
-            cfg.buffer = drawCommands.data();
-            cfg.elementByteSize = sizeof(DrawCommand);
-            cfg.size = drawCommands.size();
-            cfg.target = Render::Buffer::Target::INDIRECT;
-
-            indirectBuffer = std::make_shared<Render::BufferImp<DeviceType::WebGPU>>(cfg);
-            indirectBuffer->create();
-        }
-
-        indirectBuffer->update();
     }
 
     return Result::SUCCESS;
@@ -104,10 +78,8 @@ Result Implementation::destroy() {
     JST_DEBUG("[WebGPU] Destroying draw.");
 
     if (buffer->isBuffered()) {
-        JST_CHECK(indexedIndirectBuffer->destroy());
         indexedDrawCommands.clear();
     } else {
-        JST_CHECK(indirectBuffer->destroy());
         drawCommands.clear();
     }
 
@@ -163,7 +135,6 @@ Result Implementation::updateVertexCount(U64 vertexCount) {
         for (auto& drawCommand : indexedDrawCommands) {
             drawCommand.indexCount = vertexCount;
         }
-        indexedIndirectBuffer->update();
     } else {
         // Check bounds for non-indexed drawing
         const U64 maxVertexCount = buffer->getVertexCount();
@@ -176,7 +147,6 @@ Result Implementation::updateVertexCount(U64 vertexCount) {
         for (auto& drawCommand : drawCommands) {
             drawCommand.vertexCount = vertexCount;
         }
-        indirectBuffer->update();
     }
 
     return Result::SUCCESS;
@@ -196,14 +166,12 @@ Result Implementation::updateInstanceCount(U64 instanceCount) {
             drawCommand.instanceCount = instanceCount;
             drawCommand.firstInstance = i * instanceCount;
         }
-        indexedIndirectBuffer->update();
     } else {
         for (U64 i = 0; i < drawCommands.size(); ++i) {
             auto& drawCommand = drawCommands[i];
             drawCommand.instanceCount = instanceCount;
             drawCommand.firstInstance = i * instanceCount;
         }
-        indirectBuffer->update();
     }
 
     return Result::SUCCESS;

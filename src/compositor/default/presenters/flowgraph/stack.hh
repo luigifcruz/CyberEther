@@ -11,7 +11,7 @@
 #include "jetstream/block.hh"
 #include "jetstream/flowgraph.hh"
 #include "jetstream/flowgraph_view.hh"
-#include "jetstream/render/sakura/sakura.hh"
+#include "jetstream/render/sakura/base.hh"
 
 #include <algorithm>
 #include <memory>
@@ -41,40 +41,40 @@ inline std::optional<std::pair<std::string, std::string>> ParseStackSurfaceItemK
     return std::make_pair(rest.substr(0, delimiter), rest.substr(delimiter + 1));
 }
 
-inline std::optional<Sakura::DockLayout::Direction> ToSakuraDockDirection(const std::string& direction) {
+inline std::optional<Sakura::DockspaceWindow::DockLayout::Direction> ToSakuraDockDirection(const std::string& direction) {
     if (direction == "left") {
-        return Sakura::DockLayout::Direction::Left;
+        return Sakura::DockspaceWindow::DockLayout::Direction::Left;
     }
     if (direction == "right") {
-        return Sakura::DockLayout::Direction::Right;
+        return Sakura::DockspaceWindow::DockLayout::Direction::Right;
     }
     if (direction == "up") {
-        return Sakura::DockLayout::Direction::Up;
+        return Sakura::DockspaceWindow::DockLayout::Direction::Up;
     }
     if (direction == "down") {
-        return Sakura::DockLayout::Direction::Down;
+        return Sakura::DockspaceWindow::DockLayout::Direction::Down;
     }
     return std::nullopt;
 }
 
-inline std::optional<std::string> ToStackDockDirection(const Sakura::DockLayout::Direction direction) {
+inline std::optional<std::string> ToStackDockDirection(const Sakura::DockspaceWindow::DockLayout::Direction direction) {
     switch (direction) {
-        case Sakura::DockLayout::Direction::Left: return "left";
-        case Sakura::DockLayout::Direction::Right: return "right";
-        case Sakura::DockLayout::Direction::Up: return "up";
-        case Sakura::DockLayout::Direction::Down: return "down";
+        case Sakura::DockspaceWindow::DockLayout::Direction::Left: return "left";
+        case Sakura::DockspaceWindow::DockLayout::Direction::Right: return "right";
+        case Sakura::DockspaceWindow::DockLayout::Direction::Up: return "up";
+        case Sakura::DockspaceWindow::DockLayout::Direction::Down: return "down";
     }
     return std::nullopt;
 }
 
-inline std::optional<Sakura::DockLayout> ToSakuraDockLayout(const StackDockLayoutMeta& meta) {
-    Sakura::DockLayout layout;
+inline std::optional<Sakura::DockspaceWindow::DockLayout> ToSakuraDockLayout(const StackDockLayoutMeta& meta) {
+    Sakura::DockspaceWindow::DockLayout layout;
     if (meta.direction.has_value()) {
         layout.direction = ToSakuraDockDirection(*meta.direction);
     }
     layout.ratio = meta.ratio;
 
-    std::vector<Sakura::DockItem> items;
+    std::vector<Sakura::DockspaceWindow::DockItem> items;
     if (meta.flowgraphs.has_value()) {
         for (const auto& flowgraph : *meta.flowgraphs) {
             items.push_back({.key = "flowgraph", .order = flowgraph.order});
@@ -96,7 +96,7 @@ inline std::optional<Sakura::DockLayout> ToSakuraDockLayout(const StackDockLayou
     }
 
     if (meta.children.has_value()) {
-        std::vector<Sakura::DockLayout> children;
+        std::vector<Sakura::DockspaceWindow::DockLayout> children;
         for (const auto& child : *meta.children) {
             auto sakuraChild = ToSakuraDockLayout(child);
             if (sakuraChild.has_value()) {
@@ -114,7 +114,7 @@ inline std::optional<Sakura::DockLayout> ToSakuraDockLayout(const StackDockLayou
     return layout;
 }
 
-inline std::optional<StackDockLayoutMeta> ToStackDockLayoutMeta(const Sakura::DockLayout& layout) {
+inline std::optional<StackDockLayoutMeta> ToStackDockLayoutMeta(const Sakura::DockspaceWindow::DockLayout& layout) {
     StackDockLayoutMeta meta;
     if (layout.direction.has_value()) {
         meta.direction = ToStackDockDirection(*layout.direction);
@@ -204,7 +204,7 @@ struct StackPresenter {
                                             const std::string& stackId,
                                             const DefaultCompositorState::FlowgraphState::StackWindowState& stack) const {
         const auto enqueue = context.callbacks.enqueueMail;
-        std::optional<Sakura::DockLayout> layout;
+        std::optional<Sakura::DockspaceWindow::DockLayout> layout;
         if (stack.meta.layout.has_value()) {
             layout = ToSakuraDockLayout(*stack.meta.layout);
         }
@@ -229,7 +229,7 @@ struct StackPresenter {
                     .height = size.y,
                 });
             },
-            .onLayout = [enqueue, flowgraphId, stackId](std::optional<Sakura::DockLayout> layout) {
+            .onLayout = [enqueue, flowgraphId, stackId](std::optional<Sakura::DockspaceWindow::DockLayout> layout) {
                 std::optional<StackDockLayoutMeta> meta;
                 if (layout.has_value()) {
                     meta = ToStackDockLayoutMeta(*layout);
@@ -246,9 +246,9 @@ struct StackPresenter {
         };
     }
 
-    std::vector<Sakura::DockableWindow> buildDockables(const std::string& flowgraphId,
-                                                       const std::shared_ptr<Flowgraph>& flowgraph) const {
-        std::vector<Sakura::DockableWindow> dockables;
+    std::vector<Sakura::DockspaceWindow::DockableWindow> buildDockables(const std::string& flowgraphId,
+                                                                       const std::shared_ptr<Flowgraph>& flowgraph) const {
+        std::vector<Sakura::DockspaceWindow::DockableWindow> dockables;
         dockables.push_back({
             .key = "flowgraph",
             .label = MakeFlowgraphWindowLabel(flowgraphId, flowgraph),

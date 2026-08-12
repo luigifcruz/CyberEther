@@ -29,6 +29,14 @@ class JETSTREAM_API Block {
     struct Context;
     struct Interface;
 
+    enum class NodeSize : U8 {
+        XS = 0,
+        S,
+        M,
+        L,
+        XL,
+    };
+
     struct Config {
         virtual ~Config() = default;
 
@@ -37,6 +45,9 @@ class JETSTREAM_API Block {
         virtual std::string title() const = 0;
         virtual std::string summary() const = 0;
         virtual std::string description() const = 0;
+        virtual NodeSize nodeSize() const {
+            return NodeSize::S;
+        }
 
         virtual Result serialize(Parser::Map& data) const = 0;
         virtual Result deserialize(const Parser::Map& data) = 0;
@@ -145,6 +156,13 @@ template <> struct jst::fmt::formatter<Jetstream::Block::State> : jst::fmt::ostr
         return DOMAIN; \
     }
 #endif  // JST_BLOCK_DOMAIN
+
+#ifndef JST_BLOCK_NODE_SIZE
+#define JST_BLOCK_NODE_SIZE(SIZE) \
+    Jetstream::Block::NodeSize nodeSize() const override { \
+        return Jetstream::Block::NodeSize::SIZE; \
+    }
+#endif  // JST_BLOCK_NODE_SIZE
 
 #ifndef JST_BLOCK_DESCRIPTION
 #define JST_BLOCK_DESCRIPTION(TITLE, SUMMARY, DESCRIPTION) \
