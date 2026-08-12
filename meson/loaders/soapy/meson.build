@@ -100,6 +100,11 @@ if jst_is_browser
             required: true,
             default_options: soapy_static_options,
         ).get_variable('soapyrtlsdr_dep').as_link_whole(),
+        subproject(
+            'soapyhackrf',
+            required: true,
+            default_options: soapy_static_options,
+        ).get_variable('soapyhackrf_dep').as_link_whole(),
     ]
 endif
 

@@ -8,15 +8,19 @@ project(
   ],
 )
 
-libusb_dep = subproject(
-  'libusb',
-  required: true,
-  default_options: [
-    'default_library=static',
-    'examples=false',
-    'tests=false',
-  ],
-).get_variable('libusb_dep')
+if target_machine.system() == 'emscripten'
+  libusb_dep = dependency('libusb-browser', required: true)
+else
+  libusb_dep = subproject(
+    'libusb',
+    required: true,
+    default_options: [
+      'default_library=static',
+      'examples=false',
+      'tests=false',
+    ],
+  ).get_variable('libusb_dep')
+endif
 
 deps = [libusb_dep]
 c = meson.get_compiler('c')
