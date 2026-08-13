@@ -41,6 +41,70 @@ void HandleInterrupt() noexcept {
 
 }  // namespace
 
+Result PrepareSuperluminalPlotBuffer(
+    const std::string& name,
+    const Superluminal::PlotConfig& config,
+    Superluminal::PlotConfig& resolvedConfig) {
+    resolvedConfig = config;
+    resolvedConfig.buffer = config.buffer.clone();
+
+    const I32 rank = static_cast<I32>(resolvedConfig.buffer.rank());
+    if (rank == 0) {
+        JST_ERROR("[SUPERLUMINAL] Plot '{}' requires a non-scalar input buffer.", name);
+        return Result::ERROR;
+    }
+    if (resolvedConfig.batchAxis < -1 || resolvedConfig.batchAxis >= rank) {
+        JST_ERROR("[SUPERLUMINAL] Plot '{}' batch axis {} is out of bounds for rank {}.",
+                  name, resolvedConfig.batchAxis, rank);
+        return Result::ERROR;
+    }
+    if (resolvedConfig.channelAxis < -1 || resolvedConfig.channelAxis >= rank) {
+        JST_ERROR("[SUPERLUMINAL] Plot '{}' channel axis {} is out of bounds for rank {}.",
+                  name, resolvedConfig.channelAxis, rank);
+        return Result::ERROR;
+    }
+    if (resolvedConfig.batchAxis != -1 &&
+        resolvedConfig.batchAxis == resolvedConfig.channelAxis) {
+        JST_ERROR("[SUPERLUMINAL] Plot '{}' batch and channel axes must be different.", name);
+        return Result::ERROR;
+    }
+
+    SignalAxes axes;
+    if (resolvedConfig.batchAxis != -1) {
+        axes.batch = static_cast<Index>(resolvedConfig.batchAxis);
+    }
+    if (resolvedConfig.channelAxis != -1) {
+        axes.channel = static_cast<Index>(resolvedConfig.channelAxis);
+    }
+
+    std::vector<Index> unclassifiedAxes;
+    for (Index axis = 0; axis < resolvedConfig.buffer.rank(); ++axis) {
+        if ((axes.batch && axis == *axes.batch) ||
+            (axes.channel && axis == *axes.channel)) {
+            continue;
+        }
+        unclassifiedAxes.push_back(axis);
+    }
+    if (unclassifiedAxes.empty()) {
+        JST_ERROR("[SUPERLUMINAL] Plot '{}' has no sample axis.", name);
+        return Result::ERROR;
+    }
+
+    axes.sample = unclassifiedAxes.back();
+    if (!axes.batch && unclassifiedAxes.size() > 1) {
+        axes.batch = unclassifiedAxes.front();
+    }
+    for (const Index axis : unclassifiedAxes) {
+        if (axis != *axes.sample && (!axes.batch || axis != *axes.batch)) {
+            JST_ERROR("[SUPERLUMINAL] Plot '{}' has an unclassified input axis {}. "
+                      "Configure batchAxis and channelAxis.", name, axis);
+            return Result::ERROR;
+        }
+    }
+
+    return SetSignalAxes(resolvedConfig.buffer, axes);
+}
+
 struct Superluminal::Impl {
     InstanceConfig config;
     std::shared_ptr<Instance> instance;
@@ -740,63 +804,8 @@ Result Superluminal::plot(const std::string& name, const Mosaic& mosaic, const P
     JST_CHECK(impl->validateMosaic(mosaic));
     JST_CHECK(impl->validateName(name));
 
-    PlotConfig resolvedConfig = config;
-    resolvedConfig.buffer = config.buffer.clone();
-
-    const I32 rank = static_cast<I32>(resolvedConfig.buffer.rank());
-    if (rank == 0) {
-        JST_ERROR("[SUPERLUMINAL] Plot '{}' requires a non-scalar input buffer.", name);
-        return Result::ERROR;
-    }
-    if (resolvedConfig.batchAxis < -1 || resolvedConfig.batchAxis >= rank) {
-        JST_ERROR("[SUPERLUMINAL] Plot '{}' batch axis {} is out of bounds for rank {}.",
-                  name, resolvedConfig.batchAxis, rank);
-        return Result::ERROR;
-    }
-    if (resolvedConfig.channelAxis < -1 || resolvedConfig.channelAxis >= rank) {
-        JST_ERROR("[SUPERLUMINAL] Plot '{}' channel axis {} is out of bounds for rank {}.",
-                  name, resolvedConfig.channelAxis, rank);
-        return Result::ERROR;
-    }
-    if (resolvedConfig.batchAxis != -1 &&
-        resolvedConfig.batchAxis == resolvedConfig.channelAxis) {
-        JST_ERROR("[SUPERLUMINAL] Plot '{}' batch and channel axes must be different.", name);
-        return Result::ERROR;
-    }
-
-    SignalAxes axes;
-    if (resolvedConfig.batchAxis != -1) {
-        axes.batch = static_cast<Index>(resolvedConfig.batchAxis);
-    }
-    if (resolvedConfig.channelAxis != -1) {
-        axes.channel = static_cast<Index>(resolvedConfig.channelAxis);
-    }
-
-    std::vector<Index> unclassifiedAxes;
-    for (Index axis = 0; axis < resolvedConfig.buffer.rank(); ++axis) {
-        if ((axes.batch && axis == *axes.batch) ||
-            (axes.channel && axis == *axes.channel)) {
-            continue;
-        }
-        unclassifiedAxes.push_back(axis);
-    }
-    if (unclassifiedAxes.empty()) {
-        JST_ERROR("[SUPERLUMINAL] Plot '{}' has no sample axis.", name);
-        return Result::ERROR;
-    }
-
-    axes.sample = unclassifiedAxes.back();
-    if (!axes.batch && unclassifiedAxes.size() > 1) {
-        axes.batch = unclassifiedAxes.front();
-    }
-    for (const Index axis : unclassifiedAxes) {
-        if (axis != *axes.sample && (!axes.batch || axis != *axes.batch)) {
-            JST_ERROR("[SUPERLUMINAL] Plot '{}' has an unclassified input axis {}. "
-                      "Configure batchAxis and channelAxis.", name, axis);
-            return Result::ERROR;
-        }
-    }
-    JST_CHECK(SetSignalAxes(resolvedConfig.buffer, axes));
+    PlotConfig resolvedConfig;
+    JST_CHECK(PrepareSuperluminalPlotBuffer(name, config, resolvedConfig));
 
     // Create plot state.
 
