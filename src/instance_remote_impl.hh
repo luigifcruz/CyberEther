@@ -6,11 +6,13 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <deque>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 
 #define GST_USE_UNSTABLE_API
 #include <gst/webrtc/webrtc.h>
@@ -31,6 +33,7 @@ struct Instance::Remote::Impl {
     Result create(const Instance::Remote::Config& config);
     Result destroy();
     Result rollbackCreate();
+    Result processInput();
     Result captureFrame();
     Result approveClient(const std::string& code);
 
@@ -113,6 +116,11 @@ struct Instance::Remote::Impl {
         std::string sessionId;
     };
 
+    struct ControlChannelContext {
+        Impl* impl = nullptr;
+        std::string sessionId;
+    };
+
     std::mutex sessionsMutex;
     std::unordered_map<std::string, std::unique_ptr<WebRtcSession>> sessions;
 
@@ -150,9 +158,33 @@ struct Instance::Remote::Impl {
     Result checkGstreamerPlugins(const std::vector<std::string>& plugins,
                                  const bool& silent = false);
     static const char* GetEncodingStrategyPrettyName(const EncodingStrategyType& strategy);
-    void handleInput(const std::string& kind, const nlohmann::json& j);
+    struct QueuedInput {
+        std::string sessionId;
+        nlohmann::json payload;
+        bool reset = false;
+    };
+
+    struct RemoteInputState {
+        std::unordered_set<ImGuiKey> keys;
+        bool alt = false;
+        bool ctrl = false;
+        bool shift = false;
+        bool meta = false;
+    };
+
+    std::mutex inputMutex;
+    std::deque<QueuedInput> inputQueue;
+    std::unordered_map<std::string, RemoteInputState> remoteInputStates;
+    std::unordered_set<ImGuiKey> appliedRemoteKeys;
+
+    void enqueueInput(std::string sessionId, nlohmann::json payload);
+    void enqueueInputReset(const std::string& sessionId);
+    void handleInput(const std::string& sessionId, const std::string& kind, const nlohmann::json& j);
+    void resetInput(const std::string& sessionId);
+    void synchronizeKeyboardState();
     void createControlChannel(const std::string& sessionId);
     static void onMessageCallback(GstWebRTCDataChannel* self, gchar* data, gpointer user_data);
+    static void onChannelClosedCallback(GstWebRTCDataChannel* self, gpointer user_data);
     static void onChannelCallback(GstElement* self, GstWebRTCDataChannel* channel, gpointer user_data);
     static void onIceCandidateCallback(GstElement* self, guint mlineIndex, gchar* candidate, gpointer user_data);
     static void onOfferCreatedCallback(GstPromise* promise, gpointer user_data);
