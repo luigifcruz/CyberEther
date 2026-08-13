@@ -41,10 +41,9 @@ void HandleInterrupt() noexcept {
 
 }  // namespace
 
-Result PrepareSuperluminalPlotBuffer(
-    const std::string& name,
-    const Superluminal::PlotConfig& config,
-    Superluminal::PlotConfig& resolvedConfig) {
+JETSTREAM_API Result PrepareSuperluminalPlotBuffer(const std::string& name,
+                                                   const Superluminal::PlotConfig& config,
+                                                   Superluminal::PlotConfig& resolvedConfig) {
     resolvedConfig = config;
     resolvedConfig.buffer = config.buffer.clone();
 

@@ -10,9 +10,9 @@ using namespace Jetstream;
 
 namespace Jetstream {
 
-Result PrepareSuperluminalPlotBuffer(const std::string& name,
-                                     const Superluminal::PlotConfig& config,
-                                     Superluminal::PlotConfig& resolvedConfig);
+JETSTREAM_API Result PrepareSuperluminalPlotBuffer(const std::string& name,
+                                                   const Superluminal::PlotConfig& config,
+                                                   Superluminal::PlotConfig& resolvedConfig);
 
 }  // namespace Jetstream
 
