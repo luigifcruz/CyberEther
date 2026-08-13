@@ -7,6 +7,7 @@
 
 #include "jetstream/detail/instance_remote_supervisor.hh"
 #include "jetstream/flowgraph_view.hh"
+#include "jetstream/memory/axis.hh"
 #include "jetstream/platform.hh"
 #include "jetstream/superluminal.hh"
 #include "jetstream/macros.hh"
@@ -739,11 +740,69 @@ Result Superluminal::plot(const std::string& name, const Mosaic& mosaic, const P
     JST_CHECK(impl->validateMosaic(mosaic));
     JST_CHECK(impl->validateName(name));
 
+    PlotConfig resolvedConfig = config;
+    resolvedConfig.buffer = config.buffer.clone();
+
+    const I32 rank = static_cast<I32>(resolvedConfig.buffer.rank());
+    if (rank == 0) {
+        JST_ERROR("[SUPERLUMINAL] Plot '{}' requires a non-scalar input buffer.", name);
+        return Result::ERROR;
+    }
+    if (resolvedConfig.batchAxis < -1 || resolvedConfig.batchAxis >= rank) {
+        JST_ERROR("[SUPERLUMINAL] Plot '{}' batch axis {} is out of bounds for rank {}.",
+                  name, resolvedConfig.batchAxis, rank);
+        return Result::ERROR;
+    }
+    if (resolvedConfig.channelAxis < -1 || resolvedConfig.channelAxis >= rank) {
+        JST_ERROR("[SUPERLUMINAL] Plot '{}' channel axis {} is out of bounds for rank {}.",
+                  name, resolvedConfig.channelAxis, rank);
+        return Result::ERROR;
+    }
+    if (resolvedConfig.batchAxis != -1 &&
+        resolvedConfig.batchAxis == resolvedConfig.channelAxis) {
+        JST_ERROR("[SUPERLUMINAL] Plot '{}' batch and channel axes must be different.", name);
+        return Result::ERROR;
+    }
+
+    SignalAxes axes;
+    if (resolvedConfig.batchAxis != -1) {
+        axes.batch = static_cast<Index>(resolvedConfig.batchAxis);
+    }
+    if (resolvedConfig.channelAxis != -1) {
+        axes.channel = static_cast<Index>(resolvedConfig.channelAxis);
+    }
+
+    std::vector<Index> unclassifiedAxes;
+    for (Index axis = 0; axis < resolvedConfig.buffer.rank(); ++axis) {
+        if ((axes.batch && axis == *axes.batch) ||
+            (axes.channel && axis == *axes.channel)) {
+            continue;
+        }
+        unclassifiedAxes.push_back(axis);
+    }
+    if (unclassifiedAxes.empty()) {
+        JST_ERROR("[SUPERLUMINAL] Plot '{}' has no sample axis.", name);
+        return Result::ERROR;
+    }
+
+    axes.sample = unclassifiedAxes.back();
+    if (!axes.batch && unclassifiedAxes.size() > 1) {
+        axes.batch = unclassifiedAxes.front();
+    }
+    for (const Index axis : unclassifiedAxes) {
+        if (axis != *axes.sample && (!axes.batch || axis != *axes.batch)) {
+            JST_ERROR("[SUPERLUMINAL] Plot '{}' has an unclassified input axis {}. "
+                      "Configure batchAxis and channelAxis.", name, axis);
+            return Result::ERROR;
+        }
+    }
+    JST_CHECK(SetSignalAxes(resolvedConfig.buffer, axes));
+
     // Create plot state.
 
     auto& state = impl->plots[name];
 
-    state.config = config;
+    state.config = std::move(resolvedConfig);
     state.mosaic = mosaic;
     state.name = name;
 
@@ -1227,6 +1286,15 @@ U64 Superluminal::Impl::BufferKey(const Tensor& buffer) {
     hashCombine(seed, static_cast<U64>(buffer.rank()));
     for (U64 i = 0; i < buffer.rank(); ++i) {
         hashCombine(seed, buffer.shape(i));
+    }
+
+    for (const std::string_view attribute : {
+             SampleAxisAttribute, BatchAxisAttribute, ChannelAxisAttribute}) {
+        if (buffer.hasAttribute(std::string(attribute))) {
+            hashCombine(seed, std::hash<std::string_view>{}(attribute));
+            hashCombine(seed, std::any_cast<Index>(
+                buffer.attribute(std::string(attribute))));
+        }
     }
 
     if (seed == 0) {
