@@ -53,6 +53,11 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"destructive_btn_active", {0.50f, 0.00f, 0.00f, 1.0f}},
             {"destructive_btn_text", {1.00f, 1.00f, 1.00f, 1.0f}},
             {"destructive_btn_outline", {0.86f, 0.24f, 0.24f, 1.0f}},
+            {"warning_btn", {0.85f, 0.45f, 0.10f, 1.0f}},
+            {"warning_btn_hovered", {0.95f, 0.55f, 0.15f, 1.0f}},
+            {"warning_btn_active", {0.75f, 0.35f, 0.05f, 1.0f}},
+            {"warning_btn_text", {1.00f, 1.00f, 1.00f, 1.0f}},
+            {"warning_btn_outline", {1.00f, 0.65f, 0.25f, 0.85f}},
 
             // Text Colors
             {"text_primary", {0.90f, 0.90f, 0.90f, 1.00f}},
@@ -231,6 +236,11 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"destructive_btn_active", {0.80f, 0.15f, 0.15f, 1.0f}},
             {"destructive_btn_text", {1.00f, 1.00f, 1.00f, 1.0f}},
             {"destructive_btn_outline", {0.74f, 0.12f, 0.12f, 1.0f}},
+            {"warning_btn", {0.85f, 0.45f, 0.10f, 1.0f}},
+            {"warning_btn_hovered", {0.95f, 0.55f, 0.15f, 1.0f}},
+            {"warning_btn_active", {0.75f, 0.35f, 0.05f, 1.0f}},
+            {"warning_btn_text", {1.00f, 1.00f, 1.00f, 1.0f}},
+            {"warning_btn_outline", {0.75f, 0.35f, 0.05f, 0.85f}},
 
             // Text Colors
             {"text_primary", {0.12f, 0.12f, 0.14f, 1.00f}},

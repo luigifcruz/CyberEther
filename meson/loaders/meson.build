@@ -22,6 +22,7 @@ subdir('qrencode')
 subdir('libmodes')
 subdir('tree_sitter')
 subdir('onnxruntime')
+subdir('velopack')
 # [NEW DEPENDENCY HOOK]
 
 summary(ldr_lst, section: 'Loaders', bool_yn: true)

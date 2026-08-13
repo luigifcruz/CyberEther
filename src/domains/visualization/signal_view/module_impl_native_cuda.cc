@@ -28,7 +28,7 @@ extern "C" __global__ void lineplot_update(const float* input,
                                            unsigned long long numberOfElements,
                                            unsigned long long numberOfBatches,
                                            unsigned long long inputBatchStride,
-                                           unsigned long long inputSampleStride,
+                                           unsigned long long inputElementStride,
                                            unsigned long long decimation,
                                            float normalizationFactor,
                                            unsigned long long averaging,
@@ -42,7 +42,7 @@ extern "C" __global__ void lineplot_update(const float* input,
     float sum = 0.0f;
     for (unsigned long long batch = 0; batch < numberOfBatches; ++batch) {
         sum += input[(batch * inputBatchStride) +
-                     (index * decimation * inputSampleStride)];
+                     (index * decimation * inputElementStride)];
     }
 
     const float amplitude = fminf(
@@ -68,8 +68,8 @@ constexpr const char* kLineplotWaterfallKernelSource = R"(
 extern "C" __global__ void
 lineplot_waterfall_update(const float* input,
                           float* waterfallBins,
-                          unsigned long long sampleSize,
-                          unsigned long long inputSampleStride,
+                          unsigned long long elementCount,
+                          unsigned long long inputElementStride,
                           unsigned long long inputBatchStride,
                           unsigned long long retainedBatches,
                           unsigned long long height,
@@ -77,20 +77,20 @@ lineplot_waterfall_update(const float* input,
                           unsigned long long destinationRow) {
     const unsigned long long index =
         (static_cast<unsigned long long>(blockIdx.x) * blockDim.x) + threadIdx.x;
-    const unsigned long long elementCount = retainedBatches * sampleSize;
-    if (index >= elementCount) {
+    const unsigned long long workItemCount = retainedBatches * elementCount;
+    if (index >= workItemCount) {
         return;
     }
 
-    const unsigned long long retainedBatch = index / sampleSize;
-    const unsigned long long sample = index % sampleSize;
+    const unsigned long long retainedBatch = index / elementCount;
+    const unsigned long long element = index % elementCount;
     const unsigned long long sourceBatch = sourceRow + retainedBatch;
     const unsigned long long destinationBatch =
         (destinationRow + retainedBatch) % height;
 
-    waterfallBins[(destinationBatch * sampleSize) + sample] =
+    waterfallBins[(destinationBatch * elementCount) + element] =
         input[(sourceBatch * inputBatchStride) +
-              (sample * inputSampleStride)];
+              (element * inputElementStride)];
 }
 )";
 
@@ -158,7 +158,7 @@ Result SignalViewImplNativeCuda::validate() {
         const U64 retainedBatches = std::min(validatedNumberOfBatches,
                                              candidate()->waterfallHeight);
         if (!Jetstream::detail::CheckedMultiply(retainedBatches,
-                                                validatedInputSampleSize,
+                                                validatedInputElementCount,
                                                 workItems)) {
             JST_ERROR("[MODULE_SIGNAL_VIEW_NATIVE_CUDA] Waterfall work size "
                       "exceeds the supported range.");
@@ -266,7 +266,7 @@ Result SignalViewImplNativeCuda::computeInitialize() {
 }
 
 Result SignalViewImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
-    if (inputSampleSize == 0 || numberOfBatches == 0) {
+    if (inputElementCount == 0 || numberOfBatches == 0) {
         return Result::SUCCESS;
     }
 
@@ -302,7 +302,7 @@ Result SignalViewImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
             &numberOfElements,
             &numberOfBatches,
             &inputBatchStride,
-            &inputSampleStride,
+            &inputElementStride,
             &decimation,
             &normalizationFactor,
             &averagingValue,
@@ -330,8 +330,8 @@ Result SignalViewImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
         void* waterfallArguments[] = {
             &inputArgument,
             &waterfallData,
-            &inputSampleSize,
-            &inputSampleStride,
+            &inputElementCount,
+            &inputElementStride,
             &inputBatchStride,
             &plan.rowCount,
             &waterfallHeight,

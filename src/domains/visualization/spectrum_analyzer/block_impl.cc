@@ -5,7 +5,7 @@
 #include <string>
 
 #include <jetstream/detail/block_impl.hh>
-#include <jetstream/domains/core/invert/module.hh>
+#include <jetstream/domains/dsp/invert/module.hh>
 #include <jetstream/domains/core/multiply/module.hh>
 #include <jetstream/domains/core/range/module.hh>
 #include <jetstream/domains/core/reshape/module.hh>

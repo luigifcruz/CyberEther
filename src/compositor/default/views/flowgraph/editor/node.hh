@@ -3,6 +3,7 @@
 
 #include "config/base.hh"
 #include "documentation.hh"
+#include "inspect.hh"
 #include "menu.hh"
 #include "metrics/base.hh"
 
@@ -104,6 +105,7 @@ struct FlowgraphNode {
 
     struct Config {
         std::string id;
+        std::string inspectorId;
         BlockData block;
         bool pasteEnabled = false;
         bool timingEnabled = false;
@@ -111,6 +113,7 @@ struct FlowgraphNode {
         std::function<void(Extent2D<F32>)> onPaste;
         std::function<void()> onRename;
         std::function<void()> onReload;
+        std::function<void(Parser::Map)> onInspectApply;
         std::function<void()> onDelete;
         std::function<void(DeviceType, RuntimeType, ProviderType)> onDeviceSelect;
         std::function<void(F32, F32, F32, F32)> onLayout;
@@ -364,6 +367,10 @@ struct FlowgraphNode {
                 }
             },
             .onRename = this->config.onRename,
+            .onInspect = [this]() {
+                inspector.open();
+                inspectorOpen = true;
+            },
             .onReload = this->config.onReload,
             .onDelete = this->config.onDelete,
             .onDocumentation = [this]() {
@@ -392,6 +399,15 @@ struct FlowgraphNode {
             .value = block.documentation,
             .onClose = [this]() {
                 documentationOpen = false;
+            },
+        });
+        inspector.update({
+            .id = this->config.inspectorId,
+            .name = block.name,
+            .value = block.config,
+            .onApply = this->config.onInspectApply,
+            .onClose = [this]() {
+                inspectorOpen = false;
             },
         });
     }
@@ -438,6 +454,9 @@ struct FlowgraphNode {
         if (documentationOpen) {
             documentation.render(ctx);
         }
+        if (inspectorOpen) {
+            inspector.render(ctx);
+        }
         if (config.timingEnabled) {
             runtimeOverlay.render(ctx);
         }
@@ -460,8 +479,10 @@ struct FlowgraphNode {
     std::vector<FlowgraphNodeMenu::DeviceOption> deviceOptions;
     FlowgraphNodeMenu menu;
     FlowgraphNodeDocumentation documentation;
+    FlowgraphNodeInspector inspector;
     bool menuOpen = false;
     bool documentationOpen = false;
+    bool inspectorOpen = false;
 };
 
 }  // namespace Jetstream

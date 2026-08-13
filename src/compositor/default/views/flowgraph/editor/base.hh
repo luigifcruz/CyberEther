@@ -162,6 +162,7 @@ struct FlowgraphEditor {
             }
             FlowgraphNode::Config nodeConfig{
                 .id = block.name,
+                .inspectorId = this->config.id + ":" + block.name + ":inspector",
                 .block = std::move(nodeBlock),
                 .pasteEnabled = this->config.clipboardHasData,
                 .timingEnabled = this->config.debugTimingEnabled,
@@ -183,6 +184,11 @@ struct FlowgraphEditor {
                 .onReload = [this, blockName = block.name]() {
                     if (this->config.onReloadBlock) {
                         this->config.onReloadBlock(blockName);
+                    }
+                },
+                .onInspectApply = [this, blockName = block.name](Parser::Map values) {
+                    if (this->config.onReconfigureBlock) {
+                        this->config.onReconfigureBlock(blockName, std::move(values), false);
                     }
                 },
                 .onDelete = [this, blockName = block.name]() {

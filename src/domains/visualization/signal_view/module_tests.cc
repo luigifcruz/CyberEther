@@ -237,6 +237,15 @@ TEST_CASE("Signal View module supports every visualization mode",
                 }) == Result::SUCCESS);
                 ctx.setInput("signal", input);
                 REQUIRE(ctx.run() == Result::SUCCESS);
+
+                Tensor channels;
+                REQUIRE(channels.create(DeviceType::CPU, DataType::F32, {128}) ==
+                        Result::SUCCESS);
+                REQUIRE(SetSignalAxes(channels, {
+                    .channel = Index{0},
+                }) == Result::SUCCESS);
+                ctx.setInput("signal", channels);
+                REQUIRE(ctx.run() == Result::SUCCESS);
             }
         }
     }
@@ -362,14 +371,14 @@ TEST_CASE("Signal View validates signal axis roles",
                                              Modules::SignalView{},
                                              malformed);
 
-            Tensor channel(implementation.device, DataType::F32, {2, 32});
-            REQUIRE(SetSignalAxes(channel, {
+            Tensor mixed(implementation.device, DataType::F32, {2, 32});
+            REQUIRE(SetSignalAxes(mixed, {
                 .sample = Index{1},
                 .channel = Index{0},
             }) == Result::SUCCESS);
             RequireSignalViewValidationError(implementation,
                                              Modules::SignalView{},
-                                             channel);
+                                             mixed);
 
             Tensor auxiliary(implementation.device, DataType::F32, {2, 32});
             REQUIRE(SetSignalAxes(auxiliary, {
@@ -499,45 +508,58 @@ TEST_CASE("Combined signal view keeps full-resolution waterfall rows",
     }
 }
 
-TEST_CASE("Signal View indexes leading and trailing batch layouts equivalently",
-          "[modules][signal_view][layout]") {
+TEST_CASE("Signal View indexes sample and channel batch layouts equivalently",
+           "[modules][signal_view][layout]") {
     const auto implementations = Registry::ListAvailableModules("signal_view");
     REQUIRE(!implementations.empty());
-
-    Tensor leading(DeviceType::CPU, DataType::F32, {2, 3});
-    const F32 leadingData[] = {
-        0.25f, 0.50f, 0.75f,
-        0.25f, 0.75f, 0.50f,
-    };
-    std::copy(std::begin(leadingData), std::end(leadingData),
-              leading.data<F32>());
-    REQUIRE(SetSignalAxes(leading, {
-        .sample = Index{1},
-        .batch = Index{0},
-    }) == Result::SUCCESS);
-
-    Tensor trailing(DeviceType::CPU, DataType::F32, {3, 2});
-    const F32 trailingData[] = {
-        0.25f, 0.25f,
-        0.50f, 0.75f,
-        0.75f, 0.50f,
-    };
-    std::copy(std::begin(trailingData), std::end(trailingData),
-              trailing.data<F32>());
-    REQUIRE(SetSignalAxes(trailing, {
-        .sample = Index{0},
-        .batch = Index{1},
-    }) == Result::SUCCESS);
 
     for (const auto& implementation : implementations) {
         DYNAMIC_SECTION("Device: " << implementation.device
                         << " Runtime: " << implementation.runtime) {
-            const auto leadingSnapshot =
-                ComputeSignalViewSnapshot(implementation, leading);
-            const auto trailingSnapshot =
-                ComputeSignalViewSnapshot(implementation, trailing);
-            REQUIRE(trailingSnapshot.signalPoints == leadingSnapshot.signalPoints);
-            REQUIRE(trailingSnapshot.waterfallBins == leadingSnapshot.waterfallBins);
+            for (const bool useChannelAxis : {false, true}) {
+                DYNAMIC_SECTION("Element axis: "
+                                << (useChannelAxis ? "channel" : "sample")) {
+                    Tensor leading(DeviceType::CPU, DataType::F32, {2, 3});
+                    const F32 leadingData[] = {
+                        0.25f, 0.50f, 0.75f,
+                        0.25f, 0.75f, 0.50f,
+                    };
+                    std::copy(std::begin(leadingData), std::end(leadingData),
+                              leading.data<F32>());
+                    SignalAxes leadingAxes{.batch = Index{0}};
+                    if (useChannelAxis) {
+                        leadingAxes.channel = Index{1};
+                    } else {
+                        leadingAxes.sample = Index{1};
+                    }
+                    REQUIRE(SetSignalAxes(leading, leadingAxes) == Result::SUCCESS);
+
+                    Tensor trailing(DeviceType::CPU, DataType::F32, {3, 2});
+                    const F32 trailingData[] = {
+                        0.25f, 0.25f,
+                        0.50f, 0.75f,
+                        0.75f, 0.50f,
+                    };
+                    std::copy(std::begin(trailingData), std::end(trailingData),
+                              trailing.data<F32>());
+                    SignalAxes trailingAxes{.batch = Index{1}};
+                    if (useChannelAxis) {
+                        trailingAxes.channel = Index{0};
+                    } else {
+                        trailingAxes.sample = Index{0};
+                    }
+                    REQUIRE(SetSignalAxes(trailing, trailingAxes) == Result::SUCCESS);
+
+                    const auto leadingSnapshot =
+                        ComputeSignalViewSnapshot(implementation, leading);
+                    const auto trailingSnapshot =
+                        ComputeSignalViewSnapshot(implementation, trailing);
+                    REQUIRE(trailingSnapshot.signalPoints ==
+                            leadingSnapshot.signalPoints);
+                    REQUIRE(trailingSnapshot.waterfallBins ==
+                            leadingSnapshot.waterfallBins);
+                }
+            }
         }
     }
 }

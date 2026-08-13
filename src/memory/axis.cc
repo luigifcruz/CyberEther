@@ -1,14 +1,32 @@
 #include "jetstream/memory/axis.hh"
 
 #include <array>
+#include <cctype>
 #include <limits>
 #include <string>
+#include <utility>
 
 #include "jetstream/memory/tensor.hh"
 
 namespace Jetstream {
 
 namespace {
+
+std::string_view Trim(const std::string_view value) {
+    std::size_t begin = 0;
+    while (begin < value.size() &&
+           std::isspace(static_cast<unsigned char>(value[begin]))) {
+        ++begin;
+    }
+
+    std::size_t end = value.size();
+    while (end > begin &&
+           std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+        --end;
+    }
+
+    return value.substr(begin, end - begin);
+}
 
 Result ReadAxis(const Tensor& tensor,
                 const std::string_view name,
@@ -79,6 +97,101 @@ bool HasSignalAxes(const Tensor& tensor) {
 }
 
 }  // namespace
+
+Result ParseSignalAxesLayout(const std::string_view value,
+                             const Index rank,
+                             const SignalAxesLayoutMode mode,
+                             SignalAxesLayout& parsed) {
+    constexpr std::string_view errorContext = "[MEMORY:AXIS] Signal axes";
+
+    parsed = {};
+    SignalAxesLayout candidate;
+
+    auto layout = Trim(value);
+    if (layout.empty()) {
+        return Result::SUCCESS;
+    }
+    if (layout.front() != '[' || layout.back() != ']') {
+        JST_ERROR("{} '{}' must use bracketed notation.", errorContext, value);
+        return Result::ERROR;
+    }
+
+    layout = Trim(layout.substr(1, layout.size() - 2));
+    if (layout.empty()) {
+        JST_ERROR("{} cannot be empty.", errorContext);
+        return Result::ERROR;
+    }
+    if (layout.back() == ',') {
+        JST_ERROR("{} contain an empty entry.", errorContext);
+        return Result::ERROR;
+    }
+
+    Index axis = 0;
+    while (!layout.empty()) {
+        const std::size_t separator = layout.find(',');
+        const auto token = Trim(layout.substr(0, separator));
+        const bool allowInheritance = mode == SignalAxesLayoutMode::Transform;
+        const bool validToken = token.size() == 1 &&
+                                (token[0] == 'B' || token[0] == 'C' ||
+                                 token[0] == 'S' || token[0] == '_' ||
+                                 (allowInheritance && token[0] == '*'));
+        if (!validToken) {
+            if (allowInheritance) {
+                JST_ERROR("{} entry '{}' must be one of B, C, S, _, or *.",
+                          errorContext, token);
+            } else {
+                JST_ERROR("{} entry '{}' must be one of B, C, S, or _.",
+                          errorContext, token);
+            }
+            return Result::ERROR;
+        }
+        if (axis >= rank) {
+            JST_ERROR("{} describe more than {} dimensions.",
+                      errorContext, rank);
+            return Result::ERROR;
+        }
+
+        std::optional<Index>* role = nullptr;
+        switch (token[0]) {
+            case 'B':
+                role = &candidate.axes.batch;
+                break;
+            case 'C':
+                role = &candidate.axes.channel;
+                break;
+            case 'S':
+                role = &candidate.axes.sample;
+                break;
+            case '*':
+                candidate.inherited.push_back(axis);
+                break;
+            default:
+                break;
+        }
+        if (role != nullptr) {
+            if (*role) {
+                JST_ERROR("{} use role '{}' more than once.",
+                          errorContext, token[0]);
+                return Result::ERROR;
+            }
+            *role = axis;
+        }
+
+        ++axis;
+        if (separator == std::string_view::npos) {
+            break;
+        }
+        layout = layout.substr(separator + 1);
+        if (Trim(layout).empty()) {
+            JST_ERROR("{} contain an empty entry.", errorContext);
+            return Result::ERROR;
+        }
+    }
+
+    candidate.specified = true;
+    parsed = std::move(candidate);
+    return Result::SUCCESS;
+}
 
 std::optional<Index> ResolveAxis(const I64 axis, const Index rank) {
     if (rank == 0 || rank > static_cast<Index>(std::numeric_limits<I64>::max())) {

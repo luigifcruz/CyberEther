@@ -648,6 +648,7 @@ TEST_CASE("Python module validation rejects malformed signal axes specs",
         {.shape = "[2, 3]", .axes = "S"},
         {.shape = "[2, 3]", .axes = "[]"},
         {.shape = "[2, 3]", .axes = "[_, _]"},
+        {.shape = "[2, 3]", .axes = "[*]"},
     };
 
     for (const auto& spec : invalidSpecs) {

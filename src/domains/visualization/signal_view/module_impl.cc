@@ -28,8 +28,8 @@ Result SignalViewImpl::validate() {
 
     validatedNumberOfElements = 0;
     validatedNumberOfBatches = 0;
-    validatedInputSampleSize = 0;
-    validatedInputSampleStride = 0;
+    validatedInputElementCount = 0;
+    validatedInputElementStride = 0;
     validatedInputBatchStride = 0;
     validatedNormalizationFactor = 0.0f;
     validatedLineplotEnabled = false;
@@ -74,29 +74,39 @@ Result SignalViewImpl::validate() {
     }
 
     SignalAxes axes;
-    if (ResolveSignalAxes(inputTensor, axes) != Result::SUCCESS) {
+    if (MapSignalAxes(inputTensor, IdentityAxisMap(inputTensor.rank()), axes) !=
+        Result::SUCCESS) {
         JST_ERROR("[MODULE_SIGNAL_VIEW] Input must contain valid signal axis "
                   "metadata.");
         return Result::ERROR;
     }
 
-    if (axes.channel) {
-        JST_ERROR("[MODULE_SIGNAL_VIEW] channelAxis is not supported.");
+    if (axes.sample && axes.channel) {
+        JST_ERROR("[MODULE_SIGNAL_VIEW] Input cannot contain both sampleAxis "
+                  "and channelAxis.");
+        return Result::ERROR;
+    }
+
+    const auto elementAxis = axes.sample ? axes.sample : axes.channel;
+    if (!elementAxis) {
+        JST_ERROR("[MODULE_SIGNAL_VIEW] Input must contain sampleAxis or "
+                  "channelAxis.");
         return Result::ERROR;
     }
 
     for (Index axis = 0; axis < inputTensor.rank(); ++axis) {
-        if (axis != *axes.sample && (!axes.batch || axis != *axes.batch)) {
+        if (axis != *elementAxis && (!axes.batch || axis != *axes.batch)) {
             JST_ERROR("[MODULE_SIGNAL_VIEW] Unsupported auxiliary input axis {}. "
-                      "Every dimension must be sampleAxis or batchAxis.", axis);
+                      "Every dimension must be the element axis or batchAxis.",
+                      axis);
             return Result::ERROR;
         }
     }
 
-    const U64 inputSampleSize = inputTensor.shape(*axes.sample);
+    const U64 inputElementCount = inputTensor.shape(*elementAxis);
     const U64 numberOfElements = hasLineplot
-        ? inputSampleSize / config.decimation
-        : inputSampleSize;
+        ? inputElementCount / config.decimation
+        : inputElementCount;
     if (hasLineplot && numberOfElements < 2) {
         JST_ERROR("[MODULE_SIGNAL_VIEW] Invalid number of elements ({}), need "
                   "at least 2.",
@@ -142,7 +152,7 @@ Result SignalViewImpl::validate() {
             static_cast<U64>(std::numeric_limits<std::ptrdiff_t>::max()) /
                 sizeof(F32),
         });
-        if (!Jetstream::detail::CheckedMultiply(inputSampleSize,
+        if (!Jetstream::detail::CheckedMultiply(inputElementCount,
                                                 config.waterfallHeight,
                                                 waterfallElementCount) ||
             waterfallElementCount > maxWaterfallElementCount) {
@@ -170,8 +180,8 @@ Result SignalViewImpl::validate() {
         : 1;
     validatedNumberOfElements = numberOfElements;
     validatedNumberOfBatches = numberOfBatches;
-    validatedInputSampleSize = inputSampleSize;
-    validatedInputSampleStride = inputTensor.stride(*axes.sample);
+    validatedInputElementCount = inputElementCount;
+    validatedInputElementStride = inputTensor.stride(*elementAxis);
     validatedInputBatchStride = axes.batch
         ? inputTensor.stride(*axes.batch)
         : 0;
@@ -213,8 +223,8 @@ Result SignalViewImpl::create() {
 
     numberOfElements = validatedNumberOfElements;
     numberOfBatches = validatedNumberOfBatches;
-    inputSampleSize = validatedInputSampleSize;
-    inputSampleStride = validatedInputSampleStride;
+    inputElementCount = validatedInputElementCount;
+    inputElementStride = validatedInputElementStride;
     inputBatchStride = validatedInputBatchStride;
     normalizationFactor = validatedNormalizationFactor;
     lineplotEnabled = validatedLineplotEnabled;
@@ -250,7 +260,7 @@ Result SignalViewImpl::create() {
 
     if (waterfallEnabled) {
         JST_CHECK(waterfallBins.create(device(), DataType::F32,
-                                       {waterfallHeight, inputSampleSize},
+                                       {waterfallHeight, inputElementCount},
                                        renderStateConfig));
     }
 
@@ -742,18 +752,18 @@ Result SignalViewImpl::present() {
         const auto dirtyPlan = waterfallHistory.dirtyPlan(waterfallHeight);
         if (dirtyPlan.firstRowCount > 0) {
             JST_CHECK(waterfallBuffer->update(dirtyPlan.startRow *
-                                                  inputSampleSize,
+                                                  inputElementCount,
                                               dirtyPlan.firstRowCount *
-                                                  inputSampleSize));
+                                                  inputElementCount));
         }
         if (dirtyPlan.secondRowCount > 0) {
             JST_CHECK(waterfallBuffer->update(0,
                                               dirtyPlan.secondRowCount *
-                                                  inputSampleSize));
+                                                  inputElementCount));
         }
         waterfallHistory.clearDirty();
 
-        waterfallUniforms.width = static_cast<int>(inputSampleSize);
+        waterfallUniforms.width = static_cast<int>(inputElementCount);
         waterfallUniforms.height = static_cast<int>(waterfallHeight);
         waterfallUniforms.index = waterfallHistory.writeIndex /
                                   static_cast<F32>(waterfallHeight);

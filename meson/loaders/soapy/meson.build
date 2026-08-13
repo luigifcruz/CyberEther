@@ -44,6 +44,11 @@ if jst_is_macos or jst_is_linux
             required: true,
             default_options: soapy_static_options,
         ).get_variable('soapyrtlsdr_dep').as_link_whole(),
+        subproject(
+            'soapyhackrf',
+            required: true,
+            default_options: soapy_static_options,
+        ).get_variable('soapyhackrf_dep').as_link_whole(),
     ]
 endif
 
@@ -52,6 +57,11 @@ if jst_is_windows
         soapysdr_dep,
     ]
     whole_dep_lst += [
+        subproject(
+            'soapyairspy',
+            required: true,
+            default_options: soapy_static_options,
+        ).get_variable('soapyairspy_dep').as_link_whole(),
         subproject(
             'soapyrtlsdr',
             required: true,
@@ -62,6 +72,11 @@ if jst_is_windows
             required: true,
             default_options: soapy_static_options,
         ).get_variable('soapylms7_dep').as_link_whole(),
+        subproject(
+            'soapyhackrf',
+            required: true,
+            default_options: soapy_static_options,
+        ).get_variable('soapyhackrf_dep').as_link_whole(),
     ]
 endif
 
@@ -85,6 +100,11 @@ if jst_is_browser
             required: true,
             default_options: soapy_static_options,
         ).get_variable('soapyrtlsdr_dep').as_link_whole(),
+        subproject(
+            'soapyhackrf',
+            required: true,
+            default_options: soapy_static_options,
+        ).get_variable('soapyhackrf_dep').as_link_whole(),
     ]
 endif
 

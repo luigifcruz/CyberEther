@@ -1,7 +1,7 @@
-#include <jetstream/domains/core/invert/block.hh>
+#include <jetstream/domains/dsp/invert/block.hh>
 #include "jetstream/detail/block_impl.hh"
 
-#include <jetstream/domains/core/invert/module.hh>
+#include <jetstream/domains/dsp/invert/module.hh>
 
 namespace Jetstream::Blocks {
 
