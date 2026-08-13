@@ -1,13 +1,27 @@
 #include <glm/mat4x4.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <cmath>
+#include <limits>
+#include <new>
+#include <stdexcept>
+
 #include "jetstream/render/base.hh"
 #include "jetstream/render/components/axis.hh"
 #include "jetstream/render/components/text.hh"
+#include "jetstream/tools/numeric.hh"
 
 #include "resources/shaders/global_shaders.hh"
 
 namespace Jetstream::Render::Components {
+
+namespace {
+
+constexpr F32 kTickLabelScale = 0.85f;
+constexpr U64 kMaxVerticalLines = 65;
+constexpr U64 kMaxHorizontalLines = 17;
+
+}  // namespace
 
 Axis::Axis(const Config& config) {
     this->config = config;
@@ -66,6 +80,9 @@ struct Axis::Impl {
 
     std::shared_ptr<Text> text;
 
+    TickFormatter xTickFormatter;
+    TickFormatter yTickFormatter;
+
     void generateGridPoints();
     void computePaddingScale();
     void computeTickCount(U64 numCols, U64 numRows,
@@ -79,6 +96,11 @@ struct Axis::Impl {
     F32 mapGridY(F32 localY) const;
     Result repositionLabels();
     Result repositionXLabels();
+    Result syncResponsiveGrid();
+    Result syncTickLabels();
+    U64 responsiveLineCount(F32 availablePx,
+                            F32 requiredSpacingPx,
+                            U64 maximum) const;
 
     Impl(const Config& config) : config(config) {}
 };
@@ -91,24 +113,10 @@ Result Axis::create(Window* window) {
         return Result::ERROR;
     }
 
-    if (config.numberOfVerticalLines < 2) {
-        JST_ERROR("[AXIS] Need at least 2 vertical lines.");
-        return Result::ERROR;
-    }
-
-    if (config.numberOfHorizontalLines < 2) {
-        JST_ERROR("[AXIS] Need at least 2 horizontal lines.");
-        return Result::ERROR;
-    }
-
-    pimpl->currentVerticalLines = config.numberOfVerticalLines;
-    pimpl->currentHorizontalLines = config.numberOfHorizontalLines;
-    pimpl->maxVerticalLines = config.maxNumberOfVerticalLines > 0
-        ? std::max(config.maxNumberOfVerticalLines, config.numberOfVerticalLines)
-        : config.numberOfVerticalLines;
-    pimpl->maxHorizontalLines = config.maxNumberOfHorizontalLines > 0
-        ? std::max(config.maxNumberOfHorizontalLines, config.numberOfHorizontalLines)
-        : config.numberOfHorizontalLines;
+    pimpl->currentVerticalLines = 3;
+    pimpl->currentHorizontalLines = 3;
+    pimpl->maxVerticalLines = kMaxVerticalLines;
+    pimpl->maxHorizontalLines = kMaxHorizontalLines;
 
     pimpl->dividerLines = (config.verticalScale < 1.0f) ? 1 : 0;
 
@@ -124,21 +132,54 @@ Result Axis::create(Window* window) {
 
     pimpl->recomputeTickCount();
 
-    const U64 currentInteriorLines = config.showInteriorGrid
-        ? pimpl->currentVerticalLines + pimpl->currentHorizontalLines - 4
-        : 0;
+    const U64 currentInteriorLines = config.showInteriorGrid ? 2 : 0;
     const U64 maxInteriorLines = config.showInteriorGrid
-        ? pimpl->maxVerticalLines + pimpl->maxHorizontalLines - 4
+        ? kMaxVerticalLines + kMaxHorizontalLines - 4
         : 0;
-    pimpl->totalLines = currentInteriorLines + pimpl->currentMajorTicks +
-                        pimpl->currentMinorTicks + pimpl->dividerLines + 4;
-    pimpl->maxTotalLines = maxInteriorLines + pimpl->maxMajorTicks +
-                           pimpl->maxMinorTicks + pimpl->dividerLines + 4;
+    U64 currentTicks = 0;
+    U64 currentGridLines = 0;
+    U64 maxTicks = 0;
+    U64 maxGridLines = 0;
+    U64 gridPointScalarCount = 0;
+    U64 gridVertexScalarCount = 0;
+    U64 gridVertexCount = 0;
+    if (!detail::CheckedAdd(pimpl->currentMajorTicks,
+                            pimpl->currentMinorTicks, currentTicks) ||
+        !detail::CheckedAdd(currentInteriorLines, currentTicks,
+                            currentGridLines) ||
+        !detail::CheckedAdd(currentGridLines, pimpl->dividerLines + 4,
+                            pimpl->totalLines) ||
+        !detail::CheckedAdd(pimpl->maxMajorTicks, pimpl->maxMinorTicks,
+                            maxTicks) ||
+        !detail::CheckedAdd(maxInteriorLines, maxTicks, maxGridLines) ||
+        !detail::CheckedAdd(maxGridLines, pimpl->dividerLines + 4,
+                            pimpl->maxTotalLines) ||
+        !detail::CheckedMultiply(pimpl->maxTotalLines, 4,
+                                 gridPointScalarCount) ||
+        !detail::CheckedMultiply(pimpl->maxTotalLines, 24,
+                                 gridVertexScalarCount) ||
+        !detail::CheckedMultiply(pimpl->maxTotalLines, 6,
+                                 gridVertexCount) ||
+        pimpl->maxTotalLines > std::numeric_limits<U32>::max() ||
+        gridVertexCount > std::numeric_limits<U32>::max() ||
+        gridPointScalarCount > pimpl->gridPoints.max_size() ||
+        gridVertexScalarCount > pimpl->gridVerticesData.max_size()) {
+        JST_ERROR("[AXIS] Geometry exceeds the supported rendering range.");
+        return Result::ERROR;
+    }
 
     // 2 points per line, 2 coords per point.
-    pimpl->gridPoints.resize(pimpl->maxTotalLines * 4, 0.0f);
-    // 6 vertices per line, 4 floats per vertex.
-    pimpl->gridVerticesData.resize(pimpl->maxTotalLines * 6 * 4, 0.0f);
+    try {
+        pimpl->gridPoints.resize(gridPointScalarCount, 0.0f);
+        // 6 vertices per line, 4 floats per vertex.
+        pimpl->gridVerticesData.resize(gridVertexScalarCount, 0.0f);
+    } catch (const std::bad_alloc&) {
+        JST_ERROR("[AXIS] Failed to allocate grid geometry.");
+        return Result::ERROR;
+    } catch (const std::length_error&) {
+        JST_ERROR("[AXIS] Grid geometry exceeds container capacity.");
+        return Result::ERROR;
+    }
 
     // Grid uniform buffer.
     {
@@ -249,7 +290,7 @@ Result Axis::create(Window* window) {
         // X tick labels (interior lines only, pre-allocate for max).
         for (U64 i = 1; i < maxV - 1; i++) {
             cfg.elements[jst::fmt::format("x{:02d}", i)] = {
-                .scale = 0.85f,
+                .scale = kTickLabelScale,
                 .position = {0.0f, 0.99f},
                 .alignment = {1, 0},
             };
@@ -259,13 +300,13 @@ Result Axis::create(Window* window) {
         for (U64 i = 1; i < maxH - 1; i++) {
             if (config.yLabelOnRight) {
                 cfg.elements[jst::fmt::format("y{:02d}", i)] = {
-                    .scale = 0.85f,
+                    .scale = kTickLabelScale,
                     .position = {0.85f, 0.0f},
                     .alignment = {2, 1},
                 };
             } else {
                 cfg.elements[jst::fmt::format("y{:02d}", i)] = {
-                    .scale = 0.85f,
+                    .scale = kTickLabelScale,
                     .position = {-0.99f, 0.0f},
                     .alignment = {2, 1},
                 };
@@ -385,6 +426,7 @@ Result Axis::updatePixelSize(const Extent2D<F32>& pixelSize) {
 
     JST_CHECK(pimpl->text->updatePixelSize(pixelSize));
     JST_CHECK(pimpl->repositionLabels());
+    JST_CHECK(pimpl->syncResponsiveGrid());
 
     return Result::SUCCESS;
 }
@@ -404,46 +446,6 @@ Result Axis::updateScissorRect(const Render::ScissorRect& rect) {
     return Result::SUCCESS;
 }
 
-Result Axis::updateLineCount(U64 verticalLines, U64 horizontalLines) {
-    verticalLines = std::clamp(verticalLines, U64{2}, pimpl->maxVerticalLines);
-    horizontalLines = std::clamp(horizontalLines, U64{2}, pimpl->maxHorizontalLines);
-
-    if (verticalLines == pimpl->currentVerticalLines &&
-        horizontalLines == pimpl->currentHorizontalLines) {
-        return Result::SUCCESS;
-    }
-
-    pimpl->currentVerticalLines = verticalLines;
-    pimpl->currentHorizontalLines = horizontalLines;
-    const U64 interiorLines = config.showInteriorGrid
-        ? verticalLines + horizontalLines - 4
-        : 0;
-
-    pimpl->recomputeTickCount();
-
-    pimpl->totalLines = interiorLines + pimpl->currentMajorTicks +
-                        pimpl->currentMinorTicks + pimpl->dividerLines + 4;
-
-    pimpl->generateGridPoints();
-    pimpl->drawGridVertex->updateVertexCount(pimpl->totalLines * 6);
-
-    pimpl->gridUniforms.numberOfLines = pimpl->maxTotalLines;
-    pimpl->gridUniforms.lineInfo = {
-        static_cast<float>(config.showInteriorGrid && horizontalLines >= 2
-            ? horizontalLines - 2 : 0),
-        static_cast<float>(config.showInteriorGrid && verticalLines >= 2
-            ? verticalLines - 2 : 0),
-        static_cast<float>(pimpl->currentMajorTicks),
-        static_cast<float>(pimpl->currentMinorTicks),
-    };
-    pimpl->updateGridUniformsFlag = true;
-
-    JST_CHECK(pimpl->repositionLabels());
-    JST_CHECK(pimpl->repositionXLabels());
-
-    return Result::SUCCESS;
-}
-
 Result Axis::setShowFrameTicks(bool visible) {
     if (visible == config.showFrameTicks) {
         return Result::SUCCESS;
@@ -456,40 +458,11 @@ Result Axis::setShowFrameTicks(bool visible) {
     return Result::SUCCESS;
 }
 
-Result Axis::updateTickLabels(const std::vector<std::string>& xLabels,
-                              const std::vector<std::string>& yLabels) {
-    const U64 xCount = pimpl->maxVerticalLines - 2;
-    const U64 yCount = pimpl->maxHorizontalLines - 2;
-    const U64 xVisible = pimpl->currentVerticalLines - 2;
-    const U64 yVisible = pimpl->currentHorizontalLines - 2;
-
-    for (U64 i = 0; i < xCount; i++) {
-        const auto id = jst::fmt::format("x{:02d}", i + 1);
-        auto element = pimpl->text->get(id);
-
-        if (i < xVisible && i < xLabels.size() && !xLabels[i].empty()) {
-            element.fill = xLabels[i];
-        } else {
-            element.fill = " ";
-        }
-
-        JST_CHECK(pimpl->text->update(id, element));
-    }
-
-    for (U64 i = 0; i < yCount; i++) {
-        const auto id = jst::fmt::format("y{:02d}", i + 1);
-        auto element = pimpl->text->get(id);
-
-        if (i < yVisible && i < yLabels.size() && !yLabels[i].empty()) {
-            element.fill = yLabels[i];
-        } else {
-            element.fill = " ";
-        }
-
-        JST_CHECK(pimpl->text->update(id, element));
-    }
-
-    return Result::SUCCESS;
+Result Axis::updateTickFormatters(TickFormatter xFormatter,
+                                  TickFormatter yFormatter) {
+    pimpl->xTickFormatter = std::move(xFormatter);
+    pimpl->yTickFormatter = std::move(yFormatter);
+    return pimpl->syncResponsiveGrid();
 }
 
 Result Axis::updateTitles(const std::string& xTitle,
@@ -839,6 +812,123 @@ Result Axis::Impl::repositionXLabels() {
         const F32 x = (baseX * zoom + translation * zoom) * padScale.x;
 
         element.position = {x, 1.0f - ps.y * 5.0f};
+        JST_CHECK(text->update(id, element));
+    }
+
+    return Result::SUCCESS;
+}
+
+U64 Axis::Impl::responsiveLineCount(const F32 availablePx,
+                                    const F32 requiredSpacingPx,
+                                    const U64 maximum) const {
+    if (!std::isfinite(availablePx) || availablePx <= 0.0f) {
+        return 3;
+    }
+    const F32 spacing = std::max(requiredSpacingPx, 1.0f);
+    U64 count = std::clamp<U64>(
+        static_cast<U64>(std::floor(availablePx / spacing)) + 1,
+        3,
+        maximum);
+    if (count % 2 == 0) {
+        --count;
+    }
+    return count;
+}
+
+Result Axis::Impl::syncResponsiveGrid() {
+    const F32 availableWidthPx = config.pixelSize.x > 0.0f
+        ? 2.0f * std::max(padScale.x, 0.0f) / config.pixelSize.x
+        : 0.0f;
+    const F32 availableHeightPx = config.pixelSize.y > 0.0f
+        ? 2.0f * std::max(padScale.y, 0.0f) * config.verticalScale /
+              config.pixelSize.y
+        : 0.0f;
+    F32 maxXLabelWidth = 0.0f;
+    if (xTickFormatter) {
+        for (const F32 position : {-1.0f, 0.0f, 1.0f}) {
+            maxXLabelWidth = std::max(
+                maxXLabelWidth,
+                text->advance(xTickFormatter(position)) * kTickLabelScale);
+        }
+    }
+    const F32 collisionPadding =
+        std::max(config.labelCollisionPaddingPx, 0.0f);
+    const F32 responsiveXSpacing = std::min(
+        std::max(config.minXLabelSpacingPx, 0.0f),
+        availableWidthPx / 4.0f);
+    const F32 responsiveYSpacing = std::min(
+        std::max(config.minYLabelSpacingPx, 0.0f),
+        availableHeightPx / 4.0f);
+    const F32 xRequiredSpacing = std::max(
+        responsiveXSpacing,
+        maxXLabelWidth + collisionPadding);
+    const F32 yRequiredSpacing = std::max(
+        responsiveYSpacing,
+        static_cast<F32>(config.font->lineHeight()) * kTickLabelScale +
+            collisionPadding);
+
+    const U64 verticalLines = responsiveLineCount(
+        availableWidthPx, xRequiredSpacing, maxVerticalLines);
+    const U64 horizontalLines = responsiveLineCount(
+        availableHeightPx, yRequiredSpacing, maxHorizontalLines);
+
+    if (verticalLines != currentVerticalLines ||
+        horizontalLines != currentHorizontalLines) {
+        currentVerticalLines = verticalLines;
+        currentHorizontalLines = horizontalLines;
+        const U64 interiorLines = config.showInteriorGrid
+            ? verticalLines + horizontalLines - 4
+            : 0;
+        recomputeTickCount();
+        totalLines = interiorLines + currentMajorTicks + currentMinorTicks +
+                     dividerLines + 4;
+        generateGridPoints();
+        drawGridVertex->updateVertexCount(totalLines * 6);
+        gridUniforms.lineInfo = {
+            static_cast<float>(config.showInteriorGrid
+                ? horizontalLines - 2 : 0),
+            static_cast<float>(config.showInteriorGrid
+                ? verticalLines - 2 : 0),
+            static_cast<float>(currentMajorTicks),
+            static_cast<float>(currentMinorTicks),
+        };
+        updateGridUniformsFlag = true;
+        JST_CHECK(repositionLabels());
+        JST_CHECK(repositionXLabels());
+    }
+
+    return syncTickLabels();
+}
+
+Result Axis::Impl::syncTickLabels() {
+    const U64 xCount = currentVerticalLines - 2;
+    const U64 yCount = currentHorizontalLines - 2;
+
+    for (U64 i = 0; i < maxVerticalLines - 2; ++i) {
+        const auto id = jst::fmt::format("x{:02d}", i + 1);
+        auto element = text->get(id);
+        if (i < xCount && xTickFormatter) {
+            const F32 position =
+                (2.0f * static_cast<F32>(i + 1) /
+                 static_cast<F32>(currentVerticalLines - 1)) - 1.0f;
+            element.fill = xTickFormatter(position);
+        } else {
+            element.fill = " ";
+        }
+        JST_CHECK(text->update(id, element));
+    }
+
+    for (U64 i = 0; i < maxHorizontalLines - 2; ++i) {
+        const auto id = jst::fmt::format("y{:02d}", i + 1);
+        auto element = text->get(id);
+        if (i < yCount && yTickFormatter) {
+            const F32 position =
+                (2.0f * static_cast<F32>(i + 1) /
+                 static_cast<F32>(currentHorizontalLines - 1)) - 1.0f;
+            element.fill = yTickFormatter(position);
+        } else {
+            element.fill = " ";
+        }
         JST_CHECK(text->update(id, element));
     }
 

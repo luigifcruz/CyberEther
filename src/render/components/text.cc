@@ -1,12 +1,16 @@
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <new>
 #include <span>
+#include <stdexcept>
 
 #include <glm/mat4x4.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "jetstream/render/base.hh"
 #include "jetstream/render/components/text.hh"
+#include "jetstream/tools/numeric.hh"
 
 #include "resources/shaders/global_shaders.hh"
 
@@ -107,15 +111,39 @@ Result Text::create(Window* window) {
     }
 
     // Calculate constants.
-    const U64 numberOfVertices = config.maxCharacters * 4;
+    U64 numberOfVertices = 0;
     const U64 numberOfInstances = config.elements.size();
-    const U64 numberOfIndices = config.maxCharacters * 6;
+    U64 numberOfIndices = 0;
+    U64 totalVertexCount = 0;
+    if (!detail::CheckedMultiply(config.maxCharacters, 4,
+                                 numberOfVertices) ||
+        !detail::CheckedMultiply(config.maxCharacters, 6,
+                                 numberOfIndices) ||
+        !detail::CheckedMultiply(numberOfVertices, numberOfInstances,
+                                 totalVertexCount) ||
+        numberOfVertices > std::numeric_limits<U32>::max() ||
+        numberOfInstances > std::numeric_limits<U32>::max() ||
+        totalVertexCount > pimpl->posVertices.max_size() ||
+        totalVertexCount > pimpl->fillVertices.max_size() ||
+        numberOfInstances > pimpl->instances.max_size() ||
+        numberOfIndices > pimpl->indices.max_size()) {
+        JST_ERROR("[TEXT] Geometry exceeds the supported rendering range.");
+        return Result::ERROR;
+    }
 
     // Reserve memory.
-    pimpl->posVertices.resize(numberOfVertices * numberOfInstances);
-    pimpl->fillVertices.resize(numberOfVertices * numberOfInstances);
-    pimpl->instances.resize(numberOfInstances);
-    pimpl->indices.resize(numberOfIndices);
+    try {
+        pimpl->posVertices.resize(totalVertexCount);
+        pimpl->fillVertices.resize(totalVertexCount);
+        pimpl->instances.resize(numberOfInstances);
+        pimpl->indices.resize(numberOfIndices);
+    } catch (const std::bad_alloc&) {
+        JST_ERROR("[TEXT] Failed to allocate text geometry.");
+        return Result::ERROR;
+    } catch (const std::length_error&) {
+        JST_ERROR("[TEXT] Text geometry exceeds container capacity.");
+        return Result::ERROR;
+    }
 
     // Debug information.
     JST_DEBUG("[TEXT] Number of vertices: {}", numberOfVertices);

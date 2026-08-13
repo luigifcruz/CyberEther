@@ -1,0 +1,34 @@
+#version 450
+#extension GL_ARB_compute_shader : enable
+#extension GL_ARB_separate_shader_objects : enable
+
+layout(set = 0, binding = 0) uniform ShaderUniforms {
+    mat4 transform;
+    vec2 thickness;
+    float zoom;
+    uint numberOfPoints;
+    vec4 traceColor;
+} uniforms;
+
+layout(std430, set = 0, binding = 1) readonly buffer A {
+    vec2 points[];
+};
+
+layout(std430, set = 0, binding = 2) buffer B {
+    vec2 verts[];
+};
+
+void main() {
+    uint i = gl_GlobalInvocationID.x;
+
+    if (i >= uniforms.numberOfPoints) {
+        return;
+    }
+
+    vec2 p = points[i];
+    p.x = clamp(p.x, -1.0, 1.0) * uniforms.zoom;
+    p.y = clamp(p.y, -1.0, 1.0);
+
+    verts[(i * 2) + 0] = vec2(p.x, -1.0);
+    verts[(i * 2) + 1] = vec2(p.x, p.y);
+}

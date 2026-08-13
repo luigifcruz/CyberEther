@@ -1,8 +1,8 @@
 #ifndef JETSTREAM_RENDER_COMPONENTS_AXIS_HH
 #define JETSTREAM_RENDER_COMPONENTS_AXIS_HH
 
+#include <functional>
 #include <memory>
-#include <vector>
 #include <string>
 
 #include "jetstream/types.hh"
@@ -16,17 +16,18 @@ namespace Jetstream::Render::Components {
 
 class JETSTREAM_API Axis : public Generic {
  public:
+    using TickFormatter = std::function<std::string(F32)>;
+
     struct Config {
-        U64 numberOfVerticalLines = 11;
-        U64 numberOfHorizontalLines = 5;
-        U64 maxNumberOfVerticalLines = 0;
-        U64 maxNumberOfHorizontalLines = 0;
         F32 thickness = 1.0f;
         bool showInteriorGrid = true;
         F32 verticalScale = 1.0f;
         bool showFrameTicks = false;
         F32 majorTickLengthPx = 16.0f;
         F32 minorTickLengthPx = 12.0f;
+        F32 minXLabelSpacingPx = 150.0f;
+        F32 minYLabelSpacingPx = 150.0f;
+        F32 labelCollisionPaddingPx = 4.0f;
         ColorRGBA<F32> gridColor = {0.2f, 0.2f, 0.2f, 1.0f};
         ColorRGBA<F32> majorGridColor = {0.4f, 0.4f, 0.4f, 1.0f};
         ColorRGBA<F32> labelColor = {1.0f, 1.0f, 1.0f, 1.0f};
@@ -51,12 +52,11 @@ class JETSTREAM_API Axis : public Generic {
     Result updatePixelSize(const Extent2D<F32>& pixelSize);
     Result updateZoom(F32 zoom, F32 translation);
     Result updateScissorRect(const Render::ScissorRect& rect);
-    Result updateLineCount(U64 verticalLines, U64 horizontalLines);
 
     Result setShowFrameTicks(bool visible);
 
-    Result updateTickLabels(const std::vector<std::string>& xLabels,
-                            const std::vector<std::string>& yLabels);
+    Result updateTickFormatters(TickFormatter xFormatter,
+                                TickFormatter yFormatter = {});
 
     Result updateTitles(const std::string& xTitle,
                         const std::string& yTitle);

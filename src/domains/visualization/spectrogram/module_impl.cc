@@ -323,47 +323,24 @@ Result SpectrogramImpl::updateAxisState() {
         : xLabel;
     JST_CHECK(axis->updateTitles(resolvedXLabel, yLabel));
 
-    const auto& paddingScale = axis->paddingScale();
     const F32 maxTranslation = std::abs((1.0f / interaction.zoom) - 1.0f);
     const F32 translation = std::clamp(-2.0f * interaction.offset, -maxTranslation, maxTranslation);
 
     const F32 centerFreq = hasFreqAttrs ? std::any_cast<F32>(input.attribute("frequency")) : 0.0f;
     const F32 sampleRate = hasFreqAttrs ? std::any_cast<F32>(input.attribute("sampleRate")) : 0.0f;
 
-    const U64 numVert = axis->getConfig().numberOfVerticalLines;
-    std::vector<std::string> xLabels(numVert - 2);
-    const F32 viewWidthPx = interaction.viewSize.x / interaction.scale;
-    const F32 tickSpacingPx = (viewWidthPx * paddingScale.x) / (numVert - 1);
-
-    auto pickStep = [](U64 interior, F32 spacingPx, F32 targetPx) {
-        if (interior <= 1) return U64{1};
-        U64 s = std::max<U64>(
-            1, static_cast<U64>(std::ceil(targetPx / spacingPx)));
-        while (s < interior - 1 && (interior - 1) % s != 0) {
-            s++;
-        }
-        return s;
-    };
-    const U64 tickStep =
-        pickStep(numVert - 2, tickSpacingPx, kSpectrogramMinTickSpacingPx);
-
-    for (U64 i = 1; i < numVert - 1; i++) {
-        if ((i - 1) % tickStep != 0) {
-            continue;
-        }
-        const F32 tickX =
-            (2.0f * paddingScale.x / (numVert - 1)) * i - paddingScale.x;
-        const F32 normalizedPos =
-            tickX / (interaction.zoom * paddingScale.x) - translation;
+    auto xFormatter = [hasFreqAttrs, centerFreq, sampleRate,
+                       zoom = interaction.zoom, translation](const F32 position) {
+        const F32 normalizedPos = position / zoom - translation;
         const F32 labelValue = hasFreqAttrs ?
             (centerFreq + normalizedPos * sampleRate / 2.0f) / 1e6f :
             (normalizedPos + 1.0f) / 2.0f;
-        xLabels[i - 1] = jst::fmt::format("{:.02f}", labelValue);
-    }
+        return jst::fmt::format("{:.02f}", labelValue);
+    };
 
     axis->setShowFrameTicks(interaction.placement != SurfacePlacementType::Attached);
 
-    JST_CHECK(axis->updateTickLabels(xLabels, {}));
+    JST_CHECK(axis->updateTickFormatters(std::move(xFormatter)));
 
     return Result::SUCCESS;
 }
