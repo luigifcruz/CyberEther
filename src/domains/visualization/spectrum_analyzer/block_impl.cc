@@ -144,7 +144,7 @@ Result SpectrumAnalyzerImpl::define() {
                                     "bool"));
     JST_CHECK(defineInterfaceConfig("waterfallHeight", "Waterfall Height",
                                     "Number of spectrum rows retained.",
-                                    "range:1:2048:rows:uint"));
+                                    "uint:rows"));
     return Result::SUCCESS;
 }
 

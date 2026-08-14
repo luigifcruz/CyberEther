@@ -57,9 +57,9 @@ Result SignalViewImpl::validate() {
     }
 
     if (hasWaterfall &&
-        (config.waterfallHeight == 0 || config.waterfallHeight > 2048)) {
+        (config.waterfallHeight == 0 || config.waterfallHeight > 8192)) {
         JST_ERROR("[MODULE_SIGNAL_VIEW] Invalid waterfall height value '{}', "
-                  "must be between 1 and 2048.",
+                  "must be between 1 and 8192.",
                   config.waterfallHeight);
         return Result::ERROR;
     }
