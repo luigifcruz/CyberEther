@@ -54,7 +54,8 @@ blocks:
 |-- tools/
 |   |-- bundler.py
 |   `-- merger.py
-`-- meson.build
+|-- meson.build
+`-- meson_options.txt
 ```
 
 The public headers in `include/` define the block and module configuration.
@@ -73,7 +74,7 @@ A `.cep` file is a `tar.gz` archive with a `.cep` extension. It must include a
 metadata:
   name: cyberether-blueprint-plugin
   version: 0.1.0
-  minimumJetstreamVersion: 1.8.0
+  minimumJetstreamVersion: 1.9.0
 
 targets:
   - path: targets/macos-arm64-cpu/cyberether_blueprint_plugin.dylib
@@ -92,15 +93,26 @@ examples:
 | `metadata.minimumJetstreamVersion` | Minimum CyberEther/Jetstream version required to load the bundle, in `x.y.z` form. |
 | `targets[].path` | Shared library path inside the bundle. |
 | `targets[].system` | Target system, such as `macos`, `linux`, or `windows`. |
-| `targets[].device` | Device backend, such as `cpu`, `cuda`, `metal`, `vulkan`, or `webgpu`. |
+| `targets[].device` | Device backend required to load this library, such as `cpu`, `cuda`, `metal`, `vulkan`, or `webgpu`. |
 | `targets[].arch` | Target architecture, such as `arm64` or `x86_64`. |
 | `examples[].path` | Example flowgraph path inside the bundle. |
 
-CyberEther loads every target that matches the current system, architecture,
-and compiled device backends. Development builds usually package one target;
-release automation can package multiple systems, architectures, and devices in
-the same `.cep`. Both version fields contain exactly three decimal components
-between 0 and 255. Prerelease and build suffixes are not supported.
+The target device is a compatibility discriminator for one shared-library
+variant, not a list of every provider compiled into that library. CyberEther
+opens every target that matches the current system, architecture, and compiled
+device backends. Do not list the same shared library under multiple device
+labels: a host with those backends enabled would load the library more than
+once and attempt to drain its static registrations more than once.
+
+Build each target with provider registrations for its declared device, produce
+a single-target bundle, and merge those bundles for release. Common block
+registrations may be present in each variant, but module provider registrations
+with the same key must not overlap between compatible variants. Release
+automation can package multiple systems, architectures, and devices in the same
+`.cep` this way.
+
+Both version fields contain exactly three decimal components between 0 and 255.
+Prerelease and build suffixes are not supported.
 
 ## Plugin ABI
 
@@ -172,13 +184,15 @@ blueprint directory:
   --output build/cyberether_blueprint_plugin.cep \
   --name cyberether-blueprint-plugin \
   --version 0.1.0 \
-  --minimum-jetstream-version 1.8.0 \
+  --minimum-jetstream-version 1.9.0 \
   --target path=build/cyberether_blueprint_plugin.dylib,system=macos,device=cpu,arch=arm64 \
   --example examples/blueprint_gain.yml
 ```
 
-Repeat `--target` for production bundles that include multiple compatible
-libraries. Repeat `--example` to include more example flowgraphs.
+Repeat `--target` for distinct production library variants. Each system,
+device, and architecture combination may appear only once, and one source
+library cannot be reused under multiple device labels for the same system and
+architecture. Repeat `--example` to include more example flowgraphs.
 
 ## Merging Bundles
 
@@ -212,7 +226,7 @@ Build the blueprint as a standalone plugin from its own directory:
 
 ```sh
 cd examples/plugins/blueprint
-meson setup build
+meson setup build -Ddevices=cpu
 meson compile -C build
 ```
 
@@ -233,6 +247,7 @@ browser host:
 meson setup build-wasm examples/plugins/blueprint \
   --cross-file meson/crosscompile/emscripten.ini \
   -Dbuildtype=release \
+  -Ddevices=cpu \
   -Dtests=false
 meson compile -C build-wasm cyberether_blueprint_plugin_cep
 ```

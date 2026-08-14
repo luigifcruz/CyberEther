@@ -16,7 +16,7 @@ namespace Jetstream::Modules {
 Result SpectrogramImpl::validate() {
     validatedNumberOfElements = 0;
     validatedNumberOfBatches = 0;
-    validatedInputSampleStride = 0;
+    validatedInputElementStride = 0;
     validatedInputBatchStride = 0;
 
     const auto& config = *candidate();
@@ -36,25 +36,32 @@ Result SpectrogramImpl::validate() {
     }
 
     SignalAxes axes;
-    if (ResolveSignalAxes(inputTensor, axes) != Result::SUCCESS) {
+    if (MapSignalAxes(inputTensor, IdentityAxisMap(inputTensor.rank()), axes) !=
+        Result::SUCCESS) {
         JST_ERROR("[MODULE_SPECTROGRAM] Input must contain valid signal axis metadata.");
         return Result::ERROR;
     }
 
-    if (axes.channel) {
-        JST_ERROR("[MODULE_SPECTROGRAM] channelAxis is not supported.");
+    if (axes.sample && axes.channel) {
+        JST_ERROR("[MODULE_SPECTROGRAM] Input cannot contain both sampleAxis and channelAxis.");
+        return Result::ERROR;
+    }
+
+    const auto elementAxis = axes.sample ? axes.sample : axes.channel;
+    if (!elementAxis) {
+        JST_ERROR("[MODULE_SPECTROGRAM] Input must contain sampleAxis or channelAxis.");
         return Result::ERROR;
     }
 
     for (Index axis = 0; axis < inputTensor.rank(); ++axis) {
-        if (axis != *axes.sample && (!axes.batch || axis != *axes.batch)) {
+        if (axis != *elementAxis && (!axes.batch || axis != *axes.batch)) {
             JST_ERROR("[MODULE_SPECTROGRAM] Unsupported auxiliary input axis {}. "
-                      "Every dimension must be sampleAxis or batchAxis.", axis);
+                      "Every dimension must be the element axis or batchAxis.", axis);
             return Result::ERROR;
         }
     }
 
-    const U64 width = inputTensor.shape(*axes.sample);
+    const U64 width = inputTensor.shape(*elementAxis);
     U64 renderBinCount = 0;
     const U64 maxRenderBinCount = std::min({
         static_cast<U64>(std::numeric_limits<U32>::max()),
@@ -69,7 +76,7 @@ Result SpectrogramImpl::validate() {
 
     validatedNumberOfElements = width;
     validatedNumberOfBatches = axes.batch ? inputTensor.shape(*axes.batch) : 1;
-    validatedInputSampleStride = inputTensor.stride(*axes.sample);
+    validatedInputElementStride = inputTensor.stride(*elementAxis);
     validatedInputBatchStride = axes.batch ? inputTensor.stride(*axes.batch) : 0;
 
     return Result::SUCCESS;
@@ -92,7 +99,7 @@ Result SpectrogramImpl::create() {
 
     numberOfElements = validatedNumberOfElements;
     numberOfBatches = validatedNumberOfBatches;
-    inputSampleStride = validatedInputSampleStride;
+    inputElementStride = validatedInputElementStride;
     inputBatchStride = validatedInputBatchStride;
     decayFactor = std::pow(kSpectrogramDecayBase, static_cast<F32>(numberOfBatches));
 
@@ -323,47 +330,24 @@ Result SpectrogramImpl::updateAxisState() {
         : xLabel;
     JST_CHECK(axis->updateTitles(resolvedXLabel, yLabel));
 
-    const auto& paddingScale = axis->paddingScale();
     const F32 maxTranslation = std::abs((1.0f / interaction.zoom) - 1.0f);
     const F32 translation = std::clamp(-2.0f * interaction.offset, -maxTranslation, maxTranslation);
 
     const F32 centerFreq = hasFreqAttrs ? std::any_cast<F32>(input.attribute("frequency")) : 0.0f;
     const F32 sampleRate = hasFreqAttrs ? std::any_cast<F32>(input.attribute("sampleRate")) : 0.0f;
 
-    const U64 numVert = axis->getConfig().numberOfVerticalLines;
-    std::vector<std::string> xLabels(numVert - 2);
-    const F32 viewWidthPx = interaction.viewSize.x / interaction.scale;
-    const F32 tickSpacingPx = (viewWidthPx * paddingScale.x) / (numVert - 1);
-
-    auto pickStep = [](U64 interior, F32 spacingPx, F32 targetPx) {
-        if (interior <= 1) return U64{1};
-        U64 s = std::max<U64>(
-            1, static_cast<U64>(std::ceil(targetPx / spacingPx)));
-        while (s < interior - 1 && (interior - 1) % s != 0) {
-            s++;
-        }
-        return s;
-    };
-    const U64 tickStep =
-        pickStep(numVert - 2, tickSpacingPx, kSpectrogramMinTickSpacingPx);
-
-    for (U64 i = 1; i < numVert - 1; i++) {
-        if ((i - 1) % tickStep != 0) {
-            continue;
-        }
-        const F32 tickX =
-            (2.0f * paddingScale.x / (numVert - 1)) * i - paddingScale.x;
-        const F32 normalizedPos =
-            tickX / (interaction.zoom * paddingScale.x) - translation;
+    auto xFormatter = [hasFreqAttrs, centerFreq, sampleRate,
+                       zoom = interaction.zoom, translation](const F32 position) {
+        const F32 normalizedPos = position / zoom - translation;
         const F32 labelValue = hasFreqAttrs ?
             (centerFreq + normalizedPos * sampleRate / 2.0f) / 1e6f :
             (normalizedPos + 1.0f) / 2.0f;
-        xLabels[i - 1] = jst::fmt::format("{:.02f}", labelValue);
-    }
+        return jst::fmt::format("{:.02f}", labelValue);
+    };
 
     axis->setShowFrameTicks(interaction.placement != SurfacePlacementType::Attached);
 
-    JST_CHECK(axis->updateTickLabels(xLabels, {}));
+    JST_CHECK(axis->updateTickFormatters(std::move(xFormatter)));
 
     return Result::SUCCESS;
 }

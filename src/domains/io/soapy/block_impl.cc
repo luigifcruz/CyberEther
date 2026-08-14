@@ -35,6 +35,8 @@ Result SoapyImpl::validate() {
 }
 
 Result SoapyImpl::configure() {
+    JST_CHECK(Modules::SoapyImpl::LoadModulePath(modulePath));
+
     std::string resolvedDeviceString;
     const auto availableDeviceList = Modules::SoapyImpl::ListAvailableDevices(hintString);
     const auto selectFirstAvailable = [&](const Modules::SoapyImpl::DeviceList& devices) -> bool {
@@ -59,11 +61,13 @@ Result SoapyImpl::configure() {
         selectFirstAvailable(availableDeviceList);
     }
 
+    moduleConfig->modulePath = modulePath;
     moduleConfig->deviceString = resolvedDeviceString;
     moduleConfig->streamString = streamString;
     moduleConfig->frequency = frequency;
     moduleConfig->sampleRate = sampleRate;
     moduleConfig->automaticGain = automaticGain;
+    moduleConfig->biasTee = biasTee;
     moduleConfig->numberOfBatches = numberOfBatches;
     moduleConfig->numberOfTimeSamples = numberOfTimeSamples;
     moduleConfig->bufferMultiplier = bufferMultiplier;
@@ -90,11 +94,6 @@ Result SoapyImpl::define() {
                                     "Select from available SDR devices.",
                                     deviceDropdown));
 
-    JST_CHECK(defineInterfaceConfig("hintString",
-                                    "Device Hint",
-                                    "Filter string for discovering devices.",
-                                    "text"));
-
     JST_CHECK(defineInterfaceConfig("frequency",
                                     "Frequency",
                                     "Tuner frequency.",
@@ -110,6 +109,11 @@ Result SoapyImpl::define() {
     JST_CHECK(defineInterfaceConfig("automaticGain",
                                     "Automatic Gain",
                                     "Enable automatic gain control.",
+                                    "bool"));
+
+    JST_CHECK(defineInterfaceConfig("biasTee",
+                                    "Bias-T",
+                                    "Enable antenna power when supported by the selected device.",
                                     "bool"));
 
     JST_CHECK(defineInterfaceConfig("numberOfBatches",

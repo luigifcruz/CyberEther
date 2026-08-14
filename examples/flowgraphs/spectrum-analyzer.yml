@@ -117,10 +117,7 @@ graph:
     runtime: native
     provider: generic
     config:
-      thickness: 1
       decimation: 1
-      numberOfHorizontalLines: 5
-      numberOfVerticalLines: 11
       averaging: 1
     input:
       signal: '${graph.range.output.signal}'
@@ -142,7 +139,6 @@ graph:
     runtime: native
     provider: generic
     config:
-      interpolate: true
       height: 512
     input:
       signal: '${graph.range.output.signal}'

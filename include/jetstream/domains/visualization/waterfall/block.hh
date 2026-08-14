@@ -1,18 +1,21 @@
 #ifndef JETSTREAM_DOMAINS_VISUALIZATION_WATERFALL_BLOCK_HH
 #define JETSTREAM_DOMAINS_VISUALIZATION_WATERFALL_BLOCK_HH
 
+#include <string>
+
 #include "jetstream/block.hh"
 
 namespace Jetstream::Blocks {
 
 struct Waterfall : public Block::Config {
     U64 height = 512;
-    bool interpolate = true;
+    std::string xLabel = "Frequency (MHz)";
+    std::string yLabel = "Time";
 
     JST_BLOCK_TYPE(waterfall);
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(L);
-    JST_BLOCK_PARAMS(height, interpolate);
+    JST_BLOCK_PARAMS(height, xLabel, yLabel);
     JST_BLOCK_DESCRIPTION(
         "Waterfall",
         "Shows frequency spectrum over time as a scrolling waterfall.",
@@ -23,9 +26,7 @@ struct Waterfall : public Block::Config {
         "content over time.\n\n"
 
         "## Arguments\n"
-        "- **Height**: Number of rows in the waterfall history buffer.\n"
-        "- **Interpolate**: Enable texture interpolation for smoother visual "
-        "appearance.\n\n"
+        "- **Height**: Number of rows in the waterfall history buffer.\n\n"
 
         "## Useful For\n"
         "- Visualizing RF spectrum over time in SDR applications.\n"
@@ -34,7 +35,7 @@ struct Waterfall : public Block::Config {
 
         "## Examples\n"
         "- Waterfall display of FFT output:\n"
-        "  Config: Height=512, Interpolate=true\n"
+        "  Config: Height=512\n"
         "  Input: F32[1024] -> Scrolling color-mapped display.\n\n"
 
         "## Implementation\n"

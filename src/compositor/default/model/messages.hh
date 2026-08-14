@@ -149,6 +149,10 @@ struct MailSetDebugLogLevel {
 
 struct MailCheckForUpdates {};
 
+struct MailDownloadUpdate {};
+
+struct MailApplyUpdate {};
+
 struct MailDismissUpdate {};
 
 struct MailSetRemoteBrokerUrl {
@@ -408,6 +412,8 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetDebugTimingEnabled,
                           MailSetDebugLogLevel,
                           MailCheckForUpdates,
+                          MailDownloadUpdate,
+                          MailApplyUpdate,
                           MailDismissUpdate,
                           MailSetRemoteBrokerUrl,
                           MailSetRemoteCodec,

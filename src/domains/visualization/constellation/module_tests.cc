@@ -5,6 +5,7 @@
 #include <limits>
 
 #include "jetstream/domains/visualization/constellation/module.hh"
+#include "jetstream/memory/axis.hh"
 #include "jetstream/module_interface.hh"
 #include "jetstream/testing.hh"
 #include "jetstream/registry.hh"
@@ -74,6 +75,34 @@ TEST_CASE("Constellation module accepts CF32 rank-1 and rank-2 inputs",
             REQUIRE(batched.create(DeviceType::CPU, DataType::CF32, {4, 32}) ==
                     Result::SUCCESS);
             ctx.setInput("signal", batched);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            Tensor channels;
+            REQUIRE(channels.create(DeviceType::CPU, DataType::CF32, {128}) ==
+                    Result::SUCCESS);
+            REQUIRE(SetSignalAxes(channels, {.channel = Index{0}}) ==
+                    Result::SUCCESS);
+            ctx.setInput("signal", channels);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            Tensor batchedChannels;
+            REQUIRE(batchedChannels.create(DeviceType::CPU, DataType::CF32,
+                                           {4, 32}) == Result::SUCCESS);
+            REQUIRE(SetSignalAxes(batchedChannels, {
+                .batch = Index{0},
+                .channel = Index{1},
+            }) == Result::SUCCESS);
+            ctx.setInput("signal", batchedChannels);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            Tensor trailingBatchedChannels;
+            REQUIRE(trailingBatchedChannels.create(DeviceType::CPU, DataType::CF32,
+                                                   {32, 4}) == Result::SUCCESS);
+            REQUIRE(SetSignalAxes(trailingBatchedChannels, {
+                .batch = Index{1},
+                .channel = Index{0},
+            }) == Result::SUCCESS);
+            ctx.setInput("signal", trailingBatchedChannels);
             REQUIRE(ctx.run() == Result::SUCCESS);
         }
     }

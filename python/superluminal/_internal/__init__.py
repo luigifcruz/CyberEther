@@ -44,6 +44,7 @@ _types_lst = {
     "heat": type.heat,
     "scatter": type.scatter,
     "waterfall": type.waterfall,
+    "spectrum_analyzer": type.spectrum_analyzer,
 }
 
 _device_lst = {

@@ -9,15 +9,18 @@ project(
     ]
 )
 
+minimum_jetstream_version = '1.9.0'
 jst_is_browser = host_machine.system().startswith('emscripten')
 
 cyberether_dep = dependency(
     'jetstream',
+    version: '>=' + minimum_jetstream_version,
     required: false,
     fallback: ['cyberether', 'libjetstream_dep'],
     default_options: [
         'tests=false',
         'examples=false',
+        'remote=disabled',
     ],
 )
 
@@ -37,6 +40,21 @@ plugin_sources = []
 plugin_test_lst = []
 plugin_example = files('examples/blueprint_gain.yml')
 plugin_bundler = files('tools/bundler.py')
+
+plugin_requested_devices = get_option('devices')
+if plugin_requested_devices.length() == 0
+    error('The devices option must contain auto or cpu.')
+endif
+
+plugin_devices_auto = 'auto' in plugin_requested_devices
+if plugin_devices_auto and plugin_requested_devices.length() != 1
+    error('The auto device cannot be combined with explicit devices.')
+endif
+
+plugin_device_cpu_enabled = plugin_devices_auto or 'cpu' in plugin_requested_devices
+if not plugin_device_cpu_enabled
+    error('No supported device implementations are available.')
+endif
 
 pymod = import('python')
 py = pymod.find_installation(required: true)
@@ -86,6 +104,8 @@ else
     )
 endif
 
+plugin_package_device = plugin_device_cpu_enabled ? 'cpu' : ''
+
 custom_target(
     'cyberether_blueprint_plugin_cep',
     input: [plugin_module, plugin_example],
@@ -94,12 +114,17 @@ custom_target(
         py,
         plugin_bundler,
         '--output', '@OUTPUT@',
-        '--name', 'cyberether-blueprint-plugin',
+        '--name', meson.project_name(),
         '--version', meson.project_version(),
-        '--minimum-jetstream-version', '1.8.0',
-        '--target', 'path=@INPUT0@,system=' + host_machine.system() + ',device=cpu,arch=' + host_machine.cpu_family(),
+        '--minimum-jetstream-version', minimum_jetstream_version,
+        '--target', 'path=@INPUT0@,system=' + host_machine.system() + ',device=' + plugin_package_device + ',arch=' + host_machine.cpu_family(),
         '--example', '@INPUT1@',
     ],
     build_by_default: true,
     install: false,
 )
+
+summary({
+    'Selection': ','.join(plugin_requested_devices),
+    'CPU': plugin_device_cpu_enabled,
+}, section: 'Devices', bool_yn: true)

@@ -94,6 +94,8 @@ struct LegalSettingsPanel {
                    "- stb - MIT License\n"
                    "- fmtlib - MIT License\n"
                    "- SoapySDR - Boost Software License\n"
+                   "- libhackrf - BSD-3-Clause License\n"
+                   "- SoapyHackRF - MIT License\n"
                    "- libmodes - BSD-2-Clause License\n"
                    "- tree-sitter - MIT License\n"
                    "- tree-sitter-python - MIT License\n"
@@ -131,6 +133,7 @@ struct LegalSettingsPanel {
                    "- robin-map - MIT License\n"
                    "- Google Turbo colormap - Apache License 2.0\n"
                    "- Natural Earth - Public Domain\n"
+                   "- Velopack - MIT License\n"
                    // [NEW DEPENDENCY HOOK]
         });
 

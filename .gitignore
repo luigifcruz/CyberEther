@@ -26,6 +26,7 @@ subprojects/*
 !subprojects/gstreamer-full.wrap
 !subprojects/libairspy.wrap
 !subprojects/libgudev.wrap
+!subprojects/libhackrf.wrap
 !subprojects/libmodes.wrap
 !subprojects/librtlsdr.wrap
 !subprojects/libusb-browser.wrap
@@ -38,14 +39,17 @@ subprojects/*
 !subprojects/nlohmann_json.wrap
 !subprojects/openssl.wrap
 !subprojects/pcre2.wrap
+!subprojects/pthreads4w.wrap
 !subprojects/qrencode.wrap
 !subprojects/rapidyaml.wrap
 !subprojects/robin-map.wrap
 !subprojects/soapyairspy.wrap
+!subprojects/soapyhackrf.wrap
 !subprojects/soapyremote.wrap
 !subprojects/soapyrtlsdr.wrap
 !subprojects/soapysdr.wrap
 !subprojects/stb.wrap
+!subprojects/velopack.wrap
 !subprojects/vpx.wrap
 !subprojects/zlib.wrap
 

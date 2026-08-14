@@ -9,5 +9,6 @@ shader_pkg_lst += [{
         files(['thicklinestrip.comp']),
         files(['thicklines.comp']),
         files(['shapes.comp']),
+        files(['fillarea.comp']),
     ],
 }]

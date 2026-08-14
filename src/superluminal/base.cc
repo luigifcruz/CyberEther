@@ -1,3 +1,6 @@
+#include <cmath>
+#include <limits>
+#include <optional>
 #include <regex>
 #include <unordered_map>
 #include <unordered_set>
@@ -7,6 +10,7 @@
 
 #include "jetstream/detail/instance_remote_supervisor.hh"
 #include "jetstream/flowgraph_view.hh"
+#include "jetstream/memory/axis.hh"
 #include "jetstream/platform.hh"
 #include "jetstream/superluminal.hh"
 #include "jetstream/macros.hh"
@@ -39,6 +43,83 @@ void HandleInterrupt() noexcept {
 #endif
 
 }  // namespace
+
+JETSTREAM_API Result PrepareSuperluminalPlotBuffer(const std::string& name,
+                                                   const Superluminal::PlotConfig& config,
+                                                   Superluminal::PlotConfig& resolvedConfig) {
+    resolvedConfig = config;
+    resolvedConfig.buffer = config.buffer.clone();
+
+    const I32 rank = static_cast<I32>(resolvedConfig.buffer.rank());
+    if (rank == 0) {
+        JST_ERROR("[SUPERLUMINAL] Plot '{}' requires a non-scalar input buffer.", name);
+        return Result::ERROR;
+    }
+    if (resolvedConfig.batchAxis < -1 || resolvedConfig.batchAxis >= rank) {
+        JST_ERROR("[SUPERLUMINAL] Plot '{}' batch axis {} is out of bounds for rank {}.",
+                  name, resolvedConfig.batchAxis, rank);
+        return Result::ERROR;
+    }
+    if (resolvedConfig.channelAxis < -1 || resolvedConfig.channelAxis >= rank) {
+        JST_ERROR("[SUPERLUMINAL] Plot '{}' channel axis {} is out of bounds for rank {}.",
+                  name, resolvedConfig.channelAxis, rank);
+        return Result::ERROR;
+    }
+    if ((resolvedConfig.channelAxis == -1) !=
+        (resolvedConfig.channelIndex == -1)) {
+        JST_ERROR("[SUPERLUMINAL] Plot '{}' requires both channel axis and channel index.",
+                  name);
+        return Result::ERROR;
+    }
+    if (resolvedConfig.channelAxis != -1 &&
+        (resolvedConfig.channelIndex < 0 ||
+         static_cast<U64>(resolvedConfig.channelIndex) >=
+             resolvedConfig.buffer.shape(resolvedConfig.channelAxis))) {
+        JST_ERROR("[SUPERLUMINAL] Plot '{}' channel index {} is out of bounds for axis {}.",
+                  name, resolvedConfig.channelIndex, resolvedConfig.channelAxis);
+        return Result::ERROR;
+    }
+    if (resolvedConfig.batchAxis != -1 &&
+        resolvedConfig.batchAxis == resolvedConfig.channelAxis) {
+        JST_ERROR("[SUPERLUMINAL] Plot '{}' batch and channel axes must be different.", name);
+        return Result::ERROR;
+    }
+
+    SignalAxes axes;
+    if (resolvedConfig.batchAxis != -1) {
+        axes.batch = static_cast<Index>(resolvedConfig.batchAxis);
+    }
+    if (resolvedConfig.channelAxis != -1) {
+        axes.channel = static_cast<Index>(resolvedConfig.channelAxis);
+    }
+
+    std::vector<Index> unclassifiedAxes;
+    for (Index axis = 0; axis < resolvedConfig.buffer.rank(); ++axis) {
+        if ((axes.batch && axis == *axes.batch) ||
+            (axes.channel && axis == *axes.channel)) {
+            continue;
+        }
+        unclassifiedAxes.push_back(axis);
+    }
+    if (unclassifiedAxes.empty()) {
+        JST_ERROR("[SUPERLUMINAL] Plot '{}' has no sample axis.", name);
+        return Result::ERROR;
+    }
+
+    axes.sample = unclassifiedAxes.back();
+    if (!axes.batch && unclassifiedAxes.size() > 1) {
+        axes.batch = unclassifiedAxes.front();
+    }
+    for (const Index axis : unclassifiedAxes) {
+        if (axis != *axes.sample && (!axes.batch || axis != *axes.batch)) {
+            JST_ERROR("[SUPERLUMINAL] Plot '{}' has an unclassified input axis {}. "
+                      "Configure batchAxis and channelAxis.", name, axis);
+            return Result::ERROR;
+        }
+    }
+
+    return SetSignalAxes(resolvedConfig.buffer, axes);
+}
 
 struct Superluminal::Impl {
     InstanceConfig config;
@@ -82,6 +163,7 @@ struct Superluminal::Impl {
 
     Result buildLinePlotGraph(PlotState& state);
     Result buildWaterfallPlotGraph(PlotState& state);
+    Result buildSpectrumAnalyzerPlotGraph(PlotState& state);
     Result buildScatterPlotGraph(PlotState& state);
 
     struct GraphNode {
@@ -96,7 +178,7 @@ struct Superluminal::Impl {
 
     static std::string ParseLinkDomain(const std::string& value, const std::string& domain);
     static std::vector<char> GraphToYaml(const Graph& graph, std::string domain = {});
-    static U64 BufferKey(const Tensor& buffer);
+    static U64 BufferKey(const Tensor& buffer, Domain source);
 };
 
 Superluminal::Superluminal() : impl(std::make_unique<Impl>()) {
@@ -739,11 +821,60 @@ Result Superluminal::plot(const std::string& name, const Mosaic& mosaic, const P
     JST_CHECK(impl->validateMosaic(mosaic));
     JST_CHECK(impl->validateName(name));
 
+    PlotConfig resolvedConfig;
+    JST_CHECK(PrepareSuperluminalPlotBuffer(name, config, resolvedConfig));
+
+    F32 frequency = 0.0f;
+    F32 sampleRate = 0.0f;
+    bool hasFrequency = false;
+    bool hasSampleRate = false;
+
+    const auto readMetadataOption = [&](const std::string& key,
+                                        F32& value,
+                                        bool& present) -> Result {
+        const auto it = config.options.find(key);
+        if (it == config.options.end()) {
+            return Result::SUCCESS;
+        }
+
+        present = true;
+        if (const auto* number = std::get_if<F32>(&it->second)) {
+            value = *number;
+        } else if (const auto* integer = std::get_if<I32>(&it->second)) {
+            value = static_cast<F32>(*integer);
+        } else {
+            JST_ERROR("[SUPERLUMINAL] Plot option '{}' must be numeric.", key);
+            return Result::ERROR;
+        }
+
+        if (!std::isfinite(value)) {
+            JST_ERROR("[SUPERLUMINAL] Plot option '{}' must be finite.", key);
+            return Result::ERROR;
+        }
+
+        return Result::SUCCESS;
+    };
+
+    JST_CHECK(readMetadataOption("frequency", frequency, hasFrequency));
+    JST_CHECK(readMetadataOption("sampleRate", sampleRate, hasSampleRate));
+
+    if (hasSampleRate && sampleRate <= 0.0f) {
+        JST_ERROR("[SUPERLUMINAL] Plot option 'sampleRate' must be positive.");
+        return Result::ERROR;
+    }
+
+    if (hasFrequency) {
+        JST_CHECK(resolvedConfig.buffer.setAttribute("frequency", frequency));
+    }
+    if (hasSampleRate) {
+        JST_CHECK(resolvedConfig.buffer.setAttribute("sampleRate", sampleRate));
+    }
+
     // Create plot state.
 
     auto& state = impl->plots[name];
 
-    state.config = config;
+    state.config = std::move(resolvedConfig);
     state.mosaic = mosaic;
     state.name = name;
 
@@ -794,11 +925,13 @@ Result Superluminal::Impl::createGraph() {
         }
 
         const auto& buf = state.config.buffer;
-        auto& recipe = buffer_map[BufferKey(buf)];
+        auto& recipe = buffer_map[BufferKey(buf, state.config.source)];
 
         recipe.buffer = buf;
         recipe.source = state.config.source;
-        recipe.display.insert(state.config.display);
+        recipe.display.insert(state.config.type == Type::SpectrumAnalyzer
+            ? state.config.source
+            : state.config.display);
     }
 
     for (auto& [hash, recipe] : buffer_map) {
@@ -858,21 +991,43 @@ Result Superluminal::Impl::createGraph() {
         if (isComplexBuffer) {
             // Complex signal path - needs windowing, inversion, and multiplication
             if (config.preferredDevice == DeviceType::CPU) {
+                SignalAxes axes;
+                JST_CHECK(ResolveSignalAxes(recipe.buffer, axes));
                 auto winName = jst::fmt::format("win_{}", hash);
                 auto invName = jst::fmt::format("inv_{}", hash);
+                auto reshapeName = jst::fmt::format("win_shape_{}", hash);
                 auto mulName = jst::fmt::format("win_mul_{}", hash);
+                std::string windowShape = "[";
+                for (Index axis = 0; axis < recipe.buffer.rank(); ++axis) {
+                    if (axis > 0) {
+                        windowShape += ", ";
+                    }
+                    windowShape += std::to_string(
+                        axis == *axes.sample
+                            ? recipe.buffer.shape(*axes.sample)
+                            : 1);
+                }
+                windowShape += "]";
+                const auto windowSize =
+                    std::to_string(recipe.buffer.shape(*axes.sample));
 
                 auto blob = GraphToYaml({
                     {winName,
                         {"window", GetDeviceName(config.preferredDevice), {"CF32"},
-                            {{"size", jst::fmt::format("{}", recipe.buffer.size())}}, {}}},
+                            {{"size", windowSize}}, {}}},
                     {invName,
                         {"invert", GetDeviceName(config.preferredDevice), {"CF32"}, {},
                             {{"signal", jst::fmt::format("${{graph.{}.output.window}}", winName)}}}},
+                    {reshapeName,
+                        {"reshape", GetDeviceName(config.preferredDevice), {"CF32"},
+                            {{"shape", windowShape}},
+                            {{"buffer", jst::fmt::format(
+                                "${{graph.{}.output.signal}}", invName)}}}},
                     {mulName,
                         {"multiply", GetDeviceName(config.preferredDevice), {"CF32"}, {},
                             {{"a", jst::fmt::format("${{graph.data_{}_{}_{}.output.buffer}}", GetDeviceName(config.preferredDevice), sourceDomain, hash)},
-                            {"b", jst::fmt::format("${{graph.{}.output.signal}}", invName)}}}},
+                            {"b", jst::fmt::format(
+                                "${{graph.{}.output.buffer}}", reshapeName)}}}},
                     {jst::fmt::format("data_{}_{}_{}", GetDeviceName(config.preferredDevice), conversionDomain, hash),
                         {"fft", GetDeviceName(config.preferredDevice), {"CF32", "CF32"},
                             {{"forward", jst::fmt::format("{}", (forward) ? "true" : "false")}},
@@ -910,6 +1065,9 @@ Result Superluminal::Impl::createGraph() {
                 break;
             case Type::Waterfall:
                 JST_CHECK(buildWaterfallPlotGraph(state));
+                break;
+            case Type::SpectrumAnalyzer:
+                JST_CHECK(buildSpectrumAnalyzerPlotGraph(state));
                 break;
             case Type::Interface:
                 break;
@@ -949,6 +1107,15 @@ Result Superluminal::Impl::buildLinePlotGraph(PlotState& state) {
 
     const auto& buf = state.config.buffer;
 
+    if (state.config.options.contains("waterfall") ||
+        state.config.options.contains("waterfallHeight") ||
+        state.config.options.contains("waterfallInterpolate")) {
+        JST_ERROR("[SUPERLUMINAL] Integrated Line waterfall options are no "
+                  "longer supported; use SpectrumAnalyzer or a separate "
+                  "Waterfall plot.");
+        return Result::ERROR;
+    }
+
     // Poll options.
 
     std::string averagingRate = "1";
@@ -967,37 +1134,89 @@ Result Superluminal::Impl::buildLinePlotGraph(PlotState& state) {
         decimationRate = std::to_string(decimation);
     }
 
+    std::unordered_map<std::string, std::string> lineplotConfig = {
+        {"averaging", averagingRate},
+        {"decimation", decimationRate},
+    };
+    bool fillEnabled = state.config.display == Domain::Frequency;
+    if (state.config.options.contains("fill")) {
+        const auto& value = state.config.options.at("fill");
+        if (const auto* integer = std::get_if<I32>(&value)) {
+            fillEnabled = *integer != 0;
+        } else if (const auto* number = std::get_if<F32>(&value)) {
+            fillEnabled = *number != 0.0f;
+        } else {
+            JST_ERROR("[SUPERLUMINAL] Plot option 'fill' must be boolean.");
+            return Result::ERROR;
+        }
+    }
+    lineplotConfig["fill"] = fillEnabled ? "true" : "false";
+    const bool timeDomainReal = state.config.buffer.dtype() == DataType::F32 &&
+                                state.config.display == Domain::Time;
+    lineplotConfig["rangeMin"] = timeDomainReal ? "-1" : "-100";
+    lineplotConfig["rangeMax"] = timeDomainReal ? "1" : "0";
+    for (const std::string& key : {"xLabel", "yLabel"}) {
+        if (state.config.options.contains(key)) {
+            lineplotConfig[key] =
+                std::get<std::string>(state.config.options.at(key));
+        }
+    }
+
     // Build graph.
 
-    // TODO: Add Slice block in case of channel index.
-
     auto domain = (state.config.display == Domain::Time) ? "time" : "freq";
-    auto hash = std::to_string(BufferKey(buf));
+    auto hash = std::to_string(BufferKey(buf, state.config.source));
     auto outputPort = (state.config.display == state.config.source) ? "buffer" : "signal";
     auto port = jst::fmt::format("${{graph.data_{}_{}_{}.output.{}}}", GetDeviceName(config.preferredDevice), domain, hash, outputPort);
 
     bool isRealBuffer = (buf.dtype() == DataType::F32);
+    const std::string inputType = isRealBuffer ? "F32" : "CF32";
+    auto graph = Graph{};
+
+    if (state.config.channelAxis != -1) {
+        const U64 channelAxis = state.config.channelAxis;
+        const U64 channelIndex = state.config.channelIndex;
+        std::string slice;
+        for (U64 axis = 0; axis < buf.rank(); ++axis) {
+            slice += axis == channelAxis ? std::to_string(channelIndex) : ":";
+            if (axis + 1 != buf.rank()) {
+                slice += ",";
+            }
+        }
+        slice = jst::fmt::format("[{}]", slice);
+
+        graph.push_back({
+            "slice",
+            {"slice", GetDeviceName(config.preferredDevice), {inputType},
+                {{"slice", slice}},
+                {{"buffer", port}}},
+        });
+        graph.push_back({
+            "duplicate",
+            {"duplicate", GetDeviceName(config.preferredDevice), {inputType},
+                {{"outputDevice", GetDeviceName(config.preferredDevice)}},
+                {{"buffer", "${domain.slice.output.buffer}"}}},
+        });
+        port = "${domain.duplicate.output.buffer}";
+    }
 
     // For real signals in time domain, we don't need amplitude conversion
     if (isRealBuffer && state.config.display == Domain::Time) {
-        auto blob = GraphToYaml({
+        graph.insert(graph.end(), {
             {"scl",
                 {"range", GetDeviceName(config.preferredDevice), {"F32"},
                     {{"min", "-1"}, {"max", "1"}},
                     {{"signal", port}}}},
             {"lineplot",
                 {"lineplot", GetDeviceName(config.preferredDevice), {"F32"},
-                    {{"averaging", averagingRate},
-                     {"decimation", decimationRate}},
+                    lineplotConfig,
                     {{"signal", "${domain.scl.output.signal}"}}}},
-        }, state.name);
-        JST_CHECK(flowgraph->importFromBlob(blob));
+        });
     } else {
-        std::string inputType = isRealBuffer ? "F32" : "CF32";
-
-        auto blob = GraphToYaml({
+        graph.insert(graph.end(), {
             {"amp",
-                {"amplitude", GetDeviceName(config.preferredDevice), {inputType, "F32"}, {},
+                {"amplitude", GetDeviceName(config.preferredDevice),
+                    {inputType, "F32"}, {},
                     {{"signal", port}}}},
             {"scl",
                 {"range", GetDeviceName(config.preferredDevice), {"F32"},
@@ -1005,17 +1224,200 @@ Result Superluminal::Impl::buildLinePlotGraph(PlotState& state) {
                     {{"signal", "${domain.amp.output.signal}"}}}},
             {"lineplot",
                 {"lineplot", GetDeviceName(config.preferredDevice), {"F32"},
-                    {{"averaging", averagingRate},
-                     {"decimation", decimationRate}},
+                    lineplotConfig,
                     {{"signal", "${domain.scl.output.signal}"}}}},
-        }, state.name);
-        JST_CHECK(flowgraph->importFromBlob(blob));
+        });
     }
+    JST_CHECK(flowgraph->importFromBlob(GraphToYaml(graph, state.name)));
 
     // Update plot state.
 
     state.block = state.name + "_lineplot";
 
+    return Result::SUCCESS;
+}
+
+Result Superluminal::Impl::buildSpectrumAnalyzerPlotGraph(PlotState& state) {
+    JST_DEBUG("[SUPERLUMINAL] Building spectrum analyzer graph named '{}'.",
+              state.name);
+
+    const auto& buf = state.config.buffer;
+    if (buf.dtype() != DataType::CF32) {
+        JST_ERROR("[SUPERLUMINAL] Spectrum Analyzer '{}' requires a CF32 input buffer.",
+                  state.name);
+        return Result::ERROR;
+    }
+    if (state.config.source != Domain::Time) {
+        JST_ERROR("[SUPERLUMINAL] Spectrum Analyzer '{}' requires time-domain input.",
+                  state.name);
+        return Result::ERROR;
+    }
+    if ((state.config.channelAxis == -1) != (state.config.channelIndex == -1)) {
+        JST_ERROR("[SUPERLUMINAL] Spectrum Analyzer '{}' requires both channel "
+                  "axis and channel index.",
+                  state.name);
+        return Result::ERROR;
+    }
+
+    const I32 inputRank = static_cast<I32>(buf.rank());
+    if (inputRank == 0) {
+        JST_ERROR("[SUPERLUMINAL] Spectrum Analyzer '{}' requires a non-scalar "
+                  "input buffer.",
+                  state.name);
+        return Result::ERROR;
+    }
+    if (state.config.channelAxis < -1 || state.config.channelAxis >= inputRank) {
+        JST_ERROR("[SUPERLUMINAL] Spectrum Analyzer '{}' channel axis {} is "
+                  "out of bounds for rank {}.",
+                  state.name, state.config.channelAxis, inputRank);
+        return Result::ERROR;
+    }
+    if (state.config.channelAxis != -1 &&
+        (state.config.channelIndex < 0 ||
+         static_cast<U64>(state.config.channelIndex) >=
+             buf.shape()[state.config.channelAxis])) {
+        JST_ERROR("[SUPERLUMINAL] Spectrum Analyzer '{}' channel index {} is "
+                  "out of bounds for axis {}.",
+                  state.name, state.config.channelIndex, state.config.channelAxis);
+        return Result::ERROR;
+    }
+    if (state.config.batchAxis < -1 || state.config.batchAxis >= inputRank) {
+        JST_ERROR("[SUPERLUMINAL] Spectrum Analyzer '{}' batch axis {} is out "
+                  "of bounds for rank {}.",
+                  state.name, state.config.batchAxis, inputRank);
+        return Result::ERROR;
+    }
+    if (state.config.batchAxis != -1 &&
+        state.config.batchAxis == state.config.channelAxis) {
+        JST_ERROR("[SUPERLUMINAL] Spectrum Analyzer '{}' batch and channel "
+                  "axes must be different.",
+                  state.name);
+        return Result::ERROR;
+    }
+
+    const auto integerOption = [&](const std::string& key,
+                                   const I32 fallback) -> std::optional<I32> {
+        if (!state.config.options.contains(key)) { return fallback; }
+        const auto& value = state.config.options.at(key);
+        if (const auto* integer = std::get_if<I32>(&value)) { return *integer; }
+        if (const auto* number = std::get_if<F32>(&value)) {
+            const double resolved = static_cast<double>(*number);
+            if (!std::isfinite(resolved) ||
+                resolved < static_cast<double>(std::numeric_limits<I32>::min()) ||
+                resolved > static_cast<double>(std::numeric_limits<I32>::max())) {
+                JST_ERROR("[SUPERLUMINAL] Spectrum Analyzer option '{}' must be "
+                          "a finite integer within the I32 range.", key);
+                return std::nullopt;
+            }
+            const I32 converted = static_cast<I32>(resolved);
+            if (static_cast<double>(converted) != resolved) {
+                JST_ERROR("[SUPERLUMINAL] Spectrum Analyzer option '{}' must be "
+                          "an integer value.", key);
+                return std::nullopt;
+            }
+            return converted;
+        }
+        return fallback;
+    };
+    const auto floatOption = [&](const std::string& key, const F32 fallback) {
+        if (!state.config.options.contains(key)) { return fallback; }
+        const auto& value = state.config.options.at(key);
+        if (const auto* number = std::get_if<F32>(&value)) { return *number; }
+        if (const auto* integer = std::get_if<I32>(&value)) {
+            return static_cast<F32>(*integer);
+        }
+        return fallback;
+    };
+
+    const std::string rangeMin = std::to_string(floatOption("rangeMin", -100.0f));
+    const std::string rangeMax = std::to_string(floatOption("rangeMax", 0.0f));
+
+    const auto averagingOpt = integerOption("averaging", 1);
+    const auto decimationOpt = integerOption("decimation", 1);
+    const auto maxHoldOpt = integerOption("maxHold", 0);
+    const auto waterfallHeightOpt = integerOption("waterfallHeight", 512);
+    const auto fillOpt = integerOption("fill", 1);
+    if (!averagingOpt || !decimationOpt || !maxHoldOpt ||
+        !waterfallHeightOpt || !fillOpt) {
+        return Result::ERROR;
+    }
+    const std::string averaging = std::to_string(*averagingOpt);
+    const std::string decimation = std::to_string(*decimationOpt);
+    const std::string maxHold = *maxHoldOpt != 0 ? "true" : "false";
+    const std::string waterfallHeight = std::to_string(*waterfallHeightOpt);
+    const std::string fill = *fillOpt != 0 ? "true" : "false";
+
+    auto graph = Graph{};
+    const auto hash = std::to_string(BufferKey(buf, state.config.source));
+    auto port = jst::fmt::format(
+        "${{graph.data_{}_time_{}.output.buffer}}",
+        GetDeviceName(config.preferredDevice),
+        hash);
+    U64 effectiveRank = buf.rank();
+
+    if (state.config.channelAxis != -1) {
+        const U64 channelAxis = state.config.channelAxis;
+        const U64 channelIndex = state.config.channelIndex;
+        std::string slice;
+        for (U64 axis = 0; axis < buf.rank(); ++axis) {
+            slice += axis == channelAxis ? std::to_string(channelIndex) : ":";
+            if (axis + 1 != buf.rank()) { slice += ","; }
+        }
+        slice = jst::fmt::format("[{}]", slice);
+
+        graph.push_back({
+            "slice",
+            {"slice", GetDeviceName(config.preferredDevice), {"CF32"},
+                {{"slice", slice}},
+                {{"buffer", port}}},
+        });
+        graph.push_back({
+            "duplicate",
+            {"duplicate", GetDeviceName(config.preferredDevice), {"CF32"},
+                {{"outputDevice", GetDeviceName(config.preferredDevice)}},
+                {{"buffer", "${domain.slice.output.buffer}"}}},
+        });
+        port = "${domain.duplicate.output.buffer}";
+        effectiveRank -= 1;
+    }
+
+    if (effectiveRank == 0) {
+        JST_ERROR("[SUPERLUMINAL] Spectrum Analyzer '{}' has no transform axis "
+                  "after channel selection.",
+                  state.name);
+        return Result::ERROR;
+    }
+    if (effectiveRank > 2) {
+        JST_ERROR("[SUPERLUMINAL] Spectrum Analyzer '{}' supports at most one "
+                  "batch axis and one transform axis after channel selection.",
+                  state.name);
+        return Result::ERROR;
+    }
+    std::unordered_map<std::string, std::string> spectrumAnalyzerConfig = {
+        {"rangeMin", rangeMin},
+        {"rangeMax", rangeMax},
+        {"averaging", averaging},
+        {"decimation", decimation},
+        {"maxHold", maxHold},
+        {"fill", fill},
+        {"waterfallHeight", waterfallHeight},
+    };
+    for (const std::string& key : {"xLabel", "amplitudeLabel", "waterfallLabel"}) {
+        if (state.config.options.contains(key)) {
+            spectrumAnalyzerConfig[key] =
+                std::get<std::string>(state.config.options.at(key));
+        }
+    }
+
+    graph.push_back({
+        "spectrum_analyzer",
+        {"spectrum_analyzer", GetDeviceName(config.preferredDevice), {"CF32"},
+            spectrumAnalyzerConfig,
+            {{"buffer", port}}},
+    });
+    JST_CHECK(flowgraph->importFromBlob(GraphToYaml(graph, state.name)));
+
+    state.block = state.name + "_spectrum_analyzer";
     return Result::SUCCESS;
 }
 
@@ -1036,10 +1438,20 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
         height = std::to_string(h);
     }
 
+    std::unordered_map<std::string, std::string> waterfallConfig = {
+        {"height", height},
+    };
+    for (const std::string& key : {"xLabel", "yLabel"}) {
+        if (state.config.options.contains(key)) {
+            waterfallConfig[key] =
+                std::get<std::string>(state.config.options.at(key));
+        }
+    }
+
     // Build graph.
 
     auto graph = Graph{};
-    auto hash = std::to_string(BufferKey(buf));
+    auto hash = std::to_string(BufferKey(buf, state.config.source));
     auto domain = (state.config.display == Domain::Time) ? "time" : "freq";
     auto outputPort = (state.config.display == state.config.source) ? "buffer" : "signal";
     auto port = jst::fmt::format("${{graph.data_{}_{}_{}.output.{}}}", GetDeviceName(config.preferredDevice), domain, hash, outputPort);
@@ -1067,14 +1479,16 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
 
         graph.push_back({
             "slice",
-            {"slice", GetDeviceName(config.preferredDevice), {"CF32"},
+            {"slice", GetDeviceName(config.preferredDevice),
+                {std::string(DataTypeToName(buf.dtype()))},
                 {{"slice", slice}},
                 {{"buffer", port}}},
         });
 
         graph.push_back({
             "duplicate",
-            {"duplicate", GetDeviceName(config.preferredDevice), {"CF32"},
+            {"duplicate", GetDeviceName(config.preferredDevice),
+                {std::string(DataTypeToName(buf.dtype()))},
                 {{"outputDevice", GetDeviceName(config.preferredDevice)}},
                 {{"buffer", "${domain.slice.output.buffer}"}}},
         });
@@ -1112,7 +1526,7 @@ Result Superluminal::Impl::buildWaterfallPlotGraph(PlotState& state) {
     graph.push_back({
         "waterfall",
         {"waterfall", GetDeviceName(config.preferredDevice), {"F32"},
-            {{"height", height}},
+            waterfallConfig,
             {{"signal", "${domain.scl.output.signal}"}}},
     });
 
@@ -1140,10 +1554,18 @@ Result Superluminal::Impl::buildScatterPlotGraph(PlotState& state) {
     // Build graph.
 
     auto graph = Graph{};
-    auto hash = std::to_string(BufferKey(buf));
+    auto hash = std::to_string(BufferKey(buf, state.config.source));
     auto domain = (state.config.display == Domain::Time) ? "time" : "freq";
     auto outputPort = (state.config.display == state.config.source) ? "buffer" : "signal";
     auto port = jst::fmt::format("${{graph.data_{}_{}_{}.output.{}}}", GetDeviceName(config.preferredDevice), domain, hash, outputPort);
+
+    std::unordered_map<std::string, std::string> constellationConfig;
+    for (const std::string& key : {"xLabel", "yLabel"}) {
+        if (state.config.options.contains(key)) {
+            constellationConfig[key] =
+                std::get<std::string>(state.config.options.at(key));
+        }
+    }
 
     if (state.config.channelAxis != -1 && state.config.channelIndex != -1) {
         U64 axis = state.config.channelAxis;
@@ -1185,7 +1607,8 @@ Result Superluminal::Impl::buildScatterPlotGraph(PlotState& state) {
 
     graph.push_back({
         "constellation",
-        {"constellation", GetDeviceName(config.preferredDevice), {"CF32"}, {},
+        {"constellation", GetDeviceName(config.preferredDevice), {"CF32"},
+            constellationConfig,
             {{"signal", port}}},
     });
 
@@ -1207,7 +1630,7 @@ std::string Superluminal::Impl::ParseLinkDomain(const std::string& value, const 
     return value;
 }
 
-U64 Superluminal::Impl::BufferKey(const Tensor& buffer) {
+U64 Superluminal::Impl::BufferKey(const Tensor& buffer, const Domain source) {
     auto hashCombine = [](U64& seed, const U64 value) {
         seed ^= value + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
     };
@@ -1224,9 +1647,32 @@ U64 Superluminal::Impl::BufferKey(const Tensor& buffer) {
     hashCombine(seed, static_cast<U64>(buffer.offset()));
     hashCombine(seed, static_cast<U64>(buffer.device()));
     hashCombine(seed, static_cast<U64>(buffer.dtype()));
+    hashCombine(seed, static_cast<U64>(source));
     hashCombine(seed, static_cast<U64>(buffer.rank()));
     for (U64 i = 0; i < buffer.rank(); ++i) {
         hashCombine(seed, buffer.shape(i));
+        hashCombine(seed, buffer.stride(i));
+    }
+
+    for (const std::string& key : {"frequency", "sampleRate"}) {
+        if (!buffer.hasAttribute(key)) {
+            continue;
+        }
+
+        const auto attribute = buffer.attribute(key);
+        if (attribute.type() == typeid(F32)) {
+            hashCombine(seed, std::hash<std::string>{}(key));
+            hashCombine(seed, std::hash<F32>{}(std::any_cast<F32>(attribute)));
+        }
+    }
+
+    for (const std::string_view attribute : {
+             SampleAxisAttribute, BatchAxisAttribute, ChannelAxisAttribute}) {
+        if (buffer.hasAttribute(std::string(attribute))) {
+            hashCombine(seed, std::hash<std::string_view>{}(attribute));
+            hashCombine(seed, std::any_cast<Index>(
+                buffer.attribute(std::string(attribute))));
+        }
     }
 
     if (seed == 0) {
@@ -1244,6 +1690,18 @@ std::vector<char> Superluminal::Impl::GraphToYaml(const Graph& graph, std::strin
         "\n"
         "graph:\n"
     );
+
+    const auto escapeSingleQuotedScalar = [](const std::string& value) {
+        std::string escaped;
+        escaped.reserve(value.size());
+        for (const char character : value) {
+            escaped += character;
+            if (character == '\'') {
+                escaped += character;
+            }
+        }
+        return escaped;
+    };
 
     if (!domain.empty()) {
         domain += "_";
@@ -1273,7 +1731,9 @@ std::vector<char> Superluminal::Impl::GraphToYaml(const Graph& graph, std::strin
         if (!value.config.empty()) {
             yaml += "  config:\n";
             for (const auto& [configKey, configValue] : value.config) {
-                yaml += jst::fmt::format("    {}: '{}'\n", configKey, ParseLinkDomain(configValue, domain));
+                yaml += jst::fmt::format("    {}: '{}'\n", configKey,
+                                         escapeSingleQuotedScalar(
+                                             ParseLinkDomain(configValue, domain)));
             }
         }
 

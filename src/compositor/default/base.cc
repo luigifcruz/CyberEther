@@ -52,6 +52,18 @@ DefaultCompositor::DefaultCompositor() :
         .requestFile = [this](FilePickerRequest request) {
             return actions.requestFile(std::move(request));
         },
+        .checkForUpdates = [this]() {
+            updater.check();
+        },
+        .downloadUpdate = [this]() {
+            updater.download();
+        },
+        .applyUpdate = [this]() {
+            return updater.apply();
+        },
+        .dismissUpdate = [this]() {
+            updater.dismiss();
+        },
     },
     actions(state, callbacks),
     presenters(state, callbacks) {}
@@ -155,6 +167,9 @@ Result DefaultCompositor::create() {
 
     workbench.update(presenters.build());
 
+    updater.start();
+    updater.check();
+
     return Result::SUCCESS;
 }
 
@@ -162,6 +177,7 @@ Result DefaultCompositor::destroy() {
     JST_INFO("[COMPOSITOR_IMPL_DEFAULT] Destroying compositor.");
 
     actions.cancelFilePicker();
+    updater.shutdown();
 
     return Result::SUCCESS;
 }
@@ -200,6 +216,7 @@ Result DefaultCompositor::poll() {
     updateFilePendingState();
     updateBenchmarkState();
     updateRemoteState();
+    updateUpdaterState();
     actions.reconcileFilePicker();
     updateStacksState();
 
@@ -316,6 +333,22 @@ void DefaultCompositor::updateRemoteState() {
     state.remote.accessToken = remoteStarted ? remote->accessToken() : "";
     state.remote.clients = remoteStarted ? remote->clients() : std::vector<Instance::Remote::ClientInfo>{};
     state.remote.waitlist = remoteStarted ? remote->waitlist() : std::vector<std::string>{};
+}
+
+void DefaultCompositor::updateUpdaterState() {
+    const auto update = updater.snapshot();
+    state.update.supported = update.supported;
+    state.update.upToDate = update.upToDate;
+    state.update.failed = update.failed;
+    state.update.checking = update.checking;
+    state.update.available = update.available;
+    state.update.downloading = update.downloading;
+    state.update.ready = update.ready;
+    state.update.applying = update.applying;
+    state.update.progress = update.progress;
+    state.update.version = update.version;
+    state.update.releaseNotes = update.releaseNotes;
+    state.update.message = update.message;
 }
 
 void DefaultCompositor::updateStacksState() {

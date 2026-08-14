@@ -28,6 +28,8 @@ struct SettingsActions {
                               MailSetDebugTimingEnabled,
                               MailSetDebugLogLevel,
                               MailCheckForUpdates,
+                              MailDownloadUpdate,
+                              MailApplyUpdate,
                               MailDismissUpdate,
                               MailSetPythonRuntimePath,
                               MailAddPluginPath,
@@ -141,12 +143,24 @@ struct SettingsActions {
     }
 
     Result handle(const MailCheckForUpdates&) {
-        state.update.checking = true;
+        callbacks.checkForUpdates();
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailDownloadUpdate&) {
+        callbacks.downloadUpdate();
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailApplyUpdate&) {
+        if (callbacks.applyUpdate()) {
+            return state.system.instance->requestStop();
+        }
         return Result::SUCCESS;
     }
 
     Result handle(const MailDismissUpdate&) {
-        state.update.available = false;
+        callbacks.dismissUpdate();
         return Result::SUCCESS;
     }
 

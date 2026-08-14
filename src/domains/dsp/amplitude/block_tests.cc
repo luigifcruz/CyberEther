@@ -98,7 +98,39 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Amplitude block delegates dtype validation to its module",
+                 "Amplitude block preserves independent channel levels",
+                 "[modules][dsp][amplitude][block][channel][metadata]") {
+    Blocks::OnesTensor source;
+    source.shape = {5, 2};
+    source.dataType = "F32";
+    REQUIRE(flowgraph->blockCreate("amp_channels_src", source, {}) ==
+            Result::SUCCESS);
+
+    Tensor sourceTensor =
+        viewBlock("amp_channels_src").outputs.at("buffer").tensor;
+    REQUIRE(sourceTensor.setAttribute("channelAxis", Index{0}) == Result::SUCCESS);
+    REQUIRE(sourceTensor.setAttribute("batchAxis", Index{1}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].requested("amp_channels_src", "buffer");
+
+    REQUIRE(flowgraph->blockCreate("amp_channels", Blocks::Amplitude{}, inputs) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("amp_channels").state == Block::State::Created);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    const Tensor output = viewBlock("amp_channels").outputs.at("signal").tensor;
+    REQUIRE_FALSE(output.hasAttribute("sampleAxis"));
+    REQUIRE(std::any_cast<Index>(output.attribute("channelAxis")) == Index{0});
+    REQUIRE(std::any_cast<Index>(output.attribute("batchAxis")) == Index{1});
+    for (U64 index = 0; index < output.size(); ++index) {
+        REQUIRE_THAT(output.at<F32>(index),
+                     Catch::Matchers::WithinAbs(0.0f, 0.1f));
+    }
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                  "Amplitude block delegates dtype validation to its module",
                  "[modules][dsp][amplitude][block][validation]") {
     Blocks::OnesTensor source;
     source.shape = {4};

@@ -2,8 +2,11 @@ blueprint_gain_sources = files([
     'block_impl.cc',
     'module_benchmarks.cc',
     'module_impl.cc',
-    'module_impl_native_cpu.cc',
 ])
+
+if plugin_device_cpu_enabled
+    blueprint_gain_sources += files(['module_impl_native_cpu.cc'])
+endif
 
 plugin_sources += blueprint_gain_sources
 

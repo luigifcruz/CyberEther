@@ -172,6 +172,14 @@ TEST_CASE("Spectrogram module accepts valid height boundaries and input ranks",
                     }) == Result::SUCCESS);
                     ctx.setInput("signal", batched);
                     REQUIRE(ctx.run() == Result::SUCCESS);
+
+                    Tensor channels;
+                    REQUIRE(channels.create(DeviceType::CPU, DataType::F32, {64}) ==
+                            Result::SUCCESS);
+                    REQUIRE(SetSignalAxes(channels, {.channel = Index{0}}) ==
+                            Result::SUCCESS);
+                    ctx.setInput("signal", channels);
+                    REQUIRE(ctx.run() == Result::SUCCESS);
                 }
             }
         }
@@ -216,13 +224,13 @@ TEST_CASE("Spectrogram module rejects invalid config and inputs",
                 RequireSpectrogramValidationError(impl, Modules::Spectrogram{}, malformed);
             }
 
-            SECTION("channel and auxiliary dimensions are unsupported") {
-                Tensor channel(impl.device, DataType::F32, {2, 32});
-                REQUIRE(SetSignalAxes(channel, {
+            SECTION("mixed signal roles and auxiliary dimensions are unsupported") {
+                Tensor mixed(impl.device, DataType::F32, {2, 32});
+                REQUIRE(SetSignalAxes(mixed, {
                     .sample = Index{1},
                     .channel = Index{0},
                 }) == Result::SUCCESS);
-                RequireSpectrogramValidationError(impl, Modules::Spectrogram{}, channel);
+                RequireSpectrogramValidationError(impl, Modules::Spectrogram{}, mixed);
 
                 Tensor auxiliary(impl.device, DataType::F32, {2, 32});
                 REQUIRE(SetSignalAxes(auxiliary, {.sample = Index{1}}) ==
@@ -279,41 +287,52 @@ TEST_CASE("Spectrogram module supports repeated computes and reconfigure",
     }
 }
 
-TEST_CASE("Spectrogram indexes leading and trailing batch layouts equivalently",
-          "[modules][spectrogram][layout]") {
+TEST_CASE("Spectrogram indexes sample and channel batch layouts equivalently",
+           "[modules][spectrogram][layout]") {
     const auto implementations = Registry::ListAvailableModules("spectrogram");
     REQUIRE(!implementations.empty());
 
     for (const auto& implementation : implementations) {
         DYNAMIC_SECTION("Device: " << implementation.device
                         << " Runtime: " << implementation.runtime) {
-            Tensor leading(DeviceType::CPU, DataType::F32, {2, 3});
-            const F32 leadingData[] = {
-                0.25f, 0.50f, 0.75f,
-                0.25f, 0.75f, 0.50f,
-            };
-            std::copy(std::begin(leadingData), std::end(leadingData),
-                      leading.data<F32>());
-            REQUIRE(SetSignalAxes(leading, {
-                .sample = Index{1},
-                .batch = Index{0},
-            }) == Result::SUCCESS);
+            for (const bool useChannelAxis : {false, true}) {
+                DYNAMIC_SECTION("Element axis: "
+                                << (useChannelAxis ? "channel" : "sample")) {
+                    Tensor leading(DeviceType::CPU, DataType::F32, {2, 3});
+                    const F32 leadingData[] = {
+                        0.25f, 0.50f, 0.75f,
+                        0.25f, 0.75f, 0.50f,
+                    };
+                    std::copy(std::begin(leadingData), std::end(leadingData),
+                              leading.data<F32>());
+                    SignalAxes leadingAxes{.batch = Index{0}};
+                    if (useChannelAxis) {
+                        leadingAxes.channel = Index{1};
+                    } else {
+                        leadingAxes.sample = Index{1};
+                    }
+                    REQUIRE(SetSignalAxes(leading, leadingAxes) == Result::SUCCESS);
 
-            Tensor trailing(DeviceType::CPU, DataType::F32, {3, 2});
-            const F32 trailingData[] = {
-                0.25f, 0.25f,
-                0.50f, 0.75f,
-                0.75f, 0.50f,
-            };
-            std::copy(std::begin(trailingData), std::end(trailingData),
-                      trailing.data<F32>());
-            REQUIRE(SetSignalAxes(trailing, {
-                .sample = Index{0},
-                .batch = Index{1},
-            }) == Result::SUCCESS);
+                    Tensor trailing(DeviceType::CPU, DataType::F32, {3, 2});
+                    const F32 trailingData[] = {
+                        0.25f, 0.25f,
+                        0.50f, 0.75f,
+                        0.75f, 0.50f,
+                    };
+                    std::copy(std::begin(trailingData), std::end(trailingData),
+                              trailing.data<F32>());
+                    SignalAxes trailingAxes{.batch = Index{1}};
+                    if (useChannelAxis) {
+                        trailingAxes.channel = Index{0};
+                    } else {
+                        trailingAxes.sample = Index{0};
+                    }
+                    REQUIRE(SetSignalAxes(trailing, trailingAxes) == Result::SUCCESS);
 
-            REQUIRE(ComputeSpectrogramBins(implementation, trailing) ==
-                    ComputeSpectrogramBins(implementation, leading));
+                    REQUIRE(ComputeSpectrogramBins(implementation, trailing) ==
+                            ComputeSpectrogramBins(implementation, leading));
+                }
+            }
         }
     }
 }

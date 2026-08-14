@@ -3,6 +3,7 @@
 #include <SoapySDR/Device.hpp>
 #include <SoapySDR/Types.hpp>
 #include <SoapySDR/Formats.hpp>
+#include <SoapySDR/Modules.hpp>
 #include <SoapySDR/Registry.hpp>
 
 #include <algorithm>
@@ -13,6 +14,20 @@
 #include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Modules {
+
+Result SoapyImpl::LoadModulePath(const std::string& path) {
+    if (path.empty()) {
+        return Result::SUCCESS;
+    }
+
+    const auto error = SoapySDR::loadModule(path);
+    if (!error.empty() && !error.ends_with(" already loaded")) {
+        JST_ERROR("[MODULE_SOAPY] Failed to load SoapySDR module '{}': {}", path, error);
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
 
 Result SoapyImpl::validate() {
     const auto& config = *candidate();
@@ -94,9 +109,13 @@ Result SoapyImpl::create() {
     }
 #endif
 
+    JST_CHECK(LoadModulePath(modulePath));
+
     errored = false;
     streaming = false;
     activeSampleRate = 0.0f;
+    biasTeeSupported = false;
+    biasTeeNeedsCleanup = false;
     bufferHealth.publish(0.0f);
     throughput.publish({0.0f, 0.0f});
 
@@ -149,6 +168,17 @@ Result SoapyImpl::create() {
         return Result::ERROR;
     }
 
+    try {
+        const auto settings = soapyDevice->getSettingInfo();
+        biasTeeSupported = std::any_of(settings.begin(), settings.end(), [](const auto& setting) {
+            return setting.key == "biastee";
+        });
+    } catch (const std::exception& e) {
+        JST_WARN("[MODULE_SOAPY] Failed to query optional device settings: {}", e.what());
+    } catch (...) {
+        JST_WARN("[MODULE_SOAPY] Failed to query optional device settings.");
+    }
+
     if (!SoapyRangeContains(sampleRateRanges, sampleRate)) {
         JST_ERROR("[MODULE_SOAPY] Sample rate ({:.2f} MHz) not supported.", sampleRate / 1e6);
         SoapySDR::Device::unmake(soapyDevice);
@@ -179,15 +209,29 @@ Result SoapyImpl::create() {
     }
 
     try {
-        soapyDevice->setSampleRate(SOAPY_SDR_RX, 0, sampleRate);
-        soapyDevice->setFrequency(SOAPY_SDR_RX, 0, frequency);
-        soapyDevice->setGainMode(SOAPY_SDR_RX, 0, automaticGain);
+        if (setSampleRate(sampleRate) != Result::SUCCESS) {
+            throw std::runtime_error("Failed to set sample rate.");
+        }
+        if (setTunerFrequency(frequency) != Result::SUCCESS) {
+            throw std::runtime_error("Failed to set frequency.");
+        }
+        if (setAutomaticGain(automaticGain) != Result::SUCCESS) {
+            throw std::runtime_error("Failed to set gain mode.");
+        }
+        if (setBiasTee(biasTee) != Result::SUCCESS) {
+            throw std::runtime_error("Failed to set Bias-T.");
+        }
 
         soapyStream = soapyDevice->setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32, {0}, streamArgs);
         if (soapyStream == nullptr) {
             JST_ERROR("[MODULE_SOAPY] Failed to setup stream.");
+            if (biasTeeNeedsCleanup) {
+                static_cast<void>(setBiasTee(false));
+            }
             SoapySDR::Device::unmake(soapyDevice);
             soapyDevice = nullptr;
+            biasTeeSupported = false;
+            biasTeeNeedsCleanup = false;
             return Result::ERROR;
         }
         const int activationResult = soapyDevice->activateStream(soapyStream, 0, 0, 0);
@@ -202,8 +246,13 @@ Result SoapyImpl::create() {
             try { soapyDevice->closeStream(soapyStream); } catch (...) {}
             soapyStream = nullptr;
         }
+        if (biasTeeNeedsCleanup) {
+            static_cast<void>(setBiasTee(false));
+        }
         SoapySDR::Device::unmake(soapyDevice);
         soapyDevice = nullptr;
+        biasTeeSupported = false;
+        biasTeeNeedsCleanup = false;
         return Result::ERROR;
     } catch (...) {
         JST_ERROR("[MODULE_SOAPY] Failed to configure device.");
@@ -211,8 +260,13 @@ Result SoapyImpl::create() {
             try { soapyDevice->closeStream(soapyStream); } catch (...) {}
             soapyStream = nullptr;
         }
+        if (biasTeeNeedsCleanup) {
+            static_cast<void>(setBiasTee(false));
+        }
         SoapySDR::Device::unmake(soapyDevice);
         soapyDevice = nullptr;
+        biasTeeSupported = false;
+        biasTeeNeedsCleanup = false;
         return Result::ERROR;
     }
 
@@ -265,6 +319,10 @@ Result SoapyImpl::destroy() {
         soapyStream = nullptr;
     }
 
+    if (biasTeeNeedsCleanup) {
+        static_cast<void>(setBiasTee(false));
+    }
+
     if (soapyDevice) {
         try {
             SoapySDR::Device::unmake(soapyDevice);
@@ -275,6 +333,8 @@ Result SoapyImpl::destroy() {
         }
         soapyDevice = nullptr;
     }
+    biasTeeSupported = false;
+    biasTeeNeedsCleanup = false;
 
     sampleRateRanges.clear();
     frequencyRanges.clear();
@@ -288,8 +348,10 @@ Result SoapyImpl::destroy() {
 Result SoapyImpl::reconfigure() {
     const auto& newConfig = *candidate();
 
-    if (newConfig.deviceString != deviceString ||
+    if (newConfig.modulePath != modulePath ||
+        newConfig.deviceString != deviceString ||
         newConfig.streamString != streamString ||
+        newConfig.biasTee != biasTee ||
         newConfig.numberOfBatches != numberOfBatches ||
         newConfig.numberOfTimeSamples != numberOfTimeSamples ||
         newConfig.bufferMultiplier != bufferMultiplier) {
@@ -384,13 +446,14 @@ std::pair<F32, F32> SoapyImpl::getThroughput() const {
 }
 
 Result SoapyImpl::setTunerFrequency(const F32& freq) {
+    if (!soapyDevice) {
+        JST_ERROR("[MODULE_SOAPY] Cannot set frequency without an active device.");
+        return Result::ERROR;
+    }
+
     if (!SoapyRangeContains(frequencyRanges, freq)) {
         JST_WARN("[MODULE_SOAPY] Frequency ({:.2f} MHz) not supported.", freq / 1e6);
         return Result::WARNING;
-    }
-
-    if (!streaming) {
-        return Result::RECREATE;
     }
 
     try {
@@ -410,13 +473,14 @@ Result SoapyImpl::setTunerFrequency(const F32& freq) {
 }
 
 Result SoapyImpl::setSampleRate(const F32& rate) {
+    if (!soapyDevice) {
+        JST_ERROR("[MODULE_SOAPY] Cannot set sample rate without an active device.");
+        return Result::ERROR;
+    }
+
     if (!SoapyRangeContains(sampleRateRanges, rate)) {
         JST_WARN("[MODULE_SOAPY] Sample rate ({:.2f} MHz) not supported.", rate / 1e6);
         return Result::WARNING;
-    }
-
-    if (!streaming) {
-        return Result::RECREATE;
     }
 
     try {
@@ -437,8 +501,9 @@ Result SoapyImpl::setSampleRate(const F32& rate) {
 }
 
 Result SoapyImpl::setAutomaticGain(const bool& gain) {
-    if (!streaming) {
-        return Result::RECREATE;
+    if (!soapyDevice) {
+        JST_ERROR("[MODULE_SOAPY] Cannot set gain mode without an active device.");
+        return Result::ERROR;
     }
 
     try {
@@ -452,6 +517,31 @@ Result SoapyImpl::setAutomaticGain(const bool& gain) {
     }
 
     automaticGain = gain;
+
+    return Result::SUCCESS;
+}
+
+Result SoapyImpl::setBiasTee(const bool enabled) {
+    if (!soapyDevice) {
+        JST_ERROR("[MODULE_SOAPY] Cannot set Bias-T without an active device.");
+        return Result::ERROR;
+    }
+
+    if (biasTeeSupported) {
+        biasTeeNeedsCleanup = true;
+        try {
+            soapyDevice->writeSetting("biastee", enabled);
+        } catch (const std::exception& e) {
+            JST_ERROR("[MODULE_SOAPY] Failed to set Bias-T: {}", e.what());
+            return Result::ERROR;
+        } catch (...) {
+            JST_ERROR("[MODULE_SOAPY] Failed to set Bias-T.");
+            return Result::ERROR;
+        }
+        biasTeeNeedsCleanup = enabled;
+    } else if (enabled) {
+        JST_WARN("[MODULE_SOAPY] Bias-T is not supported by the selected device.");
+    }
 
     return Result::SUCCESS;
 }

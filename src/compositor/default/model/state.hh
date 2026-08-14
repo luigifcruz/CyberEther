@@ -83,9 +83,18 @@ struct DefaultCompositorState {
     };
 
     struct UpdateState {
+        bool supported = false;
+        bool upToDate = false;
+        bool failed = false;
         bool checking = false;
         bool available = false;
+        bool downloading = false;
+        bool ready = false;
+        bool applying = false;
+        F32 progress = 0.0f;
         std::string version;
+        std::string releaseNotes;
+        std::string message;
     };
 
     struct FlowgraphState {

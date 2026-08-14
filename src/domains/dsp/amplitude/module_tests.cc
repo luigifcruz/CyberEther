@@ -127,6 +127,39 @@ TEST_CASE("Amplitude - F32 Signal", "[modules][amplitude][f32]") {
     }
 }
 
+TEST_CASE("Amplitude - Channel-only Signal",
+          "[modules][amplitude][channel][metadata]") {
+    const auto implementations = Registry::ListAvailableModules("amplitude");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("amplitude", impl.device, impl.runtime, impl.provider);
+            ctx.setConfig(Modules::Amplitude{});
+
+            auto input = ctx.createTensor<F32>({5, 2});
+            REQUIRE(input.setAttribute("channelAxis", Index{0}) == Result::SUCCESS);
+            REQUIRE(input.setAttribute("batchAxis", Index{1}) == Result::SUCCESS);
+            for (U64 index = 0; index < input.size(); ++index) {
+                input.data()[index] = 5.0f;
+            }
+            ctx.setInput("signal", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            const auto& out = ctx.output("signal");
+            REQUIRE_FALSE(out.hasAttribute("sampleAxis"));
+            REQUIRE(std::any_cast<Index>(out.attribute("channelAxis")) == Index{0});
+            REQUIRE(std::any_cast<Index>(out.attribute("batchAxis")) == Index{1});
+            const F32 expected = 20.0f * std::log10(5.0f);
+            for (U64 index = 0; index < out.size(); ++index) {
+                REQUIRE_THAT(out.data<F32>()[index],
+                             Catch::Matchers::WithinAbs(expected, 0.1f));
+            }
+        }
+    }
+}
+
 TEST_CASE("Amplitude - Trailing Batch Metadata Normalization",
           "[modules][amplitude][batch][metadata]") {
     const auto implementations = Registry::ListAvailableModules("amplitude");
