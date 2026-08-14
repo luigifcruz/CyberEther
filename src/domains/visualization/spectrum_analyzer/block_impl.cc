@@ -138,7 +138,7 @@ Result SpectrumAnalyzerImpl::define() {
                                     "range:1:256:samples:uint"));
     JST_CHECK(defineInterfaceConfig("decimation", "Decimation",
                                     "Trace-only horizontal decimation.",
-                                    "range:1:64::uint"));
+                                    "uint:"));
     JST_CHECK(defineInterfaceConfig("maxHold", "Max Hold",
                                     "Enable maximum hold trace.",
                                     "bool"));
