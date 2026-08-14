@@ -320,6 +320,9 @@ struct FlowgraphNode {
         for (U64 i = 0; i < fields.size(); ++i) {
             fields[i].update(block.configFields[i]);
         }
+        fieldGrid.update({
+            .id = this->config.id + "FieldGrid",
+        });
 
         attachedSurfaces.resize(surfaceCount);
         for (U64 i = 0; i < surfaceCount; ++i) {
@@ -435,9 +438,17 @@ struct FlowgraphNode {
             }
 
             if (!config.block.configCollapsed) {
-                for (const auto& field : fields) {
-                    field.render(ctx);
+                std::vector<Sakura::NodeFieldGrid::Item> items;
+                items.reserve(fields.size());
+                for (U64 i = 0; i < fields.size(); ++i) {
+                    items.push_back({
+                        .child = [this, i](const Sakura::Context& ctx) {
+                            fields[i].render(ctx);
+                        },
+                        .fullWidth = !fields[i].isSimple(),
+                    });
                 }
+                fieldGrid.render(ctx, items);
             }
 
             for (U64 i = 0; i < attachedSurfaces.size(); ++i) {
@@ -474,6 +485,7 @@ struct FlowgraphNode {
     Sakura::Spacing metricsSpacing;
     std::vector<Sakura::NodePin> pins;
     std::vector<FlowgraphMetricInstance> metrics;
+    Sakura::NodeFieldGrid fieldGrid;
     std::vector<FlowgraphConfigFieldInstance> fields;
     std::vector<Sakura::SurfaceView> attachedSurfaces;
     std::vector<FlowgraphNodeMenu::DeviceOption> deviceOptions;
