@@ -104,13 +104,19 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(viewBlock("lineplot_invalid").state ==
             Block::State::Errored);
 
-    Blocks::Lineplot invalidRange;
-    invalidRange.rangeMin = 1.0f;
-    invalidRange.rangeMax = 1.0f;
-    REQUIRE(flowgraph->blockCreate("lineplot_invalid_range", invalidRange,
+    Blocks::Lineplot equalRange;
+    equalRange.rangeMin = 1.0f;
+    equalRange.rangeMax = 1.0f;
+    REQUIRE(flowgraph->blockCreate("lineplot_equal_range", equalRange, inputs) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("lineplot_equal_range").state == Block::State::Created);
+
+    Blocks::Lineplot reversedRange;
+    reversedRange.rangeMin = 1.0f;
+    reversedRange.rangeMax = -1.0f;
+    REQUIRE(flowgraph->blockCreate("lineplot_reversed_range", reversedRange,
                                    inputs) == Result::SUCCESS);
-    REQUIRE(viewBlock("lineplot_invalid_range").state ==
-            Block::State::Errored);
+    REQUIRE(viewBlock("lineplot_reversed_range").state == Block::State::Created);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,

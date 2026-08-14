@@ -8,7 +8,7 @@
 namespace Jetstream::Blocks {
 
 struct Waterfall : public Block::Config {
-    U64 height = 512;
+    U64 height = 1024;
     std::string xLabel = "Frequency (MHz)";
     std::string yLabel = "Time";
 
@@ -35,7 +35,7 @@ struct Waterfall : public Block::Config {
 
         "## Examples\n"
         "- Waterfall display of FFT output:\n"
-        "  Config: Height=512\n"
+        "  Config: Height=1024\n"
         "  Input: F32[1024] -> Scrolling color-mapped display.\n\n"
 
         "## Implementation\n"

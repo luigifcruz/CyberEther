@@ -40,7 +40,7 @@ Result LineplotImpl::define() {
     JST_CHECK(defineInterfaceConfig("decimation",
                                     "Decimation",
                                     "Decimation factor for input data.",
-                                    "range:1:64::uint"));
+                                    "uint:"));
 
     JST_CHECK(defineInterfaceConfig("maxHold",
                                     "Max Hold",

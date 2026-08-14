@@ -50,16 +50,15 @@ Result SignalViewImpl::validate() {
         return Result::ERROR;
     }
 
-    if (!std::isfinite(config.rangeMin) || !std::isfinite(config.rangeMax) ||
-        (hasLineplot && config.rangeMin >= config.rangeMax)) {
-        JST_ERROR("[MODULE_SIGNAL_VIEW] Display range must be finite and ordered.");
+    if (!std::isfinite(config.rangeMin) || !std::isfinite(config.rangeMax)) {
+        JST_ERROR("[MODULE_SIGNAL_VIEW] Display range must be finite.");
         return Result::ERROR;
     }
 
     if (hasWaterfall &&
-        (config.waterfallHeight == 0 || config.waterfallHeight > 2048)) {
+        (config.waterfallHeight == 0 || config.waterfallHeight > 8192)) {
         JST_ERROR("[MODULE_SIGNAL_VIEW] Invalid waterfall height value '{}', "
-                  "must be between 1 and 2048.",
+                  "must be between 1 and 8192.",
                   config.waterfallHeight);
         return Result::ERROR;
     }
@@ -957,9 +956,10 @@ void SignalViewImpl::updateLabelState() {
 
         Render::Components::Axis::TickFormatter yFormatter;
         if (lineplotEnabled) {
-            yFormatter = [min = rangeMin, max = rangeMax](const F32 position) {
-                const F32 db = min +
-                    ((position + 1.0f) * 0.5f) * (max - min);
+            yFormatter = [lower = std::min(rangeMin, rangeMax),
+                          upper = std::max(rangeMin, rangeMax)](const F32 position) {
+                const F32 db = lower +
+                    ((position + 1.0f) * 0.5f) * (upper - lower);
                 return jst::fmt::format("{:.0f}", db);
             };
         }
