@@ -6,6 +6,7 @@ src_lst += files([
     'subtitle.cc',
     'pin.cc',
     'field.cc',
+    'field_grid.cc',
     'combo.cc',
     'input_row.cc',
     'label.cc',
