@@ -69,10 +69,6 @@ void Bridge::refreshMetrics() {
             std::vector<Flowgraph::View::MetricEntry> entries;
             if (flowgraphView->metrics(block, entries) == Result::SUCCESS) {
                 for (const auto& entry : entries) {
-                    if (entry.format.starts_with("private-")) {
-                        continue;
-                    }
-
                     auto* object = AnyToPyObject(entry.value, valueConverterTable());
                     if (!object) {
                         JST_TRACE("[RUNTIME_CONTEXT_PYTHON] Skipping unsupported metric '{}:{}'.",

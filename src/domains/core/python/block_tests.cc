@@ -618,7 +618,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
         "    else:\n"
         "        assert \"peer\" in ctx.metrics\n"
         "        assert ctx.metrics[\"peer\"].get(\"answer\") == 42\n"
-        "        assert \"secret\" not in ctx.metrics[\"peer\"]\n"
+        "        assert ctx.metrics[\"peer\"].get(\"secret\") == \"hidden\"\n"
         "        assert \"ghost\" in ctx.metrics\n"
         "        assert ctx.metrics[\"ghost\"] == {}\n"
         "    _n += 1\n"

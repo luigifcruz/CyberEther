@@ -169,7 +169,6 @@ Details worth knowing:
 
 - Only subscribed blocks are evaluated, so unrelated metrics cost nothing.
 - A subscription to a block that does not exist (yet) yields an empty mapping and starts producing values if the block appears later.
-- Metrics with `private-` formats (internal timing and diagnostics) are hidden.
 - Values arrive with their native types when possible. Progress-bar style metrics come through as a `(label, fraction)` tuple. Note that some blocks publish display-formatted strings (for example `"12.3 MB/s"`) rather than raw numbers, so check the shape of what you receive.
 - The mapping is read-only in spirit: writes to it are ignored by the flowgraph and overwritten on refresh.
 
