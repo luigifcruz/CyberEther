@@ -17,6 +17,12 @@ class _JetstreamMetrics(dict):
             return {} if default is None else default
         return dict.__getitem__(self, key)
 
+    def get_value(self, block, metric, default=None):
+        entry = self.get(block).get(metric)
+        if not isinstance(entry, dict):
+            return default
+        return entry.get("value", default)
+
     def subscribe_all(self):
         self._jetstream_subscribe_all = True
 

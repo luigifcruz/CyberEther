@@ -146,9 +146,9 @@ The format string controls presentation and visibility:
 
 - A format of `label` renders a `std::string` in the node body. Any other value type shows as an invalid metric in the UI, so format numbers into text for display.
 - A format of `progressbar` expects a `std::pair<std::string, F32>` holding the display label and a fraction between 0 and 1.
-- Formats prefixed with `private-` are internal by convention. The UI skips them, while C++ code reading through the view and Python's metrics mapping receive every metric. The prefix is a presentation convention, not an access-control boundary.
+- Formats prefixed with `private-` skip the default node-body display. Use them for metrics meant for programmatic consumers or specialized tools rather than general user visibility. They are not access-controlled, so every metric is still readable from C++. Python receives only the metrics whose values it can convert.
 
-Consumers read metrics through `Flowgraph::View::metrics(blockName, entries)` or, from Python, the subscription-based `ctx.metrics` mapping described in [Block Metrics](/docs/python-block#block-metrics).
+Consumers read metrics through `Flowgraph::View::metrics(blockName, entries)`. From Python, use the `ctx.metrics` mapping described in [Block Metrics](/docs/python-block#block-metrics).
 
 Hints:
 

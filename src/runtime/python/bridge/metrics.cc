@@ -77,10 +77,48 @@ void Bridge::refreshMetrics() {
                         continue;
                     }
 
-                    if (PyDict_SetItemString(values, entry.name.c_str(), object) != 0) {
+                    auto* descriptor = PyDict_New();
+                    auto* format = PyUnicode_FromString(entry.format.c_str());
+                    auto* label = PyUnicode_FromString(entry.label.c_str());
+                    auto* help = PyUnicode_FromString(entry.help.c_str());
+                    if (!descriptor || !format || !label || !help) {
+                        Py_DecRef(object);
+                        if (descriptor) {
+                            Py_DecRef(descriptor);
+                        }
+                        if (format) {
+                            Py_DecRef(format);
+                        }
+                        if (label) {
+                            Py_DecRef(label);
+                        }
+                        if (help) {
+                            Py_DecRef(help);
+                        }
+                        (void)ClearPythonError();
+                        continue;
+                    }
+
+                    const bool descriptorError =
+                        PyDict_SetItemString(descriptor, "value", object) != 0 ||
+                        PyDict_SetItemString(descriptor, "format", format) != 0 ||
+                        PyDict_SetItemString(descriptor, "label", label) != 0 ||
+                        PyDict_SetItemString(descriptor, "help", help) != 0;
+                    Py_DecRef(object);
+                    Py_DecRef(format);
+                    Py_DecRef(label);
+                    Py_DecRef(help);
+
+                    if (descriptorError) {
+                        Py_DecRef(descriptor);
+                        (void)ClearPythonError();
+                        continue;
+                    }
+
+                    if (PyDict_SetItemString(values, entry.name.c_str(), descriptor) != 0) {
                         (void)ClearPythonError();
                     }
-                    Py_DecRef(object);
+                    Py_DecRef(descriptor);
                 }
             }
         }

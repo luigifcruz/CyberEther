@@ -31,7 +31,7 @@ struct PythonMetricsSourceTestConfig : Block::Config {
     JST_BLOCK_TYPE(python_metrics_source_test)
     JST_BLOCK_DOMAIN("test")
     JST_BLOCK_DESCRIPTION("Python Metrics Source Test",
-                          "Exposes public metrics for Python block tests.",
+                          "Exposes metrics for Python block tests.",
                           "A test-only block used by Python block metric coverage.")
 
     Result serialize(Parser::Map&) const override {
@@ -63,6 +63,20 @@ struct PythonMetricsSourceTestBlock : Block::Impl,
                                         "private-label",
             []() -> std::any {
                 return std::string("hidden");
+            }));
+        JST_CHECK(defineInterfaceMetric("empty",
+                                        "Empty",
+                                        "Null test metric.",
+                                        "private-null",
+            []() -> std::any {
+                return {};
+            }));
+        JST_CHECK(defineInterfaceMetric("unsupported",
+                                        "Unsupported",
+                                        "Unsupported test metric.",
+                                        "private-diagnostic",
+            []() -> std::any {
+                return Runtime::Context::Diagnostic{};
             }));
         return Result::SUCCESS;
     }
@@ -604,23 +618,54 @@ TEST_CASE_METHOD(FlowgraphFixture,
     PythonMetricsSourceTestConfig sourceConfig;
     REQUIRE(flowgraph->blockCreate("peer", sourceConfig, {}, DeviceType::CPU, RuntimeType::NATIVE) ==
             Result::SUCCESS);
+    REQUIRE(flowgraph->blockCreate("discovered", sourceConfig, {}, DeviceType::CPU, RuntimeType::NATIVE) ==
+            Result::SUCCESS);
 
     Blocks::Python config;
     config.code =
         "_n = 0\n"
         "\n"
+        "def _assert_peer(ctx):\n"
+        "    assert ctx.metrics[\"peer\"].get(\"answer\") == {\n"
+        "        \"value\": 42,\n"
+        "        \"format\": \"label\",\n"
+        "        \"label\": \"Answer\",\n"
+        "        \"help\": \"Public test metric.\",\n"
+        "    }\n"
+        "    assert ctx.metrics[\"peer\"].get(\"secret\") == {\n"
+        "        \"value\": \"hidden\",\n"
+        "        \"format\": \"private-label\",\n"
+        "        \"label\": \"Secret\",\n"
+        "        \"help\": \"Private test metric.\",\n"
+        "    }\n"
+        "    assert ctx.metrics[\"peer\"].get(\"empty\") == {\n"
+        "        \"value\": None,\n"
+        "        \"format\": \"private-null\",\n"
+        "        \"label\": \"Empty\",\n"
+        "        \"help\": \"Null test metric.\",\n"
+        "    }\n"
+        "    assert \"unsupported\" not in ctx.metrics[\"peer\"]\n"
+        "    assert ctx.metrics.get_value(\"peer\", \"answer\") == 42\n"
+        "    assert ctx.metrics.get_value(\"peer\", \"empty\", \"fallback\") is None\n"
+        "    assert ctx.metrics.get_value(\"peer\", \"missing\", \"fallback\") == \"fallback\"\n"
+        "\n"
         "def compute(ctx):\n"
         "    global _n\n"
         "    if _n == 0:\n"
-        "        ctx.metrics.subscribe_all()\n"
+        "        assert ctx.metrics.get_value(\"peer\", \"answer\", -1) == -1\n"
         "        assert \"peer\" not in ctx.metrics\n"
-        "        assert ctx.metrics.get(\"ghost\") == {}\n"
+        "        assert \"discovered\" not in ctx.metrics\n"
+        "        assert ctx.metrics.get_value(\"ghost\", \"answer\", \"missing\") == \"missing\"\n"
         "    else:\n"
+        "        _assert_peer(ctx)\n"
         "        assert \"peer\" in ctx.metrics\n"
-        "        assert ctx.metrics[\"peer\"].get(\"answer\") == 42\n"
-        "        assert ctx.metrics[\"peer\"].get(\"secret\") == \"hidden\"\n"
         "        assert \"ghost\" in ctx.metrics\n"
         "        assert ctx.metrics[\"ghost\"] == {}\n"
+        "        if _n == 1:\n"
+        "            assert \"discovered\" not in ctx.metrics\n"
+        "            ctx.metrics.subscribe_all()\n"
+        "        else:\n"
+        "            assert ctx.metrics.get_value(\"discovered\", \"answer\") == 42\n"
         "    _n += 1\n"
         "    ctx.outputs[0][...] = float(_n)\n";
     config.inputCount = 0;

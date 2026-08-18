@@ -94,9 +94,12 @@ struct Python : public Block::Config {
 
         "```python\n"
         "def compute(ctx):\n"
-        "    progress = ctx.metrics[\"file_reader\"].get(\"progress\")\n"
+        "    progress = ctx.metrics.get_value(\"file_reader\", \"progress\", default=0.0)\n"
         "    ctx.metrics.subscribe_all()  # subscribe to every block\n"
         "```\n\n"
+        "Each nested metric entry contains its `value`, `format`, `label`, "
+        "and `help` metadata. Metrics with unsupported C++ value types are "
+        "omitted.\n\n"
 
         "### Lifecycle And Errors\n"
         "Attribute and environment writes are published when `compute` "
