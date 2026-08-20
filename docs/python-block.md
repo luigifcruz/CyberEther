@@ -62,7 +62,7 @@ Rules that matter:
 
 ### CUDA Notes
 
-CUDA tensors require [CuPy](https://cupy.dev) in the Python runtime's environment. NumPy covers CPU tensors. Neither is imported until a tensor of that kind actually exists, so CPU-only systems never need CuPy installed.
+Tensors on the GPU require [CuPy](https://cupy.dev) in the Python runtime's environment. NumPy covers CPU tensors. Neither is imported until a tensor of that kind actually exists, so CPU-only systems never need CuPy installed.
 
 Synchronization contract: inputs are guaranteed complete when `compute` starts, but CuPy launches are asynchronous. Synchronize before returning so that downstream blocks see finished writes:
 
@@ -139,15 +139,28 @@ The refresh path is version-gated per key and the publish path only examines key
 
 ## Block Metrics
 
-The `ctx.metrics` mapping gives read-only access to metrics published by other blocks in the flowgraph, keyed by block name and metric name:
+The `ctx.metrics` mapping gives read-only access to metrics published by other blocks in the flowgraph, keyed by block name and metric name. Use `get_value()` when only the current value matters:
 
 ```python
 def compute(ctx):
-    progress = ctx.metrics["file_reader"].get("progress")
-    throughput = ctx.metrics["websocket"].get("throughput")
+    progress = ctx.metrics.get_value("file_reader", "progress", default=0.0)
+    throughput = ctx.metrics.get_value("websocket", "throughput")
 ```
 
-Access is subscription-based. The first read of a block's name registers interest and returns an empty mapping. From the next cycle on, that block's metrics are refreshed at the start of every cycle. Because of the one-cycle priming delay, always read metric values with `.get()` and a sensible default.
+The function takes a block name, a metric name, and an optional default. If the metric is missing or has not yet arrived, it returns the default instead of raising.
+
+Every available metric is also a mapping containing its current value and the interface metadata declared by the block:
+
+```python
+metric = ctx.metrics["file_reader"].get("progress")
+if metric is not None:
+    metric["value"]   # raw metric value
+    metric["format"]  # presentation format
+    metric["label"]   # display label
+    metric["help"]    # description
+```
+
+Access is subscription-based. The first time you touch a block name (through `get_value()`, a direct `[]` lookup, or even `.get()`), that block is registered as a subscriber. The touch itself returns an empty result because the values have not been fetched yet. From the next cycle on, that block's metrics are refreshed at the start of every cycle. Because of this one-cycle priming delay, always provide a default to `get_value()` or check for `None` when reading nested mappings.
 
 To subscribe to every block without hard-coding names, call `ctx.metrics.subscribe_all()`. The dictionary is populated on the next cycle, then you can iterate the currently visible metrics:
 
@@ -169,13 +182,14 @@ Details worth knowing:
 
 - Only subscribed blocks are evaluated, so unrelated metrics cost nothing.
 - A subscription to a block that does not exist (yet) yields an empty mapping and starts producing values if the block appears later.
-- Metrics with `private-` formats (internal timing and diagnostics) are hidden.
-- Values arrive with their native types when possible. Progress-bar style metrics come through as a `(label, fraction)` tuple. Note that some blocks publish display-formatted strings (for example `"12.3 MB/s"`) rather than raw numbers, so check the shape of what you receive.
+- Private-format metrics are included when their values can be converted. The format prefix is not an access-control boundary.
+- Values arrive in the entry's `"value"` field with their native types when possible. Progress-bar style metrics come through as a `(label, fraction)` tuple. Note that some blocks publish display-formatted strings (for example `"12.3 MB/s"`) rather than raw numbers, so check the shape of what you receive.
+- Metrics with unsupported C++ value types are omitted because Python cannot represent their raw value.
 - The mapping is read-only in spirit: writes to it are ignored by the flowgraph and overwritten on refresh.
 
 ## Type Conversion
 
-Values crossing between C++ and Python (the environment, tensor attributes, and metrics) convert as follows. When NumPy is importable in the selected runtime, numeric values are NumPy-typed on both sides, so a value keeps its exact width through a full round trip. Without NumPy, reads fall back to the plain Python types listed in the last column.
+Values crossing between C++ and Python (the environment, tensor attributes, and the `"value"` field of metrics) convert as follows. When NumPy is importable in the selected runtime, numeric values are NumPy-typed on both sides, so a value keeps its exact width through a full round trip. Without NumPy, reads fall back to the plain Python types listed in the last column.
 
 Reading (C++ to Python):
 
