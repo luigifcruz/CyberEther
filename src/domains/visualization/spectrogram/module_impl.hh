@@ -15,7 +15,6 @@
 namespace Jetstream::Modules {
 
 constexpr F32 kSpectrogramDecayBase = 0.999f;
-constexpr F32 kSpectrogramMinTickSpacingPx = 65.0f;
 
 struct SpectrogramImpl : public Module::Impl, public DynamicConfig<Spectrogram> {
  public:

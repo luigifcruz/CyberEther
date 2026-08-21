@@ -1,18 +1,18 @@
 #include <jetstream/domains/dsp/spectrum_engine/block.hh>
-#include "jetstream/detail/block_impl.hh"
 
-#include <jetstream/domains/dsp/window/module.hh>
-#include <jetstream/domains/dsp/fft/module.hh>
-#include <jetstream/domains/dsp/agc/module.hh>
-#include <jetstream/domains/dsp/amplitude/module.hh>
-#include <jetstream/domains/dsp/invert/module.hh>
+#include <optional>
+
+#include <jetstream/detail/block_impl.hh>
 #include <jetstream/domains/core/cast/module.hh>
 #include <jetstream/domains/core/multiply/module.hh>
 #include <jetstream/domains/core/range/module.hh>
 #include <jetstream/domains/core/reshape/module.hh>
+#include <jetstream/domains/dsp/agc/module.hh>
+#include <jetstream/domains/dsp/amplitude/module.hh>
+#include <jetstream/domains/dsp/fft/module.hh>
+#include <jetstream/domains/dsp/invert/module.hh>
+#include <jetstream/domains/dsp/window/module.hh>
 #include <jetstream/memory/axis.hh>
-
-#include <optional>
 
 namespace Jetstream::Blocks {
 
@@ -53,12 +53,14 @@ Result SpectrumEngineImpl::validate() {
     if (input != inputs().end() && input->second.resolved()) {
         if (input->second.tensor.dtype() != DataType::F32 &&
             input->second.tensor.dtype() != DataType::CF32) {
-            JST_ERROR("[BLOCK_SPECTRUM_ENGINE] Input must have data type F32 or CF32.");
+            JST_ERROR("[BLOCK_SPECTRUM_ENGINE] Input must have data type F32 "
+                      "or CF32.");
             return Result::ERROR;
         }
         SignalAxes axes;
         if (ResolveSignalAxes(input->second.tensor, axes) != Result::SUCCESS) {
-            JST_ERROR("[BLOCK_SPECTRUM_ENGINE] Input signal axis metadata is invalid.");
+            JST_ERROR("[BLOCK_SPECTRUM_ENGINE] Input signal axis metadata is "
+                      "invalid.");
             return Result::ERROR;
         }
         candidateSampleAxis = *axes.sample;
@@ -141,7 +143,8 @@ Result SpectrumEngineImpl::create() {
         if (dimension > 0) {
             windowShape += ", ";
         }
-        windowShape += std::to_string(dimension == resolvedAxis ? windowConfig->size : 1);
+        windowShape += std::to_string(
+            dimension == resolvedAxis ? windowConfig->size : 1);
     }
     windowShape += "]";
     reshapeWindowConfig->shape = windowShape;

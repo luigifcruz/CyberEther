@@ -269,7 +269,6 @@ graph:
     runtime: native
     provider: generic
     config:
-      interpolate: true
       height: 512
     input:
       signal: '${graph.spectrum_engine.output.buffer}'

@@ -85,4 +85,5 @@ Blocks that render a surface into their node.
 | Lineplot | `lineplot` | Displays data in a line plot visualization. |
 | Note | `note` | Displays formatted markdown text inside a node. |
 | Spectrogram | `spectrogram` | Displays a spectrogram of data. |
+| Spectrum Analyzer | `spectrum_analyzer` | Spectrum trace and waterfall in one view. |
 | Waterfall | `waterfall` | Shows frequency spectrum over time as a scrolling waterfall. |

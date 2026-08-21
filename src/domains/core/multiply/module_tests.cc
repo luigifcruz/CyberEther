@@ -82,6 +82,7 @@ void RequireMultiplySignalAxes(const Registry::ModuleRegistration& impl,
 }  // namespace
 
 TEST_CASE("Multiply Module - F32", "[modules][multiply][F32]") {
+
     const auto implementations = Registry::ListAvailableModules("multiply");
     REQUIRE(!implementations.empty());
 
@@ -418,6 +419,50 @@ TEST_CASE("Multiply Module - Rank 4 Non-Contiguous CF32",
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+TEST_CASE("Multiply Module - Derives metadata only from tagged inputs",
+          "[modules][multiply][metadata][regression]") {
+    const auto implementations = Registry::ListAvailableModules("multiply");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("multiply", impl.device, impl.runtime, impl.provider);
+
+            SECTION("untagged inputs produce no derived metadata") {
+                auto a = ctx.createTensor<F32>({4});
+                auto b = ctx.createTensor<F32>({4});
+                ctx.setInput("a", a);
+                ctx.setInput("b", b);
+                REQUIRE(ctx.run() == Result::SUCCESS);
+
+                const auto& out = ctx.output("product");
+                REQUIRE_FALSE(out.hasAttribute("frequency"));
+                REQUIRE_FALSE(out.hasAttribute("sampleRate"));
+            }
+
+            SECTION("tagged inputs produce combined metadata") {
+                auto a = ctx.createTensor<F32>({4});
+                auto b = ctx.createTensor<F32>({4});
+                REQUIRE(a.setAttribute("frequency", F32{100.0e6f}) ==
+                        Result::SUCCESS);
+                REQUIRE(b.setAttribute("sampleRate", F32{2.4e6f}) ==
+                        Result::SUCCESS);
+                ctx.setInput("a", a);
+                ctx.setInput("b", b);
+                REQUIRE(ctx.run() == Result::SUCCESS);
+
+                const auto& out = ctx.output("product");
+                REQUIRE(out.hasAttribute("frequency"));
+                REQUIRE(out.hasAttribute("sampleRate"));
+                REQUIRE(std::any_cast<F32>(out.attribute("frequency")) ==
+                        100.0e6f);
+                REQUIRE(std::any_cast<F32>(out.attribute("sampleRate")) ==
+                        2.4e6f);
             }
         }
     }

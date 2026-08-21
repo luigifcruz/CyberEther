@@ -296,7 +296,6 @@ graph:
     provider: generic
     config:
       height: 512
-      interpolate: true
     input:
       signal: '${graph.spectrum_engine.output.buffer}'
     meta:

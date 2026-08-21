@@ -96,11 +96,10 @@ Result ConstellationImpl::createPresent() {
 
     {
         Render::Components::Axis::Config cfg;
-        cfg.numberOfVerticalLines = 5;
-        cfg.numberOfHorizontalLines = 5;
+        cfg.showFrameTicks = true;
         cfg.font = window->font("default_mono");
-        cfg.xTitle = "In-Phase";
-        cfg.yTitle = "Quadrature";
+        cfg.xTitle = xLabel;
+        cfg.yTitle = yLabel;
         JST_CHECK(window->build(axis, cfg));
         JST_CHECK(window->bind(axis));
     }
@@ -239,18 +238,15 @@ Result ConstellationImpl::updateAxisState() {
     JST_CHECK(axis->updatePixelSize(pixelSize));
     JST_CHECK(shapes->updatePixelSize(pixelSize));
 
-    const U64 numVert = axis->getConfig().numberOfVerticalLines;
-    std::vector<std::string> xLabels(numVert - 2);
-
-    for (U64 i = 1; i < numVert - 1; i++) {
-        const F32 value = ((2.0f * static_cast<F32>(i) / static_cast<F32>(numVert - 1)) - 1.0f) /
-                          interaction.zoom;
-        xLabels[i - 1] = jst::fmt::format("{:.2f}", value);
-    }
-
-    JST_CHECK(axis->updateTickLabels(xLabels, {}));
-
     const auto& paddingScale = axis->paddingScale();
+    auto formatter = [zoom = interaction.zoom](const F32 position) {
+        return jst::fmt::format("{:.2f}", position / zoom);
+    };
+
+    axis->setShowFrameTicks(interaction.placement != SurfacePlacementType::Attached);
+
+    JST_CHECK(axis->updateTickFormatters(formatter, formatter));
+
     const auto& vs = interaction.viewSize;
     Render::ScissorRect plotRect;
     plotRect.x = static_cast<U32>((1.0f - paddingScale.x) / 2.0f * vs.x);

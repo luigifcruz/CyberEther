@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <any>
+
 #include "dmi_module.hh"
 #include "jetstream/module_interface.hh"
 #include "jetstream/memory/axis.hh"
@@ -116,6 +118,44 @@ TEST_CASE("Dynamic Tensor Import Module - Imports an initialized tensor",
             REQUIRE(output.data<F32>() == buffer.data<F32>());
             REQUIRE(output.at<F32>(0) == 3.0f);
 
+            REQUIRE(module->destroy() == Result::SUCCESS);
+        }
+    }
+}
+
+TEST_CASE("Dynamic Tensor Import Module - Preserves signal metadata",
+          "[modules][dynamic_tensor_import][metadata]") {
+    const auto implementations =
+        Registry::ListAvailableModules("dynamic_tensor_import");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            constexpr F32 frequency = 100.0e6f;
+            constexpr F32 sampleRate = 2.4e6f;
+
+            Tensor buffer;
+            REQUIRE(buffer.create(DeviceType::CPU, DataType::CF32, {128}) ==
+                    Result::SUCCESS);
+            REQUIRE(buffer.setAttribute("frequency", frequency) == Result::SUCCESS);
+            REQUIRE(buffer.setAttribute("sampleRate", sampleRate) == Result::SUCCESS);
+
+            Modules::DynamicTensorImport config;
+            config.buffer = buffer;
+
+            std::shared_ptr<Module> module;
+            REQUIRE(Registry::BuildModule("dynamic_tensor_import",
+                                          impl.device,
+                                          impl.runtime,
+                                          impl.provider,
+                                          module) == Result::SUCCESS);
+            REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+
+            const Tensor& output = module->outputs().at("buffer").tensor;
+            REQUIRE(output.hasAttribute("frequency"));
+            REQUIRE(output.hasAttribute("sampleRate"));
+            REQUIRE(std::any_cast<F32>(output.attribute("frequency")) == frequency);
+            REQUIRE(std::any_cast<F32>(output.attribute("sampleRate")) == sampleRate);
             REQUIRE(module->destroy() == Result::SUCCESS);
         }
     }

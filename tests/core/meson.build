@@ -41,6 +41,7 @@ core_test_domains = {
         'serialization/yaml.cc',
     ],
     'settings': ['settings/settings.cc'],
+    'surface': ['surface/surface.cc'],
     'tools': ['tools/circular_buffer.cc'],
 }
 

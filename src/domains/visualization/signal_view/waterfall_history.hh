@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_DOMAINS_VISUALIZATION_WATERFALL_RING_STATE_HH
-#define JETSTREAM_DOMAINS_VISUALIZATION_WATERFALL_RING_STATE_HH
+#ifndef JETSTREAM_DOMAINS_VISUALIZATION_SIGNAL_VIEW_WATERFALL_HISTORY_HH
+#define JETSTREAM_DOMAINS_VISUALIZATION_SIGNAL_VIEW_WATERFALL_HISTORY_HH
 
 #include <algorithm>
 
@@ -31,7 +31,7 @@ struct WaterfallDirtyPlan {
     U64 secondRowCount = 0;
 };
 
-struct WaterfallRingState {
+struct WaterfallHistory {
     U64 writeIndex = 0;
     U64 dirtyRows = 0;
 
@@ -57,4 +57,4 @@ struct WaterfallRingState {
 
 }  // namespace Jetstream::Modules
 
-#endif  // JETSTREAM_DOMAINS_VISUALIZATION_WATERFALL_RING_STATE_HH
+#endif  // JETSTREAM_DOMAINS_VISUALIZATION_SIGNAL_VIEW_WATERFALL_HISTORY_HH
