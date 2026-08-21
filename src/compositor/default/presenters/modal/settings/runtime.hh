@@ -21,11 +21,15 @@ struct RuntimeSettingsPresenter {
         const auto enqueue = context.callbacks.enqueueMail;
         return RuntimeSettingsPanel::Config{
             .pythonPath = context.state.runtime.pythonPath,
+            .dependencyPolicy = context.state.runtime.dependencyPolicy,
             .pythonCandidates = context.state.runtime.pythonCandidates,
             .pythonValidation = context.state.runtime.pythonValidation,
             .restartRequired = restartRequired(),
             .onPythonPathChange = [enqueue](const std::string& value) {
                 enqueue(MailSetPythonRuntimePath{.value = value});
+            },
+            .onDependencyPolicyChange = [enqueue](const std::string& value) {
+                enqueue(MailSetRuntimeDependencyPolicy{.value = value});
             },
             .onBrowsePythonPath = [enqueue](const std::string& currentPath, std::function<void(std::string)> onSelect) {
                 enqueue(MailBrowseConfigPath{

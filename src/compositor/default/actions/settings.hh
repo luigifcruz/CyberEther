@@ -32,6 +32,7 @@ struct SettingsActions {
                               MailApplyUpdate,
                               MailDismissUpdate,
                               MailSetPythonRuntimePath,
+                              MailSetRuntimeDependencyPolicy,
                               MailAddPluginPath,
                               MailRemovePluginPath,
                               MailReloadPlugin,
@@ -175,6 +176,23 @@ struct SettingsActions {
         Settings settings;
         JST_CHECK(Settings::Get(settings));
         settings.runtime.python.path = msg.value;
+        JST_CHECK(Settings::Set(settings));
+
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetRuntimeDependencyPolicy& msg) {
+        if (msg.value != "prompt" && msg.value != "allow" && msg.value != "deny") {
+            JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Ignoring invalid runtime dependency policy '{}'.",
+                     msg.value);
+            return Result::SUCCESS;
+        }
+
+        state.runtime.dependencyPolicy = msg.value;
+
+        Settings settings;
+        JST_CHECK(Settings::Get(settings));
+        settings.runtime.dependencyPolicy = msg.value;
         JST_CHECK(Settings::Set(settings));
 
         return Result::SUCCESS;

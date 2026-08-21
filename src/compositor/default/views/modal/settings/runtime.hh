@@ -16,10 +16,12 @@ namespace Jetstream {
 struct RuntimeSettingsPanel {
     struct Config {
         std::string pythonPath;
+        std::string dependencyPolicy = "prompt";
         std::vector<PythonRuntimeContext::Candidate> pythonCandidates;
         PythonRuntimeContext::Validation pythonValidation;
         bool restartRequired = false;
         std::function<void(const std::string&)> onPythonPathChange;
+        std::function<void(const std::string&)> onDependencyPolicyChange;
         std::function<void(const std::string&, std::function<void(std::string)>)> onBrowsePythonPath;
     };
 
@@ -106,12 +108,37 @@ struct RuntimeSettingsPanel {
             .str = validationBadge(),
             .colorKey = validationBadgeColorKey(),
         });
+
+        dependencyPolicyField.update({
+            .id = "RuntimeDependencyPolicyField",
+            .label = "Dependency Installation Policy",
+            .description = "Choose how requested dependencies are installed.",
+        });
+
+        dependencyPolicyCombo.update({
+            .id = "##app-settings-runtime-dependency-policy",
+            .options = {
+                "Ask Every Time",
+                "Install Automatically",
+                "Never Install",
+            },
+            .value = dependencyPolicyLabel(this->config.dependencyPolicy),
+            .onChange = [this](const std::string& label) {
+                if (this->config.onDependencyPolicyChange) {
+                    this->config.onDependencyPolicyChange(dependencyPolicyValue(label));
+                }
+            },
+        });
     }
 
     void render(const Sakura::Context& ctx) const {
         title.render(ctx);
         description.render(ctx);
         divider.render(ctx);
+
+        dependencyPolicyField.render(ctx, [&](const Sakura::Context& ctx) {
+            dependencyPolicyCombo.render(ctx);
+        });
 
         runtimeField.render(ctx, [&](const Sakura::Context& ctx) {
             Sakura::HStack::Children labelChildren;
@@ -130,7 +157,6 @@ struct RuntimeSettingsPanel {
 
             runtimeDescription.render(ctx);
         });
-
     }
 
  private:
@@ -142,6 +168,26 @@ struct RuntimeSettingsPanel {
     static const std::string& CustomPathLabel() {
         static const std::string label = "Custom Path";
         return label;
+    }
+
+    static std::string dependencyPolicyLabel(const std::string& value) {
+        if (value == "allow") {
+            return "Install Automatically";
+        }
+        if (value == "deny") {
+            return "Never Install";
+        }
+        return "Ask Every Time";
+    }
+
+    static std::string dependencyPolicyValue(const std::string& label) {
+        if (label == "Install Automatically") {
+            return "allow";
+        }
+        if (label == "Never Install") {
+            return "deny";
+        }
+        return "prompt";
     }
 
     std::vector<std::string> runtimeOptions() const {
@@ -234,6 +280,8 @@ struct RuntimeSettingsPanel {
     Sakura::TextInput pythonPathInput;
     Sakura::Button browseButton;
     Sakura::Text statusText;
+    Sakura::SettingField dependencyPolicyField;
+    Sakura::Combo dependencyPolicyCombo;
     bool customPathSelected = false;
 };
 

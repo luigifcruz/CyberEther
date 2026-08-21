@@ -116,6 +116,14 @@ Result DefaultCompositor::create() {
     // Restore runtime preferences.
 
     state.runtime.pythonPath = settings.runtime.python.path;
+    state.runtime.dependencyPolicy = settings.runtime.dependencyPolicy;
+    if (state.runtime.dependencyPolicy != "prompt" &&
+        state.runtime.dependencyPolicy != "allow" &&
+        state.runtime.dependencyPolicy != "deny") {
+        JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Invalid saved runtime dependency policy '{}'. Using default.",
+                 state.runtime.dependencyPolicy);
+        state.runtime.dependencyPolicy = "prompt";
+    }
     state.runtime.pythonCandidates = PythonRuntimeContext::DiscoverRuntimes();
     state.runtime.pythonValidation = PythonRuntimeContext::ValidateRuntimePath(state.runtime.pythonPath);
     state.runtime.initialPythonValidation = state.runtime.pythonValidation;

@@ -65,6 +65,7 @@ struct DefaultCompositorState {
 
     struct RuntimeState {
         std::string pythonPath;
+        std::string dependencyPolicy = "prompt";
         std::vector<PythonRuntimeContext::Candidate> pythonCandidates;
         PythonRuntimeContext::Validation pythonValidation;
         PythonRuntimeContext::Validation initialPythonValidation;
