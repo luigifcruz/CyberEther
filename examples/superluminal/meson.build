@@ -1,5 +1,6 @@
 subdir('hello_world')
 subdir('realtime')
 subdir('interface')
+subdir('global_interface')
 subdir('remote')
 subdir('constellation')

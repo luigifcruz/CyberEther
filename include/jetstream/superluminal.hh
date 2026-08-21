@@ -152,6 +152,10 @@ class Superluminal {
         return GetInstance()->interface(name, mosaic, callback);
     }
 
+    static Result GlobalInterface(const std::function<void()>& callback) {
+        return GetInstance()->globalInterface(callback);
+    }
+
     static Result Box(const std::string& title, const Mosaic& mosaic, const std::function<void()>& callback) {
         return GetInstance()->box(title, mosaic, callback);
     }
@@ -204,6 +208,7 @@ class Superluminal {
 
     Result plot(const std::string& name, const Mosaic& mosaic, const PlotConfig& config);
     Result interface(const std::string& name, const Mosaic& mosaic, const std::function<void()>& callback);
+    Result globalInterface(const std::function<void()>& callback);
     Result box(const std::string& title, const Mosaic& mosaic, const std::function<void()>& callback);
     Result text(const std::string& content);
     Result slider(const std::string& label, F32 min, F32 max, F32& value);
