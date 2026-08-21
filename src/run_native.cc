@@ -338,6 +338,10 @@ static void printUsage(const char* program,
 
     if (!command.has_value() || *command != CommandType::Update) {
         jst::fmt::print("Runtime Options:\n");
+        jst::fmt::print("  --dependency-policy <policy> Dependency installation policy (current: {})\n",
+                        settings.runtime.dependencyPolicy);
+        jst::fmt::print("  {:<29}  Choices: prompt, allow, deny\n", "");
+        jst::fmt::print("  --python-runtime <path>      Python executable or library\n");
         jst::fmt::print("  --device-index <index>       Vulkan and CUDA device index (current: {})\n",
                         settings.graphics.deviceId);
         jst::fmt::print("  --plugin <path>              Load a .cep plugin (repeatable)\n\n");
@@ -548,6 +552,35 @@ int Run(int argc, char* argv[]) {
                     "Invalid value for --plugin: '{}'. Expected a .cep path.", value));
             }
             commandLinePlugins.push_back(value);
+            runtimeOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--dependency-policy") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(
+                    argv[0],
+                    "Missing value for --dependency-policy. Expected one of: prompt, allow, deny.");
+            }
+            value = Lowercase(value);
+            if (value != "prompt" && value != "allow" && value != "deny") {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --dependency-policy: '{}'. Expected one of: prompt, allow, deny.",
+                    value));
+            }
+            settings.runtime.dependencyPolicy = value;
+            runtimeOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--python-runtime") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0],
+                                       "Missing value for --python-runtime. Expected a Python executable or library path.");
+            }
+            settings.runtime.python.path = value;
             runtimeOption = arg;
             continue;
         }
