@@ -134,6 +134,8 @@ struct Superluminal::Impl {
     };
 
     std::unordered_map<std::string, PlotState> plots;
+    std::function<void()> globalCallback;
+    F32 globalCallbackHeight = 0.0f;
 
     Result createGraph();
     Result destroyGraph();
@@ -372,6 +374,23 @@ Result Superluminal::start() {
                     return Result::SUCCESS;
                 }
 
+                if (impl->globalCallback) {
+                    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+
+                    ImGui::SetNextWindowPos(viewport->WorkPos);
+                    ImGui::SetNextWindowSize({viewport->WorkSize.x, 0.0f});
+
+                    ImGui::Begin("Global Interface", nullptr, ImGuiWindowFlags_NoSavedSettings |
+                                                              ImGuiWindowFlags_NoMove |
+                                                              ImGuiWindowFlags_NoDecoration);
+
+                    impl->globalCallback();
+
+                    impl->globalCallbackHeight = ImGui::GetWindowSize().y;
+
+                    ImGui::End();
+                }
+
                 for (auto& [_, plot] : impl->plots) {
                     static ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration |
                                                     ImGuiWindowFlags_NoMove |
@@ -381,14 +400,16 @@ Result Superluminal::start() {
 
                     const ImGuiViewport* viewport = ImGui::GetMainViewport();
 
+                    const F32 controlsOffset = impl->globalCallbackHeight;
+
                     ImVec2 workSize = {
                         (viewport->WorkSize.x / impl->mosaicDims.x) * plot.mosaicSize.x,
-                        (viewport->WorkSize.y / impl->mosaicDims.y) * plot.mosaicSize.y
+                        ((viewport->WorkSize.y - controlsOffset) / impl->mosaicDims.y) * plot.mosaicSize.y
                     };
 
                     ImVec2 workPos = {
                         viewport->WorkPos.x + ((viewport->WorkSize.x / impl->mosaicDims.x) * plot.mosaicOffset.x),
-                        viewport->WorkPos.y + ((viewport->WorkSize.y / impl->mosaicDims.y) * plot.mosaicOffset.y)
+                        viewport->WorkPos.y + controlsOffset + (((viewport->WorkSize.y - controlsOffset) / impl->mosaicDims.y) * plot.mosaicOffset.y)
                     };
 
                     ImGui::SetNextWindowPos(workPos);
@@ -783,6 +804,26 @@ Result Superluminal::interface(const std::string& name, const Mosaic& mosaic, co
     JST_CHECK(impl->calculateMosaicParams(mosaic, state));
 
     JST_INFO("[SUPERLUMINAL] Created interface '{}'.", state.name);
+    return Result::SUCCESS;
+}
+
+Result Superluminal::globalInterface(const std::function<void()>& callback) {
+    JST_DEBUG("[SUPERLUMINAL] Registering global interface.");
+
+    // Check boundaries.
+
+    if (!impl->initialized) {
+        JST_CHECK(initialize());
+    }
+
+    if (impl->running) {
+        JST_FATAL("[SUPERLUMINAL] Can't register global interface because the instance is already commited.");
+        return Result::ERROR;
+    }
+
+    impl->globalCallback = callback;
+
+    JST_INFO("[SUPERLUMINAL] Created global interface.");
     return Result::SUCCESS;
 }
 
