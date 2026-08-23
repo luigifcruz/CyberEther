@@ -100,6 +100,7 @@ Result ConstellationImpl::createPresent() {
         cfg.font = window->font("default_mono");
         cfg.xTitle = xLabel;
         cfg.yTitle = yLabel;
+        cfg.yLabelOnRight = true;
         JST_CHECK(window->build(axis, cfg));
         JST_CHECK(window->bind(axis));
     }
