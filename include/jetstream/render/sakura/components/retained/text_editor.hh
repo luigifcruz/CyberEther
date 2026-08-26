@@ -25,6 +25,7 @@ struct TextEditor : public Component {
         std::string fontName = "default_mono";
         bool monospace = true;
         bool lineNumbers = true;
+        bool showActiveLine = false;
         TextGrid::Wrap wrap = TextGrid::Wrap::None;
         Language language = Language::Python;
         std::string backgroundColorKey = "transparent";

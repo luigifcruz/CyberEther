@@ -7,6 +7,7 @@
 #include "../flowgraph/modals/examples.hh"
 #include "../flowgraph/modals/info.hh"
 #include "../flowgraph/modals/rename.hh"
+#include "feedback.hh"
 #include "settings/base.hh"
 #include "plugin.hh"
 #include "../../model/ui.hh"
@@ -31,6 +32,7 @@ struct ModalView {
         BenchmarkView::Config benchmark;
         RemoteView::Config remoteStreaming;
         PluginView::Config plugin;
+        FeedbackView::Config feedback;
         std::function<void()> onClose;
     };
 
@@ -103,6 +105,11 @@ struct ModalView {
                 pluginView.update(std::move(viewConfig));
                 break;
             }
+            case ModalContent::Feedback: {
+                auto viewConfig = this->config.feedback;
+                feedbackView.update(std::move(viewConfig));
+                break;
+            }
         }
 
         previousContent = this->config.content;
@@ -148,6 +155,9 @@ struct ModalView {
                 case ModalContent::Plugin:
                     pluginView.render(ctx);
                     break;
+                case ModalContent::Feedback:
+                    feedbackView.render(ctx);
+                    break;
             }
         });
     }
@@ -159,6 +169,9 @@ struct ModalView {
         }
         if (config.content == ModalContent::Plugin) {
             return Extent2D<F32>{620.0f, 0.0f};
+        }
+        if (config.content == ModalContent::Feedback) {
+            return Extent2D<F32>{520.0f, 0.0f};
         }
         return std::nullopt;
     }
@@ -175,6 +188,7 @@ struct ModalView {
     BenchmarkView benchmarkView;
     RemoteView remoteView;
     PluginView pluginView;
+    FeedbackView feedbackView;
 };
 
 }  // namespace Jetstream

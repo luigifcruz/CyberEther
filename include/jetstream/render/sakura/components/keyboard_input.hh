@@ -21,6 +21,7 @@ struct KeyboardInput {
         S,
         W,
         I,
+        G,
         Comma,
     };
 

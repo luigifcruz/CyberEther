@@ -17,6 +17,7 @@ struct FlowgraphToolbar {
         std::function<void()> onClose;
         std::function<void()> onAddBlock;
         std::function<void()> onCreateStack;
+        std::function<void()> onSendFeedback;
     };
 
     void update(Config config) {
@@ -65,6 +66,12 @@ struct FlowgraphToolbar {
             .size = {90.0f, 34.0f},
             .onClick = this->config.onCreateStack,
         });
+        feedbackButton.update({
+            .id = this->config.id + ":feedback",
+            .str = ICON_FA_COMMENT_DOTS " Feedback",
+            .size = {100.0f, 34.0f},
+            .onClick = this->config.onSendFeedback,
+        });
     }
 
     void render(const Sakura::Context& ctx) {
@@ -75,13 +82,14 @@ struct FlowgraphToolbar {
                     [this](const Sakura::Context& ctx) { closeButton.render(ctx); },
                     [this](const Sakura::Context& ctx) { addBlockButton.render(ctx); },
                     [this](const Sakura::Context& ctx) { createStackButton.render(ctx); },
+                    [this](const Sakura::Context& ctx) { feedbackButton.render(ctx); },
                 });
             });
         });
     }
 
  private:
-    static constexpr Extent2D<F32> toolbarSize = {384.0f, 46.0f};
+    static constexpr Extent2D<F32> toolbarSize = {492.0f, 46.0f};
 
     Config config;
     Sakura::Overlay overlay;
@@ -91,6 +99,7 @@ struct FlowgraphToolbar {
     Sakura::Button closeButton;
     Sakura::Button addBlockButton;
     Sakura::Button createStackButton;
+    Sakura::Button feedbackButton;
 };
 
 }  // namespace Jetstream

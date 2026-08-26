@@ -58,6 +58,9 @@ struct FlowgraphWindowPresenter {
             .onCreateStack = [enqueue, flowgraphId]() {
                 enqueue(MailCreateStack{.flowgraph = flowgraphId});
             },
+            .onSendFeedback = [enqueue]() {
+                enqueue(MailOpenModal{.content = ModalContent::Feedback});
+            },
         };
     }
 };

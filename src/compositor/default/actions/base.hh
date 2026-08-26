@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_BASE_HH
 
 #include "benchmark.hh"
+#include "feedback.hh"
 #include "file_picker.hh"
 #include "flowgraph.hh"
 #include "remote.hh"
@@ -29,6 +30,7 @@ class DefaultActions {
         filePicker = std::make_shared<FilePickerActions>(state, callbacks);
         flowgraph = std::make_shared<FlowgraphActions>(state, callbacks);
         stacks = std::make_shared<StackActions>(state, callbacks);
+        feedback = std::make_shared<FeedbackActions>(state, callbacks);
     }
 
     Result handle(const Mail& mail) {
@@ -52,6 +54,9 @@ class DefaultActions {
             return result;
         }
         if (Handle(*stacks, mail, result)) {
+            return result;
+        }
+        if (Handle(*feedback, mail, result)) {
             return result;
         }
 
@@ -96,6 +101,7 @@ class DefaultActions {
     std::shared_ptr<SettingsActions> settings;
     std::shared_ptr<StackActions> stacks;
     std::shared_ptr<WorkbenchActions> workbench;
+    std::shared_ptr<FeedbackActions> feedback;
 };
 
 }  // namespace Jetstream

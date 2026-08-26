@@ -38,6 +38,8 @@ struct CodeEditor {
         Language language = Language::Python;
         bool lineNumbers = true;
         bool lineWrapping = false;
+        bool showActiveLine = true;
+        F32 contentPadding = 0.0f;
         F32 editorFontSize = 15.0f;
         std::string backgroundColorKey = "editor_background";
         std::function<void(std::string)> onChange;
