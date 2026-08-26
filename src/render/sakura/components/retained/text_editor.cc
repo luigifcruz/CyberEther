@@ -549,7 +549,7 @@ bool TextEditor::update(Config config) {
         .fontName = impl->config.fontName,
         .monospace = impl->config.monospace,
         .lineNumbers = impl->config.lineNumbers,
-        .showActiveLine = true,
+        .showActiveLine = impl->config.showActiveLine,
         .wrap = impl->config.wrap,
         .backgroundColorKey = impl->config.backgroundColorKey,
         .textColorKey = impl->config.textColorKey,

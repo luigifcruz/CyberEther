@@ -32,6 +32,7 @@ struct AboutSettingsPanel {
         std::function<void()> onCheckForUpdates;
         std::function<void()> onDownloadUpdate;
         std::function<void()> onApplyUpdate;
+        std::function<void()> onSendFeedback;
     };
 
     void update(Config config) {
@@ -84,6 +85,31 @@ struct AboutSettingsPanel {
         for (U64 i = 0; i < infoTables.size(); ++i) {
             infoTables[i].update(this->config.infoTables[i]);
         }
+
+        feedbackDividerTop.update({
+            .id = "AboutFeedbackDividerTop",
+        });
+        feedbackDivider.update({
+            .id = "AboutFeedbackDivider",
+        });
+
+        feedbackField.update({
+            .id = "AboutFeedbackField",
+            .label = "Feedback",
+            .description = "Help us improve. Report bugs or suggest improvements.",
+            .divider = false,
+        });
+
+        feedbackButton.update({
+            .id = "AboutSendFeedback",
+            .str = ICON_FA_COMMENT_DOTS " Send Feedback (CTRL+G)",
+            .size = {-1.0f, 38.0f},
+            .onClick = [this]() {
+                if (this->config.onSendFeedback) {
+                    this->config.onSendFeedback();
+                }
+            },
+        });
     }
 
     void render(const Sakura::Context& ctx) const {
@@ -92,6 +118,13 @@ struct AboutSettingsPanel {
         divider.render(ctx);
         updateCard.render(ctx);
         spacing.render(ctx);
+
+        feedbackDividerTop.render(ctx);
+        feedbackField.render(ctx, [&](const Sakura::Context& ctx) {
+            feedbackButton.render(ctx);
+        });
+
+        feedbackDivider.render(ctx);
 
         for (const auto& infoTable : infoTables) {
             infoTable.render(ctx);
@@ -106,6 +139,10 @@ struct AboutSettingsPanel {
     Sakura::Spacing spacing;
     AboutUpdateCard updateCard;
     std::vector<AboutInfoTable> infoTables;
+    Sakura::Divider feedbackDividerTop;
+    Sakura::Divider feedbackDivider;
+    Sakura::SettingField feedbackField;
+    Sakura::Button feedbackButton;
 };
 
 }  // namespace Jetstream

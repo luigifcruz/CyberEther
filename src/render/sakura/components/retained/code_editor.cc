@@ -123,8 +123,10 @@ struct CodeEditorRoot : public Component {
     F32 consoleHeaderTopPixels() const { return consolePanelTopPixels() - consoleDividerHeightPixels(); }
 
     Rect editorAreaRect() const {
+        const F32 pad = config.contentPadding * pixelRatio();
         const F32 bottom = consoleExpanded() ? consoleHeaderTopPixels() : editorContentBottomPixels();
-        return {viewRect.x, viewRect.y, viewRect.width, std::max(0.0f, bottom - viewRect.y)};
+        return {viewRect.x, viewRect.y + pad,
+                viewRect.width, std::max(0.0f, bottom - viewRect.y - 2.0f * pad)};
     }
     Rect consoleHeaderRect() const {
         return {viewRect.x, consoleHeaderTopPixels(), viewRect.width, consoleDividerHeightPixels()};
@@ -267,6 +269,7 @@ struct CodeEditorRoot : public Component {
             .value = config.value,
             .fontSize = fontSizePixels,
             .lineNumbers = config.lineNumbers,
+            .showActiveLine = config.showActiveLine,
             .wrap = config.language == CodeEditor::Language::Markdown ? TextGrid::Wrap::Word
                     : config.lineWrapping                            ? TextGrid::Wrap::Character
                                                                      : TextGrid::Wrap::None,
@@ -277,7 +280,6 @@ struct CodeEditorRoot : public Component {
             .gutterSeparatorColorKey = "editor_gutter_separator",
             .selectionColorKey = "editor_selection",
             .selectionMatchColorKey = "editor_selection_match",
-            .activeLineColorKey = "editor_active_line",
             .cursorColorKey = "editor_cursor",
             .scrollbarTrackColorKey = "editor_scrollbar_track",
             .scrollbarThumbColorKey = "editor_scrollbar_thumb",
