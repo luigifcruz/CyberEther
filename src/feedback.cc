@@ -126,6 +126,11 @@ void Feedback::submit(const std::string& text) {
         delete ctx;
     };
     attr.onerror = [](emscripten_fetch_t* fetch) {
+        // Closing an in-flight fetch re-enters onerror with the abort sentinel.
+        if (fetch->status == static_cast<unsigned short>(-1)) {
+            return;
+        }
+
         auto* ctx = static_cast<FetchContext*>(fetch->userData);
         std::string message;
         if (fetch->status == 0) {
