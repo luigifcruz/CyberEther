@@ -20,13 +20,19 @@ struct FlowgraphDetachedSurface {
         std::string title;
         Extent2D<F32> logicalSize = {512.0f, 512.0f};
         std::vector<FlowgraphConfigFieldConfig> configFields;
+        bool configOpen = false;
         std::function<U64()> onResolveTexture;
         std::function<void(const Sakura::SurfaceResize&)> onSize;
         std::function<void(MouseEvent)> onMouse;
         std::function<void()> onClose;
+        std::function<void(bool)> onToggleConfigOpen;
     };
 
     void update(Config config) {
+        if (config.id != this->config.id || !initialized) {
+            configVisible = config.configOpen;
+            initialized = true;
+        }
         this->config = std::move(config);
         window.update({
             .id = this->config.id,
@@ -61,6 +67,9 @@ struct FlowgraphDetachedSurface {
             if (!fields.empty()) {
                 if (chevron.render(ctx, configVisible)) {
                     configVisible = !configVisible;
+                    if (config.onToggleConfigOpen) {
+                        config.onToggleConfigOpen(configVisible);
+                    }
                 }
 
                 if (configVisible) {
@@ -84,6 +93,7 @@ struct FlowgraphDetachedSurface {
  private:
     Config config;
     bool configVisible = false;
+    bool initialized = false;
     Sakura::Window window;
     Sakura::CollapseChevron chevron;
     Sakura::NodeFieldGrid fieldGrid;

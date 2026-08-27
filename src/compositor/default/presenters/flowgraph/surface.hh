@@ -83,6 +83,7 @@ struct FlowgraphDetachedSurfacePresenter {
                                                           blockName,
                                                           windowId,
                                                           blockData),
+                        .configOpen = surfaceMeta.detachedConfigOpen,
                         .onResolveTexture = [texture]() {
                             return texture ? texture->raw() : 0;
                         },
@@ -116,6 +117,14 @@ struct FlowgraphDetachedSurfacePresenter {
                                 .block = blockName,
                                 .surface = surfaceId,
                                 .detached = false,
+                            });
+                        },
+                        .onToggleConfigOpen = [enqueue, flowgraphId, blockName, surfaceId = manifest.id](const bool open) {
+                            enqueue(MailSetSurfaceConfigOpen{
+                                .flowgraph = flowgraphId,
+                                .block = blockName,
+                                .surface = surfaceId,
+                                .open = open,
                             });
                         },
                     });

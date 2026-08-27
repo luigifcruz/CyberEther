@@ -343,6 +343,13 @@ struct MailSetSurfaceDetached {
     bool detached = false;
 };
 
+struct MailSetSurfaceConfigOpen {
+    std::string flowgraph;
+    std::string block;
+    std::string surface;
+    bool open = false;
+};
+
 struct MailStartRemote {
     Instance::Remote::Config config;
 };
@@ -449,6 +456,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetStackGeometry,
                           MailSetStackLayout,
                           MailSetSurfaceDetached,
+                          MailSetSurfaceConfigOpen,
                           MailStartRemote,
                           MailStopRemote,
                           MailApproveRemoteClient,
