@@ -11,6 +11,7 @@
 
 #include <jetstream/render/sakura/components/button.hh>
 #include <jetstream/render/sakura/components/checkbox.hh>
+#include <jetstream/render/sakura/components/collapse_chevron.hh>
 #include <jetstream/render/sakura/components/combo.hh>
 #include <jetstream/render/sakura/components/debug_window.hh>
 #include <jetstream/render/sakura/components/div.hh>

@@ -13,7 +13,11 @@
 #include "jetstream/flowgraph.hh"
 #include "jetstream/flowgraph_metadata.hh"
 #include "jetstream/flowgraph_view.hh"
+#include "jetstream/parser.hh"
+#include "jetstream/runtime_context.hh"
 
+#include <any>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_set>
@@ -75,6 +79,10 @@ struct FlowgraphDetachedSurfacePresenter {
                             static_cast<F32>(surfaceMeta.detachedWidth),
                             static_cast<F32>(surfaceMeta.detachedHeight),
                         },
+                        .configFields = buildConfigFields(flowgraphId,
+                                                          blockName,
+                                                          windowId,
+                                                          blockData),
                         .onResolveTexture = [texture]() {
                             return texture ? texture->raw() : 0;
                         },
@@ -119,6 +127,72 @@ struct FlowgraphDetachedSurfacePresenter {
     }
 
  private:
+    std::vector<FlowgraphConfigFieldConfig> buildConfigFields(const std::string& flowgraphId,
+                                                              const std::string& blockName,
+                                                              const std::string& windowId,
+                                                              const Flowgraph::View::BlockData& blockData) const {
+        std::vector<FlowgraphConfigFieldConfig> fields;
+        for (const auto& entry : blockData.interfaceConfigs) {
+            std::string encoded;
+            if (blockData.config.contains(entry.name)) {
+                Parser::TypedToString(blockData.config.at(entry.name), encoded);
+            }
+
+            FlowgraphConfigFieldConfig field{
+                .id = windowId + ":config:" + entry.name,
+                .name = entry.name,
+                .label = entry.label.empty() ? entry.name : entry.label,
+                .help = entry.help,
+                .format = entry.format,
+                .encoded = encoded,
+                .values = blockData.config,
+                .onApply = [enqueue = context.callbacks.enqueueMail, flowgraphId, blockName](Parser::Map patch, const bool silent) {
+                    enqueue(MailReconfigureBlock{flowgraphId,
+                                                 blockName,
+                                                 std::move(patch),
+                                                 silent});
+                },
+                .onError = [enqueue = context.callbacks.enqueueMail](const Result result, const std::string& message) {
+                    enqueue(MailNotifyResult{.result = result, .message = message});
+                },
+                .onBrowsePath = [enqueue = context.callbacks.enqueueMail](const bool save,
+                                          std::vector<std::string> extensions,
+                                          std::function<void(std::string)> onSelect) {
+                    enqueue(MailBrowseConfigPath{
+                        .path = "",
+                        .save = save,
+                        .extensions = std::move(extensions),
+                        .onSelect = std::move(onSelect),
+                    });
+                },
+            };
+
+            const auto formatParts = Parser::SplitString(entry.format, ":");
+            if (!formatParts.empty() && formatParts[0] == "python") {
+                for (const auto& metric : blockData.metrics) {
+                    if (metric.format != "private-python-diagnostic" || !metric.value.has_value()) {
+                        continue;
+                    }
+
+                    try {
+                        const auto diagnostic = std::any_cast<Runtime::Context::Diagnostic>(metric.value);
+                        field.status = diagnostic.status;
+                        field.statusTone = diagnostic.healthy
+                            ? Sakura::NodeCodeEditor::StatusTone::Success
+                            : Sakura::NodeCodeEditor::StatusTone::Error;
+                        field.consoleOutput = diagnostic.console;
+                        field.consoleVisible = !field.consoleOutput.empty();
+                    } catch (const std::bad_any_cast&) {
+                    }
+                    break;
+                }
+            }
+
+            fields.push_back(std::move(field));
+        }
+        return fields;
+    }
+
     std::unordered_set<std::string> buildReferencedSurfaceIds(const std::string& flowgraphId) const {
         std::unordered_set<std::string> referenced;
         const auto stacksIt = context.state.flowgraph.stacks.find(flowgraphId);

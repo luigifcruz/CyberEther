@@ -5,9 +5,12 @@
 
 #include "jetstream/surface.hh"
 
+#include "editor/config/base.hh"
+
 #include <functional>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace Jetstream {
 
@@ -16,6 +19,7 @@ struct FlowgraphDetachedSurface {
         std::string id;
         std::string title;
         Extent2D<F32> logicalSize = {512.0f, 512.0f};
+        std::vector<FlowgraphConfigFieldConfig> configFields;
         std::function<U64()> onResolveTexture;
         std::function<void(const Sakura::SurfaceResize&)> onSize;
         std::function<void(MouseEvent)> onMouse;
@@ -39,17 +43,51 @@ struct FlowgraphDetachedSurface {
             .onSize = this->config.onSize,
             .onMouse = this->config.onMouse,
         });
+
+        fields.resize(this->config.configFields.size());
+        for (U64 i = 0; i < fields.size(); ++i) {
+            fields[i].update(this->config.configFields[i]);
+        }
+        fieldGrid.update({
+            .id = this->config.id + "FieldGrid",
+        });
+        chevron.update({
+            .id = this->config.id + ":chevron",
+        });
     }
 
     void render(const Sakura::Context& ctx) {
         window.render(ctx, [this](const Sakura::Context& ctx) {
+            if (!fields.empty()) {
+                if (chevron.render(ctx, configVisible)) {
+                    configVisible = !configVisible;
+                }
+
+                if (configVisible) {
+                    std::vector<Sakura::NodeFieldGrid::Item> items;
+                    items.reserve(fields.size());
+                    for (U64 i = 0; i < fields.size(); ++i) {
+                        items.push_back({
+                            .child = [this, i](const Sakura::Context& ctx) {
+                                fields[i].render(ctx);
+                            },
+                            .fullWidth = !fields[i].isSimple(),
+                        });
+                    }
+                    fieldGrid.render(ctx, items);
+                }
+            }
             surface.render(ctx);
         });
     }
 
  private:
     Config config;
+    bool configVisible = false;
     Sakura::Window window;
+    Sakura::CollapseChevron chevron;
+    Sakura::NodeFieldGrid fieldGrid;
+    std::vector<FlowgraphConfigFieldInstance> fields;
     Sakura::SurfaceView surface;
 };
 
