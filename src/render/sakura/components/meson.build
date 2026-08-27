@@ -24,6 +24,7 @@ src_lst += files([
     'qr_code.cc',
     'slider_float.cc',
     'checkbox.cc',
+    'collapse_chevron.cc',
     'setting_field.cc',
     'table.cc',
     'window.cc',
