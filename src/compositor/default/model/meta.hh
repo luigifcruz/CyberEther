@@ -25,8 +25,9 @@ struct SurfaceMeta {
     U64 detachedWidth = 512;
     U64 detachedHeight = 512;
     bool detached = false;
+    bool detachedConfigOpen = false;
 
-    JST_SERDES(attachedWidth, attachedHeight, detachedWidth, detachedHeight, detached);
+    JST_SERDES(attachedWidth, attachedHeight, detachedWidth, detachedHeight, detached, detachedConfigOpen);
 };
 
 struct StackDockFlowgraphMeta {

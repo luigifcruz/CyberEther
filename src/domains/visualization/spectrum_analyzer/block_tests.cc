@@ -110,6 +110,20 @@ TEST_CASE_METHOD(FlowgraphFixture,
             Result::SUCCESS);
     REQUIRE(viewBlock("invalid_height").state == Block::State::Errored);
 
+    Blocks::SpectrumAnalyzer equalRange;
+    equalRange.rangeMin = -50.0f;
+    equalRange.rangeMax = -50.0f;
+    REQUIRE(flowgraph->blockCreate("equal_range", equalRange, inputs) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("equal_range").state == Block::State::Created);
+
+    Blocks::SpectrumAnalyzer reversedRange;
+    reversedRange.rangeMin = 0.0f;
+    reversedRange.rangeMax = -100.0f;
+    REQUIRE(flowgraph->blockCreate("reversed_range", reversedRange, inputs) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("reversed_range").state == Block::State::Created);
+
     Blocks::SignalGenerator realSourceConfig;
     realSourceConfig.signalDataType = "F32";
     realSourceConfig.bufferSize = 128;

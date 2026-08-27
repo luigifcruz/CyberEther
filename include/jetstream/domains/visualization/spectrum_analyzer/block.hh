@@ -14,7 +14,7 @@ struct SpectrumAnalyzer : public Block::Config {
     bool fill = true;
     F32 rangeMin = -100.0f;
     F32 rangeMax = 0.0f;
-    U64 waterfallHeight = 512;
+    U64 waterfallHeight = 1024;
     std::string xLabel = "Frequency (MHz)";
     std::string amplitudeLabel = "Amplitude (dBFS)";
     std::string waterfallLabel = "Time";

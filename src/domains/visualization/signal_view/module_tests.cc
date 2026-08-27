@@ -299,7 +299,7 @@ TEST_CASE("Signal View validation is mode aware",
                 ctx.setInput("signal", input);
                 REQUIRE(ctx.run() == Result::ERROR);
 
-                config.waterfallHeight = 2049;
+                config.waterfallHeight = 8193;
                 ctx.setConfig(config);
                 REQUIRE(ctx.run() == Result::ERROR);
             }
