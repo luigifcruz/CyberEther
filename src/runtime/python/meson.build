@@ -4,4 +4,5 @@ src_lst += files([
     'impl.cc',
     'context.cc',
     'config.cc',
+    'script.cc',
 ])

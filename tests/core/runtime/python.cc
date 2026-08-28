@@ -17,10 +17,146 @@
 #include "jetstream/module_context.hh"
 #include "jetstream/runtime_context_python.hh"
 #include "jetstream/scheduler_context.hh"
+#include "runtime/python/script.hh"
 
 namespace {
 
 using namespace Jetstream;
+
+TEST_CASE("Python runtime parses PEP 723 script metadata",
+          "[core][runtime][python][pep723]") {
+    PythonScriptMetadata metadata;
+
+    SECTION("source without metadata") {
+        REQUIRE(ParsePythonScriptMetadata("def compute(ctx):\n    pass\n", metadata) ==
+                Result::SUCCESS);
+        CHECK(metadata.dependencies.empty());
+        CHECK(metadata.requiresPython.empty());
+    }
+
+    SECTION("multiline dependency array") {
+        const std::string source =
+            "# /// script\r\n"
+            "# requires-python = \">=3.11\"\r\n"
+            "# dependencies = [\r\n"
+            "#   \"numpy>=2\", # numerical arrays\r\n"
+            "#   'scipy==1.14.0',\r\n"
+            "# ]\r\n"
+            "# ///\r\n"
+            "def compute(ctx):\r\n"
+            "    pass\r\n";
+
+        REQUIRE(ParsePythonScriptMetadata(source, metadata) == Result::SUCCESS);
+        CHECK(metadata.dependencies ==
+              std::vector<std::string>{"numpy>=2", "scipy==1.14.0"});
+        CHECK(metadata.requiresPython == ">=3.11");
+    }
+
+    SECTION("TOML escapes") {
+        const std::string source =
+            "# /// script\n"
+            "# requires-python = \"\\u003e=3.11\"\n"
+            "# dependencies = [\"demo\\u002dpkg\"]\n"
+            "# ///\n";
+
+        REQUIRE(ParsePythonScriptMetadata(source, metadata) == Result::SUCCESS);
+        CHECK(metadata.dependencies == std::vector<std::string>{"demo-pkg"});
+        CHECK(metadata.requiresPython == ">=3.11");
+    }
+
+    SECTION("optional fields") {
+        REQUIRE(ParsePythonScriptMetadata(
+                    "# /// script\n# dependencies = []\n# ///\n", metadata) ==
+                Result::SUCCESS);
+        CHECK(metadata.dependencies.empty());
+        CHECK(metadata.requiresPython.empty());
+
+        REQUIRE(ParsePythonScriptMetadata(
+                    "# /// script\n# requires-python = \">=3.12\"\n# ///\n", metadata) ==
+                Result::SUCCESS);
+        CHECK(metadata.dependencies.empty());
+        CHECK(metadata.requiresPython == ">=3.12");
+    }
+}
+
+TEST_CASE("Python runtime follows PEP 723 block boundaries",
+          "[core][runtime][python][pep723]") {
+    PythonScriptMetadata metadata;
+
+    SECTION("unclosed candidates are ignored") {
+        const std::string source =
+            "# /// script\n"
+            "dependencies = [\"ignored\"]\n"
+            "# /// script\n"
+            "# dependencies = [\"numpy\"]\n"
+            "# ///\n";
+
+        REQUIRE(ParsePythonScriptMetadata(source, metadata) == Result::SUCCESS);
+        CHECK(metadata.dependencies == std::vector<std::string>{"numpy"});
+    }
+
+    SECTION("unknown blocks are not read") {
+        const std::string source =
+            "# /// future-metadata\n"
+            "# /// script\n"
+            "# dependencies = [\"ignored\"]\n"
+            "# ///\n"
+            "# still in the unknown block\n"
+            "# ///\n";
+
+        REQUIRE(ParsePythonScriptMetadata(source, metadata) == Result::SUCCESS);
+        CHECK(metadata.dependencies.empty());
+    }
+
+    SECTION("delimiter text can appear in multiline TOML strings") {
+        const std::string source =
+            "# /// script\n"
+            "# dependencies = [\"numpy\"]\n"
+            "# description = \"\"\"\n"
+            "# ///\n"
+            "# still metadata\n"
+            "# \"\"\"\n"
+            "# ///\n";
+
+        REQUIRE(ParsePythonScriptMetadata(source, metadata) == Result::SUCCESS);
+        CHECK(metadata.dependencies == std::vector<std::string>{"numpy"});
+    }
+
+    SECTION("duplicate script blocks are rejected") {
+        const std::string source =
+            "# /// script\n# dependencies = [\"numpy\"]\n# ///\n\n"
+            "# /// script\n# dependencies = [\"scipy\"]\n# ///\n";
+
+        JST_LOG_LAST_ERROR().clear();
+        CHECK(ParsePythonScriptMetadata(source, metadata) == Result::ERROR);
+        CHECK(JST_LOG_LAST_ERROR().find("Multiple PEP 723") != std::string::npos);
+        CHECK(metadata.dependencies.empty());
+    }
+}
+
+TEST_CASE("Python runtime rejects malformed PEP 723 metadata",
+          "[core][runtime][python][pep723]") {
+    const std::vector<std::string> sources = {
+        "# /// script\n# dependencies = [numpy]\n# ///\n",
+        "# /// script\n# dependencies = [\"numpy\" \"scipy\"]\n# ///\n",
+        "# /// script\n# requires-python = 3.11\n# ///\n",
+        "# /// script\n# dependencies = \"numpy\"\n# ///\n",
+        "# /// script\n# dependencies = [1]\n# ///\n",
+        "# /// script\n# dependencies = [\"\"]\n# ///\n",
+        "# /// script\n# dependencies = []\n# dependencies = []\n# ///\n",
+        "# /// script\n# dependencies = [] trailing\n# ///\n",
+    };
+
+    for (const auto& source : sources) {
+        PythonScriptMetadata metadata;
+        metadata.dependencies = {"unchanged"};
+        CAPTURE(source);
+        JST_LOG_LAST_ERROR().clear();
+        CHECK(ParsePythonScriptMetadata(source, metadata) == Result::ERROR);
+        CHECK(metadata.dependencies.empty());
+        CHECK(JST_LOG_LAST_ERROR().starts_with("[RUNTIME_CONTEXT_PYTHON]"));
+    }
+}
 
 struct SyntheticPythonState {
     std::unordered_map<std::string, U64> initializes;
