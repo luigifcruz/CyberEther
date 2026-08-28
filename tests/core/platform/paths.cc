@@ -173,6 +173,36 @@ Result RunFilePrinter(const std::filesystem::path& path,
 #endif
 }
 
+Result RunCombinedFilePrinter(const std::filesystem::path& standardOutputPath,
+                              const std::filesystem::path& standardErrorPath,
+                              std::string& output,
+                              U64 timeoutMilliseconds = 5000) {
+#if defined(JST_OS_WINDOWS)
+    return Platform::RunProcess("cmd.exe",
+                                {"/D",
+                                 "/C",
+                                 "type",
+                                 Platform::PathToUtf8(standardOutputPath),
+                                 "&",
+                                 "type",
+                                 Platform::PathToUtf8(standardErrorPath),
+                                 "1>&2"},
+                                output,
+                                timeoutMilliseconds,
+                                true);
+#else
+    return Platform::RunProcess("/bin/sh",
+                                {"-c",
+                                 "cat \"$1\"; cat \"$2\" >&2",
+                                 "cyberether-combined-file-printer",
+                                 Platform::PathToUtf8(standardOutputPath),
+                                 Platform::PathToUtf8(standardErrorPath)},
+                                output,
+                                timeoutMilliseconds,
+                                true);
+#endif
+}
+
 #endif
 
 struct ScopedDynamicLibrary {
@@ -539,6 +569,25 @@ TEST_CASE("Platform processes preserve output transactionally", "[core][platform
     REQUIRE(output == "unchanged");
 
     output = "unchanged";
+#if defined(JST_OS_WINDOWS)
+    REQUIRE(Platform::RunProcess(
+                "cmd.exe",
+                {"/D", "/C", "echo process-out & echo process-error 1>&2 & exit /B 7"},
+                output,
+                5000,
+                true) == Result::ERROR);
+#else
+    REQUIRE(Platform::RunProcess(
+                "/bin/sh",
+                {"-c", "printf process-out; printf process-error >&2; exit 7"},
+                output,
+                5000,
+                true) == Result::ERROR);
+#endif
+    REQUIRE(output.find("process-out") != std::string::npos);
+    REQUIRE(output.find("process-error") != std::string::npos);
+
+    output = "unchanged";
     REQUIRE(Platform::RunProcess("cyberether-process-that-does-not-exist", {}, output, 5000) ==
             Result::ERROR);
     REQUIRE(output == "unchanged");
@@ -610,6 +659,25 @@ TEST_CASE("Platform processes capture stdout without stderr",
 #endif
 }
 
+TEST_CASE("Platform processes combine stdout and stderr",
+          "[core][platform][process]") {
+    std::string output = "unchanged";
+#if defined(JST_OS_WINDOWS)
+    REQUIRE(Platform::RunProcess(
+                "cmd.exe", {"/D", "/C", "echo stdout& echo stderr 1>&2"}, output, 5000, true) ==
+            Result::SUCCESS);
+#else
+    REQUIRE(Platform::RunProcess(
+                "/bin/sh",
+                {"-c", "printf stdout; printf stderr >&2"},
+                output,
+                5000,
+                true) == Result::SUCCESS);
+#endif
+    REQUIRE(output.find("stdout") != std::string::npos);
+    REQUIRE(output.find("stderr") != std::string::npos);
+}
+
 TEST_CASE("Platform process timeouts leave output transactional",
           "[core][platform][process]") {
     std::string output = "unchanged";
@@ -630,6 +698,27 @@ TEST_CASE("Platform process timeouts leave output transactional",
                 1) == Result::ERROR);
 #endif
     REQUIRE(output == "unchanged");
+
+    output = "unchanged";
+#if defined(JST_OS_WINDOWS)
+    REQUIRE(Platform::RunProcess(
+                "cmd.exe",
+                {"/D",
+                 "/C",
+                 "echo stdout& echo stderr 1>&2 & ping -n 6 127.0.0.1 >NUL"},
+                output,
+                100,
+                true) == Result::ERROR);
+#else
+    REQUIRE(Platform::RunProcess(
+                "/bin/sh",
+                {"-c", "printf stdout; printf stderr >&2; sleep 10"},
+                output,
+                100,
+                true) == Result::ERROR);
+#endif
+    REQUIRE(output.find("stdout") != std::string::npos);
+    REQUIRE(output.find("stderr") != std::string::npos);
 }
 
 TEST_CASE("Platform process output limit is exact and transactional",
@@ -653,6 +742,26 @@ TEST_CASE("Platform process output limit is exact and transactional",
 
         REQUIRE(RunFilePrinter(path, output, 10000) == Result::ERROR);
         REQUIRE(output == "unchanged");
+    }
+
+    SECTION("combined output shares the limit") {
+        const std::string standardOutput(kProcessOutputLimit / 2, 'x');
+        std::string standardError(kProcessOutputLimit / 2, 'y');
+        const auto standardOutputPath = temp.root / "combined stdout.bin";
+        const auto standardErrorPath = temp.root / "combined stderr.bin";
+        WriteBinaryFile(standardOutputPath, standardOutput);
+        WriteBinaryFile(standardErrorPath, standardError);
+
+        REQUIRE(RunCombinedFilePrinter(
+                    standardOutputPath, standardErrorPath, output, 10000) == Result::SUCCESS);
+        REQUIRE(output == standardOutput + standardError);
+
+        output = "unchanged";
+        standardError.push_back('y');
+        WriteBinaryFile(standardErrorPath, standardError);
+        REQUIRE(RunCombinedFilePrinter(
+                    standardOutputPath, standardErrorPath, output, 10000) == Result::ERROR);
+        REQUIRE(output.size() == kProcessOutputLimit);
     }
 }
 

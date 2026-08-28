@@ -66,7 +66,8 @@ JETSTREAM_API bool ShutdownSocketRead(std::uintptr_t socket) noexcept;
 JETSTREAM_API Result RunProcess(const std::string& executable,
                                 const std::vector<std::string>& arguments,
                                 std::string& output,
-                                U64 timeoutMilliseconds = 0);
+                                U64 timeoutMilliseconds = 0,
+                                bool combineOutput = false);
 
 //
 // Dynamic Library

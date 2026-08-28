@@ -146,7 +146,8 @@ std::wstring QuoteWindowsArgument(const std::wstring& argument) {
 Result RunWindowsProcess(const std::string& executable,
                          const std::vector<std::string>& arguments,
                          std::string& output,
-                         U64 timeoutMilliseconds) {
+                         U64 timeoutMilliseconds,
+                         bool combineOutput) {
     std::wstring nativeExecutable;
     if (!ResolveWindowsExecutable(executable, nativeExecutable)) {
         return Result::ERROR;
@@ -216,7 +217,7 @@ Result RunWindowsProcess(const std::string& executable,
     startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
     startup.StartupInfo.hStdInput = nullDevice.get();
     startup.StartupInfo.hStdOutput = writePipe.get();
-    startup.StartupInfo.hStdError = nullDevice.get();
+    startup.StartupInfo.hStdError = combineOutput ? writePipe.get() : nullDevice.get();
     startup.lpAttributeList = attributeList;
 
     WindowsHandle job(CreateJobObjectW(nullptr, nullptr));
@@ -268,6 +269,9 @@ Result RunWindowsProcess(const std::string& executable,
     try {
         while (true) {
             if (TimedOut(start, timeoutMilliseconds)) {
+                if (combineOutput) {
+                    output = std::move(captured);
+                }
                 job.reset();
                 (void)WaitForSingleObject(processHandle.get(), INFINITE);
                 return Result::ERROR;
@@ -286,6 +290,9 @@ Result RunWindowsProcess(const std::string& executable,
                         pipeClosed = true;
                     } else {
                         if (captured.size() + bytesRead > kMaxProcessOutputSize) {
+                            if (combineOutput) {
+                                output = std::move(captured);
+                            }
                             job.reset();
                             (void)WaitForSingleObject(processHandle.get(), INFINITE);
                             return Result::ERROR;
@@ -322,6 +329,9 @@ Result RunWindowsProcess(const std::string& executable,
                 break;
             }
             if (captured.size() + bytesRead > kMaxProcessOutputSize) {
+                if (combineOutput) {
+                    output = std::move(captured);
+                }
                 return Result::ERROR;
             }
             captured.append(buffer, bytesRead);
@@ -332,6 +342,9 @@ Result RunWindowsProcess(const std::string& executable,
 
     DWORD exitCode = 1;
     if (!GetExitCodeProcess(processHandle.get(), &exitCode) || exitCode != 0) {
+        if (combineOutput) {
+            output = std::move(captured);
+        }
         return Result::ERROR;
     }
 
@@ -398,7 +411,8 @@ void TerminateProcessGroup(pid_t process) {
 Result RunPosixProcess(const std::string& executable,
                        const std::vector<std::string>& arguments,
                        std::string& output,
-                       U64 timeoutMilliseconds) {
+                       U64 timeoutMilliseconds,
+                       bool combineOutput) {
     std::vector<std::string> processArguments;
     processArguments.reserve(arguments.size() + 1);
     processArguments.push_back(executable);
@@ -440,7 +454,7 @@ Result RunPosixProcess(const std::string& executable,
         if (nullDevice < 0 ||
             dup2(nullDevice, STDIN_FILENO) < 0 ||
             dup2(writePipe.get(), STDOUT_FILENO) < 0 ||
-            dup2(nullDevice, STDERR_FILENO) < 0) {
+            dup2(combineOutput ? writePipe.get() : nullDevice, STDERR_FILENO) < 0) {
             _exit(127);
         }
         close(nullDevice);
@@ -466,6 +480,9 @@ Result RunPosixProcess(const std::string& executable,
         while (!processExited) {
             if (TimedOut(start, timeoutMilliseconds)) {
                 TerminateProcessGroup(process);
+                if (combineOutput) {
+                    output = std::move(captured);
+                }
                 return Result::ERROR;
             }
 
@@ -475,6 +492,9 @@ Result RunPosixProcess(const std::string& executable,
                 if (captured.size() + static_cast<std::size_t>(bytesRead) >
                     kMaxProcessOutputSize) {
                     TerminateProcessGroup(process);
+                    if (combineOutput) {
+                        output = std::move(captured);
+                    }
                     return Result::ERROR;
                 }
                 captured.append(buffer, static_cast<std::size_t>(bytesRead));
@@ -505,6 +525,10 @@ Result RunPosixProcess(const std::string& executable,
             }
             if (captured.size() + static_cast<std::size_t>(bytesRead) >
                 kMaxProcessOutputSize) {
+                TerminateProcessGroup(process);
+                if (combineOutput) {
+                    output = std::move(captured);
+                }
                 return Result::ERROR;
             }
             captured.append(buffer, static_cast<std::size_t>(bytesRead));
@@ -517,6 +541,9 @@ Result RunPosixProcess(const std::string& executable,
     }
 
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+        if (combineOutput) {
+            output = std::move(captured);
+        }
         return Result::ERROR;
     }
 
@@ -531,20 +558,22 @@ Result RunPosixProcess(const std::string& executable,
 Result RunProcess(const std::string& executable,
                   const std::vector<std::string>& arguments,
                   std::string& output,
-                  U64 timeoutMilliseconds) {
+                  U64 timeoutMilliseconds,
+                  bool combineOutput) {
     if (executable.empty()) {
         return Result::ERROR;
     }
 
 #if defined(JST_OS_WINDOWS)
-    return RunWindowsProcess(executable, arguments, output, timeoutMilliseconds);
+    return RunWindowsProcess(executable, arguments, output, timeoutMilliseconds, combineOutput);
 #elif defined(JST_OS_BROWSER) || defined(JST_OS_IOS) || defined(JST_OS_ANDROID)
     (void)arguments;
     (void)output;
     (void)timeoutMilliseconds;
+    (void)combineOutput;
     return Result::ERROR;
 #else
-    return RunPosixProcess(executable, arguments, output, timeoutMilliseconds);
+    return RunPosixProcess(executable, arguments, output, timeoutMilliseconds, combineOutput);
 #endif
 }
 
