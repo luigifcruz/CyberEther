@@ -13,10 +13,13 @@ runtime_python_dependency_preflight = custom_target(
 )
 
 dep_lst += declare_dependency(
-    sources: runtime_python_dependency_preflight,
+    sources: [
+        runtime_python_dependency_preflight,
+    ],
 )
 
 src_lst += files([
+    'environment.cc',
     'metadata.cc',
     'policy.cc',
     'preflight.cc',

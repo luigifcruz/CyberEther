@@ -1,10 +1,15 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
+#include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -16,6 +21,7 @@
 #include "jetstream/detail/module_impl.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/module_context.hh"
+#include "jetstream/platform.hh"
 #include "jetstream/runtime_context_python.hh"
 #include "jetstream/scheduler_context.hh"
 #include "runtime/python/dependencies/base.hh"
@@ -23,6 +29,136 @@
 namespace {
 
 using namespace Jetstream;
+
+class PythonTempDirectory {
+ public:
+    explicit PythonTempDirectory(const std::string& label) {
+        static std::atomic<U64> sequence{0};
+        for (U64 attempt = 0; attempt < 1024; ++attempt) {
+            const auto timestamp =
+                std::chrono::steady_clock::now().time_since_epoch().count();
+            root = std::filesystem::temp_directory_path() /
+                   ("cyberether-python-" + label + "-" + std::to_string(timestamp) +
+                    "-" + std::to_string(sequence.fetch_add(1)));
+            std::error_code ec;
+            if (std::filesystem::create_directory(root, ec)) {
+                return;
+            }
+            if (ec && ec != std::errc::file_exists) {
+                break;
+            }
+        }
+        throw std::runtime_error("failed to create Python test directory");
+    }
+
+    ~PythonTempDirectory() {
+        std::error_code ec;
+        std::filesystem::remove_all(root, ec);
+    }
+
+    PythonTempDirectory(const PythonTempDirectory&) = delete;
+    PythonTempDirectory& operator=(const PythonTempDirectory&) = delete;
+
+    std::filesystem::path root;
+};
+
+#if defined(_WIN32)
+class PythonEnvironmentGuard {
+ public:
+    explicit PythonEnvironmentGuard(const wchar_t* name) : name_(name) {
+        if (const wchar_t* value = _wgetenv(name)) {
+            previous_ = value;
+        }
+    }
+
+    ~PythonEnvironmentGuard() {
+        (void)_wputenv_s(name_.c_str(), previous_ ? previous_->c_str() : L"");
+    }
+
+    bool set(const std::wstring& value) const {
+        return _wputenv_s(name_.c_str(), value.c_str()) == 0;
+    }
+
+ private:
+    std::wstring name_;
+    std::optional<std::wstring> previous_;
+};
+#else
+class PythonEnvironmentGuard {
+ public:
+    explicit PythonEnvironmentGuard(const char* name) : name_(name) {
+        if (const char* value = std::getenv(name)) {
+            previous_ = value;
+        }
+    }
+
+    ~PythonEnvironmentGuard() {
+        if (previous_) {
+            (void)setenv(name_.c_str(), previous_->c_str(), 1);
+        } else {
+            (void)unsetenv(name_.c_str());
+        }
+    }
+
+    bool set(const std::string& value) const {
+        return setenv(name_.c_str(), value.c_str(), 1) == 0;
+    }
+
+ private:
+    std::string name_;
+    std::optional<std::string> previous_;
+};
+#endif
+
+class PythonCacheSandbox {
+ public:
+    PythonCacheSandbox()
+        : directory_("cache"),
+#if defined(_WIN32)
+          environment_(L"LOCALAPPDATA")
+#elif defined(__APPLE__)
+          environment_("CFFIXED_USER_HOME")
+#else
+          environment_("XDG_CACHE_HOME")
+#endif
+    {
+#if defined(_WIN32)
+        const bool configured = environment_.set(directory_.root.wstring());
+#else
+        const bool configured = environment_.set(directory_.root.string());
+#endif
+        if (!configured) {
+            throw std::runtime_error("failed to configure Python cache sandbox");
+        }
+    }
+
+ private:
+    PythonTempDirectory directory_;
+    PythonEnvironmentGuard environment_;
+};
+
+void EnsurePythonCacheSandbox() {
+    static const PythonCacheSandbox sandbox;
+    (void)sandbox;
+}
+
+void WritePythonTestFile(const std::filesystem::path& path,
+                         const std::string& contents) {
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    file << contents;
+    if (!file) {
+        throw std::runtime_error("failed to write Python test file");
+    }
+}
+
+std::string PythonFileUrl(const std::filesystem::path& path) {
+    auto value = std::filesystem::absolute(path).generic_string();
+#if defined(_WIN32)
+    return "file:///" + value;
+#else
+    return "file://" + value;
+#endif
+}
 
 TEST_CASE("Python runtime parses PEP 723 script metadata",
           "[core][runtime][python][pep723]") {
@@ -373,6 +509,135 @@ TEST_CASE("Python runtime resolves the configured dependency policy",
     }
 
     Backend::DestroyAll();
+}
+
+TEST_CASE("Python runtime caches pip dependency environments",
+          "[core][runtime][python][pep723]") {
+    EnsurePythonCacheSandbox();
+
+    PythonTempDirectory package("cache-package");
+    WritePythonTestFile(
+        package.root / "setup.py",
+        "from setuptools import setup\n"
+        "setup(name='cyberether-cache-fixture', version='1.0', "
+        "py_modules=['cyberether_cache_fixture'])\n");
+    WritePythonTestFile(package.root / "cyberether_cache_fixture.py", "VALUE = 17\n");
+
+    const std::string packageRequirement =
+        "cyberether-cache-fixture @ " + PythonFileUrl(package.root);
+    const std::string ignoredRequirement =
+        "cyberether-cache-ignored; python_version < '0'";
+    const std::vector<std::string> requirements = {
+        ignoredRequirement,
+        packageRequirement,
+        packageRequirement,
+    };
+
+    PythonDependencyEnvironment missing = {
+        .requirements = {"unchanged"},
+        .key = "unchanged",
+        .sitePackagesPath = "unchanged",
+    };
+    const auto missResult = PreparePythonDependencyEnvironment(
+        requirements, false, missing);
+    if (missResult == Result::ERROR) {
+        INFO(JST_LOG_LAST_ERROR());
+        SKIP("Optional Python environment cache runtime is unavailable");
+    }
+    REQUIRE(missResult == Result::INCOMPLETE);
+    CHECK(missing.key == "unchanged");
+
+    PythonDependencyEnvironment installed;
+    const auto installResult = PreparePythonDependencyEnvironment(
+        requirements, true, installed);
+    const auto& installError = JST_LOG_LAST_ERROR();
+    if (installResult != Result::SUCCESS &&
+        (installError.find("No module named pip") != std::string::npos ||
+         installError.find("No module named 'setuptools'") != std::string::npos)) {
+        SKIP("The selected optional Python runtime cannot install local packages: "
+             << installError);
+    }
+    INFO(installError);
+    REQUIRE(installResult == Result::SUCCESS);
+    CHECK(installed.requirements ==
+          std::vector<std::string>{packageRequirement, ignoredRequirement});
+    CHECK(installed.key.size() == 64);
+
+    const auto sitePackages = Platform::PathFromUtf8(installed.sitePackagesPath);
+    REQUIRE(std::filesystem::is_directory(sitePackages));
+    REQUIRE(std::filesystem::is_regular_file(
+        sitePackages / "cyberether_cache_fixture.py"));
+
+    PythonDependencyEnvironment cached;
+    REQUIRE(PreparePythonDependencyEnvironment(
+                {packageRequirement, ignoredRequirement}, false, cached) ==
+            Result::SUCCESS);
+    CHECK(cached.key == installed.key);
+    CHECK(cached.sitePackagesPath == installed.sitePackagesPath);
+
+    std::string cacheValue;
+    REQUIRE(Platform::CachePath(cacheValue) == Result::SUCCESS);
+    const auto environmentPath = Platform::PathFromUtf8(cacheValue) /
+                                 "python-environments" / installed.key;
+    const auto complete = environmentPath / "complete";
+    REQUIRE(std::filesystem::is_regular_file(environmentPath / "requirements.txt"));
+    REQUIRE(std::filesystem::is_regular_file(complete));
+
+    PythonDependencyEnvironment unchanged = {
+        .requirements = {"unchanged"},
+        .key = "unchanged",
+        .sitePackagesPath = "unchanged",
+    };
+    std::error_code ec;
+    std::filesystem::remove(complete, ec);
+    REQUIRE_FALSE(ec);
+    REQUIRE(PreparePythonDependencyEnvironment(requirements, false, unchanged) ==
+            Result::INCOMPLETE);
+    CHECK(unchanged.key == "unchanged");
+    REQUIRE(PreparePythonDependencyEnvironment(requirements, true, installed) ==
+            Result::SUCCESS);
+
+    WritePythonTestFile(environmentPath / "requirements.txt", "tampered\n");
+    REQUIRE(PreparePythonDependencyEnvironment(requirements, false, unchanged) ==
+            Result::INCOMPLETE);
+    REQUIRE(PreparePythonDependencyEnvironment(requirements, true, installed) ==
+            Result::SUCCESS);
+
+    std::filesystem::remove_all(environmentPath, ec);
+    REQUIRE_FALSE(ec);
+    PythonDependencyEnvironment concurrentFirst;
+    PythonDependencyEnvironment concurrentSecond;
+    Result firstResult = Result::ERROR;
+    Result secondResult = Result::ERROR;
+    std::thread first([&] {
+        firstResult = PreparePythonDependencyEnvironment(
+            requirements, true, concurrentFirst);
+    });
+    std::thread second([&] {
+        secondResult = PreparePythonDependencyEnvironment(
+            requirements, true, concurrentSecond);
+    });
+    first.join();
+    second.join();
+    REQUIRE(firstResult == Result::SUCCESS);
+    REQUIRE(secondResult == Result::SUCCESS);
+    CHECK(concurrentFirst.sitePackagesPath == concurrentSecond.sitePackagesPath);
+
+    std::filesystem::remove_all(package.root, ec);
+    REQUIRE_FALSE(ec);
+    REQUIRE(PreparePythonDependencyEnvironment(requirements, false, cached) ==
+            Result::SUCCESS);
+
+    const std::string missingRequirement =
+        "cyberether-cache-missing @ " + PythonFileUrl(package.root);
+    unchanged.key = "unchanged";
+    REQUIRE(PreparePythonDependencyEnvironment(
+                {missingRequirement}, false, unchanged) == Result::INCOMPLETE);
+    CHECK(unchanged.key == "unchanged");
+    REQUIRE(PreparePythonDependencyEnvironment(
+                {missingRequirement}, true, unchanged) == Result::ERROR);
+    CHECK(unchanged.key == "unchanged");
+    CHECK_FALSE(JST_LOG_LAST_ERROR().empty());
 }
 
 struct SyntheticPythonState {
