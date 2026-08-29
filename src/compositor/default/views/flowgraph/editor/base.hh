@@ -216,6 +216,14 @@ struct FlowgraphEditor {
             nodeViewIds.push_back(block.name);
         }
 
+        for (auto it = nodeViews.begin(); it != nodeViews.end();) {
+            if (!nodeIdToBlockName.contains(FlowgraphNodeId(it->first))) {
+                it = nodeViews.erase(it);
+            } else {
+                ++it;
+            }
+        }
+
         for (const auto& block : this->config.graph) {
             for (const auto& input : block.inputs) {
                 if (!input.source.has_value()) {

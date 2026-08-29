@@ -13,7 +13,6 @@
 #include "jetstream/flowgraph_view.hh"
 
 #include <memory>
-#include <optional>
 #include <string>
 
 namespace Jetstream {
@@ -39,25 +38,11 @@ struct FlowgraphSurfacePresenter {
                 const std::string surfaceMetaKey = "surface_" + manifest.id;
                 SurfaceMeta surfaceMeta;
                 flowgraph->metadata().get(surfaceMetaKey, surfaceMeta, blockName);
-                std::optional<Extent2D<F32>> aspectRatioSize;
-                const SurfaceMeta defaultSurfaceMeta;
-                if (surfaceMeta.attachedWidth == defaultSurfaceMeta.attachedWidth &&
-                    surfaceMeta.attachedHeight == defaultSurfaceMeta.attachedHeight &&
-                    surfaceMeta.attachedWidth > 0 && surfaceMeta.attachedHeight > 0) {
-                    aspectRatioSize = Extent2D<F32>{
-                        static_cast<F32>(surfaceMeta.attachedWidth),
-                        static_cast<F32>(surfaceMeta.attachedHeight),
-                    };
-                }
 
                 block.surfaces.push_back({
                     .id = nodeViewId + ":surface:" + manifest.id,
                     .texture = manifest.surface,
-                    .logicalSize = {
-                        static_cast<F32>(surfaceMeta.detachedWidth),
-                        static_cast<F32>(surfaceMeta.detachedHeight),
-                    },
-                    .aspectRatioSize = aspectRatioSize,
+                    .height = static_cast<F32>(surfaceMeta.attachedHeight),
                     .detached = surfaceMeta.detached,
                     .onDetach = [enqueue, flowgraphId, blockName, surfaceId = manifest.id]() {
                         enqueue(MailSetSurfaceDetached{
@@ -78,24 +63,6 @@ struct FlowgraphSurfacePresenter {
                             .block = blockName,
                             .metaKey = surfaceMetaKey,
                             .placement = SurfacePlacement::Attached,
-                            .resize = {
-                                .logicalSize = resize.logicalSize,
-                                .framebufferSize = resize.framebufferSize,
-                                .scale = resize.scale,
-                            },
-                        });
-                    },
-                    .onDetachedSize = [enqueue,
-                                       surface,
-                                       flowgraphId,
-                                       surfaceMetaKey,
-                                       blockName](const Sakura::SurfaceResize& resize) {
-                        enqueue(MailResizeSurface{
-                            .surface = surface,
-                            .flowgraph = flowgraphId,
-                            .block = blockName,
-                            .metaKey = surfaceMetaKey,
-                            .placement = SurfacePlacement::Detached,
                             .resize = {
                                 .logicalSize = resize.logicalSize,
                                 .framebufferSize = resize.framebufferSize,

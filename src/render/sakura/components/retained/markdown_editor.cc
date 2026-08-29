@@ -206,8 +206,8 @@ bool MarkdownEditor::update(Config config) {
 
     impl->canvas.update({
         .id = impl->config.id + ":canvas",
-        .size = {0.0f, defaultHeight},
-        .autoHeight = true,
+        .size = {0.0f, impl->config.height.value_or(defaultHeight)},
+        .autoHeight = !impl->config.height.has_value(),
     });
 
     impl->body.apply(impl->config);
