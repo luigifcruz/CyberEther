@@ -115,6 +115,11 @@ void CallPythonShutdown(PyObject* globals, const char* name) {
 
 }  // namespace
 
+std::recursive_mutex& PythonOperationMutex() {
+    static std::recursive_mutex mutex;
+    return mutex;
+}
+
 Bridge::~Bridge() {
     (void)stop();
 }
@@ -168,6 +173,7 @@ Result Bridge::start(const std::string& source,
                      const TensorMap& outputs,
                      const std::shared_ptr<Flowgraph::Environment>& environment,
                      const std::shared_ptr<Flowgraph::View>& view) {
+    std::lock_guard<std::recursive_mutex> operationLock(PythonOperationMutex());
     std::lock_guard<std::recursive_mutex> lifecycleLock(lifecycleMutex);
 
     const auto loadResult = Py_Load();
@@ -272,6 +278,7 @@ Result Bridge::start(const std::string& source,
 }
 
 Result Bridge::stop() {
+    std::lock_guard<std::recursive_mutex> operationLock(PythonOperationMutex());
     std::lock_guard<std::recursive_mutex> lifecycleLock(lifecycleMutex);
 
     if (!Py_IsLoaded()) {
@@ -325,6 +332,7 @@ Result Bridge::stop() {
 }
 
 Result Bridge::run() {
+    std::lock_guard<std::recursive_mutex> operationLock(PythonOperationMutex());
     std::lock_guard<std::recursive_mutex> lifecycleLock(lifecycleMutex);
 
     {

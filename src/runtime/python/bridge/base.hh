@@ -16,6 +16,8 @@
 
 namespace Jetstream {
 
+std::recursive_mutex& PythonOperationMutex();
+
 struct Bridge {
  public:
     Result start(const std::string& source,

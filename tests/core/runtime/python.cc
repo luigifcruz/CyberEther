@@ -511,6 +511,42 @@ TEST_CASE("Python runtime resolves the configured dependency policy",
     Backend::DestroyAll();
 }
 
+TEST_CASE("Python runtime combines scheduled dependency requirements",
+          "[core][runtime][python][pep723]") {
+    PythonRuntimeContext first;
+    PythonRuntimeContext second;
+
+    REQUIRE(StagePythonDependencies(&first,
+                                    {"scipy>=1", "numpy>=2", "numpy>=2"}) ==
+            Result::SUCCESS);
+    REQUIRE(StagePythonDependencies(&second, {"requests>=2", "numpy>=2"}) ==
+            Result::SUCCESS);
+    CHECK(SnapshotPythonDependencies().requirements.empty());
+
+    REQUIRE(SchedulePythonDependencies(&first) == Result::SUCCESS);
+    CHECK(SnapshotPythonDependencies().requirements ==
+          std::vector<std::string>{"numpy>=2", "scipy>=1"});
+
+    REQUIRE(SchedulePythonDependencies(&second) == Result::SUCCESS);
+    const auto combined = SnapshotPythonDependencies();
+    CHECK(combined.requirements ==
+          std::vector<std::string>{"numpy>=2", "requests>=2", "scipy>=1"});
+
+    REQUIRE(StagePythonDependencies(&first, {"pandas>=2"}) == Result::SUCCESS);
+    const auto updated = SnapshotPythonDependencies();
+    CHECK(updated.generation > combined.generation);
+    CHECK(updated.requirements ==
+          std::vector<std::string>{"numpy>=2", "pandas>=2", "requests>=2"});
+
+    REQUIRE(UnschedulePythonDependencies(&second) == Result::SUCCESS);
+    CHECK(SnapshotPythonDependencies().requirements ==
+          std::vector<std::string>{"pandas>=2"});
+
+    REQUIRE(RemovePythonDependencies(&first) == Result::SUCCESS);
+    REQUIRE(RemovePythonDependencies(&second) == Result::SUCCESS);
+    CHECK(SnapshotPythonDependencies().requirements.empty());
+}
+
 TEST_CASE("Python runtime caches pip dependency environments",
           "[core][runtime][python][pep723]") {
     EnsurePythonCacheSandbox();
