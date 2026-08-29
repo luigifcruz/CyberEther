@@ -3,6 +3,7 @@
 #include "../helpers.hh"
 
 #include <cmath>
+#include <optional>
 
 namespace Jetstream::Sakura {
 
@@ -22,44 +23,15 @@ Extent2D<F32> ResolveSurfaceLogicalDrawSize(const SurfaceView::Config& config,
     if (size.x <= 0.0f) {
         size.x = available.x;
     }
-    if (size.y <= 0.0f) {
+    if (config.height.has_value()) {
+        size.y = std::isfinite(*config.height) ? std::max(0.0f, *config.height) : 0.0f;
+    } else if (size.y <= 0.0f) {
         size.y = available.y;
     }
     if (size.x <= 0.0f || size.y <= 0.0f) {
         return {0.0f, 0.0f};
     }
 
-    if (!config.aspectRatioSize.has_value() ||
-        config.aspectRatioSize->x <= 0.0f ||
-        config.aspectRatioSize->y <= 0.0f ||
-        config.aspectLock == SurfaceView::AspectLock::None) {
-        return size;
-    }
-
-    const auto& aspect = *config.aspectRatioSize;
-    switch (config.aspectLock) {
-        case SurfaceView::AspectLock::X:
-            size.y = size.x * aspect.y / aspect.x;
-            break;
-        case SurfaceView::AspectLock::Y:
-            size.x = size.y * aspect.x / aspect.y;
-            break;
-        case SurfaceView::AspectLock::XY: {
-            const F32 heightFromWidth = size.x * aspect.y / aspect.x;
-            if (heightFromWidth <= size.y) {
-                size.y = heightFromWidth;
-            } else {
-                size.x = size.y * aspect.x / aspect.y;
-            }
-            break;
-        }
-        case SurfaceView::AspectLock::None:
-            break;
-    }
-
-    if (size.x <= 0.0f || size.y <= 0.0f) {
-        return {0.0f, 0.0f};
-    }
     return size;
 }
 

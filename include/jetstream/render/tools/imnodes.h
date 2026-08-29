@@ -20,6 +20,7 @@ typedef int ImNodesStyleFlags;      // -> enum ImNodesStyleFlags_
 typedef int ImNodesPinShape;        // -> enum ImNodesPinShape_
 typedef int ImNodesAttributeFlags;  // -> enum ImNodesAttributeFlags_
 typedef int ImNodesMiniMapLocation; // -> enum ImNodesMiniMapLocation_
+typedef int ImNodesNodeResizeFlags;  // -> enum ImNodesNodeResizeFlags_
 
 enum ImNodesCol_
 {
@@ -82,6 +83,14 @@ enum ImNodesStyleFlags_
     ImNodesStyleFlags_GridLines = 1 << 2,
     ImNodesStyleFlags_GridLinesPrimary = 1 << 3,
     ImNodesStyleFlags_GridSnapping = 1 << 4
+};
+
+enum ImNodesNodeResizeFlags_
+{
+    ImNodesNodeResizeFlags_None = 0,
+    ImNodesNodeResizeFlags_X = 1 << 0,
+    ImNodesNodeResizeFlags_Y = 1 << 1,
+    ImNodesNodeResizeFlags_XY = ImNodesNodeResizeFlags_X | ImNodesNodeResizeFlags_Y
 };
 
 enum ImNodesPinShape_
@@ -339,8 +348,9 @@ void Link(int id, int start_attribute_id, int end_attribute_id);
 // Enable or disable the ability to click and drag a specific node.
 void SetNodeDraggable(int node_id, const bool draggable);
 
-// Enable or disable height changes from the shared bottom-right resize handle.
-void SetNodeVerticalResizeEnabled(int node_id, const bool enabled);
+void SetNodeResizeFlags(int node_id, ImNodesNodeResizeFlags flags);
+
+void SetNodeResizeMinimumSize(int node_id, const ImVec2& minimum_size);
 
 // The node's position can be expressed in three coordinate systems:
 // * screen space coordinates, -- the origin is the upper left corner of the window.

@@ -8,6 +8,13 @@ namespace Jetstream {
 struct FlowgraphConfigMarkdownField {
     using Config = FlowgraphConfigFieldConfig;
 
+    FlowgraphNodeHeightSpec heightSpec() const {
+        return {
+            .policy = FlowgraphNodeHeightPolicy::FillRemaining,
+            .minimum = 120.0f,
+        };
+    }
+
     void update(Config config) {
         this->config = std::move(config);
         if (this->config.encoded != parsedEncoded) {
@@ -24,10 +31,27 @@ struct FlowgraphConfigMarkdownField {
             .title = false,
             .background = false,
         });
+        updateEditor();
+    }
+
+    void setAllocatedHeight(std::optional<F32> height) {
+        allocatedHeight = height;
+        updateEditor();
+    }
+
+    void render(const Sakura::Context& ctx) const {
+        frame.render(ctx, [this](const Sakura::Context& ctx) {
+            markdownField.render(ctx);
+        });
+    }
+
+ private:
+    void updateEditor() {
         markdownField.update({
             .id = this->config.id + "Markdown",
             .value = editing ? buffer : value,
             .editing = editing,
+            .height = allocatedHeight,
             .onChange = [this](std::string nextValue) {
                 buffer = std::move(nextValue);
             },
@@ -46,14 +70,8 @@ struct FlowgraphConfigMarkdownField {
         });
     }
 
-    void render(const Sakura::Context& ctx) const {
-        frame.render(ctx, [this](const Sakura::Context& ctx) {
-            markdownField.render(ctx);
-        });
-    }
-
- private:
     Config config;
+    std::optional<F32> allocatedHeight;
     std::string parsedEncoded;
     std::string value;
     bool editing = false;
