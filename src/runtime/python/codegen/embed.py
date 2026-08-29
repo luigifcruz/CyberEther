@@ -1,11 +1,11 @@
-#!/bin/python3
+#!/usr/bin/env python3
 
 import os
 import sys
 
 
 def raw_string_delimiter(content):
-    base = "JST_PY_BRIDGE"
+    base = "JST_PY_EMBED"
     delimiter = base
     index = 0
     while f'){delimiter}"' in content:
@@ -42,14 +42,14 @@ def chunk_bytes(content):
         yield "".join(chunk)
 
 
-def generate_header(input_paths, output_path):
+def generate_header(input_paths, output_path, symbol, component_root):
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
     components = []
     for input_path in input_paths:
         name = os.path.basename(input_path)
         body = read_component(input_path).rstrip("\n")
-        components.append(f"# === [bridge/prelude/{name}] ===\n\n{body}\n")
+        components.append(f"# === [{component_root}/{name}] ===\n\n{body}\n")
 
     content = "\n\n".join(components)
     delimiter = raw_string_delimiter(content)
@@ -59,7 +59,7 @@ def generate_header(input_paths, output_path):
     with open(output_path, "w", encoding="utf-8") as output:
         output.write("#pragma once\n\n")
         output.write("namespace Jetstream {\n\n")
-        output.write("inline constexpr const char* kPythonBridge =\n")
+        output.write(f"inline constexpr const char* {symbol} =\n")
         for chunk in chunks:
             output.write(f'R"{delimiter}({chunk}){delimiter}"\n')
         output.write(";\n\n")
@@ -67,4 +67,4 @@ def generate_header(input_paths, output_path):
 
 
 if __name__ == "__main__":
-    generate_header(sys.argv[2:], sys.argv[1])
+    generate_header(sys.argv[4:], sys.argv[1], sys.argv[2], sys.argv[3])

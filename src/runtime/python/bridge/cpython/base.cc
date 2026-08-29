@@ -230,6 +230,7 @@ PythonApi s_api;
 void* s_libraryHandle = nullptr;
 bool s_libraryLoaded = false;
 PyInterpreterState* s_interpreter = nullptr;
+std::string s_programPath;
 #if defined(JST_OS_WINDOWS)
 std::wstring s_programName;
 #else
@@ -368,6 +369,7 @@ Result Py_Load() {
     s_libraryHandle = handle;
     s_libraryLoaded = true;
     s_interpreter = interpreter;
+    s_programPath = validation.programPath;
     JST_INFO("[RUNTIME_CONTEXT_PYTHON] Loaded Python library '{}'.", validation.libraryPath);
     return Result::SUCCESS;
 }
@@ -375,6 +377,10 @@ Result Py_Load() {
 bool Py_IsLoaded() {
     std::lock_guard<std::mutex> lock(LoaderMutex());
     return s_libraryLoaded;
+}
+
+const std::string& Py_ProgramPath() {
+    return s_programPath;
 }
 
 PyObject* PyDict_GetItemString(PyObject* dict, const char* key) {

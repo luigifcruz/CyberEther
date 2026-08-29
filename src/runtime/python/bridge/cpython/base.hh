@@ -2,6 +2,7 @@
 #define JETSTREAM_RUNTIME_PYTHON_BRIDGE_CPYTHON_BASE_HH
 
 #include <cstdint>
+#include <string>
 
 #include "jetstream/types.hh"
 
@@ -15,6 +16,7 @@ struct PyThreadState;
 
 Result Py_Load();
 bool Py_IsLoaded();
+const std::string& Py_ProgramPath();
 
 PyObject* PyDict_GetItemString(PyObject* dict, const char* key);
 int PyCallable_Check(PyObject* object);

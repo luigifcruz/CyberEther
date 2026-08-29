@@ -1,4 +1,4 @@
-#include "runtime/python/script.hh"
+#include "runtime/python/dependencies/base.hh"
 
 #include <toml++/toml.hpp>
 
@@ -121,13 +121,13 @@ Result ExtractScriptBlock(const std::string& source, std::string& scriptBlock) {
     return Result::SUCCESS;
 }
 
-Result ReadScriptMetadata(const toml::table& table, PythonScriptMetadata& metadata) {
-    PythonScriptMetadata parsed;
+Result ReadScriptMetadata(const toml::table& table, PythonDependencyMetadata& metadata) {
+    PythonDependencyMetadata parsed;
 
     if (const auto* requiresPython = table.get("requires-python")) {
         const auto* value = requiresPython->as_string();
         if (!value) {
-            JST_ERROR("[RUNTIME_CONTEXT_PYTHON] PEP 723 requires-python must be "
+            JST_ERROR("[RUNTIME_CONTEXT_PYTHON] The PEP 723 requires-python value must be "
                       "a TOML string.");
             return Result::ERROR;
         }
@@ -137,25 +137,25 @@ Result ReadScriptMetadata(const toml::table& table, PythonScriptMetadata& metada
     if (const auto* dependencies = table.get("dependencies")) {
         const auto* array = dependencies->as_array();
         if (!array) {
-            JST_ERROR("[RUNTIME_CONTEXT_PYTHON] PEP 723 dependencies must be a "
+            JST_ERROR("[RUNTIME_CONTEXT_PYTHON] The PEP 723 dependencies value must be a "
                       "TOML array of strings.");
             return Result::ERROR;
         }
 
-        parsed.dependencies.reserve(array->size());
+        parsed.requirements.reserve(array->size());
         for (const auto& dependency : *array) {
             const auto* value = dependency.as_string();
             if (!value) {
-                JST_ERROR("[RUNTIME_CONTEXT_PYTHON] PEP 723 dependencies must "
+                JST_ERROR("[RUNTIME_CONTEXT_PYTHON] The PEP 723 dependencies array must "
                           "contain only strings.");
                 return Result::ERROR;
             }
             if (value->get().empty()) {
-                JST_ERROR("[RUNTIME_CONTEXT_PYTHON] PEP 723 dependencies cannot "
+                JST_ERROR("[RUNTIME_CONTEXT_PYTHON] The PEP 723 dependencies array cannot "
                           "contain an empty requirement.");
                 return Result::ERROR;
             }
-            parsed.dependencies.push_back(value->get());
+            parsed.requirements.push_back(value->get());
         }
     }
 
@@ -165,8 +165,8 @@ Result ReadScriptMetadata(const toml::table& table, PythonScriptMetadata& metada
 
 }  // namespace
 
-Result ParsePythonScriptMetadata(const std::string& source,
-                                 PythonScriptMetadata& metadata) {
+Result ParsePythonDependencyMetadata(const std::string& source,
+                                     PythonDependencyMetadata& metadata) {
     metadata = {};
 
     std::string scriptBlock;

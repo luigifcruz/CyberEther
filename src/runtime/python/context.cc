@@ -2,6 +2,7 @@
 
 #include "bridge/base.hh"
 #include "runtime/helpers.hh"
+#include "runtime/python/dependencies/base.hh"
 
 namespace Jetstream {
 
@@ -34,6 +35,10 @@ Result PythonRuntimeContext::createCompute(const std::string& source,
         JST_CHECK(ExpandSourcePieces(source, pieces, expandedSource));
         JST_TRACE("[RUNTIME_CONTEXT_PYTHON] Expanded Python source:\n{}", expandedSource);
     }
+
+    PythonDependencyMetadata metadata;
+    JST_CHECK(ParsePythonDependencyMetadata(expandedSource, metadata));
+    JST_CHECK(ValidatePythonDependencyMetadata(metadata));
 
     return pimpl->start(expandedSource, inputOrder, inputs, outputOrder, outputs, environment, view);
 }

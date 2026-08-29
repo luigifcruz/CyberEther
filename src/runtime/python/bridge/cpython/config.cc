@@ -1,5 +1,5 @@
-#include <jetstream/runtime_context_python.hh>
 #include <jetstream/platform.hh>
+#include <jetstream/runtime_context_python.hh>
 
 #include <algorithm>
 #include <cctype>
@@ -198,7 +198,7 @@ std::optional<std::string> RunPythonProbe(const std::string& pythonPath, const c
     }
 
     std::string output;
-    if (Platform::RunProcess(pythonPath, {"-X", "utf8", "-c", script}, output, 10000) !=
+    if (Platform::RunProcess(pythonPath, {"-I", "-X", "utf8", "-c", script}, output, 10000) !=
         Result::SUCCESS) {
         return std::nullopt;
     }
@@ -242,7 +242,6 @@ std::optional<std::string> ProbePythonVersion(const std::string& pythonPath) {
     return RunPythonProbe(pythonPath, kProbeScript);
 }
 
-#if defined(_WIN32)
 std::optional<std::string> ProbePythonProgramPath(const std::string& pythonPath) {
     constexpr const char* kProbeScript =
         "import os, sys; "
@@ -250,7 +249,6 @@ std::optional<std::string> ProbePythonProgramPath(const std::string& pythonPath)
 
     return RunPythonProbe(pythonPath, kProbeScript);
 }
-#endif
 
 std::vector<std::string> PythonLibraryCandidates(const std::string& configuredPath) {
     std::vector<std::string> candidates;
@@ -420,6 +418,62 @@ void AddCommonPythonExecutables(std::vector<std::string>& paths) {
     }
 }
 
+bool PathsEquivalent(const std::filesystem::path& lhs, const std::filesystem::path& rhs) {
+    std::error_code ec;
+    return lhs == rhs || (std::filesystem::equivalent(lhs, rhs, ec) && !ec);
+}
+
+void AddPythonExecutablesNearLibrary(std::vector<std::string>& paths,
+                                     const std::filesystem::path& libraryPath) {
+    const auto version = ExtractPythonVersion(libraryPath);
+    auto directory = libraryPath.parent_path();
+
+    while (!directory.empty()) {
+#if defined(_WIN32)
+        AddExecutableFromPath(paths, directory / "python.exe");
+        AddExecutableFromPath(paths, directory / "python3.exe");
+        AddExecutablesFromDirectory(paths, directory / "Scripts");
+        if (version.has_value()) {
+            const auto executable = "python" + CompactPythonVersion(*version) + ".exe";
+            AddExecutableFromPath(paths, directory / executable);
+        }
+#else
+        AddExecutableFromPath(paths, directory / "python");
+        AddExecutableFromPath(paths, directory / "python3");
+        AddExecutablesFromDirectory(paths, directory / "bin");
+        if (version.has_value()) {
+            AddExecutableFromPath(paths, directory / ("python" + *version));
+        }
+#endif
+
+        const auto parent = directory.parent_path();
+        if (parent == directory) {
+            break;
+        }
+        directory = parent;
+    }
+}
+
+std::optional<std::string> FindPythonProgramForLibrary(const std::filesystem::path& libraryPath) {
+    std::vector<std::string> executables;
+    AddPythonExecutablesNearLibrary(executables, libraryPath);
+    AddCommonPythonExecutables(executables);
+
+    for (const auto& executable : executables) {
+        const auto probedLibrary = ProbePythonLibraryPath(executable);
+        if (!probedLibrary ||
+            !PathsEquivalent(Platform::PathFromUtf8(*probedLibrary), libraryPath)) {
+            continue;
+        }
+
+        if (const auto programPath = ProbePythonProgramPath(executable)) {
+            return programPath;
+        }
+    }
+
+    return std::nullopt;
+}
+
 std::string CandidateLabel(const std::string& path, const PythonRuntimeContext::Validation& validation) {
     std::string name;
     if (LooksLikePythonExecutable(path)) {
@@ -431,11 +485,6 @@ std::string CandidateLabel(const std::string& path, const PythonRuntimeContext::
     }
 
     return name + " (" + path + ")";
-}
-
-bool PathsEquivalent(const std::filesystem::path& lhs, const std::filesystem::path& rhs) {
-    std::error_code ec;
-    return lhs == rhs || (std::filesystem::equivalent(lhs, rhs, ec) && !ec);
 }
 
 bool ContainsRuntimeCandidate(const std::vector<PythonRuntimeContext::Candidate>& candidates,
@@ -453,8 +502,9 @@ PythonRuntimeContext::Validation ValidateExplicitPythonRuntimePath(const std::st
     PythonRuntimeContext::Validation validation;
     const auto expandedPath = ExpandUserPath(path);
     validation.inputPath = Platform::PathToUtf8(expandedPath);
+    const bool inputIsPythonExecutable = LooksLikePythonExecutable(validation.inputPath);
 
-    if (LooksLikePythonExecutable(validation.inputPath)) {
+    if (inputIsPythonExecutable) {
         if (const auto version = ProbePythonVersion(validation.inputPath)) {
             const auto parsed = ParsePythonMajorMinor(*version);
             if (parsed.has_value() && !MeetsMinimumPythonVersion(*parsed)) {
@@ -483,8 +533,7 @@ PythonRuntimeContext::Validation ValidateExplicitPythonRuntimePath(const std::st
             return validation;
         }
 
-        if (LooksLikePythonExecutable(validation.inputPath)) {
-#if defined(_WIN32)
+        if (inputIsPythonExecutable) {
             const auto programPath = ProbePythonProgramPath(validation.inputPath);
             if (!programPath) {
                 validation.message = "Can't resolve the Python executable launched by " +
@@ -492,9 +541,8 @@ PythonRuntimeContext::Validation ValidateExplicitPythonRuntimePath(const std::st
                 return validation;
             }
             validation.programPath = *programPath;
-#else
-            validation.programPath = validation.inputPath;
-#endif
+        } else if (const auto programPath = FindPythonProgramForLibrary(candidatePath)) {
+            validation.programPath = *programPath;
         }
         validation.valid = true;
         validation.libraryPath = candidate;

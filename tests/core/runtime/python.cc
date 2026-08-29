@@ -17,7 +17,7 @@
 #include "jetstream/module_context.hh"
 #include "jetstream/runtime_context_python.hh"
 #include "jetstream/scheduler_context.hh"
-#include "runtime/python/script.hh"
+#include "runtime/python/dependencies/base.hh"
 
 namespace {
 
@@ -25,12 +25,12 @@ using namespace Jetstream;
 
 TEST_CASE("Python runtime parses PEP 723 script metadata",
           "[core][runtime][python][pep723]") {
-    PythonScriptMetadata metadata;
+    PythonDependencyMetadata metadata;
 
     SECTION("source without metadata") {
-        REQUIRE(ParsePythonScriptMetadata("def compute(ctx):\n    pass\n", metadata) ==
+        REQUIRE(ParsePythonDependencyMetadata("def compute(ctx):\n    pass\n", metadata) ==
                 Result::SUCCESS);
-        CHECK(metadata.dependencies.empty());
+        CHECK(metadata.requirements.empty());
         CHECK(metadata.requiresPython.empty());
     }
 
@@ -46,8 +46,8 @@ TEST_CASE("Python runtime parses PEP 723 script metadata",
             "def compute(ctx):\r\n"
             "    pass\r\n";
 
-        REQUIRE(ParsePythonScriptMetadata(source, metadata) == Result::SUCCESS);
-        CHECK(metadata.dependencies ==
+        REQUIRE(ParsePythonDependencyMetadata(source, metadata) == Result::SUCCESS);
+        CHECK(metadata.requirements ==
               std::vector<std::string>{"numpy>=2", "scipy==1.14.0"});
         CHECK(metadata.requiresPython == ">=3.11");
     }
@@ -59,29 +59,29 @@ TEST_CASE("Python runtime parses PEP 723 script metadata",
             "# dependencies = [\"demo\\u002dpkg\"]\n"
             "# ///\n";
 
-        REQUIRE(ParsePythonScriptMetadata(source, metadata) == Result::SUCCESS);
-        CHECK(metadata.dependencies == std::vector<std::string>{"demo-pkg"});
+        REQUIRE(ParsePythonDependencyMetadata(source, metadata) == Result::SUCCESS);
+        CHECK(metadata.requirements == std::vector<std::string>{"demo-pkg"});
         CHECK(metadata.requiresPython == ">=3.11");
     }
 
     SECTION("optional fields") {
-        REQUIRE(ParsePythonScriptMetadata(
+        REQUIRE(ParsePythonDependencyMetadata(
                     "# /// script\n# dependencies = []\n# ///\n", metadata) ==
                 Result::SUCCESS);
-        CHECK(metadata.dependencies.empty());
+        CHECK(metadata.requirements.empty());
         CHECK(metadata.requiresPython.empty());
 
-        REQUIRE(ParsePythonScriptMetadata(
+        REQUIRE(ParsePythonDependencyMetadata(
                     "# /// script\n# requires-python = \">=3.12\"\n# ///\n", metadata) ==
                 Result::SUCCESS);
-        CHECK(metadata.dependencies.empty());
+        CHECK(metadata.requirements.empty());
         CHECK(metadata.requiresPython == ">=3.12");
     }
 }
 
 TEST_CASE("Python runtime follows PEP 723 block boundaries",
           "[core][runtime][python][pep723]") {
-    PythonScriptMetadata metadata;
+    PythonDependencyMetadata metadata;
 
     SECTION("unclosed candidates are ignored") {
         const std::string source =
@@ -91,8 +91,8 @@ TEST_CASE("Python runtime follows PEP 723 block boundaries",
             "# dependencies = [\"numpy\"]\n"
             "# ///\n";
 
-        REQUIRE(ParsePythonScriptMetadata(source, metadata) == Result::SUCCESS);
-        CHECK(metadata.dependencies == std::vector<std::string>{"numpy"});
+        REQUIRE(ParsePythonDependencyMetadata(source, metadata) == Result::SUCCESS);
+        CHECK(metadata.requirements == std::vector<std::string>{"numpy"});
     }
 
     SECTION("unknown blocks are not read") {
@@ -104,8 +104,8 @@ TEST_CASE("Python runtime follows PEP 723 block boundaries",
             "# still in the unknown block\n"
             "# ///\n";
 
-        REQUIRE(ParsePythonScriptMetadata(source, metadata) == Result::SUCCESS);
-        CHECK(metadata.dependencies.empty());
+        REQUIRE(ParsePythonDependencyMetadata(source, metadata) == Result::SUCCESS);
+        CHECK(metadata.requirements.empty());
     }
 
     SECTION("delimiter text can appear in multiline TOML strings") {
@@ -118,8 +118,8 @@ TEST_CASE("Python runtime follows PEP 723 block boundaries",
             "# \"\"\"\n"
             "# ///\n";
 
-        REQUIRE(ParsePythonScriptMetadata(source, metadata) == Result::SUCCESS);
-        CHECK(metadata.dependencies == std::vector<std::string>{"numpy"});
+        REQUIRE(ParsePythonDependencyMetadata(source, metadata) == Result::SUCCESS);
+        CHECK(metadata.requirements == std::vector<std::string>{"numpy"});
     }
 
     SECTION("duplicate script blocks are rejected") {
@@ -128,9 +128,9 @@ TEST_CASE("Python runtime follows PEP 723 block boundaries",
             "# /// script\n# dependencies = [\"scipy\"]\n# ///\n";
 
         JST_LOG_LAST_ERROR().clear();
-        CHECK(ParsePythonScriptMetadata(source, metadata) == Result::ERROR);
+        CHECK(ParsePythonDependencyMetadata(source, metadata) == Result::ERROR);
         CHECK(JST_LOG_LAST_ERROR().find("Multiple PEP 723") != std::string::npos);
-        CHECK(metadata.dependencies.empty());
+        CHECK(metadata.requirements.empty());
     }
 }
 
@@ -148,14 +148,95 @@ TEST_CASE("Python runtime rejects malformed PEP 723 metadata",
     };
 
     for (const auto& source : sources) {
-        PythonScriptMetadata metadata;
-        metadata.dependencies = {"unchanged"};
+        PythonDependencyMetadata metadata;
+        metadata.requirements = {"unchanged"};
         CAPTURE(source);
         JST_LOG_LAST_ERROR().clear();
-        CHECK(ParsePythonScriptMetadata(source, metadata) == Result::ERROR);
-        CHECK(metadata.dependencies.empty());
+        CHECK(ParsePythonDependencyMetadata(source, metadata) == Result::ERROR);
+        CHECK(metadata.requirements.empty());
         CHECK(JST_LOG_LAST_ERROR().starts_with("[RUNTIME_CONTEXT_PYTHON]"));
     }
+}
+
+TEST_CASE("Python runtime rejects unsafe PEP 723 requirement strings",
+          "[core][runtime][python][pep723]") {
+    const std::vector<std::string> dependencies = {
+        std::string("demo\0--target", 13),
+        "demo\r--target",
+        "demo\n--target",
+    };
+
+    for (const auto& dependency : dependencies) {
+        CAPTURE(dependency.size());
+        JST_LOG_LAST_ERROR().clear();
+        CHECK(ValidatePythonDependencyMetadata({.requirements = {dependency}}) == Result::ERROR);
+        CHECK(JST_LOG_LAST_ERROR().find("prohibited NUL, CR, or LF") != std::string::npos);
+    }
+
+    JST_LOG_LAST_ERROR().clear();
+    CHECK(ValidatePythonDependencyMetadata({.requiresPython = ">=3.9\n"}) == Result::ERROR);
+    CHECK(JST_LOG_LAST_ERROR().find("prohibited NUL, CR, or LF") != std::string::npos);
+
+    const std::string source =
+        "# /// script\n"
+        "# dependencies = [\"\"\"demo\n"
+        "# --target\"\"\"]\n"
+        "# ///\n"
+        "def compute(ctx):\n"
+        "    pass\n";
+    const Module::Interface::EntryList order;
+    const TensorMap tensors;
+    PythonRuntimeContext context;
+    JST_LOG_LAST_ERROR().clear();
+    CHECK(context.createCompute(source, {}, order, tensors, order, tensors) == Result::ERROR);
+    CHECK(JST_LOG_LAST_ERROR().find("prohibited NUL, CR, or LF") != std::string::npos);
+}
+
+TEST_CASE("Python runtime validates PEP 723 requirements with the selected executable",
+          "[core][runtime][python][pep723]") {
+    PythonDependencyMetadata valid = {
+        .requirements = {
+            "numpy>=2,<3",
+            "requests[security]>=2.31; python_version >= '3.9'",
+            "demo @ https://example.com/demo-1.0-py3-none-any.whl",
+            "platformdirs; python_version < '0'",
+            "demo; extra == 'security'",
+        },
+        .requiresPython = ">=3.9",
+    };
+    JST_LOG_LAST_ERROR().clear();
+    if (ValidatePythonDependencyMetadata(valid) != Result::SUCCESS) {
+        const auto& error = JST_LOG_LAST_ERROR();
+        if (error.find("No libpython was found") != std::string::npos ||
+            error.find("No loadable libpython was found") != std::string::npos ||
+            error.find("Auto could not find") != std::string::npos ||
+            error.find("provides neither packaging") != std::string::npos) {
+            SKIP("Optional Python requirement preflight is unavailable: " << error);
+        }
+    }
+    REQUIRE(ValidatePythonDependencyMetadata(valid) == Result::SUCCESS);
+
+    const std::vector<std::string> invalidRequirements = {
+        "not a valid requirement !!!",
+        "demo[broken",
+        "demo; python_version >>> '3.9'",
+    };
+    for (const auto& dependency : invalidRequirements) {
+        CAPTURE(dependency);
+        JST_LOG_LAST_ERROR().clear();
+        CHECK(ValidatePythonDependencyMetadata({.requirements = {dependency}}) == Result::ERROR);
+        CHECK(JST_LOG_LAST_ERROR().find("Invalid PEP 508 requirement") != std::string::npos);
+    }
+
+    JST_LOG_LAST_ERROR().clear();
+    CHECK(ValidatePythonDependencyMetadata({.requiresPython = "<3"}) == Result::ERROR);
+    CHECK(JST_LOG_LAST_ERROR().find("does not satisfy PEP 723 requires-python") !=
+          std::string::npos);
+
+    JST_LOG_LAST_ERROR().clear();
+    CHECK(ValidatePythonDependencyMetadata({.requiresPython = "=>3.9"}) == Result::ERROR);
+    CHECK(JST_LOG_LAST_ERROR().find("Invalid PEP 723 requires-python") !=
+          std::string::npos);
 }
 
 struct SyntheticPythonState {
@@ -490,6 +571,16 @@ TEST_CASE("Python runtime discovery removes executable aliases", "[core][runtime
         CAPTURE(candidates[i].path);
         CHECK(validation.valid);
         CHECK(equivalentPaths(validation.libraryPath, candidates[i].libraryPath));
+        CHECK_FALSE(validation.programPath.empty());
+
+        const auto libraryValidation =
+            PythonRuntimeContext::ValidateRuntimePath(candidates[i].libraryPath);
+        CHECK(libraryValidation.valid);
+        CHECK_FALSE(libraryValidation.programPath.empty());
+        const auto programValidation =
+            PythonRuntimeContext::ValidateRuntimePath(libraryValidation.programPath);
+        CHECK(programValidation.valid);
+        CHECK(equivalentPaths(programValidation.libraryPath, candidates[i].libraryPath));
 #if defined(_WIN32)
         CHECK_FALSE(validation.programPath.empty());
         auto programName = std::filesystem::path(validation.programPath).filename().string();
