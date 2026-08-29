@@ -12,6 +12,7 @@
 #include <unordered_set>
 #include <utility>
 
+#include "jetstream/backend/base.hh"
 #include "jetstream/detail/module_impl.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/module_context.hh"
@@ -237,6 +238,141 @@ TEST_CASE("Python runtime validates PEP 723 requirements with the selected execu
     CHECK(ValidatePythonDependencyMetadata({.requiresPython = "=>3.9"}) == Result::ERROR);
     CHECK(JST_LOG_LAST_ERROR().find("Invalid PEP 723 requires-python") !=
           std::string::npos);
+}
+
+TEST_CASE("Python runtime parses dependency installation policies",
+          "[core][runtime][python][pep723]") {
+    PythonDependencyPolicy policy = PythonDependencyPolicy::Deny;
+
+    SECTION("canonical values") {
+        const std::vector<std::pair<std::string, PythonDependencyPolicy>> values = {
+            {"prompt", PythonDependencyPolicy::Prompt},
+            {"allow", PythonDependencyPolicy::Allow},
+            {"deny", PythonDependencyPolicy::Deny},
+        };
+
+        for (const auto& [value, expected] : values) {
+            CAPTURE(value);
+            REQUIRE(ParsePythonDependencyPolicy(value, policy) == Result::SUCCESS);
+            CHECK(policy == expected);
+        }
+    }
+
+    SECTION("values are matched exactly") {
+        for (const auto& value : {"DeNy", " never", "allow "}) {
+            CAPTURE(value);
+            JST_LOG_LAST_ERROR().clear();
+            CHECK(ParsePythonDependencyPolicy(value, policy) == Result::ERROR);
+            CHECK(JST_LOG_LAST_ERROR().find("Invalid dependency policy") != std::string::npos);
+        }
+    }
+
+    SECTION("invalid values are rejected") {
+        policy = PythonDependencyPolicy::Allow;
+        for (const auto& value : {"", "never", "installation", "a llow", "allow,prompt"}) {
+            CAPTURE(value);
+            JST_LOG_LAST_ERROR().clear();
+            CHECK(ParsePythonDependencyPolicy(value, policy) == Result::ERROR);
+            CHECK(JST_LOG_LAST_ERROR().find("Invalid dependency policy") != std::string::npos);
+        }
+        CHECK(policy == PythonDependencyPolicy::Allow);
+    }
+}
+
+TEST_CASE("Python runtime resolves the PEP 723 dependency policy",
+          "[core][runtime][python][pep723]") {
+    const PythonDependencyMetadata declared = {
+        .requirements = {"numpy>=2"},
+        .requiresPython = ">=3.11",
+    };
+
+    SECTION("scripts without metadata bypass the policy") {
+        for (const auto policy : {PythonDependencyPolicy::Prompt,
+                                  PythonDependencyPolicy::Allow,
+                                  PythonDependencyPolicy::Deny}) {
+            CAPTURE(static_cast<int>(policy));
+            const auto decision = ResolvePythonDependencyPolicy({}, policy);
+            CHECK(decision.policy == policy);
+            CHECK_FALSE(decision.installAllowed);
+            CHECK_FALSE(decision.consentRequired);
+        }
+    }
+
+    SECTION("allow installs automatically") {
+        const auto decision = ResolvePythonDependencyPolicy(declared, PythonDependencyPolicy::Allow);
+        CHECK(decision.policy == PythonDependencyPolicy::Allow);
+        CHECK(decision.installAllowed);
+        CHECK_FALSE(decision.consentRequired);
+    }
+
+    SECTION("prompt installs after consent") {
+        const auto decision = ResolvePythonDependencyPolicy(declared, PythonDependencyPolicy::Prompt);
+        CHECK(decision.policy == PythonDependencyPolicy::Prompt);
+        CHECK(decision.installAllowed);
+        CHECK(decision.consentRequired);
+    }
+
+    SECTION("deny never installs") {
+        const auto decision = ResolvePythonDependencyPolicy(declared, PythonDependencyPolicy::Deny);
+        CHECK(decision.policy == PythonDependencyPolicy::Deny);
+        CHECK_FALSE(decision.installAllowed);
+        CHECK_FALSE(decision.consentRequired);
+    }
+
+    SECTION("a requires-python constraint alone bypasses the policy") {
+        const PythonDependencyMetadata versionOnly = {.requiresPython = ">=3.11"};
+        const auto decision = ResolvePythonDependencyPolicy(versionOnly, PythonDependencyPolicy::Deny);
+        CHECK(decision.policy == PythonDependencyPolicy::Deny);
+        CHECK_FALSE(decision.installAllowed);
+        CHECK_FALSE(decision.consentRequired);
+    }
+}
+
+TEST_CASE("Python runtime resolves the configured dependency policy",
+          "[core][runtime][python][pep723]") {
+    const PythonDependencyMetadata declared = {
+        .requirements = {"numpy>=2"},
+    };
+
+    // The CPU backend snapshots its configuration at initialization, so start
+    // from a clean slate and reconfigure before every resolution.
+    Backend::DestroyAll();
+
+    SECTION("falls back to prompt without a configured policy") {
+        const auto decision = ResolvePythonDependencyPolicy(declared);
+        CHECK(decision.policy == PythonDependencyPolicy::Prompt);
+        CHECK(decision.installAllowed);
+        CHECK(decision.consentRequired);
+    }
+
+    SECTION("deny propagates from the backend configuration") {
+        REQUIRE(Backend::Configure<DeviceType::CPU>(Backend::Config{
+                    .dependencyPolicy = "deny"}) == Result::SUCCESS);
+        const auto decision = ResolvePythonDependencyPolicy(declared);
+        CHECK(decision.policy == PythonDependencyPolicy::Deny);
+        CHECK_FALSE(decision.installAllowed);
+        CHECK_FALSE(decision.consentRequired);
+    }
+
+    SECTION("allow propagates from the backend configuration") {
+        REQUIRE(Backend::Configure<DeviceType::CPU>(Backend::Config{
+                    .dependencyPolicy = "allow"}) == Result::SUCCESS);
+        const auto decision = ResolvePythonDependencyPolicy(declared);
+        CHECK(decision.policy == PythonDependencyPolicy::Allow);
+        CHECK(decision.installAllowed);
+        CHECK_FALSE(decision.consentRequired);
+    }
+
+    SECTION("invalid configured values fall back to prompt") {
+        REQUIRE(Backend::Configure<DeviceType::CPU>(Backend::Config{
+                    .dependencyPolicy = "never"}) == Result::SUCCESS);
+        const auto decision = ResolvePythonDependencyPolicy(declared);
+        CHECK(decision.policy == PythonDependencyPolicy::Prompt);
+        CHECK(decision.installAllowed);
+        CHECK(decision.consentRequired);
+    }
+
+    Backend::DestroyAll();
 }
 
 struct SyntheticPythonState {

@@ -77,6 +77,7 @@ Instance::Config BuildInstanceConfig(const Settings& settings) {
         .scale = settings.graphics.scale,
         .framerate = settings.graphics.framerate,
         .pythonRuntimePath = settings.runtime.python.path,
+        .dependencyPolicy = settings.runtime.dependencyPolicy,
     };
 
     return config;
@@ -885,6 +886,7 @@ int Run(int argc, char* argv[]) {
         .deviceId = settings.graphics.deviceId,
         .headless = settings.graphics.headless,
         .pythonRuntimePath = settings.runtime.python.path,
+        .dependencyPolicy = settings.runtime.dependencyPolicy,
     };
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
     if (Backend::Configure<DeviceType::CUDA>(backendConfig) != Result::SUCCESS) {

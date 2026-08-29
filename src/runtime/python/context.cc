@@ -38,6 +38,11 @@ Result PythonRuntimeContext::createCompute(const std::string& source,
 
     PythonDependencyMetadata metadata;
     JST_CHECK(ParsePythonDependencyMetadata(expandedSource, metadata));
+
+    // Resolve the installation policy for the declared PEP 723 metadata. The
+    // dependency installer will consume the decision once installation lands.
+    (void)ResolvePythonDependencyPolicy(metadata);
+
     JST_CHECK(ValidatePythonDependencyMetadata(metadata));
 
     return pimpl->start(expandedSource, inputOrder, inputs, outputOrder, outputs, environment, view);

@@ -18,5 +18,6 @@ dep_lst += declare_dependency(
 
 src_lst += files([
     'metadata.cc',
+    'policy.cc',
     'preflight.cc',
 ])

@@ -43,6 +43,7 @@ static void OnWebGPUInitialized(const Result webgpuResult) {
     Instance::Config config = {
         .compositor = CompositorType::DEFAULT,
         .pythonRuntimePath = settings.runtime.python.path,
+        .dependencyPolicy = settings.runtime.dependencyPolicy,
     };
 
     if (instance->create(config) != Result::SUCCESS) {

@@ -10,6 +10,7 @@ CPU::CPU(const Config& config) : config(config) {
     const auto hardwareThreads = std::thread::hardware_concurrency();
     const auto hardwareThreadsText = hardwareThreads == 0 ? std::string("Unknown") : std::to_string(hardwareThreads);
     const auto pythonRuntimePath = config.pythonRuntimePath.empty() ? std::string("Auto") : config.pythonRuntimePath;
+    const auto dependencyPolicy = config.dependencyPolicy.empty() ? std::string("prompt") : config.dependencyPolicy;
 
     // Print device information.
 
@@ -18,11 +19,16 @@ CPU::CPU(const Config& config) : config(config) {
     JST_INFO("-----------------------------------------------------");
     JST_INFO("Hardware Threads:   {}", hardwareThreadsText);
     JST_INFO("Python Runtime:     {}", pythonRuntimePath);
+    JST_INFO("Dependency Policy:  {}", dependencyPolicy);
     JST_INFO("-----------------------------------------------------");
 }
 
 const std::string& CPU::getPythonRuntimePath() const {
     return config.pythonRuntimePath;
+}
+
+const std::string& CPU::getDependencyPolicy() const {
+    return config.dependencyPolicy;
 }
 
 }  // namespace Jetstream::Backend
