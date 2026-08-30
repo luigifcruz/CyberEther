@@ -11,6 +11,7 @@
 namespace Jetstream::Platform {
 
 Result OpenUrl(const std::string& url);
+Result OpenFolder(const std::string& path);
 Result ConfigPath(std::string& path);
 Result CachePath(std::string& path);
 Result PickFile(std::string& path,

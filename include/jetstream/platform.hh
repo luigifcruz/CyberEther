@@ -115,6 +115,7 @@ class JETSTREAM_API FileLock {
 //
 
 JETSTREAM_API Result OpenUrl(const std::string& url);
+JETSTREAM_API Result OpenFolder(const std::string& path);
 
 //
 // Dialogs
