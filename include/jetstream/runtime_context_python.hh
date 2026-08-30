@@ -49,6 +49,9 @@ struct JETSTREAM_API PythonRuntimeContext : Runtime::Context {
                          const std::shared_ptr<Flowgraph::View>& view = nullptr);
     Result destroyCompute();
 
+    virtual Result loadCompute();
+    Result unloadCompute();
+
     void setImmutableOutputAttributes(const std::vector<std::unordered_set<std::string>>& keys);
 
     virtual Result computeInitialize();

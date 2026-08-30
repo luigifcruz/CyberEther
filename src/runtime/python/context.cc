@@ -175,9 +175,20 @@ Result PythonRuntimeContext::createCompute(const std::string& source,
 
 Result PythonRuntimeContext::destroyCompute() {
     std::lock_guard<std::recursive_mutex> operationLock(PythonOperationMutex());
-    const auto stopResult = pimpl->stop();
+    const auto stopResult = unloadCompute();
     const auto removeResult = RemovePythonDependencies(this);
     return stopResult == Result::SUCCESS ? removeResult : stopResult;
+}
+
+Result PythonRuntimeContext::loadCompute() {
+    JST_ERROR("[RUNTIME_CONTEXT_PYTHON] The Python module does not provide a "
+              "compute loader.");
+    return Result::ERROR;
+}
+
+Result PythonRuntimeContext::unloadCompute() {
+    std::lock_guard<std::recursive_mutex> operationLock(PythonOperationMutex());
+    return pimpl->stop();
 }
 
 void PythonRuntimeContext::setImmutableOutputAttributes(
