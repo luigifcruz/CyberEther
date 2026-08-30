@@ -816,6 +816,10 @@ def compute(ctx):
         JST_CHECK(output.create(DeviceType::CPU, DataType::F32, input.shape()));
         outputs()["out"].produced(name(), "out", output);
 
+        return loadCompute();
+    }
+
+    Result loadCompute() override {
         return createCompute(source,
                              pieces,
                              {"in"},
@@ -828,6 +832,21 @@ def compute(ctx):
     std::unordered_map<std::string, std::string> pieces;
     Tensor input;
     Tensor output;
+};
+
+struct ReloadTrackingPythonContext : PythonRuntimeContext {
+    Result loadCompute() override {
+        ++loads;
+        if (failLoads > 0) {
+            --failLoads;
+            JST_ERROR("[SKIP_TEST_SOURCE] Forced Python reload failure.");
+            return Result::ERROR;
+        }
+        return Result::SUCCESS;
+    }
+
+    U64 loads = 0;
+    U64 failLoads = 0;
 };
 
 std::shared_ptr<Module> makePythonRuntimeSmokeModule(std::string source = {},
@@ -1082,6 +1101,122 @@ TEST_CASE("Python runtime executes compute() with tensor inputs and outputs", "[
     REQUIRE(runtime.destroy() == Result::SUCCESS);
     destroyPythonCompute(module);
     REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Python runtime reloads modules after dependency environment switches",
+          "[core][runtime][python][pep723]") {
+    PythonTempDirectory firstEnvironment("environment-first");
+    PythonTempDirectory secondEnvironment("environment-second");
+    WritePythonTestFile(firstEnvironment.root / "cyberether_environment_fixture.py",
+                        "FACTOR = 2.0\n");
+    WritePythonTestFile(secondEnvironment.root / "cyberether_environment_fixture.py",
+                        "FACTOR = 5.0\n");
+
+    const PythonDependencyEnvironment first = {
+        .requirements = {"cyberether-environment-fixture==1"},
+        .key = "environment-first",
+        .sitePackagesPath = Platform::PathToUtf8(firstEnvironment.root),
+    };
+    const PythonDependencyEnvironment second = {
+        .requirements = {"cyberether-environment-fixture==2"},
+        .key = "environment-second",
+        .sitePackagesPath = Platform::PathToUtf8(secondEnvironment.root),
+    };
+
+    const auto activateResult = ActivatePythonDependencyEnvironment(first);
+    if (activateResult != Result::SUCCESS) {
+        INFO(JST_LOG_LAST_ERROR());
+        SKIP("Optional Python environment activation is unavailable");
+    }
+
+    Tensor input;
+    REQUIRE(input.create(DeviceType::CPU, DataType::F32, {4}) == Result::SUCCESS);
+    for (Index i = 0; i < input.size(); ++i) {
+        input.at<F32>(i) = static_cast<F32>(i + 1);
+    }
+
+    TensorMap inputs;
+    inputs["in"].produced("source", "out", input);
+    auto module = makePythonRuntimeSmokeModule(R"PY(
+import cyberether_environment_fixture as fixture
+
+def compute(ctx):
+    ctx.outputs[0][...] = ctx.inputs[0] * fixture.FACTOR
+)PY");
+    Parser::Map config;
+    REQUIRE(module->create("python_environment_reload", config, inputs) ==
+            Result::SUCCESS);
+
+    Runtime runtime("python", DeviceType::CPU, RuntimeType::PYTHON);
+    REQUIRE(runtime.create({{"python_environment_reload", module}}) ==
+            Result::SUCCESS);
+
+    std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+    auto output = module->outputs().at("out").tensor;
+    for (Index i = 0; i < output.size(); ++i) {
+        REQUIRE(output.at<F32>(i) == static_cast<F32>((i + 1) * 2));
+    }
+
+    REQUIRE(ActivatePythonDependencyEnvironment(second) == Result::SUCCESS);
+    skippedModules.clear();
+    failedModules.clear();
+    REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+    output = module->outputs().at("out").tensor;
+    for (Index i = 0; i < output.size(); ++i) {
+        REQUIRE(output.at<F32>(i) == static_cast<F32>((i + 1) * 5));
+    }
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    destroyPythonCompute(module);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+    REQUIRE(ActivatePythonDependencyEnvironment({}) == Result::SUCCESS);
+}
+
+TEST_CASE("Python runtime rolls back failed dependency environment reloads",
+          "[core][runtime][python][pep723]") {
+    PythonTempDirectory firstPath("rollback-first");
+    PythonTempDirectory secondPath("rollback-second");
+    const PythonDependencyEnvironment firstEnvironment = {
+        .key = "rollback-first",
+        .sitePackagesPath = Platform::PathToUtf8(firstPath.root),
+    };
+    const PythonDependencyEnvironment secondEnvironment = {
+        .key = "rollback-second",
+        .sitePackagesPath = Platform::PathToUtf8(secondPath.root),
+    };
+
+    const auto activateResult = ActivatePythonDependencyEnvironment(firstEnvironment);
+    if (activateResult != Result::SUCCESS) {
+        INFO(JST_LOG_LAST_ERROR());
+        SKIP("Optional Python environment activation is unavailable");
+    }
+
+    ReloadTrackingPythonContext first;
+    ReloadTrackingPythonContext second;
+    REQUIRE(StagePythonDependencies(&first, {}) == Result::SUCCESS);
+    REQUIRE(StagePythonDependencies(&second, {}) == Result::SUCCESS);
+    REQUIRE(SchedulePythonDependencies(&first) == Result::SUCCESS);
+    REQUIRE(SchedulePythonDependencies(&second) == Result::SUCCESS);
+
+    second.failLoads = 1;
+    REQUIRE(ActivatePythonDependencyEnvironment(secondEnvironment) == Result::ERROR);
+    const auto firstLoadsAfterFailure = first.loads;
+    const auto secondLoadsAfterFailure = second.loads;
+    REQUIRE(firstLoadsAfterFailure >= 1);
+    REQUIRE(secondLoadsAfterFailure >= 2);
+
+    REQUIRE(ActivatePythonDependencyEnvironment(secondEnvironment) ==
+            Result::SUCCESS);
+    REQUIRE(first.loads > firstLoadsAfterFailure);
+    REQUIRE(second.loads > secondLoadsAfterFailure);
+
+    REQUIRE(UnschedulePythonDependencies(&first) == Result::SUCCESS);
+    REQUIRE(UnschedulePythonDependencies(&second) == Result::SUCCESS);
+    REQUIRE(RemovePythonDependencies(&first) == Result::SUCCESS);
+    REQUIRE(RemovePythonDependencies(&second) == Result::SUCCESS);
+    REQUIRE(ActivatePythonDependencyEnvironment({}) == Result::SUCCESS);
 }
 
 TEST_CASE("Python runtime expands source pieces before compiling compute()", "[core][runtime][python]") {

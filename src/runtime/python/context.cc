@@ -1,10 +1,12 @@
 #include <jetstream/runtime_context_python.hh>
 
 #include <algorithm>
+#include <functional>
 #include <mutex>
 #include <unordered_map>
 
 #include "bridge/base.hh"
+#include "runtime/python/bridge/bootstrap/base.hh"
 #include "runtime/helpers.hh"
 #include "runtime/python/context.hh"
 #include "runtime/python/dependencies/base.hh"
@@ -20,7 +22,8 @@ struct PythonDependencyRecord {
 
 struct PythonDependencyRegistry {
     std::mutex mutex;
-    std::unordered_map<const PythonRuntimeContext*, PythonDependencyRecord> records;
+    std::unordered_map<PythonRuntimeContext*, PythonDependencyRecord> records;
+    PythonDependencyEnvironment activeEnvironment;
     U64 generation = 0;
 };
 
@@ -33,7 +36,7 @@ PythonDependencyRegistry& DependencyRegistry() {
 
 struct PythonRuntimeContext::Impl : Bridge {};
 
-Result StagePythonDependencies(const PythonRuntimeContext* context,
+Result StagePythonDependencies(PythonRuntimeContext* context,
                                const std::vector<std::string>& requirements) {
     if (!context) {
         JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Cannot stage dependencies for a null "
@@ -52,7 +55,7 @@ Result StagePythonDependencies(const PythonRuntimeContext* context,
     return Result::SUCCESS;
 }
 
-Result SchedulePythonDependencies(const PythonRuntimeContext* context) {
+Result SchedulePythonDependencies(PythonRuntimeContext* context) {
     if (!context) {
         JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Cannot schedule a null dependency "
                   "context.");
@@ -70,7 +73,7 @@ Result SchedulePythonDependencies(const PythonRuntimeContext* context) {
     return Result::SUCCESS;
 }
 
-Result UnschedulePythonDependencies(const PythonRuntimeContext* context) {
+Result UnschedulePythonDependencies(PythonRuntimeContext* context) {
     if (!context) {
         JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Cannot unschedule a null dependency "
                   "context.");
@@ -88,7 +91,7 @@ Result UnschedulePythonDependencies(const PythonRuntimeContext* context) {
     return Result::SUCCESS;
 }
 
-Result RemovePythonDependencies(const PythonRuntimeContext* context) {
+Result RemovePythonDependencies(PythonRuntimeContext* context) {
     if (!context) {
         JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Cannot remove a null dependency context.");
         return Result::ERROR;
@@ -124,6 +127,76 @@ PythonDependencySnapshot SnapshotPythonDependencies() {
         std::unique(snapshot.requirements.begin(), snapshot.requirements.end()),
         snapshot.requirements.end());
     return snapshot;
+}
+
+Result ActivatePythonDependencyEnvironment(const PythonDependencyEnvironment& environment) {
+    std::lock_guard<std::recursive_mutex> operationLock(PythonOperationMutex());
+    auto& registry = DependencyRegistry();
+
+    std::vector<PythonRuntimeContext*> contexts;
+    PythonDependencyEnvironment previous;
+    {
+        std::lock_guard<std::mutex> lock(registry.mutex);
+        if (registry.activeEnvironment.key == environment.key &&
+            registry.activeEnvironment.sitePackagesPath ==
+                environment.sitePackagesPath) {
+            return Result::SUCCESS;
+        }
+
+        previous = registry.activeEnvironment;
+        for (const auto& [context, record] : registry.records) {
+            if (record.scheduled) {
+                contexts.push_back(context);
+            }
+        }
+    }
+    std::ranges::sort(contexts, std::less<PythonRuntimeContext*>());
+
+    std::vector<PythonRuntimeContext*> unloaded;
+    for (auto* context : contexts) {
+        const auto result = context->unloadCompute();
+        if (result != Result::SUCCESS) {
+            for (auto* previousContext : unloaded) {
+                (void)previousContext->loadCompute();
+            }
+            return result;
+        }
+        unloaded.push_back(context);
+    }
+
+    const auto switchResult = SwitchPythonEnvironmentPath(
+        previous.sitePackagesPath, environment.sitePackagesPath);
+    if (switchResult != Result::SUCCESS) {
+        (void)SwitchPythonEnvironmentPath(environment.sitePackagesPath,
+                                          previous.sitePackagesPath);
+        for (auto* context : contexts) {
+            (void)context->loadCompute();
+        }
+        return switchResult;
+    }
+
+    for (auto* context : contexts) {
+        const auto result = context->loadCompute();
+        if (result == Result::SUCCESS) {
+            continue;
+        }
+
+        for (auto* loadedContext : contexts) {
+            (void)loadedContext->unloadCompute();
+        }
+        (void)SwitchPythonEnvironmentPath(environment.sitePackagesPath,
+                                          previous.sitePackagesPath);
+        for (auto* previousContext : contexts) {
+            (void)previousContext->loadCompute();
+        }
+        return result;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(registry.mutex);
+        registry.activeEnvironment = environment;
+    }
+    return Result::SUCCESS;
 }
 
 PythonRuntimeContext::PythonRuntimeContext() {

@@ -7,10 +7,10 @@
 #include <unordered_set>
 #include <vector>
 
+#include "jetstream/flowgraph.hh"
 #include "jetstream/module_interface.hh"
 #include "jetstream/runtime.hh"
 #include "jetstream/runtime_context.hh"
-#include "jetstream/runtime_context_python.hh"
 #include "jetstream/tensor_link.hh"
 #include "runtime/python/bridge/cpython/base.hh"
 
@@ -20,6 +20,22 @@ std::recursive_mutex& PythonOperationMutex();
 
 struct Bridge {
  public:
+    struct Scope {
+     public:
+        Scope();
+        ~Scope();
+
+        Scope(const Scope&) = delete;
+        Scope& operator=(const Scope&) = delete;
+
+        Result result() const;
+
+     private:
+        bool active_ = false;
+        bool ownsGil_ = false;
+        Result status_ = Result::SUCCESS;
+    };
+
     Result start(const std::string& source,
                  const Module::Interface::EntryList& inputOrder,
                  const TensorMap& inputs,
