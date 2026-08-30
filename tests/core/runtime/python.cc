@@ -24,6 +24,7 @@
 #include "jetstream/platform.hh"
 #include "jetstream/runtime_context_python.hh"
 #include "jetstream/scheduler_context.hh"
+#include "runtime/python/context.hh"
 #include "runtime/python/dependencies/base.hh"
 
 namespace {

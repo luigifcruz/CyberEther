@@ -8,8 +8,6 @@
 
 namespace Jetstream {
 
-struct PythonRuntimeContext;
-
 //
 // Metadata [dependencies/metadata.cc]
 //
@@ -63,22 +61,6 @@ struct PythonDependencyEnvironment {
 JETSTREAM_API Result PreparePythonDependencyEnvironment(const std::vector<std::string>& requirements,
                                                         bool installIfMissing,
                                                         PythonDependencyEnvironment& environment);
-
-//
-// Runtime Registry [runtime/python/context.cc]
-//
-
-struct PythonDependencySnapshot {
-    std::vector<std::string> requirements;
-    U64 generation = 0;
-};
-
-JETSTREAM_API Result StagePythonDependencies(const PythonRuntimeContext* context,
-                                             const std::vector<std::string>& requirements);
-JETSTREAM_API Result SchedulePythonDependencies(const PythonRuntimeContext* context);
-JETSTREAM_API Result UnschedulePythonDependencies(const PythonRuntimeContext* context);
-JETSTREAM_API Result RemovePythonDependencies(const PythonRuntimeContext* context);
-JETSTREAM_API PythonDependencySnapshot SnapshotPythonDependencies();
 
 }  // namespace Jetstream
 

@@ -6,6 +6,7 @@
 
 #include "bridge/base.hh"
 #include "runtime/helpers.hh"
+#include "runtime/python/context.hh"
 #include "runtime/python/dependencies/base.hh"
 
 namespace Jetstream {
