@@ -6,6 +6,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -24,6 +25,7 @@ struct NodeCodeEditor {
         bool consoleVisible = false;
         bool collapsible = false;
         bool autoHeight = false;
+        std::optional<F32> height;
         F32 maxAutoHeightWindowRatio = 0.5f;
         Language language = Language::Python;
         bool lineNumbers = true;

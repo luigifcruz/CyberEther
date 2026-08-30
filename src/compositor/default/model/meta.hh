@@ -19,13 +19,12 @@ struct NodeMeta {
 };
 
 struct SurfaceMeta {
-    U64 attachedWidth = 256;
     U64 attachedHeight = 256;
     U64 detachedWidth = 512;
     U64 detachedHeight = 512;
     bool detached = false;
 
-    JST_SERDES(attachedWidth, attachedHeight, detachedWidth, detachedHeight, detached);
+    JST_SERDES(attachedHeight, detachedWidth, detachedHeight, detached);
 };
 
 struct StackDockFlowgraphMeta {

@@ -40,6 +40,8 @@ struct KeyboardInput::Impl {
                 return ImGui::IsKeyPressed(ImGuiKey_W, config.repeat);
             case Key::I:
                 return ImGui::IsKeyPressed(ImGuiKey_I, config.repeat);
+            case Key::G:
+                return ImGui::IsKeyPressed(ImGuiKey_G, config.repeat);
             case Key::Comma:
                 return ImGui::IsKeyPressed(ImGuiKey_Comma, config.repeat);
         }

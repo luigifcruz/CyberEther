@@ -1219,6 +1219,83 @@ TEST_CASE("Python runtime rolls back failed dependency environment reloads",
     REQUIRE(ActivatePythonDependencyEnvironment({}) == Result::SUCCESS);
 }
 
+TEST_CASE("Python runtime exposes and restores SKIP in compute()", "[core][runtime][python]") {
+    Tensor input;
+    REQUIRE(input.create(DeviceType::CPU, DataType::F32, {1}) == Result::SUCCESS);
+    input.at<F32>(0) = 2.0f;
+
+    TensorMap inputs;
+    inputs["in"].produced("source", "out", input);
+
+    auto module = makePythonRuntimeSmokeModule(R"PY(
+_calls = 0
+_original_skip = SKIP
+
+def compute(ctx):
+    global _calls
+    _calls += 1
+    if _calls == 1:
+        return SKIP
+
+    ctx.outputs[0][...] = ctx.inputs[0] * 5.0
+    if _calls == 3:
+        globals()["SKIP"] = object()
+        raise ValueError("__JETSTREAM_SKIP_REBIND_ERROR__")
+
+    return True
+
+def cleanup():
+    if SKIP is _original_skip:
+        print("__JETSTREAM_SKIP_RESTORED__")
+    else:
+        print("__JETSTREAM_SKIP_CORRUPTED__")
+)PY");
+    Parser::Map config;
+    const auto createResult = module->create("python_runtime_skip", config, inputs);
+
+    if (!pythonRuntimeAvailable(createResult)) {
+        destroyUnavailablePythonModule(module, createResult);
+        SKIP("Optional Python runtime is unavailable: " << JST_LOG_LAST_ERROR());
+    }
+
+    REQUIRE(createResult == Result::SUCCESS);
+
+    Runtime runtime("python", DeviceType::CPU, RuntimeType::PYTHON);
+    REQUIRE(runtime.create({{"python_runtime_skip", module}}) == Result::SUCCESS);
+
+    std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(runtime.compute({"python_runtime_skip"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(skippedModules == std::unordered_set<std::string>{"python_runtime_skip"});
+    REQUIRE(failedModules.empty());
+
+    skippedModules.clear();
+    REQUIRE(runtime.compute({"python_runtime_skip"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(skippedModules.empty());
+    REQUIRE(failedModules.empty());
+    REQUIRE(module->outputs().at("out").tensor.at<F32>(0) == 10.0f);
+
+    REQUIRE(runtime.compute({"python_runtime_skip"}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(skippedModules == std::unordered_set<std::string>{"python_runtime_skip"});
+    REQUIRE(failedModules.empty());
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    destroyPythonCompute(module);
+
+    const auto diagnostic = module->context()->runtime()->diagnostic();
+    REQUIRE(std::ranges::any_of(diagnostic.console, [](const auto& line) {
+        return line.find("ValueError: __JETSTREAM_SKIP_REBIND_ERROR__") != std::string::npos;
+    }));
+    REQUIRE(std::ranges::any_of(diagnostic.console, [](const auto& line) {
+        return line.find("__JETSTREAM_SKIP_RESTORED__") != std::string::npos;
+    }));
+    REQUIRE_FALSE(std::ranges::any_of(diagnostic.console, [](const auto& line) {
+        return line.find("__JETSTREAM_SKIP_CORRUPTED__") != std::string::npos;
+    }));
+
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
 TEST_CASE("Python runtime expands source pieces before compiling compute()", "[core][runtime][python]") {
     Tensor input;
     REQUIRE(input.create(DeviceType::CPU, DataType::F32, {4}) == Result::SUCCESS);

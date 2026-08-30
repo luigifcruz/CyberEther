@@ -14,10 +14,13 @@ jobs:
   build:
     name: build (${{ matrix.tag }})
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix:
-        include: &container_variants
+        include:
           - tag: x86_64
             runner: ubuntu-latest
             base: amd64/ubuntu:24.04@sha256:cdb5fd928fced577cfecf12c8966e830fcdf42ee481fb0b91904eeddc2fe5eff
@@ -58,41 +61,8 @@ jobs:
         run: |
           docker run --rm local/cyberether:${{ matrix.tag }} sh -c 'test ! -e /workspace/build && test ! -e /workspace/subprojects'
 
-      - name: Save image artifact
-        run: |
-          set -euo pipefail
-          mkdir -p .dist/images
-          docker save local/cyberether:${{ matrix.tag }} | gzip > .dist/images/cyberether-ubuntu24-${{ matrix.tag }}.tar.gz
-
-      - uses: actions/upload-artifact@v4.6.2
-        with:
-          name: cyberether-container-ubuntu24-${{ matrix.tag }}
-          path: .dist/images/cyberether-ubuntu24-${{ matrix.tag }}.tar.gz
-
-  publish:
-    if: ${{ inputs.publish }}
-    needs: build
-    name: publish (${{ matrix.tag }})
-    runs-on: ${{ matrix.runner }}
-    permissions:
-      contents: read
-      packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include: *container_variants
-    steps:
-      - uses: actions/download-artifact@v4.3.0
-        with:
-          name: cyberether-container-ubuntu24-${{ matrix.tag }}
-          path: .dist/images
-
-      - name: Load image
-        run: |
-          set -euo pipefail
-          gzip -dc .dist/images/cyberether-ubuntu24-${{ matrix.tag }}.tar.gz | docker load
-
       - name: Login to GHCR
+        if: ${{ inputs.publish }}
         uses: docker/login-action@v3.7.0
         with:
           registry: ghcr.io
@@ -100,6 +70,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push to GHCR
+        if: ${{ inputs.publish }}
         run: |
           set -euo pipefail
           REPO_LOWER="$(printf '%s' "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"

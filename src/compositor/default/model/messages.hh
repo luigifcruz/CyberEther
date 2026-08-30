@@ -228,6 +228,12 @@ struct MailSetBenchmarkModule {
     std::string moduleType;
 };
 
+struct MailSetFeedbackText {
+    std::string value;
+};
+
+struct MailSubmitFeedback {};
+
 struct MailSetFlowgraphInfo {
     std::string flowgraph;
     std::optional<std::string> title;
@@ -433,6 +439,8 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailRunBenchmark,
                           MailResetBenchmark,
                           MailSetBenchmarkModule,
+                          MailSetFeedbackText,
+                          MailSubmitFeedback,
                           MailSetFlowgraphInfo,
                           MailOpenRenameBlock,
                           MailRenameBlock,

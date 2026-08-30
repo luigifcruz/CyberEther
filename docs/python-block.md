@@ -77,7 +77,7 @@ Each output tensor is allocated by the block from its spec. The Python code cann
 
 ## Working With Tensors
 
-The `ctx.inputs` and `ctx.outputs` mappings are keyed by port index. CPU tensors arrive as NumPy arrays and CUDA tensors as CuPy arrays, both zero-copy views over the tensor memory:
+The `ctx.inputs` and `ctx.outputs` mappings are keyed by port index. The block exposes CPU tensors as NumPy arrays and CUDA tensors as CuPy arrays, both as zero-copy views over the tensor memory:
 
 ```python
 def compute(ctx):
@@ -91,6 +91,20 @@ Rules that matter:
 - **Inputs are read-only.** CPU inputs are enforced by NumPy, while CUDA inputs are wrapped in a read-only array type. Copy before mutating.
 - **Non-contiguous inputs work.** Strided views produced by blocks like `slice` or `permutation` map to properly strided arrays, with no copies and no restrictions.
 - **Devices can be mixed.** A single block can read CPU and CUDA inputs and produce outputs on either device, independent of the block's own device.
+
+### Skipping a Cycle
+
+Return `SKIP` when the block cannot produce a valid output during the current compute cycle:
+
+```python
+def compute(ctx):
+    if not has_complete_symbol(ctx.inputs[0]):
+        return SKIP
+
+    ctx.outputs[0][...] = decode_symbol(ctx.inputs[0])
+```
+
+The block and every downstream block are skipped for that cycle. All output tensors keep their fixed allocations, but their contents are not consumed downstream. The scheduler retries the block on the next cycle. Returning `None` (including an implicit return) or any other value completes the cycle normally. The global `SKIP` name is reserved for this behavior.
 
 ### CUDA Notes
 
@@ -112,7 +126,7 @@ Work submitted on custom CuPy streams is likewise the user's responsibility to s
 
 Tensors carry named metadata such as `sampleRate` and `frequency`. The block exposes them per port:
 
-- `ctx.input_attrs[i]`: read-only mapping of the input tensor's attributes, including values inherited through upstream propagation and derived attributes, refreshed at the start of every cycle.
+- Input tensor attributes (`ctx.input_attrs[i]`): read-only mapping of the input tensor's attributes, including values inherited through upstream propagation and derived attributes, refreshed at the start of every cycle.
 - Output tensor attributes (`ctx.output_attrs[i]`): writable dict for the output tensor. Writes are published when `compute` returns and become visible to downstream blocks in the same cycle, and to pin tooltips in the UI. Axes declared in the output tensor spec are excluded (see [Declaring Signal Axes](#declaring-signal-axes)).
 
 ```python

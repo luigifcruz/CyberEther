@@ -370,15 +370,21 @@ Result Bridge::run() {
         setError(kComputeErrorStatus);
         return Result::SKIP;
     }
+    const int skipRequested = PyObject_IsTrue(result);
+    Py_DecRef(result);
+    if (skipRequested < 0) {
+        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't read Python compute() result.");
+        setError(kComputeErrorStatus);
+        return Result::SKIP;
+    }
     flushAttributes();
     flushEnvironment();
     collectMetricsRequests();
 
     (void)consoleRefresh();
-    Py_DecRef(result);
     setInfo("Running.");
 
-    return Result::SUCCESS;
+    return skipRequested ? Result::SKIP : Result::SUCCESS;
 }
 
 }  // namespace Jetstream

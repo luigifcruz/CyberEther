@@ -15,6 +15,7 @@ The core suite covers all generic CyberEther behavior that is not specific to a 
 | `core-registry` | `jetstream-core-registry-tests` | `registry/` |
 | `core-render` | `jetstream-core-render-tests` | `render/` |
 | `core-runtime` | `jetstream-core-runtime-tests` | `runtime/` |
+| `core-sakura` | `jetstream-core-sakura-tests` | `sakura/` |
 | `core-serialization` | `jetstream-core-serialization-tests` | `serialization/` |
 | `core-settings` | `jetstream-core-settings-tests` | `settings/` |
 | `core-tools` | `jetstream-core-tools-tests` | `tools/` |

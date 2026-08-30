@@ -91,7 +91,8 @@ void Modal::render(const Context& ctx, Child child) {
     impl->closeButton.render(ctx);
 
     ImGui::SetItemDefaultFocus();
-    if (config.minWidth > 0.0f) {
+    const bool hasExplicitWidth = config.size.has_value() && config.size->x > 0.0f;
+    if (config.minWidth > 0.0f && !hasExplicitWidth) {
         ImGui::Dummy(Private::ToImVec2({Scale(ctx, config.minWidth), 0.0f}));
     }
     ImGui::EndPopup();

@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_MODAL_CONTAINER_HH
 
 #include "benchmark.hh"
+#include "feedback.hh"
 #include "plugin.hh"
 #include "remote.hh"
 #include "settings/base.hh"
@@ -27,6 +28,7 @@ struct ModalPresenter {
     BenchmarkModalPresenter benchmark;
     RemoteStreamingModalPresenter remoteStreaming;
     PluginPresenter plugin;
+    FeedbackModalPresenter feedback;
 
     explicit ModalPresenter(const PresenterContext& context) : context(context),
                                                                settings(context),
@@ -36,7 +38,8 @@ struct ModalPresenter {
                                                                renameBlock(context),
                                                                benchmark(context),
                                                                remoteStreaming(context),
-                                                               plugin(context) {}
+                                                               plugin(context),
+                                                               feedback(context) {}
 
     ModalView::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
@@ -81,6 +84,9 @@ struct ModalPresenter {
                 break;
             case ModalContent::Plugin:
                 config.plugin = plugin.build();
+                break;
+            case ModalContent::Feedback:
+                config.feedback = feedback.build();
                 break;
         }
 

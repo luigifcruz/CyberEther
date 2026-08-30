@@ -158,6 +158,16 @@ struct DefaultCompositorState {
         std::vector<FilePickerEntry> entries;
     };
 
+    struct FeedbackState {
+        enum class Status {
+            Idle,
+            Submitting,
+        };
+
+        Status status = Status::Idle;
+        std::string text;
+    };
+
     SystemState system;
     SakuraState sakura;
     InterfaceState interface;
@@ -172,6 +182,7 @@ struct DefaultCompositorState {
     ClipboardState clipboard;
     RemoteState remote;
     FilePickerState filePicker;
+    FeedbackState feedback;
 };
 
 }  // namespace Jetstream
