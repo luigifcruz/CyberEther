@@ -22,6 +22,7 @@ struct RuntimeSettingsPanel {
         bool restartRequired = false;
         std::function<void(const std::string&)> onPythonPathChange;
         std::function<void(const std::string&)> onDependencyPolicyChange;
+        std::function<void()> onOpenPythonEnvironmentCache;
         std::function<void(const std::string&, std::function<void(std::string)>)> onBrowsePythonPath;
     };
 
@@ -129,6 +130,29 @@ struct RuntimeSettingsPanel {
                 }
             },
         });
+
+        cacheTitle.update({
+            .id = "PythonEnvironmentCacheTitle",
+            .str = "Python Environment Cache",
+        });
+
+        cacheButton.update({
+            .id = "PythonEnvironmentCacheButton",
+            .str = "Open Cache Folder",
+            .size = {-1.0f, 34.0f},
+            .onClick = this->config.onOpenPythonEnvironmentCache,
+        });
+
+        cacheDescription.update({
+            .id = "PythonEnvironmentCacheDescription",
+            .str = "Browse cached Python dependency environments in your file manager.",
+            .tone = Sakura::Text::Tone::Secondary,
+            .wrapped = true,
+        });
+
+        cacheFooterDivider.update({
+            .id = "PythonEnvironmentCacheFooterDivider",
+        });
     }
 
     void render(const Sakura::Context& ctx) const {
@@ -157,6 +181,11 @@ struct RuntimeSettingsPanel {
 
             runtimeDescription.render(ctx);
         });
+
+        cacheTitle.render(ctx);
+        cacheButton.render(ctx);
+        cacheDescription.render(ctx);
+        cacheFooterDivider.render(ctx);
     }
 
  private:
@@ -282,6 +311,10 @@ struct RuntimeSettingsPanel {
     Sakura::Text statusText;
     Sakura::SettingField dependencyPolicyField;
     Sakura::Combo dependencyPolicyCombo;
+    Sakura::Text cacheTitle;
+    Sakura::Button cacheButton;
+    Sakura::Text cacheDescription;
+    Sakura::Divider cacheFooterDivider;
     bool customPathSelected = false;
 };
 

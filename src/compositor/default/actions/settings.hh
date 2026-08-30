@@ -33,6 +33,7 @@ struct SettingsActions {
                               MailDismissUpdate,
                               MailSetPythonRuntimePath,
                               MailSetRuntimeDependencyPolicy,
+                              MailOpenPythonEnvironmentCache,
                               MailAddPluginPath,
                               MailRemovePluginPath,
                               MailReloadPlugin,
@@ -195,6 +196,28 @@ struct SettingsActions {
         settings.runtime.dependencyPolicy = msg.value;
         JST_CHECK(Settings::Set(settings));
 
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailOpenPythonEnvironmentCache&) {
+        std::string cacheValue;
+        if (Platform::CachePath(cacheValue) != Result::SUCCESS) {
+            callbacks.notify(Sakura::ToastType::Error,
+                             5000,
+                             "Failed to locate the Python environment cache.");
+            return Result::SUCCESS;
+        }
+
+        const auto path = Platform::PathFromUtf8(cacheValue) /
+                          "python-environments";
+        std::error_code ec;
+        std::filesystem::create_directories(path, ec);
+        if (ec || Platform::OpenFolder(Platform::PathToUtf8(path)) !=
+                      Result::SUCCESS) {
+            callbacks.notify(Sakura::ToastType::Error,
+                             5000,
+                             "Failed to open the Python environment cache.");
+        }
         return Result::SUCCESS;
     }
 

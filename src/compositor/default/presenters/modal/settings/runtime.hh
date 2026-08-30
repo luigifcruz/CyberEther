@@ -31,6 +31,9 @@ struct RuntimeSettingsPresenter {
             .onDependencyPolicyChange = [enqueue](const std::string& value) {
                 enqueue(MailSetRuntimeDependencyPolicy{.value = value});
             },
+            .onOpenPythonEnvironmentCache = [enqueue]() {
+                enqueue(MailOpenPythonEnvironmentCache{});
+            },
             .onBrowsePythonPath = [enqueue](const std::string& currentPath, std::function<void(std::string)> onSelect) {
                 enqueue(MailBrowseConfigPath{
                     .path = currentPath,
