@@ -30,6 +30,7 @@ struct Button {
         std::string borderColorKey = "button_outline";
         std::string textColorKey = "button_text";
         F32 textScale = 1.0f;
+        F32 rounding = -1.0f;
         std::function<void()> onClick;
     };
 

@@ -1,5 +1,7 @@
 #include <jetstream/render/sakura/components/button.hh>
 
+#include <algorithm>
+
 #include "../helpers.hh"
 
 namespace Jetstream::Sakura {
@@ -139,12 +141,30 @@ void Button::render(const Context& ctx) const {
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, Scale(ctx, 1.0f));
     styleColorCount += 1;
 
+    I32 styleVarCount = 1;
+    if (config.rounding >= 0.0f) {
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, Scale(ctx, config.rounding));
+        styleVarCount += 1;
+    }
+
     if (config.disabled) {
         ImGui::BeginDisabled();
     }
 
     if (config.textScale != 1.0f) {
         ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * config.textScale);
+    }
+
+    if (config.size.y > 0.0f) {
+        const F32 buttonHeight = Scale(ctx, config.size.y);
+        const F32 labelHeight = ImGui::CalcTextSize(config.str.c_str(), nullptr, true).y;
+        const F32 maxPaddingY = std::max((buttonHeight - labelHeight) * 0.5f, 0.0f);
+        const F32 paddingY = std::min(ImGui::GetStyle().FramePadding.y, maxPaddingY);
+        if (paddingY < ImGui::GetStyle().FramePadding.y) {
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+                                ImVec2(ImGui::GetStyle().FramePadding.x, paddingY));
+            styleVarCount += 1;
+        }
     }
 
     const bool pressed = ImGui::Button(config.str.c_str(), Private::ToImVec2(Scale(ctx, config.size)));
@@ -165,7 +185,7 @@ void Button::render(const Context& ctx) const {
         ImGui::EndDisabled();
     }
 
-    ImGui::PopStyleVar();
+    ImGui::PopStyleVar(styleVarCount);
 
     if (styleColorCount > 0) {
         ImGui::PopStyleColor(styleColorCount);
