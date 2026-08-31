@@ -18,6 +18,7 @@ struct TextView : public Component {
         std::string value;
         F32 fontSize = 15.0f;
         F32 fontScale = 1.0f;
+        F32 contentPadding = 0.0f;
         std::string fontName = "default_mono";
         bool monospace = true;
         bool lineNumbers = false;

@@ -1,17 +1,24 @@
 #include <jetstream/render/sakura/components/retained/text_view.hh>
 
+#include <jetstream/render/sakura/components/retained/box.hh>
+
+#include "../../context.hh"
+
+#include <algorithm>
 #include <utility>
 
 namespace Jetstream::Sakura::Retained {
 
 struct TextView::Impl {
     Config config;
+    Box background;
     TextGrid grid;
 };
 
 TextView::TextView() {
     this->impl = std::make_unique<Impl>();
     setClipsChildren(true);
+    add(this->impl->background);
     add(this->impl->grid);
 }
 
@@ -33,7 +40,9 @@ bool TextView::update(Config config) {
         .stickToBottom = impl->config.stickToBottom,
         .scrollbar = impl->config.scrollbar,
         .wrap = impl->config.wrap,
-        .backgroundColorKey = impl->config.backgroundColorKey,
+        .backgroundColorKey = impl->config.contentPadding > 0.0f
+                                  ? "transparent"
+                                  : impl->config.backgroundColorKey,
         .textColorKey = impl->config.textColorKey,
         .lineNumberColorKey = impl->config.lineNumberColorKey,
         .gutterSeparatorColorKey = impl->config.gutterSeparatorColorKey,
@@ -55,11 +64,33 @@ bool TextView::update(Config config) {
 }
 
 Extent2D<F32> TextView::measure(const Context& ctx, Extent2D<F32> available) {
-    return measureChild(this->impl->grid, ctx, available);
+    const F32 padding = impl->config.contentPadding * ctx.pixelRatio;
+    const Extent2D<F32> innerAvailable = {
+        available.x,
+        std::max(0.0f, available.y - 2.0f * padding),
+    };
+    const auto inner = measureChild(this->impl->grid, ctx, innerAvailable);
+    return {inner.x, inner.y + 2.0f * padding};
 }
 
 void TextView::layout(const Context& ctx) {
-    layoutChild(ctx, this->impl->grid, frame());
+    const F32 padding = impl->config.contentPadding * ctx.pixelRatio;
+    impl->background.update({
+        .id = impl->config.id + ":background",
+        .instances = {{
+            .rect = frame(),
+            .visible = impl->config.contentPadding > 0.0f && !frame().empty(),
+            .backgroundColor = ctx.color(impl->config.backgroundColorKey),
+        }},
+    });
+    layoutChild(ctx, this->impl->background, frame());
+    const Rect content = {
+        frame().x,
+        frame().y + padding,
+        frame().width,
+        std::max(0.0f, frame().height - 2.0f * padding),
+    };
+    layoutChild(ctx, this->impl->grid, content);
 }
 
 }  // namespace Jetstream::Sakura::Retained
