@@ -147,7 +147,8 @@ Result RunWindowsProcess(const std::string& executable,
                          const std::vector<std::string>& arguments,
                          std::string& output,
                          U64 timeoutMilliseconds,
-                         bool combineOutput) {
+                         bool combineOutput,
+                         const std::function<void(std::string_view)>& onOutput) {
     std::wstring nativeExecutable;
     if (!ResolveWindowsExecutable(executable, nativeExecutable)) {
         return Result::ERROR;
@@ -298,6 +299,9 @@ Result RunWindowsProcess(const std::string& executable,
                             return Result::ERROR;
                         }
                         captured.append(buffer, bytesRead);
+                        if (onOutput) {
+                            onOutput(std::string_view(buffer, bytesRead));
+                        }
                         continue;
                     }
                 }
@@ -335,6 +339,9 @@ Result RunWindowsProcess(const std::string& executable,
                 return Result::ERROR;
             }
             captured.append(buffer, bytesRead);
+            if (onOutput) {
+                onOutput(std::string_view(buffer, bytesRead));
+            }
         }
     } catch (...) {
         return Result::ERROR;
@@ -412,7 +419,8 @@ Result RunPosixProcess(const std::string& executable,
                        const std::vector<std::string>& arguments,
                        std::string& output,
                        U64 timeoutMilliseconds,
-                       bool combineOutput) {
+                       bool combineOutput,
+                       const std::function<void(std::string_view)>& onOutput) {
     std::vector<std::string> processArguments;
     processArguments.reserve(arguments.size() + 1);
     processArguments.push_back(executable);
@@ -498,6 +506,10 @@ Result RunPosixProcess(const std::string& executable,
                     return Result::ERROR;
                 }
                 captured.append(buffer, static_cast<std::size_t>(bytesRead));
+                if (onOutput) {
+                    onOutput(std::string_view(buffer,
+                                              static_cast<std::size_t>(bytesRead)));
+                }
                 continue;
             }
             if (bytesRead < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
@@ -532,6 +544,10 @@ Result RunPosixProcess(const std::string& executable,
                 return Result::ERROR;
             }
             captured.append(buffer, static_cast<std::size_t>(bytesRead));
+            if (onOutput) {
+                onOutput(std::string_view(buffer,
+                                          static_cast<std::size_t>(bytesRead)));
+            }
         }
     } catch (...) {
         if (!processExited) {
@@ -559,21 +575,25 @@ Result RunProcess(const std::string& executable,
                   const std::vector<std::string>& arguments,
                   std::string& output,
                   U64 timeoutMilliseconds,
-                  bool combineOutput) {
+                  bool combineOutput,
+                  std::function<void(std::string_view)> onOutput) {
     if (executable.empty()) {
         return Result::ERROR;
     }
 
 #if defined(JST_OS_WINDOWS)
-    return RunWindowsProcess(executable, arguments, output, timeoutMilliseconds, combineOutput);
+    return RunWindowsProcess(executable, arguments, output, timeoutMilliseconds,
+                             combineOutput, onOutput);
 #elif defined(JST_OS_BROWSER) || defined(JST_OS_IOS) || defined(JST_OS_ANDROID)
     (void)arguments;
     (void)output;
     (void)timeoutMilliseconds;
     (void)combineOutput;
+    (void)onOutput;
     return Result::ERROR;
 #else
-    return RunPosixProcess(executable, arguments, output, timeoutMilliseconds, combineOutput);
+    return RunPosixProcess(executable, arguments, output, timeoutMilliseconds,
+                           combineOutput, onOutput);
 #endif
 }
 

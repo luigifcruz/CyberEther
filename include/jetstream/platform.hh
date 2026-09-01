@@ -7,6 +7,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "jetstream/types.hh"
@@ -67,7 +68,8 @@ JETSTREAM_API Result RunProcess(const std::string& executable,
                                 const std::vector<std::string>& arguments,
                                 std::string& output,
                                 U64 timeoutMilliseconds = 0,
-                                bool combineOutput = false);
+                                bool combineOutput = false,
+                                std::function<void(std::string_view)> onOutput = {});
 
 //
 // Dynamic Library

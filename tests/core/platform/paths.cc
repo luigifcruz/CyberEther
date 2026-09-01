@@ -678,6 +678,35 @@ TEST_CASE("Platform processes combine stdout and stderr",
     REQUIRE(output.find("stderr") != std::string::npos);
 }
 
+TEST_CASE("Platform processes stream captured output",
+          "[core][platform][process]") {
+    std::string output;
+    std::string streamed;
+    const auto onOutput = [&streamed](std::string_view chunk) {
+        streamed.append(chunk.data(), chunk.size());
+    };
+#if defined(JST_OS_WINDOWS)
+    REQUIRE(Platform::RunProcess(
+                "cmd.exe",
+                {"/D", "/C", "echo streamed-out& echo streamed-error 1>&2"},
+                output,
+                5000,
+                true,
+                onOutput) == Result::SUCCESS);
+#else
+    REQUIRE(Platform::RunProcess(
+                "/bin/sh",
+                {"-c", "printf streamed-out; printf streamed-error >&2"},
+                output,
+                5000,
+                true,
+                onOutput) == Result::SUCCESS);
+#endif
+    REQUIRE(streamed == output);
+    REQUIRE(streamed.find("streamed-out") != std::string::npos);
+    REQUIRE(streamed.find("streamed-error") != std::string::npos);
+}
+
 TEST_CASE("Platform process timeouts leave output transactional",
           "[core][platform][process]") {
     std::string output = "unchanged";
