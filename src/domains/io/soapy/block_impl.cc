@@ -87,7 +87,12 @@ Result SoapyImpl::define() {
          Modules::SoapyImpl::ListAvailableDevices(config.hintString)) {
         deviceOptions.push_back(jst::fmt::format("{}({})", label, label));
     }
+#ifdef JST_OS_BROWSER
+    deviceDropdown = jst::fmt::format("webusb-dropdown:{}",
+                                      jst::fmt::join(deviceOptions, ","));
+#else
     deviceDropdown = jst::fmt::format("dropdown:{}", jst::fmt::join(deviceOptions, ","));
+#endif
 
     JST_CHECK(defineInterfaceConfig("deviceString",
                                     "Device",

@@ -15,6 +15,7 @@ struct Soapy : public Block::Config {
     F32 sampleRate = 2.0e6;
     bool automaticGain = true;
     bool biasTee = false;
+    U64 webUsbRefresh = 0;
     U64 numberOfBatches = 8;
     U64 numberOfTimeSamples = 8192;
     U64 bufferMultiplier = 4;
@@ -23,7 +24,7 @@ struct Soapy : public Block::Config {
     JST_BLOCK_DOMAIN("IO");
     JST_BLOCK_PARAMS(modulePath, hintString, deviceString,
                      streamString, frequency, frequencyStep,
-                     sampleRate, automaticGain, biasTee, numberOfBatches,
+                     sampleRate, automaticGain, biasTee, webUsbRefresh, numberOfBatches,
                      numberOfTimeSamples, bufferMultiplier);
     JST_BLOCK_DESCRIPTION(
         "Soapy SDR",

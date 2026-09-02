@@ -1,0 +1,40 @@
+diff --git a/src/librtlsdr.c b/src/librtlsdr.c
+index 7c59a99..0000000 100644
+--- a/src/librtlsdr.c
++++ b/src/librtlsdr.c
+@@ -27,5 +27,35 @@
+ 
+ #include <libusb.h>
+ 
++#ifdef __EMSCRIPTEN__
++#include <pthread.h>
++
++static libusb_context *rtlsdr_browser_libusb_context;
++static int rtlsdr_browser_libusb_result;
++static pthread_once_t rtlsdr_browser_libusb_once = PTHREAD_ONCE_INIT;
++
++static void rtlsdr_browser_libusb_initialize(void)
++{
++	rtlsdr_browser_libusb_result =
++		libusb_init(&rtlsdr_browser_libusb_context);
++}
++
++static int rtlsdr_browser_libusb_init(libusb_context **ctx)
++{
++	pthread_once(&rtlsdr_browser_libusb_once,
++		     rtlsdr_browser_libusb_initialize);
++	*ctx = rtlsdr_browser_libusb_context;
++	return rtlsdr_browser_libusb_result;
++}
++
++static void rtlsdr_browser_libusb_exit(libusb_context *ctx)
++{
++	(void)ctx;
++}
++
++#define libusb_init rtlsdr_browser_libusb_init
++#define libusb_exit rtlsdr_browser_libusb_exit
++#endif
++
+ /*
+  * All libusb callback functions should be marked with the LIBUSB_CALL macro

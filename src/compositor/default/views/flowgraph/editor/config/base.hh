@@ -16,6 +16,7 @@
 #include "uint.hh"
 #include "vector.hh"
 #include "vector_inline.hh"
+#include "webusb_dropdown.hh"
 
 namespace Jetstream {
 
@@ -34,6 +35,8 @@ struct FlowgraphConfigFieldInstance {
 
         if (kind == "dropdown") {
             dropdown.update(std::move(config));
+        } else if (kind == "webusb-dropdown") {
+            webUsbDropdown.update(std::move(config));
         } else if (kind == "float") {
             floatField.update(std::move(config));
         } else if (kind == "int") {
@@ -84,6 +87,8 @@ struct FlowgraphConfigFieldInstance {
     void render(const Sakura::Context& ctx) const {
         if (kind == "dropdown") {
             dropdown.render(ctx);
+        } else if (kind == "webusb-dropdown") {
+            webUsbDropdown.render(ctx);
         } else if (kind == "float") {
             floatField.render(ctx);
         } else if (kind == "int") {
@@ -129,6 +134,7 @@ struct FlowgraphConfigFieldInstance {
 
     std::string kind;
     FlowgraphConfigDropdownField dropdown;
+    FlowgraphConfigWebUsbDropdownField webUsbDropdown;
     FlowgraphConfigFloatField floatField;
     FlowgraphConfigIntField intField;
     FlowgraphConfigUIntField uintField;

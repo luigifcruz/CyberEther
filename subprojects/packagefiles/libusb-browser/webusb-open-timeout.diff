@@ -1,0 +1,48 @@
+diff --git a/libusb/os/emscripten_webusb.cpp b/libusb/os/emscripten_webusb.cpp
+index a0090890..00000000 100644
+--- a/libusb/os/emscripten_webusb.cpp
++++ b/libusb/os/emscripten_webusb.cpp
+@@ -140,18 +140,36 @@ EM_JS(void, usbi_em_copy_from_dataview, (void* dst, EM_VAL src), {
+ EM_JS(EM_VAL, usbi_em_device_safe_open_close, (EM_VAL device, bool open), {
+ 	device = Emval.toValue(device);
+ 	const symbol = Symbol.for('libusb.open_close_chain');
++	const withTimeout = (promise, operation) => {
++		let timer;
++		const timeout = new Promise((_, reject) => {
++			timer = setTimeout(() => {
++				reject(new DOMException(
++					'WebUSB ' + operation + ' timed out after 10 seconds',
++					'TimeoutError'));
++			}, 10000);
++		});
++		return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
++	};
+ 	let promiseChain = device[symbol] ?? Promise.resolve(0);
+-	device[symbol] = promiseChain = promiseChain.then(async refCount => {
++	device[symbol] = promiseChain = promiseChain.catch(error => {
++		console.warn('Recovering failed WebUSB open/close chain:', error);
++		return device.opened ? 1 : 0;
++	}).then(async refCount => {
+ 		if (open) {
+-			if (!refCount++) {
+-				await device.open();
++			if (!refCount && !device.opened) {
++				await withTimeout(device.open(), 'open');
+ 			}
+-		} else {
+-			if (!--refCount) {
+-				await device.close();
++			return refCount + 1;
++		}
++
++		if (refCount <= 1) {
++			if (device.opened) {
++				await withTimeout(device.close(), 'close');
+ 			}
++			return 0;
+ 		}
+-		return refCount;
++		return refCount - 1;
+ 	});
+ 	return Emval.toHandle(promiseChain);
+ });
