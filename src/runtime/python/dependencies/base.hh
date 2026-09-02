@@ -1,7 +1,9 @@
 #ifndef JETSTREAM_RUNTIME_PYTHON_DEPENDENCIES_BASE_HH
 #define JETSTREAM_RUNTIME_PYTHON_DEPENDENCIES_BASE_HH
 
+#include <functional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "jetstream/types.hh"
@@ -60,7 +62,8 @@ struct PythonDependencyEnvironment {
 
 JETSTREAM_API Result PreparePythonDependencyEnvironment(const std::vector<std::string>& requirements,
                                                         bool installIfMissing,
-                                                        PythonDependencyEnvironment& environment);
+                                                        PythonDependencyEnvironment& environment,
+                                                        std::function<void(std::string_view)> onOutput = {});
 
 }  // namespace Jetstream
 

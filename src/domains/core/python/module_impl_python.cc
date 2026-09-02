@@ -12,6 +12,7 @@
 #include <jetstream/scheduler_context.hh>
 
 #include "module_impl.hh"
+#include "runtime/python/context.hh"
 
 namespace Jetstream::Modules {
 
@@ -86,6 +87,7 @@ Result PythonImplPython::validate() {
 }
 
 Result PythonImplPython::loadComputeSource(const std::string& source) {
+    JST_CHECK(SetPythonDependencyOrigin(this, name(), view()));
     const auto computeResult = createCompute(source,
                                              {},
                                              inputPortOrder(),

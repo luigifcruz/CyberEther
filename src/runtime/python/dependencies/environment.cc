@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "jetstream/config.hh"
@@ -184,7 +185,8 @@ Result CreateTemporaryDirectory(const std::filesystem::path& root,
 
 Result PreparePythonDependencyEnvironment(const std::vector<std::string>& requestedRequirements,
                                           bool installIfMissing,
-                                          PythonDependencyEnvironment& environment) {
+                                          PythonDependencyEnvironment& environment,
+                                          std::function<void(std::string_view)> onOutput) {
     if (requestedRequirements.empty()) {
         environment = {};
         return Result::SUCCESS;
@@ -271,7 +273,7 @@ Result PreparePythonDependencyEnvironment(const std::vector<std::string>& reques
     };
     std::string output;
     if (Platform::RunProcess(program, arguments, output, kInstallTimeoutMilliseconds,
-                             true) != Result::SUCCESS) {
+                             true, std::move(onOutput)) != Result::SUCCESS) {
         JST_ERROR("[RUNTIME_CONTEXT_PYTHON] pip failed to install Python "
                   "dependencies.\n{}",
                   output);

@@ -548,6 +548,90 @@ TEST_CASE("Python runtime combines scheduled dependency requirements",
     CHECK(SnapshotPythonDependencies().requirements.empty());
 }
 
+TEST_CASE("Python runtime approves dependency installation generations",
+          "[core][runtime][python][pep723]") {
+    struct ApprovalContext : PythonRuntimeContext {
+        Result loadCompute() override {
+            return Result::SUCCESS;
+        }
+    } context;
+
+    EnsurePythonCacheSandbox();
+    Backend::DestroyAll();
+    REQUIRE(Backend::Configure<DeviceType::CPU>(Backend::Config{
+                .dependencyPolicy = "prompt"}) == Result::SUCCESS);
+    REQUIRE(SetPythonDependencyPolicy("prompt") == Result::SUCCESS);
+
+    const std::string requirement =
+        "cyberether-approval-fixture; python_version < '0'";
+    REQUIRE(StagePythonDependencies(&context, {requirement}) == Result::SUCCESS);
+    REQUIRE(SetPythonDependencyOrigin(&context, "approval-python", nullptr) ==
+            Result::SUCCESS);
+    REQUIRE(SchedulePythonDependencies(&context) == Result::SUCCESS);
+
+    const auto reconcileResult = ReconcilePythonDependencies();
+    auto request = GetPythonDependencyRequest();
+    if (request.state == PythonDependencyRequestState::Failed) {
+        REQUIRE(UnschedulePythonDependencies(&context) == Result::SUCCESS);
+        REQUIRE(RemovePythonDependencies(&context) == Result::SUCCESS);
+        Backend::DestroyAll();
+        SKIP("Optional Python dependency approval runtime is unavailable: "
+             << request.message);
+    }
+    REQUIRE(reconcileResult == Result::INCOMPLETE);
+    REQUIRE(request.state == PythonDependencyRequestState::ApprovalRequired);
+    REQUIRE(request.dependencies.size() == 1);
+    REQUIRE(request.dependencies[0].requirement == requirement);
+    REQUIRE(request.dependencies[0].block == "approval-python");
+
+    const auto approvalGeneration = request.generation;
+    REQUIRE(SetPythonDependencyPolicy("deny") == Result::SUCCESS);
+    CHECK(GetPythonDependencyRequest().state == PythonDependencyRequestState::None);
+    CHECK(SnapshotPythonDependencies().generation > approvalGeneration);
+    REQUIRE(BeginPythonDependencyInstallation(approvalGeneration) == Result::ERROR);
+    REQUIRE(ReconcilePythonDependencies() == Result::INCOMPLETE);
+    const auto deniedRequest = GetPythonDependencyRequest();
+    REQUIRE(deniedRequest.state == PythonDependencyRequestState::Denied);
+    REQUIRE(deniedRequest.dependencies.size() == 1);
+    CHECK(deniedRequest.dependencies[0].requirement == requirement);
+    CHECK_FALSE(deniedRequest.message.empty());
+    REQUIRE(ReconcilePythonDependencies() == Result::INCOMPLETE);
+    CHECK(GetPythonDependencyRequest().state == PythonDependencyRequestState::Denied);
+    REQUIRE(BeginPythonDependencyInstallation(deniedRequest.generation) == Result::ERROR);
+
+    REQUIRE(SetPythonDependencyPolicy("prompt") == Result::SUCCESS);
+    REQUIRE(ReconcilePythonDependencies() == Result::INCOMPLETE);
+    request = GetPythonDependencyRequest();
+    REQUIRE(request.state == PythonDependencyRequestState::ApprovalRequired);
+    REQUIRE(request.generation > approvalGeneration);
+
+    REQUIRE(BeginPythonDependencyInstallation(request.generation + 1) ==
+            Result::ERROR);
+    REQUIRE(GetPythonDependencyRequest().state ==
+            PythonDependencyRequestState::ApprovalRequired);
+    REQUIRE(BeginPythonDependencyInstallation(request.generation) ==
+            Result::SUCCESS);
+    REQUIRE(GetPythonDependencyRequest().state ==
+            PythonDependencyRequestState::Installing);
+    const auto installResult = InstallPythonDependencies(request.generation);
+    if (installResult == Result::ERROR &&
+        JST_LOG_LAST_ERROR().find("No module named pip") != std::string::npos) {
+        REQUIRE(UnschedulePythonDependencies(&context) == Result::SUCCESS);
+        REQUIRE(RemovePythonDependencies(&context) == Result::SUCCESS);
+        Backend::DestroyAll();
+        SKIP("The selected optional Python runtime does not provide pip");
+    }
+    REQUIRE(installResult == Result::SUCCESS);
+    const auto installedRequest = GetPythonDependencyRequest();
+    REQUIRE(installedRequest.state == PythonDependencyRequestState::Installed);
+    CHECK(installedRequest.output.ends_with("Installation completed.\n"));
+
+    REQUIRE(UnschedulePythonDependencies(&context) == Result::SUCCESS);
+    REQUIRE(RemovePythonDependencies(&context) == Result::SUCCESS);
+    REQUIRE(ReconcilePythonDependencies() == Result::SUCCESS);
+    Backend::DestroyAll();
+}
+
 TEST_CASE("Python runtime caches pip dependency environments",
           "[core][runtime][python][pep723]") {
     EnsurePythonCacheSandbox();
@@ -585,8 +669,11 @@ TEST_CASE("Python runtime caches pip dependency environments",
     CHECK(missing.key == "unchanged");
 
     PythonDependencyEnvironment installed;
+    std::string installOutput;
     const auto installResult = PreparePythonDependencyEnvironment(
-        requirements, true, installed);
+        requirements, true, installed, [&installOutput](std::string_view output) {
+            installOutput.append(output.data(), output.size());
+        });
     const auto& installError = JST_LOG_LAST_ERROR();
     if (installResult != Result::SUCCESS &&
         (installError.find("No module named pip") != std::string::npos ||
@@ -596,6 +683,7 @@ TEST_CASE("Python runtime caches pip dependency environments",
     }
     INFO(installError);
     REQUIRE(installResult == Result::SUCCESS);
+    CHECK_FALSE(installOutput.empty());
     CHECK(installed.requirements ==
           std::vector<std::string>{packageRequirement, ignoredRequirement});
     CHECK(installed.key.size() == 64);
