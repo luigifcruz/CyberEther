@@ -22,6 +22,7 @@ struct Sdr : public Block::Config {
     F32 manualGain = 30.0f;
     std::vector<F32> manualGains;
     bool biasTee = false;
+    U64 webUsbRefresh = 0;
     U64 numberOfBatches = 8;
     U64 numberOfTimeSamples = 8192;
     U64 bufferMultiplier = 4;
@@ -31,7 +32,7 @@ struct Sdr : public Block::Config {
     JST_BLOCK_NODE_SIZE(M);
     JST_BLOCK_PARAMS(deviceString, driverArguments, antenna, antennas, channels, frequency, frequencyStep,
                      sampleRate, bandwidth, sampleFormat, automaticGain, manualGain, manualGains,
-                     biasTee, numberOfBatches, numberOfTimeSamples, bufferMultiplier);
+                     biasTee, webUsbRefresh, numberOfBatches, numberOfTimeSamples, bufferMultiplier);
     JST_BLOCK_DESCRIPTION(
         "SDR",
         "Receives samples from a USB radio.",
@@ -64,7 +65,8 @@ struct Sdr : public Block::Config {
         "| Setting | Default | Range | Effect |\n"
         "|---|---|---|---|\n"
         "| **Device** | None | None and the radios found | Radio to open, saved by "
-        "driver and serial number. Radios found through SoapySDR end in (SoapySDR). A "
+        "driver and serial number, or USB index for RTL-SDR receivers. USB indexes "
+        "can change when radios are reconnected. Radios found through SoapySDR end in (SoapySDR). A "
         "saved radio that is missing shows as Configured device. |\n"
         "| **Channels** | 1 | 1 to the radio's receivers | Receivers captured together "
         "in hardware order. Shown for bladeRF 2, LimeSDR-USB, LimeSDR XTRX, and SoapySDR "
@@ -175,7 +177,8 @@ struct Sdr : public Block::Config {
         "then replug the dongle. |\n"
         "| LimeSDR XTRX | Linux only. Load the limepcie kernel driver from LimeSuiteNG. |\n"
         "| Browser | The same radios except PlutoSDR and BirriaSDR over WebUSB, once "
-        "the page has been given access to the radio. |\n"
+        "Authorize SDR Device gives the page access and refreshes the Device list. "
+        "Use one SDR block per RTL-SDR receiver in a KrakenSDR or KerberosSDR. |\n"
         "| bladeRF 2 with two channels | An FPGA image of v0.15.3 or newer, for correct"
         " timestamps. |\n"
         "| SoapySDR radios | SoapySDR 0.8 or 0.9 and the radio's module installed on macOS, "

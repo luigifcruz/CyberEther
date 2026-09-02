@@ -17,4 +17,5 @@ src_lst += files([
     'uint.cc',
     'vector.cc',
     'vector_inline.cc',
+    'webusb_dropdown.cc',
 ])

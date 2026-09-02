@@ -73,6 +73,7 @@ TEST_CASE("Interface descriptors validate every control and internal metric",
         CAPTURE(type);
         REQUIRE(Block::Interface::ValidateFormat({{"type", type}}) == Result::SUCCESS);
     }
+
     REQUIRE(Block::Interface::ValidateFormat({{"type", "tensor-config"}, {"index", 2}, {"source", "outputs"}}) == Result::SUCCESS);
     for (const auto* type : {"label", "progressbar", "table"}) {
         REQUIRE(Block::Interface::ValidateFormat({{"type", type}}, true) == Result::SUCCESS);
@@ -99,6 +100,22 @@ TEST_CASE("Interface descriptors validate every control and internal metric",
     REQUIRE(Block::Interface::ValidateFormat({{"type", "python-diagnostic"}, {"visibility", "internal"}}, true) == Result::SUCCESS);
     REQUIRE(Block::Interface::ValidateFormat({{"type", "float"}, {"unit", "arbitrary"}, {"scale", 42.0},
                                              {"precision", 3}, {"step_config", "step"}}) == Result::SUCCESS);
+}
+
+TEST_CASE("WebUSB dropdown descriptors require valid device options",
+          "[core][serialization][interface][webusb]") {
+    const Parser::Map format{
+        {"type", "webusb-dropdown"},
+        {"options", Parser::Sequence{
+            Parser::Map{{"label", "None"}, {"value", ""}},
+            Parser::Map{{"label", "Receiver 0"}, {"value", "driver=rtlsdr,index=0"}},
+        }},
+    };
+    REQUIRE(Block::Interface::ValidateFormat(format) == Result::SUCCESS);
+    REQUIRE(Block::Interface::ValidateFormat({{"type", "webusb-dropdown"}}) == Result::ERROR);
+    auto invalid = format;
+    invalid["options"] = Parser::Sequence{Parser::Map{{"label", "Receiver"}, {"value", U64{0}}}};
+    REQUIRE(Block::Interface::ValidateFormat(invalid) == Result::ERROR);
 }
 
 TEST_CASE("Malformed interface descriptors fail without throwing",

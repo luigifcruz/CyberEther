@@ -10,6 +10,7 @@
 #include "jetstream/registry.hh"
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -340,6 +341,17 @@ std::string MigrateSoapySelection(const std::string& arguments) {
         }
         begin = end + 1;
     }
+#ifdef JETSTREAM_LOADER_RTLSDR_AVAILABLE
+    if (fields["driver"] == "rtlsdr" && fields.contains("index")) {
+        const auto& value = fields.at("index");
+        U32 index = 0;
+        const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), index);
+        if (error != std::errc{} || end != value.data() + value.size()) {
+            return {};
+        }
+        return jst::fmt::format("driver=rtlsdr,index={}", index);
+    }
+#endif
     auto serial = fields["serial"];
     if (serial.empty() || serial.find_first_of(",=") != std::string::npos) {
         return {};
@@ -384,7 +396,7 @@ Result MigrateSoapyBlocks(Parser::Map& root) {
         config["deviceString"] = MigrateSoapySelection(deviceString);
         const auto migrated = Parser::Get<std::string>(config, "deviceString");
         if (!deviceString.empty() && migrated.empty()) {
-            JST_WARN("[FLOWGRAPH] SoapySDR block '{}' has no driver and serial to match. Select its radio again.",
+            JST_WARN("[FLOWGRAPH] SoapySDR block '{}' has no valid driver and serial or USB index to match. Select its radio again.",
                      Parser::Get<std::string>(block, "name"));
         }
         const bool lime = migrated.starts_with("driver=limesdr,");

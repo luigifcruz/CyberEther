@@ -34,6 +34,7 @@ TEST_CASE("SDR block selections and settings round-trip through saved configurat
     config.deviceString = "driver=hackrf,serial=0000000000000000a06063c8234e925f";
     config.antenna = "LNAW";
     config.biasTee = true;
+    config.webUsbRefresh = 3;
     config.channels = 2;
     config.manualGains = {30.0f, 36.0f};
     config.frequency = 433.92e6;
@@ -49,6 +50,7 @@ TEST_CASE("SDR block selections and settings round-trip through saved configurat
     REQUIRE(restored.deviceString == config.deviceString);
     REQUIRE(restored.antenna == config.antenna);
     REQUIRE(restored.biasTee);
+    REQUIRE(restored.webUsbRefresh == 3);
     REQUIRE(restored.channels == 2);
     REQUIRE(restored.manualGains == config.manualGains);
     REQUIRE(restored.frequency == config.frequency);
@@ -171,6 +173,15 @@ graph:
       deviceString: 'driver=rtltcp,rtltcp=127.0.0.1:1234'
   - name: bare
     module: soapy
+  - name: indexed
+    module: soapy
+    config:
+      deviceString: 'driver=rtlsdr, index=1'
+      webUsbRefresh: 3
+  - name: indexedserial
+    module: soapy
+    config:
+      deviceString: 'driver=rtlsdr,index=2,serial=00000001'
   - name: lime
     module: soapy
     config:
@@ -211,6 +222,20 @@ graph:
     Parser::Map bare;
     REQUIRE(flowgraph->blockConfig("bare", bare) == Result::SUCCESS);
     REQUIRE(std::any_cast<F32>(bare.at("manualGain")) == Blocks::Sdr{}.manualGain);
+
+#ifdef JETSTREAM_LOADER_RTLSDR_AVAILABLE
+    for (const auto& [name, index] : std::vector<std::pair<std::string, U32>>{
+             {"indexed", 1}, {"indexedserial", 2}}) {
+        Parser::Map indexed;
+        REQUIRE(viewBlock(name).type == "sdr");
+        REQUIRE(flowgraph->blockConfig(name, indexed) == Result::SUCCESS);
+        REQUIRE(std::any_cast<std::string>(indexed.at("deviceString")) ==
+                jst::fmt::format("driver=rtlsdr,index={}", index));
+        if (name == "indexed") {
+            REQUIRE(std::any_cast<U64>(indexed.at("webUsbRefresh")) == 3);
+        }
+    }
+#endif
 
 #ifdef JETSTREAM_LOADER_LIMESUITE_AVAILABLE
     Parser::Map lime;

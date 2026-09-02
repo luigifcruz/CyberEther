@@ -160,6 +160,45 @@ TEST_CASE("String vectors show one dropdown per entry and patch the whole list",
     CHECK(SakuraTest::Find<Sakura::NodeCombo>(field.component()).size() == 1);
 }
 
+TEST_CASE("WebUSB device controls preserve dropdown selection and field identity",
+          "[core][sakura][interface][webusb]") {
+    FlowgraphConfigFieldInstance field;
+    std::vector<Parser::Map> edits;
+    FlowgraphConfigFieldConfig config{
+        .id = "radioDevice",
+        .name = "deviceString",
+        .label = "Device",
+        .format = {{"type", "webusb-dropdown"},
+                   {"options", Parser::Sequence{
+                       Parser::Map{{"label", "None"}, {"value", ""}},
+                       Parser::Map{{"label", "Receiver 0"}, {"value", "driver=rtlsdr,index=0"}},
+                       Parser::Map{{"label", "Receiver 1"}, {"value", "driver=rtlsdr,index=1"}},
+                   }}},
+        .values = {{"deviceString", "driver=rtlsdr,index=0"}, {"webUsbRefresh", U64{0}}},
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) {
+            edits.push_back(std::move(patch));
+        },
+    };
+    REQUIRE(Block::Interface::ValidateFormat(config.format) == Result::SUCCESS);
+    field.update(config);
+    REQUIRE_FALSE(field.isSimple());
+    const auto combos = SakuraTest::Find<Sakura::NodeCombo>(field.component());
+    REQUIRE(combos.size() == 1);
+    REQUIRE(combos.front()->config().selectedIndex == 1);
+    combos.front()->config().onSelect(2);
+    REQUIRE(edits.size() == 1);
+    REQUIRE(Parser::Get<std::string>(edits.front(), "deviceString") == "driver=rtlsdr,index=1");
+
+    config.id = "otherDevice";
+    config.format["type"] = std::string("dropdown");
+    field.update(config);
+    REQUIRE(field.isSimple());
+    REQUIRE(SakuraTest::Find<FlowgraphConfigWebUsbDropdownField>(field.component()).empty());
+
+    config.format = {{"type", "webusb-dropdown"}};
+    REQUIRE(Block::Interface::ValidateFormat(config.format) == Result::ERROR);
+}
+
 TEST_CASE("Scaled float vector entries stay unchanged when committed without an edit",
           "[core][sakura][interface]") {
     SakuraTest::Typist typist;

@@ -103,7 +103,7 @@ Result SdrImpl::define() {
 
     Parser::Sequence deviceOptions{Parser::Map{{"label", "None"}, {"value", ""}}};
     bool selectionListed = config.deviceString.empty();
-    for (const auto& [label, device] : Radio::Device::Label(Radio::Device::List())) {
+    for (const auto& [label, device] : Radio::Device::Label(Radio::Device::List(config.webUsbRefresh != 0))) {
         const auto value = device.selector();
         selectionListed = selectionListed || value == config.deviceString;
         deviceOptions.emplace_back(Parser::Map{{"label", label}, {"value", value}});
@@ -113,10 +113,15 @@ Result SdrImpl::define() {
                                                {"value", config.deviceString}});
     }
 
+#ifdef JST_OS_BROWSER
+    constexpr auto deviceFieldType = "webusb-dropdown";
+#else
+    constexpr auto deviceFieldType = "dropdown";
+#endif
     JST_CHECK(defineInterfaceConfig("deviceString",
                                     "Device",
                                     "Select a radio to receive samples. Choose None to disconnect.",
-                                    {{"type", "dropdown"}, {"options", std::move(deviceOptions)}}));
+                                    {{"type", deviceFieldType}, {"options", std::move(deviceOptions)}}));
 
     const auto selection = Radio::Device::Selection::Parse(config.deviceString);
     const bool soapy = selection && selection->driver == "soapy";

@@ -27,7 +27,7 @@ Result Block::Interface::ValidateFormat(const Parser::Map& format, const bool me
         return invalid("'visibility' must be public or internal.");
     }
     static const std::set<std::string> controls{
-        "bool", "int", "uint", "float", "range", "dropdown", "text", "multiline",
+        "bool", "int", "uint", "float", "range", "dropdown", "webusb-dropdown", "text", "multiline",
         "vector", "vector-inline", "filepicker", "filesave", "tensor-config", "markdown", "python",
         "python-console",
     };
@@ -156,7 +156,7 @@ Result Block::Interface::ValidateFormat(const Parser::Map& format, const bool me
             return invalid("'extensions' must be a sequence of strings.");
         }
     }
-    if (type == "dropdown") {
+    if (type == "dropdown" || type == "webusb-dropdown") {
         if (const auto error = optionsError("a dropdown"); !error.empty()) {
             return invalid(error);
         }

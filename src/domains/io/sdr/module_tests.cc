@@ -641,10 +641,43 @@ TEST_CASE("SDR selections round-trip and reject malformed identities",
     REQUIRE(empty->serial.empty());
 
     for (const auto* invalid : {"", "driver=rtlsdr", "serial=1", "driver=,serial=1",
-                                "driver=rtlsdr,serial=1,serial=2", "driver=rtlsdr,index=0",
+                                "driver=rtlsdr,serial=1,serial=2", "driver=rtlsdr,index=",
+                                "driver=rtlsdr,index=-1", "driver=rtlsdr,index=1x",
+                                "driver=rtlsdr,index=4294967296", "driver=rtlsdr,index=0,index=1",
+                                "driver=hackrf,index=0", "driver=rtlsdr,serial=1,index=0",
                                 "driver=rtlsdr;serial=1", "rtlsdr"}) {
         INFO(invalid);
         REQUIRE_FALSE(Radio::Device::Selection::Parse(invalid));
+    }
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "RTL-SDR indexes distinguish receivers with duplicate or empty serials",
+                 "[modules][sdr][backend][selection]") {
+    auto drivers = Radio::Device::Drivers();
+    REQUIRE(drivers.size() == 1);
+    drivers.front().name = "rtlsdr";
+    Radio::Device::Override(std::move(drivers));
+
+    for (const std::string serial : {"00000001", ""}) {
+        {
+            std::lock_guard lock(TestScript().mutex);
+            TestScript().devices = {{.serial = serial, .label = "RTL", .index = 0},
+                                    {.serial = serial, .label = "RTL", .index = 1}};
+        }
+        const auto devices = Radio::Device::List(true);
+        REQUIRE(devices.size() == 2);
+        REQUIRE(devices[0].selector() == "driver=rtlsdr,index=0");
+        REQUIRE(devices[1].selector() == "driver=rtlsdr,index=1");
+
+        std::unique_ptr<Radio::Stream> first;
+        std::unique_ptr<Radio::Stream> second;
+        REQUIRE(Radio::Stream::Open(devices[0].selector(), first) == Result::SUCCESS);
+        REQUIRE(Radio::Stream::Open(devices[1].selector(), second) == Result::SUCCESS);
+        REQUIRE(first->info().index == 0);
+        REQUIRE(second->info().index == 1);
+        REQUIRE(Radio::Stream::Open("driver=rtlsdr,index=2", second) == Result::INCOMPLETE);
+        REQUIRE(Radio::Stream::Open("driver=rtlsdr,serial=" + serial, second) == Result::INCOMPLETE);
     }
 }
 

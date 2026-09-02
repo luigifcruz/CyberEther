@@ -18,6 +18,7 @@
 #include "uint.hh"
 #include "vector.hh"
 #include "vector_inline.hh"
+#include "webusb_dropdown.hh"
 
 #include "../field_tooltip.hh"
 
@@ -31,6 +32,7 @@ struct FlowgraphConfigFieldInstance {
     enum class Kind {
         Unknown,
         Dropdown,
+        WebUsbDropdown,
         Float,
         Int,
         UInt,
@@ -72,6 +74,7 @@ struct FlowgraphConfigFieldInstance {
     std::string notifiedDecodeError;
     bool fullHeight = false;
     std::unique_ptr<FlowgraphConfigDropdownField> dropdown;
+    std::unique_ptr<FlowgraphConfigWebUsbDropdownField> webUsbDropdown;
     std::unique_ptr<FlowgraphConfigFloatField> floatField;
     std::unique_ptr<FlowgraphConfigIntField> intField;
     std::unique_ptr<FlowgraphConfigUIntField> uintField;
