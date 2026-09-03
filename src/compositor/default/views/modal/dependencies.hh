@@ -46,7 +46,7 @@ struct DependencyReviewView {
         header.update({
             .id = "DependencyReviewHeader",
             .title = ICON_FA_BOX " Install Python Dependencies",
-            .description = "Review the Python packages before approving their installation.",
+            .description = headerDescription(),
             .dividerSpacing = 0.0f,
         });
 
@@ -66,7 +66,7 @@ struct DependencyReviewView {
             .id = "DependencyReviewTable",
             .columns = {"Package", "Requested By"},
             .fixedColumnWidths = {0.0f, 190.0f},
-            .size = {0.0f, this->config.dependencies.size() > 4 ? 300.0f : 0.0f},
+            .size = {0.0f, this->config.dependencies.size() > 8 ? 320.0f : 0.0f},
         });
         requirementTexts.resize(this->config.dependencies.size());
         requestedByTexts.resize(this->config.dependencies.size());
@@ -104,8 +104,10 @@ struct DependencyReviewView {
 
         reloadNotice.update({
             .id = "DependencyReviewReloadNotice",
-            .str = "Dependencies are installed into a shared environment. Running blocks "
-                   "will be reloaded with the new environment once installation completes.",
+            .str = installed()
+                       ? "Running Python blocks were reloaded with the new environment."
+                       : "Packages install into a shared environment. Running Python blocks "
+                         "reload once installation completes.",
             .tone = Sakura::Text::Tone::Secondary,
             .wrapped = true,
         });
@@ -137,7 +139,7 @@ struct DependencyReviewView {
             .wrap = Sakura::Retained::TextGrid::Wrap::Word,
             .padding = consolePadding,
             .backgroundColorKey = "editor_console_background",
-            .textColorKey = failed() ? "error_red" : "editor_text",
+            .textColorKey = "editor_text",
         });
 
         installDivider.update({
@@ -188,20 +190,22 @@ struct DependencyReviewView {
             staleText.render(ctx);
         }
 
-        if (hasStatus() && !failed()) {
+        if (hasStatus()) {
             statusText.render(ctx);
         }
 
-        if (installing() || installed() || failed()) {
+        if (showConsole()) {
             consoleCanvas.render(ctx);
         }
 
-        if (!denied()) {
+        if (!denied() && !failed()) {
             reloadNotice.render(ctx);
         }
 
-        installDivider.render(ctx);
-        installButton.render(ctx);
+        if (showInstallButton()) {
+            installDivider.render(ctx);
+            installButton.render(ctx);
+        }
     }
 
  private:
@@ -214,26 +218,35 @@ struct DependencyReviewView {
         return config.state != State::Review || !config.message.empty();
     }
 
-    std::string installLabel() const {
-        switch (config.state) {
-            case State::Denied:
-                return "Installation Disabled";
-            case State::Installing:
-                return "Installing...";
-            case State::Installed:
-                return "Installed";
-            case State::Failed:
-                return "Retry";
-            case State::Review:
-                return "Install Once";
+    bool showConsole() const {
+        return installing() || installed() || (failed() && !config.output.empty());
+    }
+
+    bool showInstallButton() const {
+        return config.state == State::Review || failed();
+    }
+
+    std::string headerDescription() const {
+        if (installing() || installed()) {
+            return "Installation output is shown below.";
         }
-        return "";
+        if (failed()) {
+            return "Review the packages, then retry the installation.";
+        }
+        const auto count = config.dependencies.size();
+        if (count == 0) {
+            return "Review the Python packages before approving their installation.";
+        }
+        const std::string noun = count == 1 ? " Python package" : " Python packages";
+        return "Review the " + std::to_string(count) + noun +
+               " below before approving their installation.";
+    }
+
+    std::string installLabel() const {
+        return failed() ? "Retry" : "Install Once";
     }
 
     std::string consoleText() const {
-        if (failed()) {
-            return config.message.empty() ? "Installation failed." : config.message;
-        }
         return config.output.empty() ? "Waiting for pip output..." : config.output;
     }
 
