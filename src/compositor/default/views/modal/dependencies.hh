@@ -207,7 +207,7 @@ struct DependencyReviewView {
             staleText.render(ctx);
         }
 
-        if (installing) {
+        if (installing || installed) {
             statusText.render(ctx);
         }
 
@@ -240,7 +240,8 @@ struct DependencyReviewView {
                 return config.message.empty() ? "Installing dependencies…"
                                               : config.message;
             case State::Installed:
-                return "";
+                return config.message.empty() ? "Dependencies installed successfully."
+                                              : config.message;
             case State::Failed:
                 return config.message.empty() ? "Installation failed." : config.message;
             case State::Review:
