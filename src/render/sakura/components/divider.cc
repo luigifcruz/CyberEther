@@ -29,7 +29,7 @@ void Divider::render(const Context& ctx) const {
     if (config.spacing < 0.0f) {
         ImGui::Spacing();
     } else if (config.spacing > 0.0f) {
-        ImGui::Dummy(Private::ToImVec2({0.0f, Scale(ctx, config.spacing)}));
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + Scale(ctx, config.spacing));
     }
 
     if (config.separator) {
@@ -39,7 +39,8 @@ void Divider::render(const Context& ctx) const {
     if (config.spacing < 0.0f) {
         ImGui::Spacing();
     } else if (config.spacing > 0.0f) {
-        ImGui::Dummy(Private::ToImVec2({0.0f, Scale(ctx, config.spacing)}));
+        ImGui::Dummy({0.0f, Scale(ctx, config.spacing)});
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() - ImGui::GetStyle().ItemSpacing.y);
     }
 
     ImGui::PopID();

@@ -12,7 +12,7 @@ struct ModalHeader {
         std::string id;
         std::string title;
         std::string description;
-        F32 dividerSpacing = -1.0f;
+        F32 dividerSpacing = 4.0f;
     };
 
     void update(Config config) {

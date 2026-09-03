@@ -22,6 +22,7 @@ struct Table {
         std::vector<std::vector<std::string>> rows;
         std::vector<F32> fixedColumnWidths;
         Extent2D<F32> size = {0.0f, 0.0f};
+        F32 maxHeight = 0.0f;
         bool showHeaders = true;
         bool wrapped = false;
     };

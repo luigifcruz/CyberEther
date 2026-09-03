@@ -106,7 +106,7 @@ struct FlowgraphToolbar {
         });
         bannerText.update({
             .id = this->config.id + ":banner-text",
-            .str = this->config.dependencyReviewMessage,
+            .str = std::string(ICON_FA_BOX) + " " + this->config.dependencyReviewMessage,
             .colorKey = "banner_info_text",
             .scale = 1.0f,
             .verticalOffset = bannerTextOffset,
