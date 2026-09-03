@@ -9,6 +9,7 @@
 #include "../context.hh"
 
 #include "../../model/messages.hh"
+#include "../../views/components/callout.hh"
 #include "../../views/flowgraph/window.hh"
 
 #include "jetstream/flowgraph.hh"
@@ -39,8 +40,6 @@ struct FlowgraphWindowPresenter {
         if (context.state.interface.focusedFlowgraph == flowgraphId) {
             title = "• " + title;
         }
-        const bool dependencyReviewAvailable = hasDependencyReview(flowgraph);
-
         return FlowgraphWindow::Config{
             .id = MakeFlowgraphWindowId(flowgraphId),
             .title = std::move(title),
@@ -48,8 +47,9 @@ struct FlowgraphWindowPresenter {
             .stacks = stacks.build(flowgraphId, flowgraph),
             .detachedSurfaces = surfaces.build(flowgraphId, flowgraph),
             .empty = flowgraph->view().empty(),
-            .dependencyReviewAvailable = dependencyReviewAvailable,
-            .dependencyReviewMessage = "Python dependencies need approval.",
+            .dependencyReviewAvailable = hasDependencyReview(flowgraph),
+            .dependencyReviewTone = dependencyReviewTone(),
+            .dependencyReviewMessage = dependencyReviewMessage(),
             .onFocus = [enqueue, flowgraphId]() {
                 enqueue(MailFocusFlowgraph{flowgraphId});
             },
@@ -75,14 +75,38 @@ struct FlowgraphWindowPresenter {
     }
 
  private:
+    Callout::Tone dependencyReviewTone() const {
+        switch (context.state.runtime.dependencyRequest.state) {
+            case PythonDependencyRequestState::Failed:
+                return Callout::Tone::Error;
+            case PythonDependencyRequestState::Denied:
+                return Callout::Tone::Warning;
+            default:
+                return Callout::Tone::Info;
+        }
+    }
+
+    std::string dependencyReviewMessage() const {
+        switch (context.state.runtime.dependencyRequest.state) {
+            case PythonDependencyRequestState::Failed:
+                return "Python dependency installation failed.";
+            case PythonDependencyRequestState::Denied:
+                return "Python dependencies are blocked by policy.";
+            default:
+                return "Python dependencies need approval.";
+        }
+    }
+
     bool hasDependencyReview(const std::shared_ptr<Flowgraph>& currentFlowgraph) const {
         const auto& request = context.state.runtime.dependencyRequest;
-        if (request.state != PythonDependencyRequestState::ApprovalRequired) {
+        if (request.state != PythonDependencyRequestState::ApprovalRequired &&
+            request.state != PythonDependencyRequestState::Failed &&
+            request.state != PythonDependencyRequestState::Denied) {
             return false;
         }
 
         const auto* currentView = &currentFlowgraph->view();
-        return request.dependencies.empty() ||
+        return !request.dependencies.empty() &&
                std::ranges::any_of(
                    request.dependencies,
                    [currentView](const auto& dependency) {

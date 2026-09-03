@@ -353,6 +353,7 @@ Result BeginPythonDependencyInstallation(U64 generation) {
     registry.request.state = PythonDependencyRequestState::Installing;
     registry.request.output.clear();
     registry.request.message.clear();
+    registry.request.approved = true;
     return Result::SUCCESS;
 }
 
