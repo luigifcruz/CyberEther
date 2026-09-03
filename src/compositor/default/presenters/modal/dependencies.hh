@@ -6,7 +6,9 @@
 #include "../../model/messages.hh"
 #include "../../views/modal/dependencies.hh"
 
+#include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace Jetstream {
@@ -55,30 +57,7 @@ struct DependencyReviewModalPresenter {
 
         config.dependencies.reserve(request.dependencies.size());
         for (const auto& dependency : request.dependencies) {
-            auto block = dependency.block;
-            if (block.ends_with("-python")) {
-                block.resize(block.size() - std::string("-python").size());
-            }
-
-            std::string flowgraphId;
-            if (const auto view = dependency.view.lock()) {
-                for (const auto& [id, flowgraph] : context.state.flowgraph.items) {
-                    if (flowgraph && &flowgraph->view() == view.get()) {
-                        flowgraphId = id;
-                        break;
-                    }
-                }
-            }
-
-            std::string requestedBy;
-            if (!flowgraphId.empty() && !block.empty()) {
-                requestedBy = flowgraphId + " / " + block;
-            } else if (!flowgraphId.empty()) {
-                requestedBy = std::move(flowgraphId);
-            } else {
-                requestedBy = std::move(block);
-            }
-            config.dependencies.push_back({dependency.requirement, std::move(requestedBy)});
+            config.dependencies.push_back({dependency.requirement, requestedBy(dependency)});
         }
 
         const auto enqueue = context.callbacks.enqueueMail;
@@ -86,6 +65,35 @@ struct DependencyReviewModalPresenter {
             enqueue(MailInstallPythonDependencies{.generation = generation});
         };
         return config;
+    }
+
+ private:
+    static constexpr std::string_view moduleSuffix = "-python";
+
+    std::string flowgraphIdFor(const std::weak_ptr<Flowgraph::View>& weakView) const {
+        const auto view = weakView.lock();
+        if (!view) {
+            return "";
+        }
+        for (const auto& [id, flowgraph] : context.state.flowgraph.items) {
+            if (flowgraph && &flowgraph->view() == view.get()) {
+                return id;
+            }
+        }
+        return "";
+    }
+
+    std::string requestedBy(const PythonDependencyRequestEntry& dependency) const {
+        auto block = dependency.block;
+        if (block.ends_with(moduleSuffix)) {
+            block.resize(block.size() - moduleSuffix.size());
+        }
+
+        auto flowgraphId = flowgraphIdFor(dependency.view);
+        if (!flowgraphId.empty() && !block.empty()) {
+            return flowgraphId + " / " + block;
+        }
+        return flowgraphId.empty() ? block : flowgraphId;
     }
 };
 

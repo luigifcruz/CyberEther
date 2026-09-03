@@ -80,8 +80,8 @@ struct FlowgraphToolbar {
         });
         banner.update({
             .id = this->config.id + ":banner",
-            .size = {0.0f, 36.0f},
-            .padding = 5.0f,
+            .size = {0.0f, bannerHeight},
+            .padding = bannerPadding,
             .rounding = 8.0f,
             .border = true,
             .scrollbar = false,
@@ -98,7 +98,7 @@ struct FlowgraphToolbar {
         });
         bannerTextContainer.update({
             .id = this->config.id + ":banner-text-container",
-            .size = {382.0f, 26.0f},
+            .size = {382.0f, bannerRowHeight},
             .border = false,
             .scrollbar = false,
             .mouseScroll = false,
@@ -109,12 +109,12 @@ struct FlowgraphToolbar {
             .str = this->config.dependencyReviewMessage,
             .colorKey = "banner_info_text",
             .scale = 1.0f,
-            .verticalOffset = 5.0f,
+            .verticalOffset = bannerTextOffset,
         });
         reviewButtonContainer.update({
             .id = this->config.id + ":review-container",
-            .size = {72.0f, 26.0f},
-            .padding = 1.0f,
+            .size = {72.0f, bannerRowHeight},
+            .padding = reviewButtonPadding,
             .border = false,
             .scrollbar = false,
             .mouseScroll = false,
@@ -123,7 +123,7 @@ struct FlowgraphToolbar {
         reviewButton.update({
             .id = this->config.id + ":review",
             .str = "Review",
-            .size = {70.0f, 24.0f},
+            .size = {70.0f, bannerRowHeight - 2.0f * reviewButtonPadding},
             .variant = Sakura::Button::Variant::Action,
             .rounding = 5.0f,
             .onClick = this->config.onReviewDependencies,
@@ -162,8 +162,14 @@ struct FlowgraphToolbar {
     }
 
  private:
+    static constexpr F32 bannerPadding = 5.0f;
+    static constexpr F32 bannerRowHeight = 26.0f;
+    static constexpr F32 bannerHeight = bannerRowHeight + 2.0f * bannerPadding;
+    static constexpr F32 bannerTextOffset = 5.0f;
+    static constexpr F32 reviewButtonPadding = 1.0f;
     static constexpr Extent2D<F32> collapsedToolbarSize = {492.0f, 46.0f};
-    static constexpr Extent2D<F32> expandedToolbarSize = {492.0f, 90.0f};
+    static constexpr Extent2D<F32> expandedToolbarSize = {collapsedToolbarSize.x,
+                                                          collapsedToolbarSize.y + bannerHeight + 8.0f};
 
     Config config;
     Sakura::Overlay overlay;

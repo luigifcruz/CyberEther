@@ -37,16 +37,11 @@ struct DependencyReviewView {
     };
 
     DependencyReviewView() {
-        errorCanvas.mount(errorTextView);
+        consoleCanvas.mount(consoleTextView);
     }
 
     void update(Config config) {
         this->config = std::move(config);
-
-        const bool denied = this->config.state == State::Denied;
-        const bool installing = this->config.state == State::Installing;
-        const bool failed = this->config.state == State::Failed;
-        const bool installed = this->config.state == State::Installed;
 
         header.update({
             .id = "DependencyReviewHeader",
@@ -120,33 +115,29 @@ struct DependencyReviewView {
             .colorKey = statusColorKey(),
             .wrapped = true,
         });
-        errorCanvas.update({
-            .id = "DependencyReviewErrorCanvas",
+        consoleCanvas.update({
+            .id = "DependencyReviewConsoleCanvas",
             .size = {0.0f, 300.0f},
             .clearColor = {0.0f, 0.0f, 0.0f, 0.0f},
             .onLayout = [this](const Sakura::Retained::Canvas::Layout& layout) {
-                errorFontSizePixels = 15.0f * layout.pixelRatio;
-                errorPadding = {6.0f * layout.pixelRatio, 6.0f * layout.pixelRatio,
-                                6.0f * layout.pixelRatio, 6.0f * layout.pixelRatio};
+                consoleFontSizePixels = 15.0f * layout.pixelRatio;
+                consolePadding = {6.0f * layout.pixelRatio, 6.0f * layout.pixelRatio,
+                                  6.0f * layout.pixelRatio, 6.0f * layout.pixelRatio};
             },
         });
-        errorTextView.update({
-            .id = "DependencyReviewErrorText",
-            .value = failed
-                         ? (this->config.message.empty() ? "Installation failed."
-                                                         : this->config.message)
-                         : (this->config.output.empty() ? "Waiting for pip output..."
-                                                        : this->config.output),
-            .fontSize = errorFontSizePixels,
+        consoleTextView.update({
+            .id = "DependencyReviewConsoleText",
+            .value = consoleText(),
+            .fontSize = consoleFontSizePixels,
             .fontName = "default_mono",
             .monospace = true,
             .lineNumbers = false,
-            .stickToBottom = installing || installed,
+            .stickToBottom = installing() || installed(),
             .scrollbar = true,
             .wrap = Sakura::Retained::TextGrid::Wrap::Word,
-            .padding = errorPadding,
+            .padding = consolePadding,
             .backgroundColorKey = "editor_console_background",
-            .textColorKey = failed ? "error_red" : "editor_text",
+            .textColorKey = failed() ? "error_red" : "editor_text",
         });
 
         installDivider.update({
@@ -154,10 +145,7 @@ struct DependencyReviewView {
         });
         installButton.update({
             .id = "DependencyReviewInstall",
-            .str = denied ? "Installation Disabled"
-                          : (installing ? "Installing..."
-                                        : (failed ? "Retry"
-                                                  : (installed ? "Installed" : "Install Once"))),
+            .str = installLabel(),
             .size = {-1.0f, 40.0f},
             .variant = Sakura::Button::Variant::Action,
             .disabled = !this->config.installEnabled,
@@ -170,16 +158,9 @@ struct DependencyReviewView {
     }
 
     void render(const Sakura::Context& ctx) {
-        const bool installing = config.state == State::Installing;
-        const bool installed = config.state == State::Installed;
-        const bool failed = config.state == State::Failed;
-        const bool showDependencies = config.state == State::Review ||
-                                      config.state == State::Denied ||
-                                      failed;
-
         header.render(ctx);
 
-        if (showDependencies) {
+        if (!installing() && !installed()) {
             thirdPartyNotice.render(ctx);
             warningDivider.render(ctx);
             if (config.dependencies.empty()) {
@@ -207,17 +188,15 @@ struct DependencyReviewView {
             staleText.render(ctx);
         }
 
-        if (installing || installed) {
+        if (hasStatus() && !failed()) {
             statusText.render(ctx);
         }
 
-        if (installing || installed || failed) {
-            errorCanvas.render(ctx);
-        } else if (hasStatus()) {
-            statusText.render(ctx);
+        if (installing() || installed() || failed()) {
+            consoleCanvas.render(ctx);
         }
 
-        if (config.state != State::Denied) {
+        if (!denied()) {
             reloadNotice.render(ctx);
         }
 
@@ -226,8 +205,36 @@ struct DependencyReviewView {
     }
 
  private:
+    bool denied() const { return config.state == State::Denied; }
+    bool installing() const { return config.state == State::Installing; }
+    bool installed() const { return config.state == State::Installed; }
+    bool failed() const { return config.state == State::Failed; }
+
     bool hasStatus() const {
         return config.state != State::Review || !config.message.empty();
+    }
+
+    std::string installLabel() const {
+        switch (config.state) {
+            case State::Denied:
+                return "Installation Disabled";
+            case State::Installing:
+                return "Installing...";
+            case State::Installed:
+                return "Installed";
+            case State::Failed:
+                return "Retry";
+            case State::Review:
+                return "Install Once";
+        }
+        return "";
+    }
+
+    std::string consoleText() const {
+        if (failed()) {
+            return config.message.empty() ? "Installation failed." : config.message;
+        }
+        return config.output.empty() ? "Waiting for pip output..." : config.output;
     }
 
     std::string statusLine() const {
@@ -264,8 +271,8 @@ struct DependencyReviewView {
     }
 
     Config config;
-    F32 errorFontSizePixels = 15.0f;
-    Sakura::Padding errorPadding = {6.0f, 6.0f, 6.0f, 6.0f};
+    F32 consoleFontSizePixels = 15.0f;
+    Sakura::Padding consolePadding = {6.0f, 6.0f, 6.0f, 6.0f};
 
     ModalHeader header;
 
@@ -282,8 +289,8 @@ struct DependencyReviewView {
     Sakura::Text thirdPartyNotice;
 
     Sakura::Text statusText;
-    Sakura::Retained::Canvas errorCanvas;
-    Sakura::Retained::TextView errorTextView;
+    Sakura::Retained::Canvas consoleCanvas;
+    Sakura::Retained::TextView consoleTextView;
 
     Sakura::Divider installDivider;
     Sakura::Button installButton;
