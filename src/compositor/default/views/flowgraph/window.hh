@@ -27,6 +27,7 @@ struct FlowgraphWindow {
         std::vector<FlowgraphDetachedSurface::Config> detachedSurfaces;
         bool empty = false;
         bool dependencyReviewAvailable = false;
+        Callout::Tone dependencyReviewTone = Callout::Tone::Info;
         std::string dependencyReviewMessage;
         std::function<void()> onFocus;
         std::function<void()> onSave;
@@ -64,6 +65,7 @@ struct FlowgraphWindow {
         toolbar.update({
             .id = this->config.id + ":toolbar",
             .dependencyReviewAvailable = this->config.dependencyReviewAvailable,
+            .dependencyReviewTone = this->config.dependencyReviewTone,
             .dependencyReviewMessage = this->config.dependencyReviewMessage,
             .onSave = this->config.onSave,
             .onClose = this->config.onClose,

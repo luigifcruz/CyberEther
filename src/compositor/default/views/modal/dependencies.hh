@@ -33,6 +33,7 @@ struct DependencyReviewView {
         std::vector<DependencyEntry> dependencies;
         State state = State::Review;
         bool stale = false;
+        bool approved = false;
         bool installEnabled = false;
         std::string output;
         std::string message;
@@ -157,8 +158,8 @@ struct DependencyReviewView {
     void render(const Sakura::Context& ctx) {
         header.render(ctx);
 
-        if (!installing() && !installed()) {
-            if (config.state == State::Review && !config.dependencies.empty()) {
+        if (reviewLayout() || denied()) {
+            if (reviewLayout() && !config.dependencies.empty()) {
                 overviewText.render(ctx);
             }
             if (config.dependencies.empty()) {
@@ -195,7 +196,9 @@ struct DependencyReviewView {
         }
 
         if (showInstallButton()) {
-            thirdPartyCallout.render(ctx);
+            if (reviewLayout()) {
+                thirdPartyCallout.render(ctx);
+            }
             installDivider.render(ctx);
             installButton.render(ctx);
         }
@@ -206,13 +209,16 @@ struct DependencyReviewView {
     bool installing() const { return config.state == State::Installing; }
     bool installed() const { return config.state == State::Installed; }
     bool failed() const { return config.state == State::Failed; }
+    bool reviewLayout() const {
+        return config.state == State::Review || (failed() && !config.approved);
+    }
 
     bool hasStatus() const {
         return config.state != State::Review || !config.message.empty();
     }
 
     bool showConsole() const {
-        return installing() || installed() || (failed() && !config.output.empty());
+        return installing() || installed() || failed();
     }
 
     bool showInstallButton() const {
@@ -236,11 +242,17 @@ struct DependencyReviewView {
     }
 
     std::string installLabel() const {
-        return failed() ? "Retry" : "Install Once";
+        return failed() && config.approved ? "Retry" : "Install Once";
     }
 
     std::string consoleText() const {
-        return config.output.empty() ? "Waiting for pip output..." : config.output;
+        if (!config.output.empty()) {
+            return config.output;
+        }
+        if (failed()) {
+            return config.message.empty() ? "Installation failed." : config.message;
+        }
+        return "Waiting for pip output...";
     }
 
     std::string statusLine() const {
@@ -258,7 +270,10 @@ struct DependencyReviewView {
                 return config.message.empty() ? "Installed " + packageNoun() + " successfully."
                                               : config.message;
             case State::Failed:
-                return config.message.empty() ? "Installation failed." : config.message;
+                return config.approved
+                           ? "Installation failed. Check the output below, then retry."
+                           : "Preparing the environment failed. Check the output below, then "
+                             "review the packages and install again.";
             case State::Review:
                 return config.message;
         }

@@ -39,6 +39,7 @@ struct PythonDependencyRequest {
     std::vector<PythonDependencyRequestEntry> dependencies;
     std::string output;
     std::string message;
+    bool approved = false;
 };
 
 struct PythonDependencyStateSnapshot {

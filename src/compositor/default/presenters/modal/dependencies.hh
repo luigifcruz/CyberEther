@@ -29,6 +29,7 @@ struct DependencyReviewModalPresenter {
         config.stale = context.state.runtime.dependencyGeneration != request.generation;
         config.output = displayRequest.output;
         config.message = displayRequest.message;
+        config.approved = displayRequest.approved;
 
         switch (displayRequest.state) {
             case PythonDependencyRequestState::ApprovalRequired:

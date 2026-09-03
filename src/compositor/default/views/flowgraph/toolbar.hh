@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_TOOLBAR_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_TOOLBAR_HH
 
+#include "../components/callout.hh"
+
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
@@ -14,6 +16,7 @@ struct FlowgraphToolbar {
     struct Config {
         std::string id;
         bool dependencyReviewAvailable = false;
+        Callout::Tone dependencyReviewTone = Callout::Tone::Info;
         std::string dependencyReviewMessage;
         std::function<void()> onSave;
         std::function<void()> onClose;
@@ -78,6 +81,7 @@ struct FlowgraphToolbar {
             .size = {100.0f, 34.0f},
             .onClick = this->config.onSendFeedback,
         });
+        const std::string bannerKey = "banner_" + bannerToneKey();
         banner.update({
             .id = this->config.id + ":banner",
             .size = {0.0f, bannerHeight},
@@ -86,8 +90,8 @@ struct FlowgraphToolbar {
             .border = true,
             .scrollbar = false,
             .mouseScroll = false,
-            .colorKey = "banner_info_bg",
-            .borderColorKey = "banner_info_border",
+            .colorKey = bannerKey + "_bg",
+            .borderColorKey = bannerKey + "_border",
         });
         bannerLayout.update({
             .id = this->config.id + ":banner-layout",
@@ -107,7 +111,7 @@ struct FlowgraphToolbar {
         bannerText.update({
             .id = this->config.id + ":banner-text",
             .str = std::string(ICON_FA_BOX) + " " + this->config.dependencyReviewMessage,
-            .colorKey = "banner_info_text",
+            .colorKey = bannerKey + "_text",
             .scale = 1.0f,
             .verticalOffset = bannerTextOffset,
         });
@@ -124,7 +128,12 @@ struct FlowgraphToolbar {
             .id = this->config.id + ":review",
             .str = "Review",
             .size = {70.0f, bannerRowHeight - 2.0f * reviewButtonPadding},
-            .variant = Sakura::Button::Variant::Action,
+            .variant = reviewButtonVariant(),
+            .colorKey = reviewButtonKey("warning_btn", "button"),
+            .hoveredColorKey = reviewButtonKey("warning_btn_hovered", "button_hovered"),
+            .activeColorKey = reviewButtonKey("warning_btn_active", "button_active"),
+            .borderColorKey = reviewButtonKey("warning_btn_outline", "button_outline"),
+            .textColorKey = reviewButtonKey("warning_btn_text", "button_text"),
             .rounding = 5.0f,
             .onClick = this->config.onReviewDependencies,
         });
@@ -162,6 +171,35 @@ struct FlowgraphToolbar {
     }
 
  private:
+    std::string bannerToneKey() const {
+        switch (config.dependencyReviewTone) {
+            case Callout::Tone::Error:
+                return "error";
+            case Callout::Tone::Warning:
+                return "warning";
+            case Callout::Tone::Success:
+                return "success";
+            case Callout::Tone::Info:
+                break;
+        }
+        return "info";
+    }
+
+    Sakura::Button::Variant reviewButtonVariant() const {
+        switch (config.dependencyReviewTone) {
+            case Callout::Tone::Error:
+                return Sakura::Button::Variant::Destructive;
+            case Callout::Tone::Warning:
+                return Sakura::Button::Variant::Default;
+            default:
+                return Sakura::Button::Variant::Action;
+        }
+    }
+
+    std::string reviewButtonKey(const char* warningKey, const char* defaultKey) const {
+        return config.dependencyReviewTone == Callout::Tone::Warning ? warningKey : defaultKey;
+    }
+
     static constexpr F32 bannerPadding = 5.0f;
     static constexpr F32 bannerRowHeight = 26.0f;
     static constexpr F32 bannerHeight = bannerRowHeight + 2.0f * bannerPadding;
