@@ -1,5 +1,7 @@
 deps = [
-    subproject('tomlplusplus', required: true).get_variable('tomlplusplus_dep'),
+    subproject('tomlplusplus', required: true, default_options: [
+        'default_library=static',
+    ]).get_variable('tomlplusplus_dep'),
 ]
 
 all_deps_found = true
