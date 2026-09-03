@@ -24,6 +24,9 @@ constexpr F32 kBarHeight = 24.0f;
 constexpr F32 kStatusFontScale = 0.95f;
 constexpr F32 kConsoleFontScale = 0.92f;
 constexpr F32 kStatusTextHorizontalPadding = 8.0f;
+constexpr F32 kConsoleHeaderHeight = 12.0f;
+constexpr F32 kConsoleGripWidth = 28.0f;
+constexpr F32 kConsoleGripHeight = 3.0f;
 constexpr F32 kConsoleDefaultHeight = 128.0f;
 constexpr F32 kConsoleMinHeight = 72.0f;
 constexpr F32 kConsoleMaxHeightRatio = 0.55f;
@@ -54,7 +57,7 @@ struct CodeEditorRoot : public Component {
     TextEditor textEditor;
     TextView consoleView;
     Box consoleChrome;
-    Label consoleTitle;
+    Box consoleGrip;
     Box statusBox;
     Label statusLabels;
 
@@ -73,7 +76,7 @@ struct CodeEditorRoot : public Component {
         add(textEditor);
         add(consoleView);
         add(consoleChrome);
-        add(consoleTitle);
+        add(consoleGrip);
         add(statusBox);
         add(statusLabels);
     }
@@ -109,7 +112,10 @@ struct CodeEditorRoot : public Component {
     F32 editorContentBottomPixels() const {
         return statusVisible() ? statusBarTopPixels() : viewRect.bottom();
     }
-    F32 consoleDividerHeightPixels() const { return consoleExpanded() ? barHeightPixels() : 0.0f; }
+    F32 consoleHeaderHeightPixels() const {
+        return std::max(kConsoleHeaderHeight, kConsoleHeaderHeight * pixelRatio());
+    }
+    F32 consoleDividerHeightPixels() const { return consoleExpanded() ? consoleHeaderHeightPixels() : 0.0f; }
 
     F32 consoleMinEditorHeightPixels() const {
         return verticalPaddingLogical() * pixelRatio() + lineHeightPixels() * 3.0f;
@@ -204,7 +210,7 @@ struct CodeEditorRoot : public Component {
         const F32 editorContentLogical = editorContentPx / std::max(1e-3f, pixelRatio());
         const F32 textLogical = std::max(0.0f, editorContentLogical - pad);
         const F32 consoleLogical = consoleExpanded()
-            ? kBarHeight + consoleHeightPixels() / std::max(1e-3f, pixelRatio())
+            ? kConsoleHeaderHeight + consoleHeightPixels() / std::max(1e-3f, pixelRatio())
             : 0.0f;
         const F32 statusLogical = statusVisible() ? kBarHeight : 0.0f;
         const F32 contentHeight = pad + textLogical * kAutoHeightLineMultiplier +
@@ -329,26 +335,25 @@ struct CodeEditorRoot : public Component {
             .instances = {
                 {.rect = header,
                  .visible = consoleOn,
-                 .backgroundColor = ctx.color("editor_console_header_background")},
+                 .backgroundColor = ctx.color("editor_console_background")},
                 {.rect = {viewRect.x, std::floor(header.y), viewRect.width, outline},
-                 .visible = consoleOn,
-                 .backgroundColor = ctx.color("editor_console_header_outline")},
-                {.rect = {viewRect.x, std::ceil(panel.y) - outline, viewRect.width, outline},
                  .visible = consoleOn,
                  .backgroundColor = ctx.color("editor_console_header_outline")},
             },
         });
-        consoleTitle.update({
-            .id = config.id + ":console-title",
+        const F32 gripWidth = kConsoleGripWidth * pixelRatio();
+        const F32 gripHeight = std::max(2.0f, std::round(kConsoleGripHeight * pixelRatio()));
+        consoleGrip.update({
+            .id = config.id + ":console-grip",
             .instances = {{
-                .rect = {header.x + pad, header.y, std::max(0.0f, header.width - 2.0f * pad), header.height},
-                .str = "Console",
+                .rect = {std::round(header.x + (header.width - gripWidth) * 0.5f),
+                         std::round(header.y + (header.height - gripHeight) * 0.5f),
+                         gripWidth,
+                         gripHeight},
                 .visible = consoleOn,
-                .color = ctx.color("editor_status_text"),
-                .fontSize = fontSizePixels * kStatusFontScale,
-                .alignment = {0, 1},
+                .backgroundColor = ctx.color("editor_console_header_outline"),
             }},
-            .fontName = "default_mono_bold",
+            .cornerRadius = gripHeight * 0.5f,
         });
 
         const bool statusOn = visible && statusVisible();
@@ -387,7 +392,7 @@ struct CodeEditorRoot : public Component {
             layoutChild(ctx, consoleView, panel);
         }
         layoutChild(ctx, consoleChrome, frame());
-        layoutChild(ctx, consoleTitle, frame());
+        layoutChild(ctx, consoleGrip, frame());
         layoutChild(ctx, statusBox, frame());
         layoutChild(ctx, statusLabels, frame());
 
