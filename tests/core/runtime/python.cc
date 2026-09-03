@@ -583,6 +583,10 @@ TEST_CASE("Python runtime approves dependency installation generations",
     REQUIRE(request.dependencies.size() == 1);
     REQUIRE(request.dependencies[0].requirement == requirement);
     REQUIRE(request.dependencies[0].block == "approval-python");
+    const auto stateSnapshot = SnapshotPythonDependencyState();
+    CHECK(stateSnapshot.generation == request.generation);
+    CHECK(stateSnapshot.request.state ==
+          PythonDependencyRequestState::ApprovalRequired);
 
     const auto approvalGeneration = request.generation;
     REQUIRE(SetPythonDependencyPolicy("deny") == Result::SUCCESS);
@@ -609,10 +613,28 @@ TEST_CASE("Python runtime approves dependency installation generations",
             Result::ERROR);
     REQUIRE(GetPythonDependencyRequest().state ==
             PythonDependencyRequestState::ApprovalRequired);
-    REQUIRE(BeginPythonDependencyInstallation(request.generation) ==
+    const auto staleInstallationGeneration = request.generation;
+    REQUIRE(BeginPythonDependencyInstallation(staleInstallationGeneration) ==
             Result::SUCCESS);
     REQUIRE(GetPythonDependencyRequest().state ==
             PythonDependencyRequestState::Installing);
+
+    const std::string changedRequirement =
+        "cyberether-approval-changed-fixture; python_version < '0'";
+    REQUIRE(StagePythonDependencies(&context, {requirement, changedRequirement}) ==
+            Result::SUCCESS);
+    REQUIRE(InstallPythonDependencies(staleInstallationGeneration) == Result::ERROR);
+    const auto staleInstallation = GetPythonDependencyRequest();
+    REQUIRE(staleInstallation.state == PythonDependencyRequestState::Failed);
+    CHECK_FALSE(staleInstallation.message.empty());
+
+    REQUIRE(ReconcilePythonDependencies() == Result::INCOMPLETE);
+    request = GetPythonDependencyRequest();
+    REQUIRE(request.state == PythonDependencyRequestState::ApprovalRequired);
+    REQUIRE(request.generation > staleInstallationGeneration);
+    REQUIRE(request.dependencies.size() == 2);
+    REQUIRE(BeginPythonDependencyInstallation(request.generation) ==
+            Result::SUCCESS);
     const auto installResult = InstallPythonDependencies(request.generation);
     if (installResult == Result::ERROR &&
         JST_LOG_LAST_ERROR().find("No module named pip") != std::string::npos) {

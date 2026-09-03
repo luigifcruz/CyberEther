@@ -12,6 +12,7 @@
 #include "jetstream/viewport/adapters/generic.hh"
 
 #include "render/sakura/runtime.hh"
+#include "runtime/python/context.hh"
 
 #include "ui.hh"
 #include "meta.hh"
@@ -69,12 +70,15 @@ struct DefaultCompositorState {
         std::vector<PythonRuntimeContext::Candidate> pythonCandidates;
         PythonRuntimeContext::Validation pythonValidation;
         PythonRuntimeContext::Validation initialPythonValidation;
+        PythonDependencyRequest dependencyRequest;
+        U64 dependencyGeneration = 0;
     };
 
     struct ModalState {
         std::optional<ModalContent> content;
         std::optional<std::string> flowgraph;
         std::optional<std::string> renameBlockOldName;
+        std::optional<PythonDependencyRequest> dependencyRequest;
     };
 
     struct DebugState {

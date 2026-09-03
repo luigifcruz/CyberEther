@@ -44,6 +44,7 @@ class DefaultCompositor : public Compositor::Impl {
 
     void updateWorkbenchState();
     void updateFilePendingState();
+    void updateDependencyState();
     void updateBenchmarkState();
     void updateRemoteState();
     void updateUpdaterState();

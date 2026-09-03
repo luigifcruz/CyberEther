@@ -226,6 +226,7 @@ Result DefaultCompositor::poll() {
 
     updateWorkbenchState();
     updateFilePendingState();
+    updateDependencyState();
     updateBenchmarkState();
     updateRemoteState();
     updateUpdaterState();
@@ -318,6 +319,12 @@ void DefaultCompositor::updateFilePendingState() {
 #else
     state.interface.filePending = false;
 #endif
+}
+
+void DefaultCompositor::updateDependencyState() {
+    auto snapshot = SnapshotPythonDependencyState();
+    state.runtime.dependencyRequest = std::move(snapshot.request);
+    state.runtime.dependencyGeneration = snapshot.generation;
 }
 
 void DefaultCompositor::updateBenchmarkState() {

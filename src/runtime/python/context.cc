@@ -183,6 +183,15 @@ PythonDependencySnapshot SnapshotPythonDependencies() {
     return snapshot;
 }
 
+PythonDependencyStateSnapshot SnapshotPythonDependencyState() {
+    auto& registry = DependencyRegistry();
+    std::lock_guard<std::mutex> lock(registry.mutex);
+    return {
+        .generation = registry.generation,
+        .request = registry.request,
+    };
+}
+
 PythonDependencyRequest GetPythonDependencyRequest() {
     auto& registry = DependencyRegistry();
     std::lock_guard<std::mutex> lock(registry.mutex);
@@ -355,6 +364,11 @@ Result InstallPythonDependencies(U64 generation) {
         if (registry.generation != generation ||
             registry.request.generation != generation ||
             registry.request.state != PythonDependencyRequestState::Installing) {
+            if (registry.request.generation == generation &&
+                registry.request.state == PythonDependencyRequestState::Installing) {
+                registry.request.state = PythonDependencyRequestState::Failed;
+                registry.request.message = "The dependency list changed before installation started.";
+            }
             JST_ERROR("[RUNTIME_CONTEXT_PYTHON] The dependency installation request "
                       "is stale.");
             return Result::ERROR;

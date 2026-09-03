@@ -29,6 +29,11 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"error_red", {1.0f, 0.0f, 0.0f, 1.0f}},
             {"info_blue", {0.0f, 0.0f, 1.0f, 1.0f}},
 
+            // Banner Colors
+            {"banner_info_bg", {0.10f, 0.18f, 0.34f, 1.00f}},
+            {"banner_info_border", {0.32f, 0.55f, 0.95f, 0.55f}},
+            {"banner_info_text", {0.86f, 0.93f, 1.00f, 1.00f}},
+
             // Background Colors
             {"background", {0.0f, 0.0f, 0.0f, 1.00f}},
             {"workspace_particle", {0.976f, 0.976f, 0.976f, 1.0f}},
@@ -208,9 +213,14 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
 
             // Status Colors
             {"success_green", {0.0f, 0.6f, 0.0f, 1.0f}},
-            {"warning_yellow", {0.95f, 0.90f, 0.0f, 1.0f}},
+            {"warning_yellow", {0.64f, 0.38f, 0.0f, 1.0f}},
             {"error_red", {0.9f, 0.15f, 0.15f, 1.0f}},
             {"info_blue", {0.15f, 0.4f, 0.9f, 1.0f}},
+
+            // Banner Colors
+            {"banner_info_bg", {0.88f, 0.92f, 0.99f, 1.00f}},
+            {"banner_info_border", {0.20f, 0.47f, 0.96f, 0.50f}},
+            {"banner_info_text", {0.13f, 0.28f, 0.56f, 1.00f}},
 
             // Background Colors
             {"background", {0.97f, 0.97f, 0.98f, 1.00f}},

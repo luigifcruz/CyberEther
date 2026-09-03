@@ -13,15 +13,21 @@ namespace Jetstream {
 struct FlowgraphToolbar {
     struct Config {
         std::string id;
+        bool dependencyReviewAvailable = false;
+        std::string dependencyReviewMessage;
         std::function<void()> onSave;
         std::function<void()> onClose;
         std::function<void()> onAddBlock;
         std::function<void()> onCreateStack;
         std::function<void()> onSendFeedback;
+        std::function<void()> onReviewDependencies;
     };
 
     void update(Config config) {
         this->config = std::move(config);
+        const auto toolbarSize = this->config.dependencyReviewAvailable
+                                     ? expandedToolbarSize
+                                     : collapsedToolbarSize;
         overlay.update({
             .id = this->config.id + ":overlay",
             .size = toolbarSize,
@@ -72,6 +78,56 @@ struct FlowgraphToolbar {
             .size = {100.0f, 34.0f},
             .onClick = this->config.onSendFeedback,
         });
+        banner.update({
+            .id = this->config.id + ":banner",
+            .size = {0.0f, 32.0f},
+            .padding = 5.0f,
+            .rounding = 8.0f,
+            .border = true,
+            .scrollbar = false,
+            .mouseScroll = false,
+            .colorKey = "banner_info_bg",
+            .borderColorKey = "banner_info_border",
+        });
+        bannerLayout.update({
+            .id = this->config.id + ":banner-layout",
+            .spacing = 0.0f,
+        });
+        bannerIndent.update({
+            .id = this->config.id + ":banner-indent",
+        });
+        bannerTextContainer.update({
+            .id = this->config.id + ":banner-text-container",
+            .size = {382.0f, 22.0f},
+            .border = false,
+            .scrollbar = false,
+            .mouseScroll = false,
+            .inputs = false,
+        });
+        bannerText.update({
+            .id = this->config.id + ":banner-text",
+            .str = this->config.dependencyReviewMessage,
+            .colorKey = "banner_info_text",
+            .scale = 1.0f,
+            .verticalOffset = 3.0f,
+        });
+        reviewButtonContainer.update({
+            .id = this->config.id + ":review-container",
+            .size = {72.0f, 22.0f},
+            .padding = 1.0f,
+            .border = false,
+            .scrollbar = false,
+            .mouseScroll = false,
+            .colorKey = "transparent",
+        });
+        reviewButton.update({
+            .id = this->config.id + ":review",
+            .str = "Review",
+            .size = {70.0f, 20.0f},
+            .variant = Sakura::Button::Variant::Action,
+            .rounding = 5.0f,
+            .onClick = this->config.onReviewDependencies,
+        });
     }
 
     void render(const Sakura::Context& ctx) {
@@ -84,12 +140,30 @@ struct FlowgraphToolbar {
                     [this](const Sakura::Context& ctx) { createStackButton.render(ctx); },
                     [this](const Sakura::Context& ctx) { feedbackButton.render(ctx); },
                 });
+                if (config.dependencyReviewAvailable) {
+                    banner.render(ctx, [this](const Sakura::Context& ctx) {
+                        bannerLayout.render(ctx, {
+                            [this](const Sakura::Context& ctx) { bannerIndent.render(ctx); },
+                            [this](const Sakura::Context& ctx) {
+                                bannerTextContainer.render(ctx, [this](const Sakura::Context& ctx) {
+                                    bannerText.render(ctx);
+                                });
+                            },
+                            [this](const Sakura::Context& ctx) {
+                                reviewButtonContainer.render(ctx, [this](const Sakura::Context& ctx) {
+                                    reviewButton.render(ctx);
+                                });
+                            },
+                        });
+                    });
+                }
             });
         });
     }
 
  private:
-    static constexpr Extent2D<F32> toolbarSize = {492.0f, 46.0f};
+    static constexpr Extent2D<F32> collapsedToolbarSize = {492.0f, 46.0f};
+    static constexpr Extent2D<F32> expandedToolbarSize = {492.0f, 86.0f};
 
     Config config;
     Sakura::Overlay overlay;
@@ -100,6 +174,13 @@ struct FlowgraphToolbar {
     Sakura::Button addBlockButton;
     Sakura::Button createStackButton;
     Sakura::Button feedbackButton;
+    Sakura::Div banner;
+    Sakura::HStack bannerLayout;
+    Sakura::Spacing bannerIndent;
+    Sakura::Div bannerTextContainer;
+    Sakura::Text bannerText;
+    Sakura::Div reviewButtonContainer;
+    Sakura::Button reviewButton;
 };
 
 }  // namespace Jetstream

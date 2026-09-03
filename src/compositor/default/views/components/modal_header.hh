@@ -12,6 +12,7 @@ struct ModalHeader {
         std::string id;
         std::string title;
         std::string description;
+        F32 dividerSpacing = -1.0f;
     };
 
     void update(Config config) {
@@ -28,6 +29,7 @@ struct ModalHeader {
         });
         divider.update({
             .id = this->config.id + "Divider",
+            .spacing = this->config.dividerSpacing,
         });
     }
 

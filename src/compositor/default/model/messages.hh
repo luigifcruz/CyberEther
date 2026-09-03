@@ -185,6 +185,10 @@ struct MailSetRuntimeDependencyPolicy {
 
 struct MailOpenPythonEnvironmentCache {};
 
+struct MailInstallPythonDependencies {
+    U64 generation = 0;
+};
+
 struct MailSaveFlowgraphPath {
     std::string flowgraph;
     std::string path;
@@ -429,6 +433,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetPythonRuntimePath,
                           MailSetRuntimeDependencyPolicy,
                           MailOpenPythonEnvironmentCache,
+                          MailInstallPythonDependencies,
                           MailSaveFlowgraphPath,
                           MailBrowseConfigPath,
                           MailFilePickerNavigate,

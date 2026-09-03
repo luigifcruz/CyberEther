@@ -9,6 +9,7 @@
 #include "jetstream/platform.hh"
 #include "jetstream/plugin.hh"
 #include "jetstream/settings.hh"
+#include "runtime/python/context.hh"
 
 #include <algorithm>
 #include <filesystem>
@@ -189,6 +190,7 @@ struct SettingsActions {
             return Result::SUCCESS;
         }
 
+        JST_CHECK(SetPythonDependencyPolicy(msg.value));
         state.runtime.dependencyPolicy = msg.value;
 
         Settings settings;

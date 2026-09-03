@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_BASE_HH
 
 #include "benchmark.hh"
+#include "dependencies.hh"
 #include "feedback.hh"
 #include "file_picker.hh"
 #include "flowgraph.hh"
@@ -29,6 +30,7 @@ class DefaultActions {
         remote = std::make_shared<RemoteActions>(state, callbacks);
         filePicker = std::make_shared<FilePickerActions>(state, callbacks);
         flowgraph = std::make_shared<FlowgraphActions>(state, callbacks);
+        dependencies = std::make_shared<DependencyActions>(callbacks);
         stacks = std::make_shared<StackActions>(state, callbacks);
         feedback = std::make_shared<FeedbackActions>(state, callbacks);
     }
@@ -51,6 +53,9 @@ class DefaultActions {
             return result;
         }
         if (Handle(*flowgraph, mail, result)) {
+            return result;
+        }
+        if (Handle(*dependencies, mail, result)) {
             return result;
         }
         if (Handle(*stacks, mail, result)) {
@@ -95,6 +100,7 @@ class DefaultActions {
     }
 
     std::shared_ptr<BenchmarkActions> benchmark;
+    std::shared_ptr<DependencyActions> dependencies;
     std::shared_ptr<FilePickerActions> filePicker;
     std::shared_ptr<FlowgraphActions> flowgraph;
     std::shared_ptr<RemoteActions> remote;

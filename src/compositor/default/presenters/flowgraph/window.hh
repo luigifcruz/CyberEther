@@ -14,6 +14,7 @@
 #include "jetstream/flowgraph.hh"
 #include "jetstream/flowgraph_view.hh"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -38,6 +39,7 @@ struct FlowgraphWindowPresenter {
         if (context.state.interface.focusedFlowgraph == flowgraphId) {
             title = "• " + title;
         }
+        const bool dependencyReviewAvailable = hasDependencyReview(flowgraph);
 
         return FlowgraphWindow::Config{
             .id = MakeFlowgraphWindowId(flowgraphId),
@@ -46,6 +48,8 @@ struct FlowgraphWindowPresenter {
             .stacks = stacks.build(flowgraphId, flowgraph),
             .detachedSurfaces = surfaces.build(flowgraphId, flowgraph),
             .empty = flowgraph->view().empty(),
+            .dependencyReviewAvailable = dependencyReviewAvailable,
+            .dependencyReviewMessage = "Python dependencies need approval.",
             .onFocus = [enqueue, flowgraphId]() {
                 enqueue(MailFocusFlowgraph{flowgraphId});
             },
@@ -61,7 +65,30 @@ struct FlowgraphWindowPresenter {
             .onSendFeedback = [enqueue]() {
                 enqueue(MailOpenModal{.content = ModalContent::Feedback});
             },
+            .onReviewDependencies = [enqueue, flowgraphId]() {
+                enqueue(MailOpenModal{
+                    .content = ModalContent::Dependencies,
+                    .flowgraph = flowgraphId,
+                });
+            },
         };
+    }
+
+ private:
+    bool hasDependencyReview(const std::shared_ptr<Flowgraph>& currentFlowgraph) const {
+        const auto& request = context.state.runtime.dependencyRequest;
+        if (request.state != PythonDependencyRequestState::ApprovalRequired) {
+            return false;
+        }
+
+        const auto* currentView = &currentFlowgraph->view();
+        return request.dependencies.empty() ||
+               std::ranges::any_of(
+                   request.dependencies,
+                   [currentView](const auto& dependency) {
+                       const auto view = dependency.view.lock();
+                       return !view || view.get() == currentView;
+                   });
     }
 };
 

@@ -41,6 +41,11 @@ struct PythonDependencyRequest {
     std::string message;
 };
 
+struct PythonDependencyStateSnapshot {
+    U64 generation = 0;
+    PythonDependencyRequest request;
+};
+
 JETSTREAM_API Result StagePythonDependencies(PythonRuntimeContext* context,
                                              const std::vector<std::string>& requirements);
 JETSTREAM_API Result SetPythonDependencyPolicy(const std::string& value);
@@ -51,6 +56,7 @@ JETSTREAM_API Result SchedulePythonDependencies(PythonRuntimeContext* context);
 JETSTREAM_API Result UnschedulePythonDependencies(PythonRuntimeContext* context);
 JETSTREAM_API Result RemovePythonDependencies(PythonRuntimeContext* context);
 JETSTREAM_API PythonDependencySnapshot SnapshotPythonDependencies();
+JETSTREAM_API PythonDependencyStateSnapshot SnapshotPythonDependencyState();
 JETSTREAM_API PythonDependencyRequest GetPythonDependencyRequest();
 JETSTREAM_API Result ReconcilePythonDependencies();
 JETSTREAM_API Result BeginPythonDependencyInstallation(U64 generation);
