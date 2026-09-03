@@ -62,7 +62,7 @@ The **Dependency Policy** setting controls cache misses:
 - The **Allow** option installs missing environments automatically.
 - The **Deny** option uses existing cached environments but never installs packages.
 
-Headless runs treat **Prompt** as **Deny**. Pass `--dependency-policy allow` when a headless process should install declared dependencies.
+With **Prompt**, headless runs pause blocks with missing dependencies until the request is approved through a connected interface, such as CyberEther Remote. For fully unattended runs, use **Deny** or pre-populate the cache. Use `--dependency-policy allow` only when the scripts are trusted and automatic installation is intended.
 
 ## Block Configuration
 
