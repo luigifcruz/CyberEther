@@ -15,7 +15,6 @@ namespace Jetstream::Sakura::Retained {
 namespace {
 
 constexpr F32 kReferenceFontSize = 15.0f;
-constexpr F32 kPadding = 0.0f;
 
 }  // namespace
 
@@ -25,7 +24,6 @@ struct MarkdownBody : public Component {
 
     std::string value;
     F32 fontSizePixels = kReferenceFontSize;
-    F32 pad = 0.0f;
     std::string backgroundColorKey = "background";
 
     MarkdownBody() {
@@ -35,9 +33,7 @@ struct MarkdownBody : public Component {
     }
 
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override {
-        const F32 innerWidth = std::max(0.0f, available.x - 2.0f * pad);
-        const Extent2D<F32> inner = measureChild(markdown, ctx, {innerWidth, available.y});
-        return {available.x, inner.y + 2.0f * pad};
+        return {available.x, measureChild(markdown, ctx, available).y};
     }
 
     void layout(const Context& ctx) override {
@@ -49,7 +45,6 @@ struct MarkdownBody : public Component {
             .instances = {{.rect = bounds, .visible = !bounds.empty(), .backgroundColor = bg}},
         });
 
-        const Rect content = bounds.inset(pad);
         markdown.update({
             .id = "markdown:md",
             .value = value,
@@ -62,7 +57,7 @@ struct MarkdownBody : public Component {
         });
 
         layoutChild(ctx, background, bounds);
-        layoutChild(ctx, markdown, content);
+        layoutChild(ctx, markdown, bounds);
 
     }
 };
@@ -74,8 +69,6 @@ struct MarkdownView::Impl {
     MarkdownBody body;
 
     F32 fontSizePixels = kReferenceFontSize;
-
-    F32 pixelRatio() const { return config.fontSize > 0.0f ? fontSizePixels / config.fontSize : 1.0f; }
 
     Impl() {
         canvas.mount(body);
@@ -105,7 +98,6 @@ bool MarkdownView::update(Config config) {
 
     impl->body.value = impl->config.value;
     impl->body.fontSizePixels = impl->fontSizePixels;
-    impl->body.pad = kPadding * impl->pixelRatio();
     impl->body.backgroundColorKey = impl->config.backgroundColorKey;
     impl->body.markdown.update({
         .id = impl->config.id + ":md",

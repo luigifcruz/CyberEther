@@ -20,7 +20,6 @@ namespace Jetstream::Sakura::Retained {
 namespace {
 
 constexpr F32 kReferenceFontSize = 15.0f;
-constexpr F32 kPaddingFontRatio = 6.0f / kReferenceFontSize;
 constexpr F32 kBarHeight = 24.0f;
 constexpr F32 kStatusFontScale = 0.95f;
 constexpr F32 kConsoleFontScale = 0.92f;
@@ -82,7 +81,21 @@ struct CodeEditorRoot : public Component {
     F32 pixelRatio() const {
         return config.editorFontSize > 0.0f ? fontSizePixels / config.editorFontSize : 1.0f;
     }
-    F32 paddingPixels() const { return fontSizePixels * kPaddingFontRatio; }
+    F32 verticalPaddingLogical() const {
+        return config.padding.has_value() ? config.padding->top + config.padding->bottom : 0.0f;
+    }
+    std::optional<Padding> editorPaddingPixels() const {
+        if (!config.padding.has_value()) {
+            return std::nullopt;
+        }
+        const F32 ratio = pixelRatio();
+        return Padding{
+            config.padding->left * ratio,
+            config.padding->top * ratio,
+            config.padding->right * ratio,
+            config.padding->bottom * ratio,
+        };
+    }
     F32 lineHeightPixels() const { return std::max(1.0f, fontSizePixels * (18.0f / kReferenceFontSize)); }
     F32 outlineHeightPixels() const { return std::max(1.0f, std::round(pixelRatio())); }
     F32 barHeightPixels() const { return std::max(kBarHeight, kBarHeight * pixelRatio()); }
@@ -98,7 +111,9 @@ struct CodeEditorRoot : public Component {
     }
     F32 consoleDividerHeightPixels() const { return consoleExpanded() ? barHeightPixels() : 0.0f; }
 
-    F32 consoleMinEditorHeightPixels() const { return paddingPixels() * 2.0f + lineHeightPixels() * 3.0f; }
+    F32 consoleMinEditorHeightPixels() const {
+        return verticalPaddingLogical() * pixelRatio() + lineHeightPixels() * 3.0f;
+    }
     F32 consoleMaxHeightPixels() const {
         if (!consoleVisible()) {
             return 0.0f;
@@ -123,10 +138,8 @@ struct CodeEditorRoot : public Component {
     F32 consoleHeaderTopPixels() const { return consolePanelTopPixels() - consoleDividerHeightPixels(); }
 
     Rect editorAreaRect() const {
-        const F32 pad = config.contentPadding * pixelRatio();
         const F32 bottom = consoleExpanded() ? consoleHeaderTopPixels() : editorContentBottomPixels();
-        return {viewRect.x, viewRect.y + pad,
-                viewRect.width, std::max(0.0f, bottom - viewRect.y - 2.0f * pad)};
+        return {viewRect.x, viewRect.y, viewRect.width, std::max(0.0f, bottom - viewRect.y)};
     }
     Rect consoleHeaderRect() const {
         return {viewRect.x, consoleHeaderTopPixels(), viewRect.width, consoleDividerHeightPixels()};
@@ -187,18 +200,19 @@ struct CodeEditorRoot : public Component {
         const F32 editorContentPx = measureChild(textEditor, ctx, available).y;
 
         const F32 lineHeight = config.editorFontSize * (18.0f / kReferenceFontSize);
-        const F32 pad = config.editorFontSize * kPaddingFontRatio;
+        const F32 pad = verticalPaddingLogical();
         const F32 editorContentLogical = editorContentPx / std::max(1e-3f, pixelRatio());
+        const F32 textLogical = std::max(0.0f, editorContentLogical - pad);
         const F32 consoleLogical = consoleExpanded()
             ? kBarHeight + consoleHeightPixels() / std::max(1e-3f, pixelRatio())
             : 0.0f;
         const F32 statusLogical = statusVisible() ? kBarHeight : 0.0f;
-        const F32 contentHeight = pad * 2.0f + editorContentLogical * kAutoHeightLineMultiplier +
+        const F32 contentHeight = pad + textLogical * kAutoHeightLineMultiplier +
                                   consoleLogical + statusLogical;
 
         const F32 viewportHeight = ImGui::GetMainViewport() ? ImGui::GetMainViewport()->WorkSize.y : 0.0f;
         const F32 maxHeight = Unscale(ctx, viewportHeight * std::clamp(config.maxAutoHeightWindowRatio, 0.0f, 1.0f));
-        const F32 minHeight = pad * 2.0f + lineHeight;
+        const F32 minHeight = pad + lineHeight;
         const F32 desiredLogical = std::max(minHeight, maxHeight > 0.0f ? std::min(contentHeight, maxHeight) : contentHeight);
 
         return {available.x, desiredLogical * pixelRatio()};
@@ -273,6 +287,7 @@ struct CodeEditorRoot : public Component {
             .wrap = config.language == CodeEditor::Language::Markdown ? TextGrid::Wrap::Word
                     : config.lineWrapping                            ? TextGrid::Wrap::Character
                                                                      : TextGrid::Wrap::None,
+            .padding = editorPaddingPixels(),
             .language = ToEditorLanguage(config.language),
             .backgroundColorKey = config.backgroundColorKey,
             .textColorKey = "editor_text",

@@ -68,20 +68,24 @@ struct MarkdownEditorBody : public Component {
         maxAutoHeightWindowRatio = config.maxAutoHeightWindowRatio;
     }
 
+    Padding contentPaddingPixels(F32 pixelRatio) const {
+        const F32 horizontal = (kSurfaceInset + fontSize * kPaddingFontRatio) * pixelRatio;
+        return {horizontal, kSurfaceInset * pixelRatio, horizontal, 0.0f};
+    }
+
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override {
         const F32 pixelRatio = ctx.pixelRatio;
-        const F32 padPx = kSurfaceInset * pixelRatio;
-        const Extent2D<F32> content = {std::max(0.0f, available.x - 2.0f * padPx), available.y};
+        applyContent(pixelRatio);
         const F32 activeContentPx = editing
-            ? measureChild(editor, ctx, content).y
-            : measureChild(preview, ctx, content).y;
+            ? measureChild(editor, ctx, available).y
+            : measureChild(preview, ctx, available).y;
 
         const F32 pad = kSurfaceInset;
         const F32 lineHeight = fontSize * kLineHeightFontRatio;
         const F32 buttonH = fontSize + 2.0f * kButtonPadY;
         const F32 contentLogical = activeContentPx / std::max(1e-3f, pixelRatio);
         const F32 contentFitSlack = kContentFitSlackPixels / std::max(1e-3f, pixelRatio);
-        const F32 total = pad + contentLogical + contentFitSlack + kButtonTopGap + buttonH + pad;
+        const F32 total = contentLogical + contentFitSlack + kButtonTopGap + buttonH + pad;
 
         const F32 viewportHeight = ImGui::GetMainViewport() ? ImGui::GetMainViewport()->WorkSize.y : 0.0f;
         const F32 maxHeight = Unscale(ctx, viewportHeight * std::clamp(maxAutoHeightWindowRatio, 0.0f, 1.0f));
@@ -89,6 +93,49 @@ struct MarkdownEditorBody : public Component {
         const F32 desiredLogical = std::max(minHeight, maxHeight > 0.0f ? std::min(total, maxHeight) : total);
 
         return {available.x, desiredLogical * pixelRatio};
+    }
+
+    void applyContent(F32 pixelRatio) {
+        const F32 fontSizePixels = fontSize * pixelRatio;
+        const auto padding = contentPaddingPixels(pixelRatio);
+        if (editing) {
+            editor.update({
+                .id = id + ":editor",
+                .value = value,
+                .fontSize = fontSizePixels,
+                .lineNumbers = false,
+                .wrap = TextGrid::Wrap::Word,
+                .padding = padding,
+                .language = TextEditor::Language::Markdown,
+                .textColorKey = "editor_text",
+                .lineNumberColorKey = "editor_line_number",
+                .gutterSeparatorColorKey = "editor_gutter_separator",
+                .selectionColorKey = "editor_selection",
+                .selectionMatchColorKey = "editor_selection_match",
+                .activeLineColorKey = "editor_active_line",
+                .cursorColorKey = "editor_cursor",
+                .scrollbarTrackColorKey = "editor_scrollbar_track",
+                .scrollbarThumbColorKey = "editor_scrollbar_thumb",
+                .onChange = onChange,
+            });
+        } else {
+            preview.update({
+                .id = id + ":preview",
+                .value = value,
+                .fontSize = fontSizePixels,
+                .scrollbar = true,
+                .padding = padding,
+                .textColorKey = "editor_text",
+                .lineNumberColorKey = "editor_line_number",
+                .gutterSeparatorColorKey = "editor_gutter_separator",
+                .selectionColorKey = "editor_selection",
+                .selectionMatchColorKey = "editor_selection_match",
+                .activeLineColorKey = "editor_active_line",
+                .cursorColorKey = "editor_cursor",
+                .scrollbarTrackColorKey = "editor_scrollbar_track",
+                .scrollbarThumbColorKey = "editor_scrollbar_thumb",
+            });
+        }
     }
 
     void layout(const Context& ctx) override {
@@ -108,47 +155,13 @@ struct MarkdownEditorBody : public Component {
         const Rect buttonRect = {bounds.x + pad, bounds.bottom() - pad - buttonH,
                                       std::max(0.0f, bounds.width - 2.0f * pad), buttonH};
         const F32 buttonGap = kButtonTopGap * pixelRatio;
-        const F32 contentTop = bounds.y + pad;
-        const Rect contentRect = {bounds.x + pad, contentTop,
-                                       std::max(0.0f, bounds.width - 2.0f * pad),
-                                       std::max(0.0f, buttonRect.y - buttonGap - contentTop)};
+        const Rect contentRect = {bounds.x, bounds.y, bounds.width,
+                                       std::max(0.0f, buttonRect.y - buttonGap - bounds.y)};
 
+        applyContent(pixelRatio);
         if (editing) {
-            editor.update({
-                .id = id + ":editor",
-                .value = value,
-                .fontSize = fontSizePixels,
-                .lineNumbers = false,
-                .wrap = TextGrid::Wrap::Word,
-                .language = TextEditor::Language::Markdown,
-                .textColorKey = "editor_text",
-                .lineNumberColorKey = "editor_line_number",
-                .gutterSeparatorColorKey = "editor_gutter_separator",
-                .selectionColorKey = "editor_selection",
-                .selectionMatchColorKey = "editor_selection_match",
-                .activeLineColorKey = "editor_active_line",
-                .cursorColorKey = "editor_cursor",
-                .scrollbarTrackColorKey = "editor_scrollbar_track",
-                .scrollbarThumbColorKey = "editor_scrollbar_thumb",
-                .onChange = onChange,
-            });
             layoutChild(ctx, editor, contentRect);
         } else {
-            preview.update({
-                .id = id + ":preview",
-                .value = value,
-                .fontSize = fontSizePixels,
-                .scrollbar = true,
-                .textColorKey = "editor_text",
-                .lineNumberColorKey = "editor_line_number",
-                .gutterSeparatorColorKey = "editor_gutter_separator",
-                .selectionColorKey = "editor_selection",
-                .selectionMatchColorKey = "editor_selection_match",
-                .activeLineColorKey = "editor_active_line",
-                .cursorColorKey = "editor_cursor",
-                .scrollbarTrackColorKey = "editor_scrollbar_track",
-                .scrollbarThumbColorKey = "editor_scrollbar_thumb",
-            });
             layoutChild(ctx, preview, contentRect);
         }
 

@@ -54,7 +54,7 @@ struct FeedbackView {
             .lineNumbers = false,
             .lineWrapping = true,
             .showActiveLine = false,
-            .contentPadding = 6.0f,
+            .padding = Sakura::Padding{6.0f, 6.0f, 6.0f, 6.0f},
             .backgroundColorKey = "card",
             .onChange = [this](std::string value) {
                 if (this->config.onTextChange) {

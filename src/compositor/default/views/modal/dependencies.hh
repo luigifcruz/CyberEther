@@ -71,7 +71,7 @@ struct DependencyReviewView {
             .id = "DependencyReviewTable",
             .columns = {"Package", "Requested By"},
             .fixedColumnWidths = {0.0f, 190.0f},
-            .size = {0.0f, this->config.dependencies.size() > 4 ? 190.0f : 0.0f},
+            .size = {0.0f, this->config.dependencies.size() > 4 ? 300.0f : 0.0f},
         });
         requirementTexts.resize(this->config.dependencies.size());
         requestedByTexts.resize(this->config.dependencies.size());
@@ -122,10 +122,12 @@ struct DependencyReviewView {
         });
         errorCanvas.update({
             .id = "DependencyReviewErrorCanvas",
-            .size = {0.0f, 180.0f},
+            .size = {0.0f, 300.0f},
             .clearColor = {0.0f, 0.0f, 0.0f, 0.0f},
             .onLayout = [this](const Sakura::Retained::Canvas::Layout& layout) {
                 errorFontSizePixels = 15.0f * layout.pixelRatio;
+                errorPadding = {6.0f * layout.pixelRatio, 6.0f * layout.pixelRatio,
+                                6.0f * layout.pixelRatio, 6.0f * layout.pixelRatio};
             },
         });
         errorTextView.update({
@@ -136,13 +138,13 @@ struct DependencyReviewView {
                          : (this->config.output.empty() ? "Waiting for pip output..."
                                                         : this->config.output),
             .fontSize = errorFontSizePixels,
-            .contentPadding = 6.0f,
             .fontName = "default_mono",
             .monospace = true,
             .lineNumbers = false,
             .stickToBottom = installing || installed,
             .scrollbar = true,
             .wrap = Sakura::Retained::TextGrid::Wrap::Word,
+            .padding = errorPadding,
             .backgroundColorKey = "editor_console_background",
             .textColorKey = failed ? "error_red" : "editor_text",
         });
@@ -262,6 +264,7 @@ struct DependencyReviewView {
 
     Config config;
     F32 errorFontSizePixels = 15.0f;
+    Sakura::Padding errorPadding = {6.0f, 6.0f, 6.0f, 6.0f};
 
     ModalHeader header;
 

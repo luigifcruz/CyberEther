@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,7 @@ struct TextEditor : public Component {
         bool lineNumbers = true;
         bool showActiveLine = false;
         TextGrid::Wrap wrap = TextGrid::Wrap::None;
+        std::optional<Padding> padding;
         Language language = Language::Python;
         std::string backgroundColorKey = "transparent";
         std::string textColorKey = "text_primary";

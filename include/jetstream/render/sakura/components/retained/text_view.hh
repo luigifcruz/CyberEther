@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -18,13 +19,13 @@ struct TextView : public Component {
         std::string value;
         F32 fontSize = 15.0f;
         F32 fontScale = 1.0f;
-        F32 contentPadding = 0.0f;
         std::string fontName = "default_mono";
         bool monospace = true;
         bool lineNumbers = false;
         bool stickToBottom = false;
         bool scrollbar = true;
         TextGrid::Wrap wrap = TextGrid::Wrap::None;
+        std::optional<Padding> padding;
         std::string backgroundColorKey = "transparent";
         std::string textColorKey = "text_primary";
         std::string lineNumberColorKey = "editor_line_number";

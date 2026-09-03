@@ -6,6 +6,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -39,7 +40,7 @@ struct CodeEditor {
         bool lineNumbers = true;
         bool lineWrapping = false;
         bool showActiveLine = true;
-        F32 contentPadding = 0.0f;
+        std::optional<Padding> padding;
         F32 editorFontSize = 15.0f;
         std::string backgroundColorKey = "editor_background";
         std::function<void(std::string)> onChange;
