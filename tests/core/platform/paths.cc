@@ -680,15 +680,28 @@ TEST_CASE("Platform processes combine stdout and stderr",
 
 TEST_CASE("Platform processes stream captured output",
           "[core][platform][process]") {
+    TempPathRoot temp("streaming");
+    const auto acknowledgment = temp.root / "received";
     std::string output;
     std::string streamed;
-    const auto onOutput = [&streamed](std::string_view chunk) {
+    const auto onOutput = [&](std::string_view chunk) {
         streamed.append(chunk.data(), chunk.size());
+        if (streamed.find("streamed-out") != std::string::npos) {
+            std::ofstream(acknowledgment).put('\n');
+        }
     };
+    // The child cannot finish until the callback acknowledges its first output.
+    // Delivering output only after exit must time out instead of passing.
 #if defined(JST_OS_WINDOWS)
+    const auto script = temp.root / "stream.cmd";
+    WriteBinaryFile(script,
+                    "@echo off\r\necho streamed-out\r\n:wait\r\n"
+                    "if exist \"%~1\" goto received\r\n"
+                    "ping -n 2 127.0.0.1 >NUL\r\ngoto wait\r\n"
+                    ":received\r\necho streamed-error 1>&2\r\n");
     REQUIRE(Platform::RunProcess(
                 "cmd.exe",
-                {"/D", "/C", "echo streamed-out& echo streamed-error 1>&2"},
+                {"/D", "/C", Platform::PathToUtf8(script), Platform::PathToUtf8(acknowledgment)},
                 output,
                 5000,
                 true,
@@ -696,7 +709,9 @@ TEST_CASE("Platform processes stream captured output",
 #else
     REQUIRE(Platform::RunProcess(
                 "/bin/sh",
-                {"-c", "printf streamed-out; printf streamed-error >&2"},
+                {"-c", "printf streamed-out; while [ ! -f \"$1\" ]; do sleep 0.01; done; "
+                       "printf streamed-error >&2",
+                 "streaming-test", Platform::PathToUtf8(acknowledgment)},
                 output,
                 5000,
                 true,

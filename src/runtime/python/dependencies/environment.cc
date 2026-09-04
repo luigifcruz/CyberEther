@@ -217,7 +217,6 @@ Result PreparePythonDependencyEnvironment(const std::vector<std::string>& reques
     std::string sitePackages;
     if (IsCachedEnvironment(path, requirementsText, sitePackages)) {
         environment = {
-            .requirements = std::move(requirements),
             .key = std::move(key),
             .sitePackagesPath = std::move(sitePackages),
         };
@@ -239,7 +238,6 @@ Result PreparePythonDependencyEnvironment(const std::vector<std::string>& reques
     JST_CHECK(lock.acquire(Platform::PathToUtf8(root / (key + ".lock"))));
     if (IsCachedEnvironment(path, requirementsText, sitePackages)) {
         environment = {
-            .requirements = std::move(requirements),
             .key = std::move(key),
             .sitePackagesPath = std::move(sitePackages),
         };
@@ -290,7 +288,6 @@ Result PreparePythonDependencyEnvironment(const std::vector<std::string>& reques
     temporary.path.clear();
 
     environment = {
-        .requirements = std::move(requirements),
         .key = std::move(key),
         .sitePackagesPath = Platform::PathToUtf8(path / "site-packages"),
     };

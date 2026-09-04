@@ -4,7 +4,7 @@
 #include "../model/callbacks.hh"
 #include "../model/messages.hh"
 
-#include "runtime/python/context.hh"
+#include "runtime/python/dependencies/coordinator.hh"
 
 #include <tuple>
 
@@ -20,8 +20,7 @@ struct DependencyActions {
 
     Result handle(const MailInstallPythonDependencies& msg) {
         callbacks.enqueueCommand([generation = msg.generation]() -> Result {
-            JST_CHECK(BeginPythonDependencyInstallation(generation));
-            return InstallPythonDependencies(generation);
+            return BeginPythonDependencyInstallation(generation);
         }, true);
         return Result::SUCCESS;
     }

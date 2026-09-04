@@ -12,7 +12,7 @@
 #include <jetstream/scheduler_context.hh>
 
 #include "module_impl.hh"
-#include "runtime/python/context.hh"
+#include "runtime/python/dependencies/coordinator.hh"
 
 namespace Jetstream::Modules {
 

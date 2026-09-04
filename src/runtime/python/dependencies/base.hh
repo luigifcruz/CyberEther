@@ -17,6 +17,8 @@ namespace Jetstream {
 struct PythonDependencyMetadata {
     std::vector<std::string> requirements;
     std::string requiresPython;
+
+    bool operator==(const PythonDependencyMetadata&) const = default;
 };
 
 JETSTREAM_API Result ParsePythonDependencyMetadata(const std::string& source,
@@ -38,24 +40,15 @@ enum class PythonDependencyPolicy {
     Deny,    // Never install dependencies.
 };
 
-struct PythonDependencyDecision {
-    PythonDependencyPolicy policy = PythonDependencyPolicy::Prompt;
-    bool installAllowed = false;
-    bool consentRequired = false;
-};
-
 JETSTREAM_API Result ParsePythonDependencyPolicy(const std::string& value,
                                                  PythonDependencyPolicy& policy);
-JETSTREAM_API PythonDependencyDecision ResolvePythonDependencyPolicy(const PythonDependencyMetadata& metadata,
-                                                                     PythonDependencyPolicy policy);
-JETSTREAM_API PythonDependencyDecision ResolvePythonDependencyPolicy(const PythonDependencyMetadata& metadata);
+JETSTREAM_API PythonDependencyPolicy ConfiguredPythonDependencyPolicy();
 
 //
 // Environment [dependencies/environment.cc]
 //
 
 struct PythonDependencyEnvironment {
-    std::vector<std::string> requirements;
     std::string key;
     std::string sitePackagesPath;
 };

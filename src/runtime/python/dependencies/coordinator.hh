@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_RUNTIME_PYTHON_CONTEXT_HH
-#define JETSTREAM_RUNTIME_PYTHON_CONTEXT_HH
+#ifndef JETSTREAM_RUNTIME_PYTHON_DEPENDENCIES_COORDINATOR_HH
+#define JETSTREAM_RUNTIME_PYTHON_DEPENDENCIES_COORDINATOR_HH
 
 #include <memory>
 #include <string>
@@ -12,11 +12,6 @@ namespace Jetstream {
 
 struct PythonRuntimeContext;
 struct PythonDependencyEnvironment;
-
-struct PythonDependencySnapshot {
-    std::vector<std::string> requirements;
-    U64 generation = 0;
-};
 
 enum class PythonDependencyRequestState {
     None,
@@ -56,14 +51,11 @@ JETSTREAM_API Result SetPythonDependencyOrigin(PythonRuntimeContext* context,
 JETSTREAM_API Result SchedulePythonDependencies(PythonRuntimeContext* context);
 JETSTREAM_API Result UnschedulePythonDependencies(PythonRuntimeContext* context);
 JETSTREAM_API Result RemovePythonDependencies(PythonRuntimeContext* context);
-JETSTREAM_API PythonDependencySnapshot SnapshotPythonDependencies();
 JETSTREAM_API PythonDependencyStateSnapshot SnapshotPythonDependencyState();
-JETSTREAM_API PythonDependencyRequest GetPythonDependencyRequest();
 JETSTREAM_API Result ReconcilePythonDependencies();
 JETSTREAM_API Result BeginPythonDependencyInstallation(U64 generation);
-JETSTREAM_API Result InstallPythonDependencies(U64 generation);
 JETSTREAM_API Result ActivatePythonDependencyEnvironment(const PythonDependencyEnvironment& environment);
 
 }  // namespace Jetstream
 
-#endif  // JETSTREAM_RUNTIME_PYTHON_CONTEXT_HH
+#endif  // JETSTREAM_RUNTIME_PYTHON_DEPENDENCIES_COORDINATOR_HH

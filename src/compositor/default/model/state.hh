@@ -12,7 +12,7 @@
 #include "jetstream/viewport/adapters/generic.hh"
 
 #include "render/sakura/runtime.hh"
-#include "runtime/python/context.hh"
+#include "runtime/python/dependencies/coordinator.hh"
 
 #include "ui.hh"
 #include "meta.hh"

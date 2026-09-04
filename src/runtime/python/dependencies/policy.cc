@@ -10,20 +10,6 @@
 
 namespace Jetstream {
 
-namespace {
-
-#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
-std::string ConfiguredDependencyPolicy() {
-    return Backend::State<DeviceType::CPU>()->getDependencyPolicy();
-}
-#else
-std::string ConfiguredDependencyPolicy() {
-    return {};
-}
-#endif
-
-}  // namespace
-
 Result ParsePythonDependencyPolicy(const std::string& value, PythonDependencyPolicy& policy) {
     if (value == "prompt") {
         policy = PythonDependencyPolicy::Prompt;
@@ -44,50 +30,17 @@ Result ParsePythonDependencyPolicy(const std::string& value, PythonDependencyPol
     return Result::ERROR;
 }
 
-PythonDependencyDecision ResolvePythonDependencyPolicy(const PythonDependencyMetadata& metadata,
-                                                       PythonDependencyPolicy policy) {
-    if (metadata.requirements.empty()) {
-        return {.policy = policy};
-    }
-
-    const auto declared = jst::fmt::format("{} requirement(s)",
-                                           metadata.requirements.size());
-
-    switch (policy) {
-        case PythonDependencyPolicy::Allow:
-            JST_INFO("[RUNTIME_CONTEXT_PYTHON] The script declares PEP 723 metadata with {}; "
-                     "dependency installation is allowed by policy.",
-                     declared);
-            return {.policy = policy, .installAllowed = true};
-        case PythonDependencyPolicy::Prompt:
-            JST_INFO("[RUNTIME_CONTEXT_PYTHON] The script declares PEP 723 metadata with {}; "
-                     "dependency installation is allowed after approval by policy.",
-                     declared);
-            return {.policy = policy, .installAllowed = true, .consentRequired = true};
-        case PythonDependencyPolicy::Deny:
-            JST_WARN("[RUNTIME_CONTEXT_PYTHON] The script declares PEP 723 metadata with {}; "
-                     "dependency installation is disabled by policy.",
-                     declared);
-            return {.policy = policy};
-    }
-
-    return {.policy = policy};
-}
-
-PythonDependencyDecision ResolvePythonDependencyPolicy(const PythonDependencyMetadata& metadata) {
-    const auto configured = ConfiguredDependencyPolicy();
-
+PythonDependencyPolicy ConfiguredPythonDependencyPolicy() {
     PythonDependencyPolicy policy = PythonDependencyPolicy::Prompt;
-    if (!configured.empty()) {
-        if (ParsePythonDependencyPolicy(configured, policy) != Result::SUCCESS) {
-            JST_WARN("[RUNTIME_CONTEXT_PYTHON] Ignoring the invalid configured dependency "
-                     "policy '{}'. Falling back to 'prompt'.",
-                     configured);
-            policy = PythonDependencyPolicy::Prompt;
-        }
+#ifdef JETSTREAM_BACKEND_CPU_AVAILABLE
+    const auto& configured = Backend::State<DeviceType::CPU>()->getDependencyPolicy();
+    if (!configured.empty() &&
+        ParsePythonDependencyPolicy(configured, policy) != Result::SUCCESS) {
+        JST_WARN("[RUNTIME_CONTEXT_PYTHON] Ignoring the invalid configured dependency "
+                 "policy '{}'. Falling back to 'prompt'.", configured);
     }
-
-    return ResolvePythonDependencyPolicy(metadata, policy);
+#endif
+    return policy;
 }
 
 }  // namespace Jetstream

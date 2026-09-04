@@ -9,7 +9,7 @@
 #include "jetstream/platform.hh"
 #include "jetstream/plugin.hh"
 #include "jetstream/settings.hh"
-#include "runtime/python/context.hh"
+#include "runtime/python/dependencies/coordinator.hh"
 
 #include <algorithm>
 #include <filesystem>

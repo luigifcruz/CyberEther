@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <algorithm>
 #include <atomic>
@@ -8,6 +9,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -19,12 +21,14 @@
 
 #include "jetstream/backend/base.hh"
 #include "jetstream/detail/module_impl.hh"
+#include "jetstream/domains/core/python/block.hh"
+#include "jetstream/flowgraph_view.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/module_context.hh"
 #include "jetstream/platform.hh"
 #include "jetstream/runtime_context_python.hh"
 #include "jetstream/scheduler_context.hh"
-#include "runtime/python/context.hh"
+#include "runtime/python/dependencies/coordinator.hh"
 #include "runtime/python/dependencies/base.hh"
 
 namespace {
@@ -116,17 +120,17 @@ class PythonCacheSandbox {
     PythonCacheSandbox()
         : directory_("cache"),
 #if defined(_WIN32)
-          environment_(L"LOCALAPPDATA")
+          environment_(L"LOCALAPPDATA"), noIndex_(L"PIP_NO_INDEX")
 #elif defined(__APPLE__)
-          environment_("CFFIXED_USER_HOME")
+          environment_("CFFIXED_USER_HOME"), noIndex_("PIP_NO_INDEX")
 #else
-          environment_("XDG_CACHE_HOME")
+          environment_("XDG_CACHE_HOME"), noIndex_("PIP_NO_INDEX")
 #endif
     {
 #if defined(_WIN32)
-        const bool configured = environment_.set(directory_.root.wstring());
+        const bool configured = environment_.set(directory_.root.wstring()) && noIndex_.set(L"1");
 #else
-        const bool configured = environment_.set(directory_.root.string());
+        const bool configured = environment_.set(directory_.root.string()) && noIndex_.set("1");
 #endif
         if (!configured) {
             throw std::runtime_error("failed to configure Python cache sandbox");
@@ -136,6 +140,7 @@ class PythonCacheSandbox {
  private:
     PythonTempDirectory directory_;
     PythonEnvironmentGuard environment_;
+    PythonEnvironmentGuard noIndex_;
 };
 
 void EnsurePythonCacheSandbox() {
@@ -159,6 +164,38 @@ std::string PythonFileUrl(const std::filesystem::path& path) {
 #else
     return "file://" + value;
 #endif
+}
+
+const PythonRuntimeContext::Validation& RequirePythonRuntime() {
+    static const auto runtime = PythonRuntimeContext::ValidateRuntimePath("");
+    if (!runtime.valid) {
+        SKIP("Optional Python runtime is unavailable: " << runtime.message);
+    }
+    return runtime;
+}
+
+void RequirePythonPip() {
+    const auto& runtime = RequirePythonRuntime();
+    std::string output;
+    const auto result = Platform::RunProcess(
+        runtime.programPath, {"-m", "pip", "--version"}, output, 10000, true);
+    if (result != Result::SUCCESS && output.find("No module named pip") != std::string::npos) {
+        SKIP("The selected optional Python runtime does not provide pip");
+    }
+    INFO(output);
+    REQUIRE(result == Result::SUCCESS);
+}
+
+PythonDependencyRequest WaitForPythonInstallation() {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (true) {
+        auto request = SnapshotPythonDependencyState().request;
+        if (request.state != PythonDependencyRequestState::Installing) {
+            return request;
+        }
+        REQUIRE(std::chrono::steady_clock::now() < deadline);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
 }
 
 TEST_CASE("Python runtime parses PEP 723 script metadata",
@@ -375,6 +412,15 @@ TEST_CASE("Python runtime validates PEP 723 requirements with the selected execu
     CHECK(ValidatePythonDependencyMetadata({.requiresPython = "=>3.9"}) == Result::ERROR);
     CHECK(JST_LOG_LAST_ERROR().find("Invalid PEP 723 requires-python") !=
           std::string::npos);
+
+    PythonRuntimeContext context;
+    const auto source = [](const char* version) {
+        return std::string("# /// script\n# requires-python = \"") + version +
+               "\"\n# ///\ndef compute(ctx):\n    pass\n";
+    };
+    REQUIRE(context.createCompute(source(">=3.9"), {}, {}, {}, {}, {}) == Result::SUCCESS);
+    REQUIRE(context.createCompute(source("<3"), {}, {}, {}, {}, {}) == Result::ERROR);
+    REQUIRE(context.createCompute(source(">=3.9"), {}, {}, {}, {}, {}) == Result::SUCCESS);
 }
 
 TEST_CASE("Python runtime parses dependency installation policies",
@@ -416,258 +462,236 @@ TEST_CASE("Python runtime parses dependency installation policies",
     }
 }
 
-TEST_CASE("Python runtime resolves the PEP 723 dependency policy",
-          "[core][runtime][python][pep723]") {
-    const PythonDependencyMetadata declared = {
-        .requirements = {"numpy>=2"},
-        .requiresPython = ">=3.11",
-    };
-
-    SECTION("scripts without metadata bypass the policy") {
-        for (const auto policy : {PythonDependencyPolicy::Prompt,
-                                  PythonDependencyPolicy::Allow,
-                                  PythonDependencyPolicy::Deny}) {
-            CAPTURE(static_cast<int>(policy));
-            const auto decision = ResolvePythonDependencyPolicy({}, policy);
-            CHECK(decision.policy == policy);
-            CHECK_FALSE(decision.installAllowed);
-            CHECK_FALSE(decision.consentRequired);
-        }
-    }
-
-    SECTION("allow installs automatically") {
-        const auto decision = ResolvePythonDependencyPolicy(declared, PythonDependencyPolicy::Allow);
-        CHECK(decision.policy == PythonDependencyPolicy::Allow);
-        CHECK(decision.installAllowed);
-        CHECK_FALSE(decision.consentRequired);
-    }
-
-    SECTION("prompt installs after consent") {
-        const auto decision = ResolvePythonDependencyPolicy(declared, PythonDependencyPolicy::Prompt);
-        CHECK(decision.policy == PythonDependencyPolicy::Prompt);
-        CHECK(decision.installAllowed);
-        CHECK(decision.consentRequired);
-    }
-
-    SECTION("deny never installs") {
-        const auto decision = ResolvePythonDependencyPolicy(declared, PythonDependencyPolicy::Deny);
-        CHECK(decision.policy == PythonDependencyPolicy::Deny);
-        CHECK_FALSE(decision.installAllowed);
-        CHECK_FALSE(decision.consentRequired);
-    }
-
-    SECTION("a requires-python constraint alone bypasses the policy") {
-        const PythonDependencyMetadata versionOnly = {.requiresPython = ">=3.11"};
-        const auto decision = ResolvePythonDependencyPolicy(versionOnly, PythonDependencyPolicy::Deny);
-        CHECK(decision.policy == PythonDependencyPolicy::Deny);
-        CHECK_FALSE(decision.installAllowed);
-        CHECK_FALSE(decision.consentRequired);
-    }
-}
-
 TEST_CASE("Python runtime resolves the configured dependency policy",
           "[core][runtime][python][pep723]") {
-    const PythonDependencyMetadata declared = {
-        .requirements = {"numpy>=2"},
-    };
-
-    // The CPU backend snapshots its configuration at initialization, so start
-    // from a clean slate and reconfigure before every resolution.
+    // The CPU backend snapshots its configuration at initialization.
     Backend::DestroyAll();
-
-    SECTION("falls back to prompt without a configured policy") {
-        const auto decision = ResolvePythonDependencyPolicy(declared);
-        CHECK(decision.policy == PythonDependencyPolicy::Prompt);
-        CHECK(decision.installAllowed);
-        CHECK(decision.consentRequired);
+    SECTION("defaults to prompt") {
+        CHECK(ConfiguredPythonDependencyPolicy() == PythonDependencyPolicy::Prompt);
     }
-
-    SECTION("deny propagates from the backend configuration") {
+    SECTION("configured policies propagate") {
         REQUIRE(Backend::Configure<DeviceType::CPU>(Backend::Config{
                     .dependencyPolicy = "deny"}) == Result::SUCCESS);
-        const auto decision = ResolvePythonDependencyPolicy(declared);
-        CHECK(decision.policy == PythonDependencyPolicy::Deny);
-        CHECK_FALSE(decision.installAllowed);
-        CHECK_FALSE(decision.consentRequired);
+        CHECK(ConfiguredPythonDependencyPolicy() == PythonDependencyPolicy::Deny);
     }
-
-    SECTION("allow propagates from the backend configuration") {
-        REQUIRE(Backend::Configure<DeviceType::CPU>(Backend::Config{
-                    .dependencyPolicy = "allow"}) == Result::SUCCESS);
-        const auto decision = ResolvePythonDependencyPolicy(declared);
-        CHECK(decision.policy == PythonDependencyPolicy::Allow);
-        CHECK(decision.installAllowed);
-        CHECK_FALSE(decision.consentRequired);
-    }
-
-    SECTION("invalid configured values fall back to prompt") {
+    SECTION("invalid values fall back to prompt") {
         REQUIRE(Backend::Configure<DeviceType::CPU>(Backend::Config{
                     .dependencyPolicy = "never"}) == Result::SUCCESS);
-        const auto decision = ResolvePythonDependencyPolicy(declared);
-        CHECK(decision.policy == PythonDependencyPolicy::Prompt);
-        CHECK(decision.installAllowed);
-        CHECK(decision.consentRequired);
+        CHECK(ConfiguredPythonDependencyPolicy() == PythonDependencyPolicy::Prompt);
     }
-
     Backend::DestroyAll();
 }
 
-TEST_CASE("Python runtime combines scheduled dependency requirements",
+TEST_CASE("Python runtime reconciles scheduled dependency requirements",
           "[core][runtime][python][pep723]") {
+    EnsurePythonCacheSandbox();
+    RequirePythonRuntime();
+    REQUIRE(SetPythonDependencyPolicy("deny") == Result::SUCCESS);
     PythonRuntimeContext first;
     PythonRuntimeContext second;
-
-    REQUIRE(StagePythonDependencies(&first,
-                                    {"scipy>=1", "numpy>=2", "numpy>=2"}) ==
+    REQUIRE(SetPythonDependencyOrigin(&first, "first", nullptr) == Result::SUCCESS);
+    REQUIRE(SetPythonDependencyOrigin(&second, "second", nullptr) == Result::SUCCESS);
+    REQUIRE(StagePythonDependencies(&first, {"scipy>=1", "numpy>=2", "numpy>=2"}) ==
             Result::SUCCESS);
-    REQUIRE(StagePythonDependencies(&second, {"requests>=2", "numpy>=2"}) ==
-            Result::SUCCESS);
-    CHECK(SnapshotPythonDependencies().requirements.empty());
+    REQUIRE(StagePythonDependencies(&second, {"requests>=2", "numpy>=2"}) == Result::SUCCESS);
 
+    const auto expectRequest = [](const std::vector<std::pair<std::string, std::string>>& expected) {
+        REQUIRE(ReconcilePythonDependencies() ==
+                (expected.empty() ? Result::SUCCESS : Result::INCOMPLETE));
+        const auto request = SnapshotPythonDependencyState().request;
+        REQUIRE(request.state == (expected.empty() ? PythonDependencyRequestState::None
+                                                   : PythonDependencyRequestState::Denied));
+        REQUIRE(request.dependencies.size() == expected.size());
+        for (std::size_t i = 0; i < expected.size(); ++i) {
+            CHECK(request.dependencies[i].requirement == expected[i].first);
+            CHECK(request.dependencies[i].block == expected[i].second);
+        }
+    };
+    expectRequest({});
     REQUIRE(SchedulePythonDependencies(&first) == Result::SUCCESS);
-    CHECK(SnapshotPythonDependencies().requirements ==
-          std::vector<std::string>{"numpy>=2", "scipy>=1"});
-
+    expectRequest({{"numpy>=2", "first"}, {"numpy>=2", "first"}, {"scipy>=1", "first"}});
     REQUIRE(SchedulePythonDependencies(&second) == Result::SUCCESS);
-    const auto combined = SnapshotPythonDependencies();
-    CHECK(combined.requirements ==
-          std::vector<std::string>{"numpy>=2", "requests>=2", "scipy>=1"});
-
+    expectRequest({{"numpy>=2", "first"}, {"numpy>=2", "first"}, {"numpy>=2", "second"},
+                   {"requests>=2", "second"}, {"scipy>=1", "first"}});
     REQUIRE(StagePythonDependencies(&first, {"pandas>=2"}) == Result::SUCCESS);
-    const auto updated = SnapshotPythonDependencies();
-    CHECK(updated.generation > combined.generation);
-    CHECK(updated.requirements ==
-          std::vector<std::string>{"numpy>=2", "pandas>=2", "requests>=2"});
-
+    expectRequest({{"numpy>=2", "second"}, {"pandas>=2", "first"}, {"requests>=2", "second"}});
     REQUIRE(UnschedulePythonDependencies(&second) == Result::SUCCESS);
-    CHECK(SnapshotPythonDependencies().requirements ==
-          std::vector<std::string>{"pandas>=2"});
-
+    expectRequest({{"pandas>=2", "first"}});
     REQUIRE(RemovePythonDependencies(&first) == Result::SUCCESS);
     REQUIRE(RemovePythonDependencies(&second) == Result::SUCCESS);
-    CHECK(SnapshotPythonDependencies().requirements.empty());
+    expectRequest({});
+    REQUIRE(SetPythonDependencyPolicy("prompt") == Result::SUCCESS);
 }
 
-TEST_CASE("Python runtime approves dependency installation generations",
+TEST_CASE("Python runtime rejects stale dependency approvals and denied installs",
           "[core][runtime][python][pep723]") {
-    struct ApprovalContext : PythonRuntimeContext {
-        Result loadCompute() override {
-            return Result::SUCCESS;
-        }
-    } context;
-
     EnsurePythonCacheSandbox();
-    Backend::DestroyAll();
-    REQUIRE(Backend::Configure<DeviceType::CPU>(Backend::Config{
-                .dependencyPolicy = "prompt"}) == Result::SUCCESS);
+    RequirePythonRuntime();
     REQUIRE(SetPythonDependencyPolicy("prompt") == Result::SUCCESS);
-
-    const std::string requirement =
-        "cyberether-approval-fixture; python_version < '0'";
-    REQUIRE(StagePythonDependencies(&context, {requirement}) == Result::SUCCESS);
-    REQUIRE(SetPythonDependencyOrigin(&context, "approval-python", nullptr) ==
-            Result::SUCCESS);
+    PythonRuntimeContext context;
+    REQUIRE(StagePythonDependencies(&context, {"cyberether-approval-fixture"}) == Result::SUCCESS);
     REQUIRE(SchedulePythonDependencies(&context) == Result::SUCCESS);
+    REQUIRE(ReconcilePythonDependencies() == Result::INCOMPLETE);
+    const auto approval = SnapshotPythonDependencyState().request;
+    REQUIRE(approval.state == PythonDependencyRequestState::ApprovalRequired);
+    CHECK(BeginPythonDependencyInstallation(approval.generation + 1) == Result::ERROR);
+    CHECK(SnapshotPythonDependencyState().request.state == PythonDependencyRequestState::ApprovalRequired);
 
-    const auto reconcileResult = ReconcilePythonDependencies();
-    auto request = GetPythonDependencyRequest();
-    if (request.state == PythonDependencyRequestState::Failed) {
-        REQUIRE(UnschedulePythonDependencies(&context) == Result::SUCCESS);
-        REQUIRE(RemovePythonDependencies(&context) == Result::SUCCESS);
-        Backend::DestroyAll();
-        SKIP("Optional Python dependency approval runtime is unavailable: "
-             << request.message);
-    }
-    REQUIRE(reconcileResult == Result::INCOMPLETE);
-    REQUIRE(request.state == PythonDependencyRequestState::ApprovalRequired);
-    REQUIRE(request.dependencies.size() == 1);
-    REQUIRE(request.dependencies[0].requirement == requirement);
-    REQUIRE(request.dependencies[0].block == "approval-python");
-    const auto stateSnapshot = SnapshotPythonDependencyState();
-    CHECK(stateSnapshot.generation == request.generation);
-    CHECK(stateSnapshot.request.state ==
-          PythonDependencyRequestState::ApprovalRequired);
-
-    const auto approvalGeneration = request.generation;
     REQUIRE(SetPythonDependencyPolicy("deny") == Result::SUCCESS);
-    CHECK(GetPythonDependencyRequest().state == PythonDependencyRequestState::None);
-    CHECK(SnapshotPythonDependencies().generation > approvalGeneration);
-    REQUIRE(BeginPythonDependencyInstallation(approvalGeneration) == Result::ERROR);
+    CHECK(BeginPythonDependencyInstallation(approval.generation) == Result::ERROR);
     REQUIRE(ReconcilePythonDependencies() == Result::INCOMPLETE);
-    const auto deniedRequest = GetPythonDependencyRequest();
-    REQUIRE(deniedRequest.state == PythonDependencyRequestState::Denied);
-    REQUIRE(deniedRequest.dependencies.size() == 1);
-    CHECK(deniedRequest.dependencies[0].requirement == requirement);
-    CHECK_FALSE(deniedRequest.message.empty());
+    const auto denied = SnapshotPythonDependencyState().request;
+    REQUIRE(denied.state == PythonDependencyRequestState::Denied);
+    CHECK_FALSE(denied.message.empty());
+    CHECK(BeginPythonDependencyInstallation(denied.generation) == Result::ERROR);
     REQUIRE(ReconcilePythonDependencies() == Result::INCOMPLETE);
-    CHECK(GetPythonDependencyRequest().state == PythonDependencyRequestState::Denied);
-    REQUIRE(BeginPythonDependencyInstallation(deniedRequest.generation) == Result::ERROR);
+    CHECK(SnapshotPythonDependencyState().request.state == PythonDependencyRequestState::Denied);
 
     REQUIRE(SetPythonDependencyPolicy("prompt") == Result::SUCCESS);
     REQUIRE(ReconcilePythonDependencies() == Result::INCOMPLETE);
-    request = GetPythonDependencyRequest();
-    REQUIRE(request.state == PythonDependencyRequestState::ApprovalRequired);
-    REQUIRE(request.generation > approvalGeneration);
-
-    REQUIRE(BeginPythonDependencyInstallation(request.generation + 1) ==
-            Result::ERROR);
-    REQUIRE(GetPythonDependencyRequest().state ==
-            PythonDependencyRequestState::ApprovalRequired);
-    const auto staleInstallationGeneration = request.generation;
-    REQUIRE(BeginPythonDependencyInstallation(staleInstallationGeneration) ==
-            Result::SUCCESS);
-    REQUIRE(GetPythonDependencyRequest().state ==
-            PythonDependencyRequestState::Installing);
-
-    const std::string changedRequirement =
-        "cyberether-approval-changed-fixture; python_version < '0'";
-    REQUIRE(StagePythonDependencies(&context, {requirement, changedRequirement}) ==
-            Result::SUCCESS);
-    REQUIRE(InstallPythonDependencies(staleInstallationGeneration) == Result::ERROR);
-    const auto staleInstallation = GetPythonDependencyRequest();
-    REQUIRE(staleInstallation.state == PythonDependencyRequestState::Failed);
-    CHECK_FALSE(staleInstallation.message.empty());
-
-    REQUIRE(ReconcilePythonDependencies() == Result::INCOMPLETE);
-    request = GetPythonDependencyRequest();
-    REQUIRE(request.state == PythonDependencyRequestState::ApprovalRequired);
-    REQUIRE(request.generation > staleInstallationGeneration);
-    REQUIRE(request.dependencies.size() == 2);
-    REQUIRE(BeginPythonDependencyInstallation(request.generation) ==
-            Result::SUCCESS);
-    const auto installResult = InstallPythonDependencies(request.generation);
-    if (installResult == Result::ERROR &&
-        JST_LOG_LAST_ERROR().find("No module named pip") != std::string::npos) {
-        REQUIRE(UnschedulePythonDependencies(&context) == Result::SUCCESS);
-        REQUIRE(RemovePythonDependencies(&context) == Result::SUCCESS);
-        Backend::DestroyAll();
-        SKIP("The selected optional Python runtime does not provide pip");
-    }
-    REQUIRE(installResult == Result::SUCCESS);
-    const auto installedRequest = GetPythonDependencyRequest();
-    REQUIRE(installedRequest.state == PythonDependencyRequestState::Installed);
-    CHECK(installedRequest.output.ends_with("Installation completed.\n"));
-
-    REQUIRE(UnschedulePythonDependencies(&context) == Result::SUCCESS);
+    CHECK(SnapshotPythonDependencyState().request.generation > approval.generation);
     REQUIRE(RemovePythonDependencies(&context) == Result::SUCCESS);
     REQUIRE(ReconcilePythonDependencies() == Result::SUCCESS);
-    Backend::DestroyAll();
+}
+
+TEST_CASE("Python runtime installs approved and automatic requests in the background",
+          "[core][runtime][python][pep723]") {
+    EnsurePythonCacheSandbox();
+    RequirePythonPip();
+    struct InstallationContext : PythonRuntimeContext {
+        Result loadCompute() override { return Result::SUCCESS; }
+    } context;
+    const std::string policy = GENERATE("prompt", "allow");
+    CAPTURE(policy);
+    REQUIRE(SetPythonDependencyPolicy(policy) == Result::SUCCESS);
+
+    const std::string requirement = "cyberether-" + policy + "-fixture; python_version < '0'";
+    PythonDependencyEnvironment environment;
+    REQUIRE(PreparePythonDependencyEnvironment({requirement}, true, environment) == Result::SUCCESS);
+    const auto environmentPath = Platform::PathFromUtf8(environment.sitePackagesPath).parent_path();
+    REQUIRE(std::filesystem::remove(environmentPath / "complete"));
+    Platform::FileLock installationLock;
+    REQUIRE(installationLock.acquire(Platform::PathToUtf8(
+                environmentPath.parent_path() / (environment.key + ".lock"))) == Result::SUCCESS);
+    REQUIRE(StagePythonDependencies(&context, {requirement}) == Result::SUCCESS);
+    REQUIRE(SchedulePythonDependencies(&context) == Result::SUCCESS);
+
+    // Hold the cache lock so the installer cannot finish before we inspect it.
+    // Release it even if starting installation unexpectedly blocks.
+    auto start = std::async(std::launch::async, [&] {
+        const auto result = ReconcilePythonDependencies();
+        if (result != Result::INCOMPLETE || policy == "allow") {
+            return result;
+        }
+        return BeginPythonDependencyInstallation(SnapshotPythonDependencyState().request.generation);
+    });
+    const bool returned = start.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
+    const auto installing = SnapshotPythonDependencyState().request;
+    bool changed = false;
+    SECTION("installation completes") {}
+    SECTION("a changed dependency set cannot activate the old environment") {
+        changed = true;
+        if (returned) {
+            REQUIRE(StagePythonDependencies(&context, {requirement, "cyberether-changed-fixture"}) ==
+                    Result::SUCCESS);
+        }
+    }
+    installationLock.release();
+    REQUIRE(returned);
+    REQUIRE(start.get() == (policy == "allow" ? Result::INCOMPLETE : Result::SUCCESS));
+    REQUIRE(installing.state == PythonDependencyRequestState::Installing);
+    const auto completed = WaitForPythonInstallation();
+    INFO(completed.message);
+    if (changed) {
+        REQUIRE(completed.state == PythonDependencyRequestState::Failed);
+        CHECK(completed.message.find("dependency list changed") != std::string::npos);
+        REQUIRE(SetPythonDependencyPolicy("prompt") == Result::SUCCESS);
+        REQUIRE(ReconcilePythonDependencies() == Result::INCOMPLETE);
+        CHECK(SnapshotPythonDependencyState().request.state == PythonDependencyRequestState::ApprovalRequired);
+        CHECK(BeginPythonDependencyInstallation(installing.generation) == Result::ERROR);
+    } else {
+        REQUIRE(completed.state == PythonDependencyRequestState::Installed);
+        CHECK(completed.output.find("Ignoring cyberether-") != std::string::npos);
+        CHECK(completed.output.ends_with("Installation completed.\n"));
+        REQUIRE(ReconcilePythonDependencies() == Result::SUCCESS);
+
+        // A cached environment must remain usable even when new installs are denied.
+        REQUIRE(SetPythonDependencyPolicy("deny") == Result::SUCCESS);
+        REQUIRE(ReconcilePythonDependencies() == Result::SUCCESS);
+    }
+    REQUIRE(RemovePythonDependencies(&context) == Result::SUCCESS);
+    REQUIRE(ReconcilePythonDependencies() == Result::SUCCESS);
+    REQUIRE(SetPythonDependencyPolicy("prompt") == Result::SUCCESS);
+}
+
+TEST_CASE("Python runtime recovers installed dependencies when reopening a graph",
+          "[core][runtime][python][pep723]") {
+    EnsurePythonCacheSandbox();
+    RequirePythonPip();
+    PythonTempDirectory package("reopen-package");
+    const auto wheel = package.root / "cyberether_cache_fixture-1.0-py3-none-any.whl";
+    std::filesystem::copy_file(Platform::PathFromUtf8(JETSTREAM_PYTHON_TEST_WHEEL), wheel);
+    const auto requirement = "cyberether-cache-fixture @ " + PythonFileUrl(wheel);
+
+    Blocks::Python config;
+    config.inputCount = 0;
+    config.outputCount = 1;
+    config.outputTensorSpecs = {{.shape = "[1]"}};
+    config.code = "# /// script\n# dependencies = [\"" + requirement +
+        "\"]\n# ///\n"
+        "import cyberether_cache_fixture as fixture\n"
+        "def compute(ctx):\n"
+        "    ctx.outputs[0][...] = fixture.VALUE\n";
+    const auto graphPath = Platform::PathToUtf8(package.root / "graph.yaml");
+    const auto checkOutput = [](Flowgraph& graph) {
+        REQUIRE(graph.compute() == Result::SUCCESS);
+        Flowgraph::View::BlockData block;
+        REQUIRE(graph.view().block("python", block) == Result::SUCCESS);
+        REQUIRE(block.state == Block::State::Created);
+        CHECK(block.outputs.at("output0").tensor.at<F32>(0) == 17.0f);
+    };
+
+    REQUIRE(SetPythonDependencyPolicy("prompt") == Result::SUCCESS);
+    {
+        Flowgraph graph;
+        REQUIRE(graph.create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+        REQUIRE(graph.blockCreate("python", config, {}, DeviceType::CPU,
+                                  RuntimeType::PYTHON) == Result::SUCCESS);
+        REQUIRE(graph.compute() == Result::SUCCESS);
+        const auto request = SnapshotPythonDependencyState().request;
+        REQUIRE(request.state == PythonDependencyRequestState::ApprovalRequired);
+        REQUIRE(BeginPythonDependencyInstallation(request.generation) == Result::SUCCESS);
+        REQUIRE(WaitForPythonInstallation().state == PythonDependencyRequestState::Installed);
+        checkOutput(graph);
+        REQUIRE(graph.exportToFile(graphPath) == Result::SUCCESS);
+        REQUIRE(graph.destroy() == Result::SUCCESS);
+    }
+
+    // Remove the download source and disallow installs: reopening must use disk.
+    std::filesystem::remove(wheel);
+    REQUIRE(SetPythonDependencyPolicy("deny") == Result::SUCCESS);
+    REQUIRE(ReconcilePythonDependencies() == Result::SUCCESS);
+    {
+        Flowgraph graph;
+        REQUIRE(graph.create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+        REQUIRE(graph.importFromFile(graphPath) == Result::SUCCESS);
+        checkOutput(graph);
+        REQUIRE(SnapshotPythonDependencyState().request.state == PythonDependencyRequestState::None);
+        REQUIRE(graph.destroy() == Result::SUCCESS);
+    }
+    REQUIRE(ReconcilePythonDependencies() == Result::SUCCESS);
+    REQUIRE(SetPythonDependencyPolicy("prompt") == Result::SUCCESS);
 }
 
 TEST_CASE("Python runtime caches pip dependency environments",
           "[core][runtime][python][pep723]") {
     EnsurePythonCacheSandbox();
 
+    RequirePythonPip();
     PythonTempDirectory package("cache-package");
-    WritePythonTestFile(
-        package.root / "setup.py",
-        "from setuptools import setup\n"
-        "setup(name='cyberether-cache-fixture', version='1.0', "
-        "py_modules=['cyberether_cache_fixture'])\n");
-    WritePythonTestFile(package.root / "cyberether_cache_fixture.py", "VALUE = 17\n");
-
-    const std::string packageRequirement =
-        "cyberether-cache-fixture @ " + PythonFileUrl(package.root);
+    const auto wheel = package.root / "cyberether_cache_fixture-1.0-py3-none-any.whl";
+    std::filesystem::copy_file(Platform::PathFromUtf8(JETSTREAM_PYTHON_TEST_WHEEL), wheel);
+    const std::string packageRequirement = "cyberether-cache-fixture @ " + PythonFileUrl(wheel);
     const std::string ignoredRequirement =
         "cyberether-cache-ignored; python_version < '0'";
     const std::vector<std::string> requirements = {
@@ -677,16 +701,11 @@ TEST_CASE("Python runtime caches pip dependency environments",
     };
 
     PythonDependencyEnvironment missing = {
-        .requirements = {"unchanged"},
         .key = "unchanged",
         .sitePackagesPath = "unchanged",
     };
     const auto missResult = PreparePythonDependencyEnvironment(
         requirements, false, missing);
-    if (missResult == Result::ERROR) {
-        INFO(JST_LOG_LAST_ERROR());
-        SKIP("Optional Python environment cache runtime is unavailable");
-    }
     REQUIRE(missResult == Result::INCOMPLETE);
     CHECK(missing.key == "unchanged");
 
@@ -696,18 +715,9 @@ TEST_CASE("Python runtime caches pip dependency environments",
         requirements, true, installed, [&installOutput](std::string_view output) {
             installOutput.append(output.data(), output.size());
         });
-    const auto& installError = JST_LOG_LAST_ERROR();
-    if (installResult != Result::SUCCESS &&
-        (installError.find("No module named pip") != std::string::npos ||
-         installError.find("No module named 'setuptools'") != std::string::npos)) {
-        SKIP("The selected optional Python runtime cannot install local packages: "
-             << installError);
-    }
-    INFO(installError);
+    INFO(JST_LOG_LAST_ERROR());
     REQUIRE(installResult == Result::SUCCESS);
     CHECK_FALSE(installOutput.empty());
-    CHECK(installed.requirements ==
-          std::vector<std::string>{packageRequirement, ignoredRequirement});
     CHECK(installed.key.size() == 64);
 
     const auto sitePackages = Platform::PathFromUtf8(installed.sitePackagesPath);
@@ -731,7 +741,6 @@ TEST_CASE("Python runtime caches pip dependency environments",
     REQUIRE(std::filesystem::is_regular_file(complete));
 
     PythonDependencyEnvironment unchanged = {
-        .requirements = {"unchanged"},
         .key = "unchanged",
         .sitePackagesPath = "unchanged",
     };
@@ -776,7 +785,7 @@ TEST_CASE("Python runtime caches pip dependency environments",
             Result::SUCCESS);
 
     const std::string missingRequirement =
-        "cyberether-cache-missing @ " + PythonFileUrl(package.root);
+        "cyberether-cache-fixture @ " + PythonFileUrl(package.root / "missing" / wheel.filename());
     unchanged.key = "unchanged";
     REQUIRE(PreparePythonDependencyEnvironment(
                 {missingRequirement}, false, unchanged) == Result::INCOMPLETE);
@@ -942,21 +951,6 @@ def compute(ctx):
     std::unordered_map<std::string, std::string> pieces;
     Tensor input;
     Tensor output;
-};
-
-struct ReloadTrackingPythonContext : PythonRuntimeContext {
-    Result loadCompute() override {
-        ++loads;
-        if (failLoads > 0) {
-            --failLoads;
-            JST_ERROR("[SKIP_TEST_SOURCE] Forced Python reload failure.");
-            return Result::ERROR;
-        }
-        return Result::SUCCESS;
-    }
-
-    U64 loads = 0;
-    U64 failLoads = 0;
 };
 
 std::shared_ptr<Module> makePythonRuntimeSmokeModule(std::string source = {},
@@ -1215,6 +1209,7 @@ TEST_CASE("Python runtime executes compute() with tensor inputs and outputs", "[
 
 TEST_CASE("Python runtime reloads modules after dependency environment switches",
           "[core][runtime][python][pep723]") {
+    RequirePythonRuntime();
     PythonTempDirectory firstEnvironment("environment-first");
     PythonTempDirectory secondEnvironment("environment-second");
     WritePythonTestFile(firstEnvironment.root / "cyberether_environment_fixture.py",
@@ -1223,21 +1218,15 @@ TEST_CASE("Python runtime reloads modules after dependency environment switches"
                         "FACTOR = 5.0\n");
 
     const PythonDependencyEnvironment first = {
-        .requirements = {"cyberether-environment-fixture==1"},
         .key = "environment-first",
         .sitePackagesPath = Platform::PathToUtf8(firstEnvironment.root),
     };
     const PythonDependencyEnvironment second = {
-        .requirements = {"cyberether-environment-fixture==2"},
         .key = "environment-second",
         .sitePackagesPath = Platform::PathToUtf8(secondEnvironment.root),
     };
 
-    const auto activateResult = ActivatePythonDependencyEnvironment(first);
-    if (activateResult != Result::SUCCESS) {
-        INFO(JST_LOG_LAST_ERROR());
-        SKIP("Optional Python environment activation is unavailable");
-    }
+    REQUIRE(ActivatePythonDependencyEnvironment(first) == Result::SUCCESS);
 
     Tensor input;
     REQUIRE(input.create(DeviceType::CPU, DataType::F32, {4}) == Result::SUCCESS);
@@ -1261,71 +1250,36 @@ def compute(ctx):
     REQUIRE(runtime.create({{"python_environment_reload", module}}) ==
             Result::SUCCESS);
 
-    std::unordered_set<std::string> skippedModules;
-    std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
-    auto output = module->outputs().at("out").tensor;
-    for (Index i = 0; i < output.size(); ++i) {
-        REQUIRE(output.at<F32>(i) == static_cast<F32>((i + 1) * 2));
+    const auto checkOutput = [&](F32 factor) {
+        auto output = module->outputs().at("out").tensor;
+        for (Index i = 0; i < output.size(); ++i) {
+            output.at<F32>(i) = -1.0f;
+        }
+        std::unordered_set<std::string> skippedModules;
+        std::unordered_set<std::string> failedModules;
+        REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+        REQUIRE(skippedModules.empty());
+        REQUIRE(failedModules.empty());
+        for (Index i = 0; i < output.size(); ++i) {
+            REQUIRE(output.at<F32>(i) == static_cast<F32>(i + 1) * factor);
+        }
+    };
+    checkOutput(2.0f);
+    SECTION("successful switch") {}
+    SECTION("failed reload restores the previous environment and computation") {
+        WritePythonTestFile(secondEnvironment.root / "cyberether_environment_fixture.py",
+                            "raise RuntimeError('fixture cannot load')\n");
+        REQUIRE(ActivatePythonDependencyEnvironment(second) == Result::ERROR);
+        checkOutput(2.0f);
+        WritePythonTestFile(secondEnvironment.root / "cyberether_environment_fixture.py",
+                            "FACTOR = 5.0\n");
     }
-
     REQUIRE(ActivatePythonDependencyEnvironment(second) == Result::SUCCESS);
-    skippedModules.clear();
-    failedModules.clear();
-    REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
-    output = module->outputs().at("out").tensor;
-    for (Index i = 0; i < output.size(); ++i) {
-        REQUIRE(output.at<F32>(i) == static_cast<F32>((i + 1) * 5));
-    }
+    checkOutput(5.0f);
 
     REQUIRE(runtime.destroy() == Result::SUCCESS);
     destroyPythonCompute(module);
     REQUIRE(module->destroy() == Result::SUCCESS);
-    REQUIRE(ActivatePythonDependencyEnvironment({}) == Result::SUCCESS);
-}
-
-TEST_CASE("Python runtime rolls back failed dependency environment reloads",
-          "[core][runtime][python][pep723]") {
-    PythonTempDirectory firstPath("rollback-first");
-    PythonTempDirectory secondPath("rollback-second");
-    const PythonDependencyEnvironment firstEnvironment = {
-        .key = "rollback-first",
-        .sitePackagesPath = Platform::PathToUtf8(firstPath.root),
-    };
-    const PythonDependencyEnvironment secondEnvironment = {
-        .key = "rollback-second",
-        .sitePackagesPath = Platform::PathToUtf8(secondPath.root),
-    };
-
-    const auto activateResult = ActivatePythonDependencyEnvironment(firstEnvironment);
-    if (activateResult != Result::SUCCESS) {
-        INFO(JST_LOG_LAST_ERROR());
-        SKIP("Optional Python environment activation is unavailable");
-    }
-
-    ReloadTrackingPythonContext first;
-    ReloadTrackingPythonContext second;
-    REQUIRE(StagePythonDependencies(&first, {}) == Result::SUCCESS);
-    REQUIRE(StagePythonDependencies(&second, {}) == Result::SUCCESS);
-    REQUIRE(SchedulePythonDependencies(&first) == Result::SUCCESS);
-    REQUIRE(SchedulePythonDependencies(&second) == Result::SUCCESS);
-
-    second.failLoads = 1;
-    REQUIRE(ActivatePythonDependencyEnvironment(secondEnvironment) == Result::ERROR);
-    const auto firstLoadsAfterFailure = first.loads;
-    const auto secondLoadsAfterFailure = second.loads;
-    REQUIRE(firstLoadsAfterFailure >= 1);
-    REQUIRE(secondLoadsAfterFailure >= 2);
-
-    REQUIRE(ActivatePythonDependencyEnvironment(secondEnvironment) ==
-            Result::SUCCESS);
-    REQUIRE(first.loads > firstLoadsAfterFailure);
-    REQUIRE(second.loads > secondLoadsAfterFailure);
-
-    REQUIRE(UnschedulePythonDependencies(&first) == Result::SUCCESS);
-    REQUIRE(UnschedulePythonDependencies(&second) == Result::SUCCESS);
-    REQUIRE(RemovePythonDependencies(&first) == Result::SUCCESS);
-    REQUIRE(RemovePythonDependencies(&second) == Result::SUCCESS);
     REQUIRE(ActivatePythonDependencyEnvironment({}) == Result::SUCCESS);
 }
 

@@ -19,6 +19,7 @@ dep_lst += declare_dependency(
 )
 
 src_lst += files([
+    'coordinator.cc',
     'environment.cc',
     'metadata.cc',
     'policy.cc',

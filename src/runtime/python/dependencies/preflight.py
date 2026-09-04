@@ -4,21 +4,6 @@ import platform
 import site
 import sys
 
-PARSER_PACKAGES = ("packaging", "pip._vendor.packaging")
-USER_SITE_PATHS = []
-EXTRA_WATCH_PATHS = set()
-
-
-def add_watch_path(paths, value):
-    path = os.path.abspath(value)
-    while not os.path.exists(path):
-        parent = os.path.dirname(path)
-        if parent == path:
-            return
-        path = parent
-    paths.add(path)
-
-
 def user_site_enabled():
     if os.environ.get("PYTHONNOUSERSITE"):
         return False
@@ -37,7 +22,6 @@ def user_site_enabled():
     ):
         if not os.path.isfile(config):
             continue
-        EXTRA_WATCH_PATHS.add(os.path.abspath(config))
         include_system_site_packages = "true"
         with open(config, encoding="utf-8") as file:
             for line in file:
@@ -50,15 +34,12 @@ def user_site_enabled():
 
 
 def add_user_site():
-    global USER_SITE_PATHS
-
     if not user_site_enabled():
         return
 
     paths = site.getusersitepackages()
     if isinstance(paths, str):
         paths = [paths]
-    USER_SITE_PATHS = paths
 
     existing_paths = set(sys.path)
     for path in paths:
@@ -84,34 +65,6 @@ def add_user_site():
         sys.path[insertion:insertion] = added_paths
 
 
-def watched_paths():
-    paths = set(EXTRA_WATCH_PATHS)
-    for path in sys.path:
-        add_watch_path(paths, path)
-    for directory in [*site.getsitepackages(), *USER_SITE_PATHS]:
-        add_watch_path(paths, directory)
-        try:
-            entries = os.listdir(directory)
-        except OSError:
-            continue
-        for entry in entries:
-            if entry.endswith(".pth"):
-                add_watch_path(paths, os.path.join(directory, entry))
-
-    for name, module in sys.modules.items():
-        if not any(
-            name == package or name.startswith(package + ".")
-            for package in PARSER_PACKAGES
-        ):
-            continue
-        path = getattr(module, "__file__", None)
-        if path:
-            path = os.path.abspath(path)
-            paths.add(path)
-            paths.add(os.path.dirname(path))
-    return sorted(paths)
-
-
 def emit(valid, error=""):
     print(
         "JETSTREAM_PEP723_RESULT="
@@ -119,7 +72,6 @@ def emit(valid, error=""):
             {
                 "valid": valid,
                 "error": error,
-                "watch": watched_paths(),
             },
             ensure_ascii=True,
         )

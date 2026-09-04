@@ -88,6 +88,8 @@ struct FlowgraphWindowPresenter {
 
     std::string dependencyReviewMessage() const {
         switch (context.state.runtime.dependencyRequest.state) {
+            case PythonDependencyRequestState::Installing:
+                return "Installing Python dependencies.";
             case PythonDependencyRequestState::Failed:
                 return "Python dependency installation failed.";
             case PythonDependencyRequestState::Denied:
@@ -100,6 +102,7 @@ struct FlowgraphWindowPresenter {
     bool hasDependencyReview(const std::shared_ptr<Flowgraph>& currentFlowgraph) const {
         const auto& request = context.state.runtime.dependencyRequest;
         if (request.state != PythonDependencyRequestState::ApprovalRequired &&
+            request.state != PythonDependencyRequestState::Installing &&
             request.state != PythonDependencyRequestState::Failed &&
             request.state != PythonDependencyRequestState::Denied) {
             return false;
