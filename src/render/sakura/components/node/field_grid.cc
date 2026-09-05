@@ -69,12 +69,12 @@ void NodeFieldGrid::render(const Context& ctx, const std::vector<Item>& items) c
             ImGuiWindow* window = ImGui::GetCurrentWindow();
             const F32 contentMaxX = window->ContentRegionRect.Max.x;
             window->ContentRegionRect.Max.x = ImGui::GetCursorScreenPos().x + colWidth;
-            const F32 slack = Scale(ctx, 8.0f);
             const ImRect clipRect = window->ClipRect;
-            ImGui::PushClipRect(ImVec2(clipRect.Min.x, clipRect.Min.y - slack),
+            // Columns must not expand the parent clip into neighboring dock panes.
+            ImGui::PushClipRect(clipRect.Min,
                                 ImVec2(window->ContentRegionRect.Max.x,
-                                       clipRect.Max.y + slack),
-                                false);
+                                       clipRect.Max.y),
+                                true);
             if (items[j].child) {
                 items[j].child(ctx);
             }
