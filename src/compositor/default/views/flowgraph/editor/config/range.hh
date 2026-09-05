@@ -4,6 +4,7 @@
 #include "types.hh"
 
 #include <cmath>
+#include <limits>
 
 // TODO: Cleanup parsing.
 
@@ -43,6 +44,22 @@ struct FlowgraphConfigRangeField {
             .integer = unsignedInteger,
             .unit = unit,
             .onChange = [this](F32 nextValue) {
+                const F32 unsignedLimit = std::ldexp(1.0f, std::numeric_limits<U64>::digits);
+                if (!std::isfinite(nextValue) ||
+                    (unsignedInteger &&
+                     (nextValue < 0.0f || std::round(nextValue) >= unsignedLimit))) {
+                    if (this->config.onError) {
+                        this->config.onError(
+                            Result::ERROR,
+                            jst::fmt::format("{}: {}",
+                                             this->config.label,
+                                             unsignedInteger
+                                                 ? "Value must be finite, non-negative, and fit in an unsigned 64-bit integer."
+                                                 : "Value must be finite."));
+                    }
+                    return;
+                }
+
                 Parser::Map patch;
                 if (unsignedInteger) {
                     patch[this->config.name] = static_cast<U64>(std::round(nextValue));

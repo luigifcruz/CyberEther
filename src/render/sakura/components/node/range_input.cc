@@ -53,8 +53,7 @@ void NodeRangeInput::render(const Context& ctx) const {
                               ImGuiInputTextFlags_EnterReturnsTrue |
                                   ImGuiInputTextFlags_AutoSelectAll)) {
             if (config.onChange) {
-                config.onChange(config.integer ? std::round(this->impl->editValue)
-                                               : this->impl->editValue);
+                config.onChange(this->impl->editValue);
             }
             this->impl->editing = false;
         } else if (ImGui::IsItemDeactivated()) {
@@ -104,8 +103,7 @@ void NodeRangeInput::render(const Context& ctx) const {
                                               knobColor,
                                               rounding);
 
-    const std::string valueText = config.integer ? jst::fmt::format("{}", static_cast<U64>(value))
-                                                 : jst::fmt::format("{:.0f}", value);
+    const std::string valueText = jst::fmt::format("{:.0f}", value);
     const ImVec2 textPos(rectMin.x + pad, rectMin.y + (frameHeight - ImGui::GetFontSize()) * 0.5f);
     ImGui::GetWindowDrawList()->AddText(textPos, ImGui::GetColorU32(ImGuiCol_Text), valueText.c_str());
     if (!config.unit.empty()) {
