@@ -4,7 +4,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update --fix-missing && \
     apt-get install -y --no-install-recommends \
-      git build-essential pkg-config python3-pip \
+      git build-essential pkg-config python3-pip libpython3.12t64 \
       curl ca-certificates bison flex nasm \
       spirv-cross glslang-tools \
       libudev-dev \

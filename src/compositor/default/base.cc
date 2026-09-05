@@ -64,6 +64,9 @@ DefaultCompositor::DefaultCompositor() :
         .dismissUpdate = [this]() {
             updater.dismiss();
         },
+        .submitFeedback = [this](const std::string& text) {
+            feedback.submit(text);
+        },
     },
     actions(state, callbacks),
     presenters(state, callbacks) {}
@@ -178,6 +181,7 @@ Result DefaultCompositor::destroy() {
 
     actions.cancelFilePicker();
     updater.shutdown();
+    feedback.shutdown();
 
     return Result::SUCCESS;
 }
@@ -219,6 +223,7 @@ Result DefaultCompositor::poll() {
     updateUpdaterState();
     actions.reconcileFilePicker();
     updateStacksState();
+    updateFeedbackState();
 
     // Build view configs while flowgraph access is confined to poll.
 
@@ -390,6 +395,46 @@ void DefaultCompositor::updateStacksState() {
 
 void DefaultCompositor::enqueue(Mail&& mail) {
     pendingMail.emplace_back(std::move(mail));
+}
+
+void DefaultCompositor::updateFeedbackState() {
+    const bool modalOpen = state.modal.content.has_value() &&
+                           state.modal.content.value() == ModalContent::Feedback;
+
+    const auto snapshot = feedback.snapshot();
+
+    switch (snapshot.status) {
+        case Feedback::Snapshot::Status::Idle:
+            if (state.feedback.status == DefaultCompositorState::FeedbackState::Status::Submitting) {
+                state.feedback.status = DefaultCompositorState::FeedbackState::Status::Idle;
+            }
+            if (!modalOpen &&
+                (state.feedback.status != DefaultCompositorState::FeedbackState::Status::Idle ||
+                 !state.feedback.text.empty())) {
+                state.feedback = {};
+                feedback.clear();
+            }
+            break;
+        case Feedback::Snapshot::Status::Submitting:
+            state.feedback.status = DefaultCompositorState::FeedbackState::Status::Submitting;
+            break;
+        case Feedback::Snapshot::Status::Success:
+            if (state.feedback.status == DefaultCompositorState::FeedbackState::Status::Submitting) {
+                callbacks.notify(Sakura::ToastType::Success, 5000,
+                                 "Feedback submitted. Thank you!");
+                feedback.clear();
+                state.feedback = {};
+            }
+            break;
+        case Feedback::Snapshot::Status::Error:
+            if (state.feedback.status == DefaultCompositorState::FeedbackState::Status::Submitting) {
+                callbacks.notify(Sakura::ToastType::Error, 5000,
+                                 snapshot.message);
+                feedback.clear();
+                state.feedback = {};
+            }
+            break;
+    }
 }
 
 std::shared_ptr<Compositor::Impl> DefaultCompositorFactory() {

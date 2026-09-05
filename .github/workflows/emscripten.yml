@@ -10,7 +10,7 @@ jobs:
   static:
     runs-on: ubuntu-latest
     container:
-      image: emscripten/emsdk:6.0.5@sha256:76a44fff907397784decc435115d07fcb9587a4f1504977f39f3745e538e3a1e
+      image: emscripten/emsdk:6.0.8@sha256:f174124ff798a3ead1abef247d9a849c270b642d552fea500a42565ff210f765
     defaults:
       run:
         shell: bash

@@ -4,6 +4,7 @@
 #include "jetstream/detail/compositor_impl.hh"
 
 #include "updater.hh"
+#include "feedback.hh"
 
 #include "actions/base.hh"
 #include "model/callbacks.hh"
@@ -29,6 +30,7 @@ class DefaultCompositor : public Compositor::Impl {
  private:
     DefaultCompositorState state;
     Updater updater;
+    Feedback feedback;
     DefaultCompositorCallbacks callbacks;
     DefaultActions actions;
     DefaultPresenterRegistry presenters;
@@ -46,6 +48,7 @@ class DefaultCompositor : public Compositor::Impl {
     void updateRemoteState();
     void updateUpdaterState();
     void updateStacksState();
+    void updateFeedbackState();
 };
 
 }  // namespace Jetstream

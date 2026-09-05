@@ -131,7 +131,7 @@ private:
 
 struct ImNodeData
 {
-    int    Id;
+    int Id;
     ImVec2 Origin; // The node origin is in editor space
     ImRect TitleBarContentRect;
     ImRect Rect;
@@ -151,15 +151,17 @@ struct ImNodeData
 
     ImVec2 ContentSize;
     ImVec2* ContentSizeRef;
+    ImVec2 ResizeMinimumSize;
     ImVector<int> PinIndices;
-    bool          Draggable;
-    bool          VerticalResizeEnabled;
+    bool Draggable;
+    ImNodesNodeResizeFlags ResizeFlags;
 
     ImNodeData(const int node_id)
         : Id(node_id), Origin(0.0f, 0.0f), TitleBarContentRect(),
           Rect(ImVec2(0.0f, 0.0f), ImVec2(0.0f, 0.0f)), ColorStyle(), LayoutStyle(),
-          ContentSize(0.0f, 0.0f), ContentSizeRef(nullptr), PinIndices(), Draggable(true),
-          VerticalResizeEnabled(false)
+          ContentSize(0.0f, 0.0f), ContentSizeRef(nullptr), ResizeMinimumSize(120.0f, 100.0f),
+          PinIndices(), Draggable(true),
+          ResizeFlags(ImNodesNodeResizeFlags_X)
     {
     }
 

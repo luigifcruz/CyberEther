@@ -94,17 +94,22 @@ struct Python : public Block::Config {
 
         "```python\n"
         "def compute(ctx):\n"
-        "    progress = ctx.metrics[\"file_reader\"].get(\"progress\")\n"
+        "    progress = ctx.metrics.get_value(\"file_reader\", \"progress\", default=0.0)\n"
         "    ctx.metrics.subscribe_all()  # subscribe to every block\n"
         "```\n\n"
+        "Each nested metric entry contains its `value`, `format`, `label`, "
+        "and `help` metadata. Metrics with unsupported C++ value types are "
+        "omitted.\n\n"
 
         "### Lifecycle And Errors\n"
         "Attribute and environment writes are published when `compute` "
-        "returns. The code loads once at creation, globals persist across "
-        "cycles, and an optional `cleanup()` runs at destroy. Output from "
-        "`print()` and exceptions go to the block console, and a failing "
-        "cycle is skipped without stopping the flowgraph. CUDA tensors "
-        "require CuPy, and streams must be synchronized before returning."
+        "returns. Return `SKIP` to mark all outputs unavailable and skip "
+        "downstream blocks for the current cycle. The code loads once at "
+        "creation, globals persist across cycles, and an optional `cleanup()` "
+        "runs at destroy. Output from `print()` and exceptions go to the block "
+        "console, and a failing cycle is skipped without stopping the "
+        "flowgraph. Using CUDA tensors requires CuPy and stream synchronization "
+        "before returning."
     );
 };
 

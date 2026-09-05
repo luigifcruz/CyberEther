@@ -6,6 +6,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -15,9 +16,31 @@ struct VStack {
     using Child = std::function<void(const Context&)>;
     using Children = std::vector<Child>;
 
+    struct Flex {
+        F32 minimum = 0.0f;
+        F32 grow = 1.0f;
+        std::optional<F32> basis;
+    };
+
+    struct Item {
+        std::string id;
+        std::optional<Flex> flex;
+    };
+
     struct Config {
         std::string id;
         F32 spacing = 0.0f;
+        std::optional<F32> height;
+        std::vector<Item> items;
+    };
+
+    struct Layout {
+        bool measured = false;
+        F32 fixedHeight = 0.0f;
+        std::optional<F32> minimumHeight;
+        std::vector<std::optional<F32>> itemHeights;
+
+        std::optional<F32> itemHeight(U64 index) const;
     };
 
     VStack();
@@ -30,6 +53,7 @@ struct VStack {
     VStack& operator=(const VStack&) = delete;
 
     bool update(Config config);
+    const Layout* layout() const;
     void render(const Context& ctx, Children children) const;
 
  private:

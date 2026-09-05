@@ -176,6 +176,9 @@ struct AboutPresenter {
             .onApplyUpdate = [enqueue]() {
                 enqueue(MailApplyUpdate{});
             },
+            .onSendFeedback = [enqueue]() {
+                enqueue(MailOpenModal{.content = ModalContent::Feedback});
+            },
         };
     }
 };

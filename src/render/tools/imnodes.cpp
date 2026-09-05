@@ -1017,28 +1017,46 @@ void ClickInteractionUpdate(ImNodesEditorContext& editor)
     {
         if (GImNodes->NodeResizeIdx.HasValue())
         {
-            ImNodeData& node = editor.Nodes.Pool[GImNodes->NodeResizeIdx.Value()];
-            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNWSE);
-
-            const float min_content_width = ImMax(120.0f, node.TitleBarContentRect.GetWidth());
-            const float width_delta = GImNodes->MousePos.x - GImNodes->NodeResizeStartMousePos.x;
-            node.ContentSize.x =
-                ImMax(min_content_width, GImNodes->NodeResizeStartContentWidth + width_delta);
-
-            if (node.VerticalResizeEnabled)
+            const int node_idx = GImNodes->NodeResizeIdx.Value();
+            if (!editor.Nodes.InUse[node_idx])
             {
-                const float min_content_height = 100.0f;
-                const float height_delta = GImNodes->MousePos.y - GImNodes->NodeResizeStartMousePos.y;
-                node.ContentSize.y =
-                    ImMax(min_content_height, GImNodes->NodeResizeStartContentHeight + height_delta);
+                GImNodes->NodeResizeIdx.Reset();
+                editor.ClickInteraction.Type = ImNodesClickInteractionType_None;
             }
-
-            if (node.ContentSizeRef != nullptr)
+            else
             {
-                node.ContentSizeRef->x = node.ContentSize.x;
-                if (node.VerticalResizeEnabled)
+                ImNodeData& node = editor.Nodes.Pool[node_idx];
+                const bool resize_x = (node.ResizeFlags & ImNodesNodeResizeFlags_X) != 0;
+                const bool resize_y = (node.ResizeFlags & ImNodesNodeResizeFlags_Y) != 0;
+                ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNWSE);
+
+                if (resize_x)
                 {
-                    node.ContentSizeRef->y = node.ContentSize.y;
+                    const float min_content_width =
+                        ImMax(node.ResizeMinimumSize.x, node.TitleBarContentRect.GetWidth());
+                    const float width_delta = GImNodes->MousePos.x - GImNodes->NodeResizeStartMousePos.x;
+                    node.ContentSize.x =
+                        ImMax(min_content_width, GImNodes->NodeResizeStartContentWidth + width_delta);
+                }
+
+                if (resize_y)
+                {
+                    const float height_delta = GImNodes->MousePos.y - GImNodes->NodeResizeStartMousePos.y;
+                    node.ContentSize.y =
+                        ImMax(node.ResizeMinimumSize.y,
+                              GImNodes->NodeResizeStartContentHeight + height_delta);
+                }
+
+                if (node.ContentSizeRef != nullptr)
+                {
+                    if (resize_x)
+                    {
+                        node.ContentSizeRef->x = node.ContentSize.x;
+                    }
+                    if (resize_y)
+                    {
+                        node.ContentSizeRef->y = node.ContentSize.y;
+                    }
                 }
             }
         }
@@ -1373,11 +1391,20 @@ ImOptionalIndex ResolveHoveredNodeResizeHandle(const ImNodesEditorContext& edito
             continue;
         }
         const ImNodeData& node = editor.Nodes.Pool[node_idx];
+        if (!node.Rect.Contains(GImNodes->MousePos))
+        {
+            continue;
+        }
+        if (node.ResizeFlags == ImNodesNodeResizeFlags_None)
+        {
+            return ImOptionalIndex();
+        }
         ImRect handle_rect(node.Rect.Max - ImVec2(handle_size, handle_size), node.Rect.Max);
         if (handle_rect.Contains(GImNodes->MousePos))
         {
             return ImOptionalIndex(node_idx);
         }
+        return ImOptionalIndex();
     }
     return ImOptionalIndex();
 }
@@ -1695,31 +1722,34 @@ void DrawNode(ImNodesEditorContext& editor, const int node_idx)
         DrawPin(editor, node.PinIndices[i]);
     }
 
-    const bool resize_hovered = GImNodes->HoveredNodeResizeIdx == node_idx;
-    const bool resize_active = GImNodes->NodeResizeIdx == node_idx &&
-                               editor.ClickInteraction.Type == ImNodesClickInteractionType_NodeResize;
-
-    const ImU32 grip_base_color = ImGui::GetColorU32(resize_active
-                                                         ? ImGuiCol_ResizeGripActive
-                                                         : resize_hovered ? ImGuiCol_ResizeGripHovered
-                                                                           : ImGuiCol_ResizeGrip);
-    const ImVec4 grip_color_vec = ImGui::ColorConvertU32ToFloat4(grip_base_color);
-    const ImU32 grip_color = ImGui::GetColorU32(ImVec4(ImMin(grip_color_vec.x * 2.0f, 1.0f),
-                                                       ImMin(grip_color_vec.y * 2.0f, 1.0f),
-                                                       ImMin(grip_color_vec.z * 2.0f, 1.0f),
-                                                       grip_color_vec.w));
-    const float grip_margin = ImMax(4.0f, node.LayoutStyle.Padding.x * 0.5f);
-    const float grip_size = ImMax(7.5f, ImGui::GetFontSize() * 0.60f);
-    const float grip_step = grip_size * 0.35f;
-    const ImVec2 grip_corner = node.Rect.Max - ImVec2(grip_margin, grip_margin);
-
-    for (int line = 0; line < 2; ++line)
+    if (node.ResizeFlags != ImNodesNodeResizeFlags_None)
     {
-        const float line_length = grip_size - static_cast<float>(line) * grip_step;
-        GImNodes->CanvasDrawList->AddLine(grip_corner - ImVec2(line_length, 0.0f),
-                                          grip_corner - ImVec2(0.0f, line_length),
-                                          grip_color,
-                                          1.5f);
+        const bool resize_hovered = GImNodes->HoveredNodeResizeIdx == node_idx;
+        const bool resize_active = GImNodes->NodeResizeIdx == node_idx &&
+                                   editor.ClickInteraction.Type == ImNodesClickInteractionType_NodeResize;
+
+        const ImU32 grip_base_color = ImGui::GetColorU32(resize_active
+                                                             ? ImGuiCol_ResizeGripActive
+                                                             : resize_hovered ? ImGuiCol_ResizeGripHovered
+                                                                               : ImGuiCol_ResizeGrip);
+        const ImVec4 grip_color_vec = ImGui::ColorConvertU32ToFloat4(grip_base_color);
+        const ImU32 grip_color = ImGui::GetColorU32(ImVec4(ImMin(grip_color_vec.x * 2.0f, 1.0f),
+                                                           ImMin(grip_color_vec.y * 2.0f, 1.0f),
+                                                           ImMin(grip_color_vec.z * 2.0f, 1.0f),
+                                                           grip_color_vec.w));
+        const float grip_margin = ImMax(4.0f, node.LayoutStyle.Padding.x * 0.5f);
+        const float grip_size = ImMax(7.5f, ImGui::GetFontSize() * 0.60f);
+        const float grip_step = grip_size * 0.35f;
+        const ImVec2 grip_corner = node.Rect.Max - ImVec2(grip_margin, grip_margin);
+
+        for (int line = 0; line < 2; ++line)
+        {
+            const float line_length = grip_size - static_cast<float>(line) * grip_step;
+            GImNodes->CanvasDrawList->AddLine(grip_corner - ImVec2(line_length, 0.0f),
+                                              grip_corner - ImVec2(0.0f, line_length),
+                                              grip_color,
+                                              1.5f);
+        }
     }
 
     if (node_hovered)
@@ -3031,11 +3061,19 @@ void SetNodeDraggable(const int node_id, const bool draggable)
     node.Draggable = draggable;
 }
 
-void SetNodeVerticalResizeEnabled(const int node_id, const bool enabled)
+void SetNodeResizeFlags(const int node_id, const ImNodesNodeResizeFlags flags)
 {
     ImNodesEditorContext& editor = EditorContextGet();
     ImNodeData&           node = ObjectPoolFindOrCreateObject(editor.Nodes, node_id);
-    node.VerticalResizeEnabled = enabled;
+    node.ResizeFlags = flags;
+}
+
+void SetNodeResizeMinimumSize(const int node_id, const ImVec2& minimum_size)
+{
+    ImNodesEditorContext& editor = EditorContextGet();
+    ImNodeData&           node = ObjectPoolFindOrCreateObject(editor.Nodes, node_id);
+    node.ResizeMinimumSize = ImVec2(ImMax(0.0f, minimum_size.x),
+                                    ImMax(0.0f, minimum_size.y));
 }
 
 ImVec2 GetNodeScreenSpacePos(const int node_id)

@@ -198,6 +198,15 @@ Result Instance::Remote::Impl::rollbackCreate() {
     Result result = Result::SUCCESS;
     this->started_ = false;
 
+    {
+        std::lock_guard<std::mutex> lock(inputMutex);
+        inputQueue.clear();
+    }
+    if (!remoteInputStates.empty() || !appliedRemoteKeys.empty()) {
+        remoteInputStates.clear();
+        synchronizeKeyboardState();
+    }
+
     this->frameSubmissionRunning = false;
     if (this->frameCapture && this->frameCapture->stop() != Result::SUCCESS) {
         result = Result::ERROR;
@@ -228,8 +237,31 @@ Result Instance::Remote::Impl::rollbackCreate() {
 }
 
 Result Instance::Remote::Impl::captureFrame() {
+    JST_CHECK(processInput());
     if (this->frameCapture) {
         this->frameCapture->captureFrame();
+    }
+    return Result::SUCCESS;
+}
+
+Result Instance::Remote::Impl::processInput() {
+    std::deque<QueuedInput> pending;
+    {
+        std::lock_guard<std::mutex> lock(inputMutex);
+        pending.swap(inputQueue);
+    }
+
+    for (const auto& input : pending) {
+        try {
+            if (input.reset) {
+                resetInput(input.sessionId);
+                continue;
+            }
+            const std::string kind = input.payload.value("kind", "");
+            handleInput(input.sessionId, kind, input.payload);
+        } catch (const std::exception& e) {
+            JST_WARN("[REMOTE] Rejected malformed control message: {}", e.what());
+        }
     }
     return Result::SUCCESS;
 }
@@ -519,7 +551,9 @@ Result Instance::Remote::Impl::checkGstreamerPlugins(const std::vector<std::stri
     return Result::SUCCESS;
 }
 
-void Instance::Remote::Impl::handleInput(const std::string& kind, const nlohmann::json& j) {
+void Instance::Remote::Impl::handleInput(const std::string& sessionId,
+                                         const std::string& kind,
+                                         const nlohmann::json& j) {
     auto mapMouseButton = [](int domButton) -> int {
         switch (domButton) {
             case 0: return 0;
@@ -535,24 +569,6 @@ void Instance::Remote::Impl::handleInput(const std::string& kind, const nlohmann
             return static_cast<float>(std::round(n * std::max(0, extent - 1)));
         }
         return static_cast<float>(std::round(n));
-    };
-
-    auto firstCodepoint = [](const std::string& s) -> unsigned int {
-        if (s.empty()) return 0u;
-        if (s.size() > 1) return 0u;
-
-        const unsigned char* p = reinterpret_cast<const unsigned char*>(s.data());
-        if (p[0] < 0x80) return static_cast<unsigned int>(p[0]);
-        if ((p[0] & 0xE0) == 0xC0 && s.size() >= 2) {
-            return ((p[0] & 0x1F) << 6) | (p[1] & 0x3F);
-        }
-        if ((p[0] & 0xF0) == 0xE0 && s.size() >= 3) {
-            return ((p[0] & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F);
-        }
-        if ((p[0] & 0xF8) == 0xF0 && s.size() >= 4) {
-            return ((p[0] & 0x07) << 18) | ((p[1] & 0x3F) << 12) | ((p[2] & 0x3F) << 6) | (p[3] & 0x3F);
-        }
-        return 0u;
     };
 
     auto mapKey = [](const std::string& code, const std::string& key) -> ImGuiKey {
@@ -572,6 +588,14 @@ void Instance::Remote::Impl::handleInput(const std::string& kind, const nlohmann
         if (code == "ArrowRight")                      return ImGuiKey_RightArrow;
         if (code == "ArrowUp")                         return ImGuiKey_UpArrow;
         if (code == "ArrowDown")                       return ImGuiKey_DownArrow;
+        if (code == "AltLeft")                         return ImGuiKey_LeftAlt;
+        if (code == "AltRight")                        return ImGuiKey_RightAlt;
+        if (code == "ControlLeft")                     return ImGuiKey_LeftCtrl;
+        if (code == "ControlRight")                    return ImGuiKey_RightCtrl;
+        if (code == "ShiftLeft")                       return ImGuiKey_LeftShift;
+        if (code == "ShiftRight")                      return ImGuiKey_RightShift;
+        if (code == "MetaLeft")                        return ImGuiKey_LeftSuper;
+        if (code == "MetaRight")                       return ImGuiKey_RightSuper;
         if (code == "Enter" || key == "Enter")         return ImGuiKey_Enter;
         if (code == "Escape" || key == "Escape")       return ImGuiKey_Escape;
         if (code == "Backspace" || key == "Backspace") return ImGuiKey_Backspace;
@@ -660,37 +684,97 @@ void Instance::Remote::Impl::handleInput(const std::string& kind, const nlohmann
         return;
     }
 
+    if (kind == "text") {
+        if (!j.contains("text") || !j["text"].is_string()) {
+            JST_WARN("[REMOTE] Rejected invalid text input.");
+            return;
+        }
+        const std::string text = j["text"].get<std::string>();
+        if (text.empty() || text.size() > 256) {
+            JST_WARN("[REMOTE] Rejected invalid text input size.");
+            return;
+        }
+        ImGui::GetIO().AddInputCharactersUTF8(text.c_str());
+        return;
+    }
+
     const bool alt   = j.value("altKey",   false);
     const bool ctrl  = j.value("ctrlKey",  false);
     const bool shift = j.value("shiftKey", false);
     const bool meta  = j.value("metaKey",  false);
 
     if (kind == "keyboard") {
-        ImGuiIO& io = ImGui::GetIO();
-        io.AddKeyEvent(ImGuiKey_LeftAlt, alt);
-        io.AddKeyEvent(ImGuiKey_LeftCtrl, ctrl);
-        io.AddKeyEvent(ImGuiKey_LeftShift, shift);
-        io.AddKeyEvent(ImGuiKey_LeftSuper, meta);
-
         const std::string action = j.value("action", "");
+        if (action != "down" && action != "up") {
+            JST_WARN("[REMOTE] Rejected invalid keyboard action '{}'.", action);
+            return;
+        }
         const std::string code = j.value("code", "");
         const std::string key = j.value("key", "");
         const bool pressed = (action == "down");
 
+        auto& state = remoteInputStates[sessionId];
+        state.alt = alt;
+        state.ctrl = ctrl;
+        state.shift = shift;
+        state.meta = meta;
+
         const ImGuiKey k = mapKey(code, key);
         if (k != ImGuiKey_None) {
-            ImGui::GetIO().AddKeyEvent(k, pressed);
+            if (pressed) state.keys.insert(k);
+            else state.keys.erase(k);
         }
-        if (pressed && !ctrl && !alt && !meta) {
-            const unsigned int cp = firstCodepoint(key);
-            if (cp >= 0x20 && cp != 0x7F) {
-                ImGui::GetIO().AddInputCharacter(cp);
-            }
-        }
+        synchronizeKeyboardState();
+
         return;
     }
 
     JST_TRACE("[REMOTE] Unknown control (kind='{}').", kind);
+}
+
+void Instance::Remote::Impl::enqueueInput(std::string sessionId, nlohmann::json payload) {
+    std::lock_guard<std::mutex> lock(inputMutex);
+    inputQueue.push_back({std::move(sessionId), std::move(payload), false});
+}
+
+void Instance::Remote::Impl::enqueueInputReset(const std::string& sessionId) {
+    std::lock_guard<std::mutex> lock(inputMutex);
+    inputQueue.push_back({sessionId, {}, true});
+}
+
+void Instance::Remote::Impl::resetInput(const std::string& sessionId) {
+    remoteInputStates.erase(sessionId);
+    synchronizeKeyboardState();
+}
+
+void Instance::Remote::Impl::synchronizeKeyboardState() {
+    std::unordered_set<ImGuiKey> keys;
+    bool alt = false;
+    bool ctrl = false;
+    bool shift = false;
+    bool meta = false;
+    for (const auto& [sessionId, state] : remoteInputStates) {
+        (void)sessionId;
+        keys.insert(state.keys.begin(), state.keys.end());
+        alt |= state.alt;
+        ctrl |= state.ctrl;
+        shift |= state.shift;
+        meta |= state.meta;
+    }
+
+    ImGuiIO& io = ImGui::GetIO();
+    io.AddKeyEvent(ImGuiMod_Alt, alt);
+    io.AddKeyEvent(ImGuiMod_Ctrl, ctrl);
+    io.AddKeyEvent(ImGuiMod_Shift, shift);
+    io.AddKeyEvent(ImGuiMod_Super, meta);
+
+    for (const ImGuiKey key : appliedRemoteKeys) {
+        if (!keys.contains(key)) io.AddKeyEvent(key, false);
+    }
+    for (const ImGuiKey key : keys) {
+        if (!appliedRemoteKeys.contains(key)) io.AddKeyEvent(key, true);
+    }
+    appliedRemoteKeys = std::move(keys);
 }
 
 void Instance::Remote::Impl::onMessageCallback(GstWebRTCDataChannel* self, gchar* data, gpointer user_data) {
@@ -717,12 +801,18 @@ void Instance::Remote::Impl::onMessageCallback(GstWebRTCDataChannel* self, gchar
     }
     const std::string kind = j["kind"].get<std::string>();
 
-    auto* that = reinterpret_cast<Instance::Remote::Impl*>(user_data);
+    auto* context = reinterpret_cast<ControlChannelContext*>(user_data);
     try {
-        that->handleInput(kind, j);
+        context->impl->enqueueInput(context->sessionId, std::move(j));
     } catch (const std::exception& e) {
         JST_WARN("[REMOTE] Rejected malformed control message: {}", e.what());
     }
+}
+
+void Instance::Remote::Impl::onChannelClosedCallback(GstWebRTCDataChannel* self, gpointer user_data) {
+    (void)self;
+    auto* context = reinterpret_cast<ControlChannelContext*>(user_data);
+    context->impl->enqueueInputReset(context->sessionId);
 }
 
 void Instance::Remote::Impl::onChannelCallback(GstElement* self, GstWebRTCDataChannel* channel, gpointer user_data) {
@@ -732,9 +822,17 @@ void Instance::Remote::Impl::onChannelCallback(GstElement* self, GstWebRTCDataCh
     g_object_get(channel, "label", &label, "id", &id, "negotiated", &negotiated, NULL);
     const std::string channelLabel = label ? label : "";
 
+    auto* signalContext = reinterpret_cast<WebRtcSignalContext*>(user_data);
     if (channelLabel == "control") {
         JST_INFO("[REMOTE] Control data channel opened (id='{}', negotiated='{}').", id, negotiated);
-        g_signal_connect(G_OBJECT(channel), "on-message-string", G_CALLBACK(onMessageCallback), user_data);
+        auto* messageContext = new ControlChannelContext{signalContext->impl, signalContext->sessionId};
+        g_signal_connect_data(G_OBJECT(channel), "on-message-string", G_CALLBACK(onMessageCallback), messageContext,
+                              [](gpointer data, GClosure*) { delete reinterpret_cast<ControlChannelContext*>(data); },
+                              GConnectFlags(0));
+        auto* closeContext = new ControlChannelContext{signalContext->impl, signalContext->sessionId};
+        g_signal_connect_data(G_OBJECT(channel), "on-close", G_CALLBACK(onChannelClosedCallback), closeContext,
+                              [](gpointer data, GClosure*) { delete reinterpret_cast<ControlChannelContext*>(data); },
+                              GConnectFlags(0));
     } else {
         JST_INFO("[REMOTE] Dropping data channel opened from client (label='{}', id='{}', negotiated='{}')", channelLabel, id, negotiated);
         g_signal_emit_by_name(channel, "close");
@@ -1431,10 +1529,15 @@ Result Instance::Remote::Impl::createWebRtcSession(const std::string& sessionId,
                                                     delete reinterpret_cast<WebRtcSignalContext*>(data);
                                                 },
                                                 GConnectFlags(0));
-    session->channelHandler = g_signal_connect(G_OBJECT(session->webrtc),
-                                               "on-data-channel",
-                                               G_CALLBACK(onChannelCallback),
-                                               this);
+    auto* channelContext = new WebRtcSignalContext{this, sessionId};
+    session->channelHandler = g_signal_connect_data(G_OBJECT(session->webrtc),
+                                                    "on-data-channel",
+                                                    G_CALLBACK(onChannelCallback),
+                                                    channelContext,
+                                                    [](gpointer data, GClosure*) {
+                                                        delete reinterpret_cast<WebRtcSignalContext*>(data);
+                                                    },
+                                                    GConnectFlags(0));
 
     if (!gst_element_sync_state_with_parent(session->queue) ||
         !gst_element_sync_state_with_parent(session->payloader) ||
@@ -1464,6 +1567,7 @@ void Instance::Remote::Impl::destroyWebRtcSession(const std::string& sessionId) 
     }
 
     JST_INFO("[REMOTE] Destroying WebRTC session '{}' with peer '{}'.", session->sessionId, session->peerId);
+    enqueueInputReset(sessionId);
 
     std::lock_guard<std::mutex> streamLock(streamMutex);
 
@@ -1924,7 +2028,14 @@ void Instance::Remote::Impl::createControlChannel(const std::string& sessionId) 
         gst_object_unref(sessionWebrtc);
         return;
     }
-    g_signal_connect(G_OBJECT(channel), "on-message-string", G_CALLBACK(onMessageCallback), this);
+    auto* messageContext = new ControlChannelContext{this, sessionId};
+    g_signal_connect_data(G_OBJECT(channel), "on-message-string", G_CALLBACK(onMessageCallback), messageContext,
+                          [](gpointer data, GClosure*) { delete reinterpret_cast<ControlChannelContext*>(data); },
+                          GConnectFlags(0));
+    auto* closeContext = new ControlChannelContext{this, sessionId};
+    g_signal_connect_data(G_OBJECT(channel), "on-close", G_CALLBACK(onChannelClosedCallback), closeContext,
+                          [](gpointer data, GClosure*) { delete reinterpret_cast<ControlChannelContext*>(data); },
+                          GConnectFlags(0));
     g_object_unref(channel);
     gst_object_unref(sessionWebrtc);
 }

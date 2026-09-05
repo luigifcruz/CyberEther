@@ -14,21 +14,13 @@
 namespace Jetstream::Sakura {
 
 struct SurfaceView {
-    enum class AspectLock {
-        None,
-        X,
-        Y,
-        XY,
-    };
-
     struct Config {
         std::string id;
         U64 texture = 0;
         Extent2D<F32> size = {0.0f, 0.0f};
+        std::optional<F32> height;
         F32 rounding = 0.0f;
         bool detachOverlay = false;
-        std::optional<Extent2D<F32>> aspectRatioSize;
-        AspectLock aspectLock = AspectLock::None;
         std::function<U64()> onResolveTexture;
         std::function<void(const SurfaceResize&)> onSize;
         std::function<void(MouseEvent)> onMouse;

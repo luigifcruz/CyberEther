@@ -29,6 +29,11 @@ core_test_domains = {
     ],
     'registry': ['registry/registry.cc'],
     'render': ['render/transfers.cc'],
+    'sakura': [
+        'sakura/node.cc',
+        'sakura/surface_view.cc',
+        'sakura/vstack.cc',
+    ],
     'runtime': [
         'runtime/scheduler.cc',
         'runtime/native.cc',
@@ -57,6 +62,12 @@ endif
 
 core_test_targets = []
 foreach domain, sources : core_test_domains
+    # The sakura suite drives the node editor through imnodes internals
+    # (editor context, node pool), which are not exported from the shared
+    # library on Windows.
+    if domain == 'sakura' and jst_is_windows
+        continue
+    endif
     domain_tests = executable(
         'jetstream-core-' + domain + '-tests',
         [core_test_main] + sources,

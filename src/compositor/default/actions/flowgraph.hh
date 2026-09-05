@@ -591,7 +591,6 @@ struct FlowgraphActions {
             auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
             flowgraph->metadata().get(msg.metaKey, surfaceMeta, msg.block);
             if (msg.placement == SurfacePlacement::Attached) {
-                surfaceMeta.attachedWidth = msg.resize.logicalSize.x;
                 surfaceMeta.attachedHeight = msg.resize.logicalSize.y;
             } else {
                 surfaceMeta.detachedWidth = msg.resize.logicalSize.x;

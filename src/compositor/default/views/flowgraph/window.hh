@@ -30,6 +30,7 @@ struct FlowgraphWindow {
         std::function<void()> onSave;
         std::function<void()> onClose;
         std::function<void()> onCreateStack;
+        std::function<void()> onSendFeedback;
     };
 
     void update(Config config) {
@@ -65,6 +66,7 @@ struct FlowgraphWindow {
                 openBlockPickerRequest = true;
             },
             .onCreateStack = this->config.onCreateStack,
+            .onSendFeedback = this->config.onSendFeedback,
         });
         editor.update(std::move(editorConfig));
 

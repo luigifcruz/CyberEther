@@ -185,6 +185,9 @@ struct MenubarPresenter {
                     case MenubarView::Action::ReportIssue:
                         enqueue(MailOpenUrl{.url = "https://github.com/luigifcruz/CyberEther/issues", .notifyResult = true});
                         break;
+                    case MenubarView::Action::SendFeedback:
+                        enqueue(MailOpenModal{.content = ModalContent::Feedback});
+                        break;
                 }
             },
             .onThemeSelect = [enqueue](const std::string& themeKey) {

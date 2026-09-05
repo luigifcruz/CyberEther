@@ -45,6 +45,7 @@ struct MenubarView {
         Documentation,
         OpenRepository,
         ReportIssue,
+        SendFeedback,
     };
 
     struct Config {
@@ -317,6 +318,12 @@ struct MenubarView {
             .label = "Report Issue",
             .onClick = [this]() { emit(Action::ReportIssue); },
         });
+        feedbackItem.update({
+            .id = this->config.id + ":send-feedback",
+            .label = "Send Feedback",
+            .shortcut = "CTRL+G",
+            .onClick = [this]() { emit(Action::SendFeedback); },
+        });
 
         for (U64 i = 0; i < dividers.size(); ++i) {
             dividers[i].update({
@@ -352,6 +359,11 @@ struct MenubarView {
                     .key = Sakura::KeyboardInput::Key::I,
                     .modifier = Sakura::KeyboardInput::Modifier::CommandOrControl,
                     .onPressed = [this]() { emit(Action::ShowFlowgraphInfo); },
+                },
+                {
+                    .key = Sakura::KeyboardInput::Key::G,
+                    .modifier = Sakura::KeyboardInput::Modifier::CommandOrControl,
+                    .onPressed = [this]() { emit(Action::SendFeedback); },
                 },
                 {
                     .key = Sakura::KeyboardInput::Key::Comma,
@@ -440,6 +452,8 @@ struct MenubarView {
                 documentationItem.render(ctx);
                 repositoryItem.render(ctx);
                 reportIssueItem.render(ctx);
+                dividers[10].render(ctx);
+                feedbackItem.render(ctx);
             });
 
             if (config.updateAvailable || config.updateReady) {
@@ -507,8 +521,9 @@ struct MenubarView {
     Sakura::MenuItem documentationItem;
     Sakura::MenuItem repositoryItem;
     Sakura::MenuItem reportIssueItem;
+    Sakura::MenuItem feedbackItem;
     Sakura::Menu updateMenu;
-    std::array<Sakura::Divider, 10> dividers;
+    std::array<Sakura::Divider, 11> dividers;
     Sakura::KeyboardInput shortcuts;
     Sakura::Button updateBadge;
 };
