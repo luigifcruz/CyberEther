@@ -787,7 +787,6 @@ Result SignalViewImpl::present() {
                 updateHoldPointsFlag = false;
             }
         }
-        updateLabelState();
         updateSignalPointsFlag = false;
     }
 
@@ -803,6 +802,8 @@ Result SignalViewImpl::present() {
         }
         updateSignalUniformBufferFlag = false;
     }
+
+    updateLabelState();
 
     JST_CHECK(axis->present());
     if (lineplotEnabled) {

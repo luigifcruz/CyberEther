@@ -14,6 +14,7 @@
 #include "jetstream/memory/axis.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/runtime.hh"
+#include "jetstream/scheduler_context.hh"
 #include "jetstream/testing.hh"
 
 #include "module_impl.hh"
@@ -42,7 +43,84 @@ struct SignalViewImplAccess : Modules::SignalViewImpl {
     static auto waterfallHistoryMember() {
         return &SignalViewImplAccess::waterfallHistory;
     }
+
+    static auto axisMember() {
+        return &SignalViewImplAccess::axis;
+    }
+
+    static auto renderSurfaceMember() {
+        return &SignalViewImplAccess::renderSurface;
+    }
+
+    static auto waterfallUniformBufferMember() {
+        return &SignalViewImplAccess::waterfallUniformBuffer;
+    }
+
+    static auto interactionMember() {
+        return &SignalViewImplAccess::interaction;
+    }
 };
+
+#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+// Build the axis's CPU-side label state without creating GPU resources or a
+// viewport. The Vulkan resource constructors only describe pending resources.
+class LabelTestWindow final : public Render::Window {
+ public:
+    LabelTestWindow() : Window(Config{}) {}
+
+    const Stats& stats() const override { return windowStats; }
+    std::string info() const override { return "LabelTestWindow"; }
+    constexpr DeviceType device() const override { return DeviceType::Vulkan; }
+
+ protected:
+    Result bindSurface(const std::shared_ptr<Render::Surface>&) override {
+        return Result::SUCCESS;
+    }
+    Result unbindSurface(const std::shared_ptr<Render::Surface>&) override {
+        return Result::SUCCESS;
+    }
+    Result underlyingCreate() override { return Result::SUCCESS; }
+    Result underlyingDestroy() override { return Result::SUCCESS; }
+    Result underlyingBegin() override { return Result::SUCCESS; }
+    Result underlyingEnd() override { return Result::SUCCESS; }
+    Result underlyingSynchronize() override { return Result::SUCCESS; }
+
+ private:
+    Stats windowStats{};
+};
+
+class LabelTestAxis final : public Render::Components::Axis {
+ public:
+    explicit LabelTestAxis(const Config& config) : Axis(config) {}
+
+    // Label updates are real; only GPU uploads are omitted.
+    Result present() override { return Result::SUCCESS; }
+};
+
+class LabelTestSurface final : public Render::Surface {
+ public:
+    LabelTestSurface() : Surface(Config{}) {}
+
+    Result create() override { return Result::SUCCESS; }
+    Result destroy() override { return Result::SUCCESS; }
+
+    const Extent2D<U64>& size(const Extent2D<U64>& nextSize) override {
+        viewSize = nextSize;
+        return viewSize;
+    }
+
+ private:
+    Extent2D<U64> viewSize;
+};
+
+class LabelTestBuffer final : public Render::Buffer {
+ public:
+    LabelTestBuffer() : Buffer(Config{}) {}
+
+    Result create() override { return Result::SUCCESS; }
+    Result destroy() override { return Result::SUCCESS; }
+};
+#endif
 
 std::vector<F32> ReadTensor(const Tensor& tensor,
                             const char* name) {
@@ -199,6 +277,80 @@ void ApplyReferenceRows(std::vector<F32>& ring,
 }
 
 }  // namespace
+
+#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+TEST_CASE("Standalone waterfall presents live metadata without view changes",
+          "[modules][signal_view][waterfall][present][metadata][regression]") {
+    Tensor input(DeviceType::CPU, DataType::F32, {32});
+    F32 frequency = 100.0e6f;
+    F32 sampleRate = 2.0e6f;
+    F32 observedFrequency = 0.0f;
+    F32 observedSampleRate = 0.0f;
+    U64 frequencyReads = 0;
+    U64 sampleRateReads = 0;
+    REQUIRE(input.setDerivedAttribute("frequency", [&]() -> std::any {
+        ++frequencyReads;
+        observedFrequency = frequency;
+        return frequency;
+    }) == Result::SUCCESS);
+    REQUIRE(input.setDerivedAttribute("sampleRate", [&]() -> std::any {
+        ++sampleRateReads;
+        observedSampleRate = sampleRate;
+        return sampleRate;
+    }) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].requested("source", "signal");
+    inputs["signal"].tensor = input;
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("signal_view", DeviceType::CPU,
+                                  RuntimeType::NATIVE, "generic", module) ==
+            Result::SUCCESS);
+    Modules::SignalView config;
+    config.mode = "waterfall";
+    config.waterfallHeight = 4;
+    REQUIRE(module->create("waterfall", config, inputs) == Result::SUCCESS);
+
+    LabelTestWindow window;
+    Render::Components::Axis::Config axisConfig;
+    axisConfig.showInteriorGrid = false;
+    axisConfig.font = std::make_shared<Render::Components::Font>(
+        Render::Components::Font::Config{});
+    auto axis = std::make_shared<LabelTestAxis>(axisConfig);
+    REQUIRE(axis->create(&window) == Result::SUCCESS);
+
+    auto* impl = module->getImpl<Modules::SignalViewImpl>();
+    REQUIRE(impl);
+    impl->*SignalViewImplAccess::axisMember() = axis;
+    impl->*SignalViewImplAccess::renderSurfaceMember() =
+        std::make_shared<LabelTestSurface>();
+    impl->*SignalViewImplAccess::waterfallUniformBufferMember() =
+        std::make_shared<LabelTestBuffer>();
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+
+    // Ignore validation/creation reads. Present must reread live metadata even
+    // without new samples, mouse events, or surface resize/placement events.
+    const auto present = [&] {
+        frequencyReads = 0;
+        sampleRateReads = 0;
+        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        CHECK_FALSE((impl->*SignalViewImplAccess::interactionMember()).viewChanged);
+        CHECK(frequencyReads > 0);
+        CHECK(sampleRateReads > 0);
+        CHECK(observedFrequency == frequency);
+        CHECK(observedSampleRate == sampleRate);
+    };
+    present();
+    frequency = 101.5e6f;
+    present();
+    sampleRate = 4.0e6f;
+    present();
+
+    REQUIRE(axis->destroy(&window) == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+#endif
 
 TEST_CASE("Signal View module supports every visualization mode",
           "[modules][signal_view]") {

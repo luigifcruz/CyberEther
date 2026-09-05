@@ -297,8 +297,9 @@ Result SpectrogramImpl::present() {
     if (interaction.viewChanged) {
         renderSurface->size(interaction.viewSize);
         surfaceUpdateManifestSize("default", interaction.viewSize);
-        JST_CHECK(updateAxisState());
     }
+
+    JST_CHECK(updateAxisState());
 
     signalBuffer->update();
 
