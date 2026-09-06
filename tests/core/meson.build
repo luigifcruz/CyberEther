@@ -32,6 +32,7 @@ core_test_domains = {
     'render': ['render/transfers.cc'],
     'sakura': [
         'sakura/node.cc',
+        'sakura/node_metadata.cc',
         'sakura/surface_view.cc',
         'sakura/superluminal_surface.cc',
         'sakura/vstack.cc',
