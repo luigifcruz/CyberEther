@@ -29,6 +29,20 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"error_red", {1.0f, 0.0f, 0.0f, 1.0f}},
             {"info_blue", {0.0f, 0.0f, 1.0f, 1.0f}},
 
+            // Banner Colors
+            {"banner_info_bg", {0.30f, 0.75f, 0.95f, 0.10f}},
+            {"banner_info_border", {0.30f, 0.75f, 0.95f, 0.35f}},
+            {"banner_info_text", {0.80f, 0.90f, 0.98f, 1.00f}},
+            {"banner_warning_bg", {1.00f, 0.80f, 0.00f, 0.10f}},
+            {"banner_warning_border", {1.00f, 0.80f, 0.00f, 0.35f}},
+            {"banner_warning_text", {0.98f, 0.90f, 0.70f, 1.00f}},
+            {"banner_success_bg", {0.30f, 0.85f, 0.45f, 0.10f}},
+            {"banner_success_border", {0.30f, 0.85f, 0.45f, 0.35f}},
+            {"banner_success_text", {0.80f, 0.95f, 0.85f, 1.00f}},
+            {"banner_error_bg", {0.95f, 0.35f, 0.35f, 0.10f}},
+            {"banner_error_border", {0.95f, 0.35f, 0.35f, 0.35f}},
+            {"banner_error_text", {0.98f, 0.82f, 0.82f, 1.00f}},
+
             // Background Colors
             {"background", {0.0f, 0.0f, 0.0f, 1.00f}},
             {"workspace_particle", {0.976f, 0.976f, 0.976f, 1.0f}},
@@ -208,9 +222,23 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
 
             // Status Colors
             {"success_green", {0.0f, 0.6f, 0.0f, 1.0f}},
-            {"warning_yellow", {0.95f, 0.90f, 0.0f, 1.0f}},
+            {"warning_yellow", {0.64f, 0.38f, 0.0f, 1.0f}},
             {"error_red", {0.9f, 0.15f, 0.15f, 1.0f}},
             {"info_blue", {0.15f, 0.4f, 0.9f, 1.0f}},
+
+            // Banner Colors
+            {"banner_info_bg", {0.15f, 0.55f, 0.85f, 0.08f}},
+            {"banner_info_border", {0.15f, 0.55f, 0.85f, 0.35f}},
+            {"banner_info_text", {0.10f, 0.32f, 0.55f, 1.00f}},
+            {"banner_warning_bg", {0.80f, 0.55f, 0.00f, 0.10f}},
+            {"banner_warning_border", {0.80f, 0.55f, 0.00f, 0.40f}},
+            {"banner_warning_text", {0.55f, 0.35f, 0.05f, 1.00f}},
+            {"banner_success_bg", {0.10f, 0.60f, 0.30f, 0.08f}},
+            {"banner_success_border", {0.10f, 0.60f, 0.30f, 0.35f}},
+            {"banner_success_text", {0.08f, 0.40f, 0.20f, 1.00f}},
+            {"banner_error_bg", {0.85f, 0.20f, 0.20f, 0.08f}},
+            {"banner_error_border", {0.85f, 0.20f, 0.20f, 0.35f}},
+            {"banner_error_text", {0.60f, 0.12f, 0.12f, 1.00f}},
 
             // Background Colors
             {"background", {0.97f, 0.97f, 0.98f, 1.00f}},

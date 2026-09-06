@@ -3,6 +3,7 @@
 
 #include "about.hh"
 #include "benchmark.hh"
+#include "dependencies.hh"
 #include "../flowgraph/modals/close.hh"
 #include "../flowgraph/modals/examples.hh"
 #include "../flowgraph/modals/info.hh"
@@ -32,6 +33,7 @@ struct ModalView {
         BenchmarkView::Config benchmark;
         RemoteView::Config remoteStreaming;
         PluginView::Config plugin;
+        DependencyReviewView::Config dependencies;
         FeedbackView::Config feedback;
         std::function<void()> onClose;
     };
@@ -105,6 +107,11 @@ struct ModalView {
                 pluginView.update(std::move(viewConfig));
                 break;
             }
+            case ModalContent::Dependencies: {
+                auto viewConfig = this->config.dependencies;
+                dependencyReviewView.update(std::move(viewConfig));
+                break;
+            }
             case ModalContent::Feedback: {
                 auto viewConfig = this->config.feedback;
                 feedbackView.update(std::move(viewConfig));
@@ -155,6 +162,9 @@ struct ModalView {
                 case ModalContent::Plugin:
                     pluginView.render(ctx);
                     break;
+                case ModalContent::Dependencies:
+                    dependencyReviewView.render(ctx);
+                    break;
                 case ModalContent::Feedback:
                     feedbackView.render(ctx);
                     break;
@@ -173,6 +183,9 @@ struct ModalView {
         if (config.content == ModalContent::Feedback) {
             return Extent2D<F32>{520.0f, 0.0f};
         }
+        if (config.content == ModalContent::Dependencies) {
+            return Extent2D<F32>{760.0f, 0.0f};
+        }
         return std::nullopt;
     }
 
@@ -188,6 +201,7 @@ struct ModalView {
     BenchmarkView benchmarkView;
     RemoteView remoteView;
     PluginView pluginView;
+    DependencyReviewView dependencyReviewView;
     FeedbackView feedbackView;
 };
 

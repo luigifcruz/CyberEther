@@ -62,6 +62,10 @@ foreach domain, sources : core_test_domains
         [core_test_main] + sources,
         dependencies: core_test_dependencies,
         include_directories: core_test_includes,
+        cpp_args: domain == 'runtime' ? [
+            '-DJETSTREAM_PYTHON_TEST_WHEEL="' + (meson.current_source_dir() /
+                'runtime/fixtures/cyberether_cache_fixture-1.0-py3-none-any.whl') + '"',
+        ] : [],
     )
     core_test_targets += [domain_tests]
     test('core-' + domain, domain_tests,

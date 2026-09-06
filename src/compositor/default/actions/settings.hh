@@ -9,6 +9,7 @@
 #include "jetstream/platform.hh"
 #include "jetstream/plugin.hh"
 #include "jetstream/settings.hh"
+#include "runtime/python/dependencies/coordinator.hh"
 
 #include <algorithm>
 #include <filesystem>
@@ -32,6 +33,8 @@ struct SettingsActions {
                               MailApplyUpdate,
                               MailDismissUpdate,
                               MailSetPythonRuntimePath,
+                              MailSetRuntimeDependencyPolicy,
+                              MailOpenPythonEnvironmentCache,
                               MailAddPluginPath,
                               MailRemovePluginPath,
                               MailReloadPlugin,
@@ -177,6 +180,46 @@ struct SettingsActions {
         settings.runtime.python.path = msg.value;
         JST_CHECK(Settings::Set(settings));
 
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetRuntimeDependencyPolicy& msg) {
+        if (msg.value != "prompt" && msg.value != "allow" && msg.value != "deny") {
+            JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Ignoring invalid runtime dependency policy '{}'.",
+                     msg.value);
+            return Result::SUCCESS;
+        }
+
+        JST_CHECK(SetPythonDependencyPolicy(msg.value));
+        state.runtime.dependencyPolicy = msg.value;
+
+        Settings settings;
+        JST_CHECK(Settings::Get(settings));
+        settings.runtime.dependencyPolicy = msg.value;
+        JST_CHECK(Settings::Set(settings));
+
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailOpenPythonEnvironmentCache&) {
+        std::string cacheValue;
+        if (Platform::CachePath(cacheValue) != Result::SUCCESS) {
+            callbacks.notify(Sakura::ToastType::Error,
+                             5000,
+                             "Failed to locate the Python environment cache.");
+            return Result::SUCCESS;
+        }
+
+        const auto path = Platform::PathFromUtf8(cacheValue) /
+                          "python-environments";
+        std::error_code ec;
+        std::filesystem::create_directories(path, ec);
+        if (ec || Platform::OpenFolder(Platform::PathToUtf8(path)) !=
+                      Result::SUCCESS) {
+            callbacks.notify(Sakura::ToastType::Error,
+                             5000,
+                             "Failed to open the Python environment cache.");
+        }
         return Result::SUCCESS;
     }
 

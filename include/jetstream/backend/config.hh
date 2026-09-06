@@ -46,6 +46,7 @@ struct Config {
     U64 multisampling = 4;
     bool headless = false;
     std::string pythonRuntimePath;
+    std::string dependencyPolicy;
 };
 
 }  // namespace Jetstream::Backend

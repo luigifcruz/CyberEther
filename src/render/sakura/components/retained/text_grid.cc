@@ -214,7 +214,13 @@ struct TextGrid::Impl {
     bool lastBlinkOn = false;
 
     F32 lineHeightPixels() const { return std::max(1.0f, fontSizePixels * kLineHeightFontRatio); }
-    F32 paddingPixels() const { return fontSizePixels * kPaddingFontRatio; }
+    Padding paddingPixels() const {
+        if (config.padding.has_value()) {
+            return *config.padding;
+        }
+        const F32 horizontal = fontSizePixels * kPaddingFontRatio;
+        return {horizontal, 0.0f, horizontal, 0.0f};
+    }
     F32 contentFontSize() const { return fontSizePixels * config.fontScale; }
 
     bool variableMetrics() const { return !config.lineScale.empty(); }
@@ -249,7 +255,7 @@ struct TextGrid::Impl {
         const F32 clipTop = clip.has_value()
             ? std::max(rect.y, clip->y)
             : rect.y;
-        return std::max(0.0f, (clipTop - viewportTopPixels()) + currentScrollY);
+        return std::max(0.0f, (clipTop - textTopPixels()) + currentScrollY);
     }
     U64 firstVisibleVisualRow() const {
         if (variableMetrics()) {
@@ -263,7 +269,7 @@ struct TextGrid::Impl {
         if (line < visualRowStartIndex.size()) {
             return rowTopPixels(visualRowStartIndex[line]);
         }
-        return viewportTopPixels() + rowTopContent(visualRows.size()) - currentScrollY;
+        return textTopPixels() + rowTopContent(visualRows.size()) - currentScrollY;
     }
     F32 sourceLineHeight(U64 line) const {
         ensureVisualRows();
@@ -425,13 +431,20 @@ struct TextGrid::Impl {
                characterAdvancePixels();
     }
     F32 textLeftPixels() const {
-        return config.lineNumbers ? rect.x + gutterWidthPixels() : rect.x + paddingPixels();
+        return config.lineNumbers ? rect.x + gutterWidthPixels() : rect.x + paddingPixels().left;
     }
-    F32 textClipRightPixels() const { return rect.right() - paddingPixels(); }
+    F32 textClipLeftPixels() const { return config.lineNumbers ? textLeftPixels() : rect.x; }
+    F32 textClipRightPixels() const { return rect.right(); }
+    F32 scrollbarGutterPixels() const {
+        if (!config.scrollbar) {
+            return 0.0f;
+        }
+        return fontSizePixels * (kScrollbarThicknessFontRatio + 2.0f * kScrollbarMarginFontRatio);
+    }
     F32 textViewportWidthPixels() const {
-        return std::max(1.0f, textClipRightPixels() - textLeftPixels());
+        return std::max(1.0f, rect.right() - scrollbarGutterPixels() - paddingPixels().right - textLeftPixels());
     }
-    F32 viewportTopPixels() const { return rect.y; }
+    F32 textTopPixels() const { return rect.y + paddingPixels().top; }
     struct VisualRow {
         U64 line = 0;
         U64 start = 0;
@@ -563,11 +576,19 @@ struct TextGrid::Impl {
     }
 
     F32 rowTopPixels(U64 visualRow) const {
-        return viewportTopPixels() + rowTopContent(visualRow) - currentScrollY;
+        return textTopPixels() + rowTopContent(visualRow) - currentScrollY;
     }
 
     F32 editorBottomPaddingPixels() const {
-        return config.editable ? std::max(0.0f, rect.height - lineHeightPixels()) : 0.0f;
+        if (!config.editable) {
+            return 0.0f;
+        }
+        const auto padding = paddingPixels();
+        return std::max(0.0f, rect.height - lineHeightPixels() - padding.top - padding.bottom);
+    }
+    F32 paddedContentHeightPixels() const {
+        const auto padding = paddingPixels();
+        return padding.top + textContentHeightPixels() + padding.bottom;
     }
     F32 textContentHeightPixels() const {
         ensureVisualRows();
@@ -576,7 +597,7 @@ struct TextGrid::Impl {
             : static_cast<F32>(visualRows.size()) * lineHeightPixels();
     }
     F32 contentHeightPixels() const {
-        return textContentHeightPixels() + editorBottomPaddingPixels();
+        return paddedContentHeightPixels() + editorBottomPaddingPixels();
     }
     F32 maxLineAdvancePixels() const {
         if (config.wrap != Wrap::None) {
@@ -589,7 +610,7 @@ struct TextGrid::Impl {
         return widest;
     }
     F32 contentWidthPixels() const {
-        return (textLeftPixels() - rect.x) + maxLineAdvancePixels() + paddingPixels();
+        return (textLeftPixels() - rect.x) + maxLineAdvancePixels() + paddingPixels().right + scrollbarGutterPixels();
     }
     F32 measuredContentWidthPixels() const {
         ensureVisualRows();
@@ -597,11 +618,12 @@ struct TextGrid::Impl {
         for (const auto& row : visualRows) {
             widest = std::max(widest, columnXInRow(row.line, row.start, row.end) + lineIndentAt(row.line));
         }
-        return (textLeftPixels() - rect.x) + widest + paddingPixels();
+        return (textLeftPixels() - rect.x) + widest + paddingPixels().right + scrollbarGutterPixels();
     }
     Metrics computeMetrics() const {
         Metrics out;
-        out.contentHeight = textContentHeightPixels();
+        out.contentHeight = paddedContentHeightPixels();
+        out.padding = paddingPixels();
         out.sourceLines.resize(lines.size());
         for (U64 line = 0; line < lines.size(); ++line) {
             out.sourceLines[line] = {
@@ -926,11 +948,12 @@ struct TextGrid::Impl {
     void ensureCursorVisible() {
         const F32 lineHeight = lineHeightPixels();
         const F32 areaHeight = rect.height;
-        const F32 cursorTop = static_cast<F32>(visualRowForPosition(cursor)) * lineHeight;
-        if (cursorTop < currentScrollY) {
-            currentScrollY = cursorTop;
-        } else if (cursorTop + lineHeight > currentScrollY + areaHeight) {
-            currentScrollY = cursorTop + lineHeight - areaHeight;
+        const auto padding = paddingPixels();
+        const F32 cursorTop = padding.top + static_cast<F32>(visualRowForPosition(cursor)) * lineHeight;
+        if (cursorTop - padding.top < currentScrollY) {
+            currentScrollY = cursorTop - padding.top;
+        } else if (cursorTop + lineHeight + padding.bottom > currentScrollY + areaHeight) {
+            currentScrollY = cursorTop + lineHeight + padding.bottom - areaHeight;
         }
         currentScrollY = std::clamp(currentScrollY, 0.0f, std::max(0.0f, contentHeightPixels() - areaHeight));
 
@@ -1344,7 +1367,7 @@ struct TextGrid::Impl {
 
     Position positionFromMouse(const Extent2D<F32>& pixel) const {
         ensureVisualRows();
-        const F32 contentY = pixel.y - viewportTopPixels() + currentScrollY;
+        const F32 contentY = pixel.y - textTopPixels() + currentScrollY;
         U64 visualRowIndex = variableMetrics()
             ? visualRowAtContentY(contentY)
             : static_cast<U64>(std::max(0.0f, std::floor(contentY / lineHeightPixels())));
@@ -1639,12 +1662,13 @@ struct TextGrid::Impl {
         const bool visible = !rect.empty();
         const auto clip = std::optional<Rect>(clipped(rect));
         const auto textClip = std::optional<Rect>(clipped(
-            Rect{textLeftPixels(), rect.y, std::max(0.0f, textClipRightPixels() - textLeftPixels()), rect.height}));
+            Rect{textClipLeftPixels(), rect.y,
+                 std::max(0.0f, textClipRightPixels() - textClipLeftPixels()), rect.height}));
         const F32 lineHeight = lineHeightPixels();
         const F32 advance = characterAdvancePixels();
         const F32 gutterWidth = gutterWidthPixels();
         const F32 textLeft = textLeftPixels();
-        const F32 viewportTop = viewportTopPixels();
+        const F32 viewportTop = textTopPixels();
         const F32 contentSize = contentFontSize();
         ensureVisualRows();
         const U64 firstVisualRow = firstVisibleVisualRow();
@@ -1675,7 +1699,7 @@ struct TextGrid::Impl {
         const auto matchText = singleLineSelectionText();
         U64 matchIndex = 0;
 
-        const F32 clipLeft = textLeft;
+        const F32 clipLeft = textClipLeftPixels();
         const F32 clipRight = textClipRightPixels();
         const auto rowRangeRect = [&](U64 lineIndex, U64 a, U64 b, U64 rowStart, U64 rowEnd, U64 lineLen,
                                       bool breakAtEnd, F32 rowTop, F32 rowHeight) -> std::optional<Rect> {
@@ -1977,7 +2001,7 @@ Extent2D<F32> TextGrid::measure(const Context& ctx, Extent2D<F32> available) {
     const F32 maxWidth = std::isfinite(available.x) ? available.x : impl->rect.width;
     const Rect savedRect = impl->rect;
     impl->rect = {0.0f, 0.0f, maxWidth, impl->rect.height};
-    const F32 height = impl->textContentHeightPixels();
+    const F32 height = impl->paddedContentHeightPixels();
     const F32 width = std::min(maxWidth, impl->measuredContentWidthPixels());
     impl->rect = savedRect;
 

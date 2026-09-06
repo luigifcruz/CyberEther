@@ -10,6 +10,15 @@ namespace Jetstream::Sakura {
 
 struct Context;
 
+struct Padding {
+    F32 left = 0.0f;
+    F32 top = 0.0f;
+    F32 right = 0.0f;
+    F32 bottom = 0.0f;
+
+    bool operator==(const Padding&) const = default;
+};
+
 namespace Retained {
 struct Canvas;
 }  // namespace Retained

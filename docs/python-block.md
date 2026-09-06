@@ -16,11 +16,11 @@ def compute(ctx):
     ctx.outputs[0][...] = ctx.inputs[0] * 2.0
 ```
 
-The code is compiled when the block is created and `compute(ctx)` runs once per compute cycle. Editing the code in the node reloads it in place. Changing the input or output counts recreates the block.
+The code is compiled immediately before its first compute after the flowgraph is scheduled, and `compute(ctx)` then runs once per compute cycle. Editing the code in the node reloads it in place. Changing the input or output counts recreates the block.
 
 ## Choosing a Python Runtime
 
-CyberEther does not ship with its own Python. The block runs on a Python installation already on your system, the same one you use from the terminal, so every package installed there (NumPy, SciPy, CuPy, Astropy, and so on) is available to `compute`. If you already have an environment set up, you can point CyberEther at it and use it directly inside a flowgraph.
+CyberEther does not ship with its own Python. The block runs on a Python installation already on your system, the same one you use from the terminal. Packages from that installation remain available, and scripts can declare additional packages using [inline dependency metadata](#declaring-dependencies).
 
 To pick which installation is used, open **Settings**, select the **Runtime** tab, and use the **Python Runtime** selector:
 
@@ -31,6 +31,38 @@ To pick which installation is used, open **Settings**, select the **Runtime** ta
 A badge next to the selector reports whether the choice is usable: **Valid File** means a matching Python library was located, **Invalid** means it was not. The selection is saved and applies after restarting CyberEther. The minimum supported version is Python 3.9. Older installations are reported as invalid and skipped by Auto.
 
 A useful rule of thumb: if `python -c "import numpy"` works in your terminal, selecting that same Python here makes the import work in the block too. Conversely, if an import fails inside the block, check which runtime is selected before reinstalling packages. The block may simply be running a different Python than your terminal.
+
+## Declaring Dependencies
+
+Python blocks support PEP 723 inline script metadata. Declare direct dependencies at the top of the block source:
+
+```python
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#   "numpy>=2.0,<3",
+#   "scipy~=1.14",
+#   "requests>=2.32,<3",
+# ]
+# ///
+
+def compute(ctx):
+    pass
+```
+
+Declare only packages imported directly by the script. Their transitive dependencies are resolved automatically. Prefer broad ranges that describe tested compatibility. Use exact pins only when a specific version is required.
+
+All Python blocks in the process share one interpreter, so CyberEther resolves the union of the dependencies declared by every scheduled block. Scripts without declarations can see packages contributed by other blocks. Incompatible constraints prevent the new union from activating and are reported on the requesting blocks.
+
+CyberEther stores resolved environments beneath its cache in `python-environments/<environment-key>/`. The key includes the selected Python runtime and the dependency union. Each immutable entry contains the direct requirements, a `site-packages` directory, and a completion marker. Incomplete entries are ignored. CyberEther invokes pip from the selected runtime. Package resolution and the download and wheel caches remain pip's responsibility.
+
+The **Dependency Policy** setting controls cache misses:
+
+- The **Prompt** option asks for approval before installing a missing environment.
+- The **Allow** option installs missing environments automatically.
+- The **Deny** option uses existing cached environments but never installs packages.
+
+With **Prompt**, headless runs pause blocks with missing dependencies until the request is approved through a connected interface, such as CyberEther Remote. For fully unattended runs, use **Deny** or pre-populate the cache. Use `--dependency-policy allow` only when the scripts are trusted and automatic installation is intended.
 
 ## Block Configuration
 
@@ -233,7 +265,7 @@ Not supported: multi-dimensional arrays and half precision (move bulk data throu
 
 ## State And Lifecycle
 
-- **Globals persist across cycles.** Module-level variables survive between `compute` calls. Use them for accumulators, precomputed tables, or open connections. Module-level code runs once, at block creation or code reload.
+- **Globals persist across cycles.** Module-level variables survive between `compute` calls. Use them for accumulators, precomputed tables, or open connections. Module-level code runs once immediately before the first compute after dependency reconciliation or code reload.
 - **Optional `cleanup()` hook.** If defined, it runs when the block is destroyed or the code is reloaded. Close files, stop threads, and release resources there.
 - **Errors do not stop the flowgraph.** Exceptions raised by `compute` are captured in the block console. The failing cycle is skipped, and the block remains skipped until the code is reloaded or the block is recreated.
 - **Console output routes to the owning block.** Output written to `print()` appears in the block console no matter which thread printed it, and an uncaught exception in a background thread lands there as a traceback too. Captured output identifies as non-interactive, so libraries that check for a terminal fall back to plain formatting.
@@ -276,6 +308,7 @@ One caveat for native client libraries: some compiled extensions hold the interp
 ## Limitations
 
 - One Python interpreter is shared by all Python blocks in the process, so heavy computation in one block delays the others. Blocks do get isolated globals, so one block's variables are not visible to another.
+- One managed dependency environment is active process-wide. Dependency changes reload every scheduled Python block, and native extensions may require restarting CyberEther.
 - Output tensor geometry is fixed by the spec. Reshaping on the fly requires reconfiguring the block.
 - Environment deletions are not supported (see above).
 - The runtime loads at startup from the installation selected in the settings (see [Choosing a Python Runtime](#choosing-a-python-runtime)). If no usable Python is found, the block reports it in its diagnostic and skips computing without affecting the rest of the flowgraph.

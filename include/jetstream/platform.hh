@@ -7,6 +7,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "jetstream/types.hh"
@@ -66,7 +67,9 @@ JETSTREAM_API bool ShutdownSocketRead(std::uintptr_t socket) noexcept;
 JETSTREAM_API Result RunProcess(const std::string& executable,
                                 const std::vector<std::string>& arguments,
                                 std::string& output,
-                                U64 timeoutMilliseconds = 0);
+                                U64 timeoutMilliseconds = 0,
+                                bool combineOutput = false,
+                                std::function<void(std::string_view)> onOutput = {});
 
 //
 // Dynamic Library
@@ -114,6 +117,7 @@ class JETSTREAM_API FileLock {
 //
 
 JETSTREAM_API Result OpenUrl(const std::string& url);
+JETSTREAM_API Result OpenFolder(const std::string& path);
 
 //
 // Dialogs

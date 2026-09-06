@@ -75,8 +75,9 @@ struct JETSTREAM_API Settings {
         };
 
         Python python;
+        std::string dependencyPolicy = "prompt";
 
-        JST_SERDES(python);
+        JST_SERDES(python, dependencyPolicy);
     };
 
     Graphics graphics;

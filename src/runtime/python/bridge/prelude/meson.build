@@ -14,7 +14,14 @@ runtime_python_bridge = custom_target(
         'runtime.py',
     ]),
     output: 'bridge.hh',
-    command: [py, files('meson.py'), '@OUTPUT@', '@INPUT@'],
+    command: [
+        py,
+        runtime_python_embed_script,
+        '@OUTPUT@',
+        'kPythonBridge',
+        'bridge/prelude',
+        '@INPUT@',
+    ],
 )
 
 dep_lst += declare_dependency(

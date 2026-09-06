@@ -90,6 +90,7 @@ struct LegalSettingsPanel {
                    "- ImNodes - MIT License\n"
                    "- PocketFFT - BSD-3-Clause License\n"
                    "- RapidYAML - MIT License\n"
+                   "- toml++ - MIT License\n"
                    "- vkFFT - MIT License\n"
                    "- stb - MIT License\n"
                    "- fmtlib - MIT License\n"

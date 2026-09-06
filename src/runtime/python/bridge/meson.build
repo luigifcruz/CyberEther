@@ -1,3 +1,4 @@
+subdir('bootstrap')
 subdir('prelude')
 subdir('cpython')
 

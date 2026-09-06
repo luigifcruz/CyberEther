@@ -74,6 +74,7 @@ Result Instance::create(const Config& config) {
             .deviceId = config.deviceId,
             .headless = config.headless,
             .pythonRuntimePath = config.pythonRuntimePath,
+            .dependencyPolicy = config.dependencyPolicy,
         };
         auto viewportConfig = Viewport::Config {
             .size = config.size,

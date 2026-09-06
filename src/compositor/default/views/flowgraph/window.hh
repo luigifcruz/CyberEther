@@ -26,11 +26,15 @@ struct FlowgraphWindow {
         std::vector<FlowgraphStackWindow::Config> stacks;
         std::vector<FlowgraphDetachedSurface::Config> detachedSurfaces;
         bool empty = false;
+        bool dependencyReviewAvailable = false;
+        Callout::Tone dependencyReviewTone = Callout::Tone::Info;
+        std::string dependencyReviewMessage;
         std::function<void()> onFocus;
         std::function<void()> onSave;
         std::function<void()> onClose;
         std::function<void()> onCreateStack;
         std::function<void()> onSendFeedback;
+        std::function<void()> onReviewDependencies;
     };
 
     void update(Config config) {
@@ -60,6 +64,9 @@ struct FlowgraphWindow {
         });
         toolbar.update({
             .id = this->config.id + ":toolbar",
+            .dependencyReviewAvailable = this->config.dependencyReviewAvailable,
+            .dependencyReviewTone = this->config.dependencyReviewTone,
+            .dependencyReviewMessage = this->config.dependencyReviewMessage,
             .onSave = this->config.onSave,
             .onClose = this->config.onClose,
             .onAddBlock = [this]() {
@@ -67,6 +74,7 @@ struct FlowgraphWindow {
             },
             .onCreateStack = this->config.onCreateStack,
             .onSendFeedback = this->config.onSendFeedback,
+            .onReviewDependencies = this->config.onReviewDependencies,
         });
         editor.update(std::move(editorConfig));
 
@@ -123,6 +131,7 @@ struct FlowgraphWindow {
                 .hints = flowgraphHints,
             });
         }
+
     }
 
     void render(const Sakura::Context& ctx) {

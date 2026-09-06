@@ -36,6 +36,7 @@ struct TextGrid : public Component {
 
     struct Metrics {
         F32 contentHeight = 0.0f;
+        Padding padding;
         std::vector<LineMetrics> sourceLines;
     };
 
@@ -52,6 +53,7 @@ struct TextGrid : public Component {
         bool stickToBottom = false;
         bool scrollbar = true;
         Wrap wrap = Wrap::None;
+        std::optional<Padding> padding;
         std::vector<F32> lineScale;
         std::vector<F32> lineTopGap;
         std::vector<F32> lineIndent;

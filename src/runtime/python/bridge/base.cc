@@ -40,51 +40,6 @@ bool UnregisterPythonGlobals() {
     return s_activeBridgeCount == 0;
 }
 
-struct GilScope {
-    explicit GilScope() {
-        if (s_threadState.depth == 0) {
-            if (!s_threadState.state) {
-                // Some extension modules cache CPython thread states; deleting
-                // and recreating them between computes can leave stale TLS behind.
-                s_threadState.state = PyThreadState_New();
-                if (!s_threadState.state) {
-                    JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't create Python thread state.");
-                    status = Result::ERROR;
-                    return;
-                }
-            }
-
-            PyEval_RestoreThread(s_threadState.state);
-            ownsGil = true;
-        }
-
-        ++s_threadState.depth;
-        active = true;
-    }
-
-    ~GilScope() {
-        if (!active) {
-            return;
-        }
-
-        --s_threadState.depth;
-        if (ownsGil && s_threadState.depth == 0) {
-            s_threadState.state = PyEval_SaveThread();
-        }
-    }
-
-    GilScope(const GilScope&) = delete;
-    GilScope& operator=(const GilScope&) = delete;
-
-    Result result() const {
-        return status;
-    }
-
-    bool active = false;
-    bool ownsGil = false;
-    Result status = Result::SUCCESS;
-};
-
 void CallPythonShutdown(PyObject* globals, const char* name) {
     if (!globals) {
         return;
@@ -114,6 +69,48 @@ void CallPythonShutdown(PyObject* globals, const char* name) {
 }
 
 }  // namespace
+
+std::recursive_mutex& PythonOperationMutex() {
+    static std::recursive_mutex mutex;
+    return mutex;
+}
+
+Bridge::Scope::Scope() {
+    if (s_threadState.depth == 0) {
+        if (!s_threadState.state) {
+            // Some extension modules cache CPython thread states; deleting
+            // and recreating them between computes can leave stale TLS behind.
+            s_threadState.state = PyThreadState_New();
+            if (!s_threadState.state) {
+                JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't create Python thread "
+                          "state.");
+                status_ = Result::ERROR;
+                return;
+            }
+        }
+
+        PyEval_RestoreThread(s_threadState.state);
+        ownsGil_ = true;
+    }
+
+    ++s_threadState.depth;
+    active_ = true;
+}
+
+Bridge::Scope::~Scope() {
+    if (!active_) {
+        return;
+    }
+
+    --s_threadState.depth;
+    if (ownsGil_ && s_threadState.depth == 0) {
+        s_threadState.state = PyEval_SaveThread();
+    }
+}
+
+Result Bridge::Scope::result() const {
+    return status_;
+}
 
 Bridge::~Bridge() {
     (void)stop();
@@ -168,6 +165,7 @@ Result Bridge::start(const std::string& source,
                      const TensorMap& outputs,
                      const std::shared_ptr<Flowgraph::Environment>& environment,
                      const std::shared_ptr<Flowgraph::View>& view) {
+    std::lock_guard<std::recursive_mutex> operationLock(PythonOperationMutex());
     std::lock_guard<std::recursive_mutex> lifecycleLock(lifecycleMutex);
 
     const auto loadResult = Py_Load();
@@ -182,7 +180,7 @@ Result Bridge::start(const std::string& source,
     this->environment = environment;
     this->flowgraphView = view;
 
-    GilScope gil;
+    Scope gil;
     JST_CHECK(gil.result());
 
     globals = PyDict_New();
@@ -272,6 +270,7 @@ Result Bridge::start(const std::string& source,
 }
 
 Result Bridge::stop() {
+    std::lock_guard<std::recursive_mutex> operationLock(PythonOperationMutex());
     std::lock_guard<std::recursive_mutex> lifecycleLock(lifecycleMutex);
 
     if (!Py_IsLoaded()) {
@@ -291,7 +290,7 @@ Result Bridge::stop() {
         return Result::SUCCESS;
     }
 
-    GilScope gil;
+    Scope gil;
     JST_CHECK(gil.result());
 
     environment.reset();
@@ -325,6 +324,7 @@ Result Bridge::stop() {
 }
 
 Result Bridge::run() {
+    std::lock_guard<std::recursive_mutex> operationLock(PythonOperationMutex());
     std::lock_guard<std::recursive_mutex> lifecycleLock(lifecycleMutex);
 
     {
@@ -349,7 +349,7 @@ Result Bridge::run() {
         return loadResult;
     }
 
-    GilScope gil;
+    Scope gil;
     JST_CHECK(gil.result());
 
     refreshAttributes();

@@ -21,6 +21,8 @@ The default command launches the full application and `benchmark` runs the bench
 
 Long options with values accept either `--option value` or `--option=value`. Use `--` to treat every following argument as positional, such as for a flowgraph path beginning with a dash. Run `cyberether --help` or `cyberether run --help` for the complete option list.
 
+Runtime options can select a Python executable or library for the current process with `--python-runtime <path>`, and set dependency installation behavior with `--dependency-policy prompt`, `allow`, or `deny`. These options temporarily override the saved Runtime settings without modifying `settings.yaml`.
+
 The benchmark command accepts `--format markdown`, `--format json`, or `--format csv` to select its output format. Pass a block type such as `fft` to run only that block's benchmarks: `cyberether benchmark fft --format json`. The CUDA benchmarks honor the global `--device-index` selection. Run `cyberether benchmark --help` for its command-specific help.
 
 Quirks:
@@ -46,7 +48,7 @@ Quirks:
 A remote instance is a native CyberEther, usually headless on a server, that streams its interface to you and takes interaction back, so the full application runs at the remote machine's compute capacity. CyberEther Remote is a mode of the native application rather than a separate command:
 
 ```
-cyberether --remote --broker https://cyberether.org [flowgraph]
+cyberether --remote --headless [flowgraph]
 ```
 
 ## Picking One

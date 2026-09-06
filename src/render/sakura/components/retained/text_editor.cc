@@ -551,6 +551,7 @@ bool TextEditor::update(Config config) {
         .lineNumbers = impl->config.lineNumbers,
         .showActiveLine = impl->config.showActiveLine,
         .wrap = impl->config.wrap,
+        .padding = impl->config.padding,
         .backgroundColorKey = impl->config.backgroundColorKey,
         .textColorKey = impl->config.textColorKey,
         .lineNumberColorKey = impl->config.lineNumberColorKey,

@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -24,6 +25,7 @@ struct TextView : public Component {
         bool stickToBottom = false;
         bool scrollbar = true;
         TextGrid::Wrap wrap = TextGrid::Wrap::None;
+        std::optional<Padding> padding;
         std::string backgroundColorKey = "transparent";
         std::string textColorKey = "text_primary";
         std::string lineNumberColorKey = "editor_line_number";

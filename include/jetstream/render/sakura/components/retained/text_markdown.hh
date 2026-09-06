@@ -5,6 +5,7 @@
 #include <jetstream/types.hh>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -16,6 +17,7 @@ struct TextMarkdown : public Component {
         std::string value;
         F32 fontSize = 15.0f;
         bool scrollbar = false;
+        std::optional<Padding> padding;
         std::string backgroundColorKey = "transparent";
         std::string textColorKey = "text_primary";
         std::string lineNumberColorKey = "editor_line_number";

@@ -12,6 +12,7 @@
 #include <jetstream/scheduler_context.hh>
 
 #include "module_impl.hh"
+#include "runtime/python/dependencies/coordinator.hh"
 
 namespace Jetstream::Modules {
 
@@ -42,9 +43,10 @@ struct PythonImplPython : public PythonImpl,
     Result create() final;
     Result destroy() final;
     Result reconfigure() final;
+    Result loadCompute() final;
 
  private:
-    Result loadCompute(const std::string& source);
+    Result loadComputeSource(const std::string& source);
 };
 
 Result PythonImplPython::validate() {
@@ -84,7 +86,8 @@ Result PythonImplPython::validate() {
     return Result::SUCCESS;
 }
 
-Result PythonImplPython::loadCompute(const std::string& source) {
+Result PythonImplPython::loadComputeSource(const std::string& source) {
+    JST_CHECK(SetPythonDependencyOrigin(this, name(), view()));
     const auto computeResult = createCompute(source,
                                              {},
                                              inputPortOrder(),
@@ -109,6 +112,10 @@ Result PythonImplPython::loadCompute(const std::string& source) {
     return computeResult;
 }
 
+Result PythonImplPython::loadCompute() {
+    return loadComputeSource(code);
+}
+
 Result PythonImplPython::create() {
     JST_CHECK(PythonImpl::create());
 
@@ -131,7 +138,7 @@ Result PythonImplPython::create() {
     }
     setImmutableOutputAttributes(immutableKeys);
 
-    JST_CHECK(loadCompute(code));
+    JST_CHECK(loadCompute());
 
     return Result::SUCCESS;
 }
@@ -155,7 +162,7 @@ Result PythonImplPython::reconfigure() {
     }
 
     if (config.code != code) {
-        JST_CHECK(loadCompute(config.code));
+        JST_CHECK(loadComputeSource(config.code));
         code = config.code;
     }
 

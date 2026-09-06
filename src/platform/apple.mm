@@ -65,6 +65,22 @@ Result OpenUrl(const std::string& url) {
     return Result::SUCCESS;
 }
 
+Result OpenFolder(const std::string& path) {
+#ifdef JST_OS_IOS
+    (void)path;
+    JST_ERROR("Opening folders is not supported on this platform.");
+    return Result::ERROR;
+#else
+    NSString* nsPath = [NSString stringWithUTF8String:path.c_str()];
+    NSURL* url = [NSURL fileURLWithPath:nsPath isDirectory:YES];
+    if (!url || ![[NSWorkspace sharedWorkspace] openURL:url]) {
+        JST_ERROR("Cannot open folder.");
+        return Result::ERROR;
+    }
+    return Result::SUCCESS;
+#endif
+}
+
 Result PickFile(std::string& path,
                 const std::vector<std::string>& extensions,
                 std::function<void(std::string)> callback) {
