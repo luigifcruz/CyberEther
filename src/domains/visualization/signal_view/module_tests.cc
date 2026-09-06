@@ -66,13 +66,15 @@ struct SignalViewImplAccess : Modules::SignalViewImpl {
         return &SignalViewImplAccess::splitter;
     }
 
-    static auto processMouseEventsMember() {
-        return &SignalViewImplAccess::processMouseEvents;
-    }
-
     static auto configChangePendingMember() {
         return &SignalViewImplAccess::configChangePending;
     }
+
+#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+    static void wirePresentResources(Modules::SignalViewImpl& impl,
+                                     const std::shared_ptr<Render::Components::Axis>& axis,
+                                     const std::shared_ptr<Render::Components::Text>& text);
+#endif
 };
 
 struct InteractiveSignalViewConfig : Block::Config {
@@ -141,6 +143,13 @@ class LabelTestAxis final : public Render::Components::Axis {
     Result present() override { return Result::SUCCESS; }
 };
 
+class LabelTestText final : public Render::Components::Text {
+ public:
+    explicit LabelTestText(const Config& config) : Text(config) {}
+
+    Result present() override { return Result::SUCCESS; }
+};
+
 class LabelTestSurface final : public Render::Surface {
  public:
     LabelTestSurface() : Surface(Config{}) {}
@@ -159,11 +168,46 @@ class LabelTestSurface final : public Render::Surface {
 
 class LabelTestBuffer final : public Render::Buffer {
  public:
-    LabelTestBuffer() : Buffer(Config{}) {}
+    explicit LabelTestBuffer(const Config& config = {}) : Buffer(config) {}
 
     Result create() override { return Result::SUCCESS; }
     Result destroy() override { return Result::SUCCESS; }
 };
+
+void SignalViewImplAccess::wirePresentResources(
+    Modules::SignalViewImpl& impl,
+    const std::shared_ptr<Render::Components::Axis>& axis,
+    const std::shared_ptr<Render::Components::Text>& text) {
+    // The combined presentation path updates real CPU state and queues uploads,
+    // but these resources never bind to a GPU. Only data members are accessed;
+    // internal non-exported implementation methods must not be called by tests.
+    impl.*axisMember() = axis;
+    impl.*&SignalViewImplAccess::text = text;
+    impl.*renderSurfaceMember() = std::make_shared<LabelTestSurface>();
+    auto& points = impl.*signalPointsMember();
+    impl.*&SignalViewImplAccess::signalPointsBuffer = std::make_shared<LabelTestBuffer>(
+        Render::Buffer::Config{
+            .size = points.size(),
+            .target = Render::Buffer::Target::STORAGE,
+            .elementByteSize = sizeof(F32),
+            .buffer = points.data(),
+        });
+    auto& bins = impl.*waterfallBinsMember();
+    impl.*&SignalViewImplAccess::waterfallBuffer = std::make_shared<LabelTestBuffer>(
+        Render::Buffer::Config{
+            .size = bins.size(),
+            .target = Render::Buffer::Target::STORAGE,
+            .elementByteSize = sizeof(F32),
+            .buffer = bins.data(),
+        });
+    impl.*&SignalViewImplAccess::signalUniformBuffer = std::make_shared<LabelTestBuffer>();
+    impl.*waterfallUniformBufferMember() = std::make_shared<LabelTestBuffer>();
+    impl.*&SignalViewImplAccess::signalKernel = std::make_shared<Render::Kernel>(Render::Kernel::Config{});
+    impl.*&SignalViewImplAccess::fillKernel = std::make_shared<Render::Kernel>(Render::Kernel::Config{});
+    impl.*&SignalViewImplAccess::signalProgram = std::make_shared<Render::Program>(Render::Program::Config{});
+    impl.*&SignalViewImplAccess::fillProgram = std::make_shared<Render::Program>(Render::Program::Config{});
+    impl.*&SignalViewImplAccess::waterfallProgram = std::make_shared<Render::Program>(Render::Program::Config{});
+}
 #endif
 
 std::vector<F32> ReadTensor(const Tensor& tensor,
@@ -463,7 +507,6 @@ TEST_CASE("Standalone waterfall presents live metadata without view changes",
     REQUIRE(axis->destroy(&window) == Result::SUCCESS);
     REQUIRE(module->destroy() == Result::SUCCESS);
 }
-#endif
 
 TEST_CASE_METHOD(FlowgraphFixture, "Signal View drag requests round trip through the owning block",
                  "[modules][signal_view][split][config-edits]") {
@@ -478,26 +521,56 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View drag requests round trip through
     REQUIRE(impl);
     auto& splitter = impl->*SignalViewImplAccess::splitterMember();
     auto& interaction = impl->*SignalViewImplAccess::interactionMember();
-    const auto process = [&] {
-        (impl->*SignalViewImplAccess::processMouseEventsMember())({0.8f, 0.75f});
+
+    LabelTestWindow window;
+    Render::Components::Axis::Config axisConfig;
+    axisConfig.verticalScale = 0.5f;
+    axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
+    auto axis = std::make_shared<LabelTestAxis>(axisConfig);
+    REQUIRE(axis->create(&window) == Result::SUCCESS);
+    Render::Components::Text::Config textConfig;
+    textConfig.font = axisConfig.font;
+    textConfig.maxCharacters = 64;
+    textConfig.elements = {{"header", {}}, {"zoom", {}},
+                           {"amplitude-title", {}}, {"waterfall-title", {}}};
+    auto text = std::make_shared<LabelTestText>(textConfig);
+    REQUIRE(text->create(&window) == Result::SUCCESS);
+    SignalViewImplAccess::wirePresentResources(*impl, axis, text);
+    auto* presenter = original->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+    const auto present = [&] {
+        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
     };
     const auto pending = [&] {
         return (impl->*SignalViewImplAccess::configChangePendingMember())();
     };
+    original->surface()->pushSurfaceEvent({
+        .type = SurfaceEventType::Resize,
+        .size = {1000, 800},
+    });
+    present();
+    const auto panels = Modules::detail::CalculateSignalViewPanels(
+        axis->paddingScale(), interaction.viewSize, splitter.ratio);
+    const auto positionAtRatio = [&](F32 ratio) {
+        return (panels.plot.y + panels.plot.height * ratio) / interaction.viewSize.y;
+    };
     MouseEvent event{};
     event.type = MouseEventType::Click;
     event.button = MouseButton::Left;
-    event.position = {0.5f, 0.5f};
+    event.position = {0.5f, positionAtRatio(0.5f)};
     original->surface()->pushMouseEvent(event);
-    process();
+    present();
     REQUIRE(splitter.dragging);
     REQUIRE_FALSE(interaction.dragging);
 
     event.type = MouseEventType::Move;
-    event.position = {0.7f, 0.65f};
+    event.position = {0.7f, positionAtRatio(0.7f)};
     original->surface()->pushMouseEvent(event);
-    process();
+    present();
     REQUIRE(splitter.ratio == Catch::Approx(0.7f));
+    REQUIRE(text->get("zoom").fill == "SPLIT 70%");
+    REQUIRE(axis->getConfig().verticalScale ==
+            Catch::Approx(0.7f).margin(1.0f / panels.plot.height));
     REQUIRE_FALSE(pending());
     REQUIRE(interaction.offset == 0.0f);
     REQUIRE(std::any_cast<F32>(viewBlock("plot").config.at("splitRatio")) == 0.5f);
@@ -510,11 +583,11 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View drag requests round trip through
     }
     event.type = MouseEventType::Release;
     original->surface()->pushMouseEvent(event);
-    process();
+    present();
     REQUIRE_FALSE(splitter.dragging);
     REQUIRE(pending());
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
-    process();
+    present();
     REQUIRE_FALSE(pending());
     REQUIRE(interactiveSignalView == original);
     REQUIRE(std::any_cast<F32>(viewBlock("plot").config.at("splitRatio")) == Catch::Approx(0.7f));
@@ -524,7 +597,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View drag requests round trip through
     event.type = MouseEventType::Move;
     event.position = {0.2f, 0.2f};
     original->surface()->pushMouseEvent(event);
-    process();
+    present();
     REQUIRE_FALSE(splitter.dragging);
     REQUIRE_FALSE(pending());
     REQUIRE(splitter.ratio == committedRatio);
@@ -532,10 +605,16 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View drag requests round trip through
     Parser::Map sidebar;
     sidebar["splitRatio"] = F32{0.4f};
     REQUIRE(flowgraph->blockReconfigure("plot", sidebar) == Result::SUCCESS);
-    process();
+    present();
     REQUIRE(splitter.ratio == 0.4f);
+    REQUIRE(axis->getConfig().verticalScale ==
+            Catch::Approx(0.4f).margin(1.0f / panels.plot.height));
     REQUIRE_FALSE(pending());
+
+    REQUIRE(text->destroy(&window) == Result::SUCCESS);
+    REQUIRE(axis->destroy(&window) == Result::SUCCESS);
 }
+#endif
 
 TEST_CASE("Signal View splitter hit testing uses the padded plot and commits on release",
           "[modules][signal_view][split]") {
