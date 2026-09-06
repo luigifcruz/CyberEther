@@ -253,6 +253,35 @@ Two details make this work. The implementation inherits its config fields throug
 
 The Module snapshots its serialized applied configuration before invoking the hook and attempts to restore that configuration if the hook fails. If restoration fails, the Module enters `ERRORED` and requires recreation. This rollback covers configuration fields only; implementations remain responsible for any runtime, hardware, or other external side effects.
 
+### Module-Originated Configuration Edits
+
+A surface can act as a configuration editor without directly mutating its module's
+applied fields. The owning block opts in after creating a child module:
+
+```cpp
+JST_CHECK(moduleCreate("detector", detectorConfig, inputs));
+JST_CHECK(moduleBindConfigEdit("detector", "threshold", "threshold"));
+```
+
+The first field name belongs to the module, the second to the block. Both must
+exist in their serialized configurations. The module can then submit a patch:
+
+```cpp
+Parser::Map edit;
+edit["threshold"] = newThreshold;
+JST_CHECK(requestConfigChange(edit));
+```
+
+Requests are queued rather than applied immediately. The flowgraph applies them
+through normal block reconfiguration before a compute cycle or export. Unbound
+fields reject the entire patch, and pending edits to the same field keep the
+latest value.
+
+The module can check `configChangeEnabled(key)` before offering a control, track
+outstanding edits with `configChangePending()`, and read `configChangeResult()`
+after completion. Keep interaction previews separate from applied configuration.
+Emit requests in response to user input, not when receiving an accepted edit.
+
 ### Compute Contract
 
 The compute hooks come from the runtime context, for example `computeInitialize`, `computeSubmit`, and `computeDeinitialize` on `NativeCpuRuntimeContext`. The scheduler executes modules in topological order once per cycle, and what `computeSubmit` returns matters:

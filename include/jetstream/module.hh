@@ -129,6 +129,9 @@ class JETSTREAM_API Module {
 
  private:
     std::shared_ptr<Impl> impl;
+
+    friend class Block;
+    friend class Flowgraph;
 };
 
 inline Module::Taint operator&(Module::Taint lhs, Module::Taint rhs) {

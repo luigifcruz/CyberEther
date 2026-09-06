@@ -2,6 +2,7 @@
 #define JETSTREAM_BLOCK_IMPL_HH
 
 #include <any>
+#include <atomic>
 #include <functional>
 #include <unordered_map>
 
@@ -94,6 +95,9 @@ struct JETSTREAM_API Block::Impl {
                               const std::pair<std::string, std::string>& moduleOutput);
     TensorLink moduleGetOutput(const std::pair<std::string, std::string>& moduleOutput);
     Result moduleReconfigure(const std::string name, const bool& validateOnly = false);
+    Result moduleBindConfigEdit(const std::string& module,
+                                const std::string& moduleKey,
+                                const std::string& blockKey);
     std::shared_ptr<Module> moduleHandle(const std::string& name);
 
  private:
@@ -135,6 +139,7 @@ struct JETSTREAM_API Block::Impl {
 
     std::shared_ptr<Block::Config> _stagedConfig;
     std::shared_ptr<Block::Config> _candidateConfig;
+    std::shared_ptr<std::atomic<bool>> _configChangesPending;
 
     friend class Block;
     friend class Flowgraph;

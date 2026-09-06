@@ -11,6 +11,7 @@ core_test_domains = {
     ],
     'flowgraph': [
         'flowgraph/api.cc',
+        'flowgraph/config_edits.cc',
         'flowgraph/execution.cc',
         'flowgraph/mutation.cc',
         'flowgraph/state.cc',
