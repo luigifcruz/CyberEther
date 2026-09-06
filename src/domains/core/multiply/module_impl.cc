@@ -108,22 +108,28 @@ Result MultiplyImpl::create() {
         Tensor inputA = a;
         Tensor inputB = b;
 
-        c.setDerivedAttribute("sampleRate", [inputA, inputB]() -> std::any {
-            const auto srA = inputA.hasAttribute("sampleRate") ? std::any_cast<F32>(inputA.attribute("sampleRate")) : 0.0f;
-            const auto srB = inputB.hasAttribute("sampleRate") ? std::any_cast<F32>(inputB.attribute("sampleRate")) : 0.0f;
-            if (srA == srB || srB == 0.0f) {
+        if (inputA.hasAttribute("sampleRate") ||
+            inputB.hasAttribute("sampleRate")) {
+            c.setDerivedAttribute("sampleRate", [inputA, inputB]() -> std::any {
+                const auto srA = inputA.hasAttribute("sampleRate") ? std::any_cast<F32>(inputA.attribute("sampleRate")) : 0.0f;
+                const auto srB = inputB.hasAttribute("sampleRate") ? std::any_cast<F32>(inputB.attribute("sampleRate")) : 0.0f;
+                if (srA == srB || srB == 0.0f) {
+                    return std::any(srA);
+                } else if (srA == 0.0f) {
+                    return std::any(srB);
+                }
                 return std::any(srA);
-            } else if (srA == 0.0f) {
-                return std::any(srB);
-            }
-            return std::any(srA);
-        });
+            });
+        }
 
-        c.setDerivedAttribute("frequency", [inputA, inputB]() -> std::any {
-            const auto fA = inputA.hasAttribute("frequency") ? std::any_cast<F32>(inputA.attribute("frequency")) : 0.0f;
-            const auto fB = inputB.hasAttribute("frequency") ? std::any_cast<F32>(inputB.attribute("frequency")) : 0.0f;
-            return std::any(fA + fB);
-        });
+        if (inputA.hasAttribute("frequency") ||
+            inputB.hasAttribute("frequency")) {
+            c.setDerivedAttribute("frequency", [inputA, inputB]() -> std::any {
+                const auto fA = inputA.hasAttribute("frequency") ? std::any_cast<F32>(inputA.attribute("frequency")) : 0.0f;
+                const auto fB = inputB.hasAttribute("frequency") ? std::any_cast<F32>(inputB.attribute("frequency")) : 0.0f;
+                return std::any(fA + fB);
+            });
+        }
     }
 
     outputs()["product"].produced(name(), "product", c);

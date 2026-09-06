@@ -23,6 +23,7 @@ class Superluminal {
         Scatter,
         Waterfall,
         Interface,
+        SpectrumAnalyzer,
     };
 
     enum class Domain {

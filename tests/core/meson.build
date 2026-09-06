@@ -46,8 +46,19 @@ core_test_domains = {
         'serialization/yaml.cc',
     ],
     'settings': ['settings/settings.cc'],
+    'surface': ['surface/surface.cc'],
     'tools': ['tools/circular_buffer.cc'],
 }
+
+# Sakura components are not exported from the Windows shared library.
+if not jst_is_windows
+    core_test_domains += {
+        'render': core_test_domains['render'] + [
+            'render/field_grid.cc',
+            'render/range_input.cc',
+        ],
+    }
+endif
 
 core_test_targets = []
 foreach domain, sources : core_test_domains

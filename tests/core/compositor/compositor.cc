@@ -16,6 +16,8 @@
 #include "jetstream/detail/compositor_impl.hh"
 #include "jetstream/logger.hh"
 
+#include "compositor/default/model/meta.hh"
+
 using namespace Jetstream;
 
 namespace {
@@ -99,6 +101,56 @@ void RequireRejectedFactoryChoice(CompositorType type) {
 }
 
 }  // namespace
+
+TEST_CASE("Surface metadata preserves detached config state and accepts legacy attached widths",
+          "[core][compositor][metadata]") {
+    SurfaceMeta source{
+        .attachedHeight = 300,
+        .detachedWidth = 800,
+        .detachedHeight = 600,
+        .detached = true,
+        .detachedConfigOpen = true,
+    };
+    Parser::Map data;
+    REQUIRE(source.serialize(data) == Result::SUCCESS);
+    REQUIRE_FALSE(data.contains("attachedWidth"));
+    REQUIRE(std::any_cast<bool>(data.at("detachedConfigOpen")));
+
+    data["attachedWidth"] = U64{256};
+    SurfaceMeta restored;
+    REQUIRE(restored.deserialize(data) == Result::SUCCESS);
+    REQUIRE(restored.attachedHeight == 300);
+    REQUIRE(restored.detachedWidth == 800);
+    REQUIRE(restored.detachedHeight == 600);
+    REQUIRE(restored.detached);
+    REQUIRE(restored.detachedConfigOpen);
+
+    data.erase("detachedConfigOpen");
+    SurfaceMeta legacy;
+    REQUIRE(legacy.deserialize(data) == Result::SUCCESS);
+    REQUIRE_FALSE(legacy.detachedConfigOpen);
+    REQUIRE(legacy.attachedHeight == 300);
+}
+
+TEST_CASE("Node metadata preserves resized dimensions alongside config collapse state",
+          "[core][compositor][metadata]") {
+    NodeMeta source{
+        .x = 10.0f,
+        .y = 20.0f,
+        .width = 320.0f,
+        .height = 600.0f,
+        .configCollapsed = true,
+    };
+    Parser::Map data;
+    REQUIRE(source.serialize(data) == Result::SUCCESS);
+    NodeMeta restored;
+    REQUIRE(restored.deserialize(data) == Result::SUCCESS);
+    REQUIRE(restored.x == source.x);
+    REQUIRE(restored.y == source.y);
+    REQUIRE(restored.width == source.width);
+    REQUIRE(restored.height == source.height);
+    REQUIRE(restored.configCollapsed);
+}
 
 TEST_CASE("Compositor factory selects the supported enum and rejects other values",
            "[core][compositor][factory]") {

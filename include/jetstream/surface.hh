@@ -54,11 +54,17 @@ enum class JETSTREAM_API SurfaceEventType : U8 {
     Resize = 0,
 };
 
+enum class JETSTREAM_API SurfacePlacementType : U8 {
+    Attached = 0,
+    Detached = 1,
+};
+
 struct JETSTREAM_API SurfaceEvent {
     SurfaceEventType type;
     Extent2D<U64> size;
     F32 scale = 1.0f;
     ColorRGBA<F32> backgroundColor = {0.0f, 0.0f, 0.0f, 1.0f};
+    SurfacePlacementType placement = SurfacePlacementType::Detached;
 };
 
 //
@@ -104,6 +110,7 @@ struct JETSTREAM_API SurfaceInteractionState {
 
     bool viewChanged = false;
     bool cursorMoved = false;
+    SurfacePlacementType placement = SurfacePlacementType::Detached;
 };
 
 struct JETSTREAM_API SurfaceInteractionConfig {

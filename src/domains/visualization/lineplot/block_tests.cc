@@ -1,7 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <any>
-#include <limits>
 #include <string>
 
 #include "jetstream/domains/dsp/signal_generator/block.hh"
@@ -25,11 +24,30 @@ TEST_CASE_METHOD(FlowgraphFixture,
     Blocks::Lineplot lineplotConfig;
     lineplotConfig.averaging = 2;
     lineplotConfig.decimation = 2;
+    lineplotConfig.fill = false;
+    lineplotConfig.rangeMin = -1.0f;
+    lineplotConfig.rangeMax = 1.0f;
+    lineplotConfig.xLabel = "Time";
+    lineplotConfig.yLabel = "Voltage";
 
     REQUIRE(flowgraph->blockCreate("lineplot", lineplotConfig, inputs) ==
             Result::SUCCESS);
-    REQUIRE(viewBlock("lineplot").state == Block::State::Created);
-    REQUIRE(viewBlock("lineplot").outputs.empty());
+    const auto block = viewBlock("lineplot");
+    REQUIRE(block.state == Block::State::Created);
+    REQUIRE(block.outputs.empty());
+    REQUIRE_FALSE(std::any_cast<bool>(block.config.at("fill")));
+    REQUIRE(std::any_cast<F32>(block.config.at("rangeMin")) == -1.0f);
+    REQUIRE(std::any_cast<F32>(block.config.at("rangeMax")) == 1.0f);
+    REQUIRE(std::any_cast<std::string>(block.config.at("xLabel")) == "Time");
+    REQUIRE(std::any_cast<std::string>(block.config.at("yLabel")) == "Voltage");
+    REQUIRE_FALSE(block.config.contains("thickness"));
+    for (const auto& entry : block.interfaceConfigs) {
+        REQUIRE(entry.name != "fill");
+        REQUIRE(entry.name != "rangeMin");
+        REQUIRE(entry.name != "rangeMax");
+        REQUIRE(entry.name != "xLabel");
+        REQUIRE(entry.name != "yLabel");
+    }
 
     auto result = flowgraph->blockDisconnect("lineplot", "signal");
     REQUIRE((result == Result::SUCCESS || result == Result::INCOMPLETE));
@@ -55,12 +73,29 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(flowgraph->blockCreate("lineplot", Blocks::Lineplot(), inputs) ==
             Result::SUCCESS);
+    const auto initial = viewBlock("lineplot");
+    REQUIRE(std::any_cast<std::string>(initial.config.at("xLabel")) ==
+            "Frequency (MHz)");
+    REQUIRE(std::any_cast<std::string>(initial.config.at("yLabel")) ==
+            "Amplitude (dBFS)");
+    REQUIRE(std::any_cast<F32>(initial.config.at("rangeMin")) == -100.0f);
+    REQUIRE(std::any_cast<F32>(initial.config.at("rangeMax")) == 0.0f);
 
     Parser::Map config;
     config["averaging"] = std::string("8");
     config["decimation"] = std::string("2");
+    config["rangeMin"] = std::string("-1");
+    config["rangeMax"] = std::string("1");
+    config["xLabel"] = std::string();
+    config["yLabel"] = std::string("Amplitude");
     REQUIRE(flowgraph->blockReconfigure("lineplot", config) == Result::SUCCESS);
-    REQUIRE(viewBlock("lineplot").state == Block::State::Created);
+    const auto reconfigured = viewBlock("lineplot");
+    REQUIRE(reconfigured.state == Block::State::Created);
+    REQUIRE(std::any_cast<std::string>(reconfigured.config.at("xLabel")).empty());
+    REQUIRE(std::any_cast<std::string>(reconfigured.config.at("yLabel")) ==
+            "Amplitude");
+    REQUIRE(std::any_cast<F32>(reconfigured.config.at("rangeMin")) == -1.0f);
+    REQUIRE(std::any_cast<F32>(reconfigured.config.at("rangeMax")) == 1.0f);
 
     Blocks::Lineplot invalid;
     invalid.averaging = 0;
@@ -68,6 +103,20 @@ TEST_CASE_METHOD(FlowgraphFixture,
             Result::SUCCESS);
     REQUIRE(viewBlock("lineplot_invalid").state ==
             Block::State::Errored);
+
+    Blocks::Lineplot equalRange;
+    equalRange.rangeMin = 1.0f;
+    equalRange.rangeMax = 1.0f;
+    REQUIRE(flowgraph->blockCreate("lineplot_equal_range", equalRange, inputs) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("lineplot_equal_range").state == Block::State::Created);
+
+    Blocks::Lineplot reversedRange;
+    reversedRange.rangeMin = 1.0f;
+    reversedRange.rangeMax = -1.0f;
+    REQUIRE(flowgraph->blockCreate("lineplot_reversed_range", reversedRange,
+                                   inputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("lineplot_reversed_range").state == Block::State::Created);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
@@ -100,7 +149,6 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     Blocks::Lineplot config;
     config.averaging = 2;
-    config.thickness = 1.5f;
     TensorMap inputs;
     inputs["signal"].requested("lineplot_update_src", "signal");
     REQUIRE(flowgraph->blockCreate("lineplot_update", config, inputs) ==
@@ -108,20 +156,18 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
 
     Parser::Map invalidUpdate;
-    invalidUpdate["thickness"] = std::numeric_limits<F32>::infinity();
+    invalidUpdate["averaging"] = U64{0};
     REQUIRE(flowgraph->blockReconfigure("lineplot_update", invalidUpdate) ==
             Result::SUCCESS);
     REQUIRE(viewBlock("lineplot_update").state == Block::State::Errored);
 
     Parser::Map validSparseUpdate;
     validSparseUpdate["averaging"] = U64{8};
-    validSparseUpdate["thickness"] = config.thickness;
     REQUIRE(flowgraph->blockReconfigure("lineplot_update", validSparseUpdate) ==
             Result::SUCCESS);
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("lineplot_update", saved) == Result::SUCCESS);
     REQUIRE(std::any_cast<U64>(saved.at("averaging")) == 8);
-    REQUIRE(std::any_cast<F32>(saved.at("thickness")) == config.thickness);
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
 }

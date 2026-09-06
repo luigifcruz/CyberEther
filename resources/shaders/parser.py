@@ -50,7 +50,7 @@ def bin_to_header(path, stub):
             target = file.split(".")[-1]
             targets.add(target)
 
-            name = os.path.basename(file).split(".")[0].split("_")[1]
+            name = os.path.basename(file)[len(stub) + 1:].split(".")[0]
             names.add(name)
 
             for type in types:
@@ -98,7 +98,7 @@ def bin_to_header(path, stub):
             target = file.split(".")[-1]
             targets.add(target)
 
-            name = os.path.basename(file).split(".")[0].split("_")[1]
+            name = os.path.basename(file)[len(stub) + 1:].split(".")[0]
             names.add(name)
 
             varname = f"{name}_{target}_kernel"

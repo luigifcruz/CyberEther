@@ -1472,3 +1472,134 @@ TEST_CASE("Creating nodes render at the loading height floor",
     // Loading nodes never collapse below the 96-unit floor.
     REQUIRE(flowgraphNodeDimensions("creating-block").y >= 96.0f);
 }
+
+TEST_CASE("Simple config grids reflow during node resizing and collapse without reserving height",
+          "[core][sakura][flowgraph_node][field-grid][collapse]") {
+    SakuraTest::HeadlessUi ui(1.0f, ImVec2(900.0f, 900.0f));
+    const auto ctx = ui.sakura();
+
+    FlowgraphNode node;
+    auto config = baseConfigFor(baseBlock("grid-block", "radio"));
+    for (U64 i = 0; i < 4; ++i) {
+        config.block.configFields.push_back({
+            .id = "grid-block:field:" + std::to_string(i),
+            .label = "Value",
+            .format = "range:0:1",
+            .encoded = "0.5",
+        });
+    }
+    settle(ui, ctx, node, config, 4);
+    const auto narrow = flowgraphNodeDimensions(config.id);
+    REQUIRE(flowgraphNodeData(config.id)->ResizeFlags == ImNodesNodeResizeFlags_X);
+
+    dragCorner(ui, ctx, node, config.id, ImVec2(100.0f, 0.0f));
+    settle(ui, ctx, node, config, 5);
+    const auto wide = flowgraphNodeDimensions(config.id);
+    REQUIRE(wide.x == Catch::Approx(narrow.x + 100.0f).margin(1.0f));
+    REQUIRE(wide.y < narrow.y - 20.0f);
+
+    config.block.configCollapsed = true;
+    settle(ui, ctx, node, config, 4);
+    const auto collapsed = flowgraphNodeDimensions(config.id);
+    REQUIRE(collapsed.x == Catch::Approx(wide.x).margin(1.0f));
+    REQUIRE(collapsed.y < wide.y - 20.0f);
+
+    config.block.configCollapsed = false;
+    settle(ui, ctx, node, config, 4);
+    REQUIRE(flowgraphNodeDimensions(config.id).y == Catch::Approx(wide.y).margin(1.0f));
+    dragCorner(ui, ctx, node, config.id, ImVec2(-100.0f, 0.0f));
+    settle(ui, ctx, node, config, 5);
+    REQUIRE(flowgraphNodeDimensions(config.id).x == Catch::Approx(narrow.x).margin(1.0f));
+    REQUIRE(flowgraphNodeDimensions(config.id).y == Catch::Approx(narrow.y).margin(1.0f));
+}
+
+TEST_CASE("Collapsed flexible config fields stop reserving node height and resize axes",
+          "[core][sakura][flowgraph_node][collapse][allocation]") {
+    SakuraTest::HeadlessUi ui(1.0f, ImVec2(600.0f, 900.0f));
+    const auto ctx = ui.sakura();
+
+    LayoutLog layoutLog;
+    FlowgraphNode node;
+    auto config = baseConfigFor(baseBlock("collapse-editor", "radio"));
+    config.block.configFields.push_back(
+        {.id = "collapse-editor:code", .format = "python", .encoded = "pass"});
+    config.onLayout = [&layoutLog](F32 x, F32 y, F32 width, F32 height) {
+        layoutLog.record(x, y, width, height);
+    };
+    settle(ui, ctx, node, config, 5);
+    const auto expanded = flowgraphNodeDimensions(config.id);
+    REQUIRE(flowgraphNodeData(config.id)->ResizeFlags == ImNodesNodeResizeFlags_XY);
+
+    config.block.configCollapsed = true;
+    settle(ui, ctx, node, config, 4);
+    REQUIRE(flowgraphNodeData(config.id)->ResizeFlags == ImNodesNodeResizeFlags_X);
+    REQUIRE(std::get<3>(layoutLog.last()) == 0.0f);
+    REQUIRE(flowgraphNodeDimensions(config.id).y < expanded.y - 100.0f);
+
+    config.block.configCollapsed = false;
+    settle(ui, ctx, node, config, 5);
+    REQUIRE(flowgraphNodeData(config.id)->ResizeFlags == ImNodesNodeResizeFlags_XY);
+    REQUIRE(flowgraphNodeDimensions(config.id).y == Catch::Approx(expanded.y).margin(1.0f));
+    dragCorner(ui, ctx, node, config.id, ImVec2(0.0f, 100.0f));
+    settle(ui, ctx, node, config, 4);
+    REQUIRE(flowgraphNodeDimensions(config.id).y == Catch::Approx(expanded.y + 100.0f).margin(2.0f));
+}
+
+TEST_CASE("Config grids coexist with flexible editors and attached surface allocations",
+          "[core][sakura][flowgraph_node][field-grid][allocation]") {
+    SakuraTest::HeadlessUi ui(1.0f, ImVec2(900.0f, 1200.0f));
+    const auto ctx = ui.sakura();
+
+    SakuraTest::ResizeLog resizeLog;
+    FlowgraphNode node;
+    auto config = baseConfigFor(baseBlock("grid-surface", "radio"));
+    for (U64 i = 0; i < 4; ++i) {
+        config.block.configFields.push_back({
+            .id = "grid-surface:field:" + std::to_string(i),
+            .label = "Value",
+            .format = "range:0:1",
+            .encoded = "0.5",
+        });
+        if (i == 1) {
+            config.block.configFields.push_back(
+                {.id = "grid-surface:text", .format = "markdown", .encoded = "hello"});
+        }
+    }
+    auto surface = attachedSurface("grid-surface:surface");
+    surface.height = 400.0f;
+    surface.onAttachedSize = [&resizeLog](const Sakura::SurfaceResize& resize) {
+        resizeLog.record(resize);
+    };
+    config.block.surfaces.push_back(surface);
+    settle(ui, ctx, node, config, 7);
+    REQUIRE(resizeLog.count() >= 1);
+    for (const auto& resize : resizeLog.entries) {
+        REQUIRE(resize.logicalSize.y == 400);
+    }
+    const auto narrow = flowgraphNodeDimensions(config.id);
+    const F32 narrowFloor = flowgraphNodeData(config.id)->ResizeMinimumSize.y;
+
+    dragCorner(ui, ctx, node, config.id, ImVec2(100.0f, 0.0f));
+    settle(ui, ctx, node, config, 6);
+    REQUIRE(flowgraphNodeDimensions(config.id).x == Catch::Approx(narrow.x + 100.0f).margin(1.0f));
+    REQUIRE(flowgraphNodeDimensions(config.id).y == Catch::Approx(narrow.y).margin(1.0f));
+    REQUIRE(flowgraphNodeData(config.id)->ResizeMinimumSize.y < narrowFloor - 20.0f);
+    REQUIRE(resizeLog.entries.back().logicalSize.y > 400);
+    const F32 expandedFloor = flowgraphNodeData(config.id)->ResizeMinimumSize.y;
+    const U64 expandedSurfaceHeight = resizeLog.entries.back().logicalSize.y;
+
+    config.block.configCollapsed = true;
+    settle(ui, ctx, node, config, 6);
+    REQUIRE(flowgraphNodeData(config.id)->ResizeFlags == ImNodesNodeResizeFlags_XY);
+    REQUIRE(flowgraphNodeData(config.id)->ResizeMinimumSize.y < expandedFloor - 120.0f);
+    REQUIRE(resizeLog.entries.back().logicalSize.y > expandedSurfaceHeight + 120);
+    REQUIRE(flowgraphNodeDimensions(config.id).y == Catch::Approx(narrow.y).margin(1.0f));
+
+    config.block.configCollapsed = false;
+    settle(ui, ctx, node, config, 6);
+    REQUIRE(flowgraphNodeData(config.id)->ResizeMinimumSize.y == Catch::Approx(expandedFloor).margin(1.0f));
+    REQUIRE(resizeLog.entries.back().logicalSize.y == Catch::Approx(expandedSurfaceHeight).margin(1.0f));
+    for (const auto& resize : resizeLog.entries) {
+        REQUIRE(resize.logicalSize.y >= FlowgraphNode::SurfaceHeightSpec().minimum);
+    }
+}

@@ -1,15 +1,20 @@
 #ifndef JETSTREAM_DOMAINS_VISUALIZATION_CONSTELLATION_BLOCK_HH
 #define JETSTREAM_DOMAINS_VISUALIZATION_CONSTELLATION_BLOCK_HH
 
+#include <string>
+
 #include "jetstream/block.hh"
 
 namespace Jetstream::Blocks {
 
 struct Constellation : public Block::Config {
+    std::string xLabel = "In-Phase";
+    std::string yLabel = "Quadrature";
+
     JST_BLOCK_TYPE(constellation);
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(L);
-    JST_BLOCK_PARAMS();
+    JST_BLOCK_PARAMS(xLabel, yLabel);
     JST_BLOCK_DESCRIPTION(
         "Constellation",
         "Displays a constellation scatter plot.",

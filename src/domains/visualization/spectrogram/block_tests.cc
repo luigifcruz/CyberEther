@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <any>
 #include <string>
 
 #include "jetstream/domains/core/ones_tensor/block.hh"
@@ -23,11 +24,19 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     Blocks::Spectrogram config;
     config.height = 128;
+    config.xLabel = "Time";
+    config.yLabel = "Frequency";
 
     REQUIRE(flowgraph->blockCreate("spectrogram", config, inputs) == Result::SUCCESS);
-    REQUIRE(viewBlock("spectrogram").state ==
-            Block::State::Created);
-    REQUIRE(viewBlock("spectrogram").outputs.empty());
+    const auto block = viewBlock("spectrogram");
+    REQUIRE(block.state == Block::State::Created);
+    REQUIRE(block.outputs.empty());
+    REQUIRE(std::any_cast<std::string>(block.config.at("xLabel")) == "Time");
+    REQUIRE(std::any_cast<std::string>(block.config.at("yLabel")) == "Frequency");
+    for (const auto& entry : block.interfaceConfigs) {
+        REQUIRE(entry.name != "xLabel");
+        REQUIRE(entry.name != "yLabel");
+    }
 
     auto result = flowgraph->blockDisconnect("spectrogram", "signal");
     REQUIRE((result == Result::SUCCESS || result == Result::INCOMPLETE));
@@ -57,9 +66,14 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     Parser::Map config;
     config["height"] = std::string("64");
+    config["xLabel"] = std::string("Observation");
+    config["yLabel"] = std::string("Bin");
     REQUIRE(flowgraph->blockReconfigure("spectrogram", config) == Result::SUCCESS);
-    REQUIRE(viewBlock("spectrogram").state ==
-            Block::State::Created);
+    const auto reconfigured = viewBlock("spectrogram");
+    REQUIRE(reconfigured.state == Block::State::Created);
+    REQUIRE(std::any_cast<std::string>(reconfigured.config.at("xLabel")) ==
+            "Observation");
+    REQUIRE(std::any_cast<std::string>(reconfigured.config.at("yLabel")) == "Bin");
 
     Blocks::Spectrogram invalid;
     invalid.height = 0;

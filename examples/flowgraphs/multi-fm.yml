@@ -83,7 +83,6 @@ graph:
     runtime: native
     provider: generic
     config:
-      interpolate: true
       height: 512
     input:
       signal: '${graph.spe33.output.buffer}'
@@ -105,10 +104,7 @@ graph:
     runtime: native
     provider: generic
     config:
-      thickness: 1
       decimation: 1
-      numberOfHorizontalLines: 5
-      numberOfVerticalLines: 11
       averaging: 18
     input:
       signal: '${graph.spe33.output.buffer}'
@@ -183,7 +179,6 @@ graph:
     runtime: native
     provider: generic
     config:
-      interpolate: true
       height: 512
     input:
       signal: '${graph.spectrum_engine.output.buffer}'
@@ -254,7 +249,6 @@ graph:
     runtime: native
     provider: generic
     config:
-      interpolate: true
       height: 512
     input:
       signal: '${graph.spe23.output.buffer}'

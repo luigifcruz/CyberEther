@@ -21,7 +21,8 @@ struct StackActions {
                               MailDeleteStack,
                               MailSetStackGeometry,
                               MailSetStackLayout,
-                              MailSetSurfaceDetached>;
+                              MailSetSurfaceDetached,
+                              MailSetSurfaceConfigOpen>;
     using StackWindowState = DefaultCompositorState::FlowgraphState::StackWindowState;
 
     DefaultCompositorState& state;
@@ -155,6 +156,27 @@ struct StackActions {
         }
 
         meta.detached = msg.detached;
+        return flowgraph->metadata().set(metaKey, meta, msg.block);
+    }
+
+    Result handle(const MailSetSurfaceConfigOpen& msg) {
+        if (!state.flowgraph.items.contains(msg.flowgraph)) {
+            return Result::SUCCESS;
+        }
+
+        auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+        if (!flowgraph->view().has(msg.block)) {
+            return Result::SUCCESS;
+        }
+
+        const std::string metaKey = "surface_" + msg.surface;
+        SurfaceMeta meta;
+        JST_CHECK(flowgraph->metadata().get(metaKey, meta, msg.block));
+        if (meta.detachedConfigOpen == msg.open) {
+            return Result::SUCCESS;
+        }
+
+        meta.detachedConfigOpen = msg.open;
         return flowgraph->metadata().set(metaKey, meta, msg.block);
     }
 

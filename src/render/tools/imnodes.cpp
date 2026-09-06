@@ -2730,7 +2730,9 @@ void BeginNode(const int node_id)
     GImNodes->CurrentNodeInputDisabled = IsNodeInputOccluded(editor, node_idx);
     if (GImNodes->CurrentNodeInputDisabled)
     {
-        ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
+        const float alpha = ImGui::GetStyle().Alpha;
+        ImGui::BeginDisabled();
+        ImGui::GetStyle().Alpha = alpha;
     }
 }
 
@@ -2744,7 +2746,7 @@ void EndNode()
     // The node's rectangle depends on the ImGui UI group size.
     if (GImNodes->CurrentNodeInputDisabled)
     {
-        ImGui::PopItemFlag();
+        ImGui::EndDisabled();
         GImNodes->CurrentNodeInputDisabled = false;
     }
 

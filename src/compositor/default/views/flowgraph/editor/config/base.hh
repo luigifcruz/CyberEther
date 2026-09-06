@@ -32,6 +32,8 @@ struct FlowgraphConfigFieldInstance {
         const auto parts = Parser::SplitString(config.format, ":");
         kind = parts.empty() ? "" : parts[0];
 
+        fullHeight = kind == "float" && parts.size() > 3 && !parts[3].empty();
+
         if (kind == "dropdown") {
             dropdown.update(std::move(config));
         } else if (kind == "float") {
@@ -73,6 +75,16 @@ struct FlowgraphConfigFieldInstance {
                 .tone = Sakura::Text::Tone::Warning,
             });
         }
+    }
+
+    bool isSimple() const {
+        if (fullHeight) {
+            return false;
+        }
+        return kind == "dropdown" || kind == "float" || kind == "int" ||
+               kind == "uint" || kind == "bool" || kind == "range" ||
+               kind == "text" || kind == "vector-inline" ||
+               kind == "filepicker" || kind == "filesave";
     }
 
     void setAllocatedHeight(std::optional<F32> height) {
@@ -128,6 +140,7 @@ struct FlowgraphConfigFieldInstance {
     }
 
     std::string kind;
+    bool fullHeight = false;
     FlowgraphConfigDropdownField dropdown;
     FlowgraphConfigFloatField floatField;
     FlowgraphConfigIntField intField;

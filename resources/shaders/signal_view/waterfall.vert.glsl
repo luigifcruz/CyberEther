@@ -9,21 +9,21 @@ layout(location = 0) out vec2 outTexcoord;
 layout(set = 0, binding = 0) uniform ShaderUniforms {
     int width;
     int height;
-    int maxSize;
     float index;
     float offset;
     float zoom;
-    bool interpolate;
-    float paddingScaleX;
-    float paddingScaleY;
+    float panelScaleX;
+    float panelScaleY;
+    float panelOffsetY;
 } uniforms;
 
 void main() {
     vec4 position = vec4(vertexArray, 1.0);
-    position.x *= uniforms.paddingScaleX;
-    position.y *= uniforms.paddingScaleY;
-    float vertical = ((uniforms.index - (1.0 - texcoord.y)) * float(uniforms.height));
-    float horizontal = (((texcoord.x / uniforms.zoom) + uniforms.offset) * float(uniforms.width));
+    position.x *= uniforms.panelScaleX;
+    position.y = position.y * uniforms.panelScaleY + uniforms.panelOffsetY;
+
+    float vertical = (uniforms.index - (1.0 - texcoord.y)) * float(uniforms.height);
+    float horizontal = ((texcoord.x / uniforms.zoom) + uniforms.offset) * float(uniforms.width);
 
     outTexcoord = vec2(horizontal, vertical);
     gl_Position = position;

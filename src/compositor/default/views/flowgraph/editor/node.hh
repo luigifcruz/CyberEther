@@ -99,6 +99,7 @@ struct FlowgraphNode {
         std::vector<FlowgraphConfigFieldConfig> configFields;
         std::vector<Surface> surfaces;
         std::vector<DeviceOption> deviceOptions;
+        bool configCollapsed = false;
     };
 
     struct Config {
@@ -115,6 +116,7 @@ struct FlowgraphNode {
         std::function<void()> onDelete;
         std::function<void(DeviceType, RuntimeType, ProviderType)> onDeviceSelect;
         std::function<void(F32, F32, F32, F32)> onLayout;
+        std::function<void(bool)> onConfigCollapse;
     };
 
     struct Geometry {
@@ -166,14 +168,19 @@ struct FlowgraphNode {
         for (U64 i = 0; i < fields.size(); ++i) {
             fields[i].update(block.configFields[i]);
         }
+        fieldGrid.update({
+            .id = this->config.id + "FieldGrid",
+        });
 
         U64 flexibleFieldCount = 0;
         F32 flexibleMinimumSum = 0.0f;
-        for (const auto& field : fields) {
-            const auto spec = field.heightSpec();
-            if (spec.policy == FlowgraphNodeHeightPolicy::FillRemaining) {
-                ++flexibleFieldCount;
-                flexibleMinimumSum += std::max(0.0f, spec.minimum);
+        if (!block.configCollapsed) {
+            for (const auto& field : fields) {
+                const auto spec = field.heightSpec();
+                if (spec.policy == FlowgraphNodeHeightPolicy::FillRemaining) {
+                    ++flexibleFieldCount;
+                    flexibleMinimumSum += std::max(0.0f, spec.minimum);
+                }
             }
         }
         const bool hasFlexibleFields = flexibleFieldCount > 0;
@@ -292,7 +299,26 @@ struct FlowgraphNode {
                 });
             }
 
-            for (U64 i = 0; i < fields.size(); ++i) {
+            for (U64 i = 0; !block.configCollapsed && i < fields.size();) {
+                if (fields[i].isSimple()) {
+                    std::string id = "fields";
+                    std::vector<Sakura::NodeFieldGrid::Item> items;
+                    do {
+                        id += ":" + block.configFields[i].id + ":" + block.configFields[i].format;
+                        items.push_back({
+                            .child = [this, i](const Sakura::Context& ctx) {
+                                fields[i].render(ctx);
+                            },
+                        });
+                        ++i;
+                    } while (i < fields.size() && fields[i].isSimple());
+                    addContent(std::move(id), std::nullopt,
+                               [this, items = std::move(items)](const Sakura::Context& ctx) {
+                                   fieldGrid.render(ctx, items);
+                               });
+                    continue;
+                }
+
                 const auto spec = fields[i].heightSpec();
                 std::optional<Sakura::VStack::Flex> flex;
                 if (spec.policy == FlowgraphNodeHeightPolicy::FillRemaining) {
@@ -307,6 +333,7 @@ struct FlowgraphNode {
                     [this, i](const Sakura::Context& ctx) {
                         fields[i].render(ctx);
                     });
+                ++i;
             }
 
             const auto surfaceSpec = SurfaceHeightSpec();
@@ -426,6 +453,13 @@ struct FlowgraphNode {
             .diagnostic = {
                 .state = block.diagnostic.empty() ? Sakura::Node::State::Normal : nodeState,
                 .message = block.diagnostic,
+            },
+            .configCollapsed = block.configCollapsed,
+            .configHasFields = !block.configFields.empty(),
+            .onToggleConfigCollapse = [this]() {
+                if (this->config.onConfigCollapse) {
+                    this->config.onConfigCollapse(!this->config.block.configCollapsed);
+                }
             },
         });
         subtitle.update({.text = block.name});
@@ -619,6 +653,7 @@ struct FlowgraphNode {
     Sakura::VStack::Children contentChildren;
     std::vector<Sakura::NodePin> pins;
     std::vector<FlowgraphMetricInstance> metrics;
+    Sakura::NodeFieldGrid fieldGrid;
     std::vector<FlowgraphConfigFieldInstance> fields;
     std::vector<Sakura::SurfaceView> attachedSurfaces;
     std::vector<FlowgraphNodeMenu::DeviceOption> deviceOptions;
