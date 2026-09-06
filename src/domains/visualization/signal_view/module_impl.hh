@@ -20,6 +20,7 @@
 #include <jetstream/render/components/text.hh>
 
 #include "waterfall_history.hh"
+#include "split_interaction.hh"
 
 namespace Jetstream::Modules {
 
@@ -93,6 +94,8 @@ struct SignalViewImpl : public Module::Impl,
 
     // Surface interaction state.
     SurfaceInteractionState interaction;
+    detail::SignalViewSplitInteraction splitter;
+    bool updateLayoutFlag = false;
 
     // Rendering state.
     Extent2D<F32> pixelSize;
@@ -176,6 +179,7 @@ struct SignalViewImpl : public Module::Impl,
     Result present();
 
     void updateState();
+    void processMouseEvents(const Extent2D<F32>& paddingScale);
     void updateLabelState();
     Result resetLineplotHistory();
     Result resetHistoryState();

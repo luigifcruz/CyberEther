@@ -33,6 +33,7 @@ core_test_domains = {
     'sakura': [
         'sakura/node.cc',
         'sakura/surface_view.cc',
+        'sakura/superluminal_surface.cc',
         'sakura/vstack.cc',
     ],
     'runtime': [

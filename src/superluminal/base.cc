@@ -18,6 +18,7 @@
 #include "imgui.h"
 
 #include "dmi_block.hh"
+#include "surface_interaction.hh"
 
 namespace Jetstream {
 
@@ -469,44 +470,11 @@ Result Superluminal::start() {
                                     ImGui::SetCursorScreenPos(cursorPos);
                                     ImGui::InvisibleButton("##surface", availableRegion);
 
-                                    if (ImGui::IsItemHovered()) {
-                                        const auto mousePos = ImGui::GetMousePos();
-                                        const Extent2D<F32> normPos = {
-                                            (mousePos.x - cursorPos.x) / availableRegion.x,
-                                            (mousePos.y - cursorPos.y) / availableRegion.y
-                                        };
-
-                                        MouseEvent event;
-                                        event.position = normPos;
-                                        event.scroll = {0.0f, 0.0f};
-
-                                        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-                                            event.type = MouseEventType::Click;
-                                            event.button = MouseButton::Left;
+                                    detail::ForwardSuperluminalSurfaceMouseEvents(
+                                        cursorPos, availableRegion,
+                                        [&surface](const MouseEvent& event) {
                                             surface->pushMouseEvent(event);
-                                        } else if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-                                            event.type = MouseEventType::Click;
-                                            event.button = MouseButton::Right;
-                                            surface->pushMouseEvent(event);
-                                        } else if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-                                            event.type = MouseEventType::Release;
-                                            event.button = MouseButton::Left;
-                                            surface->pushMouseEvent(event);
-                                        } else if (ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
-                                            event.type = MouseEventType::Release;
-                                            event.button = MouseButton::Right;
-                                            surface->pushMouseEvent(event);
-                                        }
-
-                                        if (io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f) {
-                                            event.type = MouseEventType::Scroll;
-                                            event.scroll = {io.MouseWheelH, io.MouseWheel};
-                                            surface->pushMouseEvent(event);
-                                        }
-
-                                        event.type = MouseEventType::Move;
-                                        surface->pushMouseEvent(event);
-                                    }
+                                        });
                                 }
                             }
                         }

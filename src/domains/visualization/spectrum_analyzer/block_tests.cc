@@ -43,6 +43,38 @@ TEST_CASE("Spectrum Analyzer declares its complete module chain",
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
+                 "Spectrum Analyzer split is persistent configuration and changes in place",
+                 "[modules][spectrum-analyzer][split]") {
+    Blocks::SignalGenerator source;
+    source.signalDataType = "CF32";
+    source.bufferSize = 64;
+    REQUIRE(flowgraph->blockCreate("src", source, {}) == Result::SUCCESS);
+    TensorMap inputs;
+    inputs["buffer"].requested("src", "signal");
+    Blocks::SpectrumAnalyzer config;
+    config.waterfallHeight = 8;
+    REQUIRE(flowgraph->blockCreate("analyzer", config, inputs) == Result::SUCCESS);
+    const auto surface = viewBlock("analyzer").surfaces.front();
+    REQUIRE(std::any_cast<F32>(viewBlock("analyzer").config.at("splitRatio")) == 0.5f);
+
+    Parser::Map edit;
+    edit["splitRatio"] = F32{0.35f};
+    REQUIRE(flowgraph->blockReconfigure("analyzer", edit) == Result::SUCCESS);
+    REQUIRE(viewBlock("analyzer").surfaces.front() == surface);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(flowgraph->blockRename("analyzer", "renamed") == Result::SUCCESS);
+    REQUIRE(std::any_cast<F32>(viewBlock("renamed").config.at("splitRatio")) == 0.35f);
+
+    std::vector<char> blob;
+    REQUIRE(flowgraph->exportToBlob(blob) == Result::SUCCESS);
+    Flowgraph restored;
+    REQUIRE(restored.create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+    REQUIRE(restored.importFromBlob(blob) == Result::SUCCESS);
+    REQUIRE(std::any_cast<F32>(ViewBlock(restored, "renamed").config.at("splitRatio")) == 0.35f);
+    REQUIRE(restored.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
                  "Spectrum Analyzer block creates one combined surface",
                  "[modules][spectrum-analyzer][block]") {
     Blocks::SignalGenerator sourceConfig;
@@ -71,6 +103,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     for (const auto& entry : block.interfaceConfigs) {
         REQUIRE(entry.name != "axis");
         REQUIRE(entry.name != "fill");
+        REQUIRE(entry.name != "splitRatio");
         REQUIRE(entry.name != "xLabel");
         REQUIRE(entry.name != "amplitudeLabel");
         REQUIRE(entry.name != "waterfallLabel");

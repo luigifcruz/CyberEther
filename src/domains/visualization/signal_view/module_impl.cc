@@ -55,6 +55,12 @@ Result SignalViewImpl::validate() {
         return Result::ERROR;
     }
 
+    if (!std::isfinite(config.splitRatio) ||
+        config.splitRatio < detail::MinSplitRatio || config.splitRatio > detail::MaxSplitRatio) {
+        JST_ERROR("[MODULE_SIGNAL_VIEW] Split ratio must be between 0.1 and 0.9.");
+        return Result::ERROR;
+    }
+
     if (hasWaterfall &&
         (config.waterfallHeight == 0 || config.waterfallHeight > 8192)) {
         JST_ERROR("[MODULE_SIGNAL_VIEW] Invalid waterfall height value '{}', "
@@ -201,6 +207,10 @@ Result SignalViewImpl::define() {
 }
 
 Result SignalViewImpl::create() {
+    splitter = {};
+    splitter.ratio = splitRatio;
+    updateLayoutFlag = false;
+
     // Get input tensor.
 
     input = inputs().at("signal").tensor;
@@ -285,6 +295,8 @@ Result SignalViewImpl::reconfigure() {
         const bool averagingChanged = config.averaging != averaging;
         const bool rangeChanged =
             config.rangeMin != rangeMin || config.rangeMax != rangeMax;
+        updateLayoutFlag |= config.splitRatio != splitRatio;
+        splitRatio = config.splitRatio;
         averaging = config.averaging;
         rangeMin = config.rangeMin;
         rangeMax = config.rangeMax;
@@ -351,7 +363,7 @@ Result SignalViewImpl::createPresent() {
         cfg.thickness = kLineThickness;
         cfg.showInteriorGrid = lineplotEnabled;
         const bool combined = lineplotEnabled && waterfallEnabled;
-        cfg.verticalScale = combined ? 0.5f : 1.0f;
+        cfg.verticalScale = combined ? splitRatio : 1.0f;
         cfg.showFrameTicks = lineplotEnabled;
         cfg.font = window->font("default_mono");
         cfg.xTitle = xLabel;
@@ -737,14 +749,21 @@ Result SignalViewImpl::present() {
     // Process surface interaction events.
 
     interaction = ProcessSurfaceInteraction(interaction,
-                                            surfaceConsumeSurfaceEvents(),
-                                            surfaceConsumeMouseEvents());
+                                            surfaceConsumeSurfaceEvents(), {});
+    // Resize the axis before hit-testing so input and rendering use the same
+    // padded plot rectangle, including on a resize-and-click frame.
+    JST_CHECK(axis->updatePixelSize({
+        (2.0f * interaction.scale) / interaction.viewSize.x,
+        (2.0f * interaction.scale) / interaction.viewSize.y,
+    }));
+    processMouseEvents(axis->paddingScale());
 
-    if (interaction.viewChanged) {
+    if (interaction.viewChanged || updateLayoutFlag) {
         renderSurface->size(interaction.viewSize);
         renderSurface->clearColor(interaction.backgroundColor);
         surfaceUpdateManifestSize("default", interaction.viewSize);
         updateState();
+        updateLayoutFlag = false;
     }
 
     if (waterfallEnabled) {
@@ -813,6 +832,42 @@ Result SignalViewImpl::present() {
     return Result::SUCCESS;
 }
 
+void SignalViewImpl::processMouseEvents(const Extent2D<F32>& paddingScale) {
+    const F32 previousRatio = splitter.ratio;
+    if (!splitter.dragging && !configChangePending()) {
+        splitter.ratio = splitRatio;
+    }
+
+    std::vector<MouseEvent> plotEvents;
+    const bool enabled = lineplotEnabled && waterfallEnabled &&
+                         configChangeEnabled("splitRatio");
+    for (const auto& event : surfaceConsumeMouseEvents()) {
+        const auto layout = detail::CalculateSignalViewPanels(paddingScale,
+                                                               interaction.viewSize,
+                                                               splitter.ratio);
+        bool commit = false;
+        if (splitter.process(event, layout, interaction.viewSize,
+                              interaction.scale, enabled, commit)) {
+            // Splitter capture must never start or continue a horizontal pan.
+            interaction.dragging = false;
+            if (commit && (splitter.ratio != splitRatio || configChangePending())) {
+                Parser::Map edit;
+                edit["splitRatio"] = splitter.ratio;
+                if (requestConfigChange(edit) != Result::SUCCESS) {
+                    splitter.ratio = splitRatio;
+                }
+            } else if (event.type == MouseEventType::Leave) {
+                splitter.ratio = splitRatio;
+            }
+        } else {
+            plotEvents.push_back(event);
+        }
+    }
+    const bool viewChanged = interaction.viewChanged || previousRatio != splitter.ratio;
+    interaction = ProcessSurfaceInteraction(interaction, {}, std::move(plotEvents));
+    interaction.viewChanged |= viewChanged;
+}
+
 void SignalViewImpl::updateState() {
     const F32 maxTranslation = std::abs((1.0f / interaction.zoom) - 1.0f);
     const F32 translation =
@@ -831,14 +886,18 @@ void SignalViewImpl::updateState() {
     const auto& paddingScale = axis->paddingScale();
 
     const bool combined = lineplotEnabled && waterfallEnabled;
+    const auto panels = detail::CalculateSignalViewPanels(paddingScale,
+                                                           interaction.viewSize,
+                                                           splitter.ratio);
+    const F32 linePanelScale = combined ? panels.lineFraction : 1.0f;
+    axis->updateVerticalScale(linePanelScale);
 
     // Update the lineplot layer.
 
     if (lineplotEnabled) {
         auto signalTransform = glm::mat4(1.0f);
 
-        const F32 linePanelScale = combined ? 0.5f : 1.0f;
-        const F32 linePanelOffset = combined ? paddingScale.y * 0.5f : 0.0f;
+        const F32 linePanelOffset = paddingScale.y * (1.0f - linePanelScale);
         signalTransform = glm::translate(signalTransform,
                                          glm::vec3(translation *
                                                        paddingScale.x *
@@ -867,22 +926,14 @@ void SignalViewImpl::updateState() {
     // Clip signal and cursor to the plot area.
 
     const auto& vs = interaction.viewSize;
-    Render::ScissorRect plotRect;
-    plotRect.x = static_cast<U32>((1.0f - paddingScale.x) / 2.0f * vs.x);
-    plotRect.y = static_cast<U32>((1.0f - paddingScale.y) / 2.0f * vs.y);
-    plotRect.width = static_cast<U32>(paddingScale.x * vs.x);
-    plotRect.height = static_cast<U32>(paddingScale.y * vs.y);
+    const auto& plotRect = panels.plot;
     if (combined) {
-        auto lineRect = plotRect;
-        lineRect.height = (plotRect.height + 1) / 2;
-        Render::ScissorRect waterfallRect = plotRect;
-        waterfallRect.y += lineRect.height;
-        waterfallRect.height -= lineRect.height;
-        waterfallProgram->scissorRect(waterfallRect);
+        const auto& lineRect = panels.line;
+        waterfallProgram->scissorRect(panels.waterfall);
 
         waterfallUniforms.panelScaleX = paddingScale.x;
-        waterfallUniforms.panelScaleY = paddingScale.y * 0.5f;
-        waterfallUniforms.panelOffsetY = -paddingScale.y * 0.5f;
+        waterfallUniforms.panelScaleY = paddingScale.y * (1.0f - linePanelScale);
+        waterfallUniforms.panelOffsetY = -paddingScale.y * linePanelScale;
         signalProgram->scissorRect(lineRect);
         if (fill) {
             fillProgram->scissorRect(lineRect);
@@ -995,7 +1046,9 @@ void SignalViewImpl::updateLabelState() {
                 pixelSize.y * (axis->getConfig().majorTickLengthPx + 4.0f),
         };
         zoomLabel.alignment = {2, 0};
-        if (interaction.placement == SurfacePlacementType::Attached) {
+        if (splitter.dragging) {
+            zoomLabel.fill = jst::fmt::format("SPLIT {:.0f}%", splitter.ratio * 100.0f);
+        } else if (interaction.placement == SurfacePlacementType::Attached) {
             zoomLabel.fill = " ";
         } else if (std::abs(interaction.zoom - 1.0f) > 0.01f) {
             zoomLabel.fill = jst::fmt::format("ZOOM {:.1f}x", interaction.zoom);
@@ -1005,14 +1058,15 @@ void SignalViewImpl::updateLabelState() {
         text->update("zoom", zoomLabel);
 
         auto amplitudeTitle = text->get("amplitude-title");
+        const F32 lineFraction = axis->getConfig().verticalScale;
         amplitudeTitle.position = {-1.0f + pixelSize.x * 3.0f,
-                                   paddingScale.y * 0.5f};
+                                   paddingScale.y * (1.0f - lineFraction)};
         amplitudeTitle.fill = combined ? amplitudeLabel : " ";
         text->update("amplitude-title", amplitudeTitle);
 
         auto waterfallTitle = text->get("waterfall-title");
         waterfallTitle.position = {-1.0f + pixelSize.x * 3.0f,
-                                   -paddingScale.y * 0.5f};
+                                   -paddingScale.y * lineFraction};
         waterfallTitle.fill = combined ? waterfallLabel : " ";
         text->update("waterfall-title", waterfallTitle);
     }

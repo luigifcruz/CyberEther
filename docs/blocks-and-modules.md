@@ -282,6 +282,10 @@ outstanding edits with `configChangePending()`, and read `configChangeResult()`
 after completion. Keep interaction previews separate from applied configuration.
 Emit requests in response to user input, not when receiving an accepted edit.
 
+The Spectrum Analyzer demonstrates this with `splitRatio`: dragging previews a
+layout, releasing queues one edit, and the accepted ratio persists in block
+configuration. The in-place path preserves trace averaging and waterfall history.
+
 ### Compute Contract
 
 The compute hooks come from the runtime context, for example `computeInitialize`, `computeSubmit`, and `computeDeinitialize` on `NativeCpuRuntimeContext`. The scheduler executes modules in topological order once per cycle, and what `computeSubmit` returns matters:
