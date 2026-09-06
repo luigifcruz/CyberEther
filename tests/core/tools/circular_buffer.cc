@@ -45,11 +45,15 @@ TEST_CASE("Circular buffer applies explicit overflow policies",
         REQUIRE(buffer.push(first.data(), first.size()) == Result::SUCCESS);
         REQUIRE(buffer.push(second.data(), second.size()) == Result::SUCCESS);
         REQUIRE(buffer.overflows() == 1);
+        REQUIRE(buffer.statistics().pushedElements == 6);
+        REQUIRE(buffer.statistics().overwrittenElements == 2);
 
         std::array<F32, 4> output = {};
         REQUIRE(buffer.pop(output.data(), output.size()) == Result::SUCCESS);
         const std::array<F32, 4> expected = {3.0f, 4.0f, 5.0f, 6.0f};
         REQUIRE(output == expected);
+        REQUIRE(buffer.statistics().pushedElements == 6);
+        REQUIRE(buffer.statistics().overwrittenElements == 2);
     }
 
     SECTION("oversized writes retain one full latest window") {
@@ -58,6 +62,8 @@ TEST_CASE("Circular buffer applies explicit overflow policies",
                                           4.0f, 5.0f, 6.0f};
         REQUIRE(buffer.push(input.data(), input.size()) == Result::SUCCESS);
         REQUIRE(buffer.overflows() == 1);
+        REQUIRE(buffer.statistics().pushedElements == 6);
+        REQUIRE(buffer.statistics().overwrittenElements == 2);
 
         std::array<F32, 4> output = {};
         REQUIRE(buffer.pop(output.data(), output.size()) == Result::SUCCESS);
@@ -72,6 +78,8 @@ TEST_CASE("Circular buffer applies explicit overflow policies",
         REQUIRE(buffer.push(first.data(), first.size()) == Result::SUCCESS);
         REQUIRE(buffer.push(&extra, 1) == Result::INCOMPLETE);
         REQUIRE(buffer.overflows() == 1);
+        REQUIRE(buffer.statistics().pushedElements == 2);
+        REQUIRE(buffer.statistics().overwrittenElements == 0);
 
         std::array<F32, 2> output = {};
         REQUIRE(buffer.pop(output.data(), output.size()) == Result::SUCCESS);
@@ -128,6 +136,8 @@ TEST_CASE("Circular buffer retains the newest strided values on overflow",
 
     REQUIRE(buffer.pushStrided(interleaved.data(), 5, 2) == Result::SUCCESS);
     REQUIRE(buffer.overflows() == 1);
+    REQUIRE(buffer.statistics().pushedElements == 5);
+    REQUIRE(buffer.statistics().overwrittenElements == 2);
 
     std::array<F32, 3> output = {};
     REQUIRE(buffer.pop(output.data(), output.size()) == Result::SUCCESS);
@@ -149,6 +159,8 @@ TEST_CASE("Circular buffer clear and resize reset state but preserve policy",
     REQUIRE(buffer.empty());
     REQUIRE(buffer.overflows() == 0);
     REQUIRE(buffer.throughput() == 0.0);
+    REQUIRE(buffer.statistics().pushedElements == 0);
+    REQUIRE(buffer.statistics().overwrittenElements == 0);
 
     REQUIRE(buffer.push(input.data(), input.size()) == Result::SUCCESS);
     REQUIRE(buffer.push(&extra, 1) == Result::INCOMPLETE);
@@ -157,6 +169,8 @@ TEST_CASE("Circular buffer clear and resize reset state but preserve policy",
     REQUIRE(buffer.empty());
     REQUIRE(buffer.overflows() == 0);
     REQUIRE(buffer.throughput() == 0.0);
+    REQUIRE(buffer.statistics().pushedElements == 0);
+    REQUIRE(buffer.statistics().overwrittenElements == 0);
 
     const std::array<F32, 3> resizedInput = {4.0f, 5.0f, 6.0f};
     REQUIRE(buffer.push(resizedInput.data(), resizedInput.size()) ==
@@ -181,6 +195,8 @@ TEST_CASE("Circular buffer handles zero-sized operations",
     const F32 value = 1.0f;
     REQUIRE(buffer.push(&value, 1) == Result::ERROR);
     REQUIRE(buffer.overflows() == 1);
+    REQUIRE(buffer.statistics().pushedElements == 0);
+    REQUIRE(buffer.statistics().overwrittenElements == 0);
     REQUIRE(buffer.clear() == Result::SUCCESS);
     REQUIRE(buffer.overflows() == 0);
 }
@@ -286,6 +302,8 @@ TEST_CASE("Circular buffer preserves ordering under concurrent reuse",
 
     REQUIRE_FALSE(producerFailed);
     REQUIRE(buffer.empty());
+    REQUIRE(buffer.statistics().pushedElements == transferCount);
+    REQUIRE(buffer.statistics().overwrittenElements == 0);
     for (U64 i = 0; i < transferCount; ++i) {
         REQUIRE(output[i] == static_cast<F32>(i));
     }
@@ -303,6 +321,8 @@ TEST_CASE("Circular buffer validates incomplete operations",
     REQUIRE(buffer.peek(0, nullptr, 1) == Result::ERROR);
     REQUIRE(buffer.peek(1, &value, 0) == Result::INCOMPLETE);
     REQUIRE(buffer.waitForSize(3, std::chrono::milliseconds(1)) == Result::ERROR);
+    REQUIRE(buffer.statistics().pushedElements == 0);
+    REQUIRE(buffer.statistics().overwrittenElements == 0);
 
     const std::array<F32, 3> oversized = {1.0f, 2.0f, 3.0f};
     Tools::CircularBuffer<F32> rejectingBuffer(2, OverflowPolicy::Reject);
@@ -310,4 +330,108 @@ TEST_CASE("Circular buffer validates incomplete operations",
             Result::ERROR);
     REQUIRE(rejectingBuffer.empty());
     REQUIRE(rejectingBuffer.overflows() == 1);
+    REQUIRE(rejectingBuffer.statistics().pushedElements == 0);
+    REQUIRE(rejectingBuffer.statistics().overwrittenElements == 0);
+}
+
+TEST_CASE("Circular buffer loss accounting includes overwritten backlog and oversized input",
+          "[tools][circular_buffer][overflow][statistics]") {
+    Tools::CircularBuffer<F32> buffer(4);
+    const std::array<F32, 6> input = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+    REQUIRE(buffer.push(input.data(), 3) == Result::SUCCESS);
+    REQUIRE(buffer.statistics().pushedElements == 3);
+    REQUIRE(buffer.statistics().overwrittenElements == 0);
+    REQUIRE(buffer.push(input.data(), input.size()) == Result::SUCCESS);
+    REQUIRE(buffer.statistics().pushedElements == 9);
+    REQUIRE(buffer.statistics().overwrittenElements == 5);
+
+    REQUIRE(buffer.discard(2) == Result::SUCCESS);
+    REQUIRE(buffer.push(input.data(), 3) == Result::SUCCESS);
+    REQUIRE(buffer.statistics().pushedElements == 12);
+    REQUIRE(buffer.statistics().overwrittenElements == 6);
+
+    std::array<F32, 4> output;
+    REQUIRE(buffer.pop(output.data(), output.size()) == Result::SUCCESS);
+    REQUIRE(output == std::array<F32, 4>{6.0f, 1.0f, 2.0f, 3.0f});
+    REQUIRE(buffer.statistics().pushedElements == 12);
+    REQUIRE(buffer.statistics().overwrittenElements == 6);
+
+    REQUIRE(buffer.push(input.data(), 4) == Result::SUCCESS);
+    REQUIRE(buffer.statistics().pushedElements == 16);
+    REQUIRE(buffer.statistics().overwrittenElements == 6);
+    REQUIRE(buffer.push(input.data(), 4) == Result::SUCCESS);
+    REQUIRE(buffer.statistics().pushedElements == 20);
+    REQUIRE(buffer.statistics().overwrittenElements == 10);
+    REQUIRE(buffer.push(nullptr, 0) == Result::SUCCESS);
+    REQUIRE(buffer.push(nullptr, 1) == Result::ERROR);
+    REQUIRE(buffer.statistics().pushedElements == 20);
+    REQUIRE(buffer.statistics().overwrittenElements == 10);
+}
+
+TEST_CASE("Circular buffer loss statistics follow the buffer lifecycle",
+          "[tools][circular_buffer][lifecycle][statistics]") {
+    Tools::CircularBuffer<F32> buffer(2);
+    const std::array<F32, 4> input = {1.0f, 2.0f, 3.0f, 4.0f};
+    REQUIRE(buffer.push(input.data(), input.size()) == Result::SUCCESS);
+    REQUIRE(buffer.statistics().pushedElements == 4);
+    REQUIRE(buffer.statistics().overwrittenElements == 2);
+
+    SECTION("clear resets both counters") {
+        REQUIRE(buffer.clear() == Result::SUCCESS);
+        REQUIRE(buffer.statistics().pushedElements == 0);
+        REQUIRE(buffer.statistics().overwrittenElements == 0);
+    }
+
+    SECTION("resize resets both counters") {
+        REQUIRE(buffer.resize(3) == Result::SUCCESS);
+        REQUIRE(buffer.statistics().pushedElements == 0);
+        REQUIRE(buffer.statistics().overwrittenElements == 0);
+    }
+
+    SECTION("move transfers both counters") {
+        Tools::CircularBuffer<F32> moved(std::move(buffer));
+        REQUIRE(moved.statistics().pushedElements == 4);
+        REQUIRE(moved.statistics().overwrittenElements == 2);
+        REQUIRE(buffer.statistics().pushedElements == 0);
+        REQUIRE(buffer.statistics().overwrittenElements == 0);
+
+        Tools::CircularBuffer<F32> assigned;
+        assigned = std::move(moved);
+        REQUIRE(assigned.statistics().pushedElements == 4);
+        REQUIRE(assigned.statistics().overwrittenElements == 2);
+        REQUIRE(moved.statistics().pushedElements == 0);
+        REQUIRE(moved.statistics().overwrittenElements == 0);
+    }
+}
+
+TEST_CASE("Circular buffer statistics are consistent during concurrent overwrites",
+          "[tools][circular_buffer][concurrency][statistics]") {
+    constexpr U64 transferCount = 4096;
+    Tools::CircularBuffer<F32> buffer(1);
+    std::atomic<bool> done{false};
+    std::atomic<bool> failed{false};
+    std::thread producer([&] {
+        const F32 value = 1.0f;
+        for (U64 i = 0; i < transferCount; ++i) {
+            if (buffer.push(&value, 1) != Result::SUCCESS) {
+                failed = true;
+                break;
+            }
+        }
+        done = true;
+    });
+
+    bool consistent = true;
+    while (!done) {
+        const auto stats = buffer.statistics();
+        if (stats.overwrittenElements != (stats.pushedElements > 0 ? stats.pushedElements - 1 : 0)) {
+            consistent = false;
+        }
+    }
+    producer.join();
+    REQUIRE(consistent);
+    REQUIRE_FALSE(failed);
+    REQUIRE(buffer.statistics().pushedElements == transferCount);
+    REQUIRE(buffer.statistics().overwrittenElements == transferCount - 1);
 }

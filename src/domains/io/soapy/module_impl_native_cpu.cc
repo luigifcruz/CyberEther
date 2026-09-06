@@ -1,3 +1,4 @@
+#include <chrono>
 #include <limits>
 
 #include <jetstream/memory/macros.hh>
@@ -37,8 +38,15 @@ Result SoapyImplNativeCpu::validate() {
 }
 
 Result SoapyImplNativeCpu::hasPendingCompute() {
+    if (errored) {
+        return Result::ERROR;
+    }
+
     if (circularBuffer.size() < buffer.size()) {
-        return circularBuffer.waitForSize(buffer.size());
+        // Keep waits bounded so receive-thread failures reach the scheduler.
+        const auto result = circularBuffer.waitForSize(buffer.size(),
+                                                       std::chrono::milliseconds(100));
+        return errored ? Result::ERROR : result;
     }
 
     return Result::SUCCESS;

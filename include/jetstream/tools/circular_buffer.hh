@@ -17,6 +17,11 @@ enum class CircularBufferOverflowPolicy {
 template<class T>
 class JETSTREAM_API CircularBuffer {
  public:
+    struct Statistics {
+        U64 pushedElements = 0;
+        U64 overwrittenElements = 0;
+    };
+
     CircularBuffer();
     explicit CircularBuffer(U64 capacity,
                             CircularBufferOverflowPolicy overflowPolicy =
@@ -46,6 +51,7 @@ class JETSTREAM_API CircularBuffer {
     [[nodiscard]] U64 size() const;
     [[nodiscard]] F64 throughput() const;
     [[nodiscard]] U64 overflows() const;
+    [[nodiscard]] Statistics statistics() const;
 
  private:
     struct Impl;

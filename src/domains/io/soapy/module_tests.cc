@@ -1,7 +1,13 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <any>
+#include <atomic>
 #include <chrono>
 #include <limits>
+#include <memory>
+#include <mutex>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -10,9 +16,15 @@
 #include <SoapySDR/Errors.hpp>
 #include <SoapySDR/Registry.hpp>
 
+#include "flowgraph_fixture.hh"
+#include "jetstream/domains/io/soapy/block.hh"
 #include "jetstream/domains/io/soapy/module.hh"
+#include "jetstream/module_context.hh"
 #include "jetstream/registry.hh"
+#include "jetstream/runtime_context_native_cpu.hh"
+#include "jetstream/scheduler_context.hh"
 #include "module_impl.hh"
+#include "receive_status.hh"
 
 using namespace Jetstream;
 
@@ -20,11 +32,18 @@ namespace {
 
 constexpr const char* TestSoapyDriver = "cyberether_test";
 
+struct TestSoapyReads {
+    std::vector<int> results;
+    std::atomic<size_t> calls{0};
+    bool throwOnRead = false;
+};
+
 struct TestSoapyState {
     bool advertiseBiasTee = true;
     bool throwOnSettingInfo = false;
     bool failStreamSetup = false;
     std::vector<std::string> biasTeeWrites;
+    std::shared_ptr<TestSoapyReads> reads = std::make_shared<TestSoapyReads>();
 };
 
 TestSoapyState testSoapyState;
@@ -70,14 +89,28 @@ class TestSoapyDevice final : public SoapySDR::Device {
     }
 
     int readStream(SoapySDR::Stream*,
-                   void* const*,
-                   const size_t,
+                   void* const* buffers,
+                   const size_t numElems,
                    int&,
                    long long&,
                    const long) override {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        return SOAPY_SDR_TIMEOUT;
+        const auto index = reads->calls.fetch_add(1);
+        if (reads->throwOnRead) {
+            throw std::runtime_error("test receive failure");
+        }
+        const int result = index < reads->results.size()
+            ? reads->results[index] : SOAPY_SDR_TIMEOUT;
+        if (result > 0) {
+            std::fill_n(static_cast<CF32*>(buffers[0]),
+                        std::min(numElems, static_cast<size_t>(result)),
+                        CF32{static_cast<F32>(index), -1.0f});
+        }
+        return result;
     }
+
+ private:
+    const std::shared_ptr<TestSoapyReads> reads = testSoapyState.reads;
 };
 
 SoapySDR::KwargsList FindTestSoapyDevice(const SoapySDR::Kwargs&) {
@@ -101,7 +134,55 @@ struct SoapyImplAccess : Modules::SoapyImpl {
     static auto frequencyRangesMember() {
         return &SoapyImplAccess::frequencyRanges;
     }
+
+    static auto erroredMember() {
+        return &SoapyImplAccess::errored;
+    }
+
+    static auto circularBufferMember() {
+        return &SoapyImplAccess::circularBuffer;
+    }
 };
+
+struct SoapyLogCapture {
+    std::ostringstream sink;
+    std::ostream* previousSink = &JST_LOG_SINK();
+
+    SoapyLogCapture() {
+        JST_LOG_SET_SINK(&sink);
+    }
+
+    ~SoapyLogCapture() {
+        JST_LOG_SET_SINK(previousSink);
+    }
+
+    std::string text() const {
+        std::lock_guard lock(_JST_LOG_MUTEX());
+        return sink.str();
+    }
+};
+
+struct SoapyModuleCleanup {
+    std::shared_ptr<Module> module;
+
+    ~SoapyModuleCleanup() {
+        if (module->state() == Module::State::CREATED) {
+            static_cast<void>(module->destroy());
+        }
+    }
+};
+
+template<typename Predicate>
+bool WaitForSoapy(Predicate predicate) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (!predicate()) {
+        if (std::chrono::steady_clock::now() >= deadline) {
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return true;
+}
 
 Modules::Soapy NonDefaultSoapyConfig() {
     Modules::Soapy config;
@@ -377,4 +458,233 @@ TEST_CASE("Soapy device lists preserve duplicate and missing labels",
     REQUIRE(devices.at("RTL-SDR [B] #2").at("serial") == "B");
     REQUIRE(devices.contains("remote"));
     REQUIRE(devices.contains("remote #2"));
+}
+
+TEST_CASE("Soapy receive statuses distinguish idle reads from failures",
+          "[modules][soapy][receive]") {
+    using Status = detail::SoapyReceiveStatus;
+    using Action = Status::Action;
+    const auto start = Status::Clock::time_point{};
+    Status status;
+
+    REQUIRE(status.handle(8, start) == Action::Samples);
+    REQUIRE(status.handle(0, start) == Action::Retry);
+    REQUIRE(status.handle(SOAPY_SDR_TIMEOUT, start) == Action::Retry);
+    REQUIRE(status.deviceOverflows == 0);
+
+    for (const int error : {SOAPY_SDR_STREAM_ERROR, SOAPY_SDR_CORRUPTION,
+                           SOAPY_SDR_NOT_SUPPORTED, SOAPY_SDR_TIME_ERROR,
+                           SOAPY_SDR_UNDERFLOW, -999}) {
+        REQUIRE(status.handle(error, start) == Action::Fail);
+    }
+    REQUIRE(status.deviceOverflows == 0);
+}
+
+TEST_CASE("Soapy device overflow warnings are counted and rate limited per stream",
+          "[modules][soapy][receive]") {
+    using Status = detail::SoapyReceiveStatus;
+    using Action = Status::Action;
+    using namespace std::chrono_literals;
+    const auto start = Status::Clock::time_point{};
+    Status status;
+
+    REQUIRE(status.handle(SOAPY_SDR_OVERFLOW, start) == Action::WarnOverflow);
+    REQUIRE(status.deviceOverflows == 1);
+    for (int i = 0; i < 100; ++i) {
+        REQUIRE(status.handle(SOAPY_SDR_OVERFLOW, start + 999ms) == Action::Retry);
+    }
+    REQUIRE(status.deviceOverflows == 101);
+
+    REQUIRE(status.handle(8, start + 999ms) == Action::Samples);
+    REQUIRE(status.handle(SOAPY_SDR_TIMEOUT, start + 999ms) == Action::Retry);
+    REQUIRE(status.handle(SOAPY_SDR_OVERFLOW, start + 1s) == Action::WarnOverflow);
+    REQUIRE(status.deviceOverflows == 102);
+    REQUIRE(status.handle(SOAPY_SDR_OVERFLOW, start + 1999ms) == Action::Retry);
+    REQUIRE(status.handle(SOAPY_SDR_OVERFLOW, start + 2s) == Action::WarnOverflow);
+    REQUIRE(status.deviceOverflows == 104);
+
+    Status otherStream;
+    REQUIRE(otherStream.handle(SOAPY_SDR_OVERFLOW, start) == Action::WarnOverflow);
+    REQUIRE(otherStream.deviceOverflows == 1);
+}
+
+TEST_CASE("Soapy receiver resumes samples after timeouts and device overflows",
+          "[modules][soapy][receive]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    testSoapyState = {};
+    const auto reads = testSoapyState.reads;
+    reads->results = {SOAPY_SDR_TIMEOUT, 0, SOAPY_SDR_OVERFLOW, SOAPY_SDR_OVERFLOW, 8};
+    SoapyLogCapture logs;
+    const auto module = BuildTestSoapyModule();
+    const SoapyModuleCleanup cleanup{module};
+    REQUIRE(module->create("test", TestDeviceSoapyConfig(), {}) == Result::SUCCESS);
+    REQUIRE(WaitForSoapy([&] { return reads->calls > reads->results.size(); }));
+
+    auto* soapy = module->getImpl<Modules::SoapyImpl>();
+    REQUIRE_FALSE((soapy->*SoapyImplAccess::erroredMember()).load());
+    REQUIRE((soapy->*SoapyImplAccess::circularBufferMember()).overflows() == 0);
+    REQUIRE(module->context()->scheduler()->hasPendingCompute() == Result::SUCCESS);
+    const auto runtime = std::dynamic_pointer_cast<NativeCpuRuntimeContext>(
+        module->context()->runtime());
+    REQUIRE(runtime != nullptr);
+    REQUIRE(runtime->computeSubmit() == Result::SUCCESS);
+    const auto& output = module->outputs().at("signal").tensor;
+    const auto* data = static_cast<const CF32*>(output.data());
+    for (U64 i = 0; i < output.size(); ++i) {
+        REQUIRE(data[i] == CF32{4.0f, -1.0f});
+    }
+    REQUIRE(module->context()->scheduler()->hasPendingCompute() == Result::TIMEOUT);
+    REQUIRE_FALSE((soapy->*SoapyImplAccess::erroredMember()).load());
+    REQUIRE(module->destroy() == Result::SUCCESS);
+
+    const auto text = logs.text();
+    const auto warning = text.find("Device receive overflow");
+    REQUIRE(warning != std::string::npos);
+    REQUIRE(text.find("Device receive overflow", warning + 1) == std::string::npos);
+    REQUIRE(text.find("total events since stream start: 1") != std::string::npos);
+    REQUIRE(text.find("TIMEOUT") == std::string::npos);
+    REQUIRE(text.find("Failed to read stream") == std::string::npos);
+}
+
+TEST_CASE("Soapy receiver stops on read failures and reports them to the scheduler",
+          "[modules][soapy][receive]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    for (const int error : {SOAPY_SDR_STREAM_ERROR, SOAPY_SDR_CORRUPTION,
+                           SOAPY_SDR_NOT_SUPPORTED, SOAPY_SDR_TIME_ERROR,
+                           SOAPY_SDR_UNDERFLOW, -999, 9}) {
+        DYNAMIC_SECTION("Read result: " << error) {
+            testSoapyState = {};
+            const auto reads = testSoapyState.reads;
+            reads->results = {error, 8};
+            SoapyLogCapture logs;
+            const auto module = BuildTestSoapyModule();
+            const SoapyModuleCleanup cleanup{module};
+            REQUIRE(module->create("test", TestDeviceSoapyConfig(), {}) == Result::SUCCESS);
+            auto* soapy = module->getImpl<Modules::SoapyImpl>();
+            REQUIRE(WaitForSoapy([&] {
+                return (soapy->*SoapyImplAccess::erroredMember()).load();
+            }));
+
+            REQUIRE(module->context()->scheduler()->hasPendingCompute() == Result::ERROR);
+            const auto runtime = std::dynamic_pointer_cast<NativeCpuRuntimeContext>(
+                module->context()->runtime());
+            REQUIRE(runtime != nullptr);
+            REQUIRE(runtime->computeSubmit() == Result::ERROR);
+            REQUIRE(module->destroy() == Result::SUCCESS);
+            REQUIRE(reads->calls == 1);
+            if (error < 0) {
+                REQUIRE(logs.text().find(SoapySDR::errToStr(error)) != std::string::npos);
+                REQUIRE(logs.text().find("(" + std::to_string(error) + ")") != std::string::npos);
+                REQUIRE(logs.text().find("Stopping reception") != std::string::npos);
+            } else {
+                REQUIRE(logs.text().find("more samples than requested") != std::string::npos);
+            }
+        }
+    }
+}
+
+TEST_CASE("Soapy receiver contains driver exceptions",
+          "[modules][soapy][receive]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    testSoapyState = {};
+    testSoapyState.reads->throwOnRead = true;
+    SoapyLogCapture logs;
+    const auto module = BuildTestSoapyModule();
+    const SoapyModuleCleanup cleanup{module};
+    REQUIRE(module->create("test", TestDeviceSoapyConfig(), {}) == Result::SUCCESS);
+    auto* soapy = module->getImpl<Modules::SoapyImpl>();
+    REQUIRE(WaitForSoapy([&] {
+        return (soapy->*SoapyImplAccess::erroredMember()).load();
+    }));
+    REQUIRE(module->context()->scheduler()->hasPendingCompute() == Result::ERROR);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+    REQUIRE(testSoapyState.reads->calls == 1);
+    REQUIRE(logs.text().find("test receive failure") != std::string::npos);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Soapy buffer loss metric counts discarded samples and survives draining",
+                 "[modules][soapy][receive][metrics]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    testSoapyState = {};
+    const auto reads = testSoapyState.reads;
+    Blocks::Soapy config;
+    config.hintString = std::string("driver=") + TestSoapyDriver;
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    config.bufferMultiplier = 1;
+    std::pair<std::string, F32> expected;
+
+    SECTION("partial and full overwrites count samples rather than events") {
+        reads->results = {SOAPY_SDR_TIMEOUT, SOAPY_SDR_OVERFLOW, 8, 8, 4};
+        expected = {"60.00%", 0.6f};
+    }
+
+    SECTION("loss percentage uses two decimal places without a sample count") {
+        config.numberOfTimeSamples = 7560;
+        config.bufferMultiplier = 3;
+        reads->results = {8192, 8192, 7320};
+        expected = {"4.32%", static_cast<F32>(1024.0 / 23704.0)};
+    }
+
+    SECTION("device overflows and timeouts do not increase application loss") {
+        reads->results = {SOAPY_SDR_TIMEOUT, SOAPY_SDR_OVERFLOW, 8};
+        expected = {"0.00%", 0.0f};
+    }
+
+    SECTION("small losses remain visible in the numeric label") {
+        config.numberOfTimeSamples = 8192;
+        config.bufferMultiplier = 2;
+        reads->results = {8192, 8192, 1};
+        expected = {"<0.01%", 1.0f / 16385.0f};
+    }
+
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    REQUIRE(WaitForSoapy([&] { return reads->calls > reads->results.size(); }));
+
+    const auto metric = [&] {
+        std::vector<Flowgraph::View::MetricEntry> metrics;
+        REQUIRE(flowgraph->view().metrics("radio", metrics) == Result::SUCCESS);
+        REQUIRE(std::none_of(metrics.begin(), metrics.end(), [](const auto& entry) {
+            return entry.name == "bufferOverruns";
+        }));
+        const auto it = std::find_if(metrics.begin(), metrics.end(), [](const auto& entry) {
+            return entry.name == "bufferLoss";
+        });
+        REQUIRE(it != metrics.end());
+        REQUIRE(it->label == "Buffer Loss");
+        REQUIRE(it->format == "progressbar");
+        REQUIRE(it->help.find("Excludes samples lost inside the device or driver") != std::string::npos);
+        return std::any_cast<std::pair<std::string, F32>>(it->value);
+    };
+    REQUIRE(metric() == expected);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(metric() == expected);
+
+    Parser::Map update;
+    update["frequency"] = 100.0e6f;
+    REQUIRE(flowgraph->blockReconfigure("radio", update) == Result::SUCCESS);
+    REQUIRE(metric() == expected);
+
+    testSoapyState.reads = std::make_shared<TestSoapyReads>();
+    update.clear();
+    update["bufferMultiplier"] = config.bufferMultiplier + 1;
+    REQUIRE(flowgraph->blockReconfigure("radio", update) == Result::SUCCESS);
+    REQUIRE(metric() == std::pair<std::string, F32>{"0.00%", 0.0f});
 }

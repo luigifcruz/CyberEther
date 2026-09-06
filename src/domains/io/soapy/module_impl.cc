@@ -1,4 +1,5 @@
 #include "module_impl.hh"
+#include "receive_status.hh"
 
 #include <SoapySDR/Device.hpp>
 #include <SoapySDR/Types.hpp>
@@ -374,18 +375,37 @@ Result SoapyImpl::reconfigure() {
 }
 
 Result SoapyImpl::soapyThreadLoop() {
-    int flags;
-    long long timeNs;
     constexpr std::size_t temporaryBufferSize = 8192;
     CF32 tmp[temporaryBufferSize];
     void* tmp_buffers[] = {tmp};
     const auto readSize = std::min<std::size_t>(temporaryBufferSize,
                                                 circularBuffer.capacity());
+    detail::SoapyReceiveStatus receiveStatus;
 
     while (streaming) {
         try {
-            int ret = soapyDevice->readStream(soapyStream, tmp_buffers, readSize, flags, timeNs, 1e5);
-            if (ret > 0 && streaming && !errored) {
+            int flags = 0;
+            long long timeNs = 0;
+            const int ret = soapyDevice->readStream(soapyStream, tmp_buffers, readSize, flags, timeNs, 100000);
+            if (!streaming || errored) {
+                break;
+            }
+
+            const auto action = receiveStatus.handle(ret);
+            if (action == detail::SoapyReceiveStatus::Action::WarnOverflow) {
+                JST_WARN("[MODULE_SOAPY] Device receive overflow on '{}'. Samples were lost "
+                         "(total events since stream start: {}).", name(), receiveStatus.deviceOverflows);
+            } else if (action == detail::SoapyReceiveStatus::Action::Fail) {
+                JST_ERROR("[MODULE_SOAPY] Failed to read stream on '{}': {} ({}). Stopping reception.",
+                          name(), SoapySDR::errToStr(ret), ret);
+                errored = true;
+                break;
+            } else if (action == detail::SoapyReceiveStatus::Action::Samples) {
+                if (static_cast<std::size_t>(ret) > readSize) {
+                    JST_ERROR("[MODULE_SOAPY] Device returned more samples than requested.");
+                    errored = true;
+                    break;
+                }
                 JST_CHECK(circularBuffer.push(tmp, ret));
                 const U64 capacity = circularBuffer.capacity();
                 if (capacity > 0) {
@@ -439,6 +459,13 @@ std::string SoapyImpl::DeviceEntryToString(const DeviceEntry& entry) {
 
 F32 SoapyImpl::getBufferHealth() const {
     return bufferHealth.get();
+}
+
+F64 SoapyImpl::getBufferLoss() const {
+    const auto stats = circularBuffer.statistics();
+    return stats.pushedElements > 0
+        ? static_cast<F64>(stats.overwrittenElements) / static_cast<F64>(stats.pushedElements)
+        : 0.0;
 }
 
 std::pair<F32, F32> SoapyImpl::getThroughput() const {

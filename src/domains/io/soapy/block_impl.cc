@@ -144,6 +144,19 @@ Result SoapyImpl::define() {
                                                bufferHealth};
         }));
 
+    JST_CHECK(defineInterfaceMetric("bufferLoss",
+                                    "Buffer Loss",
+                                    "Percentage of received samples discarded because receive buffer was full. "
+                                    "Cumulative since stream start. Excludes samples lost inside the device or driver. "
+                                    "Resets when the stream is recreated.",
+                                    "progressbar",
+        [this]() -> std::any {
+            const F64 loss = moduleImpl ? moduleImpl->getBufferLoss() : 0.0;
+            const auto percentage = loss > 0.0 && loss < 0.0001
+                ? std::string("<0.01%") : jst::fmt::format("{:.2f}%", loss * 100.0);
+            return std::pair<std::string, F32>{percentage, static_cast<F32>(loss)};
+        }));
+
     JST_CHECK(defineInterfaceMetric("throughput",
                                     "Throughput",
                                     "Current data throughput.",

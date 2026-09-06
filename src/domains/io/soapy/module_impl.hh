@@ -88,6 +88,7 @@ struct SoapyImpl : public Module::Impl, public DynamicConfig<Soapy> {
     static std::string DeviceEntryToString(const DeviceEntry& entry);
 
     F32 getBufferHealth() const;
+    F64 getBufferLoss() const;
     std::pair<F32, F32> getThroughput() const;
 
     Result setTunerFrequency(const F32& frequency);

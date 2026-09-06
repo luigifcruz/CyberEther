@@ -60,6 +60,7 @@ struct CircularBuffer<T>::Impl {
         head = 0;
         occupancy = 0;
         overflowCount = 0;
+        stats = {};
         transfers = 0;
         measuredThroughput = 0.0;
         lastTransfer = std::chrono::steady_clock::now();
@@ -84,6 +85,7 @@ struct CircularBuffer<T>::Impl {
     U64 head = 0;
     U64 occupancy = 0;
     U64 overflowCount = 0;
+    Statistics stats;
     U64 transfers = 0;
     F64 measuredThroughput = 0.0;
     std::chrono::steady_clock::time_point lastTransfer =
@@ -154,6 +156,7 @@ Result CircularBuffer<T>::pushStrided(const T* data,
                 return size > bufferCapacity ? Result::ERROR : Result::INCOMPLETE;
             }
 
+            pimpl->stats.overwrittenElements += size - (bufferCapacity - pimpl->occupancy);
             if (size >= bufferCapacity) {
                 sourceOffset = size - bufferCapacity;
                 writeSize = bufferCapacity;
@@ -174,6 +177,7 @@ Result CircularBuffer<T>::pushStrided(const T* data,
                 data[(sourceOffset + i) * stride];
         }
         pimpl->occupancy += writeSize;
+        pimpl->stats.pushedElements += size;
     }
     pimpl->dataAvailable.notify_all();
     return Result::SUCCESS;
@@ -310,6 +314,12 @@ template<class T>
 U64 CircularBuffer<T>::overflows() const {
     std::lock_guard lock(pimpl->mutex);
     return pimpl->overflowCount;
+}
+
+template<class T>
+typename CircularBuffer<T>::Statistics CircularBuffer<T>::statistics() const {
+    std::lock_guard lock(pimpl->mutex);
+    return pimpl->stats;
 }
 
 template class CircularBuffer<I8>;
