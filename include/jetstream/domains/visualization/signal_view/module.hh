@@ -17,13 +17,14 @@ struct SignalView : public Module::Config {
     F32 rangeMin = -100.0f;
     F32 rangeMax = 0.0f;
     U64 waterfallHeight = 1024;
+    F32 splitRatio = 0.5f;
     std::string xLabel = "Frequency (MHz)";
     std::string amplitudeLabel = "Amplitude (dBFS)";
     std::string waterfallLabel = "Time";
 
     JST_MODULE_TYPE(signal_view);
     JST_MODULE_PARAMS(mode, averaging, decimation, maxHold, fill, rangeMin,
-                      rangeMax, waterfallHeight, xLabel,
+                      rangeMax, waterfallHeight, splitRatio, xLabel,
                       amplitudeLabel, waterfallLabel);
 };
 

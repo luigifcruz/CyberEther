@@ -11,6 +11,7 @@ core_test_domains = {
     ],
     'flowgraph': [
         'flowgraph/api.cc',
+        'flowgraph/config_edits.cc',
         'flowgraph/execution.cc',
         'flowgraph/mutation.cc',
         'flowgraph/state.cc',
@@ -31,7 +32,9 @@ core_test_domains = {
     'render': ['render/transfers.cc'],
     'sakura': [
         'sakura/node.cc',
+        'sakura/node_metadata.cc',
         'sakura/surface_view.cc',
+        'sakura/superluminal_surface.cc',
         'sakura/vstack.cc',
     ],
     'runtime': [

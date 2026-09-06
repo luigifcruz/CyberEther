@@ -64,6 +64,14 @@ Result Module::create(const std::string& name,
     impl->_name = name;
     impl->_render = render;
 
+    {
+        std::lock_guard lock(impl->_configChangeMutex);
+        impl->_configChangeBindings.clear();
+        impl->_pendingConfigChanges.clear();
+        impl->_configChangeInFlight = false;
+        impl->_configChangeResult = Result::SUCCESS;
+    }
+
     JST_DEBUG("[MODULE] Creating module '{}'.", impl->_name);
 
     const auto stopCreating = [&](const Result result) {
@@ -227,6 +235,7 @@ Result Module::destroy() {
     }
 
     impl->_state = State::DESTROYED;
+    impl->invalidateConfigChanges();
     return Result::SUCCESS;
 }
 

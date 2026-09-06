@@ -62,6 +62,53 @@ Result Module::Impl::reconfigure() {
     return Result::RECREATE;
 }
 
+Result Module::Impl::requestConfigChange(const Parser::Map& config) {
+    std::lock_guard lock(_configChangeMutex);
+    if (!_configChangesPending) {
+        return Result::ERROR;
+    }
+    // Reject the whole patch if any field has not been explicitly bound.
+    for (const auto& entry : config) {
+        if (!_configChangeBindings.contains(entry.key)) {
+            JST_ERROR("[MODULE] Configuration edit '{}' is not bound for '{}'.",
+                      entry.key, _name);
+            return Result::ERROR;
+        }
+    }
+    for (const auto& entry : config) {
+        _pendingConfigChanges[_configChangeBindings.at(entry.key)] = entry.value;
+    }
+    if (!config.empty()) {
+        _configChangesPending->store(true);
+    }
+    return Result::SUCCESS;
+}
+
+bool Module::Impl::configChangeEnabled(const std::string& key) const {
+    std::lock_guard lock(_configChangeMutex);
+    return _configChangesPending && _configChangeBindings.contains(key);
+}
+
+bool Module::Impl::configChangePending() const {
+    std::lock_guard lock(_configChangeMutex);
+    return _configChangeInFlight || !_pendingConfigChanges.empty();
+}
+
+Result Module::Impl::configChangeResult() const {
+    std::lock_guard lock(_configChangeMutex);
+    return _configChangeResult;
+}
+
+void Module::Impl::invalidateConfigChanges() {
+    std::lock_guard lock(_configChangeMutex);
+    _configChangeBindings.clear();
+    _pendingConfigChanges.clear();
+    _configChangeInFlight = false;
+    _configChangeResult = Result::ERROR;
+    // Disconnect this module without clearing notifications from other modules.
+    _configChangesPending.reset();
+}
+
 Result Module::Impl::defineTaint(const Taint& taint) {
     _taint = taint | _taint;
 

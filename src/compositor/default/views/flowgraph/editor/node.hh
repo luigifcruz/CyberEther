@@ -174,20 +174,18 @@ struct FlowgraphNode {
 
         U64 flexibleFieldCount = 0;
         F32 flexibleMinimumSum = 0.0f;
-        if (!block.configCollapsed) {
-            for (const auto& field : fields) {
-                const auto spec = field.heightSpec();
-                if (spec.policy == FlowgraphNodeHeightPolicy::FillRemaining) {
-                    ++flexibleFieldCount;
-                    flexibleMinimumSum += std::max(0.0f, spec.minimum);
-                }
+        for (const auto& field : fields) {
+            const auto spec = field.heightSpec();
+            if (spec.policy == FlowgraphNodeHeightPolicy::FillRemaining) {
+                ++flexibleFieldCount;
+                flexibleMinimumSum += std::max(0.0f, spec.minimum);
             }
         }
         const bool hasFlexibleFields = flexibleFieldCount > 0;
 
         bool allSurfacesDetached = hasSurfaces;
         U64 attachedSurfaceCount = 0;
-        F32 restoredFlexibleHeight = flexibleMinimumSum;
+        F32 restoredFlexibleHeight = block.configCollapsed ? 0.0f : flexibleMinimumSum;
         for (const auto& surface : block.surfaces) {
             if (!surface.detached) {
                 allSurfacesDetached = false;
@@ -197,7 +195,8 @@ struct FlowgraphNode {
             }
         }
 
-        const bool verticalResize = hasFlexibleFields || attachedSurfaceCount > 0;
+        const bool verticalResize = (!block.configCollapsed && hasFlexibleFields) ||
+                                    attachedSurfaceCount > 0;
         const auto resizeAxes = verticalResize
             ? Sakura::Node::ResizeAxes::XY
             : Sakura::Node::ResizeAxes::X;
@@ -227,15 +226,18 @@ struct FlowgraphNode {
             if (attachedSurfaceCount > 0 && !chromeMeasured) {
                 pendingFlexibleRestoreHeight = restoredFlexibleHeight;
             }
-        } else if (!isCreating && !verticalResize) {
-            dimensions.y = 0.0f;
         }
         dimensions.x = std::max(MinimumNodeWidth, dimensions.x);
 
         Extent2D<F32> nodeDimensions = dimensions;
-        if (allSurfacesDetached && !hasFlexibleFields) {
+        if ((!isCreating && !verticalResize) || (allSurfacesDetached && !hasFlexibleFields)) {
             nodeDimensions.y = 0.0f;
-            dimensions.y = 0.0f;
+            // Hidden flexible fields still own the expanded height. Render
+            // at auto height without overwriting it in the saved layout.
+            if (!hasFlexibleFields) {
+                layoutChanged = layoutChanged || dimensions.y > 0.0f;
+                dimensions.y = 0.0f;
+            }
         }
 
         contentChildren.clear();
@@ -440,12 +442,7 @@ struct FlowgraphNode {
                 if (verticalResize && !isCreating) {
                     this->dimensions.y = contentDimensions.y;
                 }
-                if (this->config.onLayout) {
-                    this->config.onLayout(gridPosition.x,
-                                          gridPosition.y,
-                                          this->dimensions.x,
-                                          this->dimensions.y);
-                }
+                layoutChanged = true;
             },
         });
         title.update({
@@ -625,6 +622,16 @@ struct FlowgraphNode {
             contentLayout.render(ctx, contentChildren);
         });
 
+        // Removing hidden fields can clear the saved height without changing
+        // the rendered geometry. Persist that change after geometry is current.
+        if (layoutChanged && geometry.has_value() && config.onLayout) {
+            layoutChanged = false;
+            config.onLayout(geometry->gridPosition.x,
+                            geometry->gridPosition.y,
+                            dimensions.x,
+                            dimensions.y);
+        }
+
         if (menuOpen) {
             menu.render(ctx);
         }
@@ -663,6 +670,7 @@ struct FlowgraphNode {
     bool menuOpen = false;
     bool documentationOpen = false;
     bool inspectorOpen = false;
+    bool layoutChanged = false;
     std::optional<F32> pendingFlexibleRestoreHeight;
 };
 

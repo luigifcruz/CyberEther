@@ -85,10 +85,10 @@ struct Axis::Impl {
 
     void generateGridPoints();
     void computePaddingScale();
-    void computeTickCount(U64 numCols, U64 numRows,
-                          U64& outMajX, U64& outMinX,
-                          U64& outMajY, U64& outMinY,
-                          bool showFrameTicks) const;
+    static void computeTickCount(U64 numCols, U64 numRows,
+                                 U64& outMajX, U64& outMinX,
+                                 U64& outMajY, U64& outMinY,
+                                 bool showFrameTicks, bool combined);
     void recomputeTickCount();
     Result syncTickGeometry();
     glm::mat4 gridTransform(F32 zoom, F32 translation) const;
@@ -122,10 +122,12 @@ Result Axis::create(Window* window) {
 
     {
         U64 majX = 0, minx = 0, majY = 0, miny = 0;
+        // Full-height mode draws ticks on both horizontal edges. Reserve that
+        // worst case regardless of the initial divider and tick visibility.
         pimpl->computeTickCount(pimpl->maxVerticalLines,
                                 pimpl->maxHorizontalLines,
                                 majX, minx, majY, miny,
-                                true);
+                                true, false);
         pimpl->maxMajorTicks = majX + majY;
         pimpl->maxMinorTicks = minx + miny;
     }
@@ -152,7 +154,7 @@ Result Axis::create(Window* window) {
         !detail::CheckedAdd(pimpl->maxMajorTicks, pimpl->maxMinorTicks,
                             maxTicks) ||
         !detail::CheckedAdd(maxInteriorLines, maxTicks, maxGridLines) ||
-        !detail::CheckedAdd(maxGridLines, pimpl->dividerLines + 4,
+        !detail::CheckedAdd(maxGridLines, 5,
                             pimpl->maxTotalLines) ||
         !detail::CheckedMultiply(pimpl->maxTotalLines, 4,
                                  gridPointScalarCount) ||
@@ -446,6 +448,20 @@ Result Axis::updateScissorRect(const Render::ScissorRect& rect) {
     return Result::SUCCESS;
 }
 
+Result Axis::updateVerticalScale(F32 scale) {
+    if (!std::isfinite(scale) || scale <= 0.0f || scale > 1.0f) {
+        return Result::ERROR;
+    }
+    if (config.verticalScale == scale) {
+        return Result::SUCCESS;
+    }
+    config.verticalScale = scale;
+    pimpl->dividerLines = scale < 1.0f ? 1 : 0;
+    JST_CHECK(pimpl->syncTickGeometry());
+    JST_CHECK(pimpl->repositionLabels());
+    return pimpl->syncResponsiveGrid();
+}
+
 Result Axis::setShowFrameTicks(bool visible) {
     if (visible == config.showFrameTicks) {
         return Result::SUCCESS;
@@ -497,12 +513,12 @@ U64 Axis::currentHorizontalLineCount() const {
 void Axis::Impl::computeTickCount(U64 numCols, U64 numRows,
                                   U64& outMajX, U64& outMinX,
                                   U64& outMajY, U64& outMinY,
-                                  const bool showFrameTicks) const {
+                                  const bool showFrameTicks,
+                                  const bool combined) {
     outMajX = outMinX = outMajY = outMinY = 0;
     if (!showFrameTicks) {
         return;
     }
-    const bool combined = (dividerLines > 0);
     const U64 xEdgeCount = combined ? 1 : 2;
     if (numCols >= 3) {
         outMajX = xEdgeCount * (numCols - 2);
@@ -514,10 +530,7 @@ void Axis::Impl::computeTickCount(U64 numCols, U64 numRows,
         outMajY = 2 * (numRows - 2);
     }
     if (numRows >= 2) {
-        const U64 yMinorSegments = combined
-            ? (numRows - 1)
-            : (numRows - 1 + dividerLines);
-        outMinY = 2 * 4 * yMinorSegments;
+        outMinY = 2 * 4 * (numRows - 1);
     }
 }
 
@@ -525,7 +538,7 @@ void Axis::Impl::recomputeTickCount() {
     U64 majX = 0, minx = 0, majY = 0, miny = 0;
     computeTickCount(currentVerticalLines, currentHorizontalLines,
                      majX, minx, majY, miny,
-                     config.showFrameTicks);
+                     config.showFrameTicks, dividerLines > 0);
     currentMajorTicks = majX + majY;
     currentMinorTicks = minx + miny;
 }

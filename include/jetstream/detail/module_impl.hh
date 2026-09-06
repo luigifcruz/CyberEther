@@ -1,6 +1,10 @@
 #ifndef JETSTREAM_MODULE_IMPL_HH
 #define JETSTREAM_MODULE_IMPL_HH
 
+#include <atomic>
+#include <mutex>
+#include <unordered_map>
+
 #include "jetstream/module.hh"
 #include "jetstream/module_context.hh"
 #include "jetstream/module_interface.hh"
@@ -46,6 +50,13 @@ struct JETSTREAM_API Module::Impl {
     virtual Result destroy();
     virtual Result reconfigure();
 
+    // User-originated edits.
+
+    Result requestConfigChange(const Parser::Map& config);
+    bool configChangeEnabled(const std::string& key) const;
+    bool configChangePending() const;
+    Result configChangeResult() const;
+
     // Identity
 
     const std::string& name() const;
@@ -81,6 +92,7 @@ struct JETSTREAM_API Module::Impl {
 
  private:
     Result destroyImplementation();
+    void invalidateConfigChanges();
 
     // Identity
 
@@ -112,7 +124,16 @@ struct JETSTREAM_API Module::Impl {
     std::shared_ptr<Module::Config> _stagedConfig;
     std::shared_ptr<Module::Config> _candidateConfig;
 
+    mutable std::mutex _configChangeMutex;
+    std::unordered_map<std::string, std::string> _configChangeBindings;
+    Parser::Map _pendingConfigChanges;
+    bool _configChangeInFlight = false;
+    Result _configChangeResult = Result::SUCCESS;
+    std::shared_ptr<std::atomic<bool>> _configChangesPending;
+
     friend class Module;
+    friend class Block;
+    friend class Flowgraph;
 };
 
 }  // namespace Jetstream

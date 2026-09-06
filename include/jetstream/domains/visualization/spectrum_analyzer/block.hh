@@ -15,6 +15,7 @@ struct SpectrumAnalyzer : public Block::Config {
     F32 rangeMin = -100.0f;
     F32 rangeMax = 0.0f;
     U64 waterfallHeight = 1024;
+    F32 splitRatio = 0.5f;
     std::string xLabel = "Frequency (MHz)";
     std::string amplitudeLabel = "Amplitude (dBFS)";
     std::string waterfallLabel = "Time";
@@ -23,7 +24,7 @@ struct SpectrumAnalyzer : public Block::Config {
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(L);
     JST_BLOCK_PARAMS(averaging, decimation, maxHold, fill, rangeMin,
-                     rangeMax, waterfallHeight, xLabel,
+                     rangeMax, waterfallHeight, splitRatio, xLabel,
                      amplitudeLabel, waterfallLabel);
     JST_BLOCK_DESCRIPTION(
         "Spectrum Analyzer",

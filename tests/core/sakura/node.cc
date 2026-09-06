@@ -6,6 +6,7 @@
 #include <jetstream/render/tools/imnodes_internal.h>
 
 #include "compositor/default/views/flowgraph/editor/node.hh"
+#include "compositor/default/model/meta.hh"
 
 #include "harness.hh"
 
@@ -146,7 +147,8 @@ void settle(SakuraTest::HeadlessUi& ui,
     }
 
     const auto* data = flowgraphNodeData(config.id);
-    if (data == nullptr || !(data->ResizeFlags & ImNodesNodeResizeFlags_Y)) {
+    REQUIRE(data != nullptr);
+    if (!(data->ResizeFlags & ImNodesNodeResizeFlags_Y)) {
         return;
     }
     if (config.block.state == Block::State::Creating) {
@@ -177,6 +179,85 @@ void dragCorner(SakuraTest::HeadlessUi& ui,
     renderFrame(ui, ctx, node);
     ui.setMouse(ImVec2(-100.0f, -100.0f), false);
 }
+
+// Drive updates during gestures and feed callbacks back one frame later,
+// like the presenter's poll -> update -> render cycle. Keep the metadata
+// separate from the view so persistence assertions cannot pass on UI state alone.
+struct NodeSession {
+    SakuraTest::HeadlessUi ui;
+    Sakura::Context ctx;
+    FlowgraphNode node;
+    FlowgraphNode::Config config;
+    NodeMeta meta;
+    std::optional<FlowgraphNode::Layout> layoutMail;
+    std::optional<bool> collapseMail;
+    LayoutLog layouts;
+    std::vector<bool> toggles;
+
+    NodeSession(FlowgraphNode::Config config, F32 scale = 1.0f, NodeMeta meta = {}) :
+        ui(scale, ImVec2(1400.0f, 1400.0f)), ctx(ui.sakura()),
+        config(std::move(config)), meta(meta) {}
+
+    void tick() {
+        if (layoutMail.has_value()) {
+            meta.x = layoutMail->x;
+            meta.y = layoutMail->y;
+            meta.width = layoutMail->width;
+            meta.height = layoutMail->height;
+            layoutMail.reset();
+        }
+        if (collapseMail.has_value()) {
+            meta.configCollapsed = *collapseMail;
+            collapseMail.reset();
+        }
+        config.block.layout = FlowgraphNode::Layout{meta.x, meta.y, meta.width, meta.height};
+        config.block.configCollapsed = meta.configCollapsed;
+        config.onLayout = [this](F32 x, F32 y, F32 width, F32 height) {
+            layouts.record(x, y, width, height);
+            layoutMail = FlowgraphNode::Layout{x, y, width, height};
+        };
+        config.onConfigCollapse = [this](bool collapsed) {
+            toggles.push_back(collapsed);
+            collapseMail = collapsed;
+        };
+        node.update(config);
+        renderFrame(ui, ctx, node);
+        REQUIRE(flowgraphNodeData(config.id) != nullptr);
+    }
+
+    void frames(U64 count = 6) {
+        for (U64 i = 0; i < count; ++i) {
+            tick();
+        }
+    }
+
+    void gesture(ImVec2 start, ImVec2 delta = ImVec2(0.0f, 0.0f)) {
+        ui.setMouse(start, false);
+        tick();
+        ui.setMouse(start, true);
+        tick();
+        ui.setMouse(ImVec2(start.x + delta.x, start.y + delta.y), true);
+        tick();
+        ui.setMouse(ImVec2(start.x + delta.x, start.y + delta.y), false);
+        tick();
+        ui.setMouse(ImVec2(-100.0f, -100.0f), false);
+        frames();
+    }
+
+    void resize(ImVec2 delta) {
+        const auto* data = flowgraphNodeData(config.id);
+        REQUIRE(data != nullptr);
+        gesture(ImVec2(data->Rect.Max.x - 2.0f, data->Rect.Max.y - 2.0f), delta);
+    }
+
+    ImVec2 chevron() const {
+        const auto* data = flowgraphNodeData(config.id);
+        REQUIRE(data != nullptr);
+        // The icon sits at the right of the title content, inside node padding.
+        return ImVec2(data->Rect.Max.x - data->LayoutStyle.Padding.x - 4.0f,
+                      data->TitleBarContentRect.GetCenter().y);
+    }
+};
 }  // namespace
 
 TEST_CASE("Errored python block still floors and resizes",
@@ -454,21 +535,24 @@ TEST_CASE("Node maps resize axes to imnodes resize flags", "[core][sakura][node]
 }
 
 TEST_CASE("Node plumbs scaled minimum dimensions into imnodes", "[core][sakura][node]") {
-    SakuraTest::HeadlessUi ui;
-    const auto ctx = ui.sakura();
+    for (const F32 scale : {1.0f, 1.5f, 2.0f}) {
+        CAPTURE(scale);
+        SakuraTest::HeadlessUi ui(scale, ImVec2(900.0f, 900.0f));
+        const auto ctx = ui.sakura();
 
-    Sakura::Node node;
-    auto config = baseConfig("minimums");
-    config.minimumDimensions = {150.0f, 90.0f};
-    REQUIRE(node.update(config));
-    ui.editorFrame([&] {
-        node.render(ctx, NodeContent);
-    });
+        Sakura::Node node;
+        auto config = baseConfig("minimums");
+        config.minimumDimensions = {150.0f, 90.0f};
+        REQUIRE(node.update(config));
+        ui.editorFrame([&] {
+            node.render(ctx, NodeContent);
+        });
 
-    const auto* data = componentNodeData("minimums");
-    REQUIRE(data != nullptr);
-    REQUIRE(data->ResizeMinimumSize.x == Catch::Approx(150.0f));
-    REQUIRE(data->ResizeMinimumSize.y == Catch::Approx(90.0f));
+        const auto* data = componentNodeData("minimums");
+        REQUIRE(data != nullptr);
+        REQUIRE(data->ResizeMinimumSize.x == Catch::Approx(150.0f * scale));
+        REQUIRE(data->ResizeMinimumSize.y == Catch::Approx(90.0f * scale));
+    }
 }
 
 TEST_CASE("Node resizes width only when restricted to the X axis",
@@ -1527,13 +1611,29 @@ TEST_CASE("Collapsed flexible config fields stop reserving node height and resiz
         layoutLog.record(x, y, width, height);
     };
     settle(ui, ctx, node, config, 5);
+
+    SECTION("Default editor height") {}
+    SECTION("User-resized editor height") {
+        dragCorner(ui, ctx, node, config.id, ImVec2(0.0f, 180.0f));
+        settle(ui, ctx, node, config, 4);
+    }
+    SECTION("User-resized editor with a detached surface") {
+        auto surface = attachedSurface("collapse-editor:surface");
+        surface.detached = true;
+        config.block.surfaces.push_back(surface);
+        settle(ui, ctx, node, config, 4);
+        dragCorner(ui, ctx, node, config.id, ImVec2(0.0f, 180.0f));
+        settle(ui, ctx, node, config, 4);
+    }
+
     const auto expanded = flowgraphNodeDimensions(config.id);
+    const F32 expandedHeight = std::get<3>(layoutLog.last());
     REQUIRE(flowgraphNodeData(config.id)->ResizeFlags == ImNodesNodeResizeFlags_XY);
 
     config.block.configCollapsed = true;
     settle(ui, ctx, node, config, 4);
     REQUIRE(flowgraphNodeData(config.id)->ResizeFlags == ImNodesNodeResizeFlags_X);
-    REQUIRE(std::get<3>(layoutLog.last()) == 0.0f);
+    REQUIRE(std::get<3>(layoutLog.last()) == Catch::Approx(expandedHeight).margin(1.0f));
     REQUIRE(flowgraphNodeDimensions(config.id).y < expanded.y - 100.0f);
 
     config.block.configCollapsed = false;
@@ -1543,6 +1643,412 @@ TEST_CASE("Collapsed flexible config fields stop reserving node height and resiz
     dragCorner(ui, ctx, node, config.id, ImVec2(0.0f, 100.0f));
     settle(ui, ctx, node, config, 4);
     REQUIRE(flowgraphNodeDimensions(config.id).y == Catch::Approx(expanded.y + 100.0f).margin(2.0f));
+}
+
+TEST_CASE("Collapsed editor height survives layout feedback and view recreation",
+          "[core][sakura][flowgraph_node][collapse][persistence]") {
+    SakuraTest::HeadlessUi ui(1.0f, ImVec2(900.0f, 900.0f));
+    const auto ctx = ui.sakura();
+
+    auto config = baseConfigFor(baseBlock("collapse-meta", "radio"));
+    config.block.configFields.push_back(
+        {.id = "collapse-meta:code", .format = "python", .encoded = "pass"});
+    FlowgraphNode::Layout meta{20.0f, 20.0f, 220.0f, 400.0f};
+    std::optional<FlowgraphNode::Layout> mail;
+    auto tick = [&](FlowgraphNode& node, U64 frames) {
+        for (U64 i = 0; i < frames; ++i) {
+            if (mail.has_value()) {
+                meta = *mail;
+                mail.reset();
+            }
+            auto frameConfig = config;
+            frameConfig.block.layout = meta;
+            frameConfig.onLayout = [&mail](F32 x, F32 y, F32 width, F32 height) {
+                mail = FlowgraphNode::Layout{x, y, width, height};
+            };
+            node.update(frameConfig);
+            renderFrame(ui, ctx, node);
+        }
+    };
+
+    F32 expandedHeight = 0.0f;
+    {
+        FlowgraphNode node;
+        tick(node, 5);
+        expandedHeight = flowgraphNodeDimensions(config.id).y;
+
+        for (U64 cycle = 0; cycle < 3; ++cycle) {
+            config.block.configCollapsed = true;
+            tick(node, 4);
+            const auto collapsed = flowgraphNodeDimensions(config.id);
+            REQUIRE(collapsed.y < expandedHeight - 100.0f);
+            REQUIRE(flowgraphNodeData(config.id)->ResizeFlags == ImNodesNodeResizeFlags_X);
+            REQUIRE(meta.height == Catch::Approx(400.0f).margin(1.0f));
+
+            // Width changes must persist without replacing the hidden height.
+            dragCorner(ui, ctx, node, config.id, ImVec2(60.0f, 0.0f));
+            tick(node, 4);
+            REQUIRE(flowgraphNodeDimensions(config.id).x ==
+                    Catch::Approx(collapsed.x + 60.0f).margin(1.0f));
+            REQUIRE(meta.width == Catch::Approx(220.0f + (cycle + 1) * 60.0f).margin(1.0f));
+            REQUIRE(meta.height == Catch::Approx(400.0f).margin(1.0f));
+
+            config.block.configCollapsed = false;
+            tick(node, 5);
+            REQUIRE(flowgraphNodeDimensions(config.id).y ==
+                    Catch::Approx(expandedHeight).margin(1.0f));
+        }
+
+        config.block.configCollapsed = true;
+        tick(node, 4);
+    }
+
+    // A new view must retain the expanded height even when opened collapsed.
+    FlowgraphNode restored;
+    tick(restored, 5);
+    REQUIRE(flowgraphNodeDimensions(config.id).y < expandedHeight - 100.0f);
+    REQUIRE(meta.height == Catch::Approx(400.0f).margin(1.0f));
+    config.block.configCollapsed = false;
+    tick(restored, 5);
+    REQUIRE(flowgraphNodeDimensions(config.id).y == Catch::Approx(expandedHeight).margin(1.0f));
+    REQUIRE(flowgraphNodeData(config.id)->ResizeFlags == ImNodesNodeResizeFlags_XY);
+}
+
+TEST_CASE("Removing a collapsed editor releases its saved height",
+          "[core][sakura][flowgraph_node][collapse][persistence]") {
+    SakuraTest::HeadlessUi ui(1.0f, ImVec2(600.0f, 900.0f));
+    const auto ctx = ui.sakura();
+
+    LayoutLog layoutLog;
+    FlowgraphNode node;
+    auto config = baseConfigFor(baseBlock("removed-editor", "radio"));
+    config.block.configFields.push_back(
+        {.id = "removed-editor:code", .format = "python", .encoded = "pass"});
+    config.block.layout = FlowgraphNode::Layout{20.0f, 20.0f, 220.0f, 400.0f};
+    config.block.configCollapsed = true;
+    config.onLayout = [&layoutLog, &config](F32 x, F32 y, F32 width, F32 height) {
+        layoutLog.record(x, y, width, height);
+        config.block.layout = FlowgraphNode::Layout{x, y, width, height};
+    };
+    settle(ui, ctx, node, config, 4);
+    REQUIRE(std::get<3>(layoutLog.last()) == Catch::Approx(400.0f).margin(1.0f));
+
+    config.block.configFields.clear();
+    SECTION("Field removed") {}
+    SECTION("Field replaced with a fixed-height control") {
+        config.block.configFields.push_back(
+            {.id = "removed-editor:value", .format = "range:0:1", .encoded = "0.5"});
+    }
+    settle(ui, ctx, node, config, 4);
+    REQUIRE(flowgraphNodeData(config.id)->ResizeFlags == ImNodesNodeResizeFlags_X);
+    REQUIRE(flowgraphNodeDimensions(config.id).y < 100.0f);
+    REQUIRE(std::get<3>(layoutLog.last()) == 0.0f);
+
+    // A later editor must seed its minimum, not inherit the removed one.
+    config.block.configFields = {
+        {.id = "removed-editor:new", .format = "python", .encoded = "pass"}};
+    config.block.configCollapsed = false;
+    settle(ui, ctx, node, config, 5);
+    REQUIRE(std::get<3>(layoutLog.last()) < 400.0f - 100.0f);
+    REQUIRE(flowgraphNodeData(config.id)->ResizeFlags == ImNodesNodeResizeFlags_XY);
+}
+
+TEST_CASE("Collapsed editors preserve height across lifecycle changes and display scales",
+          "[core][sakura][flowgraph_node][collapse][lifecycle]") {
+    for (const F32 scale : {1.0f, 2.0f}) {
+        for (const std::string format : {"python", "markdown"}) {
+            CAPTURE(scale, format);
+            SakuraTest::HeadlessUi ui(scale, ImVec2(1200.0f, 1200.0f));
+            const auto ctx = ui.sakura();
+
+            FlowgraphNode node;
+            auto config = baseConfigFor(baseBlock("lifecycle-editor", "radio"));
+            const FlowgraphConfigFieldConfig field{
+                .id = "lifecycle-editor:code", .format = format, .encoded = "pass"};
+            config.block.configFields.push_back(field);
+            config.block.layout = FlowgraphNode::Layout{20.0f, 20.0f, 220.0f, 400.0f};
+            config.onLayout = [&config](F32 x, F32 y, F32 width, F32 height) {
+                config.block.layout = FlowgraphNode::Layout{x, y, width, height};
+            };
+            settle(ui, ctx, node, config, 5);
+            const auto expanded = flowgraphNodeDimensions(config.id);
+            const F32 floor = flowgraphNodeData(config.id)->ResizeMinimumSize.y;
+
+            config.block.configCollapsed = true;
+            settle(ui, ctx, node, config, 4);
+            for (const auto state : {Block::State::Incomplete, Block::State::Errored,
+                                     Block::State::Creating, Block::State::Created}) {
+                CAPTURE(state);
+                config.block.state = state;
+                // The presenter omits fields while the block is creating.
+                config.block.configFields = state == Block::State::Creating
+                    ? std::vector<FlowgraphConfigFieldConfig>{}
+                    : std::vector<FlowgraphConfigFieldConfig>{field};
+                settle(ui, ctx, node, config, 4);
+                REQUIRE(config.block.layout->height == Catch::Approx(400.0f).margin(1.0f));
+                REQUIRE(flowgraphNodeData(config.id)->ResizeFlags == ImNodesNodeResizeFlags_X);
+            }
+
+            config.block.configCollapsed = false;
+            settle(ui, ctx, node, config, 5);
+            REQUIRE(flowgraphNodeDimensions(config.id).y == Catch::Approx(expanded.y).margin(1.0f));
+            REQUIRE(flowgraphNodeData(config.id)->ResizeMinimumSize.y == Catch::Approx(floor).margin(1.0f));
+            REQUIRE(flowgraphNodeData(config.id)->ResizeFlags == ImNodesNodeResizeFlags_XY);
+        }
+    }
+}
+
+TEST_CASE("Cold collapsed editors do not reserve height from attached surfaces",
+          "[core][sakura][flowgraph_node][collapse][detachment]") {
+    SakuraTest::HeadlessUi ui(1.0f, ImVec2(600.0f, 900.0f));
+    const auto ctx = ui.sakura();
+
+    SakuraTest::ResizeLog resizeLog;
+    FlowgraphNode node;
+    auto config = baseConfigFor(baseBlock("collapsed-surface", "radio"));
+    config.block.configFields.push_back(
+        {.id = "collapsed-surface:code", .format = "python", .encoded = "pass"});
+    config.block.configCollapsed = true;
+    auto surface = attachedSurface("collapsed-surface:surface");
+    surface.height = 400.0f;
+    surface.onAttachedSize = [&resizeLog](const Sakura::SurfaceResize& resize) {
+        resizeLog.record(resize);
+    };
+    config.block.surfaces.push_back(surface);
+    config.onLayout = [&config](F32 x, F32 y, F32 width, F32 height) {
+        config.block.layout = FlowgraphNode::Layout{x, y, width, height};
+    };
+    settle(ui, ctx, node, config, 6);
+    REQUIRE(resizeLog.count() >= 1);
+    for (const auto& resize : resizeLog.entries) {
+        REQUIRE(resize.logicalSize.y == 400);
+    }
+    const auto attached = flowgraphNodeDimensions(config.id);
+    REQUIRE(flowgraphNodeData(config.id)->ResizeFlags == ImNodesNodeResizeFlags_XY);
+
+    config.block.surfaces[0].detached = true;
+    const auto resizeCount = resizeLog.count();
+    settle(ui, ctx, node, config, 4);
+    REQUIRE(flowgraphNodeDimensions(config.id).y < attached.y - 100.0f);
+    REQUIRE(flowgraphNodeData(config.id)->ResizeFlags == ImNodesNodeResizeFlags_X);
+    REQUIRE(resizeLog.count() == resizeCount);
+
+    config.block.surfaces[0].detached = false;
+    settle(ui, ctx, node, config, 6);
+    REQUIRE(flowgraphNodeDimensions(config.id).y == Catch::Approx(attached.y).margin(1.0f));
+    REQUIRE(flowgraphNodeData(config.id)->ResizeFlags == ImNodesNodeResizeFlags_XY);
+    REQUIRE(resizeLog.entries.back().logicalSize.y == 400);
+}
+
+TEST_CASE("Chevron clicks preserve resized layout through movement and serialized restoration",
+          "[core][sakura][flowgraph_node][collapse][interaction][persistence]") {
+    for (const F32 scale : {1.0f, 2.0f}) {
+        for (const std::string format : {"python", "markdown"}) {
+            CAPTURE(scale, format);
+            auto config = baseConfigFor(baseBlock("gesture-editor", "radio"));
+            config.block.configFields.push_back(
+                {.id = "gesture-editor:code", .format = format, .encoded = "pass"});
+            Parser::Map saved;
+            NodeMeta expected;
+            {
+                NodeSession session(config, scale);
+                session.frames();
+                const auto initial = flowgraphNodeDimensions(config.id);
+                session.resize(ImVec2(80.0f * scale, 180.0f * scale));
+                const auto expanded = flowgraphNodeDimensions(config.id);
+                REQUIRE(expanded.y == Catch::Approx(initial.y + 180.0f * scale).margin(2.0f));
+                REQUIRE(expanded.x == Catch::Approx(initial.x + 80.0f * scale).margin(2.0f));
+                const F32 height = session.meta.height;
+
+                // Resizing must really have succeeded before testing restoration.
+                REQUIRE(height > 250.0f);
+                for (U64 cycle = 0; cycle < 2; ++cycle) {
+                    const auto eventStart = session.layouts.entries.size();
+                    session.gesture(session.chevron());
+                    REQUIRE(session.meta.configCollapsed);
+                    REQUIRE(session.toggles.size() == cycle * 2 + 1);
+                    REQUIRE(session.toggles.back());
+                    const auto collapsed = flowgraphNodeDimensions(config.id);
+                    REQUIRE(collapsed.y < expanded.y - 100.0f * scale);
+
+                    // The collapsed node accepts X drags but must ignore Y drags.
+                    session.resize(ImVec2(40.0f * scale, 60.0f * scale));
+                    REQUIRE(flowgraphNodeDimensions(config.id).x ==
+                            Catch::Approx(collapsed.x + 40.0f * scale).margin(2.0f));
+                    REQUIRE(flowgraphNodeDimensions(config.id).y == Catch::Approx(collapsed.y).margin(1.0f));
+                    const F32 x = session.meta.x;
+                    const F32 y = session.meta.y;
+                    const auto* data = flowgraphNodeData(config.id);
+                    session.gesture(data->TitleBarContentRect.GetCenter(),
+                                    ImVec2(30.0f * scale, 20.0f * scale));
+                    REQUIRE(session.meta.x == Catch::Approx(x + 30.0f).margin(1.0f));
+                    REQUIRE(session.meta.y == Catch::Approx(y + 20.0f).margin(1.0f));
+
+                    // Check every persisted event, not just the settled frame.
+                    for (U64 i = eventStart; i < session.layouts.entries.size(); ++i) {
+                        REQUIRE(std::get<3>(session.layouts.entries[i]) == Catch::Approx(height).margin(1.0f));
+                    }
+                    session.gesture(session.chevron());
+                    REQUIRE_FALSE(session.meta.configCollapsed);
+                    REQUIRE(session.toggles.size() == (cycle + 1) * 2);
+                    REQUIRE_FALSE(session.toggles.back());
+                    REQUIRE(flowgraphNodeDimensions(config.id).y == Catch::Approx(expanded.y).margin(1.0f));
+                }
+
+                session.gesture(session.chevron());
+                const auto eventCount = session.layouts.entries.size();
+                session.frames(12);
+                REQUIRE(session.layouts.entries.size() == eventCount);
+                expected = session.meta;
+                REQUIRE(expected.serialize(saved) == Result::SUCCESS);
+            }
+
+            // Fresh UI and view: no retained node or ImGui state can rescue a bad save.
+            NodeMeta restored;
+            REQUIRE(restored.deserialize(saved) == Result::SUCCESS);
+            NodeSession session(config, scale, restored);
+            session.frames();
+            REQUIRE(session.meta.configCollapsed);
+            REQUIRE(session.meta.height == Catch::Approx(expected.height).margin(1.0f));
+            session.gesture(session.chevron());
+            REQUIRE_FALSE(session.meta.configCollapsed);
+            REQUIRE(session.meta.x == Catch::Approx(expected.x).margin(1.0f));
+            REQUIRE(session.meta.y == Catch::Approx(expected.y).margin(1.0f));
+            REQUIRE(session.meta.width == Catch::Approx(expected.width).margin(1.0f));
+            const F32 padding = 2.0f * ImNodes::GetStyle().NodePadding.y;
+            REQUIRE(flowgraphNodeDimensions(config.id).y ==
+                    Catch::Approx(expected.height * scale + padding).margin(1.0f));
+        }
+    }
+}
+
+TEST_CASE("Chevron gestures do not collapse on cancelled clicks or node drags",
+          "[core][sakura][flowgraph_node][collapse][interaction]") {
+    auto config = baseConfigFor(baseBlock("cancel-chevron", "radio"));
+    config.block.configFields.push_back(
+        {.id = "cancel-chevron:code", .format = "python", .encoded = "pass"});
+    NodeSession session(config);
+    session.frames();
+
+    const auto chevron = session.chevron();
+    session.ui.setMouse(chevron, false);
+    session.tick();
+    session.ui.setMouse(chevron, true);
+    session.tick();
+    REQUIRE(session.toggles.empty());
+    session.ui.setMouse(ImVec2(-100.0f, -100.0f), false);
+    session.frames();
+    REQUIRE(session.toggles.empty());
+    REQUIRE_FALSE(session.meta.configCollapsed);
+
+    // Starting on the chevron is also a valid node-drag gesture.
+    const F32 x = session.meta.x;
+    session.gesture(session.chevron(), ImVec2(60.0f, 0.0f));
+    REQUIRE(session.meta.x == Catch::Approx(x + 60.0f).margin(1.0f));
+    REQUIRE(session.toggles.empty());
+    REQUIRE_FALSE(session.meta.configCollapsed);
+
+    // A cancelled gesture must not prevent the next genuine click.
+    session.gesture(session.chevron());
+    REQUIRE(session.toggles == std::vector<bool>{true});
+    REQUIRE(session.meta.configCollapsed);
+
+    session.config.block.configFields.clear();
+    session.frames();
+    session.gesture(session.chevron());
+    REQUIRE(session.toggles == std::vector<bool>{true});
+}
+
+TEST_CASE("Collapsing config leaves ports and metrics in the node layout",
+          "[core][sakura][flowgraph_node][collapse][ports][allocation]") {
+    auto config = baseConfigFor(baseBlock("port-editor", "radio"));
+    config.block.inputs = {
+        {.port = {.id = "port-editor:in-a", .label = "Input A"}},
+        {.port = {.id = "port-editor:in-b", .label = "Input B"}},
+    };
+    Tensor tensor(DeviceType::CPU, DataType::F32, {16});
+    REQUIRE(tensor.setAttribute("sampleRate", F32{48000.0f}) == Result::SUCCESS);
+    config.block.outputs = {
+        {.port = {.id = "port-editor:out", .label = "Output"}, .tensor = tensor},
+    };
+    config.block.metrics.push_back({.id = "port-editor:rate", .label = "Rate", .format = "label"});
+    config.block.configFields = {
+        {.id = "port-editor:code", .format = "python", .encoded = "pass"},
+        {.id = "port-editor:text", .format = "multiline", .encoded = "fixed-height text"},
+    };
+    NodeSession session(config);
+    session.frames();
+    session.resize(ImVec2(0.0f, 180.0f));
+    const auto expanded = flowgraphNodeDimensions(config.id);
+    const F32 height = session.meta.height;
+
+    const auto checkPorts = [&]() {
+        const auto* data = flowgraphNodeData(config.id);
+        auto& editor = ImNodes::EditorContextGet();
+        std::vector<F32> positions;
+        const std::vector<std::string> ids = {"port-editor:in-a", "port-editor:in-b", "port-editor:out"};
+        for (U64 i = 0; i < ids.size(); ++i) {
+            const Sakura::NodeEditor::PinRef ref{
+                .nodeId = FlowgraphNodeId(config.id),
+                .pinId = FlowgraphPinId(ids[i]),
+                .isInput = i < 2,
+            };
+            const int index = ImNodes::ObjectPoolFind(editor.Pins, Sakura::Private::NodeEditorPinObjectId(ref));
+            REQUIRE(index >= 0);
+            REQUIRE(editor.Pins.InUse[index]);
+            const auto& pin = editor.Pins.Pool[index];
+            REQUIRE(pin.ParentNodeIdx == ImNodes::ObjectPoolFind(editor.Nodes, imnodesId(config.id)));
+            REQUIRE(pin.Type == (i < 2 ? ImNodesAttributeType_Input : ImNodesAttributeType_Output));
+            REQUIRE(pin.AttributeRect.Min.y >= data->Rect.Min.y);
+            REQUIRE(pin.AttributeRect.Max.y <= data->Rect.Max.y);
+            positions.push_back(pin.Pos.y);
+        }
+        return positions;
+    };
+    const auto pins = checkPorts();
+    session.gesture(session.chevron());
+    REQUIRE(session.meta.configCollapsed);
+    REQUIRE(checkPorts() == pins);
+    const auto collapsed = flowgraphNodeDimensions(config.id);
+    REQUIRE(collapsed.y < expanded.y - 100.0f);
+    REQUIRE(session.meta.height == Catch::Approx(height).margin(1.0f));
+
+    // Metrics are outside config: removing one must still change collapsed chrome.
+    session.config.block.metrics.clear();
+    session.frames();
+    REQUIRE(flowgraphNodeDimensions(config.id).y < collapsed.y);
+    REQUIRE(checkPorts() == pins);
+    session.config.block.metrics = config.block.metrics;
+    session.frames();
+    REQUIRE(flowgraphNodeDimensions(config.id).y == Catch::Approx(collapsed.y).margin(1.0f));
+
+    session.gesture(session.chevron());
+    REQUIRE_FALSE(session.meta.configCollapsed);
+    REQUIRE(checkPorts() == pins);
+    REQUIRE(flowgraphNodeDimensions(config.id).y == Catch::Approx(expanded.y).margin(1.0f));
+}
+
+TEST_CASE("Every node size seeds its width and honors an explicit saved width",
+          "[core][sakura][flowgraph_node][creation][persistence]") {
+    for (const auto& [size, width] :
+         {std::pair{Block::NodeSize::XS, 120.0f},
+          std::pair{Block::NodeSize::S, 140.0f},
+          std::pair{Block::NodeSize::M, 220.0f},
+          std::pair{Block::NodeSize::L, 320.0f},
+          std::pair{Block::NodeSize::XL, 460.0f}}) {
+        CAPTURE(size, width);
+        auto config = baseConfigFor(baseBlock("default-width", "radio"));
+        config.block.nodeSize = size;
+        NodeSession session(config);
+        session.frames();
+        REQUIRE(session.meta.width == Catch::Approx(width).margin(1.0f));
+        REQUIRE(session.meta.height == 0.0f);
+        session.meta.width = 360.0f;
+        session.frames();
+        REQUIRE(session.meta.width == Catch::Approx(360.0f).margin(1.0f));
+        const F32 padding = 2.0f * ImNodes::GetStyle().NodePadding.x;
+        REQUIRE(flowgraphNodeDimensions(config.id).x == Catch::Approx(360.0f + padding).margin(1.0f));
+    }
 }
 
 TEST_CASE("Config grids coexist with flexible editors and attached surface allocations",
