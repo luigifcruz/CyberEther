@@ -31,6 +31,7 @@ core_test_domains = {
     'registry': ['registry/registry.cc'],
     'render': ['render/transfers.cc'],
     'sakura': [
+        'sakura/metric_label.cc',
         'sakura/node.cc',
         'sakura/node_metadata.cc',
         'sakura/surface_view.cc',

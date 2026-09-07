@@ -21,6 +21,7 @@ struct FlowgraphMetricLabel {
             .id = this->config.id + "Text",
             .str = value,
             .align = Sakura::Text::Align::Right,
+            .clipped = true,
         });
         error.update({
             .id = this->config.id + "Error",

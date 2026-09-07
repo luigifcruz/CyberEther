@@ -85,7 +85,19 @@ void Text::render(const Context& ctx) const {
         ImGui::PushFont(this->impl->resolveFont(ctx), ImGui::GetStyle().FontSizeBase * config.scale);
     }
 
-    if (config.align != Align::Left && !config.wrapped) {
+    if (config.clipped) {
+        const ImVec2 position = ImGui::GetCursorScreenPos();
+        const ImVec2 size(std::max(0.0f, ImGui::GetContentRegionAvail().x), ImGui::GetTextLineHeight());
+        const ImVec2 endPosition(position.x + size.x, position.y + size.y);
+        const char* textStart = config.str.c_str();
+        const char* textEnd = std::find(textStart, textStart + config.str.size(), '\n');
+        const ImVec2 textSize = ImGui::CalcTextSize(textStart, textEnd);
+        const F32 alignment = config.align == Align::Right ? 1.0f :
+                              config.align == Align::Center ? 0.5f : 0.0f;
+        ImGui::Dummy(size);
+        ImGui::RenderTextClippedEx(ImGui::GetWindowDrawList(), position, endPosition,
+                                  textStart, textEnd, &textSize, ImVec2(alignment, 0.0f));
+    } else if (config.align != Align::Left && !config.wrapped) {
         const F32 startX = ImGui::GetCursorPosX();
         const F32 availableWidth = ImGui::GetContentRegionAvail().x;
         const char* lineStart = config.str.c_str();
