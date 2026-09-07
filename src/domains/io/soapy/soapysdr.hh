@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <map>
 #include <optional>
 #include <span>
 #include <string>
@@ -37,6 +38,18 @@ inline bool SoapyRangeContains(const std::vector<SoapySDR::Range>& ranges, const
     }
     return false;
 }
+
+struct SoapyDiscovery {
+    using Clock = std::chrono::steady_clock;
+    using DeviceEntry = std::map<std::string, std::string>;
+    using DeviceList = std::map<std::string, DeviceEntry>;
+
+    static DeviceList ListDevices(const std::string& filter = "", bool refresh = false,
+                                  std::optional<Clock::time_point> now = std::nullopt);
+    static void ClearDiscoveryCache();
+    static Result LoadDriverLibrary(const std::string& path);
+    static DeviceList BuildDeviceList(const SoapySDR::KwargsList& entries);
+};
 
 class SoapyReceiver {
  public:

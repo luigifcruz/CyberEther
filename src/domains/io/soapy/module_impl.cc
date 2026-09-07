@@ -1,9 +1,7 @@
 #include "module_impl.hh"
 #include "soapysdr.hh"
 
-#include <SoapySDR/Device.hpp>
 #include <SoapySDR/Types.hpp>
-#include <SoapySDR/Modules.hpp>
 
 #include <algorithm>
 #include <exception>
@@ -16,20 +14,6 @@ namespace Jetstream::Modules {
 
 SoapyImpl::~SoapyImpl() {
     stopReceiver();
-}
-
-Result SoapyImpl::LoadModulePath(const std::string& path) {
-    if (path.empty()) {
-        return Result::SUCCESS;
-    }
-
-    const auto error = SoapySDR::loadModule(path);
-    if (!error.empty() && !error.ends_with(" already loaded")) {
-        JST_ERROR("[MODULE_SOAPY] Failed to load SoapySDR module '{}': {}", path, error);
-        return Result::ERROR;
-    }
-
-    return Result::SUCCESS;
 }
 
 Result SoapyImpl::validate() {
@@ -105,14 +89,7 @@ Result SoapyImpl::define() {
 }
 
 Result SoapyImpl::create() {
-#ifdef JST_OS_BROWSER
-    if (MAIN_THREAD_EM_ASM_INT({ return 'usb' in navigator; }) == 0) {
-        JST_ERROR("[MODULE_SOAPY] Browser not compatible with WebUSB.");
-        return Result::ERROR;
-    }
-#endif
-
-    JST_CHECK(LoadModulePath(modulePath));
+    JST_CHECK(SoapyDiscovery::LoadDriverLibrary(modulePath));
 
     errored = false;
     streaming = false;
@@ -300,31 +277,6 @@ Result SoapyImpl::soapyThreadLoop() {
     }
 
     return Result::SUCCESS;
-}
-
-SoapyImpl::DeviceList SoapyImpl::ListAvailableDevices(const std::string& filter) {
-#ifdef JST_OS_BROWSER
-    if (MAIN_THREAD_EM_ASM_INT({ return 'usb' in navigator; }) == 0) {
-        JST_ERROR("[MODULE_SOAPY] Browser not compatible with WebUSB.");
-        return {};
-    }
-#endif
-
-    const SoapySDR::Kwargs args = SoapySDR::KwargsFromString(filter);
-
-    try {
-        return DeviceListFromEntries(SoapySDR::Device::enumerate(args));
-    } catch (const std::exception& e) {
-        JST_ERROR("[MODULE_SOAPY] Failed to enumerate devices: {}", e.what());
-    } catch (...) {
-        JST_ERROR("[MODULE_SOAPY] Failed to enumerate devices.");
-    }
-
-    return {};
-}
-
-std::string SoapyImpl::DeviceEntryToString(const DeviceEntry& entry) {
-    return SoapySDR::KwargsToString(entry);
 }
 
 F32 SoapyImpl::getBufferHealth() const {

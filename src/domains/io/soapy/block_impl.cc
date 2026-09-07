@@ -3,8 +3,8 @@
 
 #include <jetstream/domains/io/soapy/module.hh>
 #include "module_impl.hh"
+#include "soapysdr.hh"
 
-#include <SoapySDR/Device.hpp>
 #include <SoapySDR/Types.hpp>
 
 #include <cmath>
@@ -35,11 +35,11 @@ Result SoapyImpl::validate() {
 }
 
 Result SoapyImpl::configure() {
-    JST_CHECK(Modules::SoapyImpl::LoadModulePath(modulePath));
+    JST_CHECK(Modules::SoapyDiscovery::LoadDriverLibrary(modulePath));
 
     std::string resolvedDeviceString;
-    const auto availableDeviceList = Modules::SoapyImpl::ListAvailableDevices(hintString);
-    const auto selectFirstAvailable = [&](const Modules::SoapyImpl::DeviceList& devices) -> bool {
+    const auto availableDeviceList = Modules::SoapyDiscovery::ListDevices(hintString);
+    const auto selectFirstAvailable = [&](const Modules::SoapyDiscovery::DeviceList& devices) -> bool {
         if (devices.empty()) {
             return false;
         }
@@ -53,7 +53,7 @@ Result SoapyImpl::configure() {
     if (const auto it = availableDeviceList.find(deviceString); it != availableDeviceList.end()) {
         resolvedDeviceString = SoapySDR::KwargsToString(it->second);
     } else if (!deviceString.empty()) {
-        const auto explicitDeviceList = Modules::SoapyImpl::ListAvailableDevices(deviceString);
+        const auto explicitDeviceList = Modules::SoapyDiscovery::ListDevices(deviceString);
         if (!selectFirstAvailable(explicitDeviceList)) {
             selectFirstAvailable(availableDeviceList);
         }
@@ -84,7 +84,7 @@ Result SoapyImpl::define() {
 
     std::vector<std::string> deviceOptions;
     for (const auto& [label, _] :
-         Modules::SoapyImpl::ListAvailableDevices(config.hintString)) {
+         Modules::SoapyDiscovery::ListDevices(config.hintString)) {
         deviceOptions.push_back(jst::fmt::format("{}({})", label, label));
     }
     deviceDropdown = jst::fmt::format("dropdown:{}", jst::fmt::join(deviceOptions, ","));

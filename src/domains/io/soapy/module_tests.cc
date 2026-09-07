@@ -5,6 +5,8 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <future>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -213,6 +215,131 @@ const SoapySDR::Registry testSoapyRegistry(TestSoapyDriver,
                                            FindTestSoapyDevice,
                                            MakeTestSoapyDevice,
                                            SOAPY_SDR_ABI_VERSION);
+
+constexpr const char* TestDiscoveryDriver = "cyberether_discovery_test";
+
+struct TestDiscoveryState {
+    std::mutex mutex;
+    std::condition_variable changed;
+    SoapySDR::KwargsList entries;
+    std::vector<SoapySDR::Kwargs> queries;
+    size_t makes = 0;
+    size_t blockCall = 0;
+    bool blocked = false;
+    bool released = false;
+};
+
+TestDiscoveryState testDiscoveryState;
+
+SoapySDR::KwargsList FindDiscoveryDevice(const SoapySDR::Kwargs& args) {
+    std::unique_lock lock(testDiscoveryState.mutex);
+    testDiscoveryState.queries.push_back(args);
+    SoapySDR::KwargsList entries;
+    for (const auto& entry : testDiscoveryState.entries) {
+        if (!args.contains("serial") || args.at("serial") == entry.at("serial")) {
+            entries.push_back(entry);
+        }
+    }
+    if (testDiscoveryState.queries.size() == testDiscoveryState.blockCall) {
+        testDiscoveryState.blocked = true;
+        testDiscoveryState.changed.notify_all();
+        testDiscoveryState.changed.wait(lock, [] { return testDiscoveryState.released; });
+    }
+    return entries;
+}
+
+SoapySDR::Device* MakeDiscoveryDevice(const SoapySDR::Kwargs& args) {
+    {
+        std::lock_guard lock(testDiscoveryState.mutex);
+        ++testDiscoveryState.makes;
+        if (std::none_of(testDiscoveryState.entries.begin(), testDiscoveryState.entries.end(),
+                        [&](const auto& entry) { return entry.at("serial") == args.at("serial"); })) {
+            throw std::runtime_error("test discovery device unavailable");
+        }
+    }
+    return new TestSoapyDevice();
+}
+
+const SoapySDR::Registry testDiscoveryRegistry(TestDiscoveryDriver,
+                                              FindDiscoveryDevice,
+                                              MakeDiscoveryDevice,
+                                              SOAPY_SDR_ABI_VERSION);
+
+struct SoapyDiscoveryFixture {
+    using Devices = Modules::SoapyDiscovery::DeviceList;
+
+    const std::string filter = std::string("driver=") + TestDiscoveryDriver;
+    const SoapySDR::Kwargs deviceA{{"label", "Discovery A"}, {"serial", "A"}};
+    const SoapySDR::Kwargs deviceB{{"label", "Discovery B"}, {"serial", "B"}};
+    std::vector<std::future<Devices>> requests;
+
+    SoapyDiscoveryFixture() {
+        Modules::SoapyDiscovery::ClearDiscoveryCache();
+        testSoapyState = {};
+        std::lock_guard lock(testDiscoveryState.mutex);
+        testDiscoveryState.entries = {deviceA, deviceB};
+        testDiscoveryState.queries.clear();
+        testDiscoveryState.makes = 0;
+        testDiscoveryState.blockCall = 0;
+        testDiscoveryState.blocked = false;
+        testDiscoveryState.released = false;
+    }
+
+    ~SoapyDiscoveryFixture() {
+        release();
+        for (auto& request : requests) {
+            if (request.valid()) {
+                request.wait();
+            }
+        }
+        Modules::SoapyDiscovery::ClearDiscoveryCache();
+        std::lock_guard lock(testDiscoveryState.mutex);
+        testDiscoveryState.entries.clear();
+    }
+
+    void setEntries(SoapySDR::KwargsList entries) {
+        std::lock_guard lock(testDiscoveryState.mutex);
+        testDiscoveryState.entries = std::move(entries);
+    }
+
+    size_t queryCount() const {
+        std::lock_guard lock(testDiscoveryState.mutex);
+        return testDiscoveryState.queries.size();
+    }
+
+    size_t makeCount() const {
+        std::lock_guard lock(testDiscoveryState.mutex);
+        return testDiscoveryState.makes;
+    }
+
+    size_t request(const std::string& args) {
+        const auto index = requests.size();
+        requests.push_back(std::async(std::launch::async, [args] {
+            return Modules::SoapyDiscovery::ListDevices(args);
+        }));
+        return index;
+    }
+
+    void blockFirstQuery() {
+        std::lock_guard lock(testDiscoveryState.mutex);
+        testDiscoveryState.blockCall = 1;
+    }
+
+    bool waitUntilBlocked() {
+        std::unique_lock lock(testDiscoveryState.mutex);
+        return testDiscoveryState.changed.wait_for(lock, std::chrono::seconds(5), [] {
+            return testDiscoveryState.blocked;
+        });
+    }
+
+    void release() {
+        {
+            std::lock_guard lock(testDiscoveryState.mutex);
+            testDiscoveryState.released = true;
+        }
+        testDiscoveryState.changed.notify_all();
+    }
+};
 
 struct SoapyImplAccess : Modules::SoapyImpl {
     static auto erroredMember() {
@@ -876,7 +1003,7 @@ TEST_CASE("Soapy device lists preserve duplicate and missing labels",
         {{"driver", "remote"}},
     };
 
-    const auto devices = Modules::SoapyImpl::DeviceListFromEntries(entries);
+    const auto devices = Modules::SoapyDiscovery::BuildDeviceList(entries);
 
     REQUIRE(devices.size() == entries.size());
     REQUIRE(devices.at("RTL-SDR").at("serial") == "A");
@@ -884,6 +1011,147 @@ TEST_CASE("Soapy device lists preserve duplicate and missing labels",
     REQUIRE(devices.at("RTL-SDR [B] #2").at("serial") == "B");
     REQUIRE(devices.contains("remote"));
     REQUIRE(devices.contains("remote #2"));
+}
+
+TEST_CASE_METHOD(SoapyDiscoveryFixture,
+                 "Soapy discovery caches parsed filters and returns independent results",
+                 "[modules][soapy][discovery]") {
+    auto first = Modules::SoapyDiscovery::ListDevices(filter + ",serial=A,remote=host-a");
+    REQUIRE(first.size() == 1);
+    REQUIRE(first.at("Discovery A").at("serial") == "A");
+    first.at("Discovery A")["serial"] = "modified";
+
+    const auto repeated = Modules::SoapyDiscovery::ListDevices(
+        " remote = host-a, serial = A, " + filter);
+    REQUIRE(repeated.at("Discovery A").at("serial") == "A");
+    REQUIRE(queryCount() == 1);
+    REQUIRE(makeCount() == 0);
+    {
+        std::lock_guard lock(testDiscoveryState.mutex);
+        REQUIRE(testDiscoveryState.queries.front() == SoapySDR::Kwargs{
+            {"driver", TestDiscoveryDriver}, {"serial", "A"}, {"remote", "host-a"},
+        });
+    }
+}
+
+TEST_CASE_METHOD(SoapyDiscoveryFixture,
+                 "Soapy discovery isolates device and remote filters",
+                 "[modules][soapy][discovery]") {
+    const auto first = Modules::SoapyDiscovery::ListDevices(filter + ",serial=A,remote=host-a");
+    const auto second = Modules::SoapyDiscovery::ListDevices(filter + ",serial=B,remote=host-a");
+    const auto remote = Modules::SoapyDiscovery::ListDevices(filter + ",serial=A,remote=host-b");
+    REQUIRE(first.at("Discovery A").at("serial") == "A");
+    REQUIRE(second.at("Discovery B").at("serial") == "B");
+    REQUIRE(remote.at("Discovery A").at("serial") == "A");
+    REQUIRE(queryCount() == 3);
+    REQUIRE(makeCount() == 0);
+}
+
+TEST_CASE_METHOD(SoapyDiscoveryFixture,
+                 "Soapy discovery supports forced refresh and invalidation",
+                 "[modules][soapy][discovery]") {
+    const auto initial = Modules::SoapyDiscovery::ListDevices(filter);
+    REQUIRE(initial.size() == 2);
+    setEntries({deviceB});
+    REQUIRE(Modules::SoapyDiscovery::ListDevices(filter) == initial);
+    REQUIRE(queryCount() == 1);
+
+    const auto refreshed = Modules::SoapyDiscovery::ListDevices(filter, true);
+    REQUIRE(refreshed.size() == 1);
+    REQUIRE(refreshed.contains("Discovery B"));
+    REQUIRE(Modules::SoapyDiscovery::ListDevices(filter) == refreshed);
+    REQUIRE(queryCount() == 2);
+
+    REQUIRE(Modules::SoapyDiscovery::LoadDriverLibrary("") == Result::SUCCESS);
+    REQUIRE(Modules::SoapyDiscovery::ListDevices(filter) == refreshed);
+    REQUIRE(queryCount() == 2);
+
+    setEntries({deviceA});
+    Modules::SoapyDiscovery::ClearDiscoveryCache();
+    const auto invalidated = Modules::SoapyDiscovery::ListDevices(filter);
+    REQUIRE(invalidated.size() == 1);
+    REQUIRE(invalidated.contains("Discovery A"));
+    REQUIRE(queryCount() == 3);
+    REQUIRE(makeCount() == 0);
+}
+
+TEST_CASE_METHOD(SoapyDiscoveryFixture,
+                 "Soapy discovery expires populated and empty snapshots",
+                 "[modules][soapy][discovery]") {
+    using namespace std::chrono_literals;
+    const auto start = Modules::SoapyDiscovery::Clock::time_point{};
+
+    SECTION("populated snapshot") {}
+    SECTION("empty snapshot") {
+        setEntries({});
+    }
+
+    const auto initial = Modules::SoapyDiscovery::ListDevices(filter, false, start);
+    setEntries({deviceB});
+    REQUIRE(Modules::SoapyDiscovery::ListDevices(filter, false, start + 999ms) == initial);
+    REQUIRE(queryCount() == 1);
+    const auto expired = Modules::SoapyDiscovery::ListDevices(filter, false, start + 1s);
+    REQUIRE(expired.size() == 1);
+    REQUIRE(expired.contains("Discovery B"));
+    REQUIRE(queryCount() == 2);
+}
+
+TEST_CASE_METHOD(SoapyDiscoveryFixture,
+                 "Soapy discovery shares in-flight queries without blocking other filters",
+                 "[modules][soapy][discovery][concurrency]") {
+    blockFirstQuery();
+    const auto first = request(filter);
+    REQUIRE(waitUntilBlocked());
+    std::vector<size_t> followers;
+    for (int i = 0; i < 6; ++i) {
+        followers.push_back(request(filter));
+    }
+
+    const auto other = request(filter + ",serial=B");
+    REQUIRE(requests[other].wait_for(std::chrono::seconds(2)) == std::future_status::ready);
+    REQUIRE(requests[other].get().size() == 1);
+    release();
+    const auto initial = requests[first].get();
+    REQUIRE(initial.size() == 2);
+    for (const auto index : followers) {
+        REQUIRE(requests[index].get() == initial);
+    }
+    REQUIRE(queryCount() == 2);
+    REQUIRE(makeCount() == 0);
+}
+
+TEST_CASE_METHOD(SoapyDiscoveryFixture,
+                 "Soapy discovery invalidation prevents stale in-flight results from being cached",
+                 "[modules][soapy][discovery][concurrency]") {
+    blockFirstQuery();
+    const auto first = request(filter);
+    REQUIRE(waitUntilBlocked());
+    setEntries({deviceB});
+    Modules::SoapyDiscovery::ClearDiscoveryCache();
+
+    const auto fresh = request(filter);
+    REQUIRE(requests[fresh].wait_for(std::chrono::seconds(2)) == std::future_status::ready);
+    const auto refreshed = requests[fresh].get();
+    REQUIRE(refreshed.size() == 1);
+    REQUIRE(refreshed.contains("Discovery B"));
+    release();
+    REQUIRE(requests[first].get().size() == 2);
+    REQUIRE(Modules::SoapyDiscovery::ListDevices(filter) == refreshed);
+    REQUIRE(queryCount() == 2);
+}
+
+TEST_CASE_METHOD(SoapyDiscoveryFixture,
+                 "Soapy cached devices remain advisory when opening a disconnected device",
+                 "[modules][soapy][discovery][lifecycle]") {
+    const auto selected = filter + ",serial=A";
+    REQUIRE(Modules::SoapyDiscovery::ListDevices(selected).size() == 1);
+    setEntries({deviceB});
+
+    Modules::SoapyReceiver receiver;
+    REQUIRE(receiver.open(SoapySDR::KwargsFromString(selected)) == Result::ERROR);
+    REQUIRE(makeCount() == 1);
+    REQUIRE(Modules::SoapyDiscovery::ListDevices(selected).empty());
+    REQUIRE(queryCount() == 3);
 }
 
 TEST_CASE("Soapy typed reads require an active stream and a nonempty buffer",

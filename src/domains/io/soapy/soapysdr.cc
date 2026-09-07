@@ -2,14 +2,208 @@
 
 #include <algorithm>
 #include <exception>
+#include <future>
+#include <memory>
+#include <mutex>
 
 #include <SoapySDR/Formats.hpp>
 #include <SoapySDR/Errors.hpp>
+#include <SoapySDR/Modules.hpp>
 #include <SoapySDR/Registry.hpp>
 
 #include <jetstream/logger.hh>
 
+#ifdef JST_OS_BROWSER
+#include <emscripten.h>
+#endif
+
 namespace Jetstream::Modules {
+
+namespace {
+
+using DiscoveryClock = SoapyDiscovery::Clock;
+constexpr auto DiscoveryLifetime = std::chrono::seconds(1);
+
+struct DiscoveryEntry {
+    std::shared_future<SoapySDR::KwargsList> result;
+    DiscoveryClock::time_point expiresAt{};
+    bool ready = false;
+};
+
+struct DiscoveryCache {
+    std::mutex mutex;
+    std::map<SoapySDR::Kwargs, std::shared_ptr<DiscoveryEntry>> entries;
+#ifdef JST_OS_BROWSER
+    int usbRevision = -1;
+#endif
+};
+
+DiscoveryCache& GetDiscoveryCache() {
+    static DiscoveryCache cache;
+    return cache;
+}
+
+#ifdef JST_OS_BROWSER
+int WebUsbRevision() {
+    return MAIN_THREAD_EM_ASM_INT({
+        if (!navigator.usb) {
+            return -1;
+        }
+        let state = Module['soapyUsbDiscovery'];
+        if (!state || state.usb !== navigator.usb) {
+            state = ({
+                usb: navigator.usb,
+                revision: state ? (state.revision + 1) & 0x7fffffff : 0
+            });
+            Module['soapyUsbDiscovery'] = state;
+            const changed = () => {
+                state.revision = (state.revision + 1) & 0x7fffffff;
+            };
+            state.usb.addEventListener('connect', changed);
+            state.usb.addEventListener('disconnect', changed);
+        }
+        return state.revision;
+    });
+}
+#endif
+
+SoapySDR::KwargsList DiscoverDevices(const SoapySDR::Kwargs& args, const bool refresh = false,
+                                    const std::optional<DiscoveryClock::time_point> now = std::nullopt) {
+#ifdef JST_OS_BROWSER
+    const auto usbRevision = WebUsbRevision();
+    if (usbRevision < 0) {
+        JST_ERROR("[MODULE_SOAPY] Browser not compatible with WebUSB.");
+        return {};
+    }
+#endif
+
+    auto& cache = GetDiscoveryCache();
+    std::shared_ptr<DiscoveryEntry> entry;
+    std::optional<std::promise<SoapySDR::KwargsList>> pending;
+    {
+        std::lock_guard lock(cache.mutex);
+#ifdef JST_OS_BROWSER
+        if (cache.usbRevision != usbRevision) {
+            cache.entries.clear();
+            cache.usbRevision = usbRevision;
+        }
+#endif
+        const auto currentTime = now ? *now : DiscoveryClock::now();
+        std::erase_if(cache.entries, [&](const auto& item) {
+            return item.second->ready && currentTime >= item.second->expiresAt;
+        });
+
+        if (const auto it = cache.entries.find(args); it != cache.entries.end()) {
+            if (!refresh || !it->second->ready) {
+                entry = it->second;
+            } else {
+                cache.entries.erase(it);
+            }
+        }
+        if (!entry) {
+            pending.emplace();
+            entry = std::make_shared<DiscoveryEntry>();
+            entry->result = pending->get_future().share();
+            cache.entries.emplace(args, entry);
+        }
+    }
+
+    if (pending) {
+        bool success = false;
+        try {
+            pending->set_value(SoapySDR::Device::enumerate(args));
+            success = true;
+        } catch (...) {
+            pending->set_exception(std::current_exception());
+        }
+
+        std::lock_guard lock(cache.mutex);
+        if (success) {
+            entry->expiresAt = (now ? *now : DiscoveryClock::now()) + DiscoveryLifetime;
+            entry->ready = true;
+        } else if (const auto it = cache.entries.find(args);
+                   it != cache.entries.end() && it->second == entry) {
+            cache.entries.erase(it);
+        }
+    }
+
+    return entry->result.get();
+}
+
+}  // namespace
+
+SoapyDiscovery::DeviceList SoapyDiscovery::ListDevices(const std::string& filter, const bool refresh,
+                                                     const std::optional<Clock::time_point> now) {
+    try {
+        return BuildDeviceList(DiscoverDevices(SoapySDR::KwargsFromString(filter), refresh, now));
+    } catch (const std::exception& e) {
+        JST_ERROR("[MODULE_SOAPY] Failed to enumerate devices: {}", e.what());
+    } catch (...) {
+        JST_ERROR("[MODULE_SOAPY] Failed to enumerate devices.");
+    }
+    return {};
+}
+
+void SoapyDiscovery::ClearDiscoveryCache() {
+    auto& cache = GetDiscoveryCache();
+    std::lock_guard lock(cache.mutex);
+    cache.entries.clear();
+}
+
+Result SoapyDiscovery::LoadDriverLibrary(const std::string& path) {
+    if (path.empty()) {
+        return Result::SUCCESS;
+    }
+
+    try {
+        const auto error = SoapySDR::loadModule(path);
+        if (error.empty()) {
+            ClearDiscoveryCache();
+            return Result::SUCCESS;
+        }
+        if (error.ends_with(" already loaded")) {
+            return Result::SUCCESS;
+        }
+        JST_ERROR("[MODULE_SOAPY] Failed to load SoapySDR module '{}': {}", path, error);
+    } catch (const std::exception& e) {
+        JST_ERROR("[MODULE_SOAPY] Failed to load SoapySDR module '{}': {}", path, e.what());
+    } catch (...) {
+        JST_ERROR("[MODULE_SOAPY] Failed to load SoapySDR module '{}'.", path);
+    }
+    return Result::ERROR;
+}
+
+SoapyDiscovery::DeviceList SoapyDiscovery::BuildDeviceList(const SoapySDR::KwargsList& entries) {
+    DeviceList devices;
+    for (const auto& entry : entries) {
+        const auto labelIt = entry.find("label");
+        const auto driverIt = entry.find("driver");
+        std::string label = "SoapySDR Device";
+        if (labelIt != entry.end() && !labelIt->second.empty()) {
+            label = labelIt->second;
+        } else if (driverIt != entry.end() && !driverIt->second.empty()) {
+            label = driverIt->second;
+        }
+
+        std::string uniqueLabel = label;
+        if (devices.contains(uniqueLabel)) {
+            const auto serialIt = entry.find("serial");
+            if (serialIt != entry.end() && !serialIt->second.empty() &&
+                label.find(serialIt->second) == std::string::npos) {
+                uniqueLabel = label + " [" + serialIt->second + "]";
+            }
+
+            const std::string uniqueLabelBase = uniqueLabel;
+            U64 suffix = 2;
+            while (devices.contains(uniqueLabel)) {
+                uniqueLabel = uniqueLabelBase + " #" + std::to_string(suffix++);
+            }
+        }
+
+        devices.emplace(std::move(uniqueLabel), entry);
+    }
+    return devices;
+}
 
 SoapyReceiver::~SoapyReceiver() {
     reset();
@@ -33,21 +227,24 @@ Result SoapyReceiver::open(const SoapySDR::Kwargs& args) {
     }
 
     try {
-        const auto devices = SoapySDR::Device::enumerate(args);
+        const auto devices = DiscoverDevices(args);
         if (devices.empty()) {
             JST_ERROR("[MODULE_SOAPY] No SoapySDR devices found.");
             return Result::INCOMPLETE;
         }
         device = SoapySDR::Device::make(devices.at(0));
     } catch (const std::exception& e) {
+        SoapyDiscovery::ClearDiscoveryCache();
         JST_ERROR("[MODULE_SOAPY] Failed to open device: {}", e.what());
         return Result::ERROR;
     } catch (...) {
+        SoapyDiscovery::ClearDiscoveryCache();
         JST_ERROR("[MODULE_SOAPY] Failed to open device.");
         return Result::ERROR;
     }
 
     if (device == nullptr) {
+        SoapyDiscovery::ClearDiscoveryCache();
         JST_ERROR("[MODULE_SOAPY] Can't open SoapySDR device.");
         return Result::ERROR;
     }
