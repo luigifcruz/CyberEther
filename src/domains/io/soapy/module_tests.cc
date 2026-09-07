@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <any>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <limits>
@@ -19,12 +20,13 @@
 #include "flowgraph_fixture.hh"
 #include "jetstream/domains/io/soapy/block.hh"
 #include "jetstream/domains/io/soapy/module.hh"
+#include "jetstream/memory/axis.hh"
 #include "jetstream/module_context.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/runtime_context_native_cpu.hh"
 #include "jetstream/scheduler_context.hh"
 #include "module_impl.hh"
-#include "receive_status.hh"
+#include "soapysdr.hh"
 
 using namespace Jetstream;
 
@@ -34,31 +36,66 @@ constexpr const char* TestSoapyDriver = "cyberether_test";
 
 struct TestSoapyReads {
     std::vector<int> results;
+    std::vector<int> flags;
+    std::vector<long long> timestamps;
     std::atomic<size_t> calls{0};
+    std::atomic<bool> inFlight{false};
     bool throwOnRead = false;
+    bool throwUnknown = false;
+    void* lastBuffer = nullptr;
+    size_t lastReadSize = 0;
+    long lastTimeoutUs = 0;
+    bool metadataReset = true;
 };
 
 struct TestSoapyState {
     bool advertiseBiasTee = true;
     bool throwOnSettingInfo = false;
     bool failStreamSetup = false;
+    std::string failAt;
+    bool throwUnknown = false;
+    int activationResult = 0;
+    std::vector<std::string> lifecycle;
+    int streamDirection = -1;
+    std::string streamFormat;
+    std::vector<size_t> streamChannels;
+    SoapySDR::Kwargs streamArgs;
+    bool releasedWhileReading = false;
     std::vector<std::string> biasTeeWrites;
     std::shared_ptr<TestSoapyReads> reads = std::make_shared<TestSoapyReads>();
 };
 
 TestSoapyState testSoapyState;
 
+void RecordSoapyCall(const std::string& call) {
+    testSoapyState.lifecycle.push_back(call);
+    if (testSoapyState.failAt == call) {
+        if (testSoapyState.throwUnknown) {
+            throw -1;
+        }
+        throw std::runtime_error("test failure: " + call);
+    }
+}
+
 class TestSoapyDevice final : public SoapySDR::Device {
  public:
+    ~TestSoapyDevice() override {
+        testSoapyState.releasedWhileReading |= reads->inFlight.load();
+        testSoapyState.lifecycle.push_back("unmake");
+    }
+
     SoapySDR::RangeList getSampleRateRange(const int, const size_t) const override {
+        RecordSoapyCall("sampleRateRanges");
         return {SoapySDR::Range(1.0, 10.0e6)};
     }
 
     SoapySDR::RangeList getFrequencyRange(const int, const size_t) const override {
+        RecordSoapyCall("frequencyRanges");
         return {SoapySDR::Range(1.0, 2.0e9)};
     }
 
     SoapySDR::ArgInfoList getSettingInfo() const override {
+        RecordSoapyCall("settings");
         if (testSoapyState.throwOnSettingInfo) {
             throw std::runtime_error("optional settings unavailable");
         }
@@ -75,28 +112,78 @@ class TestSoapyDevice final : public SoapySDR::Device {
     void writeSetting(const std::string& key, const std::string& value) override {
         if (key == "biastee") {
             testSoapyState.biasTeeWrites.push_back(value);
+            RecordSoapyCall("biastee:" + value);
         }
     }
 
-    SoapySDR::Stream* setupStream(const int,
-                                  const std::string&,
-                                  const std::vector<size_t>&,
-                                  const SoapySDR::Kwargs&) override {
+    void setSampleRate(const int, const size_t, const double) override {
+        RecordSoapyCall("sampleRate");
+    }
+
+    void setFrequency(const int, const size_t, const double,
+                      const SoapySDR::Kwargs&) override {
+        RecordSoapyCall("frequency");
+    }
+
+    void setGainMode(const int, const size_t, const bool) override {
+        RecordSoapyCall("gainMode");
+    }
+
+    SoapySDR::Stream* setupStream(const int direction,
+                                  const std::string& format,
+                                  const std::vector<size_t>& channels,
+                                  const SoapySDR::Kwargs& args) override {
+        RecordSoapyCall("setup");
+        testSoapyState.streamDirection = direction;
+        testSoapyState.streamFormat = format;
+        testSoapyState.streamChannels = channels;
+        testSoapyState.streamArgs = args;
         if (testSoapyState.failStreamSetup) {
             return nullptr;
         }
         return reinterpret_cast<SoapySDR::Stream*>(this);
     }
 
+    int activateStream(SoapySDR::Stream*, const int, const long long,
+                       const size_t) override {
+        RecordSoapyCall("activate");
+        return testSoapyState.activationResult;
+    }
+
+    int deactivateStream(SoapySDR::Stream*, const int, const long long) override {
+        testSoapyState.releasedWhileReading |= reads->inFlight.load();
+        RecordSoapyCall("deactivate");
+        return 0;
+    }
+
+    void closeStream(SoapySDR::Stream*) override {
+        testSoapyState.releasedWhileReading |= reads->inFlight.load();
+        RecordSoapyCall("close");
+    }
+
     int readStream(SoapySDR::Stream*,
                    void* const* buffers,
                    const size_t numElems,
-                   int&,
-                   long long&,
-                   const long) override {
+                   int& flags,
+                   long long& timeNs,
+                   const long timeoutUs) override {
+        struct ReadScope {
+            std::atomic<bool>& inFlight;
+            ~ReadScope() { inFlight = false; }
+        } scope{reads->inFlight};
+        reads->inFlight = true;
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
         const auto index = reads->calls.fetch_add(1);
+        reads->lastBuffer = buffers[0];
+        reads->lastReadSize = numElems;
+        reads->lastTimeoutUs = timeoutUs;
+        reads->metadataReset &= flags == 0 && timeNs == 0;
+        flags = index < reads->flags.size() ? reads->flags[index] : 0;
+        timeNs = index < reads->timestamps.size() ? reads->timestamps[index] : 0;
         if (reads->throwOnRead) {
+            if (reads->throwUnknown) {
+                throw -1;
+            }
             throw std::runtime_error("test receive failure");
         }
         const int result = index < reads->results.size()
@@ -118,6 +205,7 @@ SoapySDR::KwargsList FindTestSoapyDevice(const SoapySDR::Kwargs&) {
 }
 
 SoapySDR::Device* MakeTestSoapyDevice(const SoapySDR::Kwargs&) {
+    RecordSoapyCall("make");
     return new TestSoapyDevice();
 }
 
@@ -127,14 +215,6 @@ const SoapySDR::Registry testSoapyRegistry(TestSoapyDriver,
                                            SOAPY_SDR_ABI_VERSION);
 
 struct SoapyImplAccess : Modules::SoapyImpl {
-    static auto sampleRateRangesMember() {
-        return &SoapyImplAccess::sampleRateRanges;
-    }
-
-    static auto frequencyRangesMember() {
-        return &SoapyImplAccess::frequencyRanges;
-    }
-
     static auto erroredMember() {
         return &SoapyImplAccess::errored;
     }
@@ -363,6 +443,7 @@ TEST_CASE("Soapy Bias-T follows the device lifecycle",
 
     SECTION("normal shutdown disables antenna power") {
         const auto module = BuildTestSoapyModule();
+        const SoapyModuleCleanup cleanup{module};
         REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
         const auto writesBeforeDestroy = testSoapyState.biasTeeWrites;
 
@@ -370,6 +451,58 @@ TEST_CASE("Soapy Bias-T follows the device lifecycle",
         REQUIRE(writesBeforeDestroy == std::vector<std::string>{"true"});
         REQUIRE(testSoapyState.biasTeeWrites ==
                 std::vector<std::string>{"true", "false"});
+    }
+
+    SECTION("disabled antenna power is not written again on shutdown") {
+        auto disabledConfig = config;
+        disabledConfig.biasTee = false;
+        const auto module = BuildTestSoapyModule();
+        const SoapyModuleCleanup cleanup{module};
+        REQUIRE(module->create("test", disabledConfig, {}) == Result::SUCCESS);
+        REQUIRE(module->destroy() == Result::SUCCESS);
+        REQUIRE(testSoapyState.biasTeeWrites == std::vector<std::string>{"false"});
+    }
+
+    SECTION("an explicit disable removes the shutdown cleanup obligation") {
+        const auto module = BuildTestSoapyModule();
+        const SoapyModuleCleanup cleanup{module};
+        REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+        REQUIRE(module->getImpl<Modules::SoapyImpl>()->setBiasTee(false) == Result::SUCCESS);
+        REQUIRE(module->destroy() == Result::SUCCESS);
+        REQUIRE(testSoapyState.biasTeeWrites ==
+                std::vector<std::string>{"true", "false"});
+    }
+
+    SECTION("a failed explicit disable is retried during shutdown") {
+        const auto module = BuildTestSoapyModule();
+        const SoapyModuleCleanup cleanup{module};
+        REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+        testSoapyState.failAt = "biastee:false";
+        REQUIRE(module->getImpl<Modules::SoapyImpl>()->setBiasTee(false) == Result::ERROR);
+        testSoapyState.failAt.clear();
+        REQUIRE(module->destroy() == Result::SUCCESS);
+        REQUIRE(testSoapyState.biasTeeWrites ==
+                std::vector<std::string>{"true", "false", "false"});
+    }
+
+    SECTION("capabilities are refreshed when the module is recreated") {
+        const auto module = BuildTestSoapyModule();
+        const SoapyModuleCleanup cleanup{module};
+        REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+        REQUIRE(module->destroy() == Result::SUCCESS);
+        testSoapyState.biasTeeWrites.clear();
+
+        SECTION("new device does not advertise Bias-T") {
+            testSoapyState.advertiseBiasTee = false;
+        }
+        SECTION("new device cannot report optional settings") {
+            testSoapyState.throwOnSettingInfo = true;
+        }
+
+        REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+        REQUIRE(module->getImpl<Modules::SoapyImpl>()->setBiasTee(false) == Result::SUCCESS);
+        REQUIRE(module->destroy() == Result::SUCCESS);
+        REQUIRE(testSoapyState.biasTeeWrites.empty());
     }
 
     SECTION("creation failure disables antenna power") {
@@ -385,6 +518,7 @@ TEST_CASE("Soapy Bias-T follows the device lifecycle",
         testSoapyState.throwOnSettingInfo = true;
 
         const auto module = BuildTestSoapyModule();
+        const SoapyModuleCleanup cleanup{module};
         REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
         REQUIRE(module->destroy() == Result::SUCCESS);
         REQUIRE(testSoapyState.biasTeeWrites.empty());
@@ -394,9 +528,240 @@ TEST_CASE("Soapy Bias-T follows the device lifecycle",
         testSoapyState.advertiseBiasTee = false;
 
         const auto module = BuildTestSoapyModule();
+        const SoapyModuleCleanup cleanup{module};
         REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
         REQUIRE(module->destroy() == Result::SUCCESS);
         REQUIRE(testSoapyState.biasTeeWrites.empty());
+    }
+}
+
+TEST_CASE("Soapy lifecycle preserves stream configuration and output layout",
+          "[modules][soapy][devices][lifecycle]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    testSoapyState = {};
+    auto config = TestDeviceSoapyConfig();
+    config.numberOfBatches = 3;
+    config.numberOfTimeSamples = 17;
+    config.bufferMultiplier = 2;
+    config.streamString = "bufflen=4096,buffers=3";
+    const auto module = BuildTestSoapyModule();
+    const SoapyModuleCleanup cleanup{module};
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+
+    REQUIRE(testSoapyState.lifecycle == std::vector<std::string>{
+        "make", "sampleRateRanges", "frequencyRanges", "settings",
+        "sampleRate", "frequency", "gainMode", "biastee:true", "setup", "activate",
+    });
+    REQUIRE(testSoapyState.streamDirection == SOAPY_SDR_RX);
+    REQUIRE(testSoapyState.streamFormat == "CF32");
+    REQUIRE(testSoapyState.streamChannels == std::vector<size_t>{0});
+    REQUIRE(testSoapyState.streamArgs == SoapySDR::Kwargs{
+        {"bufflen", "4096"}, {"buffers", "3"},
+    });
+
+    const auto& output = module->outputs().at("signal").tensor;
+    REQUIRE(output.dtype() == DataType::CF32);
+    REQUIRE(output.shape() == Shape{3, 17});
+    REQUIRE(std::any_cast<F32>(output.attribute("frequency")) == config.frequency);
+    REQUIRE(std::any_cast<F32>(output.attribute("sampleRate")) == config.sampleRate);
+    SignalAxes axes;
+    REQUIRE(ResolveSignalAxes(output, axes) == Result::SUCCESS);
+    REQUIRE(axes.sample == Index{1});
+    REQUIRE(axes.batch == Index{0});
+    REQUIRE_FALSE(axes.channel.has_value());
+
+    auto* soapy = module->getImpl<Modules::SoapyImpl>();
+    REQUIRE((soapy->*SoapyImplAccess::circularBufferMember()).capacity() == 102);
+
+    testSoapyState.lifecycle.clear();
+    Parser::Map update;
+    update["frequency"] = 100.0e6f;
+    update["sampleRate"] = 1.5e6f;
+    update["automaticGain"] = false;
+    REQUIRE(module->reconfigure(update) == Result::SUCCESS);
+    REQUIRE(testSoapyState.lifecycle == std::vector<std::string>{
+        "frequency", "sampleRate", "gainMode",
+    });
+    REQUIRE(std::any_cast<F32>(output.attribute("frequency")) == 100.0e6f);
+    REQUIRE(std::any_cast<F32>(output.attribute("sampleRate")) == 1.5e6f);
+
+    testSoapyState.lifecycle.clear();
+    REQUIRE(WaitForSoapy([&] { return testSoapyState.reads->inFlight.load(); }));
+    REQUIRE(module->destroy() == Result::SUCCESS);
+    REQUIRE(testSoapyState.lifecycle == std::vector<std::string>{
+        "deactivate", "close", "biastee:false", "unmake",
+    });
+    REQUIRE_FALSE(testSoapyState.releasedWhileReading);
+    REQUIRE_FALSE(testSoapyState.reads->inFlight.load());
+    REQUIRE(soapy->getBufferHealth() == 0.0f);
+    REQUIRE(soapy->getThroughput() == std::pair<F32, F32>{0.0f, 0.0f});
+
+    const auto calls = testSoapyState.lifecycle;
+    REQUIRE(soapy->destroy() == Result::SUCCESS);
+    REQUIRE(testSoapyState.lifecycle == calls);
+}
+
+TEST_CASE("Soapy implementation scope stops reception before releasing hardware",
+          "[modules][soapy][devices][lifecycle]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    testSoapyState = {};
+    {
+        Modules::SoapyImpl impl;
+        const auto handle = std::shared_ptr<Modules::SoapyImpl>(&impl, [](auto*) {});
+        Module module(DeviceType::CPU, RuntimeType::NATIVE, "generic",
+                      handle, nullptr, handle, impl.candidate());
+        REQUIRE(module.create("test", TestDeviceSoapyConfig(), {}) == Result::SUCCESS);
+        REQUIRE(WaitForSoapy([&] { return testSoapyState.reads->inFlight.load(); }));
+        testSoapyState.lifecycle.clear();
+    }
+    REQUIRE(testSoapyState.lifecycle == std::vector<std::string>{
+        "deactivate", "close", "biastee:false", "unmake",
+    });
+    REQUIRE_FALSE(testSoapyState.releasedWhileReading);
+    REQUIRE_FALSE(testSoapyState.reads->inFlight.load());
+}
+
+TEST_CASE("Soapy missing devices remain incomplete without acquiring resources",
+          "[modules][soapy][devices][lifecycle]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    testSoapyState = {};
+    auto config = TestDeviceSoapyConfig();
+    config.deviceString = "driver=cyberether_missing_test_driver";
+    const auto module = BuildTestSoapyModule();
+    REQUIRE(module->create("test", config, {}) == Result::INCOMPLETE);
+    REQUIRE(module->state() == Module::State::INCOMPLETE);
+    REQUIRE(module->outputs().empty());
+    REQUIRE(testSoapyState.lifecycle.empty());
+    REQUIRE(module->destroy() == Result::SUCCESS);
+    REQUIRE(testSoapyState.lifecycle.empty());
+
+    REQUIRE(module->create("test", TestDeviceSoapyConfig(), {}) == Result::SUCCESS);
+    const SoapyModuleCleanup cleanup{module};
+    REQUIRE(module->destroy() == Result::SUCCESS);
+    REQUIRE_FALSE(testSoapyState.releasedWhileReading);
+}
+
+TEST_CASE("Soapy creation failures release only acquired resources",
+          "[modules][soapy][devices][lifecycle]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    for (const std::string failure : {"make", "sampleRateRanges", "frequencyRanges",
+                                      "sampleRate", "frequency", "gainMode",
+                                      "biastee:true", "setup", "activate"}) {
+        for (const bool unknown : {false, true}) {
+            DYNAMIC_SECTION("Failure: " << failure << " Unknown exception: " << unknown) {
+                testSoapyState = {};
+                testSoapyState.failAt = failure;
+                testSoapyState.throwUnknown = unknown;
+                const auto module = BuildTestSoapyModule();
+                const SoapyModuleCleanup cleanup{module};
+                REQUIRE(module->create("test", TestDeviceSoapyConfig(), {}) == Result::ERROR);
+                REQUIRE(module->state() == Module::State::DESTROYED);
+                const auto& calls = testSoapyState.lifecycle;
+                REQUIRE(std::count(calls.begin(), calls.end(), "unmake") ==
+                        (failure == "make" ? 0 : 1));
+                REQUIRE(std::count(calls.begin(), calls.end(), "close") ==
+                        (failure == "activate" ? 1 : 0));
+                REQUIRE(std::count(calls.begin(), calls.end(), "deactivate") == 0);
+                REQUIRE(testSoapyState.reads->calls == 0);
+                if (failure == "biastee:true" || failure == "setup" || failure == "activate") {
+                    REQUIRE(testSoapyState.biasTeeWrites ==
+                            std::vector<std::string>{"true", "false"});
+                    REQUIRE(calls[calls.size() - 2] == "biastee:false");
+                    REQUIRE(calls.back() == "unmake");
+                } else {
+                    REQUIRE(testSoapyState.biasTeeWrites.empty());
+                }
+
+                testSoapyState.failAt.clear();
+                REQUIRE(module->create("test", TestDeviceSoapyConfig(), {}) == Result::SUCCESS);
+                REQUIRE(module->destroy() == Result::SUCCESS);
+                REQUIRE_FALSE(testSoapyState.releasedWhileReading);
+            }
+        }
+    }
+}
+
+TEST_CASE("Soapy rejected capabilities and stream statuses clean up before returning",
+          "[modules][soapy][devices][lifecycle]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    testSoapyState = {};
+    auto config = TestDeviceSoapyConfig();
+    std::vector<std::string> expectedBiasTeeWrites;
+    int expectedCloses = 0;
+
+    SECTION("unsupported sample rate") {
+        config.sampleRate = 20.0e6f;
+    }
+    SECTION("unsupported frequency") {
+        config.frequency = 3.0e9f;
+    }
+    SECTION("null stream") {
+        testSoapyState.failStreamSetup = true;
+        expectedBiasTeeWrites = {"true", "false"};
+    }
+    SECTION("activation error status") {
+        testSoapyState.activationResult = SOAPY_SDR_STREAM_ERROR;
+        expectedBiasTeeWrites = {"true", "false"};
+        expectedCloses = 1;
+    }
+
+    const auto module = BuildTestSoapyModule();
+    const SoapyModuleCleanup cleanup{module};
+    REQUIRE(module->create("test", config, {}) == Result::ERROR);
+    const auto& calls = testSoapyState.lifecycle;
+    REQUIRE(std::count(calls.begin(), calls.end(), "unmake") == 1);
+    REQUIRE(std::count(calls.begin(), calls.end(), "close") == expectedCloses);
+    REQUIRE(std::count(calls.begin(), calls.end(), "deactivate") == 0);
+    REQUIRE(testSoapyState.biasTeeWrites == expectedBiasTeeWrites);
+    REQUIRE(testSoapyState.reads->calls == 0);
+}
+
+TEST_CASE("Soapy teardown contains driver exceptions and still releases the device",
+          "[modules][soapy][devices][bias-tee][lifecycle]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    for (const std::string failure : {"deactivate", "close", "biastee:false"}) {
+        for (const bool unknown : {false, true}) {
+            DYNAMIC_SECTION("Failure: " << failure << " Unknown exception: " << unknown) {
+                testSoapyState = {};
+                const auto module = BuildTestSoapyModule();
+                const SoapyModuleCleanup cleanup{module};
+                REQUIRE(module->create("test", TestDeviceSoapyConfig(), {}) == Result::SUCCESS);
+                testSoapyState.failAt = failure;
+                testSoapyState.throwUnknown = unknown;
+                REQUIRE(module->destroy() == Result::SUCCESS);
+                const auto calls = testSoapyState.lifecycle;
+                REQUIRE(std::count(calls.begin(), calls.end(), "unmake") == 1);
+                REQUIRE(testSoapyState.biasTeeWrites ==
+                        std::vector<std::string>{"true", "false"});
+                REQUIRE_FALSE(testSoapyState.releasedWhileReading);
+                REQUIRE(module->getImpl<Modules::SoapyImpl>()->destroy() == Result::SUCCESS);
+                REQUIRE(testSoapyState.lifecycle == calls);
+            }
+        }
     }
 }
 
@@ -411,31 +776,92 @@ TEST_CASE("Soapy validation ignores cached device ranges",
     for (const auto& implementation : implementations) {
         DYNAMIC_SECTION("Device: " << implementation.device
                         << " Runtime: " << implementation.runtime) {
+            testSoapyState = {};
             std::shared_ptr<Module> module;
             REQUIRE(Registry::BuildModule("soapy",
                                           implementation.device,
                                           implementation.runtime,
                                           implementation.provider,
                                           module) == Result::SUCCESS);
+            const SoapyModuleCleanup cleanup{module};
+            REQUIRE(module->create("test", TestDeviceSoapyConfig(), {}) == Result::SUCCESS);
 
             auto* soapy = module->getImpl<Modules::SoapyImpl>();
             REQUIRE(soapy != nullptr);
-            soapy->*SoapyImplAccess::sampleRateRangesMember() = {
-                SoapySDR::Range(1.0e6, 2.0e6),
-            };
-            soapy->*SoapyImplAccess::frequencyRangesMember() = {
-                SoapySDR::Range(90.0e6, 110.0e6),
-            };
 
             auto& candidate = *soapy->candidate();
-            candidate.sampleRate = 3.0e6f;
-            candidate.frequency = 120.0e6f;
+            candidate.sampleRate = 20.0e6f;
+            candidate.frequency = 3.0e9f;
 
-            REQUIRE_FALSE(Modules::SoapyRangeContains(
-                soapy->*SoapyImplAccess::sampleRateRangesMember(), candidate.sampleRate));
-            REQUIRE_FALSE(Modules::SoapyRangeContains(
-                soapy->*SoapyImplAccess::frequencyRangesMember(), candidate.frequency));
+            const auto calls = testSoapyState.lifecycle;
+            REQUIRE(soapy->setSampleRate(candidate.sampleRate) == Result::WARNING);
+            REQUIRE(soapy->setTunerFrequency(candidate.frequency) == Result::WARNING);
+            REQUIRE(testSoapyState.lifecycle == calls);
             REQUIRE(soapy->validate() == Result::SUCCESS);
+            REQUIRE(module->destroy() == Result::SUCCESS);
+        }
+    }
+}
+
+TEST_CASE("Soapy device controls reject changes while closed",
+          "[modules][soapy][devices][lifecycle]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    testSoapyState = {};
+    const auto module = BuildTestSoapyModule();
+    const SoapyModuleCleanup cleanup{module};
+    auto* soapy = module->getImpl<Modules::SoapyImpl>();
+    const auto requireClosed = [&] {
+        const auto calls = testSoapyState.lifecycle;
+        REQUIRE(soapy->setTunerFrequency(100.0e6f) == Result::ERROR);
+        REQUIRE(soapy->setSampleRate(1.5e6f) == Result::ERROR);
+        REQUIRE(soapy->setAutomaticGain(false) == Result::ERROR);
+        REQUIRE(soapy->setBiasTee(true) == Result::ERROR);
+        REQUIRE(testSoapyState.lifecycle == calls);
+    };
+
+    requireClosed();
+    REQUIRE(module->create("test", TestDeviceSoapyConfig(), {}) == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+    requireClosed();
+}
+
+TEST_CASE("Soapy failed device controls preserve module configuration and metadata",
+          "[modules][soapy][devices][lifecycle]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    for (const std::string failure : {"frequency", "sampleRate", "gainMode"}) {
+        DYNAMIC_SECTION("Failed control: " << failure) {
+            testSoapyState = {};
+            const auto config = TestDeviceSoapyConfig();
+            const auto module = BuildTestSoapyModule();
+            const SoapyModuleCleanup cleanup{module};
+            REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+            auto* soapy = module->getImpl<Modules::SoapyImpl>();
+            testSoapyState.failAt = failure;
+
+            if (failure == "frequency") {
+                REQUIRE(soapy->setTunerFrequency(100.0e6f) == Result::ERROR);
+            } else if (failure == "sampleRate") {
+                REQUIRE(soapy->setSampleRate(1.5e6f) == Result::ERROR);
+            } else {
+                REQUIRE(soapy->setAutomaticGain(false) == Result::ERROR);
+            }
+
+            const auto& applied = static_cast<const Modules::Soapy&>(module->config());
+            REQUIRE(applied.frequency == config.frequency);
+            REQUIRE(applied.sampleRate == config.sampleRate);
+            REQUIRE(applied.automaticGain == config.automaticGain);
+            const auto& output = module->outputs().at("signal").tensor;
+            REQUIRE(std::any_cast<F32>(output.attribute("frequency")) == config.frequency);
+            REQUIRE(std::any_cast<F32>(output.attribute("sampleRate")) == config.sampleRate);
+            REQUIRE(module->destroy() == Result::SUCCESS);
         }
     }
 }
@@ -460,51 +886,225 @@ TEST_CASE("Soapy device lists preserve duplicate and missing labels",
     REQUIRE(devices.contains("remote #2"));
 }
 
+TEST_CASE("Soapy typed reads require an active stream and a nonempty buffer",
+          "[modules][soapy][receive][lifecycle]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    testSoapyState = {};
+    Modules::SoapyReceiver receiver;
+    std::array<CF32, 8> samples;
+    samples.fill(CF32{7.0f, -7.0f});
+    auto target = std::span<CF32>{samples};
+    std::string diagnostic = "active stream";
+    const SoapySDR::Kwargs args{{"driver", TestSoapyDriver}};
+
+    SECTION("closed device") {}
+    SECTION("open device without a stream") {
+        REQUIRE(receiver.open(args) == Result::SUCCESS);
+    }
+    SECTION("failed stream setup") {
+        REQUIRE(receiver.open(args) == Result::SUCCESS);
+        testSoapyState.failStreamSetup = true;
+        REQUIRE(receiver.startStream({}) == Result::ERROR);
+    }
+    SECTION("stream whose activation failed") {
+        REQUIRE(receiver.open(args) == Result::SUCCESS);
+        testSoapyState.activationResult = SOAPY_SDR_STREAM_ERROR;
+        REQUIRE(receiver.startStream({}) == Result::ERROR);
+    }
+    SECTION("reset device") {
+        REQUIRE(receiver.open(args) == Result::SUCCESS);
+        REQUIRE(receiver.startStream({}) == Result::SUCCESS);
+        receiver.reset();
+    }
+    SECTION("empty buffer with an active stream") {
+        REQUIRE(receiver.open(args) == Result::SUCCESS);
+        REQUIRE(receiver.startStream({}) == Result::SUCCESS);
+        target = {};
+        diagnostic = "empty";
+    }
+
+    const auto received = receiver.read(target);
+    REQUIRE(received.status == Modules::SoapyReceiver::ReadStatus::Error);
+    REQUIRE(received.sampleCount == 0);
+    REQUIRE_FALSE(received.timestampNs.has_value());
+    REQUIRE(received.error.find(diagnostic) != std::string::npos);
+    REQUIRE(testSoapyState.reads->calls == 0);
+    REQUIRE(std::all_of(samples.begin(), samples.end(), [](const auto sample) {
+        return sample == CF32{7.0f, -7.0f};
+    }));
+
+    if (target.empty()) {
+        testSoapyState.reads->results = {1};
+        REQUIRE(receiver.read(samples).status == Modules::SoapyReceiver::ReadStatus::Samples);
+    }
+}
+
+TEST_CASE("Soapy typed reads use the caller buffer and preserve only valid timestamps",
+          "[modules][soapy][receive]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    testSoapyState = {};
+    const auto reads = testSoapyState.reads;
+    constexpr I64 timestamp = 1234567890123456789LL;
+    reads->results = {2, 4, 4};
+    reads->flags = {SOAPY_SDR_HAS_TIME, SOAPY_SDR_END_BURST, SOAPY_SDR_HAS_TIME};
+    reads->timestamps = {timestamp, timestamp, 0};
+    Modules::SoapyReceiver receiver;
+    REQUIRE(receiver.open({{"driver", TestSoapyDriver}}) == Result::SUCCESS);
+    REQUIRE(receiver.startStream({}) == Result::SUCCESS);
+
+    std::array<CF32, 8> samples;
+    samples.fill(CF32{7.0f, -7.0f});
+    const auto target = std::span<CF32>{samples}.subspan(2, 4);
+    const auto first = receiver.read(target);
+    REQUIRE(first.status == Modules::SoapyReceiver::ReadStatus::Samples);
+    REQUIRE(first.sampleCount == 2);
+    REQUIRE(first.timestampNs == timestamp);
+    REQUIRE(first.error.empty());
+    REQUIRE(reads->lastBuffer == target.data());
+    REQUIRE(reads->lastReadSize == target.size());
+    REQUIRE(reads->lastTimeoutUs == 100000);
+    for (std::size_t i = 0; i < samples.size(); ++i) {
+        REQUIRE(samples[i] == (i == 2 || i == 3 ? CF32{0.0f, -1.0f} : CF32{7.0f, -7.0f}));
+    }
+
+    const auto second = receiver.read(target);
+    REQUIRE(second.status == Modules::SoapyReceiver::ReadStatus::Samples);
+    REQUIRE(second.sampleCount == target.size());
+    REQUIRE_FALSE(second.timestampNs.has_value());
+    REQUIRE(second.error.empty());
+
+    const auto third = receiver.read(target);
+    REQUIRE(third.status == Modules::SoapyReceiver::ReadStatus::Samples);
+    REQUIRE(third.timestampNs.has_value());
+    REQUIRE(*third.timestampNs == 0);
+    REQUIRE(reads->metadataReset);
+    REQUIRE(reads->calls == 3);
+}
+
+TEST_CASE("Soapy typed reads translate idle, overflow, and failure results",
+          "[modules][soapy][receive]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    using Status = Modules::SoapyReceiver::ReadStatus;
+    for (const int result : {0, SOAPY_SDR_TIMEOUT, SOAPY_SDR_OVERFLOW,
+                            SOAPY_SDR_STREAM_ERROR, SOAPY_SDR_CORRUPTION,
+                            SOAPY_SDR_NOT_SUPPORTED, SOAPY_SDR_TIME_ERROR,
+                            SOAPY_SDR_UNDERFLOW, -999, 9}) {
+        DYNAMIC_SECTION("Driver result: " << result) {
+            testSoapyState = {};
+            const auto reads = testSoapyState.reads;
+            reads->results = {result};
+            reads->flags = {SOAPY_SDR_HAS_TIME};
+            reads->timestamps = {1234};
+            Modules::SoapyReceiver receiver;
+            REQUIRE(receiver.open({{"driver", TestSoapyDriver}}) == Result::SUCCESS);
+            REQUIRE(receiver.startStream({}) == Result::SUCCESS);
+            std::array<CF32, 8> samples;
+            const auto received = receiver.read(samples);
+
+            REQUIRE(received.sampleCount == 0);
+            REQUIRE_FALSE(received.timestampNs.has_value());
+            REQUIRE(reads->calls == 1);
+            if (result == 0 || result == SOAPY_SDR_TIMEOUT) {
+                REQUIRE(received.status == Status::Timeout);
+                REQUIRE(received.error.empty());
+            } else if (result == SOAPY_SDR_OVERFLOW) {
+                REQUIRE(received.status == Status::Overflow);
+                REQUIRE(received.error.empty());
+            } else {
+                REQUIRE(received.status == Status::Error);
+                if (result < 0) {
+                    REQUIRE(received.error.find(SoapySDR::errToStr(result)) != std::string::npos);
+                    REQUIRE(received.error.find("(" + std::to_string(result) + ")") != std::string::npos);
+                } else {
+                    REQUIRE(received.error.find("more samples than requested") != std::string::npos);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("Soapy typed reads translate driver exceptions into failures",
+          "[modules][soapy][receive]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    for (const bool unknown : {false, true}) {
+        DYNAMIC_SECTION("Unknown exception: " << unknown) {
+            testSoapyState = {};
+            const auto reads = testSoapyState.reads;
+            reads->throwOnRead = true;
+            reads->throwUnknown = unknown;
+            Modules::SoapyReceiver receiver;
+            REQUIRE(receiver.open({{"driver", TestSoapyDriver}}) == Result::SUCCESS);
+            REQUIRE(receiver.startStream({}) == Result::SUCCESS);
+            std::array<CF32, 8> samples;
+            const auto received = receiver.read(samples);
+
+            REQUIRE(received.status == Modules::SoapyReceiver::ReadStatus::Error);
+            REQUIRE(received.sampleCount == 0);
+            REQUIRE_FALSE(received.timestampNs.has_value());
+            REQUIRE(received.error == (unknown ? "Unknown driver exception" : "test receive failure"));
+            REQUIRE(reads->calls == 1);
+        }
+    }
+}
+
 TEST_CASE("Soapy receive statuses distinguish idle reads from failures",
           "[modules][soapy][receive]") {
-    using Status = detail::SoapyReceiveStatus;
+    using Status = Modules::SoapyReceiveStatus;
     using Action = Status::Action;
+    using ReadStatus = Modules::SoapyReceiver::ReadStatus;
     const auto start = Status::Clock::time_point{};
     Status status;
 
-    REQUIRE(status.handle(8, start) == Action::Samples);
-    REQUIRE(status.handle(0, start) == Action::Retry);
-    REQUIRE(status.handle(SOAPY_SDR_TIMEOUT, start) == Action::Retry);
+    REQUIRE(status.handle(ReadStatus::Samples, start) == Action::Samples);
+    REQUIRE(status.handle(ReadStatus::Timeout, start) == Action::Retry);
     REQUIRE(status.deviceOverflows == 0);
 
-    for (const int error : {SOAPY_SDR_STREAM_ERROR, SOAPY_SDR_CORRUPTION,
-                           SOAPY_SDR_NOT_SUPPORTED, SOAPY_SDR_TIME_ERROR,
-                           SOAPY_SDR_UNDERFLOW, -999}) {
-        REQUIRE(status.handle(error, start) == Action::Fail);
-    }
+    REQUIRE(status.handle(ReadStatus::Error, start) == Action::Fail);
     REQUIRE(status.deviceOverflows == 0);
 }
 
 TEST_CASE("Soapy device overflow warnings are counted and rate limited per stream",
           "[modules][soapy][receive]") {
-    using Status = detail::SoapyReceiveStatus;
+    using Status = Modules::SoapyReceiveStatus;
     using Action = Status::Action;
+    using ReadStatus = Modules::SoapyReceiver::ReadStatus;
     using namespace std::chrono_literals;
     const auto start = Status::Clock::time_point{};
     Status status;
 
-    REQUIRE(status.handle(SOAPY_SDR_OVERFLOW, start) == Action::WarnOverflow);
+    REQUIRE(status.handle(ReadStatus::Overflow, start) == Action::WarnOverflow);
     REQUIRE(status.deviceOverflows == 1);
     for (int i = 0; i < 100; ++i) {
-        REQUIRE(status.handle(SOAPY_SDR_OVERFLOW, start + 999ms) == Action::Retry);
+        REQUIRE(status.handle(ReadStatus::Overflow, start + 999ms) == Action::Retry);
     }
     REQUIRE(status.deviceOverflows == 101);
 
-    REQUIRE(status.handle(8, start + 999ms) == Action::Samples);
-    REQUIRE(status.handle(SOAPY_SDR_TIMEOUT, start + 999ms) == Action::Retry);
-    REQUIRE(status.handle(SOAPY_SDR_OVERFLOW, start + 1s) == Action::WarnOverflow);
+    REQUIRE(status.handle(ReadStatus::Samples, start + 999ms) == Action::Samples);
+    REQUIRE(status.handle(ReadStatus::Timeout, start + 999ms) == Action::Retry);
+    REQUIRE(status.handle(ReadStatus::Overflow, start + 1s) == Action::WarnOverflow);
     REQUIRE(status.deviceOverflows == 102);
-    REQUIRE(status.handle(SOAPY_SDR_OVERFLOW, start + 1999ms) == Action::Retry);
-    REQUIRE(status.handle(SOAPY_SDR_OVERFLOW, start + 2s) == Action::WarnOverflow);
+    REQUIRE(status.handle(ReadStatus::Overflow, start + 1999ms) == Action::Retry);
+    REQUIRE(status.handle(ReadStatus::Overflow, start + 2s) == Action::WarnOverflow);
     REQUIRE(status.deviceOverflows == 104);
 
     Status otherStream;
-    REQUIRE(otherStream.handle(SOAPY_SDR_OVERFLOW, start) == Action::WarnOverflow);
+    REQUIRE(otherStream.handle(ReadStatus::Overflow, start) == Action::WarnOverflow);
     REQUIRE(otherStream.deviceOverflows == 1);
 }
 

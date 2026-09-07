@@ -2,13 +2,8 @@
 #define JETSTREAM_DOMAINS_IO_SOAPY_MODULE_IMPL_HH
 
 #include <atomic>
-#include <cmath>
-#include <cstddef>
 #include <map>
 #include <thread>
-#include <vector>
-
-#include <SoapySDR/Device.hpp>
 #include <SoapySDR/Types.hpp>
 
 #include <jetstream/domains/io/soapy/module.hh>
@@ -16,29 +11,9 @@
 #include <jetstream/tools/circular_buffer.hh>
 #include <jetstream/tools/snapshot.hh>
 
+#include "soapysdr.hh"
+
 namespace Jetstream::Modules {
-
-inline bool SoapyRangeContains(const std::vector<SoapySDR::Range>& ranges, const F32 value) {
-    for (const auto& range : ranges) {
-        const F32 minimum = static_cast<F32>(range.minimum());
-        const F32 maximum = static_cast<F32>(range.maximum());
-        if (value < minimum || value > maximum) {
-            continue;
-        }
-
-        const double step = range.step();
-        if (!std::isfinite(step) || step <= 0.0) {
-            return true;
-        }
-
-        const double stepCount = std::round((static_cast<double>(value) - range.minimum()) / step);
-        const F32 closest = static_cast<F32>(range.minimum() + stepCount * step);
-        if (value == closest) {
-            return true;
-        }
-    }
-    return false;
-}
 
 struct SoapyImpl : public Module::Impl, public DynamicConfig<Soapy> {
  public:
@@ -77,6 +52,8 @@ struct SoapyImpl : public Module::Impl, public DynamicConfig<Soapy> {
         return devices;
     }
 
+    ~SoapyImpl() override;
+
     Result validate() override;
     Result define() override;
     Result create() override;
@@ -99,14 +76,6 @@ struct SoapyImpl : public Module::Impl, public DynamicConfig<Soapy> {
  protected:
     Tensor buffer;
 
-    SoapySDR::Device* soapyDevice = nullptr;
-    SoapySDR::Stream* soapyStream = nullptr;
-    bool biasTeeSupported = false;
-    bool biasTeeNeedsCleanup = false;
-
-    std::vector<SoapySDR::Range> sampleRateRanges;
-    std::vector<SoapySDR::Range> frequencyRanges;
-
     U64 validatedOutputSizeBytes = 0;
     U64 validatedInternalElements = 0;
     U64 validatedInternalSizeBytes = 0;
@@ -121,6 +90,14 @@ struct SoapyImpl : public Module::Impl, public DynamicConfig<Soapy> {
     Tools::Snapshot<std::pair<F32, F32>> throughput{{0.0f, 0.0f}};
 
     Result soapyThreadLoop();
+
+ private:
+    SoapyReceiver receiverDevice;
+
+    Result allocateBuffers();
+    Result configureDevice(const SoapySDR::Kwargs& streamArgs);
+    Result startReceiver();
+    void stopReceiver();
 };
 
 }  // namespace Jetstream::Modules
