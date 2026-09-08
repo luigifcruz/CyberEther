@@ -11,6 +11,7 @@
 
 #include <jetstream/render/sakura/components/button.hh>
 #include <jetstream/render/sakura/components/checkbox.hh>
+#include <jetstream/render/sakura/components/collapse_chevron.hh>
 #include <jetstream/render/sakura/components/combo.hh>
 #include <jetstream/render/sakura/components/debug_window.hh>
 #include <jetstream/render/sakura/components/div.hh>
@@ -67,6 +68,7 @@
 #include <jetstream/render/sakura/components/node/combo.hh>
 #include <jetstream/render/sakura/components/node/editor.hh>
 #include <jetstream/render/sakura/components/node/field.hh>
+#include <jetstream/render/sakura/components/node/field_grid.hh>
 #include <jetstream/render/sakura/components/node/float_input.hh>
 #include <jetstream/render/sakura/components/node/input_row.hh>
 #include <jetstream/render/sakura/components/node/int_input.hh>

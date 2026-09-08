@@ -47,6 +47,8 @@ src_lst += files([
     'plugin.cc',
     'benchmark.cc',
     'testing.cc',
+    'updater.cc',
+    'feedback.cc',
     'compositor.cc',
     'compositor_impl.cc',
     'scheduler.cc',

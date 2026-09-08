@@ -21,6 +21,7 @@ struct Window {
         std::optional<U64> dockId;
         std::optional<Extent2D<F32>> padding;
         std::optional<ColorRGBA<F32>> backgroundColor;
+        std::optional<F32> borderSize;
         std::function<void()> onOpen;
         std::function<void()> onFocus;
         std::function<void()> onClose;

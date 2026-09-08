@@ -7,6 +7,7 @@
 #include "jetstream/block_interface.hh"
 #include "jetstream/detail/block_impl.hh"
 #include "jetstream/domains/core/python/block.hh"
+#include "jetstream/domains/dsp/fft/block.hh"
 #include "jetstream/flowgraph_environment.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/runtime_context.hh"
@@ -30,7 +31,7 @@ struct PythonMetricsSourceTestConfig : Block::Config {
     JST_BLOCK_TYPE(python_metrics_source_test)
     JST_BLOCK_DOMAIN("test")
     JST_BLOCK_DESCRIPTION("Python Metrics Source Test",
-                          "Exposes public metrics for Python block tests.",
+                          "Exposes metrics for Python block tests.",
                           "A test-only block used by Python block metric coverage.")
 
     Result serialize(Parser::Map&) const override {
@@ -62,6 +63,20 @@ struct PythonMetricsSourceTestBlock : Block::Impl,
                                         "private-label",
             []() -> std::any {
                 return std::string("hidden");
+            }));
+        JST_CHECK(defineInterfaceMetric("empty",
+                                        "Empty",
+                                        "Null test metric.",
+                                        "private-null",
+            []() -> std::any {
+                return {};
+            }));
+        JST_CHECK(defineInterfaceMetric("unsupported",
+                                        "Unsupported",
+                                        "Unsupported test metric.",
+                                        "private-diagnostic",
+            []() -> std::any {
+                return Runtime::Context::Diagnostic{};
             }));
         return Result::SUCCESS;
     }
@@ -97,6 +112,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
                  "[modules][python][block][validation]") {
     Blocks::Python config;
     RuntimeType runtime = RuntimeType::PYTHON;
+    U64 expectedInputs = 1;
+    U64 expectedOutputs = 1;
     std::string name;
 
     SECTION("native runtime") {
@@ -105,10 +122,12 @@ TEST_CASE_METHOD(FlowgraphFixture,
     }
     SECTION("too many inputs") {
         config.inputCount = 65;
+        expectedInputs = 64;
         name = "python_inputs_limit";
     }
     SECTION("too many outputs") {
         config.outputCount = 65;
+        expectedOutputs = 64;
         name = "python_outputs_limit";
     }
 
@@ -117,9 +136,25 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     const auto block = viewBlock(name);
     REQUIRE(block.state == Block::State::Errored);
-    REQUIRE(block.interfaceInputs.empty());
-    REQUIRE(block.interfaceOutputs.empty());
-    REQUIRE(block.interfaceConfigs.empty());
+    REQUIRE(block.interfaceInputs.size() == expectedInputs);
+    REQUIRE(block.interfaceInputs.front().name == "input0");
+    REQUIRE(block.interfaceInputs.back().name ==
+            "input" + std::to_string(expectedInputs - 1));
+    REQUIRE(block.interfaceOutputs.size() == expectedOutputs);
+    REQUIRE(block.interfaceOutputs.front().name == "output0");
+    REQUIRE(block.interfaceOutputs.back().name ==
+            "output" + std::to_string(expectedOutputs - 1));
+    REQUIRE(block.interfaceConfigs.size() == 4 + expectedOutputs);
+    REQUIRE(block.interfaceConfigs.at(0).name == "code");
+    REQUIRE(block.interfaceConfigs.at(1).name == "inputCount");
+    REQUIRE(block.interfaceConfigs.at(2).name == "outputCount");
+    REQUIRE(block.interfaceConfigs.at(3).name == "throttled");
+    REQUIRE(block.interfaceConfigs.back().name ==
+            "outputTensor" + std::to_string(expectedOutputs - 1));
+    REQUIRE(block.metrics.size() == 1);
+    const auto diagnostic =
+        std::any_cast<Runtime::Context::Diagnostic>(block.metrics.front().value);
+    REQUIRE(diagnostic.console.empty());
     REQUIRE(block.outputs.empty());
     REQUIRE(JST_LOG_LAST_ERROR().find("[PYTHON]") != std::string::npos);
 }
@@ -220,6 +255,42 @@ TEST_CASE_METHOD(FlowgraphFixture,
     for (Index i = 0; i < computed.size(); ++i) {
         REQUIRE(std::abs(computed.at<F32>(i) - 3.0f) < 1e-5f);
     }
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Python block publishes declared signal axes before downstream validation",
+                 "[modules][python][block][attributes]") {
+    Blocks::Python config;
+    config.code = "def compute(ctx):\n    ctx.outputs[0][...] = 1.0\n";
+    config.inputCount = 0;
+    config.outputCount = 1;
+    config.outputTensorSpecs = {{
+        .shape = "[2, 64]",
+        .axes = "[C, S]",
+    }};
+
+    REQUIRE(flowgraph->blockCreate("python_axes", config, {}, DeviceType::CPU, RuntimeType::PYTHON) ==
+            Result::SUCCESS);
+
+    auto block = viewBlock("python_axes");
+    if (block.state == Block::State::Errored && OptionalPythonRuntimeUnavailableForBlock()) {
+        SUCCEED("Skipping Python block signal axes test because the local Python runtime is unavailable.");
+        return;
+    }
+
+    REQUIRE(block.state == Block::State::Created);
+
+    const Tensor& output = block.outputs.at("output0").tensor;
+    REQUIRE(output.rank() == 2);
+    REQUIRE(std::any_cast<Index>(output.attribute("sampleAxis")) == Index{1});
+    REQUIRE(std::any_cast<Index>(output.attribute("channelAxis")) == Index{0});
+
+    TensorMap inputs;
+    inputs["signal"].requested("python_axes", "output0");
+    REQUIRE(flowgraph->blockCreate("python_axes_fft", Blocks::Fft{}, inputs) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("python_axes_fft").state == Block::State::Created);
+    REQUIRE(viewBlock("python_axes_fft").outputs.at("signal").tensor.shape() == Shape{2, 64});
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
@@ -547,23 +618,54 @@ TEST_CASE_METHOD(FlowgraphFixture,
     PythonMetricsSourceTestConfig sourceConfig;
     REQUIRE(flowgraph->blockCreate("peer", sourceConfig, {}, DeviceType::CPU, RuntimeType::NATIVE) ==
             Result::SUCCESS);
+    REQUIRE(flowgraph->blockCreate("discovered", sourceConfig, {}, DeviceType::CPU, RuntimeType::NATIVE) ==
+            Result::SUCCESS);
 
     Blocks::Python config;
     config.code =
         "_n = 0\n"
         "\n"
+        "def _assert_peer(ctx):\n"
+        "    assert ctx.metrics[\"peer\"].get(\"answer\") == {\n"
+        "        \"value\": 42,\n"
+        "        \"format\": \"label\",\n"
+        "        \"label\": \"Answer\",\n"
+        "        \"help\": \"Public test metric.\",\n"
+        "    }\n"
+        "    assert ctx.metrics[\"peer\"].get(\"secret\") == {\n"
+        "        \"value\": \"hidden\",\n"
+        "        \"format\": \"private-label\",\n"
+        "        \"label\": \"Secret\",\n"
+        "        \"help\": \"Private test metric.\",\n"
+        "    }\n"
+        "    assert ctx.metrics[\"peer\"].get(\"empty\") == {\n"
+        "        \"value\": None,\n"
+        "        \"format\": \"private-null\",\n"
+        "        \"label\": \"Empty\",\n"
+        "        \"help\": \"Null test metric.\",\n"
+        "    }\n"
+        "    assert \"unsupported\" not in ctx.metrics[\"peer\"]\n"
+        "    assert ctx.metrics.get_value(\"peer\", \"answer\") == 42\n"
+        "    assert ctx.metrics.get_value(\"peer\", \"empty\", \"fallback\") is None\n"
+        "    assert ctx.metrics.get_value(\"peer\", \"missing\", \"fallback\") == \"fallback\"\n"
+        "\n"
         "def compute(ctx):\n"
         "    global _n\n"
         "    if _n == 0:\n"
-        "        ctx.metrics.subscribe_all()\n"
+        "        assert ctx.metrics.get_value(\"peer\", \"answer\", -1) == -1\n"
         "        assert \"peer\" not in ctx.metrics\n"
-        "        assert ctx.metrics.get(\"ghost\") == {}\n"
+        "        assert \"discovered\" not in ctx.metrics\n"
+        "        assert ctx.metrics.get_value(\"ghost\", \"answer\", \"missing\") == \"missing\"\n"
         "    else:\n"
+        "        _assert_peer(ctx)\n"
         "        assert \"peer\" in ctx.metrics\n"
-        "        assert ctx.metrics[\"peer\"].get(\"answer\") == 42\n"
-        "        assert \"secret\" not in ctx.metrics[\"peer\"]\n"
         "        assert \"ghost\" in ctx.metrics\n"
         "        assert ctx.metrics[\"ghost\"] == {}\n"
+        "        if _n == 1:\n"
+        "            assert \"discovered\" not in ctx.metrics\n"
+        "            ctx.metrics.subscribe_all()\n"
+        "        else:\n"
+        "            assert ctx.metrics.get_value(\"discovered\", \"answer\") == 42\n"
         "    _n += 1\n"
         "    ctx.outputs[0][...] = float(_n)\n";
     config.inputCount = 0;
@@ -647,7 +749,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Python block preserves live output after provider validation rejection",
+                  "Python block preserves provider validation errors for recovery",
                  "[modules][python][block][validation][reconfigure]") {
     Blocks::Python config;
     config.code = "def compute(ctx):\n    ctx.outputs[0][...] = 9.0\n";
@@ -666,30 +768,36 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(block.state == Block::State::Created);
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
-    const auto outputId = block.outputs.at("output0").tensor.id();
+    REQUIRE(block.outputs.contains("output0"));
 
     Blocks::Python rejected = config;
     rejected.outputTensorSpecs = {{.shape = "[2]", .device = "metal"}};
     Parser::Map rejectedConfig;
     REQUIRE(rejected.serialize(rejectedConfig) == Result::SUCCESS);
-    REQUIRE(flowgraph->blockReconfigure("python_rollback", rejectedConfig) == Result::ERROR);
+    REQUIRE(flowgraph->blockReconfigure("python_rollback", rejectedConfig) == Result::SUCCESS);
 
     block = viewBlock("python_rollback");
-    REQUIRE(block.state == Block::State::Created);
-    REQUIRE(block.outputs.at("output0").tensor.id() == outputId);
+    REQUIRE(block.state == Block::State::Errored);
+    REQUIRE(block.outputs.empty());
+    REQUIRE(block.interfaceOutputs.size() == 1);
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("python_rollback", saved) == Result::SUCCESS);
     Blocks::Python applied;
     REQUIRE(applied.deserialize(saved) == Result::SUCCESS);
-    REQUIRE(applied.outputTensorSpecs == config.outputTensorSpecs);
+    REQUIRE(applied.outputTensorSpecs == rejected.outputTensorSpecs);
+
+    Parser::Map recovery;
+    REQUIRE(config.serialize(recovery) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockReconfigure("python_rollback", recovery) == Result::SUCCESS);
+    block = viewBlock("python_rollback");
+    REQUIRE(block.state == Block::State::Created);
 
     Tensor output = block.outputs.at("output0").tensor;
     for (Index i = 0; i < output.size(); ++i) {
         output.at<F32>(i) = -1.0f;
     }
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
-    REQUIRE(viewBlock("python_rollback").outputs.at("output0").tensor.id() == outputId);
     for (Index i = 0; i < output.size(); ++i) {
         REQUIRE(std::abs(output.at<F32>(i) - 9.0f) < 1e-5f);
     }

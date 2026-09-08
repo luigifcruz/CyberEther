@@ -12,6 +12,7 @@
 #include "jetstream/viewport/adapters/generic.hh"
 
 #include "render/sakura/runtime.hh"
+#include "runtime/python/dependencies/coordinator.hh"
 
 #include "ui.hh"
 #include "meta.hh"
@@ -65,15 +66,19 @@ struct DefaultCompositorState {
 
     struct RuntimeState {
         std::string pythonPath;
+        std::string dependencyPolicy = "prompt";
         std::vector<PythonRuntimeContext::Candidate> pythonCandidates;
         PythonRuntimeContext::Validation pythonValidation;
         PythonRuntimeContext::Validation initialPythonValidation;
+        PythonDependencyRequest dependencyRequest;
+        U64 dependencyGeneration = 0;
     };
 
     struct ModalState {
         std::optional<ModalContent> content;
         std::optional<std::string> flowgraph;
         std::optional<std::string> renameBlockOldName;
+        std::optional<PythonDependencyRequest> dependencyRequest;
     };
 
     struct DebugState {
@@ -83,9 +88,18 @@ struct DefaultCompositorState {
     };
 
     struct UpdateState {
+        bool supported = false;
+        bool upToDate = false;
+        bool failed = false;
         bool checking = false;
         bool available = false;
+        bool downloading = false;
+        bool ready = false;
+        bool applying = false;
+        F32 progress = 0.0f;
         std::string version;
+        std::string releaseNotes;
+        std::string message;
     };
 
     struct FlowgraphState {
@@ -148,6 +162,16 @@ struct DefaultCompositorState {
         std::vector<FilePickerEntry> entries;
     };
 
+    struct FeedbackState {
+        enum class Status {
+            Idle,
+            Submitting,
+        };
+
+        Status status = Status::Idle;
+        std::string text;
+    };
+
     SystemState system;
     SakuraState sakura;
     InterfaceState interface;
@@ -162,6 +186,7 @@ struct DefaultCompositorState {
     ClipboardState clipboard;
     RemoteState remote;
     FilePickerState filePicker;
+    FeedbackState feedback;
 };
 
 }  // namespace Jetstream

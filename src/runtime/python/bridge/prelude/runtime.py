@@ -1,18 +1,49 @@
+SKIP = object()
+
+
+def _jetstream_check_skip(skip):
+    if globals().get("SKIP") is skip:
+        return
+
+    globals()["SKIP"] = skip
+    raise RuntimeError("Python source cannot redefine the reserved SKIP sentinel.")
+
+
 def _jetstream_exec_source(source):
     exec(source, globals())
 
 
-def _jetstream_load_compute(source, _exec_source=_jetstream_exec_source):
+def _jetstream_load_compute(
+    source,
+    _exec_source=_jetstream_exec_source,
+    _check_skip=_jetstream_check_skip,
+    _skip=SKIP,
+):
     _exec_source(source)
+    _check_skip(_skip)
     function = globals().get("compute")
     if not callable(function):
         raise RuntimeError("Python source must define a callable compute() function.")
     return function
 
 
-def _jetstream_bind_compute(function, ctx):
+def _jetstream_bind_compute(
+    function,
+    ctx,
+    _check_skip=_jetstream_check_skip,
+    _skip=SKIP,
+):
     def _runner():
-        return function(ctx)
+        completed = False
+        try:
+            result = function(ctx)
+            completed = True
+        finally:
+            if not completed:
+                globals()["SKIP"] = _skip
+
+        _check_skip(_skip)
+        return result is _skip
 
     return _runner
 

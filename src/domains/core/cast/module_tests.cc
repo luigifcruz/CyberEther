@@ -123,6 +123,41 @@ TEST_CASE("Cast Module - F32 to F32", "[modules][cast][F32]") {
     }
 }
 
+TEST_CASE("Cast Module - F32 to CF32", "[modules][cast][F32][CF32]") {
+    auto implementations = CastImplementations();
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("cast", impl.device, impl.runtime, impl.provider);
+
+            Modules::Cast config;
+            config.outputType = "CF32";
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({3});
+            input.at(0) = 0.5f;
+            input.at(1) = -1.0f;
+            input.at(2) = 0.0f;
+
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            auto& out = ctx.output("buffer");
+            REQUIRE(out.dtype() == DataType::CF32);
+            REQUIRE_THAT(out.at<CF32>(0).real(),
+                         Catch::Matchers::WithinAbs(0.5f, 1e-6f));
+            REQUIRE_THAT(out.at<CF32>(0).imag(),
+                         Catch::Matchers::WithinAbs(0.0f, 1e-6f));
+            REQUIRE_THAT(out.at<CF32>(1).real(),
+                         Catch::Matchers::WithinAbs(-1.0f, 1e-6f));
+            REQUIRE_THAT(out.at<CF32>(1).imag(),
+                         Catch::Matchers::WithinAbs(0.0f, 1e-6f));
+        }
+    }
+}
+
 TEST_CASE("Cast Module - CF32 bypass", "[modules][cast][CF32][bypass]") {
     auto implementations = CastImplementations();
     REQUIRE(!implementations.empty());
@@ -656,8 +691,7 @@ TEST_CASE("Cast Module provider validation rejects unsupported pairs",
         DataType input;
         const char* output;
     };
-    constexpr std::array<InvalidPair, 8> kInvalidPairs = {{
-        {DataType::F32, "CF32"},
+    constexpr std::array<InvalidPair, 7> kInvalidPairs = {{
         {DataType::CF32, "F32"},
         {DataType::I16, "CF32"},
         {DataType::CI16, "F32"},

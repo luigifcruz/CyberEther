@@ -99,5 +99,5 @@ The exact reason is printed to the log. Run CyberEther from a terminal and look 
 
 A few limitations to be aware of:
 
-- Plugins are not supported in the browser version of CyberEther.
+- Browser plugins cannot be reloaded in place because WebAssembly side modules cannot be unloaded. Refresh the page after replacing a plugin.
 - Command-line plugins are temporary. Register a plugin through the preferences window to load it automatically in future sessions.

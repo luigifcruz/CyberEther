@@ -41,7 +41,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Filter taps uses heads over center length", 
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Filter taps rejects zero heads before define",
+                  "Filter taps retains its interface for zero heads",
                  "[modules][dsp][filter_taps][validation]") {
     Blocks::FilterTaps config;
     config.heads = 0;
@@ -52,8 +52,21 @@ TEST_CASE_METHOD(FlowgraphFixture,
     const auto block = viewBlock("taps_zero_heads");
     REQUIRE(block.state == Block::State::Errored);
     REQUIRE(block.interfaceInputs.empty());
-    REQUIRE(block.interfaceOutputs.empty());
-    REQUIRE(block.interfaceConfigs.empty());
+    REQUIRE_FALSE(block.interfaceOutputs.empty());
+    REQUIRE_FALSE(block.interfaceConfigs.empty());
+    REQUIRE(block.outputs.empty());
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Filter taps rejects unrepresentable heads without throwing",
+                 "[modules][dsp][filter_taps][validation]") {
+    Blocks::FilterTaps config;
+    config.heads = std::numeric_limits<U64>::max();
+
+    REQUIRE(flowgraph->blockCreate("taps_huge_heads", config, {}) ==
+            Result::SUCCESS);
+    const auto block = viewBlock("taps_huge_heads");
+    REQUIRE(block.state == Block::State::Errored);
     REQUIRE(block.outputs.empty());
 }
 
@@ -99,7 +112,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Filter taps block rolls back a module-rejected update",
+                  "Filter taps block preserves a module-rejected update for recovery",
                  "[modules][dsp][filter_taps][reconfigure][validation]") {
     Blocks::FilterTaps config;
     config.bandwidth = 0.2e6f;
@@ -107,19 +120,21 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockCreate("taps_update", config, {}) == Result::SUCCESS);
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
 
-    const Tensor output = viewBlock("taps_update").outputs.at("coeffs").tensor;
-    const auto outputId = output.id();
-    const CF32 centerCoeff = output.at<CF32>(0, config.taps / 2);
-
     Parser::Map update;
     update["bandwidth"] = std::numeric_limits<F32>::infinity();
-    REQUIRE(flowgraph->blockReconfigure("taps_update", update) == Result::ERROR);
-    REQUIRE(viewBlock("taps_update").state == Block::State::Created);
-    REQUIRE(viewBlock("taps_update").outputs.at("coeffs").tensor.id() == outputId);
-    REQUIRE(output.at<CF32>(0, config.taps / 2) == centerCoeff);
+    REQUIRE(flowgraph->blockReconfigure("taps_update", update) == Result::SUCCESS);
+    REQUIRE(viewBlock("taps_update").state == Block::State::Errored);
+    REQUIRE(viewBlock("taps_update").outputs.empty());
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("taps_update", saved) == Result::SUCCESS);
-    REQUIRE(std::any_cast<F32>(saved.at("bandwidth")) == config.bandwidth);
+    REQUIRE(std::any_cast<F32>(saved.at("bandwidth")) ==
+            std::numeric_limits<F32>::infinity());
     REQUIRE(std::any_cast<U64>(saved.at("taps")) == config.taps);
+
+    Parser::Map recovery;
+    recovery["bandwidth"] = config.bandwidth;
+    REQUIRE(flowgraph->blockReconfigure("taps_update", recovery) == Result::SUCCESS);
+    REQUIRE(viewBlock("taps_update").state == Block::State::Created);
+    REQUIRE(viewBlock("taps_update").outputs.contains("coeffs"));
 }

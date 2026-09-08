@@ -12,6 +12,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     Parser::Map sourceConfig;
     sourceConfig["signalDataType"] = std::string("CF32");
     sourceConfig["bufferSize"] = std::string("8192");
+    sourceConfig["sampleRate"] = std::string("2000000");
 
     REQUIRE(flowgraph->blockCreate("src", "signal_generator", sourceConfig, {}) ==
             Result::SUCCESS);

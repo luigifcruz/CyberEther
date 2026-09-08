@@ -12,6 +12,7 @@ class JETSTREAM_API CPU {
     explicit CPU(const Config& config);
 
     const std::string& getPythonRuntimePath() const;
+    const std::string& getDependencyPolicy() const;
 
   private:
     Config config;

@@ -6,6 +6,9 @@ namespace Jetstream::Sakura {
 
 struct NodeRangeInput::Impl {
     Config config;
+    bool editing = false;
+    bool focusEditor = false;
+    F32 editValue = 0.0f;
 };
 
 NodeRangeInput::NodeRangeInput() {
@@ -33,6 +36,34 @@ void NodeRangeInput::render(const Context& ctx) const {
 
     F32 value = config.value;
     ImGui::PushID(config.id.c_str());
+
+    if (this->impl->editing) {
+        if (this->impl->focusEditor) {
+            ImGui::SetKeyboardFocusHere();
+            this->impl->focusEditor = false;
+        }
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+                            ImVec2(Scale(ctx, 6.0f), Scale(ctx, 3.0f)));
+        ImGui::SetNextItemWidth(availWidth);
+        if (ImGui::InputFloat("##range_edit",
+                              &this->impl->editValue,
+                              0.0f,
+                              0.0f,
+                              "%.6g",
+                              ImGuiInputTextFlags_EnterReturnsTrue |
+                                  ImGuiInputTextFlags_AutoSelectAll)) {
+            if (config.onChange) {
+                config.onChange(this->impl->editValue);
+            }
+            this->impl->editing = false;
+        } else if (ImGui::IsItemDeactivated()) {
+            this->impl->editing = false;
+        }
+        ImGui::PopStyleVar();
+        ImGui::PopID();
+        return;
+    }
+
     ImGui::InvisibleButton("##range", ImVec2(availWidth, frameHeight));
 
     const ImVec2 rectMin = ImGui::GetItemRectMin();
@@ -44,7 +75,12 @@ void NodeRangeInput::render(const Context& ctx) const {
     fraction = std::clamp(fraction, 0.0f, 1.0f);
     bool changed = false;
 
-    if (ImGui::IsItemActive()) {
+    if (ImGui::IsItemHovered() &&
+        ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+        this->impl->editValue = value;
+        this->impl->editing = true;
+        this->impl->focusEditor = true;
+    } else if (ImGui::IsItemActive()) {
         const F32 mouseX = ImGui::GetIO().MousePos.x;
         const F32 newFraction = std::clamp((mouseX - rectMin.x) / (rectMax.x - rectMin.x), 0.0f, 1.0f);
         const F32 newValue = config.min + newFraction * range;
@@ -67,8 +103,7 @@ void NodeRangeInput::render(const Context& ctx) const {
                                               knobColor,
                                               rounding);
 
-    const std::string valueText = config.integer ? jst::fmt::format("{}", static_cast<U64>(value))
-                                                 : jst::fmt::format("{:.0f}", value);
+    const std::string valueText = jst::fmt::format("{:.0f}", value);
     const ImVec2 textPos(rectMin.x + pad, rectMin.y + (frameHeight - ImGui::GetFontSize()) * 0.5f);
     ImGui::GetWindowDrawList()->AddText(textPos, ImGui::GetColorU32(ImGuiCol_Text), valueText.c_str());
     if (!config.unit.empty()) {

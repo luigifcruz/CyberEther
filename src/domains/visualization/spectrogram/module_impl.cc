@@ -7,12 +7,18 @@
 
 #include "jetstream/render/utils.hh"
 #include "jetstream/constants.hh"
+#include "jetstream/memory/axis.hh"
 #include "jetstream/tools/numeric.hh"
 #include "resources/shaders/spectrogram_shaders.hh"
 
 namespace Jetstream::Modules {
 
 Result SpectrogramImpl::validate() {
+    validatedNumberOfElements = 0;
+    validatedNumberOfBatches = 0;
+    validatedInputElementStride = 0;
+    validatedInputBatchStride = 0;
+
     const auto& config = *candidate();
 
     if (config.height == 0 || config.height > 2048) {
@@ -29,18 +35,33 @@ Result SpectrogramImpl::validate() {
         return Result::SUCCESS;
     }
 
-    if (inputTensor.rank() == 0) {
-        JST_ERROR("[MODULE_SPECTROGRAM] Input buffer rank is 0.");
+    SignalAxes axes;
+    if (MapSignalAxes(inputTensor, IdentityAxisMap(inputTensor.rank()), axes) !=
+        Result::SUCCESS) {
+        JST_ERROR("[MODULE_SPECTROGRAM] Input must contain valid signal axis metadata.");
         return Result::ERROR;
     }
 
-    if (inputTensor.rank() > 2) {
-        JST_ERROR("[MODULE_SPECTROGRAM] Invalid input rank ({}), expected 1 or 2.",
-                  inputTensor.rank());
+    if (axes.sample && axes.channel) {
+        JST_ERROR("[MODULE_SPECTROGRAM] Input cannot contain both sampleAxis and channelAxis.");
         return Result::ERROR;
     }
 
-    const U64 width = inputTensor.shape(inputTensor.rank() - 1);
+    const auto elementAxis = axes.sample ? axes.sample : axes.channel;
+    if (!elementAxis) {
+        JST_ERROR("[MODULE_SPECTROGRAM] Input must contain sampleAxis or channelAxis.");
+        return Result::ERROR;
+    }
+
+    for (Index axis = 0; axis < inputTensor.rank(); ++axis) {
+        if (axis != *elementAxis && (!axes.batch || axis != *axes.batch)) {
+            JST_ERROR("[MODULE_SPECTROGRAM] Unsupported auxiliary input axis {}. "
+                      "Every dimension must be the element axis or batchAxis.", axis);
+            return Result::ERROR;
+        }
+    }
+
+    const U64 width = inputTensor.shape(*elementAxis);
     U64 renderBinCount = 0;
     const U64 maxRenderBinCount = std::min({
         static_cast<U64>(std::numeric_limits<U32>::max()),
@@ -52,6 +73,11 @@ Result SpectrogramImpl::validate() {
         JST_ERROR("[MODULE_SPECTROGRAM] Render bin count exceeds the supported range.");
         return Result::ERROR;
     }
+
+    validatedNumberOfElements = width;
+    validatedNumberOfBatches = axes.batch ? inputTensor.shape(*axes.batch) : 1;
+    validatedInputElementStride = inputTensor.stride(*elementAxis);
+    validatedInputBatchStride = axes.batch ? inputTensor.stride(*axes.batch) : 0;
 
     return Result::SUCCESS;
 }
@@ -71,9 +97,10 @@ Result SpectrogramImpl::create() {
 
     // Calculate parameters.
 
-    const U64 lastAxis = input.rank() - 1;
-    numberOfElements = input.shape()[lastAxis];
-    numberOfBatches = (input.rank() == 2) ? input.shape()[0] : 1;
+    numberOfElements = validatedNumberOfElements;
+    numberOfBatches = validatedNumberOfBatches;
+    inputElementStride = validatedInputElementStride;
+    inputBatchStride = validatedInputBatchStride;
     decayFactor = std::pow(kSpectrogramDecayBase, static_cast<F32>(numberOfBatches));
 
     // Allocate internal buffers.
@@ -203,9 +230,11 @@ Result SpectrogramImpl::createPresent() {
 
     {
         Render::Components::Axis::Config cfg;
+        cfg.showInteriorGrid = false;
+        cfg.showFrameTicks = true;
         cfg.font = window->font("default_mono");
-        cfg.xTitle = "Frequency (MHz)";
-        cfg.yTitle = "Magnitude";
+        cfg.xTitle = xLabel;
+        cfg.yTitle = yLabel;
         JST_CHECK(window->build(axis, cfg));
         JST_CHECK(window->bind(axis));
     }
@@ -224,8 +253,8 @@ Result SpectrogramImpl::createPresent() {
         Render::Surface::Config cfg;
         cfg.framebuffer = framebufferTexture;
         cfg.multisampled = false;
+        cfg.programs.push_back(signalProgram);
         JST_CHECK(axis->surfaceUnderlay(cfg));
-        cfg.programs = {signalProgram};
         JST_CHECK(axis->surfaceOverlay(cfg));
         JST_CHECK(window->build(renderSurface, cfg));
         JST_CHECK(window->bind(renderSurface));
@@ -268,8 +297,9 @@ Result SpectrogramImpl::present() {
     if (interaction.viewChanged) {
         renderSurface->size(interaction.viewSize);
         surfaceUpdateManifestSize("default", interaction.viewSize);
-        JST_CHECK(updateAxisState());
     }
+
+    JST_CHECK(updateAxisState());
 
     signalBuffer->update();
 
@@ -296,35 +326,29 @@ Result SpectrogramImpl::updateAxisState() {
     JST_CHECK(axis->updatePixelSize(pixelSize));
 
     const bool hasFreqAttrs = input.hasAttribute("frequency") && input.hasAttribute("sampleRate");
-    JST_CHECK(axis->updateTitles(hasFreqAttrs ? "Frequency (MHz)" : "Normalized Frequency",
-                                 "Magnitude"));
+    const std::string resolvedXLabel = !hasFreqAttrs && xLabel == "Frequency (MHz)"
+        ? "Normalized Frequency"
+        : xLabel;
+    JST_CHECK(axis->updateTitles(resolvedXLabel, yLabel));
 
-    const auto& paddingScale = axis->paddingScale();
     const F32 maxTranslation = std::abs((1.0f / interaction.zoom) - 1.0f);
     const F32 translation = std::clamp(-2.0f * interaction.offset, -maxTranslation, maxTranslation);
 
     const F32 centerFreq = hasFreqAttrs ? std::any_cast<F32>(input.attribute("frequency")) : 0.0f;
     const F32 sampleRate = hasFreqAttrs ? std::any_cast<F32>(input.attribute("sampleRate")) : 0.0f;
 
-    const U64 numVert = axis->getConfig().numberOfVerticalLines;
-    std::vector<std::string> xLabels(numVert - 2);
-    const F32 viewWidthPx = interaction.viewSize.x / interaction.scale;
-    const F32 tickSpacingPx = (viewWidthPx * paddingScale.x) / (numVert - 1);
-    const U64 tickStep = std::max(U64{1}, static_cast<U64>(std::ceil(kSpectrogramMinTickSpacingPx /
-                                                                      tickSpacingPx)));
+    auto xFormatter = [hasFreqAttrs, centerFreq, sampleRate,
+                       zoom = interaction.zoom, translation](const F32 position) {
+        const F32 normalizedPos = position / zoom - translation;
+        const F32 labelValue = hasFreqAttrs ?
+            (centerFreq + normalizedPos * sampleRate / 2.0f) / 1e6f :
+            (normalizedPos + 1.0f) / 2.0f;
+        return jst::fmt::format("{:.02f}", labelValue);
+    };
 
-    for (U64 i = 1; i < numVert - 1; i++) {
-        if ((i - 1) % tickStep == 0) {
-            const F32 tickX = (2.0f * paddingScale.x / (numVert - 1)) * i - paddingScale.x;
-            const F32 normalizedPos = tickX / (interaction.zoom * paddingScale.x) - translation;
-            const F32 labelValue = hasFreqAttrs ?
-                (centerFreq + normalizedPos * sampleRate / 2.0f) / 1e6f :
-                (normalizedPos + 1.0f) / 2.0f;
-            xLabels[i - 1] = jst::fmt::format("{:.02f}", labelValue);
-        }
-    }
+    axis->setShowFrameTicks(interaction.placement != SurfacePlacementType::Attached);
 
-    JST_CHECK(axis->updateTickLabels(xLabels, {}));
+    JST_CHECK(axis->updateTickFormatters(std::move(xFormatter)));
 
     return Result::SUCCESS;
 }

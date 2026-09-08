@@ -93,6 +93,7 @@ class JETSTREAM_API Tensor : public std::enable_shared_from_this<Tensor> {
     bool hasAttribute(const std::string& key) const;
     std::vector<std::string> attributeKeys() const;
     Result setAttribute(const std::string& key, const std::any& value);
+    Result removeAttribute(const std::string& key);
     Result setDerivedAttribute(const std::string& key,
                                std::function<std::any()> compute);
     std::any attribute(const std::string& key) const;

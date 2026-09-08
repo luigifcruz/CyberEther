@@ -63,8 +63,8 @@ Result WebsocketImplNativeCpu::create() {
 }
 
 Result WebsocketImplNativeCpu::hasPendingCompute() {
-    if (circularBuffer.getOccupancy() < buffer.sizeBytes()) {
-        return circularBuffer.waitBufferOccupancy(buffer.sizeBytes());
+    if (circularBuffer.size() < buffer.sizeBytes()) {
+        return circularBuffer.waitForSize(buffer.sizeBytes());
     }
 
     return Result::SUCCESS;
@@ -75,11 +75,12 @@ Result WebsocketImplNativeCpu::computeSubmit() {
         return Result::ERROR;
     }
 
-    if (circularBuffer.getOccupancy() < buffer.sizeBytes()) {
+    if (circularBuffer.size() < buffer.sizeBytes()) {
         return Result::YIELD;
     }
 
-    circularBuffer.get(reinterpret_cast<I8*>(buffer.data()), buffer.sizeBytes());
+    JST_CHECK(circularBuffer.pop(
+        reinterpret_cast<I8*>(buffer.data()), buffer.sizeBytes()));
 
     return Result::SUCCESS;
 }

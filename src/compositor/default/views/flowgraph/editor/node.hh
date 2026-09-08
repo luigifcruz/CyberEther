@@ -3,6 +3,7 @@
 
 #include "config/base.hh"
 #include "documentation.hh"
+#include "inspect.hh"
 #include "menu.hh"
 #include "metrics/base.hh"
 
@@ -10,6 +11,7 @@
 #include "jetstream/parser.hh"
 #include "jetstream/render/base/texture.hh"
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -55,12 +57,10 @@ struct FlowgraphNode {
         std::string id;
         std::shared_ptr<const Render::Texture> texture;
         F32 rounding = 0.0f;
-        Extent2D<F32> logicalSize = {512.0f, 512.0f};
-        std::optional<Extent2D<F32>> aspectRatioSize;
+        F32 height = 512.0f;
         bool detached = false;
         std::function<void()> onDetach;
         std::function<void(const Sakura::SurfaceResize&)> onAttachedSize;
-        std::function<void(const Sakura::SurfaceResize&)> onDetachedSize;
         std::function<void(MouseEvent)> onMouse;
     };
 
@@ -99,10 +99,12 @@ struct FlowgraphNode {
         std::vector<FlowgraphConfigFieldConfig> configFields;
         std::vector<Surface> surfaces;
         std::vector<DeviceOption> deviceOptions;
+        bool configCollapsed = false;
     };
 
     struct Config {
         std::string id;
+        std::string inspectorId;
         BlockData block;
         bool pasteEnabled = false;
         bool timingEnabled = false;
@@ -110,9 +112,11 @@ struct FlowgraphNode {
         std::function<void(Extent2D<F32>)> onPaste;
         std::function<void()> onRename;
         std::function<void()> onReload;
+        std::function<void(Parser::Map)> onInspectApply;
         std::function<void()> onDelete;
         std::function<void(DeviceType, RuntimeType, ProviderType)> onDeviceSelect;
         std::function<void(F32, F32, F32, F32)> onLayout;
+        std::function<void(bool)> onConfigCollapse;
     };
 
     struct Geometry {
@@ -120,6 +124,9 @@ struct FlowgraphNode {
         Extent2D<F32> screenPosition;
         Extent2D<F32> dimensions;
     };
+
+    static constexpr F32 MinimumNodeWidth = 120.0f;
+    static constexpr F32 MinimumNodeHeight = 100.0f;
 
     static F32 DefaultNodeWidth(const Block::NodeSize& size) {
         switch (size) {
@@ -136,6 +143,14 @@ struct FlowgraphNode {
         }
     }
 
+    static constexpr FlowgraphNodeHeightSpec SurfaceHeightSpec() {
+        return {
+            .policy = FlowgraphNodeHeightPolicy::FillRemaining,
+            .minimum = 150.0f,
+            .grow = 1.0f,
+        };
+    }
+
     void update(Config config) {
         this->config = std::move(config);
         const auto& block = this->config.block;
@@ -149,13 +164,42 @@ struct FlowgraphNode {
             : isCreating ? Sakura::Node::State::Loading
                          : isPending ? Sakura::Node::State::Pending : Sakura::Node::State::Normal;
 
+        fields.resize(block.configFields.size());
+        for (U64 i = 0; i < fields.size(); ++i) {
+            fields[i].update(block.configFields[i]);
+        }
+        fieldGrid.update({
+            .id = this->config.id + "FieldGrid",
+        });
+
+        U64 flexibleFieldCount = 0;
+        F32 flexibleMinimumSum = 0.0f;
+        for (const auto& field : fields) {
+            const auto spec = field.heightSpec();
+            if (spec.policy == FlowgraphNodeHeightPolicy::FillRemaining) {
+                ++flexibleFieldCount;
+                flexibleMinimumSum += std::max(0.0f, spec.minimum);
+            }
+        }
+        const bool hasFlexibleFields = flexibleFieldCount > 0;
+
         bool allSurfacesDetached = hasSurfaces;
+        U64 attachedSurfaceCount = 0;
+        F32 restoredFlexibleHeight = block.configCollapsed ? 0.0f : flexibleMinimumSum;
         for (const auto& surface : block.surfaces) {
             if (!surface.detached) {
                 allSurfacesDetached = false;
-                break;
+                ++attachedSurfaceCount;
+                restoredFlexibleHeight += std::max(SurfaceHeightSpec().minimum,
+                                                   surface.height);
             }
         }
+
+        const bool verticalResize = (!block.configCollapsed && hasFlexibleFields) ||
+                                    attachedSurfaceCount > 0;
+        const auto resizeAxes = verticalResize
+            ? Sakura::Node::ResizeAxes::XY
+            : Sakura::Node::ResizeAxes::X;
 
         if (dimensions.x <= 0.0f) {
             dimensions.x = DefaultNodeWidth(block.nodeSize);
@@ -173,47 +217,221 @@ struct FlowgraphNode {
         } else {
             gridPosition.reset();
         }
+        if (!isCreating && verticalResize && dimensions.y <= 0.0f) {
+            const auto* previousLayout = contentLayout.layout();
+            const bool chromeMeasured = previousLayout && previousLayout->measured;
+            const F32 fixedHeight = chromeMeasured ? previousLayout->fixedHeight : 0.0f;
+            dimensions.y = std::max(MinimumNodeHeight, restoredFlexibleHeight) +
+                           fixedHeight;
+            if (attachedSurfaceCount > 0 && !chromeMeasured) {
+                pendingFlexibleRestoreHeight = restoredFlexibleHeight;
+            }
+        }
+        dimensions.x = std::max(MinimumNodeWidth, dimensions.x);
 
-        if (hasSurfaces) {
-            if (dimensions.y <= 0.0f) {
-                const Surface* firstAttachedSurface = nullptr;
-                for (const auto& surface : block.surfaces) {
-                    if (!surface.detached) {
-                        firstAttachedSurface = &surface;
-                        break;
-                    }
+        Extent2D<F32> nodeDimensions = dimensions;
+        if ((!isCreating && !verticalResize) || (allSurfacesDetached && !hasFlexibleFields)) {
+            nodeDimensions.y = 0.0f;
+            // Hidden flexible fields still own the expanded height. Render
+            // at auto height without overwriting it in the saved layout.
+            if (!hasFlexibleFields) {
+                layoutChanged = layoutChanged || dimensions.y > 0.0f;
+                dimensions.y = 0.0f;
+            }
+        }
+
+        contentChildren.clear();
+        std::vector<std::optional<U64>> fieldLayoutItems(fields.size());
+        std::vector<std::optional<U64>> surfaceLayoutItems(surfaceCount);
+        Sakura::VStack::Config contentLayoutConfig{
+            .id = this->config.id + ":content",
+            .height = nodeDimensions.y > 0.0f
+                ? std::optional<F32>{nodeDimensions.y}
+                : std::nullopt,
+        };
+        auto addContent = [this, &contentLayoutConfig](std::string id,
+                                                       std::optional<Sakura::VStack::Flex> flex,
+                                                       Sakura::VStack::Child child) {
+            const U64 index = contentLayoutConfig.items.size();
+            contentLayoutConfig.items.push_back({
+                .id = std::move(id),
+                .flex = flex,
+            });
+            contentChildren.push_back(std::move(child));
+            return index;
+        };
+
+        if (block.module != "note") {
+            addContent("title", std::nullopt, [this](const Sakura::Context& ctx) {
+                title.render(ctx);
+            });
+            addContent("subtitle", std::nullopt, [this](const Sakura::Context& ctx) {
+                subtitle.render(ctx);
+            });
+        }
+        U64 layoutPinIndex = 0;
+        for (const auto& input : block.inputs) {
+            const U64 index = layoutPinIndex++;
+            addContent("input:" + input.port.id,
+                       std::nullopt,
+                       [this, index](const Sakura::Context& ctx) {
+                           pins[index].render(ctx);
+                       });
+        }
+        for (const auto& output : block.outputs) {
+            const U64 index = layoutPinIndex++;
+            addContent("output:" + output.port.id,
+                       std::nullopt,
+                       [this, index](const Sakura::Context& ctx) {
+                           pins[index].render(ctx);
+                       });
+        }
+
+        if (!isCreating) {
+            for (U64 i = 0; i < block.metrics.size(); ++i) {
+                addContent("metric:" + block.metrics[i].id,
+                           std::nullopt,
+                           [this, i](const Sakura::Context& ctx) {
+                               metrics[i].render(ctx);
+                           });
+            }
+            if (!block.metrics.empty()) {
+                addContent("metrics-spacing", std::nullopt, [this](const Sakura::Context& ctx) {
+                    metricsSpacing.render(ctx);
+                });
+            }
+
+            for (U64 i = 0; !block.configCollapsed && i < fields.size();) {
+                if (fields[i].isSimple()) {
+                    std::string id = "fields";
+                    std::vector<Sakura::NodeFieldGrid::Item> items;
+                    do {
+                        id += ":" + block.configFields[i].id + ":" + block.configFields[i].format;
+                        items.push_back({
+                            .child = [this, i](const Sakura::Context& ctx) {
+                                fields[i].render(ctx);
+                            },
+                        });
+                        ++i;
+                    } while (i < fields.size() && fields[i].isSimple());
+                    addContent(std::move(id), std::nullopt,
+                               [this, items = std::move(items)](const Sakura::Context& ctx) {
+                                   fieldGrid.render(ctx, items);
+                               });
+                    continue;
                 }
-                if (firstAttachedSurface) {
-                    if (firstAttachedSurface->aspectRatioSize.has_value()) {
-                        dimensions.x = firstAttachedSurface->aspectRatioSize->x;
-                        dimensions.y = firstAttachedSurface->aspectRatioSize->y;
+
+                const auto spec = fields[i].heightSpec();
+                std::optional<Sakura::VStack::Flex> flex;
+                if (spec.policy == FlowgraphNodeHeightPolicy::FillRemaining) {
+                    flex = Sakura::VStack::Flex{
+                        .minimum = spec.minimum,
+                        .grow = spec.grow,
+                    };
+                }
+                fieldLayoutItems[i] = addContent(
+                    "field:" + block.configFields[i].id + ":" + block.configFields[i].format,
+                    flex,
+                    [this, i](const Sakura::Context& ctx) {
+                        fields[i].render(ctx);
+                    });
+                ++i;
+            }
+
+            const auto surfaceSpec = SurfaceHeightSpec();
+            for (U64 i = 0; i < surfaceCount; ++i) {
+                if (block.surfaces[i].detached) {
+                    continue;
+                }
+                surfaceLayoutItems[i] = addContent(
+                    "surface:" + block.surfaces[i].id,
+                    Sakura::VStack::Flex{
+                        .minimum = surfaceSpec.minimum,
+                        .grow = surfaceSpec.grow,
+                        .basis = std::max(surfaceSpec.minimum,
+                                          block.surfaces[i].height),
+                    },
+                    [this, i](const Sakura::Context& ctx) {
+                        attachedSurfaces[i].render(ctx);
+                    });
+            }
+        }
+
+        contentLayout.update(std::move(contentLayoutConfig));
+        const auto* contentLayoutState = contentLayout.layout();
+        const F32 minimumNodeHeight = contentLayoutState &&
+                                      contentLayoutState->minimumHeight.has_value()
+            ? std::max(MinimumNodeHeight, *contentLayoutState->minimumHeight)
+            : MinimumNodeHeight;
+        if (verticalResize && !isCreating && dimensions.y < minimumNodeHeight) {
+            dimensions.y = minimumNodeHeight;
+            nodeDimensions.y = dimensions.y;
+        }
+
+        if (attachedSurfaceCount == 0) {
+            pendingFlexibleRestoreHeight.reset();
+        }
+        if (pendingFlexibleRestoreHeight.has_value()) {
+            if (contentLayoutState && contentLayoutState->measured) {
+                const F32 target =
+                    std::max(MinimumNodeHeight, *pendingFlexibleRestoreHeight) +
+                    contentLayoutState->fixedHeight;
+                if (verticalResize && !isCreating && dimensions.y < target - 0.5f) {
+                    dimensions.y = target;
+                    nodeDimensions.y = dimensions.y;
+                } else {
+                    pendingFlexibleRestoreHeight.reset();
+                }
+            }
+        }
+
+        std::vector<std::optional<F32>> fieldAllocatedHeights(fields.size());
+        std::vector<std::optional<F32>> surfaceAllocatedHeights(surfaceCount);
+        if (contentLayoutState) {
+            for (U64 i = 0; i < fields.size(); ++i) {
+                if (fieldLayoutItems[i].has_value()) {
+                    const auto allocated = contentLayoutState->itemHeight(*fieldLayoutItems[i]);
+                    if (!allocated.has_value()) {
+                        fieldAllocatedHeights[i] = allocated;
+                        continue;
+                    }
+                    const auto spec = fields[i].heightSpec();
+                    fieldAllocatedHeights[i] =
+                        spec.policy == FlowgraphNodeHeightPolicy::FillRemaining
+                            ? std::max(*allocated, spec.minimum)
+                            : *allocated;
+                }
+            }
+            for (U64 i = 0; i < surfaceCount; ++i) {
+                if (surfaceLayoutItems[i].has_value()) {
+                    const auto allocated = contentLayoutState->itemHeight(*surfaceLayoutItems[i]);
+                    if (allocated.has_value()) {
+                        surfaceAllocatedHeights[i] =
+                            std::max(*allocated, SurfaceHeightSpec().minimum);
                     } else {
-                        dimensions.y = firstAttachedSurface->logicalSize.y;
+                        surfaceAllocatedHeights[i] = allocated;
                     }
                 }
             }
-        } else if (!isPending) {
-            dimensions.y = 0.0f;
         }
-
-        Extent2D<F32> nodeDimensions = dimensions;
-        if (allSurfacesDetached) {
-            nodeDimensions.y = 0.0f;
+        for (U64 i = 0; i < fields.size(); ++i) {
+            fields[i].setAllocatedHeight(fieldAllocatedHeights[i]);
         }
 
         node.update({
             .id = FlowgraphNodeId(this->config.id),
             .state = nodeState,
-            .verticalResize = hasSurfaces && !allSurfacesDetached,
+            .resize = resizeAxes,
             .dimensions = nodeDimensions,
+            .minimumDimensions = {MinimumNodeWidth, minimumNodeHeight},
             .gridPosition = gridPosition,
             .onContextMenu = [this]() {
                 menuOpen = true;
             },
-            .onGeometryChange = [this, hasSurfaces, allSurfacesDetached](Extent2D<F32> gridPosition,
-                                                                         Extent2D<F32> screenPosition,
-                                                                         Extent2D<F32> dimensions,
-                                                                         Extent2D<F32> contentDimensions) {
+            .onGeometryChange = [this, verticalResize, isCreating](Extent2D<F32> gridPosition,
+                                                                   Extent2D<F32> screenPosition,
+                                                                   Extent2D<F32> dimensions,
+                                                                   Extent2D<F32> contentDimensions) {
                 geometry = {
                     .gridPosition = gridPosition,
                     .screenPosition = screenPosition,
@@ -221,15 +439,10 @@ struct FlowgraphNode {
                 };
 
                 this->dimensions.x = contentDimensions.x;
-                if (hasSurfaces && !allSurfacesDetached) {
+                if (verticalResize && !isCreating) {
                     this->dimensions.y = contentDimensions.y;
                 }
-                if (this->config.onLayout) {
-                    this->config.onLayout(gridPosition.x,
-                                          gridPosition.y,
-                                          this->dimensions.x,
-                                          this->dimensions.y);
-                }
+                layoutChanged = true;
             },
         });
         title.update({
@@ -237,6 +450,13 @@ struct FlowgraphNode {
             .diagnostic = {
                 .state = block.diagnostic.empty() ? Sakura::Node::State::Normal : nodeState,
                 .message = block.diagnostic,
+            },
+            .configCollapsed = block.configCollapsed,
+            .configHasFields = !block.configFields.empty(),
+            .onToggleConfigCollapse = [this]() {
+                if (this->config.onConfigCollapse) {
+                    this->config.onConfigCollapse(!this->config.block.configCollapsed);
+                }
             },
         });
         subtitle.update({.text = block.name});
@@ -277,7 +497,9 @@ struct FlowgraphNode {
             std::vector<std::vector<std::string>> attributeRows;
             for (const auto& key : tensor.attributeKeys()) {
                 std::string encoded;
-                if (Parser::TypedToString(tensor.attribute(key), encoded) != Result::SUCCESS) {
+                const std::any value = tensor.attribute(key);
+                if (!value.has_value() ||
+                    Parser::TypedToString(value, encoded) != Result::SUCCESS) {
                     encoded = "?";
                 }
                 attributeRows.push_back({key, encoded});
@@ -302,11 +524,6 @@ struct FlowgraphNode {
             metrics[i].update(block.metrics[i]);
         }
 
-        fields.resize(block.configFields.size());
-        for (U64 i = 0; i < fields.size(); ++i) {
-            fields[i].update(block.configFields[i]);
-        }
-
         attachedSurfaces.resize(surfaceCount);
         for (U64 i = 0; i < surfaceCount; ++i) {
             const auto& surface = block.surfaces[i];
@@ -314,14 +531,16 @@ struct FlowgraphNode {
             attachedSurfaces[i].update({
                 .id = surface.id,
                 .size = {0.0f, 0.0f},
+                .height = surfaceAllocatedHeights[i],
                 .rounding = surface.rounding,
                 .detachOverlay = true,
-                .aspectRatioSize = surface.aspectRatioSize,
-                .aspectLock = Sakura::SurfaceView::AspectLock::X,
                 .onResolveTexture = [texture]() {
                     return texture ? texture->raw() : 0;
                 },
-                .onSize = surface.onAttachedSize,
+                .onSize = contentLayoutState && contentLayoutState->measured &&
+                                  !pendingFlexibleRestoreHeight.has_value()
+                    ? surface.onAttachedSize
+                    : std::function<void(const Sakura::SurfaceResize&)>{},
                 .onDetach = surface.onDetach,
             });
         }
@@ -353,6 +572,10 @@ struct FlowgraphNode {
                 }
             },
             .onRename = this->config.onRename,
+            .onInspect = [this]() {
+                inspector.open();
+                inspectorOpen = true;
+            },
             .onReload = this->config.onReload,
             .onDelete = this->config.onDelete,
             .onDocumentation = [this]() {
@@ -383,47 +606,40 @@ struct FlowgraphNode {
                 documentationOpen = false;
             },
         });
+        inspector.update({
+            .id = this->config.inspectorId,
+            .name = block.name,
+            .value = block.config,
+            .onApply = this->config.onInspectApply,
+            .onClose = [this]() {
+                inspectorOpen = false;
+            },
+        });
     }
 
     void render(const Sakura::Context& ctx) {
         node.render(ctx, [this](const Sakura::Context& ctx) {
-            if (config.block.module != "note") {
-                title.render(ctx);
-                subtitle.render(ctx);
-            }
-
-            for (const auto& pin : pins) {
-                pin.render(ctx);
-            }
-
-            if (config.block.state == Block::State::Creating) {
-                return;
-            }
-
-            for (const auto& metric : metrics) {
-                metric.render(ctx);
-            }
-            if (!metrics.empty()) {
-                metricsSpacing.render(ctx);
-            }
-
-            for (const auto& field : fields) {
-                field.render(ctx);
-            }
-
-            for (U64 i = 0; i < attachedSurfaces.size(); ++i) {
-                if (i < config.block.surfaces.size() && config.block.surfaces[i].detached) {
-                    continue;
-                }
-                attachedSurfaces[i].render(ctx);
-            }
+            contentLayout.render(ctx, contentChildren);
         });
+
+        // Removing hidden fields can clear the saved height without changing
+        // the rendered geometry. Persist that change after geometry is current.
+        if (layoutChanged && geometry.has_value() && config.onLayout) {
+            layoutChanged = false;
+            config.onLayout(geometry->gridPosition.x,
+                            geometry->gridPosition.y,
+                            dimensions.x,
+                            dimensions.y);
+        }
 
         if (menuOpen) {
             menu.render(ctx);
         }
         if (documentationOpen) {
             documentation.render(ctx);
+        }
+        if (inspectorOpen) {
+            inspector.render(ctx);
         }
         if (config.timingEnabled) {
             runtimeOverlay.render(ctx);
@@ -440,15 +656,22 @@ struct FlowgraphNode {
     Sakura::NodeSubtitle subtitle;
     Sakura::NodeRuntimeOverlay runtimeOverlay;
     Sakura::Spacing metricsSpacing;
+    Sakura::VStack contentLayout;
+    Sakura::VStack::Children contentChildren;
     std::vector<Sakura::NodePin> pins;
     std::vector<FlowgraphMetricInstance> metrics;
+    Sakura::NodeFieldGrid fieldGrid;
     std::vector<FlowgraphConfigFieldInstance> fields;
     std::vector<Sakura::SurfaceView> attachedSurfaces;
     std::vector<FlowgraphNodeMenu::DeviceOption> deviceOptions;
     FlowgraphNodeMenu menu;
     FlowgraphNodeDocumentation documentation;
+    FlowgraphNodeInspector inspector;
     bool menuOpen = false;
     bool documentationOpen = false;
+    bool inspectorOpen = false;
+    bool layoutChanged = false;
+    std::optional<F32> pendingFlexibleRestoreHeight;
 };
 
 }  // namespace Jetstream

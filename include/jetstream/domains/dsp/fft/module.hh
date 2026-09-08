@@ -7,12 +7,10 @@ namespace Jetstream::Modules {
 
 struct Fft : public Module::Config {
     bool forward = true;
-    I64 axis = -1;
-    bool invert = false;
     bool complexOutput = false;
 
     JST_MODULE_TYPE(fft);
-    JST_MODULE_PARAMS(forward, axis, invert, complexOutput);
+    JST_MODULE_PARAMS(forward, complexOutput);
 };
 
 }  // namespace Jetstream::Modules

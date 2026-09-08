@@ -12,6 +12,7 @@ def normalize_system(value):
     value = value.lower()
     aliases = {
         "darwin": "macos",
+        "emscripten": "browser",
         "mac": "macos",
         "osx": "macos",
         "win32": "windows",
@@ -141,7 +142,7 @@ def main():
         dest="minimum_jetstream_version",
         required=True,
         type=parse_version,
-        help="Minimum CyberEther/Jetstream version, for example 1.7.0.",
+        help="Minimum CyberEther/Jetstream version, for example 1.9.2.",
     )
     parser.add_argument(
         "--target",
@@ -164,7 +165,27 @@ def main():
 
     targets = []
     archive_paths = set()
+    target_variants = set()
+    source_devices = {}
     for target in args.target:
+        variant = (target["system"], target["device"], target["arch"])
+        if variant in target_variants:
+            raise SystemExit("duplicate target variant: " + "-".join(variant))
+        target_variants.add(variant)
+
+        source_platform = (
+            target["source"].resolve(),
+            target["system"],
+            target["arch"],
+        )
+        known_device = source_devices.get(source_platform)
+        if known_device is not None and known_device != target["device"]:
+            raise SystemExit(
+                f"target source {target['source']} cannot be used for multiple "
+                f"devices on {target['system']}-{target['arch']}"
+            )
+        source_devices[source_platform] = target["device"]
+
         archive_path = PurePosixPath(
             "targets",
             f"{target['system']}-{target['arch']}-{target['device']}",

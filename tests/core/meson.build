@@ -11,6 +11,7 @@ core_test_domains = {
     ],
     'flowgraph': [
         'flowgraph/api.cc',
+        'flowgraph/config_edits.cc',
         'flowgraph/execution.cc',
         'flowgraph/mutation.cc',
         'flowgraph/state.cc',
@@ -33,6 +34,13 @@ core_test_domains = {
         'render/geomap_labels.cc',
         'render/map_layers.cc',
     ],
+    'sakura': [
+        'sakura/node.cc',
+        'sakura/node_metadata.cc',
+        'sakura/surface_view.cc',
+        'sakura/superluminal_surface.cc',
+        'sakura/vstack.cc',
+    ],
     'runtime': [
         'runtime/scheduler.cc',
         'runtime/native.cc',
@@ -45,15 +53,37 @@ core_test_domains = {
         'serialization/yaml.cc',
     ],
     'settings': ['settings/settings.cc'],
+    'surface': ['surface/surface.cc'],
+    'tools': ['tools/circular_buffer.cc'],
 }
+
+# Sakura components are not exported from the Windows shared library.
+if not jst_is_windows
+    core_test_domains += {
+        'render': core_test_domains['render'] + [
+            'render/field_grid.cc',
+            'render/range_input.cc',
+        ],
+    }
+endif
 
 core_test_targets = []
 foreach domain, sources : core_test_domains
+    # The sakura suite drives the node editor through imnodes internals
+    # (editor context, node pool), which are not exported from the shared
+    # library on Windows.
+    if domain == 'sakura' and jst_is_windows
+        continue
+    endif
     domain_tests = executable(
         'jetstream-core-' + domain + '-tests',
         [core_test_main] + sources,
         dependencies: core_test_dependencies,
         include_directories: core_test_includes,
+        cpp_args: domain == 'runtime' ? [
+            '-DJETSTREAM_PYTHON_TEST_WHEEL="' + (meson.current_source_dir() /
+                'runtime/fixtures/cyberether_cache_fixture-1.0-py3-none-any.whl') + '"',
+        ] : [],
     )
     core_test_targets += [domain_tests]
     test('core-' + domain, domain_tests,

@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <any>
 #include <filesystem>
 #include <limits>
 
@@ -50,6 +51,11 @@ void RequireFileReaderCreateIncomplete(const Registry::ModuleRegistration& impl,
     const Tensor& output = module->outputs().at("signal").tensor;
     REQUIRE(output.dtype() == NameToDataType(config.dataType));
     REQUIRE(output.shape() == Shape{config.batchSize});
+    REQUIRE(output.hasAttribute("sampleAxis"));
+    REQUIRE(output.attribute("sampleAxis").type() == typeid(Index));
+    REQUIRE(std::any_cast<Index>(output.attribute("sampleAxis")) == Index{0});
+    REQUIRE_FALSE(output.hasAttribute("batchAxis"));
+    REQUIRE_FALSE(output.hasAttribute("channelAxis"));
     REQUIRE(module->destroy() == Result::SUCCESS);
 }
 
@@ -283,7 +289,7 @@ TEST_CASE("FileReader module loop wraps at end-of-file",
     const auto path = TestFilePath("loop");
     Cleanup(path);
 
-    WriteRawFile(path, std::vector<F32>{7.0f, 9.0f});
+    WriteRawFile(path, std::vector<F32>{7.0f, 9.0f, 11.0f, 13.0f});
 
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device
@@ -298,14 +304,20 @@ TEST_CASE("FileReader module loop wraps at end-of-file",
             config.playing = true;
             ctx.setConfig(config);
 
-            REQUIRE(ctx.run() == Result::SUCCESS);
+            REQUIRE(ctx.start() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
             auto& out = ctx.output("signal");
             REQUIRE(out.at<F32>(0) == 7.0f);
             REQUIRE(out.at<F32>(1) == 9.0f);
 
-            REQUIRE(ctx.run() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(out.at<F32>(0) == 11.0f);
+            REQUIRE(out.at<F32>(1) == 13.0f);
+
+            REQUIRE(ctx.compute() == Result::SUCCESS);
             REQUIRE(out.at<F32>(0) == 7.0f);
             REQUIRE(out.at<F32>(1) == 9.0f);
+            REQUIRE(ctx.stop() == Result::SUCCESS);
         }
     }
 

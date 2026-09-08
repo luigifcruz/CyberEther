@@ -37,8 +37,8 @@ Result SoapyImplNativeCpu::validate() {
 }
 
 Result SoapyImplNativeCpu::hasPendingCompute() {
-    if (circularBuffer.getOccupancy() < buffer.size()) {
-        return circularBuffer.waitBufferOccupancy(buffer.size());
+    if (circularBuffer.size() < buffer.size()) {
+        return circularBuffer.waitForSize(buffer.size());
     }
 
     return Result::SUCCESS;
@@ -49,11 +49,12 @@ Result SoapyImplNativeCpu::computeSubmit() {
         return Result::ERROR;
     }
 
-    if (circularBuffer.getOccupancy() < buffer.size()) {
+    if (circularBuffer.size() < buffer.size()) {
         return Result::YIELD;
     }
 
-    circularBuffer.get(reinterpret_cast<CF32*>(buffer.data()), buffer.size());
+    JST_CHECK(circularBuffer.pop(
+        reinterpret_cast<CF32*>(buffer.data()), buffer.size()));
 
     return Result::SUCCESS;
 }

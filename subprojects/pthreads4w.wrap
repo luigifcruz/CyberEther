@@ -1,0 +1,10 @@
+[wrap-file]
+directory = pthreads4w-code-07053a521b0a9deb6db2a649cde1f828f2eb1f4f
+source_url = https://downloads.sourceforge.net/project/pthreads4w/pthreads4w-code-v3.0.0.zip
+source_filename = pthreads4w-code-v3.0.0.zip
+source_hash = b81136effb7185c77601fe2e0e6ac19bd996912e4814cebdd3010b0fac9e259b
+patch_directory = pthreads4w
+wrapdb_version = 3.0.0
+
+[provide]
+pthreads4w = pthreads4w_dep

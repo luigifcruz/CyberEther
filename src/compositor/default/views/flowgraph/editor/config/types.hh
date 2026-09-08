@@ -7,12 +7,24 @@
 #include "jetstream/types.hh"
 
 #include <functional>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace Jetstream {
+
+enum class FlowgraphNodeHeightPolicy : U8 {
+    Intrinsic,
+    FillRemaining,
+};
+
+struct FlowgraphNodeHeightSpec {
+    FlowgraphNodeHeightPolicy policy = FlowgraphNodeHeightPolicy::Intrinsic;
+    F32 minimum = 0.0f;
+    F32 grow = 1.0f;
+};
 
 struct FlowgraphConfigFieldConfig {
     std::string id;

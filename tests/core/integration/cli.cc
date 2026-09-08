@@ -372,9 +372,11 @@ TEST_CASE("CLI displays contextual help and version", "[core][integration][cli]"
             "cyberether [options] [flowgraph]",
             "Commands:\n",
             "Global Options:\n",
+            "Runtime Options:\n",
             "Graphics Options:\n",
             "CyberEther Remote Options:\n",
             "Benchmark Options:\n",
+            "Update Options:\n",
             "Examples:\n"},
            {},
            {},
@@ -398,6 +400,20 @@ TEST_CASE("CLI displays contextual help and version", "[core][integration][cli]"
            {"benchmark [options] [block]", "Global Options:\n", "Benchmark Options:\n"},
            {},
            {"Commands:\n", "Graphics Options:\n", "CyberEther Remote Options:\n"});
+    Expect("update help",
+           {"update", "--help"},
+           0,
+           {"update [--install]", "Global Options:\n", "Update Options:\n"},
+           {},
+           {"Commands:\n", "Runtime Options:\n", "Graphics Options:\n", "Benchmark Options:\n", "--dependency-policy", "--python-runtime", "--device-index", "--plugin"});
+    Expect("update install help",
+           {"update", "--install", "--help"},
+           0,
+           {"update [--install]", "Download and install an available update"});
+    Expect("update option before command",
+           {"--install", "update", "--help"},
+           0,
+           {"update [--install]", "Update Options:\n"});
     Expect("command ordering", {"-v", "run", "--help"}, 0, {"run [options] [flowgraph]"});
 
     ExpectVersion("version", {"--version"});
@@ -440,6 +456,23 @@ TEST_CASE("CLI help and version obey left-to-right precedence", "[core][integrat
                      "Missing value for --scale. Expected a positive number.");
 }
 
+TEST_CASE("CLI update command requires an official package",
+           "[core][integration][cli][update]") {
+    const std::array<std::vector<std::string>, 2> arguments{{
+        {"update"},
+        {"update", "--install"},
+    }};
+    for (const auto& invocation : arguments) {
+        const InvocationResult result = Invoke(invocation);
+        CAPTURE(invocation, result.code, result.out, result.err);
+
+        CHECK(result.code == 1);
+        CHECK(result.out.empty());
+        CHECK(result.err == "Error: Automatic updates are available only in official packages.\n");
+        CHECK(result.sandboxUntouched);
+    }
+}
+
 TEST_CASE("CLI accepts every documented enum value", "[core][integration][cli]") {
     struct EnumCase {
         const char* label;
@@ -452,6 +485,12 @@ TEST_CASE("CLI accepts every documented enum value", "[core][integration][cli]")
          "Preferred graphics backend (current: metal)"},
         {"renderer vulkan", {"--renderer=VuLkAn", "--help"},
          "Preferred graphics backend (current: vulkan)"},
+        {"dependency policy prompt", {"--dependency-policy=PROMPT", "--help"},
+         "Dependency installation policy (current: prompt)"},
+        {"dependency policy allow", {"--dependency-policy=AlLoW", "--help"},
+         "Dependency installation policy (current: allow)"},
+        {"dependency policy deny", {"--dependency-policy=DENY", "--help"},
+         "Dependency installation policy (current: deny)"},
         {"codec h264", {"--remote", "--codec=H264", "--help"},
          "Streaming codec (current: h264)"},
         {"codec av1", {"--remote", "--codec=AV1", "--help"},
@@ -497,9 +536,15 @@ TEST_CASE("CLI repeated options use last scalar and idempotent flag values",
            {"--renderer=metal",
             "--renderer",
             "vulkan",
-            "--device-index=1",
-            "--device-index",
-            "2",
+             "--device-index=1",
+             "--device-index",
+             "2",
+             "--dependency-policy=prompt",
+             "--dependency-policy",
+             "allow",
+             "--python-runtime=/first/python",
+             "--python-runtime",
+             "/second/python",
             "--size=320x240",
             "--size",
             "800X600",
@@ -529,8 +574,9 @@ TEST_CASE("CLI repeated options use last scalar and idempotent flag values",
             "second.CEP",
             "--help"},
            0,
-           {"Preferred graphics backend (current: vulkan)",
-            "Vulkan and CUDA device index (current: 2)",
+            {"Preferred graphics backend (current: vulkan)",
+             "Dependency installation policy (current: allow)",
+             "Vulkan and CUDA device index (current: 2)",
             "Viewport size (current: 800x600)",
             "Interface scale factor (current: 2.5)",
             "Target frame rate (current: 75)",
@@ -545,8 +591,10 @@ TEST_CASE("CLI repeated options use last scalar and idempotent flag values",
 
 TEST_CASE("CLI accepts normalized, inline, and boundary values", "[core][integration][cli]") {
     Expect("run values",
-           {"--renderer=METAL",
-            "--device-index=7",
+            {"--renderer=METAL",
+             "--dependency-policy=DENY",
+             "--python-runtime=/opt/python/bin/python3",
+             "--device-index=7",
             "--plugin=first.cep",
             "--plugin",
             "second.cep",
@@ -560,8 +608,9 @@ TEST_CASE("CLI accepts normalized, inline, and boundary values", "[core][integra
             "--auto-join-sessions",
             "--help"},
            0,
-           {"Preferred graphics backend (current: metal)",
-            "Vulkan and CUDA device index (current: 7)",
+            {"Preferred graphics backend (current: metal)",
+             "Dependency installation policy (current: deny)",
+             "Vulkan and CUDA device index (current: 7)",
             "Viewport size (current: 640x480)",
             "Interface scale factor (current: 2.0)",
             "Target frame rate (current: 30)",
@@ -593,8 +642,9 @@ TEST_CASE("CLI accepts normalized, inline, and boundary values", "[core][integra
     Expect("fresh settings after overrides",
            {"--help"},
            0,
-           {"Preferred graphics backend (current: automatic)",
-            "Vulkan and CUDA device index (current: 0)",
+            {"Preferred graphics backend (current: automatic)",
+             "Dependency installation policy (current: prompt)",
+             "Vulkan and CUDA device index (current: 0)",
             "Viewport size (current: 1920x1080)",
             "Interface scale factor (current: 1.0)",
             "Target frame rate (current: 60)",
@@ -618,6 +668,15 @@ TEST_CASE("CLI rejects invalid syntax and command conflicts", "[core][integratio
            {"Vulkan and CUDA device index (current: 7)"});
     Expect("benchmark option with run", {"run", "--format", "json"}, 2, {}, {"only available for the benchmark command"});
     Expect("benchmark option before run", {"--format=csv", "run"}, 2, {}, {"only available for the benchmark command"});
+    Expect("update positional", {"update", "release"}, 2, {}, {"does not accept positional arguments"});
+    Expect("update option with run", {"run", "--install"}, 2, {}, {"only available for the update command"});
+    Expect("update option without command", {"--install"}, 2, {}, {"only available for the update command"});
+    Expect("run option with update", {"update", "--headless"}, 2, {}, {"not available for the update command"});
+    Expect("benchmark option with update", {"update", "--format", "json"}, 2, {}, {"not available for the update command"});
+    Expect("plugin option with update", {"update", "--plugin", "update.cep"}, 2, {}, {"not available for the update command"});
+    Expect("dependency policy with update", {"update", "--dependency-policy", "allow"}, 2, {}, {"not available for the update command"});
+    Expect("Python runtime with update", {"update", "--python-runtime", "/opt/python"}, 2, {}, {"not available for the update command"});
+    Expect("device index with update", {"update", "--device-index", "1"}, 2, {}, {"not available for the update command"});
 }
 
 TEST_CASE("CLI keeps command and delimiter parser boundaries deterministic",
@@ -635,8 +694,11 @@ TEST_CASE("CLI keeps command and delimiter parser boundaries deterministic",
                      {"--", "benchmark", "second.yaml"},
                      "Only one flowgraph may be provided; received 'second.yaml'.");
     ExpectUsageError("benchmark command token after delimiter",
-                     {"benchmark", "--", "run", "second"},
-                     "Only one benchmark block may be provided; received 'second'.");
+                      {"benchmark", "--", "run", "second"},
+                      "Only one benchmark block may be provided; received 'second'.");
+    ExpectUsageError("update argument after delimiter",
+                     {"update", "--", "--install"},
+                     "The update command does not accept positional arguments; received '--install'.");
     ExpectUsageError("bare dash remains option syntax",
                      {"-", "second.yaml"},
                      "Unknown option: '-'.");
@@ -652,6 +714,11 @@ TEST_CASE("CLI enforces option values and dependencies", "[core][integration][cl
     const std::vector<std::pair<const char*, const char*>> errors = {
         {"--plugin", "Missing value for --plugin"},
         {"--plugin=", "Missing value for --plugin"},
+        {"--dependency-policy", "Missing value for --dependency-policy"},
+        {"--dependency-policy=", "Missing value for --dependency-policy"},
+        {"--dependency-policy=invalid", "Invalid value for --dependency-policy"},
+        {"--python-runtime", "Missing value for --python-runtime"},
+        {"--python-runtime=", "Missing value for --python-runtime"},
         {"--renderer", "Missing value for --renderer"},
         {"--renderer=software", "Invalid value for --renderer"},
         {"--broker", "Missing value for --broker"},
@@ -664,6 +731,7 @@ TEST_CASE("CLI enforces option values and dependencies", "[core][integration][cl
         {"--format=xml", "Invalid value for --format"},
         {"--help=true", "does not accept a value"},
         {"--version=true", "does not accept a value"},
+        {"--install=true", "does not accept a value"},
         {"--headless=true", "does not accept a value"},
         {"--remote=true", "does not accept a value"},
         {"--auto-join-sessions=true", "does not accept a value"},

@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_DOMAINS_VISUALIZATION_LINEPLOT_BLOCK_HH
 #define JETSTREAM_DOMAINS_VISUALIZATION_LINEPLOT_BLOCK_HH
 
+#include <string>
+
 #include "jetstream/block.hh"
 
 namespace Jetstream::Blocks {
@@ -8,14 +10,18 @@ namespace Jetstream::Blocks {
 struct Lineplot : public Block::Config {
     U64 averaging = 1;
     U64 decimation = 1;
-    U64 numberOfVerticalLines = 11;
-    U64 numberOfHorizontalLines = 5;
-    F32 thickness = 1.0f;
+    bool maxHold = false;
+    bool fill = true;
+    F32 rangeMin = -100.0f;
+    F32 rangeMax = 0.0f;
+    std::string xLabel = "Frequency (MHz)";
+    std::string yLabel = "Amplitude (dBFS)";
 
     JST_BLOCK_TYPE(lineplot);
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(L);
-    JST_BLOCK_PARAMS(averaging, decimation, numberOfVerticalLines, numberOfHorizontalLines, thickness);
+    JST_BLOCK_PARAMS(averaging, decimation, maxHold, fill, rangeMin, rangeMax,
+                     xLabel, yLabel);
     JST_BLOCK_DESCRIPTION(
         "Lineplot",
         "Displays data in a line plot visualization.",
@@ -27,9 +33,9 @@ struct Lineplot : public Block::Config {
         "- **Averaging**: Number of samples to average for smoothing "
         "(1 = no averaging).\n"
         "- **Decimation**: Decimation factor for input data (1 = no decimation).\n"
-        "- **Number of Vertical Lines**: Number of vertical grid lines.\n"
-        "- **Number of Horizontal Lines**: Number of horizontal grid lines.\n"
-        "- **Thickness**: Line thickness multiplier.\n\n"
+        "- **Max Hold**: Retain the maximum observed amplitude trace.\n"
+        "- **Range Min/Max**: Values shown at the lower and upper Y-axis "
+        "limits. Input data must already be normalized.\n\n"
 
         "## Useful For\n"
         "- Visualizing time-domain signals and waveforms.\n"
@@ -46,7 +52,7 @@ struct Lineplot : public Block::Config {
         "1. Input data is processed with averaging and decimation.\n"
         "2. Signal points are computed for each sample.\n"
         "3. Thick line vertices are generated on GPU for rendering.\n"
-        "4. Grid, signal, and cursor are rendered to a framebuffer.";
+        "4. Grid and signal are rendered to a framebuffer.";
     );
 };
 

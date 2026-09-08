@@ -16,6 +16,7 @@ struct ProgressBar {
         std::string overlay;
         Extent2D<F32> size = {-1.0f, 20.0f};
         std::string colorKey = "action_btn";
+        std::string backgroundColorKey;
     };
 
     ProgressBar();

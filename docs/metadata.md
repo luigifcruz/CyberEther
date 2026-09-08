@@ -75,6 +75,7 @@ Attributes are named values attached to a tensor, and they travel wherever the t
 ```cpp
 Result create() override {
     JST_CHECK(buffer.create(device(), DataType::CF32, {size}));
+    JST_CHECK(SetSignalAxes(buffer, {.sample = Index{0}}));
     buffer.setAttribute("sampleRate", sampleRate);
     buffer.setAttribute("frequency", frequency);
     outputs()["signal"].produced(name(), "signal", buffer);
@@ -93,11 +94,24 @@ if (signal.hasAttribute("sampleRate")) {
 
 Attributes do not propagate through a block automatically. A block that transforms a stream and wants to preserve its description copies what applies, either selectively with `setAttribute` or wholesale with `propagateAttributes(source)`, and then overrides what it changed. A decimator, for example, propagates the input attributes and rewrites `sampleRate`.
 
+### Signal Axes
+
+Signal tensors describe their layout with three standard attributes. The `sampleAxis` attribute identifies the dimension processed as signal samples and is required by consumers that operate on sample sequences. A rank-one tensor with no signal-axis attributes implicitly uses axis `0` as its sample axis. The `batchAxis` attribute optionally identifies ordered element windows processed together, while `channelAxis` identifies independent channels. A tensor containing channel values but no sample dimension may set only `channelAxis`, with an optional `batchAxis`; consumers explicitly declare whether they support this channel-only layout. No other axis meaning is inferred from tensor shape.
+
+Each value is a zero-based axis index stored as exactly `Index` (the `U64` index type). Values must be in range and two roles cannot refer to the same axis. For example, `[batch, channels, samples]` uses `batchAxis=Index{0}`, `channelAxis=Index{1}`, and `sampleAxis=Index{2}`. A rank-one producer may still publish `sampleAxis=Index{0}` explicitly. Other integer types, including `I64`, do not satisfy the contract.
+
+Sample-oriented signal-processing modules resolve this metadata with `ResolveSignalAxes` instead of guessing from rank or position. They process `sampleAxis` independently across other dimensions unless they explicitly sequence batches or consume channels. Consumers that support channel-only tensors validate the optional roles with `MapSignalAxes`. Producers and shape-preserving modules use `SetSignalAxes` to publish or preserve the roles.
+
+The Signal Axes block assigns these roles to an existing tensor without copying or reordering its data. Its positional transform notation is `[B, C, S, _, *]`: `B`, `C`, and `S` assign batch, channel, and sample; `_` leaves a dimension without an explicit role; and `*` preserves the valid input role currently assigned to that dimension. Each resulting role may appear once, omitted trailing dimensions have no explicit role, and a layout containing only `_` entries clears all three stored roles. A conflict such as assigning a role on one axis while inheriting the same role from another is rejected. An untagged rank-one result remains implicitly sampled under the rule above. Leaving the layout blank validates and preserves all input metadata unchanged, while an explicit layout without `*` can replace malformed input roles. Use structural blocks such as Slice, Squeeze Dims, or Permutation separately when the tensor shape or dimension order must also change.
+
+Structural tensor operators remain explicitly axis-configured because selecting, inserting, removing, or reordering dimensions is their operation. Built-in structural blocks remap `sampleAxis`, `batchAxis`, and `channelAxis` to the output axes, or remove a role when its dimension no longer exists or a reshape makes the correspondence ambiguous. Custom blocks must do the same rather than copying positional attributes unchanged.
+
 Hints:
 
 - **Stick to the established names.** Blocks across the tree already use `sampleRate` and `frequency`, and the UI pin tooltips display whatever is attached. Inventing a second spelling for an existing concept breaks interoperability silently.
 - **Attributes are per tensor, not per cycle.** They describe the stream, not the current buffer. Update them when the property changes, such as after a retune, and leave them alone otherwise. Change detection downstream can then key off the value cheaply.
 - **Mind the stored width when reading.** An attribute holds exactly the type the producer stored, and `std::any_cast` throws on a mismatch, so an `F32` sample rate cannot be read as `F64`. Check the type or agree on widths for shared names. Blocks in the tree store `sampleRate` and `frequency` at different widths today, so defensive reads are the safe habit.
+- **Python assignments use their concrete type.** Writing `np.float32` to `ctx.output_attrs` stores `F32`, just as passing `F32` to C++ `setAttribute` does. Reassignment replaces the previous type rather than coercing to it; plain Python `float` stores `F64`.
 
 Python code sees the same values through `ctx.input_attrs` and `ctx.output_attrs`, described in [Tensor Attributes](/docs/python-block#tensor-attributes).
 
@@ -132,9 +146,9 @@ The format string controls presentation and visibility:
 
 - A format of `label` renders a `std::string` in the node body. Any other value type shows as an invalid metric in the UI, so format numbers into text for display.
 - A format of `progressbar` expects a `std::pair<std::string, F32>` holding the display label and a fraction between 0 and 1.
-- Formats prefixed with `private-` are internal by convention. The UI and the Python metrics mapping skip them, which makes them the right place for diagnostics. The filtering lives in those consumers, so C++ code reading through the view receives every metric and applies the convention itself.
+- Formats prefixed with `private-` skip the default node-body display. Use them for metrics meant for programmatic consumers or specialized tools rather than general user visibility. They are not access-controlled, so every metric is still readable from C++. Python receives only the metrics whose values it can convert.
 
-Consumers read metrics through `Flowgraph::View::metrics(blockName, entries)` or, from Python, the subscription-based `ctx.metrics` mapping described in [Block Metrics](/docs/python-block#block-metrics).
+Consumers read metrics through `Flowgraph::View::metrics(blockName, entries)`. From Python, use the `ctx.metrics` mapping described in [Block Metrics](/docs/python-block#block-metrics).
 
 Hints:
 

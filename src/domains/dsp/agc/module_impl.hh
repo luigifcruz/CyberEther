@@ -3,11 +3,13 @@
 
 #include <jetstream/domains/dsp/agc/module.hh>
 #include <jetstream/detail/module_impl.hh>
+#include <jetstream/memory/axis.hh>
 
 namespace Jetstream::Modules {
 
 struct AgcImpl : public Module::Impl, public DynamicConfig<Agc> {
  public:
+    Result validate() override;
     Result define() override;
     Result create() override;
     Result destroy() override;
@@ -16,6 +18,9 @@ struct AgcImpl : public Module::Impl, public DynamicConfig<Agc> {
  protected:
     Tensor input;
     Tensor output;
+    SignalAxes validatedSignalAxes;
+    Index sampleAxis = 0;
+    U64 laneCount = 0;
 };
 
 }  // namespace Jetstream::Modules

@@ -56,7 +56,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Cast block delegates unsupported conversion 
     REQUIRE(viewBlock("cast_pair").outputs.empty());
 }
 
-TEST_CASE_METHOD(FlowgraphFixture, "Cast block preserves bypass after rejected update",
+TEST_CASE_METHOD(FlowgraphFixture, "Cast block preserves invalid output type for recovery",
                  "[modules][cast][block][reconfigure][validation]") {
     Blocks::Window source;
     REQUIRE(flowgraph->blockCreate("cast_update_src", source, {}) == Result::SUCCESS);
@@ -69,19 +69,22 @@ TEST_CASE_METHOD(FlowgraphFixture, "Cast block preserves bypass after rejected u
     REQUIRE(flowgraph->blockCreate("cast_update", config, inputs) == Result::SUCCESS);
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
 
-    const auto outputId = viewBlock("cast_update").outputs.at("buffer").tensor.id();
-
     Parser::Map update;
     update["outputType"] = std::string("F32");
-    REQUIRE(flowgraph->blockReconfigure("cast_update", update) == Result::ERROR);
-    REQUIRE(viewBlock("cast_update").state == Block::State::Created);
+    REQUIRE(flowgraph->blockReconfigure("cast_update", update) == Result::SUCCESS);
+    REQUIRE(viewBlock("cast_update").state == Block::State::Errored);
+    REQUIRE(viewBlock("cast_update").outputs.empty());
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("cast_update", saved) == Result::SUCCESS);
-    REQUIRE(std::any_cast<std::string>(saved.at("outputType")) == config.outputType);
+    REQUIRE(std::any_cast<std::string>(saved.at("outputType")) == "F32");
+
+    Parser::Map recovery;
+    recovery["outputType"] = config.outputType;
+    REQUIRE(flowgraph->blockReconfigure("cast_update", recovery) == Result::SUCCESS);
+    REQUIRE(viewBlock("cast_update").state == Block::State::Created);
 
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
     const Tensor output = viewBlock("cast_update").outputs.at("buffer").tensor;
-    REQUIRE(output.id() == outputId);
     REQUIRE(output.dtype() == DataType::CF32);
 }

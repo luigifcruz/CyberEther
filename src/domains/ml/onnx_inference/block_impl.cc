@@ -43,10 +43,10 @@ struct OnnxInferenceImpl : public Block::Impl, public DynamicConfig<Blocks::Onnx
     bool unsupportedModelDtypes = false;
 
   private:
-    Result readModelTensorNames();
+    Result readModelTensorNames(const std::string& path);
 };
 
-Result OnnxInferenceImpl::readModelTensorNames() {
+Result OnnxInferenceImpl::readModelTensorNames(const std::string& path) {
     inputNames.clear();
     inputShapes.clear();
     inputDtypes.clear();
@@ -54,7 +54,7 @@ Result OnnxInferenceImpl::readModelTensorNames() {
     outputDtypes.clear();
     unsupportedModelDtypes = false;
 
-    if (modelPath.empty()) {
+    if (path.empty()) {
         return Result::SUCCESS;
     }
 
@@ -63,10 +63,10 @@ Result OnnxInferenceImpl::readModelTensorNames() {
         Ort::SessionOptions sessionOptions;
 
 #ifdef JST_OS_WINDOWS
-        const auto ortModelPath = Platform::PathFromUtf8(modelPath);
+        const auto ortModelPath = Platform::PathFromUtf8(path);
         const ORTCHAR_T* ortModelPathData = ortModelPath.c_str();
 #else
-        const ORTCHAR_T* ortModelPathData = modelPath.c_str();
+        const ORTCHAR_T* ortModelPathData = path.c_str();
 #endif
         Ort::Session session(env, ortModelPathData, sessionOptions);
         Ort::AllocatorWithDefaultOptions allocator;
@@ -149,7 +149,7 @@ Result OnnxInferenceImpl::validate() {
 }
 
 Result OnnxInferenceImpl::configure() {
-    if (readModelTensorNames() != Result::SUCCESS) {
+    if (readModelTensorNames(modelPath) != Result::SUCCESS) {
         inputNames.clear();
         inputShapes.clear();
         inputDtypes.clear();
@@ -166,6 +166,14 @@ Result OnnxInferenceImpl::configure() {
 }
 
 Result OnnxInferenceImpl::define() {
+    if (readModelTensorNames(candidate()->modelPath) != Result::SUCCESS) {
+        inputNames.clear();
+        inputShapes.clear();
+        inputDtypes.clear();
+        outputNames.clear();
+        outputDtypes.clear();
+    }
+
     for (size_t i = 0; i < inputNames.size(); ++i) {
         JST_CHECK(defineInterfaceInput(jst::fmt::format("input_{}", i),
                                        inputNames[i],

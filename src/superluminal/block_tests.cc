@@ -22,8 +22,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Dynamic Tensor Import block preserves its import after "
-                 "a rejected update",
+                  "Dynamic Tensor Import block preserves an invalid import for recovery",
                  "[modules][dynamic_tensor_import][block][reconfigure][validation]") {
     Tensor buffer;
     REQUIRE(buffer.create(DeviceType::CPU, DataType::F32, {4}) == Result::SUCCESS);
@@ -40,14 +39,22 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     Parser::Map update;
     update["buffer"] = Tensor{};
-    REQUIRE(flowgraph->blockReconfigure("dti_update", update) == Result::ERROR);
+    REQUIRE(flowgraph->blockReconfigure("dti_update", update) == Result::SUCCESS);
 
     const auto rejected = viewBlock("dti_update");
-    REQUIRE(rejected.state == Block::State::Created);
-    REQUIRE(rejected.outputs.at("buffer").tensor.id() == buffer.id());
-    REQUIRE(rejected.outputs.at("buffer").tensor.at<F32>(1) == 7.0f);
+    REQUIRE(rejected.state == Block::State::Errored);
+    REQUIRE(rejected.outputs.empty());
+    REQUIRE(rejected.interfaceOutputs.size() == 1);
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("dti_update", saved) == Result::SUCCESS);
-    REQUIRE(std::any_cast<Tensor>(saved.at("buffer")).id() == buffer.id());
+    REQUIRE(std::any_cast<Tensor>(saved.at("buffer")).id() == 0);
+
+    Parser::Map recovery;
+    recovery["buffer"] = buffer;
+    REQUIRE(flowgraph->blockReconfigure("dti_update", recovery) == Result::SUCCESS);
+    const auto recovered = viewBlock("dti_update");
+    REQUIRE(recovered.state == Block::State::Created);
+    REQUIRE(recovered.outputs.at("buffer").tensor.id() == buffer.id());
+    REQUIRE(recovered.outputs.at("buffer").tensor.at<F32>(1) == 7.0f);
 }

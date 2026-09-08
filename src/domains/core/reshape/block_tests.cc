@@ -80,7 +80,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Reshape block recovers from invalid target s
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Reshape block preserves shape after rejected update",
+                  "Reshape block preserves invalid shape for recovery",
                  "[modules][reshape][block][reconfigure][validation]") {
     Blocks::Window source;
     source.size = 8;
@@ -94,19 +94,22 @@ TEST_CASE_METHOD(FlowgraphFixture,
     config.shape = "[2, 4]";
     REQUIRE(flowgraph->blockCreate("reshape_update", config, inputs) ==
             Result::SUCCESS);
-    const auto outputId = viewBlock("reshape_update").outputs.at("buffer").tensor.id();
-
     Parser::Map update;
     update["shape"] = std::string("[7]");
-    REQUIRE(flowgraph->blockReconfigure("reshape_update", update) == Result::ERROR);
-    REQUIRE(viewBlock("reshape_update").state == Block::State::Created);
+    REQUIRE(flowgraph->blockReconfigure("reshape_update", update) == Result::SUCCESS);
+    REQUIRE(viewBlock("reshape_update").state == Block::State::Errored);
+    REQUIRE(viewBlock("reshape_update").outputs.empty());
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("reshape_update", saved) == Result::SUCCESS);
-    REQUIRE(std::any_cast<std::string>(saved.at("shape")) == config.shape);
+    REQUIRE(std::any_cast<std::string>(saved.at("shape")) == "[7]");
+
+    Parser::Map recovery;
+    recovery["shape"] = config.shape;
+    REQUIRE(flowgraph->blockReconfigure("reshape_update", recovery) == Result::SUCCESS);
+    REQUIRE(viewBlock("reshape_update").state == Block::State::Created);
 
     const Tensor output = viewBlock("reshape_update").outputs.at("buffer").tensor;
-    REQUIRE(output.id() == outputId);
     REQUIRE(output.shape() == Shape{2, 4});
 }
 

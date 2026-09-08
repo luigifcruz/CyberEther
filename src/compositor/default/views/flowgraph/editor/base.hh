@@ -45,6 +45,7 @@ struct FlowgraphEditor {
         std::function<void(Result, std::string)> onConfigError;
         std::function<void(bool, std::vector<std::string>, std::function<void(std::string)>)> onBrowseConfigPath;
         std::function<void(const std::string&, F32, F32, F32, F32)> onNodeLayout;
+        std::function<void(const std::string&, bool)> onNodeConfigCollapse;
     };
 
     void update(Config config) {
@@ -161,6 +162,7 @@ struct FlowgraphEditor {
             }
             FlowgraphNode::Config nodeConfig{
                 .id = block.name,
+                .inspectorId = this->config.id + ":" + block.name + ":inspector",
                 .block = std::move(nodeBlock),
                 .pasteEnabled = this->config.clipboardHasData,
                 .timingEnabled = this->config.debugTimingEnabled,
@@ -184,6 +186,11 @@ struct FlowgraphEditor {
                         this->config.onReloadBlock(blockName);
                     }
                 },
+                .onInspectApply = [this, blockName = block.name](Parser::Map values) {
+                    if (this->config.onReconfigureBlock) {
+                        this->config.onReconfigureBlock(blockName, std::move(values), false);
+                    }
+                },
                 .onDelete = [this, blockName = block.name]() {
                     if (this->config.onDeleteBlock) {
                         this->config.onDeleteBlock(blockName);
@@ -203,11 +210,24 @@ struct FlowgraphEditor {
                         this->config.onNodeLayout(blockName, x, y, width, height);
                     }
                 },
+                .onConfigCollapse = [this, blockName = block.name](bool collapsed) {
+                    if (this->config.onNodeConfigCollapse) {
+                        this->config.onNodeConfigCollapse(blockName, collapsed);
+                    }
+                },
             };
 
             auto& nodeView = nodeViews[nodeConfig.id];
             nodeView.update(std::move(nodeConfig));
             nodeViewIds.push_back(block.name);
+        }
+
+        for (auto it = nodeViews.begin(); it != nodeViews.end();) {
+            if (!nodeIdToBlockName.contains(FlowgraphNodeId(it->first))) {
+                it = nodeViews.erase(it);
+            } else {
+                ++it;
+            }
         }
 
         for (const auto& block : this->config.graph) {

@@ -360,6 +360,17 @@ TEST_CASE_METHOD(FlowgraphFixture,
                  "[core][flowgraph][fault][creation]") {
     auto& faults = syntheticFaultState();
 
+    SECTION("block validation failure") {
+        faults.failNext(SyntheticFaultPoint::BlockValidate);
+        REQUIRE(flowgraph->blockCreate("fault", kSyntheticFaultType, {}, {}) == Result::SUCCESS);
+
+        const auto block = viewBlock("fault");
+        REQUIRE(block.type == kSyntheticFaultType);
+        REQUIRE(block.state == Block::State::Errored);
+        REQUIRE(block.outputs.empty());
+        REQUIRE(faults.blockValidateCalls == 1);
+    }
+
     SECTION("block define failure") {
         faults.failNext(SyntheticFaultPoint::BlockDefine);
         REQUIRE(flowgraph->blockCreate("fault", kSyntheticFaultType, {}, {}) == Result::SUCCESS);
@@ -395,6 +406,18 @@ TEST_CASE_METHOD(FlowgraphFixture,
         REQUIRE(faults.moduleDefineCalls == 1);
     }
 
+    SECTION("module validation failure") {
+        faults.failNext(SyntheticFaultPoint::ModuleValidate);
+        REQUIRE(flowgraph->blockCreate("fault", kSyntheticFaultType, {}, {}) == Result::SUCCESS);
+
+        const auto block = viewBlock("fault");
+        REQUIRE(block.type == kSyntheticFaultType);
+        REQUIRE(block.state == Block::State::Errored);
+        REQUIRE(block.diagnostic.find("Forced module validation failure") != std::string::npos);
+        REQUIRE(block.outputs.empty());
+        REQUIRE(faults.moduleValidateCalls == 1);
+    }
+
     SECTION("module create failure") {
         faults.failNext(SyntheticFaultPoint::ModuleCreate);
         REQUIRE(flowgraph->blockCreate("fault", kSyntheticFaultType, {}, {}) == Result::SUCCESS);
@@ -406,6 +429,28 @@ TEST_CASE_METHOD(FlowgraphFixture,
         REQUIRE(block.outputs.empty());
         REQUIRE(faults.moduleCreateCalls == 1);
     }
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Incomplete modules recover through reconstruction without reconfiguration hooks",
+                 "[core][flowgraph][fault][incomplete][reconfigure]") {
+    auto& faults = syntheticFaultState();
+    faults.failNext(SyntheticFaultPoint::ModuleCreateIncomplete);
+
+    REQUIRE(flowgraph->blockCreate("fault", kSyntheticFaultType, {}, {}) == Result::SUCCESS);
+    REQUIRE(viewBlock("fault").state == Block::State::Incomplete);
+    REQUIRE(faults.moduleCreateCalls == 1);
+
+    Parser::Map update;
+    update["revision"] = U64{1};
+    REQUIRE(flowgraph->blockReconfigure("fault", update) == Result::SUCCESS);
+
+    const auto recovered = viewBlock("fault");
+    REQUIRE(recovered.state == Block::State::Created);
+    REQUIRE(std::any_cast<U64>(recovered.config.at("revision")) == 1);
+    REQUIRE(recovered.outputs.at("out").resolved());
+    REQUIRE(faults.moduleCreateCalls == 2);
+    REQUIRE(faults.moduleReconfigureCalls == 0);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Runtime module failure marks block errored", "[core][flowgraph][runtime]") {

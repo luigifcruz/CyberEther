@@ -5,6 +5,7 @@
 #include "jetstream/registry.hh"
 #include "jetstream/domains/dsp/window/module.hh"
 
+#include <any>
 #include <cmath>
 #include <unordered_set>
 #include <vector>
@@ -30,6 +31,11 @@ TEST_CASE("Window - Blackman coefficients match formula", "[modules][window]") {
             REQUIRE(out.dtype() == DataType::CF32);
             REQUIRE(out.rank() == 1);
             REQUIRE(out.shape(0) == config.size);
+            REQUIRE(out.hasAttribute("sampleAxis"));
+            REQUIRE(out.attribute("sampleAxis").type() == typeid(Index));
+            REQUIRE(std::any_cast<Index>(out.attribute("sampleAxis")) == Index{0});
+            REQUIRE_FALSE(out.hasAttribute("batchAxis"));
+            REQUIRE_FALSE(out.hasAttribute("channelAxis"));
 
             for (U64 i = 0; i < config.size; ++i) {
                 const F32 expected = static_cast<F32>(

@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -25,7 +26,9 @@ struct TextEditor : public Component {
         std::string fontName = "default_mono";
         bool monospace = true;
         bool lineNumbers = true;
+        bool showActiveLine = false;
         TextGrid::Wrap wrap = TextGrid::Wrap::None;
+        std::optional<Padding> padding;
         Language language = Language::Python;
         std::string backgroundColorKey = "transparent";
         std::string textColorKey = "text_primary";

@@ -11,12 +11,13 @@ namespace Jetstream::Modules {
 struct Python : public Module::Config {
     struct TensorSpec {
         std::string shape = "[1]";
+        std::string axes = "";
         std::string dtype = "F32";
         std::string device = "cpu";
 
         bool operator==(const TensorSpec&) const = default;
 
-        JST_SERDES(shape, dtype, device);
+        JST_SERDES(shape, axes, dtype, device);
     };
 
     std::string code = R"PY(def compute(ctx):

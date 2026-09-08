@@ -135,13 +135,15 @@ TEST_CASE("Frame module supports repeated configurations",
                     Result::SUCCESS);
             ctx.setInput("frame", input);
 
-            REQUIRE(ctx.run() == Result::SUCCESS);
-            REQUIRE(ctx.run() == Result::SUCCESS);
+            REQUIRE(ctx.start() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
 
             Modules::Frame config;
             config.lut = true;
-            ctx.setConfig(config);
-            REQUIRE(ctx.run() == Result::SUCCESS);
+            REQUIRE(ctx.reconfigure(config) == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(ctx.stop() == Result::SUCCESS);
         }
     }
 }

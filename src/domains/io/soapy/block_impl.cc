@@ -35,6 +35,8 @@ Result SoapyImpl::validate() {
 }
 
 Result SoapyImpl::configure() {
+    JST_CHECK(Modules::SoapyImpl::LoadModulePath(modulePath));
+
     std::string resolvedDeviceString;
     const auto availableDeviceList = Modules::SoapyImpl::ListAvailableDevices(hintString);
     const auto selectFirstAvailable = [&](const Modules::SoapyImpl::DeviceList& devices) -> bool {
@@ -59,11 +61,13 @@ Result SoapyImpl::configure() {
         selectFirstAvailable(availableDeviceList);
     }
 
+    moduleConfig->modulePath = modulePath;
     moduleConfig->deviceString = resolvedDeviceString;
     moduleConfig->streamString = streamString;
     moduleConfig->frequency = frequency;
     moduleConfig->sampleRate = sampleRate;
     moduleConfig->automaticGain = automaticGain;
+    moduleConfig->biasTee = biasTee;
     moduleConfig->numberOfBatches = numberOfBatches;
     moduleConfig->numberOfTimeSamples = numberOfTimeSamples;
     moduleConfig->bufferMultiplier = bufferMultiplier;
@@ -72,12 +76,15 @@ Result SoapyImpl::configure() {
 }
 
 Result SoapyImpl::define() {
+    const auto& config = *candidate();
+
     JST_CHECK(defineInterfaceOutput("signal",
                                     "Output",
                                     "The output buffer containing samples from the SDR device."));
 
     std::vector<std::string> deviceOptions;
-    for (const auto& [label, _] : Modules::SoapyImpl::ListAvailableDevices(hintString)) {
+    for (const auto& [label, _] :
+         Modules::SoapyImpl::ListAvailableDevices(config.hintString)) {
         deviceOptions.push_back(jst::fmt::format("{}({})", label, label));
     }
     deviceDropdown = jst::fmt::format("dropdown:{}", jst::fmt::join(deviceOptions, ","));
@@ -87,15 +94,12 @@ Result SoapyImpl::define() {
                                     "Select from available SDR devices.",
                                     deviceDropdown));
 
-    JST_CHECK(defineInterfaceConfig("hintString",
-                                    "Device Hint",
-                                    "Filter string for discovering devices.",
-                                    "text"));
-
     JST_CHECK(defineInterfaceConfig("frequency",
                                     "Frequency",
                                     "Tuner frequency.",
-                                    "float:MHz:3:frequencyStep"));
+                                    std::isfinite(config.frequencyStep) && config.frequencyStep > 0.0f
+                                        ? "float:MHz:3:frequencyStep"
+                                        : "float:MHz:3"));
 
     JST_CHECK(defineInterfaceConfig("sampleRate",
                                     "Sample Rate",
@@ -105,6 +109,11 @@ Result SoapyImpl::define() {
     JST_CHECK(defineInterfaceConfig("automaticGain",
                                     "Automatic Gain",
                                     "Enable automatic gain control.",
+                                    "bool"));
+
+    JST_CHECK(defineInterfaceConfig("biasTee",
+                                    "Bias-T",
+                                    "Enable antenna power when supported by the selected device.",
                                     "bool"));
 
     JST_CHECK(defineInterfaceConfig("numberOfBatches",

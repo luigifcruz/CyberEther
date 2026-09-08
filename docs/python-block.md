@@ -16,11 +16,11 @@ def compute(ctx):
     ctx.outputs[0][...] = ctx.inputs[0] * 2.0
 ```
 
-The code is compiled when the block is created and `compute(ctx)` runs once per compute cycle. Editing the code in the node reloads it in place. Changing the input or output counts recreates the block.
+The code is compiled immediately before its first compute after the flowgraph is scheduled, and `compute(ctx)` then runs once per compute cycle. Editing the code in the node reloads it in place. Changing the input or output counts recreates the block.
 
 ## Choosing a Python Runtime
 
-CyberEther does not ship with its own Python. The block runs on a Python installation already on your system, the same one you use from the terminal, so every package installed there (NumPy, SciPy, CuPy, Astropy, and so on) is available to `compute`. If you already have an environment set up, you can point CyberEther at it and use it directly inside a flowgraph.
+CyberEther does not ship with its own Python. The block runs on a Python installation already on your system, the same one you use from the terminal. Packages from that installation remain available, and scripts can declare additional packages using [inline dependency metadata](#declaring-dependencies).
 
 To pick which installation is used, open **Settings**, select the **Runtime** tab, and use the **Python Runtime** selector:
 
@@ -32,6 +32,38 @@ A badge next to the selector reports whether the choice is usable: **Valid File*
 
 A useful rule of thumb: if `python -c "import numpy"` works in your terminal, selecting that same Python here makes the import work in the block too. Conversely, if an import fails inside the block, check which runtime is selected before reinstalling packages. The block may simply be running a different Python than your terminal.
 
+## Declaring Dependencies
+
+Python blocks support PEP 723 inline script metadata. Declare direct dependencies at the top of the block source:
+
+```python
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#   "numpy>=2.0,<3",
+#   "scipy~=1.14",
+#   "requests>=2.32,<3",
+# ]
+# ///
+
+def compute(ctx):
+    pass
+```
+
+Declare only packages imported directly by the script. Their transitive dependencies are resolved automatically. Prefer broad ranges that describe tested compatibility. Use exact pins only when a specific version is required.
+
+All Python blocks in the process share one interpreter, so CyberEther resolves the union of the dependencies declared by every scheduled block. Scripts without declarations can see packages contributed by other blocks. Incompatible constraints prevent the new union from activating and are reported on the requesting blocks.
+
+CyberEther stores resolved environments beneath its cache in `python-environments/<environment-key>/`. The key includes the selected Python runtime and the dependency union. Each immutable entry contains the direct requirements, a `site-packages` directory, and a completion marker. Incomplete entries are ignored. CyberEther invokes pip from the selected runtime. Package resolution and the download and wheel caches remain pip's responsibility.
+
+The **Dependency Policy** setting controls cache misses:
+
+- The **Prompt** option asks for approval before installing a missing environment.
+- The **Allow** option installs missing environments automatically.
+- The **Deny** option uses existing cached environments but never installs packages.
+
+With **Prompt**, headless runs pause blocks with missing dependencies until the request is approved through a connected interface, such as CyberEther Remote. For fully unattended runs, use **Deny** or pre-populate the cache. Use `--dependency-policy allow` only when the scripts are trusted and automatic installation is intended.
+
 ## Block Configuration
 
 | Field | Meaning |
@@ -39,13 +71,13 @@ A useful rule of thumb: if `python -c "import numpy"` works in your terminal, se
 | **Code** | Python source defining `compute(ctx)`. |
 | **Input Count** | Number of input ports (`input0`, `input1`, ...). |
 | **Output Count** | Number of output ports (`output0`, `output1`, ...). |
-| **Output Tensor Specs** | Per-output shape, data type, and device. |
+| **Output Tensor Specs** | Per-output shape, data type, device, and signal axes. |
 
 Each output tensor is allocated by the block from its spec. The Python code cannot change an output's shape, dtype, or device at runtime. Supported spec dtypes are `F32`, `CF32`, `F64`, `CF64`, `I8`, `I16`, `I32`, `I64`, `U8`, `U16`, `U32`, and `U64`. Supported devices are `cpu` and `cuda`. Blocks with zero inputs (sources) and zero outputs (sinks) are both valid.
 
 ## Working With Tensors
 
-The `ctx.inputs` and `ctx.outputs` mappings are keyed by port index. CPU tensors arrive as NumPy arrays and CUDA tensors as CuPy arrays, both zero-copy views over the tensor memory:
+The `ctx.inputs` and `ctx.outputs` mappings are keyed by port index. The block exposes CPU tensors as NumPy arrays and CUDA tensors as CuPy arrays, both as zero-copy views over the tensor memory:
 
 ```python
 def compute(ctx):
@@ -60,9 +92,23 @@ Rules that matter:
 - **Non-contiguous inputs work.** Strided views produced by blocks like `slice` or `permutation` map to properly strided arrays, with no copies and no restrictions.
 - **Devices can be mixed.** A single block can read CPU and CUDA inputs and produce outputs on either device, independent of the block's own device.
 
+### Skipping a Cycle
+
+Return `SKIP` when the block cannot produce a valid output during the current compute cycle:
+
+```python
+def compute(ctx):
+    if not has_complete_symbol(ctx.inputs[0]):
+        return SKIP
+
+    ctx.outputs[0][...] = decode_symbol(ctx.inputs[0])
+```
+
+The block and every downstream block are skipped for that cycle. All output tensors keep their fixed allocations, but their contents are not consumed downstream. The scheduler retries the block on the next cycle. Returning `None` (including an implicit return) or any other value completes the cycle normally. The global `SKIP` name is reserved for this behavior.
+
 ### CUDA Notes
 
-CUDA tensors require [CuPy](https://cupy.dev) in the Python runtime's environment. NumPy covers CPU tensors. Neither is imported until a tensor of that kind actually exists, so CPU-only systems never need CuPy installed.
+Tensors on the GPU require [CuPy](https://cupy.dev) in the Python runtime's environment. NumPy covers CPU tensors. Neither is imported until a tensor of that kind actually exists, so CPU-only systems never need CuPy installed.
 
 Synchronization contract: inputs are guaranteed complete when `compute` starts, but CuPy launches are asynchronous. Synchronize before returning so that downstream blocks see finished writes:
 
@@ -80,8 +126,8 @@ Work submitted on custom CuPy streams is likewise the user's responsibility to s
 
 Tensors carry named metadata such as `sampleRate` and `frequency`. The block exposes them per port:
 
-- `ctx.input_attrs[i]`: read-only mapping of the input tensor's attributes, including values inherited through upstream propagation and derived attributes, refreshed at the start of every cycle.
-- `ctx.output_attrs[i]`: writable dict for the output tensor. Writes are published when `compute` returns and become visible to downstream blocks in the same cycle, and to pin tooltips in the UI.
+- Input tensor attributes (`ctx.input_attrs[i]`): read-only mapping of the input tensor's attributes, including values inherited through upstream propagation and derived attributes, refreshed at the start of every cycle.
+- Output tensor attributes (`ctx.output_attrs[i]`): writable dict for the output tensor. Writes are published when `compute` returns and become visible to downstream blocks in the same cycle, and to pin tooltips in the UI. Axes declared in the output tensor spec are excluded (see [Declaring Signal Axes](#declaring-signal-axes)).
 
 ```python
 def compute(ctx):
@@ -89,11 +135,25 @@ def compute(ctx):
 
     ctx.outputs[0][...] = ctx.inputs[0][::2]
 
+    ctx.output_attrs[0].update(ctx.input_attrs[0])
     ctx.output_attrs[0]["sampleRate"] = rate / 2.0
     ctx.output_attrs[0]["decimation"] = 2
 ```
 
-Editing a container-valued attribute in place (for example `ctx.output_attrs[0]["meta"]["stage"] = 2`) is detected and published as well. Attributes the block does not touch are left as-is. The block does not automatically propagate input attributes to outputs, so copy the ones you want. Attribute values follow the same width-preserving rules as the environment (see [Type Conversion](#type-conversion)), so halving an F32 sample rate keeps it F32.
+Editing a container-valued attribute in place (for example `ctx.output_attrs[0]["meta"]["stage"] = 2`) is detected and published as well. Attributes the block does not touch are left as-is. The block does not automatically propagate input attributes to outputs, so copy every attribute that still describes the output. Signal outputs must preserve or remap `sampleAxis`, `batchAxis`, and `channelAxis`. Newly assigned axis values must use `numpy.uint64` so they retain the required `Index`/`U64` type. Output attribute assignment mirrors C++ `setAttribute`: every write stores the assigned value's type, so `numpy.float32` stores `F32` while a plain Python `float` stores `F64`.
+
+### Declaring Signal Axes
+
+Downstream blocks validate their inputs when they are created, before any compute cycle runs. A rank-two Python output therefore cannot rely on `compute` alone to publish the required `sampleAxis` metadata in time. Declare the signal axes in the output's tensor spec using the same `[B, C, S]` notation as the shape editor: each comma-separated role sits at the position of its axis (`B` batch, `C` channel, `S` sample). Use `_` for an axis that carries no role, and trailing axes may simply be omitted. Axis roles cannot repeat:
+
+| Spec | Meaning |
+|---|---|
+| `[S]` | Rank-one signal, `sampleAxis=0`. |
+| `[C, S]` | Channel-major stream, `channelAxis=0`, `sampleAxis=1`. |
+| `[B, C, S]` | Batched channels of samples, `batchAxis=0`, `channelAxis=1`, `sampleAxis=2`. |
+| `[B, _, S]` | Batched samples with an unlabeled middle axis. |
+
+The declared axes are published as `sampleAxis`, `batchAxis`, and `channelAxis` attributes when the block is created, so downstream blocks see them while validating, before the first `compute` runs. Blank axes receive no attribute. The declared roles remain visible to the user code as the initial contents of `ctx.output_attrs[i]` and are immutable: compute writes to `sampleAxis`, `batchAxis`, or `channelAxis` are ignored with a console warning, because downstream blocks resolve the declared roles when they are created.
 
 ## Flowgraph Environment
 
@@ -125,15 +185,28 @@ The refresh path is version-gated per key and the publish path only examines key
 
 ## Block Metrics
 
-The `ctx.metrics` mapping gives read-only access to metrics published by other blocks in the flowgraph, keyed by block name and metric name:
+The `ctx.metrics` mapping gives read-only access to metrics published by other blocks in the flowgraph, keyed by block name and metric name. Use `get_value()` when only the current value matters:
 
 ```python
 def compute(ctx):
-    progress = ctx.metrics["file_reader"].get("progress")
-    throughput = ctx.metrics["websocket"].get("throughput")
+    progress = ctx.metrics.get_value("file_reader", "progress", default=0.0)
+    throughput = ctx.metrics.get_value("websocket", "throughput")
 ```
 
-Access is subscription-based. The first read of a block's name registers interest and returns an empty mapping. From the next cycle on, that block's metrics are refreshed at the start of every cycle. Because of the one-cycle priming delay, always read metric values with `.get()` and a sensible default.
+The function takes a block name, a metric name, and an optional default. If the metric is missing or has not yet arrived, it returns the default instead of raising.
+
+Every available metric is also a mapping containing its current value and the interface metadata declared by the block:
+
+```python
+metric = ctx.metrics["file_reader"].get("progress")
+if metric is not None:
+    metric["value"]   # raw metric value
+    metric["format"]  # presentation format
+    metric["label"]   # display label
+    metric["help"]    # description
+```
+
+Access is subscription-based. The first time you touch a block name (through `get_value()`, a direct `[]` lookup, or even `.get()`), that block is registered as a subscriber. The touch itself returns an empty result because the values have not been fetched yet. From the next cycle on, that block's metrics are refreshed at the start of every cycle. Because of this one-cycle priming delay, always provide a default to `get_value()` or check for `None` when reading nested mappings.
 
 To subscribe to every block without hard-coding names, call `ctx.metrics.subscribe_all()`. The dictionary is populated on the next cycle, then you can iterate the currently visible metrics:
 
@@ -155,13 +228,14 @@ Details worth knowing:
 
 - Only subscribed blocks are evaluated, so unrelated metrics cost nothing.
 - A subscription to a block that does not exist (yet) yields an empty mapping and starts producing values if the block appears later.
-- Metrics with `private-` formats (internal timing and diagnostics) are hidden.
-- Values arrive with their native types when possible. Progress-bar style metrics come through as a `(label, fraction)` tuple. Note that some blocks publish display-formatted strings (for example `"12.3 MB/s"`) rather than raw numbers, so check the shape of what you receive.
+- Private-format metrics are included when their values can be converted. The format prefix is not an access-control boundary.
+- Values arrive in the entry's `"value"` field with their native types when possible. Progress-bar style metrics come through as a `(label, fraction)` tuple. Note that some blocks publish display-formatted strings (for example `"12.3 MB/s"`) rather than raw numbers, so check the shape of what you receive.
+- Metrics with unsupported C++ value types are omitted because Python cannot represent their raw value.
 - The mapping is read-only in spirit: writes to it are ignored by the flowgraph and overwritten on refresh.
 
 ## Type Conversion
 
-Values crossing between C++ and Python (the environment, tensor attributes, and metrics) convert as follows. When NumPy is importable in the selected runtime, numeric values are NumPy-typed on both sides, so a value keeps its exact width through a full round trip. Without NumPy, reads fall back to the plain Python types listed in the last column.
+Values crossing between C++ and Python (the environment, tensor attributes, and the `"value"` field of metrics) convert as follows. When NumPy is importable in the selected runtime, numeric values are NumPy-typed on both sides, so a value keeps its exact width through a full round trip. Without NumPy, reads fall back to the plain Python types listed in the last column.
 
 Reading (C++ to Python):
 
@@ -179,10 +253,11 @@ Reading (C++ to Python):
 
 Typed vectors cross as raw buffers in both directions: reads hand NumPy the underlying bytes directly, and writes of native contiguous one-dimensional arrays copy their buffer straight into the store. One copy each way, with no per-element Python objects. The arrays are read-only, so copy before modifying.
 
-Writing (Python to C++) follows two rules:
+Writing (Python to C++) follows these rules:
 
-- **Numeric entries keep their type.** A numeric write onto a numeric entry is coerced to the stored type: an `F32` entry stays `F32`, integer targets are range-checked exactly, floats only land in integer slots when they are integral, and a complex value with a non-zero imaginary part is rejected when the target is real. Rejections are rolled back with a console warning rather than truncated. Writes that change the kind of value, for example a number over a string or a mapping over a scalar, replace the entry instead.
-- **New entries take the value's native width.** Plain Python values default to `bool`, `I64` (`U64` above the signed range), `F64`, `CF64`, and `str`. NumPy scalars store at their exact width, so `np.float32` becomes `F32`, `np.int16` becomes `I16`, and `np.complex64` becomes `CF32`. Homogeneous lists and one-dimensional arrays of floats and complex values become typed vectors of the matching width. Integer content becomes a vector of `U64` when every element is non-negative, since no narrower integer vectors exist. Anything mixed becomes a generic sequence.
+- **Environment numeric entries keep their type.** A numeric write onto an existing environment entry is coerced to the stored type: an `F32` entry stays `F32`, integer targets are range-checked exactly, floats only land in integer slots when they are integral, and a complex value with a non-zero imaginary part is rejected when the target is real. Rejections are rolled back with a console warning rather than truncated. Writes that change the kind of value, for example a number over a string or a mapping over a scalar, replace the entry instead.
+- **Tensor output attributes use the assigned type.** Like C++ `setAttribute`, assigning an output attribute replaces both its value and its type. Reassigning an `F64` attribute with `np.float32`, for example, stores `F32`.
+- **Values without an environment schema take their native width.** Plain Python values default to `bool`, `I64` (`U64` above the signed range), `F64`, `CF64`, and `str`. NumPy scalars store at their exact width, so `np.float32` becomes `F32`, `np.int16` becomes `I16`, and `np.complex64` becomes `CF32`. Homogeneous lists and one-dimensional arrays of floats and complex values become typed vectors of the matching width. Integer content becomes a vector of `U64` when every element is non-negative, since no narrower integer vectors exist. Anything mixed becomes a generic sequence.
 
 Writing `None` stores a null regardless of what the entry previously held, at top level of a value, nested in a dict, or inside a sequence.
 
@@ -190,7 +265,7 @@ Not supported: multi-dimensional arrays and half precision (move bulk data throu
 
 ## State And Lifecycle
 
-- **Globals persist across cycles.** Module-level variables survive between `compute` calls. Use them for accumulators, precomputed tables, or open connections. Module-level code runs once, at block creation or code reload.
+- **Globals persist across cycles.** Module-level variables survive between `compute` calls. Use them for accumulators, precomputed tables, or open connections. Module-level code runs once immediately before the first compute after dependency reconciliation or code reload.
 - **Optional `cleanup()` hook.** If defined, it runs when the block is destroyed or the code is reloaded. Close files, stop threads, and release resources there.
 - **Errors do not stop the flowgraph.** Exceptions raised by `compute` are captured in the block console. The failing cycle is skipped, and the block remains skipped until the code is reloaded or the block is recreated.
 - **Console output routes to the owning block.** Output written to `print()` appears in the block console no matter which thread printed it, and an uncaught exception in a background thread lands there as a traceback too. Captured output identifies as non-interactive, so libraries that check for a terminal fall back to plain formatting.
@@ -233,6 +308,7 @@ One caveat for native client libraries: some compiled extensions hold the interp
 ## Limitations
 
 - One Python interpreter is shared by all Python blocks in the process, so heavy computation in one block delays the others. Blocks do get isolated globals, so one block's variables are not visible to another.
+- One managed dependency environment is active process-wide. Dependency changes reload every scheduled Python block, and native extensions may require restarting CyberEther.
 - Output tensor geometry is fixed by the spec. Reshaping on the fly requires reconfiguring the block.
 - Environment deletions are not supported (see above).
 - The runtime loads at startup from the installation selected in the settings (see [Choosing a Python Runtime](#choosing-a-python-runtime)). If no usable Python is found, the block reports it in its diagnostic and skips computing without affecting the rest of the flowgraph.

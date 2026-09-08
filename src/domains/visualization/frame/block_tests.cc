@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <string>
 
 #include "jetstream/domains/core/ones_tensor/block.hh"
@@ -84,4 +85,44 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockCreate("frame_dtype", Blocks::Frame{}, inputs) ==
             Result::SUCCESS);
     REQUIRE(viewBlock("frame_dtype").state == Block::State::Errored);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Frame block exposes LUT configuration only for scalar frames",
+                 "[modules][frame][block][interface]") {
+    Blocks::OnesTensor scalarSource;
+    scalarSource.shape = {16, 32};
+    scalarSource.dataType = "F32";
+    REQUIRE(flowgraph->blockCreate("frame_scalar_src", scalarSource, {}) ==
+            Result::SUCCESS);
+
+    TensorMap scalarInputs;
+    scalarInputs["frame"].requested("frame_scalar_src", "buffer");
+    REQUIRE(flowgraph->blockCreate("frame_scalar", Blocks::Frame{}, scalarInputs) ==
+            Result::SUCCESS);
+
+    const auto scalar = viewBlock("frame_scalar");
+    const auto scalarLut = std::find_if(
+        scalar.interfaceConfigs.begin(),
+        scalar.interfaceConfigs.end(),
+        [](const auto& field) { return field.name == "lut"; });
+    REQUIRE(scalarLut != scalar.interfaceConfigs.end());
+
+    Blocks::OnesTensor colorSource;
+    colorSource.shape = {16, 32, 3};
+    colorSource.dataType = "F32";
+    REQUIRE(flowgraph->blockCreate("frame_color_src", colorSource, {}) ==
+            Result::SUCCESS);
+
+    TensorMap colorInputs;
+    colorInputs["frame"].requested("frame_color_src", "buffer");
+    REQUIRE(flowgraph->blockCreate("frame_color", Blocks::Frame{}, colorInputs) ==
+            Result::SUCCESS);
+
+    const auto color = viewBlock("frame_color");
+    const auto colorLut = std::find_if(
+        color.interfaceConfigs.begin(),
+        color.interfaceConfigs.end(),
+        [](const auto& field) { return field.name == "lut"; });
+    REQUIRE(colorLut == color.interfaceConfigs.end());
 }

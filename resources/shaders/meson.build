@@ -6,10 +6,9 @@ subdir('global')
 subdir('adsb')
 subdir('constellation')
 subdir('frame')
-subdir('lineplot')
+subdir('signal_view')
 subdir('map')
 subdir('spectrogram')
-subdir('waterfall')
 
 foreach shader_pkg: shader_pkg_lst
     name = shader_pkg.get('name')

@@ -20,9 +20,19 @@
 namespace Jetstream {
 
 struct FlowgraphConfigFieldInstance {
+    FlowgraphNodeHeightSpec heightSpec() const {
+        FlowgraphNodeHeightSpec spec;
+        visitFlexible(*this, [&spec](const auto& field) {
+            spec = field.heightSpec();
+        });
+        return spec;
+    }
+
     void update(FlowgraphConfigFieldConfig config) {
         const auto parts = Parser::SplitString(config.format, ":");
         kind = parts.empty() ? "" : parts[0];
+
+        fullHeight = kind == "float" && parts.size() > 3 && !parts[3].empty();
 
         if (kind == "dropdown") {
             dropdown.update(std::move(config));
@@ -67,6 +77,22 @@ struct FlowgraphConfigFieldInstance {
         }
     }
 
+    bool isSimple() const {
+        if (fullHeight) {
+            return false;
+        }
+        return kind == "dropdown" || kind == "float" || kind == "int" ||
+               kind == "uint" || kind == "bool" || kind == "range" ||
+               kind == "text" || kind == "vector-inline" ||
+               kind == "filepicker" || kind == "filesave";
+    }
+
+    void setAllocatedHeight(std::optional<F32> height) {
+        visitFlexible(*this, [&height](auto& field) {
+            field.setAllocatedHeight(height);
+        });
+    }
+
     void render(const Sakura::Context& ctx) const {
         if (kind == "dropdown") {
             dropdown.render(ctx);
@@ -104,7 +130,17 @@ struct FlowgraphConfigFieldInstance {
     }
 
  private:
+    template<typename Self, typename Visitor>
+    static void visitFlexible(Self& self, Visitor visitor) {
+        if (self.kind == "markdown") {
+            visitor(self.markdown);
+        } else if (self.kind == "python") {
+            visitor(self.python);
+        }
+    }
+
     std::string kind;
+    bool fullHeight = false;
     FlowgraphConfigDropdownField dropdown;
     FlowgraphConfigFloatField floatField;
     FlowgraphConfigIntField intField;

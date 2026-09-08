@@ -2,7 +2,7 @@ project('soapyrtlsdr', 'cpp', version: '0.3.3', default_options: ['cpp_std=c++11
 
 private_cpp_args = []
 interface_cpp_args = []
-private_cpp_args += ['-DSTRERROR_R_XSI']
+private_cpp_args += ['-DSTRERROR_R_XSI', '-DHAS_RTLSDR_SET_BIAS_TEE=1']
 interface_cpp_args += []
 
 deps = [

@@ -7,6 +7,7 @@
 #include "jetstream/registry.hh"
 #include "jetstream/module_interface.hh"
 #include "jetstream/domains/core/slice/module.hh"
+#include "jetstream/memory/axis.hh"
 
 using namespace Jetstream;
 
@@ -401,6 +402,90 @@ TEST_CASE("Slice Module - Direct creation preserves accepted syntax",
                 REQUIRE(module->outputs().contains("buffer"));
                 REQUIRE(module->destroy() == Result::SUCCESS);
             }
+        }
+    }
+}
+
+TEST_CASE("Slice Module - Maps Signal Axes Through Slice Tokens",
+          "[modules][slice][metadata]") {
+    const auto implementations = Registry::ListAvailableModules("slice");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Modules::Slice config;
+            Shape inputShape{2, 3, 4, 5};
+            SignalAxes inputAxes;
+            SignalAxes expectedAxes;
+
+            SECTION("integer axes shift every following role") {
+                config.slice = "[1, :, ...]";
+                inputAxes = {
+                    .sample = Index{3},
+                    .batch = Index{2},
+                    .channel = Index{1},
+                };
+                expectedAxes = {
+                    .sample = Index{2},
+                    .batch = Index{1},
+                    .channel = Index{0},
+                };
+            }
+            SECTION("integer-indexed channel axis is removed") {
+                config.slice = "[..., 1, :]";
+                inputAxes = {
+                    .sample = Index{3},
+                    .batch = Index{0},
+                    .channel = Index{2},
+                };
+                expectedAxes = {
+                    .sample = Index{2},
+                    .batch = Index{0},
+                };
+            }
+
+            TestContext ctx("slice", impl.device, impl.runtime, impl.provider);
+            ctx.setConfig(config);
+            auto input = ctx.createTensor<F32>(inputShape);
+            REQUIRE(SetSignalAxes(input, inputAxes) == Result::SUCCESS);
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+            const auto& output = ctx.output("buffer");
+            SignalAxes outputAxes;
+            REQUIRE(ResolveSignalAxes(output, outputAxes) == Result::SUCCESS);
+            REQUIRE(outputAxes.sample == expectedAxes.sample);
+            REQUIRE(outputAxes.batch == expectedAxes.batch);
+            REQUIRE(outputAxes.channel == expectedAxes.channel);
+            if (config.slice == "[1, :, ...]") {
+                REQUIRE(output.shape() == Shape{3, 4, 5});
+            } else {
+                REQUIRE(output.shape() == Shape{2, 3, 5});
+            }
+        }
+    }
+}
+
+TEST_CASE("Slice Module - Rejects Malformed Signal Axis Metadata",
+          "[modules][slice][metadata][validation]") {
+    const auto implementations = Registry::ListAvailableModules("slice");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("slice", impl.device, impl.runtime, impl.provider);
+            Modules::Slice config;
+            config.slice = "[...]";
+            ctx.setConfig(config);
+
+            auto input = ctx.createTensor<F32>({2, 4});
+            REQUIRE(input.setAttribute(std::string(SampleAxisAttribute), Index{1}) ==
+                    Result::SUCCESS);
+            REQUIRE(input.setAttribute(std::string(ChannelAxisAttribute), I64{0}) ==
+                    Result::SUCCESS);
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::ERROR);
         }
     }
 }

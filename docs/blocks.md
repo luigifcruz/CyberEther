@@ -22,7 +22,6 @@ Tensor manipulation and general plumbing: shaping, casting, arithmetic, and the 
 | Duplicate | `duplicate` | Copies and transfers signal data. |
 | Expand Dims | `expand_dims` | Inserts a new dimension of size 1 at a specified axis. |
 | Flatten | `flatten` | Flattens a tensor to one dimension. |
-| Invert | `invert` | Alternating sign inversion for FFT shift. |
 | Multiply | `multiply` | Element-wise multiplication. |
 | Multiply Constant | `multiply_constant` | Multiplies input by a constant value. |
 | Ones Tensor | `ones_tensor` | Creates a tensor filled with ones. |
@@ -31,6 +30,7 @@ Tensor manipulation and general plumbing: shaping, casting, arithmetic, and the 
 | Python | `python` | Runs custom Python compute code. |
 | Range | `range` | Scales input to a specified range. |
 | Reshape | `reshape` | Changes the shape of a tensor. |
+| Signal Axes | `signal_axes` | Assigns batch, channel, and sample roles to tensor dimensions. |
 | Slice | `slice` | Extracts a subset of a tensor. |
 | Squeeze Dims | `squeeze_dims` | Removes a dimension of size 1 at a specified axis. |
 | Throttle | `throttle` | Limits data flow rate by introducing time delays. |
@@ -46,13 +46,14 @@ The signal processing chain: transforms, filters, demodulators, and generators.
 | AGC | `agc` | Automatic Gain Control. |
 | AM Demodulator | `am` | Demodulates an amplitude modulated signal. |
 | Amplitude | `amplitude` | Calculates the amplitude of a signal in decibels. |
-| Decimator | `decimator` | Decimates a signal by summing along an axis. |
+| Decimator | `decimator` | Decimates a signal along its sample axis. |
 | FFT | `fft` | Performs the Fast Fourier Transform. |
 | FM Demodulator | `fm` | Demodulates a frequency modulated signal. |
 | Filter | `filter` | Filters input signal with a FIR bandpass filter. |
 | Filter Engine | `filter_engine` | Filters a signal using FIR filter coefficients. |
 | Filter Taps | `filter_taps` | Generates FIR bandpass filter coefficients. |
-| Fold | `fold` | Folds the input signal along a specified axis. |
+| Fold | `fold` | Folds the input signal along its sample axis. |
+| Invert | `invert` | Time-domain modulation for FFT shift. |
 | Overlap Add | `overlap_add` | Sums overlap with buffer for streaming convolution. |
 | PSK Demodulator | `psk_demod` | Demodulates PSK signals with carrier and timing recovery. |
 | RRC Filter | `rrc_filter` | Root raised cosine matched filter for PSK modulation. |
@@ -84,4 +85,5 @@ Blocks that render a surface into their node.
 | Lineplot | `lineplot` | Displays data in a line plot visualization. |
 | Note | `note` | Displays formatted markdown text inside a node. |
 | Spectrogram | `spectrogram` | Displays a spectrogram of data. |
+| Spectrum Analyzer | `spectrum_analyzer` | Spectrum trace and waterfall in one view. |
 | Waterfall | `waterfall` | Shows frequency spectrum over time as a scrolling waterfall. |

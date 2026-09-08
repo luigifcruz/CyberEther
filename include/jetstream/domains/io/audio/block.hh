@@ -19,7 +19,8 @@ struct Audio : public Block::Config {
         "Audio playback device interface.",
         "# Audio\n"
         "The Audio block provides an interface to play audio through the system's "
-        "playback devices. It resamples the input signal to match the output "
+        "playback devices. It accepts mono signals or stereo signals annotated "
+        "with sample and channel axes, and resamples them to match the output "
         "device sample rate when the rates differ.\n\n"
 
         "## Arguments\n"
@@ -36,7 +37,7 @@ struct Audio : public Block::Config {
         "## Examples\n"
         "- Play demodulated FM audio:\n"
         "  Config: Device=Default, Sample Rate=48 kHz\n"
-        "  Input: F32[4096] -> Audio playback.\n\n"
+        "  Input: F32[4096] mono or F32[2, 4096] stereo -> Audio playback.\n\n"
 
         "## Implementation\n"
         "Input Buffer -> Resampler -> Circular Buffer -> Audio Device\n"

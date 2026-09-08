@@ -69,7 +69,6 @@ graph:
       enableAgc: false
       rangeMax: 1
       enableScale: true
-      axis: 1
     input:
       buffer: '${graph.soapy.output.signal}'
     meta:
@@ -84,7 +83,6 @@ graph:
     runtime: native
     provider: generic
     config:
-      interpolate: true
       height: 512
     input:
       signal: '${graph.spe33.output.buffer}'
@@ -106,10 +104,7 @@ graph:
     runtime: native
     provider: generic
     config:
-      thickness: 1
       decimation: 1
-      numberOfHorizontalLines: 5
-      numberOfVerticalLines: 11
       averaging: 18
     input:
       signal: '${graph.spe33.output.buffer}'
@@ -170,7 +165,6 @@ graph:
       enableAgc: true
       rangeMax: 1
       enableScale: true
-      axis: 1
     input:
       buffer: '${graph.slice.output.buffer}'
     meta:
@@ -185,7 +179,6 @@ graph:
     runtime: native
     provider: generic
     config:
-      interpolate: true
       height: 512
     input:
       signal: '${graph.spectrum_engine.output.buffer}'
@@ -227,7 +220,6 @@ graph:
       enableAgc: true
       rangeMax: 1
       enableScale: true
-      axis: 1
     input:
       buffer: '${graph.sli23.output.buffer}'
     meta:
@@ -257,7 +249,6 @@ graph:
     runtime: native
     provider: generic
     config:
-      interpolate: true
       height: 512
     input:
       signal: '${graph.spe23.output.buffer}'

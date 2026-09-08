@@ -27,13 +27,16 @@ inline constexpr auto kSyntheticSourceTestProvider = "flowgraph-test-alt";
 
 enum class SyntheticFaultPoint {
     None,
+    BlockValidate,
     BlockConfigure,
     BlockDefine,
     BlockCreate,
     BlockCreateFatal,
     BlockDestroy,
+    ModuleValidate,
     ModuleDefine,
     ModuleCreate,
+    ModuleCreateIncomplete,
     ModuleDestroy,
     ModuleReconfigure,
     ModulePresent,
@@ -41,10 +44,12 @@ enum class SyntheticFaultPoint {
 
 struct SyntheticFaultState {
     SyntheticFaultPoint next = SyntheticFaultPoint::None;
+    U64 blockValidateCalls = 0;
     U64 blockConfigureCalls = 0;
     U64 blockDefineCalls = 0;
     U64 blockCreateCalls = 0;
     U64 blockDestroyCalls = 0;
+    U64 moduleValidateCalls = 0;
     U64 moduleDefineCalls = 0;
     U64 moduleCreateCalls = 0;
     U64 moduleDestroyCalls = 0;
@@ -270,9 +275,20 @@ struct SyntheticMergeModule : Module::Impl,
 };
 
 struct SyntheticFaultModule : Module::Impl,
-                              DynamicConfig<SyntheticFaultModuleConfig>,
-                              NativeCpuRuntimeContext,
-                              Scheduler::Context {
+                               DynamicConfig<SyntheticFaultModuleConfig>,
+                               NativeCpuRuntimeContext,
+                               Scheduler::Context {
+    Result validate() override {
+        auto& state = syntheticFaultState();
+        state.moduleValidateCalls += 1;
+        if (state.consume(SyntheticFaultPoint::ModuleValidate)) {
+            JST_ERROR("[FLOWGRAPH_TEST_FAULT] Forced module validation failure.");
+            return Result::ERROR;
+        }
+
+        return Result::SUCCESS;
+    }
+
     Result define() override {
         auto& state = syntheticFaultState();
         state.moduleDefineCalls += 1;
@@ -291,6 +307,10 @@ struct SyntheticFaultModule : Module::Impl,
         if (state.consume(SyntheticFaultPoint::ModuleCreate)) {
             JST_ERROR("[FLOWGRAPH_TEST_FAULT] Forced module create failure.");
             return Result::ERROR;
+        }
+        if (state.consume(SyntheticFaultPoint::ModuleCreateIncomplete)) {
+            JST_ERROR("[FLOWGRAPH_TEST_FAULT] Forced incomplete module creation.");
+            return Result::INCOMPLETE;
         }
 
         JST_CHECK(output.create(DeviceType::CPU, DataType::F32, {1}));
@@ -435,7 +455,18 @@ struct SyntheticIsolatedBlock : Block::Impl,
                                  DynamicConfig<SyntheticIsolatedBlockConfig> {};
 
 struct SyntheticFaultBlock : Block::Impl,
-                             DynamicConfig<SyntheticFaultBlockConfig> {
+                              DynamicConfig<SyntheticFaultBlockConfig> {
+    Result validate() override {
+        auto& state = syntheticFaultState();
+        state.blockValidateCalls += 1;
+        if (state.consume(SyntheticFaultPoint::BlockValidate)) {
+            JST_ERROR("[FLOWGRAPH_TEST_FAULT] Forced block validation failure.");
+            return Result::ERROR;
+        }
+
+        return Result::SUCCESS;
+    }
+
     Result configure() override {
         auto& state = syntheticFaultState();
         state.blockConfigureCalls += 1;

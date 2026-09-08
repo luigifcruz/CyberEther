@@ -21,11 +21,19 @@ struct Node {
         Loading,
     };
 
+    enum class ResizeAxes : U8 {
+        None = 0,
+        X = 1 << 0,
+        Y = 1 << 1,
+        XY = 3,
+    };
+
     struct Config {
         std::string id;
         State state = State::Normal;
-        bool verticalResize = false;
+        ResizeAxes resize = ResizeAxes::X;
         Extent2D<F32> dimensions = {0.0f, 0.0f};
+        Extent2D<F32> minimumDimensions = {120.0f, 100.0f};
         std::optional<Extent2D<F32>> gridPosition;
         std::function<void()> onContextMenu;
         std::function<void(Extent2D<F32>, Extent2D<F32>, Extent2D<F32>, Extent2D<F32>)> onGeometryChange;

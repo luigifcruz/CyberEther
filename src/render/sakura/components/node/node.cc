@@ -11,6 +11,20 @@ namespace {
 
 constexpr F32 Pi = 3.14159265358979323846f;
 
+ImNodesNodeResizeFlags ToImNodesResizeFlags(const Node::ResizeAxes axes) {
+    switch (axes) {
+        case Node::ResizeAxes::None:
+            return ImNodesNodeResizeFlags_None;
+        case Node::ResizeAxes::X:
+            return ImNodesNodeResizeFlags_X;
+        case Node::ResizeAxes::Y:
+            return ImNodesNodeResizeFlags_Y;
+        case Node::ResizeAxes::XY:
+            return ImNodesNodeResizeFlags_XY;
+    }
+    return ImNodesNodeResizeFlags_None;
+}
+
 ImVec2 PointOnRectPerimeter(const ImVec2& min, const ImVec2& max, F32 distance) {
     const F32 width = max.x - min.x;
     const F32 height = max.y - min.y;
@@ -277,7 +291,9 @@ void Node::render(const Context& ctx, Child child) const {
         impl->appliedGridPositionScale = 0.0f;
     }
 
-    ImNodes::SetNodeVerticalResizeEnabled(imNodesId, config.verticalResize);
+    ImNodes::SetNodeResizeFlags(imNodesId, ToImNodesResizeFlags(config.resize));
+    ImNodes::SetNodeResizeMinimumSize(imNodesId,
+                                      Private::ToImVec2(Scale(ctx, config.minimumDimensions)));
     ImVec2 requestedContentSize = Private::ToImVec2(Scale(ctx, config.dimensions));
     if (config.state == State::Loading) {
         requestedContentSize.y = std::max(requestedContentSize.y, Scale(ctx, 96.0f));
@@ -290,10 +306,11 @@ void Node::render(const Context& ctx, Child child) const {
     if (requestedContentSizeChanged) {
         impl->contentSize = requestedContentSize;
     }
-    if (requestedContentSize.x <= 0.0f) {
+    const auto resizeFlags = ToImNodesResizeFlags(config.resize);
+    if (requestedContentSize.x <= 0.0f && (resizeFlags & ImNodesNodeResizeFlags_X) == 0) {
         impl->contentSize.x = 0.0f;
     }
-    if (requestedContentSize.y <= 0.0f) {
+    if (requestedContentSize.y <= 0.0f && (resizeFlags & ImNodesNodeResizeFlags_Y) == 0) {
         impl->contentSize.y = 0.0f;
     }
     impl->requestedContentSize = requestedContentSize;
@@ -322,7 +339,9 @@ void Node::render(const Context& ctx, Child child) const {
     const ImVec2 nodeScreenPosition = ImNodes::GetNodeScreenSpacePos(imNodesId);
     const ImVec2 nodeDimensions = ImNodes::GetNodeDimensions(imNodesId);
     const F32 measuredContentWidth = std::max(0.0f, nodeDimensions.x - ImNodes::GetStyle().NodePadding.x * 2.0f);
-    if (measuredContentWidth > impl->contentSize.x + Scale(ctx, 0.5f)) {
+    const bool xResizable =
+        (ToImNodesResizeFlags(config.resize) & ImNodesNodeResizeFlags_X) != 0;
+    if (!xResizable && measuredContentWidth > impl->contentSize.x + Scale(ctx, 0.5f)) {
         impl->contentSize.x = measuredContentWidth;
     }
     if (config.state == State::Loading) {

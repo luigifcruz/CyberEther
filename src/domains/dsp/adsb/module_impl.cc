@@ -2,10 +2,16 @@
 
 #include <any>
 #include <chrono>
+#include <cmath>
+
+#include "jetstream/memory/axis.hh"
 
 namespace Jetstream::Modules {
 
 Result AdsbImpl::validate() {
+    validatedSampleAxis = 0;
+    validatedBatchAxis.reset();
+
     if (!inputs().contains("signal")) {
         return Result::SUCCESS;
     }
@@ -13,6 +19,22 @@ Result AdsbImpl::validate() {
     const Tensor& inputTensor = inputs().at("signal").tensor;
     if (!inputTensor.validShape() || inputTensor.size() == 0) {
         return Result::SUCCESS;
+    }
+
+    SignalAxes axes;
+    if (ResolveSignalAxes(inputTensor, axes) != Result::SUCCESS) {
+        JST_ERROR("[MODULE_ADSB] Input must contain valid signal axis metadata.");
+        return Result::ERROR;
+    }
+    if (axes.channel) {
+        JST_ERROR("[MODULE_ADSB] Channel inputs are not supported.");
+        return Result::ERROR;
+    }
+    const Index expectedRank = axes.batch ? 2 : 1;
+    if (inputTensor.rank() != expectedRank) {
+        JST_ERROR("[MODULE_ADSB] Input must contain only a sample axis and "
+                  "an optional batch axis.");
+        return Result::ERROR;
     }
 
     if (inputTensor.hasAttribute("frequency")) {
@@ -25,11 +47,20 @@ Result AdsbImpl::validate() {
 
     if (inputTensor.hasAttribute("sampleRate")) {
         const std::any value = inputTensor.attribute("sampleRate");
-        if (!std::any_cast<F32>(&value)) {
+        const auto* sampleRate = std::any_cast<F32>(&value);
+        if (!sampleRate) {
             JST_ERROR("[MODULE_ADSB] Input sample rate metadata must have type F32.");
             return Result::ERROR;
         }
+        if (!std::isfinite(*sampleRate) || *sampleRate != 2.0e6f) {
+            JST_ERROR("[MODULE_ADSB] Input sample rate must be 2 MHz ({}).",
+                      *sampleRate);
+            return Result::ERROR;
+        }
     }
+
+    validatedSampleAxis = *axes.sample;
+    validatedBatchAxis = axes.batch;
 
     return Result::SUCCESS;
 }
@@ -42,6 +73,8 @@ Result AdsbImpl::define() {
 
 Result AdsbImpl::create() {
     input = inputs().at("signal").tensor;
+    sampleAxis = validatedSampleAxis;
+    batchAxis = validatedBatchAxis;
 
     if (input.hasAttribute("frequency")) {
         const std::any value = input.attribute("frequency");

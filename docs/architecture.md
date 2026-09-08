@@ -47,11 +47,11 @@ Two consequences worth internalizing:
 
 ## Paths Worth Tracing
 
-**Creating a block.** `Flowgraph::blockCreate` builds the block through the registry, resolves the requested input links against existing block outputs, and runs the block lifecycle. The block's `create()` instantiates modules, each module registers with the scheduler, and the scheduler rebuilds its topological order and segments. A block whose inputs cannot resolve yet is kept in the incomplete state rather than rejected.
+**Creating a block.** `Flowgraph::blockCreate` builds the block through the registry, resolves the requested input links against existing block outputs, and runs the block lifecycle. The candidate interface is defined before semantic validation, so an invalid block can still expose its ports and editable fields. The block's `create()` instantiates modules, each module registers with the scheduler, and the scheduler rebuilds its topological order and segments. A block whose inputs cannot resolve yet is kept in the incomplete state rather than rejected.
 
 **A compute cycle.** The scheduler snapshots the source modules, polls each source's `hasPendingCompute()` until all report ready (this is where a blocking source paces the graph), then executes the segments in order. Each runtime runs its modules' `computeSubmit`, honoring the skip propagation and failure semantics described in [the compute contract](/docs/blocks-and-modules#compute-contract). Module failures are collected and converted into errored blocks after the cycle, and the rest of the graph keeps running.
 
-**Editing a configuration.** The compositor writes the change through `blockReconfigure`, which synchronizes with the scheduler and calls the block's `reconfigure`. An in-place change ends there. A `RECREATE` answer rebuilds affected blocks with the new configuration. If applying an edit fails, the flowgraph restores the previous graph state and returns the error.
+**Editing a configuration.** The compositor writes the change through `blockReconfigure`, which synchronizes with the scheduler and calls the block's `reconfigure`. An in-place change ends there. A `RECREATE` answer rebuilds affected blocks with the new configuration. Semantic validation errors also rebuild and publish the candidate as an errored block, preserving requested downstream links for recovery. If applying a validated edit fails, the flowgraph restores the previous graph state and returns the error.
 
 **Loading a flowgraph file.** The YAML is parsed into a document, migrated across format versions if needed, topologically sorted so producers exist before consumers, and replayed through the same `blockCreate` path the editor uses. There is exactly one way blocks come into existence, whatever the origin.
 

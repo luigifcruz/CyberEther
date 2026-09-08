@@ -7,12 +7,17 @@ namespace Jetstream::Sakura {
 struct Table::Impl {
     Config config;
     std::string tableId;
+    bool overflowing = false;
+
+    bool scrollY() const {
+        return config.size.y != 0.0f || (config.maxHeight > 0.0f && overflowing);
+    }
 
     ImGuiTableFlags flags() const {
         ImGuiTableFlags flags = ImGuiTableFlags_SizingStretchProp |
                                 ImGuiTableFlags_Borders |
                                 ImGuiTableFlags_RowBg;
-        if (config.size.y != 0.0f) {
+        if (scrollY()) {
             flags |= ImGuiTableFlags_ScrollY;
         }
         return flags;
@@ -74,7 +79,12 @@ void Table::render(const Context& ctx, Rows rows) const {
         return;
     }
 
-    const ImVec2 size = Private::ToImVec2(Scale(ctx, config.size));
+    const bool capped = config.size.y == 0.0f && config.maxHeight > 0.0f;
+    const F32 maxHeight = Scale(ctx, config.maxHeight);
+    ImVec2 size = Private::ToImVec2(Scale(ctx, config.size));
+    if (capped && this->impl->overflowing) {
+        size.y = maxHeight;
+    }
     if (!ImGui::BeginTable(this->impl->tableId.c_str(),
                             config.columns.size(),
                             this->impl->flags(),
@@ -94,7 +104,17 @@ void Table::render(const Context& ctx, Rows rows) const {
             }
         }
     }
+    const bool innerOverflow = ImGui::GetScrollMaxY() > 0.0f;
     ImGui::EndTable();
+
+    if (!capped) {
+        return;
+    }
+    if (this->impl->overflowing) {
+        this->impl->overflowing = innerOverflow;
+    } else {
+        this->impl->overflowing = ImGui::GetItemRectSize().y > maxHeight + Scale(ctx, 8.0f);
+    }
 }
 
 }  // namespace Jetstream::Sakura

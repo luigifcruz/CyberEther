@@ -149,6 +149,10 @@ struct MailSetDebugLogLevel {
 
 struct MailCheckForUpdates {};
 
+struct MailDownloadUpdate {};
+
+struct MailApplyUpdate {};
+
 struct MailDismissUpdate {};
 
 struct MailSetRemoteBrokerUrl {
@@ -173,6 +177,16 @@ struct MailSetRemoteAutoJoinSessions {
 
 struct MailSetPythonRuntimePath {
     std::string value;
+};
+
+struct MailSetRuntimeDependencyPolicy {
+    std::string value;
+};
+
+struct MailOpenPythonEnvironmentCache {};
+
+struct MailInstallPythonDependencies {
+    U64 generation = 0;
 };
 
 struct MailSaveFlowgraphPath {
@@ -217,6 +231,12 @@ struct MailResetBenchmark {};
 struct MailSetBenchmarkModule {
     std::string moduleType;
 };
+
+struct MailSetFeedbackText {
+    std::string value;
+};
+
+struct MailSubmitFeedback {};
 
 struct MailSetFlowgraphInfo {
     std::string flowgraph;
@@ -302,6 +322,12 @@ struct MailSetNodeMeta {
     NodeMeta meta;
 };
 
+struct MailSetNodeConfigCollapsed {
+    std::string flowgraph;
+    std::string block;
+    bool collapsed = false;
+};
+
 struct MailCreateStack {
     std::string flowgraph;
 };
@@ -331,6 +357,13 @@ struct MailSetSurfaceDetached {
     std::string block;
     std::string surface;
     bool detached = false;
+};
+
+struct MailSetSurfaceConfigOpen {
+    std::string flowgraph;
+    std::string block;
+    std::string surface;
+    bool open = false;
 };
 
 struct MailStartRemote {
@@ -402,6 +435,8 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetDebugTimingEnabled,
                           MailSetDebugLogLevel,
                           MailCheckForUpdates,
+                          MailDownloadUpdate,
+                          MailApplyUpdate,
                           MailDismissUpdate,
                           MailSetRemoteBrokerUrl,
                           MailSetRemoteCodec,
@@ -409,6 +444,9 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetRemoteEncoder,
                           MailSetRemoteAutoJoinSessions,
                           MailSetPythonRuntimePath,
+                          MailSetRuntimeDependencyPolicy,
+                          MailOpenPythonEnvironmentCache,
+                          MailInstallPythonDependencies,
                           MailSaveFlowgraphPath,
                           MailBrowseConfigPath,
                           MailFilePickerNavigate,
@@ -419,6 +457,8 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailRunBenchmark,
                           MailResetBenchmark,
                           MailSetBenchmarkModule,
+                          MailSetFeedbackText,
+                          MailSubmitFeedback,
                           MailSetFlowgraphInfo,
                           MailOpenRenameBlock,
                           MailRenameBlock,
@@ -431,11 +471,13 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailCopyBlock,
                           MailPasteBlock,
                           MailSetNodeMeta,
+                          MailSetNodeConfigCollapsed,
                           MailCreateStack,
                           MailDeleteStack,
                           MailSetStackGeometry,
                           MailSetStackLayout,
                           MailSetSurfaceDetached,
+                          MailSetSurfaceConfigOpen,
                           MailStartRemote,
                           MailStopRemote,
                           MailApproveRemoteClient,

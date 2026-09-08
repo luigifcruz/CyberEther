@@ -122,6 +122,7 @@ static Result overlapAddKernel(const Tensor& inputBuffer,
                                const Tensor& inputOverlap,
                                Tensor& output,
                                Tensor& previousOverlap,
+                               const std::optional<Index> batchAxis,
                                const std::vector<U64>& bufStrides,
                                const std::vector<U64>& ovlStrides,
                                const std::vector<U64>& prevOvlStrides) {
@@ -155,7 +156,7 @@ static Result overlapAddKernel(const Tensor& inputBuffer,
             outIdx += coords[d] * bufStrides[d];
         }
 
-        if (rank == 1 || coords[0] == 0) {
+        if (!batchAxis || coords[*batchAxis] == 0) {
             // First batch: add stored previous overlap.
             U64 prevIdx = 0;
             for (U64 d = 0; d < rank; ++d) {
@@ -164,7 +165,7 @@ static Result overlapAddKernel(const Tensor& inputBuffer,
             outPtr[outIdx] += prevPtr[prevIdx];
         } else {
             // Other batches: add overlap from previous batch.
-            coords[0] -= 1;
+            coords[*batchAxis] -= 1;
             U64 srcIdx = 0;
             for (U64 d = 0; d < rank; ++d) {
                 srcIdx += coords[d] * ovlStrides[d];
@@ -174,10 +175,10 @@ static Result overlapAddKernel(const Tensor& inputBuffer,
     }
 
     // 3. Store last batch of overlap for next invocation.
-    if (rank == 1) {
+    if (!batchAxis) {
         std::memcpy(prevPtr, ovlPtr, totalPrev * sizeof(T));
     } else {
-        const U64 lastBatch = inputOverlap.shape(0) - 1;
+        const U64 lastBatch = inputOverlap.shape(*batchAxis) - 1;
 
         for (U64 i = 0; i < totalPrev; ++i) {
             // Convert linear previousOverlap index to coords.
@@ -188,7 +189,7 @@ static Result overlapAddKernel(const Tensor& inputBuffer,
             }
 
             // Read from last batch of overlap.
-            coords[0] = lastBatch;
+            coords[*batchAxis] = lastBatch;
             U64 srcIdx = 0;
             for (U64 d = 0; d < rank; ++d) {
                 srcIdx += coords[d] * ovlStrides[d];
@@ -205,6 +206,7 @@ Result OverlapAddImplNativeCpu::kernelCF32() {
                                   inputOverlap,
                                   output,
                                   previousOverlap,
+                                  batchAxis,
                                   bufferStrides,
                                   overlapStrides,
                                   prevOverlapStrides);
@@ -212,10 +214,11 @@ Result OverlapAddImplNativeCpu::kernelCF32() {
 
 Result OverlapAddImplNativeCpu::kernelF32() {
     return overlapAddKernel<F32>(inputBuffer,
-                                 inputOverlap,
-                                 output,
-                                 previousOverlap,
-                                 bufferStrides,
+                                  inputOverlap,
+                                  output,
+                                  previousOverlap,
+                                  batchAxis,
+                                  bufferStrides,
                                  overlapStrides,
                                  prevOverlapStrides);
 }

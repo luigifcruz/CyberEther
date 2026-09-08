@@ -6,8 +6,7 @@
 namespace Jetstream::Blocks {
 
 struct OverlapAddImpl : public Block::Impl,
-                        public DynamicConfig<Blocks::OverlapAdd> {
-    Result configure() override;
+                         public DynamicConfig<Blocks::OverlapAdd> {
     Result define() override;
     Result create() override;
 
@@ -15,12 +14,6 @@ struct OverlapAddImpl : public Block::Impl,
     std::shared_ptr<Modules::OverlapAdd> overlapAddConfig =
         std::make_shared<Modules::OverlapAdd>();
 };
-
-Result OverlapAddImpl::configure() {
-    overlapAddConfig->axis = axis;
-
-    return Result::SUCCESS;
-}
 
 Result OverlapAddImpl::define() {
     JST_CHECK(defineInterfaceInput("buffer",
@@ -34,12 +27,6 @@ Result OverlapAddImpl::define() {
     JST_CHECK(defineInterfaceOutput("buffer",
                                     "Output",
                                     "Signal with overlap added."));
-
-    JST_CHECK(defineInterfaceConfig("axis",
-                                    "Axis",
-                                    "Dimension along which the "
-                                    "overlap is applied. Negative axes count from the end.",
-                                    "int:axis"));
 
     return Result::SUCCESS;
 }

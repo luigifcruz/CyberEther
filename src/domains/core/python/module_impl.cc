@@ -5,6 +5,7 @@
 #include <charconv>
 #include <sstream>
 
+#include <jetstream/memory/axis.hh>
 #include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Modules {
@@ -156,6 +157,39 @@ Result ParseShapeSpec(const std::string& spec,
     return Result::SUCCESS;
 }
 
+Result ParseSignalAxesSpec(const std::string& spec,
+                           const std::string& label,
+                           const Shape& shape,
+                           std::map<std::string, std::any>& attributes) {
+    SignalAxesLayout layout;
+    if (ParseSignalAxesLayout(spec,
+                              static_cast<Index>(shape.size()),
+                              SignalAxesLayoutMode::Declaration,
+                              layout) != Result::SUCCESS) {
+        JST_ERROR("[PYTHON] Invalid signal axes of {}.", label);
+        return Result::ERROR;
+    }
+    if (!layout.specified) {
+        return Result::SUCCESS;
+    }
+    if (!layout.axes.batch && !layout.axes.channel && !layout.axes.sample) {
+        JST_ERROR("[PYTHON] Signal axes of {} must declare at least one of B, C, or S.", label);
+        return Result::ERROR;
+    }
+
+    if (layout.axes.batch) {
+        attributes[std::string(BatchAxisAttribute)] = *layout.axes.batch;
+    }
+    if (layout.axes.channel) {
+        attributes[std::string(ChannelAxisAttribute)] = *layout.axes.channel;
+    }
+    if (layout.axes.sample) {
+        attributes[std::string(SampleAxisAttribute)] = *layout.axes.sample;
+    }
+
+    return Result::SUCCESS;
+}
+
 }  // namespace
 
 std::string PythonImpl::inputPortName(const U64 index) {
@@ -203,6 +237,7 @@ Result PythonImpl::validate() {
         JST_CHECK(ParseDataTypeSpec(spec.dtype, label, output.dtype));
         JST_CHECK(ParseShapeSpec(spec.shape, label, output.shape));
         JST_CHECK(ParseDeviceSpec(spec.device, label, output.device));
+        JST_CHECK(ParseSignalAxesSpec(spec.axes, label, output.shape, output.attributes));
 
         U64 elementCount = 1;
         for (const U64 dimension : output.shape) {
@@ -255,6 +290,11 @@ Result PythonImpl::create() {
         const auto& plan = candidateOutputPlan[i];
         Tensor output;
         JST_CHECK(output.create(plan.device, plan.dtype, plan.shape));
+
+        for (const auto& [key, value] : plan.attributes) {
+            JST_CHECK(output.setAttribute(key, value));
+        }
+
         outputs()[outputPortName(i)].produced(name(), outputPortName(i), output);
     }
 

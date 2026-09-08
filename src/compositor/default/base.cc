@@ -52,6 +52,21 @@ DefaultCompositor::DefaultCompositor() :
         .requestFile = [this](FilePickerRequest request) {
             return actions.requestFile(std::move(request));
         },
+        .checkForUpdates = [this]() {
+            updater.check();
+        },
+        .downloadUpdate = [this]() {
+            updater.download();
+        },
+        .applyUpdate = [this]() {
+            return updater.apply();
+        },
+        .dismissUpdate = [this]() {
+            updater.dismiss();
+        },
+        .submitFeedback = [this](const std::string& text) {
+            feedback.submit(text);
+        },
     },
     actions(state, callbacks),
     presenters(state, callbacks) {}
@@ -104,6 +119,14 @@ Result DefaultCompositor::create() {
     // Restore runtime preferences.
 
     state.runtime.pythonPath = settings.runtime.python.path;
+    state.runtime.dependencyPolicy = settings.runtime.dependencyPolicy;
+    if (state.runtime.dependencyPolicy != "prompt" &&
+        state.runtime.dependencyPolicy != "allow" &&
+        state.runtime.dependencyPolicy != "deny") {
+        JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Invalid saved runtime dependency policy '{}'. Using default.",
+                 state.runtime.dependencyPolicy);
+        state.runtime.dependencyPolicy = "prompt";
+    }
     state.runtime.pythonCandidates = PythonRuntimeContext::DiscoverRuntimes();
     state.runtime.pythonValidation = PythonRuntimeContext::ValidateRuntimePath(state.runtime.pythonPath);
     state.runtime.initialPythonValidation = state.runtime.pythonValidation;
@@ -155,6 +178,9 @@ Result DefaultCompositor::create() {
 
     workbench.update(presenters.build());
 
+    updater.start();
+    updater.check();
+
     return Result::SUCCESS;
 }
 
@@ -162,6 +188,8 @@ Result DefaultCompositor::destroy() {
     JST_INFO("[COMPOSITOR_IMPL_DEFAULT] Destroying compositor.");
 
     actions.cancelFilePicker();
+    updater.shutdown();
+    feedback.shutdown();
 
     return Result::SUCCESS;
 }
@@ -198,10 +226,13 @@ Result DefaultCompositor::poll() {
 
     updateWorkbenchState();
     updateFilePendingState();
+    updateDependencyState();
     updateBenchmarkState();
     updateRemoteState();
+    updateUpdaterState();
     actions.reconcileFilePicker();
     updateStacksState();
+    updateFeedbackState();
 
     // Build view configs while flowgraph access is confined to poll.
 
@@ -290,6 +321,12 @@ void DefaultCompositor::updateFilePendingState() {
 #endif
 }
 
+void DefaultCompositor::updateDependencyState() {
+    auto snapshot = SnapshotPythonDependencyState();
+    state.runtime.dependencyRequest = std::move(snapshot.request);
+    state.runtime.dependencyGeneration = snapshot.generation;
+}
+
 void DefaultCompositor::updateBenchmarkState() {
     if (state.benchmark.running && state.benchmark.future.valid()) {
         const auto status = state.benchmark.future.wait_for(std::chrono::milliseconds(0));
@@ -316,6 +353,22 @@ void DefaultCompositor::updateRemoteState() {
     state.remote.accessToken = remoteStarted ? remote->accessToken() : "";
     state.remote.clients = remoteStarted ? remote->clients() : std::vector<Instance::Remote::ClientInfo>{};
     state.remote.waitlist = remoteStarted ? remote->waitlist() : std::vector<std::string>{};
+}
+
+void DefaultCompositor::updateUpdaterState() {
+    const auto update = updater.snapshot();
+    state.update.supported = update.supported;
+    state.update.upToDate = update.upToDate;
+    state.update.failed = update.failed;
+    state.update.checking = update.checking;
+    state.update.available = update.available;
+    state.update.downloading = update.downloading;
+    state.update.ready = update.ready;
+    state.update.applying = update.applying;
+    state.update.progress = update.progress;
+    state.update.version = update.version;
+    state.update.releaseNotes = update.releaseNotes;
+    state.update.message = update.message;
 }
 
 void DefaultCompositor::updateStacksState() {
@@ -357,6 +410,46 @@ void DefaultCompositor::updateStacksState() {
 
 void DefaultCompositor::enqueue(Mail&& mail) {
     pendingMail.emplace_back(std::move(mail));
+}
+
+void DefaultCompositor::updateFeedbackState() {
+    const bool modalOpen = state.modal.content.has_value() &&
+                           state.modal.content.value() == ModalContent::Feedback;
+
+    const auto snapshot = feedback.snapshot();
+
+    switch (snapshot.status) {
+        case Feedback::Snapshot::Status::Idle:
+            if (state.feedback.status == DefaultCompositorState::FeedbackState::Status::Submitting) {
+                state.feedback.status = DefaultCompositorState::FeedbackState::Status::Idle;
+            }
+            if (!modalOpen &&
+                (state.feedback.status != DefaultCompositorState::FeedbackState::Status::Idle ||
+                 !state.feedback.text.empty())) {
+                state.feedback = {};
+                feedback.clear();
+            }
+            break;
+        case Feedback::Snapshot::Status::Submitting:
+            state.feedback.status = DefaultCompositorState::FeedbackState::Status::Submitting;
+            break;
+        case Feedback::Snapshot::Status::Success:
+            if (state.feedback.status == DefaultCompositorState::FeedbackState::Status::Submitting) {
+                callbacks.notify(Sakura::ToastType::Success, 5000,
+                                 "Feedback submitted. Thank you!");
+                feedback.clear();
+                state.feedback = {};
+            }
+            break;
+        case Feedback::Snapshot::Status::Error:
+            if (state.feedback.status == DefaultCompositorState::FeedbackState::Status::Submitting) {
+                callbacks.notify(Sakura::ToastType::Error, 5000,
+                                 snapshot.message);
+                feedback.clear();
+                state.feedback = {};
+            }
+            break;
+    }
 }
 
 std::shared_ptr<Compositor::Impl> DefaultCompositorFactory() {

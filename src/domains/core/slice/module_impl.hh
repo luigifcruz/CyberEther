@@ -16,6 +16,7 @@ struct SliceImpl : public Module::Impl, public DynamicConfig<Slice> {
     Tensor input;
     Tensor output;
 
+    std::vector<Token> sliceTokens;
     Tensor::SlicePlan slicePlan;
 };
 

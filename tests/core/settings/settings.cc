@@ -206,6 +206,7 @@ void RequireDefaults(const Settings& settings) {
     REQUIRE(settings.benchmark.format == "markdown");
     REQUIRE(settings.registry.plugins.empty());
     REQUIRE(settings.runtime.python.path.empty());
+    REQUIRE(settings.runtime.dependencyPolicy == "prompt");
 }
 
 }  // namespace
@@ -260,6 +261,7 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     settings.developer.timingEnabled = true;
     settings.registry.plugins.push_back(pluginPath);
     settings.runtime.python.path = runtimePath;
+    settings.runtime.dependencyPolicy = "allow";
 
     REQUIRE(Settings::Set(settings) == Result::SUCCESS);
     REQUIRE(std::filesystem::exists(sandbox.path));
@@ -307,6 +309,7 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     REQUIRE(restored.benchmark.format == "markdown");
     REQUIRE(restored.registry.plugins == settings.registry.plugins);
     REQUIRE(restored.runtime.python.path == runtimePath);
+    REQUIRE(restored.runtime.dependencyPolicy == "allow");
 }
 
 TEST_CASE("Settings loads partial YAML over defaults", "[core][settings][persistence]") {
@@ -332,6 +335,7 @@ TEST_CASE("Settings loads partial YAML over defaults", "[core][settings][persist
               "  plugins:\n"
               "    - /tmp/cyberether-extra.cep\n"
               "runtime:\n"
+              "  dependencyPolicy: deny\n"
               "  python:\n"
               "    path: /opt/python/lib/libpython3.12.so\n"
               "unknown: ignored\n");
@@ -355,6 +359,7 @@ TEST_CASE("Settings loads partial YAML over defaults", "[core][settings][persist
     REQUIRE(settings.registry.plugins.size() == 1);
     REQUIRE(settings.registry.plugins[0] == "/tmp/cyberether-extra.cep");
     REQUIRE(settings.runtime.python.path == "/opt/python/lib/libpython3.12.so");
+    REQUIRE(settings.runtime.dependencyPolicy == "deny");
     REQUIRE(settings.benchmark.format == "markdown");
 }
 
@@ -365,6 +370,7 @@ TEST_CASE("Settings can update memory without persisting", "[core][settings][per
     settings.interface.themeKey = "Transient";
     settings.developer.timingEnabled = true;
     settings.runtime.python.path = "/runtime/only/libpython.so";
+    settings.runtime.dependencyPolicy = "allow";
 
     REQUIRE(Settings::Set(settings, false) == Result::SUCCESS);
     REQUIRE_FALSE(std::filesystem::exists(sandbox.path));
@@ -374,6 +380,7 @@ TEST_CASE("Settings can update memory without persisting", "[core][settings][per
     REQUIRE(restored.interface.themeKey == "Transient");
     REQUIRE(restored.developer.timingEnabled);
     REQUIRE(restored.runtime.python.path == "/runtime/only/libpython.so");
+    REQUIRE(restored.runtime.dependencyPolicy == "allow");
 }
 
 TEST_CASE("Transient settings can be restored before a retained update",

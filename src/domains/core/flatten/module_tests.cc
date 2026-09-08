@@ -2,6 +2,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include "jetstream/domains/core/flatten/module.hh"
+#include "jetstream/memory/axis.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/testing.hh"
 
@@ -110,6 +111,107 @@ TEST_CASE("Flatten Module - CF32", "[modules][flatten][CF32]") {
             REQUIRE_THAT(out.at<CF32>(2).imag(), Catch::Matchers::WithinAbs(5.0f, 1e-6f));
             REQUIRE_THAT(out.at<CF32>(3).real(), Catch::Matchers::WithinAbs(6.0f, 1e-6f));
             REQUIRE_THAT(out.at<CF32>(3).imag(), Catch::Matchers::WithinAbs(7.0f, 1e-6f));
+        }
+    }
+}
+
+TEST_CASE("Flatten Module - Retains its input layout",
+          "[modules][flatten][lifecycle]") {
+    const auto implementations = Registry::ListAvailableModules("flatten");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            Tensor input;
+            REQUIRE(input.create(impl.device, DataType::F32, {2, 4}) ==
+                    Result::SUCCESS);
+
+            TensorMap inputs;
+            inputs["buffer"].requested("test", "buffer");
+            inputs["buffer"].tensor = input;
+
+            std::shared_ptr<Module> module;
+            REQUIRE(Registry::BuildModule("flatten", impl.device, impl.runtime,
+                                          impl.provider, module) == Result::SUCCESS);
+            REQUIRE(module->create("test", Modules::Flatten{}, inputs) ==
+                    Result::SUCCESS);
+
+            REQUIRE(module->inputs().at("buffer").tensor.shape() == Shape{2, 4});
+            REQUIRE(module->outputs().at("buffer").tensor.shape() == Shape{8});
+            REQUIRE(module->destroy() == Result::SUCCESS);
+        }
+    }
+}
+
+TEST_CASE("Flatten Module - Removes Collapsed Signal Axis Metadata",
+          "[modules][flatten][metadata]") {
+    const auto implementations = Registry::ListAvailableModules("flatten");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("flatten", impl.device, impl.runtime, impl.provider);
+            ctx.setConfig(Modules::Flatten{});
+
+            auto input = ctx.createTensor<F32>({2, 3, 4});
+            REQUIRE(SetSignalAxes(input, {
+                .sample = Index{2},
+                .batch = Index{0},
+                .channel = Index{1},
+            }) == Result::SUCCESS);
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+            const auto& output = ctx.output("buffer");
+            REQUIRE(output.shape() == Shape{24});
+            REQUIRE_FALSE(output.hasAttribute(std::string(SampleAxisAttribute)));
+            REQUIRE_FALSE(output.hasAttribute(std::string(BatchAxisAttribute)));
+            REQUIRE_FALSE(output.hasAttribute(std::string(ChannelAxisAttribute)));
+        }
+    }
+}
+
+TEST_CASE("Flatten Module - Keeps Valid Metadata When Geometry Is Unchanged",
+          "[modules][flatten][metadata]") {
+    const auto implementations = Registry::ListAvailableModules("flatten");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("flatten", impl.device, impl.runtime, impl.provider);
+            ctx.setConfig(Modules::Flatten{});
+            auto input = ctx.createTensor<F32>({8});
+            REQUIRE(SetSignalAxes(input, {.sample = Index{0}}) == Result::SUCCESS);
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::SUCCESS);
+            const auto& output = ctx.output("buffer");
+            SignalAxes outputAxes;
+            REQUIRE(ResolveSignalAxes(output, outputAxes) == Result::SUCCESS);
+            REQUIRE(outputAxes.sample == Index{0});
+            REQUIRE_FALSE(outputAxes.batch);
+            REQUIRE_FALSE(outputAxes.channel);
+        }
+    }
+}
+
+TEST_CASE("Flatten Module - Rejects Malformed Signal Axis Metadata",
+          "[modules][flatten][metadata][validation]") {
+    const auto implementations = Registry::ListAvailableModules("flatten");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("flatten", impl.device, impl.runtime, impl.provider);
+            ctx.setConfig(Modules::Flatten{});
+            auto input = ctx.createTensor<F32>({8});
+            REQUIRE(input.setAttribute(std::string(SampleAxisAttribute), Index{0}) ==
+                    Result::SUCCESS);
+            REQUIRE(input.setAttribute(std::string(ChannelAxisAttribute), I64{0}) ==
+                    Result::SUCCESS);
+            ctx.setInput("buffer", input);
+
+            REQUIRE(ctx.run() == Result::ERROR);
         }
     }
 }

@@ -21,9 +21,9 @@ struct SignalGenerator : public Module::Config {
     U64 bufferSize = 8192;
 
     JST_MODULE_TYPE(signal_generator);
-    JST_MODULE_PARAMS(signalType, signalDataType, sampleRate, frequency, amplitude, phase, dcOffset,
-                      noiseVariance, chirpStartFreq, chirpEndFreq, chirpDuration,
-                      bufferSize);
+    JST_MODULE_PARAMS(signalType, signalDataType, sampleRate, frequency,
+                      amplitude, phase, dcOffset, noiseVariance,
+                      chirpStartFreq, chirpEndFreq, chirpDuration, bufferSize);
 };
 
 }  // namespace Jetstream::Modules

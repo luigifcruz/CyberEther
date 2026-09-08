@@ -4,6 +4,8 @@
 #include <jetstream/domains/core/comparator/module.hh>
 #include "module_impl.hh"
 
+#include <algorithm>
+
 namespace Jetstream::Blocks {
 
 namespace {
@@ -59,11 +61,14 @@ Result ComparatorImpl::configure() {
 }
 
 Result ComparatorImpl::define() {
+    const auto& config = *candidate();
+    const U64 interfaceInputCount = std::min(config.inputCount, kMaxComparatorInputs);
+
     JST_CHECK(defineInterfaceOutput("error",
                                     "Error",
                                     "Per-element absolute difference against the reference input."));
 
-    for (U64 i = 0; i < inputCount; ++i) {
+    for (U64 i = 0; i < interfaceInputCount; ++i) {
         const auto index = std::to_string(i);
         const auto label = i == 0 ? std::string("Reference") : ("Input " + index);
         const auto description = i == 0

@@ -14,18 +14,19 @@ struct NodeMeta {
     F32 y = 0.0f;
     F32 width = 0.0f;
     F32 height = 0.0f;
+    bool configCollapsed = false;
 
-    JST_SERDES(x, y, width, height);
+    JST_SERDES(x, y, width, height, configCollapsed);
 };
 
 struct SurfaceMeta {
-    U64 attachedWidth = 256;
     U64 attachedHeight = 256;
     U64 detachedWidth = 512;
     U64 detachedHeight = 512;
     bool detached = false;
+    bool detachedConfigOpen = false;
 
-    JST_SERDES(attachedWidth, attachedHeight, detachedWidth, detachedHeight, detached);
+    JST_SERDES(attachedHeight, detachedWidth, detachedHeight, detached, detachedConfigOpen);
 };
 
 struct StackDockFlowgraphMeta {

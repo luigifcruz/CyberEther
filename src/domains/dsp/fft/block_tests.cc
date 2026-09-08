@@ -20,6 +20,9 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockCreate("src", "signal_generator", sourceConfig, {}) ==
             Result::SUCCESS);
 
+    Tensor sourceTensor = viewBlock("src").outputs.at("signal").tensor;
+    REQUIRE(sourceTensor.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
+
     TensorMap inputs;
     inputs["signal"].requested("src", "signal");
 
@@ -31,6 +34,11 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(out.shape(0) == 64);
 
     const auto& interfaceConfigs = viewBlock("fft").interfaceConfigs;
+    const auto invert = std::find_if(
+        interfaceConfigs.begin(),
+        interfaceConfigs.end(),
+        [](const auto& field) { return field.name == "invert"; });
+    REQUIRE(invert == interfaceConfigs.end());
     const auto complexOutput = std::find_if(
         interfaceConfigs.begin(),
         interfaceConfigs.end(),
@@ -39,12 +47,42 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                  "FFT block delegates dtype validation to its module",
-                  "[modules][dsp][fft][block][validation]") {
+                  "FFT block accepts batched heads and propagates metadata",
+                  "[modules][dsp][fft][block][batch][metadata]") {
+    Blocks::OnesTensor source;
+    source.shape = {2, 3, 4};
+    source.dataType = "CF32";
+    REQUIRE(flowgraph->blockCreate("fft_batch_src", source, {}) == Result::SUCCESS);
+
+    Tensor sourceTensor = viewBlock("fft_batch_src").outputs.at("buffer").tensor;
+    REQUIRE(sourceTensor.setAttribute("sampleAxis", Index{2}) == Result::SUCCESS);
+    REQUIRE(sourceTensor.setAttribute("batchAxis", Index{0}) == Result::SUCCESS);
+    REQUIRE(sourceTensor.setAttribute("channelAxis", Index{1}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].requested("fft_batch_src", "buffer");
+    REQUIRE(flowgraph->blockCreate("fft_batch", Blocks::Fft{}, inputs) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("fft_batch").state == Block::State::Created);
+
+    const Tensor output = viewBlock("fft_batch").outputs.at("signal").tensor;
+    REQUIRE(output.shape() == Shape{2, 3, 4});
+    REQUIRE(std::any_cast<Index>(output.attribute("sampleAxis")) == Index{2});
+    REQUIRE(output.hasAttribute("batchAxis"));
+    REQUIRE(std::any_cast<Index>(output.attribute("batchAxis")) == Index{0});
+    REQUIRE(std::any_cast<Index>(output.attribute("channelAxis")) == Index{1});
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "FFT block delegates dtype validation to its module",
+                 "[modules][dsp][fft][block][validation]") {
     Blocks::OnesTensor source;
     source.shape = {4};
     source.dataType = "F64";
     REQUIRE(flowgraph->blockCreate("fft_dtype_src", source, {}) == Result::SUCCESS);
+
+    Tensor sourceTensor = viewBlock("fft_dtype_src").outputs.at("buffer").tensor;
+    REQUIRE(sourceTensor.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
 
     TensorMap inputs;
     inputs["signal"].requested("fft_dtype_src", "buffer");
@@ -56,12 +94,44 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
+                  "FFT block uses candidate direction before metadata validation",
+                  "[modules][dsp][fft][block][validation][interface]") {
+    Blocks::OnesTensor source;
+    source.shape = {2, 4};
+    source.dataType = "F32";
+    REQUIRE(flowgraph->blockCreate("fft_inverse_src", source, {}) == Result::SUCCESS);
+
+    Tensor sourceTensor = viewBlock("fft_inverse_src").outputs.at("buffer").tensor;
+    REQUIRE(sourceTensor.setAttribute("sampleAxis", Index{1}) == Result::SUCCESS);
+    REQUIRE(sourceTensor.setAttribute("batchAxis", I64{0}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].requested("fft_inverse_src", "buffer");
+
+    Blocks::Fft config;
+    config.forward = false;
+    REQUIRE(flowgraph->blockCreate("fft_inverse_bad", config, inputs) ==
+            Result::SUCCESS);
+
+    const auto block = viewBlock("fft_inverse_bad");
+    REQUIRE(block.state == Block::State::Errored);
+    const auto complexOutput = std::find_if(
+        block.interfaceConfigs.begin(),
+        block.interfaceConfigs.end(),
+        [](const auto& field) { return field.name == "complexOutput"; });
+    REQUIRE(complexOutput == block.interfaceConfigs.end());
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
                  "FFT block exposes complex output for real input",
                  "[modules][dsp][fft][block][real][complex]") {
     Blocks::OnesTensor source;
     source.shape = {4};
     source.dataType = "F32";
     REQUIRE(flowgraph->blockCreate("fft_real_src", source, {}) == Result::SUCCESS);
+
+    Tensor sourceTensor = viewBlock("fft_real_src").outputs.at("buffer").tensor;
+    REQUIRE(sourceTensor.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
 
     Blocks::Fft config;
     config.complexOutput = true;
@@ -80,6 +150,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     Tensor output = viewBlock("fft_real").outputs.at("signal").tensor;
     REQUIRE(output.dtype() == DataType::CF32);
     REQUIRE(output.shape() == Shape{3});
+    REQUIRE(std::any_cast<Index>(output.attribute("sampleAxis")) == Index{0});
 
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
     REQUIRE_THAT(output.at<CF32>(0).real(),
@@ -103,62 +174,4 @@ TEST_CASE_METHOD(FlowgraphFixture,
         [](const auto& field) { return field.name == "complexOutput"; });
     REQUIRE(inverseComplexOutput == inverse.interfaceConfigs.end());
     REQUIRE(inverse.outputs.at("signal").tensor.dtype() == DataType::F32);
-}
-
-TEST_CASE_METHOD(FlowgraphFixture,
-                  "FFT block partial recreation preserves unrelated settings",
-                  "[modules][dsp][fft][block][reconfigure]") {
-    Parser::Map sourceConfig;
-    sourceConfig["signalType"] = std::string("dc");
-    sourceConfig["signalDataType"] = std::string("CF32");
-    sourceConfig["bufferSize"] = std::string("64");
-    REQUIRE(flowgraph->blockCreate("src", "signal_generator", sourceConfig, {}) ==
-            Result::SUCCESS);
-
-    TensorMap inputs;
-    inputs["signal"].requested("src", "signal");
-
-    Blocks::Fft config;
-    config.forward = false;
-    config.axis = 0;
-    config.invert = true;
-    REQUIRE(flowgraph->blockCreate("fft", config, inputs) == Result::SUCCESS);
-
-    Parser::Map update;
-    update["axis"] = I64{-1};
-    REQUIRE(flowgraph->blockReconfigure("fft", update) == Result::SUCCESS);
-    REQUIRE(viewBlock("fft").state == Block::State::Created);
-
-    Parser::Map savedMap;
-    REQUIRE(flowgraph->blockConfig("fft", savedMap) == Result::SUCCESS);
-    Blocks::Fft saved;
-    REQUIRE(saved.deserialize(savedMap) == Result::SUCCESS);
-    REQUIRE_FALSE(saved.forward);
-    REQUIRE(saved.axis == -1);
-    REQUIRE(saved.invert);
-
-    Parser::Map invalidUpdate;
-    invalidUpdate["axis"] = I64{1};
-    REQUIRE(flowgraph->blockReconfigure("fft", invalidUpdate) == Result::ERROR);
-    REQUIRE(viewBlock("fft").state == Block::State::Created);
-
-    Parser::Map unchangedMap;
-    REQUIRE(flowgraph->blockConfig("fft", unchangedMap) == Result::SUCCESS);
-    Blocks::Fft unchanged;
-    REQUIRE(unchanged.deserialize(unchangedMap) == Result::SUCCESS);
-    REQUIRE_FALSE(unchanged.forward);
-    REQUIRE(unchanged.axis == -1);
-    REQUIRE(unchanged.invert);
-
-    Tensor output = viewBlock("fft").outputs.at("signal").tensor;
-    std::fill(output.data<CF32>(), output.data<CF32>() + output.size(), CF32{});
-
-    REQUIRE(flowgraph->compute() == Result::SUCCESS);
-    for (U64 index = 0; index < output.size(); ++index) {
-        const F32 expected = index == output.size() / 2 ? 64.0f : 0.0f;
-        REQUIRE_THAT(output.at<CF32>(index).real(),
-                     Catch::Matchers::WithinAbs(expected, 1e-3f));
-        REQUIRE_THAT(output.at<CF32>(index).imag(),
-                     Catch::Matchers::WithinAbs(0.0f, 1e-3f));
-    }
 }

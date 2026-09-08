@@ -74,7 +74,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Pad block delegates dtype validation to its 
     REQUIRE(viewBlock("pad_dtype").outputs.empty());
 }
 
-TEST_CASE_METHOD(FlowgraphFixture, "Pad block preserves execution after rejected update",
+TEST_CASE_METHOD(FlowgraphFixture, "Pad block preserves invalid axis for recovery",
                  "[modules][pad][block][reconfigure][validation]") {
     Blocks::SignalGenerator source;
     source.signalType = "dc";
@@ -92,13 +92,19 @@ TEST_CASE_METHOD(FlowgraphFixture, "Pad block preserves execution after rejected
 
     Parser::Map update;
     update["axis"] = I64{1};
-    REQUIRE(flowgraph->blockReconfigure("pad_update", update) == Result::ERROR);
-    REQUIRE(viewBlock("pad_update").state == Block::State::Created);
+    REQUIRE(flowgraph->blockReconfigure("pad_update", update) == Result::SUCCESS);
+    REQUIRE(viewBlock("pad_update").state == Block::State::Errored);
+    REQUIRE(viewBlock("pad_update").outputs.empty());
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("pad_update", saved) == Result::SUCCESS);
-    REQUIRE(std::any_cast<I64>(saved.at("axis")) == config.axis);
+    REQUIRE(std::any_cast<I64>(saved.at("axis")) == 1);
     REQUIRE(std::any_cast<U64>(saved.at("size")) == config.size);
+
+    Parser::Map recovery;
+    recovery["axis"] = config.axis;
+    REQUIRE(flowgraph->blockReconfigure("pad_update", recovery) == Result::SUCCESS);
+    REQUIRE(viewBlock("pad_update").state == Block::State::Created);
 
     Tensor output = viewBlock("pad_update").outputs.at("padded").tensor;
     std::fill(output.data<F32>(), output.data<F32>() + output.size(), -1.0f);

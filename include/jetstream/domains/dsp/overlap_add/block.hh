@@ -6,11 +6,9 @@
 namespace Jetstream::Blocks {
 
 struct OverlapAdd : public Block::Config {
-    I64 axis = -1;
-
     JST_BLOCK_TYPE(overlap_add);
     JST_BLOCK_DOMAIN("DSP");
-    JST_BLOCK_PARAMS(axis);
+    JST_BLOCK_PARAMS();
     JST_BLOCK_DESCRIPTION(
         "Overlap Add",
         "Sums overlap with buffer for streaming convolution.",
@@ -18,13 +16,10 @@ struct OverlapAdd : public Block::Config {
         "The Overlap Add block performs the overlap-add step of "
         "frequency-domain convolution. It takes a main buffer and "
         "an overlap region, adding the overlap from the previous "
-        "batch to the current output. This enables seamless "
-        "streaming FIR filtering using the overlap-add method.\n\n"
-
-        "## Arguments\n"
-        "- **Axis**: Dimension along which the overlap is applied. Negative axes "
-        "count from the end. For multidimensional inputs, axis 0 is reserved for "
-        "batch sequencing and cannot be selected.\n\n"
+        "batch to the current output. Both inputs require matching `sampleAxis`, "
+        "`batchAxis`, and `channelAxis` roles. Only `batchAxis` sequences adjacent "
+        "buffers. Channels and other dimensions maintain independent state. This "
+        "enables seamless streaming FIR filtering using the overlap-add method.\n\n"
 
         "## Useful For\n"
         "- Overlap-add FIR filtering pipelines.\n"
@@ -33,7 +28,6 @@ struct OverlapAdd : public Block::Config {
 
         "## Examples\n"
         "- 2D batched overlap-add:\n"
-        "  Config: Axis=1\n"
         "  Buffer: CF32[4, 1024], Overlap: CF32[4, 50]\n"
         "  Output: CF32[4, 1024]\n\n"
 

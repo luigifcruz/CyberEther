@@ -33,6 +33,7 @@ bool TextView::update(Config config) {
         .stickToBottom = impl->config.stickToBottom,
         .scrollbar = impl->config.scrollbar,
         .wrap = impl->config.wrap,
+        .padding = impl->config.padding,
         .backgroundColorKey = impl->config.backgroundColorKey,
         .textColorKey = impl->config.textColorKey,
         .lineNumberColorKey = impl->config.lineNumberColorKey,

@@ -7,7 +7,7 @@
 #include <windows.h>
 #undef ERROR
 #undef FATAL
-#elif !defined(JST_OS_BROWSER)
+#else
 #include <dlfcn.h>
 #endif
 
@@ -33,11 +33,6 @@ void* OpenDynamicLibrary(const std::string& path,
         error = "failed to convert the UTF-8 library path";
     }
     return nullptr;
-#elif defined(JST_OS_BROWSER)
-    (void)path;
-    (void)visibility;
-    error = "dynamic libraries are not supported on this platform";
-    return nullptr;
 #else
     dlerror();
     const int flags = RTLD_NOW |
@@ -61,7 +56,7 @@ void CloseDynamicLibrary(void* handle) {
 
 #if defined(JST_OS_WINDOWS)
     (void)FreeLibrary(reinterpret_cast<HMODULE>(handle));
-#elif !defined(JST_OS_BROWSER)
+#else
     (void)dlclose(handle);
 #endif
 }
@@ -75,11 +70,6 @@ void* LoadDynamicLibrarySymbol(void* handle, const char* symbol, std::string& er
         error = "Windows error " + std::to_string(GetLastError());
     }
     return reinterpret_cast<void*>(address);
-#elif defined(JST_OS_BROWSER)
-    (void)handle;
-    (void)symbol;
-    error = "dynamic libraries are not supported on this platform";
-    return nullptr;
 #else
     dlerror();
     void* address = dlsym(handle, symbol);

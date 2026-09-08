@@ -54,7 +54,8 @@ void NodeInputRow::render(const Context& ctx) const {
 
     const ImGuiStyle& style = ImGui::GetStyle();
     const F32 spacing = style.ItemSpacing.x;
-    const F32 minInputWidth = Scale(ctx, config.minInputWidth);
+    const F32 minShapeWidth = Scale(ctx, config.shapeMinWidth);
+    const F32 minAxesWidth = config.onAxesChange ? Scale(ctx, config.axesMinWidth) : 0.0f;
     const F32 startX = ImGui::GetCursorPosX();
     const F32 available = ImGui::GetContentRegionAvail().x;
 
@@ -63,21 +64,25 @@ void NodeInputRow::render(const Context& ctx) const {
         combosWidth += Scale(ctx, combo.width) + spacing;
     }
 
-    const bool nextStacked = available < minInputWidth + combosWidth;
+    const F32 fieldsSpacing = config.onAxesChange ? spacing : 0.0f;
+    const bool nextStacked =
+        available < minShapeWidth + minAxesWidth + combosWidth + fieldsSpacing;
     if (nextStacked != impl.stacked) {
         impl.stacked = nextStacked;
         impl.syncCombos();
     }
 
-    const F32 inputWidth = impl.stacked ? available
-                                        : std::max(minInputWidth, available - combosWidth);
+    const F32 axesWidth = impl.stacked ? 0.0f : minAxesWidth;
+    const F32 shapeWidth = impl.stacked
+        ? available
+        : std::max(minShapeWidth, available - combosWidth - axesWidth - (config.onAxesChange ? spacing : 0.0f));
 
     ImGui::PushID(config.id.c_str());
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Scale(ctx, 6.0f), Scale(ctx, 3.0f)));
 
     const F32 frameHeight = ImGui::GetFrameHeight();
     const F32 stackedSpacingY = Scale(ctx, StackedRowSpacing);
-    const F32 rowCount = static_cast<F32>(config.combos.size()) + 1.0f;
+    const F32 rowCount = static_cast<F32>(config.combos.size()) + (config.onAxesChange ? 2.0f : 1.0f);
     const F32 backgroundHeight = impl.stacked
         ? frameHeight * rowCount + stackedSpacingY * (rowCount - 1.0f)
         : frameHeight;
@@ -88,17 +93,40 @@ void NodeInputRow::render(const Context& ctx) const {
         ImGui::GetColorU32(ImGuiCol_FrameBg),
         style.FrameRounding);
 
-    std::string value = config.value;
-    ImGui::SetNextItemWidth(inputWidth);
+    std::string shape = config.shape;
+    ImGui::SetNextItemWidth(shapeWidth);
     bool changed = ImGui::InputTextWithHint("##input",
-                                            config.hint.c_str(),
-                                            &value,
+                                            config.shapeHint.c_str(),
+                                            &shape,
                                             ImGuiInputTextFlags_EnterReturnsTrue);
     if (ImGui::IsItemDeactivatedAfterEdit()) {
         changed = true;
     }
-    if (changed && config.onChange) {
-        config.onChange(value);
+    if (changed && config.onShapeChange) {
+        config.onShapeChange(shape);
+    }
+
+    if (config.onAxesChange) {
+        std::string axes = config.axes;
+        if (impl.stacked) {
+            const F32 stackedPull = style.ItemSpacing.y - stackedSpacingY;
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() - stackedPull);
+            ImGui::SetNextItemWidth(available);
+        } else {
+            ImGui::SameLine();
+            ImGui::SetCursorPosX(startX + shapeWidth + spacing);
+            ImGui::SetNextItemWidth(axesWidth);
+        }
+        bool axesChanged = ImGui::InputTextWithHint("##axes",
+                                                    config.axesHint.c_str(),
+                                                    &axes,
+                                                    ImGuiInputTextFlags_EnterReturnsTrue);
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            axesChanged = true;
+        }
+        if (axesChanged) {
+            config.onAxesChange(axes);
+        }
     }
 
     if (impl.stacked) {
@@ -108,7 +136,7 @@ void NodeInputRow::render(const Context& ctx) const {
             combo.render(ctx);
         }
     } else {
-        F32 comboX = startX + inputWidth + spacing;
+        F32 comboX = startX + shapeWidth + (config.onAxesChange ? axesWidth + spacing : 0.0f) + spacing;
         for (U64 i = 0; i < impl.combos.size(); ++i) {
             ImGui::SameLine();
             ImGui::SetCursorPosX(comboX);

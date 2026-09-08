@@ -23,10 +23,16 @@ Result FrameImpl::configure() {
 Result FrameImpl::define() {
     JST_CHECK(defineInterfaceInput("frame", "Frame", "Input F32 frame buffer to display."));
 
-    JST_CHECK(defineInterfaceConfig("lut",
-                                    "LUT",
-                                    "Apply the Turbo color lookup table to scalar frames.",
-                                    "bool"));
+    const auto input = inputs().find("frame");
+    if (input != inputs().end() && input->second.resolved()) {
+        const Tensor& frame = input->second.tensor;
+        if (frame.rank() == 2 || (frame.rank() == 3 && frame.shape(2) == 1)) {
+            JST_CHECK(defineInterfaceConfig("lut",
+                                            "LUT",
+                                            "Apply the Turbo color lookup table to scalar frames.",
+                                            "bool"));
+        }
+    }
 
     return Result::SUCCESS;
 }

@@ -4,6 +4,7 @@
 #include <cctype>
 #include <system_error>
 
+#include <jetstream/memory/axis.hh>
 #include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Modules {
@@ -105,6 +106,8 @@ Result ReshapeImpl::validate() {
 
     if (inputs().contains("buffer")) {
         const Tensor& inputTensor = inputs().at("buffer").tensor;
+        SignalAxes inputAxes;
+        JST_CHECK(MapSignalAxes(inputTensor, IdentityAxisMap(inputTensor.rank()), inputAxes));
         if (inputTensor.validShape() && inputTensor.size() > 0) {
             if (!inputTensor.contiguous()) {
                 JST_ERROR("[MODULE_RESHAPE] Cannot reshape non-contiguous tensor. "
@@ -138,10 +141,22 @@ Result ReshapeImpl::create() {
     const Tensor& inputTensor = inputs().at("buffer").tensor;
 
     input = inputTensor;
-    output = input;
+    output = input.clone();
 
     JST_CHECK(output.reshape(parsedShape));
     JST_CHECK(output.propagateAttributes(input));
+
+    if (input.shape() == output.shape()) {
+        AxisMap axisMap(input.rank());
+        for (Index axis = 0; axis < input.rank(); ++axis) {
+            axisMap[axis] = axis;
+        }
+        SignalAxes outputAxes;
+        JST_CHECK(MapSignalAxes(input, axisMap, outputAxes));
+        JST_CHECK(SetSignalAxes(output, outputAxes));
+    } else {
+        JST_CHECK(SetSignalAxes(output, {}));
+    }
 
     outputs()["buffer"].produced(name(), "buffer", output);
 

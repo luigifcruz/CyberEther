@@ -29,6 +29,9 @@ struct CastImplNativeCpu : public CastImpl,
     Result kernelI32ToF32();
     Result kernelU32ToF32();
 
+    // Real floating-point -> complex floating-point kernel.
+    Result kernelF32ToCf32();
+
     // Complex integer -> CF32 kernels.
     Result kernelCi8ToCf32();
     Result kernelCi16ToCf32();
@@ -63,7 +66,8 @@ Result CastImplNativeCpu::validate() {
           inputDtype == DataType::I16 || inputDtype == DataType::U16 ||
           inputDtype == DataType::I32 || inputDtype == DataType::U32)) ||
         (validatedOutputDtype == DataType::CF32 &&
-         (inputDtype == DataType::CI8 || inputDtype == DataType::CU8 ||
+         (inputDtype == DataType::F32 ||
+          inputDtype == DataType::CI8 || inputDtype == DataType::CU8 ||
           inputDtype == DataType::CI16 || inputDtype == DataType::CU16 ||
           inputDtype == DataType::CI32 || inputDtype == DataType::CU32));
     if (!supportedPair) {
@@ -108,6 +112,9 @@ Result CastImplNativeCpu::create() {
             break;
         case DataType::U32:
             kernel = [this]() { return kernelU32ToF32(); };
+            break;
+        case DataType::F32:
+            kernel = [this]() { return kernelF32ToCf32(); };
             break;
         case DataType::CI8:
             kernel = [this]() { return kernelCi8ToCf32(); };
@@ -198,6 +205,14 @@ Result CastImplNativeCpu::kernelU32ToF32() {
     return AutomaticIterator<const U32, F32>(
         [s](const auto& in, auto& out) {
             out = static_cast<F32>(in) / s;
+        },
+    input, output);
+}
+
+Result CastImplNativeCpu::kernelF32ToCf32() {
+    return AutomaticIterator<const F32, CF32>(
+        [](const auto& in, auto& out) {
+            out = CF32(in, 0.0f);
         },
     input, output);
 }

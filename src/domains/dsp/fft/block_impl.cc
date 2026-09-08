@@ -16,14 +16,14 @@ struct FftImpl : public Block::Impl, public DynamicConfig<Blocks::Fft> {
 
 Result FftImpl::configure() {
     fftConfig->forward = forward;
-    fftConfig->axis = axis;
-    fftConfig->invert = invert;
     fftConfig->complexOutput = complexOutput;
 
     return Result::SUCCESS;
 }
 
 Result FftImpl::define() {
+    const auto& config = *candidate();
+
     JST_CHECK(defineInterfaceInput("signal",
                                    "Input",
                                    "Input signal to transform."));
@@ -38,18 +38,8 @@ Result FftImpl::define() {
                                     "frequency-domain, Inverse converts back.",
                                     "dropdown:true(Forward),false(Inverse)"));
 
-    JST_CHECK(defineInterfaceConfig("axis",
-                                    "Axis",
-                                    "Axis along which to transform. Negative axes count from the end.",
-                                    "int:"));
-
-    JST_CHECK(defineInterfaceConfig("invert",
-                                    "Invert",
-                                    "Apply alternating signs along the selected axis before transforming.",
-                                    "bool"));
-
     const auto input = inputs().find("signal");
-    if (forward &&
+    if (config.forward &&
         input != inputs().end() &&
         input->second.resolved() &&
         input->second.tensor.dtype() == DataType::F32) {

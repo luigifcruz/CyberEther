@@ -19,7 +19,6 @@ namespace {
 
 constexpr F32 kHeadingScale[3] = {1.5f, 1.3f, 1.15f};
 constexpr F32 kLineHeightRatio = 1.15f;
-constexpr F32 kPaddingRatio = 6.0f / 15.0f;
 constexpr F32 kParagraphGapRatio = 0.6f;
 constexpr F32 kHeadingGapRatio = 1.0f;
 constexpr F32 kAfterHeadingGapRatio = 0.2f;
@@ -484,6 +483,7 @@ struct TextMarkdown::Impl {
             .showActiveLine = false,
             .scrollbar = config.scrollbar,
             .wrap = TextGrid::Wrap::Word,
+            .padding = config.padding,
             .lineScale = lineScale,
             .lineTopGap = lineTopGap,
             .lineIndent = lineIndent,
@@ -565,7 +565,7 @@ void TextMarkdown::layout(const Context& ctx) {
 
     const F32 body = impl->config.fontSize;
     const F32 codePad = body * kCodePadRatio;
-    const F32 bodyPad = body * kPaddingRatio;
+    const F32 bodyPad = metrics.padding.left;
     const F32 lineHeight = body * kLineHeightRatio;
     const F32 barWidth = body * kQuoteBarRatio;
     const F32 ruleThick = std::max(1.0f, body * kRuleThicknessRatio);

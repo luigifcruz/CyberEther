@@ -67,8 +67,6 @@ class UI {
 
         const U64 bins = 2048;
 
-        config.thickness = 1.0f;
-
         JST_CHECK(buffer.create(DeviceType::CPU, TypeToDataType<CF32>(), {8, bins}));
 
         JST_CHECK(instance.addModule(

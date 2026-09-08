@@ -1,4 +1,9 @@
+#include <array>
 #include <limits>
+#include <unordered_set>
+#include <vector>
+
+#include <jetstream/memory/axis.hh>
 
 #include <jetstream/memory/macros.hh>
 #include <jetstream/module_context.hh>
@@ -7,6 +12,7 @@
 #include <jetstream/scheduler_context.hh>
 
 #include "module_impl.hh"
+#include "runtime/python/dependencies/coordinator.hh"
 
 namespace Jetstream::Modules {
 
@@ -37,9 +43,10 @@ struct PythonImplPython : public PythonImpl,
     Result create() final;
     Result destroy() final;
     Result reconfigure() final;
+    Result loadCompute() final;
 
  private:
-    Result loadCompute(const std::string& source);
+    Result loadComputeSource(const std::string& source);
 };
 
 Result PythonImplPython::validate() {
@@ -79,7 +86,8 @@ Result PythonImplPython::validate() {
     return Result::SUCCESS;
 }
 
-Result PythonImplPython::loadCompute(const std::string& source) {
+Result PythonImplPython::loadComputeSource(const std::string& source) {
+    JST_CHECK(SetPythonDependencyOrigin(this, name(), view()));
     const auto computeResult = createCompute(source,
                                              {},
                                              inputPortOrder(),
@@ -104,9 +112,33 @@ Result PythonImplPython::loadCompute(const std::string& source) {
     return computeResult;
 }
 
+Result PythonImplPython::loadCompute() {
+    return loadComputeSource(code);
+}
+
 Result PythonImplPython::create() {
     JST_CHECK(PythonImpl::create());
-    JST_CHECK(loadCompute(code));
+
+    const std::array<std::string_view, 3> axisAttributes = {
+        SampleAxisAttribute,
+        BatchAxisAttribute,
+        ChannelAxisAttribute,
+    };
+
+    std::vector<std::unordered_set<std::string>> immutableKeys;
+    immutableKeys.reserve(candidateOutputPlan.size());
+    for (const auto& plan : candidateOutputPlan) {
+        std::unordered_set<std::string> keys;
+        if (!plan.attributes.empty()) {
+            for (const auto& name : axisAttributes) {
+                keys.insert(std::string(name));
+            }
+        }
+        immutableKeys.push_back(std::move(keys));
+    }
+    setImmutableOutputAttributes(immutableKeys);
+
+    JST_CHECK(loadCompute());
 
     return Result::SUCCESS;
 }
@@ -130,7 +162,7 @@ Result PythonImplPython::reconfigure() {
     }
 
     if (config.code != code) {
-        JST_CHECK(loadCompute(config.code));
+        JST_CHECK(loadComputeSource(config.code));
         code = config.code;
     }
 

@@ -6,6 +6,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace Jetstream::Sakura::Retained {
@@ -16,6 +17,7 @@ struct MarkdownEditor {
         std::string value;
         bool editing = false;
         F32 fontSize = 15.0f;
+        std::optional<F32> height;
         std::string backgroundColorKey = "editor_background";
         F32 maxAutoHeightWindowRatio = 0.5f;
         std::function<void(std::string)> onChange;

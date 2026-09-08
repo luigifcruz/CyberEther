@@ -19,6 +19,11 @@ struct DefaultCompositorCallbacks {
     std::function<void(Result, const std::string&)> notifyResult;
     std::function<void(const std::string&)> setClipboardText;
     std::function<Result(FilePickerRequest)> requestFile;
+    std::function<void()> checkForUpdates;
+    std::function<void()> downloadUpdate;
+    std::function<bool()> applyUpdate;
+    std::function<void()> dismissUpdate;
+    std::function<void(const std::string&)> submitFeedback;
 };
 
 }  // namespace Jetstream

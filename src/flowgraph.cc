@@ -1,6 +1,7 @@
 #include "jetstream/flowgraph.hh"
 #include "jetstream/block_context.hh"
 #include "jetstream/detail/block_impl.hh"
+#include "jetstream/detail/module_impl.hh"
 #include "jetstream/detail/flowgraph_impl.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/parser.hh"
@@ -371,7 +372,14 @@ Result Flowgraph::Impl::resolveInputs(const TensorMap& requested, TensorMap& res
             return Result::ERROR;
         }
 
-        const auto& outputs = blocks.at(ext.block)->outputs();
+        const auto& producer = blocks.at(ext.block);
+        if (producer->state() != Block::State::Created) {
+            resolved[slot].requested(ext.block, ext.port);
+            result = Result::INCOMPLETE;
+            continue;
+        }
+
+        const auto& outputs = producer->outputs();
 
         if (!outputs.contains(ext.port)) {
             JST_WARN("[FLOWGRAPH] Block '{}' has no output '{}' to satisfy connection '{}'.", ext.block,
@@ -562,6 +570,7 @@ Result Flowgraph::blockCreate(const std::string name,
 
     std::shared_ptr<Block> block;
     JST_CHECK(Registry::BuildBlock(type, block));
+    block->impl->_configChangesPending = impl->configChangesPending;
 
     TensorMap resolvedInputs;
     {
@@ -1560,6 +1569,7 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
     JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.");
 
     std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
+    JST_CHECK(processConfigChanges());
     std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
 
     std::string title;
@@ -1666,11 +1676,91 @@ Result Flowgraph::exportToBlob(std::vector<char>& blob) {
     return Result::SUCCESS;
 }
 
+Result Flowgraph::processConfigChanges() {
+    if (!impl->configChangesPending->load()) {
+        return Result::SUCCESS;
+    }
+
+    std::lock_guard<std::recursive_mutex> mutationLock(impl->mutationMutex);
+    if (!impl->created.load() || !impl->configChangesPending->exchange(false)) {
+        return Result::SUCCESS;
+    }
+
+    struct Edit {
+        std::string name;
+        std::shared_ptr<Block> block;
+        std::vector<std::shared_ptr<Module>> sources;
+        Parser::Map config;
+    };
+    std::vector<Edit> edits;
+    {
+        std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+        for (const auto& name : impl->blockOrder) {
+            const auto found = impl->blocks.find(name);
+            if (found == impl->blocks.end()) {
+                continue;
+            }
+            Edit edit{name, found->second, {}, {}};
+            for (const auto& moduleName : edit.block->impl->_moduleOrder) {
+                const auto module = edit.block->impl->_modules.at(moduleName).module;
+                auto& source = *module->impl;
+                std::lock_guard queueLock(source._configChangeMutex);
+                if (source._pendingConfigChanges.empty()) {
+                    continue;
+                }
+                for (const auto& entry : source._pendingConfigChanges) {
+                    edit.config[entry.key] = entry.value;
+                }
+                source._pendingConfigChanges.clear();
+                source._configChangeInFlight = true;
+                edit.sources.push_back(module);
+            }
+            if (!edit.config.empty()) {
+                edits.push_back(std::move(edit));
+            }
+        }
+    }
+
+    // Never hold block/queue locks while synchronizing with the scheduler.
+    for (const auto& edit : edits) {
+        bool current = false;
+        {
+            std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+            const auto found = impl->blocks.find(edit.name);
+            current = found != impl->blocks.end() && found->second == edit.block;
+        }
+        // An earlier edit can recreate a downstream block. Its old requests
+        // must not be applied to the replacement, even if the name matches.
+        Result result = current ? blockReconfigure(edit.name, edit.config)
+                                : Result::ERROR;
+        if (current) {
+            std::lock_guard<std::recursive_mutex> lock(impl->blockMutex);
+            const auto found = impl->blocks.find(edit.name);
+            if (found != impl->blocks.end() &&
+                found->second->state() == Block::State::Errored) {
+                result = Result::ERROR;
+            }
+        }
+        for (const auto& module : edit.sources) {
+            std::lock_guard queueLock(module->impl->_configChangeMutex);
+            module->impl->_configChangeInFlight = false;
+            module->impl->_configChangeResult = result;
+        }
+        if (current && result != Result::SUCCESS && result != Result::RELOAD) {
+            JST_WARN("[FLOWGRAPH] Could not apply module configuration edit for '{}'.",
+                     edit.name);
+        }
+    }
+    // Like an editor command, an unsuccessful edit does not stop the graph.
+    return Result::SUCCESS;
+}
+
 Result Flowgraph::compute() {
     if (!impl->created.load()) {
         return Result::SUCCESS;
     }
 
+    JST_CHECK(processConfigChanges());
     JST_CHECK(retryIncompleteBlocks());
 
     if (impl->scheduler) {

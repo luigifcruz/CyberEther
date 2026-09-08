@@ -48,6 +48,7 @@ Result RrcFilterImplNativeCpu::validate() {
     }
 
     U64 coefficientBytes = 0;
+    U64 historyElements = 0;
     U64 historyBytes = 0;
     U64 alignedBytes = 0;
     if (!detail::CheckedMultiply(candidate()->taps,
@@ -56,6 +57,9 @@ Result RrcFilterImplNativeCpu::validate() {
         !detail::CheckedPageAlignedSize(coefficientBytes, alignedBytes) ||
         alignedBytes > std::numeric_limits<std::size_t>::max() ||
         !detail::CheckedMultiply(candidate()->taps,
+                                 validatedLaneCount,
+                                 historyElements) ||
+        !detail::CheckedMultiply(historyElements,
                                  static_cast<U64>(DataTypeSize(inputTensor.dtype())),
                                  historyBytes) ||
         !detail::CheckedPageAlignedSize(historyBytes, alignedBytes) ||
@@ -87,62 +91,96 @@ Result RrcFilterImplNativeCpu::computeSubmit() {
     return kernel();
 }
 
-Result RrcFilterImplNativeCpu::kernelCF32() {
-    const U64 inputSize = input.size();
+template<typename T>
+static Result filterKernel(const Tensor& input,
+                           Tensor& output,
+                           const Tensor& coeffs,
+                           Tensor& history,
+                           std::vector<U64>& historyIndex,
+                           const SignalAxes& signalAxes,
+                           const U64 laneCount,
+                           const U64 taps) {
     const U64 numTaps = taps;
-    const CF32* inPtr = input.data<CF32>();
-    CF32* outPtr = output.data<CF32>();
-    CF32* histPtr = history.data<CF32>();
+    const T* inPtr = input.data<T>();
+    T* outPtr = output.data<T>();
+    T* histPtr = history.data<T>();
     const F32* coeffPtr = coeffs.data<F32>();
+    const Index sampleAxis = *signalAxes.sample;
+    const U64 sampleCount = input.shape(sampleAxis);
+    const U64 inputSampleStride = input.stride(sampleAxis);
+    const U64 outputSampleStride = output.stride(sampleAxis);
+    const U64 batchCount = signalAxes.batch
+        ? input.shape(*signalAxes.batch) : 1;
+    const U64 inputBatchStride = signalAxes.batch
+        ? input.stride(*signalAxes.batch) : 0;
+    const U64 outputBatchStride = signalAxes.batch
+        ? output.stride(*signalAxes.batch) : 0;
 
-    for (U64 n = 0; n < inputSize; ++n) {
-        // Add current input sample to history.
-        histPtr[historyIndex] = inPtr[n];
-
-        // Compute filter output using convolution.
-        CF32 outputSample{0.0f, 0.0f};
-
-        for (U64 k = 0; k < numTaps; ++k) {
-            const U64 histIdx = (historyIndex + numTaps - k) % numTaps;
-            outputSample += histPtr[histIdx] * CF32(coeffPtr[k], 0.0f);
+    for (U64 lane = 0; lane < laneCount; ++lane) {
+        U64 coordinates = lane;
+        U64 inputLaneOffset = 0;
+        U64 outputLaneOffset = 0;
+        for (Index axis = input.rank(); axis-- > 0;) {
+            if (axis == sampleAxis ||
+                (signalAxes.batch && axis == *signalAxes.batch)) {
+                continue;
+            }
+            const U64 coordinate = coordinates % input.shape(axis);
+            coordinates /= input.shape(axis);
+            inputLaneOffset += coordinate * input.stride(axis);
+            outputLaneOffset += coordinate * output.stride(axis);
         }
 
-        outPtr[n] = outputSample;
+        T* laneHistory = histPtr + lane * numTaps;
+        U64 index = historyIndex[lane];
+        for (U64 batch = 0; batch < batchCount; ++batch) {
+            const U64 inputBatchOffset = inputLaneOffset +
+                                         batch * inputBatchStride;
+            const U64 outputBatchOffset = outputLaneOffset +
+                                          batch * outputBatchStride;
+            for (U64 sample = 0; sample < sampleCount; ++sample) {
+                const U64 inputOffset = inputBatchOffset +
+                                        sample * inputSampleStride;
+                const U64 outputOffset = outputBatchOffset +
+                                         sample * outputSampleStride;
+                laneHistory[index] = inPtr[inputOffset];
 
-        // Update history index (circular buffer).
-        historyIndex = (historyIndex + 1) % numTaps;
+                T outputSample{};
+                for (U64 k = 0; k < numTaps; ++k) {
+                    const U64 historyOffset =
+                        (index + numTaps - k) % numTaps;
+                    outputSample += laneHistory[historyOffset] * coeffPtr[k];
+                }
+                outPtr[outputOffset] = outputSample;
+                index = (index + 1) % numTaps;
+            }
+        }
+        historyIndex[lane] = index;
     }
 
     return Result::SUCCESS;
 }
 
+Result RrcFilterImplNativeCpu::kernelCF32() {
+    return filterKernel<CF32>(input,
+                              output,
+                              coeffs,
+                              history,
+                              historyIndex,
+                              signalAxes,
+                              laneCount,
+                              taps);
+}
+
 Result RrcFilterImplNativeCpu::kernelF32() {
-    const U64 inputSize = input.size();
-    const U64 numTaps = taps;
-    const F32* inPtr = input.data<F32>();
-    F32* outPtr = output.data<F32>();
-    F32* histPtr = history.data<F32>();
-    const F32* coeffPtr = coeffs.data<F32>();
-
-    for (U64 n = 0; n < inputSize; ++n) {
-        // Add current input sample to history.
-        histPtr[historyIndex] = inPtr[n];
-
-        // Compute filter output using convolution.
-        F32 outputSample = 0.0f;
-
-        for (U64 k = 0; k < numTaps; ++k) {
-            const U64 histIdx = (historyIndex + numTaps - k) % numTaps;
-            outputSample += histPtr[histIdx] * coeffPtr[k];
-        }
-
-        outPtr[n] = outputSample;
-
-        // Update history index (circular buffer).
-        historyIndex = (historyIndex + 1) % numTaps;
-    }
-
-    return Result::SUCCESS;
+    return filterKernel<F32>(input,
+                             output,
+                             coeffs,
+                             history,
+                             historyIndex,
+                             signalAxes,
+                             laneCount,
+                             taps);
 }
 
 JST_REGISTER_MODULE(RrcFilterImplNativeCpu, DeviceType::CPU, RuntimeType::NATIVE, "generic");

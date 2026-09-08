@@ -54,7 +54,8 @@ NB_MODULE(_impl, m) {
         .value("line", Superluminal::Type::Line)
         .value("heat", Superluminal::Type::Heat)
         .value("scatter", Superluminal::Type::Scatter)
-        .value("waterfall", Superluminal::Type::Waterfall);
+        .value("waterfall", Superluminal::Type::Waterfall)
+        .value("spectrum_analyzer", Superluminal::Type::SpectrumAnalyzer);
 
     nb::enum_<Superluminal::Domain>(m, "domain")
         .value("time", Superluminal::Domain::Time)

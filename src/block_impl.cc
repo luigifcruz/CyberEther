@@ -4,6 +4,7 @@
 #include <jetstream/module_context.hh>
 #include <jetstream/module_surface.hh>
 #include <jetstream/detail/block_interface_impl.hh>
+#include <jetstream/detail/module_impl.hh>
 
 namespace Jetstream {
 
@@ -51,6 +52,7 @@ Result Block::Impl::moduleCreate(const std::string name,
                                     module,
                                     _context->impl->environment,
                                     _context->impl->view));
+    module->impl->_configChangesPending = _configChangesPending;
     // Clone input tensors to give each module an independent layout.
 
     TensorMap clonedInputs;
@@ -121,6 +123,8 @@ Result Block::Impl::moduleDestroy(const std::string name, bool retainOnFailure) 
     const auto module = _modules.at(name).module;
     const auto surface = module->surface();
     const auto releaseOwnership = [&]() {
+        // Permanent detachment closes the edit channel even if teardown failed.
+        module->impl->invalidateConfigChanges();
         _surfaces.erase(std::remove(_surfaces.begin(), _surfaces.end(), surface),
                         _surfaces.end());
         _moduleOrder.pop_back();
@@ -147,17 +151,6 @@ Result Block::Impl::moduleDestroy(const std::string name, bool retainOnFailure) 
     if (destroyResult != Result::SUCCESS && destroyResult != Result::RELOAD) {
         if (!retainOnFailure) {
             releaseOwnership();
-            return destroyResult;
-        }
-
-        if (wasScheduled) {
-            const auto restoreResult = scheduler()->add(module);
-            if (restoreResult == Result::SUCCESS || restoreResult == Result::RELOAD) {
-                _modules.at(name).scheduled = true;
-            } else {
-                JST_ERROR("[BLOCK] Failed to restore module '{}' after destruction failure inside block '{}'.",
-                          name, _name);
-            }
         }
         return destroyResult;
     }
@@ -190,6 +183,35 @@ std::shared_ptr<Module> Block::Impl::moduleHandle(const std::string& name) {
         return nullptr;
     }
     return _modules.at(name).module;
+}
+
+Result Block::Impl::moduleBindConfigEdit(const std::string& module,
+                                        const std::string& moduleKey,
+                                        const std::string& blockKey) {
+    if (!_modules.contains(module)) {
+        JST_ERROR("[BLOCK] Cannot bind edits for missing module '{}'.", module);
+        return Result::ERROR;
+    }
+
+    Parser::Map moduleConfig;
+    Parser::Map blockConfig;
+    JST_CHECK(_modules.at(module).config->serialize(moduleConfig));
+    JST_CHECK(_stagedConfig->serialize(blockConfig));
+    if (!moduleConfig.contains(moduleKey) || !blockConfig.contains(blockKey)) {
+        JST_ERROR("[BLOCK] Invalid configuration edit binding '{}.{}' -> '{}.{}'.",
+                  module, moduleKey, _name, blockKey);
+        return Result::ERROR;
+    }
+
+    auto& impl = *_modules.at(module).module->impl;
+    std::lock_guard lock(impl._configChangeMutex);
+    if (impl._configChangeBindings.contains(moduleKey)) {
+        JST_ERROR("[BLOCK] Configuration edit '{}.{}' is already bound.",
+                  module, moduleKey);
+        return Result::ERROR;
+    }
+    impl._configChangeBindings[moduleKey] = blockKey;
+    return Result::SUCCESS;
 }
 
 Result Block::Impl::moduleExposeOutput(const std::string blockPort,

@@ -54,7 +54,14 @@ struct PskDemod : public Block::Config {
         "2. Mueller-Muller timing error detector maintains symbol synchronization.\n"
         "3. Linear interpolation provides fractional sample timing.\n"
         "4. Outputs frequency/phase corrected soft symbols without hard mapping.\n"
-        "5. Soft symbols preserve amplitude and phase information for further decoding."
+        "5. Soft symbols preserve amplitude and phase information for further decoding.\n"
+        "6. Timing history retains one cross-buffer interpolation sample.\n"
+        "7. Output capacity is derived from the exact sample-to-symbol rate ratio. Recovered "
+        "symbols are queued per lane until every output slot can be filled. Incomplete tensors "
+        "skip downstream processing, while excess symbols remain queued for later buffers. "
+        "Both queues are bounded; sustained overproduction reports an error rather than growing "
+        "memory indefinitely.\n"
+        "8. Output sample-rate metadata is set to the configured symbol rate."
     );
 };
 

@@ -62,6 +62,11 @@ struct WorkbenchActions {
     Result handle(const MailOpenModal& msg) {
         state.modal.content = msg.content;
         state.modal.flowgraph = msg.flowgraph;
+        if (msg.content == ModalContent::Dependencies) {
+            state.modal.dependencyRequest = state.runtime.dependencyRequest;
+        } else {
+            state.modal.dependencyRequest.reset();
+        }
         if (msg.settings.has_value()) {
             state.settings.section = msg.settings.value();
         }
@@ -75,6 +80,7 @@ struct WorkbenchActions {
         state.modal.content.reset();
         state.modal.flowgraph.reset();
         state.modal.renameBlockOldName.reset();
+        state.modal.dependencyRequest.reset();
         return Result::SUCCESS;
     }
 

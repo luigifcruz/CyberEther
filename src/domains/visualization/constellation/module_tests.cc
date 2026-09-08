@@ -1,9 +1,11 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <any>
 #include <limits>
 
 #include "jetstream/domains/visualization/constellation/module.hh"
+#include "jetstream/memory/axis.hh"
 #include "jetstream/module_interface.hh"
 #include "jetstream/testing.hh"
 #include "jetstream/registry.hh"
@@ -49,6 +51,15 @@ TEST_CASE("Constellation module accepts CF32 rank-1 and rank-2 inputs",
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
             TestContext ctx("constellation", impl.device, impl.runtime, impl.provider);
+            Modules::Constellation config;
+            config.xLabel = "In Phase";
+            config.yLabel = "Quadrature";
+            Parser::Map serialized;
+            REQUIRE(config.serialize(serialized) == Result::SUCCESS);
+            REQUIRE(std::any_cast<std::string>(serialized.at("xLabel")) == "In Phase");
+            REQUIRE(std::any_cast<std::string>(serialized.at("yLabel")) ==
+                    "Quadrature");
+            ctx.setConfig(config);
 
             Tensor input;
             REQUIRE(input.create(DeviceType::CPU, DataType::CF32, {128}) == Result::SUCCESS);
@@ -64,6 +75,34 @@ TEST_CASE("Constellation module accepts CF32 rank-1 and rank-2 inputs",
             REQUIRE(batched.create(DeviceType::CPU, DataType::CF32, {4, 32}) ==
                     Result::SUCCESS);
             ctx.setInput("signal", batched);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            Tensor channels;
+            REQUIRE(channels.create(DeviceType::CPU, DataType::CF32, {128}) ==
+                    Result::SUCCESS);
+            REQUIRE(SetSignalAxes(channels, {.channel = Index{0}}) ==
+                    Result::SUCCESS);
+            ctx.setInput("signal", channels);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            Tensor batchedChannels;
+            REQUIRE(batchedChannels.create(DeviceType::CPU, DataType::CF32,
+                                           {4, 32}) == Result::SUCCESS);
+            REQUIRE(SetSignalAxes(batchedChannels, {
+                .batch = Index{0},
+                .channel = Index{1},
+            }) == Result::SUCCESS);
+            ctx.setInput("signal", batchedChannels);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            Tensor trailingBatchedChannels;
+            REQUIRE(trailingBatchedChannels.create(DeviceType::CPU, DataType::CF32,
+                                                   {32, 4}) == Result::SUCCESS);
+            REQUIRE(SetSignalAxes(trailingBatchedChannels, {
+                .batch = Index{1},
+                .channel = Index{0},
+            }) == Result::SUCCESS);
+            ctx.setInput("signal", trailingBatchedChannels);
             REQUIRE(ctx.run() == Result::SUCCESS);
         }
     }
@@ -127,7 +166,7 @@ TEST_CASE("Constellation module rejects unsupported rendering size",
     }
 }
 
-TEST_CASE("Constellation module stays stable across repeated runs",
+TEST_CASE("Constellation module stays stable across repeated computes",
           "[modules][constellation][state]") {
     auto implementations = Registry::ListAvailableModules("constellation");
     REQUIRE(!implementations.empty());
@@ -145,8 +184,10 @@ TEST_CASE("Constellation module stays stable across repeated runs",
             }
 
             ctx.setInput("signal", input);
-            REQUIRE(ctx.run() == Result::SUCCESS);
-            REQUIRE(ctx.run() == Result::SUCCESS);
+            REQUIRE(ctx.start() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(ctx.stop() == Result::SUCCESS);
         }
     }
 }

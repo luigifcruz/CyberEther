@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include <jetstream/memory/axis.hh>
 #include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Modules {
@@ -44,6 +45,10 @@ Result AddImpl::validate() {
 
         outputShape[outputShape.size() - 1 - i] = std::max(dimA, dimB);
     }
+
+    Tensor mappedAxes(DeviceType::CPU, DataType::F32,
+                      Shape(outputShape.size(), 1));
+    JST_CHECK(MergeBroadcastSignalAxes(tensorA, tensorB, mappedAxes));
 
     U64 outputSize = 1;
     for (const U64 dim : outputShape) {
@@ -100,33 +105,41 @@ Result AddImpl::create() {
 
     JST_CHECK(c.create(device, dtype, validatedOutputShape));
 
-    c.propagateAttributes(a);
+    JST_CHECK(c.propagateAttributes(a));
+    JST_CHECK(MergeBroadcastSignalAxes(inputs().at("a").tensor,
+                                       inputs().at("b").tensor, c));
 
     {
         Tensor inputA = a;
         Tensor inputB = b;
 
-        c.setDerivedAttribute("sampleRate", [inputA, inputB]() -> std::any {
-            const auto srA = inputA.hasAttribute("sampleRate") ? std::any_cast<F32>(inputA.attribute("sampleRate")) : 0.0f;
-            const auto srB = inputB.hasAttribute("sampleRate") ? std::any_cast<F32>(inputB.attribute("sampleRate")) : 0.0f;
-            if (srA == srB || srB == 0.0f) {
+        if (inputA.hasAttribute("sampleRate") ||
+            inputB.hasAttribute("sampleRate")) {
+            c.setDerivedAttribute("sampleRate", [inputA, inputB]() -> std::any {
+                const auto srA = inputA.hasAttribute("sampleRate") ? std::any_cast<F32>(inputA.attribute("sampleRate")) : 0.0f;
+                const auto srB = inputB.hasAttribute("sampleRate") ? std::any_cast<F32>(inputB.attribute("sampleRate")) : 0.0f;
+                if (srA == srB || srB == 0.0f) {
+                    return std::any(srA);
+                } else if (srA == 0.0f) {
+                    return std::any(srB);
+                }
                 return std::any(srA);
-            } else if (srA == 0.0f) {
-                return std::any(srB);
-            }
-            return std::any(srA);
-        });
+            });
+        }
 
-        c.setDerivedAttribute("frequency", [inputA, inputB]() -> std::any {
-            const auto fA = inputA.hasAttribute("frequency") ? std::any_cast<F32>(inputA.attribute("frequency")) : 0.0f;
-            const auto fB = inputB.hasAttribute("frequency") ? std::any_cast<F32>(inputB.attribute("frequency")) : 0.0f;
-            if (fA == fB || fB == 0.0f) {
+        if (inputA.hasAttribute("frequency") ||
+            inputB.hasAttribute("frequency")) {
+            c.setDerivedAttribute("frequency", [inputA, inputB]() -> std::any {
+                const auto fA = inputA.hasAttribute("frequency") ? std::any_cast<F32>(inputA.attribute("frequency")) : 0.0f;
+                const auto fB = inputB.hasAttribute("frequency") ? std::any_cast<F32>(inputB.attribute("frequency")) : 0.0f;
+                if (fA == fB || fB == 0.0f) {
+                    return std::any(fA);
+                } else if (fA == 0.0f) {
+                    return std::any(fB);
+                }
                 return std::any(fA);
-            } else if (fA == 0.0f) {
-                return std::any(fB);
-            }
-            return std::any(fA);
-        });
+            });
+        }
     }
 
     outputs()["sum"].produced(name(), "sum", c);

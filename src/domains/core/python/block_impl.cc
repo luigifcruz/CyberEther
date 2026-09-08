@@ -5,6 +5,7 @@
 #include <jetstream/module_context.hh>
 #include <jetstream/runtime_context.hh>
 
+#include <algorithm>
 #include <any>
 
 namespace Jetstream::Blocks {
@@ -73,14 +74,18 @@ Result PythonImpl::configure() {
 }
 
 Result PythonImpl::define() {
-    for (U64 i = 0; i < inputCount; ++i) {
+    const auto& config = *candidate();
+    const U64 interfaceInputCount = std::min(config.inputCount, kMaxPythonPorts);
+    const U64 interfaceOutputCount = std::min(config.outputCount, kMaxPythonPorts);
+
+    for (U64 i = 0; i < interfaceInputCount; ++i) {
         const auto index = std::to_string(i);
         JST_CHECK(defineInterfaceInput(InputPortName(i),
                                        "Input " + index,
                                        "Tensor exposed as ctx.inputs[" + index + "]."));
     }
 
-    for (U64 i = 0; i < outputCount; ++i) {
+    for (U64 i = 0; i < interfaceOutputCount; ++i) {
         const auto index = std::to_string(i);
         JST_CHECK(defineInterfaceOutput(OutputPortName(i),
                                         "Output " + index,
@@ -103,11 +108,11 @@ Result PythonImpl::define() {
                                     "Throttled",
                                     "Run compute at a slow fixed rate instead of every cycle.",
                                     "bool"));
-    for (U64 i = 0; i < outputCount; ++i) {
+    for (U64 i = 0; i < interfaceOutputCount; ++i) {
         const auto index = std::to_string(i);
         JST_CHECK(defineInterfaceConfig("outputTensor" + index,
                                         "Output " + index,
-                                        "Tensor shape, data type, and device for output " + index + ".",
+                                        "Tensor shape, data type, device, and signal axes for output " + index + ".",
                                         "tensor-config:" + index));
     }
     JST_CHECK(defineInterfaceMetric("pythonDiagnostic",

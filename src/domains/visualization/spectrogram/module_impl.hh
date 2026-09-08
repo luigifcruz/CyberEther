@@ -15,7 +15,6 @@
 namespace Jetstream::Modules {
 
 constexpr F32 kSpectrogramDecayBase = 0.999f;
-constexpr F32 kSpectrogramMinTickSpacingPx = 65.0f;
 
 struct SpectrogramImpl : public Module::Impl, public DynamicConfig<Spectrogram> {
  public:
@@ -30,6 +29,12 @@ struct SpectrogramImpl : public Module::Impl, public DynamicConfig<Spectrogram> 
 
     U64 numberOfElements = 0;
     U64 numberOfBatches = 0;
+    U64 inputElementStride = 0;
+    U64 inputBatchStride = 0;
+    U64 validatedNumberOfElements = 0;
+    U64 validatedNumberOfBatches = 0;
+    U64 validatedInputElementStride = 0;
+    U64 validatedInputBatchStride = 0;
     F32 decayFactor = 0.0f;
 
     // Surface interaction state.

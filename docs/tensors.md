@@ -24,6 +24,10 @@ Tensors are cheap handles over shared storage. Copying a `Tensor` object copies 
 ```cpp
 Tensor buffer;
 JST_CHECK(buffer.create(DeviceType::CPU, DataType::CF32, {batch, samples}));
+JST_CHECK(SetSignalAxes(buffer, {
+    .sample = Index{1},
+    .batch = Index{0},
+}));
 
 buffer.at<CF32>(0, 5) = CF32{1.0f, -1.0f};
 CF32* raw = buffer.data<CF32>();
@@ -74,7 +78,7 @@ The reshaping operations never copy data. Each one mutates the handle it is call
 - Size changes with `broadcastTo(shape)`, which repeats data virtually through zero strides.
 - Sub-ranges with `slice(tokens)`, where each token is an index, a `{start, stop}` pair, or a `{start, stop, step}` triple per axis, mirroring Python slicing.
 
-Views are how the slice and permutation blocks work, and they are the reason strides exist in the module contract: a downstream module receives whatever layout the view produced. The framework enforces the contract at module creation. A module that has not declared the `DISCONTIGUOUS` taint described in [Module Lifecycle](/docs/blocks-and-modules#module-lifecycle) rejects non-contiguous input with an error rather than silently misreading it, so kernels only ever see layouts they claimed to handle.
+Views are how the slice and permutation blocks work, and they are the reason strides exist in the module contract: a downstream module receives whatever layout the view produced. Structural blocks remap positional metadata such as `sampleAxis`, `batchAxis`, and `channelAxis`, or remove roles when a reshape makes their correspondence ambiguous. The framework enforces the layout contract at module creation. A module that has not declared the `DISCONTIGUOUS` taint described in [Module Lifecycle](/docs/blocks-and-modules#module-lifecycle) rejects non-contiguous input with an error rather than silently misreading it, so kernels only ever see layouts they claimed to handle.
 
 ## One Tensor, Many Devices
 
@@ -177,7 +181,7 @@ The write on the second line goes straight into the buffer the next block comput
 
 ## Attributes Ride Along
 
-Attributes attach to the tensor and follow it through links, views, and devices. Producers set them with `setAttribute`, pass-through blocks forward them with `propagateAttributes`, and `setDerivedAttribute` registers a callable evaluated on read for values computed from live state. The conventions and hints live in [Metadata](/docs/metadata#tensor-attributes).
+Attributes attach to the tensor and can be carried through links, views, and devices. Producers set them with `setAttribute`, pass-through blocks forward them with `propagateAttributes`, and `setDerivedAttribute` registers a callable evaluated on read for values computed from live state. Axis-changing structural operations must remap `sampleAxis`, `batchAxis`, and `channelAxis` to the new axis numbering or drop them when they no longer apply. Forwarding an old role unchanged does not make it valid for the new shape. See the [signal-axis contract](/docs/metadata#signal-axes) and the other conventions in [Metadata](/docs/metadata#tensor-attributes).
 
 ## Hints
 

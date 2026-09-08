@@ -61,6 +61,10 @@ struct AdsbImpl : public Module::Impl, public DynamicConfig<Adsb> {
     static constexpr U64 maxTrackPoints = AdsbMapState::MaxTrackPoints;
 
     Tensor input;
+    Index validatedSampleAxis = 0;
+    std::optional<Index> validatedBatchAxis;
+    Index sampleAxis = 0;
+    std::optional<Index> batchAxis;
     Tools::Snapshot<std::string> aircraftTable{std::string("No aircraft detected.")};
 
     mutable std::mutex aircraftMutex;

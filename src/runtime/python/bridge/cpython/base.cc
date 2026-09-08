@@ -49,7 +49,12 @@ std::string ConfiguredPythonPath() {
 }
 
 bool TryOpenLibrary(const std::string& path, void*& handle, std::string& error) {
-    handle = Platform::OpenDynamicLibrary(path, Platform::DynamicLibraryVisibility::Global, error);
+#if defined(JST_OS_BROWSER)
+    constexpr auto visibility = Platform::DynamicLibraryVisibility::Local;
+#else
+    constexpr auto visibility = Platform::DynamicLibraryVisibility::Global;
+#endif
+    handle = Platform::OpenDynamicLibrary(path, visibility, error);
     return handle != nullptr;
 }
 
@@ -76,6 +81,7 @@ Result OpenPythonLibrary(PythonRuntimeContext::Validation& validation, void*& ha
 
 using PyInitializeFn = void (*)();
 using PyIsInitializedFn = int (*)();
+using PythonRuntimeReadyFn = int (*)();
 using PySetProgramNameFn = void (*)(const wchar_t*);
 using PyDecodeLocaleFn = wchar_t* (*)(const char*, size_t*);
 using PyGILStateEnsureFn = int (*)();
@@ -224,6 +230,8 @@ PythonApi s_api;
 void* s_libraryHandle = nullptr;
 bool s_libraryLoaded = false;
 PyInterpreterState* s_interpreter = nullptr;
+std::string s_programPath;
+std::string s_libraryPath;
 #if defined(JST_OS_WINDOWS)
 std::wstring s_programName;
 #else
@@ -315,6 +323,15 @@ Result Py_Load() {
     void* handle = nullptr;
     JST_CHECK(OpenPythonLibrary(validation, handle));
 
+    PythonRuntimeReadyFn runtimeReady = nullptr;
+    LoadOptionalSymbol(handle, runtimeReady, "CyberEther_PythonRuntimeReady");
+    if (runtimeReady && !runtimeReady()) {
+        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Python runtime '{}' failed to install its standard library.",
+                  validation.libraryPath);
+        CloseLibrary(handle);
+        return Result::ERROR;
+    }
+
     PythonApi api;
     const auto symbolsResult = LoadSymbols(handle, api);
     if (symbolsResult != Result::SUCCESS) {
@@ -353,6 +370,8 @@ Result Py_Load() {
     s_libraryHandle = handle;
     s_libraryLoaded = true;
     s_interpreter = interpreter;
+    s_programPath = validation.programPath;
+    s_libraryPath = validation.libraryPath;
     JST_INFO("[RUNTIME_CONTEXT_PYTHON] Loaded Python library '{}'.", validation.libraryPath);
     return Result::SUCCESS;
 }
@@ -360,6 +379,14 @@ Result Py_Load() {
 bool Py_IsLoaded() {
     std::lock_guard<std::mutex> lock(LoaderMutex());
     return s_libraryLoaded;
+}
+
+const std::string& Py_ProgramPath() {
+    return s_programPath;
+}
+
+const std::string& Py_LibraryPath() {
+    return s_libraryPath;
 }
 
 PyObject* PyDict_GetItemString(PyObject* dict, const char* key) {

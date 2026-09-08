@@ -806,6 +806,24 @@ Result Plugin::Impl::ensureCacheReady() {
         return Result::SUCCESS;
     }
 
+#if defined(JST_OS_BROWSER)
+    std::error_code ec;
+    const auto cacheRoot = std::filesystem::temp_directory_path(ec) / "cyberether-registry-plugins";
+    if (ec) {
+        JST_ERROR("[PLUGIN] Failed to resolve the temporary plugin cache directory.");
+        return Result::ERROR;
+    }
+
+    std::filesystem::create_directories(cacheRoot, ec);
+    if (ec) {
+        JST_ERROR("[PLUGIN] Failed to create plugin cache directory '{}'.",
+                  Platform::PathToUtf8(cacheRoot));
+        return Result::ERROR;
+    }
+
+    cacheRunDirectory = cacheRoot;
+    return Result::SUCCESS;
+#else
     std::string cachePath;
     JST_CHECK(Platform::CachePath(cachePath));
 
@@ -826,6 +844,7 @@ Result Plugin::Impl::ensureCacheReady() {
     sweepCache(runsDirectory);
     JST_CHECK(createCacheRunDirectory(runsDirectory));
     return Result::SUCCESS;
+#endif
 }
 
 Result Plugin::Impl::createCacheRunDirectory(const std::filesystem::path& runsDirectory) {
@@ -966,6 +985,11 @@ Result Plugin::Impl::load(const std::string& path) {
 }
 
 Result Plugin::Impl::reload(const std::string& path) {
+#if defined(JST_OS_BROWSER)
+    (void)path;
+    JST_ERROR("[PLUGIN] Browser plugins cannot be reloaded in place. Refresh the page instead.");
+    return Result::ERROR;
+#else
     if (path.empty()) {
         JST_ERROR("[PLUGIN] Cannot reload plugin because path is empty.");
         return Result::ERROR;
@@ -1025,6 +1049,7 @@ Result Plugin::Impl::reload(const std::string& path) {
     std::lock_guard<std::mutex> guard(pluginsMutex);
     plugins.push_back(std::move(newPlugin));
     return Result::SUCCESS;
+#endif
 }
 
 std::vector<Plugin::Info> Plugin::Impl::list() {
