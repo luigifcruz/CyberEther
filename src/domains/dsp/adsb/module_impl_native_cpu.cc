@@ -236,6 +236,7 @@ void AdsbImplNativeCpu::updateAircraftFromMessage(const struct mode_s_msg* mm) {
                         ac.latitude = lat;
                         ac.longitude = lon;
                         ac.hasPosition = true;
+                        ac.lastPositionTimestamp = now;
 
                         // Append to position history track.
                         ac.track.emplace_back(lat, lon);
@@ -300,7 +301,7 @@ Result AdsbImplNativeCpu::computeSubmit() {
                   &AdsbImplNativeCpu::messageCallback);
     tls_instance = nullptr;
 
-    updateOutputTensors();
+    updateAircraftTable();
 
     return Result::SUCCESS;
 }

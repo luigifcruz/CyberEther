@@ -2,56 +2,43 @@
 #define JETSTREAM_RENDER_COMPONENTS_GEOMAP_HH
 
 #include <memory>
-#include <vector>
+#include <span>
 
-#include "jetstream/types.hh"
-#include "jetstream/logger.hh"
-
-#include "jetstream/render/base/surface.hh"
 #include "jetstream/render/components/generic.hh"
+#include "jetstream/render/components/map_layer.hh"
 
 namespace Jetstream::Render::Components {
 
 class JETSTREAM_API GeoMap : public Generic {
  public:
-    struct Config {
-    };
+    struct Config {};
+    using Uniforms = MapContext::Uniforms;
 
-    struct Uniforms {
-        float centerLon = 0.0f;
-        float centerLat = 0.0f;
-        float zoom = 1.0f;
-        float aspectRatio = 1.0f;
-        float surfaceScale = 1.0f;
-        float viewportWidth = 800.0f;
-        float viewportHeight = 600.0f;
-    };
+    explicit GeoMap(const Config& config);
+    ~GeoMap() override;
 
-    GeoMap(const Config& config);
-    ~GeoMap();
+    Result addLayer(const std::shared_ptr<MapLayer>& layer);
 
-    Result create(Window* window);
-    Result destroy(Window* window);
-
+    Result create(Window* window) override;
+    Result destroy(Window* window) override;
     Result surface(Render::Surface::Config& config);
-
-    Result present();
+    Result present() override;
 
     Result updateUniforms(const Uniforms& uniforms);
+    Result processInteraction(std::span<const SurfaceEvent> surfaceEvents,
+                              std::span<const MouseEvent> mouseEvents);
 
-    constexpr const Config& getConfig() const {
-        return config;
-    }
-
+    const MapContext& getContext() const;
     const Uniforms& getUniforms() const;
+
+    constexpr const Config& getConfig() const { return config; }
 
  private:
     Config config;
-
     struct Impl;
     std::unique_ptr<Impl> pimpl;
 };
 
 }  // namespace Jetstream::Render::Components
 
-#endif  // JETSTREAM_RENDER_COMPONENTS_GEOMAP_HH
+#endif

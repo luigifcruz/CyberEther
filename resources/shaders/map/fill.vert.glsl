@@ -1,51 +1,22 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
+#extension GL_GOOGLE_include_directive : require
 
-layout(set = 0, binding = 0) uniform ShaderUniforms {
-    float centerLon;
-    float centerLat;
-    float zoom;
-    float aspectRatio;
-    float surfaceScale;
-    float lineWidth;
-    float colorR;
-    float colorG;
-    float colorB;
-    float viewportWidth;
-    float viewportHeight;
-    float _pad0;
-    vec4 worldOffsets;
-} uniforms;
+#include "camera.glsl"
 
-// Per-vertex: (Mercator x, Mercator y, r, g, b).
+// Per-vertex: (longitude, latitude, r, g, b).
 layout(location = 0) in vec2 inPosition;
 layout(location = 1) in vec3 inColor;
 
 layout(location = 0) out vec3 vColor;
-
-const float PI = 3.14159265358979323846;
-const float MAX_MERCATOR_LAT = 85.05112878;
-
-float mercatorX(float lon) {
-    return (lon + 180.0) / 360.0;
-}
-
-float mercatorY(float lat) {
-    lat = clamp(lat, -MAX_MERCATOR_LAT, MAX_MERCATOR_LAT);
-    float r = radians(lat);
-    return (1.0 - asinh(tan(r)) / PI) / 2.0;
-}
+layout(location = 1) out vec3 vSphere;
 
 void main() {
-    float cx = mercatorX(uniforms.centerLon);
-    float cy = mercatorY(uniforms.centerLat);
-    float scale = pow(2.0, uniforms.zoom);
-
-    float worldX = inPosition.x + uniforms.worldOffsets[gl_InstanceIndex];
-    float vx = (worldX - cx) * scale * 2.0;
-    float vy = (cy - inPosition.y) * scale * 2.0;
-    vx /= uniforms.aspectRatio;
-
-    gl_Position = vec4(vx, vy, 0.0, 1.0);
+    vec3 p = lonLatToSphere(inPosition.x, inPosition.y);
+    // Project the real sphere point (no vertex-level clamping); the fragment
+    // stage discards pixels beyond the horizon so triangles that straddle the
+    // limb meet the silhouette cleanly without distorting large primitives.
+    gl_Position = uniforms.viewProjection * vec4(p, 1.0);
     vColor = inColor;
+    vSphere = p;
 }

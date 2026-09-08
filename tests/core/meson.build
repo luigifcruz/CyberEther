@@ -28,7 +28,11 @@ core_test_domains = {
         'platform/storage.cc',
     ],
     'registry': ['registry/registry.cc'],
-    'render': ['render/transfers.cc'],
+    'render': [
+        'render/transfers.cc',
+        'render/geomap_labels.cc',
+        'render/map_layers.cc',
+    ],
     'runtime': [
         'runtime/scheduler.cc',
         'runtime/native.cc',
