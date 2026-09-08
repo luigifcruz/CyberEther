@@ -55,7 +55,7 @@ struct AdsbImpl : public Module::Impl, public DynamicConfig<Adsb> {
     };
 
     JETSTREAM_API std::string getAircraftTable() const;
-    void updateAircraftTable();
+    JETSTREAM_API void updateAircraftTable();
 
  protected:
     static constexpr U64 maxTrackPoints = AdsbMapState::MaxTrackPoints;
