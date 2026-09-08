@@ -234,18 +234,18 @@ struct SyntheticBlockImpl : Block::Impl {
                 JST_CHECK(defineInterfaceOutput("port", "Port", "Synthetic output."));
                 return defineInterfaceOutput("port", "Port", "Synthetic output.");
             case DuplicateInterface::Config:
-                JST_CHECK(defineInterfaceConfig("value", "Value", "Synthetic config.", "text"));
-                return defineInterfaceConfig("value", "Value", "Synthetic config.", "text");
+                JST_CHECK(defineInterfaceConfig("value", "Value", "Synthetic config.", {{"type", "text"}}));
+                return defineInterfaceConfig("value", "Value", "Synthetic config.", {{"type", "text"}});
             case DuplicateInterface::Metric:
                 JST_CHECK(defineInterfaceMetric("status",
                                                 "Status",
                                                 "Synthetic metric.",
-                                                "text",
+                                                {{"type", "label"}},
                                                 [] { return std::any(std::string("ready")); }));
                 return defineInterfaceMetric("status",
                                              "Status",
                                              "Synthetic metric.",
-                                             "text",
+                                             {{"type", "label"}},
                                              [] { return std::any(std::string("ready")); });
             case DuplicateInterface::None:
                 break;
@@ -264,14 +264,14 @@ struct SyntheticBlockImpl : Block::Impl {
         }
 
         if (probe->declareConfig) {
-            JST_CHECK(defineInterfaceConfig("value", "Value", "Synthetic config.", "text"));
+            JST_CHECK(defineInterfaceConfig("value", "Value", "Synthetic config.", {{"type", "text"}}));
         }
 
         if (probe->declareMetric) {
             JST_CHECK(defineInterfaceMetric("status",
                                             "Status",
                                             "Synthetic metric.",
-                                            "text",
+                                            {{"type", "label"}},
                                             [] { return std::any(std::string("ready")); }));
         }
 
@@ -1917,13 +1917,13 @@ TEST_CASE("Block interfaces retain declaration metadata and metric callbacks",
 
     REQUIRE(interface->configs()[0].first == "value");
     REQUIRE(interface->configs()[0].second.label == "Value");
-    REQUIRE(interface->configs()[0].second.format == "text");
+    REQUIRE(interface->configs()[0].second.format == Parser::Map{{"type", "text"}});
     REQUIRE(interface->configs()[0].second.help == "Synthetic config.");
     REQUIRE_FALSE(static_cast<bool>(interface->configs()[0].second.metric));
 
     REQUIRE(interface->metrics()[0].first == "status");
     REQUIRE(interface->metrics()[0].second.label == "Status");
-    REQUIRE(interface->metrics()[0].second.format == "text");
+    REQUIRE(interface->metrics()[0].second.format == Parser::Map{{"type", "label"}});
     REQUIRE(interface->metrics()[0].second.help == "Synthetic metric.");
     REQUIRE(static_cast<bool>(interface->metrics()[0].second.metric));
     REQUIRE(std::any_cast<std::string>(interface->metrics()[0].second.metric()) == "ready");

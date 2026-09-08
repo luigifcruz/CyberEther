@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -18,6 +19,8 @@ struct Combo {
         F32 width = 0.0f;
         bool disabled = false;
         std::function<void(const std::string&)> onChange;
+        std::optional<U64> selectedIndex;
+        std::function<void(U64)> onSelect;
     };
 
     Combo();

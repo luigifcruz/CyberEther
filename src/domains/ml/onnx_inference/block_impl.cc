@@ -190,12 +190,15 @@ Result OnnxInferenceImpl::define() {
     JST_CHECK(defineInterfaceConfig("modelPath",
                                     "Model Path",
                                     "Filesystem path to the .onnx model file.",
-                                    "filepicker:onnx"));
+                                    {{"type", "filepicker"}, {"extensions", Parser::MakeSequence({"onnx"})}}));
     JST_CHECK(defineInterfaceConfig("executionProvider",
                                     "Execution Provider",
                                     "Execution backend for running the ONNX model.",
-                                    "dropdown:cpu(CPU),coreml(Core ML),"
-                                    "tensorrt(TensorRT)"));
+                                    {{"type", "dropdown"}, {"options", Parser::Sequence{
+                                        Parser::Map{{"label", "CPU"}, {"value", "cpu"}},
+                                        Parser::Map{{"label", "Core ML"}, {"value", "coreml"}},
+                                        Parser::Map{{"label", "TensorRT"}, {"value", "tensorrt"}},
+                                    }}}));
 
     return Result::SUCCESS;
 }

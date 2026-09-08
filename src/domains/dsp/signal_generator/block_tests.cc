@@ -70,7 +70,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
             fields.begin(), fields.end(),
             [](const auto& field) { return field.name == "amplitude"; });
         REQUIRE(amplitude != fields.end());
-        REQUIRE(amplitude->format == "float::3");
+        REQUIRE(amplitude->format == Parser::Map{{"type", "float"}, {"precision", 3}});
     }
 
     SECTION("noise") {

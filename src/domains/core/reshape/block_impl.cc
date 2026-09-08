@@ -42,12 +42,12 @@ Result ReshapeImpl::define() {
     JST_CHECK(defineInterfaceConfig("shape",
                                     "Shape",
                                     "Target shape as bracket notation (e.g., [100, 200]).",
-                                    "text"));
+                                    {{"type", "text"}}));
 
     JST_CHECK(defineInterfaceConfig("contiguous",
                                     "Contiguous",
                                     "Copy data to ensure contiguous memory layout before reshaping.",
-                                    "bool"));
+                                    {{"type", "bool"}}));
 
     return Result::SUCCESS;
 }

@@ -2,6 +2,7 @@
 #define JETSTREAM_PARSER_MAP_HH
 
 #include <any>
+#include <initializer_list>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -20,6 +21,10 @@ class JETSTREAM_API ParserMap {
     using iterator = std::vector<Entry>::iterator;
     using const_iterator = std::vector<Entry>::const_iterator;
     using size_type = std::vector<Entry>::size_type;
+
+    ParserMap() = default;
+    ParserMap(std::initializer_list<Entry> values);
+    bool operator==(const ParserMap& other) const;
 
     bool contains(const std::string& key) const;
     std::any& at(const std::string& key);

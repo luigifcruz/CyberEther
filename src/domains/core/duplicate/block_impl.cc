@@ -30,13 +30,19 @@ Result DuplicateImpl::define() {
     JST_CHECK(defineInterfaceConfig("outputDevice",
                                     "Output Device",
                                     "Selects the output device for the duplicated buffer.",
-                                    "dropdown:none(None),cpu(CPU),cuda(CUDA),metal(Metal),vulkan(Vulkan)"));
+                                    {{"type", "dropdown"}, {"options", Parser::Sequence{
+                                        Parser::Map{{"label", "None"}, {"value", "none"}},
+                                        Parser::Map{{"label", "CPU"}, {"value", "cpu"}},
+                                        Parser::Map{{"label", "CUDA"}, {"value", "cuda"}},
+                                        Parser::Map{{"label", "Metal"}, {"value", "metal"}},
+                                        Parser::Map{{"label", "Vulkan"}, {"value", "vulkan"}},
+                                    }}}));
 
     if (StringToDevice(config.outputDevice) != DeviceType::CPU) {
         JST_CHECK(defineInterfaceConfig("hostAccessible",
                                         "Host Accessible",
                                         "When enabled, the output buffer can be accessed from the CPU.",
-                                        "bool"));
+                                        {{"type", "bool"}}));
     }
 
     return Result::SUCCESS;

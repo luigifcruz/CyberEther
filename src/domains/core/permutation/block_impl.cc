@@ -42,12 +42,12 @@ Result PermutationImpl::define() {
     JST_CHECK(defineInterfaceConfig("permutation",
                                     "Permutation",
                                     "Output axis order as zero-based input axis indices.",
-                                    "vector-inline:uint:axis"));
+                                    {{"type", "vector-inline"}, {"value_type", "uint"}, {"unit", "axis"}}));
 
     JST_CHECK(defineInterfaceConfig("contiguous",
                                     "Contiguous",
                                     "Copy data to ensure contiguous memory layout.",
-                                    "bool"));
+                                    {{"type", "bool"}}));
 
     return Result::SUCCESS;
 }

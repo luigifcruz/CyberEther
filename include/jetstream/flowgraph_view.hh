@@ -20,14 +20,14 @@ class JETSTREAM_API Flowgraph::View {
     struct InterfaceEntry {
         std::string name;
         std::string label;
-        std::string format;
+        Parser::Map format;
         std::string help;
     };
 
     struct MetricEntry {
         std::string name;
         std::string label;
-        std::string format;
+        Parser::Map format;
         std::string help;
         std::any value;
     };

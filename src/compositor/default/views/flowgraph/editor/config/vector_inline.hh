@@ -5,21 +5,21 @@
 
 #include <cctype>
 
-// TODO: Cleanup parsing.
-
 namespace Jetstream {
 
 struct FlowgraphConfigVectorInlineField {
     using Config = FlowgraphConfigFieldConfig;
 
-    void update(Config config) {
+    Result update(Config config) {
         this->config = std::move(config);
         if (this->config.format != parsedFormat) {
             parseFormat();
         }
-        if (this->config.encoded != parsedEncoded) {
-            buffer = formatCurrentValue();
-            parsedEncoded = this->config.encoded;
+        const std::any nextValue = this->config.values.contains(this->config.name)
+            ? this->config.values.at(this->config.name) : std::any{};
+        if (!Parser::Equal(nextValue, parsedValue)) {
+            JST_CHECK(formatCurrentValue());
+            parsedValue = nextValue;
         }
         frame.update({
             .id = this->config.id,
@@ -35,6 +35,7 @@ struct FlowgraphConfigVectorInlineField {
                 applyBuffer(value);
             },
         });
+        return Result::SUCCESS;
     }
 
     void render(const Sakura::Context& ctx) const {
@@ -46,39 +47,30 @@ struct FlowgraphConfigVectorInlineField {
  private:
     void parseFormat() {
         parsedFormat = config.format;
-        const auto parts = Parser::SplitString(config.format, ":");
-        valueType = (parts.size() > 1) ? parts[1] : "float";
-        unit = (parts.size() > 2) ? parts[2] : "";
-        precision = (parts.size() > 3 && !parts[3].empty()) ? std::stoi(parts[3]) : 2;
+        valueType = Parser::Get<std::string>(config.format, "value_type", "float");
+        unit = Parser::Get<std::string>(config.format, "unit");
+        precision = Parser::Get<I32>(config.format, "precision", 2);
+        multiplier = Parser::Get<F32>(config.format, "scale", 1.0f);
+        parsedValue.reset();
+        buffer = "[]";
     }
 
-    std::string formatCurrentValue() const {
-        if (config.encoded.empty()) {
-            return "[]";
-        }
-
-        try {
-            if (valueType == "float") {
-                std::vector<F32> values;
-                if (Parser::StringToTyped(config.encoded, values) == Result::SUCCESS) {
-                    const F32 multiplier = ConfigUnitMultiplier(unit);
-                    std::vector<std::string> formattedValues;
-                    formattedValues.reserve(values.size());
-                    for (const auto value : values) {
-                        formattedValues.push_back(jst::fmt::format("{:.{}f}", value / multiplier, precision));
-                    }
-                    return jst::fmt::format("[{}]", jst::fmt::join(formattedValues, ", "));
-                }
-            } else if (valueType == "uint") {
-                std::vector<U64> values;
-                if (Parser::StringToTyped(config.encoded, values) == Result::SUCCESS) {
-                    return jst::fmt::format("[{}]", jst::fmt::join(values, ", "));
-                }
+    Result formatCurrentValue() {
+        if (valueType == "float") {
+            std::vector<F32> values;
+            JST_CHECK(Parser::Deserialize(config.values, config.name, values));
+            std::vector<std::string> formattedValues;
+            formattedValues.reserve(values.size());
+            for (const auto value : values) {
+                formattedValues.push_back(jst::fmt::format("{:.{}f}", value / multiplier, precision));
             }
-        } catch (...) {
+            buffer = jst::fmt::format("[{}]", jst::fmt::join(formattedValues, ", "));
+        } else if (valueType == "uint") {
+            std::vector<U64> values;
+            JST_CHECK(Parser::Deserialize(config.values, config.name, values));
+            buffer = jst::fmt::format("[{}]", jst::fmt::join(values, ", "));
         }
-
-        return config.encoded.empty() ? "[]" : config.encoded;
+        return Result::SUCCESS;
     }
 
     static bool normalizeVectorInput(const std::string& text, std::string& normalized, std::string& error) {
@@ -142,7 +134,6 @@ struct FlowgraphConfigVectorInlineField {
             }
 
             if (error.empty()) {
-                const F32 multiplier = ConfigUnitMultiplier(unit);
                 for (auto& value : parsedValues) {
                     value *= multiplier;
                 }
@@ -186,8 +177,9 @@ struct FlowgraphConfigVectorInlineField {
     }
 
     Config config;
-    std::string parsedFormat;
-    std::string parsedEncoded;
+    Parser::Map parsedFormat;
+    std::any parsedValue;
+    F32 multiplier = 1.0f;
     std::string valueType = "float";
     std::string unit;
     int precision = 2;

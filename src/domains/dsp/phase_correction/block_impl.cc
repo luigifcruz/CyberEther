@@ -33,7 +33,7 @@ Result PhaseCorrectionImpl::define() {
     JST_CHECK(defineInterfaceConfig("phaseIncrement",
                                     "Phase Increment",
                                     "Phase advance per batch in radians.",
-                                    "float:rad:3"));
+                                    {{"type", "float"}, {"unit", "rad"}, {"precision", 3}}));
 
     return Result::SUCCESS;
 }

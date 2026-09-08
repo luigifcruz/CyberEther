@@ -34,12 +34,12 @@ Result FoldImpl::define() {
     JST_CHECK(defineInterfaceConfig("offset",
                                     "Offset",
                                     "Sample offset before folding.",
-                                    "uint:samples"));
+                                    {{"type", "uint"}, {"unit", "samples"}}));
 
     JST_CHECK(defineInterfaceConfig("size",
                                     "Size",
                                     "Output size along the folded axis.",
-                                    "uint:samples"));
+                                    {{"type", "uint"}, {"unit", "samples"}}));
 
     return Result::SUCCESS;
 }

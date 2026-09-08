@@ -4,12 +4,16 @@
 #include <algorithm>
 #include <any>
 #include <array>
+#include <cmath>
+#include <limits>
 #include <exception>
 #include <functional>
+#include <initializer_list>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "jetstream/types.hh"
@@ -27,6 +31,20 @@ class JETSTREAM_API Parser {
  public:
     typedef ParserMap Map;
     typedef std::vector<std::any> Sequence;
+
+    static Sequence MakeSequence(std::initializer_list<std::any> values);
+    static bool Equal(const std::any& lhs, const std::any& rhs);
+
+    template<typename T>
+    static T Get(const Map& map, const std::string& key, T fallback = {}) {
+        if (map.contains(key)) {
+            T value{};
+            if (Deserialize(map, key, value) == Result::SUCCESS) {
+                return value;
+            }
+        }
+        return fallback;
+    }
 
     template<typename T>
     static Result StringToTyped(const std::string& encoded, T& variable) {
@@ -284,10 +302,45 @@ class JETSTREAM_API Parser {
         using ValueType = std::remove_cvref_t<T>;
 
         if (encoded.type() == typeid(ValueType)) {
-            JST_TRACE("Deserializing '{}': Trying to convert 'std::any' into 'T'.", name);
-
             variable = std::any_cast<const ValueType&>(encoded);
             return Result::SUCCESS;
+        }
+
+        if constexpr (std::is_arithmetic_v<ValueType> && !std::is_same_v<ValueType, bool>) {
+            std::optional<Result> converted;
+            const auto convert = [&]<typename Source>() {
+                if (const auto* number = std::any_cast<Source>(&encoded)) {
+                    bool valid;
+                    if constexpr (std::is_integral_v<Source> && std::is_integral_v<ValueType>) {
+                        valid = std::in_range<ValueType>(*number);
+                    } else {
+                        const long double candidate = static_cast<long double>(*number);
+                        if constexpr (std::is_integral_v<ValueType>) {
+                            const long double upper = std::ldexp(1.0L, std::numeric_limits<ValueType>::digits);
+                            const long double lower = std::is_signed_v<ValueType> ? -upper : 0.0L;
+                            valid = std::isfinite(candidate) && candidate >= lower && candidate < upper &&
+                                    std::trunc(candidate) == candidate;
+                        } else {
+                            valid = !std::isfinite(candidate) ||
+                                    std::abs(candidate) <= std::numeric_limits<ValueType>::max();
+                        }
+                    }
+                    if (valid) {
+                        variable = static_cast<ValueType>(*number);
+                    } else {
+                        JST_ERROR("[PARSER] Numeric value for '{}' is out of range or not integral.", name);
+                    }
+                    converted = valid ? Result::SUCCESS : Result::ERROR;
+                }
+            };
+            convert.template operator()<I8>(); convert.template operator()<U8>();
+            convert.template operator()<I16>(); convert.template operator()<U16>();
+            convert.template operator()<I32>(); convert.template operator()<U32>();
+            convert.template operator()<I64>(); convert.template operator()<U64>();
+            convert.template operator()<F32>(); convert.template operator()<F64>();
+            if (converted) {
+                return *converted;
+            }
         }
 
         if constexpr (detail::Optional<ValueType>) {

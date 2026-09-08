@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -17,6 +18,8 @@ struct NodeCombo {
         std::string value;
         F32 width = 0.0f;
         std::function<void(const std::string&)> onChange;
+        std::optional<U64> selectedIndex;
+        std::function<void(U64)> onSelect;
     };
 
     NodeCombo();

@@ -42,12 +42,19 @@ void Combo::render(const Context& ctx) const {
         }
         const float availableWidth = ImGui::GetContentRegionAvail().x;
         const float itemWidth = availableWidth > popupInset ? availableWidth - popupInset : 0.0f;
-        for (const auto& option : config.options) {
-            const bool selected = config.value == option;
+        for (U64 index = 0; index < config.options.size(); ++index) {
+            const auto& option = config.options[index];
+            ImGui::PushID(static_cast<int>(index));
+            const bool selected = config.onSelect
+                ? config.selectedIndex && *config.selectedIndex == index
+                : config.value == option;
             const bool activated = popupInset > 0.0f
                                        ? ImGui::Selectable(option.c_str(), selected, ImGuiSelectableFlags_None, ImVec2(itemWidth, 0.0f))
                                        : ImGui::Selectable(option.c_str(), selected);
             if (activated) {
+                if (config.onSelect) {
+                    config.onSelect(index);
+                }
                 if (config.onChange) {
                     config.onChange(option);
                 }
@@ -56,6 +63,7 @@ void Combo::render(const Context& ctx) const {
             if (selected) {
                 ImGui::SetItemDefaultFocus();
             }
+            ImGui::PopID();
         }
         if (popupInset > 0.0f) {
             ImGui::Unindent(popupInset);

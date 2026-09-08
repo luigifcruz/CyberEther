@@ -27,7 +27,7 @@ Result BlueprintGainImpl::define() {
     JST_CHECK(defineInterfaceConfig("gain",
                                     "Gain",
                                     "Scalar multiplier applied to each sample.",
-                                    "float::3"));
+                                    {{"type", "float"}, {"precision", 3}}));
 
     return Result::SUCCESS;
 }

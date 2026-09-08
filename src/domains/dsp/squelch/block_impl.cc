@@ -29,7 +29,7 @@ Result SquelchImpl::define() {
     JST_CHECK(defineInterfaceMetric("state",
                                     "Squelch",
                                     "Whether the squelch is currently open or closed.",
-                                    "label",
+                                    {{"type", "label"}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::string("Closed");
@@ -41,7 +41,7 @@ Result SquelchImpl::define() {
     JST_CHECK(defineInterfaceMetric("amplitude",
                                     "Signal Level",
                                     "How strong the incoming signal is right now.",
-                                    "label",
+                                    {{"type", "label"}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::string("0.000");
@@ -53,7 +53,7 @@ Result SquelchImpl::define() {
     JST_CHECK(defineInterfaceConfig("threshold",
                                     "Threshold",
                                     "Minimum signal level needed to open the squelch.",
-                                    "float::3"));
+                                    {{"type", "float"}, {"precision", 3}}));
 
     return Result::SUCCESS;
 }

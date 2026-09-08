@@ -34,18 +34,24 @@ Result FmImpl::define() {
     JST_CHECK(defineInterfaceConfig("mode",
                                     "Mode",
                                     "Select mono narrowband or stereo wideband FM.",
-                                    "dropdown:narrow(Narrowband),wide(Wideband)"));
+                                    {{"type", "dropdown"}, {"options", Parser::Sequence{
+                                        Parser::Map{{"label", "Narrowband"}, {"value", "narrow"}},
+                                        Parser::Map{{"label", "Wideband"}, {"value", "wide"}},
+                                    }}}));
 
     JST_CHECK(defineInterfaceConfig("deemphasis",
                                     "De-emphasis",
                                     "Optional FM de-emphasis time constant.",
-                                    "dropdown:none(None),50us(50 us [Global]),"
-                                    "75us(75 us [USA])"));
+                                    {{"type", "dropdown"}, {"options", Parser::Sequence{
+                                        Parser::Map{{"label", "None"}, {"value", "none"}},
+                                        Parser::Map{{"label", "50 us [Global]"}, {"value", "50us"}},
+                                        Parser::Map{{"label", "75 us [USA]"}, {"value", "75us"}},
+                                    }}}));
 
     JST_CHECK(defineInterfaceConfig("sampleRate",
                                     "Sample Rate",
                                     "Input signal sample rate.",
-                                    "float:MHz:3"));
+                                    {{"type", "float"}, {"unit", "MHz"}, {"scale", 1.0e6f}, {"precision", 3}}));
 
     return Result::SUCCESS;
 }

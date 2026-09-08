@@ -31,6 +31,7 @@ core_test_domains = {
     'registry': ['registry/registry.cc'],
     'render': ['render/transfers.cc'],
     'sakura': [
+        'sakura/interface_controls.cc',
         'sakura/metric_label.cc',
         'sakura/node.cc',
         'sakura/node_metadata.cc',
@@ -44,6 +45,7 @@ core_test_domains = {
         'runtime/python.cc',
     ],
     'serialization': [
+        'serialization/interface_format.cc',
         'serialization/conversions.cc',
         'serialization/serdes.cc',
         'serialization/hash.cc',

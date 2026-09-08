@@ -32,27 +32,27 @@ Result AgcImpl::define() {
     JST_CHECK(defineInterfaceConfig("tileSize",
                                     "Tile Size",
                                     "Samples per RMS estimate; controls response time.",
-                                    "uint:samples"));
+                                    {{"type", "uint"}, {"unit", "samples"}}));
     JST_CHECK(defineInterfaceConfig("reference",
                                     "Reference",
                                     "Desired RMS output level.",
-                                    "float::3"));
+                                    {{"type", "float"}, {"precision", 3}}));
     JST_CHECK(defineInterfaceConfig("epsilon",
                                     "Epsilon",
                                     "Power floor added before the square root.",
-                                    "float::12"));
+                                    {{"type", "float"}, {"precision", 12}}));
     JST_CHECK(defineInterfaceConfig("minGain",
                                     "Min Gain",
                                     "Minimum gain applied to a tile.",
-                                    "float::3"));
+                                    {{"type", "float"}, {"precision", 3}}));
     JST_CHECK(defineInterfaceConfig("maxGain",
                                     "Max Gain",
                                     "Maximum gain applied to a tile.",
-                                    "float::3"));
+                                    {{"type", "float"}, {"precision", 3}}));
     JST_CHECK(defineInterfaceConfig("maxGainChange",
                                     "Max Gain Change",
                                     "Maximum gain ratio between adjacent tiles.",
-                                    "float::3"));
+                                    {{"type", "float"}, {"precision", 3}}));
 
     return Result::SUCCESS;
 }

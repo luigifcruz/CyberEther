@@ -140,6 +140,70 @@ The building vocabulary inside `create()`:
 
 Blocks may also access `environment()`, `view()`, `scheduler()`, and `render()` for the surrounding machinery.
 
+## Interface Descriptions
+
+The registration methods `defineInterfaceConfig` and `defineInterfaceMetric` take a
+`Parser::Map` as their fourth argument. Each description has a required `type` string and
+named properties. String literals in map initializers become owned `std::string` values.
+For sequences containing string literals, use `Parser::MakeSequence({"bin", "raw", "iq"})`.
+The helper returns a regular sequence with owned strings and preserves the types of other values.
+
+```cpp
+JST_CHECK(defineInterfaceConfig("frequency", "Frequency", "Tuner frequency.", {
+    {"type", "float"}, {"unit", "MHz"}, {"scale", 1.0e6f},
+    {"precision", 3}, {"step_config", "frequencyStep"},
+}));
+
+JST_CHECK(defineInterfaceConfig("mode", "Mode", "Select a processing mode.", {
+    {"type", "dropdown"},
+    {"options", Parser::Sequence{
+        Parser::Map{{"label", "Fast"}, {"value", "fast"}},
+        Parser::Map{{"label", "Accurate"}, {"value", "accurate"}},
+    }},
+}));
+```
+
+Options retain their order. Display labels and values are independent. Selecting an option
+returns its string value. The receiving config's deserializer converts strings to numeric or
+boolean values when needed. The dropdown compares the current value's string representation
+with its option values. Duplicate labels are distinguished by option index. A value absent
+from the current options is displayed as unavailable and remains saved until explicitly
+changed. Dropdown descriptions and values are never delimiter-split.
+
+| Type | Properties and defaults |
+|---|---|
+| Basic controls (`bool`, `text`, `markdown`, `python`) | No additional properties are required. |
+| Integer controls (`int`, `uint`) | The display suffix `unit` defaults to an empty string. |
+| Floating-point control (`float`) | The defaults are an empty `unit`, a `scale` of 1, and a `precision` of 2. The optional `step_config` identifies a linked config key. Displayed values and steps are divided by `scale`. Edits are multiplied by it. Units are labels and imply no conversion. |
+| Range control (`range`) | The defaults are a `min` of 0, a `max` of 1, an empty `unit`, and a `value_type` of `float`. Setting `value_type` to `uint` changes the default maximum to 100. Bounds describe the slider. Block and module validation govern allowed input. |
+| Dropdown control (`dropdown`) | The required `options` sequence contains entries with a string `label` and a string `value`. |
+| Vector controls (`vector`, `vector-inline`) | The defaults are a `value_type` of `float`, an empty `unit`, a `scale` of 1, and a `precision` of 2. The element type can also be `uint`. Scaling and precision apply to float elements. |
+| File controls (`filepicker`, `filesave`) | The optional `extensions` sequence contains strings and defaults to an empty sequence. |
+| Multiline editor (`multiline`) | The `collapsible` property defaults to false. |
+| Tensor control (`tensor-config`) | The required `source` identifies the config key containing tensor specifications. The `index` property defaults to 0. |
+
+Descriptions are validated at registration. Invalid types, malformed options, non-positive
+or non-finite scales, invalid bounds, and precision outside the integer range from 0 to 16
+return `Result::ERROR`. Descriptor payloads must support the Parser equality checks used for
+change detection. Unsupported payload types and non-reflexive values, such as a not-a-number
+value, are rejected during registration. Controls cache decoded settings when descriptions change and read
+named entries directly from the config map. Value decoding uses `Parser::Deserialize` and
+propagates failures as `Result`. A field emits a decode-error notification when it enters
+the error state. Repeated updates in that state do not emit more notifications. Successful
+decoding resets the notification state.
+
+The accessor `Parser::Get` reads validated descriptor properties through `Deserialize`.
+It returns its fallback when a property is absent or cannot be decoded. Central validation
+uses `Deserialize` directly so malformed properties are reported. Checked numeric conversions
+live in the existing Parser decoder. Boolean values are excluded from numeric cross-conversion.
+The same decoding rules apply to optional values and sequence elements.
+
+Node and detached surface views share the same field construction path. Rendering does not
+encode or decode serialized documents. Use `Parser::YamlEncode` and `Parser::YamlDecode` at
+serialization boundaries. The document decoder reconstructs maps and sequences and initially
+stores scalar values as strings. Subsequent deserialization converts those strings to the
+receiving property's type.
+
 ## Module Lifecycle
 
 A module implementation derives from `Module::Impl`, a runtime context that carries the compute hooks for its runtime, and `Scheduler::Context` for the scheduling hooks:

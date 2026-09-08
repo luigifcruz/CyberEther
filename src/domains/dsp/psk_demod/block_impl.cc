@@ -37,32 +37,36 @@ Result PskDemodImpl::define() {
     JST_CHECK(defineInterfaceConfig("pskType",
                                     "PSK Type",
                                     "The PSK modulation scheme to demodulate.",
-                                    "dropdown:bpsk(BPSK),qpsk(QPSK),8psk(8-PSK)"));
+                                    {{"type", "dropdown"}, {"options", Parser::Sequence{
+                                        Parser::Map{{"label", "BPSK"}, {"value", "bpsk"}},
+                                        Parser::Map{{"label", "QPSK"}, {"value", "qpsk"}},
+                                        Parser::Map{{"label", "8-PSK"}, {"value", "8psk"}},
+                                    }}}));
 
     JST_CHECK(defineInterfaceConfig("sampleRate",
                                     "Sample Rate",
                                     "Input signal sample rate.",
-                                    "float:MHz:3"));
+                                    {{"type", "float"}, {"unit", "MHz"}, {"scale", 1.0e6f}, {"precision", 3}}));
 
     JST_CHECK(defineInterfaceConfig("symbolRate",
                                     "Symbol Rate",
                                     "Expected symbol rate.",
-                                    "float:MHz:3"));
+                                    {{"type", "float"}, {"unit", "MHz"}, {"scale", 1.0e6f}, {"precision", 3}}));
 
     JST_CHECK(defineInterfaceConfig("frequencyLoopBandwidth",
                                     "Freq Loop BW",
                                     "Carrier recovery loop bandwidth (0-1).",
-                                    "range:0.001:0.2::float"));
+                                    {{"type", "range"}, {"min", 0.001f}, {"max", 0.2f}}));
 
     JST_CHECK(defineInterfaceConfig("timingLoopBandwidth",
                                     "Timing Loop BW",
                                     "Symbol timing recovery loop bandwidth (0-1).",
-                                    "range:0.001:0.2::float"));
+                                    {{"type", "range"}, {"min", 0.001f}, {"max", 0.2f}}));
 
     JST_CHECK(defineInterfaceConfig("dampingFactor",
                                     "Damping Factor",
                                     "Loop filter damping coefficient.",
-                                    "range:0.1:2.0::float"));
+                                    {{"type", "range"}, {"min", 0.1f}, {"max", 2.0f}}));
 
     return Result::SUCCESS;
 }

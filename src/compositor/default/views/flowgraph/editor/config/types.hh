@@ -31,8 +31,7 @@ struct FlowgraphConfigFieldConfig {
     std::string name;
     std::string label;
     std::string help;
-    std::string format;
-    std::string encoded;
+    Parser::Map format;
     std::string status;
     Sakura::NodeCodeEditor::StatusTone statusTone = Sakura::NodeCodeEditor::StatusTone::Info;
     std::vector<std::string> consoleOutput;
@@ -42,13 +41,6 @@ struct FlowgraphConfigFieldConfig {
     std::function<void(Result, std::string)> onError;
     std::function<void(bool, std::vector<std::string>, std::function<void(std::string)>)> onBrowsePath;
 };
-
-inline F32 ConfigUnitMultiplier(const std::string& unit) {
-    if (unit == "GHz") return 1e9f;
-    if (unit == "MHz") return 1e6f;
-    if (unit == "kHz") return 1e3f;
-    return 1.0f;
-}
 
 }  // namespace Jetstream
 

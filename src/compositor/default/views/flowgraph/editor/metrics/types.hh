@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_METRICS_TYPES_HH
 
 #include "jetstream/render/sakura/base.hh"
+#include "jetstream/parser.hh"
 
 #include <any>
 #include <string>
@@ -12,7 +13,7 @@ struct FlowgraphMetricConfig {
     std::string id;
     std::string label;
     std::string help;
-    std::string format;
+    Parser::Map format;
     std::any value;
 };
 

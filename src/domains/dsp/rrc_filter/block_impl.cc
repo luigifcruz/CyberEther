@@ -38,25 +38,25 @@ Result RrcFilterImpl::define() {
                                     "Sample Rate",
                                     "Sampling rate of the input "
                                     "signal.",
-                                    "float:MHz:3"));
+                                    {{"type", "float"}, {"unit", "MHz"}, {"scale", 1.0e6f}, {"precision", 3}}));
 
     JST_CHECK(defineInterfaceConfig("symbolRate",
                                     "Symbol Rate",
                                     "Symbol rate of the modulated "
                                     "signal.",
-                                    "float:MHz:3"));
+                                    {{"type", "float"}, {"unit", "MHz"}, {"scale", 1.0e6f}, {"precision", 3}}));
 
     JST_CHECK(defineInterfaceConfig("rollOff",
                                     "Roll-off Factor",
                                     "Bandwidth-efficiency trade-off "
                                     "(0.0 to 1.0).",
-                                    "range:0:1::float"));
+                                    {{"type", "range"}, {"min", 0.0f}, {"max", 1.0f}}));
 
     JST_CHECK(defineInterfaceConfig("taps",
                                     "Taps",
                                     "Number of filter coefficients "
                                     "(must be odd, >= 3).",
-                                    "uint:taps"));
+                                    {{"type", "uint"}, {"unit", "taps"}}));
 
     return Result::SUCCESS;
 }

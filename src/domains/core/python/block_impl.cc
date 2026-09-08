@@ -95,30 +95,30 @@ Result PythonImpl::define() {
     JST_CHECK(defineInterfaceConfig("code",
                                     "Code",
                                     "Python source defining compute(ctx).",
-                                    "python"));
+                                    {{"type", "python"}}));
     JST_CHECK(defineInterfaceConfig("inputCount",
                                     "Input Count",
                                     "Number of input tensor ports.",
-                                    "uint:"));
+                                    {{"type", "uint"}}));
     JST_CHECK(defineInterfaceConfig("outputCount",
                                     "Output Count",
                                     "Number of output tensor ports.",
-                                    "uint:"));
+                                    {{"type", "uint"}}));
     JST_CHECK(defineInterfaceConfig("throttled",
                                     "Throttled",
                                     "Run compute at a slow fixed rate instead of every cycle.",
-                                    "bool"));
+                                    {{"type", "bool"}}));
     for (U64 i = 0; i < interfaceOutputCount; ++i) {
         const auto index = std::to_string(i);
         JST_CHECK(defineInterfaceConfig("outputTensor" + index,
                                         "Output " + index,
                                         "Tensor shape, data type, device, and signal axes for output " + index + ".",
-                                        "tensor-config:" + index));
+                                        {{"type", "tensor-config"}, {"index", i}, {"source", "outputTensorSpecs"}}));
     }
     JST_CHECK(defineInterfaceMetric("pythonDiagnostic",
                                     "Python Diagnostic",
                                     "Console output from the Python runtime context.",
-                                    "private-python-diagnostic",
+                                    {{"type", "python-diagnostic"}, {"visibility", "internal"}},
                                     [this]() -> std::any {
         const auto module = moduleHandle("python");
         if (!module || !module->context() || !module->context()->runtime()) {

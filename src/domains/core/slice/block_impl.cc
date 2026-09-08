@@ -42,12 +42,12 @@ Result SliceImpl::define() {
     JST_CHECK(defineInterfaceConfig("slice",
                                     "Slice",
                                     "NumPy-style slice notation (e.g., [0:10, ...]).",
-                                    "text"));
+                                    {{"type", "text"}}));
 
     JST_CHECK(defineInterfaceConfig("contiguous",
                                     "Contiguous",
                                     "Copy data to ensure contiguous memory layout.",
-                                    "bool"));
+                                    {{"type", "bool"}}));
 
     return Result::SUCCESS;
 }

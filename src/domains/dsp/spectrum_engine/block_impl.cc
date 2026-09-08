@@ -97,23 +97,23 @@ Result SpectrumEngineImpl::define() {
     JST_CHECK(defineInterfaceConfig("enableAgc",
                                     "Enable AGC",
                                     "Apply automatic gain control after FFT.",
-                                    "bool"));
+                                    {{"type", "bool"}}));
 
     JST_CHECK(defineInterfaceConfig("enableScale",
                                     "Enable Scale",
                                     "Apply range scaling to the output.",
-                                    "bool"));
+                                    {{"type", "bool"}}));
 
     if (config.enableScale) {
         JST_CHECK(defineInterfaceConfig("rangeMin",
                                         "Range Min",
                                         "Minimum value of the scale range.",
-                                        "range:-300:0:dBFS:float"));
+                                        {{"type", "range"}, {"min", -300.0f}, {"max", 0.0f}, {"unit", "dBFS"}}));
 
         JST_CHECK(defineInterfaceConfig("rangeMax",
                                         "Range Max",
                                         "Maximum value of the scale range.",
-                                        "range:-300:0:dBFS:float"));
+                                        {{"type", "range"}, {"min", -300.0f}, {"max", 0.0f}, {"unit", "dBFS"}}));
     }
 
     return Result::SUCCESS;

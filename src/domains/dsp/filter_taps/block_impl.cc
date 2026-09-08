@@ -68,27 +68,27 @@ Result FilterTapsImpl::define() {
     JST_CHECK(defineInterfaceConfig("sampleRate",
                                     "Sample Rate",
                                     "The sampling rate of the signal.",
-                                    "float:MHz:3"));
+                                    {{"type", "float"}, {"unit", "MHz"}, {"scale", 1.0e6f}, {"precision", 3}}));
 
     JST_CHECK(defineInterfaceConfig("bandwidth",
                                     "Bandwidth",
                                     "The passband bandwidth of the filter.",
-                                    "float:MHz:3"));
+                                    {{"type", "float"}, {"unit", "MHz"}, {"scale", 1.0e6f}, {"precision", 3}}));
 
     JST_CHECK(defineInterfaceConfig("heads",
                                     "Heads",
                                     "Number of filter heads.",
-                                    "uint:heads"));
+                                    {{"type", "uint"}, {"unit", "heads"}}));
 
     JST_CHECK(defineInterfaceConfig("center",
                                     "Center",
                                     "The center frequency offset(s) of the filter.",
-                                    "vector:float:MHz:3"));
+                                    {{"type", "vector"}, {"value_type", "float"}, {"unit", "MHz"}, {"scale", 1.0e6f}, {"precision", 3}}));
 
     JST_CHECK(defineInterfaceConfig("taps",
                                     "Taps",
                                     "Number of filter coefficients (must be odd).",
-                                    "uint:taps"));
+                                    {{"type", "uint"}, {"unit", "taps"}}));
 
     return Result::SUCCESS;
 }

@@ -1537,7 +1537,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
         });
         REQUIRE(it != metrics.end());
         REQUIRE(it->label == "Buffer Loss");
-        REQUIRE(it->format == "progressbar");
+        REQUIRE(it->format == Parser::Map{{"type", "progressbar"}});
         REQUIRE(it->help.find("Excludes samples lost inside the device or driver") != std::string::npos);
         return std::any_cast<std::pair<std::string, F32>>(it->value);
     };
