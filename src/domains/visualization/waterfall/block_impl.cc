@@ -30,7 +30,7 @@ Result WaterfallImpl::define() {
     JST_CHECK(defineInterfaceConfig("height",
                                     "Height",
                                     "Number of rows in the waterfall history buffer.",
-                                    "uint:rows"));
+                                    {{"type", "uint"}, {"unit", "rows"}}));
 
     return Result::SUCCESS;
 }

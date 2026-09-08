@@ -53,28 +53,28 @@ struct PythonMetricsSourceTestBlock : Block::Impl,
         JST_CHECK(defineInterfaceMetric("answer",
                                         "Answer",
                                         "Public test metric.",
-                                        "label",
+                                        {{"type", "label"}},
             []() -> std::any {
                 return I64{42};
             }));
         JST_CHECK(defineInterfaceMetric("secret",
                                         "Secret",
                                         "Private test metric.",
-                                        "private-label",
+                                        {{"type", "label"}, {"visibility", "internal"}},
             []() -> std::any {
                 return std::string("hidden");
             }));
         JST_CHECK(defineInterfaceMetric("empty",
                                         "Empty",
                                         "Null test metric.",
-                                        "private-null",
+                                        {{"type", "null"}, {"visibility", "internal"}},
             []() -> std::any {
                 return {};
             }));
         JST_CHECK(defineInterfaceMetric("unsupported",
                                         "Unsupported",
                                         "Unsupported test metric.",
-                                        "private-diagnostic",
+                                        {{"type", "diagnostic"}, {"visibility", "internal"}},
             []() -> std::any {
                 return Runtime::Context::Diagnostic{};
             }));
@@ -628,19 +628,19 @@ TEST_CASE_METHOD(FlowgraphFixture,
         "def _assert_peer(ctx):\n"
         "    assert ctx.metrics[\"peer\"].get(\"answer\") == {\n"
         "        \"value\": 42,\n"
-        "        \"format\": \"label\",\n"
+        "        \"format\": {\"type\": \"label\"},\n"
         "        \"label\": \"Answer\",\n"
         "        \"help\": \"Public test metric.\",\n"
         "    }\n"
         "    assert ctx.metrics[\"peer\"].get(\"secret\") == {\n"
         "        \"value\": \"hidden\",\n"
-        "        \"format\": \"private-label\",\n"
+        "        \"format\": {\"type\": \"label\", \"visibility\": \"internal\"},\n"
         "        \"label\": \"Secret\",\n"
         "        \"help\": \"Private test metric.\",\n"
         "    }\n"
         "    assert ctx.metrics[\"peer\"].get(\"empty\") == {\n"
         "        \"value\": None,\n"
-        "        \"format\": \"private-null\",\n"
+        "        \"format\": {\"type\": \"null\", \"visibility\": \"internal\"},\n"
         "        \"label\": \"Empty\",\n"
         "        \"help\": \"Null test metric.\",\n"
         "    }\n"
@@ -715,7 +715,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     bool sawMetric = false;
     bool sawPrint = false;
     for (const auto& metric : block.metrics) {
-        if (metric.format != "private-python-diagnostic" || !metric.value.has_value()) {
+        if (Parser::Get<std::string>(metric.format, "type") != "python-diagnostic" || !metric.value.has_value()) {
             continue;
         }
 

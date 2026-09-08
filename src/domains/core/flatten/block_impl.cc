@@ -41,7 +41,7 @@ Result FlattenImpl::define() {
     JST_CHECK(defineInterfaceConfig("contiguous",
                                     "Contiguous",
                                     "Copy data to ensure contiguous memory layout before flattening.",
-                                    "bool"));
+                                    {{"type", "bool"}}));
 
     return Result::SUCCESS;
 }

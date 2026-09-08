@@ -31,7 +31,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "ExpandDims block applies axis configuration"
                                    block.interfaceConfigs.end(),
                                    [](const auto& entry) { return entry.name == "axis"; });
     REQUIRE(axis != block.interfaceConfigs.end());
-    REQUIRE(axis->format == "int:");
+    REQUIRE(axis->format == Parser::Map{{"type", "int"}});
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("expand_block", saved) == Result::SUCCESS);

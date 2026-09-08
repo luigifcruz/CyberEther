@@ -29,12 +29,12 @@ Result UnpadImpl::define() {
     JST_CHECK(defineInterfaceConfig("size",
                                     "Pad Size",
                                     "Number of elements to remove.",
-                                    "uint:samples"));
+                                    {{"type", "uint"}, {"unit", "samples"}}));
 
     JST_CHECK(defineInterfaceConfig("axis",
                                     "Pad Axis",
                                     "Dimension along which to remove padding. Negative axes count from the end.",
-                                    "int:"));
+                                    {{"type", "int"}}));
 
     return Result::SUCCESS;
 }

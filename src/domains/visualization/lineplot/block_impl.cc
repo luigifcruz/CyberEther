@@ -35,17 +35,17 @@ Result LineplotImpl::define() {
     JST_CHECK(defineInterfaceConfig("averaging",
                                     "Averaging",
                                     "Number of samples to average for smoothing.",
-                                    "range:1:256:samples:uint"));
+                                    {{"type", "range"}, {"min", 1.0f}, {"max", 256.0f}, {"unit", "samples"}, {"value_type", "uint"}}));
 
     JST_CHECK(defineInterfaceConfig("decimation",
                                     "Decimation",
                                     "Decimation factor for input data.",
-                                    "uint:"));
+                                    {{"type", "uint"}}));
 
     JST_CHECK(defineInterfaceConfig("maxHold",
                                     "Max Hold",
                                     "Enable maximum hold trace.",
-                                    "bool"));
+                                    {{"type", "bool"}}));
 
     return Result::SUCCESS;
 }

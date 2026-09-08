@@ -6,31 +6,18 @@
 #include <cmath>
 #include <limits>
 
-// TODO: Cleanup parsing.
-
 namespace Jetstream {
 
 struct FlowgraphConfigRangeField {
     using Config = FlowgraphConfigFieldConfig;
 
-    void update(Config config) {
+    Result update(Config config) {
         this->config = std::move(config);
         if (this->config.format != parsedFormat) {
             parseFormat();
         }
-        if (this->config.encoded != parsedEncoded) {
-            value = minValue;
-            if (!this->config.encoded.empty()) {
-                if (unsignedInteger) {
-                    U64 uintValue = 0;
-                    Parser::StringToTyped(this->config.encoded, uintValue);
-                    value = static_cast<F32>(uintValue);
-                } else {
-                    Parser::StringToTyped(this->config.encoded, value);
-                }
-            }
-            parsedEncoded = this->config.encoded;
-        }
+        value = minValue;
+        JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, value));
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
@@ -71,6 +58,7 @@ struct FlowgraphConfigRangeField {
                 }
             },
         });
+        return Result::SUCCESS;
     }
 
     void render(const Sakura::Context& ctx) const {
@@ -82,22 +70,14 @@ struct FlowgraphConfigRangeField {
  private:
     void parseFormat() {
         parsedFormat = config.format;
-        const auto parts = Parser::SplitString(config.format, ":");
-        unit = (parts.size() > 3) ? parts[3] : "";
-        const std::string type = (parts.size() > 4) ? parts[4] : "";
-        unsignedInteger = type == "uint";
-        if (unsignedInteger) {
-            minValue = static_cast<F32>((parts.size() > 1 && !parts[1].empty()) ? std::stoull(parts[1]) : 0);
-            maxValue = static_cast<F32>((parts.size() > 2 && !parts[2].empty()) ? std::stoull(parts[2]) : 100);
-        } else {
-            minValue = (parts.size() > 1 && !parts[1].empty()) ? std::stof(parts[1]) : 0.0f;
-            maxValue = (parts.size() > 2 && !parts[2].empty()) ? std::stof(parts[2]) : 1.0f;
-        }
+        unit = Parser::Get<std::string>(config.format, "unit");
+        unsignedInteger = Parser::Get<std::string>(config.format, "value_type", "float") == "uint";
+        minValue = Parser::Get<F32>(config.format, "min", 0.0f);
+        maxValue = Parser::Get<F32>(config.format, "max", unsignedInteger ? 100.0f : 1.0f);
     }
 
     Config config;
-    std::string parsedFormat;
-    std::string parsedEncoded;
+    Parser::Map parsedFormat;
     std::string unit;
     F32 minValue = 0.0f;
     F32 maxValue = 1.0f;

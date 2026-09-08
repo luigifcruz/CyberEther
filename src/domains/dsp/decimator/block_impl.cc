@@ -132,7 +132,7 @@ Result DecimatorImpl::define() {
     JST_CHECK(defineInterfaceConfig("ratio",
                                     "Ratio",
                                     "Decimation ratio.",
-                                    "uint:"));
+                                    {{"type", "uint"}}));
 
     return Result::SUCCESS;
 }

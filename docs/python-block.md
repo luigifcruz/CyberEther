@@ -201,7 +201,7 @@ Every available metric is also a mapping containing its current value and the in
 metric = ctx.metrics["file_reader"].get("progress")
 if metric is not None:
     metric["value"]   # raw metric value
-    metric["format"]  # presentation format
+    metric["format"]  # descriptor dictionary
     metric["label"]   # display label
     metric["help"]    # description
 ```
@@ -228,7 +228,6 @@ Details worth knowing:
 
 - Only subscribed blocks are evaluated, so unrelated metrics cost nothing.
 - A subscription to a block that does not exist (yet) yields an empty mapping and starts producing values if the block appears later.
-- Private-format metrics are included when their values can be converted. The format prefix is not an access-control boundary.
 - Values arrive in the entry's `"value"` field with their native types when possible. Progress-bar style metrics come through as a `(label, fraction)` tuple. Note that some blocks publish display-formatted strings (for example `"12.3 MB/s"`) rather than raw numbers, so check the shape of what you receive.
 - Metrics with unsupported C++ value types are omitted because Python cannot represent their raw value.
 - The mapping is read-only in spirit: writes to it are ignored by the flowgraph and overwritten on refresh.

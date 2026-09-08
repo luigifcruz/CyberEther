@@ -27,12 +27,17 @@ Result OnesTensorImpl::define() {
     JST_CHECK(defineInterfaceConfig("shape",
                                     "Shape",
                                     "Output tensor shape as a list of positive dimensions.",
-                                    "vector-inline:uint:dim"));
+                                    {{"type", "vector-inline"}, {"value_type", "uint"}, {"unit", "dim"}}));
 
     JST_CHECK(defineInterfaceConfig("dataType",
                                     "Data Type",
                                     "Output tensor type.",
-                                    "dropdown:F32(F32),CF32(CF32),F64(F64),CF64(CF64)"));
+                                    {{"type", "dropdown"}, {"options", Parser::Sequence{
+                                        Parser::Map{{"label", "F32"}, {"value", "F32"}},
+                                        Parser::Map{{"label", "CF32"}, {"value", "CF32"}},
+                                        Parser::Map{{"label", "F64"}, {"value", "F64"}},
+                                        Parser::Map{{"label", "CF64"}, {"value", "CF64"}},
+                                    }}}));
 
     return Result::SUCCESS;
 }

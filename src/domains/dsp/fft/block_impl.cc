@@ -36,7 +36,10 @@ Result FftImpl::define() {
                                     "Direction",
                                     "Transform direction: Forward converts time-domain to "
                                     "frequency-domain, Inverse converts back.",
-                                    "dropdown:true(Forward),false(Inverse)"));
+                                    {{"type", "dropdown"}, {"options", Parser::Sequence{
+                                        Parser::Map{{"label", "Forward"}, {"value", "true"}},
+                                        Parser::Map{{"label", "Inverse"}, {"value", "false"}},
+                                    }}}));
 
     const auto input = inputs().find("signal");
     if (config.forward &&
@@ -46,7 +49,7 @@ Result FftImpl::define() {
         JST_CHECK(defineInterfaceConfig("complexOutput",
                                         "Complex Output",
                                         "Output N/2 + 1 complex frequency bins.",
-                                        "bool"));
+                                        {{"type", "bool"}}));
     }
 
     return Result::SUCCESS;

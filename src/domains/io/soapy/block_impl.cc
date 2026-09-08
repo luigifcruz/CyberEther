@@ -20,7 +20,7 @@ struct SoapyImpl : public Block::Impl, public DynamicConfig<Blocks::Soapy> {
  protected:
     std::shared_ptr<Modules::Soapy> moduleConfig = std::make_shared<Modules::Soapy>();
     Modules::SoapyImpl* moduleImpl = nullptr;
-    std::string deviceDropdown;
+    Parser::Map deviceDropdown;
 };
 
 Result SoapyImpl::validate() {
@@ -82,12 +82,12 @@ Result SoapyImpl::define() {
                                     "Output",
                                     "The output buffer containing samples from the SDR device."));
 
-    std::vector<std::string> deviceOptions;
+    Parser::Sequence deviceOptions;
     for (const auto& [label, _] :
          Modules::SoapyDiscovery::ListDevices(config.hintString)) {
-        deviceOptions.push_back(jst::fmt::format("{}({})", label, label));
+        deviceOptions.emplace_back(Parser::Map{{"label", label}, {"value", label}});
     }
-    deviceDropdown = jst::fmt::format("dropdown:{}", jst::fmt::join(deviceOptions, ","));
+    deviceDropdown = {{"type", "dropdown"}, {"options", std::move(deviceOptions)}};
 
     JST_CHECK(defineInterfaceConfig("deviceString",
                                     "Device",
@@ -97,44 +97,45 @@ Result SoapyImpl::define() {
     JST_CHECK(defineInterfaceConfig("frequency",
                                     "Frequency",
                                     "Tuner frequency.",
-                                    std::isfinite(config.frequencyStep) && config.frequencyStep > 0.0f
-                                        ? "float:MHz:3:frequencyStep"
-                                        : "float:MHz:3"));
+                                    {{"type", "float"}, {"unit", "MHz"}, {"scale", 1.0e6f},
+                                     {"precision", 3}, {"step_config",
+                                        std::isfinite(config.frequencyStep) && config.frequencyStep > 0.0f
+                                            ? std::string("frequencyStep") : std::string{}}}));
 
     JST_CHECK(defineInterfaceConfig("sampleRate",
                                     "Sample Rate",
                                     "Sampling rate.",
-                                    "float:MHz:3"));
+                                    {{"type", "float"}, {"unit", "MHz"}, {"scale", 1.0e6f}, {"precision", 3}}));
 
     JST_CHECK(defineInterfaceConfig("automaticGain",
                                     "Automatic Gain",
                                     "Enable automatic gain control.",
-                                    "bool"));
+                                    {{"type", "bool"}}));
 
     JST_CHECK(defineInterfaceConfig("biasTee",
                                     "Bias-T",
                                     "Enable antenna power when supported by the selected device.",
-                                    "bool"));
+                                    {{"type", "bool"}}));
 
     JST_CHECK(defineInterfaceConfig("numberOfBatches",
                                     "Batches",
                                     "Number of batches in output buffer.",
-                                    "uint:batches"));
+                                    {{"type", "uint"}, {"unit", "batches"}}));
 
     JST_CHECK(defineInterfaceConfig("numberOfTimeSamples",
                                     "Samples",
                                     "Number of samples per batch.",
-                                    "uint:samples"));
+                                    {{"type", "uint"}, {"unit", "samples"}}));
 
     JST_CHECK(defineInterfaceConfig("bufferMultiplier",
                                     "Buffer Multiplier",
                                     "Internal buffer size multiplier.",
-                                    "uint:x"));
+                                    {{"type", "uint"}, {"unit", "x"}}));
 
     JST_CHECK(defineInterfaceMetric("bufferHealth",
                                     "Buffer Health",
                                     "Current buffer occupancy level.",
-                                    "progressbar",
+                                    {{"type", "progressbar"}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::pair<std::string, F32>{"0.0%", 0.0f};
@@ -149,7 +150,7 @@ Result SoapyImpl::define() {
                                     "Percentage of received samples discarded because receive buffer was full. "
                                     "Cumulative since stream start. Excludes samples lost inside the device or driver. "
                                     "Resets when the stream is recreated.",
-                                    "progressbar",
+                                    {{"type", "progressbar"}},
         [this]() -> std::any {
             const F64 loss = moduleImpl ? moduleImpl->getBufferLoss() : 0.0;
             const auto percentage = loss > 0.0 && loss < 0.0001
@@ -160,7 +161,7 @@ Result SoapyImpl::define() {
     JST_CHECK(defineInterfaceMetric("throughput",
                                     "Throughput",
                                     "Current data throughput.",
-                                    "label",
+                                    {{"type", "label"}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::string("N/A");

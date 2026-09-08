@@ -35,37 +35,41 @@ Result FileReaderImpl::define() {
     JST_CHECK(defineInterfaceConfig("filepath",
                                     "File Path",
                                     "Path to the raw binary file to read.",
-                                    "filepicker:bin,raw,iq,wav,dat"));
+                                    {{"type", "filepicker"}, {"extensions", Parser::MakeSequence({"bin", "raw", "iq", "wav", "dat"})}}));
 
     JST_CHECK(defineInterfaceConfig("fileFormat",
                                     "File Format",
                                     "The format of the input file.",
-                                    "dropdown:raw(Raw)"));
+                                    {{"type", "dropdown"}, {"options", Parser::Sequence{Parser::Map{{"label", "Raw"}, {"value", "raw"}}}}}));
 
+    Parser::Sequence dataTypes;
+    for (const std::string type : {"CF64", "F64", "CF32", "F32", "CI8", "I8", "CU8", "U8", "CI16", "I16", "CU16", "U16"}) {
+        dataTypes.emplace_back(Parser::Map{{"label", type}, {"value", type}});
+    }
     JST_CHECK(defineInterfaceConfig("dataType",
                                     "Data Type",
                                     "The data type of samples in the file.",
-                                    "dropdown:CF64(CF64),F64(F64),CF32(CF32),F32(F32),CI8(CI8),I8(I8),CU8(CU8),U8(U8),CI16(CI16),I16(I16),CU16(CU16),U16(U16)"));
+                                    {{"type", "dropdown"}, {"options", std::move(dataTypes)}}));
 
     JST_CHECK(defineInterfaceConfig("batchSize",
                                     "Batch Size",
                                     "Number of samples to read per processing cycle.",
-                                    "uint:samples"));
+                                    {{"type", "uint"}, {"unit", "samples"}}));
 
     JST_CHECK(defineInterfaceConfig("loop",
                                     "Loop",
                                     "Whether to loop back to the start when reaching the end of the file.",
-                                    "bool"));
+                                    {{"type", "bool"}}));
 
     JST_CHECK(defineInterfaceConfig("playing",
                                     "Playing",
                                     "Start or stop reading from the file.",
-                                    "bool"));
+                                    {{"type", "bool"}}));
 
     JST_CHECK(defineInterfaceMetric("progress",
                                     "Position",
                                     "Current file position.",
-                                    "progressbar",
+                                    {{"type", "progressbar"}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::pair<std::string, F32>{"0.0%", 0.0f};
@@ -82,7 +86,7 @@ Result FileReaderImpl::define() {
     JST_CHECK(defineInterfaceMetric("currentBandwidth",
                                     "Bandwidth",
                                     "Smoothed recent file read rate.",
-                                    "label",
+                                    {{"type", "label"}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::string("N/A");

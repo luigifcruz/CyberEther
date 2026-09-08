@@ -33,7 +33,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Pad block creates with axis and size",
                                    block.interfaceConfigs.end(),
                                    [](const auto& entry) { return entry.name == "axis"; });
     REQUIRE(axis != block.interfaceConfigs.end());
-    REQUIRE(axis->format == "int:");
+    REQUIRE(axis->format == Parser::Map{{"type", "int"}});
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("pad_block", saved) == Result::SUCCESS);

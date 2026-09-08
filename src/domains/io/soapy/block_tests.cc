@@ -49,7 +49,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     });
     REQUIRE(loss != metrics.end());
     REQUIRE(loss->label == "Buffer Loss");
-    REQUIRE(loss->format == "progressbar");
+    REQUIRE(loss->format == Parser::Map{{"type", "progressbar"}});
     const auto [label, fraction] = std::any_cast<std::pair<std::string, F32>>(loss->value);
     REQUIRE(label == "0.00%");
     REQUIRE(fraction == 0.0f);
@@ -87,5 +87,5 @@ TEST_CASE_METHOD(FlowgraphFixture,
                                       });
     REQUIRE(biasTee != block.interfaceConfigs.end());
     REQUIRE(biasTee->label == "Bias-T");
-    REQUIRE(biasTee->format == "bool");
+    REQUIRE(biasTee->format == Parser::Map{{"type", "bool"}});
 }

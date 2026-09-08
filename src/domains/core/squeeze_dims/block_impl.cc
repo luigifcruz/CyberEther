@@ -28,7 +28,7 @@ Result SqueezeDimsImpl::define() {
     JST_CHECK(defineInterfaceConfig("axis",
                                     "Axis",
                                     "Position of the dimension to remove (must have size 1). Negative axes count from the end.",
-                                    "int:"));
+                                    {{"type", "int"}}));
 
     return Result::SUCCESS;
 }

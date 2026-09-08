@@ -56,7 +56,7 @@ struct AdsbImpl : public Module::Impl, public DynamicConfig<Adsb> {
         U64 oddTimestamp = 0;
     };
 
-    std::string getAircraftTable() const;
+    Parser::Map getAircraftTable() const;
     void updateOutputTensors();
 
  protected:
@@ -70,7 +70,7 @@ struct AdsbImpl : public Module::Impl, public DynamicConfig<Adsb> {
     std::optional<Index> batchAxis;
     Tensor aircraft;
     Tensor aircraftCount;
-    Tools::Snapshot<std::string> aircraftTable{std::string("No aircraft detected.")};
+    Tools::Snapshot<Parser::Map> aircraftTable{Parser::Map{}};
     std::vector<F32> aircraftInstances;
 
     mutable std::mutex aircraftMutex;

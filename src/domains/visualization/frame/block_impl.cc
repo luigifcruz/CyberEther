@@ -30,7 +30,7 @@ Result FrameImpl::define() {
             JST_CHECK(defineInterfaceConfig("lut",
                                             "LUT",
                                             "Apply the Turbo color lookup table to scalar frames.",
-                                            "bool"));
+                                            {{"type", "bool"}}));
         }
     }
 

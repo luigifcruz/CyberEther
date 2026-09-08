@@ -38,7 +38,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
                                        return entry.name == "axes";
                                    });
     REQUIRE(axes != block.interfaceConfigs.end());
-    REQUIRE(axes->format == "text");
+    REQUIRE(axes->format == Parser::Map{{"type", "text"}});
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("axes", saved) == Result::SUCCESS);

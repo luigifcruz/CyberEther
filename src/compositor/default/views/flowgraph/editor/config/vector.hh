@@ -3,31 +3,31 @@
 
 #include "types.hh"
 
-// TODO: Cleanup parsing.
-
 namespace Jetstream {
 
 struct FlowgraphConfigVectorField {
     using Config = FlowgraphConfigFieldConfig;
 
-    void update(Config config) {
+    Result update(Config config) {
         this->config = std::move(config);
         if (this->config.format != parsedFormat) {
             parseFormat();
         }
-        if (this->config.encoded != parsedEncoded) {
+        const std::any nextValue = this->config.values.contains(this->config.name)
+            ? this->config.values.at(this->config.name) : std::any{};
+        if (!Parser::Equal(nextValue, parsedValue)) {
+            parsedValue.reset();
             floatValues.clear();
             uintValues.clear();
-            if (!this->config.encoded.empty()) {
-                if (valueType == "float") {
-                    Parser::StringToTyped(this->config.encoded, floatValues);
-                } else if (valueType == "uint") {
-                    Parser::StringToTyped(this->config.encoded, uintValues);
-                }
+            if (valueType == "float") {
+                JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, floatValues));
+            } else if (valueType == "uint") {
+                JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, uintValues));
             }
-            parsedEncoded = this->config.encoded;
+            parsedValue = nextValue;
         }
         updateChildren();
+        return Result::SUCCESS;
     }
 
     void render(const Sakura::Context& ctx) const {
@@ -49,10 +49,13 @@ struct FlowgraphConfigVectorField {
  private:
     void parseFormat() {
         parsedFormat = config.format;
-        const auto parts = Parser::SplitString(config.format, ":");
-        valueType = (parts.size() > 1) ? parts[1] : "float";
-        unit = (parts.size() > 2) ? parts[2] : "";
-        precision = (parts.size() > 3 && !parts[3].empty()) ? std::stoi(parts[3]) : 2;
+        valueType = Parser::Get<std::string>(config.format, "value_type", "float");
+        unit = Parser::Get<std::string>(config.format, "unit");
+        precision = Parser::Get<I32>(config.format, "precision", 2);
+        multiplier = Parser::Get<F32>(config.format, "scale", 1.0f);
+        parsedValue.reset();
+        floatValues.clear();
+        uintValues.clear();
     }
 
     void updateChildren() {
@@ -64,7 +67,6 @@ struct FlowgraphConfigVectorField {
         if (valueType == "float") {
             floatFrames.resize(floatValues.size());
             floatInputs.resize(floatValues.size());
-            const F32 multiplier = ConfigUnitMultiplier(unit);
             for (U64 i = 0; i < floatValues.size(); ++i) {
                 floatFrames[i].update({
                     .id = config.id + "Frame" + std::to_string(i),
@@ -80,7 +82,7 @@ struct FlowgraphConfigVectorField {
                         Parser::Map patch;
                         auto nextValues = floatValues;
                         if (i < nextValues.size()) {
-                            nextValues[i] = value * ConfigUnitMultiplier(unit);
+                            nextValues[i] = value * multiplier;
                         }
                         patch[config.name] = nextValues;
                         if (config.onApply) {
@@ -119,8 +121,9 @@ struct FlowgraphConfigVectorField {
     }
 
     Config config;
-    std::string parsedFormat;
-    std::string parsedEncoded;
+    Parser::Map parsedFormat;
+    std::any parsedValue;
+    F32 multiplier = 1.0f;
     std::string valueType = "float";
     std::string unit;
     int precision = 2;

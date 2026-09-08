@@ -8,18 +8,19 @@ namespace Jetstream {
 struct FlowgraphConfigTensorField {
     using Config = FlowgraphConfigFieldConfig;
 
-    void update(Config config) {
+    Result update(Config config) {
         this->config = std::move(config);
         if (this->config.format != parsedFormat) {
             parseFormat();
         }
-        readValues();
+        JST_CHECK(readValues());
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
             .help = this->config.help,
         });
         updateRow();
+        return Result::SUCCESS;
     }
 
     void render(const Sakura::Context& ctx) const {
@@ -29,7 +30,6 @@ struct FlowgraphConfigTensorField {
     }
 
  private:
-    static constexpr const char* TensorSpecsKey = "outputTensorSpecs";
     static constexpr F32 DataTypeWidth = 84.0f;
     static constexpr F32 DeviceWidth = 84.0f;
     static constexpr F32 MinShapeWidth = 56.0f;
@@ -104,35 +104,26 @@ struct FlowgraphConfigTensorField {
 
     void parseFormat() {
         parsedFormat = config.format;
-        entryIndex = 0;
-
-        const auto parts = Parser::SplitString(config.format, ":");
-        if (parts.size() <= 1 || parts[1].empty()) {
-            return;
-        }
-
-        try {
-            entryIndex = static_cast<U64>(std::stoull(parts[1]));
-        } catch (...) {
-            entryIndex = 0;
-        }
+        entryIndex = Parser::Get<U64>(config.format, "index", 0);
+        source = Parser::Get<std::string>(config.format, "source");
     }
 
-    void readValues() {
+    Result readValues() {
         tensorSpecs.clear();
-        if (config.values.contains(TensorSpecsKey)) {
-            (void)Parser::Deserialize(config.values, TensorSpecsKey, tensorSpecs);
+        if (config.values.contains(source)) {
+            JST_CHECK(Parser::Deserialize(config.values, source, tensorSpecs));
         }
 
         const U64 requiredSize = entryIndex + 1;
         if (tensorSpecs.size() < requiredSize) {
             tensorSpecs.resize(requiredSize);
         }
+        return Result::SUCCESS;
     }
 
     void apply(std::vector<TensorSpec> nextSpecs) const {
         Parser::Map patch;
-        if (Parser::Serialize(patch, TensorSpecsKey, nextSpecs) != Result::SUCCESS) {
+        if (Parser::Serialize(patch, source, nextSpecs) != Result::SUCCESS) {
             return;
         }
         if (config.onApply) {
@@ -212,7 +203,8 @@ struct FlowgraphConfigTensorField {
     }
 
     Config config;
-    std::string parsedFormat;
+    Parser::Map parsedFormat;
+    std::string source;
     U64 entryIndex = 0;
     std::vector<TensorSpec> tensorSpecs;
     Sakura::NodeInputRow row;

@@ -342,7 +342,7 @@ Result Block::Impl::defineInterfaceInput(const std::string& key,
             return Result::ERROR;
         }
     }
-    _interface->impl->inputs.push_back({key, {label, "", help, {}}});
+    _interface->impl->inputs.push_back({key, {label, {}, help, {}}});
     return Result::SUCCESS;
 }
 
@@ -355,14 +355,15 @@ Result Block::Impl::defineInterfaceOutput(const std::string& key,
             return Result::ERROR;
         }
     }
-    _interface->impl->outputs.push_back({key, {label, "", help, {}}});
+    _interface->impl->outputs.push_back({key, {label, {}, help, {}}});
     return Result::SUCCESS;
 }
 
 Result Block::Impl::defineInterfaceConfig(const std::string& key,
                                           const std::string& label,
                                           const std::string& help,
-                                          const std::string& format) {
+                                          const Parser::Map& format) {
+    JST_CHECK(Interface::ValidateFormat(format));
     for (const auto& config : _interface->impl->configs) {
         if (config.first == key) {
             JST_ERROR("[BLOCK] Config '{}' already exists", key);
@@ -376,8 +377,9 @@ Result Block::Impl::defineInterfaceConfig(const std::string& key,
 Result Block::Impl::defineInterfaceMetric(const std::string& key,
                                           const std::string& label,
                                           const std::string& help,
-                                          const std::string& format,
+                                          const Parser::Map& format,
                                           std::function<std::any()> metric) {
+    JST_CHECK(Interface::ValidateFormat(format, true));
     for (const auto& m : _interface->impl->metrics) {
         if (m.first == key) {
             JST_ERROR("[BLOCK] Metric '{}' already exists", key);
@@ -394,7 +396,7 @@ Result Block::Impl::defineModuleTiming() {
         JST_CHECK(defineInterfaceMetric("runtime:" + name,
                                         name,
                                         "Runtime timing collected by the scheduler.",
-                                        "private-timing",
+                                        {{"type", "timing"}, {"visibility", "internal"}},
                                         [module]() -> std::any {
             return module->timing();
         }));

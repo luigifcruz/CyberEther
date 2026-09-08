@@ -32,7 +32,7 @@ Result ThrottleImpl::define() {
     JST_CHECK(defineInterfaceConfig("intervalMs",
                                     "Interval",
                                     "Minimum time between outputs in milliseconds.",
-                                    "uint:ms"));
+                                    {{"type", "uint"}, {"unit", "ms"}}));
 
     return Result::SUCCESS;
 }

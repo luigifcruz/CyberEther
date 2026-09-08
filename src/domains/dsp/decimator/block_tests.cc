@@ -49,7 +49,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
                                     block.interfaceConfigs.end(),
                                     [](const auto& entry) { return entry.name == "ratio"; });
     REQUIRE(ratio != block.interfaceConfigs.end());
-    REQUIRE(ratio->format == "uint:");
+    REQUIRE(ratio->format == Parser::Map{{"type", "uint"}});
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("decimator", saved) == Result::SUCCESS);

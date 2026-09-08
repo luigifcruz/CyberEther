@@ -3,6 +3,7 @@
 
 #include "picker.hh"
 #include "surface.hh"
+#include "../config.hh"
 
 #include "../../context.hh"
 
@@ -81,7 +82,7 @@ struct FlowgraphNodePresenter {
                            const std::string& nodeViewId,
                            const Flowgraph::View::BlockData& blockData) const {
         for (const auto& metric : blockData.metrics) {
-            if (metric.format.starts_with("private-")) {
+            if (Parser::Get<std::string>(metric.format, "visibility") == "internal") {
                 continue;
             }
 
@@ -99,45 +100,7 @@ struct FlowgraphNodePresenter {
                            const std::string& nodeViewId,
                            const Flowgraph::View::BlockData& blockData) const {
         block.config = blockData.config;
-        for (const auto& entry : blockData.interfaceConfigs) {
-            std::string encoded;
-            if (blockData.config.contains(entry.name)) {
-                Parser::TypedToString(blockData.config.at(entry.name), encoded);
-            }
-
-            FlowgraphConfigFieldConfig field{
-                .id = nodeViewId + ":config:" + entry.name,
-                .name = entry.name,
-                .label = entry.label.empty() ? entry.name : entry.label,
-                .help = entry.help,
-                .format = entry.format,
-                .encoded = encoded,
-                .values = blockData.config,
-            };
-
-            const auto formatParts = Parser::SplitString(entry.format, ":");
-            if (!formatParts.empty() && formatParts[0] == "python") {
-                for (const auto& metric : blockData.metrics) {
-                    if (metric.format != "private-python-diagnostic" || !metric.value.has_value()) {
-                        continue;
-                    }
-
-                    try {
-                        const auto diagnostic = std::any_cast<Runtime::Context::Diagnostic>(metric.value);
-                        field.status = diagnostic.status;
-                        field.statusTone = diagnostic.healthy
-                            ? Sakura::NodeCodeEditor::StatusTone::Success
-                            : Sakura::NodeCodeEditor::StatusTone::Error;
-                        field.consoleOutput = diagnostic.console;
-                        field.consoleVisible = !field.consoleOutput.empty();
-                    } catch (const std::bad_any_cast&) {
-                    }
-                    break;
-                }
-            }
-
-            block.configFields.push_back(std::move(field));
-        }
+        block.configFields = BuildFlowgraphConfigFields(nodeViewId, blockData);
     }
 
     void buildTiming(FlowgraphNode::BlockData& block,
@@ -146,7 +109,8 @@ struct FlowgraphNodePresenter {
         U64 maxCycles = 0;
 
         for (const auto& metric : blockData.metrics) {
-            if (metric.format != "private-timing") {
+            if (Parser::Get<std::string>(metric.format, "type") != "timing" ||
+                Parser::Get<std::string>(metric.format, "visibility") != "internal") {
                 continue;
             }
 

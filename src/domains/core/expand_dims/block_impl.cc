@@ -28,7 +28,7 @@ Result ExpandDimsImpl::define() {
     JST_CHECK(defineInterfaceConfig("axis",
                                     "Axis",
                                     "Position to insert the new dimension. Negative axes count from the end. An axis of -1 appends.",
-                                    "int:"));
+                                    {{"type", "int"}}));
 
     return Result::SUCCESS;
 }

@@ -122,12 +122,12 @@ Result AdsbImpl::create() {
     return Result::SUCCESS;
 }
 
-std::string AdsbImpl::getAircraftTable() const {
+Parser::Map AdsbImpl::getAircraftTable() const {
     return aircraftTable.get();
 }
 
 void AdsbImpl::updateOutputTensors() {
-    std::string nextAircraftTable;
+    Parser::Map nextAircraftTable;
     bool publishAircraftTable = false;
 
     {
@@ -161,22 +161,19 @@ void AdsbImpl::updateOutputTensors() {
         if (aircraftTableDirty) {
             publishAircraftTable = true;
 
-            if (aircraftMap.empty()) {
-                nextAircraftTable = "No aircraft detected.";
-            } else {
-                nextAircraftTable += "ICAO\tCallsign\tAlt (ft)\tSpeed (kt)\tHdg\tLat\tLon\n";
-
-                for (const auto& [icao, ac] : aircraftMap) {
-                    nextAircraftTable += jst::fmt::format("{:06X}\t{}\t{}\t{}\t{}\t{}\t{}\n",
-                        icao,
-                        ac.hasCallsign ? ac.callsign : "-",
-                        ac.hasAltitude ? jst::fmt::format("{}", ac.altitude) : "-",
-                        ac.hasVelocity ? jst::fmt::format("{:.0f}", ac.speed) : "-",
-                        ac.hasVelocity ? jst::fmt::format("{:.0f}", ac.heading) : "-",
-                        ac.hasPosition ? jst::fmt::format("{:.4f}", ac.latitude) : "-",
-                        ac.hasPosition ? jst::fmt::format("{:.4f}", ac.longitude) : "-");
-                }
+            std::vector<std::string> columns{"ICAO", "Callsign", "Alt (ft)", "Speed (kt)", "Hdg", "Lat", "Lon"};
+            std::vector<std::vector<std::string>> rows;
+            for (const auto& [icao, ac] : aircraftMap) {
+                rows.push_back({jst::fmt::format("{:06X}", icao),
+                    ac.hasCallsign ? ac.callsign : "-",
+                    ac.hasAltitude ? jst::fmt::format("{}", ac.altitude) : "-",
+                    ac.hasVelocity ? jst::fmt::format("{:.0f}", ac.speed) : "-",
+                    ac.hasVelocity ? jst::fmt::format("{:.0f}", ac.heading) : "-",
+                    ac.hasPosition ? jst::fmt::format("{:.4f}", ac.latitude) : "-",
+                    ac.hasPosition ? jst::fmt::format("{:.4f}", ac.longitude) : "-"});
             }
+            (void)Parser::Serialize(nextAircraftTable, "columns", columns);
+            (void)Parser::Serialize(nextAircraftTable, "rows", rows);
 
             aircraftTableDirty = false;
         }

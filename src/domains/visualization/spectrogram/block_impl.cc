@@ -30,7 +30,7 @@ Result SpectrogramImpl::define() {
     JST_CHECK(defineInterfaceConfig("height",
                                     "Height",
                                     "Number of frequency bins in the vertical axis.",
-                                    "uint:bins"));
+                                    {{"type", "uint"}, {"unit", "bins"}}));
 
     return Result::SUCCESS;
 }

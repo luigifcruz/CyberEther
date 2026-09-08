@@ -8,16 +8,17 @@ namespace Jetstream {
 struct FlowgraphConfigMultilineField {
     using Config = FlowgraphConfigFieldConfig;
 
-    void update(Config config) {
+    Result update(Config config) {
         this->config = std::move(config);
         if (this->config.format != parsedFormat) {
-            const auto parts = Parser::SplitString(this->config.format, ":");
-            collapsible = parts.size() > 1 && parts[1] == "collapsible";
+            collapsible = Parser::Get<bool>(this->config.format, "collapsible", false);
             parsedFormat = this->config.format;
         }
-        if (this->config.encoded != parsedEncoded) {
-            buffer = this->config.encoded;
-            parsedEncoded = this->config.encoded;
+        std::string nextValue;
+        JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, nextValue));
+        if (nextValue != parsedEncoded) {
+            buffer = nextValue;
+            parsedEncoded = nextValue;
         }
         frame.update({
             .id = this->config.id,
@@ -44,6 +45,7 @@ struct FlowgraphConfigMultilineField {
                 }
             },
         });
+        return Result::SUCCESS;
     }
 
     void render(const Sakura::Context& ctx) const {
@@ -54,7 +56,7 @@ struct FlowgraphConfigMultilineField {
 
  private:
     Config config;
-    std::string parsedFormat;
+    Parser::Map parsedFormat;
     std::string parsedEncoded;
     std::string buffer;
     bool collapsible = false;

@@ -24,7 +24,7 @@ MetricGeometry RenderMetric(SakuraTest::HeadlessUi& ui, Sakura::Node& node,
                             FlowgraphMetricLabel& metric, const std::string& value,
                             const F32 width) {
     node.update({.id = "metric-node", .dimensions = {width, 0.0f}});
-    metric.update({.id = "metric", .format = "label", .value = value});
+    metric.update({.id = "metric", .format = {{"type", "label"}}, .value = value});
     MetricGeometry result;
     ui.editorFrame([&] {
         node.render(ui.sakura(), [&](const Sakura::Context& ctx) {
