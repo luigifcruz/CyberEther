@@ -812,7 +812,9 @@ void ImGui_ImplGlfw_Shutdown()
 
 static void ImGui_ImplGlfw_UpdateMouseData()
 {
+#if !defined(__APPLE__)
     ImGui_ImplGlfw_Data* bd = ImGui_ImplGlfw_GetBackendData();
+#endif
     ImGuiIO& io = ImGui::GetIO();
     ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
 
@@ -835,6 +837,10 @@ static void ImGui_ImplGlfw_UpdateMouseData()
             if (io.WantSetMousePos)
                 glfwSetCursorPos(window, (double)(mouse_pos_prev.x - viewport->Pos.x), (double)(mouse_pos_prev.y - viewport->Pos.y));
 
+            // UPDATE-ME: CyberEther modification; preserve or revalidate when updating ImGui.
+            // On macOS, polling reads the physical cursor and can overwrite positions from
+            // synthetic mouse events. Rely on ImGui_ImplGlfw_CursorPosCallback there instead.
+#if !defined(__APPLE__)
             // (Optional) Fallback to provide mouse position when focused (ImGui_ImplGlfw_CursorPosCallback already provides this when hovered or captured)
             if (bd->MouseWindow == nullptr)
             {
@@ -852,6 +858,7 @@ static void ImGui_ImplGlfw_UpdateMouseData()
                 bd->LastValidMousePos = ImVec2((float)mouse_x, (float)mouse_y);
                 io.AddMousePosEvent((float)mouse_x, (float)mouse_y);
             }
+#endif
         }
 
         // (Optional) When using multiple viewports: call io.AddMouseViewportEvent() with the viewport the OS mouse cursor is hovering.
