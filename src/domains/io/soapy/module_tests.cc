@@ -1483,6 +1483,63 @@ TEST_CASE("Soapy receiver contains driver exceptions",
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
+                 "Soapy blocks wait for a device selection and disconnect when cleared",
+                 "[modules][soapy][block][selection]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    testSoapyState = {};
+    Blocks::Soapy config;
+    config.hintString = std::string("driver=") + TestSoapyDriver;
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(config.deviceString.empty());
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    const auto initial = viewBlock("radio");
+    REQUIRE(initial.state == Block::State::Incomplete);
+    REQUIRE(initial.outputs.empty());
+    REQUIRE_FALSE(initial.interfaceOutputs.empty());
+    REQUIRE(testSoapyState.lifecycle.empty());
+    REQUIRE(testSoapyState.reads->calls == 0);
+    const auto device = std::find_if(initial.interfaceConfigs.begin(), initial.interfaceConfigs.end(),
+                                    [](const auto& field) { return field.name == "deviceString"; });
+    REQUIRE(device != initial.interfaceConfigs.end());
+    const auto options = Parser::Get<std::vector<Parser::Map>>(device->format, "options");
+    REQUIRE(options.size() == 2);
+    REQUIRE(options.front() == Parser::Map{{"label", "None"}, {"value", ""}});
+    Blocks::Soapy saved;
+    REQUIRE(saved.deserialize(initial.config) == Result::SUCCESS);
+    REQUIRE(saved.deviceString.empty());
+    REQUIRE(flowgraph->blockRecreate("radio", initial.config) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Incomplete);
+    REQUIRE(testSoapyState.lifecycle.empty());
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"frequency", 100.0e6f}}) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Incomplete);
+    REQUIRE(testSoapyState.lifecycle.empty());
+
+    const Parser::Map selected{{"deviceString", "CyberEther test device"}};
+    REQUIRE(flowgraph->blockReconfigure("radio", selected) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+    REQUIRE(viewBlock("radio").outputs.contains("signal"));
+    REQUIRE(std::count(testSoapyState.lifecycle.begin(), testSoapyState.lifecycle.end(), "make") == 1);
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"deviceString", ""}}) == Result::SUCCESS);
+    const auto disconnected = viewBlock("radio");
+    REQUIRE(disconnected.state == Block::State::Incomplete);
+    REQUIRE(disconnected.outputs.empty());
+    REQUIRE(saved.deserialize(disconnected.config) == Result::SUCCESS);
+    REQUIRE(saved.deviceString.empty());
+    REQUIRE(std::count(testSoapyState.lifecycle.begin(), testSoapyState.lifecycle.end(), "make") == 1);
+    REQUIRE(std::count(testSoapyState.lifecycle.begin(), testSoapyState.lifecycle.end(), "close") == 1);
+    REQUIRE(std::count(testSoapyState.lifecycle.begin(), testSoapyState.lifecycle.end(), "unmake") == 1);
+    REQUIRE_FALSE(testSoapyState.releasedWhileReading);
+    REQUIRE(flowgraph->blockReconfigure("radio", selected) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+    REQUIRE(std::count(testSoapyState.lifecycle.begin(), testSoapyState.lifecycle.end(), "make") == 2);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
                  "Soapy buffer loss metric counts discarded samples and survives draining",
                  "[modules][soapy][receive][metrics]") {
     if (Registry::ListAvailableModules("soapy").empty()) {
@@ -1494,6 +1551,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     const auto reads = testSoapyState.reads;
     Blocks::Soapy config;
     config.hintString = std::string("driver=") + TestSoapyDriver;
+    config.deviceString = "CyberEther test device";
     config.numberOfBatches = 1;
     config.numberOfTimeSamples = 8;
     config.bufferMultiplier = 1;

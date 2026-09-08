@@ -89,6 +89,11 @@ Result SoapyImpl::define() {
 }
 
 Result SoapyImpl::create() {
+    if (deviceString.empty()) {
+        JST_ERROR("[MODULE_SOAPY] No device selected.");
+        return Result::INCOMPLETE;
+    }
+
     JST_CHECK(SoapyDiscovery::LoadDriverLibrary(modulePath));
 
     errored = false;

@@ -57,8 +57,6 @@ Result SoapyImpl::configure() {
         if (!selectFirstAvailable(explicitDeviceList)) {
             selectFirstAvailable(availableDeviceList);
         }
-    } else if (!availableDeviceList.empty()) {
-        selectFirstAvailable(availableDeviceList);
     }
 
     moduleConfig->modulePath = modulePath;
@@ -82,7 +80,7 @@ Result SoapyImpl::define() {
                                     "Output",
                                     "The output buffer containing samples from the SDR device."));
 
-    Parser::Sequence deviceOptions;
+    Parser::Sequence deviceOptions{Parser::Map{{"label", "None"}, {"value", ""}}};
     for (const auto& [label, _] :
          Modules::SoapyDiscovery::ListDevices(config.hintString)) {
         deviceOptions.emplace_back(Parser::Map{{"label", label}, {"value", label}});
@@ -91,7 +89,7 @@ Result SoapyImpl::define() {
 
     JST_CHECK(defineInterfaceConfig("deviceString",
                                     "Device",
-                                    "Select from available SDR devices.",
+                                    "Select a device to receive samples. Choose None to disconnect.",
                                     deviceDropdown));
 
     JST_CHECK(defineInterfaceConfig("frequency",
