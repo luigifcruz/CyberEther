@@ -15,7 +15,8 @@ namespace {
 void RequireFrameValidationError(const Registry::ModuleRegistration& impl,
                                  const DataType dtype,
                                  const Shape& shape,
-                                 const bool broadcast = false) {
+                                 const bool broadcast = false,
+                                 const Modules::Frame& config = {}) {
     Tensor input;
     if (broadcast) {
         REQUIRE(input.create(impl.device, dtype, Shape(shape.size(), 1)) == Result::SUCCESS);
@@ -31,7 +32,7 @@ void RequireFrameValidationError(const Registry::ModuleRegistration& impl,
     std::shared_ptr<Module> module;
     REQUIRE(Registry::BuildModule("frame", impl.device, impl.runtime,
                                   impl.provider, module) == Result::SUCCESS);
-    REQUIRE(module->create("test", Modules::Frame{}, inputs) == Result::ERROR);
+    REQUIRE(module->create("test", config, inputs) == Result::ERROR);
     REQUIRE(module->state() == Module::State::ERRORED);
     REQUIRE(module->interface()->inputs().empty());
 }
@@ -53,7 +54,13 @@ TEST_CASE("Frame module accepts valid F32 frames", "[modules][frame]") {
             REQUIRE(ctx.run() == Result::SUCCESS);
 
             Modules::Frame config;
-            config.lut = true;
+            config.colormap = "turbo";
+            ctx.setConfig(config);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            config.fit = "cover";
+            config.smooth = true;
+            config.autoRange = false;
             ctx.setConfig(config);
             REQUIRE(ctx.run() == Result::SUCCESS);
 
@@ -96,6 +103,19 @@ TEST_CASE("Frame module rejects invalid inputs", "[modules][frame][validation]")
             SECTION("channels must be one, three, or four") {
                 RequireFrameValidationError(impl, DataType::F32, {16, 32, 2});
             }
+
+            SECTION("fit must be contain, cover, or stretch") {
+                Modules::Frame config;
+                config.fit = "tile";
+                RequireFrameValidationError(impl, DataType::F32, {16, 32}, false, config);
+            }
+
+            SECTION("colormap must be known") {
+                Modules::Frame config;
+                config.colormap = "rainbow";
+                RequireFrameValidationError(impl, DataType::F32, {16, 32}, false, config);
+            }
+
         }
     }
 }
@@ -140,7 +160,7 @@ TEST_CASE("Frame module supports repeated configurations",
             REQUIRE(ctx.compute() == Result::SUCCESS);
 
             Modules::Frame config;
-            config.lut = true;
+            config.colormap = "turbo";
             REQUIRE(ctx.reconfigure(config) == Result::SUCCESS);
             REQUIRE(ctx.compute() == Result::SUCCESS);
             REQUIRE(ctx.stop() == Result::SUCCESS);
