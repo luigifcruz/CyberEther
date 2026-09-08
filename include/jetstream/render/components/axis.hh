@@ -34,6 +34,7 @@ class JETSTREAM_API Axis : public Generic {
         std::string xTitle;
         std::string yTitle;
         bool yLabelOnRight = false;
+        bool yLabelOutside = false;
         std::shared_ptr<Font> font;
         Extent2D<F32> pixelSize = {0.0f, 0.0f};
     };

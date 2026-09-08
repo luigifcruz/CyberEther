@@ -300,7 +300,13 @@ Result Axis::create(Window* window) {
 
         // Y tick labels (interior lines only, pre-allocate for max).
         for (U64 i = 1; i < maxH - 1; i++) {
-            if (config.yLabelOnRight) {
+            if (config.yLabelOnRight && config.yLabelOutside) {
+                cfg.elements[jst::fmt::format("y{:02d}", i)] = {
+                    .scale = kTickLabelScale,
+                    .position = {0.99f, 0.0f},
+                    .alignment = {0, 1},
+                };
+            } else if (config.yLabelOnRight) {
                 cfg.elements[jst::fmt::format("y{:02d}", i)] = {
                     .scale = kTickLabelScale,
                     .position = {0.85f, 0.0f},
@@ -797,7 +803,10 @@ Result Axis::Impl::repositionLabels() {
         auto element = text->get(id);
         const F32 localY = bandLocalY(i, numRows);
         const F32 y = mapGridY(localY);
-        if (config.yLabelOnRight) {
+        if (config.yLabelOnRight && config.yLabelOutside) {
+            element.position = {padScale.x + ps.x * 4.0f, y};
+            element.alignment = {0, 1};
+        } else if (config.yLabelOnRight) {
             element.position = {padScale.x - ps.x * sideTickOffset, y};
             element.alignment = {2, 1};
         } else {
