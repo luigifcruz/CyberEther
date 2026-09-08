@@ -21,6 +21,7 @@ struct Soapy : public Block::Config {
 
     JST_BLOCK_TYPE(soapy);
     JST_BLOCK_DOMAIN("IO");
+    JST_BLOCK_NODE_SIZE(M);
     JST_BLOCK_PARAMS(modulePath, hintString, deviceString,
                      streamString, frequency, frequencyStep,
                      sampleRate, automaticGain, biasTee, numberOfBatches,
