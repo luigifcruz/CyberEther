@@ -1,0 +1,104 @@
+diff --git a/libusb/os/emscripten_webusb.cpp b/libusb/os/emscripten_webusb.cpp
+index 0082fbd7..b97d822a 100644
+--- a/libusb/os/emscripten_webusb.cpp
++++ b/libusb/os/emscripten_webusb.cpp
+@@ -118,6 +118,48 @@ EM_JS(void, usbi_em_copy_from_dataview, (void* dst, EM_VAL src), {
+ 	HEAPU8.set(src, dst);
+ });
+ 
++EM_JS(EM_VAL, usbi_em_control_transfer,
++	  (EM_VAL device_handle, uint8_t request_type, uint8_t request,
++	   uint16_t value, uint16_t index, uint16_t length, const uint8_t* data), {
++	const device = Emval.toValue(device_handle);
++	const params = {
++		requestType:
++			['standard', 'class', 'vendor'][(request_type >> 5) & 0x03] ??
++			'unknown',
++		recipient: ['device', 'interface', 'endpoint'][request_type & 0x0f] ?? 'other',
++		request,
++		value,
++		index,
++	};
++	const input = (request_type & 0x80) !== 0;
++	const payload = input ? undefined : HEAPU8.slice(data, data + length);
++	const isRtl2832 = device.vendorId === 0x0bda && device.productId === 0x2832;
++	const run = async () => {
++		const transfer = () => input
++			? device.controlTransferIn(params, length)
++			: device.controlTransferOut(params, payload);
++		if (isRtl2832) {
++			await new Promise(resolve => setTimeout(resolve, 1));
++		}
++		try {
++			return await transfer();
++		} catch (error) {
++			if (!isRtl2832 || !(error instanceof DOMException) ||
++				error.name !== 'NetworkError') {
++				throw error;
++			}
++			await new Promise(resolve => setTimeout(resolve, 1));
++			return transfer();
++		}
++	};
++
++	const symbol = Symbol.for('libusb.control_transfer_chain');
++	const previous = device[symbol] ?? Promise.resolve();
++	const operation = previous.catch(() => undefined).then(run);
++	device[symbol] = operation.catch(() => undefined);
++	return Emval.toHandle(operation);
++});
++
+ // Our implementation proxies operations from multiple threads to the same
+ // underlying USBDevice on the main thread. This can lead to issues when
+ // multiple threads try to open/close the same device at the same time.
+@@ -337,47 +379,9 @@ static std::invoke_result_t<Func>::AwaitResult awaitOnMain(Func&& func) {
+ // A helper that makes a control transfer given a setup pointer (assumed to be
+ // followed by data payload for out-transfers).
+ val makeControlTransferPromise(const val& dev, libusb_control_setup* setup) {
+-	auto params = val::object();
+-
+-	const char* request_type = "unknown";
+-	// See LIBUSB_REQ_TYPE in windows_winusb.h (or docs for `bmRequestType`).
+-	switch (setup->bmRequestType & (0x03 << 5)) {
+-		case LIBUSB_REQUEST_TYPE_STANDARD:
+-			request_type = "standard";
+-			break;
+-		case LIBUSB_REQUEST_TYPE_CLASS:
+-			request_type = "class";
+-			break;
+-		case LIBUSB_REQUEST_TYPE_VENDOR:
+-			request_type = "vendor";
+-			break;
+-	}
+-	params.set("requestType", request_type);
+-
+-	const char* recipient = "other";
+-	switch (setup->bmRequestType & 0x0f) {
+-		case LIBUSB_RECIPIENT_DEVICE:
+-			recipient = "device";
+-			break;
+-		case LIBUSB_RECIPIENT_INTERFACE:
+-			recipient = "interface";
+-			break;
+-		case LIBUSB_RECIPIENT_ENDPOINT:
+-			recipient = "endpoint";
+-			break;
+-	}
+-	params.set("recipient", recipient);
+-
+-	params.set("request", setup->bRequest);
+-	params.set("value", setup->wValue);
+-	params.set("index", setup->wIndex);
+-
+-	if (setup->bmRequestType & LIBUSB_ENDPOINT_IN) {
+-		return dev.call<val>("controlTransferIn", params, setup->wLength);
+-	} else {
+-		return dev.call<val>("controlTransferOut", params,
+-							 getUnsharedMemoryView(setup + 1, setup->wLength));
+-	}
++	return val::take_ownership(usbi_em_control_transfer(
++		dev.as_handle(), setup->bmRequestType, setup->bRequest, setup->wValue,
++		setup->wIndex, setup->wLength, (const uint8_t*)(setup + 1)));
+ }
+ 
+ // Smart pointer for managing pointers to places allocated by libusb inside its

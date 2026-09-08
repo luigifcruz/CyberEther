@@ -14,12 +14,14 @@ TEST_CASE("Soapy block Bias-T defaults off", "[modules][io][soapy][block][bias-t
     REQUIRE_FALSE(config.biasTee);
 
     config.biasTee = true;
+    config.webUsbRefresh = 3;
     Parser::Map serialized;
     REQUIRE(config.serialize(serialized) == Result::SUCCESS);
 
     Blocks::Soapy restored;
     REQUIRE(restored.deserialize(serialized) == Result::SUCCESS);
     REQUIRE(restored.biasTee);
+    REQUIRE(restored.webUsbRefresh == 3);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,

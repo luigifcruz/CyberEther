@@ -1,0 +1,173 @@
+diff --git a/libusb/os/emscripten_webusb.cpp b/libusb/os/emscripten_webusb.cpp
+index 159eb0c1..0082fbd7 100644
+--- a/libusb/os/emscripten_webusb.cpp
++++ b/libusb/os/emscripten_webusb.cpp
+@@ -445,6 +445,10 @@ struct CachedDevice {
+ 	static val initFromDevice(val&& web_usb_dev, libusb_device* libusb_dev) {
+ 		auto cachedDevicePtr = WebUsbDevicePtr(libusb_dev);
+ 		cachedDevicePtr.emplace(std::move(web_usb_dev));
++		if (cachedDevicePtr->device["vendorId"].as<uint16_t>() == 0x0bda &&
++			cachedDevicePtr->device["productId"].as<uint16_t>() == 0x2832) {
++			co_return cachedDevicePtr->initRtl2832FromProperties(libusb_dev);
++		}
+ 		bool must_close = false;
+ 		val result = co_await cachedDevicePtr->initFromDeviceWithoutClosing(
+ 			libusb_dev, must_close);
+@@ -520,6 +524,157 @@ private:
+ 	val device;
+ 	std::vector<std::unique_ptr<usbi_configuration_descriptor>> configurations;
+ 
++	int initRtl2832FromProperties(libusb_device* dev) {
++		auto version = [](uint8_t major, uint8_t minor, uint8_t subminor) {
++			return (uint16_t)((major << 8) | (minor << 4) | subminor);
++		};
++
++		auto& desc = dev->device_descriptor;
++		desc = {
++			.bLength = LIBUSB_DT_DEVICE_SIZE,
++			.bDescriptorType = LIBUSB_DT_DEVICE,
++			.bcdUSB = version(device["usbVersionMajor"].as<uint8_t>(),
++							  device["usbVersionMinor"].as<uint8_t>(),
++							  device["usbVersionSubminor"].as<uint8_t>()),
++			.bDeviceClass = device["deviceClass"].as<uint8_t>(),
++			.bDeviceSubClass = device["deviceSubclass"].as<uint8_t>(),
++			.bDeviceProtocol = device["deviceProtocol"].as<uint8_t>(),
++			.bMaxPacketSize0 = 64,
++			.idVendor = device["vendorId"].as<uint16_t>(),
++			.idProduct = device["productId"].as<uint16_t>(),
++			.bcdDevice = version(device["deviceVersionMajor"].as<uint8_t>(),
++								device["deviceVersionMinor"].as<uint8_t>(),
++								device["deviceVersionSubminor"].as<uint8_t>()),
++			.iManufacturer = 0,
++			.iProduct = 0,
++			.iSerialNumber = 0,
++			.bNumConfigurations =
++				device["configurations"]["length"].as<uint8_t>(),
++		};
++		dev->speed = desc.bcdUSB >= 0x0200
++			? LIBUSB_SPEED_HIGH
++			: LIBUSB_SPEED_FULL;
++
++		if (auto error = usbi_sanitize_device(dev)) {
++			return error;
++		}
++
++		struct EndpointDescriptor {
++			uint8_t bLength;
++			uint8_t bDescriptorType;
++			uint8_t bEndpointAddress;
++			uint8_t bmAttributes;
++			uint16_t wMaxPacketSize;
++			uint8_t bInterval;
++		} LIBUSB_PACKED;
++
++		auto webConfigurations = device["configurations"];
++		const auto configurationCount =
++			webConfigurations["length"].as<size_t>();
++		configurations.reserve(configurationCount);
++		for (size_t configIndex = 0;
++			 configIndex < configurationCount;
++			 ++configIndex) {
++			auto webConfiguration = webConfigurations[configIndex];
++			auto webInterfaces = webConfiguration["interfaces"];
++			const auto interfaceCount = webInterfaces["length"].as<size_t>();
++			size_t totalLength = LIBUSB_DT_CONFIG_SIZE;
++			for (size_t interfaceIndex = 0;
++				 interfaceIndex < interfaceCount;
++				 ++interfaceIndex) {
++				auto alternates = webInterfaces[interfaceIndex]["alternates"];
++				const auto alternateCount = alternates["length"].as<size_t>();
++				for (size_t alternateIndex = 0;
++					 alternateIndex < alternateCount;
++					 ++alternateIndex) {
++					auto endpoints = alternates[alternateIndex]["endpoints"];
++					totalLength += LIBUSB_DT_INTERFACE_SIZE +
++						endpoints["length"].as<size_t>() *
++							LIBUSB_DT_ENDPOINT_SIZE;
++				}
++			}
++
++			auto& config = configurations.emplace_back(
++				(usbi_configuration_descriptor*)::operator new(totalLength));
++			memset(config.get(), 0, totalLength);
++			config->bLength = LIBUSB_DT_CONFIG_SIZE;
++			config->bDescriptorType = LIBUSB_DT_CONFIG;
++			config->wTotalLength =
++				libusb_cpu_to_le16((uint16_t)totalLength);
++			config->bNumInterfaces = (uint8_t)interfaceCount;
++			config->bConfigurationValue =
++				webConfiguration["configurationValue"].as<uint8_t>();
++			config->bmAttributes = 0x80;
++
++			auto* cursor = (uint8_t*)config.get() + LIBUSB_DT_CONFIG_SIZE;
++			for (size_t interfaceIndex = 0;
++				 interfaceIndex < interfaceCount;
++				 ++interfaceIndex) {
++				auto webInterface = webInterfaces[interfaceIndex];
++				auto alternates = webInterface["alternates"];
++				const auto alternateCount = alternates["length"].as<size_t>();
++				for (size_t alternateIndex = 0;
++					 alternateIndex < alternateCount;
++					 ++alternateIndex) {
++					auto alternate = alternates[alternateIndex];
++					auto endpoints = alternate["endpoints"];
++					const auto endpointCount =
++						endpoints["length"].as<size_t>();
++					auto* interfaceDesc =
++						(usbi_interface_descriptor*)cursor;
++					*interfaceDesc = {
++						.bLength = LIBUSB_DT_INTERFACE_SIZE,
++						.bDescriptorType = LIBUSB_DT_INTERFACE,
++						.bInterfaceNumber =
++							webInterface["interfaceNumber"].as<uint8_t>(),
++						.bAlternateSetting =
++							alternate["alternateSetting"].as<uint8_t>(),
++						.bNumEndpoints = (uint8_t)endpointCount,
++						.bInterfaceClass =
++							alternate["interfaceClass"].as<uint8_t>(),
++						.bInterfaceSubClass =
++							alternate["interfaceSubclass"].as<uint8_t>(),
++						.bInterfaceProtocol =
++							alternate["interfaceProtocol"].as<uint8_t>(),
++						.iInterface = 0,
++					};
++					cursor += LIBUSB_DT_INTERFACE_SIZE;
++
++					for (size_t endpointIndex = 0;
++						 endpointIndex < endpointCount;
++						 ++endpointIndex) {
++						auto endpoint = endpoints[endpointIndex];
++						const auto type =
++							endpoint["type"].as<std::string>();
++						uint8_t attributes = LIBUSB_TRANSFER_TYPE_BULK;
++						if (type == "interrupt") {
++							attributes = LIBUSB_TRANSFER_TYPE_INTERRUPT;
++						} else if (type == "isochronous") {
++							attributes = LIBUSB_TRANSFER_TYPE_ISOCHRONOUS;
++						}
++						auto* endpointDesc = (EndpointDescriptor*)cursor;
++						*endpointDesc = {
++							.bLength = LIBUSB_DT_ENDPOINT_SIZE,
++							.bDescriptorType = LIBUSB_DT_ENDPOINT,
++							.bEndpointAddress = (uint8_t)(
++								endpoint["endpointNumber"].as<uint8_t>() |
++								(endpoint["direction"].as<std::string>() == "in"
++									 ? LIBUSB_ENDPOINT_IN
++									 : LIBUSB_ENDPOINT_OUT)),
++							.bmAttributes = attributes,
++							.wMaxPacketSize = libusb_cpu_to_le16(
++								endpoint["packetSize"].as<uint16_t>()),
++							.bInterval = 0,
++						};
++						cursor += LIBUSB_DT_ENDPOINT_SIZE;
++					}
++				}
++			}
++		}
++
++		return LIBUSB_SUCCESS;
++	}
++
+ 	CaughtPromise requestDescriptor(libusb_descriptor_type desc_type,
+ 									uint8_t desc_index,
+ 									uint16_t max_length) const {
