@@ -390,6 +390,7 @@ Result FrameImpl::createPresent() {
         JST_CHECK(window->bind(renderSurface));
     }
 
+    JST_CHECK(updateViewGeometry());
     JST_CHECK(updateAxisState());
 
     JST_CHECK(surfaceCreateManifest({
@@ -416,10 +417,6 @@ Result FrameImpl::destroyPresent() {
 }
 
 Result FrameImpl::present() {
-    if (!frameBuffer) {
-        return Result::SUCCESS;
-    }
-
     auto mouseEvents = surfaceConsumeMouseEvents();
 
     interaction = ProcessSurfaceInteraction(interaction,
@@ -429,13 +426,18 @@ Result FrameImpl::present() {
                                              .enablePan = false,
                                              .enableCursor = false});
 
+    JST_CHECK(updateViewGeometry());
+    processMouseEvents(mouseEvents);
+
+    if (!frameBuffer) {
+        return Result::SUCCESS;
+    }
+
     if (interaction.viewChanged) {
         renderSurface->size(interaction.viewSize);
         renderSurface->clearColor(interaction.backgroundColor);
         surfaceUpdateManifestSize("default", interaction.viewSize);
     }
-
-    processMouseEvents(mouseEvents);
 
     if (updateLutFlag) {
         fillLut();
@@ -495,10 +497,30 @@ Extent2D<F32> FrameImpl::plotToImage(const Extent2D<F32>& plot) const {
     };
 }
 
+Extent2D<F32> FrameImpl::clampToFrame(const Extent2D<F32>& plot) const {
+    const auto clampAxis = [zoom = view.zoom](const F32 position, const F32 center, const F32 fitScale) {
+        // Project the image edges into plot coordinates and intersect them
+        // with the viewport so selections exclude letterboxing and cropping.
+        const F32 lower = 0.5f + (0.5f - center - 0.5f / fitScale) * zoom;
+        const F32 upper = 0.5f + (0.5f - center + 0.5f / fitScale) * zoom;
+        return std::clamp(position, std::clamp(lower, 0.0f, 1.0f), std::clamp(upper, 0.0f, 1.0f));
+    };
+    return {
+        clampAxis(plot.x, view.center.x, view.fitScale.x),
+        clampAxis(plot.y, view.center.y, view.fitScale.y),
+    };
+}
+
 void FrameImpl::clampViewCenter() {
-    const F32 limit = std::max(0.0f, 0.5f * (1.0f - (1.0f / view.zoom)));
-    view.center.x = std::clamp(view.center.x, 0.5f - limit, 0.5f + limit);
-    view.center.y = std::clamp(view.center.y, 0.5f - limit, 0.5f + limit);
+    // In view coordinates, the image spans 1 / fitScale and the viewport
+    // spans 1 / zoom. Keep smaller images centered and larger ones in bounds.
+    const auto limit = [zoom = view.zoom](const F32 fitScale) {
+        return std::max(0.0f, 0.5f * ((1.0f / fitScale) - (1.0f / zoom)));
+    };
+    const F32 limitX = limit(view.fitScale.x);
+    const F32 limitY = limit(view.fitScale.y);
+    view.center.x = std::clamp(view.center.x, 0.5f - limitX, 0.5f + limitX);
+    view.center.y = std::clamp(view.center.y, 0.5f - limitY, 0.5f + limitY);
 }
 
 Extent2D<F32> FrameImpl::plotToView(const Extent2D<F32>& plot) const {
@@ -516,11 +538,8 @@ F32 FrameImpl::plotDistancePx(const Extent2D<F32>& a, const Extent2D<F32>& b) co
 }
 
 void FrameImpl::zoomToSelection() {
-    const auto clampPlot = [](const Extent2D<F32>& plot) {
-        return Extent2D<F32>{std::clamp(plot.x, 0.0f, 1.0f), std::clamp(plot.y, 0.0f, 1.0f)};
-    };
-    const auto anchor = clampPlot(view.selectAnchor);
-    const auto current = clampPlot(view.selectCurrent);
+    const auto anchor = clampToFrame(view.selectAnchor);
+    const auto current = clampToFrame(view.selectCurrent);
 
     const F32 padding = axis ? axis->paddingScale().x : 1.0f;
     const F32 widthPx = std::abs(current.x - anchor.x) * static_cast<F32>(interaction.viewSize.x) * padding;
@@ -563,10 +582,8 @@ Result FrameImpl::updateSelectionState() {
         sizes[0] = {0.0f, 0.0f};
     } else {
         const Extent2D<F32> padding = axis ? axis->paddingScale() : Extent2D<F32>{1.0f, 1.0f};
-        const Extent2D<F32> anchor = {std::clamp(view.selectAnchor.x, 0.0f, 1.0f),
-                                      std::clamp(view.selectAnchor.y, 0.0f, 1.0f)};
-        const Extent2D<F32> current = {std::clamp(view.selectCurrent.x, 0.0f, 1.0f),
-                                       std::clamp(view.selectCurrent.y, 0.0f, 1.0f)};
+        const auto anchor = clampToFrame(view.selectAnchor);
+        const auto current = clampToFrame(view.selectCurrent);
         const Extent2D<F32> center = {(anchor.x + current.x) * 0.5f, (anchor.y + current.y) * 0.5f};
         positions[0] = {(center.x * 2.0f - 1.0f) * padding.x,
                         (1.0f - center.y * 2.0f) * padding.y};
@@ -624,6 +641,7 @@ void FrameImpl::processMouseEvents(const std::vector<MouseEvent>& events) {
                     view.dragging = false;
                 }
                 if (event.button == MouseButton::Right && view.selecting) {
+                    view.selectCurrent = surfaceToPlot(event.position);
                     view.selecting = false;
                     if (plotDistancePx(view.selectCurrent, view.selectAnchor) <= kFrameDragThresholdPx) {
                         view.zoom = 1.0f;
@@ -687,19 +705,27 @@ void FrameImpl::updateFitScale() {
                               : Extent2D<F32>{1.0f, imageRatio / viewRatio};
 }
 
+Result FrameImpl::updateViewGeometry() {
+    if (axis) {
+        const Extent2D<F32> pixelSize = {
+            (2.0f * interaction.scale) / interaction.viewSize.x,
+            (2.0f * interaction.scale) / interaction.viewSize.y,
+        };
+        JST_CHECK(axis->updatePixelSize(pixelSize));
+    }
+
+    updateFitScale();
+    clampViewCenter();
+
+    return Result::SUCCESS;
+}
+
 Result FrameImpl::updateAxisState() {
     if (!axis) {
         return Result::SUCCESS;
     }
 
-    const Extent2D<F32> pixelSize = {
-        (2.0f * interaction.scale) / interaction.viewSize.x,
-        (2.0f * interaction.scale) / interaction.viewSize.y,
-    };
-    JST_CHECK(axis->updatePixelSize(pixelSize));
     JST_CHECK(axis->updateTitles(xLabel, yLabel));
-
-    updateFitScale();
 
     const auto image = [this](const Extent2D<F32>& plot) {
         return plotToImage(plot);

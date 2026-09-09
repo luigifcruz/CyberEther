@@ -118,7 +118,8 @@ void SurfaceView::render(const Context& ctx) const {
                                                 rounding);
 
     if (config.onMouse) {
-        ImGui::InvisibleButton(config.id.c_str(), surfaceSize);
+        ImGui::InvisibleButton(config.id.c_str(), surfaceSize,
+                               ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
         state.hovered = ImGui::IsItemHovered();
         state.active = ImGui::IsItemActive();
         state.deactivated = ImGui::IsItemDeactivated();

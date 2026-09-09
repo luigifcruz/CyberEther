@@ -114,7 +114,9 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
     Result updateSelectionState();
     Extent2D<F32> surfaceToPlot(const Extent2D<F32>& position) const;
     Extent2D<F32> plotToImage(const Extent2D<F32>& plot) const;
+    Extent2D<F32> clampToFrame(const Extent2D<F32>& plot) const;
     void updateFitScale();
+    Result updateViewGeometry();
     void fillLut();
     Result updateAxisState();
     Result updateTextState();
