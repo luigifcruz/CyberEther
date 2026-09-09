@@ -23,6 +23,14 @@
 
 #include "updater.hh"
 
+#if defined(JST_OS_WINDOWS)
+#define WIN32_LEAN_AND_MEAN
+#include <io.h>
+#include <windows.h>
+#undef ERROR
+#undef FATAL
+#endif
+
 namespace Jetstream {
 
 namespace {
@@ -409,6 +417,39 @@ static void printUsage(const char* program,
 }
 
 int Run(int argc, char* argv[]) {
+#if defined(JST_OS_WINDOWS)
+    const auto streamHandle = [](FILE* stream) -> HANDLE {
+        const int descriptor = _fileno(stream);
+        return descriptor < 0 ? INVALID_HANDLE_VALUE
+                              : reinterpret_cast<HANDLE>(_get_osfhandle(descriptor));
+    };
+
+    // Attaching can replace the process standard handles. Retain any existing
+    // CRT streams so shell redirection and in-process captures keep working.
+    const HANDLE outputHandle = streamHandle(stdout);
+    const HANDLE errorHandle = streamHandle(stderr);
+
+    if (GetConsoleCP() != 0 || AttachConsole(ATTACH_PARENT_PROCESS)) {
+        const auto connect = [](FILE* stream, DWORD id, HANDLE handle) {
+            if (handle != nullptr && handle != INVALID_HANDLE_VALUE &&
+                GetFileType(handle) != FILE_TYPE_UNKNOWN) {
+                (void)SetStdHandle(id, handle);
+                return;
+            }
+
+            FILE* reopened = nullptr;
+            if (freopen_s(&reopened, "CONOUT$", "w", stream) == 0) {
+                (void)SetStdHandle(id, reinterpret_cast<HANDLE>(
+                    _get_osfhandle(_fileno(reopened))));
+            }
+        };
+
+        // Reopen in the library's CRT, which owns the CLI output streams.
+        connect(stdout, STD_OUTPUT_HANDLE, outputHandle);
+        connect(stderr, STD_ERROR_HANDLE, errorHandle);
+    }
+#endif
+
     LogLevelGuard runLogLevel(_JST_LOG_DEBUG_LEVEL());
 
     CommandType command = CommandType::Run;
