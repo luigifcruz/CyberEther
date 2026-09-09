@@ -39,7 +39,7 @@ inline bool SoapyRangeContains(const std::vector<SoapySDR::Range>& ranges, const
     return false;
 }
 
-struct SoapyDiscovery {
+struct JETSTREAM_API SoapyDiscovery {
     using Clock = std::chrono::steady_clock;
     using DeviceEntry = std::map<std::string, std::string>;
     using DeviceList = std::map<std::string, DeviceEntry>;
@@ -51,7 +51,7 @@ struct SoapyDiscovery {
     static DeviceList BuildDeviceList(const SoapySDR::KwargsList& entries);
 };
 
-class SoapyReceiver {
+class JETSTREAM_API SoapyReceiver {
  public:
     enum class ReadStatus {
         Samples,
@@ -102,7 +102,7 @@ class SoapyReceiver {
     bool biasTeeNeedsCleanup = false;
 };
 
-struct SoapyReceiveStatus {
+struct JETSTREAM_API SoapyReceiveStatus {
     using Clock = std::chrono::steady_clock;
 
     enum class Action {

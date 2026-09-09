@@ -13,7 +13,7 @@
 
 namespace Jetstream::Modules {
 
-struct SoapyImpl : public Module::Impl, public DynamicConfig<Soapy> {
+struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy> {
  public:
     ~SoapyImpl() override;
 
