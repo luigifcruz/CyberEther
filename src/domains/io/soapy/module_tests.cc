@@ -20,12 +20,15 @@
 #include <SoapySDR/Registry.hpp>
 
 #include "flowgraph_fixture.hh"
+#include "jetstream/block_context.hh"
+#include "jetstream/block_interface.hh"
 #include "jetstream/domains/io/soapy/block.hh"
 #include "jetstream/domains/io/soapy/module.hh"
 #include "jetstream/memory/axis.hh"
 #include "jetstream/module_context.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/runtime_context_native_cpu.hh"
+#include "jetstream/scheduler.hh"
 #include "jetstream/scheduler_context.hh"
 #include "module_impl.hh"
 #include "soapysdr.hh"
@@ -64,6 +67,10 @@ struct TestSoapyState {
     SoapySDR::Kwargs streamArgs;
     bool releasedWhileReading = false;
     std::vector<std::string> biasTeeWrites;
+    std::vector<std::string> antennas{"RX", "TX/RX"};
+    std::vector<std::string> antennaWrites;
+    int antennaDirection = -1;
+    size_t antennaChannel = 0;
     std::shared_ptr<TestSoapyReads> reads = std::make_shared<TestSoapyReads>();
 };
 
@@ -129,6 +136,20 @@ class TestSoapyDevice final : public SoapySDR::Device {
 
     void setGainMode(const int, const size_t, const bool) override {
         RecordSoapyCall("gainMode");
+    }
+
+    std::vector<std::string> listAntennas(const int direction, const size_t channel) const override {
+        RecordSoapyCall("antennas");
+        testSoapyState.antennaDirection = direction;
+        testSoapyState.antennaChannel = channel;
+        return antennas;
+    }
+
+    void setAntenna(const int direction, const size_t channel, const std::string& antenna) override {
+        RecordSoapyCall("antenna:" + antenna);
+        testSoapyState.antennaDirection = direction;
+        testSoapyState.antennaChannel = channel;
+        testSoapyState.antennaWrites.push_back(antenna);
     }
 
     SoapySDR::Stream* setupStream(const int direction,
@@ -200,6 +221,7 @@ class TestSoapyDevice final : public SoapySDR::Device {
 
  private:
     const std::shared_ptr<TestSoapyReads> reads = testSoapyState.reads;
+    const std::vector<std::string> antennas = testSoapyState.antennas;
 };
 
 SoapySDR::KwargsList FindTestSoapyDevice(const SoapySDR::Kwargs&) {
@@ -402,6 +424,7 @@ Modules::Soapy NonDefaultSoapyConfig() {
     config.modulePath = "/unused/soapy/module/path";
     config.deviceString = "driver=validation-must-precede-discovery";
     config.streamString = "bufflen=4096";
+    config.antenna = "TX/RX";
     config.frequency = 100.5e6f;
     config.sampleRate = 1.5e6f;
     config.automaticGain = false;
@@ -451,6 +474,7 @@ void RequireSoapyValidationError(const Registry::ModuleRegistration& impl,
     REQUIRE(applied.modulePath == defaults.modulePath);
     REQUIRE(applied.deviceString == defaults.deviceString);
     REQUIRE(applied.streamString == defaults.streamString);
+    REQUIRE(applied.antenna == defaults.antenna);
     REQUIRE(applied.frequency == defaults.frequency);
     REQUIRE(applied.sampleRate == defaults.sampleRate);
     REQUIRE(applied.automaticGain == defaults.automaticGain);
@@ -458,6 +482,21 @@ void RequireSoapyValidationError(const Registry::ModuleRegistration& impl,
     REQUIRE(applied.numberOfBatches == defaults.numberOfBatches);
     REQUIRE(applied.numberOfTimeSamples == defaults.numberOfTimeSamples);
     REQUIRE(applied.bufferMultiplier == defaults.bufferMultiplier);
+}
+
+std::vector<std::string> AntennaOptions(const Flowgraph::View::BlockData& block) {
+    const auto field = std::find_if(block.interfaceConfigs.begin(), block.interfaceConfigs.end(),
+                                    [](const auto& entry) { return entry.name == "antenna"; });
+    REQUIRE(field != block.interfaceConfigs.end());
+    REQUIRE(Parser::Get<std::string>(field->format, "type") == "dropdown");
+    const auto options = Parser::Get<std::vector<Parser::Map>>(field->format, "options");
+    REQUIRE_FALSE(options.empty());
+    REQUIRE(options.front() == Parser::Map{{"label", "Default"}, {"value", ""}});
+    std::vector<std::string> values;
+    for (const auto& option : options) {
+        values.push_back(Parser::Get<std::string>(option, "value"));
+    }
+    return values;
 }
 
 }  // namespace
@@ -668,6 +707,91 @@ TEST_CASE("Soapy Bias-T follows the device lifecycle",
     }
 }
 
+TEST_CASE("Soapy antenna selection is applied before streaming and cleared on teardown",
+          "[modules][soapy][devices][antenna][lifecycle]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    testSoapyState = {};
+    auto config = TestDeviceSoapyConfig();
+    SECTION("default leaves the driver selection alone") {}
+    SECTION("devices without antenna choices still work") {
+        testSoapyState.antennas.clear();
+    }
+    SECTION("optional antenna discovery can throw") {
+        testSoapyState.failAt = "antennas";
+    }
+    SECTION("optional antenna discovery can throw an unknown exception") {
+        testSoapyState.failAt = "antennas";
+        testSoapyState.throwUnknown = true;
+    }
+    SECTION("explicit selection is sent to receive channel zero") {
+        config.antenna = "TX/RX";
+    }
+
+    const auto module = BuildTestSoapyModule();
+    const SoapyModuleCleanup cleanup{module};
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    const auto* soapy = module->getImpl<Modules::SoapyImpl>();
+    REQUIRE(soapy->listAntennas() == (testSoapyState.failAt.empty()
+        ? testSoapyState.antennas : std::vector<std::string>{}));
+    REQUIRE(static_cast<const Modules::Soapy&>(module->config()).antenna == config.antenna);
+    if (config.antenna.empty()) {
+        REQUIRE(testSoapyState.antennaWrites.empty());
+    } else {
+        REQUIRE(testSoapyState.antennaWrites == std::vector<std::string>{"TX/RX"});
+        REQUIRE(testSoapyState.antennaDirection == SOAPY_SDR_RX);
+        REQUIRE(testSoapyState.antennaChannel == 0);
+        const auto& calls = testSoapyState.lifecycle;
+        REQUIRE(std::find(calls.begin(), calls.end(), "antenna:TX/RX") <
+                std::find(calls.begin(), calls.end(), "setup"));
+    }
+    const auto calls = testSoapyState.lifecycle;
+    REQUIRE(module->reconfigure({{"antenna", config.antenna.empty() ? "RX" : ""}}) == Result::RECREATE);
+    REQUIRE(testSoapyState.lifecycle == calls);
+    REQUIRE(static_cast<const Modules::Soapy&>(module->config()).antenna == config.antenna);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+    REQUIRE(soapy->listAntennas().empty());
+    REQUIRE_FALSE(testSoapyState.releasedWhileReading);
+}
+
+TEST_CASE("Soapy invalid antenna selections release the device before streaming",
+          "[modules][soapy][devices][antenna][lifecycle]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    testSoapyState = {};
+    auto config = TestDeviceSoapyConfig();
+    config.antenna = "TX/RX";
+    SECTION("unsupported selection") {
+        config.antenna = "missing";
+    }
+    SECTION("explicit selection requires advertised support") {
+        testSoapyState.antennas.clear();
+    }
+    SECTION("driver rejects selection") {
+        testSoapyState.failAt = "antenna:TX/RX";
+    }
+    SECTION("driver throws an unknown exception") {
+        testSoapyState.failAt = "antenna:TX/RX";
+        testSoapyState.throwUnknown = true;
+    }
+
+    const auto module = BuildTestSoapyModule();
+    const SoapyModuleCleanup cleanup{module};
+    REQUIRE(module->create("test", config, {}) == Result::ERROR);
+    REQUIRE(testSoapyState.antennaWrites.empty());
+    REQUIRE(testSoapyState.reads->calls == 0);
+    const auto& calls = testSoapyState.lifecycle;
+    REQUIRE(std::count(calls.begin(), calls.end(), "setup") == 0);
+    REQUIRE(std::count(calls.begin(), calls.end(), "unmake") == 1);
+    REQUIRE(module->getImpl<Modules::SoapyImpl>()->listAntennas().empty());
+}
+
 TEST_CASE("Soapy lifecycle preserves stream configuration and output layout",
           "[modules][soapy][devices][lifecycle]") {
     if (Registry::ListAvailableModules("soapy").empty()) {
@@ -686,7 +810,7 @@ TEST_CASE("Soapy lifecycle preserves stream configuration and output layout",
     REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
 
     REQUIRE(testSoapyState.lifecycle == std::vector<std::string>{
-        "make", "sampleRateRanges", "frequencyRanges", "settings",
+        "make", "sampleRateRanges", "frequencyRanges", "settings", "antennas",
         "sampleRate", "frequency", "gainMode", "biastee:true", "setup", "activate",
     });
     REQUIRE(testSoapyState.streamDirection == SOAPY_SDR_RX);
@@ -1607,6 +1731,173 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockReconfigure("radio", selected) == Result::SUCCESS);
     REQUIRE(viewBlock("radio").state == Block::State::Created);
     REQUIRE(std::count(testSoapyState.lifecycle.begin(), testSoapyState.lifecycle.end(), "make") == 2);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Soapy antenna options survive tuning selection and reconnects",
+                 "[modules][soapy][block][antenna]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    testSoapyState = {};
+    const std::string selector = std::string("driver=") + TestSoapyDriver;
+    Blocks::Soapy config;
+    config.antenna = "TX/RX";
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Incomplete);
+    REQUIRE(AntennaOptions(viewBlock("radio")) == std::vector<std::string>{"", "TX/RX"});
+    REQUIRE(testSoapyState.lifecycle.empty());
+
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"deviceString", selector}}) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+    const auto connected = viewBlock("radio");
+    REQUIRE(AntennaOptions(connected) == std::vector<std::string>{"", "RX", "TX/RX"});
+    REQUIRE(testSoapyState.antennaWrites == std::vector<std::string>{"TX/RX"});
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"frequency", 100.0e6f}}) == Result::SUCCESS);
+    REQUIRE(AntennaOptions(viewBlock("radio")) == AntennaOptions(connected));
+    REQUIRE(std::count(testSoapyState.lifecycle.begin(), testSoapyState.lifecycle.end(), "antennas") == 1);
+
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"antenna", "RX"}}) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+    REQUIRE(testSoapyState.antennaWrites == std::vector<std::string>{"TX/RX", "RX"});
+    REQUIRE(AntennaOptions(viewBlock("radio")) == AntennaOptions(connected));
+    const auto saved = viewBlock("radio").config;
+    REQUIRE(Parser::Get<std::string>(saved, "antenna") == "RX");
+
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"deviceString", ""}}) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Incomplete);
+    REQUIRE(AntennaOptions(viewBlock("radio")) == std::vector<std::string>{"", "RX"});
+    REQUIRE(AntennaOptions(connected) == std::vector<std::string>{"", "RX", "TX/RX"});
+    REQUIRE(flowgraph->blockRecreate("radio", saved) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+    REQUIRE(AntennaOptions(viewBlock("radio")) == AntennaOptions(connected));
+    REQUIRE(testSoapyState.antennaWrites == std::vector<std::string>{"TX/RX", "RX", "RX"});
+
+    const auto writes = testSoapyState.antennaWrites;
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"antenna", ""}}) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+    REQUIRE(Parser::Get<std::string>(viewBlock("radio").config, "antenna").empty());
+    REQUIRE(AntennaOptions(viewBlock("radio")) == AntennaOptions(connected));
+    REQUIRE(testSoapyState.antennaWrites == writes);
+    REQUIRE(std::count(testSoapyState.lifecycle.begin(), testSoapyState.lifecycle.end(), "make") == 4);
+    REQUIRE_FALSE(testSoapyState.releasedWhileReading);
+}
+
+TEST_CASE_METHOD(SoapySelectionFixture,
+                 "Soapy antenna options follow the selected device",
+                 "[modules][soapy][block][antenna]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    Blocks::Soapy config;
+    config.deviceString = filter + ",serial=A";
+    config.antenna = "RX";
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    const auto original = viewBlock("radio");
+    REQUIRE(AntennaOptions(original) == std::vector<std::string>{"", "RX", "TX/RX"});
+
+    testSoapyState.antennas = {"HF", "VHF"};
+    REQUIRE(flowgraph->blockReconfigure("radio", {
+        {"deviceString", filter + ",serial=B"}, {"antenna", "HF"},
+    }) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+    REQUIRE(AntennaOptions(viewBlock("radio")) == std::vector<std::string>{"", "HF", "VHF"});
+    REQUIRE(testSoapyState.antennaWrites == std::vector<std::string>{"RX", "HF"});
+    REQUIRE(makeCount() == 2);
+    REQUIRE(AntennaOptions(original) == std::vector<std::string>{"", "RX", "TX/RX"});
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Soapy antenna controls remain editable after invalid selections",
+                 "[modules][soapy][block][antenna]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    testSoapyState = {};
+    Blocks::Soapy config;
+    config.deviceString = std::string("driver=") + TestSoapyDriver;
+    config.antenna = "RX";
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    const auto original = viewBlock("radio");
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"antenna", Parser::Map{}}}) == Result::ERROR);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+    REQUIRE(AntennaOptions(viewBlock("radio")) == AntennaOptions(original));
+    REQUIRE(viewBlock("radio").config == original.config);
+
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"antenna", "missing"}}) == Result::SUCCESS);
+    const auto failed = viewBlock("radio");
+    REQUIRE(failed.state == Block::State::Errored);
+    REQUIRE(failed.diagnostic.find("antenna 'missing'") != std::string::npos);
+    REQUIRE(AntennaOptions(failed) == std::vector<std::string>{"", "missing"});
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"antenna", "TX/RX"}}) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+    REQUIRE(AntennaOptions(viewBlock("radio")) == AntennaOptions(original));
+}
+
+TEST_CASE("Soapy antenna descriptors support reuse of a destroyed block",
+          "[modules][soapy][block][antenna][lifecycle]") {
+    const auto implementations = Registry::ListAvailableModules("soapy");
+    if (implementations.empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    testSoapyState = {};
+    const auto scheduler = std::make_shared<Scheduler>(SchedulerType::SYNCHRONOUS);
+    REQUIRE(scheduler->create(nullptr) == Result::SUCCESS);
+    std::shared_ptr<Block> block;
+    REQUIRE(Registry::BuildBlock("soapy", block) == Result::SUCCESS);
+    struct Cleanup {
+        std::shared_ptr<Block> block;
+        std::shared_ptr<Scheduler> scheduler;
+        ~Cleanup() {
+            if (block->state() != Block::State::None && block->state() != Block::State::Destroyed) {
+                CHECK(block->destroy() == Result::SUCCESS);
+            }
+            CHECK(scheduler->destroy() == Result::SUCCESS);
+        }
+    } cleanup{block, scheduler};
+    const auto context = std::make_shared<Block::Context>(nullptr, nullptr, scheduler, nullptr, nullptr);
+    const auto& implementation = implementations.front();
+    Blocks::Soapy config;
+    const std::string selector = std::string("driver=") + TestSoapyDriver;
+    config.deviceString = selector;
+    config.antenna = "RX";
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    const auto create = [&] {
+        Parser::Map serialized;
+        REQUIRE(config.serialize(serialized) == Result::SUCCESS);
+        return block->create("radio", implementation.device, implementation.runtime,
+                              implementation.provider, serialized, {}, context);
+    };
+    REQUIRE(create() == Result::SUCCESS);
+    REQUIRE(block->destroy() == Result::SUCCESS);
+    config.deviceString.clear();
+    REQUIRE(create() == Result::INCOMPLETE);
+    const auto& fields = block->interface()->configs();
+    const auto antenna = std::find_if(fields.begin(), fields.end(),
+                                      [](const auto& field) { return field.first == "antenna"; });
+    REQUIRE(antenna != fields.end());
+    REQUIRE(Parser::Get<std::vector<Parser::Map>>(antenna->second.format, "options") ==
+            std::vector<Parser::Map>{{{"label", "Default"}, {"value", ""}},
+                                     {{"label", "RX"}, {"value", "RX"}}});
+    REQUIRE(block->destroy() == Result::SUCCESS);
+    config.deviceString = selector;
+    REQUIRE(create() == Result::SUCCESS);
+    REQUIRE(testSoapyState.antennaWrites == std::vector<std::string>{"RX", "RX"});
 }
 
 TEST_CASE_METHOD(SoapySelectionFixture,

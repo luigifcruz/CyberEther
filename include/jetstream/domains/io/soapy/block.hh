@@ -9,6 +9,7 @@ struct Soapy : public Block::Config {
     std::string modulePath = "";
     std::string deviceString = "";
     std::string streamString = "";
+    std::string antenna = "";
     F32 frequency = 96.9e6;
     F32 frequencyStep = 1000000.0;
     F32 sampleRate = 2.0e6;
@@ -21,9 +22,10 @@ struct Soapy : public Block::Config {
     JST_BLOCK_TYPE(soapy);
     JST_BLOCK_DOMAIN("IO");
     JST_BLOCK_NODE_SIZE(M);
-    JST_BLOCK_PARAMS(modulePath, deviceString, streamString, frequency,
-                     frequencyStep, sampleRate, automaticGain, biasTee,
-                     numberOfBatches, numberOfTimeSamples, bufferMultiplier);
+    JST_BLOCK_PARAMS(modulePath, deviceString, streamString,
+                     antenna, frequency, frequencyStep, sampleRate,
+                     automaticGain, biasTee, numberOfBatches,
+                     numberOfTimeSamples, bufferMultiplier);
     JST_BLOCK_DESCRIPTION(
         "Soapy SDR",
         "Interface for SoapySDR devices.",
@@ -34,6 +36,7 @@ struct Soapy : public Block::Config {
         "## Arguments\n"
         "- **Device String**: Device selector and constructor arguments.\n"
         "- **Stream String**: Stream configuration arguments.\n"
+        "- **Antenna**: Receive antenna port, or the driver default.\n"
         "- **Frequency**: Tuner frequency in Hz.\n"
         "- **Sample Rate**: Sampling rate in Hz.\n"
         "- **Automatic Gain**: Enable automatic gain control.\n"

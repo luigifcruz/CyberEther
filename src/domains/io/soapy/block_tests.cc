@@ -22,6 +22,21 @@ TEST_CASE("Soapy block Bias-T defaults off", "[modules][io][soapy][block][bias-t
     REQUIRE(restored.biasTee);
 }
 
+TEST_CASE("Soapy antenna selection is optional and serialized", "[modules][io][soapy][block][antenna]") {
+    Blocks::Soapy config;
+    REQUIRE(config.deserialize({{"deviceString", "driver=test"}}) == Result::SUCCESS);
+    REQUIRE(config.antenna.empty());
+    const auto defaultHash = config.hash();
+    config.antenna = "TX/RX";
+    REQUIRE(config.hash() != defaultHash);
+    Parser::Map serialized;
+    REQUIRE(config.serialize(serialized) == Result::SUCCESS);
+    Blocks::Soapy restored;
+    REQUIRE(restored.deserialize(serialized) == Result::SUCCESS);
+    REQUIRE(restored.antenna == config.antenna);
+    REQUIRE(restored.hash() == config.hash());
+}
+
 TEST_CASE_METHOD(FlowgraphFixture,
                  "Soapy block delegates module configuration validation",
                  "[modules][io][soapy][block][validation]") {

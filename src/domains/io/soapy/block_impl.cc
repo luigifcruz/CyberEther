@@ -20,6 +20,9 @@ struct SoapyImpl : public Block::Impl, public DynamicConfig<Blocks::Soapy> {
  protected:
     std::shared_ptr<Modules::Soapy> moduleConfig = std::make_shared<Modules::Soapy>();
     Modules::SoapyImpl* moduleImpl = nullptr;
+
+ private:
+    Parser::Map antennaFormat(const Blocks::Soapy& config);
 };
 
 Result SoapyImpl::validate() {
@@ -39,6 +42,7 @@ Result SoapyImpl::configure() {
     moduleConfig->modulePath = modulePath;
     moduleConfig->deviceString = deviceString;
     moduleConfig->streamString = streamString;
+    moduleConfig->antenna = antenna;
     moduleConfig->frequency = frequency;
     moduleConfig->sampleRate = sampleRate;
     moduleConfig->automaticGain = automaticGain;
@@ -74,6 +78,11 @@ Result SoapyImpl::define() {
                                     "Device",
                                     "Select a device to receive samples. Choose None to disconnect.",
                                     {{"type", "dropdown"}, {"options", std::move(deviceOptions)}}));
+
+    JST_CHECK(defineInterfaceConfig("antenna",
+                                    "Antenna",
+                                    "Receive antenna port. Changes restart the receiver.",
+                                    antennaFormat(config)));
 
     JST_CHECK(defineInterfaceConfig("frequency",
                                     "Frequency",
@@ -159,8 +168,29 @@ Result SoapyImpl::create() {
     JST_CHECK(moduleExposeOutput("signal", {"soapy", "signal"}));
 
     moduleImpl = moduleHandle("soapy")->getImpl<Modules::SoapyImpl>();
+    JST_CHECK(updateInterfaceConfigFormat("antenna", antennaFormat(*this)));
 
     return Result::SUCCESS;
+}
+
+Parser::Map SoapyImpl::antennaFormat(const Blocks::Soapy& config) {
+    Parser::Sequence options{Parser::Map{{"label", "Default"}, {"value", ""}}};
+    bool selectionListed = config.antenna.empty();
+    if (const auto module = moduleHandle("soapy");
+        module && module->state() == Module::State::CREATED) {
+        const auto* soapy = module->getImpl<Modules::SoapyImpl>();
+        if (soapy && soapy->modulePath == config.modulePath &&
+            soapy->deviceString == config.deviceString) {
+            for (const auto& antenna : soapy->listAntennas()) {
+                selectionListed = selectionListed || antenna == config.antenna;
+                options.emplace_back(Parser::Map{{"label", antenna}, {"value", antenna}});
+            }
+        }
+    }
+    if (!selectionListed) {
+        options.emplace_back(Parser::Map{{"label", config.antenna}, {"value", config.antenna}});
+    }
+    return {{"type", "dropdown"}, {"options", std::move(options)}};
 }
 
 JST_REGISTER_BLOCK(SoapyImpl, {"soapy"});

@@ -131,14 +131,13 @@ struct GainBlock : Block::Impl, DynamicConfig<GainConfig> {
 JST_REGISTER_BLOCK(GainBlock, {"gain"});
 ```
 
-The building vocabulary inside `create()`:
+Use `moduleCreate(name, config, inputs)` to create a child module with the block's device, runtime, and provider. Connect its output to a block port with `moduleExposeOutput(blockPort, {module, modulePort})`. Every output you declare in `define()` needs a connection. To chain modules together, use `moduleGetOutput({module, modulePort})` to pass one module's output to the next.
 
-- `moduleCreate(name, config, inputs)` instantiates a module by its config type, resolved against the block's device, runtime, and provider, and feeds it the given tensor links.
-- `moduleExposeOutput(blockPort, {module, modulePort})` publishes a module output as a block output. Every output declared in `define()` must be exposed, or creation fails.
-- `moduleGetOutput({module, modulePort})` fetches an intermediate output to feed into the next module when chaining.
-- `defineInterfaceConfig` and `defineInterfaceMetric` add editable fields and published values to the node UI. Metrics are covered in [Block Metrics](/docs/metadata#block-metrics).
+Add editable controls with `defineInterfaceConfig` and status readouts with `defineInterfaceMetric`. See [Block Metrics](/docs/metadata#block-metrics) for examples.
 
-Blocks may also access `environment()`, `view()`, `scheduler()`, and `render()` for the surrounding machinery.
+Some controls depend on the device. Soapy, for example, learns which antennas are available when it opens a radio. It adds the dropdown in `define()`, then fills in the choices with `updateInterfaceConfigFormat(key, format)` in `create()`. When settings change, `define()` runs again, so it also needs to include those choices if the same radio is still selected.
+
+Use `environment()`, `view()`, `scheduler()`, and `render()` to access the flowgraph environment, view, scheduler, and render window.
 
 ## Interface Descriptions
 

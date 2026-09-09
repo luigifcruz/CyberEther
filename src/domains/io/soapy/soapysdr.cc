@@ -306,6 +306,14 @@ Result SoapyReceiver::queryCapabilities() {
         JST_WARN("[MODULE_SOAPY] Failed to query optional device settings.");
     }
 
+    try {
+        antennas = device->listAntennas(SOAPY_SDR_RX, 0);
+    } catch (const std::exception& e) {
+        JST_WARN("[MODULE_SOAPY] Failed to query receive antennas: {}", e.what());
+    } catch (...) {
+        JST_WARN("[MODULE_SOAPY] Failed to query receive antennas.");
+    }
+
     return Result::SUCCESS;
 }
 
@@ -318,6 +326,36 @@ Result SoapyReceiver::validateSettings(const F32 sampleRate,
 
     if (!SoapyRangeContains(frequencyRanges, frequency)) {
         JST_ERROR("[MODULE_SOAPY] Frequency ({:.2f} MHz) not supported.", frequency / 1e6);
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
+const std::vector<std::string>& SoapyReceiver::listAntennas() const {
+    return antennas;
+}
+
+Result SoapyReceiver::setAntenna(const std::string& antenna) {
+    if (state == State::Closed) {
+        JST_ERROR("[MODULE_SOAPY] Cannot set antenna without an active device.");
+        return Result::ERROR;
+    }
+    if (antenna.empty()) {
+        return Result::SUCCESS;
+    }
+    if (std::find(antennas.begin(), antennas.end(), antenna) == antennas.end()) {
+        JST_ERROR("[MODULE_SOAPY] Receive antenna '{}' is not supported by the selected device.", antenna);
+        return Result::ERROR;
+    }
+
+    try {
+        device->setAntenna(SOAPY_SDR_RX, 0, antenna);
+    } catch (const std::exception& e) {
+        JST_ERROR("[MODULE_SOAPY] Failed to set receive antenna '{}': {}", antenna, e.what());
+        return Result::ERROR;
+    } catch (...) {
+        JST_ERROR("[MODULE_SOAPY] Failed to set receive antenna '{}'.", antenna);
         return Result::ERROR;
     }
 
@@ -526,6 +564,7 @@ void SoapyReceiver::reset() {
 
     sampleRateRanges.clear();
     frequencyRanges.clear();
+    antennas.clear();
     biasTeeSupported = false;
     biasTeeNeedsCleanup = false;
 }

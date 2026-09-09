@@ -26,6 +26,7 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
     F32 getBufferHealth() const;
     F64 getBufferLoss() const;
     std::pair<F32, F32> getThroughput() const;
+    std::vector<std::string> listAntennas() const;
 
     Result setTunerFrequency(const F32& frequency);
     Result setSampleRate(const F32& sampleRate);

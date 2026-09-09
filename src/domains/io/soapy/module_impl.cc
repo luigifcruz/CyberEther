@@ -142,6 +142,7 @@ Result SoapyImpl::allocateBuffers() {
 
 Result SoapyImpl::configureDevice(const SoapySDR::Kwargs& streamArgs) {
     try {
+        JST_CHECK(receiverDevice.setAntenna(antenna));
         JST_CHECK(setSampleRate(sampleRate));
         JST_CHECK(setTunerFrequency(frequency));
         JST_CHECK(setAutomaticGain(automaticGain));
@@ -211,6 +212,7 @@ Result SoapyImpl::reconfigure() {
     if (newConfig.modulePath != modulePath ||
         newConfig.deviceString != deviceString ||
         newConfig.streamString != streamString ||
+        newConfig.antenna != antenna ||
         newConfig.biasTee != biasTee ||
         newConfig.numberOfBatches != numberOfBatches ||
         newConfig.numberOfTimeSamples != numberOfTimeSamples ||
@@ -297,6 +299,10 @@ F64 SoapyImpl::getBufferLoss() const {
 
 std::pair<F32, F32> SoapyImpl::getThroughput() const {
     return throughput.get();
+}
+
+std::vector<std::string> SoapyImpl::listAntennas() const {
+    return receiverDevice.listAntennas();
 }
 
 Result SoapyImpl::setTunerFrequency(const F32& freq) {
