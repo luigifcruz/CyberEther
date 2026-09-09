@@ -9,9 +9,11 @@
 #include "jetstream/flowgraph_metadata.hh"
 #include "jetstream/flowgraph_view.hh"
 
+#include <any>
 #include <cmath>
 #include <string>
 #include <tuple>
+#include <unordered_map>
 #include <utility>
 
 namespace Jetstream {
@@ -23,25 +25,69 @@ struct StackActions {
                               MailSetStackLayout,
                               MailSetSurfaceDetached,
                               MailSetSurfaceConfigOpen>;
-    using StackWindowState = DefaultCompositorState::FlowgraphState::StackWindowState;
+    using FlowgraphState = DefaultCompositorState::FlowgraphState;
+    using StackWindowState = FlowgraphState::StackWindowState;
 
-    DefaultCompositorState& state;
+    FlowgraphState& state;
     DefaultCompositorCallbacks& callbacks;
 
-    StackActions(DefaultCompositorState& state,
+    StackActions(FlowgraphState& state,
                  DefaultCompositorCallbacks& callbacks) :
         state(state),
         callbacks(callbacks) {}
 
+    void restoreFromMetadata() {
+        for (const auto& [flowgraphId, flowgraph] : state.items) {
+            if (!flowgraph || state.stacks.contains(flowgraphId)) {
+                continue;
+            }
+
+            if (!flowgraph->metadata().has("stacks")) {
+                continue;
+            }
+
+            Parser::Map stackMap;
+            if (flowgraph->metadata().get("stacks", stackMap) != Result::SUCCESS) {
+                JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Failed to load stack metadata for flowgraph '{}'.", flowgraphId);
+                continue;
+            }
+
+            std::unordered_map<std::string, StackWindowState> stacks;
+            for (const auto& [stackId, encodedStack] : stackMap) {
+                if (stackId.empty() || encodedStack.type() != typeid(Parser::Map)) {
+                    continue;
+                }
+
+                StackMeta meta;
+                if (meta.deserialize(std::any_cast<const Parser::Map&>(encodedStack)) != Result::SUCCESS) {
+                    JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Failed to decode stack '{}' for flowgraph '{}'.", stackId, flowgraphId);
+                    continue;
+                }
+                if (meta.title.empty()) {
+                    meta.title = stackId;
+                }
+                const bool restoreDockLayout = meta.layout.has_value();
+
+                stacks[stackId] = StackWindowState{
+                    .meta = std::move(meta),
+                    .restoreDockLayout = restoreDockLayout,
+                    .dockInMainDockspace = true,
+                };
+            }
+
+            state.stacks.emplace(flowgraphId, std::move(stacks));
+        }
+    }
+
     Result persistFlowgraphStacks(const std::string& flowgraphId) {
-        if (!state.flowgraph.items.contains(flowgraphId)) {
+        if (!state.items.contains(flowgraphId)) {
             JST_ERROR("Failed to persist stacks because flowgraph was not found.");
             return Result::ERROR;
         }
 
         Parser::Map serializedStacks;
-        auto stacksIt = state.flowgraph.stacks.find(flowgraphId);
-        if (stacksIt != state.flowgraph.stacks.end()) {
+        auto stacksIt = state.stacks.find(flowgraphId);
+        if (stacksIt != state.stacks.end()) {
             for (auto& [stackId, stack] : stacksIt->second) {
                 if (stackId.empty()) {
                     continue;
@@ -56,16 +102,16 @@ struct StackActions {
             }
         }
 
-        return state.flowgraph.items.at(flowgraphId)->metadata().set("stacks", serializedStacks);
+        return state.items.at(flowgraphId)->metadata().set("stacks", serializedStacks);
     }
 
     Result handle(const MailCreateStack& msg) {
-        if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        if (!state.items.contains(msg.flowgraph)) {
             JST_ERROR("Failed to create stack because flowgraph was not found.");
             return Result::ERROR;
         }
 
-        auto& stacks = state.flowgraph.stacks[msg.flowgraph];
+        auto& stacks = state.stacks[msg.flowgraph];
         U64 index = 0;
         std::string stackId;
         do {
@@ -93,12 +139,12 @@ struct StackActions {
     }
 
     Result handle(const MailDeleteStack& msg) {
-        if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        if (!state.items.contains(msg.flowgraph)) {
             return Result::SUCCESS;
         }
 
-        auto stacksIt = state.flowgraph.stacks.find(msg.flowgraph);
-        if (stacksIt != state.flowgraph.stacks.end()) {
+        auto stacksIt = state.stacks.find(msg.flowgraph);
+        if (stacksIt != state.stacks.end()) {
             stacksIt->second.erase(msg.stackId);
         }
 
@@ -139,11 +185,11 @@ struct StackActions {
     }
 
     Result handle(const MailSetSurfaceDetached& msg) {
-        if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        if (!state.items.contains(msg.flowgraph)) {
             return Result::SUCCESS;
         }
 
-        auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+        auto flowgraph = state.items.at(msg.flowgraph);
         if (!flowgraph->view().has(msg.block)) {
             return Result::SUCCESS;
         }
@@ -160,11 +206,11 @@ struct StackActions {
     }
 
     Result handle(const MailSetSurfaceConfigOpen& msg) {
-        if (!state.flowgraph.items.contains(msg.flowgraph)) {
+        if (!state.items.contains(msg.flowgraph)) {
             return Result::SUCCESS;
         }
 
-        auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
+        auto flowgraph = state.items.at(msg.flowgraph);
         if (!flowgraph->view().has(msg.block)) {
             return Result::SUCCESS;
         }
@@ -182,12 +228,12 @@ struct StackActions {
 
  private:
     StackWindowState* findStack(const std::string& flowgraphId, const std::string& stackId) {
-        if (!state.flowgraph.items.contains(flowgraphId)) {
+        if (!state.items.contains(flowgraphId)) {
             return nullptr;
         }
 
-        auto flowgraphIt = state.flowgraph.stacks.find(flowgraphId);
-        if (flowgraphIt == state.flowgraph.stacks.end()) {
+        auto flowgraphIt = state.stacks.find(flowgraphId);
+        if (flowgraphIt == state.stacks.end()) {
             return nullptr;
         }
 

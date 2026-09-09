@@ -18,9 +18,7 @@
 #include "jetstream/logger.hh"
 #include "jetstream/instance_remote.hh"
 #include "jetstream/settings.hh"
-#include "jetstream/flowgraph_metadata.hh"
 
-#include <any>
 #include <chrono>
 #include <deque>
 #include <functional>
@@ -231,7 +229,7 @@ Result DefaultCompositor::poll() {
     updateRemoteState();
     updateUpdaterState();
     actions.reconcileFilePicker();
-    updateStacksState();
+    actions.restoreStacks();
     updateFeedbackState();
 
     // Build view configs while flowgraph access is confined to poll.
@@ -369,43 +367,6 @@ void DefaultCompositor::updateUpdaterState() {
     state.update.version = update.version;
     state.update.releaseNotes = update.releaseNotes;
     state.update.message = update.message;
-}
-
-void DefaultCompositor::updateStacksState() {
-    for (const auto& [flowgraphId, flowgraph] : state.flowgraph.items) {
-        if (!flowgraph || state.flowgraph.stacks.contains(flowgraphId)) {
-            continue;
-        }
-
-        auto& stacks = state.flowgraph.stacks[flowgraphId];
-        Parser::Map stackMap;
-        if (flowgraph->metadata().get("stacks", stackMap) != Result::SUCCESS) {
-            JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Failed to load stack metadata for flowgraph '{}'.", flowgraphId);
-            continue;
-        }
-
-        for (const auto& [stackId, encodedStack] : stackMap) {
-            if (stackId.empty() || encodedStack.type() != typeid(Parser::Map)) {
-                continue;
-            }
-
-            StackMeta meta;
-            if (meta.deserialize(std::any_cast<const Parser::Map&>(encodedStack)) != Result::SUCCESS) {
-                JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Failed to decode stack '{}' for flowgraph '{}'.", stackId, flowgraphId);
-                continue;
-            }
-            if (meta.title.empty()) {
-                meta.title = stackId;
-            }
-            const bool restoreDockLayout = meta.layout.has_value();
-
-            stacks[stackId] = DefaultCompositorState::FlowgraphState::StackWindowState{
-                .meta = std::move(meta),
-                .restoreDockLayout = restoreDockLayout,
-                .dockInMainDockspace = true,
-            };
-        }
-    }
 }
 
 void DefaultCompositor::enqueue(Mail&& mail) {
