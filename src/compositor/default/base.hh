@@ -48,7 +48,6 @@ class DefaultCompositor : public Compositor::Impl {
     void updateBenchmarkState();
     void updateRemoteState();
     void updateUpdaterState();
-    void updateStacksState();
     void updateFeedbackState();
 };
 

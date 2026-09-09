@@ -79,7 +79,7 @@ struct FlowgraphExamplesView {
         header.update({
             .id = "FlowgraphExamplesHeader",
             .title = ICON_FA_STORE " Flowgraph Examples",
-            .description = "Pick an example to bootstrap a new flowgraph. Examples open in a fresh tab so your work stays intact.",
+            .description = "Examples open in a fresh tab and start processing automatically once their inputs and devices are ready.",
         });
         emptyText.update({
             .id = "FlowgraphExamplesEmpty",

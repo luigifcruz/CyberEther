@@ -18,7 +18,17 @@ struct Adsb : public Block::Config {
         "at 2 MHz sample rate and decodes Mode S ADS-B transponder frames. "
         "It performs magnitude computation, preamble detection, bit decoding, "
         "CRC validation, and single-bit error correction using libmodes. "
-        "Decoded aircraft positions are displayed on an interactive world map.\n\n"
+        "Decoded aircraft positions are displayed on the existing world map "
+        "with a STARS-inspired tracking overlay: compact targets, history dots, "
+        "leader lines and persistent data blocks. This is an ADS-B visualization, "
+        "not an FAA-certified air traffic control system.\n\n"
+
+        "## Tracking Display\n"
+        "The first data-block row is the callsign (or ICAO address). The second "
+        "shows reported altitude in hundreds of feet and ground speed in tens "
+        "of knots: 080 24 means 8,000 ft and 240 kt. Missing fields use dashes. "
+        "Position reports older than 15 seconds are labeled STALE. Targets older "
+        "than 120 seconds are hidden from the map.\n\n"
 
         "## Useful For\n"
         "- Aircraft tracking and identification.\n"

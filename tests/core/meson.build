@@ -4,7 +4,10 @@ core_test_main = '../support/catch_main.cc'
 
 core_test_domains = {
     'application': ['application/instance_backend.cc'],
-    'compositor': ['compositor/compositor.cc'],
+    'compositor': [
+        'compositor/compositor.cc',
+        'compositor/stacks.cc',
+    ],
     'extensions': [
         'extensions/plugins.cc',
         'extensions/benchmark.cc',
@@ -29,7 +32,11 @@ core_test_domains = {
         'platform/storage.cc',
     ],
     'registry': ['registry/registry.cc'],
-    'render': ['render/transfers.cc'],
+    'render': [
+        'render/transfers.cc',
+        'render/geomap_labels.cc',
+        'render/map_layers.cc',
+    ],
     'sakura': [
         'sakura/interface_controls.cc',
         'sakura/metric_label.cc',

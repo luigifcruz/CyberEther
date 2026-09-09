@@ -31,7 +31,7 @@ class DefaultActions {
         filePicker = std::make_shared<FilePickerActions>(state, callbacks);
         flowgraph = std::make_shared<FlowgraphActions>(state, callbacks);
         dependencies = std::make_shared<DependencyActions>(callbacks);
-        stacks = std::make_shared<StackActions>(state, callbacks);
+        stacks = std::make_shared<StackActions>(state.flowgraph, callbacks);
         feedback = std::make_shared<FeedbackActions>(state, callbacks);
     }
 
@@ -75,6 +75,10 @@ class DefaultActions {
 
     void reconcileFilePicker() {
         filePicker->reconcileAvailability();
+    }
+
+    void restoreStacks() {
+        stacks->restoreFromMetadata();
     }
 
     void cancelFilePicker() {

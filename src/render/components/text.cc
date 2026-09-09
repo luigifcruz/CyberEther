@@ -340,14 +340,20 @@ F32 Text::advance(const std::string& fill) const {
     }
 
     F32 x = 0.0f;
+    F32 maxWidth = 0.0f;
     for (const auto c : fill) {
+        if (c == '\n') {
+            maxWidth = std::max(maxWidth, x);
+            x = 0.0f;
+            continue;
+        }
         if (c < 32 || c >= 127) {
             continue;
         }
         x += config.font->glyph(c - 32).xAdvance;
     }
 
-    return x;
+    return std::max(maxWidth, x);
 }
 
 std::vector<F32> Text::advances(const std::string& fill) const {
@@ -539,14 +545,33 @@ Result Text::Impl::updateElementVertex(Element& element) {
 
     // Recalculate vertex buffer.
 
-    F32 x = 0.0f;
+    std::vector<F32> lineWidths(1, 0.0f);
+    for (const char c : element.config.fill) {
+        if (c == '\n') {
+            lineWidths.push_back(0.0f);
+        } else if (c >= 32 && c < 127) {
+            lineWidths.back() += config.font->glyph(c - 32).xAdvance;
+        }
+    }
+    const F32 blockWidth = *std::max_element(lineWidths.begin(),
+                                             lineWidths.end());
+    U64 lineIndex = 0;
+    F32 x = (blockWidth - lineWidths[lineIndex]) * 0.5f;
     F32 y = 0.0f;
+    const U64 lineCount = lineWidths.size();
 
     const I32 baselineY = config.font->ascent();
 
     for (U64 i = 0; i < element.config.fill.size(); ++i) {
         const auto& atlasSize = config.font->atlasSize();
         const auto& c = element.config.fill[i];
+
+        if (c == '\n') {
+            ++lineIndex;
+            x = (blockWidth - lineWidths[lineIndex]) * 0.5f;
+            y -= static_cast<F32>(config.font->lineHeight());
+            continue;
+        }
 
         if (c >= 32 && c < 127) {
             if (c == ' ') {
@@ -592,8 +617,8 @@ Result Text::Impl::updateElementVertex(Element& element) {
         }
     }
 
-    element.bounds.x = x;
-    element.bounds.y = config.font->lineHeight();
+    element.bounds.x = blockWidth;
+    element.bounds.y = config.font->lineHeight() * lineCount;
 
     return Result::SUCCESS;
 }

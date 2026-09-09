@@ -12,6 +12,8 @@ if all_deps_found
     src_lst += files([
         'block_impl.cc',
         'module_impl.cc',
+        'map_layers.cc',
+        'radar_layout.cc',
         'module_impl_native_cpu.cc',
         'module_benchmarks.cc',
     ])
