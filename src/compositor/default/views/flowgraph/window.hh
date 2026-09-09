@@ -49,6 +49,7 @@ struct FlowgraphWindow {
             "Right-click a block to open its context menu.",
             "Use Ctrl+C and Ctrl+V to copy and paste blocks.",
             "Hover over ports to see their data type.",
+            "Source blocks set the buffer size downstream.",
             "Click and drag on empty canvas to pan around.",
             "Hover over diagnostic icons for details.",
             "Right-click and reload a block to retry.",

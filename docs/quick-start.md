@@ -30,6 +30,7 @@ Before building your first flowgraph, it helps to know a few terms that appear t
 - **Blocks** are the nodes on the canvas. Each one performs one operation, such as generating a signal, running an FFT, or drawing a plot.
 - **Ports** are the small connection points on the edges of a block. Output ports feed data into input ports.
 - **Wires** carry data from one block to the next. A block cannot run until its required inputs are connected.
+- **Shapes** are fixed. Every block runs on tensors of a fixed shape that flows downstream from the source, so the sample count you set on a source block sets the size of everything downstream until a block reshapes it. The [FAQ](/docs/faq#why-are-buffer-sizes-stricter-than-in-other-sdr-software) explains why.
 - **Properties** let you change how a block behaves. They appear inline inside each block; click a field to edit it.
 
 ## Creating a simple flowgraph

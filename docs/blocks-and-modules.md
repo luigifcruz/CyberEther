@@ -362,10 +362,11 @@ The compute hooks come from the runtime context, for example `computeInitialize`
 | `TIMEOUT` | Abort the rest of the cycle quietly after a bounded wait or unavailable resource. |
 | `ERROR` | The module failed. Its block becomes errored with the last log message as the diagnostic, and downstream blocks are recreated as incomplete. The rest of the flowgraph keeps running. |
 
-Two rules govern the whole design:
+Three rules govern the whole design:
 
 - **Compute must never block.** The scheduler is synchronous, so a stalled `computeSubmit` stalls every block in the flowgraph. Anything that waits on the outside world belongs in a background thread that `computeSubmit` drains.
 - **Sources pace the graph.** A module with no inputs is a source, and before each cycle the scheduler polls every source's `hasPendingCompute()` from `Scheduler::Context`. The default returns immediately, which makes the graph free-running. A real ingest source blocks there until data is available, which is what gives a flowgraph its natural rate. Note that the scheduler waits for all sources, so a slow source paces everything.
+- **Shapes are fixed at creation.** A module publishes its outputs in `create()` and their shape holds for as long as it lives, so a shape-changing edit goes through `RECREATE` as described in [Block Lifecycle](/docs/blocks-and-modules#block-lifecycle).
 
 ### Module Taints
 
