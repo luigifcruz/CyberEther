@@ -22,6 +22,7 @@
 
 #include "jetstream/config.hh"
 #include "jetstream/logger.hh"
+#include "jetstream/platform.hh"
 #include "jetstream/run.hh"
 #include "jetstream/settings.hh"
 
@@ -418,6 +419,20 @@ TEST_CASE("CLI displays contextual help and version", "[core][integration][cli]"
 
     ExpectVersion("version", {"--version"});
     ExpectVersion("short version", {"-V"});
+}
+
+TEST_CASE("CLI rejects invalid flowgraph files before startup", "[core][integration][cli]") {
+    REQUIRE(settingsSandbox != nullptr);
+    const auto& root = settingsSandbox->root();
+
+    for (const auto& path : {root / "missing.yml", root}) {
+        const std::string argument = Jetstream::Platform::PathToUtf8(path);
+        const std::string message =
+            "Can't open flowgraph file '" + argument + "'. Expected a readable file.";
+
+        ExpectUsageError("implicit run invalid file", {argument.c_str()}, message);
+        ExpectUsageError("explicit run invalid file", {"run", argument.c_str()}, message);
+    }
 }
 
 TEST_CASE("CLI help and version obey left-to-right precedence", "[core][integration][cli]") {

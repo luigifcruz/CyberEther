@@ -4,6 +4,8 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <limits>
 #include <optional>
 #include <string_view>
@@ -914,6 +916,16 @@ int Run(int argc, char* argv[]) {
 
     if (command == CommandType::Update) {
         return RunUpdateCommand(installUpdate);
+    }
+
+    if (command == CommandType::Run && !flowgraphPath.empty()) {
+        const auto path = Platform::PathFromUtf8(flowgraphPath);
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(path, ec) ||
+            !std::ifstream(path, std::ios::binary)) {
+            return PrintUsageError(argv[0], jst::fmt::format(
+                "Can't open flowgraph file '{}'. Expected a readable file.", flowgraphPath));
+        }
     }
 
     std::optional<LogLevelGuard> benchmarkLogLevel;
