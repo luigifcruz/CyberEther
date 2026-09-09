@@ -7,7 +7,6 @@ namespace Jetstream::Blocks {
 
 struct Soapy : public Block::Config {
     std::string modulePath = "";
-    std::string hintString = "";
     std::string deviceString = "";
     std::string streamString = "";
     F32 frequency = 96.9e6;
@@ -22,10 +21,9 @@ struct Soapy : public Block::Config {
     JST_BLOCK_TYPE(soapy);
     JST_BLOCK_DOMAIN("IO");
     JST_BLOCK_NODE_SIZE(M);
-    JST_BLOCK_PARAMS(modulePath, hintString, deviceString,
-                     streamString, frequency, frequencyStep,
-                     sampleRate, automaticGain, biasTee, numberOfBatches,
-                     numberOfTimeSamples, bufferMultiplier);
+    JST_BLOCK_PARAMS(modulePath, deviceString, streamString, frequency,
+                     frequencyStep, sampleRate, automaticGain, biasTee,
+                     numberOfBatches, numberOfTimeSamples, bufferMultiplier);
     JST_BLOCK_DESCRIPTION(
         "Soapy SDR",
         "Interface for SoapySDR devices.",
@@ -34,8 +32,7 @@ struct Soapy : public Block::Config {
         "facilitating data acquisition and device configuration.\n\n"
 
         "## Arguments\n"
-        "- **Device Hint**: Filter string for discovering devices.\n"
-        "- **Device String**: Full device identifier string.\n"
+        "- **Device String**: Device selector and constructor arguments.\n"
         "- **Stream String**: Stream configuration arguments.\n"
         "- **Frequency**: Tuner frequency in Hz.\n"
         "- **Sample Rate**: Sampling rate in Hz.\n"

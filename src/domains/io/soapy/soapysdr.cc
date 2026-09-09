@@ -226,26 +226,57 @@ Result SoapyReceiver::open(const SoapySDR::Kwargs& args) {
         return Result::ERROR;
     }
 
+    SoapySDR::Kwargs deviceArgs;
     try {
         const auto devices = DiscoverDevices(args);
         if (devices.empty()) {
             JST_ERROR("[MODULE_SOAPY] No SoapySDR devices found.");
             return Result::INCOMPLETE;
         }
-        device = SoapySDR::Device::make(devices.at(0));
+        if (devices.size() != 1) {
+            JST_ERROR("[MODULE_SOAPY] Device selection is ambiguous.");
+            return Result::INCOMPLETE;
+        }
+        deviceArgs = devices.front();
+        deviceArgs.insert(args.begin(), args.end());
     } catch (const std::exception& e) {
         SoapyDiscovery::ClearDiscoveryCache();
-        JST_ERROR("[MODULE_SOAPY] Failed to open device: {}", e.what());
+        JST_ERROR("[MODULE_SOAPY] Failed to discover device: {}", e.what());
         return Result::ERROR;
     } catch (...) {
         SoapyDiscovery::ClearDiscoveryCache();
-        JST_ERROR("[MODULE_SOAPY] Failed to open device.");
+        JST_ERROR("[MODULE_SOAPY] Failed to discover device.");
         return Result::ERROR;
+    }
+
+    std::string openError;
+    try {
+        device = SoapySDR::Device::make(deviceArgs);
+    } catch (const std::exception& e) {
+        openError = e.what();
+    } catch (...) {
+        openError = "Unknown driver error.";
     }
 
     if (device == nullptr) {
         SoapyDiscovery::ClearDiscoveryCache();
-        JST_ERROR("[MODULE_SOAPY] Can't open SoapySDR device.");
+        try {
+            const auto devices = DiscoverDevices(args, true);
+            if (devices.empty()) {
+                JST_ERROR("[MODULE_SOAPY] Selected device is no longer available.");
+                return Result::INCOMPLETE;
+            }
+            if (devices.size() != 1) {
+                JST_ERROR("[MODULE_SOAPY] Device selection is ambiguous.");
+                return Result::INCOMPLETE;
+            }
+        } catch (const std::exception& e) {
+            JST_DEBUG("[MODULE_SOAPY] Failed to refresh discovery after opening failure: {}", e.what());
+        } catch (...) {
+            JST_DEBUG("[MODULE_SOAPY] Failed to refresh discovery after opening failure.");
+        }
+        JST_ERROR("[MODULE_SOAPY] Failed to open device: {}",
+                  openError.empty() ? "Driver returned no device." : openError);
         return Result::ERROR;
     }
 

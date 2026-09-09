@@ -31,7 +31,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     }
 
     Parser::Map config;
-    config["hintString"] = std::string("driver=cyberether_missing_test_driver");
+    config["deviceString"] = std::string("driver=cyberether_missing_test_driver");
     config["sampleRate"] = 0.0f;
 
     REQUIRE(flowgraph->blockCreate("soapy_bad_module_config", "soapy", config, {}) ==
@@ -64,7 +64,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     }
 
     Parser::Map config;
-    config["hintString"] = std::string("driver=cyberether_missing_test_driver");
+    config["deviceString"] = std::string("driver=cyberether_missing_test_driver");
     config["frequencyStep"] = 0.0f;
 
     REQUIRE(flowgraph->blockCreate("soapy_bad_step", "soapy", config, {}) ==
@@ -73,9 +73,6 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(block.state == Block::State::Errored);
     REQUIRE_FALSE(block.interfaceOutputs.empty());
     REQUIRE_FALSE(block.interfaceConfigs.empty());
-    REQUIRE(std::none_of(block.interfaceConfigs.begin(),
-                         block.interfaceConfigs.end(),
-                         [](const auto& field) { return field.name == "hintString"; }));
     REQUIRE(std::none_of(block.interfaceConfigs.begin(),
                          block.interfaceConfigs.end(),
                          [](const auto& field) { return field.name == "modulePath"; }));

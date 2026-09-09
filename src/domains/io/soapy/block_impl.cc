@@ -20,7 +20,6 @@ struct SoapyImpl : public Block::Impl, public DynamicConfig<Blocks::Soapy> {
  protected:
     std::shared_ptr<Modules::Soapy> moduleConfig = std::make_shared<Modules::Soapy>();
     Modules::SoapyImpl* moduleImpl = nullptr;
-    Parser::Map deviceDropdown;
 };
 
 Result SoapyImpl::validate() {
@@ -37,30 +36,8 @@ Result SoapyImpl::validate() {
 Result SoapyImpl::configure() {
     JST_CHECK(Modules::SoapyDiscovery::LoadDriverLibrary(modulePath));
 
-    std::string resolvedDeviceString;
-    const auto availableDeviceList = Modules::SoapyDiscovery::ListDevices(hintString);
-    const auto selectFirstAvailable = [&](const Modules::SoapyDiscovery::DeviceList& devices) -> bool {
-        if (devices.empty()) {
-            return false;
-        }
-
-        const auto& [label, device] = *devices.begin();
-        deviceString = label;
-        resolvedDeviceString = SoapySDR::KwargsToString(device);
-        return true;
-    };
-
-    if (const auto it = availableDeviceList.find(deviceString); it != availableDeviceList.end()) {
-        resolvedDeviceString = SoapySDR::KwargsToString(it->second);
-    } else if (!deviceString.empty()) {
-        const auto explicitDeviceList = Modules::SoapyDiscovery::ListDevices(deviceString);
-        if (!selectFirstAvailable(explicitDeviceList)) {
-            selectFirstAvailable(availableDeviceList);
-        }
-    }
-
     moduleConfig->modulePath = modulePath;
-    moduleConfig->deviceString = resolvedDeviceString;
+    moduleConfig->deviceString = deviceString;
     moduleConfig->streamString = streamString;
     moduleConfig->frequency = frequency;
     moduleConfig->sampleRate = sampleRate;
@@ -81,16 +58,22 @@ Result SoapyImpl::define() {
                                     "The output buffer containing samples from the SDR device."));
 
     Parser::Sequence deviceOptions{Parser::Map{{"label", "None"}, {"value", ""}}};
-    for (const auto& [label, _] :
-         Modules::SoapyDiscovery::ListDevices(config.hintString)) {
-        deviceOptions.emplace_back(Parser::Map{{"label", label}, {"value", label}});
+    bool selectionListed = config.deviceString.empty();
+    for (const auto& [label, device] : Modules::SoapyDiscovery::ListDevices()) {
+        auto args = device;
+        args.erase("label");
+        const auto value = SoapySDR::KwargsToString(args);
+        selectionListed = selectionListed || value == config.deviceString;
+        deviceOptions.emplace_back(Parser::Map{{"label", label}, {"value", value}});
     }
-    deviceDropdown = {{"type", "dropdown"}, {"options", std::move(deviceOptions)}};
+    if (!selectionListed) {
+        deviceOptions.emplace_back(Parser::Map{{"label", "Configured device"}, {"value", config.deviceString}});
+    }
 
     JST_CHECK(defineInterfaceConfig("deviceString",
                                     "Device",
                                     "Select a device to receive samples. Choose None to disconnect.",
-                                    deviceDropdown));
+                                    {{"type", "dropdown"}, {"options", std::move(deviceOptions)}}));
 
     JST_CHECK(defineInterfaceConfig("frequency",
                                     "Frequency",

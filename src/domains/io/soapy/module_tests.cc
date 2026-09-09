@@ -223,6 +223,7 @@ struct TestDiscoveryState {
     std::condition_variable changed;
     SoapySDR::KwargsList entries;
     std::vector<SoapySDR::Kwargs> queries;
+    SoapySDR::Kwargs lastMakeArgs;
     size_t makes = 0;
     size_t blockCall = 0;
     bool blocked = false;
@@ -252,6 +253,8 @@ SoapySDR::Device* MakeDiscoveryDevice(const SoapySDR::Kwargs& args) {
     {
         std::lock_guard lock(testDiscoveryState.mutex);
         ++testDiscoveryState.makes;
+        testDiscoveryState.lastMakeArgs = args;
+        RecordSoapyCall("make");
         if (std::none_of(testDiscoveryState.entries.begin(), testDiscoveryState.entries.end(),
                         [&](const auto& entry) { return entry.at("serial") == args.at("serial"); })) {
             throw std::runtime_error("test discovery device unavailable");
@@ -279,6 +282,7 @@ struct SoapyDiscoveryFixture {
         std::lock_guard lock(testDiscoveryState.mutex);
         testDiscoveryState.entries = {deviceA, deviceB};
         testDiscoveryState.queries.clear();
+        testDiscoveryState.lastMakeArgs.clear();
         testDiscoveryState.makes = 0;
         testDiscoveryState.blockCall = 0;
         testDiscoveryState.blocked = false;
@@ -340,6 +344,8 @@ struct SoapyDiscoveryFixture {
         testDiscoveryState.changed.notify_all();
     }
 };
+
+struct SoapySelectionFixture : SoapyDiscoveryFixture, FlowgraphFixture {};
 
 struct SoapyImplAccess : Modules::SoapyImpl {
     static auto erroredMember() {
@@ -1141,17 +1147,73 @@ TEST_CASE_METHOD(SoapyDiscoveryFixture,
 }
 
 TEST_CASE_METHOD(SoapyDiscoveryFixture,
-                 "Soapy cached devices remain advisory when opening a disconnected device",
+                 "Soapy cached disconnected devices become incomplete after opening fails",
                  "[modules][soapy][discovery][lifecycle]") {
     const auto selected = filter + ",serial=A";
     REQUIRE(Modules::SoapyDiscovery::ListDevices(selected).size() == 1);
     setEntries({deviceB});
 
     Modules::SoapyReceiver receiver;
-    REQUIRE(receiver.open(SoapySDR::KwargsFromString(selected)) == Result::ERROR);
+    REQUIRE(receiver.open(SoapySDR::KwargsFromString(selected)) == Result::INCOMPLETE);
     REQUIRE(makeCount() == 1);
     REQUIRE(Modules::SoapyDiscovery::ListDevices(selected).empty());
     REQUIRE(queryCount() == 3);
+}
+
+TEST_CASE_METHOD(SoapySelectionFixture,
+                 "Soapy blocks classify opening failures using fresh selection results",
+                 "[modules][soapy][block][selection][lifecycle]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    Blocks::Soapy config;
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Incomplete);
+
+    const auto selector = filter + ",serial=A,remote=host-a";
+    REQUIRE(Modules::SoapyDiscovery::ListDevices(selector).size() == 1);
+    testSoapyState.failAt = "make";
+
+    Block::State expected = Block::State::Incomplete;
+    std::string diagnostic;
+    SECTION("the selected device was disconnected") {
+        setEntries({deviceB});
+        diagnostic = "no longer available";
+    }
+    SECTION("the selection became ambiguous") {
+        setEntries({deviceA, deviceA});
+        diagnostic = "ambiguous";
+    }
+    SECTION("a uniquely available device rejects initialization") {
+        diagnostic = "test failure: make";
+        expected = Block::State::Errored;
+    }
+
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"deviceString", selector}}) == Result::SUCCESS);
+    const auto block = viewBlock("radio");
+    REQUIRE(block.state == expected);
+    REQUIRE(block.outputs.empty());
+    REQUIRE(block.diagnostic.find(diagnostic) != std::string::npos);
+    REQUIRE(Parser::Get<std::string>(block.config, "deviceString") == selector);
+    REQUIRE(makeCount() == 1);
+    {
+        std::lock_guard lock(testDiscoveryState.mutex);
+        REQUIRE(testDiscoveryState.queries.back() == SoapySDR::KwargsFromString(selector));
+        REQUIRE(testDiscoveryState.lastMakeArgs.at("serial") == "A");
+        REQUIRE(testDiscoveryState.lastMakeArgs.at("remote") == "host-a");
+    }
+
+    testSoapyState.failAt.clear();
+    setEntries({deviceA, deviceB});
+    Modules::SoapyDiscovery::ClearDiscoveryCache();
+    REQUIRE(flowgraph->blockRecreate("radio", block.config) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+    REQUIRE(Parser::Get<std::string>(viewBlock("radio").config, "deviceString") == selector);
+    REQUIRE(makeCount() == 2);
 }
 
 TEST_CASE("Soapy typed reads require an active stream and a nonempty buffer",
@@ -1491,8 +1553,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
     }
 
     testSoapyState = {};
+    const std::string selector = std::string("driver=") + TestSoapyDriver;
     Blocks::Soapy config;
-    config.hintString = std::string("driver=") + TestSoapyDriver;
     config.numberOfBatches = 1;
     config.numberOfTimeSamples = 8;
     REQUIRE(config.deviceString.empty());
@@ -1507,8 +1569,15 @@ TEST_CASE_METHOD(FlowgraphFixture,
                                     [](const auto& field) { return field.name == "deviceString"; });
     REQUIRE(device != initial.interfaceConfigs.end());
     const auto options = Parser::Get<std::vector<Parser::Map>>(device->format, "options");
-    REQUIRE(options.size() == 2);
+    REQUIRE(options.size() >= 2);
     REQUIRE(options.front() == Parser::Map{{"label", "None"}, {"value", ""}});
+    const auto option = std::find_if(options.begin(), options.end(), [&](const auto& entry) {
+        return Parser::Get<std::string>(entry, "value") == selector;
+    });
+    REQUIRE(option != options.end());
+    REQUIRE(*option == Parser::Map{
+        {"label", "CyberEther test device"}, {"value", selector},
+    });
     Blocks::Soapy saved;
     REQUIRE(saved.deserialize(initial.config) == Result::SUCCESS);
     REQUIRE(saved.deviceString.empty());
@@ -1519,10 +1588,11 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(viewBlock("radio").state == Block::State::Incomplete);
     REQUIRE(testSoapyState.lifecycle.empty());
 
-    const Parser::Map selected{{"deviceString", "CyberEther test device"}};
+    const Parser::Map selected{{"deviceString", Parser::Get<std::string>(*option, "value")}};
     REQUIRE(flowgraph->blockReconfigure("radio", selected) == Result::SUCCESS);
     REQUIRE(viewBlock("radio").state == Block::State::Created);
     REQUIRE(viewBlock("radio").outputs.contains("signal"));
+    REQUIRE(Parser::Get<std::string>(viewBlock("radio").config, "deviceString") == selector);
     REQUIRE(std::count(testSoapyState.lifecycle.begin(), testSoapyState.lifecycle.end(), "make") == 1);
     REQUIRE(flowgraph->blockReconfigure("radio", {{"deviceString", ""}}) == Result::SUCCESS);
     const auto disconnected = viewBlock("radio");
@@ -1539,6 +1609,98 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(std::count(testSoapyState.lifecycle.begin(), testSoapyState.lifecycle.end(), "make") == 2);
 }
 
+TEST_CASE_METHOD(SoapySelectionFixture,
+                 "Soapy blocks retain device selectors independently of display labels",
+                 "[modules][soapy][block][selection]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    auto first = deviceA;
+    auto selected = deviceB;
+    first["label"] = "HackRF One #0";
+    selected["label"] = "HackRF One #1, test device";
+    selected["frontend"] = "required";
+    selected["remote"] = "host-a";
+    setEntries({first, selected});
+
+    Blocks::Soapy config;
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+
+    const auto deviceOption = [&](const std::string& label) -> Parser::Map {
+        const auto block = viewBlock("radio");
+        for (const auto& field : block.interfaceConfigs) {
+            if (field.name != "deviceString") {
+                continue;
+            }
+            for (const auto& option : Parser::Get<std::vector<Parser::Map>>(field.format, "options")) {
+                if (Parser::Get<std::string>(option, "label") == label) {
+                    return option;
+                }
+            }
+        }
+        FAIL("Device option is missing.");
+        return {};
+    };
+    const auto option = deviceOption(selected.at("label"));
+    REQUIRE(option.size() == 2);
+    const auto selector = Parser::Get<std::string>(option, "value");
+    REQUIRE(SoapySDR::KwargsFromString(selector) == SoapySDR::Kwargs{
+        {"driver", TestDiscoveryDriver}, {"serial", "B"},
+        {"frontend", "required"}, {"remote", "host-a"},
+    });
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"deviceString", selector}}) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+    REQUIRE(SoapySDR::KwargsFromString(
+        Parser::Get<std::string>(deviceOption(first.at("label")), "value")).at("serial") == "A");
+    REQUIRE(makeCount() == 1);
+    {
+        std::lock_guard lock(testDiscoveryState.mutex);
+        REQUIRE(testDiscoveryState.lastMakeArgs.at("serial") == "B");
+        REQUIRE(testDiscoveryState.lastMakeArgs.at("frontend") == "required");
+        REQUIRE(testDiscoveryState.lastMakeArgs.at("remote") == "host-a");
+    }
+
+    const auto saved = viewBlock("radio").config;
+    REQUIRE(Parser::Get<std::string>(saved, "deviceString") == selector);
+    Block::State expected = Block::State::Incomplete;
+    std::string expectedLabel = selected.at("label");
+    SECTION("label changes and enumeration reordering preserve the selection") {
+        selected["label"] = "HackRF One #0";
+        first["label"] = "HackRF One #1";
+        setEntries({selected, first});
+        expected = Block::State::Created;
+        expectedLabel = selected.at("label");
+    }
+    SECTION("custom constructor arguments retain the configured dropdown selection") {
+        selected.erase("remote");
+        setEntries({first, selected});
+        expected = Block::State::Created;
+        expectedLabel = "Configured device";
+    }
+    SECTION("an unavailable selection does not open another device") {
+        setEntries({first});
+        expectedLabel = "Configured device";
+    }
+    SECTION("an ambiguous selection does not open the first match") {
+        setEntries({selected, selected});
+    }
+    Modules::SoapyDiscovery::ClearDiscoveryCache();
+    REQUIRE(flowgraph->blockRecreate("radio", saved) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == expected);
+    REQUIRE(Parser::Get<std::string>(viewBlock("radio").config, "deviceString") == selector);
+    REQUIRE(Parser::Get<std::string>(deviceOption(expectedLabel), "value") == selector);
+    REQUIRE(makeCount() == (expected == Block::State::Created ? 2 : 1));
+    if (expected == Block::State::Created) {
+        std::lock_guard lock(testDiscoveryState.mutex);
+        REQUIRE(testDiscoveryState.lastMakeArgs.at("serial") == "B");
+        REQUIRE(testDiscoveryState.lastMakeArgs.at("remote") == "host-a");
+    }
+}
+
 TEST_CASE_METHOD(FlowgraphFixture,
                  "Soapy buffer loss metric counts discarded samples and survives draining",
                  "[modules][soapy][receive][metrics]") {
@@ -1550,8 +1712,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     testSoapyState = {};
     const auto reads = testSoapyState.reads;
     Blocks::Soapy config;
-    config.hintString = std::string("driver=") + TestSoapyDriver;
-    config.deviceString = "CyberEther test device";
+    config.deviceString = std::string("driver=") + TestSoapyDriver;
     config.numberOfBatches = 1;
     config.numberOfTimeSamples = 8;
     config.bufferMultiplier = 1;
