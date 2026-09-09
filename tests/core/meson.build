@@ -4,7 +4,10 @@ core_test_main = '../support/catch_main.cc'
 
 core_test_domains = {
     'application': ['application/instance_backend.cc'],
-    'compositor': ['compositor/compositor.cc'],
+    'compositor': [
+        'compositor/compositor.cc',
+        'compositor/stacks.cc',
+    ],
     'extensions': [
         'extensions/plugins.cc',
         'extensions/benchmark.cc',
