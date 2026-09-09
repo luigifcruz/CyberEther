@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <limits>
 #include <optional>
 #include <string_view>
@@ -933,6 +934,68 @@ int Run(int argc, char* argv[]) {
         benchmarkLogLevel.emplace(-1);
     }
 
+    std::optional<InterruptHandlerGuard> interruptHandler;
+    std::thread computeThread;
+    std::thread graphicalThread;
+    bool instanceCreated = false;
+    bool cleanedUp = false;
+
+    const auto cleanup = [&] {
+        if (cleanedUp) {
+            return;
+        }
+        cleanedUp = true;
+
+        if (interruptHandler.has_value()) {
+            shutdownRequested.test_and_set(std::memory_order_relaxed);
+        }
+        supervisor.reset();
+
+        try {
+            if (instanceCreated && (instance->computing() || instance->presenting())) {
+                (void)instance->stop();
+            }
+        } catch (...) {
+            JST_ERROR("[CYBERETHER] Failed to stop instance during cleanup.");
+        }
+
+        if (computeThread.joinable()) {
+            computeThread.join();
+        }
+        if (graphicalThread.joinable()) {
+            graphicalThread.join();
+        }
+
+        try {
+            if (instanceCreated && instance->remote() && instance->remote()->started()) {
+                (void)instance->remote()->destroy();
+            }
+        } catch (...) {
+            JST_ERROR("[CYBERETHER] Failed to destroy remote during cleanup.");
+        }
+
+        try {
+            if (instanceCreated) {
+                (void)instance->destroy();
+            }
+        } catch (...) {
+            JST_ERROR("[CYBERETHER] Failed to destroy instance during cleanup.");
+        }
+
+        flowgraph.reset();
+        instance.reset();
+        Backend::DestroyAll();
+    };
+
+    struct CleanupGuard {
+        std::function<void()> callback;
+
+        ~CleanupGuard() {
+            callback();
+        }
+    };
+    const CleanupGuard cleanupGuard{cleanup};
+
     JST_INFO("[CYBERETHER] Running native app.");
 
     const auto backendConfig = Backend::Config {
@@ -979,8 +1042,8 @@ int Run(int argc, char* argv[]) {
     //
 
     if (command == CommandType::Run) {
-        InterruptHandlerGuard interruptHandler;
-        if (!interruptHandler.installed()) {
+        interruptHandler.emplace();
+        if (!interruptHandler->installed()) {
             JST_WARN("[CYBERETHER] Interrupt handling is unavailable.");
         }
 
@@ -993,6 +1056,7 @@ int Run(int argc, char* argv[]) {
         instance = std::make_shared<Instance>();
 
         const Result createResult = instance->create(config);
+        instanceCreated = createResult == Result::SUCCESS;
 
         // The compositor initializes from the effective CLI settings. Restore
         // retained settings before later UI changes can persist CLI overrides.
@@ -1006,29 +1070,24 @@ int Run(int argc, char* argv[]) {
 
         if (!flowgraphPath.empty()) {
             if (instance->flowgraphCreate("main", {}, flowgraph) != Result::SUCCESS) {
-                (void)instance->destroy();
                 return -1;
             }
             if (flowgraph->importFromFile(flowgraphPath) != Result::SUCCESS) {
-                (void)instance->destroy();
                 return -1;
             }
         }
 
         if (instance->start() != Result::SUCCESS) {
-            (void)instance->destroy();
             return -1;
         }
 
         if (remoteEnabled) {
             if (instance->remote()->create(remoteConfig) != Result::SUCCESS) {
-                (void)instance->stop();
-                (void)instance->destroy();
                 return -1;
             }
         }
 
-        auto computeThread = std::thread([&]{
+        computeThread = std::thread([&]{
             while (instance->computing()) {
                 Result res = Result::SUCCESS;
 
@@ -1053,7 +1112,7 @@ int Run(int argc, char* argv[]) {
             }
         });
 
-        auto graphicalThread = std::thread([&]{
+        graphicalThread = std::thread([&]{
             while (instance->presenting()) {
                 Result res = Result::SUCCESS;
 
@@ -1094,34 +1153,7 @@ int Run(int argc, char* argv[]) {
             }
         }
 
-        // Treat Ctrl+C during teardown as a force-shutdown request even when
-        // shutdown began through a window close or worker failure.
-        shutdownRequested.test_and_set(std::memory_order_relaxed);
-
-        if (supervisor) {
-            supervisor->stop();
-        }
-
-        if (instance->computing() || instance->presenting()) {
-            (void)instance->stop();
-        }
-
-        if (computeThread.joinable()) {
-            computeThread.join();
-        }
-
-        if (graphicalThread.joinable()) {
-            graphicalThread.join();
-        }
-
-        if (remoteEnabled && instance->remote()->started()) {
-            (void)instance->remote()->destroy();
-        }
-
-        (void)instance->destroy();
-
-        Backend::DestroyAll();
-
+        cleanup();
         return code.load();
     }
 

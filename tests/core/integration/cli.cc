@@ -20,9 +20,11 @@
 #include <unistd.h>
 #endif
 
+#include "jetstream/backend/base.hh"
 #include "jetstream/config.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/platform.hh"
+#include "jetstream/registry.hh"
 #include "jetstream/run.hh"
 #include "jetstream/settings.hh"
 
@@ -889,6 +891,48 @@ TEST_CASE("CLI settings sandbox restores environment variables",
     CHECK(EnvironmentValue("HOME") == home);
     CHECK(EnvironmentValue("XDG_CONFIG_HOME") == xdgConfigHome);
 #endif
+}
+
+TEST_CASE("CLI releases backends after plugin loading fails", "[core][integration][cli]") {
+    SettingsSandbox sandbox;
+    const std::string path = Jetstream::Platform::PathToUtf8(
+        sandbox.root() / "missing.cep");
+
+    const InvocationResult result = Invoke({"-v", "--plugin", path.c_str()});
+    CHECK(result.code == -1);
+    CHECK(result.out.find("Backend [CPU]") != std::string::npos);
+    CHECK(result.err.find("Failed to load command-line plugin") != std::string::npos);
+    CHECK_FALSE(Jetstream::Backend::Initialized(Jetstream::DeviceType::CPU));
+}
+
+TEST_CASE("CLI releases backends on benchmark return and exception", "[core][integration][cli]") {
+    SettingsSandbox sandbox;
+    const std::string type = "__cli_cleanup";
+    const int owner = 0;
+
+    for (const bool shouldThrow : {false, true}) {
+        bool cpuInitialized = false;
+        REQUIRE(Jetstream::Registry::RegisterBenchmark(
+                    type,
+                    [&]() -> std::vector<Jetstream::Benchmark::Case> {
+                        cpuInitialized = Jetstream::Backend::Initialized(Jetstream::DeviceType::CPU);
+                        if (shouldThrow) {
+                            throw std::runtime_error("CLI cleanup test");
+                        }
+                        return {};
+                    },
+                    &owner) == Jetstream::Result::SUCCESS);
+
+        if (shouldThrow) {
+            CHECK_THROWS_AS(Invoke({"benchmark", type.c_str()}), std::runtime_error);
+        } else {
+            CHECK(Invoke({"benchmark", type.c_str()}).code == 0);
+        }
+
+        CHECK(Jetstream::Registry::UnregisterBenchmark(type, &owner) == Jetstream::Result::SUCCESS);
+        CHECK(cpuInitialized);
+        CHECK_FALSE(Jetstream::Backend::Initialized(Jetstream::DeviceType::CPU));
+    }
 }
 
 // TODO: Inject Run dependencies for Backend::Configure<CUDA>,
