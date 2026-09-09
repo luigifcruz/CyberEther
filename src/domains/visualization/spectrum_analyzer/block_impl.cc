@@ -130,22 +130,22 @@ Result SpectrumAnalyzerImpl::define() {
 
     JST_CHECK(defineInterfaceConfig("rangeMin", "Range Min",
                                     "Minimum displayed amplitude.",
-                                    "range:-300:0:dBFS:float"));
+                                    {{"type", "range"}, {"min", -300.0f}, {"max", 0.0f}, {"unit", "dBFS"}}));
     JST_CHECK(defineInterfaceConfig("rangeMax", "Range Max",
                                     "Maximum displayed amplitude.",
-                                    "range:-300:0:dBFS:float"));
+                                    {{"type", "range"}, {"min", -300.0f}, {"max", 0.0f}, {"unit", "dBFS"}}));
     JST_CHECK(defineInterfaceConfig("averaging", "Averaging",
                                     "Trace smoothing factor.",
-                                    "range:1:256:samples:uint"));
+                                    {{"type", "range"}, {"min", 1.0f}, {"max", 256.0f}, {"unit", "samples"}, {"value_type", "uint"}}));
     JST_CHECK(defineInterfaceConfig("decimation", "Decimation",
                                     "Trace-only horizontal decimation.",
-                                    "uint:"));
+                                    {{"type", "uint"}}));
     JST_CHECK(defineInterfaceConfig("maxHold", "Max Hold",
                                     "Enable maximum hold trace.",
-                                    "bool"));
+                                    {{"type", "bool"}}));
     JST_CHECK(defineInterfaceConfig("waterfallHeight", "Waterfall Height",
                                     "Number of spectrum rows retained.",
-                                    "uint:rows"));
+                                    {{"type", "uint"}, {"unit", "rows"}}));
     return Result::SUCCESS;
 }
 

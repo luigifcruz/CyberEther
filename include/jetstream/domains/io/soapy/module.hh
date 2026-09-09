@@ -10,6 +10,7 @@ struct Soapy : public Module::Config {
     std::string modulePath = "";
     std::string deviceString = "";
     std::string streamString = "";
+    std::string antenna = "";
     F32 frequency = 96.9e6;
     F32 sampleRate = 2.0e6;
     bool automaticGain = true;
@@ -19,9 +20,10 @@ struct Soapy : public Module::Config {
     U64 bufferMultiplier = 4;
 
     JST_MODULE_TYPE(soapy);
-    JST_MODULE_PARAMS(modulePath, deviceString, streamString, frequency, sampleRate,
-                      automaticGain, biasTee, numberOfBatches, numberOfTimeSamples,
-                      bufferMultiplier);
+    JST_MODULE_PARAMS(modulePath, deviceString, streamString,
+                      antenna, frequency, sampleRate,
+                      automaticGain, biasTee, numberOfBatches,
+                      numberOfTimeSamples, bufferMultiplier);
 };
 
 }  // namespace Jetstream::Modules

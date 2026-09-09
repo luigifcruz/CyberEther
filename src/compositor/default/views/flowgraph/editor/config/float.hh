@@ -3,38 +3,22 @@
 
 #include "types.hh"
 
-// TODO: Cleanup parsing.
-
 namespace Jetstream {
 
 struct FlowgraphConfigFloatField {
     using Config = FlowgraphConfigFieldConfig;
 
-    void update(Config config) {
+    Result update(Config config) {
         this->config = std::move(config);
         if (this->config.format != parsedFormat) {
             parseFormat();
         }
-        if (this->config.encoded != parsedEncoded) {
-            value = 0.0f;
-            if (!this->config.encoded.empty()) {
-                Parser::StringToTyped(this->config.encoded, value);
-            }
-            parsedEncoded = this->config.encoded;
-        }
-
-        std::string stepEncoded;
-        if (!stepConfig.empty() && this->config.values.contains(stepConfig)) {
-            Parser::TypedToString(this->config.values.at(stepConfig), stepEncoded);
-        }
-        if (stepEncoded != parsedStepEncoded) {
-            step = 0.0f;
-            hasStep = !stepConfig.empty() && stepConfig != this->config.name && this->config.values.contains(stepConfig) &&
-                      Parser::Deserialize(this->config.values, stepConfig, step) == Result::SUCCESS;
-            parsedStepEncoded = stepEncoded;
-        }
-
-        const F32 multiplier = ConfigUnitMultiplier(unit);
+        value = 0.0f;
+        JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, value));
+        step = 0.0f;
+        hasStep = !stepConfig.empty() && stepConfig != this->config.name && this->config.values.contains(stepConfig) &&
+                  Parser::Deserialize(this->config.values, stepConfig, step) == Result::SUCCESS &&
+                  std::isfinite(step) && step > 0.0f;
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
@@ -48,7 +32,7 @@ struct FlowgraphConfigFloatField {
             .step = hasStep ? std::optional<F32>(step / multiplier) : std::nullopt,
             .onChange = [this](F32 nextValue) {
                 Parser::Map patch;
-                patch[this->config.name] = nextValue * ConfigUnitMultiplier(unit);
+                patch[this->config.name] = nextValue * multiplier;
                 if (this->config.onApply) {
                     this->config.onApply(std::move(patch), false);
                 }
@@ -58,12 +42,13 @@ struct FlowgraphConfigFloatField {
                     return;
                 }
                 Parser::Map patch;
-                patch[stepConfig] = nextStep * ConfigUnitMultiplier(unit);
+                patch[stepConfig] = nextStep * multiplier;
                 if (this->config.onApply) {
                     this->config.onApply(std::move(patch), false);
                 }
             },
         });
+        return Result::SUCCESS;
     }
 
     void render(const Sakura::Context& ctx) const {
@@ -75,17 +60,15 @@ struct FlowgraphConfigFloatField {
  private:
     void parseFormat() {
         parsedFormat = config.format;
-        const auto parts = Parser::SplitString(config.format, ":");
-        unit = (parts.size() > 1) ? parts[1] : "";
-        precision = (parts.size() > 2 && !parts[2].empty()) ? std::stoi(parts[2]) : 2;
-        stepConfig = (parts.size() > 3) ? parts[3] : "";
-        parsedStepEncoded.clear();
+        unit = Parser::Get<std::string>(config.format, "unit");
+        precision = Parser::Get<I32>(config.format, "precision", 2);
+        multiplier = Parser::Get<F32>(config.format, "scale", 1.0f);
+        stepConfig = Parser::Get<std::string>(config.format, "step_config");
     }
 
     Config config;
-    std::string parsedFormat;
-    std::string parsedEncoded;
-    std::string parsedStepEncoded;
+    Parser::Map parsedFormat;
+    F32 multiplier = 1.0f;
     std::string unit;
     std::string stepConfig;
     int precision = 2;

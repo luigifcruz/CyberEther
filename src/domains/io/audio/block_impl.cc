@@ -45,7 +45,7 @@ struct AudioImpl : public Block::Impl, public DynamicConfig<Blocks::Audio> {
 
  protected:
     std::shared_ptr<Modules::Audio> moduleConfig = std::make_shared<Modules::Audio>();
-    std::string deviceDropdown;
+    Parser::Map deviceDropdown;
 };
 
 Result AudioImpl::configure() {
@@ -63,11 +63,11 @@ Result AudioImpl::define() {
                                    "The input buffer containing audio samples to play."));
 
     if (deviceDropdown.empty()) {
-        std::vector<std::string> deviceOptions;
+        Parser::Sequence deviceOptions;
         for (const auto& device : ListAvailableDevices()) {
-            deviceOptions.push_back(jst::fmt::format("{}({})", device, device));
+            deviceOptions.emplace_back(Parser::Map{{"label", device}, {"value", device}});
         }
-        deviceDropdown = jst::fmt::format("dropdown:{}", jst::fmt::join(deviceOptions, ","));
+        deviceDropdown = {{"type", "dropdown"}, {"options", std::move(deviceOptions)}};
     }
 
     JST_CHECK(defineInterfaceConfig("deviceName",
@@ -78,12 +78,12 @@ Result AudioImpl::define() {
     JST_CHECK(defineInterfaceConfig("inSampleRate",
                                     "Sample Rate",
                                     "Sample rate of the input signal.",
-                                    "float:kHz:1"));
+                                    {{"type", "float"}, {"unit", "kHz"}, {"scale", 1.0e3f}, {"precision", 1}}));
 
     JST_CHECK(defineInterfaceConfig("volume",
                                     "Volume",
                                     "Volume multiplier (0.0 to 5.0). Values above 1.0 amplify.",
-                                    "range:0:5::float"));
+                                    {{"type", "range"}, {"min", 0.0f}, {"max", 5.0f}}));
 
     return Result::SUCCESS;
 }

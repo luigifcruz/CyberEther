@@ -554,7 +554,7 @@ TEST_CASE("Flowgraph view exposes consistent block state through every accessor"
     REQUIRE(metrics.size() == 1);
     REQUIRE(metrics.front().name == "runtime:source");
     REQUIRE(metrics.front().label == "source");
-    REQUIRE(metrics.front().format == "private-timing");
+    REQUIRE(metrics.front().format == Parser::Map{{"type", "timing"}, {"visibility", "internal"}});
     REQUIRE(metrics.front().help == "Runtime timing collected by the scheduler.");
     REQUIRE(std::any_cast<Module::Timing>(&metrics.front().value) != nullptr);
     REQUIRE(surfaces.empty());
@@ -597,16 +597,16 @@ TEST_CASE("Flowgraph view exposes consistent block state through every accessor"
     REQUIRE(block.interfaceConfigs.size() == 2);
     REQUIRE(block.interfaceConfigs[0].name == "bufferSize");
     REQUIRE(block.interfaceConfigs[0].label == "Buffer Size");
-    REQUIRE(block.interfaceConfigs[0].format == "int");
+    REQUIRE(block.interfaceConfigs[0].format == Parser::Map{{"type", "int"}});
     REQUIRE(block.interfaceConfigs[0].help == "Output tensor size.");
     REQUIRE(block.interfaceConfigs[1].name == "value");
     REQUIRE(block.interfaceConfigs[1].label == "Value");
-    REQUIRE(block.interfaceConfigs[1].format == "float");
+    REQUIRE(block.interfaceConfigs[1].format == Parser::Map{{"type", "float"}});
     REQUIRE(block.interfaceConfigs[1].help == "Output tensor value.");
     CHECK((block.metrics.size() == 1 &&
            block.metrics[0].name == "runtime:source" &&
            block.metrics[0].label == "source" &&
-           block.metrics[0].format == "private-timing" &&
+           block.metrics[0].format == Parser::Map{{"type", "timing"}, {"visibility", "internal"}} &&
            block.metrics[0].help == "Runtime timing collected by the scheduler." &&
            std::any_cast<Module::Timing>(&block.metrics[0].value) != nullptr));
     REQUIRE(block.surfaces.empty());

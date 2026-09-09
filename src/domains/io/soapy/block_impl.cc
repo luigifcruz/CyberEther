@@ -3,8 +3,8 @@
 
 #include <jetstream/domains/io/soapy/module.hh>
 #include "module_impl.hh"
+#include "soapysdr.hh"
 
-#include <SoapySDR/Device.hpp>
 #include <SoapySDR/Types.hpp>
 
 #include <cmath>
@@ -20,7 +20,9 @@ struct SoapyImpl : public Block::Impl, public DynamicConfig<Blocks::Soapy> {
  protected:
     std::shared_ptr<Modules::Soapy> moduleConfig = std::make_shared<Modules::Soapy>();
     Modules::SoapyImpl* moduleImpl = nullptr;
-    std::string deviceDropdown;
+
+ private:
+    Parser::Map antennaFormat(const Blocks::Soapy& config);
 };
 
 Result SoapyImpl::validate() {
@@ -35,35 +37,12 @@ Result SoapyImpl::validate() {
 }
 
 Result SoapyImpl::configure() {
-    JST_CHECK(Modules::SoapyImpl::LoadModulePath(modulePath));
-
-    std::string resolvedDeviceString;
-    const auto availableDeviceList = Modules::SoapyImpl::ListAvailableDevices(hintString);
-    const auto selectFirstAvailable = [&](const Modules::SoapyImpl::DeviceList& devices) -> bool {
-        if (devices.empty()) {
-            return false;
-        }
-
-        const auto& [label, device] = *devices.begin();
-        deviceString = label;
-        resolvedDeviceString = SoapySDR::KwargsToString(device);
-        return true;
-    };
-
-    if (const auto it = availableDeviceList.find(deviceString); it != availableDeviceList.end()) {
-        resolvedDeviceString = SoapySDR::KwargsToString(it->second);
-    } else if (!deviceString.empty()) {
-        const auto explicitDeviceList = Modules::SoapyImpl::ListAvailableDevices(deviceString);
-        if (!selectFirstAvailable(explicitDeviceList)) {
-            selectFirstAvailable(availableDeviceList);
-        }
-    } else if (!availableDeviceList.empty()) {
-        selectFirstAvailable(availableDeviceList);
-    }
+    JST_CHECK(Modules::SoapyDiscovery::LoadDriverLibrary(modulePath));
 
     moduleConfig->modulePath = modulePath;
-    moduleConfig->deviceString = resolvedDeviceString;
+    moduleConfig->deviceString = deviceString;
     moduleConfig->streamString = streamString;
+    moduleConfig->antenna = antenna;
     moduleConfig->frequency = frequency;
     moduleConfig->sampleRate = sampleRate;
     moduleConfig->automaticGain = automaticGain;
@@ -82,59 +61,71 @@ Result SoapyImpl::define() {
                                     "Output",
                                     "The output buffer containing samples from the SDR device."));
 
-    std::vector<std::string> deviceOptions;
-    for (const auto& [label, _] :
-         Modules::SoapyImpl::ListAvailableDevices(config.hintString)) {
-        deviceOptions.push_back(jst::fmt::format("{}({})", label, label));
+    Parser::Sequence deviceOptions{Parser::Map{{"label", "None"}, {"value", ""}}};
+    bool selectionListed = config.deviceString.empty();
+    for (const auto& [label, device] : Modules::SoapyDiscovery::ListDevices()) {
+        auto args = device;
+        args.erase("label");
+        const auto value = SoapySDR::KwargsToString(args);
+        selectionListed = selectionListed || value == config.deviceString;
+        deviceOptions.emplace_back(Parser::Map{{"label", label}, {"value", value}});
     }
-    deviceDropdown = jst::fmt::format("dropdown:{}", jst::fmt::join(deviceOptions, ","));
+    if (!selectionListed) {
+        deviceOptions.emplace_back(Parser::Map{{"label", "Configured device"}, {"value", config.deviceString}});
+    }
 
     JST_CHECK(defineInterfaceConfig("deviceString",
                                     "Device",
-                                    "Select from available SDR devices.",
-                                    deviceDropdown));
+                                    "Select a device to receive samples. Choose None to disconnect.",
+                                    {{"type", "dropdown"}, {"options", std::move(deviceOptions)}}));
+
+    JST_CHECK(defineInterfaceConfig("antenna",
+                                    "Antenna",
+                                    "Receive antenna port. Changes restart the receiver.",
+                                    antennaFormat(config)));
 
     JST_CHECK(defineInterfaceConfig("frequency",
                                     "Frequency",
                                     "Tuner frequency.",
-                                    std::isfinite(config.frequencyStep) && config.frequencyStep > 0.0f
-                                        ? "float:MHz:3:frequencyStep"
-                                        : "float:MHz:3"));
+                                    {{"type", "float"}, {"unit", "MHz"}, {"scale", 1.0e6f},
+                                     {"precision", 3}, {"step_config",
+                                        std::isfinite(config.frequencyStep) && config.frequencyStep > 0.0f
+                                            ? std::string("frequencyStep") : std::string{}}}));
 
     JST_CHECK(defineInterfaceConfig("sampleRate",
                                     "Sample Rate",
                                     "Sampling rate.",
-                                    "float:MHz:3"));
+                                    {{"type", "float"}, {"unit", "MHz"}, {"scale", 1.0e6f}, {"precision", 3}}));
 
     JST_CHECK(defineInterfaceConfig("automaticGain",
                                     "Automatic Gain",
                                     "Enable automatic gain control.",
-                                    "bool"));
+                                    {{"type", "bool"}}));
 
     JST_CHECK(defineInterfaceConfig("biasTee",
                                     "Bias-T",
                                     "Enable antenna power when supported by the selected device.",
-                                    "bool"));
+                                    {{"type", "bool"}}));
 
     JST_CHECK(defineInterfaceConfig("numberOfBatches",
                                     "Batches",
                                     "Number of batches in output buffer.",
-                                    "uint:batches"));
+                                    {{"type", "uint"}, {"unit", "batches"}}));
 
     JST_CHECK(defineInterfaceConfig("numberOfTimeSamples",
                                     "Samples",
                                     "Number of samples per batch.",
-                                    "uint:samples"));
+                                    {{"type", "uint"}, {"unit", "samples"}}));
 
     JST_CHECK(defineInterfaceConfig("bufferMultiplier",
                                     "Buffer Multiplier",
                                     "Internal buffer size multiplier.",
-                                    "uint:x"));
+                                    {{"type", "uint"}, {"unit", "x"}}));
 
     JST_CHECK(defineInterfaceMetric("bufferHealth",
                                     "Buffer Health",
                                     "Current buffer occupancy level.",
-                                    "progressbar",
+                                    {{"type", "progressbar"}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::pair<std::string, F32>{"0.0%", 0.0f};
@@ -144,10 +135,23 @@ Result SoapyImpl::define() {
                                                bufferHealth};
         }));
 
+    JST_CHECK(defineInterfaceMetric("bufferLoss",
+                                    "Buffer Loss",
+                                    "Percentage of received samples discarded because receive buffer was full. "
+                                    "Cumulative since stream start. Excludes samples lost inside the device or driver. "
+                                    "Resets when the stream is recreated.",
+                                    {{"type", "progressbar"}},
+        [this]() -> std::any {
+            const F64 loss = moduleImpl ? moduleImpl->getBufferLoss() : 0.0;
+            const auto percentage = loss > 0.0 && loss < 0.0001
+                ? std::string("<0.01%") : jst::fmt::format("{:.2f}%", loss * 100.0);
+            return std::pair<std::string, F32>{percentage, static_cast<F32>(loss)};
+        }));
+
     JST_CHECK(defineInterfaceMetric("throughput",
                                     "Throughput",
                                     "Current data throughput.",
-                                    "label",
+                                    {{"type", "label"}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::string("N/A");
@@ -164,8 +168,29 @@ Result SoapyImpl::create() {
     JST_CHECK(moduleExposeOutput("signal", {"soapy", "signal"}));
 
     moduleImpl = moduleHandle("soapy")->getImpl<Modules::SoapyImpl>();
+    JST_CHECK(updateInterfaceConfigFormat("antenna", antennaFormat(*this)));
 
     return Result::SUCCESS;
+}
+
+Parser::Map SoapyImpl::antennaFormat(const Blocks::Soapy& config) {
+    Parser::Sequence options{Parser::Map{{"label", "Default"}, {"value", ""}}};
+    bool selectionListed = config.antenna.empty();
+    if (const auto module = moduleHandle("soapy");
+        module && module->state() == Module::State::CREATED) {
+        const auto* soapy = module->getImpl<Modules::SoapyImpl>();
+        if (soapy && soapy->modulePath == config.modulePath &&
+            soapy->deviceString == config.deviceString) {
+            for (const auto& antenna : soapy->listAntennas()) {
+                selectionListed = selectionListed || antenna == config.antenna;
+                options.emplace_back(Parser::Map{{"label", antenna}, {"value", antenna}});
+            }
+        }
+    }
+    if (!selectionListed) {
+        options.emplace_back(Parser::Map{{"label", config.antenna}, {"value", config.antenna}});
+    }
+    return {{"type", "dropdown"}, {"options", std::move(options)}};
 }
 
 JST_REGISTER_BLOCK(SoapyImpl, {"soapy"});

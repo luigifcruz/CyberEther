@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_FLOWGRAPH_SURFACE_HH
 
 #include "labels.hh"
+#include "config.hh"
 
 #include "../context.hh"
 
@@ -140,64 +141,27 @@ struct FlowgraphDetachedSurfacePresenter {
                                                               const std::string& blockName,
                                                               const std::string& windowId,
                                                               const Flowgraph::View::BlockData& blockData) const {
-        std::vector<FlowgraphConfigFieldConfig> fields;
-        for (const auto& entry : blockData.interfaceConfigs) {
-            std::string encoded;
-            if (blockData.config.contains(entry.name)) {
-                Parser::TypedToString(blockData.config.at(entry.name), encoded);
-            }
-
-            FlowgraphConfigFieldConfig field{
-                .id = windowId + ":config:" + entry.name,
-                .name = entry.name,
-                .label = entry.label.empty() ? entry.name : entry.label,
-                .help = entry.help,
-                .format = entry.format,
-                .encoded = encoded,
-                .values = blockData.config,
-                .onApply = [enqueue = context.callbacks.enqueueMail, flowgraphId, blockName](Parser::Map patch, const bool silent) {
-                    enqueue(MailReconfigureBlock{flowgraphId,
-                                                 blockName,
-                                                 std::move(patch),
-                                                 silent});
-                },
-                .onError = [enqueue = context.callbacks.enqueueMail](const Result result, const std::string& message) {
-                    enqueue(MailNotifyResult{.result = result, .message = message});
-                },
-                .onBrowsePath = [enqueue = context.callbacks.enqueueMail](const bool save,
+        auto fields = BuildFlowgraphConfigFields(windowId, blockData);
+        for (auto& field : fields) {
+            field.onApply = [enqueue = context.callbacks.enqueueMail, flowgraphId, blockName](Parser::Map patch, const bool silent) {
+                enqueue(MailReconfigureBlock{flowgraphId,
+                                             blockName,
+                                             std::move(patch),
+                                             silent});
+            };
+            field.onError = [enqueue = context.callbacks.enqueueMail](const Result result, const std::string& message) {
+                enqueue(MailNotifyResult{.result = result, .message = message});
+            };
+            field.onBrowsePath = [enqueue = context.callbacks.enqueueMail](const bool save,
                                           std::vector<std::string> extensions,
                                           std::function<void(std::string)> onSelect) {
-                    enqueue(MailBrowseConfigPath{
-                        .path = "",
-                        .save = save,
-                        .extensions = std::move(extensions),
-                        .onSelect = std::move(onSelect),
-                    });
-                },
+                enqueue(MailBrowseConfigPath{
+                    .path = "",
+                    .save = save,
+                    .extensions = std::move(extensions),
+                    .onSelect = std::move(onSelect),
+                });
             };
-
-            const auto formatParts = Parser::SplitString(entry.format, ":");
-            if (!formatParts.empty() && formatParts[0] == "python") {
-                for (const auto& metric : blockData.metrics) {
-                    if (metric.format != "private-python-diagnostic" || !metric.value.has_value()) {
-                        continue;
-                    }
-
-                    try {
-                        const auto diagnostic = std::any_cast<Runtime::Context::Diagnostic>(metric.value);
-                        field.status = diagnostic.status;
-                        field.statusTone = diagnostic.healthy
-                            ? Sakura::NodeCodeEditor::StatusTone::Success
-                            : Sakura::NodeCodeEditor::StatusTone::Error;
-                        field.consoleOutput = diagnostic.console;
-                        field.consoleVisible = !field.consoleOutput.empty();
-                    } catch (const std::bad_any_cast&) {
-                    }
-                    break;
-                }
-            }
-
-            fields.push_back(std::move(field));
         }
         return fields;
     }

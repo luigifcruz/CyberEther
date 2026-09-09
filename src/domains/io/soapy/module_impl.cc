@@ -1,32 +1,19 @@
 #include "module_impl.hh"
+#include "soapysdr.hh"
 
-#include <SoapySDR/Device.hpp>
 #include <SoapySDR/Types.hpp>
-#include <SoapySDR/Formats.hpp>
-#include <SoapySDR/Modules.hpp>
-#include <SoapySDR/Registry.hpp>
 
 #include <algorithm>
+#include <exception>
 #include <new>
-#include <stdexcept>
 
 #include <jetstream/memory/axis.hh>
 #include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Modules {
 
-Result SoapyImpl::LoadModulePath(const std::string& path) {
-    if (path.empty()) {
-        return Result::SUCCESS;
-    }
-
-    const auto error = SoapySDR::loadModule(path);
-    if (!error.empty() && !error.ends_with(" already loaded")) {
-        JST_ERROR("[MODULE_SOAPY] Failed to load SoapySDR module '{}': {}", path, error);
-        return Result::ERROR;
-    }
-
-    return Result::SUCCESS;
+SoapyImpl::~SoapyImpl() {
+    stopReceiver();
 }
 
 Result SoapyImpl::validate() {
@@ -102,97 +89,39 @@ Result SoapyImpl::define() {
 }
 
 Result SoapyImpl::create() {
-#ifdef JST_OS_BROWSER
-    if (MAIN_THREAD_EM_ASM_INT({ return 'usb' in navigator; }) == 0) {
-        JST_ERROR("[MODULE_SOAPY] Browser not compatible with WebUSB.");
-        return Result::ERROR;
+    if (deviceString.empty()) {
+        JST_ERROR("[MODULE_SOAPY] No device selected.");
+        return Result::INCOMPLETE;
     }
-#endif
 
-    JST_CHECK(LoadModulePath(modulePath));
+    JST_CHECK(SoapyDiscovery::LoadDriverLibrary(modulePath));
 
     errored = false;
     streaming = false;
     activeSampleRate = 0.0f;
-    biasTeeSupported = false;
-    biasTeeNeedsCleanup = false;
     bufferHealth.publish(0.0f);
     throughput.publish({0.0f, 0.0f});
 
-    SoapySDR::Kwargs args = SoapySDR::KwargsFromString(deviceString);
-    SoapySDR::Kwargs streamArgs = SoapySDR::KwargsFromString(streamString);
+    const auto args = SoapySDR::KwargsFromString(deviceString);
+    const auto streamArgs = SoapySDR::KwargsFromString(streamString);
 
-    try {
-        const auto& findFuncs = SoapySDR::Registry::listFindFunctions();
-        JST_DEBUG("[MODULE_SOAPY] Registered SoapySDR drivers ({}):", findFuncs.size());
-        for (const auto& [name, _] : findFuncs) {
-            JST_DEBUG("[MODULE_SOAPY]   - {}", name);
-        }
-    } catch (...) {
-        JST_ERROR("[MODULE_SOAPY] Failed to enumerate drivers.");
-        return Result::ERROR;
-    }
+    JST_CHECK(receiverDevice.open(args));
+    JST_CHECK(receiverDevice.validateSettings(sampleRate, frequency));
+    JST_CHECK(allocateBuffers());
+    JST_CHECK(configureDevice(streamArgs));
 
-    try {
-        const auto devices = SoapySDR::Device::enumerate(args);
-        if (devices.empty()) {
-            JST_ERROR("[MODULE_SOAPY] No SoapySDR devices found.");
-            return Result::INCOMPLETE;
-        }
-        soapyDevice = SoapySDR::Device::make(devices.at(0));
-    } catch (const std::exception& e) {
-        JST_ERROR("[MODULE_SOAPY] Failed to open device: {}", e.what());
-        return Result::ERROR;
-    } catch (...) {
-        JST_ERROR("[MODULE_SOAPY] Failed to open device.");
-        return Result::ERROR;
-    }
+    outputs()["signal"].produced(name(), "signal", buffer);
 
-    if (soapyDevice == nullptr) {
-        JST_ERROR("[MODULE_SOAPY] Can't open SoapySDR device.");
-        return Result::ERROR;
-    }
+    buffer.setAttribute("frequency", frequency);
+    buffer.setAttribute("sampleRate", sampleRate);
+    activeSampleRate = sampleRate;
 
-    try {
-        sampleRateRanges = soapyDevice->getSampleRateRange(SOAPY_SDR_RX, 0);
-        frequencyRanges = soapyDevice->getFrequencyRange(SOAPY_SDR_RX, 0);
-    } catch (const std::exception& e) {
-        JST_ERROR("[MODULE_SOAPY] Failed to get device ranges: {}", e.what());
-        SoapySDR::Device::unmake(soapyDevice);
-        soapyDevice = nullptr;
-        return Result::ERROR;
-    } catch (...) {
-        JST_ERROR("[MODULE_SOAPY] Failed to get device ranges.");
-        SoapySDR::Device::unmake(soapyDevice);
-        soapyDevice = nullptr;
-        return Result::ERROR;
-    }
+    JST_CHECK(startReceiver());
 
-    try {
-        const auto settings = soapyDevice->getSettingInfo();
-        biasTeeSupported = std::any_of(settings.begin(), settings.end(), [](const auto& setting) {
-            return setting.key == "biastee";
-        });
-    } catch (const std::exception& e) {
-        JST_WARN("[MODULE_SOAPY] Failed to query optional device settings: {}", e.what());
-    } catch (...) {
-        JST_WARN("[MODULE_SOAPY] Failed to query optional device settings.");
-    }
+    return Result::SUCCESS;
+}
 
-    if (!SoapyRangeContains(sampleRateRanges, sampleRate)) {
-        JST_ERROR("[MODULE_SOAPY] Sample rate ({:.2f} MHz) not supported.", sampleRate / 1e6);
-        SoapySDR::Device::unmake(soapyDevice);
-        soapyDevice = nullptr;
-        return Result::ERROR;
-    }
-
-    if (!SoapyRangeContains(frequencyRanges, frequency)) {
-        JST_ERROR("[MODULE_SOAPY] Frequency ({:.2f} MHz) not supported.", frequency / 1e6);
-        SoapySDR::Device::unmake(soapyDevice);
-        soapyDevice = nullptr;
-        return Result::ERROR;
-    }
-
+Result SoapyImpl::allocateBuffers() {
     try {
         JST_CHECK(buffer.create(device(), DataType::CF32, {numberOfBatches, numberOfTimeSamples}));
         JST_CHECK(SetSignalAxes(buffer, {
@@ -208,80 +137,39 @@ Result SoapyImpl::create() {
         return Result::ERROR;
     }
 
+    return Result::SUCCESS;
+}
+
+Result SoapyImpl::configureDevice(const SoapySDR::Kwargs& streamArgs) {
     try {
-        if (setSampleRate(sampleRate) != Result::SUCCESS) {
-            throw std::runtime_error("Failed to set sample rate.");
-        }
-        if (setTunerFrequency(frequency) != Result::SUCCESS) {
-            throw std::runtime_error("Failed to set frequency.");
-        }
-        if (setAutomaticGain(automaticGain) != Result::SUCCESS) {
-            throw std::runtime_error("Failed to set gain mode.");
-        }
-        if (setBiasTee(biasTee) != Result::SUCCESS) {
-            throw std::runtime_error("Failed to set Bias-T.");
-        }
-
-        soapyStream = soapyDevice->setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32, {0}, streamArgs);
-        if (soapyStream == nullptr) {
-            JST_ERROR("[MODULE_SOAPY] Failed to setup stream.");
-            if (biasTeeNeedsCleanup) {
-                static_cast<void>(setBiasTee(false));
-            }
-            SoapySDR::Device::unmake(soapyDevice);
-            soapyDevice = nullptr;
-            biasTeeSupported = false;
-            biasTeeNeedsCleanup = false;
-            return Result::ERROR;
-        }
-        const int activationResult = soapyDevice->activateStream(soapyStream, 0, 0, 0);
-        if (activationResult != 0) {
-            throw std::runtime_error(jst::fmt::format(
-                "activateStream returned status {}", activationResult));
-        }
-
+        JST_CHECK(receiverDevice.setAntenna(antenna));
+        JST_CHECK(setSampleRate(sampleRate));
+        JST_CHECK(setTunerFrequency(frequency));
+        JST_CHECK(setAutomaticGain(automaticGain));
+        JST_CHECK(setBiasTee(biasTee));
+        JST_CHECK(receiverDevice.startStream(streamArgs));
     } catch (const std::exception& e) {
         JST_ERROR("[MODULE_SOAPY] Failed to configure device: {}", e.what());
-        if (soapyStream) {
-            try { soapyDevice->closeStream(soapyStream); } catch (...) {}
-            soapyStream = nullptr;
-        }
-        if (biasTeeNeedsCleanup) {
-            static_cast<void>(setBiasTee(false));
-        }
-        SoapySDR::Device::unmake(soapyDevice);
-        soapyDevice = nullptr;
-        biasTeeSupported = false;
-        biasTeeNeedsCleanup = false;
         return Result::ERROR;
     } catch (...) {
         JST_ERROR("[MODULE_SOAPY] Failed to configure device.");
-        if (soapyStream) {
-            try { soapyDevice->closeStream(soapyStream); } catch (...) {}
-            soapyStream = nullptr;
-        }
-        if (biasTeeNeedsCleanup) {
-            static_cast<void>(setBiasTee(false));
-        }
-        SoapySDR::Device::unmake(soapyDevice);
-        soapyDevice = nullptr;
-        biasTeeSupported = false;
-        biasTeeNeedsCleanup = false;
         return Result::ERROR;
     }
 
-    outputs()["signal"].produced(name(), "signal", buffer);
+    return Result::SUCCESS;
+}
 
-    buffer.setAttribute("frequency", frequency);
-    buffer.setAttribute("sampleRate", sampleRate);
-    activeSampleRate = sampleRate;
-
+Result SoapyImpl::startReceiver() {
     streaming = true;
     try {
         producer = std::thread([this] {
+            Result result;
             try {
-                JST_CHECK_THROW(soapyThreadLoop());
+                result = soapyThreadLoop();
             } catch (...) {
+                result = Result::ERROR;
+            }
+            if (result != Result::SUCCESS && result != Result::RELOAD) {
                 errored = true;
                 JST_FATAL("[MODULE_SOAPY] Device thread crashed.");
             }
@@ -299,45 +187,18 @@ Result SoapyImpl::create() {
     return Result::SUCCESS;
 }
 
-Result SoapyImpl::destroy() {
+void SoapyImpl::stopReceiver() {
     streaming = false;
     activeSampleRate = 0.0f;
 
     if (producer.joinable()) {
         producer.join();
     }
+}
 
-    if (soapyDevice && soapyStream) {
-        try {
-            soapyDevice->deactivateStream(soapyStream, 0, 0);
-            soapyDevice->closeStream(soapyStream);
-        } catch (const std::exception& e) {
-            JST_ERROR("[MODULE_SOAPY] Failed to deactivate/close stream: {}", e.what());
-        } catch (...) {
-            JST_ERROR("[MODULE_SOAPY] Failed to deactivate/close stream.");
-        }
-        soapyStream = nullptr;
-    }
-
-    if (biasTeeNeedsCleanup) {
-        static_cast<void>(setBiasTee(false));
-    }
-
-    if (soapyDevice) {
-        try {
-            SoapySDR::Device::unmake(soapyDevice);
-        } catch (const std::exception& e) {
-            JST_ERROR("[MODULE_SOAPY] Failed to unmake device: {}", e.what());
-        } catch (...) {
-            JST_ERROR("[MODULE_SOAPY] Failed to unmake device.");
-        }
-        soapyDevice = nullptr;
-    }
-    biasTeeSupported = false;
-    biasTeeNeedsCleanup = false;
-
-    sampleRateRanges.clear();
-    frequencyRanges.clear();
+Result SoapyImpl::destroy() {
+    stopReceiver();
+    receiverDevice.reset();
 
     bufferHealth.publish(0.0f);
     throughput.publish({0.0f, 0.0f});
@@ -351,6 +212,7 @@ Result SoapyImpl::reconfigure() {
     if (newConfig.modulePath != modulePath ||
         newConfig.deviceString != deviceString ||
         newConfig.streamString != streamString ||
+        newConfig.antenna != antenna ||
         newConfig.biasTee != biasTee ||
         newConfig.numberOfBatches != numberOfBatches ||
         newConfig.numberOfTimeSamples != numberOfTimeSamples ||
@@ -374,19 +236,31 @@ Result SoapyImpl::reconfigure() {
 }
 
 Result SoapyImpl::soapyThreadLoop() {
-    int flags;
-    long long timeNs;
     constexpr std::size_t temporaryBufferSize = 8192;
     CF32 tmp[temporaryBufferSize];
-    void* tmp_buffers[] = {tmp};
     const auto readSize = std::min<std::size_t>(temporaryBufferSize,
                                                 circularBuffer.capacity());
+    const auto readBuffer = std::span<CF32>{tmp, readSize};
+    SoapyReceiveStatus receiveStatus;
 
     while (streaming) {
         try {
-            int ret = soapyDevice->readStream(soapyStream, tmp_buffers, readSize, flags, timeNs, 1e5);
-            if (ret > 0 && streaming && !errored) {
-                JST_CHECK(circularBuffer.push(tmp, ret));
+            const auto received = receiverDevice.read(readBuffer);
+            if (!streaming || errored) {
+                break;
+            }
+
+            const auto action = receiveStatus.handle(received.status);
+            if (action == SoapyReceiveStatus::Action::WarnOverflow) {
+                JST_WARN("[MODULE_SOAPY] Device receive overflow on '{}'. Samples were lost "
+                         "(total events since stream start: {}).", name(), receiveStatus.deviceOverflows);
+            } else if (action == SoapyReceiveStatus::Action::Fail) {
+                JST_ERROR("[MODULE_SOAPY] Failed to read stream on '{}': {}. Stopping reception.",
+                          name(), received.error);
+                errored = true;
+                break;
+            } else if (action == SoapyReceiveStatus::Action::Samples) {
+                JST_CHECK(circularBuffer.push(tmp, received.sampleCount));
                 const U64 capacity = circularBuffer.capacity();
                 if (capacity > 0) {
                     const F32 newHealth = static_cast<F32>(circularBuffer.size()) /
@@ -412,59 +286,27 @@ Result SoapyImpl::soapyThreadLoop() {
     return Result::SUCCESS;
 }
 
-SoapyImpl::DeviceList SoapyImpl::ListAvailableDevices(const std::string& filter) {
-#ifdef JST_OS_BROWSER
-    if (MAIN_THREAD_EM_ASM_INT({ return 'usb' in navigator; }) == 0) {
-        JST_ERROR("[MODULE_SOAPY] Browser not compatible with WebUSB.");
-        return {};
-    }
-#endif
-
-    const SoapySDR::Kwargs args = SoapySDR::KwargsFromString(filter);
-
-    try {
-        return DeviceListFromEntries(SoapySDR::Device::enumerate(args));
-    } catch (const std::exception& e) {
-        JST_ERROR("[MODULE_SOAPY] Failed to enumerate devices: {}", e.what());
-    } catch (...) {
-        JST_ERROR("[MODULE_SOAPY] Failed to enumerate devices.");
-    }
-
-    return {};
-}
-
-std::string SoapyImpl::DeviceEntryToString(const DeviceEntry& entry) {
-    return SoapySDR::KwargsToString(entry);
-}
-
 F32 SoapyImpl::getBufferHealth() const {
     return bufferHealth.get();
+}
+
+F64 SoapyImpl::getBufferLoss() const {
+    const auto stats = circularBuffer.statistics();
+    return stats.pushedElements > 0
+        ? static_cast<F64>(stats.overwrittenElements) / static_cast<F64>(stats.pushedElements)
+        : 0.0;
 }
 
 std::pair<F32, F32> SoapyImpl::getThroughput() const {
     return throughput.get();
 }
 
+std::vector<std::string> SoapyImpl::listAntennas() const {
+    return receiverDevice.listAntennas();
+}
+
 Result SoapyImpl::setTunerFrequency(const F32& freq) {
-    if (!soapyDevice) {
-        JST_ERROR("[MODULE_SOAPY] Cannot set frequency without an active device.");
-        return Result::ERROR;
-    }
-
-    if (!SoapyRangeContains(frequencyRanges, freq)) {
-        JST_WARN("[MODULE_SOAPY] Frequency ({:.2f} MHz) not supported.", freq / 1e6);
-        return Result::WARNING;
-    }
-
-    try {
-        soapyDevice->setFrequency(SOAPY_SDR_RX, 0, freq);
-    } catch (const std::exception& e) {
-        JST_ERROR("[MODULE_SOAPY] Failed to set frequency: {}", e.what());
-        return Result::ERROR;
-    } catch (...) {
-        JST_ERROR("[MODULE_SOAPY] Failed to set frequency.");
-        return Result::ERROR;
-    }
+    JST_CHECK(receiverDevice.setTunerFrequency(freq));
 
     frequency = freq;
     buffer.setAttribute("frequency", frequency);
@@ -473,25 +315,7 @@ Result SoapyImpl::setTunerFrequency(const F32& freq) {
 }
 
 Result SoapyImpl::setSampleRate(const F32& rate) {
-    if (!soapyDevice) {
-        JST_ERROR("[MODULE_SOAPY] Cannot set sample rate without an active device.");
-        return Result::ERROR;
-    }
-
-    if (!SoapyRangeContains(sampleRateRanges, rate)) {
-        JST_WARN("[MODULE_SOAPY] Sample rate ({:.2f} MHz) not supported.", rate / 1e6);
-        return Result::WARNING;
-    }
-
-    try {
-        soapyDevice->setSampleRate(SOAPY_SDR_RX, 0, rate);
-    } catch (const std::exception& e) {
-        JST_ERROR("[MODULE_SOAPY] Failed to set sample rate: {}", e.what());
-        return Result::ERROR;
-    } catch (...) {
-        JST_ERROR("[MODULE_SOAPY] Failed to set sample rate.");
-        return Result::ERROR;
-    }
+    JST_CHECK(receiverDevice.setSampleRate(rate));
 
     sampleRate = rate;
     activeSampleRate = rate;
@@ -501,20 +325,7 @@ Result SoapyImpl::setSampleRate(const F32& rate) {
 }
 
 Result SoapyImpl::setAutomaticGain(const bool& gain) {
-    if (!soapyDevice) {
-        JST_ERROR("[MODULE_SOAPY] Cannot set gain mode without an active device.");
-        return Result::ERROR;
-    }
-
-    try {
-        soapyDevice->setGainMode(SOAPY_SDR_RX, 0, gain);
-    } catch (const std::exception& e) {
-        JST_ERROR("[MODULE_SOAPY] Failed to set gain mode: {}", e.what());
-        return Result::ERROR;
-    } catch (...) {
-        JST_ERROR("[MODULE_SOAPY] Failed to set gain mode.");
-        return Result::ERROR;
-    }
+    JST_CHECK(receiverDevice.setAutomaticGain(gain));
 
     automaticGain = gain;
 
@@ -522,28 +333,7 @@ Result SoapyImpl::setAutomaticGain(const bool& gain) {
 }
 
 Result SoapyImpl::setBiasTee(const bool enabled) {
-    if (!soapyDevice) {
-        JST_ERROR("[MODULE_SOAPY] Cannot set Bias-T without an active device.");
-        return Result::ERROR;
-    }
-
-    if (biasTeeSupported) {
-        biasTeeNeedsCleanup = true;
-        try {
-            soapyDevice->writeSetting("biastee", enabled);
-        } catch (const std::exception& e) {
-            JST_ERROR("[MODULE_SOAPY] Failed to set Bias-T: {}", e.what());
-            return Result::ERROR;
-        } catch (...) {
-            JST_ERROR("[MODULE_SOAPY] Failed to set Bias-T.");
-            return Result::ERROR;
-        }
-        biasTeeNeedsCleanup = enabled;
-    } else if (enabled) {
-        JST_WARN("[MODULE_SOAPY] Bias-T is not supported by the selected device.");
-    }
-
-    return Result::SUCCESS;
+    return receiverDevice.setBiasTee(enabled);
 }
 
 }  // namespace Jetstream::Modules

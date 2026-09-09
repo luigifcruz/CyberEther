@@ -42,6 +42,7 @@ struct Text {
         Align align = Align::Left;
         std::string colorKey;
         bool wrapped = false;
+        bool clipped = false;
         F32 scale = 1.0f;
         F32 verticalOffset = 0.0f;
     };

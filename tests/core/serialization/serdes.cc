@@ -425,11 +425,11 @@ TEST_CASE("Parser::Deserialize reports incompatible types", "[core][serializatio
         REQUIRE(decoded.deserialize(data) == Result::ERROR);
     }
 
-    SECTION("scalars reject non-string mismatches") {
-        data["gain"] = bool{true};
-        U64 gain = 11;
+    SECTION("strings reject numeric values") {
+        data["gain"] = U64{1};
+        std::string gain = "unchanged";
         REQUIRE(Parser::Deserialize(data, "gain", gain) == Result::ERROR);
-        REQUIRE(gain == 11);
+        REQUIRE(gain == "unchanged");
     }
 }
 

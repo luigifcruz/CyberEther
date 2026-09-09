@@ -38,7 +38,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "SqueezeDims block creates after expand_dims"
                                    block.interfaceConfigs.end(),
                                    [](const auto& entry) { return entry.name == "axis"; });
     REQUIRE(axis != block.interfaceConfigs.end());
-    REQUIRE(axis->format == "int:");
+    REQUIRE(axis->format == Parser::Map{{"type", "int"}});
 
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("sq_block", saved) == Result::SUCCESS);

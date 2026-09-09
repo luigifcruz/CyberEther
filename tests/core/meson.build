@@ -38,6 +38,8 @@ core_test_domains = {
         'render/map_layers.cc',
     ],
     'sakura': [
+        'sakura/interface_controls.cc',
+        'sakura/metric_label.cc',
         'sakura/node.cc',
         'sakura/node_metadata.cc',
         'sakura/surface_view.cc',
@@ -50,6 +52,7 @@ core_test_domains = {
         'runtime/python.cc',
     ],
     'serialization': [
+        'serialization/interface_format.cc',
         'serialization/conversions.cc',
         'serialization/serdes.cc',
         'serialization/hash.cc',

@@ -280,7 +280,7 @@ TEST_CASE("Errored python block still floors and resizes",
     FlowgraphNode node;
     auto config = baseConfigFor(baseBlock("err-block", "radio"));
     config.block.configFields.push_back(
-        {.id = "err-block:code", .format = "python", .encoded = "pass"});
+        {.id = "err-block:code", .name = "code", .format = {{"type", "python"}}, .values = {{"code", "pass"}}});
     config.block.state = Block::State::Errored;
     config.block.diagnostic = "Python runtime raised: NameError.";
     settle(ui, ctx, node, config, 5);
@@ -690,7 +690,7 @@ TEST_CASE("Surface and flexible-field nodes resize on both axes; plain nodes sta
     FlowgraphNode markdownNode;
     auto markdownConfig = baseConfigFor(baseBlock("markdown-block", "note"));
     markdownConfig.block.configFields.push_back(
-        {.id = "markdown-block:text", .format = "markdown", .encoded = "hello"});
+        {.id = "markdown-block:text", .name = "text", .format = {{"type", "markdown"}}, .values = {{"text", "hello"}}});
     markdownNode.update(markdownConfig);
     renderFrame(ui, ctx, markdownNode);
     const auto* markdownData = flowgraphNodeData("markdown-block");
@@ -828,7 +828,7 @@ TEST_CASE("Dragging above the measured minimum clamps at the flexible minimum",
     FlowgraphNode node;
     auto config = baseConfigFor(baseBlock("clamp-block", "note"));
     config.block.configFields.push_back(
-        {.id = "clamp-block:text", .format = "markdown", .encoded = "hello"});
+        {.id = "clamp-block:text", .name = "text", .format = {{"type", "markdown"}}, .values = {{"text", "hello"}}});
     // Start above the flexible minimum so the memo reflects the floor.
     config.block.layout = FlowgraphNode::Layout{.x = 10.0f, .y = 10.0f, .width = 220.0f, .height = 300.0f};
     config.onLayout = [&layoutLog](F32 x, F32 y, F32 width, F32 height) {
@@ -880,7 +880,7 @@ TEST_CASE("Incomplete python block still seeds, floors, and resizes",
     FlowgraphNode node;
     auto config = baseConfigFor(baseBlock("inc-block", "radio"));
     config.block.configFields.push_back(
-        {.id = "inc-block:code", .format = "python", .encoded = "pass"});
+        {.id = "inc-block:code", .name = "code", .format = {{"type", "python"}}, .values = {{"code", "pass"}}});
     config.block.state = Block::State::Incomplete;
     config.block.diagnostic = "Block 'inc-block' has unconnected input 'input0'.";
     settle(ui, ctx, node, config, 5);
@@ -912,7 +912,7 @@ TEST_CASE("Node height drag survives the async meta layout round-trip",
     FlowgraphNode node;
     auto config = baseConfigFor(baseBlock("meta-block", "radio"));
     config.block.configFields.push_back(
-        {.id = "meta-block:code", .format = "python", .encoded = "pass"});
+        {.id = "meta-block:code", .name = "code", .format = {{"type", "python"}}, .values = {{"code", "pass"}}});
 
     // Saved meta from a previous session: height set, width 0 (older saves).
     FlowgraphNode::Layout meta{20.0f, 20.0f, 0.0f, 216.0f};
@@ -1024,7 +1024,7 @@ TEST_CASE("Resize floor converges to the flexible minimum after the node grows",
     FlowgraphNode node;
     auto config = baseConfigFor(baseBlock("floor-block", "note"));
     config.block.configFields.push_back(
-        {.id = "floor-block:text", .format = "markdown", .encoded = "hello"});
+        {.id = "floor-block:text", .name = "text", .format = {{"type", "markdown"}}, .values = {{"text", "hello"}}});
 
     // Warm-up caps the floor at the current height.
     settle(ui, ctx, node, config, 4);
@@ -1205,7 +1205,7 @@ TEST_CASE("Cold restore preserves every surface alongside flexible fields",
     FlowgraphNode node;
     auto config = baseConfigFor(baseBlock("multi-flex-block", "radio"));
     config.block.configFields.push_back(
-        {.id = "multi-flex-block:text", .format = "markdown", .encoded = "hello"});
+        {.id = "multi-flex-block:text", .name = "text", .format = {{"type", "markdown"}}, .values = {{"text", "hello"}}});
 
     auto surfaceA = attachedSurface("multi-flex-block:surface:a");
     surfaceA.height = 400.0f;
@@ -1244,7 +1244,7 @@ TEST_CASE("Note blocks create at their flexible minimum and clicking the knob do
     FlowgraphNode node;
     auto config = baseConfigFor(baseBlock("note-block", "note"));
     config.block.configFields.push_back(
-        {.id = "note-block:text", .format = "markdown", .encoded = "hello"});
+        {.id = "note-block:text", .name = "text", .format = {{"type", "markdown"}}, .values = {{"text", "hello"}}});
     config.block.state = Block::State::Creating;
     config.onLayout = [&layoutLog](F32 x, F32 y, F32 width, F32 height) {
         layoutLog.record(x, y, width, height);
@@ -1288,7 +1288,7 @@ TEST_CASE("Detaching every surface keeps the node height while flexible fields r
     FlowgraphNode node;
     auto config = baseConfigFor(baseBlock("keep-block", "radio"));
     config.block.configFields.push_back(
-        {.id = "keep-block:text", .format = "markdown", .encoded = "hello"});
+        {.id = "keep-block:text", .name = "text", .format = {{"type", "markdown"}}, .values = {{"text", "hello"}}});
     auto surface = attachedSurface("keep-block:surface:out");
     surface.onAttachedSize = [&resizeLog](const Sakura::SurfaceResize& resize) {
         resizeLog.record(resize);
@@ -1402,7 +1402,7 @@ TEST_CASE("Metrics consume fixed height and the surface allocation follows",
     // One metric row (plus its spacing row) shifts into the fixed chrome.
     config.block.metrics.push_back({.id = "metric-block:m1",
                                     .label = "Rate",
-                                    .format = "label"});
+                                    .format = {{"type", "label"}}});
     settle(ui, ctx, node, config, 5);
     REQUIRE(resizeLog.count() >= 2);
     const F32 withOneMetric = static_cast<F32>(resizeLog.entries.back().logicalSize.y);
@@ -1425,7 +1425,7 @@ TEST_CASE("Incomplete blocks seed their minimum height on completion",
     FlowgraphNode node;
     auto config = baseConfigFor(baseBlock("incomplete-block", "note"));
     config.block.configFields.push_back(
-        {.id = "incomplete-block:text", .format = "markdown", .encoded = "hello"});
+        {.id = "incomplete-block:text", .name = "text", .format = {{"type", "markdown"}}, .values = {{"text", "hello"}}});
     config.block.state = Block::State::Incomplete;
     config.onLayout = [&layoutLog](F32 x, F32 y, F32 width, F32 height) {
         layoutLog.record(x, y, width, height);
@@ -1462,7 +1462,7 @@ TEST_CASE("Reconfiguring flexible fields reflows the node height",
 
     // A markdown field appears: the node seeds its flexible minimum.
     config.block.configFields.push_back(
-        {.id = "reconfig-block:text", .format = "markdown", .encoded = "hello"});
+        {.id = "reconfig-block:text", .name = "text", .format = {{"type", "markdown"}}, .values = {{"text", "hello"}}});
     settle(ui, ctx, node, config, 4);
     REQUIRE(std::get<3>(layoutLog.last()) >= reconfigChrome + 120.0f - 1.0f);
 
@@ -1522,7 +1522,7 @@ TEST_CASE("Python editor receives its declared minimum height",
     FlowgraphNode node;
     auto config = baseConfigFor(baseBlock("py-block", "radio"));
     config.block.configFields.push_back(
-        {.id = "py-block:code", .format = "python", .encoded = "pass"});
+        {.id = "py-block:code", .name = "code", .format = {{"type", "python"}}, .values = {{"code", "pass"}}});
     settle(ui, ctx, node, config, 5);
 
     const F32 floor = flowgraphNodeData("py-block")->ResizeMinimumSize.y;
@@ -1567,9 +1567,10 @@ TEST_CASE("Simple config grids reflow during node resizing and collapse without 
     for (U64 i = 0; i < 4; ++i) {
         config.block.configFields.push_back({
             .id = "grid-block:field:" + std::to_string(i),
+            .name = "value",
             .label = "Value",
-            .format = "range:0:1",
-            .encoded = "0.5",
+            .format = {{"type", "range"}, {"min", 0.0f}, {"max", 1.0f}},
+            .values = {{"value", 0.5f}},
         });
     }
     settle(ui, ctx, node, config, 4);
@@ -1606,7 +1607,7 @@ TEST_CASE("Collapsed flexible config fields stop reserving node height and resiz
     FlowgraphNode node;
     auto config = baseConfigFor(baseBlock("collapse-editor", "radio"));
     config.block.configFields.push_back(
-        {.id = "collapse-editor:code", .format = "python", .encoded = "pass"});
+        {.id = "collapse-editor:code", .name = "code", .format = {{"type", "python"}}, .values = {{"code", "pass"}}});
     config.onLayout = [&layoutLog](F32 x, F32 y, F32 width, F32 height) {
         layoutLog.record(x, y, width, height);
     };
@@ -1652,7 +1653,7 @@ TEST_CASE("Collapsed editor height survives layout feedback and view recreation"
 
     auto config = baseConfigFor(baseBlock("collapse-meta", "radio"));
     config.block.configFields.push_back(
-        {.id = "collapse-meta:code", .format = "python", .encoded = "pass"});
+        {.id = "collapse-meta:code", .name = "code", .format = {{"type", "python"}}, .values = {{"code", "pass"}}});
     FlowgraphNode::Layout meta{20.0f, 20.0f, 220.0f, 400.0f};
     std::optional<FlowgraphNode::Layout> mail;
     auto tick = [&](FlowgraphNode& node, U64 frames) {
@@ -1723,7 +1724,7 @@ TEST_CASE("Removing a collapsed editor releases its saved height",
     FlowgraphNode node;
     auto config = baseConfigFor(baseBlock("removed-editor", "radio"));
     config.block.configFields.push_back(
-        {.id = "removed-editor:code", .format = "python", .encoded = "pass"});
+        {.id = "removed-editor:code", .name = "code", .format = {{"type", "python"}}, .values = {{"code", "pass"}}});
     config.block.layout = FlowgraphNode::Layout{20.0f, 20.0f, 220.0f, 400.0f};
     config.block.configCollapsed = true;
     config.onLayout = [&layoutLog, &config](F32 x, F32 y, F32 width, F32 height) {
@@ -1737,7 +1738,7 @@ TEST_CASE("Removing a collapsed editor releases its saved height",
     SECTION("Field removed") {}
     SECTION("Field replaced with a fixed-height control") {
         config.block.configFields.push_back(
-            {.id = "removed-editor:value", .format = "range:0:1", .encoded = "0.5"});
+            {.id = "removed-editor:value", .name = "value", .format = {{"type", "range"}, {"min", 0.0f}, {"max", 1.0f}}, .values = {{"value", 0.5f}}});
     }
     settle(ui, ctx, node, config, 4);
     REQUIRE(flowgraphNodeData(config.id)->ResizeFlags == ImNodesNodeResizeFlags_X);
@@ -1746,7 +1747,7 @@ TEST_CASE("Removing a collapsed editor releases its saved height",
 
     // A later editor must seed its minimum, not inherit the removed one.
     config.block.configFields = {
-        {.id = "removed-editor:new", .format = "python", .encoded = "pass"}};
+        {.id = "removed-editor:new", .name = "code", .format = {{"type", "python"}}, .values = {{"code", "pass"}}}};
     config.block.configCollapsed = false;
     settle(ui, ctx, node, config, 5);
     REQUIRE(std::get<3>(layoutLog.last()) < 400.0f - 100.0f);
@@ -1764,7 +1765,7 @@ TEST_CASE("Collapsed editors preserve height across lifecycle changes and displa
             FlowgraphNode node;
             auto config = baseConfigFor(baseBlock("lifecycle-editor", "radio"));
             const FlowgraphConfigFieldConfig field{
-                .id = "lifecycle-editor:code", .format = format, .encoded = "pass"};
+                .id = "lifecycle-editor:code", .name = "code", .format = {{"type", format}}, .values = {{"code", "pass"}}};
             config.block.configFields.push_back(field);
             config.block.layout = FlowgraphNode::Layout{20.0f, 20.0f, 220.0f, 400.0f};
             config.onLayout = [&config](F32 x, F32 y, F32 width, F32 height) {
@@ -1807,7 +1808,7 @@ TEST_CASE("Cold collapsed editors do not reserve height from attached surfaces",
     FlowgraphNode node;
     auto config = baseConfigFor(baseBlock("collapsed-surface", "radio"));
     config.block.configFields.push_back(
-        {.id = "collapsed-surface:code", .format = "python", .encoded = "pass"});
+        {.id = "collapsed-surface:code", .name = "code", .format = {{"type", "python"}}, .values = {{"code", "pass"}}});
     config.block.configCollapsed = true;
     auto surface = attachedSurface("collapsed-surface:surface");
     surface.height = 400.0f;
@@ -1847,7 +1848,7 @@ TEST_CASE("Chevron clicks preserve resized layout through movement and serialize
             CAPTURE(scale, format);
             auto config = baseConfigFor(baseBlock("gesture-editor", "radio"));
             config.block.configFields.push_back(
-                {.id = "gesture-editor:code", .format = format, .encoded = "pass"});
+                {.id = "gesture-editor:code", .name = "code", .format = {{"type", format}}, .values = {{"code", "pass"}}});
             Parser::Map saved;
             NodeMeta expected;
             {
@@ -1926,7 +1927,7 @@ TEST_CASE("Chevron gestures do not collapse on cancelled clicks or node drags",
           "[core][sakura][flowgraph_node][collapse][interaction]") {
     auto config = baseConfigFor(baseBlock("cancel-chevron", "radio"));
     config.block.configFields.push_back(
-        {.id = "cancel-chevron:code", .format = "python", .encoded = "pass"});
+        {.id = "cancel-chevron:code", .name = "code", .format = {{"type", "python"}}, .values = {{"code", "pass"}}});
     NodeSession session(config);
     session.frames();
 
@@ -1971,10 +1972,10 @@ TEST_CASE("Collapsing config leaves ports and metrics in the node layout",
     config.block.outputs = {
         {.port = {.id = "port-editor:out", .label = "Output"}, .tensor = tensor},
     };
-    config.block.metrics.push_back({.id = "port-editor:rate", .label = "Rate", .format = "label"});
+    config.block.metrics.push_back({.id = "port-editor:rate", .label = "Rate", .format = {{"type", "label"}}});
     config.block.configFields = {
-        {.id = "port-editor:code", .format = "python", .encoded = "pass"},
-        {.id = "port-editor:text", .format = "multiline", .encoded = "fixed-height text"},
+        {.id = "port-editor:code", .name = "code", .format = {{"type", "python"}}, .values = {{"code", "pass"}}},
+        {.id = "port-editor:text", .name = "text", .format = {{"type", "multiline"}}, .values = {{"text", "fixed-height text"}}},
     };
     NodeSession session(config);
     session.frames();
@@ -2062,13 +2063,14 @@ TEST_CASE("Config grids coexist with flexible editors and attached surface alloc
     for (U64 i = 0; i < 4; ++i) {
         config.block.configFields.push_back({
             .id = "grid-surface:field:" + std::to_string(i),
+            .name = "value",
             .label = "Value",
-            .format = "range:0:1",
-            .encoded = "0.5",
+            .format = {{"type", "range"}, {"min", 0.0f}, {"max", 1.0f}},
+            .values = {{"value", 0.5f}},
         });
         if (i == 1) {
             config.block.configFields.push_back(
-                {.id = "grid-surface:text", .format = "markdown", .encoded = "hello"});
+                {.id = "grid-surface:text", .name = "text", .format = {{"type", "markdown"}}, .values = {{"text", "hello"}}});
         }
     }
     auto surface = attachedSurface("grid-surface:surface");

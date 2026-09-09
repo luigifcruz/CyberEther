@@ -1,12 +1,15 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <jetstream/render/sakura/components/surface_view.hh>
 #include <jetstream/render/sakura/surface.hh>
 
 #include "harness.hh"
 
+#include <algorithm>
 #include <cmath>
+#include <vector>
 
 using namespace Jetstream;
 
@@ -210,4 +213,56 @@ TEST_CASE("SurfaceView reports framebuffer metrics for the window scaling factor
     REQUIRE(log.entries[0].framebufferSize.x == 400);
     REQUIRE(log.entries[0].framebufferSize.y == 300);
     REQUIRE(log.entries[0].scale == Catch::Approx(1.0f));
+}
+
+TEST_CASE("SurfaceView captures both mouse buttons through release outside the surface",
+          "[core][sakura][surface_view][capture]") {
+    const auto button = GENERATE(ImGuiMouseButton_Left, ImGuiMouseButton_Right);
+    SakuraTest::HeadlessUi ui;
+    const auto ctx = ui.sakura();
+    std::vector<MouseEvent> events;
+    Sakura::SurfaceView surface;
+    Sakura::SurfaceView::Config config;
+    config.id = "capture";
+    config.size = {200.0f, 100.0f};
+    config.texture = 1;
+    config.onMouse = [&](const MouseEvent& event) { events.push_back(event); };
+    REQUIRE(surface.update(config));
+
+    const auto frame = [&](const ImVec2& position, const bool down) {
+        events.clear();
+        ui.setMouse(position, button == ImGuiMouseButton_Left && down);
+        ImGui::GetIO().MouseDown[ImGuiMouseButton_Right] = button == ImGuiMouseButton_Right && down;
+        ui.frame([&] {
+            ImGui::SetCursorScreenPos({20.0f, 20.0f});
+            surface.render(ctx);
+        });
+    };
+    const auto count = [&](const MouseEventType type) {
+        return std::count_if(events.begin(), events.end(),
+                             [type](const auto& event) { return event.type == type; });
+    };
+
+    frame({120.0f, 70.0f}, false);
+    frame({120.0f, 70.0f}, false);
+    frame({120.0f, 70.0f}, true);
+    REQUIRE(count(MouseEventType::Click) == 1);
+
+    frame({260.0f, 90.0f}, true);
+    REQUIRE(count(MouseEventType::Move) == 1);
+    REQUIRE(events.back().position.x == Catch::Approx(1.2f));
+    frame({280.0f, 100.0f}, false);
+    REQUIRE(count(MouseEventType::Release) == 1);
+    const auto released = std::find_if(events.begin(), events.end(), [](const auto& event) {
+        return event.type == MouseEventType::Release;
+    });
+    REQUIRE(released->button == (button == ImGuiMouseButton_Left ? MouseButton::Left : MouseButton::Right));
+    REQUIRE(released->position.x == Catch::Approx(1.3f));
+    REQUIRE(released->position.y == Catch::Approx(0.8f));
+
+    frame({280.0f, 100.0f}, false);
+    REQUIRE(events.empty());
+    frame({120.0f, 70.0f}, false);
+    REQUIRE(count(MouseEventType::Release) == 0);
+    REQUIRE(count(MouseEventType::Click) == 0);
 }

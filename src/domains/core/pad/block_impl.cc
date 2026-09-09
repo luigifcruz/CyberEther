@@ -28,12 +28,12 @@ Result PadImpl::define() {
     JST_CHECK(defineInterfaceConfig("size",
                                     "Pad Size",
                                     "Number of zeros to append.",
-                                    "uint:samples"));
+                                    {{"type", "uint"}, {"unit", "samples"}}));
 
     JST_CHECK(defineInterfaceConfig("axis",
                                     "Pad Axis",
                                     "Dimension along which to add padding. Negative axes count from the end.",
-                                    "int:"));
+                                    {{"type", "int"}}));
 
     return Result::SUCCESS;
 }

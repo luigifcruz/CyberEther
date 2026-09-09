@@ -54,7 +54,7 @@ struct AdsbImpl : public Module::Impl, public DynamicConfig<Adsb> {
         U64 oddTimestamp = 0;
     };
 
-    JETSTREAM_API std::string getAircraftTable() const;
+    JETSTREAM_API Parser::Map getAircraftTable() const;
     JETSTREAM_API void updateAircraftTable();
 
  protected:
@@ -65,7 +65,7 @@ struct AdsbImpl : public Module::Impl, public DynamicConfig<Adsb> {
     std::optional<Index> validatedBatchAxis;
     Index sampleAxis = 0;
     std::optional<Index> batchAxis;
-    Tools::Snapshot<std::string> aircraftTable{std::string("No aircraft detected.")};
+    Tools::Snapshot<Parser::Map> aircraftTable{Parser::Map{}};
 
     mutable std::mutex aircraftMutex;
     std::map<U32, AircraftInfo> aircraftMap;

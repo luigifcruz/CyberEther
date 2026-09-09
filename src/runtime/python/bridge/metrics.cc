@@ -78,7 +78,7 @@ void Bridge::refreshMetrics() {
                     }
 
                     auto* descriptor = PyDict_New();
-                    auto* format = PyUnicode_FromString(entry.format.c_str());
+                    auto* format = AnyToPyObject(entry.format, valueConverterTable());
                     auto* label = PyUnicode_FromString(entry.label.c_str());
                     auto* help = PyUnicode_FromString(entry.help.c_str());
                     if (!descriptor || !format || !label || !help) {

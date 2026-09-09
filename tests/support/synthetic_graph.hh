@@ -404,8 +404,8 @@ struct SyntheticSourceBlock : Block::Impl,
         JST_CHECK(defineInterfaceOutput(
             "signal", "Output", "Synthetic output tensor."));
         JST_CHECK(defineInterfaceConfig(
-            "bufferSize", "Buffer Size", "Output tensor size.", "int"));
-        return defineInterfaceConfig("value", "Value", "Output tensor value.", "float");
+            "bufferSize", "Buffer Size", "Output tensor size.", {{"type", "int"}}));
+        return defineInterfaceConfig("value", "Value", "Output tensor value.", {{"type", "float"}});
     }
 
     Result create() override {
@@ -490,7 +490,7 @@ struct SyntheticFaultBlock : Block::Impl,
         JST_CHECK(defineInterfaceOutput(
             "out", "Output", "Synthetic fault output tensor."));
         return defineInterfaceConfig(
-            "revision", "Revision", "Synthetic configuration revision.", "int");
+            "revision", "Revision", "Synthetic configuration revision.", {{"type", "int"}});
     }
 
     Result create() override {

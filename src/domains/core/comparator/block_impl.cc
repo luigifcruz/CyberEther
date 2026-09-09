@@ -80,16 +80,16 @@ Result ComparatorImpl::define() {
     JST_CHECK(defineInterfaceConfig("inputCount",
                                     "Input Count",
                                     "Number of tensors to compare (2 to 16).",
-                                    "uint:"));
+                                    {{"type", "uint"}}));
     JST_CHECK(defineInterfaceConfig("tolerance",
                                     "Tolerance",
                                     "Maximum allowed absolute difference for a PASS result.",
-                                    "float::9"));
+                                    {{"type", "float"}, {"precision", 9}}));
 
     JST_CHECK(defineInterfaceMetric("maxDiff",
                                     "Max Diff",
                                     "Largest absolute difference observed in the latest buffer.",
-                                    "label",
+                                    {{"type", "label"}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::string("n/a");
@@ -100,7 +100,7 @@ Result ComparatorImpl::define() {
     JST_CHECK(defineInterfaceMetric("meanDiff",
                                     "Mean Diff",
                                     "Mean absolute difference observed in the latest buffer.",
-                                    "label",
+                                    {{"type", "label"}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::string("n/a");
@@ -111,7 +111,7 @@ Result ComparatorImpl::define() {
     JST_CHECK(defineInterfaceMetric("mse",
                                     "MSE",
                                     "Mean squared error observed in the latest buffer.",
-                                    "label",
+                                    {{"type", "label"}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::string("n/a");
@@ -122,7 +122,7 @@ Result ComparatorImpl::define() {
     JST_CHECK(defineInterfaceMetric("match",
                                     "Match",
                                     "Whether the latest comparison stayed within tolerance.",
-                                    "label",
+                                    {{"type", "label"}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::string("N/A");

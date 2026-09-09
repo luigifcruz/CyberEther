@@ -124,7 +124,7 @@ Result define() override {
     JST_CHECK(defineInterfaceMetric("progress",
                                     "Position",
                                     "Current file position.",
-                                    "progressbar",
+                                    {{"type", "progressbar"}},
         [this]() -> std::any {
             const F32 progress = currentProgress();
             return std::pair<std::string, F32>{jst::fmt::format("{:.1f}%", progress * 100.0f), progress};
@@ -133,7 +133,7 @@ Result define() override {
     JST_CHECK(defineInterfaceMetric("throughput",
                                     "Throughput",
                                     "Smoothed recent transfer rate.",
-                                    "label",
+                                    {{"type", "label"}},
         [this]() -> std::any {
             return jst::fmt::format("{:.1f} MB/s", currentBandwidth());
         }));
@@ -142,11 +142,13 @@ Result define() override {
 }
 ```
 
-The format string controls presentation and visibility:
+Choose a display format based on what you want to show:
 
-- A format of `label` renders a `std::string` in the node body. Any other value type shows as an invalid metric in the UI, so format numbers into text for display.
-- A format of `progressbar` expects a `std::pair<std::string, F32>` holding the display label and a fraction between 0 and 1.
-- Formats prefixed with `private-` skip the default node-body display. Use them for metrics meant for programmatic consumers or specialized tools rather than general user visibility. They are not access-controlled, so every metric is still readable from C++. Python receives only the metrics whose values it can convert.
+- **Text labels** are useful for readings such as "12.3 MB/s" or "Connected". Set the format's `type` to `label` and return a string containing the text you want to display. Convert numeric values to text first.
+- **Progress bars** work well for file positions, buffer usage, and similar measurements. Set the type to `progressbar` and return a pair containing the display text and a fraction between 0 and 1.
+- **Tables** let you show several related values in rows and columns. Set the type to `table` and return a map with `columns` for the column names and `rows` for the cell text. Each row needs one cell per column. You can build both from vectors using `Parser::Serialize`, and the cell text can include tabs and line breaks.
+
+Metrics appear in the node by default. Set `visibility` to `internal` when a metric is intended for a dedicated view, as with runtime timing and Python diagnostics. This hides it from the node body but keeps it available to code. You can still read it from C++, or from Python when its value can be converted. The visibility setting is only available for metrics.
 
 Consumers read metrics through `Flowgraph::View::metrics(blockName, entries)`. From Python, use the `ctx.metrics` mapping described in [Block Metrics](/docs/python-block#block-metrics).
 

@@ -53,28 +53,28 @@ Result FileWriterImpl::define() {
     JST_CHECK(defineInterfaceConfig("filepath",
                                     "File Path",
                                     "Path to the output file.",
-                                    "filesave:bin,raw,iq,wav,dat"));
+                                    {{"type", "filesave"}, {"extensions", Parser::MakeSequence({"bin", "raw", "iq", "wav", "dat"})}}));
 
     JST_CHECK(defineInterfaceConfig("fileFormat",
                                     "File Format",
                                     "The format of the output file.",
-                                    "dropdown:raw(Raw)"));
+                                    {{"type", "dropdown"}, {"options", Parser::Sequence{Parser::Map{{"label", "Raw"}, {"value", "raw"}}}}}));
 
     JST_CHECK(defineInterfaceConfig("overwrite",
                                     "Overwrite",
                                     "Whether to overwrite the file if it "
                                     "already exists.",
-                                    "bool"));
+                                    {{"type", "bool"}}));
 
     JST_CHECK(defineInterfaceConfig("recording",
                                     "Recording",
                                     "Start or stop recording to the file.",
-                                    "bool"));
+                                    {{"type", "bool"}}));
 
     JST_CHECK(defineInterfaceMetric("fileSize",
                                     "File Size",
                                     "Current size of the output file on disk.",
-                                    "label",
+                                    {{"type", "label"}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::string("0 B");
@@ -85,7 +85,7 @@ Result FileWriterImpl::define() {
     JST_CHECK(defineInterfaceMetric("currentBandwidth",
                                     "Bandwidth",
                                     "Smoothed recent file write rate.",
-                                    "label",
+                                    {{"type", "label"}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::string("N/A");

@@ -8,12 +8,10 @@ namespace Jetstream {
 struct FlowgraphConfigTextField {
     using Config = FlowgraphConfigFieldConfig;
 
-    void update(Config config) {
+    Result update(Config config) {
         this->config = std::move(config);
-        if (this->config.encoded != parsedEncoded) {
-            value = this->config.encoded;
-            parsedEncoded = this->config.encoded;
-        }
+        value.clear();
+        JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, value));
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
@@ -31,6 +29,7 @@ struct FlowgraphConfigTextField {
                 }
             },
         });
+        return Result::SUCCESS;
     }
 
     void render(const Sakura::Context& ctx) const {
@@ -41,7 +40,6 @@ struct FlowgraphConfigTextField {
 
  private:
     Config config;
-    std::string parsedEncoded;
     std::string value;
     Sakura::NodeField frame;
     Sakura::NodeTextInput input;

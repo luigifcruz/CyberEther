@@ -15,11 +15,13 @@ struct FlowgraphConfigPythonField {
         };
     }
 
-    void update(Config config) {
+    Result update(Config config) {
         this->config = std::move(config);
-        if (this->config.encoded != parsedEncoded) {
-            buffer = this->config.encoded;
-            parsedEncoded = this->config.encoded;
+        std::string nextValue;
+        JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, nextValue));
+        if (nextValue != parsedEncoded) {
+            buffer = nextValue;
+            parsedEncoded = nextValue;
         }
         frame.update({
             .id = this->config.id,
@@ -29,6 +31,7 @@ struct FlowgraphConfigPythonField {
             .background = false,
         });
         updateEditor();
+        return Result::SUCCESS;
     }
 
     void setAllocatedHeight(std::optional<F32> height) {

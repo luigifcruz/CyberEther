@@ -3,19 +3,15 @@
 
 #include "types.hh"
 
-// TODO: Cleanup parsing.
-
 namespace Jetstream {
 
 struct FlowgraphConfigBoolField {
     using Config = FlowgraphConfigFieldConfig;
 
-    void update(Config config) {
+    Result update(Config config) {
         this->config = std::move(config);
-        if (this->config.encoded != parsedEncoded) {
-            value = this->config.encoded == "true" || this->config.encoded == "1";
-            parsedEncoded = this->config.encoded;
-        }
+        value = false;
+        JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, value));
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
@@ -32,6 +28,7 @@ struct FlowgraphConfigBoolField {
                 }
             },
         });
+        return Result::SUCCESS;
     }
 
     void render(const Sakura::Context& ctx) const {
@@ -42,7 +39,6 @@ struct FlowgraphConfigBoolField {
 
  private:
     Config config;
-    std::string parsedEncoded;
     bool value = false;
     Sakura::NodeField frame;
     Sakura::NodeBoolInput input;

@@ -15,8 +15,7 @@ namespace Jetstream {
 
 struct FlowgraphMetricInstance {
     void update(FlowgraphMetricConfig config) {
-        const auto parts = Parser::SplitString(config.format, ":");
-        kind = parts.empty() ? "" : parts[0];
+        kind = Parser::Get<std::string>(config.format, "type");
 
         if (kind == "progressbar") {
             progress.update(std::move(config));

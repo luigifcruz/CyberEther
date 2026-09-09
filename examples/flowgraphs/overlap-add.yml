@@ -98,8 +98,7 @@ graph:
     runtime: native
     provider: generic
     config:
-      hintString: ''
-      deviceString: 'Generic RTL2832U OEM :: 00000001'
+      deviceString: 'driver=rtlsdr,serial=00000001'
       streamString: ''
       frequency: 9.73e+07
       frequencyStep: 1000000

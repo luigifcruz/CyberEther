@@ -29,7 +29,7 @@ Result SignalAxesImpl::define() {
         "axes",
         "Axes",
         "Axis roles in [B, C, S, _, *] notation. * preserves an input role.",
-        "text"));
+        {{"type", "text"}}));
 
     return Result::SUCCESS;
 }

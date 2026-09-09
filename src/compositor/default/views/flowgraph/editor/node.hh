@@ -306,7 +306,7 @@ struct FlowgraphNode {
                     std::string id = "fields";
                     std::vector<Sakura::NodeFieldGrid::Item> items;
                     do {
-                        id += ":" + block.configFields[i].id + ":" + block.configFields[i].format;
+                        id += ":" + block.configFields[i].id + ":" + std::to_string(Parser::Hash(block.configFields[i].format));
                         items.push_back({
                             .child = [this, i](const Sakura::Context& ctx) {
                                 fields[i].render(ctx);
@@ -330,7 +330,7 @@ struct FlowgraphNode {
                     };
                 }
                 fieldLayoutItems[i] = addContent(
-                    "field:" + block.configFields[i].id + ":" + block.configFields[i].format,
+                    "field:" + block.configFields[i].id + ":" + std::to_string(Parser::Hash(block.configFields[i].format)),
                     flex,
                     [this, i](const Sakura::Context& ctx) {
                         fields[i].render(ctx);

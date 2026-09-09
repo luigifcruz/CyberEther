@@ -468,7 +468,9 @@ Result Superluminal::start() {
                                     ImGui::Image(ImTextureRef(manifest.surface->raw()), availableRegion);
 
                                     ImGui::SetCursorScreenPos(cursorPos);
-                                    ImGui::InvisibleButton("##surface", availableRegion);
+                                    ImGui::InvisibleButton("##surface", availableRegion,
+                                                           ImGuiButtonFlags_MouseButtonLeft |
+                                                           ImGuiButtonFlags_MouseButtonRight);
 
                                     detail::ForwardSuperluminalSurfaceMouseEvents(
                                         cursorPos, availableRegion,

@@ -135,8 +135,8 @@ TEST_CASE("Unsigned range edits reject unsafe conversions before applying config
         .id = "averaging",
         .name = "averaging",
         .label = "Averaging",
-        .format = "range:1:256:samples:uint",
-        .encoded = initial,
+        .format = {{"type", "range"}, {"min", 1.0f}, {"max", 256.0f}, {"unit", "samples"}, {"value_type", "uint"}},
+        .values = {{"averaging", static_cast<U64>(std::stoull(initial))}},
         .onApply = [&](Parser::Map patch, bool) {
             applied.push_back(std::any_cast<U64>(patch.at("averaging")));
         },
@@ -187,8 +187,8 @@ TEST_CASE("Float range edits preserve finite values outside the slider range",
         .id = "range",
         .name = "range",
         .label = "Range",
-        .format = "range:0:1::float",
-        .encoded = "0.5",
+        .format = {{"type", "range"}, {"min", 0.0f}, {"max", 1.0f}},
+        .values = {{"range", 0.5f}},
         .onApply = [&](Parser::Map patch, bool) {
             applied.push_back(std::any_cast<F32>(patch.at("range")));
         },

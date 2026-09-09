@@ -3,8 +3,6 @@
 
 #include "types.hh"
 
-// TODO: Cleanup parsing.
-
 namespace Jetstream {
 
 struct FlowgraphConfigPathField {
@@ -15,15 +13,13 @@ struct FlowgraphConfigPathField {
         Save,
     };
 
-    void update(Config config) {
+    Result update(Config config) {
         this->config = std::move(config);
         if (this->config.format != parsedFormat) {
             parseFormat();
         }
-        if (this->config.encoded != parsedEncoded) {
-            value = this->config.encoded;
-            parsedEncoded = this->config.encoded;
-        }
+        value.clear();
+        JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, value));
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
@@ -43,6 +39,7 @@ struct FlowgraphConfigPathField {
                 browse();
             },
         });
+        return Result::SUCCESS;
     }
 
     void render(const Sakura::Context& ctx) const {
@@ -54,12 +51,8 @@ struct FlowgraphConfigPathField {
  private:
     void parseFormat() {
         parsedFormat = config.format;
-        extensions.clear();
-        const auto parts = Parser::SplitString(config.format, ":");
-        mode = parts.empty() || parts[0] != "filesave" ? Mode::Open : Mode::Save;
-        if (parts.size() > 1 && !parts[1].empty()) {
-            extensions = Parser::SplitString(parts[1], ",");
-        }
+        mode = Parser::Get<std::string>(config.format, "type") == "filesave" ? Mode::Save : Mode::Open;
+        extensions = Parser::Get<std::vector<std::string>>(config.format, "extensions");
     }
 
     void browse() const {
@@ -79,8 +72,7 @@ struct FlowgraphConfigPathField {
     }
 
     Config config;
-    std::string parsedFormat;
-    std::string parsedEncoded;
+    Parser::Map parsedFormat;
     std::vector<std::string> extensions;
     std::string value;
     Mode mode = Mode::Open;

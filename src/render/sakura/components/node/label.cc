@@ -28,6 +28,7 @@ bool NodeLabel::update(Config config) {
         .tone = impl->config.tone,
         .align = impl->config.align,
         .wrapped = impl->config.wrapped,
+        .clipped = impl->config.clipped,
         .scale = impl->config.scale,
     });
     return true;

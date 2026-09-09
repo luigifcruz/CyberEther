@@ -18,6 +18,7 @@ struct NodeLabel {
         Text::Tone tone = Text::Tone::Primary;
         Text::Align align = Text::Align::Left;
         bool wrapped = false;
+        bool clipped = false;
         F32 scale = 1.0f;
     };
 

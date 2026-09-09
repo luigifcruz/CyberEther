@@ -13,7 +13,7 @@ Result NoteImpl::define() {
     JST_CHECK(defineInterfaceConfig("content",
                                     "Content",
                                     "Markdown text to display.",
-                                    "markdown"));
+                                    {{"type", "markdown"}}));
 
     return Result::SUCCESS;
 }

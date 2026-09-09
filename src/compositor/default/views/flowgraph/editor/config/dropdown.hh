@@ -3,27 +3,26 @@
 
 #include "types.hh"
 
-// TODO: Cleanup parsing.
-
 namespace Jetstream {
 
 struct FlowgraphConfigDropdownField {
     using Config = FlowgraphConfigFieldConfig;
 
-    void update(Config config) {
+    Result update(Config config) {
         this->config = std::move(config);
         if (this->config.format != parsedFormat) {
             parseFormat();
         }
-        if (this->config.encoded != parsedEncoded) {
-            currentIndex = 0;
-            for (U64 i = 0; i < keys.size(); ++i) {
-                if (keys[i] == this->config.encoded) {
-                    currentIndex = static_cast<int>(i);
-                    break;
-                }
+        std::string selected;
+        if (this->config.values.contains(this->config.name)) {
+            JST_CHECK(Parser::TypedToString(this->config.values.at(this->config.name), selected));
+        }
+        currentIndex = -1;
+        for (U64 i = 0; i < values.size(); ++i) {
+            if (values[i] == selected) {
+                currentIndex = static_cast<int>(i);
+                break;
             }
-            parsedEncoded = this->config.encoded;
         }
         frame.update({
             .id = this->config.id,
@@ -34,19 +33,16 @@ struct FlowgraphConfigDropdownField {
             .id = this->config.id + "Combo",
             .options = labels,
             .value = currentLabel(),
-            .onChange = [this](const std::string& label) {
-                for (U64 i = 0; i < labels.size(); ++i) {
-                    if (labels[i] == label) {
-                        Parser::Map patch;
-                        patch[this->config.name] = keys[i];
-                        if (this->config.onApply) {
-                            this->config.onApply(std::move(patch), false);
-                        }
-                        return;
-                    }
+            .selectedIndex = currentIndex >= 0 ? std::optional<U64>(currentIndex) : std::nullopt,
+            .onSelect = [this](U64 index) {
+                Parser::Map patch;
+                patch[this->config.name] = values.at(index);
+                if (this->config.onApply) {
+                    this->config.onApply(std::move(patch), false);
                 }
             },
         });
+        return Result::SUCCESS;
     }
 
     void render(const Sakura::Context& ctx) const {
@@ -58,42 +54,26 @@ struct FlowgraphConfigDropdownField {
  private:
     std::string currentLabel() const {
         if (currentIndex < 0 || static_cast<U64>(currentIndex) >= labels.size()) {
-            return {};
+            return "Selection unavailable";
         }
         return labels[static_cast<U64>(currentIndex)];
     }
 
     void parseFormat() {
         parsedFormat = config.format;
-        keys.clear();
+        values.clear();
         labels.clear();
-
-        const auto separator = config.format.find(':');
-        std::string options;
-        if (separator != std::string::npos) {
-            options = config.format.substr(separator + 1);
-        }
-        for (auto token : Parser::SplitString(options, ",")) {
-            if (token.empty()) continue;
-
-            const auto open = token.find('(');
-            const auto close = token.rfind(')');
-            if (open != std::string::npos && close != std::string::npos && close > open) {
-                keys.push_back(token.substr(0, open));
-                labels.push_back(token.substr(open + 1, close - open - 1));
-            } else {
-                keys.push_back(token);
-                labels.push_back(token);
-            }
+        for (const auto& option : Parser::Get<std::vector<Parser::Map>>(config.format, "options")) {
+            labels.push_back(Parser::Get<std::string>(option, "label"));
+            values.push_back(Parser::Get<std::string>(option, "value"));
         }
     }
 
     Config config;
-    std::string parsedFormat;
-    std::string parsedEncoded;
-    std::vector<std::string> keys;
+    Parser::Map parsedFormat;
+    std::vector<std::string> values;
     std::vector<std::string> labels;
-    int currentIndex = 0;
+    int currentIndex = -1;
     Sakura::NodeField frame;
     Sakura::NodeCombo combo;
 };

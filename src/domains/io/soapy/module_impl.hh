@@ -2,80 +2,20 @@
 #define JETSTREAM_DOMAINS_IO_SOAPY_MODULE_IMPL_HH
 
 #include <atomic>
-#include <cmath>
-#include <cstddef>
-#include <map>
 #include <thread>
-#include <vector>
-
-#include <SoapySDR/Device.hpp>
-#include <SoapySDR/Types.hpp>
 
 #include <jetstream/domains/io/soapy/module.hh>
 #include <jetstream/detail/module_impl.hh>
 #include <jetstream/tools/circular_buffer.hh>
 #include <jetstream/tools/snapshot.hh>
 
+#include "soapysdr.hh"
+
 namespace Jetstream::Modules {
 
-inline bool SoapyRangeContains(const std::vector<SoapySDR::Range>& ranges, const F32 value) {
-    for (const auto& range : ranges) {
-        const F32 minimum = static_cast<F32>(range.minimum());
-        const F32 maximum = static_cast<F32>(range.maximum());
-        if (value < minimum || value > maximum) {
-            continue;
-        }
-
-        const double step = range.step();
-        if (!std::isfinite(step) || step <= 0.0) {
-            return true;
-        }
-
-        const double stepCount = std::round((static_cast<double>(value) - range.minimum()) / step);
-        const F32 closest = static_cast<F32>(range.minimum() + stepCount * step);
-        if (value == closest) {
-            return true;
-        }
-    }
-    return false;
-}
-
-struct SoapyImpl : public Module::Impl, public DynamicConfig<Soapy> {
+struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy> {
  public:
-    using DeviceEntry = std::map<std::string, std::string>;
-    using DeviceList = std::map<std::string, DeviceEntry>;
-
-    static DeviceList DeviceListFromEntries(const SoapySDR::KwargsList& entries) {
-        DeviceList devices;
-        for (const auto& entry : entries) {
-            const auto labelIt = entry.find("label");
-            const auto driverIt = entry.find("driver");
-            std::string label = "SoapySDR Device";
-            if (labelIt != entry.end() && !labelIt->second.empty()) {
-                label = labelIt->second;
-            } else if (driverIt != entry.end() && !driverIt->second.empty()) {
-                label = driverIt->second;
-            }
-
-            std::string uniqueLabel = label;
-            if (devices.contains(uniqueLabel)) {
-                const auto serialIt = entry.find("serial");
-                if (serialIt != entry.end() && !serialIt->second.empty() &&
-                    label.find(serialIt->second) == std::string::npos) {
-                    uniqueLabel = label + " [" + serialIt->second + "]";
-                }
-
-                const std::string uniqueLabelBase = uniqueLabel;
-                U64 suffix = 2;
-                while (devices.contains(uniqueLabel)) {
-                    uniqueLabel = uniqueLabelBase + " #" + std::to_string(suffix++);
-                }
-            }
-
-            devices.emplace(std::move(uniqueLabel), entry);
-        }
-        return devices;
-    }
+    ~SoapyImpl() override;
 
     Result validate() override;
     Result define() override;
@@ -83,12 +23,10 @@ struct SoapyImpl : public Module::Impl, public DynamicConfig<Soapy> {
     Result destroy() override;
     Result reconfigure() override;
 
-    static Result LoadModulePath(const std::string& path);
-    static DeviceList ListAvailableDevices(const std::string& filter = "");
-    static std::string DeviceEntryToString(const DeviceEntry& entry);
-
     F32 getBufferHealth() const;
+    F64 getBufferLoss() const;
     std::pair<F32, F32> getThroughput() const;
+    std::vector<std::string> listAntennas() const;
 
     Result setTunerFrequency(const F32& frequency);
     Result setSampleRate(const F32& sampleRate);
@@ -97,14 +35,6 @@ struct SoapyImpl : public Module::Impl, public DynamicConfig<Soapy> {
 
  protected:
     Tensor buffer;
-
-    SoapySDR::Device* soapyDevice = nullptr;
-    SoapySDR::Stream* soapyStream = nullptr;
-    bool biasTeeSupported = false;
-    bool biasTeeNeedsCleanup = false;
-
-    std::vector<SoapySDR::Range> sampleRateRanges;
-    std::vector<SoapySDR::Range> frequencyRanges;
 
     U64 validatedOutputSizeBytes = 0;
     U64 validatedInternalElements = 0;
@@ -120,6 +50,14 @@ struct SoapyImpl : public Module::Impl, public DynamicConfig<Soapy> {
     Tools::Snapshot<std::pair<F32, F32>> throughput{{0.0f, 0.0f}};
 
     Result soapyThreadLoop();
+
+ private:
+    SoapyReceiver receiverDevice;
+
+    Result allocateBuffers();
+    Result configureDevice(const SoapySDR::Kwargs& streamArgs);
+    Result startReceiver();
+    void stopReceiver();
 };
 
 }  // namespace Jetstream::Modules

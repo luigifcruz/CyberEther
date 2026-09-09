@@ -58,7 +58,7 @@ void RequireAdsbValidationError(const Registry::ModuleRegistration& impl,
     REQUIRE(adsb != nullptr);
     REQUIRE((adsb->*AdsbImplAccess::inputMember()).empty());
     REQUIRE((adsb->*AdsbImplAccess::aircraftMapMember()).empty());
-    REQUIRE(adsb->getAircraftTable() == "No aircraft detected.");
+    REQUIRE(adsb->getAircraftTable().empty());
 }
 
 }  // namespace
@@ -682,7 +682,10 @@ TEST_CASE("ADS-B - Metadata Validation Preserves Live State",
             const Tensor& activeInput = adsb->*AdsbImplAccess::inputMember();
             const Index inputId = activeInput.id();
             REQUIRE(module->outputs().empty());
-            REQUIRE(adsb->getAircraftTable() == "No aircraft detected.");
+            const auto emptyTable = adsb->getAircraftTable();
+            REQUIRE(Parser::Get<std::vector<std::string>>(emptyTable, "columns") ==
+                    std::vector<std::string>{"ICAO", "Callsign", "Alt (ft)", "Speed (kt)", "Hdg", "Lat", "Lon"});
+            REQUIRE(Parser::Get<std::vector<std::vector<std::string>>>(emptyTable, "rows").empty());
             auto& aircraft = adsb->*AdsbImplAccess::aircraftMapMember();
             auto& tableDirty = adsb->*AdsbImplAccess::aircraftTableDirtyMember();
             aircraft[0xABC123] = {
@@ -692,7 +695,8 @@ TEST_CASE("ADS-B - Metadata Validation Preserves Live State",
             tableDirty = true;
             adsb->updateAircraftTable();
             const auto table = adsb->getAircraftTable();
-            REQUIRE(table.find("ABC123\tTEST123\t-\t-\t-\t38.0000\t-122.0000\n") != std::string::npos);
+            REQUIRE(Parser::Get<std::vector<std::vector<std::string>>>(table, "rows") ==
+                    std::vector<std::vector<std::string>>{{"ABC123", "TEST123", "-", "-", "-", "38.0000", "-122.0000"}});
             REQUIRE_FALSE(tableDirty);
             adsb->updateAircraftTable();
             REQUIRE(adsb->getAircraftTable() == table);
@@ -715,7 +719,7 @@ TEST_CASE("ADS-B - Metadata Validation Preserves Live State",
             aircraft.clear();
             tableDirty = true;
             adsb->updateAircraftTable();
-            REQUIRE(adsb->getAircraftTable() == "No aircraft detected.");
+            REQUIRE(adsb->getAircraftTable() == emptyTable);
 
             REQUIRE(input.setAttribute("sampleRate", F32{2e6f}) == Result::SUCCESS);
             REQUIRE(adsb->validate() == Result::SUCCESS);
