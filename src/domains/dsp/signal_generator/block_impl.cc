@@ -157,7 +157,8 @@ Result SignalGeneratorImpl::define() {
 
     JST_CHECK(defineInterfaceConfig("bufferSize",
                                     "Buffer Size",
-                                    "Samples generated per processing cycle.",
+                                    "Samples generated per cycle and the FFT size "
+                                    "downstream.",
                                     {{"type", "uint"}, {"unit", "samples"}}));
 
     return Result::SUCCESS;

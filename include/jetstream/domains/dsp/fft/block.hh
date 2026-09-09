@@ -16,7 +16,8 @@ struct Fft : public Block::Config {
         "FFT",
         "Performs the Fast Fourier Transform.",
         "# FFT\n"
-        "The FFT block computes the Fast Fourier Transform of the input signal, converting "
+        "The FFT block computes the Fast Fourier Transform of the input signal along its "
+        "sample axis, whose length is set upstream and fixes the transform size, converting "
         "time-domain data to frequency-domain representation. It supports both forward and "
         "inverse transforms for complex and real data types.\n\n"
 

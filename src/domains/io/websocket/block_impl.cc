@@ -69,7 +69,7 @@ Result WebsocketImpl::define() {
 
     JST_CHECK(defineInterfaceConfig("numberOfTimeSamples",
                                     "Samples",
-                                    "Number of samples per batch.",
+                                    "Samples per batch and the FFT size downstream.",
                                     {{"type", "uint"}, {"unit", "samples"}}));
 
     JST_CHECK(defineInterfaceConfig("bufferMultiplier",

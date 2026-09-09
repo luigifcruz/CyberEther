@@ -20,7 +20,8 @@ struct SpectrumEngine : public Block::Config {
         "# Spectrum Engine\n"
         "The Spectrum Engine block computes the frequency spectrum of the input "
         "signal through a configurable processing chain. It applies a Blackman "
-        "window, performs FFT, and optionally applies AGC and range scaling to "
+        "window, performs an FFT sized by the input sample axis, and optionally "
+        "applies AGC and range scaling to "
         "produce the final spectrum output in decibels.\n\n"
 
         "The input must identify its sample dimension with `sampleAxis`. Optional "

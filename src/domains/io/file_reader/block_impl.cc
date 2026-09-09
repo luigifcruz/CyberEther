@@ -53,7 +53,7 @@ Result FileReaderImpl::define() {
 
     JST_CHECK(defineInterfaceConfig("batchSize",
                                     "Batch Size",
-                                    "Number of samples to read per processing cycle.",
+                                    "Samples read per cycle and the FFT size downstream.",
                                     {{"type", "uint"}, {"unit", "samples"}}));
 
     JST_CHECK(defineInterfaceConfig("loop",

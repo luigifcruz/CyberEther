@@ -48,7 +48,8 @@ struct SignalGenerator : public Block::Config {
         "- **Start/End Frequency**: Chirp endpoints in Hz. CF32 chirps may "
         "ascend, descend, or cross zero.\n"
         "- **Duration**: Duration of each repeated chirp sweep.\n"
-        "- **Buffer Size**: Samples generated per processing cycle.\n\n"
+        "- **Buffer Size**: Samples generated per cycle and the FFT size "
+        "downstream.\n\n"
 
         "## Useful For\n"
         "- Creating test signals for system verification and debugging.\n"

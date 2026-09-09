@@ -15,7 +15,8 @@ struct Window : public Block::Config {
         "Window",
         "Generates a Blackman window function.",
         "# Window\n"
-        "The Window block generates a Blackman window of the specified size. "
+        "The Window block generates a Blackman window of the specified size, normally "
+        "the sample axis length of the signal it multiplies. "
         "The window coefficients are computed once and cached for efficient reuse. "
         "Blackman windows provide excellent sidelobe suppression, making them ideal "
         "for spectral analysis applications.\n\n"
