@@ -50,6 +50,9 @@ struct FlowgraphWindow {
             "Use Ctrl+C and Ctrl+V to copy and paste blocks.",
             "Hover over ports to see their data type.",
             "Click and drag on empty canvas to pan around.",
+            "Hover over diagnostic icons for details.",
+            "Right-click and reload a block to retry.",
+            "Right-click a block for its documentation.",
         };
 
         const std::string title = this->config.title.empty() ? this->config.id : this->config.title;
@@ -122,13 +125,15 @@ struct FlowgraphWindow {
             hint.update({
                 .id = this->config.id + ":empty-hint",
                 .title = "Getting Started",
-                .subtitle = "Let's get started by adding your first block",
+                .subtitle = "Add your first block to get started.",
                 .steps = {
                     "Double-click anywhere on the canvas.",
                     "Pick a block from the menu.",
-                    "Connect blocks to build your flow.",
+                    "Connect block outputs to inputs.",
+                    "Processing starts automatically.",
                 },
                 .hints = flowgraphHints,
+                .size = {420.0f, 380.0f},
             });
         }
 

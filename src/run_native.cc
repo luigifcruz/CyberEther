@@ -4,6 +4,9 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <functional>
 #include <limits>
 #include <optional>
 #include <string_view>
@@ -22,6 +25,14 @@
 #include "jetstream/benchmark.hh"
 
 #include "updater.hh"
+
+#if defined(JST_OS_WINDOWS)
+#define WIN32_LEAN_AND_MEAN
+#include <io.h>
+#include <windows.h>
+#undef ERROR
+#undef FATAL
+#endif
 
 namespace Jetstream {
 
@@ -409,6 +420,39 @@ static void printUsage(const char* program,
 }
 
 int Run(int argc, char* argv[]) {
+#if defined(JST_OS_WINDOWS)
+    const auto streamHandle = [](FILE* stream) -> HANDLE {
+        const int descriptor = _fileno(stream);
+        return descriptor < 0 ? INVALID_HANDLE_VALUE
+                              : reinterpret_cast<HANDLE>(_get_osfhandle(descriptor));
+    };
+
+    // Attaching can replace the process standard handles. Retain any existing
+    // CRT streams so shell redirection and in-process captures keep working.
+    const HANDLE outputHandle = streamHandle(stdout);
+    const HANDLE errorHandle = streamHandle(stderr);
+
+    if (GetConsoleCP() != 0 || AttachConsole(ATTACH_PARENT_PROCESS)) {
+        const auto connect = [](FILE* stream, DWORD id, HANDLE handle) {
+            if (handle != nullptr && handle != INVALID_HANDLE_VALUE &&
+                GetFileType(handle) != FILE_TYPE_UNKNOWN) {
+                (void)SetStdHandle(id, handle);
+                return;
+            }
+
+            FILE* reopened = nullptr;
+            if (freopen_s(&reopened, "CONOUT$", "w", stream) == 0) {
+                (void)SetStdHandle(id, reinterpret_cast<HANDLE>(
+                    _get_osfhandle(_fileno(reopened))));
+            }
+        };
+
+        // Reopen in the library's CRT, which owns the CLI output streams.
+        connect(stdout, STD_OUTPUT_HANDLE, outputHandle);
+        connect(stderr, STD_ERROR_HANDLE, errorHandle);
+    }
+#endif
+
     LogLevelGuard runLogLevel(_JST_LOG_DEBUG_LEVEL());
 
     CommandType command = CommandType::Run;
@@ -875,10 +919,82 @@ int Run(int argc, char* argv[]) {
         return RunUpdateCommand(installUpdate);
     }
 
+    if (command == CommandType::Run && !flowgraphPath.empty()) {
+        const auto path = Platform::PathFromUtf8(flowgraphPath);
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(path, ec) ||
+            !std::ifstream(path, std::ios::binary)) {
+            return PrintUsageError(argv[0], jst::fmt::format(
+                "Can't open flowgraph file '{}'. Expected a readable file.", flowgraphPath));
+        }
+    }
+
     std::optional<LogLevelGuard> benchmarkLogLevel;
     if (command == CommandType::Benchmark) {
         benchmarkLogLevel.emplace(-1);
     }
+
+    std::optional<InterruptHandlerGuard> interruptHandler;
+    std::thread computeThread;
+    std::thread graphicalThread;
+    bool instanceCreated = false;
+    bool cleanedUp = false;
+
+    const auto cleanup = [&] {
+        if (cleanedUp) {
+            return;
+        }
+        cleanedUp = true;
+
+        if (interruptHandler.has_value()) {
+            shutdownRequested.test_and_set(std::memory_order_relaxed);
+        }
+        supervisor.reset();
+
+        try {
+            if (instanceCreated && (instance->computing() || instance->presenting())) {
+                (void)instance->stop();
+            }
+        } catch (...) {
+            JST_ERROR("[CYBERETHER] Failed to stop instance during cleanup.");
+        }
+
+        if (computeThread.joinable()) {
+            computeThread.join();
+        }
+        if (graphicalThread.joinable()) {
+            graphicalThread.join();
+        }
+
+        try {
+            if (instanceCreated && instance->remote() && instance->remote()->started()) {
+                (void)instance->remote()->destroy();
+            }
+        } catch (...) {
+            JST_ERROR("[CYBERETHER] Failed to destroy remote during cleanup.");
+        }
+
+        try {
+            if (instanceCreated) {
+                (void)instance->destroy();
+            }
+        } catch (...) {
+            JST_ERROR("[CYBERETHER] Failed to destroy instance during cleanup.");
+        }
+
+        flowgraph.reset();
+        instance.reset();
+        Backend::DestroyAll();
+    };
+
+    struct CleanupGuard {
+        std::function<void()> callback;
+
+        ~CleanupGuard() {
+            callback();
+        }
+    };
+    const CleanupGuard cleanupGuard{cleanup};
 
     JST_INFO("[CYBERETHER] Running native app.");
 
@@ -926,8 +1042,8 @@ int Run(int argc, char* argv[]) {
     //
 
     if (command == CommandType::Run) {
-        InterruptHandlerGuard interruptHandler;
-        if (!interruptHandler.installed()) {
+        interruptHandler.emplace();
+        if (!interruptHandler->installed()) {
             JST_WARN("[CYBERETHER] Interrupt handling is unavailable.");
         }
 
@@ -940,6 +1056,7 @@ int Run(int argc, char* argv[]) {
         instance = std::make_shared<Instance>();
 
         const Result createResult = instance->create(config);
+        instanceCreated = createResult == Result::SUCCESS;
 
         // The compositor initializes from the effective CLI settings. Restore
         // retained settings before later UI changes can persist CLI overrides.
@@ -953,29 +1070,24 @@ int Run(int argc, char* argv[]) {
 
         if (!flowgraphPath.empty()) {
             if (instance->flowgraphCreate("main", {}, flowgraph) != Result::SUCCESS) {
-                (void)instance->destroy();
                 return -1;
             }
             if (flowgraph->importFromFile(flowgraphPath) != Result::SUCCESS) {
-                (void)instance->destroy();
                 return -1;
             }
         }
 
         if (instance->start() != Result::SUCCESS) {
-            (void)instance->destroy();
             return -1;
         }
 
         if (remoteEnabled) {
             if (instance->remote()->create(remoteConfig) != Result::SUCCESS) {
-                (void)instance->stop();
-                (void)instance->destroy();
                 return -1;
             }
         }
 
-        auto computeThread = std::thread([&]{
+        computeThread = std::thread([&]{
             while (instance->computing()) {
                 Result res = Result::SUCCESS;
 
@@ -1000,7 +1112,7 @@ int Run(int argc, char* argv[]) {
             }
         });
 
-        auto graphicalThread = std::thread([&]{
+        graphicalThread = std::thread([&]{
             while (instance->presenting()) {
                 Result res = Result::SUCCESS;
 
@@ -1041,34 +1153,7 @@ int Run(int argc, char* argv[]) {
             }
         }
 
-        // Treat Ctrl+C during teardown as a force-shutdown request even when
-        // shutdown began through a window close or worker failure.
-        shutdownRequested.test_and_set(std::memory_order_relaxed);
-
-        if (supervisor) {
-            supervisor->stop();
-        }
-
-        if (instance->computing() || instance->presenting()) {
-            (void)instance->stop();
-        }
-
-        if (computeThread.joinable()) {
-            computeThread.join();
-        }
-
-        if (graphicalThread.joinable()) {
-            graphicalThread.join();
-        }
-
-        if (remoteEnabled && instance->remote()->started()) {
-            (void)instance->remote()->destroy();
-        }
-
-        (void)instance->destroy();
-
-        Backend::DestroyAll();
-
+        cleanup();
         return code.load();
     }
 

@@ -175,7 +175,11 @@ struct MenubarPresenter {
                         enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::Developer});
                         break;
                     case MenubarView::Action::GettingStarted:
+                        enqueue(MailOpenUrl{.url = "https://cyberether.org/docs/quick-start", .notifyResult = true});
+                        break;
                     case MenubarView::Action::Documentation:
+                        enqueue(MailOpenUrl{.url = "https://cyberether.org/docs", .notifyResult = true});
+                        break;
                     case MenubarView::Action::OpenRepository:
                         enqueue(MailOpenUrl{.url = "https://github.com/luigifcruz/CyberEther", .notifyResult = true});
                         break;
