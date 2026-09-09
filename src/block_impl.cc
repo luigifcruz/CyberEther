@@ -374,6 +374,19 @@ Result Block::Impl::defineInterfaceConfig(const std::string& key,
     return Result::SUCCESS;
 }
 
+Result Block::Impl::updateInterfaceConfigFormat(const std::string& key,
+                                                const Parser::Map& format) {
+    JST_CHECK(Interface::ValidateFormat(format));
+    for (auto& [configKey, entry] : _interface->impl->configs) {
+        if (configKey == key) {
+            entry.format = format;
+            return Result::SUCCESS;
+        }
+    }
+    JST_ERROR("[BLOCK] Config '{}' doesn't exist", key);
+    return Result::ERROR;
+}
+
 Result Block::Impl::defineInterfaceMetric(const std::string& key,
                                           const std::string& label,
                                           const std::string& help,

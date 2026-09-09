@@ -188,6 +188,8 @@ struct LifecycleChildConfig : Module::Config {
 struct LifecycleChildModule;
 
 struct SyntheticBlockImpl : Block::Impl {
+    using Block::Impl::updateInterfaceConfigFormat;
+
     std::shared_ptr<BlockProbe> probe;
     std::shared_ptr<SyntheticBlockConfig> staged;
     std::shared_ptr<SyntheticBlockConfig> candidate;
@@ -988,6 +990,40 @@ TEST_CASE("Block lifecycle hooks observe committed state in order", "[core][life
     REQUIRE(bundle.block->config(config) == Result::SUCCESS);
     REQUIRE(std::any_cast<std::string>(config.at("value")) == "active");
     REQUIRE(bundle.probe->events.back() == "block.staged.serialize");
+}
+
+TEST_CASE("Block config format updates preserve the declared interface",
+          "[core][lifecycle][block][interface]") {
+    auto bundle = MakeBlock();
+    bundle.probe->declareConfig = true;
+    bundle.probe->declareMetric = true;
+    bundle.probe->declareOutput = true;
+    bundle.probe->produceOutput = true;
+    REQUIRE(bundle.block->create("lifecycle-block", DeviceType::CPU, RuntimeType::NATIVE,
+                                 kLifecycleProvider, {}, {}, MakeBlockContext()) == Result::SUCCESS);
+
+    const auto interface = bundle.block->interface();
+    const auto original = interface->configs().front();
+    const Parser::Map format{{"type", "dropdown"}, {"options", Parser::Sequence{
+        Parser::Map{{"label", "Discovered choice"}, {"value", "choice"}},
+    }}};
+    REQUIRE(bundle.impl->updateInterfaceConfigFormat("value", format) == Result::SUCCESS);
+    REQUIRE(bundle.impl->updateInterfaceConfigFormat("missing", format) == Result::ERROR);
+    REQUIRE(bundle.impl->updateInterfaceConfigFormat("value", {{"type", "dropdown"}}) == Result::ERROR);
+
+    REQUIRE(bundle.block->interface() == interface);
+    REQUIRE(interface->configs().size() == 1);
+    const auto& [key, entry] = interface->configs().front();
+    REQUIRE(key == original.first);
+    REQUIRE(entry.label == original.second.label);
+    REQUIRE(entry.help == original.second.help);
+    REQUIRE(entry.format == format);
+    REQUIRE(interface->outputs().size() == 1);
+    REQUIRE(interface->metrics().size() == 1);
+    REQUIRE(std::any_cast<std::string>(interface->metrics().front().second.metric()) == "ready");
+    REQUIRE(std::count(bundle.probe->events.begin(), bundle.probe->events.end(),
+                       "block.define:initial") == 1);
+    REQUIRE(bundle.block->destroy() == Result::SUCCESS);
 }
 
 TEST_CASE("Module lifecycle hooks observe committed state in order", "[core][lifecycle][module]") {
