@@ -42,7 +42,7 @@ struct Soapy : public Block::Config {
         "- **Automatic Gain**: Enable automatic gain control.\n"
         "- **Bias-T**: Enable antenna power when supported by the device.\n"
         "- **Number of Batches**: Number of batches in output buffer.\n"
-        "- **Number of Time Samples**: Samples per batch.\n"
+        "- **Number of Time Samples**: Samples per batch and the FFT size downstream.\n"
         "- **Buffer Multiplier**: Internal buffer size multiplier.\n\n"
 
         "## Useful For\n"

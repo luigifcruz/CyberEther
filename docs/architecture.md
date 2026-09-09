@@ -40,9 +40,10 @@ The synchronous scheduler mediates between them with a priority rule: present ne
 
 Graph mutations can originate from either thread, and from others besides, since the compositor mutates on the present thread, host code and remote endpoints mutate from their own threads, and the incomplete-block retry mutates from the compute thread. The flowgraph serializes all of it behind a mutation lock, and the scheduler halts compute around structural changes, so block authors never see a half-mutated graph.
 
-Two consequences worth internalizing:
+Three consequences worth internalizing:
 
 - Anything called from the compute path must not block, or the entire flowgraph stalls. Sources are the single exception, and only inside `hasPendingCompute()`.
+- Shapes are settled when a block is created. The pipeline buffers are prepared then and reused on every cycle, and a change that alters a shape is a graph mutation rather than something the running pipeline absorbs.
 - Render resources are bound through queues processed at frame boundaries, so creating blocks with surfaces is safe from any thread. That is what makes the retry and remote paths sound.
 
 ## Paths Worth Tracing

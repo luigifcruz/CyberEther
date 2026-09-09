@@ -31,8 +31,9 @@ struct SpectrumAnalyzer : public Block::Config {
         "Spectrum trace and waterfall in one view.",
         "# Spectrum Analyzer\n"
         "The Spectrum Analyzer accepts complex samples, computes a normalized "
-        "spectrum, and renders a line trace above a scrolling waterfall on one "
-        "surface. Both views share horizontal zoom and pan.\n\n"
+        "spectrum sized by the input sample axis, and renders a line trace above "
+        "a scrolling waterfall on one surface. Both views share horizontal zoom "
+        "and pan.\n\n"
 
         "The input must identify its sample dimension with `sampleAxis`. An "
         "optional `batchAxis` is averaged into the line trace and appended to "

@@ -28,7 +28,7 @@ struct FileReader : public Block::Config {
         "- **File Path**: Path to the raw binary file to read.\n"
         "- **File Format**: The format of the input file (e.g., Raw).\n"
         "- **Data Type**: The data type of samples in the file.\n"
-        "- **Batch Size**: Number of samples to read per processing cycle.\n"
+        "- **Batch Size**: Samples read per cycle and the FFT size downstream.\n"
         "- **Loop**: Whether to loop back to the start when reaching the end of the file.\n"
         "- **Playing**: Start or stop reading from the file.\n\n"
 

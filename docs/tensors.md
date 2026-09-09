@@ -13,7 +13,7 @@ A tensor is described by five things:
 
 - A **data type** from the numeric ladder: `I8` to `I64`, `U8` to `U64`, `F32`, `F64`, the complex floats `CF32` and `CF64`, and the complex integers `CI8` to `CI64` and `CU8` to `CU64`.
 - A **device** where its native buffer lives: `CPU`, `CUDA`, `Metal`, or `Vulkan`. WebGPU is a graphics-only backend and does not host tensor storage.
-- A **shape** and **strides** describing the n-dimensional layout. A freshly created tensor is contiguous, and `contiguous()` reports whether it still is after view operations.
+- A **shape** and **strides** describing the n-dimensional layout. The storage is sized once at creation. Reshaping, slicing, and broadcasting change how a handle presents that storage, never how much of it there is. A freshly created tensor is contiguous, and `contiguous()` reports whether it still is after view operations.
 - An **offset** for views that start inside a parent buffer.
 - **Attributes**, the named metadata such as `sampleRate` that travels with the tensor, covered in [Metadata](/docs/metadata#tensor-attributes).
 

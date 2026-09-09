@@ -28,7 +28,8 @@ struct Websocket : public Block::Config {
         "- **URL**: WebSocket server URL.\n"
         "- **Data Type**: Sample format of incoming data.\n"
         "- **Number of Batches**: Number of batches in output buffer.\n"
-        "- **Number of Time Samples**: Samples per batch.\n"
+        "- **Number of Time Samples**: Samples per batch and the FFT size "
+        "downstream.\n"
         "- **Buffer Multiplier**: Internal buffer size multiplier.\n\n"
 
         "## Useful For\n"
