@@ -11,9 +11,23 @@ layout(set = 0, binding = 0) uniform FrameUniforms {
     int height;
     int channels;
     int useLut;
+    int interpolate;
+    float rangeMin;
+    float rangeScale;
+    float zoom;
+    float centerX;
+    float centerY;
+    float fitScaleX;
+    float fitScaleY;
+    float paddingScaleX;
+    float paddingScaleY;
 } uniforms;
 
 void main() {
-    gl_Position = vec4(inPosition, 1.0);
+    vec4 position = vec4(inPosition, 1.0);
+    position.x *= uniforms.paddingScaleX;
+    position.y *= uniforms.paddingScaleY;
+
+    gl_Position = position;
     outTexcoord = inTexcoord;
 }

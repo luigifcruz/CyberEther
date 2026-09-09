@@ -1,5 +1,6 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <algorithm>
 #include <vector>
@@ -10,7 +11,8 @@
 using namespace Jetstream;
 
 TEST_CASE("Superluminal forwards captured moves and release outside the surface",
-          "[core][sakura][superluminal][surface][capture]") {
+           "[core][sakura][superluminal][surface][capture]") {
+    const auto button = GENERATE(ImGuiMouseButton_Left, ImGuiMouseButton_Right);
     SakuraTest::HeadlessUi ui;
     const ImVec2 origin{20.0f, 20.0f};
     const ImVec2 size{200.0f, 100.0f};
@@ -19,10 +21,12 @@ TEST_CASE("Superluminal forwards captured moves and release outside the surface"
     interaction.zoom = 2.0f;
     const auto frame = [&](const ImVec2& position, bool down) {
         events.clear();
-        ui.setMouse(position, down);
+        ui.setMouse(position, button == ImGuiMouseButton_Left && down);
+        ImGui::GetIO().MouseDown[ImGuiMouseButton_Right] = button == ImGuiMouseButton_Right && down;
         ui.frame([&] {
             ImGui::SetCursorScreenPos(origin);
-            ImGui::InvisibleButton("plot", size);
+            ImGui::InvisibleButton("plot", size,
+                                   ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
             detail::ForwardSuperluminalSurfaceMouseEvents(origin, size,
                 [&](const MouseEvent& event) { events.push_back(event); });
         });
@@ -38,7 +42,7 @@ TEST_CASE("Superluminal forwards captured moves and release outside the surface"
     frame({120.0f, 70.0f}, false);
     frame({120.0f, 70.0f}, true);
     REQUIRE(count(MouseEventType::Click) == 1);
-    REQUIRE(interaction.dragging);
+    REQUIRE(interaction.dragging == (button == ImGuiMouseButton_Left));
 
     frame({260.0f, 90.0f}, true);
     CHECK(count(MouseEventType::Move) == 1);
@@ -52,7 +56,7 @@ TEST_CASE("Superluminal forwards captured moves and release outside the surface"
         return event.type == MouseEventType::Release;
     });
     if (released != events.end()) {
-        CHECK(released->button == MouseButton::Left);
+        CHECK(released->button == (button == ImGuiMouseButton_Left ? MouseButton::Left : MouseButton::Right));
         CHECK(released->position.x == Catch::Approx(1.3f));
         CHECK(released->position.y == Catch::Approx(0.8f));
     }
@@ -67,18 +71,21 @@ TEST_CASE("Superluminal forwards captured moves and release outside the surface"
 }
 
 TEST_CASE("Superluminal does not start gestures or scroll outside the surface",
-          "[core][sakura][superluminal][surface][capture]") {
+           "[core][sakura][superluminal][surface][capture]") {
+    const auto button = GENERATE(ImGuiMouseButton_Left, ImGuiMouseButton_Right);
     SakuraTest::HeadlessUi ui;
     const ImVec2 origin{20.0f, 20.0f};
     const ImVec2 size{200.0f, 100.0f};
     std::vector<MouseEvent> events;
     const auto frame = [&](const ImVec2& position, bool down, F32 scroll = 0.0f) {
         events.clear();
-        ui.setMouse(position, down);
+        ui.setMouse(position, button == ImGuiMouseButton_Left && down);
+        ImGui::GetIO().MouseDown[ImGuiMouseButton_Right] = button == ImGuiMouseButton_Right && down;
         ImGui::GetIO().MouseWheel = scroll;
         ui.frame([&] {
             ImGui::SetCursorScreenPos(origin);
-            ImGui::InvisibleButton("plot", size);
+            ImGui::InvisibleButton("plot", size,
+                                   ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
             detail::ForwardSuperluminalSurfaceMouseEvents(origin, size,
                 [&](const MouseEvent& event) { events.push_back(event); });
         });
