@@ -68,6 +68,9 @@ TEST_CASE_METHOD(FlowgraphFixture,
     const auto [label, fraction] = std::any_cast<std::pair<std::string, F32>>(loss->value);
     REQUIRE(label == "0.00%");
     REQUIRE(fraction == 0.0f);
+    REQUIRE(std::none_of(metrics.begin(), metrics.end(), [](const auto& metric) {
+        return metric.name == "deviceOverflows";
+    }));
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,

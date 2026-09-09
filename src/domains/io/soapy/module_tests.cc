@@ -1581,6 +1581,7 @@ TEST_CASE("Soapy receiver resumes samples after timeouts and device overflows",
     auto* soapy = module->getImpl<Modules::SoapyImpl>();
     REQUIRE_FALSE((soapy->*SoapyImplAccess::erroredMember()).load());
     REQUIRE((soapy->*SoapyImplAccess::circularBufferMember()).overflows() == 0);
+    REQUIRE(soapy->getDeviceOverflows() == 2);
     REQUIRE(module->context()->scheduler()->hasPendingCompute() == Result::SUCCESS);
     const auto runtime = std::dynamic_pointer_cast<NativeCpuRuntimeContext>(
         module->context()->runtime());
@@ -1993,7 +1994,7 @@ TEST_CASE_METHOD(SoapySelectionFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Soapy buffer loss metric counts discarded samples and survives draining",
+                 "Soapy buffer loss bar combines discarded samples and device overflows",
                  "[modules][soapy][receive][metrics]") {
     if (Registry::ListAvailableModules("soapy").empty()) {
         SUCCEED("Soapy module is unavailable in this build.");
@@ -2011,7 +2012,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     SECTION("partial and full overwrites count samples rather than events") {
         reads->results = {SOAPY_SDR_TIMEOUT, SOAPY_SDR_OVERFLOW, 8, 8, 4};
-        expected = {"60.00%", 0.6f};
+        expected = {"60.00% (1 OVF)", 0.6f};
     }
 
     SECTION("loss percentage uses two decimal places without a sample count") {
@@ -2022,8 +2023,13 @@ TEST_CASE_METHOD(FlowgraphFixture,
     }
 
     SECTION("device overflows and timeouts do not increase application loss") {
-        reads->results = {SOAPY_SDR_TIMEOUT, SOAPY_SDR_OVERFLOW, 8};
-        expected = {"0.00%", 0.0f};
+        reads->results = {SOAPY_SDR_TIMEOUT, 0, SOAPY_SDR_OVERFLOW, SOAPY_SDR_OVERFLOW, 8};
+        expected = {"0.00% (2 OVF)", 0.0f};
+    }
+
+    SECTION("device overflows are visible before any samples arrive") {
+        reads->results = {SOAPY_SDR_OVERFLOW, SOAPY_SDR_TIMEOUT, SOAPY_SDR_OVERFLOW};
+        expected = {"0.00% (2 OVF)", 0.0f};
     }
 
     SECTION("small losses remain visible in the numeric label") {
@@ -2040,7 +2046,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
         std::vector<Flowgraph::View::MetricEntry> metrics;
         REQUIRE(flowgraph->view().metrics("radio", metrics) == Result::SUCCESS);
         REQUIRE(std::none_of(metrics.begin(), metrics.end(), [](const auto& entry) {
-            return entry.name == "bufferOverruns";
+            return entry.name == "bufferOverruns" || entry.name == "deviceOverflows";
         }));
         const auto it = std::find_if(metrics.begin(), metrics.end(), [](const auto& entry) {
             return entry.name == "bufferLoss";
@@ -2048,12 +2054,15 @@ TEST_CASE_METHOD(FlowgraphFixture,
         REQUIRE(it != metrics.end());
         REQUIRE(it->label == "Buffer Loss");
         REQUIRE(it->format == Parser::Map{{"type", "progressbar"}});
-        REQUIRE(it->help.find("Excludes samples lost inside the device or driver") != std::string::npos);
         return std::any_cast<std::pair<std::string, F32>>(it->value);
     };
     REQUIRE(metric() == expected);
-    REQUIRE(flowgraph->compute() == Result::SUCCESS);
-    REQUIRE(metric() == expected);
+    const bool hasSamples = std::any_of(reads->results.begin(), reads->results.end(),
+                                        [](const int result) { return result > 0; });
+    if (hasSamples) {
+        REQUIRE(flowgraph->compute() == Result::SUCCESS);
+        REQUIRE(metric() == expected);
+    }
 
     Parser::Map update;
     update["frequency"] = 100.0e6f;
