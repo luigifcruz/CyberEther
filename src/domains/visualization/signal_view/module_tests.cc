@@ -241,6 +241,13 @@ std::vector<F32> ReadSignalPoints(const std::shared_ptr<Module>& module) {
                       "signal points");
 }
 
+void RequirePoints(const std::vector<F32>& actual, const std::vector<F32>& expected) {
+    REQUIRE(actual.size() == expected.size());
+    for (U64 i = 0; i < actual.size(); ++i) {
+        REQUIRE(actual[i] == Catch::Approx(expected[i]).margin(1e-6f));
+    }
+}
+
 void RequireSignalViewValidationError(const Registry::ModuleRegistration& impl,
                                       const Modules::SignalView& config,
                                       const Tensor& input) {
@@ -370,6 +377,28 @@ void ApplyReferenceRows(std::vector<F32>& ring,
 }
 
 }  // namespace
+
+TEST_CASE("Signal View amplitude labels invert the soft display mapping",
+          "[modules][signal_view][lineplot][labels][numeric]") {
+    const bool reversed = GENERATE(false, true);
+    const F32 min = reversed ? 0.0f : -100.0f;
+    const F32 max = reversed ? -100.0f : 0.0f;
+    const F32 positions[] = {-0.99505475f, -0.96402758f, -0.76159416f,
+                              0.0f, 0.76159416f, 0.96402758f, 0.99505475f};
+    const char* labels[] = {"-125", "-100", "-75", "-50", "-25", "0", "25"};
+    for (U64 i = 0; i < 7; ++i) {
+        CAPTURE(positions[i], reversed);
+        REQUIRE(Modules::detail::LineplotAmplitudeLabel(positions[i], min, max) == labels[i]);
+    }
+    REQUIRE(Modules::detail::LineplotAmplitudeLabel(0.0f, -200.0f, 0.0f) == "-100");
+    REQUIRE(Modules::detail::LineplotAmplitudeLabel(0.5f, -50.0f, -50.0f) == "-50");
+    for (const F32 position : {-1.0f, 1.0f, -2.0f, 2.0f,
+                               std::numeric_limits<F32>::infinity(),
+                               -std::numeric_limits<F32>::infinity(),
+                               std::numeric_limits<F32>::quiet_NaN()}) {
+        REQUIRE(Modules::detail::LineplotAmplitudeLabel(position, min, max).empty());
+    }
+}
 
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
 TEST_CASE("Axis vertical scale can move the divider without recreating resources",
@@ -1121,8 +1150,8 @@ TEST_CASE("Signal View indexes sample and channel batch layouts equivalently",
                         ComputeSignalViewSnapshot(implementation, leading);
                     const auto trailingSnapshot =
                         ComputeSignalViewSnapshot(implementation, trailing);
-                    REQUIRE(leadingSnapshot.signalPoints == std::vector<F32>{
-                        -1.0f, -0.5f, 0.0f, 0.25f, 1.0f, 0.25f,
+                    RequirePoints(leadingSnapshot.signalPoints, {
+                        -1.0f, -0.76159416f, 0.0f, 0.46211716f, 1.0f, 0.46211716f,
                     });
                     REQUIRE(trailingSnapshot.signalPoints ==
                             leadingSnapshot.signalPoints);
@@ -1469,8 +1498,8 @@ TEST_CASE("Signal View applies independent lineplot and waterfall averaging stre
             input.at<F32>(0) = 0.75f;
             input.at<F32>(1) = 0.25f;
             REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
-            const F32 lineValue = -0.5f + 1.0f / static_cast<F32>(lineplotAveraging);
-            REQUIRE(ReadSignalPoints(module) == std::vector<F32>{-1.0f, lineValue, 1.0f, -lineValue});
+            const F32 lineValue = std::tanh(-1.0f + 2.0f / static_cast<F32>(lineplotAveraging));
+            RequirePoints(ReadSignalPoints(module), {-1.0f, lineValue, 1.0f, -lineValue});
             const std::vector<F32> expectedWaterfall = waterfallAveraging == 1
                 ? std::vector<F32>{0.25f, 0.75f, 0.75f, 0.25f}
                 : (waterfallAveraging == 2
@@ -1482,7 +1511,7 @@ TEST_CASE("Signal View applies independent lineplot and waterfall averaging stre
             const F32 firstHold = lineplotAveraging > 2 ? -1.0f : lineValue;
             const F32 secondHold = lineplotAveraging == 1 ? lineValue
                 : (lineplotAveraging == 2 ? -lineValue : -1.0f);
-            REQUIRE(ReadMaxHoldPoints(module) == std::vector<F32>{
+            RequirePoints(ReadMaxHoldPoints(module), {
                 -1.0f, firstHold, 1.0f, secondHold,
             });
             REQUIRE(runtime.destroy() == Result::SUCCESS);
@@ -1658,7 +1687,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
             const F32 expected = input.at<F32>(index * ratio);
             REQUIRE(points[index * 2] == Catch::Approx(
                 static_cast<F32>(index) * 2.0f / (width - 1) - 1.0f));
-            REQUIRE(points[index * 2 + 1] == Catch::Approx(expected * 2.0f - 1.0f));
+            REQUIRE(points[index * 2 + 1] == Catch::Approx(std::tanh(expected * 4.0f - 2.0f)));
             REQUIRE(bins[index] == expected);
         }
     }
@@ -1732,8 +1761,7 @@ TEST_CASE("Amplitude and Range feed true log averages to both Signal View traces
                 const auto points = ReadSignalPoints(plot);
                 const auto bins = ReadWaterfallBins(plot);
                 const F32 span = config.rangeMax - config.rangeMin;
-                const F32 displayed = std::clamp(
-                    2.0f * (traceDb - config.rangeMin) / span - 1.0f, -1.0f, 1.0f);
+                const F32 displayed = std::tanh(4.0f * (traceDb - config.rangeMin) / span - 2.0f);
                 for (U64 bin = 0; bin < 2; ++bin) {
                     REQUIRE(points[bin * 2 + 1] == Catch::Approx(displayed).margin(0.001f));
                     const F32 measuredDb = config.rangeMin + bins[row * 2 + bin] * span;
@@ -1875,7 +1903,7 @@ TEST_CASE("Signal View averages keep updating after NaN and infinity inputs",
             }
             const auto firstPoints = ReadSignalPoints(module);
             for (U64 bin = 0; bin < 4; ++bin) {
-                REQUIRE(firstPoints[bin * 2 + 1] == Catch::Approx(expected[bin]).margin(1e-6f));
+                REQUIRE(firstPoints[bin * 2 + 1] == Catch::Approx(std::tanh(2.0f * expected[bin])).margin(1e-6f));
             }
             if (waterfallAveraging == 1) {
                 REQUIRE(ReadWaterfallBins(module) == std::vector<F32>{
@@ -1895,7 +1923,7 @@ TEST_CASE("Signal View averages keep updating after NaN and infinity inputs",
                                            static_cast<F32>(step));
                 for (U64 bin = 0; bin < 4; ++bin) {
                     const F32 recovered = 0.5f + (expected[bin] - 0.5f) * decay;
-                    REQUIRE(points[bin * 2 + 1] == Catch::Approx(recovered).margin(1e-6f));
+                    REQUIRE(points[bin * 2 + 1] == Catch::Approx(std::tanh(2.0f * recovered)).margin(1e-6f));
                 }
             }
             REQUIRE(ReadWaterfallBins(module) == std::vector<F32>(8, 0.75f));
@@ -1973,7 +2001,7 @@ TEST_CASE("Signal View clears lineplot history on range reconfiguration",
             const auto freshPoints = ReadSignalPoints(module);
             const auto freshHold = ReadMaxHoldPoints(module);
             for (U64 index = 0; index < input.shape(1); ++index) {
-                REQUIRE(freshPoints[(index * 2) + 1] == -0.5f);
+                REQUIRE(freshPoints[(index * 2) + 1] == Catch::Approx(-0.76159416f));
                 REQUIRE(freshHold[(index * 2) + 1] == -1.0f);
             }
 
@@ -2044,7 +2072,7 @@ TEST_CASE("Signal View clears lineplot history on averaging reconfiguration",
             const auto freshPoints = ReadSignalPoints(module);
             const auto freshHold = ReadMaxHoldPoints(module);
             for (U64 index = 0; index < input.shape(1); ++index) {
-                REQUIRE(freshPoints[(index * 2) + 1] == -0.5f);
+                REQUIRE(freshPoints[(index * 2) + 1] == Catch::Approx(-0.76159416f));
                 REQUIRE(freshHold[(index * 2) + 1] == -1.0f);
             }
 
@@ -2238,7 +2266,7 @@ TEST_CASE("Signal View max hold captures the first observation with averaging on
 
             const auto hold = ReadMaxHoldPoints(module);
             for (U64 index = 0; index < input.shape(1); ++index) {
-                REQUIRE(hold[(index * 2) + 1] == -0.5f);
+                REQUIRE(hold[(index * 2) + 1] == Catch::Approx(-0.76159416f));
             }
 
             REQUIRE(runtime.destroy() == Result::SUCCESS);
@@ -2294,7 +2322,7 @@ TEST_CASE("Signal View max hold captures the seeded trace after its configured w
 
             const auto hold = ReadMaxHoldPoints(module);
             for (U64 index = 0; index < input.shape(1); ++index) {
-                REQUIRE(hold[(index * 2) + 1] == -0.5f);
+                REQUIRE(hold[(index * 2) + 1] == Catch::Approx(-0.76159416f));
             }
 
             REQUIRE(runtime.destroy() == Result::SUCCESS);

@@ -29,7 +29,7 @@ struct Waterfall : public Block::Config {
         "## Arguments\n"
         "- **Height**: Number of rows in the waterfall history buffer.\n"
         "- **Averaging**: Number of spectra averaged per displayed row. "
-        "Finite input values are averaged as received, before display clipping. "
+        "Finite input values are averaged as received, before soft color mapping. "
         "Affine-normalized decibel input is therefore averaged in the log domain.\n\n"
 
         "## Useful For\n"

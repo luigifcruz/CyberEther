@@ -41,15 +41,15 @@ struct SpectrumAnalyzer : public Block::Config {
         "supported.\n\n"
 
         "## Arguments\n"
-        "- **Range Min/Max**: Display range mapped to the analyzer color scale.\n"
+        "- **Range Min/Max**: Reference bounds for the soft display mapping.\n"
         "- **Lineplot Averaging**: Exponential trace smoothing factor across updates, "
         "initialized from the first batch.\n"
         "- **Waterfall Averaging**: Number of spectra averaged per displayed row.\n"
         "- **Max Hold**: Retain the maximum observed trace.\n"
         "- **Waterfall Height**: Number of spectrum rows retained.\n\n"
 
-        "Both averages operate on affine-normalized decibel values before display "
-        "clipping. For ideal Gaussian noise above the numerical floor, log averaging "
+        "Both averages operate on affine-normalized decibel values before soft "
+        "display mapping. For ideal Gaussian noise above the numerical floor, log averaging "
         "has an expected bias of about -2.51 dB relative to mean power expressed "
         "in dB. This is not a universal offset for other signal statistics.\n\n"
 

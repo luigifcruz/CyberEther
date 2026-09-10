@@ -1010,11 +1010,8 @@ void SignalViewImpl::updateLabelState() {
 
         Render::Components::Axis::TickFormatter yFormatter;
         if (lineplotEnabled) {
-            yFormatter = [lower = std::min(rangeMin, rangeMax),
-                          upper = std::max(rangeMin, rangeMax)](const F32 position) {
-                const F32 db = lower +
-                    ((position + 1.0f) * 0.5f) * (upper - lower);
-                return jst::fmt::format("{:.0f}", db);
+            yFormatter = [min = rangeMin, max = rangeMax](const F32 position) {
+                return detail::LineplotAmplitudeLabel(position, min, max);
             };
         }
 

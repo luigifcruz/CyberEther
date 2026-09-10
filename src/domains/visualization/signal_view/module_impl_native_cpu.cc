@@ -125,7 +125,7 @@ Result SignalViewImplNativeCpu::computeSubmit() {
                 average += amplitude / lineplotAveraging;
             }
 
-            const F32 displayed = std::clamp(average, -1.0f, 1.0f);
+            const F32 displayed = std::tanh(2.0f * average);
             signalData[(i * 2) + 1] = displayed;
 
             if (maxData) {

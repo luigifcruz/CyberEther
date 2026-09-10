@@ -58,7 +58,7 @@ extern "C" __global__ void lineplot_update(const float* input,
     }
 
     lineplotAveragingBuffer[index] = average;
-    const float displayed = fminf(fmaxf(average, -1.0f), 1.0f);
+    const float displayed = tanhf(2.0f * average);
     signalPoints[(index * 2) + 1] = displayed;
 
     if (maxHoldEnabled != 0) {
