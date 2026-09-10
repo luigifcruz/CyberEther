@@ -3,6 +3,7 @@
 
 #include <array>
 #include <memory>
+#include <optional>
 
 #include "jetstream/render/base/surface.hh"
 #include "jetstream/render/components/map_layer.hh"
@@ -63,6 +64,22 @@ class GeoMapBaseLayer final : public MapLayer {
         float atmosphereOuterStrength = 0.32f;
         float atmosphereOutlineStrength = 0.48f;
         std::array<float, 3> atmosphereColor = {0.25f, 0.52f, 0.95f};
+
+        // Day and night follow the wall clock unless sunTime pins the sun to a
+        // moment in Unix seconds. The effect belongs to the globe view and
+        // fades out entirely between the two detail zooms. Twilight width is
+        // the sine of the sun elevation over which daylight fades out below
+        // the horizon.
+        bool dayNight = true;
+        std::optional<double> sunTime;
+        float nightFadeStart = 0.5f;
+        float nightFadeEnd = 2.5f;
+        float nightDarkening = 0.62f;
+        float twilightWidth = 0.22f;
+        float dayLift = 0.04f;
+        bool cityLights = true;
+        float cityLightStrength = 0.75f;
+        float urbanLightStrength = 0.75f;
     };
 
     GeoMapBaseLayer();

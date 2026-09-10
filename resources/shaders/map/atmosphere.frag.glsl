@@ -3,6 +3,7 @@
 #extension GL_GOOGLE_include_directive : require
 
 #include "camera.glsl"
+#include "sun.glsl"
 
 layout(location = 0) in vec3 vWorld;
 
@@ -40,7 +41,12 @@ void main() {
     float haze = mix(innerGlow * uniforms.dashScale,
                      outerGlow * uniforms.dashPhase,
                      step(1.0, radius));
-    float alpha = clamp(haze + outline * uniforms.outlineStrength, 0.0, 0.90);
+    // The shell only scatters where the sun reaches it, leaving a faint
+    // airglow on the night limb.
+    float sunlit = mix(1.0, 0.22 + 0.78 * sunDaylight(shellDirection),
+                       sun.direction.w);
+    float alpha = clamp((haze + outline * uniforms.outlineStrength) * sunlit,
+                        0.0, 0.90);
 
     vec3 glowColor = vec3(uniforms.colorR, uniforms.colorG, uniforms.colorB);
     vec3 outlineColor = vec3(0.68, 0.84, 1.00);

@@ -61,6 +61,8 @@ struct JETSTREAM_API MapContext {
     static glm::vec3 LonLatToSphere(F32 lon, F32 lat);
     static glm::vec3 CameraUp(const glm::vec3& normal);
     static F32 WrapLongitude(F32 longitude);
+    static Extent2D<F64> SubsolarPoint(F64 unixSeconds);
+    static glm::vec3 SunDirection(F64 unixSeconds);
 };
 
 class JETSTREAM_API MapNavigation {
