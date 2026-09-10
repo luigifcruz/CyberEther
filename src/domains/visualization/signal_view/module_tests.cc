@@ -1793,14 +1793,15 @@ TEST_CASE("Amplitude and Range feed true log averages to both Signal View traces
                 compute(-25.0f, -25.0f, -25.0f, -25.0f);
                 compute(-100.0f, -50.0f, -75.0f, -37.5f);
             }
-            SECTION("zero bins stay finite and subsequent signals recover") {
+            SECTION("zero bins use the display endpoint at high averaging strength") {
+                constexpr U64 strength = 256;
+                REQUIRE(plot->reconfigure({{"lineplotAveraging", strength}}) == Result::SUCCESS);
                 const F32 silence = -std::numeric_limits<F32>::infinity();
-                F32 traceDb = 20.0f * std::log10(std::numeric_limits<F32>::min()) -
-                              20.0f * std::log10(2.0f);
+                F32 traceDb = config.rangeMin;
                 compute(silence, silence, traceDb, traceDb);
                 for (U64 step = 0; step < 6; ++step) {
-                    traceDb *= 0.5f;
-                    compute(0.0f, 0.0f, 0.0f, traceDb);
+                    traceDb += (-50.0f - traceDb) / static_cast<F32>(strength);
+                    compute(-50.0f, -50.0f, -50.0f, traceDb);
                 }
             }
             REQUIRE(runtime.destroy() == Result::SUCCESS);

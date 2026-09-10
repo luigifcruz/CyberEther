@@ -416,7 +416,7 @@ TEST_CASE("Amplitude - CF32 Various Magnitudes", "[modules][amplitude][magnitude
     }
 }
 
-TEST_CASE("Amplitude - F32 exact zero has a finite numerical floor",
+TEST_CASE("Amplitude - F32 exact zero is negative infinity",
           "[modules][amplitude][f32][zero]") {
     auto implementations = Registry::ListAvailableModules("amplitude");
     REQUIRE(!implementations.empty());
@@ -437,15 +437,13 @@ TEST_CASE("Amplitude - F32 exact zero has a finite numerical floor",
             REQUIRE(ctx.run() == Result::SUCCESS);
 
             auto& out = ctx.output("signal");
-            const F32 floor = 20.0f * std::log10(std::numeric_limits<F32>::min()) -
-                              20.0f * std::log10(2.0f);
-            REQUIRE_THAT(out.at<F32>(0), Catch::Matchers::WithinAbs(floor, 0.02f));
+            REQUIRE(out.at<F32>(0) == -std::numeric_limits<F32>::infinity());
             REQUIRE(std::isfinite(out.at<F32>(1)));
         }
     }
 }
 
-TEST_CASE("Amplitude - CF32 exact zero has a finite numerical floor",
+TEST_CASE("Amplitude - CF32 exact zero is negative infinity",
           "[modules][amplitude][cf32][zero]") {
     auto implementations = Registry::ListAvailableModules("amplitude");
     REQUIRE(!implementations.empty());
@@ -466,9 +464,7 @@ TEST_CASE("Amplitude - CF32 exact zero has a finite numerical floor",
             REQUIRE(ctx.run() == Result::SUCCESS);
 
             auto& out = ctx.output("signal");
-            const F32 floor = 20.0f * std::log10(std::numeric_limits<F32>::min()) -
-                              20.0f * std::log10(2.0f);
-            REQUIRE_THAT(out.at<F32>(0), Catch::Matchers::WithinAbs(floor, 0.02f));
+            REQUIRE(out.at<F32>(0) == -std::numeric_limits<F32>::infinity());
             REQUIRE(std::isfinite(out.at<F32>(1)));
         }
     }
@@ -490,7 +486,7 @@ TEST_CASE("Amplitude - Complex magnitude avoids intermediate underflow and overf
             ctx.setInput("signal", input);
             REQUIRE(ctx.run() == Result::SUCCESS);
             const auto& out = ctx.output("signal");
-            const F64 magnitudes[] = {std::numeric_limits<F32>::min(),
+            const F64 magnitudes[] = {static_cast<F64>(std::numeric_limits<F32>::min()) * 0.5,
                                       std::sqrt(2.0) * 1e-30, std::sqrt(2.0) * 1e30};
             for (U64 i = 0; i < 3; ++i) {
                 const F64 expected = 20.0 * std::log10(magnitudes[i] / 3.0);

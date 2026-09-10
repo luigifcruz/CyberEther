@@ -55,10 +55,10 @@ extern "C" __global__ void amplitude_kernel(const InputValue* input, float* outp
         inputIndex += coordinate * kInputStride[axis];
     }
 
-    const float floor = __int_as_float(0x00800000);
-    const float rawMagnitude = Magnitude(input[inputIndex]);
-    const float magnitude = rawMagnitude < floor ? floor : rawMagnitude;
-    output[index] = 20.0f * ApproxLog10(magnitude) + scalingCoeff;
+    const float magnitude = Magnitude(input[inputIndex]);
+    output[index] = magnitude == 0.0f
+        ? -__int_as_float(0x7f800000)
+        : 20.0f * ApproxLog10(magnitude) + scalingCoeff;
 }
 )";
 
