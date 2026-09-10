@@ -150,7 +150,6 @@ graph:
     runtime: native
     provider: generic
     config:
-      decimation: 1
       averaging: 1
     input:
       signal: '${graph.range.output.signal}'

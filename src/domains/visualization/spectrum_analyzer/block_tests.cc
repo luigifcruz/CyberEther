@@ -22,6 +22,7 @@ TEST_CASE("Spectrum Analyzer derives its transform from signal metadata",
     REQUIRE(config.serialize(serialized) == Result::SUCCESS);
     REQUIRE_FALSE(serialized.contains("axis"));
     REQUIRE_FALSE(serialized.contains("thickness"));
+    REQUIRE_FALSE(serialized.contains("decimation"));
 }
 
 TEST_CASE("Spectrum Analyzer declares its complete module chain",
@@ -101,6 +102,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(std::any_cast<std::string>(block.config.at("amplitudeLabel")) == "Power");
     REQUIRE(std::any_cast<std::string>(block.config.at("waterfallLabel")) == "History");
     for (const auto& entry : block.interfaceConfigs) {
+        REQUIRE(entry.name != "decimation");
         REQUIRE(entry.name != "axis");
         REQUIRE(entry.name != "fill");
         REQUIRE(entry.name != "splitRatio");

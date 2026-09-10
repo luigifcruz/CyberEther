@@ -29,7 +29,6 @@ extern "C" __global__ void lineplot_update(const float* input,
                                            unsigned long long numberOfBatches,
                                            unsigned long long inputBatchStride,
                                            unsigned long long inputElementStride,
-                                           unsigned long long decimation,
                                            float normalizationFactor,
                                            unsigned long long averaging,
                                            unsigned int maxHoldEnabled) {
@@ -42,7 +41,7 @@ extern "C" __global__ void lineplot_update(const float* input,
     float sum = 0.0f;
     for (unsigned long long batch = 0; batch < numberOfBatches; ++batch) {
         sum += input[(batch * inputBatchStride) +
-                     (index * decimation * inputElementStride)];
+                     (index * inputElementStride)];
     }
 
     const float amplitude = fminf(
@@ -158,7 +157,7 @@ Result SignalViewImplNativeCuda::validate() {
         const U64 retainedBatches = std::min(validatedNumberOfBatches,
                                              candidate()->waterfallHeight);
         if (!Jetstream::detail::CheckedMultiply(retainedBatches,
-                                                validatedInputElementCount,
+                                                validatedNumberOfElements,
                                                 workItems)) {
             JST_ERROR("[MODULE_SIGNAL_VIEW_NATIVE_CUDA] Waterfall work size "
                       "exceeds the supported range.");
@@ -266,7 +265,7 @@ Result SignalViewImplNativeCuda::computeInitialize() {
 }
 
 Result SignalViewImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
-    if (inputElementCount == 0 || numberOfBatches == 0) {
+    if (numberOfElements == 0 || numberOfBatches == 0) {
         return Result::SUCCESS;
     }
 
@@ -303,7 +302,6 @@ Result SignalViewImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
             &numberOfBatches,
             &inputBatchStride,
             &inputElementStride,
-            &decimation,
             &normalizationFactor,
             &averagingValue,
             &maxHoldEnabled,
@@ -330,7 +328,7 @@ Result SignalViewImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
         void* waterfallArguments[] = {
             &inputArgument,
             &waterfallData,
-            &inputElementCount,
+            &numberOfElements,
             &inputElementStride,
             &inputBatchStride,
             &plan.rowCount,

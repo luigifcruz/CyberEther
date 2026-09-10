@@ -9,7 +9,6 @@ namespace Jetstream::Blocks {
 
 struct SpectrumAnalyzer : public Block::Config {
     U64 averaging = 1;
-    U64 decimation = 1;
     bool maxHold = false;
     bool fill = true;
     F32 rangeMin = -100.0f;
@@ -23,7 +22,7 @@ struct SpectrumAnalyzer : public Block::Config {
     JST_BLOCK_TYPE(spectrum_analyzer);
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(L);
-    JST_BLOCK_PARAMS(averaging, decimation, maxHold, fill, rangeMin,
+    JST_BLOCK_PARAMS(averaging, maxHold, fill, rangeMin,
                      rangeMax, waterfallHeight, splitRatio, xLabel,
                      amplitudeLabel, waterfallLabel);
     JST_BLOCK_DESCRIPTION(
@@ -43,14 +42,13 @@ struct SpectrumAnalyzer : public Block::Config {
         "## Arguments\n"
         "- **Range Min/Max**: Display range mapped to the analyzer color scale.\n"
         "- **Averaging**: Trace smoothing factor.\n"
-        "- **Decimation**: Trace-only horizontal decimation factor.\n"
         "- **Max Hold**: Retain the maximum observed trace.\n"
         "- **Waterfall Height**: Number of spectrum rows retained.\n\n"
 
         "## Implementation\n"
         "Complex Input -> Window -> FFT -> Amplitude -> Range -> Combined Plot\n"
         "The waterfall always uses smoothed interpolation and retains full-"
-        "resolution spectrum rows even when the trace is decimated.";
+        "resolution spectrum rows.";
     );
 };
 

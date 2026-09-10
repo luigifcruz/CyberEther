@@ -28,7 +28,6 @@ Result SignalViewImpl::validate() {
 
     validatedNumberOfElements = 0;
     validatedNumberOfBatches = 0;
-    validatedInputElementCount = 0;
     validatedInputElementStride = 0;
     validatedInputBatchStride = 0;
     validatedNormalizationFactor = 0.0f;
@@ -37,11 +36,6 @@ Result SignalViewImpl::validate() {
 
     if (!hasLineplot && !hasWaterfall) {
         JST_ERROR("[MODULE_SIGNAL_VIEW] Invalid mode '{}'.", config.mode);
-        return Result::ERROR;
-    }
-
-    if (hasLineplot && config.decimation == 0) {
-        JST_ERROR("[MODULE_SIGNAL_VIEW] Decimation must be at least 1.");
         return Result::ERROR;
     }
 
@@ -108,10 +102,7 @@ Result SignalViewImpl::validate() {
         }
     }
 
-    const U64 inputElementCount = inputTensor.shape(*elementAxis);
-    const U64 numberOfElements = hasLineplot
-        ? inputElementCount / config.decimation
-        : inputElementCount;
+    const U64 numberOfElements = inputTensor.shape(*elementAxis);
     if (hasLineplot && numberOfElements < 2) {
         JST_ERROR("[MODULE_SIGNAL_VIEW] Invalid number of elements ({}), need "
                   "at least 2.",
@@ -157,7 +148,7 @@ Result SignalViewImpl::validate() {
             static_cast<U64>(std::numeric_limits<std::ptrdiff_t>::max()) /
                 sizeof(F32),
         });
-        if (!Jetstream::detail::CheckedMultiply(inputElementCount,
+        if (!Jetstream::detail::CheckedMultiply(numberOfElements,
                                                 config.waterfallHeight,
                                                 waterfallElementCount) ||
             waterfallElementCount > maxWaterfallElementCount) {
@@ -185,7 +176,6 @@ Result SignalViewImpl::validate() {
         : 1;
     validatedNumberOfElements = numberOfElements;
     validatedNumberOfBatches = numberOfBatches;
-    validatedInputElementCount = inputElementCount;
     validatedInputElementStride = inputTensor.stride(*elementAxis);
     validatedInputBatchStride = axes.batch
         ? inputTensor.stride(*axes.batch)
@@ -232,7 +222,6 @@ Result SignalViewImpl::create() {
 
     numberOfElements = validatedNumberOfElements;
     numberOfBatches = validatedNumberOfBatches;
-    inputElementCount = validatedInputElementCount;
     inputElementStride = validatedInputElementStride;
     inputBatchStride = validatedInputBatchStride;
     normalizationFactor = validatedNormalizationFactor;
@@ -269,7 +258,7 @@ Result SignalViewImpl::create() {
 
     if (waterfallEnabled) {
         JST_CHECK(waterfallBins.create(device(), DataType::F32,
-                                       {waterfallHeight, inputElementCount},
+                                       {waterfallHeight, numberOfElements},
                                        renderStateConfig));
     }
 
@@ -285,7 +274,6 @@ Result SignalViewImpl::reconfigure() {
     const auto& config = *candidate();
 
     if (config.mode == mode &&
-        config.decimation == decimation &&
         config.maxHold == maxHold &&
         config.fill == fill &&
         config.waterfallHeight == waterfallHeight &&
@@ -770,18 +758,18 @@ Result SignalViewImpl::present() {
         const auto dirtyPlan = waterfallHistory.dirtyPlan(waterfallHeight);
         if (dirtyPlan.firstRowCount > 0) {
             JST_CHECK(waterfallBuffer->update(dirtyPlan.startRow *
-                                                  inputElementCount,
+                                                  numberOfElements,
                                               dirtyPlan.firstRowCount *
-                                                  inputElementCount));
+                                                  numberOfElements));
         }
         if (dirtyPlan.secondRowCount > 0) {
             JST_CHECK(waterfallBuffer->update(0,
                                               dirtyPlan.secondRowCount *
-                                                  inputElementCount));
+                                                  numberOfElements));
         }
         waterfallHistory.clearDirty();
 
-        waterfallUniforms.width = static_cast<int>(inputElementCount);
+        waterfallUniforms.width = static_cast<int>(numberOfElements);
         waterfallUniforms.height = static_cast<int>(waterfallHeight);
         waterfallUniforms.index = waterfallHistory.writeIndex /
                                   static_cast<F32>(waterfallHeight);

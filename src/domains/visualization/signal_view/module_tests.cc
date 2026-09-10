@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "jetstream/domains/visualization/signal_view/module.hh"
+#include "jetstream/domains/dsp/decimator/block.hh"
 #include "jetstream/memory/axis.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/runtime.hh"
@@ -784,7 +785,6 @@ TEST_CASE("Signal View module supports every visualization mode",
                 Modules::SignalView config;
                 config.mode = mode;
                 config.averaging = 4;
-                config.decimation = 2;
                 config.waterfallHeight = 32;
                 config.xLabel = "Frequency";
                 config.amplitudeLabel = "Power";
@@ -841,14 +841,9 @@ TEST_CASE("Signal View validation is mode aware",
                                 implementation.runtime, implementation.provider);
                 Modules::SignalView config;
                 config.mode = "lineplot";
-                config.decimation = 0;
-                ctx.setConfig(config);
-                ctx.setInput("signal", input);
-                REQUIRE(ctx.run() == Result::ERROR);
-
-                config.decimation = 1;
                 config.averaging = 0;
                 ctx.setConfig(config);
+                ctx.setInput("signal", input);
                 REQUIRE(ctx.run() == Result::ERROR);
             }
 
@@ -904,12 +899,10 @@ TEST_CASE("Signal View rejects unsupported input tensors",
                                              DataType::F32,
                                              {2, 2, 2});
 
-            Modules::SignalView decimated;
-            decimated.decimation = 2;
             RequireSignalViewValidationError(implementation,
-                                             decimated,
+                                             Modules::SignalView{},
                                              DataType::F32,
-                                             {3});
+                                             {1});
         }
     }
 }
@@ -1001,7 +994,7 @@ TEST_CASE("Waterfall history tracks wrapped dirty rows",
     REQUIRE(dirty.firstRowCount + dirty.secondRowCount == height);
 }
 
-TEST_CASE("Combined signal view keeps full-resolution waterfall rows",
+TEST_CASE("Combined signal view keeps full-resolution traces and waterfall rows",
           "[modules][signal_view][waterfall][regression]") {
     const auto implementations = Registry::ListAvailableModules("signal_view");
     REQUIRE(!implementations.empty());
@@ -1045,7 +1038,6 @@ TEST_CASE("Combined signal view keeps full-resolution waterfall rows",
 
             Modules::SignalView config;
             config.mode = "lineplot_waterfall";
-            config.decimation = 2;
             config.waterfallHeight = height;
             REQUIRE(module->create("signal_view", config, inputs) == Result::SUCCESS);
 
@@ -1061,6 +1053,7 @@ TEST_CASE("Combined signal view keeps full-resolution waterfall rows",
                 25.0f, 26.0f, 27.0f, 28.0f, 29.0f, 30.0f,
                 13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f,
             };
+            REQUIRE(ReadSignalPoints(module).size() == rowWidth * 2);
             REQUIRE(ReadWaterfallBins(module) == expected);
             REQUIRE(ReadWaterfallHistory(module).writeIndex == 2);
             REQUIRE(ReadWaterfallHistory(module).dirtyRows == height);
@@ -1117,6 +1110,9 @@ TEST_CASE("Signal View indexes sample and channel batch layouts equivalently",
                         ComputeSignalViewSnapshot(implementation, leading);
                     const auto trailingSnapshot =
                         ComputeSignalViewSnapshot(implementation, trailing);
+                    REQUIRE(leadingSnapshot.signalPoints == std::vector<F32>{
+                        -1.0f, -0.5f, 0.0f, 0.25f, 1.0f, 0.25f,
+                    });
                     REQUIRE(trailingSnapshot.signalPoints ==
                             leadingSnapshot.signalPoints);
                     REQUIRE(trailingSnapshot.waterfallBins ==
@@ -1256,7 +1252,7 @@ TEST_CASE("Signal View reconfigure preserves applied waterfall state",
     }
 }
 
-TEST_CASE("Signal View configuration omits fixed rendering settings",
+TEST_CASE("Signal View configuration omits fixed and removed rendering settings",
           "[modules][signal_view][config]") {
     Modules::SignalView config;
     Parser::Map serialized;
@@ -1264,6 +1260,7 @@ TEST_CASE("Signal View configuration omits fixed rendering settings",
     REQUIRE_FALSE(serialized.contains("interpolate"));
     REQUIRE_FALSE(serialized.contains("waterfallInterpolate"));
     REQUIRE_FALSE(serialized.contains("thickness"));
+    REQUIRE_FALSE(serialized.contains("decimation"));
 }
 
 TEST_CASE("Signal View serializes plot labels", "[modules][signal_view][config]") {
@@ -1289,9 +1286,8 @@ TEST_CASE("Signal View serializes plot labels", "[modules][signal_view][config]"
     REQUIRE(std::any_cast<std::string>(serialized.at("waterfallLabel")) == "History");
 }
 
-TEST_CASE("Lineplot helpers preserve indexing and max-hold warmup",
+TEST_CASE("Lineplot helpers initialize points and preserve max-hold warmup",
            "[modules][signal_view][lineplot][regression]") {
-    REQUIRE(Modules::detail::LineplotInputIndex(1, 1, 5, 1, 2) == 7);
     REQUIRE_FALSE(Modules::detail::LineplotMaxHoldReady(2, 4));
     REQUIRE(Modules::detail::LineplotMaxHoldReady(3, 4));
     REQUIRE(Modules::detail::LineplotMaxHoldReady(0, 1));
@@ -1304,6 +1300,59 @@ TEST_CASE("Lineplot helpers preserve indexing and max-hold warmup",
                                                1.0f, 0.0f});
     REQUIRE(maxHoldPoints == std::array<F32, 6>{-1.0f, -1.0f, 0.0f, -1.0f,
                                                 1.0f, -1.0f});
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Signal View displays externally subsampled data after ratio changes",
+                 "[modules][signal_view][decimator][integration]") {
+    TestFlowgraph::SyntheticSourceBlockConfig source;
+    source.bufferSize = 8;
+    REQUIRE(flowgraph->blockCreate("src", source, {}) == Result::SUCCESS);
+    Tensor input = viewBlock("src").outputs.at("signal").tensor;
+    REQUIRE(SetSignalAxes(input, {.sample = Index{0}}) == Result::SUCCESS);
+    REQUIRE(input.setAttribute("sampleRate", F32{48000.0f}) == Result::SUCCESS);
+    for (U64 index = 0; index < input.size(); ++index) {
+        input.at<F32>(index) = static_cast<F32>(index) / 8.0f;
+    }
+
+    Blocks::Decimator decimator;
+    decimator.method = "subsample";
+    decimator.ratio = 2;
+    TensorMap decimatorInputs;
+    decimatorInputs["buffer"].requested("src", "signal");
+    REQUIRE(flowgraph->blockCreate("decimator", decimator, decimatorInputs) ==
+            Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].requested("decimator", "buffer");
+    REQUIRE(flowgraph->blockCreate("view", InteractiveSignalViewConfig{}, inputs) ==
+            Result::SUCCESS);
+
+    for (const U64 ratio : {U64{2}, U64{4}}) {
+        Parser::Map update;
+        update["ratio"] = ratio;
+        REQUIRE(flowgraph->blockReconfigure("decimator", update) == Result::SUCCESS);
+        REQUIRE(viewBlock("view").state == Block::State::Created);
+        REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+        const Tensor received = viewBlock("view").inputs.at("signal").tensor;
+        const U64 width = input.size() / ratio;
+        REQUIRE(received.shape() == Shape{width});
+        REQUIRE(std::any_cast<F32>(received.attribute("sampleRate")) ==
+                48000.0f / static_cast<F32>(ratio));
+        const auto points = ReadSignalPoints(interactiveSignalView);
+        const auto bins = ReadWaterfallBins(interactiveSignalView);
+        REQUIRE(points.size() == width * 2);
+        REQUIRE(bins.size() == width * 8);
+        for (U64 index = 0; index < width; ++index) {
+            const F32 expected = input.at<F32>(index * ratio);
+            REQUIRE(points[index * 2] == Catch::Approx(
+                static_cast<F32>(index) * 2.0f / (width - 1) - 1.0f));
+            REQUIRE(points[index * 2 + 1] == Catch::Approx(expected * 2.0f - 1.0f));
+            REQUIRE(bins[index] == expected);
+        }
+    }
+    interactiveSignalView.reset();
 }
 
 TEST_CASE("Signal View clamps amplitudes before averaging",

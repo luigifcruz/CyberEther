@@ -104,8 +104,8 @@ Result SignalViewImplNativeCpu::computeSubmit() {
 
         for (U64 b = 0; b < numberOfBatches; b++) {
             for (U64 i = 0; i < numberOfElements; i++) {
-                sumsData[i] += inputData[detail::LineplotInputIndex(
-                    b, i, inputBatchStride, inputElementStride, decimation)];
+                sumsData[i] += inputData[b * inputBatchStride +
+                                         i * inputElementStride];
             }
         }
 
@@ -149,8 +149,8 @@ Result SignalViewImplNativeCpu::computeSubmit() {
             const U64 sourceBatch = plan.sourceRow + row;
             const U64 destinationBatch =
                 (plan.destinationRow + row) % waterfallHeight;
-            for (U64 element = 0; element < inputElementCount; ++element) {
-                waterfallData[destinationBatch * inputElementCount + element] =
+            for (U64 element = 0; element < numberOfElements; ++element) {
+                waterfallData[destinationBatch * numberOfElements + element] =
                     inputData[sourceBatch * inputBatchStride +
                               element * inputElementStride];
             }

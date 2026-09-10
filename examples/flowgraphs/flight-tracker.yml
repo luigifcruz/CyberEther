@@ -69,7 +69,6 @@ graph:
     runtime: native
     provider: generic
     config:
-      decimation: 1
       averaging: 1
     input:
       signal: '${graph.spectrum_engine.output.buffer}'

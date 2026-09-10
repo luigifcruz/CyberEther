@@ -110,7 +110,6 @@ Result SpectrumAnalyzerImpl::configure() {
 
     signalViewConfig->mode = "lineplot_waterfall";
     signalViewConfig->averaging = averaging;
-    signalViewConfig->decimation = decimation;
     signalViewConfig->maxHold = maxHold;
     signalViewConfig->fill = fill;
     signalViewConfig->rangeMin = rangeMin;
@@ -137,9 +136,6 @@ Result SpectrumAnalyzerImpl::define() {
     JST_CHECK(defineInterfaceConfig("averaging", "Averaging",
                                     "Trace smoothing factor.",
                                     {{"type", "range"}, {"min", 1.0f}, {"max", 256.0f}, {"unit", "samples"}, {"value_type", "uint"}}));
-    JST_CHECK(defineInterfaceConfig("decimation", "Decimation",
-                                    "Trace-only horizontal decimation.",
-                                    {{"type", "uint"}}));
     JST_CHECK(defineInterfaceConfig("maxHold", "Max Hold",
                                     "Enable maximum hold trace.",
                                     {{"type", "bool"}}));

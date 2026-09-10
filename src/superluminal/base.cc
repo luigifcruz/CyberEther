@@ -1137,17 +1137,8 @@ Result Superluminal::Impl::buildLinePlotGraph(PlotState& state) {
         averagingRate = std::to_string(averaging);
     }
 
-    std::string decimationRate = "1";
-
-    if (state.config.options.contains("decimation")) {
-        auto decimation = std::get<I32>(state.config.options["decimation"]);
-        JST_DEBUG("[SUPERLUMINAL] Decimation set to {}.", decimation);
-        decimationRate = std::to_string(decimation);
-    }
-
     std::unordered_map<std::string, std::string> lineplotConfig = {
         {"averaging", averagingRate},
-        {"decimation", decimationRate},
     };
     bool fillEnabled = state.config.display == Domain::Frequency;
     if (state.config.options.contains("fill")) {
@@ -1344,16 +1335,13 @@ Result Superluminal::Impl::buildSpectrumAnalyzerPlotGraph(PlotState& state) {
     const std::string rangeMax = std::to_string(floatOption("rangeMax", 0.0f));
 
     const auto averagingOpt = integerOption("averaging", 1);
-    const auto decimationOpt = integerOption("decimation", 1);
     const auto maxHoldOpt = integerOption("maxHold", 0);
     const auto waterfallHeightOpt = integerOption("waterfallHeight", 512);
     const auto fillOpt = integerOption("fill", 1);
-    if (!averagingOpt || !decimationOpt || !maxHoldOpt ||
-        !waterfallHeightOpt || !fillOpt) {
+    if (!averagingOpt || !maxHoldOpt || !waterfallHeightOpt || !fillOpt) {
         return Result::ERROR;
     }
     const std::string averaging = std::to_string(*averagingOpt);
-    const std::string decimation = std::to_string(*decimationOpt);
     const std::string maxHold = *maxHoldOpt != 0 ? "true" : "false";
     const std::string waterfallHeight = std::to_string(*waterfallHeightOpt);
     const std::string fill = *fillOpt != 0 ? "true" : "false";
@@ -1408,7 +1396,6 @@ Result Superluminal::Impl::buildSpectrumAnalyzerPlotGraph(PlotState& state) {
         {"rangeMin", rangeMin},
         {"rangeMax", rangeMax},
         {"averaging", averaging},
-        {"decimation", decimation},
         {"maxHold", maxHold},
         {"fill", fill},
         {"waterfallHeight", waterfallHeight},
