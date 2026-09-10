@@ -23,7 +23,6 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     Blocks::Lineplot lineplotConfig;
     lineplotConfig.averaging = 2;
-    lineplotConfig.decimation = 2;
     lineplotConfig.fill = false;
     lineplotConfig.rangeMin = -1.0f;
     lineplotConfig.rangeMax = 1.0f;
@@ -41,7 +40,9 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(std::any_cast<std::string>(block.config.at("xLabel")) == "Time");
     REQUIRE(std::any_cast<std::string>(block.config.at("yLabel")) == "Voltage");
     REQUIRE_FALSE(block.config.contains("thickness"));
+    REQUIRE_FALSE(block.config.contains("decimation"));
     for (const auto& entry : block.interfaceConfigs) {
+        REQUIRE(entry.name != "decimation");
         REQUIRE(entry.name != "fill");
         REQUIRE(entry.name != "rangeMin");
         REQUIRE(entry.name != "rangeMax");
@@ -83,7 +84,6 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     Parser::Map config;
     config["averaging"] = std::string("8");
-    config["decimation"] = std::string("2");
     config["rangeMin"] = std::string("-1");
     config["rangeMax"] = std::string("1");
     config["xLabel"] = std::string();

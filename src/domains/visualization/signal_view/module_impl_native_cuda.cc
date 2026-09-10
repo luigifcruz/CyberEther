@@ -20,19 +20,20 @@ constexpr U64 kThreadsPerBlock = 256;
 constexpr U64 kMaxGridSizeX = std::numeric_limits<I32>::max();
 constexpr const char* kLineplotKernelName = "lineplot_update";
 constexpr const char* kLineplotWaterfallKernelName = "lineplot_waterfall_update";
+constexpr const char* kWaterfallAverageKernelName = "waterfall_average_update";
 constexpr const char* kLineplotKernelSource = R"(
 extern "C" __global__ void lineplot_update(const float* input,
                                            float* signalPoints,
-                                           float* averagingBuffer,
+                                           float* lineplotAveragingBuffer,
                                            float* maxHoldPoints,
                                            unsigned long long numberOfElements,
                                            unsigned long long numberOfBatches,
                                            unsigned long long inputBatchStride,
                                            unsigned long long inputElementStride,
-                                           unsigned long long decimation,
                                            float normalizationFactor,
-                                           unsigned long long averaging,
-                                           unsigned int maxHoldEnabled) {
+                                           unsigned long long lineplotAveraging,
+                                           unsigned int maxHoldEnabled,
+                                           unsigned int averagingInitialized) {
     const unsigned long long index =
         (static_cast<unsigned long long>(blockIdx.x) * blockDim.x) + threadIdx.x;
     if (index >= numberOfElements) {
@@ -41,24 +42,29 @@ extern "C" __global__ void lineplot_update(const float* input,
 
     float sum = 0.0f;
     for (unsigned long long batch = 0; batch < numberOfBatches; ++batch) {
-        sum += input[(batch * inputBatchStride) +
-                     (index * decimation * inputElementStride)];
+        const float value = input[(batch * inputBatchStride) + (index * inputElementStride)];
+        sum += isfinite(value) ? value : (value > 0.0f ? 1.0f : 0.0f);
     }
 
-    const float amplitude = fminf(
-        fmaxf((sum * normalizationFactor) - 1.0f, -1.0f),
-        1.0f);
-    float average = averagingBuffer[index];
-    average -= average / static_cast<float>(averaging);
-    average += amplitude / static_cast<float>(averaging);
+    float amplitude = (sum * normalizationFactor) - 1.0f;
+    if (!isfinite(amplitude)) {
+        amplitude = fminf(fmaxf(amplitude, -1.0f), 1.0f);
+    }
+    float average = amplitude;
+    if (averagingInitialized != 0 && isfinite(lineplotAveragingBuffer[index])) {
+        average = lineplotAveragingBuffer[index];
+        average -= average / static_cast<float>(lineplotAveraging);
+        average += amplitude / static_cast<float>(lineplotAveraging);
+    }
 
-    averagingBuffer[index] = average;
-    signalPoints[(index * 2) + 1] = average;
+    lineplotAveragingBuffer[index] = average;
+    const float displayed = tanhf(2.0f * average);
+    signalPoints[(index * 2) + 1] = displayed;
 
     if (maxHoldEnabled != 0) {
         float& maxValue = maxHoldPoints[(index * 2) + 1];
-        if (average > maxValue) {
-            maxValue = average;
+        if (displayed > maxValue) {
+            maxValue = displayed;
         }
     }
 }
@@ -88,9 +94,49 @@ lineplot_waterfall_update(const float* input,
     const unsigned long long destinationBatch =
         (destinationRow + retainedBatch) % height;
 
+    const float value = input[(sourceBatch * inputBatchStride) + (element * inputElementStride)];
     waterfallBins[(destinationBatch * elementCount) + element] =
-        input[(sourceBatch * inputBatchStride) +
-              (element * inputElementStride)];
+        isfinite(value) ? value : (value > 0.0f ? 1.0f : 0.0f);
+}
+)";
+
+constexpr const char* kWaterfallAverageKernelSource = R"(
+extern "C" __global__ void
+waterfall_average_update(const float* input,
+                         float* waterfallBins,
+                         double* waterfallAveragingBuffer,
+                         unsigned long long elementCount,
+                         unsigned long long numberOfBatches,
+                         unsigned long long inputElementStride,
+                         unsigned long long inputBatchStride,
+                         unsigned long long height,
+                         unsigned long long sourceRow,
+                         unsigned long long writeIndex,
+                         unsigned long long waterfallAveraging,
+                         unsigned long long pendingRows) {
+    const unsigned long long element =
+        (static_cast<unsigned long long>(blockIdx.x) * blockDim.x) + threadIdx.x;
+    if (element >= elementCount) {
+        return;
+    }
+
+    double sum = pendingRows != 0 ? waterfallAveragingBuffer[element] : 0.0;
+    unsigned long long outputRow = 0;
+    for (unsigned long long batch = 0; batch < numberOfBatches; ++batch) {
+        const float value = input[(batch * inputBatchStride) + (element * inputElementStride)];
+        sum += static_cast<double>(isfinite(value) ? value : (value > 0.0f ? 1.0f : 0.0f));
+        if (++pendingRows == waterfallAveraging) {
+            if (outputRow >= sourceRow) {
+                const unsigned long long destinationRow = (writeIndex + outputRow % height) % height;
+                waterfallBins[(destinationRow * elementCount) + element] =
+                    static_cast<float>(sum / static_cast<double>(waterfallAveraging));
+            }
+            pendingRows = 0;
+            sum = 0.0;
+            ++outputRow;
+        }
+    }
+    waterfallAveragingBuffer[element] = sum;
 }
 )";
 
@@ -110,16 +156,17 @@ struct SignalViewImplNativeCuda : public SignalViewImpl,
     Result computeDeinitialize() override;
 
     Buffer::Config renderStateBufferConfig() const override;
-    Result resetAveragingState() override;
 
  private:
-    Tensor averagingBuffer;
+    Tensor lineplotAveragingBuffer;
+    Tensor waterfallAveragingBuffer;
     U64 lineplotGridSize = 0;
     U64 waterfallGridSize = 0;
     U64 validatedLineplotGridSize = 0;
     U64 validatedWaterfallGridSize = 0;
     bool lineplotKernelCreated = false;
     bool waterfallKernelCreated = false;
+    bool waterfallAverageKernelCreated = false;
 };
 
 Result SignalViewImplNativeCuda::validate() {
@@ -158,7 +205,7 @@ Result SignalViewImplNativeCuda::validate() {
         const U64 retainedBatches = std::min(validatedNumberOfBatches,
                                              candidate()->waterfallHeight);
         if (!Jetstream::detail::CheckedMultiply(retainedBatches,
-                                                validatedInputElementCount,
+                                                validatedNumberOfElements,
                                                 workItems)) {
             JST_ERROR("[MODULE_SIGNAL_VIEW_NATIVE_CUDA] Waterfall work size "
                       "exceeds the supported range.");
@@ -184,7 +231,7 @@ Result SignalViewImplNativeCuda::create() {
     waterfallGridSize = validatedWaterfallGridSize;
 
     if (lineplotEnabled) {
-        JST_CHECK(averagingBuffer.create(device(), DataType::F32, {numberOfElements}));
+        JST_CHECK(lineplotAveragingBuffer.create(device(), DataType::F32, {numberOfElements}));
 
         std::vector<F32> initialPoints(signalPoints.size(), 0.0f);
         std::vector<F32> initialMaxHoldPoints(maxHoldPoints.size(), 0.0f);
@@ -219,6 +266,11 @@ Result SignalViewImplNativeCuda::create() {
         });
     }
 
+    if (waterfallEnabled) {
+        JST_CHECK(waterfallAveragingBuffer.create(device(), DataType::F64,
+                                                  {numberOfElements}));
+    }
+
     return Result::SUCCESS;
 }
 
@@ -229,23 +281,6 @@ Result SignalViewImplNativeCuda::presentInitialize() {
 Buffer::Config SignalViewImplNativeCuda::renderStateBufferConfig() const {
     // TODO: Restore CUDA/Vulkan zero-copy after adding cross-API synchronization.
     return {.hostAccessible = true};
-}
-
-Result SignalViewImplNativeCuda::resetAveragingState() {
-    if (!lineplotEnabled) {
-        return Result::SUCCESS;
-    }
-    void* data = averagingBuffer.buffer().data();
-    if (!data) {
-        JST_ERROR("[MODULE_SIGNAL_VIEW_NATIVE_CUDA] Missing averaging state buffer.");
-        return Result::ERROR;
-    }
-    JST_CUDA_CHECK(cudaMemset(data, 0, averagingBuffer.sizeBytes()), [&] {
-        JST_ERROR("[MODULE_SIGNAL_VIEW_NATIVE_CUDA] Failed to clear "
-                  "averaging state: {}.",
-                  err);
-    });
-    return Result::SUCCESS;
 }
 
 Result SignalViewImplNativeCuda::presentSubmit() {
@@ -261,12 +296,15 @@ Result SignalViewImplNativeCuda::computeInitialize() {
         JST_CHECK(createKernel(kLineplotWaterfallKernelName,
                                kLineplotWaterfallKernelSource));
         waterfallKernelCreated = true;
+        JST_CHECK(createKernel(kWaterfallAverageKernelName,
+                               kWaterfallAverageKernelSource));
+        waterfallAverageKernelCreated = true;
     }
     return Result::SUCCESS;
 }
 
 Result SignalViewImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
-    if (inputElementCount == 0 || numberOfBatches == 0) {
+    if (numberOfElements == 0 || numberOfBatches == 0) {
         return Result::SUCCESS;
     }
 
@@ -282,7 +320,7 @@ Result SignalViewImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
     bool updateMaxHold = false;
     if (lineplotEnabled) {
         void* signalData = signalPoints.buffer().data();
-        void* averageData = averagingBuffer.buffer().data();
+        void* averageData = lineplotAveragingBuffer.buffer().data();
         void* maxHoldData = maxHoldPoints.buffer().data();
         if (!signalData || !averageData || !maxHoldData) {
             JST_ERROR("[MODULE_SIGNAL_VIEW_NATIVE_CUDA] Missing lineplot "
@@ -290,10 +328,10 @@ Result SignalViewImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
             return Result::ERROR;
         }
 
-        U64 averagingValue = averaging;
         updateMaxHold =
-            maxHold && detail::LineplotMaxHoldReady(maxHoldWarmupBlocks, averaging);
+            maxHold && detail::LineplotMaxHoldReady(maxHoldWarmupBlocks, lineplotAveraging);
         U32 maxHoldEnabled = updateMaxHold ? 1 : 0;
+        U32 averagingInitialized = lineplotAveragingInitialized ? 1 : 0;
         void* arguments[] = {
             &inputArgument,
             &signalData,
@@ -303,10 +341,10 @@ Result SignalViewImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
             &numberOfBatches,
             &inputBatchStride,
             &inputElementStride,
-            &decimation,
             &normalizationFactor,
-            &averagingValue,
+            &lineplotAveraging,
             &maxHoldEnabled,
+            &averagingInitialized,
         };
         const Extent3D<U64> grid = {
             lineplotGridSize,
@@ -314,6 +352,7 @@ Result SignalViewImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
             1,
         };
         JST_CHECK(scheduleKernel(kLineplotKernelName, stream, grid, block, arguments));
+        lineplotAveragingInitialized = true;
     }
 
     if (waterfallEnabled) {
@@ -324,34 +363,67 @@ Result SignalViewImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
             return Result::ERROR;
         }
 
+        const auto averagePlan = PlanWaterfallAveraging(waterfallAveragingCount,
+                                                        numberOfBatches, waterfallAveraging);
         auto plan = PlanWaterfallWrite(waterfallHistory.writeIndex,
-                                       numberOfBatches,
+                                       averagePlan.rowCount,
                                        waterfallHeight);
-        void* waterfallArguments[] = {
-            &inputArgument,
-            &waterfallData,
-            &inputElementCount,
-            &inputElementStride,
-            &inputBatchStride,
-            &plan.rowCount,
-            &waterfallHeight,
-            &plan.sourceRow,
-            &plan.destinationRow,
-        };
-        const Extent3D<U64> waterfallGrid = {
-            waterfallGridSize,
-            1,
-            1,
-        };
-        JST_CHECK(scheduleKernel(kLineplotWaterfallKernelName,
-                                 stream,
-                                 waterfallGrid,
-                                 block,
-                                 waterfallArguments));
-        waterfallHistory.advance(numberOfBatches, waterfallHeight);
+        if (waterfallAveraging > 1) {
+            void* averageData = waterfallAveragingBuffer.buffer().data();
+            if (!averageData) {
+                JST_ERROR("[MODULE_SIGNAL_VIEW_NATIVE_CUDA] Missing waterfall averaging buffer.");
+                return Result::ERROR;
+            }
+            void* waterfallArguments[] = {
+                &inputArgument,
+                &waterfallData,
+                &averageData,
+                &numberOfElements,
+                &numberOfBatches,
+                &inputElementStride,
+                &inputBatchStride,
+                &waterfallHeight,
+                &plan.sourceRow,
+                &waterfallHistory.writeIndex,
+                &waterfallAveraging,
+                &waterfallAveragingCount,
+            };
+            const Extent3D<U64> waterfallGrid = {
+                numberOfElements / kThreadsPerBlock +
+                    (numberOfElements % kThreadsPerBlock != 0),
+                1,
+                1,
+            };
+            JST_CHECK(scheduleKernel(kWaterfallAverageKernelName, stream,
+                                     waterfallGrid, block, waterfallArguments));
+        } else {
+            void* waterfallArguments[] = {
+                &inputArgument,
+                &waterfallData,
+                &numberOfElements,
+                &inputElementStride,
+                &inputBatchStride,
+                &plan.rowCount,
+                &waterfallHeight,
+                &plan.sourceRow,
+                &plan.destinationRow,
+            };
+            const Extent3D<U64> waterfallGrid = {
+                waterfallGridSize,
+                1,
+                1,
+            };
+            JST_CHECK(scheduleKernel(kLineplotWaterfallKernelName,
+                                     stream,
+                                     waterfallGrid,
+                                     block,
+                                     waterfallArguments));
+        }
+        waterfallAveragingCount = averagePlan.pendingRows;
+        waterfallHistory.advance(averagePlan.rowCount, waterfallHeight);
     }
 
-    if (lineplotEnabled && maxHold && maxHoldWarmupBlocks < averaging) {
+    if (lineplotEnabled && maxHold && maxHoldWarmupBlocks < lineplotAveraging) {
         ++maxHoldWarmupBlocks;
     }
 
@@ -372,9 +444,14 @@ Result SignalViewImplNativeCuda::computeDeinitialize() {
         destroyKernel(kLineplotWaterfallKernelName) != Result::SUCCESS) {
         result = Result::ERROR;
     }
+    if (waterfallAverageKernelCreated &&
+        destroyKernel(kWaterfallAverageKernelName) != Result::SUCCESS) {
+        result = Result::ERROR;
+    }
 
     lineplotKernelCreated = false;
     waterfallKernelCreated = false;
+    waterfallAverageKernelCreated = false;
     return result;
 }
 

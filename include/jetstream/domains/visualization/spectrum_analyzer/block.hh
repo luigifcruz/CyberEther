@@ -8,8 +8,8 @@
 namespace Jetstream::Blocks {
 
 struct SpectrumAnalyzer : public Block::Config {
-    U64 averaging = 1;
-    U64 decimation = 1;
+    U64 lineplotAveraging = 1;
+    U64 waterfallAveraging = 1;
     bool maxHold = false;
     bool fill = true;
     F32 rangeMin = -100.0f;
@@ -23,9 +23,9 @@ struct SpectrumAnalyzer : public Block::Config {
     JST_BLOCK_TYPE(spectrum_analyzer);
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(L);
-    JST_BLOCK_PARAMS(averaging, decimation, maxHold, fill, rangeMin,
-                     rangeMax, waterfallHeight, splitRatio, xLabel,
-                     amplitudeLabel, waterfallLabel);
+    JST_BLOCK_PARAMS(lineplotAveraging, waterfallAveraging, maxHold,
+                     fill, rangeMin, rangeMax, waterfallHeight,
+                     splitRatio, xLabel, amplitudeLabel, waterfallLabel);
     JST_BLOCK_DESCRIPTION(
         "Spectrum Analyzer",
         "Spectrum trace and waterfall in one view.",
@@ -41,16 +41,22 @@ struct SpectrumAnalyzer : public Block::Config {
         "supported.\n\n"
 
         "## Arguments\n"
-        "- **Range Min/Max**: Display range mapped to the analyzer color scale.\n"
-        "- **Averaging**: Trace smoothing factor.\n"
-        "- **Decimation**: Trace-only horizontal decimation factor.\n"
+        "- **Range Min/Max**: Reference bounds for the soft display mapping.\n"
+        "- **Lineplot Averaging**: Exponential trace smoothing factor across updates, "
+        "initialized from the first batch.\n"
+        "- **Waterfall Averaging**: Number of spectra averaged per displayed row.\n"
         "- **Max Hold**: Retain the maximum observed trace.\n"
         "- **Waterfall Height**: Number of spectrum rows retained.\n\n"
+
+        "Both averages operate on affine-normalized decibel values before soft "
+        "display mapping. For ideal Gaussian noise above the numerical floor, log averaging "
+        "has an expected bias of about -2.51 dB relative to mean power expressed "
+        "in dB. This is not a universal offset for other signal statistics.\n\n"
 
         "## Implementation\n"
         "Complex Input -> Window -> FFT -> Amplitude -> Range -> Combined Plot\n"
         "The waterfall always uses smoothed interpolation and retains full-"
-        "resolution spectrum rows even when the trace is decimated.";
+        "resolution spectrum rows.";
     );
 };
 

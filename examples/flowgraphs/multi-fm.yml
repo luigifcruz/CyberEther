@@ -104,7 +104,6 @@ graph:
     runtime: native
     provider: generic
     config:
-      decimation: 1
       averaging: 18
     input:
       signal: '${graph.spe33.output.buffer}'

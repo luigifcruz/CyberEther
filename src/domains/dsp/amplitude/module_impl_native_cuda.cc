@@ -56,11 +56,9 @@ extern "C" __global__ void amplitude_kernel(const InputValue* input, float* outp
     }
 
     const float magnitude = Magnitude(input[inputIndex]);
-    if (magnitude == 0.0f) {
-        output[index] = -__int_as_float(0x7f800000);
-        return;
-    }
-    output[index] = 20.0f * ApproxLog10(magnitude) + scalingCoeff;
+    output[index] = magnitude == 0.0f
+        ? -__int_as_float(0x7f800000)
+        : 20.0f * ApproxLog10(magnitude) + scalingCoeff;
 }
 )";
 
@@ -103,7 +101,7 @@ __device__ __forceinline__ float Magnitude(const InputValue value) {
     return R"(
 using InputValue = KernelComplex;
 __device__ __forceinline__ float Magnitude(const InputValue value) {
-    return sqrtf((value.real * value.real) + (value.imag * value.imag));
+    return hypotf(value.real, value.imag);
 }
 )";
 }

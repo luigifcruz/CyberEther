@@ -1,7 +1,10 @@
 #ifndef JETSTREAM_DOMAINS_VISUALIZATION_SIGNAL_VIEW_MODULE_IMPL_HH
 #define JETSTREAM_DOMAINS_VISUALIZATION_SIGNAL_VIEW_MODULE_IMPL_HH
 
+#include <algorithm>
+#include <cmath>
 #include <memory>
+#include <string>
 
 #include <glm/mat4x4.hpp>
 
@@ -34,17 +37,22 @@ inline bool SignalViewHasWaterfall(const std::string& mode) {
     return mode == "waterfall" || mode == "lineplot_waterfall";
 }
 
-constexpr U64 LineplotInputIndex(const U64 batch,
-                                 const U64 index,
-                                 const U64 batchStride,
-                                 const U64 elementStride,
-                                 const U64 decimation) {
-    return (batch * batchStride) + (index * decimation * elementStride);
-}
-
 constexpr bool LineplotMaxHoldReady(const U64 completedBlocks,
                                     const U64 averaging) {
     return completedBlocks + 1 >= averaging;
+}
+
+inline std::string LineplotAmplitudeLabel(const F32 position,
+                                          const F32 min,
+                                          const F32 max) {
+    if (!std::isfinite(position) || position <= -1.0f || position >= 1.0f) {
+        return {};
+    }
+    const F64 lower = std::min(min, max);
+    const F64 upper = std::max(min, max);
+    const F64 normalized = 0.5 + 0.25 * std::atanh(static_cast<F64>(position));
+    const F64 value = std::round(lower + normalized * (upper - lower));
+    return jst::fmt::format("{:.0f}", value == 0.0 ? 0.0 : value);
 }
 
 inline void InitializeLineplotPoints(F32* signalPoints,
@@ -75,17 +83,17 @@ struct SignalViewImpl : public Module::Impl,
 
     U64 numberOfElements = 0;
     U64 numberOfBatches = 0;
-    U64 inputElementCount = 0;
     U64 inputElementStride = 0;
     U64 inputBatchStride = 0;
     U64 maxHoldWarmupBlocks = 0;
     F32 normalizationFactor = 0.0f;
     bool lineplotEnabled = false;
+    bool lineplotAveragingInitialized = false;
     bool waterfallEnabled = false;
+    U64 waterfallAveragingCount = 0;
 
     U64 validatedNumberOfElements = 0;
     U64 validatedNumberOfBatches = 0;
-    U64 validatedInputElementCount = 0;
     U64 validatedInputElementStride = 0;
     U64 validatedInputBatchStride = 0;
     F32 validatedNormalizationFactor = 0.0f;
@@ -184,9 +192,6 @@ struct SignalViewImpl : public Module::Impl,
     Result resetLineplotHistory();
     Result resetHistoryState();
     virtual Buffer::Config renderStateBufferConfig() const = 0;
-    virtual Result resetAveragingState() {
-        return Result::SUCCESS;
-    }
 };
 
 }  // namespace Jetstream::Modules

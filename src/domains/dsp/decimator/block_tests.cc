@@ -1,10 +1,15 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <string>
 
 #include "flowgraph_fixture.hh"
 #include "jetstream/domains/core/ones_tensor/block.hh"
+#include "jetstream/domains/core/reshape/block.hh"
 #include "jetstream/domains/dsp/decimator/block.hh"
 #include "jetstream/domains/dsp/signal_generator/block.hh"
 
@@ -51,10 +56,24 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(ratio != block.interfaceConfigs.end());
     REQUIRE(ratio->format == Parser::Map{{"type", "uint"}});
 
+    const auto method = std::find_if(block.interfaceConfigs.begin(),
+                                     block.interfaceConfigs.end(),
+                                     [](const auto& entry) { return entry.name == "method"; });
+    REQUIRE(method != block.interfaceConfigs.end());
+    REQUIRE(method->format == Parser::Map{
+        {"type", "dropdown"},
+        {"options", Parser::Sequence{
+            Parser::Map{{"label", "Subsample"}, {"value", "subsample"}},
+            Parser::Map{{"label", "Sum"}, {"value", "sum"}},
+            Parser::Map{{"label", "Average"}, {"value", "average"}},
+        }},
+    });
+
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("decimator", saved) == Result::SUCCESS);
     REQUIRE(saved.at("ratio").type() == typeid(U64));
     REQUIRE(std::any_cast<U64>(saved.at("ratio")) == 4);
+    REQUIRE(std::any_cast<std::string>(saved.at("method")) == "sum");
 
     const Tensor out = block.outputs.at("buffer").tensor;
     REQUIRE(out.shape(0) == 64);
@@ -64,7 +83,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                  "Decimator block rejects invalid ratio geometry before define",
+                  "Decimator block rejects invalid settings before define",
                   "[modules][dsp][decimator][block][validation]") {
     Blocks::OnesTensor source;
     source.shape = {8, 6};
@@ -83,6 +102,10 @@ TEST_CASE_METHOD(FlowgraphFixture,
     }
     SECTION("indivisible sample extent") {
         config.ratio = 4;
+    }
+    SECTION("unknown method") {
+        config.ratio = 2;
+        config.method = "median";
     }
 
     REQUIRE(flowgraph->blockCreate("geometry_bad", config, inputs) == Result::SUCCESS);
@@ -437,6 +460,189 @@ TEST_CASE_METHOD(FlowgraphFixture,
     Parser::Map saved;
     REQUIRE(flowgraph->blockConfig("recreate_decimator", saved) == Result::SUCCESS);
     REQUIRE(std::any_cast<U64>(saved.at("ratio")) == 4);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Decimator methods reduce real and complex sample groups across layouts",
+                 "[modules][dsp][decimator][block][methods][metadata]") {
+    const std::string method = GENERATE("subsample", "sum", "average");
+    const std::string dataType = GENERATE("F32", "CF32");
+    const Index sampleAxis = GENERATE(Index{0}, Index{1}, Index{2});
+    const U64 ratio = GENERATE(U64{1}, U64{3}, U64{4}, U64{12});
+    CAPTURE(method, dataType, sampleAxis, ratio);
+
+    Blocks::SignalGenerator source;
+    source.signalDataType = dataType;
+    source.bufferSize = 48;
+    source.sampleRate = 48000.0f;
+    source.frequency = 3500.0f;
+    source.phase = 0.3f;
+    REQUIRE(flowgraph->blockCreate("src", source, {}) == Result::SUCCESS);
+
+    Blocks::Reshape reshape;
+    const std::string shapes[] = {"[12, 2, 2]", "[2, 12, 2]", "[2, 2, 12]"};
+    reshape.shape = shapes[sampleAxis];
+    TensorMap reshapeInputs;
+    reshapeInputs["buffer"].requested("src", "signal");
+    REQUIRE(flowgraph->blockCreate("layout", reshape, reshapeInputs) == Result::SUCCESS);
+    Tensor input = viewBlock("layout").outputs.at("buffer").tensor;
+    const Index batchAxis = sampleAxis == 0 ? 1 : 0;
+    const Index channelAxis = sampleAxis == 2 ? 1 : 2;
+    REQUIRE(input.setAttribute("sampleAxis", sampleAxis) == Result::SUCCESS);
+    REQUIRE(input.setAttribute("batchAxis", batchAxis) == Result::SUCCESS);
+    REQUIRE(input.setAttribute("channelAxis", channelAxis) == Result::SUCCESS);
+
+    Blocks::Decimator config;
+    config.ratio = ratio;
+    config.method = method;
+    TensorMap inputs;
+    inputs["buffer"].requested("layout", "buffer");
+    REQUIRE(flowgraph->blockCreate("decimator", config, inputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("decimator").state == Block::State::Created);
+    const Tensor output = viewBlock("decimator").outputs.at("buffer").tensor;
+    Shape expectedShape = input.shape();
+    expectedShape[sampleAxis] /= ratio;
+    REQUIRE(output.shape() == expectedShape);
+    REQUIRE(output.contiguous());
+    REQUIRE(std::any_cast<Index>(output.attribute("sampleAxis")) == sampleAxis);
+    REQUIRE(std::any_cast<Index>(output.attribute("batchAxis")) == batchAxis);
+    REQUIRE(std::any_cast<Index>(output.attribute("channelAxis")) == channelAxis);
+    REQUIRE(std::any_cast<F32>(output.attribute("sampleRate")) ==
+            source.sampleRate / static_cast<F32>(ratio));
+
+    const auto valueAt = [&](const Tensor& tensor, const U64 index) -> CF64 {
+        if (dataType == "CF32") {
+            return CF64(tensor.data<CF32>()[index]);
+        }
+        return CF64(tensor.data<F32>()[index], 0.0);
+    };
+
+    for (U64 frame = 0; frame < 2; ++frame) {
+        REQUIRE(flowgraph->compute() == Result::SUCCESS);
+        for (U64 index = 0; index < output.size(); ++index) {
+            U64 remaining = index;
+            U64 inputIndex = 0;
+            for (Index axis = output.rank(); axis-- > 0;) {
+                const U64 coordinate = remaining % output.shape(axis);
+                remaining /= output.shape(axis);
+                inputIndex += coordinate * input.stride(axis) *
+                              (axis == sampleAxis ? ratio : 1);
+            }
+
+            CF64 expected = valueAt(input, inputIndex);
+            if (method != "subsample") {
+                for (U64 sample = 1; sample < ratio; ++sample) {
+                    expected += valueAt(input, inputIndex + sample * input.stride(sampleAxis));
+                }
+                if (method == "average") {
+                    expected /= static_cast<F64>(ratio);
+                }
+            }
+
+            const CF64 actual = valueAt(output, index);
+            CAPTURE(frame, index);
+            REQUIRE(actual.real() == Catch::Approx(expected.real()).margin(1e-5));
+            REQUIRE(actual.imag() == Catch::Approx(expected.imag()).margin(1e-5));
+        }
+    }
+
+    REQUIRE(input.setAttribute("sampleRate", F32{96000.0f}) == Result::SUCCESS);
+    REQUIRE(std::any_cast<F32>(output.attribute("sampleRate")) ==
+            96000.0f / static_cast<F32>(ratio));
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Decimator switches methods and preserves the selected method on export",
+                 "[modules][dsp][decimator][block][methods][reconfigure][serialization]") {
+    TestFlowgraph::SyntheticSourceBlockConfig source;
+    source.bufferSize = 8;
+    REQUIRE(flowgraph->blockCreate("src", source, {}) == Result::SUCCESS);
+    Tensor input = viewBlock("src").outputs.at("signal").tensor;
+    REQUIRE(input.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
+    REQUIRE(input.setAttribute("sampleRate", F32{48000.0f}) == Result::SUCCESS);
+    for (U64 index = 0; index < input.size(); ++index) {
+        input.at<F32>(index) = static_cast<F32>(index + 1);
+    }
+
+    Blocks::Decimator config;
+    config.ratio = 4;
+    TensorMap inputs;
+    inputs["buffer"].requested("src", "signal");
+    REQUIRE(flowgraph->blockCreate("decimator", config, inputs) == Result::SUCCESS);
+
+    const std::string methods[] = {"sum", "subsample", "average", "sum", "average"};
+    const F32 expected[][2] = {{10.0f, 26.0f}, {1.0f, 5.0f}, {2.5f, 6.5f},
+                               {10.0f, 26.0f}, {2.5f, 6.5f}};
+    for (Index index = 0; index < 5; ++index) {
+        CAPTURE(methods[index]);
+        Parser::Map update;
+        update["method"] = methods[index];
+        REQUIRE(flowgraph->blockReconfigure("decimator", update) == Result::SUCCESS);
+        REQUIRE(viewBlock("decimator").state == Block::State::Created);
+        REQUIRE(flowgraph->compute() == Result::SUCCESS);
+        const Tensor output = viewBlock("decimator").outputs.at("buffer").tensor;
+        REQUIRE(output.shape() == Shape{2});
+        REQUIRE(output.at<F32>(0) == expected[index][0]);
+        REQUIRE(output.at<F32>(1) == expected[index][1]);
+        REQUIRE(std::any_cast<F32>(output.attribute("sampleRate")) == 12000.0f);
+    }
+
+    Parser::Map invalid;
+    invalid["method"] = std::string("unknown");
+    REQUIRE(flowgraph->blockReconfigure("decimator", invalid) == Result::SUCCESS);
+    RequireErroredWithInterface(viewBlock("decimator"));
+    Parser::Map saved;
+    REQUIRE(flowgraph->blockConfig("decimator", saved) == Result::SUCCESS);
+    REQUIRE(std::any_cast<std::string>(saved.at("method")) == "unknown");
+
+    Parser::Map recovery;
+    recovery["method"] = std::string("average");
+    recovery["ratio"] = U64{2};
+    REQUIRE(flowgraph->blockReconfigure("decimator", recovery) == Result::SUCCESS);
+    REQUIRE(viewBlock("decimator").state == Block::State::Created);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    const Tensor output = viewBlock("decimator").outputs.at("buffer").tensor;
+    REQUIRE(output.shape() == Shape{4});
+    for (U64 index = 0; index < output.size(); ++index) {
+        REQUIRE(output.at<F32>(index) == static_cast<F32>(index * 2) + 1.5f);
+    }
+    REQUIRE(std::any_cast<F32>(output.attribute("sampleRate")) == 24000.0f);
+
+    std::vector<char> blob;
+    REQUIRE(flowgraph->exportToBlob(blob) == Result::SUCCESS);
+    Flowgraph restored;
+    REQUIRE(restored.create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+    REQUIRE(restored.importFromBlob(blob) == Result::SUCCESS);
+    const auto restoredBlock = ViewBlock(restored, "decimator");
+    REQUIRE(restoredBlock.state == Block::State::Created);
+    REQUIRE(std::any_cast<std::string>(restoredBlock.config.at("method")) == "average");
+    REQUIRE(std::any_cast<U64>(restoredBlock.config.at("ratio")) == 2);
+    REQUIRE(restored.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Decimator average avoids overflow from the unnormalized sum",
+                 "[modules][dsp][decimator][block][average]") {
+    TestFlowgraph::SyntheticSourceBlockConfig source;
+    source.bufferSize = 8;
+    REQUIRE(flowgraph->blockCreate("src", source, {}) == Result::SUCCESS);
+    Tensor input = viewBlock("src").outputs.at("signal").tensor;
+    REQUIRE(input.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
+    const F32 amplitude = std::numeric_limits<F32>::max() / 2.0f;
+    std::fill_n(input.data<F32>(), input.size(), amplitude);
+
+    Blocks::Decimator config;
+    config.ratio = 4;
+    config.method = "average";
+    TensorMap inputs;
+    inputs["buffer"].requested("src", "signal");
+    REQUIRE(flowgraph->blockCreate("decimator", config, inputs) == Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    const Tensor output = viewBlock("decimator").outputs.at("buffer").tensor;
+    for (U64 index = 0; index < output.size(); ++index) {
+        REQUIRE(std::isfinite(output.at<F32>(index)));
+        REQUIRE(output.at<F32>(index) == Catch::Approx(amplitude));
+    }
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,

@@ -9,7 +9,6 @@ namespace Jetstream::Blocks {
 
 struct Lineplot : public Block::Config {
     U64 averaging = 1;
-    U64 decimation = 1;
     bool maxHold = false;
     bool fill = true;
     F32 rangeMin = -100.0f;
@@ -20,7 +19,7 @@ struct Lineplot : public Block::Config {
     JST_BLOCK_TYPE(lineplot);
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(L);
-    JST_BLOCK_PARAMS(averaging, decimation, maxHold, fill, rangeMin, rangeMax,
+    JST_BLOCK_PARAMS(averaging, maxHold, fill, rangeMin, rangeMax,
                      xLabel, yLabel);
     JST_BLOCK_DESCRIPTION(
         "Lineplot",
@@ -30,12 +29,13 @@ struct Lineplot : public Block::Config {
         "for time-domain signals, waveform displays, and spectral data.\n\n"
 
         "## Arguments\n"
-        "- **Averaging**: Number of samples to average for smoothing "
-        "(1 = no averaging).\n"
-        "- **Decimation**: Decimation factor for input data (1 = no decimation).\n"
+        "- **Averaging**: Exponential trace smoothing factor across updates. "
+        "Spectra within each input batch are averaged first. Smoothing starts "
+        "from the first batch, and soft display mapping is applied afterward. "
+        "Affine-normalized decibel input is therefore averaged in the log domain.\n"
         "- **Max Hold**: Retain the maximum observed amplitude trace.\n"
-        "- **Range Min/Max**: Values shown at the lower and upper Y-axis "
-        "limits. Input data must already be normalized.\n\n"
+        "- **Range Min/Max**: Reference bounds for the soft display mapping. "
+        "Input data must already be affine-normalized to these bounds.\n\n"
 
         "## Useful For\n"
         "- Visualizing time-domain signals and waveforms.\n"
@@ -44,12 +44,12 @@ struct Lineplot : public Block::Config {
 
         "## Examples\n"
         "- Spectrum display with averaging:\n"
-        "  Config: Averaging=8, Decimation=1\n"
+        "  Config: Averaging=8\n"
         "  Input: F32[1024] -> Rendered line plot.\n\n"
 
         "## Implementation\n"
         "Input -> Signal Points -> GPU Vertices -> Rendered Display\n"
-        "1. Input data is processed with averaging and decimation.\n"
+        "1. Input data is processed with averaging.\n"
         "2. Signal points are computed for each sample.\n"
         "3. Thick line vertices are generated on GPU for rendering.\n"
         "4. Grid and signal are rendered to a framebuffer.";

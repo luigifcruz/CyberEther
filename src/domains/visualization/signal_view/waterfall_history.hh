@@ -7,6 +7,25 @@
 
 namespace Jetstream::Modules {
 
+struct WaterfallAveragingPlan {
+    U64 rowCount = 0;
+    U64 pendingRows = 0;
+};
+
+inline WaterfallAveragingPlan PlanWaterfallAveraging(const U64 pendingRows,
+                                                    const U64 incomingRows,
+                                                    const U64 averaging) {
+    const U64 neededRows = averaging - pendingRows;
+    if (incomingRows < neededRows) {
+        return {.rowCount = 0, .pendingRows = pendingRows + incomingRows};
+    }
+    const U64 remainingRows = incomingRows - neededRows;
+    return {
+        .rowCount = 1 + remainingRows / averaging,
+        .pendingRows = remainingRows % averaging,
+    };
+}
+
 struct WaterfallWritePlan {
     U64 sourceRow = 0;
     U64 destinationRow = 0;

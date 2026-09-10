@@ -76,7 +76,7 @@ Result RangeImplNativeCpu::kernelF32() {
             }
 
             const F32 normalized = in * scale + offset;
-            out = 0.5f + 0.5f * std::tanh(4.0f * (normalized - 0.5f));
+            out = std::isfinite(normalized) ? normalized : (normalized > 0.0f ? 1.0f : 0.0f);
         },
     input, output);
 }

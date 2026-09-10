@@ -12,9 +12,8 @@ using namespace Jetstream;
 
 namespace {
 
-F32 SoftRange(const F32 value, const F32 min, const F32 max) {
-    const F32 normalized = (value - min) / (max - min);
-    return 0.5f + 0.5f * std::tanh(4.0f * (normalized - 0.5f));
+F32 NormalizeRange(const F32 value, const F32 min, const F32 max) {
+    return (value - min) / (max - min);
 }
 
 void RequireRangeValidationError(const Registry::ModuleRegistration& impl) {
@@ -59,16 +58,16 @@ TEST_CASE("Range Module - Scales Into Unit Interval", "[modules][range][F32]") {
 
             auto& out = ctx.output("signal");
             REQUIRE_THAT(out.at<F32>(0),
-                         Catch::Matchers::WithinAbs(SoftRange(-2.0f, -2.0f, 2.0f), 1e-6f));
+                         Catch::Matchers::WithinAbs(0.0f, 1e-6f));
             REQUIRE_THAT(out.at<F32>(1), Catch::Matchers::WithinAbs(0.5f, 1e-6f));
             REQUIRE_THAT(out.at<F32>(2),
-                         Catch::Matchers::WithinAbs(SoftRange(2.0f, -2.0f, 2.0f), 1e-6f));
+                         Catch::Matchers::WithinAbs(1.0f, 1e-6f));
         }
     }
 }
 
-TEST_CASE("Range Module - Softly Compresses Outliers",
-          "[modules][range][F32][soft-knee]") {
+TEST_CASE("Range Module - Preserves Outliers For Averaging",
+          "[modules][range][F32][averaging]") {
     const auto implementations = Registry::ListAvailableModules("range");
     REQUIRE(!implementations.empty());
 
@@ -81,11 +80,12 @@ TEST_CASE("Range Module - Softly Compresses Outliers",
             config.max = 2.0f;
             ctx.setConfig(config);
 
-            auto input = ctx.createTensor<F32>({4});
+            auto input = ctx.createTensor<F32>({5});
             input.at(0) = -std::numeric_limits<F32>::infinity();
             input.at(1) = -4.0f;
             input.at(2) = 4.0f;
             input.at(3) = std::numeric_limits<F32>::infinity();
+            input.at(4) = std::numeric_limits<F32>::quiet_NaN();
 
             ctx.setInput("signal", input);
             REQUIRE(ctx.run() == Result::SUCCESS);
@@ -93,12 +93,11 @@ TEST_CASE("Range Module - Softly Compresses Outliers",
             const auto& out = ctx.output("signal");
             REQUIRE(out.at<F32>(0) == 0.0f);
             REQUIRE_THAT(out.at<F32>(1),
-                         Catch::Matchers::WithinAbs(SoftRange(-4.0f, -2.0f, 2.0f), 1e-6f));
+                         Catch::Matchers::WithinAbs(-0.5f, 1e-6f));
             REQUIRE_THAT(out.at<F32>(2),
-                         Catch::Matchers::WithinAbs(SoftRange(4.0f, -2.0f, 2.0f), 1e-6f));
+                         Catch::Matchers::WithinAbs(1.5f, 1e-6f));
             REQUIRE(out.at<F32>(3) == 1.0f);
-            REQUIRE(out.at<F32>(1) > 0.0f);
-            REQUIRE(out.at<F32>(2) < 1.0f);
+            REQUIRE(out.at<F32>(4) == 0.0f);
         }
     }
 }
@@ -156,10 +155,10 @@ TEST_CASE("Range Module - Orders Reversed Bounds", "[modules][range][F32][revers
 
             const auto& out = ctx.output("signal");
             REQUIRE_THAT(out.at<F32>(0),
-                         Catch::Matchers::WithinAbs(SoftRange(-1.0f, -1.0f, 1.0f), 1e-6f));
+                         Catch::Matchers::WithinAbs(0.0f, 1e-6f));
             REQUIRE(out.at<F32>(1) == 0.5f);
             REQUIRE_THAT(out.at<F32>(2),
-                         Catch::Matchers::WithinAbs(SoftRange(1.0f, -1.0f, 1.0f), 1e-6f));
+                         Catch::Matchers::WithinAbs(1.0f, 1e-6f));
         }
     }
 }
@@ -198,7 +197,7 @@ TEST_CASE("Range Module - Rank 4 Non-Contiguous",
                 for (U64 j = 0; j < 2; ++j) {
                     for (U64 k = 0; k < 4; ++k) {
                         for (U64 l = 0; l < 2; ++l) {
-                            const F32 expected = SoftRange(
+                            const F32 expected = NormalizeRange(
                                 input.at<F32>(i, j, k, l), 0.0f, 100.0f);
                             REQUIRE_THAT(out.at<F32>(i, j, k, l),
                                          Catch::Matchers::WithinAbs(expected, 1e-6f));

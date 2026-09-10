@@ -437,8 +437,7 @@ TEST_CASE("Amplitude - F32 exact zero is negative infinity",
             REQUIRE(ctx.run() == Result::SUCCESS);
 
             auto& out = ctx.output("signal");
-            REQUIRE(std::isinf(out.at<F32>(0)));
-            REQUIRE(std::signbit(out.at<F32>(0)));
+            REQUIRE(out.at<F32>(0) == -std::numeric_limits<F32>::infinity());
             REQUIRE(std::isfinite(out.at<F32>(1)));
         }
     }
@@ -465,9 +464,34 @@ TEST_CASE("Amplitude - CF32 exact zero is negative infinity",
             REQUIRE(ctx.run() == Result::SUCCESS);
 
             auto& out = ctx.output("signal");
-            REQUIRE(std::isinf(out.at<F32>(0)));
-            REQUIRE(std::signbit(out.at<F32>(0)));
+            REQUIRE(out.at<F32>(0) == -std::numeric_limits<F32>::infinity());
             REQUIRE(std::isfinite(out.at<F32>(1)));
+        }
+    }
+}
+
+TEST_CASE("Amplitude - Complex magnitude avoids intermediate underflow and overflow",
+          "[modules][amplitude][cf32][numeric]") {
+    const auto implementations = Registry::ListAvailableModules("amplitude");
+    REQUIRE_FALSE(implementations.empty());
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            TestContext ctx("amplitude", impl.device, impl.runtime, impl.provider);
+            ctx.setConfig(Modules::Amplitude{});
+            Tensor input(DeviceType::CPU, DataType::CF32, {3});
+            REQUIRE(input.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
+            input.at<CF32>(0) = {std::numeric_limits<F32>::min() * 0.5f, 0.0f};
+            input.at<CF32>(1) = {1e-30f, 1e-30f};
+            input.at<CF32>(2) = {1e30f, 1e30f};
+            ctx.setInput("signal", input);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+            const auto& out = ctx.output("signal");
+            const F64 magnitudes[] = {static_cast<F64>(std::numeric_limits<F32>::min()) * 0.5,
+                                      std::sqrt(2.0) * 1e-30, std::sqrt(2.0) * 1e30};
+            for (U64 i = 0; i < 3; ++i) {
+                const F64 expected = 20.0 * std::log10(magnitudes[i] / 3.0);
+                REQUIRE_THAT(out.at<F32>(i), Catch::Matchers::WithinAbs(expected, 0.02));
+            }
         }
     }
 }
