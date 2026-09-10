@@ -100,6 +100,7 @@ Result SoapyImpl::create() {
     streaming = false;
     activeSampleRate = 0.0f;
     bufferHealth.publish(0.0f);
+    deviceOverflows.publish(0);
     throughput.publish({0.0f, 0.0f});
 
     const auto args = SoapySDR::KwargsFromString(deviceString);
@@ -251,6 +252,9 @@ Result SoapyImpl::soapyThreadLoop() {
             }
 
             const auto action = receiveStatus.handle(received.status);
+            if (received.status == SoapyReceiver::ReadStatus::Overflow) {
+                deviceOverflows.publish(receiveStatus.deviceOverflows);
+            }
             if (action == SoapyReceiveStatus::Action::WarnOverflow) {
                 JST_WARN("[MODULE_SOAPY] Device receive overflow on '{}'. Samples were lost "
                          "(total events since stream start: {}).", name(), receiveStatus.deviceOverflows);
@@ -295,6 +299,10 @@ F64 SoapyImpl::getBufferLoss() const {
     return stats.pushedElements > 0
         ? static_cast<F64>(stats.overwrittenElements) / static_cast<F64>(stats.pushedElements)
         : 0.0;
+}
+
+U64 SoapyImpl::getDeviceOverflows() const {
+    return deviceOverflows.get();
 }
 
 std::pair<F32, F32> SoapyImpl::getThroughput() const {

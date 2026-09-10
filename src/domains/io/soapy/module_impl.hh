@@ -25,6 +25,7 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
 
     F32 getBufferHealth() const;
     F64 getBufferLoss() const;
+    U64 getDeviceOverflows() const;
     std::pair<F32, F32> getThroughput() const;
     std::vector<std::string> listAntennas() const;
 
@@ -47,6 +48,7 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
 
     Tools::CircularBuffer<CF32> circularBuffer;
     Tools::Snapshot<F32> bufferHealth{0.0f};
+    Tools::Snapshot<U64> deviceOverflows{0};
     Tools::Snapshot<std::pair<F32, F32>> throughput{{0.0f, 0.0f}};
 
     Result soapyThreadLoop();
