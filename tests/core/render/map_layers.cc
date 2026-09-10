@@ -200,6 +200,34 @@ TEST_CASE("Map GPU uniforms match the packed shader layout", "[render][geomap]")
     REQUIRE(offsetof(GpuUniforms, lineOpacity) == 140);
 }
 
+TEST_CASE("Map sun model tracks the subsolar point", "[render][geomap]") {
+    const auto j2000 = MapContext::SubsolarPoint(946728000.0);
+    REQUIRE(j2000.y == Approx(-23.03).margin(0.1));
+    REQUIRE(j2000.x == Approx(0.8).margin(0.3));
+
+    const auto equinox = MapContext::SubsolarPoint(1774017960.0);
+    REQUIRE(equinox.y == Approx(0.0).margin(0.1));
+    REQUIRE(equinox.x == Approx(-39.6).margin(0.5));
+
+    const auto solstice = MapContext::SubsolarPoint(1782030240.0);
+    REQUIRE(solstice.y == Approx(23.44).margin(0.05));
+    REQUIRE(solstice.x == Approx(54.4).margin(0.5));
+
+    for (const F64 seconds : {946728000.0, 1774017960.0, 1782030240.0}) {
+        const auto point = MapContext::SubsolarPoint(seconds);
+        REQUIRE(point.x >= -180.0);
+        REQUIRE(point.x <= 180.0);
+        const auto direction = MapContext::SunDirection(seconds);
+        REQUIRE(glm::length(direction) == Approx(1.0f).margin(1e-5f));
+        const auto expected = MapContext::LonLatToSphere(
+            static_cast<F32>(point.x), static_cast<F32>(point.y));
+        REQUIRE(glm::distance(direction, expected) == Approx(0.0f).margin(1e-5f));
+    }
+
+    const auto morning = MapContext::SubsolarPoint(1774017960.0 - 6.0 * 3600.0);
+    REQUIRE(morning.x == Approx(equinox.x + 90.0).margin(0.5));
+}
+
 TEST_CASE("Shared map camera matches the previous globe projection", "[render][geomap]") {
     for (F32 zoom : {-2.0f, 0.0f, 3.0f, 10.0f}) {
         for (F32 aspect : {0.5f, 1.0f, 2.0f}) {

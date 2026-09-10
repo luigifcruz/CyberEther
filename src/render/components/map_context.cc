@@ -74,6 +74,31 @@ F32 MapContext::WrapLongitude(F32 longitude) {
     return wrapped - 180.0f;
 }
 
+Extent2D<F64> MapContext::SubsolarPoint(F64 unixSeconds) {
+    const auto wrapDegrees = [](F64 degrees) {
+        degrees = std::fmod(degrees, 360.0);
+        return degrees < 0.0 ? degrees + 360.0 : degrees;
+    };
+    const F64 days = unixSeconds / 86400.0 - 10957.5;
+    const F64 meanLongitude = glm::radians(wrapDegrees(280.460 + 0.9856474 * days));
+    const F64 meanAnomaly = glm::radians(wrapDegrees(357.528 + 0.9856003 * days));
+    const F64 eclipticLongitude = meanLongitude +
+        glm::radians(1.915) * std::sin(meanAnomaly) +
+        glm::radians(0.020) * std::sin(2.0 * meanAnomaly);
+    const F64 obliquity = glm::radians(23.439 - 0.0000004 * days);
+    const F64 declination = std::asin(std::sin(obliquity) * std::sin(eclipticLongitude));
+    const F64 rightAscension = std::atan2(std::cos(obliquity) * std::sin(eclipticLongitude),
+                                          std::cos(eclipticLongitude));
+    const F64 siderealTime = glm::radians(wrapDegrees(280.46061837 + 360.98564736629 * days));
+    const F64 longitude = wrapDegrees(glm::degrees(rightAscension - siderealTime) + 180.0) - 180.0;
+    return {longitude, glm::degrees(declination)};
+}
+
+glm::vec3 MapContext::SunDirection(F64 unixSeconds) {
+    const auto point = SubsolarPoint(unixSeconds);
+    return LonLatToSphere(static_cast<F32>(point.x), static_cast<F32>(point.y));
+}
+
 Result MapContext::update(const Uniforms& uniforms) {
     if (!std::isfinite(uniforms.centerLon) ||
         !std::isfinite(uniforms.centerLat) ||

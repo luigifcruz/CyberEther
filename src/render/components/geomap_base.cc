@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -434,6 +435,21 @@ struct StarsUniforms {
 static_assert(sizeof(StarsUniforms) == 80,
               "StarsUniforms must match the std140 StarsUniforms block.");
 
+// Uniform block shared by every sun-aware pass: the terminator overlay, city
+// lights and the atmosphere. Direction points at the subsolar point.
+struct SunUniforms {
+    glm::vec4 direction;
+    glm::vec4 night;
+    glm::vec4 lights;
+};
+static_assert(sizeof(SunUniforms) == 48,
+              "SunUniforms must match the std140 SunUniforms block.");
+
+static F64 WallClockSeconds() {
+    return std::chrono::duration<F64>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
 // Copy the camera/screen fields from the canonical camera block into a
 // per-program uniform buffer, leaving the line-style fields untouched.
 static void CopyCameraFields(GpuUniforms& dst, const GpuUniforms& src) {
@@ -608,6 +624,15 @@ struct PointMarkerLayer {
     std::shared_ptr<Render::Program> program;
 };
 
+// A full-globe pass that reuses the procedural sphere mesh.
+struct SpherePass {
+    GpuUniforms gpuUniforms{};
+    std::shared_ptr<Render::Buffer> uniformBuffer;
+    std::shared_ptr<Render::Vertex> vertex;
+    std::shared_ptr<Render::Draw> draw;
+    std::shared_ptr<Render::Program> program;
+};
+
 struct GeoMapBaseLayer::Impl {
     Uniforms uniforms;
     Tuning tuning;
@@ -659,13 +684,18 @@ struct GeoMapBaseLayer::Impl {
     MergedFillLayer landcover;    // land + urban + lakes merged
 
     // Translucent atmosphere reuses the water sphere's position/index mesh.
-    struct {
-        GpuUniforms gpuUniforms{};
-        std::shared_ptr<Render::Buffer> uniformBuffer;
-        std::shared_ptr<Render::Vertex> vertex;
-        std::shared_ptr<Render::Draw> draw;
-        std::shared_ptr<Render::Program> program;
-    } atmosphere;
+    SpherePass atmosphere;
+
+    // Day/night: the sun block feeds the terminator overlay (night shade and
+    // twilight tint over the whole globe), the urban-area glow fill, the
+    // population-weighted city light sprites and the atmosphere.
+    SunUniforms sunUniforms{};
+    std::shared_ptr<Render::Buffer> sunUniformBuffer;
+    F64 sunTime = -1.0;
+    SpherePass daylight;
+    MergedFillLayer urbanLights;
+    PointMarkerLayer cityLights;
+    U64 cityLightCount = 0;
 
     // Lines use endpoint-selector quads; markers/stars use centered quads.
     std::shared_ptr<Render::Buffer> quadBuffer;
@@ -943,6 +973,16 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
                                 0.176f,
                                 0.310f,  // lakes: water blue
                                 pimpl->landcover));
+
+    // The same urban polygons glow at night; they are drawn by a separate
+    // translucent pass so only positions are needed.
+    JST_CHECK(LoadPreTriangulatedFromMemory(
+        Resources::ne_10m_urban_areas_tri_gz,
+        Resources::ne_10m_urban_areas_tri_gz_len,
+        Resources::ne_10m_urban_areas_tri_raw_len,
+        pimpl->urbanLights.geographicPositions,
+        pimpl->urbanLights.indices));
+    pimpl->urbanLights.indexCount = pimpl->urbanLights.indices.size();
 
     // Load rivers split into all 11 source rank groups.
     {
@@ -1321,6 +1361,98 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
     JST_CHECK(buildMergedFill(pimpl->bathymetry));
     JST_CHECK(buildMergedFill(pimpl->landcover));
 
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = &pimpl->sunUniforms;
+        cfg.elementByteSize = sizeof(SunUniforms);
+        cfg.size = 1;
+        cfg.target = Render::Buffer::Target::UNIFORM;
+        JST_CHECK(window->build(pimpl->sunUniformBuffer, cfg));
+    }
+    const std::pair<std::shared_ptr<Render::Buffer>, Render::Program::Target>
+        sunBinding = {pimpl->sunUniformBuffer,
+                      Render::Program::Target::VERTEX |
+                      Render::Program::Target::FRAGMENT};
+
+    // Sun-aware passes share one builder: a position-only vertex stream over
+    // an index buffer, the camera block at binding 0 and the sun block at 1.
+    auto buildSunPass = [&](GpuUniforms& gpuUniforms,
+                            std::shared_ptr<Render::Buffer>& uniformBuffer,
+                            std::shared_ptr<Render::Vertex>& vertex,
+                            std::shared_ptr<Render::Draw>& draw,
+                            std::shared_ptr<Render::Program>& program,
+                            const std::shared_ptr<Render::Buffer>& posBuffer,
+                            const std::shared_ptr<Render::Buffer>& indexBuffer,
+                            const char* shaderName) -> Result {
+        CopyCameraFields(gpuUniforms, pimpl->cameraUniforms);
+        {
+            Render::Buffer::Config cfg;
+            cfg.buffer = &gpuUniforms;
+            cfg.elementByteSize = sizeof(GpuUniforms);
+            cfg.size = 1;
+            cfg.target = Render::Buffer::Target::UNIFORM;
+            JST_CHECK(window->build(uniformBuffer, cfg));
+        }
+        {
+            Render::Vertex::Config cfg;
+            cfg.vertices = {{posBuffer, 2}};
+            cfg.indices = indexBuffer;
+            JST_CHECK(window->build(vertex, cfg));
+        }
+        {
+            Render::Draw::Config cfg;
+            cfg.buffer = vertex;
+            cfg.mode = Render::Draw::Mode::TRIANGLES;
+            cfg.numberOfInstances = 1;
+            JST_CHECK(window->build(draw, cfg));
+        }
+        {
+            Render::Program::Config cfg;
+            cfg.shaders = ShadersPackage[shaderName];
+            cfg.draws = {draw};
+            cfg.buffers = {
+                {uniformBuffer, Render::Program::Target::VERTEX |
+                                Render::Program::Target::FRAGMENT},
+                sunBinding,
+            };
+            cfg.enableAlphaBlending = true;
+            JST_CHECK(window->build(program, cfg));
+        }
+        return Result::SUCCESS;
+    };
+
+    if (pimpl->waterSphere.indexCount > 0) {
+        auto& pass = pimpl->daylight;
+        JST_CHECK(buildSunPass(pass.gpuUniforms, pass.uniformBuffer,
+                               pass.vertex, pass.draw, pass.program,
+                               pimpl->waterSphere.posBuffer,
+                               pimpl->waterSphere.indexBuffer, "daylight"));
+    }
+
+    if (pimpl->urbanLights.indexCount > 0) {
+        auto& layer = pimpl->urbanLights;
+        {
+            Render::Buffer::Config cfg;
+            cfg.buffer = layer.geographicPositions.data();
+            cfg.elementByteSize = sizeof(F32);
+            cfg.size = layer.geographicPositions.size();
+            cfg.target = Render::Buffer::Target::VERTEX;
+            JST_CHECK(window->build(layer.posBuffer, cfg));
+        }
+        {
+            Render::Buffer::Config cfg;
+            cfg.buffer = layer.indices.data();
+            cfg.elementByteSize = sizeof(U32);
+            cfg.size = layer.indices.size();
+            cfg.target = Render::Buffer::Target::VERTEX_INDICES;
+            JST_CHECK(window->build(layer.indexBuffer, cfg));
+        }
+        JST_CHECK(buildSunPass(layer.gpuUniforms, layer.uniformBuffer,
+                               layer.vertex, layer.draw, layer.program,
+                               layer.posBuffer, layer.indexBuffer,
+                               "urbanglow"));
+    }
+
     // Atmosphere pass: reuse the procedural sphere mesh and inflate it in the
     // vertex shader so the soft halo extends beyond the planet silhouette.
     CopyCameraFields(pimpl->atmosphere.gpuUniforms, pimpl->cameraUniforms);
@@ -1369,6 +1501,7 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
             {pimpl->atmosphere.uniformBuffer,
              Render::Program::Target::VERTEX |
              Render::Program::Target::FRAGMENT},
+            sunBinding,
         };
         cfg.enableAlphaBlending = true;
         JST_CHECK(window->build(pimpl->atmosphere.program, cfg));
@@ -1665,7 +1798,9 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
     auto buildPointMarkers = [&](U64 markerCapacity,
                                  PointMarkerLayer& markers,
                                  const char* shaderName,
-                                 F32 colorR, F32 colorG, F32 colorB) -> Result {
+                                 F32 colorR, F32 colorG, F32 colorB,
+                                 bool sunAware = false,
+                                 U64 initialCount = 0) -> Result {
         if (markerCapacity == 0) return Result::SUCCESS;
         markers.instances.resize(markerCapacity * 4, 0.0f);
         markers.gpuUniforms.colorR = colorR;
@@ -1698,7 +1833,7 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
             Render::Draw::Config cfg;
             cfg.buffer = markers.vertex;
             cfg.mode = Render::Draw::Mode::TRIANGLES;
-            cfg.numberOfInstances = 0;
+            cfg.numberOfInstances = initialCount;
             JST_CHECK(window->build(markers.draw, cfg));
         }
         {
@@ -1708,6 +1843,9 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
             cfg.buffers = {{markers.uniformBuffer,
                             Render::Program::Target::VERTEX |
                             Render::Program::Target::FRAGMENT}};
+            if (sunAware) {
+                cfg.buffers.push_back(sunBinding);
+            }
             cfg.enableAlphaBlending = true;
             JST_CHECK(window->build(markers.program, cfg));
         }
@@ -1736,6 +1874,32 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
         pimpl->labelLayers[Impl::LabelAirports].labels.size(),
         pimpl->airportMarkers,
         "airport", 0.95f, 0.78f, 0.40f));
+
+    // City lights: one static glow sprite per populated place. The built-up
+    // radius grows with the square root of population (about 12 km for one
+    // million people) and brightness with its logarithm.
+    {
+        auto& instances = pimpl->cityLights.instances;
+        for (const U64 layerIndex : {Impl::LabelCapitals, Impl::LabelCities}) {
+            for (const auto& label : pimpl->labelLayers[layerIndex].labels) {
+                if (label.population <= 0) continue;
+                const F32 population = static_cast<F32>(label.population);
+                const F32 radiusKm = std::clamp(
+                    0.012f * std::sqrt(population), 1.0f, 45.0f);
+                const F32 brightness = 0.25f + 0.45f * std::clamp(
+                    (std::log10(population) - 4.0f) / 3.0f, 0.0f, 1.0f);
+                instances.push_back(label.lon);
+                instances.push_back(label.lat);
+                instances.push_back(radiusKm / 6371.0f);
+                instances.push_back(brightness);
+            }
+        }
+        pimpl->cityLightCount = instances.size() / 4;
+        JST_CHECK(buildPointMarkers(pimpl->cityLightCount,
+                                    pimpl->cityLights,
+                                    "citylight", 0.0f, 0.0f, 0.0f,
+                                    true, pimpl->cityLightCount));
+    }
 
     // Build the background starfield: a deterministic set of stars on the
     // celestial sphere, rendered behind the globe with a skybox projection.
@@ -1879,6 +2043,17 @@ Result GeoMapBaseLayer::surface(Render::Surface::Config& config) {
             config.programs.push_back(category.program);
         }
     }
+    // Night shade and twilight tint darken every fill and map line beneath
+    // them; the lights then glow on top of the darkened cartography.
+    if (pimpl->daylight.program) {
+        config.programs.push_back(pimpl->daylight.program);
+    }
+    if (pimpl->urbanLights.program) {
+        config.programs.push_back(pimpl->urbanLights.program);
+    }
+    if (pimpl->cityLights.program) {
+        config.programs.push_back(pimpl->cityLights.program);
+    }
     // Atmospheric rim and outer halo haze the fills and map lines near the
     // limb alike, but stay under markers and labels.
     if (pimpl->atmosphere.program) {
@@ -1919,6 +2094,9 @@ Result GeoMapBaseLayer::surface(Render::Surface::Config& config) {
 
 Result GeoMapBaseLayer::present(const MapContext& context) {
     const bool updateView = pimpl->firstFrame || pimpl->uniforms != context.view;
+    const F64 sunTime = std::floor(
+        pimpl->tuning.sunTime.value_or(WallClockSeconds()) / 5.0) * 5.0;
+    const bool updateSun = updateView || sunTime != pimpl->sunTime;
     pimpl->uniforms = context.view;
     pimpl->cameraUniforms = context.camera;
     pimpl->skyViewProjection = context.skyViewProjection;
@@ -2042,6 +2220,19 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
             JST_CHECK(pimpl->atmosphere.draw->updateInstanceCount(
                 pimpl->tuning.atmosphere ? 1 : 0));
         }
+
+        const bool lightsEnabled = pimpl->tuning.dayNight &&
+                                   pimpl->tuning.cityLights;
+        auto updateSunPass = [&](auto& pass, bool enabled, U64 count) -> Result {
+            if (!pass.program) return Result::SUCCESS;
+            copyCamera(pass.gpuUniforms);
+            JST_CHECK(pass.uniformBuffer->update());
+            return pass.draw->updateInstanceCount(enabled ? count : 0);
+        };
+        JST_CHECK(updateSunPass(pimpl->daylight, pimpl->tuning.dayNight, 1));
+        JST_CHECK(updateSunPass(pimpl->urbanLights, lightsEnabled, 1));
+        JST_CHECK(updateSunPass(pimpl->cityLights, lightsEnabled,
+                                pimpl->cityLightCount));
 
         // Update the starfield uniforms so the celestial sphere tracks the
         // 3D globe camera (stars rotate opposite to panning).
@@ -2744,6 +2935,31 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
                                     airportMarkerCount));
 
         pimpl->firstFrame = false;
+    }
+
+    if (updateSun && pimpl->sunUniformBuffer) {
+        pimpl->sunTime = sunTime;
+        const auto& tuning = pimpl->tuning;
+        const F32 detailZoom = pimpl->uniforms.detailZoom;
+        const F32 strength = tuning.dayNight
+            ? 1.0f - glm::smoothstep(tuning.nightFadeStart,
+                                     std::max(tuning.nightFadeEnd,
+                                              tuning.nightFadeStart + 0.01f),
+                                     detailZoom)
+            : 0.0f;
+        const F32 lights = tuning.cityLights ? 1.0f : 0.0f;
+        auto& sun = pimpl->sunUniforms;
+        sun.direction = glm::vec4(MapContext::SunDirection(sunTime), strength);
+        sun.night = glm::vec4(tuning.nightDarkening, tuning.twilightWidth,
+                              tuning.dayLift, 0.0f);
+        // Sprites carry the glow from orbit; the textured urban polygons join
+        // in once the view is close enough for them to cover pixels.
+        sun.lights = glm::vec4(
+            lights * tuning.cityLightStrength,
+            lights * tuning.urbanLightStrength *
+                glm::smoothstep(0.0f, 1.5f, detailZoom),
+            0.0f, 0.0f);
+        JST_CHECK(pimpl->sunUniformBuffer->update());
     }
 
     // Always present text layers (handles GPU buffer uploads).
