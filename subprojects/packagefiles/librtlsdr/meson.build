@@ -1,4 +1,4 @@
-project('librtlsdr', 'c', version: '0.7.0', default_options: ['cpp_std=c++11', 'optimization=2'])
+project('librtlsdr', 'c', version: '2.0.3', default_options: ['cpp_std=c++11', 'optimization=2'])
 
 private_cpp_args = []
 interface_cpp_args = []
@@ -53,4 +53,4 @@ librtlsdr_dep = declare_dependency(
   dependencies: dep_lst,
 )
 
-install_subdir('include/librtlsdr', install_dir: get_option('includedir'))
+install_headers('include/rtl-sdr.h', 'include/rtl-sdr_export.h')
