@@ -3,6 +3,8 @@
 
 #include <jetstream/domains/core/reshape/module.hh>
 #include <jetstream/domains/core/arithmetic/module.hh>
+#include <jetstream/domains/core/multiply_constant/module.hh>
+#include <jetstream/domains/core/slice/module.hh>
 #include <jetstream/domains/core/squeeze_dims/module.hh>
 #include <jetstream/domains/core/duplicate/module.hh>
 #include <jetstream/memory/axis.hh>
@@ -22,6 +24,7 @@ struct DecimatorImpl : public Block::Impl,
  protected:
     struct CandidatePlan {
         std::string reshapeShape;
+        std::string slice;
         I64 childAxis;
         SignalAxes signalAxes;
         SignalAxes reshapedSignalAxes;
@@ -33,6 +36,10 @@ struct DecimatorImpl : public Block::Impl,
         std::make_shared<Modules::Reshape>();
     std::shared_ptr<Modules::Arithmetic> arithmeticConfig =
         std::make_shared<Modules::Arithmetic>();
+    std::shared_ptr<Modules::MultiplyConstant> normalizeConfig =
+        std::make_shared<Modules::MultiplyConstant>();
+    std::shared_ptr<Modules::Slice> sliceConfig =
+        std::make_shared<Modules::Slice>();
     std::shared_ptr<Modules::SqueezeDims> squeezeDimsConfig =
         std::make_shared<Modules::SqueezeDims>();
     std::shared_ptr<Modules::Duplicate> duplicateConfig =
@@ -45,6 +52,13 @@ Result DecimatorImpl::validate() {
 
     if (config.ratio == 0) {
         JST_ERROR("[BLOCK_DECIMATOR] Ratio must be greater than 0.");
+        return Result::ERROR;
+    }
+
+    if (config.method != "subsample" &&
+        config.method != "sum" &&
+        config.method != "average") {
+        JST_ERROR("[BLOCK_DECIMATOR] Invalid method '{}'.", config.method);
         return Result::ERROR;
     }
 
@@ -67,20 +81,25 @@ Result DecimatorImpl::validate() {
 
         CandidatePlan plan;
         plan.reshapeShape = "[";
+        plan.slice = "[";
         for (U64 dimension = 0; dimension < inputTensor.shape().size(); ++dimension) {
             if (dimension > 0) {
                 plan.reshapeShape += ", ";
+                plan.slice += ", ";
             }
             if (dimension == sampleAxis) {
+                plan.slice += "::" + std::to_string(config.ratio);
                 plan.reshapeShape += std::to_string(inputTensor.shape(dimension) /
                                                     config.ratio);
                 plan.reshapeShape += ", ";
                 plan.reshapeShape += std::to_string(config.ratio);
             } else {
+                plan.slice += ":";
                 plan.reshapeShape += std::to_string(inputTensor.shape(dimension));
             }
         }
         plan.reshapeShape += "]";
+        plan.slice += "]";
 
         plan.childAxis = static_cast<I64>(sampleAxis) + 1;
         plan.signalAxes = axes;
@@ -106,7 +125,7 @@ Result DecimatorImpl::validate() {
         candidatePlan = std::move(plan);
     }
 
-    if (ratio != config.ratio) {
+    if (ratio != config.ratio || method != config.method) {
         return Result::RECREATE;
     }
 
@@ -115,6 +134,7 @@ Result DecimatorImpl::validate() {
 
 Result DecimatorImpl::configure() {
     arithmeticConfig->operation = "add";
+    normalizeConfig->constant = 1.0f / static_cast<F32>(ratio);
     duplicateConfig->hostAccessible = true;
     duplicateConfig->outputDevice = GetDeviceName(device());
 
@@ -134,6 +154,16 @@ Result DecimatorImpl::define() {
                                     "Decimation ratio.",
                                     {{"type", "uint"}}));
 
+    JST_CHECK(defineInterfaceConfig("method",
+                                    "Method",
+                                    "Subsample keeps the first sample in each group; "
+                                    "Sum adds the group; Average computes its mean.",
+                                    {{"type", "dropdown"}, {"options", Parser::Sequence{
+                                        Parser::Map{{"label", "Subsample"}, {"value", "subsample"}},
+                                        Parser::Map{{"label", "Sum"}, {"value", "sum"}},
+                                        Parser::Map{{"label", "Average"}, {"value", "average"}},
+                                    }}}));
+
     return Result::SUCCESS;
 }
 
@@ -144,36 +174,47 @@ Result DecimatorImpl::create() {
         return Result::ERROR;
     }
 
-    reshapeConfig->shape = candidatePlan->reshapeShape;
-    arithmeticConfig->axis = candidatePlan->childAxis;
-    squeezeDimsConfig->axis = candidatePlan->childAxis;
+    auto reduced = inputPort;
+    if (method == "subsample") {
+        sliceConfig->slice = candidatePlan->slice;
+        JST_CHECK(moduleCreate("slice", sliceConfig, {
+            {"buffer", inputPort}
+        }));
+        reduced = moduleGetOutput({"slice", "buffer"});
+    } else {
+        if (method == "average") {
+            // Scale before reduction to avoid overflowing the unnormalized sum.
+            JST_CHECK(moduleCreate("normalize", normalizeConfig, {
+                {"factor", inputPort}
+            }));
+            reduced = moduleGetOutput({"normalize", "product"});
+        }
 
-    // Create reshape module.
+        reshapeConfig->shape = candidatePlan->reshapeShape;
+        arithmeticConfig->axis = candidatePlan->childAxis;
+        squeezeDimsConfig->axis = candidatePlan->childAxis;
 
-    JST_CHECK(moduleCreate("reshape", reshapeConfig, {
-        {"buffer", inputPort}
-    }));
-    auto reshaped = moduleGetOutput({"reshape", "buffer"});
-    JST_CHECK(SetSignalAxes(reshaped.tensor, candidatePlan->reshapedSignalAxes));
+        JST_CHECK(moduleCreate("reshape", reshapeConfig, {
+            {"buffer", reduced}
+        }));
+        auto reshaped = moduleGetOutput({"reshape", "buffer"});
+        JST_CHECK(SetSignalAxes(reshaped.tensor, candidatePlan->reshapedSignalAxes));
 
-    // Create arithmetic module (sum along ratio axis).
+        JST_CHECK(moduleCreate("arithmetic", arithmeticConfig, {
+            {"buffer", reshaped}
+        }));
 
-    JST_CHECK(moduleCreate("arithmetic", arithmeticConfig, {
-        {"buffer", reshaped}
-    }));
-
-    // Create squeeze_dims module to remove the reduced axis.
-
-    JST_CHECK(moduleCreate("squeeze_dims", squeezeDimsConfig, {
-        {"buffer", moduleGetOutput({"arithmetic", "buffer"})}
-    }));
-    auto squeezed = moduleGetOutput({"squeeze_dims", "buffer"});
-    JST_CHECK(SetSignalAxes(squeezed.tensor, candidatePlan->signalAxes));
+        JST_CHECK(moduleCreate("squeeze_dims", squeezeDimsConfig, {
+            {"buffer", moduleGetOutput({"arithmetic", "buffer"})}
+        }));
+        reduced = moduleGetOutput({"squeeze_dims", "buffer"});
+    }
+    JST_CHECK(SetSignalAxes(reduced.tensor, candidatePlan->signalAxes));
 
     // Create duplicate module for host accessibility.
 
     JST_CHECK(moduleCreate("duplicate", duplicateConfig, {
-        {"buffer", squeezed}
+        {"buffer", reduced}
     }));
 
     JST_CHECK(moduleExposeOutput("buffer",
@@ -201,6 +242,8 @@ Result DecimatorImpl::create() {
 }
 
 JST_REGISTER_BLOCK(DecimatorImpl,
+                   {"slice"},
+                   {"multiply_constant"},
                    {"reshape"},
                    {"arithmetic"},
                    {"squeeze_dims"},
