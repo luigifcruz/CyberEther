@@ -22,6 +22,10 @@ struct Amplitude : public Block::Config {
         "channels. Optional `batchAxis` metadata describes independent batches. All remaining "
         "dimensions are processed independently. Output preserves all input axis metadata.\n\n"
 
+        "Magnitudes below the smallest positive normal F32 value are floored to "
+        "that value before dB conversion. This keeps zero bins finite for averaging. "
+        "The numerical floor is independent of the display range.\n\n"
+
         "## Useful For\n"
         "- Spectrum visualization and analysis.\n"
         "- Power spectrum display.\n"

@@ -42,14 +42,16 @@ struct SpectrumAnalyzer : public Block::Config {
 
         "## Arguments\n"
         "- **Range Min/Max**: Display range mapped to the analyzer color scale.\n"
-        "- **Lineplot Averaging**: Trace smoothing factor.\n"
+        "- **Lineplot Averaging**: Exponential trace smoothing factor across updates, "
+        "initialized from the first batch.\n"
         "- **Waterfall Averaging**: Number of spectra averaged per displayed row.\n"
         "- **Max Hold**: Retain the maximum observed trace.\n"
         "- **Waterfall Height**: Number of spectrum rows retained.\n\n"
 
-        "Both averages operate on the decibel spectrum, matching the log "
-        "averaging that bench spectrum analyzers use by default. The noise "
-        "floor therefore reads about 2.5 dB below its true mean power.\n\n"
+        "Both averages operate on affine-normalized decibel values before display "
+        "clipping. For ideal Gaussian noise above the numerical floor, log averaging "
+        "has an expected bias of about -2.51 dB relative to mean power expressed "
+        "in dB. This is not a universal offset for other signal statistics.\n\n"
 
         "## Implementation\n"
         "Complex Input -> Window -> FFT -> Amplitude -> Range -> Combined Plot\n"

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <limits>
 
@@ -77,10 +78,9 @@ Result AmplitudeImplNativeCpu::kernelCF32() {
         [coeff](const auto& in, auto& out) {
             const F32 real = in.real();
             const F32 imag = in.imag();
-            const F32 magnitude = std::sqrt((real * real) + (imag * imag));
-            out = magnitude == 0.0f
-                      ? -std::numeric_limits<F32>::infinity()
-                      : 20.0f * Backend::ApproxLog10(magnitude) + coeff;
+            const F32 magnitude = std::max(std::hypot(real, imag),
+                                           std::numeric_limits<F32>::min());
+            out = 20.0f * Backend::ApproxLog10(magnitude) + coeff;
         },
     input, output);
 }
@@ -90,10 +90,9 @@ Result AmplitudeImplNativeCpu::kernelF32() {
 
     return AutomaticIterator<F32, F32>(
         [coeff](const auto& in, auto& out) {
-            const F32 magnitude = std::fabs(in);
-            out = magnitude == 0.0f
-                      ? -std::numeric_limits<F32>::infinity()
-                      : 20.0f * Backend::ApproxLog10(magnitude) + coeff;
+            const F32 magnitude = std::max(std::fabs(in),
+                                           std::numeric_limits<F32>::min());
+            out = 20.0f * Backend::ApproxLog10(magnitude) + coeff;
         },
     input, output);
 }

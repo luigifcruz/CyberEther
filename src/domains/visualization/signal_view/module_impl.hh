@@ -72,6 +72,7 @@ struct SignalViewImpl : public Module::Impl,
     U64 maxHoldWarmupBlocks = 0;
     F32 normalizationFactor = 0.0f;
     bool lineplotEnabled = false;
+    bool lineplotAveragingInitialized = false;
     bool waterfallEnabled = false;
     U64 waterfallAveragingCount = 0;
 
@@ -175,9 +176,6 @@ struct SignalViewImpl : public Module::Impl,
     Result resetLineplotHistory();
     Result resetHistoryState();
     virtual Buffer::Config renderStateBufferConfig() const = 0;
-    virtual Result resetLineplotAveragingState() {
-        return Result::SUCCESS;
-    }
 };
 
 }  // namespace Jetstream::Modules

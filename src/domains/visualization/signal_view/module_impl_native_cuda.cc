@@ -32,7 +32,8 @@ extern "C" __global__ void lineplot_update(const float* input,
                                            unsigned long long inputElementStride,
                                            float normalizationFactor,
                                            unsigned long long lineplotAveraging,
-                                           unsigned int maxHoldEnabled) {
+                                           unsigned int maxHoldEnabled,
+                                           unsigned int averagingInitialized) {
     const unsigned long long index =
         (static_cast<unsigned long long>(blockIdx.x) * blockDim.x) + threadIdx.x;
     if (index >= numberOfElements) {
@@ -41,24 +42,29 @@ extern "C" __global__ void lineplot_update(const float* input,
 
     float sum = 0.0f;
     for (unsigned long long batch = 0; batch < numberOfBatches; ++batch) {
-        sum += input[(batch * inputBatchStride) +
-                     (index * inputElementStride)];
+        const float value = input[(batch * inputBatchStride) + (index * inputElementStride)];
+        sum += isfinite(value) ? value : (value > 0.0f ? 1.0f : 0.0f);
     }
 
-    const float amplitude = fminf(
-        fmaxf((sum * normalizationFactor) - 1.0f, -1.0f),
-        1.0f);
-    float average = lineplotAveragingBuffer[index];
-    average -= average / static_cast<float>(lineplotAveraging);
-    average += amplitude / static_cast<float>(lineplotAveraging);
+    float amplitude = (sum * normalizationFactor) - 1.0f;
+    if (!isfinite(amplitude)) {
+        amplitude = fminf(fmaxf(amplitude, -1.0f), 1.0f);
+    }
+    float average = amplitude;
+    if (averagingInitialized != 0 && isfinite(lineplotAveragingBuffer[index])) {
+        average = lineplotAveragingBuffer[index];
+        average -= average / static_cast<float>(lineplotAveraging);
+        average += amplitude / static_cast<float>(lineplotAveraging);
+    }
 
     lineplotAveragingBuffer[index] = average;
-    signalPoints[(index * 2) + 1] = average;
+    const float displayed = fminf(fmaxf(average, -1.0f), 1.0f);
+    signalPoints[(index * 2) + 1] = displayed;
 
     if (maxHoldEnabled != 0) {
         float& maxValue = maxHoldPoints[(index * 2) + 1];
-        if (average > maxValue) {
-            maxValue = average;
+        if (displayed > maxValue) {
+            maxValue = displayed;
         }
     }
 }
@@ -88,9 +94,9 @@ lineplot_waterfall_update(const float* input,
     const unsigned long long destinationBatch =
         (destinationRow + retainedBatch) % height;
 
+    const float value = input[(sourceBatch * inputBatchStride) + (element * inputElementStride)];
     waterfallBins[(destinationBatch * elementCount) + element] =
-        input[(sourceBatch * inputBatchStride) +
-              (element * inputElementStride)];
+        isfinite(value) ? value : (value > 0.0f ? 1.0f : 0.0f);
 }
 )";
 
@@ -117,8 +123,8 @@ waterfall_average_update(const float* input,
     double sum = pendingRows != 0 ? waterfallAveragingBuffer[element] : 0.0;
     unsigned long long outputRow = 0;
     for (unsigned long long batch = 0; batch < numberOfBatches; ++batch) {
-        sum += static_cast<double>(input[(batch * inputBatchStride) +
-                                         (element * inputElementStride)]);
+        const float value = input[(batch * inputBatchStride) + (element * inputElementStride)];
+        sum += static_cast<double>(isfinite(value) ? value : (value > 0.0f ? 1.0f : 0.0f));
         if (++pendingRows == waterfallAveraging) {
             if (outputRow >= sourceRow) {
                 const unsigned long long destinationRow = (writeIndex + outputRow % height) % height;
@@ -150,7 +156,6 @@ struct SignalViewImplNativeCuda : public SignalViewImpl,
     Result computeDeinitialize() override;
 
     Buffer::Config renderStateBufferConfig() const override;
-    Result resetLineplotAveragingState() override;
 
  private:
     Tensor lineplotAveragingBuffer;
@@ -278,23 +283,6 @@ Buffer::Config SignalViewImplNativeCuda::renderStateBufferConfig() const {
     return {.hostAccessible = true};
 }
 
-Result SignalViewImplNativeCuda::resetLineplotAveragingState() {
-    if (!lineplotEnabled) {
-        return Result::SUCCESS;
-    }
-    void* data = lineplotAveragingBuffer.buffer().data();
-    if (!data) {
-        JST_ERROR("[MODULE_SIGNAL_VIEW_NATIVE_CUDA] Missing lineplot averaging state buffer.");
-        return Result::ERROR;
-    }
-    JST_CUDA_CHECK(cudaMemset(data, 0, lineplotAveragingBuffer.sizeBytes()), [&] {
-        JST_ERROR("[MODULE_SIGNAL_VIEW_NATIVE_CUDA] Failed to clear "
-                  "lineplot averaging state: {}.",
-                  err);
-    });
-    return Result::SUCCESS;
-}
-
 Result SignalViewImplNativeCuda::presentSubmit() {
     return present();
 }
@@ -343,6 +331,7 @@ Result SignalViewImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
         updateMaxHold =
             maxHold && detail::LineplotMaxHoldReady(maxHoldWarmupBlocks, lineplotAveraging);
         U32 maxHoldEnabled = updateMaxHold ? 1 : 0;
+        U32 averagingInitialized = lineplotAveragingInitialized ? 1 : 0;
         void* arguments[] = {
             &inputArgument,
             &signalData,
@@ -355,6 +344,7 @@ Result SignalViewImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
             &normalizationFactor,
             &lineplotAveraging,
             &maxHoldEnabled,
+            &averagingInitialized,
         };
         const Extent3D<U64> grid = {
             lineplotGridSize,
@@ -362,6 +352,7 @@ Result SignalViewImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
             1,
         };
         JST_CHECK(scheduleKernel(kLineplotKernelName, stream, grid, block, arguments));
+        lineplotAveragingInitialized = true;
     }
 
     if (waterfallEnabled) {

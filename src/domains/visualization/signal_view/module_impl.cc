@@ -234,6 +234,7 @@ Result SignalViewImpl::create() {
     waterfallEnabled = validatedWaterfallEnabled;
     waterfallAveragingCount = 0;
     maxHoldWarmupBlocks = 0;
+    lineplotAveragingInitialized = false;
     waterfallHistory = {};
     updateSignalPointsFlag = false;
     updateHoldPointsFlag = false;
@@ -321,7 +322,8 @@ Result SignalViewImpl::resetLineplotHistory() {
         updateHoldPointsFlag = true;
     }
 
-    return resetLineplotAveragingState();
+    lineplotAveragingInitialized = false;
+    return Result::SUCCESS;
 }
 
 Result SignalViewImpl::resetHistoryState() {

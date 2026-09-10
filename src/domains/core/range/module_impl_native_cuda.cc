@@ -37,7 +37,7 @@ extern "C" __global__ void range_kernel(const float* input, float* output, float
         output[index] = 0.5f;
     } else {
         const float normalized = input[inputIndex] * scale + offset;
-        output[index] = 0.5f + 0.5f * tanhf(4.0f * (normalized - 0.5f));
+        output[index] = isfinite(normalized) ? normalized : (normalized > 0.0f ? 1.0f : 0.0f);
     }
 }
 )";

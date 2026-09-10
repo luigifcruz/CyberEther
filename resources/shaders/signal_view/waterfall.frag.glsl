@@ -43,5 +43,5 @@ void main() {
     magnitude += sampleWaterfall(inTexcoord.x, inTexcoord.y + 3.0) * 0.0540540541;
     magnitude += sampleWaterfall(inTexcoord.x, inTexcoord.y + 4.0) * 0.0162162162;
 
-    outColor = texture(sampler2D(lutTex, lutSam), vec2(magnitude, 0.0));
+    outColor = texture(sampler2D(lutTex, lutSam), vec2(clamp(magnitude, 0.0, 1.0), 0.0));
 }

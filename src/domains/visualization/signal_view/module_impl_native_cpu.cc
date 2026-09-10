@@ -22,7 +22,6 @@ struct SignalViewImplNativeCpu : public SignalViewImpl,
     Result computeSubmit() override;
 
     Buffer::Config renderStateBufferConfig() const override;
-    Result resetLineplotAveragingState() override;
 
  private:
     Tensor sums;
@@ -85,15 +84,6 @@ Buffer::Config SignalViewImplNativeCpu::renderStateBufferConfig() const {
     return {};
 }
 
-Result SignalViewImplNativeCpu::resetLineplotAveragingState() {
-    if (!lineplotEnabled) {
-        return Result::SUCCESS;
-    }
-    std::fill_n(static_cast<F32*>(lineplotAveragingBuffer.data()),
-                numberOfElements, 0.0f);
-    return Result::SUCCESS;
-}
-
 Result SignalViewImplNativeCpu::presentSubmit() {
     return present();
 }
@@ -111,8 +101,8 @@ Result SignalViewImplNativeCpu::computeSubmit() {
 
         for (U64 b = 0; b < numberOfBatches; b++) {
             for (U64 i = 0; i < numberOfElements; i++) {
-                sumsData[i] += inputData[b * inputBatchStride +
-                                         i * inputElementStride];
+                const F32 value = inputData[b * inputBatchStride + i * inputElementStride];
+                sumsData[i] += std::isfinite(value) ? value : (value > 0.0f ? 1.0f : 0.0f);
             }
         }
 
@@ -122,21 +112,28 @@ Result SignalViewImplNativeCpu::computeSubmit() {
             updateMaxHold ? static_cast<F32*>(maxHoldPoints.data()) : nullptr;
 
         for (U64 i = 0; i < numberOfElements; i++) {
-            const auto amplitude = std::fmin(
-                std::fmax((sumsData[i] * normalizationFactor) - 1.0f, -1.0f),
-                1.0f);
+            F32 amplitude = (sumsData[i] * normalizationFactor) - 1.0f;
+            if (!std::isfinite(amplitude)) {
+                amplitude = std::fmin(std::fmax(amplitude, -1.0f), 1.0f);
+            }
 
             auto& average = avgData[i];
-            average -= average / lineplotAveraging;
-            average += amplitude / lineplotAveraging;
+            if (!lineplotAveragingInitialized || !std::isfinite(average)) {
+                average = amplitude;
+            } else {
+                average -= average / lineplotAveraging;
+                average += amplitude / lineplotAveraging;
+            }
 
-            signalData[(i * 2) + 1] = average;
+            const F32 displayed = std::clamp(average, -1.0f, 1.0f);
+            signalData[(i * 2) + 1] = displayed;
 
             if (maxData) {
                 auto& maxVal = maxData[(i * 2) + 1];
-                if (average > maxVal) { maxVal = average; }
+                if (displayed > maxVal) { maxVal = displayed; }
             }
         }
+        lineplotAveragingInitialized = true;
 
         if (maxHold && maxHoldWarmupBlocks < lineplotAveraging) {
             ++maxHoldWarmupBlocks;
@@ -163,8 +160,8 @@ Result SignalViewImplNativeCpu::computeSubmit() {
                     std::fill_n(sumsData, numberOfElements, 0.0);
                 }
                 for (U64 element = 0; element < numberOfElements; ++element) {
-                    sumsData[element] += inputData[batch * inputBatchStride +
-                                                   element * inputElementStride];
+                    const F32 value = inputData[batch * inputBatchStride + element * inputElementStride];
+                    sumsData[element] += std::isfinite(value) ? value : (value > 0.0f ? 1.0f : 0.0f);
                 }
                 if (++pendingRows == waterfallAveraging) {
                     if (outputRow >= plan.sourceRow) {
@@ -185,9 +182,9 @@ Result SignalViewImplNativeCpu::computeSubmit() {
                 const U64 destinationBatch =
                     (plan.destinationRow + row) % waterfallHeight;
                 for (U64 element = 0; element < numberOfElements; ++element) {
+                    const F32 value = inputData[sourceBatch * inputBatchStride + element * inputElementStride];
                     waterfallData[destinationBatch * numberOfElements + element] =
-                        inputData[sourceBatch * inputBatchStride +
-                                  element * inputElementStride];
+                        std::isfinite(value) ? value : (value > 0.0f ? 1.0f : 0.0f);
                 }
             }
         }

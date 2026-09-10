@@ -29,10 +29,8 @@ struct Waterfall : public Block::Config {
         "## Arguments\n"
         "- **Height**: Number of rows in the waterfall history buffer.\n"
         "- **Averaging**: Number of spectra averaged per displayed row. "
-        "Input values are averaged as received, so decibel input is averaged "
-        "in the log domain the same way bench spectrum analyzers do by "
-        "default. This reads the noise floor about 2.5 dB below its true "
-        "mean power.\n\n"
+        "Finite input values are averaged as received, before display clipping. "
+        "Affine-normalized decibel input is therefore averaged in the log domain.\n\n"
 
         "## Useful For\n"
         "- Visualizing RF spectrum over time in SDR applications.\n"

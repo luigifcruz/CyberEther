@@ -14,6 +14,8 @@
 #include <vector>
 
 #include "jetstream/domains/visualization/signal_view/module.hh"
+#include "jetstream/domains/core/range/module.hh"
+#include "jetstream/domains/dsp/amplitude/module.hh"
 #include "jetstream/domains/dsp/decimator/block.hh"
 #include "jetstream/memory/axis.hh"
 #include "jetstream/registry.hh"
@@ -1467,7 +1469,7 @@ TEST_CASE("Signal View applies independent lineplot and waterfall averaging stre
             input.at<F32>(0) = 0.75f;
             input.at<F32>(1) = 0.25f;
             REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
-            const F32 lineValue = 0.5f / static_cast<F32>(lineplotAveraging * lineplotAveraging);
+            const F32 lineValue = -0.5f + 1.0f / static_cast<F32>(lineplotAveraging);
             REQUIRE(ReadSignalPoints(module) == std::vector<F32>{-1.0f, lineValue, 1.0f, -lineValue});
             const std::vector<F32> expectedWaterfall = waterfallAveraging == 1
                 ? std::vector<F32>{0.25f, 0.75f, 0.75f, 0.25f}
@@ -1663,21 +1665,142 @@ TEST_CASE_METHOD(FlowgraphFixture,
     interactiveSignalView.reset();
 }
 
-TEST_CASE("Signal View clamps amplitudes before averaging",
-          "[modules][signal_view][lineplot][averaging][regression]") {
+TEST_CASE("Amplitude and Range feed true log averages to both Signal View traces",
+          "[modules][signal_view][averaging][integration][numeric]") {
+    const bool trailingBatch = GENERATE(false, true);
+    const bool narrowRange = GENERATE(false, true);
+    const auto implementations = Registry::ListAvailableModules("signal_view");
+    REQUIRE_FALSE(implementations.empty());
+    for (const auto& impl : implementations) {
+        DYNAMIC_SECTION("Device: " << impl.device << " Runtime: " << impl.runtime) {
+            CAPTURE(trailingBatch, narrowRange);
+            Tensor input;
+            REQUIRE(input.create(impl.device, DataType::CF32, {2, 2},
+                                  {.hostAccessible = true}) == Result::SUCCESS);
+            REQUIRE(SetSignalAxes(input, {
+                .sample = trailingBatch ? Index{0} : Index{1},
+                .batch = trailingBatch ? Index{1} : Index{0},
+            }) == Result::SUCCESS);
+
+            const auto build = [&](const std::string& type, const Module::Config& config,
+                                    const TensorLink& signal) {
+                std::shared_ptr<Module> module;
+                REQUIRE(Registry::BuildModule(type, impl.device, impl.runtime,
+                                              impl.provider, module) == Result::SUCCESS);
+                REQUIRE(module->create(type, config, {{"signal", signal}}) == Result::SUCCESS);
+                return module;
+            };
+            TensorMap inputs;
+            inputs["signal"].tensor = input;
+            auto amplitude = build("amplitude", Modules::Amplitude{}, inputs.at("signal"));
+            Modules::Range rangeConfig;
+            rangeConfig.min = narrowRange ? -80.0f : -100.0f;
+            rangeConfig.max = narrowRange ? -40.0f : 0.0f;
+            auto range = build("range", rangeConfig, amplitude->outputs().at("signal"));
+            Modules::SignalView config;
+            config.mode = "lineplot_waterfall";
+            config.lineplotAveraging = 2;
+            config.waterfallAveraging = 2;
+            config.waterfallHeight = 4;
+            config.maxHold = true;
+            config.rangeMin = rangeConfig.min;
+            config.rangeMax = rangeConfig.max;
+            auto plot = build("signal_view", config, range->outputs().at("signal"));
+            const Runtime::Modules modules = {
+                {"amplitude", amplitude}, {"range", range}, {"signal_view", plot},
+            };
+            Runtime runtime("log_averaging", impl.device, impl.runtime);
+            REQUIRE(runtime.create(modules) == Result::SUCCESS);
+
+            const auto compute = [&](const F32 firstDb, const F32 secondDb,
+                                      const F32 rowDb, const F32 traceDb) {
+                CAPTURE(firstDb, secondDb, rowDb, traceDb);
+                const F32 levels[] = {firstDb, secondDb};
+                for (U64 batch = 0; batch < 2; ++batch) {
+                    const CF32 value{2.0f * std::pow(10.0f, levels[batch] / 20.0f), 0.0f};
+                    for (U64 bin = 0; bin < 2; ++bin) {
+                        input.at<CF32>(trailingBatch ? bin : batch,
+                                       trailingBatch ? batch : bin) = value;
+                    }
+                }
+                const U64 row = ReadWaterfallHistory(plot).writeIndex;
+                std::unordered_set<std::string> skipped, failed;
+                REQUIRE(runtime.compute({"amplitude", "range", "signal_view"},
+                                         skipped, failed) == Result::SUCCESS);
+                REQUIRE(skipped.empty());
+                REQUIRE(failed.empty());
+                const auto points = ReadSignalPoints(plot);
+                const auto bins = ReadWaterfallBins(plot);
+                const F32 span = config.rangeMax - config.rangeMin;
+                const F32 displayed = std::clamp(
+                    2.0f * (traceDb - config.rangeMin) / span - 1.0f, -1.0f, 1.0f);
+                for (U64 bin = 0; bin < 2; ++bin) {
+                    REQUIRE(points[bin * 2 + 1] == Catch::Approx(displayed).margin(0.001f));
+                    const F32 measuredDb = config.rangeMin + bins[row * 2 + bin] * span;
+                    REQUIRE(measuredDb == Catch::Approx(rowDb).margin(0.02f));
+                }
+                for (const F32 point : ReadMaxHoldPoints(plot)) {
+                    REQUIRE(std::isfinite(point));
+                    REQUIRE(point >= -1.0f);
+                    REQUIRE(point <= 1.0f);
+                }
+            };
+
+            SECTION("unclipped averages, runtime rebuilds, and reseeding") {
+                compute(-100.0f, -50.0f, -75.0f, -75.0f);
+                compute(100.0f, 100.0f, 100.0f, 12.5f);
+                compute(-100.0f, -100.0f, -100.0f, -43.75f);
+                REQUIRE(runtime.destroy() == Result::SUCCESS);
+                REQUIRE(runtime.create(modules) == Result::SUCCESS);
+                compute(-25.0f, -25.0f, -25.0f, -34.375f);
+
+                config.rangeMin = -200.0f;
+                config.rangeMax = 0.0f;
+                REQUIRE(range->reconfigure({{"min", config.rangeMin},
+                                             {"max", config.rangeMax}}) == Result::SUCCESS);
+                REQUIRE(plot->reconfigure({{"rangeMin", config.rangeMin},
+                                            {"rangeMax", config.rangeMax}}) == Result::SUCCESS);
+                compute(-100.0f, -50.0f, -75.0f, -75.0f);
+                REQUIRE(plot->reconfigure({{"lineplotAveraging", U64{4}}}) == Result::SUCCESS);
+                compute(-25.0f, -25.0f, -25.0f, -25.0f);
+                compute(-100.0f, -50.0f, -75.0f, -37.5f);
+            }
+            SECTION("zero bins stay finite and subsequent signals recover") {
+                const F32 silence = -std::numeric_limits<F32>::infinity();
+                F32 traceDb = 20.0f * std::log10(std::numeric_limits<F32>::min()) -
+                              20.0f * std::log10(2.0f);
+                compute(silence, silence, traceDb, traceDb);
+                for (U64 step = 0; step < 6; ++step) {
+                    traceDb *= 0.5f;
+                    compute(0.0f, 0.0f, 0.0f, traceDb);
+                }
+            }
+            REQUIRE(runtime.destroy() == Result::SUCCESS);
+            REQUIRE(plot->destroy() == Result::SUCCESS);
+            REQUIRE(range->destroy() == Result::SUCCESS);
+            REQUIRE(amplitude->destroy() == Result::SUCCESS);
+        }
+    }
+}
+
+TEST_CASE("Signal View averages keep updating after NaN and infinity inputs",
+          "[modules][signal_view][lineplot][waterfall][averaging][regression]") {
+    const U64 lineplotAveraging = GENERATE(U64{1}, U64{4});
+    const U64 waterfallAveraging = GENERATE(U64{1}, U64{4});
+    const bool existingHistory = GENERATE(false, true);
     const auto implementations = Registry::ListAvailableModules("signal_view");
     REQUIRE(!implementations.empty());
 
     for (const auto& implementation : implementations) {
         DYNAMIC_SECTION("Device: " << implementation.device
                         << " Runtime: " << implementation.runtime) {
+            CAPTURE(lineplotAveraging, waterfallAveraging, existingHistory);
             Tensor cpuInput(DeviceType::CPU, DataType::F32, {2, 4});
             REQUIRE(SetSignalAxes(cpuInput, {
                 .sample = Index{1},
                 .batch = Index{0},
             }) == Result::SUCCESS);
-            std::fill_n(cpuInput.data<F32>(), cpuInput.size(),
-                        -std::numeric_limits<F32>::infinity());
+            std::fill_n(cpuInput.data<F32>(), cpuInput.size(), 0.25f);
 
             Tensor input;
             if (implementation.device == DeviceType::CPU) {
@@ -1699,8 +1822,11 @@ TEST_CASE("Signal View clamps amplitudes before averaging",
                                           module) == Result::SUCCESS);
 
             Modules::SignalView config;
-            config.mode = "lineplot";
-            config.lineplotAveraging = 2;
+            config.mode = "lineplot_waterfall";
+            config.lineplotAveraging = lineplotAveraging;
+            config.waterfallAveraging = waterfallAveraging;
+            config.waterfallHeight = 2;
+            config.maxHold = true;
             config.fill = false;
             REQUIRE(module->create("signal_view", config, inputs) == Result::SUCCESS);
 
@@ -1710,24 +1836,69 @@ TEST_CASE("Signal View clamps amplitudes before averaging",
 
             std::unordered_set<std::string> skipped;
             std::unordered_set<std::string> failed;
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
-            const auto firstPoints = ReadSignalPoints(module);
-            for (const F32 point : firstPoints) {
-                REQUIRE(std::isfinite(point));
+            const auto compute = [&] {
+                if (implementation.device != DeviceType::CPU) {
+                    REQUIRE(input.copyFrom(cpuInput) == Result::SUCCESS);
+                }
+                REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+                REQUIRE(skipped.empty());
+                REQUIRE(failed.empty());
+                for (const F32 value : ReadWaterfallBins(module)) {
+                    REQUIRE(std::isfinite(value));
+                }
+                for (const F32 value : ReadMaxHoldPoints(module)) {
+                    REQUIRE(std::isfinite(value));
+                    REQUIRE(value >= -1.0f);
+                    REQUIRE(value <= 1.0f);
+                }
+            };
+            if (existingHistory) {
+                compute();
             }
 
-            std::fill_n(cpuInput.data<F32>(), cpuInput.size(), 2.0f);
-            if (implementation.device != DeviceType::CPU) {
-                REQUIRE(input.copyFrom(cpuInput) == Result::SUCCESS);
+            const F32 infinity = std::numeric_limits<F32>::infinity();
+            cpuInput.at<F32>(0, 0) = std::numeric_limits<F32>::quiet_NaN();
+            cpuInput.at<F32>(0, 1) = infinity;
+            cpuInput.at<F32>(0, 2) = -infinity;
+            cpuInput.at<F32>(0, 3) = infinity;
+            for (U64 bin = 0; bin < 3; ++bin) {
+                cpuInput.at<F32>(1, bin) = 0.75f;
             }
-            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
-            const auto recoveredPoints = ReadSignalPoints(module);
-            for (U64 index = 0; index < input.shape(1); ++index) {
-                REQUIRE(std::isfinite(recoveredPoints[(index * 2) + 1]));
-                REQUIRE(recoveredPoints[(index * 2) + 1] <= 1.0f);
-                REQUIRE(recoveredPoints[(index * 2) + 1] >
-                        firstPoints[(index * 2) + 1]);
+            cpuInput.at<F32>(1, 3) = -infinity;
+            compute();
+
+            std::array<F32, 4> expected = {-0.25f, 0.75f, -0.25f, 0.0f};
+            if (existingHistory) {
+                for (auto& value : expected) {
+                    value = -0.5f + (value + 0.5f) / static_cast<F32>(lineplotAveraging);
+                }
             }
+            const auto firstPoints = ReadSignalPoints(module);
+            for (U64 bin = 0; bin < 4; ++bin) {
+                REQUIRE(firstPoints[bin * 2 + 1] == Catch::Approx(expected[bin]).margin(1e-6f));
+            }
+            if (waterfallAveraging == 1) {
+                REQUIRE(ReadWaterfallBins(module) == std::vector<F32>{
+                    0.0f, 1.0f, 0.0f, 1.0f, 0.75f, 0.75f, 0.75f, 0.0f,
+                });
+            } else if (existingHistory) {
+                REQUIRE(ReadWaterfallBins(module) == std::vector<F32>{
+                    0.3125f, 0.5625f, 0.3125f, 0.375f, 0.0f, 0.0f, 0.0f, 0.0f,
+                });
+            }
+
+            std::fill_n(cpuInput.data<F32>(), cpuInput.size(), 0.75f);
+            for (U64 step = 1; step <= 8; ++step) {
+                compute();
+                const auto points = ReadSignalPoints(module);
+                const F32 decay = std::pow(1.0f - 1.0f / static_cast<F32>(lineplotAveraging),
+                                           static_cast<F32>(step));
+                for (U64 bin = 0; bin < 4; ++bin) {
+                    const F32 recovered = 0.5f + (expected[bin] - 0.5f) * decay;
+                    REQUIRE(points[bin * 2 + 1] == Catch::Approx(recovered).margin(1e-6f));
+                }
+            }
+            REQUIRE(ReadWaterfallBins(module) == std::vector<F32>(8, 0.75f));
 
             REQUIRE(runtime.destroy() == Result::SUCCESS);
             REQUIRE(module->destroy() == Result::SUCCESS);
@@ -1802,7 +1973,7 @@ TEST_CASE("Signal View clears lineplot history on range reconfiguration",
             const auto freshPoints = ReadSignalPoints(module);
             const auto freshHold = ReadMaxHoldPoints(module);
             for (U64 index = 0; index < input.shape(1); ++index) {
-                REQUIRE(freshPoints[(index * 2) + 1] == -0.125f);
+                REQUIRE(freshPoints[(index * 2) + 1] == -0.5f);
                 REQUIRE(freshHold[(index * 2) + 1] == -1.0f);
             }
 
@@ -1873,7 +2044,7 @@ TEST_CASE("Signal View clears lineplot history on averaging reconfiguration",
             const auto freshPoints = ReadSignalPoints(module);
             const auto freshHold = ReadMaxHoldPoints(module);
             for (U64 index = 0; index < input.shape(1); ++index) {
-                REQUIRE(freshPoints[(index * 2) + 1] == -0.03125f);
+                REQUIRE(freshPoints[(index * 2) + 1] == -0.5f);
                 REQUIRE(freshHold[(index * 2) + 1] == -1.0f);
             }
 
@@ -2076,7 +2247,7 @@ TEST_CASE("Signal View max hold captures the first observation with averaging on
     }
 }
 
-TEST_CASE("Signal View max hold captures the first fully averaged observation",
+TEST_CASE("Signal View max hold captures the seeded trace after its configured warmup",
           "[modules][signal_view][lineplot][maxhold][regression]") {
     const auto implementations = Registry::ListAvailableModules("signal_view");
     REQUIRE(!implementations.empty());
@@ -2123,7 +2294,7 @@ TEST_CASE("Signal View max hold captures the first fully averaged observation",
 
             const auto hold = ReadMaxHoldPoints(module);
             for (U64 index = 0; index < input.shape(1); ++index) {
-                REQUIRE(hold[(index * 2) + 1] == -0.341796875f);
+                REQUIRE(hold[(index * 2) + 1] == -0.5f);
             }
 
             REQUIRE(runtime.destroy() == Result::SUCCESS);
