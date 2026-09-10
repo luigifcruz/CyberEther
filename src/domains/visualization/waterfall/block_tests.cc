@@ -37,7 +37,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
                                         [](const auto& entry) { return entry.name == "averaging"; });
     REQUIRE(averaging != block.interfaceConfigs.end());
     REQUIRE(averaging->format == Parser::Map{
-        {"type", "range"}, {"min", 1.0f}, {"max", 32.0f}, {"value_type", "uint"},
+        {"type", "range"}, {"min", 1.0f}, {"max", 64.0f}, {"value_type", "uint"},
     });
     REQUIRE(std::any_cast<std::string>(block.config.at("xLabel")) == "Frequency");
     REQUIRE(std::any_cast<std::string>(block.config.at("yLabel")) == "History");

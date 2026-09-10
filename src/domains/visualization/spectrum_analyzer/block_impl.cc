@@ -139,7 +139,7 @@ Result SpectrumAnalyzerImpl::define() {
                                     {{"type", "range"}, {"min", 1.0f}, {"max", 256.0f}, {"value_type", "uint"}}));
     JST_CHECK(defineInterfaceConfig("waterfallAveraging", "Waterfall Averaging",
                                     "Number of spectra averaged per displayed row.",
-                                    {{"type", "range"}, {"min", 1.0f}, {"max", 32.0f}, {"value_type", "uint"}}));
+                                    {{"type", "range"}, {"min", 1.0f}, {"max", 64.0f}, {"value_type", "uint"}}));
     JST_CHECK(defineInterfaceConfig("maxHold", "Max Hold",
                                     "Enable maximum hold trace.",
                                     {{"type", "bool"}}));

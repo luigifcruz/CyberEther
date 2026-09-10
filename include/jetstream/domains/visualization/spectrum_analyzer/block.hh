@@ -47,6 +47,10 @@ struct SpectrumAnalyzer : public Block::Config {
         "- **Max Hold**: Retain the maximum observed trace.\n"
         "- **Waterfall Height**: Number of spectrum rows retained.\n\n"
 
+        "Both averages operate on the decibel spectrum, matching the log "
+        "averaging that bench spectrum analyzers use by default. The noise "
+        "floor therefore reads about 2.5 dB below its true mean power.\n\n"
+
         "## Implementation\n"
         "Complex Input -> Window -> FFT -> Amplitude -> Range -> Combined Plot\n"
         "The waterfall always uses smoothed interpolation and retains full-"

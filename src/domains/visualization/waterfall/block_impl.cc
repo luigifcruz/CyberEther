@@ -36,7 +36,7 @@ Result WaterfallImpl::define() {
     JST_CHECK(defineInterfaceConfig("averaging",
                                     "Averaging",
                                     "Number of spectra averaged per displayed row.",
-                                    {{"type", "range"}, {"min", 1.0f}, {"max", 32.0f}, {"value_type", "uint"}}));
+                                    {{"type", "range"}, {"min", 1.0f}, {"max", 64.0f}, {"value_type", "uint"}}));
 
     return Result::SUCCESS;
 }

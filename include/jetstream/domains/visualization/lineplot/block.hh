@@ -29,7 +29,10 @@ struct Lineplot : public Block::Config {
         "for time-domain signals, waveform displays, and spectral data.\n\n"
 
         "## Arguments\n"
-        "- **Averaging**: Trace smoothing factor.\n"
+        "- **Averaging**: Trace smoothing factor. Input values are averaged "
+        "as received, so decibel input is averaged in the log domain the same "
+        "way bench spectrum analyzers do by default. This reads the noise "
+        "floor about 2.5 dB below its true mean power.\n"
         "- **Max Hold**: Retain the maximum observed amplitude trace.\n"
         "- **Range Min/Max**: Values shown at the lower and upper Y-axis "
         "limits. Input data must already be normalized.\n\n"

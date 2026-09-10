@@ -113,7 +113,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
                                         block.interfaceConfigs.end(),
                                         [&](const auto& entry) { return entry.name == name; });
         REQUIRE(field != block.interfaceConfigs.end());
-        const F32 maximum = name == "waterfallAveraging" ? 32.0f : 256.0f;
+        const F32 maximum = name == "waterfallAveraging" ? 64.0f : 256.0f;
         REQUIRE(field->format == Parser::Map{
             {"type", "range"}, {"min", 1.0f}, {"max", maximum}, {"value_type", "uint"},
         });
