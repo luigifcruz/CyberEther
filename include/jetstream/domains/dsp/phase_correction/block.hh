@@ -10,6 +10,7 @@ struct PhaseCorrection : public Block::Config {
 
     JST_BLOCK_TYPE(phase_correction);
     JST_BLOCK_DOMAIN("DSP");
+    JST_BLOCK_NODE_SIZE(M);
     JST_BLOCK_PARAMS(phaseIncrement);
     JST_BLOCK_DESCRIPTION(
         "Phase Correction",

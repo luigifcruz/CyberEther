@@ -11,6 +11,7 @@ struct AM : public Block::Config {
 
     JST_BLOCK_TYPE(am);
     JST_BLOCK_DOMAIN("DSP");
+    JST_BLOCK_NODE_SIZE(M);
     JST_BLOCK_PARAMS(sampleRate, dcAlpha);
     JST_BLOCK_DESCRIPTION(
         "AM Demodulator",

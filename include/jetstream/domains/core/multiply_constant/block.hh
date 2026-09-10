@@ -11,6 +11,7 @@ struct MultiplyConstant : public Block::Config {
 
     JST_BLOCK_TYPE(multiply_constant);
     JST_BLOCK_DOMAIN("Core");
+    JST_BLOCK_NODE_SIZE(M);
     JST_BLOCK_PARAMS(constant);
     JST_BLOCK_DESCRIPTION(
         "Multiply Constant",
