@@ -10,7 +10,8 @@ namespace Jetstream::Modules {
 
 struct SignalView : public Module::Config {
     std::string mode = "lineplot";
-    U64 averaging = 1;
+    U64 lineplotAveraging = 1;
+    U64 waterfallAveraging = 1;
     bool maxHold = false;
     bool fill = true;
     F32 rangeMin = -100.0f;
@@ -22,9 +23,9 @@ struct SignalView : public Module::Config {
     std::string waterfallLabel = "Time";
 
     JST_MODULE_TYPE(signal_view);
-    JST_MODULE_PARAMS(mode, averaging, maxHold, fill, rangeMin,
-                      rangeMax, waterfallHeight, splitRatio, xLabel,
-                      amplitudeLabel, waterfallLabel);
+    JST_MODULE_PARAMS(mode, lineplotAveraging, waterfallAveraging,
+                      maxHold, fill, rangeMin, rangeMax, waterfallHeight,
+                      splitRatio, xLabel, amplitudeLabel, waterfallLabel);
 };
 
 }  // namespace Jetstream::Modules

@@ -73,6 +73,7 @@ struct SignalViewImpl : public Module::Impl,
     F32 normalizationFactor = 0.0f;
     bool lineplotEnabled = false;
     bool waterfallEnabled = false;
+    U64 waterfallAveragingCount = 0;
 
     U64 validatedNumberOfElements = 0;
     U64 validatedNumberOfBatches = 0;
@@ -174,7 +175,7 @@ struct SignalViewImpl : public Module::Impl,
     Result resetLineplotHistory();
     Result resetHistoryState();
     virtual Buffer::Config renderStateBufferConfig() const = 0;
-    virtual Result resetAveragingState() {
+    virtual Result resetLineplotAveragingState() {
         return Result::SUCCESS;
     }
 };

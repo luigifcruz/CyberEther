@@ -23,6 +23,9 @@ TEST_CASE("Spectrum Analyzer derives its transform from signal metadata",
     REQUIRE_FALSE(serialized.contains("axis"));
     REQUIRE_FALSE(serialized.contains("thickness"));
     REQUIRE_FALSE(serialized.contains("decimation"));
+    REQUIRE_FALSE(serialized.contains("averaging"));
+    REQUIRE(std::any_cast<U64>(serialized.at("lineplotAveraging")) == 1);
+    REQUIRE(std::any_cast<U64>(serialized.at("waterfallAveraging")) == 1);
 }
 
 TEST_CASE("Spectrum Analyzer declares its complete module chain",
@@ -54,6 +57,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
     inputs["buffer"].requested("src", "signal");
     Blocks::SpectrumAnalyzer config;
     config.waterfallHeight = 8;
+    config.lineplotAveraging = 16;
+    config.waterfallAveraging = 4;
     REQUIRE(flowgraph->blockCreate("analyzer", config, inputs) == Result::SUCCESS);
     const auto surface = viewBlock("analyzer").surfaces.front();
     REQUIRE(std::any_cast<F32>(viewBlock("analyzer").config.at("splitRatio")) == 0.5f);
@@ -72,6 +77,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(restored.create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
     REQUIRE(restored.importFromBlob(blob) == Result::SUCCESS);
     REQUIRE(std::any_cast<F32>(ViewBlock(restored, "renamed").config.at("splitRatio")) == 0.35f);
+    REQUIRE(std::any_cast<U64>(ViewBlock(restored, "renamed").config.at("lineplotAveraging")) == 16);
+    REQUIRE(std::any_cast<U64>(ViewBlock(restored, "renamed").config.at("waterfallAveraging")) == 4);
     REQUIRE(restored.destroy() == Result::SUCCESS);
 }
 
@@ -101,6 +108,16 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(std::any_cast<std::string>(block.config.at("xLabel")) == "Frequency");
     REQUIRE(std::any_cast<std::string>(block.config.at("amplitudeLabel")) == "Power");
     REQUIRE(std::any_cast<std::string>(block.config.at("waterfallLabel")) == "History");
+    for (const std::string& name : {"lineplotAveraging", "waterfallAveraging"}) {
+        const auto field = std::find_if(block.interfaceConfigs.begin(),
+                                        block.interfaceConfigs.end(),
+                                        [&](const auto& entry) { return entry.name == name; });
+        REQUIRE(field != block.interfaceConfigs.end());
+        const F32 maximum = name == "waterfallAveraging" ? 32.0f : 256.0f;
+        REQUIRE(field->format == Parser::Map{
+            {"type", "range"}, {"min", 1.0f}, {"max", maximum}, {"value_type", "uint"},
+        });
+    }
     for (const auto& entry : block.interfaceConfigs) {
         REQUIRE(entry.name != "decimation");
         REQUIRE(entry.name != "axis");
@@ -114,17 +131,33 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     Parser::Map update;
     update["rangeMin"] = std::string("-100");
-    update["averaging"] = std::string("2");
+    update["lineplotAveraging"] = std::string("8");
+    update["waterfallAveraging"] = std::string("2");
     update["xLabel"] = std::string("Offset");
     update["amplitudeLabel"] = std::string("Level");
     update["waterfallLabel"] = std::string("Time");
     REQUIRE(flowgraph->blockReconfigure("analyzer", update) == Result::SUCCESS);
     const auto reconfigured = viewBlock("analyzer");
+    REQUIRE(std::any_cast<U64>(reconfigured.config.at("lineplotAveraging")) == 8);
+    REQUIRE(std::any_cast<U64>(reconfigured.config.at("waterfallAveraging")) == 2);
     REQUIRE(std::any_cast<std::string>(reconfigured.config.at("xLabel")) == "Offset");
     REQUIRE(std::any_cast<std::string>(reconfigured.config.at("amplitudeLabel")) ==
             "Level");
     REQUIRE(std::any_cast<std::string>(reconfigured.config.at("waterfallLabel")) ==
-            "Time");
+             "Time");
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    const auto surface = reconfigured.surfaces.front();
+    Parser::Map lineplot;
+    lineplot["lineplotAveraging"] = U64{16};
+    REQUIRE(flowgraph->blockReconfigure("analyzer", lineplot) == Result::SUCCESS);
+    REQUIRE(viewBlock("analyzer").surfaces.front() == surface);
+    REQUIRE(std::any_cast<U64>(viewBlock("analyzer").config.at("waterfallAveraging")) == 2);
+    Parser::Map waterfall;
+    waterfall["waterfallAveraging"] = U64{4};
+    REQUIRE(flowgraph->blockReconfigure("analyzer", waterfall) == Result::SUCCESS);
+    REQUIRE(viewBlock("analyzer").surfaces.front() == surface);
+    REQUIRE(std::any_cast<U64>(viewBlock("analyzer").config.at("lineplotAveraging")) == 16);
     REQUIRE(flowgraph->compute() == Result::SUCCESS);
 }
 
@@ -144,6 +177,18 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockCreate("invalid_height", invalidHeight, inputs) ==
             Result::SUCCESS);
     REQUIRE(viewBlock("invalid_height").state == Block::State::Errored);
+
+    Blocks::SpectrumAnalyzer invalidLineplotAveraging;
+    invalidLineplotAveraging.lineplotAveraging = 0;
+    REQUIRE(flowgraph->blockCreate("invalid_lineplot_averaging", invalidLineplotAveraging, inputs) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("invalid_lineplot_averaging").state == Block::State::Errored);
+
+    Blocks::SpectrumAnalyzer invalidWaterfallAveraging;
+    invalidWaterfallAveraging.waterfallAveraging = 0;
+    REQUIRE(flowgraph->blockCreate("invalid_waterfall_averaging", invalidWaterfallAveraging, inputs) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("invalid_waterfall_averaging").state == Block::State::Errored);
 
     Blocks::SpectrumAnalyzer equalRange;
     equalRange.rangeMin = -50.0f;

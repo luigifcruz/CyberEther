@@ -39,8 +39,13 @@ Result SignalViewImpl::validate() {
         return Result::ERROR;
     }
 
-    if (hasLineplot && config.averaging == 0) {
-        JST_ERROR("[MODULE_SIGNAL_VIEW] Averaging must be at least 1.");
+    if (config.lineplotAveraging == 0) {
+        JST_ERROR("[MODULE_SIGNAL_VIEW] Lineplot averaging must be at least 1.");
+        return Result::ERROR;
+    }
+
+    if (config.waterfallAveraging == 0) {
+        JST_ERROR("[MODULE_SIGNAL_VIEW] Waterfall averaging must be at least 1.");
         return Result::ERROR;
     }
 
@@ -227,6 +232,7 @@ Result SignalViewImpl::create() {
     normalizationFactor = validatedNormalizationFactor;
     lineplotEnabled = validatedLineplotEnabled;
     waterfallEnabled = validatedWaterfallEnabled;
+    waterfallAveragingCount = 0;
     maxHoldWarmupBlocks = 0;
     waterfallHistory = {};
     updateSignalPointsFlag = false;
@@ -280,16 +286,21 @@ Result SignalViewImpl::reconfigure() {
         config.xLabel == xLabel &&
         config.amplitudeLabel == amplitudeLabel &&
         config.waterfallLabel == waterfallLabel) {
-        const bool averagingChanged = config.averaging != averaging;
+        const bool lineplotAveragingChanged = config.lineplotAveraging != lineplotAveraging;
+        const bool waterfallAveragingChanged = config.waterfallAveraging != waterfallAveraging;
         const bool rangeChanged =
             config.rangeMin != rangeMin || config.rangeMax != rangeMax;
         updateLayoutFlag |= config.splitRatio != splitRatio;
         splitRatio = config.splitRatio;
-        averaging = config.averaging;
+        lineplotAveraging = config.lineplotAveraging;
+        waterfallAveraging = config.waterfallAveraging;
         rangeMin = config.rangeMin;
         rangeMax = config.rangeMax;
-        if (averagingChanged) {
+        if (lineplotAveragingChanged) {
             JST_CHECK(resetLineplotHistory());
+        }
+        if (waterfallAveragingChanged) {
+            waterfallAveragingCount = 0;
         }
         if (rangeChanged) {
             JST_CHECK(resetHistoryState());
@@ -310,7 +321,7 @@ Result SignalViewImpl::resetLineplotHistory() {
         updateHoldPointsFlag = true;
     }
 
-    return resetAveragingState();
+    return resetLineplotAveragingState();
 }
 
 Result SignalViewImpl::resetHistoryState() {
@@ -323,6 +334,7 @@ Result SignalViewImpl::resetHistoryState() {
                   0.0f);
         waterfallHistory = {};
         waterfallHistory.dirtyRows = waterfallHeight;
+        waterfallAveragingCount = 0;
     }
 
     return Result::SUCCESS;

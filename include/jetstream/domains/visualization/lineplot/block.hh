@@ -29,8 +29,7 @@ struct Lineplot : public Block::Config {
         "for time-domain signals, waveform displays, and spectral data.\n\n"
 
         "## Arguments\n"
-        "- **Averaging**: Number of samples to average for smoothing "
-        "(1 = no averaging).\n"
+        "- **Averaging**: Trace smoothing factor.\n"
         "- **Max Hold**: Retain the maximum observed amplitude trace.\n"
         "- **Range Min/Max**: Values shown at the lower and upper Y-axis "
         "limits. Input data must already be normalized.\n\n"

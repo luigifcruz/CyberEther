@@ -22,11 +22,12 @@ struct SignalViewImplNativeCpu : public SignalViewImpl,
     Result computeSubmit() override;
 
     Buffer::Config renderStateBufferConfig() const override;
-    Result resetAveragingState() override;
+    Result resetLineplotAveragingState() override;
 
  private:
     Tensor sums;
-    Tensor averagingBuffer;
+    Tensor lineplotAveragingBuffer;
+    Tensor waterfallAveragingBuffer;
 };
 
 Result SignalViewImplNativeCpu::validate() {
@@ -57,14 +58,20 @@ Result SignalViewImplNativeCpu::create() {
 
     if (lineplotEnabled) {
         JST_CHECK(sums.create(DeviceType::CPU, DataType::F32, {numberOfElements}));
-        JST_CHECK(averagingBuffer.create(DeviceType::CPU,
-                                         DataType::F32,
-                                         {numberOfElements}));
+        JST_CHECK(lineplotAveragingBuffer.create(DeviceType::CPU,
+                                                 DataType::F32,
+                                                 {numberOfElements}));
 
         detail::InitializeLineplotPoints(
             static_cast<F32*>(signalPoints.data()),
             static_cast<F32*>(maxHoldPoints.data()),
             numberOfElements);
+    }
+
+    if (waterfallEnabled) {
+        JST_CHECK(waterfallAveragingBuffer.create(DeviceType::CPU,
+                                                  DataType::F64,
+                                                  {numberOfElements}));
     }
 
     return Result::SUCCESS;
@@ -78,11 +85,11 @@ Buffer::Config SignalViewImplNativeCpu::renderStateBufferConfig() const {
     return {};
 }
 
-Result SignalViewImplNativeCpu::resetAveragingState() {
+Result SignalViewImplNativeCpu::resetLineplotAveragingState() {
     if (!lineplotEnabled) {
         return Result::SUCCESS;
     }
-    std::fill_n(static_cast<F32*>(averagingBuffer.data()),
+    std::fill_n(static_cast<F32*>(lineplotAveragingBuffer.data()),
                 numberOfElements, 0.0f);
     return Result::SUCCESS;
 }
@@ -97,7 +104,7 @@ Result SignalViewImplNativeCpu::computeSubmit() {
     bool updateMaxHold = false;
     if (lineplotEnabled) {
         F32* sumsData = static_cast<F32*>(sums.data());
-        F32* avgData = static_cast<F32*>(averagingBuffer.data());
+        F32* avgData = static_cast<F32*>(lineplotAveragingBuffer.data());
         F32* signalData = static_cast<F32*>(signalPoints.data());
 
         std::fill_n(sumsData, numberOfElements, 0.0f);
@@ -110,7 +117,7 @@ Result SignalViewImplNativeCpu::computeSubmit() {
         }
 
         updateMaxHold =
-            maxHold && detail::LineplotMaxHoldReady(maxHoldWarmupBlocks, averaging);
+            maxHold && detail::LineplotMaxHoldReady(maxHoldWarmupBlocks, lineplotAveraging);
         F32* maxData =
             updateMaxHold ? static_cast<F32*>(maxHoldPoints.data()) : nullptr;
 
@@ -120,8 +127,8 @@ Result SignalViewImplNativeCpu::computeSubmit() {
                 1.0f);
 
             auto& average = avgData[i];
-            average -= average / averaging;
-            average += amplitude / averaging;
+            average -= average / lineplotAveraging;
+            average += amplitude / lineplotAveraging;
 
             signalData[(i * 2) + 1] = average;
 
@@ -131,7 +138,7 @@ Result SignalViewImplNativeCpu::computeSubmit() {
             }
         }
 
-        if (maxHold && maxHoldWarmupBlocks < averaging) {
+        if (maxHold && maxHoldWarmupBlocks < lineplotAveraging) {
             ++maxHoldWarmupBlocks;
         }
 
@@ -140,23 +147,53 @@ Result SignalViewImplNativeCpu::computeSubmit() {
     }
 
     if (waterfallEnabled) {
+        const auto averagePlan = PlanWaterfallAveraging(waterfallAveragingCount,
+                                                        numberOfBatches, waterfallAveraging);
         const auto plan = PlanWaterfallWrite(waterfallHistory.writeIndex,
-                                             numberOfBatches,
+                                             averagePlan.rowCount,
                                              waterfallHeight);
         F32* waterfallData = static_cast<F32*>(waterfallBins.data());
 
-        for (U64 row = 0; row < plan.rowCount; ++row) {
-            const U64 sourceBatch = plan.sourceRow + row;
-            const U64 destinationBatch =
-                (plan.destinationRow + row) % waterfallHeight;
-            for (U64 element = 0; element < numberOfElements; ++element) {
-                waterfallData[destinationBatch * numberOfElements + element] =
-                    inputData[sourceBatch * inputBatchStride +
-                              element * inputElementStride];
+        if (waterfallAveraging > 1) {
+            F64* sumsData = waterfallAveragingBuffer.data<F64>();
+            U64 pendingRows = waterfallAveragingCount;
+            U64 outputRow = 0;
+            for (U64 batch = 0; batch < numberOfBatches; ++batch) {
+                if (pendingRows == 0) {
+                    std::fill_n(sumsData, numberOfElements, 0.0);
+                }
+                for (U64 element = 0; element < numberOfElements; ++element) {
+                    sumsData[element] += inputData[batch * inputBatchStride +
+                                                   element * inputElementStride];
+                }
+                if (++pendingRows == waterfallAveraging) {
+                    if (outputRow >= plan.sourceRow) {
+                        const U64 destinationRow =
+                            (waterfallHistory.writeIndex + outputRow % waterfallHeight) % waterfallHeight;
+                        for (U64 element = 0; element < numberOfElements; ++element) {
+                            waterfallData[destinationRow * numberOfElements + element] =
+                                static_cast<F32>(sumsData[element] / static_cast<F64>(waterfallAveraging));
+                        }
+                    }
+                    pendingRows = 0;
+                    ++outputRow;
+                }
+            }
+        } else {
+            for (U64 row = 0; row < plan.rowCount; ++row) {
+                const U64 sourceBatch = plan.sourceRow + row;
+                const U64 destinationBatch =
+                    (plan.destinationRow + row) % waterfallHeight;
+                for (U64 element = 0; element < numberOfElements; ++element) {
+                    waterfallData[destinationBatch * numberOfElements + element] =
+                        inputData[sourceBatch * inputBatchStride +
+                                  element * inputElementStride];
+                }
             }
         }
 
-        waterfallHistory.advance(numberOfBatches, waterfallHeight);
+        waterfallAveragingCount = averagePlan.pendingRows;
+        waterfallHistory.advance(averagePlan.rowCount, waterfallHeight);
     }
 
     return Result::SUCCESS;

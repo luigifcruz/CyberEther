@@ -8,7 +8,8 @@
 namespace Jetstream::Blocks {
 
 struct SpectrumAnalyzer : public Block::Config {
-    U64 averaging = 1;
+    U64 lineplotAveraging = 1;
+    U64 waterfallAveraging = 1;
     bool maxHold = false;
     bool fill = true;
     F32 rangeMin = -100.0f;
@@ -22,9 +23,9 @@ struct SpectrumAnalyzer : public Block::Config {
     JST_BLOCK_TYPE(spectrum_analyzer);
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(L);
-    JST_BLOCK_PARAMS(averaging, maxHold, fill, rangeMin,
-                     rangeMax, waterfallHeight, splitRatio, xLabel,
-                     amplitudeLabel, waterfallLabel);
+    JST_BLOCK_PARAMS(lineplotAveraging, waterfallAveraging, maxHold,
+                     fill, rangeMin, rangeMax, waterfallHeight,
+                     splitRatio, xLabel, amplitudeLabel, waterfallLabel);
     JST_BLOCK_DESCRIPTION(
         "Spectrum Analyzer",
         "Spectrum trace and waterfall in one view.",
@@ -41,7 +42,8 @@ struct SpectrumAnalyzer : public Block::Config {
 
         "## Arguments\n"
         "- **Range Min/Max**: Display range mapped to the analyzer color scale.\n"
-        "- **Averaging**: Trace smoothing factor.\n"
+        "- **Lineplot Averaging**: Trace smoothing factor.\n"
+        "- **Waterfall Averaging**: Number of spectra averaged per displayed row.\n"
         "- **Max Hold**: Retain the maximum observed trace.\n"
         "- **Waterfall Height**: Number of spectrum rows retained.\n\n"
 

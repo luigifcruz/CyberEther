@@ -17,6 +17,7 @@ struct WaterfallImpl : public Block::Impl, public DynamicConfig<Blocks::Waterfal
 
 Result WaterfallImpl::configure() {
     signalViewConfig->mode = "waterfall";
+    signalViewConfig->waterfallAveraging = averaging;
     signalViewConfig->waterfallHeight = height;
     signalViewConfig->xLabel = xLabel;
     signalViewConfig->waterfallLabel = yLabel;
@@ -31,6 +32,11 @@ Result WaterfallImpl::define() {
                                     "Height",
                                     "Number of rows in the waterfall history buffer.",
                                     {{"type", "uint"}, {"unit", "rows"}}));
+
+    JST_CHECK(defineInterfaceConfig("averaging",
+                                    "Averaging",
+                                    "Number of spectra averaged per displayed row.",
+                                    {{"type", "range"}, {"min", 1.0f}, {"max", 32.0f}, {"value_type", "uint"}}));
 
     return Result::SUCCESS;
 }

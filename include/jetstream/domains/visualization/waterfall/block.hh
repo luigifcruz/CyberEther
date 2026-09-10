@@ -9,13 +9,14 @@ namespace Jetstream::Blocks {
 
 struct Waterfall : public Block::Config {
     U64 height = 1024;
+    U64 averaging = 1;
     std::string xLabel = "Frequency (MHz)";
     std::string yLabel = "Time";
 
     JST_BLOCK_TYPE(waterfall);
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(L);
-    JST_BLOCK_PARAMS(height, xLabel, yLabel);
+    JST_BLOCK_PARAMS(height, averaging, xLabel, yLabel);
     JST_BLOCK_DESCRIPTION(
         "Waterfall",
         "Shows frequency spectrum over time as a scrolling waterfall.",
@@ -26,7 +27,8 @@ struct Waterfall : public Block::Config {
         "content over time.\n\n"
 
         "## Arguments\n"
-        "- **Height**: Number of rows in the waterfall history buffer.\n\n"
+        "- **Height**: Number of rows in the waterfall history buffer.\n"
+        "- **Averaging**: Number of spectra averaged per displayed row.\n\n"
 
         "## Useful For\n"
         "- Visualizing RF spectrum over time in SDR applications.\n"

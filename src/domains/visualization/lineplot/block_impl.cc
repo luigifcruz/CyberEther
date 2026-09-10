@@ -17,7 +17,7 @@ struct LineplotImpl : public Block::Impl, public DynamicConfig<Blocks::Lineplot>
 
 Result LineplotImpl::configure() {
     signalViewConfig->mode = "lineplot";
-    signalViewConfig->averaging = averaging;
+    signalViewConfig->lineplotAveraging = averaging;
     signalViewConfig->maxHold = maxHold;
     signalViewConfig->fill = fill;
     signalViewConfig->rangeMin = rangeMin;
@@ -33,8 +33,8 @@ Result LineplotImpl::define() {
 
     JST_CHECK(defineInterfaceConfig("averaging",
                                     "Averaging",
-                                    "Number of samples to average for smoothing.",
-                                    {{"type", "range"}, {"min", 1.0f}, {"max", 256.0f}, {"unit", "samples"}, {"value_type", "uint"}}));
+                                    "Trace smoothing factor.",
+                                    {{"type", "range"}, {"min", 1.0f}, {"max", 256.0f}, {"value_type", "uint"}}));
 
     JST_CHECK(defineInterfaceConfig("maxHold",
                                     "Max Hold",
