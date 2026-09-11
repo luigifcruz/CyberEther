@@ -8,6 +8,7 @@
 #include "editor/config/base.hh"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -21,7 +22,7 @@ struct FlowgraphDetachedSurface {
         Extent2D<F32> logicalSize = {512.0f, 512.0f};
         std::vector<FlowgraphConfigFieldConfig> configFields;
         bool configOpen = false;
-        std::function<U64()> onResolveTexture;
+        std::shared_ptr<const Render::Texture> texture;
         std::function<void(const Sakura::SurfaceResize&)> onSize;
         std::function<void(MouseEvent)> onMouse;
         std::function<void()> onClose;
@@ -44,8 +45,8 @@ struct FlowgraphDetachedSurface {
         });
         surface.update({
             .id = this->config.id + ":surface",
+            .textureSource = this->config.texture,
             .size = {0.0f, 0.0f},
-            .onResolveTexture = this->config.onResolveTexture,
             .onSize = this->config.onSize,
             .onMouse = this->config.onMouse,
         });

@@ -132,7 +132,7 @@ struct Superluminal::Impl {
 
     std::atomic_flag computeSync = ATOMIC_FLAG_INIT;
 
-    std::thread computeThread;
+    Platform::WorkerThread computeThread;
     std::thread presentThread;
     std::unique_ptr<Instance::Remote::Supervisor> supervisor;
 
@@ -369,7 +369,7 @@ Result Superluminal::start() {
     // Start the compute, present, and input threads.
 
     impl->computeSync.test_and_set();
-    impl->computeThread = std::thread([&]{
+    impl->computeThread.start([&]{
         while (impl->instance->computing()) {
             impl->computeSync.wait(true);
 

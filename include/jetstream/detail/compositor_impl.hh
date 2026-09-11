@@ -4,13 +4,13 @@
 #include <queue>
 #include <string>
 #include <mutex>
-#include <thread>
 #include <deque>
 #include <functional>
 #include <condition_variable>
 
 #include "jetstream/compositor.hh"
 #include "jetstream/instance.hh"
+#include "jetstream/platform.hh"
 
 namespace Jetstream {
 
@@ -30,7 +30,7 @@ struct JETSTREAM_API Compositor::Impl {
     std::shared_ptr<Viewport::Generic> viewport;
 
     // Worker thread.
-    std::thread workerThread;
+    Platform::WorkerThread workerThread;
     bool workerRunning = false;
 
     // Command queue.

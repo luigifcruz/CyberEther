@@ -12,6 +12,7 @@
 #include "jetstream/render/base/texture.hh"
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -223,7 +224,7 @@ struct FlowgraphNode {
             const F32 fixedHeight = chromeMeasured ? previousLayout->fixedHeight : 0.0f;
             dimensions.y = std::max(MinimumNodeHeight, restoredFlexibleHeight) +
                            fixedHeight;
-            if (attachedSurfaceCount > 0 && !chromeMeasured) {
+            if (attachedSurfaceCount > 0) {
                 pendingFlexibleRestoreHeight = restoredFlexibleHeight;
             }
         }
@@ -376,7 +377,8 @@ struct FlowgraphNode {
                 const F32 target =
                     std::max(MinimumNodeHeight, *pendingFlexibleRestoreHeight) +
                     contentLayoutState->fixedHeight;
-                if (verticalResize && !isCreating && dimensions.y < target - 0.5f) {
+                if (verticalResize && !isCreating &&
+                    std::abs(dimensions.y - target) > 0.5f) {
                     dimensions.y = target;
                     nodeDimensions.y = dimensions.y;
                 } else {
@@ -530,13 +532,11 @@ struct FlowgraphNode {
             const auto texture = surface.texture;
             attachedSurfaces[i].update({
                 .id = surface.id,
+                .textureSource = texture,
                 .size = {0.0f, 0.0f},
                 .height = surfaceAllocatedHeights[i],
                 .rounding = surface.rounding,
                 .detachOverlay = true,
-                .onResolveTexture = [texture]() {
-                    return texture ? texture->raw() : 0;
-                },
                 .onSize = contentLayoutState && contentLayoutState->measured &&
                                   !pendingFlexibleRestoreHeight.has_value()
                     ? surface.onAttachedSize
