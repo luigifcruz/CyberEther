@@ -17,6 +17,7 @@ struct SurfaceView {
     struct Config {
         std::string id;
         U64 texture = 0;
+        std::shared_ptr<const Render::Texture> textureSource;
         Extent2D<F32> size = {0.0f, 0.0f};
         std::optional<F32> height;
         F32 rounding = 0.0f;
