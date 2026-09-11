@@ -16,6 +16,11 @@ struct CapturedResource {
     std::shared_future<void> release;
     std::thread::id& workerId;
 
+    CapturedResource(std::promise<std::thread::id>& destroyed,
+                     const std::shared_future<void>& release,
+                     std::thread::id& workerId)
+        : destroyed(destroyed), release(release), workerId(workerId) {}
+
     ~CapturedResource() {
         destroyed.set_value(std::this_thread::get_id());
     }
