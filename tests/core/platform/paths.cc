@@ -809,6 +809,60 @@ TEST_CASE("Platform process output limit is exact and transactional",
     }
 }
 
+TEST_CASE("Platform process output retains the prefix of an overflowing read",
+          "[core][platform][process][output-limit]") {
+    TempPathRoot temp("process-output-overflow");
+    const std::string prefix(kProcessOutputLimit - 17, 'x');
+    const auto prefixPath = temp.root / "prefix.bin";
+    const auto suffixPath = temp.root / "suffix.bin";
+    const auto acknowledgment = temp.root / "received";
+    WriteBinaryFile(prefixPath, prefix);
+    WriteBinaryFile(suffixPath, std::string(18, 'y'));
+
+    std::string output = "unchanged";
+    std::string streamed;
+    const auto onOutput = [&](std::string_view chunk) {
+        streamed.append(chunk.data(), chunk.size());
+        if (streamed.size() == prefix.size()) {
+            std::ofstream(acknowledgment).put('\n');
+        }
+    };
+
+    // Wait until the prefix has been consumed, then write 18 bytes together
+    // with only 17 bytes left under the limit.
+#if defined(JST_OS_WINDOWS)
+    const auto script = temp.root / "overflow.cmd";
+    WriteBinaryFile(script,
+                    "@echo off\r\ntype \"%~1\"\r\n:wait\r\n"
+                    "if exist \"%~3\" goto received\r\n"
+                    "ping -n 2 127.0.0.1 >NUL\r\ngoto wait\r\n"
+                    ":received\r\ntype \"%~2\" 1>&2\r\n");
+    const auto result = Platform::RunProcess(
+        "cmd.exe",
+        {"/D", "/C", Platform::PathToUtf8(script), Platform::PathToUtf8(prefixPath),
+         Platform::PathToUtf8(suffixPath), Platform::PathToUtf8(acknowledgment)},
+        output,
+        10000,
+        true,
+        onOutput);
+#else
+    const auto result = Platform::RunProcess(
+        "/bin/sh",
+        {"-c", "cat \"$1\"; while [ ! -f \"$3\" ]; do sleep 0.01; done; cat \"$2\" >&2",
+         "overflow-test", Platform::PathToUtf8(prefixPath),
+         Platform::PathToUtf8(suffixPath), Platform::PathToUtf8(acknowledgment)},
+        output,
+        10000,
+        true,
+        onOutput);
+#endif
+
+    REQUIRE(result == Result::ERROR);
+    REQUIRE(output.size() == kProcessOutputLimit);
+    REQUIRE(output == prefix + std::string(17, 'y'));
+    REQUIRE(streamed == output);
+}
+
 #endif
 
 TEST_CASE("Platform config and cache paths follow platform conventions",
