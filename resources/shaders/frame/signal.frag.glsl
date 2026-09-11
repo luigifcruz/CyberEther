@@ -38,15 +38,30 @@ vec4 fetchTexel(int x, int y) {
     return vec4(data[base], data[base + 1], data[base + 2], alpha);
 }
 
-vec4 sampleFrame(vec2 p) {
+vec4 fetchTexelClamped(int x, int y) {
+    x = clamp(x, 0, uniforms.width - 1);
+    y = clamp(y, 0, uniforms.height - 1);
+    return fetchTexel(x, y);
+}
+
+vec4 cubicHermite(vec4 A, vec4 B, vec4 C, vec4 D, float t) {
+    vec4 a = -A / 2.0 + (3.0 * B) / 2.0 - (3.0 * C) / 2.0 + D / 2.0;
+    vec4 b = A - (5.0 * B) / 2.0 + 2.0 * C - D / 2.0;
+    vec4 c = -A / 2.0 + C / 2.0;
+    vec4 d = B;
+
+    return a * t * t * t + b * t * t + c * t + d;
+}
+
+vec4 sampleNearest(vec2 p) {
     vec2 texel = p * vec2(float(uniforms.width), float(uniforms.height));
+    int x = clamp(int(texel.x), 0, uniforms.width - 1);
+    int y = clamp(int(texel.y), 0, uniforms.height - 1);
+    return fetchTexel(x, y);
+}
 
-    if (uniforms.interpolate == 0) {
-        int x = clamp(int(texel.x), 0, uniforms.width - 1);
-        int y = clamp(int(texel.y), 0, uniforms.height - 1);
-        return fetchTexel(x, y);
-    }
-
+vec4 sampleBilinear(vec2 p) {
+    vec2 texel = p * vec2(float(uniforms.width), float(uniforms.height));
     vec2 f = texel - 0.5;
     vec2 f0 = floor(f);
     vec2 t = f - f0;
@@ -56,12 +71,42 @@ vec4 sampleFrame(vec2 p) {
     int y0 = clamp(int(f0.y), 0, uniforms.height - 1);
     int y1 = clamp(int(f0.y) + 1, 0, uniforms.height - 1);
 
-    vec4 c00 = fetchTexel(x0, y0);
-    vec4 c10 = fetchTexel(x1, y0);
-    vec4 c01 = fetchTexel(x0, y1);
-    vec4 c11 = fetchTexel(x1, y1);
+    return mix(mix(fetchTexel(x0, y0), fetchTexel(x1, y0), t.x),
+               mix(fetchTexel(x0, y1), fetchTexel(x1, y1), t.x), t.y);
+}
 
-    return mix(mix(c00, c10, t.x), mix(c01, c11, t.x), t.y);
+vec4 sampleBicubic(vec2 p) {
+    vec2 texel = p * vec2(float(uniforms.width), float(uniforms.height));
+    vec2 f = texel - 0.5;
+    vec2 f0 = floor(f);
+    vec2 t = f - f0;
+
+    int x = int(f0.x);
+    int y = int(f0.y);
+
+    vec4 rows[4];
+    for (int j = 0; j < 4; ++j) {
+        rows[j] = cubicHermite(
+            fetchTexelClamped(x - 1, y - 1 + j),
+            fetchTexelClamped(x,     y - 1 + j),
+            fetchTexelClamped(x + 1, y - 1 + j),
+            fetchTexelClamped(x + 2, y - 1 + j),
+            t.x);
+    }
+
+    return cubicHermite(rows[0], rows[1], rows[2], rows[3], t.y);
+}
+
+vec4 sampleFrame(vec2 p) {
+    if (uniforms.interpolate == 0) {
+        return sampleNearest(p);
+    }
+
+    if (uniforms.interpolate == 2) {
+        return sampleBicubic(p);
+    }
+
+    return sampleBilinear(p);
 }
 
 void main() {

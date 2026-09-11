@@ -135,8 +135,12 @@ TEST_CASE("Frame module accepts valid F32 frames", "[modules][frame]") {
             REQUIRE(ctx.run() == Result::SUCCESS);
 
             config.fit = "cover";
-            config.smooth = true;
+            config.interpolation = "bilinear";
             config.autoRange = false;
+            ctx.setConfig(config);
+            REQUIRE(ctx.run() == Result::SUCCESS);
+
+            config.interpolation = "bicubic";
             ctx.setConfig(config);
             REQUIRE(ctx.run() == Result::SUCCESS);
 

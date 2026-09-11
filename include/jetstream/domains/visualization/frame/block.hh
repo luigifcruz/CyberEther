@@ -11,14 +11,14 @@ struct Frame : public Block::Config {
     std::string fit = "contain";
     std::string colormap = "grayscale";
     bool autoRange = true;
-    bool smooth = false;
+    std::string interpolation = "nearest";
     std::string xLabel = "X (px)";
     std::string yLabel = "Y (px)";
 
     JST_BLOCK_TYPE(frame);
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(L);
-    JST_BLOCK_PARAMS(fit, colormap, autoRange, smooth, xLabel, yLabel);
+    JST_BLOCK_PARAMS(fit, colormap, autoRange, interpolation, xLabel, yLabel);
     JST_BLOCK_DESCRIPTION(
         "Frame",
         "Displays images and heat maps.",
@@ -38,8 +38,10 @@ struct Frame : public Block::Config {
         "- **Auto Range**: Automatically adjust contrast to bring out the "
         "details in each image. Turn this off to keep a fixed brightness "
         "scale across images.\n"
-        "- **Smooth**: Soften pixel edges when zooming in. Turn this off "
-        "to keep individual pixels sharp.\n\n"
+        "- **Interpolation**: Choose how pixels are sampled when the image is "
+        "magnified. Nearest keeps individual pixels sharp. Bilinear smooths "
+        "the transitions between pixels. Bicubic fits a smooth curve through "
+        "neighboring pixels for the softest result.\n\n"
 
         "## Input\n"
         "- **Frame**: The image or heat map to display. Supports grayscale, "
@@ -56,8 +58,8 @@ struct Frame : public Block::Config {
         "to a GPU storage buffer and rendered on a fitted quad. Auto Range "
         "normalizes color values using each frame's minimum and maximum, "
         "leaving alpha unchanged. With Auto Range off, the display range "
-        "is fixed at 0 to 1. Smooth enables bilinear interpolation instead "
-        "of nearest-neighbor sampling."
+        "is fixed at 0 to 1. Interpolation selects nearest-neighbor sampling, "
+        "bilinear filtering, or bicubic (Catmull-Rom) filtering."
     );
 };
 
