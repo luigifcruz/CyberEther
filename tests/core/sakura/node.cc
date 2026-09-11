@@ -1,5 +1,6 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <jetstream/render/sakura/components/node/node.hh>
 #include <jetstream/render/tools/imnodes.h>
@@ -14,6 +15,7 @@
 
 #include <string>
 #include <tuple>
+#include <unordered_map>
 #include <vector>
 
 using namespace Jetstream;
@@ -98,6 +100,43 @@ FlowgraphNode::Surface attachedSurface(const std::string& id) {
     surface.detached = false;
     return surface;
 }
+
+FlowgraphNode::Config visualizationConfig(const std::string& id) {
+    auto config = baseConfigFor(baseBlock(id, "spectrum_analyzer"));
+    config.block.nodeSize = Block::NodeSize::L;
+    config.block.state = Block::State::Incomplete;
+    config.block.inputs.push_back({.port = {.id = "buffer", .label = "Input"}});
+    config.block.configFields = {
+        {.id = id + ":rangeMin", .name = "rangeMin", .label = "Range Min",
+         .format = {{"type", "range"}, {"min", -300.0f}, {"max", 0.0f}},
+         .values = {{"rangeMin", -100.0f}}},
+        {.id = id + ":rangeMax", .name = "rangeMax", .label = "Range Max",
+         .format = {{"type", "range"}, {"min", -300.0f}, {"max", 0.0f}},
+         .values = {{"rangeMax", 0.0f}}},
+    };
+    return config;
+}
+
+// A nonzero handle makes SurfaceView occupy its allocated space headlessly.
+class NodeSurfaceTexture final : public Render::Texture {
+ public:
+    explicit NodeSurfaceTexture(U64 handle = 1) :
+        Texture(Config{.size = {256, 256}}), handle(handle) {}
+
+    U64 handle;
+
+    Result create() override {
+        return Result::SUCCESS;
+    }
+
+    Result destroy() override {
+        return Result::SUCCESS;
+    }
+
+    uint64_t raw() const override {
+        return handle;
+    }
+};
 
 int imnodesId(const std::string& configId) {
     return Sakura::Private::NodeEditorObjectId(FlowgraphNodeId(configId));
@@ -184,6 +223,12 @@ void dragCorner(SakuraTest::HeadlessUi& ui,
 // like the presenter's poll -> update -> render cycle. Keep the metadata
 // separate from the view so persistence assertions cannot pass on UI state alone.
 struct NodeSession {
+    struct SurfaceState {
+        SurfaceMeta meta;
+        std::optional<Sakura::SurfaceResize> resizeMail;
+        SakuraTest::ResizeLog resizes;
+    };
+
     SakuraTest::HeadlessUi ui;
     Sakura::Context ctx;
     FlowgraphNode node;
@@ -193,6 +238,7 @@ struct NodeSession {
     std::optional<bool> collapseMail;
     LayoutLog layouts;
     std::vector<bool> toggles;
+    std::unordered_map<std::string, SurfaceState> surfaces;
 
     NodeSession(FlowgraphNode::Config config, F32 scale = 1.0f, NodeMeta meta = {}) :
         ui(scale, ImVec2(1400.0f, 1400.0f)), ctx(ui.sakura()),
@@ -209,6 +255,25 @@ struct NodeSession {
         if (collapseMail.has_value()) {
             meta.configCollapsed = *collapseMail;
             collapseMail.reset();
+        }
+        // Like MailResizeSurface, persist callbacks before presenting the
+        // next frame, even if disconnect has removed the visible surface.
+        for (auto& [_, surface] : surfaces) {
+            if (surface.resizeMail.has_value()) {
+                surface.meta.attachedHeight = surface.resizeMail->logicalSize.y;
+                surface.resizeMail.reset();
+            }
+        }
+        for (auto& surface : config.block.surfaces) {
+            if (!surfaces.contains(surface.id)) {
+                continue;
+            }
+            surface.height = static_cast<F32>(surfaces.at(surface.id).meta.attachedHeight);
+            surface.onAttachedSize = [this, id = surface.id](const Sakura::SurfaceResize& resize) {
+                auto& state = surfaces.at(id);
+                state.resizes.record(resize);
+                state.resizeMail = resize;
+            };
         }
         config.block.layout = FlowgraphNode::Layout{meta.x, meta.y, meta.width, meta.height};
         config.block.configCollapsed = meta.configCollapsed;
@@ -256,6 +321,55 @@ struct NodeSession {
         // The icon sits at the right of the title content, inside node padding.
         return ImVec2(data->Rect.Max.x - data->LayoutStyle.Padding.x - 4.0f,
                       data->TitleBarContentRect.GetCenter().y);
+    }
+};
+
+struct VisualizationSession : NodeSession {
+    const std::string surfaceId;
+
+    explicit VisualizationSession(F32 scale) :
+        NodeSession(visualizationConfig("timing-plot"), scale),
+        surfaceId(config.id + ":surface:default") {
+        surfaces[surfaceId];
+    }
+
+    SurfaceState& savedSurface() {
+        return surfaces.at(surfaceId);
+    }
+
+    void connect(U64 textureHandle = 1) {
+        config.block.state = Block::State::Created;
+        auto surface = attachedSurface(surfaceId);
+        surface.texture = std::make_shared<NodeSurfaceTexture>(textureHandle);
+        config.block.surfaces = {surface};
+    }
+
+    void startResized(F32 scale) {
+        frames();
+        connect();
+        frames();
+        REQUIRE(savedSurface().resizes.count() > 0);
+        const U64 initialHeight = savedSurface().meta.attachedHeight;
+        resize(ImVec2(0.0f, 300.0f * scale));
+        REQUIRE(savedSurface().meta.attachedHeight ==
+                Catch::Approx(initialHeight + 300).margin(1.0f));
+        REQUIRE_FALSE(savedSurface().resizeMail.has_value());
+    }
+
+    void checkRestored(U64 height, ImVec2 dimensions) {
+        for (U64 frame = 0; frame < 8; ++frame) {
+            CAPTURE(frame);
+            tick();
+            if (savedSurface().resizeMail.has_value()) {
+                CHECK(savedSurface().resizeMail->logicalSize.y ==
+                      Catch::Approx(height).margin(1.0f));
+            }
+            CHECK(savedSurface().meta.attachedHeight ==
+                  Catch::Approx(height).margin(1.0f));
+        }
+        const auto restored = flowgraphNodeDimensions(config.id);
+        CHECK(restored.x == Catch::Approx(dimensions.x).margin(1.0f));
+        CHECK(restored.y == Catch::Approx(dimensions.y).margin(1.0f));
     }
 };
 }  // namespace
@@ -1110,6 +1224,198 @@ TEST_CASE("Detach/reattach cycles preserve the persisted surface height",
         REQUIRE(static_cast<F32>(resizeLog.entries.back().logicalSize.y) ==
                 Catch::Approx(persisted).margin(1.0f));
     }
+}
+
+TEST_CASE("Resized visualization surfaces preserve height through input reconnection",
+          "[core][sakura][flowgraph_node][persistence][reconnect]") {
+    const F32 scale = GENERATE(1.0f, 2.0f);
+    const U64 loadingFrames = GENERATE(0, 1, 3);
+    const bool collapsed = GENERATE(false, true);
+    CAPTURE(scale, loadingFrames, collapsed);
+
+    auto config = visualizationConfig("reconnect-plot");
+    const auto fields = config.block.configFields;
+    NodeSession session(config, scale, NodeMeta{.configCollapsed = collapsed});
+    const std::string surfaceId = config.id + ":surface:default";
+    auto& savedSurface = session.surfaces[surfaceId];
+
+    const auto connect = [&] {
+        session.config.block.state = Block::State::Created;
+        session.config.block.configFields = fields;
+        auto surface = attachedSurface(surfaceId);
+        surface.texture = std::make_shared<NodeSurfaceTexture>();
+        session.config.block.surfaces = {surface};
+    };
+
+    // Start unconnected, connect, then use the actual resize grip. Metadata
+    // and surface resize callbacks are fed back on every gesture frame.
+    session.frames();
+    connect();
+    session.frames();
+    REQUIRE(savedSurface.resizes.count() > 0);
+    const U64 initialHeight = savedSurface.meta.attachedHeight;
+    const F32 initialNodeHeight = session.meta.height;
+    session.resize(ImVec2(0.0f, 300.0f * scale));
+    REQUIRE(savedSurface.meta.attachedHeight ==
+            Catch::Approx(initialHeight + 300).margin(1.0f));
+    REQUIRE(session.meta.height ==
+            Catch::Approx(initialNodeHeight + 300.0f).margin(1.0f));
+    const U64 resizedHeight = savedSurface.meta.attachedHeight;
+    const NodeMeta resizedNode = session.meta;
+
+    for (U64 cycle = 0; cycle < 3; ++cycle) {
+        CAPTURE(cycle);
+        const U64 previousResizeCount = savedSurface.resizes.count();
+
+        // Input disconnection removes the surface rather than detaching it.
+        session.config.block.state = Block::State::Incomplete;
+        session.config.block.surfaces.clear();
+        session.frames();
+        REQUIRE(savedSurface.resizes.count() == previousResizeCount);
+        const U64 heightBeforeReconnect = savedSurface.meta.attachedHeight;
+
+        // The presenter omits controls and surfaces while recreating. Cover
+        // immediate completion, one loading frame, and a measured loading layout.
+        if (loadingFrames > 0) {
+            session.config.block.state = Block::State::Creating;
+            session.config.block.configFields.clear();
+            session.frames(loadingFrames);
+        }
+        REQUIRE(savedSurface.resizes.count() == previousResizeCount);
+        CHECK(savedSurface.meta.attachedHeight == resizedHeight);
+
+        connect();
+        for (U64 frame = 0; frame < 8; ++frame) {
+            CAPTURE(frame);
+            session.tick();
+            if (savedSurface.resizeMail.has_value()) {
+                // A transient wrong emission is already a persistence bug,
+                // even if a later frame restores the correct visible height.
+                CHECK(savedSurface.resizeMail->logicalSize.y ==
+                      Catch::Approx(heightBeforeReconnect).margin(1.0f));
+            }
+        }
+        REQUIRE(savedSurface.resizes.count() > previousResizeCount);
+        CHECK(savedSurface.meta.attachedHeight ==
+              Catch::Approx(resizedHeight).margin(1.0f));
+        CHECK(session.meta.height == Catch::Approx(resizedNode.height).margin(1.0f));
+        CHECK(session.meta.width == Catch::Approx(resizedNode.width).margin(1.0f));
+    }
+}
+
+TEST_CASE("Surface replacement between frames receives the persisted size",
+          "[core][sakura][flowgraph_node][persistence][reconnect][surface_replacement]") {
+    const F32 scale = GENERATE(1.0f, 2.0f);
+    const bool reuseTextureHandle = GENERATE(false, true);
+    CAPTURE(scale, reuseTextureHandle);
+
+    VisualizationSession session(scale);
+    session.startResized(scale);
+    auto& saved = session.savedSurface();
+    const U64 height = saved.meta.attachedHeight;
+    const auto dimensions = flowgraphNodeDimensions(session.config.id);
+    const auto previousTexture = session.config.block.surfaces.front().texture;
+    const U64 previousResizeCount = saved.resizes.count();
+
+    // Recreation finishes before the next UI frame: the stable ID and layout
+    // stay the same, but the new rendering surface still needs a resize event.
+    session.connect(reuseTextureHandle ? previousTexture->raw() : 2);
+    REQUIRE(session.config.block.surfaces.front().id == session.surfaceId);
+    REQUIRE(session.config.block.surfaces.front().texture != previousTexture);
+    session.checkRestored(height, dimensions);
+    CHECK(saved.resizes.count() == previousResizeCount + 1);
+}
+
+TEST_CASE("A delayed texture restores height after its block is created",
+          "[core][sakura][flowgraph_node][persistence][reconnect][delayed_surface]") {
+    const F32 scale = GENERATE(1.0f, 2.0f);
+    const U64 textureDelayFrames = GENERATE(1, 4);
+    CAPTURE(scale, textureDelayFrames);
+
+    VisualizationSession session(scale);
+    session.startResized(scale);
+    auto& saved = session.savedSurface();
+    const U64 height = saved.meta.attachedHeight;
+    const auto dimensions = flowgraphNodeDimensions(session.config.id);
+    const U64 previousResizeCount = saved.resizes.count();
+
+    session.config.block.state = Block::State::Incomplete;
+    session.config.block.surfaces.clear();
+    session.frames();
+
+    session.config.block.state = Block::State::Created;
+    auto texture = std::make_shared<NodeSurfaceTexture>(0);
+    auto surface = attachedSurface(session.surfaceId);
+    surface.texture = texture;
+    // FlowgraphSurfacePresenter omits manifests whose texture handle is zero.
+    // Present the completed controls for several frames before the surface exists.
+    for (U64 frame = 0; frame < textureDelayFrames; ++frame) {
+        CAPTURE(frame);
+        session.tick();
+        REQUIRE(session.config.block.surfaces.empty());
+        CHECK(saved.resizes.count() == previousResizeCount);
+        CHECK(saved.meta.attachedHeight == height);
+    }
+
+    texture->handle = 2;
+    session.config.block.surfaces = {surface};
+    session.checkRestored(height, dimensions);
+    REQUIRE(saved.resizes.count() > previousResizeCount);
+}
+
+TEST_CASE("Disconnecting with a queued resize preserves the latest user height",
+          "[core][sakura][flowgraph_node][persistence][reconnect][pending_resize]") {
+    const F32 scale = GENERATE(1.0f, 2.0f);
+    const U64 disconnectedFrames = GENERATE(1, 4);
+    CAPTURE(scale, disconnectedFrames);
+
+    VisualizationSession session(scale);
+    session.startResized(scale);
+    auto& saved = session.savedSurface();
+    const U64 previousHeight = saved.meta.attachedHeight;
+    const auto* data = flowgraphNodeData(session.config.id);
+    REQUIRE(data != nullptr);
+    const ImVec2 grip(data->Rect.Max.x - 2.0f, data->Rect.Max.y - 2.0f);
+    const ImVec2 target(grip.x, grip.y + 80.0f * scale);
+
+    // Drive the resize gesture without the usual settling frames: disconnect
+    // with the final SurfaceResize still queued for next-frame persistence.
+    session.ui.setMouse(grip, false);
+    session.tick();
+    session.ui.setMouse(grip, true);
+    session.tick();
+    session.ui.setMouse(target, true);
+    session.tick();
+    session.ui.setMouse(target, false);
+    session.tick();
+    session.ui.setMouse(ImVec2(-100.0f, -100.0f), false);
+    for (U64 frame = 0; frame < 3 && !saved.resizeMail.has_value(); ++frame) {
+        session.tick();
+    }
+    REQUIRE(saved.resizeMail.has_value());
+    const U64 latestHeight = saved.resizeMail->logicalSize.y;
+    REQUIRE(latestHeight == Catch::Approx(previousHeight + 80).margin(1.0f));
+    REQUIRE(saved.meta.attachedHeight == previousHeight);
+    const auto dimensions = flowgraphNodeDimensions(session.config.id);
+    const U64 previousResizeCount = saved.resizes.count();
+
+    session.config.block.state = Block::State::Incomplete;
+    session.config.block.surfaces.clear();
+    session.frames(disconnectedFrames);
+    CHECK(saved.meta.attachedHeight == latestHeight);
+    REQUIRE_FALSE(saved.resizeMail.has_value());
+    REQUIRE(saved.resizes.count() == previousResizeCount);
+
+    session.connect(2);
+    session.checkRestored(latestHeight, dimensions);
+    REQUIRE(saved.resizes.count() > previousResizeCount);
+
+    // A subsequent resize belongs to the replacement. Draining more frames
+    // must not bring back the retired surface's queued height.
+    session.resize(ImVec2(0.0f, -40.0f * scale));
+    session.frames();
+    CHECK(saved.meta.attachedHeight == Catch::Approx(latestHeight - 40).margin(1.0f));
+    REQUIRE_FALSE(saved.resizeMail.has_value());
 }
 
 TEST_CASE("Below-minimum allocations never reach surface callbacks",
