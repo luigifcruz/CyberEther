@@ -16,6 +16,16 @@ struct Table {
     using Row = std::vector<Cell>;
     using Rows = std::vector<Row>;
 
+    struct Node {
+        std::string id;
+        std::string label;
+        std::vector<std::string> cells;
+        std::vector<Node> children;
+        bool open = false;
+        bool secondary = false;
+    };
+    using Nodes = std::vector<Node>;
+
     struct Config {
         std::string id;
         std::vector<std::string> columns;
@@ -25,6 +35,7 @@ struct Table {
         F32 maxHeight = 0.0f;
         bool showHeaders = true;
         bool wrapped = false;
+        bool resizable = false;
     };
 
     Table();
@@ -39,6 +50,7 @@ struct Table {
     bool update(Config config);
     void render(const Context& ctx) const;
     void render(const Context& ctx, Rows rows) const;
+    void render(const Context& ctx, const Nodes& nodes) const;
 
  private:
     struct Impl;
