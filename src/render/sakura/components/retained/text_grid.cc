@@ -1962,11 +1962,21 @@ TextGrid::~TextGrid() {
 bool TextGrid::update(Config config) {
 
     const bool valueChanged = impl->config.value != config.value;
+    const bool metricsChanged = impl->config.fontSize != config.fontSize ||
+                                impl->config.fontScale != config.fontScale ||
+                                impl->config.lineScale != config.lineScale ||
+                                impl->config.lineTopGap != config.lineTopGap ||
+                                impl->config.lineIndent != config.lineIndent;
     const bool wasAtBottom = impl->rect.height <= 0.0f ||
                              impl->currentScrollY + 1.0f >=
                                  std::max(0.0f, impl->contentHeightPixels() - impl->rect.height);
     impl->config = std::move(config);
     impl->fontSizePixels = impl->config.fontSize;
+
+    if (metricsChanged) {
+        impl->visualRowsValid = false;
+        impl->linePrefixesValid = false;
+    }
 
     if ((valueChanged && impl->config.value != impl->textValue()) || impl->lines.empty()) {
         impl->lines = SplitLines(impl->config.value);
