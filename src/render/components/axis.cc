@@ -67,6 +67,7 @@ struct Axis::Impl {
 
     bool updateGridPointsFlag = false;
     bool updateGridUniformsFlag = false;
+    bool updateVertexCountFlag = false;
 
     std::shared_ptr<Render::Buffer> gridUniformBuffer;
     std::shared_ptr<Render::Buffer> gridPointsBuffer;
@@ -327,7 +328,7 @@ Result Axis::create(Window* window) {
 
     // Generate grid geometry.
     pimpl->generateGridPoints();
-    pimpl->drawGridVertex->updateVertexCount(pimpl->totalLines * 6);
+    pimpl->updateVertexCountFlag = true;
 
     // Set initial uniform state.
     pimpl->computePaddingScale();
@@ -379,6 +380,12 @@ Result Axis::surfaceOverlay(Render::Surface::Config& surfaceConfig) {
 }
 
 Result Axis::present() {
+    // Draw commands are created when the owning surface is bound.
+    if (pimpl->updateVertexCountFlag) {
+        JST_CHECK(pimpl->drawGridVertex->updateVertexCount(pimpl->totalLines * 6));
+        pimpl->updateVertexCountFlag = false;
+    }
+
     if (pimpl->updateGridPointsFlag) {
         pimpl->gridPointsBuffer->update();
         pimpl->gridKernel->update();
@@ -559,7 +566,7 @@ Result Axis::Impl::syncTickGeometry() {
                  currentMinorTicks + dividerLines + 4;
 
     generateGridPoints();
-    drawGridVertex->updateVertexCount(totalLines * 6);
+    updateVertexCountFlag = true;
 
     gridUniforms.lineInfo = {
         static_cast<float>(config.showInteriorGrid && currentHorizontalLines >= 2
@@ -905,7 +912,7 @@ Result Axis::Impl::syncResponsiveGrid() {
         totalLines = interiorLines + currentMajorTicks + currentMinorTicks +
                      dividerLines + 4;
         generateGridPoints();
-        drawGridVertex->updateVertexCount(totalLines * 6);
+        updateVertexCountFlag = true;
         gridUniforms.lineInfo = {
             static_cast<float>(config.showInteriorGrid
                 ? horizontalLines - 2 : 0),
