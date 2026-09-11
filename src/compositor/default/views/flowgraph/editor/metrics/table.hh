@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_METRICS_TABLE_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_METRICS_TABLE_HH
 
+#include "error.hh"
 #include "types.hh"
 
 namespace Jetstream {
@@ -26,7 +27,6 @@ struct FlowgraphMetricTable {
         error.update({
             .id = this->config.id + "Error",
             .str = errorText,
-            .tone = Sakura::Text::Tone::Warning,
         });
     }
 
@@ -43,7 +43,7 @@ struct FlowgraphMetricTable {
  private:
     void parseValue() {
         if (!config.value.has_value()) {
-            errorText = "No metric";
+            errorText = "No metric.";
             columns.clear();
             rows.clear();
             parsedValue.reset();
@@ -52,7 +52,7 @@ struct FlowgraphMetricTable {
 
         const auto* value = std::any_cast<Parser::Map>(&config.value);
         if (!value) {
-            errorText = "Invalid metric type";
+            errorText = "Invalid metric type.";
             columns.clear();
             rows.clear();
             parsedValue.reset();
@@ -69,11 +69,11 @@ struct FlowgraphMetricTable {
         rows.clear();
         if (Parser::Deserialize(*value, "columns", columns) != Result::SUCCESS ||
             Parser::Deserialize(*value, "rows", rows) != Result::SUCCESS) {
-            errorText = "Invalid table data";
+            errorText = "Invalid table data.";
             return;
         }
         if (std::any_of(rows.begin(), rows.end(), [&](const auto& row) { return row.size() != columns.size(); })) {
-            errorText = "Invalid table row size";
+            errorText = "Invalid table row size.";
             return;
         }
 
@@ -88,7 +88,7 @@ struct FlowgraphMetricTable {
     std::vector<std::vector<std::string>> rows;
     std::string errorText;
     Sakura::NodeField frame;
-    Sakura::NodeLabel error;
+    FlowgraphMetricError error;
     Sakura::NodeTable table;
 };
 

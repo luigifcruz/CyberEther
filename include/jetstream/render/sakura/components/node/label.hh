@@ -20,6 +20,7 @@ struct NodeLabel {
         bool wrapped = false;
         bool clipped = false;
         F32 scale = 1.0f;
+        bool boxed = false;
     };
 
     NodeLabel();

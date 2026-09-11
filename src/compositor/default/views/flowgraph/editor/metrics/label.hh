@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_METRICS_LABEL_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_METRICS_LABEL_HH
 
+#include "error.hh"
 #include "types.hh"
 
 namespace Jetstream {
@@ -26,7 +27,6 @@ struct FlowgraphMetricLabel {
         error.update({
             .id = this->config.id + "Error",
             .str = errorText,
-            .tone = Sakura::Text::Tone::Warning,
         });
     }
 
@@ -60,7 +60,7 @@ struct FlowgraphMetricLabel {
     std::string value;
     std::string errorText;
     Sakura::NodeField frame;
-    Sakura::NodeLabel error;
+    FlowgraphMetricError error;
     Sakura::NodeLabel text;
 };
 
