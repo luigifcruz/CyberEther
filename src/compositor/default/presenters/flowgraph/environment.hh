@@ -42,7 +42,7 @@ struct FlowgraphEnvironmentWindowPresenter {
             keys.clear();
         }
 
-        std::vector<std::vector<std::string>> rows;
+        Sakura::Table::Nodes nodes;
         for (const auto& key : keys) {
             if (!FlowgraphKeyValueDetail::KeyMatches(key, filter)) {
                 continue;
@@ -52,11 +52,11 @@ struct FlowgraphEnvironmentWindowPresenter {
             if (flowgraph->environment().get(key, value) != Result::SUCCESS) {
                 continue;
             }
-            rows.push_back({key, FlowgraphKeyValueDetail::AnyToString(value)});
+            auto node = FlowgraphKeyValueDetail::AnyToNode(key, key, value);
+            node.open = true;
+            nodes.push_back(std::move(node));
         }
-        std::sort(rows.begin(), rows.end(), [](const auto& lhs, const auto& rhs) {
-            return lhs[0] < rhs[0];
-        });
+        FlowgraphKeyValueDetail::SortNodes(nodes);
 
         const auto enqueue = context.callbacks.enqueueMail;
         return FlowgraphKeyValueWindow::Config{
@@ -64,8 +64,8 @@ struct FlowgraphEnvironmentWindowPresenter {
             .title = "Flowgraph Environment (" + MakeFlowgraphWindowTitle(flowgraphId, flowgraph) + ")",
             .search = context.state.interface.flowgraphEnvironmentSearch,
             .searchHint = "Search environment keys...",
-            .entryCount = FlowgraphKeyValueDetail::EntryCount(rows.size(), keys.size()),
-            .rows = std::move(rows),
+            .entryCount = FlowgraphKeyValueDetail::EntryCount(nodes.size(), keys.size()),
+            .nodes = std::move(nodes),
             .onSearchChange = [enqueue](const std::string& value) {
                 enqueue(MailSetFlowgraphEnvironmentSearch{.value = value});
             },

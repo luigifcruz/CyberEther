@@ -38,9 +38,9 @@ struct FlowgraphMetadataWindowPresenter {
         const std::string filter = FlowgraphKeyValueDetail::NormalizeFilter(
             context.state.interface.flowgraphMetadataSearch);
 
-        std::vector<std::vector<std::string>> rows;
+        Sakura::Table::Nodes nodes;
         U64 totalEntries = 0;
-        const auto appendRows = [&rows, &filter, &flowgraph](const std::vector<std::string>& keys,
+        const auto appendNodes = [&nodes, &filter, &flowgraph](const std::vector<std::string>& keys,
                                                              const std::string& prefix,
                                                              const std::string& block) {
             for (const auto& key : keys) {
@@ -53,14 +53,18 @@ struct FlowgraphMetadataWindowPresenter {
                 if (flowgraph->metadata().get(key, value, block) != Result::SUCCESS) {
                     continue;
                 }
-                rows.push_back({displayKey, FlowgraphKeyValueDetail::AnyToString(value)});
+                const std::string id = block.empty() ? "flowgraph/" + key :
+                    jst::fmt::format("block/{}:{}/{}", block.size(), block, key);
+                auto node = FlowgraphKeyValueDetail::AnyToNode(id, displayKey, value);
+                node.open = true;
+                nodes.push_back(std::move(node));
             }
         };
 
         std::vector<std::string> metadataKeys;
         if (flowgraph->metadata().keys(metadataKeys) == Result::SUCCESS) {
             totalEntries += metadataKeys.size();
-            appendRows(metadataKeys, "", "");
+            appendNodes(metadataKeys, "", "");
         }
         std::vector<std::string> blocks;
         if (flowgraph->view().keys(blocks) != Result::SUCCESS) {
@@ -73,12 +77,10 @@ struct FlowgraphMetadataWindowPresenter {
                 continue;
             }
             totalEntries += blockMetadataKeys.size();
-            appendRows(blockMetadataKeys, blockName, blockName);
+            appendNodes(blockMetadataKeys, blockName, blockName);
         }
 
-        std::sort(rows.begin(), rows.end(), [](const auto& lhs, const auto& rhs) {
-            return lhs[0] < rhs[0];
-        });
+        FlowgraphKeyValueDetail::SortNodes(nodes);
 
         const auto enqueue = context.callbacks.enqueueMail;
         return FlowgraphKeyValueWindow::Config{
@@ -86,8 +88,8 @@ struct FlowgraphMetadataWindowPresenter {
             .title = "Flowgraph Metadata (" + MakeFlowgraphWindowTitle(flowgraphId, flowgraph) + ")",
             .search = context.state.interface.flowgraphMetadataSearch,
             .searchHint = "Search metadata keys...",
-            .entryCount = FlowgraphKeyValueDetail::EntryCount(rows.size(), totalEntries),
-            .rows = std::move(rows),
+            .entryCount = FlowgraphKeyValueDetail::EntryCount(nodes.size(), totalEntries),
+            .nodes = std::move(nodes),
             .onSearchChange = [enqueue](const std::string& value) {
                 enqueue(MailSetFlowgraphMetadataSearch{.value = value});
             },

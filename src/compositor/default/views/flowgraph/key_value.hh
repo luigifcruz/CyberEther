@@ -17,7 +17,7 @@ struct FlowgraphKeyValueWindow {
         std::string search;
         std::string searchHint = "Search keys...";
         std::string entryCount;
-        std::vector<std::vector<std::string>> rows;
+        Sakura::Table::Nodes nodes;
         std::function<void(const std::string&)> onSearchChange;
         std::function<void()> onClose;
     };
@@ -47,10 +47,10 @@ struct FlowgraphKeyValueWindow {
         table.update({
             .id = this->config.id + ":table",
             .columns = {"Key", "Value"},
-            .rows = this->config.rows,
             .fixedColumnWidths = {180.0f},
             .size = {0.0f, -1.0f},
             .wrapped = true,
+            .resizable = true,
         });
     }
 
@@ -58,7 +58,7 @@ struct FlowgraphKeyValueWindow {
         window.render(ctx, [this](const Sakura::Context& ctx) {
             searchInput.render(ctx);
             countText.render(ctx);
-            table.render(ctx);
+            table.render(ctx, this->config.nodes);
         });
     }
 
