@@ -217,6 +217,32 @@ TEST_CASE("Compositor command worker starts inert and empty",
     REQUIRE(state.completed == 0);
 }
 
+TEST_CASE("Compositor command worker supports large native compiler stack frames",
+          "[core][compositor][worker][stack]") {
+    CompositorWorkerDouble worker;
+    std::size_t sum = 0;
+
+    worker.start();
+    worker.submit([&sum] {
+        // Exceed the default macOS and Windows worker stacks. Volatile keeps
+        // the compiler from replacing this stack allocation with a constant.
+        volatile unsigned char scratch[2 * 1024 * 1024];
+        for (std::size_t index = 0; index < sizeof(scratch); ++index) {
+            scratch[index] = static_cast<unsigned char>(index);
+        }
+        for (std::size_t index = 0; index < sizeof(scratch); ++index) {
+            sum += scratch[index];
+        }
+        return Result::SUCCESS;
+    });
+    worker.stop();
+
+    REQUIRE(sum == (2 * 1024 * 1024 / 256) * (255 * 256 / 2));
+    CompositorWorkerDouble::CompletedCommand command;
+    REQUIRE(worker.take(command));
+    REQUIRE(command.result == Result::SUCCESS);
+}
+
 TEST_CASE("Compositor command worker supports repeated start and stop cycles",
            "[core][compositor][worker][lifecycle]") {
     CompositorWorkerDouble worker;

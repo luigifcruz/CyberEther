@@ -935,7 +935,7 @@ int Run(int argc, char* argv[]) {
     }
 
     std::optional<InterruptHandlerGuard> interruptHandler;
-    std::thread computeThread;
+    Platform::WorkerThread computeThread;
     std::thread graphicalThread;
     bool instanceCreated = false;
     bool cleanedUp = false;
@@ -1087,7 +1087,7 @@ int Run(int argc, char* argv[]) {
             }
         }
 
-        computeThread = std::thread([&]{
+        computeThread.start([&]{
             while (instance->computing()) {
                 Result res = Result::SUCCESS;
 

@@ -4,7 +4,7 @@ namespace Jetstream {
 
 void Compositor::Impl::startWorker() {
     workerRunning = true;
-    workerThread = std::thread([this]() {
+    workerThread.start([this]() {
         while (true) {
             Command cmd;
             {

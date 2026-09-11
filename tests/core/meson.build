@@ -30,6 +30,7 @@ core_test_domains = {
     'platform': [
         'platform/paths.cc',
         'platform/storage.cc',
+        'platform/thread.cc',
     ],
     'registry': ['registry/registry.cc'],
     'render': [
