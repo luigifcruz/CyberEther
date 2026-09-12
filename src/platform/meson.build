@@ -6,6 +6,7 @@ src_lst += files([
     'process.cc',
     'storage.cc',
     'terminal.cc',
+    'thread.cc',
     'url.cc',
 ])
 

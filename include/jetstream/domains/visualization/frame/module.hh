@@ -12,12 +12,12 @@ struct Frame : public Module::Config {
     std::string fit = "contain";
     std::string colormap = "grayscale";
     bool autoRange = true;
-    bool smooth = false;
+    std::string interpolation = "nearest";
     std::string xLabel = "X (px)";
     std::string yLabel = "Y (px)";
 
     JST_MODULE_TYPE(frame);
-    JST_MODULE_PARAMS(fit, colormap, autoRange, smooth, xLabel, yLabel);
+    JST_MODULE_PARAMS(fit, colormap, autoRange, interpolation, xLabel, yLabel);
 };
 
 }  // namespace Jetstream::Modules

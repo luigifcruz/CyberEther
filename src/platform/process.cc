@@ -32,6 +32,21 @@ bool TimedOut(const std::chrono::steady_clock::time_point& start, U64 timeoutMil
                std::chrono::milliseconds(timeoutMilliseconds);
 }
 
+#if defined(JST_OS_WINDOWS) || defined(JST_OS_LINUX) || defined(JST_OS_MAC)
+bool AppendProcessOutput(std::string& captured,
+                         std::string_view chunk,
+                         const std::function<void(std::string_view)>& onOutput) {
+    const auto retained = chunk.substr(0, kMaxProcessOutputSize - captured.size());
+    if (!retained.empty()) {
+        captured.append(retained);
+        if (onOutput) {
+            onOutput(retained);
+        }
+    }
+    return retained.size() == chunk.size();
+}
+#endif
+
 #if defined(JST_OS_WINDOWS)
 
 class WindowsHandle {
@@ -290,17 +305,13 @@ Result RunWindowsProcess(const std::string& executable,
                     if (!ReadFile(readPipe.get(), buffer, requested, &bytesRead, nullptr)) {
                         pipeClosed = true;
                     } else {
-                        if (captured.size() + bytesRead > kMaxProcessOutputSize) {
+                        if (!AppendProcessOutput(captured, {buffer, bytesRead}, onOutput)) {
                             if (combineOutput) {
                                 output = std::move(captured);
                             }
                             job.reset();
                             (void)WaitForSingleObject(processHandle.get(), INFINITE);
                             return Result::ERROR;
-                        }
-                        captured.append(buffer, bytesRead);
-                        if (onOutput) {
-                            onOutput(std::string_view(buffer, bytesRead));
                         }
                         continue;
                     }
@@ -332,15 +343,11 @@ Result RunWindowsProcess(const std::string& executable,
             if (!ReadFile(readPipe.get(), buffer, requested, &bytesRead, nullptr)) {
                 break;
             }
-            if (captured.size() + bytesRead > kMaxProcessOutputSize) {
+            if (!AppendProcessOutput(captured, {buffer, bytesRead}, onOutput)) {
                 if (combineOutput) {
                     output = std::move(captured);
                 }
                 return Result::ERROR;
-            }
-            captured.append(buffer, bytesRead);
-            if (onOutput) {
-                onOutput(std::string_view(buffer, bytesRead));
             }
         }
     } catch (...) {
@@ -497,18 +504,14 @@ Result RunPosixProcess(const std::string& executable,
             char buffer[1024];
             const ssize_t bytesRead = read(readPipe.get(), buffer, sizeof(buffer));
             if (bytesRead > 0) {
-                if (captured.size() + static_cast<std::size_t>(bytesRead) >
-                    kMaxProcessOutputSize) {
+                if (!AppendProcessOutput(captured,
+                                         {buffer, static_cast<std::size_t>(bytesRead)},
+                                         onOutput)) {
                     TerminateProcessGroup(process);
                     if (combineOutput) {
                         output = std::move(captured);
                     }
                     return Result::ERROR;
-                }
-                captured.append(buffer, static_cast<std::size_t>(bytesRead));
-                if (onOutput) {
-                    onOutput(std::string_view(buffer,
-                                              static_cast<std::size_t>(bytesRead)));
                 }
                 continue;
             }
@@ -535,18 +538,14 @@ Result RunPosixProcess(const std::string& executable,
             if (bytesRead <= 0) {
                 break;
             }
-            if (captured.size() + static_cast<std::size_t>(bytesRead) >
-                kMaxProcessOutputSize) {
+            if (!AppendProcessOutput(captured,
+                                     {buffer, static_cast<std::size_t>(bytesRead)},
+                                     onOutput)) {
                 TerminateProcessGroup(process);
                 if (combineOutput) {
                     output = std::move(captured);
                 }
                 return Result::ERROR;
-            }
-            captured.append(buffer, static_cast<std::size_t>(bytesRead));
-            if (onOutput) {
-                onOutput(std::string_view(buffer,
-                                          static_cast<std::size_t>(bytesRead)));
             }
         }
     } catch (...) {

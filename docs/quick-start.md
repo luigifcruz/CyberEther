@@ -87,14 +87,17 @@ Because the flowgraph is always running, the **Line Plot** block starts showing 
 
 ## Ready-to-go example flowgraphs
 
-CyberEther ships with a set of built-in example flowgraphs. Open them from the UI by choosing **Flowgraph** → **Open Examples**. The examples modal shows a grid of ready-to-run flowgraphs. Click one to open it in a fresh tab. These examples are the fastest way to see what CyberEther can do:
+Open the built-in examples from **Flowgraph** → **Open Examples**. Each opens in a fresh tab and starts processing once its inputs and devices are ready.
 
 | Flowgraph | What it demonstrates |
 |-----------|----------------------|
-| Signal Generator | Generates synthetic signals and visualizes them with a waterfall and line plot. |
-| Spectrum Analyzer | A classic SDR-style spectrum analyzer using a windowed FFT. |
-| Simple FM Receiver | Receives an FM broadcast station with an RTL-SDR and plays the audio. |
-| Multi-FM | Receives multiple FM stations at once using the `Filter Engine` block. |
-| Overlap-Add | Frequency-domain FIR filtering using the overlap-add method. |
-| Overlap-Add-Fold | Overlap-add filtering with folding and resampling. |
-| ADS-B Flight Tracker | Receives ADS-B signals and tracks nearby aircraft. |
+| CyberEther First Steps | Finish a spectrum analyzer from a lone Signal Generator. Add a display, wire it, edit live settings, read block documentation, and save. |
+| Signal Generator | Adds noise to a generated tone and displays the result in a spectrum plot and waterfall. |
+| Simple FM Receiver | Receives an FM broadcast station with an RTL-SDR, demodulates the signal, and plays the audio. |
+| Multi-FM Receiver | Uses the `Filter` block to separate two FM stations from one RTL-SDR input. Displays both spectra and plays audio from one station. |
+| Python Block | Generates noisy QPSK signals in a Python block and displays their spectrum, waterfall, and constellation. Requires [Python with NumPy](/docs/python-block#choosing-a-python-runtime). |
+| Overlap-Add-Fold | Explains FFT filtering and resampling in an RTL-SDR FM receiver, with notes on zero padding, spectral folding, and overlap-add reconstruction. |
+| Spectrum Analyzer | Applies a window and FFT to RTL-SDR samples and displays the spectrum in a line plot and waterfall. |
+| ADS-B Flight Tracker | Receives ADS-B signals at 1090 MHz from an SDR and decodes aircraft positions and flight data. |
+
+Start with **CyberEther First Steps** to turn a lone Signal Generator into a spectrum analyzer in about ten minutes. It needs no radio hardware or Python installation.

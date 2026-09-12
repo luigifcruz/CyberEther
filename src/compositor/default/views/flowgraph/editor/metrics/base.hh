@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_METRICS_BASE_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_METRICS_BASE_HH
 
+#include "error.hh"
 #include "label.hh"
 #include "progressbar.hh"
 #include "table.hh"
@@ -32,7 +33,6 @@ struct FlowgraphMetricInstance {
             unknownText.update({
                 .id = config.id + "Unsupported",
                 .str = "Unsupported metric: " + kind,
-                .tone = Sakura::Text::Tone::Warning,
             });
         }
     }
@@ -57,7 +57,7 @@ struct FlowgraphMetricInstance {
     FlowgraphMetricLabel label;
     FlowgraphMetricTable table;
     Sakura::NodeField unknownFrame;
-    Sakura::NodeLabel unknownText;
+    FlowgraphMetricError unknownText;
 };
 
 }  // namespace Jetstream

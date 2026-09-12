@@ -1,31 +1,94 @@
 ---
 version: 2
-
 title: ADS-B Flight Tracker
-summary: Flight tracker using ADS-B data.
+summary: Track aircraft with ADS-B.
 author: Luigi
 license: MIT
-description: Uses an SDR to receive ADS-B signals and track flights.
-
+description: Receives ADS-B signals at 1090 MHz from an SDR and decodes aircraft positions and flight data.
 graph:
+  - name: note
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        # ADS-B Flight Tracker
+        **Aircraft announce where they are. This example listens, decodes, and plots them.**
+        
+        1. Plug in your SDR and choose it in the **Device** dropdown on the **Soapy SDR** block. An RTL-SDR shows up as something like **Generic RTL2832U OEM**.
+        2. Leave **Frequency** at 1090.000 MHz and **Sample Rate** at 2.000 MHz. The decoder refuses any other sample rate.
+        3. Put the antenna by a window and wait. The first rows usually appear within a minute if aircraft are in range.
+
+        **Radio not listed?** Check the cable and plug the dongle directly into the computer rather than a hub. Close any other program that is using it, only one program can open a radio at a time. Then reopen this example from the **Flowgraph** menu under **Open Examples** so the list is rebuilt. On Linux, the kernel's DVB-T driver can claim an RTL-SDR before SoapySDR sees it. On Windows, the dongle needs the WinUSB driver installed with Zadig.
+        
+        ## What is happening
+        Every airliner carries a transponder that broadcasts its identity, altitude, speed, and position once or twice a second on 1090 MHz, in the clear, for anyone to hear. The radio captures 2 MHz around that frequency, the **ADS-B Decoder** finds the short pulse bursts, checks them, and keeps a table of what each aircraft has said. The globe plots every aircraft with a known position.
+        
+        Reception is line of sight. From a window you may hear aircraft 50 km away, and from a rooftop with a clear horizon, 200 km or more. Antenna placement matters more than any setting in this graph. If you use the small telescoping whip, collapse it to about 7 cm, a quarter wavelength at 1090 MHz.
+        
+        ## Reading the table
+        - **ICAO** is the aircraft's permanent 24-bit address, shown in hex. It identifies the airframe, not the flight.
+        - **Callsign** is the flight number the crew entered, such as an airline code followed by digits.
+        - **Alt (ft)**, **Speed (kt)**, and **Hdg** are barometric altitude in feet, ground speed in knots, and track in degrees.
+        - **Lat** and **Lon** are the decoded position.
+        
+        A dash means that field has not arrived yet. Each message carries only a slice of the picture, so callsign, altitude, and velocity come in separate transmissions. Position takes two transmissions of alternating types before it can be worked out, so it usually fills in last. Rows stay in the table so you can see everything the radio heard.
+        
+        ## Reading the globe
+        - Drag to spin the globe and scroll to zoom toward the pointer.
+        - A couple of seconds after the first position arrives, the view fits itself around the aircraft it has found. Touching the globe before then cancels that, so it never moves under your hand.
+        - Each target shows the callsign or address, the altitude in hundreds of feet, and the speed in tens of knots. A label reading 350 and 45 means 35,000 feet at 450 knots. An arrow shows heading and a trail shows recent positions.
+        - A target turns orange and reads **STALE** after 15 seconds without a position, and disappears after two minutes.
+        
+        ## Reading the spectrum
+        Do not expect a station shaped hump. Transponder messages are bursts lasting about a tenth of a millisecond, so the trace is a flat floor with brief spikes and the waterfall shows scattered ticks as messages arrive. Turn on **Max Hold** to watch the peaks pile up. A steady bright line that never moves is interference, not an aircraft.
+        
+        ## Try it
+        1. Watch a row fill in from left to right over a minute.
+        2. Move the antenna to another window and count the rows again. A different window faces a different slice of sky.
+        3. Zoom the globe into your city. Aircraft on approach descend through the altitude column as you watch.
+        
+        ## Common surprises
+        - **Nothing after five minutes** usually means no aircraft in range right now, an antenna with no view of the sky, or a radio that is not selected. Check a flight tracking website for traffic near you at this hour.
+        - **Rows but no positions** means the aircraft are weak or far. Position needs two clean messages, so faint aircraft give you altitude long before they give you a location.
+        - **Altitude only, forever** means an older transponder. It answers radar with altitude but never broadcasts a position.
+        - **Bias-T** powers an amplifier through the antenna cable. Turn it on only if you have a powered amplifier, which is common for serious 1090 MHz setups.
+        - **Buffer Loss** above 0.00% costs messages, because a dropped stretch of samples can split a burst in half.
+        
+        **Next:** open **Spectrum Analyzer** to survey the band around any frequency, or **Simple FM Receiver** to hear a signal instead of decoding one.
+    meta:
+      node:
+        x: 86
+        y: 533
+        width: 349
+        height: 372
+        configCollapsed: false
   - name: soapy
     module: soapy
     device: cpu
     runtime: native
     provider: generic
     config:
-      bufferMultiplier: 4
-      sampleRate: 2000000
+      modulePath: ''
+      deviceString: ''
+      streamString: ''
+      antenna: ''
       frequency: 1.09e+09
-      numberOfTimeSamples: 8192
-      numberOfBatches: 8
+      frequencyStep: 1000000
+      sampleRate: 2000000
       automaticGain: true
+      biasTee: false
+      numberOfBatches: 8
+      numberOfTimeSamples: 8192
+      bufferMultiplier: 4
     meta:
       node:
-        y: 121
         x: 88
-        height: 47
-        width: 140
+        y: 121
+        width: 346
+        height: 0
+        configCollapsed: false
   - name: adsb
     module: adsb
     device: cpu
@@ -35,73 +98,46 @@ graph:
       signal: '${graph.soapy.output.signal}'
     meta:
       surface_default:
-        detachedWidth: 506
-        attachedWidth: 483
+        attachedHeight: 604
+        detachedWidth: 906
+        detachedHeight: 923
         detached: false
-        attachedHeight: 243
-        detachedHeight: 483
+        detachedConfigOpen: false
       node:
-        y: 354
-        x: 286
-        height: 375
-        width: 483
-  - name: spectrum_engine
-    module: spectrum_engine
+        x: 483
+        y: 191
+        width: 600
+        height: 0
+        configCollapsed: false
+  - name: spectrum_analyzer
+    module: spectrum_analyzer
     device: cpu
     runtime: native
     provider: generic
     config:
-      rangeMin: -102.85714
-      enableAgc: false
+      lineplotAveraging: 1
+      waterfallAveraging: 3
+      maxHold: false
+      fill: true
+      rangeMin: -86.274506
       rangeMax: 0
-      enableScale: true
+      waterfallHeight: 1024
+      splitRatio: 0.21158393
+      xLabel: Frequency (MHz)
+      amplitudeLabel: Amplitude (dBFS)
+      waterfallLabel: Time
     input:
       buffer: '${graph.soapy.output.signal}'
     meta:
       node:
-        y: 74
-        x: 570
-        height: 162
-        width: 140
-  - name: lineplot
-    module: lineplot
-    device: cpu
-    runtime: native
-    provider: generic
-    config:
-      averaging: 1
-    input:
-      signal: '${graph.spectrum_engine.output.buffer}'
-    meta:
+        x: 1126
+        y: 121
+        width: 550
+        height: 0
+        configCollapsed: false
       surface_default:
-        detachedWidth: 512
-        attachedWidth: 349
+        attachedHeight: 661
+        detachedWidth: 788
+        detachedHeight: 755
         detached: false
-        attachedHeight: 191
-        detachedHeight: 512
-      node:
-        y: 54
-        x: 847
-        height: 306
-        width: 349
-  - name: waterfall
-    module: waterfall
-    device: cpu
-    runtime: native
-    provider: generic
-    config:
-      height: 512
-    input:
-      signal: '${graph.spectrum_engine.output.buffer}'
-    meta:
-      surface_default:
-        detachedWidth: 512
-        attachedWidth: 353
-        detached: false
-        attachedHeight: 208
-        detachedHeight: 512
-      node:
-        y: 391
-        x: 846
-        height: 323
-        width: 353
+        detachedConfigOpen: false

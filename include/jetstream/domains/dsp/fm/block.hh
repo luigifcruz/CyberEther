@@ -12,6 +12,7 @@ struct FM : public Block::Config {
 
     JST_BLOCK_TYPE(fm);
     JST_BLOCK_DOMAIN("DSP");
+    JST_BLOCK_NODE_SIZE(M);
     JST_BLOCK_PARAMS(mode, deemphasis, sampleRate);
     JST_BLOCK_DESCRIPTION(
         "FM Demodulator",

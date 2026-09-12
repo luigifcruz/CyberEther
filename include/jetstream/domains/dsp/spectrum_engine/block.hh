@@ -13,6 +13,7 @@ struct SpectrumEngine : public Block::Config {
 
     JST_BLOCK_TYPE(spectrum_engine);
     JST_BLOCK_DOMAIN("DSP");
+    JST_BLOCK_NODE_SIZE(M);
     JST_BLOCK_PARAMS(enableAgc, enableScale, rangeMin, rangeMax);
     JST_BLOCK_DESCRIPTION(
         "Spectrum Engine",

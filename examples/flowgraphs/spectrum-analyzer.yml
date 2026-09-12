@@ -1,155 +1,123 @@
 ---
 version: 2
-
 title: Spectrum Analyzer
-summary: Simple waterfall and lineplot.
+summary: View a live radio spectrum.
 author: Luigi
 license: MIT
-description: 'Shows how a CyberEther flowgraph can be used as a traditional SDR console. This example will take the samples from the SDR and display a frequency-domain representation of it.'
-
+description: Applies a window and FFT to RTL-SDR samples and displays the spectrum in a line plot and waterfall.
 graph:
-  - name: win
-    module: window
+  - name: note
+    module: note
     device: cpu
     runtime: native
     provider: generic
     config:
-      size: 2048
+      content: |-
+        # Spectrum Analyzer
+        **This example opens with no radio selected. Pick one first.**
+        
+        1. Plug in your SDR and choose it in the **Device** dropdown on the **Soapy SDR** block. An RTL-SDR shows up as something like **Generic RTL2832U OEM**. Choose **None** to disconnect.
+        2. Type a local station into **Frequency** or leave it at 94.900 MHz, in the FM broadcast band.
+        3. Watch the display. It starts a moment after you pick a device. There is no Start button, every block runs as soon as its inputs are ready.
+        
+        **Radio not listed?** Check the cable and plug the dongle directly into the computer rather than a hub. Close any other program that is using it, only one program can open a radio at a time. Then reopen this example from the **Flowgraph** menu under **Open Examples** so the list is rebuilt. On Linux, the kernel's DVB-T driver can claim an RTL-SDR before SoapySDR sees it. On Windows, the dongle needs the WinUSB driver installed with Zadig.
+        
+        ## What you are looking at
+        The top pane is the **spectrum**: frequency runs left to right and signal strength runs bottom to top. Each bump is a transmitter. The bottom pane is the **waterfall**: the same spectrum painted as a row of color, newest row at the top, older rows scrolling down. Blue is quiet and red is strong. A steady vertical stripe is a station that never stops talking. A short dash is a burst.
+        
+        The default tuning is 94.900 MHz, in the FM broadcast band. Stations there are about 200 kHz wide and easy to see with the small antenna that ships with most dongles. Pick a station you know from your car radio, type its frequency into **Frequency**, and watch it appear.
+        
+        ## Try it
+        1. Change **Frequency** to a local station. The **+** and **-** buttons move by the **Step Size** of 1 MHz.
+        2. Scroll over the plot to zoom into a peak. Drag left or right to pan. Right-click to reset the view.
+        3. Drag the line between the spectrum and the waterfall to give one of them more room.
+        4. Turn on **Max Hold**. A second trace remembers the highest level seen in every bin, which is useful for catching signals that come and go. Turn it off to clear it.
+        
+        ## Reading the numbers
+        The vertical scale is **dBFS**, decibels relative to the receiver's full scale. Zero is the loudest level the analog to digital converter can represent. These are relative levels, not calibrated power. Comparing two peaks is meaningful, quoting a dBm value is not. If the noise floor hides below the pane, raise **Range Min**. If peaks flatten near the top, the receiver is overloading: turn off **Automatic Gain** or use a smaller antenna.
+        
+        **Sample Rate** sets the span you see. At 2.000 MHz the plot covers 2 MHz of spectrum. An RTL-SDR is comfortable up to about 2.4 MHz. Asking for more produces gaps, which show up as **Buffer Loss**.
+        
+        **Samples** is the FFT size. With 2048 samples over 2 MHz, each bin is about 1 kHz wide. Doubling it sharpens the frequency detail and halves how often new rows arrive. Leave **Batches** and **Buffer Multiplier** alone unless you are tuning performance.
+        
+        ## Smoothing
+        - **Lineplot Averaging** smooths the trace over time. Higher is calmer but slower to react.
+        - **Waterfall Averaging** combines several spectra into each row, so the waterfall scrolls slower and looks cleaner.
+        - **Waterfall Height** is how many rows of history are kept.
+        
+        ## Is it keeping up?
+        - **Buffer Health** should stay low. A rising bar means the computer is falling behind.
+        - **Buffer Loss** should read 0.00%. Anything else means samples were dropped. Lower the sample rate or try a different USB port.
+        - **Throughput** shows what arrives against what was requested. The two numbers should match.
+        
+        ## Common surprises
+        - **A spike in the exact center that never moves** is the tuner's own DC offset, not a transmitter. Tune 300 kHz to one side of the station you want and it moves out of the way.
+        - **The whole trace pumps up and down** as a strong station comes and goes. That is **Automatic Gain** chasing it. Turn it off for a steadier picture.
+        - **Flat line and no peaks** usually means the antenna is loose or the room is shielded. Try near a window.
+        - **Bias-T** sends power up the antenna cable to feed an amplifier. Leave it off unless you know you have one.
+        
+        **Next:** open the **Simple FM Receiver** example to hear the station you just found.
     meta:
       node:
-        y: 36
-        x: 22
-        height: 74
-        width: 140
+        x: 48.587524
+        y: 510.79816
+        width: 412
+        height: 368
+        configCollapsed: false
   - name: soapy
     module: soapy
     device: cpu
     runtime: native
     provider: generic
     config:
-      bufferMultiplier: 512
-      sampleRate: 2000000
+      modulePath: ''
+      deviceString: ''
+      streamString: ''
+      antenna: ''
       frequency: 9.49e+07
-      numberOfTimeSamples: 2048
-      numberOfBatches: 8
+      frequencyStep: 1000000
+      sampleRate: 2000000
       automaticGain: true
-      deviceString: 'driver=rtlsdr,serial=00000001'
+      biasTee: false
+      numberOfBatches: 8
+      numberOfTimeSamples: 2048
+      bufferMultiplier: 512
     meta:
       node:
-        y: 175
-        x: 22
-        height: 391
-        width: 140
-  - name: invert
-    module: invert
-    device: cpu
-    runtime: native
-    provider: generic
-    input:
-      signal: '${graph.win.output.window}'
-    meta:
-      node:
-        y: 39
-        x: 190
-        height: 63
-        width: 140
-  - name: multiply
-    module: multiply
-    device: cpu
-    runtime: native
-    provider: generic
-    input:
-      a: '${graph.soapy.output.signal}'
-      b: '${graph.invert.output.signal}'
-    meta:
-      node:
-        y: 63
-        x: 361
-        height: 85
-        width: 140
-  - name: fft
-    module: fft
+        x: 49
+        y: 94
+        width: 332
+        height: 0
+        configCollapsed: false
+  - name: spectrum_analyzer
+    module: spectrum_analyzer
     device: cpu
     runtime: native
     provider: generic
     config:
-      forward: true
+      lineplotAveraging: 28
+      waterfallAveraging: 4
+      maxHold: false
+      fill: true
+      rangeMin: -100
+      rangeMax: 0
+      waterfallHeight: 1024
+      splitRatio: 0.3037825
+      xLabel: Frequency (MHz)
+      amplitudeLabel: Amplitude (dBFS)
+      waterfallLabel: Time
     input:
-      signal: '${graph.multiply.output.product}'
+      buffer: '${graph.soapy.output.signal}'
     meta:
       node:
-        y: 56
-        x: 532
-        height: 96
-        width: 140
-  - name: amplitude
-    module: amplitude
-    device: cpu
-    runtime: native
-    provider: generic
-    input:
-      signal: '${graph.fft.output.signal}'
-    meta:
-      node:
-        y: 65
-        x: 697
-        height: 63
-        width: 140
-  - name: range
-    module: range
-    device: cpu
-    runtime: native
-    provider: generic
-    config:
-      max: 0
-      min: -100
-    input:
-      signal: '${graph.amplitude.output.signal}'
-    meta:
-      node:
-        y: 52
-        x: 864
-        height: 129
-        width: 140
-  - name: lineplot
-    module: lineplot
-    device: cpu
-    runtime: native
-    provider: generic
-    config:
-      averaging: 1
-    input:
-      signal: '${graph.range.output.signal}'
-    meta:
+        x: 497
+        y: 95
+        width: 860
+        height: 0
+        configCollapsed: false
       surface_default:
-        detachedWidth: 512
-        attachedWidth: 354
+        attachedHeight: 626
+        detachedWidth: 504
+        detachedHeight: 463
         detached: false
-        attachedHeight: 234
-        detachedHeight: 512
-      node:
-        y: 19
-        x: 1046
-        height: 349
-        width: 354
-  - name: waterfall
-    module: waterfall
-    device: cpu
-    runtime: native
-    provider: generic
-    config:
-      height: 512
-    input:
-      signal: '${graph.range.output.signal}'
-    meta:
-      surface_default:
-        detachedWidth: 512
-        attachedWidth: 357
-        detached: false
-        attachedHeight: 187
-        detachedHeight: 512
-      node:
-        y: 399
-        x: 1043
-        height: 302
-        width: 357
+        detachedConfigOpen: false

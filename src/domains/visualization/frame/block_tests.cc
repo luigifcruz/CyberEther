@@ -149,7 +149,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(hasField("fit"));
     REQUIRE(hasField("autoRange"));
-    REQUIRE(hasField("smooth"));
+    REQUIRE(hasField("interpolation"));
     REQUIRE(!hasField("rangeMin"));
     REQUIRE(!hasField("rangeMax"));
 
@@ -160,7 +160,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Frame block rejects unknown fit and colormap values",
+                 "Frame block rejects unknown fit, colormap, and interpolation values",
                  "[modules][frame][block][validation]") {
     Blocks::OnesTensor source;
     source.shape = {16, 32};
@@ -179,4 +179,10 @@ TEST_CASE_METHOD(FlowgraphFixture,
     badColormap.colormap = "rainbow";
     REQUIRE(flowgraph->blockCreate("frame_bad_colormap", badColormap, inputs) == Result::SUCCESS);
     REQUIRE(viewBlock("frame_bad_colormap").state == Block::State::Errored);
+
+    Blocks::Frame badInterpolation;
+    badInterpolation.interpolation = "lanczos";
+    REQUIRE(flowgraph->blockCreate("frame_bad_interpolation", badInterpolation, inputs) ==
+            Result::SUCCESS);
+    REQUIRE(viewBlock("frame_bad_interpolation").state == Block::State::Errored);
 }

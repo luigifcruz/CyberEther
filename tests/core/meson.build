@@ -30,6 +30,7 @@ core_test_domains = {
     'platform': [
         'platform/paths.cc',
         'platform/storage.cc',
+        'platform/thread.cc',
     ],
     'registry': ['registry/registry.cc'],
     'render': [
@@ -39,11 +40,13 @@ core_test_domains = {
     ],
     'sakura': [
         'sakura/interface_controls.cc',
+        'sakura/key_value.cc',
         'sakura/metric_label.cc',
         'sakura/node.cc',
         'sakura/node_metadata.cc',
         'sakura/surface_view.cc',
         'sakura/superluminal_surface.cc',
+        'sakura/text_grid.cc',
         'sakura/vstack.cc',
     ],
     'runtime': [

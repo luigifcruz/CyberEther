@@ -1,12 +1,10 @@
 ---
 version: 2
-
-title: 'Multi-FM'
-summary: Receive multiple FM simultaneously.
+title: Multi-FM Receiver
+summary: Receive multiple FM stations.
 author: Luigi
 license: MIT
-description: 'Shows the reception of multiple FM broadcast stations simultaneously. The partitioning into individual stations is done via the Overlap-Add-Fold method presented in another example. This flowgraph abstracts this mechanism using the `Filter Engine` block.'
-
+description: Uses the Filter block to separate two FM stations from one RTL-SDR input. Displays both spectra and plays audio from one station.
 graph:
   - name: not34
     module: note
@@ -15,16 +13,34 @@ graph:
     provider: generic
     config:
       content: |-
-        # 1. Multi-FM Example
-        This is a simplified flowgraph from what was presented in the `Overlap-Add-Fold` example. That entire mechanism was abstracted away with the `Filter Engine` block.
+        # Multi-FM Receiver
+        **One radio, one 2 MHz capture, two stations pulled out of it at once.**
+        
+        1. Plug in your SDR and choose it in the **Device** dropdown on the **Soapy SDR** block.
+        2. Leave **Frequency** at 96.900 MHz for now. The two stations this graph expects sit 400 kHz below and above it, at 96.5 and 97.3 MHz.
+        3. Drag **Volume** up on the **Audio** block. It starts at 0 so the graph is silent until you ask for sound.
 
-        Here, 2 MHz of the FM broadcast spectrum is being received and filtered. The `Filter` block generates two sets of 200 kHz bandpass filter taps centered around 96.9 MHz and 97.5 MHz. The result after applying the taps to the signal is two independent FM stations that can be chosen by selecting the appropriate slice configuration in the `Slice` block.
+        **Radio not listed?** Check the cable and plug the dongle directly into the computer rather than a hub. Close any other program that is using it, only one program can open a radio at a time. Then reopen this example from the **Flowgraph** menu under **Open Examples** so the list is rebuilt. On Linux, the kernel's DVB-T driver can claim an RTL-SDR before SoapySDR sees it. On Windows, the dongle needs the WinUSB driver installed with Zadig.
+        
+        ## How it works
+        The **Simple FM Receiver** example captures only 240 kHz, enough for one station. This one captures 2 MHz, which holds about ten broadcast channels, and lets the **Filter** block cut two of them out. Each cut is called a head. The filter shifts each head down to center, keeps 200 kHz of it, and lowers the sample rate to match, so what comes out is exactly what a single station receiver would have captured on its own.
+        
+        The output carries both heads stacked side by side. Each **Slice** block picks one. The top slice feeds the **FM Demodulator** and the **Audio** block, so that is the station you hear. Both slices also feed their own **Spectrum Analyzer** so you can see the two stations at once.
+        
+        ## What you are looking at
+        The large **Spectrum Analyzer** shows the raw 2 MHz. Every hump about 200 kHz wide is a station. The two small analyzers each show one 200 kHz head. Their axis labels still read 96.9 MHz because the filter reports the new sample rate but not the new center, so read them as windows around 96.5 and 97.3 MHz.
+        
+        ## Tune it to your city
+        Find two stations in the big plot that are the same distance either side of some center point, retune **Frequency** to that center, and set the two **Center** offsets on the **Filter** block to the signed distances. Station humps show up in the big plot as soon as you retune, so you can hunt by eye.
+        
+        **Next:** open **Overlap-Add-Fold** to see the filtering and resampling steps this block bundles, laid out one by one.
     meta:
       node:
-        y: 637
-        x: 11
-        height: 332
-        width: 362
+        x: 14
+        y: 499
+        width: 359
+        height: 373
+        configCollapsed: false
   - name: not44
     module: note
     device: cpu
@@ -32,251 +48,259 @@ graph:
     provider: generic
     config:
       content: |-
-        # Tip
-        You can also add more filters if you have more FM stations to filter. Simply increase the number of `Heads` and set the correct `Center` in the `Filter` block.
+        # The Filter block
+        **Heads**, **Center**, and **Bandwidth** describe what to cut out. **Taps** describes how sharply.
+        
+        - **Center** lists one offset per head, in MHz from the tuned frequency. Positive is above, negative is below. Here it reads 0.4 and -0.4.
+        - **Bandwidth** is how much each head keeps. Broadcast FM needs 200 kHz.
+        - **Taps** sets the sharpness of the cut. More taps reject neighbors better and cost more compute. The count must be odd.
+        
+        ## Adding a third station
+        Raise **Heads** to 3 and add a third offset to **Center**. Any station inside the 2 MHz capture is fair game, so the offsets must stay between -1 and 1 MHz. Then add a **Slice** for index 2 and a **Spectrum Analyzer** to watch it.
+        
+        ## The resampling rule
+        The block lowers the sample rate by **Sample Rate** divided by **Bandwidth**, which must come out as a whole number. Here 2 MHz over 200 kHz is 10. The number of taps minus one must also divide evenly by that number, which is why 51 taps works. Break either rule and the block skips resampling, the output stays at 2 MHz, and the **FM Demodulator** and **Audio** blocks downstream no longer match. Look for a warning in the console if the sound turns to noise after an edit.
     meta:
       node:
-        y: 148
-        x: 366
-        height: 222
-        width: 212
+        x: 414
+        y: 165
+        width: 314
+        height: 231
+        configCollapsed: false
+  - name: note
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        # Picking a station
+        The filter output has three dimensions: batches, heads, and samples. A **Slice** keeps everything along two of them and one index along the head dimension. The top **Slice** reads index 0 and the bottom one reads index 1. That is the whole difference between them.
+        
+        ## Hear the other station
+        Change the top slice from index 0 to index 1 and the **FM Demodulator** now plays the second station. Change it back to return.
+        
+        ## Contiguous
+        Leave **Contiguous** on. Downstream blocks want the selected head packed into its own buffer rather than a view with gaps.
+        
+        ## Sample rates downstream
+        After the filter each head runs at 200 kHz. The **FM Demodulator** and the **Audio** block are both set to 200 kHz to match. Change **Bandwidth** on the filter and you must change both of those too.
+    meta:
+      node:
+        x: 892
+        y: 439
+        width: 295
+        height: 437
+        configCollapsed: false
   - name: soapy
     module: soapy
     device: cpu
     runtime: native
     provider: generic
     config:
-      bufferMultiplier: 1024
-      sampleRate: 2000000
+      modulePath: ''
+      deviceString: ''
+      streamString: ''
+      antenna: ''
       frequency: 9.69e+07
-      numberOfTimeSamples: 8000
-      numberOfBatches: 8
+      frequencyStep: 1000000
+      sampleRate: 2000000
       automaticGain: true
-      deviceString: 'driver=rtlsdr,serial=00000001'
+      biasTee: false
+      numberOfBatches: 8
+      numberOfTimeSamples: 8000
+      bufferMultiplier: 1024
     meta:
       node:
+        x: 16
         y: 94
-        x: 6
-        height: 391
-        width: 140
-  - name: spe33
-    module: spectrum_engine
-    device: cpu
-    runtime: native
-    provider: generic
-    config:
-      rangeMin: -81
-      enableAgc: false
-      rangeMax: 1
-      enableScale: true
-    input:
-      buffer: '${graph.soapy.output.signal}'
-    meta:
-      node:
-        y: 371
-        x: 206
-        height: 228
-        width: 140
-  - name: wtf_input
-    module: waterfall
-    device: cpu
-    runtime: native
-    provider: generic
-    config:
-      height: 512
-    input:
-      signal: '${graph.spe33.output.buffer}'
-    meta:
-      surface_default:
-        detachedWidth: 512
-        attachedWidth: 291
-        detached: false
-        attachedHeight: 147
-        detachedHeight: 512
-      node:
-        y: 706
-        x: 447
-        height: 262
-        width: 291
-  - name: lineplot
-    module: lineplot
-    device: cpu
-    runtime: native
-    provider: generic
-    config:
-      averaging: 18
-    input:
-      signal: '${graph.spe33.output.buffer}'
-    meta:
-      surface_default:
-        detachedWidth: 500
-        attachedWidth: 286
-        detached: false
-        attachedHeight: 162
-        detachedHeight: 454
-      node:
-        y: 400
-        x: 447
-        height: 277
-        width: 286
+        width: 314
+        height: 0
+        configCollapsed: false
   - name: flt
     module: filter
     device: cpu
     runtime: native
     provider: generic
     config:
+      sampleRate: 2000000
+      bandwidth: 200000
+      center: '[400000, -400000]'
       taps: 51
       heads: 2
-      center: '[400000, -400000]'
-      bandwidth: 200000
-      sampleRate: 2000000
     input:
       signal: '${graph.soapy.output.signal}'
     meta:
       node:
-        y: 94
-        x: 602
-        height: 261
-        width: 140
+        x: 774
+        y: 93
+        width: 154
+        height: 0
+        configCollapsed: false
+  - name: spectrum_analyzer
+    module: spectrum_analyzer
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      lineplotAveraging: 4
+      waterfallAveraging: 4
+      maxHold: false
+      fill: true
+      rangeMin: -100
+      rangeMax: 0
+      waterfallHeight: 1024
+      splitRatio: 0.44562647
+      xLabel: Frequency (MHz)
+      amplitudeLabel: Amplitude (dBFS)
+      waterfallLabel: Time
+    input:
+      buffer: '${graph.soapy.output.signal}'
+    meta:
+      node:
+        x: 413
+        y: 440
+        width: 443
+        height: 0
+        configCollapsed: true
+      surface_default:
+        attachedHeight: 377
+        detachedWidth: 504
+        detachedHeight: 463
+        detached: false
+        detachedConfigOpen: false
   - name: slice
     module: slice
     device: cpu
     runtime: native
     provider: generic
     config:
-      contiguous: true
       slice: '[:, 1, :]'
+      contiguous: true
     input:
       buffer: '${graph.flt.output.buffer}'
     meta:
       node:
-        y: 546
-        x: 823
-        height: 129
-        width: 140
-  - name: spectrum_engine
-    module: spectrum_engine
-    device: cpu
-    runtime: native
-    provider: generic
-    config:
-      rangeMin: -270
-      enableAgc: true
-      rangeMax: 1
-      enableScale: true
-    input:
-      buffer: '${graph.slice.output.buffer}'
-    meta:
-      node:
-        y: 554
-        x: 1021
-        height: 228
-        width: 140
-  - name: waterfall
-    module: waterfall
-    device: cpu
-    runtime: native
-    provider: generic
-    config:
-      height: 512
-    input:
-      signal: '${graph.spectrum_engine.output.buffer}'
-    meta:
-      surface_default:
-        detachedWidth: 512
-        attachedWidth: 196
-        detached: false
-        attachedHeight: 174
-        detachedHeight: 512
-      node:
-        y: 552
-        x: 1221
-        height: 289
-        width: 196
+        x: 1035
+        y: 264
+        width: 147
+        height: 0
+        configCollapsed: false
   - name: sli23
     module: slice
     device: cpu
     runtime: native
     provider: generic
     config:
-      contiguous: true
       slice: '[:, 0, :]'
+      contiguous: true
     input:
       buffer: '${graph.flt.output.buffer}'
     meta:
       node:
-        y: 117
-        x: 812
-        height: 129
-        width: 140
-  - name: spe23
-    module: spectrum_engine
+        x: 1036
+        y: 94
+        width: 146
+        height: 0
+        configCollapsed: false
+  - name: spectrum_analyzer_1
+    module: spectrum_analyzer
     device: cpu
     runtime: native
     provider: generic
     config:
-      rangeMin: -177.85715
-      enableAgc: true
-      rangeMax: 1
-      enableScale: true
+      lineplotAveraging: 4
+      waterfallAveraging: 4
+      maxHold: false
+      fill: true
+      rangeMin: -100
+      rangeMax: 0
+      waterfallHeight: 1024
+      splitRatio: 0.4952718
+      xLabel: Frequency (MHz)
+      amplitudeLabel: Amplitude (dBFS)
+      waterfallLabel: Time
     input:
-      buffer: '${graph.sli23.output.buffer}'
+      buffer: '${graph.slice.output.buffer}'
     meta:
       node:
-        y: 253
-        x: 1021
-        height: 228
-        width: 140
+        x: 1242
+        y: 604
+        width: 350
+        height: 0
+        configCollapsed: true
+      surface_default:
+        attachedHeight: 216
+        detachedWidth: 504
+        detachedHeight: 463
+        detached: false
+        detachedConfigOpen: false
   - name: fm
     module: fm
     device: cpu
     runtime: native
     provider: generic
     config:
+      mode: narrow
+      deemphasis: none
       sampleRate: 200000
     input:
       signal: '${graph.sli23.output.buffer}'
     meta:
       node:
-        y: 92
-        x: 1014
-        height: 96
-        width: 140
-  - name: wtf_output
-    module: waterfall
+        x: 1241
+        y: 95
+        width: 157
+        height: 0
+        configCollapsed: false
+  - name: spectrum_analyzer_2
+    module: spectrum_analyzer
     device: cpu
     runtime: native
     provider: generic
     config:
-      height: 512
+      lineplotAveraging: 4
+      waterfallAveraging: 4
+      maxHold: false
+      fill: true
+      rangeMin: -100
+      rangeMax: 0
+      waterfallHeight: 1024
+      splitRatio: 0.4952718
+      xLabel: Frequency (MHz)
+      amplitudeLabel: Amplitude (dBFS)
+      waterfallLabel: Time
     input:
-      signal: '${graph.spe23.output.buffer}'
+      buffer: '${graph.sli23.output.buffer}'
     meta:
-      surface_default:
-        detachedWidth: 512
-        attachedWidth: 196
-        detached: false
-        attachedHeight: 140
-        detachedHeight: 512
       node:
-        y: 253
-        x: 1219
-        height: 255
-        width: 196
+        x: 1243
+        y: 300
+        width: 348
+        height: 0
+        configCollapsed: true
+      surface_default:
+        attachedHeight: 215
+        detachedWidth: 512
+        detachedHeight: 512
+        detached: false
+        detachedConfigOpen: false
   - name: audio
     module: audio
     device: cpu
     runtime: native
     provider: generic
     config:
-      outSampleRate: 48000
-      inSampleRate: 200000
       deviceName: Default
+      inSampleRate: 200000
+      outSampleRate: 48000
+      volume: 0.6818182
     input:
       buffer: '${graph.fm.output.signal}'
     meta:
       node:
-        y: 86
-        x: 1213
-        height: 107
-        width: 205
+        x: 1437
+        y: 94
+        width: 154
+        height: 0
+        configCollapsed: false

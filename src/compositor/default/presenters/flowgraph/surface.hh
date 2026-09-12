@@ -72,7 +72,6 @@ struct FlowgraphDetachedSurfacePresenter {
                         continue;
                     }
 
-                    const auto texture = manifest.surface;
                     configs.push_back({
                         .id = windowId,
                         .title = MakeDetachedSurfaceWindowTitle(blockName, blockData.title),
@@ -85,9 +84,7 @@ struct FlowgraphDetachedSurfacePresenter {
                                                           windowId,
                                                           blockData),
                         .configOpen = surfaceMeta.detachedConfigOpen,
-                        .onResolveTexture = [texture]() {
-                            return texture ? texture->raw() : 0;
-                        },
+                        .texture = manifest.surface,
                         .onSize = [enqueue,
                                    surface,
                                    flowgraphId,

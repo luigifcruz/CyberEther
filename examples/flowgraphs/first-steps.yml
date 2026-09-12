@@ -1,0 +1,274 @@
+---
+version: 2
+title: CyberEther First Steps
+summary: Learn the basics of CyberEther.
+license: MIT
+description: 'Finish a spectrum analyzer from a lone Signal Generator. Add a display from the browser, wire it, edit live settings, read block documentation, and save. No hardware required.'
+graph:
+  - name: note
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        # Welcome to CyberEther
+        **Glad you're here. Let's build something together.**
+        
+        CyberEther is a flowgraph editor. You place blocks, connect them with wires, and the graph runs while you work on it. Nothing you do here is permanent until you save.
+        
+        > Want something that already works? Open the **Flowgraph** menu under **Open Examples** and pick **Signal Generator** for a live spectrum with no hardware, or **Spectrum Analyzer** if you have an RTL-SDR plugged in. Come back here when you want to know how they were built.
+        
+        ## Key concepts
+        - **Blocks** are the boxes on the canvas. Each one does a single job, such as generating a signal, filtering it, or drawing it.
+        - **Ports** are the small circles on a block's edges. Outputs sit on the right and inputs on the left.
+        - **Wires** connect an output to an input. One output can feed many inputs. A block waits until every input it needs is connected.
+        - **Tensors** are what travel on the wires: a bundle of numbers with a shape and a type, such as 8192 complex samples. A tensor can have several dimensions, so four batches of 256 samples is written **[4, 256]**.
+        - **Shapes are fixed.** The source decides how much data flows per cycle and every block downstream is built around it. Change a setting and the blocks after it rebuild themselves. This is stricter than most radio software, and it is what lets the same graph run on a CPU or a GPU without surprises.
+        - **Fields** are the settings shown inside each block. They are live. Change one and the graph follows.
+        - **Nothing needs starting.** A block runs the moment its inputs are connected.
+        
+        ## Meet the source
+        The **Signal Generator** beside this note is already running. It makes a cosine at 0.001 MHz, one million samples per second, 8192 samples at a time, as complex samples, the pairs of numbers that radios work in. Nothing shows yet, because a generator on its own has nowhere to send its signal. Hover over any field's label to read what it does.
+        
+        ## Place the display
+        - Click **Blocks** in the toolbar, or double-click anywhere on the empty canvas.
+        - Type spectrum in the search box and press Enter. A **Spectrum Analyzer** lands on the canvas.
+        - Drag it by its title to the right of the generator.
+        - Hover over the **Output** port on the right edge of the Signal Generator, press, and drag a wire to the **Input** port on the left edge of the analyzer. Let go.
+        
+        The plot comes alive. A single spike stands just right of center in the top pane, and a steady vertical stripe runs down the waterfall below it, because the waterfall is the same spectrum stacked over time with the newest row at the top. You built a spectrum analyzer.
+        
+        If the analyzer ever shows an error, check the generator's **Data Type**. The analyzer expects complex samples, CF32, and a real-valued F32 signal will not do. Fix the type and the block recovers on its own.
+        
+        ## Play with it
+        Every field inside a block is live.
+        - Change **Frequency** from 0.001 to 0.25. The spike slides to the right and the stripe bends to follow. Put it back to 0.001.
+        - Change **Amplitude** to 0.5. The spike drops. The vertical scale is in decibels, and halving a signal always costs 6 dB.
+        - Switch **Signal Type** to Square. Extra spikes appear at three and five times the frequency, the harmonics that give a square wave its buzz.
+        - Switch it to Noise. The floor rises into a grainy carpet.
+        - Put it back to Cosine.
+        
+        Hover over the wire to see the tensor on it. The label reads **[8192]** and **CF32**, 8192 complex samples per cycle. Every wire can be read this way, which is the fastest way to understand a graph someone else built.
+        
+        ## Mix in some noise
+        Real signals never arrive alone. Let's add the hiss that every receiver hears.
+        - Open the browser and add a second **Signal Generator**. Drag it below the first one.
+        - On the new block, set **Signal Type** to Noise, **Data Type** to CF32, and **Amplitude** to 0.1.
+        - Open the browser again and add an **Add** block. Drag it between the generators and the analyzer.
+        - Wire the first generator's **Output** to **Input A** on the Add block, and the noise generator's **Output** to **Input B**.
+        - Click the end of the old wire where it meets the analyzer's **Input**. The wire lets go.
+        - Wire the Add block's **Output** to the analyzer's **Input**.
+        
+        The floor of the spectrum rises into a grainy carpet with the spike still standing above it. That gap between spike and carpet is the signal to noise ratio, the number that decides whether any receiver can hear anything. Raise the noise **Amplitude** to 0.5 and watch the spike start to drown. Put it back to 0.1.
+        
+        Both generators had to agree on sample rate, buffer size, and data type before Add could combine them, because a block can only add tensors of the same shape and type. That is the fixed shapes rule from the top of this note doing its job.
+        
+        ## One output, many inputs
+        - Open the browser again and add a **Constellation**. Drag it below the analyzer.
+        - Wire the Add block's **Output** to its input as well.
+        
+        One output can feed as many blocks as you like. The constellation plots each complex sample as a point. A pure tone is a point going around a circle, and at 0.001 MHz it takes a thousand samples per turn, so the points blur into a ring. The fuzz on the ring is the noise you just mixed in. Set the noise **Amplitude** to 0 and the ring turns crisp. Now raise the tone's **Frequency** to 0.1. The ring collapses into ten dots, because the tone now completes a full turn every ten samples and keeps landing on the same spots. Restore 0.001 for the tone and 0.1 for the noise.
+        
+        Now take it apart.
+        - Click the end of the new wire where it meets the constellation. The wire lets go.
+        - Right-click the constellation and choose **Delete Block**.
+        
+        Copy and paste a block with Ctrl+C and Ctrl+V, settings included, and rename one from the same right-click menu.
+        
+        ## Getting around and getting help
+        - Hold the middle mouse button and drag to pan the canvas.
+        - Drag a block by its title to move it.
+        - Right-click any block and choose **Documentation** for the full description of its fields and what it expects at its inputs.
+        - **Inspect & Edit** in the same menu shows the settings as text, for values a field cannot express.
+        
+        ## Keep it
+        - Click **Save** in the toolbar to write your graph to a file.
+        - **Close** closes the tab.
+        - The other examples live under the **Flowgraph** menu under **Open Examples**, each with a note like this one.
+        
+        Open **Signal Generator** next to see a tone, a chirp, and noise mixed on one display, then **Spectrum Analyzer** to point a real radio at real stations.
+    meta:
+      node:
+        x: 40
+        y: 78
+        width: 610
+        height: 713
+        configCollapsed: false
+  - name: signal_generator
+    module: signal_generator
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      signalType: cosine
+      signalDataType: CF32
+      sampleRate: 1000000
+      frequency: 1000
+      amplitude: 1
+      phase: 0
+      dcOffset: 0
+      noiseVariance: 1
+      chirpStartFreq: 1000
+      chirpEndFreq: 10000
+      chirpDuration: 1
+      bufferSize: 8192
+    meta:
+      node:
+        x: 704
+        y: 81
+        width: 300
+        height: 0
+        configCollapsed: false
+  - name: reference_note
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        ## The finished version
+        You found the answer key. This is the graph the note above walks you through, already wired. Compare it with yours, or copy a block from here with Ctrl+C and Ctrl+V if you get stuck.
+    meta:
+      node:
+        x: 43.361786
+        y: 1168.2493
+        width: 269
+        height: 157
+        configCollapsed: false
+  - name: reference_generator
+    module: signal_generator
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      signalType: cosine
+      signalDataType: CF32
+      sampleRate: 1000000
+      frequency: 1000.00006
+      amplitude: 1
+      phase: 0
+      dcOffset: 0
+      noiseVariance: 1
+      chirpStartFreq: 1000
+      chirpEndFreq: 10000
+      chirpDuration: 1
+      bufferSize: 8192
+    meta:
+      node:
+        x: 383.3618
+        y: 1168.2493
+        width: 300
+        height: 0
+        configCollapsed: false
+  - name: reference_noise
+    module: signal_generator
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      signalType: noise
+      signalDataType: CF32
+      sampleRate: 1000000
+      frequency: 1000
+      amplitude: 0.1
+      phase: 0
+      dcOffset: 0
+      noiseVariance: 1
+      chirpStartFreq: 1000
+      chirpEndFreq: 10000
+      chirpDuration: 1
+      bufferSize: 8192
+    meta:
+      node:
+        x: 391.3618
+        y: 1411.2493
+        width: 300
+        height: 0
+        configCollapsed: false
+  - name: reference_add
+    module: add
+    device: cpu
+    runtime: native
+    provider: generic
+    input:
+      a: '${graph.reference_generator.output.signal}'
+      b: '${graph.reference_noise.output.signal}'
+    meta:
+      node:
+        x: 763.3618
+        y: 1167.2493
+        width: 140
+        height: 0
+        configCollapsed: false
+  - name: reference_constellation
+    module: constellation
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      xLabel: In-Phase
+      yLabel: Quadrature
+    input:
+      signal: '${graph.reference_add.output.sum}'
+    meta:
+      node:
+        x: 967.3618
+        y: 1338.2493
+        width: 360
+        height: 378
+        configCollapsed: false
+      surface_default:
+        attachedHeight: 320
+        detachedWidth: 600
+        detachedHeight: 600
+        detached: false
+        detachedConfigOpen: false
+  - name: throttle
+    module: throttle
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      intervalMs: 30
+    input:
+      buffer: '${graph.reference_add.output.sum}'
+    meta:
+      node:
+        x: 1054.2783
+        y: 1165.8676
+        width: 140
+        height: 0
+        configCollapsed: false
+  - name: reference_analyzer
+    module: spectrum_analyzer
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      lineplotAveraging: 1
+      waterfallAveraging: 1
+      maxHold: false
+      fill: true
+      rangeMin: -100
+      rangeMax: 0
+      waterfallHeight: 1024
+      splitRatio: 0.5
+      xLabel: Frequency (MHz)
+      amplitudeLabel: Amplitude (dBFS)
+      waterfallLabel: Time
+    input:
+      buffer: '${graph.throttle.output.buffer}'
+    meta:
+      node:
+        x: 1366.3618
+        y: 1113.2493
+        width: 700
+        height: 606
+        configCollapsed: false
+      surface_default:
+        attachedHeight: 480
+        detachedWidth: 800
+        detachedHeight: 600
+        detached: false
+        detachedConfigOpen: false

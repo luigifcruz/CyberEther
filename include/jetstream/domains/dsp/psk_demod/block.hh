@@ -15,6 +15,7 @@ struct PskDemod : public Block::Config {
 
     JST_BLOCK_TYPE(psk_demod);
     JST_BLOCK_DOMAIN("DSP");
+    JST_BLOCK_NODE_SIZE(M);
     JST_BLOCK_PARAMS(pskType, sampleRate, symbolRate, frequencyLoopBandwidth,
                      timingLoopBandwidth, dampingFactor);
     JST_BLOCK_DESCRIPTION(

@@ -52,7 +52,8 @@ SurfaceView::SurfaceView(SurfaceView&&) noexcept = default;
 SurfaceView& SurfaceView::operator=(SurfaceView&&) noexcept = default;
 
 bool SurfaceView::update(Config config) {
-    if (this->impl->config.id != config.id) {
+    if (this->impl->config.id != config.id ||
+        this->impl->config.textureSource != config.textureSource) {
         this->impl->lastEmittedResize.reset();
     }
     this->impl->config = std::move(config);
@@ -95,7 +96,9 @@ void SurfaceView::render(const Context& ctx) const {
     }
     const Extent2D<F32> displaySize = Scale(ctx, logicalDrawSize);
 
-    const U64 texture = config.onResolveTexture ? config.onResolveTexture() : config.texture;
+    const U64 texture = config.onResolveTexture
+        ? config.onResolveTexture()
+        : config.textureSource ? config.textureSource->raw() : config.texture;
     if (texture == 0) {
         return;
     }

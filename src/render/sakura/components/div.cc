@@ -58,8 +58,9 @@ void Div::render(const Context& ctx, Child child) const {
         const F32 contentWidth = std::max(0.0f, size.x - 2.0f * padding);
 
         ImDrawList* drawList = ImGui::GetWindowDrawList();
-        drawList->ChannelsSplit(2);
-        drawList->ChannelsSetCurrent(1);
+        ImDrawListSplitter splitter;
+        splitter.Split(drawList, 2);
+        splitter.SetCurrentChannel(drawList, 1);
 
         const std::string childId = config.id + "Content";
         ImGuiChildFlags contentChildFlags = ImGuiChildFlags_None;
@@ -105,7 +106,7 @@ void Div::render(const Context& ctx, Child child) const {
 
         const std::string& backgroundKey = config.selected ? config.selectedColorKey
                                                            : (hovered ? config.hoveredColorKey : config.colorKey);
-        drawList->ChannelsSetCurrent(0);
+        splitter.SetCurrentChannel(drawList, 0);
         drawList->AddRectFilled(Private::ToImVec2(divMin),
                                 Private::ToImVec2(divMax),
                                 ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, backgroundKey)),
@@ -116,7 +117,7 @@ void Div::render(const Context& ctx, Child child) const {
                               ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, config.borderColorKey)),
                               Scale(ctx, config.rounding));
         }
-        drawList->ChannelsMerge();
+        splitter.Merge(drawList);
 
         ImGui::Dummy(Private::ToImVec2({0.0f, std::max(0.0f, divMax.y - ImGui::GetCursorScreenPos().y)}));
         ImGui::PopID();

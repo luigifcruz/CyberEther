@@ -402,15 +402,20 @@ TEST_CASE("Signal View amplitude labels invert the soft display mapping",
 
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
 TEST_CASE("Axis vertical scale can move the divider without recreating resources",
-          "[modules][signal_view][split][axis]") {
+          "[modules][signal_view][split][axis][regression]") {
     LabelTestWindow window;
     Render::Components::Axis::Config config;
     config.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
     LabelTestAxis axis(config);
+    // CPU-side setup must not submit draw commands before a surface is bound.
+    JST_LOG_LAST_ERROR().clear();
     REQUIRE(axis.create(&window) == Result::SUCCESS);
+    CHECK(JST_LOG_LAST_ERROR() == "");
     REQUIRE(axis.updatePixelSize({2.0f / 1000.0f, 2.0f / 800.0f}) == Result::SUCCESS);
+    CHECK(JST_LOG_LAST_ERROR() == "");
     for (const F32 ratio : {0.1f, 0.35f, 0.9f, 1.0f, 0.5f}) {
         REQUIRE(axis.updateVerticalScale(ratio) == Result::SUCCESS);
+        CHECK(JST_LOG_LAST_ERROR() == "");
         REQUIRE(axis.getConfig().verticalScale == ratio);
         REQUIRE(axis.currentHorizontalLineCount() >= 3);
     }
@@ -421,17 +426,21 @@ TEST_CASE("Axis vertical scale can move the divider without recreating resources
 }
 
 TEST_CASE("Axis created in split mode reserves full height tick geometry",
-          "[modules][signal_view][split][axis][capacity]") {
+          "[modules][signal_view][split][axis][capacity][regression]") {
     LabelTestWindow window;
     Render::Components::Axis::Config config;
     config.verticalScale = 0.5f;
     config.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
     LabelTestAxis axis(config);
+    JST_LOG_LAST_ERROR().clear();
     REQUIRE(axis.create(&window) == Result::SUCCESS);
+    CHECK(JST_LOG_LAST_ERROR() == "");
     REQUIRE(axis.updatePixelSize({2.0f / 16384.0f, 2.0f / 16384.0f}) == Result::SUCCESS);
+    CHECK(JST_LOG_LAST_ERROR() == "");
     REQUIRE(axis.currentVerticalLineCount() == 65);
     REQUIRE(axis.currentHorizontalLineCount() == 17);
     REQUIRE(axis.setShowFrameTicks(true) == Result::SUCCESS);
+    CHECK(JST_LOG_LAST_ERROR() == "");
 
     Render::Surface::Config resources;
     REQUIRE(axis.surfaceUnderlay(resources) == Result::SUCCESS);
@@ -453,6 +462,7 @@ TEST_CASE("Axis created in split mode reserves full height tick geometry",
 
     for (const F32 ratio : {1.0f, 0.25f, 1.0f}) {
         REQUIRE(axis.updateVerticalScale(ratio) == Result::SUCCESS);
+        CHECK(JST_LOG_LAST_ERROR() == "");
         REQUIRE(axis.currentVerticalLineCount() == 65);
         REQUIRE(axis.currentHorizontalLineCount() == 17);
         REQUIRE(points.buffer == originalPoints);

@@ -67,6 +67,12 @@ bool IsValidColormap(const std::string& colormap) {
            colormap == "plasma";
 }
 
+bool IsValidInterpolation(const std::string& interpolation) {
+    return interpolation == "nearest" ||
+           interpolation == "bilinear" ||
+           interpolation == "bicubic";
+}
+
 void FillPolynomialLut(std::array<uint8_t, 256 * 4>& out, const PolynomialColormap& c) {
     for (U64 i = 0; i < 256; ++i) {
         const F32 t = static_cast<F32>(i) / 255.0f;
@@ -112,6 +118,12 @@ Result FrameImpl::validate() {
 
     if (!IsValidColormap(config.colormap)) {
         JST_ERROR("[MODULE_FRAME] Invalid colormap '{}'.", config.colormap);
+        return Result::ERROR;
+    }
+
+    if (!IsValidInterpolation(config.interpolation)) {
+        JST_ERROR("[MODULE_FRAME] Invalid interpolation '{}', expected nearest, bilinear, or bicubic.",
+                  config.interpolation);
         return Result::ERROR;
     }
 
@@ -190,7 +202,7 @@ Result FrameImpl::reconfigure() {
     fit = config.fit;
     colormap = config.colormap;
     autoRange = config.autoRange;
-    smooth = config.smooth;
+    interpolation = config.interpolation;
     xLabel = config.xLabel;
     yLabel = config.yLabel;
 
@@ -461,7 +473,9 @@ Result FrameImpl::present() {
     frameUniforms.height = static_cast<int>(height);
     frameUniforms.channels = static_cast<int>(channels);
     frameUniforms.useLut = (colormap != "grayscale") ? 1 : 0;
-    frameUniforms.interpolate = smooth ? 1 : 0;
+    frameUniforms.interpolate = (interpolation == "bilinear") ? 1
+                               : (interpolation == "bicubic") ? 2
+                                                              : 0;
     frameUniforms.rangeMin = lower;
     frameUniforms.rangeScale = 1.0f / (upper - lower);
     frameUniforms.zoom = view.zoom;

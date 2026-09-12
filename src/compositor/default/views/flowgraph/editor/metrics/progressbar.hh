@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_METRICS_PROGRESSBAR_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_METRICS_PROGRESSBAR_HH
 
+#include "error.hh"
 #include "types.hh"
 
 #include <algorithm>
@@ -28,7 +29,6 @@ struct FlowgraphMetricProgressBar {
         error.update({
             .id = this->config.id + "Error",
             .str = errorText,
-            .tone = Sakura::Text::Tone::Warning,
         });
     }
 
@@ -66,7 +66,7 @@ struct FlowgraphMetricProgressBar {
     F32 value = 0.0f;
     std::string errorText;
     Sakura::NodeField frame;
-    Sakura::NodeLabel error;
+    FlowgraphMetricError error;
     Sakura::NodeProgressBar progress;
 };
 

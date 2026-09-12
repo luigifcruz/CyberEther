@@ -18,7 +18,7 @@ Result FrameImpl::configure() {
     frameConfig->fit = fit;
     frameConfig->colormap = colormap;
     frameConfig->autoRange = autoRange;
-    frameConfig->smooth = smooth;
+    frameConfig->interpolation = interpolation;
     frameConfig->xLabel = xLabel;
     frameConfig->yLabel = yLabel;
 
@@ -61,10 +61,14 @@ Result FrameImpl::define() {
                                     "When off, values are shown as is in the 0 to 1 range.",
                                     {{"type", "bool"}}));
 
-    JST_CHECK(defineInterfaceConfig("smooth",
-                                    "Smooth",
-                                    "Sample the frame with bilinear interpolation.",
-                                    {{"type", "bool"}}));
+    JST_CHECK(defineInterfaceConfig("interpolation",
+                                    "Interpolation",
+                                    "How the frame is sampled when magnified.",
+                                    {{"type", "dropdown"}, {"options", Parser::Sequence{
+                                        Parser::Map{{"label", "Nearest"}, {"value", "nearest"}},
+                                        Parser::Map{{"label", "Bilinear"}, {"value", "bilinear"}},
+                                        Parser::Map{{"label", "Bicubic"}, {"value", "bicubic"}},
+                                    }}}));
 
     return Result::SUCCESS;
 }

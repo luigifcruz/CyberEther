@@ -455,6 +455,7 @@ struct TextGrid::Impl {
     mutable std::vector<VisualRow> visualRows;
     mutable std::vector<U64> visualRowStartIndex;
     mutable F32 visualContentHeight = 0.0f;
+    mutable F32 minimumVisualRowHeight = 1.0f;
     mutable bool visualRowsValid = false;
     mutable U64 visualRowsRevision = 0;
     mutable Wrap visualRowsWrap = Wrap::None;
@@ -514,6 +515,8 @@ struct TextGrid::Impl {
         }
         visualRows.clear();
         visualRowStartIndex.assign(lines.size(), 0);
+        // Reserve for ordinary rows even when the content is empty or only headings.
+        minimumVisualRowHeight = lineHeightPixels();
         const F32 trailingMargin = 0.5f * characterAdvancePixels();
         F32 y = 0.0f;
         for (U64 line = 0; line < lines.size(); ++line) {
@@ -522,6 +525,7 @@ struct TextGrid::Impl {
             const auto& text = lines[line];
             const U64 len = text.size();
             const F32 h = lineHeightAt(line);
+            minimumVisualRowHeight = std::min(minimumVisualRowHeight, h);
             const auto push = [&](U64 start, U64 end) {
                 visualRows.push_back({line, start, end, y, h});
                 y += h;
@@ -1672,13 +1676,13 @@ struct TextGrid::Impl {
         const F32 contentSize = contentFontSize();
         ensureVisualRows();
         const U64 firstVisualRow = firstVisibleVisualRow();
-        U64 visibleRowCount = 0;
-        while (firstVisualRow + visibleRowCount < visualRows.size() &&
-               viewportTop + rowTopContent(firstVisualRow + visibleRowCount) - currentScrollY < rect.bottom()) {
-            ++visibleRowCount;
-        }
-        const U64 visibleRowCapacity = std::max<U64>(
-            1, ((visibleRowCount + kVisibleRowCapacityStep - 1) / kVisibleRowCapacityStep) * kVisibleRowCapacityStep);
+        // Size the pools for the viewport, including a partially visible first row.
+        // Visible row counts fluctuate while scrolling; resizing to match them
+        // invalidates GPU resources and rebuilds the entire canvas.
+        const U64 viewportRowCount = static_cast<U64>(
+            std::ceil(std::max(0.0f, rect.height) / minimumVisualRowHeight)) + 1;
+        const U64 visibleRowCapacity =
+            ((viewportRowCount + kVisibleRowCapacityStep - 1) / kVisibleRowCapacityStep) * kVisibleRowCapacityStep;
         const auto selection = selectionRange();
         const bool selected = hasSelection();
 
@@ -1962,11 +1966,21 @@ TextGrid::~TextGrid() {
 bool TextGrid::update(Config config) {
 
     const bool valueChanged = impl->config.value != config.value;
+    const bool metricsChanged = impl->config.fontSize != config.fontSize ||
+                                impl->config.fontScale != config.fontScale ||
+                                impl->config.lineScale != config.lineScale ||
+                                impl->config.lineTopGap != config.lineTopGap ||
+                                impl->config.lineIndent != config.lineIndent;
     const bool wasAtBottom = impl->rect.height <= 0.0f ||
                              impl->currentScrollY + 1.0f >=
                                  std::max(0.0f, impl->contentHeightPixels() - impl->rect.height);
     impl->config = std::move(config);
     impl->fontSizePixels = impl->config.fontSize;
+
+    if (metricsChanged) {
+        impl->visualRowsValid = false;
+        impl->linePrefixesValid = false;
+    }
 
     if ((valueChanged && impl->config.value != impl->textValue()) || impl->lines.empty()) {
         impl->lines = SplitLines(impl->config.value);

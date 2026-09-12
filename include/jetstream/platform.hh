@@ -61,6 +61,27 @@ JETSTREAM_API bool ShutdownSocketRead(std::uintptr_t socket) noexcept;
 #endif
 
 //
+// Worker Thread
+//
+
+class JETSTREAM_API WorkerThread {
+ public:
+    WorkerThread();
+    ~WorkerThread();
+
+    WorkerThread(const WorkerThread&) = delete;
+    WorkerThread& operator=(const WorkerThread&) = delete;
+
+    void start(std::function<void()> fn);
+    void join();
+    bool joinable() const;
+
+ private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+};
+
+//
 // Process
 //
 
