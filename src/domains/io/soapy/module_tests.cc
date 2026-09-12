@@ -54,6 +54,8 @@ struct TestSoapyReads {
 };
 
 struct TestSoapyState {
+    SoapySDR::RangeList sampleRateRanges{SoapySDR::Range(1.0, 10.0e6)};
+    std::vector<double> sampleRateWrites;
     bool advertiseBiasTee = true;
     bool throwOnSettingInfo = false;
     bool failStreamSetup = false;
@@ -95,7 +97,7 @@ class TestSoapyDevice final : public SoapySDR::Device {
 
     SoapySDR::RangeList getSampleRateRange(const int, const size_t) const override {
         RecordSoapyCall("sampleRateRanges");
-        return {SoapySDR::Range(1.0, 10.0e6)};
+        return testSoapyState.sampleRateRanges;
     }
 
     SoapySDR::RangeList getFrequencyRange(const int, const size_t) const override {
@@ -125,8 +127,9 @@ class TestSoapyDevice final : public SoapySDR::Device {
         }
     }
 
-    void setSampleRate(const int, const size_t, const double) override {
+    void setSampleRate(const int, const size_t, const double rate) override {
         RecordSoapyCall("sampleRate");
+        testSoapyState.sampleRateWrites.push_back(rate);
     }
 
     void setFrequency(const int, const size_t, const double,
@@ -585,7 +588,7 @@ TEST_CASE("Soapy module rejects candidates before hardware access and preserves 
 }
 
 TEST_CASE("Soapy runtime ranges retain stepped capability checks",
-          "[modules][soapy][devices]") {
+          "[modules][soapy][devices][sample-rate]") {
     const std::vector ranges{SoapySDR::Range(1.0e6, 3.0e6, 1.0e6)};
 
     REQUIRE(Modules::SoapyRangeContains(ranges, 2.0e6f));
@@ -601,6 +604,66 @@ TEST_CASE("Soapy runtime ranges retain stepped capability checks",
     };
     const F32 endpoint = static_cast<F32>(endpointRange.front().minimum());
     REQUIRE(Modules::SoapyRangeContains(endpointRange, endpoint));
+}
+
+TEST_CASE("Soapy receivers accept intermediate sample rates within advertised ranges",
+          "[modules][soapy][devices][bladerf][sample-rate]") {
+    testSoapyState = {};
+    double minimum = 0.0;
+    double maximum = 0.0;
+    SECTION("original bladeRF") {
+        minimum = 80000.0;
+        maximum = 40.0e6;
+    }
+    SECTION("bladeRF 2.0 micro") {
+        minimum = 520834.0;
+        maximum = 61.44e6;
+    }
+    testSoapyState.sampleRateRanges = {
+        SoapySDR::Range(minimum, maximum / 4.0, maximum / 16.0),
+        SoapySDR::Range(maximum / 4.0, maximum / 2.0, maximum / 8.0),
+        SoapySDR::Range(maximum / 2.0, maximum, maximum / 4.0),
+    };
+
+    Modules::SoapyReceiver receiver;
+    REQUIRE(receiver.open({{"driver", TestSoapyDriver}}) == Result::SUCCESS);
+    for (const F32 rate : {2.0e6f, 2.4e6f, 4.0e6f}) {
+        REQUIRE(receiver.validateSettings(rate, 100.0e6f) == Result::SUCCESS);
+        REQUIRE(receiver.setSampleRate(rate) == Result::SUCCESS);
+    }
+    REQUIRE(testSoapyState.sampleRateWrites == std::vector<double>{2.0e6, 2.4e6, 4.0e6});
+    REQUIRE(receiver.validateSettings(minimum, 100.0e6f) == Result::SUCCESS);
+    REQUIRE(receiver.validateSettings(maximum, 100.0e6f) == Result::SUCCESS);
+    for (const F32 rate : {minimum / 2.0f, maximum * 2.0f}) {
+        REQUIRE(receiver.validateSettings(rate, 100.0e6f) == Result::ERROR);
+        REQUIRE(receiver.setSampleRate(rate) == Result::WARNING);
+    }
+    REQUIRE(testSoapyState.sampleRateWrites.size() == 3);
+    testSoapyState.failAt = "sampleRate";
+    REQUIRE(receiver.setSampleRate(2.0e6f) == Result::ERROR);
+}
+
+TEST_CASE("Soapy sample-rate validation preserves gaps and driver errors",
+          "[modules][soapy][devices][sample-rate]") {
+    testSoapyState = {};
+    testSoapyState.sampleRateRanges = {
+        SoapySDR::Range(1.0e6, 3.0e6, 1.0e6),
+        SoapySDR::Range(5.0e6, 6.0e6, 1.0e6),
+    };
+    Modules::SoapyReceiver receiver;
+    REQUIRE(receiver.open({{"driver", TestSoapyDriver}}) == Result::SUCCESS);
+    REQUIRE(receiver.validateSettings(2.5e6f, 100.0e6f) == Result::SUCCESS);
+    REQUIRE(receiver.setSampleRate(2.5e6f) == Result::SUCCESS);
+    for (const F32 rate : {0.0f, -1.0f, 4.0e6f, 7.0e6f,
+                           std::numeric_limits<F32>::infinity(),
+                           std::numeric_limits<F32>::quiet_NaN()}) {
+        REQUIRE(receiver.validateSettings(rate, 100.0e6f) == Result::ERROR);
+        REQUIRE(receiver.setSampleRate(rate) == Result::WARNING);
+    }
+    REQUIRE(testSoapyState.sampleRateWrites == std::vector<double>{2.5e6});
+    testSoapyState.failAt = "sampleRate";
+    REQUIRE(receiver.setSampleRate(2.0e6f) == Result::ERROR);
+    REQUIRE(testSoapyState.sampleRateWrites == std::vector<double>{2.5e6});
 }
 
 TEST_CASE("Soapy Bias-T follows the device lifecycle",

@@ -1,6 +1,7 @@
 #include "soapysdr.hh"
 
 #include <algorithm>
+#include <cmath>
 #include <exception>
 #include <future>
 #include <memory>
@@ -20,6 +21,19 @@
 namespace Jetstream::Modules {
 
 namespace {
+
+bool SampleRateInRanges(const SoapySDR::RangeList& ranges, const F32 rate) {
+    if (!std::isfinite(rate) || rate <= 0.0f) {
+        return false;
+    }
+
+    // Drivers can report suggested steps while accepting intermediate rates.
+    // Check each interval's bounds and let setSampleRate validate or quantize.
+    return std::any_of(ranges.begin(), ranges.end(), [rate](const auto& range) {
+        return rate >= static_cast<F32>(range.minimum()) &&
+               rate <= static_cast<F32>(range.maximum());
+    });
+}
 
 using DiscoveryClock = SoapyDiscovery::Clock;
 constexpr auto DiscoveryLifetime = std::chrono::seconds(1);
@@ -319,7 +333,7 @@ Result SoapyReceiver::queryCapabilities() {
 
 Result SoapyReceiver::validateSettings(const F32 sampleRate,
                                        const F32 frequency) const {
-    if (!SoapyRangeContains(sampleRateRanges, sampleRate)) {
+    if (!SampleRateInRanges(sampleRateRanges, sampleRate)) {
         JST_ERROR("[MODULE_SOAPY] Sample rate ({:.2f} MHz) not supported.", sampleRate / 1e6);
         return Result::ERROR;
     }
@@ -392,7 +406,7 @@ Result SoapyReceiver::setSampleRate(const F32 sampleRate) {
         return Result::ERROR;
     }
 
-    if (!SoapyRangeContains(sampleRateRanges, sampleRate)) {
+    if (!SampleRateInRanges(sampleRateRanges, sampleRate)) {
         JST_WARN("[MODULE_SOAPY] Sample rate ({:.2f} MHz) not supported.", sampleRate / 1e6);
         return Result::WARNING;
     }
