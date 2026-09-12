@@ -1585,43 +1585,40 @@ TEST_CASE("Soapy receive statuses distinguish idle reads from failures",
     using Status = Modules::SoapyReceiveStatus;
     using Action = Status::Action;
     using ReadStatus = Modules::SoapyReceiver::ReadStatus;
-    const auto start = Status::Clock::time_point{};
     Status status;
 
-    REQUIRE(status.handle(ReadStatus::Samples, start) == Action::Samples);
-    REQUIRE(status.handle(ReadStatus::Timeout, start) == Action::Retry);
+    REQUIRE(status.handle(ReadStatus::Samples) == Action::Samples);
+    REQUIRE(status.handle(ReadStatus::Timeout) == Action::Retry);
     REQUIRE(status.deviceOverflows == 0);
 
-    REQUIRE(status.handle(ReadStatus::Error, start) == Action::Fail);
+    REQUIRE(status.handle(ReadStatus::Error) == Action::Fail);
     REQUIRE(status.deviceOverflows == 0);
 }
 
-TEST_CASE("Soapy device overflow warnings are counted and rate limited per stream",
+TEST_CASE("Soapy device overflows are counted per stream and retried",
           "[modules][soapy][receive]") {
     using Status = Modules::SoapyReceiveStatus;
     using Action = Status::Action;
     using ReadStatus = Modules::SoapyReceiver::ReadStatus;
-    using namespace std::chrono_literals;
-    const auto start = Status::Clock::time_point{};
     Status status;
 
-    REQUIRE(status.handle(ReadStatus::Overflow, start) == Action::WarnOverflow);
+    REQUIRE(status.handle(ReadStatus::Overflow) == Action::Retry);
     REQUIRE(status.deviceOverflows == 1);
     for (int i = 0; i < 100; ++i) {
-        REQUIRE(status.handle(ReadStatus::Overflow, start + 999ms) == Action::Retry);
+        REQUIRE(status.handle(ReadStatus::Overflow) == Action::Retry);
     }
     REQUIRE(status.deviceOverflows == 101);
 
-    REQUIRE(status.handle(ReadStatus::Samples, start + 999ms) == Action::Samples);
-    REQUIRE(status.handle(ReadStatus::Timeout, start + 999ms) == Action::Retry);
-    REQUIRE(status.handle(ReadStatus::Overflow, start + 1s) == Action::WarnOverflow);
+    REQUIRE(status.handle(ReadStatus::Samples) == Action::Samples);
+    REQUIRE(status.handle(ReadStatus::Timeout) == Action::Retry);
+    REQUIRE(status.handle(ReadStatus::Overflow) == Action::Retry);
     REQUIRE(status.deviceOverflows == 102);
-    REQUIRE(status.handle(ReadStatus::Overflow, start + 1999ms) == Action::Retry);
-    REQUIRE(status.handle(ReadStatus::Overflow, start + 2s) == Action::WarnOverflow);
+    REQUIRE(status.handle(ReadStatus::Overflow) == Action::Retry);
+    REQUIRE(status.handle(ReadStatus::Overflow) == Action::Retry);
     REQUIRE(status.deviceOverflows == 104);
 
     Status otherStream;
-    REQUIRE(otherStream.handle(ReadStatus::Overflow, start) == Action::WarnOverflow);
+    REQUIRE(otherStream.handle(ReadStatus::Overflow) == Action::Retry);
     REQUIRE(otherStream.deviceOverflows == 1);
 }
 
@@ -1660,10 +1657,7 @@ TEST_CASE("Soapy receiver resumes samples after timeouts and device overflows",
     REQUIRE(module->destroy() == Result::SUCCESS);
 
     const auto text = logs.text();
-    const auto warning = text.find("Device receive overflow");
-    REQUIRE(warning != std::string::npos);
-    REQUIRE(text.find("Device receive overflow", warning + 1) == std::string::npos);
-    REQUIRE(text.find("total events since stream start: 1") != std::string::npos);
+    REQUIRE(text.find("Device receive overflow") == std::string::npos);
     REQUIRE(text.find("TIMEOUT") == std::string::npos);
     REQUIRE(text.find("Failed to read stream") == std::string::npos);
 }

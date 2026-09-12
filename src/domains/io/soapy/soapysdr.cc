@@ -583,8 +583,7 @@ void SoapyReceiver::reset() {
     biasTeeNeedsCleanup = false;
 }
 
-SoapyReceiveStatus::Action SoapyReceiveStatus::handle(const SoapyReceiver::ReadStatus status,
-                                                     const Clock::time_point now) {
+SoapyReceiveStatus::Action SoapyReceiveStatus::handle(const SoapyReceiver::ReadStatus status) {
     using Status = SoapyReceiver::ReadStatus;
     if (status == Status::Samples) {
         return Action::Samples;
@@ -597,10 +596,6 @@ SoapyReceiveStatus::Action SoapyReceiveStatus::handle(const SoapyReceiver::ReadS
     }
 
     ++deviceOverflows;
-    if (deviceOverflows == 1 || now >= nextWarning) {
-        nextWarning = now + std::chrono::seconds(1);
-        return Action::WarnOverflow;
-    }
     return Action::Retry;
 }
 
