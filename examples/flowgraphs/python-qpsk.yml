@@ -1,0 +1,191 @@
+---
+version: 2
+title: Python Block
+summary: Generate QPSK signals with Python.
+author: Luigi
+license: MIT
+description: 'Generates noisy QPSK signals in a Python block and displays their spectrum, waterfall, and constellation. Requires Python with NumPy.'
+graph:
+  - name: explanation
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        # Python Block
+        **No radio needed, but Python with NumPy must be installed.**
+
+        The **Signal Generator** makes faint complex noise. The **Python** block adds a random QPSK signal on top of it, in about twenty lines of NumPy you can read and edit right on the canvas. The **Spectrum Analyzer** and the **Constellation** show the result.
+
+        ## What is QPSK
+        Quadrature phase shift keying sends two bits at a time by choosing one of four carrier phases. Every 8 samples the code draws a fresh pair of bits and jumps to the matching phase. At a 1 MHz sample rate that is 125,000 symbols per second, or 250 kilobits per second.
+
+        ## Reading the plots
+        - **Constellation** plots every sample as a dot, in-phase across and quadrature up. The four clouds are the four phases. Noise smears each one into a cloud, and wider clouds mean a harder job for a receiver telling them apart.
+        - **Spectrum** shows a broad hump instead of a single peak. Jumping abruptly between phases spreads energy across frequency. The main hump spans about 125 kHz either side of center, which is the symbol rate, with ripples beyond it because rectangular pulses have sharp edges. Real radios round those edges with a pulse shaping filter to stay inside their channel.
+
+        **Next:** open **Signal Generator** to see a tone, a chirp, and noise built the same way, or read the Python block guide under **Help** for the full context API.
+    meta:
+      node:
+        x: 41
+        y: 326
+        width: 344
+        height: 377
+        configCollapsed: false
+  - name: experiment
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        # Try it
+        1. Raise **Noise Variance** on the **Signal Generator** from 0.005 to 0.05. The clouds spread and the spectrum floor rises. Set it to 0 for four clean dots. Restore 0.005.
+        2. In the code, change **samples_per_symbol** from 8 to 4 and press **Ctrl+Enter** to run. The symbol rate doubles and the hump grows twice as wide. Try 16 to narrow it. Restore 8.
+        3. Change **amplitude** from 0.7 to 0.3 and run. The clouds slide toward the center and sink into the noise. Restore 0.7.
+        4. Break something on purpose. Delete a character, run, and read the status line under the code. Fix it and run again. The rest of the graph keeps going.
+
+        ## Rules of the road
+        - Edits do nothing until you press **Ctrl+Enter**. The status line says **Edited** until then.
+        - The output stays at 4096 complex samples. Its shape, type, and device are fixed by the **Output 0** row under the code, and the code cannot change them.
+        - Inputs are read-only. Copy an input before modifying it.
+        - The last three lines copy the sample rate and frequency to the output so the plots can label their axes. Any attribute the code does not copy is dropped.
+
+        ## If the block is not running
+        - **Python not found** means CyberEther could not use a Python on your computer. Open **Settings**, choose the **Runtime** tab, and pick an installation that has NumPy. The choice applies after a restart.
+        - **Import failed** usually means the block is running a different Python than your terminal. Same fix.
+        - **Throttled** runs the code at a slow fixed rate instead of every cycle. Leave it off here or the waterfall crawls.
+    meta:
+      node:
+        x: 1499
+        y: 573
+        width: 330
+        height: 351
+        configCollapsed: false
+  - name: noise
+    module: signal_generator
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      signalType: noise
+      signalDataType: CF32
+      sampleRate: 1000000
+      frequency: 0
+      amplitude: 1
+      phase: 0
+      dcOffset: 0
+      noiseVariance: 0.005
+      chirpStartFreq: 1000
+      chirpEndFreq: 10000
+      chirpDuration: 1
+      bufferSize: 4096
+    meta:
+      node:
+        x: 40
+        y: 100
+        width: 343
+        height: 0
+        configCollapsed: false
+  - name: python_qpsk
+    module: python
+    device: cpu
+    runtime: python
+    provider: generic
+    config:
+      code: |-
+        import numpy as np
+        
+        rng = np.random.default_rng(7)
+        samples_per_symbol = 8
+        amplitude = 0.7
+        
+        def compute(ctx):
+            noise = ctx.inputs[0]
+            count = noise.size // samples_per_symbol
+        
+            # Two random bits choose one of four QPSK phases.
+            bits = rng.integers(0, 2, (2, count))
+            i, q = 2 * bits - 1
+            symbols = amplitude * (i + 1j * q) / np.sqrt(2)
+        
+            # Hold each symbol, then add it to the incoming noise.
+            signal = np.repeat(symbols, samples_per_symbol)
+            ctx.outputs[0][...] = noise + signal
+        
+            attrs = ctx.input_attrs[0]
+            ctx.output_attrs[0]["sampleRate"] = attrs["sampleRate"]
+            ctx.output_attrs[0]["frequency"] = attrs["frequency"]
+      inputCount: 1
+      outputCount: 1
+      outputTensorSpecs:
+        - shape: '[4096]'
+          axes: '[S]'
+          dtype: CF32
+          device: cpu
+      throttled: false
+    input:
+      input0: '${graph.noise.output.signal}'
+    meta:
+      node:
+        x: 465
+        y: 101
+        width: 574
+        height: 681
+        configCollapsed: false
+  - name: spectrum_analyzer
+    module: spectrum_analyzer
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      lineplotAveraging: 1
+      waterfallAveraging: 1
+      maxHold: false
+      fill: true
+      rangeMin: -80
+      rangeMax: 0
+      waterfallHeight: 256
+      splitRatio: 0.5
+      xLabel: Frequency (MHz)
+      amplitudeLabel: Amplitude (dBFS)
+      waterfallLabel: Time
+    input:
+      buffer: '${graph.python_qpsk.output.output0}'
+    meta:
+      node:
+        x: 1127
+        y: 99
+        width: 701
+        height: 438
+        configCollapsed: true
+      surface_default:
+        attachedHeight: 380
+        detachedWidth: 800
+        detachedHeight: 600
+        detached: false
+        detachedConfigOpen: false
+  - name: constellation
+    module: constellation
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      xLabel: In-Phase
+      yLabel: Quadrature
+    input:
+      signal: '${graph.python_qpsk.output.output0}'
+    meta:
+      node:
+        x: 1127
+        y: 574
+        width: 328
+        height: 350
+        configCollapsed: false
+      surface_default:
+        attachedHeight: 292
+        detachedWidth: 600
+        detachedHeight: 600
+        detached: false
+        detachedConfigOpen: false

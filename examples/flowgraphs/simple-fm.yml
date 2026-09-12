@@ -1,57 +1,150 @@
 ---
 version: 2
-
 title: Simple FM Receiver
-summary: Radio receiver with RTLSDR.
+summary: Listen to FM with an RTL-SDR.
 author: Luigi
 license: MIT
-description: Shows the simplest way to demodulate an FM station using a RTL-SDR.
-
+description: 'Receives an FM broadcast station with an RTL-SDR, demodulates the signal, and plays the audio.'
 graph:
+  - name: note
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        # Simple FM Receiver
+        **Pick a radio, tune a station, and listen.**
+        
+        1. Plug in your SDR and choose it in the **Device** dropdown on the **Soapy SDR** block. An RTL-SDR shows up as something like **Generic RTL2832U OEM**.
+        2. Type a local station into **Frequency**. The default is 88.900 MHz. The **+** and **-** buttons move a full megahertz, so type finer values directly.
+        3. Audio plays through the **Audio** block. **Default** is your system output. Turn your speakers up or drag **Volume**.
+        
+        **Radio not listed?** Check the cable and plug the dongle directly into the computer rather than a hub. Close any other program that is using it, only one program can open a radio at a time. Then reopen this example from the **Flowgraph** menu under **Open Examples** so the list is rebuilt. On Linux, the kernel's DVB-T driver can claim an RTL-SDR before SoapySDR sees it. On Windows, the dongle needs the WinUSB driver installed with Zadig.
+        
+        Not sure where the stations are? Open the **Spectrum Analyzer** example first. It shows 2 MHz of the band at once and every hump is a station.
+        
+        ## How the signal flows
+        The radio hands complex samples to the **FM Demodulator**, which turns the frequency wiggle of the carrier back into sound. The **Audio** block plays that sound and resamples it to whatever your sound card wants. The **Spectrum Analyzer** taps the raw samples before demodulation so you can see what the radio sees.
+        
+        The span is only 240 kHz because that is all this receiver needs. A broadcast station occupies about 200 kHz, so one station fills the view with a little margin on each side. With a station tuned in, the plot shows one broad hump centered on the tuned frequency. If the trace is a flat, spiky line, there is no station at that frequency or the antenna is not connected.
+        
+        ## Try it
+        1. Switch **Mode** to **Wideband**. The demodulator now decodes the stereo pilot and you get left and right. If the sound gets hissier, the station is weak, and **Narrowband** mono holds up better on weak signals.
+        2. Set **De-emphasis** to match your region: 50 us in most of the world, 75 us in the USA. Stations boost the treble before transmitting to fight noise, and the receiver must undo it. **None** sounds bright and hissy.
+        3. Nudge **Frequency** by 0.05 MHz. The hump slides off center and the audio distorts. Broadcast stations sit on 100 kHz steps, and a receiver only sounds right when it is centered.
+        4. Push **Volume** above 1. Values above 1 amplify and can clip on loud passages. Bring it back to 1.
+        
+        ## Reading the numbers
+        - **Sample Rate** appears on three blocks and all three must agree. Change it on the **Soapy SDR** block and update the **FM Demodulator** and **Audio** blocks to match, or the audio plays at the wrong pitch or stops.
+        - **Wideband** needs a sample rate of at least 200 kHz to capture the stereo subcarrier. The default 240 kHz satisfies that.
+        - **Automatic Gain** stays on. Broadcast FM is strong and the demodulator does not care about level, only frequency.
+        - **Buffer Loss** should read 0.00%. Dropouts in the audio usually show up here first.
+        
+        ## Common surprises
+        - **Hiss and no music** means no station at that frequency, a loose antenna, or a tuning error. Check the plot for a hump.
+        - **Music but no sound** means the wrong output. Reopen the **Device** dropdown on the **Audio** block and pick your speakers or headphones.
+        - **Stutters** point to the computer falling behind or a struggling USB port. Watch **Buffer Health** climb before it happens.
+        
+        **Next:** open **Multi-FM Receiver** to pull two stations out of one wider capture with a filter.
+    meta:
+      node:
+        x: 832
+        y: 81
+        width: 503
+        height: 663
+        configCollapsed: false
   - name: soapy
     module: soapy
     device: cpu
     runtime: native
     provider: generic
     config:
-      bufferMultiplier: 512
+      modulePath: ''
+      deviceString: ''
+      streamString: ''
+      antenna: ''
+      frequency: 8.89e+07
+      frequencyStep: 1000000
       sampleRate: 240000
-      frequency: 88.9e+06
-      numberOfTimeSamples: 2048
-      numberOfBatches: 8
       automaticGain: true
+      biasTee: false
+      numberOfBatches: 8
+      numberOfTimeSamples: 2048
+      bufferMultiplier: 512
     meta:
       node:
-        y: 50
         x: 50
-        height: 309
-        width: 233
+        y: 80
+        width: 165
+        height: 0
+        configCollapsed: false
   - name: fm
     module: fm
     device: cpu
     runtime: native
     provider: generic
+    config:
+      mode: narrow
+      deemphasis: none
+      sampleRate: 240000
     input:
       signal: '${graph.soapy.output.signal}'
     meta:
       node:
-        y: 50
-        x: 320
-        height: 100
-        width: 140
+        x: 288
+        y: 81
+        width: 173
+        height: 0
+        configCollapsed: false
+  - name: spectrum_analyzer
+    module: spectrum_analyzer
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      lineplotAveraging: 8
+      waterfallAveraging: 1
+      maxHold: false
+      fill: true
+      rangeMin: -100
+      rangeMax: 0
+      waterfallHeight: 1024
+      splitRatio: 0.5
+      xLabel: Frequency (MHz)
+      amplitudeLabel: Amplitude (dBFS)
+      waterfallLabel: Time
+    input:
+      buffer: '${graph.soapy.output.signal}'
+    meta:
+      node:
+        x: 286
+        y: 293
+        width: 495
+        height: 0
+        configCollapsed: false
+      surface_default:
+        attachedHeight: 323
+        detachedWidth: 512
+        detachedHeight: 512
+        detached: false
+        detachedConfigOpen: false
   - name: audio
     module: audio
     device: cpu
     runtime: native
     provider: generic
     config:
+      deviceName: Default
       inSampleRate: 240000
       outSampleRate: 48000
+      volume: 0.75
     input:
       buffer: '${graph.fm.output.signal}'
     meta:
       node:
-        y: 50
-        x: 500
-        height: 150
-        width: 200
+        x: 509
+        y: 82
+        width: 164
+        height: 0
+        configCollapsed: false

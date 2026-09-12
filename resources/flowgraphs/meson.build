@@ -1,13 +1,14 @@
 if py.found()
     flowgraph_examples = custom_target(
         input : files([
-            meson.project_source_root() / 'examples/flowgraphs/flight-tracker.yml',
-            meson.project_source_root() / 'examples/flowgraphs/multi-fm.yml',
-            meson.project_source_root() / 'examples/flowgraphs/overlap-add-fold.yml',
-            meson.project_source_root() / 'examples/flowgraphs/overlap-add.yml',
-            meson.project_source_root() / 'examples/flowgraphs/simple-fm.yml',
-            meson.project_source_root() / 'examples/flowgraphs/spectrum-analyzer.yml',
+            meson.project_source_root() / 'examples/flowgraphs/first-steps.yml',
             meson.project_source_root() / 'examples/flowgraphs/signal-generator.yml',
+            meson.project_source_root() / 'examples/flowgraphs/simple-fm.yml',
+            meson.project_source_root() / 'examples/flowgraphs/multi-fm.yml',
+            meson.project_source_root() / 'examples/flowgraphs/python-qpsk.yml',
+            meson.project_source_root() / 'examples/flowgraphs/overlap-add-fold.yml',
+            meson.project_source_root() / 'examples/flowgraphs/spectrum-analyzer.yml',
+            meson.project_source_root() / 'examples/flowgraphs/flight-tracker.yml',
         ]),
         output : ['examples.cc'],
         command : [py, files('parser.py'), meson.project_build_root(), '@OUTPUT@', '@INPUT@'],

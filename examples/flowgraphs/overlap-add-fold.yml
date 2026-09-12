@@ -1,32 +1,11 @@
 ---
 version: 2
-
-title: 'Overlap-Add-Fold'
-summary: 'Filter with overlap-add & resample.'
+title: Overlap-Add-Fold
+summary: Learn overlap-add and resampling.
 author: Luigi
 license: MIT
-description: Shows how to filter a signal in the frequency domain with a FIR filter. Uses multiply and add to reduce blocking artifacts. The signal is also folded and resampled.
-
+description: 'Explains FFT filtering and resampling in an RTL-SDR FM receiver, with notes on zero padding, spectral folding, and overlap-add reconstruction.'
 graph:
-  - name: soapy
-    module: soapy
-    device: cpu
-    runtime: native
-    provider: generic
-    config:
-      bufferMultiplier: 1024
-      sampleRate: 2000000
-      frequency: 9.69e+07
-      numberOfTimeSamples: 8000
-      numberOfBatches: 8
-      automaticGain: true
-      deviceString: driver=rtlsdr
-    meta:
-      node:
-        y: 287
-        x: 24
-        height: 391
-        width: 140
   - name: not22
     module: note
     device: cpu
@@ -34,33 +13,223 @@ graph:
     provider: generic
     config:
       content: |-
-        # Overlap-Add-Fold Example
-        To understand the Overlap-Add section of this flowgraph, please, open the `Overlap-Add` example flowgraph. This is a continuation of that example that adds a `Fold` block for resampling the filtered signal. This decreases the computation necessary by reducing the IFFT size for each station.
+        # Overlap-Add-Fold
+        **The Filter block from Multi-FM Receiver, opened up so you can see every step.**
+        
+        This graph does the same job as the **Multi-FM Receiver** example: capture 2 MHz of the FM band, cut two stations out of it, and play one. The difference is that nothing is hidden. Every stage that the Filter block bundles is a separate block here, laid out left to right, with a numbered note beside it.
+        
+        1. Open the **Device** dropdown on the **Soapy SDR** block and choose your radio.
+        2. Leave **Frequency** at 96.900 MHz for now. The two stations this graph expects sit at 96.5 and 97.3 MHz. Retune to a center that has stations 400 kHz either side of it in your city.
+        3. Drag **Volume** up on the **Audio** block. It starts at 0.
 
-        ### Suggestion
-        The next example flowgraph `Multi-FM` abstracts this whole mechanism in a single `Filter Engine` block. Making it more practical for reuse.
+        **Radio not listed?** Check the cable and plug the dongle directly into the computer rather than a hub. Close any other program that is using it, only one program can open a radio at a time. Then reopen this example from the **Flowgraph** menu under **Open Examples** so the list is rebuilt. On Linux, the kernel's DVB-T driver can claim an RTL-SDR before SoapySDR sees it. On Windows, the dongle needs the WinUSB driver installed with Zadig.
+        
+        ## How to read the canvas
+        The upper row prepares the two filters and never touches the radio. The lower row carries radio samples. They meet at **Multiply**, where filtering actually happens, and everything after that is shared. Follow the four numbered notes in order. Each one ends with a link if you want the theory behind it.
+        
+        Hover over any wire to see the shape of the tensor flowing through it. The notes quote those shapes, so you can check them as you go.
+        
+        **Next:** open **Multi-FM Receiver** to use the same pipeline as one block, or **Simple FM Receiver** for the one-station version.
     meta:
       node:
-        y: 231.99997
-        x: 843
-        height: 287.00003
-        width: 460
+        x: 36
+        y: 770
+        width: 429
+        height: 317
+        configCollapsed: false
+  - name: not38
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        ## 1. Filter design and padding
+        The **Filter Taps** block designs two finite impulse response filters, each with **101 taps** and a **Bandwidth** of 200 kHz, at the radio's 2 MHz sample rate. The two **Center** values, 0.4 and -0.4 MHz, are offsets from the tuned frequency. With the radio at 96.9 MHz the filters select 97.3 and 96.5 MHz. The coefficient tensor has shape **[2, 101]**, one row per filter.
+        
+        ### Why pad
+        Each radio batch holds **8000 samples**. Convolving it with a 101 tap filter produces **8000 + 101 - 1 = 8100** samples. The extra 100 positions hold the filter's tail, the part of the response that spills past the end of the batch.
+        
+        - **Radio samples:** 8000 samples plus 100 zeros gives an 8100 point transform.
+        - **Each filter:** 101 taps plus 7999 zeros gives an 8100 point transform.
+        
+        Both **Pad** blocks work on **axis 1**. The radio tensor becomes **[8, 8100]** and the filter tensor becomes **[2, 8100]**, so their sample dimensions match for the multiplication ahead.
+        
+        **Remember:** padding makes room for linear convolution. Without it, a transform based convolution wraps the tail around to the beginning of the same batch.
+        
+        **Further reading:** the [filtering chapter in PySDR](https://pysdr.org/content/filters.html) explains taps, bandwidth, and frequency response.
+    meta:
+      node:
+        x: 513
+        y: 498
+        width: 344
+        height: 360
+        configCollapsed: false
+  - name: not39
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        ## 2. Fast convolution and folding
+        The two forward **FFT** blocks transform the padded samples and the padded filters. Multiplying their spectra applies each filter in the frequency domain, which is far cheaper than sliding 101 taps across every sample.
+        
+        **Expand Dims** inserts a channel dimension into the radio tensor, turning **[8, 8100]** into **[8, 1, 8100]**. **Multiply** broadcasts that against the **[2, 8100]** filter tensor to produce **[8, 2, 8100]**: eight batches, two channels, 8100 frequency bins. The singleton channel dimension lets both filters share one input without duplicating the radio.
+        
+        ### Folding
+        The **Fold** block collapses **8100 bins to 810**, a factor of 10. It sums bins that sit 810 positions apart and divides by 10. In the time domain that is downsampling from 2 MHz to 200 kHz, and the inverse **FFT** that follows only has 810 values per channel to process.
+        
+        Filtering comes first on purpose. Anything outside the 200 kHz passband would otherwise fold on top of the station.
+        
+        The centers at plus and minus 400 kHz are whole multiples of the new 200 kHz sample rate, so both stations land at zero frequency after folding with **Offset** at 0. Other centers would need a frequency shift or a folding offset.
+        
+        **Further reading:** the [broadcasting guide from NumPy](https://numpy.org/doc/stable/user/basics.broadcasting.html) covers singleton dimensions, and the [downsampling and aliasing theorem](https://www.dsprelated.com/freebooks/sasp/Downsampling_Aliasing.html) covers folding.
+    meta:
+      node:
+        x: 907.99994
+        y: 267
+        width: 385
+        height: 357
+        configCollapsed: false
+  - name: not41
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        ## 3. Unpadding and overlap-add
+        The inverse transform returns **810 time samples** per channel and batch. After downsampling by 10, the 100 sample convolution tail has become **10 samples**. **Unpad** splits each result into **800 main samples** and a **10 sample tail** along **axis 2**.
+        
+        That tail is not padding to throw away. It holds real filtered signal that belongs at the start of the next batch. **Overlap Add** adds the previous batch's tail to the start of the current one and saves the new tail for the next compute cycle, keeping separate state for each channel.
+        
+        The output shape is **[8, 2, 800]**. This stitches the filtered stream back together across batch boundaries. Without it you would hear a click at every batch edge and see a seam in the waterfall.
+        
+        **Further reading:** the [overlap-add explanation on Wikipedia](https://en.wikipedia.org/wiki/Overlap%E2%80%93add_method) shows how the tails combine.
+    meta:
+      node:
+        x: 1339
+        y: 268
+        width: 400
+        height: 357
+        configCollapsed: false
+  - name: not40
+    module: note
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      content: |-
+        ## 4. Select, visualize, and listen
+        The **Slice** setting **[:, 1, :]** keeps every batch and sample and picks channel 1. Its output has shape **[8, 800]**. Channel numbering starts at zero, so channel 1 is the -400 kHz filter, or 96.5 MHz with the default tuning.
+        
+        The display branch uses **Spectrum Engine** to window the signal, compute a centered spectrum, apply automatic gain, convert to decibels, and scale for the **Waterfall**. What you see is the reconstructed channel after overlap-add.
+        
+        The sound branch demodulates the same channel with the **FM Demodulator** at 200 kHz. The **Audio** block resamples that to 48 kHz for your speakers. **Volume** starts at 0, so drag it up.
+        
+        **Try it:** change **Slice** to **[:, 0, :]** to pick the +400 kHz channel. The audio and the waterfall switch together because they share the slice. Restore **[:, 1, :]** to return.
+    meta:
+      node:
+        x: 1803
+        y: 591
+        width: 421
+        height: 341
+        configCollapsed: false
+  - name: flt
+    module: filter_taps
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      sampleRate: 2000000
+      bandwidth: 200000
+      center: '[400000, -400000]'
+      taps: 101
+      heads: 2
+    meta:
+      node:
+        x: 35
+        y: 73
+        width: 141
+        height: 0
+        configCollapsed: false
+  - name: pad_flt
+    module: pad
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      size: 7999
+      axis: 1
+    input:
+      unpadded: '${graph.flt.output.coeffs}'
+    meta:
+      node:
+        x: 227
+        y: 72
+        width: 140
+        height: 0
+        configCollapsed: false
+  - name: fft_flt
+    module: fft
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      forward: true
+      complexOutput: false
+    input:
+      signal: '${graph.pad_flt.output.padded}'
+    meta:
+      node:
+        x: 419
+        y: 75
+        width: 140
+        height: 0
+        configCollapsed: false
+  - name: soapy
+    module: soapy
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      modulePath: ''
+      deviceString: ''
+      streamString: ''
+      antenna: ''
+      frequency: 9.69e+07
+      frequencyStep: 1000000
+      sampleRate: 2000000
+      automaticGain: true
+      biasTee: false
+      numberOfBatches: 8
+      numberOfTimeSamples: 8000
+      bufferMultiplier: 1024
+    meta:
+      node:
+        x: 35
+        y: 361
+        width: 286
+        height: 0
+        configCollapsed: false
   - name: pad_soapy
     module: pad
     device: cpu
     runtime: native
     provider: generic
     config:
-      axis: 1
       size: 100
+      axis: 1
     input:
       unpadded: '${graph.soapy.output.signal}'
     meta:
       node:
-        y: 320.99997
-        x: 217
-        height: 129
-        width: 140
+        x: 364
+        y: 360.99997
+        width: 120
+        height: 0
+        configCollapsed: false
   - name: fft_soapy
     module: fft
     device: cpu
@@ -68,14 +237,16 @@ graph:
     provider: generic
     config:
       forward: true
+      complexOutput: false
     input:
       signal: '${graph.pad_soapy.output.padded}'
     meta:
       node:
-        y: 326.99997
-        x: 401
-        height: 96
-        width: 140
+        x: 519
+        y: 359.99997
+        width: 120
+        height: 0
+        configCollapsed: false
   - name: exp_dims27
     module: expand_dims
     device: cpu
@@ -87,88 +258,43 @@ graph:
       buffer: '${graph.fft_soapy.output.signal}'
     meta:
       node:
-        y: 315.99997
-        x: 584
-        height: 96.00003
-        width: 140
-  - name: flt
-    module: filter_taps
-    device: cpu
-    runtime: native
-    provider: generic
-    config:
-      taps: 101
-      heads: 2
-      center: '[400000, -400000]'
-      bandwidth: 200000
-      sampleRate: 2000000
-    meta:
-      node:
-        y: -1
-        x: 24
-        height: 239
-        width: 140
-  - name: pad_flt
-    module: pad
-    device: cpu
-    runtime: native
-    provider: generic
-    config:
-      axis: 1
-      size: 7999
-    input:
-      unpadded: '${graph.flt.output.coeffs}'
-    meta:
-      node:
-        y: 24.99997
-        x: 216
-        height: 128.00003
-        width: 140
-  - name: fft_flt
-    module: fft
-    device: cpu
-    runtime: native
-    provider: generic
-    config:
-      forward: true
-    input:
-      signal: '${graph.pad_flt.output.padded}'
-    meta:
-      node:
-        y: 19.99997
-        x: 409
-        height: 95.00003
-        width: 140
+        x: 674
+        y: 359.99997
+        width: 120
+        height: 0
+        configCollapsed: false
   - name: mul
     module: multiply
     device: cpu
     runtime: native
     provider: generic
     input:
-      a: '${graph.exp_dims27.output.buffer}'
-      b: '${graph.fft_flt.output.signal}'
+      b: '${graph.exp_dims27.output.buffer}'
+      a: '${graph.fft_flt.output.signal}'
     meta:
       node:
-        y: 18.99997
-        x: 815
-        height: 84.00003
-        width: 140
+        x: 853.99994
+        y: 77
+        width: 120
+        height: 0
+        configCollapsed: false
   - name: fol36
     module: fold
     device: cpu
     runtime: native
     provider: generic
     config:
-      size: 810
       offset: 0
+      size: 810
     input:
       buffer: '${graph.mul.output.product}'
     meta:
       node:
-        y: 18.99997
-        x: 1005
-        height: 161.00003
-        width: 140
+        x: 1006.99994
+        y: 75
+        width: 120
+        height: 0
+        configCollapsed: false
   - name: ifft
     module: fft
     device: cpu
@@ -176,30 +302,33 @@ graph:
     provider: generic
     config:
       forward: false
+      complexOutput: false
     input:
       signal: '${graph.fol36.output.buffer}'
     meta:
       node:
-        y: 28.99997
-        x: 1195
-        height: 95.00003
-        width: 140
+        x: 1158
+        y: 74
+        width: 120
+        height: 0
+        configCollapsed: false
   - name: unpad
     module: unpad
     device: cpu
     runtime: native
     provider: generic
     config:
-      axis: 2
       size: 10
+      axis: 2
     input:
       padded: '${graph.ifft.output.signal}'
     meta:
       node:
-        y: 29.641693
-        x: 1381.2487
-        height: 150.3583
-        width: 140
+        x: 1314.2485
+        y: 72.64172
+        width: 120
+        height: 0
+        configCollapsed: false
   - name: overlap_add
     module: overlap_add
     device: cpu
@@ -210,59 +339,65 @@ graph:
       buffer: '${graph.unpad.output.unpadded}'
     meta:
       node:
-        y: 39.51596
-        x: 1561.3184
-        height: 117.48404
-        width: 140
+        x: 1467.3184
+        y: 72.51599
+        width: 120
+        height: 0
+        configCollapsed: false
   - name: sli51
     module: slice
     device: cpu
     runtime: native
     provider: generic
     config:
-      contiguous: true
       slice: '[:, 1, :]'
+      contiguous: true
     input:
       buffer: '${graph.overlap_add.output.buffer}'
     meta:
       node:
-        y: 28.862396
-        x: 1770.1914
-        height: 128.1376
-        width: 140
+        x: 1618.1914
+        y: 71.86243
+        width: 120
+        height: 0
+        configCollapsed: false
   - name: spectrum_engine
     module: spectrum_engine
     device: cpu
     runtime: native
     provider: generic
     config:
-      rangeMin: -274.28574
       enableAgc: true
-      rangeMax: -0.0002682209
       enableScale: true
+      rangeMin: -123.3189
+      rangeMax: -0.0002682209
     input:
       buffer: '${graph.sli51.output.buffer}'
     meta:
       node:
-        y: 189.77023
-        x: 1986.9319
-        height: 227.22977
-        width: 140
+        x: 1802.9319
+        y: 284.77023
+        width: 162
+        height: 0
+        configCollapsed: false
   - name: fm
     module: fm
     device: cpu
     runtime: native
     provider: generic
     config:
+      mode: narrow
+      deemphasis: none
       sampleRate: 200000
     input:
       signal: '${graph.sli51.output.buffer}'
     meta:
       node:
-        y: 25.99997
-        x: 1988.0001
-        height: 95.00003
-        width: 140
+        x: 1804
+        y: 76
+        width: 158
+        height: 0
+        configCollapsed: false
   - name: wtf
     module: waterfall
     device: cpu
@@ -270,34 +405,40 @@ graph:
     provider: generic
     config:
       height: 512
+      averaging: 1
+      xLabel: Frequency (MHz)
+      yLabel: Time
     input:
       signal: '${graph.spectrum_engine.output.buffer}'
     meta:
       surface_default:
+        attachedHeight: 224
         detachedWidth: 512
-        attachedWidth: 218
-        detached: false
-        attachedHeight: 167
         detachedHeight: 512
+        detached: false
+        detachedConfigOpen: false
       node:
-        y: 186.99997
-        x: 2194
-        height: 281.77023
-        width: 218
+        x: 2013
+        y: 282.99997
+        width: 249
+        height: 0
+        configCollapsed: true
   - name: audio
     module: audio
     device: cpu
     runtime: native
     provider: generic
     config:
-      outSampleRate: 48000
-      inSampleRate: 200000
       deviceName: Default
+      inSampleRate: 200000
+      outSampleRate: 48000
+      volume: 0.75
     input:
       buffer: '${graph.fm.output.signal}'
     meta:
       node:
-        y: 13.9999695
-        x: 2193
-        height: 106.00003
+        x: 2011
+        y: 77
         width: 140
+        height: 0
+        configCollapsed: false

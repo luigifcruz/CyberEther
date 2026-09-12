@@ -1,167 +1,190 @@
 ---
 version: 2
-
 title: Signal Generator
-
+summary: Generate tones and add noise.
+license: MIT
+description: Adds noise to a generated tone and displays the result in a spectrum plot and waterfall.
 graph:
-  - name: signal_generator
-    module: signal_generator
+  - name: note
+    module: note
     device: cpu
     runtime: native
     provider: generic
     config:
-      bufferSize: 8192
-      chirpEndFreq: 10000
-      chirpStartFreq: 1000
-      signalDataType: CF32
-      dcOffset: 0
-      noiseVariance: 1
-      frequency: 1e+08
-      sampleRate: 5e+08
-      phase: 0
-      amplitude: 1
-      chirpDuration: 1
-      signalType: cosine
+      content: |-
+        # Signal Generator
+        **No radio needed. Everything on screen is made inside the graph.**
+        
+        Three generators feed one display. The top one makes **Noise**, the middle one makes a **Chirp** that sweeps from -2 MHz to +2 MHz, and the bottom one makes a **Cosine** tone parked at +1 MHz. Two **Add** blocks sum them, the same way signals from different transmitters pile up at one antenna. The **Spectrum Analyzer** shows the result across a 5 MHz span, set by the shared **Sample Rate**.
+        
+        ## What you are looking at
+        - **The flat carpet** across the whole span is the noise floor.
+        - **The fixed peak** at 1.000 MHz is the cosine. It never moves.
+        - **The moving peak** is the chirp. Each sweep takes 2 seconds of signal time and draws a diagonal line down the waterfall. Nothing here waits for a wall clock, so the sweep runs as fast as your computer allows and may look faster than two seconds.
+        
+        Frequencies to the left of zero are real. These generators produce IQ pairs, and an IQ signal can carry a signed frequency. A real radio tuned to 100 MHz shows exactly the same picture with 100 MHz written at the center.
+        
+        ## Try it
+        1. On the **Cosine** generator, set **Frequency** to -1.5 MHz. The peak jumps to the left half of the plot. Restore 1 MHz.
+        2. Set its **Amplitude** to 0.1. The peak drops by 20 dB and the floor stays put. Restore 1.
+        3. On the **Noise** generator, set **Amplitude** to 0.1. Now the floor drops by 20 dB and the tone stands taller above it. That ratio, signal above noise, is what decides whether a receiver can hear something. Restore 1.
+        4. On the **Chirp** generator, set **Duration** to 0.5 seconds. The diagonal steepens. Set **End Frequency** to 0 and the sweep only covers the left half. Restore 2 seconds and 2 MHz.
+        5. Switch the **Cosine** generator's **Signal Type** to **Square**. A mirror peak appears at -1 MHz because square waves here are real-valued, not IQ. Extra peaks show up at odd multiples of 1 MHz, and the ones past the edge fold back into view. That fold is aliasing, the sampled world only has 5 MHz of room. Switch back to **Cosine**.
+        
+        ## Reading the numbers
+        The vertical scale is **dBFS**, decibels below a nominal full scale of 1.0. Doubling an amplitude adds 6 dB and multiplying it by 10 adds 20 dB. The chirp has **Amplitude** 10, so it sits 20 dB above the tone. Nothing clips because these are floating point numbers. A real receiver fed a signal this strong would overload and spray false peaks everywhere.
+        
+        **Buffer Size** is both the number of samples generated per cycle and the FFT size downstream. With 8192 samples over 5 MHz each frequency bin is about 610 Hz wide. Raise it for finer detail and slower updates.
+        
+        **Noise Variance** and **Amplitude** on the noise generator both scale the floor. Leave variance at 1 and use amplitude, it is the same knob with fewer surprises.
+        
+        ## Common questions
+        - **Why is there no Throttle?** This example runs free. Add a **Throttle** block after a generator if you want the display to advance in real time.
+        - **Why two Add blocks?** Each one sums two inputs. Chain them to sum three.
+        - **Can I use Sine instead of Cosine?** Yes. With IQ output they differ only in starting phase, and the spectrum looks identical.
+        
+        **Next:** open **CyberEther First Steps** for six short labs that build on this graph, or **Spectrum Analyzer** to point a real radio at real stations.
     meta:
       node:
-        y: 35
-        x: 17
-        height: 338
-        width: 140
+        x: 630
+        y: 373
+        width: 463
+        height: 450
+        configCollapsed: false
   - name: signal_generator_1
     module: signal_generator
     device: cpu
     runtime: native
     provider: generic
     config:
-      bufferSize: 8192
-      chirpEndFreq: 10000
-      chirpStartFreq: 1000
+      signalType: noise
       signalDataType: CF32
+      sampleRate: 5000000
+      frequency: 0
+      amplitude: 1
+      phase: 0
       dcOffset: 0
       noiseVariance: 1
-      frequency: 0
-      sampleRate: 5e+08
-      phase: 0
-      amplitude: 1
+      chirpStartFreq: 1000
+      chirpEndFreq: 10000
       chirpDuration: 1
-      signalType: noise
+      bufferSize: 8192
     meta:
       node:
-        y: 362
-        x: 176
-        height: 338
-        width: 140
+        x: 24
+        y: 71
+        width: 287
+        height: 0
+        configCollapsed: false
+  - name: signal_generator_2
+    module: signal_generator
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      signalType: chirp
+      signalDataType: CF32
+      sampleRate: 5000000
+      frequency: 0
+      amplitude: 10
+      phase: 0
+      dcOffset: 0
+      noiseVariance: 1
+      chirpStartFreq: -2000000
+      chirpEndFreq: 2000000
+      chirpDuration: 2
+      bufferSize: 8192
+    meta:
+      node:
+        x: 82
+        y: 297
+        width: 289
+        height: 0
+        configCollapsed: false
+  - name: signal_generator
+    module: signal_generator
+    device: cpu
+    runtime: native
+    provider: generic
+    config:
+      signalType: cosine
+      signalDataType: CF32
+      sampleRate: 5000000
+      frequency: 1000000
+      amplitude: 1
+      phase: 0
+      dcOffset: 0
+      noiseVariance: 1
+      chirpStartFreq: 1000
+      chirpEndFreq: 10000
+      chirpDuration: 1
+      bufferSize: 8192
+    meta:
+      node:
+        x: 248
+        y: 558
+        width: 290
+        height: 0
+        configCollapsed: false
   - name: add
     module: add
     device: cpu
     runtime: native
     provider: generic
     input:
-      a: '${graph.signal_generator.output.signal}'
-      b: '${graph.signal_generator_1.output.signal}'
+      b: '${graph.signal_generator_2.output.signal}'
+      a: '${graph.signal_generator_1.output.signal}'
     meta:
       node:
-        y: 211
-        x: 363
-        height: 85
-        width: 140
-  - name: invert
-    module: invert
+        x: 436
+        y: 137
+        width: 120
+        height: 0
+        configCollapsed: false
+  - name: add_1
+    module: add
     device: cpu
     runtime: native
     provider: generic
     input:
-      signal: '${graph.add.output.sum}'
+      b: '${graph.signal_generator.output.signal}'
+      a: '${graph.add.output.sum}'
     meta:
       node:
-        y: 227
-        x: 542
-        height: 63
-        width: 140
-  - name: fft
-    module: fft
-    device: cpu
-    runtime: native
-    provider: generic
-    config:
-      forward: true
-    input:
-      signal: '${graph.invert.output.signal}'
-    meta:
-      node:
-        y: 237
-        x: 717
-        height: 96
-        width: 140
-  - name: amplitude
-    module: amplitude
-    device: cpu
-    runtime: native
-    provider: generic
-    input:
-      signal: '${graph.fft.output.signal}'
-    meta:
-      node:
-        y: 243
-        x: 891
-        height: 63
-        width: 140
-  - name: range
-    module: range
+        x: 640
+        y: 239
+        width: 120
+        height: 0
+        configCollapsed: false
+  - name: spectrum_analyzer
+    module: spectrum_analyzer
     device: cpu
     runtime: native
     provider: generic
     config:
-      max: 0
-      min: -90.71429
+      lineplotAveraging: 16
+      waterfallAveraging: 2
+      maxHold: false
+      fill: true
+      rangeMin: -56.907158
+      rangeMax: 0
+      waterfallHeight: 1024
+      splitRatio: 0.5
+      xLabel: Frequency (MHz)
+      amplitudeLabel: Amplitude (dBFS)
+      waterfallLabel: Time
     input:
-      signal: '${graph.amplitude.output.signal}'
+      buffer: '${graph.add_1.output.sum}'
     meta:
       node:
-        y: 236
-        x: 1064
-        height: 129
-        width: 140
-  - name: waterfall
-    module: waterfall
-    device: cpu
-    runtime: native
-    provider: generic
-    config:
-      height: 512
-    input:
-      signal: '${graph.range.output.signal}'
-    meta:
+        x: 1138
+        y: 73
+        width: 608
+        height: 672
+        configCollapsed: false
       surface_default:
+        attachedHeight: 546
         detachedWidth: 512
-        attachedWidth: 357
-        detached: false
-        attachedHeight: 187
         detachedHeight: 512
-      node:
-        y: 455
-        x: 1267
-        height: 302
-        width: 357
-  - name: lineplot
-    module: lineplot
-    device: cpu
-    runtime: native
-    provider: generic
-    config:
-      averaging: 1
-    input:
-      signal: '${graph.range.output.signal}'
-    meta:
-      surface_default:
-        detachedWidth: 910
-        attachedWidth: 354
         detached: false
-        attachedHeight: 234
-        detachedHeight: 692
-      node:
-        y: 64
-        x: 1264
-        height: 349
-        width: 354
+        detachedConfigOpen: false
