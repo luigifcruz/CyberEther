@@ -64,6 +64,8 @@ class CudaBackend final : public CudaBufferBackend, public Backend {
             allocationProp.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
             allocationProp.location.id = state->getDeviceId();
             allocationProp.requestedHandleTypes = CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR;
+            allocationProp.allocFlags.gpuDirectRDMACapable =
+                state->hasRdmaMemorySupport() ? 1 : 0;
 
             U64 granularity = 0;
             JST_CUDA_CHECK(cuMemGetAllocationGranularity(&granularity,

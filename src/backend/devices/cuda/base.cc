@@ -29,6 +29,25 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
     JST_CUDA_CHECK_THROW(cuDeviceGet(&device, config.deviceId), [&]{
         JST_FATAL("[CUDA] Cannot get desired device ID ({}): {}", config.deviceId, err);
     });
+
+    {
+        int supported = 0;
+        cache.hasRdmaMemorySupport = false;
+
+        const CUresult result = cuDeviceGetAttribute(&supported,
+                                                     CU_DEVICE_ATTRIBUTE_GPU_DIRECT_RDMA_WITH_CUDA_VMM_SUPPORTED,
+                                                     device);
+
+        if (result == CUDA_SUCCESS) {
+            cache.hasRdmaMemorySupport = supported != 0;
+        } else if (result != CUDA_ERROR_INVALID_VALUE &&
+                   result != CUDA_ERROR_NOT_SUPPORTED) {
+            JST_FATAL("[CUDA] RDMA VMM capability query failed for device ID ({}): {}.",
+                      config.deviceId, static_cast<int>(result));
+            JST_CHECK_THROW(Result::ERROR);
+        }
+    }
+
     JST_CUDA_CHECK_THROW(cudaSetDevice(config.deviceId), [&]{
         JST_FATAL("[CUDA] Cannot get desired device ID ({}): {}", config.deviceId, err);
     });
@@ -124,6 +143,7 @@ CUDA::CUDA(const Config& config) : config(config), cache({}) {
     JST_INFO("API Version:        {}", getApiVersion());
     JST_INFO("Compute Capability: {}", getComputeCapability());
     JST_INFO("Unified Memory:     {}", hasUnifiedMemory() ? "YES" : "NO");
+    JST_INFO("RDMA VMM Support:   {}", hasRdmaMemorySupport() ? "YES" : "NO");
     JST_INFO("Device Memory:      {:.2f} GB", static_cast<F32>(getPhysicalMemory()) / (1024*1024*1024));
     JST_INFO("Interoperability:");
     JST_INFO("  - Can Import Device Memory: {}", canImportDeviceMemory() ? "YES" : "NO");
@@ -170,6 +190,10 @@ PhysicalDeviceType CUDA::getPhysicalDeviceType() const {
 
 bool CUDA::hasUnifiedMemory() const {
     return cache.hasUnifiedMemory;
+}
+
+bool CUDA::hasRdmaMemorySupport() const {
+    return cache.hasRdmaMemorySupport;
 }
 
 bool CUDA::canExportDeviceMemory() const {
