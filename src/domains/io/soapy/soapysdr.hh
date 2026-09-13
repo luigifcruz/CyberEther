@@ -106,20 +106,15 @@ class JETSTREAM_API SoapyReceiver {
 };
 
 struct JETSTREAM_API SoapyReceiveStatus {
-    using Clock = std::chrono::steady_clock;
-
     enum class Action {
         Samples,
         Retry,
-        WarnOverflow,
         Fail,
     };
 
-    Action handle(SoapyReceiver::ReadStatus status,
-                  Clock::time_point now = Clock::now());
+    Action handle(SoapyReceiver::ReadStatus status);
 
     U64 deviceOverflows = 0;
-    Clock::time_point nextWarning{};
 };
 
 }  // namespace Jetstream::Modules

@@ -16,6 +16,7 @@ imgui.ini
 *.zip
 subprojects/*
 !subprojects/packagefiles
+!subprojects/bladerf-no-os.wrap
 !subprojects/catch2.wrap
 !subprojects/cpp-httplib.wrap
 !subprojects/fmt.wrap
@@ -25,6 +26,7 @@ subprojects/*
 !subprojects/glib.wrap
 !subprojects/gstreamer-full.wrap
 !subprojects/libairspy.wrap
+!subprojects/libbladerf.wrap
 !subprojects/libgudev.wrap
 !subprojects/libhackrf.wrap
 !subprojects/libmodes.wrap
@@ -44,6 +46,7 @@ subprojects/*
 !subprojects/rapidyaml.wrap
 !subprojects/robin-map.wrap
 !subprojects/soapyairspy.wrap
+!subprojects/soapybladerf.wrap
 !subprojects/soapyhackrf.wrap
 !subprojects/soapyremote.wrap
 !subprojects/soapyrtlsdr.wrap

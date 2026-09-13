@@ -1,0 +1,6 @@
+[wrap-file]
+directory = no-OS-0bba46e6f6f75785a65d425ece37d0a04daf6157
+source_url = https://github.com/analogdevicesinc/no-OS/archive/0bba46e6f6f75785a65d425ece37d0a04daf6157.tar.gz
+source_filename = no-OS-0bba46e6f6f75785a65d425ece37d0a04daf6157.tar.gz
+source_hash = b77a86780e82ff592dd3cbcbf916d6f421f5cb7b523b800255483b1992aea88d
+patch_directory = bladerf-no-os
