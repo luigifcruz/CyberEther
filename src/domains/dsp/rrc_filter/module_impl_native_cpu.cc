@@ -1,4 +1,5 @@
-#include <cstring>
+#include <algorithm>
+#include <array>
 #include <limits>
 
 #include <jetstream/backend/devices/cpu/helpers.hh>
@@ -22,9 +23,10 @@ struct RrcFilterImplNativeCpu : public RrcFilterImpl,
     Result computeSubmit() override;
 
  private:
-    Result kernelCF32();
-    Result kernelF32();
+    template<typename T>
+    Result filterKernel();
 
+    Tensor workspace;
     std::function<Result()> kernel;
 };
 
@@ -50,21 +52,31 @@ Result RrcFilterImplNativeCpu::validate() {
     U64 coefficientBytes = 0;
     U64 historyElements = 0;
     U64 historyBytes = 0;
+    U64 workspaceElements = 0;
+    U64 workspaceBytes = 0;
     U64 alignedBytes = 0;
     if (!detail::CheckedMultiply(candidate()->taps,
                                  static_cast<U64>(sizeof(F32)),
                                  coefficientBytes) ||
         !detail::CheckedPageAlignedSize(coefficientBytes, alignedBytes) ||
         alignedBytes > std::numeric_limits<std::size_t>::max() ||
-        !detail::CheckedMultiply(candidate()->taps,
+        !detail::CheckedMultiply(candidate()->taps - 1,
                                  validatedLaneCount,
                                  historyElements) ||
         !detail::CheckedMultiply(historyElements,
                                  static_cast<U64>(DataTypeSize(inputTensor.dtype())),
                                  historyBytes) ||
         !detail::CheckedPageAlignedSize(historyBytes, alignedBytes) ||
+        alignedBytes > std::numeric_limits<std::size_t>::max() ||
+        !detail::CheckedAdd(candidate()->taps - 1,
+                            inputTensor.shape(*validatedSignalAxes.sample),
+                            workspaceElements) ||
+        !detail::CheckedMultiply(workspaceElements,
+                                 static_cast<U64>(DataTypeSize(inputTensor.dtype())),
+                                 workspaceBytes) ||
+        !detail::CheckedPageAlignedSize(workspaceBytes, alignedBytes) ||
         alignedBytes > std::numeric_limits<std::size_t>::max()) {
-        JST_ERROR("[MODULE_RRC_FILTER_NATIVE_CPU] Tap buffers exceed the supported allocation range.");
+        JST_ERROR("[MODULE_RRC_FILTER_NATIVE_CPU] Filter buffers exceed the supported allocation range.");
         return Result::ERROR;
     }
 
@@ -72,16 +84,14 @@ Result RrcFilterImplNativeCpu::validate() {
 }
 
 Result RrcFilterImplNativeCpu::create() {
-    // Create parent.
-
     JST_CHECK(RrcFilterImpl::create());
-
-    // Register compute kernel.
+    JST_CHECK(workspace.create(input.device(), input.dtype(),
+                               {taps - 1 + input.shape(*signalAxes.sample)}));
 
     if (input.dtype() == DataType::CF32) {
-        kernel = [this]() { return kernelCF32(); };
+        kernel = [this]() { return filterKernel<CF32>(); };
     } else {
-        kernel = [this]() { return kernelF32(); };
+        kernel = [this]() { return filterKernel<F32>(); };
     }
 
     return Result::SUCCESS;
@@ -91,20 +101,51 @@ Result RrcFilterImplNativeCpu::computeSubmit() {
     return kernel();
 }
 
+namespace {
+
 template<typename T>
-static Result filterKernel(const Tensor& input,
-                           Tensor& output,
-                           const Tensor& coeffs,
-                           Tensor& history,
-                           std::vector<U64>& historyIndex,
-                           const SignalAxes& signalAxes,
-                           const U64 laneCount,
-                           const U64 taps) {
-    const U64 numTaps = taps;
+void convolve(const T* samples,
+              T* output,
+              const F32* coefficients,
+              const U64 sampleCount,
+              const U64 taps,
+              const U64 outputStride) {
+    constexpr U64 blockSize = 32;
+    constexpr U64 componentCount = blockSize * sizeof(T) / sizeof(F32);
+    const U64 blockEnd = outputStride == 1
+        ? sampleCount - sampleCount % blockSize : 0;
+
+    for (U64 sample = 0; sample < blockEnd; sample += blockSize) {
+        std::array<F32, componentCount> sums{};
+        for (U64 tap = 0; tap < taps; ++tap) {
+            const F32* window = reinterpret_cast<const F32*>(
+                samples + sample + taps - 1 - tap);
+            for (U64 component = 0; component < componentCount; ++component) {
+                sums[component] += window[component] * coefficients[tap];
+            }
+        }
+        std::copy(sums.begin(), sums.end(), reinterpret_cast<F32*>(output + sample));
+    }
+
+    for (U64 sample = blockEnd; sample < sampleCount; ++sample) {
+        T sum{};
+        for (U64 tap = 0; tap < taps; ++tap) {
+            sum += samples[sample + taps - 1 - tap] * coefficients[tap];
+        }
+        output[sample * outputStride] = sum;
+    }
+}
+
+}
+
+template<typename T>
+Result RrcFilterImplNativeCpu::filterKernel() {
     const T* inPtr = input.data<T>();
     T* outPtr = output.data<T>();
     T* histPtr = history.data<T>();
+    T* window = workspace.data<T>();
     const F32* coeffPtr = coeffs.data<F32>();
+    const U64 historyCount = taps - 1;
     const Index sampleAxis = *signalAxes.sample;
     const U64 sampleCount = input.shape(sampleAxis);
     const U64 inputSampleStride = input.stride(sampleAxis);
@@ -131,56 +172,27 @@ static Result filterKernel(const Tensor& input,
             outputLaneOffset += coordinate * output.stride(axis);
         }
 
-        T* laneHistory = histPtr + lane * numTaps;
-        U64 index = historyIndex[lane];
+        T* laneHistory = histPtr + lane * historyCount;
         for (U64 batch = 0; batch < batchCount; ++batch) {
-            const U64 inputBatchOffset = inputLaneOffset +
-                                         batch * inputBatchStride;
-            const U64 outputBatchOffset = outputLaneOffset +
-                                          batch * outputBatchStride;
-            for (U64 sample = 0; sample < sampleCount; ++sample) {
-                const U64 inputOffset = inputBatchOffset +
-                                        sample * inputSampleStride;
-                const U64 outputOffset = outputBatchOffset +
-                                         sample * outputSampleStride;
-                laneHistory[index] = inPtr[inputOffset];
+            const T* batchInput = inPtr + inputLaneOffset + batch * inputBatchStride;
+            T* batchOutput = outPtr + outputLaneOffset + batch * outputBatchStride;
 
-                T outputSample{};
-                for (U64 k = 0; k < numTaps; ++k) {
-                    const U64 historyOffset =
-                        (index + numTaps - k) % numTaps;
-                    outputSample += laneHistory[historyOffset] * coeffPtr[k];
+            std::copy_n(laneHistory, historyCount, window);
+            if (inputSampleStride == 1) {
+                std::copy_n(batchInput, sampleCount, window + historyCount);
+            } else {
+                for (U64 sample = 0; sample < sampleCount; ++sample) {
+                    window[historyCount + sample] = batchInput[sample * inputSampleStride];
                 }
-                outPtr[outputOffset] = outputSample;
-                index = (index + 1) % numTaps;
             }
+
+            convolve(window, batchOutput, coeffPtr, sampleCount, taps, outputSampleStride);
+
+            std::copy_n(window + sampleCount, historyCount, laneHistory);
         }
-        historyIndex[lane] = index;
     }
 
     return Result::SUCCESS;
-}
-
-Result RrcFilterImplNativeCpu::kernelCF32() {
-    return filterKernel<CF32>(input,
-                              output,
-                              coeffs,
-                              history,
-                              historyIndex,
-                              signalAxes,
-                              laneCount,
-                              taps);
-}
-
-Result RrcFilterImplNativeCpu::kernelF32() {
-    return filterKernel<F32>(input,
-                             output,
-                             coeffs,
-                             history,
-                             historyIndex,
-                             signalAxes,
-                             laneCount,
-                             taps);
 }
 
 JST_REGISTER_MODULE(RrcFilterImplNativeCpu, DeviceType::CPU, RuntimeType::NATIVE, "generic");

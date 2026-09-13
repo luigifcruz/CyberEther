@@ -9,6 +9,8 @@
 #include <any>
 #include <cmath>
 #include <limits>
+#include <type_traits>
+#include <vector>
 
 using namespace Jetstream;
 
@@ -46,6 +48,113 @@ void RequireRrcFilterSignalValidationError(
     REQUIRE(module->create("test", Modules::RrcFilter{}, inputs) == Result::ERROR);
     REQUIRE(module->state() == Module::State::ERRORED);
     REQUIRE(module->outputs().empty());
+}
+
+std::vector<F32> RrcImpulseResponse(const Registry::ModuleRegistration& impl,
+                                    const Modules::RrcFilter& config) {
+    TestContext ctx("rrc_filter", impl.device, impl.runtime, impl.provider);
+    ctx.setConfig(config);
+    Tensor impulse;
+    REQUIRE(impulse.create(DeviceType::CPU, DataType::F32, {config.taps}) ==
+            Result::SUCCESS);
+    REQUIRE(impulse.setAttribute("sampleAxis", Index{0}) == Result::SUCCESS);
+    std::fill_n(impulse.data<F32>(), config.taps, 0.0f);
+    impulse.at<F32>(0) = 1.0f;
+    ctx.setInput("buffer", impulse);
+    REQUIRE(ctx.run() == Result::SUCCESS);
+    const auto* coefficients = ctx.output("buffer").data<F32>();
+    return {coefficients, coefficients + config.taps};
+}
+
+template<typename T>
+void RequireRrcStreamingConvolution(const Registry::ModuleRegistration& impl,
+                                    const U64 taps,
+                                    const U64 sampleCount,
+                                    const std::string& layout) {
+    Modules::RrcFilter config;
+    config.taps = taps;
+    config.symbolRate = 1.0e6f;
+    config.sampleRate = 4.0e6f;
+    config.rollOff = 0.35f;
+    auto coefficients = RrcImpulseResponse(impl, config);
+
+    const bool sampleFirst = layout == "sample-first";
+    const bool offsetView = layout == "offset";
+    const Index sampleAxis = sampleFirst ? 0 : 2;
+    const Index batchAxis = sampleFirst ? 2 : 0;
+    Tensor input;
+    REQUIRE(input.create(DeviceType::CPU, TypeToDataType<T>(),
+                         sampleFirst ? Shape{sampleCount, 2, 2}
+                                     : (offsetView ? Shape{2, 2, 2, sampleCount}
+                                                   : Shape{2, 2, sampleCount})) ==
+            Result::SUCCESS);
+    if (offsetView) {
+        REQUIRE(input.slice({Token(1), Token(), Token(), Token()}) ==
+                Result::SUCCESS);
+    }
+    REQUIRE(input.setAttribute("sampleAxis", sampleAxis) == Result::SUCCESS);
+    REQUIRE(input.setAttribute("channelAxis", Index{1}) == Result::SUCCESS);
+    REQUIRE(input.setAttribute("batchAxis", batchAxis) == Result::SUCCESS);
+
+    TestContext ctx("rrc_filter", impl.device, impl.runtime, impl.provider);
+    ctx.setConfig(config);
+    ctx.setInput("buffer", input);
+    REQUIRE(ctx.start() == Result::SUCCESS);
+
+    std::vector<T> streams[2];
+    for (U64 frame = 0; frame < 3; ++frame) {
+        if (frame == 2) {
+            config.rollOff = 1.0f;
+            config.sampleRate = 5.0e6f;
+            REQUIRE(ctx.reconfigure(config) == Result::SUCCESS);
+            coefficients = RrcImpulseResponse(impl, config);
+        }
+        for (U64 batch = 0; batch < 2; ++batch) {
+            for (U64 channel = 0; channel < 2; ++channel) {
+                for (U64 sample = 0; sample < sampleCount; ++sample) {
+                    const F32 time = static_cast<F32>((frame * 2 + batch) *
+                                                     sampleCount + sample);
+                    const F32 real = std::sin(0.31f * time + channel) +
+                                     0.3f * std::cos(0.73f * time);
+                    T value;
+                    if constexpr (std::is_same_v<T, CF32>) {
+                        value = CF32(real, std::cos(0.17f * time + channel));
+                    } else {
+                        value = real;
+                    }
+                    const U64 offset = batch * input.stride(batchAxis) +
+                                       channel * input.stride(1) +
+                                       sample * input.stride(sampleAxis);
+                    input.data<T>()[offset] = value;
+                    streams[channel].push_back(value);
+                }
+            }
+        }
+
+        REQUIRE(ctx.compute() == Result::SUCCESS);
+        const auto& output = ctx.output("buffer");
+        for (U64 batch = 0; batch < 2; ++batch) {
+            for (U64 channel = 0; channel < 2; ++channel) {
+                for (U64 sample = 0; sample < sampleCount; ++sample) {
+                    const U64 time = (frame * 2 + batch) * sampleCount + sample;
+                    using Accumulator = std::conditional_t<std::is_same_v<T, CF32>,
+                                                           CF64, F64>;
+                    Accumulator expected{};
+                    for (U64 k = 0; k < std::min(taps, time + 1); ++k) {
+                        expected += static_cast<Accumulator>(streams[channel][time - k]) *
+                                    static_cast<F64>(coefficients[k]);
+                    }
+                    const U64 offset = batch * output.stride(batchAxis) +
+                                       channel * output.stride(1) +
+                                       sample * output.stride(sampleAxis);
+                    const auto actual = static_cast<Accumulator>(output.data<T>()[offset]);
+                    CAPTURE(frame, batch, channel, sample);
+                    REQUIRE(std::abs(actual - expected) < 2.0e-5);
+                }
+            }
+        }
+    }
+    REQUIRE(ctx.stop() == Result::SUCCESS);
 }
 
 }  // namespace
@@ -185,6 +294,28 @@ TEST_CASE("RRC Filter - Invalid Even Taps",
             ctx.setInput("buffer", input);
 
             REQUIRE(ctx.run() != Result::SUCCESS);
+        }
+    }
+}
+
+TEST_CASE("RRC Filter - Matches streaming convolution across layouts and reconfiguration",
+          "[modules][rrc_filter][streaming]") {
+    const auto implementations = Registry::ListAvailableModules("rrc_filter");
+    REQUIRE(!implementations.empty());
+
+    for (const auto& impl : implementations) {
+        for (const U64 taps : {3, 11, 101}) {
+            for (const U64 samples : {U64{1}, taps - 1, taps, taps + 7,
+                                      taps + 31, taps + 32, U64{257}}) {
+                for (const std::string layout : {"contiguous", "sample-first", "offset"}) {
+                    DYNAMIC_SECTION("Device: " << impl.device << " Runtime: "
+                                    << impl.runtime << " taps: " << taps
+                                    << " samples: " << samples << " layout: " << layout) {
+                        RequireRrcStreamingConvolution<F32>(impl, taps, samples, layout);
+                        RequireRrcStreamingConvolution<CF32>(impl, taps, samples, layout);
+                    }
+                }
+            }
         }
     }
 }

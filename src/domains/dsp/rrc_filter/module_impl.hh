@@ -5,8 +5,6 @@
 #include <jetstream/detail/module_impl.hh>
 #include <jetstream/memory/axis.hh>
 
-#include <vector>
-
 namespace Jetstream::Modules {
 
 struct RrcFilterImpl : public Module::Impl,
@@ -28,7 +26,6 @@ struct RrcFilterImpl : public Module::Impl,
 
     SignalAxes signalAxes;
     U64 laneCount = 0;
-    std::vector<U64> historyIndex;
 
     Result generateCoefficients();
 };
