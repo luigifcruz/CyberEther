@@ -23,6 +23,8 @@ class CUDA {
     U64 getPhysicalMemory() const;
 
     bool hasUnifiedMemory() const;
+    bool hasRdmaMemorySupport() const;
+
     bool canExportDeviceMemory() const;
     bool canImportDeviceMemory() const;
     bool canImportHostMemory() const;
@@ -55,6 +57,7 @@ class CUDA {
         bool canImportDeviceMemory;
         bool canImportHostMemory;
         bool canExportDeviceMemory;
+        bool hasRdmaMemorySupport;
     } cache;
 };
 
