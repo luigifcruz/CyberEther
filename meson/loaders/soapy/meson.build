@@ -113,6 +113,14 @@ if jst_is_android
     all_deps_found = false
 endif
 
+if jst_is_macos or jst_is_linux or jst_is_windows or jst_is_browser
+    whole_dep_lst += subproject(
+        'soapybladerf',
+        required: true,
+        default_options: soapy_static_options,
+    ).get_variable('soapybladerf_dep').as_link_whole()
+endif
+
 foreach x_dep : deps
     all_deps_found = all_deps_found and x_dep.found()
 endforeach

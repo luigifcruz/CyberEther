@@ -243,6 +243,12 @@ const SoapySDR::Registry testSoapyRegistry(TestSoapyDriver,
 
 constexpr const char* TestDiscoveryDriver = "cyberether_discovery_test";
 
+void WaitForSoapyDriverCache() {
+    // SoapySDR 0.8.1 caches enumeration for one second independently of
+    // CyberEther's cache and its injectable clock.
+    std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+}
+
 struct TestDiscoveryState {
     std::mutex mutex;
     std::condition_variable changed;
@@ -253,6 +259,7 @@ struct TestDiscoveryState {
     size_t blockCall = 0;
     bool blocked = false;
     bool released = false;
+    bool expireCacheOnMake = false;
 };
 
 TestDiscoveryState testDiscoveryState;
@@ -279,6 +286,11 @@ SoapySDR::Device* MakeDiscoveryDevice(const SoapySDR::Kwargs& args) {
         std::lock_guard lock(testDiscoveryState.mutex);
         ++testDiscoveryState.makes;
         testDiscoveryState.lastMakeArgs = args;
+        if (testDiscoveryState.expireCacheOnMake) {
+            // Model initialization taking longer than the driver's discovery
+            // cache lifetime before the opening failure triggers a refresh.
+            WaitForSoapyDriverCache();
+        }
         RecordSoapyCall("make");
         if (std::none_of(testDiscoveryState.entries.begin(), testDiscoveryState.entries.end(),
                         [&](const auto& entry) { return entry.at("serial") == args.at("serial"); })) {
@@ -288,15 +300,17 @@ SoapySDR::Device* MakeDiscoveryDevice(const SoapySDR::Kwargs& args) {
     return new TestSoapyDevice();
 }
 
-const SoapySDR::Registry testDiscoveryRegistry(TestDiscoveryDriver,
-                                              FindDiscoveryDevice,
-                                              MakeDiscoveryDevice,
-                                              SOAPY_SDR_ABI_VERSION);
-
 struct SoapyDiscoveryFixture {
     using Devices = Modules::SoapyDiscovery::DeviceList;
 
-    const std::string filter = std::string("driver=") + TestDiscoveryDriver;
+    // A distinct registration prevents SoapySDR's process-wide cache from
+    // returning snapshots belonging to a previous test or Catch2 section.
+    inline static std::atomic<size_t> nextDriver{0};
+    const std::string driver = std::string(TestDiscoveryDriver) + "_" +
+                               std::to_string(nextDriver.fetch_add(1));
+    const SoapySDR::Registry registry{driver, FindDiscoveryDevice,
+                                      MakeDiscoveryDevice, SOAPY_SDR_ABI_VERSION};
+    const std::string filter = "driver=" + driver;
     const SoapySDR::Kwargs deviceA{{"label", "Discovery A"}, {"serial", "A"}};
     const SoapySDR::Kwargs deviceB{{"label", "Discovery B"}, {"serial", "B"}};
     std::vector<std::future<Devices>> requests;
@@ -312,6 +326,7 @@ struct SoapyDiscoveryFixture {
         testDiscoveryState.blockCall = 0;
         testDiscoveryState.blocked = false;
         testDiscoveryState.released = false;
+        testDiscoveryState.expireCacheOnMake = false;
     }
 
     ~SoapyDiscoveryFixture() {
@@ -329,6 +344,11 @@ struct SoapyDiscoveryFixture {
     void setEntries(SoapySDR::KwargsList entries) {
         std::lock_guard lock(testDiscoveryState.mutex);
         testDiscoveryState.entries = std::move(entries);
+    }
+
+    void expireCacheOnMake(const bool enabled) {
+        std::lock_guard lock(testDiscoveryState.mutex);
+        testDiscoveryState.expireCacheOnMake = enabled;
     }
 
     size_t queryCount() const {
@@ -1222,7 +1242,7 @@ TEST_CASE_METHOD(SoapyDiscoveryFixture,
     {
         std::lock_guard lock(testDiscoveryState.mutex);
         REQUIRE(testDiscoveryState.queries.front() == SoapySDR::Kwargs{
-            {"driver", TestDiscoveryDriver}, {"serial", "A"}, {"remote", "host-a"},
+            {"driver", driver}, {"serial", "A"}, {"remote", "host-a"},
         });
     }
 }
@@ -1243,25 +1263,33 @@ TEST_CASE_METHOD(SoapyDiscoveryFixture,
 TEST_CASE_METHOD(SoapyDiscoveryFixture,
                  "Soapy discovery supports forced refresh and invalidation",
                  "[modules][soapy][discovery]") {
-    const auto initial = Modules::SoapyDiscovery::ListDevices(filter);
+    // Freeze CyberEther's clock while allowing the SDK's wall-clock cache to
+    // expire, so only explicit refresh/invalidation can replace our snapshot.
+    const auto now = Modules::SoapyDiscovery::Clock::time_point{};
+    const auto list = [&](const bool refresh = false) {
+        return Modules::SoapyDiscovery::ListDevices(filter, refresh, now);
+    };
+    const auto initial = list();
     REQUIRE(initial.size() == 2);
     setEntries({deviceB});
-    REQUIRE(Modules::SoapyDiscovery::ListDevices(filter) == initial);
+    WaitForSoapyDriverCache();
+    REQUIRE(list() == initial);
     REQUIRE(queryCount() == 1);
 
-    const auto refreshed = Modules::SoapyDiscovery::ListDevices(filter, true);
+    const auto refreshed = list(true);
     REQUIRE(refreshed.size() == 1);
     REQUIRE(refreshed.contains("Discovery B"));
-    REQUIRE(Modules::SoapyDiscovery::ListDevices(filter) == refreshed);
+    REQUIRE(list() == refreshed);
     REQUIRE(queryCount() == 2);
 
     REQUIRE(Modules::SoapyDiscovery::LoadDriverLibrary("") == Result::SUCCESS);
-    REQUIRE(Modules::SoapyDiscovery::ListDevices(filter) == refreshed);
+    REQUIRE(list() == refreshed);
     REQUIRE(queryCount() == 2);
 
     setEntries({deviceA});
+    WaitForSoapyDriverCache();
     Modules::SoapyDiscovery::ClearDiscoveryCache();
-    const auto invalidated = Modules::SoapyDiscovery::ListDevices(filter);
+    const auto invalidated = list();
     REQUIRE(invalidated.size() == 1);
     REQUIRE(invalidated.contains("Discovery A"));
     REQUIRE(queryCount() == 3);
@@ -1281,6 +1309,7 @@ TEST_CASE_METHOD(SoapyDiscoveryFixture,
 
     const auto initial = Modules::SoapyDiscovery::ListDevices(filter, false, start);
     setEntries({deviceB});
+    WaitForSoapyDriverCache();
     REQUIRE(Modules::SoapyDiscovery::ListDevices(filter, false, start + 999ms) == initial);
     REQUIRE(queryCount() == 1);
     const auto expired = Modules::SoapyDiscovery::ListDevices(filter, false, start + 1s);
@@ -1320,6 +1349,7 @@ TEST_CASE_METHOD(SoapyDiscoveryFixture,
     const auto first = request(filter);
     REQUIRE(waitUntilBlocked());
     setEntries({deviceB});
+    WaitForSoapyDriverCache();
     Modules::SoapyDiscovery::ClearDiscoveryCache();
 
     const auto fresh = request(filter);
@@ -1339,6 +1369,7 @@ TEST_CASE_METHOD(SoapyDiscoveryFixture,
     const auto selected = filter + ",serial=A";
     REQUIRE(Modules::SoapyDiscovery::ListDevices(selected).size() == 1);
     setEntries({deviceB});
+    expireCacheOnMake(true);
 
     Modules::SoapyReceiver receiver;
     REQUIRE(receiver.open(SoapySDR::KwargsFromString(selected)) == Result::INCOMPLETE);
@@ -1364,6 +1395,7 @@ TEST_CASE_METHOD(SoapySelectionFixture,
     const auto selector = filter + ",serial=A,remote=host-a";
     REQUIRE(Modules::SoapyDiscovery::ListDevices(selector).size() == 1);
     testSoapyState.failAt = "make";
+    expireCacheOnMake(true);
 
     Block::State expected = Block::State::Incomplete;
     std::string diagnostic;
@@ -1389,13 +1421,16 @@ TEST_CASE_METHOD(SoapySelectionFixture,
     REQUIRE(makeCount() == 1);
     {
         std::lock_guard lock(testDiscoveryState.mutex);
+        REQUIRE_FALSE(testDiscoveryState.queries.empty());
         REQUIRE(testDiscoveryState.queries.back() == SoapySDR::KwargsFromString(selector));
         REQUIRE(testDiscoveryState.lastMakeArgs.at("serial") == "A");
         REQUIRE(testDiscoveryState.lastMakeArgs.at("remote") == "host-a");
     }
 
     testSoapyState.failAt.clear();
+    expireCacheOnMake(false);
     setEntries({deviceA, deviceB});
+    WaitForSoapyDriverCache();
     Modules::SoapyDiscovery::ClearDiscoveryCache();
     REQUIRE(flowgraph->blockRecreate("radio", block.config) == Result::SUCCESS);
     REQUIRE(viewBlock("radio").state == Block::State::Created);
@@ -1998,7 +2033,7 @@ TEST_CASE_METHOD(SoapySelectionFixture,
     REQUIRE(option.size() == 2);
     const auto selector = Parser::Get<std::string>(option, "value");
     REQUIRE(SoapySDR::KwargsFromString(selector) == SoapySDR::Kwargs{
-        {"driver", TestDiscoveryDriver}, {"serial", "B"},
+        {"driver", driver}, {"serial", "B"},
         {"frontend", "required"}, {"remote", "host-a"},
     });
     REQUIRE(flowgraph->blockReconfigure("radio", {{"deviceString", selector}}) == Result::SUCCESS);
@@ -2037,6 +2072,7 @@ TEST_CASE_METHOD(SoapySelectionFixture,
     SECTION("an ambiguous selection does not open the first match") {
         setEntries({selected, selected});
     }
+    WaitForSoapyDriverCache();
     Modules::SoapyDiscovery::ClearDiscoveryCache();
     REQUIRE(flowgraph->blockRecreate("radio", saved) == Result::SUCCESS);
     REQUIRE(viewBlock("radio").state == expected);

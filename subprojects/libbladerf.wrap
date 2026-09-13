@@ -1,0 +1,10 @@
+[wrap-file]
+directory = bladeRF-2025.10
+source_url = https://github.com/Nuand/bladeRF/archive/refs/tags/2025.10.tar.gz
+source_filename = bladeRF-2025.10.tar.gz
+source_hash = f7a63f7ad53cf3478dc60cc476b377020a7c256ef37640b1a4fa715cd9784b23
+patch_directory = libbladerf
+diff_files = libbladerf/posix-timeout-fix.diff, libbladerf/windows-timeout-fix.diff
+
+[provide]
+libbladerf = libbladerf_dep

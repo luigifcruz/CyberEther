@@ -1,0 +1,9 @@
+diff --git a/host/common/include/thread.h b/host/common/include/thread.h
+--- a/host/common/include/thread.h
++++ b/host/common/include/thread.h
+@@ -172,4 +172,4 @@
+ #   define THREAD_SUCCESS 0
+-#   define THREAD_TIMEOUT WAIT_TIMEOUT
++#   define THREAD_TIMEOUT ERROR_TIMEOUT
+ #   define THREAD_CANCEL(m) TerminateThread(m, 0)
+ #   define THREAD_JOIN(t, s) WaitForSingleObject(t, INFINITE)
