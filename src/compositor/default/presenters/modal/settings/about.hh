@@ -69,6 +69,7 @@ inline std::vector<AboutInfoTable::Config> BuildAboutInfoTables(const AboutPrese
                 {"Compute Capability", backend->getComputeCapability()},
                 {"Physical Memory", jst::fmt::format("{:.0f} GB", static_cast<float>(backend->getPhysicalMemory()) / (1024 * 1024 * 1024))},
                 {"Unified Memory", backend->hasUnifiedMemory() ? "Yes" : "No"},
+                {"RDMA VMM Support", backend->hasRdmaMemorySupport() ? "Yes" : "No"},
                 {"Can Import Device Memory", backend->canImportDeviceMemory() ? "Yes" : "No"},
                 {"Can Export Device Memory", backend->canExportDeviceMemory() ? "Yes" : "No"},
                 {"Can Import Host Memory", backend->canImportHostMemory() ? "Yes" : "No"},
