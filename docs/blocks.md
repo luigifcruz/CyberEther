@@ -29,6 +29,7 @@ Tensor manipulation and general plumbing: shaping, casting, arithmetic, and the 
 | Permutation | `permutation` | Reorders tensor axes with a user-defined permutation. |
 | Python | `python` | Runs custom Python compute code. |
 | Range | `range` | Scales input to a specified range. |
+| Remove Indices | `remove_indices` | Removes entries by index. |
 | Reshape | `reshape` | Changes the shape of a tensor. |
 | Signal Axes | `signal_axes` | Assigns batch, channel, and sample roles to tensor dimensions. |
 | Slice | `slice` | Extracts a subset of a tensor. |
