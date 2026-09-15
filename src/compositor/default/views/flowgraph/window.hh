@@ -35,6 +35,7 @@ struct FlowgraphWindow {
         std::function<void()> onCreateStack;
         std::function<void()> onSendFeedback;
         std::function<void()> onReviewDependencies;
+        std::function<void()> onOpenExamples;
     };
 
     void update(Config config) {
@@ -126,7 +127,7 @@ struct FlowgraphWindow {
             hint.update({
                 .id = this->config.id + ":empty-hint",
                 .title = "Getting Started",
-                .subtitle = "Add your first block to get started.",
+                .subtitle = "Add your first block, or open a ready-made example.",
                 .steps = {
                     "Double-click anywhere on the canvas.",
                     "Pick a block from the menu.",
@@ -134,7 +135,15 @@ struct FlowgraphWindow {
                     "Processing starts automatically.",
                 },
                 .hints = flowgraphHints,
-                .size = {420.0f, 380.0f},
+                .actions = {
+                    {
+                        .id = "open-examples",
+                        .label = ICON_FA_FLASK " Open Examples",
+                        .variant = Sakura::Button::Variant::Action,
+                        .onClick = this->config.onOpenExamples,
+                    },
+                },
+                .size = {420.0f, 430.0f},
             });
         }
 

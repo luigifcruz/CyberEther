@@ -4,6 +4,7 @@
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
+#include <cfloat>
 #include <functional>
 #include <optional>
 #include <string>
@@ -13,6 +14,13 @@
 namespace Jetstream {
 
 struct HintOverlay {
+    struct Action {
+        std::string id;
+        std::string label;
+        Sakura::Button::Variant variant = Sakura::Button::Variant::Default;
+        std::function<void()> onClick;
+    };
+
     struct Config {
         std::string id;
         std::string icon = ICON_FA_LIGHTBULB;
@@ -20,15 +28,18 @@ struct HintOverlay {
         std::string subtitle;
         std::vector<std::string> steps;
         std::vector<std::string> hints;
+        std::vector<Action> actions;
         Extent2D<F32> size = {420.0f, 340.0f};
     };
 
     void update(Config config) {
         this->config = std::move(config);
+        const bool interactive = !this->config.actions.empty();
         overlay.update({
             .id = this->config.id + ":overlay",
             .size = this->config.size,
             .anchor = Sakura::Overlay::Anchor::Center,
+            .inputs = interactive,
         });
         card.update({
             .id = this->config.id + ":card",
@@ -38,7 +49,7 @@ struct HintOverlay {
             .border = true,
             .scrollbar = false,
             .mouseScroll = false,
-            .inputs = false,
+            .inputs = interactive,
         });
         stack.update({
             .id = this->config.id + ":stack",
@@ -92,6 +103,17 @@ struct HintOverlay {
                 .align = Sakura::Text::Align::Center,
             });
         }
+        actionButtons.resize(this->config.actions.size());
+        for (U64 i = 0; i < this->config.actions.size(); ++i) {
+            const auto& action = this->config.actions[i];
+            actionButtons[i].update({
+                .id = this->config.id + ":action-" + action.id,
+                .str = action.label,
+                .size = {-FLT_MIN, 34.0f},
+                .variant = action.variant,
+                .onClick = action.onClick,
+            });
+        }
     }
 
     void render(const Sakura::Context& ctx) {
@@ -108,6 +130,9 @@ struct HintOverlay {
                 if (!config.hints.empty()) {
                     children.push_back([this](const Sakura::Context& ctx) { hintText.render(ctx); });
                 }
+                for (U64 i = 0; i < actionButtons.size(); ++i) {
+                    children.push_back([this, i](const Sakura::Context& ctx) { actionButtons[i].render(ctx); });
+                }
                 stack.render(ctx, std::move(children));
             });
         });
@@ -123,6 +148,7 @@ struct HintOverlay {
     Sakura::Text subtitle;
     std::vector<Sakura::Text> stepTexts;
     Sakura::Text hintText;
+    std::vector<Sakura::Button> actionButtons;
     std::optional<U64> selectedHintIndex;
     std::string selectedHintId;
     std::vector<std::string> selectedHints;
