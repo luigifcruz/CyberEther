@@ -95,12 +95,10 @@ Result RrcFilterImpl::create() {
     JST_CHECK(coeffs.create(input.device(), DataType::F32, {taps}));
 
     // Allocate history buffer matching input dtype.
-    JST_CHECK(history.create(input.device(), input.dtype(), {laneCount, taps}));
+    JST_CHECK(history.create(input.device(), input.dtype(), {laneCount, taps - 1}));
 
     // Zero the history buffer.
     std::memset(history.data(), 0, history.size() * history.elementSize());
-
-    historyIndex.assign(laneCount, 0);
 
     // Generate initial RRC coefficients.
     JST_CHECK(generateCoefficients());
