@@ -13,6 +13,7 @@ struct RationalResampler : public Block::Config {
 
     JST_BLOCK_TYPE(rational_resampler);
     JST_BLOCK_DOMAIN("DSP");
+    JST_BLOCK_NODE_SIZE(M);
     JST_BLOCK_PARAMS(interpolation, decimation, taps, cutoff);
     JST_BLOCK_DESCRIPTION(
         "Rational Resampler",
