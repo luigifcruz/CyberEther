@@ -56,6 +56,7 @@ The signal processing chain: transforms, filters, demodulators, and generators.
 | Invert | `invert` | Time-domain modulation for FFT shift. |
 | Overlap Add | `overlap_add` | Sums overlap with buffer for streaming convolution. |
 | PSK Demodulator | `psk_demod` | Demodulates PSK signals with carrier and timing recovery. |
+| Rational Resampler | `rational_resampler` | Resamples a signal by a rational factor. |
 | RRC Filter | `rrc_filter` | Root raised cosine matched filter for PSK modulation. |
 | Signal Generator | `signal_generator` | Generates synthetic waveforms, noise, and chirps. |
 | Spectrum Engine | `spectrum_engine` | Computes spectra with windowing, FFT, and optional scaling. |
