@@ -193,6 +193,14 @@ Result DefaultCompositor::destroy() {
 }
 
 Result DefaultCompositor::poll() {
+    // Route files dropped onto the window into the mail queue.
+
+    if (state.system.viewport) {
+        for (auto& path : state.system.viewport->takeDroppedFiles()) {
+            enqueue(MailDropFlowgraphPath{std::move(path)});
+        }
+    }
+
     std::deque<Mail> pending;
     pending.swap(pendingMail);
 

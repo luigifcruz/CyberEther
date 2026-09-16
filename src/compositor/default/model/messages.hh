@@ -38,6 +38,10 @@ struct MailOpenFlowgraphPath {
     std::string path;
 };
 
+struct MailDropFlowgraphPath {
+    std::string path;
+};
+
 struct MailOpenFlowgraphBlob {
     std::vector<char> blob;
 };
@@ -407,6 +411,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailCloseFlowgraph,
                           MailSaveFlowgraph,
                           MailOpenFlowgraphPath,
+                          MailDropFlowgraphPath,
                           MailOpenFlowgraphBlob,
                           MailFocusFlowgraph,
                           MailApplyTheme,
