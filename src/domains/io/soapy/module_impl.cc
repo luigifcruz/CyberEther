@@ -255,10 +255,7 @@ Result SoapyImpl::soapyThreadLoop() {
             if (received.status == SoapyReceiver::ReadStatus::Overflow) {
                 deviceOverflows.publish(receiveStatus.deviceOverflows);
             }
-            if (action == SoapyReceiveStatus::Action::WarnOverflow) {
-                JST_WARN("[MODULE_SOAPY] Device receive overflow on '{}'. Samples were lost "
-                         "(total events since stream start: {}).", name(), receiveStatus.deviceOverflows);
-            } else if (action == SoapyReceiveStatus::Action::Fail) {
+            if (action == SoapyReceiveStatus::Action::Fail) {
                 JST_ERROR("[MODULE_SOAPY] Failed to read stream on '{}': {}. Stopping reception.",
                           name(), received.error);
                 errored = true;

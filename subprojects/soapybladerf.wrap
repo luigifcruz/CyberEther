@@ -1,0 +1,9 @@
+[wrap-file]
+directory = SoapyBladeRF-soapy-bladerf-0.4.2
+source_url = https://github.com/pothosware/SoapyBladeRF/archive/refs/tags/soapy-bladerf-0.4.2.tar.gz
+source_filename = SoapyBladeRF-soapy-bladerf-0.4.2.tar.gz
+source_hash = ca348b30d3a5b84fc5632c97b55db21008af867cad4290641a177576402311b0
+patch_directory = soapybladerf
+
+[provide]
+soapybladerf = soapybladerf_dep
