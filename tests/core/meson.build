@@ -77,6 +77,12 @@ if not jst_is_windows
 endif
 
 core_test_targets = []
+if cfg_lst.get('JETSTREAM_LOADER_GSTREAMER_AVAILABLE', false) and not jst_is_windows
+    core_test_domains += {
+        'application': core_test_domains['application'] + ['application/remote_stream.cc'],
+    }
+endif
+
 foreach domain, sources : core_test_domains
     # The sakura suite drives the node editor through imnodes internals
     # (editor context, node pool), which are not exported from the shared

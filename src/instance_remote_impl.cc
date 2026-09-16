@@ -952,6 +952,7 @@ Result Instance::Remote::Impl::startStream() {
             return fail();
     }
 
+    gst_app_src_set_caps(GST_APP_SRC(newSource), caps);
     g_object_set(elements["caps"], "caps", caps, nullptr);
     gst_caps_unref(caps);
 
@@ -1279,28 +1280,70 @@ Result Instance::Remote::Impl::startStream() {
         streaming = true;
     }
 
+    GstBus* bus = gst_element_get_bus(newPipeline);
+    busRunning = true;
+    try {
+        busThread = std::thread([this, newPipeline, bus]() {
+            while (busRunning) {
+                GstMessage* message = gst_bus_timed_pop(bus, 100 * GST_MSECOND);
+                if (!message) {
+                    continue;
+                }
+                switch (GST_MESSAGE_TYPE(message)) {
+                    case GST_MESSAGE_LATENCY: {
+                        std::lock_guard<std::mutex> lock(streamMutex);
+                        if (streaming) {
+                            gst_bin_recalculate_latency(GST_BIN(newPipeline));
+                        }
+                        break;
+                    }
+                    case GST_MESSAGE_ERROR:
+                    case GST_MESSAGE_WARNING: {
+                        GError* error = nullptr;
+                        gchar* debug = nullptr;
+                        const bool fatal = GST_MESSAGE_TYPE(message) == GST_MESSAGE_ERROR;
+                        if (fatal) {
+                            gst_message_parse_error(message, &error, &debug);
+                            JST_ERROR("[REMOTE] GStreamer '{}': {} ({})",
+                                      GST_OBJECT_NAME(GST_MESSAGE_SRC(message)), error->message, debug ? debug : "");
+                        } else {
+                            gst_message_parse_warning(message, &error, &debug);
+                            JST_WARN("[REMOTE] GStreamer '{}': {} ({})",
+                                     GST_OBJECT_NAME(GST_MESSAGE_SRC(message)), error->message, debug ? debug : "");
+                        }
+                        g_clear_error(&error);
+                        g_free(debug);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                gst_message_unref(message);
+            }
+            gst_object_unref(bus);
+        });
+    } catch (const std::exception& e) {
+        gst_object_unref(bus);
+        JST_ERROR("[REMOTE] Failed to start GStreamer bus thread: {}", e.what());
+        stopStream();
+        return Result::ERROR;
+    }
+
     return Result::SUCCESS;
 }
 
 Result Instance::Remote::Impl::stopStream() {
     JST_DEBUG("[REMOTE] Stopping stream.");
 
+    busRunning = false;
+    if (busThread.joinable()) {
+        busThread.join();
+    }
     destroyAllWebRtcSessions();
 
     if (pipeline) {
         std::lock_guard<std::mutex> lock(streamMutex);
-        const bool wasStreaming = streaming.exchange(false);
-
-        if (wasStreaming) {
-            gst_element_send_event(pipeline, gst_event_new_eos());
-
-            GstBus* bus = gst_element_get_bus(pipeline);
-            GstMessage* msg = gst_bus_timed_pop_filtered(bus, GST_SECOND, GST_MESSAGE_EOS);
-            if (msg) {
-                gst_message_unref(msg);
-            }
-            gst_object_unref(bus);
-        }
+        streaming = false;
 
         gst_element_set_state(pipeline, GST_STATE_NULL);
         gst_object_unref(pipeline);
@@ -1505,21 +1548,6 @@ Result Instance::Remote::Impl::createWebRtcSession(const std::string& sessionId,
         return fail();
     }
 
-    session->teeSrcPad = gst_element_request_pad_simple(tee, "src_%u");
-    GstPad* queueSinkPad = gst_element_get_static_pad(session->queue, "sink");
-    if (!session->teeSrcPad || !queueSinkPad) {
-        JST_ERROR("[REMOTE] Failed to create WebRTC tee link pads.");
-        if (queueSinkPad) gst_object_unref(queueSinkPad);
-        return fail();
-    }
-
-    const GstPadLinkReturn teeLinkReturn = gst_pad_link(session->teeSrcPad, queueSinkPad);
-    gst_object_unref(queueSinkPad);
-    if (teeLinkReturn != GST_PAD_LINK_OK) {
-        JST_ERROR("[REMOTE] Failed to link stream tee to WebRTC session queue.");
-        return fail();
-    }
-
     auto* context = new WebRtcSignalContext{this, sessionId};
     session->iceHandler = g_signal_connect_data(G_OBJECT(session->webrtc),
                                                 "on-ice-candidate",
@@ -1544,6 +1572,21 @@ Result Instance::Remote::Impl::createWebRtcSession(const std::string& sessionId,
         !gst_element_sync_state_with_parent(session->rtpCaps) ||
         !gst_element_sync_state_with_parent(session->webrtc)) {
         JST_ERROR("[REMOTE] Failed to start WebRTC session elements.");
+        return fail();
+    }
+
+    session->teeSrcPad = gst_element_request_pad_simple(tee, "src_%u");
+    GstPad* queueSinkPad = gst_element_get_static_pad(session->queue, "sink");
+    if (!session->teeSrcPad || !queueSinkPad) {
+        JST_ERROR("[REMOTE] Failed to create WebRTC tee link pads.");
+        if (queueSinkPad) gst_object_unref(queueSinkPad);
+        return fail();
+    }
+
+    const GstPadLinkReturn teeLinkReturn = gst_pad_link(session->teeSrcPad, queueSinkPad);
+    gst_object_unref(queueSinkPad);
+    if (teeLinkReturn != GST_PAD_LINK_OK) {
+        JST_ERROR("[REMOTE] Failed to link stream tee to WebRTC session queue.");
         return fail();
     }
 
@@ -1582,11 +1625,6 @@ void Instance::Remote::Impl::destroyWebRtcSession(const std::string& sessionId) 
         }
     }
 
-    if (session->queue) gst_element_set_state(session->queue, GST_STATE_NULL);
-    if (session->payloader) gst_element_set_state(session->payloader, GST_STATE_NULL);
-    if (session->rtpCaps) gst_element_set_state(session->rtpCaps, GST_STATE_NULL);
-    if (session->webrtc) gst_element_set_state(session->webrtc, GST_STATE_NULL);
-
     if (session->teeSrcPad) {
         GstPad* queueSinkPad = session->queue ? gst_element_get_static_pad(session->queue, "sink") : nullptr;
         if (queueSinkPad) {
@@ -1599,6 +1637,11 @@ void Instance::Remote::Impl::destroyWebRtcSession(const std::string& sessionId) 
         gst_object_unref(session->teeSrcPad);
         session->teeSrcPad = nullptr;
     }
+
+    if (session->queue) gst_element_set_state(session->queue, GST_STATE_NULL);
+    if (session->payloader) gst_element_set_state(session->payloader, GST_STATE_NULL);
+    if (session->rtpCaps) gst_element_set_state(session->rtpCaps, GST_STATE_NULL);
+    if (session->webrtc) gst_element_set_state(session->webrtc, GST_STATE_NULL);
 
     if (session->webrtcSinkPad) {
         if (session->webrtc) {

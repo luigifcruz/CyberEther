@@ -87,6 +87,8 @@ struct Instance::Remote::Impl {
     GstElement* source = nullptr;
     GstElement* encoder = nullptr;
     GstElement* tee = nullptr;
+    std::thread busThread;
+    std::atomic<bool> busRunning = false;
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
     GstCudaContext* gstCudaContext = nullptr;
