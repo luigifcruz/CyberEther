@@ -109,7 +109,7 @@ jobs:
             -Dexamples=false `
             -Dremote=enabled `
             build
-          meson compile -C build
+          meson compile -C build cyberether jetstream-core-tests jetstream-modules-tests
 
           New-Item -ItemType Directory -Force -Path .dist/artifacts | Out-Null
           tar -C build -czf .dist/artifacts/cyberether-windows-x86_64.tar.gz cyberether.exe jetstream.dll

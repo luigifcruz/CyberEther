@@ -69,7 +69,7 @@ jobs:
             -Dbuildtype=release \
             -Dexamples=false \
             -Dremote=enabled
-          meson compile -C build
+          meson compile -C build cyberether jetstream-core-tests jetstream-modules-tests
 
       - name: Validate binary
         run: |
