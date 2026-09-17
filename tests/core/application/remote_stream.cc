@@ -3,6 +3,10 @@
 
 #include "../../../src/instance_remote_impl.hh"
 
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+#include "jetstream/backend/base.hh"
+#endif
+
 #include <gst/app/gstappsink.h>
 #include <gst/rtp/gstrtcpbuffer.h>
 
@@ -235,3 +239,51 @@ TEST_CASE("Remote pipeline can stop and restart on the same instance",
         stream.stop();
     }
 }
+
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+TEST_CASE("Remote NVENC shares the input CUDA context across stream restarts",
+          "[core][application][remote][stream][cuda]") {
+    gst_init(nullptr, nullptr);
+    gst_init_static_plugins();
+    GstElementFactory* factory = gst_element_factory_find("nvh264enc");
+    if (!factory) {
+        SKIP("NVENC is unavailable");
+    }
+    gst_object_unref(factory);
+    if (!Backend::State<DeviceType::CUDA>()->isAvailable()) {
+        SKIP("CUDA is unavailable");
+    }
+
+    Stream stream;
+    auto& remote = stream.remote;
+    remote.size = {320, 240};
+    remote.config.codec = Instance::Remote::CodecType::H264;
+    remote.inputMemoryDevice_ = DeviceType::CUDA;
+    remote.encodingStrategy = Instance::Remote::Impl::EncodingStrategyType::HardwareNVENC;
+    for (unsigned i = 0; i < 2; ++i) {
+        CAPTURE(i);
+        REQUIRE(remote.startStream() == Result::SUCCESS);
+        GstPad* input = gst_element_get_static_pad(remote.encoder, "sink");
+        REQUIRE(input);
+        GstQuery* query = gst_query_new_context(GST_CUDA_CONTEXT_TYPE);
+        const bool queried = gst_pad_query(input, query);
+        GstCudaContext* encoderContext = nullptr;
+        if (queried) {
+            GstContext* context = nullptr;
+            gst_query_parse_context(query, &context);
+            if (context) {
+                gst_structure_get(gst_context_get_structure(context), GST_CUDA_CONTEXT_TYPE,
+                                  GST_TYPE_CUDA_CONTEXT, &encoderContext, nullptr);
+            }
+        }
+        // Query NVENC's active context, rather than just its stored element property.
+        const bool shared = encoderContext && encoderContext == remote.gstCudaContext;
+        gst_clear_object(&encoderContext);
+        gst_query_unref(query);
+        gst_object_unref(input);
+        CHECK(queried);
+        CHECK(shared);
+        REQUIRE(remote.stopStream() == Result::SUCCESS);
+    }
+}
+#endif

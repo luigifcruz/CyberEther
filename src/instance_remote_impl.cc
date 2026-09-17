@@ -1252,6 +1252,14 @@ Result Instance::Remote::Impl::startStream() {
         lastElement = name;
     }
 
+#ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
+    if (newGstCudaContext) {
+        GstContext* context = gst_context_new_cuda_context(newGstCudaContext);
+        gst_element_set_context(newPipeline, context);
+        gst_context_unref(context);
+    }
+#endif
+
     // Set pipeline state to playing.
 
     if (gst_element_set_state(newPipeline, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) {
