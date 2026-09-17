@@ -2285,6 +2285,7 @@ Result Instance::Remote::Impl::pushNewFrame(const void* data) {
         }
     }
 
+    Result result = Result::SUCCESS;
     {
         std::lock_guard<std::mutex> lock(streamMutex);
 
@@ -2370,7 +2371,7 @@ Result Instance::Remote::Impl::pushNewFrame(const void* data) {
 
         if (gst_app_src_push_buffer(GST_APP_SRC(source), buffer) != GST_FLOW_OK) {
             JST_ERROR("[REMOTE] Failed to push buffer to gstreamer pipeline.");
-            return Result::ERROR;
+            result = Result::ERROR;
         }
     }
 
@@ -2380,7 +2381,7 @@ Result Instance::Remote::Impl::pushNewFrame(const void* data) {
         bufferProcessed = false;
     }
 
-    return Result::SUCCESS;
+    return result;
 }
 
 //

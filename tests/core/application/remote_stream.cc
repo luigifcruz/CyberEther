@@ -10,6 +10,7 @@
 #endif
 
 #include <gst/app/gstappsink.h>
+#include <gst/app/gstappsrc.h>
 #include <gst/rtp/gstrtcpbuffer.h>
 #include <gst/video/video-info.h>
 
@@ -594,6 +595,46 @@ TEST_CASE("Remote pipeline services its bus and sends RTCP sender reports",
     const bool drained = WaitFor([&] { return !gst_bus_have_pending(bus); });
     gst_object_unref(bus);
     REQUIRE(drained);
+}
+
+TEST_CASE("Rejected remote submissions cannot release a later frame prematurely",
+          "[core][application][remote][stream][buffer]") {
+    const bool flushing = GENERATE(false, true);
+    CAPTURE(flushing);
+    std::atomic<bool> returned = false;
+    Result submitted = Result::ERROR;
+    Stream stream;
+    stream.start(false);
+    auto& remote = stream.remote;
+    REQUIRE(remote.createWebRtcSession("viewer", "loopback") == Result::SUCCESS);
+    if (flushing) {
+        REQUIRE(gst_element_set_state(remote.source, GST_STATE_READY) != GST_STATE_CHANGE_FAILURE);
+    } else {
+        REQUIRE(gst_app_src_end_of_stream(GST_APP_SRC(remote.source)) == GST_FLOW_OK);
+    }
+    REQUIRE(remote.pushNewFrame(stream.frame.data()) == Result::ERROR);
+    stream.stop();
+    stream.start(false);
+    REQUIRE(remote.createWebRtcSession("viewer", "loopback") == Result::SUCCESS);
+
+    PadProbe block{gst_element_get_static_pad(remote.source, "src")};
+    block.id = gst_pad_add_probe(block.pad,
+        GstPadProbeType(GST_PAD_PROBE_TYPE_BLOCK | GST_PAD_PROBE_TYPE_BUFFER),
+        +[](GstPad*, GstPadProbeInfo*, gpointer) { return GST_PAD_PROBE_OK; },
+        nullptr, nullptr);
+    stream.producer = std::thread([&] {
+        submitted = remote.pushNewFrame(stream.frame.data());
+        returned = true;
+    });
+    const bool held = WaitFor([&] { return gst_pad_is_blocking(block.pad); });
+    const bool returnedEarly = WaitFor([&] { return returned.load(); }, 100ms);
+    block.remove();
+    const bool released = WaitFor([&] { return returned.load(); });
+    stream.stop();
+    CHECK(held);
+    CHECK_FALSE(returnedEarly);
+    CHECK(released);
+    CHECK(submitted == Result::SUCCESS);
 }
 
 TEST_CASE("Remote pipeline can stop and restart on the same instance",
