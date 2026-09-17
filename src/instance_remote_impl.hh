@@ -167,6 +167,7 @@ struct Instance::Remote::Impl {
 
     struct RemoteInputState {
         std::unordered_set<ImGuiKey> keys;
+        std::unordered_set<int> mouseButtons;
         bool alt = false;
         bool ctrl = false;
         bool shift = false;
@@ -174,6 +175,7 @@ struct Instance::Remote::Impl {
     };
 
     std::mutex inputMutex;
+    std::deque<std::string> inputSessionOrder;
     std::deque<QueuedInput> inputQueue;
     std::unordered_map<std::string, RemoteInputState> remoteInputStates;
     std::unordered_set<ImGuiKey> appliedRemoteKeys;

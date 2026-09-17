@@ -183,7 +183,143 @@ struct Peer {
     }
 };
 
+struct InputContext {
+    ImGuiContext* context = ImGui::CreateContext();
+
+    InputContext() {
+        auto& io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+        io.DisplaySize = {320.0f, 240.0f};
+        io.ConfigInputTrickleEventQueue = false;
+        io.Fonts->AddFontDefault();
+    }
+
+    ~InputContext() { ImGui::DestroyContext(context); }
+
+    template<typename Check>
+    void frame(Instance::Remote::Impl& remote, Check check) {
+        REQUIRE(remote.processInput() == Result::SUCCESS);
+        ImGui::NewFrame();
+        check(ImGui::GetIO());
+        ImGui::EndFrame();
+    }
+};
+
+void SendInput(Instance::Remote::Impl& remote, const std::string& sessionId, const nlohmann::json& input) {
+    Instance::Remote::Impl::ControlChannelContext context{&remote, sessionId};
+    auto payload = input.dump();
+    Instance::Remote::Impl::onMessageCallback(nullptr, payload.data(), &context);
+}
+
 }  // namespace
+
+TEST_CASE("Only the first remote consumer can control the interface",
+          "[core][application][remote][input]") {
+    const std::string sender = GENERATE("z-first", "a-second", "unknown");
+    const bool controls = sender == "z-first";
+    const bool macOS = GENERATE(false, true);
+    InputContext input;
+    ImGui::GetIO().ConfigMacOSXBehaviors = macOS;
+    Stream stream;
+    stream.start();
+    auto& remote = stream.remote;
+    REQUIRE(remote.createWebRtcSession("z-first", "first") == Result::SUCCESS);
+    REQUIRE(remote.createWebRtcSession("a-second", "second") == Result::SUCCESS);
+
+    SendInput(remote, sender, {{"kind", "keyboard"}, {"action", "down"}, {"code", "KeyA"}, {"ctrlKey", true}});
+    SendInput(remote, sender, {{"kind", "mouse"}, {"act", "down"}, {"button", 0}, {"x", 0.5}, {"y", 0.5}});
+    SendInput(remote, sender, {{"kind", "wheel"}, {"deltaY", -100}});
+    SendInput(remote, sender, {{"kind", "text"}, {"text", "x"}});
+    input.frame(remote, [&](const ImGuiIO& io) {
+        CHECK(ImGui::IsKeyDown(ImGuiKey_A) == controls);
+        // ImGui swaps Ctrl/Super and maps Ctrl+left click to right click on macOS.
+        CHECK(io.KeyCtrl == (controls && !macOS));
+        CHECK(io.KeySuper == (controls && macOS));
+        CHECK(io.MouseDown[0] == (controls && !macOS));
+        CHECK(io.MouseDown[1] == (controls && macOS));
+        CHECK(io.MouseWheel == (controls ? 1.0f : 0.0f));
+        CHECK(io.InputQueueCharacters.Size == (controls ? 1 : 0));
+        CHECK((io.MousePos.x == 160.0f) == controls);
+    });
+
+    Instance::Remote::Impl::ControlChannelContext context{&remote, sender};
+    Instance::Remote::Impl::onChannelClosedCallback(nullptr, &context);
+    input.frame(remote, [](const ImGuiIO& io) {
+        CHECK_FALSE(ImGui::IsKeyDown(ImGuiKey_A));
+        CHECK_FALSE(io.KeyCtrl);
+        CHECK_FALSE(io.KeySuper);
+        CHECK_FALSE(io.MouseDown[0]);
+        CHECK_FALSE(io.MouseDown[1]);
+    });
+}
+
+TEST_CASE("Remote control follows connection order and releases input on handoff",
+          "[core][application][remote][input]") {
+    InputContext input;
+    Stream stream;
+    stream.start();
+    auto& remote = stream.remote;
+    REQUIRE(remote.createWebRtcSession("z-first", "first") == Result::SUCCESS);
+    REQUIRE(remote.createWebRtcSession("m-second", "second") == Result::SUCCESS);
+    REQUIRE(remote.createWebRtcSession("a-third", "third") == Result::SUCCESS);
+    // Duplicate start messages must not create another position in the queue.
+    REQUIRE(remote.createWebRtcSession("z-first", "first") == Result::SUCCESS);
+
+    SendInput(remote, "z-first", {{"kind", "keyboard"}, {"action", "down"}, {"code", "KeyA"}, {"shiftKey", true}});
+    SendInput(remote, "z-first", {{"kind", "mouse"}, {"act", "down"}, {"button", 0}, {"x", 0.5}, {"y", 0.5}});
+    input.frame(remote, [](const ImGuiIO& io) {
+        CHECK(ImGui::IsKeyDown(ImGuiKey_A));
+        CHECK(io.KeyShift);
+        CHECK(io.MouseDown[0]);
+    });
+
+    // Already queued input from the departed controller and spectator input
+    // received before promotion must not be applied after handoff.
+    SendInput(remote, "z-first", {{"kind", "text"}, {"text", "stale"}});
+    SendInput(remote, "z-first", {{"kind", "mouse"}, {"act", "move"}, {"x", 0.0}, {"y", 0.0}});
+    SendInput(remote, "m-second", {{"kind", "text"}, {"text", "early"}});
+    remote.destroyWebRtcSession("z-first");
+    SendInput(remote, "z-first", {{"kind", "text"}, {"text", "late"}});
+    SendInput(remote, "a-third", {{"kind", "text"}, {"text", "viewer"}});
+    SendInput(remote, "m-second", {{"kind", "keyboard"}, {"action", "down"}, {"code", "KeyB"}});
+    SendInput(remote, "m-second", {{"kind", "text"}, {"text", "b"}});
+    input.frame(remote, [](const ImGuiIO& io) {
+        CHECK_FALSE(ImGui::IsKeyDown(ImGuiKey_A));
+        CHECK(ImGui::IsKeyDown(ImGuiKey_B));
+        CHECK_FALSE(io.KeyShift);
+        CHECK_FALSE(io.MouseDown[0]);
+        CHECK(io.MousePos.x == 160.0f);
+        CHECK(io.InputQueueCharacters.Size == 1);
+        if (io.InputQueueCharacters.Size == 1) CHECK(io.InputQueueCharacters[0] == 'b');
+    });
+
+    // A reconnect joins at the back, even if it was the original controller.
+    REQUIRE(remote.createWebRtcSession("z-first", "first") == Result::SUCCESS);
+    remote.destroyWebRtcSession("m-second");
+    SendInput(remote, "z-first", {{"kind", "text"}, {"text", "reconnected"}});
+    SendInput(remote, "a-third", {{"kind", "text"}, {"text", "c"}});
+    input.frame(remote, [](const ImGuiIO& io) {
+        CHECK_FALSE(ImGui::IsKeyDown(ImGuiKey_B));
+        CHECK(io.InputQueueCharacters.Size == 1);
+        if (io.InputQueueCharacters.Size == 1) CHECK(io.InputQueueCharacters[0] == 'c');
+    });
+
+    // Removing a spectator cannot release the controller's held input.
+    SendInput(remote, "a-third", {{"kind", "mouse"}, {"act", "down"}, {"button", 0}});
+    remote.destroyWebRtcSession("z-first");
+    input.frame(remote, [](const ImGuiIO& io) { CHECK(io.MouseDown[0]); });
+
+    stream.stop();
+    stream.start();
+    REQUIRE(remote.createWebRtcSession("new-first", "new") == Result::SUCCESS);
+    SendInput(remote, "new-first", {{"kind", "text"}, {"text", "d"}});
+    input.frame(remote, [](const ImGuiIO& io) {
+        CHECK_FALSE(io.MouseDown[0]);
+        CHECK(io.InputQueueCharacters.Size == 1);
+        if (io.InputQueueCharacters.Size == 1) CHECK(io.InputQueueCharacters[0] == 'd');
+    });
+}
 
 TEST_CASE("Remote capture honors the configured frame rate without catch-up bursts",
           "[core][application][remote][capture]") {

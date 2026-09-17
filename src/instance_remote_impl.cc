@@ -209,8 +209,10 @@ Result Instance::Remote::Impl::rollbackCreate() {
         std::lock_guard<std::mutex> lock(inputMutex);
         inputQueue.clear();
     }
-    if (!remoteInputStates.empty() || !appliedRemoteKeys.empty()) {
-        remoteInputStates.clear();
+    while (!remoteInputStates.empty()) {
+        resetInput(remoteInputStates.begin()->first);
+    }
+    if (!appliedRemoteKeys.empty()) {
         synchronizeKeyboardState();
     }
 
@@ -566,6 +568,11 @@ Result Instance::Remote::Impl::checkGstreamerPlugins(const std::vector<std::stri
 void Instance::Remote::Impl::handleInput(const std::string& sessionId,
                                          const std::string& kind,
                                          const nlohmann::json& j) {
+    std::lock_guard<std::mutex> lock(inputMutex);
+    if (inputSessionOrder.empty() || inputSessionOrder.front() != sessionId) {
+        return;
+    }
+
     auto mapMouseButton = [](int domButton) -> int {
         switch (domButton) {
             case 0: return 0;
@@ -656,16 +663,21 @@ void Instance::Remote::Impl::handleInput(const std::string& sessionId,
         if (act == "down" || act == "up" || act == "click" || act == "dblclick") {
             const int domButton = j.value("button", 0);
             const int b = mapMouseButton(domButton);
+            if (b < 0 || b >= ImGuiMouseButton_COUNT) {
+                return;
+            }
 
             io.AddMousePosEvent(px, py);
 
             if (act == "down") {
                 JST_TRACE("[REMOTE] Mouse: down (b='{}', x='{}', y='{}')", b, px, py);
+                remoteInputStates[sessionId].mouseButtons.insert(b);
                 io.AddMouseButtonEvent(b, true);
                 return;
             }
             if (act == "up") {
                 JST_TRACE("[REMOTE] Mouse: up b={}, x={}, y={}", b, px, py);
+                remoteInputStates[sessionId].mouseButtons.erase(b);
                 io.AddMouseButtonEvent(b, false);
                 return;
             }
@@ -746,6 +758,9 @@ void Instance::Remote::Impl::handleInput(const std::string& sessionId,
 
 void Instance::Remote::Impl::enqueueInput(std::string sessionId, nlohmann::json payload) {
     std::lock_guard<std::mutex> lock(inputMutex);
+    if (inputSessionOrder.empty() || inputSessionOrder.front() != sessionId) {
+        return;
+    }
     inputQueue.push_back({std::move(sessionId), std::move(payload), false});
 }
 
@@ -755,7 +770,14 @@ void Instance::Remote::Impl::enqueueInputReset(const std::string& sessionId) {
 }
 
 void Instance::Remote::Impl::resetInput(const std::string& sessionId) {
-    remoteInputStates.erase(sessionId);
+    const auto it = remoteInputStates.find(sessionId);
+    if (it == remoteInputStates.end()) {
+        return;
+    }
+    for (const int button : it->second.mouseButtons) {
+        ImGui::GetIO().AddMouseButtonEvent(button, false);
+    }
+    remoteInputStates.erase(it);
     synchronizeKeyboardState();
 }
 
@@ -1607,6 +1629,10 @@ Result Instance::Remote::Impl::createWebRtcSession(const std::string& sessionId,
     }
 
     sessions[sessionId] = std::move(session);
+    {
+        std::lock_guard<std::mutex> inputLock(inputMutex);
+        inputSessionOrder.push_back(sessionId);
+    }
     forceKeyframe.store(true);
 
     return Result::SUCCESS;
@@ -1623,10 +1649,13 @@ void Instance::Remote::Impl::destroyWebRtcSession(const std::string& sessionId) 
 
         session = std::move(it->second);
         sessions.erase(it);
+
+        std::lock_guard<std::mutex> inputLock(inputMutex);
+        std::erase(inputSessionOrder, sessionId);
+        inputQueue.push_back({sessionId, {}, true});
     }
 
     JST_INFO("[REMOTE] Destroying WebRTC session '{}' with peer '{}'.", session->sessionId, session->peerId);
-    enqueueInputReset(sessionId);
 
     std::lock_guard<std::mutex> streamLock(streamMutex);
 
