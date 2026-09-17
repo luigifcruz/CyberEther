@@ -1354,8 +1354,21 @@ Result Instance::Remote::Impl::startStream() {
                         const bool fatal = GST_MESSAGE_TYPE(message) == GST_MESSAGE_ERROR;
                         if (fatal) {
                             gst_message_parse_error(message, &error, &debug);
-                            JST_ERROR("[REMOTE] GStreamer '{}': {} ({})",
-                                      GST_OBJECT_NAME(GST_MESSAGE_SRC(message)), error->message, debug ? debug : "");
+                            GstObject* source = GST_MESSAGE_SRC(message);
+                            GstElementFactory* factory = GST_IS_ELEMENT(source)
+                                ? gst_element_get_factory(GST_ELEMENT(source)) : nullptr;
+                            const bool sctpDisconnect = factory &&
+                                g_strcmp0(GST_OBJECT_NAME(factory), "sctpenc") == 0 &&
+                                g_error_matches(error, GST_RESOURCE_ERROR, GST_RESOURCE_ERROR_WRITE) &&
+                                debug && std::string_view(debug).find("SCTP association went into error state") != std::string_view::npos;
+                            if (sctpDisconnect) {
+                                JST_WARN("[REMOTE] WebRTC data channel disconnected ({}).", GST_OBJECT_NAME(source));
+                                JST_DEBUG("[REMOTE] GStreamer '{}': {} ({})",
+                                          GST_OBJECT_NAME(source), error->message, debug);
+                            } else {
+                                JST_ERROR("[REMOTE] GStreamer '{}': {} ({})",
+                                          GST_OBJECT_NAME(source), error->message, debug ? debug : "");
+                            }
                         } else {
                             gst_message_parse_warning(message, &error, &debug);
                             JST_WARN("[REMOTE] GStreamer '{}': {} ({})",
