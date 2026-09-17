@@ -20,7 +20,7 @@ extern "C" void gst_init_static_plugins();
 namespace {
 
 template<typename Predicate>
-bool WaitFor(Predicate predicate, std::chrono::seconds timeout = 3s) {
+bool WaitFor(Predicate predicate, std::chrono::milliseconds timeout = 3s) {
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     while (!predicate() && std::chrono::steady_clock::now() < deadline) {
         std::this_thread::sleep_for(5ms);
@@ -34,7 +34,7 @@ struct Stream {
     std::atomic<bool> running = false;
     std::thread producer;
 
-    void start() {
+    void start(bool produceFrames = true) {
         gst_init(nullptr, nullptr);
         gst_init_static_plugins();
         remote.size = {320, 240};
@@ -42,6 +42,10 @@ struct Stream {
         remote.inputMemoryDevice_ = DeviceType::CPU;
         remote.encodingStrategy = Instance::Remote::Impl::EncodingStrategyType::Software;
         REQUIRE(remote.startStream() == Result::SUCCESS);
+        if (produceFrames) startFrames();
+    }
+
+    void startFrames() {
         running = true;
         producer = std::thread([this] {
             while (running) {
@@ -106,7 +110,7 @@ struct Peer {
 
     Peer(Stream& stream, std::string id) : remote(stream.remote), id(std::move(id)) {}
 
-    void connect() {
+    void prepare() {
         REQUIRE(remote.createWebRtcSession(id, "loopback") == Result::SUCCESS);
         auto& session = *remote.sessions.at(id);
         sender = GST_ELEMENT(gst_object_ref(session.webrtc));
@@ -145,6 +149,10 @@ struct Peer {
         senderIce = g_signal_connect(sender, "on-ice-candidate", G_CALLBACK(ice), receiver);
         receiverIce = g_signal_connect(receiver, "on-ice-candidate", G_CALLBACK(ice), sender);
         REQUIRE(gst_element_set_state(pipeline, GST_STATE_PLAYING) != GST_STATE_CHANGE_FAILURE);
+    }
+
+    void connect() {
+        prepare();
         remote.createControlChannel(id);
         Negotiate(sender, receiver, true);
         Negotiate(receiver, sender, false);
@@ -356,6 +364,75 @@ TEST_CASE("Remote capture honors the configured frame rate without catch-up burs
     CHECK(counter->frames == before + 1);
     REQUIRE(remote.captureFrame(resumed + std::chrono::nanoseconds(GST_SECOND / captureFps)) == Result::SUCCESS);
     CHECK(counter->frames == before + 2);
+}
+
+TEST_CASE("Remote offers wait for encoded H264 caps and advertise the actual profile and level",
+          "[core][application][remote][stream][caps]") {
+    const bool capsFirst = GENERATE(false, true);
+    CAPTURE(capsFirst);
+    Stream stream;
+    stream.start(false);
+    auto& remote = stream.remote;
+
+    // Disconnecting while waiting for the first frame must cancel that offer,
+    // including when a subsequent session reuses the same identifier.
+    remote.handleStartSession({{"sessionId", "viewer"}, {"peerId", "cancelled"}});
+    remote.destroyWebRtcSession("viewer");
+
+    Peer viewer(stream, "viewer");
+    viewer.prepare();
+    auto& session = *remote.sessions.at(viewer.id);
+    std::unique_ptr<GstCaps, decltype(&gst_caps_unref)> caps(nullptr, gst_caps_unref);
+    const auto readCaps = [&] {
+        caps.reset(gst_pad_get_current_caps(session.webrtcSinkPad));
+        return caps != nullptr;
+    };
+    std::unique_ptr<GstWebRTCSessionDescription, decltype(&gst_webrtc_session_description_free)>
+        offer(nullptr, gst_webrtc_session_description_free);
+    const auto readOffer = [&] {
+        GstWebRTCSessionDescription* desc = nullptr;
+        g_object_get(viewer.sender, "local-description", &desc, nullptr);
+        offer.reset(desc);
+        return offer != nullptr;
+    };
+
+    if (capsFirst) {
+        stream.startFrames();
+        REQUIRE(WaitFor(readCaps));
+        CHECK_FALSE(WaitFor(readOffer, 100ms));
+    }
+    remote.handleStartSession({{"sessionId", viewer.id}, {"peerId", "loopback"}});
+    if (!capsFirst) {
+        CHECK_FALSE(WaitFor(readOffer, 100ms));
+        CHECK_FALSE(readCaps());
+        stream.startFrames();
+    }
+
+    REQUIRE(WaitFor(readOffer));
+    REQUIRE(offer->type == GST_WEBRTC_SDP_TYPE_OFFER);
+    REQUIRE(WaitFor(readCaps));
+    const char* profile = gst_structure_get_string(gst_caps_get_structure(caps.get(), 0),
+                                                   "profile-level-id");
+    REQUIRE(profile);
+    bool video = false;
+    bool control = false;
+    for (guint i = 0; i < gst_sdp_message_medias_len(offer->sdp); ++i) {
+        const GstSDPMedia* media = gst_sdp_message_get_media(offer->sdp, i);
+        const std::string kind = gst_sdp_media_get_media(media);
+        if (kind == "video") {
+            video = true;
+            const char* fmtp = gst_sdp_media_get_attribute_val(media, "fmtp");
+            REQUIRE(fmtp);
+            CHECK(std::string(fmtp).find(std::string("profile-level-id=") + profile) != std::string::npos);
+        }
+        if (kind == "application") control = true;
+    }
+    CHECK(video);
+    CHECK(control);
+
+    SetDescription(viewer.receiver, "set-remote-description", offer.get());
+    Negotiate(viewer.receiver, viewer.sender, false);
+    REQUIRE(WaitFor([&] { return viewer.packets >= 20; }));
 }
 
 TEST_CASE("Remote RTP delivery survives reconnects while other viewers keep receiving",

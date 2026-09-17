@@ -1606,6 +1606,16 @@ Result Instance::Remote::Impl::createWebRtcSession(const std::string& sessionId,
                                                     },
                                                     GConnectFlags(0));
 
+    auto* negotiationContext = new WebRtcSignalContext{this, sessionId};
+    session->negotiationHandler = g_signal_connect_data(G_OBJECT(session->webrtc),
+                                                        "on-negotiation-needed",
+                                                        G_CALLBACK(onNegotiationNeededCallback),
+                                                        negotiationContext,
+                                                        [](gpointer data, GClosure*) {
+                                                            delete reinterpret_cast<WebRtcSignalContext*>(data);
+                                                        },
+                                                        GConnectFlags(0));
+
     if (!gst_element_sync_state_with_parent(session->payloader) ||
         !gst_element_sync_state_with_parent(session->rtpCaps) ||
         !gst_element_sync_state_with_parent(session->webrtc)) {
@@ -1667,6 +1677,10 @@ void Instance::Remote::Impl::destroyWebRtcSession(const std::string& sessionId) 
         if (session->channelHandler) {
             g_signal_handler_disconnect(G_OBJECT(session->webrtc), session->channelHandler);
             session->channelHandler = 0;
+        }
+        if (session->negotiationHandler) {
+            g_signal_handler_disconnect(G_OBJECT(session->webrtc), session->negotiationHandler);
+            session->negotiationHandler = 0;
         }
     }
 
@@ -1902,16 +1916,34 @@ void Instance::Remote::Impl::handleStartSession(const nlohmann::json& j) {
 
     createControlChannel(sessionId);
 
+    {
+        std::lock_guard<std::mutex> lock(sessionsMutex);
+        const auto it = sessions.find(sessionId);
+        if (it == sessions.end()) {
+            return;
+        }
+        it->second->offerPending = true;
+    }
+    createOfferIfReady(sessionId);
+}
+
+void Instance::Remote::Impl::createOfferIfReady(const std::string& sessionId) {
+    GstElement* sessionWebrtc = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(sessionsMutex);
+        const auto it = sessions.find(sessionId);
+        if (it == sessions.end() || !it->second->offerPending ||
+            !it->second->negotiationReady) {
+            return;
+        }
+        it->second->offerPending = false;
+        sessionWebrtc = GST_ELEMENT(gst_object_ref(it->second->webrtc));
+    }
+
     auto* context = new WebRtcPromiseContext{this, sessionId};
     GstPromise* promise = gst_promise_new_with_change_func(onOfferCreatedCallback, context, [](gpointer data) {
         delete reinterpret_cast<WebRtcPromiseContext*>(data);
     });
-
-    GstElement* sessionWebrtc = refSessionWebrtc(sessionId);
-    if (!sessionWebrtc) {
-        gst_promise_unref(promise);
-        return;
-    }
 
     g_signal_emit_by_name(G_OBJECT(sessionWebrtc), "create-offer", nullptr, promise);
     gst_object_unref(sessionWebrtc);
@@ -2133,6 +2165,19 @@ void Instance::Remote::Impl::onIceCandidateCallback(GstElement* self,
     (void)self;
     auto* context = reinterpret_cast<WebRtcSignalContext*>(user_data);
     context->impl->sendIceCandidate(context->sessionId, mlineIndex, candidate);
+}
+
+void Instance::Remote::Impl::onNegotiationNeededCallback(GstElement* self, gpointer user_data) {
+    auto* context = reinterpret_cast<WebRtcSignalContext*>(user_data);
+    {
+        std::lock_guard<std::mutex> lock(context->impl->sessionsMutex);
+        const auto it = context->impl->sessions.find(context->sessionId);
+        if (it == context->impl->sessions.end() || it->second->webrtc != self) {
+            return;
+        }
+        it->second->negotiationReady = true;
+    }
+    context->impl->createOfferIfReady(context->sessionId);
 }
 
 void Instance::Remote::Impl::onOfferCreatedCallback(GstPromise* promise, gpointer user_data) {

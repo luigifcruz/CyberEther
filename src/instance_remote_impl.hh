@@ -110,6 +110,9 @@ struct Instance::Remote::Impl {
         GstPad* webrtcSinkPad = nullptr;
         gulong iceHandler = 0;
         gulong channelHandler = 0;
+        gulong negotiationHandler = 0;
+        bool negotiationReady = false;
+        bool offerPending = false;
     };
 
     struct WebRtcSignalContext {
@@ -147,6 +150,7 @@ struct Instance::Remote::Impl {
     void signallerLoop();
     void handleSignallerMessage(const std::string& payload);
     void handleStartSession(const nlohmann::json& j);
+    void createOfferIfReady(const std::string& sessionId);
     void handlePeerMessage(const nlohmann::json& j);
     void handleEndSession(const nlohmann::json& j);
     bool sendSignallerMessage(const nlohmann::json& j);
@@ -190,6 +194,7 @@ struct Instance::Remote::Impl {
     static void onChannelClosedCallback(GstWebRTCDataChannel* self, gpointer user_data);
     static void onChannelCallback(GstElement* self, GstWebRTCDataChannel* channel, gpointer user_data);
     static void onIceCandidateCallback(GstElement* self, guint mlineIndex, gchar* candidate, gpointer user_data);
+    static void onNegotiationNeededCallback(GstElement* self, gpointer user_data);
     static void onOfferCreatedCallback(GstPromise* promise, gpointer user_data);
     static void onAnswerCreatedCallback(GstPromise* promise, gpointer user_data);
 
