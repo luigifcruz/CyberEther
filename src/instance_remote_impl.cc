@@ -2130,8 +2130,27 @@ Result Instance::Remote::Impl::applyRemoteDescription(const std::string& session
     GstWebRTCSessionDescription* desc = gst_webrtc_session_description_new(descType, sdp);
     GstPromise* promise = gst_promise_new();
     g_signal_emit_by_name(G_OBJECT(sessionWebrtc), "set-remote-description", desc, promise);
-    gst_promise_interrupt(promise);
+    const auto result = gst_promise_wait(promise);
+    GError* error = nullptr;
+    if (result == GST_PROMISE_RESULT_REPLIED) {
+        const GstStructure* reply = gst_promise_get_reply(promise);
+        if (reply) {
+            gst_structure_get(reply, "error", G_TYPE_ERROR, &error, nullptr);
+        }
+    }
+    const bool applied = result == GST_PROMISE_RESULT_REPLIED && !error;
+    if (!applied) {
+        JST_ERROR("[REMOTE] Failed to apply WebRTC {} for session '{}': {}",
+                  type, sessionId, error ? error->message : "GStreamer did not reply.");
+    }
+    g_clear_error(&error);
     gst_promise_unref(promise);
+    gst_webrtc_session_description_free(desc);
+
+    if (!applied) {
+        gst_object_unref(sessionWebrtc);
+        return Result::ERROR;
+    }
 
     if (descType == GST_WEBRTC_SDP_TYPE_OFFER) {
         auto* context = new WebRtcPromiseContext{this, sessionId};
@@ -2141,7 +2160,6 @@ Result Instance::Remote::Impl::applyRemoteDescription(const std::string& session
         g_signal_emit_by_name(G_OBJECT(sessionWebrtc), "create-answer", nullptr, answerPromise);
     }
 
-    gst_webrtc_session_description_free(desc);
     gst_object_unref(sessionWebrtc);
     return Result::SUCCESS;
 }

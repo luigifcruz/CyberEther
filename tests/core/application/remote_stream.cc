@@ -84,15 +84,20 @@ void SetDescription(GstElement* webrtc, const char* action, GstWebRTCSessionDesc
     REQUIRE(result == GST_PROMISE_RESULT_REPLIED);
 }
 
-void Negotiate(GstElement* from, GstElement* to, bool offer) {
+GstWebRTCSessionDescription* CreateDescription(GstElement* webrtc, bool offer) {
     GstPromise* promise = gst_promise_new();
-    g_signal_emit_by_name(from, offer ? "create-offer" : "create-answer", nullptr, promise);
+    g_signal_emit_by_name(webrtc, offer ? "create-offer" : "create-answer", nullptr, promise);
     REQUIRE(gst_promise_wait(promise) == GST_PROMISE_RESULT_REPLIED);
     GstWebRTCSessionDescription* desc = nullptr;
     gst_structure_get(gst_promise_get_reply(promise), offer ? "offer" : "answer",
                       GST_TYPE_WEBRTC_SESSION_DESCRIPTION, &desc, nullptr);
     gst_promise_unref(promise);
     REQUIRE(desc);
+    return desc;
+}
+
+void Negotiate(GstElement* from, GstElement* to, bool offer) {
+    GstWebRTCSessionDescription* desc = CreateDescription(from, offer);
     SetDescription(from, "set-local-description", desc);
     SetDescription(to, "set-remote-description", desc);
     gst_webrtc_session_description_free(desc);
@@ -495,6 +500,80 @@ TEST_CASE("Remote offers wait for encoded H264 caps and advertise the actual pro
     SetDescription(viewer.receiver, "set-remote-description", offer.get());
     Negotiate(viewer.receiver, viewer.sender, false);
     REQUIRE(WaitFor([&] { return viewer.packets >= 20; }));
+}
+
+TEST_CASE("Remote SDP validation closes rejected sessions and permits valid negotiations",
+          "[core][application][remote][stream][sdp]") {
+    const bool offer = GENERATE(false, true);
+    const bool valid = GENERATE(false, true);
+    CAPTURE(offer, valid);
+    Stream stream;
+    stream.start();
+    Peer observer(stream, "observer");
+    observer.connect();
+    REQUIRE(WaitFor([&] { return observer.packets >= 20; }));
+    Peer viewer(stream, "viewer");
+    viewer.prepare();
+    auto& remote = stream.remote;
+
+    if (offer) {
+        GstCaps* caps = gst_caps_from_string("application/x-rtp,media=video,encoding-name=H264,"
+                                             "payload=96,clock-rate=90000,packetization-mode=(string)1");
+        GstWebRTCRTPTransceiver* transceiver = nullptr;
+        g_signal_emit_by_name(viewer.receiver, "add-transceiver",
+                             GST_WEBRTC_RTP_TRANSCEIVER_DIRECTION_RECVONLY, caps, &transceiver);
+        gst_caps_unref(caps);
+        REQUIRE(transceiver);
+        gst_object_unref(transceiver);
+    } else {
+        remote.createControlChannel(viewer.id);
+        Negotiate(viewer.sender, viewer.receiver, true);
+    }
+
+    GstWebRTCSessionDescription* desc = CreateDescription(viewer.receiver, offer);
+    if (valid) {
+        SetDescription(viewer.receiver, "set-local-description", desc);
+    } else {
+        for (guint i = 0; i < gst_sdp_message_medias_len(desc->sdp); ++i) {
+            auto* media = const_cast<GstSDPMedia*>(gst_sdp_message_get_media(desc->sdp, i));
+            for (guint j = gst_sdp_media_attributes_len(media); j > 0; --j) {
+                if (std::string(gst_sdp_media_get_attribute(media, j - 1)->key) == "ice-pwd") {
+                    gst_sdp_media_remove_attribute(media, j - 1);
+                }
+            }
+        }
+    }
+    gchar* text = gst_sdp_message_as_text(desc->sdp);
+    const std::string sdp(text);
+    g_free(text);
+    gst_webrtc_session_description_free(desc);
+
+    if (!valid) {
+        CHECK(remote.applyRemoteDescription(viewer.id, offer ? "offer" : "answer", sdp) == Result::ERROR);
+    }
+    if (offer) {
+        remote.handleStartSession({{"sessionId", viewer.id}, {"peerId", "loopback"}, {"offer", sdp}});
+    } else {
+        remote.handlePeerMessage({{"sessionId", viewer.id}, {"sdp", {{"type", "answer"}, {"sdp", sdp}}}});
+    }
+    CHECK(remote.sessions.contains(viewer.id) == valid);
+
+    if (valid) {
+        if (offer) {
+            std::unique_ptr<GstWebRTCSessionDescription, decltype(&gst_webrtc_session_description_free)>
+                answer(nullptr, gst_webrtc_session_description_free);
+            REQUIRE(WaitFor([&] {
+                GstWebRTCSessionDescription* local = nullptr;
+                g_object_get(viewer.sender, "local-description", &local, nullptr);
+                answer.reset(local);
+                return answer && answer->type == GST_WEBRTC_SDP_TYPE_ANSWER;
+            }));
+            SetDescription(viewer.receiver, "set-remote-description", answer.get());
+        }
+        REQUIRE(WaitFor([&] { return viewer.packets >= 20; }));
+    }
+    const unsigned before = observer.packets;
+    REQUIRE(WaitFor([&] { return observer.packets >= before + 20; }));
 }
 
 TEST_CASE("Remote sessions can disconnect with video blocked on SDP negotiation",
