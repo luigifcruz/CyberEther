@@ -59,12 +59,48 @@ struct Stream {
 
     void stop() {
         running = false;
-        remote.stopStream();
+        remote.destroy();
         if (producer.joinable()) producer.join();
-        remote.destroyStream();
     }
 
     ~Stream() { stop(); }
+};
+
+struct Broker {
+    httplib::Server server;
+    std::thread listener;
+    std::string origin;
+    std::atomic<unsigned> rooms = 0;
+
+    Broker() {
+        server.WebSocket("/api/v1/remote/signaller", [this](const httplib::Request&, httplib::ws::WebSocket& ws) {
+            ws.send(R"({"type":"welcome","peerId":"producer"})");
+            std::string payload;
+            while (ws.read(payload) == httplib::ws::Text) {
+                const auto message = nlohmann::json::parse(payload);
+                if (message.value("type", "") == "disconnect") {
+                    ws.close();
+                    return;
+                }
+                if (message.value("type", "") == "createRoom") {
+                    const auto room = std::to_string(++rooms);
+                    ws.send(nlohmann::json{{"type", "roomCreated"}, {"roomId", room},
+                                          {"consumerToken", "token-" + room},
+                                          {"clientDomain", origin + "/remote"}}.dump());
+                    ws.send(R"({"type":"roomState","waiting":["waiting"],"active":["viewer"]})");
+                }
+            }
+        });
+        const int port = server.bind_to_any_port("127.0.0.1");
+        REQUIRE(port > 0);
+        origin = "http://127.0.0.1:" + std::to_string(port);
+        listener = std::thread([this] { server.listen_after_bind(); });
+    }
+
+    ~Broker() {
+        server.stop();
+        if (listener.joinable()) listener.join();
+    }
 };
 
 void Loopback(GstElement* webrtc) {
@@ -353,6 +389,65 @@ TEST_CASE("Remote control follows connection order and releases input on handoff
         CHECK(io.InputQueueCharacters.Size == 1);
         if (io.InputQueueCharacters.Size == 1) CHECK(io.InputQueueCharacters[0] == 'd');
     });
+}
+
+TEST_CASE("Broker disconnect stops remote streaming and releases its room and input state",
+          "[core][application][remote][broker]") {
+    InputContext input;
+    Broker broker;
+    REQUIRE(WaitFor([&] { return broker.server.is_running(); }));
+    Stream stream;
+    auto& remote = stream.remote;
+    gst_init(nullptr, nullptr);
+    gst_init_static_plugins();
+    remote.config.broker = broker.origin;
+    remote.size = {320, 240};
+
+    for (unsigned i = 1; i <= 2; ++i) {
+        CAPTURE(i);
+        remote.inputMemoryDevice_ = DeviceType::CPU;
+        remote.encodingStrategy = Instance::Remote::Impl::EncodingStrategyType::Software;
+        REQUIRE(remote.createBroker() == Result::SUCCESS);
+        remote.started_ = true;
+        REQUIRE(remote.roomId_ == std::to_string(i));
+        REQUIRE(WaitFor([&] {
+            std::lock_guard<std::mutex> lock(remote.remoteStateMutex);
+            return remote.clients_.size() == 1 && remote.waitlist_.size() == 1;
+        }));
+        REQUIRE(remote.createWebRtcSession("viewer", "loopback") == Result::SUCCESS);
+        SendInput(remote, "viewer", {{"kind", "keyboard"}, {"action", "down"},
+                                      {"code", "KeyA"}, {"shiftKey", true}});
+        SendInput(remote, "viewer", {{"kind", "mouse"}, {"act", "down"}, {"button", 0}});
+        input.frame(remote, [](const ImGuiIO& io) {
+            CHECK(ImGui::IsKeyDown(ImGuiKey_A));
+            CHECK(io.KeyShift);
+            CHECK(io.MouseDown[0]);
+        });
+        REQUIRE(remote.captureFrame() == Result::SUCCESS);
+        REQUIRE(remote.started_);
+        REQUIRE(remote.sendSignallerMessage({{"type", "disconnect"}}));
+        REQUIRE(WaitFor([&] { return !remote.signallerRunning; }));
+        REQUIRE(remote.captureFrame() == Result::SUCCESS);
+
+        CHECK_FALSE(remote.started_);
+        CHECK_FALSE(remote.streaming);
+        CHECK_FALSE(remote.pipeline);
+        CHECK_FALSE(remote.signallerClient);
+        CHECK_FALSE(remote.signallerThread.joinable());
+        CHECK(remote.sessions.empty());
+        CHECK(remote.roomId_.empty());
+        CHECK(remote.consumerToken.empty());
+        CHECK(remote.inviteUrl_.empty());
+        CHECK(remote.clients_.empty());
+        CHECK(remote.waitlist_.empty());
+        CHECK(remote.inputSessionOrder.empty());
+        input.frame(remote, [](const ImGuiIO& io) {
+            CHECK_FALSE(ImGui::IsKeyDown(ImGuiKey_A));
+            CHECK_FALSE(io.KeyShift);
+            CHECK_FALSE(io.MouseDown[0]);
+        });
+        REQUIRE(remote.destroy() == Result::SUCCESS);
+    }
 }
 
 TEST_CASE("Remote capture honors the configured frame rate without catch-up bursts",

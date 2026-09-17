@@ -246,6 +246,11 @@ Result Instance::Remote::Impl::rollbackCreate() {
 }
 
 Result Instance::Remote::Impl::captureFrame(std::chrono::steady_clock::time_point now) {
+    if (this->started_ && !this->signallerRunning) {
+        JST_WARN("[REMOTE] Stopping remote streaming after the signaller disconnected.");
+        return this->destroy();
+    }
+
     JST_CHECK(processInput());
     if (this->frameCapture && now >= this->nextCaptureTime) {
         const auto interval = std::chrono::nanoseconds(GST_SECOND / config.framerate);
