@@ -12,6 +12,8 @@
 #include "jetstream/instance.hh"
 #include "jetstream/platform.hh"
 
+#include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
@@ -28,6 +30,7 @@ struct FlowgraphActions {
     using Filter = std::tuple<MailNewFlowgraph,
                               MailOpenFlowgraph,
                               MailOpenFlowgraphPath,
+                              MailDropFlowgraphPath,
                               MailOpenFlowgraphBlob,
                               MailFocusFlowgraph,
                               MailSaveFlowgraph,
@@ -111,6 +114,22 @@ struct FlowgraphActions {
 
         state.interface.pendingFocusedFlowgraph = name;
         return Result::SUCCESS;
+    }
+
+    Result handle(const MailDropFlowgraphPath& msg) {
+        auto extension = Platform::PathToUtf8(
+            Platform::PathFromUtf8(msg.path).extension());
+        std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+
+        if (extension != ".yml" && extension != ".yaml") {
+            callbacks.notify(Sakura::ToastType::Warning, 5000,
+                             "Only flowgraph files (.yml or .yaml) can be opened by dropping them here.");
+            return Result::SUCCESS;
+        }
+
+        return handle(MailOpenFlowgraphPath{msg.path});
     }
 
     Result handle(const MailOpenFlowgraphBlob& msg) {

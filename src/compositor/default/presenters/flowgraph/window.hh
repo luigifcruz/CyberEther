@@ -71,6 +71,9 @@ struct FlowgraphWindowPresenter {
                     .flowgraph = flowgraphId,
                 });
             },
+            .onOpenExamples = [enqueue]() {
+                enqueue(MailOpenModal{.content = ModalContent::FlowgraphExamples});
+            },
         };
     }
 

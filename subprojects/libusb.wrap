@@ -8,6 +8,7 @@ patch_url = https://wrapdb.mesonbuild.com/v2/libusb_1.0.26-5/get_patch
 patch_hash = 6b107bcc552a531099c19181b327b8d62c2c73bdc4d488f85449d140d3e7eb9b
 source_fallback_url = https://github.com/mesonbuild/wrapdb/releases/download/libusb_1.0.26-5/libusb-1.0.26.tar.bz2
 wrapdb_version = 1.0.26-5
+diff_files = libusb/pipe2-availability.diff
 
 [provide]
 libusb-1.0 = libusb_dep

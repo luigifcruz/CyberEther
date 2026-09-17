@@ -1,0 +1,12 @@
+diff --git a/meson.build b/meson.build
+--- a/meson.build
++++ b/meson.build
+@@ -837,7 +837,7 @@
+ foreach f : functions
+-  if cc.has_function(f)
++  if cc.has_function(f, prefix : f == 'pipe2' ? '#define _GNU_SOURCE\n#include <unistd.h>' : '')
+     define = 'HAVE_' + f.underscorify().to_upper()
+     glib_conf.set(define, 1)
+     glib_conf_prefix = glib_conf_prefix + '#define @0@ 1\n'.format(define)
+     set_variable('have_func_' + f, true)
+   else
