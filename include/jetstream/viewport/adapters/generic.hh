@@ -7,6 +7,10 @@
 #include "jetstream/parser.hh"
 #include "jetstream/render/tools/imgui.h"
 
+#include <mutex>
+#include <string>
+#include <vector>
+
 namespace Jetstream::Viewport {
 
 struct Config {
@@ -47,9 +51,16 @@ class Generic {
 
     Result addMousePosEvent(F32 x, F32 y);
     Result addMouseButtonEvent(U64 button, bool down);
+    Result addFileDropEvent(std::vector<std::string> paths);
+
+    std::vector<std::string> takeDroppedFiles();
 
  protected:
     Config config;
+
+ private:
+    std::mutex droppedFilesMutex;
+    std::vector<std::string> droppedFiles;
 };
 
 template<DeviceType DeviceId>
