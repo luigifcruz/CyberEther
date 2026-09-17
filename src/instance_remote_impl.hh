@@ -34,7 +34,7 @@ struct Instance::Remote::Impl {
     Result destroy();
     Result rollbackCreate();
     Result processInput();
-    Result captureFrame();
+    Result captureFrame(std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now());
     Result approveClient(const std::string& code);
 
     Config config;
@@ -197,6 +197,7 @@ struct Instance::Remote::Impl {
     };
 
     std::unique_ptr<Viewport::FrameCapture> frameCapture;
+    std::chrono::steady_clock::time_point nextCaptureTime{};
     std::thread frameSubmissionThread;
     std::atomic<bool> frameSubmissionRunning = false;
 

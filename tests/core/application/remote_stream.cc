@@ -1,6 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
+#include <algorithm>
+
 #include "../../../src/instance_remote_impl.hh"
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
@@ -182,6 +184,43 @@ struct Peer {
 };
 
 }  // namespace
+
+TEST_CASE("Remote capture honors the configured frame rate without catch-up bursts",
+          "[core][application][remote][capture]") {
+    const U32 renderFps = GENERATE(30u, 60u, 144u);
+    const U32 captureFps = GENERATE(30u, 60u);
+    CAPTURE(renderFps, captureFps);
+    struct Capture final : Viewport::FrameCapture {
+        unsigned frames = 0;
+        Result create(Viewport::Generic*, const DeviceType&) override { return Result::SUCCESS; }
+        Result destroy() override { return Result::SUCCESS; }
+        Result stop() override { return Result::SUCCESS; }
+        Result captureFrame() override { ++frames; return Result::SUCCESS; }
+        Result getFrameData(Tensor&) override { return Result::ERROR; }
+        Result releaseFrame() override { return Result::SUCCESS; }
+    };
+    Instance::Remote::Impl remote;
+    remote.config.framerate = captureFps;
+    auto capture = std::make_unique<Capture>();
+    auto* counter = capture.get();
+    remote.frameCapture = std::move(capture);
+    const auto start = std::chrono::steady_clock::time_point(1s);
+    for (U32 frame = 0; frame < renderFps * 2; ++frame) {
+        const auto now = start + std::chrono::nanoseconds(frame * GST_SECOND / renderFps);
+        REQUIRE(remote.captureFrame(now) == Result::SUCCESS);
+    }
+    CHECK(counter->frames == std::min(renderFps, captureFps) * 2);
+
+    const auto before = counter->frames;
+    const auto resumed = start + 10s;
+    REQUIRE(remote.captureFrame(resumed) == Result::SUCCESS);
+    for (unsigned i = 0; i < 8; ++i) {
+        REQUIRE(remote.captureFrame(resumed + 1ms) == Result::SUCCESS);
+    }
+    CHECK(counter->frames == before + 1);
+    REQUIRE(remote.captureFrame(resumed + std::chrono::nanoseconds(GST_SECOND / captureFps)) == Result::SUCCESS);
+    CHECK(counter->frames == before + 2);
+}
 
 TEST_CASE("Remote RTP delivery survives reconnects while other viewers keep receiving",
           "[core][application][remote][stream]") {

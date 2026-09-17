@@ -117,6 +117,11 @@ Result Instance::Remote::Impl::create(const Instance::Remote::Config& config) {
 
     this->config = config;
 
+    if (config.framerate == 0) {
+        JST_ERROR("[REMOTE] Frame rate must be greater than zero.");
+        return Result::ERROR;
+    }
+
     if (!supported()) {
         JST_ERROR("[REMOTE] Current backend ({}) is not supported for remote streaming.", this->viewportDevice);
         return Result::ERROR;
@@ -198,6 +203,7 @@ Result Instance::Remote::Impl::destroy() {
 Result Instance::Remote::Impl::rollbackCreate() {
     Result result = Result::SUCCESS;
     this->started_ = false;
+    this->nextCaptureTime = {};
 
     {
         std::lock_guard<std::mutex> lock(inputMutex);
@@ -237,9 +243,14 @@ Result Instance::Remote::Impl::rollbackCreate() {
     return result;
 }
 
-Result Instance::Remote::Impl::captureFrame() {
+Result Instance::Remote::Impl::captureFrame(std::chrono::steady_clock::time_point now) {
     JST_CHECK(processInput());
-    if (this->frameCapture) {
+    if (this->frameCapture && now >= this->nextCaptureTime) {
+        const auto interval = std::chrono::nanoseconds(GST_SECOND / config.framerate);
+        if (now - this->nextCaptureTime >= interval) {
+            this->nextCaptureTime = now;
+        }
+        this->nextCaptureTime += interval;
         this->frameCapture->captureFrame();
     }
     return Result::SUCCESS;
@@ -1034,6 +1045,7 @@ Result Instance::Remote::Impl::startStream() {
     }
 
     if (encodingStrategy == EncodingStrategyType::HardwareNVENC) {
+        constexpr guint bitrate = 25'000'000 / 1024;
         switch(config.codec) {
             case Instance::Remote::CodecType::H264:
                 newEncoder = makeElement("encoder", "nvh264enc");
@@ -1043,6 +1055,11 @@ Result Instance::Remote::Impl::startStream() {
 
                 g_object_set(elements["encoder"], "zerolatency", true, nullptr);
                 g_object_set(elements["encoder"], "preset", 5, nullptr);
+                gst_util_set_object_arg(G_OBJECT(elements["encoder"]), "rc-mode", "vbr");
+                g_object_set(elements["encoder"],
+                             "bitrate", bitrate,
+                             "max-bitrate", bitrate,
+                             nullptr);
 
                 if (!makeElement("hwcaps", "capsfilter")) {
                     return fail();
