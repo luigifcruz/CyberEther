@@ -23,6 +23,7 @@
 
 #include <gst/app/gstappsrc.h>
 #include <gst/sdp/sdp.h>
+#include <gst/video/video-color.h>
 #include <gst/video/video-event.h>
 #include <gst/gststructure.h>
 
@@ -926,7 +927,7 @@ Result Instance::Remote::Impl::startStream() {
                                         "height", G_TYPE_INT, static_cast<int>(size.y),
                                         "framerate", GST_TYPE_FRACTION, config.framerate, 1,
                                         "interlace-mode", G_TYPE_STRING, "progressive",
-                                        "colorimetry", G_TYPE_STRING, "bt709",
+                                        "colorimetry", G_TYPE_STRING, GST_VIDEO_COLORIMETRY_SRGB,
                                         nullptr);
     if (!caps) {
         JST_ERROR("[REMOTE] Failed to create gstreamer input caps.");
