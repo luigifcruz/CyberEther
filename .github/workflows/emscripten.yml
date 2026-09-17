@@ -39,7 +39,7 @@ jobs:
           set -euo pipefail
           rm -rf build-wasm
           meson setup --cross-file meson/crosscompile/emscripten.ini -Dbuildtype=release build-wasm
-          meson compile -C build-wasm
+          meson compile -C build-wasm cyberether
           mkdir -p .dist/artifacts
           tar -C build-wasm -czf .dist/artifacts/cyberether-emscripten-wasm32.tar.gz \
             cyberether.js cyberether.wasm cyberether.js.symbols cyberether.wasm.map

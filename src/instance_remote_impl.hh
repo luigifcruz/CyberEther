@@ -34,7 +34,7 @@ struct Instance::Remote::Impl {
     Result destroy();
     Result rollbackCreate();
     Result processInput();
-    Result captureFrame();
+    Result captureFrame(std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now());
     Result approveClient(const std::string& code);
 
     Config config;
@@ -87,6 +87,8 @@ struct Instance::Remote::Impl {
     GstElement* source = nullptr;
     GstElement* encoder = nullptr;
     GstElement* tee = nullptr;
+    std::thread busThread;
+    std::atomic<bool> busRunning = false;
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
     GstCudaContext* gstCudaContext = nullptr;
@@ -109,6 +111,9 @@ struct Instance::Remote::Impl {
         GstPad* webrtcSinkPad = nullptr;
         gulong iceHandler = 0;
         gulong channelHandler = 0;
+        gulong negotiationHandler = 0;
+        bool negotiationReady = false;
+        bool offerPending = false;
     };
 
     struct WebRtcSignalContext {
@@ -146,6 +151,7 @@ struct Instance::Remote::Impl {
     void signallerLoop();
     void handleSignallerMessage(const std::string& payload);
     void handleStartSession(const nlohmann::json& j);
+    void createOfferIfReady(const std::string& sessionId);
     void handlePeerMessage(const nlohmann::json& j);
     void handleEndSession(const nlohmann::json& j);
     bool sendSignallerMessage(const nlohmann::json& j);
@@ -166,6 +172,7 @@ struct Instance::Remote::Impl {
 
     struct RemoteInputState {
         std::unordered_set<ImGuiKey> keys;
+        std::unordered_set<int> mouseButtons;
         bool alt = false;
         bool ctrl = false;
         bool shift = false;
@@ -173,6 +180,7 @@ struct Instance::Remote::Impl {
     };
 
     std::mutex inputMutex;
+    std::deque<std::string> inputSessionOrder;
     std::deque<QueuedInput> inputQueue;
     std::unordered_map<std::string, RemoteInputState> remoteInputStates;
     std::unordered_set<ImGuiKey> appliedRemoteKeys;
@@ -187,6 +195,7 @@ struct Instance::Remote::Impl {
     static void onChannelClosedCallback(GstWebRTCDataChannel* self, gpointer user_data);
     static void onChannelCallback(GstElement* self, GstWebRTCDataChannel* channel, gpointer user_data);
     static void onIceCandidateCallback(GstElement* self, guint mlineIndex, gchar* candidate, gpointer user_data);
+    static void onNegotiationNeededCallback(GstElement* self, gpointer user_data);
     static void onOfferCreatedCallback(GstPromise* promise, gpointer user_data);
     static void onAnswerCreatedCallback(GstPromise* promise, gpointer user_data);
 
@@ -196,6 +205,7 @@ struct Instance::Remote::Impl {
     };
 
     std::unique_ptr<Viewport::FrameCapture> frameCapture;
+    std::chrono::steady_clock::time_point nextCaptureTime{};
     std::thread frameSubmissionThread;
     std::atomic<bool> frameSubmissionRunning = false;
 

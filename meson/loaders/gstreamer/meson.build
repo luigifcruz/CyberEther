@@ -72,10 +72,15 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
         gst_full_plugins += ['libgstmediafoundation.a']
         gst_platform_options += [
             'build-tools-source=system',
+            'gst-plugins-base:gl=disabled',
+            'gst-plugins-bad:d3d-hlsl-precompile=disabled',
             'gst-plugins-bad:mediafoundation=enabled',
         ]
     else
-        gst_platform_options += ['gst-plugins-bad:mediafoundation=disabled']
+        gst_platform_options += [
+            'gst-plugins-base:gl=enabled',
+            'gst-plugins-bad:mediafoundation=disabled',
+        ]
     endif
 
     gst_disabled_base_plugins = [
@@ -184,6 +189,8 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
         'gst-plugins-bad:gpl=disabled',
         'gst-plugins-ugly:gpl=disabled',
         'gstreamer:default_library=static',
+        'gstreamer:coretracers=disabled',
+        'gstreamer:ptp-helper=disabled',
         'gstreamer:tests=disabled',
         'gst-plugins-base:default_library=static',
         'gst-plugins-base:auto_features=disabled',
@@ -212,12 +219,15 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
         'libsrtp2:tests=disabled',
         'openh264:default_library=static',
         'orc:default_library=static',
+        'pcre2:grep=false',
         'pcre2:test=false',
         'proxy-libintl:default_library=static',
         'vpx:default_library=static',
         'vpx:decode_perf_tests=disabled',
+        'vpx:docs=disabled',
         'vpx:encode_perf_tests=disabled',
         'vpx:examples=disabled',
+        'vpx:install_docs=disabled',
         'vpx:tools=disabled',
         'vpx:unit_tests=disabled',
 
@@ -230,7 +240,6 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
         'gst-full-dynamic-types=[]',
 
         'gst-plugins-base:app=enabled',
-        'gst-plugins-base:gl=enabled',
         'gst-plugins-base:rawparse=enabled',
         'gst-plugins-base:videoconvertscale=enabled',
         'gst-plugins-good:rtp=enabled',
@@ -251,6 +260,7 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
 
     subproject('pcre2', required: true, default_options: [
         'default_library=static',
+        'grep=false',
         'test=false',
     ])
 
@@ -280,8 +290,10 @@ if remote_opt.enabled() and cfg_lst.get('JETSTREAM_LOADER_OPENSSL_AVAILABLE', fa
     subproject('vpx', required: true, default_options: [
         'default_library=static',
         'decode_perf_tests=disabled',
+        'docs=disabled',
         'encode_perf_tests=disabled',
         'examples=disabled',
+        'install_docs=disabled',
         'tools=disabled',
         'unit_tests=disabled',
     ])
