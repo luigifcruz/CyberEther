@@ -154,6 +154,10 @@ struct Peer {
 
     void connect() {
         prepare();
+        negotiate();
+    }
+
+    void negotiate() {
         remote.createControlChannel(id);
         Negotiate(sender, receiver, true);
         Negotiate(receiver, sender, false);
@@ -189,6 +193,21 @@ struct Peer {
             gst_object_unref(pipeline);
         }
         gst_clear_object(&sender);
+    }
+};
+
+struct PadProbe {
+    GstPad* pad = nullptr;
+    gulong id = 0;
+
+    void remove() {
+        if (id) gst_pad_remove_probe(pad, id);
+        id = 0;
+    }
+
+    ~PadProbe() {
+        remove();
+        gst_clear_object(&pad);
     }
 };
 
@@ -491,6 +510,48 @@ TEST_CASE("Remote sessions can disconnect with video blocked on SDP negotiation"
     Peer viewer(stream, "viewer");
     viewer.connect();
     REQUIRE(WaitFor([&] { return viewer.packets >= 20; }));
+}
+
+TEST_CASE("A stalled remote viewer does not interrupt other viewers",
+          "[core][application][remote][stream][queue]") {
+    const bool pending = GENERATE(false, true);
+    CAPTURE(pending);
+    std::atomic<unsigned> overruns = 0;
+    Stream stream;
+    stream.start(false);
+    Peer observer(stream, "observer");
+    Peer stalled(stream, "stalled");
+    observer.prepare();
+    stalled.prepare();
+
+    auto& session = *stream.remote.sessions.at(stalled.id);
+    g_signal_connect(session.queue, "overrun", G_CALLBACK(+[](GstElement*, gpointer data) {
+        ++*static_cast<std::atomic<unsigned>*>(data);
+    }), &overruns);
+
+    stream.startFrames();
+    observer.negotiate();
+    PadProbe block{GST_PAD(gst_object_ref(session.webrtcSinkPad))};
+    if (!pending) {
+        stalled.negotiate();
+        REQUIRE(WaitFor([&] { return stalled.packets >= 20; }));
+        block.id = gst_pad_add_probe(block.pad,
+            GstPadProbeType(GST_PAD_PROBE_TYPE_BLOCK | GST_PAD_PROBE_TYPE_BUFFER),
+            +[](GstPad*, GstPadProbeInfo*, gpointer) { return GST_PAD_PROBE_OK; },
+            nullptr, nullptr);
+    }
+    REQUIRE(WaitFor([&] { return gst_pad_is_blocking(block.pad); }));
+    const unsigned receivedBefore = observer.packets;
+    REQUIRE(WaitFor([&] { return overruns >= 32; }));
+    REQUIRE(WaitFor([&] { return observer.packets >= receivedBefore + 20; }));
+    guint queued = 0;
+    g_object_get(session.queue, "current-level-buffers", &queued, nullptr);
+    CHECK(queued <= 32);
+
+    const unsigned stalledBefore = stalled.packets;
+    if (pending) stalled.negotiate();
+    else block.remove();
+    REQUIRE(WaitFor([&] { return stalled.packets >= stalledBefore + 40; }));
 }
 
 TEST_CASE("Remote RTP delivery survives reconnects while other viewers keep receiving",

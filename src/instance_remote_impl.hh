@@ -103,6 +103,7 @@ struct Instance::Remote::Impl {
     struct WebRtcSession {
         std::string sessionId;
         std::string peerId;
+        GstElement* queue = nullptr;
         GstElement* payloader = nullptr;
         GstElement* rtpCaps = nullptr;
         GstElement* webrtc = nullptr;
