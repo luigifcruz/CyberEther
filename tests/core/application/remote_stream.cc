@@ -11,6 +11,7 @@
 
 #include <gst/app/gstappsink.h>
 #include <gst/rtp/gstrtcpbuffer.h>
+#include <gst/video/video-info.h>
 
 using namespace Jetstream;
 using namespace std::chrono_literals;
@@ -366,6 +367,47 @@ TEST_CASE("Remote capture honors the configured frame rate without catch-up burs
     CHECK(counter->frames == before + 2);
 }
 
+TEST_CASE("Remote CPU encoding preserves the configured frame rate and source colorimetry",
+          "[core][application][remote][stream][caps]") {
+    const U32 framerate = GENERATE(30u, 60u);
+    CAPTURE(framerate);
+    Stream stream;
+    stream.remote.config.framerate = framerate;
+    stream.start();
+    Peer viewer(stream, "viewer");
+    viewer.connect();
+    REQUIRE(WaitFor([&] { return viewer.packets >= 20; }));
+
+    const auto videoInfo = [&](const char* elementName, const char* padName) {
+        CAPTURE(elementName, padName);
+        GstElement* element = gst_bin_get_by_name(GST_BIN(stream.remote.pipeline), elementName);
+        REQUIRE(element);
+        GstPad* pad = gst_element_get_static_pad(element, padName);
+        gst_object_unref(element);
+        REQUIRE(pad);
+        GstCaps* caps = gst_pad_get_current_caps(pad);
+        gst_object_unref(pad);
+        REQUIRE(caps);
+        GstVideoInfo info;
+        const bool parsed = gst_video_info_from_caps(&info, caps);
+        gst_caps_unref(caps);
+        REQUIRE(parsed);
+        CHECK(GST_VIDEO_INFO_FPS_N(&info) == static_cast<gint>(framerate));
+        CHECK(GST_VIDEO_INFO_FPS_D(&info) == 1);
+        return info;
+    };
+
+    const auto raw = videoInfo("rawparser", "src");
+    CHECK(GST_VIDEO_INFO_FORMAT(&raw) == GST_VIDEO_FORMAT_BGRA);
+    CHECK(GST_VIDEO_INFO_WIDTH(&raw) == static_cast<gint>(stream.remote.size.x));
+    CHECK(GST_VIDEO_INFO_HEIGHT(&raw) == static_cast<gint>(stream.remote.size.y));
+    CHECK(gst_video_colorimetry_matches(&raw.colorimetry, GST_VIDEO_COLORIMETRY_SRGB));
+
+    const auto encodedInput = videoInfo("encoder", "sink");
+    CHECK(encodedInput.colorimetry.transfer == GST_VIDEO_TRANSFER_SRGB);
+    CHECK(encodedInput.colorimetry.primaries == GST_VIDEO_COLOR_PRIMARIES_BT709);
+}
+
 TEST_CASE("Remote offers wait for encoded H264 caps and advertise the actual profile and level",
           "[core][application][remote][stream][caps]") {
     const bool capsFirst = GENERATE(false, true);
@@ -432,6 +474,22 @@ TEST_CASE("Remote offers wait for encoded H264 caps and advertise the actual pro
 
     SetDescription(viewer.receiver, "set-remote-description", offer.get());
     Negotiate(viewer.receiver, viewer.sender, false);
+    REQUIRE(WaitFor([&] { return viewer.packets >= 20; }));
+}
+
+TEST_CASE("Remote sessions can disconnect with video blocked on SDP negotiation",
+          "[core][application][remote][stream]") {
+    Stream stream;
+    stream.start();
+    auto& remote = stream.remote;
+    REQUIRE(remote.createWebRtcSession("pending", "loopback") == Result::SUCCESS);
+    GstPad* pad = remote.sessions.at("pending")->webrtcSinkPad;
+    REQUIRE(WaitFor([&] { return gst_pad_is_blocking(pad); }));
+    remote.destroyWebRtcSession("pending");
+    CHECK(remote.sessions.empty());
+
+    Peer viewer(stream, "viewer");
+    viewer.connect();
     REQUIRE(WaitFor([&] { return viewer.packets >= 20; }));
 }
 

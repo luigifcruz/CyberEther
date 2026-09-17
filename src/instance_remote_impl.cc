@@ -1002,10 +1002,7 @@ Result Instance::Remote::Impl::startStream() {
             return fail();
         }
 
-        g_object_set(elements["rawparser"], "use-sink-caps", 0, nullptr);
-        g_object_set(elements["rawparser"], "format", 12, nullptr);
-        g_object_set(elements["rawparser"], "width", static_cast<int>(size.x), nullptr);
-        g_object_set(elements["rawparser"], "height", static_cast<int>(size.y), nullptr);
+        g_object_set(elements["rawparser"], "use-sink-caps", TRUE, nullptr);
 
         if (!makeElement("convert", "videoconvert")) {
             return fail();
@@ -1104,10 +1101,7 @@ Result Instance::Remote::Impl::startStream() {
             return fail();
         }
 
-        g_object_set(elements["rawparser"], "use-sink-caps", 0, nullptr);
-        g_object_set(elements["rawparser"], "format", 12, nullptr);
-        g_object_set(elements["rawparser"], "width", static_cast<int>(size.x), nullptr);
-        g_object_set(elements["rawparser"], "height", static_cast<int>(size.y), nullptr);
+        g_object_set(elements["rawparser"], "use-sink-caps", TRUE, nullptr);
 
         if (!makeElement("convert", "videoconvert")) {
             return fail();
@@ -1152,10 +1146,7 @@ Result Instance::Remote::Impl::startStream() {
             return fail();
         }
 
-        g_object_set(elements["rawparser"], "use-sink-caps", 0, nullptr);
-        g_object_set(elements["rawparser"], "format", 12, nullptr);
-        g_object_set(elements["rawparser"], "width", static_cast<int>(size.x), nullptr);
-        g_object_set(elements["rawparser"], "height", static_cast<int>(size.y), nullptr);
+        g_object_set(elements["rawparser"], "use-sink-caps", TRUE, nullptr);
 
         if (!makeElement("convert", "videoconvert")) {
             return fail();
@@ -1206,10 +1197,7 @@ Result Instance::Remote::Impl::startStream() {
             return fail();
         }
 
-        g_object_set(elements["rawparser"], "use-sink-caps", 0, nullptr);
-        g_object_set(elements["rawparser"], "format", 12, nullptr);
-        g_object_set(elements["rawparser"], "width", static_cast<int>(size.x), nullptr);
-        g_object_set(elements["rawparser"], "height", static_cast<int>(size.y), nullptr);
+        g_object_set(elements["rawparser"], "use-sink-caps", TRUE, nullptr);
 
         if (!makeElement("convert", "videoconvert")) {
             return fail();
@@ -1249,6 +1237,22 @@ Result Instance::Remote::Impl::startStream() {
                 JST_ERROR("[REMOTE] Unsupported codec for hardware encoding.");
                 return fail();
         }
+    }
+
+    if (config.codec == Instance::Remote::CodecType::H264) {
+        if (!makeElement("encodedcaps", "capsfilter")) {
+            return fail();
+        }
+        GstCaps* encodedCaps = gst_caps_new_simple("video/x-h264",
+                                                  "stream-format", G_TYPE_STRING, "avc",
+                                                  "alignment", G_TYPE_STRING, "au",
+                                                  nullptr);
+        if (!encodedCaps) {
+            JST_ERROR("[REMOTE] Failed to create gstreamer encoded caps.");
+            return fail();
+        }
+        g_object_set(elements["encodedcaps"], "caps", encodedCaps, nullptr);
+        gst_caps_unref(encodedCaps);
     }
 
     // 04. Setup stream tee. WebRTC peer branches are added per session.
@@ -1697,9 +1701,9 @@ void Instance::Remote::Impl::destroyWebRtcSession(const std::string& sessionId) 
         session->teeSrcPad = nullptr;
     }
 
-    if (session->payloader) gst_element_set_state(session->payloader, GST_STATE_NULL);
-    if (session->rtpCaps) gst_element_set_state(session->rtpCaps, GST_STATE_NULL);
     if (session->webrtc) gst_element_set_state(session->webrtc, GST_STATE_NULL);
+    if (session->rtpCaps) gst_element_set_state(session->rtpCaps, GST_STATE_NULL);
+    if (session->payloader) gst_element_set_state(session->payloader, GST_STATE_NULL);
 
     if (session->webrtcSinkPad) {
         if (session->webrtc) {
