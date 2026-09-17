@@ -1283,20 +1283,13 @@ Result Instance::Remote::Impl::startStream() {
     GstBus* bus = gst_element_get_bus(newPipeline);
     busRunning = true;
     try {
-        busThread = std::thread([this, newPipeline, bus]() {
+        busThread = std::thread([this, bus]() {
             while (busRunning) {
                 GstMessage* message = gst_bus_timed_pop(bus, 100 * GST_MSECOND);
                 if (!message) {
                     continue;
                 }
                 switch (GST_MESSAGE_TYPE(message)) {
-                    case GST_MESSAGE_LATENCY: {
-                        std::lock_guard<std::mutex> lock(streamMutex);
-                        if (streaming) {
-                            gst_bin_recalculate_latency(GST_BIN(newPipeline));
-                        }
-                        break;
-                    }
                     case GST_MESSAGE_ERROR:
                     case GST_MESSAGE_WARNING: {
                         GError* error = nullptr;
@@ -1463,7 +1456,6 @@ Result Instance::Remote::Impl::createWebRtcSession(const std::string& sessionId,
     auto session = std::make_unique<WebRtcSession>();
     session->sessionId = sessionId;
     session->peerId = peerId;
-    session->queue = gst_element_factory_make("queue", nullptr);
     session->payloader = createPayloader();
     session->rtpCaps = createRtpCapsFilter();
     session->webrtc = gst_element_factory_make("webrtcbin", nullptr);
@@ -1502,33 +1494,32 @@ Result Instance::Remote::Impl::createWebRtcSession(const std::string& sessionId,
         removeElement(session->webrtc);
         removeElement(session->rtpCaps);
         removeElement(session->payloader);
-        removeElement(session->queue);
         return Result::ERROR;
     };
 
-    if (!session->queue || !session->payloader || !session->rtpCaps || !session->webrtc) {
+    if (!session->payloader || !session->rtpCaps || !session->webrtc) {
         JST_ERROR("[REMOTE] Failed to create WebRTC session elements.");
         return fail();
     }
 
-    g_object_set(session->queue,
-                 "leaky", 2,
-                 "max-size-buffers", 2u,
-                 "max-size-bytes", 0u,
-                 "max-size-time", static_cast<guint64>(0),
-                 nullptr);
     g_object_set(session->webrtc, "bundle-policy", GST_WEBRTC_BUNDLE_POLICY_MAX_BUNDLE, nullptr);
 
-    if (!gst_bin_add(GST_BIN(pipeline), session->queue) ||
-        !gst_bin_add(GST_BIN(pipeline), session->payloader) ||
+    GstElement* rtpbin = gst_bin_get_by_name(GST_BIN(session->webrtc), "rtpbin");
+    if (!rtpbin) {
+        JST_ERROR("[REMOTE] Failed to find WebRTC RTP session manager.");
+        return fail();
+    }
+    g_object_set(rtpbin, "rtcp-sync-send-time", FALSE, nullptr);
+    gst_object_unref(rtpbin);
+
+    if (!gst_bin_add(GST_BIN(pipeline), session->payloader) ||
         !gst_bin_add(GST_BIN(pipeline), session->rtpCaps) ||
         !gst_bin_add(GST_BIN(pipeline), session->webrtc)) {
         JST_ERROR("[REMOTE] Failed to add WebRTC session elements to pipeline.");
         return fail();
     }
 
-    if (!gst_element_link(session->queue, session->payloader) ||
-        !gst_element_link(session->payloader, session->rtpCaps)) {
+    if (!gst_element_link(session->payloader, session->rtpCaps)) {
         JST_ERROR("[REMOTE] Failed to link WebRTC session RTP elements.");
         return fail();
     }
@@ -1567,8 +1558,7 @@ Result Instance::Remote::Impl::createWebRtcSession(const std::string& sessionId,
                                                     },
                                                     GConnectFlags(0));
 
-    if (!gst_element_sync_state_with_parent(session->queue) ||
-        !gst_element_sync_state_with_parent(session->payloader) ||
+    if (!gst_element_sync_state_with_parent(session->payloader) ||
         !gst_element_sync_state_with_parent(session->rtpCaps) ||
         !gst_element_sync_state_with_parent(session->webrtc)) {
         JST_ERROR("[REMOTE] Failed to start WebRTC session elements.");
@@ -1576,17 +1566,17 @@ Result Instance::Remote::Impl::createWebRtcSession(const std::string& sessionId,
     }
 
     session->teeSrcPad = gst_element_request_pad_simple(tee, "src_%u");
-    GstPad* queueSinkPad = gst_element_get_static_pad(session->queue, "sink");
-    if (!session->teeSrcPad || !queueSinkPad) {
+    GstPad* payloaderSinkPad = gst_element_get_static_pad(session->payloader, "sink");
+    if (!session->teeSrcPad || !payloaderSinkPad) {
         JST_ERROR("[REMOTE] Failed to create WebRTC tee link pads.");
-        if (queueSinkPad) gst_object_unref(queueSinkPad);
+        if (payloaderSinkPad) gst_object_unref(payloaderSinkPad);
         return fail();
     }
 
-    const GstPadLinkReturn teeLinkReturn = gst_pad_link(session->teeSrcPad, queueSinkPad);
-    gst_object_unref(queueSinkPad);
+    const GstPadLinkReturn teeLinkReturn = gst_pad_link(session->teeSrcPad, payloaderSinkPad);
+    gst_object_unref(payloaderSinkPad);
     if (teeLinkReturn != GST_PAD_LINK_OK) {
-        JST_ERROR("[REMOTE] Failed to link stream tee to WebRTC session queue.");
+        JST_ERROR("[REMOTE] Failed to link stream tee to WebRTC session payloader.");
         return fail();
     }
 
@@ -1626,10 +1616,10 @@ void Instance::Remote::Impl::destroyWebRtcSession(const std::string& sessionId) 
     }
 
     if (session->teeSrcPad) {
-        GstPad* queueSinkPad = session->queue ? gst_element_get_static_pad(session->queue, "sink") : nullptr;
-        if (queueSinkPad) {
-            gst_pad_unlink(session->teeSrcPad, queueSinkPad);
-            gst_object_unref(queueSinkPad);
+        GstPad* payloaderSinkPad = session->payloader ? gst_element_get_static_pad(session->payloader, "sink") : nullptr;
+        if (payloaderSinkPad) {
+            gst_pad_unlink(session->teeSrcPad, payloaderSinkPad);
+            gst_object_unref(payloaderSinkPad);
         }
         if (tee) {
             gst_element_release_request_pad(tee, session->teeSrcPad);
@@ -1638,7 +1628,6 @@ void Instance::Remote::Impl::destroyWebRtcSession(const std::string& sessionId) 
         session->teeSrcPad = nullptr;
     }
 
-    if (session->queue) gst_element_set_state(session->queue, GST_STATE_NULL);
     if (session->payloader) gst_element_set_state(session->payloader, GST_STATE_NULL);
     if (session->rtpCaps) gst_element_set_state(session->rtpCaps, GST_STATE_NULL);
     if (session->webrtc) gst_element_set_state(session->webrtc, GST_STATE_NULL);
@@ -1665,7 +1654,6 @@ void Instance::Remote::Impl::destroyWebRtcSession(const std::string& sessionId) 
     removeElement(session->webrtc);
     removeElement(session->rtpCaps);
     removeElement(session->payloader);
-    removeElement(session->queue);
 }
 
 void Instance::Remote::Impl::destroyAllWebRtcSessions() {
