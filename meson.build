@@ -60,6 +60,7 @@ if jst_is_windows
     add_project_arguments(
         '/Zc:preprocessor',
         '/bigobj',
+        '/wd4251',
         '/D_SILENCE_NONFLOATING_COMPLEX_DEPRECATION_WARNING',
         language: 'cpp',
     )
