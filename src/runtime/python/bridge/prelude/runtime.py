@@ -10,6 +10,7 @@ def _jetstream_check_skip(skip):
 
 
 def _jetstream_exec_source(source, source_file):
+    source = source.decode("utf-8")
     if source_file:
         globals()["__file__"] = source_file
     exec(compile(source, source_file or "<string>", "exec"), globals())

@@ -275,7 +275,7 @@ Result Bridge::start(const std::string& source,
         return Result::ERROR;
     }
 
-    auto* sourceObject = PyUnicode_FromStringAndSize(source.data(), static_cast<Py_ssize_t>(source.size()));
+    auto* sourceObject = PyBytes_FromStringAndSize(source.data(), static_cast<Py_ssize_t>(source.size()));
     if (!sourceObject) {
         JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't prepare Python source execution.");
         setError("Initialization error.");
