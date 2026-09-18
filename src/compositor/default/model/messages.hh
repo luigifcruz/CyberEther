@@ -380,9 +380,9 @@ struct MailApproveRemoteClient {
     std::string code;
 };
 
-struct MailSurfaceMouse {
+struct MailSurfaceInput {
     std::shared_ptr<Module::Surface> surface;
-    MouseEvent event;
+    InputEvent event;
 };
 
 enum class SurfacePlacement {
@@ -486,7 +486,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailStartRemote,
                           MailStopRemote,
                           MailApproveRemoteClient,
-                          MailSurfaceMouse,
+                          MailSurfaceInput,
                           MailResizeSurface>;
 
 }  // namespace Jetstream

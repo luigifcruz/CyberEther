@@ -429,7 +429,7 @@ Result FrameImpl::destroyPresent() {
 }
 
 Result FrameImpl::present() {
-    auto mouseEvents = surfaceConsumeMouseEvents();
+    auto inputEvents = surfaceConsumeInputEvents();
 
     interaction = ProcessSurfaceInteraction(interaction,
                                             surfaceConsumeSurfaceEvents(),
@@ -439,7 +439,7 @@ Result FrameImpl::present() {
                                              .enableCursor = false});
 
     JST_CHECK(updateViewGeometry());
-    processMouseEvents(mouseEvents);
+    processInputEvents(inputEvents);
 
     if (!frameBuffer) {
         return Result::SUCCESS;
@@ -613,8 +613,11 @@ Result FrameImpl::updateSelectionState() {
     return Result::SUCCESS;
 }
 
-void FrameImpl::processMouseEvents(const std::vector<MouseEvent>& events) {
-    for (const auto& event : events) {
+void FrameImpl::processInputEvents(const std::vector<InputEvent>& events) {
+    for (const auto& input : events) {
+        const auto mouse = SurfaceMouseEvent(input);
+        if (!mouse) continue;
+        const auto& event = *mouse;
         switch (event.type) {
             case MouseEventType::Scroll: {
                 const F32 oldZoom = view.zoom;

@@ -440,8 +440,8 @@ TEST_CASE("ADS-B layered surface presents, resizes, clears and recreates",
     REQUIRE_FALSE(autoFit.update({&startup, 1}, map->getContext(), {},
         start - Modules::AdsbMapAutoFit::CollectionMilliseconds).has_value());
     guard.module->surface()->pushSurfaceEvent({SurfaceEventType::Resize, {800, 600}, 1});
-    guard.module->surface()->pushMouseEvent({.type = MouseEventType::Move,
-                                            .position = {0.5f, 0.5f}});
+    guard.module->surface()->pushInputEvent(MouseEvent{.type = MouseEventType::Move,
+                                                       .position = {0.5f, 0.5f}});
     REQUIRE(guard.instance->start() == Result::SUCCESS);
     guard.started = true;
     auto frame = [&] {
@@ -471,24 +471,24 @@ TEST_CASE("ADS-B layered surface presents, resizes, clears and recreates",
 
     // Aircraft are passive overlays: a drag starting on a target navigates the map.
     const auto beforeDrag = map->getUniforms();
-    guard.module->surface()->pushMouseEvent({.type = MouseEventType::Click,
+    guard.module->surface()->pushInputEvent(MouseEvent{.type = MouseEventType::Click,
         .button = MouseButton::Left, .position = {0.5f, 0.5f}});
-    guard.module->surface()->pushMouseEvent({.type = MouseEventType::Move,
+    guard.module->surface()->pushInputEvent(MouseEvent{.type = MouseEventType::Move,
         .position = {0.6f, 0.5f}});
-    guard.module->surface()->pushMouseEvent({.type = MouseEventType::Release,
+    guard.module->surface()->pushInputEvent(MouseEvent{.type = MouseEventType::Release,
         .button = MouseButton::Left, .position = {0.6f, 0.5f}});
     frame();
     REQUIRE(map->getUniforms().centerLon != beforeDrag.centerLon);
     const auto beforeRightClick = map->getUniforms();
-    guard.module->surface()->pushMouseEvent({.type = MouseEventType::Click,
+    guard.module->surface()->pushInputEvent(MouseEvent{.type = MouseEventType::Click,
         .button = MouseButton::Right, .position = {0.5f, 0.5f}});
-    guard.module->surface()->pushMouseEvent({.type = MouseEventType::Release,
+    guard.module->surface()->pushInputEvent(MouseEvent{.type = MouseEventType::Release,
         .button = MouseButton::Right, .position = {0.5f, 0.5f}});
     frame();
     REQUIRE(map->getUniforms() == beforeRightClick);
 
     aircraft.clear();
-    guard.module->surface()->pushMouseEvent({.type = MouseEventType::Leave});
+    guard.module->surface()->pushInputEvent(MouseEvent{.type = MouseEventType::Leave});
     guard.module->surface()->pushSurfaceEvent({SurfaceEventType::Resize, {600, 800}, 2});
     frame();
     REQUIRE(state->aircraft.empty());

@@ -87,7 +87,7 @@ struct JETSTREAM_API Module::Impl {
 
     Result surfaceCreateManifest(SurfaceManifest&& manifest);
     Result surfaceUpdateManifestSize(const std::string& id, const Extent2D<U64>& size);
-    std::vector<MouseEvent> surfaceConsumeMouseEvents();
+    std::vector<InputEvent> surfaceConsumeInputEvents();
     std::vector<SurfaceEvent> surfaceConsumeSurfaceEvents();
 
  private:

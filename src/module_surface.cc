@@ -17,7 +17,7 @@ F32 ClampPanOffsetLimit(const F32 zoom) {
 
 SurfaceInteractionState ProcessSurfaceInteraction(SurfaceInteractionState state,
                                                    std::vector<SurfaceEvent>&& surfaceEvents,
-                                                   std::vector<MouseEvent>&& mouseEvents,
+                                                   std::vector<InputEvent>&& inputEvents,
                                                    const SurfaceInteractionConfig& config) {
     // Reset change flags.
 
@@ -50,7 +50,10 @@ SurfaceInteractionState ProcessSurfaceInteraction(SurfaceInteractionState state,
 
     // Process mouse events.
 
-    for (const auto& event : mouseEvents) {
+    for (const auto& input : inputEvents) {
+        const auto mouse = SurfaceMouseEvent(input);
+        if (!mouse) continue;
+        const auto& event = *mouse;
         switch (event.type) {
             case MouseEventType::Scroll: {
                 if (!config.enableZoom) break;
@@ -134,9 +137,9 @@ std::vector<SurfaceManifest> Module::Surface::manifests() const {
     return impl->manifests;
 }
 
-void Module::Surface::pushMouseEvent(const MouseEvent& event) {
+void Module::Surface::pushInputEvent(const InputEvent& event) {
     std::lock_guard<std::mutex> lock(impl->eventMutex);
-    impl->eventBuffer.pushMouse(event);
+    impl->eventBuffer.pushInput(event);
 }
 
 void Module::Surface::pushSurfaceEvent(const SurfaceEvent& event) {

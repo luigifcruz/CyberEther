@@ -202,9 +202,9 @@ Result Module::Impl::surfaceUpdateManifestSize(const std::string& id, const Exte
     return Result::ERROR;
 }
 
-std::vector<MouseEvent> Module::Impl::surfaceConsumeMouseEvents() {
+std::vector<InputEvent> Module::Impl::surfaceConsumeInputEvents() {
     std::lock_guard<std::mutex> lock(_surface->impl->eventMutex);
-    return _surface->impl->eventBuffer.consumeMouseEvents();
+    return _surface->impl->eventBuffer.consumeInputEvents();
 }
 
 std::vector<SurfaceEvent> Module::Impl::surfaceConsumeSurfaceEvents() {

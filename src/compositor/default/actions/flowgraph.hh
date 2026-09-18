@@ -50,7 +50,7 @@ struct FlowgraphActions {
                               MailPasteBlock,
                               MailSetNodeMeta,
                               MailSetNodeConfigCollapsed,
-                              MailSurfaceMouse,
+                              MailSurfaceInput,
                               MailResizeSurface>;
 
     DefaultCompositorState& state;
@@ -591,9 +591,9 @@ struct FlowgraphActions {
         return Result::SUCCESS;
     }
 
-    Result handle(const MailSurfaceMouse& msg) {
+    Result handle(const MailSurfaceInput& msg) {
         if (msg.surface) {
-            msg.surface->pushMouseEvent(msg.event);
+            msg.surface->pushInputEvent(msg.event);
         }
 
         return Result::SUCCESS;

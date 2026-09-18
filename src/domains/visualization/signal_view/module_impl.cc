@@ -840,10 +840,13 @@ void SignalViewImpl::processMouseEvents(const Extent2D<F32>& paddingScale) {
         splitter.ratio = splitRatio;
     }
 
-    std::vector<MouseEvent> plotEvents;
+    std::vector<InputEvent> plotEvents;
     const bool enabled = lineplotEnabled && waterfallEnabled &&
                          configChangeEnabled("splitRatio");
-    for (const auto& event : surfaceConsumeMouseEvents()) {
+    for (const auto& input : surfaceConsumeInputEvents()) {
+        const auto mouse = SurfaceMouseEvent(input);
+        if (!mouse) continue;
+        const auto& event = *mouse;
         const auto layout = detail::CalculateSignalViewPanels(paddingScale,
                                                                interaction.viewSize,
                                                                splitter.ratio);

@@ -602,14 +602,14 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View drag requests round trip through
     event.type = MouseEventType::Click;
     event.button = MouseButton::Left;
     event.position = {0.5f, positionAtRatio(0.5f)};
-    original->surface()->pushMouseEvent(event);
+    original->surface()->pushInputEvent(event);
     present();
     REQUIRE(splitter.dragging);
     REQUIRE_FALSE(interaction.dragging);
 
     event.type = MouseEventType::Move;
     event.position = {0.7f, positionAtRatio(0.7f)};
-    original->surface()->pushMouseEvent(event);
+    original->surface()->pushInputEvent(event);
     present();
     REQUIRE(splitter.ratio == Catch::Approx(0.7f));
     REQUIRE(text->get("zoom").fill == "SPLIT 70%");
@@ -626,7 +626,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View drag requests round trip through
         event.position.x = 1.2f;
     }
     event.type = MouseEventType::Release;
-    original->surface()->pushMouseEvent(event);
+    original->surface()->pushInputEvent(event);
     present();
     REQUIRE_FALSE(splitter.dragging);
     REQUIRE(pending());
@@ -640,7 +640,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View drag requests round trip through
     const auto committedRatio = splitter.ratio;
     event.type = MouseEventType::Move;
     event.position = {0.2f, 0.2f};
-    original->surface()->pushMouseEvent(event);
+    original->surface()->pushInputEvent(event);
     present();
     REQUIRE_FALSE(splitter.dragging);
     REQUIRE_FALSE(pending());

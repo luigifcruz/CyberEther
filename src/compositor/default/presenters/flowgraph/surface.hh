@@ -103,8 +103,8 @@ struct FlowgraphDetachedSurfacePresenter {
                                 },
                             });
                         },
-                        .onMouse = [enqueue, surface](MouseEvent event) {
-                            enqueue(MailSurfaceMouse{
+                        .onInput = [enqueue, surface](InputEvent event) {
+                            enqueue(MailSurfaceInput{
                                 .surface = surface,
                                 .event = event,
                             });

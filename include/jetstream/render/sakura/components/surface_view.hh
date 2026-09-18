@@ -24,7 +24,7 @@ struct SurfaceView {
         bool detachOverlay = false;
         std::function<U64()> onResolveTexture;
         std::function<void(const SurfaceResize&)> onSize;
-        std::function<void(MouseEvent)> onMouse;
+        std::function<void(InputEvent)> onInput;
         std::function<void()> onDetach;
     };
 

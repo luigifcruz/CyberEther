@@ -70,12 +70,6 @@ struct FlowgraphSurfacePresenter {
                             },
                         });
                     },
-                    .onMouse = [enqueue, surface](MouseEvent event) {
-                        enqueue(MailSurfaceMouse{
-                            .surface = surface,
-                            .event = event,
-                        });
-                    },
                 });
             }
         }
