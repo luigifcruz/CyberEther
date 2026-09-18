@@ -2,12 +2,11 @@
 
 #include <jetstream/render/sakura/components/retained/box.hh>
 #include <jetstream/render/sakura/components/retained/canvas.hh>
-#include <jetstream/render/sakura/components/retained/label.hh>
+#include <jetstream/render/sakura/components/retained/status_bar.hh>
 #include <jetstream/render/sakura/components/retained/text_editor.hh>
 #include <jetstream/render/sakura/components/retained/text_view.hh>
 
 #include "../../helpers.hh"
-#include "../../retained/text_metrics.hh"
 
 #include <algorithm>
 #include <cmath>
@@ -20,14 +19,7 @@ namespace Jetstream::Sakura::Retained {
 namespace {
 
 constexpr F32 kReferenceFontSize = 15.0f;
-constexpr F32 kBarHeight = 24.0f;
-constexpr F32 kStatusFontScale = 0.9f;
 constexpr F32 kConsoleFontScale = 0.92f;
-constexpr F32 kStatusTextHorizontalPadding = 8.0f;
-constexpr F32 kStatusDotDiameter = 6.0f;
-constexpr F32 kStatusToggleInset = 4.0f;
-constexpr F32 kStatusToggleGap = 6.0f;
-constexpr F32 kStatusCaretRows = 4.0f;
 constexpr F32 kConsoleHeaderHeight = 12.0f;
 constexpr F32 kConsoleGripWidth = 28.0f;
 constexpr F32 kConsoleGripHeight = 3.0f;
@@ -62,13 +54,7 @@ struct CodeEditorRoot : public Component {
     TextView consoleView;
     Box consoleChrome;
     Box consoleGrip;
-    Box statusBox;
-    Box statusPill;
-    Box statusDot;
-    Box statusCaret;
-    Label statusLabels;
-
-    mutable TextMetrics textMetrics;
+    StatusBar statusBar;
 
     Rect viewRect;
     F32 fontSizePixels = kReferenceFontSize;
@@ -84,11 +70,7 @@ struct CodeEditorRoot : public Component {
         add(consoleView);
         add(consoleChrome);
         add(consoleGrip);
-        add(statusBox);
-        add(statusPill);
-        add(statusDot);
-        add(statusCaret);
-        add(statusLabels);
+        add(statusBar);
     }
 
     F32 pixelRatio() const {
@@ -111,7 +93,7 @@ struct CodeEditorRoot : public Component {
     }
     F32 lineHeightPixels() const { return std::max(1.0f, fontSizePixels * (18.0f / kReferenceFontSize)); }
     F32 outlineHeightPixels() const { return std::max(1.0f, std::round(pixelRatio())); }
-    F32 barHeightPixels() const { return std::max(kBarHeight, kBarHeight * pixelRatio()); }
+    F32 barHeightPixels() const { return StatusBar::HeightPixels(pixelRatio()); }
 
     bool consoleVisible() const { return config.consoleVisible; }
     bool consoleExpanded() const { return consoleVisible() && !consoleCollapsed; }
@@ -170,52 +152,6 @@ struct CodeEditorRoot : public Component {
     std::string statusConsoleToggleText() const {
         return consoleVisible() ? "Console" : "";
     }
-    F32 statusCaretRowsPixels() const { return std::max(2.0f, std::round(kStatusCaretRows * pixelRatio())); }
-    F32 statusCaretWidthPixels() const { return 2.0f * statusCaretRowsPixels() - 1.0f; }
-    Rect statusConsoleToggleRect() const {
-        const auto text = statusConsoleToggleText();
-        if (!statusVisible() || text.empty()) {
-            return {};
-        }
-        const F32 pad = kStatusTextHorizontalPadding * pixelRatio();
-        const F32 inset = kStatusToggleInset * pixelRatio();
-        const F32 gap = kStatusToggleGap * pixelRatio();
-        const F32 textWidth = textMetrics.measure("default_mono", text, fontSizePixels * kStatusFontScale);
-        const F32 width = std::round(textWidth + gap + statusCaretWidthPixels() + 2.0f * pad);
-        const auto bar = statusBarRect();
-        return {std::round(bar.right() - pad - width),
-                std::round(bar.y + inset),
-                width,
-                std::max(0.0f, std::round(bar.height - 2.0f * inset))};
-    }
-
-    ColorRGBA<F32> statusBarColor(const Context& ctx) const {
-        switch (config.statusTone) {
-            case CodeEditor::StatusTone::Success: return ctx.color("editor_status_success");
-            case CodeEditor::StatusTone::Warning: return ctx.color("editor_status_warning");
-            case CodeEditor::StatusTone::Error: return ctx.color("editor_status_error");
-            case CodeEditor::StatusTone::Info: break;
-        }
-        return ctx.color("editor_status_info");
-    }
-    ColorRGBA<F32> statusBarTextColor(const Context& ctx) const {
-        switch (config.statusTone) {
-            case CodeEditor::StatusTone::Success: return ctx.color("editor_status_success_text");
-            case CodeEditor::StatusTone::Warning: return ctx.color("editor_status_warning_text");
-            case CodeEditor::StatusTone::Error: return ctx.color("editor_status_error_text");
-            case CodeEditor::StatusTone::Info: break;
-        }
-        return ctx.color("editor_status_info_text");
-    }
-    ColorRGBA<F32> statusBarTopLineColor(const Context& ctx) const {
-        switch (config.statusTone) {
-            case CodeEditor::StatusTone::Success: return ctx.color("editor_status_success_separator");
-            case CodeEditor::StatusTone::Warning: return ctx.color("editor_status_warning_separator");
-            case CodeEditor::StatusTone::Error: return ctx.color("editor_status_error_separator");
-            case CodeEditor::StatusTone::Info: break;
-        }
-        return ctx.color("editor_status_info_separator");
-    }
 
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override {
         const F32 editorContentPx = measureChild(textEditor, ctx, available).y;
@@ -227,7 +163,7 @@ struct CodeEditorRoot : public Component {
         const F32 consoleLogical = consoleExpanded()
             ? kConsoleHeaderHeight + consoleHeightPixels() / std::max(1e-3f, pixelRatio())
             : 0.0f;
-        const F32 statusLogical = statusVisible() ? kBarHeight : 0.0f;
+        const F32 statusLogical = statusVisible() ? StatusBar::Height : 0.0f;
         const F32 contentHeight = pad + textLogical * kAutoHeightLineMultiplier +
                                   consoleLogical + statusLogical;
 
@@ -245,10 +181,6 @@ struct CodeEditorRoot : public Component {
                 if (event.button != MouseButton::Left) {
                     return false;
                 }
-                if (statusConsoleToggleRect().contains(event.position.x, event.position.y)) {
-                    consoleCollapsed = !consoleCollapsed;
-                    return true;
-                }
                 if (consoleExpanded() && consoleHeaderRect().contains(event.position.x, event.position.y)) {
                     consoleResizing = true;
                     consoleResizeHeightPixels = consoleHeightPixels();
@@ -265,8 +197,6 @@ struct CodeEditorRoot : public Component {
                 }
                 if (consoleExpanded() && consoleHeaderRect().contains(event.position.x, event.position.y)) {
                     ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
-                } else if (statusConsoleToggleRect().contains(event.position.x, event.position.y)) {
-                    ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
                 }
                 return false;
             }
@@ -284,14 +214,11 @@ struct CodeEditorRoot : public Component {
     }
 
     void layout(const Context& ctx) override {
-        textMetrics.setWindow(ctx.render);
-
         fontSizePixels = config.editorFontSize * ctx.pixelRatio;
         viewRect = frame();
 
         const bool visible = !viewRect.empty();
         const auto editorBackground = ctx.color(config.backgroundColorKey);
-        const F32 pad = kStatusTextHorizontalPadding * pixelRatio();
         const F32 outline = outlineHeightPixels();
 
         backgroundBox.update({
@@ -371,82 +298,17 @@ struct CodeEditorRoot : public Component {
             .cornerRadius = gripHeight * 0.5f,
         });
 
-        const bool statusOn = visible && statusVisible();
-        const auto bar = statusBarRect();
-        statusBox.update({
+        statusBar.update({
             .id = config.id + ":status",
-            .instances = {
-                {.rect = bar, .visible = statusOn, .backgroundColor = statusBarColor(ctx)},
-                {.rect = {viewRect.x, std::floor(bar.y), viewRect.width, outline},
-                 .visible = statusOn, .backgroundColor = statusBarTopLineColor(ctx)},
+            .status = config.status,
+            .tone = config.statusTone,
+            .toggleText = statusConsoleToggleText(),
+            .toggleExpanded = !consoleCollapsed,
+            .fontSize = fontSizePixels,
+            .pixelRatio = pixelRatio(),
+            .onToggle = [this]() {
+                consoleCollapsed = !consoleCollapsed;
             },
-        });
-        const auto toggleText = statusConsoleToggleText();
-        const auto toggle = statusConsoleToggleRect();
-        const bool toggleOn = statusOn && !toggleText.empty();
-        const bool statusTextOn = statusOn && !config.status.empty();
-        const auto textColor = statusBarTextColor(ctx);
-        const F32 dot = std::max(2.0f, std::round(kStatusDotDiameter * pixelRatio()));
-        const F32 gap = kStatusToggleGap * pixelRatio();
-        const F32 messageLeft = bar.x + pad + dot + gap;
-        const F32 messageRight = toggleOn ? toggle.x - gap : bar.right() - pad;
-
-        statusDot.update({
-            .id = config.id + ":status-dot",
-            .instances = {{
-                .rect = {std::round(bar.x + pad), std::round(bar.y + (bar.height - dot) * 0.5f), dot, dot},
-                .visible = statusTextOn,
-                .backgroundColor = textColor,
-            }},
-            .cornerRadius = dot * 0.5f,
-        });
-        statusPill.update({
-            .id = config.id + ":status-pill",
-            .instances = {{
-                .rect = toggle,
-                .visible = toggleOn,
-                .backgroundColor = statusBarTopLineColor(ctx),
-            }},
-            .cornerRadius = toggle.height * 0.5f,
-        });
-
-        const F32 caretRows = statusCaretRowsPixels();
-        const F32 caretWidth = statusCaretWidthPixels();
-        const F32 caretX = toggle.right() - pad - caretWidth;
-        const F32 caretY = std::round(toggle.y + (toggle.height - caretRows) * 0.5f);
-        std::vector<Box::Instance> caretInstances;
-        caretInstances.reserve(static_cast<U64>(caretRows));
-        for (F32 row = 0.0f; row < caretRows; row += 1.0f) {
-            const F32 step = consoleCollapsed ? row : caretRows - 1.0f - row;
-            const F32 width = 2.0f * step + 1.0f;
-            caretInstances.push_back({
-                .rect = {caretX + (caretWidth - width) * 0.5f, caretY + row, width, 1.0f},
-                .visible = toggleOn,
-                .backgroundColor = textColor,
-            });
-        }
-        statusCaret.update({
-            .id = config.id + ":status-caret",
-            .instances = std::move(caretInstances),
-        });
-
-        statusLabels.update({
-            .id = config.id + ":status-text",
-            .instances = {
-                {.rect = {messageLeft, bar.y, std::max(0.0f, messageRight - messageLeft), bar.height},
-                 .str = config.status,
-                 .visible = statusTextOn,
-                 .color = textColor,
-                 .fontSize = fontSizePixels * kStatusFontScale,
-                 .alignment = {0, 1}},
-                {.rect = {toggle.x + pad, toggle.y, std::max(0.0f, caretX - gap - (toggle.x + pad)), toggle.height},
-                 .str = toggleText,
-                 .visible = toggleOn,
-                 .color = textColor,
-                 .fontSize = fontSizePixels * kStatusFontScale,
-                 .alignment = {0, 1}},
-            },
-            .fontName = "default_mono",
         });
 
         layoutChild(ctx, backgroundBox, frame());
@@ -456,12 +318,7 @@ struct CodeEditorRoot : public Component {
         }
         layoutChild(ctx, consoleChrome, frame());
         layoutChild(ctx, consoleGrip, frame());
-        layoutChild(ctx, statusBox, frame());
-        layoutChild(ctx, statusPill, frame());
-        layoutChild(ctx, statusDot, frame());
-        layoutChild(ctx, statusCaret, frame());
-        layoutChild(ctx, statusLabels, frame());
-
+        layoutChild(ctx, statusBar, statusBarRect());
     }
 
     bool event(const MouseEvent& event) override {

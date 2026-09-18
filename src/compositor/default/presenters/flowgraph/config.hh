@@ -21,7 +21,8 @@ inline std::vector<FlowgraphConfigFieldConfig> BuildFlowgraphConfigFields(
             .format = entry.format,
             .values = block.config,
         };
-        if (Parser::Get<std::string>(entry.format, "type") == "python") {
+        const auto type = Parser::Get<std::string>(entry.format, "type");
+        if (type == "python" || type == "python-console") {
             for (const auto& metric : block.metrics) {
                 if (Parser::Get<std::string>(metric.format, "type") != "python-diagnostic" ||
                     Parser::Get<std::string>(metric.format, "visibility") != "internal") {
@@ -35,6 +36,12 @@ inline std::vector<FlowgraphConfigFieldConfig> BuildFlowgraphConfigFields(
                     field.consoleVisible = !field.consoleOutput.empty();
                 }
                 break;
+            }
+            if (field.status.empty() && !block.diagnostic.empty()) {
+                field.status = "Not running.";
+                field.statusTone = Sakura::NodeCodeEditor::StatusTone::Error;
+                field.consoleOutput = {block.diagnostic};
+                field.consoleVisible = true;
             }
         }
         fields.push_back(std::move(field));

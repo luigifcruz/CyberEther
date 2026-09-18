@@ -13,6 +13,7 @@ src_lst += files([
     'text_input.cc',
     'text_area.cc',
     'code_editor.cc',
+    'console.cc',
     'progress_bar.cc',
     'table.cc',
     'float_input.cc',

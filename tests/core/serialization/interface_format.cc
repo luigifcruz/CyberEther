@@ -68,7 +68,8 @@ TEST_CASE("Parser maps own initializer strings and preserve nested dropdown data
 TEST_CASE("Interface descriptors validate every control and internal metric",
           "[core][serialization][interface]") {
     for (const auto* type : {"bool", "int", "uint", "float", "range", "text", "multiline", "vector",
-                             "vector-inline", "filepicker", "filesave", "markdown", "python"}) {
+                             "vector-inline", "filepicker", "filesave", "markdown", "python",
+                             "python-console"}) {
         CAPTURE(type);
         REQUIRE(Block::Interface::ValidateFormat({{"type", type}}) == Result::SUCCESS);
     }

@@ -53,6 +53,7 @@ void Py_DecRef(PyObject* object);
 void PyErr_Fetch(PyObject** type, PyObject** value, PyObject** traceback);
 void PyErr_NormalizeException(PyObject** type, PyObject** value, PyObject** traceback);
 PyObject* PyUnicode_FromString(const char* str);
+PyObject* PyUnicode_FromStringAndSize(const char* str, Py_ssize_t size);
 const char* PyUnicode_AsUTF8(PyObject* object);
 PyObject* PyBytes_FromStringAndSize(const char* data, Py_ssize_t size);
 int PyBytes_AsStringAndSize(PyObject* object, char** data, Py_ssize_t* size);

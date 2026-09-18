@@ -9,17 +9,20 @@ def _jetstream_check_skip(skip):
     raise RuntimeError("Python source cannot redefine the reserved SKIP sentinel.")
 
 
-def _jetstream_exec_source(source):
-    exec(source, globals())
+def _jetstream_exec_source(source, source_file):
+    if source_file:
+        globals()["__file__"] = source_file
+    exec(compile(source, source_file or "<string>", "exec"), globals())
 
 
 def _jetstream_load_compute(
     source,
+    source_file="",
     _exec_source=_jetstream_exec_source,
     _check_skip=_jetstream_check_skip,
     _skip=SKIP,
 ):
-    _exec_source(source)
+    _exec_source(source, source_file)
     _check_skip(_skip)
     function = globals().get("compute")
     if not callable(function):

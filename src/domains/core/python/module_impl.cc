@@ -215,7 +215,12 @@ Module::Interface::EntryList PythonImpl::outputPortOrder() const {
 Result PythonImpl::validate() {
     auto config = *candidate();
 
-    if (config.code.empty()) {
+    if (config.source != "editor" && config.source != "file") {
+        JST_ERROR("[PYTHON] Invalid source '{}'.", config.source);
+        return Result::ERROR;
+    }
+
+    if (config.source == "editor" && config.code.empty()) {
         JST_ERROR("[PYTHON] Code cannot be empty.");
         return Result::ERROR;
     }

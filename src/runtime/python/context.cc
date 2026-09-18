@@ -32,17 +32,24 @@ Result PythonRuntimeContext::createCompute(const std::string& source,
                                            const Module::Interface::EntryList& outputOrder,
                                            const TensorMap& outputs,
                                            const std::shared_ptr<Flowgraph::Environment>& environment,
-                                           const std::shared_ptr<Flowgraph::View>& view) {
-    std::string expandedSource = source;
+                                           const std::shared_ptr<Flowgraph::View>& view,
+                                           const std::string& sourceFile) {
+    std::lock_guard<std::recursive_mutex> operationLock(PythonOperationMutex());
+
+    std::string decodedSource;
+    if (!sourceFile.empty()) {
+        JST_CHECK(pimpl->decodeSource(source, decodedSource));
+    }
+    const auto& normalizedSource = sourceFile.empty() ? source : decodedSource;
+    std::string expandedSource = normalizedSource;
     if (!pieces.empty()) {
-        JST_CHECK(ExpandSourcePieces(source, pieces, expandedSource));
+        JST_CHECK(ExpandSourcePieces(normalizedSource, pieces, expandedSource));
         JST_TRACE("[RUNTIME_CONTEXT_PYTHON] Expanded Python source:\n{}", expandedSource);
     }
 
     PythonDependencyMetadata metadata;
     JST_CHECK(ParsePythonDependencyMetadata(expandedSource, metadata));
 
-    std::lock_guard<std::recursive_mutex> operationLock(PythonOperationMutex());
     // The selected interpreter is fixed until restart. Revalidate when metadata
     // changes; environment reloads can reuse this context's successful validation.
     if (metadata != pimpl->validatedMetadata) {
@@ -51,7 +58,7 @@ Result PythonRuntimeContext::createCompute(const std::string& source,
     }
 
     const auto startResult = pimpl->start(expandedSource, inputOrder, inputs,
-                                          outputOrder, outputs, environment, view);
+                                          outputOrder, outputs, environment, view, sourceFile);
     if (startResult == Result::SUCCESS ||
         pimpl->diagnostic().status == "Source error.") {
         JST_CHECK(StagePythonDependencies(this, metadata.requirements));

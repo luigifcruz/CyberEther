@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_CONFIG_BASE_HH
 
 #include "bool.hh"
+#include "console.hh"
 #include "dropdown.hh"
 #include "float.hh"
 #include "int.hh"
@@ -67,6 +68,8 @@ struct FlowgraphConfigFieldInstance {
             result = markdown.update(std::move(config));
         } else if (kind == "python") {
             result = python.update(std::move(config));
+        } else if (kind == "python-console") {
+            result = pythonConsole.update(std::move(config));
         } else if (kind == "multiline") {
             result = multiline.update(std::move(config));
         } else if (kind == "text") {
@@ -137,6 +140,8 @@ struct FlowgraphConfigFieldInstance {
             markdown.render(ctx);
         } else if (kind == "python") {
             python.render(ctx);
+        } else if (kind == "python-console") {
+            pythonConsole.render(ctx);
         } else if (kind == "multiline") {
             multiline.render(ctx);
         } else if (kind == "text") {
@@ -155,6 +160,8 @@ struct FlowgraphConfigFieldInstance {
             visitor(self.markdown);
         } else if (self.kind == "python") {
             visitor(self.python);
+        } else if (self.kind == "python-console") {
+            visitor(self.pythonConsole);
         }
     }
 
@@ -173,6 +180,7 @@ struct FlowgraphConfigFieldInstance {
     FlowgraphConfigTensorField tensor;
     FlowgraphConfigMarkdownField markdown;
     FlowgraphConfigPythonField python;
+    FlowgraphConfigPythonConsoleField pythonConsole;
     FlowgraphConfigMultilineField multiline;
     FlowgraphConfigTextField text;
     Sakura::NodeField unknownFrame;

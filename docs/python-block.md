@@ -18,6 +18,10 @@ def compute(ctx):
 
 The code is compiled immediately before its first compute after the flowgraph is scheduled, and `compute(ctx)` then runs once per compute cycle. Editing the code in the node reloads it in place. Changing the input or output counts recreates the block.
 
+### Using a File
+
+Choose **File** under **Source**, then select your Python script. Switching sources stops the previous script and keeps your code and file selection. After editing the file, click **Reload** to use your changes.
+
 ## Choosing a Python Runtime
 
 CyberEther does not ship with its own Python. The block runs on a Python installation already on your system, the same one you use from the terminal. Packages from that installation remain available, and scripts can declare additional packages using [inline dependency metadata](#declaring-dependencies).
@@ -68,7 +72,9 @@ With **Prompt**, headless runs pause blocks with missing dependencies until the 
 
 | Field | Meaning |
 |---|---|
+| **Source** | Code editor or file. |
 | **Code** | Python source defining `compute(ctx)`. |
+| **File** | Python script path. |
 | **Input Count** | Number of input ports (`input0`, `input1`, ...). |
 | **Output Count** | Number of output ports (`output0`, `output1`, ...). |
 | **Output Tensor Specs** | Per-output shape, data type, device, and signal axes. |

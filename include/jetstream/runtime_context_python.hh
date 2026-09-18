@@ -46,7 +46,8 @@ struct JETSTREAM_API PythonRuntimeContext : Runtime::Context {
                          const Module::Interface::EntryList& outputOrder,
                          const TensorMap& outputs,
                          const std::shared_ptr<Flowgraph::Environment>& environment = nullptr,
-                         const std::shared_ptr<Flowgraph::View>& view = nullptr);
+                         const std::shared_ptr<Flowgraph::View>& view = nullptr,
+                         const std::string& sourceFile = {});
     Result destroyCompute();
 
     virtual Result loadCompute();

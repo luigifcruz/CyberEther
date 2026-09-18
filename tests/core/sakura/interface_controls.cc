@@ -82,6 +82,7 @@ TEST_CASE("Shared config presenter preserves descriptors values and Python diagn
     block.interfaceConfigs = {
         {.name = "count", .format = {{"type", "uint"}}},
         {.name = "code", .format = {{"type", "python"}}},
+        {.name = "console", .format = {{"type", "python-console"}}},
     };
     Runtime::Context::Diagnostic diagnostic;
     diagnostic.status = "ready";
@@ -91,8 +92,8 @@ TEST_CASE("Shared config presenter preserves descriptors values and Python diagn
                              .value = diagnostic});
     const auto node = BuildFlowgraphConfigFields("node", block);
     const auto detached = BuildFlowgraphConfigFields("window", block);
-    REQUIRE(node.size() == 2);
-    REQUIRE(detached.size() == 2);
+    REQUIRE(node.size() == 3);
+    REQUIRE(detached.size() == 3);
     U64 count = 0;
     REQUIRE(Parser::Deserialize(node[0].values, node[0].name, count) == Result::SUCCESS);
     REQUIRE(count == U64{9007199254740993ULL});
@@ -104,6 +105,9 @@ TEST_CASE("Shared config presenter preserves descriptors values and Python diagn
     REQUIRE(node[1].status == "ready");
     REQUIRE(detached[1].consoleOutput == diagnostic.console);
     REQUIRE(detached[1].consoleVisible);
+    REQUIRE(node[2].status == "ready");
+    REQUIRE(node[2].statusTone == Sakura::NodeCodeEditor::StatusTone::Success);
+    REQUIRE(node[2].consoleOutput == diagnostic.console);
 }
 
 TEST_CASE("String dropdown options work with boolean config values",

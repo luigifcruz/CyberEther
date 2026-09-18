@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_RETAINED_CODE_EDITOR_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/components/retained/status_bar.hh>
 #include <jetstream/types.hh>
 
 #include <functional>
@@ -18,12 +19,7 @@ struct CodeEditor {
         Markdown,
     };
 
-    enum class StatusTone : U8 {
-        Info,
-        Success,
-        Warning,
-        Error,
-    };
+    using StatusTone = Retained::StatusTone;
 
     struct Config {
         std::string id;
