@@ -104,7 +104,7 @@ jobs:
 
   github-release:
     if: github.event_name == 'push'
-    needs: [linux, wheel, windows, macos, emscripten]
+    needs: [linux, wheel, windows, macos, emscripten, containers]
     runs-on: ubuntu-latest
     permissions:
       contents: write
