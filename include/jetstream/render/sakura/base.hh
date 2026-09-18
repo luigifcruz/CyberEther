@@ -48,11 +48,13 @@
 #include <jetstream/render/sakura/components/retained/button.hh>
 #include <jetstream/render/sakura/components/retained/canvas.hh>
 #include <jetstream/render/sakura/components/retained/code_editor.hh>
+#include <jetstream/render/sakura/components/retained/console.hh>
 #include <jetstream/render/sakura/components/retained/label.hh>
 #include <jetstream/render/sakura/components/retained/list.hh>
 #include <jetstream/render/sakura/components/retained/markdown_editor.hh>
 #include <jetstream/render/sakura/components/retained/markdown_view.hh>
 #include <jetstream/render/sakura/components/retained/scroll_view.hh>
+#include <jetstream/render/sakura/components/retained/status_bar.hh>
 #include <jetstream/render/sakura/components/retained/text_editor.hh>
 #include <jetstream/render/sakura/components/retained/text_grid.hh>
 #include <jetstream/render/sakura/components/retained/text_markdown.hh>
@@ -66,6 +68,7 @@
 #include <jetstream/render/sakura/components/node/bool_input.hh>
 #include <jetstream/render/sakura/components/node/code_editor.hh>
 #include <jetstream/render/sakura/components/node/combo.hh>
+#include <jetstream/render/sakura/components/node/console.hh>
 #include <jetstream/render/sakura/components/node/editor.hh>
 #include <jetstream/render/sakura/components/node/field.hh>
 #include <jetstream/render/sakura/components/node/field_grid.hh>

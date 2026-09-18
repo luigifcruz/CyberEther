@@ -1,7 +1,14 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <any>
+#include <atomic>
+#include <chrono>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
+#include <stdexcept>
 #include <string>
 
 #include "jetstream/block_interface.hh"
@@ -10,6 +17,7 @@
 #include "jetstream/domains/dsp/fft/block.hh"
 #include "jetstream/flowgraph_environment.hh"
 #include "jetstream/logger.hh"
+#include "jetstream/platform.hh"
 #include "jetstream/runtime_context.hh"
 #include "flowgraph_fixture.hh"
 
@@ -26,6 +34,58 @@ bool OptionalPythonRuntimeUnavailableForBlock() {
            error.find("No libpython was found") != std::string::npos ||
            error.find("No loadable libpython was found") != std::string::npos;
 }
+
+class PythonSourceFiles {
+ public:
+    PythonSourceFiles() {
+        static std::atomic<U64> sequence{0};
+        const auto timestamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        root = std::filesystem::temp_directory_path() /
+               ("jetstream-python-source-" + std::to_string(timestamp) + "-" +
+                std::to_string(sequence.fetch_add(1)));
+        if (!std::filesystem::create_directory(root)) {
+            throw std::runtime_error("Can't create Python source test directory");
+        }
+    }
+
+    ~PythonSourceFiles() {
+        std::error_code error;
+        std::filesystem::remove_all(root, error);
+    }
+
+    void write(const std::string& name, const std::string& contents) const {
+        std::ofstream stream(root / Platform::PathFromUtf8(name), std::ios::binary);
+        stream << contents;
+        REQUIRE(stream.good());
+    }
+
+    std::string path(const std::string& name) const {
+        return Platform::PathToUtf8(root / Platform::PathFromUtf8(name));
+    }
+
+    std::string events() const {
+        std::ifstream stream(root / "events.txt");
+        return {std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()};
+    }
+
+    std::string script(const std::string& label, const U64 value) const {
+        std::ostringstream literal;
+        literal << std::quoted(path("events.txt"));
+        return "def record(event):\n"
+               "    with open(" + literal.str() + ", 'a') as log:\n"
+               "        log.write('" + label + "-' + event + '\\n')\n"
+               "record('load')\n"
+               "def compute(ctx):\n"
+               "    record('compute')\n"
+               "    ctx.outputs[0][...] = " + std::to_string(value) + "\n"
+               "    print('" + label + " output')\n"
+               "def cleanup():\n"
+               "    record('cleanup')\n";
+    }
+
+ private:
+    std::filesystem::path root;
+};
 
 struct PythonMetricsSourceTestConfig : Block::Config {
     JST_BLOCK_TYPE(python_metrics_source_test)
@@ -100,11 +160,327 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(block.state == Block::State::Incomplete);
     REQUIRE(block.interfaceInputs.size() == 2);
     REQUIRE(block.interfaceOutputs.size() == 3);
-    REQUIRE(block.interfaceConfigs.size() == 7);
+    REQUIRE(block.interfaceConfigs.size() == 8);
     REQUIRE(block.interfaceInputs.at(0).name == "input0");
     REQUIRE(block.interfaceInputs.at(1).name == "input1");
     REQUIRE(block.interfaceOutputs.at(0).name == "output0");
     REQUIRE(block.interfaceOutputs.at(2).name == "output2");
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Python block swaps the code editor for a file picker by source",
+                 "[modules][python][block][source]") {
+    Blocks::Python config;
+    std::string name;
+    std::vector<std::string> expectedFields;
+
+    SECTION("editor") {
+        config.source = "editor";
+        name = "python_source_editor";
+        expectedFields = {"source", "code", "inputCount"};
+    }
+    SECTION("file without a path") {
+        config.source = "file";
+        name = "python_source_file_empty";
+        expectedFields = {"source", "file", "console", "inputCount"};
+    }
+    SECTION("file") {
+        config.source = "file";
+        config.file = "compute.py";
+        name = "python_source_file";
+        expectedFields = {"source", "file", "console", "inputCount"};
+    }
+
+    REQUIRE(flowgraph->blockCreate(name, config, {}, DeviceType::CPU, RuntimeType::PYTHON) ==
+            Result::SUCCESS);
+
+    const auto block = viewBlock(name);
+    REQUIRE(block.interfaceConfigs.size() == expectedFields.size() + 3);
+    for (U64 i = 0; i < expectedFields.size(); ++i) {
+        CAPTURE(i);
+        REQUIRE(block.interfaceConfigs.at(i).name == expectedFields[i]);
+    }
+    REQUIRE(std::any_cast<std::string>(block.config.at("source")) == config.source);
+    REQUIRE(std::any_cast<std::string>(block.config.at("file")) == config.file);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Python block switches sources and cleans up the previous script",
+                 "[modules][python][block][source]") {
+    PythonSourceFiles files;
+    const auto fileSource =
+        "from pathlib import Path\n"
+        "assert Path(__file__).name == 'compute script.py'\n" + files.script("file", 10);
+    files.write("compute script.py", "\xEF\xBB\xBF" + fileSource);
+    files.write("other.py", files.script("other", 20));
+
+    Blocks::Python config;
+    config.code = "assert '__file__' not in globals()\n" + files.script("editor", 1);
+    config.inputCount = 0;
+    config.outputCount = 1;
+    REQUIRE(flowgraph->blockCreate("python_switch", config, {}, DeviceType::CPU,
+                                   RuntimeType::PYTHON) == Result::SUCCESS);
+    if (viewBlock("python_switch").state == Block::State::Errored &&
+        OptionalPythonRuntimeUnavailableForBlock()) {
+        SKIP("Optional Python runtime is unavailable.");
+    }
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(viewBlock("python_switch").outputs.at("output0").tensor.at<F32>(0) == 1.0f);
+    files.write("events.txt", "");
+
+    // Editing the inactive source must not restart the current script.
+    REQUIRE(flowgraph->blockReconfigure("python_switch", {{"file", files.path("compute script.py")}}) ==
+            Result::SUCCESS);
+    REQUIRE(files.events().empty());
+    REQUIRE(flowgraph->blockReconfigure("python_switch", {{"source", "file"}}) == Result::SUCCESS);
+    REQUIRE(files.events() == "editor-cleanup\nfile-load\n");
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(viewBlock("python_switch").outputs.at("output0").tensor.at<F32>(0) == 10.0f);
+    REQUIRE(files.events() == "editor-cleanup\nfile-load\nfile-compute\n");
+
+    const auto nextCode = "assert '__file__' not in globals()\n" + files.script("edited", 2);
+    files.write("events.txt", "");
+    REQUIRE(flowgraph->blockReconfigure("python_switch", {{"code", nextCode}}) == Result::SUCCESS);
+    REQUIRE(files.events().empty());
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(files.events() == "file-compute\n");
+
+    files.write("events.txt", "");
+    REQUIRE(flowgraph->blockReconfigure("python_switch", {{"file", files.path("other.py")}}) ==
+            Result::SUCCESS);
+    REQUIRE(files.events() == "file-cleanup\nother-load\n");
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(viewBlock("python_switch").outputs.at("output0").tensor.at<F32>(0) == 20.0f);
+
+    files.write("events.txt", "");
+    REQUIRE(flowgraph->blockReconfigure("python_switch", {{"source", "editor"}}) == Result::SUCCESS);
+    REQUIRE(files.events() == "other-cleanup\nedited-load\n");
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(viewBlock("python_switch").outputs.at("output0").tensor.at<F32>(0) == 2.0f);
+    REQUIRE(files.events() == "other-cleanup\nedited-load\nedited-compute\n");
+    REQUIRE(std::any_cast<std::string>(viewBlock("python_switch").config.at("file")) ==
+            files.path("other.py"));
+
+    // File contents are snapshotted until the block is explicitly reloaded.
+    REQUIRE(flowgraph->blockReconfigure("python_switch", {{"source", "file"}}) == Result::SUCCESS);
+    files.write("other.py", files.script("reloaded", 30));
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(viewBlock("python_switch").outputs.at("output0").tensor.at<F32>(0) == 20.0f);
+    REQUIRE(flowgraph->blockRecreate("python_switch", viewBlock("python_switch").config) == Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    const auto block = viewBlock("python_switch");
+    REQUIRE(block.outputs.at("output0").tensor.at<F32>(0) == 30.0f);
+    const auto diagnostic = std::any_cast<Runtime::Context::Diagnostic>(block.metrics.front().value);
+    REQUIRE(diagnostic.healthy);
+    REQUIRE(std::any_of(diagnostic.console.begin(), diagnostic.console.end(), [](const auto& line) {
+        return line.find("reloaded output") != std::string::npos;
+    }));
+    REQUIRE(flowgraph->blockDestroy("python_switch", false) == Result::SUCCESS);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Python sources normalize file encodings before metadata and execution",
+                 "[modules][python][block][source][encoding]") {
+    PythonSourceFiles files;
+    std::string header;
+    std::string encodedLabel;
+    std::string expectedLabel = "caf\xC3\xA9";
+    F32 expectedCodePoint = 233.0f;
+    bool inlineSource = false;
+
+    SECTION("Latin-1 cookie on the first line") {
+        header = "# coding: latin-1\n";
+        encodedLabel = "caf\xE9";
+    }
+    SECTION("Latin-1 cookie after a shebang") {
+        header = "#!/usr/bin/env python\n# -*- coding: latin-1 -*-\n";
+        encodedLabel = "caf\xE9";
+    }
+    SECTION("Windows-1252") {
+        header = "# coding: cp1252\n";
+        encodedLabel = "\x80";
+        expectedLabel = "\xE2\x82\xAC";
+        expectedCodePoint = 8364.0f;
+    }
+    SECTION("default UTF-8") {
+        encodedLabel = expectedLabel;
+    }
+    SECTION("UTF-8 BOM and matching cookie") {
+        header = "\xEF\xBB\xBF# coding: utf-8\n";
+        encodedLabel = expectedLabel;
+    }
+    SECTION("inline Unicode ignores encoding cookies") {
+        header = "# coding: latin-1\n";
+        encodedLabel = expectedLabel;
+        inlineSource = true;
+    }
+
+    const auto source = header +
+        "# /// script\n# dependencies = []\n# description = '" + encodedLabel + "'\n# ///\n"
+        "label = '" + encodedLabel + "'\n"
+        "def compute(ctx):\n"
+        "    ctx.outputs[0][...] = ord(label[-1])\n"
+        "    print(label)\n";
+    files.write("encoded.py", source);
+    Blocks::Python config;
+    config.source = inlineSource ? "editor" : "file";
+    if (inlineSource) {
+        config.code = source;
+    }
+    config.file = files.path("encoded.py");
+    config.inputCount = 0;
+    config.outputCount = 1;
+    REQUIRE(flowgraph->blockCreate("python_encoding", config, {}, DeviceType::CPU,
+                                   RuntimeType::PYTHON) == Result::SUCCESS);
+    if (viewBlock("python_encoding").state == Block::State::Errored &&
+        OptionalPythonRuntimeUnavailableForBlock()) {
+        SKIP("Optional Python runtime is unavailable.");
+    }
+    REQUIRE(viewBlock("python_encoding").state == Block::State::Created);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    const auto block = viewBlock("python_encoding");
+    const auto diagnostic = std::any_cast<Runtime::Context::Diagnostic>(block.metrics.front().value);
+    INFO(diagnostic.status);
+    REQUIRE(diagnostic.healthy);
+    REQUIRE(block.outputs.at("output0").tensor.at<F32>(0) == expectedCodePoint);
+    REQUIRE(std::any_of(diagnostic.console.begin(), diagnostic.console.end(), [&](const auto& line) {
+        return line.find(expectedLabel) != std::string::npos;
+    }));
+    REQUIRE(flowgraph->blockDestroy("python_encoding", false) == Result::SUCCESS);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Python source switches stop the old script when the replacement is unavailable",
+                 "[modules][python][block][source]") {
+    PythonSourceFiles files;
+    Blocks::Python config;
+    config.code = files.script("old", 1);
+    config.inputCount = 0;
+    config.outputCount = 1;
+    Parser::Map replacement{{"source", "file"}};
+    Block::State expectedState = Block::State::Incomplete;
+    bool sourceError = false;
+    bool fileSyntaxError = false;
+    bool nullSourceError = false;
+
+    SECTION("no file selected") {}
+    SECTION("missing file") {
+        replacement["file"] = files.path("missing.py");
+    }
+    SECTION("directory instead of a file") {
+        replacement["file"] = files.path("");
+    }
+    SECTION("file syntax error") {
+        files.write("bad.py", "def compute(:\n");
+        replacement["file"] = files.path("bad.py");
+        expectedState = Block::State::Created;
+        sourceError = true;
+        fileSyntaxError = true;
+    }
+    SECTION("empty file") {
+        files.write("bad.py", "");
+        replacement["file"] = files.path("bad.py");
+        expectedState = Block::State::Created;
+        sourceError = true;
+    }
+    SECTION("unknown source encoding") {
+        files.write("bad.py", "# coding: nonexistent-encoding\ndef compute(ctx):\n    pass\n");
+        replacement["file"] = files.path("bad.py");
+        expectedState = Block::State::Created;
+        sourceError = true;
+    }
+    SECTION("UTF-8 BOM conflicts with the encoding cookie") {
+        files.write("bad.py", "\xEF\xBB\xBF# coding: latin-1\ndef compute(ctx):\n    pass\n");
+        replacement["file"] = files.path("bad.py");
+        expectedState = Block::State::Created;
+        sourceError = true;
+    }
+    SECTION("invalid default UTF-8") {
+        files.write("bad.py", "def compute(ctx):\n    print('caf\xE9')\n");
+        replacement["file"] = files.path("bad.py");
+        expectedState = Block::State::Created;
+        sourceError = true;
+    }
+    SECTION("embedded NUL in a Python file") {
+        files.write("bad.py", files.script("prefix", 42) + '\0' +
+                              "\nraise RuntimeError('must not be ignored')\n");
+        replacement["file"] = files.path("bad.py");
+        expectedState = Block::State::Created;
+        sourceError = true;
+        nullSourceError = true;
+    }
+    SECTION("invalid file dependency metadata") {
+        files.write("bad.py", "# /// script\n# dependencies = 1\n# ///\n");
+        replacement["file"] = files.path("bad.py");
+        expectedState = Block::State::Errored;
+    }
+    SECTION("file to invalid inline source") {
+        files.write("old.py", config.code);
+        config.source = "file";
+        config.file = files.path("old.py");
+        config.code = "def compute(:\n";
+        replacement = {{"source", "editor"}};
+        expectedState = Block::State::Created;
+        sourceError = true;
+    }
+    SECTION("file to empty inline source") {
+        files.write("old.py", config.code);
+        config.source = "file";
+        config.file = files.path("old.py");
+        config.code.clear();
+        replacement = {{"source", "editor"}};
+        expectedState = Block::State::Errored;
+    }
+    SECTION("file to inline source containing an embedded NUL") {
+        files.write("old.py", config.code);
+        config.source = "file";
+        config.file = files.path("old.py");
+        config.code = files.script("prefix", 42) + '\0' +
+                      "\nraise RuntimeError('must not be ignored')\n";
+        replacement = {{"source", "editor"}};
+        expectedState = Block::State::Created;
+        sourceError = true;
+        nullSourceError = true;
+    }
+
+    REQUIRE(flowgraph->blockCreate("python_unavailable", config, {}, DeviceType::CPU,
+                                   RuntimeType::PYTHON) == Result::SUCCESS);
+    if (viewBlock("python_unavailable").state == Block::State::Errored &&
+        OptionalPythonRuntimeUnavailableForBlock()) {
+        SKIP("Optional Python runtime is unavailable.");
+    }
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    files.write("events.txt", "");
+    REQUIRE(flowgraph->blockReconfigure("python_unavailable", replacement) == Result::SUCCESS);
+    REQUIRE(files.events() == "old-cleanup\n");
+    auto block = viewBlock("python_unavailable");
+    REQUIRE(block.state == expectedState);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(files.events() == "old-cleanup\n");
+    if (sourceError) {
+        block = viewBlock("python_unavailable");
+        const auto diagnostic = std::any_cast<Runtime::Context::Diagnostic>(block.metrics.front().value);
+        REQUIRE_FALSE(diagnostic.healthy);
+        REQUIRE(diagnostic.status == "Source error.");
+        REQUIRE_FALSE(diagnostic.console.empty());
+        if (fileSyntaxError) {
+            REQUIRE(std::any_of(diagnostic.console.begin(), diagnostic.console.end(), [](const auto& line) {
+                return line.find("bad.py") != std::string::npos;
+            }));
+        }
+        if (nullSourceError) {
+            REQUIRE(std::any_of(diagnostic.console.begin(), diagnostic.console.end(), [](const auto& line) {
+                return line.find("null bytes") != std::string::npos;
+            }));
+        }
+    }
+
+    REQUIRE(flowgraph->blockReconfigure("python_unavailable", {
+        {"source", "editor"}, {"code", files.script("recovered", 7)},
+    }) == Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    REQUIRE(viewBlock("python_unavailable").outputs.at("output0").tensor.at<F32>(0) == 7.0f);
+    REQUIRE(flowgraph->blockDestroy("python_unavailable", false) == Result::SUCCESS);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
@@ -144,11 +520,12 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(block.interfaceOutputs.front().name == "output0");
     REQUIRE(block.interfaceOutputs.back().name ==
             "output" + std::to_string(expectedOutputs - 1));
-    REQUIRE(block.interfaceConfigs.size() == 4 + expectedOutputs);
-    REQUIRE(block.interfaceConfigs.at(0).name == "code");
-    REQUIRE(block.interfaceConfigs.at(1).name == "inputCount");
-    REQUIRE(block.interfaceConfigs.at(2).name == "outputCount");
-    REQUIRE(block.interfaceConfigs.at(3).name == "throttled");
+    REQUIRE(block.interfaceConfigs.size() == 5 + expectedOutputs);
+    REQUIRE(block.interfaceConfigs.at(0).name == "source");
+    REQUIRE(block.interfaceConfigs.at(1).name == "code");
+    REQUIRE(block.interfaceConfigs.at(2).name == "inputCount");
+    REQUIRE(block.interfaceConfigs.at(3).name == "outputCount");
+    REQUIRE(block.interfaceConfigs.at(4).name == "throttled");
     REQUIRE(block.interfaceConfigs.back().name ==
             "outputTensor" + std::to_string(expectedOutputs - 1));
     REQUIRE(block.metrics.size() == 1);

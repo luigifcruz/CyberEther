@@ -51,24 +51,26 @@ void NodeField::render(const Context& ctx, Child child) const {
 
     if (config.title && !config.label.empty()) {
         if (config.background) {
-            ImGui::SetCursorPosY(ImGui::GetCursorPosY() - Scale(ctx, 4.0f));
             const ImVec2 pos = ImGui::GetCursorScreenPos();
-            const F32 height = ImGui::GetTextLineHeight() + Scale(ctx, 12.0f);
-            const ImVec2 min(pos.x, pos.y - Scale(ctx, 2.0f));
+            const F32 height = ImGui::GetTextLineHeight() + Scale(ctx, 14.0f);
             const ImVec2 max(pos.x + ImGui::GetContentRegionAvail().x, pos.y + height);
-            ImGui::GetWindowDrawList()->AddRectFilled(min,
+            ImGui::GetWindowDrawList()->AddRectFilled(pos,
                                                       max,
                                                       ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, "card")),
                                                       ImGui::GetStyle().FrameRounding);
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + Scale(ctx, 2.0f));
         }
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + Scale(ctx, 6.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
+                            ImVec2(ImGui::GetStyle().ItemSpacing.x,
+                                   Scale(ctx, config.background ? 0.0f : 4.0f)));
         impl->label.render(ctx);
+        ImGui::PopStyleVar();
         if (!config.help.empty()) {
             impl->helpTooltip.render(ctx, [this](const Context& ctx) {
                 this->impl->helpText.render(ctx);
             });
         }
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY() - Scale(ctx, config.background ? 8.0f : 4.0f));
     }
 
     if (child) {

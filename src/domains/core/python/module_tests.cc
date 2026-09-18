@@ -617,6 +617,10 @@ TEST_CASE("Python module validation rejects code and malformed output specs befo
     emptyCode.outputCount = 0;
     RequirePythonValidationError(emptyCode);
 
+    Modules::Python invalidSource;
+    invalidSource.source = "unknown";
+    RequirePythonValidationError(invalidSource);
+
     const std::vector<Modules::Python::TensorSpec> invalidSpecs = {
         {.shape = "[1x]"},
         {.shape = "[-1]"},

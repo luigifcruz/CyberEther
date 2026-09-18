@@ -1,5 +1,8 @@
 #include <array>
+#include <filesystem>
+#include <fstream>
 #include <limits>
+#include <sstream>
 #include <unordered_set>
 #include <vector>
 
@@ -7,6 +10,7 @@
 
 #include <jetstream/memory/macros.hh>
 #include <jetstream/module_context.hh>
+#include <jetstream/platform.hh>
 #include <jetstream/registry.hh>
 #include <jetstream/runtime_context_python.hh>
 #include <jetstream/scheduler_context.hh>
@@ -47,6 +51,9 @@ struct PythonImplPython : public PythonImpl,
 
  private:
     Result loadComputeSource(const std::string& source);
+
+    std::string computeSource;
+    std::string computeFile;
 };
 
 Result PythonImplPython::validate() {
@@ -95,7 +102,8 @@ Result PythonImplPython::loadComputeSource(const std::string& source) {
                                              outputPortOrder(),
                                              outputs(),
                                              environment(),
-                                             view());
+                                             view(),
+                                             computeFile);
     if (computeResult == Result::SUCCESS) {
         return Result::SUCCESS;
     }
@@ -113,11 +121,41 @@ Result PythonImplPython::loadComputeSource(const std::string& source) {
 }
 
 Result PythonImplPython::loadCompute() {
-    return loadComputeSource(code);
+    return loadComputeSource(computeSource);
 }
 
 Result PythonImplPython::create() {
     JST_CHECK(PythonImpl::create());
+
+    computeSource = code;
+    computeFile.clear();
+    if (source == "file") {
+        if (file.empty()) {
+            JST_ERROR("[PYTHON] Choose a Python file to run.");
+            return Result::INCOMPLETE;
+        }
+
+        const auto path = Platform::PathFromUtf8(file);
+        std::error_code error;
+        if (!std::filesystem::is_regular_file(path, error)) {
+            JST_ERROR("[PYTHON] Python file '{}' is not a readable regular file.", file);
+            return Result::INCOMPLETE;
+        }
+        std::ifstream stream(path, std::ios::binary);
+        if (!stream.is_open()) {
+            JST_ERROR("[PYTHON] Can't open Python file '{}'.", file);
+            return Result::INCOMPLETE;
+        }
+        std::ostringstream contents;
+        contents << stream.rdbuf();
+        if (stream.bad() || contents.bad()) {
+            JST_ERROR("[PYTHON] Can't read Python file '{}'.", file);
+            return Result::INCOMPLETE;
+        }
+        computeSource = contents.str();
+        const auto absolutePath = std::filesystem::absolute(path, error);
+        computeFile = Platform::PathToUtf8(error ? path : absolutePath);
+    }
 
     const std::array<std::string_view, 3> axisAttributes = {
         SampleAxisAttribute,
@@ -154,17 +192,21 @@ Result PythonImplPython::reconfigure() {
     auto config = *candidate();
     normalizeOutputSpecs(config);
 
-    if (config.inputCount != inputCount ||
+    if (config.source != source ||
+        (config.source == "file" && config.file != file) ||
+        config.inputCount != inputCount ||
         config.outputCount != outputCount ||
         config.outputTensorSpecs != outputTensorSpecs ||
         config.throttled != throttled) {
         return Result::RECREATE;
     }
 
-    if (config.code != code) {
+    if (config.source == "editor" && config.code != code) {
         JST_CHECK(loadComputeSource(config.code));
-        code = config.code;
+        computeSource = config.code;
     }
+    code = config.code;
+    file = config.file;
 
     return Result::SUCCESS;
 }

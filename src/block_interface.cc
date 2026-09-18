@@ -28,6 +28,7 @@ Result Block::Interface::ValidateFormat(const Parser::Map& format, const bool me
     static const std::set<std::string> controls{
         "bool", "int", "uint", "float", "range", "dropdown", "text", "multiline",
         "vector", "vector-inline", "filepicker", "filesave", "tensor-config", "markdown", "python",
+        "python-console",
     };
     if ((!metric && !controls.contains(type)) ||
         (metric && visibility != "internal" && type != "label" && type != "progressbar" && type != "table")) {

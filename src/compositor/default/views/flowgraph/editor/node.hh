@@ -251,11 +251,13 @@ struct FlowgraphNode {
         };
         auto addContent = [this, &contentLayoutConfig](std::string id,
                                                        std::optional<Sakura::VStack::Flex> flex,
-                                                       Sakura::VStack::Child child) {
+                                                       Sakura::VStack::Child child,
+                                                       std::optional<F32> gap = std::nullopt) {
             const U64 index = contentLayoutConfig.items.size();
             contentLayoutConfig.items.push_back({
                 .id = std::move(id),
                 .flex = flex,
+                .gap = gap,
             });
             contentChildren.push_back(std::move(child));
             return index;
@@ -317,7 +319,8 @@ struct FlowgraphNode {
                     addContent(std::move(id), std::nullopt,
                                [this, items = std::move(items)](const Sakura::Context& ctx) {
                                    fieldGrid.render(ctx, items);
-                               });
+                               },
+                               Sakura::NodeField::Gap);
                     continue;
                 }
 
@@ -334,7 +337,8 @@ struct FlowgraphNode {
                     flex,
                     [this, i](const Sakura::Context& ctx) {
                         fields[i].render(ctx);
-                    });
+                    },
+                    Sakura::NodeField::Gap);
                 ++i;
             }
 

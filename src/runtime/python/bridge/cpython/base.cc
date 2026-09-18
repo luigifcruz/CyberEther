@@ -122,6 +122,7 @@ using PyDecRefFn = void (*)(PyObject*);
 using PyErrFetchFn = void (*)(PyObject**, PyObject**, PyObject**);
 using PyErrNormalizeExceptionFn = void (*)(PyObject**, PyObject**, PyObject**);
 using PyUnicodeFromStringFn = PyObject* (*)(const char*);
+using PyUnicodeFromStringAndSizeFn = PyObject* (*)(const char*, Py_ssize_t);
 using PyUnicodeAsUTF8Fn = const char* (*)(PyObject*);
 using PyBytesFromStringAndSizeFn = PyObject* (*)(const char*, Py_ssize_t);
 using PyBytesAsStringAndSizeFn = int (*)(PyObject*, char**, Py_ssize_t*);
@@ -170,6 +171,7 @@ struct PythonApi {
     PyErrFetchFn PyErr_Fetch = nullptr;
     PyErrNormalizeExceptionFn PyErr_NormalizeException = nullptr;
     PyUnicodeFromStringFn PyUnicode_FromString = nullptr;
+    PyUnicodeFromStringAndSizeFn PyUnicode_FromStringAndSize = nullptr;
     PyUnicodeAsUTF8Fn PyUnicode_AsUTF8 = nullptr;
     PyBytesFromStringAndSizeFn PyBytes_FromStringAndSize = nullptr;
     PyBytesAsStringAndSizeFn PyBytes_AsStringAndSize = nullptr;
@@ -219,6 +221,7 @@ Result LoadSymbols(void* handle, PythonApi& api) {
     JST_CHECK(LoadSymbol(handle, api.PyErr_Fetch, "PyErr_Fetch"));
     JST_CHECK(LoadSymbol(handle, api.PyErr_NormalizeException, "PyErr_NormalizeException"));
     JST_CHECK(LoadSymbol(handle, api.PyUnicode_FromString, "PyUnicode_FromString"));
+    JST_CHECK(LoadSymbol(handle, api.PyUnicode_FromStringAndSize, "PyUnicode_FromStringAndSize"));
     JST_CHECK(LoadSymbol(handle, api.PyUnicode_AsUTF8, "PyUnicode_AsUTF8"));
     JST_CHECK(LoadSymbol(handle, api.PyBytes_FromStringAndSize, "PyBytes_FromStringAndSize"));
     JST_CHECK(LoadSymbol(handle, api.PyBytes_AsStringAndSize, "PyBytes_AsStringAndSize"));
@@ -503,6 +506,10 @@ void PyErr_NormalizeException(PyObject** type, PyObject** value, PyObject** trac
 
 PyObject* PyUnicode_FromString(const char* str) {
     return s_api.PyUnicode_FromString(str);
+}
+
+PyObject* PyUnicode_FromStringAndSize(const char* str, Py_ssize_t size) {
+    return s_api.PyUnicode_FromStringAndSize(str, size);
 }
 
 const char* PyUnicode_AsUTF8(PyObject* object) {

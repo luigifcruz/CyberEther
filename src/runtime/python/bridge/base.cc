@@ -1,4 +1,5 @@
 #include "runtime/python/bridge/base.hh"
+#include "runtime/python/bridge/bootstrap/source.hh"
 #include "runtime/python/bridge/convert.hh"
 #include "runtime/python/bridge/cpython/base.hh"
 #include "runtime/python/bridge/prelude/bridge.hh"
@@ -158,13 +159,70 @@ Runtime::Context::Diagnostic Bridge::diagnostic() const {
     return current;
 }
 
+Result Bridge::decodeSource(const std::string& source, std::string& decodedSource) {
+    std::lock_guard<std::recursive_mutex> operationLock(PythonOperationMutex());
+    std::lock_guard<std::recursive_mutex> lifecycleLock(lifecycleMutex);
+
+    const auto loadResult = Py_Load();
+    if (loadResult != Result::SUCCESS) {
+        setError("Runtime unavailable.");
+        return loadResult;
+    }
+
+    consoleClear();
+    JST_CHECK(stop());
+    Scope gil;
+    JST_CHECK(gil.result());
+
+    auto* decoderGlobals = PyDict_New();
+    if (!decoderGlobals) {
+        setError("Initialization error.");
+        return Result::ERROR;
+    }
+    auto* helperResult = PyRun_StringFlags(
+        kPythonBootstrapSource, 257, decoderGlobals, decoderGlobals, nullptr);
+    if (!helperResult) {
+        Py_DecRef(decoderGlobals);
+        setError("Initialization error.");
+        return Result::ERROR;
+    }
+    Py_DecRef(helperResult);
+
+    auto* decode = PyDict_GetItemString(decoderGlobals, "_jetstream_decode_source");
+    auto* bytes = PyBytes_FromStringAndSize(source.data(), static_cast<Py_ssize_t>(source.size()));
+    if (!bytes) {
+        Py_DecRef(decoderGlobals);
+        setError("Initialization error.");
+        return Result::ERROR;
+    }
+    auto* decoded = PyObject_CallFunctionObjArgs(decode, bytes);
+    Py_DecRef(bytes);
+    Py_DecRef(decoderGlobals);
+    if (!decoded) {
+        setError("Source error.");
+        return Result::ERROR;
+    }
+
+    char* data = nullptr;
+    Py_ssize_t size = 0;
+    if (PyBytes_AsStringAndSize(decoded, &data, &size) != 0) {
+        Py_DecRef(decoded);
+        setError("Source error.");
+        return Result::ERROR;
+    }
+    decodedSource.assign(data, static_cast<std::size_t>(size));
+    Py_DecRef(decoded);
+    return Result::SUCCESS;
+}
+
 Result Bridge::start(const std::string& source,
                      const Module::Interface::EntryList& inputOrder,
                      const TensorMap& inputs,
                      const Module::Interface::EntryList& outputOrder,
                      const TensorMap& outputs,
                      const std::shared_ptr<Flowgraph::Environment>& environment,
-                     const std::shared_ptr<Flowgraph::View>& view) {
+                     const std::shared_ptr<Flowgraph::View>& view,
+                     const std::string& sourceFile) {
     std::lock_guard<std::recursive_mutex> operationLock(PythonOperationMutex());
     std::lock_guard<std::recursive_mutex> lifecycleLock(lifecycleMutex);
 
@@ -217,7 +275,7 @@ Result Bridge::start(const std::string& source,
         return Result::ERROR;
     }
 
-    auto* sourceObject = PyUnicode_FromString(source.c_str());
+    auto* sourceObject = PyUnicode_FromStringAndSize(source.data(), static_cast<Py_ssize_t>(source.size()));
     if (!sourceObject) {
         JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't prepare Python source execution.");
         setError("Initialization error.");
@@ -225,7 +283,17 @@ Result Bridge::start(const std::string& source,
         return Result::ERROR;
     }
 
-    auto* compute = PyObject_CallFunctionObjArgs(loadCompute, sourceObject);
+    auto* sourceFileObject = PyUnicode_FromString(sourceFile.c_str());
+    if (!sourceFileObject) {
+        Py_DecRef(sourceObject);
+        JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't prepare Python source filename.");
+        setError("Initialization error.");
+        JST_CHECK(stop());
+        return Result::ERROR;
+    }
+
+    auto* compute = PyObject_CallFunctionObjArgs(loadCompute, sourceObject, sourceFileObject);
+    Py_DecRef(sourceFileObject);
     Py_DecRef(sourceObject);
     if (!compute) {
         JST_ERROR("[RUNTIME_CONTEXT_PYTHON] Can't compile Python source.");

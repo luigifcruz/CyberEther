@@ -47,12 +47,19 @@ Result PythonImpl::validate() {
         return Result::ERROR;
     }
 
+    if (config.source != "editor" && config.source != "file") {
+        JST_ERROR("[PYTHON] Invalid source '{}'.", config.source);
+        return Result::ERROR;
+    }
+
     if (config.inputCount > kMaxPythonPorts || config.outputCount > kMaxPythonPorts) {
         JST_ERROR("[PYTHON] Input and output counts must be at most {}.", kMaxPythonPorts);
         return Result::ERROR;
     }
 
-    if (inputCount != config.inputCount ||
+    if (source != config.source ||
+        (config.source == "file" && file != config.file) ||
+        inputCount != config.inputCount ||
         outputCount != config.outputCount ||
         throttled != config.throttled) {
         return Result::RECREATE;
@@ -64,7 +71,9 @@ Result PythonImpl::validate() {
 Result PythonImpl::configure() {
     NormalizeOutputSpecs(*this);
 
+    moduleConfig->source = source;
     moduleConfig->code = code;
+    moduleConfig->file = file;
     moduleConfig->inputCount = inputCount;
     moduleConfig->outputCount = outputCount;
     moduleConfig->outputTensorSpecs = outputTensorSpecs;
@@ -92,10 +101,28 @@ Result PythonImpl::define() {
                                         "Tensor exposed as ctx.outputs[" + index + "]."));
     }
 
-    JST_CHECK(defineInterfaceConfig("code",
-                                    "Code",
-                                    "Python source defining compute(ctx).",
-                                    {{"type", "python"}}));
+    JST_CHECK(defineInterfaceConfig("source",
+                                    "Source",
+                                    "Where the Python code comes from.",
+                                    {{"type", "dropdown"}, {"options", Parser::Sequence{
+                                        Parser::Map{{"label", "Code Editor"}, {"value", "editor"}},
+                                        Parser::Map{{"label", "File"}, {"value", "file"}},
+                                    }}}));
+    if (config.source == "file") {
+        JST_CHECK(defineInterfaceConfig("file",
+                                        "File",
+                                        "Path to a Python file defining compute(ctx).",
+                                        {{"type", "filepicker"}, {"extensions", Parser::MakeSequence({"py"})}}));
+        JST_CHECK(defineInterfaceConfig("console",
+                                        "Console",
+                                        "Output and status of the running script.",
+                                        {{"type", "python-console"}, {"file", "file"}}));
+    } else {
+        JST_CHECK(defineInterfaceConfig("code",
+                                        "Code",
+                                        "Python source defining compute(ctx).",
+                                        {{"type", "python"}}));
+    }
     JST_CHECK(defineInterfaceConfig("inputCount",
                                     "Input Count",
                                     "Number of input tensor ports.",

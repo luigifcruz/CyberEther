@@ -50,6 +50,7 @@ bool SameLayoutContract(const VStack::Config& lhs, const VStack::Config& rhs) {
     }
     for (U64 i = 0; i < lhs.items.size(); ++i) {
         if (lhs.items[i].id != rhs.items[i].id ||
+            lhs.items[i].gap != rhs.items[i].gap ||
             !SameFlex(lhs.items[i].flex, rhs.items[i].flex)) {
             return false;
         }
@@ -73,6 +74,13 @@ F32 MeasuredHeight(const Context& ctx, const F32 start) {
     return Unscale(ctx, height);
 }
 
+void PlaceBelowPreviousLine(const Context& ctx, const F32 gap) {
+    const ImGuiWindow* window = ImGui::GetCurrentWindow();
+    const F32 previousLineBottom = window->DC.CursorPosPrevLine.y + window->DC.PrevLineSize.y;
+    ImGui::SetCursorScreenPos(ImVec2(ImGui::GetCursorScreenPos().x,
+                                     previousLineBottom + Scale(ctx, gap)));
+}
+
 }  // namespace
 
 VStack::VStack() {
@@ -89,6 +97,9 @@ bool VStack::update(Config config) {
         config.height = Normalize(*config.height);
     }
     for (auto& item : config.items) {
+        if (item.gap.has_value()) {
+            item.gap = Normalize(*item.gap);
+        }
         if (item.flex.has_value()) {
             item.flex->minimum = Normalize(item.flex->minimum);
             item.flex->grow = Normalize(item.flex->grow);
@@ -220,6 +231,9 @@ void VStack::render(const Context& ctx, Children children) const {
     const F32 stackStart = managed ? ImGui::GetCursorScreenPos().y : 0.0f;
     std::vector<F32> measuredItemHeights(managed ? children.size() : 0);
     for (U64 i = 0; i < children.size(); ++i) {
+        if (managed && i != 0 && config.items[i].gap.has_value()) {
+            PlaceBelowPreviousLine(ctx, *config.items[i].gap);
+        }
         const F32 itemStart = managed ? ImGui::GetCursorScreenPos().y : 0.0f;
         children[i](ctx);
         if (managed) {

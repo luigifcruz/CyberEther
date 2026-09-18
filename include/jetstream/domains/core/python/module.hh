@@ -20,16 +20,18 @@ struct Python : public Module::Config {
         JST_SERDES(shape, axes, dtype, device);
     };
 
+    std::string source = "editor";
     std::string code = R"PY(def compute(ctx):
     ctx.outputs[0][...] = ctx.inputs[0]
     )PY";
+    std::string file;
     U64 inputCount = 1;
     U64 outputCount = 1;
     std::vector<TensorSpec> outputTensorSpecs;
     bool throttled = false;
 
     JST_MODULE_TYPE(python);
-    JST_MODULE_PARAMS(code, inputCount, outputCount,
+    JST_MODULE_PARAMS(source, code, file, inputCount, outputCount,
                       outputTensorSpecs, throttled);
 };
 

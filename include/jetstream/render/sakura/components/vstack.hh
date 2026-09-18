@@ -25,6 +25,7 @@ struct VStack {
     struct Item {
         std::string id;
         std::optional<Flex> flex;
+        std::optional<F32> gap;
     };
 
     struct Config {

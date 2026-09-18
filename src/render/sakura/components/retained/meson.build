@@ -11,5 +11,7 @@ src_lst += files([
     'text_editor.cc',
     'markdown_editor.cc',
     'markdown_view.cc',
+    'status_bar.cc',
     'code_editor.cc',
+    'console.cc',
 ])

@@ -10,9 +10,11 @@
 namespace Jetstream::Blocks {
 
 struct Python : public Block::Config {
+    std::string source = "editor";
     std::string code = R"PY(def compute(ctx):
     ctx.outputs[0][...] = ctx.inputs[0]
     )PY";
+    std::string file;
     U64 inputCount = 1;
     U64 outputCount = 1;
     std::vector<Modules::Python::TensorSpec> outputTensorSpecs;
@@ -21,7 +23,7 @@ struct Python : public Block::Config {
     JST_BLOCK_TYPE(python);
     JST_BLOCK_DOMAIN("Core");
     JST_BLOCK_NODE_SIZE(XL);
-    JST_BLOCK_PARAMS(code, inputCount, outputCount,
+    JST_BLOCK_PARAMS(source, code, file, inputCount, outputCount,
                      outputTensorSpecs, throttled);
     JST_BLOCK_DESCRIPTION(
         "Python",
@@ -31,7 +33,10 @@ struct Python : public Block::Config {
         "compute cycle with zero-copy access to the block's tensors.\n\n"
 
         "## Arguments\n"
+        "- **Source**: Where the Python code comes from, the built-in code "
+        "editor or a file on disk.\n"
         "- **Code**: Python source defining `compute(ctx)`.\n"
+        "- **File**: Path to a Python file defining `compute(ctx)`.\n"
         "- **Input Count**: Number of input ports.\n"
         "- **Output Count**: Number of output ports.\n"
         "- **Output Tensor Specs**: Shape, data type, device, and signal axes "

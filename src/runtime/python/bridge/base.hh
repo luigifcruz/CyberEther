@@ -36,13 +36,15 @@ struct Bridge {
         Result status_ = Result::SUCCESS;
     };
 
+    Result decodeSource(const std::string& source, std::string& decodedSource);
     Result start(const std::string& source,
                  const Module::Interface::EntryList& inputOrder,
                  const TensorMap& inputs,
                  const Module::Interface::EntryList& outputOrder,
                  const TensorMap& outputs,
                  const std::shared_ptr<Flowgraph::Environment>& environment = nullptr,
-                 const std::shared_ptr<Flowgraph::View>& view = nullptr);
+                 const std::shared_ptr<Flowgraph::View>& view = nullptr,
+                 const std::string& sourceFile = {});
     Result stop();
     Result run();
     Runtime::Context::Diagnostic diagnostic() const;
