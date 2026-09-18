@@ -215,7 +215,12 @@ Result AdsbImpl::present() {
     }
 
     const auto surfaceEvents = surfaceConsumeSurfaceEvents();
-    const auto mouseEvents = surfaceConsumeMouseEvents();
+    std::vector<MouseEvent> mouseEvents;
+    for (const auto& input : surfaceConsumeInputEvents()) {
+        if (const auto mouse = SurfaceMouseEvent(input)) {
+            mouseEvents.push_back(*mouse);
+        }
+    }
     JST_CHECK(geoMapComponent->processInteraction(surfaceEvents, mouseEvents));
     if (const auto fitted = mapAutoFit.update(mapState->aircraft,
                                               geoMapComponent->getContext(), mouseEvents, now)) {

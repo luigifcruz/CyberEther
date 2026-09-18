@@ -45,6 +45,7 @@ core_test_domains = {
         'sakura/node.cc',
         'sakura/node_metadata.cc',
         'sakura/surface_view.cc',
+        'sakura/surface_input.cc',
         'sakura/superluminal_surface.cc',
         'sakura/text_grid.cc',
         'sakura/vstack.cc',

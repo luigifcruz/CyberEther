@@ -149,6 +149,7 @@ struct Superluminal::Impl {
         bool active = false;
         U64 surfaceWidth = 0;
         U64 surfaceHeight = 0;
+        std::unordered_map<ImGuiID, detail::SurfaceInputState> surfaceInputs;
     };
 
     std::unordered_map<std::string, PlotState> plots;
@@ -468,15 +469,19 @@ Result Superluminal::start() {
                                     ImGui::Image(ImTextureRef(manifest.surface->raw()), availableRegion);
 
                                     ImGui::SetCursorScreenPos(cursorPos);
+                                    ImGui::PushID(surface.get());
+                                    ImGui::PushID(manifest.id.c_str());
                                     ImGui::InvisibleButton("##surface", availableRegion,
                                                            ImGuiButtonFlags_MouseButtonLeft |
                                                            ImGuiButtonFlags_MouseButtonRight);
 
-                                    detail::ForwardSuperluminalSurfaceMouseEvents(
-                                        cursorPos, availableRegion,
-                                        [&surface](const MouseEvent& event) {
-                                            surface->pushMouseEvent(event);
+                                    detail::ForwardSuperluminalSurfaceInputEvents(
+                                        cursorPos, availableRegion, plot.surfaceInputs[ImGui::GetItemID()],
+                                        [surface](const InputEvent& event) {
+                                            surface->pushInputEvent(event);
                                         });
+                                    ImGui::PopID();
+                                    ImGui::PopID();
                                 }
                             }
                         }
@@ -1100,6 +1105,7 @@ Result Superluminal::Impl::destroyGraph() {
     // Destroy plots graph.
 
     for (auto& [_, state] : plots) {
+        state.surfaceInputs.clear();
         state.block = {};
     }
 

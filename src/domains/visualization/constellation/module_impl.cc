@@ -180,7 +180,7 @@ Result ConstellationImpl::present() {
     // Process surface interaction events.
 
     auto surfaceEvents = surfaceConsumeSurfaceEvents();
-    auto mouseEvents = surfaceConsumeMouseEvents();
+    auto inputEvents = surfaceConsumeInputEvents();
 
     interaction = ProcessSurfaceInteraction(interaction,
                                             std::move(surfaceEvents),
@@ -190,7 +190,10 @@ Result ConstellationImpl::present() {
                                              .enableCursor = false});
     interaction.offset = 0.0f;
 
-    for (const auto& event : mouseEvents) {
+    for (const auto& input : inputEvents) {
+        const auto mouse = SurfaceMouseEvent(input);
+        if (!mouse) continue;
+        const auto& event = *mouse;
         if (event.type == MouseEventType::Scroll) {
             const F32 newZoom = interaction.zoom * std::exp(event.scroll.y * kConstellationZoomSpeed);
 

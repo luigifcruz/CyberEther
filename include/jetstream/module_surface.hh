@@ -15,7 +15,7 @@ struct JETSTREAM_API Module::Surface {
 
     std::vector<SurfaceManifest> manifests() const;
 
-    void pushMouseEvent(const MouseEvent& event);
+    void pushInputEvent(const InputEvent& event);
     void pushSurfaceEvent(const SurfaceEvent& event);
 
  private:

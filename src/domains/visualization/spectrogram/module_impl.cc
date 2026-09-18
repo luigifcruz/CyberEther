@@ -292,7 +292,7 @@ Result SpectrogramImpl::present() {
 
     interaction = ProcessSurfaceInteraction(interaction,
                                             surfaceConsumeSurfaceEvents(),
-                                            surfaceConsumeMouseEvents());
+                                            surfaceConsumeInputEvents());
 
     if (interaction.viewChanged) {
         renderSurface->size(interaction.viewSize);

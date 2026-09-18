@@ -1,6 +1,7 @@
 #include <jetstream/render/sakura/components/surface_view.hh>
 
 #include "../helpers.hh"
+#include "../../surface_input.hh"
 
 #include <cmath>
 #include <optional>
@@ -41,6 +42,13 @@ struct SurfaceView::Impl {
     Config config;
     std::optional<SurfaceResize> lastEmittedResize;
     int lastRenderedFrame = -1;
+    detail::SurfaceInputState input;
+
+    void resetInput() {
+        if (config.onInput) input.reset(config.onInput);
+    }
+
+    ~Impl() { resetInput(); }
 };
 
 SurfaceView::SurfaceView() {
@@ -55,7 +63,9 @@ bool SurfaceView::update(Config config) {
     if (this->impl->config.id != config.id ||
         this->impl->config.textureSource != config.textureSource) {
         this->impl->lastEmittedResize.reset();
+        this->impl->resetInput();
     }
+    if (!config.onInput) this->impl->resetInput();
     this->impl->config = std::move(config);
     return true;
 }
@@ -68,24 +78,11 @@ void SurfaceView::render(const Context& ctx) const {
     }
     impl->lastRenderedFrame = frame;
 
-    struct RenderState {
-        bool hovered = false;
-        bool active = false;
-        bool deactivated = false;
-        bool detachClicked = false;
-        bool leftClicked = false;
-        bool rightClicked = false;
-        bool leftReleased = false;
-        bool rightReleased = false;
-        bool scrolled = false;
-        Extent2D<F32> normalizedMouse = {0.0f, 0.0f};
-        Extent2D<F32> scroll = {0.0f, 0.0f};
-    };
-
-    RenderState state;
+    bool detachClicked = false;
     const Extent2D<F32> available = Unscale(ctx, Private::ToExtent2D(ImGui::GetContentRegionAvail()));
     const Extent2D<F32> logicalDrawSize = ResolveSurfaceLogicalDrawSize(config, available);
     if (logicalDrawSize.x <= 0.0f || logicalDrawSize.y <= 0.0f) {
+        impl->resetInput();
         return;
     }
     const auto resolvedResize = ResolveSurfaceResize(ctx, logicalDrawSize);
@@ -100,11 +97,13 @@ void SurfaceView::render(const Context& ctx) const {
         ? config.onResolveTexture()
         : config.textureSource ? config.textureSource->raw() : config.texture;
     if (texture == 0) {
+        impl->resetInput();
         return;
     }
 
     const ImTextureRef textureRef(static_cast<ImTextureID>(texture));
     if (textureRef.GetTexID() == ImTextureID_Invalid) {
+        impl->resetInput();
         return;
     }
 
@@ -120,31 +119,15 @@ void SurfaceView::render(const Context& ctx) const {
                                                 IM_COL32_WHITE,
                                                 rounding);
 
-    if (config.onMouse) {
+    if (config.onInput) {
         ImGui::InvisibleButton(config.id.c_str(), surfaceSize,
                                ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
-        state.hovered = ImGui::IsItemHovered();
-        state.active = ImGui::IsItemActive();
-        state.deactivated = ImGui::IsItemDeactivated();
+        detail::ForwardSurfaceInputEvents(cursorPos, surfaceSize, impl->input, config.onInput);
     } else {
         ImGui::Dummy(surfaceSize);
-        state.hovered = ImGui::IsItemHovered();
-    }
-    if (state.hovered || state.active || state.deactivated) {
-        const ImVec2 mousePos = ImGui::GetMousePos();
-        state.normalizedMouse = {(mousePos.x - cursorPos.x) / surfaceSize.x,
-                                 (mousePos.y - cursorPos.y) / surfaceSize.y};
-        state.leftClicked = state.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
-        state.rightClicked = state.hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right);
-        state.leftReleased = ImGui::IsMouseReleased(ImGuiMouseButton_Left);
-        state.rightReleased = ImGui::IsMouseReleased(ImGuiMouseButton_Right);
-
-        const ImGuiIO& io = ImGui::GetIO();
-        state.scrolled = state.hovered && (io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f);
-        state.scroll = {io.MouseWheelH, io.MouseWheel};
     }
 
-    if (config.detachOverlay && state.hovered) {
+    if (config.detachOverlay && ImGui::IsItemHovered()) {
         const F32 buttonSize = Scale(ctx, 24.0f);
         const F32 buttonPadding = Scale(ctx, 8.0f);
         const ImVec2 buttonPos(cursorEnd.x - buttonSize - buttonPadding, cursorPos.y + buttonPadding);
@@ -156,7 +139,7 @@ void SurfaceView::render(const Context& ctx) const {
         ImU32 buttonColor = IM_COL32(30, 30, 30, 200);
         if (buttonHovered) {
             buttonColor = IM_COL32(60, 60, 60, 230);
-            state.detachClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+            detachClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
         }
 
         ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -169,40 +152,7 @@ void SurfaceView::render(const Context& ctx) const {
         drawList->AddText(textPos, IM_COL32(255, 255, 255, 255), icon);
     }
 
-    if ((state.hovered || state.active || state.deactivated) && config.onMouse) {
-        MouseEvent event{};
-        event.position = state.normalizedMouse;
-        event.scroll = {0.0f, 0.0f};
-
-        if (state.leftClicked) {
-            event.type = MouseEventType::Click;
-            event.button = MouseButton::Left;
-            config.onMouse(event);
-        } else if (state.rightClicked) {
-            event.type = MouseEventType::Click;
-            event.button = MouseButton::Right;
-            config.onMouse(event);
-        } else if (state.leftReleased) {
-            event.type = MouseEventType::Release;
-            event.button = MouseButton::Left;
-            config.onMouse(event);
-        } else if (state.rightReleased) {
-            event.type = MouseEventType::Release;
-            event.button = MouseButton::Right;
-            config.onMouse(event);
-        }
-
-        if (state.scrolled) {
-            event.type = MouseEventType::Scroll;
-            event.scroll = state.scroll;
-            config.onMouse(event);
-        }
-
-        event.type = MouseEventType::Move;
-        config.onMouse(event);
-    }
-
-    if (state.detachClicked && config.onDetach) {
+    if (detachClicked && config.onDetach) {
         config.onDetach();
     }
 }

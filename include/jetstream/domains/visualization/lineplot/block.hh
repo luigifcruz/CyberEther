@@ -26,7 +26,8 @@ struct Lineplot : public Block::Config {
         "Displays data in a line plot visualization.",
         "# Line Plot\n"
         "The Lineplot block visualizes input data as a line graph, suitable "
-        "for time-domain signals, waveform displays, and spectral data.\n\n"
+        "for time-domain signals, waveform displays, and spectral data. "
+        "Press **Space** in the focused plot window to freeze or resume the view.\n\n"
 
         "## Arguments\n"
         "- **Averaging**: Exponential trace smoothing factor across updates. "

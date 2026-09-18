@@ -444,6 +444,19 @@ The `STATELESS` and `IN_PLACE` traits are conceptually incompatible because muta
 
 Most importantly, settlement is not `SKIP`. A `SKIP` result means output is unavailable for the current cycle and therefore propagates to downstream modules. Settlement means a previously computed output is still valid, so downstream modules continue normally.
 
+### Surface Input
+
+Interactive surfaces receive an ordered `InputEvent` stream from `surfaceConsumeInputEvents()`. Each event is a `std::variant` containing a `MouseEvent`, `KeyEvent`, or `FocusEvent`, declared in `jetstream/surface.hh`. Resize and placement notifications remain available through `surfaceConsumeSurfaceEvents()`.
+
+- Mouse positions are surface-normalized, with `(0, 0)` at the top left. Captured drags and their releases can have coordinates outside `[0, 1]`.
+- Keyboard events carry a Jetstream `KeyCode`, a `Press` or `Release` type, and a `repeat` flag. They identify keys rather than input text.
+- Both mouse and keyboard events carry a snapshot of Control, Shift, Alt, and Super/Command modifiers. Control and Command retain their native meanings on macOS.
+- Clicking an interactive surface gives it keyboard focus. Moving the pointer outside does not remove focus. Clicking elsewhere, focusing another widget, or hiding the surface releases its held keys and emits `FocusEvent{false}`. Hidden surfaces are cleaned up at the end of the frame, even when their content is skipped. Consumers should cancel captures and other held-input state on focus loss.
+
+Inspect each payload with `std::get_if<KeyEvent>(&event)` or `std::get_if<MouseEvent>(&event)`. Mouse-only consumers can use `SurfaceMouseEvent(event)`, which returns an optional mouse event and translates focus loss into `MouseEventType::Leave`. The `ProcessSurfaceInteraction()` helper accepts the input stream directly and keeps its existing cursor, zoom, and pan behavior.
+
+Interface components use `SurfaceView::Config::onInput` and `Module::Surface::pushInputEvent()`. Consume the input queue once per presentation and dispatch the returned events in order.
+
 ## Registration And Dispatch
 
 Registration is static. Placing the macros at namespace scope in a translation unit queues the registration, and both the main binary and loaded plugins drain into the same registry:

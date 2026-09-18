@@ -4,7 +4,9 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <optional>
 #include <string>
+#include <vector>
 
 #include <glm/mat4x4.hpp>
 
@@ -20,6 +22,7 @@
 #include <jetstream/render/base/vertex.hh>
 #include <jetstream/render/base/draw.hh>
 #include <jetstream/render/components/axis.hh>
+#include <jetstream/render/components/shapes.hh>
 #include <jetstream/render/components/text.hh>
 
 #include "waterfall_history.hh"
@@ -42,17 +45,36 @@ constexpr bool LineplotMaxHoldReady(const U64 completedBlocks,
     return completedBlocks + 1 >= averaging;
 }
 
-inline std::string LineplotAmplitudeLabel(const F32 position,
-                                          const F32 min,
-                                          const F32 max) {
+inline std::optional<F64> LineplotAmplitudeValue(const F32 position,
+                                                 const F32 min,
+                                                 const F32 max) {
     if (!std::isfinite(position) || position <= -1.0f || position >= 1.0f) {
-        return {};
+        return std::nullopt;
     }
     const F64 lower = std::min(min, max);
     const F64 upper = std::max(min, max);
     const F64 normalized = 0.5 + 0.25 * std::atanh(static_cast<F64>(position));
-    const F64 value = std::round(lower + normalized * (upper - lower));
-    return jst::fmt::format("{:.0f}", value == 0.0 ? 0.0 : value);
+    return lower + normalized * (upper - lower);
+}
+
+inline std::string LineplotAmplitudeLabel(const F32 position,
+                                          const F32 min,
+                                          const F32 max) {
+    const auto value = LineplotAmplitudeValue(position, min, max);
+    if (!value) {
+        return {};
+    }
+    const F64 rounded = std::round(*value);
+    return jst::fmt::format("{:.0f}", rounded == 0.0 ? 0.0 : rounded);
+}
+
+inline std::string LabelUnit(const std::string& label) {
+    const auto open = label.rfind('(');
+    const auto close = label.rfind(')');
+    if (open == std::string::npos || close == std::string::npos || close <= open + 1) {
+        return {};
+    }
+    return label.substr(open + 1, close - open - 1);
 }
 
 inline void InitializeLineplotPoints(F32* signalPoints,
@@ -104,6 +126,15 @@ struct SignalViewImpl : public Module::Impl,
     SurfaceInteractionState interaction;
     detail::SignalViewSplitInteraction splitter;
     bool updateLayoutFlag = false;
+    bool displayHeld = false;
+
+    struct CursorState {
+        bool inside = false;
+        Extent2D<F32> position = {0.0f, 0.0f};
+        bool visible = false;
+        bool marker = false;
+        Extent2D<F32> plot = {0.0f, 0.0f};
+    } cursor;
 
     // Rendering state.
     Extent2D<F32> pixelSize;
@@ -112,6 +143,9 @@ struct SignalViewImpl : public Module::Impl,
     std::shared_ptr<Render::Surface> renderSurface;
     std::shared_ptr<Render::Components::Axis> axis;
     std::shared_ptr<Render::Components::Text> text;
+    std::shared_ptr<Render::Components::Shapes> cursorShapes;
+    std::shared_ptr<Render::Components::Text> cursorText;
+    std::vector<F32> displayedPoints;
 
     struct TraceUniforms {
         glm::mat4 transform;
@@ -187,8 +221,9 @@ struct SignalViewImpl : public Module::Impl,
     Result present();
 
     void updateState();
-    void processMouseEvents(const Extent2D<F32>& paddingScale);
+    void processInputEvents(const Extent2D<F32>& paddingScale);
     void updateLabelState();
+    Result updateCursorState();
     Result resetLineplotHistory();
     Result resetHistoryState();
     virtual Buffer::Config renderStateBufferConfig() const = 0;

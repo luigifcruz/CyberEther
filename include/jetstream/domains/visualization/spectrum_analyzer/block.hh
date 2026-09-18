@@ -33,7 +33,8 @@ struct SpectrumAnalyzer : public Block::Config {
         "The Spectrum Analyzer accepts complex samples, computes a normalized "
         "spectrum sized by the input sample axis, and renders a line trace above "
         "a scrolling waterfall on one surface. Both views share horizontal zoom "
-        "and pan.\n\n"
+        "and pan. Press **Space** in the focused plot window to freeze or "
+        "resume both views.\n\n"
 
         "The input must identify its sample dimension with `sampleAxis`. An "
         "optional `batchAxis` is averaged into the line trace and appended to "

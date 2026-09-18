@@ -24,7 +24,7 @@ struct FlowgraphDetachedSurface {
         bool configOpen = false;
         std::shared_ptr<const Render::Texture> texture;
         std::function<void(const Sakura::SurfaceResize&)> onSize;
-        std::function<void(MouseEvent)> onMouse;
+        std::function<void(InputEvent)> onInput;
         std::function<void()> onClose;
         std::function<void(bool)> onToggleConfigOpen;
     };
@@ -48,7 +48,7 @@ struct FlowgraphDetachedSurface {
             .textureSource = this->config.texture,
             .size = {0.0f, 0.0f},
             .onSize = this->config.onSize,
-            .onMouse = this->config.onMouse,
+            .onInput = this->config.onInput,
         });
 
         fields.resize(this->config.configFields.size());

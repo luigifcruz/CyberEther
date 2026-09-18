@@ -62,7 +62,6 @@ struct FlowgraphNode {
         bool detached = false;
         std::function<void()> onDetach;
         std::function<void(const Sakura::SurfaceResize&)> onAttachedSize;
-        std::function<void(MouseEvent)> onMouse;
     };
 
     struct DeviceOption {

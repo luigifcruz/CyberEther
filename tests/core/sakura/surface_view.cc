@@ -226,7 +226,9 @@ TEST_CASE("SurfaceView captures both mouse buttons through release outside the s
     config.id = "capture";
     config.size = {200.0f, 100.0f};
     config.texture = 1;
-    config.onMouse = [&](const MouseEvent& event) { events.push_back(event); };
+    config.onInput = [&](const InputEvent& event) {
+        if (const auto* mouse = std::get_if<MouseEvent>(&event)) events.push_back(*mouse);
+    };
     REQUIRE(surface.update(config));
 
     const auto frame = [&](const ImVec2& position, const bool down) {

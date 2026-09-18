@@ -91,6 +91,8 @@ struct Canvas::Impl {
     bool surfaceDirty = true;
 
     ~Impl() {
+        root = nullptr;
+        surfaceView.update({});
         (void)destroySurface();
     }
 
@@ -375,8 +377,10 @@ void Canvas::render(const Sakura::Context& ctx) {
         .onSize = [impl = impl.get()](const SurfaceResize& resize) {
             impl->handleResize(resize);
         },
-        .onMouse = [impl = impl.get()](MouseEvent event) {
-            impl->handleMouse(event);
+        .onInput = [impl = impl.get()](InputEvent event) {
+            if (const auto mouse = SurfaceMouseEvent(event)) {
+                impl->handleMouse(*mouse);
+            }
         },
     });
     impl->surfaceView.render(ctx);

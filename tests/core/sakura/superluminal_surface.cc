@@ -17,6 +17,7 @@ TEST_CASE("Superluminal forwards captured moves and release outside the surface"
     const ImVec2 origin{20.0f, 20.0f};
     const ImVec2 size{200.0f, 100.0f};
     std::vector<MouseEvent> events;
+    detail::SurfaceInputState input;
     SurfaceInteractionState interaction;
     interaction.zoom = 2.0f;
     const auto frame = [&](const ImVec2& position, bool down) {
@@ -27,10 +28,12 @@ TEST_CASE("Superluminal forwards captured moves and release outside the surface"
             ImGui::SetCursorScreenPos(origin);
             ImGui::InvisibleButton("plot", size,
                                    ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
-            detail::ForwardSuperluminalSurfaceMouseEvents(origin, size,
-                [&](const MouseEvent& event) { events.push_back(event); });
+            detail::ForwardSuperluminalSurfaceInputEvents(origin, size, input,
+                [&](const InputEvent& event) {
+                    if (const auto* mouse = std::get_if<MouseEvent>(&event)) events.push_back(*mouse);
+                });
         });
-        auto pending = events;
+        std::vector<InputEvent> pending(events.begin(), events.end());
         interaction = ProcessSurfaceInteraction(interaction, {}, std::move(pending));
     };
     const auto count = [&](MouseEventType type) {
@@ -77,6 +80,7 @@ TEST_CASE("Superluminal does not start gestures or scroll outside the surface",
     const ImVec2 origin{20.0f, 20.0f};
     const ImVec2 size{200.0f, 100.0f};
     std::vector<MouseEvent> events;
+    detail::SurfaceInputState input;
     const auto frame = [&](const ImVec2& position, bool down, F32 scroll = 0.0f) {
         events.clear();
         ui.setMouse(position, button == ImGuiMouseButton_Left && down);
@@ -86,8 +90,10 @@ TEST_CASE("Superluminal does not start gestures or scroll outside the surface",
             ImGui::SetCursorScreenPos(origin);
             ImGui::InvisibleButton("plot", size,
                                    ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
-            detail::ForwardSuperluminalSurfaceMouseEvents(origin, size,
-                [&](const MouseEvent& event) { events.push_back(event); });
+            detail::ForwardSuperluminalSurfaceInputEvents(origin, size, input,
+                [&](const InputEvent& event) {
+                    if (const auto* mouse = std::get_if<MouseEvent>(&event)) events.push_back(*mouse);
+                });
         });
     };
 

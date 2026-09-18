@@ -6,6 +6,7 @@
 #include <any>
 #include <array>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <numeric>
 #include <optional>
@@ -63,8 +64,28 @@ struct SignalViewImplAccess : Modules::SignalViewImpl {
         return &SignalViewImplAccess::waterfallUniformBuffer;
     }
 
+    static auto signalPointsBufferMember() {
+        return &SignalViewImplAccess::signalPointsBuffer;
+    }
+
+    static auto maxHoldPointsBufferMember() {
+        return &SignalViewImplAccess::maxHoldPointsBuffer;
+    }
+
+    static auto waterfallBufferMember() {
+        return &SignalViewImplAccess::waterfallBuffer;
+    }
+
+    static auto waterfallUniformsMember() {
+        return &SignalViewImplAccess::waterfallUniforms;
+    }
+
     static auto interactionMember() {
         return &SignalViewImplAccess::interaction;
+    }
+
+    static auto cursorMember() {
+        return &SignalViewImplAccess::cursor;
     }
 
     static auto splitterMember() {
@@ -78,7 +99,8 @@ struct SignalViewImplAccess : Modules::SignalViewImpl {
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
     static void wirePresentResources(Modules::SignalViewImpl& impl,
                                      const std::shared_ptr<Render::Components::Axis>& axis,
-                                     const std::shared_ptr<Render::Components::Text>& text);
+                                     const std::shared_ptr<Render::Components::Text>& text,
+                                     const std::shared_ptr<Render::Components::Text>& cursorText = {});
 #endif
 };
 
@@ -182,36 +204,62 @@ class LabelTestBuffer final : public Render::Buffer {
 void SignalViewImplAccess::wirePresentResources(
     Modules::SignalViewImpl& impl,
     const std::shared_ptr<Render::Components::Axis>& axis,
-    const std::shared_ptr<Render::Components::Text>& text) {
+    const std::shared_ptr<Render::Components::Text>& text,
+    const std::shared_ptr<Render::Components::Text>& cursorText) {
     // The combined presentation path updates real CPU state and queues uploads,
     // but these resources never bind to a GPU. Only data members are accessed;
     // internal non-exported implementation methods must not be called by tests.
     impl.*axisMember() = axis;
+    impl.*&SignalViewImplAccess::cursorText = cursorText;
     impl.*&SignalViewImplAccess::text = text;
     impl.*renderSurfaceMember() = std::make_shared<LabelTestSurface>();
-    auto& points = impl.*signalPointsMember();
-    impl.*&SignalViewImplAccess::signalPointsBuffer = std::make_shared<LabelTestBuffer>(
-        Render::Buffer::Config{
-            .size = points.size(),
+    const auto tensorBuffer = [](Tensor& tensor) {
+        return std::make_shared<LabelTestBuffer>(Render::Buffer::Config{
+            .size = tensor.size(),
             .target = Render::Buffer::Target::STORAGE,
             .elementByteSize = sizeof(F32),
-            .buffer = points.data(),
+            .buffer = tensor.data(),
         });
-    auto& bins = impl.*waterfallBinsMember();
-    impl.*&SignalViewImplAccess::waterfallBuffer = std::make_shared<LabelTestBuffer>(
-        Render::Buffer::Config{
-            .size = bins.size(),
-            .target = Render::Buffer::Target::STORAGE,
-            .elementByteSize = sizeof(F32),
-            .buffer = bins.data(),
-        });
+    };
+    if (impl.*&SignalViewImplAccess::lineplotEnabled) {
+        impl.*signalPointsBufferMember() = tensorBuffer(impl.*signalPointsMember());
+        impl.*maxHoldPointsBufferMember() = tensorBuffer(impl.*maxHoldPointsMember());
+    }
+    if (impl.*&SignalViewImplAccess::waterfallEnabled) {
+        impl.*waterfallBufferMember() = tensorBuffer(impl.*waterfallBinsMember());
+    }
     impl.*&SignalViewImplAccess::signalUniformBuffer = std::make_shared<LabelTestBuffer>();
-    impl.*waterfallUniformBufferMember() = std::make_shared<LabelTestBuffer>();
+    impl.*&SignalViewImplAccess::holdUniformBuffer = std::make_shared<LabelTestBuffer>();
+    auto& uniforms = impl.*waterfallUniformsMember();
+    impl.*waterfallUniformBufferMember() = std::make_shared<LabelTestBuffer>(
+        Render::Buffer::Config{
+            .size = 1,
+            .target = Render::Buffer::Target::UNIFORM,
+            .elementByteSize = sizeof(uniforms),
+            .buffer = &uniforms,
+        });
     impl.*&SignalViewImplAccess::signalKernel = std::make_shared<Render::Kernel>(Render::Kernel::Config{});
     impl.*&SignalViewImplAccess::fillKernel = std::make_shared<Render::Kernel>(Render::Kernel::Config{});
+    impl.*&SignalViewImplAccess::maxHoldKernel = std::make_shared<Render::Kernel>(Render::Kernel::Config{});
     impl.*&SignalViewImplAccess::signalProgram = std::make_shared<Render::Program>(Render::Program::Config{});
     impl.*&SignalViewImplAccess::fillProgram = std::make_shared<Render::Program>(Render::Program::Config{});
+    impl.*&SignalViewImplAccess::maxHoldProgram = std::make_shared<Render::Program>(Render::Program::Config{});
     impl.*&SignalViewImplAccess::waterfallProgram = std::make_shared<Render::Program>(Render::Program::Config{});
+}
+
+U64 ApplyBufferUploads(const std::shared_ptr<Render::Buffer>& buffer, void* destination) {
+    if (!buffer) return 0;
+    Render::Transfer::Batch batch;
+    batch.collect(buffer);
+    U64 bytes = 0;
+    for (const auto& transfer : batch.buffers()) {
+        REQUIRE(transfer.destinationOffset + transfer.upload.data.size() <= buffer->byteSize());
+        std::memcpy(static_cast<U8*>(destination) + transfer.destinationOffset,
+                    transfer.upload.data.data(), transfer.upload.data.size());
+        bytes += transfer.upload.data.size();
+    }
+    batch.commit();
+    return bytes;
 }
 #endif
 
@@ -552,6 +600,387 @@ TEST_CASE("Standalone waterfall presents live metadata without view changes",
     REQUIRE(module->destroy() == Result::SUCCESS);
 }
 
+TEST_CASE("Signal View label units come from the trailing parentheses",
+          "[modules][signal_view][labels][cursor]") {
+    REQUIRE(Modules::detail::LabelUnit("Amplitude (dBFS)") == "dBFS");
+    REQUIRE(Modules::detail::LabelUnit("Power (dBm) (avg)") == "avg");
+    REQUIRE(Modules::detail::LabelUnit("Time") == "");
+    REQUIRE(Modules::detail::LabelUnit("Empty ()") == "");
+    REQUIRE(Modules::detail::LabelUnit(") mismatched (") == "");
+}
+
+TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leaves",
+          "[modules][signal_view][present][cursor]") {
+    const std::string mode = GENERATE("lineplot", "waterfall", "lineplot_waterfall");
+    const bool lineplot = Modules::detail::SignalViewHasLineplot(mode);
+    CAPTURE(mode);
+
+    Tensor input(DeviceType::CPU, DataType::F32, {2, 8});
+    REQUIRE(SetSignalAxes(input, {.sample = Index{1}, .batch = Index{0}}) == Result::SUCCESS);
+    REQUIRE(input.setDerivedAttribute("frequency", []() -> std::any {
+        return 100.0e6f;
+    }) == Result::SUCCESS);
+    REQUIRE(input.setDerivedAttribute("sampleRate", []() -> std::any {
+        return 2.0e6f;
+    }) == Result::SUCCESS);
+    TensorMap inputs;
+    inputs["signal"].tensor = input;
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("signal_view", DeviceType::CPU,
+                                  RuntimeType::NATIVE, "generic", module) == Result::SUCCESS);
+    Modules::SignalView config;
+    config.mode = mode;
+    config.waterfallHeight = 4;
+    REQUIRE(module->create("plot", config, inputs) == Result::SUCCESS);
+    Runtime runtime("plot", DeviceType::CPU, RuntimeType::NATIVE);
+    REQUIRE(runtime.create({{"plot", module}}) == Result::SUCCESS);
+
+    LabelTestWindow window;
+    Render::Components::Axis::Config axisConfig;
+    axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
+    auto axis = std::make_shared<LabelTestAxis>(axisConfig);
+    REQUIRE(axis->create(&window) == Result::SUCCESS);
+    Render::Components::Text::Config textConfig;
+    textConfig.font = axisConfig.font;
+    textConfig.maxCharacters = 256;
+    textConfig.elements = {{"header", {}}, {"zoom", {}}, {"hold", {}},
+                           {"amplitude-title", {}}, {"waterfall-title", {}}};
+    auto text = std::make_shared<LabelTestText>(textConfig);
+    REQUIRE(text->create(&window) == Result::SUCCESS);
+    Render::Components::Text::Config cursorConfig;
+    cursorConfig.font = axisConfig.font;
+    cursorConfig.maxCharacters = 64;
+    cursorConfig.elements = {{"cursor-x", {}}, {"cursor-y", {}}};
+    auto cursorText = std::make_shared<LabelTestText>(cursorConfig);
+    REQUIRE(cursorText->create(&window) == Result::SUCCESS);
+    auto* impl = module->getImpl<Modules::SignalViewImpl>();
+    REQUIRE(impl);
+    SignalViewImplAccess::wirePresentResources(*impl, axis, text, cursorText);
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+
+    std::unordered_set<std::string> skipped, failed;
+    std::fill_n(input.data<F32>(), input.size(), 0.4f);
+    REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(cursorText->get("cursor-x").fill == " ");
+    REQUIRE(cursorText->get("cursor-y").fill == " ");
+
+    const auto amplitudeAt = [&](const U64 bin) -> std::string {
+        if (!lineplot) return " ";
+        const auto value = Modules::detail::LineplotAmplitudeValue(
+            ReadSignalPoints(module)[(bin * 2) + 1], config.rangeMin, config.rangeMax);
+        REQUIRE(value.has_value());
+        return jst::fmt::format("{:.1f} dBFS", *value);
+    };
+
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Move, .position = {0.5f, 0.5f},
+    });
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(cursorText->get("cursor-x").fill == "100.0000 MHz");
+    REQUIRE(cursorText->get("cursor-y").fill == amplitudeAt(4));
+
+    const auto padding = axis->paddingScale();
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Move, .position = {0.5f + 0.25f * padding.x, 0.5f},
+    });
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(cursorText->get("cursor-x").fill == "100.5000 MHz");
+    REQUIRE(cursorText->get("cursor-y").fill == amplitudeAt(5));
+
+    module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Space, {}});
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    const auto heldAmplitude = cursorText->get("cursor-y").fill;
+    REQUIRE(heldAmplitude == amplitudeAt(5));
+    std::fill_n(input.data<F32>(), input.size(), 0.9f);
+    REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(cursorText->get("cursor-y").fill == heldAmplitude);
+    if (lineplot) REQUIRE(heldAmplitude != amplitudeAt(5));
+    module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Space, {}});
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(cursorText->get("cursor-y").fill == amplitudeAt(5));
+
+    module->surface()->pushSurfaceEvent({.type = SurfaceEventType::Resize,
+                                         .size = {512, 512},
+                                         .placement = SurfacePlacementType::Attached});
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(cursorText->get("cursor-x").fill == " ");
+    REQUIRE(cursorText->get("cursor-y").fill == " ");
+
+    module->surface()->pushSurfaceEvent({.type = SurfaceEventType::Resize,
+                                         .size = {512, 512},
+                                         .placement = SurfacePlacementType::Detached});
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(cursorText->get("cursor-x").fill == "100.5000 MHz");
+
+    module->surface()->pushInputEvent(FocusEvent{false});
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(cursorText->get("cursor-x").fill == " ");
+    REQUIRE(cursorText->get("cursor-y").fill == " ");
+
+    REQUIRE(cursorText->destroy(&window) == Result::SUCCESS);
+    REQUIRE(text->destroy(&window) == Result::SUCCESS);
+    REQUIRE(axis->destroy(&window) == Result::SUCCESS);
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Cursor stays inside the zoomed plot and interpolates between sparse samples",
+          "[modules][signal_view][present][cursor][zoom][regression]") {
+    Tensor input(DeviceType::CPU, DataType::F32, {2, 2});
+    REQUIRE(SetSignalAxes(input, {.sample = Index{1}, .batch = Index{0}}) == Result::SUCCESS);
+    REQUIRE(input.setDerivedAttribute("frequency", []() -> std::any {
+        return 100.0e6f;
+    }) == Result::SUCCESS);
+    REQUIRE(input.setDerivedAttribute("sampleRate", []() -> std::any {
+        return 2.0e6f;
+    }) == Result::SUCCESS);
+    TensorMap inputs;
+    inputs["signal"].tensor = input;
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("signal_view", DeviceType::CPU,
+                                  RuntimeType::NATIVE, "generic", module) == Result::SUCCESS);
+    Modules::SignalView config;
+    config.mode = "lineplot";
+    REQUIRE(module->create("plot", config, inputs) == Result::SUCCESS);
+    Runtime runtime("plot", DeviceType::CPU, RuntimeType::NATIVE);
+    REQUIRE(runtime.create({{"plot", module}}) == Result::SUCCESS);
+
+    LabelTestWindow window;
+    Render::Components::Axis::Config axisConfig;
+    axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
+    auto axis = std::make_shared<LabelTestAxis>(axisConfig);
+    REQUIRE(axis->create(&window) == Result::SUCCESS);
+    Render::Components::Text::Config textConfig;
+    textConfig.font = axisConfig.font;
+    textConfig.maxCharacters = 256;
+    textConfig.elements = {{"header", {}}, {"zoom", {}}, {"hold", {}},
+                           {"amplitude-title", {}}, {"waterfall-title", {}}};
+    auto text = std::make_shared<LabelTestText>(textConfig);
+    REQUIRE(text->create(&window) == Result::SUCCESS);
+    Render::Components::Text::Config cursorConfig;
+    cursorConfig.font = axisConfig.font;
+    cursorConfig.maxCharacters = 64;
+    cursorConfig.elements = {{"cursor-x", {}}, {"cursor-y", {}}};
+    auto cursorText = std::make_shared<LabelTestText>(cursorConfig);
+    REQUIRE(cursorText->create(&window) == Result::SUCCESS);
+    auto* impl = module->getImpl<Modules::SignalViewImpl>();
+    REQUIRE(impl);
+    SignalViewImplAccess::wirePresentResources(*impl, axis, text, cursorText);
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+    const auto& cursor = impl->*SignalViewImplAccess::cursorMember();
+    const auto& interaction = impl->*SignalViewImplAccess::interactionMember();
+
+    std::unordered_set<std::string> skipped, failed;
+    for (U64 b = 0; b < 2; ++b) {
+        input.data<F32>()[b * 2 + 0] = 0.25f;
+        input.data<F32>()[b * 2 + 1] = 0.75f;
+    }
+    REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    const auto points = ReadSignalPoints(module);
+    REQUIRE(points[1] == Catch::Approx(std::tanh(-1.0f)));
+    REQUIRE(points[3] == Catch::Approx(std::tanh(1.0f)));
+
+    const auto expectedAmplitude = [&](const F32 xPoint) {
+        const F32 fraction = (xPoint + 1.0f) * 0.5f;
+        const F32 y = points[1] + (points[3] - points[1]) * fraction;
+        const auto value = Modules::detail::LineplotAmplitudeValue(y, config.rangeMin, config.rangeMax);
+        REQUIRE(value.has_value());
+        return jst::fmt::format("{:.1f} dBFS", *value);
+    };
+
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Scroll, .position = {0.5f, 0.5f}, .scroll = {0, 90},
+    });
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(interaction.zoom == Catch::Approx(10.0f));
+    REQUIRE(interaction.offset == Catch::Approx(0.0f).margin(1e-6f));
+    const auto padding = axis->paddingScale();
+
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Move, .position = {0.5f, 0.5f},
+    });
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(cursor.visible);
+    REQUIRE(cursor.marker);
+    REQUIRE(cursor.plot.x == Catch::Approx(0.0f).margin(1e-5f));
+    REQUIRE(cursor.plot.y == Catch::Approx(0.0f).margin(1e-5f));
+    REQUIRE(cursorText->get("cursor-x").fill == "100.0000 MHz");
+    REQUIRE(cursorText->get("cursor-y").fill == "-50.0 dBFS");
+
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Move, .position = {0.5f + 0.25f * padding.x, 0.5f},
+    });
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(cursor.visible);
+    REQUIRE(cursor.marker);
+    REQUIRE(std::abs(cursor.plot.x) <= padding.x);
+    REQUIRE(cursor.plot.x == Catch::Approx(0.5f * padding.x));
+    REQUIRE(cursor.plot.y == Catch::Approx(padding.y * 0.05f * std::tanh(1.0f)).margin(1e-5f));
+    REQUIRE(cursorText->get("cursor-x").fill == "100.0500 MHz");
+    REQUIRE(cursorText->get("cursor-y").fill == expectedAmplitude(0.05f));
+
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Move, .position = {0.5f + 0.49f * padding.x, 0.5f},
+    });
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(cursor.visible);
+    REQUIRE(std::abs(cursor.plot.x) <= padding.x);
+    REQUIRE(cursor.plot.x == Catch::Approx(0.98f * padding.x));
+    REQUIRE(cursorText->get("cursor-x").fill == "100.0980 MHz");
+    REQUIRE(cursorText->get("cursor-y").fill == expectedAmplitude(0.098f));
+
+    REQUIRE(cursorText->destroy(&window) == Result::SUCCESS);
+    REQUIRE(text->destroy(&window) == Result::SUCCESS);
+    REQUIRE(axis->destroy(&window) == Result::SUCCESS);
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Space holds displayed plots while processing continues and resumes at the latest data",
+          "[modules][signal_view][present][keyboard][hold]") {
+    const std::string mode = GENERATE("lineplot", "waterfall", "lineplot_waterfall");
+    const U64 heldFrames = GENERATE(2, 11);
+    const bool lineplot = Modules::detail::SignalViewHasLineplot(mode);
+    const bool waterfall = Modules::detail::SignalViewHasWaterfall(mode);
+    CAPTURE(mode, heldFrames);
+
+    Tensor input(DeviceType::CPU, DataType::F32, {2, 8});
+    REQUIRE(SetSignalAxes(input, {.sample = Index{1}, .batch = Index{0}}) == Result::SUCCESS);
+    TensorMap inputs;
+    inputs["signal"].tensor = input;
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("signal_view", DeviceType::CPU,
+                                  RuntimeType::NATIVE, "generic", module) == Result::SUCCESS);
+    Modules::SignalView config;
+    config.mode = mode;
+    config.lineplotAveraging = 2;
+    config.waterfallAveraging = 2;
+    config.waterfallHeight = 4;
+    config.maxHold = true;
+    REQUIRE(module->create("plot", config, inputs) == Result::SUCCESS);
+    Runtime runtime("plot", DeviceType::CPU, RuntimeType::NATIVE);
+    REQUIRE(runtime.create({{"plot", module}}) == Result::SUCCESS);
+
+    LabelTestWindow window;
+    Render::Components::Axis::Config axisConfig;
+    axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
+    auto axis = std::make_shared<LabelTestAxis>(axisConfig);
+    REQUIRE(axis->create(&window) == Result::SUCCESS);
+    Render::Components::Text::Config textConfig;
+    textConfig.font = axisConfig.font;
+    textConfig.maxCharacters = 256;
+    textConfig.elements = {{"header", {}}, {"zoom", {}}, {"hold", {}},
+                           {"amplitude-title", {}}, {"waterfall-title", {}}};
+    auto text = std::make_shared<LabelTestText>(textConfig);
+    REQUIRE(text->create(&window) == Result::SUCCESS);
+    auto* impl = module->getImpl<Modules::SignalViewImpl>();
+    REQUIRE(impl);
+    SignalViewImplAccess::wirePresentResources(*impl, axis, text);
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+
+    std::vector<F32> displayedSignal(lineplot ? 16 : 0);
+    std::vector<F32> displayedMaxHold(lineplot ? 16 : 0);
+    std::vector<F32> displayedWaterfall(waterfall ? 32 : 0);
+    auto displayedUniforms = impl->*SignalViewImplAccess::waterfallUniformsMember();
+    const auto present = [&] {
+        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        U64 bytes = ApplyBufferUploads(impl->*SignalViewImplAccess::signalPointsBufferMember(),
+                                       displayedSignal.data());
+        bytes += ApplyBufferUploads(impl->*SignalViewImplAccess::maxHoldPointsBufferMember(),
+                                    displayedMaxHold.data());
+        bytes += ApplyBufferUploads(impl->*SignalViewImplAccess::waterfallBufferMember(),
+                                    displayedWaterfall.data());
+        ApplyBufferUploads(impl->*SignalViewImplAccess::waterfallUniformBufferMember(),
+                            &displayedUniforms);
+        return bytes;
+    };
+    std::unordered_set<std::string> skipped, failed;
+    F32 average = -0.8f;
+    const auto compute = [&](F32 value) {
+        std::fill_n(input.data<F32>(), input.size(), value);
+        REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+        REQUIRE(skipped.empty());
+        REQUIRE(failed.empty());
+        average = 0.5f * average + 0.5f * (2.0f * value - 1.0f);
+        if (lineplot) {
+            REQUIRE(ReadSignalPoints(module)[1] == Catch::Approx(std::tanh(2.0f * average)));
+        }
+    };
+    const auto holdLabel = [&]() -> std::string {
+        return lineplot ? text->get("hold").fill : "";
+    };
+    compute(0.1f);
+    REQUIRE(present() > 0);
+    REQUIRE(holdLabel() == (lineplot ? " " : ""));
+    const auto frozenSignal = displayedSignal;
+    const auto frozenMaxHold = displayedMaxHold;
+    const auto frozenWaterfall = displayedWaterfall;
+    const auto frozenIndex = displayedUniforms.index;
+
+    compute(0.2f);
+    module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Space, {}});
+    REQUIRE(present() == 0);
+    REQUIRE(holdLabel() == (lineplot ? "HOLD" : ""));
+    for (U64 frame = 0; frame < heldFrames; ++frame) {
+        compute(0.3f + 0.05f * frame);
+        module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Space, {}, true});
+        REQUIRE(present() == 0);
+        if (waterfall) {
+            REQUIRE(ReadWaterfallHistory(module).writeIndex == (frame + 3) % config.waterfallHeight);
+            REQUIRE(ReadWaterfallHistory(module).dirtyRows == std::min(frame + 2, config.waterfallHeight));
+        }
+    }
+    module->surface()->pushInputEvent(KeyEvent{KeyEventType::Release, KeyCode::Space, {}});
+    module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::A, {}});
+    module->surface()->pushInputEvent(FocusEvent{false});
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Scroll, .position = {0.5f, 0.5f}, .scroll = {0, 1},
+    });
+    module->surface()->pushSurfaceEvent({.type = SurfaceEventType::Resize, .size = {800, 600}});
+    REQUIRE(present() == 0);
+    REQUIRE(displayedSignal == frozenSignal);
+    REQUIRE(displayedMaxHold == frozenMaxHold);
+    REQUIRE(displayedWaterfall == frozenWaterfall);
+    REQUIRE(displayedUniforms.index == frozenIndex);
+    REQUIRE(holdLabel() == (lineplot ? "HOLD" : ""));
+    REQUIRE((impl->*SignalViewImplAccess::interactionMember()).zoom > 1.0f);
+    REQUIRE((impl->*SignalViewImplAccess::interactionMember()).viewSize.x == 800);
+    if (waterfall) REQUIRE(displayedUniforms.zoom > 1.0f);
+
+    module->surface()->pushInputEvent(FocusEvent{true});
+    module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Space, {}});
+    REQUIRE(present() > 0);
+    REQUIRE(holdLabel() == (lineplot ? " " : ""));
+    if (lineplot) {
+        REQUIRE(displayedSignal == ReadSignalPoints(module));
+        REQUIRE(displayedMaxHold == ReadMaxHoldPoints(module));
+        REQUIRE(displayedSignal != frozenSignal);
+        REQUIRE(displayedMaxHold != frozenMaxHold);
+    }
+    if (waterfall) {
+        REQUIRE(displayedWaterfall == ReadWaterfallBins(module));
+        REQUIRE(displayedWaterfall != frozenWaterfall);
+        REQUIRE(displayedUniforms.index == ReadWaterfallHistory(module).writeIndex / F32{4});
+        REQUIRE(ReadWaterfallHistory(module).dirtyRows == 0);
+    }
+    REQUIRE(present() == 0);
+    compute(0.95f);
+    REQUIRE(present() > 0);
+    if (lineplot) REQUIRE(displayedSignal == ReadSignalPoints(module));
+    if (waterfall) REQUIRE(displayedWaterfall == ReadWaterfallBins(module));
+
+    REQUIRE(text->destroy(&window) == Result::SUCCESS);
+    REQUIRE(axis->destroy(&window) == Result::SUCCESS);
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
 TEST_CASE_METHOD(FlowgraphFixture, "Signal View drag requests round trip through the owning block",
                  "[modules][signal_view][split][config-edits]") {
     TestFlowgraph::SyntheticSourceBlockConfig source;
@@ -575,7 +1004,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View drag requests round trip through
     Render::Components::Text::Config textConfig;
     textConfig.font = axisConfig.font;
     textConfig.maxCharacters = 64;
-    textConfig.elements = {{"header", {}}, {"zoom", {}},
+    textConfig.elements = {{"header", {}}, {"zoom", {}}, {"hold", {}},
                            {"amplitude-title", {}}, {"waterfall-title", {}}};
     auto text = std::make_shared<LabelTestText>(textConfig);
     REQUIRE(text->create(&window) == Result::SUCCESS);
@@ -602,14 +1031,14 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View drag requests round trip through
     event.type = MouseEventType::Click;
     event.button = MouseButton::Left;
     event.position = {0.5f, positionAtRatio(0.5f)};
-    original->surface()->pushMouseEvent(event);
+    original->surface()->pushInputEvent(event);
     present();
     REQUIRE(splitter.dragging);
     REQUIRE_FALSE(interaction.dragging);
 
     event.type = MouseEventType::Move;
     event.position = {0.7f, positionAtRatio(0.7f)};
-    original->surface()->pushMouseEvent(event);
+    original->surface()->pushInputEvent(event);
     present();
     REQUIRE(splitter.ratio == Catch::Approx(0.7f));
     REQUIRE(text->get("zoom").fill == "SPLIT 70%");
@@ -626,7 +1055,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View drag requests round trip through
         event.position.x = 1.2f;
     }
     event.type = MouseEventType::Release;
-    original->surface()->pushMouseEvent(event);
+    original->surface()->pushInputEvent(event);
     present();
     REQUIRE_FALSE(splitter.dragging);
     REQUIRE(pending());
@@ -640,7 +1069,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View drag requests round trip through
     const auto committedRatio = splitter.ratio;
     event.type = MouseEventType::Move;
     event.position = {0.2f, 0.2f};
-    original->surface()->pushMouseEvent(event);
+    original->surface()->pushInputEvent(event);
     present();
     REQUIRE_FALSE(splitter.dragging);
     REQUIRE_FALSE(pending());

@@ -106,7 +106,7 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
     Result destroyPresent();
     Result present();
 
-    void processMouseEvents(const std::vector<MouseEvent>& events);
+    void processInputEvents(const std::vector<InputEvent>& events);
     void clampViewCenter();
     Extent2D<F32> plotToView(const Extent2D<F32>& plot) const;
     F32 plotDistancePx(const Extent2D<F32>& a, const Extent2D<F32>& b) const;

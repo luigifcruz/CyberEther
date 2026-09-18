@@ -52,7 +52,7 @@ struct FrameViewFixture {
     }
 
     void zoomTo(const F32 zoom) {
-        module->surface()->pushMouseEvent({
+        module->surface()->pushInputEvent(MouseEvent{
             .type = MouseEventType::Scroll,
             .position = {0.5f, 0.5f},
             .scroll = {0.0f, std::log(zoom) / Modules::kFrameZoomSpeed},
@@ -66,12 +66,12 @@ struct FrameViewFixture {
         event.type = MouseEventType::Click;
         event.button = MouseButton::Left;
         event.position = {0.5f, 0.5f};
-        module->surface()->pushMouseEvent(event);
+        module->surface()->pushInputEvent(event);
         event.type = MouseEventType::Move;
         event.position = {0.5f + delta.x, 0.5f + delta.y};
-        module->surface()->pushMouseEvent(event);
+        module->surface()->pushInputEvent(event);
         event.type = MouseEventType::Release;
-        module->surface()->pushMouseEvent(event);
+        module->surface()->pushInputEvent(event);
         present();
     }
 
@@ -351,7 +351,7 @@ TEST_CASE_METHOD(FrameViewFixture, "Frame zoom selections use the release positi
     event.type = MouseEventType::Click;
     event.button = MouseButton::Right;
     event.position = {0.25f, 0.25f};
-    module->surface()->pushMouseEvent(event);
+    module->surface()->pushInputEvent(event);
     present();
     REQUIRE(view.selecting);
 
@@ -369,7 +369,7 @@ TEST_CASE_METHOD(FrameViewFixture, "Frame zoom selections use the release positi
         expectedZoom = 1.0f;
     }
     event.type = MouseEventType::Release;
-    module->surface()->pushMouseEvent(event);
+    module->surface()->pushInputEvent(event);
     present();
     REQUIRE_FALSE(view.selecting);
     REQUIRE(view.zoom == Catch::Approx(expectedZoom));
@@ -377,7 +377,7 @@ TEST_CASE_METHOD(FrameViewFixture, "Frame zoom selections use the release positi
 
     event.type = MouseEventType::Move;
     event.position = {0.8f, 0.1f};
-    module->surface()->pushMouseEvent(event);
+    module->surface()->pushInputEvent(event);
     present();
     REQUIRE_FALSE(view.selecting);
     REQUIRE(view.zoom == Catch::Approx(expectedZoom));
@@ -399,13 +399,13 @@ TEST_CASE_METHOD(FrameViewFixture, "Frame selections exclude letterbox space in 
                 event.type = MouseEventType::Click;
                 event.button = MouseButton::Right;
                 event.position = start;
-                module->surface()->pushMouseEvent(event);
+                module->surface()->pushInputEvent(event);
                 event.type = MouseEventType::Move;
                 event.position = end;
-                module->surface()->pushMouseEvent(event);
+                module->surface()->pushInputEvent(event);
                 present();
                 event.type = MouseEventType::Release;
-                module->surface()->pushMouseEvent(event);
+                module->surface()->pushInputEvent(event);
                 present();
 
                 // The image occupies only a quarter of the plot on its short
@@ -431,10 +431,10 @@ TEST_CASE_METHOD(FrameViewFixture, "Frame selection bounds follow the zoomed and
             event.type = MouseEventType::Click;
             event.button = MouseButton::Right;
             event.position = wide ? Extent2D<F32>{0.4f, 0.5f} : Extent2D<F32>{0.5f, 0.4f};
-            module->surface()->pushMouseEvent(event);
+            module->surface()->pushInputEvent(event);
             event.type = MouseEventType::Release;
             event.position = wide ? Extent2D<F32>{0.6f, 1.2f} : Extent2D<F32>{1.2f, 0.6f};
-            module->surface()->pushMouseEvent(event);
+            module->surface()->pushInputEvent(event);
             present();
 
             const auto& view = frame->*FrameImplAccess::viewMember();
