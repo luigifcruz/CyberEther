@@ -514,3 +514,54 @@ TEST_CASE("VStack resets managed state when children do not match items",
     REQUIRE(stack.update(config));
     REQUIRE_FALSE(stack.layout()->measured);
 }
+
+TEST_CASE("VStack places gapped items exactly below the previous line",
+          "[core][sakura][vstack][gap]") {
+    SakuraTest::HeadlessUi ui;
+    const auto ctx = ui.sakura();
+    ImGui::GetStyle().ItemSpacing = ImVec2(0.0f, 8.0f);
+
+    VStack stack;
+    VStack::Config config;
+    config.id = "gap";
+    config.height = 500.0f;
+    config.items = {
+        {.id = "fixed-1", .flex = std::nullopt},
+        {.id = "fixed-2", .flex = std::nullopt, .gap = 2.0f},
+        {.id = "flex", .flex = VStack::Flex{.minimum = 150.0f, .grow = 1.0f}},
+    };
+
+    std::vector<F32> starts;
+    std::vector<VStack::Child> children = {
+        [&starts](const Sakura::Context&) {
+            starts.push_back(ImGui::GetCursorScreenPos().y);
+            ImGui::Dummy(ImVec2(0.0f, 100.0f));
+        },
+        [&starts](const Sakura::Context&) {
+            starts.push_back(ImGui::GetCursorScreenPos().y);
+            ImGui::Dummy(ImVec2(0.0f, 100.0f));
+        },
+        [&starts](const Sakura::Context&) {
+            starts.push_back(ImGui::GetCursorScreenPos().y);
+            ImGui::Dummy(ImVec2(0.0f, 123.0f));
+        },
+    };
+
+    REQUIRE(stack.update(config));
+    renderFrame(ui, ctx, stack, children);
+    REQUIRE(stack.update(config));
+
+    REQUIRE(starts.size() == 3);
+    REQUIRE(starts[1] - starts[0] == Catch::Approx(102.0f));
+    REQUIRE(starts[2] - starts[1] == Catch::Approx(108.0f));
+
+    const auto* layout = stack.layout();
+    REQUIRE(layout != nullptr);
+    REQUIRE(layout->measured);
+    REQUIRE(layout->fixedHeight == Catch::Approx(210.0f));
+    REQUIRE(layout->itemHeight(2) == Catch::Approx(290.0f));
+
+    config.items[1].gap = 6.0f;
+    REQUIRE(stack.update(config));
+    REQUIRE_FALSE(stack.layout()->measured);
+}

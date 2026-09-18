@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_NODE_FIELD_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/types.hh>
 
 #include <functional>
 #include <memory>
@@ -11,6 +12,8 @@ namespace Jetstream::Sakura {
 
 struct NodeField {
     using Child = std::function<void(const Context&)>;
+
+    static constexpr F32 Gap = 2.0f;
 
     struct Config {
         std::string id;

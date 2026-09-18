@@ -31,19 +31,7 @@ struct FlowgraphConfigVectorField {
     }
 
     void render(const Sakura::Context& ctx) const {
-        if (valueType == "float") {
-            for (U64 i = 0; i < floatInputs.size(); ++i) {
-                floatFrames[i].render(ctx, [this, i](const Sakura::Context& ctx) {
-                    floatInputs[i].render(ctx);
-                });
-            }
-        } else if (valueType == "uint") {
-            for (U64 i = 0; i < uintInputs.size(); ++i) {
-                uintFrames[i].render(ctx, [this, i](const Sakura::Context& ctx) {
-                    uintInputs[i].render(ctx);
-                });
-            }
-        }
+        grid.render(ctx, items);
     }
 
  private:
@@ -59,6 +47,10 @@ struct FlowgraphConfigVectorField {
     }
 
     void updateChildren() {
+        grid.update({
+            .id = config.id + "Grid",
+        });
+        items.clear();
         floatFrames.clear();
         floatInputs.clear();
         uintFrames.clear();
@@ -72,6 +64,14 @@ struct FlowgraphConfigVectorField {
                     .id = config.id + "Frame" + std::to_string(i),
                     .label = config.label,
                     .help = config.help,
+                });
+                items.push_back({
+                    .child = [this, i](const Sakura::Context& ctx) {
+                        floatFrames[i].render(ctx, [this, i](const Sakura::Context& ctx) {
+                            floatInputs[i].render(ctx);
+                        });
+                    },
+                    .fullWidth = true,
                 });
                 floatInputs[i].update({
                     .id = config.id + "Float" + std::to_string(i),
@@ -99,6 +99,14 @@ struct FlowgraphConfigVectorField {
                     .id = config.id + "Frame" + std::to_string(i),
                     .label = config.label,
                     .help = config.help,
+                });
+                items.push_back({
+                    .child = [this, i](const Sakura::Context& ctx) {
+                        uintFrames[i].render(ctx, [this, i](const Sakura::Context& ctx) {
+                            uintInputs[i].render(ctx);
+                        });
+                    },
+                    .fullWidth = true,
                 });
                 uintInputs[i].update({
                     .id = config.id + "UInt" + std::to_string(i),
@@ -129,6 +137,8 @@ struct FlowgraphConfigVectorField {
     int precision = 2;
     std::vector<F32> floatValues;
     std::vector<U64> uintValues;
+    Sakura::NodeFieldGrid grid;
+    std::vector<Sakura::NodeFieldGrid::Item> items;
     std::vector<Sakura::NodeField> floatFrames;
     std::vector<Sakura::NodeFloatInput> floatInputs;
     std::vector<Sakura::NodeField> uintFrames;
