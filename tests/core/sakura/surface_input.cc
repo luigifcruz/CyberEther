@@ -66,6 +66,8 @@ struct InputSurface {
 TEST_CASE("Surface keyboard focus survives pointer exit and forwards press repeat release",
           "[core][sakura][surface][keyboard]") {
     const bool superluminal = GENERATE(false, true);
+    const auto key = GENERATE(ImGuiKey_B, ImGuiKey_Space);
+    const auto code = key == ImGuiKey_Space ? KeyCode::Space : KeyCode::B;
     SakuraTest::HeadlessUi ui;
     InputSurface surface("keys", {20, 20}, superluminal);
     const auto frame = [&](ImVec2 position, bool down) {
@@ -84,10 +86,10 @@ TEST_CASE("Surface keyboard focus survives pointer exit and forwards press repea
     REQUIRE(surface.keys().empty());
 
     ImGui::GetIO().AddKeyEvent(ImGuiMod_Ctrl, true);
-    ImGui::GetIO().AddKeyEvent(ImGuiKey_B, true);
+    ImGui::GetIO().AddKeyEvent(key, true);
     frame({350, 250}, false);
     REQUIRE(surface.keys().size() == 1);
-    REQUIRE(surface.keys()[0].key == KeyCode::B);
+    REQUIRE(surface.keys()[0].key == code);
     REQUIRE(surface.keys()[0].type == KeyEventType::Press);
     REQUIRE(surface.keys()[0].modifiers.control);
     REQUIRE_FALSE(surface.keys()[0].repeat);
@@ -98,15 +100,15 @@ TEST_CASE("Surface keyboard focus survives pointer exit and forwards press repea
     bool repeated = false;
     for (int i = 0; i < 40; ++i) {
         frame({350, 250}, false);
-        for (const auto& key : surface.keys()) {
-            REQUIRE(key.key == KeyCode::B);
-            REQUIRE(key.type == KeyEventType::Press);
-            REQUIRE(key.repeat);
+        for (const auto& event : surface.keys()) {
+            REQUIRE(event.key == code);
+            REQUIRE(event.type == KeyEventType::Press);
+            REQUIRE(event.repeat);
             repeated = true;
         }
     }
     REQUIRE(repeated);
-    ImGui::GetIO().AddKeyEvent(ImGuiKey_B, false);
+    ImGui::GetIO().AddKeyEvent(key, false);
     frame({350, 250}, false);
     REQUIRE(surface.keys().size() == 1);
     REQUIRE(surface.keys()[0].type == KeyEventType::Release);
@@ -137,7 +139,7 @@ TEST_CASE("Surface focus switches exclusively and yields to text fields",
     frame({60, 60}, false);
     frame({60, 60}, true);
     frame({60, 60}, false);
-    ImGui::GetIO().AddKeyEvent(ImGuiKey_K, true);
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Space, true);
     frame({60, 60}, false);
     REQUIRE(first.keys().size() == 1);
     REQUIRE(second.keys().empty());
@@ -145,11 +147,11 @@ TEST_CASE("Surface focus switches exclusively and yields to text fields",
     frame({260, 60}, true);
     REQUIRE(first.focus(false));
     REQUIRE(first.keys().size() == 1);
-    REQUIRE(first.keys()[0].key == KeyCode::K);
+    REQUIRE(first.keys()[0].key == KeyCode::Space);
     REQUIRE(first.keys()[0].type == KeyEventType::Release);
     REQUIRE(second.focus(true));
     frame({260, 60}, false);
-    ImGui::GetIO().AddKeyEvent(ImGuiKey_K, false);
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Space, false);
     frame({260, 60}, false);
     REQUIRE(first.keys().empty());
     REQUIRE(second.keys().empty());
@@ -210,6 +212,191 @@ TEST_CASE("Surface forwards discrete key and mouse ordering with modifier snapsh
     REQUIRE_FALSE(move.modifiers.shift);
     REQUIRE(move.scroll.x == 0);
     REQUIRE(move.scroll.y == 0);
+}
+
+TEST_CASE("Window shortcuts deliver Space to only one surface",
+          "[core][sakura][surface][keyboard][space-routing]") {
+    const bool superluminal = GENERATE(false, true);
+    const bool reverse = GENERATE(false, true);
+    SakuraTest::HeadlessUi ui;
+    InputSurface first("first", {10, 10}, superluminal);
+    InputSurface second("second", {210, 10}, superluminal);
+    const auto frame = [&] {
+        first.events.clear();
+        second.events.clear();
+        ui.setMouse({260, 60}, false);
+        ui.frame([&] {
+            (reverse ? second : first).render(ui.sakura());
+            (reverse ? first : second).render(ui.sakura());
+        });
+    };
+    frame();
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Space, true);
+    frame();
+    REQUIRE(first.keys().size() + second.keys().size() == 1);
+    auto& recipient = first.keys().empty() ? second : first;
+    REQUIRE(recipient.keys()[0].type == KeyEventType::Press);
+    REQUIRE_FALSE(recipient.keys()[0].repeat);
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Space, false);
+    frame();
+    REQUIRE(first.keys().size() + second.keys().size() == 1);
+    REQUIRE(recipient.keys()[0].type == KeyEventType::Release);
+}
+
+TEST_CASE("Space targets the selected plot window regardless of hover and yields to text fields",
+          "[core][sakura][surface][keyboard][space-routing]") {
+    const bool superluminal = GENERATE(false, true);
+    const bool reverse = GENERATE(false, true);
+    SakuraTest::HeadlessUi ui(1.0f, {640, 360});
+    InputSurface first("first", {20, 60}, superluminal);
+    InputSurface second("second", {320, 60}, superluminal);
+    char text[64] = {};
+    bool textActive = false;
+    const auto frame = [&](ImVec2 position, bool down = false) {
+        first.events.clear();
+        second.events.clear();
+        ui.setMouse(position, down);
+        ui.frame([&] {
+            const auto draw = [&](InputSurface& surface, ImVec2 origin) {
+                ImGui::SetNextWindowPos(origin);
+                ImGui::SetNextWindowSize({280, 280});
+                if (ImGui::Begin(surface.id, nullptr, ImGuiWindowFlags_NoMove)) {
+                    surface.render(ui.sakura());
+                    if (&surface == &second) {
+                        ImGui::SetCursorScreenPos({320, 210});
+                        ImGui::InputText("text", text, sizeof(text));
+                        textActive = ImGui::IsItemActive();
+                    }
+                }
+                ImGui::End();
+            };
+            if (reverse) {
+                draw(second, {300, 0});
+                draw(first, {0, 0});
+            } else {
+                draw(first, {0, 0});
+                draw(second, {300, 0});
+            }
+        });
+    };
+    frame({100, 8});
+    frame({100, 8}, true);
+    frame({100, 8});
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Space, true);
+    frame({620, 320});
+    REQUIRE(first.keys().size() == 1);
+    REQUIRE(first.keys()[0].type == KeyEventType::Press);
+    REQUIRE(second.keys().empty());
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Space, false);
+    frame({620, 320});
+    REQUIRE(first.keys().size() == 1);
+    REQUIRE(first.keys()[0].type == KeyEventType::Release);
+
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Space, true);
+    frame({370, 110});
+    REQUIRE(first.keys().size() == 1);
+    REQUIRE(first.keys()[0].type == KeyEventType::Press);
+    REQUIRE(second.keys().empty());
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Space, false);
+    frame({370, 110});
+
+    frame({400, 8}, true);
+    frame({400, 8});
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Space, true);
+    frame({70, 110});
+    REQUIRE(first.keys().empty());
+    REQUIRE(second.keys().size() == 1);
+    REQUIRE(second.keys()[0].type == KeyEventType::Press);
+    bool repeated = false;
+    for (int i = 0; i < 40; ++i) {
+        frame({70, 110});
+        REQUIRE(first.keys().empty());
+        for (const auto& key : second.keys()) {
+            REQUIRE(key.repeat);
+            repeated = true;
+        }
+    }
+    REQUIRE(repeated);
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Space, false);
+    frame({70, 110});
+    REQUIRE(second.keys().size() == 1);
+    REQUIRE(second.keys()[0].type == KeyEventType::Release);
+
+    frame({350, 220}, true);
+    frame({350, 220});
+    REQUIRE(textActive);
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Space, true);
+    ImGui::GetIO().AddInputCharacter(' ');
+    frame({70, 110});
+    REQUIRE(textActive);
+    REQUIRE(std::string(text) == " ");
+    REQUIRE(first.keys().empty());
+    REQUIRE(second.keys().empty());
+}
+
+TEST_CASE("Window Space shortcuts retain their place and modifiers in mixed input batches",
+          "[core][sakura][surface][keyboard][space-routing][ordering]") {
+    const bool superluminal = GENERATE(false, true);
+    SakuraTest::HeadlessUi ui;
+    InputSurface surface("space-order", {20, 20}, superluminal);
+    ui.setMouse({70, 70}, false);
+    ui.frame([&] { surface.render(ui.sakura()); });
+    surface.events.clear();
+    auto& io = ImGui::GetIO();
+    io.ConfigInputTrickleEventQueue = false;
+    io.AddMouseWheelEvent(0, 1);
+    io.AddKeyEvent(ImGuiMod_Shift, true);
+    io.AddKeyEvent(ImGuiKey_Space, true);
+    io.AddKeyEvent(ImGuiMod_Shift, false);
+    io.AddMouseWheelEvent(0, -1);
+    io.AddKeyEvent(ImGuiKey_Space, false);
+    ui.frame([&] { surface.render(ui.sakura()); });
+    REQUIRE(surface.events.size() == 5);
+    REQUIRE(std::get<MouseEvent>(surface.events[0]).scroll.y == 1);
+    const auto& press = std::get<KeyEvent>(surface.events[1]);
+    REQUIRE(press.key == KeyCode::Space);
+    REQUIRE(press.type == KeyEventType::Press);
+    REQUIRE(press.modifiers.shift);
+    REQUIRE(std::get<MouseEvent>(surface.events[2]).scroll.y == -1);
+    const auto& release = std::get<KeyEvent>(surface.events[3]);
+    REQUIRE(release.key == KeyCode::Space);
+    REQUIRE(release.type == KeyEventType::Release);
+    REQUIRE_FALSE(release.modifiers.shift);
+    REQUIRE(std::get<MouseEvent>(surface.events[4]).type == MouseEventType::Move);
+}
+
+TEST_CASE("Window Space shortcuts release when hidden or blocked by a popup",
+          "[core][sakura][surface][keyboard][space-routing][hidden]") {
+    const bool superluminal = GENERATE(false, true);
+    SakuraTest::HeadlessUi ui;
+    InputSurface surface("window-hidden", {20, 20}, superluminal);
+    ui.setMouse({70, 70}, false);
+    ui.frame([&] { surface.render(ui.sakura()); });
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Space, true);
+    ui.frame([&] { surface.render(ui.sakura()); });
+    REQUIRE(surface.keys().size() == 1);
+    REQUIRE_FALSE(surface.focus(true));
+    surface.events.clear();
+    SECTION("hidden surface") {
+        ui.frame([] {});
+        REQUIRE(surface.events.size() == 1);
+        REQUIRE(surface.keys()[0].type == KeyEventType::Release);
+        surface.events.clear();
+        ui.frame([&] { surface.render(ui.sakura()); });
+        REQUIRE(surface.keys().empty());
+    }
+    SECTION("open popup") {
+        ui.frame([&] {
+            ImGui::OpenPopup("popup");
+            if (ImGui::BeginPopup("popup")) {
+                ImGui::TextUnformatted("Popup");
+                ImGui::EndPopup();
+            }
+            surface.render(ui.sakura());
+        });
+        REQUIRE(surface.keys().size() == 1);
+        REQUIRE(surface.keys()[0].type == KeyEventType::Release);
+    }
 }
 
 TEST_CASE("Surface preserves batched wheel deltas and interleaved modifier changes",
@@ -461,6 +648,7 @@ TEST_CASE("Collapsed windows release surface input while their content is skippe
 TEST_CASE("Surface visibility tracking handles either context or surface destruction first",
           "[core][sakura][surface][keyboard][focus][hidden][lifetime]") {
     const bool superluminal = GENERATE(false, true);
+    const auto key = GENERATE(ImGuiKey_A, ImGuiKey_Space);
     std::vector<InputEvent> events;
     auto ui = std::make_unique<SakuraTest::HeadlessUi>();
     auto view = std::make_unique<Sakura::SurfaceView>();
@@ -484,7 +672,7 @@ TEST_CASE("Surface visibility tracking handles either context or surface destruc
     frame(false);
     frame(true);
     frame(false);
-    ImGui::GetIO().AddKeyEvent(ImGuiKey_A, true);
+    ImGui::GetIO().AddKeyEvent(key, true);
     frame(false);
     REQUIRE(std::get<KeyEvent>(events[0]).type == KeyEventType::Press);
     events.clear();

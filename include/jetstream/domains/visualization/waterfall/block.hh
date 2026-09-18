@@ -24,7 +24,8 @@ struct Waterfall : public Block::Config {
         "The Waterfall block provides a time-frequency visualization where signal "
         "amplitude is represented using colors. New data appears at the top and "
         "scrolls downward, creating a visual history of the signal's spectral "
-        "content over time.\n\n"
+        "content over time. Press **Space** in the focused plot window to "
+        "freeze or resume the view.\n\n"
 
         "## Arguments\n"
         "- **Height**: Number of rows in the waterfall history buffer.\n"

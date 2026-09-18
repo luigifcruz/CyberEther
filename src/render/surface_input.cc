@@ -134,7 +134,7 @@ void SurfaceInputState::observe(std::function<void(const InputEvent&)> emit) {
     hook.Type = ImGuiContextHookType_EndFramePost;
     hook.Callback = [](ImGuiContext* ctx, ImGuiContextHook* hook) {
         auto& state = *static_cast<SurfaceInputState*>(hook->UserData);
-        if (state.focused && state.lastFrame != ctx->FrameCount) {
+        if (state.lastFrame != ctx->FrameCount) {
             state.reset(state.callback);
         }
     };
@@ -190,11 +190,19 @@ void ForwardSurfaceInputEvents(const ImVec2& origin, const ImVec2& size,
     for (int button = 0; button < ImGuiMouseButton_COUNT; ++button) {
         outsideClick |= !hovered && ImGui::IsMouseClicked(button);
     }
+    const bool windowFocused = ImGui::IsWindowFocused() && !io.AppFocusLost &&
+                               (g.ActiveId == 0 || g.ActiveId == id);
     const bool focused = (state.focused || clicked) && ImGui::IsItemFocused() &&
-                         ImGui::IsWindowFocused() && !io.AppFocusLost && !outsideClick &&
-                         (g.ActiveId == 0 || g.ActiveId == id);
-    if (!focused) {
+                         windowFocused && !outsideClick;
+    const bool spaceFocused = windowFocused && !io.WantTextInput && g.OpenPopupStack.empty() &&
+                              ImGui::SetShortcutRouting(ImGuiKey_Space, ImGuiInputFlags_RouteFocused, id);
+    if (!focused && state.focused) {
         state.reset(emit);
+    }
+    auto& spaceHeld = state.heldKeys[ImGuiKey_Space - ImGuiKey_NamedKey_BEGIN];
+    if (!spaceFocused && spaceHeld) {
+        emit(KeyEvent{KeyEventType::Release, KeyCode::Space, {}});
+        spaceHeld = false;
     }
 
     const auto position = ImGui::GetMousePos();
@@ -246,7 +254,7 @@ void ForwardSurfaceInputEvents(const ImVec2& origin, const ImVec2& size,
         if (event.Type == ImGuiInputEventType_Key) {
             UpdateSurfaceModifiers(modifiers, event.Key.Key, event.Key.Down, state.macOS);
             const auto key = SurfaceKeyCode(event.Key.Key, state.macOS);
-            if (!state.focused || key == KeyCode::Unknown) continue;
+            if (key == KeyCode::Unknown || (key == KeyCode::Space ? !spaceFocused : !state.focused)) continue;
             auto& held = state.heldKeys[event.Key.Key - ImGuiKey_NamedKey_BEGIN];
             if (held == event.Key.Down) continue;
             held = event.Key.Down;
@@ -263,9 +271,10 @@ void ForwardSurfaceInputEvents(const ImVec2& origin, const ImVec2& size,
     modifiers = SurfaceKeyModifiers();
     if (buttonPending) emitButton();
     if (wheelPending) emitWheel({io.MouseWheelH, io.MouseWheel});
-    if (state.focused) {
+    if (state.focused || spaceFocused) {
         for (int value = ImGuiKey_Tab; value <= ImGuiKey_Oem102; ++value) {
             const auto key = static_cast<ImGuiKey>(value);
+            if (key == ImGuiKey_Space ? !spaceFocused : !state.focused) continue;
             ImGui::SetKeyOwner(key, id);
             if (state.heldKeys[value - ImGuiKey_NamedKey_BEGIN] &&
                 ImGui::GetKeyData(key)->DownDuration > 0.0f &&

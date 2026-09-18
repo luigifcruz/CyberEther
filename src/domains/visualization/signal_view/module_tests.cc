@@ -6,6 +6,7 @@
 #include <any>
 #include <array>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <numeric>
 #include <optional>
@@ -61,6 +62,22 @@ struct SignalViewImplAccess : Modules::SignalViewImpl {
 
     static auto waterfallUniformBufferMember() {
         return &SignalViewImplAccess::waterfallUniformBuffer;
+    }
+
+    static auto signalPointsBufferMember() {
+        return &SignalViewImplAccess::signalPointsBuffer;
+    }
+
+    static auto maxHoldPointsBufferMember() {
+        return &SignalViewImplAccess::maxHoldPointsBuffer;
+    }
+
+    static auto waterfallBufferMember() {
+        return &SignalViewImplAccess::waterfallBuffer;
+    }
+
+    static auto waterfallUniformsMember() {
+        return &SignalViewImplAccess::waterfallUniforms;
     }
 
     static auto interactionMember() {
@@ -189,29 +206,53 @@ void SignalViewImplAccess::wirePresentResources(
     impl.*axisMember() = axis;
     impl.*&SignalViewImplAccess::text = text;
     impl.*renderSurfaceMember() = std::make_shared<LabelTestSurface>();
-    auto& points = impl.*signalPointsMember();
-    impl.*&SignalViewImplAccess::signalPointsBuffer = std::make_shared<LabelTestBuffer>(
-        Render::Buffer::Config{
-            .size = points.size(),
+    const auto tensorBuffer = [](Tensor& tensor) {
+        return std::make_shared<LabelTestBuffer>(Render::Buffer::Config{
+            .size = tensor.size(),
             .target = Render::Buffer::Target::STORAGE,
             .elementByteSize = sizeof(F32),
-            .buffer = points.data(),
+            .buffer = tensor.data(),
         });
-    auto& bins = impl.*waterfallBinsMember();
-    impl.*&SignalViewImplAccess::waterfallBuffer = std::make_shared<LabelTestBuffer>(
-        Render::Buffer::Config{
-            .size = bins.size(),
-            .target = Render::Buffer::Target::STORAGE,
-            .elementByteSize = sizeof(F32),
-            .buffer = bins.data(),
-        });
+    };
+    if (impl.*&SignalViewImplAccess::lineplotEnabled) {
+        impl.*signalPointsBufferMember() = tensorBuffer(impl.*signalPointsMember());
+        impl.*maxHoldPointsBufferMember() = tensorBuffer(impl.*maxHoldPointsMember());
+    }
+    if (impl.*&SignalViewImplAccess::waterfallEnabled) {
+        impl.*waterfallBufferMember() = tensorBuffer(impl.*waterfallBinsMember());
+    }
     impl.*&SignalViewImplAccess::signalUniformBuffer = std::make_shared<LabelTestBuffer>();
-    impl.*waterfallUniformBufferMember() = std::make_shared<LabelTestBuffer>();
+    impl.*&SignalViewImplAccess::holdUniformBuffer = std::make_shared<LabelTestBuffer>();
+    auto& uniforms = impl.*waterfallUniformsMember();
+    impl.*waterfallUniformBufferMember() = std::make_shared<LabelTestBuffer>(
+        Render::Buffer::Config{
+            .size = 1,
+            .target = Render::Buffer::Target::UNIFORM,
+            .elementByteSize = sizeof(uniforms),
+            .buffer = &uniforms,
+        });
     impl.*&SignalViewImplAccess::signalKernel = std::make_shared<Render::Kernel>(Render::Kernel::Config{});
     impl.*&SignalViewImplAccess::fillKernel = std::make_shared<Render::Kernel>(Render::Kernel::Config{});
+    impl.*&SignalViewImplAccess::maxHoldKernel = std::make_shared<Render::Kernel>(Render::Kernel::Config{});
     impl.*&SignalViewImplAccess::signalProgram = std::make_shared<Render::Program>(Render::Program::Config{});
     impl.*&SignalViewImplAccess::fillProgram = std::make_shared<Render::Program>(Render::Program::Config{});
+    impl.*&SignalViewImplAccess::maxHoldProgram = std::make_shared<Render::Program>(Render::Program::Config{});
     impl.*&SignalViewImplAccess::waterfallProgram = std::make_shared<Render::Program>(Render::Program::Config{});
+}
+
+U64 ApplyBufferUploads(const std::shared_ptr<Render::Buffer>& buffer, void* destination) {
+    if (!buffer) return 0;
+    Render::Transfer::Batch batch;
+    batch.collect(buffer);
+    U64 bytes = 0;
+    for (const auto& transfer : batch.buffers()) {
+        REQUIRE(transfer.destinationOffset + transfer.upload.data.size() <= buffer->byteSize());
+        std::memcpy(static_cast<U8*>(destination) + transfer.destinationOffset,
+                    transfer.upload.data.data(), transfer.upload.data.size());
+        bytes += transfer.upload.data.size();
+    }
+    batch.commit();
+    return bytes;
 }
 #endif
 
@@ -549,6 +590,139 @@ TEST_CASE("Standalone waterfall presents live metadata without view changes",
     present();
 
     REQUIRE(axis->destroy(&window) == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Space holds displayed plots while processing continues and resumes at the latest data",
+          "[modules][signal_view][present][keyboard][hold]") {
+    const std::string mode = GENERATE("lineplot", "waterfall", "lineplot_waterfall");
+    const U64 heldFrames = GENERATE(2, 11);
+    const bool lineplot = Modules::detail::SignalViewHasLineplot(mode);
+    const bool waterfall = Modules::detail::SignalViewHasWaterfall(mode);
+    CAPTURE(mode, heldFrames);
+
+    Tensor input(DeviceType::CPU, DataType::F32, {2, 8});
+    REQUIRE(SetSignalAxes(input, {.sample = Index{1}, .batch = Index{0}}) == Result::SUCCESS);
+    TensorMap inputs;
+    inputs["signal"].tensor = input;
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("signal_view", DeviceType::CPU,
+                                  RuntimeType::NATIVE, "generic", module) == Result::SUCCESS);
+    Modules::SignalView config;
+    config.mode = mode;
+    config.lineplotAveraging = 2;
+    config.waterfallAveraging = 2;
+    config.waterfallHeight = 4;
+    config.maxHold = true;
+    REQUIRE(module->create("plot", config, inputs) == Result::SUCCESS);
+    Runtime runtime("plot", DeviceType::CPU, RuntimeType::NATIVE);
+    REQUIRE(runtime.create({{"plot", module}}) == Result::SUCCESS);
+
+    LabelTestWindow window;
+    Render::Components::Axis::Config axisConfig;
+    axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
+    auto axis = std::make_shared<LabelTestAxis>(axisConfig);
+    REQUIRE(axis->create(&window) == Result::SUCCESS);
+    Render::Components::Text::Config textConfig;
+    textConfig.font = axisConfig.font;
+    textConfig.maxCharacters = 256;
+    textConfig.elements = {{"header", {}}, {"zoom", {}},
+                           {"amplitude-title", {}}, {"waterfall-title", {}}};
+    auto text = std::make_shared<LabelTestText>(textConfig);
+    REQUIRE(text->create(&window) == Result::SUCCESS);
+    auto* impl = module->getImpl<Modules::SignalViewImpl>();
+    REQUIRE(impl);
+    SignalViewImplAccess::wirePresentResources(*impl, axis, text);
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+
+    std::vector<F32> displayedSignal(lineplot ? 16 : 0);
+    std::vector<F32> displayedMaxHold(lineplot ? 16 : 0);
+    std::vector<F32> displayedWaterfall(waterfall ? 32 : 0);
+    auto displayedUniforms = impl->*SignalViewImplAccess::waterfallUniformsMember();
+    const auto present = [&] {
+        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        U64 bytes = ApplyBufferUploads(impl->*SignalViewImplAccess::signalPointsBufferMember(),
+                                       displayedSignal.data());
+        bytes += ApplyBufferUploads(impl->*SignalViewImplAccess::maxHoldPointsBufferMember(),
+                                    displayedMaxHold.data());
+        bytes += ApplyBufferUploads(impl->*SignalViewImplAccess::waterfallBufferMember(),
+                                    displayedWaterfall.data());
+        ApplyBufferUploads(impl->*SignalViewImplAccess::waterfallUniformBufferMember(),
+                            &displayedUniforms);
+        return bytes;
+    };
+    std::unordered_set<std::string> skipped, failed;
+    F32 average = -0.8f;
+    const auto compute = [&](F32 value) {
+        std::fill_n(input.data<F32>(), input.size(), value);
+        REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+        REQUIRE(skipped.empty());
+        REQUIRE(failed.empty());
+        average = 0.5f * average + 0.5f * (2.0f * value - 1.0f);
+        if (lineplot) {
+            REQUIRE(ReadSignalPoints(module)[1] == Catch::Approx(std::tanh(2.0f * average)));
+        }
+    };
+    compute(0.1f);
+    REQUIRE(present() > 0);
+    const auto frozenSignal = displayedSignal;
+    const auto frozenMaxHold = displayedMaxHold;
+    const auto frozenWaterfall = displayedWaterfall;
+    const auto frozenIndex = displayedUniforms.index;
+
+    compute(0.2f);
+    module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Space, {}});
+    REQUIRE(present() == 0);
+    for (U64 frame = 0; frame < heldFrames; ++frame) {
+        compute(0.3f + 0.05f * frame);
+        module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Space, {}, true});
+        REQUIRE(present() == 0);
+        if (waterfall) {
+            REQUIRE(ReadWaterfallHistory(module).writeIndex == (frame + 3) % config.waterfallHeight);
+            REQUIRE(ReadWaterfallHistory(module).dirtyRows == std::min(frame + 2, config.waterfallHeight));
+        }
+    }
+    module->surface()->pushInputEvent(KeyEvent{KeyEventType::Release, KeyCode::Space, {}});
+    module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::A, {}});
+    module->surface()->pushInputEvent(FocusEvent{false});
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Scroll, .position = {0.5f, 0.5f}, .scroll = {0, 1},
+    });
+    module->surface()->pushSurfaceEvent({.type = SurfaceEventType::Resize, .size = {800, 600}});
+    REQUIRE(present() == 0);
+    REQUIRE(displayedSignal == frozenSignal);
+    REQUIRE(displayedMaxHold == frozenMaxHold);
+    REQUIRE(displayedWaterfall == frozenWaterfall);
+    REQUIRE(displayedUniforms.index == frozenIndex);
+    REQUIRE((impl->*SignalViewImplAccess::interactionMember()).zoom > 1.0f);
+    REQUIRE((impl->*SignalViewImplAccess::interactionMember()).viewSize.x == 800);
+    if (waterfall) REQUIRE(displayedUniforms.zoom > 1.0f);
+
+    module->surface()->pushInputEvent(FocusEvent{true});
+    module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Space, {}});
+    REQUIRE(present() > 0);
+    if (lineplot) {
+        REQUIRE(displayedSignal == ReadSignalPoints(module));
+        REQUIRE(displayedMaxHold == ReadMaxHoldPoints(module));
+        REQUIRE(displayedSignal != frozenSignal);
+        REQUIRE(displayedMaxHold != frozenMaxHold);
+    }
+    if (waterfall) {
+        REQUIRE(displayedWaterfall == ReadWaterfallBins(module));
+        REQUIRE(displayedWaterfall != frozenWaterfall);
+        REQUIRE(displayedUniforms.index == ReadWaterfallHistory(module).writeIndex / F32{4});
+        REQUIRE(ReadWaterfallHistory(module).dirtyRows == 0);
+    }
+    REQUIRE(present() == 0);
+    compute(0.95f);
+    REQUIRE(present() > 0);
+    if (lineplot) REQUIRE(displayedSignal == ReadSignalPoints(module));
+    if (waterfall) REQUIRE(displayedWaterfall == ReadWaterfallBins(module));
+
+    REQUIRE(text->destroy(&window) == Result::SUCCESS);
+    REQUIRE(axis->destroy(&window) == Result::SUCCESS);
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
     REQUIRE(module->destroy() == Result::SUCCESS);
 }
 

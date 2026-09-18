@@ -205,6 +205,7 @@ Result SignalViewImpl::create() {
     splitter = {};
     splitter.ratio = splitRatio;
     updateLayoutFlag = false;
+    displayHeld = false;
 
     // Get input tensor.
 
@@ -758,7 +759,7 @@ Result SignalViewImpl::present() {
         (2.0f * interaction.scale) / interaction.viewSize.x,
         (2.0f * interaction.scale) / interaction.viewSize.y,
     }));
-    processMouseEvents(axis->paddingScale());
+    processInputEvents(axis->paddingScale());
 
     if (interaction.viewChanged || updateLayoutFlag) {
         renderSurface->size(interaction.viewSize);
@@ -769,24 +770,26 @@ Result SignalViewImpl::present() {
     }
 
     if (waterfallEnabled) {
-        const auto dirtyPlan = waterfallHistory.dirtyPlan(waterfallHeight);
-        if (dirtyPlan.firstRowCount > 0) {
-            JST_CHECK(waterfallBuffer->update(dirtyPlan.startRow *
-                                                  numberOfElements,
-                                              dirtyPlan.firstRowCount *
-                                                  numberOfElements));
+        if (!displayHeld) {
+            const auto dirtyPlan = waterfallHistory.dirtyPlan(waterfallHeight);
+            if (dirtyPlan.firstRowCount > 0) {
+                JST_CHECK(waterfallBuffer->update(dirtyPlan.startRow *
+                                                      numberOfElements,
+                                                  dirtyPlan.firstRowCount *
+                                                      numberOfElements));
+            }
+            if (dirtyPlan.secondRowCount > 0) {
+                JST_CHECK(waterfallBuffer->update(0,
+                                                  dirtyPlan.secondRowCount *
+                                                      numberOfElements));
+            }
+            waterfallHistory.clearDirty();
+            waterfallUniforms.index = waterfallHistory.writeIndex /
+                                      static_cast<F32>(waterfallHeight);
         }
-        if (dirtyPlan.secondRowCount > 0) {
-            JST_CHECK(waterfallBuffer->update(0,
-                                              dirtyPlan.secondRowCount *
-                                                  numberOfElements));
-        }
-        waterfallHistory.clearDirty();
 
         waterfallUniforms.width = static_cast<int>(numberOfElements);
         waterfallUniforms.height = static_cast<int>(waterfallHeight);
-        waterfallUniforms.index = waterfallHistory.writeIndex /
-                                  static_cast<F32>(waterfallHeight);
         waterfallUniforms.offset = interaction.offset +
             0.5f * (1.0f - 1.0f / interaction.zoom);
         waterfallUniforms.zoom = interaction.zoom;
@@ -795,7 +798,7 @@ Result SignalViewImpl::present() {
 
     // Process update flags.
 
-    if (lineplotEnabled && updateSignalPointsFlag) {
+    if (lineplotEnabled && updateSignalPointsFlag && !displayHeld) {
         JST_CHECK(signalPointsBuffer->update());
         signalKernel->update();
         if (fill) {
@@ -834,7 +837,7 @@ Result SignalViewImpl::present() {
     return Result::SUCCESS;
 }
 
-void SignalViewImpl::processMouseEvents(const Extent2D<F32>& paddingScale) {
+void SignalViewImpl::processInputEvents(const Extent2D<F32>& paddingScale) {
     const F32 previousRatio = splitter.ratio;
     if (!splitter.dragging && !configChangePending()) {
         splitter.ratio = splitRatio;
@@ -844,6 +847,11 @@ void SignalViewImpl::processMouseEvents(const Extent2D<F32>& paddingScale) {
     const bool enabled = lineplotEnabled && waterfallEnabled &&
                          configChangeEnabled("splitRatio");
     for (const auto& input : surfaceConsumeInputEvents()) {
+        if (const auto* key = std::get_if<KeyEvent>(&input)) {
+            if (key->type == KeyEventType::Press && key->key == KeyCode::Space && !key->repeat) {
+                displayHeld = !displayHeld;
+            }
+        }
         const auto mouse = SurfaceMouseEvent(input);
         if (!mouse) continue;
         const auto& event = *mouse;

@@ -104,6 +104,7 @@ struct SignalViewImpl : public Module::Impl,
     SurfaceInteractionState interaction;
     detail::SignalViewSplitInteraction splitter;
     bool updateLayoutFlag = false;
+    bool displayHeld = false;
 
     // Rendering state.
     Extent2D<F32> pixelSize;
@@ -187,7 +188,7 @@ struct SignalViewImpl : public Module::Impl,
     Result present();
 
     void updateState();
-    void processMouseEvents(const Extent2D<F32>& paddingScale);
+    void processInputEvents(const Extent2D<F32>& paddingScale);
     void updateLabelState();
     Result resetLineplotHistory();
     Result resetHistoryState();
