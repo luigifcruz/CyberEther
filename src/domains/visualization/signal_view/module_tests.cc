@@ -626,7 +626,7 @@ TEST_CASE("Space holds displayed plots while processing continues and resumes at
     Render::Components::Text::Config textConfig;
     textConfig.font = axisConfig.font;
     textConfig.maxCharacters = 256;
-    textConfig.elements = {{"header", {}}, {"zoom", {}},
+    textConfig.elements = {{"header", {}}, {"zoom", {}}, {"hold", {}},
                            {"amplitude-title", {}}, {"waterfall-title", {}}};
     auto text = std::make_shared<LabelTestText>(textConfig);
     REQUIRE(text->create(&window) == Result::SUCCESS);
@@ -664,8 +664,12 @@ TEST_CASE("Space holds displayed plots while processing continues and resumes at
             REQUIRE(ReadSignalPoints(module)[1] == Catch::Approx(std::tanh(2.0f * average)));
         }
     };
+    const auto holdLabel = [&]() -> std::string {
+        return lineplot ? text->get("hold").fill : "";
+    };
     compute(0.1f);
     REQUIRE(present() > 0);
+    REQUIRE(holdLabel() == (lineplot ? " " : ""));
     const auto frozenSignal = displayedSignal;
     const auto frozenMaxHold = displayedMaxHold;
     const auto frozenWaterfall = displayedWaterfall;
@@ -674,6 +678,7 @@ TEST_CASE("Space holds displayed plots while processing continues and resumes at
     compute(0.2f);
     module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Space, {}});
     REQUIRE(present() == 0);
+    REQUIRE(holdLabel() == (lineplot ? "HOLD" : ""));
     for (U64 frame = 0; frame < heldFrames; ++frame) {
         compute(0.3f + 0.05f * frame);
         module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Space, {}, true});
@@ -695,6 +700,7 @@ TEST_CASE("Space holds displayed plots while processing continues and resumes at
     REQUIRE(displayedMaxHold == frozenMaxHold);
     REQUIRE(displayedWaterfall == frozenWaterfall);
     REQUIRE(displayedUniforms.index == frozenIndex);
+    REQUIRE(holdLabel() == (lineplot ? "HOLD" : ""));
     REQUIRE((impl->*SignalViewImplAccess::interactionMember()).zoom > 1.0f);
     REQUIRE((impl->*SignalViewImplAccess::interactionMember()).viewSize.x == 800);
     if (waterfall) REQUIRE(displayedUniforms.zoom > 1.0f);
@@ -702,6 +708,7 @@ TEST_CASE("Space holds displayed plots while processing continues and resumes at
     module->surface()->pushInputEvent(FocusEvent{true});
     module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Space, {}});
     REQUIRE(present() > 0);
+    REQUIRE(holdLabel() == (lineplot ? " " : ""));
     if (lineplot) {
         REQUIRE(displayedSignal == ReadSignalPoints(module));
         REQUIRE(displayedMaxHold == ReadMaxHoldPoints(module));
@@ -749,7 +756,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View drag requests round trip through
     Render::Components::Text::Config textConfig;
     textConfig.font = axisConfig.font;
     textConfig.maxCharacters = 64;
-    textConfig.elements = {{"header", {}}, {"zoom", {}},
+    textConfig.elements = {{"header", {}}, {"zoom", {}}, {"hold", {}},
                            {"amplitude-title", {}}, {"waterfall-title", {}}};
     auto text = std::make_shared<LabelTestText>(textConfig);
     REQUIRE(text->create(&window) == Result::SUCCESS);

@@ -641,6 +641,11 @@ Result SignalViewImpl::createPresent() {
                  {.scale = 0.85f,
                   .position = {0.0f, 1.0f},
                   .alignment = {1, 0}}},
+                {"hold",
+                 {.scale = 0.85f,
+                  .position = {-1.0f, 1.0f},
+                  .alignment = {0, 0},
+                  .color = ColorRGBA<F32>{1.0f, 0.85f, 0.0f, 1.0f}}},
                 {"amplitude-title",
                  {.scale = 0.85f,
                   .position = {-1.0f, 0.5f},
@@ -1032,11 +1037,21 @@ void SignalViewImpl::updateLabelState() {
     if (lineplotEnabled && text) {
         text->updatePixelSize(pixelSize);
 
+        const F32 tickOffset = axis->getConfig().majorTickLengthPx + 4.0f;
+
+        auto holdLabel = text->get("hold");
+        const F32 lineHeight = text->getConfig().font
+            ? static_cast<F32>(text->getConfig().font->lineHeight()) * holdLabel.scale
+            : 0.0f;
+        holdLabel.position = {-paddingScale.x + pixelSize.x * tickOffset,
+                              paddingScale.y - pixelSize.y * (tickOffset + lineHeight)};
+        holdLabel.fill = displayHeld ? "HOLD" : " ";
+        text->update("hold", holdLabel);
+
         auto header = text->get("header");
         if (interaction.placement == SurfacePlacementType::Attached) {
             header.fill = " ";
         } else {
-            const F32 tickOffset = axis->getConfig().majorTickLengthPx + 4.0f;
             header.position = {-paddingScale.x + pixelSize.x * tickOffset,
                                paddingScale.y - pixelSize.y * tickOffset};
             if (hasFreqAttrs) {
