@@ -41,7 +41,6 @@ struct FlowgraphDetachedSurface {
             .title = this->config.title,
             .size = this->config.logicalSize,
             .padding = Extent2D<F32>{4.0f, 4.0f},
-            .backgroundColor = ColorRGBA<F32>{0.0f, 0.0f, 0.0f, 1.0f},
             .onClose = this->config.onClose,
         });
         surface.update({
