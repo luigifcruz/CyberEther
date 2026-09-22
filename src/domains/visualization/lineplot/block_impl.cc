@@ -25,6 +25,7 @@ Result LineplotImpl::configure() {
     signalViewConfig->xLabel = xLabel;
     signalViewConfig->amplitudeLabel = yLabel;
     signalViewConfig->markers = markers;
+    signalViewConfig->pins = pins;
 
     return Result::SUCCESS;
 }
@@ -50,6 +51,7 @@ Result LineplotImpl::create() {
         {"signal", inputs().at("signal")}
     }));
     JST_CHECK(moduleBindConfigEdit("signal_view", "markers", "markers"));
+    JST_CHECK(moduleBindConfigEdit("signal_view", "pins", "pins"));
 
     return Result::SUCCESS;
 }

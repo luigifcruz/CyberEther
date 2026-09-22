@@ -56,8 +56,14 @@ constexpr ColorRGBA<F32> MarkerTagTextColor(const U64 index) {
     return luminance > 0.5f ? ColorRGBA<F32>{0.05f, 0.05f, 0.05f, 1.0f}
                             : ColorRGBA<F32>{1.0f, 1.0f, 1.0f, 1.0f};
 }
+constexpr ColorRGBA<F32> kMarkerSpanColor = {1.0f, 1.0f, 1.0f, 0.6f};
 constexpr F32 kLabelScale = 0.85f;
 constexpr F32 kMarkerPickRadiusPx = 8.0f;
+constexpr F32 kMarkerSpanThicknessPx = 3.0f;
+constexpr F32 kMarkerSpanArrowArmPx = 11.0f;
+constexpr F32 kMarkerSpanArrowAngleDeg = 30.0f;
+constexpr F32 kMarkerSpanLabelGapPx = 10.0f;
+constexpr F32 kMarkerSpanTagGapPx = 5.0f;
 constexpr F32 kMarkerTableGapPx = 12.0f;
 
 bool HostReadable(const Tensor& tensor) {
@@ -87,12 +93,38 @@ enum MarkerTableGroup : U64 {
     kMarkerTableGroups,
 };
 
+enum MarkerSpanSegment : U64 {
+    kSpanLeadSegment = 0,
+    kSpanTrailSegment,
+    kSpanSegments,
+};
+
+enum MarkerSpanArrow : U64 {
+    kSpanLeadUpperArm = 0,
+    kSpanLeadLowerArm,
+    kSpanTrailUpperArm,
+    kSpanTrailLowerArm,
+    kSpanArrows,
+};
+
 constexpr U64 MarkerInstance(const U64 group, const U64 index) {
     return group * detail::MaxMarkers + index;
 }
 
+constexpr U64 SpanInstance(const U64 span, const U64 segment) {
+    return span * kSpanSegments + segment;
+}
+
+constexpr U64 ArrowInstance(const U64 span, const U64 arm) {
+    return span * kSpanArrows + arm;
+}
+
 std::string MarkerElement(const U64 index, const char* suffix) {
     return jst::fmt::format("marker-{}-{}", index, suffix);
+}
+
+std::string SpanElement(const U64 index, const char* suffix) {
+    return jst::fmt::format("span-{}-{}", index, suffix);
 }
 
 }  // namespace
@@ -143,6 +175,12 @@ Result SignalViewImpl::validate() {
     for (const auto marker : config.markers) {
         if (!std::isfinite(marker) || marker < -1.0f || marker > 1.0f) {
             JST_ERROR("[MODULE_SIGNAL_VIEW] Marker positions must be between -1 and 1.");
+            return Result::ERROR;
+        }
+    }
+    for (const auto index : config.pins) {
+        if (index >= config.markers.size()) {
+            JST_ERROR("[MODULE_SIGNAL_VIEW] Pinned marker indices must refer to a marker.");
             return Result::ERROR;
         }
     }
@@ -296,6 +334,7 @@ Result SignalViewImpl::create() {
     cursor = {};
     markerPositions = markers;
     updateMarkersFlag = false;
+    applyPins();
     displayedPoints.clear();
 
     // Get input tensor.
@@ -385,8 +424,9 @@ Result SignalViewImpl::reconfigure() {
             config.rangeMin != rangeMin || config.rangeMax != rangeMax;
         updateLayoutFlag |= config.splitRatio != splitRatio;
         splitRatio = config.splitRatio;
-        updateMarkersFlag |= config.markers != markers;
+        updateMarkersFlag |= config.markers != markers || config.pins != pins;
         markers = config.markers;
+        pins = config.pins;
         lineplotAveraging = config.lineplotAveraging;
         waterfallAveraging = config.waterfallAveraging;
         rangeMin = config.rangeMin;
@@ -859,6 +899,32 @@ Result SignalViewImpl::createPresent() {
             2.0f / interaction.viewSize.x,
             2.0f / interaction.viewSize.y,
         };
+        cfg.elements["spans"] = {
+            .type = Render::Components::Shapes::Type::RECT,
+            .numberOfInstances = kSpanSegments * detail::MarkerSpans,
+            .color = kMarkerSpanColor,
+            .position = {-2.0f, -2.0f},
+            .size = {0.0f, 0.0f},
+            .cornerRadius = kMarkerSpanThicknessPx * 0.5f,
+        };
+        cfg.elements["arrows"] = {
+            .type = Render::Components::Shapes::Type::RECT,
+            .numberOfInstances = kSpanArrows * detail::MarkerSpans,
+            .color = kMarkerSpanColor,
+            .position = {-2.0f, -2.0f},
+            .size = {0.0f, 0.0f},
+            .cornerRadius = kMarkerSpanThicknessPx * 0.5f,
+        };
+        JST_CHECK(window->build(markerSpanShapes, cfg));
+        JST_CHECK(window->bind(markerSpanShapes));
+    }
+
+    {
+        Render::Components::Shapes::Config cfg;
+        cfg.pixelSize = {
+            2.0f / interaction.viewSize.x,
+            2.0f / interaction.viewSize.y,
+        };
         cfg.elements["table"] = {
             .type = Render::Components::Shapes::Type::RECT,
             .numberOfInstances = kMarkerTableGroups * detail::MaxMarkers,
@@ -893,6 +959,14 @@ Result SignalViewImpl::createPresent() {
                 .scale = kLabelScale,
                 .position = {-2.0f, -2.0f},
                 .alignment = {0, 1},
+            };
+        }
+        for (U64 i = 0; i < detail::MarkerSpans; ++i) {
+            cfg.elements[SpanElement(i, "label")] = {
+                .scale = kLabelScale,
+                .position = {-2.0f, -2.0f},
+                .alignment = {1, 1},
+                .color = kMarkerSpanColor,
             };
         }
         JST_CHECK(window->build(markerText, cfg));
@@ -973,6 +1047,7 @@ Result SignalViewImpl::createPresent() {
             cfg.programs.push_back(signalProgram);
         }
         JST_CHECK(markerShapes->surface(cfg));
+        JST_CHECK(markerSpanShapes->surface(cfg));
         JST_CHECK(markerTagShapes->surface(cfg));
         JST_CHECK(markerTagText->surface(cfg));
         JST_CHECK(markerTableShapes->surface(cfg));
@@ -1041,6 +1116,9 @@ Result SignalViewImpl::destroyPresent() {
     }
     if (markerTagShapes) {
         JST_CHECK(window->unbind(markerTagShapes));
+    }
+    if (markerSpanShapes) {
+        JST_CHECK(window->unbind(markerSpanShapes));
     }
     if (markerShapes) {
         JST_CHECK(window->unbind(markerShapes));
@@ -1152,6 +1230,9 @@ Result SignalViewImpl::present() {
     if (markerShapes) {
         JST_CHECK(markerShapes->present());
     }
+    if (markerSpanShapes) {
+        JST_CHECK(markerSpanShapes->present());
+    }
     if (markerTagShapes) {
         JST_CHECK(markerTagShapes->present());
     }
@@ -1192,6 +1273,11 @@ void SignalViewImpl::processInputEvents(const Extent2D<F32>& paddingScale) {
         if (const auto* key = std::get_if<KeyEvent>(&input)) {
             if (key->type == KeyEventType::Press && key->key == KeyCode::Space && !key->repeat) {
                 displayHeld = !displayHeld;
+            }
+            if (key->type == KeyEventType::Press && key->key == KeyCode::Escape &&
+                std::any_of(pinned.begin(), pinned.end(), [](const bool flag) { return flag; })) {
+                pinned.fill(false);
+                commitMarkers();
             }
         }
         const auto mouse = SurfaceMouseEvent(input);
@@ -1245,7 +1331,9 @@ void SignalViewImpl::processInputEvents(const Extent2D<F32>& paddingScale) {
             !splitter.dragging) {
             cursor.inside = true;
             cursor.position = event.position;
-            if (tagAt(event.position)) {
+            if (const auto tag = tagAt(event.position)) {
+                pinned[*tag] = !pinned[*tag];
+                commitMarkers();
                 continue;
             }
             if (const auto hit = markerAt(event.position)) {
@@ -1577,6 +1665,16 @@ std::string SignalViewImpl::formatPointX(const F32 xPoint) {
     return jst::fmt::format("{:.4f}", lineplotEnabled ? xPoint : (xPoint + 1.0f) * 0.5f);
 }
 
+std::string SignalViewImpl::formatSpanX(const F32 delta) {
+    const bool hasFreqAttrs = input.hasAttribute("frequency") &&
+                              input.hasAttribute("sampleRate");
+    if (hasFreqAttrs) {
+        const F32 sampleRate = std::any_cast<F32>(input.attribute("sampleRate"));
+        return detail::FormatFrequencySpan(std::abs(delta) * sampleRate / 2.0f);
+    }
+    return jst::fmt::format("{:.4f}", std::abs(lineplotEnabled ? delta : delta * 0.5f));
+}
+
 std::string SignalViewImpl::formatAmplitude(const F32 yPoint) const {
     const auto value = detail::LineplotAmplitudeValue(yPoint, rangeMin, rangeMax);
     if (!value) {
@@ -1595,7 +1693,29 @@ void SignalViewImpl::syncMarkers() {
     if (updateMarkersFlag || configChangeEnabled("markers")) {
         markerPositions = markers;
     }
+    if (updateMarkersFlag || configChangeEnabled("pins")) {
+        applyPins();
+    }
     updateMarkersFlag = false;
+}
+
+void SignalViewImpl::applyPins() {
+    pinned.fill(false);
+    for (const auto index : pins) {
+        if (index < markerPositions.size() && index < pinned.size()) {
+            pinned[index] = true;
+        }
+    }
+}
+
+std::vector<U64> SignalViewImpl::pinnedIndices() const {
+    std::vector<U64> indices;
+    for (U64 i = 0; i < markerPositions.size() && i < pinned.size(); ++i) {
+        if (pinned[i]) {
+            indices.push_back(i);
+        }
+    }
+    return indices;
 }
 
 bool SignalViewImpl::insidePlot(const Extent2D<F32>& position) const {
@@ -1651,6 +1771,8 @@ void SignalViewImpl::toggleMarker() {
     if (const auto nearest = markerAt(cursor.position)) {
         const U64 removed = *nearest;
         markerPositions.erase(markerPositions.begin() + removed);
+        std::copy(pinned.begin() + removed + 1, pinned.end(), pinned.begin() + removed);
+        pinned.back() = false;
     } else if (markerPositions.size() < detail::MaxMarkers) {
         markerPositions.push_back(*point);
     } else {
@@ -1664,6 +1786,7 @@ void SignalViewImpl::clearMarkers() {
         return;
     }
     markerPositions.clear();
+    pinned.fill(false);
     commitMarkers();
 }
 
@@ -1673,8 +1796,12 @@ void SignalViewImpl::commitMarkers() {
     }
     Parser::Map edit;
     edit["markers"] = markerPositions;
+    if (configChangeEnabled("pins")) {
+        edit["pins"] = pinnedIndices();
+    }
     if (requestConfigChange(edit) != Result::SUCCESS) {
         markerPositions = markers;
+        applyPins();
     }
 }
 
@@ -1817,7 +1944,15 @@ Result SignalViewImpl::updateMarkerState() {
         Extent2D<F32> xPosition = {-2.0f, -2.0f};
         Extent2D<F32> yPosition = {-2.0f, -2.0f};
     };
+    struct Span {
+        bool active = false;
+        F32 left = 0.0f;
+        F32 right = 0.0f;
+        std::string label;
+        Extent2D<F32> labelPosition = {-2.0f, -2.0f};
+    };
     std::array<Row, detail::MaxMarkers> rows;
+    std::array<Span, detail::MarkerSpans> spans;
     const U64 count = shown ? std::min<U64>(markerPositions.size(), detail::MaxMarkers) : 0;
     Render::Components::Text* const badgeText =
         markerBadgeText ? markerBadgeText.get() : markerText.get();
@@ -1884,6 +2019,57 @@ Result SignalViewImpl::updateMarkerState() {
     }
     cursor.overMarker = hovered.has_value() || markerDrag.index.has_value() ||
                         (cursor.inside && !splitter.dragging && markerAt(cursor.position));
+
+    std::vector<U64> focused;
+    if (hovered) {
+        focused.push_back(*hovered);
+    }
+    for (U64 i = 0; i < count; ++i) {
+        if (pinned[i] && rows[i].tagged && hovered != i) {
+            focused.push_back(i);
+        }
+    }
+
+    if (!focused.empty()) {
+        std::vector<U64> order;
+        for (U64 i = 0; i < count; ++i) {
+            if (rows[i].tagged) {
+                order.push_back(i);
+            }
+        }
+        std::sort(order.begin(), order.end(), [&](const U64 a, const U64 b) {
+            return rows[a].xNdc < rows[b].xNdc;
+        });
+        std::array<bool, detail::MarkerSpans> gaps{};
+        for (const U64 index : focused) {
+            const U64 rank = std::find(order.begin(), order.end(), index) - order.begin();
+            if (rank > 0) {
+                gaps[rank - 1] = true;
+            }
+            if (rank + 1 < order.size()) {
+                gaps[rank] = true;
+            }
+        }
+        const F32 arrowLength = kMarkerSpanArrowArmPx *
+                                std::cos(glm::radians(kMarkerSpanArrowAngleDeg)) * pixelSize.x;
+        const F32 labelGap = kMarkerSpanLabelGapPx * pixelSize.x;
+        const F32 tagGap = kMarkerSpanTagGapPx * pixelSize.x;
+        const auto fillSpan = [&](Span& span, const U64 leftIndex, const U64 rightIndex) {
+            const auto& leftRow = rows[leftIndex];
+            const auto& rightRow = rows[rightIndex];
+            span.left = leftRow.tagPosition.x + leftRow.tagWidth * 0.5f + tagGap;
+            span.right = rightRow.tagPosition.x - rightRow.tagWidth * 0.5f - tagGap;
+            span.label = formatSpanX(markerPositions[rightIndex] - markerPositions[leftIndex]);
+            const F32 labelWidth = markerText->advance(span.label) * kLabelScale * pixelSize.x;
+            span.active = span.right - span.left >= (arrowLength + labelGap) * 2.0f + labelWidth;
+            span.labelPosition = {(span.left + span.right) * 0.5f, cursorRowCenter};
+        };
+        for (U64 gap = 0; gap < detail::MarkerSpans; ++gap) {
+            if (gaps[gap]) {
+                fillSpan(spans[gap], order[gap], order[gap + 1]);
+            }
+        }
+    }
 
     if (markerShapes) {
         JST_CHECK(markerShapes->updatePixelSize({
@@ -2003,6 +2189,73 @@ Result SignalViewImpl::updateMarkerState() {
         JST_CHECK(markerTagShapes->updateSizes("tags"));
     }
 
+    if (markerSpanShapes) {
+        JST_CHECK(markerSpanShapes->updatePixelSize({
+            2.0f / interaction.viewSize.x,
+            2.0f / interaction.viewSize.y,
+        }));
+
+        const F32 thickness = kMarkerSpanThicknessPx * scale;
+        JST_CHECK(markerSpanShapes->updateProperties("spans", thickness * 0.5f, 0.0f, {}));
+        JST_CHECK(markerSpanShapes->updateProperties("arrows", thickness * 0.5f, 0.0f, {}));
+
+        std::span<Extent2D<F32>> positions;
+        JST_CHECK(markerSpanShapes->getPositions("spans", positions));
+        std::span<Extent2D<F32>> sizes;
+        JST_CHECK(markerSpanShapes->getSizes("spans", sizes));
+        for (U64 i = 0; i < kSpanSegments * detail::MarkerSpans; ++i) {
+            positions[i] = {-2.0f, -2.0f};
+            sizes[i] = {0.0f, 0.0f};
+        }
+        std::span<Extent2D<F32>> arrowPositions;
+        JST_CHECK(markerSpanShapes->getPositions("arrows", arrowPositions));
+        std::span<Extent2D<F32>> arrowSizes;
+        JST_CHECK(markerSpanShapes->getSizes("arrows", arrowSizes));
+        std::span<F32> arrowRotations;
+        JST_CHECK(markerSpanShapes->getRotations("arrows", arrowRotations));
+        for (U64 i = 0; i < kSpanArrows * detail::MarkerSpans; ++i) {
+            arrowPositions[i] = {-2.0f, -2.0f};
+            arrowSizes[i] = {0.0f, 0.0f};
+            arrowRotations[i] = 0.0f;
+        }
+
+        for (U64 i = 0; i < detail::MarkerSpans; ++i) {
+            const auto& span = spans[i];
+            if (!span.active || !markerText) {
+                continue;
+            }
+            const F32 arrowAngle = glm::radians(kMarkerSpanArrowAngleDeg);
+            const F32 armReach = (kMarkerSpanArrowArmPx - kMarkerSpanThicknessPx) * 0.5f;
+            const F32 armDx = armReach * std::cos(arrowAngle) * pixelSize.x;
+            const F32 armDy = armReach * std::sin(arrowAngle) * pixelSize.y;
+            const F32 labelGap = kMarkerSpanLabelGapPx * pixelSize.x;
+            const F32 labelHalf = markerText->advance(span.label) * kLabelScale * pixelSize.x * 0.5f;
+            const F32 leadStart = span.left;
+            const F32 trailEnd = span.right;
+            const F32 leadEnd = std::max(span.labelPosition.x - labelHalf - labelGap, leadStart);
+            const F32 trailStart = std::min(span.labelPosition.x + labelHalf + labelGap, trailEnd);
+
+            const auto arm = [&](const U64 arrow, const F32 tipX, const F32 dx, const F32 dy, const F32 degrees) {
+                arrowPositions[ArrowInstance(i, arrow)] = {tipX + dx, cursorRowCenter + dy};
+                arrowSizes[ArrowInstance(i, arrow)] = {kMarkerSpanArrowArmPx * scale, thickness};
+                arrowRotations[ArrowInstance(i, arrow)] = degrees;
+            };
+            arm(kSpanLeadUpperArm, span.left, armDx, armDy, kMarkerSpanArrowAngleDeg);
+            arm(kSpanLeadLowerArm, span.left, armDx, -armDy, -kMarkerSpanArrowAngleDeg);
+            arm(kSpanTrailUpperArm, span.right, -armDx, armDy, -kMarkerSpanArrowAngleDeg);
+            arm(kSpanTrailLowerArm, span.right, -armDx, -armDy, kMarkerSpanArrowAngleDeg);
+
+            positions[SpanInstance(i, kSpanLeadSegment)] = {(leadStart + leadEnd) * 0.5f, cursorRowCenter};
+            sizes[SpanInstance(i, kSpanLeadSegment)] = {(leadEnd - leadStart) * toPixelsX, thickness};
+            positions[SpanInstance(i, kSpanTrailSegment)] = {(trailStart + trailEnd) * 0.5f, cursorRowCenter};
+            sizes[SpanInstance(i, kSpanTrailSegment)] = {(trailEnd - trailStart) * toPixelsX, thickness};
+        }
+
+        JST_CHECK(markerSpanShapes->updatePositions());
+        JST_CHECK(markerSpanShapes->updateSizes());
+        JST_CHECK(markerSpanShapes->updateRotations());
+    }
+
     if (markerText) {
         for (U64 i = 0; i < detail::MaxMarkers; ++i) {
             const auto& row = rows[i];
@@ -2029,6 +2282,14 @@ Result SignalViewImpl::updateMarkerState() {
             JST_CHECK(markerText->update(MarkerElement(i, "y"), y));
         }
 
+        for (U64 i = 0; i < detail::MarkerSpans; ++i) {
+            const auto& span = spans[i];
+
+            auto label = markerText->get(SpanElement(i, "label"));
+            label.position = span.labelPosition;
+            label.fill = span.active ? span.label : " ";
+            JST_CHECK(markerText->update(SpanElement(i, "label"), label));
+        }
     }
 
     return Result::SUCCESS;

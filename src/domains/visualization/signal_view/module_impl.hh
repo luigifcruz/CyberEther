@@ -70,6 +70,28 @@ inline std::string LineplotAmplitudeLabel(const F32 position,
 }
 
 constexpr U64 MaxMarkers = 16;
+constexpr U64 MarkerSpans = MaxMarkers - 1;
+
+inline std::string FormatFrequencySpan(const F64 hertz) {
+    const F64 magnitude = std::abs(hertz);
+    const char* unit = "Hz";
+    F64 value = magnitude;
+    int decimals = 1;
+    if (magnitude >= 1.0e6) {
+        unit = "MHz";
+        value = magnitude / 1.0e6;
+        decimals = 3;
+    } else if (magnitude >= 1.0e3) {
+        unit = "kHz";
+        value = magnitude / 1.0e3;
+        decimals = 3;
+    }
+    std::string text = jst::fmt::format("{:.{}f}", value, decimals);
+    while (text.size() > 2 && text.back() == '0' && text[text.size() - 2] != '.') {
+        text.pop_back();
+    }
+    return jst::fmt::format("{} {}", text, unit);
+}
 
 inline std::string LabelUnit(const std::string& label) {
     const auto open = label.rfind('(');
@@ -148,6 +170,7 @@ struct SignalViewImpl : public Module::Impl,
         Extent2D<F32> halfSize = {0.0f, 0.0f};
     };
     std::array<TagBounds, detail::MaxMarkers> tagBounds;
+    std::array<bool, detail::MaxMarkers> pinned{};
     struct MarkerDrag {
         std::optional<U64> index;
         bool moved = false;
@@ -165,6 +188,7 @@ struct SignalViewImpl : public Module::Impl,
     std::shared_ptr<Render::Components::Text> cursorText;
     std::shared_ptr<Render::Components::Shapes> markerShapes;
     std::shared_ptr<Render::Components::Shapes> markerTagShapes;
+    std::shared_ptr<Render::Components::Shapes> markerSpanShapes;
     std::shared_ptr<Render::Components::Shapes> markerTableShapes;
     std::shared_ptr<Render::Components::Text> markerText;
     std::shared_ptr<Render::Components::Text> markerBadgeText;
@@ -255,8 +279,11 @@ struct SignalViewImpl : public Module::Impl,
     std::optional<F32> displayedAmplitude(F32 xPoint) const;
     F32 amplitudeToNdc(F32 yPoint) const;
     std::string formatPointX(F32 xPoint);
+    std::string formatSpanX(F32 delta);
     std::string formatAmplitude(F32 yPoint) const;
     void syncMarkers();
+    void applyPins();
+    std::vector<U64> pinnedIndices() const;
     std::optional<U64> tagAt(const Extent2D<F32>& position) const;
     std::optional<U64> markerAt(const Extent2D<F32>& position) const;
     bool insidePlot(const Extent2D<F32>& position) const;

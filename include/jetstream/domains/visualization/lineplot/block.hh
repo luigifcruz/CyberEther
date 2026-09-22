@@ -17,19 +17,24 @@ struct Lineplot : public Block::Config {
     std::string xLabel = "Frequency (MHz)";
     std::string yLabel = "Amplitude (dBFS)";
     std::vector<F32> markers;
+    std::vector<U64> pins;
 
     JST_BLOCK_TYPE(lineplot);
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(L);
     JST_BLOCK_PARAMS(averaging, maxHold, fill, rangeMin, rangeMax,
-                     xLabel, yLabel, markers);
+                     xLabel, yLabel, markers, pins);
     JST_BLOCK_DESCRIPTION(
         "Lineplot",
         "Displays data in a line plot visualization.",
         "# Line Plot\n"
         "The Lineplot block visualizes input data as a line graph, suitable "
         "for time-domain signals, waveform displays, and spectral data. "
-        "Press **Space** in the focused plot window to freeze or resume the view.\n\n"
+        "Press **Space** in the focused plot window to freeze or resume the view. "
+        "**Shift+Click** the plot to place or remove a marker, and "
+        "**Shift+Right Click** to clear all markers. Drag a marker line to move it, "
+        "click a marker tag to pin the distance readouts to its neighbors, and "
+        "press **Escape** to unpin them all.\n\n"
 
         "## Arguments\n"
         "- **Averaging**: Exponential trace smoothing factor across updates. "

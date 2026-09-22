@@ -112,9 +112,10 @@ struct SignalViewImplAccess : Modules::SignalViewImpl {
 struct InteractiveSignalViewConfig : Block::Config {
     F32 splitRatio = 0.5f;
     std::vector<F32> markers;
+    std::vector<U64> pins;
     JST_BLOCK_TYPE(interactive_signal_view_test);
     JST_BLOCK_DOMAIN("Test");
-    JST_BLOCK_PARAMS(splitRatio, markers);
+    JST_BLOCK_PARAMS(splitRatio, markers, pins);
     JST_BLOCK_DESCRIPTION("Interactive Signal View Test", "Test surface edits.", "Test surface edits.");
 };
 
@@ -129,12 +130,14 @@ struct InteractiveSignalViewBlock : Block::Impl, DynamicConfig<InteractiveSignal
         config->waterfallHeight = 8;
         config->splitRatio = splitRatio;
         config->markers = markers;
+        config->pins = pins;
         return Result::SUCCESS;
     }
     Result create() override {
         JST_CHECK(moduleCreate("plot", config, inputs()));
         JST_CHECK(moduleBindConfigEdit("plot", "splitRatio", "splitRatio"));
         JST_CHECK(moduleBindConfigEdit("plot", "markers", "markers"));
+        JST_CHECK(moduleBindConfigEdit("plot", "pins", "pins"));
         interactiveSignalView = moduleHandle("plot");
         return Result::SUCCESS;
     }
@@ -267,6 +270,9 @@ std::shared_ptr<LabelTestText> MakeMarkerText(const std::shared_ptr<Render::Comp
         config.elements[jst::fmt::format("marker-{}-id", i)] = {};
         config.elements[jst::fmt::format("marker-{}-x", i)] = {};
         config.elements[jst::fmt::format("marker-{}-y", i)] = {};
+    }
+    for (U64 i = 0; i < Modules::detail::MarkerSpans; ++i) {
+        config.elements[jst::fmt::format("span-{}-label", i)] = {};
     }
     auto text = std::make_shared<LabelTestText>(config);
     REQUIRE(text->create(&window) == Result::SUCCESS);
@@ -635,6 +641,17 @@ TEST_CASE("Signal View label units come from the trailing parentheses",
     REQUIRE(Modules::detail::LabelUnit(") mismatched (") == "");
 }
 
+TEST_CASE("Signal View marker spans format frequency distances by magnitude",
+          "[modules][signal_view][markers]") {
+    REQUIRE(Modules::detail::FormatFrequencySpan(9.8e6) == "9.8 MHz");
+    REQUIRE(Modules::detail::FormatFrequencySpan(1.0e6) == "1.0 MHz");
+    REQUIRE(Modules::detail::FormatFrequencySpan(1.2345678e6) == "1.235 MHz");
+    REQUIRE(Modules::detail::FormatFrequencySpan(-12.5e3) == "12.5 kHz");
+    REQUIRE(Modules::detail::FormatFrequencySpan(500.0e3) == "500.0 kHz");
+    REQUIRE(Modules::detail::FormatFrequencySpan(250.0) == "250.0 Hz");
+    REQUIRE(Modules::detail::FormatFrequencySpan(0.0) == "0.0 Hz");
+}
+
 TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leaves",
           "[modules][signal_view][present][cursor]") {
     const std::string mode = GENERATE("lineplot", "waterfall", "lineplot_waterfall");
@@ -753,6 +770,9 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
     REQUIRE(markerLabel(1, "x") == "100.0000 MHz");
     REQUIRE(markerLabel(1, "y") == amplitudeAt(4));
 
+    const auto spanLabel = [&](const U64 index, const char* suffix) {
+        return markerText->get(jst::fmt::format("span-{}-{}", index, suffix)).fill;
+    };
     const auto hoverTag = [&](const U64 index) {
         const auto tag = markerText->get(jst::fmt::format("marker-{}-tag", index)).position;
         module->surface()->pushInputEvent(MouseEvent{
@@ -761,8 +781,24 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
         });
         REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
     };
+    REQUIRE(spanLabel(0, "label") == " ");
+    REQUIRE(spanLabel(1, "label") == " ");
     hoverTag(1);
     REQUIRE(cursorText->get("cursor-x").fill == " ");
+    REQUIRE(spanLabel(0, "label") == "500.0 kHz");
+    REQUIRE(spanLabel(1, "label") == " ");
+    const Extent2D<F32> lowerQuarter = {0.5f - 0.25f * padding.x, 0.5f};
+    shiftClick(lowerQuarter);
+    REQUIRE(markerLabel(2, "x") == "99.5000 MHz");
+    hoverTag(1);
+    REQUIRE(spanLabel(0, "label") == "500.0 kHz");
+    REQUIRE(spanLabel(1, "label") == "500.0 kHz");
+    hoverTag(0);
+    REQUIRE(spanLabel(0, "label") == " ");
+    REQUIRE(spanLabel(1, "label") == "500.0 kHz");
+    hoverTag(2);
+    REQUIRE(spanLabel(0, "label") == "500.0 kHz");
+    REQUIRE(spanLabel(1, "label") == " ");
     const auto moveAway = [&]() {
         module->surface()->pushInputEvent(MouseEvent{
             .type = MouseEventType::Move, .position = {0.5f - 0.05f * padding.x, 0.5f},
@@ -771,12 +807,72 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
     };
     moveAway();
     REQUIRE(cursorText->get("cursor-x").fill == "99.9000 MHz");
+    REQUIRE(spanLabel(0, "label") == " ");
+    REQUIRE(spanLabel(1, "label") == " ");
     module->surface()->pushInputEvent(MouseEvent{
         .type = MouseEventType::Move, .position = {0.5f, 0.5f},
     });
     REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
     REQUIRE(cursorText->get("cursor-x").fill == " ");
     REQUIRE(cursorText->get("cursor-y").fill == " ");
+    REQUIRE(spanLabel(0, "label") == " ");
+    REQUIRE(spanLabel(1, "label") == " ");
+
+    const auto clickTag = [&](const U64 index) {
+        const auto tag = markerText->get(jst::fmt::format("marker-{}-tag", index)).position;
+        const Extent2D<F32> position = {(tag.x + 1.0f) * 0.5f, (1.0f - tag.y) * 0.5f};
+        module->surface()->pushInputEvent(MouseEvent{
+            .type = MouseEventType::Click, .button = MouseButton::Left, .position = position,
+        });
+        module->surface()->pushInputEvent(MouseEvent{
+            .type = MouseEventType::Release, .button = MouseButton::Left, .position = position,
+        });
+        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        REQUIRE_FALSE(interaction.dragging);
+    };
+    clickTag(0);
+    moveAway();
+    REQUIRE(cursorText->get("cursor-x").fill == "99.9000 MHz");
+    REQUIRE(spanLabel(0, "label") == " ");
+    REQUIRE(spanLabel(1, "label") == "500.0 kHz");
+    hoverTag(2);
+    REQUIRE(spanLabel(0, "label") == "500.0 kHz");
+    REQUIRE(spanLabel(1, "label") == "500.0 kHz");
+    hoverTag(1);
+    REQUIRE(spanLabel(0, "label") == "500.0 kHz");
+    REQUIRE(spanLabel(1, "label") == "500.0 kHz");
+    moveAway();
+    REQUIRE(spanLabel(0, "label") == " ");
+    REQUIRE(spanLabel(1, "label") == "500.0 kHz");
+    clickTag(0);
+    moveAway();
+    REQUIRE(spanLabel(0, "label") == " ");
+    REQUIRE(spanLabel(1, "label") == " ");
+    clickTag(0);
+    clickTag(2);
+    moveAway();
+    REQUIRE(spanLabel(0, "label") == "500.0 kHz");
+    REQUIRE(spanLabel(1, "label") == "500.0 kHz");
+    module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Escape, {}});
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(spanLabel(0, "label") == " ");
+    REQUIRE(spanLabel(1, "label") == " ");
+    clickTag(0);
+    clickTag(2);
+    moveAway();
+    clickTag(2);
+    moveAway();
+    REQUIRE(spanLabel(0, "label") == " ");
+    REQUIRE(spanLabel(1, "label") == "500.0 kHz");
+    clickTag(2);
+    shiftClick(lowerQuarter);
+    REQUIRE(spanLabel(0, "label") == "500.0 kHz");
+    REQUIRE(spanLabel(1, "label") == " ");
+    clickTag(0);
+    moveAway();
+    REQUIRE(spanLabel(0, "label") == " ");
+    REQUIRE(spanLabel(1, "label") == " ");
+    REQUIRE((impl->*SignalViewImplAccess::markerPositionsMember()) == std::vector<F32>{0.5f, 0.0f});
 
     const auto dragMarker = [&](const Extent2D<F32>& from, const Extent2D<F32>& to) {
         module->surface()->pushInputEvent(MouseEvent{
@@ -803,6 +899,13 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
     dragMarker(tagFrom, {0.5f + 0.375f * padding.x, tagFrom.y});
     REQUIRE(markerLabel(0, "x") == "100.5000 MHz");
     REQUIRE((impl->*SignalViewImplAccess::markerPositionsMember())[0] == Catch::Approx(0.5f));
+    moveAway();
+    REQUIRE(spanLabel(0, "label") == "250.0 kHz");
+    REQUIRE(spanLabel(1, "label") == " ");
+    module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Escape, {}});
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(spanLabel(0, "label") == " ");
+    REQUIRE(spanLabel(1, "label") == " ");
     for (U64 extra = 1; extra <= 16; ++extra) {
         shiftClick({0.5f - 0.03f * extra * padding.x, 0.5f});
     }
@@ -1386,6 +1489,13 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View markers persist through the owni
     const auto storedMarkers = [&] {
         return std::any_cast<std::vector<F32>>(viewBlock("plot").config.at("markers"));
     };
+    const auto storedPins = [&] {
+        return std::any_cast<std::vector<U64>>(viewBlock("plot").config.at("pins"));
+    };
+    const auto spanLabel = [&](const U64 index) {
+        return markerText->get(jst::fmt::format("span-{}-label", index)).fill;
+    };
+
     original->surface()->pushSurfaceEvent({
         .type = SurfaceEventType::Resize,
         .size = {1000, 800},
@@ -1425,6 +1535,58 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View markers persist through the owni
     REQUIRE(interactiveSignalView == original);
     REQUIRE((impl->*SignalViewImplAccess::markerPositionsMember()) == std::vector<F32>{-0.5f, 0.25f});
     REQUIRE(markerText->get("marker-1-tag").fill == "M2");
+    REQUIRE(storedPins().empty());
+    REQUIRE(spanLabel(0) == " ");
+
+    const auto tag = markerText->get("marker-0-tag").position;
+    const Extent2D<F32> tagPosition = {(tag.x + 1.0f) * 0.5f, (1.0f - tag.y) * 0.5f};
+    original->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Click, .button = MouseButton::Left, .position = tagPosition,
+    });
+    original->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Release, .button = MouseButton::Left, .position = tagPosition,
+    });
+    original->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Move, .position = {0.5f, 0.75f},
+    });
+    present();
+    REQUIRE(pending());
+    REQUIRE(spanLabel(0) == "0.7500");
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    present();
+    REQUIRE_FALSE(pending());
+    REQUIRE(storedPins() == std::vector<U64>{0});
+    REQUIRE(impl->pins == std::vector<U64>{0});
+    REQUIRE(spanLabel(0) == "0.7500");
+
+    edit.clear();
+    edit["pins"] = std::vector<U64>{};
+    REQUIRE(flowgraph->blockReconfigure("plot", edit) == Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    present();
+    REQUIRE(spanLabel(0) == " ");
+
+    edit["pins"] = std::vector<U64>{1};
+    REQUIRE(flowgraph->blockReconfigure("plot", edit) == Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    present();
+    REQUIRE(spanLabel(0) == "0.7500");
+
+    original->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Escape, {}});
+    present();
+    REQUIRE(pending());
+    REQUIRE(spanLabel(0) == " ");
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    present();
+    REQUIRE_FALSE(pending());
+    REQUIRE(storedPins().empty());
+
+    edit["pins"] = std::vector<U64>{1};
+    REQUIRE(flowgraph->blockReconfigure("plot", edit) == Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    present();
+    REQUIRE(spanLabel(0) == "0.7500");
+
     original->surface()->pushInputEvent(MouseEvent{
         .type = MouseEventType::Click,
         .button = MouseButton::Right,
@@ -1438,6 +1600,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View markers persist through the owni
     present();
     REQUIRE_FALSE(pending());
     REQUIRE(storedMarkers().empty());
+    REQUIRE(storedPins().empty());
     REQUIRE(markerText->get("marker-0-tag").fill == " ");
 
     REQUIRE(markerText->destroy(&window) == Result::SUCCESS);

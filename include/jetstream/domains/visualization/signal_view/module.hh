@@ -20,6 +20,7 @@ struct SignalView : public Module::Config {
     U64 waterfallHeight = 1024;
     F32 splitRatio = 0.5f;
     std::vector<F32> markers;
+    std::vector<U64> pins;
     std::string xLabel = "Frequency (MHz)";
     std::string amplitudeLabel = "Amplitude (dBFS)";
     std::string waterfallLabel = "Time";
@@ -27,7 +28,7 @@ struct SignalView : public Module::Config {
     JST_MODULE_TYPE(signal_view);
     JST_MODULE_PARAMS(mode, lineplotAveraging, waterfallAveraging,
                       maxHold, fill, rangeMin, rangeMax, waterfallHeight,
-                      splitRatio, markers, xLabel, amplitudeLabel, waterfallLabel);
+                      splitRatio, markers, pins, xLabel, amplitudeLabel, waterfallLabel);
 };
 
 }  // namespace Jetstream::Modules

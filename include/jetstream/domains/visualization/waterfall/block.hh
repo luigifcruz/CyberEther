@@ -14,11 +14,12 @@ struct Waterfall : public Block::Config {
     std::string xLabel = "Frequency (MHz)";
     std::string yLabel = "Time";
     std::vector<F32> markers;
+    std::vector<U64> pins;
 
     JST_BLOCK_TYPE(waterfall);
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(L);
-    JST_BLOCK_PARAMS(height, averaging, xLabel, yLabel, markers);
+    JST_BLOCK_PARAMS(height, averaging, xLabel, yLabel, markers, pins);
     JST_BLOCK_DESCRIPTION(
         "Waterfall",
         "Shows frequency spectrum over time as a scrolling waterfall.",
@@ -27,7 +28,10 @@ struct Waterfall : public Block::Config {
         "amplitude is represented using colors. New data appears at the top and "
         "scrolls downward, creating a visual history of the signal's spectral "
         "content over time. Press **Space** in the focused plot window to "
-        "freeze or resume the view.\n\n"
+        "freeze or resume the view. **Shift+Click** the plot to place or "
+        "remove a marker, and **Shift+Right Click** to clear all markers. Drag a marker line to move it, "
+        "click a marker tag to pin the distance readouts to its neighbors, and "
+        "press **Escape** to unpin them all.\n\n"
 
         "## Arguments\n"
         "- **Height**: Number of rows in the waterfall history buffer.\n"
