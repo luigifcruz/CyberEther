@@ -14,7 +14,6 @@
 namespace Jetstream::Render::Components {
 
 // TODO: Add support for zero-copy buffers.
-// TODO: Implement proper rotation.
 
 class JETSTREAM_API Shapes : public Generic {
  public:
