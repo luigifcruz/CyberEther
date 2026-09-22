@@ -224,6 +224,15 @@ struct SignalViewImpl : public Module::Impl,
     void processInputEvents(const Extent2D<F32>& paddingScale);
     void updateLabelState();
     Result updateCursorState();
+    F32 viewTranslation() const;
+    std::optional<F32> cursorPoint() const;
+    F32 projectPointX(F32 xPoint) const;
+    std::optional<F32> displayedAmplitude(F32 xPoint) const;
+    F32 amplitudeToNdc(F32 yPoint) const;
+    std::string formatPointX(F32 xPoint);
+    std::string formatAmplitude(F32 yPoint) const;
+    bool insidePlot(const Extent2D<F32>& position) const;
+    F32 pointAtX(F32 x) const;
     Result resetLineplotHistory();
     Result resetHistoryState();
     virtual Buffer::Config renderStateBufferConfig() const = 0;

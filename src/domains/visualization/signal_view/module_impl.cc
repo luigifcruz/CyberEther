@@ -1208,15 +1208,86 @@ void SignalViewImpl::updateLabelState() {
     }
 }
 
-Result SignalViewImpl::updateCursorState() {
-    const auto& padding = axis->paddingScale();
-    const F32 u = (cursor.position.x - 0.5f) / std::max(padding.x, 1e-6f) + 0.5f;
-    const F32 v = (cursor.position.y - 0.5f) / std::max(padding.y, 1e-6f) + 0.5f;
+F32 SignalViewImpl::viewTranslation() const {
+    const F32 maxTranslation = std::abs((1.0f / interaction.zoom) - 1.0f);
+    return std::clamp(-2.0f * interaction.offset, -maxTranslation, maxTranslation);
+}
+
+std::optional<F32> SignalViewImpl::cursorPoint() const {
     const bool visible = cursor.inside &&
                          !splitter.dragging &&
                          interaction.placement != SurfacePlacementType::Attached &&
-                         u >= 0.0f && u <= 1.0f && v >= 0.0f && v <= 1.0f &&
+                         insidePlot(cursor.position) &&
                          numberOfElements >= 2;
+    if (!visible) {
+        return std::nullopt;
+    }
+    return pointAtX(cursor.position.x);
+}
+
+F32 SignalViewImpl::projectPointX(const F32 xPoint) const {
+    return (xPoint + viewTranslation()) * interaction.zoom * axis->paddingScale().x;
+}
+
+std::optional<F32> SignalViewImpl::displayedAmplitude(const F32 xPoint) const {
+    if (!lineplotEnabled || numberOfElements < 2 ||
+        displayedPoints.size() < numberOfElements * 2) {
+        return std::nullopt;
+    }
+    const F32 sample = (xPoint + 1.0f) * 0.5f * (numberOfElements - 1);
+    const U64 lower = std::min(static_cast<U64>(std::max(sample, 0.0f)), numberOfElements - 2);
+    const F32 fraction = std::clamp(sample - static_cast<F32>(lower), 0.0f, 1.0f);
+    const F32 yLower = displayedPoints[(lower * 2) + 1];
+    const F32 yUpper = displayedPoints[(lower * 2) + 3];
+    return yLower + (yUpper - yLower) * fraction;
+}
+
+F32 SignalViewImpl::amplitudeToNdc(const F32 yPoint) const {
+    const auto& padding = axis->paddingScale();
+    const bool combined = lineplotEnabled && waterfallEnabled;
+    const F32 lineFraction = combined ? axis->getConfig().verticalScale : 1.0f;
+    return padding.y * (1.0f - lineFraction) +
+           padding.y * lineFraction * std::clamp(yPoint, -1.0f, 1.0f);
+}
+
+std::string SignalViewImpl::formatPointX(const F32 xPoint) {
+    const bool hasFreqAttrs = input.hasAttribute("frequency") &&
+                              input.hasAttribute("sampleRate");
+    if (hasFreqAttrs) {
+        const F32 centerFreq = std::any_cast<F32>(input.attribute("frequency"));
+        const F32 sampleRate = std::any_cast<F32>(input.attribute("sampleRate"));
+        return jst::fmt::format("{:.4f} MHz", (centerFreq + xPoint * sampleRate / 2.0f) / 1e6f);
+    }
+    return jst::fmt::format("{:.4f}", lineplotEnabled ? xPoint : (xPoint + 1.0f) * 0.5f);
+}
+
+std::string SignalViewImpl::formatAmplitude(const F32 yPoint) const {
+    const auto value = detail::LineplotAmplitudeValue(yPoint, rangeMin, rangeMax);
+    if (!value) {
+        return {};
+    }
+    const auto unit = detail::LabelUnit(amplitudeLabel);
+    return unit.empty()
+        ? jst::fmt::format("{:.1f}", *value)
+        : jst::fmt::format("{:.1f} {}", *value, unit);
+}
+
+bool SignalViewImpl::insidePlot(const Extent2D<F32>& position) const {
+    const auto& padding = axis->paddingScale();
+    const F32 u = (position.x - 0.5f) / std::max(padding.x, 1e-6f) + 0.5f;
+    const F32 v = (position.y - 0.5f) / std::max(padding.y, 1e-6f) + 0.5f;
+    return u >= 0.0f && u <= 1.0f && v >= 0.0f && v <= 1.0f;
+}
+
+F32 SignalViewImpl::pointAtX(const F32 x) const {
+    const F32 u = (x - 0.5f) / std::max(axis->paddingScale().x, 1e-6f) + 0.5f;
+    return std::clamp((u * 2.0f - 1.0f) / interaction.zoom - viewTranslation(), -1.0f, 1.0f);
+}
+
+Result SignalViewImpl::updateCursorState() {
+    const auto& padding = axis->paddingScale();
+    const auto point = cursorPoint();
+    const bool visible = point.has_value();
 
     std::string xLabelText;
     std::string yLabelText;
@@ -1225,42 +1296,13 @@ Result SignalViewImpl::updateCursorState() {
     bool hasMarker = false;
 
     if (visible) {
-        const F32 maxTranslation = std::abs((1.0f / interaction.zoom) - 1.0f);
-        const F32 translation =
-            std::clamp(-2.0f * interaction.offset, -maxTranslation, maxTranslation);
-        const F32 xPoint = std::clamp((u * 2.0f - 1.0f) / interaction.zoom - translation,
-                                      -1.0f, 1.0f);
-        xNdc = std::clamp((xPoint + translation) * interaction.zoom, -1.0f, 1.0f) * padding.x;
-
-        const bool hasFreqAttrs = input.hasAttribute("frequency") &&
-                                  input.hasAttribute("sampleRate");
-        if (hasFreqAttrs) {
-            const F32 centerFreq = std::any_cast<F32>(input.attribute("frequency"));
-            const F32 sampleRate = std::any_cast<F32>(input.attribute("sampleRate"));
-            xLabelText = jst::fmt::format("{:.4f} MHz",
-                                          (centerFreq + xPoint * sampleRate / 2.0f) / 1e6f);
-        } else {
-            xLabelText = jst::fmt::format("{:.4f}", lineplotEnabled
-                                                        ? xPoint
-                                                        : (xPoint + 1.0f) * 0.5f);
-        }
-
-        if (lineplotEnabled && displayedPoints.size() >= numberOfElements * 2) {
-            const F32 sample = (xPoint + 1.0f) * 0.5f * (numberOfElements - 1);
-            const U64 lower = std::min(static_cast<U64>(sample), numberOfElements - 2);
-            const F32 fraction = std::clamp(sample - static_cast<F32>(lower), 0.0f, 1.0f);
-            const F32 yLower = displayedPoints[(lower * 2) + 1];
-            const F32 yUpper = displayedPoints[(lower * 2) + 3];
-            const F32 yPoint = yLower + (yUpper - yLower) * fraction;
-            if (const auto value = detail::LineplotAmplitudeValue(yPoint, rangeMin, rangeMax)) {
-                const auto unit = detail::LabelUnit(amplitudeLabel);
-                yLabelText = unit.empty()
-                    ? jst::fmt::format("{:.1f}", *value)
-                    : jst::fmt::format("{:.1f} {}", *value, unit);
-                const bool combined = lineplotEnabled && waterfallEnabled;
-                const F32 lineFraction = combined ? axis->getConfig().verticalScale : 1.0f;
-                yNdc = padding.y * (1.0f - lineFraction) +
-                       padding.y * lineFraction * std::clamp(yPoint, -1.0f, 1.0f);
+        xNdc = std::clamp((*point + viewTranslation()) * interaction.zoom,
+                          -1.0f, 1.0f) * padding.x;
+        xLabelText = formatPointX(*point);
+        if (const auto yPoint = displayedAmplitude(*point)) {
+            yLabelText = formatAmplitude(*yPoint);
+            if (!yLabelText.empty()) {
+                yNdc = amplitudeToNdc(*yPoint);
                 hasMarker = true;
             }
         }

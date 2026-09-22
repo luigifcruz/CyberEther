@@ -834,6 +834,23 @@ TEST_CASE("Cursor stays inside the zoomed plot and interpolates between sparse s
     REQUIRE(cursorText->get("cursor-x").fill == "100.0980 MHz");
     REQUIRE(cursorText->get("cursor-y").fill == expectedAmplitude(0.098f));
 
+    // Narrow surfaces can have negative horizontal padding while the center
+    // still passes hit-testing. The cursor must stay centered after resizing.
+    module->surface()->pushSurfaceEvent({.type = SurfaceEventType::Resize,
+                                         .size = {64, 512},
+                                         .scale = 1.0f});
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Move, .position = {0.5f, 0.5f},
+    });
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(axis->paddingScale().x == Catch::Approx(-0.25f));
+    REQUIRE(cursor.visible);
+    REQUIRE(cursor.marker);
+    REQUIRE(cursor.plot.x == Catch::Approx(0.0f).margin(1e-5f));
+    REQUIRE(cursor.plot.y == Catch::Approx(0.0f).margin(1e-5f));
+    REQUIRE(cursorText->get("cursor-x").fill == "100.0000 MHz");
+    REQUIRE(cursorText->get("cursor-y").fill == "-50.0 dBFS");
+
     REQUIRE(cursorText->destroy(&window) == Result::SUCCESS);
     REQUIRE(text->destroy(&window) == Result::SUCCESS);
     REQUIRE(axis->destroy(&window) == Result::SUCCESS);
