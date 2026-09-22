@@ -480,6 +480,12 @@ Result Superluminal::start() {
                                         [surface](const InputEvent& event) {
                                             surface->pushInputEvent(event);
                                         });
+                                    if (ImGui::IsItemHovered() || ImGui::IsItemActive()) {
+                                        const auto cursor = surface->cursor();
+                                        if (cursor != SurfaceCursor::Default) {
+                                            ImGui::SetMouseCursor(detail::ToImGuiMouseCursor(cursor));
+                                        }
+                                    }
                                     ImGui::PopID();
                                     ImGui::PopID();
                                 }

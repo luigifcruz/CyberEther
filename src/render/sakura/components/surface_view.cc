@@ -123,6 +123,12 @@ void SurfaceView::render(const Context& ctx) const {
         ImGui::InvisibleButton(config.id.c_str(), surfaceSize,
                                ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
         detail::ForwardSurfaceInputEvents(cursorPos, surfaceSize, impl->input, config.onInput);
+        if (config.onResolveCursor && (ImGui::IsItemHovered() || ImGui::IsItemActive())) {
+            const auto cursor = config.onResolveCursor();
+            if (cursor != SurfaceCursor::Default) {
+                ImGui::SetMouseCursor(detail::ToImGuiMouseCursor(cursor));
+            }
+        }
     } else {
         ImGui::Dummy(surfaceSize);
     }

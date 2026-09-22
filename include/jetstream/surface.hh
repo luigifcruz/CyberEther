@@ -23,6 +23,18 @@ struct JETSTREAM_API SurfaceManifest {
     std::shared_ptr<const Render::Texture> surface;
 };
 
+enum class JETSTREAM_API SurfaceCursor : U8 {
+    Default = 0,
+    Hand = 1,
+    ResizeEW = 2,
+    ResizeNS = 3,
+    ResizeAll = 4,
+    ResizeNESW = 5,
+    ResizeNWSE = 6,
+    TextInput = 7,
+    NotAllowed = 8,
+};
+
 //
 // InputEvent
 //

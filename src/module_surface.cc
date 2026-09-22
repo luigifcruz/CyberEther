@@ -137,6 +137,10 @@ std::vector<SurfaceManifest> Module::Surface::manifests() const {
     return impl->manifests;
 }
 
+SurfaceCursor Module::Surface::cursor() const {
+    return impl->cursor.load(std::memory_order_relaxed);
+}
+
 void Module::Surface::pushInputEvent(const InputEvent& event) {
     std::lock_guard<std::mutex> lock(impl->eventMutex);
     impl->eventBuffer.pushInput(event);

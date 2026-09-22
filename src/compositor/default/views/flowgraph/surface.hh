@@ -25,6 +25,7 @@ struct FlowgraphDetachedSurface {
         std::shared_ptr<const Render::Texture> texture;
         std::function<void(const Sakura::SurfaceResize&)> onSize;
         std::function<void(InputEvent)> onInput;
+        std::function<SurfaceCursor()> onResolveCursor;
         std::function<void()> onClose;
         std::function<void(bool)> onToggleConfigOpen;
     };
@@ -47,6 +48,7 @@ struct FlowgraphDetachedSurface {
             .id = this->config.id + ":surface",
             .textureSource = this->config.texture,
             .size = {0.0f, 0.0f},
+            .onResolveCursor = this->config.onResolveCursor,
             .onSize = this->config.onSize,
             .onInput = this->config.onInput,
         });
