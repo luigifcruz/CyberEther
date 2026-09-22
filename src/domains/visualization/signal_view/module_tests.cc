@@ -1450,6 +1450,106 @@ TEST_CASE("Space holds displayed plots while processing continues and resumes at
     REQUIRE(module->destroy() == Result::SUCCESS);
 }
 
+TEST_CASE_METHOD(FlowgraphFixture, "Marker drags commit the release position with or without a preceding move",
+                 "[modules][signal_view][markers][release][config-edits][regression]") {
+    const bool moveBeforeRelease = GENERATE(false, true);
+    CAPTURE(moveBeforeRelease);
+    TestFlowgraph::SyntheticSourceBlockConfig source;
+    source.bufferSize = 32;
+    REQUIRE(flowgraph->blockCreate("source", source, {}) == Result::SUCCESS);
+    TensorMap inputs;
+    inputs["signal"].requested("source", "signal");
+    InteractiveSignalViewConfig config;
+    config.markers = {0.0f};
+    REQUIRE(flowgraph->blockCreate("plot", config, inputs) == Result::SUCCESS);
+    const auto module = interactiveSignalView;
+    auto* impl = module->getImpl<Modules::SignalViewImpl>();
+    REQUIRE(impl);
+    const auto& positions = impl->*SignalViewImplAccess::markerPositionsMember();
+    const auto& interaction = impl->*SignalViewImplAccess::interactionMember();
+    const auto& cursor = impl->*SignalViewImplAccess::cursorMember();
+
+    LabelTestWindow window;
+    Render::Components::Axis::Config axisConfig;
+    axisConfig.verticalScale = 0.5f;
+    axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
+    auto axis = std::make_shared<LabelTestAxis>(axisConfig);
+    REQUIRE(axis->create(&window) == Result::SUCCESS);
+    auto markerText = MakeMarkerText(axisConfig.font, window);
+    SignalViewImplAccess::wirePresentResources(*impl, axis, {}, {}, markerText);
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+    const auto present = [&] { REQUIRE(presenter->presentSubmit() == Result::SUCCESS); };
+    const auto pending = [&] {
+        return (impl->*SignalViewImplAccess::configChangePendingMember())();
+    };
+
+    module->surface()->pushSurfaceEvent({
+        .type = SurfaceEventType::Resize,
+        .size = {1000, 800},
+    });
+    present();
+    REQUIRE(positions == std::vector<F32>{0.0f});
+    const auto padding = axis->paddingScale();
+    const Extent2D<F32> origin = {0.5f, 0.25f};
+
+    // A release below the drag threshold must remain a click.
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Click, .button = MouseButton::Left, .position = origin,
+    });
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Release, .button = MouseButton::Left,
+        .position = {origin.x + 2.0f * interaction.scale / interaction.viewSize.x, origin.y},
+    });
+    present();
+    REQUIRE(positions == std::vector<F32>{0.0f});
+    REQUIRE_FALSE(pending());
+
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Click, .button = MouseButton::Left, .position = origin,
+    });
+    if (moveBeforeRelease) {
+        present();
+        module->surface()->pushInputEvent(MouseEvent{
+            .type = MouseEventType::Move,
+            .position = {origin.x + 0.125f * padding.x, origin.y},
+        });
+        present();
+        REQUIRE(positions[0] == Catch::Approx(0.25f));
+        REQUIRE_FALSE(pending());
+    }
+    const Extent2D<F32> release = {origin.x + 0.25f * padding.x, origin.y};
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Release, .button = MouseButton::Left, .position = release,
+    });
+    present();
+    REQUIRE(positions[0] == Catch::Approx(0.5f));
+    REQUIRE(cursor.position.x == Catch::Approx(release.x));
+    REQUIRE(pending());
+    REQUIRE_FALSE(interaction.dragging);
+    REQUIRE(interaction.zoom == Catch::Approx(1.0f));
+    REQUIRE(interaction.offset == Catch::Approx(0.0f));
+
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    present();
+    REQUIRE_FALSE(pending());
+    REQUIRE(interactiveSignalView == module);
+    const auto stored = std::any_cast<std::vector<F32>>(viewBlock("plot").config.at("markers"));
+    REQUIRE(stored.size() == 1);
+    REQUIRE(stored[0] == Catch::Approx(0.5f));
+
+    // Later motion must not continue a drag that has already been released.
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Move, .position = origin,
+    });
+    present();
+    REQUIRE(positions[0] == Catch::Approx(0.5f));
+    REQUIRE_FALSE(pending());
+
+    REQUIRE(markerText->destroy(&window) == Result::SUCCESS);
+    REQUIRE(axis->destroy(&window) == Result::SUCCESS);
+}
+
 TEST_CASE_METHOD(FlowgraphFixture, "Signal View markers persist through the owning block and follow external edits",
                  "[modules][signal_view][markers][config-edits]") {
     TestFlowgraph::SyntheticSourceBlockConfig source;

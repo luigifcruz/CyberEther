@@ -1303,7 +1303,9 @@ void SignalViewImpl::processInputEvents(const Extent2D<F32>& paddingScale) {
             markerDrag = {};
         }
         if (markerDrag.index) {
-            if (event.type == MouseEventType::Move) {
+            const bool released = event.type == MouseEventType::Release &&
+                                  event.button == MouseButton::Left;
+            if (event.type == MouseEventType::Move || released) {
                 cursor.inside = true;
                 cursor.position = event.position;
                 const F32 travel = std::abs(event.position.x - markerDrag.origin.x) *
@@ -1312,10 +1314,10 @@ void SignalViewImpl::processInputEvents(const Extent2D<F32>& paddingScale) {
                     markerDrag.moved = true;
                     markerPositions[*markerDrag.index] = pointAtX(event.position.x);
                 }
-                continue;
+                if (!released) {
+                    continue;
+                }
             }
-            const bool released = event.type == MouseEventType::Release &&
-                                  event.button == MouseButton::Left;
             if (released || event.type == MouseEventType::Leave) {
                 if (event.type == MouseEventType::Leave) {
                     cursor.inside = false;
