@@ -2,6 +2,7 @@
 #define JETSTREAM_DOMAINS_VISUALIZATION_LINEPLOT_BLOCK_HH
 
 #include <string>
+#include <vector>
 
 #include "jetstream/block.hh"
 
@@ -15,12 +16,13 @@ struct Lineplot : public Block::Config {
     F32 rangeMax = 0.0f;
     std::string xLabel = "Frequency (MHz)";
     std::string yLabel = "Amplitude (dBFS)";
+    std::vector<F32> markers;
 
     JST_BLOCK_TYPE(lineplot);
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(L);
     JST_BLOCK_PARAMS(averaging, maxHold, fill, rangeMin, rangeMax,
-                     xLabel, yLabel);
+                     xLabel, yLabel, markers);
     JST_BLOCK_DESCRIPTION(
         "Lineplot",
         "Displays data in a line plot visualization.",

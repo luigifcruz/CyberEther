@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <any>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <glm/gtc/matrix_transform.hpp>
@@ -24,7 +25,40 @@ constexpr ColorRGBA<F32> kCursorLineColor = {1.0f, 1.0f, 1.0f, 0.35f};
 constexpr ColorRGBA<F32> kCursorHaloColor = {0.0f, 0.0f, 0.0f, 0.65f};
 constexpr ColorRGBA<F32> kCursorPillColor = {0.07f, 0.07f, 0.07f, 0.9f};
 constexpr ColorRGBA<F32> kCursorPillEdgeColor = {1.0f, 1.0f, 1.0f, 0.22f};
+constexpr std::array<ColorRGBA<F32>, detail::MaxMarkers> kMarkerPalette = {{
+    {0.31f, 0.76f, 0.97f, 1.0f},
+    {1.00f, 0.44f, 0.26f, 1.0f},
+    {0.40f, 0.73f, 0.42f, 1.0f},
+    {0.67f, 0.28f, 0.74f, 1.0f},
+    {1.00f, 0.93f, 0.35f, 1.0f},
+    {0.15f, 0.78f, 0.85f, 1.0f},
+    {0.94f, 0.33f, 0.31f, 1.0f},
+    {0.93f, 0.25f, 0.48f, 1.0f},
+    {0.55f, 0.43f, 0.39f, 1.0f},
+    {0.61f, 0.80f, 0.40f, 1.0f},
+    {0.26f, 0.65f, 0.96f, 1.0f},
+    {1.00f, 0.65f, 0.15f, 1.0f},
+    {0.49f, 0.34f, 0.76f, 1.0f},
+    {0.15f, 0.65f, 0.60f, 1.0f},
+    {0.83f, 0.88f, 0.34f, 1.0f},
+    {0.74f, 0.74f, 0.74f, 1.0f},
+}};
+
+constexpr ColorRGBA<F32> MarkerLineColor(const U64 index) {
+    auto color = kMarkerPalette[index];
+    color.a = 0.6f;
+    return color;
+}
+
+constexpr ColorRGBA<F32> MarkerTagTextColor(const U64 index) {
+    const auto& color = kMarkerPalette[index];
+    const F32 luminance = 0.2126f * color.r + 0.7152f * color.g + 0.0722f * color.b;
+    return luminance > 0.5f ? ColorRGBA<F32>{0.05f, 0.05f, 0.05f, 1.0f}
+                            : ColorRGBA<F32>{1.0f, 1.0f, 1.0f, 1.0f};
+}
 constexpr F32 kLabelScale = 0.85f;
+constexpr F32 kMarkerPickRadiusPx = 8.0f;
+constexpr F32 kMarkerTableGapPx = 12.0f;
 
 bool HostReadable(const Tensor& tensor) {
     return (static_cast<U8>(tensor.buffer().location()) &
@@ -39,6 +73,27 @@ enum CursorInstance : U64 {
     kCursorPill,
     kCursorInstances,
 };
+
+enum MarkerGroup : U64 {
+    kMarkerLine = 0,
+    kMarkerHalo,
+    kMarkerDot,
+    kMarkerGroups,
+};
+
+enum MarkerTableGroup : U64 {
+    kMarkerPillEdge = 0,
+    kMarkerPill,
+    kMarkerTableGroups,
+};
+
+constexpr U64 MarkerInstance(const U64 group, const U64 index) {
+    return group * detail::MaxMarkers + index;
+}
+
+std::string MarkerElement(const U64 index, const char* suffix) {
+    return jst::fmt::format("marker-{}-{}", index, suffix);
+}
 
 }  // namespace
 
@@ -79,6 +134,17 @@ Result SignalViewImpl::validate() {
         config.splitRatio < detail::MinSplitRatio || config.splitRatio > detail::MaxSplitRatio) {
         JST_ERROR("[MODULE_SIGNAL_VIEW] Split ratio must be between 0.1 and 0.9.");
         return Result::ERROR;
+    }
+
+    if (config.markers.size() > detail::MaxMarkers) {
+        JST_ERROR("[MODULE_SIGNAL_VIEW] At most {} markers are supported.", detail::MaxMarkers);
+        return Result::ERROR;
+    }
+    for (const auto marker : config.markers) {
+        if (!std::isfinite(marker) || marker < -1.0f || marker > 1.0f) {
+            JST_ERROR("[MODULE_SIGNAL_VIEW] Marker positions must be between -1 and 1.");
+            return Result::ERROR;
+        }
     }
 
     if (hasWaterfall &&
@@ -228,6 +294,8 @@ Result SignalViewImpl::create() {
     updateLayoutFlag = false;
     displayHeld = false;
     cursor = {};
+    markerPositions = markers;
+    updateMarkersFlag = false;
     displayedPoints.clear();
 
     // Get input tensor.
@@ -317,6 +385,8 @@ Result SignalViewImpl::reconfigure() {
             config.rangeMin != rangeMin || config.rangeMax != rangeMax;
         updateLayoutFlag |= config.splitRatio != splitRatio;
         splitRatio = config.splitRatio;
+        updateMarkersFlag |= config.markers != markers;
+        markers = config.markers;
         lineplotAveraging = config.lineplotAveraging;
         waterfallAveraging = config.waterfallAveraging;
         rangeMin = config.rangeMin;
@@ -731,6 +801,142 @@ Result SignalViewImpl::createPresent() {
         JST_CHECK(window->bind(cursorText));
     }
 
+    // Marker overlay (lines, trace dots, and readout table).
+
+    {
+        Render::Components::Shapes::Config cfg;
+        cfg.pixelSize = {
+            2.0f / interaction.viewSize.x,
+            2.0f / interaction.viewSize.y,
+        };
+        cfg.elements["markers"] = {
+            .type = Render::Components::Shapes::Type::RECT,
+            .numberOfInstances = kMarkerGroups * detail::MaxMarkers,
+            .position = {-2.0f, -2.0f},
+            .size = {0.0f, 0.0f},
+            .cornerRadius = 1.0e4f,
+        };
+        JST_CHECK(window->build(markerShapes, cfg));
+        JST_CHECK(window->bind(markerShapes));
+
+        std::span<ColorRGBA<F32>> colors;
+        JST_CHECK(markerShapes->getColors("markers", colors));
+        for (U64 i = 0; i < detail::MaxMarkers; ++i) {
+            colors[MarkerInstance(kMarkerLine, i)] = MarkerLineColor(i);
+            colors[MarkerInstance(kMarkerHalo, i)] = kCursorHaloColor;
+            colors[MarkerInstance(kMarkerDot, i)] = kMarkerPalette[i];
+        }
+        JST_CHECK(markerShapes->updateColors("markers"));
+    }
+
+    {
+        Render::Components::Shapes::Config cfg;
+        cfg.pixelSize = {
+            2.0f / interaction.viewSize.x,
+            2.0f / interaction.viewSize.y,
+        };
+        cfg.elements["tags"] = {
+            .type = Render::Components::Shapes::Type::RECT,
+            .numberOfInstances = detail::MaxMarkers,
+            .position = {-2.0f, -2.0f},
+            .size = {0.0f, 0.0f},
+            .cornerRadius = 4.0f,
+        };
+        JST_CHECK(window->build(markerTagShapes, cfg));
+        JST_CHECK(window->bind(markerTagShapes));
+
+        std::span<ColorRGBA<F32>> colors;
+        JST_CHECK(markerTagShapes->getColors("tags", colors));
+        for (U64 i = 0; i < detail::MaxMarkers; ++i) {
+            colors[i] = kMarkerPalette[i];
+        }
+        JST_CHECK(markerTagShapes->updateColors("tags"));
+    }
+
+    {
+        Render::Components::Shapes::Config cfg;
+        cfg.pixelSize = {
+            2.0f / interaction.viewSize.x,
+            2.0f / interaction.viewSize.y,
+        };
+        cfg.elements["table"] = {
+            .type = Render::Components::Shapes::Type::RECT,
+            .numberOfInstances = kMarkerTableGroups * detail::MaxMarkers,
+            .position = {-2.0f, -2.0f},
+            .size = {0.0f, 0.0f},
+            .cornerRadius = 1.0e4f,
+        };
+        JST_CHECK(window->build(markerTableShapes, cfg));
+        JST_CHECK(window->bind(markerTableShapes));
+
+        std::span<ColorRGBA<F32>> colors;
+        JST_CHECK(markerTableShapes->getColors("table", colors));
+        for (U64 i = 0; i < detail::MaxMarkers; ++i) {
+            colors[MarkerInstance(kMarkerPillEdge, i)] = kCursorPillEdgeColor;
+            colors[MarkerInstance(kMarkerPill, i)] = kCursorPillColor;
+        }
+        JST_CHECK(markerTableShapes->updateColors("table"));
+    }
+
+    {
+        Render::Components::Text::Config cfg;
+        cfg.maxCharacters = 1024;
+        cfg.color = {1.0f, 1.0f, 1.0f, 1.0f};
+        cfg.font = window->font("default_mono");
+        for (U64 i = 0; i < detail::MaxMarkers; ++i) {
+            cfg.elements[MarkerElement(i, "x")] = {
+                .scale = kLabelScale,
+                .position = {-2.0f, -2.0f},
+                .alignment = {0, 1},
+            };
+            cfg.elements[MarkerElement(i, "y")] = {
+                .scale = kLabelScale,
+                .position = {-2.0f, -2.0f},
+                .alignment = {0, 1},
+            };
+        }
+        JST_CHECK(window->build(markerText, cfg));
+        JST_CHECK(window->bind(markerText));
+    }
+
+    {
+        Render::Components::Text::Config cfg;
+        cfg.maxCharacters = 64;
+        cfg.color = {1.0f, 1.0f, 1.0f, 1.0f};
+        cfg.font = window->hasFont("default_mono_bold")
+            ? window->font("default_mono_bold")
+            : window->font("default_mono");
+        for (U64 i = 0; i < detail::MaxMarkers; ++i) {
+            cfg.elements[MarkerElement(i, "id")] = {
+                .scale = kLabelScale,
+                .position = {-2.0f, -2.0f},
+                .alignment = {0, 1},
+                .color = kMarkerPalette[i],
+            };
+        }
+        JST_CHECK(window->build(markerBadgeText, cfg));
+        JST_CHECK(window->bind(markerBadgeText));
+    }
+
+    {
+        Render::Components::Text::Config cfg;
+        cfg.maxCharacters = 64;
+        cfg.color = {1.0f, 1.0f, 1.0f, 1.0f};
+        cfg.font = window->hasFont("default_mono_bold")
+            ? window->font("default_mono_bold")
+            : window->font("default_mono");
+        for (U64 i = 0; i < detail::MaxMarkers; ++i) {
+            cfg.elements[MarkerElement(i, "tag")] = {
+                .scale = kLabelScale,
+                .position = {-2.0f, -2.0f},
+                .alignment = {1, 1},
+                .color = MarkerTagTextColor(i),
+            };
+        }
+        JST_CHECK(window->build(markerTagText, cfg));
+        JST_CHECK(window->bind(markerTagText));
+    }
+
     // Framebuffer texture.
 
     {
@@ -766,6 +972,12 @@ Result SignalViewImpl::createPresent() {
             }
             cfg.programs.push_back(signalProgram);
         }
+        JST_CHECK(markerShapes->surface(cfg));
+        JST_CHECK(markerTagShapes->surface(cfg));
+        JST_CHECK(markerTagText->surface(cfg));
+        JST_CHECK(markerTableShapes->surface(cfg));
+        JST_CHECK(markerText->surface(cfg));
+        JST_CHECK(markerBadgeText->surface(cfg));
         JST_CHECK(axis->surfaceOverlay(cfg));
         JST_CHECK(text->surface(cfg));
         JST_CHECK(cursorShapes->surface(cfg));
@@ -814,6 +1026,24 @@ Result SignalViewImpl::destroyPresent() {
     }
     if (cursorShapes) {
         JST_CHECK(window->unbind(cursorShapes));
+    }
+    if (markerTagText) {
+        JST_CHECK(window->unbind(markerTagText));
+    }
+    if (markerBadgeText) {
+        JST_CHECK(window->unbind(markerBadgeText));
+    }
+    if (markerText) {
+        JST_CHECK(window->unbind(markerText));
+    }
+    if (markerTableShapes) {
+        JST_CHECK(window->unbind(markerTableShapes));
+    }
+    if (markerTagShapes) {
+        JST_CHECK(window->unbind(markerTagShapes));
+    }
+    if (markerShapes) {
+        JST_CHECK(window->unbind(markerShapes));
     }
     if (text) {
         JST_CHECK(window->unbind(text));
@@ -912,11 +1142,30 @@ Result SignalViewImpl::present() {
     }
 
     updateLabelState();
+    JST_CHECK(updateMarkerState());
     JST_CHECK(updateCursorState());
 
     JST_CHECK(axis->present());
     if (text) {
         JST_CHECK(text->present());
+    }
+    if (markerShapes) {
+        JST_CHECK(markerShapes->present());
+    }
+    if (markerTagShapes) {
+        JST_CHECK(markerTagShapes->present());
+    }
+    if (markerTableShapes) {
+        JST_CHECK(markerTableShapes->present());
+    }
+    if (markerText) {
+        JST_CHECK(markerText->present());
+    }
+    if (markerBadgeText) {
+        JST_CHECK(markerBadgeText->present());
+    }
+    if (markerTagText) {
+        JST_CHECK(markerTagText->present());
     }
     if (cursorShapes) {
         JST_CHECK(cursorShapes->present());
@@ -933,6 +1182,8 @@ void SignalViewImpl::processInputEvents(const Extent2D<F32>& paddingScale) {
     if (!splitter.dragging && !configChangePending()) {
         splitter.ratio = splitRatio;
     }
+
+    syncMarkers();
 
     std::vector<InputEvent> plotEvents;
     const bool enabled = lineplotEnabled && waterfallEnabled &&
@@ -951,6 +1202,56 @@ void SignalViewImpl::processInputEvents(const Extent2D<F32>& paddingScale) {
             cursor.position = event.position;
         } else if (event.type == MouseEventType::Leave) {
             cursor.inside = false;
+        }
+        if (event.type == MouseEventType::Click && event.modifiers.shift && !splitter.dragging) {
+            cursor.inside = true;
+            cursor.position = event.position;
+            if (event.button == MouseButton::Left) {
+                toggleMarker();
+            } else if (event.button == MouseButton::Right) {
+                clearMarkers();
+            }
+            continue;
+        }
+        if (markerDrag.index && *markerDrag.index >= markerPositions.size()) {
+            markerDrag = {};
+        }
+        if (markerDrag.index) {
+            if (event.type == MouseEventType::Move) {
+                cursor.inside = true;
+                cursor.position = event.position;
+                const F32 travel = std::abs(event.position.x - markerDrag.origin.x) *
+                                   static_cast<F32>(interaction.viewSize.x);
+                if (markerDrag.moved || travel > 3.0f * interaction.scale) {
+                    markerDrag.moved = true;
+                    markerPositions[*markerDrag.index] = pointAtX(event.position.x);
+                }
+                continue;
+            }
+            const bool released = event.type == MouseEventType::Release &&
+                                  event.button == MouseButton::Left;
+            if (released || event.type == MouseEventType::Leave) {
+                if (event.type == MouseEventType::Leave) {
+                    cursor.inside = false;
+                }
+                if (markerDrag.moved) {
+                    commitMarkers();
+                }
+                markerDrag = {};
+                continue;
+            }
+        }
+        if (event.type == MouseEventType::Click && event.button == MouseButton::Left &&
+            !splitter.dragging) {
+            cursor.inside = true;
+            cursor.position = event.position;
+            if (tagAt(event.position)) {
+                continue;
+            }
+            if (const auto hit = markerAt(event.position)) {
+                markerDrag = {.index = hit, .origin = event.position};
+                continue;
+            }
         }
         const auto layout = detail::CalculateSignalViewPanels(paddingScale,
                                                                interaction.viewSize,
@@ -978,14 +1279,20 @@ void SignalViewImpl::processInputEvents(const Extent2D<F32>& paddingScale) {
     interaction.viewChanged |= viewChanged;
 
     SurfaceCursor shape = SurfaceCursor::Default;
-    if (splitter.dragging) {
+    if (markerDrag.index) {
+        shape = SurfaceCursor::ResizeEW;
+    } else if (splitter.dragging) {
         shape = SurfaceCursor::ResizeNS;
     } else if (cursor.inside) {
         const auto layout = detail::CalculateSignalViewPanels(paddingScale,
                                                                interaction.viewSize,
                                                                splitter.ratio);
-        if (splitter.hovered(cursor.position, layout, interaction.viewSize,
-                             interaction.scale, enabled)) {
+        if (tagAt(cursor.position)) {
+            shape = SurfaceCursor::Default;
+        } else if (markerAt(cursor.position)) {
+            shape = SurfaceCursor::ResizeEW;
+        } else if (splitter.hovered(cursor.position, layout, interaction.viewSize,
+                                    interaction.scale, enabled)) {
             shape = SurfaceCursor::ResizeNS;
         }
     }
@@ -1146,6 +1453,15 @@ void SignalViewImpl::updateLabelState() {
     if (cursorText) {
         cursorText->updatePixelSize(pixelSize);
     }
+    if (markerText) {
+        markerText->updatePixelSize(pixelSize);
+    }
+    if (markerBadgeText) {
+        markerBadgeText->updatePixelSize(pixelSize);
+    }
+    if (markerTagText) {
+        markerTagText->updatePixelSize(pixelSize);
+    }
 
     if (lineplotEnabled && text) {
         const F32 tickOffset = axis->getConfig().majorTickLengthPx + 4.0f;
@@ -1272,6 +1588,16 @@ std::string SignalViewImpl::formatAmplitude(const F32 yPoint) const {
         : jst::fmt::format("{:.1f} {}", *value, unit);
 }
 
+void SignalViewImpl::syncMarkers() {
+    if (markerDrag.index || configChangePending()) {
+        return;
+    }
+    if (updateMarkersFlag || configChangeEnabled("markers")) {
+        markerPositions = markers;
+    }
+    updateMarkersFlag = false;
+}
+
 bool SignalViewImpl::insidePlot(const Extent2D<F32>& position) const {
     const auto& padding = axis->paddingScale();
     const F32 u = (position.x - 0.5f) / std::max(padding.x, 1e-6f) + 0.5f;
@@ -1282,6 +1608,74 @@ bool SignalViewImpl::insidePlot(const Extent2D<F32>& position) const {
 F32 SignalViewImpl::pointAtX(const F32 x) const {
     const F32 u = (x - 0.5f) / std::max(axis->paddingScale().x, 1e-6f) + 0.5f;
     return std::clamp((u * 2.0f - 1.0f) / interaction.zoom - viewTranslation(), -1.0f, 1.0f);
+}
+
+std::optional<U64> SignalViewImpl::markerAt(const Extent2D<F32>& position) const {
+    if (interaction.placement == SurfacePlacementType::Attached ||
+        numberOfElements < 2 || !insidePlot(position)) {
+        return std::nullopt;
+    }
+    const F32 pointerNdc = position.x * 2.0f - 1.0f;
+    F32 best = kMarkerPickRadiusPx * (2.0f * interaction.scale) /
+               static_cast<F32>(std::max<U64>(interaction.viewSize.x, 1));
+    std::optional<U64> nearest;
+    for (U64 i = 0; i < markerPositions.size(); ++i) {
+        const F32 distance = std::abs(projectPointX(markerPositions[i]) - pointerNdc);
+        if (distance < best) {
+            best = distance;
+            nearest = i;
+        }
+    }
+    return nearest;
+}
+
+std::optional<U64> SignalViewImpl::tagAt(const Extent2D<F32>& position) const {
+    const Extent2D<F32> pointer = {position.x * 2.0f - 1.0f, 1.0f - position.y * 2.0f};
+    for (U64 i = 0; i < tagBounds.size(); ++i) {
+        const auto& bounds = tagBounds[i];
+        if (bounds.active &&
+            std::abs(pointer.x - bounds.center.x) <= bounds.halfSize.x &&
+            std::abs(pointer.y - bounds.center.y) <= bounds.halfSize.y) {
+            return i;
+        }
+    }
+    return std::nullopt;
+}
+
+void SignalViewImpl::toggleMarker() {
+    const auto point = cursorPoint();
+    if (!point) {
+        return;
+    }
+
+    if (const auto nearest = markerAt(cursor.position)) {
+        const U64 removed = *nearest;
+        markerPositions.erase(markerPositions.begin() + removed);
+    } else if (markerPositions.size() < detail::MaxMarkers) {
+        markerPositions.push_back(*point);
+    } else {
+        return;
+    }
+    commitMarkers();
+}
+
+void SignalViewImpl::clearMarkers() {
+    if (markerPositions.empty()) {
+        return;
+    }
+    markerPositions.clear();
+    commitMarkers();
+}
+
+void SignalViewImpl::commitMarkers() {
+    if (!configChangeEnabled("markers")) {
+        return;
+    }
+    Parser::Map edit;
+    edit["markers"] = markerPositions;
+    if (requestConfigChange(edit) != Result::SUCCESS) {
+        markerPositions = markers;
+    }
 }
 
 Result SignalViewImpl::updateCursorState() {
@@ -1296,6 +1690,7 @@ Result SignalViewImpl::updateCursorState() {
     bool hasMarker = false;
 
     if (visible) {
+        cursor.point = *point;
         xNdc = std::clamp((*point + viewTranslation()) * interaction.zoom,
                           -1.0f, 1.0f) * padding.x;
         xLabelText = formatPointX(*point);
@@ -1335,17 +1730,19 @@ Result SignalViewImpl::updateCursorState() {
             const F32 toPixelsX = static_cast<F32>(interaction.viewSize.x) * 0.5f;
             const F32 toPixelsY = static_cast<F32>(interaction.viewSize.y) * 0.5f;
 
-            positions[kCursorLine] = {xNdc, 0.0f};
-            sizes[kCursorLine] = {2.0f * scale, padding.y * 2.0f * toPixelsY};
+            if (!cursor.overMarker) {
+                positions[kCursorLine] = {xNdc, 0.0f};
+                sizes[kCursorLine] = {2.0f * scale, padding.y * 2.0f * toPixelsY};
+            }
 
-            if (hasMarker) {
+            if (hasMarker && !cursor.overMarker) {
                 positions[kCursorHalo] = {xNdc, yNdc};
                 sizes[kCursorHalo] = {16.0f * scale, 16.0f * scale};
                 positions[kCursorMarker] = {xNdc, yNdc};
                 sizes[kCursorMarker] = {11.0f * scale, 11.0f * scale};
             }
 
-            if (cursorText) {
+            if (cursorText && !cursor.overMarker) {
                 const auto& font = cursorText->getConfig().font;
                 const F32 lineHeight = font ? font->lineHeight() * kLabelScale : 0.0f;
                 const F32 xWidth = cursorText->advance(xLabelText) * kLabelScale;
@@ -1384,15 +1781,254 @@ Result SignalViewImpl::updateCursorState() {
     }
 
     if (cursorText) {
+        const bool readout = visible && !cursor.overMarker;
         auto xLabelElement = cursorText->get("cursor-x");
         xLabelElement.position = xLabelPosition;
-        xLabelElement.fill = visible ? xLabelText : " ";
+        xLabelElement.fill = readout ? xLabelText : " ";
         JST_CHECK(cursorText->update("cursor-x", xLabelElement));
 
         auto yLabelElement = cursorText->get("cursor-y");
         yLabelElement.position = yLabelPosition;
-        yLabelElement.fill = (visible && !yLabelText.empty()) ? yLabelText : " ";
+        yLabelElement.fill = (readout && !yLabelText.empty()) ? yLabelText : " ";
         JST_CHECK(cursorText->update("cursor-y", yLabelElement));
+    }
+
+    return Result::SUCCESS;
+}
+
+Result SignalViewImpl::updateMarkerState() {
+    const auto& padding = axis->paddingScale();
+    const bool shown = numberOfElements >= 2;
+    const bool table = interaction.placement != SurfacePlacementType::Attached;
+
+    struct Row {
+        std::string tag;
+        std::string id;
+        std::string x;
+        std::string y;
+        F32 xNdc = 0.0f;
+        F32 yNdc = 0.0f;
+        bool inView = false;
+        bool dot = false;
+        bool tagged = false;
+        F32 tagWidth = 0.0f;
+        Extent2D<F32> tagPosition = {-2.0f, -2.0f};
+        Extent2D<F32> idPosition = {-2.0f, -2.0f};
+        Extent2D<F32> xPosition = {-2.0f, -2.0f};
+        Extent2D<F32> yPosition = {-2.0f, -2.0f};
+    };
+    std::array<Row, detail::MaxMarkers> rows;
+    const U64 count = shown ? std::min<U64>(markerPositions.size(), detail::MaxMarkers) : 0;
+    Render::Components::Text* const badgeText =
+        markerBadgeText ? markerBadgeText.get() : markerText.get();
+    Render::Components::Text* const tagText =
+        markerTagText ? markerTagText.get() : badgeText;
+
+    for (U64 i = 0; i < count; ++i) {
+        auto& row = rows[i];
+        const F32 marker = markerPositions[i];
+        row.xNdc = projectPointX(marker);
+        row.inView = std::abs(row.xNdc) <= padding.x;
+        row.id = jst::fmt::format("M{}", i + 1);
+        row.tag = row.id;
+        row.x = formatPointX(marker);
+        if (const auto yPoint = displayedAmplitude(marker)) {
+            row.y = formatAmplitude(*yPoint);
+            if (!row.y.empty()) {
+                row.yNdc = amplitudeToNdc(*yPoint);
+                row.dot = row.inView;
+            }
+        }
+    }
+
+    const F32 scale = interaction.scale;
+    const F32 toPixelsX = static_cast<F32>(interaction.viewSize.x) * 0.5f;
+    const F32 toPixelsY = static_cast<F32>(interaction.viewSize.y) * 0.5f;
+    const std::shared_ptr<Render::Components::Font> font =
+        markerText ? markerText->getConfig().font : nullptr;
+    const F32 lineHeight = font ? font->lineHeight() * kLabelScale : 0.0f;
+    const std::shared_ptr<Render::Components::Font> tagFont =
+        tagText ? tagText->getConfig().font : nullptr;
+    const F32 tagLineHeight = tagFont ? tagFont->lineHeight() * kLabelScale : 0.0f;
+    const F32 headerOffset = axis->getConfig().majorTickLengthPx + 4.0f;
+    const F32 tagPadX = 6.0f;
+    const F32 tagPadY = 2.0f;
+    const F32 tagHeight = (tagPadY * 2.0f + tagLineHeight) * pixelSize.y;
+    const F32 cursorRowTop = padding.y - (headerOffset + tagLineHeight + 8.0f) * pixelSize.y;
+    const F32 cursorRowCenter = cursorRowTop - (8.0f + tagLineHeight) * pixelSize.y * 0.5f;
+
+    tagBounds.fill({});
+    for (U64 i = 0; i < count; ++i) {
+        auto& row = rows[i];
+        if (!row.inView || !markerText) {
+            continue;
+        }
+        row.tagWidth = (tagPadX * 2.0f + tagText->advance(row.tag) * kLabelScale) * pixelSize.x;
+        // Center oversized tags instead of clamping with inverted bounds.
+        const F32 tagLimit = std::max(0.0f, padding.x - row.tagWidth * 0.5f);
+        row.tagPosition = {
+            std::clamp(row.xNdc, -tagLimit, tagLimit),
+            cursorRowCenter,
+        };
+        row.tagged = true;
+        tagBounds[i] = {
+            .active = true,
+            .center = row.tagPosition,
+            .halfSize = {row.tagWidth * 0.5f, tagHeight * 0.5f},
+        };
+    }
+
+    std::optional<U64> hovered;
+    if (cursor.inside && !splitter.dragging && shown) {
+        hovered = tagAt(cursor.position);
+    }
+    cursor.overMarker = hovered.has_value() || markerDrag.index.has_value() ||
+                        (cursor.inside && !splitter.dragging && markerAt(cursor.position));
+
+    if (markerShapes) {
+        JST_CHECK(markerShapes->updatePixelSize({
+            2.0f / interaction.viewSize.x,
+            2.0f / interaction.viewSize.y,
+        }));
+
+        std::span<Extent2D<F32>> positions;
+        JST_CHECK(markerShapes->getPositions("markers", positions));
+        std::span<Extent2D<F32>> sizes;
+        JST_CHECK(markerShapes->getSizes("markers", sizes));
+        for (U64 i = 0; i < kMarkerGroups * detail::MaxMarkers; ++i) {
+            positions[i] = {-2.0f, -2.0f};
+            sizes[i] = {0.0f, 0.0f};
+        }
+
+        std::span<Extent2D<F32>> tablePositions;
+        std::span<Extent2D<F32>> tableSizes;
+        if (markerTableShapes) {
+            JST_CHECK(markerTableShapes->updatePixelSize({
+                2.0f / interaction.viewSize.x,
+                2.0f / interaction.viewSize.y,
+            }));
+            JST_CHECK(markerTableShapes->getPositions("table", tablePositions));
+            JST_CHECK(markerTableShapes->getSizes("table", tableSizes));
+            for (U64 i = 0; i < kMarkerTableGroups * detail::MaxMarkers; ++i) {
+                tablePositions[i] = {-2.0f, -2.0f};
+                tableSizes[i] = {0.0f, 0.0f};
+            }
+        }
+
+        const F32 padX = 9.0f;
+        const F32 padY = 4.0f;
+        const F32 rowGap = 4.0f;
+        const F32 pillHeight = (padY * 2.0f + lineHeight) * pixelSize.y;
+        const F32 left = -padding.x + headerOffset * pixelSize.x;
+        const F32 top = cursorRowCenter - tagHeight * 0.5f - kMarkerTableGapPx * pixelSize.y;
+
+        for (U64 i = 0; i < count; ++i) {
+            auto& row = rows[i];
+
+            if (row.inView) {
+                positions[MarkerInstance(kMarkerLine, i)] = {row.xNdc, 0.0f};
+                sizes[MarkerInstance(kMarkerLine, i)] = {2.0f * scale, padding.y * 2.0f * toPixelsY};
+            }
+
+            if (row.dot) {
+                positions[MarkerInstance(kMarkerHalo, i)] = {row.xNdc, row.yNdc};
+                sizes[MarkerInstance(kMarkerHalo, i)] = {13.0f * scale, 13.0f * scale};
+                positions[MarkerInstance(kMarkerDot, i)] = {row.xNdc, row.yNdc};
+                sizes[MarkerInstance(kMarkerDot, i)] = {8.0f * scale, 8.0f * scale};
+            }
+
+            if (markerText && table) {
+                const F32 idWidth = badgeText->advance(row.id) * kLabelScale;
+                const F32 idGap = 8.0f;
+                const F32 xWidth = markerText->advance(row.x) * kLabelScale;
+                const F32 yWidth = row.y.empty() ? 0.0f : markerText->advance(row.y) * kLabelScale;
+                const F32 gap = row.y.empty() ? 0.0f : 10.0f;
+                const F32 pillWidth =
+                    (padX * 2.0f + idWidth + idGap + xWidth + gap + yWidth) * pixelSize.x;
+                const F32 centerY = top - (pillHeight + rowGap * pixelSize.y) * i - pillHeight * 0.5f;
+                const F32 centerX = left + pillWidth * 0.5f;
+
+                if (markerTableShapes) {
+                    tablePositions[MarkerInstance(kMarkerPillEdge, i)] = {centerX, centerY};
+                    tableSizes[MarkerInstance(kMarkerPillEdge, i)] = {
+                        pillWidth * toPixelsX + 2.0f * scale,
+                        pillHeight * toPixelsY + 2.0f * scale,
+                    };
+                    tablePositions[MarkerInstance(kMarkerPill, i)] = {centerX, centerY};
+                    tableSizes[MarkerInstance(kMarkerPill, i)] = {pillWidth * toPixelsX,
+                                                                  pillHeight * toPixelsY};
+                }
+
+                row.idPosition = {left + padX * pixelSize.x, centerY};
+                row.xPosition = {left + (padX + idWidth + idGap) * pixelSize.x, centerY};
+                row.yPosition = {left + (padX + idWidth + idGap + xWidth + gap) * pixelSize.x,
+                                 centerY};
+            }
+        }
+
+        JST_CHECK(markerShapes->updatePositions("markers"));
+        JST_CHECK(markerShapes->updateSizes("markers"));
+        if (markerTableShapes) {
+            JST_CHECK(markerTableShapes->updatePositions("table"));
+            JST_CHECK(markerTableShapes->updateSizes("table"));
+        }
+    }
+
+    if (markerTagShapes) {
+        JST_CHECK(markerTagShapes->updatePixelSize({
+            2.0f / interaction.viewSize.x,
+            2.0f / interaction.viewSize.y,
+        }));
+        JST_CHECK(markerTagShapes->updateProperties("tags", 4.0f * interaction.scale, 0.0f, {}));
+
+        std::span<Extent2D<F32>> positions;
+        JST_CHECK(markerTagShapes->getPositions("tags", positions));
+        std::span<Extent2D<F32>> sizes;
+        JST_CHECK(markerTagShapes->getSizes("tags", sizes));
+        for (U64 i = 0; i < detail::MaxMarkers; ++i) {
+            positions[i] = {-2.0f, -2.0f};
+            sizes[i] = {0.0f, 0.0f};
+        }
+
+        for (U64 i = 0; i < count; ++i) {
+            const auto& row = rows[i];
+            if (!row.tagged) {
+                continue;
+            }
+            positions[i] = row.tagPosition;
+            sizes[i] = {row.tagWidth * toPixelsX, tagHeight * toPixelsY};
+        }
+
+        JST_CHECK(markerTagShapes->updatePositions("tags"));
+        JST_CHECK(markerTagShapes->updateSizes("tags"));
+    }
+
+    if (markerText) {
+        for (U64 i = 0; i < detail::MaxMarkers; ++i) {
+            const auto& row = rows[i];
+            const bool active = i < count;
+
+            auto tag = tagText->get(MarkerElement(i, "tag"));
+            tag.position = row.tagPosition;
+            tag.fill = (active && row.inView) ? row.tag : " ";
+            JST_CHECK(tagText->update(MarkerElement(i, "tag"), tag));
+
+            auto id = badgeText->get(MarkerElement(i, "id"));
+            id.position = row.idPosition;
+            id.fill = (active && table) ? row.id : " ";
+            JST_CHECK(badgeText->update(MarkerElement(i, "id"), id));
+
+            auto x = markerText->get(MarkerElement(i, "x"));
+            x.position = row.xPosition;
+            x.fill = (active && table) ? row.x : " ";
+            JST_CHECK(markerText->update(MarkerElement(i, "x"), x));
+
+            auto y = markerText->get(MarkerElement(i, "y"));
+            y.position = row.yPosition;
+            y.fill = (active && table && !row.y.empty()) ? row.y : " ";
+            JST_CHECK(markerText->update(MarkerElement(i, "y"), y));
+        }
+
     }
 
     return Result::SUCCESS;

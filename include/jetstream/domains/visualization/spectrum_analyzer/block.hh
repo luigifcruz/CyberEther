@@ -2,6 +2,7 @@
 #define JETSTREAM_DOMAINS_VISUALIZATION_SPECTRUM_ANALYZER_BLOCK_HH
 
 #include <string>
+#include <vector>
 
 #include "jetstream/block.hh"
 
@@ -16,6 +17,7 @@ struct SpectrumAnalyzer : public Block::Config {
     F32 rangeMax = 0.0f;
     U64 waterfallHeight = 1024;
     F32 splitRatio = 0.5f;
+    std::vector<F32> markers;
     std::string xLabel = "Frequency (MHz)";
     std::string amplitudeLabel = "Amplitude (dBFS)";
     std::string waterfallLabel = "Time";
@@ -25,7 +27,7 @@ struct SpectrumAnalyzer : public Block::Config {
     JST_BLOCK_NODE_SIZE(L);
     JST_BLOCK_PARAMS(lineplotAveraging, waterfallAveraging, maxHold,
                      fill, rangeMin, rangeMax, waterfallHeight,
-                     splitRatio, xLabel, amplitudeLabel, waterfallLabel);
+                     splitRatio, markers, xLabel, amplitudeLabel, waterfallLabel);
     JST_BLOCK_DESCRIPTION(
         "Spectrum Analyzer",
         "Spectrum trace and waterfall in one view.",

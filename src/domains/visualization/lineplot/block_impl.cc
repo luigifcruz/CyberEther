@@ -24,6 +24,7 @@ Result LineplotImpl::configure() {
     signalViewConfig->rangeMax = rangeMax;
     signalViewConfig->xLabel = xLabel;
     signalViewConfig->amplitudeLabel = yLabel;
+    signalViewConfig->markers = markers;
 
     return Result::SUCCESS;
 }
@@ -48,6 +49,7 @@ Result LineplotImpl::create() {
     JST_CHECK(moduleCreate("signal_view", signalViewConfig, {
         {"signal", inputs().at("signal")}
     }));
+    JST_CHECK(moduleBindConfigEdit("signal_view", "markers", "markers"));
 
     return Result::SUCCESS;
 }

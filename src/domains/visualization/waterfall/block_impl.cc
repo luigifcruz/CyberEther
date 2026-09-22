@@ -21,6 +21,7 @@ Result WaterfallImpl::configure() {
     signalViewConfig->waterfallHeight = height;
     signalViewConfig->xLabel = xLabel;
     signalViewConfig->waterfallLabel = yLabel;
+    signalViewConfig->markers = markers;
 
     return Result::SUCCESS;
 }
@@ -45,6 +46,7 @@ Result WaterfallImpl::create() {
     JST_CHECK(moduleCreate("signal_view", signalViewConfig, {
         {"signal", inputs().at("signal")}
     }));
+    JST_CHECK(moduleBindConfigEdit("signal_view", "markers", "markers"));
 
     return Result::SUCCESS;
 }

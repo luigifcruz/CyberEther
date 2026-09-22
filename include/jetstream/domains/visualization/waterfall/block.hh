@@ -2,6 +2,7 @@
 #define JETSTREAM_DOMAINS_VISUALIZATION_WATERFALL_BLOCK_HH
 
 #include <string>
+#include <vector>
 
 #include "jetstream/block.hh"
 
@@ -12,11 +13,12 @@ struct Waterfall : public Block::Config {
     U64 averaging = 1;
     std::string xLabel = "Frequency (MHz)";
     std::string yLabel = "Time";
+    std::vector<F32> markers;
 
     JST_BLOCK_TYPE(waterfall);
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(L);
-    JST_BLOCK_PARAMS(height, averaging, xLabel, yLabel);
+    JST_BLOCK_PARAMS(height, averaging, xLabel, yLabel, markers);
     JST_BLOCK_DESCRIPTION(
         "Waterfall",
         "Shows frequency spectrum over time as a scrolling waterfall.",
