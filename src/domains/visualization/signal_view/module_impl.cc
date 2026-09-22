@@ -2107,8 +2107,8 @@ Result SignalViewImpl::updateMarkerState() {
         const F32 padY = 4.0f;
         const F32 rowGap = 4.0f;
         const F32 pillHeight = (padY * 2.0f + lineHeight) * pixelSize.y;
-        const F32 left = -padding.x + headerOffset * pixelSize.x;
-        const F32 top = cursorRowCenter - tagHeight * 0.5f - kMarkerTableGapPx * pixelSize.y;
+        const F32 right = padding.x - kMarkerTableGapPx * pixelSize.x;
+        const F32 bottom = -padding.y + kMarkerTableGapPx * pixelSize.y;
 
         for (U64 i = 0; i < count; ++i) {
             auto& row = rows[i];
@@ -2133,7 +2133,9 @@ Result SignalViewImpl::updateMarkerState() {
                 const F32 gap = row.y.empty() ? 0.0f : 10.0f;
                 const F32 pillWidth =
                     (padX * 2.0f + idWidth + idGap + xWidth + gap + yWidth) * pixelSize.x;
-                const F32 centerY = top - (pillHeight + rowGap * pixelSize.y) * i - pillHeight * 0.5f;
+                const F32 left = right - pillWidth;
+                const F32 centerY = bottom + (pillHeight + rowGap * pixelSize.y) * (count - 1 - i) +
+                                    pillHeight * 0.5f;
                 const F32 centerX = left + pillWidth * 0.5f;
 
                 if (markerTableShapes) {
