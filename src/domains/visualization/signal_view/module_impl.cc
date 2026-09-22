@@ -1988,10 +1988,11 @@ Result SignalViewImpl::updateMarkerState() {
         tagText ? tagText->getConfig().font : nullptr;
     const F32 tagLineHeight = tagFont ? tagFont->lineHeight() * kLabelScale : 0.0f;
     const F32 headerOffset = axis->getConfig().majorTickLengthPx + 4.0f;
+    const F32 headerHeight = table ? tagLineHeight + 8.0f : 0.0f;
     const F32 tagPadX = 6.0f;
     const F32 tagPadY = 2.0f;
     const F32 tagHeight = (tagPadY * 2.0f + tagLineHeight) * pixelSize.y;
-    const F32 cursorRowTop = padding.y - (headerOffset + tagLineHeight + 8.0f) * pixelSize.y;
+    const F32 cursorRowTop = padding.y - (headerOffset + headerHeight) * pixelSize.y;
     const F32 cursorRowCenter = cursorRowTop - (8.0f + tagLineHeight) * pixelSize.y * 0.5f;
 
     tagBounds.fill({});
