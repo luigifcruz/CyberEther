@@ -976,6 +976,20 @@ void SignalViewImpl::processInputEvents(const Extent2D<F32>& paddingScale) {
     const bool viewChanged = interaction.viewChanged || previousRatio != splitter.ratio;
     interaction = ProcessSurfaceInteraction(interaction, {}, std::move(plotEvents));
     interaction.viewChanged |= viewChanged;
+
+    SurfaceCursor shape = SurfaceCursor::Default;
+    if (splitter.dragging) {
+        shape = SurfaceCursor::ResizeNS;
+    } else if (cursor.inside) {
+        const auto layout = detail::CalculateSignalViewPanels(paddingScale,
+                                                               interaction.viewSize,
+                                                               splitter.ratio);
+        if (splitter.hovered(cursor.position, layout, interaction.viewSize,
+                             interaction.scale, enabled)) {
+            shape = SurfaceCursor::ResizeNS;
+        }
+    }
+    surfaceSetCursor(shape);
 }
 
 void SignalViewImpl::updateState() {

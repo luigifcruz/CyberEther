@@ -53,6 +53,19 @@ struct SignalViewSplitInteraction {
     F32 grabOffset = 0.0f;
     bool dragging = false;
 
+    bool hovered(const Extent2D<F32>& position,
+                 const SignalViewPanelLayout& layout,
+                 const Extent2D<U64>& size,
+                 const F32 scale,
+                 const bool enabled) const {
+        const F32 x = position.x * size.x;
+        const F32 y = position.y * size.y;
+        return enabled && layout.plot.height >= 2 &&
+               std::isfinite(x) && std::isfinite(y) &&
+               x >= layout.plot.x && x <= layout.plot.x + layout.plot.width &&
+               std::abs(y - layout.waterfall.y) <= 6.0f * scale;
+    }
+
     bool process(const MouseEvent& event,
                  const SignalViewPanelLayout& layout,
                  const Extent2D<U64>& size,
@@ -80,11 +93,8 @@ struct SignalViewSplitInteraction {
             }
             return true;
         }
-        if (enabled && event.type == MouseEventType::Click &&
-            event.button == MouseButton::Left && layout.plot.height >= 2 &&
-            std::isfinite(x) && std::isfinite(y) &&
-            x >= layout.plot.x && x <= layout.plot.x + layout.plot.width &&
-            std::abs(y - layout.waterfall.y) <= 6.0f * scale) {
+        if (event.type == MouseEventType::Click && event.button == MouseButton::Left &&
+            hovered(event.position, layout, size, scale, enabled)) {
             dragging = true;
             grabOffset = y - (layout.plot.y + ratio * layout.plot.height);
             return true;
