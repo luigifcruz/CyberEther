@@ -206,7 +206,7 @@ struct TextGrid::Impl {
     Position cursor;
     Position selectionAnchor;
     bool selectionActive = false;
-    std::optional<U64> preferredColumn;
+    std::optional<F32> preferredX;
     std::vector<Snapshot> undoStack;
     std::vector<Snapshot> redoStack;
     U64 contentRevision = 0;
@@ -562,6 +562,11 @@ struct TextGrid::Impl {
         return visualRows.size();
     }
 
+    U64 rowLastColumn(const VisualRow& row) const {
+        const bool wrapped = row.line < lines.size() && row.end < lines[row.line].size();
+        return wrapped && row.end > row.start ? row.end - 1 : row.end;
+    }
+
     U64 visualRowForPosition(Position position) const {
         ensureVisualRows();
         if (position.line >= visualRowStartIndex.size()) {
@@ -911,7 +916,7 @@ struct TextGrid::Impl {
 
     void resetBlink() { blinkBase = ImGui::GetTime(); }
 
-    void moveCursorTo(Position position, bool extendSelection, bool keepPreferredColumn = false) {
+    void moveCursorTo(Position position, bool extendSelection, bool keepPreferredX = false) {
         clampPosition(position);
         if (extendSelection) {
             if (!selectionActive) {
@@ -925,8 +930,8 @@ struct TextGrid::Impl {
         if (!extendSelection) {
             selectionAnchor = cursor;
         }
-        if (!keepPreferredColumn) {
-            preferredColumn.reset();
+        if (!keepPreferredX) {
+            preferredX.reset();
         }
         ensureCursorVisible();
         resetBlink();
@@ -938,14 +943,16 @@ struct TextGrid::Impl {
     void moveCursorVertically(I64 delta, bool extendSelection) {
         ensureVisualRows();
         const U64 fromRow = visualRowForPosition(cursor);
-        const U64 fromStart = visualRows[fromRow].start;
-        if (!preferredColumn.has_value()) {
-            preferredColumn = cursor.column >= fromStart ? cursor.column - fromStart : 0;
+        const auto& from = visualRows[fromRow];
+        if (!preferredX.has_value()) {
+            preferredX = columnXInRow(from.line, from.start, cursor.column);
         }
         const U64 toRow = static_cast<U64>(
             std::clamp<I64>(static_cast<I64>(fromRow) + delta, 0, static_cast<I64>(visualRows.size()) - 1));
         const auto& row = visualRows[toRow];
-        const U64 column = std::min<U64>(row.start + *preferredColumn, row.end);
+        const F32 rowLeft = columnOffsetPixels(row.line, row.start);
+        const U64 column = std::clamp<U64>(columnAtOffsetPixels(row.line, rowLeft + *preferredX),
+                                           row.start, rowLastColumn(row));
         moveCursorTo({row.line, column}, extendSelection, true);
     }
 
@@ -996,7 +1003,7 @@ struct TextGrid::Impl {
         ++contentRevision;
         clampPosition(cursor);
         clampPosition(selectionAnchor);
-        preferredColumn.reset();
+        preferredX.reset();
         ensureCursorVisible();
         resetBlink();
         configureScrollView();
@@ -1212,7 +1219,7 @@ struct TextGrid::Impl {
         selectionAnchor = documentStartPosition();
         cursor = documentEndPosition();
         selectionActive = true;
-        preferredColumn.reset();
+        preferredX.reset();
         resetBlink();
         notifySelect();
         configureScrollView();
@@ -1229,7 +1236,7 @@ struct TextGrid::Impl {
         selectionAnchor = range->first;
         cursor = range->second;
         selectionActive = !(selectionAnchor == cursor);
-        preferredColumn.reset();
+        preferredX.reset();
         resetBlink();
         notifySelect();
         configureScrollView();
@@ -1247,7 +1254,7 @@ struct TextGrid::Impl {
         selectionAnchor = range->first;
         cursor = range->second;
         selectionActive = !(selectionAnchor == cursor);
-        preferredColumn.reset();
+        preferredX.reset();
         ensureCursorVisible();
         resetBlink();
         notifySelect();
@@ -1968,6 +1975,8 @@ bool TextGrid::update(Config config) {
     const bool valueChanged = impl->config.value != config.value;
     const bool metricsChanged = impl->config.fontSize != config.fontSize ||
                                 impl->config.fontScale != config.fontScale ||
+                                impl->config.fontName != config.fontName ||
+                                impl->config.monospace != config.monospace ||
                                 impl->config.lineScale != config.lineScale ||
                                 impl->config.lineTopGap != config.lineTopGap ||
                                 impl->config.lineIndent != config.lineIndent;
@@ -1980,6 +1989,7 @@ bool TextGrid::update(Config config) {
     if (metricsChanged) {
         impl->visualRowsValid = false;
         impl->linePrefixesValid = false;
+        impl->preferredX.reset();
     }
 
     if ((valueChanged && impl->config.value != impl->textValue()) || impl->lines.empty()) {
@@ -1991,7 +2001,7 @@ bool TextGrid::update(Config config) {
             impl->cursor = {0, 0};
             impl->selectionAnchor = {0, 0};
             impl->selectionActive = false;
-            impl->preferredColumn.reset();
+            impl->preferredX.reset();
             impl->currentScrollY = 0.0f;
             impl->currentScrollX = 0.0f;
             impl->stickToBottomPending = false;
@@ -2003,6 +2013,18 @@ bool TextGrid::update(Config config) {
     }
 
     return true;
+}
+
+TextGrid::Position TextGrid::cursor() const {
+    return impl->cursor;
+}
+
+void TextGrid::setCursor(Position position) {
+    impl->moveCursorTo(position, false);
+}
+
+void TextGrid::moveCursorRows(I64 delta, bool extendSelection) {
+    impl->moveCursorVertically(delta, extendSelection);
 }
 
 const TextGrid::Metrics& TextGrid::metrics() const {

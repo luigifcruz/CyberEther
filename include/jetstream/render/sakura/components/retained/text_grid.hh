@@ -93,6 +93,10 @@ struct TextGrid : public Component {
     bool update(Config config);
     const Metrics& metrics() const;
 
+    Position cursor() const;
+    void setCursor(Position position);
+    void moveCursorRows(I64 delta, bool extendSelection = false);
+
  protected:
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
     void layout(const Context& ctx) override;

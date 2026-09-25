@@ -57,6 +57,7 @@ struct Component {
     virtual bool event(const MouseEvent& event);
 
     Extent2D<F32> measureChild(Component& child, const Context& ctx, Extent2D<F32> available);
+    void layoutRoot(const Context& ctx, Rect frame);
     void layoutChild(const Context& ctx, Component& child, Rect frame);
     void layoutChildren(const Context& ctx);
     bool eventChildren(const MouseEvent& event);

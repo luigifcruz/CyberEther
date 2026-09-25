@@ -81,7 +81,6 @@ struct AboutUpdateCard {
         changelog.update({
             .id = "AboutUpdateChangelog",
             .value = this->config.releaseNotes,
-            .fontSize = 14.5f,
             .backgroundColorKey = "card",
         });
 

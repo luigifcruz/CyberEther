@@ -44,9 +44,7 @@ MouseEvent ConvertMouse(const MouseEvent& event, const Extent2D<U64>& framebuffe
 
 struct Canvas::Impl {
     static void frame(Component& root, Rect viewport, const Context& ctx) {
-        root.impl->setFrame(viewport);
-        root.impl->setClip(viewport);
-        root.layout(ctx);
+        root.layoutRoot(ctx, viewport);
     }
 
     static Result build(Component& root, Context& ctx) {

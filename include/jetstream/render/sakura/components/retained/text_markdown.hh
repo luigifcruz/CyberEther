@@ -12,6 +12,8 @@
 namespace Jetstream::Sakura::Retained {
 
 struct TextMarkdown : public Component {
+    static constexpr const char* BodyFont = "default_body";
+
     struct Config {
         std::string id;
         std::string value;

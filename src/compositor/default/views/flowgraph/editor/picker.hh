@@ -51,7 +51,7 @@ struct FlowgraphBlockPicker {
 
         popup.update({
             .id = this->config.id + ":popup",
-            .size = Extent2D<F32>{720.0f, 560.0f},
+            .size = Extent2D<F32>{800.0f, 640.0f},
             .padding = Extent2D<F32>{12.0f, 12.0f},
             .rounding = 16.0f,
             .borderSize = 1.0f,
@@ -111,7 +111,7 @@ struct FlowgraphBlockPicker {
         splitView.update({
             .id = this->config.id + ":split",
             .leftWidth = 210.0f,
-            .height = 437.0f,
+            .height = 517.0f,
         });
 
         leftPanel.update({
@@ -221,7 +221,6 @@ struct FlowgraphBlockPicker {
             detailMarkdown.update({
                 .id = this->config.id + ":detail-md",
                 .value = selected.description,
-                .fontSize = 14.0f,
                 .backgroundColorKey = "card",
             });
         }

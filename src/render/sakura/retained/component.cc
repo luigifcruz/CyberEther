@@ -170,6 +170,12 @@ Extent2D<F32> Component::measureChild(Component& child, const Context& ctx, Exte
     return child.measure(ctx, available);
 }
 
+void Component::layoutRoot(const Context& ctx, Rect frame) {
+    impl->setFrame(frame);
+    impl->setClip(frame);
+    layout(ctx);
+}
+
 void Component::layoutChild(const Context& ctx, Component& child, Rect frame) {
     child.impl->setFrame(frame);
     child.impl->setClip(impl->childClip());

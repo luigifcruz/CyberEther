@@ -29,7 +29,7 @@ constexpr F32 kRuleThicknessRatio = 0.12f;
 constexpr F32 kQuoteBarRatio = 0.18f;
 constexpr F32 kQuoteIndentEmRatio = 0.4f;
 constexpr F32 kScrollbarGutterFontRatio = 14.0f / 15.0f;
-constexpr const char* kBodyFont = "default_body";
+constexpr const char* kBodyFont = TextMarkdown::BodyFont;
 
 using StyleId = TextGrid::StyleId;
 constexpr StyleId kStyleBold = 1;

@@ -103,6 +103,8 @@ struct MarkdownEditorBody : public Component {
                 .id = id + ":editor",
                 .value = value,
                 .fontSize = fontSizePixels,
+                .fontName = TextMarkdown::BodyFont,
+                .monospace = false,
                 .lineNumbers = false,
                 .wrap = TextGrid::Wrap::Word,
                 .padding = padding,
