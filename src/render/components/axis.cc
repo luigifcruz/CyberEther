@@ -877,7 +877,7 @@ Result Axis::Impl::syncResponsiveGrid() {
         for (const F32 position : {-1.0f, 0.0f, 1.0f}) {
             maxXLabelWidth = std::max(
                 maxXLabelWidth,
-                text->advance(xTickFormatter(position)) * kTickLabelScale);
+                text->advance(xTickFormatter(position), kTickLabelScale));
         }
     }
     const F32 collisionPadding =

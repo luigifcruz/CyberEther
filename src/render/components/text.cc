@@ -26,9 +26,33 @@ Text::~Text() {
 }
 
 struct Text::Impl {
+    static std::vector<F32> GlyphAdvances(const Font* font, const std::string& fill, F32 scale) {
+        std::vector<F32> result(fill.size(), 0.0f);
+        if (!font) {
+            return result;
+        }
+        for (U64 i = 0; i < fill.size(); ++i) {
+            const char c = fill[i];
+            if (c < 32 || c >= 127) {
+                continue;
+            }
+            result[i] = std::round(font->glyph(c - 32).xAdvance * scale);
+        }
+        return result;
+    }
+
+    static F32 ScaledLineHeight(const Font* font, F32 scale) {
+        if (!font) {
+            return 0.0f;
+        }
+        return std::max(1.0f, std::round(static_cast<F32>(font->lineHeight()) * scale));
+    }
+
     struct UniformBuffer {
         glm::vec3 color;
         F32 sharpness;
+        F32 atlasPixelRange;
+        F32 padding[3];
     };
 
     struct InstanceData {
@@ -295,7 +319,8 @@ Result Text::update(const std::string& elementId, const ElementConfig& elementCo
     auto& updatedElement = elementConfig;
 
     // Check if element data has changed.
-    const bool shouldUpdateVertices = updatedElement.fill != currentElement.fill;
+    const bool shouldUpdateVertices = updatedElement.fill != currentElement.fill ||
+                                      updatedElement.scale != currentElement.scale;
     const bool shouldUpdateInstance = shouldUpdateVertices ||
                                       updatedElement.scale != currentElement.scale ||
                                       updatedElement.position != currentElement.position ||
@@ -334,41 +359,29 @@ Result Text::update(const std::string& elementId, const ElementConfig& elementCo
     return Result::SUCCESS;
 }
 
-F32 Text::advance(const std::string& fill) const {
-    if (!config.font) {
-        return 0.0f;
-    }
+F32 Text::advance(const std::string& fill, F32 scale) const {
+    const auto perGlyph = advances(fill, scale);
 
     F32 x = 0.0f;
     F32 maxWidth = 0.0f;
-    for (const auto c : fill) {
-        if (c == '\n') {
+    for (U64 i = 0; i < fill.size(); ++i) {
+        if (fill[i] == '\n') {
             maxWidth = std::max(maxWidth, x);
             x = 0.0f;
             continue;
         }
-        if (c < 32 || c >= 127) {
-            continue;
-        }
-        x += config.font->glyph(c - 32).xAdvance;
+        x += perGlyph[i];
     }
 
     return std::max(maxWidth, x);
 }
 
-std::vector<F32> Text::advances(const std::string& fill) const {
-    std::vector<F32> result(fill.size(), 0.0f);
-    if (!config.font) {
-        return result;
-    }
-    for (U64 i = 0; i < fill.size(); ++i) {
-        const char c = fill[i];
-        if (c < 32 || c >= 127) {
-            continue;
-        }
-        result[i] = config.font->glyph(c - 32).xAdvance;
-    }
-    return result;
+std::vector<F32> Text::advances(const std::string& fill, F32 scale) const {
+    return Impl::GlyphAdvances(config.font.get(), fill, scale);
+}
+
+F32 Text::lineHeight(F32 scale) const {
+    return Impl::ScaledLineHeight(config.font.get(), scale);
 }
 
 Result Text::updatePixelSize(const Extent2D<F32>& pixelSize) {
@@ -403,6 +416,7 @@ Result Text::Impl::updateUniforms() {
     // Set data.
     uniforms.color = glm::vec3(config.color.r, config.color.g, config.color.b);
     uniforms.sharpness = config.sharpness;
+    uniforms.atlasPixelRange = config.font->atlasPixelRange();
 
     // Set flag to update buffer.
     updateFontUniformBufferFlag = true;
@@ -471,44 +485,37 @@ Result Text::Impl::refreshVertexCount() {
 }
 
 Result Text::Impl::updateElementInstance(Element& element) {
-    // Reference transform.
     auto& instance = element.instances[0];
     auto& transform = instance.transform;
 
-    // Reset transform.
+    glm::vec2 alignment(0.0f, 0.0f);
+    if (element.config.alignment.x == 1) {
+        alignment.x = -static_cast<F32>(element.bounds.x) / 2.0f;
+    } else if (element.config.alignment.x == 2) {
+        alignment.x = -static_cast<F32>(element.bounds.x);
+    }
+    if (element.config.alignment.y == 1) {
+        alignment.y = static_cast<F32>(element.bounds.y) / 2.0f;
+    } else if (element.config.alignment.y == 2) {
+        alignment.y = static_cast<F32>(element.bounds.y);
+    }
+
+    glm::vec2 origin(element.config.position.x, element.config.position.y);
+    const bool snap = element.config.rotationDeg == 0.0f &&
+                      config.pixelSize.x > 0.0f &&
+                      config.pixelSize.y > 0.0f;
+    if (snap) {
+        const F32 column = std::round((origin.x + 1.0f) / config.pixelSize.x + alignment.x);
+        const F32 row = std::round((1.0f - origin.y) / config.pixelSize.y - alignment.y);
+        origin = glm::vec2(-1.0f + column * config.pixelSize.x, 1.0f - row * config.pixelSize.y);
+        alignment = glm::vec2(0.0f, 0.0f);
+    }
+
     transform = glm::mat4(1.0f);
-
-    // Translate to screen position.
-    transform = glm::translate(transform, glm::vec3(element.config.position.x, element.config.position.y, 0.0f));
-
-    // Scale to pixel size.
+    transform = glm::translate(transform, glm::vec3(origin, 0.0f));
     transform = glm::scale(transform, glm::vec3(config.pixelSize.x, config.pixelSize.y, 1.0f));
-
-    // Scale font.
-    transform = glm::scale(transform, glm::vec3(element.config.scale, element.config.scale, 1.0f));
-
-    // Rotate.
     transform = glm::rotate(transform, glm::radians(element.config.rotationDeg), glm::vec3(0.0f, 0.0f, 1.0f));
-
-    // Horizontal center.
-    if (element.config.alignment.x) {
-        if (element.config.alignment.x == 1) {
-            transform = glm::translate(transform, glm::vec3(-element.bounds.x / 2.0f, 0.0f, 0.0f));
-        }
-        if (element.config.alignment.x == 2) {
-            transform = glm::translate(transform, glm::vec3(-element.bounds.x, 0.0f, 0.0f));
-        }
-    }
-
-    // Vertical center.
-    if (element.config.alignment.y) {
-        if (element.config.alignment.y == 1) {
-            transform = glm::translate(transform, glm::vec3(0.0f, element.bounds.y / 2.0f, 0.0f));
-        }
-        if (element.config.alignment.y == 2) {
-            transform = glm::translate(transform, glm::vec3(0.0f, element.bounds.y, 0.0f));
-        }
-    }
+    transform = glm::translate(transform, glm::vec3(alignment, 0.0f));
 
     const auto color = element.config.color.value_or(config.color);
     instance.color = glm::vec4(color.r, color.g, color.b, color.a);
@@ -517,15 +524,12 @@ Result Text::Impl::updateElementInstance(Element& element) {
 }
 
 Result Text::Impl::updateElementVertex(Element& element) {
-    // Clear buffers.
     std::fill(element.posVertices.begin(), element.posVertices.end(), glm::vec2(0.0f));
     std::fill(element.fillVertices.begin(), element.fillVertices.end(), glm::vec2(0.0f));
 
-    // Reset character count.
     element.characterCount = 0;
     element.bounds = {0, 0};
 
-    // Check config.
     if (element.config.fill.empty()) {
         return Result::SUCCESS;
     }
@@ -543,82 +547,77 @@ Result Text::Impl::updateElementVertex(Element& element) {
         return Result::ERROR;
     }
 
-    // Recalculate vertex buffer.
+    const auto& font = *config.font;
+    const auto& atlasSize = font.atlasSize();
+    const F32 scale = element.config.scale;
+    const F32 texel = scale / font.atlasScale();
+    const F32 lineHeight = ScaledLineHeight(config.font.get(), scale);
+    const F32 ascent = std::round(static_cast<F32>(font.ascent()) * scale);
+    const auto perGlyph = GlyphAdvances(config.font.get(), element.config.fill, scale);
 
     std::vector<F32> lineWidths(1, 0.0f);
-    for (const char c : element.config.fill) {
-        if (c == '\n') {
+    for (U64 i = 0; i < element.config.fill.size(); ++i) {
+        if (element.config.fill[i] == '\n') {
             lineWidths.push_back(0.0f);
-        } else if (c >= 32 && c < 127) {
-            lineWidths.back() += config.font->glyph(c - 32).xAdvance;
+        } else {
+            lineWidths.back() += perGlyph[i];
         }
     }
-    const F32 blockWidth = *std::max_element(lineWidths.begin(),
-                                             lineWidths.end());
-    U64 lineIndex = 0;
-    F32 x = (blockWidth - lineWidths[lineIndex]) * 0.5f;
-    F32 y = 0.0f;
+    const F32 blockWidth = *std::max_element(lineWidths.begin(), lineWidths.end());
     const U64 lineCount = lineWidths.size();
 
-    const I32 baselineY = config.font->ascent();
+    U64 lineIndex = 0;
+    F32 x = std::round((blockWidth - lineWidths[lineIndex]) * 0.5f);
+    F32 y = 0.0f;
 
     for (U64 i = 0; i < element.config.fill.size(); ++i) {
-        const auto& atlasSize = config.font->atlasSize();
-        const auto& c = element.config.fill[i];
-
+        const char c = element.config.fill[i];
         if (c == '\n') {
             ++lineIndex;
-            x = (blockWidth - lineWidths[lineIndex]) * 0.5f;
-            y -= static_cast<F32>(config.font->lineHeight());
+            x = std::round((blockWidth - lineWidths[lineIndex]) * 0.5f);
+            y -= lineHeight;
             continue;
         }
 
-        if (c >= 32 && c < 127) {
-            if (c == ' ') {
-                x += config.font->glyph(c - 32).xAdvance;
-                continue;
-            }
-
-            const auto& b = config.font->glyph(c - 32);
-
-            F32 x0 = x + b.xOffset;
-            F32 y0 = y - b.yOffset - baselineY;
-            F32 x1 = x0 + (b.x1 - b.x0);
-            F32 y1 = y0 - (b.y1 - b.y0);
-            const U64 base = element.characterCount * 4;
-
-            // Add positions.
-
-            element.posVertices[base + 0] = glm::vec2(x0, y0);
-            element.posVertices[base + 1] = glm::vec2(x1, y0);
-            element.posVertices[base + 2] = glm::vec2(x1, y1);
-            element.posVertices[base + 3] = glm::vec2(x0, y1);
-
-            // Normalize texture coordinates.
-
-            F32 s0 = b.x0 / static_cast<F32>(atlasSize.x);
-            F32 t0 = b.y0 / static_cast<F32>(atlasSize.y);
-            F32 s1 = b.x1 / static_cast<F32>(atlasSize.x);
-            F32 t1 = b.y1 / static_cast<F32>(atlasSize.y);
-
-            // Add texture coordinates.
-
-            element.fillVertices[base + 0] = glm::vec2(s0, t0);
-            element.fillVertices[base + 1] = glm::vec2(s1, t0);
-            element.fillVertices[base + 2] = glm::vec2(s1, t1);
-            element.fillVertices[base + 3] = glm::vec2(s0, t1);
-
-            // Update horizontal position.
-
-            x += b.xAdvance;
-
-            // Count actual rendered characters (non-space)
-            element.characterCount++;
+        if (c < 32 || c >= 127) {
+            continue;
         }
+
+        const auto& b = font.glyph(c - 32);
+        const F32 advance = perGlyph[i];
+
+        if (c == ' ') {
+            x += advance;
+            continue;
+        }
+
+        const F32 x0 = x + static_cast<F32>(b.xOffset) * scale;
+        const F32 y0 = y - ascent - static_cast<F32>(b.yOffset) * scale;
+        const F32 x1 = x0 + static_cast<F32>(b.x1 - b.x0) * texel;
+        const F32 y1 = y0 - static_cast<F32>(b.y1 - b.y0) * texel;
+        const U64 base = element.characterCount * 4;
+
+        element.posVertices[base + 0] = glm::vec2(x0, y0);
+        element.posVertices[base + 1] = glm::vec2(x1, y0);
+        element.posVertices[base + 2] = glm::vec2(x1, y1);
+        element.posVertices[base + 3] = glm::vec2(x0, y1);
+
+        const F32 s0 = static_cast<F32>(b.x0) / static_cast<F32>(atlasSize.x);
+        const F32 t0 = static_cast<F32>(b.y0) / static_cast<F32>(atlasSize.y);
+        const F32 s1 = static_cast<F32>(b.x1) / static_cast<F32>(atlasSize.x);
+        const F32 t1 = static_cast<F32>(b.y1) / static_cast<F32>(atlasSize.y);
+
+        element.fillVertices[base + 0] = glm::vec2(s0, t0);
+        element.fillVertices[base + 1] = glm::vec2(s1, t0);
+        element.fillVertices[base + 2] = glm::vec2(s1, t1);
+        element.fillVertices[base + 3] = glm::vec2(s0, t1);
+
+        x += advance;
+        element.characterCount++;
     }
 
-    element.bounds.x = blockWidth;
-    element.bounds.y = config.font->lineHeight() * lineCount;
+    element.bounds.x = static_cast<I32>(blockWidth);
+    element.bounds.y = static_cast<I32>(lineHeight * static_cast<F32>(lineCount));
 
     return Result::SUCCESS;
 }

@@ -2390,10 +2390,10 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
             }
 
             const F32 pathLength = cumulative.back();
-            const auto advances = pimpl->pathText->advances(name);
+            const auto advances = pimpl->pathText->advances(name, scale);
             F32 naturalWidth = 0.0f;
             for (const F32 advance : advances) {
-                naturalWidth += advance * scale;
+                naturalWidth += advance;
             }
             const F32 layoutWidth = naturalWidth +
                 tracking * static_cast<F32>(name.size() - 1);
@@ -2435,7 +2435,7 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
             F32 cursor = 0.0f;
             F32 pathOcclusion = 0.0f;
             for (U64 i = 0; i < name.size(); ++i) {
-                const F32 glyphWidth = advances[i] * scale;
+                const F32 glyphWidth = advances[i];
                 const F32 fraction = (cursor + glyphWidth * 0.5f) / layoutWidth;
                 const PathSample sample = samplePath(pathLength * fraction);
                 const F32 angle = sample.angle;
@@ -2553,11 +2553,11 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
                                       F32 anchorLat,
                                       F32 fade) -> Result {
                 const std::string name(ref.name);
-                const auto advances = pimpl->pathText->advances(name);
+                const auto advances = pimpl->pathText->advances(name, scale);
                 F32 layoutWidth =
                     tracking * static_cast<F32>(name.size() - 1);
                 for (const F32 advance : advances) {
-                    layoutWidth += advance * scale;
+                    layoutWidth += advance;
                 }
 
                 const F32 probeLon = ref.meridian
@@ -2822,14 +2822,13 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
                 } else if (idx == Impl::LabelAirports) {
                     labelY += pixelSize.y * 22.0f;
                 }
-                const F32 w = layer.text->advance(fill) * pixelSize.x *
-                              lblScale + padX * 2.0f;
+                const F32 w = layer.text->advance(fill, lblScale) * pixelSize.x +
+                              padX * 2.0f;
                 const U64 lineCount = static_cast<U64>(
                     std::count(fill.begin(), fill.end(), '\n')) + 1;
-                const F32 h = static_cast<F32>(
-                                  layer.text->getConfig().font->lineHeight()) *
+                const F32 h = layer.text->lineHeight(lblScale) *
                               static_cast<F32>(lineCount) *
-                              pixelSize.y * lblScale + padY * 2.0f;
+                              pixelSize.y + padY * 2.0f;
                 const AABB box = {labelX - w * 0.5f, labelY - h * 0.5f,
                                   labelX + w * 0.5f, labelY + h * 0.5f};
                 if (box.x0 < -1.05f || box.x1 > 1.05f ||

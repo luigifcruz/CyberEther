@@ -16,6 +16,9 @@
 #pragma GCC diagnostic pop
 #endif
 
+#include <algorithm>
+#include <vector>
+
 #include "jetstream/render/base.hh"
 #include "jetstream/render/components/font.hh"
 
@@ -39,10 +42,12 @@ struct Font::Impl {
 
     // Font atlas.
 
-    I32 atlasPadding = 4;
+    F32 atlasOversample = 2.0f;
+    I32 atlasPadding = 8;
     U8  atlasOneEdgeValue = 128;
-    F32 atlasPixelDistScale = 16.0f;
-    Extent2D<I32> atlasSize = {512, 512};
+    F32 atlasPixelDistScale = 8.0f;
+    I32 atlasWidth = 1024;
+    Extent2D<I32> atlasSize = {0, 0};
     I32 ascent, descent;
 
     // Texture.
@@ -84,17 +89,20 @@ Result Font::create(Window* window) {
 
     // Create font atlas.
 
-    std::vector<uint8_t> atlas(pimpl->atlasSize.x * pimpl->atlasSize.y);
+    const auto bakeScale = stbtt_ScaleForPixelHeight(&pimpl->font, config.size * pimpl->atlasOversample);
 
-    int x = 0;
-    int y = 0;
-    int maxHeight = 0;
+    struct Baked {
+        I32 code;
+        U8* sdf;
+        I32 width;
+        I32 height;
+        I32 xOffset;
+        I32 yOffset;
+    };
+    std::vector<Baked> baked;
 
     for (int ch = 32; ch < 128; ch++) {
-        uint8_t* sdf;
-        int width, height, xoffset, yoffset;
         int advanceWidth, leftSideBearing;
-
         stbtt_GetCodepointHMetrics(&pimpl->font, ch, &advanceWidth, &leftSideBearing);
 
         glyphs[ch - 32] = {
@@ -107,51 +115,68 @@ Result Font::create(Window* window) {
             .xAdvance = static_cast<F32>(advanceWidth * scale)
         };
 
-        if (!(sdf = stbtt_GetCodepointSDF(&pimpl->font,
-                                          scale,
+        Baked glyph{.code = ch - 32};
+        glyph.sdf = stbtt_GetCodepointSDF(&pimpl->font,
+                                          bakeScale,
                                           ch,
                                           pimpl->atlasPadding,
                                           pimpl->atlasOneEdgeValue,
                                           pimpl->atlasPixelDistScale,
-                                          &width,
-                                          &height,
-                                          &xoffset,
-                                          &yoffset))) {
-            continue;
+                                          &glyph.width,
+                                          &glyph.height,
+                                          &glyph.xOffset,
+                                          &glyph.yOffset);
+        if (glyph.sdf) {
+            baked.push_back(glyph);
         }
+    }
 
-        if (x + width >= pimpl->atlasSize.x) {
+    I32 atlasWidth = pimpl->atlasWidth;
+    for (const auto& glyph : baked) {
+        atlasWidth = std::max(atlasWidth, glyph.width + 1);
+    }
+
+    int x = 0;
+    int y = 0;
+    int maxHeight = 0;
+    std::vector<Extent2D<I32>> placements(baked.size());
+
+    for (U64 i = 0; i < baked.size(); i++) {
+        const auto& glyph = baked[i];
+        if (x + glyph.width >= atlasWidth) {
             x = 0;
             y += maxHeight + 1;
             maxHeight = 0;
         }
+        placements[i] = {x, y};
+        x += glyph.width + 1;
+        maxHeight = std::max(maxHeight, glyph.height);
+    }
 
-        if (y + height >= pimpl->atlasSize.y) {
-            break;
-        }
+    pimpl->atlasSize = {atlasWidth, y + maxHeight + 1};
+    std::vector<uint8_t> atlas(static_cast<U64>(pimpl->atlasSize.x) * pimpl->atlasSize.y);
 
-        for (int j = 0; j < height; ++j) {
-            for (int i = 0; i < width; ++i) {
-                atlas[(y + j) * pimpl->atlasSize.x + (x + i)] = sdf[j * width + i];
+    for (U64 i = 0; i < baked.size(); i++) {
+        const auto& glyph = baked[i];
+        const auto& [gx, gy] = placements[i];
+
+        for (int j = 0; j < glyph.height; ++j) {
+            for (int k = 0; k < glyph.width; ++k) {
+                atlas[(gy + j) * pimpl->atlasSize.x + (gx + k)] = glyph.sdf[j * glyph.width + k];
             }
         }
 
-        glyphs[ch - 32] = {
-            .x0 = x,
-            .y0 = y,
-            .x1 = x + width,
-            .y1 = y + height,
-            .xOffset = static_cast<F32>(xoffset),
-            .yOffset = static_cast<F32>(yoffset),
-            .xAdvance = static_cast<F32>(advanceWidth * scale)
+        glyphs[glyph.code] = {
+            .x0 = gx,
+            .y0 = gy,
+            .x1 = gx + glyph.width,
+            .y1 = gy + glyph.height,
+            .xOffset = static_cast<F32>(glyph.xOffset) / pimpl->atlasOversample,
+            .yOffset = static_cast<F32>(glyph.yOffset) / pimpl->atlasOversample,
+            .xAdvance = glyphs[glyph.code].xAdvance
         };
 
-        x += width + 1;
-        if (height > maxHeight) {
-            maxHeight = height;
-        }
-
-        stbtt_FreeSDF(sdf, nullptr);
+        stbtt_FreeSDF(glyph.sdf, nullptr);
     }
 
     JST_DEBUG("[FONT] Created font atlas.");
@@ -206,6 +231,14 @@ I32 Font::descent() const {
 
 I32 Font::lineHeight() const {
     return pimpl->ascent - pimpl->descent;
+}
+
+F32 Font::atlasScale() const {
+    return pimpl->atlasOversample;
+}
+
+F32 Font::atlasPixelRange() const {
+    return 255.0f / pimpl->atlasPixelDistScale;
 }
 
 const std::shared_ptr<Render::Texture>& Font::atlas() const {

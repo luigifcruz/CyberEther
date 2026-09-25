@@ -1290,12 +1290,11 @@ Result SignalViewImpl::updateCursorState() {
             }
 
             if (cursorText) {
-                const auto& font = cursorText->getConfig().font;
-                const F32 lineHeight = font ? font->lineHeight() * kLabelScale : 0.0f;
-                const F32 xWidth = cursorText->advance(xLabelText) * kLabelScale;
+                const F32 lineHeight = cursorText->lineHeight(kLabelScale);
+                const F32 xWidth = cursorText->advance(xLabelText, kLabelScale);
                 const F32 yWidth = yLabelText.empty()
                     ? 0.0f
-                    : cursorText->advance(yLabelText) * kLabelScale;
+                    : cursorText->advance(yLabelText, kLabelScale);
                 const F32 gap = yLabelText.empty() ? 0.0f : 10.0f;
                 const F32 padX = 9.0f;
                 const F32 padY = 4.0f;

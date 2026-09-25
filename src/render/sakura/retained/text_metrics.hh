@@ -52,26 +52,26 @@ struct TextMetrics {
 
     F32 measure(const std::string& fontName, const std::string& value, F32 fontSize) {
         auto* text = label(fontName);
-        if (!text || !text->getConfig().font) {
+        if (!text) {
             return 0.0f;
         }
-        const F32 baseSize = std::max(1e-3f, text->getConfig().font->getConfig().size);
-        return text->advance(value) * (fontSize / baseSize);
+        return text->advance(value, scale(*text, fontSize));
     }
 
     std::vector<F32> advances(const std::string& fontName, const std::string& value, F32 fontSize) {
         auto* text = label(fontName);
-        if (!text || !text->getConfig().font) {
+        if (!text) {
             return std::vector<F32>(value.size(), 0.0f);
         }
+        return text->advances(value, scale(*text, fontSize));
+    }
 
-        auto result = text->advances(value);
-        const F32 baseSize = std::max(1e-3f, text->getConfig().font->getConfig().size);
-        const F32 scale = fontSize / baseSize;
-        for (auto& advance : result) {
-            advance *= scale;
+ private:
+    static F32 scale(const Render::Components::Text& text, F32 fontSize) {
+        if (!text.getConfig().font) {
+            return 0.0f;
         }
-        return result;
+        return fontSize / std::max(1e-3f, text.getConfig().font->getConfig().size);
     }
 };
 

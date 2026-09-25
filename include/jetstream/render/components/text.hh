@@ -47,8 +47,9 @@ class JETSTREAM_API Text : public Generic {
     const ElementConfig& get(const std::string& elementId) const;
     Result update(const std::string& elementId, const ElementConfig& elementConfig);
 
-    F32 advance(const std::string& fill) const;
-    std::vector<F32> advances(const std::string& fill) const;
+    F32 advance(const std::string& fill, F32 scale = 1.0f) const;
+    std::vector<F32> advances(const std::string& fill, F32 scale = 1.0f) const;
+    F32 lineHeight(F32 scale = 1.0f) const;
 
     Result updatePixelSize(const Extent2D<F32>& pixelSize);
     Result updateScissorRect(const std::optional<Render::ScissorRect>& rect);

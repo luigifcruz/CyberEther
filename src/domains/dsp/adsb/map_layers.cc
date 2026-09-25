@@ -217,8 +217,8 @@ class RadarLayer final : public MapLayer {
 
             if (!text) continue;
             const auto fill = LeftAlignedBlock(FormatAdsbDataBlock(ac));
-            const Extent2D<F32> size{text->advance(fill) * LabelScale + 4 * AdsbTrackingScale,
-                static_cast<F32>(text->getConfig().font->lineHeight()) * LabelScale *
+            const Extent2D<F32> size{text->advance(fill, LabelScale) + 4 * AdsbTrackingScale,
+                text->lineHeight(LabelScale) *
                     (1 + static_cast<F32>(std::count(fill.begin(), fill.end(), '\n'))) + 4 * AdsbTrackingScale};
             if (size.x + 12 > viewport.x || size.y + 12 > viewport.y) continue;
             const auto anchor = toPixels(target.ndc);
