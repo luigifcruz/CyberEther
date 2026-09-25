@@ -48,7 +48,7 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
     if (buffer->isBuffered()) {
         for (uint32_t i = 0; i < config.numberOfDraws; i++) {
             VkDrawIndexedIndirectCommand drawCommand{};
-            drawCommand.indexCount = buffer->getIndexCount();
+            drawCommand.indexCount = vertexCounts.empty() ? buffer->getIndexCount() : vertexCounts[i];
             drawCommand.instanceCount = config.numberOfInstances;
             drawCommand.firstIndex = 0;
             drawCommand.vertexOffset = i * (buffer->getIndexCount() - buffer->getVertexCount());
@@ -69,7 +69,7 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
     } else {
         for (uint32_t i = 0; i < config.numberOfDraws; i++) {
             VkDrawIndirectCommand drawCommand{};
-            drawCommand.vertexCount = buffer->getVertexCount();
+            drawCommand.vertexCount = vertexCounts.empty() ? buffer->getVertexCount() : vertexCounts[i];
             drawCommand.instanceCount = config.numberOfInstances;
             drawCommand.firstVertex = i * buffer->getVertexCount();
             drawCommand.firstInstance = i * config.numberOfInstances;
@@ -164,6 +164,8 @@ Result Implementation::updateVertexCount(U64 vertexCount) {
             return Result::ERROR;
         }
         
+        vertexCounts.assign(config.numberOfDraws, vertexCount);
+
         // Update indexed draw commands
         for (auto& drawCommand : indexedDrawCommands) {
             drawCommand.indexCount = vertexCount;
@@ -177,6 +179,8 @@ Result Implementation::updateVertexCount(U64 vertexCount) {
             return Result::ERROR;
         }
         
+        vertexCounts.assign(config.numberOfDraws, vertexCount);
+
         // Update non-indexed draw commands
         for (auto& drawCommand : drawCommands) {
             drawCommand.vertexCount = vertexCount;
