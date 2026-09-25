@@ -2,6 +2,8 @@
 
 #include "helpers.hh"
 
+#include <cmath>
+
 namespace Jetstream::Sakura {
 
 namespace {
@@ -54,14 +56,35 @@ F32 SurfaceScale(const Context& ctx) {
     return ScalingFactor(ctx) * FramebufferScale(ctx).x * 0.5f;
 }
 
+Extent2D<F32> SnapToFramebuffer(const Context& ctx, const Extent2D<F32>& displayPosition) {
+    const auto scale = FramebufferScale(ctx);
+    if (scale.x <= 0.0f || scale.y <= 0.0f) {
+        return displayPosition;
+    }
+    return {std::round(displayPosition.x * scale.x) / scale.x,
+            std::round(displayPosition.y * scale.y) / scale.y};
+}
+
+Extent2D<F32> FramebufferToDisplay(const Context& ctx, const Extent2D<U64>& framebufferSize) {
+    const auto scale = FramebufferScale(ctx);
+    return {scale.x > 0.0f ? static_cast<F32>(framebufferSize.x) / scale.x : 0.0f,
+            scale.y > 0.0f ? static_cast<F32>(framebufferSize.y) / scale.y : 0.0f};
+}
+
 std::optional<SurfaceResize> ResolveSurfaceResize(const Context& ctx, const Extent2D<F32>& logicalSize) {
     if (logicalSize.x <= 0.0f || logicalSize.y <= 0.0f) {
         return std::nullopt;
     }
 
+    constexpr F32 kSnapEpsilon = 1e-3f;
+    const auto framebufferScale = FramebufferScale(ctx);
+    const auto displaySize = Scale(ctx, logicalSize);
     const SurfaceResize resize{
         .logicalSize = {static_cast<U64>(logicalSize.x), static_cast<U64>(logicalSize.y)},
-        .framebufferSize = LogicalFramebufferSize(ctx, logicalSize),
+        .framebufferSize = {
+            static_cast<U64>(std::floor(displaySize.x * framebufferScale.x + kSnapEpsilon)),
+            static_cast<U64>(std::floor(displaySize.y * framebufferScale.y + kSnapEpsilon)),
+        },
         .scale = SurfaceScale(ctx),
     };
 

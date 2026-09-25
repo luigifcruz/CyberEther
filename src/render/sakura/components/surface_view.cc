@@ -91,7 +91,10 @@ void SurfaceView::render(const Context& ctx) const {
         impl->lastEmittedResize = *resolvedResize;
         config.onSize(*resolvedResize);
     }
-    const Extent2D<F32> displaySize = Scale(ctx, logicalDrawSize);
+    Extent2D<F32> displaySize = Scale(ctx, logicalDrawSize);
+    if (resolvedResize.has_value()) {
+        displaySize = FramebufferToDisplay(ctx, resolvedResize->framebufferSize);
+    }
 
     const U64 texture = config.onResolveTexture
         ? config.onResolveTexture()
@@ -108,7 +111,9 @@ void SurfaceView::render(const Context& ctx) const {
     }
 
     const ImVec2 surfaceSize = Private::ToImVec2(displaySize);
-    const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+    const ImVec2 cursorPos = Private::ToImVec2(
+        SnapToFramebuffer(ctx, Private::ToExtent2D(ImGui::GetCursorScreenPos())));
+    ImGui::SetCursorScreenPos(cursorPos);
     const ImVec2 cursorEnd(cursorPos.x + surfaceSize.x, cursorPos.y + surfaceSize.y);
     const F32 rounding = config.rounding <= 0.0f ? ImGui::GetStyle().FrameRounding : config.rounding;
     ImGui::GetWindowDrawList()->AddImageRounded(textureRef,

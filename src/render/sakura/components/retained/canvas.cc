@@ -113,9 +113,8 @@ struct Canvas::Impl {
     }
 
     F32 currentPixelRatio() const {
-        if (lastResize.has_value() && lastResize->logicalSize.x > 0) {
-            return static_cast<F32>(lastResize->framebufferSize.x) /
-                   static_cast<F32>(lastResize->logicalSize.x);
+        if (lastResize.has_value() && lastResize->scale > 0.0f) {
+            return lastResize->scale * 2.0f;
         }
         return 1.0f;
     }
