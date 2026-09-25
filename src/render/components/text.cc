@@ -624,6 +624,7 @@ Result Text::Impl::updateElementVertex(Element& element) {
 }
 
 Result Text::present() {
+    pimpl->fontProgram->setEnabled(pimpl->vertexCount != 0);
     if (pimpl->updateFontFillVerticesBufferFlag) {
         pimpl->fontFillVerticesBuffer->update();
         pimpl->updateFontFillVerticesBufferFlag = false;
