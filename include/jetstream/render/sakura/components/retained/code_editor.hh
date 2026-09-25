@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_RETAINED_CODE_EDITOR_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/typography.hh>
 #include <jetstream/render/sakura/components/retained/status_bar.hh>
 #include <jetstream/types.hh>
 
@@ -37,7 +38,7 @@ struct CodeEditor {
         bool lineWrapping = false;
         bool showActiveLine = true;
         std::optional<Padding> padding;
-        F32 editorFontSize = 15.0f;
+        F32 editorFontSize = Typography::FontSize;
         std::string backgroundColorKey = "editor_background";
         std::function<void(std::string)> onChange;
         std::function<void(std::string)> onSubmit;

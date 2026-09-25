@@ -546,6 +546,7 @@ bool TextEditor::update(Config config) {
         .value = impl->config.value,
         .editable = true,
         .fontSize = impl->config.fontSize,
+        .lineHeight = impl->config.lineHeight,
         .fontName = impl->config.fontName,
         .monospace = impl->config.monospace,
         .lineNumbers = impl->config.lineNumbers,

@@ -16,9 +16,9 @@ namespace Jetstream::Sakura::Retained {
 
 namespace {
 
-constexpr F32 kReferenceFontSize = 15.0f;
+constexpr F32 kReferenceFontSize = Typography::FontSize;
 constexpr F32 kPaddingFontRatio = 6.0f / kReferenceFontSize;
-constexpr F32 kLineHeightFontRatio = 18.0f / kReferenceFontSize;
+constexpr F32 kLineHeightFontRatio = Typography::BodyLineHeight;
 constexpr F32 kSurfaceInset = 2.0f;
 constexpr F32 kButtonTopGap = 10.0f;
 constexpr F32 kButtonPadY = 6.0f;
@@ -103,6 +103,7 @@ struct MarkdownEditorBody : public Component {
                 .id = id + ":editor",
                 .value = value,
                 .fontSize = fontSizePixels,
+                .lineHeight = Typography::BodyLineHeight,
                 .fontName = TextMarkdown::BodyFont,
                 .monospace = false,
                 .lineNumbers = false,

@@ -25,8 +25,7 @@ namespace Jetstream::Sakura::Retained {
 
 namespace {
 
-constexpr F32 kReferenceFontSize = 15.0f;
-constexpr F32 kLineHeightFontRatio = 1.15f;
+constexpr F32 kReferenceFontSize = Typography::FontSize;
 constexpr F32 kPaddingFontRatio = 6.0f / kReferenceFontSize;
 constexpr F32 kScrollbarThicknessFontRatio = 6.0f / kReferenceFontSize;
 constexpr F32 kScrollbarMarginFontRatio = 4.0f / kReferenceFontSize;
@@ -213,7 +212,7 @@ struct TextGrid::Impl {
     F64 blinkBase = 0.0;
     bool lastBlinkOn = false;
 
-    F32 lineHeightPixels() const { return std::max(1.0f, fontSizePixels * kLineHeightFontRatio); }
+    F32 lineHeightPixels() const { return std::max(1.0f, contentFontSize() * config.lineHeight); }
     Padding paddingPixels() const {
         if (config.padding.has_value()) {
             return *config.padding;
@@ -235,7 +234,7 @@ struct TextGrid::Impl {
     }
     F32 lineGlyphSize(U64 line) const { return contentFontSize() * lineScaleAt(line); }
     F32 lineHeightAt(U64 line) const {
-        return std::max(1.0f, fontSizePixels * lineScaleAt(line) * kLineHeightFontRatio);
+        return std::max(1.0f, contentFontSize() * lineScaleAt(line) * config.lineHeight);
     }
     F32 lineTextLeftPixels(U64 line) const { return textLeftPixels() + lineIndentAt(line); }
 
@@ -1975,6 +1974,7 @@ bool TextGrid::update(Config config) {
     const bool valueChanged = impl->config.value != config.value;
     const bool metricsChanged = impl->config.fontSize != config.fontSize ||
                                 impl->config.fontScale != config.fontScale ||
+                                impl->config.lineHeight != config.lineHeight ||
                                 impl->config.fontName != config.fontName ||
                                 impl->config.monospace != config.monospace ||
                                 impl->config.lineScale != config.lineScale ||

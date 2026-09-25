@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_RETAINED_CONSOLE_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/typography.hh>
 #include <jetstream/render/sakura/components/retained/status_bar.hh>
 #include <jetstream/types.hh>
 
@@ -21,7 +22,7 @@ struct Console {
         std::string emptyText = "No output.";
         StatusTone statusTone = StatusTone::Info;
         Extent2D<F32> size = {0.0f, 160.0f};
-        F32 fontSize = 15.0f;
+        F32 fontSize = Typography::FontSize;
         std::string backgroundColorKey = "editor_console_background";
     };
 

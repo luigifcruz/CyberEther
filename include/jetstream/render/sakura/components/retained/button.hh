@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_RETAINED_BUTTON_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/typography.hh>
 #include <jetstream/types.hh>
 
 #include <functional>
@@ -21,7 +22,7 @@ struct Button : public Component {
         std::string borderColorKey = "button_outline";
         std::string textColorKey = "button_text";
         F32 disabledAlpha = 0.4f;
-        F32 fontSize = 15.0f;
+        F32 fontSize = Typography::FontSize;
         std::string fontName = "default_mono";
         F32 cornerRadius = 0.0f;
         F32 borderWidth = 0.0f;

@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_RETAINED_MARKDOWN_VIEW_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/typography.hh>
 #include <jetstream/types.hh>
 
 #include <memory>
@@ -13,7 +14,7 @@ struct MarkdownView {
     struct Config {
         std::string id;
         std::string value;
-        F32 fontSize = 15.0f;
+        F32 fontSize = Typography::FontSize;
         std::string backgroundColorKey = "background";
     };
 

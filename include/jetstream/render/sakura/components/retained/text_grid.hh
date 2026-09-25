@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_RETAINED_TEXT_GRID_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/typography.hh>
 #include <jetstream/types.hh>
 
 #include <functional>
@@ -44,8 +45,9 @@ struct TextGrid : public Component {
         std::string id;
         std::string value;
         bool editable = false;
-        F32 fontSize = 15.0f;
+        F32 fontSize = Typography::FontSize;
         F32 fontScale = 1.0f;
+        F32 lineHeight = Typography::CodeLineHeight;
         std::string fontName = "default_mono";
         bool monospace = true;
         bool lineNumbers = false;

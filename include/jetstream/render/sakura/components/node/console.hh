@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_NODE_CONSOLE_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/typography.hh>
 #include <jetstream/render/sakura/components/retained/console.hh>
 
 #include <memory>
@@ -21,7 +22,7 @@ struct NodeConsole {
         std::string emptyText = "No output.";
         StatusTone statusTone = StatusTone::Info;
         std::optional<F32> height;
-        F32 fontSize = 15.0f;
+        F32 fontSize = Typography::FontSize;
     };
 
     NodeConsole();

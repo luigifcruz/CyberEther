@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_RETAINED_TEXT_MARKDOWN_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/typography.hh>
 #include <jetstream/types.hh>
 
 #include <memory>
@@ -12,12 +13,12 @@
 namespace Jetstream::Sakura::Retained {
 
 struct TextMarkdown : public Component {
-    static constexpr const char* BodyFont = "default_body";
+    static constexpr const char* BodyFont = Typography::BodyFont;
 
     struct Config {
         std::string id;
         std::string value;
-        F32 fontSize = 15.0f;
+        F32 fontSize = Typography::FontSize;
         bool scrollbar = false;
         std::optional<Padding> padding;
         std::string backgroundColorKey = "transparent";

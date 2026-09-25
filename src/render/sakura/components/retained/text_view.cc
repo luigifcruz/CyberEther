@@ -26,6 +26,7 @@ bool TextView::update(Config config) {
         .editable = false,
         .fontSize = impl->config.fontSize,
         .fontScale = impl->config.fontScale,
+        .lineHeight = impl->config.lineHeight,
         .fontName = impl->config.fontName,
         .monospace = impl->config.monospace,
         .lineNumbers = impl->config.lineNumbers,

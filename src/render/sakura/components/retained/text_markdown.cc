@@ -17,8 +17,7 @@ namespace Jetstream::Sakura::Retained {
 
 namespace {
 
-constexpr F32 kHeadingScale[3] = {1.5f, 1.3f, 1.15f};
-constexpr F32 kLineHeightRatio = 1.15f;
+constexpr F32 kLineHeightRatio = Typography::BodyLineHeight;
 constexpr F32 kParagraphGapRatio = 0.6f;
 constexpr F32 kHeadingGapRatio = 1.0f;
 constexpr F32 kAfterHeadingGapRatio = 0.2f;
@@ -39,7 +38,7 @@ constexpr StyleId kStyleCode = 4;
 constexpr StyleId kStyleLink = 5;
 
 constexpr U64 kMaxDecorations = 256;
-constexpr const char* kCodeFont = "default_mono";
+constexpr const char* kCodeFont = Typography::MonoFont;
 
 struct Block {
     std::string text;
@@ -346,7 +345,7 @@ struct TextMarkdown::Impl {
                               : lineHeight * (prevHeading ? kAfterHeadingGapRatio : kHeadingGapRatio);
                 Block b;
                 b.text = line.substr(level + 1);
-                b.fontSize = body * kHeadingScale[scale - 1];
+                b.fontSize = body * Typography::HeadingScale[scale - 1];
                 b.topGap = gap;
                 b.baseStyle = kStyleBold;
                 blocks.push_back(std::move(b));
@@ -478,6 +477,7 @@ struct TextMarkdown::Impl {
             .value = plainValue,
             .editable = false,
             .fontSize = config.fontSize,
+            .lineHeight = Typography::BodyLineHeight,
             .fontName = kBodyFont,
             .monospace = false,
             .showActiveLine = false,
@@ -566,7 +566,6 @@ void TextMarkdown::layout(const Context& ctx) {
     const F32 body = impl->config.fontSize;
     const F32 codePad = body * kCodePadRatio;
     const F32 bodyPad = metrics.padding.left;
-    const F32 lineHeight = body * kLineHeightRatio;
     const F32 barWidth = body * kQuoteBarRatio;
     const F32 ruleThick = std::max(1.0f, body * kRuleThicknessRatio);
     const F32 dotSize = std::max(2.0f, body * 0.22f);
@@ -586,10 +585,12 @@ void TextMarkdown::layout(const Context& ctx) {
             break;
         }
         const F32 top = sourceLineTop(d.first);
+        const F32 rowHeight = body * (d.first < impl->lineScale.size() ? impl->lineScale[d.first] : 1.0f) *
+                              kLineHeightRatio;
 
         if (d.rule) {
             decoInstances.push_back({
-                .rect = {rect.x, top + lineHeight * 0.5f - ruleThick * 0.5f, decorationWidth, ruleThick},
+                .rect = {rect.x, top + rowHeight * 0.5f - ruleThick * 0.5f, decorationWidth, ruleThick},
                 .visible = on,
                 .backgroundColor = ruleColor,
             });
@@ -616,7 +617,7 @@ void TextMarkdown::layout(const Context& ctx) {
         const F32 textStart = rect.x + bodyPad + d.indent;
         if (d.bullet) {
             decoInstances.push_back({
-                .rect = {textStart - body * 0.75f - dotSize, top + lineHeight * 0.5f - dotSize * 0.5f,
+                .rect = {textStart - body * 0.75f - dotSize, top + rowHeight * 0.5f - dotSize * 0.5f,
                          dotSize, dotSize},
                 .visible = on,
                 .backgroundColor = markerColor,
@@ -626,7 +627,7 @@ void TextMarkdown::layout(const Context& ctx) {
             const F32 markerRight = textStart - body * 0.45f;
             const F32 markerWidth = body * 2.0f;
             markerInstances.push_back({
-                .rect = {markerRight - markerWidth, top, markerWidth, lineHeight},
+                .rect = {markerRight - markerWidth, top, markerWidth, rowHeight},
                 .str = d.marker,
                 .visible = on,
                 .color = markerColor,

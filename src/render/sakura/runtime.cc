@@ -2,6 +2,8 @@
 
 #include "helpers.hh"
 
+#include <jetstream/render/sakura/typography.hh>
+
 namespace Jetstream::Sakura {
 
 struct Runtime::Impl {
@@ -57,7 +59,7 @@ struct Runtime::Impl {
         fonts.body = Private::ToFontHandle(io.Fonts->AddFontFromMemoryCompressedTTF(
             this->fontConfig.body.data,
             static_cast<int>(this->fontConfig.body.size),
-            15.0f * fontScalingFactor,
+            Typography::FontSize * fontScalingFactor,
             &fontConfig,
             nullptr));
 
@@ -67,7 +69,7 @@ struct Runtime::Impl {
             iconFontConfig.OversampleV = 5;
             iconFontConfig.FontLoaderFlags = 1;
             iconFontConfig.MergeMode = true;
-            iconFontConfig.GlyphMinAdvanceX = 15.0f * fontScalingFactor;
+            iconFontConfig.GlyphMinAdvanceX = Typography::FontSize * fontScalingFactor;
             iconFontConfig.GlyphOffset = {0.0f, 2.0f};
 
             static const ImWchar iconRanges[] = {ICON_MIN_FA, ICON_MAX_FA, 0};
@@ -75,14 +77,14 @@ struct Runtime::Impl {
             if (this->fontConfig.iconRegular.valid()) {
                 io.Fonts->AddFontFromMemoryCompressedTTF(this->fontConfig.iconRegular.data,
                                                          static_cast<int>(this->fontConfig.iconRegular.size),
-                                                         15.0f * fontScalingFactor,
+                                                         Typography::FontSize * fontScalingFactor,
                                                          &iconFontConfig,
                                                          iconRanges);
             }
             if (this->fontConfig.iconSolid.valid()) {
                 io.Fonts->AddFontFromMemoryCompressedTTF(this->fontConfig.iconSolid.data,
                                                          static_cast<int>(this->fontConfig.iconSolid.size),
-                                                         15.0f * fontScalingFactor,
+                                                         Typography::FontSize * fontScalingFactor,
                                                          &iconFontConfig,
                                                          iconRanges);
             }
@@ -91,19 +93,19 @@ struct Runtime::Impl {
         fonts.h1 = Private::ToFontHandle(io.Fonts->AddFontFromMemoryCompressedTTF(
             this->fontConfig.bold.data,
             static_cast<int>(this->fontConfig.bold.size),
-            15.0f * fontScalingFactor * 1.15f,
+            Typography::FontSize * fontScalingFactor * Typography::ChromeH1Scale,
             &fontConfig,
             nullptr));
         fonts.h2 = Private::ToFontHandle(io.Fonts->AddFontFromMemoryCompressedTTF(
             this->fontConfig.bold.data,
             static_cast<int>(this->fontConfig.bold.size),
-            15.0f * fontScalingFactor * 1.10f,
+            Typography::FontSize * fontScalingFactor * Typography::ChromeH2Scale,
             &fontConfig,
             nullptr));
         fonts.bold = Private::ToFontHandle(io.Fonts->AddFontFromMemoryCompressedTTF(
             this->fontConfig.bold.data,
             static_cast<int>(this->fontConfig.bold.size),
-            15.0f * fontScalingFactor * 1.04f,
+            Typography::FontSize * fontScalingFactor * Typography::ChromeBoldScale,
             &fontConfig,
             nullptr));
 
@@ -111,7 +113,7 @@ struct Runtime::Impl {
             fonts.display = Private::ToFontHandle(io.Fonts->AddFontFromMemoryCompressedTTF(
                 this->fontConfig.display.data,
                 static_cast<int>(this->fontConfig.display.size),
-                15.0f * fontScalingFactor * 1.15f,
+                Typography::FontSize * fontScalingFactor * Typography::DisplayScale,
                 &fontConfig,
                 nullptr));
         }

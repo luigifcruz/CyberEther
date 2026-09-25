@@ -14,7 +14,7 @@ namespace Jetstream::Sakura::Retained {
 
 namespace {
 
-constexpr F32 kReferenceFontSize = 15.0f;
+constexpr F32 kReferenceFontSize = Typography::FontSize;
 
 }  // namespace
 
@@ -68,6 +68,7 @@ struct MarkdownView::Impl {
     Canvas canvas;
     MarkdownBody body;
 
+    F32 pixelRatio = 1.0f;
     F32 fontSizePixels = kReferenceFontSize;
 
     Impl() {
@@ -91,11 +92,13 @@ bool MarkdownView::update(Config config) {
         .size = {0.0f, 200.0f},
         .autoHeight = true,
         .onLayout = [impl = this->impl.get()](const Canvas::Layout& layout) {
+            impl->pixelRatio = layout.pixelRatio;
             impl->fontSizePixels = impl->config.fontSize * layout.pixelRatio;
             impl->body.fontSizePixels = impl->fontSizePixels;
         },
     });
 
+    impl->fontSizePixels = impl->config.fontSize * impl->pixelRatio;
     impl->body.value = impl->config.value;
     impl->body.fontSizePixels = impl->fontSizePixels;
     impl->body.backgroundColorKey = impl->config.backgroundColorKey;
