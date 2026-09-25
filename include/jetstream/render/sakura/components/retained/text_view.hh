@@ -41,7 +41,9 @@ struct TextView : public Component {
         std::vector<std::string> styleColorKeys;
         std::vector<std::string> styleFonts;
         std::vector<std::string> styleBackgroundColorKeys;
+        std::vector<F32> styleScales;
         U64 maxLineSegments = 64;
+        U64 styleRevision = 0;
         std::function<const std::vector<std::vector<TextGrid::StyleId>>&(
             const std::vector<std::string>& lines, U64 revision)> styler;
         std::function<bool(TextGrid::Position)> onPositionClick;

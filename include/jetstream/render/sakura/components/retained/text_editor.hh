@@ -47,6 +47,7 @@ struct TextEditor : public Component {
                                                    "editor_keyword", "editor_type"};
         std::vector<std::string> styleFonts;
         std::vector<std::string> styleBackgroundColorKeys;
+        std::vector<F32> styleScales;
         std::function<void(std::string)> onChange;
         std::function<void(std::string)> onSubmit;
     };

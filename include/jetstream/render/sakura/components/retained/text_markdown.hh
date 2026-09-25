@@ -31,10 +31,11 @@ struct TextMarkdown : public Component {
         std::string cursorColorKey = "editor_cursor";
         std::string scrollbarTrackColorKey = "editor_scrollbar_track";
         std::string scrollbarThumbColorKey = "editor_scrollbar_thumb";
-        std::vector<std::string> styleColorKeys = {"", "", "", "", "cyber_blue"};
+        std::vector<std::string> styleColorKeys = {"", "", "", "", "cyber_blue", ""};
         std::vector<std::string> styleFonts = {"default_body_bold", "default_body_italic",
-                                               "default_body_bold_italic", "default_mono", ""};
-        std::vector<std::string> styleBackgroundColorKeys;
+                                               "default_body_bold_italic", "default_mono", "", "default_mono"};
+        std::vector<std::string> styleBackgroundColorKeys = {"", "", "", "editor_scrollbar_track", "", ""};
+        std::vector<F32> styleScales = {1.0f, 1.0f, 1.0f, 0.9f, 1.0f, 0.9f};
     };
 
     TextMarkdown();

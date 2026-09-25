@@ -370,6 +370,7 @@ struct TextEditor::Impl {
     TextGrid grid;
     SyntaxHighlighter highlighter;
     U64 lastRevision = 0;
+    U64 styleRevision = 0;
 
     bool styleIsCommentOrString(StyleId id) const {
         return id == StyleComment || id == StyleString;
@@ -539,6 +540,9 @@ TextEditor::TextEditor() {
 TextEditor::~TextEditor() = default;
 
 bool TextEditor::update(Config config) {
+    if (impl->config.language != config.language) {
+        ++impl->styleRevision;
+    }
     impl->config = std::move(config);
 
     impl->grid.update({
@@ -566,6 +570,8 @@ bool TextEditor::update(Config config) {
         .styleColorKeys = impl->config.styleColorKeys,
         .styleFonts = impl->config.styleFonts,
         .styleBackgroundColorKeys = impl->config.styleBackgroundColorKeys,
+        .styleScales = impl->config.styleScales,
+        .styleRevision = impl->styleRevision,
         .styler = [impl = this->impl.get()](const std::vector<std::string>& lines, U64 revision)
                       -> const std::vector<std::vector<StyleId>>& {
             impl->lastRevision = revision;

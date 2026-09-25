@@ -25,6 +25,7 @@ constexpr F32 kListGapRatio = 0.15f;
 constexpr F32 kIndentEmRatio = 1.4f;
 constexpr F32 kCodePadRatio = 0.4f;
 constexpr F32 kRuleThicknessRatio = 0.12f;
+constexpr F32 kRuleRowScale = 0.5f;
 constexpr F32 kQuoteBarRatio = 0.18f;
 constexpr F32 kQuoteIndentEmRatio = 0.4f;
 constexpr F32 kScrollbarGutterFontRatio = 14.0f / 15.0f;
@@ -36,6 +37,7 @@ constexpr StyleId kStyleItalic = 2;
 constexpr StyleId kStyleBoldItalic = 3;
 constexpr StyleId kStyleCode = 4;
 constexpr StyleId kStyleLink = 5;
+constexpr StyleId kStyleCodeBlock = 6;
 
 constexpr U64 kMaxDecorations = 256;
 constexpr const char* kCodeFont = Typography::MonoFont;
@@ -229,6 +231,7 @@ struct TextMarkdown::Impl {
     std::vector<std::vector<LinkSpan>> combinedLinks;
     std::vector<Deco> decos;
     std::string plainValue;
+    U64 styleRevision = 0;
     std::vector<F32> lineScale;
     std::vector<F32> lineTopGap;
     std::vector<F32> lineIndent;
@@ -301,7 +304,7 @@ struct TextMarkdown::Impl {
             b.fontSize = body;
             b.topGap = gapAbove(kParagraphGapRatio);
             b.codeBlock = true;
-            b.baseStyle = kStyleCode;
+            b.baseStyle = kStyleCodeBlock;
             b.inlineParse = false;
             blocks.push_back(std::move(b));
             prevHeading = prevList = false;
@@ -400,6 +403,7 @@ struct TextMarkdown::Impl {
     }
 
     void rebuild() {
+        ++styleRevision;
         const std::vector<Block> blocks = parse();
 
         const F32 body = config.fontSize;
@@ -429,7 +433,7 @@ struct TextMarkdown::Impl {
             const U64 firstLine = lines.size();
 
             if (b.rule) {
-                addLine("", 1.0f, b.topGap, 0.0f, {}, {});
+                addLine("", kRuleRowScale, b.topGap, 0.0f, {}, {});
                 decos.push_back({firstLine, firstLine, false, false, true, false, "", 0.0f});
                 continue;
             }
@@ -500,7 +504,9 @@ struct TextMarkdown::Impl {
             .styleColorKeys = config.styleColorKeys,
             .styleFonts = config.styleFonts,
             .styleBackgroundColorKeys = config.styleBackgroundColorKeys,
+            .styleScales = config.styleScales,
             .maxLineSegments = 16,
+            .styleRevision = styleRevision,
             .styler = [this](const std::vector<std::string>&, U64)
                           -> const std::vector<std::vector<StyleId>>& {
                 return combinedStyles;

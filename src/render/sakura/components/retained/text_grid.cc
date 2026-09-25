@@ -26,6 +26,7 @@ namespace Jetstream::Sakura::Retained {
 namespace {
 
 constexpr F32 kReferenceFontSize = Typography::FontSize;
+constexpr F32 kStyleBackgroundPadRatio = 0.2f;
 constexpr F32 kPaddingFontRatio = 6.0f / kReferenceFontSize;
 constexpr F32 kScrollbarThicknessFontRatio = 6.0f / kReferenceFontSize;
 constexpr F32 kScrollbarMarginFontRatio = 4.0f / kReferenceFontSize;
@@ -335,7 +336,7 @@ struct TextGrid::Impl {
 
         static const std::vector<std::vector<StyleId>> kNoStyles;
         static const std::vector<StyleId> kNoLineStyles;
-        const bool multiFont = !extraFontNames.empty() && config.styler;
+        const bool multiFont = styleMetricsActive();
         const auto& styles = multiFont ? config.styler(lines, contentRevision) : kNoStyles;
 
         linePrefixes.assign(lines.size(), {});
@@ -354,15 +355,19 @@ struct TextGrid::Impl {
             const auto& lineStyles = i < styles.size() ? styles[i] : kNoLineStyles;
             U64 c = 0;
             while (c < line.size()) {
-                const std::string font = fontForStyle(c < lineStyles.size() ? lineStyles[c] : 0);
+                const StyleId style = c < lineStyles.size() ? lineStyles[c] : 0;
+                const std::string font = fontForStyle(style);
+                const F32 glyphSize = lineSize * scaleForStyle(style);
                 U64 e = c + 1;
-                while (e < line.size() && fontForStyle(e < lineStyles.size() ? lineStyles[e] : 0) == font) {
+                while (e < line.size() && (e < lineStyles.size() ? lineStyles[e] : 0) == style) {
                     ++e;
                 }
                 const auto adv = textMetrics.advances(font.empty() ? config.fontName : font,
-                                                      line.substr(c, e - c), lineSize);
+                                                      line.substr(c, e - c), glyphSize);
+                const F32 pad = stylePaddingPixels(style, glyphSize);
                 for (U64 k = c; k < e; ++k) {
-                    prefix[k + 1] = prefix[k] + (k - c < adv.size() ? adv[k - c] : 0.0f);
+                    prefix[k + 1] = prefix[k] + (k - c < adv.size() ? adv[k - c] : 0.0f) +
+                                    (k == c ? pad : 0.0f) + (k + 1 == e ? pad : 0.0f);
                 }
                 c = e;
             }
@@ -690,6 +695,27 @@ struct TextGrid::Impl {
         }
         const auto& font = config.styleFonts[id - 1];
         return font.empty() ? config.fontName : font;
+    }
+
+    bool styleMetricsActive() const {
+        return !config.monospace && static_cast<bool>(config.styler);
+    }
+
+    bool styleHasBackground(StyleId id) const {
+        return id != 0 && id <= config.styleBackgroundColorKeys.size() &&
+               !config.styleBackgroundColorKeys[id - 1].empty();
+    }
+
+    F32 stylePaddingPixels(StyleId id, F32 glyphSize) const {
+        return styleMetricsActive() && styleHasBackground(id) ? glyphSize * kStyleBackgroundPadRatio : 0.0f;
+    }
+
+    F32 scaleForStyle(StyleId id) const {
+        if (!styleMetricsActive() || id == 0 || id > config.styleScales.size()) {
+            return 1.0f;
+        }
+        const F32 scale = config.styleScales[id - 1];
+        return scale > 0.0f ? scale : 1.0f;
     }
 
     ColorRGBA<F32> backgroundForStyle(StyleId id) const {
@@ -1777,21 +1803,28 @@ struct TextGrid::Impl {
                 const F32 segW = columnOffsetPixels(row.line, endColumn) - columnOffsetPixels(row.line, startColumn);
                 const U64 poolIndex = poolIndexForFont(fontForStyle(style));
                 auto& target = poolIndex == static_cast<U64>(-1) ? codeInstances : extraInstances[poolIndex];
+                const F32 glyphSize = lineSize * scaleForStyle(style);
+                const F32 pad = stylePaddingPixels(style, glyphSize);
+                const bool spanStart = startColumn == 0 ||
+                                       (startColumn - 1 < lineStyles.size() ? lineStyles[startColumn - 1] : 0) != style;
+                const bool spanEnd = endColumn >= lineLen ||
+                                     (endColumn < lineStyles.size() ? lineStyles[endColumn] : 0) != style;
+                const F32 leftPad = spanStart ? pad : 0.0f;
+                const F32 rightPad = spanEnd ? pad : 0.0f;
                 target[slot] = {
-                    .rect = {segX, rowTop, segW, rh},
+                    .rect = {segX + leftPad, rowTop, std::max(0.0f, segW - leftPad - rightPad), rh},
                     .str = line.substr(startColumn, endColumn - startColumn),
                     .visible = true,
                     .color = colorForStyle(style),
-                    .fontSize = lineSize,
+                    .fontSize = glyphSize,
                     .alignment = {0, 1},
                 };
                 if (hasStyleBackgrounds) {
                     const auto bg = backgroundForStyle(style);
                     if (bg.a > 0.0f) {
-                        const F32 padX = rh * 0.12f;
+                        const F32 bgHeight = glyphSize * 1.3f;
                         styleBgInstances[slot] = {
-                            .rect = {segX - padX, rowTop + rh * 0.08f,
-                                     segW + 2.0f * padX, rh * 0.84f},
+                            .rect = {segX, rowTop + (rh - bgHeight) * 0.5f, segW, bgHeight},
                             .visible = true,
                             .backgroundColor = bg,
                         };
@@ -1871,7 +1904,7 @@ struct TextGrid::Impl {
             .id = config.id + ":style-bg",
             .instances = std::move(styleBgInstances),
             .clip = textClip,
-            .cornerRadius = lineHeightPixels() * 0.22f,
+            .cornerRadius = contentFontSize() * 0.25f,
             .capacity = hasStyleBackgrounds ? visibleRowCapacity * maxSegments : 0,
         });
         codeLabels.update({
@@ -1952,9 +1985,9 @@ TextGrid::TextGrid() {
     };
     add(this->impl->backgroundBox);
     add(this->impl->activeLineBox);
+    add(this->impl->styleBackgroundBox);
     add(this->impl->selectionMatchBox);
     add(this->impl->selectionBox);
-    add(this->impl->styleBackgroundBox);
     add(this->impl->gutterBox);
     add(this->impl->numberLabels);
     add(this->impl->codeLabels);
@@ -1975,6 +2008,9 @@ bool TextGrid::update(Config config) {
     const bool metricsChanged = impl->config.fontSize != config.fontSize ||
                                 impl->config.fontScale != config.fontScale ||
                                 impl->config.lineHeight != config.lineHeight ||
+                                impl->config.styleScales != config.styleScales ||
+                                impl->config.styleBackgroundColorKeys != config.styleBackgroundColorKeys ||
+                                impl->config.styleRevision != config.styleRevision ||
                                 impl->config.fontName != config.fontName ||
                                 impl->config.monospace != config.monospace ||
                                 impl->config.lineScale != config.lineScale ||
