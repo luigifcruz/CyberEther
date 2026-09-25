@@ -89,6 +89,7 @@ struct JETSTREAM_API Module::Impl {
     Result surfaceUpdateManifestSize(const std::string& id, const Extent2D<U64>& size);
     std::vector<InputEvent> surfaceConsumeInputEvents();
     std::vector<SurfaceEvent> surfaceConsumeSurfaceEvents();
+    void surfaceSetCursor(SurfaceCursor cursor);
 
  private:
     Result destroyImplementation();

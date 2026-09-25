@@ -2,6 +2,7 @@
 #define JETSTREAM_DOMAINS_VISUALIZATION_SIGNAL_VIEW_MODULE_IMPL_HH
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <memory>
 #include <optional>
@@ -66,6 +67,30 @@ inline std::string LineplotAmplitudeLabel(const F32 position,
     }
     const F64 rounded = std::round(*value);
     return jst::fmt::format("{:.0f}", rounded == 0.0 ? 0.0 : rounded);
+}
+
+constexpr U64 MaxMarkers = 16;
+constexpr U64 MarkerSpans = MaxMarkers - 1;
+
+inline std::string FormatFrequencySpan(const F64 hertz) {
+    const F64 magnitude = std::abs(hertz);
+    const char* unit = "Hz";
+    F64 value = magnitude;
+    int decimals = 1;
+    if (magnitude >= 1.0e6) {
+        unit = "MHz";
+        value = magnitude / 1.0e6;
+        decimals = 3;
+    } else if (magnitude >= 1.0e3) {
+        unit = "kHz";
+        value = magnitude / 1.0e3;
+        decimals = 3;
+    }
+    std::string text = jst::fmt::format("{:.{}f}", value, decimals);
+    while (text.size() > 2 && text.back() == '0' && text[text.size() - 2] != '.') {
+        text.pop_back();
+    }
+    return jst::fmt::format("{} {}", text, unit);
 }
 
 inline std::string LabelUnit(const std::string& label) {
@@ -133,8 +158,24 @@ struct SignalViewImpl : public Module::Impl,
         Extent2D<F32> position = {0.0f, 0.0f};
         bool visible = false;
         bool marker = false;
+        bool overMarker = false;
+        F32 point = 0.0f;
         Extent2D<F32> plot = {0.0f, 0.0f};
     } cursor;
+    std::vector<F32> markerPositions;
+    bool updateMarkersFlag = false;
+    struct TagBounds {
+        bool active = false;
+        Extent2D<F32> center = {0.0f, 0.0f};
+        Extent2D<F32> halfSize = {0.0f, 0.0f};
+    };
+    std::array<TagBounds, detail::MaxMarkers> tagBounds;
+    std::array<bool, detail::MaxMarkers> pinned{};
+    struct MarkerDrag {
+        std::optional<U64> index;
+        bool moved = false;
+        Extent2D<F32> origin = {0.0f, 0.0f};
+    } markerDrag;
 
     // Rendering state.
     Extent2D<F32> pixelSize;
@@ -145,6 +186,13 @@ struct SignalViewImpl : public Module::Impl,
     std::shared_ptr<Render::Components::Text> text;
     std::shared_ptr<Render::Components::Shapes> cursorShapes;
     std::shared_ptr<Render::Components::Text> cursorText;
+    std::shared_ptr<Render::Components::Shapes> markerShapes;
+    std::shared_ptr<Render::Components::Shapes> markerTagShapes;
+    std::shared_ptr<Render::Components::Shapes> markerSpanShapes;
+    std::shared_ptr<Render::Components::Shapes> markerTableShapes;
+    std::shared_ptr<Render::Components::Text> markerText;
+    std::shared_ptr<Render::Components::Text> markerBadgeText;
+    std::shared_ptr<Render::Components::Text> markerTagText;
     std::vector<F32> displayedPoints;
 
     struct TraceUniforms {
@@ -224,6 +272,25 @@ struct SignalViewImpl : public Module::Impl,
     void processInputEvents(const Extent2D<F32>& paddingScale);
     void updateLabelState();
     Result updateCursorState();
+    Result updateMarkerState();
+    F32 viewTranslation() const;
+    std::optional<F32> cursorPoint() const;
+    F32 projectPointX(F32 xPoint) const;
+    std::optional<F32> displayedAmplitude(F32 xPoint) const;
+    F32 amplitudeToNdc(F32 yPoint) const;
+    std::string formatPointX(F32 xPoint);
+    std::string formatSpanX(F32 delta);
+    std::string formatAmplitude(F32 yPoint) const;
+    void syncMarkers();
+    void applyPins();
+    std::vector<U64> pinnedIndices() const;
+    std::optional<U64> tagAt(const Extent2D<F32>& position) const;
+    std::optional<U64> markerAt(const Extent2D<F32>& position) const;
+    bool insidePlot(const Extent2D<F32>& position) const;
+    F32 pointAtX(F32 x) const;
+    void toggleMarker();
+    void clearMarkers();
+    void commitMarkers();
     Result resetLineplotHistory();
     Result resetHistoryState();
     virtual Buffer::Config renderStateBufferConfig() const = 0;

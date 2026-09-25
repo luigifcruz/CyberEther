@@ -88,6 +88,10 @@ struct SignalViewImplAccess : Modules::SignalViewImpl {
         return &SignalViewImplAccess::cursor;
     }
 
+    static auto markerPositionsMember() {
+        return &SignalViewImplAccess::markerPositions;
+    }
+
     static auto splitterMember() {
         return &SignalViewImplAccess::splitter;
     }
@@ -100,15 +104,18 @@ struct SignalViewImplAccess : Modules::SignalViewImpl {
     static void wirePresentResources(Modules::SignalViewImpl& impl,
                                      const std::shared_ptr<Render::Components::Axis>& axis,
                                      const std::shared_ptr<Render::Components::Text>& text,
-                                     const std::shared_ptr<Render::Components::Text>& cursorText = {});
+                                     const std::shared_ptr<Render::Components::Text>& cursorText = {},
+                                     const std::shared_ptr<Render::Components::Text>& markerText = {});
 #endif
 };
 
 struct InteractiveSignalViewConfig : Block::Config {
     F32 splitRatio = 0.5f;
+    std::vector<F32> markers;
+    std::vector<U64> pins;
     JST_BLOCK_TYPE(interactive_signal_view_test);
     JST_BLOCK_DOMAIN("Test");
-    JST_BLOCK_PARAMS(splitRatio);
+    JST_BLOCK_PARAMS(splitRatio, markers, pins);
     JST_BLOCK_DESCRIPTION("Interactive Signal View Test", "Test surface edits.", "Test surface edits.");
 };
 
@@ -122,11 +129,15 @@ struct InteractiveSignalViewBlock : Block::Impl, DynamicConfig<InteractiveSignal
         config->mode = "lineplot_waterfall";
         config->waterfallHeight = 8;
         config->splitRatio = splitRatio;
+        config->markers = markers;
+        config->pins = pins;
         return Result::SUCCESS;
     }
     Result create() override {
         JST_CHECK(moduleCreate("plot", config, inputs()));
         JST_CHECK(moduleBindConfigEdit("plot", "splitRatio", "splitRatio"));
+        JST_CHECK(moduleBindConfigEdit("plot", "markers", "markers"));
+        JST_CHECK(moduleBindConfigEdit("plot", "pins", "pins"));
         interactiveSignalView = moduleHandle("plot");
         return Result::SUCCESS;
     }
@@ -205,12 +216,14 @@ void SignalViewImplAccess::wirePresentResources(
     Modules::SignalViewImpl& impl,
     const std::shared_ptr<Render::Components::Axis>& axis,
     const std::shared_ptr<Render::Components::Text>& text,
-    const std::shared_ptr<Render::Components::Text>& cursorText) {
+    const std::shared_ptr<Render::Components::Text>& cursorText,
+    const std::shared_ptr<Render::Components::Text>& markerText) {
     // The combined presentation path updates real CPU state and queues uploads,
     // but these resources never bind to a GPU. Only data members are accessed;
     // internal non-exported implementation methods must not be called by tests.
     impl.*axisMember() = axis;
     impl.*&SignalViewImplAccess::cursorText = cursorText;
+    impl.*&SignalViewImplAccess::markerText = markerText;
     impl.*&SignalViewImplAccess::text = text;
     impl.*renderSurfaceMember() = std::make_shared<LabelTestSurface>();
     const auto tensorBuffer = [](Tensor& tensor) {
@@ -245,6 +258,25 @@ void SignalViewImplAccess::wirePresentResources(
     impl.*&SignalViewImplAccess::fillProgram = std::make_shared<Render::Program>(Render::Program::Config{});
     impl.*&SignalViewImplAccess::maxHoldProgram = std::make_shared<Render::Program>(Render::Program::Config{});
     impl.*&SignalViewImplAccess::waterfallProgram = std::make_shared<Render::Program>(Render::Program::Config{});
+}
+
+std::shared_ptr<LabelTestText> MakeMarkerText(const std::shared_ptr<Render::Components::Font>& font,
+                                              LabelTestWindow& window) {
+    Render::Components::Text::Config config;
+    config.font = font;
+    config.maxCharacters = 1024;
+    for (U64 i = 0; i < Modules::detail::MaxMarkers; ++i) {
+        config.elements[jst::fmt::format("marker-{}-tag", i)] = {};
+        config.elements[jst::fmt::format("marker-{}-id", i)] = {};
+        config.elements[jst::fmt::format("marker-{}-x", i)] = {};
+        config.elements[jst::fmt::format("marker-{}-y", i)] = {};
+    }
+    for (U64 i = 0; i < Modules::detail::MarkerSpans; ++i) {
+        config.elements[jst::fmt::format("span-{}-label", i)] = {};
+    }
+    auto text = std::make_shared<LabelTestText>(config);
+    REQUIRE(text->create(&window) == Result::SUCCESS);
+    return text;
 }
 
 U64 ApplyBufferUploads(const std::shared_ptr<Render::Buffer>& buffer, void* destination) {
@@ -609,6 +641,17 @@ TEST_CASE("Signal View label units come from the trailing parentheses",
     REQUIRE(Modules::detail::LabelUnit(") mismatched (") == "");
 }
 
+TEST_CASE("Signal View marker spans format frequency distances by magnitude",
+          "[modules][signal_view][markers]") {
+    REQUIRE(Modules::detail::FormatFrequencySpan(9.8e6) == "9.8 MHz");
+    REQUIRE(Modules::detail::FormatFrequencySpan(1.0e6) == "1.0 MHz");
+    REQUIRE(Modules::detail::FormatFrequencySpan(1.2345678e6) == "1.235 MHz");
+    REQUIRE(Modules::detail::FormatFrequencySpan(-12.5e3) == "12.5 kHz");
+    REQUIRE(Modules::detail::FormatFrequencySpan(500.0e3) == "500.0 kHz");
+    REQUIRE(Modules::detail::FormatFrequencySpan(250.0) == "250.0 Hz");
+    REQUIRE(Modules::detail::FormatFrequencySpan(0.0) == "0.0 Hz");
+}
+
 TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leaves",
           "[modules][signal_view][present][cursor]") {
     const std::string mode = GENERATE("lineplot", "waterfall", "lineplot_waterfall");
@@ -653,9 +696,10 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
     cursorConfig.elements = {{"cursor-x", {}}, {"cursor-y", {}}};
     auto cursorText = std::make_shared<LabelTestText>(cursorConfig);
     REQUIRE(cursorText->create(&window) == Result::SUCCESS);
+    auto markerText = MakeMarkerText(axisConfig.font, window);
     auto* impl = module->getImpl<Modules::SignalViewImpl>();
     REQUIRE(impl);
-    SignalViewImplAccess::wirePresentResources(*impl, axis, text, cursorText);
+    SignalViewImplAccess::wirePresentResources(*impl, axis, text, cursorText, markerText);
     auto* presenter = module->getImpl<Scheduler::Context>();
     REQUIRE(presenter);
 
@@ -689,6 +733,195 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
     REQUIRE(cursorText->get("cursor-x").fill == "100.5000 MHz");
     REQUIRE(cursorText->get("cursor-y").fill == amplitudeAt(5));
 
+    const auto markerLabel = [&](const U64 index, const char* suffix) {
+        return markerText->get(jst::fmt::format("marker-{}-{}", index, suffix)).fill;
+    };
+    const auto& interaction = impl->*SignalViewImplAccess::interactionMember();
+    const auto shiftClick = [&](const Extent2D<F32>& position, const bool clear = false) {
+        module->surface()->pushInputEvent(MouseEvent{
+            .type = MouseEventType::Click,
+            .button = clear ? MouseButton::Right : MouseButton::Left,
+            .position = position,
+            .modifiers = {.shift = true},
+        });
+        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        REQUIRE_FALSE(interaction.dragging);
+        REQUIRE(interaction.zoom == Catch::Approx(1.0f));
+    };
+    const Extent2D<F32> quarter = {0.5f + 0.25f * padding.x, 0.5f};
+    REQUIRE(markerLabel(0, "x") == " ");
+    shiftClick(quarter);
+    REQUIRE((impl->*SignalViewImplAccess::markerPositionsMember()) == std::vector<F32>{0.5f});
+    REQUIRE(markerLabel(0, "tag") == "M1");
+    REQUIRE(markerLabel(0, "id") == "M1");
+    REQUIRE(markerLabel(0, "x") == "100.5000 MHz");
+    REQUIRE(markerLabel(0, "y") == amplitudeAt(5));
+    REQUIRE(markerLabel(1, "x") == " ");
+    REQUIRE(markerLabel(1, "id") == " ");
+    shiftClick(quarter);
+    REQUIRE((impl->*SignalViewImplAccess::markerPositionsMember()).empty());
+    REQUIRE(markerLabel(0, "x") == " ");
+    REQUIRE(markerLabel(0, "y") == " ");
+    shiftClick(quarter);
+    shiftClick({0.5f, 0.5f});
+    REQUIRE((impl->*SignalViewImplAccess::markerPositionsMember()) == std::vector<F32>{0.5f, 0.0f});
+    REQUIRE(markerLabel(0, "x") == "100.5000 MHz");
+    REQUIRE(markerLabel(1, "id") == "M2");
+    REQUIRE(markerLabel(1, "x") == "100.0000 MHz");
+    REQUIRE(markerLabel(1, "y") == amplitudeAt(4));
+
+    const auto spanLabel = [&](const U64 index, const char* suffix) {
+        return markerText->get(jst::fmt::format("span-{}-{}", index, suffix)).fill;
+    };
+    const auto hoverTag = [&](const U64 index) {
+        const auto tag = markerText->get(jst::fmt::format("marker-{}-tag", index)).position;
+        module->surface()->pushInputEvent(MouseEvent{
+            .type = MouseEventType::Move,
+            .position = {(tag.x + 1.0f) * 0.5f, (1.0f - tag.y) * 0.5f},
+        });
+        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    };
+    REQUIRE(spanLabel(0, "label") == " ");
+    REQUIRE(spanLabel(1, "label") == " ");
+    hoverTag(1);
+    REQUIRE(cursorText->get("cursor-x").fill == " ");
+    REQUIRE(spanLabel(0, "label") == "500.0 kHz");
+    REQUIRE(spanLabel(1, "label") == " ");
+    const Extent2D<F32> lowerQuarter = {0.5f - 0.25f * padding.x, 0.5f};
+    shiftClick(lowerQuarter);
+    REQUIRE(markerLabel(2, "x") == "99.5000 MHz");
+    hoverTag(1);
+    REQUIRE(spanLabel(0, "label") == "500.0 kHz");
+    REQUIRE(spanLabel(1, "label") == "500.0 kHz");
+    hoverTag(0);
+    REQUIRE(spanLabel(0, "label") == " ");
+    REQUIRE(spanLabel(1, "label") == "500.0 kHz");
+    hoverTag(2);
+    REQUIRE(spanLabel(0, "label") == "500.0 kHz");
+    REQUIRE(spanLabel(1, "label") == " ");
+    const auto moveAway = [&]() {
+        module->surface()->pushInputEvent(MouseEvent{
+            .type = MouseEventType::Move, .position = {0.5f - 0.05f * padding.x, 0.5f},
+        });
+        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    };
+    moveAway();
+    REQUIRE(cursorText->get("cursor-x").fill == "99.9000 MHz");
+    REQUIRE(spanLabel(0, "label") == " ");
+    REQUIRE(spanLabel(1, "label") == " ");
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Move, .position = {0.5f, 0.5f},
+    });
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(cursorText->get("cursor-x").fill == " ");
+    REQUIRE(cursorText->get("cursor-y").fill == " ");
+    REQUIRE(spanLabel(0, "label") == " ");
+    REQUIRE(spanLabel(1, "label") == " ");
+
+    const auto clickTag = [&](const U64 index) {
+        const auto tag = markerText->get(jst::fmt::format("marker-{}-tag", index)).position;
+        const Extent2D<F32> position = {(tag.x + 1.0f) * 0.5f, (1.0f - tag.y) * 0.5f};
+        module->surface()->pushInputEvent(MouseEvent{
+            .type = MouseEventType::Click, .button = MouseButton::Left, .position = position,
+        });
+        module->surface()->pushInputEvent(MouseEvent{
+            .type = MouseEventType::Release, .button = MouseButton::Left, .position = position,
+        });
+        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        REQUIRE_FALSE(interaction.dragging);
+    };
+    clickTag(0);
+    moveAway();
+    REQUIRE(cursorText->get("cursor-x").fill == "99.9000 MHz");
+    REQUIRE(spanLabel(0, "label") == " ");
+    REQUIRE(spanLabel(1, "label") == "500.0 kHz");
+    hoverTag(2);
+    REQUIRE(spanLabel(0, "label") == "500.0 kHz");
+    REQUIRE(spanLabel(1, "label") == "500.0 kHz");
+    hoverTag(1);
+    REQUIRE(spanLabel(0, "label") == "500.0 kHz");
+    REQUIRE(spanLabel(1, "label") == "500.0 kHz");
+    moveAway();
+    REQUIRE(spanLabel(0, "label") == " ");
+    REQUIRE(spanLabel(1, "label") == "500.0 kHz");
+    clickTag(0);
+    moveAway();
+    REQUIRE(spanLabel(0, "label") == " ");
+    REQUIRE(spanLabel(1, "label") == " ");
+    clickTag(0);
+    clickTag(2);
+    moveAway();
+    REQUIRE(spanLabel(0, "label") == "500.0 kHz");
+    REQUIRE(spanLabel(1, "label") == "500.0 kHz");
+    module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Escape, {}});
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(spanLabel(0, "label") == " ");
+    REQUIRE(spanLabel(1, "label") == " ");
+    clickTag(0);
+    clickTag(2);
+    moveAway();
+    clickTag(2);
+    moveAway();
+    REQUIRE(spanLabel(0, "label") == " ");
+    REQUIRE(spanLabel(1, "label") == "500.0 kHz");
+    clickTag(2);
+    shiftClick(lowerQuarter);
+    REQUIRE(spanLabel(0, "label") == "500.0 kHz");
+    REQUIRE(spanLabel(1, "label") == " ");
+    clickTag(0);
+    moveAway();
+    REQUIRE(spanLabel(0, "label") == " ");
+    REQUIRE(spanLabel(1, "label") == " ");
+    REQUIRE((impl->*SignalViewImplAccess::markerPositionsMember()) == std::vector<F32>{0.5f, 0.0f});
+
+    const auto dragMarker = [&](const Extent2D<F32>& from, const Extent2D<F32>& to) {
+        module->surface()->pushInputEvent(MouseEvent{
+            .type = MouseEventType::Click, .button = MouseButton::Left, .position = from,
+        });
+        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        module->surface()->pushInputEvent(MouseEvent{
+            .type = MouseEventType::Move, .position = to,
+        });
+        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        module->surface()->pushInputEvent(MouseEvent{
+            .type = MouseEventType::Release, .button = MouseButton::Left, .position = to,
+        });
+        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        REQUIRE_FALSE(interaction.dragging);
+        REQUIRE(interaction.zoom == Catch::Approx(1.0f));
+        REQUIRE(interaction.offset == Catch::Approx(0.0f));
+    };
+    dragMarker({0.5f, 0.5f}, {0.5f + 0.125f * padding.x, 0.5f});
+    REQUIRE(markerLabel(1, "x") == "100.2500 MHz");
+    REQUIRE((impl->*SignalViewImplAccess::markerPositionsMember())[1] == Catch::Approx(0.25f));
+    const auto tagOrigin = markerText->get("marker-0-tag").position;
+    const Extent2D<F32> tagFrom = {(tagOrigin.x + 1.0f) * 0.5f, (1.0f - tagOrigin.y) * 0.5f};
+    dragMarker(tagFrom, {0.5f + 0.375f * padding.x, tagFrom.y});
+    REQUIRE(markerLabel(0, "x") == "100.5000 MHz");
+    REQUIRE((impl->*SignalViewImplAccess::markerPositionsMember())[0] == Catch::Approx(0.5f));
+    moveAway();
+    REQUIRE(spanLabel(0, "label") == "250.0 kHz");
+    REQUIRE(spanLabel(1, "label") == " ");
+    module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Escape, {}});
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(spanLabel(0, "label") == " ");
+    REQUIRE(spanLabel(1, "label") == " ");
+    for (U64 extra = 1; extra <= 16; ++extra) {
+        shiftClick({0.5f - 0.03f * extra * padding.x, 0.5f});
+    }
+    REQUIRE((impl->*SignalViewImplAccess::markerPositionsMember()).size() == Modules::detail::MaxMarkers);
+    REQUIRE(markerLabel(15, "id") == "M16");
+    REQUIRE(markerLabel(15, "x") == "99.1600 MHz");
+    shiftClick({0.5f, 0.5f}, true);
+    REQUIRE((impl->*SignalViewImplAccess::markerPositionsMember()).empty());
+    for (U64 i = 0; i < Modules::detail::MaxMarkers; ++i) {
+        REQUIRE(markerLabel(i, "x") == " ");
+    }
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Move, .position = {0.5f + 0.25f * padding.x, 0.5f},
+    });
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+
     module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Space, {}});
     REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
     const auto heldAmplitude = cursorText->get("cursor-y").fill;
@@ -702,29 +935,248 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
     REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
     REQUIRE(cursorText->get("cursor-y").fill == amplitudeAt(5));
 
+    shiftClick(quarter);
+    REQUIRE(markerLabel(0, "tag") == "M1");
+    REQUIRE(markerLabel(0, "x") == "100.5000 MHz");
     module->surface()->pushSurfaceEvent({.type = SurfaceEventType::Resize,
                                          .size = {512, 512},
                                          .placement = SurfacePlacementType::Attached});
     REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
     REQUIRE(cursorText->get("cursor-x").fill == " ");
     REQUIRE(cursorText->get("cursor-y").fill == " ");
+    REQUIRE(markerLabel(0, "tag") == "M1");
+    REQUIRE(markerLabel(0, "id") == " ");
+    REQUIRE(markerLabel(0, "x") == " ");
+    REQUIRE(markerLabel(0, "y") == " ");
 
     module->surface()->pushSurfaceEvent({.type = SurfaceEventType::Resize,
                                          .size = {512, 512},
                                          .placement = SurfacePlacementType::Detached});
     REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
-    REQUIRE(cursorText->get("cursor-x").fill == "100.5000 MHz");
+    REQUIRE(cursorText->get("cursor-x").fill == " ");
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Move, .position = {0.5f, 0.5f},
+    });
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(cursorText->get("cursor-x").fill == "100.0000 MHz");
+    REQUIRE(markerLabel(0, "id") == "M1");
+    REQUIRE(markerLabel(0, "x") == "100.5000 MHz");
 
     module->surface()->pushInputEvent(FocusEvent{false});
     REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
     REQUIRE(cursorText->get("cursor-x").fill == " ");
     REQUIRE(cursorText->get("cursor-y").fill == " ");
 
+    REQUIRE(markerText->destroy(&window) == Result::SUCCESS);
     REQUIRE(cursorText->destroy(&window) == Result::SUCCESS);
     REQUIRE(text->destroy(&window) == Result::SUCCESS);
     REQUIRE(axis->destroy(&window) == Result::SUCCESS);
     REQUIRE(runtime.destroy() == Result::SUCCESS);
     REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Standalone marker displays survive resizing and follow reconfiguration",
+          "[modules][signal_view][markers][present][reconfigure][regression]") {
+    const std::string mode = GENERATE("lineplot", "waterfall", "lineplot_waterfall");
+    CAPTURE(mode);
+    Tensor input(DeviceType::CPU, DataType::F32, {8});
+    TensorMap inputs;
+    inputs["signal"].tensor = input;
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("signal_view", DeviceType::CPU,
+                                  RuntimeType::NATIVE, "generic", module) == Result::SUCCESS);
+    Modules::SignalView config;
+    config.mode = mode;
+    config.waterfallHeight = 4;
+    config.markers = {0.5f};
+    REQUIRE(module->create("plot", config, inputs) == Result::SUCCESS);
+
+    LabelTestWindow window;
+    Render::Components::Axis::Config axisConfig;
+    axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
+    auto axis = std::make_shared<LabelTestAxis>(axisConfig);
+    REQUIRE(axis->create(&window) == Result::SUCCESS);
+    auto markerText = MakeMarkerText(axisConfig.font, window);
+    auto* impl = module->getImpl<Modules::SignalViewImpl>();
+    REQUIRE(impl);
+    SignalViewImplAccess::wirePresentResources(*impl, axis, {}, {}, markerText);
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+    const auto present = [&] { REQUIRE(presenter->presentSubmit() == Result::SUCCESS); };
+    const auto& positions = impl->*SignalViewImplAccess::markerPositionsMember();
+    present();
+    REQUIRE(markerText->get("marker-0-tag").fill == "M1");
+    REQUIRE(markerText->get("marker-0-tag").position.x > 0.0f);
+
+    SECTION("an existing marker survives narrow surfaces and recovers after expansion") {
+        const U64 scale = GENERATE(1, 2);
+        for (const U64 width : {88, 64, 512}) {
+            CAPTURE(width, scale);
+            module->surface()->pushSurfaceEvent({.type = SurfaceEventType::Resize,
+                                                 .size = {width * scale, 512 * scale},
+                                                 .scale = static_cast<F32>(scale)});
+            present();
+            REQUIRE(positions == std::vector<F32>{0.5f});
+            const auto tag = markerText->get("marker-0-tag");
+            REQUIRE(std::isfinite(tag.position.x));
+            REQUIRE(std::isfinite(tag.position.y));
+            if (width == 64) {
+                REQUIRE(tag.fill == " ");
+            } else {
+                REQUIRE(tag.fill == "M1");
+                if (width <= 88) {
+                    REQUIRE(tag.position.x == 0.0f);
+                } else {
+                    REQUIRE(tag.position.x > 0.0f);
+                    REQUIRE(tag.position.x <= axis->paddingScale().x);
+                }
+            }
+        }
+    }
+
+    SECTION("external edits update displayed markers and defer during a drag") {
+        Parser::Map edit;
+        edit["markers"] = std::vector<F32>{-0.5f, 0.25f};
+        REQUIRE(module->reconfigure(edit, true) == Result::SUCCESS);
+        present();
+        REQUIRE(positions == std::vector<F32>{0.5f});
+        REQUIRE(module->reconfigure(edit) == Result::SUCCESS);
+        present();
+        REQUIRE(positions == std::vector<F32>{-0.5f, 0.25f});
+        REQUIRE(markerText->get("marker-1-tag").fill == "M2");
+        REQUIRE(markerText->get("marker-0-x").fill == (mode == "waterfall" ? "0.2500" : "-0.5000"));
+        REQUIRE(markerText->get("marker-1-x").fill == (mode == "waterfall" ? "0.6250" : "0.2500"));
+
+        const auto padding = axis->paddingScale();
+        module->surface()->pushInputEvent(MouseEvent{
+            .type = MouseEventType::Click, .button = MouseButton::Left,
+            .position = {0.5f - 0.25f * padding.x, 0.5f},
+        });
+        present();
+        module->surface()->pushInputEvent(MouseEvent{
+            .type = MouseEventType::Move, .position = {0.5f, 0.5f},
+        });
+        present();
+        REQUIRE(positions == std::vector<F32>{0.0f, 0.25f});
+        edit["markers"] = std::vector<F32>{0.75f};
+        REQUIRE(module->reconfigure(edit) == Result::SUCCESS);
+        for (U64 frame = 0; frame < 2; ++frame) {
+            present();
+            REQUIRE(positions == std::vector<F32>{0.0f, 0.25f});
+            REQUIRE(markerText->get("marker-0-x").fill == (mode == "waterfall" ? "0.5000" : "0.0000"));
+        }
+        module->surface()->pushInputEvent(MouseEvent{
+            .type = MouseEventType::Release, .button = MouseButton::Left, .position = {0.5f, 0.5f},
+        });
+        present();
+        present();
+        REQUIRE(positions == std::vector<F32>{0.75f});
+        REQUIRE(markerText->get("marker-0-x").fill == (mode == "waterfall" ? "0.8750" : "0.7500"));
+        REQUIRE(markerText->get("marker-1-tag").fill == " ");
+
+        edit["markers"] = std::vector<F32>{};
+        REQUIRE(module->reconfigure(edit) == Result::SUCCESS);
+        present();
+        REQUIRE(positions.empty());
+        REQUIRE(markerText->get("marker-0-tag").fill == " ");
+        REQUIRE(markerText->get("marker-0-x").fill == " ");
+    }
+
+    REQUIRE(markerText->destroy(&window) == Result::SUCCESS);
+    REQUIRE(axis->destroy(&window) == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture, "Production plot markers persist after recreation and flowgraph reload",
+                 "[modules][signal_view][markers][config-edits][regression]") {
+    const std::string type = GENERATE("lineplot", "waterfall");
+    CAPTURE(type);
+    // Observe the real module factory through a test provider, so the production
+    // block's configuration forwarding and edit bindings are exercised intact.
+    struct ModuleObserver {
+        const ProviderType provider = "marker-persistence-test";
+        std::shared_ptr<Module> module;
+
+        ModuleObserver() {
+            const auto registrations = Registry::ListAvailableModules(
+                "signal_view", DeviceType::CPU, RuntimeType::NATIVE, "generic");
+            REQUIRE(registrations.size() == 1);
+            REQUIRE(Registry::RegisterModule("signal_view", DeviceType::CPU, RuntimeType::NATIVE,
+                provider, [this, factory = registrations.front().factory](const auto& environment, const auto& view) {
+                    module = factory(environment, view);
+                    return module;
+                }) == Result::SUCCESS);
+        }
+
+        ~ModuleObserver() {
+            CHECK(Registry::UnregisterModule("signal_view", DeviceType::CPU,
+                                              RuntimeType::NATIVE, provider) == Result::SUCCESS);
+        }
+    } observer;
+
+    TestFlowgraph::SyntheticSourceBlockConfig source;
+    source.bufferSize = 32;
+    REQUIRE(flowgraph->blockCreate("source", source, {}) == Result::SUCCESS);
+    TensorMap inputs;
+    inputs["signal"].requested("source", "signal");
+    REQUIRE(flowgraph->blockCreate("plot", type, {}, inputs, DeviceType::CPU,
+                                   RuntimeType::NATIVE, observer.provider) == Result::SUCCESS);
+    REQUIRE(viewBlock("plot").state == Block::State::Created);
+    REQUIRE(observer.module);
+    const auto original = observer.module;
+
+    LabelTestWindow window;
+    Render::Components::Axis::Config axisConfig;
+    axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
+    auto axis = std::make_shared<LabelTestAxis>(axisConfig);
+    REQUIRE(axis->create(&window) == Result::SUCCESS);
+    auto markerText = MakeMarkerText(axisConfig.font, window);
+    const auto wire = [&] {
+        auto* impl = observer.module->getImpl<Modules::SignalViewImpl>();
+        REQUIRE(impl);
+        SignalViewImplAccess::wirePresentResources(*impl, axis, {}, {}, markerText);
+    };
+    const auto present = [&] {
+        REQUIRE(observer.module->getImpl<Scheduler::Context>()->presentSubmit() == Result::SUCCESS);
+    };
+    const auto stored = [&](Flowgraph& graph) {
+        return std::any_cast<std::vector<F32>>(ViewBlock(graph, "plot").config.at("markers"));
+    };
+    wire();
+    present();
+    original->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Click, .button = MouseButton::Left,
+        .position = {0.5f + 0.25f * axis->paddingScale().x, 0.5f},
+        .modifiers = {.shift = true},
+    });
+    present();
+    present();
+    REQUIRE(markerText->get("marker-0-tag").fill == "M1");
+    REQUIRE(stored(*flowgraph).empty());
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    present();
+    REQUIRE(stored(*flowgraph) == std::vector<F32>{0.5f});
+
+    REQUIRE(flowgraph->blockRecreate("plot", viewBlock("plot").config) == Result::SUCCESS);
+    REQUIRE(observer.module != original);
+    wire();
+    present();
+    REQUIRE(markerText->get("marker-0-tag").fill == "M1");
+    REQUIRE(markerText->get("marker-0-x").fill == (type == "waterfall" ? "0.7500" : "0.5000"));
+
+    std::vector<char> blob;
+    REQUIRE(flowgraph->exportToBlob(blob) == Result::SUCCESS);
+    Flowgraph restored;
+    REQUIRE(restored.create({}, nullptr, nullptr, nullptr) == Result::SUCCESS);
+    REQUIRE(restored.importFromBlob(blob) == Result::SUCCESS);
+    REQUIRE(stored(restored) == std::vector<F32>{0.5f});
+    wire();
+    present();
+    REQUIRE(markerText->get("marker-0-tag").fill == "M1");
+    REQUIRE(markerText->get("marker-0-x").fill == (type == "waterfall" ? "0.7500" : "0.5000"));
+    REQUIRE(restored.destroy() == Result::SUCCESS);
+    REQUIRE(markerText->destroy(&window) == Result::SUCCESS);
+    REQUIRE(axis->destroy(&window) == Result::SUCCESS);
 }
 
 TEST_CASE("Cursor stays inside the zoomed plot and interpolates between sparse samples",
@@ -833,6 +1285,23 @@ TEST_CASE("Cursor stays inside the zoomed plot and interpolates between sparse s
     REQUIRE(cursor.plot.x == Catch::Approx(0.98f * padding.x));
     REQUIRE(cursorText->get("cursor-x").fill == "100.0980 MHz");
     REQUIRE(cursorText->get("cursor-y").fill == expectedAmplitude(0.098f));
+
+    // Narrow surfaces can have negative horizontal padding while the center
+    // still passes hit-testing. The cursor must stay centered after resizing.
+    module->surface()->pushSurfaceEvent({.type = SurfaceEventType::Resize,
+                                         .size = {64, 512},
+                                         .scale = 1.0f});
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Move, .position = {0.5f, 0.5f},
+    });
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(axis->paddingScale().x == Catch::Approx(-0.25f));
+    REQUIRE(cursor.visible);
+    REQUIRE(cursor.marker);
+    REQUIRE(cursor.plot.x == Catch::Approx(0.0f).margin(1e-5f));
+    REQUIRE(cursor.plot.y == Catch::Approx(0.0f).margin(1e-5f));
+    REQUIRE(cursorText->get("cursor-x").fill == "100.0000 MHz");
+    REQUIRE(cursorText->get("cursor-y").fill == "-50.0 dBFS");
 
     REQUIRE(cursorText->destroy(&window) == Result::SUCCESS);
     REQUIRE(text->destroy(&window) == Result::SUCCESS);
@@ -979,6 +1448,264 @@ TEST_CASE("Space holds displayed plots while processing continues and resumes at
     REQUIRE(axis->destroy(&window) == Result::SUCCESS);
     REQUIRE(runtime.destroy() == Result::SUCCESS);
     REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture, "Marker drags commit the release position with or without a preceding move",
+                 "[modules][signal_view][markers][release][config-edits][regression]") {
+    const bool moveBeforeRelease = GENERATE(false, true);
+    CAPTURE(moveBeforeRelease);
+    TestFlowgraph::SyntheticSourceBlockConfig source;
+    source.bufferSize = 32;
+    REQUIRE(flowgraph->blockCreate("source", source, {}) == Result::SUCCESS);
+    TensorMap inputs;
+    inputs["signal"].requested("source", "signal");
+    InteractiveSignalViewConfig config;
+    config.markers = {0.0f};
+    REQUIRE(flowgraph->blockCreate("plot", config, inputs) == Result::SUCCESS);
+    const auto module = interactiveSignalView;
+    auto* impl = module->getImpl<Modules::SignalViewImpl>();
+    REQUIRE(impl);
+    const auto& positions = impl->*SignalViewImplAccess::markerPositionsMember();
+    const auto& interaction = impl->*SignalViewImplAccess::interactionMember();
+    const auto& cursor = impl->*SignalViewImplAccess::cursorMember();
+
+    LabelTestWindow window;
+    Render::Components::Axis::Config axisConfig;
+    axisConfig.verticalScale = 0.5f;
+    axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
+    auto axis = std::make_shared<LabelTestAxis>(axisConfig);
+    REQUIRE(axis->create(&window) == Result::SUCCESS);
+    auto markerText = MakeMarkerText(axisConfig.font, window);
+    SignalViewImplAccess::wirePresentResources(*impl, axis, {}, {}, markerText);
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+    const auto present = [&] { REQUIRE(presenter->presentSubmit() == Result::SUCCESS); };
+    const auto pending = [&] {
+        return (impl->*SignalViewImplAccess::configChangePendingMember())();
+    };
+
+    module->surface()->pushSurfaceEvent({
+        .type = SurfaceEventType::Resize,
+        .size = {1000, 800},
+    });
+    present();
+    REQUIRE(positions == std::vector<F32>{0.0f});
+    const auto padding = axis->paddingScale();
+    const Extent2D<F32> origin = {0.5f, 0.25f};
+
+    // A release below the drag threshold must remain a click.
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Click, .button = MouseButton::Left, .position = origin,
+    });
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Release, .button = MouseButton::Left,
+        .position = {origin.x + 2.0f * interaction.scale / interaction.viewSize.x, origin.y},
+    });
+    present();
+    REQUIRE(positions == std::vector<F32>{0.0f});
+    REQUIRE_FALSE(pending());
+
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Click, .button = MouseButton::Left, .position = origin,
+    });
+    if (moveBeforeRelease) {
+        present();
+        module->surface()->pushInputEvent(MouseEvent{
+            .type = MouseEventType::Move,
+            .position = {origin.x + 0.125f * padding.x, origin.y},
+        });
+        present();
+        REQUIRE(positions[0] == Catch::Approx(0.25f));
+        REQUIRE_FALSE(pending());
+    }
+    const Extent2D<F32> release = {origin.x + 0.25f * padding.x, origin.y};
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Release, .button = MouseButton::Left, .position = release,
+    });
+    present();
+    REQUIRE(positions[0] == Catch::Approx(0.5f));
+    REQUIRE(cursor.position.x == Catch::Approx(release.x));
+    REQUIRE(pending());
+    REQUIRE_FALSE(interaction.dragging);
+    REQUIRE(interaction.zoom == Catch::Approx(1.0f));
+    REQUIRE(interaction.offset == Catch::Approx(0.0f));
+
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    present();
+    REQUIRE_FALSE(pending());
+    REQUIRE(interactiveSignalView == module);
+    const auto stored = std::any_cast<std::vector<F32>>(viewBlock("plot").config.at("markers"));
+    REQUIRE(stored.size() == 1);
+    REQUIRE(stored[0] == Catch::Approx(0.5f));
+
+    // Later motion must not continue a drag that has already been released.
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Move, .position = origin,
+    });
+    present();
+    REQUIRE(positions[0] == Catch::Approx(0.5f));
+    REQUIRE_FALSE(pending());
+
+    REQUIRE(markerText->destroy(&window) == Result::SUCCESS);
+    REQUIRE(axis->destroy(&window) == Result::SUCCESS);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture, "Signal View markers persist through the owning block and follow external edits",
+                 "[modules][signal_view][markers][config-edits]") {
+    TestFlowgraph::SyntheticSourceBlockConfig source;
+    source.bufferSize = 32;
+    REQUIRE(flowgraph->blockCreate("source", source, {}) == Result::SUCCESS);
+    TensorMap inputs;
+    inputs["signal"].requested("source", "signal");
+    REQUIRE(flowgraph->blockCreate("plot", InteractiveSignalViewConfig{}, inputs) == Result::SUCCESS);
+    const auto original = interactiveSignalView;
+    auto* impl = original->getImpl<Modules::SignalViewImpl>();
+    REQUIRE(impl);
+    const auto& cursor = impl->*SignalViewImplAccess::cursorMember();
+
+    LabelTestWindow window;
+    Render::Components::Axis::Config axisConfig;
+    axisConfig.verticalScale = 0.5f;
+    axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
+    auto axis = std::make_shared<LabelTestAxis>(axisConfig);
+    REQUIRE(axis->create(&window) == Result::SUCCESS);
+    Render::Components::Text::Config textConfig;
+    textConfig.font = axisConfig.font;
+    textConfig.maxCharacters = 64;
+    textConfig.elements = {{"header", {}}, {"zoom", {}}, {"hold", {}},
+                           {"amplitude-title", {}}, {"waterfall-title", {}}};
+    auto text = std::make_shared<LabelTestText>(textConfig);
+    REQUIRE(text->create(&window) == Result::SUCCESS);
+    auto markerText = MakeMarkerText(axisConfig.font, window);
+    SignalViewImplAccess::wirePresentResources(*impl, axis, text, {}, markerText);
+    auto* presenter = original->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+    const auto present = [&] {
+        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    };
+    const auto pending = [&] {
+        return (impl->*SignalViewImplAccess::configChangePendingMember())();
+    };
+    const auto storedMarkers = [&] {
+        return std::any_cast<std::vector<F32>>(viewBlock("plot").config.at("markers"));
+    };
+    const auto storedPins = [&] {
+        return std::any_cast<std::vector<U64>>(viewBlock("plot").config.at("pins"));
+    };
+    const auto spanLabel = [&](const U64 index) {
+        return markerText->get(jst::fmt::format("span-{}-label", index)).fill;
+    };
+
+    original->surface()->pushSurfaceEvent({
+        .type = SurfaceEventType::Resize,
+        .size = {1000, 800},
+    });
+    present();
+    REQUIRE(storedMarkers().empty());
+
+    original->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Move, .position = {0.5f, 0.25f},
+    });
+    present();
+    REQUIRE(cursor.visible);
+    original->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Click,
+        .button = MouseButton::Left,
+        .position = {0.5f, 0.25f},
+        .modifiers = {.shift = true},
+    });
+    present();
+    REQUIRE((impl->*SignalViewImplAccess::markerPositionsMember()) == std::vector<F32>{0.0f});
+    REQUIRE(pending());
+    REQUIRE(storedMarkers().empty());
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    present();
+    REQUIRE_FALSE(pending());
+    REQUIRE(interactiveSignalView == original);
+    REQUIRE(storedMarkers() == std::vector<F32>{0.0f});
+    REQUIRE(impl->markers == std::vector<F32>{0.0f});
+    REQUIRE((impl->*SignalViewImplAccess::markerPositionsMember()) == std::vector<F32>{0.0f});
+    REQUIRE(markerText->get("marker-0-tag").fill == "M1");
+
+    Parser::Map edit;
+    edit["markers"] = std::vector<F32>{-0.5f, 0.25f};
+    REQUIRE(flowgraph->blockReconfigure("plot", edit) == Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    present();
+    REQUIRE(interactiveSignalView == original);
+    REQUIRE((impl->*SignalViewImplAccess::markerPositionsMember()) == std::vector<F32>{-0.5f, 0.25f});
+    REQUIRE(markerText->get("marker-1-tag").fill == "M2");
+    REQUIRE(storedPins().empty());
+    REQUIRE(spanLabel(0) == " ");
+
+    const auto tag = markerText->get("marker-0-tag").position;
+    const Extent2D<F32> tagPosition = {(tag.x + 1.0f) * 0.5f, (1.0f - tag.y) * 0.5f};
+    original->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Click, .button = MouseButton::Left, .position = tagPosition,
+    });
+    original->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Release, .button = MouseButton::Left, .position = tagPosition,
+    });
+    original->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Move, .position = {0.5f, 0.75f},
+    });
+    present();
+    REQUIRE(pending());
+    REQUIRE(spanLabel(0) == "0.7500");
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    present();
+    REQUIRE_FALSE(pending());
+    REQUIRE(storedPins() == std::vector<U64>{0});
+    REQUIRE(impl->pins == std::vector<U64>{0});
+    REQUIRE(spanLabel(0) == "0.7500");
+
+    edit.clear();
+    edit["pins"] = std::vector<U64>{};
+    REQUIRE(flowgraph->blockReconfigure("plot", edit) == Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    present();
+    REQUIRE(spanLabel(0) == " ");
+
+    edit["pins"] = std::vector<U64>{1};
+    REQUIRE(flowgraph->blockReconfigure("plot", edit) == Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    present();
+    REQUIRE(spanLabel(0) == "0.7500");
+
+    original->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Escape, {}});
+    present();
+    REQUIRE(pending());
+    REQUIRE(spanLabel(0) == " ");
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    present();
+    REQUIRE_FALSE(pending());
+    REQUIRE(storedPins().empty());
+
+    edit["pins"] = std::vector<U64>{1};
+    REQUIRE(flowgraph->blockReconfigure("plot", edit) == Result::SUCCESS);
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    present();
+    REQUIRE(spanLabel(0) == "0.7500");
+
+    original->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Click,
+        .button = MouseButton::Right,
+        .position = {0.5f, 0.25f},
+        .modifiers = {.shift = true},
+    });
+    present();
+    REQUIRE((impl->*SignalViewImplAccess::markerPositionsMember()).empty());
+    REQUIRE(pending());
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+    present();
+    REQUIRE_FALSE(pending());
+    REQUIRE(storedMarkers().empty());
+    REQUIRE(storedPins().empty());
+    REQUIRE(markerText->get("marker-0-tag").fill == " ");
+
+    REQUIRE(markerText->destroy(&window) == Result::SUCCESS);
+    REQUIRE(text->destroy(&window) == Result::SUCCESS);
+    REQUIRE(axis->destroy(&window) == Result::SUCCESS);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture, "Signal View drag requests round trip through the owning block",
@@ -1223,6 +1950,24 @@ TEST_CASE("Signal View split reconfiguration preserves trace and waterfall histo
             REQUIRE(ReadWaterfallHistory(module).dirtyRows == history.dirtyRows);
             REQUIRE((impl->*SignalViewImplAccess::signalPointsMember()).id() == signalId);
             REQUIRE(impl->*SignalViewImplAccess::maxHoldWarmupBlocksMember() == warmup);
+
+            Parser::Map markerEdit;
+            markerEdit["markers"] = std::vector<F32>{-0.5f, 0.25f};
+            REQUIRE(module->reconfigure(markerEdit) == Result::SUCCESS);
+            REQUIRE(static_cast<const Modules::SignalView&>(module->config()).markers ==
+                    std::vector<F32>{-0.5f, 0.25f});
+            REQUIRE((impl->*SignalViewImplAccess::signalPointsMember()).id() == signalId);
+            REQUIRE(ReadSignalPoints(module) == trace);
+            for (const auto& invalid : {std::vector<F32>{2.0f},
+                                        std::vector<F32>{std::numeric_limits<F32>::quiet_NaN()},
+                                        std::vector<F32>(Modules::detail::MaxMarkers + 1, 0.0f)}) {
+                markerEdit["markers"] = invalid;
+                REQUIRE(module->reconfigure(markerEdit) == Result::ERROR);
+                REQUIRE(static_cast<const Modules::SignalView&>(module->config()).markers ==
+                        std::vector<F32>{-0.5f, 0.25f});
+            }
+            markerEdit["markers"] = std::vector<F32>{-0.5f, 0.25f};
+            REQUIRE(module->reconfigure(markerEdit) == Result::SUCCESS);
 
             for (const F32 invalid : {0.0f, 1.0f, std::numeric_limits<F32>::infinity(),
                                        std::numeric_limits<F32>::quiet_NaN()}) {

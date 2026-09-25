@@ -23,6 +23,7 @@ struct SurfaceView {
         F32 rounding = 0.0f;
         bool detachOverlay = false;
         std::function<U64()> onResolveTexture;
+        std::function<SurfaceCursor()> onResolveCursor;
         std::function<void(const SurfaceResize&)> onSize;
         std::function<void(InputEvent)> onInput;
         std::function<void()> onDetach;

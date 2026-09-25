@@ -65,8 +65,8 @@ mat4 createRotationMatrix(float angleDeg) {
     float s = sin(angleRad);
 
     return mat4(
-        c,  -s,  0.0, 0.0,
-        s,   c,  0.0, 0.0,
+        c,   s,  0.0, 0.0,
+        -s,  c,  0.0, 0.0,
         0.0, 0.0, 1.0, 0.0,
         0.0, 0.0, 0.0, 1.0
     );
@@ -117,9 +117,9 @@ void main() {
 
     mat4 rotation = createRotationMatrix(rotationDeg);
 
-    // Apply transformations: T * R * S * P (right-to-left)
-    // This applies: pixelScale, then scale, then rotation, then translation
-    transform = translation * rotation * scale * pixelScale;
+    // Apply transformations: T * P * R * S (right-to-left)
+    // This applies: scale, then rotation in pixel space, then pixelScale, then translation
+    transform = translation * pixelScale * rotation * scale;
 
     // Write output
     instances[i].transform = transform;
