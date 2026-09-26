@@ -3,6 +3,8 @@
 
 #include <memory>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <vector>
 
 #include "jetstream/types.hh"
@@ -32,6 +34,16 @@ class JETSTREAM_API Text : public Generic {
         ColorRGBA<F32> color = {1.0f, 1.0f, 1.0f, 1.0f};
         std::unordered_map<std::string, ElementConfig> elements;
         F32 sharpness = 0.5f;
+    };
+
+    struct Unicode {
+        static bool IsAscii(std::string_view text);
+        static U64 Decode(std::string_view text, U64 pos, U32& codepoint);
+        static std::string Encode(U32 codepoint);
+        static U64 PreviousCharacter(std::string_view text, U64 column);
+        static U64 NextCharacter(std::string_view text, U64 column);
+        static U64 Align(std::string_view text, U64 column);
+        static U64 Advance(std::string_view text, U64 pos, U64 count);
     };
 
     Text(const Config& config);

@@ -1,5 +1,6 @@
 #include <jetstream/render/sakura/components/retained/text_grid.hh>
 
+#include <jetstream/render/components/text.hh>
 #include <jetstream/render/sakura/clipboard.hh>
 #include <jetstream/render/sakura/components/retained/box.hh>
 #include <jetstream/render/sakura/components/retained/label.hh>
@@ -24,6 +25,8 @@
 namespace Jetstream::Sakura::Retained {
 
 namespace {
+
+using Unicode = Jetstream::Render::Components::Text::Unicode;
 
 constexpr F32 kReferenceFontSize = Typography::FontSize;
 constexpr F32 kStyleBackgroundPadRatio = 0.2f;
@@ -78,7 +81,8 @@ std::string JoinLines(const std::vector<std::string>& lines) {
 }
 
 bool IsWordChar(char character) {
-    return std::isalnum(static_cast<unsigned char>(character)) || character == '_';
+    return std::isalnum(static_cast<unsigned char>(character)) || character == '_' ||
+           static_cast<unsigned char>(character) >= 0x80;
 }
 
 bool IsBracketPair(char opening, char closing) {
@@ -112,15 +116,21 @@ std::vector<std::pair<U64, U64>> WrapSegments(std::string_view line, U64 cols, b
         segments.emplace_back(0, len);
         return segments;
     }
+    const auto advance = [&](U64 start) {
+        return Unicode::Advance(line, start, cols);
+    };
     if (!word) {
-        for (U64 start = 0; start < len; start += cols) {
-            segments.emplace_back(start, std::min(len, start + cols));
+        U64 start = 0;
+        while (start < len) {
+            const U64 end = advance(start);
+            segments.emplace_back(start, end);
+            start = end;
         }
         return segments;
     }
     U64 pos = 0;
     while (pos < len) {
-        const U64 limit = std::min(len, pos + cols);
+        const U64 limit = advance(pos);
         U64 end = limit;
         if (limit < len) {
             U64 brk = pos;
@@ -384,7 +394,7 @@ struct TextGrid::Impl {
             return 0.0f;
         }
         const U64 col = std::min<U64>(column, lines[lineIndex].size());
-        if (config.monospace) {
+        if (config.monospace && Unicode::IsAscii(lines[lineIndex])) {
             return static_cast<F32>(col) * characterAdvancePixels();
         }
         ensureLinePrefixes();
@@ -405,7 +415,7 @@ struct TextGrid::Impl {
             return 0;
         }
         const U64 len = lines[lineIndex].size();
-        if (config.monospace) {
+        if (config.monospace && Unicode::IsAscii(lines[lineIndex])) {
             const F32 advance = std::max(1.0f, characterAdvancePixels());
             const I64 col = static_cast<I64>(x / advance + 0.5f);
             return static_cast<U64>(std::clamp<I64>(col, 0, static_cast<I64>(len)));
@@ -502,6 +512,15 @@ struct TextGrid::Impl {
                 }
                 end = brk > pos ? brk : fitEnd;
             }
+            if (end < len) {
+                const U64 aligned = Unicode::Align(text, end);
+                if (aligned != end) {
+                    end = Unicode::PreviousCharacter(text, aligned);
+                }
+                if (end <= pos) {
+                    end = Unicode::NextCharacter(text, pos);
+                }
+            }
             segments.emplace_back(pos, end);
             pos = end;
         }
@@ -568,7 +587,7 @@ struct TextGrid::Impl {
 
     U64 rowLastColumn(const VisualRow& row) const {
         const bool wrapped = row.line < lines.size() && row.end < lines[row.line].size();
-        return wrapped && row.end > row.start ? row.end - 1 : row.end;
+        return wrapped && row.end > row.start ? Unicode::PreviousCharacter(lines[row.line], row.end) : row.end;
     }
 
     U64 visualRowForPosition(Position position) const {
@@ -763,6 +782,7 @@ struct TextGrid::Impl {
     void clampPosition(Position& position) const {
         position.line = std::min<U64>(position.line, lines.size() - 1);
         position.column = std::min<U64>(position.column, lines[position.line].size());
+        position.column = Unicode::Align(lines[position.line], position.column);
     }
 
     bool hasSelection() const { return selectionActive && !(selectionAnchor == cursor); }
@@ -859,7 +879,7 @@ struct TextGrid::Impl {
 
     Position previousCharacterPosition() const {
         if (cursor.column > 0) {
-            return {cursor.line, cursor.column - 1};
+            return {cursor.line, Unicode::PreviousCharacter(lines[cursor.line], cursor.column)};
         }
         if (cursor.line > 0) {
             return {cursor.line - 1, lines[cursor.line - 1].size()};
@@ -868,7 +888,7 @@ struct TextGrid::Impl {
     }
     Position nextCharacterPosition() const {
         if (cursor.column < lines[cursor.line].size()) {
-            return {cursor.line, cursor.column + 1};
+            return {cursor.line, Unicode::NextCharacter(lines[cursor.line], cursor.column)};
         }
         if (cursor.line + 1 < lines.size()) {
             return {cursor.line + 1, 0};
@@ -1129,8 +1149,9 @@ struct TextGrid::Impl {
                 line.erase(previousIndent, cursor.column - previousIndent);
                 cursor.column = previousIndent;
             } else {
-                line.erase(cursor.column - 1, pair ? 2 : 1);
-                cursor.column -= 1;
+                const U64 previous = Unicode::PreviousCharacter(line, cursor.column);
+                line.erase(previous, cursor.column - previous + (pair ? 1 : 0));
+                cursor.column = previous;
             }
         } else if (cursor.line > 0) {
             cursor.column = lines[cursor.line - 1].size();
@@ -1150,7 +1171,7 @@ struct TextGrid::Impl {
         }
         auto& line = lines[cursor.line];
         if (cursor.column < line.size()) {
-            line.erase(cursor.column, 1);
+            line.erase(cursor.column, Unicode::NextCharacter(line, cursor.column) - cursor.column);
         } else if (cursor.line + 1 < lines.size()) {
             line += lines[cursor.line + 1];
             lines.erase(lines.begin() + static_cast<I64>(cursor.line) + 1);
@@ -1636,6 +1657,8 @@ struct TextGrid::Impl {
                 for (const ImWchar character : io.InputQueueCharacters) {
                     if (character >= 32 && character < 127) {
                         insertTypedCharacter(static_cast<char>(character));
+                    } else if (character >= 0xA0) {
+                        insertText(Unicode::Encode(static_cast<U32>(character)));
                     }
                 }
             }
@@ -1792,11 +1815,19 @@ struct TextGrid::Impl {
             U64 segmentIndex = 0;
             while (startColumn < row.end && segmentIndex < maxSegments) {
                 const StyleId style = startColumn < lineStyles.size() ? lineStyles[startColumn] : 0;
+                const bool lastSegment = segmentIndex + 1 == maxSegments;
                 U64 endColumn = startColumn + 1;
                 while (endColumn < row.end &&
-                       (endColumn < lineStyles.size() ? lineStyles[endColumn] : 0) == style &&
+                       (lastSegment || (endColumn < lineStyles.size() ? lineStyles[endColumn] : 0) == style) &&
                        endColumn - startColumn < kTextSegmentCharacterCapacity) {
                     ++endColumn;
+                }
+                if (endColumn < row.end) {
+                    const U64 aligned = Unicode::Align(line, endColumn);
+                    if (aligned != endColumn) {
+                        const U64 previous = Unicode::PreviousCharacter(line, aligned);
+                        endColumn = previous > startColumn ? previous : aligned;
+                    }
                 }
                 const U64 slot = i * maxSegments + segmentIndex;
                 const F32 segX = lineLeft - currentScrollX + columnXInRow(row.line, row.start, startColumn);

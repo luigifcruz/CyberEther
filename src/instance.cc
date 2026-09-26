@@ -13,6 +13,7 @@
 #include "resources/fonts/compressed_jbmb.hh"
 #include "resources/fonts/compressed_sg.hh"
 #include "resources/fonts/compressed_inter.hh"
+#include "resources/fonts/compressed_fa.hh"
 
 #include <unordered_map>
 #include <chrono>
@@ -244,6 +245,18 @@ Result Instance::create(const Config& config) {
 
         JST_CHECK(impl->render->build(font, cfg));
         JST_CHECK(impl->render->addFont("default_display", font));
+    }
+
+    {
+        std::shared_ptr<Render::Components::Font> font;
+
+        Render::Components::Font::Config cfg;
+        cfg.data = fas_compressed_data;
+        cfg.size = 32.0f;
+        cfg.icons = true;
+
+        JST_CHECK(impl->render->build(font, cfg));
+        JST_CHECK(impl->render->addFont("default_icons", font));
     }
 
     {
