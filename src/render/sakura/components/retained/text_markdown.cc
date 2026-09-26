@@ -33,6 +33,7 @@ constexpr F32 kRuleRowScale = 0.5f;
 constexpr F32 kQuoteBarRatio = 0.18f;
 constexpr F32 kQuoteIndentEmRatio = 0.4f;
 constexpr F32 kScrollbarGutterFontRatio = 14.0f / 15.0f;
+constexpr F32 kPaddingFontRatio = 6.0f / 15.0f;
 constexpr F32 kBulletDotRatio = 0.22f;
 constexpr F32 kBulletGapEmRatio = 0.75f;
 constexpr F32 kMarkerGapEmRatio = 0.45f;
@@ -256,6 +257,7 @@ struct BlockScanner {
     std::vector<Block> blocks;
     bool prevHeading = false;
     bool prevList = false;
+    bool prevCode = false;
     U64 index = 0;
 
     BlockScanner(const std::vector<std::string>& source, F32 body)
@@ -280,7 +282,20 @@ struct BlockScanner {
         return blocks.empty() ? 0.0f : lineHeight * (prevHeading ? kAfterHeadingGapRatio : ratio);
     }
 
+    F32 boxPad(Block::Kind kind) const {
+        return kind == Block::Kind::Code ? body * kCodePadRatio : 0.0f;
+    }
+
+    F32 padBelowPrevious() const {
+        return prevCode ? boxPad(Block::Kind::Code) : 0.0f;
+    }
+
+    F32 topGapFor(Block::Kind kind, F32 rowGap) const {
+        return rowGap + padBelowPrevious() + boxPad(kind);
+    }
+
     void emit(Block block, bool heading = false, bool list = false) {
+        prevCode = block.kind == Block::Kind::Code;
         blocks.push_back(std::move(block));
         prevHeading = heading;
         prevList = list;
@@ -303,7 +318,7 @@ struct BlockScanner {
         block.kind = Block::Kind::Code;
         block.text = JoinLines(code);
         block.fontSize = body;
-        block.topGap = gapAbove(kParagraphGapRatio);
+        block.topGap = topGapFor(block.kind, gapAbove(kParagraphGapRatio));
         block.baseStyle = Style::CodeBlock;
         emit(std::move(block));
         return true;
@@ -316,7 +331,7 @@ struct BlockScanner {
         Block block;
         block.kind = Block::Kind::Rule;
         block.fontSize = body;
-        block.topGap = gapAbove(kParagraphGapRatio);
+        block.topGap = topGapFor(block.kind, gapAbove(kParagraphGapRatio));
         emit(std::move(block));
         ++index;
         return true;
@@ -332,7 +347,7 @@ struct BlockScanner {
         block.kind = Block::Kind::Heading;
         block.text = line.substr(level + 1);
         block.fontSize = body * Typography::HeadingScale[scale - 1];
-        block.topGap = gapAbove(kHeadingGapRatio);
+        block.topGap = topGapFor(block.kind, gapAbove(kHeadingGapRatio));
         block.baseStyle = Style::Bold;
         emit(std::move(block), true);
         ++index;
@@ -356,7 +371,7 @@ struct BlockScanner {
         block.kind = Block::Kind::Quote;
         block.text = JoinLines(quote);
         block.fontSize = body;
-        block.topGap = gapAbove(kParagraphGapRatio);
+        block.topGap = topGapFor(block.kind, gapAbove(kParagraphGapRatio));
         block.indent = body * kQuoteIndentEmRatio;
         emit(std::move(block));
         return true;
@@ -372,9 +387,9 @@ struct BlockScanner {
         block.kind = Block::Kind::ListItem;
         block.text = line.substr(contentStart);
         block.fontSize = body;
-        block.topGap = lineHeight * (prevList ? kListGapRatio
-                                   : prevHeading ? kAfterHeadingGapRatio
-                                                 : kParagraphGapRatio);
+        block.topGap = topGapFor(block.kind, lineHeight * (prevList ? kListGapRatio
+                                                         : prevHeading ? kAfterHeadingGapRatio
+                                                                       : kParagraphGapRatio));
         block.indent = indentUnit * static_cast<F32>(LeadingSpaces(line) / 2 + 1);
         block.marker = std::move(marker);
         emit(std::move(block), false, true);
@@ -396,7 +411,7 @@ struct BlockScanner {
         block.kind = Block::Kind::Paragraph;
         block.text = JoinLines(paragraph);
         block.fontSize = body;
-        block.topGap = gapAbove(kParagraphGapRatio);
+        block.topGap = topGapFor(block.kind, gapAbove(kParagraphGapRatio));
         emit(std::move(block));
     }
 };
@@ -409,6 +424,7 @@ struct Document {
     std::vector<std::vector<LinkSpan>> links;
     std::vector<Deco> decos;
     std::string plainValue;
+    F32 trailingPad = 0.0f;
 
     F32 scaleAt(U64 line) const {
         return line < lineScale.size() ? lineScale[line] : 1.0f;
@@ -444,6 +460,9 @@ struct DocumentBuilder {
         }
         if (lines.empty()) {
             addLine("", 1.0f, 0.0f, 0.0f, {}, {});
+        }
+        if (!blocks.empty() && blocks.back().kind == Block::Kind::Code) {
+            document.trailingPad = body * kCodePadRatio;
         }
         document.plainValue = JoinLines(lines);
         return std::move(document);
@@ -555,6 +574,13 @@ struct TextMarkdown::Impl {
         return config.fontSize * document.scaleAt(line) * kLineHeightRatio;
     }
 
+    Padding gridPadding() const {
+        const F32 horizontal = config.fontSize * kPaddingFontRatio;
+        Padding padding = config.padding.value_or(Padding{horizontal, 0.0f, horizontal, 0.0f});
+        padding.bottom += document.trailingPad;
+        return padding;
+    }
+
     TextGrid::Config buildGridConfig() {
         return {
             .id = config.id + ":grid",
@@ -567,7 +593,7 @@ struct TextMarkdown::Impl {
             .showActiveLine = false,
             .scrollbar = config.scrollbar,
             .wrap = TextGrid::Wrap::Word,
-            .padding = config.padding,
+            .padding = gridPadding(),
             .lineScale = document.lineScale,
             .lineTopGap = document.lineTopGap,
             .lineIndent = document.lineIndent,
