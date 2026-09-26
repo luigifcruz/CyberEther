@@ -49,6 +49,7 @@ core_test_domains = {
         'sakura/superluminal_surface.cc',
         'sakura/text_grid.cc',
         'sakura/vstack.cc',
+        'sakura/workspace_background.cc',
     ],
     'runtime': [
         'runtime/scheduler.cc',

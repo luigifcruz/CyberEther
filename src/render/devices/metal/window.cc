@@ -149,9 +149,12 @@ Result Implementation::beginImgui() {
 }
 
 Result Implementation::endImgui() {
+    prepareImgui();
+    const auto& background = frameClearColor();
+    renderPassDescriptor->colorAttachments()->object(0)->setClearColor(
+        MTL::ClearColor(background.r, background.g, background.b, background.a));
     auto renderCmdEncoder = commandBuffer->renderCommandEncoder(renderPassDescriptor);
 
-    ImGui::Render();
     ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(),
         commandBuffer, renderCmdEncoder);
 
