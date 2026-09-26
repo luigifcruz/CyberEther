@@ -164,3 +164,58 @@ TEST_CASE("Vertical cursor moves forget their pixel column when metrics change",
     host.grid.moveCursorRows(1);
     CHECK(host.grid.cursor() == TextGrid::Position{1, 6});
 }
+
+TEST_CASE("Monospace wrapping counts characters rather than bytes",
+          "[core][sakura][text-grid][wrap]") {
+    using TextGrid = Sakura::Retained::TextGrid;
+    const auto wrap = GENERATE(TextGrid::Wrap::Character, TextGrid::Wrap::Word);
+    const Sakura::Context ctx;
+    MeasuredTextGrid ascii;
+    MeasuredTextGrid accented;
+    TextGrid::Config config{
+        .id = "wrap-bytes",
+        .value = "eeee eeee",
+        .fontSize = 15.0f,
+        .wrap = wrap,
+        .padding = Sakura::Padding{0.0f, 0.0f, 0.0f, 0.0f},
+    };
+    ascii.update(config);
+    config.value = "\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9 \xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9";
+    accented.update(config);
+
+    for (F32 width = 20.0f; width <= 200.0f; width += 5.0f) {
+        CAPTURE(wrap, width);
+        CHECK(accented.measure(ctx, {width, 600.0f}).y ==
+              Catch::Approx(ascii.measure(ctx, {width, 600.0f}).y));
+    }
+}
+
+TEST_CASE("Vertical cursor moves climb wrapped rows ending in multibyte characters",
+          "[core][sakura][text-grid][cursor]") {
+    using TextGrid = Sakura::Retained::TextGrid;
+    const ImGuiContextGuard imguiContext;
+    const Sakura::Context ctx;
+    TextGridHost host;
+    std::string value;
+    for (U64 i = 0; i < 40; ++i) {
+        value += "\xC3\xA9";
+    }
+    value += "\neeeeeeeeee";
+    host.grid.update({
+        .id = "wrapped-multibyte",
+        .value = value,
+        .editable = true,
+        .fontSize = 15.0f,
+        .scrollbar = false,
+        .wrap = TextGrid::Wrap::Character,
+        .padding = Sakura::Padding{0.0f, 0.0f, 0.0f, 0.0f},
+    });
+    host.place(ctx, {0.0f, 0.0f, 75.0f, 400.0f});
+
+    host.grid.setCursor({1, 10});
+    host.grid.moveCursorRows(-1);
+    REQUIRE(host.grid.cursor() == TextGrid::Position{0, 80});
+
+    host.grid.moveCursorRows(-1);
+    CHECK(host.grid.cursor() == TextGrid::Position{0, 58});
+}

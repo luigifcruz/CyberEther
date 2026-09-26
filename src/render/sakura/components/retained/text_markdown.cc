@@ -505,7 +505,7 @@ struct TextMarkdown::Impl {
             .styleFonts = config.styleFonts,
             .styleBackgroundColorKeys = config.styleBackgroundColorKeys,
             .styleScales = config.styleScales,
-            .maxLineSegments = 16,
+            .maxLineSegments = 32,
             .styleRevision = styleRevision,
             .styler = [this](const std::vector<std::string>&, U64)
                           -> const std::vector<std::vector<StyleId>>& {

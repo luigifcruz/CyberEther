@@ -73,6 +73,7 @@ struct TextGrid : public Component {
         std::vector<std::string> styleFonts;
         std::vector<std::string> styleBackgroundColorKeys;
         std::vector<F32> styleScales;
+        std::string iconFont = Typography::IconFont;
         U64 maxLineSegments = 64;
         U64 styleRevision = 0;
         bool submitOnEnter = false;

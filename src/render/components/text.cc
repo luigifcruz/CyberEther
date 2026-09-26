@@ -31,12 +31,13 @@ struct Text::Impl {
         if (!font) {
             return result;
         }
-        for (U64 i = 0; i < fill.size(); ++i) {
-            const char c = fill[i];
-            if (c < 32 || c >= 127) {
-                continue;
+        for (U64 i = 0; i < fill.size();) {
+            U32 codepoint = 0;
+            const U64 length = Unicode::Decode(fill, i, codepoint);
+            if (codepoint >= 32) {
+                result[i] = std::round(font->glyph(static_cast<I32>(codepoint)).xAdvance * scale);
             }
-            result[i] = std::round(font->glyph(c - 32).xAdvance * scale);
+            i += length;
         }
         return result;
     }
@@ -535,8 +536,10 @@ Result Text::Impl::updateElementVertex(Element& element) {
     }
 
     U64 renderableCharacterCount = 0;
-    for (const auto c : element.config.fill) {
-        if (c >= 32 && c < 127 && c != ' ') {
+    for (U64 i = 0; i < element.config.fill.size();) {
+        U32 codepoint = 0;
+        i += Unicode::Decode(element.config.fill, i, codepoint);
+        if (codepoint >= 32 && codepoint != ' ') {
             ++renderableCharacterCount;
         }
     }
@@ -571,25 +574,28 @@ Result Text::Impl::updateElementVertex(Element& element) {
     F32 y = 0.0f;
 
     for (U64 i = 0; i < element.config.fill.size(); ++i) {
-        const char c = element.config.fill[i];
-        if (c == '\n') {
+        U32 codepoint = 0;
+        const U64 length = Unicode::Decode(element.config.fill, i, codepoint);
+        const F32 advance = perGlyph[i];
+        i += length - 1;
+
+        if (codepoint == '\n') {
             ++lineIndex;
             x = std::round((blockWidth - lineWidths[lineIndex]) * 0.5f);
             y -= lineHeight;
             continue;
         }
 
-        if (c < 32 || c >= 127) {
+        if (codepoint < 32) {
             continue;
         }
 
-        const auto& b = font.glyph(c - 32);
-        const F32 advance = perGlyph[i];
-
-        if (c == ' ') {
+        if (codepoint == ' ') {
             x += advance;
             continue;
         }
+
+        const auto& b = font.glyph(static_cast<I32>(codepoint));
 
         const F32 x0 = x + static_cast<F32>(b.xOffset) * scale;
         const F32 y0 = y - ascent - static_cast<F32>(b.yOffset) * scale;
@@ -656,6 +662,120 @@ Result Text::present() {
     }
 
     return Result::SUCCESS;
+}
+
+U64 Text::Unicode::Decode(std::string_view text, U64 pos, U32& codepoint) {
+    const U8 lead = static_cast<U8>(text[pos]);
+    U64 length = 1;
+    if (lead < 0x80) {
+        codepoint = lead;
+        return 1;
+    } else if ((lead & 0xE0) == 0xC0) {
+        codepoint = lead & 0x1F;
+        length = 2;
+    } else if ((lead & 0xF0) == 0xE0) {
+        codepoint = lead & 0x0F;
+        length = 3;
+    } else if ((lead & 0xF8) == 0xF0) {
+        codepoint = lead & 0x07;
+        length = 4;
+    } else {
+        codepoint = 0xFFFD;
+        return 1;
+    }
+    if (pos + length > text.size()) {
+        codepoint = 0xFFFD;
+        return 1;
+    }
+    for (U64 i = 1; i < length; ++i) {
+        const U8 byte = static_cast<U8>(text[pos + i]);
+        if ((byte & 0xC0) != 0x80) {
+            codepoint = 0xFFFD;
+            return 1;
+        }
+        codepoint = (codepoint << 6) | (byte & 0x3F);
+    }
+    static constexpr U32 kMinimum[] = {0, 0, 0x80, 0x800, 0x10000};
+    const bool overlong = codepoint < kMinimum[length];
+    const bool surrogate = codepoint >= 0xD800 && codepoint <= 0xDFFF;
+    if (overlong || surrogate || codepoint > 0x10FFFF) {
+        codepoint = 0xFFFD;
+        return 1;
+    }
+    return length;
+}
+
+bool Text::Unicode::IsAscii(std::string_view text) {
+    for (const char c : text) {
+        if (static_cast<U8>(c) >= 0x80) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::string Text::Unicode::Encode(U32 codepoint) {
+    std::string out;
+    if (codepoint < 0x80) {
+        out.push_back(static_cast<char>(codepoint));
+    } else if (codepoint < 0x800) {
+        out.push_back(static_cast<char>(0xC0 | (codepoint >> 6)));
+        out.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+    } else if (codepoint < 0x10000) {
+        out.push_back(static_cast<char>(0xE0 | (codepoint >> 12)));
+        out.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+    } else {
+        out.push_back(static_cast<char>(0xF0 | (codepoint >> 18)));
+        out.push_back(static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+    }
+    return out;
+}
+
+U64 Text::Unicode::PreviousCharacter(std::string_view text, U64 column) {
+    if (column == 0 || text.empty()) {
+        return 0;
+    }
+    column = std::min<U64>(column, text.size());
+    for (U64 c = column > 4 ? column - 4 : 0; c < column; ++c) {
+        U32 codepoint = 0;
+        if (c + Decode(text, c, codepoint) == column) {
+            return c;
+        }
+    }
+    return column - 1;
+}
+
+U64 Text::Unicode::NextCharacter(std::string_view text, U64 column) {
+    if (column >= text.size()) {
+        return text.size();
+    }
+    U32 codepoint = 0;
+    return column + Decode(text, column, codepoint);
+}
+
+U64 Text::Unicode::Align(std::string_view text, U64 column) {
+    if (column >= text.size()) {
+        return column;
+    }
+    for (U64 c = column > 3 ? column - 3 : 0; c < column; ++c) {
+        U32 codepoint = 0;
+        const U64 end = c + Decode(text, c, codepoint);
+        if (end > column) {
+            return end;
+        }
+    }
+    return column;
+}
+
+U64 Text::Unicode::Advance(std::string_view text, U64 pos, U64 count) {
+    U64 end = pos;
+    for (U64 i = 0; i < count && end < text.size(); ++i) {
+        end = NextCharacter(text, end);
+    }
+    return end;
 }
 
 }  // namespace Jetstream::Render::Components
