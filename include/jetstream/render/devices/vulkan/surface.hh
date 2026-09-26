@@ -18,7 +18,7 @@ class JETSTREAM_API SurfaceImp<DeviceType::Vulkan> : public Surface {
 
  protected:
     Result prepare();
-    Result encode(VkCommandBuffer& commandBuffer);
+    Result encode(VkCommandBuffer& commandBuffer, bool visible = true);
     void commit();
 
  private:
@@ -28,6 +28,8 @@ class JETSTREAM_API SurfaceImp<DeviceType::Vulkan> : public Surface {
     VkRenderPass renderPass;
     Extent2D<U64> requestedSize;
     bool framebufferChanged = false;
+    bool imageInitialized = false;
+    bool graphicsSkipped = false;
 
     std::vector<std::shared_ptr<ProgramImp<DeviceType::Vulkan>>> programs;
     std::vector<std::shared_ptr<KernelImp<DeviceType::Vulkan>>> kernels;

@@ -110,8 +110,15 @@ void SurfaceView::render(const Context& ctx) const {
     const ImVec2 surfaceSize = Private::ToImVec2(displaySize);
     const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
     const ImVec2 cursorEnd(cursorPos.x + surfaceSize.x, cursorPos.y + surfaceSize.y);
+    auto* drawList = ImGui::GetWindowDrawList();
+    ImRect imageRect(cursorPos, cursorEnd);
+    imageRect.Expand(drawList->_FringeScale);
+    const bool visible = imageRect.Overlaps(ImRect(drawList->GetClipRectMin(), drawList->GetClipRectMax()));
+    if (config.textureSource && config.textureSource->raw() == texture) {
+        config.textureSource->presentationHint(frame, visible);
+    }
     const F32 rounding = config.rounding <= 0.0f ? ImGui::GetStyle().FrameRounding : config.rounding;
-    ImGui::GetWindowDrawList()->AddImageRounded(textureRef,
+    if (visible) drawList->AddImageRounded(textureRef,
                                                 cursorPos,
                                                 cursorEnd,
                                                 ImVec2(0.0f, 0.0f),

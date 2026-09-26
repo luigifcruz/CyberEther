@@ -15,6 +15,56 @@ using namespace Jetstream;
 
 using SakuraTest::ResizeLog;
 
+TEST_CASE("SurfaceView visibility follows the displayed texture and draw clip",
+          "[core][sakura][surface_view][visibility]") {
+    class Texture final : public Render::Texture {
+     public:
+        Texture() : Render::Texture(Config{.size = {200, 100}}) {}
+        Result create() override { return Result::SUCCESS; }
+        Result destroy() override { return Result::SUCCESS; }
+        uint64_t raw() const override { return 123; }
+    };
+    SakuraTest::HeadlessUi ui;
+    auto texture = std::make_shared<Texture>();
+    Sakura::SurfaceView surface;
+    Sakura::SurfaceView::Config config{.id = "clipped", .textureSource = texture, .size = {200, 100}};
+    bool visible = false;
+    bool secondView = false;
+    bool customClip = false;
+    bool differentTexture = false;
+    SECTION("A fully clipped image emits no geometry") {}
+    SECTION("A second visible view keeps the texture visible") { secondView = true; }
+    SECTION("An expanded draw clip preserves off-window images") { customClip = visible = true; }
+    SECTION("A reduced draw clip suppresses an on-window image") { customClip = true; }
+    SECTION("An overridden texture does not hide its unused textureSource") {
+        config.onResolveTexture = [] { return U64(456); };
+        differentTexture = true;
+    }
+    surface.update(config);
+    ui.frame([&] {
+        const auto frame = ImGui::GetFrameCount();
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        auto* list = ImGui::GetWindowDrawList();
+        const int indices = list->IdxBuffer.Size;
+        if (customClip) {
+            list->PushClipRect(visible ? ImVec2(0, 0) : ImVec2(1000, 1000),
+                               visible ? ImVec2(20000, 20000) : ImVec2(1100, 1100), false);
+        }
+        if (!customClip || visible) ImGui::SetCursorScreenPos({10000, 10000});
+        surface.render(ui.sakura());
+        REQUIRE(texture->visibleForPresentation(frame) == (visible || differentTexture));
+        REQUIRE((list->IdxBuffer.Size > indices) == visible);
+        if (customClip) list->PopClipRect();
+        ImGui::SetCursorScreenPos(origin);
+        if (secondView) {
+            surface.render(ui.sakura());
+            REQUIRE(texture->visibleForPresentation(frame));
+            REQUIRE(list->IdxBuffer.Size > indices);
+        }
+        REQUIRE(texture->visibleForPresentation(frame + 1));
+    });
+}
+
 TEST_CASE("SurfaceView falls back to the available region when size is zero",
           "[core][sakura][surface_view]") {
     SakuraTest::HeadlessUi ui;

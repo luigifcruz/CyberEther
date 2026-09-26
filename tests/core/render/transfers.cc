@@ -1123,6 +1123,20 @@ TEST_CASE("Window clear colors expire at the next frame", "[core][render][window
     REQUIRE(window.destroy() == Result::SUCCESS);
 }
 
+TEST_CASE("Surface visibility hints combine views and expire each frame", "[core][render][surface]") {
+    TestTexture texture(Render::Texture::Config{.size = {2, 2}});
+    REQUIRE(texture.visibleForPresentation(1));
+    texture.presentationHint(1, false);
+    REQUIRE_FALSE(texture.visibleForPresentation(1));
+    texture.presentationHint(1, true);
+    texture.presentationHint(1, false);
+    REQUIRE(texture.visibleForPresentation(1));
+    REQUIRE(texture.visibleForPresentation(2));
+    texture.presentationHint(2, false);
+    REQUIRE_FALSE(texture.visibleForPresentation(2));
+    REQUIRE(texture.visibleForPresentation(3));
+}
+
 TEST_CASE("Surfaces collect their complete transfer dependency graph",
           "[core][render][transfer][surface]") {
     TestWindow window;

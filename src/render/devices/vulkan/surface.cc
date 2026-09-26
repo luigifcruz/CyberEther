@@ -143,6 +143,7 @@ Result Implementation::create() {
     });
 
     requestedSize = framebufferResolve->size();
+    imageInitialized = false;
 
     return Result::SUCCESS;
 }
@@ -191,7 +192,8 @@ Result Implementation::prepare() {
     return Result::SUCCESS;
 }
 
-Result Implementation::encode(VkCommandBuffer& commandBuffer) {
+Result Implementation::encode(VkCommandBuffer& commandBuffer, bool visible) {
+    graphicsSkipped = false;
     if (!shouldDraw(framebufferChanged)) {
         return Result::SUCCESS;
     }
@@ -226,6 +228,11 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
     }
 
     // Begin render pass.
+
+    if (!visible && imageInitialized) {
+        graphicsSkipped = true;
+        return Result::SUCCESS;
+    }
 
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -273,6 +280,11 @@ void Implementation::commit() {
         framebuffer->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
     commitDraw();
+    if (graphicsSkipped) {
+        invalidate();
+    } else {
+        imageInitialized = true;
+    }
 }
 
 const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) {
