@@ -331,6 +331,20 @@ struct TextGrid::Impl {
         return true;
     }
 
+    mutable std::vector<U8> lineAsciiCache;
+    mutable U64 lineAsciiRevision = static_cast<U64>(-1);
+
+    bool lineIsAscii(U64 lineIndex) const {
+        if (lineAsciiRevision != contentRevision || lineAsciiCache.size() != lines.size()) {
+            lineAsciiCache.resize(lines.size());
+            for (U64 i = 0; i < lines.size(); ++i) {
+                lineAsciiCache[i] = Unicode::IsAscii(lines[i]) ? 1 : 0;
+            }
+            lineAsciiRevision = contentRevision;
+        }
+        return lineAsciiCache[lineIndex] != 0;
+    }
+
     mutable std::vector<std::vector<F32>> linePrefixes;
     mutable bool linePrefixesValid = false;
     mutable U64 linePrefixesRevision = static_cast<U64>(-1);
@@ -355,7 +369,7 @@ struct TextGrid::Impl {
             auto& prefix = linePrefixes[i];
             prefix.resize(line.size() + 1, 0.0f);
             const F32 lineSize = lineGlyphSize(i);
-            if (!multiFont) {
+            if (!multiFont && !lineHasIcons(line)) {
                 const auto adv = textMetrics.advances(config.fontName, line, lineSize);
                 for (U64 c = 0; c < line.size(); ++c) {
                     prefix[c + 1] = prefix[c] + (c < adv.size() ? adv[c] : 0.0f);
@@ -366,18 +380,17 @@ struct TextGrid::Impl {
             U64 c = 0;
             while (c < line.size()) {
                 const StyleId style = c < lineStyles.size() ? lineStyles[c] : 0;
-                const std::string font = fontForStyle(style);
+                bool icon = false;
+                const U64 e = runEnd(line, lineStyles, c, line.size(), icon);
+                const std::string font = fontForRun(style, icon);
                 const F32 glyphSize = lineSize * scaleForStyle(style);
-                U64 e = c + 1;
-                while (e < line.size() && (e < lineStyles.size() ? lineStyles[e] : 0) == style) {
-                    ++e;
-                }
-                const auto adv = textMetrics.advances(font.empty() ? config.fontName : font,
-                                                      line.substr(c, e - c), glyphSize);
+                const auto adv = textMetrics.advances(font, line.substr(c, e - c), glyphSize);
                 const F32 pad = stylePaddingPixels(style, glyphSize);
+                const bool spanStart = c == 0 || (c - 1 < lineStyles.size() ? lineStyles[c - 1] : 0) != style;
+                const bool spanEnd = e >= line.size() || (e < lineStyles.size() ? lineStyles[e] : 0) != style;
                 for (U64 k = c; k < e; ++k) {
                     prefix[k + 1] = prefix[k] + (k - c < adv.size() ? adv[k - c] : 0.0f) +
-                                    (k == c ? pad : 0.0f) + (k + 1 == e ? pad : 0.0f);
+                                    (k == c && spanStart ? pad : 0.0f) + (k + 1 == e && spanEnd ? pad : 0.0f);
                 }
                 c = e;
             }
@@ -394,7 +407,7 @@ struct TextGrid::Impl {
             return 0.0f;
         }
         const U64 col = std::min<U64>(column, lines[lineIndex].size());
-        if (config.monospace && Unicode::IsAscii(lines[lineIndex])) {
+        if (config.monospace && lineIsAscii(lineIndex)) {
             return static_cast<F32>(col) * characterAdvancePixels();
         }
         ensureLinePrefixes();
@@ -415,7 +428,7 @@ struct TextGrid::Impl {
             return 0;
         }
         const U64 len = lines[lineIndex].size();
-        if (config.monospace && Unicode::IsAscii(lines[lineIndex])) {
+        if (config.monospace && lineIsAscii(lineIndex)) {
             const F32 advance = std::max(1.0f, characterAdvancePixels());
             const I64 col = static_cast<I64>(x / advance + 0.5f);
             return static_cast<U64>(std::clamp<I64>(col, 0, static_cast<I64>(len)));
@@ -474,6 +487,7 @@ struct TextGrid::Impl {
     mutable U64 visualRowsRevision = 0;
     mutable Wrap visualRowsWrap = Wrap::None;
     mutable U64 visualRowsWrapColumns = 0;
+    mutable F32 visualRowsWrapWidth = -1.0f;
 
     U64 wrapColumns() const {
         if (config.wrap == Wrap::None) {
@@ -532,8 +546,10 @@ struct TextGrid::Impl {
 
     void ensureVisualRows() const {
         const U64 wrapCols = wrapColumns();
+        const F32 wrapWidth = config.wrap == Wrap::None ? 0.0f : textViewportWidthPixels();
         if (visualRowsValid && visualRowsRevision == contentRevision &&
-            visualRowsWrap == config.wrap && visualRowsWrapColumns == wrapCols) {
+            visualRowsWrap == config.wrap && visualRowsWrapColumns == wrapCols &&
+            visualRowsWrapWidth == wrapWidth) {
             return;
         }
         visualRows.clear();
@@ -555,7 +571,7 @@ struct TextGrid::Impl {
             };
             if (config.wrap == Wrap::None) {
                 push(0, len);
-            } else if (config.monospace) {
+            } else if (config.monospace && !lineHasIcons(text)) {
                 for (const auto& [start, end] : WrapSegments(text, wrapCols, config.wrap == Wrap::Word)) {
                     push(start, end);
                 }
@@ -577,6 +593,7 @@ struct TextGrid::Impl {
             visualRowsRevision = contentRevision;
             visualRowsWrap = config.wrap;
             visualRowsWrapColumns = wrapCols;
+            visualRowsWrapWidth = wrapWidth;
         }
     }
 
@@ -720,6 +737,68 @@ struct TextGrid::Impl {
         return !config.monospace && static_cast<bool>(config.styler);
     }
 
+    static bool IsIconCodepoint(U32 codepoint) {
+        return codepoint >= 0xE000 && codepoint <= 0xF8FF;
+    }
+
+    bool iconsActive() const {
+        return !config.iconFont.empty() && config.iconFont != config.fontName;
+    }
+
+    bool contentHasIcons = false;
+
+    void refreshContentIcons() {
+        contentHasIcons = false;
+        for (const auto& line : lines) {
+            if (lineHasIcons(line)) {
+                contentHasIcons = true;
+                return;
+            }
+        }
+    }
+
+    bool lineHasIcons(const std::string& line) const {
+        if (!iconsActive() || Unicode::IsAscii(line)) {
+            return false;
+        }
+        for (U64 i = 0; i < line.size();) {
+            U32 codepoint = 0;
+            i += Unicode::Decode(line, i, codepoint);
+            if (IsIconCodepoint(codepoint)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    std::string fontForRun(StyleId id, bool icon) const {
+        return icon ? config.iconFont : fontForStyle(id);
+    }
+
+    U64 runEnd(const std::string& line, const std::vector<StyleId>& lineStyles,
+               U64 start, U64 limit, bool& icon, bool fontBoundariesOnly = false) const {
+        const auto styleAt = [&](U64 column) {
+            return column < lineStyles.size() ? lineStyles[column] : 0;
+        };
+        const StyleId style = styleAt(start);
+        U32 codepoint = 0;
+        U64 pos = start + Unicode::Decode(line, start, codepoint);
+        icon = iconsActive() && IsIconCodepoint(codepoint);
+        const std::string font = fontForRun(style, icon);
+        while (pos < limit) {
+            const U64 length = Unicode::Decode(line, pos, codepoint);
+            const bool iconAt = iconsActive() && IsIconCodepoint(codepoint);
+            const bool boundary = fontBoundariesOnly
+                ? fontForRun(styleAt(pos), iconAt) != font
+                : styleAt(pos) != style || iconAt != icon;
+            if (boundary) {
+                break;
+            }
+            pos += length;
+        }
+        return std::min(pos, limit);
+    }
+
     bool styleHasBackground(StyleId id) const {
         return id != 0 && id <= config.styleBackgroundColorKeys.size() &&
                !config.styleBackgroundColorKeys[id - 1].empty();
@@ -746,7 +825,11 @@ struct TextGrid::Impl {
 
     void ensureFontPools() {
         std::vector<std::string> wanted;
-        for (const auto& font : config.styleFonts) {
+        auto fonts = config.styleFonts;
+        if (contentHasIcons) {
+            fonts.push_back(config.iconFont);
+        }
+        for (const auto& font : fonts) {
             if (font.empty() || font == config.fontName) {
                 continue;
             }
@@ -1046,6 +1129,8 @@ struct TextGrid::Impl {
     }
     void commitEdit() {
         ++contentRevision;
+        refreshContentIcons();
+        ensureFontPools();
         clampPosition(cursor);
         clampPosition(selectionAnchor);
         preferredX.reset();
@@ -1342,6 +1427,8 @@ struct TextGrid::Impl {
         restoreSnapshot(undoStack.back());
         undoStack.pop_back();
         ++contentRevision;
+        refreshContentIcons();
+        ensureFontPools();
         ensureCursorVisible();
         resetBlink();
         configureScrollView();
@@ -1359,6 +1446,8 @@ struct TextGrid::Impl {
         restoreSnapshot(redoStack.back());
         redoStack.pop_back();
         ++contentRevision;
+        refreshContentIcons();
+        ensureFontPools();
         ensureCursorVisible();
         resetBlink();
         configureScrollView();
@@ -1746,12 +1835,16 @@ struct TextGrid::Impl {
 
         const U64 maxSegments = std::max<U64>(1, config.maxLineSegments);
         const bool hasStyleBackgrounds = !theme.styleBackgrounds.empty();
-        std::vector<Label::Instance> codeInstances(visibleRowCapacity * maxSegments);
+        Label::Instance hiddenText;
+        hiddenText.visible = false;
+        Box::Instance hiddenBox;
+        hiddenBox.visible = false;
+        std::vector<Label::Instance> codeInstances(visibleRowCapacity * maxSegments, hiddenText);
         std::vector<std::vector<Label::Instance>> extraInstances(
             extraFontNames.size(),
-            std::vector<Label::Instance>(visibleRowCapacity * maxSegments));
+            std::vector<Label::Instance>(visibleRowCapacity * maxSegments, hiddenText));
         std::vector<Box::Instance> styleBgInstances(
-            hasStyleBackgrounds ? visibleRowCapacity * maxSegments : 0);
+            hasStyleBackgrounds ? visibleRowCapacity * maxSegments : 0, hiddenBox);
         std::vector<Label::Instance> numberInstances(visibleRowCapacity);
         std::vector<Box::Instance> selectionInstances(visibleRowCapacity);
         std::vector<Box::Instance> matchInstances(kSelectionMatchCapacity);
@@ -1787,16 +1880,6 @@ struct TextGrid::Impl {
             const U64 visualRow = firstVisualRow + i;
             const F32 rowTop = viewportTop + rowTopContent(visualRow) - currentScrollY;
             const bool rowVisible = visible && visualRow < visualRows.size() && rowTop < rect.bottom();
-            for (U64 segment = 0; segment < maxSegments; ++segment) {
-                const U64 slot = i * maxSegments + segment;
-                codeInstances[slot].visible = false;
-                for (auto& pool : extraInstances) {
-                    pool[slot].visible = false;
-                }
-                if (hasStyleBackgrounds) {
-                    styleBgInstances[slot].visible = false;
-                }
-            }
             if (!rowVisible) {
                 numberInstances[i].visible = false;
                 selectionInstances[i].visible = false;
@@ -1815,13 +1898,10 @@ struct TextGrid::Impl {
             U64 segmentIndex = 0;
             while (startColumn < row.end && segmentIndex < maxSegments) {
                 const StyleId style = startColumn < lineStyles.size() ? lineStyles[startColumn] : 0;
+                bool icon = false;
                 const bool lastSegment = segmentIndex + 1 == maxSegments;
-                U64 endColumn = startColumn + 1;
-                while (endColumn < row.end &&
-                       (lastSegment || (endColumn < lineStyles.size() ? lineStyles[endColumn] : 0) == style) &&
-                       endColumn - startColumn < kTextSegmentCharacterCapacity) {
-                    ++endColumn;
-                }
+                const U64 scanLimit = std::min(row.end, startColumn + kTextSegmentCharacterCapacity);
+                U64 endColumn = runEnd(line, lineStyles, startColumn, scanLimit, icon, lastSegment);
                 if (endColumn < row.end) {
                     const U64 aligned = Unicode::Align(line, endColumn);
                     if (aligned != endColumn) {
@@ -1829,11 +1909,18 @@ struct TextGrid::Impl {
                         endColumn = previous > startColumn ? previous : aligned;
                     }
                 }
-                const U64 slot = i * maxSegments + segmentIndex;
                 const F32 segX = lineLeft - currentScrollX + columnXInRow(row.line, row.start, startColumn);
                 const F32 segW = columnOffsetPixels(row.line, endColumn) - columnOffsetPixels(row.line, startColumn);
-                const U64 poolIndex = poolIndexForFont(fontForStyle(style));
+                if (segX > rect.right()) {
+                    break;
+                }
+                if (segX + segW < rect.x) {
+                    startColumn = endColumn;
+                    continue;
+                }
+                const U64 poolIndex = poolIndexForFont(fontForRun(style, icon));
                 auto& target = poolIndex == static_cast<U64>(-1) ? codeInstances : extraInstances[poolIndex];
+                const U64 slot = i * maxSegments + segmentIndex++;
                 const F32 glyphSize = lineSize * scaleForStyle(style);
                 const F32 pad = stylePaddingPixels(style, glyphSize);
                 const bool spanStart = startColumn == 0 ||
@@ -1861,7 +1948,6 @@ struct TextGrid::Impl {
                         };
                     }
                 }
-                ++segmentIndex;
                 startColumn = endColumn;
             }
 
@@ -2043,6 +2129,7 @@ bool TextGrid::update(Config config) {
                                 impl->config.styleBackgroundColorKeys != config.styleBackgroundColorKeys ||
                                 impl->config.styleRevision != config.styleRevision ||
                                 impl->config.fontName != config.fontName ||
+                                impl->config.iconFont != config.iconFont ||
                                 impl->config.monospace != config.monospace ||
                                 impl->config.lineScale != config.lineScale ||
                                 impl->config.lineTopGap != config.lineTopGap ||
@@ -2057,11 +2144,13 @@ bool TextGrid::update(Config config) {
         impl->visualRowsValid = false;
         impl->linePrefixesValid = false;
         impl->preferredX.reset();
+        impl->refreshContentIcons();
     }
 
     if ((valueChanged && impl->config.value != impl->textValue()) || impl->lines.empty()) {
         impl->lines = SplitLines(impl->config.value);
         ++impl->contentRevision;
+        impl->refreshContentIcons();
         if (impl->config.editable) {
             impl->undoStack.clear();
             impl->redoStack.clear();

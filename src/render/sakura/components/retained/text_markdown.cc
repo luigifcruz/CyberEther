@@ -1,7 +1,6 @@
 #include <jetstream/render/sakura/components/retained/text_markdown.hh>
 
 #include <jetstream/platform.hh>
-#include <jetstream/render/components/text.hh>
 #include <jetstream/render/sakura/components/retained/box.hh>
 #include <jetstream/render/sakura/components/retained/label.hh>
 #include <jetstream/render/sakura/components/retained/text_grid.hh>
@@ -17,8 +16,6 @@
 namespace Jetstream::Sakura::Retained {
 
 namespace {
-
-using Unicode = Jetstream::Render::Components::Text::Unicode;
 
 constexpr F32 kLineHeightRatio = Typography::BodyLineHeight;
 constexpr F32 kParagraphGapRatio = 0.6f;
@@ -41,7 +38,6 @@ constexpr StyleId kStyleBoldItalic = 3;
 constexpr StyleId kStyleCode = 4;
 constexpr StyleId kStyleLink = 5;
 constexpr StyleId kStyleCodeBlock = 6;
-constexpr StyleId kStyleIcon = 7;
 
 constexpr U64 kMaxDecorations = 256;
 constexpr const char* kCodeFont = Typography::MonoFont;
@@ -423,16 +419,6 @@ struct TextMarkdown::Impl {
 
         const auto addLine = [&](std::string text, F32 scale, F32 gap, F32 indent,
                                  std::vector<StyleId> styles, std::vector<LinkSpan> links) {
-            for (U64 i = 0; i < text.size();) {
-                U32 codepoint = 0;
-                const U64 length = Unicode::Decode(text, i, codepoint);
-                if (codepoint >= 0xE000 && codepoint <= 0xF8FF) {
-                    for (U64 k = i; k < i + length && k < styles.size(); ++k) {
-                        styles[k] = kStyleIcon;
-                    }
-                }
-                i += length;
-            }
             lines.push_back(std::move(text));
             lineScale.push_back(scale);
             lineTopGap.push_back(gap);
@@ -489,13 +475,6 @@ struct TextMarkdown::Impl {
         }
     }
 
-    template<typename T>
-    static std::vector<T> WithIconStyle(std::vector<T> styles, T icon) {
-        styles.resize(kStyleIcon - 1);
-        styles.push_back(std::move(icon));
-        return styles;
-    }
-
     TextGrid::Config buildGridConfig() {
         return {
             .id = config.id + ":grid",
@@ -522,10 +501,10 @@ struct TextMarkdown::Impl {
             .cursorColorKey = config.cursorColorKey,
             .scrollbarTrackColorKey = config.scrollbarTrackColorKey,
             .scrollbarThumbColorKey = config.scrollbarThumbColorKey,
-            .styleColorKeys = WithIconStyle<std::string>(config.styleColorKeys, ""),
-            .styleFonts = WithIconStyle<std::string>(config.styleFonts, "default_icons"),
-            .styleBackgroundColorKeys = WithIconStyle<std::string>(config.styleBackgroundColorKeys, ""),
-            .styleScales = WithIconStyle<F32>(config.styleScales, 1.0f),
+            .styleColorKeys = config.styleColorKeys,
+            .styleFonts = config.styleFonts,
+            .styleBackgroundColorKeys = config.styleBackgroundColorKeys,
+            .styleScales = config.styleScales,
             .maxLineSegments = 32,
             .styleRevision = styleRevision,
             .styler = [this](const std::vector<std::string>&, U64)

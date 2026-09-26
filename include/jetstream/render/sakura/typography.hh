@@ -10,6 +10,7 @@ struct Typography {
     static constexpr F32 ChromeScale = 0.90f;
     static constexpr const char* MonoFont = "default_mono";
     static constexpr const char* BodyFont = "default_body";
+    static constexpr const char* IconFont = "default_icons";
     static constexpr F32 CodeLineHeight = 1.15f;
     static constexpr F32 BodyLineHeight = 1.25f;
     static constexpr F32 HeadingScale[3] = {1.5f, 1.3f, 1.15f};
