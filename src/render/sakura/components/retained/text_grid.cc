@@ -10,6 +10,7 @@
 #include "../../state.hh"
 #include "../../retained/helpers.hh"
 #include "../../retained/text_grid_viewport.hh"
+#include "../../retained/text_lines.hh"
 #include "../../retained/text_metrics.hh"
 
 #include <algorithm>
@@ -59,32 +60,6 @@ constexpr F32 kHitContainsWeight = 16777216.0f;
 constexpr F32 kHitVerticalWeight = 4096.0f;
 constexpr std::string_view kAutoPairOpenings = "([{\"'";
 constexpr std::string_view kAutoPairClosings = ")]}\"'";
-
-std::vector<std::string> SplitLines(const std::string& value) {
-    std::vector<std::string> lines;
-    std::string::size_type start = 0;
-    while (true) {
-        const auto end = value.find('\n', start);
-        if (end == std::string::npos) {
-            lines.push_back(value.substr(start));
-            break;
-        }
-        lines.push_back(value.substr(start, end - start));
-        start = end + 1;
-    }
-    return lines;
-}
-
-std::string JoinLines(const std::vector<std::string>& lines) {
-    std::string value;
-    for (U64 i = 0; i < lines.size(); ++i) {
-        if (i > 0) {
-            value += '\n';
-        }
-        value += lines[i];
-    }
-    return value;
-}
 
 bool IsWordChar(char character) {
     return std::isalnum(static_cast<unsigned char>(character)) || character == '_' ||
@@ -289,6 +264,7 @@ struct TextGrid::Impl {
     mutable bool linePrefixesValid = false;
     mutable U64 linePrefixesRevision = static_cast<U64>(-1);
     mutable F32 linePrefixesFontSize = -1.0f;
+    mutable std::vector<std::pair<F32, F32>> cellAdvanceCache;
 
     F32 contentFontSize() const { return fontSizePixels * config.fontScale; }
     F32 lineHeightPixels() const { return std::max(1.0f, contentFontSize() * config.lineHeight); }
@@ -312,8 +288,19 @@ struct TextGrid::Impl {
         return std::max(1.0f, lineGlyphSize(line) * config.lineHeight);
     }
     F32 cellAdvancePixels(F32 glyphSize) const {
-        const F32 advance = textMetrics.measure(config.fontName, "0", glyphSize);
-        return advance > 0.0f ? advance : glyphSize * kFallbackAdvanceFontRatio;
+        for (const auto& [size, advance] : cellAdvanceCache) {
+            if (size == glyphSize) {
+                return advance;
+            }
+        }
+        const F32 measured = textMetrics.measure(config.fontName, "0", glyphSize);
+        const F32 advance = measured > 0.0f ? measured : glyphSize * kFallbackAdvanceFontRatio;
+        cellAdvanceCache.emplace_back(glyphSize, advance);
+        return advance;
+    }
+    void beginMetricsFrame(Render::Window* window) {
+        textMetrics.setWindow(window);
+        cellAdvanceCache.clear();
     }
     F32 lineAdvancePixels(U64 line) const { return cellAdvancePixels(lineGlyphSize(line)); }
     U64 visibleLineCapacity() const {
@@ -2376,6 +2363,7 @@ bool TextGrid::update(Config config) {
     if (metricsChanged) {
         impl->visualRowsValid = false;
         impl->linePrefixesValid = false;
+        impl->cellAdvanceCache.clear();
         impl->preferredContentX.reset();
         impl->refreshContentIcons();
     }
@@ -2421,7 +2409,7 @@ const TextGrid::Metrics& TextGrid::metrics() const {
 }
 
 Extent2D<F32> TextGrid::measure(const Context& ctx, Extent2D<F32> available) {
-    impl->textMetrics.setWindow(ctx.render);
+    impl->beginMetricsFrame(ctx.render);
 
     const F32 maxWidth = std::isfinite(available.x) ? available.x : impl->rect.width;
     const Rect savedRect = impl->rect;
@@ -2440,7 +2428,7 @@ void TextGrid::layout(const Context& ctx) {
     impl->active = ctx.active;
     impl->windowFocused = ctx.windowFocused;
 
-    impl->textMetrics.setWindow(ctx.render);
+    impl->beginMetricsFrame(ctx.render);
     impl->resolveTheme(ctx);
     impl->ensureFontPools();
     if (impl->stickToBottomPending) {

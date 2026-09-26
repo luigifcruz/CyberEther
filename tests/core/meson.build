@@ -48,6 +48,7 @@ core_test_domains = {
         'sakura/surface_input.cc',
         'sakura/superluminal_surface.cc',
         'sakura/text_grid.cc',
+        'sakura/text_markdown.cc',
         'sakura/vstack.cc',
     ],
     'runtime': [

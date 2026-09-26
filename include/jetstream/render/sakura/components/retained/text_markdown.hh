@@ -15,6 +15,19 @@ namespace Jetstream::Sakura::Retained {
 struct TextMarkdown : public Component {
     static constexpr const char* BodyFont = Typography::BodyFont;
 
+    using StyleId = U8;
+
+    struct Style {
+        static constexpr StyleId Plain = 0;
+        static constexpr StyleId Bold = 1;
+        static constexpr StyleId Italic = 2;
+        static constexpr StyleId BoldItalic = 3;
+        static constexpr StyleId Code = 4;
+        static constexpr StyleId Link = 5;
+        static constexpr StyleId CodeBlock = 6;
+        static constexpr StyleId Count = 6;
+    };
+
     struct Config {
         std::string id;
         std::string value;

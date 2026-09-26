@@ -7,9 +7,13 @@
 
 #include "../../context.hh"
 #include "../../retained/helpers.hh"
+#include "../../retained/text_lines.hh"
 
 #include <algorithm>
+#include <array>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -29,32 +33,72 @@ constexpr F32 kRuleRowScale = 0.5f;
 constexpr F32 kQuoteBarRatio = 0.18f;
 constexpr F32 kQuoteIndentEmRatio = 0.4f;
 constexpr F32 kScrollbarGutterFontRatio = 14.0f / 15.0f;
-constexpr const char* kBodyFont = TextMarkdown::BodyFont;
-
-using StyleId = TextGrid::StyleId;
-constexpr StyleId kStyleBold = 1;
-constexpr StyleId kStyleItalic = 2;
-constexpr StyleId kStyleBoldItalic = 3;
-constexpr StyleId kStyleCode = 4;
-constexpr StyleId kStyleLink = 5;
-constexpr StyleId kStyleCodeBlock = 6;
-
+constexpr F32 kBulletDotRatio = 0.22f;
+constexpr F32 kBulletGapEmRatio = 0.75f;
+constexpr F32 kMarkerGapEmRatio = 0.45f;
+constexpr F32 kMarkerWidthEmRatio = 2.0f;
+constexpr F32 kDecorationCornerRatio = 0.4f;
 constexpr U64 kMaxDecorations = 256;
+constexpr U64 kMaxMarkerCharacters = 8;
+constexpr U64 kGridLineSegments = 32;
+constexpr const char* kBodyFont = TextMarkdown::BodyFont;
 constexpr const char* kCodeFont = Typography::MonoFont;
 
+using StyleId = TextGrid::StyleId;
+using Style = TextMarkdown::Style;
+
+constexpr std::array<std::pair<std::string_view, StyleId>, 4> kInlineDelimiters = {{
+    {"`", Style::Code},
+    {"***", Style::BoldItalic},
+    {"**", Style::Bold},
+    {"__", Style::Bold},
+}};
+
 struct Block {
+    enum class Kind {
+        Paragraph,
+        Heading,
+        Quote,
+        Code,
+        Rule,
+        ListItem,
+    };
+
+    Kind kind = Kind::Paragraph;
     std::string text;
-    F32 fontSize = 15.0f;
+    F32 fontSize = Typography::FontSize;
     F32 topGap = 0.0f;
-    StyleId baseStyle = 0;
+    StyleId baseStyle = Style::Plain;
     F32 indent = 0.0f;
     std::string marker;
-    bool codeBlock = false;
-    bool quote = false;
-    bool rule = false;
-    bool bullet = false;
-    bool inlineParse = true;
+
+    bool inlineParse() const { return kind != Kind::Code; }
 };
+
+struct LinkSpan {
+    U64 start = 0;
+    U64 end = 0;
+    std::string url;
+};
+
+struct Deco {
+    enum class Kind {
+        Code,
+        Quote,
+        Rule,
+        ListItem,
+    };
+
+    Kind kind = Kind::Code;
+    U64 first = 0;
+    U64 last = 0;
+    std::string marker;
+    F32 indent = 0.0f;
+};
+
+bool IsFence(const std::string& line) {
+    return line.rfind("```", 0) == 0;
+}
 
 bool IsRule(const std::string& line) {
     char mark = 0;
@@ -76,12 +120,17 @@ bool IsRule(const std::string& line) {
     return count >= 3;
 }
 
-U64 ListMarker(const std::string& line, std::string& marker) {
-    marker.clear();
+U64 LeadingSpaces(const std::string& line) {
     U64 i = 0;
     while (i < line.size() && line[i] == ' ') {
         ++i;
     }
+    return i;
+}
+
+U64 ListMarker(const std::string& line, std::string& marker) {
+    marker.clear();
+    const U64 i = LeadingSpaces(line);
     if (i + 1 < line.size() && (line[i] == '-' || line[i] == '*' || line[i] == '+') && line[i + 1] == ' ') {
         return i + 2;
     }
@@ -96,6 +145,11 @@ U64 ListMarker(const std::string& line, std::string& marker) {
     return 0;
 }
 
+bool IsListItem(const std::string& line) {
+    std::string marker;
+    return ListMarker(line, marker) > 0;
+}
+
 U64 HeadingLevel(const std::string& line) {
     U64 hashes = 0;
     while (hashes < line.size() && line[hashes] == '#') {
@@ -107,6 +161,18 @@ U64 HeadingLevel(const std::string& line) {
     return hashes;
 }
 
+bool IsQuoteLine(const std::string& line) {
+    return !line.empty() && line[0] == '>';
+}
+
+std::string QuoteContent(const std::string& line) {
+    U64 s = 1;
+    while (s < line.size() && line[s] == ' ') {
+        ++s;
+    }
+    return line.substr(s);
+}
+
 std::string TrimRight(std::string s) {
     while (!s.empty() && (s.back() == '\r' || s.back() == ' ' || s.back() == '\t')) {
         s.pop_back();
@@ -114,26 +180,9 @@ std::string TrimRight(std::string s) {
     return s;
 }
 
-std::vector<std::string> SplitLines(const std::string& value) {
-    std::vector<std::string> lines;
-    std::string line;
-    for (const char c : value) {
-        if (c == '\n') {
-            lines.push_back(std::move(line));
-            line.clear();
-        } else {
-            line += c;
-        }
-    }
-    lines.push_back(std::move(line));
-    return lines;
+bool StartsBlock(const std::string& line) {
+    return IsFence(line) || IsRule(line) || HeadingLevel(line) > 0 || IsQuoteLine(line) || IsListItem(line);
 }
-
-struct LinkSpan {
-    U64 start = 0;
-    U64 end = 0;
-    std::string url;
-};
 
 void ParseInline(const std::string& line, StyleId baseStyle, std::string& display, std::vector<StyleId>& styles,
                  std::vector<LinkSpan>& links) {
@@ -147,46 +196,36 @@ void ParseInline(const std::string& line, StyleId baseStyle, std::string& displa
             emit(line[k], s);
         }
     };
+    const auto delimited = [&](U64 i, std::string_view open, StyleId s) -> U64 {
+        if (line.compare(i, open.size(), open) != 0) {
+            return 0;
+        }
+        const U64 j = line.find(open, i + open.size());
+        if (j == std::string::npos) {
+            return 0;
+        }
+        emitRange(i + open.size(), j, s);
+        return j + open.size();
+    };
 
     U64 i = 0;
     while (i < n) {
         const char c = line[i];
-        if (c == '`') {
-            const U64 j = line.find('`', i + 1);
-            if (j != std::string::npos) {
-                emitRange(i + 1, j, kStyleCode);
-                i = j + 1;
-                continue;
+        U64 resume = 0;
+        for (const auto& [open, style] : kInlineDelimiters) {
+            resume = delimited(i, open, style);
+            if (resume != 0) {
+                break;
             }
         }
-        if (line.compare(i, 3, "***") == 0) {
-            const U64 j = line.find("***", i + 3);
-            if (j != std::string::npos) {
-                emitRange(i + 3, j, kStyleBoldItalic);
-                i = j + 3;
-                continue;
-            }
-        }
-        if (line.compare(i, 2, "**") == 0) {
-            const U64 j = line.find("**", i + 2);
-            if (j != std::string::npos) {
-                emitRange(i + 2, j, kStyleBold);
-                i = j + 2;
-                continue;
-            }
-        }
-        if (line.compare(i, 2, "__") == 0) {
-            const U64 j = line.find("__", i + 2);
-            if (j != std::string::npos) {
-                emitRange(i + 2, j, kStyleBold);
-                i = j + 2;
-                continue;
-            }
+        if (resume != 0) {
+            i = resume;
+            continue;
         }
         if (c == '*' || c == '_') {
             const U64 j = line.find(c, i + 1);
             if (j != std::string::npos && j > i + 1) {
-                emitRange(i + 1, j, kStyleItalic);
+                emitRange(i + 1, j, Style::Italic);
                 i = j + 1;
                 continue;
             }
@@ -197,7 +236,7 @@ void ParseInline(const std::string& line, StyleId baseStyle, std::string& displa
                 const U64 paren = line.find(')', close + 2);
                 if (paren != std::string::npos) {
                     const U64 startCol = display.size();
-                    emitRange(i + 1, close, kStyleLink);
+                    emitRange(i + 1, close, Style::Link);
                     links.push_back({startCol, display.size(), line.substr(close + 2, paren - (close + 2))});
                     i = paren + 1;
                     continue;
@@ -209,276 +248,317 @@ void ParseInline(const std::string& line, StyleId baseStyle, std::string& displa
     }
 }
 
-}  // namespace
+struct BlockScanner {
+    const std::vector<std::string>& source;
+    F32 body;
+    F32 lineHeight;
+    F32 indentUnit;
+    std::vector<Block> blocks;
+    bool prevHeading = false;
+    bool prevList = false;
+    U64 index = 0;
 
-struct TextMarkdown::Impl {
-    struct Deco {
-        U64 first = 0;
-        U64 last = 0;
-        bool code = false;
-        bool quote = false;
-        bool rule = false;
-        bool bullet = false;
+    BlockScanner(const std::vector<std::string>& source, F32 body)
+        : source(source), body(body), lineHeight(body * kLineHeightRatio), indentUnit(body * kIndentEmRatio) {}
+
+    std::vector<Block> run() {
+        while (index < source.size()) {
+            const std::string line = TrimRight(source[index]);
+            if (line.empty()) {
+                ++index;
+                continue;
+            }
+            if (scanFencedCode(line) || scanRule(line) || scanHeading(line) || scanQuote(line) || scanListItem(line)) {
+                continue;
+            }
+            scanParagraph();
+        }
+        return std::move(blocks);
+    }
+
+    F32 gapAbove(F32 ratio) const {
+        return blocks.empty() ? 0.0f : lineHeight * (prevHeading ? kAfterHeadingGapRatio : ratio);
+    }
+
+    void emit(Block block, bool heading = false, bool list = false) {
+        blocks.push_back(std::move(block));
+        prevHeading = heading;
+        prevList = list;
+    }
+
+    bool scanFencedCode(const std::string& line) {
+        if (!IsFence(line)) {
+            return false;
+        }
+        std::vector<std::string> code;
+        ++index;
+        while (index < source.size() && !IsFence(source[index])) {
+            code.push_back(source[index]);
+            ++index;
+        }
+        if (index < source.size()) {
+            ++index;
+        }
+        Block block;
+        block.kind = Block::Kind::Code;
+        block.text = JoinLines(code);
+        block.fontSize = body;
+        block.topGap = gapAbove(kParagraphGapRatio);
+        block.baseStyle = Style::CodeBlock;
+        emit(std::move(block));
+        return true;
+    }
+
+    bool scanRule(const std::string& line) {
+        if (!IsRule(line)) {
+            return false;
+        }
+        Block block;
+        block.kind = Block::Kind::Rule;
+        block.fontSize = body;
+        block.topGap = gapAbove(kParagraphGapRatio);
+        emit(std::move(block));
+        ++index;
+        return true;
+    }
+
+    bool scanHeading(const std::string& line) {
+        const U64 level = HeadingLevel(line);
+        if (level == 0) {
+            return false;
+        }
+        const U64 scale = std::min<U64>(level, 3);
+        Block block;
+        block.kind = Block::Kind::Heading;
+        block.text = line.substr(level + 1);
+        block.fontSize = body * Typography::HeadingScale[scale - 1];
+        block.topGap = gapAbove(kHeadingGapRatio);
+        block.baseStyle = Style::Bold;
+        emit(std::move(block), true);
+        ++index;
+        return true;
+    }
+
+    bool scanQuote(const std::string& line) {
+        if (!IsQuoteLine(line)) {
+            return false;
+        }
+        std::vector<std::string> quote;
+        while (index < source.size()) {
+            const std::string current = TrimRight(source[index]);
+            if (!IsQuoteLine(current)) {
+                break;
+            }
+            quote.push_back(QuoteContent(current));
+            ++index;
+        }
+        Block block;
+        block.kind = Block::Kind::Quote;
+        block.text = JoinLines(quote);
+        block.fontSize = body;
+        block.topGap = gapAbove(kParagraphGapRatio);
+        block.indent = body * kQuoteIndentEmRatio;
+        emit(std::move(block));
+        return true;
+    }
+
+    bool scanListItem(const std::string& line) {
         std::string marker;
-        F32 indent = 0.0f;
-    };
+        const U64 contentStart = ListMarker(line, marker);
+        if (contentStart == 0) {
+            return false;
+        }
+        Block block;
+        block.kind = Block::Kind::ListItem;
+        block.text = line.substr(contentStart);
+        block.fontSize = body;
+        block.topGap = lineHeight * (prevList ? kListGapRatio
+                                   : prevHeading ? kAfterHeadingGapRatio
+                                                 : kParagraphGapRatio);
+        block.indent = indentUnit * static_cast<F32>(LeadingSpaces(line) / 2 + 1);
+        block.marker = std::move(marker);
+        emit(std::move(block), false, true);
+        ++index;
+        return true;
+    }
 
-    Config config;
-    TextGrid grid;
-    Box decorations;
-    Label markers;
-    std::vector<std::vector<StyleId>> combinedStyles;
-    std::vector<std::vector<LinkSpan>> combinedLinks;
-    std::vector<Deco> decos;
-    std::string plainValue;
-    U64 styleRevision = 0;
+    void scanParagraph() {
+        std::vector<std::string> paragraph;
+        while (index < source.size()) {
+            const std::string current = TrimRight(source[index]);
+            if (current.empty() || StartsBlock(current)) {
+                break;
+            }
+            paragraph.push_back(current);
+            ++index;
+        }
+        Block block;
+        block.kind = Block::Kind::Paragraph;
+        block.text = JoinLines(paragraph);
+        block.fontSize = body;
+        block.topGap = gapAbove(kParagraphGapRatio);
+        emit(std::move(block));
+    }
+};
+
+struct Document {
     std::vector<F32> lineScale;
     std::vector<F32> lineTopGap;
     std::vector<F32> lineIndent;
-    bool parsed = false;
+    std::vector<std::vector<StyleId>> styles;
+    std::vector<std::vector<LinkSpan>> links;
+    std::vector<Deco> decos;
+    std::string plainValue;
+
+    F32 scaleAt(U64 line) const {
+        return line < lineScale.size() ? lineScale[line] : 1.0f;
+    }
 
     const std::string* linkAt(TextGrid::Position pos) const {
-        if (pos.line >= combinedLinks.size()) {
+        if (pos.line >= links.size()) {
             return nullptr;
         }
-        for (const auto& span : combinedLinks[pos.line]) {
+        for (const auto& span : links[pos.line]) {
             if (pos.column >= span.start && pos.column < span.end) {
                 return &span.url;
             }
         }
         return nullptr;
     }
+};
 
-    std::vector<Block> parse() const {
-        const F32 body = config.fontSize;
-        const F32 lineHeight = body * kLineHeightRatio;
-        const F32 indentUnit = body * kIndentEmRatio;
-        std::vector<Block> blocks;
-        std::vector<std::string> paragraph, quoteLines, codeLines;
-        bool prevHeading = false;
-        bool prevList = false;
-        bool inCode = false;
+struct DocumentBuilder {
+    F32 body;
+    Document document;
+    std::vector<std::string> lines;
 
-        const auto gapAbove = [&](F32 ratio) {
-            return blocks.empty() ? 0.0f : lineHeight * (prevHeading ? kAfterHeadingGapRatio : ratio);
-        };
-        const auto join = [](const std::vector<std::string>& v) {
-            std::string s;
-            for (U64 i = 0; i < v.size(); ++i) {
-                if (i) {
-                    s += '\n';
-                }
-                s += v[i];
-            }
-            return s;
-        };
-        const auto flushParagraph = [&]() {
-            if (paragraph.empty()) {
-                return;
-            }
-            Block b;
-            b.text = join(paragraph);
-            b.fontSize = body;
-            b.topGap = gapAbove(kParagraphGapRatio);
-            blocks.push_back(std::move(b));
-            prevHeading = prevList = false;
-            paragraph.clear();
-        };
-        const auto flushQuote = [&]() {
-            if (quoteLines.empty()) {
-                return;
-            }
-            Block b;
-            b.text = join(quoteLines);
-            b.fontSize = body;
-            b.topGap = gapAbove(kParagraphGapRatio);
-            b.indent = body * kQuoteIndentEmRatio;
-            b.quote = true;
-            blocks.push_back(std::move(b));
-            prevHeading = prevList = false;
-            quoteLines.clear();
-        };
-        const auto flushCode = [&]() {
-            Block b;
-            b.text = join(codeLines);
-            b.fontSize = body;
-            b.topGap = gapAbove(kParagraphGapRatio);
-            b.codeBlock = true;
-            b.baseStyle = kStyleCodeBlock;
-            b.inlineParse = false;
-            blocks.push_back(std::move(b));
-            prevHeading = prevList = false;
-            codeLines.clear();
-        };
+    explicit DocumentBuilder(F32 body) : body(body) {}
 
-        for (const auto& raw : SplitLines(config.value)) {
-            if (inCode) {
-                if (raw.rfind("```", 0) == 0) {
-                    inCode = false;
-                    flushCode();
-                } else {
-                    codeLines.push_back(raw);
-                }
-                continue;
-            }
-            const std::string line = TrimRight(raw);
-            if (line.rfind("```", 0) == 0) {
-                flushParagraph();
-                flushQuote();
-                inCode = true;
-                continue;
-            }
-            if (IsRule(line)) {
-                flushParagraph();
-                flushQuote();
-                Block b;
-                b.fontSize = body;
-                b.topGap = gapAbove(kParagraphGapRatio);
-                b.rule = true;
-                blocks.push_back(std::move(b));
-                prevHeading = prevList = false;
-                continue;
-            }
-            const U64 level = HeadingLevel(line);
-            if (level > 0) {
-                flushParagraph();
-                flushQuote();
-                const U64 scale = std::min<U64>(level, 3);
-                const F32 gap = blocks.empty() ? 0.0f
-                              : lineHeight * (prevHeading ? kAfterHeadingGapRatio : kHeadingGapRatio);
-                Block b;
-                b.text = line.substr(level + 1);
-                b.fontSize = body * Typography::HeadingScale[scale - 1];
-                b.topGap = gap;
-                b.baseStyle = kStyleBold;
-                blocks.push_back(std::move(b));
-                prevHeading = true;
-                prevList = false;
-                continue;
-            }
-            if (!line.empty() && line[0] == '>') {
-                flushParagraph();
-                U64 s = 1;
-                while (s < line.size() && line[s] == ' ') {
-                    ++s;
-                }
-                quoteLines.push_back(line.substr(s));
-                continue;
-            }
-            flushQuote();
-            std::string marker;
-            U64 lead = 0;
-            while (lead < line.size() && line[lead] == ' ') {
-                ++lead;
-            }
-            const U64 contentStart = ListMarker(line, marker);
-            if (contentStart > 0) {
-                flushParagraph();
-                Block b;
-                b.text = line.substr(contentStart);
-                b.fontSize = body;
-                b.topGap = lineHeight * (prevList ? kListGapRatio
-                                       : prevHeading ? kAfterHeadingGapRatio
-                                                     : kParagraphGapRatio);
-                b.indent = indentUnit * static_cast<F32>(lead / 2 + 1);
-                b.marker = marker;
-                b.bullet = marker.empty();
-                blocks.push_back(std::move(b));
-                prevHeading = false;
-                prevList = true;
-                continue;
-            }
-            if (line.empty()) {
-                flushParagraph();
-                continue;
-            }
-            paragraph.push_back(line);
-        }
-        flushParagraph();
-        flushQuote();
-        if (inCode) {
-            flushCode();
-        }
-        return blocks;
-    }
-
-    void rebuild() {
-        ++styleRevision;
-        const std::vector<Block> blocks = parse();
-
-        const F32 body = config.fontSize;
-        const F32 codePad = body * kCodePadRatio;
-
-        std::vector<std::string> lines;
-        lineScale.clear();
-        lineTopGap.clear();
-        lineIndent.clear();
-        combinedStyles.clear();
-        combinedLinks.clear();
-        decos.clear();
-
-        const auto addLine = [&](std::string text, F32 scale, F32 gap, F32 indent,
-                                 std::vector<StyleId> styles, std::vector<LinkSpan> links) {
-            lines.push_back(std::move(text));
-            lineScale.push_back(scale);
-            lineTopGap.push_back(gap);
-            lineIndent.push_back(indent);
-            combinedStyles.push_back(std::move(styles));
-            combinedLinks.push_back(std::move(links));
-        };
-
-        for (const auto& b : blocks) {
-            const F32 scale = b.fontSize / body;
-            const F32 indent = b.indent + (b.codeBlock ? codePad : 0.0f);
-            const U64 firstLine = lines.size();
-
-            if (b.rule) {
-                addLine("", kRuleRowScale, b.topGap, 0.0f, {}, {});
-                decos.push_back({firstLine, firstLine, false, false, true, false, "", 0.0f});
-                continue;
-            }
-
-            const auto sources = SplitLines(b.text);
-            for (U64 li = 0; li < sources.size(); ++li) {
-                const F32 gap = li == 0 ? b.topGap : 0.0f;
-                std::vector<StyleId> styles;
-                std::vector<LinkSpan> links;
-                std::string display;
-                if (b.inlineParse) {
-                    ParseInline(sources[li], b.baseStyle, display, styles, links);
-                } else {
-                    display = sources[li];
-                    styles.assign(display.size(), b.baseStyle);
-                }
-                addLine(std::move(display), scale, gap, indent, std::move(styles), std::move(links));
-            }
-            const U64 lastLine = lines.empty() ? firstLine : lines.size() - 1;
-
-            if (b.codeBlock) {
-                decos.push_back({firstLine, lastLine, true, false, false, false, "", indent});
-            } else if (b.quote) {
-                decos.push_back({firstLine, lastLine, false, true, false, false, "", indent});
-            } else if (b.bullet || !b.marker.empty()) {
-                decos.push_back({firstLine, firstLine, false, false, false, b.bullet, b.marker, indent});
+    Document build(const std::vector<Block>& blocks) {
+        for (const auto& block : blocks) {
+            if (block.kind == Block::Kind::Rule) {
+                emitRule(block);
+            } else {
+                emitTextBlock(block);
             }
         }
         if (lines.empty()) {
             addLine("", 1.0f, 0.0f, 0.0f, {}, {});
         }
+        document.plainValue = JoinLines(lines);
+        return std::move(document);
+    }
 
-        plainValue.clear();
-        for (U64 i = 0; i < lines.size(); ++i) {
-            if (i) {
-                plainValue += '\n';
+    void addLine(std::string text, F32 scale, F32 gap, F32 indent,
+                 std::vector<StyleId> lineStyles, std::vector<LinkSpan> lineLinks) {
+        lines.push_back(std::move(text));
+        document.lineScale.push_back(scale);
+        document.lineTopGap.push_back(gap);
+        document.lineIndent.push_back(indent);
+        document.styles.push_back(std::move(lineStyles));
+        document.links.push_back(std::move(lineLinks));
+    }
+
+    void emitRule(const Block& block) {
+        const U64 line = lines.size();
+        addLine("", kRuleRowScale, block.topGap, 0.0f, {}, {});
+        document.decos.push_back({.kind = Deco::Kind::Rule, .first = line, .last = line});
+    }
+
+    void emitTextBlock(const Block& block) {
+        const F32 scale = block.fontSize / body;
+        const F32 indent = block.indent + (block.kind == Block::Kind::Code ? body * kCodePadRatio : 0.0f);
+        const U64 firstLine = lines.size();
+
+        const auto sources = SplitLines(block.text);
+        for (U64 li = 0; li < sources.size(); ++li) {
+            const F32 gap = li == 0 ? block.topGap : 0.0f;
+            std::vector<StyleId> styles;
+            std::vector<LinkSpan> links;
+            std::string display;
+            if (block.inlineParse()) {
+                ParseInline(sources[li], block.baseStyle, display, styles, links);
+            } else {
+                display = sources[li];
+                styles.assign(display.size(), block.baseStyle);
             }
-            plainValue += lines[i];
+            addLine(std::move(display), scale, gap, indent, std::move(styles), std::move(links));
         }
+        const U64 lastLine = lines.size() - 1;
+
+        switch (block.kind) {
+            case Block::Kind::Code:
+                document.decos.push_back({.kind = Deco::Kind::Code, .first = firstLine, .last = lastLine, .indent = indent});
+                break;
+            case Block::Kind::Quote:
+                document.decos.push_back({.kind = Deco::Kind::Quote, .first = firstLine, .last = lastLine, .indent = indent});
+                break;
+            case Block::Kind::ListItem:
+                document.decos.push_back({.kind = Deco::Kind::ListItem, .first = firstLine, .last = firstLine,
+                                          .marker = block.marker, .indent = indent});
+                break;
+            default:
+                break;
+        }
+    }
+};
+
+}  // namespace
+
+struct TextMarkdown::Impl {
+    struct DecorationFrame {
+        Rect rect;
+        std::optional<Rect> clip;
+        F32 body = 0.0f;
+        F32 bodyPad = 0.0f;
+        F32 width = 0.0f;
+        bool on = false;
+        ColorRGBA<F32> codeBackground;
+        ColorRGBA<F32> bar;
+        ColorRGBA<F32> rule;
+        ColorRGBA<F32> marker;
+        const TextGrid::Metrics* metrics = nullptr;
+
+        F32 lineTop(U64 line) const {
+            return line < metrics->sourceLines.size() ? metrics->sourceLines[line].top : rect.y;
+        }
+        F32 lineHeight(U64 line) const {
+            return line < metrics->sourceLines.size() ? metrics->sourceLines[line].height : 0.0f;
+        }
+        F32 lineBottom(U64 line) const { return lineTop(line) + lineHeight(line); }
+    };
+
+    struct DecorationPools {
+        std::vector<Box::Instance> boxes;
+        std::vector<Label::Instance> markers;
+
+        bool full() const {
+            return boxes.size() >= kMaxDecorations || markers.size() >= kMaxDecorations;
+        }
+    };
+
+    Config config;
+    TextGrid grid;
+    Box decorations;
+    Label markers;
+    Document document;
+    U64 styleRevision = 0;
+    bool parsed = false;
+
+    void rebuild() {
+        ++styleRevision;
+        const std::vector<Block> blocks = BlockScanner(SplitLines(config.value), config.fontSize).run();
+        document = DocumentBuilder(config.fontSize).build(blocks);
+    }
+
+    F32 rowHeight(U64 line) const {
+        return config.fontSize * document.scaleAt(line) * kLineHeightRatio;
     }
 
     TextGrid::Config buildGridConfig() {
         return {
             .id = config.id + ":grid",
-            .value = plainValue,
+            .value = document.plainValue,
             .editable = false,
             .fontSize = config.fontSize,
             .lineHeight = Typography::BodyLineHeight,
@@ -488,9 +568,9 @@ struct TextMarkdown::Impl {
             .scrollbar = config.scrollbar,
             .wrap = TextGrid::Wrap::Word,
             .padding = config.padding,
-            .lineScale = lineScale,
-            .lineTopGap = lineTopGap,
-            .lineIndent = lineIndent,
+            .lineScale = document.lineScale,
+            .lineTopGap = document.lineTopGap,
+            .lineIndent = document.lineIndent,
             .backgroundColorKey = config.backgroundColorKey,
             .textColorKey = config.textColorKey,
             .lineNumberColorKey = config.lineNumberColorKey,
@@ -505,23 +585,132 @@ struct TextMarkdown::Impl {
             .styleFonts = config.styleFonts,
             .styleBackgroundColorKeys = config.styleBackgroundColorKeys,
             .styleScales = config.styleScales,
-            .maxLineSegments = 32,
+            .maxLineSegments = kGridLineSegments,
             .styleRevision = styleRevision,
             .styler = [this](const std::vector<std::string>&, U64)
                           -> const std::vector<std::vector<StyleId>>& {
-                return combinedStyles;
+                return document.styles;
             },
             .onPositionClick = [this](TextGrid::Position pos) -> bool {
-                if (const std::string* url = linkAt(pos)) {
+                if (const std::string* url = document.linkAt(pos)) {
                     (void)Platform::OpenUrl(*url);
                     return true;
                 }
                 return false;
             },
             .isPositionInteractive = [this](TextGrid::Position pos) -> bool {
-                return linkAt(pos) != nullptr;
+                return document.linkAt(pos) != nullptr;
             },
         };
+    }
+
+    DecorationFrame decorationFrame(const Context& ctx, const Rect& rect, const Rect& clipPixel) const {
+        const auto& metrics = grid.metrics();
+        const F32 body = config.fontSize;
+        const bool scrollbarVisible = config.scrollbar && metrics.contentHeight > rect.height;
+        return {
+            .rect = rect,
+            .clip = clipPixel,
+            .body = body,
+            .bodyPad = metrics.padding.left,
+            .width = std::max(0.0f, rect.width - (scrollbarVisible ? body * kScrollbarGutterFontRatio : 0.0f)),
+            .on = !rect.empty(),
+            .codeBackground = ctx.color(config.scrollbarTrackColorKey),
+            .bar = ctx.color(config.lineNumberColorKey),
+            .rule = ctx.color(config.gutterSeparatorColorKey),
+            .marker = ctx.color(config.lineNumberColorKey),
+            .metrics = &metrics,
+        };
+    }
+
+    void addRule(const DecorationFrame& frame, const Deco& deco, DecorationPools& pools) const {
+        const F32 thickness = std::max(1.0f, frame.body * kRuleThicknessRatio);
+        const F32 center = frame.lineTop(deco.first) + rowHeight(deco.first) * 0.5f;
+        pools.boxes.push_back({
+            .rect = {frame.rect.x, center - thickness * 0.5f, frame.width, thickness},
+            .visible = frame.on,
+            .backgroundColor = frame.rule,
+        });
+    }
+
+    void addCodeBackground(const DecorationFrame& frame, const Deco& deco, DecorationPools& pools) const {
+        const F32 pad = frame.body * kCodePadRatio;
+        const F32 top = frame.lineTop(deco.first);
+        const F32 bottom = frame.lineBottom(deco.last);
+        pools.boxes.push_back({
+            .rect = {frame.rect.x, top - pad, frame.width, (bottom - top) + 2.0f * pad},
+            .visible = frame.on,
+            .backgroundColor = frame.codeBackground,
+        });
+    }
+
+    void addQuoteBar(const DecorationFrame& frame, const Deco& deco, DecorationPools& pools) const {
+        const F32 top = frame.lineTop(deco.first);
+        const F32 bottom = frame.lineBottom(deco.last);
+        pools.boxes.push_back({
+            .rect = {frame.rect.x, top, frame.body * kQuoteBarRatio, bottom - top},
+            .visible = frame.on,
+            .backgroundColor = frame.bar,
+        });
+    }
+
+    void addListMarker(const DecorationFrame& frame, const Deco& deco, DecorationPools& pools) const {
+        const F32 top = frame.lineTop(deco.first);
+        const F32 height = rowHeight(deco.first);
+        const F32 textStart = frame.rect.x + frame.bodyPad + deco.indent;
+        if (deco.marker.empty()) {
+            const F32 dot = std::max(2.0f, frame.body * kBulletDotRatio);
+            pools.boxes.push_back({
+                .rect = {textStart - frame.body * kBulletGapEmRatio - dot, top + height * 0.5f - dot * 0.5f, dot, dot},
+                .visible = frame.on,
+                .backgroundColor = frame.marker,
+            });
+            return;
+        }
+        const F32 right = textStart - frame.body * kMarkerGapEmRatio;
+        const F32 width = frame.body * kMarkerWidthEmRatio;
+        pools.markers.push_back({
+            .rect = {right - width, top, width, height},
+            .str = deco.marker,
+            .visible = frame.on,
+            .color = frame.marker,
+            .fontSize = frame.body,
+            .alignment = {2, 1},
+        });
+    }
+
+    DecorationPools buildDecorations(const DecorationFrame& frame) const {
+        DecorationPools pools;
+        for (const auto& deco : document.decos) {
+            if (pools.full()) {
+                break;
+            }
+            switch (deco.kind) {
+                case Deco::Kind::Rule: addRule(frame, deco, pools); break;
+                case Deco::Kind::Code: addCodeBackground(frame, deco, pools); break;
+                case Deco::Kind::Quote: addQuoteBar(frame, deco, pools); break;
+                case Deco::Kind::ListItem: addListMarker(frame, deco, pools); break;
+            }
+        }
+        return pools;
+    }
+
+    void uploadDecorations(const DecorationFrame& frame, DecorationPools&& pools) {
+        decorations.update({
+            .id = config.id + ":deco",
+            .instances = std::move(pools.boxes),
+            .clip = frame.clip,
+            .cornerRadius = std::max(1.0f, frame.body * kDecorationCornerRatio),
+            .capacity = kMaxDecorations,
+        });
+        markers.update({
+            .id = config.id + ":markers",
+            .instances = std::move(pools.markers),
+            .clip = frame.clip,
+            .fontName = kCodeFont,
+            .maxCharacters = kMaxMarkerCharacters,
+            .capacity = kMaxDecorations,
+        });
     }
 };
 
@@ -555,113 +744,16 @@ Extent2D<F32> TextMarkdown::measure(const Context& ctx, Extent2D<F32> available)
 
 void TextMarkdown::layout(const Context& ctx) {
     const Rect bounds = frame();
-    const Rect rect = bounds;
     const Rect clipPixel = Intersect(bounds, clip());
 
     impl->grid.update(impl->buildGridConfig());
     layoutChild(ctx, impl->grid, bounds);
 
-    const auto& metrics = impl->grid.metrics();
-    const auto sourceLineTop = [&](U64 line) -> F32 {
-        return line < metrics.sourceLines.size() ? metrics.sourceLines[line].top : rect.y;
-    };
-    const auto sourceLineHeight = [&](U64 line) -> F32 {
-        return line < metrics.sourceLines.size() ? metrics.sourceLines[line].height : 0.0f;
-    };
-
-    const F32 body = impl->config.fontSize;
-    const F32 codePad = body * kCodePadRatio;
-    const F32 bodyPad = metrics.padding.left;
-    const F32 barWidth = body * kQuoteBarRatio;
-    const F32 ruleThick = std::max(1.0f, body * kRuleThicknessRatio);
-    const F32 dotSize = std::max(2.0f, body * 0.22f);
-    const bool scrollbarVisible = impl->config.scrollbar && metrics.contentHeight > rect.height;
-    const F32 decorationWidth = std::max(
-        0.0f, rect.width - (scrollbarVisible ? body * kScrollbarGutterFontRatio : 0.0f));
-    const bool on = !rect.empty();
-    const auto codeBg = ctx.color(impl->config.scrollbarTrackColorKey);
-    const auto barColor = ctx.color(impl->config.lineNumberColorKey);
-    const auto ruleColor = ctx.color(impl->config.gutterSeparatorColorKey);
-    const auto markerColor = ctx.color(impl->config.lineNumberColorKey);
-
-    std::vector<Box::Instance> decoInstances;
-    std::vector<Label::Instance> markerInstances;
-    for (const auto& d : impl->decos) {
-        if (decoInstances.size() >= kMaxDecorations || markerInstances.size() >= kMaxDecorations) {
-            break;
-        }
-        const F32 top = sourceLineTop(d.first);
-        const F32 rowHeight = body * (d.first < impl->lineScale.size() ? impl->lineScale[d.first] : 1.0f) *
-                              kLineHeightRatio;
-
-        if (d.rule) {
-            decoInstances.push_back({
-                .rect = {rect.x, top + rowHeight * 0.5f - ruleThick * 0.5f, decorationWidth, ruleThick},
-                .visible = on,
-                .backgroundColor = ruleColor,
-            });
-            continue;
-        }
-        if (d.code) {
-            const F32 bottom = sourceLineTop(d.last) + sourceLineHeight(d.last);
-            decoInstances.push_back({
-                .rect = {rect.x, top - codePad, decorationWidth, (bottom - top) + 2.0f * codePad},
-                .visible = on,
-                .backgroundColor = codeBg,
-            });
-            continue;
-        }
-        if (d.quote) {
-            const F32 bottom = sourceLineTop(d.last) + sourceLineHeight(d.last);
-            decoInstances.push_back({
-                .rect = {rect.x, top, barWidth, bottom - top},
-                .visible = on,
-                .backgroundColor = barColor,
-            });
-            continue;
-        }
-        const F32 textStart = rect.x + bodyPad + d.indent;
-        if (d.bullet) {
-            decoInstances.push_back({
-                .rect = {textStart - body * 0.75f - dotSize, top + rowHeight * 0.5f - dotSize * 0.5f,
-                         dotSize, dotSize},
-                .visible = on,
-                .backgroundColor = markerColor,
-            });
-        }
-        if (!d.marker.empty()) {
-            const F32 markerRight = textStart - body * 0.45f;
-            const F32 markerWidth = body * 2.0f;
-            markerInstances.push_back({
-                .rect = {markerRight - markerWidth, top, markerWidth, rowHeight},
-                .str = d.marker,
-                .visible = on,
-                .color = markerColor,
-                .fontSize = body,
-                .alignment = {2, 1},
-            });
-        }
-    }
-
-    impl->decorations.update({
-        .id = impl->config.id + ":deco",
-        .instances = std::move(decoInstances),
-        .clip = clipPixel,
-        .cornerRadius = std::max(1.0f, body * 0.4f),
-        .capacity = kMaxDecorations,
-    });
-    impl->markers.update({
-        .id = impl->config.id + ":markers",
-        .instances = std::move(markerInstances),
-        .clip = clipPixel,
-        .fontName = kCodeFont,
-        .maxCharacters = 8,
-        .capacity = kMaxDecorations,
-    });
+    const auto decoFrame = impl->decorationFrame(ctx, bounds, clipPixel);
+    impl->uploadDecorations(decoFrame, impl->buildDecorations(decoFrame));
 
     layoutChild(ctx, impl->decorations, bounds);
     layoutChild(ctx, impl->markers, bounds);
-
 }
 
 }  // namespace Jetstream::Sakura::Retained
