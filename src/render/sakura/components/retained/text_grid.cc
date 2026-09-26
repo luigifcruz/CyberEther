@@ -16,6 +16,7 @@
 #include <cctype>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -234,7 +235,7 @@ struct TextGrid::Impl {
     }
     F32 contentFontSize() const { return fontSizePixels * config.fontScale; }
 
-    bool variableMetrics() const { return !config.lineScale.empty(); }
+    bool variableMetrics() const { return !config.lineScale.empty() || !config.lineSameRow.empty(); }
     F32 lineScaleAt(U64 line) const {
         return line < config.lineScale.size() ? config.lineScale[line] : 1.0f;
     }
@@ -243,6 +244,12 @@ struct TextGrid::Impl {
     }
     F32 lineIndentAt(U64 line) const {
         return line < config.lineIndent.size() ? config.lineIndent[line] : 0.0f;
+    }
+    bool lineSameRowAt(U64 line) const {
+        return line < config.lineSameRow.size() && config.lineSameRow[line] != 0;
+    }
+    F32 lineWrapWidthAt(U64 line) const {
+        return line < config.lineWrapWidth.size() ? config.lineWrapWidth[line] : 0.0f;
     }
     U64 visibleLineCapacity() const {
         return std::max<U64>(1, config.visibleLineCapacity);
@@ -273,7 +280,12 @@ struct TextGrid::Impl {
     }
     U64 firstVisibleVisualRow() const {
         if (variableMetrics()) {
-            return visualRowAtContentY(visibleTopContentY());
+            const F32 y = visibleTopContentY();
+            const U64 groupStart = visualRowAtContentY(y);
+            if (groupStart >= visualRows.size()) {
+                return groupStart;
+            }
+            return rowInRangeAtY(groupStart, std::min(groupEndRow(groupStart), columnEndRow(groupStart)), y);
         }
         return static_cast<U64>(std::max(0.0f, std::floor(visibleTopContentY() / lineHeightPixels())));
     }
@@ -301,11 +313,40 @@ struct TextGrid::Impl {
         return h;
     }
     U64 visualRowAtContentY(F32 y) const {
-        if (visualRows.empty()) {
+        if (visualRows.empty() || groupStartRows.empty()) {
             return 0;
         }
         U64 lo = 0;
-        U64 hi = visualRows.size();
+        U64 hi = groupStartRows.size();
+        while (lo + 1 < hi) {
+            const U64 mid = (lo + hi) / 2;
+            if (visualRows[groupStartRows[mid]].top <= y) {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        return groupStartRows[lo];
+    }
+
+    U64 groupEndRow(U64 groupStartRow) const {
+        const auto it = std::upper_bound(groupStartRows.begin(), groupStartRows.end(), groupStartRow);
+        return it != groupStartRows.end() ? *it : visualRows.size();
+    }
+
+    U64 groupStartOf(U64 visualRow) const {
+        const auto it = std::upper_bound(groupStartRows.begin(), groupStartRows.end(), visualRow);
+        return it == groupStartRows.begin() ? 0 : *(it - 1);
+    }
+
+    U64 columnEndRow(U64 visualRow) const {
+        const U64 line = visualRows[visualRow].line;
+        return line + 1 < visualRowStartIndex.size() ? visualRowStartIndex[line + 1] : visualRows.size();
+    }
+
+    U64 rowInRangeAtY(U64 begin, U64 end, F32 y) const {
+        U64 lo = begin;
+        U64 hi = std::max(end, begin + 1);
         while (lo + 1 < hi) {
             const U64 mid = (lo + hi) / 2;
             if (visualRows[mid].top <= y) {
@@ -315,6 +356,62 @@ struct TextGrid::Impl {
             }
         }
         return lo;
+    }
+
+    template<typename F>
+    void forEachGroupColumn(U64 groupStartRow, F&& visit) const {
+        const U64 groupEnd = groupEndRow(groupStartRow);
+        U64 begin = groupStartRow;
+        while (begin < groupEnd) {
+            const U64 end = std::max(begin + 1, std::min(groupEnd, columnEndRow(begin)));
+            visit(begin, end);
+            begin = end;
+        }
+    }
+
+    U64 visualRowNear(F32 contentY, F32 pixelX) const {
+        const U64 groupStart = visualRowAtContentY(contentY);
+        U64 best = groupStart;
+        F32 bestScore = std::numeric_limits<F32>::max();
+        forEachGroupColumn(groupStart, [&](U64 begin, U64 end) {
+            const U64 r = rowInRangeAtY(begin, end, contentY);
+            const auto& candidate = visualRows[r];
+            const F32 bottom = candidate.top + candidate.height;
+            const bool containsY = contentY >= candidate.top && contentY < bottom;
+            const F32 yDistance = contentY < candidate.top ? candidate.top - contentY
+                                : contentY >= bottom ? contentY - bottom
+                                                     : 0.0f;
+            const F32 left = lineTextLeftPixels(candidate.line) - currentScrollX;
+            const F32 right = left + columnXInRow(candidate.line, candidate.start, candidate.end);
+            const F32 xDistance = pixelX < left ? left - pixelX
+                                : pixelX > right ? pixelX - right
+                                                 : 0.0f;
+            const F32 score = (containsY ? 0.0f : 1.0f) * 16777216.0f + yDistance * 4096.0f + xDistance;
+            if (score < bestScore) {
+                bestScore = score;
+                best = r;
+            }
+        });
+        return best;
+    }
+
+    U64 groupColumnNearX(U64 groupStartRow, F32 contentX, bool lastRow) const {
+        U64 best = groupStartRow;
+        F32 bestDistance = std::numeric_limits<F32>::max();
+        forEachGroupColumn(groupStartRow, [&](U64 begin, U64 end) {
+            const U64 r = lastRow ? end - 1 : begin;
+            const auto& candidate = visualRows[r];
+            const F32 left = lineIndentAt(candidate.line);
+            const F32 right = left + columnXInRow(candidate.line, candidate.start, candidate.end);
+            const F32 distance = contentX < left ? left - contentX
+                               : contentX > right ? contentX - right
+                                                  : 0.0f;
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = r;
+            }
+        });
+        return best;
     }
 
     F32 characterAdvancePixels() const {
@@ -484,9 +581,47 @@ struct TextGrid::Impl {
         F32 height = 0.0f;
     };
     mutable std::vector<VisualRow> visualRows;
+    mutable std::vector<U64> groupStartRows;
     mutable std::vector<U64> visualRowStartIndex;
     mutable F32 visualContentHeight = 0.0f;
     mutable F32 minimumVisualRowHeight = 1.0f;
+    mutable U64 maximumRowGroupColumns = 1;
+    std::vector<std::pair<U64, U64>> visibleRowRanges;
+
+    void collectVisibleRowRanges(F32 visibleTop, F32 visibleBottom) {
+        visibleRowRanges.clear();
+        if (visualRows.empty() || visibleBottom <= visibleTop) {
+            return;
+        }
+        if (!variableMetrics()) {
+            const U64 first = std::min<U64>(firstVisibleVisualRow(), visualRows.size());
+            U64 last = first;
+            while (last < visualRows.size() && rowTopContent(last) < visibleBottom) {
+                ++last;
+            }
+            if (last > first) {
+                visibleRowRanges.emplace_back(first, last);
+            }
+            return;
+        }
+        U64 groupStart = visualRowAtContentY(visibleTop);
+        while (groupStart < visualRows.size() && visualRows[groupStart].top < visibleBottom) {
+            forEachGroupColumn(groupStart, [&](U64 begin, U64 end) {
+                U64 first = rowInRangeAtY(begin, end, visibleTop);
+                while (first < end && visualRows[first].top + visualRows[first].height <= visibleTop) {
+                    ++first;
+                }
+                U64 last = first;
+                while (last < end && visualRows[last].top < visibleBottom) {
+                    ++last;
+                }
+                if (last > first) {
+                    visibleRowRanges.emplace_back(first, last);
+                }
+            });
+            groupStart = groupEndRow(groupStart);
+        }
+    }
     mutable bool visualRowsValid = false;
     mutable U64 visualRowsRevision = 0;
     mutable Wrap visualRowsWrap = Wrap::None;
@@ -557,13 +692,27 @@ struct TextGrid::Impl {
             return;
         }
         visualRows.clear();
+        groupStartRows.clear();
         visualRowStartIndex.assign(lines.size(), 0);
         // Reserve for ordinary rows even when the content is empty or only headings.
         minimumVisualRowHeight = lineHeightPixels();
+        maximumRowGroupColumns = 1;
         const F32 trailingMargin = 0.5f * characterAdvancePixels();
         F32 y = 0.0f;
+        F32 maxY = 0.0f;
+        F32 rowGroupTop = 0.0f;
+        U64 rowGroupColumns = 0;
         for (U64 line = 0; line < lines.size(); ++line) {
-            y += lineTopGapAt(line);
+            if (line > 0 && lineSameRowAt(line)) {
+                y = rowGroupTop;
+                ++rowGroupColumns;
+            } else {
+                y = maxY + lineTopGapAt(line);
+                rowGroupTop = y;
+                groupStartRows.push_back(visualRows.size());
+                rowGroupColumns = 1;
+            }
+            maximumRowGroupColumns = std::max(maximumRowGroupColumns, rowGroupColumns);
             visualRowStartIndex[line] = visualRows.size();
             const auto& text = lines[line];
             const U64 len = text.size();
@@ -576,22 +725,32 @@ struct TextGrid::Impl {
             if (config.wrap == Wrap::None) {
                 push(0, len);
             } else if (config.monospace && !lineHasIcons(text)) {
-                for (const auto& [start, end] : WrapSegments(text, wrapCols, config.wrap == Wrap::Word)) {
+                const F32 overrideWidth = lineWrapWidthAt(line);
+                const U64 cols = overrideWidth > 0.0f
+                    ? std::max<U64>(1, static_cast<U64>(std::floor(overrideWidth / std::max(1.0f, characterAdvancePixels()))))
+                    : wrapCols;
+                for (const auto& [start, end] : WrapSegments(text, cols, config.wrap == Wrap::Word)) {
                     push(start, end);
                 }
             } else {
-                const F32 wrapWidth = std::max(
-                    1.0f, textViewportWidthPixels() - lineIndentAt(line) - trailingMargin);
+                const F32 overrideWidth = lineWrapWidthAt(line);
+                const F32 wrapWidth = overrideWidth > 0.0f
+                    ? overrideWidth
+                    : std::max(1.0f, textViewportWidthPixels() - lineIndentAt(line) - trailingMargin);
                 for (const auto& [start, end] : wrapSegmentsProportional(line, wrapWidth, config.wrap == Wrap::Word)) {
                     push(start, end);
                 }
             }
+            maxY = std::max(maxY, y);
         }
         if (visualRows.empty()) {
             visualRows.push_back({0, 0, 0, 0.0f, lineHeightAt(0)});
-            y = lineHeightAt(0);
+            maxY = lineHeightAt(0);
         }
-        visualContentHeight = y;
+        if (groupStartRows.empty()) {
+            groupStartRows.push_back(0);
+        }
+        visualContentHeight = maxY;
         if (config.monospace || config.wrap == Wrap::None || fontsReady()) {
             visualRowsValid = true;
             visualRowsRevision = contentRevision;
@@ -658,7 +817,7 @@ struct TextGrid::Impl {
         }
         F32 widest = 0.0f;
         for (U64 i = 0; i < lines.size(); ++i) {
-            widest = std::max(widest, lineWidthPixels(i));
+            widest = std::max(widest, lineIndentAt(i) + lineWidthPixels(i));
         }
         return widest;
     }
@@ -1077,26 +1236,60 @@ struct TextGrid::Impl {
         const U64 fromRow = visualRowForPosition(cursor);
         const auto& from = visualRows[fromRow];
         if (!preferredX.has_value()) {
-            preferredX = columnXInRow(from.line, from.start, cursor.column);
+            preferredX = columnXInRow(from.line, from.start, cursor.column) +
+                         (variableMetrics() ? lineIndentAt(from.line) : 0.0f);
         }
-        const U64 toRow = static_cast<U64>(
-            std::clamp<I64>(static_cast<I64>(fromRow) + delta, 0, static_cast<I64>(visualRows.size()) - 1));
+        U64 toRow = fromRow;
+        F32 localX = *preferredX;
+        if (variableMetrics()) {
+            const F32 contentX = *preferredX;
+            for (I64 step = 0; step < std::abs(delta); ++step) {
+                const U64 groupStart = groupStartOf(toRow);
+                if (delta > 0) {
+                    const U64 columnEnd = std::min(groupEndRow(groupStart), columnEndRow(toRow));
+                    if (toRow + 1 < columnEnd) {
+                        ++toRow;
+                        continue;
+                    }
+                    const U64 nextGroup = groupEndRow(groupStart);
+                    if (nextGroup >= visualRows.size()) {
+                        break;
+                    }
+                    toRow = groupColumnNearX(nextGroup, contentX, false);
+                } else {
+                    const U64 columnBegin = std::max(groupStart, visualRowStartIndex[visualRows[toRow].line]);
+                    if (toRow > columnBegin) {
+                        --toRow;
+                        continue;
+                    }
+                    if (groupStart == 0) {
+                        break;
+                    }
+                    toRow = groupColumnNearX(groupStartOf(groupStart - 1), contentX, true);
+                }
+            }
+            localX = std::max(0.0f, contentX - lineIndentAt(visualRows[toRow].line));
+        } else {
+            toRow = static_cast<U64>(
+                std::clamp<I64>(static_cast<I64>(fromRow) + delta, 0, static_cast<I64>(visualRows.size()) - 1));
+        }
         const auto& row = visualRows[toRow];
         const F32 rowLeft = columnOffsetPixels(row.line, row.start);
-        const U64 column = std::clamp<U64>(columnAtOffsetPixels(row.line, rowLeft + *preferredX),
+        const U64 column = std::clamp<U64>(columnAtOffsetPixels(row.line, rowLeft + localX),
                                            row.start, rowLastColumn(row));
         moveCursorTo({row.line, column}, extendSelection, true);
     }
 
     void ensureCursorVisible() {
-        const F32 lineHeight = lineHeightPixels();
         const F32 areaHeight = rect.height;
         const auto padding = paddingPixels();
-        const F32 cursorTop = padding.top + static_cast<F32>(visualRowForPosition(cursor)) * lineHeight;
-        if (cursorTop - padding.top < currentScrollY) {
-            currentScrollY = cursorTop - padding.top;
-        } else if (cursorTop + lineHeight + padding.bottom > currentScrollY + areaHeight) {
-            currentScrollY = cursorTop + lineHeight + padding.bottom - areaHeight;
+        const U64 cursorRow = visualRowForPosition(cursor);
+        const F32 rowTop = rowTopContent(cursorRow);
+        const F32 rowHeight = rowHeightPixels(cursorRow);
+        if (rowTop < currentScrollY) {
+            currentScrollY = rowTop;
+        } else if (padding.top + rowTop + rowHeight + padding.bottom > currentScrollY + areaHeight) {
+            currentScrollY = padding.top + rowTop + rowHeight + padding.bottom - areaHeight;
         }
         currentScrollY = std::clamp(currentScrollY, 0.0f, std::max(0.0f, contentHeightPixels() - areaHeight));
 
@@ -1104,7 +1297,7 @@ struct TextGrid::Impl {
             currentScrollX = 0.0f;
             return;
         }
-        const F32 cursorX = columnOffsetPixels(cursor.line, cursor.column);
+        const F32 cursorX = lineIndentAt(cursor.line) + columnOffsetPixels(cursor.line, cursor.column);
         const F32 viewportWidth = textViewportWidthPixels();
         const F32 margin = std::min(fontSizePixels * kCursorScrollMarginFontRatio, viewportWidth * 0.5f);
         if (cursorX < currentScrollX + margin) {
@@ -1518,12 +1711,15 @@ struct TextGrid::Impl {
     Position positionFromMouse(const Extent2D<F32>& pixel) const {
         ensureVisualRows();
         const F32 contentY = pixel.y - textTopPixels() + currentScrollY;
-        U64 visualRowIndex = variableMetrics()
-            ? visualRowAtContentY(contentY)
-            : static_cast<U64>(std::max(0.0f, std::floor(contentY / lineHeightPixels())));
+        U64 visualRowIndex;
+        if (variableMetrics()) {
+            visualRowIndex = visualRowNear(contentY, pixel.x);
+        } else {
+            visualRowIndex = static_cast<U64>(std::max(0.0f, std::floor(contentY / lineHeightPixels())));
+        }
         visualRowIndex = std::min<U64>(visualRowIndex, visualRows.size() - 1);
         const auto& row = visualRows[visualRowIndex];
-        const F32 localX = std::max(0.0f, pixel.x - lineTextLeftPixels(row.line)) + currentScrollX;
+        const F32 localX = std::max(0.0f, pixel.x - lineTextLeftPixels(row.line) + currentScrollX);
         const F32 lineX = columnOffsetPixels(row.line, row.start) + localX;
         const U64 column = columnAtOffsetPixels(row.line, lineX);
         Position position;
@@ -1812,7 +2008,8 @@ struct TextGrid::Impl {
     void rebuildVisibleInstances() {
         const auto& rect = this->rect;
         ensureVisualRows();
-        viewport.update(rect, this->clip.value_or(rect), minimumVisualRowHeight, 1, visibleLineCapacity());
+        viewport.update(rect, this->clip.value_or(rect), minimumVisualRowHeight,
+                        maximumRowGroupColumns, visibleLineCapacity());
         const auto clip = std::optional<Rect>(viewport.bounds);
         const bool visible = !clip->empty();
         const auto textClip = std::optional<Rect>(clipped(
@@ -1821,12 +2018,16 @@ struct TextGrid::Impl {
         const F32 lineHeight = lineHeightPixels();
         const F32 advance = characterAdvancePixels();
         const F32 gutterWidth = gutterWidthPixels();
-        const F32 textLeft = textLeftPixels();
         const F32 viewportTop = textTopPixels();
         const F32 contentSize = contentFontSize();
-        const U64 firstVisualRow = firstVisibleVisualRow();
         const F32 clipTopPixel = clip->y;
         const F32 clipBottomPixel = clip->bottom();
+        if (visible) {
+            const F32 visibleTop = visibleTopContentY();
+            collectVisibleRowRanges(visibleTop, visibleTop + (clipBottomPixel - clipTopPixel));
+        } else {
+            visibleRowRanges.clear();
+        }
         const auto selection = selectionRange();
         const bool selected = hasSelection();
 
@@ -1870,14 +2071,12 @@ struct TextGrid::Impl {
         };
 
         static const std::vector<StyleId> kNoLineStyles;
-        for (U64 visualRow = firstVisualRow; visible && visualRow < visualRows.size(); ++visualRow) {
+        for (const auto& [rangeBegin, rangeEnd] : visibleRowRanges)
+        for (U64 visualRow = rangeBegin; visualRow < rangeEnd; ++visualRow) {
             const F32 rowTop = viewportTop + rowTopContent(visualRow) - currentScrollY;
-            if (rowTop >= clipBottomPixel) {
-                break;
-            }
             const VisualRow row = visualRows[visualRow];
             const F32 rh = variableMetrics() ? row.height : lineHeight;
-            if (rowTop + rh <= clipTopPixel) {
+            if (rowTop >= clipBottomPixel || rowTop + rh <= clipTopPixel) {
                 continue;
             }
             const auto& line = lines[row.line];
@@ -1945,7 +2144,8 @@ struct TextGrid::Impl {
                 startColumn = endColumn;
             }
 
-            if (config.lineNumbers && row.start == 0 && numberInstances.size() < lineCapacity) {
+            if (config.lineNumbers && row.start == 0 && !lineSameRowAt(row.line) &&
+                numberInstances.size() < lineCapacity) {
                 numberInstances.push_back({
                     .rect = {rect.x, rowTop, lineNumberRightPixels(), rh},
                     .str = jst::fmt::format("{}", row.line + 1),
@@ -2074,15 +2274,16 @@ struct TextGrid::Impl {
         lastBlinkOn = blinkOn;
         const F32 cursorWidth = std::max(1.0f, std::round(fontSizePixels * kCursorWidthFontRatio));
         const F32 cursorTop = rowTopPixels(cursorVisualRow);
+        const F32 cursorHeight = rowHeightPixels(cursorVisualRow);
         const U64 cursorRowStart = cursorVisualRow < visualRows.size() ? visualRows[cursorVisualRow].start : 0;
-        const F32 cursorX = textLeft - currentScrollX +
+        const F32 cursorX = lineTextLeftPixels(cursor.line) - currentScrollX +
                             columnXInRow(cursor.line, cursorRowStart, cursor.column);
         cursorBox.update({
             .id = config.id + ":cursor",
             .instances = {{
-                .rect = {cursorX, cursorTop, cursorWidth, lineHeight},
+                .rect = {cursorX, cursorTop, cursorWidth, cursorHeight},
                 .visible = visible && config.editable && hasFocus() && blinkOn &&
-                            cursorTop + lineHeight > rect.y && cursorTop < rect.bottom(),
+                            cursorTop + cursorHeight > rect.y && cursorTop < rect.bottom(),
                 .backgroundColor = theme.cursor,
             }},
             .clip = textClip,
@@ -2130,7 +2331,9 @@ bool TextGrid::update(Config config) {
                                 impl->config.monospace != config.monospace ||
                                 impl->config.lineScale != config.lineScale ||
                                 impl->config.lineTopGap != config.lineTopGap ||
-                                impl->config.lineIndent != config.lineIndent;
+                                impl->config.lineIndent != config.lineIndent ||
+                                impl->config.lineSameRow != config.lineSameRow ||
+                                impl->config.lineWrapWidth != config.lineWrapWidth;
     const bool wasAtBottom = impl->rect.height <= 0.0f ||
                              impl->currentScrollY + 1.0f >=
                                  std::max(0.0f, impl->contentHeightPixels() - impl->rect.height);

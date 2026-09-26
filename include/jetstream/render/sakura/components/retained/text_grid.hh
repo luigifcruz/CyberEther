@@ -59,6 +59,8 @@ struct TextGrid : public Component {
         std::vector<F32> lineScale;
         std::vector<F32> lineTopGap;
         std::vector<F32> lineIndent;
+        std::vector<U8> lineSameRow;
+        std::vector<F32> lineWrapWidth;
         U64 visibleLineCapacity = 64;
         std::string backgroundColorKey = "transparent";
         std::string textColorKey = "text_primary";
