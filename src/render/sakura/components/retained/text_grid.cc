@@ -9,6 +9,7 @@
 #include "../../helpers.hh"
 #include "../../state.hh"
 #include "../../retained/helpers.hh"
+#include "../../retained/text_grid_viewport.hh"
 #include "../../retained/text_metrics.hh"
 
 #include <algorithm>
@@ -44,7 +45,6 @@ constexpr F32 kWheelScrollLines = 3.0f;
 constexpr F32 kDragScrollMarginFontRatio = 36.0f / kReferenceFontSize;
 constexpr F32 kDragScrollMaxLines = 0.85f;
 constexpr F32 kFallbackAdvanceFontRatio = 0.5f;
-constexpr U64 kVisibleRowCapacityStep = 16;
 constexpr U64 kTextSegmentCharacterCapacity = 128;
 constexpr U64 kSelectionMatchCapacity = 128;
 constexpr U64 kMaxUndoHistory = 128;
@@ -201,6 +201,7 @@ struct TextGrid::Impl {
     Rect rect;
     std::optional<Rect> clip;
     Metrics storedMetrics;
+    TextGridViewport viewport;
     bool hovered = false;
     bool active = false;
     bool windowFocused = false;
@@ -242,6 +243,9 @@ struct TextGrid::Impl {
     }
     F32 lineIndentAt(U64 line) const {
         return line < config.lineIndent.size() ? config.lineIndent[line] : 0.0f;
+    }
+    U64 visibleLineCapacity() const {
+        return std::max<U64>(1, config.visibleLineCapacity);
     }
     F32 lineGlyphSize(U64 line) const { return contentFontSize() * lineScaleAt(line); }
     F32 lineHeightAt(U64 line) const {
@@ -1807,8 +1811,10 @@ struct TextGrid::Impl {
 
     void rebuildVisibleInstances() {
         const auto& rect = this->rect;
-        const bool visible = !rect.empty();
-        const auto clip = std::optional<Rect>(clipped(rect));
+        ensureVisualRows();
+        viewport.update(rect, this->clip.value_or(rect), minimumVisualRowHeight, 1, visibleLineCapacity());
+        const auto clip = std::optional<Rect>(viewport.bounds);
+        const bool visible = !clip->empty();
         const auto textClip = std::optional<Rect>(clipped(
             Rect{textClipLeftPixels(), rect.y,
                  std::max(0.0f, textClipRightPixels() - textClipLeftPixels()), rect.height}));
@@ -1818,15 +1824,9 @@ struct TextGrid::Impl {
         const F32 textLeft = textLeftPixels();
         const F32 viewportTop = textTopPixels();
         const F32 contentSize = contentFontSize();
-        ensureVisualRows();
         const U64 firstVisualRow = firstVisibleVisualRow();
-        // Size the pools for the viewport, including a partially visible first row.
-        // Visible row counts fluctuate while scrolling; resizing to match them
-        // invalidates GPU resources and rebuilds the entire canvas.
-        const U64 viewportRowCount = static_cast<U64>(
-            std::ceil(std::max(0.0f, rect.height) / minimumVisualRowHeight)) + 1;
-        const U64 visibleRowCapacity =
-            ((viewportRowCount + kVisibleRowCapacityStep - 1) / kVisibleRowCapacityStep) * kVisibleRowCapacityStep;
+        const F32 clipTopPixel = clip->y;
+        const F32 clipBottomPixel = clip->bottom();
         const auto selection = selectionRange();
         const bool selected = hasSelection();
 
@@ -1835,21 +1835,15 @@ struct TextGrid::Impl {
 
         const U64 maxSegments = std::max<U64>(1, config.maxLineSegments);
         const bool hasStyleBackgrounds = !theme.styleBackgrounds.empty();
-        Label::Instance hiddenText;
-        hiddenText.visible = false;
-        Box::Instance hiddenBox;
-        hiddenBox.visible = false;
-        std::vector<Label::Instance> codeInstances(visibleRowCapacity * maxSegments, hiddenText);
-        std::vector<std::vector<Label::Instance>> extraInstances(
-            extraFontNames.size(),
-            std::vector<Label::Instance>(visibleRowCapacity * maxSegments, hiddenText));
-        std::vector<Box::Instance> styleBgInstances(
-            hasStyleBackgrounds ? visibleRowCapacity * maxSegments : 0, hiddenBox);
-        std::vector<Label::Instance> numberInstances(visibleRowCapacity);
-        std::vector<Box::Instance> selectionInstances(visibleRowCapacity);
-        std::vector<Box::Instance> matchInstances(kSelectionMatchCapacity);
+        const U64 lineCapacity = viewport.rowCapacity;
+        const U64 segmentCapacity = lineCapacity * maxSegments;
+        std::vector<Label::Instance> codeInstances;
+        std::vector<std::vector<Label::Instance>> extraInstances(extraFontNames.size());
+        std::vector<Box::Instance> styleBgInstances;
+        std::vector<Label::Instance> numberInstances;
+        std::vector<Box::Instance> selectionInstances;
+        std::vector<Box::Instance> matchInstances;
         const auto matchText = singleLineSelectionText();
-        U64 matchIndex = 0;
 
         const F32 clipLeft = textClipLeftPixels();
         const F32 clipRight = textClipRightPixels();
@@ -1876,21 +1870,19 @@ struct TextGrid::Impl {
         };
 
         static const std::vector<StyleId> kNoLineStyles;
-        for (U64 i = 0; i < visibleRowCapacity; ++i) {
-            const U64 visualRow = firstVisualRow + i;
+        for (U64 visualRow = firstVisualRow; visible && visualRow < visualRows.size(); ++visualRow) {
             const F32 rowTop = viewportTop + rowTopContent(visualRow) - currentScrollY;
-            const bool rowVisible = visible && visualRow < visualRows.size() && rowTop < rect.bottom();
-            if (!rowVisible) {
-                numberInstances[i].visible = false;
-                selectionInstances[i].visible = false;
+            if (rowTop >= clipBottomPixel) {
+                break;
+            }
+            const VisualRow row = visualRows[visualRow];
+            const F32 rh = variableMetrics() ? row.height : lineHeight;
+            if (rowTop + rh <= clipTopPixel) {
                 continue;
             }
-
-            const VisualRow row = visualRows[visualRow];
             const auto& line = lines[row.line];
             const U64 lineLen = line.size();
             const auto& lineStyles = row.line < styles.size() ? styles[row.line] : kNoLineStyles;
-            const F32 rh = variableMetrics() ? row.height : lineHeight;
             const F32 lineLeft = lineTextLeftPixels(row.line);
             const F32 lineSize = lineGlyphSize(row.line);
 
@@ -1920,7 +1912,7 @@ struct TextGrid::Impl {
                 }
                 const U64 poolIndex = poolIndexForFont(fontForRun(style, icon));
                 auto& target = poolIndex == static_cast<U64>(-1) ? codeInstances : extraInstances[poolIndex];
-                const U64 slot = i * maxSegments + segmentIndex++;
+                ++segmentIndex;
                 const F32 glyphSize = lineSize * scaleForStyle(style);
                 const F32 pad = stylePaddingPixels(style, glyphSize);
                 const bool spanStart = startColumn == 0 ||
@@ -1929,57 +1921,62 @@ struct TextGrid::Impl {
                                      (endColumn < lineStyles.size() ? lineStyles[endColumn] : 0) != style;
                 const F32 leftPad = spanStart ? pad : 0.0f;
                 const F32 rightPad = spanEnd ? pad : 0.0f;
-                target[slot] = {
-                    .rect = {segX + leftPad, rowTop, std::max(0.0f, segW - leftPad - rightPad), rh},
-                    .str = line.substr(startColumn, endColumn - startColumn),
-                    .visible = true,
-                    .color = colorForStyle(style),
-                    .fontSize = glyphSize,
-                    .alignment = {0, 1},
-                };
+                if (target.size() < segmentCapacity) {
+                    target.push_back({
+                        .rect = {segX + leftPad, rowTop, std::max(0.0f, segW - leftPad - rightPad), rh},
+                        .str = line.substr(startColumn, endColumn - startColumn),
+                        .visible = true,
+                        .color = colorForStyle(style),
+                        .fontSize = glyphSize,
+                        .alignment = {0, 1},
+                    });
+                }
                 if (hasStyleBackgrounds) {
                     const auto bg = backgroundForStyle(style);
-                    if (bg.a > 0.0f) {
+                    if (bg.a > 0.0f && styleBgInstances.size() < segmentCapacity) {
                         const F32 bgHeight = glyphSize * 1.3f;
-                        styleBgInstances[slot] = {
+                        styleBgInstances.push_back({
                             .rect = {segX, rowTop + (rh - bgHeight) * 0.5f, segW, bgHeight},
                             .visible = true,
                             .backgroundColor = bg,
-                        };
+                        });
                     }
                 }
                 startColumn = endColumn;
             }
 
-            numberInstances[i] = {
-                .rect = {rect.x, rowTop, lineNumberRightPixels(), rh},
-                .str = jst::fmt::format("{}", row.line + 1),
-                .visible = config.lineNumbers && row.start == 0,
-                .color = theme.lineNumber,
-                .fontSize = contentSize,
-                .alignment = {2, 1},
-            };
+            if (config.lineNumbers && row.start == 0 && numberInstances.size() < lineCapacity) {
+                numberInstances.push_back({
+                    .rect = {rect.x, rowTop, lineNumberRightPixels(), rh},
+                    .str = jst::fmt::format("{}", row.line + 1),
+                    .visible = true,
+                    .color = theme.lineNumber,
+                    .fontSize = contentSize,
+                    .alignment = {2, 1},
+                });
+            }
 
-            selectionInstances[i].visible = false;
             if (selected && row.line >= selection.first.line && row.line <= selection.second.line) {
                 const U64 lo = row.line == selection.first.line ? selection.first.column : 0;
                 const U64 hi = row.line == selection.second.line ? selection.second.column : lineLen;
                 const bool breakAtEnd = row.line < selection.second.line;
                 if (const auto r = rowRangeRect(row.line, lo, hi, row.start, row.end, lineLen, breakAtEnd, rowTop, rh)) {
-                    selectionInstances[i] = {.rect = *r, .backgroundColor = theme.selection};
+                    if (selectionInstances.size() < lineCapacity) {
+                        selectionInstances.push_back({.rect = *r, .backgroundColor = theme.selection});
+                    }
                 }
             }
 
             if (matchText.has_value()) {
                 std::size_t found = line.find(*matchText);
-                while (found != std::string::npos && matchIndex < kSelectionMatchCapacity) {
+                while (found != std::string::npos && matchInstances.size() < kSelectionMatchCapacity) {
                     const U64 startCol = static_cast<U64>(found);
                     const U64 endCol = startCol + matchText->size();
                     const bool isPrimary = selected && row.line == selection.first.line &&
                                            startCol == selection.first.column && endCol == selection.second.column;
                     if (!isPrimary) {
                         if (const auto r = rowRangeRect(row.line, startCol, endCol, row.start, row.end, lineLen, false, rowTop, rh)) {
-                            matchInstances[matchIndex++] = {.rect = *r, .backgroundColor = theme.selectionMatch};
+                            matchInstances.push_back({.rect = *r, .backgroundColor = theme.selectionMatch});
                         }
                     }
                     found = line.find(*matchText, found + matchText->size());
@@ -2015,14 +2012,14 @@ struct TextGrid::Impl {
             .id = config.id + ":selection",
             .instances = std::move(selectionInstances),
             .clip = textClip,
-            .capacity = visibleRowCapacity,
+            .capacity = lineCapacity,
         });
         styleBackgroundBox.update({
             .id = config.id + ":style-bg",
             .instances = std::move(styleBgInstances),
             .clip = textClip,
             .cornerRadius = contentFontSize() * 0.25f,
-            .capacity = hasStyleBackgrounds ? visibleRowCapacity * maxSegments : 0,
+            .capacity = hasStyleBackgrounds ? lineCapacity * maxSegments : 0,
         });
         codeLabels.update({
             .id = config.id + ":text",
@@ -2030,7 +2027,7 @@ struct TextGrid::Impl {
             .clip = textClip,
             .fontName = config.fontName,
             .maxCharacters = kTextSegmentCharacterCapacity,
-            .capacity = visibleRowCapacity * maxSegments,
+            .capacity = lineCapacity * maxSegments,
         });
         for (U64 k = 0; k < extraFontLabels.size(); ++k) {
             if (k < extraFontNames.size()) {
@@ -2040,7 +2037,7 @@ struct TextGrid::Impl {
                     .clip = textClip,
                     .fontName = extraFontNames[k],
                     .maxCharacters = kTextSegmentCharacterCapacity,
-                    .capacity = visibleRowCapacity * maxSegments,
+                    .capacity = lineCapacity * maxSegments,
                 });
             } else {
                 extraFontLabels[k]->update({
@@ -2049,7 +2046,7 @@ struct TextGrid::Impl {
                     .clip = textClip,
                     .fontName = config.fontName,
                     .maxCharacters = kTextSegmentCharacterCapacity,
-                    .capacity = visibleRowCapacity * maxSegments,
+                    .capacity = lineCapacity * maxSegments,
                 });
             }
         }
@@ -2058,7 +2055,7 @@ struct TextGrid::Impl {
             .instances = std::move(numberInstances),
             .clip = clip,
             .maxCharacters = kMaxLineNumberCharacters,
-            .capacity = visibleRowCapacity,
+            .capacity = lineCapacity,
         });
 
         const F32 separatorWidth = std::max(1.0f, std::round(fontSizePixels * kSeparatorWidthFontRatio));
