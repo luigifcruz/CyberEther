@@ -27,6 +27,7 @@ class JETSTREAM_API Kernel {
         std::tuple<U64, U64, U64> gridSize;
         std::vector<std::pair<std::shared_ptr<Buffer>, AccessMode>> buffers;
         std::unordered_map<DeviceType, std::vector<std::vector<U8>>> kernels;
+        U32 workgroupSize = 1;
     };
 
     explicit Kernel(const Config& config) : config(config) {}

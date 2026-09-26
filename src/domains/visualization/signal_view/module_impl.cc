@@ -558,6 +558,7 @@ Result SignalViewImpl::createPresent() {
                 Render::Kernel::Config cfg;
                 cfg.gridSize = {numberOfElements - 1, 1, 1};
                 cfg.kernels = GlobalKernelsPackage["thicklinestrip"];
+                cfg.workgroupSize = 64;
                 cfg.buffers = {
                     {uniformBuffer, Render::Kernel::AccessMode::READ},
                     {pointsBuffer, Render::Kernel::AccessMode::READ},
@@ -617,6 +618,7 @@ Result SignalViewImpl::createPresent() {
                 Render::Kernel::Config cfg;
                 cfg.gridSize = {numberOfElements, 1, 1};
                 cfg.kernels = GlobalKernelsPackage["fillarea"];
+                cfg.workgroupSize = 64;
                 cfg.buffers = {
                     {signalUniformBuffer, Render::Kernel::AccessMode::READ},
                     {signalPointsBuffer, Render::Kernel::AccessMode::READ},
