@@ -82,6 +82,15 @@ Result Implementation::create() {
     dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
+    VkSubpassDependency sampledDependency{};
+    sampledDependency.srcSubpass = 0;
+    sampledDependency.dstSubpass = VK_SUBPASS_EXTERNAL;
+    sampledDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    sampledDependency.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    sampledDependency.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
+    sampledDependency.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT;
+    const VkSubpassDependency dependencies[] = {dependency, sampledDependency};
+
     std::vector<VkAttachmentDescription> colorAttachments;
     if (config.multisampled) {
         colorAttachments.push_back(colorAttachment);
@@ -94,8 +103,8 @@ Result Implementation::create() {
     renderPassInfo.pAttachments = colorAttachments.data();
     renderPassInfo.subpassCount = 1;
     renderPassInfo.pSubpasses = &subpass;
-    renderPassInfo.dependencyCount = 1;
-    renderPassInfo.pDependencies = &dependency;
+    renderPassInfo.dependencyCount = 2;
+    renderPassInfo.pDependencies = dependencies;
 
     JST_VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass), [&]{
         JST_ERROR("[VULKAN] Failed to create render pass.");

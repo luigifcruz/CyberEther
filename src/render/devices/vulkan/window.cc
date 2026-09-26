@@ -315,7 +315,6 @@ Result Implementation::beginImgui() {
 }
 
 Result Implementation::endImgui() {
-    ImGui::Render();
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffers[currentFrame]);
 
     return Result::SUCCESS;
@@ -427,7 +426,9 @@ Result Implementation::underlyingEnd() {
     const auto extent = viewport->getSwapchainExtent();
     renderPassBeginInfo.renderArea.extent = {static_cast<U32>(extent.x), static_cast<U32>(extent.y)};
 
-    VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+    prepareImgui();
+    const auto& background = frameClearColor();
+    VkClearValue clearColor = {{{background.r, background.g, background.b, background.a}}};
     renderPassBeginInfo.clearValueCount = 1;
     renderPassBeginInfo.pClearValues = &clearColor;
     vkCmdBeginRenderPass(commandBuffers[currentFrame], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);

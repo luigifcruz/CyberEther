@@ -604,6 +604,13 @@ Result Shapes::present() {
     }
 
     if (pimpl->updateSizeBufferFlag) {
+        bool visible = false;
+        for (const auto& element : pimpl->elements) {
+            for (const auto& size : element.instanceSizesBuffer) {
+                visible |= size.x != 0.0f && size.y != 0.0f;
+            }
+        }
+        pimpl->program->setEnabled(visible);
         pimpl->sizesBuffer->update();
         pimpl->updateSizeBufferFlag = false;
         pimpl->computeInstanceBufferFlag = true;

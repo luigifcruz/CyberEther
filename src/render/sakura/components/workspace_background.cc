@@ -39,13 +39,28 @@ bool WorkspaceBackground::update(Config config) {
 void WorkspaceBackground::render(const Context& ctx) {
     const auto& config = impl->config;
 
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImDrawList* drawList = ImGui::GetBackgroundDrawList(viewport);
     const ImVec2 rectMin(viewport->Pos.x, viewport->Pos.y);
     const ImVec2 rectMax(viewport->Pos.x + viewport->Size.x, viewport->Pos.y + viewport->Size.y);
-    drawList->AddRectFilled(rectMin,
-                            rectMax,
-                            ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, config.backgroundColorKey)));
+    const ImU32 background = ImGui::ColorConvertFloat4ToU32(
+        Private::ImColor(ctx, config.backgroundColorKey));
+    const bool emptyBackground = drawList->VtxBuffer.empty() &&
+        drawList->CmdBuffer.Size == 1 && drawList->CmdBuffer[0].ElemCount == 0 &&
+        drawList->CmdBuffer[0].UserCallback == nullptr;
+    const ImVec2 clipMin = drawList->GetClipRectMin();
+    const ImVec2 clipMax = drawList->GetClipRectMax();
+    const auto& atlas = ImGui::GetIO().Fonts->TexRef;
+    const bool fullViewport = clipMin.x <= rectMin.x && clipMin.y <= rectMin.y &&
+                              clipMax.x >= rectMax.x && clipMax.y >= rectMax.y;
+    const bool atlasTexture = emptyBackground &&
+        drawList->CmdBuffer[0].TexRef._TexData == atlas._TexData &&
+        drawList->CmdBuffer[0].TexRef._TexID == atlas._TexID;
+    if (ctx.render && atlasTexture && fullViewport &&
+        (background & IM_COL32_A_MASK) == IM_COL32_A_MASK) {
+        ctx.render->frameClearColor(Private::ToColor(ImGui::ColorConvertU32ToFloat4(background)), drawList);
+    }
+    drawList->AddRectFilled(rectMin, rectMax, background);
 
     if (!config.particles || config.particleCount == 0) {
         return;
