@@ -438,6 +438,42 @@ TEST_CASE("Monospace lines honor per-line wrap widths",
     config.lineWrapWidth = {4.0f * 7.5f};
     grid.update(config);
     CHECK(grid.measure(ctx, {400.0f, 600.0f}).y == Catch::Approx(2.0f * single));
+
+    config.lineScale = {2.0f};
+    grid.update(config);
+    CHECK(grid.measure(ctx, {400.0f, 600.0f}).y == Catch::Approx(8.0f * single));
+}
+
+TEST_CASE("Scaled monospace lines place columns with scaled advances",
+          "[core][sakura][text-grid][row-group]") {
+    using TextGrid = Sakura::Retained::TextGrid;
+    const ImGuiContextGuard imguiContext;
+    const Sakura::Context ctx;
+    TextGridHost host;
+    host.grid.update({
+        .id = "scaled-mono-hit",
+        .value = "aaaa\nbbbb",
+        .editable = true,
+        .fontSize = 15.0f,
+        .scrollbar = false,
+        .padding = Sakura::Padding{0.0f, 0.0f, 0.0f, 0.0f},
+        .lineScale = {2.0f, 1.0f},
+    });
+    host.place(ctx, {0.0f, 0.0f, 400.0f, 200.0f});
+    const auto& metrics = host.grid.metrics();
+    REQUIRE(metrics.sourceLines[0].height == Catch::Approx(2.0f * metrics.sourceLines[1].height));
+
+    REQUIRE(host.send(MouseEventType::Click, 30.0f, 5.0f));
+    CHECK(host.grid.cursor() == TextGrid::Position{0, 2});
+    REQUIRE(host.send(MouseEventType::Release, 30.0f, 5.0f));
+
+    REQUIRE(host.send(MouseEventType::Click, 30.0f, metrics.sourceLines[1].top + 5.0f));
+    CHECK(host.grid.cursor() == TextGrid::Position{1, 4});
+    REQUIRE(host.send(MouseEventType::Release, 30.0f, metrics.sourceLines[1].top + 5.0f));
+
+    host.grid.setCursor({1, 4});
+    host.grid.moveCursorRows(-1);
+    CHECK(host.grid.cursor() == TextGrid::Position{0, 2});
 }
 
 TEST_CASE("Clicks on a wrapped row boundary resolve to the row below",
