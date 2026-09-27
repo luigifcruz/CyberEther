@@ -5,6 +5,7 @@
 
 #include <tree_sitter/api.h>
 
+#include <array>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -18,7 +19,13 @@ struct SyntaxHighlighter {
     enum class Language : U8 {
         Python,
         Markdown,
+        Yaml,
+        Bash,
+        Cpp,
+        Json,
     };
+
+    static constexpr U64 LanguageCount = 6;
 
     enum Style : StyleId {
         Default = 0,
@@ -51,7 +58,8 @@ struct SyntaxHighlighter {
 
  private:
     TSParser* parser = nullptr;
-    TSQuery* query = nullptr;
+    std::array<TSQuery*, LanguageCount> queries = {};
+    std::array<bool, LanguageCount> queryFailed = {};
     TSTree* tree = nullptr;
     std::vector<std::vector<StyleId>> cachedStyles;
     U64 cachedRevision = 0;
@@ -61,8 +69,8 @@ struct SyntaxHighlighter {
     bool activeLanguageValid = false;
 
     bool ensureTreeSitter(Language language);
-    void applyQuery(std::vector<std::vector<StyleId>>& styles, const std::vector<std::string>& lines,
-                    TSNode root) const;
+    void applyQuery(const TSQuery* query, std::vector<std::vector<StyleId>>& styles,
+                    const std::vector<std::string>& lines, TSNode root) const;
 };
 
 }  // namespace Jetstream::Sakura::Retained

@@ -8,6 +8,10 @@
 
 extern "C" const TSLanguage* tree_sitter_python(void);
 extern "C" const TSLanguage* tree_sitter_markdown(void);
+extern "C" const TSLanguage* tree_sitter_yaml(void);
+extern "C" const TSLanguage* tree_sitter_bash(void);
+extern "C" const TSLanguage* tree_sitter_cpp(void);
+extern "C" const TSLanguage* tree_sitter_json(void);
 
 namespace Jetstream::Sakura::Retained {
 
@@ -26,8 +30,8 @@ constexpr std::string_view kPythonHighlightQuery = R"(
   (function_definition name: (identifier) @function)
   (class_definition name: (identifier) @type)
   (call function: (identifier) @function)
-  (call function: (attribute attribute: (identifier) @function.method))
   (attribute attribute: (identifier) @property)
+  (call function: (attribute attribute: (identifier) @function.method))
   (type (identifier) @type)
   [
     "as" "assert" "async" "await" "break" "class" "continue" "def" "del"
@@ -62,6 +66,101 @@ constexpr std::string_view kMarkdownHighlightQuery = R"(
   (backslash_escape) @string.escape
 )";
 
+constexpr std::string_view kYamlHighlightQuery = R"(
+  [
+    (double_quote_scalar) (single_quote_scalar) (block_scalar) (string_scalar)
+  ] @string
+  [ (integer_scalar) (float_scalar) ] @number
+  (boolean_scalar) @boolean
+  (null_scalar) @constant.builtin
+  [ (anchor_name) (alias_name) ] @label
+  (tag) @type
+  [ (yaml_directive) (tag_directive) (reserved_directive) ] @attribute
+  (block_mapping_pair
+    key: (flow_node [ (double_quote_scalar) (single_quote_scalar) ] @property))
+  (block_mapping_pair
+    key: (flow_node (plain_scalar (string_scalar) @property)))
+  (flow_mapping
+    (_ key: (flow_node [ (double_quote_scalar) (single_quote_scalar) ] @property)))
+  (flow_mapping
+    (_ key: (flow_node (plain_scalar (string_scalar) @property))))
+  [ "," "-" ":" ">" "?" "|" ] @punctuation.delimiter
+  [ "[" "]" "{" "}" ] @punctuation.bracket
+  [ "*" "&" "---" "..." ] @punctuation.special
+  (comment) @comment
+)";
+
+constexpr std::string_view kBashHighlightQuery = R"(
+  [ (string) (raw_string) (heredoc_body) (heredoc_start) ] @string
+  (variable_name) @property
+  [ (simple_expansion) (expansion) ] @property
+  (command_name) @function
+  (function_definition name: (word) @function)
+  [ (number) (file_descriptor) ] @number
+  [
+    "case" "do" "done" "elif" "else" "esac" "export" "fi" "for" "function" "if" "in"
+    "select" "then" "unset" "until" "while" "declare" "local" "readonly" "typeset"
+  ] @keyword
+  [ "$" "&&" "||" ">" ">>" "<" "|" ] @operator
+  (comment) @comment
+)";
+
+constexpr std::string_view kCppHighlightQuery = R"(
+  [ (type_identifier) (primitive_type) (sized_type_specifier) (auto) ] @type
+  (field_identifier) @property
+  (number_literal) @number
+  [ (string_literal) (raw_string_literal) (char_literal) (system_lib_string) ] @string
+  [ (true) (false) (null) (this) ] @constant.builtin
+  [
+    "break" "case" "catch" "class" "co_await" "co_return" "co_yield" "concept" "const"
+    "consteval" "constexpr" "constinit" "continue" "default" "delete" "do" "else" "enum"
+    "explicit" "extern" "final" "for" "friend" "if" "inline" "mutable" "namespace" "new"
+    "noexcept" "override" "private" "protected" "public" "requires" "return" "sizeof"
+    "static" "struct" "switch" "template" "throw" "try" "typedef" "typename" "union"
+    "using" "virtual" "volatile" "while"
+    "#define" "#elif" "#else" "#endif" "#if" "#ifdef" "#ifndef" "#include"
+  ] @keyword
+  (preproc_directive) @keyword
+  [
+    "--" "-" "-=" "->" "=" "!=" "*" "&" "&&" "+" "++" "+=" "<" "==" ">" "||" "!" "/" "%"
+    "<=" ">=" "<<" ">>" "::"
+  ] @operator
+  (call_expression function: (identifier) @function)
+  (call_expression function: (field_expression field: (field_identifier) @function))
+  (call_expression function: (qualified_identifier name: (identifier) @function))
+  (function_declarator declarator: (identifier) @function)
+  (function_declarator declarator: (field_identifier) @function)
+  (function_declarator declarator: (qualified_identifier name: (identifier) @function))
+  (template_function name: (identifier) @function)
+  (template_method name: (field_identifier) @function)
+  (preproc_function_def name: (identifier) @function)
+  (comment) @comment
+)";
+
+constexpr std::string_view kJsonHighlightQuery = R"(
+  (string) @string
+  (number) @number
+  [ (null) (true) (false) ] @constant.builtin
+  (pair key: (string) @property)
+  (comment) @comment
+)";
+
+struct LanguageTag {
+    std::string_view tag;
+    Language language;
+};
+
+constexpr LanguageTag kLanguageTags[] = {
+    {"python", Language::Python}, {"py", Language::Python}, {"python3", Language::Python},
+    {"markdown", Language::Markdown}, {"md", Language::Markdown},
+    {"yaml", Language::Yaml}, {"yml", Language::Yaml},
+    {"bash", Language::Bash}, {"sh", Language::Bash}, {"shell", Language::Bash}, {"zsh", Language::Bash},
+    {"cpp", Language::Cpp}, {"c++", Language::Cpp}, {"cc", Language::Cpp}, {"cxx", Language::Cpp},
+    {"hpp", Language::Cpp}, {"hh", Language::Cpp}, {"hxx", Language::Cpp}, {"c", Language::Cpp},
+    {"h", Language::Cpp},
+    {"json", Language::Json}, {"jsonc", Language::Json},
+};
+
 struct SyntaxGrammar {
     std::string_view name;
     const TSLanguage* (*grammar)();
@@ -69,9 +168,15 @@ struct SyntaxGrammar {
 };
 
 const SyntaxGrammar& GrammarFor(Language language) {
-    static const SyntaxGrammar python = {"python", tree_sitter_python, kPythonHighlightQuery};
-    static const SyntaxGrammar markdown = {"markdown", tree_sitter_markdown, kMarkdownHighlightQuery};
-    return language == Language::Markdown ? markdown : python;
+    static const SyntaxGrammar grammars[SyntaxHighlighter::LanguageCount] = {
+        {"python", tree_sitter_python, kPythonHighlightQuery},
+        {"markdown", tree_sitter_markdown, kMarkdownHighlightQuery},
+        {"yaml", tree_sitter_yaml, kYamlHighlightQuery},
+        {"bash", tree_sitter_bash, kBashHighlightQuery},
+        {"cpp", tree_sitter_cpp, kCppHighlightQuery},
+        {"json", tree_sitter_json, kJsonHighlightQuery},
+    };
+    return grammars[static_cast<U64>(language)];
 }
 
 std::string JoinLines(const std::vector<std::string>& lines) {
@@ -96,10 +201,10 @@ StyleId StyleForCapture(std::string_view capture) {
     if (capture == "number") {
         return Style::Number;
     }
-    if (capture.starts_with("constant") || capture == "text.uri") {
+    if (capture.starts_with("constant") || capture == "boolean" || capture == "text.uri") {
         return Style::Constant;
     }
-    if (capture == "keyword") {
+    if (capture == "keyword" || capture == "attribute") {
         return Style::Keyword;
     }
     if (capture == "operator" || capture.starts_with("punctuation")) {
@@ -108,7 +213,7 @@ StyleId StyleForCapture(std::string_view capture) {
     if (capture.starts_with("function") || capture == "text.title") {
         return Style::Function;
     }
-    if (capture == "type" || capture == "text.reference") {
+    if (capture == "type" || capture == "label" || capture == "text.reference") {
         return Style::Type;
     }
     if (capture == "property") {
@@ -116,6 +221,12 @@ StyleId StyleForCapture(std::string_view capture) {
     }
     return Style::Default;
 }
+
+struct PatternCapture {
+    U32 pattern = 0;
+    TSNode node;
+    StyleId style = Style::Default;
+};
 
 std::vector<std::vector<StyleId>> BlankStyles(const std::vector<std::string>& lines) {
     std::vector<std::vector<StyleId>> styles;
@@ -146,11 +257,10 @@ std::optional<Language> SyntaxHighlighter::LanguageForTag(std::string_view tag) 
     std::string lower(tag);
     std::transform(lower.begin(), lower.end(), lower.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    if (lower == "python" || lower == "py" || lower == "python3") {
-        return Language::Python;
-    }
-    if (lower == "markdown" || lower == "md") {
-        return Language::Markdown;
+    for (const auto& entry : kLanguageTags) {
+        if (entry.tag == lower) {
+            return entry.language;
+        }
     }
     return std::nullopt;
 }
@@ -165,8 +275,10 @@ SyntaxHighlighter::~SyntaxHighlighter() {
     if (tree) {
         ts_tree_delete(tree);
     }
-    if (query) {
-        ts_query_delete(query);
+    for (TSQuery* query : queries) {
+        if (query) {
+            ts_query_delete(query);
+        }
     }
     if (parser) {
         ts_parser_delete(parser);
@@ -201,7 +313,7 @@ std::vector<std::vector<StyleId>> SyntaxHighlighter::highlight(const std::vector
         ts_tree_delete(tree);
     }
     tree = nextTree;
-    applyQuery(styles, lines, ts_tree_root_node(tree));
+    applyQuery(queries[static_cast<U64>(language)], styles, lines, ts_tree_root_node(tree));
     return styles;
 }
 
@@ -231,21 +343,22 @@ bool SyntaxHighlighter::ensureTreeSitter(Language language) {
             ts_tree_delete(tree);
             tree = nullptr;
         }
-        if (query) {
-            ts_query_delete(query);
-            query = nullptr;
-        }
         activeLanguage = language;
         activeLanguageValid = true;
     }
-    if (query) {
+    const U64 index = static_cast<U64>(language);
+    if (queries[index]) {
         return true;
+    }
+    if (queryFailed[index]) {
+        return false;
     }
     U32 errorOffset = 0;
     TSQueryError errorType = TSQueryErrorNone;
-    query = ts_query_new(grammar.grammar(), grammar.highlightQuery.data(),
-                         static_cast<U32>(grammar.highlightQuery.size()), &errorOffset, &errorType);
-    if (!query) {
+    queries[index] = ts_query_new(grammar.grammar(), grammar.highlightQuery.data(),
+                                  static_cast<U32>(grammar.highlightQuery.size()), &errorOffset, &errorType);
+    if (!queries[index]) {
+        queryFailed[index] = true;
         JST_ERROR("[SAKURA] Failed to compile {} highlight query at byte {} (error {}).",
                   grammar.name, errorOffset, static_cast<U32>(errorType));
         return false;
@@ -253,13 +366,14 @@ bool SyntaxHighlighter::ensureTreeSitter(Language language) {
     return true;
 }
 
-void SyntaxHighlighter::applyQuery(std::vector<std::vector<StyleId>>& styles, const std::vector<std::string>& lines,
-                                   TSNode root) const {
+void SyntaxHighlighter::applyQuery(const TSQuery* query, std::vector<std::vector<StyleId>>& styles,
+                                   const std::vector<std::string>& lines, TSNode root) const {
     TSQueryCursor* cursor = ts_query_cursor_new();
     if (!cursor) {
         return;
     }
     ts_query_cursor_exec(cursor, query, root);
+    std::vector<PatternCapture> captures;
     TSQueryMatch match;
     while (ts_query_cursor_next_match(cursor, &match)) {
         for (U16 i = 0; i < match.capture_count; ++i) {
@@ -267,11 +381,17 @@ void SyntaxHighlighter::applyQuery(std::vector<std::vector<StyleId>>& styles, co
             U32 nameLength = 0;
             const char* name = ts_query_capture_name_for_id(query, capture.index, &nameLength);
             if (name) {
-                ApplyRange(styles, lines, capture.node, StyleForCapture({name, nameLength}));
+                captures.push_back({match.pattern_index, capture.node, StyleForCapture({name, nameLength})});
             }
         }
     }
     ts_query_cursor_delete(cursor);
+    std::stable_sort(captures.begin(), captures.end(), [](const PatternCapture& a, const PatternCapture& b) {
+        return a.pattern < b.pattern;
+    });
+    for (const auto& capture : captures) {
+        ApplyRange(styles, lines, capture.node, capture.style);
+    }
 }
 
 }  // namespace Jetstream::Sakura::Retained
