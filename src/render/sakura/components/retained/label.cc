@@ -115,6 +115,15 @@ struct Label::Impl : public Drawable {
             return Result::SUCCESS;
         }
 
+        const bool active = std::any_of(
+            config.instances.begin(), config.instances.end(), [](const auto& instance) {
+                return instance.visible && !instance.str.empty();
+            });
+        text->enabled(active);
+        if (!active) {
+            return Result::SUCCESS;
+        }
+
         const auto& framebufferSize = context->framebufferSize;
         const U64 characterCapacity = std::max<U64>(1, text->getConfig().maxCharacters);
 
