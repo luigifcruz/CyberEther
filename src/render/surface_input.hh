@@ -35,6 +35,29 @@ struct JETSTREAM_API SurfaceInputState {
     void removeHooks();
 };
 
+inline ImGuiMouseCursor ToImGuiMouseCursor(const SurfaceCursor cursor) {
+    switch (cursor) {
+        case SurfaceCursor::Hand:
+            return ImGuiMouseCursor_Hand;
+        case SurfaceCursor::ResizeEW:
+            return ImGuiMouseCursor_ResizeEW;
+        case SurfaceCursor::ResizeNS:
+            return ImGuiMouseCursor_ResizeNS;
+        case SurfaceCursor::ResizeAll:
+            return ImGuiMouseCursor_ResizeAll;
+        case SurfaceCursor::ResizeNESW:
+            return ImGuiMouseCursor_ResizeNESW;
+        case SurfaceCursor::ResizeNWSE:
+            return ImGuiMouseCursor_ResizeNWSE;
+        case SurfaceCursor::TextInput:
+            return ImGuiMouseCursor_TextInput;
+        case SurfaceCursor::NotAllowed:
+            return ImGuiMouseCursor_NotAllowed;
+        default:
+            return ImGuiMouseCursor_Arrow;
+    }
+}
+
 JETSTREAM_API void ForwardSurfaceInputEvents(const ImVec2& origin,
                                              const ImVec2& size,
                                              SurfaceInputState& state,

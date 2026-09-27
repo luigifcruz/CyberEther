@@ -231,8 +231,14 @@ struct Canvas::Impl {
         if (surface) {
             surface->size(resize.framebufferSize);
         }
+        const Extent2D<U64> previousFramebufferSize = context.framebufferSize;
+        const F32 previousPixelRatio = context.pixelRatio;
         context.framebufferSize = resize.framebufferSize;
         context.pixelRatio = currentPixelRatio();
+        if (root && (context.framebufferSize != previousFramebufferSize ||
+                     context.pixelRatio != previousPixelRatio)) {
+            root->impl->invalidatePaintTree();
+        }
         runLayout();
         invalidateSurface();
         return true;
@@ -310,6 +316,9 @@ void Canvas::render(const Sakura::Context& ctx) {
         }
     }
 
+    Extent2D<U64> laidOutFramebufferSize = impl->context.framebufferSize;
+    F32 laidOutPixelRatio = impl->context.pixelRatio;
+
     if (impl->root) {
         if (impl->context.framebufferSize.x == 0 || impl->context.framebufferSize.y == 0) {
             impl->context.render = impl->renderWindow;
@@ -331,6 +340,8 @@ void Canvas::render(const Sakura::Context& ctx) {
             static_cast<F32>(impl->context.framebufferSize.y),
         };
         Impl::frame(*impl->root, viewport, rctx);
+        laidOutFramebufferSize = impl->context.framebufferSize;
+        laidOutPixelRatio = impl->context.pixelRatio;
 
         if (impl->config.autoHeight && impl->context.framebufferSize.x > 0) {
             const Extent2D<F32> available = {
@@ -350,6 +361,8 @@ void Canvas::render(const Sakura::Context& ctx) {
                         static_cast<F32>(impl->context.framebufferSize.y),
                     };
                     Impl::frame(*impl->root, resizedViewport, resizedContext);
+                    laidOutFramebufferSize = impl->context.framebufferSize;
+                    laidOutPixelRatio = impl->context.pixelRatio;
                 }
             }
         }
@@ -384,6 +397,17 @@ void Canvas::render(const Sakura::Context& ctx) {
     impl->hovered = ImGui::IsItemHovered();
     impl->active = ImGui::IsItemActive();
     impl->windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+
+    if (impl->root && (laidOutFramebufferSize != impl->context.framebufferSize ||
+                       laidOutPixelRatio != impl->context.pixelRatio)) {
+        const Context rctx = impl->retainedContext(ctx);
+        const Rect viewport = {
+            0.0f, 0.0f,
+            static_cast<F32>(impl->context.framebufferSize.x),
+            static_cast<F32>(impl->context.framebufferSize.y),
+        };
+        Impl::frame(*impl->root, viewport, rctx);
+    }
 
     (void)impl->paintTree();
 }

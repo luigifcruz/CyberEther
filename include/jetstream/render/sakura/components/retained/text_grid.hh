@@ -37,8 +37,20 @@ struct TextGrid : public Component {
 
     struct Metrics {
         F32 contentHeight = 0.0f;
+        F32 contentWidth = 0.0f;
+        F32 scrollX = 0.0f;
+        F32 scrollY = 0.0f;
+        F32 scrollbarGutter = 0.0f;
         Padding padding;
         std::vector<LineMetrics> sourceLines;
+    };
+
+    struct WidthLayout {
+        std::vector<F32> lineIndent;
+        std::vector<F32> lineWrapWidth;
+        F32 contentMinWidth = 0.0f;
+
+        bool operator==(const WidthLayout&) const = default;
     };
 
     struct Config {
@@ -59,6 +71,11 @@ struct TextGrid : public Component {
         std::vector<F32> lineScale;
         std::vector<F32> lineTopGap;
         std::vector<F32> lineIndent;
+        std::vector<U8> lineSameRow;
+        std::vector<F32> lineWrapWidth;
+        std::vector<F32> lineRightInset;
+        F32 contentMinWidth = 0.0f;
+        U64 visibleLineCapacity = 64;
         std::string backgroundColorKey = "transparent";
         std::string textColorKey = "text_primary";
         std::string lineNumberColorKey = "editor_line_number";
@@ -79,6 +96,7 @@ struct TextGrid : public Component {
         bool submitOnEnter = false;
         std::function<const std::vector<std::vector<StyleId>>&(
             const std::vector<std::string>& lines, U64 revision)> styler;
+        std::function<WidthLayout(F32 textWidth)> widthLayout;
         std::function<bool(StyleId)> isStyleCommentOrString;
         std::function<void(std::string)> onChange;
         std::function<void(std::string)> onSubmit;
@@ -97,6 +115,7 @@ struct TextGrid : public Component {
 
     bool update(Config config);
     const Metrics& metrics() const;
+    F32 naturalWidth() const;
 
     Position cursor() const;
     void setCursor(Position position);

@@ -1,8 +1,6 @@
 #include <jetstream/render/sakura/components/retained/text_editor.hh>
 
-#include <jetstream/logger.hh>
-
-#include <tree_sitter/api.h>
+#include "../../retained/syntax_highlighter.hh"
 
 #include <algorithm>
 #include <cctype>
@@ -12,9 +10,6 @@
 #include <utility>
 #include <vector>
 
-extern "C" const TSLanguage* tree_sitter_python(void);
-extern "C" const TSLanguage* tree_sitter_markdown(void);
-
 namespace Jetstream::Sakura::Retained {
 
 namespace {
@@ -23,19 +18,6 @@ using StyleId = TextGrid::StyleId;
 using Position = TextGrid::Position;
 
 constexpr U64 kTabSize = 4;
-
-enum Style : StyleId {
-    StyleDefault = 0,
-    StyleComment = 1,
-    StyleKeyword = 2,
-    StyleString = 3,
-    StyleNumber = 4,
-    StyleFunction = 5,
-    StyleType = 6,
-    StyleConstant = 7,
-    StyleOperator = 8,
-    StyleProperty = 9,
-};
 
 constexpr std::string_view kPythonBlockOpenerNodes[] = {
     "if_statement",
@@ -75,64 +57,23 @@ constexpr std::string_view kPythonTerminalStatementKeywords[] = {
     "return",
 };
 
-constexpr std::string_view kPythonHighlightQuery = R"(
-  (comment) @comment
-  (string) @string
-  (escape_sequence) @escape
-  [ (integer) (float) ] @number
-  [ (none) (true) (false) ] @constant.builtin
-  (function_definition name: (identifier) @function)
-  (class_definition name: (identifier) @type)
-  (call function: (identifier) @function)
-  (call function: (attribute attribute: (identifier) @function.method))
-  (attribute attribute: (identifier) @property)
-  (type (identifier) @type)
-  [
-    "as" "assert" "async" "await" "break" "class" "continue" "def" "del"
-    "elif" "else" "except" "finally" "for" "from" "global" "if" "import"
-    "lambda" "nonlocal" "pass" "raise" "return" "try" "while" "with" "yield"
-    "match" "case"
-  ] @keyword
-  [
-    "and" "in" "is" "not" "or" "is not" "not in" "=" ":=" "==" "!=" "<" "<=" ">" ">="
-    "+" "-" "*" "**" "/" "//" "%" "&" "|" "^" "~" "<<" ">>" "+=" "-=" "*="
-    "**=" "/=" "//=" "%=" "&=" "|=" "^=" "<<=" ">>=" "->"
-  ] @operator
-)";
+SyntaxHighlighter::Language SyntaxLanguage(TextEditor::Language language) {
+    return language == TextEditor::Language::Markdown ? SyntaxHighlighter::Language::Markdown
+                                                       : SyntaxHighlighter::Language::Python;
+}
 
-constexpr std::string_view kMarkdownHighlightQuery = R"(
-  (atx_heading (inline) @text.title)
-  (setext_heading (paragraph) @text.title)
-  [
-    (atx_h1_marker) (atx_h2_marker) (atx_h3_marker) (atx_h4_marker)
-    (atx_h5_marker) (atx_h6_marker) (setext_h1_underline) (setext_h2_underline)
-  ] @punctuation.special
-  [ (link_title) (indented_code_block) (fenced_code_block) ] @text.literal
-  (fenced_code_block_delimiter) @punctuation.delimiter
-  (code_fence_content) @none
-  (link_destination) @text.uri
-  (link_label) @text.reference
-  [
-    (list_marker_plus) (list_marker_minus) (list_marker_star) (list_marker_dot)
-    (list_marker_parenthesis) (thematic_break)
-  ] @punctuation.special
-  [ (block_continuation) (block_quote_marker) ] @punctuation.special
-  (backslash_escape) @string.escape
-)";
+std::span<const std::string_view> BlockOpenerNodes(TextEditor::Language language) {
+    if (language == TextEditor::Language::Python) {
+        return kPythonBlockOpenerNodes;
+    }
+    return {};
+}
 
-struct SyntaxGrammar {
-    std::string_view name;
-    const TSLanguage* (*grammar)();
-    std::string_view highlightQuery;
-    std::span<const std::string_view> blockOpenerNodes;
-    std::span<const std::string_view> indentContainerNodes;
-};
-
-const SyntaxGrammar& GrammarFor(TextEditor::Language language) {
-    static const SyntaxGrammar python = {"python", tree_sitter_python, kPythonHighlightQuery,
-                                         kPythonBlockOpenerNodes, kPythonIndentContainerNodes};
-    static const SyntaxGrammar markdown = {"markdown", tree_sitter_markdown, kMarkdownHighlightQuery, {}, {}};
-    return language == TextEditor::Language::Markdown ? markdown : python;
+std::span<const std::string_view> IndentContainerNodes(TextEditor::Language language) {
+    if (language == TextEditor::Language::Python) {
+        return kPythonIndentContainerNodes;
+    }
+    return {};
 }
 
 bool ContainsNodeType(std::span<const std::string_view> values, std::string_view value) {
@@ -170,199 +111,6 @@ U64 LeadingWhitespaceColumn(const std::string& line) {
     return column;
 }
 
-std::string JoinLines(const std::vector<std::string>& lines) {
-    std::string value;
-    for (U64 i = 0; i < lines.size(); ++i) {
-        if (i > 0) {
-            value += '\n';
-        }
-        value += lines[i];
-    }
-    return value;
-}
-
-StyleId StyleForCapture(std::string_view capture) {
-    if (capture == "comment") {
-        return StyleComment;
-    }
-    if (capture == "string" || capture == "escape" ||
-        capture == "text.literal" || capture == "string.escape") {
-        return StyleString;
-    }
-    if (capture == "number") {
-        return StyleNumber;
-    }
-    if (capture.starts_with("constant") || capture == "text.uri") {
-        return StyleConstant;
-    }
-    if (capture == "keyword") {
-        return StyleKeyword;
-    }
-    if (capture == "operator" || capture.starts_with("punctuation")) {
-        return StyleOperator;
-    }
-    if (capture.starts_with("function") || capture == "text.title") {
-        return StyleFunction;
-    }
-    if (capture == "type" || capture == "text.reference") {
-        return StyleType;
-    }
-    if (capture == "property") {
-        return StyleProperty;
-    }
-    return StyleDefault;
-}
-
-struct SyntaxHighlighter {
-    TSParser* parser = nullptr;
-    TSQuery* query = nullptr;
-    TSTree* tree = nullptr;
-    std::vector<std::vector<StyleId>> cachedStyles;
-    U64 cachedRevision = 0;
-    TextEditor::Language cachedLanguage = TextEditor::Language::Python;
-    TextEditor::Language activeLanguage = TextEditor::Language::Python;
-    bool cacheValid = false;
-    bool activeLanguageValid = false;
-
-    ~SyntaxHighlighter() {
-        if (tree) {
-            ts_tree_delete(tree);
-        }
-        if (query) {
-            ts_query_delete(query);
-        }
-        if (parser) {
-            ts_parser_delete(parser);
-        }
-    }
-
-    const std::vector<std::vector<StyleId>>& styles(const std::vector<std::string>& lines,
-                                                    U64 revision,
-                                                    TextEditor::Language language) {
-        if (cacheValid && revision == cachedRevision && language == cachedLanguage) {
-            return cachedStyles;
-        }
-        auto next = blankStyles(lines);
-        applyTreeSitter(next, lines, language);
-        cachedStyles = std::move(next);
-        cachedRevision = revision;
-        cachedLanguage = language;
-        cacheValid = true;
-        return cachedStyles;
-    }
-
-    bool rootNode(const std::vector<std::string>& lines, U64 revision,
-                  TextEditor::Language language, TSNode& root) {
-        (void)styles(lines, revision, language);
-        if (!tree) {
-            return false;
-        }
-        root = ts_tree_root_node(tree);
-        return !ts_node_is_null(root);
-    }
-
- private:
-    static std::vector<std::vector<StyleId>> blankStyles(const std::vector<std::string>& lines) {
-        std::vector<std::vector<StyleId>> styles;
-        styles.reserve(lines.size());
-        for (const auto& line : lines) {
-            styles.emplace_back(line.size(), StyleDefault);
-        }
-        return styles;
-    }
-
-    void applyTreeSitter(std::vector<std::vector<StyleId>>& styles,
-                         const std::vector<std::string>& lines,
-                         TextEditor::Language language) {
-        const std::string source = JoinLines(lines);
-        if (!ensureTreeSitter(language)) {
-            return;
-        }
-        TSTree* nextTree = ts_parser_parse_string(parser, nullptr, source.c_str(), static_cast<U32>(source.size()));
-        if (!nextTree) {
-            return;
-        }
-        if (tree) {
-            ts_tree_delete(tree);
-        }
-        tree = nextTree;
-        applyQuery(styles, lines, ts_tree_root_node(tree));
-    }
-
-    bool ensureTreeSitter(TextEditor::Language language) {
-        const auto& grammar = GrammarFor(language);
-        if (!parser) {
-            parser = ts_parser_new();
-        }
-        if (!parser) {
-            return false;
-        }
-        if (!activeLanguageValid || activeLanguage != language) {
-            if (!ts_parser_set_language(parser, grammar.grammar())) {
-                return false;
-            }
-            if (tree) {
-                ts_tree_delete(tree);
-                tree = nullptr;
-            }
-            if (query) {
-                ts_query_delete(query);
-                query = nullptr;
-            }
-            activeLanguage = language;
-            activeLanguageValid = true;
-        }
-        if (query) {
-            return true;
-        }
-        U32 errorOffset = 0;
-        TSQueryError errorType = TSQueryErrorNone;
-        query = ts_query_new(grammar.grammar(), grammar.highlightQuery.data(),
-                             static_cast<U32>(grammar.highlightQuery.size()), &errorOffset, &errorType);
-        if (!query) {
-            JST_ERROR("[SAKURA] Failed to compile {} highlight query at byte {} (error {}).",
-                      grammar.name, errorOffset, static_cast<U32>(errorType));
-            return false;
-        }
-        return true;
-    }
-
-    static void applyRange(std::vector<std::vector<StyleId>>& styles,
-                           const std::vector<std::string>& lines, TSNode node, StyleId style) {
-        const TSPoint start = ts_node_start_point(node);
-        const TSPoint end = ts_node_end_point(node);
-        for (U64 row = start.row; row <= end.row && row < styles.size(); ++row) {
-            const U64 lineSize = std::min<U64>(styles[row].size(), lines[row].size());
-            const U64 startColumn = row == start.row ? std::min<U64>(start.column, lineSize) : 0;
-            const U64 endColumn = row == end.row ? std::min<U64>(end.column, lineSize) : lineSize;
-            for (U64 column = startColumn; column < endColumn; ++column) {
-                styles[row][column] = style;
-            }
-        }
-    }
-
-    void applyQuery(std::vector<std::vector<StyleId>>& styles,
-                    const std::vector<std::string>& lines, TSNode root) const {
-        TSQueryCursor* cursor = ts_query_cursor_new();
-        if (!cursor) {
-            return;
-        }
-        ts_query_cursor_exec(cursor, query, root);
-        TSQueryMatch match;
-        while (ts_query_cursor_next_match(cursor, &match)) {
-            for (U16 i = 0; i < match.capture_count; ++i) {
-                const TSQueryCapture& capture = match.captures[i];
-                U32 nameLength = 0;
-                const char* name = ts_query_capture_name_for_id(query, capture.index, &nameLength);
-                if (name) {
-                    applyRange(styles, lines, capture.node, StyleForCapture({name, nameLength}));
-                }
-            }
-        }
-        ts_query_cursor_delete(cursor);
-    }
-};
-
 }  // namespace
 
 struct TextEditor::Impl {
@@ -373,7 +121,7 @@ struct TextEditor::Impl {
     U64 styleRevision = 0;
 
     bool styleIsCommentOrString(StyleId id) const {
-        return id == StyleComment || id == StyleString;
+        return SyntaxHighlighter::IsCommentOrString(id);
     }
 
     TSPoint pointFor(Position p) const {
@@ -391,7 +139,7 @@ struct TextEditor::Impl {
 
     bool nodeAtPosition(const std::vector<std::string>& lines, Position position, TSNode& node, bool namedOnly) {
         TSNode root;
-        if (!highlighter.rootNode(lines, lastRevision, config.language, root)) {
+        if (!highlighter.rootNode(lines, lastRevision, SyntaxLanguage(config.language), root)) {
             return false;
         }
         const TSPoint point = pointFor(position);
@@ -405,7 +153,7 @@ struct TextEditor::Impl {
         if (!nodeAtPosition(lines, position, node, false)) {
             return false;
         }
-        const auto& openers = GrammarFor(config.language).blockOpenerNodes;
+        const auto openers = BlockOpenerNodes(config.language);
         while (!ts_node_is_null(node)) {
             if (ContainsNodeType(openers, ts_node_type(node))) {
                 return true;
@@ -420,7 +168,7 @@ struct TextEditor::Impl {
         if (!nodeAtPosition(lines, position, node, true)) {
             return false;
         }
-        const auto& containers = GrammarFor(config.language).indentContainerNodes;
+        const auto containers = IndentContainerNodes(config.language);
         const auto less = [](Position a, Position b) {
             return a.line != b.line ? a.line < b.line : a.column < b.column;
         };
@@ -436,7 +184,7 @@ struct TextEditor::Impl {
     }
 
     bool hasUnclosedBracket(const std::vector<std::string>& lines, Position position) {
-        const auto& styles = highlighter.styles(lines, lastRevision, config.language);
+        const auto& styles = highlighter.styles(lines, lastRevision, SyntaxLanguage(config.language));
         I64 depth = 0;
         for (U64 lineIndex = 0; lineIndex <= position.line && lineIndex < lines.size(); ++lineIndex) {
             const auto& line = lines[lineIndex];
@@ -478,7 +226,7 @@ struct TextEditor::Impl {
         if (lastContent == std::string::npos) {
             return indent;
         }
-        const auto& styles = highlighter.styles(lines, lastRevision, config.language);
+        const auto& styles = highlighter.styles(lines, lastRevision, SyntaxLanguage(config.language));
         const Position contentPos = {cursor.line, static_cast<U64>(lastContent)};
         const bool inCommentOrString = cursor.line < styles.size() && lastContent < styles[cursor.line].size() &&
                                        styleIsCommentOrString(styles[cursor.line][lastContent]);
@@ -504,7 +252,7 @@ struct TextEditor::Impl {
         const bool empty = basis.first == basis.second;
 
         TSNode root;
-        if (!highlighter.rootNode(lines, lastRevision, config.language, root)) {
+        if (!highlighter.rootNode(lines, lastRevision, SyntaxLanguage(config.language), root)) {
             return std::nullopt;
         }
         Position endPos = basis.second;
@@ -575,7 +323,7 @@ bool TextEditor::update(Config config) {
         .styler = [impl = this->impl.get()](const std::vector<std::string>& lines, U64 revision)
                       -> const std::vector<std::vector<StyleId>>& {
             impl->lastRevision = revision;
-            return impl->highlighter.styles(lines, revision, impl->config.language);
+            return impl->highlighter.styles(lines, revision, SyntaxLanguage(impl->config.language));
         },
         .isStyleCommentOrString = [impl = this->impl.get()](StyleId id) {
             return impl->styleIsCommentOrString(id);

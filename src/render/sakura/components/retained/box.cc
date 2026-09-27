@@ -79,6 +79,15 @@ struct Box::Impl : public Drawable {
             return Result::SUCCESS;
         }
 
+        const bool active = std::any_of(
+            config.instances.begin(), config.instances.end(), [](const auto& instance) {
+                return instance.visible && !instance.rect.empty();
+            });
+        shape->enabled(active);
+        if (!active) {
+            return Result::SUCCESS;
+        }
+
         const auto& framebufferSize = context->framebufferSize;
 
         JST_CHECK(shape->updatePixelSize(context->pixelSize()));

@@ -53,6 +53,13 @@ subprojects/*
 !subprojects/soapysdr.wrap
 !subprojects/stb.wrap
 !subprojects/tomlplusplus.wrap
+!subprojects/tree-sitter.wrap
+!subprojects/tree-sitter-bash.wrap
+!subprojects/tree-sitter-cpp.wrap
+!subprojects/tree-sitter-json.wrap
+!subprojects/tree-sitter-markdown.wrap
+!subprojects/tree-sitter-python.wrap
+!subprojects/tree-sitter-yaml.wrap
 !subprojects/velopack.wrap
 !subprojects/vpx.wrap
 !subprojects/zlib.wrap

@@ -18,6 +18,8 @@ struct Typography {
     static constexpr F32 ChromeH2Scale = 1.10f;
     static constexpr F32 ChromeBoldScale = 1.04f;
     static constexpr F32 DisplayScale = 1.15f;
+    static constexpr F32 StyleBackgroundPadRatio = 0.2f;
+    static constexpr F32 TextPaddingRatio = 6.0f / 15.0f;
 };
 
 }  // namespace Jetstream::Sakura

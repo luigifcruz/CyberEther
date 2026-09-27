@@ -413,6 +413,10 @@ Result Text::updateScissorRect(const std::optional<Render::ScissorRect>& rect) {
     return Result::SUCCESS;
 }
 
+void Text::enabled(bool value) {
+    pimpl->fontProgram->setEnabled(value);
+}
+
 Result Text::Impl::updateUniforms() {
     // Set data.
     uniforms.color = glm::vec3(config.color.r, config.color.g, config.color.b);
