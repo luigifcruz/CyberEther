@@ -24,9 +24,7 @@ int CyberEtherMain(int argc, char* argv[]) {
     try {
         Updater::Initialize(argc, argv);
 #if defined(JST_OS_BROWSER)
-        (void)argc;
-        (void)argv;
-        return Run();
+        return Run(argc, argv);
 #endif
 #if defined(JST_OS_LINUX) || defined(JST_OS_WINDOWS) || defined(JST_OS_MAC)
         return Run(argc, argv);
