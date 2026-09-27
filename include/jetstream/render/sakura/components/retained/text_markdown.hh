@@ -30,9 +30,15 @@ struct TextMarkdown : public Component {
         static constexpr StyleId CalloutBase = 7;
         static constexpr StyleId CalloutVariants = 4;
         static constexpr StyleId CalloutTones = 6;
+        static constexpr StyleId SyntaxBase = CalloutBase + CalloutTones * CalloutVariants;
+        static constexpr StyleId SyntaxStyles = 9;
 
         static constexpr StyleId Callout(StyleId tone, StyleId emphasis) {
             return static_cast<StyleId>(CalloutBase + tone * CalloutVariants + emphasis);
+        }
+
+        static constexpr StyleId Syntax(StyleId style) {
+            return static_cast<StyleId>(SyntaxBase + style - 1);
         }
     };
 
@@ -58,7 +64,10 @@ struct TextMarkdown : public Component {
         std::vector<std::string> styleFonts = {"default_body_bold", "default_body_italic",
                                                "default_body_bold_italic", "default_mono", "", "default_mono"};
         std::vector<std::string> styleBackgroundColorKeys = {"", "", "", "editor_scrollbar_track", "", ""};
-        std::vector<F32> styleScales = {1.0f, 1.0f, 1.0f, 0.9f, 1.0f, 0.9f};
+        std::vector<F32> styleScales = {1.0f, 1.0f, 1.0f, 0.9f, 1.0f, 1.0f};
+        std::vector<std::string> syntaxColorKeys = {"editor_comment", "editor_keyword", "editor_string",
+                                                    "editor_constant", "editor_function", "editor_type",
+                                                    "editor_constant", "editor_keyword", "editor_type"};
     };
 
     TextMarkdown();

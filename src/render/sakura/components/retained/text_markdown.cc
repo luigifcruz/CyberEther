@@ -9,6 +9,7 @@
 #include "../../retained/helpers.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 #include "../../retained/text_lines.hh"
+#include "../../retained/syntax_highlighter.hh"
 #include "../../retained/text_metrics.hh"
 
 #include <algorithm>
@@ -34,7 +35,7 @@ constexpr F32 kHeadingGapRatio = 1.0f;
 constexpr F32 kAfterHeadingGapRatio = 0.2f;
 constexpr F32 kListGapRatio = 0.15f;
 constexpr F32 kIndentEmRatio = 1.4f;
-constexpr F32 kCodePadRatio = 0.6f;
+constexpr F32 kCodePadRatio = 0.45f;
 constexpr F32 kCodeCapHeightRatio = 0.73f;
 constexpr U8 kCodeMinLineDigits = 2;
 constexpr F32 kCodeGutterGapChars = 1.5f;
@@ -118,6 +119,7 @@ struct Block {
     std::string marker;
     TableSource table;
     StyleId tone = 0;
+    std::optional<SyntaxHighlighter::Language> syntax;
 
     bool inlineParse() const { return kind != Kind::Code; }
 };
@@ -168,6 +170,15 @@ struct Table {
 
 bool IsFence(const std::string& line) {
     return line.rfind("```", 0) == 0;
+}
+
+std::string_view FenceTag(std::string_view line) {
+    const U64 start = line.find_first_not_of("` \t");
+    if (start == std::string_view::npos) {
+        return {};
+    }
+    const U64 end = line.find_first_of(" \t{", start);
+    return line.substr(start, end == std::string_view::npos ? std::string_view::npos : end - start);
 }
 
 bool IsRule(const std::string& line) {
@@ -513,6 +524,7 @@ struct BlockScanner {
         if (!IsFence(line)) {
             return false;
         }
+        const auto syntax = SyntaxHighlighter::LanguageForTag(FenceTag(line));
         std::vector<std::string> code;
         ++index;
         while (index < source.size() && !IsFence(source[index])) {
@@ -528,6 +540,7 @@ struct BlockScanner {
         block.fontSize = body;
         block.topGap = topGapFor(block.kind, gapAbove(kParagraphGapRatio));
         block.baseStyle = Style::CodeBlock;
+        block.syntax = syntax;
         emit(std::move(block));
         return true;
     }
@@ -698,11 +711,12 @@ struct DocumentBuilder {
     F32 body;
     F32 codeIndent;
     F32 codeRightInset;
+    SyntaxHighlighter& highlighter;
     Document document;
     std::vector<std::string> lines;
 
-    DocumentBuilder(F32 body, F32 codeIndent, F32 codeRightInset)
-        : body(body), codeIndent(codeIndent), codeRightInset(codeRightInset) {}
+    DocumentBuilder(F32 body, F32 codeIndent, F32 codeRightInset, SyntaxHighlighter& highlighter)
+        : body(body), codeIndent(codeIndent), codeRightInset(codeRightInset), highlighter(highlighter) {}
 
     Document build(const std::vector<Block>& blocks) {
         for (const auto& block : blocks) {
@@ -809,6 +823,8 @@ struct DocumentBuilder {
         const U64 firstLine = lines.size();
 
         const auto sources = SplitLines(block.text);
+        const auto syntaxStyles = block.syntax.has_value() ? highlighter.highlight(sources, *block.syntax)
+                                                           : std::vector<std::vector<StyleId>>{};
         for (U64 li = 0; li < sources.size(); ++li) {
             const F32 gap = li == 0 ? block.topGap : 0.0f;
             std::vector<StyleId> styles;
@@ -819,6 +835,13 @@ struct DocumentBuilder {
             } else {
                 display = sources[li];
                 styles.assign(display.size(), block.baseStyle);
+                if (li < syntaxStyles.size()) {
+                    for (U64 column = 0; column < styles.size() && column < syntaxStyles[li].size(); ++column) {
+                        if (syntaxStyles[li][column] != SyntaxHighlighter::Default) {
+                            styles[column] = Style::Syntax(syntaxStyles[li][column]);
+                        }
+                    }
+                }
             }
             addLine(std::move(display), scale, gap, indent, std::move(styles), std::move(links), false,
                     block.kind == Block::Kind::Code ? codeRightInset : 0.0f);
@@ -900,6 +923,7 @@ struct TextMarkdown::Impl {
     Box tableChrome;
     Box decorations;
     Label markers;
+    SyntaxHighlighter highlighter;
     Document document;
     mutable TextMetrics textMetrics;
     U64 styleRevision = 0;
@@ -914,7 +938,7 @@ struct TextMarkdown::Impl {
         const Padding padding = gridPadding();
         const F32 inset = codeInset();
         document = DocumentBuilder(config.fontSize, std::max(0.0f, inset - padding.left),
-                                   std::max(0.0f, inset - padding.right)).build(blocks);
+                                   std::max(0.0f, inset - padding.right), highlighter).build(blocks);
         tablesLayoutValid = false;
     }
 
@@ -961,14 +985,20 @@ struct TextMarkdown::Impl {
         return config.fontSize * kCodePadRatio + leading * 0.5f;
     }
 
-    F32 styleScale(StyleId id) const {
+    static StyleId configStyle(StyleId id) {
+        return id >= Style::SyntaxBase ? Style::CodeBlock : id;
+    }
+
+    F32 styleScale(StyleId style) const {
+        const StyleId id = configStyle(style);
         if (id == 0 || id > config.styleScales.size() || config.styleScales[id - 1] <= 0.0f) {
             return 1.0f;
         }
         return config.styleScales[id - 1];
     }
 
-    std::string styleFont(StyleId id) const {
+    std::string styleFont(StyleId style) const {
+        const StyleId id = configStyle(style);
         if (id == 0 || id > config.styleFonts.size() || config.styleFonts[id - 1].empty()) {
             return kBodyFont;
         }
@@ -1099,7 +1129,17 @@ struct TextMarkdown::Impl {
                 keys.emplace_back(kCalloutColorKeys[tone]);
             }
         }
+        for (StyleId syntax = 0; syntax < Style::SyntaxStyles; ++syntax) {
+            keys.push_back(syntax < config.syntaxColorKeys.size() ? config.syntaxColorKeys[syntax] : "");
+        }
         return keys;
+    }
+
+    std::vector<F32> gridStyleScales() const {
+        auto scales = config.styleScales;
+        scales.resize(Style::SyntaxBase - 1, 0.0f);
+        scales.resize(Style::SyntaxBase - 1 + Style::SyntaxStyles, styleScale(Style::CodeBlock));
+        return scales;
     }
 
     std::vector<std::string> gridStyleFonts() const {
@@ -1111,6 +1151,7 @@ struct TextMarkdown::Impl {
                 fonts.push_back(config.styleFonts.size() >= emphasis ? config.styleFonts[emphasis - 1] : "");
             }
         }
+        fonts.resize(Style::SyntaxBase - 1 + Style::SyntaxStyles, styleFont(Style::CodeBlock));
         return fonts;
     }
 
@@ -1185,7 +1226,7 @@ struct TextMarkdown::Impl {
             .styleColorKeys = gridStyleColorKeys(),
             .styleFonts = gridStyleFonts(),
             .styleBackgroundColorKeys = config.styleBackgroundColorKeys,
-            .styleScales = config.styleScales,
+            .styleScales = gridStyleScales(),
             .maxLineSegments = kGridLineSegments,
             .styleRevision = styleRevision,
             .styler = [this](const std::vector<std::string>&, U64)
