@@ -27,7 +27,11 @@ void Component::Impl::setFrame(Rect newFrame) {
 }
 
 void Component::Impl::setClip(Rect newClip) {
+    if (clip == newClip) {
+        return;
+    }
     clip = newClip;
+    invalidate(Component::Dirty::Paint);
 }
 
 Rect Component::Impl::childClip() const {
@@ -55,6 +59,7 @@ Result Component::Impl::buildTree(Context& ctx) {
     if (visible) {
         JST_CHECK(self->build(ctx));
         resourceDirty = false;
+        paintDirty = true;
     }
     for (auto* child : children) {
         if (!child || !child->impl->visible) {
@@ -67,18 +72,27 @@ Result Component::Impl::buildTree(Context& ctx) {
 }
 
 Result Component::Impl::paintTree() {
-    if (!visible) {
+    if (!visible || !paintDirty) {
         return Result::SUCCESS;
     }
     JST_CHECK(self->paint());
-    paintDirty = false;
     for (auto* child : children) {
         if (!child) {
             continue;
         }
         JST_CHECK(child->impl->paintTree());
     }
+    paintDirty = false;
     return Result::SUCCESS;
+}
+
+void Component::Impl::invalidatePaintTree() {
+    paintDirty = true;
+    for (auto* child : children) {
+        if (child) {
+            child->impl->invalidatePaintTree();
+        }
+    }
 }
 
 bool Component::Impl::treeResourceDirty() const {

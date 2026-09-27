@@ -5,6 +5,7 @@
 #include <jetstream/render/sakura/components/retained/text_grid.hh>
 #include <jetstream/render/tools/imgui.h>
 
+#include "harness.hh"
 #include "render/sakura/context.hh"
 #include "render/sakura/retained/text_grid_viewport.hh"
 
@@ -856,4 +857,40 @@ TEST_CASE("Switching wrap modes re-resolves scrollbar reservations",
     REQUIRE(wrapped.sourceLines.size() == 1);
     CHECK(wrapped.sourceLines[0].height == Catch::Approx(2.0f * 17.25f));
     CHECK_FALSE(host.wheel(-5.0f, 0.0f, 30.0f, 10.0f));
+}
+
+TEST_CASE("Keyboard input applies once per frame across repeated layouts",
+          "[core][sakura][text-grid][input]") {
+    using TextGrid = Sakura::Retained::TextGrid;
+    SakuraTest::HeadlessUi ui;
+    Sakura::Context ctx = ui.sakura();
+    ctx.windowFocused = true;
+    TextGridHost host;
+    host.grid.update({
+        .id = "keyboard-once",
+        .value = "ab",
+        .editable = true,
+        .fontSize = 15.0f,
+        .padding = Sakura::Padding{0.0f, 0.0f, 0.0f, 0.0f},
+    });
+    const Jetstream::Rect frame{0.0f, 0.0f, 200.0f, 100.0f};
+    ui.frame([&] { host.place(ctx, frame); });
+    host.send(MouseEventType::Click, 5.0f, 5.0f);
+    host.send(MouseEventType::Release, 5.0f, 5.0f);
+    ui.frame([&] { host.place(ctx, frame); });
+    REQUIRE(host.grid.metrics().sourceLines.size() == 1);
+
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, true);
+    ui.frame([&] {
+        host.place(ctx, frame);
+        host.place(ctx, frame);
+    });
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, false);
+    ui.frame([&] { host.place(ctx, frame); });
+    CHECK(host.grid.metrics().sourceLines.size() == 2);
+
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, true);
+    ui.frame([&] { host.place(ctx, frame); });
+    ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, false);
+    CHECK(host.grid.metrics().sourceLines.size() == 3);
 }

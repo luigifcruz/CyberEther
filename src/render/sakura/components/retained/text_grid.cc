@@ -270,6 +270,7 @@ struct TextGrid::Impl {
     bool bottomReserved = false;
     bool liveLayout = false;
     bool cursorFollowPending = false;
+    I32 keyboardFrame = -1;
     bool viewportResolved = false;
     bool resolvedLayoutPass = false;
     U64 resolvedRevision = 0;
@@ -1977,6 +1978,11 @@ struct TextGrid::Impl {
         if (!hasFocus() || !windowFocused) {
             return;
         }
+        const I32 frame = ImGui::GetFrameCount();
+        if (keyboardFrame == frame) {
+            return;
+        }
+        keyboardFrame = frame;
         const Modifiers mods = CurrentModifiers();
 
         if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
