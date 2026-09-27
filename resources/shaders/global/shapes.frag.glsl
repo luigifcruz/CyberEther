@@ -55,7 +55,9 @@ void main() {
 
     // WGSL requires derivatives in uniform control flow, so compute every
     // pixel-scale term up front before branching on per-instance params.
-    vec2 localPixel = max(fwidth(inLocalPos), vec2(1.0e-6));
+    vec2 localPixel = max(vec2(length(vec2(dFdx(inLocalPos.x), dFdy(inLocalPos.x))),
+                               length(vec2(dFdx(inLocalPos.y), dFdy(inLocalPos.y)))),
+                          vec2(1.0e-6));
 
     float circleSd = sdfCircle(inLocalPos, 0.5);
     float circleSdPixels = circleSd / max(length(vec2(dFdx(circleSd), dFdy(circleSd))), 1.0e-6);
