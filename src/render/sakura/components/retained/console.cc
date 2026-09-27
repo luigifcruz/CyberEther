@@ -17,7 +17,7 @@ namespace Jetstream::Sakura::Retained {
 
 namespace {
 
-constexpr F32 kReferenceFontSize = 15.0f;
+constexpr F32 kReferenceFontSize = Typography::FontSize;
 constexpr F32 kOutputFontScale = 0.92f;
 
 std::string JoinLines(const std::vector<std::string>& lines) {
@@ -105,7 +105,7 @@ struct ConsoleRoot : public Component {
                 .fontSize = fontSizePixels * kOutputFontScale,
                 .alignment = {1, 1},
             }},
-            .fontName = "default_mono",
+            .fontName = Typography::MonoFont,
         });
 
         statusBar.update({

@@ -1,0 +1,10 @@
+[wrap-file]
+directory = tree-sitter-yaml-0.7.2
+lead_directory_missing = true
+source_url = https://github.com/tree-sitter-grammars/tree-sitter-yaml/releases/download/v0.7.2/tree-sitter-yaml.tar.gz
+source_filename = tree-sitter-yaml-0.7.2.tar.gz
+source_hash = 2707d9ff0556ee6c36a77299b4c08e5b2dcbd0d35f0b9688bb2ac8e276025f72
+patch_directory = tree-sitter-yaml
+
+[provide]
+tree-sitter-yaml = tree_sitter_yaml_dep

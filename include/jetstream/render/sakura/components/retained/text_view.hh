@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_RETAINED_TEXT_VIEW_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/typography.hh>
 #include <jetstream/render/sakura/components/retained/text_grid.hh>
 #include <jetstream/types.hh>
 
@@ -17,8 +18,9 @@ struct TextView : public Component {
     struct Config {
         std::string id;
         std::string value;
-        F32 fontSize = 15.0f;
+        F32 fontSize = Typography::FontSize;
         F32 fontScale = 1.0f;
+        F32 lineHeight = Typography::CodeLineHeight;
         std::string fontName = "default_mono";
         bool monospace = true;
         bool lineNumbers = false;
@@ -39,7 +41,9 @@ struct TextView : public Component {
         std::vector<std::string> styleColorKeys;
         std::vector<std::string> styleFonts;
         std::vector<std::string> styleBackgroundColorKeys;
+        std::vector<F32> styleScales;
         U64 maxLineSegments = 64;
+        U64 styleRevision = 0;
         std::function<const std::vector<std::vector<TextGrid::StyleId>>&(
             const std::vector<std::string>& lines, U64 revision)> styler;
         std::function<bool(TextGrid::Position)> onPositionClick;

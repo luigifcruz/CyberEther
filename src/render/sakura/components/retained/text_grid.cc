@@ -1,5 +1,6 @@
 #include <jetstream/render/sakura/components/retained/text_grid.hh>
 
+#include <jetstream/render/components/text.hh>
 #include <jetstream/render/sakura/clipboard.hh>
 #include <jetstream/render/sakura/components/retained/box.hh>
 #include <jetstream/render/sakura/components/retained/label.hh>
@@ -8,12 +9,15 @@
 #include "../../helpers.hh"
 #include "../../state.hh"
 #include "../../retained/helpers.hh"
+#include "../../retained/text_grid_viewport.hh"
+#include "../../retained/text_lines.hh"
 #include "../../retained/text_metrics.hh"
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -25,9 +29,11 @@ namespace Jetstream::Sakura::Retained {
 
 namespace {
 
-constexpr F32 kReferenceFontSize = 15.0f;
-constexpr F32 kLineHeightFontRatio = 1.15f;
-constexpr F32 kPaddingFontRatio = 6.0f / kReferenceFontSize;
+using Unicode = Jetstream::Render::Components::Text::Unicode;
+
+constexpr F32 kReferenceFontSize = Typography::FontSize;
+constexpr F32 kStyleBackgroundHeightRatio = 1.3f;
+constexpr F32 kStyleBackgroundCornerRatio = 0.25f;
 constexpr F32 kScrollbarThicknessFontRatio = 6.0f / kReferenceFontSize;
 constexpr F32 kScrollbarMarginFontRatio = 4.0f / kReferenceFontSize;
 constexpr F32 kSeparatorWidthFontRatio = 1.0f / kReferenceFontSize;
@@ -41,44 +47,22 @@ constexpr F32 kWheelScrollLines = 3.0f;
 constexpr F32 kDragScrollMarginFontRatio = 36.0f / kReferenceFontSize;
 constexpr F32 kDragScrollMaxLines = 0.85f;
 constexpr F32 kFallbackAdvanceFontRatio = 0.5f;
-constexpr U64 kVisibleRowCapacityStep = 16;
+constexpr F32 kWrapTrailingMarginCharacters = 0.5f;
+constexpr F32 kScrollRangeEpsilon = 0.5f;
 constexpr U64 kTextSegmentCharacterCapacity = 128;
 constexpr U64 kSelectionMatchCapacity = 128;
 constexpr U64 kMaxUndoHistory = 128;
 constexpr U64 kTabSize = 4;
 constexpr F64 kCursorBlinkPeriod = 1.0;
 constexpr F64 kCursorBlinkOnDuration = 0.55;
+constexpr F32 kHitContainsWeight = 16777216.0f;
+constexpr F32 kHitVerticalWeight = 4096.0f;
 constexpr std::string_view kAutoPairOpenings = "([{\"'";
 constexpr std::string_view kAutoPairClosings = ")]}\"'";
 
-std::vector<std::string> SplitLines(const std::string& value) {
-    std::vector<std::string> lines;
-    std::string::size_type start = 0;
-    while (true) {
-        const auto end = value.find('\n', start);
-        if (end == std::string::npos) {
-            lines.push_back(value.substr(start));
-            break;
-        }
-        lines.push_back(value.substr(start, end - start));
-        start = end + 1;
-    }
-    return lines;
-}
-
-std::string JoinLines(const std::vector<std::string>& lines) {
-    std::string value;
-    for (U64 i = 0; i < lines.size(); ++i) {
-        if (i > 0) {
-            value += '\n';
-        }
-        value += lines[i];
-    }
-    return value;
-}
-
 bool IsWordChar(char character) {
-    return std::isalnum(static_cast<unsigned char>(character)) || character == '_';
+    return std::isalnum(static_cast<unsigned char>(character)) || character == '_' ||
+           static_cast<unsigned char>(character) >= 0x80;
 }
 
 bool IsBracketPair(char opening, char closing) {
@@ -105,6 +89,15 @@ U64 LeadingWhitespaceColumn(const std::string& line) {
     return column;
 }
 
+U64 LastBreakBefore(std::string_view text, U64 from, U64 limit) {
+    for (U64 i = limit; i > from; --i) {
+        if (text[i - 1] == ' ' || text[i - 1] == '\t') {
+            return i;
+        }
+    }
+    return from;
+}
+
 std::vector<std::pair<U64, U64>> WrapSegments(std::string_view line, U64 cols, bool word) {
     std::vector<std::pair<U64, U64>> segments;
     const U64 len = line.size();
@@ -112,24 +105,12 @@ std::vector<std::pair<U64, U64>> WrapSegments(std::string_view line, U64 cols, b
         segments.emplace_back(0, len);
         return segments;
     }
-    if (!word) {
-        for (U64 start = 0; start < len; start += cols) {
-            segments.emplace_back(start, std::min(len, start + cols));
-        }
-        return segments;
-    }
     U64 pos = 0;
     while (pos < len) {
-        const U64 limit = std::min(len, pos + cols);
+        const U64 limit = Unicode::Advance(line, pos, cols);
         U64 end = limit;
-        if (limit < len) {
-            U64 brk = pos;
-            for (U64 i = limit; i > pos; --i) {
-                if (line[i - 1] == ' ' || line[i - 1] == '\t') {
-                    brk = i;
-                    break;
-                }
-            }
+        if (word && limit < len) {
+            const U64 brk = LastBreakBefore(line, pos, limit);
             end = brk > pos ? brk : limit;
         }
         segments.emplace_back(pos, end);
@@ -170,6 +151,53 @@ struct TextGrid::Impl {
         std::vector<ColorRGBA<F32>> styleBackgrounds;
     };
 
+    struct VisualRow {
+        U64 line = 0;
+        U64 start = 0;
+        U64 end = 0;
+        F32 top = 0.0f;
+        F32 height = 0.0f;
+    };
+
+    struct FrameGeometry {
+        Rect rect;
+        std::optional<Rect> clip;
+        std::optional<Rect> textClip;
+        bool visible = false;
+        F32 clipTop = 0.0f;
+        F32 clipBottom = 0.0f;
+        F32 clipLeft = 0.0f;
+        F32 clipRight = 0.0f;
+        U64 maxSegments = 1;
+        U64 lineCapacity = 1;
+        U64 segmentCapacity = 1;
+    };
+
+    struct InstancePools {
+        std::vector<Label::Instance> text;
+        std::vector<std::vector<Label::Instance>> extraText;
+        std::vector<Box::Instance> styleBackgrounds;
+        std::vector<Label::Instance> lineNumbers;
+        std::vector<Box::Instance> selection;
+        std::vector<Box::Instance> matches;
+    };
+
+    struct SelectionState {
+        bool active = false;
+        Position first;
+        Position second;
+        std::optional<std::string> matchText;
+    };
+
+    struct RowContext {
+        const VisualRow& row;
+        F32 top;
+        F32 height;
+        const std::string& line;
+        const std::vector<StyleId>& styles;
+        F32 glyphSize;
+    };
+
     Config config;
     ResolvedTheme theme;
 
@@ -191,6 +219,10 @@ struct TextGrid::Impl {
     Rect rect;
     std::optional<Rect> clip;
     Metrics storedMetrics;
+    TextGridViewport viewport;
+    U64 textPoolCapacity = 0;
+    U64 styleBackgroundPoolCapacity = 0;
+    std::vector<U64> extraTextPoolCapacities;
     bool hovered = false;
     bool active = false;
     bool windowFocused = false;
@@ -200,112 +232,187 @@ struct TextGrid::Impl {
     F32 currentScrollY = 0.0f;
     bool stickToBottomPending = false;
     F32 fontSizePixels = kReferenceFontSize;
+    bool contentHasIcons = false;
 
     bool focused = false;
     bool mouseSelecting = false;
     Position cursor;
     Position selectionAnchor;
     bool selectionActive = false;
-    std::optional<U64> preferredColumn;
+    std::optional<F32> preferredContentX;
     std::vector<Snapshot> undoStack;
     std::vector<Snapshot> redoStack;
     U64 contentRevision = 0;
     F64 blinkBase = 0.0;
     bool lastBlinkOn = false;
 
-    F32 lineHeightPixels() const { return std::max(1.0f, fontSizePixels * kLineHeightFontRatio); }
-    Padding paddingPixels() const {
-        if (config.padding.has_value()) {
-            return *config.padding;
-        }
-        const F32 horizontal = fontSizePixels * kPaddingFontRatio;
-        return {horizontal, 0.0f, horizontal, 0.0f};
-    }
-    F32 contentFontSize() const { return fontSizePixels * config.fontScale; }
+    mutable std::vector<VisualRow> visualRows;
+    mutable std::vector<U64> groupStartRows;
+    mutable std::vector<U64> visualRowStartIndex;
+    mutable F32 visualContentHeight = 0.0f;
+    mutable F32 minimumVisualRowHeight = 1.0f;
+    mutable U64 maximumRowGroupColumns = 1;
+    mutable bool visualRowsValid = false;
+    mutable U64 visualRowsRevision = 0;
+    mutable Wrap visualRowsWrap = Wrap::None;
+    mutable F32 visualRowsWrapWidth = -1.0f;
+    mutable F32 visualRowsAdvance = -1.0f;
+    std::vector<std::pair<U64, U64>> visibleRowRanges;
 
-    bool variableMetrics() const { return !config.lineScale.empty(); }
+    mutable std::vector<U8> lineAsciiCache;
+    mutable U64 lineAsciiRevision = static_cast<U64>(-1);
+
+    mutable std::vector<std::vector<F32>> linePrefixes;
+    mutable bool linePrefixesValid = false;
+    mutable U64 linePrefixesRevision = static_cast<U64>(-1);
+    mutable F32 linePrefixesFontSize = -1.0f;
+    mutable std::vector<std::pair<F32, F32>> cellAdvanceCache;
+    WidthLayout resolvedWidthLayout;
+    bool widthLayoutResolved = false;
+    bool gutterReserved = false;
+    bool bottomReserved = false;
+    bool liveLayout = false;
+    bool cursorFollowPending = false;
+    I32 keyboardFrame = -1;
+    bool viewportResolved = false;
+    bool resolvedLayoutPass = false;
+    U64 resolvedRevision = 0;
+    Extent2D<F32> resolvedSize = {-1.0f, -1.0f};
+    F32 lastNaturalWidth = 0.0f;
+
+    F32 contentFontSize() const { return fontSizePixels * config.fontScale; }
+    F32 lineHeightPixels() const { return std::max(1.0f, contentFontSize() * config.lineHeight); }
     F32 lineScaleAt(U64 line) const {
         return line < config.lineScale.size() ? config.lineScale[line] : 1.0f;
     }
     F32 lineTopGapAt(U64 line) const {
         return line < config.lineTopGap.size() ? config.lineTopGap[line] : 0.0f;
     }
+    const std::vector<F32>& lineIndents() const {
+        return config.widthLayout ? resolvedWidthLayout.lineIndent : config.lineIndent;
+    }
+    const std::vector<F32>& lineWrapWidths() const {
+        return config.widthLayout ? resolvedWidthLayout.lineWrapWidth : config.lineWrapWidth;
+    }
+    F32 contentMinWidthPixels() const {
+        return config.widthLayout ? resolvedWidthLayout.contentMinWidth : config.contentMinWidth;
+    }
     F32 lineIndentAt(U64 line) const {
-        return line < config.lineIndent.size() ? config.lineIndent[line] : 0.0f;
+        const auto& indents = lineIndents();
+        return line < indents.size() ? indents[line] : 0.0f;
+    }
+    bool lineSameRowAt(U64 line) const {
+        return line < config.lineSameRow.size() && config.lineSameRow[line] != 0;
+    }
+    F32 lineWrapWidthAt(U64 line) const {
+        const auto& widths = lineWrapWidths();
+        return line < widths.size() ? widths[line] : 0.0f;
+    }
+    F32 lineRightInsetAt(U64 line) const {
+        return line < config.lineRightInset.size() ? config.lineRightInset[line] : 0.0f;
+    }
+    F32 lineTrailingMarginPixels(U64 line) const {
+        if (config.wrap == Wrap::None || lineWrapWidthAt(line) > 0.0f || lineWrapsByColumns(line)) {
+            return 0.0f;
+        }
+        return kWrapTrailingMarginCharacters * lineAdvancePixels(line);
     }
     F32 lineGlyphSize(U64 line) const { return contentFontSize() * lineScaleAt(line); }
     F32 lineHeightAt(U64 line) const {
-        return std::max(1.0f, fontSizePixels * lineScaleAt(line) * kLineHeightFontRatio);
+        return std::max(1.0f, lineGlyphSize(line) * config.lineHeight);
     }
-    F32 lineTextLeftPixels(U64 line) const { return textLeftPixels() + lineIndentAt(line); }
-
-    F32 rowTopContent(U64 visualRow) const {
-        if (variableMetrics()) {
-            return visualRow < visualRows.size() ? visualRows[visualRow].top : visualContentHeight;
-        }
-        return static_cast<F32>(visualRow) * lineHeightPixels();
-    }
-    F32 rowHeightPixels(U64 visualRow) const {
-        if (variableMetrics()) {
-            return visualRow < visualRows.size() ? visualRows[visualRow].height : lineHeightPixels();
-        }
-        return lineHeightPixels();
-    }
-    F32 visibleTopContentY() const {
-        const F32 clipTop = clip.has_value()
-            ? std::max(rect.y, clip->y)
-            : rect.y;
-        return std::max(0.0f, (clipTop - textTopPixels()) + currentScrollY);
-    }
-    U64 firstVisibleVisualRow() const {
-        if (variableMetrics()) {
-            return visualRowAtContentY(visibleTopContentY());
-        }
-        return static_cast<U64>(std::max(0.0f, std::floor(visibleTopContentY() / lineHeightPixels())));
-    }
-
-    F32 sourceLineTop(U64 line) const {
-        ensureVisualRows();
-        if (line < visualRowStartIndex.size()) {
-            return rowTopPixels(visualRowStartIndex[line]);
-        }
-        return textTopPixels() + rowTopContent(visualRows.size()) - currentScrollY;
-    }
-    F32 sourceLineHeight(U64 line) const {
-        ensureVisualRows();
-        if (line >= visualRowStartIndex.size()) {
-            return 0.0f;
-        }
-        const U64 first = visualRowStartIndex[line];
-        const U64 last = line + 1 < visualRowStartIndex.size()
-            ? visualRowStartIndex[line + 1]
-            : visualRows.size();
-        F32 h = 0.0f;
-        for (U64 r = first; r < last; ++r) {
-            h += rowHeightPixels(r);
-        }
-        return h;
-    }
-    U64 visualRowAtContentY(F32 y) const {
-        if (visualRows.empty()) {
-            return 0;
-        }
-        U64 lo = 0;
-        U64 hi = visualRows.size();
-        while (lo + 1 < hi) {
-            const U64 mid = (lo + hi) / 2;
-            if (visualRows[mid].top <= y) {
-                lo = mid;
-            } else {
-                hi = mid;
+    F32 cellAdvancePixels(F32 glyphSize) const {
+        for (const auto& [size, advance] : cellAdvanceCache) {
+            if (size == glyphSize) {
+                return advance;
             }
         }
-        return lo;
+        const F32 measured = textMetrics.measure(config.fontName, "0", glyphSize);
+        const F32 advance = measured > 0.0f ? measured : glyphSize * kFallbackAdvanceFontRatio;
+        cellAdvanceCache.emplace_back(glyphSize, advance);
+        return advance;
+    }
+    void beginMetricsFrame(Render::Window* window) {
+        textMetrics.setWindow(window);
+        cellAdvanceCache.clear();
+    }
+    F32 lineAdvancePixels(U64 line) const { return cellAdvancePixels(lineGlyphSize(line)); }
+    U64 visibleLineCapacity() const {
+        return std::max<U64>(1, config.visibleLineCapacity);
     }
 
-    F32 characterAdvancePixels() const {
-        const F32 advance = textMetrics.measure(config.fontName, "0", contentFontSize());
-        return advance > 0.0f ? advance : contentFontSize() * kFallbackAdvanceFontRatio;
+    Padding paddingPixels() const {
+        if (config.padding.has_value()) {
+            return *config.padding;
+        }
+        const F32 horizontal = fontSizePixels * Typography::TextPaddingRatio;
+        return {horizontal, 0.0f, horizontal, 0.0f};
+    }
+    F32 gutterWidthPixels() const {
+        if (!config.lineNumbers) {
+            return 0.0f;
+        }
+        return (kLineNumberLeftPaddingCharacters + static_cast<F32>(kLineNumberDigits) +
+                kLineNumberRightPaddingCharacters) * cellAdvancePixels(contentFontSize());
+    }
+    F32 lineNumberRightPixels() const {
+        return (kLineNumberLeftPaddingCharacters + static_cast<F32>(kLineNumberDigits)) *
+               cellAdvancePixels(contentFontSize());
+    }
+    F32 textLeftPixels() const {
+        return config.lineNumbers ? rect.x + gutterWidthPixels() : rect.x + paddingPixels().left;
+    }
+    F32 textTopPixels() const { return rect.y + paddingPixels().top; }
+    F32 textClipLeftPixels() const { return config.lineNumbers ? textLeftPixels() : rect.x; }
+    F32 textClipRightPixels() const { return rect.right(); }
+    F32 scrollbarReservePixels() const {
+        return fontSizePixels * (kScrollbarThicknessFontRatio + 2.0f * kScrollbarMarginFontRatio);
+    }
+    F32 scrollbarGutterPixels() const {
+        return config.scrollbar && gutterReserved ? scrollbarReservePixels() : 0.0f;
+    }
+    F32 scrollbarBottomPixels() const {
+        return config.scrollbar && bottomReserved ? scrollbarReservePixels() : 0.0f;
+    }
+    F32 textViewportWidthPixels() const {
+        return std::max(1.0f, rect.right() - scrollbarGutterPixels() - paddingPixels().right - textLeftPixels());
+    }
+
+    F32 screenXFromContent(F32 contentX) const { return textLeftPixels() - currentScrollX + contentX; }
+    F32 contentXFromScreen(F32 screenX) const { return screenX - textLeftPixels() + currentScrollX; }
+    F32 screenYFromContent(F32 contentY) const { return textTopPixels() - currentScrollY + contentY; }
+    F32 contentYFromScreen(F32 screenY) const { return screenY - textTopPixels() + currentScrollY; }
+
+    F32 rowContentLeft(const VisualRow& row) const { return lineIndentAt(row.line); }
+    F32 rowContentWidth(const VisualRow& row) const { return columnXInRow(row.line, row.start, row.end); }
+    F32 contentXAtColumn(const VisualRow& row, U64 column) const {
+        return rowContentLeft(row) + columnXInRow(row.line, row.start, column);
+    }
+    U64 columnAtContentX(const VisualRow& row, F32 contentX) const {
+        const F32 lineX = columnOffsetPixels(row.line, row.start) + std::max(0.0f, contentX - rowContentLeft(row));
+        return std::clamp<U64>(columnAtOffsetPixels(row.line, lineX), row.start, row.end);
+    }
+    F32 contentDistanceX(const VisualRow& row, F32 contentX) const {
+        const F32 left = rowContentLeft(row);
+        const F32 right = left + rowContentWidth(row);
+        return contentX < left ? left - contentX : contentX > right ? contentX - right : 0.0f;
+    }
+
+    bool lineIsAscii(U64 lineIndex) const {
+        if (lineAsciiRevision != contentRevision || lineAsciiCache.size() != lines.size()) {
+            lineAsciiCache.resize(lines.size());
+            for (U64 i = 0; i < lines.size(); ++i) {
+                lineAsciiCache[i] = Unicode::IsAscii(lines[i]) ? 1 : 0;
+            }
+            lineAsciiRevision = contentRevision;
+        }
+        return lineAsciiCache[lineIndex] != 0;
+    }
+    bool lineUsesCellGeometry(U64 lineIndex) const {
+        return config.monospace && lineIsAscii(lineIndex);
+    }
+    bool lineWrapsByColumns(U64 lineIndex) const {
+        return config.monospace && !lineHasIcons(lines[lineIndex]);
     }
 
     bool fontsReady() const {
@@ -321,11 +428,6 @@ struct TextGrid::Impl {
         return true;
     }
 
-    mutable std::vector<std::vector<F32>> linePrefixes;
-    mutable bool linePrefixesValid = false;
-    mutable U64 linePrefixesRevision = static_cast<U64>(-1);
-    mutable F32 linePrefixesFontSize = -1.0f;
-
     void ensureLinePrefixes() const {
         const F32 fontSize = contentFontSize();
         if (linePrefixesValid && linePrefixesRevision == contentRevision &&
@@ -336,7 +438,7 @@ struct TextGrid::Impl {
 
         static const std::vector<std::vector<StyleId>> kNoStyles;
         static const std::vector<StyleId> kNoLineStyles;
-        const bool multiFont = !extraFontNames.empty() && config.styler;
+        const bool multiFont = styleMetricsActive();
         const auto& styles = multiFont ? config.styler(lines, contentRevision) : kNoStyles;
 
         linePrefixes.assign(lines.size(), {});
@@ -345,7 +447,7 @@ struct TextGrid::Impl {
             auto& prefix = linePrefixes[i];
             prefix.resize(line.size() + 1, 0.0f);
             const F32 lineSize = lineGlyphSize(i);
-            if (!multiFont) {
+            if (!multiFont && !lineHasIcons(line)) {
                 const auto adv = textMetrics.advances(config.fontName, line, lineSize);
                 for (U64 c = 0; c < line.size(); ++c) {
                     prefix[c + 1] = prefix[c] + (c < adv.size() ? adv[c] : 0.0f);
@@ -355,15 +457,18 @@ struct TextGrid::Impl {
             const auto& lineStyles = i < styles.size() ? styles[i] : kNoLineStyles;
             U64 c = 0;
             while (c < line.size()) {
-                const std::string font = fontForStyle(c < lineStyles.size() ? lineStyles[c] : 0);
-                U64 e = c + 1;
-                while (e < line.size() && fontForStyle(e < lineStyles.size() ? lineStyles[e] : 0) == font) {
-                    ++e;
-                }
-                const auto adv = textMetrics.advances(font.empty() ? config.fontName : font,
-                                                      line.substr(c, e - c), lineSize);
+                const StyleId style = c < lineStyles.size() ? lineStyles[c] : 0;
+                bool icon = false;
+                const U64 e = runEnd(line, lineStyles, c, line.size(), icon);
+                const std::string font = fontForRun(style, icon);
+                const F32 glyphSize = lineSize * scaleForStyle(style);
+                const auto adv = textMetrics.advances(font, line.substr(c, e - c), glyphSize);
+                const F32 pad = stylePaddingPixels(style, glyphSize);
+                const bool spanStart = c == 0 || (c - 1 < lineStyles.size() ? lineStyles[c - 1] : 0) != style;
+                const bool spanEnd = e >= line.size() || (e < lineStyles.size() ? lineStyles[e] : 0) != style;
                 for (U64 k = c; k < e; ++k) {
-                    prefix[k + 1] = prefix[k] + (k - c < adv.size() ? adv[k - c] : 0.0f);
+                    prefix[k + 1] = prefix[k] + (k - c < adv.size() ? adv[k - c] : 0.0f) +
+                                    (k == c && spanStart ? pad : 0.0f) + (k + 1 == e && spanEnd ? pad : 0.0f);
                 }
                 c = e;
             }
@@ -380,8 +485,8 @@ struct TextGrid::Impl {
             return 0.0f;
         }
         const U64 col = std::min<U64>(column, lines[lineIndex].size());
-        if (config.monospace) {
-            return static_cast<F32>(col) * characterAdvancePixels();
+        if (lineUsesCellGeometry(lineIndex)) {
+            return static_cast<F32>(col) * lineAdvancePixels(lineIndex);
         }
         ensureLinePrefixes();
         const auto& prefix = linePrefixes[lineIndex];
@@ -401,8 +506,8 @@ struct TextGrid::Impl {
             return 0;
         }
         const U64 len = lines[lineIndex].size();
-        if (config.monospace) {
-            const F32 advance = std::max(1.0f, characterAdvancePixels());
+        if (lineUsesCellGeometry(lineIndex)) {
+            const F32 advance = std::max(1.0f, lineAdvancePixels(lineIndex));
             const I64 col = static_cast<I64>(x / advance + 0.5f);
             return static_cast<U64>(std::clamp<I64>(col, 0, static_cast<I64>(len)));
         }
@@ -419,54 +524,21 @@ struct TextGrid::Impl {
         return (x - prefix[lo] <= prefix[hi] - x) ? lo : hi;
     }
 
-    F32 gutterWidthPixels() const {
-        if (!config.lineNumbers) {
-            return 0.0f;
+    F32 lineWrapWidthPixels(U64 line, F32 trailingMargin) const {
+        const F32 overrideWidth = lineWrapWidthAt(line);
+        if (overrideWidth > 0.0f) {
+            return overrideWidth;
         }
-        return (kLineNumberLeftPaddingCharacters + static_cast<F32>(kLineNumberDigits) +
-                kLineNumberRightPaddingCharacters) * characterAdvancePixels();
+        return std::max(1.0f, textViewportWidthPixels() - lineIndentAt(line) - lineRightInsetAt(line) - trailingMargin);
     }
-    F32 lineNumberRightPixels() const {
-        return (kLineNumberLeftPaddingCharacters + static_cast<F32>(kLineNumberDigits)) *
-               characterAdvancePixels();
-    }
-    F32 textLeftPixels() const {
-        return config.lineNumbers ? rect.x + gutterWidthPixels() : rect.x + paddingPixels().left;
-    }
-    F32 textClipLeftPixels() const { return config.lineNumbers ? textLeftPixels() : rect.x; }
-    F32 textClipRightPixels() const { return rect.right(); }
-    F32 scrollbarGutterPixels() const {
-        if (!config.scrollbar) {
-            return 0.0f;
-        }
-        return fontSizePixels * (kScrollbarThicknessFontRatio + 2.0f * kScrollbarMarginFontRatio);
-    }
-    F32 textViewportWidthPixels() const {
-        return std::max(1.0f, rect.right() - scrollbarGutterPixels() - paddingPixels().right - textLeftPixels());
-    }
-    F32 textTopPixels() const { return rect.y + paddingPixels().top; }
-    struct VisualRow {
-        U64 line = 0;
-        U64 start = 0;
-        U64 end = 0;
-        F32 top = 0.0f;
-        F32 height = 0.0f;
-    };
-    mutable std::vector<VisualRow> visualRows;
-    mutable std::vector<U64> visualRowStartIndex;
-    mutable F32 visualContentHeight = 0.0f;
-    mutable F32 minimumVisualRowHeight = 1.0f;
-    mutable bool visualRowsValid = false;
-    mutable U64 visualRowsRevision = 0;
-    mutable Wrap visualRowsWrap = Wrap::None;
-    mutable U64 visualRowsWrapColumns = 0;
 
-    U64 wrapColumns() const {
-        if (config.wrap == Wrap::None) {
-            return 0;
+    std::vector<std::pair<U64, U64>> wrapSegmentsByColumns(U64 line, bool word) const {
+        const F32 width = lineWrapWidthPixels(line, 0.0f);
+        if (!std::isfinite(width)) {
+            return {{0, lines[line].size()}};
         }
-        const F32 advance = std::max(1.0f, characterAdvancePixels());
-        return std::max<U64>(1, static_cast<U64>(std::floor(textViewportWidthPixels() / advance)));
+        const U64 cols = std::max<U64>(1, static_cast<U64>(std::floor(width / std::max(1.0f, lineAdvancePixels(line)))));
+        return WrapSegments(lines[line], cols, word);
     }
 
     std::vector<std::pair<U64, U64>> wrapSegmentsProportional(U64 lineIndex, F32 maxWidth, bool word) const {
@@ -489,14 +561,17 @@ struct TextGrid::Impl {
             fitEnd = std::clamp<U64>(fitEnd, pos + 1, len);
             U64 end = fitEnd;
             if (word && fitEnd < len) {
-                U64 brk = pos;
-                for (U64 i = fitEnd; i > pos; --i) {
-                    if (text[i - 1] == ' ' || text[i - 1] == '\t') {
-                        brk = i;
-                        break;
-                    }
-                }
+                const U64 brk = LastBreakBefore(text, pos, fitEnd);
                 end = brk > pos ? brk : fitEnd;
+            }
+            if (end < len) {
+                const U64 aligned = Unicode::Align(text, end);
+                if (aligned != end) {
+                    end = Unicode::PreviousCharacter(text, aligned);
+                }
+                if (end <= pos) {
+                    end = Unicode::NextCharacter(text, pos);
+                }
             }
             segments.emplace_back(pos, end);
             pos = end;
@@ -507,59 +582,85 @@ struct TextGrid::Impl {
         return segments;
     }
 
+    std::vector<std::pair<U64, U64>> wrapSegmentsFor(U64 line) const {
+        const U64 len = lines[line].size();
+        if (config.wrap == Wrap::None) {
+            return {{0, len}};
+        }
+        const bool word = config.wrap == Wrap::Word;
+        if (lineWrapsByColumns(line)) {
+            return wrapSegmentsByColumns(line, word);
+        }
+        return wrapSegmentsProportional(line, lineWrapWidthPixels(line, lineTrailingMarginPixels(line)), word);
+    }
+
     void ensureVisualRows() const {
-        const U64 wrapCols = wrapColumns();
+        const F32 wrapWidth = config.wrap == Wrap::None ? 0.0f : textViewportWidthPixels();
+        const F32 advance = cellAdvancePixels(contentFontSize());
         if (visualRowsValid && visualRowsRevision == contentRevision &&
-            visualRowsWrap == config.wrap && visualRowsWrapColumns == wrapCols) {
+            visualRowsWrap == config.wrap && visualRowsWrapWidth == wrapWidth &&
+            visualRowsAdvance == advance) {
             return;
         }
         visualRows.clear();
+        groupStartRows.clear();
         visualRowStartIndex.assign(lines.size(), 0);
-        // Reserve for ordinary rows even when the content is empty or only headings.
         minimumVisualRowHeight = lineHeightPixels();
-        const F32 trailingMargin = 0.5f * characterAdvancePixels();
+        maximumRowGroupColumns = 1;
         F32 y = 0.0f;
+        F32 maxY = 0.0f;
+        F32 rowGroupTop = 0.0f;
+        U64 rowGroupColumns = 0;
         for (U64 line = 0; line < lines.size(); ++line) {
-            y += lineTopGapAt(line);
+            if (line > 0 && lineSameRowAt(line)) {
+                y = rowGroupTop;
+                ++rowGroupColumns;
+            } else {
+                y = maxY + lineTopGapAt(line);
+                rowGroupTop = y;
+                groupStartRows.push_back(visualRows.size());
+                rowGroupColumns = 1;
+            }
+            maximumRowGroupColumns = std::max(maximumRowGroupColumns, rowGroupColumns);
             visualRowStartIndex[line] = visualRows.size();
-            const auto& text = lines[line];
-            const U64 len = text.size();
             const F32 h = lineHeightAt(line);
             minimumVisualRowHeight = std::min(minimumVisualRowHeight, h);
-            const auto push = [&](U64 start, U64 end) {
+            for (const auto& [start, end] : wrapSegmentsFor(line)) {
                 visualRows.push_back({line, start, end, y, h});
                 y += h;
-            };
-            if (config.wrap == Wrap::None) {
-                push(0, len);
-            } else if (config.monospace) {
-                for (const auto& [start, end] : WrapSegments(text, wrapCols, config.wrap == Wrap::Word)) {
-                    push(start, end);
-                }
-            } else {
-                const F32 wrapWidth = std::max(
-                    1.0f, textViewportWidthPixels() - lineIndentAt(line) - trailingMargin);
-                for (const auto& [start, end] : wrapSegmentsProportional(line, wrapWidth, config.wrap == Wrap::Word)) {
-                    push(start, end);
-                }
             }
+            maxY = std::max(maxY, y);
         }
         if (visualRows.empty()) {
             visualRows.push_back({0, 0, 0, 0.0f, lineHeightAt(0)});
-            y = lineHeightAt(0);
+            maxY = lineHeightAt(0);
         }
-        visualContentHeight = y;
+        if (groupStartRows.empty()) {
+            groupStartRows.push_back(0);
+        }
+        visualContentHeight = maxY;
         if (config.monospace || config.wrap == Wrap::None || fontsReady()) {
             visualRowsValid = true;
             visualRowsRevision = contentRevision;
             visualRowsWrap = config.wrap;
-            visualRowsWrapColumns = wrapCols;
+            visualRowsWrapWidth = wrapWidth;
+            visualRowsAdvance = advance;
         }
     }
 
-    U64 visualRowCount() const {
-        ensureVisualRows();
-        return visualRows.size();
+    F32 rowTopContent(U64 visualRow) const {
+        return visualRow < visualRows.size() ? visualRows[visualRow].top : visualContentHeight;
+    }
+    F32 rowHeightPixels(U64 visualRow) const {
+        return visualRow < visualRows.size() ? visualRows[visualRow].height : lineHeightPixels();
+    }
+    F32 rowTopPixels(U64 visualRow) const {
+        return screenYFromContent(rowTopContent(visualRow));
+    }
+
+    U64 rowLastColumn(const VisualRow& row) const {
+        const bool wrapped = row.line < lines.size() && row.end < lines[row.line].size();
+        return wrapped && row.end > row.start ? Unicode::PreviousCharacter(lines[row.line], row.end) : row.end;
     }
 
     U64 visualRowForPosition(Position position) const {
@@ -579,54 +680,211 @@ struct TextGrid::Impl {
         return next > base ? next - 1 : base;
     }
 
-    F32 rowTopPixels(U64 visualRow) const {
-        return textTopPixels() + rowTopContent(visualRow) - currentScrollY;
+    U64 visualRowAtContentY(F32 y) const {
+        if (visualRows.empty() || groupStartRows.empty()) {
+            return 0;
+        }
+        U64 lo = 0;
+        U64 hi = groupStartRows.size();
+        while (lo + 1 < hi) {
+            const U64 mid = (lo + hi) / 2;
+            if (visualRows[groupStartRows[mid]].top <= y) {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        return groupStartRows[lo];
     }
 
+    U64 groupEndRow(U64 groupStartRow) const {
+        const auto it = std::upper_bound(groupStartRows.begin(), groupStartRows.end(), groupStartRow);
+        return it != groupStartRows.end() ? *it : visualRows.size();
+    }
+
+    U64 groupStartOf(U64 visualRow) const {
+        const auto it = std::upper_bound(groupStartRows.begin(), groupStartRows.end(), visualRow);
+        return it == groupStartRows.begin() ? 0 : *(it - 1);
+    }
+
+    U64 columnEndRow(U64 visualRow) const {
+        const U64 line = visualRows[visualRow].line;
+        return line + 1 < visualRowStartIndex.size() ? visualRowStartIndex[line + 1] : visualRows.size();
+    }
+
+    U64 columnBeginRow(U64 visualRow) const {
+        return std::max(groupStartOf(visualRow), visualRowStartIndex[visualRows[visualRow].line]);
+    }
+
+    U64 rowInRangeAtY(U64 begin, U64 end, F32 y) const {
+        U64 lo = begin;
+        U64 hi = std::max(end, begin + 1);
+        while (lo + 1 < hi) {
+            const U64 mid = (lo + hi) / 2;
+            if (visualRows[mid].top <= y) {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        return lo;
+    }
+
+    template<typename F>
+    void forEachGroupColumn(U64 groupStartRow, F&& visit) const {
+        const U64 groupEnd = groupEndRow(groupStartRow);
+        U64 begin = groupStartRow;
+        while (begin < groupEnd) {
+            const U64 end = std::max(begin + 1, std::min(groupEnd, columnEndRow(begin)));
+            visit(begin, end);
+            begin = end;
+        }
+    }
+
+    U64 visualRowNear(F32 contentY, F32 contentX) const {
+        const U64 groupStart = visualRowAtContentY(contentY);
+        U64 best = groupStart;
+        F32 bestScore = std::numeric_limits<F32>::max();
+        forEachGroupColumn(groupStart, [&](U64 begin, U64 end) {
+            const U64 r = rowInRangeAtY(begin, end, contentY);
+            const auto& candidate = visualRows[r];
+            const F32 bottom = candidate.top + candidate.height;
+            const bool containsY = contentY >= candidate.top && contentY < bottom;
+            const F32 yDistance = contentY < candidate.top ? candidate.top - contentY
+                                : contentY >= bottom ? contentY - bottom
+                                                     : 0.0f;
+            const F32 score = (containsY ? 0.0f : kHitContainsWeight) +
+                              yDistance * kHitVerticalWeight +
+                              contentDistanceX(candidate, contentX);
+            if (score < bestScore) {
+                bestScore = score;
+                best = r;
+            }
+        });
+        return best;
+    }
+
+    U64 groupColumnNearX(U64 groupStartRow, F32 contentX, bool lastRow) const {
+        U64 best = groupStartRow;
+        F32 bestDistance = std::numeric_limits<F32>::max();
+        forEachGroupColumn(groupStartRow, [&](U64 begin, U64 end) {
+            const U64 r = lastRow ? end - 1 : begin;
+            const F32 distance = contentDistanceX(visualRows[r], contentX);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = r;
+            }
+        });
+        return best;
+    }
+
+    F32 visibleTopContentY() const {
+        const F32 clipTop = clip.has_value() ? std::max(rect.y, clip->y) : rect.y;
+        return std::max(0.0f, contentYFromScreen(clipTop));
+    }
+
+    void collectVisibleRowRanges(F32 visibleTop, F32 visibleBottom) {
+        visibleRowRanges.clear();
+        if (visualRows.empty() || visibleBottom <= visibleTop) {
+            return;
+        }
+        U64 groupStart = visualRowAtContentY(visibleTop);
+        while (groupStart < visualRows.size() && visualRows[groupStart].top < visibleBottom) {
+            forEachGroupColumn(groupStart, [&](U64 begin, U64 end) {
+                U64 first = rowInRangeAtY(begin, end, visibleTop);
+                while (first < end && visualRows[first].top + visualRows[first].height <= visibleTop) {
+                    ++first;
+                }
+                U64 last = first;
+                while (last < end && visualRows[last].top < visibleBottom) {
+                    ++last;
+                }
+                if (last > first) {
+                    visibleRowRanges.emplace_back(first, last);
+                }
+            });
+            groupStart = groupEndRow(groupStart);
+        }
+    }
+
+    F32 sourceLineTop(U64 line) const {
+        ensureVisualRows();
+        if (line < visualRowStartIndex.size()) {
+            return rowTopPixels(visualRowStartIndex[line]);
+        }
+        return rowTopPixels(visualRows.size());
+    }
+    F32 sourceLineHeight(U64 line) const {
+        ensureVisualRows();
+        if (line >= visualRowStartIndex.size()) {
+            return 0.0f;
+        }
+        const U64 first = visualRowStartIndex[line];
+        const U64 last = line + 1 < visualRowStartIndex.size()
+            ? visualRowStartIndex[line + 1]
+            : visualRows.size();
+        F32 h = 0.0f;
+        for (U64 r = first; r < last; ++r) {
+            h += rowHeightPixels(r);
+        }
+        return h;
+    }
     F32 editorBottomPaddingPixels() const {
         if (!config.editable) {
             return 0.0f;
         }
         const auto padding = paddingPixels();
-        return std::max(0.0f, rect.height - lineHeightPixels() - padding.top - padding.bottom);
-    }
-    F32 paddedContentHeightPixels() const {
-        const auto padding = paddingPixels();
-        return padding.top + textContentHeightPixels() + padding.bottom;
+        return std::max(0.0f, rect.height - lineHeightPixels() - padding.top - padding.bottom - scrollbarBottomPixels());
     }
     F32 textContentHeightPixels() const {
         ensureVisualRows();
-        return variableMetrics()
-            ? visualContentHeight
-            : static_cast<F32>(visualRows.size()) * lineHeightPixels();
+        return visualContentHeight;
+    }
+    F32 paddedContentHeightPixels() const {
+        const auto padding = paddingPixels();
+        return padding.top + textContentHeightPixels() + padding.bottom + scrollbarBottomPixels();
     }
     F32 contentHeightPixels() const {
         return paddedContentHeightPixels() + editorBottomPaddingPixels();
     }
+    F32 maxScrollYPixels() const {
+        const F32 range = contentHeightPixels() - rect.height;
+        return range > kScrollRangeEpsilon ? range : 0.0f;
+    }
     F32 maxLineAdvancePixels() const {
+        F32 widest = contentMinWidthPixels();
         if (config.wrap != Wrap::None) {
-            return 0.0f;
+            return widest;
         }
-        F32 widest = 0.0f;
         for (U64 i = 0; i < lines.size(); ++i) {
-            widest = std::max(widest, lineWidthPixels(i));
+            widest = std::max(widest, lineIndentAt(i) + lineWidthPixels(i));
         }
         return widest;
+    }
+    F32 maxScrollXPixels() const {
+        const F32 range = maxLineAdvancePixels() - textViewportWidthPixels();
+        return range > kScrollRangeEpsilon ? range : 0.0f;
     }
     F32 contentWidthPixels() const {
         return (textLeftPixels() - rect.x) + maxLineAdvancePixels() + paddingPixels().right + scrollbarGutterPixels();
     }
     F32 measuredContentWidthPixels() const {
         ensureVisualRows();
-        F32 widest = 0.0f;
+        F32 widest = contentMinWidthPixels();
         for (const auto& row : visualRows) {
-            widest = std::max(widest, columnXInRow(row.line, row.start, row.end) + lineIndentAt(row.line));
+            const F32 width = rowContentWidth(row);
+            const F32 trailing = width > 0.0f ? lineTrailingMarginPixels(row.line) : 0.0f;
+            widest = std::max(widest, rowContentLeft(row) + width + lineRightInsetAt(row.line) + trailing);
         }
         return (textLeftPixels() - rect.x) + widest + paddingPixels().right + scrollbarGutterPixels();
     }
     Metrics computeMetrics() const {
         Metrics out;
         out.contentHeight = paddedContentHeightPixels();
+        out.contentWidth = contentWidthPixels();
+        out.scrollX = currentScrollX;
+        out.scrollY = currentScrollY;
+        out.scrollbarGutter = scrollbarGutterPixels();
         out.padding = paddingPixels();
         out.sourceLines.resize(lines.size());
         for (U64 line = 0; line < lines.size(); ++line) {
@@ -688,6 +946,87 @@ struct TextGrid::Impl {
         return font.empty() ? config.fontName : font;
     }
 
+    bool styleMetricsActive() const {
+        return !config.monospace && static_cast<bool>(config.styler);
+    }
+
+    static bool IsIconCodepoint(U32 codepoint) {
+        return codepoint >= 0xE000 && codepoint <= 0xF8FF;
+    }
+
+    bool iconsActive() const {
+        return !config.iconFont.empty() && config.iconFont != config.fontName;
+    }
+
+    void refreshContentIcons() {
+        contentHasIcons = false;
+        for (const auto& line : lines) {
+            if (lineHasIcons(line)) {
+                contentHasIcons = true;
+                return;
+            }
+        }
+    }
+
+    bool lineHasIcons(const std::string& line) const {
+        if (!iconsActive() || Unicode::IsAscii(line)) {
+            return false;
+        }
+        for (U64 i = 0; i < line.size();) {
+            U32 codepoint = 0;
+            i += Unicode::Decode(line, i, codepoint);
+            if (IsIconCodepoint(codepoint)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    std::string fontForRun(StyleId id, bool icon) const {
+        return icon ? config.iconFont : fontForStyle(id);
+    }
+
+    U64 runEnd(const std::string& line, const std::vector<StyleId>& lineStyles,
+               U64 start, U64 limit, bool& icon, bool fontBoundariesOnly = false) const {
+        const auto styleAt = [&](U64 column) {
+            return column < lineStyles.size() ? lineStyles[column] : 0;
+        };
+        const StyleId style = styleAt(start);
+        U32 codepoint = 0;
+        U64 pos = start + Unicode::Decode(line, start, codepoint);
+        icon = iconsActive() && IsIconCodepoint(codepoint);
+        const std::string font = fontForRun(style, icon);
+        while (pos < limit) {
+            const U64 length = Unicode::Decode(line, pos, codepoint);
+            const bool iconAt = iconsActive() && IsIconCodepoint(codepoint);
+            const bool boundary = fontBoundariesOnly
+                ? fontForRun(styleAt(pos), iconAt) != font
+                : styleAt(pos) != style || iconAt != icon;
+            if (boundary) {
+                break;
+            }
+            pos += length;
+        }
+        return std::min(pos, limit);
+    }
+
+    bool styleHasBackground(StyleId id) const {
+        return id != 0 && id <= config.styleBackgroundColorKeys.size() &&
+               !config.styleBackgroundColorKeys[id - 1].empty();
+    }
+
+    F32 stylePaddingPixels(StyleId id, F32 glyphSize) const {
+        return styleMetricsActive() && styleHasBackground(id) ? glyphSize * Typography::StyleBackgroundPadRatio : 0.0f;
+    }
+
+    F32 scaleForStyle(StyleId id) const {
+        if (!styleMetricsActive() || id == 0 || id > config.styleScales.size()) {
+            return 1.0f;
+        }
+        const F32 scale = config.styleScales[id - 1];
+        return scale > 0.0f ? scale : 1.0f;
+    }
+
     ColorRGBA<F32> backgroundForStyle(StyleId id) const {
         if (id == 0 || id > theme.styleBackgrounds.size()) {
             return {0.0f, 0.0f, 0.0f, 0.0f};
@@ -697,7 +1036,11 @@ struct TextGrid::Impl {
 
     void ensureFontPools() {
         std::vector<std::string> wanted;
-        for (const auto& font : config.styleFonts) {
+        auto fonts = config.styleFonts;
+        if (contentHasIcons) {
+            fonts.push_back(config.iconFont);
+        }
+        for (const auto& font : fonts) {
             if (font.empty() || font == config.fontName) {
                 continue;
             }
@@ -728,11 +1071,13 @@ struct TextGrid::Impl {
         }
         return static_cast<U64>(-1);
     }
+
     std::string textValue() const { return JoinLines(lines); }
 
     void clampPosition(Position& position) const {
         position.line = std::min<U64>(position.line, lines.size() - 1);
         position.column = std::min<U64>(position.column, lines[position.line].size());
+        position.column = Unicode::Align(lines[position.line], position.column);
     }
 
     bool hasSelection() const { return selectionActive && !(selectionAnchor == cursor); }
@@ -773,6 +1118,16 @@ struct TextGrid::Impl {
             return std::nullopt;
         }
         return text;
+    }
+
+    SelectionState selectionState() const {
+        SelectionState state;
+        state.active = hasSelection();
+        const auto range = selectionRange();
+        state.first = range.first;
+        state.second = range.second;
+        state.matchText = singleLineSelectionText();
+        return state;
     }
 
     std::string textInRange(const Position& start, const Position& end) const {
@@ -829,7 +1184,7 @@ struct TextGrid::Impl {
 
     Position previousCharacterPosition() const {
         if (cursor.column > 0) {
-            return {cursor.line, cursor.column - 1};
+            return {cursor.line, Unicode::PreviousCharacter(lines[cursor.line], cursor.column)};
         }
         if (cursor.line > 0) {
             return {cursor.line - 1, lines[cursor.line - 1].size()};
@@ -838,7 +1193,7 @@ struct TextGrid::Impl {
     }
     Position nextCharacterPosition() const {
         if (cursor.column < lines[cursor.line].size()) {
-            return {cursor.line, cursor.column + 1};
+            return {cursor.line, Unicode::NextCharacter(lines[cursor.line], cursor.column)};
         }
         if (cursor.line + 1 < lines.size()) {
             return {cursor.line + 1, 0};
@@ -911,7 +1266,14 @@ struct TextGrid::Impl {
 
     void resetBlink() { blinkBase = ImGui::GetTime(); }
 
-    void moveCursorTo(Position position, bool extendSelection, bool keepPreferredColumn = false) {
+    void refreshAfterCursorChange() {
+        resetBlink();
+        notifySelect();
+        configureScrollView();
+        rebuildVisibleInstances();
+    }
+
+    void moveCursorTo(Position position, bool extendSelection, bool keepPreferredX = false) {
         clampPosition(position);
         if (extendSelection) {
             if (!selectionActive) {
@@ -925,47 +1287,71 @@ struct TextGrid::Impl {
         if (!extendSelection) {
             selectionAnchor = cursor;
         }
-        if (!keepPreferredColumn) {
-            preferredColumn.reset();
+        if (!keepPreferredX) {
+            preferredContentX.reset();
         }
         ensureCursorVisible();
-        resetBlink();
-        notifySelect();
-        configureScrollView();
-        rebuildVisibleInstances();
+        refreshAfterCursorChange();
+    }
+
+    U64 visualRowAfterVerticalMove(U64 fromRow, I64 delta, F32 contentX) const {
+        U64 toRow = fromRow;
+        for (I64 step = 0; step < std::abs(delta); ++step) {
+            const U64 groupStart = groupStartOf(toRow);
+            if (delta > 0) {
+                const U64 columnEnd = std::min(groupEndRow(groupStart), columnEndRow(toRow));
+                if (toRow + 1 < columnEnd) {
+                    ++toRow;
+                    continue;
+                }
+                const U64 nextGroup = groupEndRow(groupStart);
+                if (nextGroup >= visualRows.size()) {
+                    break;
+                }
+                toRow = groupColumnNearX(nextGroup, contentX, false);
+            } else {
+                if (toRow > columnBeginRow(toRow)) {
+                    --toRow;
+                    continue;
+                }
+                if (groupStart == 0) {
+                    break;
+                }
+                toRow = groupColumnNearX(groupStartOf(groupStart - 1), contentX, true);
+            }
+        }
+        return toRow;
     }
 
     void moveCursorVertically(I64 delta, bool extendSelection) {
         ensureVisualRows();
         const U64 fromRow = visualRowForPosition(cursor);
-        const U64 fromStart = visualRows[fromRow].start;
-        if (!preferredColumn.has_value()) {
-            preferredColumn = cursor.column >= fromStart ? cursor.column - fromStart : 0;
+        if (!preferredContentX.has_value()) {
+            preferredContentX = contentXAtColumn(visualRows[fromRow], cursor.column);
         }
-        const U64 toRow = static_cast<U64>(
-            std::clamp<I64>(static_cast<I64>(fromRow) + delta, 0, static_cast<I64>(visualRows.size()) - 1));
+        const U64 toRow = visualRowAfterVerticalMove(fromRow, delta, *preferredContentX);
         const auto& row = visualRows[toRow];
-        const U64 column = std::min<U64>(row.start + *preferredColumn, row.end);
+        const U64 column = std::min(columnAtContentX(row, *preferredContentX), rowLastColumn(row));
         moveCursorTo({row.line, column}, extendSelection, true);
     }
 
     void ensureCursorVisible() {
-        const F32 lineHeight = lineHeightPixels();
-        const F32 areaHeight = rect.height;
+        cursorFollowPending = true;
+        if (liveLayout) {
+            resolveViewport(true);
+        }
         const auto padding = paddingPixels();
-        const F32 cursorTop = padding.top + static_cast<F32>(visualRowForPosition(cursor)) * lineHeight;
-        if (cursorTop - padding.top < currentScrollY) {
-            currentScrollY = cursorTop - padding.top;
-        } else if (cursorTop + lineHeight + padding.bottom > currentScrollY + areaHeight) {
-            currentScrollY = cursorTop + lineHeight + padding.bottom - areaHeight;
+        const U64 cursorRow = visualRowForPosition(cursor);
+        const F32 rowTop = rowTopContent(cursorRow);
+        const F32 rowBottom = rowTop + rowHeightPixels(cursorRow);
+        if (rowTop < currentScrollY) {
+            currentScrollY = rowTop;
+        } else if (padding.top + rowBottom + padding.bottom > currentScrollY + rect.height) {
+            currentScrollY = padding.top + rowBottom + padding.bottom - rect.height;
         }
-        currentScrollY = std::clamp(currentScrollY, 0.0f, std::max(0.0f, contentHeightPixels() - areaHeight));
+        currentScrollY = std::clamp(currentScrollY, 0.0f, maxScrollYPixels());
 
-        if (config.wrap != Wrap::None) {
-            currentScrollX = 0.0f;
-            return;
-        }
-        const F32 cursorX = columnOffsetPixels(cursor.line, cursor.column);
+        const F32 cursorX = contentXAtColumn(visualRows[cursorRow], cursor.column);
         const F32 viewportWidth = textViewportWidthPixels();
         const F32 margin = std::min(fontSizePixels * kCursorScrollMarginFontRatio, viewportWidth * 0.5f);
         if (cursorX < currentScrollX + margin) {
@@ -973,7 +1359,7 @@ struct TextGrid::Impl {
         } else if (cursorX > currentScrollX + viewportWidth - margin) {
             currentScrollX = std::max(0.0f, cursorX - viewportWidth + margin);
         }
-        currentScrollX = std::clamp(currentScrollX, 0.0f, std::max(0.0f, maxLineAdvancePixels() - viewportWidth));
+        currentScrollX = std::clamp(currentScrollX, 0.0f, maxScrollXPixels());
     }
 
     Snapshot snapshot() const { return {lines, cursor, selectionAnchor, selectionActive}; }
@@ -992,11 +1378,12 @@ struct TextGrid::Impl {
         }
         redoStack.clear();
     }
-    void commitEdit() {
+    void contentChanged() {
         ++contentRevision;
+        refreshContentIcons();
+        ensureFontPools();
         clampPosition(cursor);
         clampPosition(selectionAnchor);
-        preferredColumn.reset();
         ensureCursorVisible();
         resetBlink();
         configureScrollView();
@@ -1004,6 +1391,10 @@ struct TextGrid::Impl {
         if (config.onChange) {
             config.onChange(textValue());
         }
+    }
+    void commitEdit() {
+        preferredContentX.reset();
+        contentChanged();
     }
 
     void insertText(const std::string& text) {
@@ -1097,8 +1488,9 @@ struct TextGrid::Impl {
                 line.erase(previousIndent, cursor.column - previousIndent);
                 cursor.column = previousIndent;
             } else {
-                line.erase(cursor.column - 1, pair ? 2 : 1);
-                cursor.column -= 1;
+                const U64 previous = Unicode::PreviousCharacter(line, cursor.column);
+                line.erase(previous, cursor.column - previous + (pair ? 1 : 0));
+                cursor.column = previous;
             }
         } else if (cursor.line > 0) {
             cursor.column = lines[cursor.line - 1].size();
@@ -1118,7 +1510,7 @@ struct TextGrid::Impl {
         }
         auto& line = lines[cursor.line];
         if (cursor.column < line.size()) {
-            line.erase(cursor.column, 1);
+            line.erase(cursor.column, Unicode::NextCharacter(line, cursor.column) - cursor.column);
         } else if (cursor.line + 1 < lines.size()) {
             line += lines[cursor.line + 1];
             lines.erase(lines.begin() + static_cast<I64>(cursor.line) + 1);
@@ -1208,15 +1600,16 @@ struct TextGrid::Impl {
         commitEdit();
     }
 
+    void setSelection(Position anchor, Position end) {
+        selectionAnchor = anchor;
+        cursor = end;
+        selectionActive = !(selectionAnchor == cursor);
+        preferredContentX.reset();
+        refreshAfterCursorChange();
+    }
+
     void selectAll() {
-        selectionAnchor = documentStartPosition();
-        cursor = documentEndPosition();
-        selectionActive = true;
-        preferredColumn.reset();
-        resetBlink();
-        notifySelect();
-        configureScrollView();
-        rebuildVisibleInstances();
+        setSelection(documentStartPosition(), documentEndPosition());
     }
 
     void selectWordAt(Position position) {
@@ -1226,14 +1619,7 @@ struct TextGrid::Impl {
             moveCursorTo(position, false);
             return;
         }
-        selectionAnchor = range->first;
-        cursor = range->second;
-        selectionActive = !(selectionAnchor == cursor);
-        preferredColumn.reset();
-        resetBlink();
-        notifySelect();
-        configureScrollView();
-        rebuildVisibleInstances();
+        setSelection(range->first, range->second);
     }
 
     void expandSyntaxSelection() {
@@ -1247,12 +1633,9 @@ struct TextGrid::Impl {
         selectionAnchor = range->first;
         cursor = range->second;
         selectionActive = !(selectionAnchor == cursor);
-        preferredColumn.reset();
+        preferredContentX.reset();
         ensureCursorVisible();
-        resetBlink();
-        notifySelect();
-        configureScrollView();
-        rebuildVisibleInstances();
+        refreshAfterCursorChange();
     }
 
     void copySelectionOrLine() {
@@ -1288,14 +1671,7 @@ struct TextGrid::Impl {
         redoStack.push_back(snapshot());
         restoreSnapshot(undoStack.back());
         undoStack.pop_back();
-        ++contentRevision;
-        ensureCursorVisible();
-        resetBlink();
-        configureScrollView();
-        rebuildVisibleInstances();
-        if (config.onChange) {
-            config.onChange(textValue());
-        }
+        contentChanged();
     }
 
     void redo() {
@@ -1305,14 +1681,7 @@ struct TextGrid::Impl {
         undoStack.push_back(snapshot());
         restoreSnapshot(redoStack.back());
         redoStack.pop_back();
-        ++contentRevision;
-        ensureCursorVisible();
-        resetBlink();
-        configureScrollView();
-        rebuildVisibleInstances();
-        if (config.onChange) {
-            config.onChange(textValue());
-        }
+        contentChanged();
     }
 
     bool hasFocus() const { return focused && ActiveTextGridId() == config.id; }
@@ -1328,28 +1697,27 @@ struct TextGrid::Impl {
             rebuildVisibleInstances();
         }
     }
+    void dropFocusState() {
+        focused = false;
+        mouseSelecting = false;
+        clearSelection();
+        configureScrollView();
+        rebuildVisibleInstances();
+    }
     void clearFocus() {
         if (ActiveTextGridId() == config.id) {
             ActiveTextGridId().clear();
             Private::SetKeyboardInputCaptured(false);
         }
         if (focused) {
-            focused = false;
-            mouseSelecting = false;
-            clearSelection();
-            configureScrollView();
-            rebuildVisibleInstances();
+            dropFocusState();
         }
     }
     void reconcileFocusOwnership() {
         if (!focused || ActiveTextGridId() == config.id) {
             return;
         }
-        focused = false;
-        mouseSelecting = false;
-        clearSelection();
-        configureScrollView();
-        rebuildVisibleInstances();
+        dropFocusState();
     }
 
     void autoscrollSelection(const Extent2D<F32>& pixel) {
@@ -1364,26 +1732,17 @@ struct TextGrid::Impl {
             delta = maxStep * std::max(0.1f, distance / std::max(1.0f, margin));
         }
         if (std::abs(delta) > 1e-3f) {
-            currentScrollY = std::clamp(currentScrollY + delta, 0.0f,
-                                        std::max(0.0f, contentHeightPixels() - rect.height));
+            currentScrollY = std::clamp(currentScrollY + delta, 0.0f, maxScrollYPixels());
         }
     }
 
     Position positionFromMouse(const Extent2D<F32>& pixel) const {
         ensureVisualRows();
-        const F32 contentY = pixel.y - textTopPixels() + currentScrollY;
-        U64 visualRowIndex = variableMetrics()
-            ? visualRowAtContentY(contentY)
-            : static_cast<U64>(std::max(0.0f, std::floor(contentY / lineHeightPixels())));
-        visualRowIndex = std::min<U64>(visualRowIndex, visualRows.size() - 1);
+        const F32 contentY = contentYFromScreen(pixel.y);
+        const F32 contentX = contentXFromScreen(pixel.x);
+        const U64 visualRowIndex = std::min<U64>(visualRowNear(contentY, contentX), visualRows.size() - 1);
         const auto& row = visualRows[visualRowIndex];
-        const F32 localX = std::max(0.0f, pixel.x - lineTextLeftPixels(row.line)) + currentScrollX;
-        const F32 lineX = columnOffsetPixels(row.line, row.start) + localX;
-        const U64 column = columnAtOffsetPixels(row.line, lineX);
-        Position position;
-        position.line = row.line;
-        position.column = std::clamp<U64>(column, row.start, row.end);
-        return position;
+        return {row.line, columnAtContentX(row, contentX)};
     }
 
     bool pointerInside(const Extent2D<F32>& position) const {
@@ -1450,17 +1809,184 @@ struct TextGrid::Impl {
         }
     }
 
+    struct Modifiers {
+        bool command = false;
+        bool control = false;
+        bool alt = false;
+        bool shift = false;
+        bool shortcut() const { return command || control; }
+        bool word() const { return alt || (control && !command); }
+        bool none() const { return !command && !control && !alt; }
+    };
+
+    static Modifiers CurrentModifiers() {
+        const ImGuiIO& io = ImGui::GetIO();
+        return {
+            .command = (io.KeyMods & ImGuiMod_Super) != 0,
+            .control = (io.KeyMods & ImGuiMod_Ctrl) != 0,
+            .alt = (io.KeyMods & ImGuiMod_Alt) != 0,
+            .shift = (io.KeyMods & ImGuiMod_Shift) != 0,
+        };
+    }
+
+    static bool EnterPressed(bool repeat) {
+        return ImGui::IsKeyPressed(ImGuiKey_Enter, repeat) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, repeat);
+    }
+
+    bool handleShortcuts(const Modifiers& mods) {
+        bool handled = false;
+        if (ImGui::IsKeyPressed(ImGuiKey_A, false)) {
+            selectAll();
+            handled = true;
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_C, false)) {
+            copySelectionOrLine();
+            handled = true;
+        }
+        if (!config.editable) {
+            return handled;
+        }
+        if (!mods.alt && EnterPressed(false)) {
+            if (config.onSubmit) {
+                config.onSubmit(textValue());
+            }
+            handled = true;
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_X, false)) {
+            cutSelectionOrLine();
+            handled = true;
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_V, false)) {
+            const char* clipboardText = ImGui::GetClipboardText();
+            if (clipboardText != nullptr) {
+                insertText(clipboardText);
+            }
+            handled = true;
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_Z, true)) {
+            if (mods.shift) {
+                redo();
+            } else {
+                undo();
+            }
+            handled = true;
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_Y, true)) {
+            redo();
+            handled = true;
+        }
+        return handled;
+    }
+
+    void handleDeletionKeys(const Modifiers& mods) {
+        if (ImGui::IsKeyPressed(ImGuiKey_Backspace, true)) {
+            if (mods.command) {
+                deleteToPosition(lineStartPosition());
+            } else if (mods.word()) {
+                deleteToPosition(previousWordPosition());
+            } else {
+                backspace();
+            }
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_Delete, true)) {
+            if (mods.command) {
+                deleteToPosition(lineEndPosition());
+            } else if (mods.word()) {
+                deleteToPosition(nextWordPosition());
+            } else {
+                deleteForward();
+            }
+        }
+    }
+
+    void handleEnterAndTab(const Modifiers& mods) {
+        if (!mods.none()) {
+            return;
+        }
+        if (config.submitOnEnter && !mods.shift) {
+            if (EnterPressed(false) && config.onSubmit) {
+                config.onSubmit(textValue());
+            }
+        } else if (EnterPressed(true)) {
+            insertNewLine();
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_Tab, true)) {
+            indentSelection(mods.shift);
+        }
+    }
+
+    void handleNavigationKeys(const Modifiers& mods) {
+        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, true)) {
+            if (hasSelection() && !mods.shift) {
+                moveCursorTo(selectionRange().first, false);
+            } else {
+                moveCursorTo(mods.command ? lineStartPosition()
+                                          : (mods.word() ? previousWordPosition() : previousCharacterPosition()),
+                             mods.shift);
+            }
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, true)) {
+            if (mods.alt && mods.shift && !mods.command && !mods.control) {
+                expandSyntaxSelection();
+            } else if (hasSelection() && !mods.shift) {
+                moveCursorTo(selectionRange().second, false);
+            } else {
+                moveCursorTo(mods.command ? lineEndPosition()
+                                          : (mods.word() ? nextWordPosition() : nextCharacterPosition()),
+                             mods.shift);
+            }
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, true)) {
+            if (mods.command) {
+                moveCursorTo(documentStartPosition(), mods.shift);
+            } else {
+                moveCursorVertically(-1, mods.shift);
+            }
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, true)) {
+            if (mods.command) {
+                moveCursorTo(documentEndPosition(), mods.shift);
+            } else {
+                moveCursorVertically(1, mods.shift);
+            }
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_Home, true)) {
+            moveCursorTo(smartLineStartPosition(), mods.shift);
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_End, true)) {
+            moveCursorTo(lineEndPosition(), mods.shift);
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_PageUp, true)) {
+            moveCursorVertically(-static_cast<I64>(pageStepLines()), mods.shift);
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_PageDown, true)) {
+            moveCursorVertically(static_cast<I64>(pageStepLines()), mods.shift);
+        }
+    }
+
+    void handleTypedCharacters(const Modifiers& mods) {
+        if (!mods.none()) {
+            return;
+        }
+        for (const ImWchar character : ImGui::GetIO().InputQueueCharacters) {
+            if (character >= 32 && character < 127) {
+                insertTypedCharacter(static_cast<char>(character));
+            } else if (character >= 0xA0) {
+                insertText(Unicode::Encode(static_cast<U32>(character)));
+            }
+        }
+    }
+
     void handleKeyboard() {
         if (!hasFocus() || !windowFocused) {
             return;
         }
-        ImGuiIO& io = ImGui::GetIO();
-        const bool commandPressed = (io.KeyMods & ImGuiMod_Super) != 0;
-        const bool controlPressed = (io.KeyMods & ImGuiMod_Ctrl) != 0;
-        const bool altPressed = (io.KeyMods & ImGuiMod_Alt) != 0;
-        const bool shiftPressed = (io.KeyMods & ImGuiMod_Shift) != 0;
-        const bool shortcutPressed = commandPressed || controlPressed;
-        const bool wordModifier = altPressed || (controlPressed && !commandPressed);
+        const I32 frame = ImGui::GetFrameCount();
+        if (keyboardFrame == frame) {
+            return;
+        }
+        keyboardFrame = frame;
+        const Modifiers mods = CurrentModifiers();
 
         if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
             if (hasSelection()) {
@@ -1472,142 +1998,15 @@ struct TextGrid::Impl {
             }
         }
 
-        bool handledShortcut = false;
-        if (shortcutPressed) {
-            if (ImGui::IsKeyPressed(ImGuiKey_A, false)) {
-                selectAll();
-                handledShortcut = true;
-            }
-            if (ImGui::IsKeyPressed(ImGuiKey_C, false)) {
-                copySelectionOrLine();
-                handledShortcut = true;
-            }
-            if (config.editable) {
-                if (!altPressed &&
-                    (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false))) {
-                    if (config.onSubmit) {
-                        config.onSubmit(textValue());
-                    }
-                    handledShortcut = true;
-                }
-                if (ImGui::IsKeyPressed(ImGuiKey_X, false)) {
-                    cutSelectionOrLine();
-                    handledShortcut = true;
-                }
-                if (ImGui::IsKeyPressed(ImGuiKey_V, false)) {
-                    const char* clipboardText = ImGui::GetClipboardText();
-                    if (clipboardText != nullptr) {
-                        insertText(clipboardText);
-                    }
-                    handledShortcut = true;
-                }
-                if (ImGui::IsKeyPressed(ImGuiKey_Z, true)) {
-                    if (shiftPressed) {
-                        redo();
-                    } else {
-                        undo();
-                    }
-                    handledShortcut = true;
-                }
-                if (ImGui::IsKeyPressed(ImGuiKey_Y, true)) {
-                    redo();
-                    handledShortcut = true;
-                }
-            }
-        }
-
-        if (!config.editable) {
+        const bool handledShortcut = mods.shortcut() && handleShortcuts(mods);
+        if (!config.editable || handledShortcut) {
             return;
         }
 
-        if (!handledShortcut) {
-            if (ImGui::IsKeyPressed(ImGuiKey_Backspace, true)) {
-                if (commandPressed) {
-                    deleteToPosition(lineStartPosition());
-                } else if (wordModifier) {
-                    deleteToPosition(previousWordPosition());
-                } else {
-                    backspace();
-                }
-            }
-            if (ImGui::IsKeyPressed(ImGuiKey_Delete, true)) {
-                if (commandPressed) {
-                    deleteToPosition(lineEndPosition());
-                } else if (wordModifier) {
-                    deleteToPosition(nextWordPosition());
-                } else {
-                    deleteForward();
-                }
-            }
-            if (!commandPressed && !controlPressed && !altPressed) {
-                if (config.submitOnEnter && !shiftPressed) {
-                    if ((ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
-                         ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false)) &&
-                        config.onSubmit) {
-                        config.onSubmit(textValue());
-                    }
-                } else if (ImGui::IsKeyPressed(ImGuiKey_Enter, true) ||
-                           ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, true)) {
-                    insertNewLine();
-                }
-            }
-            if (!commandPressed && !controlPressed && !altPressed && ImGui::IsKeyPressed(ImGuiKey_Tab, true)) {
-                indentSelection(shiftPressed);
-            }
-            if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, true)) {
-                if (hasSelection() && !shiftPressed) {
-                    moveCursorTo(selectionRange().first, false);
-                } else {
-                    moveCursorTo(commandPressed ? lineStartPosition()
-                                                : (wordModifier ? previousWordPosition() : previousCharacterPosition()),
-                                 shiftPressed);
-                }
-            }
-            if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, true)) {
-                if (altPressed && shiftPressed && !commandPressed && !controlPressed) {
-                    expandSyntaxSelection();
-                } else if (hasSelection() && !shiftPressed) {
-                    moveCursorTo(selectionRange().second, false);
-                } else {
-                    moveCursorTo(commandPressed ? lineEndPosition()
-                                                : (wordModifier ? nextWordPosition() : nextCharacterPosition()),
-                                 shiftPressed);
-                }
-            }
-            if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, true)) {
-                if (commandPressed) {
-                    moveCursorTo(documentStartPosition(), shiftPressed);
-                } else {
-                    moveCursorVertically(-1, shiftPressed);
-                }
-            }
-            if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, true)) {
-                if (commandPressed) {
-                    moveCursorTo(documentEndPosition(), shiftPressed);
-                } else {
-                    moveCursorVertically(1, shiftPressed);
-                }
-            }
-            if (ImGui::IsKeyPressed(ImGuiKey_Home, true)) {
-                moveCursorTo(smartLineStartPosition(), shiftPressed);
-            }
-            if (ImGui::IsKeyPressed(ImGuiKey_End, true)) {
-                moveCursorTo(lineEndPosition(), shiftPressed);
-            }
-            if (ImGui::IsKeyPressed(ImGuiKey_PageUp, true)) {
-                moveCursorVertically(-static_cast<I64>(pageStepLines()), shiftPressed);
-            }
-            if (ImGui::IsKeyPressed(ImGuiKey_PageDown, true)) {
-                moveCursorVertically(static_cast<I64>(pageStepLines()), shiftPressed);
-            }
-            if (!commandPressed && !controlPressed && !altPressed) {
-                for (const ImWchar character : io.InputQueueCharacters) {
-                    if (character >= 32 && character < 127) {
-                        insertTypedCharacter(static_cast<char>(character));
-                    }
-                }
-            }
-        }
+        handleDeletionKeys(mods);
+        handleEnterAndTab(mods);
+        handleNavigationKeys(mods);
+        handleTypedCharacters(mods);
     }
 
     void reconcileCursorBlink() {
@@ -1620,16 +2019,64 @@ struct TextGrid::Impl {
         }
     }
 
+    void applyWidthLayout() {
+        if (!config.widthLayout) {
+            return;
+        }
+        WidthLayout next = config.widthLayout(textViewportWidthPixels());
+        if (widthLayoutResolved && next == resolvedWidthLayout) {
+            return;
+        }
+        resolvedWidthLayout = std::move(next);
+        widthLayoutResolved = true;
+        visualRowsValid = false;
+    }
+
+    bool verticalScrollNeeded(bool layoutPass) const {
+        if (!config.scrollbar) {
+            return false;
+        }
+        if (layoutPass) {
+            return maxScrollYPixels() > 0.0f;
+        }
+        return config.editable && textContentHeightPixels() > lineHeightPixels() + kScrollRangeEpsilon;
+    }
+
+    void resolveViewport(bool layoutPass) {
+        applyWidthLayout();
+        const bool unchanged = viewportResolved && visualRowsValid &&
+                               resolvedLayoutPass == layoutPass &&
+                               resolvedRevision == contentRevision &&
+                               resolvedSize.x == rect.width && resolvedSize.y == rect.height;
+        if (unchanged) {
+            return;
+        }
+        gutterReserved = false;
+        bottomReserved = false;
+        applyWidthLayout();
+        bottomReserved = config.scrollbar && maxScrollXPixels() > 0.0f;
+        if (verticalScrollNeeded(layoutPass)) {
+            gutterReserved = true;
+            applyWidthLayout();
+            bottomReserved = config.scrollbar && maxScrollXPixels() > 0.0f;
+        }
+        ensureVisualRows();
+        viewportResolved = true;
+        resolvedLayoutPass = layoutPass;
+        resolvedRevision = contentRevision;
+        resolvedSize = {rect.width, rect.height};
+    }
+
     void clampScroll() {
-        currentScrollY = std::clamp(currentScrollY, 0.0f, std::max(0.0f, contentHeightPixels() - rect.height));
-        currentScrollX = std::clamp(currentScrollX, 0.0f, std::max(0.0f, maxLineAdvancePixels() - textViewportWidthPixels()));
+        currentScrollY = std::clamp(currentScrollY, 0.0f, maxScrollYPixels());
+        currentScrollX = std::clamp(currentScrollX, 0.0f, maxScrollXPixels());
     }
 
     void configureScrollView() {
         scroll.update({
             .id = config.id + ":scroll",
-            .contentWidth = contentWidthPixels(),
-            .contentHeight = contentHeightPixels(),
+            .contentWidth = rect.width + maxScrollXPixels(),
+            .contentHeight = rect.height + maxScrollYPixels(),
             .scrollX = currentScrollX,
             .scrollY = currentScrollY,
             .scrollbar = config.scrollbar,
@@ -1653,289 +2100,331 @@ struct TextGrid::Impl {
         if (!clip.has_value()) {
             return r;
         }
-        const auto& c = *clip;
-        const F32 x = std::max(r.x, c.x);
-        const F32 y = std::max(r.y, c.y);
-        const F32 right = std::min(r.right(), c.right());
-        const F32 bottom = std::min(r.bottom(), c.bottom());
-        return {x, y, std::max(0.0f, right - x), std::max(0.0f, bottom - y)};
+        return Intersect(r, *clip);
+    }
+
+    FrameGeometry beginFrame() {
+        ensureVisualRows();
+        viewport.update(rect, clip.value_or(rect), minimumVisualRowHeight,
+                        maximumRowGroupColumns, visibleLineCapacity());
+        FrameGeometry frame;
+        frame.rect = rect;
+        frame.clip = viewport.bounds;
+        frame.visible = !viewport.bounds.empty();
+        frame.textClip = clipped(Rect{textClipLeftPixels(), rect.y,
+                                      std::max(0.0f, textClipRightPixels() - textClipLeftPixels()), rect.height});
+        frame.clipTop = viewport.bounds.y;
+        frame.clipBottom = viewport.bounds.bottom();
+        frame.clipLeft = textClipLeftPixels();
+        frame.clipRight = textClipRightPixels();
+        frame.maxSegments = std::max<U64>(1, config.maxLineSegments);
+        frame.lineCapacity = viewport.rowCapacity;
+        frame.segmentCapacity = frame.lineCapacity * frame.maxSegments;
+        if (frame.visible) {
+            const F32 visibleTop = visibleTopContentY();
+            collectVisibleRowRanges(visibleTop, visibleTop + (frame.clipBottom - frame.clipTop));
+        } else {
+            visibleRowRanges.clear();
+        }
+        return frame;
     }
 
     void rebuildVisibleInstances() {
-        const auto& rect = this->rect;
-        const bool visible = !rect.empty();
-        const auto clip = std::optional<Rect>(clipped(rect));
-        const auto textClip = std::optional<Rect>(clipped(
-            Rect{textClipLeftPixels(), rect.y,
-                 std::max(0.0f, textClipRightPixels() - textClipLeftPixels()), rect.height}));
-        const F32 lineHeight = lineHeightPixels();
-        const F32 advance = characterAdvancePixels();
-        const F32 gutterWidth = gutterWidthPixels();
-        const F32 textLeft = textLeftPixels();
-        const F32 viewportTop = textTopPixels();
-        const F32 contentSize = contentFontSize();
-        ensureVisualRows();
-        const U64 firstVisualRow = firstVisibleVisualRow();
-        // Size the pools for the viewport, including a partially visible first row.
-        // Visible row counts fluctuate while scrolling; resizing to match them
-        // invalidates GPU resources and rebuilds the entire canvas.
-        const U64 viewportRowCount = static_cast<U64>(
-            std::ceil(std::max(0.0f, rect.height) / minimumVisualRowHeight)) + 1;
-        const U64 visibleRowCapacity =
-            ((viewportRowCount + kVisibleRowCapacityStep - 1) / kVisibleRowCapacityStep) * kVisibleRowCapacityStep;
-        const auto selection = selectionRange();
-        const bool selected = hasSelection();
+        const FrameGeometry frame = beginFrame();
+        InstancePools pools;
+        pools.extraText.resize(extraFontNames.size());
+        buildRows(frame, pools);
+        uploadPools(frame, std::move(pools));
+        updateChrome(frame);
+        updateCaret(frame);
+    }
 
+    void buildRows(const FrameGeometry& frame, InstancePools& pools) {
         static const std::vector<std::vector<StyleId>> kNoStyles;
-        const auto& styles = config.styler ? config.styler(lines, contentRevision) : kNoStyles;
-
-        const U64 maxSegments = std::max<U64>(1, config.maxLineSegments);
-        const bool hasStyleBackgrounds = !theme.styleBackgrounds.empty();
-        std::vector<Label::Instance> codeInstances(visibleRowCapacity * maxSegments);
-        std::vector<std::vector<Label::Instance>> extraInstances(
-            extraFontNames.size(),
-            std::vector<Label::Instance>(visibleRowCapacity * maxSegments));
-        std::vector<Box::Instance> styleBgInstances(
-            hasStyleBackgrounds ? visibleRowCapacity * maxSegments : 0);
-        std::vector<Label::Instance> numberInstances(visibleRowCapacity);
-        std::vector<Box::Instance> selectionInstances(visibleRowCapacity);
-        std::vector<Box::Instance> matchInstances(kSelectionMatchCapacity);
-        const auto matchText = singleLineSelectionText();
-        U64 matchIndex = 0;
-
-        const F32 clipLeft = textClipLeftPixels();
-        const F32 clipRight = textClipRightPixels();
-        const auto rowRangeRect = [&](U64 lineIndex, U64 a, U64 b, U64 rowStart, U64 rowEnd, U64 lineLen,
-                                      bool breakAtEnd, F32 rowTop, F32 rowHeight) -> std::optional<Rect> {
-            const F32 textLeft = lineTextLeftPixels(lineIndex);
-            const U64 s = std::max(a, rowStart);
-            const U64 e = std::min(b, rowEnd);
-            const bool extend = breakAtEnd && rowEnd >= lineLen;
-            if (e <= s && !extend) {
-                return std::nullopt;
-            }
-            const F32 startX = textLeft - currentScrollX + columnXInRow(lineIndex, rowStart, s);
-            F32 endX = textLeft - currentScrollX + columnXInRow(lineIndex, rowStart, e);
-            if (extend) {
-                endX = std::max(endX, textLeft - currentScrollX + columnXInRow(lineIndex, rowStart, lineLen) + advance);
-            }
-            const F32 clippedStart = std::max(startX, clipLeft);
-            const F32 clippedEnd = std::min(endX, clipRight);
-            if (clippedEnd - clippedStart <= 0.0f) {
-                return std::nullopt;
-            }
-            return Rect{clippedStart, rowTop, clippedEnd - clippedStart, rowHeight};
-        };
-
         static const std::vector<StyleId> kNoLineStyles;
-        for (U64 i = 0; i < visibleRowCapacity; ++i) {
-            const U64 visualRow = firstVisualRow + i;
-            const F32 rowTop = viewportTop + rowTopContent(visualRow) - currentScrollY;
-            const bool rowVisible = visible && visualRow < visualRows.size() && rowTop < rect.bottom();
-            for (U64 segment = 0; segment < maxSegments; ++segment) {
-                const U64 slot = i * maxSegments + segment;
-                codeInstances[slot].visible = false;
-                for (auto& pool : extraInstances) {
-                    pool[slot].visible = false;
-                }
-                if (hasStyleBackgrounds) {
-                    styleBgInstances[slot].visible = false;
-                }
-            }
-            if (!rowVisible) {
-                numberInstances[i].visible = false;
-                selectionInstances[i].visible = false;
-                continue;
-            }
+        const auto& styles = config.styler ? config.styler(lines, contentRevision) : kNoStyles;
+        const SelectionState selection = selectionState();
 
-            const VisualRow row = visualRows[visualRow];
-            const auto& line = lines[row.line];
-            const U64 lineLen = line.size();
-            const auto& lineStyles = row.line < styles.size() ? styles[row.line] : kNoLineStyles;
-            const F32 rh = variableMetrics() ? row.height : lineHeight;
-            const F32 lineLeft = lineTextLeftPixels(row.line);
-            const F32 lineSize = lineGlyphSize(row.line);
-
-            U64 startColumn = row.start;
-            U64 segmentIndex = 0;
-            while (startColumn < row.end && segmentIndex < maxSegments) {
-                const StyleId style = startColumn < lineStyles.size() ? lineStyles[startColumn] : 0;
-                U64 endColumn = startColumn + 1;
-                while (endColumn < row.end &&
-                       (endColumn < lineStyles.size() ? lineStyles[endColumn] : 0) == style &&
-                       endColumn - startColumn < kTextSegmentCharacterCapacity) {
-                    ++endColumn;
+        for (const auto& [rangeBegin, rangeEnd] : visibleRowRanges) {
+            for (U64 visualRow = rangeBegin; visualRow < rangeEnd; ++visualRow) {
+                const VisualRow& row = visualRows[visualRow];
+                const F32 rowTop = rowTopPixels(visualRow);
+                if (rowTop >= frame.clipBottom || rowTop + row.height <= frame.clipTop) {
+                    continue;
                 }
-                const U64 slot = i * maxSegments + segmentIndex;
-                const F32 segX = lineLeft - currentScrollX + columnXInRow(row.line, row.start, startColumn);
-                const F32 segW = columnOffsetPixels(row.line, endColumn) - columnOffsetPixels(row.line, startColumn);
-                const U64 poolIndex = poolIndexForFont(fontForStyle(style));
-                auto& target = poolIndex == static_cast<U64>(-1) ? codeInstances : extraInstances[poolIndex];
-                target[slot] = {
-                    .rect = {segX, rowTop, segW, rh},
-                    .str = line.substr(startColumn, endColumn - startColumn),
-                    .visible = true,
-                    .color = colorForStyle(style),
-                    .fontSize = lineSize,
-                    .alignment = {0, 1},
+                const RowContext ctx{
+                    .row = row,
+                    .top = rowTop,
+                    .height = row.height,
+                    .line = lines[row.line],
+                    .styles = row.line < styles.size() ? styles[row.line] : kNoLineStyles,
+                    .glyphSize = lineGlyphSize(row.line),
                 };
-                if (hasStyleBackgrounds) {
-                    const auto bg = backgroundForStyle(style);
-                    if (bg.a > 0.0f) {
-                        const F32 padX = rh * 0.12f;
-                        styleBgInstances[slot] = {
-                            .rect = {segX - padX, rowTop + rh * 0.08f,
-                                     segW + 2.0f * padX, rh * 0.84f},
-                            .visible = true,
-                            .backgroundColor = bg,
-                        };
-                    }
-                }
-                ++segmentIndex;
-                startColumn = endColumn;
-            }
-
-            numberInstances[i] = {
-                .rect = {rect.x, rowTop, lineNumberRightPixels(), rh},
-                .str = jst::fmt::format("{}", row.line + 1),
-                .visible = config.lineNumbers && row.start == 0,
-                .color = theme.lineNumber,
-                .fontSize = contentSize,
-                .alignment = {2, 1},
-            };
-
-            selectionInstances[i].visible = false;
-            if (selected && row.line >= selection.first.line && row.line <= selection.second.line) {
-                const U64 lo = row.line == selection.first.line ? selection.first.column : 0;
-                const U64 hi = row.line == selection.second.line ? selection.second.column : lineLen;
-                const bool breakAtEnd = row.line < selection.second.line;
-                if (const auto r = rowRangeRect(row.line, lo, hi, row.start, row.end, lineLen, breakAtEnd, rowTop, rh)) {
-                    selectionInstances[i] = {.rect = *r, .backgroundColor = theme.selection};
-                }
-            }
-
-            if (matchText.has_value()) {
-                std::size_t found = line.find(*matchText);
-                while (found != std::string::npos && matchIndex < kSelectionMatchCapacity) {
-                    const U64 startCol = static_cast<U64>(found);
-                    const U64 endCol = startCol + matchText->size();
-                    const bool isPrimary = selected && row.line == selection.first.line &&
-                                           startCol == selection.first.column && endCol == selection.second.column;
-                    if (!isPrimary) {
-                        if (const auto r = rowRangeRect(row.line, startCol, endCol, row.start, row.end, lineLen, false, rowTop, rh)) {
-                            matchInstances[matchIndex++] = {.rect = *r, .backgroundColor = theme.selectionMatch};
-                        }
-                    }
-                    found = line.find(*matchText, found + matchText->size());
-                }
+                buildTextSegments(frame, ctx, pools);
+                buildLineNumber(frame, ctx, pools);
+                buildSelection(frame, ctx, selection, pools);
+                buildSelectionMatches(frame, ctx, selection, pools);
             }
         }
+    }
 
-        backgroundBox.update({
-            .id = config.id + ":background",
-            .instances = {{.rect = rect, .visible = visible, .backgroundColor = theme.background}},
+    U64 segmentEnd(const RowContext& ctx, U64 startColumn, bool lastSegment, bool& icon) const {
+        const U64 scanLimit = std::min(ctx.row.end, startColumn + kTextSegmentCharacterCapacity);
+        U64 endColumn = runEnd(ctx.line, ctx.styles, startColumn, scanLimit, icon, lastSegment);
+        if (endColumn < ctx.row.end) {
+            const U64 aligned = Unicode::Align(ctx.line, endColumn);
+            if (aligned != endColumn) {
+                const U64 previous = Unicode::PreviousCharacter(ctx.line, aligned);
+                endColumn = previous > startColumn ? previous : aligned;
+            }
+        }
+        return endColumn;
+    }
+
+    void buildTextSegments(const FrameGeometry& frame, const RowContext& ctx, InstancePools& pools) {
+        const bool hasStyleBackgrounds = !theme.styleBackgrounds.empty();
+        const U64 lineLen = ctx.line.size();
+        U64 startColumn = ctx.row.start;
+        U64 segmentIndex = 0;
+        while (startColumn < ctx.row.end && segmentIndex < frame.maxSegments) {
+            const StyleId style = startColumn < ctx.styles.size() ? ctx.styles[startColumn] : 0;
+            bool icon = false;
+            const U64 endColumn = segmentEnd(ctx, startColumn, segmentIndex + 1 == frame.maxSegments, icon);
+            const F32 segX = screenXFromContent(contentXAtColumn(ctx.row, startColumn));
+            const F32 segW = columnXInRow(ctx.row.line, startColumn, endColumn);
+            if (segX > frame.rect.right()) {
+                break;
+            }
+            if (segX + segW < frame.rect.x) {
+                startColumn = endColumn;
+                continue;
+            }
+            ++segmentIndex;
+            const F32 glyphSize = ctx.glyphSize * scaleForStyle(style);
+            const F32 pad = stylePaddingPixels(style, glyphSize);
+            const bool spanStart = startColumn == 0 ||
+                                   (startColumn - 1 < ctx.styles.size() ? ctx.styles[startColumn - 1] : 0) != style;
+            const bool spanEnd = endColumn >= lineLen ||
+                                 (endColumn < ctx.styles.size() ? ctx.styles[endColumn] : 0) != style;
+            const F32 leftPad = spanStart ? pad : 0.0f;
+            const F32 rightPad = spanEnd ? pad : 0.0f;
+            const U64 poolIndex = poolIndexForFont(fontForRun(style, icon));
+            auto& target = poolIndex == static_cast<U64>(-1) ? pools.text : pools.extraText[poolIndex];
+            if (target.size() < frame.segmentCapacity) {
+                target.push_back({
+                    .rect = {segX + leftPad, ctx.top, std::max(0.0f, segW - leftPad - rightPad), ctx.height},
+                    .str = ctx.line.substr(startColumn, endColumn - startColumn),
+                    .visible = true,
+                    .color = colorForStyle(style),
+                    .fontSize = glyphSize,
+                    .alignment = {0, 1},
+                });
+            }
+            if (hasStyleBackgrounds) {
+                const auto bg = backgroundForStyle(style);
+                if (bg.a > 0.0f && pools.styleBackgrounds.size() < frame.segmentCapacity) {
+                    const F32 bgHeight = glyphSize * kStyleBackgroundHeightRatio;
+                    pools.styleBackgrounds.push_back({
+                        .rect = {segX, ctx.top + (ctx.height - bgHeight) * 0.5f, segW, bgHeight},
+                        .visible = true,
+                        .backgroundColor = bg,
+                    });
+                }
+            }
+            startColumn = endColumn;
+        }
+    }
+
+    void buildLineNumber(const FrameGeometry& frame, const RowContext& ctx, InstancePools& pools) {
+        if (!config.lineNumbers || ctx.row.start != 0 || lineSameRowAt(ctx.row.line) ||
+            pools.lineNumbers.size() >= frame.lineCapacity) {
+            return;
+        }
+        pools.lineNumbers.push_back({
+            .rect = {frame.rect.x, ctx.top, lineNumberRightPixels(), ctx.height},
+            .str = jst::fmt::format("{}", ctx.row.line + 1),
+            .visible = true,
+            .color = theme.lineNumber,
+            .fontSize = contentFontSize(),
+            .alignment = {2, 1},
         });
+    }
 
-        const U64 cursorVisualRow = visualRowForPosition(cursor);
-        const F32 activeRowTop = rowTopPixels(cursorVisualRow);
-        activeLineBox.update({
-            .id = config.id + ":active-line",
-            .instances = {{
-                .rect = {rect.x, activeRowTop, rect.width, lineHeight},
-                .visible = visible && config.showActiveLine && hasFocus() && !selected &&
-                            activeRowTop + lineHeight > rect.y && activeRowTop < rect.bottom(),
-                .backgroundColor = theme.activeLine,
-            }},
-            .clip = clip,
-        });
+    std::optional<Rect> rowRangeScreenRect(const FrameGeometry& frame, const RowContext& ctx,
+                                           U64 a, U64 b, bool breakAtEnd) const {
+        const auto& row = ctx.row;
+        const U64 lineLen = ctx.line.size();
+        const U64 s = std::max(a, row.start);
+        const U64 e = std::min(b, row.end);
+        const bool extend = breakAtEnd && row.end >= lineLen;
+        if (e <= s && !extend) {
+            return std::nullopt;
+        }
+        const F32 startX = screenXFromContent(contentXAtColumn(row, s));
+        F32 endX = screenXFromContent(contentXAtColumn(row, e));
+        if (extend) {
+            endX = std::max(endX, screenXFromContent(contentXAtColumn(row, lineLen)) + lineAdvancePixels(row.line));
+        }
+        const F32 clippedStart = std::max(startX, frame.clipLeft);
+        const F32 clippedEnd = std::min(endX, frame.clipRight);
+        if (clippedEnd - clippedStart <= 0.0f) {
+            return std::nullopt;
+        }
+        return Rect{clippedStart, ctx.top, clippedEnd - clippedStart, ctx.height};
+    }
 
+    void buildSelection(const FrameGeometry& frame, const RowContext& ctx,
+                        const SelectionState& selection, InstancePools& pools) {
+        const U64 line = ctx.row.line;
+        if (!selection.active || line < selection.first.line || line > selection.second.line) {
+            return;
+        }
+        const U64 lo = line == selection.first.line ? selection.first.column : 0;
+        const U64 hi = line == selection.second.line ? selection.second.column : ctx.line.size();
+        const bool breakAtEnd = line < selection.second.line;
+        const auto r = rowRangeScreenRect(frame, ctx, lo, hi, breakAtEnd);
+        if (r.has_value() && pools.selection.size() < frame.lineCapacity) {
+            pools.selection.push_back({.rect = *r, .backgroundColor = theme.selection});
+        }
+    }
+
+    void buildSelectionMatches(const FrameGeometry& frame, const RowContext& ctx,
+                               const SelectionState& selection, InstancePools& pools) {
+        if (!selection.matchText.has_value()) {
+            return;
+        }
+        const auto& needle = *selection.matchText;
+        std::size_t found = ctx.line.find(needle);
+        while (found != std::string::npos && pools.matches.size() < kSelectionMatchCapacity) {
+            const U64 startCol = static_cast<U64>(found);
+            const U64 endCol = startCol + needle.size();
+            const bool isPrimary = selection.active && ctx.row.line == selection.first.line &&
+                                   startCol == selection.first.column && endCol == selection.second.column;
+            if (!isPrimary) {
+                if (const auto r = rowRangeScreenRect(frame, ctx, startCol, endCol, false)) {
+                    pools.matches.push_back({.rect = *r, .backgroundColor = theme.selectionMatch});
+                }
+            }
+            found = ctx.line.find(needle, found + needle.size());
+        }
+    }
+
+    void growPoolCapacities(const FrameGeometry& frame, const InstancePools& pools) {
+        const auto grow = [&](U64& capacity, U64 demand) {
+            capacity = viewport.poolCapacity(capacity, demand, frame.maxSegments);
+        };
+        grow(styleBackgroundPoolCapacity, pools.styleBackgrounds.size());
+        grow(textPoolCapacity, pools.text.size());
+        extraTextPoolCapacities.resize(extraFontLabels.size(), 0);
+        for (U64 k = 0; k < extraFontLabels.size(); ++k) {
+            grow(extraTextPoolCapacities[k], k < pools.extraText.size() ? pools.extraText[k].size() : 0);
+        }
+    }
+
+    void uploadPools(const FrameGeometry& frame, InstancePools&& pools) {
+        const bool hasStyleBackgrounds = !theme.styleBackgrounds.empty();
+        growPoolCapacities(frame, pools);
         selectionMatchBox.update({
             .id = config.id + ":selection-match",
-            .instances = std::move(matchInstances),
-            .clip = textClip,
+            .instances = std::move(pools.matches),
+            .clip = frame.textClip,
             .capacity = kSelectionMatchCapacity,
         });
         selectionBox.update({
             .id = config.id + ":selection",
-            .instances = std::move(selectionInstances),
-            .clip = textClip,
-            .capacity = visibleRowCapacity,
+            .instances = std::move(pools.selection),
+            .clip = frame.textClip,
+            .capacity = frame.lineCapacity,
         });
         styleBackgroundBox.update({
             .id = config.id + ":style-bg",
-            .instances = std::move(styleBgInstances),
-            .clip = textClip,
-            .cornerRadius = lineHeightPixels() * 0.22f,
-            .capacity = hasStyleBackgrounds ? visibleRowCapacity * maxSegments : 0,
+            .instances = std::move(pools.styleBackgrounds),
+            .clip = frame.textClip,
+            .cornerRadius = contentFontSize() * kStyleBackgroundCornerRatio,
+            .capacity = hasStyleBackgrounds ? styleBackgroundPoolCapacity : 0,
         });
         codeLabels.update({
             .id = config.id + ":text",
-            .instances = std::move(codeInstances),
-            .clip = textClip,
+            .instances = std::move(pools.text),
+            .clip = frame.textClip,
             .fontName = config.fontName,
             .maxCharacters = kTextSegmentCharacterCapacity,
-            .capacity = visibleRowCapacity * maxSegments,
+            .capacity = textPoolCapacity,
         });
         for (U64 k = 0; k < extraFontLabels.size(); ++k) {
-            if (k < extraFontNames.size()) {
-                extraFontLabels[k]->update({
-                    .id = config.id + ":text-font" + std::to_string(k),
-                    .instances = std::move(extraInstances[k]),
-                    .clip = textClip,
-                    .fontName = extraFontNames[k],
-                    .maxCharacters = kTextSegmentCharacterCapacity,
-                    .capacity = visibleRowCapacity * maxSegments,
-                });
-            } else {
-                extraFontLabels[k]->update({
-                    .id = config.id + ":text-font" + std::to_string(k),
-                    .instances = {},
-                    .clip = textClip,
-                    .fontName = config.fontName,
-                    .maxCharacters = kTextSegmentCharacterCapacity,
-                    .capacity = visibleRowCapacity * maxSegments,
-                });
-            }
+            const bool live = k < extraFontNames.size();
+            extraFontLabels[k]->update({
+                .id = config.id + ":text-font" + std::to_string(k),
+                .instances = live ? std::move(pools.extraText[k]) : std::vector<Label::Instance>{},
+                .clip = frame.textClip,
+                .fontName = live ? extraFontNames[k] : config.fontName,
+                .maxCharacters = kTextSegmentCharacterCapacity,
+                .capacity = extraTextPoolCapacities[k],
+            });
         }
         numberLabels.update({
             .id = config.id + ":numbers",
-            .instances = std::move(numberInstances),
-            .clip = clip,
+            .instances = std::move(pools.lineNumbers),
+            .clip = frame.clip,
             .maxCharacters = kMaxLineNumberCharacters,
-            .capacity = visibleRowCapacity,
-        });
-
-        const F32 separatorWidth = std::max(1.0f, std::round(fontSizePixels * kSeparatorWidthFontRatio));
-        const F32 separatorCenter = rect.x + gutterWidth - kLineNumberRightPaddingCharacters * 0.5f * advance;
-        gutterBox.update({
-            .id = config.id + ":gutter",
-            .instances = {{
-                .rect = {separatorCenter - separatorWidth * 0.5f, rect.y, separatorWidth, rect.height},
-                .visible = visible && config.lineNumbers,
-                .backgroundColor = theme.gutterSeparator,
-            }},
-            .clip = clip,
-        });
-
-        const bool blinkOn = std::fmod(ImGui::GetTime() - blinkBase, kCursorBlinkPeriod) < kCursorBlinkOnDuration;
-        lastBlinkOn = blinkOn;
-        const F32 cursorWidth = std::max(1.0f, std::round(fontSizePixels * kCursorWidthFontRatio));
-        const F32 cursorTop = rowTopPixels(cursorVisualRow);
-        const U64 cursorRowStart = cursorVisualRow < visualRows.size() ? visualRows[cursorVisualRow].start : 0;
-        const F32 cursorX = textLeft - currentScrollX +
-                            columnXInRow(cursor.line, cursorRowStart, cursor.column);
-        cursorBox.update({
-            .id = config.id + ":cursor",
-            .instances = {{
-                .rect = {cursorX, cursorTop, cursorWidth, lineHeight},
-                .visible = visible && config.editable && hasFocus() && blinkOn &&
-                            cursorTop + lineHeight > rect.y && cursorTop < rect.bottom(),
-                .backgroundColor = theme.cursor,
-            }},
-            .clip = textClip,
+            .capacity = frame.lineCapacity,
         });
     }
 
+    void updateChrome(const FrameGeometry& frame) {
+        backgroundBox.update({
+            .id = config.id + ":background",
+            .instances = {{.rect = frame.rect, .visible = frame.visible, .backgroundColor = theme.background}},
+        });
+
+        const U64 cursorRow = visualRowForPosition(cursor);
+        const F32 activeTop = rowTopPixels(cursorRow);
+        const F32 activeHeight = rowHeightPixels(cursorRow);
+        activeLineBox.update({
+            .id = config.id + ":active-line",
+            .instances = {{
+                .rect = {frame.rect.x, activeTop, frame.rect.width, activeHeight},
+                .visible = frame.visible && config.showActiveLine && hasFocus() && !hasSelection() &&
+                            activeTop + activeHeight > frame.rect.y && activeTop < frame.rect.bottom(),
+                .backgroundColor = theme.activeLine,
+            }},
+            .clip = frame.clip,
+        });
+
+        const F32 advance = cellAdvancePixels(contentFontSize());
+        const F32 separatorWidth = std::max(1.0f, std::round(fontSizePixels * kSeparatorWidthFontRatio));
+        const F32 separatorCenter = frame.rect.x + gutterWidthPixels() -
+                                    kLineNumberRightPaddingCharacters * 0.5f * advance;
+        gutterBox.update({
+            .id = config.id + ":gutter",
+            .instances = {{
+                .rect = {separatorCenter - separatorWidth * 0.5f, frame.rect.y, separatorWidth, frame.rect.height},
+                .visible = frame.visible && config.lineNumbers,
+                .backgroundColor = theme.gutterSeparator,
+            }},
+            .clip = frame.clip,
+        });
+    }
+
+    void updateCaret(const FrameGeometry& frame) {
+        const bool blinkOn = std::fmod(ImGui::GetTime() - blinkBase, kCursorBlinkPeriod) < kCursorBlinkOnDuration;
+        lastBlinkOn = blinkOn;
+        const U64 cursorRow = visualRowForPosition(cursor);
+        const F32 cursorWidth = std::max(1.0f, std::round(fontSizePixels * kCursorWidthFontRatio));
+        const F32 cursorTop = rowTopPixels(cursorRow);
+        const F32 cursorHeight = rowHeightPixels(cursorRow);
+        const F32 cursorX = screenXFromContent(contentXAtColumn(visualRows[cursorRow], cursor.column));
+        cursorBox.update({
+            .id = config.id + ":cursor",
+            .instances = {{
+                .rect = {cursorX, cursorTop, cursorWidth, cursorHeight},
+                .visible = frame.visible && config.editable && hasFocus() && blinkOn &&
+                            cursorTop + cursorHeight > frame.rect.y && cursorTop < frame.rect.bottom(),
+                .backgroundColor = theme.cursor,
+            }},
+            .clip = frame.textClip,
+        });
+    }
 };
 
 TextGrid::TextGrid() {
@@ -1946,9 +2435,9 @@ TextGrid::TextGrid() {
     };
     add(this->impl->backgroundBox);
     add(this->impl->activeLineBox);
+    add(this->impl->styleBackgroundBox);
     add(this->impl->selectionMatchBox);
     add(this->impl->selectionBox);
-    add(this->impl->styleBackgroundBox);
     add(this->impl->gutterBox);
     add(this->impl->numberLabels);
     add(this->impl->codeLabels);
@@ -1964,34 +2453,60 @@ TextGrid::~TextGrid() {
 }
 
 bool TextGrid::update(Config config) {
-
     const bool valueChanged = impl->config.value != config.value;
     const bool metricsChanged = impl->config.fontSize != config.fontSize ||
                                 impl->config.fontScale != config.fontScale ||
+                                impl->config.lineHeight != config.lineHeight ||
+                                impl->config.styleScales != config.styleScales ||
+                                impl->config.styleBackgroundColorKeys != config.styleBackgroundColorKeys ||
+                                impl->config.styleRevision != config.styleRevision ||
+                                impl->config.fontName != config.fontName ||
+                                impl->config.iconFont != config.iconFont ||
+                                impl->config.monospace != config.monospace ||
                                 impl->config.lineScale != config.lineScale ||
                                 impl->config.lineTopGap != config.lineTopGap ||
-                                impl->config.lineIndent != config.lineIndent;
+                                impl->config.lineIndent != config.lineIndent ||
+                                impl->config.lineSameRow != config.lineSameRow ||
+                                impl->config.lineWrapWidth != config.lineWrapWidth ||
+                                impl->config.lineRightInset != config.lineRightInset ||
+                                impl->config.contentMinWidth != config.contentMinWidth ||
+                                static_cast<bool>(impl->config.widthLayout) != static_cast<bool>(config.widthLayout);
+    const bool viewportChanged = metricsChanged ||
+                                 impl->config.wrap != config.wrap ||
+                                 impl->config.padding != config.padding ||
+                                 impl->config.scrollbar != config.scrollbar ||
+                                 impl->config.editable != config.editable ||
+                                 impl->config.lineNumbers != config.lineNumbers;
     const bool wasAtBottom = impl->rect.height <= 0.0f ||
-                             impl->currentScrollY + 1.0f >=
-                                 std::max(0.0f, impl->contentHeightPixels() - impl->rect.height);
+                             impl->currentScrollY + 1.0f >= impl->maxScrollYPixels();
     impl->config = std::move(config);
     impl->fontSizePixels = impl->config.fontSize;
+
+    if (viewportChanged) {
+        impl->viewportResolved = false;
+    }
 
     if (metricsChanged) {
         impl->visualRowsValid = false;
         impl->linePrefixesValid = false;
+        impl->widthLayoutResolved = false;
+        impl->viewportResolved = false;
+        impl->cellAdvanceCache.clear();
+        impl->preferredContentX.reset();
+        impl->refreshContentIcons();
     }
 
     if ((valueChanged && impl->config.value != impl->textValue()) || impl->lines.empty()) {
         impl->lines = SplitLines(impl->config.value);
         ++impl->contentRevision;
+        impl->refreshContentIcons();
         if (impl->config.editable) {
             impl->undoStack.clear();
             impl->redoStack.clear();
             impl->cursor = {0, 0};
             impl->selectionAnchor = {0, 0};
             impl->selectionActive = false;
-            impl->preferredColumn.reset();
+            impl->preferredContentX.reset();
             impl->currentScrollY = 0.0f;
             impl->currentScrollX = 0.0f;
             impl->stickToBottomPending = false;
@@ -2005,36 +2520,64 @@ bool TextGrid::update(Config config) {
     return true;
 }
 
+TextGrid::Position TextGrid::cursor() const {
+    return impl->cursor;
+}
+
+void TextGrid::setCursor(Position position) {
+    impl->moveCursorTo(position, false);
+}
+
+void TextGrid::moveCursorRows(I64 delta, bool extendSelection) {
+    impl->moveCursorVertically(delta, extendSelection);
+}
+
 const TextGrid::Metrics& TextGrid::metrics() const {
     return this->impl->storedMetrics;
 }
 
 Extent2D<F32> TextGrid::measure(const Context& ctx, Extent2D<F32> available) {
-    impl->textMetrics.setWindow(ctx.render);
+    impl->beginMetricsFrame(ctx.render);
 
-    const F32 maxWidth = std::isfinite(available.x) ? available.x : impl->rect.width;
+    const F32 maxWidth = available.x;
     const Rect savedRect = impl->rect;
     impl->rect = {0.0f, 0.0f, maxWidth, impl->rect.height};
+    impl->ensureFontPools();
+    impl->resolveViewport(false);
     const F32 height = impl->paddedContentHeightPixels();
-    const F32 width = std::min(maxWidth, impl->measuredContentWidthPixels());
+    impl->lastNaturalWidth = impl->measuredContentWidthPixels();
+    const F32 width = std::min(maxWidth, impl->lastNaturalWidth);
     impl->rect = savedRect;
+    if (impl->liveLayout) {
+        impl->resolveViewport(true);
+    }
 
     return {width, height};
 }
 
-void TextGrid::layout(const Context& ctx) {
+F32 TextGrid::naturalWidth() const {
+    return impl->lastNaturalWidth;
+}
 
+void TextGrid::layout(const Context& ctx) {
     impl->rect = frame();
     impl->clip = std::optional<Rect>(Intersect(frame(), clip()));
     impl->hovered = ctx.hovered;
     impl->active = ctx.active;
     impl->windowFocused = ctx.windowFocused;
 
-    impl->textMetrics.setWindow(ctx.render);
+    impl->beginMetricsFrame(ctx.render);
     impl->resolveTheme(ctx);
     impl->ensureFontPools();
+    impl->resolveViewport(true);
+    impl->liveLayout = true;
+    if (impl->cursorFollowPending) {
+        impl->cursorFollowPending = false;
+        impl->ensureCursorVisible();
+        impl->cursorFollowPending = false;
+    }
     if (impl->stickToBottomPending) {
-        impl->currentScrollY = std::max(0.0f, impl->contentHeightPixels() - impl->rect.height);
+        impl->currentScrollY = impl->maxScrollYPixels();
         impl->stickToBottomPending = false;
     }
     impl->clampScroll();
@@ -2047,7 +2590,6 @@ void TextGrid::layout(const Context& ctx) {
     impl->handleKeyboard();
     impl->reconcileCursorBlink();
     impl->notifyLayout();
-
 }
 
 bool TextGrid::event(const MouseEvent& event) {

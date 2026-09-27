@@ -558,6 +558,10 @@ Result Shapes::updateScissorRect(const std::optional<Render::ScissorRect>& rect)
     return Result::SUCCESS;
 }
 
+void Shapes::enabled(bool value) {
+    pimpl->program->setEnabled(value);
+}
+
 Result Shapes::present() {
     // Update render buffers.
 

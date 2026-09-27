@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_NODE_CODE_EDITOR_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/typography.hh>
 #include <jetstream/render/sakura/components/retained/code_editor.hh>
 
 #include <functional>
@@ -30,7 +31,7 @@ struct NodeCodeEditor {
         Language language = Language::Python;
         bool lineNumbers = true;
         bool lineWrapping = false;
-        F32 editorFontSize = 15.0f;
+        F32 editorFontSize = Typography::FontSize;
         std::string backgroundColorKey = "editor_background";
         std::function<void(std::string)> onChange;
         std::function<void(std::string)> onSubmit;

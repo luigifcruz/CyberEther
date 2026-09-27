@@ -18,7 +18,7 @@ namespace Jetstream::Sakura::Retained {
 
 namespace {
 
-constexpr F32 kReferenceFontSize = 15.0f;
+constexpr F32 kReferenceFontSize = Typography::FontSize;
 constexpr F32 kConsoleFontScale = 0.92f;
 constexpr F32 kConsoleHeaderHeight = 12.0f;
 constexpr F32 kConsoleGripWidth = 28.0f;
@@ -26,7 +26,6 @@ constexpr F32 kConsoleGripHeight = 3.0f;
 constexpr F32 kConsoleDefaultHeight = 128.0f;
 constexpr F32 kConsoleMinHeight = 72.0f;
 constexpr F32 kConsoleMaxHeightRatio = 0.55f;
-constexpr F32 kAutoHeightLineMultiplier = 1.25f;
 
 std::string JoinLines(const std::vector<std::string>& lines) {
     std::string value;
@@ -91,7 +90,7 @@ struct CodeEditorRoot : public Component {
             config.padding->bottom * ratio,
         };
     }
-    F32 lineHeightPixels() const { return std::max(1.0f, fontSizePixels * (18.0f / kReferenceFontSize)); }
+    F32 lineHeightPixels() const { return std::max(1.0f, fontSizePixels * Typography::CodeLineHeight); }
     F32 outlineHeightPixels() const { return std::max(1.0f, std::round(pixelRatio())); }
     F32 barHeightPixels() const { return StatusBar::HeightPixels(pixelRatio()); }
 
@@ -156,7 +155,7 @@ struct CodeEditorRoot : public Component {
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override {
         const F32 editorContentPx = measureChild(textEditor, ctx, available).y;
 
-        const F32 lineHeight = config.editorFontSize * (18.0f / kReferenceFontSize);
+        const F32 lineHeight = config.editorFontSize * Typography::CodeLineHeight;
         const F32 pad = verticalPaddingLogical();
         const F32 editorContentLogical = editorContentPx / std::max(1e-3f, pixelRatio());
         const F32 textLogical = std::max(0.0f, editorContentLogical - pad);
@@ -164,8 +163,7 @@ struct CodeEditorRoot : public Component {
             ? kConsoleHeaderHeight + consoleHeightPixels() / std::max(1e-3f, pixelRatio())
             : 0.0f;
         const F32 statusLogical = statusVisible() ? StatusBar::Height : 0.0f;
-        const F32 contentHeight = pad + textLogical * kAutoHeightLineMultiplier +
-                                  consoleLogical + statusLogical;
+        const F32 contentHeight = pad + textLogical + consoleLogical + statusLogical;
 
         const F32 viewportHeight = ImGui::GetMainViewport() ? ImGui::GetMainViewport()->WorkSize.y : 0.0f;
         const F32 maxHeight = Unscale(ctx, viewportHeight * std::clamp(config.maxAutoHeightWindowRatio, 0.0f, 1.0f));
