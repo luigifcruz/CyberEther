@@ -369,6 +369,8 @@ static void printUsage(const char* program,
                         settings.graphics.size.height);
         jst::fmt::print("  --scale <factor>             Interface scale factor (current: {})\n",
                         interfaceScale);
+        jst::fmt::print("  --theme <name>               Interface color theme (current: {})\n",
+                        settings.interface.themeKey);
         jst::fmt::print("  --framerate <fps>            Target frame rate (current: {})\n\n",
                         settings.graphics.framerate);
         jst::fmt::print("CyberEther Remote Options:\n");
@@ -730,6 +732,16 @@ int Run(int argc, char* argv[]) {
                     "Invalid value for --scale: '{}'. Expected a positive number.", value));
             }
             settings.graphics.scale = scale;
+            runOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--theme") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --theme. Expected a theme name.");
+            }
+            settings.interface.themeKey = value;
             runOption = arg;
             continue;
         }

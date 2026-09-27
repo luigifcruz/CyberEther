@@ -4,6 +4,7 @@
 #include "jetstream/render/sakura/base.hh"
 
 #include <algorithm>
+#include <cctype>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -407,6 +408,18 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
         }
     }
 };
+
+inline std::string ResolveThemeKey(const std::string& value) {
+    for (const auto& [key, _] : themes) {
+        if (std::equal(key.begin(), key.end(), value.begin(), value.end(),
+                       [](unsigned char lhs, unsigned char rhs) {
+                           return std::tolower(lhs) == std::tolower(rhs);
+                       })) {
+            return key;
+        }
+    }
+    return "Dark";
+}
 
 inline std::vector<std::string> BuildThemeKeys() {
     std::vector<std::string> themeKeys;

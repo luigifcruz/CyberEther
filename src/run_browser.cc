@@ -1,5 +1,6 @@
 #include <atomic>
 #include <cstdio>
+#include <string>
 #include <thread>
 
 #include "jetstream/run.hh"
@@ -18,6 +19,8 @@ namespace Jetstream {
 static std::atomic<bool> shutdownRequested{false};
 static std::shared_ptr<Instance> instance;
 static std::thread computeThread;
+static std::string startupTheme;
+static std::string startupFlowgraph;
 
 static void OnWebGPUInitialized(const Result webgpuResult) {
     if (webgpuResult != Result::SUCCESS ||
@@ -31,6 +34,14 @@ static void OnWebGPUInitialized(const Result webgpuResult) {
         JST_WARN("[CYBERETHER] Failed to load settings. Using defaults.");
         settings = {};
         (void)Settings::Set(settings, false);
+    }
+    const Settings retainedSettings = settings;
+
+    if (!startupTheme.empty()) {
+        settings.interface.themeKey = startupTheme;
+        if (Settings::Set(settings, false) != Result::SUCCESS) {
+            JST_WARN("[CYBERETHER] Failed to apply startup theme.");
+        }
     }
 
     for (const auto& path : settings.registry.plugins) {
@@ -46,7 +57,13 @@ static void OnWebGPUInitialized(const Result webgpuResult) {
         .dependencyPolicy = settings.runtime.dependencyPolicy,
     };
 
-    if (instance->create(config) != Result::SUCCESS) {
+    const Result createResult = instance->create(config);
+
+    const Result restoreResult = Settings::Set(retainedSettings, false);
+    if (createResult != Result::SUCCESS || restoreResult != Result::SUCCESS) {
+        if (createResult == Result::SUCCESS) {
+            (void)instance->destroy();
+        }
         instance.reset();
         Backend::DestroyAll();
         return;
@@ -57,6 +74,14 @@ static void OnWebGPUInitialized(const Result webgpuResult) {
         instance.reset();
         Backend::DestroyAll();
         return;
+    }
+
+    if (!startupFlowgraph.empty()) {
+        std::shared_ptr<Viewport::Generic> viewport;
+        if (instance->viewportGet(viewport) != Result::SUCCESS || !viewport ||
+            viewport->addFileDropEvent({startupFlowgraph}) != Result::SUCCESS) {
+            JST_WARN("[CYBERETHER] Failed to queue startup flowgraph '{}'.", startupFlowgraph);
+        }
     }
 
     computeThread = std::thread([&] {
@@ -133,8 +158,46 @@ static void OnWebGPUInitialized(const Result webgpuResult) {
     emscripten_set_main_loop_arg(graphicalThreadLoop, instance.get(), 0, 0);
 }
 
-int Run() {
+int Run(int argc, char* argv[]) {
     JST_INFO("[CYBERETHER] Running browser app.");
+
+    startupTheme.clear();
+    startupFlowgraph.clear();
+    bool positionalOnly = false;
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (!positionalOnly && arg == "--") {
+            positionalOnly = true;
+            continue;
+        }
+
+        if (!positionalOnly && (arg == "--theme" || arg.starts_with("--theme="))) {
+            if (arg == "--theme") {
+                if (++i >= argc || !argv[i][0] || std::string(argv[i]).starts_with("-")) {
+                    JST_ERROR("[CYBERETHER] Missing value for --theme.");
+                    return -1;
+                }
+                startupTheme = argv[i];
+            } else {
+                startupTheme = arg.substr(8);
+                if (startupTheme.empty()) {
+                    JST_ERROR("[CYBERETHER] Missing value for --theme.");
+                    return -1;
+                }
+            }
+            continue;
+        }
+
+        if (!positionalOnly && arg.starts_with("-")) {
+            JST_ERROR("[CYBERETHER] Unknown browser option '{}'.", arg);
+            return -1;
+        }
+        if (!startupFlowgraph.empty()) {
+            JST_ERROR("[CYBERETHER] Only one flowgraph may be provided; received '{}'.", arg);
+            return -1;
+        }
+        startupFlowgraph = arg;
+    }
 
     shutdownRequested.store(false);
 

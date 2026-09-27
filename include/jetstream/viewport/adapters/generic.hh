@@ -18,7 +18,11 @@ struct Config {
     bool vsync = true;
 
     /// @brief The title of the application or window.
+#if defined(JST_OS_BROWSER)
+    std::string title = "CyberEther Web";
+#else
     std::string title = "CyberEther";
+#endif
 
     /// @brief The size of the application or window.
     Extent2D<U64> size = {1920, 1080};
