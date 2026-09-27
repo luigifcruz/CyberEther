@@ -34,7 +34,6 @@ using Unicode = Jetstream::Render::Components::Text::Unicode;
 constexpr F32 kReferenceFontSize = Typography::FontSize;
 constexpr F32 kStyleBackgroundHeightRatio = 1.3f;
 constexpr F32 kStyleBackgroundCornerRatio = 0.25f;
-constexpr F32 kPaddingFontRatio = 6.0f / kReferenceFontSize;
 constexpr F32 kScrollbarThicknessFontRatio = 6.0f / kReferenceFontSize;
 constexpr F32 kScrollbarMarginFontRatio = 4.0f / kReferenceFontSize;
 constexpr F32 kSeparatorWidthFontRatio = 1.0f / kReferenceFontSize;
@@ -265,6 +264,17 @@ struct TextGrid::Impl {
     mutable U64 linePrefixesRevision = static_cast<U64>(-1);
     mutable F32 linePrefixesFontSize = -1.0f;
     mutable std::vector<std::pair<F32, F32>> cellAdvanceCache;
+    WidthLayout resolvedWidthLayout;
+    bool widthLayoutResolved = false;
+    bool gutterReserved = false;
+    bool bottomReserved = false;
+    bool liveLayout = false;
+    bool cursorFollowPending = false;
+    bool viewportResolved = false;
+    bool resolvedLayoutPass = false;
+    U64 resolvedRevision = 0;
+    Extent2D<F32> resolvedSize = {-1.0f, -1.0f};
+    F32 lastNaturalWidth = 0.0f;
 
     F32 contentFontSize() const { return fontSizePixels * config.fontScale; }
     F32 lineHeightPixels() const { return std::max(1.0f, contentFontSize() * config.lineHeight); }
@@ -274,14 +284,25 @@ struct TextGrid::Impl {
     F32 lineTopGapAt(U64 line) const {
         return line < config.lineTopGap.size() ? config.lineTopGap[line] : 0.0f;
     }
+    const std::vector<F32>& lineIndents() const {
+        return config.widthLayout ? resolvedWidthLayout.lineIndent : config.lineIndent;
+    }
+    const std::vector<F32>& lineWrapWidths() const {
+        return config.widthLayout ? resolvedWidthLayout.lineWrapWidth : config.lineWrapWidth;
+    }
+    F32 contentMinWidthPixels() const {
+        return config.widthLayout ? resolvedWidthLayout.contentMinWidth : config.contentMinWidth;
+    }
     F32 lineIndentAt(U64 line) const {
-        return line < config.lineIndent.size() ? config.lineIndent[line] : 0.0f;
+        const auto& indents = lineIndents();
+        return line < indents.size() ? indents[line] : 0.0f;
     }
     bool lineSameRowAt(U64 line) const {
         return line < config.lineSameRow.size() && config.lineSameRow[line] != 0;
     }
     F32 lineWrapWidthAt(U64 line) const {
-        return line < config.lineWrapWidth.size() ? config.lineWrapWidth[line] : 0.0f;
+        const auto& widths = lineWrapWidths();
+        return line < widths.size() ? widths[line] : 0.0f;
     }
     F32 lineRightInsetAt(U64 line) const {
         return line < config.lineRightInset.size() ? config.lineRightInset[line] : 0.0f;
@@ -320,7 +341,7 @@ struct TextGrid::Impl {
         if (config.padding.has_value()) {
             return *config.padding;
         }
-        const F32 horizontal = fontSizePixels * kPaddingFontRatio;
+        const F32 horizontal = fontSizePixels * Typography::TextPaddingRatio;
         return {horizontal, 0.0f, horizontal, 0.0f};
     }
     F32 gutterWidthPixels() const {
@@ -340,11 +361,14 @@ struct TextGrid::Impl {
     F32 textTopPixels() const { return rect.y + paddingPixels().top; }
     F32 textClipLeftPixels() const { return config.lineNumbers ? textLeftPixels() : rect.x; }
     F32 textClipRightPixels() const { return rect.right(); }
-    F32 scrollbarGutterPixels() const {
-        if (!config.scrollbar || !config.reserveScrollbarGutter) {
-            return 0.0f;
-        }
+    F32 scrollbarReservePixels() const {
         return fontSizePixels * (kScrollbarThicknessFontRatio + 2.0f * kScrollbarMarginFontRatio);
+    }
+    F32 scrollbarGutterPixels() const {
+        return config.scrollbar && gutterReserved ? scrollbarReservePixels() : 0.0f;
+    }
+    F32 scrollbarBottomPixels() const {
+        return config.scrollbar && bottomReserved ? scrollbarReservePixels() : 0.0f;
     }
     F32 textViewportWidthPixels() const {
         return std::max(1.0f, rect.right() - scrollbarGutterPixels() - paddingPixels().right - textLeftPixels());
@@ -501,11 +525,14 @@ struct TextGrid::Impl {
         if (overrideWidth > 0.0f) {
             return overrideWidth;
         }
-        return std::max(1.0f, textViewportWidthPixels() - lineIndentAt(line) - trailingMargin);
+        return std::max(1.0f, textViewportWidthPixels() - lineIndentAt(line) - lineRightInsetAt(line) - trailingMargin);
     }
 
     std::vector<std::pair<U64, U64>> wrapSegmentsByColumns(U64 line, bool word) const {
         const F32 width = lineWrapWidthPixels(line, 0.0f);
+        if (!std::isfinite(width)) {
+            return {{0, lines[line].size()}};
+        }
         const U64 cols = std::max<U64>(1, static_cast<U64>(std::floor(width / std::max(1.0f, lineAdvancePixels(line)))));
         return WrapSegments(lines[line], cols, word);
     }
@@ -803,7 +830,7 @@ struct TextGrid::Impl {
             return 0.0f;
         }
         const auto padding = paddingPixels();
-        return std::max(0.0f, rect.height - lineHeightPixels() - padding.top - padding.bottom);
+        return std::max(0.0f, rect.height - lineHeightPixels() - padding.top - padding.bottom - scrollbarBottomPixels());
     }
     F32 textContentHeightPixels() const {
         ensureVisualRows();
@@ -811,7 +838,7 @@ struct TextGrid::Impl {
     }
     F32 paddedContentHeightPixels() const {
         const auto padding = paddingPixels();
-        return padding.top + textContentHeightPixels() + padding.bottom;
+        return padding.top + textContentHeightPixels() + padding.bottom + scrollbarBottomPixels();
     }
     F32 contentHeightPixels() const {
         return paddedContentHeightPixels() + editorBottomPaddingPixels();
@@ -821,7 +848,7 @@ struct TextGrid::Impl {
         return range > kScrollRangeEpsilon ? range : 0.0f;
     }
     F32 maxLineAdvancePixels() const {
-        F32 widest = config.contentMinWidth;
+        F32 widest = contentMinWidthPixels();
         if (config.wrap != Wrap::None) {
             return widest;
         }
@@ -839,7 +866,7 @@ struct TextGrid::Impl {
     }
     F32 measuredContentWidthPixels() const {
         ensureVisualRows();
-        F32 widest = 0.0f;
+        F32 widest = contentMinWidthPixels();
         for (const auto& row : visualRows) {
             const F32 width = rowContentWidth(row);
             const F32 trailing = width > 0.0f ? lineTrailingMarginPixels(row.line) : 0.0f;
@@ -853,6 +880,7 @@ struct TextGrid::Impl {
         out.contentWidth = contentWidthPixels();
         out.scrollX = currentScrollX;
         out.scrollY = currentScrollY;
+        out.scrollbarGutter = scrollbarGutterPixels();
         out.padding = paddingPixels();
         out.sourceLines.resize(lines.size());
         for (U64 line = 0; line < lines.size(); ++line) {
@@ -1304,6 +1332,10 @@ struct TextGrid::Impl {
     }
 
     void ensureCursorVisible() {
+        cursorFollowPending = true;
+        if (liveLayout) {
+            resolveViewport(true);
+        }
         const auto padding = paddingPixels();
         const U64 cursorRow = visualRowForPosition(cursor);
         const F32 rowTop = rowTopContent(cursorRow);
@@ -1978,6 +2010,54 @@ struct TextGrid::Impl {
         }
     }
 
+    void applyWidthLayout() {
+        if (!config.widthLayout) {
+            return;
+        }
+        WidthLayout next = config.widthLayout(textViewportWidthPixels());
+        if (widthLayoutResolved && next == resolvedWidthLayout) {
+            return;
+        }
+        resolvedWidthLayout = std::move(next);
+        widthLayoutResolved = true;
+        visualRowsValid = false;
+    }
+
+    bool verticalScrollNeeded(bool layoutPass) const {
+        if (!config.scrollbar) {
+            return false;
+        }
+        if (layoutPass) {
+            return maxScrollYPixels() > 0.0f;
+        }
+        return config.editable && textContentHeightPixels() > lineHeightPixels() + kScrollRangeEpsilon;
+    }
+
+    void resolveViewport(bool layoutPass) {
+        applyWidthLayout();
+        const bool unchanged = viewportResolved && visualRowsValid &&
+                               resolvedLayoutPass == layoutPass &&
+                               resolvedRevision == contentRevision &&
+                               resolvedSize.x == rect.width && resolvedSize.y == rect.height;
+        if (unchanged) {
+            return;
+        }
+        gutterReserved = false;
+        bottomReserved = false;
+        applyWidthLayout();
+        bottomReserved = config.scrollbar && maxScrollXPixels() > 0.0f;
+        if (verticalScrollNeeded(layoutPass)) {
+            gutterReserved = true;
+            applyWidthLayout();
+            bottomReserved = config.scrollbar && maxScrollXPixels() > 0.0f;
+        }
+        ensureVisualRows();
+        viewportResolved = true;
+        resolvedLayoutPass = layoutPass;
+        resolvedRevision = contentRevision;
+        resolvedSize = {rect.width, rect.height};
+    }
+
     void clampScroll() {
         currentScrollY = std::clamp(currentScrollY, 0.0f, maxScrollYPixels());
         currentScrollX = std::clamp(currentScrollX, 0.0f, maxScrollXPixels());
@@ -2367,15 +2447,28 @@ bool TextGrid::update(Config config) {
                                 impl->config.lineSameRow != config.lineSameRow ||
                                 impl->config.lineWrapWidth != config.lineWrapWidth ||
                                 impl->config.lineRightInset != config.lineRightInset ||
-                                impl->config.contentMinWidth != config.contentMinWidth;
+                                impl->config.contentMinWidth != config.contentMinWidth ||
+                                static_cast<bool>(impl->config.widthLayout) != static_cast<bool>(config.widthLayout);
+    const bool viewportChanged = metricsChanged ||
+                                 impl->config.wrap != config.wrap ||
+                                 impl->config.padding != config.padding ||
+                                 impl->config.scrollbar != config.scrollbar ||
+                                 impl->config.editable != config.editable ||
+                                 impl->config.lineNumbers != config.lineNumbers;
     const bool wasAtBottom = impl->rect.height <= 0.0f ||
                              impl->currentScrollY + 1.0f >= impl->maxScrollYPixels();
     impl->config = std::move(config);
     impl->fontSizePixels = impl->config.fontSize;
 
+    if (viewportChanged) {
+        impl->viewportResolved = false;
+    }
+
     if (metricsChanged) {
         impl->visualRowsValid = false;
         impl->linePrefixesValid = false;
+        impl->widthLayoutResolved = false;
+        impl->viewportResolved = false;
         impl->cellAdvanceCache.clear();
         impl->preferredContentX.reset();
         impl->refreshContentIcons();
@@ -2424,14 +2517,24 @@ const TextGrid::Metrics& TextGrid::metrics() const {
 Extent2D<F32> TextGrid::measure(const Context& ctx, Extent2D<F32> available) {
     impl->beginMetricsFrame(ctx.render);
 
-    const F32 maxWidth = std::isfinite(available.x) ? available.x : impl->rect.width;
+    const F32 maxWidth = available.x;
     const Rect savedRect = impl->rect;
     impl->rect = {0.0f, 0.0f, maxWidth, impl->rect.height};
+    impl->ensureFontPools();
+    impl->resolveViewport(false);
     const F32 height = impl->paddedContentHeightPixels();
-    const F32 width = std::min(maxWidth, impl->measuredContentWidthPixels());
+    impl->lastNaturalWidth = impl->measuredContentWidthPixels();
+    const F32 width = std::min(maxWidth, impl->lastNaturalWidth);
     impl->rect = savedRect;
+    if (impl->liveLayout) {
+        impl->resolveViewport(true);
+    }
 
     return {width, height};
+}
+
+F32 TextGrid::naturalWidth() const {
+    return impl->lastNaturalWidth;
 }
 
 void TextGrid::layout(const Context& ctx) {
@@ -2444,6 +2547,13 @@ void TextGrid::layout(const Context& ctx) {
     impl->beginMetricsFrame(ctx.render);
     impl->resolveTheme(ctx);
     impl->ensureFontPools();
+    impl->resolveViewport(true);
+    impl->liveLayout = true;
+    if (impl->cursorFollowPending) {
+        impl->cursorFollowPending = false;
+        impl->ensureCursorVisible();
+        impl->cursorFollowPending = false;
+    }
     if (impl->stickToBottomPending) {
         impl->currentScrollY = impl->maxScrollYPixels();
         impl->stickToBottomPending = false;

@@ -36,6 +36,10 @@ struct TextGridHost : Sakura::Component {
         return eventChildren({.type = type, .button = MouseButton::Left, .position = {x, y}});
     }
 
+    bool wheel(F32 dx, F32 dy, F32 x, F32 y) {
+        return eventChildren({.type = MouseEventType::Scroll, .position = {x, y}, .scroll = {dx, dy}});
+    }
+
  protected:
     void layout(const Sakura::Context& ctx) override {
         layoutChild(ctx, grid, frame());
@@ -701,4 +705,155 @@ TEST_CASE("Line numbers label only the first cell of a same-row band",
 
     REQUIRE(host.send(MouseEventType::Click, 250.0f, 5.0f));
     CHECK(host.grid.cursor().line == 2);
+}
+
+TEST_CASE("Clearing the width layout hook restores static wrapping",
+          "[core][sakura][text-grid][wrap]") {
+    using TextGrid = Sakura::Retained::TextGrid;
+    const Sakura::Context ctx;
+    MeasuredTextGrid grid;
+    TextGrid::Config config{
+        .id = "hooked-wrap",
+        .value = "aaaaaaaa",
+        .fontSize = 15.0f,
+        .scrollbar = false,
+        .wrap = TextGrid::Wrap::Character,
+        .padding = Sakura::Padding{0.0f, 0.0f, 0.0f, 0.0f},
+        .widthLayout = [](F32) { return TextGrid::WidthLayout{.lineWrapWidth = {4.0f * 7.5f}}; },
+    };
+    grid.update(config);
+    const F32 hooked = grid.measure(ctx, {400.0f, 600.0f}).y;
+
+    config.widthLayout = nullptr;
+    grid.update(config);
+    CHECK(grid.measure(ctx, {400.0f, 600.0f}).y == Catch::Approx(hooked * 0.5f));
+}
+
+TEST_CASE("Horizontal overflow in an editor does not create vertical scrolling",
+          "[core][sakura][text-grid][scroll]") {
+    const ImGuiContextGuard imguiContext;
+    const Sakura::Context ctx;
+    TextGridHost host;
+    host.grid.update({
+        .id = "editor-overflow",
+        .value = "abcdefghijk",
+        .editable = true,
+        .fontSize = 15.0f,
+        .scrollbar = true,
+        .padding = Sakura::Padding{0.0f, 0.0f, 0.0f, 0.0f},
+    });
+    host.place(ctx, {0.0f, 0.0f, 75.0f, 200.0f});
+
+    const auto& metrics = host.grid.metrics();
+    CHECK(metrics.contentWidth > 75.0f);
+    CHECK(metrics.scrollbarGutter == 0.0f);
+    REQUIRE_FALSE(host.wheel(0.0f, -5.0f, 30.0f, 100.0f));
+    REQUIRE(host.wheel(-5.0f, 0.0f, 30.0f, 100.0f));
+    host.place(ctx, {0.0f, 0.0f, 75.0f, 200.0f});
+    CHECK(host.grid.metrics().scrollY == 0.0f);
+    CHECK(host.grid.metrics().scrollX > 0.0f);
+}
+
+TEST_CASE("Cursor stays visible when a scrollbar appears and rewraps the text",
+          "[core][sakura][text-grid][scroll]") {
+    using TextGrid = Sakura::Retained::TextGrid;
+    const ImGuiContextGuard imguiContext;
+    const Sakura::Context ctx;
+    TextGridHost host;
+    TextGrid::Config config{
+        .id = "rewrap-cursor",
+        .value = "abcdefghijk",
+        .editable = true,
+        .fontSize = 15.0f,
+        .scrollbar = true,
+        .wrap = TextGrid::Wrap::Word,
+        .padding = Sakura::Padding{0.0f, 0.0f, 0.0f, 0.0f},
+    };
+    const Jetstream::Rect frame{0.0f, 0.0f, 90.0f, 34.5f};
+    host.grid.update(config);
+    host.place(ctx, frame);
+    REQUIRE(host.grid.metrics().scrollbarGutter == 0.0f);
+
+    config.value = "abcdefghijk\nx";
+    host.grid.update(config);
+    host.grid.setCursor({1, 0});
+    host.place(ctx, frame);
+
+    const auto& metrics = host.grid.metrics();
+    REQUIRE(metrics.scrollbarGutter > 0.0f);
+    REQUIRE(metrics.sourceLines.size() == 2);
+    CHECK(metrics.sourceLines[1].top >= 0.0f);
+    CHECK(metrics.sourceLines[1].top + metrics.sourceLines[1].height <= frame.height + 1e-3f);
+
+    const F32 previousTop = metrics.sourceLines[1].top;
+    host.place(ctx, frame);
+    CHECK(host.grid.metrics().sourceLines[1].top == Catch::Approx(previousTop));
+
+    config.value = "abcdefghijkx";
+    host.grid.update(config);
+    host.place(ctx, frame);
+    host.place(ctx, frame);
+    const auto& joined = host.grid.metrics();
+    CHECK(joined.scrollbarGutter == 0.0f);
+    REQUIRE(joined.sourceLines.size() == 1);
+    CHECK(joined.sourceLines[0].height == Catch::Approx(17.25f));
+    CHECK(joined.scrollY == 0.0f);
+}
+
+TEST_CASE("Editable wrapped grids measure the height their layout will use",
+          "[core][sakura][text-grid][scroll]") {
+    using TextGrid = Sakura::Retained::TextGrid;
+    const ImGuiContextGuard imguiContext;
+    const Sakura::Context ctx;
+    struct Host : TextGridHost {
+        using TextGridHost::measureChild;
+    } host;
+    host.grid.update({
+        .id = "editor-measure",
+        .value = "abcdefghijk\nx",
+        .editable = true,
+        .fontSize = 15.0f,
+        .scrollbar = true,
+        .wrap = TextGrid::Wrap::Word,
+        .padding = Sakura::Padding{0.0f, 0.0f, 0.0f, 0.0f},
+    });
+    const F32 measured = host.measureChild(host.grid, ctx, {90.0f, std::numeric_limits<F32>::infinity()}).y;
+    CHECK(measured == Catch::Approx(3.0f * 17.25f));
+
+    host.place(ctx, {0.0f, 0.0f, 90.0f, measured});
+    const auto& metrics = host.grid.metrics();
+    CHECK(metrics.scrollbarGutter > 0.0f);
+    CHECK(metrics.contentHeight == Catch::Approx(measured));
+}
+
+TEST_CASE("Switching wrap modes re-resolves scrollbar reservations",
+          "[core][sakura][text-grid][scroll]") {
+    using TextGrid = Sakura::Retained::TextGrid;
+    const ImGuiContextGuard imguiContext;
+    const Sakura::Context ctx;
+    TextGridHost host;
+    TextGrid::Config config{
+        .id = "wrap-switch",
+        .value = "abcdefghijk",
+        .editable = true,
+        .fontSize = 15.0f,
+        .scrollbar = true,
+        .padding = Sakura::Padding{0.0f, 0.0f, 0.0f, 0.0f},
+    };
+    const Jetstream::Rect frame{0.0f, 0.0f, 75.0f, 200.0f};
+    host.grid.update(config);
+    host.place(ctx, frame);
+    REQUIRE(host.grid.metrics().contentWidth > 75.0f);
+    REQUIRE(host.grid.metrics().scrollbarGutter == 0.0f);
+
+    config.wrap = TextGrid::Wrap::Word;
+    host.grid.update(config);
+    host.place(ctx, frame);
+    host.place(ctx, frame);
+    const auto& wrapped = host.grid.metrics();
+    CHECK(wrapped.contentWidth <= 75.0f + 1e-3f);
+    CHECK(wrapped.scrollbarGutter > 0.0f);
+    REQUIRE(wrapped.sourceLines.size() == 1);
+    CHECK(wrapped.sourceLines[0].height == Catch::Approx(2.0f * 17.25f));
+    CHECK_FALSE(host.wheel(-5.0f, 0.0f, 30.0f, 10.0f));
 }

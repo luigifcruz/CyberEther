@@ -81,9 +81,9 @@ constexpr Golden kGoldens[] = {
     {"unmatched backtick keeps columns", "| a | b |\n|---|---|\n| tick ` | next |", 108.0f, 52.5f},
     {"matched backtick protects a pipe", "| a | b |\n|---|---|\n| `x|y` | z |", 108.0f, 52.5f},
     {"escaped pipe inside code span", "| a | b |\n|---|---|\n| `x\\|y` | z |", 108.0f, 52.5f},
-    {"callout with body", "> [!NOTE]\n> body", 30.0f, 57.375f},
-    {"callout between text", "text\n> [!WARNING]\n> a\n> b\nafter", 30.0f, 136.125f},
-    {"callout title only", "> [!TIP]", 30.0f, 38.625f},
+    {"callout with body", "> [!NOTE]\n> body", 30.0f, 59.25f},
+    {"callout between text", "text\n> [!WARNING]\n> a\n> b\nafter", 30.0f, 138.0f},
+    {"callout title only", "> [!TIP]", 30.0f, 36.75f},
     {"quote with unknown tag stays a quote", "> [!nope]\n> x", 18.0f, 37.5f},
 };
 
@@ -360,4 +360,40 @@ TEST_CASE("Laying a callout out at its measured width keeps its height",
     const auto measured = host.measureAt(ctx, 400.0f);
     host.place(ctx, {0.0f, 0.0f, measured.x, 400.0f});
     CHECK(host.markdown.metrics().contentHeight == Catch::Approx(measured.y));
+}
+
+TEST_CASE("Backslash runs before a pipe escape it only when odd",
+          "[core][sakura][markdown]") {
+    const Sakura::Context ctx;
+    const std::string tail = "|OK|\n|---|---|\n|x|y|";
+    MarkdownHost even;
+    even.markdown.update({.id = "even", .value = "|C:" + std::string(2, '\\') + tail, .fontSize = 15.0f});
+    MarkdownHost odd;
+    odd.markdown.update({.id = "odd", .value = "|C:" + std::string(3, '\\') + tail, .fontSize = 15.0f});
+
+    const auto evenSize = even.measureAt(ctx, 400.0f);
+    CHECK(evenSize.x == Catch::Approx(108.0f));
+    CHECK(evenSize.y == Catch::Approx(52.5f));
+
+    const auto oddSize = odd.measureAt(ctx, 400.0f);
+    CHECK(oddSize.x == Catch::Approx(12.0f));
+    CHECK(oddSize.y == Catch::Approx(56.25f));
+}
+
+TEST_CASE("Unbounded measurement keeps the intrinsic table width before and after layout",
+          "[core][sakura][markdown]") {
+    const ImGuiContextGuard imguiContext;
+    const Sakura::Context ctx;
+    const F32 inf = std::numeric_limits<F32>::infinity();
+    MarkdownHost host;
+    host.markdown.update({.id = "unbounded", .value = "| a | b |\n|---|---|\n| c | d |", .fontSize = 15.0f});
+
+    const auto fresh = host.measureAt(ctx, inf);
+    CHECK(fresh.x == Catch::Approx(108.0f));
+    CHECK(fresh.y == Catch::Approx(52.5f));
+
+    host.place(ctx, {0.0f, 0.0f, 60.0f, 200.0f});
+    const auto after = host.measureAt(ctx, inf);
+    CHECK(after.x == Catch::Approx(108.0f));
+    CHECK(after.y == Catch::Approx(52.5f));
 }

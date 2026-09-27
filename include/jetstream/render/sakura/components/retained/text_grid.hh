@@ -40,8 +40,17 @@ struct TextGrid : public Component {
         F32 contentWidth = 0.0f;
         F32 scrollX = 0.0f;
         F32 scrollY = 0.0f;
+        F32 scrollbarGutter = 0.0f;
         Padding padding;
         std::vector<LineMetrics> sourceLines;
+    };
+
+    struct WidthLayout {
+        std::vector<F32> lineIndent;
+        std::vector<F32> lineWrapWidth;
+        F32 contentMinWidth = 0.0f;
+
+        bool operator==(const WidthLayout&) const = default;
     };
 
     struct Config {
@@ -57,7 +66,6 @@ struct TextGrid : public Component {
         bool showActiveLine = true;
         bool stickToBottom = false;
         bool scrollbar = true;
-        bool reserveScrollbarGutter = true;
         Wrap wrap = Wrap::None;
         std::optional<Padding> padding;
         std::vector<F32> lineScale;
@@ -88,6 +96,7 @@ struct TextGrid : public Component {
         bool submitOnEnter = false;
         std::function<const std::vector<std::vector<StyleId>>&(
             const std::vector<std::string>& lines, U64 revision)> styler;
+        std::function<WidthLayout(F32 textWidth)> widthLayout;
         std::function<bool(StyleId)> isStyleCommentOrString;
         std::function<void(std::string)> onChange;
         std::function<void(std::string)> onSubmit;
@@ -106,6 +115,7 @@ struct TextGrid : public Component {
 
     bool update(Config config);
     const Metrics& metrics() const;
+    F32 naturalWidth() const;
 
     Position cursor() const;
     void setCursor(Position position);
