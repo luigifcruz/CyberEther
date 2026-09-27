@@ -52,6 +52,8 @@ struct TextMarkdown : public Component {
         std::string cursorColorKey = "editor_cursor";
         std::string scrollbarTrackColorKey = "editor_scrollbar_track";
         std::string scrollbarThumbColorKey = "editor_scrollbar_thumb";
+        std::string codeBlockColorKey = "markdown_code_block";
+        std::string codeBlockBorderColorKey = "markdown_code_block_border";
         std::vector<std::string> styleColorKeys = {"", "", "", "", "cyber_blue", ""};
         std::vector<std::string> styleFonts = {"default_body_bold", "default_body_italic",
                                                "default_body_bold_italic", "default_mono", "", "default_mono"};

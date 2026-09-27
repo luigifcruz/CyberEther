@@ -34,7 +34,11 @@ constexpr F32 kHeadingGapRatio = 1.0f;
 constexpr F32 kAfterHeadingGapRatio = 0.2f;
 constexpr F32 kListGapRatio = 0.15f;
 constexpr F32 kIndentEmRatio = 1.4f;
-constexpr F32 kCodePadRatio = 0.4f;
+constexpr F32 kCodePadRatio = 0.6f;
+constexpr F32 kCodeCapHeightRatio = 0.73f;
+constexpr U8 kCodeMinLineDigits = 2;
+constexpr F32 kCodeGutterGapChars = 1.5f;
+constexpr F32 kCodeBorderRatio = 1.0f / 15.0f;
 constexpr F32 kRuleThicknessRatio = 0.12f;
 constexpr F32 kRuleRowScale = 0.5f;
 constexpr F32 kQuoteBarRatio = 0.18f;
@@ -141,6 +145,7 @@ struct Deco {
     F32 indent = 0.0f;
     U64 table = 0;
     StyleId tone = 0;
+    U8 digits = 0;
 };
 
 struct TableCell {
@@ -664,6 +669,7 @@ struct Document {
     std::vector<U8> lineSameRow;
     std::vector<F32> lineWrapWidth;
     std::vector<F32> lineRightInset;
+    std::vector<U8> lineGutterDigits;
     std::vector<std::vector<StyleId>> styles;
     std::vector<std::vector<LinkSpan>> links;
     std::vector<Deco> decos;
@@ -690,10 +696,13 @@ struct Document {
 
 struct DocumentBuilder {
     F32 body;
+    F32 codeIndent;
+    F32 codeRightInset;
     Document document;
     std::vector<std::string> lines;
 
-    explicit DocumentBuilder(F32 body) : body(body) {}
+    DocumentBuilder(F32 body, F32 codeIndent, F32 codeRightInset)
+        : body(body), codeIndent(codeIndent), codeRightInset(codeRightInset) {}
 
     Document build(const std::vector<Block>& blocks) {
         for (const auto& block : blocks) {
@@ -760,6 +769,7 @@ struct DocumentBuilder {
         document.lineSameRow.push_back(sameRow ? 1 : 0);
         document.lineWrapWidth.push_back(0.0f);
         document.lineRightInset.push_back(rightInset);
+        document.lineGutterDigits.push_back(0);
         document.styles.push_back(std::move(lineStyles));
         document.links.push_back(std::move(lineLinks));
     }
@@ -795,7 +805,7 @@ struct DocumentBuilder {
 
     void emitTextBlock(const Block& block) {
         const F32 scale = block.fontSize / body;
-        const F32 indent = block.indent + (block.kind == Block::Kind::Code ? body * kCodePadRatio : 0.0f);
+        const F32 indent = block.indent + (block.kind == Block::Kind::Code ? codeIndent : 0.0f);
         const U64 firstLine = lines.size();
 
         const auto sources = SplitLines(block.text);
@@ -810,14 +820,20 @@ struct DocumentBuilder {
                 display = sources[li];
                 styles.assign(display.size(), block.baseStyle);
             }
-            addLine(std::move(display), scale, gap, indent, std::move(styles), std::move(links));
+            addLine(std::move(display), scale, gap, indent, std::move(styles), std::move(links), false,
+                    block.kind == Block::Kind::Code ? codeRightInset : 0.0f);
         }
         const U64 lastLine = lines.size() - 1;
 
         switch (block.kind) {
-            case Block::Kind::Code:
-                document.decos.push_back({.kind = Deco::Kind::Code, .first = firstLine, .last = lastLine, .indent = indent});
+            case Block::Kind::Code: {
+                const U8 digits = std::max(kCodeMinLineDigits,
+                                           static_cast<U8>(std::to_string(lastLine - firstLine + 1).size()));
+                std::fill(document.lineGutterDigits.begin() + firstLine, document.lineGutterDigits.end(), digits);
+                document.decos.push_back({.kind = Deco::Kind::Code, .first = firstLine, .last = lastLine,
+                                          .indent = indent, .digits = digits});
                 break;
+            }
             case Block::Kind::Quote:
                 document.decos.push_back({.kind = Deco::Kind::Quote, .first = firstLine, .last = lastLine, .indent = indent});
                 break;
@@ -842,6 +858,11 @@ struct TextMarkdown::Impl {
         F32 width = 0.0f;
         bool on = false;
         ColorRGBA<F32> codeBackground;
+        ColorRGBA<F32> codeBlock;
+        ColorRGBA<F32> codeBlockBorder;
+        F32 codeBorder = 0.0f;
+        F32 codeGlyph = 0.0f;
+        F32 lineNumberAdvance = 0.0f;
         ColorRGBA<F32> bar;
         ColorRGBA<F32> rule;
         ColorRGBA<F32> marker;
@@ -861,11 +882,13 @@ struct TextMarkdown::Impl {
     struct DecorationPools {
         std::vector<Box::Instance> boxes;
         std::vector<Box::Instance> tableBoxes;
+        std::vector<Box::Instance> codeBoxes;
         std::array<std::vector<Box::Instance>, kCalloutTones> callouts;
         std::vector<Label::Instance> markers;
 
         bool full() const {
             return boxes.size() >= kMaxDecorations || tableBoxes.size() >= kMaxDecorations ||
+                   codeBoxes.size() >= kMaxDecorations ||
                    markers.size() >= kMaxDecorations;
         }
     };
@@ -873,6 +896,7 @@ struct TextMarkdown::Impl {
     Config config;
     TextGrid grid;
     std::array<Box, kCalloutTones> calloutChrome;
+    Box codeChrome;
     Box tableChrome;
     Box decorations;
     Label markers;
@@ -887,8 +911,54 @@ struct TextMarkdown::Impl {
     void rebuild() {
         ++styleRevision;
         const std::vector<Block> blocks = BlockScanner(SplitLines(config.value), config.fontSize).run();
-        document = DocumentBuilder(config.fontSize).build(blocks);
+        const Padding padding = gridPadding();
+        const F32 inset = codeInset();
+        document = DocumentBuilder(config.fontSize, std::max(0.0f, inset - padding.left),
+                                   std::max(0.0f, inset - padding.right)).build(blocks);
         tablesLayoutValid = false;
+    }
+
+    F32 codeGlyphSize() const {
+        return config.fontSize * styleScale(Style::CodeBlock);
+    }
+
+    F32 lineNumberAdvance() const {
+        const F32 glyph = codeGlyphSize();
+        const F32 measured = textMetrics.measure(kCodeFont, "0", glyph);
+        return measured > 0.0f ? measured : glyph * kFallbackGlyphWidthRatio;
+    }
+
+    std::vector<F32> lineIndents() const {
+        std::vector<F32> indents = document.lineIndent;
+        const F32 advance = lineNumberAdvance();
+        for (U64 i = 0; i < indents.size() && i < document.lineGutterDigits.size(); ++i) {
+            if (document.lineGutterDigits[i] > 0) {
+                indents[i] += (static_cast<F32>(document.lineGutterDigits[i]) + kCodeGutterGapChars) * advance;
+            }
+        }
+        return indents;
+    }
+
+    F32 minimumContentWidth(const std::vector<F32>& indents) const {
+        const F32 glyph = glyphMinimumWidth();
+        F32 widest = widestTableWidth();
+        for (U64 i = 0; i < indents.size(); ++i) {
+            if (i < document.lineWrapWidth.size() && document.lineWrapWidth[i] > 0.0f) {
+                continue;
+            }
+            const F32 rightInset = i < document.lineRightInset.size() ? document.lineRightInset[i] : 0.0f;
+            if (indents[i] <= 0.0f && rightInset <= 0.0f) {
+                continue;
+            }
+            widest = std::max(widest, indents[i] + glyph * document.scaleAt(i) + rightInset);
+        }
+        return widest;
+    }
+
+    F32 codeInset() const {
+        const F32 capHeight = config.fontSize * styleScale(Style::CodeBlock) * kCodeCapHeightRatio;
+        const F32 leading = config.fontSize * kLineHeightRatio - capHeight;
+        return config.fontSize * kCodePadRatio + leading * 0.5f;
     }
 
     F32 styleScale(StyleId id) const {
@@ -954,10 +1024,12 @@ struct TextMarkdown::Impl {
     TextGrid::WidthLayout layoutForTextWidth(F32 textWidth) {
         if (!(tablesLayoutValid && tablesLayoutWidth == textWidth)) {
             layoutTables(textWidth);
+            std::vector<F32> indents = lineIndents();
+            const F32 minimumWidth = minimumContentWidth(indents);
             tablesLayout = {
-                .lineIndent = document.lineIndent,
+                .lineIndent = std::move(indents),
                 .lineWrapWidth = document.lineWrapWidth,
-                .contentMinWidth = widestTableWidth(),
+                .contentMinWidth = minimumWidth,
             };
             tablesLayoutValid = fontsReady();
             tablesLayoutWidth = textWidth;
@@ -1079,6 +1151,8 @@ struct TextMarkdown::Impl {
     }
 
     TextGrid::Config buildGridConfig() {
+        std::vector<F32> indents = lineIndents();
+        const F32 minimumWidth = minimumContentWidth(indents);
         return {
             .id = config.id + ":grid",
             .value = document.plainValue,
@@ -1093,10 +1167,11 @@ struct TextMarkdown::Impl {
             .padding = gridPadding(),
             .lineScale = document.lineScale,
             .lineTopGap = document.lineTopGap,
-            .lineIndent = document.lineIndent,
+            .lineIndent = std::move(indents),
             .lineSameRow = document.lineSameRow,
             .lineWrapWidth = document.lineWrapWidth,
             .lineRightInset = document.lineRightInset,
+            .contentMinWidth = minimumWidth,
             .backgroundColorKey = config.backgroundColorKey,
             .textColorKey = config.textColorKey,
             .lineNumberColorKey = config.lineNumberColorKey,
@@ -1144,6 +1219,11 @@ struct TextMarkdown::Impl {
             .width = std::max(0.0f, rect.width - metrics.scrollbarGutter),
             .on = !rect.empty(),
             .codeBackground = ctx.color(config.scrollbarTrackColorKey),
+            .codeBlock = ctx.color(config.codeBlockColorKey),
+            .codeBlockBorder = ctx.color(config.codeBlockBorderColorKey),
+            .codeBorder = std::max(1.0f, std::round(body * kCodeBorderRatio * 2.0f) * 0.5f),
+            .codeGlyph = codeGlyphSize(),
+            .lineNumberAdvance = lineNumberAdvance(),
             .bar = ctx.color(config.lineNumberColorKey),
             .rule = ctx.color(config.gutterSeparatorColorKey),
             .marker = ctx.color(config.lineNumberColorKey),
@@ -1191,15 +1271,45 @@ struct TextMarkdown::Impl {
         });
     }
 
-    void addCodeBackground(const DecorationFrame& frame, const Deco& deco, DecorationPools& pools) const {
+    void addCodeBlock(const DecorationFrame& frame, const Deco& deco, DecorationPools& pools) const {
         const F32 pad = frame.body * kCodePadRatio;
         const F32 top = frame.lineTop(deco.first);
         const F32 bottom = frame.lineBottom(deco.last);
-        pools.boxes.push_back({
+        pools.codeBoxes.push_back({
             .rect = {frame.rect.x, top - pad, frame.width, (bottom - top) + 2.0f * pad},
             .visible = frame.on,
-            .backgroundColor = frame.codeBackground,
+            .backgroundColor = frame.codeBlock,
         });
+
+        const F32 numbersLeft = frame.rect.x + frame.bodyPad + deco.indent - frame.scrollX;
+        const F32 numbersWidth = static_cast<F32>(deco.digits) * frame.lineNumberAdvance;
+        const F32 separatorCenter = numbersLeft + numbersWidth +
+                                    kCodeGutterGapChars * 0.5f * frame.lineNumberAdvance;
+        pools.boxes.push_back({
+            .rect = {std::round(separatorCenter - frame.codeBorder * 0.5f), top - pad + frame.codeBorder,
+                     frame.codeBorder, (bottom - top) + 2.0f * (pad - frame.codeBorder)},
+            .visible = frame.on,
+            .backgroundColor = frame.rule,
+        });
+
+        for (U64 line = deco.first; line <= deco.last && pools.markers.size() < kMaxDecorations; ++line) {
+            const F32 lineTop = frame.lineTop(line);
+            const F32 height = rowHeight(line);
+            if (frame.clip.has_value() && lineTop >= frame.clip->bottom()) {
+                break;
+            }
+            if (frame.clip.has_value() && lineTop + height <= frame.clip->y) {
+                continue;
+            }
+            pools.markers.push_back({
+                .rect = {numbersLeft, lineTop, numbersWidth, height},
+                .str = std::to_string(line - deco.first + 1),
+                .visible = frame.on,
+                .color = frame.marker,
+                .fontSize = frame.codeGlyph,
+                .alignment = {2, 1},
+            });
+        }
     }
 
     void addQuoteBar(const DecorationFrame& frame, const Deco& deco, DecorationPools& pools) const {
@@ -1298,7 +1408,7 @@ struct TextMarkdown::Impl {
             }
             switch (deco.kind) {
                 case Deco::Kind::Rule: addRule(frame, deco, pools); break;
-                case Deco::Kind::Code: addCodeBackground(frame, deco, pools); break;
+                case Deco::Kind::Code: addCodeBlock(frame, deco, pools); break;
                 case Deco::Kind::Quote: addQuoteBar(frame, deco, pools); break;
                 case Deco::Kind::ListItem: addListMarker(frame, deco, pools); break;
                 case Deco::Kind::Table: addTableChrome(frame, deco, pools); break;
@@ -1322,6 +1432,15 @@ struct TextMarkdown::Impl {
                 .capacity = kMaxCallouts,
             });
         }
+        codeChrome.update({
+            .id = config.id + ":code-chrome",
+            .instances = std::move(pools.codeBoxes),
+            .clip = frame.clip,
+            .cornerRadius = std::max(1.0f, frame.body * kCalloutRadiusRatio),
+            .borderWidth = frame.codeBorder,
+            .borderColor = frame.codeBlockBorder,
+            .capacity = kMaxDecorations,
+        });
         tableChrome.update({
             .id = config.id + ":table-chrome",
             .instances = std::move(pools.tableBoxes),
@@ -1352,6 +1471,7 @@ TextMarkdown::TextMarkdown() {
     for (auto& chrome : this->impl->calloutChrome) {
         add(chrome);
     }
+    add(this->impl->codeChrome);
     add(this->impl->tableChrome);
     add(this->impl->decorations);
     add(this->impl->grid);
@@ -1364,7 +1484,8 @@ bool TextMarkdown::update(Config config) {
     const bool changed = !impl->parsed ||
                          impl->config.value != config.value ||
                          impl->config.fontSize != config.fontSize ||
-                         impl->config.padding != config.padding;
+                         impl->config.padding != config.padding ||
+                         impl->config.styleScales != config.styleScales;
     const bool widthInputsChanged = impl->config.styleFonts != config.styleFonts ||
                                     impl->config.styleScales != config.styleScales ||
                                     impl->config.styleBackgroundColorKeys != config.styleBackgroundColorKeys;
@@ -1408,6 +1529,7 @@ void TextMarkdown::layout(const Context& ctx) {
     for (auto& chrome : impl->calloutChrome) {
         layoutChild(ctx, chrome, bounds);
     }
+    layoutChild(ctx, impl->codeChrome, bounds);
     layoutChild(ctx, impl->tableChrome, bounds);
     layoutChild(ctx, impl->decorations, bounds);
     layoutChild(ctx, impl->markers, bounds);

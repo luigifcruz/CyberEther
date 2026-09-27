@@ -58,14 +58,14 @@ struct Golden {
 constexpr Golden kGoldens[] = {
     {"empty", "", 12.0f, 18.75f},
     {"headings", "# H1\n## H2\n### H3\n#### H4\ntext\n# H1 again\n\ntext", 12.0f, 198.75f},
-    {"lists", "- a\n- b\n  - c\n    - d\n1. x\n2. y\n10. z\n* s\n+ p\n\n- after blank", 75.0f, 224.0625f},
-    {"list after heading", "## H\n- a\n- b\npara\n- c", 33.0f, 128.4375f},
-    {"quote then paragraph", "> a\n> b\npara", 18.0f, 67.5f},
+    {"lists", "- a\n- b\n  - c\n    - d\n1. x\n2. y\n10. z\n* s\n+ p\n\n- after blank", 82.5f, 224.0625f},
+    {"list after heading", "## H\n- a\n- b\npara\n- c", 40.5f, 128.4375f},
+    {"quote then paragraph", "> a\n> b\npara", 25.5f, 67.5f},
     {"rules", "a\n---\nb\n***\nc\n___\n- - -\nd", 12.0f, 191.25f},
-    {"fence then text", "```\ncode\n```\nafter", 18.0f, 60.75f},
-    {"unterminated fence", "text\n```\ncode line\nmore code", 18.0f, 79.5f},
-    {"only code", "```\na\n```", 18.0f, 30.75f},
-    {"heading then code", "# H\n```\na\n```\ntext", 18.0f, 92.625f},
+    {"fence then text", "```\ncode\n```\nafter", 58.02f, 66.75f},
+    {"unterminated fence", "text\n```\ncode line\nmore code", 58.02f, 85.5f},
+    {"only code", "```\na\n```", 58.02f, 36.75f},
+    {"heading then code", "# H\n```\na\n```\ntext", 58.02f, 98.625f},
     {"inline styles", "plain **b** *i* ***bi*** `c` __b2__ _i2_ [l](http://x) **unterminated *x `y` a_b",
      26.55f, 18.75f},
     {"table 2x2", "| a | b |\n|---|---|\n| c | d |", 108.0f, 52.5f},
@@ -81,10 +81,10 @@ constexpr Golden kGoldens[] = {
     {"unmatched backtick keeps columns", "| a | b |\n|---|---|\n| tick ` | next |", 108.0f, 52.5f},
     {"matched backtick protects a pipe", "| a | b |\n|---|---|\n| `x|y` | z |", 108.0f, 52.5f},
     {"escaped pipe inside code span", "| a | b |\n|---|---|\n| `x\\|y` | z |", 108.0f, 52.5f},
-    {"callout with body", "> [!NOTE]\n> body", 30.0f, 59.25f},
-    {"callout between text", "text\n> [!WARNING]\n> a\n> b\nafter", 30.0f, 138.0f},
-    {"callout title only", "> [!TIP]", 30.0f, 36.75f},
-    {"quote with unknown tag stays a quote", "> [!nope]\n> x", 18.0f, 37.5f},
+    {"callout with body", "> [!NOTE]\n> body", 37.5f, 59.25f},
+    {"callout between text", "text\n> [!WARNING]\n> a\n> b\nafter", 37.5f, 138.0f},
+    {"callout title only", "> [!TIP]", 37.5f, 36.75f},
+    {"quote with unknown tag stays a quote", "> [!nope]\n> x", 25.5f, 37.5f},
 };
 
 }  // namespace
@@ -126,6 +126,22 @@ TEST_CASE("Consecutive code blocks keep their backgrounds apart",
     const F32 paragraphGap = 15.0f * 1.25f * 0.6f;
     CHECK(stacked.measureAt(ctx, 400.0f).y ==
           Catch::Approx(2.0f * single.measureAt(ctx, 400.0f).y + paragraphGap));
+}
+
+TEST_CASE("Narrow viewports can scroll to code behind the line number gutter",
+          "[core][sakura][markdown]") {
+    const ImGuiContextGuard imguiContext;
+    const Sakura::Context ctx;
+    MarkdownHost host;
+    host.markdown.update({.id = "narrow-code", .value = "```\nabc\n```", .fontSize = 15.0f});
+    host.place(ctx, {0.0f, 0.0f, 30.0f, 200.0f});
+    REQUIRE(host.markdown.metrics().contentWidth > 30.0f);
+
+    REQUIRE(host.wheel(-100.0f, 0.0f, 15.0f, 20.0f));
+    host.place(ctx, {0.0f, 0.0f, 30.0f, 200.0f});
+    const auto& scrolled = host.markdown.metrics();
+    CHECK(scrolled.scrollX > 0.0f);
+    CHECK(scrolled.contentWidth - scrolled.scrollX == Catch::Approx(30.0f));
 }
 
 TEST_CASE("Table rows share a band and stack below each other",

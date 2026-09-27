@@ -121,6 +121,10 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"callout_caution", {0.97f, 0.32f, 0.29f, 1.00f}},
             {"callout_error", {1.00f, 0.48f, 0.45f, 1.00f}},
 
+            // Markdown Code Block Colors
+            {"markdown_code_block", {0.085f, 0.09f, 0.10f, 1.00f}},
+            {"markdown_code_block_border", {0.20f, 0.21f, 0.24f, 1.00f}},
+
             // Border Colors
             {"border", {0.18f, 0.18f, 0.18f, 0.75f}},
             {"border_shadow", {0.00f, 0.00f, 0.00f, 0.00f}},
@@ -325,6 +329,10 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"callout_warning", {0.60f, 0.40f, 0.00f, 1.00f}},
             {"callout_caution", {0.81f, 0.13f, 0.18f, 1.00f}},
             {"callout_error", {0.64f, 0.05f, 0.15f, 1.00f}},
+
+            // Markdown Code Block Colors
+            {"markdown_code_block", {0.965f, 0.968f, 0.975f, 1.00f}},
+            {"markdown_code_block_border", {0.84f, 0.85f, 0.87f, 1.00f}},
 
             // Border Colors
             {"border", {0.78f, 0.78f, 0.80f, 0.75f}},
