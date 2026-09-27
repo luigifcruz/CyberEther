@@ -17,6 +17,8 @@
 #endif
 
 #include <algorithm>
+#include <cmath>
+#include <thread>
 #include <vector>
 
 #include "jetstream/render/base.hh"
@@ -89,6 +91,7 @@ Result Font::create(Window* window) {
 
     // Create font atlas.
 
+    pimpl->atlasOversample = config.icons ? 1.0f : 2.0f;
     const auto bakeScale = stbtt_ScaleForPixelHeight(&pimpl->font, config.size * pimpl->atlasOversample);
 
     struct Baked {
@@ -101,11 +104,62 @@ Result Font::create(Window* window) {
     };
     std::vector<Baked> baked;
 
-    for (int ch = 32; ch < 128; ch++) {
-        int advanceWidth, leftSideBearing;
-        stbtt_GetCodepointHMetrics(&pimpl->font, ch, &advanceWidth, &leftSideBearing);
+    std::vector<I32> codepoints;
+    const auto addRange = [&](I32 first, I32 last) {
+        for (I32 code = first; code <= last; ++code) {
+            if (code == 0xFFFD || stbtt_FindGlyphIndex(&pimpl->font, code) != 0) {
+                codepoints.push_back(code);
+            }
+        }
+    };
+    addRange(0x0020, 0x007E);
+    addRange(0x00A0, 0x017F);
+    addRange(0x2010, 0x2027);
+    addRange(0x2030, 0x203C);
+    addRange(0x20A0, 0x20BF);
+    addRange(0x2100, 0x214F);
+    addRange(0x2190, 0x21FF);
+    addRange(0x2200, 0x2265);
+    addRange(0x25A0, 0x25CF);
+    addRange(0x2605, 0x2606);
+    addRange(0x2610, 0x2612);
+    addRange(0x2713, 0x2718);
+    if (config.icons) {
+        addRange(0xE000, 0xF8FF);
+    }
+    addRange(0xFFFD, 0xFFFD);
 
-        glyphs[ch - 32] = {
+    std::vector<Baked> results(codepoints.size());
+    const U64 workers = std::max<U64>(1, std::min<U64>(std::thread::hardware_concurrency(), 8));
+    std::vector<std::thread> threads;
+    for (U64 t = 0; t < workers; ++t) {
+        threads.emplace_back([&, t]() {
+            for (U64 i = t; i < codepoints.size(); i += workers) {
+                Baked glyph{.code = codepoints[i]};
+                glyph.sdf = stbtt_GetCodepointSDF(&pimpl->font,
+                                                  bakeScale,
+                                                  glyph.code,
+                                                  pimpl->atlasPadding,
+                                                  pimpl->atlasOneEdgeValue,
+                                                  pimpl->atlasPixelDistScale,
+                                                  &glyph.width,
+                                                  &glyph.height,
+                                                  &glyph.xOffset,
+                                                  &glyph.yOffset);
+                results[i] = glyph;
+            }
+        });
+    }
+    for (auto& thread : threads) {
+        thread.join();
+    }
+
+    U64 atlasArea = 0;
+    for (U64 i = 0; i < codepoints.size(); i++) {
+        int advanceWidth, leftSideBearing;
+        stbtt_GetCodepointHMetrics(&pimpl->font, codepoints[i], &advanceWidth, &leftSideBearing);
+
+        glyphs[codepoints[i]] = {
             .x0 = 0,
             .y0 = 0,
             .x1 = 0,
@@ -115,23 +169,14 @@ Result Font::create(Window* window) {
             .xAdvance = static_cast<F32>(advanceWidth * scale)
         };
 
-        Baked glyph{.code = ch - 32};
-        glyph.sdf = stbtt_GetCodepointSDF(&pimpl->font,
-                                          bakeScale,
-                                          ch,
-                                          pimpl->atlasPadding,
-                                          pimpl->atlasOneEdgeValue,
-                                          pimpl->atlasPixelDistScale,
-                                          &glyph.width,
-                                          &glyph.height,
-                                          &glyph.xOffset,
-                                          &glyph.yOffset);
-        if (glyph.sdf) {
-            baked.push_back(glyph);
+        if (results[i].sdf) {
+            baked.push_back(results[i]);
+            atlasArea += static_cast<U64>(results[i].width + 1) * static_cast<U64>(results[i].height + 1);
         }
     }
 
-    I32 atlasWidth = pimpl->atlasWidth;
+    const I32 suggestedWidth = static_cast<I32>(std::sqrt(static_cast<F64>(atlasArea) * 1.1));
+    I32 atlasWidth = std::max(pimpl->atlasWidth, (suggestedWidth + 255) / 256 * 256);
     for (const auto& glyph : baked) {
         atlasWidth = std::max(atlasWidth, glyph.width + 1);
     }
@@ -211,13 +256,11 @@ Result Font::destroy(Window* window) {
 }
 
 const Font::Glyph& Font::glyph(const I32& code) const {
-    // TODO: Implement full UTF-8 support.
-    // The atlas only covers printable ASCII (codes 0..95 == chars 32..127); any
-    // other byte (a UTF-8 multi-byte lead/continuation, or a control char) has no
-    // glyph. Return a blank one instead of throwing so non-ASCII text renders as
-    // empty space rather than crashing the renderer.
     static const Glyph kEmpty = {};
-    const auto it = glyphs.find(code);
+    auto it = glyphs.find(code);
+    if (it == glyphs.end()) {
+        it = glyphs.find(0xFFFD);
+    }
     return it != glyphs.end() ? it->second : kEmpty;
 }
 

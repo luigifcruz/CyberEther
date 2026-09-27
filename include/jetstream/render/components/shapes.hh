@@ -14,7 +14,6 @@
 namespace Jetstream::Render::Components {
 
 // TODO: Add support for zero-copy buffers.
-// TODO: Implement proper rotation.
 
 class JETSTREAM_API Shapes : public Generic {
  public:
@@ -72,6 +71,7 @@ class JETSTREAM_API Shapes : public Generic {
 
     Result updatePixelSize(const Extent2D<F32>& pixelSize);
     Result updateScissorRect(const std::optional<Render::ScissorRect>& rect);
+    void enabled(bool value);
 
     constexpr const Config& getConfig() const {
         return config;

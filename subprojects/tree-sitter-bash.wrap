@@ -1,0 +1,10 @@
+[wrap-file]
+directory = tree-sitter-bash-0.25.1
+lead_directory_missing = true
+source_url = https://github.com/tree-sitter/tree-sitter-bash/releases/download/v0.25.1/tree-sitter-bash.tar.gz
+source_filename = tree-sitter-bash-0.25.1.tar.gz
+source_hash = bd0d72814c6512de190439ce6562635c69ce27fa8bc59eaf381d44263579df36
+patch_directory = tree-sitter-bash
+
+[provide]
+tree-sitter-bash = tree_sitter_bash_dep

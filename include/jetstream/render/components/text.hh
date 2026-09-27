@@ -3,6 +3,8 @@
 
 #include <memory>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <vector>
 
 #include "jetstream/types.hh"
@@ -34,6 +36,16 @@ class JETSTREAM_API Text : public Generic {
         F32 sharpness = 0.5f;
     };
 
+    struct Unicode {
+        static bool IsAscii(std::string_view text);
+        static U64 Decode(std::string_view text, U64 pos, U32& codepoint);
+        static std::string Encode(U32 codepoint);
+        static U64 PreviousCharacter(std::string_view text, U64 column);
+        static U64 NextCharacter(std::string_view text, U64 column);
+        static U64 Align(std::string_view text, U64 column);
+        static U64 Advance(std::string_view text, U64 pos, U64 count);
+    };
+
     Text(const Config& config);
     ~Text();
 
@@ -50,6 +62,7 @@ class JETSTREAM_API Text : public Generic {
     F32 advance(const std::string& fill, F32 scale = 1.0f) const;
     std::vector<F32> advances(const std::string& fill, F32 scale = 1.0f) const;
     F32 lineHeight(F32 scale = 1.0f) const;
+    void enabled(bool value);
 
     Result updatePixelSize(const Extent2D<F32>& pixelSize);
     Result updateScissorRect(const std::optional<Render::ScissorRect>& rect);

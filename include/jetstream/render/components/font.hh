@@ -16,6 +16,7 @@ class JETSTREAM_API Font : public Generic {
  public:
     struct Config {
         F32 size = 13.0f;
+        bool icons = false;
         const void* data = nullptr;
     };
 

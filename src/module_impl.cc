@@ -212,4 +212,8 @@ std::vector<SurfaceEvent> Module::Impl::surfaceConsumeSurfaceEvents() {
     return _surface->impl->eventBuffer.consumeSurfaceEvents();
 }
 
+void Module::Impl::surfaceSetCursor(const SurfaceCursor cursor) {
+    _surface->impl->cursor.store(cursor, std::memory_order_relaxed);
+}
+
 }  // namespace Jetstream

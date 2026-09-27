@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <utility>
 
+using Unicode = Jetstream::Render::Components::Text::Unicode;
+
 namespace Jetstream::Sakura::Retained {
 
 namespace {
@@ -113,6 +115,15 @@ struct Label::Impl : public Drawable {
             return Result::SUCCESS;
         }
 
+        const bool active = std::any_of(
+            config.instances.begin(), config.instances.end(), [](const auto& instance) {
+                return instance.visible && !instance.str.empty();
+            });
+        text->enabled(active);
+        if (!active) {
+            return Result::SUCCESS;
+        }
+
         const auto& framebufferSize = context->framebufferSize;
         const U64 characterCapacity = std::max<U64>(1, text->getConfig().maxCharacters);
 
@@ -137,7 +148,7 @@ struct Label::Impl : public Drawable {
                 .scale = instance.fontSize / fontPixelSize(),
                 .position = PixelToNdc(framebufferSize, anchor.x, anchor.y),
                 .alignment = instance.alignment,
-                .fill = instance.str.substr(0, characterCapacity),
+                .fill = instance.str.substr(0, Unicode::Advance(instance.str, 0, characterCapacity)),
                 .color = instance.color,
             }));
         }
