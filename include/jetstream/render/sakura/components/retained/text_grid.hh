@@ -37,6 +37,9 @@ struct TextGrid : public Component {
 
     struct Metrics {
         F32 contentHeight = 0.0f;
+        F32 contentWidth = 0.0f;
+        F32 scrollX = 0.0f;
+        F32 scrollY = 0.0f;
         Padding padding;
         std::vector<LineMetrics> sourceLines;
     };
@@ -54,6 +57,7 @@ struct TextGrid : public Component {
         bool showActiveLine = true;
         bool stickToBottom = false;
         bool scrollbar = true;
+        bool reserveScrollbarGutter = true;
         Wrap wrap = Wrap::None;
         std::optional<Padding> padding;
         std::vector<F32> lineScale;
@@ -61,6 +65,8 @@ struct TextGrid : public Component {
         std::vector<F32> lineIndent;
         std::vector<U8> lineSameRow;
         std::vector<F32> lineWrapWidth;
+        std::vector<F32> lineRightInset;
+        F32 contentMinWidth = 0.0f;
         U64 visibleLineCapacity = 64;
         std::string backgroundColorKey = "transparent";
         std::string textColorKey = "text_primary";

@@ -229,8 +229,8 @@ bool ScrollView::event(const MouseEvent& event) {
                 dx = dy;
                 dy = 0.0f;
             }
-            const bool consumedY = dy != 0.0f && impl->verticalVisible();
-            const bool consumedX = dx != 0.0f && impl->horizontalVisible();
+            const bool consumedY = dy != 0.0f && impl->maxScrollY() > 0.0f;
+            const bool consumedX = dx != 0.0f && impl->maxScrollX() > 0.0f;
             if (consumedY) {
                 (void)impl->setScrollY(impl->scrollY - dy * impl->config.wheelStep);
             }

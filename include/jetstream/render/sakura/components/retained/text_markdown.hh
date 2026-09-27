@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_RETAINED_TEXT_MARKDOWN_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/components/retained/text_grid.hh>
 #include <jetstream/render/sakura/typography.hh>
 #include <jetstream/types.hh>
 
@@ -26,6 +27,13 @@ struct TextMarkdown : public Component {
         static constexpr StyleId Link = 5;
         static constexpr StyleId CodeBlock = 6;
         static constexpr StyleId Count = 6;
+        static constexpr StyleId CalloutBase = 7;
+        static constexpr StyleId CalloutVariants = 4;
+        static constexpr StyleId CalloutTones = 6;
+
+        static constexpr StyleId Callout(StyleId tone, StyleId emphasis) {
+            return static_cast<StyleId>(CalloutBase + tone * CalloutVariants + emphasis);
+        }
     };
 
     struct Config {
@@ -55,6 +63,8 @@ struct TextMarkdown : public Component {
     ~TextMarkdown();
 
     bool update(Config config);
+    F32 naturalWidth() const;
+    const TextGrid::Metrics& metrics() const;
 
  protected:
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;

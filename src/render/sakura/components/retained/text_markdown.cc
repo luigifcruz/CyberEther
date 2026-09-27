@@ -8,9 +8,12 @@
 #include "../../context.hh"
 #include "../../retained/helpers.hh"
 #include "../../retained/text_lines.hh"
+#include "../../retained/text_metrics.hh"
 
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -20,6 +23,9 @@
 namespace Jetstream::Sakura::Retained {
 
 namespace {
+
+using StyleId = TextGrid::StyleId;
+using Style = TextMarkdown::Style;
 
 constexpr F32 kLineHeightRatio = Typography::BodyLineHeight;
 constexpr F32 kParagraphGapRatio = 0.6f;
@@ -39,14 +45,37 @@ constexpr F32 kBulletGapEmRatio = 0.75f;
 constexpr F32 kMarkerGapEmRatio = 0.45f;
 constexpr F32 kMarkerWidthEmRatio = 2.0f;
 constexpr F32 kDecorationCornerRatio = 0.4f;
+constexpr F32 kTableCellPadXRatio = 0.6f;
+constexpr F32 kTableRowPadRatio = 0.4f;
+constexpr F32 kTableBorderRatio = 0.07f;
+constexpr F32 kTableMinColumnEm = 2.0f;
+constexpr F32 kTableWrapSlack = 0.5f;
+constexpr F32 kWidthTolerance = 0.5f;
+constexpr F32 kTableNarrowPadShare = 0.25f;
+constexpr F32 kFallbackGlyphWidthRatio = 0.5f;
+constexpr U64 kTableShrinkIterations = 24;
+constexpr F32 kCalloutPadEmRatio = 0.6f;
+constexpr F32 kCalloutRadiusRatio = 0.8f;
+constexpr F32 kCalloutFillAlpha = 0.10f;
+constexpr F32 kCalloutBorderAlpha = 0.35f;
+constexpr F32 kCalloutBorderRatio = 2.0f / 15.0f;
+constexpr F32 kCalloutTitleScale = 1.1f;
+constexpr U64 kMaxCallouts = 32;
+constexpr U64 kCalloutTones = Style::CalloutTones;
+constexpr std::array<std::string_view, kCalloutTones> kCalloutTags = {
+    "[!NOTE]", "[!TIP]", "[!IMPORTANT]", "[!WARNING]", "[!CAUTION]", "[!ERROR]",
+};
+constexpr std::array<const char*, kCalloutTones> kCalloutTitles = {
+    "Note", "Tip", "Important", "Warning", "Caution", "Error",
+};
+constexpr std::array<const char*, kCalloutTones> kCalloutColorKeys = {
+    "callout_note", "callout_tip", "callout_important", "callout_warning", "callout_caution", "callout_error",
+};
 constexpr U64 kMaxDecorations = 256;
 constexpr U64 kMaxMarkerCharacters = 8;
 constexpr U64 kGridLineSegments = 32;
 constexpr const char* kBodyFont = TextMarkdown::BodyFont;
 constexpr const char* kCodeFont = Typography::MonoFont;
-
-using StyleId = TextGrid::StyleId;
-using Style = TextMarkdown::Style;
 
 constexpr std::array<std::pair<std::string_view, StyleId>, 4> kInlineDelimiters = {{
     {"`", Style::Code},
@@ -54,6 +83,11 @@ constexpr std::array<std::pair<std::string_view, StyleId>, 4> kInlineDelimiters 
     {"**", Style::Bold},
     {"__", Style::Bold},
 }};
+
+struct TableSource {
+    std::vector<I8> aligns;
+    std::vector<std::vector<std::string>> rows;
+};
 
 struct Block {
     enum class Kind {
@@ -63,6 +97,8 @@ struct Block {
         Code,
         Rule,
         ListItem,
+        Table,
+        Callout,
     };
 
     Kind kind = Kind::Paragraph;
@@ -72,6 +108,8 @@ struct Block {
     StyleId baseStyle = Style::Plain;
     F32 indent = 0.0f;
     std::string marker;
+    TableSource table;
+    StyleId tone = 0;
 
     bool inlineParse() const { return kind != Kind::Code; }
 };
@@ -88,6 +126,8 @@ struct Deco {
         Quote,
         Rule,
         ListItem,
+        Table,
+        Callout,
     };
 
     Kind kind = Kind::Code;
@@ -95,6 +135,26 @@ struct Deco {
     U64 last = 0;
     std::string marker;
     F32 indent = 0.0f;
+    U64 table = 0;
+    StyleId tone = 0;
+};
+
+struct TableCell {
+    U64 line = 0;
+    std::string text;
+    std::vector<StyleId> styles;
+    F32 width = 0.0f;
+};
+
+struct Table {
+    U64 columns = 0;
+    U64 rows = 0;
+    std::vector<I8> aligns;
+    std::vector<TableCell> cells;
+    std::vector<F32> columnX;
+    F32 width = 0.0f;
+
+    const TableCell& cell(U64 row, U64 column) const { return cells[row * columns + column]; }
 };
 
 bool IsFence(const std::string& line) {
@@ -174,11 +234,118 @@ std::string QuoteContent(const std::string& line) {
     return line.substr(s);
 }
 
+bool ParseCalloutTag(const std::string& line, StyleId& tone) {
+    for (U64 i = 0; i < kCalloutTags.size(); ++i) {
+        if (line == kCalloutTags[i]) {
+            tone = static_cast<StyleId>(i);
+            return true;
+        }
+    }
+    return false;
+}
+
+void TintStyles(std::vector<StyleId>& styles, StyleId tone) {
+    for (auto& style : styles) {
+        if (style <= Style::BoldItalic) {
+            style = Style::Callout(tone, style);
+        }
+    }
+}
+
 std::string TrimRight(std::string s) {
     while (!s.empty() && (s.back() == '\r' || s.back() == ' ' || s.back() == '\t')) {
         s.pop_back();
     }
     return s;
+}
+
+std::string TrimCell(const std::string& s) {
+    const U64 begin = s.find_first_not_of(" \t");
+    if (begin == std::string::npos) {
+        return "";
+    }
+    const U64 end = s.find_last_not_of(" \t");
+    return s.substr(begin, end - begin + 1);
+}
+
+std::vector<std::string> SplitTableRow(const std::string& line) {
+    std::vector<std::string> cells;
+    std::string current;
+    bool pipe = false;
+    for (U64 i = 0; i < line.size(); ++i) {
+        const char c = line[i];
+        if (c == '\\' && i + 1 < line.size() && line[i + 1] == '|') {
+            current += '|';
+            ++i;
+            continue;
+        }
+        if (c == '`') {
+            const U64 close = line.find('`', i + 1);
+            if (close != std::string::npos) {
+                for (U64 k = i; k <= close; ++k) {
+                    if (line[k] == '\\' && k + 1 < close && line[k + 1] == '|') {
+                        current += '|';
+                        ++k;
+                    } else {
+                        current += line[k];
+                    }
+                }
+                i = close;
+                continue;
+            }
+        }
+        if (c == '|') {
+            pipe = true;
+            cells.push_back(std::move(current));
+            current.clear();
+            continue;
+        }
+        current += c;
+    }
+    cells.push_back(std::move(current));
+    if (!pipe) {
+        return {};
+    }
+    const auto blank = [](const std::string& s) {
+        return s.find_first_not_of(" \t") == std::string::npos;
+    };
+    if (!cells.empty() && blank(cells.front())) {
+        cells.erase(cells.begin());
+    }
+    if (!cells.empty() && blank(cells.back())) {
+        cells.pop_back();
+    }
+    for (auto& cell : cells) {
+        cell = TrimCell(cell);
+    }
+    return cells;
+}
+
+bool ParseDelimiterRow(const std::string& line, std::vector<I8>& aligns) {
+    const auto cells = SplitTableRow(line);
+    if (cells.empty()) {
+        return false;
+    }
+    aligns.clear();
+    for (const auto& cell : cells) {
+        if (cell.empty()) {
+            return false;
+        }
+        const bool left = cell.front() == ':';
+        const bool right = cell.size() > 1 && cell.back() == ':';
+        const U64 begin = left ? 1 : 0;
+        const U64 end = cell.size() - (right ? 1 : 0);
+        if (end <= begin) {
+            return false;
+        }
+        for (U64 i = begin; i < end; ++i) {
+            if (cell[i] != '-') {
+                return false;
+            }
+        }
+        aligns.push_back(left && right ? 0 : right ? 1 : -1);
+    }
+    return true;
 }
 
 bool StartsBlock(const std::string& line) {
@@ -257,7 +424,6 @@ struct BlockScanner {
     std::vector<Block> blocks;
     bool prevHeading = false;
     bool prevList = false;
-    bool prevCode = false;
     U64 index = 0;
 
     BlockScanner(const std::vector<std::string>& source, F32 body)
@@ -270,7 +436,8 @@ struct BlockScanner {
                 ++index;
                 continue;
             }
-            if (scanFencedCode(line) || scanRule(line) || scanHeading(line) || scanQuote(line) || scanListItem(line)) {
+            if (scanFencedCode(line) || scanRule(line) || scanHeading(line) || scanQuote(line) ||
+                scanTable(line) || scanListItem(line)) {
                 continue;
             }
             scanParagraph();
@@ -278,16 +445,40 @@ struct BlockScanner {
         return std::move(blocks);
     }
 
+    bool tableStartsAt(U64 at, std::vector<std::string>& header, std::vector<I8>& aligns) const {
+        if (at + 1 >= source.size()) {
+            return false;
+        }
+        const std::string line = TrimRight(source[at]);
+        if (line.find('|') == std::string::npos) {
+            return false;
+        }
+        header = SplitTableRow(line);
+        return !header.empty() && ParseDelimiterRow(TrimRight(source[at + 1]), aligns) &&
+               aligns.size() == header.size();
+    }
+
+    bool tableStartsAt(U64 at) const {
+        std::vector<std::string> header;
+        std::vector<I8> aligns;
+        return tableStartsAt(at, header, aligns);
+    }
+
     F32 gapAbove(F32 ratio) const {
         return blocks.empty() ? 0.0f : lineHeight * (prevHeading ? kAfterHeadingGapRatio : ratio);
     }
 
     F32 boxPad(Block::Kind kind) const {
-        return kind == Block::Kind::Code ? body * kCodePadRatio : 0.0f;
+        switch (kind) {
+            case Block::Kind::Code: return body * kCodePadRatio;
+            case Block::Kind::Table: return body * kTableRowPadRatio * 0.5f;
+            case Block::Kind::Callout: return body * kCalloutPadEmRatio;
+            default: return 0.0f;
+        }
     }
 
     F32 padBelowPrevious() const {
-        return prevCode ? boxPad(Block::Kind::Code) : 0.0f;
+        return blocks.empty() ? 0.0f : boxPad(blocks.back().kind);
     }
 
     F32 topGapFor(Block::Kind kind, F32 rowGap) const {
@@ -295,7 +486,6 @@ struct BlockScanner {
     }
 
     void emit(Block block, bool heading = false, bool list = false) {
-        prevCode = block.kind == Block::Kind::Code;
         blocks.push_back(std::move(block));
         prevHeading = heading;
         prevList = list;
@@ -368,11 +558,49 @@ struct BlockScanner {
             ++index;
         }
         Block block;
-        block.kind = Block::Kind::Quote;
-        block.text = JoinLines(quote);
+        block.fontSize = body;
+        StyleId tone = 0;
+        if (ParseCalloutTag(quote.front(), tone)) {
+            block.kind = Block::Kind::Callout;
+            block.tone = tone;
+            block.text = JoinLines({quote.begin() + 1, quote.end()});
+            block.indent = body * kCalloutPadEmRatio;
+        } else {
+            block.kind = Block::Kind::Quote;
+            block.text = JoinLines(quote);
+            block.indent = body * kQuoteIndentEmRatio;
+        }
+        block.topGap = topGapFor(block.kind, gapAbove(kParagraphGapRatio));
+        emit(std::move(block));
+        return true;
+    }
+
+    bool scanTable(const std::string&) {
+        std::vector<std::string> header;
+        std::vector<I8> aligns;
+        if (!tableStartsAt(index, header, aligns)) {
+            return false;
+        }
+        Block block;
+        block.kind = Block::Kind::Table;
         block.fontSize = body;
         block.topGap = topGapFor(block.kind, gapAbove(kParagraphGapRatio));
-        block.indent = body * kQuoteIndentEmRatio;
+        block.table.aligns = std::move(aligns);
+        block.table.rows.push_back(std::move(header));
+        index += 2;
+        while (index < source.size()) {
+            const std::string row = TrimRight(source[index]);
+            if (row.empty() || row.find('|') == std::string::npos || StartsBlock(row)) {
+                break;
+            }
+            auto cells = SplitTableRow(row);
+            if (cells.empty()) {
+                break;
+            }
+            cells.resize(block.table.aligns.size());
+            block.table.rows.push_back(std::move(cells));
+            ++index;
+        }
         emit(std::move(block));
         return true;
     }
@@ -401,7 +629,7 @@ struct BlockScanner {
         std::vector<std::string> paragraph;
         while (index < source.size()) {
             const std::string current = TrimRight(source[index]);
-            if (current.empty() || StartsBlock(current)) {
+            if (current.empty() || StartsBlock(current) || tableStartsAt(index)) {
                 break;
             }
             paragraph.push_back(current);
@@ -420,11 +648,18 @@ struct Document {
     std::vector<F32> lineScale;
     std::vector<F32> lineTopGap;
     std::vector<F32> lineIndent;
+    std::vector<U8> lineSameRow;
+    std::vector<F32> lineWrapWidth;
+    std::vector<F32> lineRightInset;
     std::vector<std::vector<StyleId>> styles;
     std::vector<std::vector<LinkSpan>> links;
     std::vector<Deco> decos;
+    std::vector<Table> tables;
     std::string plainValue;
     F32 trailingPad = 0.0f;
+    bool hasCallouts = false;
+
+    bool needsWidthLayout() const { return !tables.empty() || hasCallouts; }
 
     F32 scaleAt(U64 line) const {
         return line < lineScale.size() ? lineScale[line] : 1.0f;
@@ -452,30 +687,89 @@ struct DocumentBuilder {
 
     Document build(const std::vector<Block>& blocks) {
         for (const auto& block : blocks) {
-            if (block.kind == Block::Kind::Rule) {
-                emitRule(block);
-            } else {
-                emitTextBlock(block);
+            switch (block.kind) {
+                case Block::Kind::Rule: emitRule(block); break;
+                case Block::Kind::Table: emitTable(block); break;
+                case Block::Kind::Callout: emitCallout(block); break;
+                default: emitTextBlock(block); break;
             }
         }
         if (lines.empty()) {
             addLine("", 1.0f, 0.0f, 0.0f, {}, {});
         }
-        if (!blocks.empty() && blocks.back().kind == Block::Kind::Code) {
-            document.trailingPad = body * kCodePadRatio;
+        if (!blocks.empty()) {
+            document.trailingPad = trailingPadFor(blocks.back().kind);
         }
         document.plainValue = JoinLines(lines);
         return std::move(document);
     }
 
+    F32 trailingPadFor(Block::Kind kind) const {
+        switch (kind) {
+            case Block::Kind::Code: return body * kCodePadRatio;
+            case Block::Kind::Table: return body * kTableRowPadRatio * 0.5f;
+            case Block::Kind::Callout: return body * kCalloutPadEmRatio;
+            default: return 0.0f;
+        }
+    }
+
+    void emitCallout(const Block& block) {
+        const U64 firstLine = lines.size();
+        const auto addTinted = [&](const std::string& source, StyleId baseStyle, F32 scale, F32 gap) {
+            std::vector<StyleId> styles;
+            std::vector<LinkSpan> links;
+            std::string display;
+            ParseInline(source, baseStyle, display, styles, links);
+            TintStyles(styles, block.tone);
+            addLine(std::move(display), scale, gap, block.indent, std::move(styles), std::move(links), false,
+                    block.indent);
+        };
+        addTinted(kCalloutTitles[block.tone], Style::Bold, kCalloutTitleScale, block.topGap);
+        if (!block.text.empty()) {
+            for (const auto& source : SplitLines(block.text)) {
+                addTinted(source, Style::Plain, 1.0f, 0.0f);
+            }
+        }
+        document.decos.push_back({.kind = Deco::Kind::Callout, .first = firstLine, .last = lines.size() - 1,
+                                  .tone = block.tone});
+        document.hasCallouts = true;
+    }
+
     void addLine(std::string text, F32 scale, F32 gap, F32 indent,
-                 std::vector<StyleId> lineStyles, std::vector<LinkSpan> lineLinks) {
+                 std::vector<StyleId> lineStyles, std::vector<LinkSpan> lineLinks, bool sameRow = false,
+                 F32 rightInset = 0.0f) {
         lines.push_back(std::move(text));
         document.lineScale.push_back(scale);
         document.lineTopGap.push_back(gap);
         document.lineIndent.push_back(indent);
+        document.lineSameRow.push_back(sameRow ? 1 : 0);
+        document.lineWrapWidth.push_back(0.0f);
+        document.lineRightInset.push_back(rightInset);
         document.styles.push_back(std::move(lineStyles));
         document.links.push_back(std::move(lineLinks));
+    }
+
+    void emitTable(const Block& block) {
+        const F32 rowPad = body * kTableRowPadRatio;
+        Table table;
+        table.columns = block.table.aligns.size();
+        table.rows = block.table.rows.size();
+        table.aligns = block.table.aligns;
+        for (U64 r = 0; r < table.rows; ++r) {
+            for (U64 c = 0; c < table.columns; ++c) {
+                TableCell cell;
+                std::vector<StyleId> styles;
+                std::vector<LinkSpan> links;
+                ParseInline(block.table.rows[r][c], r == 0 ? Style::Bold : Style::Plain, cell.text, styles, links);
+                cell.styles = styles;
+                cell.line = lines.size();
+                const F32 gap = c > 0 ? 0.0f : r == 0 ? block.topGap + rowPad * 0.5f : rowPad;
+                addLine(cell.text, 1.0f, gap, 0.0f, std::move(styles), std::move(links), c > 0);
+                table.cells.push_back(std::move(cell));
+            }
+        }
+        document.decos.push_back({.kind = Deco::Kind::Table, .table = document.tables.size()});
+        document.tables.push_back(std::move(table));
     }
 
     void emitRule(const Block& block) {
@@ -536,6 +830,8 @@ struct TextMarkdown::Impl {
         ColorRGBA<F32> bar;
         ColorRGBA<F32> rule;
         ColorRGBA<F32> marker;
+        std::array<ColorRGBA<F32>, kCalloutTones> callout;
+        F32 scrollX = 0.0f;
         const TextGrid::Metrics* metrics = nullptr;
 
         F32 lineTop(U64 line) const {
@@ -549,25 +845,248 @@ struct TextMarkdown::Impl {
 
     struct DecorationPools {
         std::vector<Box::Instance> boxes;
+        std::vector<Box::Instance> tableBoxes;
+        std::array<std::vector<Box::Instance>, kCalloutTones> callouts;
         std::vector<Label::Instance> markers;
 
         bool full() const {
-            return boxes.size() >= kMaxDecorations || markers.size() >= kMaxDecorations;
+            return boxes.size() >= kMaxDecorations || tableBoxes.size() >= kMaxDecorations ||
+                   markers.size() >= kMaxDecorations;
         }
     };
 
     Config config;
     TextGrid grid;
+    std::array<Box, kCalloutTones> calloutChrome;
+    Box tableChrome;
     Box decorations;
     Label markers;
     Document document;
+    mutable TextMetrics textMetrics;
     U64 styleRevision = 0;
     bool parsed = false;
+    bool tablesLayoutValid = false;
+    F32 tablesLayoutWidth = -1.0f;
+    F32 naturalWidth = 0.0f;
+    bool verticalScroll = true;
+    bool horizontalScroll = false;
+    F32 liveLayoutWidth = -1.0f;
+    bool liveVerticalScroll = false;
 
     void rebuild() {
         ++styleRevision;
         const std::vector<Block> blocks = BlockScanner(SplitLines(config.value), config.fontSize).run();
         document = DocumentBuilder(config.fontSize).build(blocks);
+        tablesLayoutValid = false;
+    }
+
+    F32 styleScale(StyleId id) const {
+        if (id == 0 || id > config.styleScales.size() || config.styleScales[id - 1] <= 0.0f) {
+            return 1.0f;
+        }
+        return config.styleScales[id - 1];
+    }
+
+    std::string styleFont(StyleId id) const {
+        if (id == 0 || id > config.styleFonts.size() || config.styleFonts[id - 1].empty()) {
+            return kBodyFont;
+        }
+        return config.styleFonts[id - 1];
+    }
+
+    bool styleHasBackground(StyleId id) const {
+        return id != 0 && id <= config.styleBackgroundColorKeys.size() &&
+               !config.styleBackgroundColorKeys[id - 1].empty();
+    }
+
+    bool fontsReady() const {
+        const F32 body = config.fontSize;
+        if (textMetrics.measure(kBodyFont, "0", body) <= 0.0f) {
+            return false;
+        }
+        for (const auto& font : config.styleFonts) {
+            if (!font.empty() && textMetrics.measure(font, "0", body) <= 0.0f) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    F32 cellNaturalWidth(const TableCell& cell) const {
+        const F32 body = config.fontSize;
+        F32 width = 0.0f;
+        U64 i = 0;
+        while (i < cell.text.size()) {
+            const StyleId style = i < cell.styles.size() ? cell.styles[i] : Style::Plain;
+            U64 j = i + 1;
+            while (j < cell.text.size() && (j < cell.styles.size() ? cell.styles[j] : Style::Plain) == style) {
+                ++j;
+            }
+            const F32 glyphSize = body * styleScale(style);
+            width += textMetrics.measure(styleFont(style), cell.text.substr(i, j - i), glyphSize);
+            if (styleHasBackground(style)) {
+                width += 2.0f * glyphSize * Typography::StyleBackgroundPadRatio;
+            }
+            i = j;
+        }
+        return width;
+    }
+
+    F32 widestTableWidth() const {
+        F32 widest = 0.0f;
+        for (const auto& table : document.tables) {
+            widest = std::max(widest, table.width);
+        }
+        return widest;
+    }
+
+    F32 gutterWidth() const {
+        return config.scrollbar && verticalScroll ? config.fontSize * kScrollbarGutterFontRatio : 0.0f;
+    }
+
+    F32 tableExtentWidth() const {
+        if (document.tables.empty()) {
+            return 0.0f;
+        }
+        const auto padding = gridPadding();
+        return padding.left + widestTableWidth() + padding.right + gutterWidth();
+    }
+
+    F32 blockLayoutWidth(F32 width) const {
+        return std::max(0.0f, width - gutterWidth());
+    }
+
+    void layoutCallouts(F32 width) {
+        const F32 body = config.fontSize;
+        const auto padding = gridPadding();
+        const bool bounded = std::isfinite(width) && width > 0.0f;
+        const F32 wrap = bounded
+            ? std::max(1.0f, width - padding.left - padding.right - 2.0f * body * kCalloutPadEmRatio +
+                             kWidthTolerance)
+            : 0.0f;
+        for (const auto& deco : document.decos) {
+            if (deco.kind != Deco::Kind::Callout) {
+                continue;
+            }
+            for (U64 line = deco.first; line <= deco.last && line < document.lineWrapWidth.size(); ++line) {
+                document.lineWrapWidth[line] = wrap;
+            }
+        }
+    }
+
+    void layoutBlocks(F32 width) {
+        if (!document.needsWidthLayout() || (tablesLayoutValid && tablesLayoutWidth == width)) {
+            return;
+        }
+        layoutCallouts(width);
+        layoutTables(width);
+        tablesLayoutValid = fontsReady();
+        tablesLayoutWidth = width;
+    }
+
+    F32 glyphMinimumWidth() const {
+        const F32 measured = textMetrics.measure(kBodyFont, "W", config.fontSize);
+        return measured > 0.0f ? measured : config.fontSize * kFallbackGlyphWidthRatio;
+    }
+
+    void layoutTables(F32 width) {
+        const F32 body = config.fontSize;
+        const auto padding = gridPadding();
+        const bool bounded = std::isfinite(width) && width > 0.0f;
+        const F32 available = bounded
+            ? std::max(1.0f, width - padding.left - padding.right)
+            : std::numeric_limits<F32>::max();
+        const F32 glyphMinimum = glyphMinimumWidth();
+
+        for (auto& table : document.tables) {
+            if (table.columns == 0 || table.rows == 0) {
+                continue;
+            }
+            const F32 slot = available / static_cast<F32>(table.columns);
+            const F32 padX = std::min(body * kTableCellPadXRatio, slot * kTableNarrowPadShare);
+            const F32 minColumn = std::max(glyphMinimum,
+                                           std::min(body * kTableMinColumnEm, slot - 2.0f * padX));
+            std::vector<F32> columnWidths(table.columns, minColumn);
+            for (U64 i = 0; i < table.cells.size(); ++i) {
+                table.cells[i].width = cellNaturalWidth(table.cells[i]);
+                columnWidths[i % table.columns] = std::max(columnWidths[i % table.columns], table.cells[i].width);
+            }
+            shrinkColumns(columnWidths, available - 2.0f * padX * static_cast<F32>(table.columns), minColumn);
+
+            table.columnX.assign(table.columns + 1, 0.0f);
+            for (U64 c = 0; c < table.columns; ++c) {
+                table.columnX[c + 1] = table.columnX[c] + columnWidths[c] + 2.0f * padX;
+            }
+            if (bounded && table.columnX[table.columns] > available &&
+                table.columnX[table.columns] - available <= kWidthTolerance) {
+                table.columnX[table.columns] = available;
+            }
+            table.width = table.columnX[table.columns];
+
+            for (U64 i = 0; i < table.cells.size(); ++i) {
+                const auto& cell = table.cells[i];
+                const U64 c = i % table.columns;
+                const F32 columnWidth = columnWidths[c];
+                F32 shift = 0.0f;
+                if (cell.width <= columnWidth) {
+                    if (table.aligns[c] == 0) {
+                        shift = (columnWidth - cell.width) * 0.5f;
+                    } else if (table.aligns[c] > 0) {
+                        shift = columnWidth - cell.width;
+                    }
+                }
+                document.lineIndent[cell.line] = table.columnX[c] + padX + shift;
+                document.lineWrapWidth[cell.line] = columnWidth + kTableWrapSlack;
+            }
+        }
+    }
+
+    std::vector<std::string> gridStyleColorKeys() const {
+        auto keys = config.styleColorKeys;
+        keys.resize(Style::CalloutBase - 1);
+        for (StyleId tone = 0; tone < kCalloutTones; ++tone) {
+            for (StyleId variant = 0; variant < Style::CalloutVariants; ++variant) {
+                keys.emplace_back(kCalloutColorKeys[tone]);
+            }
+        }
+        return keys;
+    }
+
+    std::vector<std::string> gridStyleFonts() const {
+        auto fonts = config.styleFonts;
+        fonts.resize(Style::CalloutBase - 1);
+        for (StyleId tone = 0; tone < kCalloutTones; ++tone) {
+            fonts.emplace_back("");
+            for (StyleId emphasis = Style::Bold; emphasis <= Style::BoldItalic; ++emphasis) {
+                fonts.push_back(config.styleFonts.size() >= emphasis ? config.styleFonts[emphasis - 1] : "");
+            }
+        }
+        return fonts;
+    }
+
+    static void shrinkColumns(std::vector<F32>& widths, F32 available, F32 minColumn) {
+        F32 total = 0.0f;
+        F32 widest = minColumn;
+        for (const F32 w : widths) {
+            total += w;
+            widest = std::max(widest, w);
+        }
+        if (total <= available) {
+            return;
+        }
+        F32 lo = minColumn;
+        F32 hi = widest;
+        for (U64 iteration = 0; iteration < kTableShrinkIterations; ++iteration) {
+            const F32 mid = 0.5f * (lo + hi);
+            F32 sum = 0.0f;
+            for (const F32 w : widths) {
+                sum += std::min(w, mid);
+            }
+            (sum > available ? hi : lo) = mid;
+        }
+        for (auto& w : widths) {
+            w = std::min(w, lo);
+        }
     }
 
     F32 rowHeight(U64 line) const {
@@ -578,7 +1097,26 @@ struct TextMarkdown::Impl {
         const F32 horizontal = config.fontSize * kPaddingFontRatio;
         Padding padding = config.padding.value_or(Padding{horizontal, 0.0f, horizontal, 0.0f});
         padding.bottom += document.trailingPad;
+        if (horizontalScroll) {
+            padding.bottom += config.fontSize * kScrollbarGutterFontRatio;
+        }
         return padding;
+    }
+
+    void layoutForWidth(F32 width, bool vertical) {
+        verticalScroll = vertical;
+        horizontalScroll = false;
+        layoutBlocks(blockLayoutWidth(width));
+        const auto padding = gridPadding();
+        horizontalScroll = config.scrollbar && !document.tables.empty() &&
+                           padding.left + widestTableWidth() + padding.right + gutterWidth() > width + kWidthTolerance;
+        grid.update(buildGridConfig());
+    }
+
+    void restoreLiveLayout() {
+        if (liveLayoutWidth >= 0.0f) {
+            layoutForWidth(liveLayoutWidth, liveVerticalScroll);
+        }
     }
 
     TextGrid::Config buildGridConfig() {
@@ -592,11 +1130,16 @@ struct TextMarkdown::Impl {
             .monospace = false,
             .showActiveLine = false,
             .scrollbar = config.scrollbar,
+            .reserveScrollbarGutter = verticalScroll,
             .wrap = TextGrid::Wrap::Word,
             .padding = gridPadding(),
             .lineScale = document.lineScale,
             .lineTopGap = document.lineTopGap,
             .lineIndent = document.lineIndent,
+            .lineSameRow = document.lineSameRow,
+            .lineWrapWidth = document.lineWrapWidth,
+            .lineRightInset = document.lineRightInset,
+            .contentMinWidth = widestTableWidth(),
             .backgroundColorKey = config.backgroundColorKey,
             .textColorKey = config.textColorKey,
             .lineNumberColorKey = config.lineNumberColorKey,
@@ -607,8 +1150,8 @@ struct TextMarkdown::Impl {
             .cursorColorKey = config.cursorColorKey,
             .scrollbarTrackColorKey = config.scrollbarTrackColorKey,
             .scrollbarThumbColorKey = config.scrollbarThumbColorKey,
-            .styleColorKeys = config.styleColorKeys,
-            .styleFonts = config.styleFonts,
+            .styleColorKeys = gridStyleColorKeys(),
+            .styleFonts = gridStyleFonts(),
             .styleBackgroundColorKeys = config.styleBackgroundColorKeys,
             .styleScales = config.styleScales,
             .maxLineSegments = kGridLineSegments,
@@ -645,8 +1188,38 @@ struct TextMarkdown::Impl {
             .bar = ctx.color(config.lineNumberColorKey),
             .rule = ctx.color(config.gutterSeparatorColorKey),
             .marker = ctx.color(config.lineNumberColorKey),
+            .callout = calloutColors(ctx),
+            .scrollX = metrics.scrollX,
             .metrics = &metrics,
         };
+    }
+
+    static std::array<ColorRGBA<F32>, kCalloutTones> calloutColors(const Context& ctx) {
+        std::array<ColorRGBA<F32>, kCalloutTones> colors;
+        for (U64 tone = 0; tone < kCalloutTones; ++tone) {
+            colors[tone] = ctx.color(kCalloutColorKeys[tone]);
+        }
+        return colors;
+    }
+
+    void addCallout(const DecorationFrame& frame, const Deco& deco, DecorationPools& pools) const {
+        auto& instances = pools.callouts[deco.tone];
+        if (instances.size() >= kMaxCallouts) {
+            return;
+        }
+        const F32 pad = frame.body * kCalloutPadEmRatio;
+        const F32 top = frame.lineTop(deco.first) - pad;
+        const F32 bottom = frame.lineBottom(deco.last) + pad;
+        if (frame.clip.has_value() && (bottom <= frame.clip->y || top >= frame.clip->bottom())) {
+            return;
+        }
+        auto fill = frame.callout[deco.tone];
+        fill.a *= kCalloutFillAlpha;
+        instances.push_back({
+            .rect = {frame.rect.x, top, frame.width, bottom - top},
+            .visible = frame.on,
+            .backgroundColor = fill,
+        });
     }
 
     void addRule(const DecorationFrame& frame, const Deco& deco, DecorationPools& pools) const {
@@ -683,7 +1256,7 @@ struct TextMarkdown::Impl {
     void addListMarker(const DecorationFrame& frame, const Deco& deco, DecorationPools& pools) const {
         const F32 top = frame.lineTop(deco.first);
         const F32 height = rowHeight(deco.first);
-        const F32 textStart = frame.rect.x + frame.bodyPad + deco.indent;
+        const F32 textStart = frame.rect.x + frame.bodyPad + deco.indent - frame.scrollX;
         if (deco.marker.empty()) {
             const F32 dot = std::max(2.0f, frame.body * kBulletDotRatio);
             pools.boxes.push_back({
@@ -705,6 +1278,59 @@ struct TextMarkdown::Impl {
         });
     }
 
+    F32 tableRowBottom(const DecorationFrame& frame, const Table& table, U64 row) const {
+        F32 bottom = frame.lineTop(table.cell(row, 0).line);
+        for (U64 c = 0; c < table.columns; ++c) {
+            bottom = std::max(bottom, frame.lineBottom(table.cell(row, c).line));
+        }
+        return bottom;
+    }
+
+    void addTableChrome(const DecorationFrame& frame, const Deco& deco, DecorationPools& pools) const {
+        const Table& table = document.tables[deco.table];
+        if (table.columns == 0 || table.rows == 0 || table.columnX.size() != table.columns + 1) {
+            return;
+        }
+        const F32 left = frame.rect.x + frame.bodyPad - frame.scrollX;
+        const F32 halfRowPad = frame.body * kTableRowPadRatio * 0.5f;
+        const F32 border = std::max(1.0f, frame.body * kTableBorderRatio);
+        const F32 top = frame.lineTop(table.cell(0, 0).line) - halfRowPad;
+        const F32 bottom = tableRowBottom(frame, table, table.rows - 1) + halfRowPad;
+        const F32 visibleTop = frame.clip.has_value() ? std::max(top, frame.clip->y) : top;
+        const F32 visibleBottom = frame.clip.has_value() ? std::min(bottom, frame.clip->bottom()) : bottom;
+        if (visibleBottom <= visibleTop) {
+            return;
+        }
+        const auto push = [&](Rect rect, const ColorRGBA<F32>& color) {
+            if (pools.tableBoxes.size() < kMaxDecorations) {
+                pools.tableBoxes.push_back({.rect = rect, .visible = frame.on, .backgroundColor = color});
+            }
+        };
+        const auto horizontal = [&](F32 y) {
+            if (y + border * 0.5f >= visibleTop && y - border * 0.5f <= visibleBottom) {
+                push({left, y - border * 0.5f, table.width, border}, frame.rule);
+            }
+        };
+
+        const F32 headerBottom = table.rows > 1 ? frame.lineTop(table.cell(1, 0).line) - halfRowPad : bottom;
+        if (headerBottom > visibleTop && top < visibleBottom) {
+            const F32 fillTop = std::max(top, visibleTop);
+            push({left, fillTop, table.width, std::min(headerBottom, visibleBottom) - fillTop}, frame.codeBackground);
+        }
+        horizontal(top);
+        for (U64 r = 1; r < table.rows; ++r) {
+            const F32 y = frame.lineTop(table.cell(r, 0).line) - halfRowPad;
+            if (y > visibleBottom) {
+                break;
+            }
+            horizontal(y);
+        }
+        horizontal(bottom);
+        for (U64 c = 0; c <= table.columns; ++c) {
+            push({left + table.columnX[c] - border * 0.5f, visibleTop, border, visibleBottom - visibleTop}, frame.rule);
+        }
+    }
+
     DecorationPools buildDecorations(const DecorationFrame& frame) const {
         DecorationPools pools;
         for (const auto& deco : document.decos) {
@@ -716,12 +1342,33 @@ struct TextMarkdown::Impl {
                 case Deco::Kind::Code: addCodeBackground(frame, deco, pools); break;
                 case Deco::Kind::Quote: addQuoteBar(frame, deco, pools); break;
                 case Deco::Kind::ListItem: addListMarker(frame, deco, pools); break;
+                case Deco::Kind::Table: addTableChrome(frame, deco, pools); break;
+                case Deco::Kind::Callout: addCallout(frame, deco, pools); break;
             }
         }
         return pools;
     }
 
     void uploadDecorations(const DecorationFrame& frame, DecorationPools&& pools) {
+        for (U64 tone = 0; tone < kCalloutTones; ++tone) {
+            auto border = frame.callout[tone];
+            border.a *= kCalloutBorderAlpha;
+            calloutChrome[tone].update({
+                .id = config.id + ":callout-" + kCalloutColorKeys[tone],
+                .instances = std::move(pools.callouts[tone]),
+                .clip = frame.clip,
+                .cornerRadius = std::max(1.0f, frame.body * kCalloutRadiusRatio),
+                .borderWidth = std::max(1.0f, std::round(frame.body * kCalloutBorderRatio)),
+                .borderColor = border,
+                .capacity = kMaxCallouts,
+            });
+        }
+        tableChrome.update({
+            .id = config.id + ":table-chrome",
+            .instances = std::move(pools.tableBoxes),
+            .clip = frame.clip,
+            .capacity = kMaxDecorations,
+        });
         decorations.update({
             .id = config.id + ":deco",
             .instances = std::move(pools.boxes),
@@ -743,6 +1390,10 @@ struct TextMarkdown::Impl {
 TextMarkdown::TextMarkdown() {
     this->impl = std::make_unique<Impl>();
     setClipsChildren(true);
+    for (auto& chrome : this->impl->calloutChrome) {
+        add(chrome);
+    }
+    add(this->impl->tableChrome);
     add(this->impl->decorations);
     add(this->impl->grid);
     add(this->impl->markers);
@@ -753,8 +1404,15 @@ TextMarkdown::~TextMarkdown() = default;
 bool TextMarkdown::update(Config config) {
     const bool changed = !impl->parsed ||
                          impl->config.value != config.value ||
-                         impl->config.fontSize != config.fontSize;
+                         impl->config.fontSize != config.fontSize ||
+                         impl->config.padding != config.padding;
+    const bool widthInputsChanged = impl->config.styleFonts != config.styleFonts ||
+                                    impl->config.styleScales != config.styleScales ||
+                                    impl->config.styleBackgroundColorKeys != config.styleBackgroundColorKeys;
     impl->config = std::move(config);
+    if (widthInputsChanged) {
+        impl->tablesLayoutValid = false;
+    }
     if (changed) {
         impl->rebuild();
         impl->parsed = true;
@@ -763,21 +1421,49 @@ bool TextMarkdown::update(Config config) {
     return true;
 }
 
+F32 TextMarkdown::naturalWidth() const {
+    return impl->naturalWidth;
+}
+
+const TextGrid::Metrics& TextMarkdown::metrics() const {
+    return impl->grid.metrics();
+}
+
 Extent2D<F32> TextMarkdown::measure(const Context& ctx, Extent2D<F32> available) {
-    impl->grid.update(impl->buildGridConfig());
-    return measureChild(impl->grid, ctx, available);
+    impl->textMetrics.setWindow(ctx.render);
+    impl->layoutForWidth(available.x, false);
+    auto size = measureChild(impl->grid, ctx, available);
+    impl->naturalWidth = std::max(size.x, impl->tableExtentWidth());
+    size.x = std::min(available.x, impl->naturalWidth);
+    impl->restoreLiveLayout();
+    return size;
 }
 
 void TextMarkdown::layout(const Context& ctx) {
     const Rect bounds = frame();
     const Rect clipPixel = Intersect(bounds, clip());
 
-    impl->grid.update(impl->buildGridConfig());
+    impl->textMetrics.setWindow(ctx.render);
+    impl->layoutForWidth(bounds.width, false);
+
+    if (impl->config.scrollbar) {
+        const F32 fullWidthHeight =
+            measureChild(impl->grid, ctx, {bounds.width, std::numeric_limits<F32>::infinity()}).y;
+        if (fullWidthHeight > bounds.height) {
+            impl->layoutForWidth(bounds.width, true);
+        }
+    }
+    impl->liveLayoutWidth = bounds.width;
+    impl->liveVerticalScroll = impl->verticalScroll;
     layoutChild(ctx, impl->grid, bounds);
 
     const auto decoFrame = impl->decorationFrame(ctx, bounds, clipPixel);
     impl->uploadDecorations(decoFrame, impl->buildDecorations(decoFrame));
 
+    for (auto& chrome : impl->calloutChrome) {
+        layoutChild(ctx, chrome, bounds);
+    }
+    layoutChild(ctx, impl->tableChrome, bounds);
     layoutChild(ctx, impl->decorations, bounds);
     layoutChild(ctx, impl->markers, bounds);
 }
