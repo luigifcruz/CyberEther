@@ -23,6 +23,12 @@ struct TextGridViewport {
 
         rowCapacity = std::max({rowCapacity, minimumCapacity, required});
     }
+
+    U64 poolCapacity(U64 current, U64 demand, U64 maxSegments) const {
+        const U64 step = std::max<U64>(1, rowCapacity);
+        const U64 required = ((demand + step - 1) / step) * step;
+        return std::min(step * std::max<U64>(1, maxSegments), std::max({current, step, required}));
+    }
 };
 
 }  // namespace Jetstream::Sakura::Retained

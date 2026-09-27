@@ -352,6 +352,21 @@ TEST_CASE("Text grid pools preserve viewport-sized reserves and same-row columns
     CHECK(viewport.rowCapacity == capacity);
 }
 
+TEST_CASE("Text grid segment pools grow by visible demand in row sized steps",
+          "[core][sakura][text-grid][viewport]") {
+    Sakura::Retained::TextGridViewport viewport;
+    const Jetstream::Rect clip{0.0f, 0.0f, 400.0f, 300.0f};
+    viewport.update(clip, clip, 17.25f, 1, 64);
+    REQUIRE(viewport.rowCapacity == 64);
+
+    CHECK(viewport.poolCapacity(0, 0, 32) == 64);
+    CHECK(viewport.poolCapacity(0, 64, 32) == 64);
+    CHECK(viewport.poolCapacity(0, 65, 32) == 128);
+    CHECK(viewport.poolCapacity(128, 3, 32) == 128);
+    CHECK(viewport.poolCapacity(0, 5000, 32) == 64 * 32);
+    CHECK(viewport.poolCapacity(0, 65, 1) == 64);
+}
+
 TEST_CASE("Same-row lines share a band and resolve mouse hits by column",
           "[core][sakura][text-grid][row-group]") {
     const ImGuiContextGuard imguiContext;

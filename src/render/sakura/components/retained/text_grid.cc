@@ -220,6 +220,9 @@ struct TextGrid::Impl {
     std::optional<Rect> clip;
     Metrics storedMetrics;
     TextGridViewport viewport;
+    U64 textPoolCapacity = 0;
+    U64 styleBackgroundPoolCapacity = 0;
+    std::vector<U64> extraTextPoolCapacities;
     bool hovered = false;
     bool active = false;
     bool windowFocused = false;
@@ -2306,8 +2309,21 @@ struct TextGrid::Impl {
         }
     }
 
+    void growPoolCapacities(const FrameGeometry& frame, const InstancePools& pools) {
+        const auto grow = [&](U64& capacity, U64 demand) {
+            capacity = viewport.poolCapacity(capacity, demand, frame.maxSegments);
+        };
+        grow(styleBackgroundPoolCapacity, pools.styleBackgrounds.size());
+        grow(textPoolCapacity, pools.text.size());
+        extraTextPoolCapacities.resize(extraFontLabels.size(), 0);
+        for (U64 k = 0; k < extraFontLabels.size(); ++k) {
+            grow(extraTextPoolCapacities[k], k < pools.extraText.size() ? pools.extraText[k].size() : 0);
+        }
+    }
+
     void uploadPools(const FrameGeometry& frame, InstancePools&& pools) {
         const bool hasStyleBackgrounds = !theme.styleBackgrounds.empty();
+        growPoolCapacities(frame, pools);
         selectionMatchBox.update({
             .id = config.id + ":selection-match",
             .instances = std::move(pools.matches),
@@ -2325,7 +2341,7 @@ struct TextGrid::Impl {
             .instances = std::move(pools.styleBackgrounds),
             .clip = frame.textClip,
             .cornerRadius = contentFontSize() * kStyleBackgroundCornerRatio,
-            .capacity = hasStyleBackgrounds ? frame.segmentCapacity : 0,
+            .capacity = hasStyleBackgrounds ? styleBackgroundPoolCapacity : 0,
         });
         codeLabels.update({
             .id = config.id + ":text",
@@ -2333,7 +2349,7 @@ struct TextGrid::Impl {
             .clip = frame.textClip,
             .fontName = config.fontName,
             .maxCharacters = kTextSegmentCharacterCapacity,
-            .capacity = frame.segmentCapacity,
+            .capacity = textPoolCapacity,
         });
         for (U64 k = 0; k < extraFontLabels.size(); ++k) {
             const bool live = k < extraFontNames.size();
@@ -2343,7 +2359,7 @@ struct TextGrid::Impl {
                 .clip = frame.textClip,
                 .fontName = live ? extraFontNames[k] : config.fontName,
                 .maxCharacters = kTextSegmentCharacterCapacity,
-                .capacity = frame.segmentCapacity,
+                .capacity = extraTextPoolCapacities[k],
             });
         }
         numberLabels.update({
