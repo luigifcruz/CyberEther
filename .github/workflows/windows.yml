@@ -158,11 +158,17 @@ jobs:
     if: ${{ inputs.package_desktop }}
     needs: bin
     runs-on: windows-latest
+    environment: windows-signing
+    permissions:
+      contents: read
+      id-token: write
     env:
       ARCH: x86_64
       CYBERETHER_BINARY: .dist\bin\cyberether.exe
       JETSTREAM_DLL: .dist\bin\jetstream.dll
       OUTPUT_DIR: .dist\windows
+      REQUIRE_SIGNING: '1'
+      AZURE_SIGNING_METADATA: apps/windows/signing-metadata.json
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -197,6 +203,13 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+
+      - name: Authenticate to Azure signing
+        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
+        with:
+          client-id: 54c779ae-ffb3-4b49-9967-44ba371f33be
+          tenant-id: 22277dd9-b672-4d30-be37-045a42e2bacc
+          subscription-id: ba295586-a92b-428d-afc2-21ee82850b86
 
       - name: Package desktop release
         shell: pwsh
