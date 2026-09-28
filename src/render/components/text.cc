@@ -1,9 +1,12 @@
 #include <algorithm>
 #include <cmath>
+#include <initializer_list>
 #include <limits>
 #include <new>
 #include <span>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 #include <glm/mat4x4.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -62,6 +65,7 @@ struct Text::Impl {
     };
 
     struct Element {
+        U64 index = 0;
         U64 characterCount = 0;
         const ElementConfig& config;
 
@@ -81,11 +85,42 @@ struct Text::Impl {
     // Render.
 
     bool updateFontUniformBufferFlag = false;
-    bool updateFontPosVerticesBufferFlag = false;
-    bool updateFontFillVerticesBufferFlag = false;
-    bool updateFontInstanceBufferFlag = false;
     bool updateFontIndicesBufferFlag = false;
     bool updateVertexCountFlag = false;
+
+    struct DirtyElements {
+        std::vector<U64> indices;
+        std::vector<U8> marked;
+        bool all = false;
+
+        void mark(U64 index) {
+            if (all || marked[index]) {
+                return;
+            }
+            marked[index] = 1;
+            indices.push_back(index);
+        }
+
+        void markAll() {
+            all = true;
+        }
+
+        bool empty() const {
+            return !all && indices.empty();
+        }
+
+        void clear() {
+            for (const U64 index : indices) {
+                marked[index] = 0;
+            }
+            indices.clear();
+            all = false;
+        }
+    };
+
+    DirtyElements dirtyVertices;
+    DirtyElements dirtyInstances;
+    bool vertexCountDirty = false;
 
     std::vector<glm::vec2> posVertices;
     std::vector<glm::vec2> fillVertices;
@@ -114,6 +149,10 @@ struct Text::Impl {
 
     Result updateElementVertex(Element& element);
     Result updateElementInstance(Element& element);
+
+    static Result FlushDirty(DirtyElements& dirty,
+                             U64 unitsPerElement,
+                             std::initializer_list<Render::Buffer*> buffers);
 
     // Constructor.
 
@@ -263,16 +302,25 @@ Result Text::create(Window* window) {
 
     // Create element data.
 
-    U32 i = 0;
+    std::vector<std::string> ids;
+    ids.reserve(config.elements.size());
     for (const auto& [id, _] : config.elements) {
-        pimpl->elements.emplace(id, Text::Impl::Element{
-            .config = config.elements[id],
+        ids.push_back(id);
+    }
+    std::sort(ids.begin(), ids.end());
+
+    for (U64 i = 0; i < ids.size(); ++i) {
+        pimpl->elements.emplace(ids[i], Text::Impl::Element{
+            .index = i,
+            .config = config.elements[ids[i]],
             .bounds = {0, 0},
             .posVertices = std::span{pimpl->posVertices}.subspan(numberOfVertices * i, numberOfVertices),
             .fillVertices = std::span{pimpl->fillVertices}.subspan(numberOfVertices * i, numberOfVertices),
-            .instances = std::span{pimpl->instances}.subspan(i++, 1),
+            .instances = std::span{pimpl->instances}.subspan(i, 1),
         });
     }
+    pimpl->dirtyVertices.marked.assign(ids.size(), 0);
+    pimpl->dirtyInstances.marked.assign(ids.size(), 0);
 
     // Load static state.
     JST_CHECK(pimpl->updateUniforms());
@@ -342,19 +390,14 @@ Result Text::update(const std::string& elementId, const ElementConfig& elementCo
     // Update element vertex.
     if (shouldUpdateVertices) {
         JST_CHECK(pimpl->updateElementVertex(element));
-        JST_CHECK(pimpl->refreshVertexCount());
-
-        // Set flag to update buffers.
-        pimpl->updateFontPosVerticesBufferFlag = true;
-        pimpl->updateFontFillVerticesBufferFlag = true;
+        pimpl->dirtyVertices.mark(element.index);
+        pimpl->vertexCountDirty = true;
     }
 
     // Update element instance.
     if (shouldUpdateInstance) {
         JST_CHECK(pimpl->updateElementInstance(element));
-
-        // Set flag to update buffer.
-        pimpl->updateFontInstanceBufferFlag = true;
+        pimpl->dirtyInstances.mark(element.index);
     }
 
     return Result::SUCCESS;
@@ -435,11 +478,8 @@ Result Text::Impl::updateVertices() {
         JST_CHECK(updateElementVertex(element));
     }
 
-    // Set flag to update buffers.
-    updateFontPosVerticesBufferFlag = true;
-    updateFontFillVerticesBufferFlag = true;
-
-    JST_CHECK(refreshVertexCount());
+    dirtyVertices.markAll();
+    vertexCountDirty = true;
 
     return Result::SUCCESS;
 }
@@ -450,8 +490,7 @@ Result Text::Impl::updateInstances() {
         JST_CHECK(updateElementInstance(element));
     }
 
-    // Set flag to update buffer.
-    updateFontInstanceBufferFlag = true;
+    dirtyInstances.markAll();
 
     return Result::SUCCESS;
 }
@@ -475,8 +514,16 @@ Result Text::Impl::updateIndices() {
 
 Result Text::Impl::refreshVertexCount() {
     U64 maxCharacterCount = 0;
+    U64 drawCount = 0;
     for (const auto& [_, element] : elements) {
         maxCharacterCount = std::max(maxCharacterCount, element.characterCount);
+        if (element.characterCount > 0) {
+            drawCount = std::max(drawCount, element.index + 1);
+        }
+    }
+
+    if (drawFont) {
+        drawFont->setDrawCount(drawCount);
     }
 
     const U64 nextVertexCount = maxCharacterCount * 6;
@@ -486,6 +533,36 @@ Result Text::Impl::refreshVertexCount() {
 
     vertexCount = nextVertexCount;
     updateVertexCountFlag = true;
+    return Result::SUCCESS;
+}
+
+Result Text::Impl::FlushDirty(DirtyElements& dirty,
+                              U64 unitsPerElement,
+                              std::initializer_list<Render::Buffer*> buffers) {
+    if (dirty.all) {
+        for (auto* buffer : buffers) {
+            JST_CHECK(buffer->update());
+        }
+        dirty.clear();
+        return Result::SUCCESS;
+    }
+
+    auto& indices = dirty.indices;
+    std::sort(indices.begin(), indices.end());
+    U64 runStart = 0;
+    while (runStart < indices.size()) {
+        U64 runEnd = runStart + 1;
+        while (runEnd < indices.size() && indices[runEnd] == indices[runEnd - 1] + 1) {
+            ++runEnd;
+        }
+        const U64 first = indices[runStart] * unitsPerElement;
+        const U64 count = (runEnd - runStart) * unitsPerElement;
+        for (auto* buffer : buffers) {
+            JST_CHECK(buffer->update(first, count));
+        }
+        runStart = runEnd;
+    }
+    dirty.clear();
     return Result::SUCCESS;
 }
 
@@ -633,14 +710,15 @@ Result Text::Impl::updateElementVertex(Element& element) {
 }
 
 Result Text::present() {
-    if (pimpl->updateFontFillVerticesBufferFlag) {
-        pimpl->fontFillVerticesBuffer->update();
-        pimpl->updateFontFillVerticesBufferFlag = false;
+    if (pimpl->vertexCountDirty) {
+        JST_CHECK(pimpl->refreshVertexCount());
+        pimpl->vertexCountDirty = false;
     }
 
-    if (pimpl->updateFontPosVerticesBufferFlag) {
-        pimpl->fontPosVerticesBuffer->update();
-        pimpl->updateFontPosVerticesBufferFlag = false;
+    if (!pimpl->dirtyVertices.empty()) {
+        JST_CHECK(Impl::FlushDirty(pimpl->dirtyVertices,
+                                   config.maxCharacters * 4,
+                                   {pimpl->fontPosVerticesBuffer.get(), pimpl->fontFillVerticesBuffer.get()}));
     }
 
     if (pimpl->updateFontIndicesBufferFlag) {
@@ -653,9 +731,8 @@ Result Text::present() {
         pimpl->updateFontUniformBufferFlag = false;
     }
 
-    if (pimpl->updateFontInstanceBufferFlag) {
-        pimpl->fontInstanceBuffer->update();
-        pimpl->updateFontInstanceBufferFlag = false;
+    if (!pimpl->dirtyInstances.empty()) {
+        JST_CHECK(Impl::FlushDirty(pimpl->dirtyInstances, 1, {pimpl->fontInstanceBuffer.get()}));
     }
 
     if (pimpl->updateVertexCountFlag) {

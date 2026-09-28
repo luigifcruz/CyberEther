@@ -12,22 +12,20 @@ struct TextGridViewport {
     Rect bounds;
     U64 rowCapacity = 0;
 
-    void update(const Rect& frame, const Rect& clip, F32 minimumRowHeight,
-                U64 columns, U64 minimumCapacity) {
+    void update(const Rect& frame, const Rect& clip, F32 rowHeight, U64 minimumCapacity, F32 ceilingHeight) {
         bounds = Intersect(frame, clip);
-
-        constexpr U64 step = 16;
-        const U64 rows = static_cast<U64>(std::ceil(bounds.height / minimumRowHeight)) + 1;
-        const U64 groupedRows = rows * columns;
-        const U64 required = ((groupedRows + step - 1) / step) * step;
-
-        rowCapacity = std::max({rowCapacity, minimumCapacity, required});
+        rowCapacity = std::max(rowCapacity, minimumCapacity);
+        const U64 required = RowsFor(bounds.height, rowHeight);
+        if (required > rowCapacity) {
+            rowCapacity = std::max(required, RowsFor(ceilingHeight, rowHeight));
+        }
     }
 
-    U64 poolCapacity(U64 current, U64 demand, U64 maxSegments) const {
-        const U64 step = std::max<U64>(1, rowCapacity);
-        const U64 required = ((demand + step - 1) / step) * step;
-        return std::min(step * std::max<U64>(1, maxSegments), std::max({current, step, required}));
+ private:
+    static U64 RowsFor(F32 height, F32 rowHeight) {
+        constexpr U64 step = 16;
+        const U64 rows = static_cast<U64>(std::ceil(std::max(0.0f, height) / std::max(1.0f, rowHeight))) + 1;
+        return ((rows + step - 1) / step) * step;
     }
 };
 

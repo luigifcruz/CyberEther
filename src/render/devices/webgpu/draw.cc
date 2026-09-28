@@ -94,7 +94,8 @@ Result Implementation::encode(WGPURenderPassEncoder& renderPassEncoder) {
     // WebGPU doesn't support multi-draw and 'indirect-first-instance' feature
     // may not be available. Use direct draw calls instead of indirect.
 
-    for (U64 i = 0; i < config.numberOfDraws; i++) {
+    const U64 count = std::min<U64>(drawCount, config.numberOfDraws);
+    for (U64 i = 0; i < count; i++) {
         if (buffer->isBuffered()) {
             const auto& cmd = indexedDrawCommands[i];
             wgpuRenderPassEncoderDrawIndexed(renderPassEncoder,
