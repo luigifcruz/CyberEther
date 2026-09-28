@@ -14,19 +14,69 @@
 #include <emscripten.h>
 #include <emscripten/html5.h>
 
+extern "C" void cyberether_lifecycle_report(int phase);
+
 namespace Jetstream {
 
+enum class LifecyclePhase : int {
+    Starting = 0,
+    Running = 1,
+    Stopping = 2,
+};
+
 static std::atomic<bool> shutdownRequested{false};
+static std::atomic<int> exitStatus{0};
 static std::shared_ptr<Instance> instance;
 static std::thread computeThread;
 static std::string startupTheme;
 static std::string startupFlowgraph;
 
+static void ReportLifecycle(const LifecyclePhase phase) {
+    cyberether_lifecycle_report(static_cast<int>(phase));
+}
+
+static void RequestFailure() {
+    exitStatus.store(1, std::memory_order_release);
+    RequestShutdown();
+}
+
+[[noreturn]] static void Teardown() {
+    JST_INFO("[CYBERETHER] Stopping browser app.");
+    ReportLifecycle(LifecyclePhase::Stopping);
+
+    emscripten_cancel_main_loop();
+
+    if (instance && (instance->computing() || instance->presenting())) {
+        (void)instance->stop();
+    }
+
+    if (computeThread.joinable()) {
+        computeThread.join();
+    }
+
+    if (instance) {
+        (void)instance->destroy();
+        instance.reset();
+    }
+
+    Backend::DestroyAll();
+
+    startupTheme.clear();
+    startupFlowgraph.clear();
+
+    const int status = exitStatus.load(std::memory_order_acquire);
+    JST_INFO("[CYBERETHER] Exiting browser runtime with status {}.", status);
+    emscripten_force_exit(status);
+}
+
 static void OnWebGPUInitialized(const Result webgpuResult) {
     if (webgpuResult != Result::SUCCESS ||
         shutdownRequested.load(std::memory_order_acquire)) {
         Backend::WebGPU::CancelInitialization();
-        return;
+        if (webgpuResult != Result::SUCCESS) {
+            RequestFailure();
+        }
+        Teardown();
     }
 
     Settings settings;
@@ -61,19 +111,16 @@ static void OnWebGPUInitialized(const Result webgpuResult) {
 
     const Result restoreResult = Settings::Set(retainedSettings, false);
     if (createResult != Result::SUCCESS || restoreResult != Result::SUCCESS) {
-        if (createResult == Result::SUCCESS) {
-            (void)instance->destroy();
+        if (createResult != Result::SUCCESS) {
+            instance.reset();
         }
-        instance.reset();
-        Backend::DestroyAll();
-        return;
+        RequestFailure();
+        Teardown();
     }
 
     if (instance->start() != Result::SUCCESS) {
-        (void)instance->destroy();
-        instance.reset();
-        Backend::DestroyAll();
-        return;
+        RequestFailure();
+        Teardown();
     }
 
     if (!startupFlowgraph.empty()) {
@@ -102,7 +149,7 @@ static void OnWebGPUInitialized(const Result webgpuResult) {
             }
 
             if (res != Result::SUCCESS && res != Result::RELOAD) {
-                RequestShutdown();
+                RequestFailure();
                 break;
             }
         }
@@ -128,38 +175,23 @@ static void OnWebGPUInitialized(const Result webgpuResult) {
         }
 
         if (res != Result::SUCCESS && res != Result::RELOAD) {
-            RequestShutdown();
+            RequestFailure();
         } else if (!currentInstance->presenting()) {
             RequestShutdown();
         }
 
-        if (!shutdownRequested.load(std::memory_order_acquire)) {
-            return;
+        if (shutdownRequested.load(std::memory_order_acquire)) {
+            Teardown();
         }
-
-        JST_INFO("[CYBERETHER] Stopping browser app.");
-
-        emscripten_cancel_main_loop();
-
-        if (currentInstance->computing() || currentInstance->presenting()) {
-            (void)currentInstance->stop();
-        }
-
-        if (computeThread.joinable()) {
-            computeThread.join();
-        }
-
-        (void)currentInstance->destroy();
-        instance.reset();
-
-        Backend::DestroyAll();
     };
 
+    ReportLifecycle(LifecyclePhase::Running);
     emscripten_set_main_loop_arg(graphicalThreadLoop, instance.get(), 0, 0);
 }
 
 int Run(int argc, char* argv[]) {
     JST_INFO("[CYBERETHER] Running browser app.");
+    ReportLifecycle(LifecyclePhase::Starting);
 
     startupTheme.clear();
     startupFlowgraph.clear();
@@ -198,8 +230,6 @@ int Run(int argc, char* argv[]) {
         }
         startupFlowgraph = arg;
     }
-
-    shutdownRequested.store(false);
 
     if (Platform::InitializePersistentStorage() != Result::SUCCESS) {
         return -1;

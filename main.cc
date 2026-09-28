@@ -49,6 +49,14 @@ int CyberEtherMain(int argc, char* argv[]) {
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
     return CyberEtherMain(__argc, __argv);
 }
+#elif defined(JST_OS_BROWSER)
+int main(int argc, char* argv[]) {
+    const int status = CyberEtherMain(argc, argv);
+    if (status != 0) {
+        emscripten_force_exit(status);
+    }
+    return status;
+}
 #else
 int main(int argc, char* argv[]) {
     return CyberEtherMain(argc, argv);
