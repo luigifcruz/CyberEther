@@ -324,62 +324,49 @@ TEST_CASE("Text grid pools use inherited clipping and survive scrolling and coll
     for (const F32 height : {35000.0f, 70000.0f}) {
         for (const F32 top : {0.0f, -9.0f, -1000.0f, 150.0f, 350.0f}) {
             CAPTURE(height, top);
-            viewport.update({0.0f, top, 400.0f, height}, clip, lineHeight, 1, 64);
+            viewport.update({0.0f, top, 400.0f, height}, clip, lineHeight, 64, clip.height);
             CHECK(viewport.bounds.height <= clip.height);
             CHECK(viewport.rowCapacity == 64);
         }
     }
 
-    viewport.update({}, clip, lineHeight, 1, 64);
+    viewport.update({}, clip, lineHeight, 64, clip.height);
     CHECK(viewport.bounds.empty());
     CHECK(viewport.rowCapacity == 64);
-    viewport.update({0.0f, 0.0f, 400.0f, 70000.0f}, clip, lineHeight, 1, 64);
+    viewport.update({0.0f, 0.0f, 400.0f, 70000.0f}, clip, lineHeight, 64, clip.height);
     CHECK(viewport.bounds == clip);
     CHECK(viewport.rowCapacity == 64);
 }
 
-TEST_CASE("Text grid pools preserve viewport-sized reserves and same-row columns",
+TEST_CASE("Text grid row capacity jumps once from its minimum to the surface height",
           "[core][sakura][text-grid][viewport]") {
     Sakura::Retained::TextGridViewport viewport;
-    const Jetstream::Rect clip{0.0f, 0.0f, 400.0f, 300.0f};
     constexpr F32 lineHeight = 17.25f;
+    constexpr F32 surfaceHeight = 3000.0f;
+    const auto clipped = [&](F32 height) {
+        const Jetstream::Rect frame{0.0f, 0.0f, 400.0f, height};
+        viewport.update(frame, frame, lineHeight, 64, surfaceHeight);
+    };
 
-    viewport.update(clip, clip, lineHeight, 1, 64);
-    REQUIRE(viewport.rowCapacity == 64);
+    for (const F32 height : {100.0f, 600.0f, 1000.0f}) {
+        CAPTURE(height);
+        clipped(height);
+        CHECK(viewport.rowCapacity == 64);
+    }
 
-    viewport.update({0.0f, 0.0f, 400.0f, 35000.0f}, clip, lineHeight, 4, 64);
-    REQUIRE(viewport.rowCapacity > 64);
-    REQUIRE(viewport.rowCapacity <= 96);
-    const U64 capacity = viewport.rowCapacity;
+    clipped(1200.0f);
+    const U64 filled = viewport.rowCapacity;
+    CHECK(filled == 176);
 
-    viewport.update({0.0f, -1000.0f, 400.0f, 35000.0f}, clip, lineHeight, 4, 64);
-    CHECK(viewport.rowCapacity == capacity);
-    viewport.update({0.0f, 150.0f, 400.0f, 35000.0f}, clip, lineHeight, 4, 64);
-    CHECK(viewport.rowCapacity == capacity);
-    viewport.update({}, clip, lineHeight, 1, 64);
-    CHECK(viewport.rowCapacity == capacity);
-}
-
-TEST_CASE("Text grid segment pools do not scale with table columns",
-          "[core][sakura][text-grid][viewport]") {
-    Sakura::Retained::TextGridViewport plain;
-    Sakura::Retained::TextGridViewport table;
-    Sakura::Retained::TextGridViewport wide;
-    const Jetstream::Rect clip{0.0f, 0.0f, 400.0f, 1200.0f};
-    constexpr F32 lineHeight = 17.25f;
-
-    plain.update(clip, clip, lineHeight, 1, 64);
-    table.update(clip, clip, lineHeight, 4, 64);
-    wide.update(clip, clip, lineHeight, 12, 64);
-    REQUIRE(plain.bandCapacity == plain.rowCapacity);
-    REQUIRE(table.bandCapacity == plain.bandCapacity);
-    REQUIRE(table.rowCapacity > plain.rowCapacity * 3);
-
-    CHECK(plain.segmentCapacity(32, 8) == plain.rowCapacity * 32);
-    CHECK(table.segmentCapacity(32, 8) == plain.segmentCapacity(32, 8));
-    CHECK(wide.segmentCapacity(32, 8) == wide.rowCapacity * 8);
-    CHECK(wide.segmentCapacity(32, 8) < wide.rowCapacity * 32);
-    CHECK(wide.segmentCapacity(2, 8) == wide.rowCapacity * 2);
+    for (const F32 height : {1400.0f, 2000.0f, 2600.0f, 3000.0f}) {
+        CAPTURE(height);
+        clipped(height);
+        CHECK(viewport.rowCapacity == filled);
+    }
+    viewport.update({0.0f, -1000.0f, 400.0f, 35000.0f}, {0.0f, 0.0f, 400.0f, 3000.0f}, lineHeight, 64, surfaceHeight);
+    CHECK(viewport.rowCapacity == filled);
+    viewport.update({}, {}, lineHeight, 64, surfaceHeight);
+    CHECK(viewport.rowCapacity == filled);
 }
 
 TEST_CASE("Same-row lines share a band and resolve mouse hits by column",
