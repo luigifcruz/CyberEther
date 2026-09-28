@@ -23,6 +23,7 @@ struct Box::Impl : public Drawable {
     Context* context = nullptr;
     std::shared_ptr<Render::Components::Shapes> shape;
     U64 capacity = 0;
+    U64 liveSlots = 0;
 
     ~Impl() override {
         if (context && context->release) {
@@ -45,6 +46,7 @@ struct Box::Impl : public Drawable {
     Result attach(Context* context, Render::Surface::Config& surfaceConfig) override {
         this->context = context;
         capacity = requiredCapacity(config);
+        liveSlots = 0;
 
         Render::Components::Shapes::Config shapeConfig;
         shapeConfig.pixelSize = context->pixelSize();
@@ -99,7 +101,9 @@ struct Box::Impl : public Drawable {
         std::span<ColorRGBA<F32>> colors;
         JST_CHECK(shape->getColors(kRectElementId, colors));
 
-        for (U64 i = 0; i < capacity; ++i) {
+        const U64 slots = std::min(capacity, std::max<U64>(config.instances.size(), liveSlots));
+        U64 nextLiveSlots = 0;
+        for (U64 i = 0; i < slots; ++i) {
             const bool on = i < config.instances.size() &&
                             config.instances[i].visible &&
                             !config.instances[i].rect.empty();
@@ -108,12 +112,15 @@ struct Box::Impl : public Drawable {
                 sizes[i] = {0.0f, 0.0f};
                 continue;
             }
+            nextLiveSlots = i + 1;
 
             const auto& instance = config.instances[i];
             positions[i] = PixelToNdc(framebufferSize, instance.rect.center().x, instance.rect.center().y);
             sizes[i] = {instance.rect.width, instance.rect.height};
             colors[i] = instance.backgroundColor;
         }
+
+        liveSlots = nextLiveSlots;
 
         JST_CHECK(shape->updatePositions(kRectElementId));
         JST_CHECK(shape->updateSizes(kRectElementId));

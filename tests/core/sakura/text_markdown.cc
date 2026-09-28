@@ -4,6 +4,8 @@
 #include <jetstream/render/sakura/components/retained/text_markdown.hh>
 #include <jetstream/render/tools/imgui.h>
 
+#include "../../../resources/fonts/compressed_jbmm.hh"
+#include "harness.hh"
 #include "render/sakura/context.hh"
 
 #include <algorithm>
@@ -40,6 +42,12 @@ struct MarkdownHost : Sakura::Component {
  protected:
     void layout(const Sakura::Context& ctx) override {
         layoutChild(ctx, markdown, frame());
+    }
+};
+
+struct MonoFontWindow : SakuraTest::FontWindow {
+    MonoFontWindow() {
+        load("default_mono", jbmm_compressed_data);
     }
 };
 
@@ -412,4 +420,28 @@ TEST_CASE("Unbounded measurement keeps the intrinsic table width before and afte
     const auto after = host.measureAt(ctx, inf);
     CHECK(after.x == Catch::Approx(108.0f));
     CHECK(after.y == Catch::Approx(52.5f));
+}
+
+TEST_CASE("Repeated markdown measures follow table content changes",
+          "[core][sakura][text-markdown][measure]") {
+    const ImGuiContextGuard imguiContext;
+    MonoFontWindow window;
+    Sakura::Context ctx;
+    ctx.render = &window;
+    MarkdownHost host;
+    const std::string shortTable = "| a | b |\n|---|---|\n| short | x |";
+    const std::string longTable = "| a | b |\n|---|---|\n| " + std::string(40, 'w') + " " + std::string(40, 'w') + " | x |";
+
+    host.markdown.update({.id = "memo-table", .value = shortTable, .fontSize = 15.0f});
+    const F32 first = host.measureAt(ctx, 300.0f).y;
+    REQUIRE(first > 0.0f);
+    CHECK(host.measureAt(ctx, 300.0f).y == Catch::Approx(first));
+
+    host.markdown.update({.id = "memo-table", .value = longTable, .fontSize = 15.0f});
+    const F32 wrapped = host.measureAt(ctx, 300.0f).y;
+    CHECK(wrapped > first);
+    CHECK(host.measureAt(ctx, 300.0f).y == Catch::Approx(wrapped));
+
+    host.markdown.update({.id = "memo-table", .value = shortTable, .fontSize = 15.0f});
+    CHECK(host.measureAt(ctx, 300.0f).y == Catch::Approx(first));
 }

@@ -930,6 +930,7 @@ struct TextMarkdown::Impl {
     bool parsed = false;
     bool tablesLayoutValid = false;
     F32 tablesLayoutWidth = -1.0f;
+    std::vector<U8> tablesLayoutFonts;
     TextGrid::WidthLayout tablesLayout;
 
     void rebuild() {
@@ -1010,6 +1011,19 @@ struct TextMarkdown::Impl {
                !config.styleBackgroundColorKeys[id - 1].empty();
     }
 
+    std::vector<U8> fontAvailability() const {
+        std::vector<U8> available;
+        if (!textMetrics.window) {
+            return available;
+        }
+        available.reserve(config.styleFonts.size() + 1);
+        available.push_back(textMetrics.window->hasFont(kBodyFont) ? 1 : 0);
+        for (const auto& fontName : config.styleFonts) {
+            available.push_back(textMetrics.window->hasFont(fontName) ? 1 : 0);
+        }
+        return available;
+    }
+
     bool fontsReady() const {
         const F32 body = config.fontSize;
         if (textMetrics.measure(kBodyFont, "0", body) <= 0.0f) {
@@ -1052,7 +1066,8 @@ struct TextMarkdown::Impl {
     }
 
     TextGrid::WidthLayout layoutForTextWidth(F32 textWidth) {
-        if (!(tablesLayoutValid && tablesLayoutWidth == textWidth)) {
+        auto fonts = fontAvailability();
+        if (!(tablesLayoutValid && tablesLayoutWidth == textWidth && tablesLayoutFonts == fonts)) {
             layoutTables(textWidth);
             std::vector<F32> indents = lineIndents();
             const F32 minimumWidth = minimumContentWidth(indents);
@@ -1063,6 +1078,7 @@ struct TextMarkdown::Impl {
             };
             tablesLayoutValid = fontsReady();
             tablesLayoutWidth = textWidth;
+            tablesLayoutFonts = std::move(fonts);
         }
         return tablesLayout;
     }

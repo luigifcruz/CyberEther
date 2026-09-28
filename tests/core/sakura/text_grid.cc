@@ -5,6 +5,8 @@
 #include <jetstream/render/sakura/components/retained/text_grid.hh>
 #include <jetstream/render/tools/imgui.h>
 
+#include "../../../resources/fonts/compressed_inter.hh"
+#include "../../../resources/fonts/compressed_jbmm.hh"
 #include "harness.hh"
 #include "render/sakura/context.hh"
 #include "render/sakura/retained/text_grid_viewport.hh"
@@ -76,6 +78,12 @@ std::string Document(U64 lines) {
     }
     return text;
 }
+
+struct MonoFontWindow : SakuraTest::FontWindow {
+    MonoFontWindow() {
+        load("default_mono", jbmm_compressed_data);
+    }
+};
 
 struct ImGuiContextGuard {
     ImGuiContextGuard() { ImGui::CreateContext(); }
@@ -352,19 +360,26 @@ TEST_CASE("Text grid pools preserve viewport-sized reserves and same-row columns
     CHECK(viewport.rowCapacity == capacity);
 }
 
-TEST_CASE("Text grid segment pools grow by visible demand in row sized steps",
+TEST_CASE("Text grid segment pools do not scale with table columns",
           "[core][sakura][text-grid][viewport]") {
-    Sakura::Retained::TextGridViewport viewport;
-    const Jetstream::Rect clip{0.0f, 0.0f, 400.0f, 300.0f};
-    viewport.update(clip, clip, 17.25f, 1, 64);
-    REQUIRE(viewport.rowCapacity == 64);
+    Sakura::Retained::TextGridViewport plain;
+    Sakura::Retained::TextGridViewport table;
+    Sakura::Retained::TextGridViewport wide;
+    const Jetstream::Rect clip{0.0f, 0.0f, 400.0f, 1200.0f};
+    constexpr F32 lineHeight = 17.25f;
 
-    CHECK(viewport.poolCapacity(0, 0, 32) == 64);
-    CHECK(viewport.poolCapacity(0, 64, 32) == 64);
-    CHECK(viewport.poolCapacity(0, 65, 32) == 128);
-    CHECK(viewport.poolCapacity(128, 3, 32) == 128);
-    CHECK(viewport.poolCapacity(0, 5000, 32) == 64 * 32);
-    CHECK(viewport.poolCapacity(0, 65, 1) == 64);
+    plain.update(clip, clip, lineHeight, 1, 64);
+    table.update(clip, clip, lineHeight, 4, 64);
+    wide.update(clip, clip, lineHeight, 12, 64);
+    REQUIRE(plain.bandCapacity == plain.rowCapacity);
+    REQUIRE(table.bandCapacity == plain.bandCapacity);
+    REQUIRE(table.rowCapacity > plain.rowCapacity * 3);
+
+    CHECK(plain.segmentCapacity(32, 8) == plain.rowCapacity * 32);
+    CHECK(table.segmentCapacity(32, 8) == plain.segmentCapacity(32, 8));
+    CHECK(wide.segmentCapacity(32, 8) == wide.rowCapacity * 8);
+    CHECK(wide.segmentCapacity(32, 8) < wide.rowCapacity * 32);
+    CHECK(wide.segmentCapacity(2, 8) == wide.rowCapacity * 2);
 }
 
 TEST_CASE("Same-row lines share a band and resolve mouse hits by column",
@@ -908,4 +923,123 @@ TEST_CASE("Keyboard input applies once per frame across repeated layouts",
     ui.frame([&] { host.place(ctx, frame); });
     ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, false);
     CHECK(host.grid.metrics().sourceLines.size() == 3);
+}
+
+TEST_CASE("Repeated measures follow content, padding, and width changes",
+          "[core][sakura][text-grid][measure]") {
+    using TextGrid = Sakura::Retained::TextGrid;
+    const ImGuiContextGuard imguiContext;
+    MonoFontWindow window;
+    Sakura::Context ctx;
+    ctx.render = &window;
+    struct Host : TextGridHost {
+        using TextGridHost::measureChild;
+    } host;
+    TextGrid::Config config{
+        .id = "measure-memo",
+        .value = "abc",
+        .fontSize = 15.0f,
+        .wrap = TextGrid::Wrap::Word,
+        .padding = Sakura::Padding{0.0f, 0.0f, 0.0f, 0.0f},
+    };
+    host.grid.update(config);
+    const auto measure = [&](F32 width) {
+        return host.measureChild(host.grid, ctx, {width, std::numeric_limits<F32>::infinity()});
+    };
+
+    const auto first = measure(400.0f);
+    REQUIRE(first.x > 0.0f);
+    REQUIRE(first.y > 0.0f);
+    CHECK(measure(400.0f).y == Catch::Approx(first.y));
+
+    config.value = "abc\ndef";
+    host.grid.update(config);
+    const F32 twoLines = measure(400.0f).y;
+    CHECK(twoLines == Catch::Approx(first.y * 2.0f));
+
+    config.padding = Sakura::Padding{0.0f, 10.0f, 0.0f, 0.0f};
+    host.grid.update(config);
+    CHECK(measure(400.0f).y == Catch::Approx(twoLines + 10.0f));
+
+    config.padding = Sakura::Padding{0.0f, 0.0f, 0.0f, 0.0f};
+    config.value = "abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz";
+    host.grid.update(config);
+    const auto wide = measure(2000.0f);
+    const auto narrow = measure(first.x * 4.0f);
+    CHECK(narrow.y > wide.y);
+    CHECK(measure(2000.0f).y == Catch::Approx(wide.y));
+    CHECK(measure(2000.0f).x == Catch::Approx(wide.x));
+}
+
+
+TEST_CASE("Repeated measures follow fonts registered after a fallback measure",
+          "[core][sakura][text-grid][measure]") {
+    using TextGrid = Sakura::Retained::TextGrid;
+    const ImGuiContextGuard imguiContext;
+    MonoFontWindow window;
+    Sakura::Context ctx;
+    ctx.render = &window;
+    struct Host : TextGridHost {
+        using TextGridHost::measureChild;
+    } host;
+    host.grid.update({
+        .id = "measure-late-font",
+        .value = "iiiiiiiiii",
+        .fontSize = 15.0f,
+        .fontName = "late_body",
+        .monospace = false,
+        .padding = Sakura::Padding{0.0f, 0.0f, 0.0f, 0.0f},
+    });
+    const auto measure = [&] {
+        return host.measureChild(host.grid, ctx, {2000.0f, std::numeric_limits<F32>::infinity()}).x;
+    };
+
+    const F32 fallback = measure();
+    REQUIRE(fallback > 0.0f);
+    CHECK(measure() == Catch::Approx(fallback));
+
+    window.load("late_body", inter_regular_compressed_data);
+    CHECK(measure() < fallback);
+}
+
+TEST_CASE("Repeated measures follow late fonts beyond the first sixty-three styles",
+          "[core][sakura][text-grid][measure]") {
+    using TextGrid = Sakura::Retained::TextGrid;
+    const ImGuiContextGuard imguiContext;
+    MonoFontWindow window;
+    Sakura::Context ctx;
+    ctx.render = &window;
+    struct Host : TextGridHost {
+        using TextGridHost::measureChild;
+    } host;
+    constexpr U64 kStyles = 70;
+    std::vector<std::string> fonts;
+    for (U64 i = 1; i <= kStyles; ++i) {
+        fonts.push_back("late_style_" + std::to_string(i));
+    }
+    const std::string value(10, 'i');
+    const std::vector<std::vector<TextGrid::StyleId>> styles = {
+        std::vector<TextGrid::StyleId>(value.size(), static_cast<TextGrid::StyleId>(kStyles)),
+    };
+    host.grid.update({
+        .id = "measure-late-style-font",
+        .value = value,
+        .fontSize = 15.0f,
+        .monospace = false,
+        .padding = Sakura::Padding{0.0f, 0.0f, 0.0f, 0.0f},
+        .styleFonts = fonts,
+        .styler = [styles](const std::vector<std::string>&, U64) -> const std::vector<std::vector<TextGrid::StyleId>>& {
+            return styles;
+        },
+    });
+    const auto measure = [&] {
+        return host.measureChild(host.grid, ctx, {2000.0f, std::numeric_limits<F32>::infinity()}).x;
+    };
+
+    const F32 fallback = measure();
+    REQUIRE(fallback > 0.0f);
+    CHECK(measure() == Catch::Approx(fallback));
+
+    window.load(fonts.back(), inter_regular_compressed_data);
+    CHECK(measure() < fallback);
 }

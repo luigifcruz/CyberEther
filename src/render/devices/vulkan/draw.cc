@@ -115,14 +115,18 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
         Backend::State<DeviceType::Vulkan>()->supportsMultiDrawIndirect();
 
     if (buffer->isBuffered()) {
+        const U64 count = std::min<U64>(drawCount, indexedDrawCommands.size());
+        if (count == 0) {
+            return Result::SUCCESS;
+        }
         if (supportsMultiDrawIndirect) {
             vkCmdDrawIndexedIndirect(commandBuffer,
                                      indexedIndirectBuffer->getHandle(),
                                      0,
-                                     indexedDrawCommands.size(),
+                                     count,
                                      sizeof(VkDrawIndexedIndirectCommand));
         } else {
-            for (U64 i = 0; i < indexedDrawCommands.size(); ++i) {
+            for (U64 i = 0; i < count; ++i) {
                 vkCmdDrawIndexedIndirect(commandBuffer,
                                          indexedIndirectBuffer->getHandle(),
                                          i * sizeof(VkDrawIndexedIndirectCommand),
@@ -130,14 +134,21 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
                                          sizeof(VkDrawIndexedIndirectCommand));
             }
         }
-    } else if (supportsMultiDrawIndirect) {
+        return Result::SUCCESS;
+    }
+
+    const U64 count = std::min<U64>(drawCount, drawCommands.size());
+    if (count == 0) {
+        return Result::SUCCESS;
+    }
+    if (supportsMultiDrawIndirect) {
         vkCmdDrawIndirect(commandBuffer,
                           indirectBuffer->getHandle(),
                           0,
-                          drawCommands.size(),
+                          count,
                           sizeof(VkDrawIndirectCommand));
     } else {
-        for (U64 i = 0; i < drawCommands.size(); ++i) {
+        for (U64 i = 0; i < count; ++i) {
             vkCmdDrawIndirect(commandBuffer,
                               indirectBuffer->getHandle(),
                               i * sizeof(VkDrawIndirectCommand),
