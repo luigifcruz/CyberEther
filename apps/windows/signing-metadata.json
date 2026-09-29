@@ -1,0 +1,5 @@
+{
+  "Endpoint": "https://eus.codesigning.azure.net/",
+  "CodeSigningAccountName": "cyberether-signing",
+  "CertificateProfileName": "cyberether-windows"
+}
