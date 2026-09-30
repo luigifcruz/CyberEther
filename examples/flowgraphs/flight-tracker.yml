@@ -23,7 +23,7 @@ graph:
         **Radio not listed?** Check the cable and plug the dongle directly into the computer rather than a hub. Close any other program that is using it, only one program can open a radio at a time. Then reopen this example from the **Flowgraph** menu under **Open Examples** so the list is rebuilt. On Linux, the kernel's DVB-T driver can claim an RTL-SDR before SoapySDR sees it. On Windows, the dongle needs the WinUSB driver installed with Zadig.
         
         ## What is happening
-        Every airliner carries a transponder that broadcasts its identity, altitude, speed, and position once or twice a second on 1090 MHz, in the clear, for anyone to hear. The radio captures 2 MHz around that frequency, the **ADS-B Decoder** finds the short pulse bursts, checks them, and keeps a table of what each aircraft has said. The globe plots every aircraft with a known position.
+        Every airliner carries a transponder that broadcasts its altitude, speed, and position twice a second and its identity every five seconds on 1090 MHz, in the clear, for anyone to hear. The radio captures 2 MHz around that frequency, the **ADS-B Decoder** finds the short pulse bursts, checks them, and keeps a table of what each aircraft has said. The globe plots every aircraft with a known position.
         
         Reception is line of sight. From a window you may hear aircraft 50 km away, and from a rooftop with a clear horizon, 200 km or more. Antenna placement matters more than any setting in this graph. If you use the small telescoping whip, collapse it to about 7 cm, a quarter wavelength at 1090 MHz.
         
@@ -38,7 +38,7 @@ graph:
         ## Reading the globe
         - Drag to spin the globe and scroll to zoom toward the pointer.
         - A couple of seconds after the first position arrives, the view fits itself around the aircraft it has found. Touching the globe before then cancels that, so it never moves under your hand.
-        - Each target shows the callsign or address, the altitude in hundreds of feet, and the speed in tens of knots. A label reading 350 and 45 means 35,000 feet at 450 knots. An arrow shows heading and a trail shows recent positions.
+        - Each target shows the callsign or address, the altitude in hundreds of feet, and the speed in tens of knots. A label reading 350 and 45 means 35,000 feet at 450 knots. Once speed is known, an arrow shows the direction of travel over the ground, and a trail shows recent positions.
         - A target turns orange and reads **STALE** after 15 seconds without a position, and disappears after two minutes.
         
         ## Reading the spectrum
@@ -51,8 +51,8 @@ graph:
         
         ## Common surprises
         - **Nothing after five minutes** usually means no aircraft in range right now, an antenna with no view of the sky, or a radio that is not selected. Check a flight tracking website for traffic near you at this hour.
-        - **Rows but no positions** means the aircraft are weak or far. Position needs two clean messages, so faint aircraft give you altitude long before they give you a location.
-        - **Altitude only, forever** means an older transponder. It answers radar with altitude but never broadcasts a position.
+        - **Rows but no positions** means the aircraft are weak, far, or on the ground. Position needs two clean airborne messages, so faint aircraft give you altitude long before they give you a location.
+        - **Altitude only, forever** means the aircraft's two kinds of position message never arrive as a matching pair, usually because it is faint. Altitude comes from a single message, so it shows up first.
         - **Bias-T** powers an amplifier through the antenna cable. Turn it on only if you have a powered amplifier, which is common for serious 1090 MHz setups.
         - **Buffer Loss** above 0.00% costs messages, because a dropped stretch of samples can split a burst in half.
         
