@@ -37,6 +37,7 @@ core_test_domains = {
         'render/transfers.cc',
         'render/geomap_labels.cc',
         'render/map_layers.cc',
+        'render/shapes.cc',
     ],
     'sakura': [
         'sakura/interface_controls.cc',
