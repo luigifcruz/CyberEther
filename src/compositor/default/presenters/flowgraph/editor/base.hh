@@ -38,7 +38,9 @@ struct FlowgraphEditorPresenter {
             .id = flowgraphId,
             .clipboardHasData = context.state.clipboard.hasData,
             .debugTimingEnabled = context.state.debug.timingEnabled,
-            .blockOptions = catalog.buildBlockCatalog(),
+            .onBuildBlockOptions = [catalog = catalog]() {
+                return catalog.buildBlockCatalog();
+            },
             .title = flowgraph->title(),
             .summary = flowgraph->summary(),
             .author = flowgraph->author(),
