@@ -213,6 +213,8 @@ Result Window::begin() {
 
     Result res;
     try {
+        frameBackground = {0.0f, 0.0f, 0.0f, 1.0f};
+        frameBackgroundDrawList = nullptr;
         res = underlyingBegin();
     } catch (...) {
         abortImguiFrame();
@@ -228,6 +230,28 @@ Result Window::begin() {
     }
 
     return res;
+}
+
+void Window::prepareImgui() {
+    ImGui::Render();
+    auto* background = frameBackgroundDrawList;
+    frameBackgroundDrawList = nullptr;
+    if (!background) return;
+
+    const auto* data = ImGui::GetDrawData();
+    const ImDrawIdx rectangle[] = {0, 1, 2, 0, 2, 3};
+    if (data && data->CmdListsCount > 0 && data->CmdLists[0] == background &&
+        !background->CmdBuffer.empty() && background->IdxBuffer.Size >= 6) {
+        auto& command = background->CmdBuffer[0];
+        if (!command.UserCallback && command.IdxOffset == 0 && command.VtxOffset == 0 &&
+            command.ElemCount >= 6 &&
+            std::equal(std::begin(rectangle), std::end(rectangle), background->IdxBuffer.begin())) {
+            command.IdxOffset += 6;
+            command.ElemCount -= 6;
+            return;
+        }
+    }
+    frameBackground = {0.0f, 0.0f, 0.0f, 1.0f};
 }
 
 Result Window::start() {

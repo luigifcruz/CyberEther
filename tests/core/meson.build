@@ -51,6 +51,7 @@ core_test_domains = {
         'sakura/text_grid.cc',
         'sakura/text_markdown.cc',
         'sakura/vstack.cc',
+        'sakura/workspace_background.cc',
     ],
     'runtime': [
         'runtime/scheduler.cc',

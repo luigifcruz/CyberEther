@@ -82,13 +82,16 @@ Result Implementation::encode(MTL::ComputeCommandEncoder* encoder) {
     const auto& [x, y, z] = config.gridSize;
 
     // TODO: Implement 2D and 3D grid sizes.
-    if (y != 1 || z != 1) {
-        JST_ERROR("[METAL] Only 1D grids are supported.");
+    if (y != 1 || z != 1 || config.workgroupSize == 0 ||
+        config.workgroupSize > pipelineState->maxTotalThreadsPerThreadgroup()) {
+        JST_ERROR("[METAL] Invalid render kernel grid or workgroup size.");
         return Result::ERROR;
     }
 
+    const U64 groupSize = config.workgroupSize > 1 ? config.workgroupSize :
+                         pipelineState->maxTotalThreadsPerThreadgroup();
     encoder->dispatchThreads(MTL::Size(x, y, z),
-                             MTL::Size(pipelineState->maxTotalThreadsPerThreadgroup(), 1, 1));
+                             MTL::Size(groupSize, 1, 1));
 
     markScheduled();
 

@@ -1097,6 +1097,46 @@ TEST_CASE("Render program state remains local and mutable", "[core][render][prog
     REQUIRE_FALSE(program.getConfig().scissorRect.has_value());
 }
 
+TEST_CASE("Window clear colors expire at the next frame", "[core][render][window]") {
+    TestWindow window;
+    bool cancelled = false;
+    bool failed = false;
+    SECTION("Completed frame") {}
+    SECTION("Cancelled frame") { cancelled = true; }
+    SECTION("Failed submission") { failed = true; }
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.start() == Result::SUCCESS);
+    REQUIRE(window.begin() == Result::SUCCESS);
+    window.frameClearColor({0.2f, 0.4f, 0.6f, 1.0f});
+    REQUIRE(window.frameClearColor().r == 0.2f);
+    if (failed) window.nextSubmissionResult(Result::ERROR);
+    if (cancelled) REQUIRE(window.cancel() == Result::SUCCESS);
+    else REQUIRE(window.end() == (failed ? Result::ERROR : Result::SUCCESS));
+    window.nextSubmissionResult(Result::SUCCESS);
+    REQUIRE(window.begin() == Result::SUCCESS);
+    REQUIRE(window.frameClearColor().r == 0.0f);
+    REQUIRE(window.frameClearColor().g == 0.0f);
+    REQUIRE(window.frameClearColor().b == 0.0f);
+    REQUIRE(window.frameClearColor().a == 1.0f);
+    REQUIRE(window.end() == Result::SUCCESS);
+    REQUIRE(window.stop() == Result::SUCCESS);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Surface visibility hints combine views and expire each frame", "[core][render][surface]") {
+    TestTexture texture(Render::Texture::Config{.size = {2, 2}});
+    REQUIRE(texture.visibleForPresentation(1));
+    texture.presentationHint(1, false);
+    REQUIRE_FALSE(texture.visibleForPresentation(1));
+    texture.presentationHint(1, true);
+    texture.presentationHint(1, false);
+    REQUIRE(texture.visibleForPresentation(1));
+    REQUIRE(texture.visibleForPresentation(2));
+    texture.presentationHint(2, false);
+    REQUIRE_FALSE(texture.visibleForPresentation(2));
+    REQUIRE(texture.visibleForPresentation(3));
+}
+
 TEST_CASE("Surfaces collect their complete transfer dependency graph",
           "[core][render][transfer][surface]") {
     TestWindow window;

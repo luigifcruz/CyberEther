@@ -26,6 +26,18 @@ Result Implementation::create() {
 
     auto device = Backend::State<DeviceType::WebGPU>()->getDevice();
 
+    WGPULimits limits = WGPU_LIMITS_INIT;
+    const U64 threads = std::get<0>(config.gridSize);
+    if (wgpuDeviceGetLimits(device, &limits) != WGPUStatus_Success ||
+        config.workgroupSize == 0 ||
+        config.workgroupSize > limits.maxComputeWorkgroupSizeX ||
+        config.workgroupSize > limits.maxComputeInvocationsPerWorkgroup ||
+        threads / config.workgroupSize + (threads % config.workgroupSize != 0) >
+            limits.maxComputeWorkgroupsPerDimension) {
+        JST_ERROR("[WebGPU] Invalid render kernel workgroup size, count, or device limits.");
+        return Result::ERROR;
+    }
+
     const auto& kernels = config.kernels[DeviceType::WebGPU];
     kernelModule = Backend::LoadShader(kernels[0], device);
 
@@ -127,7 +139,8 @@ Result Implementation::encode(WGPUComputePassEncoder& computePassEncoder) {
         return Result::ERROR;
     }
 
-    wgpuComputePassEncoderDispatchWorkgroups(computePassEncoder, x, y, z);
+    const U64 groups = x / config.workgroupSize + (x % config.workgroupSize != 0);
+    wgpuComputePassEncoderDispatchWorkgroups(computePassEncoder, groups, y, z);
 
     markScheduled();
 

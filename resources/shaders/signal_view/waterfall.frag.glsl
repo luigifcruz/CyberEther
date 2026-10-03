@@ -29,7 +29,7 @@ float sampleWaterfall(float x, float y) {
     if (row < 0) {
         row += uniforms.height;
     }
-    return data[row * uniforms.width + column];
+    return data[row * (uniforms.width + 16) + column];
 }
 
 void main() {

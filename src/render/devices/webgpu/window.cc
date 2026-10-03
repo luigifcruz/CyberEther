@@ -149,7 +149,9 @@ Result Implementation::beginImgui() {
 }
 
 Result Implementation::endImgui() {
-    ImGui::Render();
+    prepareImgui();
+    const auto& background = frameClearColor();
+    colorAttachments.clearValue = {background.r, background.g, background.b, background.a};
 
     // Begin the render pass using the C API.
     WGPURenderPassEncoder renderPassEncoder = wgpuCommandEncoderBeginRenderPass(encoder, &renderPassDesc);
