@@ -11,6 +11,7 @@
 
 #include "jetstream/constants.hh"
 #include "jetstream/memory/axis.hh"
+#include "jetstream/render/base.hh"
 #include "jetstream/tools/numeric.hh"
 #include "resources/shaders/global_shaders.hh"
 #include "resources/shaders/signal_view_shaders.hh"

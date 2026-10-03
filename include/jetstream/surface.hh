@@ -9,7 +9,8 @@
 #include <variant>
 
 #include "jetstream/types.hh"
-#include "jetstream/render/base/texture.hh"
+
+namespace Jetstream::Render { class Texture; }
 
 namespace Jetstream {
 

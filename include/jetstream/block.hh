@@ -12,7 +12,6 @@
 #include "jetstream/parser.hh"
 #include "jetstream/tensor_link.hh"
 #include "jetstream/module.hh"
-#include "jetstream/render/base.hh"
 
 namespace Jetstream {
 

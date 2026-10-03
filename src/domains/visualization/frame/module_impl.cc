@@ -6,6 +6,7 @@
 #include <span>
 
 #include "jetstream/constants.hh"
+#include "jetstream/render/base.hh"
 #include "resources/shaders/frame_shaders.hh"
 
 namespace Jetstream::Modules {

@@ -5,6 +5,7 @@
 #include <cmath>
 
 #include "jetstream/memory/axis.hh"
+#include "jetstream/render/base.hh"
 
 namespace Jetstream::Modules {
 

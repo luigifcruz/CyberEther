@@ -14,10 +14,10 @@
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/block.hh"
-#include "jetstream/compositor.hh"
-#include "jetstream/render/base/window.hh"
 
 namespace Jetstream {
+
+class Compositor;
 
 class JETSTREAM_API Flowgraph {
  public:
