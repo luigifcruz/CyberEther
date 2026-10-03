@@ -538,14 +538,11 @@ static constexpr bool BathymetryLayersAreOrdered() {
 static_assert(BathymetryLayersAreOrdered(),
               "Bathymetry layers must be ordered from shallow to deep.");
 
-// Static quad vertices: 6 vertices forming 2 triangles.
 // x = endpoint selector (0=start, 1=end), y = side offset (-1 or +1).
 static const F32 QuadVertices[] = {
     0.0f, -1.0f,
     1.0f, -1.0f,
     0.0f,  1.0f,
-    0.0f,  1.0f,
-    1.0f, -1.0f,
     1.0f,  1.0f,
 };
 
@@ -1050,7 +1047,7 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
         Render::Buffer::Config cfg;
         cfg.buffer = const_cast<F32*>(QuadVertices);
         cfg.elementByteSize = sizeof(F32);
-        cfg.size = 12;  // 6 vertices * 2 components
+        cfg.size = 8;
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(pimpl->quadBuffer, cfg));
     }
@@ -1151,7 +1148,7 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
         {
             Render::Draw::Config cfg;
             cfg.buffer = category.vertex;
-            cfg.mode = Render::Draw::Mode::TRIANGLES;
+            cfg.mode = Render::Draw::Mode::TRIANGLE_STRIP;
             cfg.numberOfInstances = initialCount.value_or(category.instanceCount);
             JST_CHECK(window->build(category.draw, cfg));
         }
