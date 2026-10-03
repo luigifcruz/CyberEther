@@ -5,6 +5,8 @@
 #include "jetstream/render/components/font.hh"
 #include "jetstream/render/base/window.hh"
 #include "jetstream/platform.hh"
+#include "jetstream/viewport/adapters/generic.hh"
+#include "jetstream/render/tools/imgui_internal.h"
 
 #include <algorithm>
 

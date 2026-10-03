@@ -1,6 +1,8 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <imgui_internal.h>
+
 #include "compositor/default/views/flowgraph/editor/metrics/label.hh"
 #include "render/sakura/components/node/base.hh"
 #include "harness.hh"

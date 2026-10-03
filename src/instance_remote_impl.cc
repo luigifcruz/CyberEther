@@ -1,6 +1,7 @@
 #include "instance_remote_impl.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/viewport/capture.hh"
+#include "jetstream/viewport/adapters/generic.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/types.hh"
 

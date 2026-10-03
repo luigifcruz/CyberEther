@@ -8,7 +8,7 @@
 #ifndef JST_FMT_INCLUDED
 #define JST_FMT_INCLUDED
 
-#ifndef JST_FMT_HEADER_ONLY
+#if !defined(JST_FMT_HEADER_ONLY) && !defined(JST_FMT_COMPILED)
 #define JST_FMT_HEADER_ONLY
 #endif
 #include <jetstream/fmt/format.h>

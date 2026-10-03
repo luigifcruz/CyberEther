@@ -2,8 +2,9 @@
 #define JETSTREAM_RENDER_BASE_WINDOW_ATTACHMENT_HH
 
 #include <atomic>
+#include <cstdint>
 
-#include "jetstream/backend/base.hh"
+#include "jetstream/types.hh"
 
 namespace Jetstream::Render {
 

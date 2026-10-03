@@ -4,11 +4,12 @@
 #include <memory>
 
 #include "jetstream/types.hh"
-#include "jetstream/block.hh"
-#include "jetstream/render/base/window.hh"
-#include "jetstream/viewport/base.hh"
 
 namespace Jetstream {
+
+class Instance;
+namespace Render { class Window; }
+namespace Viewport { class Generic; }
 
 enum class JETSTREAM_API CompositorType {
     NONE = 0,
