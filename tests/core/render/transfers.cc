@@ -120,11 +120,22 @@ class TestTransfer final : public Render::Transfer {
     }
 };
 
+class TestKernel final : public Render::Kernel {
+ public:
+    explicit TestKernel(const Config& config) : Kernel(config) {}
+
+    bool wantsDispatch() const { return shouldEncode(); }
+    void scheduled() { markScheduled(); }
+};
+
 class TestSurface final : public Render::Surface {
  public:
     explicit TestSurface(const Config& config) : Surface(config) {}
 
-    Result create() override { return Result::SUCCESS; }
+    Result create() override {
+        resetFramebuffer();
+        return Result::SUCCESS;
+    }
     Result destroy() override {
         destructionStarted.store(true, std::memory_order_release);
         while (destructionBlocked.load(std::memory_order_acquire)) {
@@ -137,6 +148,8 @@ class TestSurface final : public Render::Surface {
     bool wantsDraw(const bool framebufferChanged = false) {
         return shouldDraw(framebufferChanged);
     }
+    bool wantsGraphics(const bool visible) { return shouldDrawGraphics(visible); }
+    void recreateFramebuffer() { resetFramebuffer(); }
     void blockDestruction() { destructionBlocked.store(true, std::memory_order_release); }
     void resumeDestruction() { destructionBlocked.store(false, std::memory_order_release); }
     bool hasStartedDestruction() const {
@@ -974,6 +987,138 @@ TEST_CASE("Retained surfaces preserve explicit invalidation until a draw commits
     REQUIRE(immediate.wantsDraw());
     immediate.commitDraw();
     REQUIRE(immediate.wantsDraw());
+}
+
+TEST_CASE("Hidden surfaces initialize images and redraw after skipped graphics",
+          "[core][render][surface][visibility]") {
+    bool retained = true;
+    SECTION("Retained surface") {}
+    SECTION("Immediate surface") { retained = false; }
+    TestSurface surface(Render::Surface::Config{.retained = retained});
+
+    REQUIRE(surface.create() == Result::SUCCESS);
+    REQUIRE(surface.wantsDraw());
+    REQUIRE(surface.wantsGraphics(false));
+    // An aborted submission must not mark the new image initialized.
+    REQUIRE(surface.wantsDraw());
+    REQUIRE(surface.wantsGraphics(false));
+    surface.commitDraw();
+
+    surface.invalidate();
+    for (int frame = 0; frame < 2; ++frame) {
+        REQUIRE(surface.wantsDraw());
+        REQUIRE_FALSE(surface.wantsGraphics(false));
+        surface.commitDraw();
+    }
+
+    REQUIRE(surface.wantsDraw());
+    REQUIRE(surface.wantsGraphics(true));
+    surface.commitDraw();
+    REQUIRE(surface.wantsDraw() == !retained);
+}
+
+TEST_CASE("Hidden surfaces initialize resized and recreated framebuffers",
+          "[core][render][surface][visibility]") {
+    TestSurface surface(Render::Surface::Config{.retained = true});
+    REQUIRE(surface.create() == Result::SUCCESS);
+    REQUIRE(surface.wantsDraw());
+    REQUIRE(surface.wantsGraphics(true));
+    surface.commitDraw();
+
+    bool resized = false;
+    SECTION("Framebuffer resize") { resized = true; }
+    SECTION("Surface recreation") {
+        REQUIRE(surface.destroy() == Result::SUCCESS);
+        REQUIRE(surface.create() == Result::SUCCESS);
+    }
+    REQUIRE(surface.wantsDraw(resized));
+    REQUIRE(surface.wantsGraphics(false));
+    surface.commitDraw();
+
+    surface.invalidate();
+    REQUIRE(surface.wantsDraw());
+    REQUIRE_FALSE(surface.wantsGraphics(false));
+    surface.commitDraw();
+    REQUIRE(surface.wantsDraw());
+    REQUIRE(surface.wantsGraphics(true));
+    surface.commitDraw();
+    REQUIRE_FALSE(surface.wantsDraw());
+}
+
+TEST_CASE("Cancelled resize frames still initialize hidden framebuffers",
+          "[core][render][surface][visibility]") {
+    TestWindow window;
+    auto surface = std::make_shared<TestSurface>(Render::Surface::Config{.retained = true});
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(surface) == Result::SUCCESS);
+    REQUIRE(window.start() == Result::SUCCESS);
+    REQUIRE(window.begin() == Result::SUCCESS);
+    REQUIRE(surface->wantsDraw());
+    REQUIRE(surface->wantsGraphics(true));
+    REQUIRE(window.end() == Result::SUCCESS);
+    REQUIRE_FALSE(surface->wantsDraw());
+
+    REQUIRE(window.begin() == Result::SUCCESS);
+    // prepare() recreates the framebuffer, but cancellation prevents draw().
+    surface->recreateFramebuffer();
+    REQUIRE(window.cancel() == Result::SUCCESS);
+
+    REQUIRE(window.begin() == Result::SUCCESS);
+    // The following prepare() no longer reports framebufferChanged.
+    REQUIRE(surface->wantsDraw(false));
+    REQUIRE(surface->wantsGraphics(false));
+    REQUIRE(window.end() == Result::SUCCESS);
+    REQUIRE_FALSE(surface->wantsDraw());
+
+    surface->invalidate();
+    REQUIRE(surface->wantsDraw());
+    REQUIRE_FALSE(surface->wantsGraphics(false));
+    surface->commitDraw();
+    REQUIRE(window.stop() == Result::SUCCESS);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Skipped surface graphics still commit transfers and compute updates",
+          "[core][render][transfer][surface][visibility]") {
+    TestWindow window;
+    std::array<U32, 2> source = {10, 20};
+    auto buffer = MakeBuffer(source);
+    Render::Kernel::Config kernelConfig;
+    kernelConfig.buffers.push_back({buffer, Render::Kernel::AccessMode::READ});
+    auto kernel = std::make_shared<TestKernel>(kernelConfig);
+    Render::Surface::Config config;
+    config.kernels.push_back(kernel);
+    config.retained = true;
+    auto surface = std::make_shared<TestSurface>(config);
+
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(surface) == Result::SUCCESS);
+    REQUIRE(surface->wantsDraw());
+    REQUIRE(surface->wantsGraphics(false));
+    surface->commitDraw();
+
+    REQUIRE(buffer->update() == Result::SUCCESS);
+    kernel->update();
+    Render::Transfer::Batch batch;
+    REQUIRE(window.collectFrameTransfers(batch) == Result::SUCCESS);
+    REQUIRE(batch.buffers().size() == 1);
+    REQUIRE(surface->wantsDraw());
+    REQUIRE(kernel->wantsDispatch());
+    kernel->scheduled();
+    REQUIRE_FALSE(surface->wantsGraphics(false));
+    surface->commitDraw();
+    batch.commit();
+
+    Render::Transfer::Batch nextFrame;
+    REQUIRE(window.collectFrameTransfers(nextFrame) == Result::SUCCESS);
+    REQUIRE(nextFrame.empty());
+    REQUIRE_FALSE(kernel->wantsDispatch());
+    REQUIRE(surface->wantsDraw());
+    REQUIRE(surface->wantsGraphics(true));
+    surface->commitDraw();
+    REQUIRE_FALSE(surface->wantsDraw());
+    nextFrame.commit();
+    REQUIRE(window.destroy() == Result::SUCCESS);
 }
 
 TEST_CASE("Shared transfers invalidate every retained consumer",

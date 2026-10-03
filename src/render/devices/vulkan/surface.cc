@@ -143,7 +143,7 @@ Result Implementation::create() {
     });
 
     requestedSize = framebufferResolve->size();
-    imageInitialized = false;
+    resetFramebuffer();
 
     return Result::SUCCESS;
 }
@@ -193,7 +193,6 @@ Result Implementation::prepare() {
 }
 
 Result Implementation::encode(VkCommandBuffer& commandBuffer, bool visible) {
-    graphicsSkipped = false;
     if (!shouldDraw(framebufferChanged)) {
         return Result::SUCCESS;
     }
@@ -229,8 +228,7 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer, bool visible) {
 
     // Begin render pass.
 
-    if (!visible && imageInitialized) {
-        graphicsSkipped = true;
+    if (!shouldDrawGraphics(visible)) {
         return Result::SUCCESS;
     }
 
@@ -280,11 +278,6 @@ void Implementation::commit() {
         framebuffer->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     }
     commitDraw();
-    if (graphicsSkipped) {
-        invalidate();
-    } else {
-        imageInitialized = true;
-    }
 }
 
 const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) {

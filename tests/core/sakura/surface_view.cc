@@ -65,6 +65,75 @@ TEST_CASE("SurfaceView visibility follows the displayed texture and draw clip",
     });
 }
 
+TEST_CASE("Surface visibility accounts for finalized texture consumers",
+          "[core][sakura][surface_view][visibility]") {
+    class Window final : public SakuraTest::FakeWindow {
+     public:
+        using Render::Window::prepareImgui;
+        using Render::Window::textureVisibleForPresentation;
+    };
+    class Texture final : public Render::Texture {
+     public:
+        Texture() : Render::Texture(Config{.size = {200, 100}}) {}
+        Result create() override { return Result::SUCCESS; }
+        Result destroy() override { return Result::SUCCESS; }
+        uint64_t raw() const override { return 123; }
+    };
+    SakuraTest::HeadlessUi ui;
+    Window window;
+    Texture texture;
+    bool hinted = true;
+    bool sampled = false;
+    bool unrelated = false;
+    bool empty = false;
+    bool callback = false;
+    bool visible = false;
+    SECTION("A hidden texture with no consumers skips graphics") {}
+    SECTION("Textures without visibility hints remain visible") {
+        hinted = false;
+        visible = true;
+    }
+    SECTION("Another draw list sampling the texture keeps it visible") {
+        sampled = visible = true;
+    }
+    SECTION("An unrelated texture does not keep a hidden surface visible") {
+        unrelated = true;
+    }
+    SECTION("An empty texture command is not a sampling consumer") { empty = true; }
+    SECTION("Custom draw callbacks conservatively keep surfaces visible") {
+        callback = visible = true;
+    }
+    SECTION("A second visible view overrides a hidden view") { visible = true; }
+
+    ui.frame([&] {
+        if (hinted) texture.presentationHint(ImGui::GetFrameCount(), false);
+        if (hinted && visible && !sampled && !callback) {
+            texture.presentationHint(ImGui::GetFrameCount(), true);
+            texture.presentationHint(ImGui::GetFrameCount(), false);
+        }
+        auto* list = ImGui::GetForegroundDrawList();
+        if (sampled || unrelated) {
+            list->AddImage(ImTextureRef(static_cast<ImTextureID>(sampled ? 123 : 456)),
+                           {0, 0}, {100, 100});
+        }
+        if (empty) {
+            list->PushTexture(ImTextureRef(static_cast<ImTextureID>(123)));
+            list->AddDrawCmd();
+            list->PopTexture();
+        }
+        if (callback) {
+            list->AddCallback([](const ImDrawList*, const ImDrawCmd*) {}, nullptr);
+        }
+    });
+    window.prepareImgui();
+    REQUIRE(window.textureVisibleForPresentation(texture) == visible);
+
+    // Neither sampled textures nor custom callbacks carry into the next frame.
+    ui.frame([&] { texture.presentationHint(ImGui::GetFrameCount(), false); });
+    window.prepareImgui();
+    REQUIRE_FALSE(window.textureVisibleForPresentation(texture));
+}
+
 TEST_CASE("SurfaceView falls back to the available region when size is zero",
           "[core][sakura][surface_view]") {
     SakuraTest::HeadlessUi ui;

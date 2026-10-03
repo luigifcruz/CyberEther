@@ -412,22 +412,11 @@ Result Implementation::underlyingEnd() {
     }
 
     prepareImgui();
-    std::unordered_set<ImTextureID> sampledTextures;
-    bool customDraws = false;
-    for (const auto* list : ImGui::GetDrawData()->CmdLists) {
-        for (const auto& command : list->CmdBuffer) {
-            customDraws |= command.UserCallback != nullptr;
-            if (command.ElemCount > 0) {
-                sampledTextures.insert(command.TexRef.GetTexID());
-            }
-        }
-    }
 
     for (auto& surface : surfaces) {
-        const auto& framebuffer = surface->getConfig().framebuffer;
-        result = surface->encode(commandBuffers[currentFrame], customDraws ||
-            framebuffer->visibleForPresentation(ImGui::GetFrameCount()) ||
-            sampledTextures.contains(static_cast<ImTextureID>(framebuffer->raw())));
+        const auto& framebuffer = *surface->getConfig().framebuffer;
+        result = surface->encode(commandBuffers[currentFrame],
+                                 textureVisibleForPresentation(framebuffer));
         if (result != Result::SUCCESS && result != Result::RELOAD) {
             return abortFrame(result);
         }

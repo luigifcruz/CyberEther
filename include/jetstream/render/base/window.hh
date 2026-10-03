@@ -147,6 +147,7 @@ class JETSTREAM_API Window {
     Result collectTransfers(Transfer::Batch& batch) const;
     void abortImguiFrame();
     void prepareImgui();
+    bool textureVisibleForPresentation(const Texture& texture) const;
 
     // Font.
 
@@ -162,6 +163,8 @@ class JETSTREAM_API Window {
  private:
     ColorRGBA<F32> frameBackground = {0.0f, 0.0f, 0.0f, 1.0f};
     ImDrawList* frameBackgroundDrawList = nullptr;
+    std::unordered_set<ImTextureID> frameSampledTextures;
+    bool frameCustomDraws = true;
     bool shouldDeferAttachmentQueueProcessing();
     bool attachmentQueueEmpty() const;
     Result destroyInternal();
