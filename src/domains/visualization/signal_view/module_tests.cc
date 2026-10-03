@@ -239,7 +239,13 @@ void SignalViewImplAccess::wirePresentResources(
         impl.*maxHoldPointsBufferMember() = tensorBuffer(impl.*maxHoldPointsMember());
     }
     if (impl.*&SignalViewImplAccess::waterfallEnabled) {
-        impl.*waterfallBufferMember() = tensorBuffer(impl.*waterfallBinsMember());
+        auto& upload = impl.*&SignalViewImplAccess::waterfallUpload;
+        upload.resize((impl.*&SignalViewImplAccess::numberOfElements + 16) *
+                      (impl.*&SignalViewImplAccess::waterfallHeight));
+        impl.*waterfallBufferMember() = std::make_shared<LabelTestBuffer>(Render::Buffer::Config{
+            .size = upload.size(), .target = Render::Buffer::Target::STORAGE,
+            .elementByteSize = sizeof(F32), .buffer = upload.data(),
+        });
     }
     impl.*&SignalViewImplAccess::signalUniformBuffer = std::make_shared<LabelTestBuffer>();
     impl.*&SignalViewImplAccess::holdUniformBuffer = std::make_shared<LabelTestBuffer>();
@@ -1356,6 +1362,7 @@ TEST_CASE("Space holds displayed plots while processing continues and resumes at
     std::vector<F32> displayedSignal(lineplot ? 16 : 0);
     std::vector<F32> displayedMaxHold(lineplot ? 16 : 0);
     std::vector<F32> displayedWaterfall(waterfall ? 32 : 0);
+    std::vector<F32> uploadedWaterfall(waterfall ? (8 + 16) * 4 : 0);
     auto displayedUniforms = impl->*SignalViewImplAccess::waterfallUniformsMember();
     const auto present = [&] {
         REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
@@ -1364,7 +1371,12 @@ TEST_CASE("Space holds displayed plots while processing continues and resumes at
         bytes += ApplyBufferUploads(impl->*SignalViewImplAccess::maxHoldPointsBufferMember(),
                                     displayedMaxHold.data());
         bytes += ApplyBufferUploads(impl->*SignalViewImplAccess::waterfallBufferMember(),
-                                    displayedWaterfall.data());
+                                    uploadedWaterfall.data());
+        if (waterfall) {
+            for (U64 row = 0; row < 4; ++row)
+                std::copy_n(uploadedWaterfall.data() + row * (8 + 16), 8,
+                            displayedWaterfall.data() + row * 8);
+        }
         ApplyBufferUploads(impl->*SignalViewImplAccess::waterfallUniformBufferMember(),
                             &displayedUniforms);
         return bytes;

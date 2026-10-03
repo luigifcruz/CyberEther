@@ -721,9 +721,15 @@ Result SignalViewImpl::createPresent() {
 
         {
             Render::Buffer::Config cfg;
-            cfg.buffer = waterfallBins.data();
+            const U64 stride = numberOfElements + 16;
+            waterfallUpload.assign(waterfallHeight * stride, 0.0f);
+            for (U64 row = 0; row < waterfallHeight; ++row) {
+                std::copy_n(waterfallBins.data<F32>() + row * numberOfElements,
+                            numberOfElements, waterfallUpload.data() + row * stride);
+            }
+            cfg.buffer = waterfallUpload.data();
             cfg.elementByteSize = sizeof(F32);
-            cfg.size = waterfallBins.size();
+            cfg.size = waterfallUpload.size();
             cfg.target = Render::Buffer::Target::STORAGE;
             cfg.enableZeroCopy = false;
             JST_CHECK(window->build(waterfallBuffer, cfg));
@@ -1162,16 +1168,22 @@ Result SignalViewImpl::present() {
     if (waterfallEnabled) {
         if (!displayHeld) {
             const auto dirtyPlan = waterfallHistory.dirtyPlan(waterfallHeight);
+            const U64 stride = numberOfElements + 16;
+            for (U64 i = 0; i < dirtyPlan.firstRowCount + dirtyPlan.secondRowCount; ++i) {
+                const U64 row = (dirtyPlan.startRow + i) % waterfallHeight;
+                std::copy_n(waterfallBins.data<F32>() + row * numberOfElements,
+                            numberOfElements, waterfallUpload.data() + row * stride);
+            }
             if (dirtyPlan.firstRowCount > 0) {
                 JST_CHECK(waterfallBuffer->update(dirtyPlan.startRow *
-                                                      numberOfElements,
+                                                      stride,
                                                   dirtyPlan.firstRowCount *
-                                                      numberOfElements));
+                                                      stride));
             }
             if (dirtyPlan.secondRowCount > 0) {
                 JST_CHECK(waterfallBuffer->update(0,
                                                   dirtyPlan.secondRowCount *
-                                                      numberOfElements));
+                                                      stride));
             }
             waterfallHistory.clearDirty();
             waterfallUniforms.index = waterfallHistory.writeIndex /
