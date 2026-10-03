@@ -155,6 +155,7 @@ Result AdsbImpl::createPresent() {
         Render::Surface::Config cfg;
         cfg.framebuffer = framebufferTexture;
         cfg.multisampled = false;
+        cfg.retained = true;
         JST_CHECK(geoMapComponent->surface(cfg));
         JST_CHECK(window->build(renderSurface, cfg));
         JST_CHECK(window->bind(renderSurface));

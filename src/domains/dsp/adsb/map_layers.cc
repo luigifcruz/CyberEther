@@ -49,7 +49,9 @@ std::string LeftAlignedBlock(const std::string& fill) {
 // projected through the shared map context on the CPU, including horizon culling.
 struct Batch {
     U64 count = 0;
+    U64 uploadedCount = 0;
     std::vector<F32> data;
+    std::vector<F32> uploadedData;
     std::shared_ptr<Render::Buffer> instances;
     std::shared_ptr<Render::Vertex> vertex;
     std::shared_ptr<Render::Draw> draw;
@@ -99,8 +101,12 @@ struct Batch {
     }
 
     Result present() {
+        if (count == uploadedCount && data == uploadedData) return Result::SUCCESS;
         JST_CHECK(instances->update());
-        return draw->updateInstanceCount(count);
+        JST_CHECK(draw->updateInstanceCount(count));
+        uploadedData = data;
+        uploadedCount = count;
+        return Result::SUCCESS;
     }
 };
 
@@ -256,7 +262,10 @@ class RadarLayer final : public MapLayer {
             JST_CHECK(text->present());
         }
         uniforms = {pixel.x, pixel.y, 2.0f * AdsbTrackingScale, 0};
-        JST_CHECK(uniformBuffer->update());
+        if (uniforms != uploadedUniforms) {
+            JST_CHECK(uniformBuffer->update());
+            uploadedUniforms = uniforms;
+        }
         JST_CHECK(targets.present());
         return leaders.present();
     }
@@ -267,6 +276,7 @@ class RadarLayer final : public MapLayer {
     std::vector<std::string> ids;
     U64 previousSlots = 0;
     std::array<F32, 4> uniforms{};
+    std::array<F32, 4> uploadedUniforms{};
     std::shared_ptr<Render::Buffer> quadBuffer, uniformBuffer;
     Batch targets, leaders;
     std::shared_ptr<Text> text, shadow;
