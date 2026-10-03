@@ -23,6 +23,7 @@
 
 #include "jetstream/render/base.hh"
 #include "jetstream/render/components/font.hh"
+#include "jetstream/render/tools/imgui_internal.h"
 
 namespace Jetstream::Render::Components {
 

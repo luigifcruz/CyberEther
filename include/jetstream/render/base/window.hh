@@ -16,8 +16,6 @@
 #include "jetstream/render/base/transfer.hh"
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
-#include "jetstream/parser.hh"
-#include "jetstream/viewport/base.hh"
 #include "jetstream/render/base/surface.hh"
 #include "jetstream/render/components/generic.hh"
 #include "jetstream/render/types.hh"
@@ -25,9 +23,9 @@
 #include "jetstream/render/tools/imgui.h"
 #include "jetstream/render/tools/imgui_stdlib.h"
 #include "jetstream/render/tools/imgui_fmtlib.h"
-#include "jetstream/render/tools/imgui_internal.h"
 
 namespace Jetstream::Render::Components { class Font; }
+namespace Jetstream::Viewport { class Generic; }
 
 namespace Jetstream::Render {
 
