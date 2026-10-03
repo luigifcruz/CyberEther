@@ -20,6 +20,7 @@
 #include "jetstream/domains/dsp/decimator/block.hh"
 #include "jetstream/memory/axis.hh"
 #include "jetstream/registry.hh"
+#include "jetstream/render/base/window.hh"
 #include "jetstream/runtime.hh"
 #include "jetstream/scheduler_context.hh"
 #include "jetstream/testing.hh"

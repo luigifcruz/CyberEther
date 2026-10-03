@@ -1,4 +1,5 @@
 #include "jetstream/instance_remote.hh"
+#include "jetstream/viewport/adapters/generic.hh"
 #include "jetstream/logger.hh"
 
 #include <memory>

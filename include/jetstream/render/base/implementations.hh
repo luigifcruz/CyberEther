@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_RENDER_BASE_IMPLEMENTATIONS_HH
 #define JETSTREAM_RENDER_BASE_IMPLEMENTATIONS_HH
 
-#include "jetstream/backend/base.hh"
+#include "jetstream/memory/types.hh"
 
 namespace Jetstream::Render {
 

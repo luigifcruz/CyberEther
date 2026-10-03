@@ -17,6 +17,12 @@
 #include <emscripten/websocket.h>
 #else
 #include <httplib.h>
+#ifdef ERROR
+#undef ERROR
+#endif
+#ifdef interface
+#undef interface
+#endif
 #endif
 
 namespace Jetstream::Modules {

@@ -19,6 +19,7 @@
 #include "jetstream/module_context.hh"
 #include "jetstream/module_interface.hh"
 #include "jetstream/registry.hh"
+#include "jetstream/render/base/window.hh"
 #include "jetstream/runtime_context_native_cpu.hh"
 #include "jetstream/scheduler_context.hh"
 

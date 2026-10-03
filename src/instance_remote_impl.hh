@@ -2,6 +2,7 @@
 
 #include "jetstream/instance_remote.hh"
 #include "jetstream/viewport/capture.hh"
+#include "jetstream/render/tools/imgui.h"
 
 #include <atomic>
 #include <chrono>
@@ -22,6 +23,9 @@
 #endif
 
 #include <httplib.h>
+#ifdef ERROR
+#undef ERROR
+#endif
 #include <nlohmann/json.hpp>
 
 namespace Jetstream {

@@ -9,7 +9,8 @@
 #include "jetstream/tensor_link.hh"
 #include "jetstream/runtime.hh"
 #include "jetstream/provider.hh"
-#include "jetstream/render/base/window.hh"
+
+namespace Jetstream::Render { class Window; }
 
 namespace Jetstream {
 
