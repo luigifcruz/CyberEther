@@ -20,7 +20,7 @@ graph:
         
         1. Open the **Device** dropdown on the **Soapy SDR** block and choose your radio.
         2. Leave **Frequency** at 96.900 MHz for now. The two stations this graph expects sit at 96.5 and 97.3 MHz. Retune to a center that has stations 400 kHz either side of it in your city.
-        3. Drag **Volume** up on the **Audio** block. It starts at 0.
+        3. Adjust **Volume** on the **Audio** block to a comfortable level.
 
         **Radio not listed?** Check the cable and plug the dongle directly into the computer rather than a hub. Close any other program that is using it, only one program can open a radio at a time. Then reopen this example from the **Flowgraph** menu under **Open Examples** so the list is rebuilt. On Linux, the kernel's DVB-T driver can claim an RTL-SDR before SoapySDR sees it. On Windows, the dongle needs the WinUSB driver installed with Zadig.
         
@@ -82,7 +82,7 @@ graph:
         
         Filtering comes first on purpose. Anything outside the 200 kHz passband would otherwise fold on top of the station.
         
-        The centers at plus and minus 400 kHz are whole multiples of the new 200 kHz sample rate, so both stations land at zero frequency after folding with **Offset** at 0. Other centers would need a frequency shift or a folding offset.
+        The centers at plus and minus 400 kHz are whole multiples of the new 200 kHz sample rate, so both stations land at zero frequency after folding with **Offset** at 0. Other centers would need a frequency shift, or a folding offset when both stations leave the same remainder after dividing by 200 kHz, since **Offset** is a single value shared by every channel.
         
         **Further reading:** the [broadcasting guide from NumPy](https://numpy.org/doc/stable/user/basics.broadcasting.html) covers singleton dimensions, and the [downsampling and aliasing theorem](https://www.dsprelated.com/freebooks/sasp/Downsampling_Aliasing.html) covers folding.
     meta:
@@ -104,7 +104,7 @@ graph:
         
         That tail is not padding to throw away. It holds real filtered signal that belongs at the start of the next batch. **Overlap Add** adds the previous batch's tail to the start of the current one and saves the new tail for the next compute cycle, keeping separate state for each channel.
         
-        The output shape is **[8, 2, 800]**. This stitches the filtered stream back together across batch boundaries. Without it you would hear a click at every batch edge and see a seam in the waterfall.
+        The output shape is **[8, 2, 800]**. This stitches the filtered stream back together across batch boundaries. Without it the first 10 samples of every batch would miss the previous batch's filter tail, which adds a faint artifact repeating every 4 ms, 250 times a second.
         
         **Further reading:** the [overlap-add explanation on Wikipedia](https://en.wikipedia.org/wiki/Overlap%E2%80%93add_method) shows how the tails combine.
     meta:
@@ -126,7 +126,7 @@ graph:
         
         The display branch uses **Spectrum Engine** to window the signal, compute a centered spectrum, apply automatic gain, convert to decibels, and scale for the **Waterfall**. What you see is the reconstructed channel after overlap-add.
         
-        The sound branch demodulates the same channel with the **FM Demodulator** at 200 kHz. The **Audio** block resamples that to 48 kHz for your speakers. **Volume** starts at 0, so drag it up.
+        The sound branch demodulates the same channel with the **FM Demodulator** at 200 kHz. The **Audio** block resamples that to 48 kHz for your speakers. Adjust **Volume** to a comfortable level.
         
         **Try it:** change **Slice** to **[:, 0, :]** to pick the +400 kHz channel. The audio and the waterfall switch together because they share the slice. Restore **[:, 1, :]** to return.
     meta:
@@ -369,8 +369,8 @@ graph:
     config:
       enableAgc: true
       enableScale: true
-      rangeMin: -123.3189
-      rangeMax: -0.0002682209
+      rangeMin: -120
+      rangeMax: 0
     input:
       buffer: '${graph.sli51.output.buffer}'
     meta:

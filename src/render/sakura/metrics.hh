@@ -17,6 +17,8 @@ Extent2D<F32> FramebufferScale(const Context& ctx);
 Extent2D<U64> FramebufferSize(const Context& ctx, const Extent2D<F32>& displaySize);
 Extent2D<U64> LogicalFramebufferSize(const Context& ctx, const Extent2D<F32>& logicalSize);
 F32 SurfaceScale(const Context& ctx);
+Extent2D<F32> SnapToFramebuffer(const Context& ctx, const Extent2D<F32>& displayPosition);
+Extent2D<F32> FramebufferToDisplay(const Context& ctx, const Extent2D<U64>& framebufferSize);
 std::optional<SurfaceResize> ResolveSurfaceResize(const Context& ctx, const Extent2D<F32>& logicalSize);
 
 }  // namespace Jetstream::Sakura

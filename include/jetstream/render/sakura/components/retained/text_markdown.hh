@@ -2,6 +2,8 @@
 #define JETSTREAM_RENDER_SAKURA_RETAINED_TEXT_MARKDOWN_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/components/retained/text_grid.hh>
+#include <jetstream/render/sakura/typography.hh>
 #include <jetstream/types.hh>
 
 #include <memory>
@@ -12,10 +14,38 @@
 namespace Jetstream::Sakura::Retained {
 
 struct TextMarkdown : public Component {
+    static constexpr const char* BodyFont = Typography::BodyFont;
+
+    using StyleId = U8;
+
+    struct Style {
+        static constexpr StyleId Plain = 0;
+        static constexpr StyleId Bold = 1;
+        static constexpr StyleId Italic = 2;
+        static constexpr StyleId BoldItalic = 3;
+        static constexpr StyleId Code = 4;
+        static constexpr StyleId Link = 5;
+        static constexpr StyleId CodeBlock = 6;
+        static constexpr StyleId Count = 6;
+        static constexpr StyleId CalloutBase = 7;
+        static constexpr StyleId CalloutVariants = 4;
+        static constexpr StyleId CalloutTones = 6;
+        static constexpr StyleId SyntaxBase = CalloutBase + CalloutTones * CalloutVariants;
+        static constexpr StyleId SyntaxStyles = 9;
+
+        static constexpr StyleId Callout(StyleId tone, StyleId emphasis) {
+            return static_cast<StyleId>(CalloutBase + tone * CalloutVariants + emphasis);
+        }
+
+        static constexpr StyleId Syntax(StyleId style) {
+            return static_cast<StyleId>(SyntaxBase + style - 1);
+        }
+    };
+
     struct Config {
         std::string id;
         std::string value;
-        F32 fontSize = 15.0f;
+        F32 fontSize = Typography::FontSize;
         bool scrollbar = false;
         std::optional<Padding> padding;
         std::string backgroundColorKey = "transparent";
@@ -28,16 +58,24 @@ struct TextMarkdown : public Component {
         std::string cursorColorKey = "editor_cursor";
         std::string scrollbarTrackColorKey = "editor_scrollbar_track";
         std::string scrollbarThumbColorKey = "editor_scrollbar_thumb";
-        std::vector<std::string> styleColorKeys = {"", "", "", "", "cyber_blue"};
+        std::string codeBlockColorKey = "markdown_code_block";
+        std::string codeBlockBorderColorKey = "markdown_code_block_border";
+        std::vector<std::string> styleColorKeys = {"", "", "", "", "cyber_blue", ""};
         std::vector<std::string> styleFonts = {"default_body_bold", "default_body_italic",
-                                               "default_body_bold_italic", "default_mono", ""};
-        std::vector<std::string> styleBackgroundColorKeys;
+                                               "default_body_bold_italic", "default_mono", "", "default_mono"};
+        std::vector<std::string> styleBackgroundColorKeys = {"", "", "", "editor_scrollbar_track", "", ""};
+        std::vector<F32> styleScales = {1.0f, 1.0f, 1.0f, 0.9f, 1.0f, 1.0f};
+        std::vector<std::string> syntaxColorKeys = {"editor_comment", "editor_keyword", "editor_string",
+                                                    "editor_constant", "editor_function", "editor_type",
+                                                    "editor_constant", "editor_keyword", "editor_type"};
     };
 
     TextMarkdown();
     ~TextMarkdown();
 
     bool update(Config config);
+    F32 naturalWidth() const;
+    const TextGrid::Metrics& metrics() const;
 
  protected:
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;

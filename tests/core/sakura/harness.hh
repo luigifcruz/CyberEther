@@ -5,6 +5,7 @@
 #include <imnodes.h>
 
 #include "jetstream/render/base/window.hh"
+#include "jetstream/render/components/font.hh"
 #include "jetstream/render/sakura/surface.hh"
 #include "jetstream/types.hh"
 
@@ -65,6 +66,21 @@ class FakeWindow : public Jetstream::Render::Window {
 
     Jetstream::Result underlyingSynchronize() override {
         return Jetstream::Result::SUCCESS;
+    }
+};
+
+// Fake window whose fonts carry real glyph metrics for measurement tests.
+// Font::create sets glyph metrics before its atlas upload, which the fake
+// window cannot perform, so the upload failure is ignored.
+class FontWindow : public FakeWindow {
+ public:
+    void load(const std::string& name, const unsigned int* data) {
+        Jetstream::Render::Components::Font::Config config;
+        config.data = data;
+        config.size = 32.0f;
+        auto font = std::make_shared<Jetstream::Render::Components::Font>(config);
+        (void)font->create(this);
+        fonts[name] = font;
     }
 };
 

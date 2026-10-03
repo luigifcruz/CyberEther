@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_NODE_EDITOR_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/typography.hh>
 #include <jetstream/types.hh>
 
 #include <functional>
@@ -22,7 +23,7 @@ struct NodeEditor {
 
     struct Config {
         std::string id;
-        F32 fontScale = 0.90f;
+        F32 fontScale = Typography::ChromeScale;
         F32 childRounding = 12.0f;
         bool pasteEnabled = false;
         std::function<void(Extent2D<F32>, Extent2D<F32>)> onEditorContextMenu;

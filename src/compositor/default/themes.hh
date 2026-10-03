@@ -4,6 +4,7 @@
 #include "jetstream/render/sakura/base.hh"
 
 #include <algorithm>
+#include <cctype>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -112,6 +113,18 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"editor_gutter_separator", {0.18f, 0.19f, 0.22f, 0.35f}},
             {"editor_scrollbar_track", {0.12f, 0.12f, 0.13f, 1.00f}},
             {"editor_scrollbar_thumb", {0.42f, 0.42f, 0.42f, 0.80f}},
+
+            // Markdown Callout Colors
+            {"callout_note", {0.27f, 0.58f, 0.97f, 1.00f}},
+            {"callout_tip", {0.25f, 0.73f, 0.31f, 1.00f}},
+            {"callout_important", {0.67f, 0.49f, 0.97f, 1.00f}},
+            {"callout_warning", {0.82f, 0.60f, 0.13f, 1.00f}},
+            {"callout_caution", {0.97f, 0.32f, 0.29f, 1.00f}},
+            {"callout_error", {1.00f, 0.48f, 0.45f, 1.00f}},
+
+            // Markdown Code Block Colors
+            {"markdown_code_block", {0.085f, 0.09f, 0.10f, 1.00f}},
+            {"markdown_code_block_border", {0.20f, 0.21f, 0.24f, 1.00f}},
 
             // Border Colors
             {"border", {0.18f, 0.18f, 0.18f, 0.75f}},
@@ -310,6 +323,18 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"editor_scrollbar_track", {0.87f, 0.87f, 0.88f, 1.00f}},
             {"editor_scrollbar_thumb", {0.55f, 0.55f, 0.57f, 0.80f}},
 
+            // Markdown Callout Colors
+            {"callout_note", {0.04f, 0.41f, 0.85f, 1.00f}},
+            {"callout_tip", {0.10f, 0.50f, 0.22f, 1.00f}},
+            {"callout_important", {0.51f, 0.31f, 0.87f, 1.00f}},
+            {"callout_warning", {0.60f, 0.40f, 0.00f, 1.00f}},
+            {"callout_caution", {0.81f, 0.13f, 0.18f, 1.00f}},
+            {"callout_error", {0.64f, 0.05f, 0.15f, 1.00f}},
+
+            // Markdown Code Block Colors
+            {"markdown_code_block", {0.965f, 0.968f, 0.975f, 1.00f}},
+            {"markdown_code_block_border", {0.84f, 0.85f, 0.87f, 1.00f}},
+
             // Border Colors
             {"border", {0.78f, 0.78f, 0.80f, 0.75f}},
             {"border_shadow", {0.00f, 0.00f, 0.00f, 0.00f}},
@@ -407,6 +432,18 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
         }
     }
 };
+
+inline std::string ResolveThemeKey(const std::string& value) {
+    for (const auto& [key, _] : themes) {
+        if (std::equal(key.begin(), key.end(), value.begin(), value.end(),
+                       [](unsigned char lhs, unsigned char rhs) {
+                           return std::tolower(lhs) == std::tolower(rhs);
+                       })) {
+            return key;
+        }
+    }
+    return "Dark";
+}
 
 inline std::vector<std::string> BuildThemeKeys() {
     std::vector<std::string> themeKeys;

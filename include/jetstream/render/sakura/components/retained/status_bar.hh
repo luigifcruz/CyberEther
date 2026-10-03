@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_RETAINED_STATUS_BAR_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/typography.hh>
 #include <jetstream/types.hh>
 
 #include <functional>
@@ -26,7 +27,7 @@ struct StatusBar : public Component {
         StatusTone tone = StatusTone::Info;
         std::string toggleText;
         bool toggleExpanded = false;
-        F32 fontSize = 15.0f;
+        F32 fontSize = Typography::FontSize;
         F32 pixelRatio = 1.0f;
         std::function<void()> onToggle;
     };

@@ -85,9 +85,7 @@ Result DefaultCompositor::create() {
 
     // Restore Sakura theme state.
 
-    state.sakura.themeKey = themes.contains(settings.interface.themeKey)
-        ? settings.interface.themeKey
-        : "Dark";
+    state.sakura.themeKey = ResolveThemeKey(settings.interface.themeKey);
     state.sakura.colorMap = themes.at(state.sakura.themeKey);
 
     // Restore graphics preferences.

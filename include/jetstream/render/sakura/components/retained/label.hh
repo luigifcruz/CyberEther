@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_RETAINED_LABEL_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/typography.hh>
 #include <jetstream/types.hh>
 
 #include <memory>
@@ -17,7 +18,7 @@ struct Label : public Component {
         std::string str;
         bool visible = true;
         ColorRGBA<F32> color = {1.0f, 1.0f, 1.0f, 1.0f};
-        F32 fontSize = 15.0f;
+        F32 fontSize = Typography::FontSize;
         Extent2D<I32> alignment = {0, 0};
 
         bool operator==(const Instance&) const = default;

@@ -1886,12 +1886,11 @@ Result SignalViewImpl::updateCursorState() {
             }
 
             if (cursorText && !cursor.overMarker) {
-                const auto& font = cursorText->getConfig().font;
-                const F32 lineHeight = font ? font->lineHeight() * kLabelScale : 0.0f;
-                const F32 xWidth = cursorText->advance(xLabelText) * kLabelScale;
+                const F32 lineHeight = cursorText->lineHeight(kLabelScale);
+                const F32 xWidth = cursorText->advance(xLabelText, kLabelScale);
                 const F32 yWidth = yLabelText.empty()
                     ? 0.0f
-                    : cursorText->advance(yLabelText) * kLabelScale;
+                    : cursorText->advance(yLabelText, kLabelScale);
                 const F32 gap = yLabelText.empty() ? 0.0f : 10.0f;
                 const F32 padX = 9.0f;
                 const F32 padY = 4.0f;
@@ -1995,12 +1994,8 @@ Result SignalViewImpl::updateMarkerState() {
     const F32 scale = interaction.scale;
     const F32 toPixelsX = static_cast<F32>(interaction.viewSize.x) * 0.5f;
     const F32 toPixelsY = static_cast<F32>(interaction.viewSize.y) * 0.5f;
-    const std::shared_ptr<Render::Components::Font> font =
-        markerText ? markerText->getConfig().font : nullptr;
-    const F32 lineHeight = font ? font->lineHeight() * kLabelScale : 0.0f;
-    const std::shared_ptr<Render::Components::Font> tagFont =
-        tagText ? tagText->getConfig().font : nullptr;
-    const F32 tagLineHeight = tagFont ? tagFont->lineHeight() * kLabelScale : 0.0f;
+    const F32 lineHeight = markerText ? markerText->lineHeight(kLabelScale) : 0.0f;
+    const F32 tagLineHeight = tagText ? tagText->lineHeight(kLabelScale) : 0.0f;
     const F32 headerOffset = axis->getConfig().majorTickLengthPx + 4.0f;
     const F32 headerHeight = table ? tagLineHeight + 8.0f : 0.0f;
     const F32 tagPadX = 6.0f;
@@ -2015,7 +2010,7 @@ Result SignalViewImpl::updateMarkerState() {
         if (!row.inView || !markerText) {
             continue;
         }
-        row.tagWidth = (tagPadX * 2.0f + tagText->advance(row.tag) * kLabelScale) * pixelSize.x;
+        row.tagWidth = (tagPadX * 2.0f + tagText->advance(row.tag, kLabelScale)) * pixelSize.x;
         // Center oversized tags instead of clamping with inverted bounds.
         const F32 tagLimit = std::max(0.0f, padding.x - row.tagWidth * 0.5f);
         row.tagPosition = {
@@ -2077,7 +2072,7 @@ Result SignalViewImpl::updateMarkerState() {
             span.left = leftRow.tagPosition.x + leftRow.tagWidth * 0.5f + tagGap;
             span.right = rightRow.tagPosition.x - rightRow.tagWidth * 0.5f - tagGap;
             span.label = formatSpanX(markerPositions[rightIndex] - markerPositions[leftIndex]);
-            const F32 labelWidth = markerText->advance(span.label) * kLabelScale * pixelSize.x;
+            const F32 labelWidth = markerText->advance(span.label, kLabelScale) * pixelSize.x;
             span.active = span.right - span.left >= (arrowLength + labelGap) * 2.0f + labelWidth;
             span.labelPosition = {(span.left + span.right) * 0.5f, cursorRowCenter};
         };
@@ -2141,10 +2136,10 @@ Result SignalViewImpl::updateMarkerState() {
             }
 
             if (markerText && table) {
-                const F32 idWidth = badgeText->advance(row.id) * kLabelScale;
+                const F32 idWidth = badgeText->advance(row.id, kLabelScale);
                 const F32 idGap = 8.0f;
-                const F32 xWidth = markerText->advance(row.x) * kLabelScale;
-                const F32 yWidth = row.y.empty() ? 0.0f : markerText->advance(row.y) * kLabelScale;
+                const F32 xWidth = markerText->advance(row.x, kLabelScale);
+                const F32 yWidth = row.y.empty() ? 0.0f : markerText->advance(row.y, kLabelScale);
                 const F32 gap = row.y.empty() ? 0.0f : 10.0f;
                 const F32 pillWidth =
                     (padX * 2.0f + idWidth + idGap + xWidth + gap + yWidth) * pixelSize.x;
@@ -2248,7 +2243,7 @@ Result SignalViewImpl::updateMarkerState() {
             const F32 armDx = armReach * std::cos(arrowAngle) * pixelSize.x;
             const F32 armDy = armReach * std::sin(arrowAngle) * pixelSize.y;
             const F32 labelGap = kMarkerSpanLabelGapPx * pixelSize.x;
-            const F32 labelHalf = markerText->advance(span.label) * kLabelScale * pixelSize.x * 0.5f;
+            const F32 labelHalf = markerText->advance(span.label, kLabelScale) * pixelSize.x * 0.5f;
             const F32 leadStart = span.left;
             const F32 trailEnd = span.right;
             const F32 leadEnd = std::max(span.labelPosition.x - labelHalf - labelGap, leadStart);

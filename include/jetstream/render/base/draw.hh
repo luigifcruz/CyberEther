@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_RENDER_BASE_DRAW_HH
 #define JETSTREAM_RENDER_BASE_DRAW_HH
 
+#include <algorithm>
 #include <memory>
 #include <vector>
 
@@ -29,11 +30,15 @@ class JETSTREAM_API Draw {
         std::shared_ptr<Vertex> buffer;
     };
 
-    explicit Draw(const Config& config) : config(config) {}
+    explicit Draw(const Config& config) : config(config), drawCount(config.numberOfDraws) {}
     virtual ~Draw() = default;
 
     const Config& getConfig() const {
         return config;
+    }
+
+    void setDrawCount(U64 count) {
+        drawCount = std::min(count, config.numberOfDraws);
     }
 
     virtual Result updateVertexCount(U64 vertexCount) = 0;
@@ -46,6 +51,7 @@ class JETSTREAM_API Draw {
 
  protected:
     Config config;
+    U64 drawCount = 0;
     std::vector<std::shared_ptr<Buffer>> transferBuffers;
 
  private:

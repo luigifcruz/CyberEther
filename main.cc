@@ -24,9 +24,7 @@ int CyberEtherMain(int argc, char* argv[]) {
     try {
         Updater::Initialize(argc, argv);
 #if defined(JST_OS_BROWSER)
-        (void)argc;
-        (void)argv;
-        return Run();
+        return Run(argc, argv);
 #endif
 #if defined(JST_OS_LINUX) || defined(JST_OS_WINDOWS) || defined(JST_OS_MAC)
         return Run(argc, argv);
@@ -50,6 +48,14 @@ int CyberEtherMain(int argc, char* argv[]) {
 #if defined(JST_OS_WINDOWS)
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
     return CyberEtherMain(__argc, __argv);
+}
+#elif defined(JST_OS_BROWSER)
+int main(int argc, char* argv[]) {
+    const int status = CyberEtherMain(argc, argv);
+    if (status != 0) {
+        emscripten_force_exit(status);
+    }
+    return status;
 }
 #else
 int main(int argc, char* argv[]) {

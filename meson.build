@@ -1,7 +1,7 @@
 project(
     'CyberEther',
     ['cpp'],
-    version: '1.11.0',  # [VERSION HOOK]
+    version: '1.12.0',  # [VERSION HOOK]
     meson_version: '>=1.11.0',
     default_options: [
         'cpp_std=c++20',
@@ -49,9 +49,20 @@ if jst_is_browser
 endif
 
 browser_exe_link_args = []
+browser_exe_link_depends = []
 if jst_is_browser
+    browser_exe_link_depends = files(
+        'src/platform/emscripten_sync_library.js',
+        'src/platform/emscripten_lifecycle_library.js',
+        'src/platform/emscripten_lifecycle_pre.js',
+        'src/platform/emscripten_lifecycle_wrapper.js',
+    )
     browser_exe_link_args = meson.get_external_property('main_module_link_args') + [
         '--js-library', meson.current_source_dir() / 'src/platform/emscripten_sync_library.js',
+        '--js-library', meson.current_source_dir() / 'src/platform/emscripten_lifecycle_library.js',
+        '--pre-js', meson.current_source_dir() / 'src/platform/emscripten_lifecycle_pre.js',
+        '--extern-pre-js', meson.current_source_dir() / 'src/platform/emscripten_lifecycle_wrapper.js',
+        '-sEXPORT_NAME=CyberEtherRuntime',
         '-Wl,--whole-archive',
     ]
 endif
@@ -225,6 +236,7 @@ if not jst_is_wheel and \
         include_directories: inc_lst,
         dependencies: libjetstream_dep,
         link_args: browser_exe_link_args,
+        link_depends: browser_exe_link_depends,
         win_subsystem: 'windows',
         install: true,
     )

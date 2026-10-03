@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_RETAINED_MARKDOWN_EDITOR_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/typography.hh>
 #include <jetstream/types.hh>
 
 #include <functional>
@@ -16,7 +17,7 @@ struct MarkdownEditor {
         std::string id;
         std::string value;
         bool editing = false;
-        F32 fontSize = 15.0f;
+        F32 fontSize = Typography::FontSize;
         std::optional<F32> height;
         std::string backgroundColorKey = "editor_background";
         F32 maxAutoHeightWindowRatio = 0.5f;

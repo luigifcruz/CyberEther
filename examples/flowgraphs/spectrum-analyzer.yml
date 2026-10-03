@@ -34,9 +34,9 @@ graph:
         4. Turn on **Max Hold**. A second trace remembers the highest level seen in every bin, which is useful for catching signals that come and go. Turn it off to clear it.
         
         ## Reading the numbers
-        The vertical scale is **dBFS**, decibels relative to the receiver's full scale. Zero is the loudest level the analog to digital converter can represent. These are relative levels, not calibrated power. Comparing two peaks is meaningful, quoting a dBm value is not. If the noise floor hides below the pane, raise **Range Min**. If peaks flatten near the top, the receiver is overloading: turn off **Automatic Gain** or use a smaller antenna.
+        The vertical scale is **dBFS**, decibels relative to the receiver's full scale. Zero is the converter's full scale, and even a full-scale tone peaks several dB below it on this plot. These are relative levels, not calibrated power. Comparing two peaks is meaningful, quoting a dBm value is not. If the noise floor hides below the pane, lower **Range Min**. If the floor jumps and false peaks appear across the band when a strong signal arrives, the receiver is overloading: turn off **Automatic Gain** or use a smaller antenna.
         
-        **Sample Rate** sets the span you see. At 2.000 MHz the plot covers 2 MHz of spectrum. An RTL-SDR is comfortable up to about 2.4 MHz. Asking for more produces gaps, which show up as **Buffer Loss**.
+        **Sample Rate** sets the span you see. At 2.000 MHz the plot covers 2 MHz of spectrum. An RTL-SDR is comfortable up to about 2.56 MHz. Asking for more produces gaps, which show up as **Buffer Loss**.
         
         **Samples** is the FFT size. With 2048 samples over 2 MHz, each bin is about 1 kHz wide. Doubling it sharpens the frequency detail and halves how often new rows arrive. Leave **Batches** and **Buffer Multiplier** alone unless you are tuning performance.
         
