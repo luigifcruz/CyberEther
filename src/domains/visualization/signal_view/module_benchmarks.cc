@@ -29,6 +29,18 @@ JST_BENCHMARKS("signal_view") {
             }())),
         },
         {
+            .variant = "surface-F32-1024",
+            .inputs = {
+                JST_BENCHMARK_INPUT("signal", F32, 1024),
+            },
+            .config = JST_BENCHMARK_CONFIG(([]{
+                SignalView cfg;
+                cfg.mode = "waterfall_3d";
+                cfg.waterfallHeight = 256;
+                return cfg;
+            }())),
+        },
+        {
             .variant = "combined-F32-2048",
             .inputs = {
                 JST_BENCHMARK_INPUT("signal", F32, 2048),

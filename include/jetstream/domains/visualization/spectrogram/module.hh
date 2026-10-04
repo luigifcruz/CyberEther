@@ -10,11 +10,12 @@ namespace Jetstream::Modules {
 
 struct Spectrogram : public Module::Config {
     U64 height = 256;
+    std::string colormap = "turbo";
     std::string xLabel = "Frequency (MHz)";
     std::string yLabel = "Magnitude";
 
     JST_MODULE_TYPE(spectrogram);
-    JST_MODULE_PARAMS(height, xLabel, yLabel);
+    JST_MODULE_PARAMS(height, colormap, xLabel, yLabel);
 };
 
 }  // namespace Jetstream::Modules

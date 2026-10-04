@@ -1,120 +1,16 @@
 #ifndef JETSTREAM_DOMAINS_VISUALIZATION_SIGNAL_VIEW_MODULE_IMPL_HH
 #define JETSTREAM_DOMAINS_VISUALIZATION_SIGNAL_VIEW_MODULE_IMPL_HH
 
-#include <algorithm>
-#include <array>
-#include <cmath>
-#include <memory>
-#include <optional>
-#include <string>
-#include <vector>
-
-#include <glm/mat4x4.hpp>
-
 #include <jetstream/domains/visualization/signal_view/module.hh>
 #include <jetstream/detail/module_impl.hh>
 #include <jetstream/memory/tensor.hh>
-#include <jetstream/surface.hh>
-#include <jetstream/render/base/buffer.hh>
-#include <jetstream/render/base/texture.hh>
-#include <jetstream/render/base/surface.hh>
-#include <jetstream/render/base/program.hh>
-#include <jetstream/render/base/kernel.hh>
-#include <jetstream/render/base/vertex.hh>
-#include <jetstream/render/base/draw.hh>
-#include <jetstream/render/components/axis.hh>
-#include <jetstream/render/components/shapes.hh>
-#include <jetstream/render/components/text.hh>
 
-#include "waterfall_history.hh"
-#include "split_interaction.hh"
+#include "common.hh"
+#include "lineplot.hh"
+#include "waterfall.hh"
+#include "waterfall_3d.hh"
 
 namespace Jetstream::Modules {
-
-namespace detail {
-
-inline bool SignalViewHasLineplot(const std::string& mode) {
-    return mode == "lineplot" || mode == "lineplot_waterfall";
-}
-
-inline bool SignalViewHasWaterfall(const std::string& mode) {
-    return mode == "waterfall" || mode == "lineplot_waterfall";
-}
-
-constexpr bool LineplotMaxHoldReady(const U64 completedBlocks,
-                                    const U64 averaging) {
-    return completedBlocks + 1 >= averaging;
-}
-
-inline std::optional<F64> LineplotAmplitudeValue(const F32 position,
-                                                 const F32 min,
-                                                 const F32 max) {
-    if (!std::isfinite(position) || position <= -1.0f || position >= 1.0f) {
-        return std::nullopt;
-    }
-    const F64 lower = std::min(min, max);
-    const F64 upper = std::max(min, max);
-    const F64 normalized = 0.5 + 0.25 * std::atanh(static_cast<F64>(position));
-    return lower + normalized * (upper - lower);
-}
-
-inline std::string LineplotAmplitudeLabel(const F32 position,
-                                          const F32 min,
-                                          const F32 max) {
-    const auto value = LineplotAmplitudeValue(position, min, max);
-    if (!value) {
-        return {};
-    }
-    const F64 rounded = std::round(*value);
-    return jst::fmt::format("{:.0f}", rounded == 0.0 ? 0.0 : rounded);
-}
-
-constexpr U64 MaxMarkers = 16;
-constexpr U64 MarkerSpans = MaxMarkers - 1;
-
-inline std::string FormatFrequencySpan(const F64 hertz) {
-    const F64 magnitude = std::abs(hertz);
-    const char* unit = "Hz";
-    F64 value = magnitude;
-    int decimals = 1;
-    if (magnitude >= 1.0e6) {
-        unit = "MHz";
-        value = magnitude / 1.0e6;
-        decimals = 3;
-    } else if (magnitude >= 1.0e3) {
-        unit = "kHz";
-        value = magnitude / 1.0e3;
-        decimals = 3;
-    }
-    std::string text = jst::fmt::format("{:.{}f}", value, decimals);
-    while (text.size() > 2 && text.back() == '0' && text[text.size() - 2] != '.') {
-        text.pop_back();
-    }
-    return jst::fmt::format("{} {}", text, unit);
-}
-
-inline std::string LabelUnit(const std::string& label) {
-    const auto open = label.rfind('(');
-    const auto close = label.rfind(')');
-    if (open == std::string::npos || close == std::string::npos || close <= open + 1) {
-        return {};
-    }
-    return label.substr(open + 1, close - open - 1);
-}
-
-inline void InitializeLineplotPoints(F32* signalPoints,
-                                     F32* maxHoldPoints,
-                                     const U64 numberOfElements) noexcept {
-    for (U64 index = 0; index < numberOfElements; ++index) {
-        const F32 x = index * 2.0f / (numberOfElements - 1) - 1.0f;
-        signalPoints[(index * 2) + 0] = x;
-        signalPoints[(index * 2) + 1] = 0.0f;
-        maxHoldPoints[(index * 2) + 0] = x;
-        maxHoldPoints[(index * 2) + 1] = -1.0f;
-    }
-}
-
-}  // namespace detail
 
 struct SignalViewImpl : public Module::Impl,
                         public DynamicConfig<SignalView> {
@@ -137,6 +33,7 @@ struct SignalViewImpl : public Module::Impl,
     bool lineplotEnabled = false;
     bool lineplotAveragingInitialized = false;
     bool waterfallEnabled = false;
+    bool waterfall3dEnabled = false;
     U64 waterfallAveragingCount = 0;
 
     U64 validatedNumberOfElements = 0;
@@ -146,62 +43,7 @@ struct SignalViewImpl : public Module::Impl,
     F32 validatedNormalizationFactor = 0.0f;
     bool validatedLineplotEnabled = false;
     bool validatedWaterfallEnabled = false;
-
-    // Surface interaction state.
-    SurfaceInteractionState interaction;
-    detail::SignalViewSplitInteraction splitter;
-    bool updateLayoutFlag = false;
-    bool displayHeld = false;
-
-    struct CursorState {
-        bool inside = false;
-        Extent2D<F32> position = {0.0f, 0.0f};
-        bool visible = false;
-        bool marker = false;
-        bool overMarker = false;
-        F32 point = 0.0f;
-        Extent2D<F32> plot = {0.0f, 0.0f};
-    } cursor;
-    std::vector<F32> markerPositions;
-    bool updateMarkersFlag = false;
-    struct TagBounds {
-        bool active = false;
-        Extent2D<F32> center = {0.0f, 0.0f};
-        Extent2D<F32> halfSize = {0.0f, 0.0f};
-    };
-    std::array<TagBounds, detail::MaxMarkers> tagBounds;
-    std::array<bool, detail::MaxMarkers> pinned{};
-    struct MarkerDrag {
-        std::optional<U64> index;
-        bool moved = false;
-        Extent2D<F32> origin = {0.0f, 0.0f};
-    } markerDrag;
-
-    // Rendering state.
-    Extent2D<F32> pixelSize;
-
-    std::shared_ptr<Render::Texture> framebufferTexture;
-    std::shared_ptr<Render::Surface> renderSurface;
-    std::shared_ptr<Render::Components::Axis> axis;
-    std::shared_ptr<Render::Components::Text> text;
-    std::shared_ptr<Render::Components::Shapes> cursorShapes;
-    std::shared_ptr<Render::Components::Text> cursorText;
-    std::shared_ptr<Render::Components::Shapes> markerShapes;
-    std::shared_ptr<Render::Components::Shapes> markerTagShapes;
-    std::shared_ptr<Render::Components::Shapes> markerSpanShapes;
-    std::shared_ptr<Render::Components::Shapes> markerTableShapes;
-    std::shared_ptr<Render::Components::Text> markerText;
-    std::shared_ptr<Render::Components::Text> markerBadgeText;
-    std::shared_ptr<Render::Components::Text> markerTagText;
-    std::vector<F32> displayedPoints;
-
-    struct TraceUniforms {
-        glm::mat4 transform;
-        F32 thickness[2];
-        F32 zoom;
-        U32 numberOfPoints;
-        F32 traceColor[4];
-    };
+    bool validatedWaterfall3dEnabled = false;
 
     Tensor signalPoints;
     Tensor signalVertices;
@@ -209,103 +51,25 @@ struct SignalViewImpl : public Module::Impl,
     Tensor maxHoldPoints;
     Tensor maxHoldVertices;
 
-    TraceUniforms signalUniforms{};
-    TraceUniforms holdUniforms{};
-
     bool updateSignalPointsFlag = false;
     bool updateHoldPointsFlag = false;
-    bool updateSignalUniformBufferFlag = false;
-
-    std::shared_ptr<Render::Buffer> signalPointsBuffer;
-    std::shared_ptr<Render::Buffer> signalVerticesBuffer;
-    std::shared_ptr<Render::Buffer> fillVerticesBuffer;
-    std::shared_ptr<Render::Buffer> signalUniformBuffer;
-    std::shared_ptr<Render::Buffer> maxHoldPointsBuffer;
-    std::shared_ptr<Render::Buffer> maxHoldVerticesBuffer;
-    std::shared_ptr<Render::Buffer> holdUniformBuffer;
-
-    std::shared_ptr<Render::Kernel> signalKernel;
-    std::shared_ptr<Render::Kernel> fillKernel;
-    std::shared_ptr<Render::Kernel> maxHoldKernel;
-
-    std::shared_ptr<Render::Program> signalProgram;
-    std::shared_ptr<Render::Program> fillProgram;
-    std::shared_ptr<Render::Program> maxHoldProgram;
-
-    std::shared_ptr<Render::Vertex> signalVertex;
-    std::shared_ptr<Render::Vertex> fillVertex;
-    std::shared_ptr<Render::Vertex> maxHoldVertex;
-
-    std::shared_ptr<Render::Draw> drawSignalVertex;
-    std::shared_ptr<Render::Draw> drawFillVertex;
-    std::shared_ptr<Render::Draw> drawMaxHoldVertex;
 
     Tensor waterfallBins;
-    std::vector<F32> waterfallUpload;
     WaterfallHistory waterfallHistory;
 
-    struct WaterfallUniforms {
-        int width;
-        int height;
-        F32 index;
-        F32 offset;
-        F32 zoom;
-        F32 panelScaleX;
-        F32 panelScaleY;
-        F32 panelOffsetY;
-        int filtered;
-    } waterfallUniforms{};
-
-    struct WaterfallFilterUniforms {
-        U32 width;
-        U32 height;
-        U32 writeIndex;
-        U32 version;
-    } waterfallFilterUniforms{};
-
-    std::vector<std::array<U32, 2>> waterfallFilterState;
-    std::shared_ptr<Render::Buffer> waterfallFilteredBuffer;
-    std::shared_ptr<Render::Buffer> waterfallFilterUniformBuffer;
-    std::shared_ptr<Render::Buffer> waterfallFilterStateBuffer;
-    std::shared_ptr<Render::Kernel> waterfallFilterKernel;
-
-    std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
-    std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
-    std::shared_ptr<Render::Buffer> fillScreenIndicesBuffer;
-    std::shared_ptr<Render::Buffer> waterfallBuffer;
-    std::shared_ptr<Render::Buffer> waterfallUniformBuffer;
-    std::shared_ptr<Render::Texture> waterfallLutTexture;
-    std::shared_ptr<Render::Program> waterfallProgram;
-    std::shared_ptr<Render::Vertex> waterfallVertex;
-    std::shared_ptr<Render::Draw> drawWaterfallVertex;
+    SignalViewCanvas canvas;
+    SignalViewLineplot lineplot;
+    SignalViewWaterfall waterfall;
+    SignalViewWaterfall3D waterfall3d;
+    bool updateLayoutFlag = false;
 
     Result createPresent();
     Result destroyPresent();
     Result present();
 
-    void updateState();
-    void processInputEvents(const Extent2D<F32>& paddingScale);
-    void updateLabelState();
-    Result updateCursorState();
-    Result updateMarkerState();
-    F32 viewTranslation() const;
-    std::optional<F32> cursorPoint() const;
-    F32 projectPointX(F32 xPoint) const;
-    std::optional<F32> displayedAmplitude(F32 xPoint) const;
-    F32 amplitudeToNdc(F32 yPoint) const;
-    std::string formatPointX(F32 xPoint);
-    std::string formatSpanX(F32 delta);
-    std::string formatAmplitude(F32 yPoint) const;
-    void syncMarkers();
-    void applyPins();
-    std::vector<U64> pinnedIndices() const;
-    std::optional<U64> tagAt(const Extent2D<F32>& position) const;
-    std::optional<U64> markerAt(const Extent2D<F32>& position) const;
-    bool insidePlot(const Extent2D<F32>& position) const;
-    F32 pointAtX(F32 x) const;
-    void toggleMarker();
-    void clearMarkers();
-    void commitMarkers();
+    SignalViewCanvas::Context canvasContext();
+    WaterfallFrame waterfallFrame() const;
+    SignalViewWaterfall3DLabels waterfall3dLabels() const;
     Result resetLineplotHistory();
     Result resetHistoryState();
     virtual Buffer::Config renderStateBufferConfig() const = 0;

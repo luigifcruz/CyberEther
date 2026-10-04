@@ -1,4 +1,4 @@
-#include <jetstream/domains/visualization/waterfall/block.hh>
+#include <jetstream/domains/visualization/waterfall_3d/block.hh>
 #include <jetstream/detail/block_impl.hh>
 
 #include <jetstream/domains/visualization/signal_view/module.hh>
@@ -6,7 +6,7 @@
 
 namespace Jetstream::Blocks {
 
-struct WaterfallImpl : public Block::Impl, public DynamicConfig<Blocks::Waterfall> {
+struct Waterfall3DImpl : public Block::Impl, public DynamicConfig<Blocks::Waterfall3D> {
     Result configure() override;
     Result define() override;
     Result create() override;
@@ -16,25 +16,26 @@ struct WaterfallImpl : public Block::Impl, public DynamicConfig<Blocks::Waterfal
         std::make_shared<Modules::SignalView>();
 };
 
-Result WaterfallImpl::configure() {
-    signalViewConfig->mode = "waterfall";
+Result Waterfall3DImpl::configure() {
+    signalViewConfig->mode = "waterfall_3d";
     signalViewConfig->waterfallAveraging = averaging;
     signalViewConfig->waterfallHeight = height;
     signalViewConfig->colormap = colormap;
+    signalViewConfig->rangeMin = 0.0f;
+    signalViewConfig->rangeMax = 1.0f;
     signalViewConfig->xLabel = xLabel;
-    signalViewConfig->waterfallLabel = yLabel;
-    signalViewConfig->markers = markers;
-    signalViewConfig->pins = pins;
+    signalViewConfig->waterfallLabel = timeLabel;
+    signalViewConfig->amplitudeLabel = amplitudeLabel;
 
     return Result::SUCCESS;
 }
 
-Result WaterfallImpl::define() {
+Result Waterfall3DImpl::define() {
     JST_CHECK(defineInterfaceInput("signal", "Input", "Input signal data to visualize."));
 
     JST_CHECK(defineInterfaceConfig("height",
                                     "Height",
-                                    "Number of rows in the waterfall history buffer.",
+                                    "Number of rows in the history buffer.",
                                     {{"type", "uint"}, {"unit", "rows"}}));
 
     JST_CHECK(defineInterfaceConfig("averaging",
@@ -50,16 +51,14 @@ Result WaterfallImpl::define() {
     return Result::SUCCESS;
 }
 
-Result WaterfallImpl::create() {
+Result Waterfall3DImpl::create() {
     JST_CHECK(moduleCreate("signal_view", signalViewConfig, {
         {"signal", inputs().at("signal")}
     }));
-    JST_CHECK(moduleBindConfigEdit("signal_view", "markers", "markers"));
-    JST_CHECK(moduleBindConfigEdit("signal_view", "pins", "pins"));
 
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(WaterfallImpl, {"signal_view"});
+JST_REGISTER_BLOCK(Waterfall3DImpl, {"signal_view"});
 
 }  // namespace Jetstream::Blocks

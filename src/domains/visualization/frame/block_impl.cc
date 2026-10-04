@@ -2,6 +2,7 @@
 #include <jetstream/detail/block_impl.hh>
 
 #include <jetstream/domains/visualization/frame/module.hh>
+#include <jetstream/render/colormap.hh>
 
 namespace Jetstream::Blocks {
 
@@ -44,14 +45,7 @@ Result FrameImpl::define() {
             JST_CHECK(defineInterfaceConfig("colormap",
                                             "Colormap",
                                             "Color lookup applied to scalar frames.",
-                                            {{"type", "dropdown"}, {"options", Parser::Sequence{
-                                                Parser::Map{{"label", "Grayscale"}, {"value", "grayscale"}},
-                                                Parser::Map{{"label", "Turbo"}, {"value", "turbo"}},
-                                                Parser::Map{{"label", "Viridis"}, {"value", "viridis"}},
-                                                Parser::Map{{"label", "Inferno"}, {"value", "inferno"}},
-                                                Parser::Map{{"label", "Magma"}, {"value", "magma"}},
-                                                Parser::Map{{"label", "Plasma"}, {"value", "plasma"}},
-                                            }}}));
+                                            Render::Colormap::Format()));
         }
     }
 

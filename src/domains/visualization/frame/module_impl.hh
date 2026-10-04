@@ -15,6 +15,7 @@
 #include <jetstream/render/base/program.hh>
 #include <jetstream/render/base/vertex.hh>
 #include <jetstream/render/base/draw.hh>
+#include <jetstream/render/colormap.hh>
 #include <jetstream/render/components/axis.hh>
 #include <jetstream/render/components/shapes.hh>
 #include <jetstream/render/components/text.hh>
@@ -63,8 +64,6 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
 
     std::string cursorLabel;
 
-    bool updateLutFlag = false;
-
     struct {
         int width;
         int height;
@@ -82,8 +81,6 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
         float paddingScaleY;
     } frameUniforms{};
 
-    std::array<uint8_t, 256 * 4> lutBytes{};
-
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenIndicesBuffer;
@@ -91,7 +88,7 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
     std::shared_ptr<Render::Buffer> frameUniformBuffer;
 
     std::shared_ptr<Render::Texture> framebufferTexture;
-    std::shared_ptr<Render::Texture> lutTexture;
+    Render::Colormap lut;
 
     std::shared_ptr<Render::Program> frameProgram;
     std::shared_ptr<Render::Surface> renderSurface;
@@ -117,7 +114,6 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
     Extent2D<F32> clampToFrame(const Extent2D<F32>& plot) const;
     void updateFitScale();
     Result updateViewGeometry();
-    void fillLut();
     Result updateAxisState();
     Result updateTextState();
     void updateCursorReadout();
