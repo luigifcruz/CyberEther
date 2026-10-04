@@ -37,6 +37,7 @@ core_test_domains = {
         'render/transfers.cc',
         'render/geomap_labels.cc',
         'render/map_layers.cc',
+        'render/shapes.cc',
     ],
     'sakura': [
         'sakura/interface_controls.cc',
@@ -47,8 +48,11 @@ core_test_domains = {
         'sakura/surface_view.cc',
         'sakura/surface_input.cc',
         'sakura/superluminal_surface.cc',
+        'sakura/syntax_highlighter.cc',
         'sakura/text_grid.cc',
+        'sakura/text_markdown.cc',
         'sakura/vstack.cc',
+        'sakura/workspace_background.cc',
     ],
     'runtime': [
         'runtime/scheduler.cc',

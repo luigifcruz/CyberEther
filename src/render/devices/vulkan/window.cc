@@ -315,7 +315,6 @@ Result Implementation::beginImgui() {
 }
 
 Result Implementation::endImgui() {
-    ImGui::Render();
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffers[currentFrame]);
 
     return Result::SUCCESS;
@@ -412,8 +411,12 @@ Result Implementation::underlyingEnd() {
         }
     }
 
+    prepareImgui();
+
     for (auto& surface : surfaces) {
-        result = surface->encode(commandBuffers[currentFrame]);
+        const auto& framebuffer = *surface->getConfig().framebuffer;
+        result = surface->encode(commandBuffers[currentFrame],
+                                 textureVisibleForPresentation(framebuffer));
         if (result != Result::SUCCESS && result != Result::RELOAD) {
             return abortFrame(result);
         }
@@ -427,7 +430,8 @@ Result Implementation::underlyingEnd() {
     const auto extent = viewport->getSwapchainExtent();
     renderPassBeginInfo.renderArea.extent = {static_cast<U32>(extent.x), static_cast<U32>(extent.y)};
 
-    VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+    const auto& background = frameClearColor();
+    VkClearValue clearColor = {{{background.r, background.g, background.b, background.a}}};
     renderPassBeginInfo.clearValueCount = 1;
     renderPassBeginInfo.pClearValues = &clearColor;
     vkCmdBeginRenderPass(commandBuffers[currentFrame], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);

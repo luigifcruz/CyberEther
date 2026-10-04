@@ -30,6 +30,7 @@ struct Component::Impl {
     void layoutChildren(const Context& ctx);
     Result buildTree(Context& ctx);
     Result paintTree();
+    void invalidatePaintTree();
     bool treeResourceDirty() const;
     bool isPaintDirty() const;
 };

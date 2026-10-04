@@ -91,7 +91,10 @@ void SurfaceView::render(const Context& ctx) const {
         impl->lastEmittedResize = *resolvedResize;
         config.onSize(*resolvedResize);
     }
-    const Extent2D<F32> displaySize = Scale(ctx, logicalDrawSize);
+    Extent2D<F32> displaySize = Scale(ctx, logicalDrawSize);
+    if (resolvedResize.has_value()) {
+        displaySize = FramebufferToDisplay(ctx, resolvedResize->framebufferSize);
+    }
 
     const U64 texture = config.onResolveTexture
         ? config.onResolveTexture()
@@ -108,10 +111,19 @@ void SurfaceView::render(const Context& ctx) const {
     }
 
     const ImVec2 surfaceSize = Private::ToImVec2(displaySize);
-    const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+    const ImVec2 cursorPos = Private::ToImVec2(
+        SnapToFramebuffer(ctx, Private::ToExtent2D(ImGui::GetCursorScreenPos())));
+    ImGui::SetCursorScreenPos(cursorPos);
     const ImVec2 cursorEnd(cursorPos.x + surfaceSize.x, cursorPos.y + surfaceSize.y);
+    auto* drawList = ImGui::GetWindowDrawList();
+    ImRect imageRect(cursorPos, cursorEnd);
+    imageRect.Expand(drawList->_FringeScale);
+    const bool visible = imageRect.Overlaps(ImRect(drawList->GetClipRectMin(), drawList->GetClipRectMax()));
+    if (config.textureSource && config.textureSource->raw() == texture) {
+        config.textureSource->presentationHint(frame, visible);
+    }
     const F32 rounding = config.rounding <= 0.0f ? ImGui::GetStyle().FrameRounding : config.rounding;
-    ImGui::GetWindowDrawList()->AddImageRounded(textureRef,
+    if (visible) drawList->AddImageRounded(textureRef,
                                                 cursorPos,
                                                 cursorEnd,
                                                 ImVec2(0.0f, 0.0f),
@@ -123,6 +135,12 @@ void SurfaceView::render(const Context& ctx) const {
         ImGui::InvisibleButton(config.id.c_str(), surfaceSize,
                                ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
         detail::ForwardSurfaceInputEvents(cursorPos, surfaceSize, impl->input, config.onInput);
+        if (config.onResolveCursor && (ImGui::IsItemHovered() || ImGui::IsItemActive())) {
+            const auto cursor = config.onResolveCursor();
+            if (cursor != SurfaceCursor::Default) {
+                ImGui::SetMouseCursor(detail::ToImGuiMouseCursor(cursor));
+            }
+        }
     } else {
         ImGui::Dummy(surfaceSize);
     }

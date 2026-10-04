@@ -9,7 +9,8 @@
 #include <variant>
 
 #include "jetstream/types.hh"
-#include "jetstream/render/base/texture.hh"
+
+namespace Jetstream::Render { class Texture; }
 
 namespace Jetstream {
 
@@ -21,6 +22,18 @@ struct JETSTREAM_API SurfaceManifest {
     std::string id;
     Extent2D<U64> size;
     std::shared_ptr<const Render::Texture> surface;
+};
+
+enum class JETSTREAM_API SurfaceCursor : U8 {
+    Default = 0,
+    Hand = 1,
+    ResizeEW = 2,
+    ResizeNS = 3,
+    ResizeAll = 4,
+    ResizeNESW = 5,
+    ResizeNWSE = 6,
+    TextInput = 7,
+    NotAllowed = 8,
 };
 
 //

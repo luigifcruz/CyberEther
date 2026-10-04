@@ -1,7 +1,9 @@
 #ifndef JETSTREAM_DOMAINS_VISUALIZATION_SIGNAL_VIEW_WATERFALL_HH
 #define JETSTREAM_DOMAINS_VISUALIZATION_SIGNAL_VIEW_WATERFALL_HH
 
+#include <array>
 #include <memory>
+#include <vector>
 
 #include <jetstream/memory/tensor.hh>
 #include <jetstream/surface.hh>
@@ -27,6 +29,14 @@ struct SignalViewWaterfall {
         F32 panelScaleX;
         F32 panelScaleY;
         F32 panelOffsetY;
+        int filtered;
+    };
+
+    struct FilterUniforms {
+        U32 width;
+        U32 height;
+        U32 writeIndex;
+        U32 version;
     };
 
     void configure(const Config& config);
@@ -38,17 +48,24 @@ struct SignalViewWaterfall {
                 F32 panelScaleX,
                 F32 panelScaleY,
                 F32 panelOffsetY);
-    Result upload(const WaterfallFrame& frame);
+    Result update(const WaterfallFrame& frame);
     Result present(const SurfaceInteractionState& interaction, const std::string& colormap);
 
     Config config;
     Uniforms uniforms{};
+    FilterUniforms filterUniforms{};
+    std::vector<F32> upload;
+    std::vector<std::array<U32, 2>> filterState;
 
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenIndicesBuffer;
     std::shared_ptr<Render::Buffer> binsBuffer;
     std::shared_ptr<Render::Buffer> uniformBuffer;
+    std::shared_ptr<Render::Buffer> filteredBuffer;
+    std::shared_ptr<Render::Buffer> filterUniformBuffer;
+    std::shared_ptr<Render::Buffer> filterStateBuffer;
+    std::shared_ptr<Render::Kernel> filterKernel;
     Render::Colormap lut;
     std::shared_ptr<Render::Program> program;
     std::shared_ptr<Render::Vertex> vertex;

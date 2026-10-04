@@ -18,7 +18,7 @@ class JETSTREAM_API SurfaceImp<DeviceType::Vulkan> : public Surface {
 
  protected:
     Result prepare();
-    Result encode(VkCommandBuffer& commandBuffer);
+    Result encode(VkCommandBuffer& commandBuffer, bool visible = true);
     void commit();
 
  private:

@@ -2,6 +2,7 @@
 #define JETSTREAM_DOMAINS_VISUALIZATION_SIGNAL_VIEW_WATERFALL_3D_HH
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <memory>
@@ -517,6 +518,13 @@ class SignalViewWaterfall3D {
         glm::vec4 skirt;
     };
 
+    struct FilterUniforms {
+        U32 width;
+        U32 height;
+        U32 writeIndex;
+        U32 version;
+    };
+
     struct FrameUniforms {
         glm::vec4 color;
         glm::vec4 lineColor;
@@ -555,6 +563,7 @@ class SignalViewWaterfall3D {
     U64 columns = 0;
     U64 columnCapacity = 0;
     std::vector<F32> heights;
+    std::vector<std::array<U32, 2>> filterState;
     U64 writeIndex = 0;
     SignalViewWaterfall3DLabels labels;
 
@@ -576,6 +585,7 @@ class SignalViewWaterfall3D {
     Extent2D<F32> pixelSize;
     MeshUniforms meshUniforms{};
     FrameUniforms frameUniforms{};
+    FilterUniforms filterUniforms{};
     std::vector<F32> meshSlots;
 
     std::shared_ptr<Render::Texture> framebufferTexture;
@@ -586,6 +596,10 @@ class SignalViewWaterfall3D {
     std::shared_ptr<Render::Buffer> meshSlotsBuffer;
     std::shared_ptr<Render::Buffer> meshUniformBuffer;
     std::shared_ptr<Render::Buffer> heightsBuffer;
+    std::shared_ptr<Render::Buffer> filteredBuffer;
+    std::shared_ptr<Render::Buffer> filterUniformBuffer;
+    std::shared_ptr<Render::Buffer> filterStateBuffer;
+    std::shared_ptr<Render::Kernel> filterKernel;
     std::shared_ptr<Render::Vertex> meshVertex;
     std::shared_ptr<Render::Draw> drawMesh;
     std::shared_ptr<Render::Program> meshProgram;
@@ -603,6 +617,7 @@ class SignalViewWaterfall3D {
 
     Result resizeMesh(const F32* bins, U64 nextColumns);
     Result uploadRows(const F32* bins, U64 startRow, U64 rowCount);
+    Result filterRows(U64 rowCount, bool restart);
     void processInputEvents(std::vector<InputEvent>&& events);
     bool advanceCamera();
     void updateTicks();

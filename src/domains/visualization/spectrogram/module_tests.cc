@@ -11,6 +11,7 @@
 #include "jetstream/memory/axis.hh"
 #include "jetstream/module_interface.hh"
 #include "jetstream/registry.hh"
+#include "jetstream/render/base/window.hh"
 #include "jetstream/runtime.hh"
 #include "jetstream/scheduler_context.hh"
 #include "jetstream/testing.hh"

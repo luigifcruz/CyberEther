@@ -48,7 +48,7 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
     if (buffer->isBuffered()) {
         for (uint32_t i = 0; i < config.numberOfDraws; i++) {
             VkDrawIndexedIndirectCommand drawCommand{};
-            drawCommand.indexCount = buffer->getIndexCount();
+            drawCommand.indexCount = vertexCounts.empty() ? buffer->getIndexCount() : vertexCounts[i];
             drawCommand.instanceCount = config.numberOfInstances;
             drawCommand.firstIndex = 0;
             drawCommand.vertexOffset = i * (buffer->getIndexCount() - buffer->getVertexCount());
@@ -69,7 +69,7 @@ Result Implementation::create(std::vector<VkVertexInputBindingDescription>& bind
     } else {
         for (uint32_t i = 0; i < config.numberOfDraws; i++) {
             VkDrawIndirectCommand drawCommand{};
-            drawCommand.vertexCount = buffer->getVertexCount();
+            drawCommand.vertexCount = vertexCounts.empty() ? buffer->getVertexCount() : vertexCounts[i];
             drawCommand.instanceCount = config.numberOfInstances;
             drawCommand.firstVertex = i * buffer->getVertexCount();
             drawCommand.firstInstance = i * config.numberOfInstances;
@@ -115,14 +115,18 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
         Backend::State<DeviceType::Vulkan>()->supportsMultiDrawIndirect();
 
     if (buffer->isBuffered()) {
+        const U64 count = std::min<U64>(drawCount, indexedDrawCommands.size());
+        if (count == 0) {
+            return Result::SUCCESS;
+        }
         if (supportsMultiDrawIndirect) {
             vkCmdDrawIndexedIndirect(commandBuffer,
                                      indexedIndirectBuffer->getHandle(),
                                      0,
-                                     indexedDrawCommands.size(),
+                                     count,
                                      sizeof(VkDrawIndexedIndirectCommand));
         } else {
-            for (U64 i = 0; i < indexedDrawCommands.size(); ++i) {
+            for (U64 i = 0; i < count; ++i) {
                 vkCmdDrawIndexedIndirect(commandBuffer,
                                          indexedIndirectBuffer->getHandle(),
                                          i * sizeof(VkDrawIndexedIndirectCommand),
@@ -130,14 +134,21 @@ Result Implementation::encode(VkCommandBuffer& commandBuffer) {
                                          sizeof(VkDrawIndexedIndirectCommand));
             }
         }
-    } else if (supportsMultiDrawIndirect) {
+        return Result::SUCCESS;
+    }
+
+    const U64 count = std::min<U64>(drawCount, drawCommands.size());
+    if (count == 0) {
+        return Result::SUCCESS;
+    }
+    if (supportsMultiDrawIndirect) {
         vkCmdDrawIndirect(commandBuffer,
                           indirectBuffer->getHandle(),
                           0,
-                          drawCommands.size(),
+                          count,
                           sizeof(VkDrawIndirectCommand));
     } else {
-        for (U64 i = 0; i < drawCommands.size(); ++i) {
+        for (U64 i = 0; i < count; ++i) {
             vkCmdDrawIndirect(commandBuffer,
                               indirectBuffer->getHandle(),
                               i * sizeof(VkDrawIndirectCommand),
@@ -164,6 +175,8 @@ Result Implementation::updateVertexCount(U64 vertexCount) {
             return Result::ERROR;
         }
         
+        vertexCounts.assign(config.numberOfDraws, vertexCount);
+
         // Update indexed draw commands
         for (auto& drawCommand : indexedDrawCommands) {
             drawCommand.indexCount = vertexCount;
@@ -177,6 +190,8 @@ Result Implementation::updateVertexCount(U64 vertexCount) {
             return Result::ERROR;
         }
         
+        vertexCounts.assign(config.numberOfDraws, vertexCount);
+
         // Update non-indexed draw commands
         for (auto& drawCommand : drawCommands) {
             drawCommand.vertexCount = vertexCount;

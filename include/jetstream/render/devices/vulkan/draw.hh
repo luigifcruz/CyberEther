@@ -28,6 +28,8 @@ class JETSTREAM_API DrawImp<DeviceType::Vulkan> : public Draw {
 
     std::vector<VkDrawIndirectCommand> drawCommands;
     std::vector<VkDrawIndexedIndirectCommand> indexedDrawCommands;
+    // Logical counts survive surface/pipeline recreation on framebuffer resize.
+    std::vector<U64> vertexCounts;
 
     friend class ProgramImp<DeviceType::Vulkan>;
 };

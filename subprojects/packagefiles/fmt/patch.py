@@ -12,10 +12,17 @@ def patch_file(path: Path) -> None:
     content = content.replace("fmt::", "jst::fmt::")
     content = content.replace("namespace fmt", "namespace jst::fmt")
     content = content.replace("FMT_", "JST_FMT_")
+    content = content.replace('"fmt/', '"jetstream/fmt/')
     path.write_text(content, encoding="utf-8")
 
 
 def main() -> int:
+    if sys.argv[1] == "--source":
+        output = Path(sys.argv[3])
+        shutil.copyfile(sys.argv[2], output)
+        patch_file(output)
+        return 0
+
     fmt_path = Path(sys.argv[1]).resolve()
     fmt_root = fmt_path.parent
     stamp_path = fmt_root / "patch_headers.stamp"

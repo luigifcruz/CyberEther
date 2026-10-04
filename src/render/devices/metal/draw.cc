@@ -105,7 +105,8 @@ Result Implementation::encode(MTL::RenderCommandEncoder* encoder) {
     JST_CHECK(buffer->encode(encoder));
 
     if (buffer->isBuffered()) {
-        for (U64 i = 0; i < indexedDrawCommands.size(); ++i) {
+        const U64 count = std::min<U64>(drawCount, indexedDrawCommands.size());
+        for (U64 i = 0; i < count; ++i) {
             encoder->drawIndexedPrimitives(mode,
                                            MTL::IndexTypeUInt32,
                                            buffer->getIndexBuffer(),
@@ -114,7 +115,8 @@ Result Implementation::encode(MTL::RenderCommandEncoder* encoder) {
                                            i * sizeof(MTL::DrawIndexedPrimitivesIndirectArguments));
         }
     } else {
-        for (U64 i = 0; i < drawCommands.size(); ++i) {
+        const U64 count = std::min<U64>(drawCount, drawCommands.size());
+        for (U64 i = 0; i < count; ++i) {
             encoder->drawPrimitives(mode,
                                     indirectBuffer->getHandle(),
                                     i * sizeof(MTL::DrawPrimitivesIndirectArguments));

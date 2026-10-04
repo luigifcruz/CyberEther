@@ -87,6 +87,26 @@ $OutputDir = AbsolutePath (EnvOrDefault 'OUTPUT_DIR' (Join-Path $RootDir '.dist\
 $ReleaseNotes = EnvOrDefault 'RELEASE_NOTES' ''
 $Aumid = EnvOrDefault 'AUMID' 'ltd.luigi.CyberEther'
 $PackDir = Join-Path $OutputDir '.pack'
+$SigningMetadata = EnvOrDefault 'AZURE_SIGNING_METADATA' ''
+$RequireSigning = (EnvOrDefault 'REQUIRE_SIGNING' '0') -eq '1'
+$SigningArgs = @()
+
+if ($RequireSigning -and [string]::IsNullOrWhiteSpace($SigningMetadata)) {
+    Die 'REQUIRE_SIGNING=1 requires AZURE_SIGNING_METADATA'
+}
+if (![string]::IsNullOrWhiteSpace($SigningMetadata)) {
+    $SigningMetadata = AbsolutePath $SigningMetadata
+    if (!(Test-Path -LiteralPath $SigningMetadata -PathType Leaf)) {
+        Die "signing metadata does not exist: $SigningMetadata"
+    }
+    $Metadata = Get-Content -Raw -LiteralPath $SigningMetadata | ConvertFrom-Json
+    foreach ($Field in @('Endpoint', 'CodeSigningAccountName', 'CertificateProfileName')) {
+        if ([string]::IsNullOrWhiteSpace($Metadata.$Field)) {
+            Die "signing metadata is missing $Field"
+        }
+    }
+    $SigningArgs = @('--azureTrustedSignFile', $SigningMetadata)
+}
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
     Die 'cannot determine project version'
@@ -130,9 +150,54 @@ $Packager = ResolvePackager $OutputDir
     --aumid $Aumid `
     --shortcuts 'Desktop,StartMenuRoot' `
     --noPortable `
-    --instLocation PerUser
+    --instLocation PerUser `
+    @SigningArgs
 if ($LASTEXITCODE -ne 0) {
     Die 'packaging CLI failed to create the Windows release'
+}
+
+if ($SigningArgs.Count -gt 0) {
+    function AssertSigned($Path) {
+        $Signature = Get-AuthenticodeSignature -LiteralPath $Path
+        if ($Signature.Status -ne 'Valid') {
+            Die "invalid signature on ${Path}: $($Signature.Status)"
+        }
+        if ($null -eq $Signature.TimeStamperCertificate) {
+            Die "missing signature timestamp on $Path"
+        }
+    }
+
+    $Installers = @(Get-ChildItem -LiteralPath $OutputDir -Filter '*Setup.exe' -File)
+    $Packages = @(Get-ChildItem -LiteralPath $OutputDir -Filter '*-full.nupkg' -File)
+    if ($Installers.Count -eq 0 -or $Packages.Count -eq 0) {
+        Die 'expected a signed setup executable and a full update package'
+    }
+    foreach ($Installer in $Installers) {
+        AssertSigned $Installer.FullName
+    }
+
+    # Check the shipped package, not the input directory: Velopack signs temporary copies.
+    foreach ($Package in $Packages) {
+        $VerifyDir = Join-Path ([System.IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
+        try {
+            [System.IO.Compression.ZipFile]::ExtractToDirectory($Package.FullName, $VerifyDir)
+            $Binaries = @(Get-ChildItem -LiteralPath $VerifyDir -Recurse -File |
+                Where-Object { $_.Extension -in @('.exe', '.dll') })
+            foreach ($Required in @($ExecutableName, 'jetstream.dll')) {
+                if ($Required -notin $Binaries.Name) {
+                    Die "missing $Required in $($Package.Name)"
+                }
+            }
+            foreach ($Binary in $Binaries) {
+                AssertSigned $Binary.FullName
+            }
+        } finally {
+            if (Test-Path -LiteralPath $VerifyDir) {
+                Remove-Item -LiteralPath $VerifyDir -Recurse -Force
+            }
+        }
+    }
+    Write-Host 'Verified signed and timestamped Windows release binaries.'
 }
 
 Write-Host "Created Windows release in: $OutputDir"

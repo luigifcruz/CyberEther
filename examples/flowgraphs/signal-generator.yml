@@ -20,7 +20,7 @@ graph:
         ## What you are looking at
         - **The flat carpet** across the whole span is the noise floor.
         - **The fixed peak** at 1.000 MHz is the cosine. It never moves.
-        - **The moving peak** is the chirp. Each sweep takes 2 seconds of signal time and draws a diagonal line down the waterfall. Nothing here waits for a wall clock, so the sweep runs as fast as your computer allows and may look faster than two seconds.
+        - **The diagonal line** in the waterfall is the chirp. Each sweep takes 2 seconds of signal time. The plot above averages 16 frames, which smooths the chirp into a faint ripple, so set **Lineplot Averaging** to 1 to see it as a moving peak. Nothing here waits for a wall clock, so the sweep runs as fast as your computer allows and may look faster than two seconds.
         
         Frequencies to the left of zero are real. These generators produce IQ pairs, and an IQ signal can carry a signed frequency. A real radio tuned to 100 MHz shows exactly the same picture with 100 MHz written at the center.
         
@@ -28,22 +28,22 @@ graph:
         1. On the **Cosine** generator, set **Frequency** to -1.5 MHz. The peak jumps to the left half of the plot. Restore 1 MHz.
         2. Set its **Amplitude** to 0.1. The peak drops by 20 dB and the floor stays put. Restore 1.
         3. On the **Noise** generator, set **Amplitude** to 0.1. Now the floor drops by 20 dB and the tone stands taller above it. That ratio, signal above noise, is what decides whether a receiver can hear something. Restore 1.
-        4. On the **Chirp** generator, set **Duration** to 0.5 seconds. The diagonal steepens. Set **End Frequency** to 0 and the sweep only covers the left half. Restore 2 seconds and 2 MHz.
+        4. On the **Chirp** generator, set **Duration** to 0.5 seconds. The sweep crosses the band in fewer rows, so the diagonal gets flatter. Set **End Frequency** to 0 and the sweep only covers the left half. Restore 2 seconds and 2 MHz.
         5. Switch the **Cosine** generator's **Signal Type** to **Square**. A mirror peak appears at -1 MHz because square waves here are real-valued, not IQ. Extra peaks show up at odd multiples of 1 MHz, and the ones past the edge fold back into view. That fold is aliasing, the sampled world only has 5 MHz of room. Switch back to **Cosine**.
         
         ## Reading the numbers
-        The vertical scale is **dBFS**, decibels below a nominal full scale of 1.0. Doubling an amplitude adds 6 dB and multiplying it by 10 adds 20 dB. The chirp has **Amplitude** 10, so it sits 20 dB above the tone. Nothing clips because these are floating point numbers. A real receiver fed a signal this strong would overload and spray false peaks everywhere.
+        The vertical scale is **dBFS**, decibels below a nominal full scale of 1.0. Doubling an amplitude adds 6 dB and multiplying it by 10 adds 20 dB. The chirp has **Amplitude** 10, so each frame it sits 20 dB above the tone, which the plot shows once **Lineplot Averaging** is 1. Nothing clips because these are floating point numbers. A real receiver fed a signal this strong would overload and spray false peaks everywhere.
         
         **Buffer Size** is both the number of samples generated per cycle and the FFT size downstream. With 8192 samples over 5 MHz each frequency bin is about 610 Hz wide. Raise it for finer detail and slower updates.
         
-        **Noise Variance** and **Amplitude** on the noise generator both scale the floor. Leave variance at 1 and use amplitude, it is the same knob with fewer surprises.
+        **Noise Variance** and **Amplitude** on the noise generator both scale the floor. Leave variance at 1 and use amplitude. Amplitude scales the noise's standard deviation, so an amplitude of 0.1 matches a variance of 0.01.
         
         ## Common questions
-        - **Why is there no Throttle?** This example runs free. Add a **Throttle** block after a generator if you want the display to advance in real time.
+        - **Why is there no Throttle?** This example runs free. Add a **Throttle** block after a generator if you want the display to advance at a slower, steadier pace.
         - **Why two Add blocks?** Each one sums two inputs. Chain them to sum three.
         - **Can I use Sine instead of Cosine?** Yes. With IQ output they differ only in starting phase, and the spectrum looks identical.
         
-        **Next:** open **CyberEther First Steps** for six short labs that build on this graph, or **Spectrum Analyzer** to point a real radio at real stations.
+        **Next:** open **CyberEther First Steps** for a guided lesson that builds a similar graph from a single generator, or **Spectrum Analyzer** to point a real radio at real stations.
     meta:
       node:
         x: 630

@@ -18,7 +18,7 @@ graph:
         
         1. Plug in your SDR and choose it in the **Device** dropdown on the **Soapy SDR** block.
         2. Leave **Frequency** at 96.900 MHz for now. The two stations this graph expects sit 400 kHz below and above it, at 96.5 and 97.3 MHz.
-        3. Drag **Volume** up on the **Audio** block. It starts at 0 so the graph is silent until you ask for sound.
+        3. Adjust **Volume** on the **Audio** block to a comfortable level.
 
         **Radio not listed?** Check the cable and plug the dongle directly into the computer rather than a hub. Close any other program that is using it, only one program can open a radio at a time. Then reopen this example from the **Flowgraph** menu under **Open Examples** so the list is rebuilt. On Linux, the kernel's DVB-T driver can claim an RTL-SDR before SoapySDR sees it. On Windows, the dongle needs the WinUSB driver installed with Zadig.
         
@@ -31,7 +31,7 @@ graph:
         The large **Spectrum Analyzer** shows the raw 2 MHz. Every hump about 200 kHz wide is a station. The two small analyzers each show one 200 kHz head. Their axis labels still read 96.9 MHz because the filter reports the new sample rate but not the new center, so read them as windows around 96.5 and 97.3 MHz.
         
         ## Tune it to your city
-        Find two stations in the big plot that are the same distance either side of some center point, retune **Frequency** to that center, and set the two **Center** offsets on the **Filter** block to the signed distances. Station humps show up in the big plot as soon as you retune, so you can hunt by eye.
+        Find two stations in the big plot that fit inside the same 2 MHz window, retune **Frequency** to a point between them, and set the two **Center** offsets on the **Filter** block to each station's signed distance from that point. Station humps show up in the big plot as soon as you retune, so you can hunt by eye.
         
         **Next:** open **Overlap-Add-Fold** to see the filtering and resampling steps this block bundles, laid out one by one.
     meta:
@@ -56,10 +56,10 @@ graph:
         - **Taps** sets the sharpness of the cut. More taps reject neighbors better and cost more compute. The count must be odd.
         
         ## Adding a third station
-        Raise **Heads** to 3 and add a third offset to **Center**. Any station inside the 2 MHz capture is fair game, so the offsets must stay between -1 and 1 MHz. Then add a **Slice** for index 2 and a **Spectrum Analyzer** to watch it.
+        Raise **Heads** to 3 and add a third offset to **Center**. Any station whose whole 200 kHz channel fits inside the 2 MHz capture is fair game, so the offsets must stay between -0.9 and 0.9 MHz. Then add a **Slice** for index 2 and a **Spectrum Analyzer** to watch it.
         
         ## The resampling rule
-        The block lowers the sample rate by **Sample Rate** divided by **Bandwidth**, which must come out as a whole number. Here 2 MHz over 200 kHz is 10. The number of taps minus one must also divide evenly by that number, which is why 51 taps works. Break either rule and the block skips resampling, the output stays at 2 MHz, and the **FM Demodulator** and **Audio** blocks downstream no longer match. Look for a warning in the console if the sound turns to noise after an edit.
+        The block lowers the sample rate by **Sample Rate** divided by **Bandwidth**, which must come out as a whole number. Here 2 MHz over 200 kHz is 10. The number of taps minus one must also divide evenly by that number, which is why 51 taps works, and so must the radio's batch length, 8,000 samples here. Break either rule and the block skips resampling, the output stays at 2 MHz, and the **FM Demodulator** and **Audio** blocks downstream no longer match. Look for a warning in the console if the sound turns to noise after an edit.
     meta:
       node:
         x: 414

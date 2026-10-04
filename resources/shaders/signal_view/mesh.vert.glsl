@@ -45,12 +45,7 @@ float fetch(int column, int row) {
 }
 
 float magnitude(int column, int row) {
-    float value = fetch(column, row - 2) * 0.0625;
-    value += fetch(column, row - 1) * 0.25;
-    value += fetch(column, row) * 0.375;
-    value += fetch(column, row + 1) * 0.25;
-    value += fetch(column, row + 2) * 0.0625;
-    return clamp(value, 0.0, 1.0);
+    return clamp(fetch(column, row), 0.0, 1.0);
 }
 
 float elevation(float value) {

@@ -50,6 +50,7 @@ Result Implementation::create() {
     }
 
     requestedSize = framebufferResolve->size();
+    resetFramebuffer();
 
     return Result::SUCCESS;
 }
@@ -118,6 +119,7 @@ Result Implementation::destroyFramebuffer() {
 Result Implementation::prepare() {
     framebufferChanged = framebufferResolve->size(requestedSize);
     if (framebufferChanged) {
+        resetFramebuffer();
         if (config.multisampled) {
             framebuffer->size(requestedSize);
         }
@@ -131,7 +133,7 @@ Result Implementation::prepare() {
     return Result::SUCCESS;
 }
 
-Result Implementation::draw(MTL::CommandBuffer* commandBuffer) {
+Result Implementation::draw(MTL::CommandBuffer* commandBuffer, bool visible) {
     if (!shouldDraw(framebufferChanged)) {
         return Result::SUCCESS;
     }
@@ -143,6 +145,10 @@ Result Implementation::draw(MTL::CommandBuffer* commandBuffer) {
         JST_CHECK(kernel->encode(computeCmdEncoder));
     }
     computeCmdEncoder->endEncoding();
+
+    if (!shouldDrawGraphics(visible)) {
+        return Result::SUCCESS;
+    }
 
     // Update clear color.
 

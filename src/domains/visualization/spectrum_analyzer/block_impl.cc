@@ -138,6 +138,8 @@ Result SpectrumAnalyzerImpl::configure() {
     signalViewConfig->waterfallHeight = waterfallHeight;
     signalViewConfig->colormap = colormap;
     signalViewConfig->splitRatio = splitRatio;
+    signalViewConfig->markers = markers;
+    signalViewConfig->pins = pins;
     signalViewConfig->xLabel = xLabel;
     signalViewConfig->amplitudeLabel = amplitudeLabel;
     signalViewConfig->waterfallLabel = waterfallLabel;
@@ -241,6 +243,8 @@ Result SpectrumAnalyzerImpl::create() {
         {"signal", moduleGetOutput({"range", "signal"})}
     }));
     JST_CHECK(moduleBindConfigEdit("signal_view", "splitRatio", "splitRatio"));
+    JST_CHECK(moduleBindConfigEdit("signal_view", "markers", "markers"));
+    JST_CHECK(moduleBindConfigEdit("signal_view", "pins", "pins"));
 
     return Result::SUCCESS;
 }

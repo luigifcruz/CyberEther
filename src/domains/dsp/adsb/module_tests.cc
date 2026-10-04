@@ -15,6 +15,7 @@
 #include "jetstream/scheduler_context.hh"
 #include "jetstream/domains/dsp/adsb/module.hh"
 #include "jetstream/render/base/program.hh"
+#include "jetstream/render/base/window.hh"
 
 #include "module_impl.hh"
 

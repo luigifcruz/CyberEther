@@ -2,6 +2,7 @@
 
 #include "jetstream/instance_remote.hh"
 #include "jetstream/viewport/capture.hh"
+#include "jetstream/render/tools/imgui.h"
 
 #include <atomic>
 #include <chrono>
@@ -22,6 +23,9 @@
 #endif
 
 #include <httplib.h>
+#ifdef ERROR
+#undef ERROR
+#endif
 #include <nlohmann/json.hpp>
 
 namespace Jetstream {
@@ -72,6 +76,9 @@ struct Instance::Remote::Impl {
     // Broker state
     std::string clientDomain;
     std::string signallerUrl;
+    std::string producerToken;
+    std::chrono::milliseconds heartbeatInterval{0};
+    std::chrono::milliseconds rejoinWindow{0};
     std::mutex roomMutex;
     std::condition_variable roomCondition;
     bool signallerReady = false;
@@ -97,7 +104,7 @@ struct Instance::Remote::Impl {
     std::unique_ptr<httplib::ws::WebSocketClient> signallerClient;
     std::thread signallerThread;
     std::atomic<bool> signallerRunning = false;
-    std::atomic<socket_t> signallerSocket = INVALID_SOCKET;
+    socket_t signallerSocket = INVALID_SOCKET;
     std::mutex signallerMutex;
 
     struct WebRtcSession {
@@ -148,7 +155,10 @@ struct Instance::Remote::Impl {
     GstElement* createRtpCapsFilter();
     Result startSignaller();
     Result stopSignaller();
+    httplib::ws::Result connectSignaller(const std::string& url, const httplib::Headers& headers);
+    void closeSignallerClient();
     void signallerLoop();
+    void readSignaller(std::chrono::steady_clock::time_point deadline);
     void handleSignallerMessage(const std::string& payload);
     void handleStartSession(const nlohmann::json& j);
     void createOfferIfReady(const std::string& sessionId);

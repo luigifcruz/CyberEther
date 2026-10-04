@@ -51,6 +51,23 @@ Result SignalViewImpl::validate() {
         return Result::ERROR;
     }
 
+    if (config.markers.size() > detail::MaxMarkers) {
+        JST_ERROR("[MODULE_SIGNAL_VIEW] At most {} markers are supported.", detail::MaxMarkers);
+        return Result::ERROR;
+    }
+    for (const auto marker : config.markers) {
+        if (!std::isfinite(marker) || marker < -1.0f || marker > 1.0f) {
+            JST_ERROR("[MODULE_SIGNAL_VIEW] Marker positions must be between -1 and 1.");
+            return Result::ERROR;
+        }
+    }
+    for (const auto index : config.pins) {
+        if (index >= config.markers.size()) {
+            JST_ERROR("[MODULE_SIGNAL_VIEW] Pinned marker indices must refer to a marker.");
+            return Result::ERROR;
+        }
+    }
+
     if (!std::isfinite(config.splitRatio) ||
         config.splitRatio < detail::MinSplitRatio || config.splitRatio > detail::MaxSplitRatio) {
         JST_ERROR("[MODULE_SIGNAL_VIEW] Split ratio must be between 0.1 and 0.9.");
@@ -215,10 +232,7 @@ Result SignalViewImpl::define() {
 }
 
 Result SignalViewImpl::create() {
-    canvas.splitter = {};
-    canvas.splitter.ratio = splitRatio;
-    canvas.displayHeld = false;
-    canvas.cursor = {};
+    canvas.reset(*this);
     updateLayoutFlag = false;
 
     // Get input tensor.
@@ -318,6 +332,9 @@ Result SignalViewImpl::reconfigure() {
             config.rangeMin != rangeMin || config.rangeMax != rangeMax;
         updateLayoutFlag |= config.splitRatio != splitRatio;
         splitRatio = config.splitRatio;
+        canvas.updateMarkersFlag |= config.markers != markers || config.pins != pins;
+        markers = config.markers;
+        pins = config.pins;
         lineplotAveraging = config.lineplotAveraging;
         waterfallAveraging = config.waterfallAveraging;
         rangeMin = config.rangeMin;
@@ -457,16 +474,12 @@ Result SignalViewImpl::present() {
     const auto context = canvasContext();
 
     JST_CHECK(canvas.processSurfaceEvents(surfaceConsumeSurfaceEvents()));
-    canvas.processInputEvents(surfaceConsumeInputEvents(), {
-        .ratio = splitRatio,
-        .enabled = lineplotEnabled && waterfallEnabled && configChangeEnabled("splitRatio"),
+    surfaceSetCursor(canvas.processInputEvents(surfaceConsumeInputEvents(), context, {
+        .splitEnabled = lineplotEnabled && waterfallEnabled && configChangeEnabled("splitRatio"),
         .pending = [this] { return configChangePending(); },
-        .request = [this](const F32 ratio) {
-            Parser::Map edit;
-            edit["splitRatio"] = ratio;
-            return requestConfigChange(edit);
-        },
-    });
+        .enabled = [this](const std::string& name) { return configChangeEnabled(name); },
+        .request = [this](const Parser::Map& edit) { return requestConfigChange(edit); },
+    }));
 
     if (canvas.interaction.viewChanged || updateLayoutFlag) {
         canvas.resize();
@@ -477,7 +490,7 @@ Result SignalViewImpl::present() {
 
     if (waterfallEnabled) {
         if (!canvas.displayHeld) {
-            JST_CHECK(waterfall.upload(waterfallFrame()));
+            JST_CHECK(waterfall.update(waterfallFrame()));
             waterfallHistory.clearDirty();
         }
         JST_CHECK(waterfall.present(canvas.interaction, colormap));

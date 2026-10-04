@@ -1,6 +1,7 @@
 #include "instance_remote_impl.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/viewport/capture.hh"
+#include "jetstream/viewport/adapters/generic.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/types.hh"
 
@@ -30,6 +31,17 @@
 extern "C" void gst_init_static_plugins(void);
 
 namespace Jetstream {
+
+namespace {
+
+std::chrono::milliseconds DurationMs(const nlohmann::json& j, const char* key) {
+    if (!j.contains(key) || !j[key].is_number_unsigned()) {
+        return {};
+    }
+    return std::chrono::milliseconds(std::min<uint64_t>(j[key].get<uint64_t>(), 3'600'000));
+}
+
+}  // namespace
 
 Instance::Remote::Remote(Viewport::Generic* viewport) {
     impl = std::make_shared<Impl>();
@@ -1802,11 +1814,16 @@ void Instance::Remote::Impl::handleSignallerMessage(const std::string& payload) 
             return;
         }
 
+        bool rejoin = false;
         {
             std::lock_guard<std::mutex> lock(roomMutex);
             signallerReady = true;
+            rejoin = !producerToken.empty();
         }
         roomCondition.notify_all();
+        if (rejoin) {
+            (void)sendSignallerMessage({{"type", "rejoinRoom"}});
+        }
         return;
     }
 
@@ -1835,14 +1852,34 @@ void Instance::Remote::Impl::handleSignallerMessage(const std::string& payload) 
             return;
         }
 
+        const auto reconnect = DurationMs(j, "reconnectWindowMs");
+        const auto interval = DurationMs(j, "heartbeatIntervalMs");
+        const auto timeout = DurationMs(j, "heartbeatTimeoutMs");
+        const std::string recoveryToken = j.contains("producerToken") && j["producerToken"].is_string()
+                                            ? j["producerToken"].get<std::string>()
+                                            : "";
+
         {
             std::lock_guard<std::mutex> lock(roomMutex);
             roomId_ = roomId;
             consumerToken = token;
             clientDomain = domain;
+            producerToken = recoveryToken;
+            heartbeatInterval = interval;
+            rejoinWindow = timeout + reconnect;
             roomReady = true;
         }
         roomCondition.notify_all();
+        return;
+    }
+
+    if (type == "roomRejoined") {
+        {
+            std::lock_guard<std::mutex> lock(roomMutex);
+            roomReady = true;
+        }
+        roomCondition.notify_all();
+        JST_INFO("[REMOTE] Rejoined remote room.");
         return;
     }
 

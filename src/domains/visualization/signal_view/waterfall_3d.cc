@@ -76,7 +76,7 @@ Result SignalViewWaterfall3D::create(const std::shared_ptr<Render::Window>& wind
     height = binsHeight;
     columnCapacity = std::min(width, detail::kWaterfall3DMaxColumns);
     columns = 0;
-    heights.assign(columnCapacity * height, 0.0f);
+    heights.assign((columnCapacity + 16) * height, 0.0f);
     writeIndex = 0;
     camera = {};
     cameraGoal = {};
@@ -136,6 +136,52 @@ Result SignalViewWaterfall3D::create(const std::shared_ptr<Render::Window>& wind
         JST_CHECK(window->build(heightsBuffer, cfg));
     }
 
+    // Time smoothing of the decimated history, shared with the flat waterfall.
+
+    filterUniforms = {0, static_cast<U32>(height), 0, 0};
+    filterState.assign(columnCapacity, {});
+
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = &filterUniforms;
+        cfg.elementByteSize = sizeof(filterUniforms);
+        cfg.size = 1;
+        cfg.target = Render::Buffer::Target::UNIFORM;
+        JST_CHECK(window->build(filterUniformBuffer, cfg));
+    }
+
+    {
+        Render::Buffer::Config cfg;
+        cfg.buffer = filterState.data();
+        cfg.elementByteSize = sizeof(filterState[0]);
+        cfg.size = filterState.size();
+        cfg.target = Render::Buffer::Target::STORAGE;
+        JST_CHECK(window->build(filterStateBuffer, cfg));
+    }
+
+    {
+        Render::Buffer::Config cfg;
+        cfg.elementByteSize = sizeof(F32);
+        cfg.size = columnCapacity * height;
+        cfg.target = Render::Buffer::Target::STORAGE;
+        JST_CHECK(window->build(filteredBuffer, cfg));
+    }
+
+    {
+        Render::Kernel::Config cfg;
+        cfg.gridSize = {columnCapacity, 1, 1};
+        cfg.workgroupSize = 64;
+        cfg.kernels = KernelsPackage["waterfall_filter"];
+        cfg.buffers = {
+            {filterUniformBuffer, Render::Kernel::AccessMode::READ},
+            {heightsBuffer, Render::Kernel::AccessMode::READ},
+            {filteredBuffer, Render::Kernel::AccessMode::WRITE},
+            {filterStateBuffer, Render::Kernel::AccessMode::READ |
+                                Render::Kernel::AccessMode::WRITE},
+        };
+        JST_CHECK(window->build(filterKernel, cfg));
+    }
+
     {
         Render::Buffer::Config cfg;
         cfg.buffer = &meshUniforms;
@@ -171,7 +217,7 @@ Result SignalViewWaterfall3D::create(const std::shared_ptr<Render::Window>& wind
         cfg.buffers = {
             {meshUniformBuffer, Render::Program::Target::VERTEX |
                                 Render::Program::Target::FRAGMENT},
-            {heightsBuffer, Render::Program::Target::VERTEX},
+            {filteredBuffer, Render::Program::Target::VERTEX},
         };
         JST_CHECK(window->build(meshProgram, cfg));
     }
@@ -202,7 +248,7 @@ Result SignalViewWaterfall3D::create(const std::shared_ptr<Render::Window>& wind
         cfg.buffers = {
             {meshUniformBuffer, Render::Program::Target::VERTEX |
                                 Render::Program::Target::FRAGMENT},
-            {heightsBuffer, Render::Program::Target::VERTEX},
+            {filteredBuffer, Render::Program::Target::VERTEX},
         };
         JST_CHECK(window->build(skirtProgram, cfg));
     }
@@ -230,7 +276,7 @@ Result SignalViewWaterfall3D::create(const std::shared_ptr<Render::Window>& wind
             cfg.buffers = {
                 {meshUniformBuffer, Render::Program::Target::VERTEX |
                                     Render::Program::Target::FRAGMENT},
-                {heightsBuffer, Render::Program::Target::VERTEX},
+                {filteredBuffer, Render::Program::Target::VERTEX},
             };
             cfg.enableAlphaBlending = true;
             JST_CHECK(window->build(layer->program, cfg));
@@ -299,6 +345,7 @@ Result SignalViewWaterfall3D::create(const std::shared_ptr<Render::Window>& wind
         cfg.framebuffer = framebufferTexture;
         cfg.multisampled = true;
         cfg.clearColor = interaction.backgroundColor;
+        cfg.kernels = {filterKernel};
         cfg.programs = {backdrop.program};
         JST_CHECK(text->surface(cfg));
         cfg.programs.push_back(traceBehind.program);
@@ -387,20 +434,24 @@ Result SignalViewWaterfall3D::present(std::vector<SurfaceEvent>&& surfaceEvents,
     const U64 targetColumns = std::min(detail::Waterfall3DMeshColumns(width, viewWidth),
                                        columnCapacity);
     if (!displayHeld) {
+        writeIndex = frame.writeIndex;
         if (targetColumns != columns) {
             JST_CHECK(resizeMesh(frame.bins, targetColumns));
+            JST_CHECK(filterRows(height, true));
             dataChanged = true;
         } else {
             if (frame.dirty.firstRowCount > 0) {
                 JST_CHECK(uploadRows(frame.bins, frame.dirty.startRow, frame.dirty.firstRowCount));
-                dataChanged = true;
             }
             if (frame.dirty.secondRowCount > 0) {
                 JST_CHECK(uploadRows(frame.bins, 0, frame.dirty.secondRowCount));
+            }
+            const U64 rows = frame.dirty.firstRowCount + frame.dirty.secondRowCount;
+            if (rows > 0) {
+                JST_CHECK(filterRows(rows, false));
                 dataChanged = true;
             }
         }
-        writeIndex = frame.writeIndex;
     }
 
     if (ticksDirty) {
@@ -432,11 +483,24 @@ Result SignalViewWaterfall3D::resizeMesh(const F32* bins, const U64 nextColumns)
 }
 
 Result SignalViewWaterfall3D::uploadRows(const F32* bins, const U64 startRow, const U64 rowCount) {
+    const U64 stride = columns + 16;
     for (U64 row = startRow; row < startRow + rowCount; ++row) {
         detail::Waterfall3DDecimateRow(bins + row * width, width,
-                                       heights.data() + row * columns, columns);
+                                       heights.data() + row * stride, columns);
     }
-    return heightsBuffer->update(startRow * columns, rowCount * columns);
+    return heightsBuffer->update(startRow * stride, rowCount * stride);
+}
+
+Result SignalViewWaterfall3D::filterRows(const U64 rowCount, const bool restart) {
+    if (restart) {
+        JST_CHECK(filterStateBuffer->update());
+    }
+    filterUniforms.width = static_cast<U32>(columns);
+    filterUniforms.writeIndex = static_cast<U32>(writeIndex);
+    filterUniforms.version += static_cast<U32>(rowCount);
+    JST_CHECK(filterUniformBuffer->update());
+    filterKernel->update();
+    return Result::SUCCESS;
 }
 
 void SignalViewWaterfall3D::processInputEvents(std::vector<InputEvent>&& events) {

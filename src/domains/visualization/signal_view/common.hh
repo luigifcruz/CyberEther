@@ -2,9 +2,11 @@
 #define JETSTREAM_DOMAINS_VISUALIZATION_SIGNAL_VIEW_COMMON_HH
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -47,6 +49,30 @@ inline std::string LabelUnit(const std::string& label) {
         return {};
     }
     return label.substr(open + 1, close - open - 1);
+}
+
+constexpr U64 MaxMarkers = 16;
+constexpr U64 MarkerSpans = MaxMarkers - 1;
+
+inline std::string FormatFrequencySpan(const F64 hertz) {
+    const F64 magnitude = std::abs(hertz);
+    const char* unit = "Hz";
+    F64 value = magnitude;
+    int decimals = 1;
+    if (magnitude >= 1.0e6) {
+        unit = "MHz";
+        value = magnitude / 1.0e6;
+        decimals = 3;
+    } else if (magnitude >= 1.0e3) {
+        unit = "kHz";
+        value = magnitude / 1.0e3;
+        decimals = 3;
+    }
+    std::string text = jst::fmt::format("{:.{}f}", value, decimals);
+    while (text.size() > 2 && text.back() == '0' && text[text.size() - 2] != '.') {
+        text.pop_back();
+    }
+    return jst::fmt::format("{} {}", text, unit);
 }
 
 
@@ -94,6 +120,19 @@ struct SignalViewSplitInteraction {
     F32 grabOffset = 0.0f;
     bool dragging = false;
 
+    bool hovered(const Extent2D<F32>& position,
+                 const SignalViewPanelLayout& layout,
+                 const Extent2D<U64>& size,
+                 const F32 scale,
+                 const bool enabled) const {
+        const F32 x = position.x * size.x;
+        const F32 y = position.y * size.y;
+        return enabled && layout.plot.height >= 2 &&
+               std::isfinite(x) && std::isfinite(y) &&
+               x >= layout.plot.x && x <= layout.plot.x + layout.plot.width &&
+               std::abs(y - layout.waterfall.y) <= 6.0f * scale;
+    }
+
     bool process(const MouseEvent& event,
                  const SignalViewPanelLayout& layout,
                  const Extent2D<U64>& size,
@@ -121,11 +160,8 @@ struct SignalViewSplitInteraction {
             }
             return true;
         }
-        if (enabled && event.type == MouseEventType::Click &&
-            event.button == MouseButton::Left && layout.plot.height >= 2 &&
-            std::isfinite(x) && std::isfinite(y) &&
-            x >= layout.plot.x && x <= layout.plot.x + layout.plot.width &&
-            std::abs(y - layout.waterfall.y) <= 6.0f * scale) {
+        if (event.type == MouseEventType::Click && event.button == MouseButton::Left &&
+            hovered(event.position, layout, size, scale, enabled)) {
             dragging = true;
             grabOffset = y - (layout.plot.y + ratio * layout.plot.height);
             return true;
@@ -232,11 +268,11 @@ struct SignalViewCanvas {
         SignalViewWaterfall* waterfall = nullptr;
     };
 
-    struct SplitEdits {
-        F32 ratio = 0.5f;
-        bool enabled = false;
+    struct Edits {
+        bool splitEnabled = false;
         std::function<bool()> pending;
-        std::function<Result(F32)> request;
+        std::function<bool(const std::string&)> enabled;
+        std::function<Result(const Parser::Map&)> request;
     };
 
     struct CursorState {
@@ -244,14 +280,31 @@ struct SignalViewCanvas {
         Extent2D<F32> position = {0.0f, 0.0f};
         bool visible = false;
         bool marker = false;
+        bool overMarker = false;
+        F32 point = 0.0f;
         Extent2D<F32> plot = {0.0f, 0.0f};
     };
 
+    struct TagBounds {
+        bool active = false;
+        Extent2D<F32> center = {0.0f, 0.0f};
+        Extent2D<F32> halfSize = {0.0f, 0.0f};
+    };
+
+    struct MarkerDrag {
+        std::optional<U64> index;
+        bool moved = false;
+        Extent2D<F32> origin = {0.0f, 0.0f};
+    };
+
+    void reset(const SignalView& config);
     Result create(const std::shared_ptr<Render::Window>& window, const Context& context);
     Result destroy(const std::shared_ptr<Render::Window>& window);
 
     Result processSurfaceEvents(std::vector<SurfaceEvent>&& events);
-    void processInputEvents(std::vector<InputEvent>&& events, const SplitEdits& edits);
+    SurfaceCursor processInputEvents(std::vector<InputEvent>&& events,
+                                     const Context& context,
+                                     const Edits& edits);
     void resize();
     void updateState(const Context& context);
     Result present(const Context& context);
@@ -262,16 +315,48 @@ struct SignalViewCanvas {
     bool displayHeld = false;
     Extent2D<F32> pixelSize;
 
+    std::vector<F32> markerPositions;
+    bool updateMarkersFlag = false;
+    std::array<TagBounds, detail::MaxMarkers> tagBounds;
+    std::array<bool, detail::MaxMarkers> pinned{};
+    MarkerDrag markerDrag;
+
     std::shared_ptr<Render::Texture> framebufferTexture;
     std::shared_ptr<Render::Surface> renderSurface;
     std::shared_ptr<Render::Components::Axis> axis;
     std::shared_ptr<Render::Components::Text> text;
     std::shared_ptr<Render::Components::Shapes> cursorShapes;
     std::shared_ptr<Render::Components::Text> cursorText;
+    std::shared_ptr<Render::Components::Shapes> markerShapes;
+    std::shared_ptr<Render::Components::Shapes> markerTagShapes;
+    std::shared_ptr<Render::Components::Shapes> markerSpanShapes;
+    std::shared_ptr<Render::Components::Shapes> markerTableShapes;
+    std::shared_ptr<Render::Components::Text> markerText;
+    std::shared_ptr<Render::Components::Text> markerBadgeText;
+    std::shared_ptr<Render::Components::Text> markerTagText;
 
  private:
     void updateLabels(const Context& context);
     Result updateCursor(const Context& context);
+    Result updateMarkers(const Context& context);
+    F32 viewTranslation() const;
+    std::optional<F32> cursorPoint(const Context& context) const;
+    F32 projectPointX(F32 xPoint) const;
+    std::optional<F32> displayedAmplitude(const Context& context, F32 xPoint) const;
+    F32 amplitudeToNdc(const Context& context, F32 yPoint) const;
+    std::string formatPointX(const Context& context, F32 xPoint) const;
+    std::string formatSpanX(const Context& context, F32 delta) const;
+    std::string formatAmplitude(const Context& context, F32 yPoint) const;
+    void syncMarkers(const Context& context, const Edits& edits);
+    void applyPins(const std::vector<U64>& pins);
+    std::vector<U64> pinnedIndices() const;
+    std::optional<U64> tagAt(const Extent2D<F32>& position) const;
+    std::optional<U64> markerAt(const Context& context, const Extent2D<F32>& position) const;
+    bool insidePlot(const Extent2D<F32>& position) const;
+    F32 pointAtX(F32 x) const;
+    void toggleMarker(const Context& context, const Edits& edits);
+    void clearMarkers(const Context& context, const Edits& edits);
+    void commitMarkers(const Context& context, const Edits& edits);
 };
 
 }  // namespace Jetstream::Modules

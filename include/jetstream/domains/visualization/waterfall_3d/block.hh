@@ -61,10 +61,12 @@ struct Waterfall3D : public Block::Config {
         "2. Each row is reduced to one column per few pixels of view width "
         "by keeping the peak of the nearby bins, then uploaded to a GPU "
         "storage buffer.\n"
-        "3. A vertex shader builds one quad per column and raises it with the "
+        "3. A compute kernel smooths the new rows along time with the same "
+        "filter as the flat waterfall.\n"
+        "4. A vertex shader builds one quad per column and raises it with the "
         "same curve as the colors, then shades it from the wider "
         "neighborhood.\n"
-        "4. Cells are emitted far to near so painting order handles occlusion.";
+        "5. Cells are emitted far to near so painting order handles occlusion.";
     );
 };
 

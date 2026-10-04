@@ -109,6 +109,9 @@ struct FlowgraphDetachedSurfacePresenter {
                                 .event = event,
                             });
                         },
+                        .onResolveCursor = [surface]() {
+                            return surface->cursor();
+                        },
                         .onClose = [enqueue, flowgraphId, blockName, surfaceId = manifest.id]() {
                             enqueue(MailSetSurfaceDetached{
                                 .flowgraph = flowgraphId,

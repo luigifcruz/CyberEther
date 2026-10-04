@@ -538,14 +538,11 @@ static constexpr bool BathymetryLayersAreOrdered() {
 static_assert(BathymetryLayersAreOrdered(),
               "Bathymetry layers must be ordered from shallow to deep.");
 
-// Static quad vertices: 6 vertices forming 2 triangles.
 // x = endpoint selector (0=start, 1=end), y = side offset (-1 or +1).
 static const F32 QuadVertices[] = {
     0.0f, -1.0f,
     1.0f, -1.0f,
     0.0f,  1.0f,
-    0.0f,  1.0f,
-    1.0f, -1.0f,
     1.0f,  1.0f,
 };
 
@@ -1050,7 +1047,7 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
         Render::Buffer::Config cfg;
         cfg.buffer = const_cast<F32*>(QuadVertices);
         cfg.elementByteSize = sizeof(F32);
-        cfg.size = 12;  // 6 vertices * 2 components
+        cfg.size = 8;
         cfg.target = Render::Buffer::Target::VERTEX;
         JST_CHECK(window->build(pimpl->quadBuffer, cfg));
     }
@@ -1151,7 +1148,7 @@ Result GeoMapBaseLayer::create(Window* window, const MapContext& context) {
         {
             Render::Draw::Config cfg;
             cfg.buffer = category.vertex;
-            cfg.mode = Render::Draw::Mode::TRIANGLES;
+            cfg.mode = Render::Draw::Mode::TRIANGLE_STRIP;
             cfg.numberOfInstances = initialCount.value_or(category.instanceCount);
             JST_CHECK(window->build(category.draw, cfg));
         }
@@ -2390,10 +2387,10 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
             }
 
             const F32 pathLength = cumulative.back();
-            const auto advances = pimpl->pathText->advances(name);
+            const auto advances = pimpl->pathText->advances(name, scale);
             F32 naturalWidth = 0.0f;
             for (const F32 advance : advances) {
-                naturalWidth += advance * scale;
+                naturalWidth += advance;
             }
             const F32 layoutWidth = naturalWidth +
                 tracking * static_cast<F32>(name.size() - 1);
@@ -2435,7 +2432,7 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
             F32 cursor = 0.0f;
             F32 pathOcclusion = 0.0f;
             for (U64 i = 0; i < name.size(); ++i) {
-                const F32 glyphWidth = advances[i] * scale;
+                const F32 glyphWidth = advances[i];
                 const F32 fraction = (cursor + glyphWidth * 0.5f) / layoutWidth;
                 const PathSample sample = samplePath(pathLength * fraction);
                 const F32 angle = sample.angle;
@@ -2553,11 +2550,11 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
                                       F32 anchorLat,
                                       F32 fade) -> Result {
                 const std::string name(ref.name);
-                const auto advances = pimpl->pathText->advances(name);
+                const auto advances = pimpl->pathText->advances(name, scale);
                 F32 layoutWidth =
                     tracking * static_cast<F32>(name.size() - 1);
                 for (const F32 advance : advances) {
-                    layoutWidth += advance * scale;
+                    layoutWidth += advance;
                 }
 
                 const F32 probeLon = ref.meridian
@@ -2822,14 +2819,13 @@ Result GeoMapBaseLayer::present(const MapContext& context) {
                 } else if (idx == Impl::LabelAirports) {
                     labelY += pixelSize.y * 22.0f;
                 }
-                const F32 w = layer.text->advance(fill) * pixelSize.x *
-                              lblScale + padX * 2.0f;
+                const F32 w = layer.text->advance(fill, lblScale) * pixelSize.x +
+                              padX * 2.0f;
                 const U64 lineCount = static_cast<U64>(
                     std::count(fill.begin(), fill.end(), '\n')) + 1;
-                const F32 h = static_cast<F32>(
-                                  layer.text->getConfig().font->lineHeight()) *
+                const F32 h = layer.text->lineHeight(lblScale) *
                               static_cast<F32>(lineCount) *
-                              pixelSize.y * lblScale + padY * 2.0f;
+                              pixelSize.y + padY * 2.0f;
                 const AABB box = {labelX - w * 0.5f, labelY - h * 0.5f,
                                   labelX + w * 0.5f, labelY + h * 0.5f};
                 if (box.x0 < -1.05f || box.x1 > 1.05f ||

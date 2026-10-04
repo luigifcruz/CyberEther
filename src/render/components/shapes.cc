@@ -62,6 +62,9 @@ struct Shapes::Impl {
 
     // Render.
 
+    bool enabled = true;
+    bool visible = true;
+
     bool updateUniformBufferFlag = false;
     bool updateVerticesBufferFlag = false;
     bool updateIndicesBufferFlag = false;
@@ -307,6 +310,7 @@ Result Shapes::create(Window* window) {
         };
         cfg.enableAlphaBlending = true;
         JST_CHECK(window->build(pimpl->program, cfg));
+        pimpl->program->setEnabled(pimpl->enabled && pimpl->visible);
     }
 
     // Create element data.
@@ -558,6 +562,11 @@ Result Shapes::updateScissorRect(const std::optional<Render::ScissorRect>& rect)
     return Result::SUCCESS;
 }
 
+void Shapes::enabled(bool value) {
+    pimpl->enabled = value;
+    pimpl->program->setEnabled(pimpl->enabled && pimpl->visible);
+}
+
 Result Shapes::present() {
     // Update render buffers.
 
@@ -604,6 +613,13 @@ Result Shapes::present() {
     }
 
     if (pimpl->updateSizeBufferFlag) {
+        pimpl->visible = false;
+        for (const auto& element : pimpl->elements) {
+            for (const auto& size : element.instanceSizesBuffer) {
+                pimpl->visible |= size.x != 0.0f && size.y != 0.0f;
+            }
+        }
+        pimpl->program->setEnabled(pimpl->enabled && pimpl->visible);
         pimpl->sizesBuffer->update();
         pimpl->updateSizeBufferFlag = false;
         pimpl->computeInstanceBufferFlag = true;

@@ -37,6 +37,7 @@ Result Implementation::create() {
     }
 
     requestedSize = framebuffer->size();
+    resetFramebuffer();
 
     return Result::SUCCESS;
 }
@@ -58,6 +59,7 @@ Result Implementation::destroy() {
 Result Implementation::prepare() {
     framebufferChanged = framebuffer->size(requestedSize);
     if (framebufferChanged) {
+        resetFramebuffer();
         JST_CHECK(framebuffer->destroy());
         JST_CHECK(framebuffer->create());
     }
@@ -65,7 +67,7 @@ Result Implementation::prepare() {
     return Result::SUCCESS;
 }
 
-Result Implementation::draw(WGPUCommandEncoder& commandEncoder) {
+Result Implementation::draw(WGPUCommandEncoder& commandEncoder, bool visible) {
     if (!shouldDraw(framebufferChanged)) {
         return Result::SUCCESS;
     }
@@ -80,6 +82,10 @@ Result Implementation::draw(WGPUCommandEncoder& commandEncoder) {
     }
 
     wgpuComputePassEncoderEnd(computePassEncoder);
+
+    if (!shouldDrawGraphics(visible)) {
+        return Result::SUCCESS;
+    }
 
     // Begin render pass.
 

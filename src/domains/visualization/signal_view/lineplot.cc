@@ -55,6 +55,7 @@ Result SignalViewLineplot::create(const std::shared_ptr<Render::Window>& window,
             Render::Kernel::Config cfg;
             cfg.gridSize = {config.numberOfElements - 1, 1, 1};
             cfg.kernels = GlobalKernelsPackage["thicklinestrip"];
+            cfg.workgroupSize = 64;
             cfg.buffers = {
                 {uniformBuffer, Render::Kernel::AccessMode::READ},
                 {pointsBuffer, Render::Kernel::AccessMode::READ},
@@ -114,6 +115,7 @@ Result SignalViewLineplot::create(const std::shared_ptr<Render::Window>& window,
             Render::Kernel::Config cfg;
             cfg.gridSize = {config.numberOfElements, 1, 1};
             cfg.kernels = GlobalKernelsPackage["fillarea"];
+            cfg.workgroupSize = 64;
             cfg.buffers = {
                 {signalUniformBuffer, Render::Kernel::AccessMode::READ},
                 {signalPointsBuffer, Render::Kernel::AccessMode::READ},
@@ -264,7 +266,7 @@ std::optional<F32> SignalViewLineplot::sample(const F32 position) const {
         return std::nullopt;
     }
     const F32 index = (position + 1.0f) * 0.5f * (count - 1);
-    const U64 lower = std::min(static_cast<U64>(index), count - 2);
+    const U64 lower = std::min(static_cast<U64>(std::max(index, 0.0f)), count - 2);
     const F32 fraction = std::clamp(index - static_cast<F32>(lower), 0.0f, 1.0f);
     const F32 yLower = displayedPoints[(lower * 2) + 1];
     const F32 yUpper = displayedPoints[(lower * 2) + 3];

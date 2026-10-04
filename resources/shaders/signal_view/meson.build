@@ -9,5 +9,5 @@ shader_pkg_lst += [{
         files(['trace.vert.glsl', 'trace.frag.glsl']),
         files(['skirt.vert.glsl', 'skirt.frag.glsl']),
     ],
-    'kernels': [],
+    'kernels': [files(['waterfall_filter.comp'])],
 }]

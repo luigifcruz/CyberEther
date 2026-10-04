@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_RETAINED_TEXT_GRID_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/typography.hh>
 #include <jetstream/types.hh>
 
 #include <functional>
@@ -36,16 +37,29 @@ struct TextGrid : public Component {
 
     struct Metrics {
         F32 contentHeight = 0.0f;
+        F32 contentWidth = 0.0f;
+        F32 scrollX = 0.0f;
+        F32 scrollY = 0.0f;
+        F32 scrollbarGutter = 0.0f;
         Padding padding;
         std::vector<LineMetrics> sourceLines;
+    };
+
+    struct WidthLayout {
+        std::vector<F32> lineIndent;
+        std::vector<F32> lineWrapWidth;
+        F32 contentMinWidth = 0.0f;
+
+        bool operator==(const WidthLayout&) const = default;
     };
 
     struct Config {
         std::string id;
         std::string value;
         bool editable = false;
-        F32 fontSize = 15.0f;
+        F32 fontSize = Typography::FontSize;
         F32 fontScale = 1.0f;
+        F32 lineHeight = Typography::CodeLineHeight;
         std::string fontName = "default_mono";
         bool monospace = true;
         bool lineNumbers = false;
@@ -57,6 +71,11 @@ struct TextGrid : public Component {
         std::vector<F32> lineScale;
         std::vector<F32> lineTopGap;
         std::vector<F32> lineIndent;
+        std::vector<U8> lineSameRow;
+        std::vector<F32> lineWrapWidth;
+        std::vector<F32> lineRightInset;
+        F32 contentMinWidth = 0.0f;
+        U64 visibleLineCapacity = 64;
         std::string backgroundColorKey = "transparent";
         std::string textColorKey = "text_primary";
         std::string lineNumberColorKey = "editor_line_number";
@@ -70,10 +89,14 @@ struct TextGrid : public Component {
         std::vector<std::string> styleColorKeys;
         std::vector<std::string> styleFonts;
         std::vector<std::string> styleBackgroundColorKeys;
+        std::vector<F32> styleScales;
+        std::string iconFont = Typography::IconFont;
         U64 maxLineSegments = 64;
+        U64 styleRevision = 0;
         bool submitOnEnter = false;
         std::function<const std::vector<std::vector<StyleId>>&(
             const std::vector<std::string>& lines, U64 revision)> styler;
+        std::function<WidthLayout(F32 textWidth)> widthLayout;
         std::function<bool(StyleId)> isStyleCommentOrString;
         std::function<void(std::string)> onChange;
         std::function<void(std::string)> onSubmit;
@@ -92,6 +115,11 @@ struct TextGrid : public Component {
 
     bool update(Config config);
     const Metrics& metrics() const;
+    F32 naturalWidth() const;
+
+    Position cursor() const;
+    void setCursor(Position position);
+    void moveCursorRows(I64 delta, bool extendSelection = false);
 
  protected:
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;

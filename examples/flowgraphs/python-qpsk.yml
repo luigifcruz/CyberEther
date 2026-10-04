@@ -1,6 +1,6 @@
 ---
 version: 2
-title: Python Block
+title: Python QPSK Generator
 summary: Generate QPSK signals with Python.
 author: Luigi
 license: MIT
@@ -25,7 +25,7 @@ graph:
         - **Constellation** plots every sample as a dot, in-phase across and quadrature up. The four clouds are the four phases. Noise smears each one into a cloud, and wider clouds mean a harder job for a receiver telling them apart.
         - **Spectrum** shows a broad hump instead of a single peak. Jumping abruptly between phases spreads energy across frequency. The main hump spans about 125 kHz either side of center, which is the symbol rate, with ripples beyond it because rectangular pulses have sharp edges. Real radios round those edges with a pulse shaping filter to stay inside their channel.
 
-        **Next:** open **Signal Generator** to see a tone, a chirp, and noise built the same way, or read the Python block guide under **Help** for the full context API.
+        **Next:** open **Signal Generator** to see a tone, a chirp, and noise made with native generator blocks instead, or read the Python block guide under **Help** for the full context API.
     meta:
       node:
         x: 41
@@ -43,7 +43,7 @@ graph:
         # Try it
         1. Raise **Noise Variance** on the **Signal Generator** from 0.005 to 0.05. The clouds spread and the spectrum floor rises. Set it to 0 for four clean dots. Restore 0.005.
         2. In the code, change **samples_per_symbol** from 8 to 4 and press **Ctrl+Enter** to run. The symbol rate doubles and the hump grows twice as wide. Try 16 to narrow it. Restore 8.
-        3. Change **amplitude** from 0.7 to 0.3 and run. The clouds slide toward the center and sink into the noise. Restore 0.7.
+        3. Change **amplitude** from 0.7 to 0.3 and run. The clouds slide toward the center and the noise blurs them more, though they stay apart. Restore 0.7.
         4. Break something on purpose. Delete a character, run, and read the status line under the code. Fix it and run again. The rest of the graph keeps going.
 
         ## Rules of the road
