@@ -41,17 +41,12 @@ struct FlowgraphDetachedSurfacePresenter {
             return configs;
         }
 
-        std::vector<std::string> blocks;
-        if (flowgraph->view().keys(blocks) != Result::SUCCESS) {
+        const auto blocks = context.state.flowgraph.blocks.find(flowgraphId);
+        if (blocks == context.state.flowgraph.blocks.end()) {
             return configs;
         }
 
-        for (const auto& blockName : blocks) {
-            Flowgraph::View::BlockData blockData;
-            if (flowgraph->view().block(blockName, blockData) != Result::SUCCESS) {
-                continue;
-            }
-
+        for (const auto& [blockName, blockData] : blocks->second) {
             for (const auto& surface : blockData.surfaces) {
                 if (!surface) {
                     continue;
@@ -142,6 +137,7 @@ struct FlowgraphDetachedSurfacePresenter {
                                                               const std::string& windowId,
                                                               const Flowgraph::View::BlockData& blockData) const {
         auto fields = BuildFlowgraphConfigFields(windowId, blockData);
+        ApplyLiveMarkdown(fields, context.state.flowgraph, flowgraphId, blockName);
         for (auto& field : fields) {
             field.onApply = [enqueue = context.callbacks.enqueueMail, flowgraphId, blockName](Parser::Map patch, const bool silent) {
                 enqueue(MailReconfigureBlock{flowgraphId,

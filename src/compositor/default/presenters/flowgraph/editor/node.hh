@@ -97,10 +97,13 @@ struct FlowgraphNodePresenter {
     }
 
     void buildConfigFields(FlowgraphNode::BlockData& block,
+                           const std::string& flowgraphId,
+                           const std::string& blockName,
                            const std::string& nodeViewId,
                            const Flowgraph::View::BlockData& blockData) const {
         block.config = blockData.config;
         block.configFields = BuildFlowgraphConfigFields(nodeViewId, blockData);
+        ApplyLiveMarkdown(block.configFields, context.state.flowgraph, flowgraphId, blockName);
     }
 
     void buildTiming(FlowgraphNode::BlockData& block,
@@ -187,7 +190,7 @@ struct FlowgraphNodePresenter {
 
         if (blockState != Block::State::Creating) {
             buildBlockMetrics(block, nodeViewId, blockData);
-            buildConfigFields(block, nodeViewId, blockData);
+            buildConfigFields(block, flowgraphId, blockName, nodeViewId, blockData);
             buildTiming(block, blockData);
             surfaces.buildSurfaces(block, flowgraph, flowgraphId, blockName, nodeViewId, blockData);
         }

@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_FLOWGRAPH_CONFIG_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_FLOWGRAPH_CONFIG_HH
 
+#include "../../model/state.hh"
 #include "../../views/flowgraph/editor/config/types.hh"
 
 #include <jetstream/flowgraph_view.hh>
@@ -47,6 +48,22 @@ inline std::vector<FlowgraphConfigFieldConfig> BuildFlowgraphConfigFields(
         fields.push_back(std::move(field));
     }
     return fields;
+}
+
+inline void ApplyLiveMarkdown(std::vector<FlowgraphConfigFieldConfig>& fields,
+                              const DefaultCompositorState::FlowgraphState& flowgraphs,
+                              const std::string& flowgraphId,
+                              const std::string& blockName) {
+    for (auto& field : fields) {
+        if (Parser::Get<std::string>(field.format, "type") != "markdown") {
+            continue;
+        }
+        const auto preview = flowgraphs.liveMarkdown.find(
+            DefaultCompositorState::FlowgraphState::LiveMarkdownKey(flowgraphId, blockName, field.name));
+        if (preview != flowgraphs.liveMarkdown.end()) {
+            field.preview = preview->second;
+        }
+    }
 }
 
 }  // namespace Jetstream

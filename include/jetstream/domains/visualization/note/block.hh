@@ -26,7 +26,21 @@ struct Note : public Block::Config {
         "## Useful For\n"
         "- Annotating flowgraph pipelines with documentation.\n"
         "- Adding visual labels or descriptions to groups of blocks.\n"
-        "- Embedding instructions or status notes.\n\n"
+        "- Embedding instructions or status notes.\n"
+        "- Showing live values published to the flowgraph environment.\n\n"
+
+        "## Live Markdown\n"
+        "Placeholders such as `${env.status.snr:.1f}` show the current value of "
+        "a flowgraph environment field while the flowgraph runs.\n\n"
+        "- **Paths**: Dots select nested fields and brackets index lists, with "
+        "negative indices counting from the end.\n"
+        "- **Format**: An optional Python format specification follows the "
+        "colon. Values that are not available yet render as `--`.\n"
+        "- **Repeated rows**: A line containing `[*]` repeats once per entry, "
+        "which builds a table from a list.\n"
+        "- **Stat tiles**: A fenced block tagged `stats` renders one tile per "
+        "line, written as label, value, and an optional tone such as green or "
+        "red, separated by pipes.\n\n"
 
         "## Examples\n"
         "- Add a title note:\n"
@@ -34,7 +48,8 @@ struct Note : public Block::Config {
 
         "## Implementation\n"
         "The block contains no modules. The content parameter is rendered as "
-        "markdown inside the flowgraph node.";
+        "markdown inside the flowgraph node, after placeholders are expanded "
+        "from the flowgraph environment.";
     );
 };
 
