@@ -52,7 +52,7 @@ struct FlowgraphConfigMarkdownField {
     void updateEditor() {
         markdownField.update({
             .id = this->config.id + "Markdown",
-            .value = editing ? buffer : value,
+            .value = editing ? buffer : this->config.preview.value_or(value),
             .editing = editing,
             .height = allocatedHeight,
             .onChange = [this](std::string nextValue) {

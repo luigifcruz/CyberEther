@@ -4,6 +4,7 @@
 #include "jetstream/benchmark.hh"
 #include "jetstream/block.hh"
 #include "jetstream/flowgraph.hh"
+#include "jetstream/flowgraph_view.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/instance_remote.hh"
 #include "jetstream/parser.hh"
@@ -109,8 +110,21 @@ struct DefaultCompositorState {
             bool dockInMainDockspace = true;
         };
 
+        struct BlockSnapshot {
+            std::string name;
+            Flowgraph::View::BlockData data;
+        };
+
+        static std::string LiveMarkdownKey(const std::string& flowgraphId,
+                                           const std::string& blockName,
+                                           const std::string& fieldName) {
+            return flowgraphId + ":" + blockName + ":" + fieldName;
+        }
+
         std::unordered_map<std::string, std::shared_ptr<Flowgraph>> items;
         std::unordered_map<std::string, std::unordered_map<std::string, StackWindowState>> stacks;
+        std::unordered_map<std::string, std::vector<BlockSnapshot>> blocks;
+        std::unordered_map<std::string, std::string> liveMarkdown;
     };
 
     struct ClipboardState {

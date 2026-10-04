@@ -68,6 +68,33 @@ Points worth knowing:
 
 The Python view of the environment, including the write tracking and rollback semantics, is covered in [Flowgraph Environment](/docs/python-block#flowgraph-environment).
 
+### Live Markdown
+
+Note blocks can display environment values while the flowgraph runs. Write a placeholder with the key path and an optional format specification:
+
+```markdown
+The SNR is **${env.receiver_status.snr:.1f} dB** and the lock state is ${env.receiver_status.locked}.
+```
+
+Paths use dots for nested fields and brackets for indices, with negative indices counting from the end. The format specification follows the Python syntax. Values that are not available yet render as `--`.
+
+A `[*]` wildcard repeats the line once per entry, which builds a table from a list:
+
+```markdown
+| Station | Freq (MHz) |
+|---|---:|
+| ${env.stations.list[*].name} | ${env.stations.list[*].freq:.3f} |
+```
+
+A fenced block tagged `stats` renders one tile per line, with a label, a value, and an optional tone such as green or red:
+
+````markdown
+```stats
+SNR | ${env.receiver.snr:.1f} dB | green
+Uptime | ${env.receiver.uptime:.0f} s
+```
+````
+
 ## Tensor Attributes
 
 Attributes are named values attached to a tensor, and they travel wherever the tensor is connected. Producers set them when the tensor is created or when the described property changes, and every downstream consumer reads them from its input:

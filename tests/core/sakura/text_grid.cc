@@ -383,7 +383,12 @@ TEST_CASE("Same-row lines share a band and resolve mouse hits by column",
         .padding = Sakura::Padding{0.0f, 0.0f, 0.0f, 0.0f},
         .lineScale = {1.0f, 2.0f, 1.0f, 1.0f},
         .lineIndent = {0.0f, 100.0f, 200.0f, 0.0f},
-        .lineSameRow = {0, 1, 1, 0},
+        .lineRowMode = {
+            Sakura::Retained::TextGrid::RowMode::Next,
+            Sakura::Retained::TextGrid::RowMode::Same,
+            Sakura::Retained::TextGrid::RowMode::Same,
+            Sakura::Retained::TextGrid::RowMode::Next,
+        },
     });
     host.place(ctx, {0.0f, 0.0f, 400.0f, 200.0f});
 
@@ -428,7 +433,12 @@ TEST_CASE("Cursor visibility follows the visual row of a same-row cell",
         .padding = Sakura::Padding{0.0f, 0.0f, 0.0f, 0.0f},
         .lineScale = {1.0f, 1.0f, 1.0f, 1.0f},
         .lineIndent = {0.0f, 100.0f, 200.0f, 0.0f},
-        .lineSameRow = {0, 1, 1, 0},
+        .lineRowMode = {
+            Sakura::Retained::TextGrid::RowMode::Next,
+            Sakura::Retained::TextGrid::RowMode::Same,
+            Sakura::Retained::TextGrid::RowMode::Same,
+            Sakura::Retained::TextGrid::RowMode::Next,
+        },
     });
     host.place(ctx, {0.0f, 0.0f, 400.0f, 20.0f});
 
@@ -548,7 +558,12 @@ TEST_CASE("Vertical cursor moves cross row groups by horizontal position",
         .padding = Sakura::Padding{0.0f, 0.0f, 0.0f, 0.0f},
         .lineScale = {1.0f, 1.0f, 1.0f, 1.0f},
         .lineIndent = {0.0f, 100.0f, 200.0f, 0.0f},
-        .lineSameRow = {0, 1, 1, 0},
+        .lineRowMode = {
+            Sakura::Retained::TextGrid::RowMode::Next,
+            Sakura::Retained::TextGrid::RowMode::Same,
+            Sakura::Retained::TextGrid::RowMode::Same,
+            Sakura::Retained::TextGrid::RowMode::Next,
+        },
     });
     host.place(ctx, {0.0f, 0.0f, 400.0f, 200.0f});
 
@@ -627,7 +642,7 @@ TEST_CASE("Horizontal scrolling reveals indented same-row cells",
         .padding = Sakura::Padding{0.0f, 0.0f, 0.0f, 0.0f},
         .lineScale = {1.0f, 1.0f},
         .lineIndent = {0.0f, 200.0f},
-        .lineSameRow = {0, 1},
+        .lineRowMode = {Sakura::Retained::TextGrid::RowMode::Next, Sakura::Retained::TextGrid::RowMode::Same},
     });
     host.place(ctx, {0.0f, 0.0f, 100.0f, 50.0f});
 
@@ -666,7 +681,11 @@ TEST_CASE("Clipped grids with a long wrapped column lay out beside short cells",
         .padding = Sakura::Padding{0.0f, 0.0f, 0.0f, 0.0f},
         .lineScale = {1.0f, 1.0f, 1.0f},
         .lineIndent = {0.0f, 100.0f, 0.0f},
-        .lineSameRow = {0, 1, 0},
+        .lineRowMode = {
+            Sakura::Retained::TextGrid::RowMode::Next,
+            Sakura::Retained::TextGrid::RowMode::Same,
+            Sakura::Retained::TextGrid::RowMode::Next,
+        },
         .lineWrapWidth = {75.0f, 0.0f, 0.0f},
     });
     host.document = {0.0f, 0.0f, 400.0f,
@@ -703,7 +722,12 @@ TEST_CASE("Line numbers label only the first cell of a same-row band",
         .padding = Sakura::Padding{0.0f, 0.0f, 0.0f, 0.0f},
         .lineScale = {1.0f, 1.0f, 1.0f, 1.0f},
         .lineIndent = {0.0f, 100.0f, 200.0f, 0.0f},
-        .lineSameRow = {0, 1, 1, 0},
+        .lineRowMode = {
+            Sakura::Retained::TextGrid::RowMode::Next,
+            Sakura::Retained::TextGrid::RowMode::Same,
+            Sakura::Retained::TextGrid::RowMode::Same,
+            Sakura::Retained::TextGrid::RowMode::Next,
+        },
     });
     host.place(ctx, {0.0f, 0.0f, 400.0f, 200.0f});
 

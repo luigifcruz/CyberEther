@@ -45,9 +45,16 @@ struct TextGrid : public Component {
         std::vector<LineMetrics> sourceLines;
     };
 
+    enum class RowMode : U8 {
+        Next,
+        Same,
+        Below,
+    };
+
     struct WidthLayout {
         std::vector<F32> lineIndent;
         std::vector<F32> lineWrapWidth;
+        std::vector<RowMode> lineRowMode;
         F32 contentMinWidth = 0.0f;
 
         bool operator==(const WidthLayout&) const = default;
@@ -71,7 +78,7 @@ struct TextGrid : public Component {
         std::vector<F32> lineScale;
         std::vector<F32> lineTopGap;
         std::vector<F32> lineIndent;
-        std::vector<U8> lineSameRow;
+        std::vector<RowMode> lineRowMode;
         std::vector<F32> lineWrapWidth;
         std::vector<F32> lineRightInset;
         F32 contentMinWidth = 0.0f;

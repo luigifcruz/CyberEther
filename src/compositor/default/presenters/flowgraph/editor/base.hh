@@ -125,17 +125,12 @@ struct FlowgraphEditorPresenter {
             },
         };
 
-        std::vector<std::string> blocks;
-        if (flowgraph->view().keys(blocks) != Result::SUCCESS) {
+        const auto blocks = context.state.flowgraph.blocks.find(flowgraphId);
+        if (blocks == context.state.flowgraph.blocks.end()) {
             return config;
         }
 
-        for (const auto& blockName : blocks) {
-            Flowgraph::View::BlockData blockData;
-            if (flowgraph->view().block(blockName, blockData) != Result::SUCCESS) {
-                continue;
-            }
-
+        for (const auto& [blockName, blockData] : blocks->second) {
             config.graph.push_back(node.build(flowgraphId, flowgraph, blockName,
                                               blockData));
         }

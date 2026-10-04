@@ -1,1 +1,4 @@
-src_lst += files('base.cc')
+src_lst += files([
+    'base.cc',
+    'live_markdown.cc',
+])

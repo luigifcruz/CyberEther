@@ -319,8 +319,12 @@ struct TextGrid::Impl {
         const auto& indents = lineIndents();
         return line < indents.size() ? indents[line] : 0.0f;
     }
-    bool lineSameRowAt(U64 line) const {
-        return line < config.lineSameRow.size() && config.lineSameRow[line] != 0;
+    RowMode lineRowModeAt(U64 line) const {
+        const auto& modes = config.widthLayout ? resolvedWidthLayout.lineRowMode : config.lineRowMode;
+        return line < modes.size() ? modes[line] : RowMode::Next;
+    }
+    bool lineContinuesRowAt(U64 line) const {
+        return lineRowModeAt(line) != RowMode::Next;
     }
     F32 lineWrapWidthAt(U64 line) const {
         const auto& widths = lineWrapWidths();
@@ -648,7 +652,10 @@ struct TextGrid::Impl {
         F32 maxY = 0.0f;
         F32 rowGroupTop = 0.0f;
         for (U64 line = 0; line < lines.size(); ++line) {
-            if (line > 0 && lineSameRowAt(line)) {
+            const RowMode mode = line > 0 ? lineRowModeAt(line) : RowMode::Next;
+            if (mode == RowMode::Below) {
+                y += lineTopGapAt(line);
+            } else if (mode == RowMode::Same) {
                 y = rowGroupTop;
             } else {
                 y = maxY + lineTopGapAt(line);
@@ -740,12 +747,19 @@ struct TextGrid::Impl {
     }
 
     U64 columnEndRow(U64 visualRow) const {
-        const U64 line = visualRows[visualRow].line;
-        return line + 1 < visualRowStartIndex.size() ? visualRowStartIndex[line + 1] : visualRows.size();
+        U64 line = visualRows[visualRow].line + 1;
+        while (line < visualRowStartIndex.size() && lineRowModeAt(line) == RowMode::Below) {
+            ++line;
+        }
+        return line < visualRowStartIndex.size() ? visualRowStartIndex[line] : visualRows.size();
     }
 
     U64 columnBeginRow(U64 visualRow) const {
-        return std::max(groupStartOf(visualRow), visualRowStartIndex[visualRows[visualRow].line]);
+        U64 line = visualRows[visualRow].line;
+        while (line > 0 && lineRowModeAt(line) == RowMode::Below) {
+            --line;
+        }
+        return std::max(groupStartOf(visualRow), visualRowStartIndex[line]);
     }
 
     U64 rowInRangeAtY(U64 begin, U64 end, F32 y) const {
@@ -2286,7 +2300,7 @@ struct TextGrid::Impl {
     }
 
     void buildLineNumber(const FrameGeometry& frame, const RowContext& ctx, InstancePools& pools) {
-        if (!config.lineNumbers || ctx.row.start != 0 || lineSameRowAt(ctx.row.line) ||
+        if (!config.lineNumbers || ctx.row.start != 0 || lineContinuesRowAt(ctx.row.line) ||
             pools.lineNumbers.size() >= frame.segmentLimit) {
             return;
         }
@@ -2543,7 +2557,7 @@ bool TextGrid::update(Config config) {
                                 impl->config.lineScale != config.lineScale ||
                                 impl->config.lineTopGap != config.lineTopGap ||
                                 impl->config.lineIndent != config.lineIndent ||
-                                impl->config.lineSameRow != config.lineSameRow ||
+                                impl->config.lineRowMode != config.lineRowMode ||
                                 impl->config.lineWrapWidth != config.lineWrapWidth ||
                                 impl->config.lineRightInset != config.lineRightInset ||
                                 impl->config.contentMinWidth != config.contentMinWidth ||
