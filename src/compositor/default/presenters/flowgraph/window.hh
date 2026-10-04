@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_FLOWGRAPH_WINDOW_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_FLOWGRAPH_WINDOW_HH
 
+#include "detached_config.hh"
 #include "editor/base.hh"
 #include "labels.hh"
 #include "stack.hh"
@@ -27,11 +28,13 @@ struct FlowgraphWindowPresenter {
     FlowgraphEditorPresenter editor;
     StackPresenter stacks;
     FlowgraphDetachedSurfacePresenter surfaces;
+    FlowgraphDetachedConfigPresenter configs;
 
     explicit FlowgraphWindowPresenter(const PresenterContext& context) : context(context),
                                                                           editor(context),
                                                                           stacks(context),
-                                                                          surfaces(context) {}
+                                                                          surfaces(context),
+                                                                          configs(context) {}
 
     FlowgraphWindow::Config build(const std::string& flowgraphId,
                                   const std::shared_ptr<Flowgraph>& flowgraph) const {
@@ -46,6 +49,7 @@ struct FlowgraphWindowPresenter {
             .editor = editor.build(flowgraphId, flowgraph),
             .stacks = stacks.build(flowgraphId, flowgraph),
             .detachedSurfaces = surfaces.build(flowgraphId, flowgraph),
+            .detachedConfigs = configs.build(flowgraphId, flowgraph),
             .empty = flowgraph->view().empty(),
             .dependencyReviewAvailable = hasDependencyReview(flowgraph),
             .dependencyReviewTone = dependencyReviewTone(),

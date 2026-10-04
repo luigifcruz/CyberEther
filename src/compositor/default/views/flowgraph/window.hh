@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_WINDOW_HH
 
 #include "../components/hint_overlay.hh"
+#include "detached_config.hh"
 #include "editor/base.hh"
 #include "surface.hh"
 #include "stack.hh"
@@ -25,6 +26,7 @@ struct FlowgraphWindow {
         FlowgraphEditor::Config editor;
         std::vector<FlowgraphStackWindow::Config> stacks;
         std::vector<FlowgraphDetachedSurface::Config> detachedSurfaces;
+        std::vector<FlowgraphDetachedConfig::Config> detachedConfigs;
         bool empty = false;
         bool dependencyReviewAvailable = false;
         Callout::Tone dependencyReviewTone = Callout::Tone::Info;
@@ -123,6 +125,26 @@ struct FlowgraphWindow {
             detachedSurfaceWindows.erase(surfaceId);
         }
 
+        // Update detached config windows.
+
+        detachedConfigOrder.clear();
+        std::unordered_set<std::string> activeConfigs;
+        for (auto& detachedConfig : this->config.detachedConfigs) {
+            detachedConfigOrder.push_back(detachedConfig.id);
+            activeConfigs.insert(detachedConfig.id);
+            detachedConfigWindows[detachedConfig.id].update(std::move(detachedConfig));
+        }
+
+        std::vector<std::string> staleConfigs;
+        for (const auto& [configId, _] : detachedConfigWindows) {
+            if (!activeConfigs.contains(configId)) {
+                staleConfigs.push_back(configId);
+            }
+        }
+        for (const auto& configId : staleConfigs) {
+            detachedConfigWindows.erase(configId);
+        }
+
         if (this->config.empty) {
             hint.update({
                 .id = this->config.id + ":empty-hint",
@@ -167,6 +189,11 @@ struct FlowgraphWindow {
                 detachedSurfaceWindows.at(surfaceId).render(ctx);
             }
         }
+        for (const auto& configId : detachedConfigOrder) {
+            if (detachedConfigWindows.contains(configId)) {
+                detachedConfigWindows.at(configId).render(ctx);
+            }
+        }
     }
 
  private:
@@ -179,6 +206,8 @@ struct FlowgraphWindow {
     std::unordered_map<std::string, FlowgraphStackWindow> stackWindows;
     std::vector<std::string> detachedSurfaceOrder;
     std::unordered_map<std::string, FlowgraphDetachedSurface> detachedSurfaceWindows;
+    std::vector<std::string> detachedConfigOrder;
+    std::unordered_map<std::string, FlowgraphDetachedConfig> detachedConfigWindows;
     bool openBlockPickerRequest = false;
 };
 

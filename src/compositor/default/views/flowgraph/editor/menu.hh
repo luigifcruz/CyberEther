@@ -20,11 +20,14 @@ struct FlowgraphNodeMenu {
     struct Config {
         std::string id;
         bool pasteEnabled = false;
+        bool configDetachEnabled = false;
+        bool configDetached = false;
         std::vector<DeviceOption> devices;
         std::function<void()> onCopy;
         std::function<void()> onPaste;
         std::function<void()> onRename;
         std::function<void()> onInspect;
+        std::function<void()> onToggleConfigDetach;
         std::function<void()> onReload;
         std::function<void()> onDelete;
         std::function<void()> onDocumentation;
@@ -61,6 +64,13 @@ struct FlowgraphNodeMenu {
             .id = this->config.id + ":inspect",
             .label = ICON_FA_CODE " Inspect & Edit",
             .onClick = this->config.onInspect,
+        });
+        configDetach.update({
+            .id = this->config.id + ":config-detach",
+            .label = this->config.configDetached ? ICON_FA_WINDOW_RESTORE " Attach Config"
+                                                 : ICON_FA_UP_RIGHT_FROM_SQUARE " Detach Config",
+            .enabled = this->config.configDetachEnabled,
+            .onClick = this->config.onToggleConfigDetach,
         });
         deviceSeparator.update({
             .id = this->config.id + ":device-separator",
@@ -119,6 +129,7 @@ struct FlowgraphNodeMenu {
             paste.render(ctx);
             rename.render(ctx);
             inspect.render(ctx);
+            configDetach.render(ctx);
             deviceSeparator.render(ctx);
             deviceMenu.render(ctx, [this](const Sakura::Context& ctx) {
                 for (const auto& item : deviceItems) {
@@ -140,6 +151,7 @@ struct FlowgraphNodeMenu {
     Sakura::MenuItem paste;
     Sakura::MenuItem rename;
     Sakura::MenuItem inspect;
+    Sakura::MenuItem configDetach;
     Sakura::Divider deviceSeparator;
     Sakura::Menu deviceMenu;
     std::vector<Sakura::MenuItem> deviceItems;

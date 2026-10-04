@@ -50,7 +50,6 @@ graph:
         y: 373
         width: 463
         height: 450
-        configCollapsed: false
   - name: signal_generator_1
     module: signal_generator
     device: cpu
@@ -75,7 +74,6 @@ graph:
         y: 71
         width: 287
         height: 0
-        configCollapsed: false
   - name: signal_generator_2
     module: signal_generator
     device: cpu
@@ -100,7 +98,6 @@ graph:
         y: 297
         width: 289
         height: 0
-        configCollapsed: false
   - name: signal_generator
     module: signal_generator
     device: cpu
@@ -125,7 +122,6 @@ graph:
         y: 558
         width: 290
         height: 0
-        configCollapsed: false
   - name: add
     module: add
     device: cpu
@@ -140,7 +136,6 @@ graph:
         y: 137
         width: 120
         height: 0
-        configCollapsed: false
   - name: add_1
     module: add
     device: cpu
@@ -155,7 +150,6 @@ graph:
         y: 239
         width: 120
         height: 0
-        configCollapsed: false
   - name: spectrum_analyzer
     module: spectrum_analyzer
     device: cpu
@@ -181,10 +175,9 @@ graph:
         y: 73
         width: 608
         height: 672
-        configCollapsed: false
       surface_default:
         attachedHeight: 546
         detachedWidth: 512
         detachedHeight: 512
         detached: false
-        detachedConfigOpen: false
+        configCollapsed: true

@@ -1,10 +1,16 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_FLOWGRAPH_CONFIG_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_FLOWGRAPH_CONFIG_HH
 
+#include "../../model/messages.hh"
 #include "../../views/flowgraph/editor/config/types.hh"
 
 #include <jetstream/flowgraph_view.hh>
 #include <jetstream/runtime_context.hh>
+
+#include <functional>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace Jetstream {
 
@@ -45,6 +51,37 @@ inline std::vector<FlowgraphConfigFieldConfig> BuildFlowgraphConfigFields(
             }
         }
         fields.push_back(std::move(field));
+    }
+    return fields;
+}
+
+inline std::vector<FlowgraphConfigFieldConfig> BuildFlowgraphDetachedConfigFields(
+    const std::function<void(Mail&&)>& enqueue,
+    const std::string& flowgraphId,
+    const std::string& blockName,
+    const std::string& viewId,
+    const Flowgraph::View::BlockData& block) {
+    auto fields = BuildFlowgraphConfigFields(viewId, block);
+    for (auto& field : fields) {
+        field.onApply = [enqueue, flowgraphId, blockName](Parser::Map patch, const bool silent) {
+            enqueue(MailReconfigureBlock{flowgraphId,
+                                         blockName,
+                                         std::move(patch),
+                                         silent});
+        };
+        field.onError = [enqueue](const Result result, const std::string& message) {
+            enqueue(MailNotifyResult{.result = result, .message = message});
+        };
+        field.onBrowsePath = [enqueue](const bool save,
+                                       std::vector<std::string> extensions,
+                                       std::function<void(std::string)> onSelect) {
+            enqueue(MailBrowseConfigPath{
+                .path = "",
+                .save = save,
+                .extensions = std::move(extensions),
+                .onSelect = std::move(onSelect),
+            });
+        };
     }
     return fields;
 }

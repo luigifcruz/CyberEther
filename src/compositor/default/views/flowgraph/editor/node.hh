@@ -100,6 +100,7 @@ struct FlowgraphNode {
         std::vector<Surface> surfaces;
         std::vector<DeviceOption> deviceOptions;
         bool configCollapsed = false;
+        bool configDetached = false;
     };
 
     struct Config {
@@ -117,6 +118,7 @@ struct FlowgraphNode {
         std::function<void(DeviceType, RuntimeType, ProviderType)> onDeviceSelect;
         std::function<void(F32, F32, F32, F32)> onLayout;
         std::function<void(bool)> onConfigCollapse;
+        std::function<void(bool)> onConfigDetach;
     };
 
     struct Geometry {
@@ -159,6 +161,7 @@ struct FlowgraphNode {
         const bool isCreating = block.state == Block::State::Creating;
         const bool isPending = isCreating ||
                                block.state == Block::State::Incomplete;
+        const bool configHidden = block.configCollapsed || block.configDetached;
         const auto nodeState = block.state == Block::State::Errored
             ? Sakura::Node::State::Error
             : isCreating ? Sakura::Node::State::Loading
@@ -185,7 +188,7 @@ struct FlowgraphNode {
 
         bool allSurfacesDetached = hasSurfaces;
         U64 attachedSurfaceCount = 0;
-        F32 restoredFlexibleHeight = block.configCollapsed ? 0.0f : flexibleMinimumSum;
+        F32 restoredFlexibleHeight = configHidden ? 0.0f : flexibleMinimumSum;
         for (const auto& surface : block.surfaces) {
             if (!surface.detached) {
                 allSurfacesDetached = false;
@@ -195,7 +198,7 @@ struct FlowgraphNode {
             }
         }
 
-        const bool verticalResize = (!block.configCollapsed && hasFlexibleFields) ||
+        const bool verticalResize = (!configHidden && hasFlexibleFields) ||
                                     attachedSurfaceCount > 0;
         const auto resizeAxes = verticalResize
             ? Sakura::Node::ResizeAxes::XY
@@ -303,7 +306,7 @@ struct FlowgraphNode {
                 });
             }
 
-            for (U64 i = 0; !block.configCollapsed && i < fields.size();) {
+            for (U64 i = 0; !configHidden && i < fields.size();) {
                 if (fields[i].isSimple()) {
                     std::string id = "fields";
                     std::vector<Sakura::NodeFieldGrid::Item> items;
@@ -457,7 +460,7 @@ struct FlowgraphNode {
                 .message = block.diagnostic,
             },
             .configCollapsed = block.configCollapsed,
-            .configHasFields = !block.configFields.empty(),
+            .configHasFields = !block.configFields.empty() && !block.configDetached,
             .onToggleConfigCollapse = [this]() {
                 if (this->config.onConfigCollapse) {
                     this->config.onConfigCollapse(!this->config.block.configCollapsed);
@@ -560,6 +563,8 @@ struct FlowgraphNode {
         menu.update({
             .id = this->config.id + ":context-menu",
             .pasteEnabled = this->config.pasteEnabled,
+            .configDetachEnabled = !block.configFields.empty(),
+            .configDetached = block.configDetached,
             .devices = deviceOptions,
             .onCopy = this->config.onCopy,
             .onPaste = [this]() {
@@ -578,6 +583,11 @@ struct FlowgraphNode {
             .onInspect = [this]() {
                 inspector.open();
                 inspectorOpen = true;
+            },
+            .onToggleConfigDetach = [this]() {
+                if (this->config.onConfigDetach) {
+                    this->config.onConfigDetach(!this->config.block.configDetached);
+                }
             },
             .onReload = this->config.onReload,
             .onDelete = this->config.onDelete,

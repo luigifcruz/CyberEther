@@ -14,9 +14,16 @@ struct NodeMeta {
     F32 y = 0.0f;
     F32 width = 0.0f;
     F32 height = 0.0f;
-    bool configCollapsed = false;
 
-    JST_SERDES(x, y, width, height, configCollapsed);
+    JST_SERDES(x, y, width, height);
+};
+
+struct ConfigMeta {
+    bool collapsed = false;
+    bool detached = false;
+    std::string windowId;
+
+    JST_SERDES(collapsed, detached, windowId);
 };
 
 struct SurfaceMeta {
@@ -24,9 +31,10 @@ struct SurfaceMeta {
     U64 detachedWidth = 512;
     U64 detachedHeight = 512;
     bool detached = false;
-    bool detachedConfigOpen = false;
+    bool configCollapsed = true;
+    std::string windowId;
 
-    JST_SERDES(attachedHeight, detachedWidth, detachedHeight, detached, detachedConfigOpen);
+    JST_SERDES(attachedHeight, detachedWidth, detachedHeight, detached, configCollapsed, windowId);
 };
 
 struct StackDockFlowgraphMeta {
@@ -43,14 +51,22 @@ struct StackDockSurfaceMeta {
     JST_SERDES(block, surface, order);
 };
 
+struct StackDockConfigMeta {
+    std::string block;
+    U64 order = 0;
+
+    JST_SERDES(block, order);
+};
+
 struct StackDockLayoutMeta {
     std::optional<std::string> direction;
     std::optional<F32> ratio;
     std::optional<std::vector<StackDockFlowgraphMeta>> flowgraphs;
     std::optional<std::vector<StackDockSurfaceMeta>> surfaces;
+    std::optional<std::vector<StackDockConfigMeta>> configs;
     std::optional<std::vector<StackDockLayoutMeta>> children;
 
-    JST_SERDES(direction, ratio, flowgraphs, surfaces, children);
+    JST_SERDES(direction, ratio, flowgraphs, surfaces, configs, children);
 };
 
 struct StackMeta {

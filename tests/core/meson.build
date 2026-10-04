@@ -73,6 +73,7 @@ core_test_domains = {
 if not jst_is_windows
     core_test_domains += {
         'render': core_test_domains['render'] + [
+            'render/dockspace_window.cc',
             'render/field_grid.cc',
             'render/range_input.cc',
         ],

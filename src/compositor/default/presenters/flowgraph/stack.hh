@@ -17,6 +17,8 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -39,6 +41,18 @@ inline std::optional<std::pair<std::string, std::string>> ParseStackSurfaceItemK
     }
 
     return std::make_pair(rest.substr(0, delimiter), rest.substr(delimiter + 1));
+}
+
+inline std::string MakeStackConfigItemKey(const std::string& block) {
+    return "config:" + block;
+}
+
+inline std::optional<std::string> ParseStackConfigItemKey(const std::string& key) {
+    static const std::string prefix = "config:";
+    if (key.rfind(prefix, 0) != 0 || key.size() == prefix.size()) {
+        return std::nullopt;
+    }
+    return key.substr(prefix.size());
 }
 
 inline std::optional<Sakura::DockspaceWindow::DockLayout::Direction> ToSakuraDockDirection(const std::string& direction) {
@@ -91,6 +105,17 @@ inline std::optional<Sakura::DockspaceWindow::DockLayout> ToSakuraDockLayout(con
             });
         }
     }
+    if (meta.configs.has_value()) {
+        for (const auto& config : *meta.configs) {
+            if (config.block.empty()) {
+                continue;
+            }
+            items.push_back({
+                .key = MakeStackConfigItemKey(config.block),
+                .order = config.order,
+            });
+        }
+    }
     if (!items.empty()) {
         layout.items = std::move(items);
     }
@@ -123,10 +148,19 @@ inline std::optional<StackDockLayoutMeta> ToStackDockLayoutMeta(const Sakura::Do
 
     std::vector<StackDockFlowgraphMeta> flowgraphs;
     std::vector<StackDockSurfaceMeta> surfaces;
+    std::vector<StackDockConfigMeta> configs;
     if (layout.items.has_value()) {
         for (const auto& item : *layout.items) {
             if (item.key == "flowgraph") {
                 flowgraphs.push_back({.order = item.order});
+                continue;
+            }
+
+            if (auto parsedConfig = ParseStackConfigItemKey(item.key); parsedConfig.has_value()) {
+                configs.push_back({
+                    .block = std::move(*parsedConfig),
+                    .order = item.order,
+                });
                 continue;
             }
 
@@ -147,6 +181,9 @@ inline std::optional<StackDockLayoutMeta> ToStackDockLayoutMeta(const Sakura::Do
     if (!surfaces.empty()) {
         meta.surfaces = std::move(surfaces);
     }
+    if (!configs.empty()) {
+        meta.configs = std::move(configs);
+    }
 
     if (layout.children.has_value()) {
         std::vector<StackDockLayoutMeta> children;
@@ -161,7 +198,8 @@ inline std::optional<StackDockLayoutMeta> ToStackDockLayoutMeta(const Sakura::Do
         }
     }
 
-    if (!meta.flowgraphs.has_value() && !meta.surfaces.has_value() && !meta.children.has_value()) {
+    if (!meta.flowgraphs.has_value() && !meta.surfaces.has_value() &&
+        !meta.configs.has_value() && !meta.children.has_value()) {
         return std::nullopt;
     }
     return meta;
@@ -218,7 +256,7 @@ struct StackPresenter {
             .dockIntoParent = stack.dockInMainDockspace,
             .restoreLayout = stack.restoreDockLayout,
             .layout = layout,
-            .dockables = buildDockables(flowgraphId, flowgraph),
+            .dockables = buildDockables(flowgraphId, flowgraph, stack.meta.layout),
             .onGeometry = [enqueue, flowgraphId, stackId](Extent2D<F32> position, Extent2D<F32> size) {
                 enqueue(MailSetStackGeometry{
                     .flowgraph = flowgraphId,
@@ -247,7 +285,13 @@ struct StackPresenter {
     }
 
     std::vector<Sakura::DockspaceWindow::DockableWindow> buildDockables(const std::string& flowgraphId,
-                                                                       const std::shared_ptr<Flowgraph>& flowgraph) const {
+                                                                       const std::shared_ptr<Flowgraph>& flowgraph,
+                                                                       const std::optional<StackDockLayoutMeta>& layout) const {
+        std::unordered_map<std::string, std::vector<std::string>> savedSurfaces;
+        if (layout.has_value()) {
+            collectSavedSurfaces(*layout, savedSurfaces);
+        }
+
         std::vector<Sakura::DockspaceWindow::DockableWindow> dockables;
         dockables.push_back({
             .key = "flowgraph",
@@ -265,6 +309,16 @@ struct StackPresenter {
                 continue;
             }
 
+            if (blockData.state == Block::State::Creating || !blockData.interfaceConfigs.empty()) {
+                ConfigMeta configMeta;
+                flowgraph->metadata().get("config", configMeta, blockName);
+                dockables.push_back({
+                    .key = MakeStackConfigItemKey(blockName),
+                    .label = MakeDetachedConfigWindowLabel(flowgraphId, blockName, blockData.title, configMeta),
+                });
+            }
+
+            std::unordered_set<std::string> surfaceIds;
             for (const auto& surface : blockData.surfaces) {
                 if (!surface) {
                     continue;
@@ -273,18 +327,45 @@ struct StackPresenter {
                     if (!manifest.surface) {
                         continue;
                     }
-                    dockables.push_back({
-                        .key = MakeStackSurfaceItemKey(blockName, manifest.id),
-                        .label = MakeDetachedSurfaceWindowLabel(flowgraphId,
-                                                                blockName,
-                                                                manifest.id,
-                                                                blockData.title),
-                    });
+                    surfaceIds.insert(manifest.id);
                 }
+            }
+            if (const auto saved = savedSurfaces.find(blockName); saved != savedSurfaces.end()) {
+                surfaceIds.insert(saved->second.begin(), saved->second.end());
+            }
+
+            for (const auto& surfaceId : surfaceIds) {
+                SurfaceMeta surfaceMeta;
+                flowgraph->metadata().get("surface_" + surfaceId, surfaceMeta, blockName);
+                dockables.push_back({
+                    .key = MakeStackSurfaceItemKey(blockName, surfaceId),
+                    .label = MakeDetachedSurfaceWindowLabel(flowgraphId,
+                                                            blockName,
+                                                            surfaceId,
+                                                            blockData.title,
+                                                            surfaceMeta),
+                });
             }
         }
 
         return dockables;
+    }
+
+    static void collectSavedSurfaces(const StackDockLayoutMeta& layout,
+                                     std::unordered_map<std::string, std::vector<std::string>>& surfaces) {
+        if (layout.surfaces.has_value()) {
+            for (const auto& surface : *layout.surfaces) {
+                if (!surface.block.empty() && !surface.surface.empty()) {
+                    surfaces[surface.block].push_back(surface.surface);
+                }
+            }
+        }
+        if (!layout.children.has_value()) {
+            return;
+        }
+        for (const auto& child : *layout.children) {
+            collectSavedSurfaces(child, surfaces);
+        }
     }
 };
 

@@ -234,15 +234,19 @@ struct NodeSession {
     FlowgraphNode node;
     FlowgraphNode::Config config;
     NodeMeta meta;
+    ConfigMeta configMeta;
     std::optional<FlowgraphNode::Layout> layoutMail;
     std::optional<bool> collapseMail;
     LayoutLog layouts;
     std::vector<bool> toggles;
     std::unordered_map<std::string, SurfaceState> surfaces;
 
-    NodeSession(FlowgraphNode::Config config, F32 scale = 1.0f, NodeMeta meta = {}) :
+    NodeSession(FlowgraphNode::Config config,
+                F32 scale = 1.0f,
+                NodeMeta meta = {},
+                ConfigMeta configMeta = {}) :
         ui(scale, ImVec2(1400.0f, 1400.0f)), ctx(ui.sakura()),
-        config(std::move(config)), meta(meta) {}
+        config(std::move(config)), meta(meta), configMeta(configMeta) {}
 
     void tick() {
         if (layoutMail.has_value()) {
@@ -253,7 +257,7 @@ struct NodeSession {
             layoutMail.reset();
         }
         if (collapseMail.has_value()) {
-            meta.configCollapsed = *collapseMail;
+            configMeta.collapsed = *collapseMail;
             collapseMail.reset();
         }
         // Like MailResizeSurface, persist callbacks before presenting the
@@ -276,7 +280,7 @@ struct NodeSession {
             };
         }
         config.block.layout = FlowgraphNode::Layout{meta.x, meta.y, meta.width, meta.height};
-        config.block.configCollapsed = meta.configCollapsed;
+        config.block.configCollapsed = configMeta.collapsed;
         config.onLayout = [this](F32 x, F32 y, F32 width, F32 height) {
             layouts.record(x, y, width, height);
             layoutMail = FlowgraphNode::Layout{x, y, width, height};
@@ -1235,7 +1239,7 @@ TEST_CASE("Resized visualization surfaces preserve height through input reconnec
 
     auto config = visualizationConfig("reconnect-plot");
     const auto fields = config.block.configFields;
-    NodeSession session(config, scale, NodeMeta{.configCollapsed = collapsed});
+    NodeSession session(config, scale, {}, ConfigMeta{.collapsed = collapsed});
     const std::string surfaceId = config.id + ":surface:default";
     auto& savedSurface = session.surfaces[surfaceId];
 
@@ -2156,6 +2160,7 @@ TEST_CASE("Chevron clicks preserve resized layout through movement and serialize
             config.block.configFields.push_back(
                 {.id = "gesture-editor:code", .name = "code", .format = {{"type", format}}, .values = {{"code", "pass"}}});
             Parser::Map saved;
+            Parser::Map savedConfig;
             NodeMeta expected;
             {
                 NodeSession session(config, scale);
@@ -2172,7 +2177,7 @@ TEST_CASE("Chevron clicks preserve resized layout through movement and serialize
                 for (U64 cycle = 0; cycle < 2; ++cycle) {
                     const auto eventStart = session.layouts.entries.size();
                     session.gesture(session.chevron());
-                    REQUIRE(session.meta.configCollapsed);
+                    REQUIRE(session.configMeta.collapsed);
                     REQUIRE(session.toggles.size() == cycle * 2 + 1);
                     REQUIRE(session.toggles.back());
                     const auto collapsed = flowgraphNodeDimensions(config.id);
@@ -2196,7 +2201,7 @@ TEST_CASE("Chevron clicks preserve resized layout through movement and serialize
                         REQUIRE(std::get<3>(session.layouts.entries[i]) == Catch::Approx(height).margin(1.0f));
                     }
                     session.gesture(session.chevron());
-                    REQUIRE_FALSE(session.meta.configCollapsed);
+                    REQUIRE_FALSE(session.configMeta.collapsed);
                     REQUIRE(session.toggles.size() == (cycle + 1) * 2);
                     REQUIRE_FALSE(session.toggles.back());
                     REQUIRE(flowgraphNodeDimensions(config.id).y == Catch::Approx(expanded.y).margin(1.0f));
@@ -2208,17 +2213,20 @@ TEST_CASE("Chevron clicks preserve resized layout through movement and serialize
                 REQUIRE(session.layouts.entries.size() == eventCount);
                 expected = session.meta;
                 REQUIRE(expected.serialize(saved) == Result::SUCCESS);
+                REQUIRE(session.configMeta.serialize(savedConfig) == Result::SUCCESS);
             }
 
             // Fresh UI and view: no retained node or ImGui state can rescue a bad save.
             NodeMeta restored;
             REQUIRE(restored.deserialize(saved) == Result::SUCCESS);
-            NodeSession session(config, scale, restored);
+            ConfigMeta restoredConfig;
+            REQUIRE(restoredConfig.deserialize(savedConfig) == Result::SUCCESS);
+            NodeSession session(config, scale, restored, restoredConfig);
             session.frames();
-            REQUIRE(session.meta.configCollapsed);
+            REQUIRE(session.configMeta.collapsed);
             REQUIRE(session.meta.height == Catch::Approx(expected.height).margin(1.0f));
             session.gesture(session.chevron());
-            REQUIRE_FALSE(session.meta.configCollapsed);
+            REQUIRE_FALSE(session.configMeta.collapsed);
             REQUIRE(session.meta.x == Catch::Approx(expected.x).margin(1.0f));
             REQUIRE(session.meta.y == Catch::Approx(expected.y).margin(1.0f));
             REQUIRE(session.meta.width == Catch::Approx(expected.width).margin(1.0f));
@@ -2246,19 +2254,19 @@ TEST_CASE("Chevron gestures do not collapse on cancelled clicks or node drags",
     session.ui.setMouse(ImVec2(-100.0f, -100.0f), false);
     session.frames();
     REQUIRE(session.toggles.empty());
-    REQUIRE_FALSE(session.meta.configCollapsed);
+    REQUIRE_FALSE(session.configMeta.collapsed);
 
     // Starting on the chevron is also a valid node-drag gesture.
     const F32 x = session.meta.x;
     session.gesture(session.chevron(), ImVec2(60.0f, 0.0f));
     REQUIRE(session.meta.x == Catch::Approx(x + 60.0f).margin(1.0f));
     REQUIRE(session.toggles.empty());
-    REQUIRE_FALSE(session.meta.configCollapsed);
+    REQUIRE_FALSE(session.configMeta.collapsed);
 
     // A cancelled gesture must not prevent the next genuine click.
     session.gesture(session.chevron());
     REQUIRE(session.toggles == std::vector<bool>{true});
-    REQUIRE(session.meta.configCollapsed);
+    REQUIRE(session.configMeta.collapsed);
 
     session.config.block.configFields.clear();
     session.frames();
@@ -2314,7 +2322,7 @@ TEST_CASE("Collapsing config leaves ports and metrics in the node layout",
     };
     const auto pins = checkPorts();
     session.gesture(session.chevron());
-    REQUIRE(session.meta.configCollapsed);
+    REQUIRE(session.configMeta.collapsed);
     REQUIRE(checkPorts() == pins);
     const auto collapsed = flowgraphNodeDimensions(config.id);
     REQUIRE(collapsed.y < expanded.y - 100.0f);
@@ -2330,7 +2338,7 @@ TEST_CASE("Collapsing config leaves ports and metrics in the node layout",
     REQUIRE(flowgraphNodeDimensions(config.id).y == Catch::Approx(collapsed.y).margin(1.0f));
 
     session.gesture(session.chevron());
-    REQUIRE_FALSE(session.meta.configCollapsed);
+    REQUIRE_FALSE(session.configMeta.collapsed);
     REQUIRE(checkPorts() == pins);
     REQUIRE(flowgraphNodeDimensions(config.id).y == Catch::Approx(expanded.y).margin(1.0f));
 }

@@ -29,8 +29,9 @@ inline std::string MakeFlowgraphWindowLabel(const std::string& flowgraphId,
 
 inline std::string MakeDetachedSurfaceWindowId(const std::string& flowgraphId,
                                                const std::string& blockName,
-                                               const std::string& surfaceId) {
-    return flowgraphId + ":" + blockName + ":" + surfaceId;
+                                               const std::string& surfaceId,
+                                               const SurfaceMeta& meta) {
+    return flowgraphId + ":" + (meta.windowId.empty() ? blockName + ":" + surfaceId : meta.windowId);
 }
 
 inline std::string MakeDetachedSurfaceWindowTitle(const std::string& blockName,
@@ -42,9 +43,30 @@ inline std::string MakeDetachedSurfaceWindowTitle(const std::string& blockName,
 inline std::string MakeDetachedSurfaceWindowLabel(const std::string& flowgraphId,
                                                   const std::string& blockName,
                                                   const std::string& surfaceId,
-                                                  const std::string& blockTitle) {
+                                                  const std::string& blockTitle,
+                                                  const SurfaceMeta& meta) {
     return MakeDetachedSurfaceWindowTitle(blockName, blockTitle) + "###" +
-           MakeDetachedSurfaceWindowId(flowgraphId, blockName, surfaceId);
+           MakeDetachedSurfaceWindowId(flowgraphId, blockName, surfaceId, meta);
+}
+
+inline std::string MakeDetachedConfigWindowId(const std::string& flowgraphId,
+                                              const std::string& blockName,
+                                              const ConfigMeta& meta) {
+    return "config:" + flowgraphId + ":" + (meta.windowId.empty() ? blockName : meta.windowId);
+}
+
+inline std::string MakeDetachedConfigWindowTitle(const std::string& blockName,
+                                                 const std::string& blockTitle) {
+    const std::string title = blockTitle.empty() ? blockName : blockTitle;
+    return title + " Config (" + blockName + ")";
+}
+
+inline std::string MakeDetachedConfigWindowLabel(const std::string& flowgraphId,
+                                                  const std::string& blockName,
+                                                  const std::string& blockTitle,
+                                                  const ConfigMeta& meta) {
+    return MakeDetachedConfigWindowTitle(blockName, blockTitle) + "###" +
+           MakeDetachedConfigWindowId(flowgraphId, blockName, meta);
 }
 
 inline std::string MakeStackWindowId(const std::string& flowgraphId, const std::string& stackId) {

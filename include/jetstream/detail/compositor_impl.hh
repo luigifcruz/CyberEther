@@ -39,6 +39,7 @@ struct JETSTREAM_API Compositor::Impl {
         bool silent = false;
         Result result = Result::SUCCESS;
         std::string message;
+        std::function<void(Result)> onComplete;
     };
     std::queue<Command> commandPendingQueue;
     std::queue<Command> commandCompletedQueue;
@@ -48,7 +49,9 @@ struct JETSTREAM_API Compositor::Impl {
 
     void startWorker();
     void stopWorker();
-    void enqueue(std::function<Result()> fn, bool silent = false);
+    void enqueue(std::function<Result()> fn,
+                 bool silent = false,
+                 std::function<void(Result)> onComplete = {});
     bool dequeue(Command& command);
 
     friend class Compositor;

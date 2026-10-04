@@ -40,7 +40,6 @@ graph:
         y: 499
         width: 359
         height: 373
-        configCollapsed: false
   - name: not44
     module: note
     device: cpu
@@ -66,7 +65,6 @@ graph:
         y: 165
         width: 314
         height: 231
-        configCollapsed: false
   - name: note
     module: note
     device: cpu
@@ -91,7 +89,6 @@ graph:
         y: 439
         width: 295
         height: 437
-        configCollapsed: false
   - name: soapy
     module: soapy
     device: cpu
@@ -116,7 +113,6 @@ graph:
         y: 94
         width: 314
         height: 0
-        configCollapsed: false
   - name: flt
     module: filter
     device: cpu
@@ -136,7 +132,6 @@ graph:
         y: 93
         width: 154
         height: 0
-        configCollapsed: false
   - name: spectrum_analyzer
     module: spectrum_analyzer
     device: cpu
@@ -162,13 +157,14 @@ graph:
         y: 440
         width: 443
         height: 0
-        configCollapsed: true
+      config:
+        collapsed: true
       surface_default:
         attachedHeight: 377
         detachedWidth: 504
         detachedHeight: 463
         detached: false
-        detachedConfigOpen: false
+        configCollapsed: true
   - name: slice
     module: slice
     device: cpu
@@ -185,7 +181,6 @@ graph:
         y: 264
         width: 147
         height: 0
-        configCollapsed: false
   - name: sli23
     module: slice
     device: cpu
@@ -202,7 +197,6 @@ graph:
         y: 94
         width: 146
         height: 0
-        configCollapsed: false
   - name: spectrum_analyzer_1
     module: spectrum_analyzer
     device: cpu
@@ -228,13 +222,14 @@ graph:
         y: 604
         width: 350
         height: 0
-        configCollapsed: true
+      config:
+        collapsed: true
       surface_default:
         attachedHeight: 216
         detachedWidth: 504
         detachedHeight: 463
         detached: false
-        detachedConfigOpen: false
+        configCollapsed: true
   - name: fm
     module: fm
     device: cpu
@@ -252,7 +247,6 @@ graph:
         y: 95
         width: 157
         height: 0
-        configCollapsed: false
   - name: spectrum_analyzer_2
     module: spectrum_analyzer
     device: cpu
@@ -278,13 +272,14 @@ graph:
         y: 300
         width: 348
         height: 0
-        configCollapsed: true
+      config:
+        collapsed: true
       surface_default:
         attachedHeight: 215
         detachedWidth: 512
         detachedHeight: 512
         detached: false
-        detachedConfigOpen: false
+        configCollapsed: true
   - name: audio
     module: audio
     device: cpu
@@ -303,4 +298,3 @@ graph:
         y: 94
         width: 154
         height: 0
-        configCollapsed: false

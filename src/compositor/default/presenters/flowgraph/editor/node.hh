@@ -180,7 +180,11 @@ struct FlowgraphNodePresenter {
             .width = nodeMeta.width,
             .height = nodeMeta.height,
         };
-        block.configCollapsed = nodeMeta.configCollapsed;
+
+        ConfigMeta configMeta;
+        flowgraph->metadata().get("config", configMeta, blockName);
+        block.configCollapsed = configMeta.collapsed;
+        block.configDetached = configMeta.detached;
 
         buildInputs(block, blockData);
         buildOutputs(block, blockData);

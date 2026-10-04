@@ -36,7 +36,6 @@ graph:
         y: 770
         width: 429
         height: 317
-        configCollapsed: false
   - name: not38
     module: note
     device: cpu
@@ -64,7 +63,6 @@ graph:
         y: 498
         width: 344
         height: 360
-        configCollapsed: false
   - name: not39
     module: note
     device: cpu
@@ -91,7 +89,6 @@ graph:
         y: 267
         width: 385
         height: 357
-        configCollapsed: false
   - name: not41
     module: note
     device: cpu
@@ -113,7 +110,6 @@ graph:
         y: 268
         width: 400
         height: 357
-        configCollapsed: false
   - name: not40
     module: note
     device: cpu
@@ -135,7 +131,6 @@ graph:
         y: 591
         width: 421
         height: 341
-        configCollapsed: false
   - name: flt
     module: filter_taps
     device: cpu
@@ -153,7 +148,6 @@ graph:
         y: 73
         width: 141
         height: 0
-        configCollapsed: false
   - name: pad_flt
     module: pad
     device: cpu
@@ -170,7 +164,6 @@ graph:
         y: 72
         width: 140
         height: 0
-        configCollapsed: false
   - name: fft_flt
     module: fft
     device: cpu
@@ -187,7 +180,6 @@ graph:
         y: 75
         width: 140
         height: 0
-        configCollapsed: false
   - name: soapy
     module: soapy
     device: cpu
@@ -212,7 +204,6 @@ graph:
         y: 361
         width: 286
         height: 0
-        configCollapsed: false
   - name: pad_soapy
     module: pad
     device: cpu
@@ -229,7 +220,6 @@ graph:
         y: 360.99997
         width: 120
         height: 0
-        configCollapsed: false
   - name: fft_soapy
     module: fft
     device: cpu
@@ -246,7 +236,6 @@ graph:
         y: 359.99997
         width: 120
         height: 0
-        configCollapsed: false
   - name: exp_dims27
     module: expand_dims
     device: cpu
@@ -262,7 +251,6 @@ graph:
         y: 359.99997
         width: 120
         height: 0
-        configCollapsed: false
   - name: mul
     module: multiply
     device: cpu
@@ -277,7 +265,6 @@ graph:
         y: 77
         width: 120
         height: 0
-        configCollapsed: false
   - name: fol36
     module: fold
     device: cpu
@@ -294,7 +281,6 @@ graph:
         y: 75
         width: 120
         height: 0
-        configCollapsed: false
   - name: ifft
     module: fft
     device: cpu
@@ -311,7 +297,6 @@ graph:
         y: 74
         width: 120
         height: 0
-        configCollapsed: false
   - name: unpad
     module: unpad
     device: cpu
@@ -328,7 +313,6 @@ graph:
         y: 72.64172
         width: 120
         height: 0
-        configCollapsed: false
   - name: overlap_add
     module: overlap_add
     device: cpu
@@ -343,7 +327,6 @@ graph:
         y: 72.51599
         width: 120
         height: 0
-        configCollapsed: false
   - name: sli51
     module: slice
     device: cpu
@@ -360,7 +343,6 @@ graph:
         y: 71.86243
         width: 120
         height: 0
-        configCollapsed: false
   - name: spectrum_engine
     module: spectrum_engine
     device: cpu
@@ -379,7 +361,6 @@ graph:
         y: 284.77023
         width: 162
         height: 0
-        configCollapsed: false
   - name: fm
     module: fm
     device: cpu
@@ -397,7 +378,6 @@ graph:
         y: 76
         width: 158
         height: 0
-        configCollapsed: false
   - name: wtf
     module: waterfall
     device: cpu
@@ -416,13 +396,14 @@ graph:
         detachedWidth: 512
         detachedHeight: 512
         detached: false
-        detachedConfigOpen: false
+        configCollapsed: true
       node:
         x: 2013
         y: 282.99997
         width: 249
         height: 0
-        configCollapsed: true
+      config:
+        collapsed: true
   - name: audio
     module: audio
     device: cpu
@@ -441,4 +422,3 @@ graph:
         y: 77
         width: 140
         height: 0
-        configCollapsed: false

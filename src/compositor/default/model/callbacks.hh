@@ -15,6 +15,7 @@ namespace Jetstream {
 struct DefaultCompositorCallbacks {
     std::function<void(Mail&&)> enqueueMail;
     std::function<void(std::function<Result()>, bool)> enqueueCommand;
+    std::function<void(std::function<Result()>, bool, Mail)> enqueueCommandWithMail;
     std::function<void(Sakura::ToastType, I32, const std::string&)> notify;
     std::function<void(Result, const std::string&)> notifyResult;
     std::function<void(const std::string&)> setClipboardText;

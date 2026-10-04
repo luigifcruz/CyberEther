@@ -136,6 +136,9 @@ void NodeFloatInput::render(const Context& ctx) const {
         drawCenteredLabel("Step Size", ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), hovered);
     } else {
         ImGui::SetNextItemWidth(stepInputWidth);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+                            ImVec2(ImGui::GetStyle().FramePadding.x,
+                                   (btnHeight - ImGui::GetTextLineHeight()) * 0.5f));
         ImGui::PushStyleColor(ImGuiCol_Text, Private::ImColor(ctx, "text_secondary"));
         if (storage->GetBool(stepFocusId, false)) {
             ImGui::SetKeyboardFocusHere();
@@ -151,13 +154,15 @@ void NodeFloatInput::render(const Context& ctx) const {
             storage->SetBool(stepFocusId, false);
         }
         ImGui::PopStyleColor();
+        ImGui::PopStyleVar();
     }
 
     ImGui::SameLine(0.0f, 0.0f);
     renderStepButton("+##float_step_plus", "+", step);
     ImGui::PopStyleVar();
 
-    ImGui::SetCursorScreenPos(ImVec2(cellPos.x, cellPos.y + totalHeight + ImGui::GetStyle().ItemSpacing.y));
+    ImGui::SetCursorScreenPos(ImVec2(cellPos.x, cellPos.y + totalHeight));
+    ImGui::Dummy(ImVec2(0.0f, 0.0f));
     ImGui::PopStyleVar();
     ImGui::PopID();
 }
