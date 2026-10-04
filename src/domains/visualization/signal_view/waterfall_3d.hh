@@ -39,6 +39,8 @@ constexpr F32 kWaterfall3DTiltSpeed = 2.4f;
 constexpr F32 kWaterfall3DDollySpeed = 0.15f;
 constexpr F32 kWaterfall3DSmoothingSeconds = 0.06f;
 constexpr F32 kWaterfall3DClickTravel = 0.004f;
+constexpr F32 kWaterfall3DHomeDistance = 3.4f;
+constexpr F32 kWaterfall3DHomeAspect = 1.8f;
 constexpr U64 kWaterfall3DMinColumns = 32;
 constexpr U64 kWaterfall3DMaxColumns = 768;
 constexpr F32 kWaterfall3DPixelsPerColumn = 4.0f;
@@ -47,7 +49,7 @@ constexpr F32 kWaterfall3DElevationGain = 4.0f;
 struct Waterfall3DCamera {
     F32 azimuth = 0.55f;
     F32 elevation = 0.52f;
-    F32 distance = 3.4f;
+    F32 distance = kWaterfall3DHomeDistance;
     glm::vec3 target = {0.0f, 0.15f, 0.0f};
 
     void clamp() {
@@ -135,6 +137,14 @@ struct Waterfall3DCamera {
         return moved;
     }
 };
+
+inline Waterfall3DCamera Waterfall3DHomeCamera(const F32 aspect) {
+    Waterfall3DCamera camera;
+    camera.distance = kWaterfall3DHomeDistance *
+                      std::max(1.0f, kWaterfall3DHomeAspect / std::max(aspect, 1e-3f));
+    camera.clamp();
+    return camera;
+}
 
 inline U64 Waterfall3DMeshColumns(const U64 bins, const F32 viewWidth) {
     const auto target = static_cast<U64>(std::max(viewWidth / kWaterfall3DPixelsPerColumn, 0.0f));
@@ -551,6 +561,7 @@ class SignalViewWaterfall3D {
     SurfaceInteractionState interaction;
     detail::Waterfall3DCamera camera;
     detail::Waterfall3DCamera cameraGoal;
+    bool cameraHome = true;
     DragState drag;
     std::chrono::steady_clock::time_point lastFrameTime;
     bool clockStarted = false;

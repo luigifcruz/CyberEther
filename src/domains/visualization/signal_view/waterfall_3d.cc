@@ -80,6 +80,7 @@ Result SignalViewWaterfall3D::create(const std::shared_ptr<Render::Window>& wind
     writeIndex = 0;
     camera = {};
     cameraGoal = {};
+    cameraHome = true;
     drag = {};
     clockStarted = false;
     displayHeld = false;
@@ -356,6 +357,12 @@ Result SignalViewWaterfall3D::present(std::vector<SurfaceEvent>&& surfaceEvents,
             (2.0f * interaction.scale) / interaction.viewSize.y,
         };
         JST_CHECK(text->updatePixelSize(pixelSize));
+        if (cameraHome) {
+            cameraGoal = detail::Waterfall3DHomeCamera(
+                static_cast<F32>(interaction.viewSize.x) /
+                static_cast<F32>(std::max<U64>(interaction.viewSize.y, 1)));
+            camera = cameraGoal;
+        }
         sceneDirty = true;
         viewChanged = true;
     }
@@ -467,7 +474,8 @@ void SignalViewWaterfall3D::processInputEvents(std::vector<InputEvent>&& events)
                 if (event.button == MouseButton::Right && drag.panning) {
                     drag.panning = false;
                     if (drag.travel < detail::kWaterfall3DClickTravel) {
-                        cameraGoal = {};
+                        cameraGoal = detail::Waterfall3DHomeCamera(aspect);
+                        cameraHome = true;
                     }
                 }
                 break;
@@ -482,6 +490,9 @@ void SignalViewWaterfall3D::processInputEvents(std::vector<InputEvent>&& events)
                     cameraGoal.pan(delta, aspect);
                     drag.travel += glm::length(delta);
                 }
+                if ((drag.orbiting || drag.panning) && glm::length(delta) > 0.0f) {
+                    cameraHome = false;
+                }
                 if (drag.orbiting || drag.panning) {
                     drag.last = position;
                 }
@@ -489,6 +500,7 @@ void SignalViewWaterfall3D::processInputEvents(std::vector<InputEvent>&& events)
             }
             case MouseEventType::Scroll: {
                 cameraGoal.dolly(std::exp(-event.scroll.y * detail::kWaterfall3DDollySpeed));
+                cameraHome = false;
                 break;
             }
             case MouseEventType::Enter: {
@@ -823,18 +835,6 @@ void SignalViewWaterfall3D::updateLabels(const detail::Waterfall3DProjector& pro
         show("hold", "HOLD", *holdAnchor + glm::vec2(0.0f, kHoldGapPx * pixelSize.y), {1, 2});
     } else {
         hide("hold");
-    }
-
-    if (interaction.placement == SurfacePlacementType::Attached) {
-        for (const char* prefix : {"freq", "time", "amp"}) {
-            for (U64 index = 0; index < kTickCount; ++index) {
-                hide(TickElementId(prefix, index));
-            }
-        }
-        hide("x-title");
-        hide("time-title");
-        hide("amp-title");
-        return;
     }
 
     const glm::vec2 center =
