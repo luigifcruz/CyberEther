@@ -441,7 +441,9 @@ Result SignalViewImpl::present() {
                                       surfaceConsumeInputEvents(),
                                       waterfallFrame(), waterfall3dLabels(), colormap,
                                       viewChanged));
-        waterfallHistory.clearDirty();
+        if (!waterfall3d.held()) {
+            waterfallHistory.clearDirty();
+        }
         if (viewChanged) {
             surfaceUpdateManifestSize("default", waterfall3d.viewSize());
         }

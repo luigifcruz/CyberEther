@@ -31,6 +31,9 @@ constexpr F32 kAmbientLight = 0.4f;
 constexpr F32 kAgeFadeStrength = 0.3f;
 constexpr F32 kAgeFadeExponent = 1.5f;
 constexpr F32 kTraceWidthPx = 2.0f;
+constexpr F32 kHoldGapPx = 10.0f;
+constexpr ColorRGBA<F32> kFrameColor = {0.62f, 0.66f, 0.72f, 1.0f};
+constexpr ColorRGBA<F32> kHoldColor = {1.0f, 0.85f, 0.0f, 1.0f};
 
 std::string TickElementId(const char* prefix, const U64 index) {
     return jst::fmt::format("{}-{}", prefix, index);
@@ -79,6 +82,7 @@ Result SignalViewWaterfall3D::create(const std::shared_ptr<Render::Window>& wind
     cameraGoal = {};
     drag = {};
     clockStarted = false;
+    displayHeld = false;
     sceneDirty = true;
     ticksDirty = true;
 
@@ -102,6 +106,7 @@ Result SignalViewWaterfall3D::create(const std::shared_ptr<Render::Window>& wind
         cfg.elements["x-title"] = {.scale = kTitleScale, .fill = " "};
         cfg.elements["time-title"] = {.scale = kTitleScale, .fill = " "};
         cfg.elements["amp-title"] = {.scale = kTitleScale, .fill = " "};
+        cfg.elements["hold"] = {.scale = kTitleScale, .fill = " ", .color = kHoldColor};
         JST_CHECK(window->build(text, cfg));
         JST_CHECK(window->bind(text));
     }
@@ -304,7 +309,8 @@ Result SignalViewWaterfall3D::create(const std::shared_ptr<Render::Window>& wind
         JST_CHECK(window->bind(renderSurface));
     }
 
-    frameUniforms.color = {0.62f, 0.66f, 0.72f, 1.0f};
+    frameUniforms.color = {kFrameColor.r, kFrameColor.g, kFrameColor.b, kFrameColor.a};
+    frameUniforms.lineColor = frameUniforms.color;
     JST_CHECK(frameUniformBuffer->update());
 
     pixelSize = {
@@ -373,20 +379,22 @@ Result SignalViewWaterfall3D::present(std::vector<SurfaceEvent>&& surfaceEvents,
                           std::max(interaction.scale, 1e-3f);
     const U64 targetColumns = std::min(detail::Waterfall3DMeshColumns(width, viewWidth),
                                        columnCapacity);
-    if (targetColumns != columns) {
-        JST_CHECK(resizeMesh(frame.bins, targetColumns));
-        dataChanged = true;
-    } else {
-        if (frame.dirty.firstRowCount > 0) {
-            JST_CHECK(uploadRows(frame.bins, frame.dirty.startRow, frame.dirty.firstRowCount));
+    if (!displayHeld) {
+        if (targetColumns != columns) {
+            JST_CHECK(resizeMesh(frame.bins, targetColumns));
             dataChanged = true;
+        } else {
+            if (frame.dirty.firstRowCount > 0) {
+                JST_CHECK(uploadRows(frame.bins, frame.dirty.startRow, frame.dirty.firstRowCount));
+                dataChanged = true;
+            }
+            if (frame.dirty.secondRowCount > 0) {
+                JST_CHECK(uploadRows(frame.bins, 0, frame.dirty.secondRowCount));
+                dataChanged = true;
+            }
         }
-        if (frame.dirty.secondRowCount > 0) {
-            JST_CHECK(uploadRows(frame.bins, 0, frame.dirty.secondRowCount));
-            dataChanged = true;
-        }
+        writeIndex = frame.writeIndex;
     }
-    writeIndex = frame.writeIndex;
 
     if (ticksDirty) {
         updateTicks();
@@ -429,6 +437,12 @@ void SignalViewWaterfall3D::processInputEvents(std::vector<InputEvent>&& events)
                        static_cast<F32>(std::max<U64>(interaction.viewSize.y, 1));
 
     for (const auto& input : events) {
+        if (const auto* key = std::get_if<KeyEvent>(&input)) {
+            if (key->type == KeyEventType::Press && key->key == KeyCode::Space && !key->repeat) {
+                displayHeld = !displayHeld;
+                sceneDirty = true;
+            }
+        }
         const auto mouse = SurfaceMouseEvent(input);
         if (!mouse) continue;
         const auto& event = *mouse;
@@ -562,6 +576,10 @@ Result SignalViewWaterfall3D::updateScene() {
     JST_CHECK(meshUniformBuffer->update());
 
     // Frame geometry.
+
+    const ColorRGBA<F32> lineColor = displayHeld ? kHoldColor : kFrameColor;
+    frameUniforms.lineColor = {lineColor.r, lineColor.g, lineColor.b, lineColor.a};
+    JST_CHECK(frameUniformBuffer->update());
 
     const detail::Waterfall3DProjector projector{viewProjection, pixelSize};
     const auto walls = detail::Waterfall3DVisibleWalls(eye);
@@ -799,6 +817,13 @@ void SignalViewWaterfall3D::updateLabels(const detail::Waterfall3DProjector& pro
             direction.y > 0.35f ? 2 : (direction.y < -0.35f ? 0 : 1),
         };
     };
+
+    const auto holdAnchor = projector.project({0.0f, heightScale, eye.z >= 0.0f ? -1.0f : 1.0f});
+    if (displayHeld && holdAnchor) {
+        show("hold", "HOLD", *holdAnchor + glm::vec2(0.0f, kHoldGapPx * pixelSize.y), {1, 2});
+    } else {
+        hide("hold");
+    }
 
     if (interaction.placement == SurfacePlacementType::Attached) {
         for (const char* prefix : {"freq", "time", "amp"}) {

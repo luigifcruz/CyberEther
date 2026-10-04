@@ -301,7 +301,7 @@ struct Waterfall3DGeometry {
     }
 
     void vertex(const glm::vec2& position, const F32 distancePx,
-                const F32 halfWidthPx, const F32 alpha) {
+                const F32 halfWidthPx, const F32 alpha, const F32 stroke) {
         if (used >= capacity()) {
             return;
         }
@@ -311,7 +311,7 @@ struct Waterfall3DGeometry {
         slot[2] = distancePx;
         slot[3] = halfWidthPx;
         slot[4] = alpha;
-        slot[5] = 0.0f;
+        slot[5] = stroke;
         slot[6] = 0.0f;
         slot[7] = 0.0f;
         ++used;
@@ -323,12 +323,12 @@ struct Waterfall3DGeometry {
             return;
         }
         constexpr F32 solid = 1e4f;
-        vertex(a, 0.0f, solid, alpha);
-        vertex(b, 0.0f, solid, alpha);
-        vertex(c, 0.0f, solid, alpha);
-        vertex(a, 0.0f, solid, alpha);
-        vertex(c, 0.0f, solid, alpha);
-        vertex(d, 0.0f, solid, alpha);
+        vertex(a, 0.0f, solid, alpha, 0.0f);
+        vertex(b, 0.0f, solid, alpha, 0.0f);
+        vertex(c, 0.0f, solid, alpha, 0.0f);
+        vertex(a, 0.0f, solid, alpha, 0.0f);
+        vertex(c, 0.0f, solid, alpha, 0.0f);
+        vertex(d, 0.0f, solid, alpha, 0.0f);
     }
 
     void line(const glm::vec2& a, const glm::vec2& b,
@@ -352,12 +352,12 @@ struct Waterfall3DGeometry {
         const F32 reach = halfWidth + 1.0f;
         const glm::vec2 normal = glm::vec2(-direction.y, direction.x) / length;
         const glm::vec2 offset = normal * reach * scale;
-        vertex(a + offset, reach, halfWidth, alphaA);
-        vertex(a - offset, -reach, halfWidth, alphaA);
-        vertex(b + offset, reach, halfWidth, alphaB);
-        vertex(a - offset, -reach, halfWidth, alphaA);
-        vertex(b - offset, -reach, halfWidth, alphaB);
-        vertex(b + offset, reach, halfWidth, alphaB);
+        vertex(a + offset, reach, halfWidth, alphaA, 1.0f);
+        vertex(a - offset, -reach, halfWidth, alphaA, 1.0f);
+        vertex(b + offset, reach, halfWidth, alphaB, 1.0f);
+        vertex(a - offset, -reach, halfWidth, alphaA, 1.0f);
+        vertex(b - offset, -reach, halfWidth, alphaB, 1.0f);
+        vertex(b + offset, reach, halfWidth, alphaB, 1.0f);
     }
 };
 
@@ -488,6 +488,10 @@ class SignalViewWaterfall3D {
         return static_cast<bool>(renderSurface);
     }
 
+    bool held() const {
+        return displayHeld;
+    }
+
  private:
     struct MeshUniforms {
         glm::mat4 viewProjection;
@@ -505,6 +509,7 @@ class SignalViewWaterfall3D {
 
     struct FrameUniforms {
         glm::vec4 color;
+        glm::vec4 lineColor;
     };
 
     struct FrameLayer {
@@ -549,6 +554,7 @@ class SignalViewWaterfall3D {
     DragState drag;
     std::chrono::steady_clock::time_point lastFrameTime;
     bool clockStarted = false;
+    bool displayHeld = false;
     bool sceneDirty = true;
     bool ticksDirty = true;
 

@@ -42,7 +42,8 @@ struct Waterfall3D : public Block::Config {
         "- Drag with the left button to orbit around the surface.\n"
         "- Drag with the right button to pan the view.\n"
         "- Scroll to move closer or farther away.\n"
-        "- Click the right button without dragging to return home.\n\n"
+        "- Click the right button without dragging to return home.\n"
+        "- Press **Space** to freeze or resume the surface.\n\n"
 
         "## Useful For\n"
         "- Reading weak signals whose shape is lost in a flat color map.\n"
