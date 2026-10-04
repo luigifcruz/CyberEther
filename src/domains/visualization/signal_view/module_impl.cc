@@ -676,6 +676,12 @@ Result SignalViewImpl::createPresent() {
     }
 
     if (waterfallEnabled) {
+        waterfallUniforms.filtered = numberOfElements <= 65535 * 64 &&
+            waterfallBins.size() <= 16 * 1024 * 1024;
+        waterfallFilterKernel.reset();
+        waterfallFilteredBuffer.reset();
+        waterfallFilterUniformBuffer.reset();
+        waterfallFilterStateBuffer.reset();
         {
             Render::Buffer::Config cfg;
             cfg.buffer = &FillScreenVertices;
@@ -736,6 +742,49 @@ Result SignalViewImpl::createPresent() {
             JST_CHECK(window->build(waterfallBuffer, cfg));
         }
 
+        if (waterfallUniforms.filtered) {
+            waterfallFilterUniforms = {static_cast<U32>(numberOfElements),
+                                      static_cast<U32>(waterfallHeight), 0, 0};
+            waterfallFilterState.assign(numberOfElements, {});
+            {
+                Render::Buffer::Config cfg;
+                cfg.buffer = &waterfallFilterUniforms;
+                cfg.elementByteSize = sizeof(waterfallFilterUniforms);
+                cfg.size = 1;
+                cfg.target = Render::Buffer::Target::UNIFORM;
+                JST_CHECK(window->build(waterfallFilterUniformBuffer, cfg));
+            }
+            {
+                Render::Buffer::Config cfg;
+                cfg.buffer = waterfallFilterState.data();
+                cfg.elementByteSize = sizeof(waterfallFilterState[0]);
+                cfg.size = waterfallFilterState.size();
+                cfg.target = Render::Buffer::Target::STORAGE;
+                JST_CHECK(window->build(waterfallFilterStateBuffer, cfg));
+            }
+            {
+                Render::Buffer::Config cfg;
+                cfg.elementByteSize = sizeof(F32);
+                cfg.size = waterfallBins.size();
+                cfg.target = Render::Buffer::Target::STORAGE;
+                JST_CHECK(window->build(waterfallFilteredBuffer, cfg));
+            }
+            {
+                Render::Kernel::Config cfg;
+                cfg.gridSize = {numberOfElements, 1, 1};
+                cfg.workgroupSize = 64;
+                cfg.kernels = KernelsPackage["waterfall_filter"];
+                cfg.buffers = {
+                    {waterfallFilterUniformBuffer, Render::Kernel::AccessMode::READ},
+                    {waterfallBuffer, Render::Kernel::AccessMode::READ},
+                    {waterfallFilteredBuffer, Render::Kernel::AccessMode::WRITE},
+                    {waterfallFilterStateBuffer, Render::Kernel::AccessMode::READ |
+                                                 Render::Kernel::AccessMode::WRITE},
+                };
+                JST_CHECK(window->build(waterfallFilterKernel, cfg));
+            }
+        }
+
         {
             Render::Texture::Config cfg;
             cfg.size = {256, 1};
@@ -761,6 +810,8 @@ Result SignalViewImpl::createPresent() {
                 {waterfallUniformBuffer, Render::Program::Target::VERTEX |
                                          Render::Program::Target::FRAGMENT},
                 {waterfallBuffer, Render::Program::Target::FRAGMENT},
+                {waterfallUniforms.filtered ? waterfallFilteredBuffer : waterfallBuffer,
+                 Render::Program::Target::FRAGMENT},
             };
             JST_CHECK(window->build(waterfallProgram, cfg));
         }
@@ -1036,6 +1087,9 @@ Result SignalViewImpl::createPresent() {
         cfg.multisampled = lineplotEnabled;
         cfg.clearColor = {0.0f, 0.0f, 0.0f, 1.0f};
         if (waterfallEnabled) {
+            if (waterfallFilterKernel) {
+                cfg.kernels.push_back(waterfallFilterKernel);
+            }
             cfg.programs.push_back(waterfallProgram);
         }
         JST_CHECK(axis->surfaceUnderlay(cfg));
@@ -1169,6 +1223,13 @@ Result SignalViewImpl::present() {
     if (waterfallEnabled) {
         if (!displayHeld) {
             const auto dirtyPlan = waterfallHistory.dirtyPlan(waterfallHeight);
+            if (waterfallFilterKernel && (dirtyPlan.firstRowCount || dirtyPlan.secondRowCount)) {
+                waterfallFilterUniforms.writeIndex = static_cast<U32>(waterfallHistory.writeIndex);
+                waterfallFilterUniforms.version += static_cast<U32>(
+                    dirtyPlan.firstRowCount + dirtyPlan.secondRowCount);
+                JST_CHECK(waterfallFilterUniformBuffer->update());
+                waterfallFilterKernel->update();
+            }
             const U64 stride = numberOfElements + 16;
             for (U64 i = 0; i < dirtyPlan.firstRowCount + dirtyPlan.secondRowCount; ++i) {
                 const U64 row = (dirtyPlan.startRow + i) % waterfallHeight;
