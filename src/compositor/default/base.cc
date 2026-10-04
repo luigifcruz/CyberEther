@@ -340,6 +340,10 @@ void DefaultCompositor::updateBenchmarkState() {
         }
     }
 
+    if (!state.benchmark.running && state.modal.content != ModalContent::Benchmark) {
+        return;
+    }
+
     const U64 current = Benchmark::CurrentCount();
     const U64 total = Benchmark::TotalCount(state.benchmark.selectedModule);
     state.benchmark.progress = total > 0 ? static_cast<F32>(current) / static_cast<F32>(total) : 0.0f;
