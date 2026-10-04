@@ -3,6 +3,8 @@
 
 #include "context.hh"
 
+#include <jetstream/macros.hh>
+
 #include <memory>
 
 namespace Jetstream::Sakura {
@@ -28,8 +30,8 @@ struct Runtime {
         Render::Window* render = nullptr;
     };
 
-    Runtime();
-    ~Runtime();
+    JETSTREAM_API Runtime();
+    JETSTREAM_API ~Runtime();
 
     Runtime(Runtime&&) noexcept;
     Runtime& operator=(Runtime&&) noexcept;
