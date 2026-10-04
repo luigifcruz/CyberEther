@@ -295,3 +295,56 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockReconfigure("analyzer", recovery) == Result::SUCCESS);
     REQUIRE(viewBlock("analyzer").state == Block::State::Created);
 }
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Spectrum Analyzer block switches display modes",
+                 "[modules][spectrum-analyzer][block][mode]") {
+    Blocks::SignalGenerator sourceConfig;
+    sourceConfig.signalDataType = "CF32";
+    sourceConfig.bufferSize = 128;
+    REQUIRE(flowgraph->blockCreate("src", sourceConfig, {}) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["buffer"].requested("src", "signal");
+
+    const auto hasConfig = [&](const std::string& name) {
+        const auto block = viewBlock("analyzer");
+        return std::any_of(block.interfaceConfigs.begin(), block.interfaceConfigs.end(),
+                           [&](const auto& entry) { return entry.name == name; });
+    };
+
+    Blocks::SpectrumAnalyzer config;
+    config.mode = "waterfall_3d";
+    config.waterfallHeight = 32;
+    REQUIRE(flowgraph->blockCreate("analyzer", config, inputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("analyzer").state == Block::State::Created);
+    REQUIRE(viewBlock("analyzer").surfaces.size() == 1);
+    REQUIRE(std::any_cast<std::string>(viewBlock("analyzer").config.at("mode")) == "waterfall_3d");
+    REQUIRE(hasConfig("mode"));
+    REQUIRE(hasConfig("waterfallAveraging"));
+    REQUIRE(hasConfig("waterfallHeight"));
+    REQUIRE_FALSE(hasConfig("lineplotAveraging"));
+    REQUIRE_FALSE(hasConfig("maxHold"));
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    Parser::Map toLineplot;
+    toLineplot["mode"] = std::string("lineplot");
+    REQUIRE(flowgraph->blockReconfigure("analyzer", toLineplot) == Result::SUCCESS);
+    REQUIRE(viewBlock("analyzer").state == Block::State::Created);
+    REQUIRE(hasConfig("lineplotAveraging"));
+    REQUIRE(hasConfig("maxHold"));
+    REQUIRE_FALSE(hasConfig("waterfallHeight"));
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
+    Parser::Map toCombined;
+    toCombined["mode"] = std::string("lineplot_waterfall");
+    REQUIRE(flowgraph->blockReconfigure("analyzer", toCombined) == Result::SUCCESS);
+    REQUIRE(viewBlock("analyzer").state == Block::State::Created);
+    REQUIRE(hasConfig("lineplotAveraging"));
+    REQUIRE(hasConfig("waterfallHeight"));
+
+    Parser::Map invalid;
+    invalid["mode"] = std::string("surface");
+    REQUIRE(flowgraph->blockReconfigure("analyzer", invalid) == Result::SUCCESS);
+    REQUIRE(viewBlock("analyzer").state == Block::State::Errored);
+}

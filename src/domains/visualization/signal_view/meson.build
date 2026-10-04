@@ -1,5 +1,9 @@
 src_lst += files([
     'module_impl.cc',
+    'common.cc',
+    'lineplot.cc',
+    'waterfall.cc',
+    'waterfall_3d.cc',
     'module_impl_native_cpu.cc',
     'module_benchmarks.cc',
 ])

@@ -4,48 +4,18 @@
 #include <any>
 #include <cmath>
 #include <cstddef>
-#include <glm/gtc/matrix_transform.hpp>
 #include <limits>
-#include <span>
 
-#include "jetstream/constants.hh"
 #include "jetstream/memory/axis.hh"
 #include "jetstream/tools/numeric.hh"
-#include "resources/shaders/global_shaders.hh"
-#include "resources/shaders/signal_view_shaders.hh"
 
 namespace Jetstream::Modules {
-
-namespace {
-
-constexpr F32 kLineThickness = 1.0f;
-constexpr ColorRGBA<F32> kAccentColor = {1.0f, 0.85f, 0.0f, 1.0f};
-constexpr ColorRGBA<F32> kCursorLineColor = {1.0f, 1.0f, 1.0f, 0.35f};
-constexpr ColorRGBA<F32> kCursorHaloColor = {0.0f, 0.0f, 0.0f, 0.65f};
-constexpr ColorRGBA<F32> kCursorPillColor = {0.07f, 0.07f, 0.07f, 0.9f};
-constexpr ColorRGBA<F32> kCursorPillEdgeColor = {1.0f, 1.0f, 1.0f, 0.22f};
-constexpr F32 kLabelScale = 0.85f;
-
-bool HostReadable(const Tensor& tensor) {
-    return (static_cast<U8>(tensor.buffer().location()) &
-            static_cast<U8>(Location::Host)) != 0 && tensor.data();
-}
-
-enum CursorInstance : U64 {
-    kCursorLine = 0,
-    kCursorHalo,
-    kCursorMarker,
-    kCursorPillEdge,
-    kCursorPill,
-    kCursorInstances,
-};
-
-}  // namespace
 
 Result SignalViewImpl::validate() {
     const auto& config = *candidate();
     const bool hasLineplot = detail::SignalViewHasLineplot(config.mode);
     const bool hasWaterfall = detail::SignalViewHasWaterfall(config.mode);
+    const bool hasWaterfall3D = detail::SignalViewHasWaterfall3D(config.mode);
 
     validatedNumberOfElements = 0;
     validatedNumberOfBatches = 0;
@@ -54,6 +24,7 @@ Result SignalViewImpl::validate() {
     validatedNormalizationFactor = 0.0f;
     validatedLineplotEnabled = false;
     validatedWaterfallEnabled = false;
+    validatedWaterfall3dEnabled = false;
 
     if (!hasLineplot && !hasWaterfall) {
         JST_ERROR("[MODULE_SIGNAL_VIEW] Invalid mode '{}'.", config.mode);
@@ -86,6 +57,11 @@ Result SignalViewImpl::validate() {
         JST_ERROR("[MODULE_SIGNAL_VIEW] Invalid waterfall height value '{}', "
                   "must be between 1 and 8192.",
                   config.waterfallHeight);
+        return Result::ERROR;
+    }
+
+    if (hasWaterfall3D && config.waterfallHeight < 2) {
+        JST_ERROR("[MODULE_SIGNAL_VIEW] 3D waterfall needs at least 2 rows.");
         return Result::ERROR;
     }
 
@@ -129,7 +105,7 @@ Result SignalViewImpl::validate() {
     }
 
     const U64 numberOfElements = inputTensor.shape(*elementAxis);
-    if (hasLineplot && numberOfElements < 2) {
+    if ((hasLineplot || hasWaterfall3D) && numberOfElements < 2) {
         JST_ERROR("[MODULE_SIGNAL_VIEW] Invalid number of elements ({}), need "
                   "at least 2.",
                   numberOfElements);
@@ -184,6 +160,16 @@ Result SignalViewImpl::validate() {
         }
     }
 
+    if (hasWaterfall3D) {
+        U64 slotCount = 0;
+        if (!Jetstream::detail::CheckedMultiply(numberOfElements - 1, 6, slotCount) ||
+            slotCount > static_cast<U64>(std::numeric_limits<I32>::max())) {
+            JST_ERROR("[MODULE_SIGNAL_VIEW] 3D waterfall geometry exceeds the "
+                      "supported rendering range.");
+            return Result::ERROR;
+        }
+    }
+
     for (const auto* attribute : {"frequency", "sampleRate"}) {
         if (!inputTensor.hasAttribute(attribute)) {
             continue;
@@ -210,6 +196,7 @@ Result SignalViewImpl::validate() {
         1.0f / (0.5f * static_cast<F32>(numberOfBatches));
     validatedLineplotEnabled = hasLineplot;
     validatedWaterfallEnabled = hasWaterfall;
+    validatedWaterfall3dEnabled = hasWaterfall3D;
 
     return Result::SUCCESS;
 }
@@ -223,12 +210,11 @@ Result SignalViewImpl::define() {
 }
 
 Result SignalViewImpl::create() {
-    splitter = {};
-    splitter.ratio = splitRatio;
+    canvas.splitter = {};
+    canvas.splitter.ratio = splitRatio;
+    canvas.displayHeld = false;
+    canvas.cursor = {};
     updateLayoutFlag = false;
-    displayHeld = false;
-    cursor = {};
-    displayedPoints.clear();
 
     // Get input tensor.
 
@@ -256,13 +242,23 @@ Result SignalViewImpl::create() {
     normalizationFactor = validatedNormalizationFactor;
     lineplotEnabled = validatedLineplotEnabled;
     waterfallEnabled = validatedWaterfallEnabled;
+    waterfall3dEnabled = validatedWaterfall3dEnabled;
     waterfallAveragingCount = 0;
     maxHoldWarmupBlocks = 0;
     lineplotAveragingInitialized = false;
     waterfallHistory = {};
     updateSignalPointsFlag = false;
     updateHoldPointsFlag = false;
-    updateSignalUniformBufferFlag = false;
+
+    lineplot.configure({
+        .numberOfElements = numberOfElements,
+        .fill = fill,
+        .maxHold = maxHold,
+    });
+    waterfall.configure({
+        .width = numberOfElements,
+        .height = waterfallHeight,
+    });
 
     const Buffer::Config renderStateConfig = renderStateBufferConfig();
 
@@ -377,423 +373,42 @@ Result SignalViewImpl::createPresent() {
 
     JST_DEBUG("[MODULE_SIGNAL_VIEW] Creating present resources...");
 
-    // Axis component.
-
     if (!window->hasFont("default_mono")) {
         JST_ERROR("[MODULE_SIGNAL_VIEW] Font 'default_mono' not found.");
         return Result::ERROR;
     }
 
-    {
-        Render::Components::Axis::Config cfg;
-        cfg.thickness = kLineThickness;
-        cfg.showInteriorGrid = lineplotEnabled;
-        const bool combined = lineplotEnabled && waterfallEnabled;
-        cfg.verticalScale = combined ? splitRatio : 1.0f;
-        cfg.showFrameTicks = lineplotEnabled;
-        cfg.font = window->font("default_mono");
-        cfg.xTitle = xLabel;
-        cfg.yTitle = combined ? "" : (lineplotEnabled
-            ? amplitudeLabel
-            : waterfallLabel);
-        cfg.yLabelOnRight = lineplotEnabled;
-        cfg.gridColor = {0.12f, 0.12f, 0.12f, 1.0f};
-        cfg.majorGridColor = {0.5f, 0.5f, 0.5f, 1.0f};
-        JST_CHECK(window->build(axis, cfg));
-        JST_CHECK(window->bind(axis));
+    if (waterfall3dEnabled) {
+        JST_CHECK(waterfall3d.create(window, numberOfElements, waterfallHeight));
+        waterfallHistory.dirtyRows = waterfallHeight;
+        JST_CHECK(surfaceCreateManifest({
+            .id = "default",
+            .size = waterfall3d.viewSize(),
+            .surface = waterfall3d.framebuffer(),
+        }));
+        return Result::SUCCESS;
     }
 
-    // Lineplot layer.
-
     if (lineplotEnabled) {
-        {
-            Render::Buffer::Config cfg;
-            cfg.buffer = &signalUniforms;
-            cfg.elementByteSize = sizeof(signalUniforms);
-            cfg.size = 1;
-            cfg.target = Render::Buffer::Target::UNIFORM;
-            JST_CHECK(window->build(signalUniformBuffer, cfg));
-        }
-
-        auto buildTrace = [&](
-            const std::shared_ptr<Render::Buffer>& uniformBuffer,
-            Tensor& pointsTensor,
-            std::shared_ptr<Render::Buffer>& pointsBuffer,
-            Tensor& verticesTensor,
-            std::shared_ptr<Render::Buffer>& verticesBuffer,
-            std::shared_ptr<Render::Kernel>& kernel,
-            std::shared_ptr<Render::Vertex>& vertex,
-            std::shared_ptr<Render::Draw>& draw,
-            std::shared_ptr<Render::Program>& program) -> Result {
-            {
-                Render::Buffer::Config cfg;
-                cfg.buffer = pointsTensor.data();
-                cfg.elementByteSize = sizeof(F32);
-                cfg.size = pointsTensor.size();
-                cfg.target = Render::Buffer::Target::STORAGE;
-                cfg.enableZeroCopy = false;
-                JST_CHECK(window->build(pointsBuffer, cfg));
-            }
-            {
-                Render::Buffer::Config cfg;
-                cfg.buffer = verticesTensor.data();
-                cfg.elementByteSize = sizeof(F32);
-                cfg.size = verticesTensor.size();
-                cfg.target = Render::Buffer::Target::VERTEX |
-                             Render::Buffer::Target::STORAGE;
-                cfg.enableZeroCopy = false;
-                JST_CHECK(window->build(verticesBuffer, cfg));
-            }
-            {
-                Render::Kernel::Config cfg;
-                cfg.gridSize = {numberOfElements - 1, 1, 1};
-                cfg.kernels = GlobalKernelsPackage["thicklinestrip"];
-                cfg.buffers = {
-                    {uniformBuffer, Render::Kernel::AccessMode::READ},
-                    {pointsBuffer, Render::Kernel::AccessMode::READ},
-                    {verticesBuffer, Render::Kernel::AccessMode::WRITE},
-                };
-                JST_CHECK(window->build(kernel, cfg));
-            }
-            {
-                Render::Vertex::Config cfg;
-                cfg.vertices = {
-                    {verticesBuffer, 4},
-                };
-                JST_CHECK(window->build(vertex, cfg));
-            }
-            {
-                Render::Draw::Config cfg;
-                cfg.buffer = vertex;
-                cfg.mode = Render::Draw::Mode::TRIANGLE_STRIP;
-                JST_CHECK(window->build(draw, cfg));
-            }
-            {
-                Render::Program::Config cfg;
-                cfg.shaders = ShadersPackage["signal"];
-                cfg.draws = {draw};
-                cfg.buffers = {
-                    {uniformBuffer,
-                     Render::Program::Target::VERTEX |
-                         Render::Program::Target::FRAGMENT},
-                };
-                cfg.enableAlphaBlending = true;
-                JST_CHECK(window->build(program, cfg));
-            }
-            return Result::SUCCESS;
-        };
-
-        JST_CHECK(buildTrace(signalUniformBuffer,
-                             signalPoints, signalPointsBuffer,
-                             signalVertices, signalVerticesBuffer,
-                             signalKernel, signalVertex,
-                             drawSignalVertex, signalProgram));
-
-        // Fill element (analyser-style persistence area beneath the trace).
-
-        if (fill) {
-            {
-                Render::Buffer::Config cfg;
-                cfg.buffer = fillVertices.data();
-                cfg.elementByteSize = sizeof(F32);
-                cfg.size = fillVertices.size();
-                cfg.target = Render::Buffer::Target::VERTEX |
-                             Render::Buffer::Target::STORAGE;
-                cfg.enableZeroCopy = false;
-                JST_CHECK(window->build(fillVerticesBuffer, cfg));
-            }
-
-            {
-                Render::Kernel::Config cfg;
-                cfg.gridSize = {numberOfElements, 1, 1};
-                cfg.kernels = GlobalKernelsPackage["fillarea"];
-                cfg.buffers = {
-                    {signalUniformBuffer, Render::Kernel::AccessMode::READ},
-                    {signalPointsBuffer, Render::Kernel::AccessMode::READ},
-                    {fillVerticesBuffer, Render::Kernel::AccessMode::WRITE},
-                };
-                JST_CHECK(window->build(fillKernel, cfg));
-            }
-
-            {
-                Render::Vertex::Config cfg;
-                cfg.vertices = {
-                    {fillVerticesBuffer, 2},
-                };
-                JST_CHECK(window->build(fillVertex, cfg));
-            }
-
-            {
-                Render::Draw::Config cfg;
-                cfg.buffer = fillVertex;
-                cfg.mode = Render::Draw::Mode::TRIANGLE_STRIP;
-                JST_CHECK(window->build(drawFillVertex, cfg));
-            }
-
-            {
-                Render::Program::Config cfg;
-                cfg.shaders = ShadersPackage["fill"];
-                cfg.draws = {drawFillVertex};
-                cfg.buffers = {
-                    {signalUniformBuffer,
-                     Render::Program::Target::VERTEX |
-                         Render::Program::Target::FRAGMENT},
-                };
-                cfg.enableAlphaBlending = true;
-                JST_CHECK(window->build(fillProgram, cfg));
-            }
-        }
-
-        // Max hold trace (dimmed grey line behind the live trace).
-
-        {
-            Render::Buffer::Config cfg;
-            cfg.buffer = &holdUniforms;
-            cfg.elementByteSize = sizeof(holdUniforms);
-            cfg.size = 1;
-            cfg.target = Render::Buffer::Target::UNIFORM;
-            JST_CHECK(window->build(holdUniformBuffer, cfg));
-        }
-
-        JST_CHECK(buildTrace(holdUniformBuffer,
-                             maxHoldPoints, maxHoldPointsBuffer,
-                             maxHoldVertices, maxHoldVerticesBuffer,
-                             maxHoldKernel, maxHoldVertex,
-                             drawMaxHoldVertex, maxHoldProgram));
+        JST_CHECK(lineplot.create(window, {
+            .signalPoints = signalPoints,
+            .signalVertices = signalVertices,
+            .fillVertices = fillVertices,
+            .maxHoldPoints = maxHoldPoints,
+            .maxHoldVertices = maxHoldVertices,
+        }));
     }
 
     if (waterfallEnabled) {
-        {
-            Render::Buffer::Config cfg;
-            cfg.buffer = &FillScreenVertices;
-            cfg.elementByteSize = sizeof(F32);
-            cfg.size = 12;
-            cfg.target = Render::Buffer::Target::VERTEX;
-            JST_CHECK(window->build(fillScreenVerticesBuffer, cfg));
-        }
-
-        {
-            Render::Buffer::Config cfg;
-            cfg.buffer = &FillScreenTextureVertices;
-            cfg.elementByteSize = sizeof(F32);
-            cfg.size = 8;
-            cfg.target = Render::Buffer::Target::VERTEX;
-            JST_CHECK(window->build(fillScreenTextureVerticesBuffer, cfg));
-        }
-
-        {
-            Render::Buffer::Config cfg;
-            cfg.buffer = &FillScreenIndices;
-            cfg.elementByteSize = sizeof(U32);
-            cfg.size = 6;
-            cfg.target = Render::Buffer::Target::VERTEX_INDICES;
-            JST_CHECK(window->build(fillScreenIndicesBuffer, cfg));
-        }
-
-        {
-            Render::Vertex::Config cfg;
-            cfg.vertices = {
-                {fillScreenVerticesBuffer, 3},
-                {fillScreenTextureVerticesBuffer, 2},
-            };
-            cfg.indices = fillScreenIndicesBuffer;
-            JST_CHECK(window->build(waterfallVertex, cfg));
-        }
-
-        {
-            Render::Draw::Config cfg;
-            cfg.buffer = waterfallVertex;
-            cfg.mode = Render::Draw::Mode::TRIANGLES;
-            JST_CHECK(window->build(drawWaterfallVertex, cfg));
-        }
-
-        {
-            Render::Buffer::Config cfg;
-            cfg.buffer = waterfallBins.data();
-            cfg.elementByteSize = sizeof(F32);
-            cfg.size = waterfallBins.size();
-            cfg.target = Render::Buffer::Target::STORAGE;
-            cfg.enableZeroCopy = false;
-            JST_CHECK(window->build(waterfallBuffer, cfg));
-        }
-
-        {
-            Render::Texture::Config cfg;
-            cfg.size = {256, 1};
-            cfg.buffer = const_cast<U8*>(&TurboLutBytes[0][0]);
-            JST_CHECK(window->build(waterfallLutTexture, cfg));
-        }
-
-        {
-            Render::Buffer::Config cfg;
-            cfg.buffer = &waterfallUniforms;
-            cfg.elementByteSize = sizeof(waterfallUniforms);
-            cfg.size = 1;
-            cfg.target = Render::Buffer::Target::UNIFORM;
-            JST_CHECK(window->build(waterfallUniformBuffer, cfg));
-        }
-
-        {
-            Render::Program::Config cfg;
-            cfg.shaders = ShadersPackage["waterfall"];
-            cfg.draws = {drawWaterfallVertex};
-            cfg.textures = {waterfallLutTexture};
-            cfg.buffers = {
-                {waterfallUniformBuffer, Render::Program::Target::VERTEX |
-                                         Render::Program::Target::FRAGMENT},
-                {waterfallBuffer, Render::Program::Target::FRAGMENT},
-            };
-            JST_CHECK(window->build(waterfallProgram, cfg));
-        }
+        JST_CHECK(waterfall.create(window, waterfallBins));
     }
 
-    // Text labels (header, zoom, and cursor readouts).
-
-    {
-        Render::Components::Text::Config cfg;
-        cfg.maxCharacters = 256;
-        cfg.color = {1.0f, 1.0f, 1.0f, 1.0f};
-        cfg.font = window->font("default_mono");
-        cfg.elements = {
-            {"header",
-             {.scale = kLabelScale,
-              .position = {-1.0f, 1.0f},
-              .alignment = {0, 0}}},
-            {"zoom",
-             {.scale = kLabelScale,
-              .position = {0.0f, 1.0f},
-              .alignment = {1, 0}}},
-            {"hold",
-             {.scale = kLabelScale,
-              .position = {-1.0f, 1.0f},
-              .alignment = {0, 0},
-              .color = kAccentColor}},
-            {"amplitude-title",
-             {.scale = kLabelScale,
-              .position = {-1.0f, 0.5f},
-              .alignment = {1, 0},
-              .rotationDeg = 90.0f}},
-            {"waterfall-title",
-             {.scale = kLabelScale,
-              .position = {-1.0f, -0.5f},
-              .alignment = {1, 0},
-              .rotationDeg = 90.0f}},
-        };
-        JST_CHECK(window->build(text, cfg));
-        JST_CHECK(window->bind(text));
-    }
-
-    // Cursor overlay (line, trace marker, and readout pill).
-
-    {
-        Render::Components::Shapes::Config cfg;
-        cfg.pixelSize = {
-            2.0f / interaction.viewSize.x,
-            2.0f / interaction.viewSize.y,
-        };
-        cfg.elements["cursor"] = {
-            .type = Render::Components::Shapes::Type::RECT,
-            .numberOfInstances = kCursorInstances,
-            .position = {-2.0f, -2.0f},
-            .size = {0.0f, 0.0f},
-            .cornerRadius = 1.0e4f,
-        };
-        JST_CHECK(window->build(cursorShapes, cfg));
-        JST_CHECK(window->bind(cursorShapes));
-
-        std::span<ColorRGBA<F32>> colors;
-        JST_CHECK(cursorShapes->getColors("cursor", colors));
-        colors[kCursorLine] = kCursorLineColor;
-        colors[kCursorHalo] = kCursorHaloColor;
-        colors[kCursorMarker] = kAccentColor;
-        colors[kCursorPillEdge] = kCursorPillEdgeColor;
-        colors[kCursorPill] = kCursorPillColor;
-        JST_CHECK(cursorShapes->updateColors("cursor"));
-    }
-
-    {
-        Render::Components::Text::Config cfg;
-        cfg.maxCharacters = 64;
-        cfg.color = {1.0f, 1.0f, 1.0f, 1.0f};
-        cfg.font = window->font("default_mono");
-        cfg.elements = {
-            {"cursor-x",
-             {.scale = kLabelScale,
-              .position = {-2.0f, -2.0f},
-              .alignment = {0, 1}}},
-            {"cursor-y",
-             {.scale = kLabelScale,
-              .position = {-2.0f, -2.0f},
-              .alignment = {0, 1},
-              .color = kAccentColor}},
-        };
-        JST_CHECK(window->build(cursorText, cfg));
-        JST_CHECK(window->bind(cursorText));
-    }
-
-    // Framebuffer texture.
-
-    {
-        Render::Texture::Config cfg;
-        cfg.size = interaction.viewSize;
-        JST_CHECK(window->build(framebufferTexture, cfg));
-    }
-
-    // Surface.
-
-    {
-        Render::Surface::Config cfg;
-        cfg.framebuffer = framebufferTexture;
-        cfg.multisampled = lineplotEnabled;
-        cfg.clearColor = {0.0f, 0.0f, 0.0f, 1.0f};
-        if (waterfallEnabled) {
-            cfg.programs.push_back(waterfallProgram);
-        }
-        JST_CHECK(axis->surfaceUnderlay(cfg));
-        if (lineplotEnabled) {
-            cfg.kernels.push_back(signalKernel);
-            if (fill) {
-                cfg.kernels.push_back(fillKernel);
-            }
-            if (maxHold) {
-                cfg.kernels.push_back(maxHoldKernel);
-            }
-            if (fill) {
-                cfg.programs.push_back(fillProgram);
-            }
-            if (maxHold) {
-                cfg.programs.push_back(maxHoldProgram);
-            }
-            cfg.programs.push_back(signalProgram);
-        }
-        JST_CHECK(axis->surfaceOverlay(cfg));
-        JST_CHECK(text->surface(cfg));
-        JST_CHECK(cursorShapes->surface(cfg));
-        JST_CHECK(cursorText->surface(cfg));
-        JST_CHECK(window->build(renderSurface, cfg));
-        JST_CHECK(window->bind(renderSurface));
-    }
-
-    if (lineplotEnabled) {
-        signalUniforms.traceColor[0] = 1.0f;
-        signalUniforms.traceColor[1] = 0.85f;
-        signalUniforms.traceColor[2] = 0.0f;
-        signalUniforms.traceColor[3] = 0.25f;
-
-        holdUniforms.traceColor[0] = 0.6f;
-        holdUniforms.traceColor[1] = 0.45f;
-        holdUniforms.traceColor[2] = 0.0f;
-        holdUniforms.traceColor[3] = 0.7f;
-    }
-
-    updateState();
-
-    // Register surface manifest.
+    JST_CHECK(canvas.create(window, canvasContext()));
 
     JST_CHECK(surfaceCreateManifest({
         .id = "default",
-        .size = interaction.viewSize,
-        .surface = framebufferTexture,
+        .size = canvas.interaction.viewSize,
+        .surface = canvas.framebufferTexture,
     }));
 
     return Result::SUCCESS;
@@ -806,540 +421,100 @@ Result SignalViewImpl::destroyPresent() {
         return Result::SUCCESS;
     }
 
-    if (renderSurface) {
-        JST_CHECK(window->unbind(renderSurface));
+    if (waterfall3dEnabled) {
+        return waterfall3d.destroy(window);
     }
-    if (cursorText) {
-        JST_CHECK(window->unbind(cursorText));
-    }
-    if (cursorShapes) {
-        JST_CHECK(window->unbind(cursorShapes));
-    }
-    if (text) {
-        JST_CHECK(window->unbind(text));
-    }
-    if (axis) {
-        JST_CHECK(window->unbind(axis));
-    }
-    return Result::SUCCESS;
+
+    return canvas.destroy(window);
 }
 
 Result SignalViewImpl::present() {
-    if (!renderSurface) {
+    if (waterfall3dEnabled) {
+        bool viewChanged = false;
+        JST_CHECK(waterfall3d.present(surfaceConsumeSurfaceEvents(),
+                                      surfaceConsumeInputEvents(),
+                                      waterfallFrame(), waterfall3dLabels(), viewChanged));
+        waterfallHistory.clearDirty();
+        if (viewChanged) {
+            surfaceUpdateManifestSize("default", waterfall3d.viewSize());
+        }
         return Result::SUCCESS;
     }
 
-    // Process surface interaction events.
+    if (!canvas.renderSurface) {
+        return Result::SUCCESS;
+    }
 
-    interaction = ProcessSurfaceInteraction(interaction,
-                                            surfaceConsumeSurfaceEvents(), {});
-    // Resize the axis before hit-testing so input and rendering use the same
-    // padded plot rectangle, including on a resize-and-click frame.
-    JST_CHECK(axis->updatePixelSize({
-        (2.0f * interaction.scale) / interaction.viewSize.x,
-        (2.0f * interaction.scale) / interaction.viewSize.y,
-    }));
-    processInputEvents(axis->paddingScale());
+    const auto context = canvasContext();
 
-    if (interaction.viewChanged || updateLayoutFlag) {
-        renderSurface->size(interaction.viewSize);
-        renderSurface->clearColor(interaction.backgroundColor);
-        surfaceUpdateManifestSize("default", interaction.viewSize);
-        updateState();
+    JST_CHECK(canvas.processSurfaceEvents(surfaceConsumeSurfaceEvents()));
+    canvas.processInputEvents(surfaceConsumeInputEvents(), {
+        .ratio = splitRatio,
+        .enabled = lineplotEnabled && waterfallEnabled && configChangeEnabled("splitRatio"),
+        .pending = [this] { return configChangePending(); },
+        .request = [this](const F32 ratio) {
+            Parser::Map edit;
+            edit["splitRatio"] = ratio;
+            return requestConfigChange(edit);
+        },
+    });
+
+    if (canvas.interaction.viewChanged || updateLayoutFlag) {
+        canvas.resize();
+        surfaceUpdateManifestSize("default", canvas.interaction.viewSize);
+        canvas.updateState(context);
         updateLayoutFlag = false;
     }
 
     if (waterfallEnabled) {
-        if (!displayHeld) {
-            const auto dirtyPlan = waterfallHistory.dirtyPlan(waterfallHeight);
-            if (dirtyPlan.firstRowCount > 0) {
-                JST_CHECK(waterfallBuffer->update(dirtyPlan.startRow *
-                                                      numberOfElements,
-                                                  dirtyPlan.firstRowCount *
-                                                      numberOfElements));
-            }
-            if (dirtyPlan.secondRowCount > 0) {
-                JST_CHECK(waterfallBuffer->update(0,
-                                                  dirtyPlan.secondRowCount *
-                                                      numberOfElements));
-            }
+        if (!canvas.displayHeld) {
+            JST_CHECK(waterfall.upload(waterfallFrame()));
             waterfallHistory.clearDirty();
-            waterfallUniforms.index = waterfallHistory.writeIndex /
-                                      static_cast<F32>(waterfallHeight);
         }
-
-        waterfallUniforms.width = static_cast<int>(numberOfElements);
-        waterfallUniforms.height = static_cast<int>(waterfallHeight);
-        waterfallUniforms.offset = interaction.offset +
-            0.5f * (1.0f - 1.0f / interaction.zoom);
-        waterfallUniforms.zoom = interaction.zoom;
-        JST_CHECK(waterfallUniformBuffer->update());
+        JST_CHECK(waterfall.present(canvas.interaction));
     }
-
-    // Process update flags.
-
-    if (lineplotEnabled && updateSignalPointsFlag && !displayHeld) {
-        JST_CHECK(signalPointsBuffer->update());
-        if (HostReadable(signalPoints)) {
-            const F32* points = signalPoints.data<F32>();
-            displayedPoints.assign(points, points + signalPoints.size());
-        }
-        signalKernel->update();
-        if (fill) {
-            fillKernel->update();
-        }
-        if (maxHold) {
-            if (updateHoldPointsFlag) {
-                JST_CHECK(maxHoldPointsBuffer->update());
-                maxHoldKernel->update();
-                updateHoldPointsFlag = false;
-            }
-        }
-        updateSignalPointsFlag = false;
-    }
-
-    if (lineplotEnabled && updateSignalUniformBufferFlag) {
-        JST_CHECK(signalUniformBuffer->update());
-        signalKernel->update();
-        if (fill) {
-            fillKernel->update();
-        }
-        if (maxHold) {
-            JST_CHECK(holdUniformBuffer->update());
-            maxHoldKernel->update();
-        }
-        updateSignalUniformBufferFlag = false;
-    }
-
-    updateLabelState();
-    JST_CHECK(updateCursorState());
-
-    JST_CHECK(axis->present());
-    if (text) {
-        JST_CHECK(text->present());
-    }
-    if (cursorShapes) {
-        JST_CHECK(cursorShapes->present());
-    }
-    if (cursorText) {
-        JST_CHECK(cursorText->present());
-    }
-
-    return Result::SUCCESS;
-}
-
-void SignalViewImpl::processInputEvents(const Extent2D<F32>& paddingScale) {
-    const F32 previousRatio = splitter.ratio;
-    if (!splitter.dragging && !configChangePending()) {
-        splitter.ratio = splitRatio;
-    }
-
-    std::vector<InputEvent> plotEvents;
-    const bool enabled = lineplotEnabled && waterfallEnabled &&
-                         configChangeEnabled("splitRatio");
-    for (const auto& input : surfaceConsumeInputEvents()) {
-        if (const auto* key = std::get_if<KeyEvent>(&input)) {
-            if (key->type == KeyEventType::Press && key->key == KeyCode::Space && !key->repeat) {
-                displayHeld = !displayHeld;
-            }
-        }
-        const auto mouse = SurfaceMouseEvent(input);
-        if (!mouse) continue;
-        const auto& event = *mouse;
-        if (event.type == MouseEventType::Move) {
-            cursor.inside = true;
-            cursor.position = event.position;
-        } else if (event.type == MouseEventType::Leave) {
-            cursor.inside = false;
-        }
-        const auto layout = detail::CalculateSignalViewPanels(paddingScale,
-                                                               interaction.viewSize,
-                                                               splitter.ratio);
-        bool commit = false;
-        if (splitter.process(event, layout, interaction.viewSize,
-                              interaction.scale, enabled, commit)) {
-            // Splitter capture must never start or continue a horizontal pan.
-            interaction.dragging = false;
-            if (commit && (splitter.ratio != splitRatio || configChangePending())) {
-                Parser::Map edit;
-                edit["splitRatio"] = splitter.ratio;
-                if (requestConfigChange(edit) != Result::SUCCESS) {
-                    splitter.ratio = splitRatio;
-                }
-            } else if (event.type == MouseEventType::Leave) {
-                splitter.ratio = splitRatio;
-            }
-        } else {
-            plotEvents.push_back(event);
-        }
-    }
-    const bool viewChanged = interaction.viewChanged || previousRatio != splitter.ratio;
-    interaction = ProcessSurfaceInteraction(interaction, {}, std::move(plotEvents));
-    interaction.viewChanged |= viewChanged;
-}
-
-void SignalViewImpl::updateState() {
-    const F32 maxTranslation = std::abs((1.0f / interaction.zoom) - 1.0f);
-    const F32 translation =
-        std::clamp(-2.0f * interaction.offset, -maxTranslation, maxTranslation);
-
-    // Update global pixel size.
-
-    pixelSize = {
-        (2.0f * interaction.scale) / interaction.viewSize.x,
-        (2.0f * interaction.scale) / interaction.viewSize.y
-    };
-
-    // Update axis component (computes paddingScale internally).
-
-    axis->updatePixelSize(pixelSize);
-    const auto& paddingScale = axis->paddingScale();
-
-    const bool combined = lineplotEnabled && waterfallEnabled;
-    const auto panels = detail::CalculateSignalViewPanels(paddingScale,
-                                                           interaction.viewSize,
-                                                           splitter.ratio);
-    const F32 linePanelScale = combined ? panels.lineFraction : 1.0f;
-    axis->updateVerticalScale(linePanelScale);
-
-    // Update the lineplot layer.
 
     if (lineplotEnabled) {
-        auto signalTransform = glm::mat4(1.0f);
-
-        const F32 linePanelOffset = paddingScale.y * (1.0f - linePanelScale);
-        signalTransform = glm::translate(signalTransform,
-                                         glm::vec3(translation *
-                                                       paddingScale.x *
-                                                       interaction.zoom,
-                                                   linePanelOffset, 0.0f));
-        signalTransform = glm::scale(signalTransform,
-                                     glm::vec3(paddingScale.x,
-                                               paddingScale.y * linePanelScale,
-                                               1.0f));
-
-        signalUniforms.transform = signalTransform;
-        signalUniforms.thickness[0] = pixelSize.x * kLineThickness * 3.0f;
-        signalUniforms.thickness[1] =
-            pixelSize.y * kLineThickness * 3.0f / linePanelScale;
-        signalUniforms.zoom = interaction.zoom;
-        signalUniforms.numberOfPoints = numberOfElements;
-
-        holdUniforms.transform = signalTransform;
-        holdUniforms.thickness[0] = pixelSize.x * kLineThickness * 3.0f;
-        holdUniforms.thickness[1] =
-            pixelSize.y * kLineThickness * 3.0f / linePanelScale;
-        holdUniforms.zoom = interaction.zoom;
-        holdUniforms.numberOfPoints = numberOfElements;
+        if (updateSignalPointsFlag && !canvas.displayHeld) {
+            JST_CHECK(lineplot.upload(signalPoints, updateHoldPointsFlag));
+            updateSignalPointsFlag = false;
+        }
+        JST_CHECK(lineplot.present());
     }
 
-    // Clip signal and cursor to the plot area.
-
-    const auto& vs = interaction.viewSize;
-    const auto& plotRect = panels.plot;
-    if (combined) {
-        const auto& lineRect = panels.line;
-        waterfallProgram->scissorRect(panels.waterfall);
-
-        waterfallUniforms.panelScaleX = paddingScale.x;
-        waterfallUniforms.panelScaleY = paddingScale.y * (1.0f - linePanelScale);
-        waterfallUniforms.panelOffsetY = -paddingScale.y * linePanelScale;
-        signalProgram->scissorRect(lineRect);
-        if (fill) {
-            fillProgram->scissorRect(lineRect);
-        }
-        if (maxHold) {
-            maxHoldProgram->scissorRect(lineRect);
-        }
-    } else if (lineplotEnabled) {
-        signalProgram->scissorRect(plotRect);
-        if (fill) {
-            fillProgram->scissorRect(plotRect);
-        }
-        if (maxHold) {
-            maxHoldProgram->scissorRect(plotRect);
-        }
-    } else if (waterfallEnabled) {
-        waterfallProgram->scissorRect(plotRect);
-        waterfallUniforms.panelScaleX = paddingScale.x;
-        waterfallUniforms.panelScaleY = paddingScale.y;
-        waterfallUniforms.panelOffsetY = 0.0f;
-    }
-    axis->updateScissorRect({0, 0,
-                             static_cast<U32>(vs.x),
-                             static_cast<U32>(vs.y)});
-
-    // Update the labels.
-
-    updateLabelState();
-
-    // Schedule the uniform buffers for update.
-
-    updateSignalUniformBufferFlag = true;
+    return canvas.present(context);
 }
 
-void SignalViewImpl::updateLabelState() {
-    const auto& paddingScale = axis->paddingScale();
-    const bool combined = lineplotEnabled && waterfallEnabled;
-    const bool hasFreqAttrs =
-        input.hasAttribute("frequency") &&
-        input.hasAttribute("sampleRate");
-    const F32 centerFreq =
-        hasFreqAttrs ? std::any_cast<F32>(input.attribute("frequency")) : 0.0f;
-    const F32 sampleRate =
-        hasFreqAttrs ? std::any_cast<F32>(input.attribute("sampleRate")) : 0.0f;
-
-    const F32 translation =
-        std::clamp(-2.0f * interaction.offset,
-                   -std::abs((1.0f / interaction.zoom) - 1.0f),
-                   std::abs((1.0f / interaction.zoom) - 1.0f));
-
-    // Update tick labels via axis component.
-
-    if (axis) {
-        const bool ticksVisible = lineplotEnabled &&
-            interaction.placement != SurfacePlacementType::Attached;
-        axis->setShowFrameTicks(ticksVisible);
-
-        auto xFormatter = [hasFreqAttrs, centerFreq, sampleRate,
-                           hasLineplot = lineplotEnabled,
-                           zoom = interaction.zoom, translation](const F32 position) {
-            const F32 normalizedPos = position / zoom - translation;
-            if (hasFreqAttrs) {
-                const F32 freq =
-                    (centerFreq + normalizedPos * sampleRate / 2.0f) / 1e6f;
-                return jst::fmt::format("{:.02f}", freq);
-            }
-            const F32 value = hasLineplot
-                ? normalizedPos
-                : (normalizedPos + 1.0f) * 0.5f;
-            return jst::fmt::format("{:.02f}", value);
-        };
-
-        Render::Components::Axis::TickFormatter yFormatter;
-        if (lineplotEnabled) {
-            yFormatter = [min = rangeMin, max = rangeMax](const F32 position) {
-                return detail::LineplotAmplitudeLabel(position, min, max);
-            };
-        }
-
-        axis->updateTickFormatters(std::move(xFormatter), std::move(yFormatter));
-    }
-
-    if (text) {
-        text->updatePixelSize(pixelSize);
-    }
-    if (cursorText) {
-        cursorText->updatePixelSize(pixelSize);
-    }
-
-    if (lineplotEnabled && text) {
-        const F32 tickOffset = axis->getConfig().majorTickLengthPx + 4.0f;
-
-        auto holdLabel = text->get("hold");
-        const F32 lineHeight = text->getConfig().font
-            ? static_cast<F32>(text->getConfig().font->lineHeight()) * holdLabel.scale
-            : 0.0f;
-        holdLabel.position = {-paddingScale.x + pixelSize.x * tickOffset,
-                              paddingScale.y - pixelSize.y * (tickOffset + lineHeight)};
-        holdLabel.fill = displayHeld ? "HOLD" : " ";
-        text->update("hold", holdLabel);
-
-        auto header = text->get("header");
-        if (interaction.placement == SurfacePlacementType::Attached) {
-            header.fill = " ";
-        } else {
-            header.position = {-paddingScale.x + pixelSize.x * tickOffset,
-                               paddingScale.y - pixelSize.y * tickOffset};
-            if (hasFreqAttrs) {
-                header.fill = jst::fmt::format("CENTER {:.3f} MHz   SPAN {:.3f} MHz",
-                                               centerFreq / 1e6f, sampleRate / 1e6f);
-            } else {
-                header.fill = "CENTER 0.000   SPAN 1.000";
-            }
-        }
-        text->update("header", header);
-
-        auto zoomLabel = text->get("zoom");
-        zoomLabel.position = {
-            paddingScale.x -
-                pixelSize.x * (axis->getConfig().majorTickLengthPx + 4.0f),
-            paddingScale.y -
-                pixelSize.y * (axis->getConfig().majorTickLengthPx + 4.0f),
-        };
-        zoomLabel.alignment = {2, 0};
-        if (splitter.dragging) {
-            zoomLabel.fill = jst::fmt::format("SPLIT {:.0f}%", splitter.ratio * 100.0f);
-        } else if (interaction.placement == SurfacePlacementType::Attached) {
-            zoomLabel.fill = " ";
-        } else if (std::abs(interaction.zoom - 1.0f) > 0.01f) {
-            zoomLabel.fill = jst::fmt::format("ZOOM {:.1f}x", interaction.zoom);
-        } else {
-            zoomLabel.fill = " ";
-        }
-        text->update("zoom", zoomLabel);
-
-        auto amplitudeTitle = text->get("amplitude-title");
-        const F32 lineFraction = axis->getConfig().verticalScale;
-        amplitudeTitle.position = {-1.0f + pixelSize.x * 3.0f,
-                                   paddingScale.y * (1.0f - lineFraction)};
-        amplitudeTitle.fill = combined ? amplitudeLabel : " ";
-        text->update("amplitude-title", amplitudeTitle);
-
-        auto waterfallTitle = text->get("waterfall-title");
-        waterfallTitle.position = {-1.0f + pixelSize.x * 3.0f,
-                                   -paddingScale.y * lineFraction};
-        waterfallTitle.fill = combined ? waterfallLabel : " ";
-        text->update("waterfall-title", waterfallTitle);
-    }
+SignalViewCanvas::Context SignalViewImpl::canvasContext() {
+    return {
+        .config = *this,
+        .frequency = SignalViewFrequencyOf(input),
+        .numberOfElements = numberOfElements,
+        .lineplot = lineplotEnabled ? &lineplot : nullptr,
+        .waterfall = waterfallEnabled ? &waterfall : nullptr,
+    };
 }
 
-Result SignalViewImpl::updateCursorState() {
-    const auto& padding = axis->paddingScale();
-    const F32 u = (cursor.position.x - 0.5f) / std::max(padding.x, 1e-6f) + 0.5f;
-    const F32 v = (cursor.position.y - 0.5f) / std::max(padding.y, 1e-6f) + 0.5f;
-    const bool visible = cursor.inside &&
-                         !splitter.dragging &&
-                         interaction.placement != SurfacePlacementType::Attached &&
-                         u >= 0.0f && u <= 1.0f && v >= 0.0f && v <= 1.0f &&
-                         numberOfElements >= 2;
+WaterfallFrame SignalViewImpl::waterfallFrame() const {
+    return {
+        .bins = waterfallBins.data<F32>(),
+        .writeIndex = waterfallHistory.writeIndex,
+        .dirty = waterfallHistory.dirtyPlan(waterfallHeight),
+    };
+}
 
-    std::string xLabelText;
-    std::string yLabelText;
-    F32 xNdc = 0.0f;
-    F32 yNdc = 0.0f;
-    bool hasMarker = false;
-
-    if (visible) {
-        const F32 maxTranslation = std::abs((1.0f / interaction.zoom) - 1.0f);
-        const F32 translation =
-            std::clamp(-2.0f * interaction.offset, -maxTranslation, maxTranslation);
-        const F32 xPoint = std::clamp((u * 2.0f - 1.0f) / interaction.zoom - translation,
-                                      -1.0f, 1.0f);
-        xNdc = std::clamp((xPoint + translation) * interaction.zoom, -1.0f, 1.0f) * padding.x;
-
-        const bool hasFreqAttrs = input.hasAttribute("frequency") &&
-                                  input.hasAttribute("sampleRate");
-        if (hasFreqAttrs) {
-            const F32 centerFreq = std::any_cast<F32>(input.attribute("frequency"));
-            const F32 sampleRate = std::any_cast<F32>(input.attribute("sampleRate"));
-            xLabelText = jst::fmt::format("{:.4f} MHz",
-                                          (centerFreq + xPoint * sampleRate / 2.0f) / 1e6f);
-        } else {
-            xLabelText = jst::fmt::format("{:.4f}", lineplotEnabled
-                                                        ? xPoint
-                                                        : (xPoint + 1.0f) * 0.5f);
-        }
-
-        if (lineplotEnabled && displayedPoints.size() >= numberOfElements * 2) {
-            const F32 sample = (xPoint + 1.0f) * 0.5f * (numberOfElements - 1);
-            const U64 lower = std::min(static_cast<U64>(sample), numberOfElements - 2);
-            const F32 fraction = std::clamp(sample - static_cast<F32>(lower), 0.0f, 1.0f);
-            const F32 yLower = displayedPoints[(lower * 2) + 1];
-            const F32 yUpper = displayedPoints[(lower * 2) + 3];
-            const F32 yPoint = yLower + (yUpper - yLower) * fraction;
-            if (const auto value = detail::LineplotAmplitudeValue(yPoint, rangeMin, rangeMax)) {
-                const auto unit = detail::LabelUnit(amplitudeLabel);
-                yLabelText = unit.empty()
-                    ? jst::fmt::format("{:.1f}", *value)
-                    : jst::fmt::format("{:.1f} {}", *value, unit);
-                const bool combined = lineplotEnabled && waterfallEnabled;
-                const F32 lineFraction = combined ? axis->getConfig().verticalScale : 1.0f;
-                yNdc = padding.y * (1.0f - lineFraction) +
-                       padding.y * lineFraction * std::clamp(yPoint, -1.0f, 1.0f);
-                hasMarker = true;
-            }
-        }
-    }
-
-    cursor.visible = visible;
-    cursor.marker = hasMarker;
-    cursor.plot = {xNdc, yNdc};
-
-    Extent2D<F32> xLabelPosition = {-2.0f, -2.0f};
-    Extent2D<F32> yLabelPosition = {-2.0f, -2.0f};
-
-    if (cursorShapes) {
-        JST_CHECK(cursorShapes->updatePixelSize({
-            2.0f / interaction.viewSize.x,
-            2.0f / interaction.viewSize.y,
-        }));
-
-        std::span<Extent2D<F32>> positions;
-        JST_CHECK(cursorShapes->getPositions("cursor", positions));
-        std::span<Extent2D<F32>> sizes;
-        JST_CHECK(cursorShapes->getSizes("cursor", sizes));
-        for (U64 i = 0; i < kCursorInstances; ++i) {
-            positions[i] = {-2.0f, -2.0f};
-            sizes[i] = {0.0f, 0.0f};
-        }
-
-        if (visible) {
-            const F32 scale = interaction.scale;
-            const F32 toPixelsX = static_cast<F32>(interaction.viewSize.x) * 0.5f;
-            const F32 toPixelsY = static_cast<F32>(interaction.viewSize.y) * 0.5f;
-
-            positions[kCursorLine] = {xNdc, 0.0f};
-            sizes[kCursorLine] = {2.0f * scale, padding.y * 2.0f * toPixelsY};
-
-            if (hasMarker) {
-                positions[kCursorHalo] = {xNdc, yNdc};
-                sizes[kCursorHalo] = {16.0f * scale, 16.0f * scale};
-                positions[kCursorMarker] = {xNdc, yNdc};
-                sizes[kCursorMarker] = {11.0f * scale, 11.0f * scale};
-            }
-
-            if (cursorText) {
-                const auto& font = cursorText->getConfig().font;
-                const F32 lineHeight = font ? font->lineHeight() * kLabelScale : 0.0f;
-                const F32 xWidth = cursorText->advance(xLabelText) * kLabelScale;
-                const F32 yWidth = yLabelText.empty()
-                    ? 0.0f
-                    : cursorText->advance(yLabelText) * kLabelScale;
-                const F32 gap = yLabelText.empty() ? 0.0f : 10.0f;
-                const F32 padX = 9.0f;
-                const F32 padY = 4.0f;
-                const F32 pillWidth = (padX * 2.0f + xWidth + gap + yWidth) * pixelSize.x;
-                const F32 pillHeight = (padY * 2.0f + lineHeight) * pixelSize.y;
-                const F32 nudge = 14.0f * pixelSize.x;
-
-                F32 left = xNdc + nudge;
-                if (left + pillWidth > padding.x) {
-                    left = xNdc - nudge - pillWidth;
-                }
-                const F32 headerOffset = axis->getConfig().majorTickLengthPx + 4.0f;
-                const F32 top = padding.y - (headerOffset + lineHeight + 8.0f) * pixelSize.y;
-                const F32 centerY = top - pillHeight * 0.5f;
-                const F32 centerX = left + pillWidth * 0.5f;
-
-                positions[kCursorPillEdge] = {centerX, centerY};
-                sizes[kCursorPillEdge] = {pillWidth * toPixelsX + 2.0f * scale,
-                                          pillHeight * toPixelsY + 2.0f * scale};
-                positions[kCursorPill] = {centerX, centerY};
-                sizes[kCursorPill] = {pillWidth * toPixelsX, pillHeight * toPixelsY};
-
-                xLabelPosition = {left + padX * pixelSize.x, centerY};
-                yLabelPosition = {left + (padX + xWidth + gap) * pixelSize.x, centerY};
-            }
-        }
-
-        JST_CHECK(cursorShapes->updatePositions("cursor"));
-        JST_CHECK(cursorShapes->updateSizes("cursor"));
-    }
-
-    if (cursorText) {
-        auto xLabelElement = cursorText->get("cursor-x");
-        xLabelElement.position = xLabelPosition;
-        xLabelElement.fill = visible ? xLabelText : " ";
-        JST_CHECK(cursorText->update("cursor-x", xLabelElement));
-
-        auto yLabelElement = cursorText->get("cursor-y");
-        yLabelElement.position = yLabelPosition;
-        yLabelElement.fill = (visible && !yLabelText.empty()) ? yLabelText : " ";
-        JST_CHECK(cursorText->update("cursor-y", yLabelElement));
-    }
-
-    return Result::SUCCESS;
+SignalViewWaterfall3DLabels SignalViewImpl::waterfall3dLabels() const {
+    const auto frequency = SignalViewFrequencyOf(input);
+    SignalViewWaterfall3DLabels labels;
+    labels.frequency = xLabel;
+    labels.time = waterfallLabel;
+    labels.amplitude = amplitudeLabel;
+    labels.hasFrequency = frequency.valid;
+    labels.centerFrequency = frequency.center;
+    labels.sampleRate = frequency.sampleRate;
+    labels.rangeMin = rangeMin;
+    labels.rangeMax = rangeMax;
+    return labels;
 }
 
 }  // namespace Jetstream::Modules

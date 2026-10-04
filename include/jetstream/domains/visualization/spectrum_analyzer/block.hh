@@ -8,6 +8,7 @@
 namespace Jetstream::Blocks {
 
 struct SpectrumAnalyzer : public Block::Config {
+    std::string mode = "lineplot_waterfall";
     U64 lineplotAveraging = 1;
     U64 waterfallAveraging = 1;
     bool maxHold = false;
@@ -23,7 +24,7 @@ struct SpectrumAnalyzer : public Block::Config {
     JST_BLOCK_TYPE(spectrum_analyzer);
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(L);
-    JST_BLOCK_PARAMS(lineplotAveraging, waterfallAveraging, maxHold,
+    JST_BLOCK_PARAMS(mode, lineplotAveraging, waterfallAveraging, maxHold,
                      fill, rangeMin, rangeMax, waterfallHeight,
                      splitRatio, xLabel, amplitudeLabel, waterfallLabel);
     JST_BLOCK_DESCRIPTION(
@@ -31,10 +32,12 @@ struct SpectrumAnalyzer : public Block::Config {
         "Spectrum trace and waterfall in one view.",
         "# Spectrum Analyzer\n"
         "The Spectrum Analyzer accepts complex samples, computes a normalized "
-        "spectrum sized by the input sample axis, and renders a line trace above "
-        "a scrolling waterfall on one surface. Both views share horizontal zoom "
-        "and pan. Press **Space** in the focused plot window to freeze or "
-        "resume both views.\n\n"
+        "spectrum sized by the input sample axis, and renders it on one surface. "
+        "The default view places a line trace above a scrolling waterfall, and "
+        "both share horizontal zoom and pan. Press **Space** in the focused plot "
+        "window to freeze or resume both views. The mode option can instead show "
+        "only the trace, only the waterfall, or the waterfall as a 3D surface "
+        "with an orbit camera.\n\n"
 
         "The input must identify its sample dimension with `sampleAxis`. An "
         "optional `batchAxis` is averaged into the line trace and appended to "
@@ -42,6 +45,8 @@ struct SpectrumAnalyzer : public Block::Config {
         "supported.\n\n"
 
         "## Arguments\n"
+        "- **Mode**: Spectrum and waterfall, spectrum only, waterfall only, or "
+        "3D waterfall.\n"
         "- **Range Min/Max**: Reference bounds for the soft display mapping.\n"
         "- **Lineplot Averaging**: Exponential trace smoothing factor across updates, "
         "initialized from the first batch.\n"

@@ -17,6 +17,18 @@
 
 namespace Jetstream::Blocks {
 
+namespace {
+
+bool SpectrumAnalyzerHasLineplot(const std::string& mode) {
+    return mode == "lineplot" || mode == "lineplot_waterfall";
+}
+
+bool SpectrumAnalyzerHasWaterfall(const std::string& mode) {
+    return mode == "waterfall" || mode == "lineplot_waterfall" || mode == "waterfall_3d";
+}
+
+}  // namespace
+
 struct SpectrumAnalyzerImpl : public Block::Impl,
                               public DynamicConfig<Blocks::SpectrumAnalyzer> {
     Result validate() override;
@@ -53,6 +65,13 @@ struct SpectrumAnalyzerImpl : public Block::Impl,
 
 Result SpectrumAnalyzerImpl::validate() {
     candidatePlan.reset();
+
+    const std::string& candidateMode = candidate()->mode;
+    if (!SpectrumAnalyzerHasLineplot(candidateMode) &&
+        !SpectrumAnalyzerHasWaterfall(candidateMode)) {
+        JST_ERROR("[BLOCK_SPECTRUM_ANALYZER] Invalid mode '{}'.", candidateMode);
+        return Result::ERROR;
+    }
 
     const auto input = inputs().find("buffer");
     if (input == inputs().end() || !input->second.resolved()) {
@@ -108,7 +127,7 @@ Result SpectrumAnalyzerImpl::configure() {
     rangeConfig->min = rangeMin;
     rangeConfig->max = rangeMax;
 
-    signalViewConfig->mode = "lineplot_waterfall";
+    signalViewConfig->mode = mode;
     signalViewConfig->lineplotAveraging = lineplotAveraging;
     signalViewConfig->waterfallAveraging = waterfallAveraging;
     signalViewConfig->maxHold = maxHold;
@@ -128,24 +147,41 @@ Result SpectrumAnalyzerImpl::define() {
     JST_CHECK(defineInterfaceInput("buffer", "Input",
                                    "Complex samples to analyze."));
 
+    const std::string& candidateMode = candidate()->mode;
+    JST_CHECK(defineInterfaceConfig("mode", "Mode",
+                                    "Which views the analyzer renders.",
+                                    {{"type", "dropdown"}, {"options", Parser::Sequence{
+                                        Parser::Map{{"label", "Lineplot + Waterfall"}, {"value", "lineplot_waterfall"}},
+                                        Parser::Map{{"label", "Spectrum"}, {"value", "lineplot"}},
+                                        Parser::Map{{"label", "Waterfall"}, {"value", "waterfall"}},
+                                        Parser::Map{{"label", "3D Waterfall"}, {"value", "waterfall_3d"}},
+                                    }}}));
     JST_CHECK(defineInterfaceConfig("rangeMin", "Range Min",
                                     "Minimum displayed amplitude.",
                                     {{"type", "range"}, {"min", -300.0f}, {"max", 0.0f}, {"unit", "dBFS"}}));
     JST_CHECK(defineInterfaceConfig("rangeMax", "Range Max",
                                     "Maximum displayed amplitude.",
                                     {{"type", "range"}, {"min", -300.0f}, {"max", 0.0f}, {"unit", "dBFS"}}));
-    JST_CHECK(defineInterfaceConfig("lineplotAveraging", "Lineplot Averaging",
-                                    "Trace smoothing factor.",
-                                    {{"type", "range"}, {"min", 1.0f}, {"max", 256.0f}, {"value_type", "uint"}}));
-    JST_CHECK(defineInterfaceConfig("waterfallAveraging", "Waterfall Averaging",
-                                    "Number of spectra averaged per displayed row.",
-                                    {{"type", "range"}, {"min", 1.0f}, {"max", 64.0f}, {"value_type", "uint"}}));
-    JST_CHECK(defineInterfaceConfig("maxHold", "Max Hold",
-                                    "Enable maximum hold trace.",
-                                    {{"type", "bool"}}));
-    JST_CHECK(defineInterfaceConfig("waterfallHeight", "Waterfall Height",
-                                    "Number of spectrum rows retained.",
-                                    {{"type", "uint"}, {"unit", "rows"}}));
+    if (SpectrumAnalyzerHasLineplot(candidateMode)) {
+        JST_CHECK(defineInterfaceConfig("lineplotAveraging", "Lineplot Averaging",
+                                        "Trace smoothing factor.",
+                                        {{"type", "range"}, {"min", 1.0f}, {"max", 256.0f}, {"value_type", "uint"}}));
+    }
+    if (SpectrumAnalyzerHasWaterfall(candidateMode)) {
+        JST_CHECK(defineInterfaceConfig("waterfallAveraging", "Waterfall Averaging",
+                                        "Number of spectra averaged per displayed row.",
+                                        {{"type", "range"}, {"min", 1.0f}, {"max", 64.0f}, {"value_type", "uint"}}));
+    }
+    if (SpectrumAnalyzerHasLineplot(candidateMode)) {
+        JST_CHECK(defineInterfaceConfig("maxHold", "Max Hold",
+                                        "Enable maximum hold trace.",
+                                        {{"type", "bool"}}));
+    }
+    if (SpectrumAnalyzerHasWaterfall(candidateMode)) {
+        JST_CHECK(defineInterfaceConfig("waterfallHeight", "Waterfall Height",
+                                        "Number of spectrum rows retained.",
+                                        {{"type", "uint"}, {"unit", "rows"}}));
+    }
     return Result::SUCCESS;
 }
 

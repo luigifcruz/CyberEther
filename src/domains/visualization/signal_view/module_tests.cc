@@ -26,6 +26,7 @@
 #include "flowgraph_fixture.hh"
 
 #include "module_impl.hh"
+#include "waterfall_3d.hh"
 
 using namespace Jetstream;
 
@@ -52,44 +53,16 @@ struct SignalViewImplAccess : Modules::SignalViewImpl {
         return &SignalViewImplAccess::waterfallHistory;
     }
 
-    static auto axisMember() {
-        return &SignalViewImplAccess::axis;
+    static Modules::SignalViewCanvas& canvasOf(Modules::SignalViewImpl& impl) {
+        return impl.*&SignalViewImplAccess::canvas;
     }
 
-    static auto renderSurfaceMember() {
-        return &SignalViewImplAccess::renderSurface;
+    static Modules::SignalViewLineplot& lineplotOf(Modules::SignalViewImpl& impl) {
+        return impl.*&SignalViewImplAccess::lineplot;
     }
 
-    static auto waterfallUniformBufferMember() {
-        return &SignalViewImplAccess::waterfallUniformBuffer;
-    }
-
-    static auto signalPointsBufferMember() {
-        return &SignalViewImplAccess::signalPointsBuffer;
-    }
-
-    static auto maxHoldPointsBufferMember() {
-        return &SignalViewImplAccess::maxHoldPointsBuffer;
-    }
-
-    static auto waterfallBufferMember() {
-        return &SignalViewImplAccess::waterfallBuffer;
-    }
-
-    static auto waterfallUniformsMember() {
-        return &SignalViewImplAccess::waterfallUniforms;
-    }
-
-    static auto interactionMember() {
-        return &SignalViewImplAccess::interaction;
-    }
-
-    static auto cursorMember() {
-        return &SignalViewImplAccess::cursor;
-    }
-
-    static auto splitterMember() {
-        return &SignalViewImplAccess::splitter;
+    static Modules::SignalViewWaterfall& waterfallOf(Modules::SignalViewImpl& impl) {
+        return impl.*&SignalViewImplAccess::waterfall;
     }
 
     static auto configChangePendingMember() {
@@ -209,10 +182,13 @@ void SignalViewImplAccess::wirePresentResources(
     // The combined presentation path updates real CPU state and queues uploads,
     // but these resources never bind to a GPU. Only data members are accessed;
     // internal non-exported implementation methods must not be called by tests.
-    impl.*axisMember() = axis;
-    impl.*&SignalViewImplAccess::cursorText = cursorText;
-    impl.*&SignalViewImplAccess::text = text;
-    impl.*renderSurfaceMember() = std::make_shared<LabelTestSurface>();
+    auto& canvas = SignalViewImplAccess::canvasOf(impl);
+    auto& lineplot = SignalViewImplAccess::lineplotOf(impl);
+    auto& waterfall = SignalViewImplAccess::waterfallOf(impl);
+    canvas.axis = axis;
+    canvas.cursorText = cursorText;
+    canvas.text = text;
+    canvas.renderSurface = std::make_shared<LabelTestSurface>();
     const auto tensorBuffer = [](Tensor& tensor) {
         return std::make_shared<LabelTestBuffer>(Render::Buffer::Config{
             .size = tensor.size(),
@@ -222,29 +198,28 @@ void SignalViewImplAccess::wirePresentResources(
         });
     };
     if (impl.*&SignalViewImplAccess::lineplotEnabled) {
-        impl.*signalPointsBufferMember() = tensorBuffer(impl.*signalPointsMember());
-        impl.*maxHoldPointsBufferMember() = tensorBuffer(impl.*maxHoldPointsMember());
+        lineplot.signalPointsBuffer = tensorBuffer(impl.*signalPointsMember());
+        lineplot.maxHoldPointsBuffer = tensorBuffer(impl.*maxHoldPointsMember());
     }
     if (impl.*&SignalViewImplAccess::waterfallEnabled) {
-        impl.*waterfallBufferMember() = tensorBuffer(impl.*waterfallBinsMember());
+        waterfall.binsBuffer = tensorBuffer(impl.*waterfallBinsMember());
     }
-    impl.*&SignalViewImplAccess::signalUniformBuffer = std::make_shared<LabelTestBuffer>();
-    impl.*&SignalViewImplAccess::holdUniformBuffer = std::make_shared<LabelTestBuffer>();
-    auto& uniforms = impl.*waterfallUniformsMember();
-    impl.*waterfallUniformBufferMember() = std::make_shared<LabelTestBuffer>(
+    lineplot.signalUniformBuffer = std::make_shared<LabelTestBuffer>();
+    lineplot.holdUniformBuffer = std::make_shared<LabelTestBuffer>();
+    waterfall.uniformBuffer = std::make_shared<LabelTestBuffer>(
         Render::Buffer::Config{
             .size = 1,
             .target = Render::Buffer::Target::UNIFORM,
-            .elementByteSize = sizeof(uniforms),
-            .buffer = &uniforms,
+            .elementByteSize = sizeof(waterfall.uniforms),
+            .buffer = &waterfall.uniforms,
         });
-    impl.*&SignalViewImplAccess::signalKernel = std::make_shared<Render::Kernel>(Render::Kernel::Config{});
-    impl.*&SignalViewImplAccess::fillKernel = std::make_shared<Render::Kernel>(Render::Kernel::Config{});
-    impl.*&SignalViewImplAccess::maxHoldKernel = std::make_shared<Render::Kernel>(Render::Kernel::Config{});
-    impl.*&SignalViewImplAccess::signalProgram = std::make_shared<Render::Program>(Render::Program::Config{});
-    impl.*&SignalViewImplAccess::fillProgram = std::make_shared<Render::Program>(Render::Program::Config{});
-    impl.*&SignalViewImplAccess::maxHoldProgram = std::make_shared<Render::Program>(Render::Program::Config{});
-    impl.*&SignalViewImplAccess::waterfallProgram = std::make_shared<Render::Program>(Render::Program::Config{});
+    lineplot.signalKernel = std::make_shared<Render::Kernel>(Render::Kernel::Config{});
+    lineplot.fillKernel = std::make_shared<Render::Kernel>(Render::Kernel::Config{});
+    lineplot.maxHoldKernel = std::make_shared<Render::Kernel>(Render::Kernel::Config{});
+    lineplot.signalProgram = std::make_shared<Render::Program>(Render::Program::Config{});
+    lineplot.fillProgram = std::make_shared<Render::Program>(Render::Program::Config{});
+    lineplot.maxHoldProgram = std::make_shared<Render::Program>(Render::Program::Config{});
+    waterfall.program = std::make_shared<Render::Program>(Render::Program::Config{});
 }
 
 U64 ApplyBufferUploads(const std::shared_ptr<Render::Buffer>& buffer, void* destination) {
@@ -570,10 +545,10 @@ TEST_CASE("Standalone waterfall presents live metadata without view changes",
 
     auto* impl = module->getImpl<Modules::SignalViewImpl>();
     REQUIRE(impl);
-    impl->*SignalViewImplAccess::axisMember() = axis;
-    impl->*SignalViewImplAccess::renderSurfaceMember() =
+    SignalViewImplAccess::canvasOf(*impl).axis = axis;
+    SignalViewImplAccess::canvasOf(*impl).renderSurface =
         std::make_shared<LabelTestSurface>();
-    impl->*SignalViewImplAccess::waterfallUniformBufferMember() =
+    SignalViewImplAccess::waterfallOf(*impl).uniformBuffer =
         std::make_shared<LabelTestBuffer>();
     auto* presenter = module->getImpl<Scheduler::Context>();
     REQUIRE(presenter);
@@ -584,7 +559,7 @@ TEST_CASE("Standalone waterfall presents live metadata without view changes",
         frequencyReads = 0;
         sampleRateReads = 0;
         REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
-        CHECK_FALSE((impl->*SignalViewImplAccess::interactionMember()).viewChanged);
+        CHECK_FALSE(SignalViewImplAccess::canvasOf(*impl).interaction.viewChanged);
         CHECK(frequencyReads > 0);
         CHECK(sampleRateReads > 0);
         CHECK(observedFrequency == frequency);
@@ -771,8 +746,8 @@ TEST_CASE("Cursor stays inside the zoomed plot and interpolates between sparse s
     SignalViewImplAccess::wirePresentResources(*impl, axis, text, cursorText);
     auto* presenter = module->getImpl<Scheduler::Context>();
     REQUIRE(presenter);
-    const auto& cursor = impl->*SignalViewImplAccess::cursorMember();
-    const auto& interaction = impl->*SignalViewImplAccess::interactionMember();
+    const auto& cursor = SignalViewImplAccess::canvasOf(*impl).cursor;
+    const auto& interaction = SignalViewImplAccess::canvasOf(*impl).interaction;
 
     std::unordered_set<std::string> skipped, failed;
     for (U64 b = 0; b < 2; ++b) {
@@ -887,16 +862,16 @@ TEST_CASE("Space holds displayed plots while processing continues and resumes at
     std::vector<F32> displayedSignal(lineplot ? 16 : 0);
     std::vector<F32> displayedMaxHold(lineplot ? 16 : 0);
     std::vector<F32> displayedWaterfall(waterfall ? 32 : 0);
-    auto displayedUniforms = impl->*SignalViewImplAccess::waterfallUniformsMember();
+    auto displayedUniforms = SignalViewImplAccess::waterfallOf(*impl).uniforms;
     const auto present = [&] {
         REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
-        U64 bytes = ApplyBufferUploads(impl->*SignalViewImplAccess::signalPointsBufferMember(),
+        U64 bytes = ApplyBufferUploads(SignalViewImplAccess::lineplotOf(*impl).signalPointsBuffer,
                                        displayedSignal.data());
-        bytes += ApplyBufferUploads(impl->*SignalViewImplAccess::maxHoldPointsBufferMember(),
+        bytes += ApplyBufferUploads(SignalViewImplAccess::lineplotOf(*impl).maxHoldPointsBuffer,
                                     displayedMaxHold.data());
-        bytes += ApplyBufferUploads(impl->*SignalViewImplAccess::waterfallBufferMember(),
+        bytes += ApplyBufferUploads(SignalViewImplAccess::waterfallOf(*impl).binsBuffer,
                                     displayedWaterfall.data());
-        ApplyBufferUploads(impl->*SignalViewImplAccess::waterfallUniformBufferMember(),
+        ApplyBufferUploads(SignalViewImplAccess::waterfallOf(*impl).uniformBuffer,
                             &displayedUniforms);
         return bytes;
     };
@@ -949,8 +924,8 @@ TEST_CASE("Space holds displayed plots while processing continues and resumes at
     REQUIRE(displayedWaterfall == frozenWaterfall);
     REQUIRE(displayedUniforms.index == frozenIndex);
     REQUIRE(holdLabel() == (lineplot ? "HOLD" : ""));
-    REQUIRE((impl->*SignalViewImplAccess::interactionMember()).zoom > 1.0f);
-    REQUIRE((impl->*SignalViewImplAccess::interactionMember()).viewSize.x == 800);
+    REQUIRE(SignalViewImplAccess::canvasOf(*impl).interaction.zoom > 1.0f);
+    REQUIRE(SignalViewImplAccess::canvasOf(*impl).interaction.viewSize.x == 800);
     if (waterfall) REQUIRE(displayedUniforms.zoom > 1.0f);
 
     module->surface()->pushInputEvent(FocusEvent{true});
@@ -992,8 +967,8 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View drag requests round trip through
     const auto original = interactiveSignalView;
     auto* impl = original->getImpl<Modules::SignalViewImpl>();
     REQUIRE(impl);
-    auto& splitter = impl->*SignalViewImplAccess::splitterMember();
-    auto& interaction = impl->*SignalViewImplAccess::interactionMember();
+    auto& splitter = SignalViewImplAccess::canvasOf(*impl).splitter;
+    auto& interaction = SignalViewImplAccess::canvasOf(*impl).interaction;
 
     LabelTestWindow window;
     Render::Components::Axis::Config axisConfig;
@@ -1241,10 +1216,11 @@ TEST_CASE("Signal View module supports every visualization mode",
     const auto implementations = Registry::ListAvailableModules("signal_view");
     REQUIRE(!implementations.empty());
 
-    const std::array<const char*, 3> modes = {
+    const std::array<const char*, 4> modes = {
         "lineplot",
         "waterfall",
         "lineplot_waterfall",
+        "waterfall_3d",
     };
 
     for (const auto& implementation : implementations) {
@@ -2769,4 +2745,233 @@ TEST_CASE("Signal View max hold captures the seeded trace after its configured w
             REQUIRE(module->destroy() == Result::SUCCESS);
         }
     }
+}
+
+TEST_CASE("Signal View surface sweep order visits every cell far to near",
+          "[modules][signal_view][surface][scene]") {
+    const I32 count = GENERATE(I32{1}, I32{2}, I32{5}, I32{8});
+    const F32 cameraIndex = GENERATE(-3.0f, 0.0f, 1.5f, 3.9f, 7.0f, 20.0f);
+    CAPTURE(count, cameraIndex);
+
+    const I32 pivot = std::clamp(static_cast<I32>(std::floor(cameraIndex)), 0, count - 1);
+    std::unordered_set<I32> visited;
+    I32 previousBelow = -1;
+    I32 previousAbove = count;
+    for (I32 slot = 0; slot < count; ++slot) {
+        const I32 cell = Modules::detail::Waterfall3DSweepOrder(slot, count, cameraIndex);
+        REQUIRE(cell >= 0);
+        REQUIRE(cell < count);
+        REQUIRE(visited.insert(cell).second);
+        if (cell < pivot) {
+            REQUIRE(cell > previousBelow);
+            previousBelow = cell;
+        } else if (cell > pivot) {
+            REQUIRE(cell < previousAbove);
+            previousAbove = cell;
+        } else {
+            REQUIRE(slot == count - 1);
+        }
+    }
+    REQUIRE(visited.size() == static_cast<U64>(count));
+    REQUIRE(Modules::detail::Waterfall3DSweepOrder(count - 1, count, cameraIndex) == pivot);
+}
+
+TEST_CASE("Signal View surface camera clamps orbit, dolly, and pan",
+          "[modules][signal_view][surface][camera]") {
+    Modules::detail::Waterfall3DCamera camera;
+
+    camera.orbit(0.0f, 10.0f);
+    REQUIRE(camera.elevation == Catch::Approx(Modules::detail::kWaterfall3DMaxElevation));
+    camera.orbit(0.0f, -10.0f);
+    REQUIRE(camera.elevation == Catch::Approx(Modules::detail::kWaterfall3DMinElevation));
+
+    camera.dolly(1000.0f);
+    REQUIRE(camera.distance == Catch::Approx(Modules::detail::kWaterfall3DMaxDistance));
+    camera.dolly(0.0001f);
+    REQUIRE(camera.distance == Catch::Approx(Modules::detail::kWaterfall3DMinDistance));
+
+    camera = {};
+    camera.pan({50.0f, 0.0f}, 1.0f);
+    REQUIRE(std::abs(camera.target.x) <= Modules::detail::kWaterfall3DPanLimit + 1e-5f);
+    REQUIRE(std::abs(camera.target.z) <= Modules::detail::kWaterfall3DPanLimit + 1e-5f);
+    camera.pan({0.0f, -50.0f}, 1.0f);
+    REQUIRE(camera.target.y >= 0.0f);
+    REQUIRE(camera.target.y <= Modules::detail::kWaterfall3DHeightScale);
+
+    camera = {};
+    const glm::vec3 eye = camera.eye();
+    REQUIRE(glm::length(eye - camera.target) == Catch::Approx(camera.distance));
+    REQUIRE(eye.y > camera.target.y);
+    REQUIRE(eye.z > 0.0f);
+
+    Modules::detail::Waterfall3DCamera goal;
+    goal.azimuth = 2.0f;
+    goal.distance = 5.0f;
+    Modules::detail::Waterfall3DCamera follower;
+    REQUIRE(follower.approach(goal, 0.5f));
+    REQUIRE(follower.azimuth == Catch::Approx(0.5f * (0.55f + 2.0f)));
+    for (int step = 0; step < 200; ++step) {
+        follower.approach(goal, 0.5f);
+    }
+    REQUIRE_FALSE(follower.approach(goal, 0.5f));
+    REQUIRE(follower.azimuth == Catch::Approx(goal.azimuth));
+    REQUIRE(follower.distance == Catch::Approx(goal.distance));
+}
+
+TEST_CASE("Signal View surface hides the two walls nearest the camera",
+          "[modules][signal_view][surface][scene]") {
+    const auto corner = Modules::detail::Waterfall3DVisibleWalls({3.0f, 1.0f, 3.0f});
+    REQUIRE(corner.negativeX);
+    REQUIRE(corner.negativeZ);
+    REQUIRE_FALSE(corner.positiveX);
+    REQUIRE_FALSE(corner.positiveZ);
+
+    const auto opposite = Modules::detail::Waterfall3DVisibleWalls({-3.0f, 1.0f, -3.0f});
+    REQUIRE(opposite.positiveX);
+    REQUIRE(opposite.positiveZ);
+    REQUIRE_FALSE(opposite.negativeX);
+    REQUIRE_FALSE(opposite.negativeZ);
+
+    const auto inside = Modules::detail::Waterfall3DVisibleWalls({0.0f, 2.0f, 0.0f});
+    REQUIRE(inside.negativeX);
+    REQUIRE(inside.positiveX);
+    REQUIRE(inside.negativeZ);
+    REQUIRE(inside.positiveZ);
+}
+
+TEST_CASE("Signal View surface ticks label frequency, time, and amplitude",
+          "[modules][signal_view][surface][labels]") {
+    const auto frequency = Modules::detail::Waterfall3DFrequencyTicks(true, 100e6f, 10e6f);
+    REQUIRE(frequency.size() == 5);
+    REQUIRE(frequency.front().position == Catch::Approx(-1.0f));
+    REQUIRE(frequency.front().label == "95.00");
+    REQUIRE(frequency[2].label == "100.00");
+    REQUIRE(frequency.back().label == "105.00");
+
+    const auto normalized = Modules::detail::Waterfall3DFrequencyTicks(false, 0.0f, 0.0f);
+    REQUIRE(normalized.front().label == "0.00");
+    REQUIRE(normalized[2].label == "0.50");
+    REQUIRE(normalized.back().label == "1.00");
+
+    const auto time = Modules::detail::Waterfall3DTimeTicks(256);
+    REQUIRE(time.size() == 5);
+    REQUIRE(time.front().position == Catch::Approx(1.0f));
+    REQUIRE(time.front().label == "0");
+    REQUIRE(time[1].label == "-64");
+    REQUIRE(time.back().position == Catch::Approx(-1.0f));
+    REQUIRE(time.back().label == "-256");
+
+    const auto amplitude = Modules::detail::Waterfall3DAmplitudeTicks(0.0f, 1.0f);
+    REQUIRE(amplitude.size() == 5);
+    REQUIRE(amplitude.front().position == Catch::Approx(0.0f));
+    REQUIRE(amplitude.front().label == "0.00");
+    REQUIRE(amplitude[1].label == "0.37");
+    REQUIRE(amplitude[2].label == "0.50");
+    REQUIRE(amplitude.back().position == Catch::Approx(1.0f));
+    REQUIRE(amplitude.back().label == "1.00");
+}
+
+TEST_CASE("Signal View surface geometry builder caps capacity and clips behind the camera",
+          "[modules][signal_view][surface][scene]") {
+    using Modules::detail::kWaterfall3DGeometryStride;
+    Modules::detail::Waterfall3DGeometry geometry(6);
+    REQUIRE(geometry.capacity() == 6);
+    geometry.line({-0.5f, 0.0f}, {0.5f, 0.0f}, {0.01f, 0.01f}, 2.0f, 1.0f);
+    REQUIRE(geometry.used == 6);
+    REQUIRE(geometry.storage[2] == Catch::Approx(2.0f));
+    REQUIRE(geometry.storage[3] == Catch::Approx(1.0f));
+    REQUIRE(geometry.storage[4] == Catch::Approx(1.0f));
+    REQUIRE(geometry.storage[kWaterfall3DGeometryStride + 2] == Catch::Approx(-2.0f));
+    REQUIRE(geometry.storage[1] == Catch::Approx(0.02f));
+    geometry.line({-0.5f, 0.5f}, {0.5f, 0.5f}, {0.01f, 0.01f}, 2.0f, 1.0f);
+    REQUIRE(geometry.used == 6);
+    geometry.clear();
+    geometry.quad({-1.0f, -1.0f}, {1.0f, -1.0f}, {1.0f, 1.0f}, {-1.0f, 1.0f}, 0.5f);
+    REQUIRE(geometry.used == 6);
+    REQUIRE(geometry.storage[2] == Catch::Approx(0.0f));
+    REQUIRE(geometry.storage[3] > 100.0f);
+    REQUIRE(geometry.storage[4] == Catch::Approx(0.5f));
+
+    Modules::detail::Waterfall3DCamera camera;
+    const Modules::detail::Waterfall3DProjector projector{
+        camera.projection(1.0f) * camera.view(), {0.01f, 0.01f}};
+    REQUIRE(projector.project({0.0f, 0.0f, 0.0f}).has_value());
+    REQUIRE_FALSE(projector.project(camera.eye() - camera.forward()).has_value());
+
+    glm::vec2 a;
+    glm::vec2 b;
+    REQUIRE(projector.projectSegment({-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, a, b));
+    REQUIRE(a.x < b.x);
+    const glm::vec3 behind = camera.eye() - camera.forward() * 2.0f;
+    REQUIRE_FALSE(projector.projectSegment(behind, behind - camera.forward(), a, b));
+    REQUIRE(projector.projectSegment({0.0f, 0.0f, 0.0f}, behind, a, b));
+    REQUIRE(std::isfinite(b.x));
+    REQUIRE(std::isfinite(b.y));
+}
+
+TEST_CASE("Signal View surface axis frames, label extents, and tick thinning",
+          "[modules][signal_view][surface][labels]") {
+    const Modules::detail::Waterfall3DProjector projector{glm::mat4(1.0f), {0.01f, 0.01f}};
+    const glm::vec2 center(0.0f, 0.0f);
+
+    const auto floor = Modules::detail::Waterfall3DAxisFrameFor(
+        projector, {-1.0f, -0.5f, 0.0f}, {1.0f, -0.5f, 0.0f}, {0.0f, -1.0f, 0.0f}, center);
+    REQUIRE(floor.valid);
+    REQUIRE(floor.direction.x == Catch::Approx(1.0f));
+    REQUIRE(floor.normal.x == Catch::Approx(0.0f).margin(1e-6f));
+    REQUIRE(floor.normal.y == Catch::Approx(-1.0f));
+
+    const auto fallback = Modules::detail::Waterfall3DAxisFrameFor(
+        projector, {-1.0f, -0.5f, 0.0f}, {1.0f, -0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, center);
+    REQUIRE(fallback.valid);
+    REQUIRE(fallback.normal.y == Catch::Approx(-1.0f));
+
+    const auto side = Modules::detail::Waterfall3DAxisFrameFor(
+        projector, {-0.5f, -0.5f, 0.0f}, {-0.5f, 0.5f, 0.0f}, {-1.0f, 0.0f, 0.0f}, center);
+    REQUIRE(side.valid);
+    REQUIRE(side.normal.x == Catch::Approx(-1.0f));
+
+    const auto degenerate = Modules::detail::Waterfall3DAxisFrameFor(
+        projector, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, center);
+    REQUIRE_FALSE(degenerate.valid);
+
+    REQUIRE(Modules::detail::Waterfall3DLabelExtentAlong({0.0f, -1.0f}, {1, 0}, 30.0f, 12.0f) ==
+            Catch::Approx(12.0f));
+    REQUIRE(Modules::detail::Waterfall3DLabelExtentAlong({-1.0f, 0.0f}, {2, 1}, 30.0f, 12.0f) ==
+            Catch::Approx(30.0f));
+    REQUIRE(Modules::detail::Waterfall3DLabelExtentAlong({-1.0f, 0.0f}, {1, 1}, 30.0f, 12.0f) ==
+            Catch::Approx(15.0f));
+    REQUIRE(Modules::detail::Waterfall3DLabelExtentAlong({0.0f, 1.0f}, {0, 2}, 30.0f, 12.0f) ==
+            Catch::Approx(12.0f));
+
+    REQUIRE(Modules::detail::Waterfall3DTickStride(floor, projector.pixelSize, 5, 30.0f, 12.0f) == 1);
+    REQUIRE(Modules::detail::Waterfall3DTickStride(floor, projector.pixelSize, 5, 60.0f, 12.0f) == 2);
+    REQUIRE(Modules::detail::Waterfall3DTickStride(floor, projector.pixelSize, 5, 150.0f, 12.0f) == 4);
+    REQUIRE(Modules::detail::Waterfall3DTickStride(side, projector.pixelSize, 5, 150.0f, 12.0f) == 1);
+    REQUIRE(Modules::detail::Waterfall3DTickStride(side, projector.pixelSize, 5, 150.0f, 30.0f) == 2);
+}
+
+TEST_CASE("Signal View Surface decimates columns by peak",
+          "[modules][signal_view][surface][decimate]") {
+    REQUIRE(Modules::detail::Waterfall3DMeshColumns(64, 1000.0f) == 64);
+    REQUIRE(Modules::detail::Waterfall3DMeshColumns(8192, 1000.0f) == 250);
+    REQUIRE(Modules::detail::Waterfall3DMeshColumns(8192, 0.0f) ==
+            Modules::detail::kWaterfall3DMinColumns);
+    REQUIRE(Modules::detail::Waterfall3DMeshColumns(8192, 100000.0f) ==
+            Modules::detail::kWaterfall3DMaxColumns);
+
+    const std::vector<F32> identity = {0.1f, 0.4f, 0.2f, 0.9f};
+    std::vector<F32> same(4, 0.0f);
+    Modules::detail::Waterfall3DDecimateRow(identity.data(), 4, same.data(), 4);
+    for (U64 i = 0; i < identity.size(); ++i) {
+        REQUIRE(same[i] == Catch::Approx(identity[i]));
+    }
+
+    std::vector<F32> bins(9, 0.0f);
+    bins[4] = 0.8f;
+    std::vector<F32> reduced(3, 0.0f);
+    Modules::detail::Waterfall3DDecimateRow(bins.data(), bins.size(), reduced.data(), 3);
+    REQUIRE(reduced[0] == Catch::Approx(0.0f));
+    REQUIRE(reduced[1] == Catch::Approx(0.8f));
+    REQUIRE(reduced[2] == Catch::Approx(0.0f));
 }
