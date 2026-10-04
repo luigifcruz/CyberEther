@@ -26,6 +26,11 @@ Result SpectrogramImpl::validate() {
         return Result::ERROR;
     }
 
+    if (!Render::Colormap::Valid(config.colormap)) {
+        JST_ERROR("[MODULE_SPECTROGRAM] Invalid colormap '{}'.", config.colormap);
+        return Result::ERROR;
+    }
+
     if (!inputs().contains("signal")) {
         return Result::SUCCESS;
     }
@@ -118,6 +123,20 @@ Result SpectrogramImpl::destroy() {
     return Result::SUCCESS;
 }
 
+Result SpectrogramImpl::reconfigure() {
+    const auto& config = *candidate();
+
+    if (config.height != height ||
+        config.xLabel != xLabel ||
+        config.yLabel != yLabel) {
+        return Result::RECREATE;
+    }
+
+    colormap = config.colormap;
+
+    return Result::SUCCESS;
+}
+
 Result SpectrogramImpl::createPresent() {
     auto& window = render();
 
@@ -193,12 +212,7 @@ Result SpectrogramImpl::createPresent() {
 
     // LUT texture.
 
-    {
-        Render::Texture::Config cfg;
-        cfg.size = {256, 1};
-        cfg.buffer = (uint8_t*)TurboLutBytes;
-        JST_CHECK(window->build(lutTexture, cfg));
-    }
+    JST_CHECK(lut.create(window, colormap));
 
     // Uniform buffer.
 
@@ -217,7 +231,7 @@ Result SpectrogramImpl::createPresent() {
         Render::Program::Config cfg;
         cfg.shaders = ShadersPackage["signal"];
         cfg.draws = {drawVertex};
-        cfg.textures = {lutTexture};
+        cfg.textures = {lut.texture()};
         cfg.buffers = {
             {signalUniformBuffer, Render::Program::Target::VERTEX |
                                   Render::Program::Target::FRAGMENT},
@@ -300,6 +314,7 @@ Result SpectrogramImpl::present() {
     }
 
     JST_CHECK(updateAxisState());
+    JST_CHECK(lut.update(colormap));
 
     signalBuffer->update();
 

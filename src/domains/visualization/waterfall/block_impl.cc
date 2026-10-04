@@ -2,6 +2,7 @@
 #include <jetstream/detail/block_impl.hh>
 
 #include <jetstream/domains/visualization/signal_view/module.hh>
+#include <jetstream/render/colormap.hh>
 
 namespace Jetstream::Blocks {
 
@@ -19,6 +20,7 @@ Result WaterfallImpl::configure() {
     signalViewConfig->mode = "waterfall";
     signalViewConfig->waterfallAveraging = averaging;
     signalViewConfig->waterfallHeight = height;
+    signalViewConfig->colormap = colormap;
     signalViewConfig->xLabel = xLabel;
     signalViewConfig->waterfallLabel = yLabel;
 
@@ -37,6 +39,11 @@ Result WaterfallImpl::define() {
                                     "Averaging",
                                     "Number of spectra averaged per displayed row.",
                                     {{"type", "range"}, {"min", 1.0f}, {"max", 64.0f}, {"value_type", "uint"}}));
+
+    JST_CHECK(defineInterfaceConfig("colormap",
+                                    "Colormap",
+                                    "Color palette for amplitude.",
+                                    Render::Colormap::Format()));
 
     return Result::SUCCESS;
 }

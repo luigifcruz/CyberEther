@@ -9,13 +9,14 @@ namespace Jetstream::Blocks {
 
 struct Spectrogram : public Block::Config {
     U64 height = 256;
+    std::string colormap = "turbo";
     std::string xLabel = "Frequency (MHz)";
     std::string yLabel = "Magnitude";
 
     JST_BLOCK_TYPE(spectrogram);
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(L);
-    JST_BLOCK_PARAMS(height, xLabel, yLabel);
+    JST_BLOCK_PARAMS(height, colormap, xLabel, yLabel);
     JST_BLOCK_DESCRIPTION(
         "Spectrogram",
         "Displays a spectrogram of data.",
@@ -25,7 +26,8 @@ struct Spectrogram : public Block::Config {
         "in a 2D histogram that accumulates and decays.\n\n"
 
         "## Arguments\n"
-        "- **Height**: Number of frequency bins in the vertical axis.\n\n"
+        "- **Height**: Number of frequency bins in the vertical axis.\n"
+        "- **Colormap**: Color palette that maps density to color.\n\n"
 
         "## Useful For\n"
         "- Visualizing frequency distribution as a heat map.\n"

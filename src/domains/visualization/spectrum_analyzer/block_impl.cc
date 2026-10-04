@@ -14,6 +14,7 @@
 #include <jetstream/domains/dsp/window/module.hh>
 #include <jetstream/domains/visualization/signal_view/module.hh>
 #include <jetstream/memory/axis.hh>
+#include <jetstream/render/colormap.hh>
 
 namespace Jetstream::Blocks {
 
@@ -135,6 +136,7 @@ Result SpectrumAnalyzerImpl::configure() {
     signalViewConfig->rangeMin = rangeMin;
     signalViewConfig->rangeMax = rangeMax;
     signalViewConfig->waterfallHeight = waterfallHeight;
+    signalViewConfig->colormap = colormap;
     signalViewConfig->splitRatio = splitRatio;
     signalViewConfig->xLabel = xLabel;
     signalViewConfig->amplitudeLabel = amplitudeLabel;
@@ -156,6 +158,11 @@ Result SpectrumAnalyzerImpl::define() {
                                         Parser::Map{{"label", "Waterfall"}, {"value", "waterfall"}},
                                         Parser::Map{{"label", "3D Waterfall"}, {"value", "waterfall_3d"}},
                                     }}}));
+    if (SpectrumAnalyzerHasWaterfall(candidateMode)) {
+        JST_CHECK(defineInterfaceConfig("colormap", "Colormap",
+                                        "Color palette for the waterfall.",
+                                        Render::Colormap::Format()));
+    }
     JST_CHECK(defineInterfaceConfig("rangeMin", "Range Min",
                                     "Minimum displayed amplitude.",
                                     {{"type", "range"}, {"min", -300.0f}, {"max", 0.0f}, {"unit", "dBFS"}}));

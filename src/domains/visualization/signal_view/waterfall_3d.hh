@@ -16,6 +16,7 @@
 #include <jetstream/logger.hh>
 #include <jetstream/surface.hh>
 #include <jetstream/render/base.hh>
+#include <jetstream/render/colormap.hh>
 #include <jetstream/render/components/text.hh>
 
 #include "common.hh"
@@ -464,13 +465,15 @@ class SignalViewWaterfall3D {
  public:
     Result create(const std::shared_ptr<Render::Window>& window,
                   U64 width,
-                  U64 height);
+                  U64 height,
+                  const std::string& colormap);
     Result destroy(const std::shared_ptr<Render::Window>& window);
 
     Result present(std::vector<SurfaceEvent>&& surfaceEvents,
                    std::vector<InputEvent>&& inputEvents,
                    const WaterfallFrame& frame,
                    const SignalViewWaterfall3DLabels& labels,
+                   const std::string& colormap,
                    bool& viewChanged);
 
     const std::shared_ptr<Render::Texture>& framebuffer() const {
@@ -559,7 +562,7 @@ class SignalViewWaterfall3D {
     std::vector<F32> meshSlots;
 
     std::shared_ptr<Render::Texture> framebufferTexture;
-    std::shared_ptr<Render::Texture> lutTexture;
+    Render::Colormap lut;
     std::shared_ptr<Render::Surface> renderSurface;
     std::shared_ptr<Render::Components::Text> text;
 

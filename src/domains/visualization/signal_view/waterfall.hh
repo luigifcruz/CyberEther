@@ -6,6 +6,7 @@
 #include <jetstream/memory/tensor.hh>
 #include <jetstream/surface.hh>
 #include <jetstream/render/base.hh>
+#include <jetstream/render/colormap.hh>
 
 #include "common.hh"
 
@@ -29,14 +30,16 @@ struct SignalViewWaterfall {
     };
 
     void configure(const Config& config);
-    Result create(const std::shared_ptr<Render::Window>& window, Tensor& bins);
+    Result create(const std::shared_ptr<Render::Window>& window,
+                  Tensor& bins,
+                  const std::string& colormap);
     void attach(Render::Surface::Config& surface) const;
     void layout(const Render::ScissorRect& scissor,
                 F32 panelScaleX,
                 F32 panelScaleY,
                 F32 panelOffsetY);
     Result upload(const WaterfallFrame& frame);
-    Result present(const SurfaceInteractionState& interaction);
+    Result present(const SurfaceInteractionState& interaction, const std::string& colormap);
 
     Config config;
     Uniforms uniforms{};
@@ -46,7 +49,7 @@ struct SignalViewWaterfall {
     std::shared_ptr<Render::Buffer> fillScreenIndicesBuffer;
     std::shared_ptr<Render::Buffer> binsBuffer;
     std::shared_ptr<Render::Buffer> uniformBuffer;
-    std::shared_ptr<Render::Texture> lutTexture;
+    Render::Colormap lut;
     std::shared_ptr<Render::Program> program;
     std::shared_ptr<Render::Vertex> vertex;
     std::shared_ptr<Render::Draw> draw;

@@ -6,7 +6,6 @@
 #include <numeric>
 #include <optional>
 
-#include "jetstream/constants.hh"
 #include "resources/shaders/signal_view_shaders.hh"
 
 namespace Jetstream::Modules {
@@ -68,7 +67,8 @@ bool EdgeTouchesColumn(const LabelEdge& edge, const glm::vec2& corner) {
 
 Result SignalViewWaterfall3D::create(const std::shared_ptr<Render::Window>& window,
                                  const U64 binsWidth,
-                                 const U64 binsHeight) {
+                                 const U64 binsHeight,
+                                 const std::string& colormap) {
     width = binsWidth;
     height = binsHeight;
     columnCapacity = std::min(width, detail::kWaterfall3DMaxColumns);
@@ -139,12 +139,7 @@ Result SignalViewWaterfall3D::create(const std::shared_ptr<Render::Window>& wind
         JST_CHECK(window->build(meshUniformBuffer, cfg));
     }
 
-    {
-        Render::Texture::Config cfg;
-        cfg.size = {256, 1};
-        cfg.buffer = const_cast<U8*>(&TurboLutBytes[0][0]);
-        JST_CHECK(window->build(lutTexture, cfg));
-    }
+    JST_CHECK(lut.create(window, colormap));
 
     {
         Render::Vertex::Config cfg;
@@ -166,7 +161,7 @@ Result SignalViewWaterfall3D::create(const std::shared_ptr<Render::Window>& wind
         Render::Program::Config cfg;
         cfg.shaders = ShadersPackage["mesh"];
         cfg.draws = {drawMesh};
-        cfg.textures = {lutTexture};
+        cfg.textures = {lut.texture()};
         cfg.buffers = {
             {meshUniformBuffer, Render::Program::Target::VERTEX |
                                 Render::Program::Target::FRAGMENT},
@@ -197,7 +192,7 @@ Result SignalViewWaterfall3D::create(const std::shared_ptr<Render::Window>& wind
         Render::Program::Config cfg;
         cfg.shaders = ShadersPackage["skirt"];
         cfg.draws = {drawSkirt};
-        cfg.textures = {lutTexture};
+        cfg.textures = {lut.texture()};
         cfg.buffers = {
             {meshUniformBuffer, Render::Program::Target::VERTEX |
                                 Render::Program::Target::FRAGMENT},
@@ -337,6 +332,7 @@ Result SignalViewWaterfall3D::present(std::vector<SurfaceEvent>&& surfaceEvents,
                                   std::vector<InputEvent>&& inputEvents,
                                   const WaterfallFrame& frame,
                                   const SignalViewWaterfall3DLabels& nextLabels,
+                                  const std::string& colormap,
                                   bool& viewChanged) {
     viewChanged = false;
     if (!renderSurface) {
@@ -367,6 +363,8 @@ Result SignalViewWaterfall3D::present(std::vector<SurfaceEvent>&& surfaceEvents,
         labels = nextLabels;
         sceneDirty = true;
     }
+
+    JST_CHECK(lut.update(colormap));
 
     const bool cameraMoved = advanceCamera();
 

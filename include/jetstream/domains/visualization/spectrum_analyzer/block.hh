@@ -16,6 +16,7 @@ struct SpectrumAnalyzer : public Block::Config {
     F32 rangeMin = -100.0f;
     F32 rangeMax = 0.0f;
     U64 waterfallHeight = 1024;
+    std::string colormap = "turbo";
     F32 splitRatio = 0.5f;
     std::string xLabel = "Frequency (MHz)";
     std::string amplitudeLabel = "Amplitude (dBFS)";
@@ -25,7 +26,7 @@ struct SpectrumAnalyzer : public Block::Config {
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(L);
     JST_BLOCK_PARAMS(mode, lineplotAveraging, waterfallAveraging, maxHold,
-                     fill, rangeMin, rangeMax, waterfallHeight,
+                     fill, rangeMin, rangeMax, waterfallHeight, colormap,
                      splitRatio, xLabel, amplitudeLabel, waterfallLabel);
     JST_BLOCK_DESCRIPTION(
         "Spectrum Analyzer",
@@ -52,7 +53,8 @@ struct SpectrumAnalyzer : public Block::Config {
         "initialized from the first batch.\n"
         "- **Waterfall Averaging**: Number of spectra averaged per displayed row.\n"
         "- **Max Hold**: Retain the maximum observed trace.\n"
-        "- **Waterfall Height**: Number of spectrum rows retained.\n\n"
+        "- **Waterfall Height**: Number of spectrum rows retained.\n"
+        "- **Colormap**: Color palette for the waterfall views.\n\n"
 
         "Both averages operate on affine-normalized decibel values before soft "
         "display mapping. For ideal Gaussian noise above the numerical floor, log averaging "

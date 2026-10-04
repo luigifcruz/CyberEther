@@ -10,6 +10,7 @@ namespace Jetstream::Blocks {
 struct Waterfall3D : public Block::Config {
     U64 height = 256;
     U64 averaging = 1;
+    std::string colormap = "turbo";
     std::string xLabel = "Frequency (MHz)";
     std::string timeLabel = "Time (rows)";
     std::string amplitudeLabel = "Amplitude";
@@ -17,7 +18,7 @@ struct Waterfall3D : public Block::Config {
     JST_BLOCK_TYPE(waterfall_3d);
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(XL);
-    JST_BLOCK_PARAMS(height, averaging, xLabel, timeLabel, amplitudeLabel);
+    JST_BLOCK_PARAMS(height, averaging, colormap, xLabel, timeLabel, amplitudeLabel);
     JST_BLOCK_DESCRIPTION(
         "3D Waterfall",
         "Displays spectrum history as a 3D surface.",
@@ -34,7 +35,8 @@ struct Waterfall3D : public Block::Config {
 
         "## Arguments\n"
         "- **Height**: Number of rows in the history buffer.\n"
-        "- **Averaging**: Number of spectra averaged per displayed row.\n\n"
+        "- **Averaging**: Number of spectra averaged per displayed row.\n"
+        "- **Colormap**: Color palette that maps amplitude to color.\n\n"
 
         "## Interaction\n"
         "- Drag with the left button to orbit around the surface.\n"

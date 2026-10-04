@@ -9,7 +9,9 @@ void SignalViewWaterfall::configure(const Config& nextConfig) {
     config = nextConfig;
 }
 
-Result SignalViewWaterfall::create(const std::shared_ptr<Render::Window>& window, Tensor& bins) {
+Result SignalViewWaterfall::create(const std::shared_ptr<Render::Window>& window,
+                                   Tensor& bins,
+                                   const std::string& colormap) {
     {
         Render::Buffer::Config cfg;
         cfg.buffer = &FillScreenVertices;
@@ -64,12 +66,7 @@ Result SignalViewWaterfall::create(const std::shared_ptr<Render::Window>& window
         JST_CHECK(window->build(binsBuffer, cfg));
     }
 
-    {
-        Render::Texture::Config cfg;
-        cfg.size = {256, 1};
-        cfg.buffer = const_cast<U8*>(&TurboLutBytes[0][0]);
-        JST_CHECK(window->build(lutTexture, cfg));
-    }
+    JST_CHECK(lut.create(window, colormap));
 
     {
         Render::Buffer::Config cfg;
@@ -84,7 +81,7 @@ Result SignalViewWaterfall::create(const std::shared_ptr<Render::Window>& window
         Render::Program::Config cfg;
         cfg.shaders = ShadersPackage["waterfall"];
         cfg.draws = {draw};
-        cfg.textures = {lutTexture};
+        cfg.textures = {lut.texture()};
         cfg.buffers = {
             {uniformBuffer, Render::Program::Target::VERTEX |
                             Render::Program::Target::FRAGMENT},
@@ -122,7 +119,9 @@ Result SignalViewWaterfall::upload(const WaterfallFrame& frame) {
     return Result::SUCCESS;
 }
 
-Result SignalViewWaterfall::present(const SurfaceInteractionState& interaction) {
+Result SignalViewWaterfall::present(const SurfaceInteractionState& interaction,
+                                    const std::string& colormap) {
+    JST_CHECK(lut.update(colormap));
     uniforms.width = static_cast<int>(config.width);
     uniforms.height = static_cast<int>(config.height);
     uniforms.offset = interaction.offset + 0.5f * (1.0f - 1.0f / interaction.zoom);

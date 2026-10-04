@@ -46,6 +46,11 @@ Result SignalViewImpl::validate() {
         return Result::ERROR;
     }
 
+    if (!Render::Colormap::Valid(config.colormap)) {
+        JST_ERROR("[MODULE_SIGNAL_VIEW] Invalid colormap '{}'.", config.colormap);
+        return Result::ERROR;
+    }
+
     if (!std::isfinite(config.splitRatio) ||
         config.splitRatio < detail::MinSplitRatio || config.splitRatio > detail::MaxSplitRatio) {
         JST_ERROR("[MODULE_SIGNAL_VIEW] Split ratio must be between 0.1 and 0.9.");
@@ -317,6 +322,7 @@ Result SignalViewImpl::reconfigure() {
         waterfallAveraging = config.waterfallAveraging;
         rangeMin = config.rangeMin;
         rangeMax = config.rangeMax;
+        colormap = config.colormap;
         if (lineplotAveragingChanged) {
             JST_CHECK(resetLineplotHistory());
         }
@@ -379,7 +385,7 @@ Result SignalViewImpl::createPresent() {
     }
 
     if (waterfall3dEnabled) {
-        JST_CHECK(waterfall3d.create(window, numberOfElements, waterfallHeight));
+        JST_CHECK(waterfall3d.create(window, numberOfElements, waterfallHeight, colormap));
         waterfallHistory.dirtyRows = waterfallHeight;
         JST_CHECK(surfaceCreateManifest({
             .id = "default",
@@ -400,7 +406,7 @@ Result SignalViewImpl::createPresent() {
     }
 
     if (waterfallEnabled) {
-        JST_CHECK(waterfall.create(window, waterfallBins));
+        JST_CHECK(waterfall.create(window, waterfallBins, colormap));
     }
 
     JST_CHECK(canvas.create(window, canvasContext()));
@@ -433,7 +439,8 @@ Result SignalViewImpl::present() {
         bool viewChanged = false;
         JST_CHECK(waterfall3d.present(surfaceConsumeSurfaceEvents(),
                                       surfaceConsumeInputEvents(),
-                                      waterfallFrame(), waterfall3dLabels(), viewChanged));
+                                      waterfallFrame(), waterfall3dLabels(), colormap,
+                                      viewChanged));
         waterfallHistory.clearDirty();
         if (viewChanged) {
             surfaceUpdateManifestSize("default", waterfall3d.viewSize());
@@ -471,7 +478,7 @@ Result SignalViewImpl::present() {
             JST_CHECK(waterfall.upload(waterfallFrame()));
             waterfallHistory.clearDirty();
         }
-        JST_CHECK(waterfall.present(canvas.interaction));
+        JST_CHECK(waterfall.present(canvas.interaction, colormap));
     }
 
     if (lineplotEnabled) {

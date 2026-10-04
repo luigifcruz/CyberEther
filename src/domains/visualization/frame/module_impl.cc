@@ -12,89 +12,14 @@ namespace Jetstream::Modules {
 
 namespace {
 
-using PolynomialColormap = std::array<std::array<F32, 3>, 7>;
-
-constexpr PolynomialColormap kViridis = {{
-    {0.2777273272234177f, 0.005407344544966578f, 0.3340998053353061f},
-    {0.1050930431085774f, 1.404613529898575f, 1.384590162594685f},
-    {-0.3308618287255563f, 0.214847559468213f, 0.09509516302823659f},
-    {-4.634230498983486f, -5.799100973351585f, -19.33244095627987f},
-    {6.228269936347081f, 14.17993336680509f, 56.69055260068105f},
-    {4.776384997670288f, -13.74514537774601f, -65.35303263337234f},
-    {-5.435455855934631f, 4.645852612178535f, 26.3124352495832f},
-}};
-
-constexpr PolynomialColormap kInferno = {{
-    {0.0002189403691192265f, 0.001651004631001012f, -0.01948089843709184f},
-    {0.1065134194856116f, 0.5639564367884091f, 3.932712388889277f},
-    {11.60249308247187f, -3.972853965665698f, -15.9423941062914f},
-    {-41.70399613139459f, 17.43639888205313f, 44.35414519872813f},
-    {77.162935699427f, -33.40235894210092f, -81.80730925738993f},
-    {-71.31942824499214f, 32.62606426397723f, 73.20951985803202f},
-    {25.13112622477341f, -12.24266895238567f, -23.07032500287172f},
-}};
-
-constexpr PolynomialColormap kMagma = {{
-    {-0.002136485053939582f, -0.000749655052795221f, -0.005386127855323933f},
-    {0.2516605407371642f, 0.6775232436837668f, 2.494026599312351f},
-    {8.353717279216625f, -3.577719514958484f, 0.3144679030132573f},
-    {-27.66873308576866f, 14.26473078096533f, -13.64921318813922f},
-    {52.17613981234068f, -27.94360607168351f, 12.94416944238394f},
-    {-50.76852536473588f, 29.04658282127291f, 4.23415299384598f},
-    {18.65570506591883f, -11.48977351997711f, -5.601961508734096f},
-}};
-
-constexpr PolynomialColormap kPlasma = {{
-    {0.05873234392399702f, 0.02333670892565664f, 0.5433401826748754f},
-    {2.176514634195958f, 0.2383834171260182f, 0.7539604599784036f},
-    {-2.689460476458034f, -7.455851135738909f, 3.110799939717086f},
-    {6.130348345893603f, 42.3461881477227f, -28.51885465332158f},
-    {-11.10743619062271f, -82.66631109428045f, 60.13984767418263f},
-    {10.02306557647065f, 71.41361770095349f, -54.07218655560067f},
-    {-3.658713842777788f, -22.93153465461149f, 18.19190778539828f},
-}};
-
 bool IsValidFit(const std::string& fit) {
     return fit == "contain" || fit == "cover" || fit == "stretch";
-}
-
-bool IsValidColormap(const std::string& colormap) {
-    return colormap == "grayscale" ||
-           colormap == "turbo" ||
-           colormap == "viridis" ||
-           colormap == "inferno" ||
-           colormap == "magma" ||
-           colormap == "plasma";
 }
 
 bool IsValidInterpolation(const std::string& interpolation) {
     return interpolation == "nearest" ||
            interpolation == "bilinear" ||
            interpolation == "bicubic";
-}
-
-void FillPolynomialLut(std::array<uint8_t, 256 * 4>& out, const PolynomialColormap& c) {
-    for (U64 i = 0; i < 256; ++i) {
-        const F32 t = static_cast<F32>(i) / 255.0f;
-        for (U64 ch = 0; ch < 3; ++ch) {
-            F32 value = c[6][ch];
-            for (int k = 5; k >= 0; --k) {
-                value = c[k][ch] + t * value;
-            }
-            out[i * 4 + ch] = static_cast<uint8_t>(std::clamp(value, 0.0f, 1.0f) * 255.0f + 0.5f);
-        }
-        out[i * 4 + 3] = 255;
-    }
-}
-
-void FillTurboLut(std::array<uint8_t, 256 * 4>& out) {
-    for (U64 i = 0; i < 256; ++i) {
-        const U64 source = std::clamp<U64>(i, 1, 254);
-        out[i * 4 + 0] = TurboLutBytes[source][0];
-        out[i * 4 + 1] = TurboLutBytes[source][1];
-        out[i * 4 + 2] = TurboLutBytes[source][2];
-        out[i * 4 + 3] = 255;
-    }
 }
 
 const char* ChannelLabel(const U64 channels) {
@@ -116,7 +41,7 @@ Result FrameImpl::validate() {
         return Result::ERROR;
     }
 
-    if (!IsValidColormap(config.colormap)) {
+    if (!Render::Colormap::Valid(config.colormap)) {
         JST_ERROR("[MODULE_FRAME] Invalid colormap '{}'.", config.colormap);
         return Result::ERROR;
     }
@@ -197,8 +122,6 @@ Result FrameImpl::destroy() {
 Result FrameImpl::reconfigure() {
     const auto& config = *candidate();
 
-    updateLutFlag |= config.colormap != colormap;
-
     fit = config.fit;
     colormap = config.colormap;
     autoRange = config.autoRange;
@@ -207,27 +130,6 @@ Result FrameImpl::reconfigure() {
     yLabel = config.yLabel;
 
     return Result::SUCCESS;
-}
-
-void FrameImpl::fillLut() {
-    if (colormap == "turbo") {
-        FillTurboLut(lutBytes);
-    } else if (colormap == "viridis") {
-        FillPolynomialLut(lutBytes, kViridis);
-    } else if (colormap == "inferno") {
-        FillPolynomialLut(lutBytes, kInferno);
-    } else if (colormap == "magma") {
-        FillPolynomialLut(lutBytes, kMagma);
-    } else if (colormap == "plasma") {
-        FillPolynomialLut(lutBytes, kPlasma);
-    } else {
-        for (U64 i = 0; i < 256; ++i) {
-            lutBytes[i * 4 + 0] = static_cast<uint8_t>(i);
-            lutBytes[i * 4 + 1] = static_cast<uint8_t>(i);
-            lutBytes[i * 4 + 2] = static_cast<uint8_t>(i);
-            lutBytes[i * 4 + 3] = 255;
-        }
-    }
 }
 
 Result FrameImpl::createPresent() {
@@ -299,15 +201,7 @@ Result FrameImpl::createPresent() {
         JST_CHECK(window->build(frameBuffer, cfg));
     }
 
-    fillLut();
-    updateLutFlag = false;
-
-    {
-        Render::Texture::Config cfg;
-        cfg.size = {256, 1};
-        cfg.buffer = lutBytes.data();
-        JST_CHECK(window->build(lutTexture, cfg));
-    }
+    JST_CHECK(lut.create(window, colormap));
 
     {
         Render::Buffer::Config cfg;
@@ -322,7 +216,7 @@ Result FrameImpl::createPresent() {
         Render::Program::Config cfg;
         cfg.shaders = ShadersPackage["signal"];
         cfg.draws = {drawVertex};
-        cfg.textures = {lutTexture};
+        cfg.textures = {lut.texture()};
         cfg.buffers = {
             {frameUniformBuffer, Render::Program::Target::VERTEX |
                                  Render::Program::Target::FRAGMENT},
@@ -451,11 +345,7 @@ Result FrameImpl::present() {
         surfaceUpdateManifestSize("default", interaction.viewSize);
     }
 
-    if (updateLutFlag) {
-        fillLut();
-        JST_CHECK(lutTexture->fill());
-        updateLutFlag = false;
-    }
+    JST_CHECK(lut.update(colormap));
 
     JST_CHECK(updateAxisState());
     updateCursorReadout();
