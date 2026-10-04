@@ -18,7 +18,7 @@ class JETSTREAM_API SurfaceImp<DeviceType::WebGPU> : public Surface {
 
  protected:
     Result prepare();
-    Result draw(WGPUCommandEncoder& commandEncoder);
+    Result draw(WGPUCommandEncoder& commandEncoder, bool visible = true);
 
  private:
     std::shared_ptr<TextureImp<DeviceType::WebGPU>> framebuffer;

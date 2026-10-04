@@ -149,9 +149,11 @@ Result Implementation::beginImgui() {
 }
 
 Result Implementation::endImgui() {
+    const auto& background = frameClearColor();
+    renderPassDescriptor->colorAttachments()->object(0)->setClearColor(
+        MTL::ClearColor(background.r, background.g, background.b, background.a));
     auto renderCmdEncoder = commandBuffer->renderCommandEncoder(renderPassDescriptor);
 
-    ImGui::Render();
     ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(),
         commandBuffer, renderCmdEncoder);
 
@@ -231,8 +233,10 @@ Result Implementation::underlyingEnd() {
         }
     }
 
+    prepareImgui();
     for (auto& surface : surfaces) {
-        result = surface->draw(commandBuffer);
+        const auto& framebuffer = *surface->getConfig().framebuffer;
+        result = surface->draw(commandBuffer, textureVisibleForPresentation(framebuffer));
         if (result != Result::SUCCESS && result != Result::RELOAD) {
             return abortFrame(result);
         }

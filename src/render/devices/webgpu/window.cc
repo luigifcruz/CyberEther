@@ -149,7 +149,8 @@ Result Implementation::beginImgui() {
 }
 
 Result Implementation::endImgui() {
-    ImGui::Render();
+    const auto& background = frameClearColor();
+    colorAttachments.clearValue = {background.r, background.g, background.b, background.a};
 
     // Begin the render pass using the C API.
     WGPURenderPassEncoder renderPassEncoder = wgpuCommandEncoderBeginRenderPass(encoder, &renderPassDesc);
@@ -246,8 +247,10 @@ Result Implementation::underlyingEnd() {
         }
     }
 
+    prepareImgui();
     for (auto& surface : surfaces) {
-        result = surface->draw(encoder);
+        const auto& framebuffer = *surface->getConfig().framebuffer;
+        result = surface->draw(encoder, textureVisibleForPresentation(framebuffer));
         if (result != Result::SUCCESS && result != Result::RELOAD) {
             return abortFrame(result);
         }

@@ -18,7 +18,7 @@ class JETSTREAM_API SurfaceImp<DeviceType::Metal> : public Surface {
 
  protected:
     Result prepare();
-    Result draw(MTL::CommandBuffer* commandBuffer);
+    Result draw(MTL::CommandBuffer* commandBuffer, bool visible = true);
 
  private:
     Extent2D<U64> requestedSize;

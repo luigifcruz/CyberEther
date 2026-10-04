@@ -215,6 +215,8 @@ Result Window::begin() {
 
     Result res;
     try {
+        frameBackground = {0.0f, 0.0f, 0.0f, 1.0f};
+        frameBackgroundDrawList = nullptr;
         res = underlyingBegin();
     } catch (...) {
         abortImguiFrame();
@@ -230,6 +232,48 @@ Result Window::begin() {
     }
 
     return res;
+}
+
+void Window::prepareImgui() {
+    ImGui::Render();
+    auto* background = frameBackgroundDrawList;
+    frameBackgroundDrawList = nullptr;
+
+    const auto* data = ImGui::GetDrawData();
+    const ImDrawIdx rectangle[] = {0, 1, 2, 0, 2, 3};
+    bool folded = false;
+    if (background && data && data->CmdListsCount > 0 && data->CmdLists[0] == background &&
+        !background->CmdBuffer.empty() && background->IdxBuffer.Size >= 6) {
+        auto& command = background->CmdBuffer[0];
+        if (!command.UserCallback && command.IdxOffset == 0 && command.VtxOffset == 0 &&
+            command.ElemCount >= 6 &&
+            std::equal(std::begin(rectangle), std::end(rectangle), background->IdxBuffer.begin())) {
+            command.IdxOffset += 6;
+            command.ElemCount -= 6;
+            folded = true;
+        }
+    }
+    if (background && !folded) {
+        frameBackground = {0.0f, 0.0f, 0.0f, 1.0f};
+    }
+
+    frameSampledTextures.clear();
+    frameCustomDraws = data == nullptr;
+    if (data) {
+        for (const auto* list : data->CmdLists) {
+            for (const auto& command : list->CmdBuffer) {
+                frameCustomDraws |= command.UserCallback != nullptr;
+                if (command.ElemCount > 0) {
+                    frameSampledTextures.insert(command.TexRef.GetTexID());
+                }
+            }
+        }
+    }
+}
+
+bool Window::textureVisibleForPresentation(const Texture& texture) const {
+    return frameCustomDraws || texture.visibleForPresentation(ImGui::GetFrameCount()) ||
+           frameSampledTextures.contains(static_cast<ImTextureID>(texture.raw()));
 }
 
 Result Window::start() {

@@ -241,6 +241,7 @@ struct SignalViewImpl : public Module::Impl,
     std::shared_ptr<Render::Draw> drawMaxHoldVertex;
 
     Tensor waterfallBins;
+    std::vector<F32> waterfallUpload;
     WaterfallHistory waterfallHistory;
 
     struct WaterfallUniforms {
