@@ -253,7 +253,21 @@ struct SignalViewImpl : public Module::Impl,
         F32 panelScaleX;
         F32 panelScaleY;
         F32 panelOffsetY;
+        int filtered;
     } waterfallUniforms{};
+
+    struct WaterfallFilterUniforms {
+        U32 width;
+        U32 height;
+        U32 writeIndex;
+        U32 version;
+    } waterfallFilterUniforms{};
+
+    std::vector<std::array<U32, 2>> waterfallFilterState;
+    std::shared_ptr<Render::Buffer> waterfallFilteredBuffer;
+    std::shared_ptr<Render::Buffer> waterfallFilterUniformBuffer;
+    std::shared_ptr<Render::Buffer> waterfallFilterStateBuffer;
+    std::shared_ptr<Render::Kernel> waterfallFilterKernel;
 
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;

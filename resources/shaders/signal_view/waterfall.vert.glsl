@@ -15,6 +15,7 @@ layout(set = 0, binding = 0) uniform ShaderUniforms {
     float panelScaleX;
     float panelScaleY;
     float panelOffsetY;
+    int filtered;
 } uniforms;
 
 void main() {

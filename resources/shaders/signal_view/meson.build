@@ -5,5 +5,5 @@ shader_pkg_lst += [{
         files(['fill.vert.glsl', 'fill.frag.glsl']),
         files(['waterfall.vert.glsl', 'waterfall.frag.glsl']),
     ],
-    'kernels': [],
+    'kernels': [files(['waterfall_filter.comp'])],
 }]

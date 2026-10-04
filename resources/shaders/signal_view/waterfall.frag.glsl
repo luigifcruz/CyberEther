@@ -14,14 +14,19 @@ layout(set = 0, binding = 0) uniform ShaderUniforms {
     float panelScaleX;
     float panelScaleY;
     float panelOffsetY;
+    int filtered;
 } uniforms;
 
 layout(set = 0, binding = 1) readonly buffer DataBuffer {
     float data[];
 };
 
-layout(set = 0, binding = 2) uniform texture2D lutTex;
-layout(set = 0, binding = 3) uniform sampler lutSam;
+layout(set = 0, binding = 2) readonly buffer FilteredBuffer {
+    float filtered[];
+};
+
+layout(set = 0, binding = 3) uniform texture2D lutTex;
+layout(set = 0, binding = 4) uniform sampler lutSam;
 
 float sampleWaterfall(float x, float y) {
     int column = clamp(int(floor(x)), 0, uniforms.width - 1);
@@ -33,6 +38,20 @@ float sampleWaterfall(float x, float y) {
 }
 
 void main() {
+    float y = inTexcoord.y;
+    float row = floor(y);
+    if (uniforms.filtered != 0 &&
+        floor(y - 4.0) == row - 4.0 && floor(y + 4.0) == row + 4.0) {
+        int column = clamp(int(floor(inTexcoord.x)), 0, uniforms.width - 1);
+        int wrapped = int(row) % uniforms.height;
+        if (wrapped < 0) {
+            wrapped += uniforms.height;
+        }
+        float magnitude = filtered[wrapped * uniforms.width + column];
+        float mapped = 0.5 + 0.5 * tanh(4.0 * (magnitude - 0.5));
+        outColor = texture(sampler2D(lutTex, lutSam), vec2(mapped, 0.0));
+        return;
+    }
     float magnitude = sampleWaterfall(inTexcoord.x, inTexcoord.y - 4.0) * 0.0162162162;
     magnitude += sampleWaterfall(inTexcoord.x, inTexcoord.y - 3.0) * 0.0540540541;
     magnitude += sampleWaterfall(inTexcoord.x, inTexcoord.y - 2.0) * 0.1216216216;
