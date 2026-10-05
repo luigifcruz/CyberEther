@@ -53,7 +53,6 @@ graph:
         y: 81
         width: 503
         height: 663
-        configCollapsed: false
   - name: soapy
     module: soapy
     device: cpu
@@ -78,7 +77,6 @@ graph:
         y: 80
         width: 165
         height: 0
-        configCollapsed: false
   - name: fm
     module: fm
     device: cpu
@@ -96,7 +94,6 @@ graph:
         y: 81
         width: 173
         height: 0
-        configCollapsed: false
   - name: spectrum_analyzer
     module: spectrum_analyzer
     device: cpu
@@ -122,13 +119,12 @@ graph:
         y: 293
         width: 495
         height: 0
-        configCollapsed: false
       surface_default:
         attachedHeight: 323
         detachedWidth: 512
         detachedHeight: 512
         detached: false
-        detachedConfigOpen: false
+        configCollapsed: true
   - name: audio
     module: audio
     device: cpu
@@ -147,4 +143,3 @@ graph:
         y: 82
         width: 164
         height: 0
-        configCollapsed: false

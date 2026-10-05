@@ -2,6 +2,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "compositor/default/actions/stacks.hh"
+#include "compositor/default/actions/flowgraph.hh"
+#include "compositor/default/presenters/flowgraph/labels.hh"
+#include "flowgraph_fixture.hh"
 
 #include <memory>
 #include <string>
@@ -134,4 +137,110 @@ TEST_CASE("Stack restoration skips malformed entries and supplies missing titles
     REQUIRE(stack.meta.title == "stack_0");
     REQUIRE_FALSE(stack.restoreDockLayout);
     REQUIRE(stack.dockInMainDockspace);
+}
+
+TEST_CASE("Delayed stack cleanup ignores closed flowgraphs with retained layouts",
+          "[core][compositor][stacks][lifecycle]") {
+    DefaultCompositorState::FlowgraphState state;
+    DefaultCompositorCallbacks callbacks;
+    StackActions actions(state, callbacks);
+    auto& stack = state.stacks["closed"]["stack_0"];
+    stack.meta.layout = StackDockLayoutMeta{
+        .configs = std::vector<StackDockConfigMeta>{{.block = "deleted"}},
+    };
+    const auto before = Parser::Hash(stack.meta);
+
+    REQUIRE(actions.handle(MailRemoveStackBlock{"closed", "deleted"}) == Result::SUCCESS);
+    REQUIRE(Parser::Hash(stack.meta) == before);
+    REQUIRE(actions.handle(MailRenameStackBlock{"closed", "deleted", "renamed"}) == Result::SUCCESS);
+    REQUIRE(Parser::Hash(stack.meta) == before);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Block renames preserve config identity and migrate saved stack references",
+                 "[core][compositor][stacks][rename]") {
+    REQUIRE(flowgraph->blockCreate("source", TestFlowgraph::kSyntheticSourceType, {}, {}) == Result::SUCCESS);
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    state.flowgraph.items["graph"] = std::shared_ptr<Flowgraph>(flowgraph.get(), [](Flowgraph*) {});
+    StackActions stacks(state.flowgraph, callbacks);
+    FlowgraphActions actions(state, callbacks);
+    auto& stack = state.flowgraph.stacks["graph"]["stack_0"];
+    stack.meta.layout = StackDockLayoutMeta{
+        .direction = "left",
+        .ratio = 0.3f,
+        .children = std::vector<StackDockLayoutMeta>{
+            {.configs = std::vector<StackDockConfigMeta>{{"other", 0}, {"source", 2}}},
+            {.surfaces = std::vector<StackDockSurfaceMeta>{{"source", "default", 1}}},
+        },
+    };
+    REQUIRE(stacks.persistFlowgraphStacks("graph") == Result::SUCCESS);
+    REQUIRE(stacks.handle(MailSetConfigDetached{"graph", "source", true}) == Result::SUCCESS);
+
+    ConfigMeta before;
+    REQUIRE(flowgraph->metadata().get("config", before, "source") == Result::SUCCESS);
+    REQUIRE(before.detached);
+    REQUIRE_FALSE(before.windowId.empty());
+    const auto windowId = MakeDetachedConfigWindowId("graph", "source", before);
+    const auto layoutHash = Parser::Hash(stack.meta.layout);
+
+    std::function<Result()> command;
+    std::optional<Mail> completion;
+    callbacks.enqueueMail = [](Mail&&) {};
+    callbacks.enqueueCommandWithMail = [&](std::function<Result()> fn, bool, Mail mail) {
+        command = std::move(fn);
+        completion = std::move(mail);
+    };
+
+    std::string newName = "renamed";
+    SECTION("successful rename") {}
+    SECTION("failed rename") { newName = "invalid.name"; }
+    SECTION("unchanged name") { newName = "source"; }
+    REQUIRE(actions.handle(MailRenameBlock{"graph", "source", newName}) == Result::SUCCESS);
+    REQUIRE(command);
+    REQUIRE(completion.has_value());
+    REQUIRE(Parser::Hash(stack.meta.layout) == layoutHash);
+
+    const auto result = command();
+    if (newName == "invalid.name") {
+        REQUIRE(result == Result::ERROR);
+        REQUIRE(Parser::Hash(stack.meta.layout) == layoutHash);
+        REQUIRE_FALSE(stack.restoreDockLayout);
+        ConfigMeta after;
+        REQUIRE(flowgraph->metadata().get("config", after, "source") == Result::SUCCESS);
+        REQUIRE(MakeDetachedConfigWindowId("graph", "source", after) == windowId);
+        return;
+    }
+    REQUIRE(result == Result::SUCCESS);
+    REQUIRE(stacks.handle(std::get<MailRenameStackBlock>(*completion)) == Result::SUCCESS);
+
+    // Geometry updates must not overwrite the identity copied during rename.
+    REQUIRE(actions.handle(MailSetNodeMeta{"graph", newName, NodeMeta{1.0f, 2.0f}}) == Result::SUCCESS);
+    ConfigMeta after;
+    REQUIRE(flowgraph->metadata().get("config", after, newName) == Result::SUCCESS);
+    REQUIRE(MakeDetachedConfigWindowId("graph", newName, after) == windowId);
+    REQUIRE(stack.restoreDockLayout == (newName != "source"));
+
+    Parser::Map saved;
+    REQUIRE(flowgraph->metadata().get("stacks", saved) == Result::SUCCESS);
+    StackMeta restored;
+    REQUIRE(restored.deserialize(std::any_cast<const Parser::Map&>(saved.at("stack_0"))) == Result::SUCCESS);
+    REQUIRE(restored.layout->direction == "left");
+    REQUIRE(restored.layout->ratio == Catch::Approx(0.3f));
+    const auto& children = *restored.layout->children;
+    REQUIRE(children.size() == 2);
+    REQUIRE(children[0].configs->at(0).block == "other");
+    REQUIRE(children[0].configs->at(1).block == newName);
+    REQUIRE(children[0].configs->at(1).order == 2);
+    REQUIRE(children[1].surfaces->at(0).block == newName);
+    REQUIRE(children[1].surfaces->at(0).surface == "default");
+    REQUIRE(children[1].surfaces->at(0).order == 1);
+
+    if (newName != "source") {
+        REQUIRE(flowgraph->blockCreate("source", TestFlowgraph::kSyntheticSourceType, {}, {}) == Result::SUCCESS);
+        REQUIRE(stacks.handle(MailSetConfigDetached{"graph", "source", true}) == Result::SUCCESS);
+        ConfigMeta reused;
+        REQUIRE(flowgraph->metadata().get("config", reused, "source") == Result::SUCCESS);
+        REQUIRE(MakeDetachedConfigWindowId("graph", "source", reused) != windowId);
+    }
 }

@@ -94,7 +94,6 @@ graph:
         y: 78
         width: 610
         height: 713
-        configCollapsed: false
   - name: signal_generator
     module: signal_generator
     device: cpu
@@ -119,7 +118,6 @@ graph:
         y: 81
         width: 300
         height: 0
-        configCollapsed: false
   - name: reference_note
     module: note
     device: cpu
@@ -137,7 +135,6 @@ graph:
         y: 1168.2493
         width: 269
         height: 157
-        configCollapsed: false
   - name: reference_generator
     module: signal_generator
     device: cpu
@@ -162,7 +159,6 @@ graph:
         y: 1168.2493
         width: 300
         height: 0
-        configCollapsed: false
   - name: reference_noise
     module: signal_generator
     device: cpu
@@ -187,7 +183,6 @@ graph:
         y: 1411.2493
         width: 300
         height: 0
-        configCollapsed: false
   - name: reference_add
     module: add
     device: cpu
@@ -202,7 +197,6 @@ graph:
         y: 1167.2493
         width: 140
         height: 0
-        configCollapsed: false
   - name: reference_constellation
     module: constellation
     device: cpu
@@ -219,13 +213,12 @@ graph:
         y: 1338.2493
         width: 360
         height: 378
-        configCollapsed: false
       surface_default:
         attachedHeight: 320
         detachedWidth: 600
         detachedHeight: 600
         detached: false
-        detachedConfigOpen: false
+        configCollapsed: true
   - name: throttle
     module: throttle
     device: cpu
@@ -241,7 +234,6 @@ graph:
         y: 1165.8676
         width: 140
         height: 0
-        configCollapsed: false
   - name: reference_analyzer
     module: spectrum_analyzer
     device: cpu
@@ -267,10 +259,9 @@ graph:
         y: 1113.2493
         width: 700
         height: 606
-        configCollapsed: false
       surface_default:
         attachedHeight: 480
         detachedWidth: 800
         detachedHeight: 600
         detached: false
-        detachedConfigOpen: false
+        configCollapsed: true

@@ -32,6 +32,7 @@ struct VStack {
         std::string id;
         F32 spacing = 0.0f;
         std::optional<F32> height;
+        bool fill = false;
         std::vector<Item> items;
     };
 

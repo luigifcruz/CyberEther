@@ -49,7 +49,7 @@ struct FlowgraphActions {
                               MailCopyBlock,
                               MailPasteBlock,
                               MailSetNodeMeta,
-                              MailSetNodeConfigCollapsed,
+                              MailSetConfigCollapsed,
                               MailSurfaceInput,
                               MailResizeSurface>;
 
@@ -344,9 +344,13 @@ struct FlowgraphActions {
         auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
         const auto oldId = msg.oldId;
         const auto newId = msg.newId;
-        callbacks.enqueueCommand([flowgraph, oldId, newId]() -> Result {
+        callbacks.enqueueCommandWithMail([flowgraph, oldId, newId]() -> Result {
             return flowgraph->blockRename(oldId, newId);
-        }, false);
+        }, false, MailRenameStackBlock{
+            .flowgraph = msg.flowgraph,
+            .oldId = oldId,
+            .newId = newId,
+        });
         callbacks.enqueueMail(MailCloseModal{});
         return Result::SUCCESS;
     }
@@ -365,9 +369,12 @@ struct FlowgraphActions {
         auto flowgraph = state.flowgraph.items[msg.flowgraph];
         auto blockId = msg.blockId;
 
-        callbacks.enqueueCommand([flowgraph, blockId]() -> Result {
+        callbacks.enqueueCommandWithMail([flowgraph, blockId]() -> Result {
             return flowgraph->blockDestroy(blockId);
-        }, false);
+        }, false, MailRemoveStackBlock{
+            .flowgraph = msg.flowgraph,
+            .block = blockId,
+        });
 
         return Result::SUCCESS;
     }
@@ -570,24 +577,20 @@ struct FlowgraphActions {
         }
 
         auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
-        NodeMeta existing;
-        flowgraph->metadata().get("node", existing, msg.block);
-        NodeMeta merged = msg.meta;
-        merged.configCollapsed = existing.configCollapsed;
-        flowgraph->metadata().set("node", merged, msg.block);
+        flowgraph->metadata().set("node", msg.meta, msg.block);
         return Result::SUCCESS;
     }
 
-    Result handle(const MailSetNodeConfigCollapsed& msg) {
+    Result handle(const MailSetConfigCollapsed& msg) {
         if (!state.flowgraph.items.contains(msg.flowgraph)) {
             return Result::SUCCESS;
         }
 
         auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
-        NodeMeta existing;
-        flowgraph->metadata().get("node", existing, msg.block);
-        existing.configCollapsed = msg.collapsed;
-        flowgraph->metadata().set("node", existing, msg.block);
+        ConfigMeta existing;
+        flowgraph->metadata().get("config", existing, msg.block);
+        existing.collapsed = msg.collapsed;
+        flowgraph->metadata().set("config", existing, msg.block);
         return Result::SUCCESS;
     }
 

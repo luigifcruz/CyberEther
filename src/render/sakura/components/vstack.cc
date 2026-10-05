@@ -22,6 +22,7 @@ struct VStack::Impl {
     U64 revision = 0;
     std::optional<Measurement> measurement;
     std::optional<F32> lastMeasuredFixedHeight;
+    std::optional<F32> availableHeight;
     std::optional<Layout> layout;
 };
 
@@ -158,12 +159,15 @@ bool VStack::update(Config config) {
         layout.fixedHeight = *this->impl->lastMeasuredFixedHeight;
     }
 
-    if (!currentConfig.height.has_value() || flexibleItemCount == 0) {
+    const std::optional<F32> height = currentConfig.height.has_value()
+        ? currentConfig.height
+        : currentConfig.fill ? this->impl->availableHeight : std::nullopt;
+    if (!height.has_value() || flexibleItemCount == 0) {
         this->impl->layout = std::move(layout);
         return true;
     }
 
-    const F32 availableHeight = std::max(0.0f, *currentConfig.height - layout.fixedHeight);
+    const F32 availableHeight = std::max(0.0f, *height - layout.fixedHeight);
     if (hasMeasurement) {
         layout.minimumHeight = layout.fixedHeight + static_cast<F32>(minimumFlexibleHeight);
     }
@@ -224,6 +228,10 @@ std::optional<F32> VStack::Layout::itemHeight(const U64 index) const {
 
 void VStack::render(const Context& ctx, Children children) const {
     const auto& config = this->impl->config;
+
+    if (config.fill) {
+        this->impl->availableHeight = Normalize(Unscale(ctx, ImGui::GetContentRegionAvail().y));
+    }
 
     ImGui::PushID(config.id.c_str());
 

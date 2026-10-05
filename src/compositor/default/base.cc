@@ -38,6 +38,13 @@ DefaultCompositor::DefaultCompositor() :
         .enqueueCommand = [this](std::function<Result()> fn, bool silent) {
             Compositor::Impl::enqueue(std::move(fn), silent);
         },
+        .enqueueCommandWithMail = [this](std::function<Result()> fn, bool silent, Mail mail) {
+            Compositor::Impl::enqueue(std::move(fn), silent, [this, mail = std::move(mail)](const Result result) {
+                if (result == Result::SUCCESS) {
+                    enqueue(Mail(mail));
+                }
+            });
+        },
         .notify = [](Sakura::ToastType type, I32 durationMs, const std::string& message) {
             Sakura::PushToast(type, durationMs, message);
         },
@@ -220,6 +227,9 @@ Result DefaultCompositor::poll() {
 
     Command completed;
     while (dequeue(completed)) {
+        if (completed.onComplete) {
+            completed.onComplete(completed.result);
+        }
         if (completed.silent) {
             continue;
         }

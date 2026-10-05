@@ -220,14 +220,14 @@ F32 CaptureRatio(const ImGuiDockNode& node,
 
 void CaptureWindowItem(ImGuiWindow* window,
                        U64& order,
-                       const std::unordered_map<std::string, std::string>& labelToKey,
+                       const std::unordered_map<ImGuiID, std::string>& windowToKey,
                        std::vector<DockItem>& items) {
-    if (!window || !window->Name) {
+    if (!window) {
         return;
     }
 
-    const auto keyIt = labelToKey.find(window->Name);
-    if (keyIt == labelToKey.end()) {
+    const auto keyIt = windowToKey.find(window->ID);
+    if (keyIt == windowToKey.end()) {
         return;
     }
 
@@ -235,31 +235,31 @@ void CaptureWindowItem(ImGuiWindow* window,
 }
 
 std::vector<DockItem> CaptureItems(const ImGuiDockNode& node,
-                                   const std::unordered_map<std::string, std::string>& labelToKey) {
+                                   const std::unordered_map<ImGuiID, std::string>& windowToKey) {
     std::vector<DockItem> items;
     U64 order = 0;
 
     if (node.TabBar) {
         for (const auto& tab : node.TabBar->Tabs) {
-            CaptureWindowItem(tab.Window, order, labelToKey, items);
+            CaptureWindowItem(tab.Window, order, windowToKey, items);
         }
         return items;
     }
 
     for (ImGuiWindow* window : node.Windows) {
-        CaptureWindowItem(window, order, labelToKey, items);
+        CaptureWindowItem(window, order, windowToKey, items);
     }
     return items;
 }
 
 std::optional<DockLayout> CaptureLayout(const ImGuiDockNode* node,
-                                        const std::unordered_map<std::string, std::string>& labelToKey) {
+                                        const std::unordered_map<ImGuiID, std::string>& windowToKey) {
     if (!node) {
         return std::nullopt;
     }
 
     DockLayout layout;
-    const auto items = CaptureItems(*node, labelToKey);
+    const auto items = CaptureItems(*node, windowToKey);
     if (!items.empty()) {
         layout.items = items;
     }
@@ -272,8 +272,8 @@ std::optional<DockLayout> CaptureLayout(const ImGuiDockNode* node,
         const ImGuiDockNode* opposite = second;
 
         std::vector<DockLayout> children;
-        const auto atDirLayout = CaptureLayout(atDir, labelToKey);
-        const auto oppositeLayout = CaptureLayout(opposite, labelToKey);
+        const auto atDirLayout = CaptureLayout(atDir, windowToKey);
+        const auto oppositeLayout = CaptureLayout(opposite, windowToKey);
         if (atDirLayout.has_value()) {
             children.push_back(*atDirLayout);
         }
@@ -314,28 +314,45 @@ void CollectItemKeys(const DockLayout& layout, std::unordered_set<std::string>& 
 }
 
 bool CapturedAllRequestedItems(const DockLayout& requested,
-                               const std::optional<DockLayout>& captured) {
+                               const std::optional<DockLayout>& captured,
+                               const std::unordered_map<std::string, std::string>& keyToLabel) {
     std::unordered_set<std::string> requestedKeys;
     CollectItemKeys(requested, requestedKeys);
-    if (requestedKeys.empty()) {
-        return true;
-    }
-    if (!captured.has_value()) {
-        return false;
-    }
 
     std::unordered_set<std::string> capturedKeys;
-    CollectItemKeys(*captured, capturedKeys);
+    if (captured.has_value()) {
+        CollectItemKeys(*captured, capturedKeys);
+    }
+
     for (const auto& key : requestedKeys) {
-        if (!capturedKeys.contains(key)) {
+        if (keyToLabel.contains(key) && !capturedKeys.contains(key)) {
             return false;
         }
     }
     return true;
 }
 
+std::unordered_set<std::string> CollectActiveItemKeys(const DockLayout& requested,
+                                                      const std::unordered_map<std::string, std::string>& keyToLabel) {
+    std::unordered_set<std::string> requestedKeys;
+    CollectItemKeys(requested, requestedKeys);
+
+    std::unordered_set<std::string> activeKeys;
+    for (const auto& key : requestedKeys) {
+        const auto labelIt = keyToLabel.find(key);
+        if (labelIt == keyToLabel.end()) {
+            continue;
+        }
+        const ImGuiWindow* window = ImGui::FindWindowByName(labelIt->second.c_str());
+        if (window && (window->Active || window->WasActive)) {
+            activeKeys.insert(key);
+        }
+    }
+    return activeKeys;
+}
+
 U64 CountKnownWindows(const ImGuiDockNode* node,
-                      const std::unordered_map<std::string, std::string>& labelToKey) {
+                      const std::unordered_map<ImGuiID, std::string>& windowToKey) {
     if (!node) {
         return 0;
     }
@@ -343,20 +360,20 @@ U64 CountKnownWindows(const ImGuiDockNode* node,
     U64 count = 0;
     if (node->TabBar) {
         for (const auto& tab : node->TabBar->Tabs) {
-            if (tab.Window && tab.Window->Name && labelToKey.contains(tab.Window->Name)) {
+            if (tab.Window && windowToKey.contains(tab.Window->ID)) {
                 ++count;
             }
         }
     } else {
         for (ImGuiWindow* window : node->Windows) {
-            if (window && window->Name && labelToKey.contains(window->Name)) {
+            if (window && windowToKey.contains(window->ID)) {
                 ++count;
             }
         }
     }
 
-    return count + CountKnownWindows(node->ChildNodes[0], labelToKey) +
-           CountKnownWindows(node->ChildNodes[1], labelToKey);
+    return count + CountKnownWindows(node->ChildNodes[0], windowToKey) +
+           CountKnownWindows(node->ChildNodes[1], windowToKey);
 }
 
 }  // namespace
@@ -370,6 +387,7 @@ struct DockspaceWindow::Impl {
     std::optional<Extent2D<F32>> lastSize;
     std::optional<DockLayout> lastCapturedLayout;
     std::optional<std::size_t> lastRestoreHash;
+    std::unordered_set<std::string> restoredKeys;
     bool parentDockPending = false;
 };
 
@@ -391,6 +409,7 @@ bool DockspaceWindow::update(Config config) {
         this->impl->lastSize.reset();
         this->impl->lastCapturedLayout.reset();
         this->impl->lastRestoreHash.reset();
+        this->impl->restoredKeys.clear();
     }
     if (resetParentDock) {
         this->impl->parentDockPending = config.dockIntoParent && config.parentDockId.has_value() &&
@@ -401,6 +420,7 @@ bool DockspaceWindow::update(Config config) {
     this->impl->dockspaceId = ImHashStr((config.id + ":dockspace").c_str());
     if (!config.restoreLayout) {
         this->impl->lastRestoreHash.reset();
+        this->impl->restoredKeys.clear();
     }
     this->impl->config = std::move(config);
     return true;
@@ -448,13 +468,13 @@ void DockspaceWindow::render(const Context& ctx, Child emptyContent) {
     }
 
     std::unordered_map<std::string, std::string> keyToLabel;
-    std::unordered_map<std::string, std::string> labelToKey;
+    std::unordered_map<ImGuiID, std::string> windowToKey;
     for (const auto& dockable : config.dockables) {
         if (dockable.key.empty() || dockable.label.empty()) {
             continue;
         }
         keyToLabel[dockable.key] = dockable.label;
-        labelToKey[dockable.label] = dockable.key;
+        windowToKey[ImHashStr(dockable.label.c_str())] = dockable.key;
     }
 
     ImVec2 dockspaceSize = ImGui::GetContentRegionAvail();
@@ -463,10 +483,19 @@ void DockspaceWindow::render(const Context& ctx, Child emptyContent) {
     }
     dockspaceSize.x = std::max(1.0f, dockspaceSize.x);
     dockspaceSize.y = std::max(1.0f, dockspaceSize.y);
-    const bool shouldRestore = config.restoreLayout && config.layout.has_value() &&
-                               (!impl->lastRestoreHash.has_value() ||
-                                *impl->lastRestoreHash != HashLayout(config.layout));
     const std::size_t restoreHash = HashLayout(config.layout);
+    bool shouldRestore = false;
+    if (config.restoreLayout && config.layout.has_value()) {
+        if (!impl->lastRestoreHash.has_value() || *impl->lastRestoreHash != restoreHash) {
+            impl->restoredKeys.clear();
+            shouldRestore = true;
+        }
+        for (const auto& key : CollectActiveItemKeys(*config.layout, keyToLabel)) {
+            if (impl->restoredKeys.insert(key).second) {
+                shouldRestore = true;
+            }
+        }
+    }
     bool restoredThisFrame = false;
     if (shouldRestore) {
         if (!ImGui::DockBuilderGetNode(impl->dockspaceId)) {
@@ -476,6 +505,7 @@ void DockspaceWindow::render(const Context& ctx, Child emptyContent) {
         ImGui::DockBuilderRemoveNodeChildNodes(impl->dockspaceId);
         RestoreLayout(*config.layout, impl->dockspaceId, keyToLabel);
         ImGui::DockBuilderFinish(impl->dockspaceId);
+        impl->lastRestoreHash = restoreHash;
         restoredThisFrame = true;
     }
 
@@ -486,13 +516,6 @@ void DockspaceWindow::render(const Context& ctx, Child emptyContent) {
                              static_cast<int>(ImGuiDockNodeFlags_KeepAliveOnly) |
                              static_cast<int>(ImGuiDockNodeFlags_NoWindowMenuButton) |
                              static_cast<int>(ImGuiDockNodeFlags_NoCloseButton)));
-        const ImGuiDockNode* root = ImGui::DockBuilderGetNode(impl->dockspaceId);
-        const auto capturedLayout = CaptureLayout(root, labelToKey);
-        const bool restoreCaptureComplete = !config.restoreLayout || !config.layout.has_value() ||
-                                            CapturedAllRequestedItems(*config.layout, capturedLayout);
-        if (restoredThisFrame && restoreCaptureComplete) {
-            impl->lastRestoreHash = restoreHash;
-        }
         ImGui::End();
         return;
     }
@@ -513,13 +536,10 @@ void DockspaceWindow::render(const Context& ctx, Child emptyContent) {
                      ImGuiDockNodeFlags_NoCloseButton);
 
     const ImGuiDockNode* root = ImGui::DockBuilderGetNode(impl->dockspaceId);
-    const U64 knownWindowCount = CountKnownWindows(root, labelToKey);
-    const auto capturedLayout = CaptureLayout(root, labelToKey);
+    const U64 knownWindowCount = CountKnownWindows(root, windowToKey);
+    const auto capturedLayout = CaptureLayout(root, windowToKey);
     const bool restoreCaptureComplete = !config.restoreLayout || !config.layout.has_value() ||
-                                        CapturedAllRequestedItems(*config.layout, capturedLayout);
-    if (restoredThisFrame && restoreCaptureComplete) {
-        impl->lastRestoreHash = restoreHash;
-    }
+                                        CapturedAllRequestedItems(*config.layout, capturedLayout, keyToLabel);
 
     if (!restoredThisFrame && restoreCaptureComplete && config.onLayout &&
         !SameLayout(impl->lastCapturedLayout, capturedLayout)) {

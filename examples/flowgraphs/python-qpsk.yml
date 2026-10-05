@@ -32,7 +32,6 @@ graph:
         y: 326
         width: 344
         height: 377
-        configCollapsed: false
   - name: experiment
     module: note
     device: cpu
@@ -62,7 +61,6 @@ graph:
         y: 573
         width: 330
         height: 351
-        configCollapsed: false
   - name: noise
     module: signal_generator
     device: cpu
@@ -87,7 +85,6 @@ graph:
         y: 100
         width: 343
         height: 0
-        configCollapsed: false
   - name: python_qpsk
     module: python
     device: cpu
@@ -133,7 +130,6 @@ graph:
         y: 101
         width: 574
         height: 681
-        configCollapsed: false
   - name: spectrum_analyzer
     module: spectrum_analyzer
     device: cpu
@@ -159,13 +155,14 @@ graph:
         y: 99
         width: 701
         height: 438
-        configCollapsed: true
+      config:
+        collapsed: true
       surface_default:
         attachedHeight: 380
         detachedWidth: 800
         detachedHeight: 600
         detached: false
-        detachedConfigOpen: false
+        configCollapsed: true
   - name: constellation
     module: constellation
     device: cpu
@@ -182,10 +179,9 @@ graph:
         y: 574
         width: 328
         height: 350
-        configCollapsed: false
       surface_default:
         attachedHeight: 292
         detachedWidth: 600
         detachedHeight: 600
         detached: false
-        detachedConfigOpen: false
+        configCollapsed: true

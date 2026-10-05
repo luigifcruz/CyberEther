@@ -326,10 +326,16 @@ struct MailSetNodeMeta {
     NodeMeta meta;
 };
 
-struct MailSetNodeConfigCollapsed {
+struct MailSetConfigCollapsed {
     std::string flowgraph;
     std::string block;
     bool collapsed = false;
+};
+
+struct MailSetConfigDetached {
+    std::string flowgraph;
+    std::string block;
+    bool detached = false;
 };
 
 struct MailCreateStack {
@@ -356,6 +362,17 @@ struct MailSetStackLayout {
     std::optional<StackDockLayoutMeta> layout;
 };
 
+struct MailRemoveStackBlock {
+    std::string flowgraph;
+    std::string block;
+};
+
+struct MailRenameStackBlock {
+    std::string flowgraph;
+    std::string oldId;
+    std::string newId;
+};
+
 struct MailSetSurfaceDetached {
     std::string flowgraph;
     std::string block;
@@ -363,11 +380,11 @@ struct MailSetSurfaceDetached {
     bool detached = false;
 };
 
-struct MailSetSurfaceConfigOpen {
+struct MailSetSurfaceConfigCollapsed {
     std::string flowgraph;
     std::string block;
     std::string surface;
-    bool open = false;
+    bool collapsed = true;
 };
 
 struct MailStartRemote {
@@ -476,13 +493,16 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailCopyBlock,
                           MailPasteBlock,
                           MailSetNodeMeta,
-                          MailSetNodeConfigCollapsed,
+                          MailSetConfigCollapsed,
+                          MailSetConfigDetached,
                           MailCreateStack,
                           MailDeleteStack,
                           MailSetStackGeometry,
                           MailSetStackLayout,
+                          MailRemoveStackBlock,
+                          MailRenameStackBlock,
                           MailSetSurfaceDetached,
-                          MailSetSurfaceConfigOpen,
+                          MailSetSurfaceConfigCollapsed,
                           MailStartRemote,
                           MailStopRemote,
                           MailApproveRemoteClient,

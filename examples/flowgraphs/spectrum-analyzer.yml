@@ -63,7 +63,6 @@ graph:
         y: 510.79816
         width: 412
         height: 368
-        configCollapsed: false
   - name: soapy
     module: soapy
     device: cpu
@@ -88,7 +87,6 @@ graph:
         y: 94
         width: 332
         height: 0
-        configCollapsed: false
   - name: spectrum_analyzer
     module: spectrum_analyzer
     device: cpu
@@ -114,10 +112,9 @@ graph:
         y: 95
         width: 860
         height: 0
-        configCollapsed: false
       surface_default:
         attachedHeight: 626
         detachedWidth: 504
         detachedHeight: 463
         detached: false
-        detachedConfigOpen: false
+        configCollapsed: true

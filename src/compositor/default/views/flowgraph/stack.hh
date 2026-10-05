@@ -49,14 +49,15 @@ struct FlowgraphStackWindow {
         hint.update({
             .id = this->config.id + ":empty-hint",
             .title = "Arrange Your Stack",
-            .subtitle = "Drag surfaces into this stack to create your layout",
+            .subtitle = "Drag surfaces and configs into this stack to create your layout",
             .steps = {
-                "Detach a visualization surface from the flowgraph.",
-                "Drag the detached surface into this stack window.",
+                "Detach a surface or a block config from the flowgraph.",
+                "Drag the detached window into this stack window.",
                 "Resize and rearrange to build your layout.",
             },
             .hints = {
                 "Drag a surface tab into this stack to dock it.",
+                "Right-click a block and pick Detach Config to control it here.",
                 "Split the stack by dragging a surface to the edge.",
                 "Stacks sync with your flowgraph.",
             },

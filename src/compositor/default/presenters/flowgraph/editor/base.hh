@@ -120,8 +120,13 @@ struct FlowgraphEditorPresenter {
             },
             .onNodeConfigCollapse = [enqueue, flowgraphId](const std::string& blockName,
                                                            bool collapsed) {
-                enqueue(MailSetNodeConfigCollapsed{
+                enqueue(MailSetConfigCollapsed{
                     flowgraphId, blockName, collapsed});
+            },
+            .onNodeConfigDetach = [enqueue, flowgraphId](const std::string& blockName,
+                                                         bool detached) {
+                enqueue(MailSetConfigDetached{
+                    flowgraphId, blockName, detached});
             },
         };
 

@@ -102,19 +102,19 @@ void RequireRejectedFactoryChoice(CompositorType type) {
 
 }  // namespace
 
-TEST_CASE("Surface metadata preserves detached config state and accepts legacy attached widths",
+TEST_CASE("Surface metadata preserves config panel state and accepts legacy attached widths",
           "[core][compositor][metadata]") {
     SurfaceMeta source{
         .attachedHeight = 300,
         .detachedWidth = 800,
         .detachedHeight = 600,
         .detached = true,
-        .detachedConfigOpen = true,
+        .configCollapsed = false,
     };
     Parser::Map data;
     REQUIRE(source.serialize(data) == Result::SUCCESS);
     REQUIRE_FALSE(data.contains("attachedWidth"));
-    REQUIRE(std::any_cast<bool>(data.at("detachedConfigOpen")));
+    REQUIRE_FALSE(std::any_cast<bool>(data.at("configCollapsed")));
 
     data["attachedWidth"] = U64{256};
     SurfaceMeta restored;
@@ -123,23 +123,22 @@ TEST_CASE("Surface metadata preserves detached config state and accepts legacy a
     REQUIRE(restored.detachedWidth == 800);
     REQUIRE(restored.detachedHeight == 600);
     REQUIRE(restored.detached);
-    REQUIRE(restored.detachedConfigOpen);
+    REQUIRE_FALSE(restored.configCollapsed);
 
-    data.erase("detachedConfigOpen");
+    data.erase("configCollapsed");
     SurfaceMeta legacy;
     REQUIRE(legacy.deserialize(data) == Result::SUCCESS);
-    REQUIRE_FALSE(legacy.detachedConfigOpen);
+    REQUIRE(legacy.configCollapsed);
     REQUIRE(legacy.attachedHeight == 300);
 }
 
-TEST_CASE("Node metadata preserves resized dimensions alongside config collapse state",
+TEST_CASE("Node and config metadata preserve resized dimensions and config collapse state",
           "[core][compositor][metadata]") {
     NodeMeta source{
         .x = 10.0f,
         .y = 20.0f,
         .width = 320.0f,
         .height = 600.0f,
-        .configCollapsed = true,
     };
     Parser::Map data;
     REQUIRE(source.serialize(data) == Result::SUCCESS);
@@ -149,7 +148,13 @@ TEST_CASE("Node metadata preserves resized dimensions alongside config collapse 
     REQUIRE(restored.y == source.y);
     REQUIRE(restored.width == source.width);
     REQUIRE(restored.height == source.height);
-    REQUIRE(restored.configCollapsed);
+
+    ConfigMeta sourceConfig{.collapsed = true};
+    Parser::Map configData;
+    REQUIRE(sourceConfig.serialize(configData) == Result::SUCCESS);
+    ConfigMeta restoredConfig;
+    REQUIRE(restoredConfig.deserialize(configData) == Result::SUCCESS);
+    REQUIRE(restoredConfig.collapsed);
 }
 
 TEST_CASE("Compositor factory selects the supported enum and rejects other values",
