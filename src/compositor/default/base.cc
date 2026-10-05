@@ -239,6 +239,7 @@ Result DefaultCompositor::poll() {
     // Update the state snapshots used by presenters.
 
     updateWorkbenchState();
+    updateFlowgraphBlockState();
     updateFilePendingState();
     updateDependencyState();
     updateBenchmarkState();
@@ -246,11 +247,13 @@ Result DefaultCompositor::poll() {
     updateUpdaterState();
     actions.reconcileFilePicker();
     actions.restoreStacks();
+    actions.refreshLiveMarkdown();
     updateFeedbackState();
 
     // Build view configs while flowgraph access is confined to poll.
 
     workbench.update(presenters.build());
+    state.flowgraph.blocks.clear();
 
     return Result::SUCCESS;
 }
@@ -327,6 +330,25 @@ void DefaultCompositor::updateWorkbenchState() {
     }
 }
 
+void DefaultCompositor::updateFlowgraphBlockState() {
+    state.flowgraph.blocks.clear();
+    for (const auto& [flowgraphId, flowgraph] : state.flowgraph.items) {
+        auto& blocks = state.flowgraph.blocks[flowgraphId];
+        std::vector<std::string> names;
+        if (!flowgraph || flowgraph->view().keys(names) != Result::SUCCESS) {
+            continue;
+        }
+        blocks.reserve(names.size());
+        for (auto& name : names) {
+            Flowgraph::View::BlockData data;
+            if (flowgraph->view().block(name, data) != Result::SUCCESS) {
+                continue;
+            }
+            blocks.push_back({std::move(name), std::move(data)});
+        }
+    }
+}
+
 void DefaultCompositor::updateFilePendingState() {
 #ifdef JST_OS_BROWSER
     state.interface.filePending = Platform::IsFilePending();
@@ -348,6 +370,10 @@ void DefaultCompositor::updateBenchmarkState() {
             state.benchmark.future.get();
             state.benchmark.running = false;
         }
+    }
+
+    if (!state.benchmark.running && state.modal.content != ModalContent::Benchmark) {
+        return;
     }
 
     const U64 current = Benchmark::CurrentCount();

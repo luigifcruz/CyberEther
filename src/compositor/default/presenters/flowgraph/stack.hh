@@ -298,17 +298,12 @@ struct StackPresenter {
             .label = MakeFlowgraphWindowLabel(flowgraphId, flowgraph),
         });
 
-        std::vector<std::string> blocks;
-        if (flowgraph->view().keys(blocks) != Result::SUCCESS) {
+        const auto blocks = context.state.flowgraph.blocks.find(flowgraphId);
+        if (blocks == context.state.flowgraph.blocks.end()) {
             return dockables;
         }
 
-        for (const auto& blockName : blocks) {
-            Flowgraph::View::BlockData blockData;
-            if (flowgraph->view().block(blockName, blockData) != Result::SUCCESS) {
-                continue;
-            }
-
+        for (const auto& [blockName, blockData] : blocks->second) {
             if (blockData.state == Block::State::Creating || !blockData.interfaceConfigs.empty()) {
                 ConfigMeta configMeta;
                 flowgraph->metadata().get("config", configMeta, blockName);

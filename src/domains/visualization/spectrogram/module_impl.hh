@@ -10,6 +10,7 @@
 #include <jetstream/render/base/program.hh>
 #include <jetstream/render/base/vertex.hh>
 #include <jetstream/render/base/draw.hh>
+#include <jetstream/render/colormap.hh>
 #include <jetstream/render/components/axis.hh>
 
 namespace Jetstream::Modules {
@@ -22,6 +23,7 @@ struct SpectrogramImpl : public Module::Impl, public DynamicConfig<Spectrogram> 
     Result define() override;
     Result create() override;
     Result destroy() override;
+    Result reconfigure() override;
 
  protected:
     Tensor input;
@@ -58,7 +60,7 @@ struct SpectrogramImpl : public Module::Impl, public DynamicConfig<Spectrogram> 
     std::shared_ptr<Render::Buffer> signalUniformBuffer;
 
     std::shared_ptr<Render::Texture> framebufferTexture;
-    std::shared_ptr<Render::Texture> lutTexture;
+    Render::Colormap lut;
 
     std::shared_ptr<Render::Program> signalProgram;
 

@@ -6,6 +6,7 @@
 #include "feedback.hh"
 #include "file_picker.hh"
 #include "flowgraph.hh"
+#include "live_markdown.hh"
 #include "remote.hh"
 #include "settings.hh"
 #include "stacks.hh"
@@ -32,6 +33,7 @@ class DefaultActions {
         flowgraph = std::make_shared<FlowgraphActions>(state, callbacks);
         dependencies = std::make_shared<DependencyActions>(callbacks);
         stacks = std::make_shared<StackActions>(state.flowgraph, callbacks);
+        liveMarkdown = std::make_shared<LiveMarkdownActions>(state.flowgraph);
         feedback = std::make_shared<FeedbackActions>(state, callbacks);
     }
 
@@ -81,6 +83,10 @@ class DefaultActions {
         stacks->restoreFromMetadata();
     }
 
+    void refreshLiveMarkdown() {
+        liveMarkdown->refresh();
+    }
+
     void cancelFilePicker() {
         filePicker->cancel();
     }
@@ -107,6 +113,7 @@ class DefaultActions {
     std::shared_ptr<DependencyActions> dependencies;
     std::shared_ptr<FilePickerActions> filePicker;
     std::shared_ptr<FlowgraphActions> flowgraph;
+    std::shared_ptr<LiveMarkdownActions> liveMarkdown;
     std::shared_ptr<RemoteActions> remote;
     std::shared_ptr<SettingsActions> settings;
     std::shared_ptr<StackActions> stacks;

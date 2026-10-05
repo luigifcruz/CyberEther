@@ -38,7 +38,9 @@ struct FlowgraphEditorPresenter {
             .id = flowgraphId,
             .clipboardHasData = context.state.clipboard.hasData,
             .debugTimingEnabled = context.state.debug.timingEnabled,
-            .blockOptions = catalog.buildBlockCatalog(),
+            .onBuildBlockOptions = [catalog = catalog]() {
+                return catalog.buildBlockCatalog();
+            },
             .title = flowgraph->title(),
             .summary = flowgraph->summary(),
             .author = flowgraph->author(),
@@ -128,17 +130,12 @@ struct FlowgraphEditorPresenter {
             },
         };
 
-        std::vector<std::string> blocks;
-        if (flowgraph->view().keys(blocks) != Result::SUCCESS) {
+        const auto blocks = context.state.flowgraph.blocks.find(flowgraphId);
+        if (blocks == context.state.flowgraph.blocks.end()) {
             return config;
         }
 
-        for (const auto& blockName : blocks) {
-            Flowgraph::View::BlockData blockData;
-            if (flowgraph->view().block(blockName, blockData) != Result::SUCCESS) {
-                continue;
-            }
-
+        for (const auto& [blockName, blockData] : blocks->second) {
             config.graph.push_back(node.build(flowgraphId, flowgraph, blockName,
                                               blockData));
         }

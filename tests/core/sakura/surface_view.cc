@@ -15,6 +15,125 @@ using namespace Jetstream;
 
 using SakuraTest::ResizeLog;
 
+TEST_CASE("SurfaceView visibility follows the displayed texture and draw clip",
+          "[core][sakura][surface_view][visibility]") {
+    class Texture final : public Render::Texture {
+     public:
+        Texture() : Render::Texture(Config{.size = {200, 100}}) {}
+        Result create() override { return Result::SUCCESS; }
+        Result destroy() override { return Result::SUCCESS; }
+        uint64_t raw() const override { return 123; }
+    };
+    SakuraTest::HeadlessUi ui;
+    auto texture = std::make_shared<Texture>();
+    Sakura::SurfaceView surface;
+    Sakura::SurfaceView::Config config{.id = "clipped", .textureSource = texture, .size = {200, 100}};
+    bool visible = false;
+    bool secondView = false;
+    bool customClip = false;
+    bool differentTexture = false;
+    SECTION("A fully clipped image emits no geometry") {}
+    SECTION("A second visible view keeps the texture visible") { secondView = true; }
+    SECTION("An expanded draw clip preserves off-window images") { customClip = visible = true; }
+    SECTION("A reduced draw clip suppresses an on-window image") { customClip = true; }
+    SECTION("An overridden texture does not hide its unused textureSource") {
+        config.onResolveTexture = [] { return U64(456); };
+        differentTexture = true;
+    }
+    surface.update(config);
+    ui.frame([&] {
+        const auto frame = ImGui::GetFrameCount();
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        auto* list = ImGui::GetWindowDrawList();
+        const int indices = list->IdxBuffer.Size;
+        if (customClip) {
+            list->PushClipRect(visible ? ImVec2(0, 0) : ImVec2(1000, 1000),
+                               visible ? ImVec2(20000, 20000) : ImVec2(1100, 1100), false);
+        }
+        if (!customClip || visible) ImGui::SetCursorScreenPos({10000, 10000});
+        surface.render(ui.sakura());
+        REQUIRE(texture->visibleForPresentation(frame) == (visible || differentTexture));
+        REQUIRE((list->IdxBuffer.Size > indices) == visible);
+        if (customClip) list->PopClipRect();
+        ImGui::SetCursorScreenPos(origin);
+        if (secondView) {
+            surface.render(ui.sakura());
+            REQUIRE(texture->visibleForPresentation(frame));
+            REQUIRE(list->IdxBuffer.Size > indices);
+        }
+        REQUIRE(texture->visibleForPresentation(frame + 1));
+    });
+}
+
+TEST_CASE("Surface visibility accounts for finalized texture consumers",
+          "[core][sakura][surface_view][visibility]") {
+    class Window final : public SakuraTest::FakeWindow {
+     public:
+        using Render::Window::prepareImgui;
+        using Render::Window::textureVisibleForPresentation;
+    };
+    class Texture final : public Render::Texture {
+     public:
+        Texture() : Render::Texture(Config{.size = {200, 100}}) {}
+        Result create() override { return Result::SUCCESS; }
+        Result destroy() override { return Result::SUCCESS; }
+        uint64_t raw() const override { return 123; }
+    };
+    SakuraTest::HeadlessUi ui;
+    Window window;
+    Texture texture;
+    bool hinted = true;
+    bool sampled = false;
+    bool unrelated = false;
+    bool empty = false;
+    bool callback = false;
+    bool visible = false;
+    SECTION("A hidden texture with no consumers skips graphics") {}
+    SECTION("Textures without visibility hints remain visible") {
+        hinted = false;
+        visible = true;
+    }
+    SECTION("Another draw list sampling the texture keeps it visible") {
+        sampled = visible = true;
+    }
+    SECTION("An unrelated texture does not keep a hidden surface visible") {
+        unrelated = true;
+    }
+    SECTION("An empty texture command is not a sampling consumer") { empty = true; }
+    SECTION("Custom draw callbacks conservatively keep surfaces visible") {
+        callback = visible = true;
+    }
+    SECTION("A second visible view overrides a hidden view") { visible = true; }
+
+    ui.frame([&] {
+        if (hinted) texture.presentationHint(ImGui::GetFrameCount(), false);
+        if (hinted && visible && !sampled && !callback) {
+            texture.presentationHint(ImGui::GetFrameCount(), true);
+            texture.presentationHint(ImGui::GetFrameCount(), false);
+        }
+        auto* list = ImGui::GetForegroundDrawList();
+        if (sampled || unrelated) {
+            list->AddImage(ImTextureRef(static_cast<ImTextureID>(sampled ? 123 : 456)),
+                           {0, 0}, {100, 100});
+        }
+        if (empty) {
+            list->PushTexture(ImTextureRef(static_cast<ImTextureID>(123)));
+            list->AddDrawCmd();
+            list->PopTexture();
+        }
+        if (callback) {
+            list->AddCallback([](const ImDrawList*, const ImDrawCmd*) {}, nullptr);
+        }
+    });
+    window.prepareImgui();
+    REQUIRE(window.textureVisibleForPresentation(texture) == visible);
+
+    // Neither sampled textures nor custom callbacks carry into the next frame.
+    ui.frame([&] { texture.presentationHint(ImGui::GetFrameCount(), false); });
+    window.prepareImgui();
+    REQUIRE_FALSE(window.textureVisibleForPresentation(texture));
+}
+
 TEST_CASE("SurfaceView falls back to the available region when size is zero",
           "[core][sakura][surface_view]") {
     SakuraTest::HeadlessUi ui;

@@ -2,6 +2,7 @@
 #include <jetstream/detail/block_impl.hh>
 
 #include <jetstream/domains/visualization/spectrogram/module.hh>
+#include <jetstream/render/colormap.hh>
 
 namespace Jetstream::Blocks {
 
@@ -17,6 +18,7 @@ struct SpectrogramImpl : public Block::Impl, public DynamicConfig<Blocks::Spectr
 
 Result SpectrogramImpl::configure() {
     spectrogramConfig->height = height;
+    spectrogramConfig->colormap = colormap;
     spectrogramConfig->xLabel = xLabel;
     spectrogramConfig->yLabel = yLabel;
 
@@ -31,6 +33,11 @@ Result SpectrogramImpl::define() {
                                     "Height",
                                     "Number of frequency bins in the vertical axis.",
                                     {{"type", "uint"}, {"unit", "bins"}}));
+
+    JST_CHECK(defineInterfaceConfig("colormap",
+                                    "Colormap",
+                                    "Color palette for density.",
+                                    Render::Colormap::Format()));
 
     return Result::SUCCESS;
 }

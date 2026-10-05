@@ -11,6 +11,7 @@ namespace Jetstream::Blocks {
 struct Waterfall : public Block::Config {
     U64 height = 1024;
     U64 averaging = 1;
+    std::string colormap = "turbo";
     std::string xLabel = "Frequency (MHz)";
     std::string yLabel = "Time";
     std::vector<F32> markers;
@@ -19,7 +20,7 @@ struct Waterfall : public Block::Config {
     JST_BLOCK_TYPE(waterfall);
     JST_BLOCK_DOMAIN("Visualization");
     JST_BLOCK_NODE_SIZE(L);
-    JST_BLOCK_PARAMS(height, averaging, xLabel, yLabel, markers, pins);
+    JST_BLOCK_PARAMS(height, averaging, colormap, xLabel, yLabel, markers, pins);
     JST_BLOCK_DESCRIPTION(
         "Waterfall",
         "Shows frequency spectrum over time as a scrolling waterfall.",
@@ -37,7 +38,8 @@ struct Waterfall : public Block::Config {
         "- **Height**: Number of rows in the waterfall history buffer.\n"
         "- **Averaging**: Number of spectra averaged per displayed row. "
         "Finite input values are averaged as received, before soft color mapping. "
-        "Affine-normalized decibel input is therefore averaged in the log domain.\n\n"
+        "Affine-normalized decibel input is therefore averaged in the log domain.\n"
+        "- **Colormap**: Color palette that maps amplitude to color.\n\n"
 
         "## Useful For\n"
         "- Visualizing RF spectrum over time in SDR applications.\n"

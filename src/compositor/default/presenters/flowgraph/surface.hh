@@ -41,17 +41,12 @@ struct FlowgraphDetachedSurfacePresenter {
             return configs;
         }
 
-        std::vector<std::string> blocks;
-        if (flowgraph->view().keys(blocks) != Result::SUCCESS) {
+        const auto blocks = context.state.flowgraph.blocks.find(flowgraphId);
+        if (blocks == context.state.flowgraph.blocks.end()) {
             return configs;
         }
 
-        for (const auto& blockName : blocks) {
-            Flowgraph::View::BlockData blockData;
-            if (flowgraph->view().block(blockName, blockData) != Result::SUCCESS) {
-                continue;
-            }
-
+        for (const auto& [blockName, blockData] : blocks->second) {
             for (const auto& surface : blockData.surfaces) {
                 if (!surface) {
                     continue;
@@ -82,6 +77,7 @@ struct FlowgraphDetachedSurfacePresenter {
                             static_cast<F32>(surfaceMeta.detachedHeight),
                         },
                         .configFields = BuildFlowgraphDetachedConfigFields(enqueue,
+                                                                           context.state.flowgraph,
                                                                            flowgraphId,
                                                                            blockName,
                                                                            windowId,

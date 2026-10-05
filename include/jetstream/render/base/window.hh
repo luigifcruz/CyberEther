@@ -16,8 +16,6 @@
 #include "jetstream/render/base/transfer.hh"
 #include "jetstream/types.hh"
 #include "jetstream/logger.hh"
-#include "jetstream/parser.hh"
-#include "jetstream/viewport/base.hh"
 #include "jetstream/render/base/surface.hh"
 #include "jetstream/render/components/generic.hh"
 #include "jetstream/render/types.hh"
@@ -25,9 +23,9 @@
 #include "jetstream/render/tools/imgui.h"
 #include "jetstream/render/tools/imgui_stdlib.h"
 #include "jetstream/render/tools/imgui_fmtlib.h"
-#include "jetstream/render/tools/imgui_internal.h"
 
 namespace Jetstream::Render::Components { class Font; }
+namespace Jetstream::Viewport { class Generic; }
 
 namespace Jetstream::Render {
 
@@ -62,6 +60,12 @@ class JETSTREAM_API Window {
     Result cancel();
 
     Result synchronize();
+
+    void frameClearColor(const ColorRGBA<F32>& color, ImDrawList* background = nullptr) {
+        frameBackground = color;
+        frameBackgroundDrawList = background;
+    }
+    const ColorRGBA<F32>& frameClearColor() const { return frameBackground; }
 
     virtual const Stats& stats() const = 0;
     virtual std::string info() const = 0;
@@ -140,6 +144,8 @@ class JETSTREAM_API Window {
 
     Result collectTransfers(Transfer::Batch& batch) const;
     void abortImguiFrame();
+    void prepareImgui();
+    bool textureVisibleForPresentation(const Texture& texture) const;
 
     // Font.
 
@@ -153,6 +159,10 @@ class JETSTREAM_API Window {
     void updateScalingFactor(const Viewport::Generic& viewport);
 
  private:
+    ColorRGBA<F32> frameBackground = {0.0f, 0.0f, 0.0f, 1.0f};
+    ImDrawList* frameBackgroundDrawList = nullptr;
+    std::unordered_set<ImTextureID> frameSampledTextures;
+    bool frameCustomDraws = true;
     bool shouldDeferAttachmentQueueProcessing();
     bool attachmentQueueEmpty() const;
     Result destroyInternal();

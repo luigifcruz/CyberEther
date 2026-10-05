@@ -32,6 +32,7 @@ struct TextMarkdown : public Component {
         static constexpr StyleId CalloutTones = 6;
         static constexpr StyleId SyntaxBase = CalloutBase + CalloutTones * CalloutVariants;
         static constexpr StyleId SyntaxStyles = 9;
+        static constexpr StyleId StatLabel = SyntaxBase + SyntaxStyles;
 
         static constexpr StyleId Callout(StyleId tone, StyleId emphasis) {
             return static_cast<StyleId>(CalloutBase + tone * CalloutVariants + emphasis);

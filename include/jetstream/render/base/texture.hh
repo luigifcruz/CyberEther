@@ -66,6 +66,14 @@ class JETSTREAM_API Texture : public WindowAttachment {
     Result fill();
     Result fillRow(const U64& y, const U64& height);
 
+    void presentationHint(U64 frame, bool visible) const {
+        presentationVisible = (presentationFrame == frame && presentationVisible) || visible;
+        presentationFrame = frame;
+    }
+    bool visibleForPresentation(U64 frame) const {
+        return presentationFrame != frame || presentationVisible;
+    }
+
     template<DeviceType D>
     static std::shared_ptr<Texture> Factory(const Config& config) {
         return std::make_shared<TextureImp<D>>(config);
@@ -84,6 +92,8 @@ class JETSTREAM_API Texture : public WindowAttachment {
     std::mutex uploadMutex;
     Transfer::PendingUploadQueue pendingUploads;
     std::atomic<U64> uploadGeneration = 0;
+    mutable U64 presentationFrame = ~U64{0};
+    mutable bool presentationVisible = true;
 
     friend class Transfer;
     friend class Transfer::Batch;

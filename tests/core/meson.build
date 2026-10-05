@@ -37,6 +37,7 @@ core_test_domains = {
         'render/transfers.cc',
         'render/geomap_labels.cc',
         'render/map_layers.cc',
+        'render/shapes.cc',
     ],
     'sakura': [
         'sakura/interface_controls.cc',
@@ -51,6 +52,7 @@ core_test_domains = {
         'sakura/text_grid.cc',
         'sakura/text_markdown.cc',
         'sakura/vstack.cc',
+        'sakura/workspace_background.cc',
     ],
     'runtime': [
         'runtime/scheduler.cc',
@@ -69,9 +71,10 @@ core_test_domains = {
     'tools': ['tools/circular_buffer.cc'],
 }
 
-# Sakura components are not exported from the Windows shared library.
+# Internal compositor and Sakura components are not exported from the Windows shared library.
 if not jst_is_windows
     core_test_domains += {
+        'compositor': core_test_domains['compositor'] + ['compositor/live_markdown.cc'],
         'render': core_test_domains['render'] + [
             'render/dockspace_window.cc',
             'render/field_grid.cc',

@@ -22,7 +22,7 @@ struct FlowgraphEditor {
         bool clipboardHasData = false;
         bool debugTimingEnabled = false;
         bool openBlockPicker = false;
-        std::vector<FlowgraphBlockPicker::BlockOption> blockOptions;
+        std::function<std::vector<FlowgraphBlockPicker::BlockOption>()> onBuildBlockOptions;
 
         std::string title;
         std::string summary;
@@ -104,35 +104,39 @@ struct FlowgraphEditor {
             blockPicker = FlowgraphBlockPicker();
         }
 
-        blockPicker.update({
-            .id = this->config.id + ":block-picker",
-            .search = blockPickerSearch,
-            .selectedIndex = blockPickerSelectedIndex,
-            .blocks = this->config.blockOptions,
-            .onResolveGridPosition = [this]() {
-                return blockPickerGridPosition;
-            },
-            .onSearchChange = [this](const std::string& value) {
-                blockPickerSearch = value;
-            },
-            .onSelectIndex = [this](const int index) {
-                blockPickerSelectedIndex = index;
-            },
-            .onCreateBlock = [this](const std::string& moduleId,
-                                    Extent2D<F32> gridPosition,
-                                    DeviceType device,
-                                    RuntimeType runtime,
-                                    ProviderType provider) {
-                suppressEditorDoubleClick = true;
-                if (this->config.onCreateBlock) {
-                    this->config.onCreateBlock(moduleId, gridPosition, device, runtime, provider);
-                }
-            },
-            .onClose = [this]() {
-                suppressEditorDoubleClick = true;
-                blockPickerOpen = false;
-            },
-        });
+        if (blockPickerOpen) {
+            blockPicker.update({
+                .id = this->config.id + ":block-picker",
+                .search = blockPickerSearch,
+                .selectedIndex = blockPickerSelectedIndex,
+                .blocks = this->config.onBuildBlockOptions
+                    ? this->config.onBuildBlockOptions()
+                    : std::vector<FlowgraphBlockPicker::BlockOption>{},
+                .onResolveGridPosition = [this]() {
+                    return blockPickerGridPosition;
+                },
+                .onSearchChange = [this](const std::string& value) {
+                    blockPickerSearch = value;
+                },
+                .onSelectIndex = [this](const int index) {
+                    blockPickerSelectedIndex = index;
+                },
+                .onCreateBlock = [this](const std::string& moduleId,
+                                        Extent2D<F32> gridPosition,
+                                        DeviceType device,
+                                        RuntimeType runtime,
+                                        ProviderType provider) {
+                    suppressEditorDoubleClick = true;
+                    if (this->config.onCreateBlock) {
+                        this->config.onCreateBlock(moduleId, gridPosition, device, runtime, provider);
+                    }
+                },
+                .onClose = [this]() {
+                    suppressEditorDoubleClick = true;
+                    blockPickerOpen = false;
+                },
+            });
+        }
         blockPickerWasOpen = blockPickerOpen;
 
         for (const auto& block : this->config.graph) {

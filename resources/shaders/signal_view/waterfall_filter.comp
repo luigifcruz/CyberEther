@@ -1,0 +1,55 @@
+#version 450
+
+layout(local_size_x = 64) in;
+
+layout(set = 0, binding = 0) uniform FilterUniforms {
+    uint width;
+    uint height;
+    uint writeIndex;
+    uint version;
+} uniforms;
+
+layout(std430, set = 0, binding = 1) readonly buffer History {
+    float data[];
+};
+
+layout(std430, set = 0, binding = 2) buffer FilteredHistory {
+    float filtered[];
+};
+
+layout(std430, set = 0, binding = 3) buffer FilterState {
+    uvec2 state[];
+};
+
+float sampleRow(uint age, int offset, uint column) {
+    uint clamped = uint(clamp(int(age) + offset, 0, int(uniforms.height) - 1));
+    uint row = (uniforms.writeIndex + clamped) % uniforms.height;
+    return data[row * (uniforms.width + 16) + column];
+}
+
+void main() {
+    uint column = gl_GlobalInvocationID.x;
+    if (column >= uniforms.width) {
+        return;
+    }
+    uint dirty = state[column].y == 0 ? uniforms.height :
+        min(uniforms.version - state[column].x, uniforms.height);
+    uint count = dirty == 0 ? 0 : min(dirty + 8, uniforms.height);
+    uint start = (uniforms.writeIndex + 2 * uniforms.height - dirty -
+                  (4 % uniforms.height)) % uniforms.height;
+    for (uint i = 0; i < count; ++i) {
+        uint row = (start + i) % uniforms.height;
+        uint age = (row + uniforms.height - uniforms.writeIndex) % uniforms.height;
+        float magnitude = sampleRow(age, -4, column) * 0.0162162162;
+        magnitude += sampleRow(age, -3, column) * 0.0540540541;
+        magnitude += sampleRow(age, -2, column) * 0.1216216216;
+        magnitude += sampleRow(age, -1, column) * 0.1945945946;
+        magnitude += sampleRow(age, 0, column) * 0.2270270270;
+        magnitude += sampleRow(age, 1, column) * 0.1945945946;
+        magnitude += sampleRow(age, 2, column) * 0.1216216216;
+        magnitude += sampleRow(age, 3, column) * 0.0540540541;
+        magnitude += sampleRow(age, 4, column) * 0.0162162162;
+        filtered[row * uniforms.width + column] = magnitude;
+    }
+    state[column] = uvec2(uniforms.version, 1);
+}

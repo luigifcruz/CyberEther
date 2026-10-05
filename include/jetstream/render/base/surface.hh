@@ -64,6 +64,8 @@ class JETSTREAM_API Surface : public WindowAttachment {
     bool dirty = true;
 
     bool shouldDraw(bool framebufferChanged = false);
+    bool shouldDrawGraphics(bool visible);
+    void resetFramebuffer();
     void markDrawn();
 
  private:
@@ -72,6 +74,8 @@ class JETSTREAM_API Surface : public WindowAttachment {
     bool affectedBy(const Transfer::Batch& batch) const;
 
     bool drawPending = false;
+    bool imageInitialized = false;
+    bool graphicsSkipped = false;
     std::unordered_set<std::shared_ptr<Buffer>> dependencyBuffers;
     std::unordered_set<std::shared_ptr<Draw>> dependencyDraws;
     std::unordered_set<std::shared_ptr<Texture>> dependencyTextures;

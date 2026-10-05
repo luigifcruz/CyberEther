@@ -43,6 +43,7 @@ class DefaultCompositor : public Compositor::Impl {
     // Workbench.
 
     void updateWorkbenchState();
+    void updateFlowgraphBlockState();
     void updateFilePendingState();
     void updateDependencyState();
     void updateBenchmarkState();

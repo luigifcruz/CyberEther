@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_FLOWGRAPH_CONFIG_HH
 
 #include "../../model/messages.hh"
+#include "../../model/state.hh"
 #include "../../views/flowgraph/editor/config/types.hh"
 
 #include <jetstream/flowgraph_view.hh>
@@ -55,13 +56,31 @@ inline std::vector<FlowgraphConfigFieldConfig> BuildFlowgraphConfigFields(
     return fields;
 }
 
+inline void ApplyLiveMarkdown(std::vector<FlowgraphConfigFieldConfig>& fields,
+                              const DefaultCompositorState::FlowgraphState& flowgraphs,
+                              const std::string& flowgraphId,
+                              const std::string& blockName) {
+    for (auto& field : fields) {
+        if (Parser::Get<std::string>(field.format, "type") != "markdown") {
+            continue;
+        }
+        const auto preview = flowgraphs.liveMarkdown.find(
+            DefaultCompositorState::FlowgraphState::LiveMarkdownKey(flowgraphId, blockName, field.name));
+        if (preview != flowgraphs.liveMarkdown.end()) {
+            field.preview = preview->second;
+        }
+    }
+}
+
 inline std::vector<FlowgraphConfigFieldConfig> BuildFlowgraphDetachedConfigFields(
     const std::function<void(Mail&&)>& enqueue,
+    const DefaultCompositorState::FlowgraphState& flowgraphs,
     const std::string& flowgraphId,
     const std::string& blockName,
     const std::string& viewId,
     const Flowgraph::View::BlockData& block) {
     auto fields = BuildFlowgraphConfigFields(viewId, block);
+    ApplyLiveMarkdown(fields, flowgraphs, flowgraphId, blockName);
     for (auto& field : fields) {
         field.onApply = [enqueue, flowgraphId, blockName](Parser::Map patch, const bool silent) {
             enqueue(MailReconfigureBlock{flowgraphId,

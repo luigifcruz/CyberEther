@@ -142,13 +142,29 @@ const Extent2D<U64>& Surface::size() const {
 }
 
 bool Surface::shouldDraw(bool framebufferChanged) {
+    graphicsSkipped = false;
+    if (framebufferChanged) {
+        resetFramebuffer();
+    }
     drawPending = drawPending || !config.retained || dirty || framebufferChanged;
     return drawPending;
 }
 
+bool Surface::shouldDrawGraphics(bool visible) {
+    // Initialize new images even when hidden; only skip the graphics pass.
+    graphicsSkipped = !visible && imageInitialized;
+    return !graphicsSkipped;
+}
+
+void Surface::resetFramebuffer() {
+    imageInitialized = false;
+    invalidate();
+}
+
 void Surface::markDrawn() {
     if (drawPending) {
-        dirty = false;
+        imageInitialized = imageInitialized || !graphicsSkipped;
+        dirty = graphicsSkipped;
         drawPending = false;
     }
 }
