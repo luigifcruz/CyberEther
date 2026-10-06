@@ -67,6 +67,8 @@ JETSTREAM_API void WriteInterruptMessage(const char* message, std::size_t size) 
 
 #if !defined(JST_OS_BROWSER)
 JETSTREAM_API bool ShutdownSocketRead(std::uintptr_t socket) noexcept;
+JETSTREAM_API void DisableSocketSigPipe(std::uintptr_t socket) noexcept;
+JETSTREAM_API void IgnoreBrokenPipe() noexcept;
 #endif
 
 //
@@ -119,6 +121,12 @@ JETSTREAM_API void* LoadDynamicLibrarySymbol(void* handle,
                                              std::string& error);
 
 //
+// Files
+//
+
+JETSTREAM_API Result WriteFileAtomic(const std::string& path, std::string_view bytes, bool ownerOnly = false);
+
+//
 // File Lock
 //
 
@@ -159,6 +167,7 @@ JETSTREAM_API Result PickFile(std::string& path,
 JETSTREAM_API Result PickFolder(std::string& path,
                                 std::function<void(std::string)> callback = nullptr);
 JETSTREAM_API Result SaveFile(std::string& path,
+                              const std::vector<std::string>& extensions = {},
                               std::function<void(std::string)> callback = nullptr);
 
 JETSTREAM_API bool IsFilePending();

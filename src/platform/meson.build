@@ -1,6 +1,7 @@
 src_lst += files([
     'dialogs.cc',
     'dynamic_library.cc',
+    'file.cc',
     'file_lock.cc',
     'paths.cc',
     'process.cc',

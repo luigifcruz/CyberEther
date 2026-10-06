@@ -16,8 +16,14 @@
 #include <cerrno>
 #include <csignal>
 #include <fcntl.h>
+#include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#if defined(JST_OS_MAC)
+#include <crt_externs.h>
+#else
+extern char** environ;
+#endif
 #endif
 
 namespace Jetstream::Platform {
@@ -422,6 +428,45 @@ void TerminateProcessGroup(pid_t process) {
     (void)WaitForProcess(process, status, 0, result);
 }
 
+int SpawnProcess(const std::string& executable, char* const* arguments,
+                 int readPipe, int writePipe, bool combineOutput, pid_t& process) {
+    posix_spawn_file_actions_t actions;
+    int error = posix_spawn_file_actions_init(&actions);
+    if (error != 0) {
+        return error;
+    }
+    posix_spawnattr_t attributes;
+    error = posix_spawnattr_init(&attributes);
+    if (error != 0) {
+        posix_spawn_file_actions_destroy(&actions);
+        return error;
+    }
+
+    short flags = POSIX_SPAWN_SETPGROUP;
+#if defined(JST_OS_MAC)
+    flags |= POSIX_SPAWN_CLOEXEC_DEFAULT;
+    char** environment = *_NSGetEnviron();
+#else
+    char** environment = environ;
+#endif
+    if ((error = posix_spawnattr_setflags(&attributes, flags)) == 0 &&
+        (error = posix_spawnattr_setpgroup(&attributes, 0)) == 0 &&
+        (error = posix_spawn_file_actions_addclose(&actions, readPipe)) == 0 &&
+        (error = posix_spawn_file_actions_addopen(
+            &actions, STDIN_FILENO, "/dev/null", O_RDWR, 0)) == 0 &&
+        (error = posix_spawn_file_actions_adddup2(
+            &actions, writePipe, STDOUT_FILENO)) == 0 &&
+        (error = posix_spawn_file_actions_adddup2(
+            &actions, combineOutput ? writePipe : STDIN_FILENO, STDERR_FILENO)) == 0 &&
+        (error = posix_spawn_file_actions_addclose(&actions, writePipe)) == 0) {
+        error = posix_spawnp(&process, executable.c_str(), &actions, &attributes,
+                             arguments, environment);
+    }
+    posix_spawnattr_destroy(&attributes);
+    posix_spawn_file_actions_destroy(&actions);
+    return error;
+}
+
 Result RunPosixProcess(const std::string& executable,
                        const std::vector<std::string>& arguments,
                        std::string& output,
@@ -441,7 +486,11 @@ Result RunPosixProcess(const std::string& executable,
     argumentPointers.push_back(nullptr);
 
     int rawPipe[2];
+#if defined(JST_OS_LINUX)
+    if (pipe2(rawPipe, O_CLOEXEC) != 0) {
+#else
     if (pipe(rawPipe) != 0) {
+#endif
         return Result::ERROR;
     }
     FileDescriptor readPipe(rawPipe[0]);
@@ -450,35 +499,11 @@ Result RunPosixProcess(const std::string& executable,
         return Result::ERROR;
     }
 
-    const pid_t process = fork();
-    if (process < 0) {
+    pid_t process = 0;
+    if (SpawnProcess(executable, argumentPointers.data(), readPipe.get(),
+                     writePipe.get(), combineOutput, process) != 0) {
         return Result::ERROR;
     }
-
-    if (process == 0) {
-        readPipe.reset();
-        if (setpgid(0, 0) != 0) {
-            _exit(127);
-        }
-        int nullDevice = open("/dev/null", O_RDWR);
-        if (nullDevice >= 0 && nullDevice <= STDERR_FILENO) {
-            const int relocated = fcntl(nullDevice, F_DUPFD, STDERR_FILENO + 1);
-            close(nullDevice);
-            nullDevice = relocated;
-        }
-        if (nullDevice < 0 ||
-            dup2(nullDevice, STDIN_FILENO) < 0 ||
-            dup2(writePipe.get(), STDOUT_FILENO) < 0 ||
-            dup2(combineOutput ? writePipe.get() : nullDevice, STDERR_FILENO) < 0) {
-            _exit(127);
-        }
-        close(nullDevice);
-        writePipe.reset();
-        execvp(executable.c_str(), argumentPointers.data());
-        _exit(127);
-    }
-
-    (void)setpgid(process, process);
     writePipe.reset();
     const int flags = fcntl(readPipe.get(), F_GETFL, 0);
     if (flags < 0 || fcntl(readPipe.get(), F_SETFL, flags | O_NONBLOCK) < 0) {
@@ -541,7 +566,6 @@ Result RunPosixProcess(const std::string& executable,
             if (!AppendProcessOutput(captured,
                                      {buffer, static_cast<std::size_t>(bytesRead)},
                                      onOutput)) {
-                TerminateProcessGroup(process);
                 if (combineOutput) {
                     output = std::move(captured);
                 }
