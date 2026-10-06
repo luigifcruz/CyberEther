@@ -30,6 +30,15 @@ JETSTREAM_API Result ConfigPath(std::string& path);
 JETSTREAM_API Result CachePath(std::string& path);
 
 //
+// Secrets
+//
+
+JETSTREAM_API bool SecretStoreAvailable();
+JETSTREAM_API Result ReadSecret(const std::string& service, const std::string& account, std::string& value);
+JETSTREAM_API Result WriteSecret(const std::string& service, const std::string& account, const std::string& value);
+JETSTREAM_API Result DeleteSecret(const std::string& service, const std::string& account);
+
+//
 // Storage
 //
 
