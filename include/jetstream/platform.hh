@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -25,6 +26,7 @@ JETSTREAM_API std::string PathToUtf8(const std::filesystem::path& path);
 
 JETSTREAM_API Result EnvironmentVariable(const std::string& name, std::string& value);
 JETSTREAM_API Result EnvironmentPath(const std::string& name, std::filesystem::path& path);
+JETSTREAM_API Result WriteEnvironmentVariable(const std::string& name, const std::optional<std::string>& value);
 
 JETSTREAM_API Result ConfigPath(std::string& path);
 JETSTREAM_API Result CachePath(std::string& path);
