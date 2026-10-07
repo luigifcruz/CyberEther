@@ -1,4 +1,5 @@
 #include "syntax_highlighter.hh"
+#include "tools/text.hh"
 
 #include <jetstream/logger.hh>
 
@@ -179,17 +180,6 @@ const SyntaxGrammar& GrammarFor(Language language) {
     return grammars[static_cast<U64>(language)];
 }
 
-std::string JoinLines(const std::vector<std::string>& lines) {
-    std::string value;
-    for (U64 i = 0; i < lines.size(); ++i) {
-        if (i > 0) {
-            value += '\n';
-        }
-        value += lines[i];
-    }
-    return value;
-}
-
 StyleId StyleForCapture(std::string_view capture) {
     if (capture == "comment") {
         return Style::Comment;
@@ -304,7 +294,7 @@ std::vector<std::vector<StyleId>> SyntaxHighlighter::highlight(const std::vector
     if (!ensureTreeSitter(language)) {
         return styles;
     }
-    const std::string source = JoinLines(lines);
+    const std::string source = Text::JoinLines(lines);
     TSTree* nextTree = ts_parser_parse_string(parser, nullptr, source.c_str(), static_cast<U32>(source.size()));
     if (!nextTree) {
         return styles;

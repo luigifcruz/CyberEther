@@ -1,4 +1,5 @@
 #include <jetstream/render/sakura/components/retained/code_editor.hh>
+#include "tools/text.hh"
 
 #include <jetstream/render/sakura/components/retained/box.hh>
 #include <jetstream/render/sakura/components/retained/canvas.hh>
@@ -26,17 +27,6 @@ constexpr F32 kConsoleGripHeight = 3.0f;
 constexpr F32 kConsoleDefaultHeight = 128.0f;
 constexpr F32 kConsoleMinHeight = 72.0f;
 constexpr F32 kConsoleMaxHeightRatio = 0.55f;
-
-std::string JoinLines(const std::vector<std::string>& lines) {
-    std::string value;
-    for (U64 i = 0; i < lines.size(); ++i) {
-        if (i > 0) {
-            value += '\n';
-        }
-        value += lines[i];
-    }
-    return value;
-}
 
 TextEditor::Language ToEditorLanguage(CodeEditor::Language language) {
     return language == CodeEditor::Language::Markdown ? TextEditor::Language::Markdown
@@ -256,7 +246,7 @@ struct CodeEditorRoot : public Component {
         if (consoleOn) {
             consoleView.update({
                 .id = config.id + ":console",
-                .value = JoinLines(config.consoleOutput),
+                .value = Text::JoinLines(config.consoleOutput),
                 .fontSize = fontSizePixels,
                 .fontScale = kConsoleFontScale,
                 .stickToBottom = true,
