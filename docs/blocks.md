@@ -15,23 +15,23 @@ Tensor manipulation and general plumbing: shaping, casting, arithmetic, and the 
 
 | Block | Type | Summary |
 |---|---|---|
-| Add | `add` | Element-wise addition. |
+| Add | `add` | Adds two tensors element by element, with broadcasting. |
 | Arithmetic | `arithmetic` | Reduces a tensor along an axis using an arithmetic operation. |
 | Cast | `cast` | Casts the input to a type. |
 | Comparator | `comparator` | Compares inputs for numerical similarity. |
 | Duplicate | `duplicate` | Copies and transfers signal data. |
 | Expand Dims | `expand_dims` | Inserts a new dimension of size 1 at a specified axis. |
 | Flatten | `flatten` | Flattens a tensor to one dimension. |
-| Multiply | `multiply` | Element-wise multiplication. |
+| Multiply | `multiply` | Multiplies two tensors element by element, with broadcasting. |
 | Multiply Constant | `multiply_constant` | Multiplies input by a constant value. |
 | Ones Tensor | `ones_tensor` | Creates a tensor filled with ones. |
 | Pad | `pad` | Adds zeros to the end of a tensor. |
 | Permutation | `permutation` | Reorders tensor axes with a user-defined permutation. |
 | Python | `python` | Runs custom Python compute code. |
-| Range | `range` | Scales input to a specified range. |
+| Range | `range` | Normalizes input using an affine range mapping. |
 | Remove Indices | `remove_indices` | Removes entries by index. |
 | Reshape | `reshape` | Changes the shape of a tensor. |
-| Signal Axes | `signal_axes` | Assigns batch, channel, and sample roles to tensor dimensions. |
+| Signal Axes | `signal_axes` | Assigns signal roles to tensor dimensions. |
 | Slice | `slice` | Extracts a subset of a tensor. |
 | Squeeze Dims | `squeeze_dims` | Removes a dimension of size 1 at a specified axis. |
 | Throttle | `throttle` | Limits data flow rate by introducing time delays. |
@@ -44,7 +44,7 @@ The signal processing chain: transforms, filters, demodulators, and generators.
 | Block | Type | Summary |
 |---|---|---|
 | ADS-B Decoder | `adsb` | Decodes ADS-B Mode S frames and maps aircraft positions. |
-| AGC | `agc` | Automatic Gain Control. |
+| AGC | `agc` | Normalizes a signal to a target RMS level. |
 | AM Demodulator | `am` | Demodulates an amplitude modulated signal. |
 | Amplitude | `amplitude` | Calculates the amplitude of a signal in decibels. |
 | Decimator | `decimator` | Decimates a signal along its sample axis. |
@@ -54,11 +54,12 @@ The signal processing chain: transforms, filters, demodulators, and generators.
 | Filter Engine | `filter_engine` | Filters a signal using FIR filter coefficients. |
 | Filter Taps | `filter_taps` | Generates FIR bandpass filter coefficients. |
 | Fold | `fold` | Folds the input signal along its sample axis. |
-| Invert | `invert` | Time-domain modulation for FFT shift. |
+| Invert | `invert` | Shifts a signal so that the following FFT is centered. |
 | Overlap Add | `overlap_add` | Sums overlap with buffer for streaming convolution. |
+| Phase Correction | `phase_correction` | Applies a phase rotation to a complex signal. |
 | PSK Demodulator | `psk_demod` | Demodulates PSK signals with carrier and timing recovery. |
 | Rational Resampler | `rational_resampler` | Resamples a signal by a rational factor. |
-| RRC Filter | `rrc_filter` | Root raised cosine matched filter for PSK modulation. |
+| RRC Filter | `rrc_filter` | Applies a root raised cosine matched filter to a PSK signal. |
 | Signal Generator | `signal_generator` | Generates synthetic waveforms, noise, and chirps. |
 | Spectrum Engine | `spectrum_engine` | Computes spectra with windowing, FFT, and optional scaling. |
 | Squelch | `squelch` | Passes input only when signal strength is above a threshold. |
@@ -70,10 +71,10 @@ Sources and sinks: hardware, files, audio, and the network.
 
 | Block | Type | Summary |
 |---|---|---|
-| Audio | `audio` | Audio playback device interface. |
+| Audio | `audio` | Plays audio through a sound device. |
 | File Reader | `file_reader` | Reads raw binary signal data from a file. |
 | File Writer | `file_writer` | Writes raw binary signal data to a file. |
-| Soapy SDR | `soapy` | Interface for SoapySDR devices. |
+| Soapy SDR | `soapy` | Receives samples from a SoapySDR radio. |
 | WebSocket | `websocket` | Receives data streams over WebSocket. |
 
 ## Visualization
@@ -83,10 +84,18 @@ Blocks that render a surface into their node.
 | Block | Type | Summary |
 |---|---|---|
 | Constellation | `constellation` | Displays a constellation scatter plot. |
-| Frame | `frame` | Displays a frame buffer on a surface. |
+| Frame | `frame` | Displays images and heat maps. |
 | Lineplot | `lineplot` | Displays data in a line plot visualization. |
 | Note | `note` | Displays formatted markdown text inside a node. |
 | Spectrogram | `spectrogram` | Displays a spectrogram of data. |
-| Spectrum Analyzer | `spectrum_analyzer` | Spectrum trace, waterfall, or 3D surface from complex samples. |
+| Spectrum Analyzer | `spectrum_analyzer` | Shows the spectrum of complex samples as a trace and a waterfall. |
 | Waterfall | `waterfall` | Shows frequency spectrum over time as a scrolling waterfall. |
-| 3D Waterfall | `waterfall_3d` | Shows spectrum history as a shaded surface inside an orbiting camera. |
+| 3D Waterfall | `waterfall_3d` | Displays spectrum history as a 3D surface. |
+
+## ML
+
+Model inference on signal tensors, available in builds with ONNX Runtime.
+
+| Block | Type | Summary |
+|---|---|---|
+| ONNX Inference | `onnx_inference` | Runs an ONNX model on input tensors. |
