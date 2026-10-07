@@ -29,6 +29,7 @@ core_test_domains = {
     ],
     'platform': [
         'platform/paths.cc',
+        'platform/secrets.cc',
         'platform/storage.cc',
         'platform/thread.cc',
     ],
