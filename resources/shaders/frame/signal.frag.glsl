@@ -123,7 +123,7 @@ void main() {
     if (uniforms.channels == 1) {
         float scalar = clamp((texel.r - uniforms.rangeMin) * uniforms.rangeScale, 0.0, 1.0);
         if (uniforms.useLut != 0) {
-            outColor = texture(sampler2D(lutTex, lutSam), vec2(scalar, 0.0));
+            outColor = textureLod(sampler2D(lutTex, lutSam), vec2(scalar, 0.0), 0.0);
         } else {
             outColor = vec4(vec3(scalar), 1.0);
         }
