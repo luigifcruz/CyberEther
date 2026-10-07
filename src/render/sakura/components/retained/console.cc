@@ -1,4 +1,5 @@
 #include <jetstream/render/sakura/components/retained/console.hh>
+#include "tools/text.hh"
 
 #include <jetstream/render/sakura/components/retained/box.hh>
 #include <jetstream/render/sakura/components/retained/canvas.hh>
@@ -19,19 +20,6 @@ namespace {
 
 constexpr F32 kReferenceFontSize = Typography::FontSize;
 constexpr F32 kOutputFontScale = 0.92f;
-
-std::string JoinLines(const std::vector<std::string>& lines) {
-    std::string value;
-    for (U64 i = 0; i < lines.size(); ++i) {
-        if (i > 0) {
-            value += '\n';
-        }
-        value += lines[i];
-    }
-    return value;
-}
-
-}  // namespace
 
 struct ConsoleRoot : public Component {
     Console::Config config;
@@ -81,7 +69,7 @@ struct ConsoleRoot : public Component {
 
         outputView.update({
             .id = config.id + ":output",
-            .value = JoinLines(config.output),
+            .value = Text::JoinLines(config.output),
             .fontSize = fontSizePixels,
             .fontScale = kOutputFontScale,
             .stickToBottom = true,
@@ -126,6 +114,8 @@ struct ConsoleRoot : public Component {
         return eventChildren(event);
     }
 };
+
+}  // namespace
 
 struct Console::Impl {
     Config config;

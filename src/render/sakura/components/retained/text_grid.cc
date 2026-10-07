@@ -10,7 +10,7 @@
 #include "../../state.hh"
 #include "../../retained/helpers.hh"
 #include "../../retained/text_grid_viewport.hh"
-#include "../../retained/text_lines.hh"
+#include "tools/text.hh"
 #include "../../retained/text_metrics.hh"
 
 #include <algorithm>
@@ -26,6 +26,9 @@
 #include <vector>
 
 namespace Jetstream::Sakura::Retained {
+
+using Jetstream::Text::SplitLines;
+using Jetstream::Text::JoinLines;
 
 namespace {
 
