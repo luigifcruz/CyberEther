@@ -14,7 +14,6 @@ struct Settings::Impl {
 
     static Impl& Instance();
     static Result ResolvePath(std::filesystem::path& path);
-    static std::filesystem::path ResolveTempPath(const std::filesystem::path& path);
     static Result LoadFile(const std::filesystem::path& path, Settings& settings);
     static Result SaveFile(const std::filesystem::path& path, const Settings& settings);
 
@@ -35,12 +34,6 @@ Result Settings::Impl::ResolvePath(std::filesystem::path& path) {
 
     path = Platform::PathFromUtf8(configPath) / Filename;
     return Result::SUCCESS;
-}
-
-std::filesystem::path Settings::Impl::ResolveTempPath(const std::filesystem::path& path) {
-    auto tempPath = path;
-    tempPath += ".tmp";
-    return tempPath;
 }
 
 Result Settings::Impl::LoadFile(const std::filesystem::path& path, Settings& settings) {
@@ -72,61 +65,13 @@ Result Settings::Impl::LoadFile(const std::filesystem::path& path, Settings& set
 }
 
 Result Settings::Impl::SaveFile(const std::filesystem::path& path, const Settings& settings) {
-    const auto parent = path.parent_path();
-    if (!parent.empty()) {
-        std::error_code ec;
-        std::filesystem::create_directories(parent, ec);
-        if (ec) {
-            JST_ERROR("[SETTINGS] Cannot create directory '{}'.", Platform::PathToUtf8(parent));
-            return Result::ERROR;
-        }
-    }
-
     Parser::Map data;
     JST_CHECK(settings.serialize(data));
 
     std::string yaml;
     JST_CHECK(Parser::YamlEncode(data, yaml));
 
-    const auto tempPath = ResolveTempPath(path);
-
-    std::ofstream file(tempPath, std::ios::out | std::ios::binary | std::ios::trunc);
-    if (!file) {
-        JST_ERROR("[SETTINGS] Can't open temporary settings file '{}'.", Platform::PathToUtf8(tempPath));
-        return Result::ERROR;
-    }
-
-    file.write(yaml.data(), static_cast<std::streamsize>(yaml.size()));
-    if (!file) {
-        file.close();
-
-        std::error_code cleanupEc;
-        (void)std::filesystem::remove(tempPath, cleanupEc);
-
-        JST_ERROR("[SETTINGS] Failed to write temporary settings file '{}'.", Platform::PathToUtf8(tempPath));
-        return Result::ERROR;
-    }
-
-    file.close();
-    if (!file) {
-        std::error_code cleanupEc;
-        (void)std::filesystem::remove(tempPath, cleanupEc);
-
-        JST_ERROR("[SETTINGS] Failed to finalize temporary settings file '{}'.", Platform::PathToUtf8(tempPath));
-        return Result::ERROR;
-    }
-
-    std::error_code ec;
-    std::filesystem::rename(tempPath, path, ec);
-    if (ec) {
-        std::error_code cleanupEc;
-        (void)std::filesystem::remove(tempPath, cleanupEc);
-
-        JST_ERROR("[SETTINGS] Failed to replace settings file '{}'.", Platform::PathToUtf8(path));
-        return Result::ERROR;
-    }
-
-    return Result::SUCCESS;
+    return Platform::WriteFileAtomic(Platform::PathToUtf8(path), yaml);
 }
 
 Result Settings::Get(Settings& settings) {
