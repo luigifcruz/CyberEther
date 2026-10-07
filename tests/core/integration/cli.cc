@@ -20,6 +20,7 @@
 #include <unistd.h>
 #endif
 
+#include "environment.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/config.hh"
 #include "jetstream/logger.hh"
@@ -109,73 +110,21 @@ class StreamCapture {
     bool finished_ = false;
 };
 
-#if defined(_WIN32)
-class EnvironmentGuard {
- public:
-    explicit EnvironmentGuard(const wchar_t* name) : name_(name) {
-        if (const wchar_t* value = _wgetenv(name)) {
-            previous_ = value;
-        }
-    }
-
-    ~EnvironmentGuard() {
-        (void)_wputenv_s(name_.c_str(), previous_ ? previous_->c_str() : L"");
-    }
-
-    bool set(const std::wstring& value) const {
-        return _wputenv_s(name_.c_str(), value.c_str()) == 0;
-    }
-
- private:
-    std::wstring name_;
-    std::optional<std::wstring> previous_;
-};
-
-std::optional<std::wstring> EnvironmentValue(const wchar_t* name) {
-    if (const wchar_t* value = _wgetenv(name)) {
-        return value;
-    }
-    return std::nullopt;
-}
-#else
-class EnvironmentGuard {
- public:
-    explicit EnvironmentGuard(const char* name) : name_(name) {
-        if (const char* value = std::getenv(name)) {
-            previous_ = value;
-        }
-    }
-
-    ~EnvironmentGuard() {
-        if (previous_) {
-            (void)setenv(name_.c_str(), previous_->c_str(), 1);
-        } else {
-            (void)unsetenv(name_.c_str());
-        }
-    }
-
-    bool set(const std::string& value) const {
-        return setenv(name_.c_str(), value.c_str(), 1) == 0;
-    }
-
- private:
-    std::string name_;
-    std::optional<std::string> previous_;
-};
+using EnvironmentGuard = TestSupport::ScopedEnvironment;
 
 std::optional<std::string> EnvironmentValue(const char* name) {
-    if (const char* value = std::getenv(name)) {
-        return value;
+    std::string value;
+    if (Jetstream::Platform::EnvironmentVariable(name, value) != Jetstream::Result::SUCCESS) {
+        return std::nullopt;
     }
-    return std::nullopt;
+    return value;
 }
-#endif
 
 class SettingsSandbox {
  public:
     SettingsSandbox()
 #if defined(_WIN32)
-        : appData_(L"APPDATA")
+        : appData_("APPDATA")
 #elif defined(__APPLE__)
         : fixedHome_("CFFIXED_USER_HOME")
 #else
@@ -209,12 +158,13 @@ class SettingsSandbox {
 
  private:
     bool ConfigureEnvironment(const std::filesystem::path& root) {
+        const auto path = Jetstream::Platform::PathToUtf8(root);
 #if defined(_WIN32)
-        return appData_.set(root.wstring());
+        return appData_.set(path);
 #elif defined(__APPLE__)
-        return fixedHome_.set(root.string());
+        return fixedHome_.set(path);
 #else
-        return home_.set(root.string()) && xdgConfigHome_.set(root.string());
+        return home_.set(path) && xdgConfigHome_.set(path);
 #endif
     }
 
@@ -864,13 +814,12 @@ TEST_CASE("CLI reports invalid retained remote settings before backend startup",
 TEST_CASE("CLI settings sandbox restores environment variables",
           "[core][integration][cli]") {
 #if defined(_WIN32)
-    const auto appData = EnvironmentValue(L"APPDATA");
+    const auto appData = EnvironmentValue("APPDATA");
     {
         SettingsSandbox nested;
-        CHECK(EnvironmentValue(L"APPDATA") ==
-              std::optional<std::wstring>(nested.root().wstring()));
+        CHECK(EnvironmentValue("APPDATA") == std::optional<std::string>(Jetstream::Platform::PathToUtf8(nested.root())));
     }
-    CHECK(EnvironmentValue(L"APPDATA") == appData);
+    CHECK(EnvironmentValue("APPDATA") == appData);
 #elif defined(__APPLE__)
     const auto fixedHome = EnvironmentValue("CFFIXED_USER_HOME");
     {

@@ -19,6 +19,7 @@
 #include <unordered_set>
 #include <utility>
 
+#include "environment.hh"
 #include "jetstream/backend/base.hh"
 #include "jetstream/detail/module_impl.hh"
 #include "jetstream/domains/core/python/block.hh"
@@ -67,71 +68,21 @@ class PythonTempDirectory {
     std::filesystem::path root;
 };
 
-#if defined(_WIN32)
-class PythonEnvironmentGuard {
- public:
-    explicit PythonEnvironmentGuard(const wchar_t* name) : name_(name) {
-        if (const wchar_t* value = _wgetenv(name)) {
-            previous_ = value;
-        }
-    }
-
-    ~PythonEnvironmentGuard() {
-        (void)_wputenv_s(name_.c_str(), previous_ ? previous_->c_str() : L"");
-    }
-
-    bool set(const std::wstring& value) const {
-        return _wputenv_s(name_.c_str(), value.c_str()) == 0;
-    }
-
- private:
-    std::wstring name_;
-    std::optional<std::wstring> previous_;
-};
-#else
-class PythonEnvironmentGuard {
- public:
-    explicit PythonEnvironmentGuard(const char* name) : name_(name) {
-        if (const char* value = std::getenv(name)) {
-            previous_ = value;
-        }
-    }
-
-    ~PythonEnvironmentGuard() {
-        if (previous_) {
-            (void)setenv(name_.c_str(), previous_->c_str(), 1);
-        } else {
-            (void)unsetenv(name_.c_str());
-        }
-    }
-
-    bool set(const std::string& value) const {
-        return setenv(name_.c_str(), value.c_str(), 1) == 0;
-    }
-
- private:
-    std::string name_;
-    std::optional<std::string> previous_;
-};
-#endif
+using PythonEnvironmentGuard = TestSupport::ScopedEnvironment;
 
 class PythonCacheSandbox {
  public:
     PythonCacheSandbox()
         : directory_("cache"),
 #if defined(_WIN32)
-          environment_(L"LOCALAPPDATA"), noIndex_(L"PIP_NO_INDEX")
+          environment_("LOCALAPPDATA"), noIndex_("PIP_NO_INDEX")
 #elif defined(__APPLE__)
           environment_("CFFIXED_USER_HOME"), noIndex_("PIP_NO_INDEX")
 #else
           environment_("XDG_CACHE_HOME"), noIndex_("PIP_NO_INDEX")
 #endif
     {
-#if defined(_WIN32)
-        const bool configured = environment_.set(directory_.root.wstring()) && noIndex_.set(L"1");
-#else
-        const bool configured = environment_.set(directory_.root.string()) && noIndex_.set("1");
-#endif
+        const bool configured = environment_.set(Platform::PathToUtf8(directory_.root)) && noIndex_.set("1");
         if (!configured) {
             throw std::runtime_error("failed to configure Python cache sandbox");
         }

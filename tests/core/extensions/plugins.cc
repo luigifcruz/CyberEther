@@ -19,6 +19,7 @@
 
 #include <zlib.h>
 
+#include "environment.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/platform.hh"
 #include "jetstream/plugin.hh"
@@ -63,71 +64,21 @@ class TempDirectory {
     std::filesystem::path root;
 };
 
-#if defined(_WIN32)
-class EnvironmentGuard {
- public:
-    explicit EnvironmentGuard(const wchar_t* name) : name_(name) {
-        if (const wchar_t* value = _wgetenv(name)) {
-            previous_ = value;
-        }
-    }
-
-    ~EnvironmentGuard() {
-        (void)_wputenv_s(name_.c_str(), previous_ ? previous_->c_str() : L"");
-    }
-
-    bool set(const std::wstring& value) const {
-        return _wputenv_s(name_.c_str(), value.c_str()) == 0;
-    }
-
- private:
-    std::wstring name_;
-    std::optional<std::wstring> previous_;
-};
-#else
-class EnvironmentGuard {
- public:
-    explicit EnvironmentGuard(const char* name) : name_(name) {
-        if (const char* value = std::getenv(name)) {
-            previous_ = value;
-        }
-    }
-
-    ~EnvironmentGuard() {
-        if (previous_) {
-            (void)setenv(name_.c_str(), previous_->c_str(), 1);
-        } else {
-            (void)unsetenv(name_.c_str());
-        }
-    }
-
-    bool set(const std::string& value) const {
-        return setenv(name_.c_str(), value.c_str(), 1) == 0;
-    }
-
- private:
-    std::string name_;
-    std::optional<std::string> previous_;
-};
-#endif
+using EnvironmentGuard = TestSupport::ScopedEnvironment;
 
 class PluginCacheSandbox {
  public:
     PluginCacheSandbox()
         : directory_("cache"),
 #if defined(_WIN32)
-          environment_(L"LOCALAPPDATA")
+          environment_("LOCALAPPDATA")
 #elif defined(__APPLE__)
           environment_("CFFIXED_USER_HOME")
 #else
           environment_("XDG_CACHE_HOME")
 #endif
     {
-#if defined(_WIN32)
-        const bool configured = environment_.set(directory_.root.wstring());
-#else
-        const bool configured = environment_.set(directory_.root.string());
-#endif
+        const bool configured = environment_.set(Platform::PathToUtf8(directory_.root));
         if (!configured) {
             throw std::runtime_error("failed to configure plugin cache sandbox");
         }
