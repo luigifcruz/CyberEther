@@ -14,7 +14,9 @@ struct DynamicTensorImport : public Block::Config {
     JST_BLOCK_DESCRIPTION(
         "Dynamic Tensor Import",
         "Dynamically imports an external tensor.",
-        ""
+        "Imports an external tensor buffer into the flowgraph for processing. "
+        "Used internally by Superluminal to bridge user-provided data buffers "
+        "into the signal processing pipeline."
     );
 };
 
