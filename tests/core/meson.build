@@ -66,6 +66,7 @@ core_test_domains = {
         'serialization/conversions.cc',
         'serialization/serdes.cc',
         'serialization/hash.cc',
+        'serialization/json.cc',
         'serialization/yaml.cc',
     ],
     'settings': ['settings/settings.cc'],
