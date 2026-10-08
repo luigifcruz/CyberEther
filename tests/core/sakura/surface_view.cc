@@ -4,6 +4,7 @@
 
 #include <jetstream/render/sakura/components/surface_view.hh>
 #include <jetstream/render/sakura/surface.hh>
+#include <jetstream/render/tools/imgui_blend_ext.h>
 
 #include "harness.hh"
 
@@ -63,6 +64,54 @@ TEST_CASE("SurfaceView visibility follows the displayed texture and draw clip",
         }
         REQUIRE(texture->visibleForPresentation(frame + 1));
     });
+}
+
+TEST_CASE("SurfaceView keeps rounded geometry with premultiplied edge coverage",
+          "[core][sakura][surface_view][premultiplied]") {
+    struct Geometry {
+        std::vector<ImDrawVert> vertices;
+        std::vector<ImDrawCallback> callbacks;
+    };
+    const ImDrawCallback blend = [](const ImDrawList*, const ImDrawCmd*) {};
+    ImGui::RegisterPremultipliedAlphaCallback(blend);
+    SakuraTest::HeadlessUi ui;
+    const auto draw = [&](const bool premultiplied) {
+        Geometry geometry;
+        Sakura::SurfaceView surface;
+        surface.update({.id = "rounded", .texture = 1, .size = {200, 100}, .rounding = 12.0f,
+                        .premultiplied = premultiplied});
+        ui.frame([&] {
+            auto* list = ImGui::GetWindowDrawList();
+            const int vertices = list->VtxBuffer.Size;
+            const int commands = list->CmdBuffer.Size;
+            ImGui::SetCursorScreenPos({20.0f, 20.0f});
+            surface.render(ui.sakura());
+            geometry.vertices.assign(list->VtxBuffer.begin() + vertices, list->VtxBuffer.end());
+            for (int i = std::max(commands - 1, 0); i < list->CmdBuffer.Size; ++i) {
+                if (list->CmdBuffer[i].UserCallback) geometry.callbacks.push_back(list->CmdBuffer[i].UserCallback);
+            }
+        });
+        return geometry;
+    };
+    const auto straight = draw(false);
+    const auto premultiplied = draw(true);
+    ImGui::UnregisterPremultipliedAlphaCallback(blend);
+
+    REQUIRE(straight.callbacks.empty());
+    REQUIRE(premultiplied.callbacks == std::vector<ImDrawCallback>{blend, ImDrawCallback_ResetRenderState});
+    REQUIRE(premultiplied.vertices.size() > 4);
+    REQUIRE(premultiplied.vertices.size() == straight.vertices.size());
+    bool fringe = false;
+    for (std::size_t i = 0; i < premultiplied.vertices.size(); ++i) {
+        const auto& vertex = premultiplied.vertices[i];
+        REQUIRE(vertex.pos.x == straight.vertices[i].pos.x);
+        REQUIRE(vertex.pos.y == straight.vertices[i].pos.y);
+        const ImU32 alpha = (vertex.col >> IM_COL32_A_SHIFT) & 0xFF;
+        REQUIRE(alpha == ((straight.vertices[i].col >> IM_COL32_A_SHIFT) & 0xFF));
+        REQUIRE(vertex.col == IM_COL32(alpha, alpha, alpha, alpha));
+        fringe |= alpha == 0;
+    }
+    REQUIRE(fringe);
 }
 
 TEST_CASE("Surface visibility accounts for finalized texture consumers",

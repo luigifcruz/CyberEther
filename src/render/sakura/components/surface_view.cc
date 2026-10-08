@@ -3,6 +3,8 @@
 #include "../helpers.hh"
 #include "../../surface_input.hh"
 
+#include "jetstream/render/tools/imgui_blend_ext.h"
+
 #include <cmath>
 #include <optional>
 
@@ -34,6 +36,18 @@ Extent2D<F32> ResolveSurfaceLogicalDrawSize(const SurfaceView::Config& config,
     }
 
     return size;
+}
+
+void PremultiplyVertexColors(ImDrawList* drawList, const int vtxStart) {
+    for (int i = vtxStart; i < drawList->VtxBuffer.Size; ++i) {
+        ImU32& col = drawList->VtxBuffer[i].col;
+        const ImU32 alpha = (col >> IM_COL32_A_SHIFT) & 0xFF;
+        const auto scale = [&](const int shift) {
+            return ((((col >> shift) & 0xFF) * alpha + 127) / 255) << shift;
+        };
+        col = scale(IM_COL32_R_SHIFT) | scale(IM_COL32_G_SHIFT) | scale(IM_COL32_B_SHIFT) |
+              (alpha << IM_COL32_A_SHIFT);
+    }
 }
 
 }  // namespace
@@ -122,14 +136,25 @@ void SurfaceView::render(const Context& ctx) const {
     if (config.textureSource && config.textureSource->raw() == texture) {
         config.textureSource->presentationHint(frame, visible);
     }
-    const F32 rounding = config.rounding <= 0.0f ? ImGui::GetStyle().FrameRounding : config.rounding;
-    if (visible) drawList->AddImageRounded(textureRef,
-                                                cursorPos,
-                                                cursorEnd,
-                                                ImVec2(0.0f, 0.0f),
-                                                ImVec2(1.0f, 1.0f),
-                                                IM_COL32_WHITE,
-                                                rounding);
+    if (visible) {
+        const bool premultiplied = config.premultiplied && ImGui::PremultipliedAlphaCallback;
+        const F32 rounding = config.rounding <= 0.0f ? ImGui::GetStyle().FrameRounding : config.rounding;
+        if (premultiplied) {
+            drawList->AddCallback(ImGui::PremultipliedAlphaCallback, nullptr);
+        }
+        const int vtxStart = drawList->VtxBuffer.Size;
+        drawList->AddImageRounded(textureRef,
+                                  cursorPos,
+                                  cursorEnd,
+                                  ImVec2(0.0f, 0.0f),
+                                  ImVec2(1.0f, 1.0f),
+                                  IM_COL32_WHITE,
+                                  rounding);
+        if (premultiplied) {
+            PremultiplyVertexColors(drawList, vtxStart);
+            drawList->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+        }
+    }
 
     if (config.onInput) {
         ImGui::InvisibleButton(config.id.c_str(), surfaceSize,
