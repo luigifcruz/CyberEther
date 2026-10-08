@@ -1,5 +1,6 @@
 src_lst += files([
     'circular_buffer.cc',
+    'json.cc',
 ])
 
 if cfg_lst.get('JETSTREAM_LOADER_MINIAUDIO_AVAILABLE', false)

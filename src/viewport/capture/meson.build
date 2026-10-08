@@ -7,7 +7,6 @@ endif
 instance_remote_deps = [
     'JETSTREAM_LOADER_GSTREAMER_AVAILABLE',
     'JETSTREAM_LOADER_CPPHTTPLIB_AVAILABLE',
-    'JETSTREAM_LOADER_JSON_AVAILABLE',
 ]
 
 instance_remote_deps_found = true
