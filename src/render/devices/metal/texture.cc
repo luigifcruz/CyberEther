@@ -1,5 +1,7 @@
 #include "jetstream/render/devices/metal/texture.hh"
 
+#include <cstring>
+
 namespace Jetstream::Render {
 
 using Implementation = TextureImp<DeviceType::Metal>;
@@ -64,6 +66,46 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
+Result Implementation::underlyingDump(uint8_t* output) const {
+    if (!texture) {
+        JST_ERROR("[METAL] Can't dump uninitialized texture.");
+        return Result::ERROR;
+    }
+
+    auto pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+    auto device = Backend::State<DeviceType::Metal>()->getDevice();
+    const U64 rowByteSize = config.size.x * pixelByteSize();
+    const U64 bufferByteSize = rowByteSize * config.size.y;
+
+    auto buffer = NS::TransferPtr(device->newBuffer(bufferByteSize, MTL::ResourceStorageModeShared));
+    JST_ASSERT(buffer, "[METAL] Failed to create texture dump buffer.");
+
+    auto commandQueue = NS::TransferPtr(device->newCommandQueue());
+    JST_ASSERT(commandQueue, "[METAL] Failed to create texture dump command queue.");
+
+    auto commandBuffer = commandQueue->commandBuffer();
+    JST_ASSERT(commandBuffer, "[METAL] Failed to create texture dump command buffer.");
+
+    auto blitEncoder = commandBuffer->blitCommandEncoder();
+    JST_ASSERT(blitEncoder, "[METAL] Failed to create texture dump blit encoder.");
+
+    blitEncoder->copyFromTexture(texture, 0, 0,
+                                 MTL::Origin(0, 0, 0),
+                                 MTL::Size(config.size.x, config.size.y, 1),
+                                 buffer.get(), 0, rowByteSize, bufferByteSize);
+    blitEncoder->endEncoding();
+    commandBuffer->commit();
+    commandBuffer->waitUntilCompleted();
+
+    JST_ASSERT(commandBuffer->status() == MTL::CommandBufferStatusCompleted,
+               "[METAL] Texture dump command buffer did not complete.");
+
+    std::memcpy(output, buffer->contents(), bufferByteSize);
+
+    return Result::SUCCESS;
+}
+
 MTL::PixelFormat Implementation::ConvertPixelFormat(const PixelFormat& pfmt,
                                                     const PixelType& ptype) {
     if (pfmt == PixelFormat::RED && ptype == PixelType::F32) {
@@ -84,22 +126,6 @@ MTL::PixelFormat Implementation::ConvertPixelFormat(const PixelFormat& pfmt,
 
     JST_FATAL("Can't convert pixel format.");
     throw Result::FATAL;
-}
-
-U64 Implementation::GetPixelByteSize(const MTL::PixelFormat& pfmt) {
-    switch (pfmt) {
-        case MTL::PixelFormatR32Float:
-            return 4;
-        case MTL::PixelFormatR8Unorm:
-            return 1;
-        case MTL::PixelFormatRGBA32Float:
-            return 16;
-        case MTL::PixelFormatRGBA8Unorm:
-            return 4;
-        default:
-            JST_FATAL("Pixel format not implemented yet.");
-            throw Result::FATAL;
-    }
 }
 
 }  // namespace Jetstream::Render

@@ -1,6 +1,9 @@
 #include "jetstream/render/devices/vulkan/texture.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 
+#include <cstring>
+#include <limits>
+
 namespace Jetstream::Render {
 
 using Implementation = TextureImp<DeviceType::Vulkan>;
@@ -230,6 +233,90 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
+Result Implementation::underlyingDump(uint8_t* output) const {
+    if (texture == VK_NULL_HANDLE) {
+        JST_ERROR("[VULKAN] Can't dump uninitialized texture.");
+        return Result::ERROR;
+    }
+
+    if (layout == VK_IMAGE_LAYOUT_UNDEFINED) {
+        JST_ERROR("[VULKAN] Can't dump a texture with undefined contents.");
+        return Result::ERROR;
+    }
+
+    if (config.size.x > std::numeric_limits<U32>::max() ||
+        config.size.y > std::numeric_limits<U32>::max()) {
+        JST_ERROR("[VULKAN] Invalid texture dimensions for dump.");
+        return Result::ERROR;
+    }
+
+    auto& backend = Backend::State<DeviceType::Vulkan>();
+    auto& device = backend->getDevice();
+    const U64 bufferByteSize = config.size.x * config.size.y * pixelByteSize();
+
+    Backend::HostVisibleBuffer readback;
+    JST_CHECK(Backend::CreateHostVisibleBuffer(device, backend->getPhysicalDevice(), bufferByteSize,
+                                               VK_BUFFER_USAGE_TRANSFER_DST_BIT, readback));
+
+    const Result result = Backend::SubmitOnce(device, backend->getPhysicalDevice(), backend->getGraphicsQueue(),
+                                              [&](VkCommandBuffer& cmd) {
+        constexpr VkPipelineStageFlags sourceStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        constexpr VkAccessFlags sourceAccess = VK_ACCESS_MEMORY_READ_BIT |
+                                               VK_ACCESS_MEMORY_WRITE_BIT;
+        VkImageMemoryBarrier before{};
+        before.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        before.srcAccessMask = sourceAccess;
+        before.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        before.oldLayout = layout;
+        before.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        before.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        before.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        before.image = texture;
+        before.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        vkCmdPipelineBarrier(cmd, sourceStage, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             0, 0, nullptr, 0, nullptr, 1, &before);
+
+        VkBufferImageCopy region{};
+        region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        region.imageExtent = {
+            static_cast<U32>(config.size.x),
+            static_cast<U32>(config.size.y),
+            1,
+        };
+        vkCmdCopyImageToBuffer(cmd, texture,
+                               VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                               readback.buffer, 1, &region);
+
+        VkBufferMemoryBarrier hostRead{};
+        hostRead.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        hostRead.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        hostRead.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+        hostRead.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        hostRead.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        hostRead.buffer = readback.buffer;
+        hostRead.offset = 0;
+        hostRead.size = VK_WHOLE_SIZE;
+
+        VkImageMemoryBarrier after = before;
+        after.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        after.dstAccessMask = sourceAccess;
+        after.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        after.newLayout = layout;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             sourceStage | VK_PIPELINE_STAGE_HOST_BIT,
+                             0, 0, nullptr, 1, &hostRead, 1, &after);
+        return Result::SUCCESS;
+    });
+    if (result == Result::SUCCESS) {
+        std::memcpy(output, readback.mapped, bufferByteSize);
+    } else {
+        JST_ERROR("[VULKAN] Failed to read back texture.");
+    }
+    Backend::DestroyHostVisibleBuffer(device, readback);
+
+    return result;
+}
+
 VkFormat Implementation::ConvertPixelFormat(const PixelFormat& pfmt,
                                             const PixelType& ptype) {
     if (pfmt == PixelFormat::RED && ptype == PixelType::F32) {
@@ -250,23 +337,6 @@ VkFormat Implementation::ConvertPixelFormat(const PixelFormat& pfmt,
 
     JST_ERROR("[VULKAN] Can't convert pixel format.");
     return VK_FORMAT_UNDEFINED;
-}
-
-U64 Implementation::GetPixelByteSize(const VkFormat& pfmt) {
-    switch (pfmt) {
-        case VK_FORMAT_R32_SFLOAT:
-            return 4;
-        case VK_FORMAT_R8_UNORM:
-            return 1;
-        case VK_FORMAT_R32G32B32A32_SFLOAT:
-            return 16;
-        case VK_FORMAT_R8G8B8A8_UNORM:
-            return 4;
-        default:
-            JST_FATAL("[VULKAN] Pixel format not implemented yet.");
-            JST_CHECK_THROW(Result::FATAL);
-            return 0;
-    }
 }
 
 }  // namespace Jetstream::Render

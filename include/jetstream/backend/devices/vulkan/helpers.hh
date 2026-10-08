@@ -215,10 +215,118 @@ inline Result ExecuteOnce(VkDevice& device,
         JST_ERROR("[VULKAN] Can't submit one time queue.");
     });
 
-    vkWaitForFences(device, 1, &fence, true, UINT64_MAX);
+    JST_VK_CHECK(vkWaitForFences(device, 1, &fence, true, UINT64_MAX), [&]{
+        JST_ERROR("[VULKAN] Can't wait for one time queue.");
+    });
     vkResetFences(device, 1, &fence);
     vkResetCommandBuffer(commandBuffer, 0);
 
+    return Result::SUCCESS;
+}
+
+inline Result SubmitOnce(VkDevice device,
+                         VkPhysicalDevice physicalDevice,
+                         VkQueue queue,
+                         const std::function<Result(VkCommandBuffer&)>& func) {
+    struct Scope {
+        VkDevice device;
+        VkCommandPool pool = VK_NULL_HANDLE;
+        VkFence fence = VK_NULL_HANDLE;
+
+        ~Scope() {
+            if (fence != VK_NULL_HANDLE) vkDestroyFence(device, fence, nullptr);
+            if (pool != VK_NULL_HANDLE) vkDestroyCommandPool(device, pool, nullptr);
+        }
+    } scope{device};
+
+    VkCommandPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    poolInfo.queueFamilyIndex = FindQueueFamilies(physicalDevice).graphicFamily.value();
+    poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT |
+                     VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    JST_VK_CHECK(vkCreateCommandPool(device, &poolInfo, nullptr, &scope.pool), [&]{
+        JST_ERROR("[VULKAN] Failed to create one time command pool.");
+    });
+
+    VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+    VkCommandBufferAllocateInfo commandInfo{};
+    commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    commandInfo.commandPool = scope.pool;
+    commandInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    commandInfo.commandBufferCount = 1;
+    JST_VK_CHECK(vkAllocateCommandBuffers(device, &commandInfo, &commandBuffer), [&]{
+        JST_ERROR("[VULKAN] Failed to allocate one time command buffer.");
+    });
+
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    JST_VK_CHECK(vkCreateFence(device, &fenceInfo, nullptr, &scope.fence), [&]{
+        JST_ERROR("[VULKAN] Failed to create one time fence.");
+    });
+
+    return ExecuteOnce(device, queue, scope.fence, commandBuffer, func);
+}
+
+struct HostVisibleBuffer {
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    U8* mapped = nullptr;
+};
+
+inline void DestroyHostVisibleBuffer(VkDevice device, HostVisibleBuffer& buffer) {
+    if (buffer.mapped) vkUnmapMemory(device, buffer.memory);
+    if (buffer.buffer != VK_NULL_HANDLE) vkDestroyBuffer(device, buffer.buffer, nullptr);
+    if (buffer.memory != VK_NULL_HANDLE) vkFreeMemory(device, buffer.memory, nullptr);
+    buffer = {};
+}
+
+inline Result CreateHostVisibleBuffer(VkDevice device,
+                                      VkPhysicalDevice physicalDevice,
+                                      const U64& size,
+                                      const VkBufferUsageFlags& usage,
+                                      HostVisibleBuffer& buffer) {
+    HostVisibleBuffer created;
+    const auto release = [&]{
+        DestroyHostVisibleBuffer(device, created);
+    };
+
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = size;
+    bufferInfo.usage = usage;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    JST_VK_CHECK(vkCreateBuffer(device, &bufferInfo, nullptr, &created.buffer), [&]{
+        release();
+        JST_ERROR("[VULKAN] Failed to create a {} byte host-visible buffer.", size);
+    });
+
+    VkMemoryRequirements requirements;
+    vkGetBufferMemoryRequirements(device, created.buffer, &requirements);
+
+    VkMemoryAllocateInfo allocation{};
+    allocation.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocation.allocationSize = requirements.size;
+    allocation.memoryTypeIndex = FindMemoryType(
+        physicalDevice, requirements.memoryTypeBits,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    JST_VK_CHECK(vkAllocateMemory(device, &allocation, nullptr, &created.memory), [&]{
+        release();
+        JST_ERROR("[VULKAN] Failed to allocate host-visible buffer memory.");
+    });
+
+    JST_VK_CHECK(vkBindBufferMemory(device, created.buffer, created.memory, 0), [&]{
+        release();
+        JST_ERROR("[VULKAN] Failed to bind host-visible buffer memory.");
+    });
+
+    void* mapped = nullptr;
+    JST_VK_CHECK(vkMapMemory(device, created.memory, 0, VK_WHOLE_SIZE, 0, &mapped), [&]{
+        release();
+        JST_ERROR("[VULKAN] Failed to map host-visible buffer memory.");
+    });
+    created.mapped = static_cast<U8*>(mapped);
+
+    buffer = created;
     return Result::SUCCESS;
 }
 

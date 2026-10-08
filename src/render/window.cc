@@ -381,6 +381,35 @@ Result Window::synchronize() {
     return underlyingSynchronize();
 }
 
+Result Window::capture(const std::shared_ptr<const Texture>& texture,
+                       Extent2D<U64>& size, std::vector<U8>& pixels) {
+    size = {};
+    pixels.clear();
+    if (!supportsCapture()) {
+        JST_ERROR("[WINDOW] Texture capture is not supported by this backend.");
+        return Result::ERROR;
+    }
+    {
+        std::lock_guard<std::mutex> stateLock(attachmentStateMutex);
+        if (graphicalLoopThreadId == std::this_thread::get_id() && frameActive) {
+            JST_ERROR("[WINDOW] Cannot capture a texture during an active frame.");
+            return Result::ERROR;
+        }
+    }
+    std::lock_guard<std::mutex> frameLock(newFrameQueueMutex);
+    {
+        std::lock_guard<std::mutex> stateLock(attachmentStateMutex);
+        if (!texture || texture->owner.load(std::memory_order_acquire) != this ||
+            !resourceLeases.contains(texture.get())) {
+            return Result::ERROR;
+        }
+    }
+
+    size = texture->size();
+    JST_CHECK(underlyingSynchronize());
+    return texture->dump(pixels);
+}
+
 void Window::abortImguiFrame() {
     ImGuiContext* context = ImGui::GetCurrentContext();
     if (context && context->WithinFrameScope) {

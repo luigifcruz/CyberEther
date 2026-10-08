@@ -15,6 +15,9 @@ class JETSTREAM_API WindowImp<DeviceType::Metal> : public Window {
     explicit WindowImp(const Config& config,
                        const std::shared_ptr<Viewport::Adapter<DeviceType::Metal>>& viewport);
 
+    bool supportsCapture() const override {
+        return true;
+    }
     const Stats& stats() const override;
     std::string info() const override;
 
