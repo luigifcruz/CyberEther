@@ -67,6 +67,11 @@ class JETSTREAM_API Window {
     }
     const ColorRGBA<F32>& frameClearColor() const { return frameBackground; }
 
+    Result capture(const std::shared_ptr<const Texture>& texture,
+                   Extent2D<U64>& size, std::vector<U8>& pixels);
+
+    virtual bool supportsCapture() const { return false; }
+
     virtual const Stats& stats() const = 0;
     virtual std::string info() const = 0;
 
