@@ -7,6 +7,7 @@
 #include "jetstream/platform.hh"
 #include "jetstream/viewport/adapters/generic.hh"
 #include "jetstream/render/tools/imgui_internal.h"
+#include "jetstream/render/tools/imgui_blend_ext.h"
 
 #include <algorithm>
 
@@ -262,7 +263,9 @@ void Window::prepareImgui() {
     if (data) {
         for (const auto* list : data->CmdLists) {
             for (const auto& command : list->CmdBuffer) {
-                frameCustomDraws |= command.UserCallback != nullptr;
+                const bool stateOnly = command.UserCallback == ImDrawCallback_ResetRenderState ||
+                                       command.UserCallback == ImGui::PremultipliedAlphaCallback;
+                frameCustomDraws |= command.UserCallback != nullptr && !stateOnly;
                 if (command.ElemCount > 0) {
                     frameSampledTextures.insert(command.TexRef.GetTexID());
                 }

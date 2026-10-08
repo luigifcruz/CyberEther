@@ -21,6 +21,7 @@ struct SurfaceView {
         Extent2D<F32> size = {0.0f, 0.0f};
         std::optional<F32> height;
         F32 rounding = 0.0f;
+        bool premultiplied = false;
         bool detachOverlay = false;
         std::function<U64()> onResolveTexture;
         std::function<SurfaceCursor()> onResolveCursor;

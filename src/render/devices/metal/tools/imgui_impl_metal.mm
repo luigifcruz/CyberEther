@@ -74,11 +74,19 @@
 @property (nonatomic, strong) id<MTLDepthStencilState>      depthStencilState;
 @property (nonatomic, strong) FramebufferDescriptor*        framebufferDescriptor; // framebuffer descriptor for current frame; transient
 @property (nonatomic, strong) NSMutableDictionary*          renderPipelineStateCache; // pipeline cache; keyed on framebuffer descriptors
+@property (nonatomic, strong) NSMutableDictionary*          premultipliedPipelineStateCache; // premultiplied-alpha pipeline cache; keyed on framebuffer descriptors
 @property (nonatomic, strong) NSMutableArray<MetalBuffer*>* bufferCache;
 @property (nonatomic, assign) double                        lastBufferCachePurge;
 - (MetalBuffer*)dequeueReusableBufferOfLength:(NSUInteger)length device:(id<MTLDevice>)device;
-- (id<MTLRenderPipelineState>)renderPipelineStateForFramebufferDescriptor:(FramebufferDescriptor*)descriptor device:(id<MTLDevice>)device;
+- (id<MTLRenderPipelineState>)renderPipelineStateForFramebufferDescriptor:(FramebufferDescriptor*)descriptor device:(id<MTLDevice>)device premultiplied:(BOOL)premultiplied;
+- (id<MTLRenderPipelineState>)cachedRenderPipelineStateForFramebufferDescriptor:(FramebufferDescriptor*)descriptor device:(id<MTLDevice>)device premultiplied:(BOOL)premultiplied;
 @end
+
+struct ImGui_ImplMetal_RenderState
+{
+    id<MTLRenderCommandEncoder> CommandEncoder;
+    id<MTLRenderPipelineState>  PipelinePremultiplied;
+};
 
 struct ImGui_ImplMetal_Data
 {
@@ -124,6 +132,14 @@ bool ImGui_ImplMetal_CreateDeviceObjects(MTL::Device* device)
 #endif // #ifdef IMGUI_IMPL_METAL_CPP
 
 #pragma mark - Dear ImGui Metal Backend API
+
+void ImGui_ImplMetal_PremultipliedAlphaCallback(const ImDrawList*, const ImDrawCmd*)
+{
+    ImGui_ImplMetal_RenderState* render_state = (ImGui_ImplMetal_RenderState*)ImGui::GetPlatformIO().Renderer_RenderState;
+    if (render_state == nullptr || render_state->PipelinePremultiplied == nil)
+        return;
+    [render_state->CommandEncoder setRenderPipelineState:render_state->PipelinePremultiplied];
+}
 
 bool ImGui_ImplMetal_Init(id<MTLDevice> device)
 {
@@ -235,15 +251,14 @@ void ImGui_ImplMetal_RenderDrawData(ImDrawData* draw_data, id<MTLCommandBuffer> 
 
     // Try to retrieve a render pipeline state that is compatible with the framebuffer config for this frame
     // The hit rate for this cache should be very near 100%.
-    id<MTLRenderPipelineState> renderPipelineState = ctx.renderPipelineStateCache[ctx.framebufferDescriptor];
-    if (renderPipelineState == nil)
-    {
-        // No luck; make a new render pipeline state
-        renderPipelineState = [ctx renderPipelineStateForFramebufferDescriptor:ctx.framebufferDescriptor device:commandBuffer.device];
+    id<MTLRenderPipelineState> renderPipelineState = [ctx cachedRenderPipelineStateForFramebufferDescriptor:ctx.framebufferDescriptor device:commandBuffer.device premultiplied:NO];
+    id<MTLRenderPipelineState> premultipliedPipelineState = [ctx cachedRenderPipelineStateForFramebufferDescriptor:ctx.framebufferDescriptor device:commandBuffer.device premultiplied:YES];
 
-        // Cache render pipeline state for later reuse
-        ctx.renderPipelineStateCache[ctx.framebufferDescriptor] = renderPipelineState;
-    }
+    ImGui_ImplMetal_RenderState render_state;
+    render_state.CommandEncoder = commandEncoder;
+    render_state.PipelinePremultiplied = premultipliedPipelineState;
+    ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
+    platform_io.Renderer_RenderState = &render_state;
 
     size_t vertexBufferLength = (size_t)draw_data->TotalVtxCount * sizeof(ImDrawVert);
     size_t indexBufferLength = (size_t)draw_data->TotalIdxCount * sizeof(ImDrawIdx);
@@ -318,6 +333,7 @@ void ImGui_ImplMetal_RenderDrawData(ImDrawData* draw_data, id<MTLCommandBuffer> 
         vertexBufferOffset += (size_t)draw_list->VtxBuffer.Size * sizeof(ImDrawVert);
         indexBufferOffset += (size_t)draw_list->IdxBuffer.Size * sizeof(ImDrawIdx);
     }
+    platform_io.Renderer_RenderState = nullptr;
 
     MetalContext* sharedMetalContext = bd->SharedMetalContext;
     [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer>)
@@ -423,6 +439,7 @@ void ImGui_ImplMetal_DestroyDeviceObjects()
             ImGui_ImplMetal_DestroyTexture(tex);
 
     [bd->SharedMetalContext.renderPipelineStateCache removeAllObjects];
+    [bd->SharedMetalContext.premultipliedPipelineStateCache removeAllObjects];
 }
 
 #pragma mark - MetalBuffer implementation
@@ -507,6 +524,7 @@ void ImGui_ImplMetal_DestroyDeviceObjects()
     if ((self = [super init]))
     {
         self.renderPipelineStateCache = [NSMutableDictionary dictionary];
+        self.premultipliedPipelineStateCache = [NSMutableDictionary dictionary];
         self.bufferCache = [NSMutableArray array];
         _lastBufferCachePurge = GetMachAbsoluteTimeInSeconds();
     }
@@ -549,8 +567,23 @@ void ImGui_ImplMetal_DestroyDeviceObjects()
     return [[MetalBuffer alloc] initWithBuffer:backing];
 }
 
+- (id<MTLRenderPipelineState>)cachedRenderPipelineStateForFramebufferDescriptor:(FramebufferDescriptor*)descriptor device:(id<MTLDevice>)device premultiplied:(BOOL)premultiplied
+{
+    NSMutableDictionary* cache = premultiplied ? self.premultipliedPipelineStateCache : self.renderPipelineStateCache;
+    id<MTLRenderPipelineState> renderPipelineState = cache[descriptor];
+    if (renderPipelineState == nil)
+    {
+        // No luck; make a new render pipeline state
+        renderPipelineState = [self renderPipelineStateForFramebufferDescriptor:descriptor device:device premultiplied:premultiplied];
+
+        // Cache render pipeline state for later reuse
+        cache[descriptor] = renderPipelineState;
+    }
+    return renderPipelineState;
+}
+
 // Bilinear sampling is required by default. Set 'io.Fonts->Flags |= ImFontAtlasFlags_NoBakedLines' or 'style.AntiAliasedLinesUseTex = false' to allow point/nearest sampling.
-- (id<MTLRenderPipelineState>)renderPipelineStateForFramebufferDescriptor:(FramebufferDescriptor*)descriptor device:(id<MTLDevice>)device
+- (id<MTLRenderPipelineState>)renderPipelineStateForFramebufferDescriptor:(FramebufferDescriptor*)descriptor device:(id<MTLDevice>)device premultiplied:(BOOL)premultiplied
 {
     NSError* error = nil;
 
@@ -628,7 +661,7 @@ void ImGui_ImplMetal_DestroyDeviceObjects()
     pipelineDescriptor.colorAttachments[0].pixelFormat = self.framebufferDescriptor.colorPixelFormat;
     pipelineDescriptor.colorAttachments[0].blendingEnabled = YES;
     pipelineDescriptor.colorAttachments[0].rgbBlendOperation = MTLBlendOperationAdd;
-    pipelineDescriptor.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+    pipelineDescriptor.colorAttachments[0].sourceRGBBlendFactor = premultiplied ? MTLBlendFactorOne : MTLBlendFactorSourceAlpha;
     pipelineDescriptor.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
     pipelineDescriptor.colorAttachments[0].alphaBlendOperation = MTLBlendOperationAdd;
     pipelineDescriptor.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
