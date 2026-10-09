@@ -89,6 +89,7 @@ struct BlockProbe {
     std::string failingChildInitialize;
     std::string failingChildPresentInitialize;
     std::string stagedDeserializeFailureValue;
+    std::function<Result()> reconfigureCallback;
 
     std::vector<std::string> events;
     std::vector<Block::State> hookStates;
@@ -321,6 +322,13 @@ struct SyntheticBlockImpl : Block::Impl {
     Result destroy() override {
         recordHook("block.destroy");
         return probe->destroyResult;
+    }
+
+    Result reconfigure() override {
+        recordHook("block.reconfigure:" + staged->value);
+        return probe->reconfigureCallback
+                   ? probe->reconfigureCallback()
+                   : Block::Impl::reconfigure();
     }
 
     std::string childStagedValue(const std::string& child);
@@ -1024,6 +1032,147 @@ TEST_CASE("Block config format updates preserve the declared interface",
     REQUIRE(std::any_cast<std::string>(interface->metrics().front().second.metric()) == "ready");
     REQUIRE(std::count(bundle.probe->events.begin(), bundle.probe->events.end(),
                        "block.define:initial") == 1);
+    REQUIRE(bundle.block->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Block reconfiguration refreshes formats from applied child state",
+          "[core][lifecycle][block][interface][reconfigure]") {
+    auto bundle = MakeBlock();
+    ScopedChildRegistration registration(bundle.probe);
+    SchedulerHarness scheduler;
+    REQUIRE(registration.result == Result::SUCCESS);
+    REQUIRE(scheduler.createResult == Result::SUCCESS);
+    bundle.probe->children = {"first", "second"};
+    bundle.probe->declareConfig = true;
+    bundle.probe->declareMetric = true;
+    bundle.probe->declareOutput = true;
+    bundle.probe->produceOutput = true;
+
+    size_t refreshCalls = 0;
+    Result refreshResult = Result::SUCCESS;
+    Result formatResult = Result::ERROR;
+    std::string blockValueAtRefresh;
+    std::vector<std::string> childValuesAtRefresh;
+    bundle.probe->reconfigureCallback = [&] {
+        ++refreshCalls;
+        blockValueAtRefresh = bundle.staged->value;
+        childValuesAtRefresh.clear();
+        Parser::Sequence options;
+        for (const auto& child : bundle.probe->children) {
+            const auto applied = bundle.impl->childStagedValue(child);
+            childValuesAtRefresh.push_back(applied);
+            options.emplace_back(Parser::Map{{"label", child}, {"value", applied}});
+        }
+        formatResult = bundle.impl->updateInterfaceConfigFormat("value", {
+            {"type", "dropdown"}, {"options", std::move(options)},
+        });
+        if (formatResult != Result::SUCCESS) {
+            return formatResult;
+        }
+        if (refreshResult == Result::ERROR) {
+            JST_ERROR("Synthetic interface refresh failed.");
+        }
+        return refreshResult;
+    };
+
+    REQUIRE(bundle.block->create("lifecycle-block", DeviceType::CPU, RuntimeType::NATIVE,
+                                 kLifecycleProvider, ConfigWithValue("before"), {},
+                                 MakeBlockContext(scheduler.scheduler)) == Result::SUCCESS);
+    REQUIRE(refreshCalls == 0);
+    const auto original = bundle.block->interface();
+    const auto originalFormat = original->configs().front().second.format;
+    REQUIRE(originalFormat == Parser::Map{{"type", "text"}});
+
+    SECTION("successful reconfiguration publishes freshly applied choices") {
+        REQUIRE(bundle.block->reconfigure(ConfigWithValue("after")) == Result::SUCCESS);
+        REQUIRE(refreshCalls == 1);
+        REQUIRE(bundle.block->interface() != original);
+        const auto& updated = bundle.block->interface();
+        REQUIRE(Parser::Get<std::vector<Parser::Map>>(updated->configs().front().second.format,
+                                                     "options") ==
+                std::vector<Parser::Map>{{{"label", "first"}, {"value", "after"}},
+                                        {{"label", "second"}, {"value", "after"}}});
+        REQUIRE(updated->configs().size() == 1);
+        REQUIRE(updated->outputs().size() == 1);
+        REQUIRE(updated->metrics().size() == 3);
+        REQUIRE(updated->configs().front().second.label == "Value");
+        REQUIRE(std::any_cast<std::string>(updated->metrics().front().second.metric()) == "ready");
+
+        REQUIRE(bundle.block->reconfigure(ConfigWithValue("after")) == Result::SUCCESS);
+        REQUIRE(refreshCalls == 1);
+    }
+
+    SECTION("rejected module validation skips refresh") {
+        bundle.probe->failingChildValidate = "second";
+        REQUIRE(bundle.block->reconfigure(ConfigWithValue("after")) == Result::RECREATE);
+        REQUIRE(refreshCalls == 0);
+        REQUIRE(bundle.block->interface() == original);
+    }
+
+    SECTION("partial module application skips refresh") {
+        bundle.probe->failingChildReconfigure = "second";
+        REQUIRE(bundle.block->reconfigure(ConfigWithValue("after")) == Result::ERROR);
+        REQUIRE(refreshCalls == 0);
+        REQUIRE(bundle.block->interface() == original);
+        REQUIRE(bundle.block->state() == Block::State::Errored);
+    }
+
+    SECTION("refresh failure preserves the active interface") {
+        refreshResult = Result::ERROR;
+        REQUIRE(bundle.block->reconfigure(ConfigWithValue("after")) == Result::ERROR);
+        REQUIRE(refreshCalls == 1);
+        REQUIRE(bundle.block->interface() == original);
+        REQUIRE(bundle.block->state() == Block::State::Errored);
+        REQUIRE(bundle.block->diagnostic().find("Synthetic interface refresh failed") != std::string::npos);
+    }
+
+    SECTION("reload refresh result is accepted") {
+        refreshResult = Result::RELOAD;
+        REQUIRE(bundle.block->reconfigure(ConfigWithValue("after")) == Result::SUCCESS);
+        REQUIRE(refreshCalls == 1);
+        REQUIRE(bundle.block->interface() != original);
+        REQUIRE(bundle.block->state() == Block::State::Created);
+    }
+
+    SECTION("block hook can request recreation without publishing the candidate interface") {
+        refreshResult = Result::RECREATE;
+        REQUIRE(bundle.block->reconfigure(ConfigWithValue("after")) == Result::RECREATE);
+        REQUIRE(refreshCalls == 1);
+        REQUIRE(bundle.block->interface() == original);
+        REQUIRE(bundle.block->state() == Block::State::Created);
+    }
+
+    if (refreshCalls != 0) {
+        REQUIRE(formatResult == Result::SUCCESS);
+        REQUIRE(blockValueAtRefresh == "after");
+        REQUIRE(childValuesAtRefresh == std::vector<std::string>{"after", "after"});
+    }
+    REQUIRE(original->configs().front().second.format == originalFormat);
+    REQUIRE(bundle.block->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Incomplete blocks publish edits without invoking the reconfiguration hook",
+          "[core][lifecycle][block][interface][reconfigure]") {
+    auto bundle = MakeBlock();
+    bundle.probe->declareConfig = true;
+    SECTION("unconnected input") {
+        bundle.probe->declareInput = true;
+    }
+    SECTION("incomplete creation") {
+        bundle.probe->createResult = Result::INCOMPLETE;
+    }
+    REQUIRE(bundle.block->create("lifecycle-block", DeviceType::CPU, RuntimeType::NATIVE,
+                                 kLifecycleProvider, ConfigWithValue("before"), {},
+                                 MakeBlockContext()) == Result::INCOMPLETE);
+    const auto original = bundle.block->interface();
+
+    REQUIRE(bundle.block->reconfigure(ConfigWithValue("after")) == Result::SUCCESS);
+    REQUIRE(bundle.block->state() == Block::State::Incomplete);
+    REQUIRE(bundle.staged->value == "after");
+    REQUIRE(bundle.block->interface() != original);
+    REQUIRE(bundle.block->interface()->configs().front().second.format ==
+            Parser::Map{{"type", "text"}});
+    REQUIRE(EventsStartingWith(bundle.probe->events, "block.reconfigure:").empty());
     REQUIRE(bundle.block->destroy() == Result::SUCCESS);
 }
 
@@ -2398,8 +2547,10 @@ TEST_CASE("Block reconfiguration separates validation from application failures"
             "block.staged.serialize",
             "block.staged.deserialize",
             "block.configure:after",
+            "block.reconfigure:after",
         });
         REQUIRE(bundle.probe->hookStates == std::vector<Block::State>{
+            Block::State::Created,
             Block::State::Created,
             Block::State::Created,
             Block::State::Created,

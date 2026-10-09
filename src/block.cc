@@ -339,12 +339,26 @@ Result Block::reconfigure(const Parser::Map& config) {
         }
     }
 
-    // Publish the interface that was defined from the validated candidate.
+    // Finish block reconfiguration with the candidate interface before publishing it.
 
     impl->_interface = candidateInterface;
+    if (impl->_state == State::Created) {
+        Result result = Result::ERROR;
+        try {
+            result = impl->reconfigure();
+        } catch (...) {
+            impl->_interface = activeInterface;
+            throw;
+        }
+        if (result != Result::SUCCESS && result != Result::RELOAD) {
+            impl->_interface = activeInterface;
+            return result == Result::RECREATE ? result : failReconfiguration(result);
+        }
+    }
     {
         const auto result = impl->defineModuleTiming();
         if (result != Result::SUCCESS && result != Result::RELOAD) {
+            impl->_interface = activeInterface;
             return result == Result::RECREATE ? result : failReconfiguration(result);
         }
     }

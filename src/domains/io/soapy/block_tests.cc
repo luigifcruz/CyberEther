@@ -74,6 +74,36 @@ TEST_CASE_METHOD(FlowgraphFixture,
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
+                 "Soapy frequency step remains editable without a selected device",
+                 "[modules][io][soapy][block][antenna][reconfigure]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    Blocks::Soapy config;
+    config.antenna = "RX";
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Incomplete);
+
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"frequencyStep", 2000000.0f}}) ==
+            Result::SUCCESS);
+    const auto block = viewBlock("radio");
+    REQUIRE(block.state == Block::State::Incomplete);
+    REQUIRE(Parser::Get<F32>(block.config, "frequencyStep") == 2000000.0f);
+    REQUIRE(block.outputs.empty());
+    const auto antenna = std::find_if(block.interfaceConfigs.begin(),
+                                      block.interfaceConfigs.end(),
+                                      [](const auto& field) {
+                                          return field.name == "antenna";
+                                      });
+    REQUIRE(antenna != block.interfaceConfigs.end());
+    REQUIRE(Parser::Get<std::vector<Parser::Map>>(antenna->format, "options") ==
+            std::vector<Parser::Map>{{{"label", "Default"}, {"value", ""}},
+                                    {{"label", "RX"}, {"value", "RX"}}});
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
                  "Soapy block rejects invalid frequency steps",
                  "[modules][io][soapy][block][validation]") {
     if (Registry::ListAvailableModules("soapy").empty()) {

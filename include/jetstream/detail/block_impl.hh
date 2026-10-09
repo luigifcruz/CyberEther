@@ -44,6 +44,7 @@ struct JETSTREAM_API Block::Impl {
     virtual Result define();
     virtual Result create();
     virtual Result destroy();
+    virtual Result reconfigure();
 
     // Identity
 

@@ -16,13 +16,16 @@ struct SoapyImpl : public Block::Impl, public DynamicConfig<Blocks::Soapy> {
     Result configure() override;
     Result define() override;
     Result create() override;
+    Result reconfigure() override;
 
  protected:
     std::shared_ptr<Modules::Soapy> moduleConfig = std::make_shared<Modules::Soapy>();
     Modules::SoapyImpl* moduleImpl = nullptr;
 
  private:
-    Parser::Map antennaFormat(const Blocks::Soapy& config);
+    Result updateAntennaFormat();
+    Parser::Map antennaFormat(const std::string& selected,
+                              const std::vector<std::string>& antennas = {});
 };
 
 Result SoapyImpl::validate() {
@@ -82,7 +85,7 @@ Result SoapyImpl::define() {
     JST_CHECK(defineInterfaceConfig("antenna",
                                     "Antenna",
                                     "Receive antenna port. Changes restart the receiver.",
-                                    antennaFormat(config)));
+                                    antennaFormat(config.antenna)));
 
     JST_CHECK(defineInterfaceConfig("frequency",
                                     "Frequency",
@@ -170,27 +173,32 @@ Result SoapyImpl::create() {
     JST_CHECK(moduleExposeOutput("signal", {"soapy", "signal"}));
 
     moduleImpl = moduleHandle("soapy")->getImpl<Modules::SoapyImpl>();
-    JST_CHECK(updateInterfaceConfigFormat("antenna", antennaFormat(*this)));
+    JST_CHECK(updateAntennaFormat());
 
     return Result::SUCCESS;
 }
 
-Parser::Map SoapyImpl::antennaFormat(const Blocks::Soapy& config) {
+Result SoapyImpl::reconfigure() {
+    JST_CHECK(updateAntennaFormat());
+
+    return Result::SUCCESS;
+}
+
+Result SoapyImpl::updateAntennaFormat() {
+    return updateInterfaceConfigFormat("antenna",
+                                       antennaFormat(antenna, moduleImpl->listAntennas()));
+}
+
+Parser::Map SoapyImpl::antennaFormat(const std::string& selected,
+                                     const std::vector<std::string>& antennas) {
     Parser::Sequence options{Parser::Map{{"label", "Default"}, {"value", ""}}};
-    bool selectionListed = config.antenna.empty();
-    if (const auto module = moduleHandle("soapy");
-        module && module->state() == Module::State::CREATED) {
-        const auto* soapy = module->getImpl<Modules::SoapyImpl>();
-        if (soapy && soapy->modulePath == config.modulePath &&
-            soapy->deviceString == config.deviceString) {
-            for (const auto& antenna : soapy->listAntennas()) {
-                selectionListed = selectionListed || antenna == config.antenna;
-                options.emplace_back(Parser::Map{{"label", antenna}, {"value", antenna}});
-            }
-        }
+    bool selectionListed = selected.empty();
+    for (const auto& antenna : antennas) {
+        selectionListed = selectionListed || antenna == selected;
+        options.emplace_back(Parser::Map{{"label", antenna}, {"value", antenna}});
     }
     if (!selectionListed) {
-        options.emplace_back(Parser::Map{{"label", config.antenna}, {"value", config.antenna}});
+        options.emplace_back(Parser::Map{{"label", selected}, {"value", selected}});
     }
     return {{"type", "dropdown"}, {"options", std::move(options)}};
 }
