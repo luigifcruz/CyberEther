@@ -75,10 +75,12 @@ class JETSTREAM_API SoapyReceiver {
     Result open(const SoapySDR::Kwargs& args);
     Result validateSettings(F32 sampleRate, F32 frequency) const;
     const std::vector<std::string>& listAntennas() const;
+    const std::optional<SoapySDR::Range>& getGainRange() const;
     Result setAntenna(const std::string& antenna);
     Result setTunerFrequency(F32 frequency);
     Result setSampleRate(F32 sampleRate);
     Result setAutomaticGain(bool automaticGain);
+    Result setGain(F32 gain);
     Result setBiasTee(bool enabled);
     Result startStream(const SoapySDR::Kwargs& args);
     void reset();
@@ -94,6 +96,7 @@ class JETSTREAM_API SoapyReceiver {
     };
 
     Result queryCapabilities();
+    void queryGainRange();
 
     State state = State::Closed;
     SoapySDR::Device* device = nullptr;
@@ -101,6 +104,7 @@ class JETSTREAM_API SoapyReceiver {
     std::vector<SoapySDR::Range> sampleRateRanges;
     std::vector<SoapySDR::Range> frequencyRanges;
     std::vector<std::string> antennas;
+    std::optional<SoapySDR::Range> gainRange;
     bool biasTeeSupported = false;
     bool biasTeeNeedsCleanup = false;
 };

@@ -73,6 +73,13 @@ struct TestSoapyState {
     std::vector<std::string> antennaWrites;
     int antennaDirection = -1;
     size_t antennaChannel = 0;
+    double frequency = 96.9e6;
+    SoapySDR::Range gainRange{0.0, 30.0};
+    bool frequencyDependentGain = false;
+    std::vector<double> gainWrites;
+    std::vector<bool> gainModeWrites;
+    int gainDirection = -1;
+    size_t gainChannel = 0;
     std::shared_ptr<TestSoapyReads> reads = std::make_shared<TestSoapyReads>();
 };
 
@@ -132,13 +139,30 @@ class TestSoapyDevice final : public SoapySDR::Device {
         testSoapyState.sampleRateWrites.push_back(rate);
     }
 
-    void setFrequency(const int, const size_t, const double,
+    void setFrequency(const int, const size_t, const double frequency,
                       const SoapySDR::Kwargs&) override {
         RecordSoapyCall("frequency");
+        testSoapyState.frequency = frequency;
     }
 
-    void setGainMode(const int, const size_t, const bool) override {
+    void setGainMode(const int, const size_t, const bool automatic) override {
         RecordSoapyCall("gainMode");
+        testSoapyState.gainModeWrites.push_back(automatic);
+    }
+
+    SoapySDR::Range getGainRange(const int, const size_t) const override {
+        RecordSoapyCall("gainRange");
+        if (testSoapyState.frequencyDependentGain && testSoapyState.frequency >= 300.0e6) {
+            return SoapySDR::Range(10.0, 60.0);
+        }
+        return testSoapyState.gainRange;
+    }
+
+    void setGain(const int direction, const size_t channel, const double gain) override {
+        RecordSoapyCall("gain");
+        testSoapyState.gainDirection = direction;
+        testSoapyState.gainChannel = channel;
+        testSoapyState.gainWrites.push_back(gain);
     }
 
     std::vector<std::string> listAntennas(const int direction, const size_t channel) const override {
@@ -501,6 +525,7 @@ void RequireSoapyValidationError(const Registry::ModuleRegistration& impl,
     REQUIRE(applied.frequency == defaults.frequency);
     REQUIRE(applied.sampleRate == defaults.sampleRate);
     REQUIRE(applied.automaticGain == defaults.automaticGain);
+    REQUIRE(applied.manualGain == defaults.manualGain);
     REQUIRE(applied.biasTee == defaults.biasTee);
     REQUIRE(applied.numberOfBatches == defaults.numberOfBatches);
     REQUIRE(applied.numberOfTimeSamples == defaults.numberOfTimeSamples);
@@ -520,6 +545,15 @@ std::vector<std::string> AntennaOptions(const Flowgraph::View::BlockData& block)
         values.push_back(Parser::Get<std::string>(option, "value"));
     }
     return values;
+}
+
+Parser::Map ManualGainFormat(const Flowgraph::View::BlockData& block) {
+    for (const auto& field : block.interfaceConfigs) {
+        if (field.name == "manualGain") {
+            return field.format;
+        }
+    }
+    return {};
 }
 
 }  // namespace
@@ -560,6 +594,14 @@ TEST_CASE("Soapy module rejects candidates before hardware access and preserves 
 
                 config = NonDefaultSoapyConfig();
                 config.bufferMultiplier = 0;
+                RequireSoapyValidationError(impl, config);
+            }
+
+            SECTION("manual gain must be finite") {
+                auto config = NonDefaultSoapyConfig();
+                config.manualGain = std::numeric_limits<F32>::quiet_NaN();
+                RequireSoapyValidationError(impl, config);
+                config.manualGain = std::numeric_limits<F32>::infinity();
                 RequireSoapyValidationError(impl, config);
             }
 
@@ -893,8 +935,8 @@ TEST_CASE("Soapy lifecycle preserves stream configuration and output layout",
     REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
 
     REQUIRE(testSoapyState.lifecycle == std::vector<std::string>{
-        "make", "sampleRateRanges", "frequencyRanges", "settings", "antennas",
-        "sampleRate", "frequency", "gainMode", "biastee:true", "setup", "activate",
+        "make", "sampleRateRanges", "frequencyRanges", "settings", "antennas", "gainRange",
+        "sampleRate", "frequency", "gainRange", "gainMode", "biastee:true", "setup", "activate",
     });
     REQUIRE(testSoapyState.streamDirection == SOAPY_SDR_RX);
     REQUIRE(testSoapyState.streamFormat == "CF32");
@@ -924,7 +966,7 @@ TEST_CASE("Soapy lifecycle preserves stream configuration and output layout",
     update["automaticGain"] = false;
     REQUIRE(module->reconfigure(update) == Result::SUCCESS);
     REQUIRE(testSoapyState.lifecycle == std::vector<std::string>{
-        "frequency", "sampleRate", "gainMode",
+        "frequency", "gainRange", "sampleRate", "gainMode", "gain",
     });
     REQUIRE(std::any_cast<F32>(output.attribute("frequency")) == 100.0e6f);
     REQUIRE(std::any_cast<F32>(output.attribute("sampleRate")) == 1.5e6f);
@@ -1824,6 +1866,157 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(flowgraph->blockReconfigure("radio", selected) == Result::SUCCESS);
     REQUIRE(viewBlock("radio").state == Block::State::Created);
     REQUIRE(std::count(testSoapyState.lifecycle.begin(), testSoapyState.lifecycle.end(), "make") == 2);
+}
+
+TEST_CASE("Soapy manual gain clamps to current limits and tolerates missing ranges",
+          "[modules][soapy][devices][gain]") {
+    testSoapyState = {};
+    Modules::SoapyReceiver receiver;
+    REQUIRE(receiver.setGain(20.0f) == Result::ERROR);
+    REQUIRE(receiver.open({{"driver", TestSoapyDriver}}) == Result::SUCCESS);
+    REQUIRE(receiver.getGainRange().has_value());
+    REQUIRE(receiver.setGain(-5.0f) == Result::SUCCESS);
+    REQUIRE(receiver.setGain(70.0f) == Result::SUCCESS);
+    REQUIRE(testSoapyState.gainWrites == std::vector<double>{0.0, 30.0});
+    REQUIRE(testSoapyState.gainDirection == SOAPY_SDR_RX);
+    REQUIRE(testSoapyState.gainChannel == 0);
+
+    testSoapyState.failAt = "gainRange";
+    REQUIRE(receiver.setTunerFrequency(100.0e6f) == Result::SUCCESS);
+    REQUIRE_FALSE(receiver.getGainRange());
+    REQUIRE(receiver.setGain(40.0f) == Result::SUCCESS);
+    REQUIRE(testSoapyState.gainWrites.back() == 40.0);
+
+    testSoapyState.failAt = "gain";
+    REQUIRE(receiver.setGain(20.0f) == Result::ERROR);
+    REQUIRE(testSoapyState.gainWrites.back() == 40.0);
+    testSoapyState.failAt.clear();
+    REQUIRE(receiver.setTunerFrequency(100.0e6f) == Result::SUCCESS);
+    REQUIRE(receiver.getGainRange().has_value());
+    receiver.reset();
+    REQUIRE_FALSE(receiver.getGainRange());
+}
+
+TEST_CASE("Soapy restores automatic gain when a manual transition fails",
+          "[modules][soapy][devices][gain][rollback]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    testSoapyState = {};
+    auto config = TestDeviceSoapyConfig();
+    config.manualGain = 20.0f;
+    const auto module = BuildTestSoapyModule();
+    const SoapyModuleCleanup cleanup{module};
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    testSoapyState.failAt = "gain";
+    REQUIRE(module->reconfigure({{"automaticGain", false}}) == Result::ERROR);
+    REQUIRE(testSoapyState.gainModeWrites == std::vector<bool>{true, false, true});
+    REQUIRE(testSoapyState.gainWrites.empty());
+    REQUIRE(static_cast<const Modules::Soapy&>(module->config()).automaticGain);
+
+    testSoapyState.failAt.clear();
+    REQUIRE(module->reconfigure({{"automaticGain", false}}) == Result::SUCCESS);
+    REQUIRE_FALSE(testSoapyState.gainModeWrites.back());
+    REQUIRE(testSoapyState.gainWrites == std::vector<double>{20.0});
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Soapy manual gain follows AGC without restarting the receiver",
+                 "[modules][soapy][block][gain]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    testSoapyState = {};
+    Blocks::Soapy config;
+    config.deviceString = std::string("driver=") + TestSoapyDriver;
+    config.manualGain = 20.0f;
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Created);
+    REQUIRE(ManualGainFormat(viewBlock("radio")).empty());
+    REQUIRE(testSoapyState.gainWrites.empty());
+
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"automaticGain", false}}) == Result::SUCCESS);
+    REQUIRE(testSoapyState.gainWrites == std::vector<double>{20.0});
+    REQUIRE(ManualGainFormat(viewBlock("radio")) == Parser::Map{
+        {"type", "range"}, {"min", 0.0f}, {"max", 30.0f}, {"unit", "dB"},
+    });
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"manualGain", 25.0f}}) == Result::SUCCESS);
+    REQUIRE(testSoapyState.gainWrites == std::vector<double>{20.0, 25.0});
+    REQUIRE(Parser::Get<F32>(viewBlock("radio").config, "manualGain") == 25.0f);
+
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"automaticGain", true}}) == Result::SUCCESS);
+    REQUIRE(ManualGainFormat(viewBlock("radio")).empty());
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"manualGain", 15.0f}}) == Result::SUCCESS);
+    REQUIRE(testSoapyState.gainWrites.size() == 2);
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"automaticGain", false}}) == Result::SUCCESS);
+    REQUIRE(testSoapyState.gainWrites.back() == 15.0);
+    REQUIRE(testSoapyState.gainModeWrites == std::vector<bool>{true, false, true, false});
+    REQUIRE(std::count(testSoapyState.lifecycle.begin(), testSoapyState.lifecycle.end(), "make") == 1);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Soapy publishes frequency-dependent gain bounds after tuning",
+                 "[modules][soapy][block][gain][reconfigure]") {
+    if (Registry::ListAvailableModules("soapy").empty()) {
+        SUCCEED("Soapy module is unavailable in this build.");
+        return;
+    }
+
+    testSoapyState = {};
+    testSoapyState.frequencyDependentGain = true;
+    testSoapyState.frequency = 500.0e6;
+    testSoapyState.gainRange = SoapySDR::Range(-10.0, 30.0);
+    Blocks::Soapy config;
+    config.deviceString = std::string("driver=") + TestSoapyDriver;
+    config.frequency = 100.0e6f;
+    config.automaticGain = false;
+    config.manualGain = -5.0f;
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    const auto original = viewBlock("radio");
+    REQUIRE(original.state == Block::State::Created);
+    const Parser::Map lowBand{
+        {"type", "range"}, {"min", -10.0f}, {"max", 30.0f}, {"unit", "dB"},
+    };
+    const Parser::Map highBand{
+        {"type", "range"}, {"min", 10.0f}, {"max", 60.0f}, {"unit", "dB"},
+    };
+    REQUIRE(ManualGainFormat(original) == lowBand);
+    REQUIRE(testSoapyState.gainWrites == std::vector<double>{-5.0});
+    const auto& calls = testSoapyState.lifecycle;
+    REQUIRE(std::find(calls.begin(), calls.end(), "gain") <
+            std::find(calls.begin(), calls.end(), "setup"));
+
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"manualGain", 25.0f}}) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"frequency", 500.0e6f}}) == Result::SUCCESS);
+    REQUIRE(testSoapyState.frequency == 500.0e6);
+    REQUIRE(ManualGainFormat(viewBlock("radio")) == highBand);
+    REQUIRE(testSoapyState.gainWrites.back() == 25.0);
+    REQUIRE(ManualGainFormat(original) == lowBand);
+
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"manualGain", 50.0f}}) == Result::SUCCESS);
+    REQUIRE(testSoapyState.gainWrites.back() == 50.0);
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"frequency", 100.0e6f}}) == Result::SUCCESS);
+    REQUIRE(ManualGainFormat(viewBlock("radio")) == lowBand);
+    REQUIRE(testSoapyState.gainWrites.back() == 30.0);
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"frequency", 500.0e6f}}) == Result::SUCCESS);
+    REQUIRE(ManualGainFormat(viewBlock("radio")) == highBand);
+    REQUIRE(testSoapyState.gainWrites.back() == 50.0);
+
+    testSoapyState.failAt = "gainRange";
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"frequency", 100.0e6f}}) == Result::SUCCESS);
+    REQUIRE(ManualGainFormat(viewBlock("radio")) == Parser::Map{
+        {"type", "range"}, {"min", 0.0f}, {"max", 60.0f}, {"unit", "dB"},
+    });
+    REQUIRE(std::count(calls.begin(), calls.end(), "make") == 1);
+    REQUIRE(std::count(calls.begin(), calls.end(), "setup") == 1);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,

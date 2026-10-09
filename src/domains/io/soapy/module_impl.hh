@@ -28,10 +28,12 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
     U64 getDeviceOverflows() const;
     std::pair<F32, F32> getThroughput() const;
     std::vector<std::string> listAntennas() const;
+    std::optional<SoapySDR::Range> getGainRange() const;
 
     Result setTunerFrequency(const F32& frequency);
     Result setSampleRate(const F32& sampleRate);
     Result setAutomaticGain(const bool& automaticGain);
+    Result setManualGain(const F32& manualGain);
     Result setBiasTee(bool enabled);
 
  protected:

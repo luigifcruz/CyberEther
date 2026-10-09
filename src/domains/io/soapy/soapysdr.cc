@@ -328,7 +328,25 @@ Result SoapyReceiver::queryCapabilities() {
         JST_WARN("[MODULE_SOAPY] Failed to query receive antennas.");
     }
 
+    queryGainRange();
+
     return Result::SUCCESS;
+}
+
+void SoapyReceiver::queryGainRange() {
+    gainRange.reset();
+
+    try {
+        const auto range = device->getGainRange(SOAPY_SDR_RX, 0);
+        if (std::isfinite(range.minimum()) && std::isfinite(range.maximum()) &&
+            range.minimum() <= range.maximum()) {
+            gainRange = range;
+        }
+    } catch (const std::exception& e) {
+        JST_WARN("[MODULE_SOAPY] Failed to query receive gain range: {}", e.what());
+    } catch (...) {
+        JST_WARN("[MODULE_SOAPY] Failed to query receive gain range.");
+    }
 }
 
 Result SoapyReceiver::validateSettings(const F32 sampleRate,
@@ -348,6 +366,10 @@ Result SoapyReceiver::validateSettings(const F32 sampleRate,
 
 const std::vector<std::string>& SoapyReceiver::listAntennas() const {
     return antennas;
+}
+
+const std::optional<SoapySDR::Range>& SoapyReceiver::getGainRange() const {
+    return gainRange;
 }
 
 Result SoapyReceiver::setAntenna(const std::string& antenna) {
@@ -397,6 +419,8 @@ Result SoapyReceiver::setTunerFrequency(const F32 frequency) {
         return Result::ERROR;
     }
 
+    queryGainRange();
+
     return Result::SUCCESS;
 }
 
@@ -437,6 +461,36 @@ Result SoapyReceiver::setAutomaticGain(const bool automaticGain) {
         return Result::ERROR;
     } catch (...) {
         JST_ERROR("[MODULE_SOAPY] Failed to set gain mode.");
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
+Result SoapyReceiver::setGain(const F32 gain) {
+    if (state == State::Closed) {
+        JST_ERROR("[MODULE_SOAPY] Cannot set gain without an active device.");
+        return Result::ERROR;
+    }
+
+    F32 applied = gain;
+    if (gainRange) {
+        const F32 minimum = static_cast<F32>(gainRange->minimum());
+        const F32 maximum = static_cast<F32>(gainRange->maximum());
+        applied = std::clamp(gain, minimum, maximum);
+        if (applied != gain) {
+            JST_WARN("[MODULE_SOAPY] Gain ({:.1f} dB) outside device range ({:.1f} to {:.1f} dB). Using {:.1f} dB.",
+                     gain, minimum, maximum, applied);
+        }
+    }
+
+    try {
+        device->setGain(SOAPY_SDR_RX, 0, applied);
+    } catch (const std::exception& e) {
+        JST_ERROR("[MODULE_SOAPY] Failed to set gain: {}", e.what());
+        return Result::ERROR;
+    } catch (...) {
+        JST_ERROR("[MODULE_SOAPY] Failed to set gain.");
         return Result::ERROR;
     }
 
@@ -579,6 +633,7 @@ void SoapyReceiver::reset() {
     sampleRateRanges.clear();
     frequencyRanges.clear();
     antennas.clear();
+    gainRange.reset();
     biasTeeSupported = false;
     biasTeeNeedsCleanup = false;
 }

@@ -14,6 +14,7 @@ struct Soapy : public Block::Config {
     F32 frequencyStep = 1000000.0;
     F32 sampleRate = 2.0e6;
     bool automaticGain = true;
+    F32 manualGain = 0.0f;
     bool biasTee = false;
     U64 numberOfBatches = 8;
     U64 numberOfTimeSamples = 8192;
@@ -24,7 +25,7 @@ struct Soapy : public Block::Config {
     JST_BLOCK_NODE_SIZE(M);
     JST_BLOCK_PARAMS(modulePath, deviceString, streamString,
                      antenna, frequency, frequencyStep, sampleRate,
-                     automaticGain, biasTee, numberOfBatches,
+                     automaticGain, manualGain, biasTee, numberOfBatches,
                      numberOfTimeSamples, bufferMultiplier);
     JST_BLOCK_DESCRIPTION(
         "Soapy SDR",
@@ -39,8 +40,8 @@ struct Soapy : public Block::Config {
         " delivered all of its samples.\n"
         "- **A slow chain loses samples.** When the chain falls behind, the oldest "
         "samples are overwritten and Buffer Loss rises.\n"
-        "- **Automatic Gain off keeps the last gain.** The block has no manual gain "
-        "setting.\n"
+        "- **Automatic Gain off uses Manual Gain.** The saved gain is reapplied after "
+        "tuning and clamped to the radio's gain range.\n"
         "\n"
         "## Ports\n"
         "\n"
@@ -62,6 +63,8 @@ struct Soapy : public Block::Config {
         "| **Sample Rate** | 2 MHz | Within the radio's range | Complex samples per "
         "second, which is also the bandwidth captured. |\n"
         "| **Automatic Gain** | On | On, Off | Lets the radio set its own gain. |\n"
+        "| **Manual Gain** | 0 dB | Within the radio's gain range | Requested receive "
+        "gain, shown when Automatic Gain is off. Limits follow the tuned frequency. |\n"
         "| **Bias-T** | Off | On, Off | Powers an active antenna through the cable, on "
         "radios that support it. |\n"
         "| **Batches** | 8 | 1 or more | Batches per output buffer. |\n"

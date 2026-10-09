@@ -38,7 +38,7 @@ The headers hold only the `Config` structs, since that is all other code needs t
 
 ## Block Lifecycle
 
-A block implementation derives from `Block::Impl` and overrides some of four hooks, all optional:
+A block implementation derives from `Block::Impl` and overrides these optional hooks:
 
 | Hook | Purpose |
 |---|---|
@@ -46,6 +46,7 @@ A block implementation derives from `Block::Impl` and overrides some of four hoo
 | `configure()` | Derive internal state from the validated configuration. |
 | `define()` | Declare the candidate interface: inputs, outputs, configuration fields, and metrics. |
 | `create()` | Build the modules and wire them to the block ports. |
+| `reconfigure()` | Finish an in-place edit after the child modules have applied it. |
 
 Block creation follows this order:
 
@@ -83,7 +84,26 @@ Validation errors retain the candidate configuration and declared interface so t
 
 The deliberate `INCOMPLETE` return is the gating pattern: a block whose `create()` needs a value that arrives later, such as an environment key delivered by a server connection, returns incomplete and is automatically destroyed and recreated when a new environment key becomes visible. The full pattern, with example code, is in [Flowgraph Environment](/docs/metadata#flowgraph-environment).
 
-Configuration edits go through `reconfigure`, which defines a temporary candidate interface before validation. A semantic validation error is accepted as a graph edit: the flowgraph rebuilds the affected blocks with the candidate configuration, publishes the edited block as errored, and keeps downstream connections as unresolved links until the candidate is repaired. Failures while applying an already validated edit are different: the flowgraph restores the previous working state and returns the error. When a valid change cannot be applied in place, for example a buffer size that shaped an allocation, return `Result::RECREATE` and let the flowgraph rebuild the affected blocks.
+Configuration edits go through `Block::reconfigure()`, which follows this order:
+
+```text
+Block::reconfigure
+├── Deserialize the candidate configuration
+├── define() the candidate interface
+├── validate() candidate semantics
+├── Commit the candidate configuration
+├── configure() derived block state
+├── Validate the edit in every child module
+├── Apply the edit in every child module
+├── reconfigure() the block, if it is Created
+└── Publish the updated interface
+```
+
+A semantic validation error is accepted as a graph edit: the flowgraph rebuilds the affected blocks with the candidate configuration, publishes the edited block as errored, and keeps downstream connections as unresolved links until the candidate is repaired. Failures while applying an already validated edit are different: the flowgraph restores the previous working state and returns the error. When a valid change cannot be applied in place, for example a buffer size that shaped an allocation, return `Result::RECREATE` and let the flowgraph rebuild the affected blocks.
+
+The block's own `reconfigure()` hook runs last, and only when the block is Created and every child module has applied the edit. It finishes work that depends on the updated modules, and the candidate interface is still open for updates because the UI receives it only after the hook returns. Child module settings are prepared earlier, in `configure()`, since the modules have already applied the edit by the time the hook runs. Returning `RECREATE` requests reconstruction of the block. Structural changes that can be detected up front belong in `validate()`, before any module applies the edit.
+
+Blocks that are incomplete or invalid never reach the hook, so `define()` remains responsible for their editable interface. The framework also does not call the hook during `create()`. The default implementation returns `SUCCESS`.
 
 ## Defining The Block
 
@@ -135,7 +155,7 @@ Use `moduleCreate(name, config, inputs)` to create a child module with the block
 
 Add editable controls with `defineInterfaceConfig` and status readouts with `defineInterfaceMetric`. See [Block Metrics](/docs/metadata#block-metrics) for examples.
 
-Some controls depend on the device. Soapy, for example, learns which antennas are available when it opens a radio. It adds the dropdown in `define()`, then fills in the choices with `updateInterfaceConfigFormat(key, format)` in `create()`. When settings change, `define()` runs again, so it also needs to include those choices if the same radio is still selected.
+A control's format can also depend on state that only exists at runtime, such as a value reported by a child module. Declare such a control in `define()` with a format that needs no runtime state, then refine it with `updateInterfaceConfigFormat(key, format)`, which replaces the format of a previously declared config control. The update can run in `create()` once the modules exist, and again in the block's `reconfigure()` hook after a successful edit. When both hooks need the same update, move it into a shared function and call it from each.
 
 Use `environment()`, `view()`, `scheduler()`, and `render()` to access the flowgraph environment, view, scheduler, and render window.
 

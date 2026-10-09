@@ -16,13 +16,18 @@ struct SoapyImpl : public Block::Impl, public DynamicConfig<Blocks::Soapy> {
     Result configure() override;
     Result define() override;
     Result create() override;
+    Result reconfigure() override;
 
  protected:
     std::shared_ptr<Modules::Soapy> moduleConfig = std::make_shared<Modules::Soapy>();
     Modules::SoapyImpl* moduleImpl = nullptr;
 
  private:
-    Parser::Map antennaFormat(const Blocks::Soapy& config);
+    Result updateAntennaFormat();
+    Result updateManualGainFormat();
+    Parser::Map antennaFormat(const std::string& selected,
+                              const std::vector<std::string>& antennas = {});
+    Parser::Map manualGainFormat(const std::optional<SoapySDR::Range>& range = std::nullopt);
 };
 
 Result SoapyImpl::validate() {
@@ -46,6 +51,7 @@ Result SoapyImpl::configure() {
     moduleConfig->frequency = frequency;
     moduleConfig->sampleRate = sampleRate;
     moduleConfig->automaticGain = automaticGain;
+    moduleConfig->manualGain = manualGain;
     moduleConfig->biasTee = biasTee;
     moduleConfig->numberOfBatches = numberOfBatches;
     moduleConfig->numberOfTimeSamples = numberOfTimeSamples;
@@ -82,7 +88,7 @@ Result SoapyImpl::define() {
     JST_CHECK(defineInterfaceConfig("antenna",
                                     "Antenna",
                                     "Receive antenna port. Changes restart the receiver.",
-                                    antennaFormat(config)));
+                                    antennaFormat(config.antenna)));
 
     JST_CHECK(defineInterfaceConfig("frequency",
                                     "Frequency",
@@ -101,6 +107,13 @@ Result SoapyImpl::define() {
                                     "Automatic Gain",
                                     "Enable automatic gain control.",
                                     {{"type", "bool"}}));
+
+    if (!config.automaticGain) {
+        JST_CHECK(defineInterfaceConfig("manualGain",
+                                        "Manual Gain",
+                                        "Receive gain applied while automatic gain is off.",
+                                        manualGainFormat()));
+    }
 
     JST_CHECK(defineInterfaceConfig("biasTee",
                                     "Bias-T",
@@ -170,29 +183,51 @@ Result SoapyImpl::create() {
     JST_CHECK(moduleExposeOutput("signal", {"soapy", "signal"}));
 
     moduleImpl = moduleHandle("soapy")->getImpl<Modules::SoapyImpl>();
-    JST_CHECK(updateInterfaceConfigFormat("antenna", antennaFormat(*this)));
+    JST_CHECK(updateAntennaFormat());
+    JST_CHECK(updateManualGainFormat());
 
     return Result::SUCCESS;
 }
 
-Parser::Map SoapyImpl::antennaFormat(const Blocks::Soapy& config) {
+Result SoapyImpl::reconfigure() {
+    JST_CHECK(updateAntennaFormat());
+    JST_CHECK(updateManualGainFormat());
+
+    return Result::SUCCESS;
+}
+
+Result SoapyImpl::updateAntennaFormat() {
+    return updateInterfaceConfigFormat("antenna",
+                                       antennaFormat(antenna, moduleImpl->listAntennas()));
+}
+
+Result SoapyImpl::updateManualGainFormat() {
+    if (!automaticGain) {
+        JST_CHECK(updateInterfaceConfigFormat("manualGain",
+                                              manualGainFormat(moduleImpl->getGainRange())));
+    }
+
+    return Result::SUCCESS;
+}
+
+Parser::Map SoapyImpl::antennaFormat(const std::string& selected,
+                                     const std::vector<std::string>& antennas) {
     Parser::Sequence options{Parser::Map{{"label", "Default"}, {"value", ""}}};
-    bool selectionListed = config.antenna.empty();
-    if (const auto module = moduleHandle("soapy");
-        module && module->state() == Module::State::CREATED) {
-        const auto* soapy = module->getImpl<Modules::SoapyImpl>();
-        if (soapy && soapy->modulePath == config.modulePath &&
-            soapy->deviceString == config.deviceString) {
-            for (const auto& antenna : soapy->listAntennas()) {
-                selectionListed = selectionListed || antenna == config.antenna;
-                options.emplace_back(Parser::Map{{"label", antenna}, {"value", antenna}});
-            }
-        }
+    bool selectionListed = selected.empty();
+    for (const auto& antenna : antennas) {
+        selectionListed = selectionListed || antenna == selected;
+        options.emplace_back(Parser::Map{{"label", antenna}, {"value", antenna}});
     }
     if (!selectionListed) {
-        options.emplace_back(Parser::Map{{"label", config.antenna}, {"value", config.antenna}});
+        options.emplace_back(Parser::Map{{"label", selected}, {"value", selected}});
     }
     return {{"type", "dropdown"}, {"options", std::move(options)}};
+}
+
+Parser::Map SoapyImpl::manualGainFormat(const std::optional<SoapySDR::Range>& range) {
+    const F32 minimum = range ? static_cast<F32>(range->minimum()) : 0.0f;
+    const F32 maximum = range ? static_cast<F32>(range->maximum()) : 60.0f;
+    return {{"type", "range"}, {"min", minimum}, {"max", maximum}, {"unit", "dB"}};
 }
 
 JST_REGISTER_BLOCK(SoapyImpl, {"soapy"});
