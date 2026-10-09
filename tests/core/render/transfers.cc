@@ -5,6 +5,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <future>
 #include <limits>
 #include <optional>
 #include <thread>
@@ -54,9 +55,13 @@ class TestTexture final : public Render::Texture {
         return Result::SUCCESS;
     }
     uint64_t raw() const override { return 0; }
+    Result underlyingDump(uint8_t* output) const override {
+        return dumpHandler ? dumpHandler(output) : Result::ERROR;
+    }
 
     void nextCreationResult(const Result result) { creationResult = result; }
 
+    std::function<Result(uint8_t*)> dumpHandler;
     U64 createCount = 0;
     U64 destroyCount = 0;
 
@@ -166,6 +171,7 @@ class TestWindow final : public Render::Window {
     TestWindow() : Window(Config{}) {}
 
     constexpr DeviceType device() const override { return DeviceType::None; }
+    bool supportsCapture() const override { return true; }
     const Stats& stats() const override { return statsData; }
     std::string info() const override { return "Test"; }
 
@@ -188,6 +194,8 @@ class TestWindow final : public Render::Window {
     U64 destructionCount() const {
         return destructions;
     }
+
+    std::function<Result()> synchronizeHandler;
 
  protected:
     Result bindSurface(const std::shared_ptr<Render::Surface>& surface) override {
@@ -222,7 +230,9 @@ class TestWindow final : public Render::Window {
         batch.commit();
         return Result::SUCCESS;
     }
-    Result underlyingSynchronize() override { return Result::SUCCESS; }
+    Result underlyingSynchronize() override {
+        return synchronizeHandler ? synchronizeHandler() : Result::SUCCESS;
+    }
 
  private:
     Stats statsData{};
@@ -912,6 +922,77 @@ TEST_CASE("Window destruction rejects concurrent resource binding",
     REQUIRE(bindResult == Result::ERROR);
     REQUIRE(destructionResult == Result::SUCCESS);
     REQUIRE(buffer->destroyCount == 1);
+}
+
+TEST_CASE("Texture capture synchronizes GPU work and excludes concurrent resize",
+          "[core][render][window][capture]") {
+    using namespace std::chrono_literals;
+    TestWindow window;
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {4, 3}});
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(texture) == Result::SUCCESS);
+    REQUIRE(window.start() == Result::SUCCESS);
+
+    bool synchronized = false;
+    bool dumpAfterSync = false;
+    window.synchronizeHandler = [&] {
+        synchronized = true;
+        return Result::SUCCESS;
+    };
+    std::promise<void> dumping;
+    auto dumpingStarted = dumping.get_future();
+    std::promise<void> releaseDump;
+    auto mayDump = releaseDump.get_future();
+    texture->dumpHandler = [&](uint8_t* output) {
+        dumpAfterSync = synchronized;
+        dumping.set_value();
+        if (mayDump.wait_for(2s) != std::future_status::ready) return Result::ERROR;
+        std::fill_n(output, texture->size().x * texture->size().y * 4, U8{73});
+        return Result::SUCCESS;
+    };
+
+    Extent2D<U64> size{};
+    std::vector<U8> pixels;
+    auto captured = std::async(std::launch::async, [&] { return window.capture(texture, size, pixels); });
+    REQUIRE(dumpingStarted.wait_for(2s) == std::future_status::ready);
+    std::promise<void> rendering;
+    auto renderingStarted = rendering.get_future();
+    auto resized = std::async(std::launch::async, [&] {
+        rendering.set_value();
+        JST_CHECK(window.begin());
+        texture->size({8, 6});
+        return window.end();
+    });
+    REQUIRE(renderingStarted.wait_for(2s) == std::future_status::ready);
+    CHECK(resized.wait_for(20ms) == std::future_status::timeout);
+    releaseDump.set_value();
+    REQUIRE(captured.get() == Result::SUCCESS);
+    REQUIRE(resized.get() == Result::SUCCESS);
+    CHECK(dumpAfterSync);
+    CHECK(size == Extent2D<U64>{4, 3});
+    CHECK(pixels == std::vector<U8>(4 * 3 * 4, 73));
+    CHECK(texture->size() == Extent2D<U64>{8, 6});
+    REQUIRE(window.stop() == Result::SUCCESS);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Texture capture rejects unowned resources and failed GPU synchronization",
+          "[core][render][window][capture]") {
+    TestWindow window;
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {4, 3}});
+    REQUIRE(window.create() == Result::SUCCESS);
+    bool dumped = false;
+    texture->dumpHandler = [&](uint8_t*) { dumped = true; return Result::SUCCESS; };
+    Extent2D<U64> size{};
+    std::vector<U8> pixels;
+    CHECK(window.capture(texture, size, pixels) == Result::ERROR);
+    CHECK_FALSE(dumped);
+    REQUIRE(window.bind(texture) == Result::SUCCESS);
+    window.synchronizeHandler = [] { return Result::ERROR; };
+    CHECK(window.capture(texture, size, pixels) == Result::ERROR);
+    CHECK_FALSE(dumped);
+    CHECK(pixels.empty());
+    REQUIRE(window.destroy() == Result::SUCCESS);
 }
 
 TEST_CASE("Cancelled render frames release the window", "[core][render][window]") {

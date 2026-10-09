@@ -3,6 +3,7 @@
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 
 #include "tools/imgui_impl_vulkan.h"
+#include "jetstream/render/tools/imgui_blend_ext.h"
 
 const size_t MAX_FRAMES_IN_FLIGHT = 2;
 
@@ -279,6 +280,7 @@ Result Implementation::createImgui() {
         init_info.ImageCount = static_cast<U32>(viewport->getSwapchainImageViewsCount());
         init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
         ImGui_ImplVulkan_Init(&init_info);
+        ImGui::RegisterPremultipliedAlphaCallback(ImGui_ImplVulkan_PremultipliedAlphaCallback);
     } catch (...) {
         viewport->destroyImgui();
         ImGui::DestroyContext();
@@ -294,6 +296,7 @@ Result Implementation::createImgui() {
 Result Implementation::destroyImgui() {
     JST_DEBUG("[VULKAN] Destroying ImGui.");
 
+    ImGui::UnregisterPremultipliedAlphaCallback(ImGui_ImplVulkan_PremultipliedAlphaCallback);
     ImGui_ImplVulkan_Shutdown();
     const Result result = viewport->destroyImgui();
     ImGui::DestroyContext();

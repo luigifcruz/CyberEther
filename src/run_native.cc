@@ -946,6 +946,8 @@ int Run(int argc, char* argv[]) {
         benchmarkLogLevel.emplace(-1);
     }
 
+    Platform::IgnoreBrokenPipe();
+
     std::optional<InterruptHandlerGuard> interruptHandler;
     Platform::WorkerThread computeThread;
     std::thread graphicalThread;

@@ -86,6 +86,11 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
+Result Implementation::underlyingDump(uint8_t*) const {
+    JST_ERROR("[WebGPU] Texture readback requires asynchronous buffer mapping and is not supported.");
+    return Result::ERROR;
+}
+
 WGPUTextureFormat Implementation::ConvertPixelFormat(const PixelFormat& pfmt,
                                                      const PixelType& ptype) {
     if (pfmt == PixelFormat::RED && ptype == PixelType::F32) {
@@ -106,22 +111,6 @@ WGPUTextureFormat Implementation::ConvertPixelFormat(const PixelFormat& pfmt,
 
     JST_FATAL("[WebGPU] Can't convert pixel format.");
     throw Result::ERROR;
-}
-
-U64 Implementation::GetPixelByteSize(const WGPUTextureFormat& pfmt) {
-    switch (pfmt) {
-        case WGPUTextureFormat_R32Float:
-            return 4;
-        case WGPUTextureFormat_R8Unorm:
-            return 1;
-        case WGPUTextureFormat_RGBA32Float:
-            return 16;
-        case WGPUTextureFormat_RGBA8Unorm:
-            return 4;
-        default:
-            JST_FATAL("[WebGPU] Pixel format not implemented yet.");
-            throw Result::ERROR;
-    }
 }
 
 }  // namespace Jetstream::Render

@@ -8,7 +8,7 @@
 #include <jetstream/tools/numeric.hh>
 #include <jetstream/memory/axis.hh>
 
-#include "miniaudio.h"
+#include "tools/miniaudio/miniaudio.h"
 
 #ifdef JST_OS_BROWSER
 #include <emscripten.h>

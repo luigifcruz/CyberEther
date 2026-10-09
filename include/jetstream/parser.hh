@@ -16,6 +16,7 @@
 #include <utility>
 #include <vector>
 
+#include "jetstream/config.hh"
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/logger.hh"
@@ -61,6 +62,7 @@ class JETSTREAM_API Parser {
         }
     }
     static Result TypedToString(const std::any& variable, std::string& encoded);
+    static bool TryTypedToString(const std::any& variable, std::string& encoded);
 
     template<typename T>
     static Result Serialize(Map& map, const std::string& name, const T& variable) {
@@ -167,6 +169,10 @@ class JETSTREAM_API Parser {
         } else if constexpr (std::is_same_v<ValueType, std::any>) {
             if (!variable.has_value()) {
                 return 0;
+            }
+
+            if (variable.type() == typeid(std::nullptr_t)) {
+                return Hash(nullptr);
             }
 
             if (variable.type() == typeid(Map)) {
@@ -344,6 +350,10 @@ class JETSTREAM_API Parser {
         }
 
         if constexpr (detail::Optional<ValueType>) {
+            if (encoded.type() == typeid(std::nullptr_t)) {
+                variable.reset();
+                return Result::SUCCESS;
+            }
             using EntryType = typename ValueType::value_type;
             EntryType decoded{};
             JST_CHECK(Decode(encoded, name, decoded));

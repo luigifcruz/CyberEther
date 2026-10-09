@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -25,9 +26,19 @@ JETSTREAM_API std::string PathToUtf8(const std::filesystem::path& path);
 
 JETSTREAM_API Result EnvironmentVariable(const std::string& name, std::string& value);
 JETSTREAM_API Result EnvironmentPath(const std::string& name, std::filesystem::path& path);
+JETSTREAM_API Result WriteEnvironmentVariable(const std::string& name, const std::optional<std::string>& value);
 
 JETSTREAM_API Result ConfigPath(std::string& path);
 JETSTREAM_API Result CachePath(std::string& path);
+
+//
+// Secrets
+//
+
+JETSTREAM_API bool SecretStoreAvailable();
+JETSTREAM_API Result ReadSecret(const std::string& service, const std::string& account, std::string& value);
+JETSTREAM_API Result WriteSecret(const std::string& service, const std::string& account, const std::string& value);
+JETSTREAM_API Result DeleteSecret(const std::string& service, const std::string& account);
 
 //
 // Storage
@@ -58,6 +69,8 @@ JETSTREAM_API void WriteInterruptMessage(const char* message, std::size_t size) 
 
 #if !defined(JST_OS_BROWSER)
 JETSTREAM_API bool ShutdownSocketRead(std::uintptr_t socket) noexcept;
+JETSTREAM_API void DisableSocketSigPipe(std::uintptr_t socket) noexcept;
+JETSTREAM_API void IgnoreBrokenPipe() noexcept;
 #endif
 
 //
@@ -110,6 +123,12 @@ JETSTREAM_API void* LoadDynamicLibrarySymbol(void* handle,
                                              std::string& error);
 
 //
+// Files
+//
+
+JETSTREAM_API Result WriteFileAtomic(const std::string& path, std::string_view bytes, bool ownerOnly = false);
+
+//
 // File Lock
 //
 
@@ -150,6 +169,7 @@ JETSTREAM_API Result PickFile(std::string& path,
 JETSTREAM_API Result PickFolder(std::string& path,
                                 std::function<void(std::string)> callback = nullptr);
 JETSTREAM_API Result SaveFile(std::string& path,
+                              const std::vector<std::string>& extensions = {},
                               std::function<void(std::string)> callback = nullptr);
 
 JETSTREAM_API bool IsFilePending();

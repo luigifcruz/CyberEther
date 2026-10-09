@@ -8,7 +8,7 @@
 #include "../../context.hh"
 #include "../../retained/helpers.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
-#include "../../retained/text_lines.hh"
+#include "tools/text.hh"
 #include "../../retained/syntax_highlighter.hh"
 #include "../../retained/text_metrics.hh"
 
@@ -25,6 +25,9 @@
 #include <vector>
 
 namespace Jetstream::Sakura::Retained {
+
+using Jetstream::Text::SplitLines;
+using Jetstream::Text::JoinLines;
 
 namespace {
 

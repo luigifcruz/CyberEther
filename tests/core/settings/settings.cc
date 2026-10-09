@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "environment.hh"
 #include "jetstream/platform.hh"
 #include "jetstream/settings.hh"
 
@@ -17,63 +18,7 @@ using namespace Jetstream;
 
 namespace {
 
-bool SetEnvValue(const char* name, const std::optional<std::string>& value) {
-#if defined(JST_OS_WINDOWS)
-    return _putenv_s(name, value ? value->c_str() : "") == 0;
-#else
-    if (value) {
-        return setenv(name, value->c_str(), 1) == 0;
-    }
-
-    return unsetenv(name) == 0;
-#endif
-}
-
-struct ScopedEnvVar {
-    explicit ScopedEnvVar(const char* name) : name(name) {
-        if (const char* value = std::getenv(name)) {
-            originalValue = value;
-        }
-    }
-
-    ~ScopedEnvVar() {
-        (void)SetEnvValue(name.c_str(), originalValue);
-    }
-
-    bool set(const std::optional<std::string>& value) const {
-        return SetEnvValue(name.c_str(), value);
-    }
-
-    std::string name;
-    std::optional<std::string> originalValue;
-};
-
-#if defined(JST_OS_WINDOWS)
-
-bool SetWideEnvValue(const wchar_t* name, const std::optional<std::wstring>& value) {
-    return _wputenv_s(name, value ? value->c_str() : L"") == 0;
-}
-
-struct ScopedWideEnvVar {
-    explicit ScopedWideEnvVar(const wchar_t* name) : name(name) {
-        if (const wchar_t* value = _wgetenv(name)) {
-            originalValue = value;
-        }
-    }
-
-    ~ScopedWideEnvVar() {
-        (void)SetWideEnvValue(name.c_str(), originalValue);
-    }
-
-    bool set(const std::optional<std::wstring>& value) const {
-        return SetWideEnvValue(name.c_str(), value);
-    }
-
-    std::wstring name;
-    std::optional<std::wstring> originalValue;
-};
-
-#endif
+using ScopedEnvVar = TestSupport::ScopedEnvironment;
 
 struct TempPathRoot {
     explicit TempPathRoot(const std::string& label) {
@@ -100,7 +45,7 @@ struct SettingsSandbox {
         , homeEnv("HOME")
         , xdgConfigEnv("XDG_CONFIG_HOME")
 #elif defined(JST_OS_WINDOWS)
-        , appDataEnv(L"APPDATA")
+        , appDataEnv("APPDATA")
 #elif defined(JST_OS_MAC)
         , fixedHomeEnv("CFFIXED_USER_HOME")
 #endif
@@ -111,7 +56,7 @@ struct SettingsSandbox {
             throw std::runtime_error("failed to redirect settings test environment");
         }
 #elif defined(JST_OS_WINDOWS)
-        if (!appDataEnv.set((tempRoot.root / "AppData" / "Roaming").wstring())) {
+        if (!appDataEnv.set(Platform::PathToUtf8(tempRoot.root / "AppData" / "Roaming"))) {
             throw std::runtime_error("failed to redirect settings test environment");
         }
 #elif defined(JST_OS_MAC)
@@ -148,7 +93,7 @@ struct SettingsSandbox {
     ScopedEnvVar homeEnv;
     ScopedEnvVar xdgConfigEnv;
 #elif defined(JST_OS_WINDOWS)
-    ScopedWideEnvVar appDataEnv;
+    ScopedEnvVar appDataEnv;
 #elif defined(JST_OS_MAC)
     ScopedEnvVar fixedHomeEnv;
 #endif
@@ -537,7 +482,7 @@ TEST_CASE("Settings reports an error when Linux config environment is unavailabl
 
 TEST_CASE("Settings reports an error when Windows config environment is unavailable",
           "[core][settings][environment]") {
-    ScopedWideEnvVar appDataEnv(L"APPDATA");
+    ScopedEnvVar appDataEnv("APPDATA");
     REQUIRE(appDataEnv.set(std::nullopt));
 
     Settings settings;
