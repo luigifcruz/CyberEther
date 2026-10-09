@@ -40,10 +40,19 @@ void TextInput::render(const Context& ctx) const {
     if (config.selectAllOnFocus) {
         flags |= ImGuiInputTextFlags_AutoSelectAll;
     }
+    if (config.password) {
+        flags |= ImGuiInputTextFlags_Password;
+    }
+    if (config.disabled) {
+        ImGui::BeginDisabled();
+    }
     if (config.hint.empty()) {
         changed = ImGui::InputText("##input", &value, flags);
     } else {
         changed = ImGui::InputTextWithHint("##input", config.hint.c_str(), &value, flags);
+    }
+    if (config.disabled) {
+        ImGui::EndDisabled();
     }
     if (!config.focusOutline) {
         ImGui::PopStyleColor();

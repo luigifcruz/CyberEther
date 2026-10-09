@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace Jetstream::Sakura::Retained {
@@ -22,10 +23,13 @@ struct Button : public Component {
         std::string borderColorKey = "button_outline";
         std::string textColorKey = "button_text";
         F32 disabledAlpha = 0.4f;
+        F32 opacity = 1.0f;
         F32 fontSize = Typography::FontSize;
         std::string fontName = "default_mono";
         F32 cornerRadius = 0.0f;
         F32 borderWidth = 0.0f;
+        F32 labelInsetLeft = 0.0f;
+        std::optional<F32> horizontalPadding;
         U64 maxCharacters = 64;
         std::function<void()> onClick;
     };

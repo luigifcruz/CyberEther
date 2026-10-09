@@ -24,8 +24,7 @@ struct Button::Impl {
     Box box;
     Label label;
     mutable TextMetrics textMetrics;
-    bool hovered = false;
-    bool pressed = false;
+    PressState press;
 };
 
 Button::Button() {
@@ -49,7 +48,8 @@ Extent2D<F32> Button::measure(const Context& ctx, Extent2D<F32> available) {
     const F32 fontSizePixels = impl->config.fontSize;
     const F32 textWidth = impl->textMetrics.measure(impl->config.fontName, impl->config.str, fontSizePixels);
 
-    const F32 width = textWidth + 2.0f * kHorizontalPadding * ratio;
+    const F32 padding = impl->config.horizontalPadding.value_or(kHorizontalPadding * ratio);
+    const F32 width = textWidth + 2.0f * padding + impl->config.labelInsetLeft;
     const F32 height = fontSizePixels + 2.0f * kVerticalPadding * ratio;
 
     return {std::min(width, available.x), std::min(height, available.y)};
@@ -64,35 +64,37 @@ void Button::layout(const Context& ctx) {
     const bool visible = !bounds.empty();
     const F32 fontSizePixels = c.fontSize;
 
-    ColorRGBA<F32> bg = ctx.color(c.colorKey);
+    ColorRGBA<F32> bg = ctx.color(impl->press.colorKey(c));
     ColorRGBA<F32> fg = ctx.color(c.textColorKey);
     ColorRGBA<F32> border = ctx.color(c.borderColorKey);
 
-    if (c.disabled) {
-        bg.a *= c.disabledAlpha;
-        fg.a *= c.disabledAlpha;
-        border.a *= c.disabledAlpha;
-    } else if (impl->pressed) {
-        bg = ctx.color(c.activeColorKey);
-    } else if (impl->hovered) {
-        bg = ctx.color(c.hoveredColorKey);
-    }
+    const F32 alpha = c.opacity * (c.disabled ? c.disabledAlpha : 1.0f);
+    bg.a *= alpha;
+    fg.a *= alpha;
+    border.a *= alpha;
 
     impl->box.update({
         .id = c.id + ":bg",
-        .instances = {{.rect = rect, .visible = visible, .backgroundColor = bg}},
+        .instances = {{.rect = rect, .visible = visible && alpha > 0.0f, .backgroundColor = bg}},
         .clip = clipRect,
         .cornerRadius = c.cornerRadius,
         .borderWidth = c.borderWidth,
         .borderColor = border,
     });
 
+    const Rect labelRect = {
+        rect.x + c.labelInsetLeft,
+        rect.y,
+        std::max(0.0f, rect.width - c.labelInsetLeft),
+        rect.height,
+    };
+
     impl->label.update({
         .id = c.id + ":label",
         .instances = {{
-            .rect = rect,
+            .rect = labelRect,
             .str = c.str,
-            .visible = visible,
+            .visible = visible && alpha > 0.0f,
             .color = fg,
             .fontSize = fontSizePixels,
             .alignment = {1, 1},
@@ -110,12 +112,9 @@ void Button::layout(const Context& ctx) {
 
 bool Button::event(const MouseEvent& event) {
     const auto setState = [&](bool nextHovered, bool nextPressed) {
-        if (nextHovered == impl->hovered && nextPressed == impl->pressed) {
-            return;
+        if (impl->press.set(nextHovered, nextPressed)) {
+            invalidate(Dirty::Paint);
         }
-        impl->hovered = nextHovered;
-        impl->pressed = nextPressed;
-        invalidate(Dirty::Paint);
     };
 
     if (impl->config.disabled) {
@@ -129,7 +128,7 @@ bool Button::event(const MouseEvent& event) {
             if (inside) {
                 ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
             }
-            setState(inside, impl->pressed && inside);
+            setState(inside, impl->press.pressed && inside);
             return false;
         case MouseEventType::Leave:
             setState(false, false);
@@ -141,7 +140,7 @@ bool Button::event(const MouseEvent& event) {
             }
             return false;
         case MouseEventType::Release:
-            if (event.button == MouseButton::Left && impl->pressed && inside) {
+            if (event.button == MouseButton::Left && impl->press.pressed && inside) {
                 setState(inside, false);
                 if (impl->config.onClick) {
                     impl->config.onClick();

@@ -51,7 +51,8 @@ struct Box::Impl : public Drawable {
         Render::Components::Shapes::Config shapeConfig;
         shapeConfig.pixelSize = context->pixelSize();
         shapeConfig.elements[kRectElementId] = {
-            .type = Render::Components::Shapes::Type::RECT,
+            .type = config.shape == Shape::Triangle ? Render::Components::Shapes::Type::TRIANGLE
+                                                    : Render::Components::Shapes::Type::RECT,
             .numberOfInstances = capacity,
             .position = {-2.0f, -2.0f},
             .size = {0.0f, 0.0f},
@@ -100,6 +101,8 @@ struct Box::Impl : public Drawable {
         JST_CHECK(shape->getSizes(kRectElementId, sizes));
         std::span<ColorRGBA<F32>> colors;
         JST_CHECK(shape->getColors(kRectElementId, colors));
+        std::span<F32> rotations;
+        JST_CHECK(shape->getRotations(kRectElementId, rotations));
 
         const U64 slots = std::min(capacity, std::max<U64>(config.instances.size(), liveSlots));
         U64 nextLiveSlots = 0;
@@ -118,6 +121,7 @@ struct Box::Impl : public Drawable {
             positions[i] = PixelToNdc(framebufferSize, instance.rect.center().x, instance.rect.center().y);
             sizes[i] = {instance.rect.width, instance.rect.height};
             colors[i] = instance.backgroundColor;
+            rotations[i] = instance.rotation;
         }
 
         liveSlots = nextLiveSlots;
@@ -125,6 +129,7 @@ struct Box::Impl : public Drawable {
         JST_CHECK(shape->updatePositions(kRectElementId));
         JST_CHECK(shape->updateSizes(kRectElementId));
         JST_CHECK(shape->updateColors(kRectElementId));
+        JST_CHECK(shape->updateRotations(kRectElementId));
 
         JST_CHECK(shape->updateProperties(kRectElementId, config.cornerRadius,
                                           config.borderWidth, config.borderColor));
@@ -152,7 +157,8 @@ Box::~Box() = default;
 
 bool Box::update(Config config) {
     const bool visualsChanged = !this->impl->sameVisuals(config);
-    const bool capacityChanged = this->impl->requiredCapacity(config) != this->impl->capacity;
+    const bool capacityChanged = this->impl->requiredCapacity(config) != this->impl->capacity ||
+                                 this->impl->config.shape != config.shape;
     this->impl->config = std::move(config);
 
     if (capacityChanged) {

@@ -20,6 +20,7 @@ struct Canvas {
         std::string id;
         Extent2D<F32> size = {0.0f, 0.0f};
         bool autoHeight = false;
+        bool passthrough = false;
         ColorRGBA<F32> clearColor = {0.0f, 0.0f, 0.0f, 1.0f};
         std::function<void(const Layout&)> onLayout;
     };

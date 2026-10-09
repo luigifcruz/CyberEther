@@ -71,8 +71,56 @@ struct Canvas::Impl {
         return root.measure(ctx, available);
     }
 
+    static bool hitTest(const Component& root, const Extent2D<F32>& point) {
+        return root.hitTest(point);
+    }
+
+    static bool hoverBlocked(const ImGuiContext& g, const ImGuiIO& io) {
+        if (g.HoveredWindow != g.HoveredWindowBeforeClear || ImGui::GetTopMostPopupModal() ||
+            (io.ConfigFlags & ImGuiConfigFlags_NoMouse)) {
+            return true;
+        }
+        for (int i = 0; i < IM_ARRAYSIZE(io.MouseDown); ++i) {
+            if (io.MouseDown[i] && !io.MouseClicked[i] && !io.MouseDownOwned[i]) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void routeMouse() {
+        ImGuiContext& g = *ImGui::GetCurrentContext();
+        ImGuiWindow* window = ImGui::GetCurrentWindow();
+        if (!root || surfaceRect.empty() || context.framebufferSize.x == 0 || context.framebufferSize.y == 0 ||
+            (g.ActiveId != 0 && g.ActiveIdWindow == window)) {
+            return;
+        }
+        ImGuiIO& io = ImGui::GetIO();
+        const ImVec2 mouse = io.MousePos;
+        const bool inside = ImGui::IsMousePosValid(&mouse) && hitTest(*root, {
+            (mouse.x - surfaceRect.x) / surfaceRect.width * static_cast<F32>(context.framebufferSize.x),
+            (mouse.y - surfaceRect.y) / surfaceRect.height * static_cast<F32>(context.framebufferSize.y),
+        });
+        if (!inside) {
+            window->Flags |= ImGuiWindowFlags_NoMouseInputs;
+        }
+        const bool hovered = g.HoveredWindow && g.HoveredWindow->RootWindow == window->RootWindow;
+        if (hovered == inside || hoverBlocked(g, io)) {
+            return;
+        }
+        ImGui::FindHoveredWindowEx(mouse, false, &g.HoveredWindow, &g.HoveredWindowUnderMovingWindow);
+        g.HoveredWindowBeforeClear = g.HoveredWindow;
+        for (int i = 0; i < IM_ARRAYSIZE(io.MouseDown); ++i) {
+            if (io.MouseClicked[i]) {
+                io.MouseDownOwned[i] = g.HoveredWindow != nullptr || g.OpenPopupStack.Size > 0;
+                io.MouseDownOwnedUnlessPopupClose[i] = g.HoveredWindow != nullptr;
+            }
+        }
+    }
+
     Config config;
     Component* root = nullptr;
+    Rect surfaceRect;
 
     Render::Window* renderWindow = nullptr;
     Render::Window* boundWindow = nullptr;
@@ -223,6 +271,17 @@ struct Canvas::Impl {
         return Result::SUCCESS;
     }
 
+    void applyContext(const Extent2D<U64>& framebufferSize, const F32 pixelRatio) {
+        const bool changed = context.framebufferSize != framebufferSize || context.pixelRatio != pixelRatio;
+        context.framebufferSize = framebufferSize;
+        context.pixelRatio = pixelRatio;
+        if (root && changed) {
+            root->impl->invalidatePaintTree();
+        }
+        runLayout();
+        invalidateSurface();
+    }
+
     bool handleResize(const SurfaceResize& resize) {
         if (lastResize.has_value() && SameSurfaceResize(*lastResize, resize)) {
             return false;
@@ -231,16 +290,7 @@ struct Canvas::Impl {
         if (surface) {
             surface->size(resize.framebufferSize);
         }
-        const Extent2D<U64> previousFramebufferSize = context.framebufferSize;
-        const F32 previousPixelRatio = context.pixelRatio;
-        context.framebufferSize = resize.framebufferSize;
-        context.pixelRatio = currentPixelRatio();
-        if (root && (context.framebufferSize != previousFramebufferSize ||
-                     context.pixelRatio != previousPixelRatio)) {
-            root->impl->invalidatePaintTree();
-        }
-        runLayout();
-        invalidateSurface();
+        applyContext(surface ? surface->size() : resize.framebufferSize, currentPixelRatio());
         return true;
     }
 
@@ -293,6 +343,14 @@ bool Canvas::update(Config config) {
 
 void Canvas::render(const Sakura::Context& ctx) {
     impl->renderWindow = ctx.render;
+
+    if (impl->surface) {
+        const auto framebufferSize = impl->surface->size();
+        const F32 pixelRatio = impl->currentPixelRatio();
+        if (impl->context.framebufferSize != framebufferSize || impl->context.pixelRatio != pixelRatio) {
+            impl->applyContext(framebufferSize, pixelRatio);
+        }
+    }
 
     Extent2D<F32> surfaceSize = impl->config.size;
     const Extent2D<F32> availableLogicalSize =
@@ -349,7 +407,7 @@ void Canvas::render(const Sakura::Context& ctx) {
                 std::numeric_limits<F32>::infinity(),
             };
             const F32 desiredPx = Impl::measure(*impl->root, rctx, available).y;
-            surfaceSize.y = desiredPx / std::max(1e-3f, impl->currentPixelRatio());
+            surfaceSize.y = desiredPx / std::max(1e-3f, impl->context.pixelRatio);
 
             if (!impl->bound) {
                 if (const auto resize = ResolveSurfaceResize(ctx, surfaceSize);
@@ -380,6 +438,7 @@ void Canvas::render(const Sakura::Context& ctx) {
     impl->surfaceView.update({
         .id = impl->config.id + ":surface",
         .size = surfaceSize,
+        .premultiplied = impl->config.clearColor.a < 1.0f,
         .detachOverlay = false,
         .onResolveTexture = [impl = impl.get()]() {
             return impl->framebuffer ? impl->framebuffer->raw() : 0;
@@ -393,7 +452,13 @@ void Canvas::render(const Sakura::Context& ctx) {
             }
         },
     });
+    if (impl->config.passthrough) {
+        impl->routeMouse();
+    }
     impl->surfaceView.render(ctx);
+    const ImVec2 itemMin = ImGui::GetItemRectMin();
+    const ImVec2 itemMax = ImGui::GetItemRectMax();
+    impl->surfaceRect = {itemMin.x, itemMin.y, itemMax.x - itemMin.x, itemMax.y - itemMin.y};
     impl->hovered = ImGui::IsItemHovered();
     impl->active = ImGui::IsItemActive();
     impl->windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);

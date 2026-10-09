@@ -3,6 +3,7 @@ src_lst += files([
     'box.cc',
     'label.cc',
     'button.cc',
+    'dropdown.cc',
     'scroll_view.cc',
     'list.cc',
     'text_grid.cc',

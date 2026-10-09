@@ -180,6 +180,10 @@ bool Component::event(const MouseEvent& event) {
     return eventChildren(event);
 }
 
+bool Component::hitTest(const Extent2D<F32>& point) const {
+    return frame().contains(point.x, point.y);
+}
+
 Extent2D<F32> Component::measureChild(Component& child, const Context& ctx, Extent2D<F32> available) {
     return child.measure(ctx, available);
 }

@@ -14,13 +14,7 @@ namespace Jetstream::Sakura {
 struct Hud {
     using Child = std::function<void(const Context&)>;
 
-    enum class Anchor {
-        TopLeft,
-        TopRight,
-        BottomLeft,
-        BottomRight,
-        Center,
-    };
+    using Anchor = Sakura::Anchor;
 
     struct Config {
         std::string id;
