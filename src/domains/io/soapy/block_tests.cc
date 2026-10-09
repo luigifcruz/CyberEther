@@ -83,6 +83,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     Blocks::Soapy config;
     config.antenna = "RX";
+    config.automaticGain = false;
+    config.manualGain = 20.0f;
     REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
     REQUIRE(viewBlock("radio").state == Block::State::Incomplete);
 
@@ -101,6 +103,14 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(Parser::Get<std::vector<Parser::Map>>(antenna->format, "options") ==
             std::vector<Parser::Map>{{{"label", "Default"}, {"value", ""}},
                                     {{"label", "RX"}, {"value", "RX"}}});
+    const auto gain = std::find_if(block.interfaceConfigs.begin(),
+                                  block.interfaceConfigs.end(),
+                                  [](const auto& field) { return field.name == "manualGain"; });
+    REQUIRE(gain != block.interfaceConfigs.end());
+    REQUIRE(gain->format == Parser::Map{
+        {"type", "range"}, {"min", 0.0f}, {"max", 60.0f}, {"unit", "dB"},
+    });
+    REQUIRE(Parser::Get<F32>(block.config, "manualGain") == 20.0f);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
