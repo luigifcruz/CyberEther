@@ -41,6 +41,7 @@ struct FlowgraphConfigFieldConfig {
     std::function<void(Result, std::string)> onError;
     std::function<void(bool, std::vector<std::string>, std::function<void(std::string)>)> onBrowsePath;
     std::optional<std::string> preview;
+    std::function<void(Extent2D<F32>)> onContentOverflow;
 };
 
 }  // namespace Jetstream

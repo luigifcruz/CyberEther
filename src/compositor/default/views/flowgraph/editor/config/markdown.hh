@@ -70,6 +70,7 @@ struct FlowgraphConfigMarkdownField {
                 }
                 editing = false;
             },
+            .onContentOverflow = this->config.onContentOverflow,
         });
     }
 

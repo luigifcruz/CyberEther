@@ -7,9 +7,11 @@
 #include "menu.hh"
 #include "metrics/base.hh"
 
+#include "../../../model/meta.hh"
 #include "jetstream/block.hh"
 #include "jetstream/parser.hh"
 #include "jetstream/render/base/texture.hh"
+#include "render/sakura/metrics.hh"
 
 #include <algorithm>
 #include <cmath>
@@ -117,6 +119,7 @@ struct FlowgraphNode {
         std::function<void()> onDelete;
         std::function<void(DeviceType, RuntimeType, ProviderType)> onDeviceSelect;
         std::function<void(F32, F32, F32, F32)> onLayout;
+        std::function<void(Rect, Extent2D<F32>, std::optional<Extent2D<F32>>)> onBounds;
         std::function<void(bool)> onConfigCollapse;
         std::function<void(bool)> onConfigDetach;
     };
@@ -129,21 +132,6 @@ struct FlowgraphNode {
 
     static constexpr F32 MinimumNodeWidth = 120.0f;
     static constexpr F32 MinimumNodeHeight = 100.0f;
-
-    static F32 DefaultNodeWidth(const Block::NodeSize& size) {
-        switch (size) {
-            case Block::NodeSize::XS:
-                return 120.0f;
-            case Block::NodeSize::M:
-                return 220.0f;
-            case Block::NodeSize::L:
-                return 320.0f;
-            case Block::NodeSize::XL:
-                return 460.0f;
-            default:
-                return 140.0f;
-        }
-    }
 
     static constexpr FlowgraphNodeHeightSpec SurfaceHeightSpec() {
         return {
@@ -168,8 +156,19 @@ struct FlowgraphNode {
                          : isPending ? Sakura::Node::State::Pending : Sakura::Node::State::Normal;
 
         fields.resize(block.configFields.size());
+        fieldOverflows.resize(fields.size());
+        fieldKinds.resize(fields.size());
         for (U64 i = 0; i < fields.size(); ++i) {
-            fields[i].update(block.configFields[i]);
+            auto field = block.configFields[i];
+            auto kind = Parser::Get<std::string>(field.format, "type");
+            if (kind != fieldKinds[i]) {
+                fieldKinds[i] = std::move(kind);
+                fieldOverflows[i].reset();
+            }
+            field.onContentOverflow = [this, i](Extent2D<F32> overflow) {
+                fieldOverflows[i] = overflow;
+            };
+            fields[i].update(std::move(field));
         }
         fieldGrid.update({
             .id = this->config.id + "FieldGrid",
@@ -370,6 +369,7 @@ struct FlowgraphNode {
                                       contentLayoutState->minimumHeight.has_value()
             ? std::max(MinimumNodeHeight, *contentLayoutState->minimumHeight)
             : MinimumNodeHeight;
+        minimumHeight = minimumNodeHeight;
         if (verticalResize && !isCreating && dimensions.y < minimumNodeHeight) {
             dimensions.y = minimumNodeHeight;
             nodeDimensions.y = dimensions.y;
@@ -645,6 +645,27 @@ struct FlowgraphNode {
                             dimensions.y);
         }
 
+        if (geometry.has_value() && config.block.state != Block::State::Creating && config.onBounds) {
+            const auto size = Sakura::Unscale(ctx, geometry->dimensions);
+            const F32 padding = size.x - dimensions.x;
+            const Extent2D<F32> inner = {dimensions.x, size.y - padding};
+            std::optional<Extent2D<F32>> content;
+            const bool configHidden = config.block.configCollapsed || config.block.configDetached;
+            for (U64 i = 0; !configHidden && i < fields.size(); ++i) {
+                if (const auto& overflow = fieldOverflows[i]) {
+                    if (!content.has_value()) {
+                        content = inner;
+                    }
+                    content->x = std::max(content->x, inner.x + overflow->x);
+                    content->y += overflow->y;
+                }
+            }
+            if (content.has_value()) {
+                content->y = std::max(content->y, minimumHeight);
+            }
+            config.onBounds({geometry->gridPosition.x, geometry->gridPosition.y, size.x, size.y}, inner, content);
+        }
+
         if (menuOpen) {
             menu.render(ctx);
         }
@@ -662,6 +683,7 @@ struct FlowgraphNode {
  private:
     Config config;
     Extent2D<F32> dimensions = {0.0f, 0.0f};
+    F32 minimumHeight = MinimumNodeHeight;
     std::optional<Extent2D<F32>> gridPosition;
     std::optional<Geometry> geometry;
     Sakura::Node node;
@@ -675,6 +697,8 @@ struct FlowgraphNode {
     std::vector<FlowgraphMetricInstance> metrics;
     Sakura::NodeFieldGrid fieldGrid;
     std::vector<FlowgraphConfigFieldInstance> fields;
+    std::vector<std::optional<Extent2D<F32>>> fieldOverflows;
+    std::vector<std::string> fieldKinds;
     std::vector<Sakura::SurfaceView> attachedSurfaces;
     std::vector<FlowgraphNodeMenu::DeviceOption> deviceOptions;
     FlowgraphNodeMenu menu;

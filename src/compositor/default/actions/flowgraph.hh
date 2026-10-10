@@ -11,9 +11,10 @@
 #include "jetstream/flowgraph_view.hh"
 #include "jetstream/instance.hh"
 #include "jetstream/platform.hh"
+#include "tools/naming.hh"
+#include "tools/text.hh"
 
 #include <algorithm>
-#include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
@@ -117,11 +118,8 @@ struct FlowgraphActions {
     }
 
     Result handle(const MailDropFlowgraphPath& msg) {
-        auto extension = Platform::PathToUtf8(
-            Platform::PathFromUtf8(msg.path).extension());
-        std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) {
-            return static_cast<char>(std::tolower(c));
-        });
+        const auto extension = Text::ToLower(Platform::PathToUtf8(
+            Platform::PathFromUtf8(msg.path).extension()));
 
         if (extension != ".yml" && extension != ".yaml") {
             callbacks.notify(Sakura::ToastType::Warning, 5000,
@@ -279,12 +277,9 @@ struct FlowgraphActions {
 
         auto flowgraph = state.flowgraph.items[msg.flowgraph];
 
-        std::string baseName = msg.moduleId;
-        std::string blockName = baseName;
-        int suffix = 1;
-        while (flowgraph->view().has(blockName)) {
-            blockName = jst::fmt::format("{}_{}", baseName, suffix++);
-        }
+        const std::string blockName = Naming::UniqueName(msg.moduleId, [&](const std::string& candidate) {
+            return flowgraph->view().has(candidate);
+        });
 
         if (msg.gridPosition.has_value()) {
             const auto& pos = msg.gridPosition.value();
@@ -536,12 +531,9 @@ struct FlowgraphActions {
 
         auto flowgraph = state.flowgraph.items[msg.flowgraph];
 
-        std::string baseName = state.clipboard.moduleType;
-        std::string blockName = baseName;
-        int suffix = 1;
-        while (flowgraph->view().has(blockName)) {
-            blockName = jst::fmt::format("{}_{}", baseName, suffix++);
-        }
+        const std::string blockName = Naming::UniqueName(state.clipboard.moduleType, [&](const std::string& candidate) {
+            return flowgraph->view().has(candidate);
+        });
 
         if (msg.gridPosition.has_value()) {
             const auto& pos = msg.gridPosition.value();
@@ -577,7 +569,17 @@ struct FlowgraphActions {
         }
 
         auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
-        flowgraph->metadata().set("node", msg.meta, msg.block);
+        NodeMeta existing;
+        flowgraph->metadata().get("node", existing, msg.block);
+        NodeMeta merged = msg.meta;
+        if (msg.base.has_value()) {
+            for (const auto field : {&NodeMeta::x, &NodeMeta::y, &NodeMeta::width, &NodeMeta::height}) {
+                if (existing.*field != (*msg.base).*field) {
+                    merged.*field = existing.*field;
+                }
+            }
+        }
+        flowgraph->metadata().set("node", merged, msg.block);
         return Result::SUCCESS;
     }
 

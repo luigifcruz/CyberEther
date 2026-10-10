@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_REMOTE_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_REMOTE_HH
 
+#include "persist.hh"
 #include "../model/callbacks.hh"
 #include "../model/messages.hh"
 #include "../model/state.hh"
@@ -62,10 +63,9 @@ struct RemoteActions {
     Result handle(const MailSetRemoteBrokerUrl& msg) {
         state.remote.brokerUrl = msg.value;
 
-        Settings settings;
-        JST_CHECK(Settings::Get(settings));
-        settings.remote.brokerUrl = msg.value;
-        JST_CHECK(Settings::Set(settings));
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.remote.brokerUrl = msg.value;
+        }));
 
         return Result::SUCCESS;
     }
@@ -73,10 +73,9 @@ struct RemoteActions {
     Result handle(const MailSetRemoteCodec& msg) {
         state.remote.codec = msg.value;
 
-        Settings settings;
-        JST_CHECK(Settings::Get(settings));
-        settings.remote.codec = GetRemoteCodecName(msg.value);
-        JST_CHECK(Settings::Set(settings));
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.remote.codec = GetRemoteCodecName(msg.value);
+        }));
 
         return Result::SUCCESS;
     }
@@ -84,10 +83,9 @@ struct RemoteActions {
     Result handle(const MailSetRemoteFramerate& msg) {
         state.remote.framerate = msg.value;
 
-        Settings settings;
-        JST_CHECK(Settings::Get(settings));
-        settings.remote.framerate = msg.value;
-        JST_CHECK(Settings::Set(settings));
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.remote.framerate = msg.value;
+        }));
 
         return Result::SUCCESS;
     }
@@ -95,10 +93,9 @@ struct RemoteActions {
     Result handle(const MailSetRemoteEncoder& msg) {
         state.remote.encoder = msg.value;
 
-        Settings settings;
-        JST_CHECK(Settings::Get(settings));
-        settings.remote.encoder = GetRemoteEncoderName(msg.value);
-        JST_CHECK(Settings::Set(settings));
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.remote.encoder = GetRemoteEncoderName(msg.value);
+        }));
 
         return Result::SUCCESS;
     }
@@ -106,10 +103,9 @@ struct RemoteActions {
     Result handle(const MailSetRemoteAutoJoinSessions& msg) {
         state.remote.autoJoinSessions = msg.value;
 
-        Settings settings;
-        JST_CHECK(Settings::Get(settings));
-        settings.remote.autoJoinSessions = msg.value;
-        JST_CHECK(Settings::Set(settings));
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.remote.autoJoinSessions = msg.value;
+        }));
 
         return Result::SUCCESS;
     }

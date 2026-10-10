@@ -35,14 +35,20 @@ struct FlowgraphWindow {
         std::function<void()> onSave;
         std::function<void()> onClose;
         std::function<void()> onCreateStack;
-        std::function<void()> onSendFeedback;
         std::function<void()> onReviewDependencies;
         std::function<void()> onOpenExamples;
+        std::function<void(Rect, Rect)> onViewport;
     };
 
     void update(Config config) {
         auto editorConfig = std::move(config.editor);
         editorConfig.openBlockPicker = openBlockPickerRequest;
+        editorConfig.onViewport = [this](Rect viewport) {
+            if (this->config.onViewport) {
+                this->config.onViewport(viewport, {viewport.x + toolbarPlacement.x, viewport.y + toolbarPlacement.y,
+                                                   toolbarPlacement.width, toolbarPlacement.height});
+            }
+        };
         openBlockPickerRequest = false;
         this->config = std::move(config);
 
@@ -80,8 +86,10 @@ struct FlowgraphWindow {
                 openBlockPickerRequest = true;
             },
             .onCreateStack = this->config.onCreateStack,
-            .onSendFeedback = this->config.onSendFeedback,
             .onReviewDependencies = this->config.onReviewDependencies,
+            .onPlacement = [this](Rect placement) {
+                toolbarPlacement = placement;
+            },
         });
         editor.update(std::move(editorConfig));
 
@@ -200,6 +208,7 @@ struct FlowgraphWindow {
     Config config;
     Sakura::Window window;
     FlowgraphToolbar toolbar;
+    Rect toolbarPlacement;
     FlowgraphEditor editor;
     HintOverlay hint;
     std::vector<std::string> stackOrder;
