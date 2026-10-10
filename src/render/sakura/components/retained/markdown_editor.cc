@@ -24,8 +24,6 @@ constexpr F32 kButtonTopGap = 10.0f;
 constexpr F32 kButtonPadY = 6.0f;
 constexpr F32 kContentFitSlackPixels = 1.0f;
 
-}  // namespace
-
 struct MarkdownEditorBody : public Component {
     Box background;
     TextMarkdown preview;
@@ -40,8 +38,10 @@ struct MarkdownEditorBody : public Component {
     std::function<void(std::string)> onChange;
     std::function<void()> onEdit;
     std::function<void()> onDone;
+    std::function<void(Extent2D<F32>)> onContentOverflow;
 
     F32 maxAutoHeightWindowRatio = 0.0f;
+    F32 contentOverflow = 0.0f;
 
     MarkdownEditorBody() {
         setClipsChildren(true);
@@ -65,6 +65,7 @@ struct MarkdownEditorBody : public Component {
         onChange = config.onChange;
         onEdit = config.onEdit;
         onDone = config.onDone;
+        onContentOverflow = config.onContentOverflow;
         maxAutoHeightWindowRatio = config.maxAutoHeightWindowRatio;
     }
 
@@ -167,6 +168,14 @@ struct MarkdownEditorBody : public Component {
         } else {
             layoutChild(ctx, preview, contentRect);
         }
+        const F32 contentPixels = (editing ? editor.metrics() : preview.metrics()).contentHeight;
+        const F32 overflow = (contentPixels + kContentFitSlackPixels - contentRect.height) / std::max(1e-3f, pixelRatio);
+        if (overflow != contentOverflow) {
+            contentOverflow = overflow;
+            if (onContentOverflow) {
+                onContentOverflow({0.0f, overflow});
+            }
+        }
 
         button.update({
             .id = id + ":button",
@@ -195,6 +204,8 @@ struct MarkdownEditorBody : public Component {
 
     }
 };
+
+}  // namespace
 
 struct MarkdownEditor::Impl {
     Config config;

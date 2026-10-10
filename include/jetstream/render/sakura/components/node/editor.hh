@@ -34,7 +34,7 @@ struct NodeEditor {
         std::function<void(const std::vector<std::string>&)> onCopyShortcut;
         std::function<void(Extent2D<F32>)> onPasteShortcut;
         std::function<void(Extent2D<F32>)> onMouseGridPositionChange;
-        std::function<void(Extent2D<F32>)> onViewportGridCenterChange;
+        std::function<void(Rect)> onViewportGridChange;
     };
 
     NodeEditor();

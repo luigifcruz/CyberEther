@@ -86,8 +86,6 @@ void NodeEditor::render(const Context& ctx, Child child) const {
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, Scale(ctx, config.childRounding));
     const ImVec2 editorMin = ImGui::GetCursorScreenPos();
     const ImVec2 editorSize = ImGui::GetContentRegionAvail();
-    const ImVec2 editorCenter(editorMin.x + editorSize.x * 0.5f,
-                              editorMin.y + editorSize.y * 0.5f);
     ImNodes::BeginNodeEditor();
     ImGui::PopStyleVar();
     if (child) {
@@ -109,8 +107,10 @@ void NodeEditor::render(const Context& ctx, Child child) const {
     if (config.onMouseGridPositionChange) {
         config.onMouseGridPositionChange(mouseGridPosition);
     }
-    if (config.onViewportGridCenterChange) {
-        config.onViewportGridCenterChange(Unscale(ctx, Private::ToExtent2D(ImNodes::ScreenSpaceToGridSpace(editorCenter))));
+    if (config.onViewportGridChange) {
+        const auto gridMin = Unscale(ctx, Private::ToExtent2D(ImNodes::ScreenSpaceToGridSpace(editorMin)));
+        const auto gridSize = Unscale(ctx, Private::ToExtent2D(editorSize));
+        config.onViewportGridChange({gridMin.x, gridMin.y, gridSize.x, gridSize.y});
     }
 
     if (editorHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {

@@ -24,6 +24,7 @@ struct MarkdownEditor {
         std::function<void(std::string)> onChange;
         std::function<void()> onEdit;
         std::function<void()> onDone;
+        std::function<void(Extent2D<F32>)> onContentOverflow;
     };
 
     MarkdownEditor();

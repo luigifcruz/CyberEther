@@ -6,29 +6,6 @@ namespace Jetstream::Sakura {
 
 struct Overlay::Impl {
     Config config;
-
-    Extent2D<F32> anchorPosition(const Extent2D<F32>& origin,
-                                 const Extent2D<F32>& available,
-                                 const Extent2D<F32>& size) const {
-        switch (config.anchor) {
-            case Anchor::TopLeft:
-                return origin;
-            case Anchor::TopCenter:
-                return {origin.x + (available.x - size.x) * 0.5f, origin.y};
-            case Anchor::TopRight:
-                return {origin.x + available.x - size.x, origin.y};
-            case Anchor::BottomLeft:
-                return {origin.x, origin.y + available.y - size.y};
-            case Anchor::BottomRight:
-                return {origin.x + available.x - size.x, origin.y + available.y - size.y};
-            case Anchor::BottomCenter:
-                return {origin.x + (available.x - size.x) * 0.5f, origin.y + available.y - size.y};
-            case Anchor::Center:
-                return {origin.x + (available.x - size.x) * 0.5f,
-                        origin.y + (available.y - size.y) * 0.5f};
-        }
-        return origin;
-    }
 };
 
 Overlay::Overlay() {
@@ -66,10 +43,19 @@ void Overlay::render(const Context& ctx, Child child) const {
         size.y = available.y;
     }
 
-    Extent2D<F32> position = this->impl->anchorPosition(Private::ToExtent2D(regionMin), available, size);
+    const auto pivot = Private::AnchorPivot(config.anchor);
+    Extent2D<F32> position = {
+        regionMin.x + (available.x - size.x) * pivot.x,
+        regionMin.y + (available.y - size.y) * pivot.y,
+    };
     const Extent2D<F32> offset = Scale(ctx, config.offset);
     position.x += offset.x;
     position.y += offset.y;
+    if (config.onPlacement) {
+        const auto origin = Unscale(ctx, Extent2D<F32>{position.x - regionMin.x, position.y - regionMin.y});
+        const auto extent = Unscale(ctx, size);
+        config.onPlacement({origin.x, origin.y, extent.x, extent.y});
+    }
 
     ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoBackground |
                                    ImGuiWindowFlags_NoSavedSettings |

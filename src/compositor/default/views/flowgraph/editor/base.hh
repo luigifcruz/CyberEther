@@ -92,8 +92,9 @@ struct FlowgraphEditor {
             .onMouseGridPositionChange = [this](Extent2D<F32> gridPosition) {
                 mouseGridPosition = gridPosition;
             },
-            .onViewportGridCenterChange = [this](Extent2D<F32> gridPosition) {
-                viewportGridCenter = gridPosition;
+            .onViewportGridChange = [this](Rect viewport) {
+                viewportGridCenter = {viewport.x + viewport.width * 0.5f,
+                                      viewport.y + viewport.height * 0.5f};
             },
         });
 

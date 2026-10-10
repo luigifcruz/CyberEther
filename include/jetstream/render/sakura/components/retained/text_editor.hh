@@ -56,6 +56,7 @@ struct TextEditor : public Component {
     ~TextEditor();
 
     bool update(Config config);
+    const TextGrid::Metrics& metrics() const;
 
  protected:
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;

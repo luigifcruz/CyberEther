@@ -29,6 +29,7 @@ src_lst += files([
     'table.cc',
     'window.cc',
     'hud.cc',
+    'layer.cc',
     'modal.cc',
     'surface_view.cc',
     'workspace_background.cc',

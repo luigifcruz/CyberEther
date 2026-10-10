@@ -21,6 +21,7 @@
 #include <jetstream/render/sakura/components/hstack.hh>
 #include <jetstream/render/sakura/components/hud.hh>
 #include <jetstream/render/sakura/components/keyboard_input.hh>
+#include <jetstream/render/sakura/components/layer.hh>
 #include <jetstream/render/sakura/components/modal.hh>
 #include <jetstream/render/sakura/components/navigation_item.hh>
 #include <jetstream/render/sakura/components/navigation_list.hh>
@@ -49,6 +50,7 @@
 #include <jetstream/render/sakura/components/retained/canvas.hh>
 #include <jetstream/render/sakura/components/retained/code_editor.hh>
 #include <jetstream/render/sakura/components/retained/console.hh>
+#include <jetstream/render/sakura/components/retained/dropdown.hh>
 #include <jetstream/render/sakura/components/retained/label.hh>
 #include <jetstream/render/sakura/components/retained/list.hh>
 #include <jetstream/render/sakura/components/retained/markdown_editor.hh>
