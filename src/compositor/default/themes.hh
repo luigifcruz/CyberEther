@@ -49,6 +49,10 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"workspace_particle", {0.976f, 0.976f, 0.976f, 1.0f}},
             {"panel", {0.05f, 0.05f, 0.05f, 1.00f}},
             {"card", {0.08f, 0.08f, 0.08f, 1.00f}},
+            {"agent_panel", {0.06f, 0.06f, 0.06f, 1.00f}},
+            {"agent_composer", {0.10f, 0.10f, 0.10f, 1.00f}},
+            {"agent_outline", {1.00f, 1.00f, 1.00f, 0.12f}},
+            {"agent_activity", {0.20f, 0.47f, 0.96f, 1.00f}},
             {"popup_bg", {0.06f, 0.06f, 0.06f, 1.0f}},
             {"modal_dim", {0.00f, 0.00f, 0.00f, 0.60f}},
             {"notification_bg", {0.08f, 0.08f, 0.08f, 0.90f}},
@@ -68,6 +72,10 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"destructive_btn_active", {0.50f, 0.00f, 0.00f, 1.0f}},
             {"destructive_btn_text", {1.00f, 1.00f, 1.00f, 1.0f}},
             {"destructive_btn_outline", {0.86f, 0.24f, 0.24f, 1.0f}},
+            {"contrast_btn", {0.93f, 0.93f, 0.93f, 1.0f}},
+            {"contrast_btn_hovered", {0.82f, 0.82f, 0.82f, 1.0f}},
+            {"contrast_btn_active", {0.70f, 0.70f, 0.70f, 1.0f}},
+            {"contrast_btn_text", {0.08f, 0.08f, 0.08f, 1.0f}},
             {"warning_btn", {0.85f, 0.45f, 0.10f, 1.0f}},
             {"warning_btn_hovered", {0.95f, 0.55f, 0.15f, 1.0f}},
             {"warning_btn_active", {0.75f, 0.35f, 0.05f, 1.0f}},
@@ -125,6 +133,16 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             // Markdown Code Block Colors
             {"markdown_code_block", {0.085f, 0.09f, 0.10f, 1.00f}},
             {"markdown_code_block_border", {0.20f, 0.21f, 0.24f, 1.00f}},
+
+            // Chat Colors
+            {"chat_user_bubble", {0.20f, 0.47f, 0.96f, 1.00f}},
+            {"chat_user_bubble_outline", {0.35f, 0.65f, 1.00f, 0.85f}},
+
+            // Voice Orb Colors
+            {"voice_orb_listening", {0.10f, 0.40f, 1.00f, 1.0f}},
+            {"voice_orb_busy", {0.96f, 0.36f, 0.30f, 1.0f}},
+            {"voice_orb_listening_accent", {0.10f, 1.00f, 1.00f, 1.0f}},
+            {"voice_orb_busy_accent", {1.00f, 0.80f, 0.38f, 1.0f}},
 
             // Border Colors
             {"border", {0.18f, 0.18f, 0.18f, 0.75f}},
@@ -258,6 +276,10 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"workspace_particle", {0.149f, 0.149f, 0.149f, 1.0f}},
             {"panel", {0.95f, 0.95f, 0.96f, 1.00f}},
             {"card", {0.93f, 0.93f, 0.94f, 1.00f}},
+            {"agent_panel", {0.99f, 0.99f, 0.99f, 1.00f}},
+            {"agent_composer", {0.95f, 0.95f, 0.96f, 1.00f}},
+            {"agent_outline", {0.00f, 0.00f, 0.00f, 0.14f}},
+            {"agent_activity", {0.20f, 0.47f, 0.96f, 1.00f}},
             {"popup_bg", {0.96f, 0.96f, 0.97f, 1.0f}},
             {"modal_dim", {0.00f, 0.00f, 0.00f, 0.35f}},
             {"notification_bg", {0.96f, 0.96f, 0.97f, 0.90f}},
@@ -277,6 +299,10 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"destructive_btn_active", {0.80f, 0.15f, 0.15f, 1.0f}},
             {"destructive_btn_text", {1.00f, 1.00f, 1.00f, 1.0f}},
             {"destructive_btn_outline", {0.74f, 0.12f, 0.12f, 1.0f}},
+            {"contrast_btn", {0.12f, 0.12f, 0.14f, 1.0f}},
+            {"contrast_btn_hovered", {0.24f, 0.24f, 0.26f, 1.0f}},
+            {"contrast_btn_active", {0.34f, 0.34f, 0.36f, 1.0f}},
+            {"contrast_btn_text", {1.00f, 1.00f, 1.00f, 1.0f}},
             {"warning_btn", {0.85f, 0.45f, 0.10f, 1.0f}},
             {"warning_btn_hovered", {0.95f, 0.55f, 0.15f, 1.0f}},
             {"warning_btn_active", {0.75f, 0.35f, 0.05f, 1.0f}},
@@ -334,6 +360,16 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             // Markdown Code Block Colors
             {"markdown_code_block", {0.965f, 0.968f, 0.975f, 1.00f}},
             {"markdown_code_block_border", {0.84f, 0.85f, 0.87f, 1.00f}},
+
+            // Chat Colors
+            {"chat_user_bubble", {0.20f, 0.47f, 0.96f, 1.00f}},
+            {"chat_user_bubble_outline", {0.15f, 0.35f, 0.85f, 0.85f}},
+
+            // Voice Orb Colors
+            {"voice_orb_listening", {0.10f, 0.40f, 1.00f, 1.0f}},
+            {"voice_orb_busy", {0.96f, 0.36f, 0.30f, 1.0f}},
+            {"voice_orb_listening_accent", {0.10f, 1.00f, 1.00f, 1.0f}},
+            {"voice_orb_busy_accent", {1.00f, 0.80f, 0.38f, 1.0f}},
 
             // Border Colors
             {"border", {0.78f, 0.78f, 0.80f, 0.75f}},
