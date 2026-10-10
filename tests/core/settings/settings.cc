@@ -11,6 +11,8 @@
 #include <string>
 
 #include "environment.hh"
+#include "jetstream/compositor.hh"
+#include "jetstream/logger.hh"
 #include "jetstream/platform.hh"
 #include "jetstream/settings.hh"
 
@@ -326,6 +328,69 @@ TEST_CASE("Settings can update memory without persisting", "[core][settings][per
     REQUIRE(restored.developer.timingEnabled);
     REQUIRE(restored.runtime.python.path == "/runtime/only/libpython.so");
     REQUIRE(restored.runtime.dependencyPolicy == "allow");
+}
+
+TEST_CASE("Queued settings publish immediately and preserve persistence ordering", "[core][settings][persistence]") {
+    SettingsSandbox sandbox("async");
+    Settings settings;
+    for (int i = 0; i < 64; ++i) {
+        settings.interface.themeKey = "Queued " + std::to_string(i);
+        REQUIRE(Settings::SetAsync(settings) == Result::SUCCESS);
+        Settings visible;
+        REQUIRE(Settings::Get(visible) == Result::SUCCESS);
+        CHECK(visible.interface.themeKey == settings.interface.themeKey);
+    }
+    REQUIRE(Settings::Flush() == Result::SUCCESS);
+    CHECK(ReadFile(sandbox.path).find("Queued 63") != std::string::npos);
+    settings.interface.themeKey = "Before barrier";
+    REQUIRE(Settings::SetAsync(settings) == Result::SUCCESS);
+    settings.interface.themeKey = "Synchronous barrier";
+    REQUIRE(Settings::Set(settings) == Result::SUCCESS);
+    CHECK(ReadFile(sandbox.path).find("Synchronous barrier") != std::string::npos);
+    CHECK_FALSE(Settings::TakePersistenceError());
+}
+
+TEST_CASE("Queued settings failures reach the owner without reverting newer memory", "[core][settings][persistence]") {
+    SettingsSandbox sandbox("async-failure");
+    std::filesystem::create_directories(sandbox.path);
+    Settings settings;
+    settings.interface.themeKey = "Visible despite disk failure";
+    REQUIRE(Settings::SetAsync(settings) == Result::SUCCESS);
+    REQUIRE(Settings::Flush() == Result::ERROR);
+    const auto error = Settings::TakePersistenceError();
+    REQUIRE(error);
+    CHECK(error->find("Could not save settings") != std::string::npos);
+    Settings visible;
+    REQUIRE(Settings::Get(visible) == Result::SUCCESS);
+    CHECK(visible.interface.themeKey == settings.interface.themeKey);
+    CHECK_FALSE(Settings::TakePersistenceError());
+}
+
+TEST_CASE("Compositor shutdown reports failed async settings saves without aborting cleanup",
+          "[core][settings][persistence][compositor][shutdown]") {
+    SettingsSandbox sandbox("shutdown-failure");
+    std::filesystem::create_directories(sandbox.path);
+    Compositor compositor{CompositorType::DEFAULT};
+
+    JST_LOG_LAST_ERROR().clear();
+    REQUIRE(Settings::SetAsync(Settings{}) == Result::SUCCESS);
+
+    SECTION("shutdown drains the queued save") {
+        // Let destroy() wait for the failed write rather than flushing it here.
+    }
+
+    SECTION("the async failure was already reported before shutdown") {
+        REQUIRE(Settings::Flush() == Result::ERROR);
+        REQUIRE(Settings::TakePersistenceError());
+    }
+
+    // Instance::destroy() checks this result before tearing down its resources.
+    CHECK(compositor.destroy() == Result::SUCCESS);
+    CHECK(JST_LOG_LAST_ERROR() ==
+          "[COMPOSITOR_IMPL_DEFAULT] Failed to save settings during shutdown. Continuing cleanup.");
+    CHECK(Settings::Flush() == Result::ERROR);
+
+    while (Settings::TakePersistenceError()) {}
 }
 
 TEST_CASE("Transient settings can be restored before a retained update",

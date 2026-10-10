@@ -5,9 +5,9 @@
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
 #include "jetstream/types.hh"
+#include "tools/value.hh"
 
 #include <algorithm>
-#include <cctype>
 #include <functional>
 #include <string>
 #include <utility>
@@ -364,14 +364,6 @@ struct FlowgraphBlockPicker {
         bool titleMatch = false;
     };
 
-    static std::string normalize(const std::string& value) {
-        std::string normalized = value;
-        std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) {
-            return static_cast<char>(std::tolower(c));
-        });
-        return normalized;
-    }
-
     std::vector<std::string> buildCategories() const {
         std::vector<std::string> categories = {"All"};
         const std::vector<std::string> preferred = {"Core", "DSP", "Visualization", "IO", "Other"};
@@ -401,12 +393,12 @@ struct FlowgraphBlockPicker {
     }
 
     std::vector<BlockItem> filteredBlocks() const {
-        const std::string normalizedQuery = normalize(config.search);
+        const std::string normalizedQuery = Text::ToLower(config.search);
         auto matchPriority = [&](const std::string& title, const std::string& summary) -> int {
             if (normalizedQuery.empty()) return 0;
 
-            const std::string normalizedTitle = normalize(title);
-            const std::string normalizedSummary = normalize(summary);
+            const std::string normalizedTitle = Text::ToLower(title);
+            const std::string normalizedSummary = Text::ToLower(summary);
             if (normalizedTitle.find(normalizedQuery) != std::string::npos) return 0;
             if (normalizedSummary.find(normalizedQuery) != std::string::npos) return 1;
             return -1;

@@ -73,6 +73,7 @@ struct FlowgraphConfigPythonField {
                     this->config.onApply(std::move(patch), false);
                 }
             },
+            .onContentOverflow = this->config.onContentOverflow,
         });
     }
 

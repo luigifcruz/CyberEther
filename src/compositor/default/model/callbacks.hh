@@ -8,6 +8,7 @@
 #include "jetstream/types.hh"
 
 #include <functional>
+#include <optional>
 #include <string>
 
 namespace Jetstream {
@@ -20,6 +21,9 @@ struct DefaultCompositorCallbacks {
     std::function<void(Result, const std::string&)> notifyResult;
     std::function<void(const std::string&)> setClipboardText;
     std::function<Result(FilePickerRequest)> requestFile;
+    std::function<void(const std::string&, const std::string&, Rect, Extent2D<F32>,
+                       std::optional<Extent2D<F32>>)> recordNodeBounds;
+    std::function<void(const std::string&, Rect, Rect)> recordViewport;
     std::function<void()> checkForUpdates;
     std::function<void()> downloadUpdate;
     std::function<bool()> applyUpdate;

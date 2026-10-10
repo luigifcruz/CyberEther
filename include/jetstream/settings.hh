@@ -92,6 +92,9 @@ struct JETSTREAM_API Settings {
 
     static Result Get(Settings& settings);
     static Result Set(const Settings& settings, bool persist = true);
+    static Result SetAsync(const Settings& settings);
+    static std::optional<std::string> TakePersistenceError();
+    static Result Flush();
 
  private:
     struct Impl;

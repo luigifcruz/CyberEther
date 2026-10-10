@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_META_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_META_HH
 
+#include "jetstream/block.hh"
 #include "jetstream/parser.hh"
 
 #include <optional>
@@ -25,6 +26,21 @@ struct ConfigMeta {
 
     JST_SERDES(collapsed, detached, windowId);
 };
+
+constexpr F32 DefaultNodeWidth(Block::NodeSize size) {
+    switch (size) {
+        case Block::NodeSize::XS:
+            return 120.0f;
+        case Block::NodeSize::M:
+            return 220.0f;
+        case Block::NodeSize::L:
+            return 320.0f;
+        case Block::NodeSize::XL:
+            return 460.0f;
+        default:
+            return 140.0f;
+    }
+}
 
 struct SurfaceMeta {
     U64 attachedHeight = 256;

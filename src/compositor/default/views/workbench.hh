@@ -67,7 +67,7 @@ struct WorkbenchView {
         if (this->config.remoteHud.has_value()) {
             remoteHud.update(std::move(this->config.remoteHud.value()));
         }
-        notifications.update({.id = "notifications"});
+        notifications.update({.id = "notifications", .topOffset = menuBarHeight});
         if (this->config.debugWindow.has_value()) {
             debugWindow.update(std::move(this->config.debugWindow.value()));
         }
