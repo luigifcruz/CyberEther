@@ -1,12 +1,13 @@
 #include "module_impl.hh"
 
 #include <algorithm>
-#include <any>
 #include <cmath>
 #include <limits>
+#include <optional>
 
 #include "jetstream/render/utils.hh"
 #include "jetstream/constants.hh"
+#include "jetstream/memory/attributes.hh"
 #include "jetstream/memory/axis.hh"
 #include "jetstream/tools/numeric.hh"
 #include "resources/shaders/spectrogram_shaders.hh"
@@ -73,11 +74,16 @@ Result SpectrogramImpl::validate() {
         static_cast<U64>(std::numeric_limits<std::size_t>::max()) / sizeof(F32),
         static_cast<U64>(std::numeric_limits<std::ptrdiff_t>::max()) / sizeof(F32),
     });
-    if (!detail::CheckedMultiply(width, config.height, renderBinCount) ||
+    if (!Jetstream::detail::CheckedMultiply(width, config.height, renderBinCount) ||
         renderBinCount > maxRenderBinCount) {
         JST_ERROR("[MODULE_SPECTROGRAM] Render bin count exceeds the supported range.");
         return Result::ERROR;
     }
+
+    std::optional<F32> centerFrequency;
+    std::optional<F32> sampleRate;
+    JST_CHECK(ReadAttribute(inputTensor, "frequency", centerFrequency));
+    JST_CHECK(ReadAttribute(inputTensor, "sampleRate", sampleRate));
 
     validatedNumberOfElements = width;
     validatedNumberOfBatches = axes.batch ? inputTensor.shape(*axes.batch) : 1;
@@ -138,6 +144,10 @@ Result SpectrogramImpl::reconfigure() {
 }
 
 Result SpectrogramImpl::createPresent() {
+    std::optional<F32> centerFrequency;
+    std::optional<F32> sampleRate;
+    JST_CHECK(ReadAttribute(input, "frequency", centerFrequency));
+    JST_CHECK(ReadAttribute(input, "sampleRate", sampleRate));
     auto& window = render();
 
     if (!window) {
@@ -274,7 +284,7 @@ Result SpectrogramImpl::createPresent() {
         JST_CHECK(window->bind(renderSurface));
     }
 
-    JST_CHECK(updateAxisState());
+    JST_CHECK(updateAxisState(centerFrequency, sampleRate));
 
     // Register surface manifest.
 
@@ -300,6 +310,11 @@ Result SpectrogramImpl::destroyPresent() {
 }
 
 Result SpectrogramImpl::present() {
+    std::optional<F32> centerFrequency;
+    std::optional<F32> sampleRate;
+    JST_CHECK(ReadAttribute(input, "frequency", centerFrequency));
+    JST_CHECK(ReadAttribute(input, "sampleRate", sampleRate));
+
     if (!signalBuffer) {
         return Result::SUCCESS;
     }
@@ -313,7 +328,7 @@ Result SpectrogramImpl::present() {
         surfaceUpdateManifestSize("default", interaction.viewSize);
     }
 
-    JST_CHECK(updateAxisState());
+    JST_CHECK(updateAxisState(centerFrequency, sampleRate));
     JST_CHECK(lut.update(colormap));
 
     signalBuffer->update();
@@ -329,7 +344,8 @@ Result SpectrogramImpl::present() {
     return Result::SUCCESS;
 }
 
-Result SpectrogramImpl::updateAxisState() {
+Result SpectrogramImpl::updateAxisState(const std::optional<F32>& centerFrequency,
+                                        const std::optional<F32>& sampleRate) {
     if (!axis) {
         return Result::SUCCESS;
     }
@@ -340,7 +356,7 @@ Result SpectrogramImpl::updateAxisState() {
     };
     JST_CHECK(axis->updatePixelSize(pixelSize));
 
-    const bool hasFreqAttrs = input.hasAttribute("frequency") && input.hasAttribute("sampleRate");
+    const bool hasFreqAttrs = centerFrequency && sampleRate;
     const std::string resolvedXLabel = !hasFreqAttrs && xLabel == "Frequency (MHz)"
         ? "Normalized Frequency"
         : xLabel;
@@ -349,14 +365,14 @@ Result SpectrogramImpl::updateAxisState() {
     const F32 maxTranslation = std::abs((1.0f / interaction.zoom) - 1.0f);
     const F32 translation = std::clamp(-2.0f * interaction.offset, -maxTranslation, maxTranslation);
 
-    const F32 centerFreq = hasFreqAttrs ? std::any_cast<F32>(input.attribute("frequency")) : 0.0f;
-    const F32 sampleRate = hasFreqAttrs ? std::any_cast<F32>(input.attribute("sampleRate")) : 0.0f;
+    const F32 centerFreq = centerFrequency.value_or(0.0f);
+    const F32 sampleRateValue = sampleRate.value_or(0.0f);
 
-    auto xFormatter = [hasFreqAttrs, centerFreq, sampleRate,
+    auto xFormatter = [hasFreqAttrs, centerFreq, sampleRateValue,
                        zoom = interaction.zoom, translation](const F32 position) {
         const F32 normalizedPos = position / zoom - translation;
         const F32 labelValue = hasFreqAttrs ?
-            (centerFreq + normalizedPos * sampleRate / 2.0f) / 1e6f :
+            (centerFreq + normalizedPos * sampleRateValue / 2.0f) / 1e6f :
             (normalizedPos + 1.0f) / 2.0f;
         return jst::fmt::format("{:.02f}", labelValue);
     };

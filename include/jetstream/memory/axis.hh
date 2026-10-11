@@ -6,15 +6,12 @@
 #include <vector>
 
 #include "jetstream/types.hh"
+#include "jetstream/memory/attributes.hh"
 #include "jetstream/memory/types.hh"
 
 namespace Jetstream {
 
 class Tensor;
-
-inline constexpr std::string_view SampleAxisAttribute = "sampleAxis";
-inline constexpr std::string_view BatchAxisAttribute = "batchAxis";
-inline constexpr std::string_view ChannelAxisAttribute = "channelAxis";
 
 struct SignalAxes {
     std::optional<Index> sample;

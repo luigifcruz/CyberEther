@@ -1,15 +1,19 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <algorithm>
 #include <any>
 #include <array>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "jetstream/logger.hh"
+#include "jetstream/memory/attributes.hh"
 #include "jetstream/memory/tensor.hh"
 #include "jetstream/tools/automatic_iterator.hh"
 
@@ -1070,6 +1074,159 @@ TEST_CASE("Tensor contains invalid derived attribute casts",
 
     REQUIRE(tensor.hasAttribute("invalid"));
     REQUIRE_FALSE(tensor.attribute("invalid").has_value());
+}
+
+TEST_CASE("Tensor checked attribute reads accept standard and custom attributes",
+          "[core][memory][tensor][attributes]") {
+    Tensor tensor(DeviceType::CPU, DataType::F32, {2, 4});
+
+    std::optional<F32> frequency = 1.0f;
+    std::any value = F32{1.0f};
+    REQUIRE(ReadAttribute(tensor, "frequency", frequency) == Result::SUCCESS);
+    REQUIRE_FALSE(frequency.has_value());
+    REQUIRE(ReadAttribute(tensor, "frequency", value) == Result::SUCCESS);
+    REQUIRE_FALSE(value.has_value());
+
+    REQUIRE(tensor.setAttribute("frequency", F32{-1.0e6f}) == Result::SUCCESS);
+    REQUIRE(tensor.setAttribute("sampleRate", F32{2.0e6f}) == Result::SUCCESS);
+    REQUIRE(tensor.setAttribute("bandwidth", F32{1.0e6f}) == Result::SUCCESS);
+    REQUIRE(tensor.setAttribute("sampleAxis", Index{1}) == Result::SUCCESS);
+    REQUIRE(tensor.setAttribute("channelOffsets", std::vector<U64>{0, 3}) ==
+            Result::SUCCESS);
+    REQUIRE(tensor.setAttribute("channelPhaseIncrements", std::vector<F64>{0.5, -0.5}) ==
+            Result::SUCCESS);
+
+    std::optional<F32> sampleRate;
+    std::optional<F32> bandwidth;
+    std::optional<U64> sampleAxis;
+    std::optional<std::vector<U64>> channelOffsets;
+    std::optional<std::vector<F64>> channelPhaseIncrements;
+    REQUIRE(ReadAttribute(tensor, "frequency", frequency) == Result::SUCCESS);
+    REQUIRE(ReadAttribute(tensor, "sampleRate", sampleRate) == Result::SUCCESS);
+    REQUIRE(ReadAttribute(tensor, "bandwidth", bandwidth) == Result::SUCCESS);
+    REQUIRE(ReadAttribute(tensor, "sampleAxis", sampleAxis) == Result::SUCCESS);
+    REQUIRE(ReadAttribute(tensor, "channelOffsets", channelOffsets) == Result::SUCCESS);
+    REQUIRE(ReadAttribute(tensor, "channelPhaseIncrements", channelPhaseIncrements) ==
+            Result::SUCCESS);
+    REQUIRE(frequency == -1.0e6f);
+    REQUIRE(sampleRate == 2.0e6f);
+    REQUIRE(bandwidth == 1.0e6f);
+    REQUIRE(sampleAxis == Index{1});
+    REQUIRE(channelOffsets == std::vector<U64>{0, 3});
+    REQUIRE(channelPhaseIncrements == std::vector<F64>{0.5, -0.5});
+
+    REQUIRE(tensor.setAttribute("center", F32{100.0f}) == Result::SUCCESS);
+    REQUIRE(ReadAttribute(tensor, "center", value) == Result::SUCCESS);
+    REQUIRE(std::any_cast<F32>(value) == 100.0f);
+    REQUIRE(tensor.setAttribute("center", std::vector<F32>{-1.0f, 1.0f}) == Result::SUCCESS);
+    REQUIRE(ReadAttribute(tensor, "center", value) == Result::SUCCESS);
+    REQUIRE(std::any_cast<std::vector<F32>>(value) == std::vector<F32>{-1.0f, 1.0f});
+
+    REQUIRE(tensor.setAttribute("gain", F64{3.5}) == Result::SUCCESS);
+    REQUIRE(ReadAttribute(tensor, "gain", value) == Result::SUCCESS);
+    REQUIRE(value.type() == typeid(F64));
+    REQUIRE(std::any_cast<F64>(value) == 3.5);
+    REQUIRE(tensor.setAttribute("label", std::string("antenna")) == Result::SUCCESS);
+    REQUIRE(ReadAttribute(tensor, "label", value) == Result::SUCCESS);
+    REQUIRE(std::any_cast<std::string>(value) == "antenna");
+    std::optional<F32> custom;
+    REQUIRE(tensor.setAttribute("level", std::numeric_limits<F32>::infinity()) ==
+            Result::SUCCESS);
+    REQUIRE(ReadAttribute(tensor, "level", custom) == Result::SUCCESS);
+    REQUIRE(custom == std::numeric_limits<F32>::infinity());
+    REQUIRE(ReadAttribute(tensor, "gain", custom) == Result::ERROR);
+    REQUIRE_FALSE(custom.has_value());
+    REQUIRE(JST_LOG_LAST_ERROR().find("gain") != std::string::npos);
+
+    Tensor destination(DeviceType::CPU, DataType::F32, {2, 4});
+    REQUIRE(destination.propagateAttributes(tensor) == Result::SUCCESS);
+    REQUIRE(ReadAttribute(destination, "sampleRate", sampleRate) == Result::SUCCESS);
+    REQUIRE(sampleRate == 2.0e6f);
+    REQUIRE(tensor.setAttribute("sampleRate", F32{4.0e6f}) == Result::SUCCESS);
+    REQUIRE(ReadAttribute(destination, "sampleRate", sampleRate) == Result::SUCCESS);
+    REQUIRE(sampleRate == 4.0e6f);
+    REQUIRE(destination.removeAttribute("sampleRate") == Result::SUCCESS);
+    REQUIRE(ReadAttribute(destination, "sampleRate", sampleRate) == Result::SUCCESS);
+    REQUIRE_FALSE(sampleRate.has_value());
+    REQUIRE(tensor.setAttribute("frequency", F64{1.0e6}) == Result::SUCCESS);
+    REQUIRE(ReadAttribute(destination, "frequency", frequency) == Result::ERROR);
+}
+
+TEST_CASE("Tensor checked attribute reads reject standard contract violations",
+          "[core][memory][tensor][attributes]") {
+    struct Violation {
+        const char* key;
+        std::any value;
+        const char* message;
+    };
+    const auto violation = GENERATE(
+        Violation{"frequency", F64{1.0e6}, "np.float32"},
+        Violation{"sampleRate", F64{2.0e6}, "np.float32"},
+        Violation{"bandwidth", I64{1}, "I64"},
+        Violation{"frequency", std::string("100"), "string"},
+        Violation{"sampleRate", std::numeric_limits<F32>::quiet_NaN(), "finite"},
+        Violation{"bandwidth", std::numeric_limits<F32>::infinity(), "finite"},
+        Violation{"frequency", std::any{}, "no value"},
+        Violation{"center", F64{1.0}, "F32 or vector<F32>"},
+        Violation{"center", std::vector<F64>{1.0}, "np.float32"},
+        Violation{"center", std::vector<F32>{}, "empty"},
+        Violation{"center", std::vector<F32>{0.0f, std::numeric_limits<F32>::infinity()},
+                  "#1"},
+        Violation{"sampleAxis", I64{0}, "Index"},
+        Violation{"batchAxis", F32{0.0f}, "Index"},
+        Violation{"channelAxis", I32{0}, "Index"},
+        Violation{"channelOffsets", std::vector<I64>{0}, "vector<U64>"},
+        Violation{"channelOffsets", std::vector<U64>{}, "empty"},
+        Violation{"channelPhaseIncrements", std::vector<F32>{0.0f}, "vector<F64>"},
+        Violation{"channelPhaseIncrements",
+                  std::vector<F64>{std::numeric_limits<F64>::quiet_NaN()}, "finite"});
+    CAPTURE(violation.key, violation.message);
+
+    Tensor tensor(DeviceType::CPU, DataType::F32, {2, 4});
+    REQUIRE(tensor.setAttribute(violation.key, violation.value) == Result::SUCCESS);
+
+    std::any value = F32{1.0f};
+    REQUIRE(ReadAttribute(tensor, violation.key, value) == Result::ERROR);
+    REQUIRE_FALSE(value.has_value());
+    CHECK(JST_LOG_LAST_ERROR().find(violation.key) != std::string::npos);
+    CHECK(JST_LOG_LAST_ERROR().find(violation.message) != std::string::npos);
+    REQUIRE(tensor.attribute(violation.key).type() == violation.value.type());
+}
+
+TEST_CASE("Tensor checked attribute reads evaluate derived attributes once",
+          "[core][memory][tensor][attributes]") {
+    Tensor tensor(DeviceType::CPU, DataType::F32, {4});
+    U64 evaluations = 0;
+    REQUIRE(tensor.setDerivedAttribute("sampleRate", [&]() -> std::any {
+                ++evaluations;
+                if (evaluations % 2 == 1) {
+                    return F32{static_cast<F32>(evaluations)};
+                }
+                return F64{static_cast<F64>(evaluations)};
+            }) == Result::SUCCESS);
+
+    std::optional<F32> sampleRate;
+    REQUIRE(ReadAttribute(tensor, "sampleRate", sampleRate) == Result::SUCCESS);
+    REQUIRE(evaluations == 1);
+    REQUIRE(sampleRate == 1.0f);
+    REQUIRE(ReadAttribute(tensor, "sampleRate", sampleRate) == Result::ERROR);
+    REQUIRE(evaluations == 2);
+    REQUIRE_FALSE(sampleRate.has_value());
+    CHECK(JST_LOG_LAST_ERROR().find("F64") != std::string::npos);
+
+    REQUIRE(tensor.setDerivedAttribute("frequency", []() -> std::any {
+                throw std::bad_any_cast();
+            }) == Result::SUCCESS);
+    std::optional<F32> frequency;
+    REQUIRE(ReadAttribute(tensor, "frequency", frequency) == Result::ERROR);
+    REQUIRE_FALSE(frequency.has_value());
+    CHECK(JST_LOG_LAST_ERROR().find("frequency") != std::string::npos);
+
+    REQUIRE(tensor.setDerivedAttribute("label", []() -> std::any { return {}; }) ==
+            Result::SUCCESS);
+    std::any label;
+    REQUIRE(ReadAttribute(tensor, "label", label) == Result::ERROR);
+    CHECK(JST_LOG_LAST_ERROR().find("label") != std::string::npos);
 }
 
 TEST_CASE("Tensor swaps compatible storage without replacing metadata",
