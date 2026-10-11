@@ -34,7 +34,7 @@ struct FlowgraphEnvironmentWindowPresenter {
         }
 
         const auto& flowgraph = context.state.flowgraph.items.at(flowgraphId);
-        const std::string filter = FlowgraphKeyValueDetail::NormalizeFilter(
+        const std::string filter = Text::ToLower(
             context.state.interface.flowgraphEnvironmentSearch);
 
         std::vector<std::string> keys;

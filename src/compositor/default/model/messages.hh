@@ -324,6 +324,7 @@ struct MailSetNodeMeta {
     std::string flowgraph;
     std::string block;
     NodeMeta meta;
+    std::optional<NodeMeta> base;
 };
 
 struct MailSetConfigCollapsed {

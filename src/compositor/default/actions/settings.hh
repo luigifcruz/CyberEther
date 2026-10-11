@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_SETTINGS_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_SETTINGS_HH
 
+#include "persist.hh"
 #include "../model/callbacks.hh"
 #include "../model/messages.hh"
 #include "../model/state.hh"
@@ -15,6 +16,7 @@
 #include <filesystem>
 #include <optional>
 #include <tuple>
+#include <utility>
 
 namespace Jetstream {
 
@@ -51,10 +53,9 @@ struct SettingsActions {
     Result handle(const MailSetInfoPanelEnabled& msg) {
         state.interface.infoPanelEnabled = msg.value;
 
-        Settings settings;
-        JST_CHECK(Settings::Get(settings));
-        settings.interface.infoPanelEnabled = msg.value;
-        JST_CHECK(Settings::Set(settings));
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.interface.infoPanelEnabled = msg.value;
+        }));
 
         return Result::SUCCESS;
     }
@@ -62,10 +63,9 @@ struct SettingsActions {
     Result handle(const MailSetBackgroundParticles& msg) {
         state.interface.backgroundParticles = msg.value;
 
-        Settings settings;
-        JST_CHECK(Settings::Get(settings));
-        settings.interface.backgroundParticles = msg.value;
-        JST_CHECK(Settings::Set(settings));
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.interface.backgroundParticles = msg.value;
+        }));
 
         return Result::SUCCESS;
     }
@@ -74,10 +74,9 @@ struct SettingsActions {
         state.graphics.scale = msg.value;
         state.system.render->setScale(msg.value);
 
-        Settings settings;
-        JST_CHECK(Settings::Get(settings));
-        settings.graphics.scale = msg.value;
-        JST_CHECK(Settings::Set(settings));
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.graphics.scale = msg.value;
+        }));
 
         return Result::SUCCESS;
     }
@@ -87,10 +86,9 @@ struct SettingsActions {
             ? std::optional<DeviceType>{}
             : std::optional<DeviceType>{msg.value};
 
-        Settings settings;
-        JST_CHECK(Settings::Get(settings));
-        settings.graphics.device = state.graphics.device;
-        JST_CHECK(Settings::Set(settings));
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.graphics.device = state.graphics.device;
+        }));
 
         return Result::SUCCESS;
     }
@@ -98,10 +96,9 @@ struct SettingsActions {
     Result handle(const MailSetGraphicsFramerate& msg) {
         state.graphics.framerate = msg.value;
 
-        Settings settings;
-        JST_CHECK(Settings::Get(settings));
-        settings.graphics.framerate = msg.value;
-        JST_CHECK(Settings::Set(settings));
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.graphics.framerate = msg.value;
+        }));
 
         return Result::SUCCESS;
     }
@@ -114,10 +111,9 @@ struct SettingsActions {
     Result handle(const MailSetDebugLatencyEnabled& msg) {
         state.debug.latencyEnabled = msg.value;
 
-        Settings settings;
-        JST_CHECK(Settings::Get(settings));
-        settings.developer.latencyEnabled = msg.value;
-        JST_CHECK(Settings::Set(settings));
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.developer.latencyEnabled = msg.value;
+        }));
 
         return Result::SUCCESS;
     }
@@ -125,10 +121,9 @@ struct SettingsActions {
     Result handle(const MailSetDebugTimingEnabled& msg) {
         state.debug.timingEnabled = msg.value;
 
-        Settings settings;
-        JST_CHECK(Settings::Get(settings));
-        settings.developer.timingEnabled = msg.value;
-        JST_CHECK(Settings::Set(settings));
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.developer.timingEnabled = msg.value;
+        }));
 
         return Result::SUCCESS;
     }
@@ -137,10 +132,9 @@ struct SettingsActions {
         state.debug.logLevel = msg.value;
         JST_LOG_SET_DEBUG_LEVEL(state.debug.logLevel);
 
-        Settings settings;
-        JST_CHECK(Settings::Get(settings));
-        settings.developer.logLevel = state.debug.logLevel;
-        JST_CHECK(Settings::Set(settings));
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.developer.logLevel = state.debug.logLevel;
+        }));
 
         return Result::SUCCESS;
     }
@@ -175,10 +169,9 @@ struct SettingsActions {
             return Result::SUCCESS;
         }
 
-        Settings settings;
-        JST_CHECK(Settings::Get(settings));
-        settings.runtime.python.path = msg.value;
-        JST_CHECK(Settings::Set(settings));
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.runtime.python.path = msg.value;
+        }));
 
         return Result::SUCCESS;
     }
@@ -193,10 +186,9 @@ struct SettingsActions {
         JST_CHECK(SetPythonDependencyPolicy(msg.value));
         state.runtime.dependencyPolicy = msg.value;
 
-        Settings settings;
-        JST_CHECK(Settings::Get(settings));
-        settings.runtime.dependencyPolicy = msg.value;
-        JST_CHECK(Settings::Set(settings));
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.runtime.dependencyPolicy = msg.value;
+        }));
 
         return Result::SUCCESS;
     }
@@ -258,7 +250,7 @@ struct SettingsActions {
         }
 
         settings.registry.plugins.push_back(msg.path);
-        JST_CHECK(Settings::Set(settings));
+        JST_CHECK(Settings::SetAsync(settings));
 
         state.settings.section = SettingsSection::Registry;
         state.modal.content = ModalContent::Settings;
@@ -282,7 +274,7 @@ struct SettingsActions {
             return Result::SUCCESS;
         }
 
-        JST_CHECK(Settings::Set(settings));
+        JST_CHECK(Settings::SetAsync(settings));
         callbacks.notify(Sakura::ToastType::Success, 5000, "Plugin removed. Restart CyberEther to unload registered blocks.");
         return Result::SUCCESS;
     }
@@ -345,13 +337,13 @@ struct SettingsActions {
             if (Platform::PathFromUtf8(path).extension() != ".cep") {
                 callbacks.notify(Sakura::ToastType::Error,
                                  5000,
-                                 "Registered plugins must be .cep bundles: " + path);
+                                 jst::fmt::format("Registered plugins must be .cep bundles: {}", path));
                 return Result::SUCCESS;
             }
             if (!std::filesystem::exists(Platform::PathFromUtf8(path))) {
                 callbacks.notify(Sakura::ToastType::Error,
                                  5000,
-                                 "A registered plugin does not exist: " + path);
+                                 jst::fmt::format("A registered plugin does not exist: {}", path));
                 return Result::SUCCESS;
             }
         }
@@ -360,7 +352,7 @@ struct SettingsActions {
             if (Plugin::Reload(path) != Result::SUCCESS) {
                 callbacks.notify(Sakura::ToastType::Error,
                                  5000,
-                                 "Failed to reload plugin: " + path);
+                                 jst::fmt::format("Failed to reload plugin: {}", path));
                 return Result::SUCCESS;
             }
         }
@@ -368,7 +360,7 @@ struct SettingsActions {
         const auto count = settings.registry.plugins.size();
         callbacks.notify(Sakura::ToastType::Success,
                          3000,
-                         "Reloaded modules from " + std::to_string(count) + (count == 1 ? " plugin." : " plugins."));
+                         jst::fmt::format("Reloaded modules from {} plugin{}.", count, count == 1 ? "" : "s"));
         return Result::SUCCESS;
     }
 

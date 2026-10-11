@@ -44,7 +44,9 @@ struct FlowgraphEditor {
         std::function<void(const std::string&, Parser::Map, bool)> onReconfigureBlock;
         std::function<void(Result, std::string)> onConfigError;
         std::function<void(bool, std::vector<std::string>, std::function<void(std::string)>)> onBrowseConfigPath;
-        std::function<void(const std::string&, F32, F32, F32, F32)> onNodeLayout;
+        std::function<void(const std::string&, F32, F32, F32, F32, std::optional<FlowgraphNode::Layout>)> onNodeLayout;
+        std::function<void(const std::string&, Rect, Extent2D<F32>, std::optional<Extent2D<F32>>)> onNodeBounds;
+        std::function<void(Rect)> onViewport;
         std::function<void(const std::string&, bool)> onNodeConfigCollapse;
         std::function<void(const std::string&, bool)> onNodeConfigDetach;
     };
@@ -95,6 +97,9 @@ struct FlowgraphEditor {
             .onViewportGridChange = [this](Rect viewport) {
                 viewportGridCenter = {viewport.x + viewport.width * 0.5f,
                                       viewport.y + viewport.height * 0.5f};
+                if (this->config.onViewport) {
+                    this->config.onViewport(viewport);
+                }
             },
         });
 
@@ -211,9 +216,19 @@ struct FlowgraphEditor {
 
                     this->config.onChangeBlockDevice(blockName, device, runtime, provider);
                 },
-                .onLayout = [this, blockName = block.name](F32 x, F32 y, F32 width, F32 height) {
+                .onLayout = [this, blockName = block.name, base = block.layout](F32 x,
+                                                                                F32 y,
+                                                                                F32 width,
+                                                                                F32 height) {
                     if (this->config.onNodeLayout) {
-                        this->config.onNodeLayout(blockName, x, y, width, height);
+                        this->config.onNodeLayout(blockName, x, y, width, height, base);
+                    }
+                },
+                .onBounds = [this, blockName = block.name](Rect bounds,
+                                                           Extent2D<F32> size,
+                                                           std::optional<Extent2D<F32>> content) {
+                    if (this->config.onNodeBounds) {
+                        this->config.onNodeBounds(blockName, bounds, size, content);
                     }
                 },
                 .onConfigCollapse = [this, blockName = block.name](bool collapsed) {

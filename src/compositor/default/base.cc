@@ -193,6 +193,9 @@ Result DefaultCompositor::destroy() {
     actions.cancelFilePicker();
     updater.shutdown();
     feedback.shutdown();
+    if (Settings::Flush() != Result::SUCCESS) {
+        JST_ERROR("[COMPOSITOR_IMPL_DEFAULT] Failed to save settings during shutdown. Continuing cleanup.");
+    }
 
     return Result::SUCCESS;
 }
@@ -221,6 +224,10 @@ Result DefaultCompositor::poll() {
         }
 
         JST_CHECK(actions.handle(mail));
+    }
+
+    while (const auto error = Settings::TakePersistenceError()) {
+        callbacks.notify(Sakura::ToastType::Error, 5000, *error);
     }
 
     // Surface completed async command results as notifications.
@@ -272,7 +279,7 @@ Result DefaultCompositor::present() {
 
 void DefaultCompositor::updateWorkbenchState() {
     if (state.interface.pendingFocusedFlowgraph.has_value() &&
-        state.flowgraph.items.contains(state.interface.pendingFocusedFlowgraph.value())) {
+        state.flowgraph.items.contains(*state.interface.pendingFocusedFlowgraph)) {
         state.interface.focusedFlowgraph = state.interface.pendingFocusedFlowgraph;
         state.interface.pendingFocusedFlowgraph.reset();
     }

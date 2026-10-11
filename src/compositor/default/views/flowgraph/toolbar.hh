@@ -22,8 +22,8 @@ struct FlowgraphToolbar {
         std::function<void()> onClose;
         std::function<void()> onAddBlock;
         std::function<void()> onCreateStack;
-        std::function<void()> onSendFeedback;
         std::function<void()> onReviewDependencies;
+        std::function<void(Rect)> onPlacement;
     };
 
     void update(Config config) {
@@ -35,8 +35,9 @@ struct FlowgraphToolbar {
             .id = this->config.id + ":overlay",
             .size = toolbarSize,
             .anchor = Sakura::Overlay::Anchor::TopCenter,
-            .offset = {0.0f, 12.0f},
+            .offset = {0.0f, topOffset},
             .inputs = true,
+            .onPlacement = this->config.onPlacement,
         });
         card.update({
             .id = this->config.id + ":card",
@@ -75,12 +76,6 @@ struct FlowgraphToolbar {
             .size = {90.0f, 34.0f},
             .onClick = this->config.onCreateStack,
         });
-        feedbackButton.update({
-            .id = this->config.id + ":feedback",
-            .str = ICON_FA_COMMENT_DOTS " Feedback",
-            .size = {100.0f, 34.0f},
-            .onClick = this->config.onSendFeedback,
-        });
         const std::string bannerKey = "banner_" + bannerToneKey();
         banner.update({
             .id = this->config.id + ":banner",
@@ -102,7 +97,7 @@ struct FlowgraphToolbar {
         });
         bannerTextContainer.update({
             .id = this->config.id + ":banner-text-container",
-            .size = {382.0f, bannerRowHeight},
+            .size = {collapsedToolbarSize.x - 110.0f, bannerRowHeight},
             .border = false,
             .scrollbar = false,
             .mouseScroll = false,
@@ -147,7 +142,6 @@ struct FlowgraphToolbar {
                     [this](const Sakura::Context& ctx) { closeButton.render(ctx); },
                     [this](const Sakura::Context& ctx) { addBlockButton.render(ctx); },
                     [this](const Sakura::Context& ctx) { createStackButton.render(ctx); },
-                    [this](const Sakura::Context& ctx) { feedbackButton.render(ctx); },
                 });
                 if (config.dependencyReviewAvailable) {
                     banner.render(ctx, [this](const Sakura::Context& ctx) {
@@ -200,12 +194,13 @@ struct FlowgraphToolbar {
         return config.dependencyReviewTone == Callout::Tone::Warning ? warningKey : defaultKey;
     }
 
+    static constexpr F32 topOffset = 12.0f;
     static constexpr F32 bannerPadding = 5.0f;
     static constexpr F32 bannerRowHeight = 26.0f;
     static constexpr F32 bannerHeight = bannerRowHeight + 2.0f * bannerPadding;
     static constexpr F32 bannerTextOffset = 5.0f;
     static constexpr F32 reviewButtonPadding = 1.0f;
-    static constexpr Extent2D<F32> collapsedToolbarSize = {492.0f, 46.0f};
+    static constexpr Extent2D<F32> collapsedToolbarSize = {384.0f, 46.0f};
     static constexpr Extent2D<F32> expandedToolbarSize = {collapsedToolbarSize.x,
                                                           collapsedToolbarSize.y + bannerHeight + 8.0f};
 
@@ -217,7 +212,6 @@ struct FlowgraphToolbar {
     Sakura::Button closeButton;
     Sakura::Button addBlockButton;
     Sakura::Button createStackButton;
-    Sakura::Button feedbackButton;
     Sakura::Div banner;
     Sakura::HStack bannerLayout;
     Sakura::Spacing bannerIndent;

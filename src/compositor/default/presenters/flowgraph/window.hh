@@ -66,9 +66,6 @@ struct FlowgraphWindowPresenter {
             .onCreateStack = [enqueue, flowgraphId]() {
                 enqueue(MailCreateStack{.flowgraph = flowgraphId});
             },
-            .onSendFeedback = [enqueue]() {
-                enqueue(MailOpenModal{.content = ModalContent::Feedback});
-            },
             .onReviewDependencies = [enqueue, flowgraphId]() {
                 enqueue(MailOpenModal{
                     .content = ModalContent::Dependencies,
@@ -77,6 +74,9 @@ struct FlowgraphWindowPresenter {
             },
             .onOpenExamples = [enqueue]() {
                 enqueue(MailOpenModal{.content = ModalContent::FlowgraphExamples});
+            },
+            .onViewport = [record = context.callbacks.recordViewport, flowgraphId](Rect viewport, Rect toolbar) {
+                if (record) record(flowgraphId, viewport, toolbar);
             },
         };
     }

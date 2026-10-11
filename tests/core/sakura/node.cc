@@ -378,6 +378,46 @@ struct VisualizationSession : NodeSession {
 };
 }  // namespace
 
+TEST_CASE("Auto-sized flowgraph nodes publish outer bounds in graph coordinates",
+          "[core][sakura][flowgraph_node][bounds]") {
+    const F32 scale = GENERATE(1.0f, 2.0f);
+    SakuraTest::HeadlessUi ui(scale, ImVec2(1200.0f, 1000.0f));
+    const auto ctx = ui.sakura();
+    FlowgraphNode node;
+    auto config = baseConfigFor(baseBlock("auto-bounds", "radio"));
+    config.block.layout = FlowgraphNode::Layout{20.0f, 30.0f, 0.0f, 0.0f};
+    LayoutLog saved;
+    LayoutLog measured;
+    config.onLayout = [&](F32 x, F32 y, F32 width, F32 height) { saved.record(x, y, width, height); };
+    config.onBounds = [&](Jetstream::Rect bounds, Extent2D<F32>, std::optional<Extent2D<F32>>) {
+        measured.record(bounds.x, bounds.y, bounds.width, bounds.height);
+    };
+
+    REQUIRE(measured.entries.empty());
+    settle(ui, ctx, node, config, 4);
+    REQUIRE(measured.entries.size() == 4);
+    REQUIRE_FALSE(saved.entries.empty());
+    REQUIRE(std::get<3>(saved.last()) == 0.0f);
+    const auto [x, y, width, height] = measured.last();
+    const auto rendered = flowgraphNodeDimensions(config.id);
+    CHECK(x == Catch::Approx(20.0f));
+    CHECK(y == Catch::Approx(30.0f));
+    CHECK(width == Catch::Approx(rendered.x / scale));
+    CHECK(height == Catch::Approx(rendered.y / scale));
+    CHECK(width > DefaultNodeWidth(config.block.nodeSize));
+    CHECK(height > 0.0f);
+
+    // A loading placeholder is not a measurement of the completed block.
+    config.block.state = Block::State::Creating;
+    settle(ui, ctx, node, config, 2);
+    CHECK(measured.entries.size() == 4);
+    config.block.state = Block::State::Created;
+    config.block.layout->x = 320.0f;
+    settle(ui, ctx, node, config, 2);
+    CHECK(measured.entries.size() == 6);
+    CHECK(std::get<0>(measured.last()) == Catch::Approx(320.0f));
+}
+
 TEST_CASE("Errored python block still floors and resizes",
           "[core][sakura][flowgraph_node][errored]") {
     SakuraTest::HeadlessUi ui(1.0f, ImVec2(600.0f, 900.0f));
