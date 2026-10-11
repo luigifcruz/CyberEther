@@ -39,21 +39,18 @@ struct Context {
     bool hovered = false;
     bool active = false;
     bool windowFocused = false;
+    F32 opacity = 1.0f;
     std::function<void()> invalidate;
     std::function<void(Retained::Drawable*)> release;
     Render::Surface::Config* surface = nullptr;
     std::vector<Retained::Drawable*>* drawables = nullptr;
 
     ColorRGBA<F32> color(const std::string& key, ColorRGBA<F32> fallback = {}) const {
-        if (key.empty()) {
-            return fallback;
-        }
         const auto& activePalette = palette.get();
-        const auto it = activePalette.find(key);
-        if (it == activePalette.end()) {
-            return fallback;
-        }
-        return it->second;
+        const auto it = key.empty() ? activePalette.end() : activePalette.find(key);
+        auto resolved = it == activePalette.end() ? fallback : it->second;
+        resolved.a *= opacity;
+        return resolved;
     }
 
     Extent2D<F32> pixelSize() const {

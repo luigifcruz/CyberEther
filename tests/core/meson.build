@@ -42,6 +42,7 @@ core_test_domains = {
         'render/shapes.cc',
     ],
     'sakura': [
+        'sakura/chat.cc',
         'sakura/interface_controls.cc',
         'sakura/key_value.cc',
         'sakura/metric_label.cc',

@@ -1,6 +1,6 @@
 shader_pkg_lst += [{
     'name': 'map',
-    'includes': files('line_clip.glsl', 'camera.glsl', 'marker.glsl', 'sun.glsl'),
+    'includes': files('line_clip.glsl', 'camera.glsl', 'marker.glsl', 'sun.glsl', '../common/noise.glsl'),
     'msl_args': ['--msl-decoration-binding'],
     'shaders': [
         files(['geoline.vert.glsl', 'geoline.frag.glsl']),

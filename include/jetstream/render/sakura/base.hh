@@ -48,9 +48,13 @@
 #include <jetstream/render/sakura/components/retained/box.hh>
 #include <jetstream/render/sakura/components/retained/button.hh>
 #include <jetstream/render/sakura/components/retained/canvas.hh>
+#include <jetstream/render/sakura/components/retained/chat.hh>
+#include <jetstream/render/sakura/components/retained/chat_composer.hh>
+#include <jetstream/render/sakura/components/retained/chat_dock.hh>
 #include <jetstream/render/sakura/components/retained/code_editor.hh>
 #include <jetstream/render/sakura/components/retained/console.hh>
 #include <jetstream/render/sakura/components/retained/dropdown.hh>
+#include <jetstream/render/sakura/components/retained/model_picker.hh>
 #include <jetstream/render/sakura/components/retained/label.hh>
 #include <jetstream/render/sakura/components/retained/list.hh>
 #include <jetstream/render/sakura/components/retained/markdown_editor.hh>
@@ -61,6 +65,7 @@
 #include <jetstream/render/sakura/components/retained/text_grid.hh>
 #include <jetstream/render/sakura/components/retained/text_markdown.hh>
 #include <jetstream/render/sakura/components/retained/text_view.hh>
+#include <jetstream/render/sakura/components/retained/voice.hh>
 
 #include <jetstream/render/sakura/components/menu/context_menu.hh>
 #include <jetstream/render/sakura/components/menu/menu.hh>
