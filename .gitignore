@@ -26,6 +26,7 @@ subprojects/*
 !subprojects/glib.wrap
 !subprojects/gstreamer-full.wrap
 !subprojects/libairspy.wrap
+!subprojects/libairspyhf.wrap
 !subprojects/libbladerf.wrap
 !subprojects/libgudev.wrap
 !subprojects/libhackrf.wrap

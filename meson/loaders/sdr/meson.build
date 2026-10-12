@@ -9,6 +9,7 @@ if jst_is_macos or jst_is_linux or jst_is_windows or jst_is_browser
     sdr_families = {
         'RTLSDR': ['librtlsdr', 'librtlsdr_dep'],
         'AIRSPY': ['libairspy', 'libairspy_dep'],
+        'AIRSPYHF': ['libairspyhf', 'libairspyhf_dep'],
         'HACKRF': ['libhackrf', 'libhackrf_dep'],
         'LIMESUITE': ['limesuite', 'limesuite_dep'],
         'BLADERF': ['libbladerf', 'libbladerf_dep'],
@@ -33,13 +34,14 @@ if jst_is_macos or jst_is_linux or jst_is_windows or jst_is_browser
     # so system SoapySDR plugins resolve their own vendor libraries.
     if jst_is_linux and not jst_is_static
         lib_link_args += [
-            '-Wl,--exclude-libs,liblibrtlsdr.a:liblibairspy.a:libhackrf.a:libLimeSuite.a:' +
+            '-Wl,--exclude-libs,liblibrtlsdr.a:liblibairspy.a:liblibairspyhf.a:libhackrf.a:' +
+            'libLimeSuite.a:' +
             'libbladeRF.a:libusb-1.0.a',
         ]
     endif
 
     if jst_is_macos and not jst_is_static
-        foreach symbols : ['_rtlsdr_*', '_airspy_*', '_hackrf_*', '_bladerf_*', '_LMS_*',
+        foreach symbols : ['_rtlsdr_*', '_airspy_*', '_airspyhf_*', '_hackrf_*', '_bladerf_*', '_LMS_*',
                            '_libusb_*', '__ZN4lime*']
             lib_link_args += '-Wl,-unexported_symbol,' + symbols
         endforeach

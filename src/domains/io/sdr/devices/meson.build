@@ -4,6 +4,7 @@ src_lst += files([
 
 subdir('rtlsdr')
 subdir('airspy')
+subdir('airspyhf')
 subdir('hackrf')
 subdir('limesdr')
 subdir('bladerf')

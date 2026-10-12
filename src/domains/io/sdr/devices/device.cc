@@ -8,6 +8,9 @@
 #ifdef JETSTREAM_LOADER_AIRSPY_AVAILABLE
 #include "airspy/airspy.hh"
 #endif
+#ifdef JETSTREAM_LOADER_AIRSPYHF_AVAILABLE
+#include "airspyhf/airspyhf.hh"
+#endif
 #ifdef JETSTREAM_LOADER_HACKRF_AVAILABLE
 #include "hackrf/hackrf.hh"
 #endif
@@ -90,6 +93,9 @@ std::vector<Device::Driver> BuiltinDrivers() {
 #endif
 #ifdef JETSTREAM_LOADER_AIRSPY_AVAILABLE
     drivers.push_back({"airspy", &AirspyDevice::Enumerate, &AirspyDevice::Create});
+#endif
+#ifdef JETSTREAM_LOADER_AIRSPYHF_AVAILABLE
+    drivers.push_back({"airspyhf", &AirspyHfDevice::Enumerate, &AirspyHfDevice::Create});
 #endif
 #ifdef JETSTREAM_LOADER_HACKRF_AVAILABLE
     drivers.push_back({"hackrf", &HackRfDevice::Enumerate, &HackRfDevice::Create});
