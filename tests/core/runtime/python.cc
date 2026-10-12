@@ -1217,6 +1217,11 @@ def compute(ctx):
     };
     checkOutput(2.0f);
     SECTION("successful switch") {}
+    SECTION("NumPy stays usable when the next environment supplies it") {
+        const auto metadata = secondEnvironment.root / "numpy-0.dist-info";
+        std::filesystem::create_directory(metadata);
+        WritePythonTestFile(metadata / "top_level.txt", "numpy\n");
+    }
     SECTION("failed reload restores the previous environment and computation") {
         WritePythonTestFile(secondEnvironment.root / "cyberether_environment_fixture.py",
                             "raise RuntimeError('fixture cannot load')\n");
