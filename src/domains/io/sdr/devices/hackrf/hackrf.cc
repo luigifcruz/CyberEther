@@ -239,6 +239,7 @@ Result HackRfDevice::tune(const F64 frequency) {
         return pimpl->startStream();
     };
     if (pimpl->streaming && set() == Result::SUCCESS) {
+        pimpl->queue.relabel(appliedSettings.frequency);
         return Result::SUCCESS;
     }
     return restart(change);

@@ -243,7 +243,9 @@ void RtlSdrDevice::stop() {
 }
 
 Result RtlSdrDevice::setAutomaticGain(const bool automaticGain) {
-    JST_CHECK(pimpl->applyGainMode(automaticGain));
+    if (pimpl->applyGainMode(automaticGain) != Result::SUCCESS) {
+        return Device::setAutomaticGain(automaticGain);
+    }
     requestedSettings.automaticGain = automaticGain;
     appliedSettings.automaticGain = automaticGain;
     return Result::SUCCESS;
@@ -282,6 +284,7 @@ Result RtlSdrDevice::tune(const F64 frequency) {
         return pimpl->startStream();
     };
     if (pimpl->worker.joinable() && set() == Result::SUCCESS) {
+        pimpl->queue.relabel(appliedSettings.frequency);
         return Result::SUCCESS;
     }
     return restart(change);

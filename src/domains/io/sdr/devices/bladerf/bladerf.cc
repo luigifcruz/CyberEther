@@ -243,7 +243,9 @@ Result BladeRfDevice::apply(const Settings& settings) {
 }
 
 Result BladeRfDevice::setAutomaticGain(const bool automaticGain) {
-    JST_CHECK(pimpl->applyGainMode(automaticGain));
+    if (pimpl->applyGainMode(automaticGain) != Result::SUCCESS) {
+        return Device::setAutomaticGain(automaticGain);
+    }
     requestedSettings.automaticGain = automaticGain;
     return Result::SUCCESS;
 }
