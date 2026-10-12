@@ -1,7 +1,11 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_HUD_WELCOME_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_HUD_WELCOME_HH
 
+#include "../components/assistant_composer.hh"
+
 #include "jetstream/render/sakura/base.hh"
+#include "jetstream/render/sakura/components/retained/canvas.hh"
+#include "jetstream/render/sakura/components/retained/chat_composer.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
 #include <functional>
@@ -116,6 +120,11 @@ struct WelcomeHudCell {
 struct WelcomeHudView {
     struct Config {
         std::string version;
+        bool chatOpen = false;
+        bool assistantEnabled = true;
+        U64 assistantClearRequest = 0;
+        std::function<void(const std::string&)> onAssistantSubmit;
+        std::function<void()> onAssistantVoice;
         std::function<void()> onNewFlowgraph;
         std::function<void()> onOpenFlowgraph;
         std::function<void()> onOpenExamples;
@@ -124,6 +133,10 @@ struct WelcomeHudView {
         std::function<void()> onOpenSettings;
         std::function<void()> onOpenAbout;
     };
+
+    WelcomeHudView() {
+        assistantCanvas.mount(assistant);
+    }
 
     void update(Config config) {
         this->config = std::move(config);
@@ -144,18 +157,41 @@ struct WelcomeHudView {
         actions.update({
             .id = "WelcomeActions",
             .columns = 3,
-            .size = {560.0f, 126.0f},
+            .size = {0.0f, 126.0f},
             .cellPadding = {4.0f, 2.0f},
         });
         links.update({
             .id = "WelcomeLinks",
             .columns = 4,
-            .size = {560.0f, 42.0f},
+            .size = {0.0f, 42.0f},
             .cellPadding = {4.0f, 2.0f},
         });
         welcomeSpacing.update({
             .id = "WelcomeSpacing",
-            .lines = 4,
+            .lines = 3,
+        });
+        assistant.update({
+            .id = "WelcomeAssistant",
+            .style = AssistantComposerStyle(Sakura::Retained::ChatComposer::Style{
+                .backgroundColorKey = "card",
+                .compact = true,
+                .margin = {.left = 4.0f, .right = 4.0f, .bottom = 6.0f},
+            }, assistantPixelRatio),
+            .onSubmit = this->config.onAssistantSubmit,
+            .onVoice = this->config.onAssistantVoice,
+            .clearRequest = this->config.assistantClearRequest,
+        });
+        assistantCanvas.update({
+            .id = "WelcomeAssistantCanvas",
+            .autoHeight = true,
+            .clearColor = {0.0f, 0.0f, 0.0f, 0.0f},
+            .onLayout = [this](const Sakura::Retained::Canvas::Layout& layout) {
+                assistantPixelRatio = layout.pixelRatio;
+            },
+        });
+        assistantSpacing.update({
+            .id = "WelcomeAssistantSpacing",
+            .lines = 1,
         });
         buttonSpacing.update({
             .id = "WelcomeButtonSpacing",
@@ -230,10 +266,14 @@ struct WelcomeHudView {
         });
     }
 
-    void render(const Sakura::Context& ctx) const {
+    void render(const Sakura::Context& ctx) {
         hud.render(ctx, [this](const Sakura::Context& ctx) {
             title.render(ctx);
             welcomeSpacing.render(ctx);
+            if (this->config.assistantEnabled && !this->config.chatOpen) {
+                assistantCanvas.render(ctx);
+                assistantSpacing.render(ctx);
+            }
             actions.render(ctx, {
                 [this](const Sakura::Context& ctx) { newCell.render(ctx); },
                 [this](const Sakura::Context& ctx) { openCell.render(ctx); },
@@ -258,6 +298,10 @@ struct WelcomeHudView {
     Sakura::Grid actions;
     Sakura::Grid links;
     Sakura::Spacing welcomeSpacing;
+    Sakura::Retained::ChatComposer assistant;
+    Sakura::Retained::Canvas assistantCanvas;
+    F32 assistantPixelRatio = 1.0f;
+    Sakura::Spacing assistantSpacing;
     Sakura::Spacing buttonSpacing;
     Sakura::Spacing versionSpacing;
     WelcomeHudCell newCell;

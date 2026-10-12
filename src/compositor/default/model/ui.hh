@@ -14,6 +14,8 @@ enum class ModalContent : I32 {
     RemoteStreaming,
     Settings,
     Plugin,
+    IntelligenceProvider,
+    IntelligenceModel,
     Dependencies,
     Feedback,
 };
@@ -23,6 +25,7 @@ enum class SettingsSection : I32 {
     Remote,
     Runtime,
     Registry,
+    Intelligence,
     Developer,
     About,
     Legal,

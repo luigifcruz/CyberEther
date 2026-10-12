@@ -78,7 +78,11 @@ core_test_domains = {
 # Internal compositor and Sakura components are not exported from the Windows shared library.
 if not jst_is_windows
     core_test_domains += {
-        'compositor': core_test_domains['compositor'] + ['compositor/live_markdown.cc'],
+        'compositor': core_test_domains['compositor'] + [
+            'compositor/live_markdown.cc',
+            'compositor/agent_bridge.cc',
+            'compositor/agent_responsiveness.cc',
+        ],
         'render': core_test_domains['render'] + [
             'render/dockspace_window.cc',
             'render/field_grid.cc',

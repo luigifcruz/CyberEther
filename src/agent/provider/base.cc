@@ -447,7 +447,8 @@ const Provider::Profile& Provider::profile() const {
     return Profile::Find(configuration.kind);
 }
 
-Result Provider::models(std::vector<Model>& models, Provider::Error* error) const {
+Result Provider::models(std::vector<Model>& models, Provider::Error* error,
+                        const Cancellation& cancelled) const {
     const auto& config = configuration;
     models.clear();
     if (error) {
@@ -465,6 +466,7 @@ Result Provider::models(std::vector<Model>& models, Provider::Error* error) cons
         http.path = config.modelsPath;
         http.headers = Headers(config, key, {});
         http.timeoutSeconds = std::min<U64>(config.timeoutSeconds, 15);
+        http.cancelled = cancelled;
 
         nlohmann::json body;
         if (auto failure = Detail::Diagnostics::Response(Platform::Http::Send(http), body)) {
