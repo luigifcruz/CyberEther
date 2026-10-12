@@ -251,10 +251,10 @@ struct SignalViewFrequency {
     F32 center = 0.0f;
     F32 sampleRate = 0.0f;
 
+    Result read(const Tensor& input);
+
     bool operator==(const SignalViewFrequency&) const = default;
 };
-
-SignalViewFrequency SignalViewFrequencyOf(const Tensor& input);
 
 struct SignalViewLineplot;
 struct SignalViewWaterfall;

@@ -1,7 +1,6 @@
 #include "module_impl.hh"
 
 #include <algorithm>
-#include <any>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -192,18 +191,8 @@ Result SignalViewImpl::validate() {
         }
     }
 
-    for (const auto* attribute : {"frequency", "sampleRate"}) {
-        if (!inputTensor.hasAttribute(attribute)) {
-            continue;
-        }
-        const std::any value = inputTensor.attribute(attribute);
-        const auto* scalar = std::any_cast<F32>(&value);
-        if (!scalar || !std::isfinite(*scalar)) {
-            JST_ERROR("[MODULE_SIGNAL_VIEW] Input {} metadata must be a finite F32.",
-                      attribute);
-            return Result::ERROR;
-        }
-    }
+    SignalViewFrequency frequency;
+    JST_CHECK(frequency.read(inputTensor));
 
     const U64 numberOfBatches = axes.batch
         ? inputTensor.shape(*axes.batch)
@@ -239,19 +228,13 @@ Result SignalViewImpl::create() {
 
     input = inputs().at("signal").tensor;
 
-    if (input.hasAttribute("frequency")) {
-        const std::any value = input.attribute("frequency");
-        if (const auto* frequency = std::any_cast<F32>(&value)) {
-            JST_DEBUG("[MODULE_SIGNAL_VIEW] Input frequency: {:.02f} MHz",
-                      *frequency / 1e6f);
-        }
-    }
-    if (input.hasAttribute("sampleRate")) {
-        const std::any value = input.attribute("sampleRate");
-        if (const auto* sampleRate = std::any_cast<F32>(&value)) {
-            JST_DEBUG("[MODULE_SIGNAL_VIEW] Input sample rate: {:.02f} MHz",
-                      *sampleRate / 1e6f);
-        }
+    SignalViewFrequency frequency;
+    JST_CHECK(frequency.read(input));
+    if (frequency.valid) {
+        JST_DEBUG("[MODULE_SIGNAL_VIEW] Input frequency: {:.02f} MHz",
+                  frequency.center / 1e6f);
+        JST_DEBUG("[MODULE_SIGNAL_VIEW] Input sample rate: {:.02f} MHz",
+                  frequency.sampleRate / 1e6f);
     }
 
     numberOfElements = validatedNumberOfElements;
@@ -386,6 +369,8 @@ Result SignalViewImpl::resetHistoryState() {
 }
 
 Result SignalViewImpl::createPresent() {
+    SignalViewFrequency frequency;
+    JST_CHECK(frequency.read(input));
     auto& window = render();
 
     if (!window) {
@@ -426,7 +411,7 @@ Result SignalViewImpl::createPresent() {
         JST_CHECK(waterfall.create(window, waterfallBins, colormap));
     }
 
-    JST_CHECK(canvas.create(window, canvasContext()));
+    JST_CHECK(canvas.create(window, canvasContext(frequency)));
 
     JST_CHECK(surfaceCreateManifest({
         .id = "default",
@@ -452,11 +437,14 @@ Result SignalViewImpl::destroyPresent() {
 }
 
 Result SignalViewImpl::present() {
+    SignalViewFrequency frequency;
+    JST_CHECK(frequency.read(input));
+
     if (waterfall3dEnabled) {
         bool viewChanged = false;
         JST_CHECK(waterfall3d.present(surfaceConsumeSurfaceEvents(),
                                       surfaceConsumeInputEvents(),
-                                      waterfallFrame(), waterfall3dLabels(), colormap,
+                                      waterfallFrame(), waterfall3dLabels(frequency), colormap,
                                       viewChanged));
         if (!waterfall3d.held()) {
             waterfallHistory.clearDirty();
@@ -471,7 +459,7 @@ Result SignalViewImpl::present() {
         return Result::SUCCESS;
     }
 
-    const auto context = canvasContext();
+    const auto context = canvasContext(frequency);
 
     JST_CHECK(canvas.processSurfaceEvents(surfaceConsumeSurfaceEvents()));
     surfaceSetCursor(canvas.processInputEvents(surfaceConsumeInputEvents(), context, {
@@ -507,10 +495,10 @@ Result SignalViewImpl::present() {
     return canvas.present(context);
 }
 
-SignalViewCanvas::Context SignalViewImpl::canvasContext() {
+SignalViewCanvas::Context SignalViewImpl::canvasContext(const SignalViewFrequency& frequency) {
     return {
         .config = *this,
-        .frequency = SignalViewFrequencyOf(input),
+        .frequency = frequency,
         .numberOfElements = numberOfElements,
         .lineplot = lineplotEnabled ? &lineplot : nullptr,
         .waterfall = waterfallEnabled ? &waterfall : nullptr,
@@ -525,8 +513,8 @@ WaterfallFrame SignalViewImpl::waterfallFrame() const {
     };
 }
 
-SignalViewWaterfall3DLabels SignalViewImpl::waterfall3dLabels() const {
-    const auto frequency = SignalViewFrequencyOf(input);
+SignalViewWaterfall3DLabels SignalViewImpl::waterfall3dLabels(
+    const SignalViewFrequency& frequency) const {
     SignalViewWaterfall3DLabels labels;
     labels.frequency = xLabel;
     labels.time = waterfallLabel;
