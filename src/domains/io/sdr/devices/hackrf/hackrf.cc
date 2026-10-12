@@ -21,8 +21,10 @@ namespace Jetstream::Radio {
 namespace {
 
 constexpr F64 SettlingTime = 2.0e-3;
-constexpr U32 FixedLnaGain = 16;
-constexpr U32 FixedVgaGain = 20;
+constexpr U32 MaxLnaGain = 40;
+constexpr U32 LnaGainStep = 8;
+constexpr U32 MaxVgaGain = 62;
+constexpr U32 VgaGainStep = 2;
 constexpr U16 SweepApiVersion = 0x0104;
 constexpr U64 BlockQueueDepth = 64;
 constexpr U64 InFlightTransfers = 4;
@@ -46,6 +48,13 @@ std::string ShortSerial(const std::string& serial) {
     return serial.size() > 16 ? serial.substr(serial.size() - 16) : serial;
 }
 
+std::pair<U32, U32> StageGains(const F64 gain) {
+    const auto total = static_cast<U32>(std::lround(std::max(gain, 0.0)));
+    const U32 lna = std::min(MaxLnaGain, total / LnaGainStep * LnaGainStep);
+    const U32 vga = std::min(MaxVgaGain, (total - lna) / VgaGainStep * VgaGainStep);
+    return {lna, vga};
+}
+
 }  // namespace
 
 struct HackRfDevice::Impl {
@@ -56,6 +65,7 @@ struct HackRfDevice::Impl {
 
     Result open(const Info& info);
     Result configure(F64 sampleRate);
+    Result applyGain(F64 gain, bool force);
     Result startStream();
     void stopStream();
 
@@ -154,6 +164,7 @@ Result HackRfDevice::Impl::open(const Info& info) {
     caps.usableBandwidth = 0.75;
     caps.dcExclusion = 50.0e3;
     device.defaultSettlingTime = SettlingTime;
+    device.appliedSettings.gainRange = Range{0.0, static_cast<F64>(MaxLnaGain + MaxVgaGain)};
     if (version >= SweepApiVersion) {
         caps.firmwareSweep = HackRfSweep::Capability();
     }
@@ -179,11 +190,11 @@ Result HackRfDevice::start(const Settings& settings) {
         return Result::ERROR;
     }
     if (settings.automaticGain) {
-        JST_WARN("[SDR_HACKRF] HackRF has no automatic gain control. Using a fixed LNA {} dB, "
-                 "VGA {} dB.", FixedLnaGain, FixedVgaGain);
+        JST_WARN("[SDR_HACKRF] HackRF has no automatic gain control. Using the manual gain.");
     }
 
     JST_CHECK(pimpl->configure(settings.sampleRate));
+    JST_CHECK(pimpl->applyGain(settings.gain, true));
     if (hackrf_set_freq(handle, static_cast<U64>(std::llround(settings.frequency))) !=
         HACKRF_SUCCESS) {
         JST_ERROR("[SDR_HACKRF] Failed to tune to {:.3f} MHz.", settings.frequency / 1e6);
@@ -212,11 +223,23 @@ void HackRfDevice::stop() {
 
 Result HackRfDevice::setAutomaticGain(const bool automaticGain) {
     if (automaticGain) {
-        JST_WARN("[SDR_HACKRF] HackRF has no automatic gain control. Using a fixed LNA {} dB, "
-                 "VGA {} dB.", FixedLnaGain, FixedVgaGain);
+        JST_WARN("[SDR_HACKRF] HackRF has no automatic gain control. Using the manual gain.");
     }
     requestedSettings.automaticGain = automaticGain;
     return Result::SUCCESS;
+}
+
+Result HackRfDevice::setGain(const F64 gain) {
+    if (pimpl->applyGain(gain, false) != Result::SUCCESS) {
+        return Device::setGain(gain);
+    }
+    requestedSettings.gain = gain;
+    return Result::SUCCESS;
+}
+
+F64 HackRfDevice::resolveGain(const F64 gain, const std::optional<Range>& range) const {
+    const auto [lna, vga] = StageGains(Device::resolveGain(gain, range));
+    return static_cast<F64>(lna + vga);
 }
 
 Result HackRfDevice::tune(const F64 frequency) {
@@ -324,6 +347,7 @@ Result HackRfDevice::runSweep(const SweepRunning& running, const SweepSink& sink
 
     pimpl->stopStream();
     JST_CHECK(pimpl->configure(HackRfSweep::SampleRate));
+    JST_CHECK(pimpl->applyGain(requestedSettings.gain, true));
 
     const uint16_t ranges[2] = {static_cast<uint16_t>(pimpl->sweepRange.start),
                                 static_cast<uint16_t>(pimpl->sweepRange.end)};
@@ -392,12 +416,25 @@ Result HackRfDevice::Impl::configure(const F64 sampleRate) {
         JST_ERROR("[SDR_HACKRF] Failed to set the sample rate.");
         return Result::ERROR;
     }
-    if (hackrf_set_amp_enable(handle, 0) != HACKRF_SUCCESS ||
-        hackrf_set_lna_gain(handle, FixedLnaGain) != HACKRF_SUCCESS ||
-        hackrf_set_vga_gain(handle, FixedVgaGain) != HACKRF_SUCCESS) {
-        JST_ERROR("[SDR_HACKRF] Failed to set a fixed gain.");
+    if (hackrf_set_amp_enable(handle, 0) != HACKRF_SUCCESS) {
+        JST_ERROR("[SDR_HACKRF] Failed to disable the RF amplifier.");
         return Result::ERROR;
     }
+    return Result::SUCCESS;
+}
+
+Result HackRfDevice::Impl::applyGain(const F64 gain, const bool force) {
+    const F64 target = device.resolveGain(gain, device.appliedSettings.gainRange);
+    if (!force && target == device.appliedSettings.gain) {
+        return Result::SUCCESS;
+    }
+    const auto [lna, vga] = StageGains(target);
+    if (hackrf_set_lna_gain(handle, lna) != HACKRF_SUCCESS ||
+        hackrf_set_vga_gain(handle, vga) != HACKRF_SUCCESS) {
+        JST_ERROR("[SDR_HACKRF] Failed to set the gain to {:.0f} dB.", target);
+        return Result::ERROR;
+    }
+    device.appliedSettings.gain = target;
     return Result::SUCCESS;
 }
 

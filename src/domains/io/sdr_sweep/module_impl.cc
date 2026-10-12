@@ -110,6 +110,10 @@ Result SdrSweepImpl::validate() {
         JST_ERROR("[MODULE_SDR_SWEEP] Settling time must be finite and not negative.");
         return Result::ERROR;
     }
+    if (!std::isfinite(config.manualGain)) {
+        JST_ERROR("[MODULE_SDR_SWEEP] Manual gain must be finite.");
+        return Result::ERROR;
+    }
 
     return Result::SUCCESS;
 }
@@ -202,6 +206,11 @@ Result SdrSweepImpl::create() {
         radio.reset();
         return result;
     }
+    gainLimits = radio->applied().gainRange;
+    if (gainLimits) {
+        manualGain = static_cast<F32>(radio->applied().gain);
+        active.gain = manualGain;
+    }
 
     JST_CHECK(buffer.setAttribute("frequency", static_cast<F32>(plan.centerFrequency())));
     JST_CHECK(buffer.setAttribute("sampleRate", static_cast<F32>(plan.span())));
@@ -264,11 +273,13 @@ Result SdrSweepImpl::reconfigure() {
         return Result::RECREATE;
     }
 
-    const auto settings = settingsOf(config, next);
+    auto settings = settingsOf(config, next);
+    settings.gain = radio->resolveGain(config.manualGain, gainLimits);
     control.submit([this, next, settings] { return applyPlan(next, settings); });
     submitted = next;
 
     automaticGain = config.automaticGain;
+    manualGain = static_cast<F32>(settings.gain);
     dwell = config.dwell;
     settlingTime = config.settlingTime;
     return Result::SUCCESS;
@@ -283,6 +294,7 @@ Radio::Device::Settings SdrSweepImpl::settingsOf(const SdrSweep& config,
         .automaticGain = config.automaticGain,
         .biasTee = config.biasTee,
         .settlingTime = config.settlingTime > 0.0f ? config.settlingTime / 1e3 : -1.0,
+        .gain = config.manualGain,
     };
 }
 
@@ -295,6 +307,10 @@ Result SdrSweepImpl::applyPlan(const Sweep::Plan& next, const Radio::Device::Set
         if (settings.settlingTime != active.settlingTime) {
             JST_CHECK(radio->setSettlingTime(settings.settlingTime));
             active.settlingTime = settings.settlingTime;
+        }
+        if (settings.gain != active.gain) {
+            JST_CHECK(radio->setGain(settings.gain));
+            active.gain = settings.gain;
         }
         plan = next;
         JST_CHECK(assembler.configure(plan));
@@ -475,6 +491,10 @@ SdrSweepImpl::MetricSnapshot SdrSweepImpl::getMetrics(const Clock::time_point no
 
 std::vector<std::string> SdrSweepImpl::listAntennas() const {
     return antennas;
+}
+
+std::optional<Radio::Device::Range> SdrSweepImpl::gainRange() const {
+    return gainLimits;
 }
 
 const Sweep::Plan& SdrSweepImpl::sweepPlan() const {

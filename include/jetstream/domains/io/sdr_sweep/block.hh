@@ -9,6 +9,7 @@ struct SdrSweep : public Block::Config {
     std::string deviceString = "";
     std::string antenna = "";
     bool automaticGain = false;
+    F32 manualGain = 30.0f;
     bool biasTee = false;
     F64 startFrequency = 88.0e6;
     F64 endFrequency = 108.0e6;
@@ -20,7 +21,7 @@ struct SdrSweep : public Block::Config {
     JST_BLOCK_TYPE(sdr_sweep);
     JST_BLOCK_DOMAIN("IO");
     JST_BLOCK_NODE_SIZE(M);
-    JST_BLOCK_PARAMS(deviceString, antenna, automaticGain, biasTee,
+    JST_BLOCK_PARAMS(deviceString, antenna, automaticGain, manualGain, biasTee,
                      startFrequency, endFrequency, sampleRate, resolution,
                      dwell, settlingTime);
     JST_BLOCK_DESCRIPTION(
@@ -38,7 +39,7 @@ struct SdrSweep : public Block::Config {
         "is not one recording.\n"
         "- **Labels describe the stitched band.** The `frequency` attribute is its "
         "center and `sampleRate` is its width.\n"
-        "- **Automatic Gain is off by default.** A fixed gain keeps the levels of "
+        "- **Automatic Gain is off by default.** Manual Gain keeps the levels of "
         "different hops comparable.\n"
         "\n"
         "## Ports\n"
@@ -74,6 +75,9 @@ struct SdrSweep : public Block::Config {
         "sweeping in firmware. |\n"
         "| **Automatic Gain** | Off | On, Off | Lets the radio set its gain, which "
         "makes hop levels not comparable. |\n"
+        "| **Manual Gain** | 30 dB | Within the radio's gain range | Receive gain, shown "
+        "when Automatic Gain is off. The value snaps to the nearest gain the radio "
+        "applies at the start of the sweep. |\n"
         "| **Bias-T** | Off | On, Off | Powers an active antenna through the cable on "
         "RTL-SDR, Airspy, HackRF, and bladeRF 2. |\n"
         "\n"

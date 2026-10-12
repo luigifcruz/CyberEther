@@ -10,6 +10,7 @@ struct SdrSweepImpl : public Block::Impl, public DynamicConfig<Blocks::SdrSweep>
     Result configure() override;
     Result define() override;
     Result create() override;
+    Result reconfigure() override;
 
  protected:
     std::shared_ptr<Modules::SdrSweep> moduleConfig = std::make_shared<Modules::SdrSweep>();
@@ -19,12 +20,14 @@ struct SdrSweepImpl : public Block::Impl, public DynamicConfig<Blocks::SdrSweep>
     const Modules::SdrSweepImpl* createdModule(const Blocks::SdrSweep& config);
     Parser::Map antennaFormat(const Blocks::SdrSweep& config);
     Parser::Map sampleRateFormat(const Blocks::SdrSweep& config);
+    Parser::Map manualGainFormat(const Blocks::SdrSweep& config);
 };
 
 Result SdrSweepImpl::configure() {
     moduleConfig->deviceString = deviceString;
     moduleConfig->antenna = antenna;
     moduleConfig->automaticGain = automaticGain;
+    moduleConfig->manualGain = manualGain;
     moduleConfig->biasTee = biasTee;
     moduleConfig->startFrequency = startFrequency;
     moduleConfig->endFrequency = endFrequency;
@@ -102,6 +105,13 @@ Result SdrSweepImpl::define() {
                                     "Lets the radio set its gain. Hop levels are then not comparable.",
                                     {{"type", "bool"}}));
 
+    if (!config.automaticGain) {
+        JST_CHECK(defineInterfaceConfig("manualGain",
+                                        "Manual Gain",
+                                        "Receive gain applied while automatic gain is off.",
+                                        manualGainFormat(config)));
+    }
+
     JST_CHECK(defineInterfaceConfig("biasTee",
                                     "Bias-T",
                                     "Enable antenna power when supported by the selected radio.",
@@ -156,7 +166,28 @@ Result SdrSweepImpl::create() {
     moduleImpl = moduleHandle("sdr_sweep")->getImpl<Modules::SdrSweepImpl>();
     JST_CHECK(updateInterfaceConfigFormat("antenna", antennaFormat(*this)));
 
+    return reconfigure();
+}
+
+Result SdrSweepImpl::reconfigure() {
+    if (const auto* sweep = createdModule(*this); sweep && sweep->gainRange()) {
+        manualGain = sweep->manualGain;
+        moduleConfig->manualGain = manualGain;
+    }
+
+    if (!automaticGain) {
+        JST_CHECK(updateInterfaceConfigFormat("manualGain", manualGainFormat(*this)));
+    }
+
     return Result::SUCCESS;
+}
+
+Parser::Map SdrSweepImpl::manualGainFormat(const Blocks::SdrSweep& config) {
+    const auto* sweep = createdModule(config);
+    const auto range = sweep ? sweep->gainRange() : std::nullopt;
+    const F32 minimum = range ? static_cast<F32>(range->minimum) : 0.0f;
+    const F32 maximum = range ? static_cast<F32>(range->maximum) : 60.0f;
+    return {{"type", "range"}, {"min", minimum}, {"max", maximum}, {"unit", "dB"}};
 }
 
 const Modules::SdrSweepImpl* SdrSweepImpl::createdModule(const Blocks::SdrSweep& config) {

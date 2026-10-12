@@ -31,7 +31,6 @@ namespace Jetstream::Radio {
 namespace {
 
 constexpr F64 SettlingTime = 1.0e-3;
-constexpr int FixedGain = 30;
 constexpr U64 MaxProfiles = 256;
 constexpr unsigned SyncBuffers = 16;
 constexpr unsigned SyncBufferSize = 8192;
@@ -72,7 +71,8 @@ struct BladeRfDevice::Impl {
 
     Result open(const Info& info);
     Result setFrequency(F64 frequency, bool settle = true);
-    Result applyGainMode(bool requested);
+    Result applyGainMode(bool requested, F64 gain);
+    Result applyGain(F64 gain, bool force);
     Result resynchronize(U64 guard);
 
     BladeRfDevice& device;
@@ -154,6 +154,7 @@ Result BladeRfDevice::Impl::open(const Info& info) {
     caps.frequencyRanges = ToRanges(frequency);
     caps.sampleRateRanges = ToRanges(rate);
     caps.automaticGain = second;
+    caps.gainFollowsFrequency = second;
     caps.biasTee = second;
     caps.sweepSampleRate = second ? 30.72e6 : 20.0e6;
     caps.usableBandwidth = 0.8;
@@ -192,7 +193,7 @@ Result BladeRfDevice::start(const Settings& settings) {
         return Result::ERROR;
     }
 
-    JST_CHECK(pimpl->applyGainMode(settings.automaticGain));
+    JST_CHECK(pimpl->applyGainMode(settings.automaticGain, settings.gain));
 
     if (deviceCapabilities.biasTee && (settings.biasTee || pimpl->biasTeeEnabled)) {
         if (bladerf_set_bias_tee(handle, Channel, settings.biasTee) != 0) {
@@ -243,26 +244,54 @@ Result BladeRfDevice::apply(const Settings& settings) {
 }
 
 Result BladeRfDevice::setAutomaticGain(const bool automaticGain) {
-    if (pimpl->applyGainMode(automaticGain) != Result::SUCCESS) {
+    if (pimpl->applyGainMode(automaticGain, requestedSettings.gain) != Result::SUCCESS) {
         return Device::setAutomaticGain(automaticGain);
     }
     requestedSettings.automaticGain = automaticGain;
     return Result::SUCCESS;
 }
 
-Result BladeRfDevice::Impl::applyGainMode(const bool requested) {
+Result BladeRfDevice::setGain(const F64 gain) {
+    if (pimpl->applyGain(gain, false) != Result::SUCCESS) {
+        return Device::setGain(gain);
+    }
+    requestedSettings.gain = gain;
+    return Result::SUCCESS;
+}
+
+F64 BladeRfDevice::resolveGain(const F64 gain, const std::optional<Range>& range) const {
+    return std::round(Device::resolveGain(gain, range));
+}
+
+Result BladeRfDevice::Impl::applyGainMode(const bool requested, const F64 gain) {
     const bool automatic = requested && device.deviceCapabilities.automaticGain;
     if (requested && !automatic) {
         JST_WARN("[SDR_BLADERF] Automatic gain is not supported by this bladeRF. "
-                 "Using a fixed {} dB.", FixedGain);
+                 "Using the manual gain.");
     }
     if (bladerf_set_gain_mode(handle, Channel,
-                              automatic ? BLADERF_GAIN_AUTOMATIC : BLADERF_GAIN_MGC) != 0 ||
-        (!automatic && bladerf_set_gain(handle, Channel, FixedGain) != 0)) {
-        JST_ERROR("[SDR_BLADERF] Failed to set the gain.");
+                              automatic ? BLADERF_GAIN_AUTOMATIC : BLADERF_GAIN_MGC) != 0) {
+        JST_ERROR("[SDR_BLADERF] Failed to set the gain mode.");
         return Result::ERROR;
     }
     device.appliedSettings.automaticGain = automatic;
+    return applyGain(gain, true);
+}
+
+Result BladeRfDevice::Impl::applyGain(const F64 gain, const bool force) {
+    const bladerf_range* range = nullptr;
+    if (bladerf_get_gain_range(handle, Channel, &range) == 0 && range) {
+        device.appliedSettings.gainRange = Range{static_cast<F64>(range->min) * range->scale,
+                                                 static_cast<F64>(range->max) * range->scale};
+    }
+    const F64 target = device.resolveGain(gain, device.appliedSettings.gainRange);
+    const bool unchanged = !force && target == device.appliedSettings.gain;
+    if (!device.appliedSettings.automaticGain && !unchanged &&
+        bladerf_set_gain(handle, Channel, static_cast<bladerf_gain>(target)) != 0) {
+        JST_ERROR("[SDR_BLADERF] Failed to set the gain to {:.0f} dB.", target);
+        return Result::ERROR;
+    }
+    device.appliedSettings.gain = target;
     return Result::SUCCESS;
 }
 
@@ -412,6 +441,7 @@ Result BladeRfDevice::Impl::setFrequency(const F64 frequency, const bool settle)
     bladerf_get_frequency(handle, Channel, &actual);
     device.requestedSettings.frequency = frequency;
     device.appliedSettings.frequency = static_cast<F64>(actual);
+    JST_CHECK(applyGain(device.requestedSettings.gain, false));
     if (!settle) {
         return Result::SUCCESS;
     }

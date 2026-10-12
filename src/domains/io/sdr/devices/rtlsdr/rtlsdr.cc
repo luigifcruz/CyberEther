@@ -70,14 +70,13 @@ struct RtlSdrDevice::Impl {
     static void Callback(unsigned char* buffer, uint32_t length, void* context);
 
     Result open(const Info& info);
-    Result applyGainMode(bool automatic);
+    Result applyGain(bool automatic, F64 gain, bool setMode);
     Result startStream();
     void stopStream();
 
     RtlSdrDevice& device;
     rtlsdr_dev_t* handle = nullptr;
     std::vector<int> gains;
-    int fixedGain = 0;
     bool biasTeeEnabled = false;
     CaptureQueue queue;
     std::thread worker;
@@ -179,11 +178,9 @@ Result RtlSdrDevice::Impl::open(const Info& info) {
         gains.resize(static_cast<std::size_t>(count));
         rtlsdr_get_tuner_gains(handle, gains.data());
     }
-    fixedGain = 0;
-    for (const auto gain : gains) {
-        if (std::abs(gain - 300) < std::abs(fixedGain - 300)) {
-            fixedGain = gain;
-        }
+    if (!gains.empty()) {
+        const auto [minimum, maximum] = std::minmax_element(gains.begin(), gains.end());
+        device.appliedSettings.gainRange = Range{*minimum / 10.0, *maximum / 10.0};
     }
 
     JST_DEBUG("[SDR_RTLSDR] Opened '{}' with a {} tuner.", info.label, TunerName(tuner));
@@ -218,7 +215,7 @@ Result RtlSdrDevice::start(const Settings& settings) {
         return Result::ERROR;
     }
 
-    JST_CHECK(pimpl->applyGainMode(settings.automaticGain));
+    JST_CHECK(pimpl->applyGain(settings.automaticGain, settings.gain, true));
 
     if (settings.biasTee || pimpl->biasTeeEnabled) {
         if (rtlsdr_set_bias_tee(handle, settings.biasTee ? 1 : 0) < 0) {
@@ -243,7 +240,7 @@ void RtlSdrDevice::stop() {
 }
 
 Result RtlSdrDevice::setAutomaticGain(const bool automaticGain) {
-    if (pimpl->applyGainMode(automaticGain) != Result::SUCCESS) {
+    if (pimpl->applyGain(automaticGain, requestedSettings.gain, true) != Result::SUCCESS) {
         return Device::setAutomaticGain(automaticGain);
     }
     requestedSettings.automaticGain = automaticGain;
@@ -251,17 +248,42 @@ Result RtlSdrDevice::setAutomaticGain(const bool automaticGain) {
     return Result::SUCCESS;
 }
 
-Result RtlSdrDevice::Impl::applyGainMode(const bool automatic) {
-    if (automatic) {
-        if (rtlsdr_set_tuner_gain_mode(handle, 0) < 0) {
-            JST_ERROR("[SDR_RTLSDR] Failed to enable automatic gain.");
-            return Result::ERROR;
+Result RtlSdrDevice::setGain(const F64 gain) {
+    if (pimpl->applyGain(appliedSettings.automaticGain, gain, false) != Result::SUCCESS) {
+        return Device::setGain(gain);
+    }
+    requestedSettings.gain = gain;
+    return Result::SUCCESS;
+}
+
+F64 RtlSdrDevice::resolveGain(const F64 gain, const std::optional<Range>&) const {
+    const auto& gains = pimpl->gains;
+    if (gains.empty()) {
+        return gain;
+    }
+    const int target = static_cast<int>(std::lround(gain * 10.0));
+    int nearest = gains.front();
+    for (const auto step : gains) {
+        if (std::abs(step - target) < std::abs(nearest - target)) {
+            nearest = step;
         }
-    } else if (rtlsdr_set_tuner_gain_mode(handle, 1) < 0 ||
-               rtlsdr_set_tuner_gain(handle, fixedGain) < 0) {
-        JST_ERROR("[SDR_RTLSDR] Failed to set a fixed gain.");
+    }
+    return nearest / 10.0;
+}
+
+Result RtlSdrDevice::Impl::applyGain(const bool automatic, const F64 gain, const bool setMode) {
+    const F64 target = device.resolveGain(gain, device.appliedSettings.gainRange);
+    if (setMode && rtlsdr_set_tuner_gain_mode(handle, automatic ? 0 : 1) < 0) {
+        JST_ERROR("[SDR_RTLSDR] Failed to set the gain mode.");
         return Result::ERROR;
     }
+    const bool unchanged = !setMode && target == device.appliedSettings.gain;
+    if (!automatic && !unchanged &&
+        rtlsdr_set_tuner_gain(handle, static_cast<int>(std::lround(target * 10.0))) < 0) {
+        JST_ERROR("[SDR_RTLSDR] Failed to set the gain to {:.1f} dB.", target);
+        return Result::ERROR;
+    }
+    device.appliedSettings.gain = target;
     return Result::SUCCESS;
 }
 

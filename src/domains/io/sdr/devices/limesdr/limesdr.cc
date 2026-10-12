@@ -20,7 +20,7 @@ namespace Jetstream::Radio {
 namespace {
 
 constexpr F64 SettlingTime = 2.0e-3;
-constexpr F64 FixedNormalizedGain = 0.7;
+constexpr unsigned MaxGain = 73;
 constexpr F32 StreamLatency = 0.5f;
 constexpr U64 PacketSamples = 1360;
 constexpr U64 DrainSamples = 65536;
@@ -74,6 +74,7 @@ struct LimeSdrDevice::Impl {
     explicit Impl(LimeSdrDevice& owner) : device(owner) {}
 
     Result open(const Info& info);
+    Result applyGain(F64 gain, bool force);
     Result setFrequency(F64 frequency, bool useCache);
     Result startStream();
     void stopStream();
@@ -187,6 +188,7 @@ Result LimeSdrDevice::Impl::open(const Info& info) {
     caps.usableBandwidth = 0.8;
     caps.dcExclusion = 20.0e3;
     device.defaultSettlingTime = SettlingTime;
+    device.appliedSettings.gainRange = Range{0.0, static_cast<F64>(MaxGain)};
     return Result::SUCCESS;
 }
 
@@ -211,8 +213,7 @@ Result LimeSdrDevice::start(const Settings& settings) {
         return Result::ERROR;
     }
     if (settings.automaticGain) {
-        JST_WARN("[SDR_LIMESDR] LimeSDR has no automatic gain control. Using a fixed {:.0f}% "
-                 "of the gain range.", FixedNormalizedGain * 100);
+        JST_WARN("[SDR_LIMESDR] LimeSDR has no automatic gain control. Using the manual gain.");
     }
 
     {
@@ -228,10 +229,7 @@ Result LimeSdrDevice::start(const Settings& settings) {
             JST_ERROR("[SDR_LIMESDR] Failed to select antenna: {}", LMS_GetLastErrorMessage());
             return Result::ERROR;
         }
-        if (LMS_SetNormalizedGain(handle, LMS_CH_RX, 0, FixedNormalizedGain) != 0) {
-            JST_ERROR("[SDR_LIMESDR] Failed to set a fixed gain.");
-            return Result::ERROR;
-        }
+        JST_CHECK(pimpl->applyGain(settings.gain, true));
         lms_range_t filter = {};
         if (LMS_GetLPFBWRange(handle, LMS_CH_RX, &filter) != 0 ||
             LMS_SetLPFBW(handle, LMS_CH_RX, 0,
@@ -288,10 +286,40 @@ void LimeSdrDevice::stop() {
 
 Result LimeSdrDevice::setAutomaticGain(const bool automaticGain) {
     if (automaticGain) {
-        JST_WARN("[SDR_LIMESDR] LimeSDR has no automatic gain control. Using a fixed {:.0f}% "
-                 "of the gain range.", FixedNormalizedGain * 100);
+        JST_WARN("[SDR_LIMESDR] LimeSDR has no automatic gain control. Using the manual gain.");
     }
     requestedSettings.automaticGain = automaticGain;
+    return Result::SUCCESS;
+}
+
+Result LimeSdrDevice::setGain(const F64 gain) {
+    Result result = Result::SUCCESS;
+    {
+        std::lock_guard lock(TuningMutex());
+        result = pimpl->applyGain(gain, false);
+    }
+    if (result != Result::SUCCESS) {
+        return Device::setGain(gain);
+    }
+    requestedSettings.gain = gain;
+    return Result::SUCCESS;
+}
+
+F64 LimeSdrDevice::resolveGain(const F64 gain, const std::optional<Range>& range) const {
+    return std::round(Device::resolveGain(gain, range));
+}
+
+Result LimeSdrDevice::Impl::applyGain(const F64 gain, const bool force) {
+    const F64 target = device.resolveGain(gain, device.appliedSettings.gainRange);
+    if (!force && target == device.appliedSettings.gain) {
+        return Result::SUCCESS;
+    }
+    if (LMS_SetGaindB(handle, LMS_CH_RX, 0, static_cast<unsigned>(target)) != 0) {
+        JST_ERROR("[SDR_LIMESDR] Failed to set the gain to {:.0f} dB: {}", target,
+                  LMS_GetLastErrorMessage());
+        return Result::ERROR;
+    }
+    device.appliedSettings.gain = target;
     return Result::SUCCESS;
 }
 

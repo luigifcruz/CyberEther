@@ -11,6 +11,7 @@ namespace Jetstream::Modules {
 
 namespace {
 
+constexpr auto ControlTimeout = std::chrono::seconds(5);
 constexpr auto ReadTimeout = std::chrono::milliseconds(50);
 constexpr U64 ReadChunk = 16384;
 
@@ -32,6 +33,10 @@ Result SdrImpl::validate() {
     }
     if (!std::isfinite(config.sampleRate) || config.sampleRate <= 0.0f) {
         JST_ERROR("[MODULE_SDR] Sample rate must be finite and positive.");
+        return Result::ERROR;
+    }
+    if (!std::isfinite(config.manualGain)) {
+        JST_ERROR("[MODULE_SDR] Manual gain must be finite.");
         return Result::ERROR;
     }
     if (config.numberOfBatches == 0) {
@@ -113,6 +118,10 @@ Result SdrImpl::create() {
         return result;
     }
     resetStream();
+    if (radio->applied().gainRange) {
+        manualGain = static_cast<F32>(radio->applied().gain);
+        active.gain = manualGain;
+    }
 
     outputs()["signal"].produced(name(), "signal", buffer);
     publishedMetadata = {};
@@ -158,15 +167,22 @@ Result SdrImpl::reconfigure() {
         return Result::WARNING;
     }
 
-    if (config.frequency != frequency || config.sampleRate != sampleRate ||
-        config.automaticGain != automaticGain) {
-        const auto desired = settingsOf(config);
-        control.submit([this, desired] { return applySettings(desired); });
+    auto desired = settingsOf(config);
+    if (config.frequency != frequency && caps.gainFollowsFrequency) {
+        JST_CHECK(control.post([this, desired] { return applySettings(desired); }, ControlTimeout));
+        desired.gain = applied.get().gain;
+    } else {
+        desired.gain = radio->resolveGain(config.manualGain, applied.get().gainRange);
+        if (config.frequency != frequency || config.sampleRate != sampleRate ||
+            config.automaticGain != automaticGain || static_cast<F32>(desired.gain) != manualGain) {
+            control.submit([this, desired] { return applySettings(desired); });
+        }
     }
 
     frequency = config.frequency;
     sampleRate = config.sampleRate;
     automaticGain = config.automaticGain;
+    manualGain = static_cast<F32>(desired.gain);
     return Result::SUCCESS;
 }
 
@@ -177,6 +193,7 @@ Radio::Device::Settings SdrImpl::settingsOf(const Sdr& config) const {
         .antenna = config.antenna,
         .automaticGain = config.automaticGain,
         .biasTee = config.biasTee,
+        .gain = config.manualGain,
     };
 }
 
@@ -208,6 +225,17 @@ Result SdrImpl::applySettings(const Radio::Device::Settings& desired) {
         }
         JST_CHECK(result);
         active.automaticGain = desired.automaticGain;
+    }
+    if (desired.gain != active.gain) {
+        const U64 generation = radio->generation();
+        const auto result = radio->setGain(desired.gain);
+        if (radio->generation() != generation) {
+            resetStream();
+        } else {
+            applied.publish(radio->applied());
+        }
+        JST_CHECK(result);
+        active.gain = desired.gain;
     }
     return Result::SUCCESS;
 }

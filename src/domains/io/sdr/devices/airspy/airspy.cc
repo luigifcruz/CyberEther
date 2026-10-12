@@ -3,6 +3,8 @@
 #include "../../tools/capture_queue.hh"
 #include "../../tools/samples.hh"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 
@@ -15,11 +17,29 @@ namespace Jetstream::Radio {
 namespace {
 
 constexpr F64 SettlingTime = 10.0e-3;
-constexpr U8 FixedLinearityGain = 10;
+constexpr std::array<U8, 3> MaxStageGains = {14, 15, 15};
 constexpr U64 InFlightTransfers = 24;
 
 std::string SerialString(const U64 serial) {
     return jst::fmt::format("{:016X}", serial);
+}
+
+std::array<U8, 3> StageGains(U64 total) {
+    std::array<U8, 3> stages = {0, 0, 0};
+    while (total > 0) {
+        U64 next = stages.size();
+        for (U64 i = 0; i < stages.size(); ++i) {
+            if (stages[i] < MaxStageGains[i] && (next == stages.size() || stages[i] < stages[next])) {
+                next = i;
+            }
+        }
+        if (next == stages.size()) {
+            break;
+        }
+        ++stages[next];
+        --total;
+    }
+    return stages;
 }
 
 }  // namespace
@@ -30,7 +50,7 @@ struct AirspyDevice::Impl {
     static int Callback(airspy_transfer* transfer);
 
     Result open(const Info& info);
-    Result applyGainMode(bool automatic);
+    Result applyGain(bool automatic, F64 gain, bool setMode);
     Result startStream();
     void stopStream();
 
@@ -130,6 +150,8 @@ Result AirspyDevice::Impl::open(const Info& info) {
     caps.usableBandwidth = 0.8;
     caps.dcExclusion = 0.0;
     device.defaultSettlingTime = SettlingTime;
+    device.appliedSettings.gainRange = Range{
+        0.0, static_cast<F64>(MaxStageGains[0] + MaxStageGains[1] + MaxStageGains[2])};
     return Result::SUCCESS;
 }
 
@@ -163,7 +185,7 @@ Result AirspyDevice::start(const Settings& settings) {
         return Result::ERROR;
     }
 
-    JST_CHECK(pimpl->applyGainMode(settings.automaticGain));
+    JST_CHECK(pimpl->applyGain(settings.automaticGain, settings.gain, true));
 
     if (settings.biasTee || pimpl->biasTeeEnabled) {
         if (airspy_set_rf_bias(handle, settings.biasTee ? 1 : 0) != AIRSPY_SUCCESS) {
@@ -187,7 +209,7 @@ void AirspyDevice::stop() {
 }
 
 Result AirspyDevice::setAutomaticGain(const bool automaticGain) {
-    if (pimpl->applyGainMode(automaticGain) != Result::SUCCESS) {
+    if (pimpl->applyGain(automaticGain, requestedSettings.gain, true) != Result::SUCCESS) {
         return Device::setAutomaticGain(automaticGain);
     }
     requestedSettings.automaticGain = automaticGain;
@@ -195,17 +217,39 @@ Result AirspyDevice::setAutomaticGain(const bool automaticGain) {
     return Result::SUCCESS;
 }
 
-Result AirspyDevice::Impl::applyGainMode(const bool automatic) {
-    const U8 agc = automatic ? 1 : 0;
-    if (airspy_set_lna_agc(handle, agc) != AIRSPY_SUCCESS ||
-        airspy_set_mixer_agc(handle, agc) != AIRSPY_SUCCESS) {
-        JST_ERROR("[SDR_AIRSPY] Failed to set the gain mode.");
-        return Result::ERROR;
+Result AirspyDevice::setGain(const F64 gain) {
+    if (pimpl->applyGain(appliedSettings.automaticGain, gain, false) != Result::SUCCESS) {
+        return Device::setGain(gain);
     }
-    if (!automatic && airspy_set_linearity_gain(handle, FixedLinearityGain) != AIRSPY_SUCCESS) {
-        JST_ERROR("[SDR_AIRSPY] Failed to set a fixed gain.");
-        return Result::ERROR;
+    requestedSettings.gain = gain;
+    return Result::SUCCESS;
+}
+
+F64 AirspyDevice::resolveGain(const F64 gain, const std::optional<Range>& range) const {
+    return std::round(Device::resolveGain(gain, range));
+}
+
+Result AirspyDevice::Impl::applyGain(const bool automatic, const F64 gain, const bool setMode) {
+    const F64 target = device.resolveGain(gain, device.appliedSettings.gainRange);
+    if (setMode) {
+        const U8 agc = automatic ? 1 : 0;
+        if (airspy_set_lna_agc(handle, agc) != AIRSPY_SUCCESS ||
+            airspy_set_mixer_agc(handle, agc) != AIRSPY_SUCCESS) {
+            JST_ERROR("[SDR_AIRSPY] Failed to set the gain mode.");
+            return Result::ERROR;
+        }
     }
+    const bool unchanged = !setMode && target == device.appliedSettings.gain;
+    if (!automatic && !unchanged) {
+        const auto stages = StageGains(static_cast<U64>(target));
+        if (airspy_set_lna_gain(handle, stages[0]) != AIRSPY_SUCCESS ||
+            airspy_set_mixer_gain(handle, stages[1]) != AIRSPY_SUCCESS ||
+            airspy_set_vga_gain(handle, stages[2]) != AIRSPY_SUCCESS) {
+            JST_ERROR("[SDR_AIRSPY] Failed to set the gain to {:.0f}.", target);
+            return Result::ERROR;
+        }
+    }
+    device.appliedSettings.gain = target;
     return Result::SUCCESS;
 }
 

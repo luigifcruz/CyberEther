@@ -12,6 +12,7 @@ struct Sdr : public Block::Config {
     F32 frequencyStep = 1000000.0;
     F32 sampleRate = 2.0e6;
     bool automaticGain = true;
+    F32 manualGain = 30.0f;
     bool biasTee = false;
     U64 numberOfBatches = 8;
     U64 numberOfTimeSamples = 8192;
@@ -21,7 +22,7 @@ struct Sdr : public Block::Config {
     JST_BLOCK_DOMAIN("IO");
     JST_BLOCK_NODE_SIZE(M);
     JST_BLOCK_PARAMS(deviceString, antenna, frequency, frequencyStep,
-                     sampleRate, automaticGain, biasTee, numberOfBatches,
+                     sampleRate, automaticGain, manualGain, biasTee, numberOfBatches,
                      numberOfTimeSamples, bufferMultiplier);
     JST_BLOCK_DESCRIPTION(
         "SDR",
@@ -61,8 +62,11 @@ struct Sdr : public Block::Config {
         "| **Sample Rate** | 2 MHz | Within the radio's range | Complex samples per "
         "second, which is also the bandwidth captured. Airspy shows a list of its "
         "rates. |\n"
-        "| **Automatic Gain** | On | On, Off | Lets the radio set its gain. When off, "
-        "or on HackRF, LimeSDR, and bladeRF 1, a fixed gain is used. |\n"
+        "| **Automatic Gain** | On | On, Off | Lets the radio set its gain. HackRF, "
+        "LimeSDR, and bladeRF 1 have none and always use Manual Gain. |\n"
+        "| **Manual Gain** | 30 dB | Within the radio's gain range | Receive gain, shown "
+        "when Automatic Gain is off. The value snaps to the nearest gain the radio "
+        "applies, and on bladeRF 2 the limits follow the tuned frequency. |\n"
         "| **Bias-T** | Off | On, Off | Powers an active antenna through the cable on "
         "RTL-SDR, Airspy, HackRF, and bladeRF 2. |\n"
         "| **Batches** | 8 | 1 or more | Batches per output buffer. |\n"

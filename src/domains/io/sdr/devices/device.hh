@@ -84,6 +84,7 @@ struct JETSTREAM_API Device {
         std::vector<Range> sampleRateRanges;
         std::vector<std::string> antennas;
         bool automaticGain = false;
+        bool gainFollowsFrequency = false;
         bool biasTee = false;
         F64 sweepSampleRate = 0.0;
         F64 usableBandwidth = 0.75;
@@ -100,6 +101,7 @@ struct JETSTREAM_API Device {
         bool automaticGain = true;
         bool biasTee = false;
         F64 settlingTime = -1.0;
+        F64 gain = 30.0;
     };
 
     struct Applied {
@@ -108,6 +110,8 @@ struct JETSTREAM_API Device {
         std::string antenna;
         bool automaticGain = false;
         bool biasTee = false;
+        F64 gain = 0.0;
+        std::optional<Range> gainRange;
     };
 
     struct Statistics {
@@ -176,6 +180,8 @@ struct JETSTREAM_API Device {
     virtual Result apply(const Settings& settings);
     virtual Result tune(F64 frequency);
     virtual Result setAutomaticGain(bool automaticGain);
+    virtual Result setGain(F64 gain);
+    virtual F64 resolveGain(F64 gain, const std::optional<Range>& range) const;
     Result setSettlingTime(F64 settlingTime);
     virtual Capture read(std::span<CF32> samples, std::chrono::milliseconds timeout) = 0;
     virtual Result prepareSweep(const SweepRequest& request);

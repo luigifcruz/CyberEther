@@ -392,6 +392,16 @@ Result Device::setAutomaticGain(const bool automaticGain) {
     return apply(settings);
 }
 
+Result Device::setGain(const F64 gain) {
+    auto settings = requestedSettings;
+    settings.gain = gain;
+    return apply(settings);
+}
+
+F64 Device::resolveGain(const F64 gain, const std::optional<Range>& range) const {
+    return range ? std::clamp(gain, range->minimum, range->maximum) : gain;
+}
+
 Result Device::setSettlingTime(const F64 settlingTime) {
     auto settings = requestedSettings;
     settings.settlingTime = settlingTime;

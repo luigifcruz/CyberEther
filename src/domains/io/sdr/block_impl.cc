@@ -13,6 +13,7 @@ struct SdrImpl : public Block::Impl, public DynamicConfig<Blocks::Sdr> {
     Result configure() override;
     Result define() override;
     Result create() override;
+    Result reconfigure() override;
 
  protected:
     std::shared_ptr<Modules::Sdr> moduleConfig = std::make_shared<Modules::Sdr>();
@@ -21,6 +22,8 @@ struct SdrImpl : public Block::Impl, public DynamicConfig<Blocks::Sdr> {
  private:
     Parser::Map antennaFormat(const Blocks::Sdr& config);
     Parser::Map sampleRateFormat(const Blocks::Sdr& config);
+    const Modules::SdrImpl* createdModule(const Blocks::Sdr& config);
+    Parser::Map manualGainFormat(const Blocks::Sdr& config);
 };
 
 Result SdrImpl::validate() {
@@ -40,6 +43,7 @@ Result SdrImpl::configure() {
     moduleConfig->frequency = frequency;
     moduleConfig->sampleRate = sampleRate;
     moduleConfig->automaticGain = automaticGain;
+    moduleConfig->manualGain = manualGain;
     moduleConfig->biasTee = biasTee;
     moduleConfig->numberOfBatches = numberOfBatches;
     moduleConfig->numberOfTimeSamples = numberOfTimeSamples;
@@ -94,6 +98,13 @@ Result SdrImpl::define() {
                                     "Automatic Gain",
                                     "Enable automatic gain control on radios that support it.",
                                     {{"type", "bool"}}));
+
+    if (!config.automaticGain) {
+        JST_CHECK(defineInterfaceConfig("manualGain",
+                                        "Manual Gain",
+                                        "Receive gain applied while automatic gain is off.",
+                                        manualGainFormat(config)));
+    }
 
     JST_CHECK(defineInterfaceConfig("biasTee",
                                     "Bias-T",
@@ -164,20 +175,46 @@ Result SdrImpl::create() {
     moduleImpl = moduleHandle("sdr")->getImpl<Modules::SdrImpl>();
     JST_CHECK(updateInterfaceConfigFormat("antenna", antennaFormat(*this)));
 
+    return reconfigure();
+}
+
+Result SdrImpl::reconfigure() {
+    if (const auto* sdr = createdModule(*this); sdr && sdr->appliedSettings().gainRange) {
+        manualGain = sdr->manualGain;
+        moduleConfig->manualGain = manualGain;
+    }
+
+    if (!automaticGain) {
+        JST_CHECK(updateInterfaceConfigFormat("manualGain", manualGainFormat(*this)));
+    }
+
     return Result::SUCCESS;
+}
+
+const Modules::SdrImpl* SdrImpl::createdModule(const Blocks::Sdr& config) {
+    const auto module = moduleHandle("sdr");
+    if (!module || module->state() != Module::State::CREATED) {
+        return nullptr;
+    }
+    const auto* sdr = module->getImpl<Modules::SdrImpl>();
+    return sdr && sdr->deviceString == config.deviceString ? sdr : nullptr;
+}
+
+Parser::Map SdrImpl::manualGainFormat(const Blocks::Sdr& config) {
+    const auto* sdr = createdModule(config);
+    const auto range = sdr ? sdr->appliedSettings().gainRange : std::nullopt;
+    const F32 minimum = range ? static_cast<F32>(range->minimum) : 0.0f;
+    const F32 maximum = range ? static_cast<F32>(range->maximum) : 60.0f;
+    return {{"type", "range"}, {"min", minimum}, {"max", maximum}, {"unit", "dB"}};
 }
 
 Parser::Map SdrImpl::antennaFormat(const Blocks::Sdr& config) {
     Parser::Sequence options{Parser::Map{{"label", "Default"}, {"value", ""}}};
     bool selectionListed = config.antenna.empty();
-    if (const auto module = moduleHandle("sdr");
-        module && module->state() == Module::State::CREATED) {
-        const auto* sdr = module->getImpl<Modules::SdrImpl>();
-        if (sdr && sdr->deviceString == config.deviceString) {
-            for (const auto& antenna : sdr->listAntennas()) {
-                selectionListed = selectionListed || antenna == config.antenna;
-                options.emplace_back(Parser::Map{{"label", antenna}, {"value", antenna}});
-            }
+    if (const auto* sdr = createdModule(config)) {
+        for (const auto& antenna : sdr->listAntennas()) {
+            selectionListed = selectionListed || antenna == config.antenna;
+            options.emplace_back(Parser::Map{{"label", antenna}, {"value", antenna}});
         }
     }
     if (!selectionListed) {

@@ -12,6 +12,7 @@ struct Sdr : public Module::Config {
     F32 frequency = 96.9e6;
     F32 sampleRate = 2.0e6;
     bool automaticGain = true;
+    F32 manualGain = 30.0f;
     bool biasTee = false;
     U64 numberOfBatches = 8;
     U64 numberOfTimeSamples = 8192;
@@ -19,7 +20,7 @@ struct Sdr : public Module::Config {
 
     JST_MODULE_TYPE(sdr);
     JST_MODULE_PARAMS(deviceString, antenna, frequency, sampleRate,
-                      automaticGain, biasTee, numberOfBatches,
+                      automaticGain, manualGain, biasTee, numberOfBatches,
                       numberOfTimeSamples, bufferMultiplier);
 };
 

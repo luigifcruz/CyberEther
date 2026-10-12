@@ -20,6 +20,8 @@ struct LimeSdrDevice : public Device {
     void stop() override;
     Result tune(F64 frequency) override;
     Result setAutomaticGain(bool automaticGain) override;
+    Result setGain(F64 gain) override;
+    F64 resolveGain(F64 gain, const std::optional<Range>& range) const override;
     Capture read(std::span<CF32> samples, std::chrono::milliseconds timeout) override;
     Result prepareSweep(const SweepRequest& request) override;
 
