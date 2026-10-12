@@ -8,6 +8,7 @@
 #include <jetstream/detail/module_impl.hh>
 #include <jetstream/tools/snapshot.hh>
 
+#include "domains/io/sdr/tools/control_channel.hh"
 #include "domains/io/sdr/tools/stream_buffer.hh"
 #include "library/soapysdr.hh"
 
@@ -30,10 +31,6 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
     std::vector<std::string> listAntennas() const;
     std::optional<SoapyAbi::Range> getGainRange() const;
 
-    Result setTunerFrequency(const F32& frequency);
-    Result setSampleRate(const F32& sampleRate);
-    Result setAutomaticGain(const bool& automaticGain);
-    Result setManualGain(const F32& manualGain);
     Result setBiasTee(bool enabled);
 
  protected:
@@ -54,15 +51,26 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
     Tools::Snapshot<F32> bufferHealth{0.0f};
     Tools::Snapshot<U64> deviceOverflows{0};
     Tools::Snapshot<std::pair<F32, F32>> throughput{{0.0f, 0.0f}};
+    Tools::Snapshot<std::optional<SoapyAbi::Range>> gainRange;
 
     Result soapyThreadLoop();
     Result emitFrame();
 
  private:
+    struct Tuning {
+        F32 frequency = 0.0f;
+        F32 sampleRate = 0.0f;
+        bool automaticGain = true;
+        F32 gain = 0.0f;
+    };
+
     SoapyReceiver receiverDevice;
+    Radio::ControlChannel control;
+    Tuning tuned;
 
     Result allocateBuffers();
     Result configureDevice();
+    Result applyTuning(const Tuning& desired);
     void resetStream(F32 appliedFrequency, F32 appliedSampleRate);
     Result publishMetadata(const Radio::StreamBuffer::Metadata& metadata);
     Result startReceiver();

@@ -12,6 +12,7 @@
 #include <jetstream/tools/snapshot.hh>
 
 #include "domains/io/sdr/devices/device.hh"
+#include "domains/io/sdr/tools/control_channel.hh"
 #include "domains/io/sdr_sweep/tools/sweep.hh"
 
 namespace Jetstream::Modules {
@@ -93,6 +94,7 @@ struct JETSTREAM_API SdrSweepImpl : public Module::Impl, public DynamicConfig<Sd
     Tools::Snapshot<U64> sweeps{0};
     Tools::Snapshot<U64> expiredFrames{0};
     Tools::Snapshot<F64> sweepDuration{0.0};
+    Tools::Snapshot<U64> totalHops{0};
 
     Result workerLoop();
     bool handleCapture(const Radio::Device::SweepCapture& capture);
@@ -104,13 +106,18 @@ struct JETSTREAM_API SdrSweepImpl : public Module::Impl, public DynamicConfig<Sd
  private:
     std::unique_ptr<Radio::Device> radio;
     std::vector<std::string> antennas;
+    Radio::ControlChannel control;
     Sweep::Plan plan;
+    Sweep::Plan submitted;
+    F64 hardwareRate = 0.0;
     Sweep::Assembler assembler;
     U64 instance = 0;
 
     Clock::time_point sweepStarted{};
     U64 sweepCounter = 0;
 
+    Radio::Device::Settings settingsOf(const SdrSweep& config, const Sweep::Plan& next) const;
+    Result applyPlan(const Sweep::Plan& next, const Radio::Device::Settings& settings);
     Result startWorker();
     void stopWorker();
 };

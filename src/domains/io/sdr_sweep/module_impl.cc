@@ -152,15 +152,8 @@ Result SdrSweepImpl::create() {
         return result;
     }
 
-    const Radio::Device::Settings settings{
-        .frequency = plan.hops.front().frequency,
-        .sampleRate = plan.sampleRate,
-        .antenna = antenna,
-        .automaticGain = automaticGain,
-        .biasTee = biasTee,
-        .settlingTime = settlingTime > 0.0f ? settlingTime / 1e3 : -1.0,
-    };
-    if (const auto result = radio->start(settings); result != Result::SUCCESS) {
+    hardwareRate = plan.sampleRate;
+    if (const auto result = radio->start(settingsOf(*this, plan)); result != Result::SUCCESS) {
         radio.reset();
         return result;
     }
@@ -197,6 +190,8 @@ Result SdrSweepImpl::create() {
         return Result::ERROR;
     }
     JST_CHECK(assembler.configure(plan));
+    totalHops.publish(plan.hops.size());
+    submitted = plan;
 
     if (automaticGain && radio->applied().automaticGain) {
         JST_WARN("[MODULE_SDR_SWEEP] Automatic gain is on. Levels of different hops are not "
@@ -243,11 +238,76 @@ Result SdrSweepImpl::destroy() {
 }
 
 Result SdrSweepImpl::reconfigure() {
-    return Result::RECREATE;
+    const auto& config = *candidate();
+    if (!radio || config.deviceString != deviceString || config.antenna != antenna ||
+        config.biasTee != biasTee || config.startFrequency != startFrequency ||
+        config.endFrequency != endFrequency || config.sampleRate != sampleRate ||
+        config.resolution != resolution) {
+        return Result::RECREATE;
+    }
+
+    Sweep::Plan next;
+    const Sweep::Plan::Request request{
+        .startFrequency = config.startFrequency,
+        .endFrequency = config.endFrequency,
+        .sampleRate = submitted.sampleRate,
+        .resolution = config.resolution,
+        .dwell = config.dwell,
+        .settlingTime = config.settlingTime / 1e3,
+    };
+    if (Sweep::Plan::Create(request, radio->capabilities(), next) != Result::SUCCESS ||
+        next.mode != submitted.mode || next.sampleRate != submitted.sampleRate ||
+        next.segmentLength != submitted.segmentLength || next.binWidth != submitted.binWidth ||
+        next.startFrequency != submitted.startFrequency ||
+        next.outputBins != submitted.outputBins || next.hops.size() != submitted.hops.size()) {
+        return Result::RECREATE;
+    }
+
+    const auto settings = settingsOf(config, next);
+    control.submit([this, next, settings] { return applyPlan(next, settings); });
+    submitted = next;
+
+    automaticGain = config.automaticGain;
+    dwell = config.dwell;
+    settlingTime = config.settlingTime;
+    return Result::SUCCESS;
+}
+
+Radio::Device::Settings SdrSweepImpl::settingsOf(const SdrSweep& config,
+                                                 const Sweep::Plan& next) const {
+    return {
+        .frequency = next.hops.front().frequency,
+        .sampleRate = hardwareRate,
+        .antenna = config.antenna,
+        .automaticGain = config.automaticGain,
+        .biasTee = config.biasTee,
+        .settlingTime = config.settlingTime > 0.0f ? config.settlingTime / 1e3 : -1.0,
+    };
+}
+
+Result SdrSweepImpl::applyPlan(const Sweep::Plan& next, const Radio::Device::Settings& settings) {
+    const auto result = [&] {
+        JST_CHECK(radio->apply(settings));
+        if (radio->applied().sampleRate != next.sampleRate) {
+            JST_ERROR("[MODULE_SDR_SWEEP] The radio applied {:.6f} MS/s instead of {:.6f} MS/s.",
+                      radio->applied().sampleRate / 1e6, next.sampleRate / 1e6);
+            return Result::ERROR;
+        }
+        plan = next;
+        JST_CHECK(assembler.configure(plan));
+        JST_CHECK(radio->prepareSweep(plan.deviceRequest()));
+        completedHops.publish(0);
+        return Result::SUCCESS;
+    }();
+    if (result != Result::SUCCESS) {
+        errored = true;
+    }
+    return result;
 }
 
 Result SdrSweepImpl::startWorker() {
     running = true;
+    control.open();
     {
         std::lock_guard lock(slotMutex);
         metrics.reset(Clock::now());
@@ -260,6 +320,7 @@ Result SdrSweepImpl::startWorker() {
             } catch (...) {
                 result = Result::ERROR;
             }
+            control.close();
             if (result != Result::SUCCESS) {
                 errored = true;
             }
@@ -267,6 +328,7 @@ Result SdrSweepImpl::startWorker() {
         });
     } catch (const std::exception& e) {
         running = false;
+        control.close();
         JST_ERROR("[MODULE_SDR_SWEEP] Failed to start the sweep thread: {}", e.what());
         return Result::ERROR;
     }
@@ -281,6 +343,7 @@ void SdrSweepImpl::stopWorker() {
     if (worker.joinable()) {
         worker.join();
     }
+    control.close();
     {
         std::lock_guard lock(slotMutex);
         slotFresh = false;
@@ -289,11 +352,23 @@ void SdrSweepImpl::stopWorker() {
 }
 
 Result SdrSweepImpl::workerLoop() {
-    const auto result = radio->runSweep([this] { return running.load(); },
-                                        [this](const auto& capture) {
-                                            return handleCapture(capture);
-                                        });
-    return errored ? Result::ERROR : result;
+    while (running) {
+        control.service();
+        if (errored) {
+            return Result::ERROR;
+        }
+        const auto result = radio->runSweep(
+            [this] { return running.load() && !control.pending(); },
+            [this](const auto& capture) { return handleCapture(capture); });
+        if (errored) {
+            return Result::ERROR;
+        }
+        JST_CHECK(result);
+        if (!control.pending()) {
+            break;
+        }
+    }
+    return Result::SUCCESS;
 }
 
 bool SdrSweepImpl::handleCapture(const Radio::Device::SweepCapture& capture) {
@@ -381,7 +456,7 @@ Result SdrSweepImpl::emitFrame(const Clock::time_point now) {
 SdrSweepImpl::Progress SdrSweepImpl::getProgress() const {
     return {
         .completedHops = completedHops.get(),
-        .totalHops = plan.hops.size(),
+        .totalHops = totalHops.get(),
         .sweeps = sweeps.get(),
         .failedHops = radio ? radio->statistics().failedHops : 0,
         .expiredFrames = expiredFrames.get(),

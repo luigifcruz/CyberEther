@@ -847,41 +847,33 @@ TEST_CASE("SDR stream buffers keep loss totals across resets",
     REQUIRE(stats.overwrittenSamples == 2);
 }
 
-TEST_CASE("SDR control channels run changes on the owner thread",
+TEST_CASE("SDR control channels keep only the latest change",
           "[modules][sdr][backend][control]") {
     Radio::ControlChannel channel;
-    std::thread::id executor;
-    REQUIRE(channel.post([&] {
-        executor = std::this_thread::get_id();
-        return Result::SUCCESS;
-    }, std::chrono::milliseconds(10)) == Result::SUCCESS);
-    REQUIRE(executor == std::this_thread::get_id());
+    std::vector<std::string> applied;
+    const auto record = [&](const std::string& name) {
+        return [&applied, name] {
+            applied.push_back(name);
+            return Result::SUCCESS;
+        };
+    };
+
+    channel.submit(record("closed"));
+    REQUIRE(applied == std::vector<std::string>{"closed"});
 
     channel.open();
-    std::atomic<bool> running{true};
-    std::thread owner([&] {
-        while (running) {
-            channel.service();
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-    });
-    REQUIRE(channel.post([&] {
-        executor = std::this_thread::get_id();
-        return Result::WARNING;
-    }, std::chrono::seconds(2)) == Result::WARNING);
-    REQUIRE(executor == owner.get_id());
-    running = false;
-    owner.join();
-
-    // Without an owner servicing it, a pending change is withdrawn safely.
-    bool ran = false;
-    REQUIRE(channel.post([&] {
-        ran = true;
-        return Result::SUCCESS;
-    }, std::chrono::milliseconds(10)) == Result::ERROR);
+    channel.submit(record("first"));
+    channel.submit(record("second"));
+    REQUIRE(channel.pending());
+    REQUIRE(applied.size() == 1);
     channel.service();
-    REQUIRE_FALSE(ran);
+    REQUIRE_FALSE(channel.pending());
+    REQUIRE(applied == std::vector<std::string>{"closed", "second"});
+
+    channel.submit(record("dropped"));
     channel.close();
+    channel.service();
+    REQUIRE(applied.size() == 2);
 }
 
 TEST_CASE("SDR timestamp filter rejects stale epochs, gaps, and guard samples",
@@ -1103,11 +1095,11 @@ TEST_CASE_METHOD(ScriptedDrivers,
     REQUIRE(output.data<CF32>()[0].real() == 100.0f);
     REQUIRE(AttributeOf(output, "frequency") == 100.0e6f);
 
-    // Four samples of a partial frame remain. The setter returning neither
+    // Four samples of a partial frame remain. Applying the retune neither
     // relabels them nor lets them complete a frame with the new settings.
     REQUIRE(stream.size() == 4);
     REQUIRE(module->reconfigure({{"frequency", 250.0e6f}}) == Result::SUCCESS);
-    REQUIRE(stream.size() == 0);
+    REQUIRE(WaitFor([&] { return stream.size() == 0 && stream.metadata().frequency == 250.0e6; }));
     REQUIRE(runtime->computeSubmit() == Result::YIELD);
     REQUIRE(AttributeOf(output, "frequency") == 100.0e6f);
 
@@ -1122,15 +1114,18 @@ TEST_CASE_METHOD(ScriptedDrivers,
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,
-                 "SDR failed retunes keep the previous configuration and labels",
+                 "SDR failed retunes keep the previous labels",
                  "[modules][sdr][metadata][retune]") {
     TestScript().budget = 0;
     const auto module = BuildSdrModule();
     const ModuleCleanup cleanup{module};
     REQUIRE(module->create("test", ScriptedConfig(), {}) == Result::SUCCESS);
     TestScript().failAt = "tune:300";
-    REQUIRE(module->reconfigure({{"frequency", 300.0e6f}}) == Result::ERROR);
-    REQUIRE(static_cast<const Modules::Sdr&>(module->config()).frequency == 100.0e6f);
+    REQUIRE(module->reconfigure({{"frequency", 300.0e6f}}) == Result::SUCCESS);
+    REQUIRE(WaitFor([&] {
+        const auto all = TestScript().calls();
+        return std::find(all.begin(), all.end(), "tune:300") != all.end();
+    }));
     REQUIRE(module->getImpl<Modules::SdrImpl>()->appliedSettings().frequency == 100.0e6);
 
     // Out-of-range values only warn and leave the device untouched.
@@ -1171,6 +1166,7 @@ TEST_CASE_METHOD(ScriptedDrivers,
     // and the stream setup stay as they were.
     const U64 generation = stream.metadata().generation;
     REQUIRE(module->reconfigure({{"frequency", 250.0e6f}}) == Result::SUCCESS);
+    REQUIRE(WaitFor([&] { return sdr->appliedSettings().frequency == 250.0e6; }));
     REQUIRE(calls() == std::vector<std::string>{"tune:250"});
     const auto applied = sdr->appliedSettings();
     REQUIRE(applied.frequency == 250.0e6);
@@ -1188,6 +1184,7 @@ TEST_CASE_METHOD(ScriptedDrivers,
 
     // Rate and gain changes need the full configuration path.
     REQUIRE(module->reconfigure({{"sampleRate", 4.0e6f}}) == Result::SUCCESS);
+    REQUIRE(WaitFor([&] { return sdr->appliedSettings().sampleRate == 4.0e6; }));
     REQUIRE(calls() == std::vector<std::string>{"tune:250", "stop", "start:250"});
     REQUIRE(sdr->appliedSettings().sampleRate == 4.0e6);
     REQUIRE(sdr->appliedSettings().frequency == 250.0e6);
@@ -1210,7 +1207,7 @@ TEST_CASE_METHOD(ScriptedFlowgraph,
     REQUIRE(flowgraph->blockReconfigure("radio", {{"frequency", 101.1e6f}}) == Result::SUCCESS);
     auto expected = calls;
     expected.push_back("tune:101");
-    REQUIRE(TestScript().calls() == expected);
+    REQUIRE(WaitFor([&] { return TestScript().calls() == expected; }));
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,

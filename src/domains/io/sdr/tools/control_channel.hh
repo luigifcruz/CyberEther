@@ -4,6 +4,7 @@
 #include <chrono>
 #include <functional>
 #include <future>
+#include <memory>
 #include <mutex>
 #include <optional>
 
@@ -12,26 +13,25 @@
 
 namespace Jetstream::Radio {
 
-// Hands device changes from other threads to the receive thread, which runs
-// them between reads. Used by the SDR module.
-
 class JETSTREAM_API ControlChannel {
  public:
     using Request = std::function<Result()>;
 
     void open();
     void close();
+    void submit(const Request& request);
     Result post(const Request& request, std::chrono::milliseconds timeout);
+    bool pending() const;
     void service();
 
  private:
     struct Pending {
         Request request;
-        std::promise<Result> done;
+        std::shared_ptr<std::promise<Result>> done;
     };
 
-    std::mutex mutex;
-    std::optional<Pending> pending;
+    mutable std::mutex mutex;
+    std::optional<Pending> latest;
     bool active = false;
 };
 

@@ -11,7 +11,6 @@ namespace Jetstream::Modules {
 
 namespace {
 
-constexpr auto ControlTimeout = std::chrono::seconds(5);
 constexpr auto ReadTimeout = std::chrono::milliseconds(50);
 constexpr U64 ReadChunk = 16384;
 
@@ -108,7 +107,8 @@ Result SdrImpl::create() {
         return Result::ERROR;
     }
 
-    if (const auto result = radio->start(settingsOf(*this)); result != Result::SUCCESS) {
+    active = settingsOf(*this);
+    if (const auto result = radio->start(active); result != Result::SUCCESS) {
         radio.reset();
         return result;
     }
@@ -158,21 +158,10 @@ Result SdrImpl::reconfigure() {
         return Result::WARNING;
     }
 
-    const bool frequencyChanged = config.frequency != frequency;
-    const bool othersChanged = config.sampleRate != sampleRate ||
-                               config.automaticGain != automaticGain;
-    if (!frequencyChanged && !othersChanged) {
-        return Result::SUCCESS;
-    }
-
-    if (othersChanged) {
-        const auto settings = settingsOf(config);
-        JST_CHECK(control.post([this, settings] { return applySettings(settings); },
-                               ControlTimeout));
-    } else {
-        const F64 target = config.frequency;
-        JST_CHECK(control.post([this, target] { return applyFrequency(target); },
-                               ControlTimeout));
+    if (config.frequency != frequency || config.sampleRate != sampleRate ||
+        config.automaticGain != automaticGain) {
+        const auto desired = settingsOf(config);
+        control.submit([this, desired] { return applySettings(desired); });
     }
 
     frequency = config.frequency;
@@ -191,21 +180,22 @@ Radio::Device::Settings SdrImpl::settingsOf(const Sdr& config) const {
     };
 }
 
-Result SdrImpl::applySettings(const Radio::Device::Settings& settings) {
+Result SdrImpl::applySettings(const Radio::Device::Settings& desired) {
     if (!radio) {
         return Result::ERROR;
     }
-    const auto result = radio->apply(settings);
-    resetStream();
-    return result;
-}
-
-Result SdrImpl::applyFrequency(const F64 target) {
-    if (!radio) {
-        return Result::ERROR;
+    Result result = Result::SUCCESS;
+    if (desired.sampleRate != active.sampleRate || desired.automaticGain != active.automaticGain) {
+        result = radio->apply(desired);
+    } else if (desired.frequency != active.frequency) {
+        result = radio->tune(desired.frequency);
+    } else {
+        return Result::SUCCESS;
     }
-    const auto result = radio->tune(target);
     resetStream();
+    if (result == Result::SUCCESS) {
+        active = desired;
+    }
     return result;
 }
 

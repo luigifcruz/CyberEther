@@ -10,6 +10,12 @@
 
 namespace Jetstream::Modules {
 
+namespace {
+
+constexpr auto ControlTimeout = std::chrono::seconds(5);
+
+}  // namespace
+
 SoapyImpl::~SoapyImpl() {
     stopReceiver();
 }
@@ -146,11 +152,22 @@ Result SoapyImpl::allocateBuffers() {
 }
 
 Result SoapyImpl::configureDevice() {
+    tuned = {
+        .frequency = frequency,
+        .sampleRate = sampleRate,
+        .automaticGain = automaticGain,
+        .gain = manualGain,
+    };
     JST_CHECK(receiverDevice.setAntenna(antenna));
     JST_CHECK(receiverDevice.setSampleRate(sampleRate));
     JST_CHECK(receiverDevice.setTunerFrequency(frequency));
+    gainRange.publish(receiverDevice.getGainRange());
     JST_CHECK(receiverDevice.setAutomaticGain(automaticGain));
-    JST_CHECK(setManualGain(manualGain));
+    tuned.gain = receiverDevice.clampGain(manualGain);
+    if (!automaticGain) {
+        JST_CHECK(receiverDevice.setGain(tuned.gain));
+    }
+    manualGain = tuned.gain;
     JST_CHECK(receiverDevice.setBiasTee(biasTee));
     JST_CHECK(receiverDevice.startStream(streamString));
     return Result::SUCCESS;
@@ -158,6 +175,7 @@ Result SoapyImpl::configureDevice() {
 
 Result SoapyImpl::startReceiver() {
     streaming = true;
+    control.open();
     try {
         producer = std::thread([this] {
             Result result;
@@ -166,6 +184,7 @@ Result SoapyImpl::startReceiver() {
             } catch (...) {
                 result = Result::ERROR;
             }
+            control.close();
             if (result != Result::SUCCESS && result != Result::RELOAD) {
                 errored = true;
                 JST_FATAL("[MODULE_SOAPY] Device thread crashed.");
@@ -173,10 +192,12 @@ Result SoapyImpl::startReceiver() {
         });
     } catch (const std::exception& e) {
         streaming = false;
+        control.close();
         JST_ERROR("[MODULE_SOAPY] Failed to start device thread: {}", e.what());
         return Result::ERROR;
     } catch (...) {
         streaming = false;
+        control.close();
         JST_ERROR("[MODULE_SOAPY] Failed to start device thread.");
         return Result::ERROR;
     }
@@ -190,6 +211,7 @@ void SoapyImpl::stopReceiver() {
     if (producer.joinable()) {
         producer.join();
     }
+    control.close();
 }
 
 Result SoapyImpl::destroy() {
@@ -216,31 +238,35 @@ Result SoapyImpl::reconfigure() {
         return Result::RECREATE;
     }
 
-    const bool frequencyChanged = newConfig.frequency != frequency;
-    if (frequencyChanged) {
-        JST_CHECK(setTunerFrequency(newConfig.frequency));
+    if ((newConfig.frequency != frequency || newConfig.sampleRate != sampleRate) &&
+        receiverDevice.validateSettings(newConfig.sampleRate, newConfig.frequency) != Result::SUCCESS) {
+        return Result::WARNING;
     }
 
-    if (newConfig.sampleRate != sampleRate) {
-        JST_CHECK(setSampleRate(newConfig.sampleRate));
-    }
-
-    const bool previousAutomaticGain = automaticGain;
-    const bool gainModeChanged = newConfig.automaticGain != automaticGain;
-    if (gainModeChanged) {
-        JST_CHECK(setAutomaticGain(newConfig.automaticGain));
-    }
-
-    if (frequencyChanged || gainModeChanged || newConfig.manualGain != manualGain) {
-        const auto result = setManualGain(newConfig.manualGain);
-        if (result != Result::SUCCESS) {
-            if (gainModeChanged) {
-                JST_CHECK(setAutomaticGain(previousAutomaticGain));
-            }
-            return result;
+    Tuning desired{
+        .frequency = newConfig.frequency,
+        .sampleRate = newConfig.sampleRate,
+        .automaticGain = newConfig.automaticGain,
+        .gain = newConfig.manualGain,
+    };
+    if (newConfig.frequency != frequency) {
+        JST_CHECK(control.post([this, desired] { return applyTuning(desired); }, ControlTimeout));
+        desired.gain = tuned.gain;
+    } else {
+        if (const auto range = gainRange.get()) {
+            desired.gain = std::clamp(desired.gain, static_cast<F32>(range->minimum),
+                                      static_cast<F32>(range->maximum));
+        }
+        if (newConfig.sampleRate != sampleRate || newConfig.automaticGain != automaticGain ||
+            desired.gain != manualGain) {
+            control.submit([this, desired] { return applyTuning(desired); });
         }
     }
 
+    frequency = newConfig.frequency;
+    sampleRate = newConfig.sampleRate;
+    automaticGain = newConfig.automaticGain;
+    manualGain = desired.gain;
     return Result::SUCCESS;
 }
 
@@ -283,6 +309,8 @@ Result SoapyImpl::soapyThreadLoop() {
     SoapyReceiveStatus receiveStatus;
 
     while (streaming) {
+        control.service();
+
         const U64 readGeneration = stream.metadata().generation;
         const auto received = receiverDevice.read(readBuffer);
         if (!streaming || errored) {
@@ -340,42 +368,35 @@ std::vector<std::string> SoapyImpl::listAntennas() const {
 }
 
 std::optional<SoapyAbi::Range> SoapyImpl::getGainRange() const {
-    return receiverDevice.getGainRange();
+    return gainRange.get();
 }
 
-Result SoapyImpl::setTunerFrequency(const F32& freq) {
-    JST_CHECK(receiverDevice.setTunerFrequency(freq));
-
-    frequency = freq;
-    resetStream(frequency, sampleRate);
-
-    return Result::SUCCESS;
-}
-
-Result SoapyImpl::setSampleRate(const F32& rate) {
-    JST_CHECK(receiverDevice.setSampleRate(rate));
-
-    sampleRate = rate;
-    resetStream(frequency, sampleRate);
-
-    return Result::SUCCESS;
-}
-
-Result SoapyImpl::setAutomaticGain(const bool& gain) {
-    JST_CHECK(receiverDevice.setAutomaticGain(gain));
-
-    automaticGain = gain;
-
-    return Result::SUCCESS;
-}
-
-Result SoapyImpl::setManualGain(const F32& gain) {
-    const F32 applied = receiverDevice.clampGain(gain);
-    if (!automaticGain) {
-        JST_CHECK(receiverDevice.setGain(applied));
+Result SoapyImpl::applyTuning(const Tuning& desired) {
+    if (desired.sampleRate != tuned.sampleRate) {
+        JST_CHECK(receiverDevice.setSampleRate(desired.sampleRate));
+        tuned.sampleRate = desired.sampleRate;
+        resetStream(tuned.frequency, tuned.sampleRate);
     }
 
-    manualGain = applied;
+    const bool retuned = desired.frequency != tuned.frequency;
+    if (retuned) {
+        JST_CHECK(receiverDevice.setTunerFrequency(desired.frequency));
+        tuned.frequency = desired.frequency;
+        resetStream(tuned.frequency, tuned.sampleRate);
+        gainRange.publish(receiverDevice.getGainRange());
+    }
+
+    const bool modeChanged = desired.automaticGain != tuned.automaticGain;
+    if (modeChanged) {
+        JST_CHECK(receiverDevice.setAutomaticGain(desired.automaticGain));
+        tuned.automaticGain = desired.automaticGain;
+    }
+
+    const F32 applied = receiverDevice.clampGain(desired.gain);
+    if (!tuned.automaticGain && (applied != tuned.gain || retuned || modeChanged)) {
+        JST_CHECK(receiverDevice.setGain(applied));
+    }
+    tuned.gain = applied;
 
     return Result::SUCCESS;
 }

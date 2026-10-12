@@ -12,31 +12,43 @@ void ControlChannel::open() {
 void ControlChannel::close() {
     std::lock_guard lock(mutex);
     active = false;
-    if (pending) {
-        pending->done.set_value(Result::ERROR);
-        pending.reset();
+    if (latest && latest->done) {
+        latest->done->set_value(Result::ERROR);
     }
+    latest.reset();
+}
+
+void ControlChannel::submit(const Request& request) {
+    {
+        std::lock_guard lock(mutex);
+        if (active) {
+            if (latest && latest->done) {
+                latest->done->set_value(Result::ERROR);
+            }
+            latest = Pending{request, nullptr};
+            return;
+        }
+    }
+    request();
 }
 
 Result ControlChannel::post(const Request& request, const std::chrono::milliseconds timeout) {
-    std::future<Result> result;
+    auto done = std::make_shared<std::promise<Result>>();
+    auto result = done->get_future();
     {
         std::lock_guard lock(mutex);
         if (!active) {
             return request();
         }
-        if (pending) {
-            JST_ERROR("[SDR] Another device change is still pending.");
-            return Result::ERROR;
+        if (latest && latest->done) {
+            latest->done->set_value(Result::ERROR);
         }
-        pending.emplace();
-        pending->request = request;
-        result = pending->done.get_future();
+        latest = Pending{request, done};
     }
     if (result.wait_for(timeout) != std::future_status::ready) {
         std::lock_guard lock(mutex);
-        if (pending) {
-            pending.reset();
+        if (latest && latest->done == done) {
+            latest.reset();
             JST_ERROR("[SDR] Timed out waiting for the receive thread to apply the change.");
             return Result::ERROR;
         }
@@ -44,22 +56,31 @@ Result ControlChannel::post(const Request& request, const std::chrono::milliseco
     return result.get();
 }
 
+bool ControlChannel::pending() const {
+    std::lock_guard lock(mutex);
+    return latest.has_value();
+}
+
 void ControlChannel::service() {
     std::optional<Pending> current;
     {
         std::lock_guard lock(mutex);
-        if (!pending) {
-            return;
-        }
-        current.swap(pending);
+        current.swap(latest);
+    }
+    if (!current) {
+        return;
     }
     Result result = Result::ERROR;
     try {
         result = current->request();
     } catch (...) {
-        result = Result::ERROR;
+        JST_ERROR("[SDR] A device change failed.");
     }
-    current->done.set_value(result);
+    if (current->done) {
+        current->done->set_value(result);
+    } else if (result != Result::SUCCESS) {
+        JST_WARN("[SDR] A device change did not apply cleanly.");
+    }
 }
 
 }  // namespace Jetstream::Radio
