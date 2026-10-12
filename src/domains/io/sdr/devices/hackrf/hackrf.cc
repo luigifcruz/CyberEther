@@ -215,7 +215,7 @@ Result HackRfDevice::tune(const F64 frequency) {
         JST_ERROR("[SDR_HACKRF] Frequency ({:.3f} MHz) not supported.", frequency / 1e6);
         return Result::ERROR;
     }
-    return restart([&] {
+    const auto set = [&] {
         if (hackrf_set_freq(pimpl->handle, static_cast<U64>(std::llround(frequency))) !=
             HACKRF_SUCCESS) {
             JST_ERROR("[SDR_HACKRF] Failed to tune to {:.3f} MHz.", frequency / 1e6);
@@ -223,8 +223,16 @@ Result HackRfDevice::tune(const F64 frequency) {
         }
         requestedSettings.frequency = frequency;
         appliedSettings.frequency = std::round(frequency);
+        return Result::SUCCESS;
+    };
+    const auto change = [&] {
+        JST_CHECK(set());
         return pimpl->startStream();
-    });
+    };
+    if (pimpl->streaming && set() == Result::SUCCESS) {
+        return Result::SUCCESS;
+    }
+    return restart(change);
 }
 
 Device::Capture HackRfDevice::read(std::span<CF32> samples, const std::chrono::milliseconds timeout) {

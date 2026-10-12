@@ -291,14 +291,22 @@ Result LimeSdrDevice::tune(const F64 frequency) {
         JST_ERROR("[SDR_LIMESDR] Frequency ({:.3f} MHz) not supported.", frequency / 1e6);
         return Result::ERROR;
     }
-    return restart([&] {
+    const auto set = [&] {
         JST_CHECK(pimpl->setFrequency(frequency, pimpl->cachedTuning && OpenDevices() == 1));
         F64 actual = frequency;
         LMS_GetLOFrequency(pimpl->handle, LMS_CH_RX, 0, &actual);
         requestedSettings.frequency = frequency;
         appliedSettings.frequency = actual;
+        return Result::SUCCESS;
+    };
+    const auto change = [&] {
+        JST_CHECK(set());
         return pimpl->startStream();
-    });
+    };
+    if (pimpl->streaming && set() == Result::SUCCESS) {
+        return Result::SUCCESS;
+    }
+    return restart(change);
 }
 
 Device::Capture LimeSdrDevice::read(std::span<CF32> samples, const std::chrono::milliseconds timeout) {

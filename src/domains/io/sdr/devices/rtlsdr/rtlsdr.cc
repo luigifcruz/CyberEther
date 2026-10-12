@@ -257,16 +257,23 @@ Result RtlSdrDevice::tune(const F64 frequency) {
         JST_ERROR("[SDR_RTLSDR] Frequency ({:.3f} MHz) not supported.", frequency / 1e6);
         return Result::ERROR;
     }
-
-    return restart([&] {
+    const auto set = [&] {
         if (rtlsdr_set_center_freq(pimpl->handle, static_cast<U32>(std::llround(frequency))) < 0) {
             JST_ERROR("[SDR_RTLSDR] Failed to tune to {:.3f} MHz.", frequency / 1e6);
             return Result::ERROR;
         }
         requestedSettings.frequency = frequency;
         appliedSettings.frequency = rtlsdr_get_center_freq(pimpl->handle);
+        return Result::SUCCESS;
+    };
+    const auto change = [&] {
+        JST_CHECK(set());
         return pimpl->startStream();
-    });
+    };
+    if (pimpl->worker.joinable() && set() == Result::SUCCESS) {
+        return Result::SUCCESS;
+    }
+    return restart(change);
 }
 
 Device::Capture RtlSdrDevice::read(std::span<CF32> samples, const std::chrono::milliseconds timeout) {
