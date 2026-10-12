@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <map>
 #include <new>
 
@@ -389,6 +390,19 @@ Result Device::setAutomaticGain(const bool automaticGain) {
     auto settings = requestedSettings;
     settings.automaticGain = automaticGain;
     return apply(settings);
+}
+
+Result Device::setSettlingTime(const F64 settlingTime) {
+    auto settings = requestedSettings;
+    settings.settlingTime = settlingTime;
+    const U64 guard = guardSamples(settings, appliedSettings.sampleRate);
+    if (guard == std::numeric_limits<U64>::max()) {
+        JST_ERROR("[SDR] Settling guard exceeds the sample count range.");
+        return Result::ERROR;
+    }
+    requestedSettings.settlingTime = settlingTime;
+    guardLength = guard;
+    return Result::SUCCESS;
 }
 
 Result Device::restart(const std::function<Result()>& change) {

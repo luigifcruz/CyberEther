@@ -110,6 +110,7 @@ struct JETSTREAM_API SdrSweepImpl : public Module::Impl, public DynamicConfig<Sd
     Sweep::Plan plan;
     Sweep::Plan submitted;
     F64 hardwareRate = 0.0;
+    Radio::Device::Settings active;
     Sweep::Assembler assembler;
     U64 instance = 0;
 

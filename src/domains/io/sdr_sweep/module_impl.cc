@@ -153,7 +153,8 @@ Result SdrSweepImpl::create() {
     }
 
     hardwareRate = plan.sampleRate;
-    if (const auto result = radio->start(settingsOf(*this, plan)); result != Result::SUCCESS) {
+    active = settingsOf(*this, plan);
+    if (const auto result = radio->start(active); result != Result::SUCCESS) {
         radio.reset();
         return result;
     }
@@ -287,11 +288,13 @@ Radio::Device::Settings SdrSweepImpl::settingsOf(const SdrSweep& config,
 
 Result SdrSweepImpl::applyPlan(const Sweep::Plan& next, const Radio::Device::Settings& settings) {
     const auto result = [&] {
-        JST_CHECK(radio->apply(settings));
-        if (radio->applied().sampleRate != next.sampleRate) {
-            JST_ERROR("[MODULE_SDR_SWEEP] The radio applied {:.6f} MS/s instead of {:.6f} MS/s.",
-                      radio->applied().sampleRate / 1e6, next.sampleRate / 1e6);
-            return Result::ERROR;
+        if (settings.automaticGain != active.automaticGain) {
+            JST_CHECK(radio->setAutomaticGain(settings.automaticGain));
+            active.automaticGain = settings.automaticGain;
+        }
+        if (settings.settlingTime != active.settlingTime) {
+            JST_CHECK(radio->setSettlingTime(settings.settlingTime));
+            active.settlingTime = settings.settlingTime;
         }
         plan = next;
         JST_CHECK(assembler.configure(plan));

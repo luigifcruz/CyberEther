@@ -176,6 +176,7 @@ struct JETSTREAM_API Device {
     virtual Result apply(const Settings& settings);
     virtual Result tune(F64 frequency);
     virtual Result setAutomaticGain(bool automaticGain);
+    Result setSettlingTime(F64 settlingTime);
     virtual Capture read(std::span<CF32> samples, std::chrono::milliseconds timeout) = 0;
     virtual Result prepareSweep(const SweepRequest& request);
     virtual Result runSweep(const SweepRunning& running, const SweepSink& sink);
