@@ -3,9 +3,7 @@
 
 #include <jetstream/domains/io/soapy/module.hh>
 #include "module_impl.hh"
-#include "soapysdr.hh"
-
-#include <SoapySDR/Types.hpp>
+#include "library/soapysdr.hh"
 
 #include <cmath>
 
@@ -37,7 +35,11 @@ Result SoapyImpl::validate() {
 }
 
 Result SoapyImpl::configure() {
-    JST_CHECK(Modules::SoapyDiscovery::LoadDriverLibrary(modulePath));
+    // Without SoapySDR the saved block stays recognizable, and the module
+    // reports the missing installation.
+    if (Modules::SoapyRuntime::Acquire()) {
+        JST_CHECK(Modules::SoapyDiscovery::LoadDriverLibrary(modulePath));
+    }
 
     moduleConfig->modulePath = modulePath;
     moduleConfig->deviceString = deviceString;
@@ -63,10 +65,10 @@ Result SoapyImpl::define() {
 
     Parser::Sequence deviceOptions{Parser::Map{{"label", "None"}, {"value", ""}}};
     bool selectionListed = config.deviceString.empty();
-    for (const auto& [label, device] : Modules::SoapyDiscovery::ListDevices()) {
+    for (const auto& [label, device] : Modules::SoapyDiscovery::List()) {
         auto args = device;
         args.erase("label");
-        const auto value = SoapySDR::KwargsToString(args);
+        const auto value = Modules::SoapyDiscovery::FormatArguments(args);
         selectionListed = selectionListed || value == config.deviceString;
         deviceOptions.emplace_back(Parser::Map{{"label", label}, {"value", value}});
     }

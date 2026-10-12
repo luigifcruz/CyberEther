@@ -45,12 +45,6 @@ subprojects/*
 !subprojects/qrencode.wrap
 !subprojects/rapidyaml.wrap
 !subprojects/robin-map.wrap
-!subprojects/soapyairspy.wrap
-!subprojects/soapybladerf.wrap
-!subprojects/soapyhackrf.wrap
-!subprojects/soapyremote.wrap
-!subprojects/soapyrtlsdr.wrap
-!subprojects/soapysdr.wrap
 !subprojects/stb.wrap
 !subprojects/tomlplusplus.wrap
 !subprojects/tree-sitter.wrap

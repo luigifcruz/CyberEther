@@ -1,5 +1,6 @@
 subdir('audio')
 subdir('file_reader')
 subdir('file_writer')
+subdir('sdr')
 subdir('soapy')
 subdir('websocket')

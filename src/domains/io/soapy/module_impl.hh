@@ -6,10 +6,10 @@
 
 #include <jetstream/domains/io/soapy/module.hh>
 #include <jetstream/detail/module_impl.hh>
-#include <jetstream/tools/circular_buffer.hh>
 #include <jetstream/tools/snapshot.hh>
 
-#include "soapysdr.hh"
+#include "domains/io/sdr/tools/stream_buffer.hh"
+#include "library/soapysdr.hh"
 
 namespace Jetstream::Modules {
 
@@ -44,20 +44,25 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
     std::thread producer;
     std::atomic<bool> errored{false};
     std::atomic<bool> streaming{false};
-    std::atomic<F32> activeSampleRate{0.0f};
 
-    Tools::CircularBuffer<CF32> circularBuffer;
+    Radio::StreamBuffer stream;
+    Radio::StreamBuffer::Metadata publishedMetadata;
+    U64 generation = 0;
+
     Tools::Snapshot<F32> bufferHealth{0.0f};
     Tools::Snapshot<U64> deviceOverflows{0};
     Tools::Snapshot<std::pair<F32, F32>> throughput{{0.0f, 0.0f}};
 
     Result soapyThreadLoop();
+    Result emitFrame();
 
  private:
     SoapyReceiver receiverDevice;
 
     Result allocateBuffers();
-    Result configureDevice(const SoapySDR::Kwargs& streamArgs);
+    Result configureDevice();
+    void resetStream(F32 appliedFrequency, F32 appliedSampleRate);
+    Result publishMetadata(const Radio::StreamBuffer::Metadata& metadata);
     Result startReceiver();
     void stopReceiver();
 };
