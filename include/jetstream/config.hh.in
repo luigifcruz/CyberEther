@@ -85,3 +85,6 @@
 
 // Instance Remote
 #mesondefine JETSTREAM_INSTANCE_REMOTE_AVAILABLE
+
+// Platform
+#mesondefine JETSTREAM_PLATFORM_HTTP_AVAILABLE

@@ -3,6 +3,7 @@ src_lst += files([
     'dynamic_library.cc',
     'file.cc',
     'file_lock.cc',
+    'http.cc',
     'paths.cc',
     'process.cc',
     'secret.cc',
@@ -10,7 +11,12 @@ src_lst += files([
     'terminal.cc',
     'thread.cc',
     'url.cc',
+    'websocket.cc',
 ])
+
+if jst_is_browser or cfg_lst.get('JETSTREAM_LOADER_CPPHTTPLIB_AVAILABLE', false)
+    cfg_lst.set('JETSTREAM_PLATFORM_HTTP_AVAILABLE', true)
+endif
 
 if jst_is_linux or jst_is_macos or jst_is_windows
     src_lst += files('interrupt.cc')
