@@ -4,7 +4,7 @@
 #include "context.hh"
 
 #include "../model/messages.hh"
-#include "../themes.hh"
+#include "../support/themes.hh"
 #include "../views/menubar.hh"
 
 #include <string>

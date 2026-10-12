@@ -4,7 +4,7 @@
 #include "jetstream/detail/compositor_impl.hh"
 
 #include "updater.hh"
-#include "feedback.hh"
+#include "support/feedback.hh"
 
 #include "actions/base.hh"
 #include "model/callbacks.hh"

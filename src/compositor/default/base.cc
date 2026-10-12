@@ -7,7 +7,7 @@
 
 #include "actions/base.hh"
 #include "presenters/base.hh"
-#include "themes.hh"
+#include "support/themes.hh"
 
 #include "resources/fonts/compressed_jbmm.hh"
 #include "resources/fonts/compressed_jbmb.hh"
