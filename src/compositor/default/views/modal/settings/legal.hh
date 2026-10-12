@@ -96,6 +96,7 @@ struct LegalSettingsPanel {
                    "- fmtlib - MIT License\n"
                    "- librtlsdr - GPL-2.0-or-later License\n"
                    "- libairspy - BSD-3-Clause License\n"
+                   "- libairspyhf - BSD-3-Clause License\n"
                    "- libhackrf - BSD-3-Clause License\n"
                    "- LimeSuite - Apache License 2.0\n"
                    "- libbladeRF - LGPL-2.1-or-later License\n"
