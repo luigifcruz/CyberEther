@@ -118,10 +118,12 @@ Result SdrSweepImpl::define() {
                                         manualGainFormat(config)));
     }
 
-    JST_CHECK(defineInterfaceConfig("biasTee",
-                                    "Bias-T",
-                                    "Enable antenna power when supported by the selected radio.",
-                                    {{"type", "bool"}}));
+    if (Radio::Device::SupportsBiasTee(config.deviceString)) {
+        JST_CHECK(defineInterfaceConfig("biasTee",
+                                        "Bias-T",
+                                        "Enable antenna power through the antenna cable.",
+                                        {{"type", "bool"}}));
+    }
 
     JST_CHECK(defineInterfaceMetric("bufferHealth",
                                     "Buffer Health",

@@ -72,7 +72,7 @@ struct Soapy : public Block::Config {
         "| **Manual Gain** | 0 dB | Within the radio's gain range | Requested receive "
         "gain, shown when Automatic Gain is off. Limits follow the tuned frequency. |\n"
         "| **Bias-T** | Off | On, Off | Powers an active antenna through the cable, on "
-        "radios that support it. |\n"
+        "radios that support it. Hidden once the radio is open and lacks it. |\n"
         "| **Batches** | 8 | 1 or more | Batches per output buffer. |\n"
         "| **Samples** | 8,192 | 1 or more | Samples per batch, and the FFT size "
         "downstream. |\n"

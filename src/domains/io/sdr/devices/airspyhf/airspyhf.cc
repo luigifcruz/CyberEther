@@ -78,6 +78,7 @@ std::vector<Device::Info> AirspyHfDevice::Enumerate() {
         devices.push_back({
             .serial = serial,
             .label = jst::fmt::format("Airspy HF+ ({})", serial),
+            .biasTee = false,
         });
     }
     return devices;

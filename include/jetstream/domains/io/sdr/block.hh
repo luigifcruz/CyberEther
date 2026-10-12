@@ -68,7 +68,7 @@ struct Sdr : public Block::Config {
         "when Automatic Gain is off. The value snaps to the nearest gain the radio "
         "applies, and on bladeRF 2 the limits follow the tuned frequency. |\n"
         "| **Bias-T** | Off | On, Off | Powers an active antenna through the cable on "
-        "RTL-SDR, Airspy, HackRF, and bladeRF 2. |\n"
+        "RTL-SDR, Airspy, HackRF, and bladeRF 2. Hidden on other radios. |\n"
         "| **Batches** | 8 | 1 or more | Batches per output buffer. |\n"
         "| **Samples** | 8,192 | 1 or more | Samples per batch, and the FFT size "
         "downstream. |\n"

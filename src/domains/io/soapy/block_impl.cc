@@ -115,10 +115,16 @@ Result SoapyImpl::define() {
                                         manualGainFormat()));
     }
 
-    JST_CHECK(defineInterfaceConfig("biasTee",
-                                    "Bias-T",
-                                    "Enable antenna power when supported by the selected device.",
-                                    {{"type", "bool"}}));
+    const auto module = moduleHandle("soapy");
+    const bool knownWithoutBiasTee = module && module->state() == Module::State::CREATED &&
+                                     config.deviceString == deviceString &&
+                                     !module->getImpl<Modules::SoapyImpl>()->supportsBiasTee();
+    if (!knownWithoutBiasTee) {
+        JST_CHECK(defineInterfaceConfig("biasTee",
+                                        "Bias-T",
+                                        "Enable antenna power through the antenna cable.",
+                                        {{"type", "bool"}}));
+    }
 
     JST_CHECK(defineInterfaceConfig("numberOfBatches",
                                     "Batches",

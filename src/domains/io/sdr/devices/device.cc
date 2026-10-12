@@ -274,6 +274,21 @@ std::optional<Device::Capabilities> Device::Cached(const std::string& selector) 
     return entry->second;
 }
 
+bool Device::SupportsBiasTee(const std::string& selector) {
+    if (selector.empty()) {
+        return true;
+    }
+    if (const auto capabilities = Cached(selector)) {
+        return capabilities->biasTee;
+    }
+    for (const auto& info : List()) {
+        if (info.selector() == selector) {
+            return info.biasTee;
+        }
+    }
+    return true;
+}
+
 Result Device::Open(const std::string& selector, std::unique_ptr<Device>& device) {
     device.reset();
 

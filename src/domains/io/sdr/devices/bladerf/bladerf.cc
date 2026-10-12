@@ -112,6 +112,7 @@ std::vector<Device::Info> BladeRfDevice::Enumerate() {
         devices.push_back({
             .serial = serial,
             .label = jst::fmt::format("bladeRF ({})", serial.substr(0, 8)),
+            .biasTee = std::string(list[i].product).find("2.0") != std::string::npos,
         });
     }
     if (list) {

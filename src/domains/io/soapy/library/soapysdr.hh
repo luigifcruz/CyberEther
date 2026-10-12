@@ -78,6 +78,7 @@ class JETSTREAM_API SoapyReceiver {
     Result validateSettings(F32 sampleRate, F32 frequency) const;
     const std::vector<std::string>& listAntennas() const;
     const std::optional<SoapyAbi::Range>& getGainRange() const;
+    bool supportsBiasTee() const;
     F32 clampGain(F32 gain) const;
     Result setAntenna(const std::string& antenna);
     Result setTunerFrequency(F32 frequency);

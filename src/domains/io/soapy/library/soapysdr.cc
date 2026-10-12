@@ -334,6 +334,10 @@ const std::vector<std::string>& SoapyReceiver::listAntennas() const {
     return antennas;
 }
 
+bool SoapyReceiver::supportsBiasTee() const {
+    return biasTeeSupported;
+}
+
 const std::optional<SoapyAbi::Range>& SoapyReceiver::getGainRange() const {
     return gainRange;
 }

@@ -84,7 +84,7 @@ struct SdrSweep : public Block::Config {
         "when Automatic Gain is off. The value snaps to the nearest gain the radio "
         "applies at the start of the sweep. |\n"
         "| **Bias-T** | Off | On, Off | Powers an active antenna through the cable on "
-        "RTL-SDR, Airspy, HackRF, and bladeRF 2. |\n"
+        "RTL-SDR, Airspy, HackRF, and bladeRF 2. Hidden on other radios. |\n"
         "\n"
         "## Readouts\n"
         "\n"

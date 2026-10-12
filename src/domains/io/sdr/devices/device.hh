@@ -66,6 +66,7 @@ struct JETSTREAM_API Device {
         std::string driver;
         std::string serial;
         std::string label;
+        bool biasTee = true;
 
         std::string selector() const;
     };
@@ -167,6 +168,7 @@ struct JETSTREAM_API Device {
     static void ClearCache();
     static Labels Label(const std::vector<Info>& devices);
     static std::optional<Capabilities> Cached(const std::string& selector);
+    static bool SupportsBiasTee(const std::string& selector);
     static Result Open(const std::string& selector, std::unique_ptr<Device>& device);
 
     const Info& info() const;

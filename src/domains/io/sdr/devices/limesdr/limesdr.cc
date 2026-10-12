@@ -108,6 +108,7 @@ std::vector<Device::Info> LimeSdrDevice::Enumerate() {
             .serial = board.serial,
             .label = jst::fmt::format("{} ({})", board.name.empty() ? "LimeSDR" : board.name,
                                       board.serial),
+            .biasTee = false,
         });
     }
     return devices;
