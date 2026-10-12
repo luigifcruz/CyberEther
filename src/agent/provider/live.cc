@@ -140,14 +140,6 @@ struct Live::Impl {
         return Detail::Diagnostics::Redact(std::move(text), key);
     }
 
-    std::string preview(const std::string& payload) const {
-        auto redacted = redact(payload);
-        if (redacted.size() > 2048) {
-            return redacted.substr(0, 2048) + "...";
-        }
-        return redacted;
-    }
-
     template <typename Callback, typename... Args>
     void emit(const Callback& callback, Args&&... args) {
         if (callback && !orphaned.load()) {
@@ -199,8 +191,6 @@ struct Live::Impl {
             return false;
         }
 
-        JST_INFO("[LIVE] Sending: {}", type);
-        JST_DEBUG("[LIVE] Payload: {}", preview(payload));
         sentEvents.fetch_add(1);
         return true;
     }
@@ -315,7 +305,7 @@ struct Live::Impl {
         }
     }
 
-    void recordEvent(const nlohmann::json& event, const std::string& type, const std::string& payload) {
+    void recordEvent(const nlohmann::json& event, const std::string& type) {
         receivedEvents.fetch_add(1);
 
         std::string label = type;
@@ -326,14 +316,6 @@ struct Live::Impl {
             }
         }
         lastEventLabel = label;
-
-        const bool streamingDelta = type == "session.output_audio.delta" ||
-                                    type == "session.input_transcript.delta" ||
-                                    type == "session.output_transcript.delta";
-        if (!streamingDelta) {
-            JST_INFO("[LIVE] Event: {} ({} bytes)", redact(label), payload.size());
-            JST_DEBUG("[LIVE] Payload: {}", preview(payload));
-        }
     }
 
     void handleOutputAudio(const std::string& type, const nlohmann::json& event) {
@@ -412,7 +394,7 @@ struct Live::Impl {
         }
 
         const std::string type = event.value("type", "");
-        recordEvent(event, type, payload);
+        recordEvent(event, type);
 
         if (type.rfind("session.output_audio.", 0) == 0) {
             handleOutputAudio(type, event);
