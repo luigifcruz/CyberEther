@@ -22,7 +22,6 @@ class JETSTREAM_API QuickTuneBudget {
     Decision plan(const std::vector<F64>& frequencies) const;
     void built(const std::vector<F64>& frequencies);
     void failed(U64 allocated);
-    void invalidate();
     U64 used() const;
     std::optional<U64> remaining() const;
 

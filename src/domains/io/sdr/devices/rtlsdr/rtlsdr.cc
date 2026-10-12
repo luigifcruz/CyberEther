@@ -18,7 +18,7 @@ namespace Jetstream::Radio {
 namespace {
 
 constexpr F64 SettlingTime = 5.0e-3;
-constexpr U32 TransferCount = 12;
+constexpr U32 InFlightTransfers = 12;
 constexpr F64 TransferDuration = 10.0e-3;
 constexpr U32 MinTransferBytes = 16384;
 
@@ -70,7 +70,8 @@ struct RtlSdrDevice::Impl {
     static void Callback(unsigned char* buffer, uint32_t length, void* context);
 
     Result open(const Info& info);
-    Result applyGain(bool automatic, F64 gain, bool setMode);
+    Result applyGainMode(bool automatic, F64 gain);
+    Result applyGain(F64 gain, bool force);
     Result startStream();
     void stopStream();
 
@@ -215,7 +216,7 @@ Result RtlSdrDevice::start(const Settings& settings) {
         return Result::ERROR;
     }
 
-    JST_CHECK(pimpl->applyGain(settings.automaticGain, settings.gain, true));
+    JST_CHECK(pimpl->applyGainMode(settings.automaticGain, settings.gain));
 
     if (settings.biasTee || pimpl->biasTeeEnabled) {
         if (rtlsdr_set_bias_tee(handle, settings.biasTee ? 1 : 0) < 0) {
@@ -240,7 +241,7 @@ void RtlSdrDevice::stop() {
 }
 
 Result RtlSdrDevice::setAutomaticGain(const bool automaticGain) {
-    if (pimpl->applyGain(automaticGain, requestedSettings.gain, true) != Result::SUCCESS) {
+    if (pimpl->applyGainMode(automaticGain, requestedSettings.gain) != Result::SUCCESS) {
         return Device::setAutomaticGain(automaticGain);
     }
     requestedSettings.automaticGain = automaticGain;
@@ -249,7 +250,7 @@ Result RtlSdrDevice::setAutomaticGain(const bool automaticGain) {
 }
 
 Result RtlSdrDevice::setGain(const F64 gain) {
-    if (pimpl->applyGain(appliedSettings.automaticGain, gain, false) != Result::SUCCESS) {
+    if (pimpl->applyGain(gain, false) != Result::SUCCESS) {
         return Device::setGain(gain);
     }
     requestedSettings.gain = gain;
@@ -271,15 +272,22 @@ F64 RtlSdrDevice::resolveGain(const F64 gain, const std::optional<Range>&) const
     return nearest / 10.0;
 }
 
-Result RtlSdrDevice::Impl::applyGain(const bool automatic, const F64 gain, const bool setMode) {
-    const F64 target = device.resolveGain(gain, device.appliedSettings.gainRange);
-    if (setMode && rtlsdr_set_tuner_gain_mode(handle, automatic ? 0 : 1) < 0) {
+Result RtlSdrDevice::Impl::applyGainMode(const bool automatic, const F64 gain) {
+    if (rtlsdr_set_tuner_gain_mode(handle, automatic ? 0 : 1) < 0) {
         JST_ERROR("[SDR_RTLSDR] Failed to set the gain mode.");
         return Result::ERROR;
     }
-    const bool unchanged = !setMode && target == device.appliedSettings.gain;
-    if (!automatic && !unchanged &&
-        rtlsdr_set_tuner_gain(handle, static_cast<int>(std::lround(target * 10.0))) < 0) {
+    device.appliedSettings.automaticGain = automatic;
+    return applyGain(gain, true);
+}
+
+Result RtlSdrDevice::Impl::applyGain(const F64 gain, const bool force) {
+    const F64 target = device.resolveGain(gain, device.appliedSettings.gainRange);
+    if (device.appliedSettings.automaticGain || (!force && target == device.appliedSettings.gain)) {
+        device.appliedSettings.gain = target;
+        return Result::SUCCESS;
+    }
+    if (rtlsdr_set_tuner_gain(handle, static_cast<int>(std::lround(target * 10.0))) < 0) {
         JST_ERROR("[SDR_RTLSDR] Failed to set the gain to {:.1f} dB.", target);
         return Result::ERROR;
     }
@@ -342,7 +350,7 @@ Result RtlSdrDevice::tuneHop(const U64 hop) {
     requestedSettings.frequency = frequency;
     appliedSettings.frequency = rtlsdr_get_center_freq(pimpl->handle);
     pimpl->streamGeneration = nextGeneration();
-    pimpl->queue.retune(pimpl->streamGeneration, TransferCount, guardLength,
+    pimpl->queue.retune(pimpl->streamGeneration, InFlightTransfers, guardLength,
                         appliedSettings.frequency);
     return Result::SUCCESS;
 }
@@ -356,7 +364,7 @@ Result RtlSdrDevice::Impl::startStream() {
     const F64 sampleRate = device.appliedSettings.sampleRate;
     const U32 transferBytes = TransferBytes(sampleRate, lowLatency);
     const U64 capacity = std::max<U64>(static_cast<U64>(sampleRate / 2.0),
-                                       static_cast<U64>(transferBytes) * TransferCount);
+                                       static_cast<U64>(transferBytes) * InFlightTransfers);
     JST_CHECK(queue.resize(capacity));
 
     device.guardLength = device.guardSamples(device.requestedSettings, sampleRate);
@@ -372,7 +380,7 @@ Result RtlSdrDevice::Impl::startStream() {
     try {
         worker = std::thread([impl = this, transferBytes] {
             const int status = rtlsdr_read_async(impl->handle, &Impl::Callback, impl,
-                                                 TransferCount, transferBytes);
+                                                 InFlightTransfers, transferBytes);
             if (status < 0 && !impl->stopping) {
                 impl->queue.fail(Status::Disconnected,
                                  jst::fmt::format("reception stopped ({})", status));

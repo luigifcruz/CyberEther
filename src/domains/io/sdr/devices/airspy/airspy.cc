@@ -50,7 +50,8 @@ struct AirspyDevice::Impl {
     static int Callback(airspy_transfer* transfer);
 
     Result open(const Info& info);
-    Result applyGain(bool automatic, F64 gain, bool setMode);
+    Result applyGainMode(bool automatic, F64 gain);
+    Result applyGain(F64 gain, bool force);
     Result startStream();
     void stopStream();
 
@@ -185,7 +186,7 @@ Result AirspyDevice::start(const Settings& settings) {
         return Result::ERROR;
     }
 
-    JST_CHECK(pimpl->applyGain(settings.automaticGain, settings.gain, true));
+    JST_CHECK(pimpl->applyGainMode(settings.automaticGain, settings.gain));
 
     if (settings.biasTee || pimpl->biasTeeEnabled) {
         if (airspy_set_rf_bias(handle, settings.biasTee ? 1 : 0) != AIRSPY_SUCCESS) {
@@ -209,7 +210,7 @@ void AirspyDevice::stop() {
 }
 
 Result AirspyDevice::setAutomaticGain(const bool automaticGain) {
-    if (pimpl->applyGain(automaticGain, requestedSettings.gain, true) != Result::SUCCESS) {
+    if (pimpl->applyGainMode(automaticGain, requestedSettings.gain) != Result::SUCCESS) {
         return Device::setAutomaticGain(automaticGain);
     }
     requestedSettings.automaticGain = automaticGain;
@@ -218,7 +219,7 @@ Result AirspyDevice::setAutomaticGain(const bool automaticGain) {
 }
 
 Result AirspyDevice::setGain(const F64 gain) {
-    if (pimpl->applyGain(appliedSettings.automaticGain, gain, false) != Result::SUCCESS) {
+    if (pimpl->applyGain(gain, false) != Result::SUCCESS) {
         return Device::setGain(gain);
     }
     requestedSettings.gain = gain;
@@ -229,25 +230,29 @@ F64 AirspyDevice::resolveGain(const F64 gain, const std::optional<Range>& range)
     return std::round(Device::resolveGain(gain, range));
 }
 
-Result AirspyDevice::Impl::applyGain(const bool automatic, const F64 gain, const bool setMode) {
-    const F64 target = device.resolveGain(gain, device.appliedSettings.gainRange);
-    if (setMode) {
-        const U8 agc = automatic ? 1 : 0;
-        if (airspy_set_lna_agc(handle, agc) != AIRSPY_SUCCESS ||
-            airspy_set_mixer_agc(handle, agc) != AIRSPY_SUCCESS) {
-            JST_ERROR("[SDR_AIRSPY] Failed to set the gain mode.");
-            return Result::ERROR;
-        }
+Result AirspyDevice::Impl::applyGainMode(const bool automatic, const F64 gain) {
+    const U8 agc = automatic ? 1 : 0;
+    if (airspy_set_lna_agc(handle, agc) != AIRSPY_SUCCESS ||
+        airspy_set_mixer_agc(handle, agc) != AIRSPY_SUCCESS) {
+        JST_ERROR("[SDR_AIRSPY] Failed to set the gain mode.");
+        return Result::ERROR;
     }
-    const bool unchanged = !setMode && target == device.appliedSettings.gain;
-    if (!automatic && !unchanged) {
-        const auto stages = StageGains(static_cast<U64>(target));
-        if (airspy_set_lna_gain(handle, stages[0]) != AIRSPY_SUCCESS ||
-            airspy_set_mixer_gain(handle, stages[1]) != AIRSPY_SUCCESS ||
-            airspy_set_vga_gain(handle, stages[2]) != AIRSPY_SUCCESS) {
-            JST_ERROR("[SDR_AIRSPY] Failed to set the gain to {:.0f}.", target);
-            return Result::ERROR;
-        }
+    device.appliedSettings.automaticGain = automatic;
+    return applyGain(gain, true);
+}
+
+Result AirspyDevice::Impl::applyGain(const F64 gain, const bool force) {
+    const F64 target = device.resolveGain(gain, device.appliedSettings.gainRange);
+    if (device.appliedSettings.automaticGain || (!force && target == device.appliedSettings.gain)) {
+        device.appliedSettings.gain = target;
+        return Result::SUCCESS;
+    }
+    const auto stages = StageGains(static_cast<U64>(target));
+    if (airspy_set_lna_gain(handle, stages[0]) != AIRSPY_SUCCESS ||
+        airspy_set_mixer_gain(handle, stages[1]) != AIRSPY_SUCCESS ||
+        airspy_set_vga_gain(handle, stages[2]) != AIRSPY_SUCCESS) {
+        JST_ERROR("[SDR_AIRSPY] Failed to set the gain to {:.0f}.", target);
+        return Result::ERROR;
     }
     device.appliedSettings.gain = target;
     return Result::SUCCESS;

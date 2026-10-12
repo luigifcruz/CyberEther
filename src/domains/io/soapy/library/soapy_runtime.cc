@@ -80,10 +80,6 @@ SoapyKwargs ToMap(const SoapyAbi::Kwargs& kwargs) {
 
 }  // namespace
 
-//
-// Library.
-//
-
 SoapyLibrary::~SoapyLibrary() {
     Platform::CloseDynamicLibrary(handle);
 }
@@ -150,9 +146,6 @@ Result SoapyLibrary::loadModule(const std::string& path) const {
 }
 
 std::shared_ptr<SoapyLibrary> SoapyLibrary::Open(const std::string& path, std::string& error) {
-    // Device modules resolve core symbols such as `SoapySDR_log` through the
-    // global namespace, so the core is loaded globally. CyberEther itself
-    // defines no SoapySDR symbols.
     void* handle = Platform::OpenDynamicLibrary(path, Platform::DynamicLibraryVisibility::Global,
                                                 error);
     if (!handle) {
@@ -182,10 +175,6 @@ std::shared_ptr<SoapyLibrary> SoapyLibrary::Open(const std::string& path, std::s
     return library;
 }
 
-//
-// Kwargs view.
-//
-
 SoapyKwargsView::SoapyKwargsView(const SoapyKwargs& kwargs) {
     keys.reserve(kwargs.size());
     values.reserve(kwargs.size());
@@ -202,16 +191,11 @@ const SoapyAbi::Kwargs* SoapyKwargsView::get() const {
     return &view;
 }
 
-//
-// Runtime.
-//
-
 std::vector<std::string> SoapyRuntime::Candidates() {
     if (const char* override = std::getenv(LibraryOverride); override && *override) {
         return {override};
     }
 
-    // Versioned names come first. Each candidate is still ABI-checked.
 #if defined(JST_OS_MAC)
     std::vector<std::string> names{"libSoapySDR.0.8.dylib", "libSoapySDR.dylib"};
     std::vector<std::string> directories{"", "/opt/homebrew/lib/", "/usr/local/lib/",

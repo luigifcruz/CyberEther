@@ -13,12 +13,6 @@
 
 namespace Jetstream::Radio {
 
-// Bounded sample queue between a vendor receive callback and `Device::read()`.
-// Used by the RTL-SDR, Airspy, and HackRF adapters. `retune()` relabels a
-// running stream: it drops every queued sample, the next `transfers` vendor
-// callbacks, which can still hold samples from before the change, and then
-// `discard` settling samples.
-
 class JETSTREAM_API CaptureQueue {
  public:
     using Converter = std::function<void(CF32* output, U64 offset, U64 count)>;

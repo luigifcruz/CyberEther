@@ -1,7 +1,3 @@
-# Direct SDR vendor libraries, linked statically into the application.
-# SoapySDR is not bundled. The SoapySDR block loads a system installation at
-# runtime instead.
-
 sdr_static_options = ['default_library=static']
 sdr_found = false
 
@@ -30,8 +26,6 @@ if jst_is_macos or jst_is_linux or jst_is_windows or jst_is_browser
         ldr_lst += {family: family_dep.found()}
     endforeach
 
-    # Keep the bundled vendor and libusb symbols private to the shared library
-    # so system SoapySDR plugins resolve their own vendor libraries.
     if jst_is_linux and not jst_is_static
         lib_link_args += [
             '-Wl,--exclude-libs,liblibrtlsdr.a:liblibairspy.a:liblibairspyhf.a:libhackrf.a:' +

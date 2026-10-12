@@ -157,9 +157,9 @@ Result SdrSweepImpl::create() {
         return result;
     }
 
-    hardwareRate = plan.sampleRate;
-    active = settingsOf(*this, plan);
-    if (const auto result = radio->start(active); result != Result::SUCCESS) {
+    requestedRate = plan.sampleRate;
+    tuned = settingsOf(*this, plan);
+    if (const auto result = radio->start(tuned); result != Result::SUCCESS) {
         radio.reset();
         return result;
     }
@@ -207,10 +207,10 @@ Result SdrSweepImpl::create() {
         radio.reset();
         return result;
     }
-    gainLimits = radio->applied().gainRange;
-    if (gainLimits) {
+    gainRange = radio->applied().gainRange;
+    if (gainRange) {
         manualGain = static_cast<F32>(radio->applied().gain);
-        active.gain = manualGain;
+        tuned.gain = manualGain;
     }
 
     JST_CHECK(buffer.setAttribute("frequency", static_cast<F32>(plan.centerFrequency())));
@@ -276,7 +276,7 @@ Result SdrSweepImpl::reconfigure() {
     }
 
     auto settings = settingsOf(config, next);
-    settings.gain = radio->resolveGain(config.manualGain, gainLimits);
+    settings.gain = radio->resolveGain(config.manualGain, gainRange);
     control.submit([this, next, settings] { return applyPlan(next, settings); });
     submitted = next;
 
@@ -292,7 +292,7 @@ Radio::Device::Settings SdrSweepImpl::settingsOf(const SdrSweep& config,
                                                  const Sweep::Plan& next) const {
     return {
         .frequency = next.hops.front().frequency,
-        .sampleRate = hardwareRate,
+        .sampleRate = requestedRate,
         .antenna = config.antenna,
         .automaticGain = config.automaticGain,
         .biasTee = config.biasTee,
@@ -303,17 +303,17 @@ Radio::Device::Settings SdrSweepImpl::settingsOf(const SdrSweep& config,
 
 Result SdrSweepImpl::applyPlan(const Sweep::Plan& next, const Radio::Device::Settings& settings) {
     const auto result = [&] {
-        if (settings.automaticGain != active.automaticGain) {
+        if (settings.automaticGain != tuned.automaticGain) {
             JST_CHECK(radio->setAutomaticGain(settings.automaticGain));
-            active.automaticGain = settings.automaticGain;
+            tuned.automaticGain = settings.automaticGain;
         }
-        if (settings.settlingTime != active.settlingTime) {
+        if (settings.settlingTime != tuned.settlingTime) {
             JST_CHECK(radio->setSettlingTime(settings.settlingTime));
-            active.settlingTime = settings.settlingTime;
+            tuned.settlingTime = settings.settlingTime;
         }
-        if (settings.gain != active.gain) {
+        if (settings.gain != tuned.gain) {
             JST_CHECK(radio->setGain(settings.gain));
-            active.gain = settings.gain;
+            tuned.gain = settings.gain;
         }
         plan = next;
         JST_CHECK(assembler.configure(plan));
@@ -496,8 +496,8 @@ std::vector<std::string> SdrSweepImpl::listAntennas() const {
     return antennas;
 }
 
-std::optional<Radio::Device::Range> SdrSweepImpl::gainRange() const {
-    return gainLimits;
+std::optional<Radio::Device::Range> SdrSweepImpl::getGainRange() const {
+    return gainRange;
 }
 
 const Sweep::Plan& SdrSweepImpl::sweepPlan() const {

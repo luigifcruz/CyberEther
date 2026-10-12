@@ -56,7 +56,6 @@ Result SoapyImplNativeCpu::computeSubmit() {
         return Result::ERROR;
     }
 
-    // Publishes the metadata captured with these samples.
     return emitFrame();
 }
 

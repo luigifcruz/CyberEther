@@ -10,9 +10,6 @@
 
 namespace Jetstream::Radio {
 
-// Ring buffer between a module's receive thread and its output frames, tagged
-// with the settings of the samples it holds. Used by the SDR and SoapySDR modules.
-
 class JETSTREAM_API StreamBuffer {
  public:
     struct Metadata {

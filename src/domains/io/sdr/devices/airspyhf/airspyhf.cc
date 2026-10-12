@@ -31,7 +31,8 @@ struct AirspyHfDevice::Impl {
     static int Callback(airspyhf_transfer_t* transfer);
 
     Result open(const Info& info);
-    Result applyGain(bool automatic, F64 gain, bool setMode);
+    Result applyGainMode(bool automatic, F64 gain);
+    Result applyGain(F64 gain, bool force);
     Result startStream();
     void stopStream();
 
@@ -164,7 +165,7 @@ Result AirspyHfDevice::start(const Settings& settings) {
         return Result::ERROR;
     }
 
-    JST_CHECK(pimpl->applyGain(settings.automaticGain, settings.gain, true));
+    JST_CHECK(pimpl->applyGainMode(settings.automaticGain, settings.gain));
 
     requestedSettings = settings;
     appliedSettings.sampleRate = settings.sampleRate;
@@ -180,7 +181,7 @@ void AirspyHfDevice::stop() {
 }
 
 Result AirspyHfDevice::setAutomaticGain(const bool automaticGain) {
-    if (pimpl->applyGain(automaticGain, requestedSettings.gain, true) != Result::SUCCESS) {
+    if (pimpl->applyGainMode(automaticGain, requestedSettings.gain) != Result::SUCCESS) {
         return Device::setAutomaticGain(automaticGain);
     }
     requestedSettings.automaticGain = automaticGain;
@@ -189,7 +190,7 @@ Result AirspyHfDevice::setAutomaticGain(const bool automaticGain) {
 }
 
 Result AirspyHfDevice::setGain(const F64 gain) {
-    if (pimpl->applyGain(appliedSettings.automaticGain, gain, false) != Result::SUCCESS) {
+    if (pimpl->applyGain(gain, false) != Result::SUCCESS) {
         return Device::setGain(gain);
     }
     requestedSettings.gain = gain;
@@ -200,20 +201,26 @@ F64 AirspyHfDevice::resolveGain(const F64 gain, const std::optional<Range>& rang
     return std::round(Device::resolveGain(gain, range) / AttenuationStep) * AttenuationStep;
 }
 
-Result AirspyHfDevice::Impl::applyGain(const bool automatic, const F64 gain, const bool setMode) {
-    const F64 target = device.resolveGain(gain, device.appliedSettings.gainRange);
-    if (setMode && airspyhf_set_hf_agc(handle, automatic ? 1 : 0) != AIRSPYHF_SUCCESS) {
+Result AirspyHfDevice::Impl::applyGainMode(const bool automatic, const F64 gain) {
+    if (airspyhf_set_hf_agc(handle, automatic ? 1 : 0) != AIRSPYHF_SUCCESS) {
         JST_ERROR("[SDR_AIRSPYHF] Failed to set the gain mode.");
         return Result::ERROR;
     }
-    const bool unchanged = !setMode && target == device.appliedSettings.gain;
-    if (!automatic && !unchanged) {
-        const auto attenuation = static_cast<U8>(
-            MaxAttenuation - static_cast<U8>(std::lround(target / AttenuationStep)));
-        if (airspyhf_set_hf_att(handle, attenuation) != AIRSPYHF_SUCCESS) {
-            JST_ERROR("[SDR_AIRSPYHF] Failed to set the gain to {:.0f} dB.", target);
-            return Result::ERROR;
-        }
+    device.appliedSettings.automaticGain = automatic;
+    return applyGain(gain, true);
+}
+
+Result AirspyHfDevice::Impl::applyGain(const F64 gain, const bool force) {
+    const F64 target = device.resolveGain(gain, device.appliedSettings.gainRange);
+    if (device.appliedSettings.automaticGain || (!force && target == device.appliedSettings.gain)) {
+        device.appliedSettings.gain = target;
+        return Result::SUCCESS;
+    }
+    const auto attenuation = static_cast<U8>(
+        MaxAttenuation - static_cast<U8>(std::lround(target / AttenuationStep)));
+    if (airspyhf_set_hf_att(handle, attenuation) != AIRSPYHF_SUCCESS) {
+        JST_ERROR("[SDR_AIRSPYHF] Failed to set the gain to {:.0f} dB.", target);
+        return Result::ERROR;
     }
     device.appliedSettings.gain = target;
     return Result::SUCCESS;

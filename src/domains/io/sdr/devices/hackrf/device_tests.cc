@@ -43,7 +43,7 @@ TEST_CASE("HackRF firmware sweeps follow the interleaved firmware sequence",
 TEST_CASE("HackRF firmware captures fit the sweep block payload",
           "[devices][sdr][hackrf][layout]") {
     const auto capability = Radio::HackRfSweep::Capability();
-    REQUIRE(capability.maxCaptureLength * 2 + Radio::SweepDecoder::HeaderBytes <=
+    REQUIRE(capability.maxCaptureLength * 2 + Radio::HackRfSweepDecoder::HeaderBytes <=
             Radio::HackRfSweep::BlockBytes);
     REQUIRE((capability.maxCaptureLength - capability.captureBase) % capability.captureStep == 0);
 
@@ -69,22 +69,22 @@ TEST_CASE("HackRF parses sweep blocks and excludes their headers",
     }
     block[10] = 0x55;
 
-    const auto parsed = Radio::SweepDecoder::Block::Parse(block.data(), block.size(), 16384);
+    const auto parsed = Radio::HackRfSweepDecoder::Block::Parse(block.data(), block.size(), 16384);
     REQUIRE(parsed);
     REQUIRE(parsed->frequency == frequency);
     REQUIRE(parsed->payloadSamples == 8187);
     REQUIRE(reinterpret_cast<const U8*>(parsed->payload) == block.data() + 10);
     REQUIRE(parsed->payload[0] == 0x55);
 
-    REQUIRE_FALSE(Radio::SweepDecoder::Block::Parse(block.data(), 16383, 16384));
+    REQUIRE_FALSE(Radio::HackRfSweepDecoder::Block::Parse(block.data(), 16383, 16384));
     block[1] = 0x7e;
-    REQUIRE_FALSE(Radio::SweepDecoder::Block::Parse(block.data(), block.size(), 16384));
+    REQUIRE_FALSE(Radio::HackRfSweepDecoder::Block::Parse(block.data(), block.size(), 16384));
 }
 
 TEST_CASE("HackRF tracks firmware cycles through dwell repeats and losses",
           "[devices][sdr][hackrf][sequence]") {
-    using Event = Radio::SweepDecoder::Sequence::Event;
-    Radio::SweepDecoder::Sequence sequence;
+    using Event = Radio::HackRfSweepDecoder::Sequence::Event;
+    Radio::HackRfSweepDecoder::Sequence sequence;
     sequence.configure({10, 20, 30}, 2);
     U64 hop = 0;
     U64 repetition = 0;
@@ -124,7 +124,7 @@ TEST_CASE("HackRF decoders report progress while waiting for a full firmware cyc
           "[devices][sdr][hackrf][sequence]") {
     constexpr U64 BlockBytes = 64;
     constexpr U64 Dwell = 64;
-    const auto append = [](Radio::TransferQueue::Transfer& transfer, const U64 frequency) {
+    const auto append = [](Radio::HackRfTransferQueue::Transfer& transfer, const U64 frequency) {
         std::vector<U8> block(BlockBytes, 0);
         block[0] = 0x7f;
         block[1] = 0x7f;
@@ -134,7 +134,7 @@ TEST_CASE("HackRF decoders report progress while waiting for a full firmware cyc
         transfer.bytes.insert(transfer.bytes.end(), block.begin(), block.end());
     };
 
-    Radio::SweepDecoder decoder;
+    Radio::HackRfSweepDecoder decoder;
     decoder.configure({10, 20, 30}, Dwell, 4, BlockBytes, 0.0);
     U64 captures = 0;
     const auto sink = [&](const Radio::Device::SweepCapture&) {
@@ -143,7 +143,7 @@ TEST_CASE("HackRF decoders report progress while waiting for a full firmware cyc
     };
 
     // A wide, high-dwell sweep starts mid-cycle and waits for the first hop.
-    Radio::TransferQueue::Transfer waiting;
+    Radio::HackRfTransferQueue::Transfer waiting;
     for (const U64 frequency : {20, 30}) {
         for (U64 i = 0; i < Dwell; ++i) {
             append(waiting, frequency);
@@ -154,7 +154,7 @@ TEST_CASE("HackRF decoders report progress while waiting for a full firmware cyc
     REQUIRE(decoder.losses() == 0);
     REQUIRE(captures == 0);
 
-    Radio::TransferQueue::Transfer first;
+    Radio::HackRfTransferQueue::Transfer first;
     for (U64 i = 0; i < Dwell; ++i) {
         append(first, 10);
     }
@@ -165,7 +165,7 @@ TEST_CASE("HackRF decoders report progress while waiting for a full firmware cyc
 
 TEST_CASE("HackRF transfer queues mark loss where it happened",
           "[devices][sdr][hackrf][queue]") {
-    Radio::TransferQueue queue(2);
+    Radio::HackRfTransferQueue queue(2);
     const U8 bytes[] = {1, 2, 3};
     queue.push(bytes, 1);
     queue.push(bytes, 2);
@@ -173,7 +173,7 @@ TEST_CASE("HackRF transfer queues mark loss where it happened",
     queue.push(bytes, 3);
     REQUIRE(queue.dropped() == 2);
 
-    Radio::TransferQueue::Transfer transfer;
+    Radio::HackRfTransferQueue::Transfer transfer;
     REQUIRE(queue.pop(transfer, std::chrono::milliseconds(1)));
     REQUIRE(transfer.bytes.size() == 1);
     REQUIRE_FALSE(transfer.gapBefore);

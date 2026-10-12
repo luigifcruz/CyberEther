@@ -1642,10 +1642,10 @@ std::vector<U8> SweepBlock(const U64 frequency, const I8 value) {
     return block;
 }
 
-Radio::TransferQueue::Transfer SweepTransfer(const std::vector<std::vector<U8>>& blocks,
+Radio::HackRfTransferQueue::Transfer SweepTransfer(const std::vector<std::vector<U8>>& blocks,
                                              const U64 partialBytes = 0,
                                              const bool gapBefore = false) {
-    Radio::TransferQueue::Transfer transfer{.gapBefore = gapBefore};
+    Radio::HackRfTransferQueue::Transfer transfer{.gapBefore = gapBefore};
     for (const auto& block : blocks) {
         transfer.bytes.insert(transfer.bytes.end(), block.begin(), block.end());
     }
@@ -1655,7 +1655,7 @@ Radio::TransferQueue::Transfer SweepTransfer(const std::vector<std::vector<U8>>&
 
 // Decodes transfers into the real assembler and returns the payload marker of
 // every hop of each completed sweep.
-std::vector<std::vector<I32>> DecodeSweeps(const std::vector<Radio::TransferQueue::Transfer>& transfers) {
+std::vector<std::vector<I32>> DecodeSweeps(const std::vector<Radio::HackRfTransferQueue::Transfer>& transfers) {
     const std::vector<U64> headers{10, 20, 30};
     Modules::Sweep::Plan plan;
     plan.mode = Mode::Firmware;
@@ -1671,7 +1671,7 @@ std::vector<std::vector<I32>> DecodeSweeps(const std::vector<Radio::TransferQueu
     REQUIRE(assembler.configure(plan) == Result::SUCCESS);
     std::vector<CF32> frame(plan.outputBins);
 
-    Radio::SweepDecoder decoder;
+    Radio::HackRfSweepDecoder decoder;
     decoder.configure(headers, 1, 4, TestBlockBytes, 0.0);
     std::vector<std::vector<I32>> sweeps;
     for (const auto& transfer : transfers) {

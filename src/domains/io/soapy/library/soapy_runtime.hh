@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_DOMAINS_IO_SOAPY_SOAPY_RUNTIME_HH
-#define JETSTREAM_DOMAINS_IO_SOAPY_SOAPY_RUNTIME_HH
+#ifndef JETSTREAM_DOMAINS_IO_SOAPY_LIBRARY_SOAPY_RUNTIME_HH
+#define JETSTREAM_DOMAINS_IO_SOAPY_LIBRARY_SOAPY_RUNTIME_HH
 
 #include <cstddef>
 #include <map>
@@ -8,12 +8,6 @@
 #include <vector>
 
 #include <jetstream/types.hh>
-
-// SoapySDR is loaded from the system, never linked. ABI must equal "0.8", as
-// required by the upstream header; development suffixes are rejected. All
-// required symbols are resolved before use. These declarations mirror only
-// the SoapySDR 0.8 C types and calls needed by the bridge. Returned memory uses
-// matching SoapySDR release functions; devices keep the library loaded.
 
 namespace Jetstream::Modules::SoapyAbi {
 
@@ -109,7 +103,6 @@ class JETSTREAM_API SoapyLibrary {
     const SoapyApi& api() const;
     const std::string& path() const;
 
-    // Error text of the last failed C API call on this thread.
     std::string lastError() const;
     std::string errorString(int code) const;
 
@@ -128,8 +121,6 @@ class JETSTREAM_API SoapyLibrary {
     SoapyApi table;
 };
 
-// C view of a kwargs map. Keys and values point into the map, which must
-// outlive the view.
 class JETSTREAM_API SoapyKwargsView {
  public:
     explicit SoapyKwargsView(const SoapyKwargs& kwargs);
@@ -151,17 +142,14 @@ struct JETSTREAM_API SoapyRuntime {
         std::vector<std::string> attempts;
     };
 
-    // Loads the system library on first use. Never fails application startup.
     static std::shared_ptr<SoapyLibrary> Acquire();
     static Status Availability();
 
     static std::vector<std::string> Candidates();
 
-    // Forgets the cached library so the next use searches again. Open devices
-    // keep their own reference until they are released.
     static void Reset();
 };
 
 }  // namespace Jetstream::Modules
 
-#endif  // JETSTREAM_DOMAINS_IO_SOAPY_SOAPY_RUNTIME_HH
+#endif  // JETSTREAM_DOMAINS_IO_SOAPY_LIBRARY_SOAPY_RUNTIME_HH

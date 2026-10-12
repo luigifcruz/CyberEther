@@ -1126,7 +1126,7 @@ TEST_CASE_METHOD(ScriptedDrivers,
         const auto all = TestScript().calls();
         return std::find(all.begin(), all.end(), "tune:300") != all.end();
     }));
-    REQUIRE(module->getImpl<Modules::SdrImpl>()->appliedSettings().frequency == 100.0e6);
+    REQUIRE(module->getImpl<Modules::SdrImpl>()->getApplied().frequency == 100.0e6);
 
     // Out-of-range values only warn and leave the device untouched.
     const auto calls = TestScript().calls();
@@ -1166,9 +1166,9 @@ TEST_CASE_METHOD(ScriptedDrivers,
     // and the stream setup stay as they were.
     const U64 generation = stream.metadata().generation;
     REQUIRE(module->reconfigure({{"frequency", 250.0e6f}}) == Result::SUCCESS);
-    REQUIRE(WaitFor([&] { return sdr->appliedSettings().frequency == 250.0e6; }));
+    REQUIRE(WaitFor([&] { return sdr->getApplied().frequency == 250.0e6; }));
     REQUIRE(calls() == std::vector<std::string>{"tune:250"});
-    const auto applied = sdr->appliedSettings();
+    const auto applied = sdr->getApplied();
     REQUIRE(applied.frequency == 250.0e6);
     REQUIRE(applied.sampleRate == 2.0e6);
     REQUIRE_FALSE(applied.automaticGain);
@@ -1184,10 +1184,10 @@ TEST_CASE_METHOD(ScriptedDrivers,
 
     // Rate and gain changes need the full configuration path.
     REQUIRE(module->reconfigure({{"sampleRate", 4.0e6f}}) == Result::SUCCESS);
-    REQUIRE(WaitFor([&] { return sdr->appliedSettings().sampleRate == 4.0e6; }));
+    REQUIRE(WaitFor([&] { return sdr->getApplied().sampleRate == 4.0e6; }));
     REQUIRE(calls() == std::vector<std::string>{"tune:250", "stop", "start:250"});
-    REQUIRE(sdr->appliedSettings().sampleRate == 4.0e6);
-    REQUIRE(sdr->appliedSettings().frequency == 250.0e6);
+    REQUIRE(sdr->getApplied().sampleRate == 4.0e6);
+    REQUIRE(sdr->getApplied().frequency == 250.0e6);
 }
 
 TEST_CASE_METHOD(ScriptedFlowgraph,

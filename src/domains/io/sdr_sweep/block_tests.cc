@@ -9,7 +9,7 @@
 
 using namespace Jetstream;
 
-TEST_CASE("SDR Sweep block defaults to one fixed-gain automatic sweep",
+TEST_CASE("SDR Sweep block defaults to a manual-gain sweep",
           "[modules][io][sdr_sweep][block]") {
     Blocks::SdrSweep config;
     REQUIRE(config.deviceString.empty());

@@ -40,8 +40,6 @@ Result SoapyImpl::validate() {
 }
 
 Result SoapyImpl::configure() {
-    // Without SoapySDR the saved block stays recognizable, and the module
-    // reports the missing installation.
     if (Modules::SoapyRuntime::Acquire()) {
         JST_CHECK(Modules::SoapyDiscovery::LoadDriverLibrary(modulePath));
     }

@@ -13,7 +13,7 @@
 
 #include <jetstream/types.hh>
 
-#include "../soapy_runtime.hh"
+#include "soapy_runtime.hh"
 
 namespace Jetstream::Modules {
 
@@ -44,7 +44,6 @@ struct JETSTREAM_API SoapyDiscovery {
     using DeviceEntry = SoapyKwargs;
     using DeviceList = std::map<std::string, DeviceEntry>;
 
-    // Empty when SoapySDR is unavailable.
     static DeviceList List(const std::string& filter = "", bool refresh = false,
                            std::optional<Clock::time_point> now = std::nullopt);
     static void ClearCache();
@@ -74,7 +73,6 @@ class JETSTREAM_API SoapyReceiver {
     SoapyReceiver(const SoapyReceiver&) = delete;
     SoapyReceiver& operator=(const SoapyReceiver&) = delete;
 
-    // Saved device and stream strings stay opaque until SoapySDR parses them.
     Result open(const std::string& deviceString);
     Result openArgs(const SoapyKwargs& args);
     Result validateSettings(F32 sampleRate, F32 frequency) const;

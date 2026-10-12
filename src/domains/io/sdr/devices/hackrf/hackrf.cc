@@ -78,7 +78,7 @@ struct HackRfDevice::Impl {
     std::atomic<U64> streamGeneration{0};
     std::vector<U64> sweepHeaders;
     HackRfSweep::Range sweepRange;
-    TransferQueue transfers{BlockQueueDepth};
+    HackRfTransferQueue transfers{BlockQueueDepth};
 };
 
 int HackRfDevice::Impl::Callback(hackrf_transfer* transfer) {
@@ -359,7 +359,7 @@ Result HackRfDevice::runSweep(const SweepRunning& running, const SweepSink& sink
         return Result::ERROR;
     }
 
-    SweepDecoder decoder;
+    HackRfSweepDecoder decoder;
     decoder.configure(pimpl->sweepHeaders, request.dwell, request.captureLength,
                       HackRfSweep::BlockBytes, HackRfSweep::Offset);
     transfers.clear();
@@ -381,7 +381,7 @@ Result HackRfDevice::runSweep(const SweepRunning& running, const SweepSink& sink
         return sink(capture);
     };
     while (running() && result == Result::SUCCESS) {
-        TransferQueue::Transfer transfer;
+        HackRfTransferQueue::Transfer transfer;
         if (transfers.pop(transfer, std::chrono::milliseconds(100))) {
             if (!decoder.decode(transfer, deliver)) {
                 break;
@@ -399,7 +399,7 @@ Result HackRfDevice::runSweep(const SweepRunning& running, const SweepSink& sink
             progress = std::chrono::steady_clock::now();
         } else if (result == Result::SUCCESS &&
                    std::chrono::steady_clock::now() - progress > StallTimeout) {
-            JST_ERROR("[SDR] Timed out waiting for sweep samples from {}.", deviceInfo.label);
+            JST_ERROR("[SDR_HACKRF] Timed out waiting for sweep samples from {}.", deviceInfo.label);
             progress = std::chrono::steady_clock::now();
             result = fail(failures);
         }

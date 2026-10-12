@@ -17,8 +17,6 @@ bool SampleRateInRanges(const std::vector<SoapyAbi::Range>& ranges, const F32 ra
         return false;
     }
 
-    // Drivers can report suggested steps while accepting intermediate rates.
-    // Check each interval's bounds and let setSampleRate validate or quantize.
     return std::any_of(ranges.begin(), ranges.end(), [rate](const auto& range) {
         return rate >= static_cast<F32>(range.minimum) &&
                rate <= static_cast<F32>(range.maximum);
@@ -122,7 +120,6 @@ Result SoapyDiscovery::LoadDriverLibrary(const std::string& path) {
         return Result::SUCCESS;
     }
 
-    // A module path names a SoapySDR device module, never the core library.
     const auto library = SoapyRuntime::Acquire();
     if (!library) {
         JST_ERROR("[MODULE_SOAPY] Cannot load module '{}': {}", path,
@@ -321,12 +318,12 @@ void SoapyReceiver::queryGainRange() {
 
 Result SoapyReceiver::validateSettings(const F32 sampleRate, const F32 frequency) const {
     if (!SampleRateInRanges(sampleRateRanges, sampleRate)) {
-        JST_ERROR("[MODULE_SOAPY] Sample rate ({:.2f} MHz) not supported.", sampleRate / 1e6);
+        JST_ERROR("[MODULE_SOAPY] Sample rate ({:.3f} MHz) not supported.", sampleRate / 1e6);
         return Result::ERROR;
     }
 
     if (!SoapyRangeContains(frequencyRanges, frequency)) {
-        JST_ERROR("[MODULE_SOAPY] Frequency ({:.2f} MHz) not supported.", frequency / 1e6);
+        JST_ERROR("[MODULE_SOAPY] Frequency ({:.3f} MHz) not supported.", frequency / 1e6);
         return Result::ERROR;
     }
 
@@ -384,7 +381,7 @@ Result SoapyReceiver::setTunerFrequency(const F32 frequency) {
     }
 
     if (!SoapyRangeContains(frequencyRanges, frequency)) {
-        JST_WARN("[MODULE_SOAPY] Frequency ({:.2f} MHz) not supported.", frequency / 1e6);
+        JST_WARN("[MODULE_SOAPY] Frequency ({:.3f} MHz) not supported.", frequency / 1e6);
         return Result::WARNING;
     }
 
@@ -406,7 +403,7 @@ Result SoapyReceiver::setSampleRate(const F32 sampleRate) {
     }
 
     if (!SampleRateInRanges(sampleRateRanges, sampleRate)) {
-        JST_WARN("[MODULE_SOAPY] Sample rate ({:.2f} MHz) not supported.", sampleRate / 1e6);
+        JST_WARN("[MODULE_SOAPY] Sample rate ({:.3f} MHz) not supported.", sampleRate / 1e6);
         return Result::WARNING;
     }
 

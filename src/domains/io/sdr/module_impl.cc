@@ -120,15 +120,15 @@ Result SdrImpl::create() {
         return Result::ERROR;
     }
 
-    active = settingsOf(*this);
-    if (const auto result = radio->start(active); result != Result::SUCCESS) {
+    tuned = settingsOf(*this);
+    if (const auto result = radio->start(tuned); result != Result::SUCCESS) {
         radio.reset();
         return result;
     }
     resetStream();
     if (radio->applied().gainRange) {
         manualGain = static_cast<F32>(radio->applied().gain);
-        active.gain = manualGain;
+        tuned.gain = manualGain;
     }
 
     outputs()["signal"].produced(name(), "signal", buffer);
@@ -177,10 +177,10 @@ Result SdrImpl::reconfigure() {
 
     auto desired = settingsOf(config);
     if (config.frequency != frequency && caps.gainFollowsFrequency) {
-        JST_CHECK(control.post([this, desired] { return applySettings(desired); }, ControlTimeout));
-        desired.gain = applied.get().gain;
+        JST_CHECK(control.submitAndWait([this, desired] { return applySettings(desired); }, ControlTimeout));
+        desired.gain = published.get().gain;
     } else {
-        desired.gain = radio->resolveGain(config.manualGain, applied.get().gainRange);
+        desired.gain = radio->resolveGain(config.manualGain, published.get().gainRange);
         if (config.frequency != frequency || config.sampleRate != sampleRate ||
             config.automaticGain != automaticGain || static_cast<F32>(desired.gain) != manualGain) {
             control.submit([this, desired] { return applySettings(desired); });
@@ -209,41 +209,41 @@ Result SdrImpl::applySettings(const Radio::Device::Settings& desired) {
     if (!radio) {
         return Result::ERROR;
     }
-    if (desired.sampleRate != active.sampleRate) {
+    if (desired.sampleRate != tuned.sampleRate) {
         const auto result = radio->apply(desired);
         resetStream();
         if (result == Result::SUCCESS) {
-            active = desired;
+            tuned = desired;
         }
         return result;
     }
-    if (desired.frequency != active.frequency) {
+    if (desired.frequency != tuned.frequency) {
         const auto result = radio->tune(desired.frequency);
         resetStream();
         JST_CHECK(result);
-        active.frequency = desired.frequency;
+        tuned.frequency = desired.frequency;
     }
-    if (desired.automaticGain != active.automaticGain) {
+    if (desired.automaticGain != tuned.automaticGain) {
         const U64 generation = radio->generation();
         const auto result = radio->setAutomaticGain(desired.automaticGain);
         if (radio->generation() != generation) {
             resetStream();
         } else {
-            applied.publish(radio->applied());
+            published.publish(radio->applied());
         }
         JST_CHECK(result);
-        active.automaticGain = desired.automaticGain;
+        tuned.automaticGain = desired.automaticGain;
     }
-    if (desired.gain != active.gain) {
+    if (desired.gain != tuned.gain) {
         const U64 generation = radio->generation();
         const auto result = radio->setGain(desired.gain);
         if (radio->generation() != generation) {
             resetStream();
         } else {
-            applied.publish(radio->applied());
+            published.publish(radio->applied());
         }
         JST_CHECK(result);
-        active.gain = desired.gain;
+        tuned.gain = desired.gain;
     }
     return Result::SUCCESS;
 }
@@ -255,7 +255,7 @@ void SdrImpl::resetStream() {
         .sampleRate = current.sampleRate,
         .generation = radio->generation(),
     });
-    applied.publish(current);
+    published.publish(current);
 }
 
 Result SdrImpl::publishMetadata(const Radio::StreamBuffer::Metadata& metadata) {
@@ -378,8 +378,12 @@ std::vector<std::string> SdrImpl::listAntennas() const {
     return antennas;
 }
 
-Radio::Device::Applied SdrImpl::appliedSettings() const {
-    return applied.get();
+Radio::Device::Applied SdrImpl::getApplied() const {
+    return published.get();
+}
+
+std::optional<Radio::Device::Range> SdrImpl::getGainRange() const {
+    return published.get().gainRange;
 }
 
 }  // namespace Jetstream::Modules

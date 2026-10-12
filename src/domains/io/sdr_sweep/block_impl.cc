@@ -176,7 +176,7 @@ Result SdrSweepImpl::create() {
 }
 
 Result SdrSweepImpl::reconfigure() {
-    if (const auto* sweep = createdModule(*this); sweep && sweep->gainRange()) {
+    if (const auto* sweep = createdModule(*this); sweep && sweep->getGainRange()) {
         manualGain = sweep->manualGain;
         moduleConfig->manualGain = manualGain;
     }
@@ -190,7 +190,7 @@ Result SdrSweepImpl::reconfigure() {
 
 Parser::Map SdrSweepImpl::manualGainFormat(const Blocks::SdrSweep& config) {
     const auto* sweep = createdModule(config);
-    const auto range = sweep ? sweep->gainRange() : std::nullopt;
+    const auto range = sweep ? sweep->getGainRange() : std::nullopt;
     const F32 minimum = range ? static_cast<F32>(range->minimum) : 0.0f;
     const F32 maximum = range ? static_cast<F32>(range->maximum) : 60.0f;
     return {{"type", "range"}, {"min", minimum}, {"max", maximum}, {"unit", "dB"}};
@@ -232,8 +232,9 @@ Parser::Map SdrSweepImpl::sampleRateFormat(const Blocks::SdrSweep& config) {
     for (const auto rate : rates) {
         std::string value;
         Parser::TypedToString(rate, value);
-        options.emplace_back(Parser::Map{{"label", jst::fmt::format("{:g} MHz", rate / 1e6)},
-                                         {"value", std::move(value)}});
+        auto label = rate < 1e6 ? jst::fmt::format("{:g} kHz", rate / 1e3)
+                                : jst::fmt::format("{:g} MHz", rate / 1e6);
+        options.emplace_back(Parser::Map{{"label", std::move(label)}, {"value", std::move(value)}});
     }
     return {{"type", "dropdown"}, {"options", std::move(options)}};
 }

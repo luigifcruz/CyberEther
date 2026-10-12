@@ -47,7 +47,7 @@ struct JETSTREAM_API SdrSweepImpl : public Module::Impl, public DynamicConfig<Sd
     Progress getProgress() const;
     MetricSnapshot getMetrics(Clock::time_point now = Clock::now());
     std::vector<std::string> listAntennas() const;
-    std::optional<Radio::Device::Range> gainRange() const;
+    std::optional<Radio::Device::Range> getGainRange() const;
     const Sweep::Plan& sweepPlan() const;
 
  protected:
@@ -110,9 +110,9 @@ struct JETSTREAM_API SdrSweepImpl : public Module::Impl, public DynamicConfig<Sd
     Radio::ControlChannel control;
     Sweep::Plan plan;
     Sweep::Plan submitted;
-    F64 hardwareRate = 0.0;
-    Radio::Device::Settings active;
-    std::optional<Radio::Device::Range> gainLimits;
+    F64 requestedRate = 0.0;
+    Radio::Device::Settings tuned;
+    std::optional<Radio::Device::Range> gainRange;
     Sweep::Assembler assembler;
     U64 instance = 0;
 

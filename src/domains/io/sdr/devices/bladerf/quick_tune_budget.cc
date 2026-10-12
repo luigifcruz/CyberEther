@@ -27,10 +27,6 @@ void QuickTuneBudget::failed(const U64 partial) {
     prepared.clear();
 }
 
-void QuickTuneBudget::invalidate() {
-    prepared.clear();
-}
-
 U64 QuickTuneBudget::used() const {
     return allocated;
 }

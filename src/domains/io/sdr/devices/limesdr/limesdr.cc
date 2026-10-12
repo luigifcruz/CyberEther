@@ -49,11 +49,6 @@ std::vector<lime::ConnectionHandle> FindBoards() {
     return {};
 }
 
-// Heuristic margin, not a measured end-to-end pipeline bound. It mirrors the
-// RX batch sizing in LimeSuite 23.11 `Streamer::SetupStream()` (Streamer.cpp
-// 235-243) for one RX channel with I12 packets: every queued USB transfer
-// (`USB_MAX_CONTEXTS`), the latest received packet, and one more for the status
-// counter race.
 U64 InFlightSamples(const F64 sampleRate) {
     const F64 limit = (sampleRate / 1.0e6 + 5.0) * StreamLatency;
     U64 batch = 1;
@@ -91,8 +86,6 @@ struct LimeSdrDevice::Impl {
     Clock::time_point received{};
     TimestampFilter timestamps;
     std::vector<CF32> drain;
-    U64 lostPackets = 0;
-    U64 overruns = 0;
 };
 
 LimeSdrDevice::LimeSdrDevice() : pimpl(std::make_unique<Impl>(*this)) {}
@@ -456,8 +449,6 @@ void LimeSdrDevice::Impl::poll() {
     if (LMS_GetStreamStatus(&stream, &status) != 0) {
         return;
     }
-    lostPackets += status.droppedPackets;
-    overruns += status.overrun;
     if (status.droppedPackets == 0 && status.overrun == 0) {
         return;
     }

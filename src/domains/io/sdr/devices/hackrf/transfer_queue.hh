@@ -12,14 +12,14 @@
 
 namespace Jetstream::Radio {
 
-class JETSTREAM_API TransferQueue {
+class JETSTREAM_API HackRfTransferQueue {
  public:
     struct Transfer {
         std::vector<U8> bytes;
         bool gapBefore = false;
     };
 
-    explicit TransferQueue(U64 depth);
+    explicit HackRfTransferQueue(U64 depth);
 
     void push(const U8* data, U64 size);
     bool pop(Transfer& transfer, std::chrono::milliseconds timeout);

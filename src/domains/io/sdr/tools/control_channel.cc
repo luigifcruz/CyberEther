@@ -32,7 +32,7 @@ void ControlChannel::submit(const Request& request) {
     request();
 }
 
-Result ControlChannel::post(const Request& request, const std::chrono::milliseconds timeout) {
+Result ControlChannel::submitAndWait(const Request& request, const std::chrono::milliseconds timeout) {
     auto done = std::make_shared<std::promise<Result>>();
     auto result = done->get_future();
     {

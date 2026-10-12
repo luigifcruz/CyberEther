@@ -70,7 +70,7 @@ struct BladeRfDevice::Impl {
     explicit Impl(BladeRfDevice& owner) : device(owner) {}
 
     Result open(const Info& info);
-    Result setFrequency(F64 frequency, bool settle = true);
+    Result retune(F64 frequency, bool settle = true);
     Result applyGainMode(bool requested, F64 gain);
     Result applyGain(F64 gain, bool force);
     Result resynchronize(U64 guard);
@@ -223,7 +223,7 @@ Result BladeRfDevice::start(const Settings& settings) {
     appliedSettings.sampleRate = actualRate;
     appliedSettings.antenna.clear();
     appliedSettings.biasTee = settings.biasTee && deviceCapabilities.biasTee;
-    return pimpl->setFrequency(settings.frequency);
+    return pimpl->retune(settings.frequency);
 }
 
 void BladeRfDevice::stop() {
@@ -301,8 +301,8 @@ Result BladeRfDevice::tune(const F64 frequency) {
         return Result::ERROR;
     }
     const auto previous = requestedSettings.frequency;
-    if (pimpl->setFrequency(frequency, false) != Result::SUCCESS) {
-        pimpl->setFrequency(previous, false);
+    if (pimpl->retune(frequency, false) != Result::SUCCESS) {
+        pimpl->retune(previous, false);
         return Result::ERROR;
     }
     return Result::SUCCESS;
@@ -415,7 +415,7 @@ Result BladeRfDevice::prepareSweep(const SweepRequest& request) {
 
 Result BladeRfDevice::tuneHop(const U64 hop) {
     if (!pimpl->quickTune) {
-        return pimpl->setFrequency(sweepRequest.frequencies[hop]);
+        return pimpl->retune(sweepRequest.frequencies[hop]);
     }
     const int status = bladerf_schedule_retune(pimpl->handle, Channel, BLADERF_RETUNE_NOW, 0,
                                                &pimpl->profiles[hop]);
@@ -423,7 +423,7 @@ Result BladeRfDevice::tuneHop(const U64 hop) {
         JST_WARN("[SDR_BLADERF] Quick tune to hop {} failed ({}). Using normal tuning.", hop,
                  bladerf_strerror(status));
         pimpl->quickTune = false;
-        return pimpl->setFrequency(sweepRequest.frequencies[hop]);
+        return pimpl->retune(sweepRequest.frequencies[hop]);
     }
     requestedSettings.frequency = sweepRequest.frequencies[hop];
     appliedSettings.frequency = pimpl->actualFrequencies[hop];
@@ -431,7 +431,7 @@ Result BladeRfDevice::tuneHop(const U64 hop) {
     return pimpl->resynchronize(guardLength);
 }
 
-Result BladeRfDevice::Impl::setFrequency(const F64 frequency, const bool settle) {
+Result BladeRfDevice::Impl::retune(const F64 frequency, const bool settle) {
     const auto target = static_cast<bladerf_frequency>(std::llround(frequency));
     if (bladerf_set_frequency(handle, Channel, target) != 0) {
         JST_ERROR("[SDR_BLADERF] Failed to tune to {:.3f} MHz.", frequency / 1e6);

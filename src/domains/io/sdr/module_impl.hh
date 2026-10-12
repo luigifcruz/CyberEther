@@ -35,7 +35,8 @@ struct JETSTREAM_API SdrImpl : public Module::Impl, public DynamicConfig<Sdr> {
     LossSnapshot getLoss() const;
     std::pair<F32, F32> getThroughput() const;
     std::vector<std::string> listAntennas() const;
-    Radio::Device::Applied appliedSettings() const;
+    Radio::Device::Applied getApplied() const;
+    std::optional<Radio::Device::Range> getGainRange() const;
 
  protected:
     Tensor buffer;
@@ -56,7 +57,7 @@ struct JETSTREAM_API SdrImpl : public Module::Impl, public DynamicConfig<Sdr> {
     Tools::Snapshot<std::pair<F32, F32>> throughput{{0.0f, 0.0f}};
     Tools::Snapshot<U64> deviceGaps{0};
     Tools::Snapshot<U64> deviceLostSamples{0};
-    Tools::Snapshot<Radio::Device::Applied> applied;
+    Tools::Snapshot<Radio::Device::Applied> published;
 
     Result receiveLoop();
     Result emitFrame();
@@ -65,7 +66,7 @@ struct JETSTREAM_API SdrImpl : public Module::Impl, public DynamicConfig<Sdr> {
  private:
     std::unique_ptr<Radio::Device> radio;
     std::vector<std::string> antennas;
-    Radio::Device::Settings active;
+    Radio::Device::Settings tuned;
 
     Radio::Device::Settings settingsOf(const Sdr& config) const;
     Result applySettings(const Radio::Device::Settings& desired);

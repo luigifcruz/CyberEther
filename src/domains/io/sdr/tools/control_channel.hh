@@ -20,7 +20,7 @@ class JETSTREAM_API ControlChannel {
     void open();
     void close();
     void submit(const Request& request);
-    Result post(const Request& request, std::chrono::milliseconds timeout);
+    Result submitAndWait(const Request& request, std::chrono::milliseconds timeout);
     bool pending() const;
     void service();
 

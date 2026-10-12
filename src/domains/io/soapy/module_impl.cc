@@ -250,7 +250,7 @@ Result SoapyImpl::reconfigure() {
         .gain = newConfig.manualGain,
     };
     if (newConfig.frequency != frequency) {
-        JST_CHECK(control.post([this, desired] { return applyTuning(desired); }, ControlTimeout));
+        JST_CHECK(control.submitAndWait([this, desired] { return applyTuning(desired); }, ControlTimeout));
         desired.gain = tuned.gain;
     } else {
         if (const auto range = gainRange.get()) {
@@ -271,9 +271,6 @@ Result SoapyImpl::reconfigure() {
 }
 
 void SoapyImpl::resetStream(const F32 appliedFrequency, const F32 appliedSampleRate) {
-    // Drop application-buffered and in-flight samples. Live setters establish
-    // no acquisition boundary here, so driver-queued samples may still predate
-    // the change even though later frames carry the new settings.
     stream.reset({
         .frequency = appliedFrequency,
         .sampleRate = appliedSampleRate,

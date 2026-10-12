@@ -58,12 +58,12 @@ void AssignRun(Hop& hop, std::vector<char>& covered, const I64 grid, const U64 s
 
 Result CheckOutputBins(const std::optional<U64> bins, const F64 needed) {
     if (!bins) {
-        JST_ERROR("[SWEEP] The sweep needs {:.3g} bins, above the limit of {}. Narrow the span "
+        JST_ERROR("[MODULE_SDR_SWEEP] The sweep needs {:.3g} bins, above the limit of {}. Narrow the span "
                   "or use a coarser resolution.", needed, MaxOutputBins);
         return Result::ERROR;
     }
     if (*bins < MinOutputBins) {
-        JST_ERROR("[SWEEP] The sweep has only {} bins. Widen the span or use a finer "
+        JST_ERROR("[MODULE_SDR_SWEEP] The sweep has only {} bins. Widen the span or use a finer "
                   "resolution to get at least {}.", *bins, MinOutputBins);
         return Result::ERROR;
     }
@@ -150,7 +150,7 @@ Result PlanRetune(const Request& request, const Capabilities& caps, Plan& plan,
     const F64 sampleRate = request.sampleRate > 0.0 ? request.sampleRate : caps.sweepSampleRate;
     if (!Range::Contains(caps.sampleRateRanges, sampleRate)) {
         if (!quiet) {
-            JST_ERROR("[SWEEP] Capture rate ({:.3f} MHz) not supported by the device.",
+            JST_ERROR("[MODULE_SDR_SWEEP] Capture rate ({:.3f} MHz) not supported by the device.",
                       sampleRate / 1e6);
         }
         return Result::ERROR;
@@ -161,7 +161,7 @@ Result PlanRetune(const Request& request, const Capabilities& caps, Plan& plan,
                                        MaxSegmentLength, {});
     if (!segment || *segment < MinSegmentLength) {
         if (!quiet) {
-            JST_ERROR("[SWEEP] A resolution of {:.3g} Hz at {:.3f} MS/s needs {:.3g}-point captures, "
+            JST_ERROR("[MODULE_SDR_SWEEP] A resolution of {:.3g} Hz at {:.3f} MS/s needs {:.3g}-point captures, "
                       "outside {} to {}.", request.resolution, sampleRate / 1e6,
                       sampleRate / request.resolution, MinSegmentLength, MaxSegmentLength);
         }
@@ -177,7 +177,7 @@ Result PlanRetune(const Request& request, const Capabilities& caps, Plan& plan,
     const I64 dc = dcBins ? static_cast<I64>(*dcBins) : half;
     if (half - dc < 1) {
         if (!quiet) {
-            JST_ERROR("[SWEEP] The usable capture bandwidth is too narrow at this resolution.");
+            JST_ERROR("[MODULE_SDR_SWEEP] The usable capture bandwidth is too narrow at this resolution.");
         }
         return Result::ERROR;
     }
@@ -203,7 +203,7 @@ Result PlanRetune(const Request& request, const Capabilities& caps, Plan& plan,
     while (first < bins) {
         if (plan.hops.size() >= MaxHops) {
             if (!quiet) {
-                JST_ERROR("[SWEEP] The sweep needs more than {} hops.", MaxHops);
+                JST_ERROR("[MODULE_SDR_SWEEP] The sweep needs more than {} hops.", MaxHops);
             }
             return Result::ERROR;
         }
@@ -212,7 +212,7 @@ Result PlanRetune(const Request& request, const Capabilities& caps, Plan& plan,
         hop.frequency = std::round(plan.startFrequency + (static_cast<F64>(grid) + 0.5) * binWidth);
         if (!Range::Contains(caps.frequencyRanges, hop.frequency)) {
             if (!quiet) {
-                JST_ERROR("[SWEEP] Hop at {:.3f} MHz is outside the tunable range.",
+                JST_ERROR("[MODULE_SDR_SWEEP] Hop at {:.3f} MHz is outside the tunable range.",
                           hop.frequency / 1e6);
             }
             return Result::ERROR;
@@ -233,25 +233,25 @@ Result PlanRetune(const Request& request, const Capabilities& caps, Plan& plan,
 Result PlanFirmware(const Request& request, const Capabilities& caps, Plan& plan) {
     const auto& sweep = *caps.firmwareSweep;
     if (request.sampleRate > 0.0 && request.sampleRate != sweep.sampleRate) {
-        JST_ERROR("[SWEEP] Firmware sweeps capture at {:.0f} MS/s. Set Capture Rate to 0 or "
+        JST_ERROR("[MODULE_SDR_SWEEP] Firmware sweeps capture at {:.0f} MS/s. Set Capture Rate to 0 or "
                   "{:.0f} MHz.", sweep.sampleRate / 1e6, sweep.sampleRate / 1e6);
         return Result::ERROR;
     }
     if (request.dwell > sweep.maxDwell) {
-        JST_ERROR("[SWEEP] Firmware sweeps support a dwell of at most {}.", sweep.maxDwell);
+        JST_ERROR("[MODULE_SDR_SWEEP] Firmware sweeps support a dwell of at most {}.", sweep.maxDwell);
         return Result::ERROR;
     }
 
     SweepLayout layout;
     const auto segment = FirmwareCaptureLength(request, sweep, layout);
     if (!segment) {
-        JST_ERROR("[SWEEP] No firmware sweep covers {:.3f} to {:.3f} MHz at this resolution.",
+        JST_ERROR("[MODULE_SDR_SWEEP] No firmware sweep covers {:.3f} to {:.3f} MHz at this resolution.",
                   request.startFrequency / 1e6, request.endFrequency / 1e6);
         return Result::ERROR;
     }
     const U64 length = *segment;
     if (!sweep.layout(request.startFrequency, request.endFrequency, length, layout)) {
-        JST_ERROR("[SWEEP] The firmware sweep layout rejected a {}-point capture.", length);
+        JST_ERROR("[MODULE_SDR_SWEEP] The firmware sweep layout rejected a {}-point capture.", length);
         return Result::ERROR;
     }
     const F64 span = layout.endFrequency - layout.startFrequency;
@@ -276,7 +276,7 @@ Result PlanFirmware(const Request& request, const Capabilities& caps, Plan& plan
             const F64 offset = (hop.frequency - origin) / binWidth +
                                static_cast<F64>(band.offset) - static_cast<F64>(center);
             if (std::abs(offset - std::round(offset)) > 1e-6) {
-                JST_ERROR("[SWEEP] Firmware sweep bins do not align with the output grid.");
+                JST_ERROR("[MODULE_SDR_SWEEP] Firmware sweep bins do not align with the output grid.");
                 return Result::ERROR;
             }
             AssignRun(hop, covered, static_cast<I64>(std::llround(offset)), band.offset,
@@ -285,7 +285,7 @@ Result PlanFirmware(const Request& request, const Capabilities& caps, Plan& plan
         plan.hops.push_back(std::move(hop));
     }
     if (std::find(covered.begin(), covered.end(), 0) != covered.end()) {
-        JST_ERROR("[SWEEP] Firmware sweep bands do not cover the output grid.");
+        JST_ERROR("[MODULE_SDR_SWEEP] Firmware sweep bands do not cover the output grid.");
         return Result::ERROR;
     }
     return Result::SUCCESS;
@@ -371,23 +371,23 @@ Result Plan::Create(const Request& request, const Capabilities& caps, Plan& plan
 
     if (!std::isfinite(request.startFrequency) || !std::isfinite(request.endFrequency) ||
         request.startFrequency < 0.0 || request.startFrequency >= request.endFrequency) {
-        JST_ERROR("[SWEEP] Start frequency must be finite and below the end frequency.");
+        JST_ERROR("[MODULE_SDR_SWEEP] Start frequency must be finite and below the end frequency.");
         return Result::ERROR;
     }
     if (!std::isfinite(request.resolution) || request.resolution <= 0.0) {
-        JST_ERROR("[SWEEP] Resolution must be finite and positive.");
+        JST_ERROR("[MODULE_SDR_SWEEP] Resolution must be finite and positive.");
         return Result::ERROR;
     }
     if (!std::isfinite(request.sampleRate) || request.sampleRate < 0.0) {
-        JST_ERROR("[SWEEP] Capture rate must be finite and not negative.");
+        JST_ERROR("[MODULE_SDR_SWEEP] Capture rate must be finite and not negative.");
         return Result::ERROR;
     }
     if (request.dwell == 0 || request.dwell > MaxDwell) {
-        JST_ERROR("[SWEEP] Dwell must be between 1 and {}.", MaxDwell);
+        JST_ERROR("[MODULE_SDR_SWEEP] Dwell must be between 1 and {}.", MaxDwell);
         return Result::ERROR;
     }
     if (!std::isfinite(request.settlingTime) || request.settlingTime < 0.0) {
-        JST_ERROR("[SWEEP] Settling time must be finite and not negative.");
+        JST_ERROR("[MODULE_SDR_SWEEP] Settling time must be finite and not negative.");
         return Result::ERROR;
     }
 
@@ -397,12 +397,12 @@ Result Plan::Create(const Request& request, const Capabilities& caps, Plan& plan
     plan.flatten = request.flatten;
     if (mode == Mode::Firmware) {
         if (request.settlingTime > 0.0) {
-            JST_ERROR("[SWEEP] Firmware sweeps have fixed settling timing and cannot honor "
+            JST_ERROR("[MODULE_SDR_SWEEP] Firmware sweeps have fixed settling timing and cannot honor "
                       "a nonzero Settling Time override.");
             return Result::ERROR;
         }
         if (!caps.firmwareSweep) {
-            JST_ERROR("[SWEEP] Firmware sweeps are not available on this device.");
+            JST_ERROR("[MODULE_SDR_SWEEP] Firmware sweeps are not available on this device.");
             return Result::ERROR;
         }
         JST_CHECK(PlanFirmware(request, caps, plan));
@@ -411,7 +411,7 @@ Result Plan::Create(const Request& request, const Capabilities& caps, Plan& plan
     }
 
     if (plan.workingSetBytes() > MaxWorkingSetBytes) {
-        JST_ERROR("[SWEEP] The sweep needs {:.1f} MiB of working memory, above the limit of "
+        JST_ERROR("[MODULE_SDR_SWEEP] The sweep needs {:.1f} MiB of working memory, above the limit of "
                   "{} MiB. Reduce Dwell, the span, or the resolution.",
                   static_cast<F64>(plan.workingSetBytes()) / (1 << 20),
                   MaxWorkingSetBytes >> 20);
@@ -448,7 +448,7 @@ Assembler::~Assembler() = default;
 
 Result Assembler::configure(const Plan& plan) {
     if (plan.segmentLength == 0 || plan.outputBins == 0 || plan.hops.empty()) {
-        JST_ERROR("[SWEEP] Cannot assemble an empty sweep plan.");
+        JST_ERROR("[MODULE_SDR_SWEEP] Cannot assemble an empty sweep plan.");
         return Result::ERROR;
     }
     try {
@@ -488,7 +488,7 @@ Result Assembler::configure(const Plan& plan) {
         impl->valid.assign(length, false);
         impl->shapeReady = false;
     } catch (const std::bad_alloc&) {
-        JST_ERROR("[SWEEP] Failed to allocate the sweep buffers.");
+        JST_ERROR("[MODULE_SDR_SWEEP] Failed to allocate the sweep buffers.");
         return Result::ERROR;
     }
     impl->nextHop = 0;
@@ -516,14 +516,14 @@ Result Assembler::add(const Radio::Device::SweepCapture& capture) {
     const U64 length = plan.segmentLength;
     if (capture.hop >= plan.hops.size() || capture.samples.size() < plan.captureSamples()) {
         state.active = false;
-        JST_ERROR("[SWEEP] Hop capture does not match the sweep plan.");
+        JST_ERROR("[MODULE_SDR_SWEEP] Hop capture does not match the sweep plan.");
         return Result::ERROR;
     }
 
     const auto& hop = plan.hops[capture.hop];
     if (std::abs(capture.frequency - hop.frequency) > BinTolerance * plan.binWidth) {
         state.active = false;
-        JST_ERROR("[SWEEP] Hop {} tuned to {:.3f} Hz instead of {:.3f} Hz, beyond the "
+        JST_ERROR("[MODULE_SDR_SWEEP] Hop {} tuned to {:.3f} Hz instead of {:.3f} Hz, beyond the "
                   "{:.2f}-bin mapping tolerance.", capture.hop, capture.frequency,
                   hop.frequency, BinTolerance);
         return Result::ERROR;

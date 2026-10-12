@@ -9,7 +9,7 @@
 
 namespace Jetstream::Radio {
 
-class JETSTREAM_API SweepDecoder {
+class JETSTREAM_API HackRfSweepDecoder {
  public:
     static constexpr U64 HeaderBytes = 10;
 
@@ -46,7 +46,7 @@ class JETSTREAM_API SweepDecoder {
 
     void configure(std::vector<U64> headers, U64 dwell, U64 captureLength, U64 blockBytes,
                    F64 offset);
-    bool decode(const TransferQueue::Transfer& transfer, const Device::SweepSink& sink);
+    bool decode(const HackRfTransferQueue::Transfer& transfer, const Device::SweepSink& sink);
     U64 blocks() const;
     U64 losses() const;
 

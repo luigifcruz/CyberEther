@@ -181,7 +181,7 @@ Result SdrImpl::create() {
 }
 
 Result SdrImpl::reconfigure() {
-    if (const auto* sdr = createdModule(*this); sdr && sdr->appliedSettings().gainRange) {
+    if (const auto* sdr = createdModule(*this); sdr && sdr->getGainRange()) {
         manualGain = sdr->manualGain;
         moduleConfig->manualGain = manualGain;
     }
@@ -204,7 +204,7 @@ const Modules::SdrImpl* SdrImpl::createdModule(const Blocks::Sdr& config) {
 
 Parser::Map SdrImpl::manualGainFormat(const Blocks::Sdr& config) {
     const auto* sdr = createdModule(config);
-    const auto range = sdr ? sdr->appliedSettings().gainRange : std::nullopt;
+    const auto range = sdr ? sdr->getGainRange() : std::nullopt;
     const F32 minimum = range ? static_cast<F32>(range->minimum) : 0.0f;
     const F32 maximum = range ? static_cast<F32>(range->maximum) : 60.0f;
     return {{"type", "range"}, {"min", minimum}, {"max", maximum}, {"unit", "dB"}};
@@ -235,8 +235,9 @@ Parser::Map SdrImpl::sampleRateFormat(const Blocks::Sdr& config) {
     for (const auto rate : rates) {
         std::string value;
         Parser::TypedToString(static_cast<F32>(rate), value);
-        options.emplace_back(Parser::Map{{"label", jst::fmt::format("{:g} MHz", rate / 1e6)},
-                                         {"value", std::move(value)}});
+        auto label = rate < 1e6 ? jst::fmt::format("{:g} kHz", rate / 1e3)
+                                : jst::fmt::format("{:g} MHz", rate / 1e6);
+        options.emplace_back(Parser::Map{{"label", std::move(label)}, {"value", std::move(value)}});
     }
     return {{"type", "dropdown"}, {"options", std::move(options)}};
 }

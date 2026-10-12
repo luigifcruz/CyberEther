@@ -2,7 +2,7 @@ src_lst += files([
     'block_impl.cc',
     'module_impl.cc',
     'library/soapysdr.cc',
-    'soapy_runtime.cc',
+    'library/soapy_runtime.cc',
     'module_impl_native_cpu.cc',
 ])
 
