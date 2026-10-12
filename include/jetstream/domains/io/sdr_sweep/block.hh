@@ -17,13 +17,14 @@ struct SdrSweep : public Block::Config {
     F64 resolution = 10.0e3;
     U64 dwell = 1;
     F32 settlingTime = 0.0f;
+    bool flatten = true;
 
     JST_BLOCK_TYPE(sdr_sweep);
     JST_BLOCK_DOMAIN("IO");
     JST_BLOCK_NODE_SIZE(M);
     JST_BLOCK_PARAMS(deviceString, antenna, automaticGain, manualGain, biasTee,
                      startFrequency, endFrequency, sampleRate, resolution,
-                     dwell, settlingTime);
+                     dwell, settlingTime, flatten);
     JST_BLOCK_DESCRIPTION(
         "SDR Sweep",
         "Sweeps a radio across a wide band.",
@@ -73,6 +74,9 @@ struct SdrSweep : public Block::Config {
         "| **Settling Time** | 0 ms | 0 or more | Time skipped after each retune. Zero "
         "uses the radio's default. A nonzero value makes HackRF retune instead of "
         "sweeping in firmware. |\n"
+        "| **Flatten** | On | On, Off | Removes the receiver shape that repeats in every "
+        "hop. It is learned from the level at each offset across the hops of a sweep, "
+        "ignoring carriers, and settles over a few sweeps. Needs three or more hops. |\n"
         "| **Automatic Gain** | Off | On, Off | Lets the radio set its gain, which "
         "makes hop levels not comparable. |\n"
         "| **Manual Gain** | 30 dB | Within the radio's gain range | Receive gain, shown "

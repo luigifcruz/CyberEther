@@ -150,6 +150,7 @@ Result SdrSweepImpl::create() {
         .resolution = resolution,
         .dwell = dwell,
         .settlingTime = settlingTime / 1e3,
+        .flatten = flatten,
     };
     if (const auto result = Sweep::Plan::Create(request, caps, plan); result != Result::SUCCESS) {
         radio.reset();
@@ -264,6 +265,7 @@ Result SdrSweepImpl::reconfigure() {
         .resolution = config.resolution,
         .dwell = config.dwell,
         .settlingTime = config.settlingTime / 1e3,
+        .flatten = config.flatten,
     };
     if (Sweep::Plan::Create(request, radio->capabilities(), next) != Result::SUCCESS ||
         next.mode != submitted.mode || next.sampleRate != submitted.sampleRate ||
@@ -282,6 +284,7 @@ Result SdrSweepImpl::reconfigure() {
     manualGain = static_cast<F32>(settings.gain);
     dwell = config.dwell;
     settlingTime = config.settlingTime;
+    flatten = config.flatten;
     return Result::SUCCESS;
 }
 

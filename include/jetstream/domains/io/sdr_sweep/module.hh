@@ -18,11 +18,12 @@ struct SdrSweep : public Module::Config {
     F64 resolution = 10.0e3;
     U64 dwell = 1;
     F32 settlingTime = 0.0f;
+    bool flatten = true;
 
     JST_MODULE_TYPE(sdr_sweep);
     JST_MODULE_PARAMS(deviceString, antenna, automaticGain, manualGain, biasTee,
                       startFrequency, endFrequency, sampleRate, resolution,
-                      dwell, settlingTime);
+                      dwell, settlingTime, flatten);
 };
 
 }  // namespace Jetstream::Modules

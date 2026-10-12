@@ -394,6 +394,7 @@ Result Plan::Create(const Request& request, const Capabilities& caps, Plan& plan
     const auto mode = ResolveMode(request, caps);
     plan.mode = mode;
     plan.dwell = request.dwell;
+    plan.flatten = request.flatten;
     if (mode == Mode::Firmware) {
         if (request.settlingTime > 0.0) {
             JST_ERROR("[SWEEP] Firmware sweeps have fixed settling timing and cannot honor "
@@ -420,7 +421,18 @@ Result Plan::Create(const Request& request, const Capabilities& caps, Plan& plan
 }
 
 struct Assembler::Impl {
+    void flatten();
+
     Plan plan;
+    std::vector<U64> groupStart;
+    std::vector<U64> groupBins;
+    std::vector<F32> levels;
+    std::vector<F32> floors;
+    std::vector<F64> sums;
+    std::vector<U64> counts;
+    std::vector<F32> shape;
+    std::vector<bool> valid;
+    bool shapeReady = false;
     std::vector<CF32> spectrum;
     std::vector<CF32> transform;
     std::vector<CF32> combined;
@@ -446,6 +458,35 @@ Result Assembler::configure(const Plan& plan) {
         impl->transform.assign(plan.segmentLength, CF32{});
         impl->combined.assign(plan.segmentLength, CF32{});
         impl->magnitude.assign(plan.segmentLength, 0.0f);
+
+        const U64 length = plan.segmentLength;
+        impl->groupStart.assign(length + 1, 0);
+        for (const auto& hop : plan.hops) {
+            for (const auto& run : hop.runs) {
+                for (U64 i = 0; i < run.length; ++i) {
+                    ++impl->groupStart[run.segment + i + 1];
+                }
+            }
+        }
+        for (U64 u = 0; u < length; ++u) {
+            impl->groupStart[u + 1] += impl->groupStart[u];
+        }
+        impl->groupBins.assign(impl->groupStart.back(), 0);
+        std::vector<U64> cursor(impl->groupStart.begin(), impl->groupStart.end() - 1);
+        for (const auto& hop : plan.hops) {
+            for (const auto& run : hop.runs) {
+                for (U64 i = 0; i < run.length; ++i) {
+                    impl->groupBins[cursor[run.segment + i]++] = run.grid + i;
+                }
+            }
+        }
+        impl->levels.clear();
+        impl->floors.assign(length, 0.0f);
+        impl->sums.assign(length + 1, 0.0);
+        impl->counts.assign(length + 1, 0);
+        impl->shape.assign(length, 0.0f);
+        impl->valid.assign(length, false);
+        impl->shapeReady = false;
     } catch (const std::bad_alloc&) {
         JST_ERROR("[SWEEP] Failed to allocate the sweep buffers.");
         return Result::ERROR;
@@ -530,11 +571,83 @@ U64 Assembler::completedHops() const {
     return impl->active ? impl->nextHop : 0;
 }
 
+void Assembler::Impl::flatten() {
+    constexpr U64 MinimumHops = 3;
+    constexpr F32 MaximumCorrection = 20.0f;
+    constexpr F32 Smoothing = 0.2f;
+    constexpr F32 CarrierMargin = 10.0f;
+
+    const U64 length = plan.segmentLength;
+    for (U64 u = 0; u < length; ++u) {
+        const U64 begin = groupStart[u];
+        const U64 end = groupStart[u + 1];
+        valid[u] = end - begin >= MinimumHops;
+        if (!valid[u]) {
+            continue;
+        }
+        levels.clear();
+        for (U64 g = begin; g < end; ++g) {
+            levels.push_back(10.0f * std::log10(std::norm(spectrum[groupBins[g]]) + 1e-30f));
+        }
+        const auto middle = levels.begin() + static_cast<std::ptrdiff_t>(levels.size() / 2);
+        std::nth_element(levels.begin(), middle, levels.end());
+        const F32 ceiling = *middle + CarrierMargin;
+        F64 sum = 0.0;
+        U64 count = 0;
+        for (const auto level : levels) {
+            if (level <= ceiling) {
+                sum += level;
+                ++count;
+            }
+        }
+        floors[u] = static_cast<F32>(sum / static_cast<F64>(count));
+    }
+
+    for (U64 u = 0; u < length; ++u) {
+        sums[u + 1] = sums[u] + (valid[u] ? floors[u] : 0.0);
+        counts[u + 1] = counts[u] + (valid[u] ? 1 : 0);
+    }
+    const U64 radius = std::max<U64>(1, length / 128);
+    levels.clear();
+    for (U64 u = 0; u < length; ++u) {
+        if (!valid[u]) {
+            continue;
+        }
+        const U64 low = u > radius ? u - radius : 0;
+        const U64 high = std::min(length, u + radius + 1);
+        const F32 smoothed = static_cast<F32>((sums[high] - sums[low]) /
+                                              static_cast<F64>(counts[high] - counts[low]));
+        shape[u] = shapeReady ? shape[u] + Smoothing * (smoothed - shape[u]) : smoothed;
+        levels.push_back(shape[u]);
+    }
+    shapeReady = true;
+    if (levels.empty()) {
+        return;
+    }
+
+    const auto middle = levels.begin() + static_cast<std::ptrdiff_t>(levels.size() / 2);
+    std::nth_element(levels.begin(), middle, levels.end());
+    const F32 reference = *middle;
+    for (U64 u = 0; u < length; ++u) {
+        if (!valid[u]) {
+            continue;
+        }
+        const F32 correction = std::clamp(shape[u] - reference, -MaximumCorrection, MaximumCorrection);
+        const F32 factor = std::pow(10.0f, -correction / 20.0f);
+        for (U64 g = groupStart[u]; g < groupStart[u + 1]; ++g) {
+            spectrum[groupBins[g]] *= factor;
+        }
+    }
+}
+
 Result Assembler::synthesize(std::span<CF32> output) {
     auto& state = *impl;
     const U64 bins = state.plan.outputBins;
     if (!complete() || output.size() < bins) {
         return Result::ERROR;
+    }
+    if (state.plan.flatten) {
+        state.flatten();
     }
 
     const U64 shift = bins - bins / 2;
