@@ -3,9 +3,11 @@
 #include <array>
 #include <cctype>
 #include <limits>
+#include <optional>
 #include <string>
 #include <utility>
 
+#include "jetstream/memory/attributes.hh"
 #include "jetstream/memory/tensor.hh"
 
 namespace Jetstream {
@@ -33,24 +35,15 @@ Result ReadAxis(const Tensor& tensor,
                 std::optional<Index>& axis) {
     axis.reset();
 
-    const std::string key(name);
-    if (!tensor.hasAttribute(key)) {
-        return Result::SUCCESS;
-    }
-
-    const std::any value = tensor.attribute(key);
-    const auto* resolvedAxis = std::any_cast<Index>(&value);
-    if (resolvedAxis == nullptr) {
-        JST_ERROR("[MEMORY:AXIS] Attribute '{}' must have type Index.", name);
-        return Result::ERROR;
-    }
-    if (*resolvedAxis >= tensor.rank()) {
+    std::optional<Index> resolvedAxis;
+    JST_CHECK(ReadAttribute(tensor, std::string(name), resolvedAxis));
+    if (resolvedAxis && *resolvedAxis >= tensor.rank()) {
         JST_ERROR("[MEMORY:AXIS] Attribute '{}' axis {} is out of range for rank {}.",
                   name, *resolvedAxis, tensor.rank());
         return Result::ERROR;
     }
 
-    axis = *resolvedAxis;
+    axis = resolvedAxis;
     return Result::SUCCESS;
 }
 

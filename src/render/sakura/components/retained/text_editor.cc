@@ -340,6 +340,10 @@ bool TextEditor::update(Config config) {
     return true;
 }
 
+const TextGrid::Metrics& TextEditor::metrics() const {
+    return impl->grid.metrics();
+}
+
 Extent2D<F32> TextEditor::measure(const Context& ctx, Extent2D<F32> available) {
     return measureChild(this->impl->grid, ctx, available);
 }

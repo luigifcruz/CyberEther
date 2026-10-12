@@ -7,6 +7,7 @@
 #include <jetstream/domains/core/slice/module.hh>
 #include <jetstream/domains/core/squeeze_dims/module.hh>
 #include <jetstream/domains/core/duplicate/module.hh>
+#include <jetstream/memory/attributes.hh>
 #include <jetstream/memory/axis.hh>
 
 #include <optional>
@@ -112,15 +113,9 @@ Result DecimatorImpl::validate() {
         shiftAfterSample(plan.reshapedSignalAxes.batch);
         shiftAfterSample(plan.reshapedSignalAxes.channel);
 
-        if (inputTensor.hasAttribute("sampleRate")) {
-            const std::any sampleRate = inputTensor.attribute("sampleRate");
-            const auto* sampleRateF32 = std::any_cast<F32>(&sampleRate);
-            if (sampleRateF32 == nullptr) {
-                JST_ERROR("[BLOCK_DECIMATOR] Sample rate attribute must be F32.");
-                return Result::ERROR;
-            }
-            plan.deriveSampleRate = true;
-        }
+        std::optional<F32> sampleRate;
+        JST_CHECK(ReadAttribute(inputTensor, "sampleRate", sampleRate));
+        plan.deriveSampleRate = sampleRate.has_value();
 
         candidatePlan = std::move(plan);
     }

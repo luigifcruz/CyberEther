@@ -30,6 +30,11 @@ Result SoapyImpl::validate() {
         return Result::ERROR;
     }
 
+    if (!std::isfinite(config.manualGain)) {
+        JST_ERROR("[MODULE_SOAPY] Manual gain must be finite.");
+        return Result::ERROR;
+    }
+
     if (config.numberOfBatches == 0) {
         JST_ERROR("[MODULE_SOAPY] Number of batches cannot be zero.");
         return Result::ERROR;
@@ -145,6 +150,7 @@ Result SoapyImpl::configureDevice() {
     JST_CHECK(receiverDevice.setSampleRate(sampleRate));
     JST_CHECK(receiverDevice.setTunerFrequency(frequency));
     JST_CHECK(receiverDevice.setAutomaticGain(automaticGain));
+    JST_CHECK(setManualGain(manualGain));
     JST_CHECK(receiverDevice.setBiasTee(biasTee));
     JST_CHECK(receiverDevice.startStream(streamString));
     return Result::SUCCESS;
@@ -210,7 +216,8 @@ Result SoapyImpl::reconfigure() {
         return Result::RECREATE;
     }
 
-    if (newConfig.frequency != frequency) {
+    const bool frequencyChanged = newConfig.frequency != frequency;
+    if (frequencyChanged) {
         JST_CHECK(setTunerFrequency(newConfig.frequency));
     }
 
@@ -218,8 +225,20 @@ Result SoapyImpl::reconfigure() {
         JST_CHECK(setSampleRate(newConfig.sampleRate));
     }
 
-    if (newConfig.automaticGain != automaticGain) {
+    const bool previousAutomaticGain = automaticGain;
+    const bool gainModeChanged = newConfig.automaticGain != automaticGain;
+    if (gainModeChanged) {
         JST_CHECK(setAutomaticGain(newConfig.automaticGain));
+    }
+
+    if (frequencyChanged || gainModeChanged || newConfig.manualGain != manualGain) {
+        const auto result = setManualGain(newConfig.manualGain);
+        if (result != Result::SUCCESS) {
+            if (gainModeChanged) {
+                JST_CHECK(setAutomaticGain(previousAutomaticGain));
+            }
+            return result;
+        }
     }
 
     return Result::SUCCESS;
@@ -320,6 +339,10 @@ std::vector<std::string> SoapyImpl::listAntennas() const {
     return receiverDevice.listAntennas();
 }
 
+std::optional<SoapyAbi::Range> SoapyImpl::getGainRange() const {
+    return receiverDevice.getGainRange();
+}
+
 Result SoapyImpl::setTunerFrequency(const F32& freq) {
     JST_CHECK(receiverDevice.setTunerFrequency(freq));
 
@@ -342,6 +365,16 @@ Result SoapyImpl::setAutomaticGain(const bool& gain) {
     JST_CHECK(receiverDevice.setAutomaticGain(gain));
 
     automaticGain = gain;
+
+    return Result::SUCCESS;
+}
+
+Result SoapyImpl::setManualGain(const F32& gain) {
+    if (!automaticGain) {
+        JST_CHECK(receiverDevice.setGain(gain));
+    }
+
+    manualGain = gain;
 
     return Result::SUCCESS;
 }

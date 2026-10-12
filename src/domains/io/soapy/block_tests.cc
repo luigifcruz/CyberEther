@@ -36,6 +36,7 @@ TEST_CASE("Soapy block preserves public defaults and saved settings",
     REQUIRE(config.frequencyStep == 1000000.0f);
     REQUIRE(config.sampleRate == 2.0e6f);
     REQUIRE(config.automaticGain);
+    REQUIRE(config.manualGain == 0.0f);
     REQUIRE_FALSE(config.biasTee);
     REQUIRE(config.numberOfBatches == 8);
     REQUIRE(config.numberOfTimeSamples == 8192);
@@ -45,6 +46,8 @@ TEST_CASE("Soapy block preserves public defaults and saved settings",
     config.deviceString = "driver=saved,serial=123";
     config.streamString = "bufflen=8192";
     config.antenna = "RX";
+    config.automaticGain = false;
+    config.manualGain = 20.0f;
     config.biasTee = true;
     Parser::Map saved;
     REQUIRE(config.serialize(saved) == Result::SUCCESS);
@@ -79,6 +82,43 @@ TEST_CASE_METHOD(FlowgraphFixture,
     const auto options = Parser::Get<std::vector<Parser::Map>>(field->format, "options");
     REQUIRE(options.back() == Parser::Map{{"label", "Configured device"},
                                          {"value", config.deviceString}});
+    REQUIRE(flowgraph->blockDestroy("radio", false) == Result::SUCCESS);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Soapy manual gain stays editable without a system runtime",
+                 "[modules][io][soapy][block][gain]") {
+    const TestSupport::ScopedEnvironment environment("CYBERETHER_SOAPYSDR_LIBRARY");
+    REQUIRE(environment.set("/__cyberether_missing_soapy__/library"));
+    const RuntimeReset reset;
+    Blocks::Soapy config;
+    config.antenna = "RX";
+    config.automaticGain = false;
+    config.manualGain = 20.0f;
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    REQUIRE(viewBlock("radio").state == Block::State::Incomplete);
+
+    REQUIRE(flowgraph->blockReconfigure("radio", {{"frequencyStep", 2000000.0f}}) ==
+            Result::SUCCESS);
+    const auto block = viewBlock("radio");
+    REQUIRE(block.state == Block::State::Incomplete);
+    REQUIRE(Parser::Get<F32>(block.config, "frequencyStep") == 2000000.0f);
+    REQUIRE(block.outputs.empty());
+    const auto antenna = std::find_if(block.interfaceConfigs.begin(),
+                                      block.interfaceConfigs.end(),
+                                      [](const auto& field) { return field.name == "antenna"; });
+    REQUIRE(antenna != block.interfaceConfigs.end());
+    REQUIRE(Parser::Get<std::vector<Parser::Map>>(antenna->format, "options") ==
+            std::vector<Parser::Map>{{{"label", "Default"}, {"value", ""}},
+                                    {{"label", "RX"}, {"value", "RX"}}});
+    const auto gain = std::find_if(block.interfaceConfigs.begin(),
+                                   block.interfaceConfigs.end(),
+                                   [](const auto& field) { return field.name == "manualGain"; });
+    REQUIRE(gain != block.interfaceConfigs.end());
+    REQUIRE(gain->format == Parser::Map{
+        {"type", "range"}, {"min", 0.0f}, {"max", 60.0f}, {"unit", "dB"},
+    });
+    REQUIRE(Parser::Get<F32>(block.config, "manualGain") == 20.0f);
     REQUIRE(flowgraph->blockDestroy("radio", false) == Result::SUCCESS);
 }
 

@@ -88,6 +88,8 @@ struct SoapyApi {
                         const SoapyAbi::Kwargs*) = nullptr;
     int (*setSampleRate)(SoapyAbi::Device*, int, std::size_t, double) = nullptr;
     int (*setGainMode)(SoapyAbi::Device*, int, std::size_t, bool) = nullptr;
+    SoapyAbi::Range (*getGainRange)(const SoapyAbi::Device*, int, std::size_t) = nullptr;
+    int (*setGain)(SoapyAbi::Device*, int, std::size_t, double) = nullptr;
     SoapyAbi::ArgInfo* (*getSettingInfo)(const SoapyAbi::Device*, std::size_t*) = nullptr;
     int (*writeSetting)(SoapyAbi::Device*, const char*, const char*) = nullptr;
     SoapyAbi::Stream* (*setupStream)(SoapyAbi::Device*, int, const char*, const std::size_t*,

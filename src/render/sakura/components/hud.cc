@@ -6,38 +6,6 @@ namespace Jetstream::Sakura {
 
 struct Hud::Impl {
     Config config;
-
-    static ImVec2 anchorPivot(Anchor anchor) {
-        switch (anchor) {
-            case Anchor::TopLeft:
-                return ImVec2(0.0f, 0.0f);
-            case Anchor::TopRight:
-                return ImVec2(1.0f, 0.0f);
-            case Anchor::BottomLeft:
-                return ImVec2(0.0f, 1.0f);
-            case Anchor::BottomRight:
-                return ImVec2(1.0f, 1.0f);
-            case Anchor::Center:
-                return ImVec2(0.5f, 0.5f);
-        }
-        return ImVec2(0.0f, 0.0f);
-    }
-
-    static ImVec2 anchorPosition(Anchor anchor, const ImVec2& pos, const ImVec2& size, F32 padding) {
-        switch (anchor) {
-            case Anchor::TopLeft:
-                return ImVec2(pos.x + padding, pos.y + padding);
-            case Anchor::TopRight:
-                return ImVec2(pos.x + size.x - padding, pos.y + padding);
-            case Anchor::BottomLeft:
-                return ImVec2(pos.x + padding, pos.y + size.y - padding);
-            case Anchor::BottomRight:
-                return ImVec2(pos.x + size.x - padding, pos.y + size.y - padding);
-            case Anchor::Center:
-                return ImVec2(pos.x + size.x * 0.5f, pos.y + size.y * 0.5f);
-        }
-        return pos;
-    }
 };
 
 Hud::Hud() {
@@ -58,9 +26,10 @@ void Hud::render(const Context& ctx, Child child) const {
 
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     const F32 padding = Scale(ctx, config.padding);
-    const ImVec2 position = Impl::anchorPosition(config.anchor, viewport->Pos, viewport->Size, padding);
+    ImVec2 position = Private::AnchorPoint(config.anchor, viewport->Pos, viewport->Size,
+                                           {padding, padding, padding, padding});
 
-    ImGui::SetNextWindowPos(position, ImGuiCond_Always, Impl::anchorPivot(config.anchor));
+    ImGui::SetNextWindowPos(position, ImGuiCond_Always, Private::AnchorPivot(config.anchor));
     ImGui::SetNextWindowViewport(viewport->ID);
     if (config.size.has_value()) {
         ImGui::SetNextWindowSize(Private::ToImVec2(Scale(ctx, *config.size)), ImGuiCond_Always);

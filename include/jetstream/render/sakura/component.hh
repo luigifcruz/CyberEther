@@ -19,6 +19,16 @@ struct Padding {
     bool operator==(const Padding&) const = default;
 };
 
+enum class Anchor {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+    Center,
+    TopCenter,
+    BottomCenter,
+};
+
 namespace Retained {
 struct Canvas;
 }  // namespace Retained
@@ -55,6 +65,7 @@ struct Component {
     virtual Result build(Context& ctx);
     virtual Result paint();
     virtual bool event(const MouseEvent& event);
+    virtual bool hitTest(const Extent2D<F32>& point) const;
 
     Extent2D<F32> measureChild(Component& child, const Context& ctx, Extent2D<F32> available);
     void layoutRoot(const Context& ctx, Rect frame);

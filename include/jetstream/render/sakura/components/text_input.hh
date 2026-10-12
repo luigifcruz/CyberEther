@@ -24,6 +24,8 @@ struct TextInput {
         bool focus = false;
         bool focusOutline = true;
         bool selectAllOnFocus = false;
+        bool password = false;
+        bool disabled = false;
         std::function<void(const std::string&)> onChange;
         std::function<void(const std::string&)> onSubmit;
     };

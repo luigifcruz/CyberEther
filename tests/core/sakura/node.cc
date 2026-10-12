@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
+#include <jetstream/render/sakura/components/combo.hh>
 #include <jetstream/render/sakura/components/node/node.hh>
 #include <jetstream/render/tools/imnodes.h>
 #include <jetstream/render/tools/imnodes_internal.h>
@@ -377,6 +378,46 @@ struct VisualizationSession : NodeSession {
     }
 };
 }  // namespace
+
+TEST_CASE("Auto-sized flowgraph nodes publish outer bounds in graph coordinates",
+          "[core][sakura][flowgraph_node][bounds]") {
+    const F32 scale = GENERATE(1.0f, 2.0f);
+    SakuraTest::HeadlessUi ui(scale, ImVec2(1200.0f, 1000.0f));
+    const auto ctx = ui.sakura();
+    FlowgraphNode node;
+    auto config = baseConfigFor(baseBlock("auto-bounds", "radio"));
+    config.block.layout = FlowgraphNode::Layout{20.0f, 30.0f, 0.0f, 0.0f};
+    LayoutLog saved;
+    LayoutLog measured;
+    config.onLayout = [&](F32 x, F32 y, F32 width, F32 height) { saved.record(x, y, width, height); };
+    config.onBounds = [&](Jetstream::Rect bounds, Extent2D<F32>, std::optional<Extent2D<F32>>) {
+        measured.record(bounds.x, bounds.y, bounds.width, bounds.height);
+    };
+
+    REQUIRE(measured.entries.empty());
+    settle(ui, ctx, node, config, 4);
+    REQUIRE(measured.entries.size() == 4);
+    REQUIRE_FALSE(saved.entries.empty());
+    REQUIRE(std::get<3>(saved.last()) == 0.0f);
+    const auto [x, y, width, height] = measured.last();
+    const auto rendered = flowgraphNodeDimensions(config.id);
+    CHECK(x == Catch::Approx(20.0f));
+    CHECK(y == Catch::Approx(30.0f));
+    CHECK(width == Catch::Approx(rendered.x / scale));
+    CHECK(height == Catch::Approx(rendered.y / scale));
+    CHECK(width > DefaultNodeWidth(config.block.nodeSize));
+    CHECK(height > 0.0f);
+
+    // A loading placeholder is not a measurement of the completed block.
+    config.block.state = Block::State::Creating;
+    settle(ui, ctx, node, config, 2);
+    CHECK(measured.entries.size() == 4);
+    config.block.state = Block::State::Created;
+    config.block.layout->x = 320.0f;
+    settle(ui, ctx, node, config, 2);
+    CHECK(measured.entries.size() == 6);
+    CHECK(std::get<0>(measured.last()) == Catch::Approx(320.0f));
+}
 
 TEST_CASE("Errored python block still floors and resizes",
           "[core][sakura][flowgraph_node][errored]") {
@@ -2424,4 +2465,130 @@ TEST_CASE("Config grids coexist with flexible editors and attached surface alloc
     for (const auto& resize : resizeLog.entries) {
         REQUIRE(resize.logicalSize.y >= FlowgraphNode::SurfaceHeightSpec().minimum);
     }
+}
+
+TEST_CASE("Combo popup rows stay clickable over a node drawn above their own",
+          "[core][sakura][node][combo]") {
+    SakuraTest::HeadlessUi ui(1.0f, ImVec2(600.0f, 600.0f));
+    const auto ctx = ui.sakura();
+
+    std::vector<std::string> options;
+    for (int i = 0; i < 24; ++i) {
+        options.push_back("Option " + std::to_string(i));
+    }
+
+    Sakura::Node upper;
+    auto upperConfig = baseConfig("combo-upper");
+    upperConfig.gridPosition = Extent2D<F32>{20.0f, 20.0f};
+    upperConfig.dimensions = {220.0f, 60.0f};
+    REQUIRE(upper.update(upperConfig));
+
+    Sakura::Node lower;
+    auto lowerConfig = baseConfig("combo-lower");
+    lowerConfig.gridPosition = Extent2D<F32>{20.0f, 110.0f};
+    lowerConfig.dimensions = {220.0f, 300.0f};
+    REQUIRE(lower.update(lowerConfig));
+
+    std::optional<U64> picked;
+    Sakura::Combo combo;
+    REQUIRE(combo.update({
+        .id = "combo-field",
+        .options = options,
+        .value = options[0],
+        .selectedIndex = U64{0},
+        .onSelect = [&](U64 index) { picked = index; },
+    }));
+
+    ImRect comboRect;
+    const auto frame = [&] {
+        ui.editorFrame([&] {
+            upper.render(ctx, [&](const Sakura::Context& ctx) {
+                combo.render(ctx);
+                comboRect = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+            });
+            lower.render(ctx, NodeContent);
+        });
+    };
+    const auto click = [&](ImVec2 at) {
+        ui.setMouse(at, false);
+        frame();
+        ui.setMouse(at, true);
+        frame();
+        ui.setMouse(at, false);
+        frame();
+    };
+
+    frame();
+    frame();
+    const auto* lowerData = componentNodeData("combo-lower");
+    REQUIRE(lowerData != nullptr);
+    const ImRect lowerRect = lowerData->Rect;
+
+    click(comboRect.GetCenter());
+    frame();
+    frame();
+    ImGuiContext& g = *ImGui::GetCurrentContext();
+    REQUIRE(g.OpenPopupStack.Size == 1);
+    const ImRect popupRect = g.OpenPopupStack[0].Window->Rect();
+    REQUIRE(popupRect.Max.y > lowerRect.Min.y + 8.0f);
+
+    click(ImVec2(popupRect.GetCenter().x, popupRect.Max.y - 8.0f));
+    CHECK(picked.has_value());
+    CHECK(g.OpenPopupStack.Size == 0);
+    CHECK_FALSE(ImNodes::IsNodeSelected(objectId("combo-lower")));
+    ui.setMouse(ImVec2(-100.0f, -100.0f), false);
+    frame();
+}
+
+TEST_CASE("Dragging a press into a covered part of a button does not activate it",
+          "[core][sakura][node][combo]") {
+    SakuraTest::HeadlessUi ui(1.0f, ImVec2(600.0f, 600.0f));
+    const auto ctx = ui.sakura();
+
+    Sakura::Node back;
+    auto backConfig = baseConfig("drag-back");
+    backConfig.gridPosition = Extent2D<F32>{20.0f, 20.0f};
+    backConfig.dimensions = {220.0f, 120.0f};
+    REQUIRE(back.update(backConfig));
+
+    Sakura::Node front;
+    auto frontConfig = baseConfig("drag-front");
+    frontConfig.gridPosition = Extent2D<F32>{140.0f, 20.0f};
+    frontConfig.dimensions = {200.0f, 200.0f};
+    REQUIRE(front.update(frontConfig));
+
+    bool activated = false;
+    ImRect buttonRect;
+    const auto frame = [&] {
+        ui.editorFrame([&] {
+            back.render(ctx, [&](const Sakura::Context&) {
+                if (ImGui::Button("covered-button", ImVec2(200.0f, 40.0f))) {
+                    activated = true;
+                }
+                buttonRect = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+            });
+            front.render(ctx, NodeContent);
+        });
+    };
+
+    frame();
+    frame();
+    const auto* frontData = componentNodeData("drag-front");
+    REQUIRE(frontData != nullptr);
+    const ImVec2 exposed(frontData->Rect.Min.x - 10.0f, buttonRect.GetCenter().y);
+    const ImVec2 covered(frontData->Rect.Min.x + 10.0f, buttonRect.GetCenter().y);
+    REQUIRE(buttonRect.Contains(exposed));
+    REQUIRE(buttonRect.Contains(covered));
+
+    ui.setMouse(exposed, false);
+    frame();
+    ui.setMouse(exposed, true);
+    frame();
+    ui.setMouse(covered, true);
+    frame();
+    ui.setMouse(covered, false);
+    frame();
+    CHECK_FALSE(activated);
+    ui.setMouse(ImVec2(-100.0f, -100.0f), false);
+    frame();
 }

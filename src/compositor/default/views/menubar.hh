@@ -373,6 +373,12 @@ struct MenubarView {
             },
         });
 
+        feedbackMenu.update({
+            .id = this->config.id + ":feedback-menu",
+            .label = "Feedback",
+            .scale = 1.04f,
+        });
+
         updateMenu.update({
             .id = this->config.id + ":update-menu",
             .label = this->config.updateReady ? "Update Ready" : "Update Available",
@@ -444,6 +450,10 @@ struct MenubarView {
                 });
                 dividers[9].render(ctx);
                 openDeveloperSettingsItem.render(ctx);
+            });
+
+            feedbackMenu.render(ctx, [this](const Sakura::Context& ctx) {
+                feedbackItem.render(ctx);
             });
 
             helpMenu.render(ctx, [this](const Sakura::Context& ctx) {
@@ -522,6 +532,7 @@ struct MenubarView {
     Sakura::MenuItem repositoryItem;
     Sakura::MenuItem reportIssueItem;
     Sakura::MenuItem feedbackItem;
+    Sakura::Menu feedbackMenu;
     Sakura::Menu updateMenu;
     std::array<Sakura::Divider, 11> dividers;
     Sakura::KeyboardInput shortcuts;

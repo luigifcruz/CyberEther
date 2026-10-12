@@ -40,6 +40,7 @@ bool NodeCodeEditor::update(Config config) {
         .backgroundColorKey = impl->config.backgroundColorKey,
         .onChange = impl->config.onChange,
         .onSubmit = impl->config.onSubmit,
+        .onContentOverflow = impl->config.onContentOverflow,
     });
     return true;
 }

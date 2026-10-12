@@ -10,7 +10,7 @@ struct DefaultPresenterRegistry {
  public:
     DefaultPresenterRegistry(const DefaultCompositorState& state,
                              const DefaultCompositorCallbacks& callbacks) : context{state, callbacks},
-                                                                             workbench(context) {}
+                                                                            workbench(context) {}
 
     WorkbenchView::Config build() const {
         return workbench.build();

@@ -13,15 +13,7 @@ namespace Jetstream::Sakura {
 struct Overlay {
     using Child = std::function<void(const Context&)>;
 
-    enum class Anchor {
-        TopLeft,
-        TopCenter,
-        TopRight,
-        BottomLeft,
-        BottomRight,
-        BottomCenter,
-        Center,
-    };
+    using Anchor = Sakura::Anchor;
 
     struct Config {
         std::string id;
@@ -29,6 +21,7 @@ struct Overlay {
         Anchor anchor = Anchor::Center;
         Extent2D<F32> offset = {0.0f, 0.0f};
         bool inputs = false;
+        std::function<void(Rect)> onPlacement;
     };
 
     Overlay();

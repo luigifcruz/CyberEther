@@ -11,6 +11,8 @@
 #include <string>
 
 #include "environment.hh"
+#include "jetstream/compositor.hh"
+#include "jetstream/logger.hh"
 #include "jetstream/platform.hh"
 #include "jetstream/settings.hh"
 
@@ -125,6 +127,30 @@ void WriteFile(const std::filesystem::path& path, const std::string& content) {
     if (!file) {
         throw std::runtime_error("failed to write settings file");
     }
+}
+
+Parser::Map ReadDocument(const std::filesystem::path& path) {
+    Parser::Map document;
+    if (Parser::YamlDecode(ReadFile(path), document) != Result::SUCCESS) {
+        throw std::runtime_error("failed to decode settings file");
+    }
+    return document;
+}
+
+const Parser::Map& Section(const Parser::Map& map, const std::string& key) {
+    return std::any_cast<const Parser::Map&>(map.at(key));
+}
+
+const Parser::Sequence& List(const Parser::Map& map, const std::string& key) {
+    return std::any_cast<const Parser::Sequence&>(map.at(key));
+}
+
+std::string Scalar(const Parser::Map& map, const std::string& key) {
+    return std::any_cast<const std::string&>(map.at(key));
+}
+
+std::string Scalar(const Parser::Sequence& sequence, std::size_t index) {
+    return std::any_cast<const std::string&>(sequence.at(index));
 }
 
 void RequireDefaults(const Settings& settings) {
@@ -328,6 +354,69 @@ TEST_CASE("Settings can update memory without persisting", "[core][settings][per
     REQUIRE(restored.runtime.dependencyPolicy == "allow");
 }
 
+TEST_CASE("Queued settings publish immediately and preserve persistence ordering", "[core][settings][persistence]") {
+    SettingsSandbox sandbox("async");
+    Settings settings;
+    for (int i = 0; i < 64; ++i) {
+        settings.interface.themeKey = "Queued " + std::to_string(i);
+        REQUIRE(Settings::SetAsync(settings) == Result::SUCCESS);
+        Settings visible;
+        REQUIRE(Settings::Get(visible) == Result::SUCCESS);
+        CHECK(visible.interface.themeKey == settings.interface.themeKey);
+    }
+    REQUIRE(Settings::Flush() == Result::SUCCESS);
+    CHECK(ReadFile(sandbox.path).find("Queued 63") != std::string::npos);
+    settings.interface.themeKey = "Before barrier";
+    REQUIRE(Settings::SetAsync(settings) == Result::SUCCESS);
+    settings.interface.themeKey = "Synchronous barrier";
+    REQUIRE(Settings::Set(settings) == Result::SUCCESS);
+    CHECK(ReadFile(sandbox.path).find("Synchronous barrier") != std::string::npos);
+    CHECK_FALSE(Settings::TakePersistenceError());
+}
+
+TEST_CASE("Queued settings failures reach the owner without reverting newer memory", "[core][settings][persistence]") {
+    SettingsSandbox sandbox("async-failure");
+    std::filesystem::create_directories(sandbox.path);
+    Settings settings;
+    settings.interface.themeKey = "Visible despite disk failure";
+    REQUIRE(Settings::SetAsync(settings) == Result::SUCCESS);
+    REQUIRE(Settings::Flush() == Result::ERROR);
+    const auto error = Settings::TakePersistenceError();
+    REQUIRE(error);
+    CHECK(error->find("Could not save settings") != std::string::npos);
+    Settings visible;
+    REQUIRE(Settings::Get(visible) == Result::SUCCESS);
+    CHECK(visible.interface.themeKey == settings.interface.themeKey);
+    CHECK_FALSE(Settings::TakePersistenceError());
+}
+
+TEST_CASE("Compositor shutdown reports failed async settings saves without aborting cleanup",
+          "[core][settings][persistence][compositor][shutdown]") {
+    SettingsSandbox sandbox("shutdown-failure");
+    std::filesystem::create_directories(sandbox.path);
+    Compositor compositor{CompositorType::DEFAULT};
+
+    JST_LOG_LAST_ERROR().clear();
+    REQUIRE(Settings::SetAsync(Settings{}) == Result::SUCCESS);
+
+    SECTION("shutdown drains the queued save") {
+        // Let destroy() wait for the failed write rather than flushing it here.
+    }
+
+    SECTION("the async failure was already reported before shutdown") {
+        REQUIRE(Settings::Flush() == Result::ERROR);
+        REQUIRE(Settings::TakePersistenceError());
+    }
+
+    // Instance::destroy() checks this result before tearing down its resources.
+    CHECK(compositor.destroy() == Result::SUCCESS);
+    CHECK(JST_LOG_LAST_ERROR() ==
+          "[COMPOSITOR_IMPL_DEFAULT] Failed to save settings during shutdown. Continuing cleanup.");
+    CHECK(Settings::Flush() == Result::ERROR);
+
+    while (Settings::TakePersistenceError()) {}
+}
+
 TEST_CASE("Transient settings can be restored before a retained update",
           "[core][settings][persistence]") {
     SettingsSandbox sandbox("transient-restore");
@@ -447,6 +536,166 @@ TEST_CASE("Settings replaces an existing file without leaving a temporary file",
     REQUIRE(yaml.find("themeKey: Second") != std::string::npos);
     REQUIRE(yaml.find("themeKey: First") == std::string::npos);
     REQUIRE_FALSE(std::filesystem::exists(TempSettingsPath(sandbox.path)));
+}
+
+TEST_CASE("Settings preserves unknown sections and nested fields when saving",
+          "[core][settings][persistence][compatibility]") {
+    SettingsSandbox sandbox("preserve-unknown");
+    WriteFile(sandbox.path,
+              "graphics:\n"
+              "  scale: 1.5\n"
+              "  vsync: adaptive\n"
+              "  size:\n"
+              "    width: 640\n"
+              "    density: 2\n"
+              "interface:\n"
+              "  themeKey: Dark\n"
+              "  accent: teal\n"
+              "runtime:\n"
+              "  dependencyPolicy: deny\n"
+              "  python:\n"
+              "    path: /opt/python/lib/libpython3.12.so\n"
+              "    venv: /opt/venv\n"
+              "telemetry:\n"
+              "  enabled: true\n"
+              "  endpoints:\n"
+              "    - https://a.example\n"
+              "    - https://b.example\n"
+              "  window:\n"
+              "    days: 7\n");
+
+    Settings settings;
+    REQUIRE(Settings::Get(settings) == Result::SUCCESS);
+    settings.interface.themeKey = "Light";
+    REQUIRE(Settings::Set(settings) == Result::SUCCESS);
+
+    const auto requirePreserved = [&](const std::string& themeKey) {
+        const auto document = ReadDocument(sandbox.path);
+
+        const auto& graphics = Section(document, "graphics");
+        CHECK(Scalar(graphics, "vsync") == "adaptive");
+        CHECK(Scalar(graphics, "scale") == "1.5");
+        CHECK(Scalar(Section(graphics, "size"), "density") == "2");
+        CHECK(Scalar(Section(graphics, "size"), "width") == "640");
+
+        const auto& interface = Section(document, "interface");
+        CHECK(Scalar(interface, "accent") == "teal");
+        CHECK(Scalar(interface, "themeKey") == themeKey);
+
+        const auto& python = Section(Section(document, "runtime"), "python");
+        CHECK(Scalar(python, "venv") == "/opt/venv");
+        CHECK(Scalar(python, "path") == "/opt/python/lib/libpython3.12.so");
+
+        const auto& telemetry = Section(document, "telemetry");
+        CHECK(Scalar(telemetry, "enabled") == "true");
+        const auto& endpoints = List(telemetry, "endpoints");
+        REQUIRE(endpoints.size() == 2);
+        CHECK(Scalar(endpoints, 0) == "https://a.example");
+        CHECK(Scalar(endpoints, 1) == "https://b.example");
+        CHECK(Scalar(Section(telemetry, "window"), "days") == "7");
+    };
+
+    requirePreserved("Light");
+
+    settings.interface.themeKey = "Queued";
+    REQUIRE(Settings::SetAsync(settings) == Result::SUCCESS);
+    REQUIRE(Settings::Flush() == Result::SUCCESS);
+    requirePreserved("Queued");
+    CHECK_FALSE(Settings::TakePersistenceError());
+
+    Settings restored;
+    REQUIRE(Settings::Get(restored) == Result::SUCCESS);
+    CHECK(restored.interface.themeKey == "Queued");
+    CHECK(restored.graphics.size.width == 640);
+}
+
+TEST_CASE("Settings removes cleared fields without touching unknown siblings",
+          "[core][settings][persistence][compatibility]") {
+    SettingsSandbox sandbox("clear-known");
+    WriteFile(sandbox.path,
+              "graphics:\n"
+              "  device: cpu\n"
+              "  vsync: adaptive\n"
+              "registry:\n"
+              "  plugins:\n"
+              "    - /plugins/a.cep\n"
+              "    - /plugins/b.cep\n"
+              "  mirror: https://plugins.example\n"
+              "runtime:\n"
+              "  python:\n"
+              "    path: /opt/python/lib/libpython3.12.so\n");
+
+    Settings settings;
+    REQUIRE(Settings::Get(settings) == Result::SUCCESS);
+    REQUIRE(settings.graphics.device == DeviceType::CPU);
+
+    settings.graphics.device.reset();
+    settings.registry.plugins = {"/plugins/a.cep"};
+    settings.runtime.python.path.clear();
+    REQUIRE(Settings::Set(settings) == Result::SUCCESS);
+
+    const auto document = ReadDocument(sandbox.path);
+    const auto& graphics = Section(document, "graphics");
+    CHECK_FALSE(graphics.contains("device"));
+    CHECK(Scalar(graphics, "vsync") == "adaptive");
+
+    const auto& registry = Section(document, "registry");
+    const auto& plugins = List(registry, "plugins");
+    REQUIRE(plugins.size() == 1);
+    CHECK(Scalar(plugins, 0) == "/plugins/a.cep");
+    CHECK(Scalar(registry, "mirror") == "https://plugins.example");
+
+    {
+        SettingsSandbox cacheSwitch("clear-known-cache-switch");
+        Settings ignored;
+        REQUIRE(Settings::Get(ignored) == Result::SUCCESS);
+    }
+
+    Settings restored;
+    REQUIRE(Settings::Get(restored) == Result::SUCCESS);
+    CHECK_FALSE(restored.graphics.device.has_value());
+    CHECK(restored.registry.plugins == settings.registry.plugins);
+    CHECK(restored.runtime.python.path.empty());
+}
+
+TEST_CASE("Settings refuses to overwrite a malformed file",
+          "[core][settings][corruption]") {
+    SettingsSandbox sandbox("malformed-save");
+    const std::string malformed = "graphics: [unterminated\nfuture: value\n";
+    WriteFile(sandbox.path, malformed);
+
+    Settings settings;
+    settings.interface.themeKey = "Rejected";
+    REQUIRE(Settings::Set(settings) == Result::ERROR);
+    CHECK(ReadFile(sandbox.path) == malformed);
+
+    REQUIRE(Settings::SetAsync(settings) == Result::SUCCESS);
+    REQUIRE(Settings::Flush() == Result::ERROR);
+    CHECK(Settings::TakePersistenceError());
+    CHECK(ReadFile(sandbox.path) == malformed);
+    CHECK_FALSE(std::filesystem::exists(TempSettingsPath(sandbox.path)));
+}
+
+TEST_CASE("Settings repairs invalid known values while keeping unknown fields",
+          "[core][settings][corruption][compatibility]") {
+    SettingsSandbox sandbox("repair-known");
+    WriteFile(sandbox.path,
+              "graphics: not-a-map\n"
+              "future:\n"
+              "  flag: on\n");
+
+    Settings rejected;
+    REQUIRE(Settings::Get(rejected) == Result::ERROR);
+
+    REQUIRE(Settings::Set(Settings{}) == Result::SUCCESS);
+
+    const auto document = ReadDocument(sandbox.path);
+    CHECK(Scalar(Section(document, "graphics"), "framerate") == "60");
+    CHECK(Scalar(Section(document, "future"), "flag") == "on");
+
+    Settings restored;
+    REQUIRE(Settings::Get(restored) == Result::SUCCESS);
+    RequireDefaults(restored);
 }
 
 #if defined(JST_OS_LINUX)

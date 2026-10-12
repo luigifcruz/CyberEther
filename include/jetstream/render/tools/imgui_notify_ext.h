@@ -15,8 +15,8 @@
 #include <cstdio>
 
 #define NOTIFY_MAX_MSG_LENGTH           (uint64_t)4096   // Max message content length
-#define NOTIFY_PADDING_X                (float)20.0f     // Bottom-left X padding
-#define NOTIFY_PADDING_Y                (float)20.0f     // Bottom-left Y padding
+#define NOTIFY_PADDING_X                (float)20.0f     // Top-right X padding
+#define NOTIFY_PADDING_Y                (float)20.0f     // Top-right Y padding
 #define NOTIFY_PADDING_MESSAGE_Y        (float)10.0f     // Padding Y between each message
 #define NOTIFY_FADE_IN_OUT_TIME         (uint64_t)150    // Fade in and out duration
 #define NOTIFY_DEFAULT_DISMISS          (uint64_t)3000   // Auto dismiss after X ms (default, applied only of no data provided in constructors)
@@ -253,8 +253,9 @@ namespace ImGui
     /// <summary>
     /// Render toasts, call at the end of your rendering!
     /// </summary>
-    inline void RenderNotifications()
+    inline void RenderNotifications(float top_offset)
     {
+        const auto vp_pos = GetMainViewport()->Pos;
         const auto vp_size = GetMainViewport()->Size;
 
         float height = 0.f;
@@ -287,7 +288,7 @@ namespace ImGui
 
             //PushStyleColor(ImGuiCol_Text, text_color);
             SetNextWindowBgAlpha(opacity);
-            SetNextWindowPos(ImVec2(vp_size.x - NOTIFY_PADDING_X, vp_size.y - NOTIFY_PADDING_Y - height), ImGuiCond_Always, ImVec2(1.0f, 1.0f));
+            SetNextWindowPos(ImVec2(vp_pos.x + vp_size.x - NOTIFY_PADDING_X, vp_pos.y + top_offset + NOTIFY_PADDING_Y + height), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
             Begin(window_name, NULL, NOTIFY_TOAST_FLAGS);
 
             // Here we render the toast content

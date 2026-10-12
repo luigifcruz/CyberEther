@@ -46,6 +46,9 @@ TEST_CASE("Soapy validates configuration before accessing the runtime",
     SECTION("non-finite frequency") {
         config.frequency = std::numeric_limits<F32>::quiet_NaN();
     }
+    SECTION("non-finite manual gain") {
+        config.manualGain = std::numeric_limits<F32>::infinity();
+    }
     SECTION("overflowing buffer dimensions") {
         config.numberOfBatches = std::numeric_limits<U64>::max();
     }

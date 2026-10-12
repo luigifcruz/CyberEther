@@ -14,6 +14,7 @@ struct Notifications {
         std::string id;
         std::string backgroundColorKey = "notification_bg";
         F32 rounding = 12.0f;
+        F32 topOffset = 0.0f;
     };
 
     Notifications();

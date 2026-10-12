@@ -35,6 +35,7 @@ struct NodeCodeEditor {
         std::string backgroundColorKey = "editor_background";
         std::function<void(std::string)> onChange;
         std::function<void(std::string)> onSubmit;
+        std::function<void(Extent2D<F32>)> onContentOverflow;
     };
 
     NodeCodeEditor();

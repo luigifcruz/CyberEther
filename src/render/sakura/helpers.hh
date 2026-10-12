@@ -3,6 +3,7 @@
 
 #include "metrics.hh"
 #include "palette.hh"
+#include "state.hh"
 
 #include "imgui.h"
 #include "jetstream/render/tools/imgui_internal.h"
@@ -12,6 +13,7 @@
 #include "jetstream/render/tools/imgui_notify_ext.h"
 #include "jetstream/render/tools/imnodes.h"
 
+#include <jetstream/render/sakura/component.hh>
 #include <jetstream/types.hh>
 
 #include <algorithm>
@@ -61,6 +63,46 @@ inline ImVec4 ImColor(const Context& ctx, const std::string& key, const ImVec4& 
 
 inline ImVec4 ImColor(const Context& ctx, const std::string& key) {
     return ToImVec4(Sakura::ResolveColor(ctx, key));
+}
+
+inline ImVec2 AnchorPivot(Anchor anchor) {
+    switch (anchor) {
+        case Anchor::TopLeft:
+            return ImVec2(0.0f, 0.0f);
+        case Anchor::TopRight:
+            return ImVec2(1.0f, 0.0f);
+        case Anchor::BottomLeft:
+            return ImVec2(0.0f, 1.0f);
+        case Anchor::BottomRight:
+            return ImVec2(1.0f, 1.0f);
+        case Anchor::Center:
+            return ImVec2(0.5f, 0.5f);
+        case Anchor::TopCenter:
+            return ImVec2(0.5f, 0.0f);
+        case Anchor::BottomCenter:
+            return ImVec2(0.5f, 1.0f);
+    }
+    return ImVec2(0.0f, 0.0f);
+}
+
+inline ImVec2 AnchorPoint(Anchor anchor, const ImVec2& pos, const ImVec2& size, const Padding& padding) {
+    switch (anchor) {
+        case Anchor::TopLeft:
+            return ImVec2(pos.x + padding.left, pos.y + padding.top);
+        case Anchor::TopRight:
+            return ImVec2(pos.x + size.x - padding.right, pos.y + padding.top);
+        case Anchor::BottomLeft:
+            return ImVec2(pos.x + padding.left, pos.y + size.y - padding.bottom);
+        case Anchor::BottomRight:
+            return ImVec2(pos.x + size.x - padding.right, pos.y + size.y - padding.bottom);
+        case Anchor::Center:
+            return ImVec2(pos.x + size.x * 0.5f, pos.y + size.y * 0.5f);
+        case Anchor::TopCenter:
+            return ImVec2(pos.x + size.x * 0.5f, pos.y + padding.top);
+        case Anchor::BottomCenter:
+            return ImVec2(pos.x + size.x * 0.5f, pos.y + size.y - padding.bottom);
+    }
+    return pos;
 }
 
 }  // namespace Jetstream::Sakura::Private

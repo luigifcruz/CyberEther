@@ -33,8 +33,6 @@ TextEditor::Language ToEditorLanguage(CodeEditor::Language language) {
                                                       : TextEditor::Language::Python;
 }
 
-}  // namespace
-
 struct CodeEditorRoot : public Component {
     CodeEditor::Config config;
 
@@ -51,6 +49,7 @@ struct CodeEditorRoot : public Component {
     bool consoleResizing = false;
     F32 consoleResizeHeightPixels = 0.0f;
     F32 consoleHeight = kConsoleDefaultHeight;
+    Extent2D<F32> contentOverflow = {0.0f, 0.0f};
 
     CodeEditorRoot() {
         setClipsChildren(true);
@@ -301,6 +300,17 @@ struct CodeEditorRoot : public Component {
 
         layoutChild(ctx, backgroundBox, frame());
         layoutChild(ctx, textEditor, editorAreaRect());
+        const auto& metrics = textEditor.metrics();
+        const Rect editorArea = editorAreaRect();
+        const F32 ratio = std::max(1e-3f, pixelRatio());
+        const Extent2D<F32> overflow = {(metrics.contentWidth - editorArea.width) / ratio,
+                                        (metrics.contentHeight - editorArea.height) / ratio};
+        if (overflow != contentOverflow) {
+            contentOverflow = overflow;
+            if (config.onContentOverflow) {
+                config.onContentOverflow(overflow);
+            }
+        }
         if (consoleOn) {
             layoutChild(ctx, consoleView, panel);
         }
@@ -319,6 +329,8 @@ struct CodeEditorRoot : public Component {
         return handleChromeMouse(event);
     }
 };
+
+}  // namespace
 
 struct CodeEditor::Impl {
     Config config;

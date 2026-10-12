@@ -16,8 +16,6 @@ namespace {
 
 constexpr F32 kReferenceFontSize = Typography::FontSize;
 
-}  // namespace
-
 struct MarkdownBody : public Component {
     Box background;
     TextMarkdown markdown;
@@ -61,6 +59,8 @@ struct MarkdownBody : public Component {
 
     }
 };
+
+}  // namespace
 
 struct MarkdownView::Impl {
     Config config;

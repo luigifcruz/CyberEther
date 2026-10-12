@@ -35,7 +35,7 @@ struct FlowgraphMetadataWindowPresenter {
         }
 
         const auto& flowgraph = context.state.flowgraph.items.at(flowgraphId);
-        const std::string filter = FlowgraphKeyValueDetail::NormalizeFilter(
+        const std::string filter = Text::ToLower(
             context.state.interface.flowgraphMetadataSearch);
 
         Sakura::Table::Nodes nodes;

@@ -12,10 +12,16 @@
 namespace Jetstream::Sakura::Retained {
 
 struct Box : public Component {
+    enum class Shape {
+        Rect,
+        Triangle,
+    };
+
     struct Instance {
         Rect rect;
         bool visible = true;
         ColorRGBA<F32> backgroundColor = {1.0f, 1.0f, 1.0f, 1.0f};
+        F32 rotation = 0.0f;
 
         bool operator==(const Instance&) const = default;
     };
@@ -24,6 +30,7 @@ struct Box : public Component {
         std::string id;
         std::vector<Instance> instances;
         std::optional<Rect> clip;
+        Shape shape = Shape::Rect;
         F32 cornerRadius = 0.0f;
         F32 borderWidth = 0.0f;
         ColorRGBA<F32> borderColor = {0.0f, 0.0f, 0.0f, 1.0f};

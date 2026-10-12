@@ -180,8 +180,6 @@ struct TextGrid::Impl {
         U64 maxSegments = 1;
         U64 lineCapacity = 1;
         U64 segmentCapacity = 1;
-        U64 segmentLimit = 1;
-        U64 iconCapacity = 1;
     };
 
     struct InstancePools {
@@ -232,7 +230,6 @@ struct TextGrid::Impl {
     F32 surfaceHeight = 0.0f;
     Metrics storedMetrics;
     TextGridViewport viewport;
-    bool poolsOverflowed = false;
     bool hovered = false;
     bool active = false;
     bool windowFocused = false;
@@ -302,6 +299,7 @@ struct TextGrid::Impl {
     F32 lastNaturalWidth = 0.0f;
 
     F32 contentFontSize() const { return fontSizePixels * config.fontScale; }
+
     F32 lineHeightPixels() const { return std::max(1.0f, contentFontSize() * config.lineHeight); }
     F32 lineScaleAt(U64 line) const {
         return line < config.lineScale.size() ? std::max(kMinimumLineScale, config.lineScale[line]) : 1.0f;
@@ -360,7 +358,7 @@ struct TextGrid::Impl {
     void beginMetricsFrame(Render::Window* window) {
         textMetrics.setWindow(window);
         cellAdvanceCache.clear();
-        auto fonts = fontAvailability();
+        auto fonts = FontAvailability(textMetrics.window, config.fontName, extraFontNames);
         if (fonts != resolvedFontAvailability) {
             resolvedFontAvailability = std::move(fonts);
             linePrefixesValid = false;
@@ -446,19 +444,6 @@ struct TextGrid::Impl {
     }
     bool lineWrapsByColumns(U64 lineIndex) const {
         return config.monospace && !lineHasIcons(lines[lineIndex]);
-    }
-
-    std::vector<U8> fontAvailability() const {
-        std::vector<U8> available;
-        if (!textMetrics.window) {
-            return available;
-        }
-        available.reserve(extraFontNames.size() + 1);
-        available.push_back(textMetrics.window->hasFont(config.fontName) ? 1 : 0);
-        for (const auto& fontName : extraFontNames) {
-            available.push_back(textMetrics.window->hasFont(fontName) ? 1 : 0);
-        }
-        return available;
     }
 
     bool fontsReady() const {
@@ -879,7 +864,7 @@ struct TextGrid::Impl {
         return h;
     }
     F32 editorBottomPaddingPixels() const {
-        if (!config.editable) {
+        if (!config.editable || !config.scrollPastEnd) {
             return 0.0f;
         }
         const auto padding = paddingPixels();
@@ -895,6 +880,16 @@ struct TextGrid::Impl {
     }
     F32 contentHeightPixels() const {
         return paddedContentHeightPixels() + editorBottomPaddingPixels();
+    }
+    F32 boundedHeightPixels() const {
+        if (config.minLines <= 0.0f && config.maxLines <= 0.0f) {
+            return paddedContentHeightPixels();
+        }
+        const F32 lineHeight = lineHeightPixels();
+        F32 lines = std::round(textContentHeightPixels() / lineHeight);
+        if (config.minLines > 0.0f) lines = std::max(lines, config.minLines);
+        if (config.maxLines > 0.0f) lines = std::min(lines, config.maxLines);
+        return paddedContentHeightPixels() - textContentHeightPixels() + lines * lineHeight;
     }
     F32 maxScrollYPixels() const {
         const F32 range = contentHeightPixels() - rect.height;
@@ -2077,6 +2072,9 @@ struct TextGrid::Impl {
         if (layoutPass) {
             return maxScrollYPixels() > 0.0f;
         }
+        if (config.maxLines > 0.0f) {
+            return textContentHeightPixels() > config.maxLines * lineHeightPixels() + kScrollRangeEpsilon;
+        }
         return config.editable && textContentHeightPixels() > lineHeightPixels() + kScrollRangeEpsilon;
     }
 
@@ -2156,11 +2154,7 @@ struct TextGrid::Impl {
         frame.clipRight = textClipRightPixels();
         frame.maxSegments = std::max<U64>(1, config.maxLineSegments);
         frame.lineCapacity = viewport.rowCapacity;
-        frame.segmentLimit = frame.lineCapacity * kMinimumLineScaleDivisor * frame.maxSegments * kSegmentLimitScale;
-        frame.segmentCapacity = poolsOverflowed
-            ? frame.segmentLimit
-            : std::min(frame.segmentLimit, frame.lineCapacity * frame.maxSegments);
-        frame.iconCapacity = poolsOverflowed ? frame.segmentLimit : std::min(frame.segmentLimit, frame.lineCapacity);
+        frame.segmentCapacity = frame.lineCapacity * frame.maxSegments;
         if (frame.visible) {
             const F32 visibleTop = visibleTopContentY();
             collectVisibleRowRanges(visibleTop, visibleTop + (frame.clipBottom - frame.clipTop));
@@ -2277,7 +2271,7 @@ struct TextGrid::Impl {
             const F32 rightPad = spanEnd ? pad : 0.0f;
             const U64 poolIndex = poolIndexForFont(fontForRun(style, icon));
             auto& target = poolIndex == static_cast<U64>(-1) ? pools.text : pools.extraText[poolIndex];
-            if (target.size() < frame.segmentLimit) {
+            if (target.size() < frame.segmentCapacity) {
                 target.push_back({
                     .rect = {segX + leftPad, ctx.top, std::max(0.0f, segW - leftPad - rightPad), ctx.height},
                     .str = ctx.line.substr(startColumn, endColumn - startColumn),
@@ -2289,7 +2283,7 @@ struct TextGrid::Impl {
             }
             if (hasStyleBackgrounds) {
                 const auto bg = backgroundForStyle(style);
-                if (bg.a > 0.0f && pools.styleBackgrounds.size() < frame.segmentLimit) {
+                if (bg.a > 0.0f && pools.styleBackgrounds.size() < frame.segmentCapacity) {
                     const F32 bgHeight = glyphSize * kStyleBackgroundHeightRatio;
                     pools.styleBackgrounds.push_back({
                         .rect = {segX, ctx.top + (ctx.height - bgHeight) * 0.5f, segW, bgHeight},
@@ -2304,7 +2298,7 @@ struct TextGrid::Impl {
 
     void buildLineNumber(const FrameGeometry& frame, const RowContext& ctx, InstancePools& pools) {
         if (!config.lineNumbers || ctx.row.start != 0 || lineContinuesRowAt(ctx.row.line) ||
-            pools.lineNumbers.size() >= frame.segmentLimit) {
+            pools.lineNumbers.size() >= frame.lineCapacity) {
             return;
         }
         pools.lineNumbers.push_back({
@@ -2350,7 +2344,7 @@ struct TextGrid::Impl {
         const U64 hi = line == selection.second.line ? selection.second.column : ctx.line.size();
         const bool breakAtEnd = line < selection.second.line;
         const auto r = rowRangeScreenRect(frame, ctx, lo, hi, breakAtEnd);
-        if (r.has_value() && pools.selection.size() < frame.segmentLimit) {
+        if (r.has_value() && pools.selection.size() < frame.segmentCapacity) {
             pools.selection.push_back({.rect = *r, .backgroundColor = theme.selection});
         }
     }
@@ -2376,47 +2370,9 @@ struct TextGrid::Impl {
         }
     }
 
-    struct PoolCapacity {
-        U64 segments = 1;
-        U64 icons = 1;
-        U64 selection = 1;
-        U64 lineNumbers = 1;
-    };
-
-    U64 iconPoolIndex() const {
-        const bool shared = std::find(config.styleFonts.begin(), config.styleFonts.end(), config.iconFont) !=
-                            config.styleFonts.end();
-        return iconsActive() && !shared ? poolIndexForFont(config.iconFont) : static_cast<U64>(-1);
-    }
-
-    PoolCapacity reservePools(const FrameGeometry& frame, const InstancePools& pools) {
-        const U64 iconPool = iconPoolIndex();
-        U64 demand = std::max(pools.text.size(), pools.styleBackgrounds.size());
-        U64 iconDemand = 0;
-        for (U64 k = 0; k < pools.extraText.size(); ++k) {
-            if (k == iconPool) {
-                iconDemand = pools.extraText[k].size();
-            } else {
-                demand = std::max<U64>(demand, pools.extraText[k].size());
-            }
-        }
-        if (demand > frame.segmentCapacity || iconDemand > frame.iconCapacity ||
-            pools.selection.size() > frame.segmentCapacity || pools.lineNumbers.size() > frame.lineCapacity) {
-            poolsOverflowed = true;
-        }
-        return {
-            .segments = poolsOverflowed ? frame.segmentLimit : frame.segmentCapacity,
-            .icons = poolsOverflowed ? frame.segmentLimit : frame.iconCapacity,
-            .selection = poolsOverflowed ? frame.segmentLimit : frame.segmentCapacity,
-            .lineNumbers = poolsOverflowed ? frame.segmentLimit : frame.lineCapacity,
-        };
-    }
-
     void uploadPools(const FrameGeometry& frame, InstancePools&& pools) {
         const bool hasStyleBackgrounds = !theme.styleBackgrounds.empty();
-        const PoolCapacity capacity = reservePools(frame, pools);
-        const U64 segmentCapacity = capacity.segments;
-        const U64 iconPool = iconPoolIndex();
+        const U64 segmentCapacity = frame.segmentCapacity;
         selectionMatchBox.update({
             .id = config.id + ":selection-match",
             .instances = std::move(pools.matches),
@@ -2427,7 +2383,7 @@ struct TextGrid::Impl {
             .id = config.id + ":selection",
             .instances = std::move(pools.selection),
             .clip = frame.textClip,
-            .capacity = capacity.selection,
+            .capacity = segmentCapacity,
         });
         styleBackgroundBox.update({
             .id = config.id + ":style-bg",
@@ -2452,7 +2408,7 @@ struct TextGrid::Impl {
                 .clip = frame.textClip,
                 .fontName = live ? extraFontNames[k] : config.fontName,
                 .maxCharacters = kTextSegmentCharacterCapacity,
-                .capacity = k == iconPool ? capacity.icons : segmentCapacity,
+                .capacity = segmentCapacity,
             });
         }
         numberLabels.update({
@@ -2460,7 +2416,7 @@ struct TextGrid::Impl {
             .instances = std::move(pools.lineNumbers),
             .clip = frame.clip,
             .maxCharacters = kMaxLineNumberCharacters,
-            .capacity = capacity.lineNumbers,
+            .capacity = frame.lineCapacity,
         });
     }
 
@@ -2569,6 +2525,9 @@ bool TextGrid::update(Config config) {
                                  impl->config.wrap != config.wrap ||
                                  impl->config.padding != config.padding ||
                                  impl->config.scrollbar != config.scrollbar ||
+                                 impl->config.scrollPastEnd != config.scrollPastEnd ||
+                                 impl->config.minLines != config.minLines ||
+                                 impl->config.maxLines != config.maxLines ||
                                  impl->config.editable != config.editable ||
                                  impl->config.lineNumbers != config.lineNumbers;
     const bool wasAtBottom = impl->rect.height <= 0.0f ||
@@ -2625,6 +2584,10 @@ void TextGrid::moveCursorRows(I64 delta, bool extendSelection) {
     impl->moveCursorVertically(delta, extendSelection);
 }
 
+void TextGrid::focus() {
+    impl->focus();
+}
+
 const TextGrid::Metrics& TextGrid::metrics() const {
     return this->impl->storedMetrics;
 }
@@ -2645,7 +2608,7 @@ Extent2D<F32> TextGrid::measure(const Context& ctx, Extent2D<F32> available) {
     impl->rect = {0.0f, 0.0f, maxWidth, impl->rect.height};
     impl->ensureFontPools();
     impl->resolveViewport(false);
-    const F32 height = impl->paddedContentHeightPixels();
+    const F32 height = impl->boundedHeightPixels();
     impl->lastNaturalWidth = impl->measuredContentWidthPixels();
     const F32 width = std::min(maxWidth, impl->lastNaturalWidth);
     impl->rect = savedRect;

@@ -73,6 +73,9 @@ struct TextGrid : public Component {
         bool showActiveLine = true;
         bool stickToBottom = false;
         bool scrollbar = true;
+        bool scrollPastEnd = true;
+        F32 minLines = 0.0f;
+        F32 maxLines = 0.0f;
         Wrap wrap = Wrap::None;
         std::optional<Padding> padding;
         std::vector<F32> lineScale;
@@ -127,6 +130,7 @@ struct TextGrid : public Component {
     Position cursor() const;
     void setCursor(Position position);
     void moveCursorRows(I64 delta, bool extendSelection = false);
+    void focus();
 
  protected:
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;

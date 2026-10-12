@@ -37,11 +37,11 @@ env:
     libjetstream.so
   CUDA_SHARED_LIBS: |
     libcuda.so.1
-    libcudart.so.13
-    libnvrtc.so.13
-    libnvrtc-builtins.so.13.0
-    libnvJitLink.so.13
-    libcufft.so.12
+    libcudart.so.12
+    libnvrtc.so.12
+    libnvrtc-builtins.so.12.0
+    libnvJitLink.so.12
+    libcufft.so.11
 
 jobs:
   bin:
@@ -67,14 +67,14 @@ jobs:
             runner: ubuntu-24.04-arm
           - tag: x86_64-cuda
             arch: x86_64
-            image: nvidia/cuda:13.0.2-devel-ubuntu22.04
+            image: nvidia/cuda:12.0.1-devel-ubuntu22.04
             artifact: cyberether-bin-linux-x86_64-cuda
             archive: cyberether-linux-x86_64-cuda.tar.gz
             appimage_suffix: -cuda
             runner: ubuntu-latest
           - tag: aarch64-cuda
             arch: aarch64
-            image: nvidia/cuda:13.0.2-devel-ubuntu22.04
+            image: nvidia/cuda:12.0.1-devel-ubuntu22.04
             artifact: cyberether-bin-linux-aarch64-cuda
             archive: cyberether-linux-aarch64-cuda.tar.gz
             appimage_suffix: -cuda

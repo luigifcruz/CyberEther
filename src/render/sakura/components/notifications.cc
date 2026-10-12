@@ -27,7 +27,7 @@ void Notifications::render(const Context& ctx) const {
     ImGui::PushID(config.id.c_str());
     ImGui::PushStyleColor(ImGuiCol_WindowBg, Private::ImColor(ctx, config.backgroundColorKey));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, Scale(ctx, config.rounding));
-    ImGui::RenderNotifications();
+    ImGui::RenderNotifications(Scale(ctx, config.topOffset));
     ImGui::PopStyleVar();
     ImGui::PopStyleColor();
     ImGui::PopID();

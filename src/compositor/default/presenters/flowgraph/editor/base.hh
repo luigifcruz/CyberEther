@@ -114,9 +114,21 @@ struct FlowgraphEditorPresenter {
                                                    F32 x,
                                                    F32 y,
                                                    F32 width,
-                                                   F32 height) {
+                                                   F32 height,
+                                                   std::optional<FlowgraphNode::Layout> base) {
+                std::optional<NodeMeta> saved;
+                if (base.has_value()) {
+                    saved = NodeMeta{base->x, base->y, base->width, base->height};
+                }
                 enqueue(MailSetNodeMeta{
-                    flowgraphId, blockName, NodeMeta{x, y, width, height}});
+                    flowgraphId, blockName, NodeMeta{x, y, width, height}, saved});
+            },
+            .onNodeBounds = [record = context.callbacks.recordNodeBounds, flowgraphId](
+                               const std::string& blockName,
+                               Rect bounds,
+                               Extent2D<F32> size,
+                               std::optional<Extent2D<F32>> content) {
+                if (record) record(flowgraphId, blockName, bounds, size, content);
             },
             .onNodeConfigCollapse = [enqueue, flowgraphId](const std::string& blockName,
                                                            bool collapsed) {

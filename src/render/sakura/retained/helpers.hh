@@ -5,7 +5,10 @@
 #include <jetstream/types.hh>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <optional>
+#include <string>
 
 namespace Jetstream::Sakura::Retained {
 
@@ -43,6 +46,60 @@ inline Render::ScissorRect RectToScissor(const Rect& rect, const Extent2D<U64>& 
         static_cast<U32>(std::ceil(endY - y)),
     };
 }
+
+inline F32 Lerp(F32 a, F32 b, F32 t) {
+    return a + (b - a) * t;
+}
+
+inline F32 Approach(F32 value, F32 goal, F32 elapsed) {
+    return Lerp(value, goal, 1.0f - std::exp(-elapsed));
+}
+
+inline ColorRGBA<F32> Over(const ColorRGBA<F32>& base, const ColorRGBA<F32>& tint, F32 alpha) {
+    return {
+        base.r + (tint.r - base.r) * tint.a,
+        base.g + (tint.g - base.g) * tint.a,
+        base.b + (tint.b - base.b) * tint.a,
+        alpha,
+    };
+}
+
+struct FrameClock {
+    std::optional<std::chrono::steady_clock::time_point> last;
+
+    F32 tick(std::chrono::steady_clock::time_point now, F32 initial) {
+        const F32 dt = last.has_value()
+            ? std::clamp(std::chrono::duration<F32>(now - *last).count(), 0.0f, 0.1f)
+            : initial;
+        last = now;
+        return dt;
+    }
+};
+
+struct PressState {
+    bool hovered = false;
+    bool pressed = false;
+
+    bool set(bool nextHovered, bool nextPressed) {
+        if (nextHovered == hovered && nextPressed == pressed) {
+            return false;
+        }
+        hovered = nextHovered;
+        pressed = nextPressed;
+        return true;
+    }
+
+    template<typename Config>
+    const std::string& colorKey(const Config& config, bool active = false) const {
+        if (config.disabled) {
+            return config.colorKey;
+        }
+        if (pressed || active) {
+            return config.activeColorKey;
+        }
+        return hovered ? config.hoveredColorKey : config.colorKey;
+    }
+};
 
 }  // namespace Jetstream::Sakura::Retained
 

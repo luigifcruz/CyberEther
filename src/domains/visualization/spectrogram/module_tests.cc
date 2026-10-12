@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <algorithm>
 #include <any>
@@ -259,10 +260,61 @@ TEST_CASE("Spectrogram presents live metadata without view changes",
     sampleRate = 4.0e6f;
     present();
 
+    for (const auto* attribute : {"frequency", "sampleRate"}) {
+        for (const auto& value : {std::any{}, std::any{std::string("invalid")},
+                                  std::any{F64{2.0e6}},
+                                  std::any{std::numeric_limits<F64>::infinity()},
+                                  std::any{std::numeric_limits<F32>::quiet_NaN()}}) {
+            CAPTURE(attribute, value.type().name());
+            REQUIRE(input.setDerivedAttribute(attribute, [value] { return value; }) ==
+                    Result::SUCCESS);
+            REQUIRE(presenter->presentSubmit() == Result::ERROR);
+            CHECK(JST_LOG_LAST_ERROR().find(attribute) != std::string::npos);
+            REQUIRE(presenter->presentSubmit() == Result::ERROR);
+
+            REQUIRE(input.setDerivedAttribute(attribute, [=]() -> std::any {
+                return std::string(attribute) == "frequency" ? frequency : sampleRate;
+            }) == Result::SUCCESS);
+            REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        }
+    }
+
     REQUIRE(axis->destroy(&window) == Result::SUCCESS);
     REQUIRE(module->destroy() == Result::SUCCESS);
 }
 #endif
+
+TEST_CASE("Spectrogram rejects invalid metadata at creation and presentation",
+          "[modules][spectrogram][metadata][regression]") {
+    const auto attribute = GENERATE("frequency", "sampleRate");
+    const auto value = GENERATE(std::any{F64{2.0e6}}, std::any{},
+                               std::any{std::string("invalid")},
+                               std::any{std::numeric_limits<F32>::quiet_NaN()});
+    CAPTURE(attribute, value.type().name());
+    Tensor input(DeviceType::CPU, DataType::F32, {32});
+    REQUIRE(input.setAttribute(attribute, value) == Result::SUCCESS);
+    TensorMap inputs;
+    inputs["signal"].produced("source", "signal", input);
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("spectrogram", DeviceType::CPU,
+                                  RuntimeType::NATIVE, "generic", module) == Result::SUCCESS);
+    REQUIRE(module->create("plot", Modules::Spectrogram{}, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    CHECK(JST_LOG_LAST_ERROR().find(attribute) != std::string::npos);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+
+    REQUIRE(input.removeAttribute(attribute) == Result::SUCCESS);
+    REQUIRE(Registry::BuildModule("spectrogram", DeviceType::CPU,
+                                  RuntimeType::NATIVE, "generic", module) == Result::SUCCESS);
+    REQUIRE(module->create("plot", Modules::Spectrogram{}, inputs) == Result::SUCCESS);
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+    REQUIRE(presenter->presentInitialize() == Result::SUCCESS);
+    REQUIRE(input.setAttribute(attribute, value) == Result::SUCCESS);
+    REQUIRE(presenter->presentSubmit() == Result::ERROR);
+    CHECK(JST_LOG_LAST_ERROR().find(attribute) != std::string::npos);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
 
 TEST_CASE("Spectrogram module accepts valid height boundaries and input ranks",
           "[modules][spectrogram]") {

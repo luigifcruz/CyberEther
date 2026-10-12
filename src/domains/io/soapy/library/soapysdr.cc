@@ -300,7 +300,23 @@ Result SoapyReceiver::queryCapabilities() {
     }
     api.stringsClear(&names, antennaCount);
 
+    queryGainRange();
+
     return Result::SUCCESS;
+}
+
+void SoapyReceiver::queryGainRange() {
+    gainRange.reset();
+
+    const auto range = library->api().getGainRange(device, SoapyAbi::RX, 0);
+    if (library->api().lastStatus() != 0) {
+        JST_WARN("[MODULE_SOAPY] Failed to query receive gain range: {}", failure());
+        return;
+    }
+    if (std::isfinite(range.minimum) && std::isfinite(range.maximum) &&
+        range.minimum <= range.maximum) {
+        gainRange = range;
+    }
 }
 
 Result SoapyReceiver::validateSettings(const F32 sampleRate, const F32 frequency) const {
@@ -319,6 +335,10 @@ Result SoapyReceiver::validateSettings(const F32 sampleRate, const F32 frequency
 
 const std::vector<std::string>& SoapyReceiver::listAntennas() const {
     return antennas;
+}
+
+const std::optional<SoapyAbi::Range>& SoapyReceiver::getGainRange() const {
+    return gainRange;
 }
 
 Result SoapyReceiver::setAntenna(const std::string& antenna) {
@@ -359,6 +379,8 @@ Result SoapyReceiver::setTunerFrequency(const F32 frequency) {
         return Result::ERROR;
     }
 
+    queryGainRange();
+
     return Result::SUCCESS;
 }
 
@@ -389,6 +411,31 @@ Result SoapyReceiver::setAutomaticGain(const bool automaticGain) {
 
     if (library->api().setGainMode(device, SoapyAbi::RX, 0, automaticGain) != 0) {
         JST_ERROR("[MODULE_SOAPY] Failed to set gain mode: {}", failure());
+        return Result::ERROR;
+    }
+
+    return Result::SUCCESS;
+}
+
+Result SoapyReceiver::setGain(const F32 gain) {
+    if (state == State::Closed) {
+        JST_ERROR("[MODULE_SOAPY] Cannot set gain without an active device.");
+        return Result::ERROR;
+    }
+
+    F32 applied = gain;
+    if (gainRange) {
+        const F32 minimum = static_cast<F32>(gainRange->minimum);
+        const F32 maximum = static_cast<F32>(gainRange->maximum);
+        applied = std::clamp(gain, minimum, maximum);
+        if (applied != gain) {
+            JST_WARN("[MODULE_SOAPY] Gain ({:.1f} dB) outside device range ({:.1f} to {:.1f} dB). Using {:.1f} dB.",
+                     gain, minimum, maximum, applied);
+        }
+    }
+
+    if (library->api().setGain(device, SoapyAbi::RX, 0, applied) != 0) {
+        JST_ERROR("[MODULE_SOAPY] Failed to set gain: {}", failure());
         return Result::ERROR;
     }
 
@@ -521,6 +568,7 @@ void SoapyReceiver::reset() {
     sampleRateRanges.clear();
     frequencyRanges.clear();
     antennas.clear();
+    gainRange.reset();
     biasTeeSupported = false;
     biasTeeNeedsCleanup = false;
     library.reset();
