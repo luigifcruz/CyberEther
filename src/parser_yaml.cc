@@ -1,3 +1,8 @@
+// TODO: Stop stripping single quotes in NormalizeScalar, rapidyaml already unquotes scalars.
+// TODO: Reject anchors, aliases, duplicate keys, and multi-document streams instead of accepting them silently.
+// TODO: Reject lone carriage returns and bound nesting depth, both currently crash the process.
+// TODO: Emit scalars in a style that reads back identically, such as "!tag", "...", and control characters.
+
 #include "jetstream/parser.hh"
 
 #include <ryml.hpp>
