@@ -173,6 +173,8 @@ Result SdrImpl::create() {
     JST_CHECK(moduleExposeOutput("signal", {"sdr", "signal"}));
 
     moduleImpl = moduleHandle("sdr")->getImpl<Modules::SdrImpl>();
+    sampleRate = moduleImpl->sampleRate;
+    moduleConfig->sampleRate = sampleRate;
     JST_CHECK(updateInterfaceConfigFormat("antenna", antennaFormat(*this)));
 
     return reconfigure();

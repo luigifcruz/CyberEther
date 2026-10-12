@@ -61,7 +61,7 @@ struct Sdr : public Block::Config {
         "the output. |\n"
         "| **Sample Rate** | 2 MHz | Within the radio's range | Complex samples per "
         "second, which is also the bandwidth captured. Airspy and Airspy HF+ show a "
-        "list of their rates. |\n"
+        "list of their rates, and a rate missing from the list switches to the first. |\n"
         "| **Automatic Gain** | On | On, Off | Lets the radio set its gain. HackRF, "
         "LimeSDR, and bladeRF 1 have none and always use Manual Gain. |\n"
         "| **Manual Gain** | 30 dB | Within the radio's gain range | Receive gain, shown "
