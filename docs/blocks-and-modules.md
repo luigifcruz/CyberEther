@@ -135,7 +135,7 @@ Use `moduleCreate(name, config, inputs)` to create a child module with the block
 
 Add editable controls with `defineInterfaceConfig` and status readouts with `defineInterfaceMetric`. See [Block Metrics](/docs/metadata#block-metrics) for examples.
 
-Some controls depend on the device. Soapy, for example, learns which antennas are available when it opens a radio. It adds the dropdown in `define()`, then fills in the choices with `updateInterfaceConfigFormat(key, format)` in `create()`. When settings change, `define()` runs again, so it also needs to include those choices if the same radio is still selected.
+Some controls depend on the device. SDR, for example, learns which antennas are available when it opens a radio. It adds the dropdown in `define()`, then fills in the choices with `updateInterfaceConfigFormat(key, format)` in `create()`. When settings change, `define()` runs again, so it also needs to include those choices if the same radio is still selected.
 
 Use `environment()`, `view()`, `scheduler()`, and `render()` to access the flowgraph environment, view, scheduler, and render window.
 

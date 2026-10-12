@@ -159,7 +159,7 @@ struct SignalGenerator : public Block::Config {
         "- **Add** sums two generators, such as a tone and noise.\n"
         "- **Throttle** limits how often new buffers come out.\n"
         "- **Spectrum Analyzer** shows what the block produces.\n"
-        "- **Soapy SDR** replaces it with live radio samples."
+        "- Live radio samples come from **SDR** instead."
     );
 };
 
