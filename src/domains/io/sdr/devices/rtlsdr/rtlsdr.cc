@@ -70,6 +70,7 @@ struct RtlSdrDevice::Impl {
     static void Callback(unsigned char* buffer, uint32_t length, void* context);
 
     Result open(const Info& info);
+    Result applyGainMode(bool automatic);
     Result startStream();
     void stopStream();
 
@@ -217,18 +218,7 @@ Result RtlSdrDevice::start(const Settings& settings) {
         return Result::ERROR;
     }
 
-    if (settings.automaticGain) {
-        if (rtlsdr_set_tuner_gain_mode(handle, 0) < 0) {
-            JST_ERROR("[SDR_RTLSDR] Failed to enable automatic gain.");
-            return Result::ERROR;
-        }
-    } else {
-        if (rtlsdr_set_tuner_gain_mode(handle, 1) < 0 ||
-            rtlsdr_set_tuner_gain(handle, pimpl->fixedGain) < 0) {
-            JST_ERROR("[SDR_RTLSDR] Failed to set a fixed gain.");
-            return Result::ERROR;
-        }
-    }
+    JST_CHECK(pimpl->applyGainMode(settings.automaticGain));
 
     if (settings.biasTee || pimpl->biasTeeEnabled) {
         if (rtlsdr_set_bias_tee(handle, settings.biasTee ? 1 : 0) < 0) {
@@ -250,6 +240,27 @@ Result RtlSdrDevice::start(const Settings& settings) {
 
 void RtlSdrDevice::stop() {
     pimpl->stopStream();
+}
+
+Result RtlSdrDevice::setAutomaticGain(const bool automaticGain) {
+    JST_CHECK(pimpl->applyGainMode(automaticGain));
+    requestedSettings.automaticGain = automaticGain;
+    appliedSettings.automaticGain = automaticGain;
+    return Result::SUCCESS;
+}
+
+Result RtlSdrDevice::Impl::applyGainMode(const bool automatic) {
+    if (automatic) {
+        if (rtlsdr_set_tuner_gain_mode(handle, 0) < 0) {
+            JST_ERROR("[SDR_RTLSDR] Failed to enable automatic gain.");
+            return Result::ERROR;
+        }
+    } else if (rtlsdr_set_tuner_gain_mode(handle, 1) < 0 ||
+               rtlsdr_set_tuner_gain(handle, fixedGain) < 0) {
+        JST_ERROR("[SDR_RTLSDR] Failed to set a fixed gain.");
+        return Result::ERROR;
+    }
+    return Result::SUCCESS;
 }
 
 Result RtlSdrDevice::tune(const F64 frequency) {

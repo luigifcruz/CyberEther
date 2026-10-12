@@ -286,6 +286,15 @@ void LimeSdrDevice::stop() {
     pimpl->stopStream();
 }
 
+Result LimeSdrDevice::setAutomaticGain(const bool automaticGain) {
+    if (automaticGain) {
+        JST_WARN("[SDR_LIMESDR] LimeSDR has no automatic gain control. Using a fixed {:.0f}% "
+                 "of the gain range.", FixedNormalizedGain * 100);
+    }
+    requestedSettings.automaticGain = automaticGain;
+    return Result::SUCCESS;
+}
+
 Result LimeSdrDevice::tune(const F64 frequency) {
     if (!Range::Contains(deviceCapabilities.frequencyRanges, frequency)) {
         JST_ERROR("[SDR_LIMESDR] Frequency ({:.3f} MHz) not supported.", frequency / 1e6);

@@ -30,6 +30,7 @@ struct AirspyDevice::Impl {
     static int Callback(airspy_transfer* transfer);
 
     Result open(const Info& info);
+    Result applyGainMode(bool automatic);
     Result startStream();
     void stopStream();
 
@@ -162,17 +163,7 @@ Result AirspyDevice::start(const Settings& settings) {
         return Result::ERROR;
     }
 
-    const U8 agc = settings.automaticGain ? 1 : 0;
-    if (airspy_set_lna_agc(handle, agc) != AIRSPY_SUCCESS ||
-        airspy_set_mixer_agc(handle, agc) != AIRSPY_SUCCESS) {
-        JST_ERROR("[SDR_AIRSPY] Failed to set the gain mode.");
-        return Result::ERROR;
-    }
-    if (!settings.automaticGain &&
-        airspy_set_linearity_gain(handle, FixedLinearityGain) != AIRSPY_SUCCESS) {
-        JST_ERROR("[SDR_AIRSPY] Failed to set a fixed gain.");
-        return Result::ERROR;
-    }
+    JST_CHECK(pimpl->applyGainMode(settings.automaticGain));
 
     if (settings.biasTee || pimpl->biasTeeEnabled) {
         if (airspy_set_rf_bias(handle, settings.biasTee ? 1 : 0) != AIRSPY_SUCCESS) {
@@ -193,6 +184,27 @@ Result AirspyDevice::start(const Settings& settings) {
 
 void AirspyDevice::stop() {
     pimpl->stopStream();
+}
+
+Result AirspyDevice::setAutomaticGain(const bool automaticGain) {
+    JST_CHECK(pimpl->applyGainMode(automaticGain));
+    requestedSettings.automaticGain = automaticGain;
+    appliedSettings.automaticGain = automaticGain;
+    return Result::SUCCESS;
+}
+
+Result AirspyDevice::Impl::applyGainMode(const bool automatic) {
+    const U8 agc = automatic ? 1 : 0;
+    if (airspy_set_lna_agc(handle, agc) != AIRSPY_SUCCESS ||
+        airspy_set_mixer_agc(handle, agc) != AIRSPY_SUCCESS) {
+        JST_ERROR("[SDR_AIRSPY] Failed to set the gain mode.");
+        return Result::ERROR;
+    }
+    if (!automatic && airspy_set_linearity_gain(handle, FixedLinearityGain) != AIRSPY_SUCCESS) {
+        JST_ERROR("[SDR_AIRSPY] Failed to set a fixed gain.");
+        return Result::ERROR;
+    }
+    return Result::SUCCESS;
 }
 
 Result AirspyDevice::tune(const F64 frequency) {

@@ -19,6 +19,7 @@ struct AirspyDevice : public Device {
     Result start(const Settings& settings) override;
     void stop() override;
     Result tune(F64 frequency) override;
+    Result setAutomaticGain(bool automaticGain) override;
     Capture read(std::span<CF32> samples, std::chrono::milliseconds timeout) override;
 
  protected:

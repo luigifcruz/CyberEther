@@ -385,6 +385,12 @@ Result Device::tune(const F64 frequency) {
     return apply(settings);
 }
 
+Result Device::setAutomaticGain(const bool automaticGain) {
+    auto settings = requestedSettings;
+    settings.automaticGain = automaticGain;
+    return apply(settings);
+}
+
 Result Device::restart(const std::function<Result()>& change) {
     const auto previous = requestedSettings;
     const auto applied = appliedSettings;

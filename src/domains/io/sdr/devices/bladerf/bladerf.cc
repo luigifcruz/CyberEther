@@ -72,6 +72,7 @@ struct BladeRfDevice::Impl {
 
     Result open(const Info& info);
     Result setFrequency(F64 frequency, bool settle = true);
+    Result applyGainMode(bool requested);
     Result resynchronize(U64 guard);
 
     BladeRfDevice& device;
@@ -191,17 +192,7 @@ Result BladeRfDevice::start(const Settings& settings) {
         return Result::ERROR;
     }
 
-    const bool automatic = settings.automaticGain && deviceCapabilities.automaticGain;
-    if (settings.automaticGain && !automatic) {
-        JST_WARN("[SDR_BLADERF] Automatic gain is not supported by this bladeRF. "
-                 "Using a fixed {} dB.", FixedGain);
-    }
-    if (bladerf_set_gain_mode(handle, Channel,
-                              automatic ? BLADERF_GAIN_AUTOMATIC : BLADERF_GAIN_MGC) != 0 ||
-        (!automatic && bladerf_set_gain(handle, Channel, FixedGain) != 0)) {
-        JST_ERROR("[SDR_BLADERF] Failed to set the gain.");
-        return Result::ERROR;
-    }
+    JST_CHECK(pimpl->applyGainMode(settings.automaticGain));
 
     if (deviceCapabilities.biasTee && (settings.biasTee || pimpl->biasTeeEnabled)) {
         if (bladerf_set_bias_tee(handle, Channel, settings.biasTee) != 0) {
@@ -230,7 +221,6 @@ Result BladeRfDevice::start(const Settings& settings) {
     requestedSettings = settings;
     appliedSettings.sampleRate = actualRate;
     appliedSettings.antenna.clear();
-    appliedSettings.automaticGain = automatic;
     appliedSettings.biasTee = settings.biasTee && deviceCapabilities.biasTee;
     return pimpl->setFrequency(settings.frequency);
 }
@@ -249,6 +239,28 @@ Result BladeRfDevice::apply(const Settings& settings) {
     if (result != Result::SUCCESS) {
         return restore(previous, result);
     }
+    return Result::SUCCESS;
+}
+
+Result BladeRfDevice::setAutomaticGain(const bool automaticGain) {
+    JST_CHECK(pimpl->applyGainMode(automaticGain));
+    requestedSettings.automaticGain = automaticGain;
+    return Result::SUCCESS;
+}
+
+Result BladeRfDevice::Impl::applyGainMode(const bool requested) {
+    const bool automatic = requested && device.deviceCapabilities.automaticGain;
+    if (requested && !automatic) {
+        JST_WARN("[SDR_BLADERF] Automatic gain is not supported by this bladeRF. "
+                 "Using a fixed {} dB.", FixedGain);
+    }
+    if (bladerf_set_gain_mode(handle, Channel,
+                              automatic ? BLADERF_GAIN_AUTOMATIC : BLADERF_GAIN_MGC) != 0 ||
+        (!automatic && bladerf_set_gain(handle, Channel, FixedGain) != 0)) {
+        JST_ERROR("[SDR_BLADERF] Failed to set the gain.");
+        return Result::ERROR;
+    }
+    device.appliedSettings.automaticGain = automatic;
     return Result::SUCCESS;
 }
 

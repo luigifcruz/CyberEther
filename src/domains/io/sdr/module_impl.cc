@@ -184,19 +184,32 @@ Result SdrImpl::applySettings(const Radio::Device::Settings& desired) {
     if (!radio) {
         return Result::ERROR;
     }
-    Result result = Result::SUCCESS;
-    if (desired.sampleRate != active.sampleRate || desired.automaticGain != active.automaticGain) {
-        result = radio->apply(desired);
-    } else if (desired.frequency != active.frequency) {
-        result = radio->tune(desired.frequency);
-    } else {
-        return Result::SUCCESS;
+    if (desired.sampleRate != active.sampleRate) {
+        const auto result = radio->apply(desired);
+        resetStream();
+        if (result == Result::SUCCESS) {
+            active = desired;
+        }
+        return result;
     }
-    resetStream();
-    if (result == Result::SUCCESS) {
-        active = desired;
+    if (desired.frequency != active.frequency) {
+        const auto result = radio->tune(desired.frequency);
+        resetStream();
+        JST_CHECK(result);
+        active.frequency = desired.frequency;
     }
-    return result;
+    if (desired.automaticGain != active.automaticGain) {
+        const U64 generation = radio->generation();
+        const auto result = radio->setAutomaticGain(desired.automaticGain);
+        if (radio->generation() != generation) {
+            resetStream();
+        } else {
+            applied.publish(radio->applied());
+        }
+        JST_CHECK(result);
+        active.automaticGain = desired.automaticGain;
+    }
+    return Result::SUCCESS;
 }
 
 void SdrImpl::resetStream() {

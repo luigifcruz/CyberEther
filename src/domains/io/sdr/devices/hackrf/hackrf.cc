@@ -210,6 +210,15 @@ void HackRfDevice::stop() {
     pimpl->stopStream();
 }
 
+Result HackRfDevice::setAutomaticGain(const bool automaticGain) {
+    if (automaticGain) {
+        JST_WARN("[SDR_HACKRF] HackRF has no automatic gain control. Using a fixed LNA {} dB, "
+                 "VGA {} dB.", FixedLnaGain, FixedVgaGain);
+    }
+    requestedSettings.automaticGain = automaticGain;
+    return Result::SUCCESS;
+}
+
 Result HackRfDevice::tune(const F64 frequency) {
     if (!Range::Contains(deviceCapabilities.frequencyRanges, frequency)) {
         JST_ERROR("[SDR_HACKRF] Frequency ({:.3f} MHz) not supported.", frequency / 1e6);
