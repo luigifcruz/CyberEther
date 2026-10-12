@@ -370,11 +370,12 @@ Result SoapyImpl::setAutomaticGain(const bool& gain) {
 }
 
 Result SoapyImpl::setManualGain(const F32& gain) {
+    const F32 applied = receiverDevice.clampGain(gain);
     if (!automaticGain) {
-        JST_CHECK(receiverDevice.setGain(gain));
+        JST_CHECK(receiverDevice.setGain(applied));
     }
 
-    manualGain = gain;
+    manualGain = applied;
 
     return Result::SUCCESS;
 }

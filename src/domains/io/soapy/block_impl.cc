@@ -204,6 +204,11 @@ Result SoapyImpl::updateAntennaFormat() {
 }
 
 Result SoapyImpl::updateManualGainFormat() {
+    if (moduleImpl->getGainRange()) {
+        manualGain = moduleImpl->manualGain;
+        moduleConfig->manualGain = manualGain;
+    }
+
     if (!automaticGain) {
         JST_CHECK(updateInterfaceConfigFormat("manualGain",
                                               manualGainFormat(moduleImpl->getGainRange())));

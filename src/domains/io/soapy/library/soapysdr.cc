@@ -341,6 +341,21 @@ const std::optional<SoapyAbi::Range>& SoapyReceiver::getGainRange() const {
     return gainRange;
 }
 
+F32 SoapyReceiver::clampGain(const F32 gain) const {
+    if (!gainRange) {
+        return gain;
+    }
+
+    const F32 minimum = static_cast<F32>(gainRange->minimum);
+    const F32 maximum = static_cast<F32>(gainRange->maximum);
+    const F32 applied = std::clamp(gain, minimum, maximum);
+    if (applied != gain) {
+        JST_WARN("[MODULE_SOAPY] Gain ({:.1f} dB) outside device range ({:.1f} to {:.1f} dB). Using {:.1f} dB.",
+                 gain, minimum, maximum, applied);
+    }
+    return applied;
+}
+
 Result SoapyReceiver::setAntenna(const std::string& antenna) {
     if (state == State::Closed) {
         JST_ERROR("[MODULE_SOAPY] Cannot set antenna without an active device.");
@@ -423,18 +438,7 @@ Result SoapyReceiver::setGain(const F32 gain) {
         return Result::ERROR;
     }
 
-    F32 applied = gain;
-    if (gainRange) {
-        const F32 minimum = static_cast<F32>(gainRange->minimum);
-        const F32 maximum = static_cast<F32>(gainRange->maximum);
-        applied = std::clamp(gain, minimum, maximum);
-        if (applied != gain) {
-            JST_WARN("[MODULE_SOAPY] Gain ({:.1f} dB) outside device range ({:.1f} to {:.1f} dB). Using {:.1f} dB.",
-                     gain, minimum, maximum, applied);
-        }
-    }
-
-    if (library->api().setGain(device, SoapyAbi::RX, 0, applied) != 0) {
+    if (library->api().setGain(device, SoapyAbi::RX, 0, gain) != 0) {
         JST_ERROR("[MODULE_SOAPY] Failed to set gain: {}", failure());
         return Result::ERROR;
     }
