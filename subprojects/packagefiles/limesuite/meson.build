@@ -41,11 +41,19 @@ else
   ).get_variable('libusb_dep')
 endif
 
-atomic_dep = cpp.find_library('atomic', required: false)
+atomic_code = '''
+#include <atomic>
+#include <cstdint>
+int main() {
+  std::atomic<std::uint64_t> value{0};
+  value.fetch_add(1);
+  return static_cast<int>(value.load());
+}
+'''
 
 limesuite_deps = [thread_dep, usb_dep]
-if atomic_dep.found()
-  limesuite_deps += [atomic_dep]
+if not cpp.links(atomic_code, name: 'std::atomic without libatomic')
+  limesuite_deps += [cpp.find_library('atomic', required: true)]
 endif
 
 if target_machine.system().startswith('windows')
