@@ -236,6 +236,10 @@ Provider::Error Diagnostics::Transport(const Platform::Http::Error& failure) {
             error.kind = Kind::Unsupported;
             error.message = failure.message + ".";
             break;
+        case Failure::Cancelled:
+            error.kind = Kind::Cancelled;
+            error.message = "Request cancelled.";
+            break;
         default:
             error.kind = Kind::Connection;
             error.message = failure.message + ". Check the endpoint and network connection.";
