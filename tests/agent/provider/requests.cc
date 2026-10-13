@@ -467,12 +467,21 @@ TEST_CASE("Provider diagnostics redact echoed credentials and distinguish quota"
 }
 
 TEST_CASE("Cancellation interrupts a provider that stops sending bytes", "[agent][providers][cancellation]") {
+    const bool beforeHeaders = GENERATE(false, true);
+    CAPTURE(beforeHeaders);
+
     AgentTest::ProviderServer provider;
     std::promise<void> entered;
     std::promise<void> release;
     auto received = entered.get_future();
     auto released = release.get_future().share();
     provider.server.Post("/chat", [&](const auto&, auto& response) {
+        if (beforeHeaders) {
+            entered.set_value();
+            released.wait();
+            response.set_content(Delta({{"content", "Late"}}) + Done(), "text/event-stream");
+            return;
+        }
         const auto provide = [&](size_t, httplib::DataSink& sink) {
             const auto chunk = Delta({{"content", "Starting"}});
             sink.write(chunk.data(), chunk.size());
@@ -512,13 +521,26 @@ TEST_CASE("Cancellation interrupts a provider that stops sending bytes", "[agent
 }
 
 TEST_CASE("Cancellation interrupts in-flight model discovery", "[agent][providers][cancellation]") {
+    const bool beforeHeaders = GENERATE(false, true);
+    CAPTURE(beforeHeaders);
+
     AgentTest::ProviderServer provider;
     std::promise<void> entered;
     std::promise<void> release;
     auto received = entered.get_future();
     auto released = release.get_future().share();
     provider.server.Get("/models", [&](const auto&, auto& response) {
+        if (beforeHeaders) {
+            entered.set_value();
+            released.wait();
+            response.set_content(R"({"data":[]})", "application/json");
+            return;
+        }
         const auto provide = [&](size_t, httplib::DataSink& sink) {
+            const std::string chunk = R"({"data":[)";
+            if (!sink.write(chunk.data(), chunk.size())) {
+                return false;
+            }
             entered.set_value();
             released.wait();
             sink.done();
@@ -553,6 +575,31 @@ TEST_CASE("Cancellation interrupts in-flight model discovery", "[agent][provider
     CHECK(error.kind == Kind::Cancelled);
 }
 
+TEST_CASE("Slow provider responses retain the configured idle timeout", "[agent][providers][network]") {
+    AgentTest::ProviderServer provider;
+    provider.server.Post("/chat", [](const auto&, auto& response) {
+        std::this_thread::sleep_for(150ms);
+        response.set_chunked_content_provider("text/event-stream", [](size_t offset, httplib::DataSink& sink) {
+            std::this_thread::sleep_for(150ms);
+            const auto chunk = offset == 0 ? Delta({{"content", "Slow"}}) : Done();
+            if (!sink.write(chunk.data(), chunk.size())) {
+                return false;
+            }
+            if (offset != 0) {
+                sink.done();
+            }
+            return true;
+        });
+    });
+    provider.start();
+
+    Agent::Provider::Error error;
+    std::string text;
+    REQUIRE(Chat(Agent::Provider(provider.config()), error, &text) == Result::SUCCESS);
+    CHECK(text == "Slow");
+    CHECK_FALSE(error);
+}
+
 TEST_CASE("Model discovery reports malformed responses without blaming credentials",
           "[agent][providers][models]") {
     const auto body = GENERATE(std::string("not JSON"),
@@ -585,7 +632,7 @@ TEST_CASE("Connection failures and request timeouts are different diagnostics", 
     provider.start();
 
     auto config = provider.config();
-    config.timeoutSeconds = 1;
+    config.timeoutSeconds = timeout ? 1 : 5;
     if (!timeout) {
         provider.stop();
     }

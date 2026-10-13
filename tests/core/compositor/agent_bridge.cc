@@ -417,6 +417,7 @@ TEST_CASE("Model discovery failures reach the model picker with provider diagnos
     provider.start();
 
     DefaultCompositorState state;
+    state.agent.settings.enabled = true;
     state.agent.settings.customProviders.push_back({
         .name = "Local",
         .host = provider.origin,

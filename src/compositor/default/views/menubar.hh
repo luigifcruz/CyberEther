@@ -455,10 +455,12 @@ struct MenubarView {
                 openSettingsItem.render(ctx);
             });
 
+#ifndef JST_OS_BROWSER
             intelligenceMenu.render(ctx, [this](const Sakura::Context& ctx) {
                 agentItem.render(ctx);
                 voiceItem.render(ctx);
             });
+#endif
 
             remoteMenu.render(ctx, [this](const Sakura::Context& ctx) {
                 remoteStreamingItem.render(ctx);

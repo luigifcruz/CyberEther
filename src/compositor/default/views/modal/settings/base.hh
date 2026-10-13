@@ -98,6 +98,7 @@ struct SettingsView {
                         }
                     },
                 },
+#ifndef JST_OS_BROWSER
                 {
                     .label = ICON_FA_WAND_MAGIC_SPARKLES " Intelligence",
                     .selected = this->config.section == SettingsSection::Intelligence,
@@ -107,6 +108,7 @@ struct SettingsView {
                         }
                     },
                 },
+#endif
                 {
                     .label = ICON_FA_FLASK " Developer",
                     .selected = this->config.section == SettingsSection::Developer,
