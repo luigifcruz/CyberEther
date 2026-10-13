@@ -4,4 +4,5 @@ if cfg_lst.get('JETSTREAM_PLATFORM_HTTP_AVAILABLE', false) and \
 endif
 
 subdir('provider')
+subdir('session')
 subdir('tools')

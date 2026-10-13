@@ -59,7 +59,7 @@ void ParseModel(const nlohmann::json& model, auto& entry) {
 
 }  // namespace
 
-Result Provider::Catalog::fetch(Provider::Error* error) {
+Result Provider::Catalog::fetch(Provider::Error* error, const Cancellation& cancelled) {
     entries.clear();
     if (error) {
         *error = {};
@@ -70,6 +70,7 @@ Result Provider::Catalog::fetch(Provider::Error* error) {
         http.host = kCatalogHost;
         http.path = "/api.json";
         http.timeoutSeconds = 15;
+        http.cancelled = cancelled;
 
         nlohmann::json body;
         if (auto failure = Diagnostics::Response(Platform::Http::Send(http), body)) {

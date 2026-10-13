@@ -6,6 +6,7 @@
 #include "about.hh"
 #include "developer.hh"
 #include "general.hh"
+#include "intelligence.hh"
 #include "legal.hh"
 #include "registry.hh"
 #include "remote.hh"
@@ -24,6 +25,7 @@ struct SettingsView {
         RemoteSettingsPanel::Config remote;
         RuntimeSettingsPanel::Config runtime;
         RegistrySettingsPanel::Config registry;
+        IntelligenceSettingsPanel::Config intelligence;
         DeveloperSettingsPanel::Config developer;
         AboutSettingsPanel::Config about;
         LegalSettingsPanel::Config legal;
@@ -96,6 +98,17 @@ struct SettingsView {
                         }
                     },
                 },
+#ifndef JST_OS_BROWSER
+                {
+                    .label = ICON_FA_WAND_MAGIC_SPARKLES " Intelligence",
+                    .selected = this->config.section == SettingsSection::Intelligence,
+                    .onSelect = [this]() {
+                        if (this->config.onSectionChange) {
+                            this->config.onSectionChange(SettingsSection::Intelligence);
+                        }
+                    },
+                },
+#endif
                 {
                     .label = ICON_FA_FLASK " Developer",
                     .selected = this->config.section == SettingsSection::Developer,
@@ -130,6 +143,7 @@ struct SettingsView {
         remote.update(this->config.remote);
         runtime.update(this->config.runtime);
         registry.update(this->config.registry);
+        intelligence.update(this->config.intelligence);
         developer.update(this->config.developer);
         about.update(this->config.about);
         legal.update(this->config.legal);
@@ -158,6 +172,9 @@ struct SettingsView {
                         case SettingsSection::Registry:
                             registry.render(ctx);
                             break;
+                        case SettingsSection::Intelligence:
+                            intelligence.render(ctx);
+                            break;
                         case SettingsSection::Developer:
                             developer.render(ctx);
                             break;
@@ -184,6 +201,7 @@ struct SettingsView {
     RemoteSettingsPanel remote;
     RuntimeSettingsPanel runtime;
     RegistrySettingsPanel registry;
+    IntelligenceSettingsPanel intelligence;
     DeveloperSettingsPanel developer;
     AboutSettingsPanel about;
     LegalSettingsPanel legal;
