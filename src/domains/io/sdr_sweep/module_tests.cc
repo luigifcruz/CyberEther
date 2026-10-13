@@ -191,10 +191,15 @@ U64 ArgMax(const std::vector<F32>& values) {
 
 std::vector<CF32> WhiteNoise(const U64 count, const F64 variance, const U32 seed) {
     std::mt19937 generator(seed);
-    std::normal_distribution<F32> normal(0.0f, static_cast<F32>(std::sqrt(variance / 2.0)));
+    const F64 sigma = std::sqrt(variance / 2.0);
     std::vector<CF32> noise(count);
     for (auto& sample : noise) {
-        sample = CF32{normal(generator), normal(generator)};
+        const F64 u1 = (static_cast<F64>(generator()) + 1.0) / 4294967297.0;
+        const F64 u2 = static_cast<F64>(generator()) / 4294967296.0;
+        const F64 radius = sigma * std::sqrt(-2.0 * std::log(u1));
+        const F64 angle = 2.0 * std::numbers::pi * u2;
+        sample = CF32{static_cast<F32>(radius * std::cos(angle)),
+                      static_cast<F32>(radius * std::sin(angle))};
     }
     return noise;
 }
@@ -679,8 +684,7 @@ TEST_CASE("SDR Sweep noise floor follows the capture bin width",
     const auto plan = RequirePlan({.startFrequency = 100.0e6, .endFrequency = 104.0e6,
                                    .resolution = 10.0e3}, TestCaps());
     const F64 variance = 1.0e-4;
-    const auto noise = WhiteNoise(plan.captureSamples() * plan.hops.size(), variance, 7);
-    const auto decibels = SpectrumAnalyzerDb(Synthesize(plan, {}, noise));
+    constexpr U32 Realizations = 8;
 
     // Each displayed bin averages independent capture bins weighted by the
     // display window, so its mean power is `sum(w^2) / M * variance / N`.
@@ -696,10 +700,13 @@ TEST_CASE("SDR Sweep noise floor follows the capture bin width",
     const F64 expected = energy / static_cast<F64>(bins) * variance /
                          static_cast<F64>(plan.segmentLength);
     F64 measured = 0.0;
-    for (const auto value : decibels) {
-        measured += std::pow(10.0, value / 10.0);
+    for (U32 seed = 1; seed <= Realizations; ++seed) {
+        const auto noise = WhiteNoise(plan.captureSamples() * plan.hops.size(), variance, seed);
+        for (const auto value : SpectrumAnalyzerDb(Synthesize(plan, {}, noise))) {
+            measured += std::pow(10.0, value / 10.0);
+        }
     }
-    measured /= static_cast<F64>(bins);
+    measured /= static_cast<F64>(bins) * Realizations;
     REQUIRE_THAT(10.0 * std::log10(measured / expected), WithinAbs(0.0, 0.3));
 }
 
