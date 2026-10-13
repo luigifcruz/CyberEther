@@ -16,6 +16,7 @@ env:
     libm.so.6
     libstdc++.so.6
     libgcc_s.so.1
+    libatomic.so.1
     libpthread.so.0
     libdl.so.2
     librt.so.1
