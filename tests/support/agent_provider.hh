@@ -5,6 +5,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <httplib.h>
+#ifdef ERROR
+#undef ERROR
+#endif
 #include <nlohmann/json.hpp>
 
 #include <span>
