@@ -274,4 +274,13 @@ void SoapyRuntime::Reset() {
     cache.attempted = false;
 }
 
+void SoapyRuntime::Override(const SoapyApi& api) {
+    auto& cache = Cache();
+    std::lock_guard lock(cache.mutex);
+    cache.library = std::shared_ptr<SoapyLibrary>(new SoapyLibrary());
+    cache.library->table = api;
+    cache.status = {.available = true};
+    cache.attempted = true;
+}
+
 }  // namespace Jetstream::Modules

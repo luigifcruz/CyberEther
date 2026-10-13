@@ -157,9 +157,17 @@ Result SdrSweepImpl::create() {
         return result;
     }
 
-    requestedRate = plan.sampleRate;
-    tuned = settingsOf(*this, plan);
-    if (const auto result = radio->start(tuned); result != Result::SUCCESS) {
+    const Radio::Device::Settings settings{
+        .frequency = plan.hops.front().frequency,
+        .sampleRate = plan.sampleRate,
+        .antenna = antenna,
+        .automaticGain = automaticGain,
+        .biasTee = biasTee,
+        .settlingTime = settlingTime > 0.0f ? settlingTime / 1e3 : -1.0,
+        .gain = manualGain,
+        .lowLatency = true,
+    };
+    if (const auto result = radio->start(settings); result != Result::SUCCESS) {
         radio.reset();
         return result;
     }
@@ -197,7 +205,6 @@ Result SdrSweepImpl::create() {
     }
     JST_CHECK(assembler.configure(plan));
     totalHops.publish(plan.hops.size());
-    submitted = plan;
 
     if (automaticGain && radio->applied().automaticGain) {
         JST_WARN("[MODULE_SDR_SWEEP] Automatic gain is on. Levels of different hops are not "
@@ -210,7 +217,6 @@ Result SdrSweepImpl::create() {
     gainRange = radio->applied().gainRange;
     if (gainRange) {
         manualGain = static_cast<F32>(radio->applied().gain);
-        tuned.gain = manualGain;
     }
 
     JST_CHECK(buffer.setAttribute("frequency", static_cast<F32>(plan.centerFrequency())));
@@ -250,87 +256,78 @@ Result SdrSweepImpl::destroy() {
 
 Result SdrSweepImpl::reconfigure() {
     const auto& config = *candidate();
-    if (!radio || config.deviceString != deviceString || config.antenna != antenna ||
+    if (!radio || errored || config.deviceString != deviceString || config.antenna != antenna ||
         config.biasTee != biasTee || config.startFrequency != startFrequency ||
         config.endFrequency != endFrequency || config.sampleRate != sampleRate ||
         config.resolution != resolution) {
         return Result::RECREATE;
     }
 
-    Sweep::Plan next;
-    const Sweep::Plan::Request request{
-        .startFrequency = config.startFrequency,
-        .endFrequency = config.endFrequency,
-        .sampleRate = submitted.sampleRate,
-        .resolution = config.resolution,
-        .dwell = config.dwell,
-        .settlingTime = config.settlingTime / 1e3,
-        .flatten = config.flatten,
-    };
-    if (Sweep::Plan::Create(request, radio->capabilities(), next) != Result::SUCCESS ||
-        next.mode != submitted.mode || next.sampleRate != submitted.sampleRate ||
-        next.segmentLength != submitted.segmentLength || next.binWidth != submitted.binWidth ||
-        next.startFrequency != submitted.startFrequency ||
-        next.outputBins != submitted.outputBins || next.hops.size() != submitted.hops.size()) {
-        return Result::RECREATE;
-    }
+    return access.change([&] {
+        Sweep::Plan next;
+        const Sweep::Plan::Request request{
+            .startFrequency = config.startFrequency,
+            .endFrequency = config.endFrequency,
+            .sampleRate = plan.sampleRate,
+            .resolution = config.resolution,
+            .dwell = config.dwell,
+            .settlingTime = config.settlingTime / 1e3,
+            .flatten = config.flatten,
+        };
+        if (Sweep::Plan::Create(request, radio->capabilities(), next) != Result::SUCCESS ||
+            next.mode != plan.mode || next.sampleRate != plan.sampleRate ||
+            next.segmentLength != plan.segmentLength || next.binWidth != plan.binWidth ||
+            next.startFrequency != plan.startFrequency ||
+            next.outputBins != plan.outputBins || next.hops.size() != plan.hops.size()) {
+            return Result::RECREATE;
+        }
 
-    auto settings = settingsOf(config, next);
-    settings.gain = radio->resolveGain(config.manualGain, gainRange);
-    control.submit([this, next, settings] { return applyPlan(next, settings); });
-    submitted = next;
+        auto settings = radio->settings();
+        settings.automaticGain = config.automaticGain;
+        settings.gain = radio->resolveGain(config.manualGain, gainRange);
+        settings.settlingTime = config.settlingTime > 0.0f ? config.settlingTime / 1e3 : -1.0;
+        JST_CHECK(applyPlan(next, settings));
 
-    automaticGain = config.automaticGain;
-    manualGain = static_cast<F32>(settings.gain);
-    dwell = config.dwell;
-    settlingTime = config.settlingTime;
-    flatten = config.flatten;
-    return Result::SUCCESS;
-}
-
-Radio::Device::Settings SdrSweepImpl::settingsOf(const SdrSweep& config,
-                                                 const Sweep::Plan& next) const {
-    return {
-        .frequency = next.hops.front().frequency,
-        .sampleRate = requestedRate,
-        .antenna = config.antenna,
-        .automaticGain = config.automaticGain,
-        .biasTee = config.biasTee,
-        .settlingTime = config.settlingTime > 0.0f ? config.settlingTime / 1e3 : -1.0,
-        .gain = config.manualGain,
-        .lowLatency = true,
-    };
+        automaticGain = config.automaticGain;
+        manualGain = gainRange ? static_cast<F32>(radio->applied().gain) : config.manualGain;
+        dwell = config.dwell;
+        settlingTime = config.settlingTime;
+        flatten = config.flatten;
+        return Result::SUCCESS;
+    });
 }
 
 Result SdrSweepImpl::applyPlan(const Sweep::Plan& next, const Radio::Device::Settings& settings) {
+    const auto previous = radio->settings();
+    JST_CHECK(radio->update(settings));
     const auto result = [&] {
-        if (settings.automaticGain != tuned.automaticGain) {
-            JST_CHECK(radio->setAutomaticGain(settings.automaticGain));
-            tuned.automaticGain = settings.automaticGain;
-        }
-        if (settings.settlingTime != tuned.settlingTime) {
-            JST_CHECK(radio->setSettlingTime(settings.settlingTime));
-            tuned.settlingTime = settings.settlingTime;
-        }
-        if (settings.gain != tuned.gain) {
-            JST_CHECK(radio->setGain(settings.gain));
-            tuned.gain = settings.gain;
-        }
-        plan = next;
-        JST_CHECK(assembler.configure(plan));
-        JST_CHECK(radio->prepareSweep(plan.deviceRequest()));
-        completedHops.publish(0);
+        JST_CHECK(assembler.configure(next));
+        JST_CHECK(radio->prepareSweep(next.deviceRequest()));
         return Result::SUCCESS;
     }();
     if (result != Result::SUCCESS) {
-        errored = true;
+        const auto restoredSettings = radio->update(previous);
+        const auto restoredAssembler = assembler.configure(plan);
+        const auto restoredSweep = radio->prepareSweep(plan.deviceRequest());
+        if (restoredSettings != Result::SUCCESS || restoredAssembler != Result::SUCCESS ||
+            restoredSweep != Result::SUCCESS) {
+            errored = true;
+            JST_ERROR("[MODULE_SDR_SWEEP] Failed to restore the previous sweep settings.");
+        }
+        return result;
     }
-    return result;
+    plan = next;
+    completedHops.publish(0);
+    {
+        std::lock_guard lock(slotMutex);
+        metrics.discard(Clock::now(), slotFresh);
+        slotFresh = false;
+    }
+    return Result::SUCCESS;
 }
 
 Result SdrSweepImpl::startWorker() {
     running = true;
-    control.open();
     {
         std::lock_guard lock(slotMutex);
         metrics.reset(Clock::now());
@@ -343,7 +340,6 @@ Result SdrSweepImpl::startWorker() {
             } catch (...) {
                 result = Result::ERROR;
             }
-            control.close();
             if (result != Result::SUCCESS) {
                 errored = true;
             }
@@ -351,7 +347,6 @@ Result SdrSweepImpl::startWorker() {
         });
     } catch (const std::exception& e) {
         running = false;
-        control.close();
         JST_ERROR("[MODULE_SDR_SWEEP] Failed to start the sweep thread: {}", e.what());
         return Result::ERROR;
     }
@@ -366,7 +361,6 @@ void SdrSweepImpl::stopWorker() {
     if (worker.joinable()) {
         worker.join();
     }
-    control.close();
     {
         std::lock_guard lock(slotMutex);
         slotFresh = false;
@@ -376,20 +370,20 @@ void SdrSweepImpl::stopWorker() {
 
 Result SdrSweepImpl::workerLoop() {
     while (running) {
-        control.service();
+        const auto lock = access.lock();
+        if (!running) {
+            break;
+        }
         if (errored) {
             return Result::ERROR;
         }
         const auto result = radio->runSweep(
-            [this] { return running.load() && !control.pending(); },
+            [this] { return running.load() && !access.interrupted(); },
             [this](const auto& capture) { return handleCapture(capture); });
         if (errored) {
             return Result::ERROR;
         }
         JST_CHECK(result);
-        if (!control.pending()) {
-            break;
-        }
     }
     return Result::SUCCESS;
 }

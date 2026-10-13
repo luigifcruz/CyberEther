@@ -46,6 +46,8 @@ struct Script {
     U64 readLimit = 0;
     std::chrono::milliseconds readDelay{0};
     std::atomic<U64> largestRead{0};
+    std::atomic<unsigned> activeReads{0};
+    std::atomic<U64> concurrentChanges{0};
 
     void reset() {
         std::lock_guard lock(mutex);
@@ -63,9 +65,14 @@ struct Script {
         readLimit = 0;
         readDelay = std::chrono::milliseconds(0);
         largestRead = 0;
+        activeReads = 0;
+        concurrentChanges = 0;
     }
 
     void record(const std::string& call) {
+        if (activeReads > 0) {
+            ++concurrentChanges;
+        }
         std::lock_guard lock(mutex);
         lifecycle.push_back(call);
     }
@@ -98,6 +105,7 @@ class ScriptedDevice final : public Radio::Device {
         deviceCapabilities.sweepSampleRate = 2.0e6;
         deviceCapabilities.usableBandwidth = 0.75;
         deviceCapabilities.dcExclusion = 0.0;
+        appliedSettings.gainRange = Radio::Device::Range{0.0, 60.0};
         defaultSettlingTime = 1.0e-3;
         {
             std::lock_guard lock(TestScript().mutex);
@@ -136,6 +144,7 @@ class ScriptedDevice final : public Radio::Device {
         appliedSettings.sampleRate = settings.sampleRate + TestScript().rateOffset;
         appliedSettings.antenna = settings.antenna;
         appliedSettings.automaticGain = settings.automaticGain;
+        appliedSettings.gain = resolveGain(settings.gain, appliedSettings.gainRange);
         appliedSettings.biasTee = settings.biasTee;
         guardLength = guardSamples(settings, appliedSettings.sampleRate);
         if (guardLength == std::numeric_limits<U64>::max()) {
@@ -167,6 +176,10 @@ class ScriptedDevice final : public Radio::Device {
     }
 
     Radio::Device::Capture read(std::span<CF32> samples, const std::chrono::milliseconds) override {
+        ++TestScript().activeReads;
+        struct Reading {
+            ~Reading() { --TestScript().activeReads; }
+        } reading;
         if (!started) {
             return {.status = Radio::Device::Status::Failure, .error = "stopped"};
         }
@@ -236,6 +249,37 @@ class ScriptedDevice final : public Radio::Device {
             .frequency = appliedSettings.frequency,
             .sampleRate = appliedSettings.sampleRate,
         };
+    }
+
+    Result setAutomaticGain(const bool automatic) override {
+        const auto call = automatic ? "mode:true" : "mode:false";
+        TestScript().record(call);
+        if (TestScript().fails(call)) {
+            return Result::ERROR;
+        }
+        requestedSettings.automaticGain = automatic;
+        appliedSettings.automaticGain = automatic;
+        return Result::SUCCESS;
+    }
+
+    Result setGain(const F64 gain) override {
+        const auto call = jst::fmt::format("gain:{:.0f}", gain);
+        TestScript().record(call);
+        if (TestScript().fails(call)) {
+            return Result::ERROR;
+        }
+        requestedSettings.gain = gain;
+        appliedSettings.gain = resolveGain(gain, appliedSettings.gainRange);
+        return Result::SUCCESS;
+    }
+
+    Result prepareSweep(const SweepRequest& request) override {
+        const auto call = jst::fmt::format("prepare:{}", request.dwell);
+        TestScript().record(call);
+        if (TestScript().fails(call)) {
+            return Result::ERROR;
+        }
+        return Device::prepareSweep(request);
     }
 
  private:

@@ -358,6 +358,10 @@ const Device::Applied& Device::applied() const {
     return appliedSettings;
 }
 
+const Device::Settings& Device::settings() const {
+    return requestedSettings;
+}
+
 U64 Device::generation() const {
     return currentGeneration.load();
 }
@@ -405,6 +409,32 @@ Result Device::tune(const F64 frequency) {
     auto settings = requestedSettings;
     settings.frequency = frequency;
     return apply(settings);
+}
+
+Result Device::update(const Settings& settings) {
+    const auto previous = requestedSettings;
+    if (settings.sampleRate != previous.sampleRate || settings.antenna != previous.antenna ||
+        settings.biasTee != previous.biasTee || settings.lowLatency != previous.lowLatency) {
+        return apply(settings);
+    }
+
+    const auto result = [&] {
+        if (settings.frequency != previous.frequency) {
+            JST_CHECK(tune(settings.frequency));
+        }
+        if (settings.automaticGain != previous.automaticGain) {
+            JST_CHECK(setAutomaticGain(settings.automaticGain));
+        }
+        if (settings.gain != previous.gain ||
+            resolveGain(settings.gain, appliedSettings.gainRange) != appliedSettings.gain) {
+            JST_CHECK(setGain(settings.gain));
+        }
+        if (settings.settlingTime != previous.settlingTime) {
+            JST_CHECK(setSettlingTime(settings.settlingTime));
+        }
+        return Result::SUCCESS;
+    }();
+    return result == Result::SUCCESS ? result : restore(previous, result);
 }
 
 Result Device::setAutomaticGain(const bool automaticGain) {

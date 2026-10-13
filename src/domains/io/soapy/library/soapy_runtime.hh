@@ -119,6 +119,8 @@ class JETSTREAM_API SoapyLibrary {
     void* handle = nullptr;
     std::string libraryPath;
     SoapyApi table;
+
+    friend struct SoapyRuntime;
 };
 
 class JETSTREAM_API SoapyKwargsView {
@@ -148,6 +150,7 @@ struct JETSTREAM_API SoapyRuntime {
     static std::vector<std::string> Candidates();
 
     static void Reset();
+    static void Override(const SoapyApi& api);
 };
 
 }  // namespace Jetstream::Modules

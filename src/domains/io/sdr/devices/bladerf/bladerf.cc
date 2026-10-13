@@ -155,7 +155,6 @@ Result BladeRfDevice::Impl::open(const Info& info) {
     caps.frequencyRanges = ToRanges(frequency);
     caps.sampleRateRanges = ToRanges(rate);
     caps.automaticGain = second;
-    caps.gainFollowsFrequency = second;
     caps.biasTee = second;
     caps.sweepSampleRate = second ? 30.72e6 : 20.0e6;
     caps.usableBandwidth = 0.8;

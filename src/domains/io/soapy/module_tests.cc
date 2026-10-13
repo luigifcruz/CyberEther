@@ -7,6 +7,7 @@
 #include "jetstream/module_interface.hh"
 #include "jetstream/registry.hh"
 #include "library/soapysdr.hh"
+#include "scripted_soapy.hh"
 
 using namespace Jetstream;
 
@@ -99,4 +100,67 @@ TEST_CASE("Soapy can load an installed system runtime without opening a radio",
     REQUIRE(Modules::SoapyRuntime::Availability().available);
     REQUIRE(std::string(library->api().getABIVersion()) == Modules::SoapyAbi::Version);
     REQUIRE_FALSE(library->path().empty());
+}
+
+TEST_CASE_METHOD(TestSoapy::Runtime,
+                 "Soapy live edits finish synchronously and failed transactions remain retryable",
+                 "[modules][soapy][reconfigure][control]") {
+    const auto module = BuildSoapyModule();
+    struct Cleanup {
+        std::shared_ptr<Module> module;
+        ~Cleanup() { static_cast<void>(module->destroy()); }
+    } cleanup{module};
+    Modules::Soapy config;
+    config.deviceString = "driver=scripted";
+    config.frequency = 100.0e6f;
+    config.sampleRate = 2.0e6f;
+    config.automaticGain = false;
+    config.manualGain = 30.0f;
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+
+    Parser::Map edit;
+    std::string failure;
+    SECTION("frequency") {
+        edit = {{"frequency", 300.0e6f}};
+        failure = "frequency";
+    }
+    SECTION("sample rate") {
+        edit = {{"sampleRate", 4.0e6f}};
+        failure = "sampleRate";
+    }
+    SECTION("automatic gain") {
+        edit = {{"automaticGain", true}};
+        failure = "automaticGain";
+    }
+    SECTION("manual gain after changing the rate and frequency") {
+        edit = {{"sampleRate", 4.0e6f}, {"frequency", 300.0e6f}, {"manualGain", 40.0f}};
+        failure = "manualGain";
+    }
+    const auto checkApplied = [&] {
+        const auto applied = TestSoapy::State().settings();
+        REQUIRE(applied.frequency == config.frequency);
+        REQUIRE(applied.sampleRate == config.sampleRate);
+        REQUIRE(applied.automaticGain == config.automaticGain);
+        REQUIRE(applied.gain == config.manualGain);
+    };
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (TestSoapy::State().activeReads == 0 && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::yield();
+    }
+    REQUIRE(TestSoapy::State().activeReads > 0);
+    TestSoapy::State().fail(failure);
+    REQUIRE(module->reconfigure(edit) == Result::ERROR);
+    checkApplied();
+    Parser::Map before;
+    Parser::Map retained;
+    REQUIRE(config.serialize(before) == Result::SUCCESS);
+    REQUIRE(module->config(retained) == Result::SUCCESS);
+    REQUIRE(retained == before);
+
+    REQUIRE(module->reconfigure(edit) == Result::SUCCESS);
+    REQUIRE(config.deserialize(edit) == Result::SUCCESS);
+    checkApplied();
+    REQUIRE(TestSoapy::State().concurrentChanges == 0);
 }

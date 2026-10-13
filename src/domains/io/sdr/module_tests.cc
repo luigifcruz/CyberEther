@@ -6,6 +6,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <future>
 #include <limits>
 #include <mutex>
 #include <string>
@@ -14,7 +15,7 @@
 
 #include "domains/io/sdr/devices/device.hh"
 #include "domains/io/sdr/tools/capture_queue.hh"
-#include "domains/io/sdr/tools/control_channel.hh"
+#include "domains/io/sdr/tools/stream_access.hh"
 #include "domains/io/sdr/tools/samples.hh"
 #include "domains/io/sdr/tools/stream_buffer.hh"
 #include "domains/io/sdr/tools/timestamp_filter.hh"
@@ -847,33 +848,34 @@ TEST_CASE("SDR stream buffers keep loss totals across resets",
     REQUIRE(stats.overwrittenSamples == 2);
 }
 
-TEST_CASE("SDR control channels keep only the latest change",
+TEST_CASE("SDR stream access interrupts captures and applies changes on the caller",
           "[modules][sdr][backend][control]") {
-    Radio::ControlChannel channel;
-    std::vector<std::string> applied;
-    const auto record = [&](const std::string& name) {
-        return [&applied, name] {
-            applied.push_back(name);
-            return Result::SUCCESS;
-        };
-    };
+    Radio::StreamAccess access;
+    std::atomic<bool> applied{false};
+    std::thread::id caller;
+    std::thread::id setter;
+    auto read = access.lock();
+    auto change = std::async(std::launch::async, [&] {
+        caller = std::this_thread::get_id();
+        return access.change([&] {
+            setter = std::this_thread::get_id();
+            applied = true;
+            return Result::WARNING;
+        });
+    });
+    const bool interrupted = WaitFor([&] { return access.interrupted(); });
+    const bool appliedDuringRead = applied;
+    read.unlock();
+    REQUIRE(change.get() == Result::WARNING);
+    REQUIRE(interrupted);
+    REQUIRE_FALSE(appliedDuringRead);
+    REQUIRE(applied);
+    REQUIRE(setter == caller);
+    REQUIRE_FALSE(access.interrupted());
 
-    channel.submit(record("closed"));
-    REQUIRE(applied == std::vector<std::string>{"closed"});
-
-    channel.open();
-    channel.submit(record("first"));
-    channel.submit(record("second"));
-    REQUIRE(channel.pending());
-    REQUIRE(applied.size() == 1);
-    channel.service();
-    REQUIRE_FALSE(channel.pending());
-    REQUIRE(applied == std::vector<std::string>{"closed", "second"});
-
-    channel.submit(record("dropped"));
-    channel.close();
-    channel.service();
-    REQUIRE(applied.size() == 2);
+    REQUIRE_THROWS(access.change([]() -> Result { throw std::runtime_error("setter failed"); }));
+    REQUIRE_FALSE(access.interrupted());
+    REQUIRE(access.lock().owns_lock());
 }
 
 TEST_CASE("SDR timestamp filter rejects stale epochs, gaps, and guard samples",
@@ -1121,11 +1123,8 @@ TEST_CASE_METHOD(ScriptedDrivers,
     const ModuleCleanup cleanup{module};
     REQUIRE(module->create("test", ScriptedConfig(), {}) == Result::SUCCESS);
     TestScript().failAt = "tune:300";
-    REQUIRE(module->reconfigure({{"frequency", 300.0e6f}}) == Result::SUCCESS);
-    REQUIRE(WaitFor([&] {
-        const auto all = TestScript().calls();
-        return std::find(all.begin(), all.end(), "tune:300") != all.end();
-    }));
+    REQUIRE(module->reconfigure({{"frequency", 300.0e6f}}) == Result::ERROR);
+    REQUIRE(static_cast<const Modules::Sdr&>(module->config()).frequency == 100.0e6f);
     REQUIRE(module->getImpl<Modules::SdrImpl>()->getApplied().frequency == 100.0e6);
 
     // Out-of-range values only warn and leave the device untouched.
@@ -1188,6 +1187,66 @@ TEST_CASE_METHOD(ScriptedDrivers,
     REQUIRE(calls() == std::vector<std::string>{"tune:250", "stop", "start:250"});
     REQUIRE(sdr->getApplied().sampleRate == 4.0e6);
     REQUIRE(sdr->getApplied().frequency == 250.0e6);
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR live edits finish synchronously and failed transactions remain retryable",
+                 "[modules][sdr][reconfigure][control]") {
+    TestScript().budget = 0;
+    TestScript().readDelay = std::chrono::milliseconds(10);
+    const auto module = BuildSdrModule();
+    const ModuleCleanup cleanup{module};
+    auto config = ScriptedConfig();
+    config.automaticGain = false;
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    REQUIRE(WaitFor([] { return TestScript().activeReads > 0; }));
+    auto* sdr = module->getImpl<Modules::SdrImpl>();
+
+    Parser::Map edit;
+    std::string failure;
+    SECTION("frequency") {
+        edit = {{"frequency", 300.0e6f}};
+        failure = "tune:300";
+    }
+    SECTION("sample rate") {
+        edit = {{"sampleRate", 4.0e6f}};
+        edit["frequency"] = 300.0e6f;
+        failure = "start:300";
+    }
+    SECTION("automatic gain") {
+        edit = {{"automaticGain", true}};
+        failure = "mode:true";
+    }
+    SECTION("manual gain after a successful retune") {
+        edit = {{"frequency", 300.0e6f}, {"manualGain", 40.0f}};
+        failure = "gain:40";
+    }
+    {
+        std::lock_guard lock(TestScript().mutex);
+        TestScript().failAt = failure;
+    }
+    REQUIRE(module->reconfigure(edit) == Result::ERROR);
+    REQUIRE(sdr->getApplied().frequency == config.frequency);
+    REQUIRE(sdr->getApplied().sampleRate == config.sampleRate);
+    REQUIRE(sdr->getApplied().automaticGain == config.automaticGain);
+    REQUIRE(sdr->getApplied().gain == config.manualGain);
+    Parser::Map before;
+    Parser::Map retained;
+    REQUIRE(config.serialize(before) == Result::SUCCESS);
+    REQUIRE(module->config(retained) == Result::SUCCESS);
+    REQUIRE(retained == before);
+
+    {
+        std::lock_guard lock(TestScript().mutex);
+        TestScript().failAt.clear();
+    }
+    REQUIRE(module->reconfigure(edit) == Result::SUCCESS);
+    REQUIRE(config.deserialize(edit) == Result::SUCCESS);
+    REQUIRE(sdr->getApplied().frequency == config.frequency);
+    REQUIRE(sdr->getApplied().sampleRate == config.sampleRate);
+    REQUIRE(sdr->getApplied().automaticGain == config.automaticGain);
+    REQUIRE(sdr->getApplied().gain == config.manualGain);
+    REQUIRE(TestScript().concurrentChanges == 0);
 }
 
 TEST_CASE_METHOD(ScriptedFlowgraph,

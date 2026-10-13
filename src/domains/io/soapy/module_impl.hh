@@ -8,7 +8,7 @@
 #include <jetstream/detail/module_impl.hh>
 #include <jetstream/tools/snapshot.hh>
 
-#include "domains/io/sdr/tools/control_channel.hh"
+#include "domains/io/sdr/tools/stream_access.hh"
 #include "domains/io/sdr/tools/stream_buffer.hh"
 #include "library/soapysdr.hh"
 
@@ -66,12 +66,12 @@ struct JETSTREAM_API SoapyImpl : public Module::Impl, public DynamicConfig<Soapy
     };
 
     SoapyReceiver receiverDevice;
-    Radio::ControlChannel control;
+    Radio::StreamAccess access;
     Tuning tuned;
 
     Result allocateBuffers();
     Result configureDevice();
-    Result applyTuning(const Tuning& desired);
+    Result applyTuning(const Tuning& desired, bool force = false);
     void resetStream(F32 appliedFrequency, F32 appliedSampleRate);
     Result publishMetadata(const Radio::StreamBuffer::Metadata& metadata);
     Result startReceiver();

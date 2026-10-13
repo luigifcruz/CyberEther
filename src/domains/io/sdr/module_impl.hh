@@ -10,7 +10,7 @@
 #include <jetstream/tools/snapshot.hh>
 
 #include "domains/io/sdr/devices/device.hh"
-#include "domains/io/sdr/tools/control_channel.hh"
+#include "domains/io/sdr/tools/stream_access.hh"
 #include "domains/io/sdr/tools/stream_buffer.hh"
 
 namespace Jetstream::Modules {
@@ -50,7 +50,7 @@ struct JETSTREAM_API SdrImpl : public Module::Impl, public DynamicConfig<Sdr> {
     std::atomic<bool> streaming{false};
 
     Radio::StreamBuffer stream;
-    Radio::ControlChannel control;
+    Radio::StreamAccess access;
     Radio::StreamBuffer::Metadata publishedMetadata;
 
     Tools::Snapshot<F32> bufferHealth{0.0f};
@@ -66,10 +66,8 @@ struct JETSTREAM_API SdrImpl : public Module::Impl, public DynamicConfig<Sdr> {
  private:
     std::unique_ptr<Radio::Device> radio;
     std::vector<std::string> antennas;
-    Radio::Device::Settings tuned;
 
     Radio::Device::Settings settingsOf(const Sdr& config) const;
-    Result applySettings(const Radio::Device::Settings& desired);
     void resetStream();
     Result startReceiver();
     void stopReceiver();

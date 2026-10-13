@@ -1321,6 +1321,76 @@ TEST_CASE_METHOD(ScriptedDrivers,
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR Sweep live edits interrupt capture synchronously and preserve the receive session",
+                 "[modules][sdr_sweep][reconfigure][control]") {
+    TestScript().budget = 0;
+    TestScript().readDelay = std::chrono::milliseconds(10);
+    auto config = ScriptedSweep();
+    config.automaticGain = false;
+    const auto module = BuildSweepModule();
+    const SweepCleanup cleanup{module};
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    REQUIRE(WaitFor([] { return TestScript().activeReads > 0; }));
+    auto* sweep = module->getImpl<Modules::SdrSweepImpl>();
+    const auto begin = std::chrono::steady_clock::now();
+    REQUIRE(module->reconfigure({{"automaticGain", true}, {"manualGain", 42.0f},
+                                  {"dwell", U64{2}}, {"settlingTime", 3.0f},
+                                  {"flatten", !config.flatten}}) == Result::SUCCESS);
+    REQUIRE(std::chrono::steady_clock::now() - begin < std::chrono::seconds(1));
+    REQUIRE(sweep->automaticGain);
+    REQUIRE(sweep->manualGain == 42.0f);
+    REQUIRE(sweep->dwell == 2);
+    REQUIRE(sweep->settlingTime == 3.0f);
+    REQUIRE(sweep->sweepPlan().dwell == 2);
+    REQUIRE(sweep->sweepPlan().flatten == !config.flatten);
+    const auto calls = TestScript().calls();
+    REQUIRE(std::count(calls.begin(), calls.end(), "mode:true") == 1);
+    REQUIRE(std::count(calls.begin(), calls.end(), "gain:42") == 1);
+    REQUIRE(std::count(calls.begin(), calls.end(), "prepare:2") == 1);
+    REQUIRE(std::count_if(calls.begin(), calls.end(), [](const auto& call) {
+        return call.starts_with("start:");
+    }) == 1);
+    REQUIRE(std::count(calls.begin(), calls.end(), "stop") == 0);
+    REQUIRE(TestScript().concurrentChanges == 0);
+
+    TestScript().budget = -1;
+    REQUIRE(WaitFor([&] { return sweep->getProgress().sweeps > 0; }));
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR Sweep failed live edits restore settings and the plan before returning",
+                 "[modules][sdr_sweep][reconfigure][control]") {
+    TestScript().budget = 0;
+    const auto config = ScriptedSweep();
+    const auto module = BuildSweepModule();
+    const SweepCleanup cleanup{module};
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    auto* sweep = module->getImpl<Modules::SdrSweepImpl>();
+    Parser::Map edit{{"manualGain", 40.0f}, {"dwell", U64{2}}};
+    std::string failure;
+    SECTION("gain setter") { failure = "gain:40"; }
+    SECTION("sweep preparation after applying gain") { failure = "prepare:2"; }
+    {
+        std::lock_guard lock(TestScript().mutex);
+        TestScript().failAt = failure;
+    }
+    REQUIRE(module->reconfigure(edit) == Result::ERROR);
+    REQUIRE(sweep->manualGain == config.manualGain);
+    REQUIRE(sweep->dwell == config.dwell);
+    REQUIRE(sweep->sweepPlan().dwell == config.dwell);
+    {
+        std::lock_guard lock(TestScript().mutex);
+        TestScript().failAt.clear();
+    }
+    REQUIRE(module->reconfigure(edit) == Result::SUCCESS);
+    REQUIRE(sweep->manualGain == 40.0f);
+    REQUIRE(sweep->sweepPlan().dwell == 2);
+    TestScript().budget = -1;
+    REQUIRE(WaitFor([&] { return sweep->getProgress().sweeps > 0; }));
+    REQUIRE(TestScript().concurrentChanges == 0);
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
                  "SDR Sweep retries a failing later hop in place and stops after bounded failures",
                  "[modules][sdr_sweep][receive][failure]") {
     const auto module = BuildSweepModule();

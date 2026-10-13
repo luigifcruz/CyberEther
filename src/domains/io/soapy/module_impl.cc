@@ -10,12 +10,6 @@
 
 namespace Jetstream::Modules {
 
-namespace {
-
-constexpr auto ControlTimeout = std::chrono::seconds(5);
-
-}  // namespace
-
 SoapyImpl::~SoapyImpl() {
     stopReceiver();
 }
@@ -152,21 +146,14 @@ Result SoapyImpl::allocateBuffers() {
 }
 
 Result SoapyImpl::configureDevice() {
-    tuned = {
+    const Tuning desired{
         .frequency = frequency,
         .sampleRate = sampleRate,
         .automaticGain = automaticGain,
         .gain = manualGain,
     };
     JST_CHECK(receiverDevice.setAntenna(antenna));
-    JST_CHECK(receiverDevice.setSampleRate(sampleRate));
-    JST_CHECK(receiverDevice.setTunerFrequency(frequency));
-    gainRange.publish(receiverDevice.getGainRange());
-    JST_CHECK(receiverDevice.setAutomaticGain(automaticGain));
-    tuned.gain = receiverDevice.clampGain(manualGain);
-    if (!automaticGain) {
-        JST_CHECK(receiverDevice.setGain(tuned.gain));
-    }
+    JST_CHECK(applyTuning(desired, true));
     manualGain = tuned.gain;
     JST_CHECK(receiverDevice.setBiasTee(biasTee));
     JST_CHECK(receiverDevice.startStream(streamString));
@@ -175,7 +162,6 @@ Result SoapyImpl::configureDevice() {
 
 Result SoapyImpl::startReceiver() {
     streaming = true;
-    control.open();
     try {
         producer = std::thread([this] {
             Result result;
@@ -184,7 +170,6 @@ Result SoapyImpl::startReceiver() {
             } catch (...) {
                 result = Result::ERROR;
             }
-            control.close();
             if (result != Result::SUCCESS && result != Result::RELOAD) {
                 errored = true;
                 JST_FATAL("[MODULE_SOAPY] Device thread crashed.");
@@ -192,12 +177,10 @@ Result SoapyImpl::startReceiver() {
         });
     } catch (const std::exception& e) {
         streaming = false;
-        control.close();
         JST_ERROR("[MODULE_SOAPY] Failed to start device thread: {}", e.what());
         return Result::ERROR;
     } catch (...) {
         streaming = false;
-        control.close();
         JST_ERROR("[MODULE_SOAPY] Failed to start device thread.");
         return Result::ERROR;
     }
@@ -211,7 +194,6 @@ void SoapyImpl::stopReceiver() {
     if (producer.joinable()) {
         producer.join();
     }
-    control.close();
 }
 
 Result SoapyImpl::destroy() {
@@ -227,7 +209,7 @@ Result SoapyImpl::destroy() {
 Result SoapyImpl::reconfigure() {
     const auto& newConfig = *candidate();
 
-    if (newConfig.modulePath != modulePath ||
+    if (errored || newConfig.modulePath != modulePath ||
         newConfig.deviceString != deviceString ||
         newConfig.streamString != streamString ||
         newConfig.antenna != antenna ||
@@ -243,31 +225,29 @@ Result SoapyImpl::reconfigure() {
         return Result::WARNING;
     }
 
-    Tuning desired{
-        .frequency = newConfig.frequency,
-        .sampleRate = newConfig.sampleRate,
-        .automaticGain = newConfig.automaticGain,
-        .gain = newConfig.manualGain,
-    };
-    if (newConfig.frequency != frequency) {
-        JST_CHECK(control.submitAndWait([this, desired] { return applyTuning(desired); }, ControlTimeout));
-        desired.gain = tuned.gain;
-    } else {
-        if (const auto range = gainRange.get()) {
-            desired.gain = std::clamp(desired.gain, static_cast<F32>(range->minimum),
-                                      static_cast<F32>(range->maximum));
+    return access.change([&] {
+        const Tuning desired{
+            .frequency = newConfig.frequency,
+            .sampleRate = newConfig.sampleRate,
+            .automaticGain = newConfig.automaticGain,
+            .gain = newConfig.manualGain,
+        };
+        const auto previous = tuned;
+        const auto result = applyTuning(desired);
+        if (result != Result::SUCCESS) {
+            if (applyTuning(previous, true) != Result::SUCCESS) {
+                errored = true;
+                JST_ERROR("[MODULE_SOAPY] Failed to restore the previous receiver settings.");
+            }
+            return result;
         }
-        if (newConfig.sampleRate != sampleRate || newConfig.automaticGain != automaticGain ||
-            desired.gain != manualGain) {
-            control.submit([this, desired] { return applyTuning(desired); });
-        }
-    }
 
-    frequency = newConfig.frequency;
-    sampleRate = newConfig.sampleRate;
-    automaticGain = newConfig.automaticGain;
-    manualGain = desired.gain;
-    return Result::SUCCESS;
+        frequency = newConfig.frequency;
+        sampleRate = newConfig.sampleRate;
+        automaticGain = newConfig.automaticGain;
+        manualGain = tuned.gain;
+        return Result::SUCCESS;
+    });
 }
 
 void SoapyImpl::resetStream(const F32 appliedFrequency, const F32 appliedSampleRate) {
@@ -306,7 +286,10 @@ Result SoapyImpl::soapyThreadLoop() {
     SoapyReceiveStatus receiveStatus;
 
     while (streaming) {
-        control.service();
+        const auto lock = access.lock();
+        if (!streaming || errored) {
+            break;
+        }
 
         const U64 readGeneration = stream.metadata().generation;
         const auto received = receiverDevice.read(readBuffer);
@@ -372,14 +355,14 @@ std::optional<SoapyAbi::Range> SoapyImpl::getGainRange() const {
     return gainRange.get();
 }
 
-Result SoapyImpl::applyTuning(const Tuning& desired) {
-    if (desired.sampleRate != tuned.sampleRate) {
+Result SoapyImpl::applyTuning(const Tuning& desired, const bool force) {
+    if (force || desired.sampleRate != tuned.sampleRate) {
         JST_CHECK(receiverDevice.setSampleRate(desired.sampleRate));
         tuned.sampleRate = desired.sampleRate;
         resetStream(tuned.frequency, tuned.sampleRate);
     }
 
-    const bool retuned = desired.frequency != tuned.frequency;
+    const bool retuned = force || desired.frequency != tuned.frequency;
     if (retuned) {
         JST_CHECK(receiverDevice.setTunerFrequency(desired.frequency));
         tuned.frequency = desired.frequency;
@@ -387,7 +370,7 @@ Result SoapyImpl::applyTuning(const Tuning& desired) {
         gainRange.publish(receiverDevice.getGainRange());
     }
 
-    const bool modeChanged = desired.automaticGain != tuned.automaticGain;
+    const bool modeChanged = force || desired.automaticGain != tuned.automaticGain;
     if (modeChanged) {
         JST_CHECK(receiverDevice.setAutomaticGain(desired.automaticGain));
         tuned.automaticGain = desired.automaticGain;
@@ -403,7 +386,7 @@ Result SoapyImpl::applyTuning(const Tuning& desired) {
 }
 
 Result SoapyImpl::setBiasTee(const bool enabled) {
-    return receiverDevice.setBiasTee(enabled);
+    return access.change([&] { return receiverDevice.setBiasTee(enabled); });
 }
 
 }  // namespace Jetstream::Modules

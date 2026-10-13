@@ -12,7 +12,7 @@
 #include <jetstream/tools/snapshot.hh>
 
 #include "domains/io/sdr/devices/device.hh"
-#include "domains/io/sdr/tools/control_channel.hh"
+#include "domains/io/sdr/tools/stream_access.hh"
 #include "domains/io/sdr_sweep/tools/sweep.hh"
 
 namespace Jetstream::Modules {
@@ -107,11 +107,8 @@ struct JETSTREAM_API SdrSweepImpl : public Module::Impl, public DynamicConfig<Sd
  private:
     std::unique_ptr<Radio::Device> radio;
     std::vector<std::string> antennas;
-    Radio::ControlChannel control;
+    Radio::StreamAccess access;
     Sweep::Plan plan;
-    Sweep::Plan submitted;
-    F64 requestedRate = 0.0;
-    Radio::Device::Settings tuned;
     std::optional<Radio::Device::Range> gainRange;
     Sweep::Assembler assembler;
     U64 instance = 0;
@@ -119,7 +116,6 @@ struct JETSTREAM_API SdrSweepImpl : public Module::Impl, public DynamicConfig<Sd
     Clock::time_point sweepStarted{};
     U64 sweepCounter = 0;
 
-    Radio::Device::Settings settingsOf(const SdrSweep& config, const Sweep::Plan& next) const;
     Result applyPlan(const Sweep::Plan& next, const Radio::Device::Settings& settings);
     Result startWorker();
     void stopWorker();
