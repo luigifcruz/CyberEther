@@ -13,7 +13,7 @@ class JETSTREAM_API HackRfSweepDecoder {
  public:
     static constexpr U64 HeaderBytes = 10;
 
-    struct Block {
+    struct JETSTREAM_API Block {
         U64 frequency = 0;
         const I8* payload = nullptr;
         U64 payloadSamples = 0;
@@ -21,7 +21,7 @@ class JETSTREAM_API HackRfSweepDecoder {
         static std::optional<Block> Parse(const U8* data, U64 size, U64 blockBytes);
     };
 
-    class Sequence {
+    class JETSTREAM_API Sequence {
      public:
         enum class Event : U8 {
             Waiting,

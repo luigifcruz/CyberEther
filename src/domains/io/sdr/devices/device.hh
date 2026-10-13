@@ -27,7 +27,7 @@ struct JETSTREAM_API Device {
         Failure,
     };
 
-    struct Range {
+    struct JETSTREAM_API Range {
         F64 minimum = 0.0;
         F64 maximum = 0.0;
 
@@ -62,7 +62,7 @@ struct JETSTREAM_API Device {
         Layout layout;
     };
 
-    struct Info {
+    struct JETSTREAM_API Info {
         std::string driver;
         std::string serial;
         std::string label;
@@ -71,7 +71,7 @@ struct JETSTREAM_API Device {
         std::string selector() const;
     };
 
-    struct Selection {
+    struct JETSTREAM_API Selection {
         std::string driver;
         std::string serial;
 
@@ -80,7 +80,7 @@ struct JETSTREAM_API Device {
         static std::optional<Selection> Parse(const std::string& selector);
     };
 
-    struct Capabilities {
+    struct JETSTREAM_API Capabilities {
         std::vector<Range> frequencyRanges;
         std::vector<Range> sampleRateRanges;
         std::vector<std::string> antennas;

@@ -51,7 +51,7 @@ struct JETSTREAM_API SdrSweepImpl : public Module::Impl, public DynamicConfig<Sd
     const Sweep::Plan& sweepPlan() const;
 
  protected:
-    struct MetricState {
+    struct JETSTREAM_API MetricState {
         void reset(Clock::time_point now);
         void advance(Clock::time_point now, bool occupied, bool active = true);
         void publish(Clock::time_point now, bool occupied);
