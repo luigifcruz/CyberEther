@@ -519,6 +519,10 @@ TEST_CASE("Cancellation interrupts in-flight model discovery", "[agent][provider
     auto released = release.get_future().share();
     provider.server.Get("/models", [&](const auto&, auto& response) {
         const auto provide = [&](size_t, httplib::DataSink& sink) {
+            const std::string chunk = R"({"data":[)";
+            if (!sink.write(chunk.data(), chunk.size())) {
+                return false;
+            }
             entered.set_value();
             released.wait();
             sink.done();
@@ -585,7 +589,7 @@ TEST_CASE("Connection failures and request timeouts are different diagnostics", 
     provider.start();
 
     auto config = provider.config();
-    config.timeoutSeconds = 1;
+    config.timeoutSeconds = timeout ? 1 : 5;
     if (!timeout) {
         provider.stop();
     }
