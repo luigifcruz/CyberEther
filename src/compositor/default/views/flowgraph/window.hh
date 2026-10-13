@@ -37,16 +37,18 @@ struct FlowgraphWindow {
         std::function<void()> onCreateStack;
         std::function<void()> onReviewDependencies;
         std::function<void()> onOpenExamples;
-        std::function<void(Rect, Rect)> onViewport;
+        std::function<void(FlowgraphEditor::Measured)> onLayout;
     };
 
     void update(Config config) {
         auto editorConfig = std::move(config.editor);
         editorConfig.openBlockPicker = openBlockPickerRequest;
-        editorConfig.onViewport = [this](Rect viewport) {
-            if (this->config.onViewport) {
-                this->config.onViewport(viewport, {viewport.x + toolbarPlacement.x, viewport.y + toolbarPlacement.y,
-                                                   toolbarPlacement.width, toolbarPlacement.height});
+        editorConfig.onLayout = [this](FlowgraphEditor::Measured measured) {
+            if (this->config.onLayout) {
+                const auto& viewport = measured.viewport;
+                measured.toolbar = {viewport.x + toolbarPlacement.x, viewport.y + toolbarPlacement.y,
+                                    toolbarPlacement.width, toolbarPlacement.height};
+                this->config.onLayout(std::move(measured));
             }
         };
         openBlockPickerRequest = false;

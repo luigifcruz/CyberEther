@@ -187,7 +187,7 @@ class JETSTREAM_API Provider {
 
     class JETSTREAM_API Catalog {
      public:
-        Result fetch(Error* error = nullptr);
+        Result fetch(Error* error = nullptr, const Cancellation& cancelled = {});
         std::optional<Model> find(Kind kind, const std::string& id) const;
 
      private:
@@ -203,7 +203,8 @@ class JETSTREAM_API Provider {
     const Config& config() const;
     const Profile& profile() const;
 
-    virtual Result models(std::vector<Model>& models, Error* error = nullptr) const;
+    virtual Result models(std::vector<Model>& models, Error* error = nullptr,
+                          const Cancellation& cancelled = {}) const;
     virtual Result stream(const Request& request, const Callbacks& callbacks, Response& response) const;
 
  private:

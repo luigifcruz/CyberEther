@@ -11,6 +11,7 @@
 #include "settings.hh"
 #include "stacks.hh"
 #include "workbench.hh"
+#include "agent.hh"
 
 #include "jetstream/logger.hh"
 
@@ -24,7 +25,7 @@ namespace Jetstream {
 
 class DefaultActions {
  public:
-    DefaultActions(DefaultCompositorState& state, DefaultCompositorCallbacks& callbacks) {
+    DefaultActions(DefaultCompositorState& state, DefaultCompositorCallbacks& callbacks, AgentRuntime& runtime) {
         workbench = std::make_shared<WorkbenchActions>(state, callbacks);
         settings = std::make_shared<SettingsActions>(state, callbacks);
         benchmark = std::make_shared<BenchmarkActions>(state, callbacks);
@@ -35,6 +36,7 @@ class DefaultActions {
         stacks = std::make_shared<StackActions>(state.flowgraph, callbacks);
         liveMarkdown = std::make_shared<LiveMarkdownActions>(state.flowgraph);
         feedback = std::make_shared<FeedbackActions>(state, callbacks);
+        agent = std::make_shared<AgentActions>(state, callbacks, runtime);
     }
 
     Result handle(const Mail& mail) {
@@ -66,6 +68,9 @@ class DefaultActions {
         if (Handle(*feedback, mail, result)) {
             return result;
         }
+        if (Handle(*agent, mail, result)) {
+            return result;
+        }
 
         JST_ERROR("[COMPOSITOR_IMPL_DEFAULT] Unhandled mail.");
         return Result::ERROR;
@@ -89,6 +94,14 @@ class DefaultActions {
 
     void cancelFilePicker() {
         filePicker->cancel();
+    }
+
+    void reconcileAgent() {
+        agent->reconcile();
+    }
+
+    void shutdownAgent() {
+        agent->shutdown();
     }
 
  private:
@@ -119,6 +132,7 @@ class DefaultActions {
     std::shared_ptr<StackActions> stacks;
     std::shared_ptr<WorkbenchActions> workbench;
     std::shared_ptr<FeedbackActions> feedback;
+    std::shared_ptr<AgentActions> agent;
 };
 
 }  // namespace Jetstream

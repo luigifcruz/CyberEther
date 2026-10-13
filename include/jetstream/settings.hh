@@ -83,7 +83,7 @@ struct JETSTREAM_API Settings {
             JST_SERDES(model, voice, backend);
         };
 
-        bool enabled = true;
+        bool enabled = false;
         std::string provider;
         std::string model;
         std::vector<Model> models;

@@ -75,8 +75,16 @@ struct FlowgraphWindowPresenter {
             .onOpenExamples = [enqueue]() {
                 enqueue(MailOpenModal{.content = ModalContent::FlowgraphExamples});
             },
-            .onViewport = [record = context.callbacks.recordViewport, flowgraphId](Rect viewport, Rect toolbar) {
-                if (record) record(flowgraphId, viewport, toolbar);
+            .onLayout = [layout = context.callbacks.layout, flowgraphId](FlowgraphEditor::Measured measured) {
+                if (!layout) {
+                    return;
+                }
+                Agent::Tools::Layout converted;
+                for (auto& [block, node] : measured.nodes) {
+                    converted.nodes[block] = {node.bounds, node.size, node.content};
+                }
+                converted.viewport = Agent::Tools::Layout::Viewport{measured.viewport, measured.toolbar};
+                layout(flowgraphId, std::move(converted));
             },
         };
     }

@@ -301,6 +301,18 @@ std::string LeadingSpace(const std::string& line) {
     return line.substr(0, end);
 }
 
+Indent Shift(const std::string& original, const std::string& written) {
+    const std::string have = LeadingSpace(original);
+    const std::string wrote = LeadingSpace(written);
+    if (have.rfind(wrote, 0) == 0) {
+        return {have.substr(wrote.size()), 0};
+    }
+    if (wrote.rfind(have, 0) == 0) {
+        return {{}, wrote.size() - have.size()};
+    }
+    return {};
+}
+
 Indent IndentShift(const Lines& lines, U64 start, const Hunk& hunk) {
     U64 index = start;
     for (const auto& step : hunk.steps) {
@@ -312,16 +324,7 @@ Indent IndentShift(const Lines& lines, U64 start, const Hunk& hunk) {
         if (Trim(step.text).empty() || Trim(original).empty()) {
             continue;
         }
-
-        const std::string have = LeadingSpace(original);
-        const std::string wrote = LeadingSpace(step.text);
-        if (have.rfind(wrote, 0) == 0) {
-            return {have.substr(wrote.size()), 0};
-        }
-        if (wrote.rfind(have, 0) == 0) {
-            return {{}, wrote.size() - have.size()};
-        }
-        return {};
+        return Shift(original, step.text);
     }
     return {};
 }
@@ -350,6 +353,99 @@ Replacement BuildReplacement(const Lines& lines, U64 start, const Hunk& hunk, bo
             replacement.after.push_back(Reindent(step.text, indent));
             ++replacement.added;
         }
+    }
+
+    replacement.count = index - start;
+    return replacement;
+}
+
+bool Blank(const std::string& line) {
+    return Trim(line).empty();
+}
+
+std::vector<U64> LooseMatches(const Lines& lines, const Hunk& hunk, U64 from, U64 textEnd) {
+    Lines needle;
+    for (const auto& line : hunk.before()) {
+        if (!Blank(line)) {
+            needle.push_back(FoldPunctuation(line));
+        }
+    }
+
+    std::vector<U64> positions;
+    Lines haystack;
+    for (U64 index = from; index < textEnd; ++index) {
+        if (!Blank(lines[index])) {
+            positions.push_back(index);
+            haystack.push_back(FoldPunctuation(lines[index]));
+        }
+    }
+
+    std::vector<U64> matches;
+    if (needle.empty() || needle.size() > haystack.size()) {
+        return matches;
+    }
+
+    for (U64 start = 0; start + needle.size() <= haystack.size(); ++start) {
+        if (hunk.endOfText && start + needle.size() != haystack.size()) {
+            continue;
+        }
+        if (std::equal(needle.begin(), needle.end(), haystack.begin() + static_cast<I64>(start))) {
+            matches.push_back(positions[start]);
+        }
+    }
+    return matches;
+}
+
+Replacement LooseReplacement(const Lines& lines, U64 first, const Hunk& hunk, U64 from, U64 textEnd) {
+    const auto written = std::find_if(hunk.steps.begin(), hunk.steps.end(), [](const Step& step) {
+        return step.kind != '+' && !Blank(step.text);
+    });
+    const Indent indent = Shift(lines[first], written->text);
+
+    U64 leading = 0;
+    for (auto step = hunk.steps.begin(); step != written; ++step) {
+        leading += step->kind != '+';
+    }
+
+    U64 start = first;
+    while (leading > 0 && start > from && Blank(lines[start - 1])) {
+        --start;
+        --leading;
+    }
+
+    Replacement replacement{.start = start};
+    U64 index = start;
+    for (const auto& step : hunk.steps) {
+        if (step.kind == '+') {
+            replacement.after.push_back(Reindent(step.text, indent));
+            ++replacement.added;
+            continue;
+        }
+
+        if (Blank(step.text)) {
+            if (index < textEnd && Blank(lines[index])) {
+                if (step.kind == ' ') {
+                    replacement.after.push_back(lines[index]);
+                } else {
+                    ++replacement.removed;
+                }
+                ++index;
+            } else if (step.kind == ' ') {
+                replacement.after.push_back({});
+                ++replacement.added;
+            }
+            continue;
+        }
+
+        while (index < textEnd && Blank(lines[index])) {
+            replacement.after.push_back(lines[index++]);
+        }
+        if (step.kind == ' ') {
+            replacement.after.push_back(lines[index]);
+        } else {
+            ++replacement.removed;
+        }
+        ++index;
     }
 
     replacement.count = index - start;
@@ -413,6 +509,18 @@ std::string LocateHunk(const Lines& lines, Hunk hunk, U64 number, U64& cursor, R
             }
         }
     } while (DropTrailingBlank(hunk));
+
+    const auto loose = LooseMatches(lines, hunk, from, textEnd);
+    if (loose.size() == 1) {
+        replacement = LooseReplacement(lines, loose.front(), hunk, from, textEnd);
+        cursor = replacement.start + replacement.count;
+        return {};
+    }
+    if (loose.size() > 1) {
+        return jst::fmt::format("{} matches {} places (lines {}). More unchanged context lines, "
+                                "or an @@ line naming the enclosing def or class, would narrow it to one place.",
+                                label, loose.size(), LineList(loose));
+    }
 
     return jst::fmt::format("{}: its unchanged and '-' lines were not found in order after the previous hunk.{} "
                             "read_block_text shows the current lines.", label, MissHint(lines, hunk.before()));
