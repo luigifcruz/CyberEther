@@ -55,6 +55,11 @@ struct AgentActions {
         state(state), callbacks(callbacks), runtime(runtime) {}
 
     Result handle(const MailSetAgentEnabled& msg) {
+#ifdef JST_OS_BROWSER
+        if (msg.value) {
+            return Result::SUCCESS;
+        }
+#endif
         auto& agent = state.agent;
         agent.settings.enabled = msg.value;
 

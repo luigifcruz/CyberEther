@@ -116,6 +116,9 @@ Result DefaultCompositor::create() {
     state.agent.captureSupported = render && render->supportsCapture();
 
     state.agent.settings = settings.intelligence;
+#ifdef JST_OS_BROWSER
+    state.agent.settings.enabled = false;
+#endif
 
     // Restore debug preferences.
 
