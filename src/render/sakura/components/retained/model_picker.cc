@@ -45,7 +45,6 @@ struct ModelPicker::Impl {
     Box caretBox;
     Box popupBox;
     Box hoverBox;
-    Box chevronBox;
     Box trackBox;
     Box fillBox;
     Box dotsBox;
@@ -270,8 +269,9 @@ struct ModelPicker::Impl {
         const auto* model = selectedModel();
         const std::string modelLabel = model ? model->label : config.placeholder;
         const F32 modelWidth = measureText(modelLabel, m.font);
-        const F32 chevron = 5.0f * m.unit;
-        const F32 modelX = modelRowRect.x + (modelRowRect.width - modelWidth - m.gap - chevron) * 0.5f;
+        const F32 chevron = 0.6f * m.font;
+        const F32 chevronGap = 0.5f * m.gap;
+        const F32 modelX = modelRowRect.x + (modelRowRect.width - modelWidth - chevronGap - chevron) * 0.5f;
         const bool modelHovered = hover == Hover::ModelRow;
         const auto& title = effortLabel().empty() ? config.effortPlaceholder : effortLabel();
 
@@ -296,19 +296,12 @@ struct ModelPicker::Impl {
             .maxCharacters = config.maxCharacters,
             .capacity = 1,
         });
-        const Rect chevronRect = {modelX + modelWidth + m.gap, modelRowRect.y + 1.5f * m.unit, chevron,
-                                  modelRowRect.height};
-        chevronBox.update({
-            .id = config.id + ":chevron",
-            .instances = {Caret(chevronRect, false, {8.5f * m.unit, 5.0f * m.unit},
-                                color(ctx, modelHovered ? config.textColorKey : config.detailColorKey), shown)},
-            .clip = area,
-            .shape = Box::Shape::Triangle,
-            .capacity = 1,
-        });
+        const Rect chevronRect = {modelX + modelWidth + chevronGap, modelRowRect.y, chevron, modelRowRect.height};
         iconLabels.update({
             .id = config.id + ":icons",
-            .instances = {{.rect = chevronRect, .str = ICON_FA_CHECK, .visible = false}},
+            .instances = {{.rect = chevronRect, .str = ICON_FA_CHEVRON_RIGHT, .visible = shown,
+                           .color = color(ctx, modelHovered ? config.textColorKey : config.detailColorKey),
+                           .fontSize = chevron, .alignment = {0, 1}}},
             .clip = area,
             .fontName = Typography::IconFont,
             .maxCharacters = 4,
@@ -407,13 +400,6 @@ struct ModelPicker::Impl {
                             .alignment = {1, 1}};
             }
         }
-        chevronBox.update({
-            .id = config.id + ":chevron",
-            .instances = {{.visible = false}},
-            .clip = area,
-            .shape = Box::Shape::Triangle,
-            .capacity = 1,
-        });
         rowLabels.update({
             .id = config.id + ":rows",
             .instances = std::move(labels),
@@ -458,7 +444,6 @@ ModelPicker::ModelPicker() {
     add(impl->caretBox);
     add(impl->popupBox);
     add(impl->hoverBox);
-    add(impl->chevronBox);
     add(impl->trackBox);
     add(impl->fillBox);
     add(impl->dotsBox);
@@ -546,7 +531,7 @@ void ModelPicker::layout(const Context& ctx) {
         .borderColor = Over(popupColor, state.color(ctx, state.config.popupBorderColorKey), popupColor.a),
     });
     for (Component* child : std::initializer_list<Component*>{
-             &state.popupBox, &state.hoverBox, &state.chevronBox, &state.trackBox, &state.fillBox, &state.dotsBox,
+             &state.popupBox, &state.hoverBox, &state.trackBox, &state.fillBox, &state.dotsBox,
              &state.thumbBox, &state.titleLabel, &state.popupLabels, &state.iconLabels, &state.rowLabels}) {
         layoutChild(ctx, *child, visible ? state.popupRect : Rect{});
     }

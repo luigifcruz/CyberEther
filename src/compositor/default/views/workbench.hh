@@ -10,6 +10,10 @@
 #include "menubar.hh"
 #include "modal/container.hh"
 
+#include "agent/chat.hh"
+#include "agent/voice.hh"
+
+#include <functional>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -23,6 +27,8 @@ struct WorkbenchView {
     struct Config {
         bool filePending = false;
         bool backgroundParticles = true;
+        AgentChatView::Config agentChat;
+        AgentVoiceView::Config agentVoice;
         std::optional<Sakura::DebugWindow::Config> debugWindow;
         std::optional<InfoHudView::Config> infoHud;
         std::optional<WelcomeHudView::Config> welcomeHud;
@@ -71,6 +77,9 @@ struct WorkbenchView {
         if (this->config.debugWindow.has_value()) {
             debugWindow.update(std::move(this->config.debugWindow.value()));
         }
+        this->config.agentChat.topOffset = menuBarHeight;
+        agentChat.update(std::move(this->config.agentChat));
+        agentVoice.update(this->config.agentVoice);
 
         auto menubarConfig = std::move(this->config.menubar);
         auto onHeight = std::move(menubarConfig.onHeight);
@@ -134,10 +143,14 @@ struct WorkbenchView {
         if (config.debugWindow.has_value()) {
             debugWindow.render(ctx);
         }
-
         menubar.render(ctx);
         workspaceBackground.render(ctx);
         Sakura::Dockspace({.topOffset = Sakura::Scale(ctx, menuBarHeight)});
+        if (config.agentVoice.visible) {
+            agentVoice.render(ctx);
+        } else {
+            agentChat.render(ctx);
+        }
 
         for (const auto& flowgraphId : flowgraphOrder) {
             if (flowgraphWindows.contains(flowgraphId)) {
@@ -167,6 +180,8 @@ struct WorkbenchView {
     RemoteHudView remoteHud;
     Sakura::Notifications notifications;
     Sakura::DebugWindow debugWindow;
+    AgentChatView agentChat;
+    AgentVoiceView agentVoice;
     MenubarView menubar;
     std::vector<std::string> flowgraphOrder;
     std::unordered_map<std::string, FlowgraphWindow> flowgraphWindows;
