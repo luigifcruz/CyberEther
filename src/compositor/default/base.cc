@@ -7,7 +7,7 @@
 
 #include "actions/base.hh"
 #include "presenters/base.hh"
-#include "themes.hh"
+#include "support/themes.hh"
 
 #include "resources/fonts/compressed_jbmm.hh"
 #include "resources/fonts/compressed_jbmb.hh"
@@ -22,6 +22,7 @@
 #include <chrono>
 #include <deque>
 #include <functional>
+#include <future>
 #include <memory>
 #include <optional>
 #include <string>
@@ -57,6 +58,9 @@ DefaultCompositor::DefaultCompositor() :
         .requestFile = [this](FilePickerRequest request) {
             return actions.requestFile(std::move(request));
         },
+        .layout = [this](const std::string& flowgraph, Agent::Tools::Layout layout) {
+            agent.executor().layout(flowgraph, std::move(layout));
+        },
         .checkForUpdates = [this]() {
             updater.check();
         },
@@ -73,7 +77,8 @@ DefaultCompositor::DefaultCompositor() :
             feedback.submit(text);
         },
     },
-    actions(state, callbacks),
+    agent(state, callbacks),
+    actions(state, callbacks, agent),
     presenters(state, callbacks) {}
 
 Result DefaultCompositor::create() {
@@ -105,6 +110,15 @@ Result DefaultCompositor::create() {
 
     state.interface.infoPanelEnabled = settings.interface.infoPanelEnabled;
     state.interface.backgroundParticles = settings.interface.backgroundParticles;
+
+    // Restore intelligence preferences.
+
+    state.agent.captureSupported = render && render->supportsCapture();
+
+    state.agent.settings = settings.intelligence;
+#ifdef JST_OS_BROWSER
+    state.agent.settings.enabled = false;
+#endif
 
     // Restore debug preferences.
 
@@ -191,6 +205,8 @@ Result DefaultCompositor::destroy() {
     JST_INFO("[COMPOSITOR_IMPL_DEFAULT] Destroying compositor.");
 
     actions.cancelFilePicker();
+    agent.shutdown();
+    actions.shutdownAgent();
     updater.shutdown();
     feedback.shutdown();
     if (Settings::Flush() != Result::SUCCESS) {
@@ -226,6 +242,7 @@ Result DefaultCompositor::poll() {
         JST_CHECK(actions.handle(mail));
     }
 
+    agent.poll();
     while (const auto error = Settings::TakePersistenceError()) {
         callbacks.notify(Sakura::ToastType::Error, 5000, *error);
     }
@@ -255,6 +272,7 @@ Result DefaultCompositor::poll() {
     actions.reconcileFilePicker();
     actions.restoreStacks();
     actions.refreshLiveMarkdown();
+    actions.reconcileAgent();
     updateFeedbackState();
 
     // Build view configs while flowgraph access is confined to poll.

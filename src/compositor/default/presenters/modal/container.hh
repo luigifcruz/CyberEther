@@ -4,6 +4,8 @@
 #include "benchmark.hh"
 #include "dependencies.hh"
 #include "feedback.hh"
+#include "intelligence_model.hh"
+#include "intelligence_provider.hh"
 #include "plugin.hh"
 #include "remote.hh"
 #include "settings/base.hh"
@@ -29,6 +31,8 @@ struct ModalPresenter {
     BenchmarkModalPresenter benchmark;
     RemoteStreamingModalPresenter remoteStreaming;
     PluginPresenter plugin;
+    IntelligenceProviderPresenter intelligenceProvider;
+    IntelligenceModelPresenter intelligenceModel;
     DependencyReviewModalPresenter dependencies;
     FeedbackModalPresenter feedback;
 
@@ -41,6 +45,8 @@ struct ModalPresenter {
                                                                benchmark(context),
                                                                remoteStreaming(context),
                                                                plugin(context),
+                                                               intelligenceProvider(context),
+                                                               intelligenceModel(context),
                                                                dependencies(context),
                                                                feedback(context) {}
 
@@ -52,6 +58,11 @@ struct ModalPresenter {
         config.onClose = [enqueue, content = config.content]() {
             if (content == ModalContent::Plugin) {
                 enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::Registry});
+                return;
+            }
+            if (content == ModalContent::IntelligenceProvider ||
+                content == ModalContent::IntelligenceModel) {
+                enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::Intelligence});
                 return;
             }
             enqueue(MailCloseModal{});
@@ -87,6 +98,12 @@ struct ModalPresenter {
                 break;
             case ModalContent::Plugin:
                 config.plugin = plugin.build();
+                break;
+            case ModalContent::IntelligenceProvider:
+                config.intelligenceProvider = intelligenceProvider.build();
+                break;
+            case ModalContent::IntelligenceModel:
+                config.intelligenceModel = intelligenceModel.build();
                 break;
             case ModalContent::Dependencies:
                 config.dependencies = dependencies.build();

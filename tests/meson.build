@@ -1,4 +1,5 @@
 if catch2_dep.found()
+    subdir('agent')
     subdir('core')
     subdir('modules')
 endif
