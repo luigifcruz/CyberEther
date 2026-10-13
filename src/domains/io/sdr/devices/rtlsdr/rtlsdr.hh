@@ -23,7 +23,6 @@ struct RtlSdrDevice : public Device {
     Result setGain(F64 gain) override;
     F64 resolveGain(F64 gain, const std::optional<Range>& range) const override;
     Capture read(std::span<CF32> samples, std::chrono::milliseconds timeout) override;
-    Result prepareSweep(const SweepRequest& request) override;
 
  protected:
     Result tuneHop(U64 hop) override;

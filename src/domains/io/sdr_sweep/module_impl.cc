@@ -298,6 +298,7 @@ Radio::Device::Settings SdrSweepImpl::settingsOf(const SdrSweep& config,
         .biasTee = config.biasTee,
         .settlingTime = config.settlingTime > 0.0f ? config.settlingTime / 1e3 : -1.0,
         .gain = config.manualGain,
+        .lowLatency = true,
     };
 }
 

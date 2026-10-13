@@ -83,7 +83,6 @@ struct RtlSdrDevice::Impl {
     std::thread worker;
     std::atomic<bool> stopping{false};
     std::atomic<U64> streamGeneration{0};
-    bool lowLatency = false;
     std::mutex finishedMutex;
     std::condition_variable finishedCondition;
     bool finished = true;
@@ -324,19 +323,6 @@ Device::Capture RtlSdrDevice::read(std::span<CF32> samples, const std::chrono::m
     return pimpl->queue.pop(samples, timeout);
 }
 
-Result RtlSdrDevice::prepareSweep(const SweepRequest& request) {
-    JST_CHECK(Device::prepareSweep(request));
-    if (pimpl->lowLatency) {
-        return Result::SUCCESS;
-    }
-    pimpl->lowLatency = true;
-    if (!pimpl->worker.joinable()) {
-        return Result::SUCCESS;
-    }
-    pimpl->stopStream();
-    return pimpl->startStream();
-}
-
 Result RtlSdrDevice::tuneHop(const U64 hop) {
     const F64 frequency = sweepRequest.frequencies[hop];
     if (!pimpl->worker.joinable()) {
@@ -362,7 +348,9 @@ Result RtlSdrDevice::Impl::startStream() {
     }
 
     const F64 sampleRate = device.appliedSettings.sampleRate;
-    const U32 transferBytes = TransferBytes(sampleRate, lowLatency);
+    // WebUSB cancellation can leave browser reads pending. Choose the sweep
+    // transfer size before starting, rather than restarting/resetting the FIFO.
+    const U32 transferBytes = TransferBytes(sampleRate, device.requestedSettings.lowLatency);
     const U64 capacity = std::max<U64>(static_cast<U64>(sampleRate / 2.0),
                                        static_cast<U64>(transferBytes) * InFlightTransfers);
     JST_CHECK(queue.resize(capacity));

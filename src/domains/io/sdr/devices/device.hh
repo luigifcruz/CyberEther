@@ -103,6 +103,7 @@ struct JETSTREAM_API Device {
         bool biasTee = false;
         F64 settlingTime = -1.0;
         F64 gain = 30.0;
+        bool lowLatency = false;
     };
 
     struct Applied {
