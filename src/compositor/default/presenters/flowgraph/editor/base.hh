@@ -123,13 +123,6 @@ struct FlowgraphEditorPresenter {
                 enqueue(MailSetNodeMeta{
                     flowgraphId, blockName, NodeMeta{x, y, width, height}, saved});
             },
-            .onNodeBounds = [record = context.callbacks.recordNodeBounds, flowgraphId](
-                               const std::string& blockName,
-                               Rect bounds,
-                               Extent2D<F32> size,
-                               std::optional<Extent2D<F32>> content) {
-                if (record) record(flowgraphId, blockName, bounds, size, content);
-            },
             .onNodeConfigCollapse = [enqueue, flowgraphId](const std::string& blockName,
                                                            bool collapsed) {
                 enqueue(MailSetConfigCollapsed{
@@ -141,6 +134,9 @@ struct FlowgraphEditorPresenter {
                     flowgraphId, blockName, detached});
             },
         };
+
+        const auto& agent = context.state.agent;
+        config.measure = agent.chat.conversation.streaming || agent.voice.phase != Agent::Session::Phase::Idle;
 
         const auto blocks = context.state.flowgraph.blocks.find(flowgraphId);
         if (blocks == context.state.flowgraph.blocks.end()) {

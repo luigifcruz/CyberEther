@@ -1,5 +1,6 @@
 agent_test_domains = {
     'tools': ['tools/flowgraph.cc'],
+    'session': ['session/session.cc', 'session/harness.cc'],
     'provider': ['provider/provider.cc', 'provider/requests.cc', 'provider/replay.cc', 'provider/retry.cc'],
 }
 
