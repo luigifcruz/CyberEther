@@ -1,5 +1,7 @@
 src_lst += files([
     'device.cc',
+    'discovery.cc',
+    'sweep.cc',
 ])
 
 subdir('rtlsdr')
