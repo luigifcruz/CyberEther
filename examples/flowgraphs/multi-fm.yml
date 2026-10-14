@@ -16,11 +16,11 @@ graph:
         # Multi-FM Receiver
         **One radio, one 2 MHz capture, two stations pulled out of it at once.**
         
-        1. Plug in your SDR and choose it in the **Device** dropdown on the **Soapy SDR** block.
+        1. Plug in your SDR and choose it in the **Device** dropdown on the **SDR** block.
         2. Leave **Frequency** at 96.900 MHz for now. The two stations this graph expects sit 400 kHz below and above it, at 96.5 and 97.3 MHz.
         3. Adjust **Volume** on the **Audio** block to a comfortable level.
 
-        **Radio not listed?** Check the cable and plug the dongle directly into the computer rather than a hub. Close any other program that is using it, only one program can open a radio at a time. Then reopen this example from the **Flowgraph** menu under **Open Examples** so the list is rebuilt. On Linux, the kernel's DVB-T driver can claim an RTL-SDR before SoapySDR sees it. On Windows, the dongle needs the WinUSB driver installed with Zadig.
+        **Radio not listed?** Check the cable and plug the dongle directly into the computer rather than a hub. Close any other program that is using it, only one program can open a radio at a time. Then reopen this example from the **Flowgraph** menu under **Open Examples** so the list is rebuilt. On Linux, the kernel's DVB-T driver can claim an RTL-SDR before CyberEther sees it. On Windows, the dongle needs the WinUSB driver installed with Zadig.
         
         ## How it works
         The **Simple FM Receiver** example captures only 240 kHz, enough for one station. This one captures 2 MHz, which holds about ten broadcast channels, and lets the **Filter** block cut two of them out. Each cut is called a head. The filter shifts each head down to center, keeps 200 kHz of it, and lowers the sample rate to match, so what comes out is exactly what a single station receiver would have captured on its own.
@@ -89,15 +89,13 @@ graph:
         y: 439
         width: 295
         height: 437
-  - name: soapy
-    module: soapy
+  - name: sdr
+    module: sdr
     device: cpu
     runtime: native
     provider: generic
     config:
-      modulePath: ''
       deviceString: ''
-      streamString: ''
       antenna: ''
       frequency: 9.69e+07
       frequencyStep: 1000000
@@ -125,7 +123,7 @@ graph:
       taps: 51
       heads: 2
     input:
-      signal: '${graph.soapy.output.signal}'
+      signal: '${graph.sdr.output.signal}'
     meta:
       node:
         x: 774
@@ -150,7 +148,7 @@ graph:
       amplitudeLabel: Amplitude (dBFS)
       waterfallLabel: Time
     input:
-      buffer: '${graph.soapy.output.signal}'
+      buffer: '${graph.sdr.output.signal}'
     meta:
       node:
         x: 413

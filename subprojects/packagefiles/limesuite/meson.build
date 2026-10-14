@@ -20,7 +20,6 @@ elif target_machine.system() == 'darwin' or \
 endif
 
 thread_dep = dependency('threads')
-soapysdr_dep = dependency('soapysdr', required: true)
 
 if target_machine.system() == 'emscripten'
   usb_dep = subproject(
@@ -42,11 +41,19 @@ else
   ).get_variable('libusb_dep')
 endif
 
-atomic_dep = cpp.find_library('atomic', required: false)
+atomic_code = '''
+#include <atomic>
+#include <cstdint>
+int main() {
+  std::atomic<std::uint64_t> value{0};
+  value.fetch_add(1);
+  return static_cast<int>(value.load());
+}
+'''
 
 limesuite_deps = [thread_dep, usb_dep]
-if atomic_dep.found()
-  limesuite_deps += [atomic_dep]
+if not cpp.links(atomic_code, name: 'std::atomic without libatomic')
+  limesuite_deps += [cpp.find_library('atomic', required: true)]
 endif
 
 if target_machine.system().startswith('windows')
@@ -104,7 +111,6 @@ limesuite_inc = include_directories(
   'src/threadHelper',
   'src/ConnectionFX3',
   'src/ConnectionFTDI',
-  'SoapyLMS7',
   'external/cpp-feather-ini-parser',
   'external/kissFFT',
 )
@@ -190,22 +196,4 @@ limesuite_dep = declare_dependency(
   include_directories: limesuite_inc,
   dependencies: limesuite_deps,
   link_with: limesuite_lib,
-)
-
-soapylms7_lib = library(
-  'SoapyLMS7',
-  'SoapyLMS7/Registration.cpp',
-  'SoapyLMS7/Settings.cpp',
-  'SoapyLMS7/Streaming.cpp',
-  c_args: private_c_args,
-  cpp_args: private_cpp_args,
-  include_directories: limesuite_inc,
-  dependencies: [soapysdr_dep, limesuite_dep],
-  install: true,
-)
-
-soapylms7_dep = declare_dependency(
-  include_directories: limesuite_inc,
-  dependencies: [soapysdr_dep, limesuite_dep],
-  link_with: soapylms7_lib,
 )

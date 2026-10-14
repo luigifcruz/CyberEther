@@ -59,7 +59,7 @@ TEST_CASE("Dropdowns return strings and distinguish duplicate display labels",
         .name = "deviceString",
         .format = {{"type", "dropdown"}, {"options", options}},
         .values = {{"deviceString", ""}},
-        .onApply = [&](Parser::Map patch, bool) { edits.push_back(std::move(patch)); },
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) { edits.push_back(std::move(patch)); },
     };
     REQUIRE(Block::Interface::ValidateFormat(config.format) == Result::SUCCESS);
     REQUIRE(field.update(config) == Result::SUCCESS);
@@ -123,7 +123,7 @@ TEST_CASE("String dropdown options work with boolean config values",
             Parser::Map{{"label", "Inverse"}, {"value", "false"}},
         }}},
         .values = {{"forward", true}},
-        .onApply = [&](Parser::Map patch, bool) { edits.push_back(std::move(patch)); },
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) { edits.push_back(std::move(patch)); },
     }) == Result::SUCCESS);
     SelectOption(ui, field, 1);
     REQUIRE(edits.size() == 1);
@@ -189,7 +189,7 @@ TEST_CASE("Numeric fields apply explicit scale independently of their unit label
         .name = "value",
         .format = {{"type", "float"}, {"unit", "MHz"}, {"scale", 10.0f}, {"precision", 3}},
         .values = {{"value", 20.0f}},
-        .onApply = [&](Parser::Map patch, bool) { edits.push_back(std::move(patch)); },
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) { edits.push_back(std::move(patch)); },
     });
     ImRect rect;
     const auto frame = [&] {

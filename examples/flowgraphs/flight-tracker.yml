@@ -16,11 +16,11 @@ graph:
         # ADS-B Flight Tracker
         **Aircraft announce where they are. This example listens, decodes, and plots them.**
         
-        1. Plug in your SDR and choose it in the **Device** dropdown on the **Soapy SDR** block. An RTL-SDR shows up as something like **Generic RTL2832U OEM**.
+        1. Plug in your SDR and choose it in the **Device** dropdown on the **SDR** block. An RTL-SDR shows up as something like **Generic RTL2832U OEM**.
         2. Leave **Frequency** at 1090.000 MHz and **Sample Rate** at 2.000 MHz. The decoder refuses any other sample rate.
         3. Put the antenna by a window and wait. The first rows usually appear within a minute if aircraft are in range.
 
-        **Radio not listed?** Check the cable and plug the dongle directly into the computer rather than a hub. Close any other program that is using it, only one program can open a radio at a time. Then reopen this example from the **Flowgraph** menu under **Open Examples** so the list is rebuilt. On Linux, the kernel's DVB-T driver can claim an RTL-SDR before SoapySDR sees it. On Windows, the dongle needs the WinUSB driver installed with Zadig.
+        **Radio not listed?** Check the cable and plug the dongle directly into the computer rather than a hub. Close any other program that is using it, only one program can open a radio at a time. Then reopen this example from the **Flowgraph** menu under **Open Examples** so the list is rebuilt. On Linux, the kernel's DVB-T driver can claim an RTL-SDR before CyberEther sees it. On Windows, the dongle needs the WinUSB driver installed with Zadig.
         
         ## What is happening
         Every airliner carries a transponder that broadcasts its altitude, speed, and position twice a second and its identity every five seconds on 1090 MHz, in the clear, for anyone to hear. The radio captures 2 MHz around that frequency, the **ADS-B Decoder** finds the short pulse bursts, checks them, and keeps a table of what each aircraft has said. The globe plots every aircraft with a known position.
@@ -63,15 +63,13 @@ graph:
         y: 533
         width: 349
         height: 372
-  - name: soapy
-    module: soapy
+  - name: sdr
+    module: sdr
     device: cpu
     runtime: native
     provider: generic
     config:
-      modulePath: ''
       deviceString: ''
-      streamString: ''
       antenna: ''
       frequency: 1.09e+09
       frequencyStep: 1000000
@@ -93,7 +91,7 @@ graph:
     runtime: native
     provider: generic
     input:
-      signal: '${graph.soapy.output.signal}'
+      signal: '${graph.sdr.output.signal}'
     meta:
       surface_default:
         attachedHeight: 604
@@ -124,7 +122,7 @@ graph:
       amplitudeLabel: Amplitude (dBFS)
       waterfallLabel: Time
     input:
-      buffer: '${graph.soapy.output.signal}'
+      buffer: '${graph.sdr.output.signal}'
     meta:
       node:
         x: 1126

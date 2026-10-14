@@ -1,86 +1,96 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
-#include <string>
 
+#include "environment.hh"
 #include "flowgraph_fixture.hh"
 #include "jetstream/domains/io/soapy/block.hh"
-#include "jetstream/registry.hh"
+#include "library/soapysdr.hh"
 
 using namespace Jetstream;
 
-TEST_CASE("Soapy block Bias-T defaults off", "[modules][io][soapy][block][bias-tee]") {
+namespace {
+
+struct RuntimeReset {
+    RuntimeReset() {
+        Modules::SoapyRuntime::Reset();
+        Modules::SoapyDiscovery::ClearCache();
+    }
+
+    ~RuntimeReset() {
+        Modules::SoapyRuntime::Reset();
+        Modules::SoapyDiscovery::ClearCache();
+    }
+};
+
+}  // namespace
+
+TEST_CASE("Soapy block preserves public defaults and saved settings",
+          "[modules][io][soapy][block][config]") {
     Blocks::Soapy config;
-    REQUIRE_FALSE(config.biasTee);
-
-    config.biasTee = true;
-    Parser::Map serialized;
-    REQUIRE(config.serialize(serialized) == Result::SUCCESS);
-
-    Blocks::Soapy restored;
-    REQUIRE(restored.deserialize(serialized) == Result::SUCCESS);
-    REQUIRE(restored.biasTee);
-}
-
-TEST_CASE("Soapy antenna selection is optional and serialized", "[modules][io][soapy][block][antenna]") {
-    Blocks::Soapy config;
-    REQUIRE(config.deserialize({{"deviceString", "driver=test"}}) == Result::SUCCESS);
+    REQUIRE(config.modulePath.empty());
+    REQUIRE(config.deviceString.empty());
+    REQUIRE(config.streamString.empty());
     REQUIRE(config.antenna.empty());
-    const auto defaultHash = config.hash();
-    config.antenna = "TX/RX";
-    REQUIRE(config.hash() != defaultHash);
-    Parser::Map serialized;
-    REQUIRE(config.serialize(serialized) == Result::SUCCESS);
+    REQUIRE(config.frequency == 96.9e6f);
+    REQUIRE(config.frequencyStep == 1000000.0f);
+    REQUIRE(config.sampleRate == 2.0e6f);
+    REQUIRE(config.automaticGain);
+    REQUIRE(config.manualGain == 0.0f);
+    REQUIRE_FALSE(config.biasTee);
+    REQUIRE(config.numberOfBatches == 8);
+    REQUIRE(config.numberOfTimeSamples == 8192);
+    REQUIRE(config.bufferMultiplier == 4);
+
+    config.modulePath = "saved-device-module";
+    config.deviceString = "driver=saved,serial=123";
+    config.streamString = "bufflen=8192";
+    config.antenna = "RX";
+    config.automaticGain = false;
+    config.manualGain = 20.0f;
+    config.biasTee = true;
+    Parser::Map saved;
+    REQUIRE(config.serialize(saved) == Result::SUCCESS);
     Blocks::Soapy restored;
-    REQUIRE(restored.deserialize(serialized) == Result::SUCCESS);
-    REQUIRE(restored.antenna == config.antenna);
+    REQUIRE(restored.deserialize(saved) == Result::SUCCESS);
     REQUIRE(restored.hash() == config.hash());
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Soapy block delegates module configuration validation",
-                 "[modules][io][soapy][block][validation]") {
-    if (Registry::ListAvailableModules("soapy").empty()) {
-        SUCCEED("Soapy module is unavailable in this build.");
-        return;
-    }
-
-    Parser::Map config;
-    config["deviceString"] = std::string("driver=cyberether_missing_test_driver");
-    config["sampleRate"] = 0.0f;
-
-    REQUIRE(flowgraph->blockCreate("soapy_bad_module_config", "soapy", config, {}) ==
-            Result::SUCCESS);
-    const auto block = viewBlock("soapy_bad_module_config");
-    REQUIRE(block.state == Block::State::Errored);
+                 "Soapy saved blocks stay recognizable without a system runtime",
+                 "[modules][io][soapy][block][runtime]") {
+    const TestSupport::ScopedEnvironment environment("CYBERETHER_SOAPYSDR_LIBRARY");
+    REQUIRE(environment.set("/__cyberether_missing_soapy__/library"));
+    const RuntimeReset reset;
+    Blocks::Soapy config;
+    config.modulePath = "saved-device-module";
+    config.deviceString = "driver=saved,serial=123";
+    config.streamString = "bufflen=8192";
+    Parser::Map saved;
+    REQUIRE(config.serialize(saved) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    const auto block = viewBlock("radio");
+    REQUIRE(block.state == Block::State::Incomplete);
+    REQUIRE(block.config == saved);
     REQUIRE(block.outputs.empty());
-    REQUIRE_FALSE(block.interfaceConfigs.empty());
-    REQUIRE(block.diagnostic.find("[MODULE_SOAPY]") != std::string::npos);
-
-    std::vector<Flowgraph::View::MetricEntry> metrics;
-    REQUIRE(flowgraph->view().metrics("soapy_bad_module_config", metrics) == Result::SUCCESS);
-    const auto loss = std::find_if(metrics.begin(), metrics.end(), [](const auto& metric) {
-        return metric.name == "bufferLoss";
-    });
-    REQUIRE(loss != metrics.end());
-    REQUIRE(loss->label == "Buffer Loss");
-    REQUIRE(loss->format == Parser::Map{{"type", "progressbar"}});
-    const auto [label, fraction] = std::any_cast<std::pair<std::string, F32>>(loss->value);
-    REQUIRE(label == "0.00%");
-    REQUIRE(fraction == 0.0f);
-    REQUIRE(std::none_of(metrics.begin(), metrics.end(), [](const auto& metric) {
-        return metric.name == "deviceOverflows";
-    }));
+    REQUIRE(block.diagnostic.find("SoapySDR 0.8 was not found") != std::string::npos);
+    REQUIRE(block.interfaceOutputs.size() == 1);
+    REQUIRE(block.interfaceOutputs.front().name == "signal");
+    const auto field = std::find_if(block.interfaceConfigs.begin(), block.interfaceConfigs.end(),
+                                    [](const auto& entry) { return entry.name == "deviceString"; });
+    REQUIRE(field != block.interfaceConfigs.end());
+    const auto options = Parser::Get<std::vector<Parser::Map>>(field->format, "options");
+    REQUIRE(options.back() == Parser::Map{{"label", "Configured device"},
+                                         {"value", config.deviceString}});
+    REQUIRE(flowgraph->blockDestroy("radio", false) == Result::SUCCESS);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Soapy frequency step remains editable without a selected device",
-                 "[modules][io][soapy][block][antenna][reconfigure]") {
-    if (Registry::ListAvailableModules("soapy").empty()) {
-        SUCCEED("Soapy module is unavailable in this build.");
-        return;
-    }
-
+                 "Soapy manual gain stays editable without a system runtime",
+                 "[modules][io][soapy][block][gain]") {
+    const TestSupport::ScopedEnvironment environment("CYBERETHER_SOAPYSDR_LIBRARY");
+    REQUIRE(environment.set("/__cyberether_missing_soapy__/library"));
+    const RuntimeReset reset;
     Blocks::Soapy config;
     config.antenna = "RX";
     config.automaticGain = false;
@@ -96,51 +106,42 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(block.outputs.empty());
     const auto antenna = std::find_if(block.interfaceConfigs.begin(),
                                       block.interfaceConfigs.end(),
-                                      [](const auto& field) {
-                                          return field.name == "antenna";
-                                      });
+                                      [](const auto& field) { return field.name == "antenna"; });
     REQUIRE(antenna != block.interfaceConfigs.end());
     REQUIRE(Parser::Get<std::vector<Parser::Map>>(antenna->format, "options") ==
             std::vector<Parser::Map>{{{"label", "Default"}, {"value", ""}},
                                     {{"label", "RX"}, {"value", "RX"}}});
     const auto gain = std::find_if(block.interfaceConfigs.begin(),
-                                  block.interfaceConfigs.end(),
-                                  [](const auto& field) { return field.name == "manualGain"; });
+                                   block.interfaceConfigs.end(),
+                                   [](const auto& field) { return field.name == "manualGain"; });
     REQUIRE(gain != block.interfaceConfigs.end());
     REQUIRE(gain->format == Parser::Map{
         {"type", "range"}, {"min", 0.0f}, {"max", 60.0f}, {"unit", "dB"},
     });
     REQUIRE(Parser::Get<F32>(block.config, "manualGain") == 20.0f);
+    REQUIRE(flowgraph->blockDestroy("radio", false) == Result::SUCCESS);
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "Soapy block rejects invalid frequency steps",
+                 "Soapy blocks reject invalid block and module settings",
                  "[modules][io][soapy][block][validation]") {
-    if (Registry::ListAvailableModules("soapy").empty()) {
-        SUCCEED("Soapy module is unavailable in this build.");
-        return;
+    const TestSupport::ScopedEnvironment environment("CYBERETHER_SOAPYSDR_LIBRARY");
+    REQUIRE(environment.set("/__cyberether_missing_soapy__/library"));
+    const RuntimeReset reset;
+    Blocks::Soapy config;
+    std::string diagnostic;
+    SECTION("block frequency step") {
+        config.frequencyStep = 0.0f;
+        diagnostic = "[BLOCK_SOAPY]";
     }
-
-    Parser::Map config;
-    config["deviceString"] = std::string("driver=cyberether_missing_test_driver");
-    config["frequencyStep"] = 0.0f;
-
-    REQUIRE(flowgraph->blockCreate("soapy_bad_step", "soapy", config, {}) ==
-            Result::SUCCESS);
-    const auto block = viewBlock("soapy_bad_step");
+    SECTION("module sample rate") {
+        config.sampleRate = 0.0f;
+        diagnostic = "[MODULE_SOAPY]";
+    }
+    REQUIRE(flowgraph->blockCreate("radio", config, {}) == Result::SUCCESS);
+    const auto block = viewBlock("radio");
     REQUIRE(block.state == Block::State::Errored);
-    REQUIRE_FALSE(block.interfaceOutputs.empty());
-    REQUIRE_FALSE(block.interfaceConfigs.empty());
-    REQUIRE(std::none_of(block.interfaceConfigs.begin(),
-                         block.interfaceConfigs.end(),
-                         [](const auto& field) { return field.name == "modulePath"; }));
     REQUIRE(block.outputs.empty());
-    const auto biasTee = std::find_if(block.interfaceConfigs.begin(),
-                                      block.interfaceConfigs.end(),
-                                      [](const auto& field) {
-                                          return field.name == "biasTee";
-                                      });
-    REQUIRE(biasTee != block.interfaceConfigs.end());
-    REQUIRE(biasTee->label == "Bias-T");
-    REQUIRE(biasTee->format == Parser::Map{{"type", "bool"}});
+    REQUIRE(block.diagnostic.find(diagnostic) != std::string::npos);
+    REQUIRE(flowgraph->blockDestroy("radio", false) == Result::SUCCESS);
 }

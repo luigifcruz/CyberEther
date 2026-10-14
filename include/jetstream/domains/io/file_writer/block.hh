@@ -96,7 +96,7 @@ struct FileWriter : public Block::Config {
         "## See Also\n"
         "\n"
         "- **File Reader** plays the file back with a matching type.\n"
-        "- **Soapy SDR** provides radio samples to record."
+        "- Radio samples to record come from **SDR**."
     );
 };
 

@@ -1,0 +1,9 @@
+[wrap-file]
+directory = airspyhf-1.6.8
+source_url = https://github.com/airspy/airspyhf/archive/refs/tags/1.6.8.tar.gz
+source_filename = airspyhf-1.6.8.tar.gz
+source_hash = cd1e5ae89e09b813b096ae4a328e352c9432a582e03fd7da86760ba60efa77ab
+patch_directory = libairspyhf
+
+[provide]
+libairspyhf = libairspyhf_dep

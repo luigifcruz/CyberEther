@@ -3,9 +3,7 @@
 
 #include <jetstream/domains/io/soapy/module.hh>
 #include "module_impl.hh"
-#include "soapysdr.hh"
-
-#include <SoapySDR/Types.hpp>
+#include "library/soapysdr.hh"
 
 #include <cmath>
 
@@ -27,7 +25,7 @@ struct SoapyImpl : public Block::Impl, public DynamicConfig<Blocks::Soapy> {
     Result updateManualGainFormat();
     Parser::Map antennaFormat(const std::string& selected,
                               const std::vector<std::string>& antennas = {});
-    Parser::Map manualGainFormat(const std::optional<SoapySDR::Range>& range = std::nullopt);
+    Parser::Map manualGainFormat(const std::optional<Modules::SoapyAbi::Range>& range = std::nullopt);
 };
 
 Result SoapyImpl::validate() {
@@ -42,7 +40,9 @@ Result SoapyImpl::validate() {
 }
 
 Result SoapyImpl::configure() {
-    JST_CHECK(Modules::SoapyDiscovery::LoadDriverLibrary(modulePath));
+    if (Modules::SoapyRuntime::Acquire()) {
+        JST_CHECK(Modules::SoapyDiscovery::LoadDriverLibrary(modulePath));
+    }
 
     moduleConfig->modulePath = modulePath;
     moduleConfig->deviceString = deviceString;
@@ -69,10 +69,10 @@ Result SoapyImpl::define() {
 
     Parser::Sequence deviceOptions{Parser::Map{{"label", "None"}, {"value", ""}}};
     bool selectionListed = config.deviceString.empty();
-    for (const auto& [label, device] : Modules::SoapyDiscovery::ListDevices()) {
+    for (const auto& [label, device] : Modules::SoapyDiscovery::List()) {
         auto args = device;
         args.erase("label");
-        const auto value = SoapySDR::KwargsToString(args);
+        const auto value = Modules::SoapyDiscovery::FormatArguments(args);
         selectionListed = selectionListed || value == config.deviceString;
         deviceOptions.emplace_back(Parser::Map{{"label", label}, {"value", value}});
     }
@@ -115,10 +115,16 @@ Result SoapyImpl::define() {
                                         manualGainFormat()));
     }
 
-    JST_CHECK(defineInterfaceConfig("biasTee",
-                                    "Bias-T",
-                                    "Enable antenna power when supported by the selected device.",
-                                    {{"type", "bool"}}));
+    const auto module = moduleHandle("soapy");
+    const bool knownWithoutBiasTee = module && module->state() == Module::State::CREATED &&
+                                     config.deviceString == deviceString &&
+                                     !module->getImpl<Modules::SoapyImpl>()->supportsBiasTee();
+    if (!knownWithoutBiasTee) {
+        JST_CHECK(defineInterfaceConfig("biasTee",
+                                        "Bias-T",
+                                        "Enable antenna power through the antenna cable.",
+                                        {{"type", "bool"}}));
+    }
 
     JST_CHECK(defineInterfaceConfig("numberOfBatches",
                                     "Batches",
@@ -202,6 +208,11 @@ Result SoapyImpl::updateAntennaFormat() {
 }
 
 Result SoapyImpl::updateManualGainFormat() {
+    if (moduleImpl->getGainRange()) {
+        manualGain = moduleImpl->manualGain;
+        moduleConfig->manualGain = manualGain;
+    }
+
     if (!automaticGain) {
         JST_CHECK(updateInterfaceConfigFormat("manualGain",
                                               manualGainFormat(moduleImpl->getGainRange())));
@@ -224,9 +235,9 @@ Parser::Map SoapyImpl::antennaFormat(const std::string& selected,
     return {{"type", "dropdown"}, {"options", std::move(options)}};
 }
 
-Parser::Map SoapyImpl::manualGainFormat(const std::optional<SoapySDR::Range>& range) {
-    const F32 minimum = range ? static_cast<F32>(range->minimum()) : 0.0f;
-    const F32 maximum = range ? static_cast<F32>(range->maximum()) : 60.0f;
+Parser::Map SoapyImpl::manualGainFormat(const std::optional<Modules::SoapyAbi::Range>& range) {
+    const F32 minimum = range ? static_cast<F32>(range->minimum) : 0.0f;
+    const F32 maximum = range ? static_cast<F32>(range->maximum) : 60.0f;
     return {{"type", "range"}, {"min", minimum}, {"max", maximum}, {"unit", "dB"}};
 }
 

@@ -1,7 +1,5 @@
 #include "module_impl.hh"
-#include "soapysdr.hh"
-
-#include <SoapySDR/Types.hpp>
+#include "library/soapysdr.hh"
 
 #include <algorithm>
 #include <exception>
@@ -99,28 +97,29 @@ Result SoapyImpl::create() {
         return Result::INCOMPLETE;
     }
 
+    if (!SoapyRuntime::Acquire()) {
+        JST_ERROR("[MODULE_SOAPY] {}", SoapyRuntime::Availability().message);
+        return Result::INCOMPLETE;
+    }
     JST_CHECK(SoapyDiscovery::LoadDriverLibrary(modulePath));
 
     errored = false;
     streaming = false;
-    activeSampleRate = 0.0f;
     bufferHealth.publish(0.0f);
     deviceOverflows.publish(0);
     throughput.publish({0.0f, 0.0f});
 
-    const auto args = SoapySDR::KwargsFromString(deviceString);
-    const auto streamArgs = SoapySDR::KwargsFromString(streamString);
-
-    JST_CHECK(receiverDevice.open(args));
+    JST_CHECK(receiverDevice.open(deviceString));
     JST_CHECK(receiverDevice.validateSettings(sampleRate, frequency));
     JST_CHECK(allocateBuffers());
-    JST_CHECK(configureDevice(streamArgs));
+    JST_CHECK(configureDevice());
 
     outputs()["signal"].produced(name(), "signal", buffer);
 
-    buffer.setAttribute("frequency", frequency);
-    buffer.setAttribute("sampleRate", sampleRate);
-    activeSampleRate = sampleRate;
+    generation = 0;
+    resetStream(frequency, sampleRate);
+    publishedMetadata = {};
+    JST_CHECK(publishMetadata(stream.metadata()));
 
     JST_CHECK(startReceiver());
 
@@ -134,7 +133,7 @@ Result SoapyImpl::allocateBuffers() {
             .sample = Index{1},
             .batch = Index{0},
         }));
-        JST_CHECK(circularBuffer.resize(validatedInternalElements));
+        JST_CHECK(stream.resize(validatedInternalElements));
     } catch (const std::bad_array_new_length&) {
         JST_ERROR("[MODULE_SOAPY] Internal buffer dimensions are too large.");
         return Result::ERROR;
@@ -146,23 +145,18 @@ Result SoapyImpl::allocateBuffers() {
     return Result::SUCCESS;
 }
 
-Result SoapyImpl::configureDevice(const SoapySDR::Kwargs& streamArgs) {
-    try {
-        JST_CHECK(receiverDevice.setAntenna(antenna));
-        JST_CHECK(setSampleRate(sampleRate));
-        JST_CHECK(setTunerFrequency(frequency));
-        JST_CHECK(setAutomaticGain(automaticGain));
-        JST_CHECK(setManualGain(manualGain));
-        JST_CHECK(setBiasTee(biasTee));
-        JST_CHECK(receiverDevice.startStream(streamArgs));
-    } catch (const std::exception& e) {
-        JST_ERROR("[MODULE_SOAPY] Failed to configure device: {}", e.what());
-        return Result::ERROR;
-    } catch (...) {
-        JST_ERROR("[MODULE_SOAPY] Failed to configure device.");
-        return Result::ERROR;
-    }
-
+Result SoapyImpl::configureDevice() {
+    const Tuning desired{
+        .frequency = frequency,
+        .sampleRate = sampleRate,
+        .automaticGain = automaticGain,
+        .gain = manualGain,
+    };
+    JST_CHECK(receiverDevice.setAntenna(antenna));
+    JST_CHECK(applyTuning(desired, true));
+    manualGain = tuned.gain;
+    JST_CHECK(receiverDevice.setBiasTee(biasTee));
+    JST_CHECK(receiverDevice.startStream(streamString));
     return Result::SUCCESS;
 }
 
@@ -196,7 +190,6 @@ Result SoapyImpl::startReceiver() {
 
 void SoapyImpl::stopReceiver() {
     streaming = false;
-    activeSampleRate = 0.0f;
 
     if (producer.joinable()) {
         producer.join();
@@ -216,7 +209,7 @@ Result SoapyImpl::destroy() {
 Result SoapyImpl::reconfigure() {
     const auto& newConfig = *candidate();
 
-    if (newConfig.modulePath != modulePath ||
+    if (errored || newConfig.modulePath != modulePath ||
         newConfig.deviceString != deviceString ||
         newConfig.streamString != streamString ||
         newConfig.antenna != antenna ||
@@ -227,79 +220,104 @@ Result SoapyImpl::reconfigure() {
         return Result::RECREATE;
     }
 
-    const bool frequencyChanged = newConfig.frequency != frequency;
-    if (frequencyChanged) {
-        JST_CHECK(setTunerFrequency(newConfig.frequency));
+    if ((newConfig.frequency != frequency || newConfig.sampleRate != sampleRate) &&
+        receiverDevice.validateSettings(newConfig.sampleRate, newConfig.frequency) != Result::SUCCESS) {
+        return Result::WARNING;
     }
 
-    if (newConfig.sampleRate != sampleRate) {
-        JST_CHECK(setSampleRate(newConfig.sampleRate));
-    }
-
-    const bool previousAutomaticGain = automaticGain;
-    const bool gainModeChanged = newConfig.automaticGain != automaticGain;
-    if (gainModeChanged) {
-        JST_CHECK(setAutomaticGain(newConfig.automaticGain));
-    }
-
-    if (frequencyChanged || gainModeChanged || newConfig.manualGain != manualGain) {
-        const auto result = setManualGain(newConfig.manualGain);
+    return access.change([&] {
+        const Tuning desired{
+            .frequency = newConfig.frequency,
+            .sampleRate = newConfig.sampleRate,
+            .automaticGain = newConfig.automaticGain,
+            .gain = newConfig.manualGain,
+        };
+        const auto previous = tuned;
+        const auto result = applyTuning(desired);
         if (result != Result::SUCCESS) {
-            if (gainModeChanged) {
-                JST_CHECK(setAutomaticGain(previousAutomaticGain));
+            if (applyTuning(previous, true) != Result::SUCCESS) {
+                errored = true;
+                JST_ERROR("[MODULE_SOAPY] Failed to restore the previous receiver settings.");
             }
             return result;
         }
-    }
 
+        frequency = newConfig.frequency;
+        sampleRate = newConfig.sampleRate;
+        automaticGain = newConfig.automaticGain;
+        manualGain = tuned.gain;
+        return Result::SUCCESS;
+    });
+}
+
+void SoapyImpl::resetStream(const F32 appliedFrequency, const F32 appliedSampleRate) {
+    stream.reset({
+        .frequency = appliedFrequency,
+        .sampleRate = appliedSampleRate,
+        .generation = ++generation,
+    });
+}
+
+Result SoapyImpl::publishMetadata(const Radio::StreamBuffer::Metadata& metadata) {
+    if (metadata == publishedMetadata) {
+        return Result::SUCCESS;
+    }
+    JST_CHECK(buffer.setAttribute("frequency", static_cast<F32>(metadata.frequency)));
+    JST_CHECK(buffer.setAttribute("sampleRate", static_cast<F32>(metadata.sampleRate)));
+    publishedMetadata = metadata;
     return Result::SUCCESS;
+}
+
+Result SoapyImpl::emitFrame() {
+    Radio::StreamBuffer::Metadata metadata;
+    const auto result = stream.pop(buffer.data<CF32>(), buffer.size(), metadata);
+    if (result == Result::INCOMPLETE) {
+        return Result::YIELD;
+    }
+    JST_CHECK(result);
+    return publishMetadata(metadata);
 }
 
 Result SoapyImpl::soapyThreadLoop() {
     constexpr std::size_t temporaryBufferSize = 8192;
-    CF32 tmp[temporaryBufferSize];
-    const auto readSize = std::min<std::size_t>(temporaryBufferSize,
-                                                circularBuffer.capacity());
-    const auto readBuffer = std::span<CF32>{tmp, readSize};
+    std::vector<CF32> tmp(temporaryBufferSize);
+    const auto readSize = std::min<std::size_t>(temporaryBufferSize, stream.capacity());
+    const auto readBuffer = std::span<CF32>{tmp.data(), readSize};
     SoapyReceiveStatus receiveStatus;
 
     while (streaming) {
-        try {
-            const auto received = receiverDevice.read(readBuffer);
-            if (!streaming || errored) {
-                break;
-            }
+        const auto lock = access.lock();
+        if (!streaming || errored) {
+            break;
+        }
 
-            const auto action = receiveStatus.handle(received.status);
-            if (received.status == SoapyReceiver::ReadStatus::Overflow) {
-                deviceOverflows.publish(receiveStatus.deviceOverflows);
-            }
-            if (action == SoapyReceiveStatus::Action::Fail) {
-                JST_ERROR("[MODULE_SOAPY] Failed to read stream on '{}': {}. Stopping reception.",
-                          name(), received.error);
-                errored = true;
-                break;
-            } else if (action == SoapyReceiveStatus::Action::Samples) {
-                JST_CHECK(circularBuffer.push(tmp, received.sampleCount));
-                const U64 capacity = circularBuffer.capacity();
-                if (capacity > 0) {
-                    const F32 newHealth = static_cast<F32>(circularBuffer.size()) /
-                                          static_cast<F32>(capacity);
-                    const F32 smoothedHealth = bufferHealth.get() * 0.99f + newHealth * 0.01f;
-                    bufferHealth.publish(smoothedHealth);
-                }
-                const F32 actualMB = static_cast<F32>(circularBuffer.throughput() * sizeof(CF32)) / 1e6f;
-                const F32 expectedMB = (activeSampleRate.load() * sizeof(CF32)) / 1e6f;
-                throughput.publish({actualMB, expectedMB});
-            }
-        } catch (const std::exception& e) {
-            JST_ERROR("[MODULE_SOAPY] Failed to read stream: {}", e.what());
+        const U64 readGeneration = stream.metadata().generation;
+        const auto received = receiverDevice.read(readBuffer);
+        if (!streaming || errored) {
+            break;
+        }
+
+        const auto action = receiveStatus.handle(received.status);
+        if (received.status == SoapyReceiver::ReadStatus::Overflow) {
+            deviceOverflows.publish(receiveStatus.deviceOverflows);
+        }
+        if (action == SoapyReceiveStatus::Action::Fail) {
+            JST_ERROR("[MODULE_SOAPY] Failed to read stream on '{}': {}. Stopping reception.",
+                      name(), received.error);
             errored = true;
             break;
-        } catch (...) {
-            JST_ERROR("[MODULE_SOAPY] Failed to read stream.");
-            errored = true;
-            break;
+        } else if (action == SoapyReceiveStatus::Action::Samples) {
+            stream.push(readGeneration, tmp.data(), received.sampleCount);
+            const U64 capacity = stream.capacity();
+            if (capacity > 0) {
+                const F32 newHealth = static_cast<F32>(stream.size()) /
+                                      static_cast<F32>(capacity);
+                const F32 smoothedHealth = bufferHealth.get() * 0.99f + newHealth * 0.01f;
+                bufferHealth.publish(smoothedHealth);
+            }
+            const F32 actualMB = static_cast<F32>(stream.throughput() * sizeof(CF32)) / 1e6f;
+            const F32 expectedMB = static_cast<F32>(stream.metadata().sampleRate * sizeof(CF32)) / 1e6f;
+            throughput.publish({actualMB, expectedMB});
         }
     }
 
@@ -311,9 +329,9 @@ F32 SoapyImpl::getBufferHealth() const {
 }
 
 F64 SoapyImpl::getBufferLoss() const {
-    const auto stats = circularBuffer.statistics();
-    return stats.pushedElements > 0
-        ? static_cast<F64>(stats.overwrittenElements) / static_cast<F64>(stats.pushedElements)
+    const auto stats = stream.statistics();
+    return stats.pushedSamples > 0
+        ? static_cast<F64>(stats.overwrittenSamples) / static_cast<F64>(stats.pushedSamples)
         : 0.0;
 }
 
@@ -329,49 +347,46 @@ std::vector<std::string> SoapyImpl::listAntennas() const {
     return receiverDevice.listAntennas();
 }
 
-std::optional<SoapySDR::Range> SoapyImpl::getGainRange() const {
-    return receiverDevice.getGainRange();
+bool SoapyImpl::supportsBiasTee() const {
+    return receiverDevice.supportsBiasTee();
 }
 
-Result SoapyImpl::setTunerFrequency(const F32& freq) {
-    JST_CHECK(receiverDevice.setTunerFrequency(freq));
-
-    frequency = freq;
-    buffer.setAttribute("frequency", frequency);
-
-    return Result::SUCCESS;
+std::optional<SoapyAbi::Range> SoapyImpl::getGainRange() const {
+    return gainRange.get();
 }
 
-Result SoapyImpl::setSampleRate(const F32& rate) {
-    JST_CHECK(receiverDevice.setSampleRate(rate));
-
-    sampleRate = rate;
-    activeSampleRate = rate;
-    buffer.setAttribute("sampleRate", sampleRate);
-
-    return Result::SUCCESS;
-}
-
-Result SoapyImpl::setAutomaticGain(const bool& gain) {
-    JST_CHECK(receiverDevice.setAutomaticGain(gain));
-
-    automaticGain = gain;
-
-    return Result::SUCCESS;
-}
-
-Result SoapyImpl::setManualGain(const F32& gain) {
-    if (!automaticGain) {
-        JST_CHECK(receiverDevice.setGain(gain));
+Result SoapyImpl::applyTuning(const Tuning& desired, const bool force) {
+    if (force || desired.sampleRate != tuned.sampleRate) {
+        JST_CHECK(receiverDevice.setSampleRate(desired.sampleRate));
+        tuned.sampleRate = desired.sampleRate;
+        resetStream(tuned.frequency, tuned.sampleRate);
     }
 
-    manualGain = gain;
+    const bool retuned = force || desired.frequency != tuned.frequency;
+    if (retuned) {
+        JST_CHECK(receiverDevice.setTunerFrequency(desired.frequency));
+        tuned.frequency = desired.frequency;
+        resetStream(tuned.frequency, tuned.sampleRate);
+        gainRange.publish(receiverDevice.getGainRange());
+    }
+
+    const bool modeChanged = force || desired.automaticGain != tuned.automaticGain;
+    if (modeChanged) {
+        JST_CHECK(receiverDevice.setAutomaticGain(desired.automaticGain));
+        tuned.automaticGain = desired.automaticGain;
+    }
+
+    const F32 applied = receiverDevice.clampGain(desired.gain);
+    if (!tuned.automaticGain && (applied != tuned.gain || retuned || modeChanged)) {
+        JST_CHECK(receiverDevice.setGain(applied));
+    }
+    tuned.gain = applied;
 
     return Result::SUCCESS;
 }
 
 Result SoapyImpl::setBiasTee(const bool enabled) {
-    return receiverDevice.setBiasTee(enabled);
+    return access.change([&] { return receiverDevice.setBiasTee(enabled); });
 }
 
 }  // namespace Jetstream::Modules
