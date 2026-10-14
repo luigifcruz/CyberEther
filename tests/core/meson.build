@@ -79,6 +79,7 @@ core_test_domains = {
 if not jst_is_windows
     core_test_domains += {
         'compositor': core_test_domains['compositor'] + [
+            'compositor/config_edits.cc',
             'compositor/live_markdown.cc',
             'compositor/agent_bridge.cc',
             'compositor/agent_responsiveness.cc',

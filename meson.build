@@ -1,7 +1,7 @@
 project(
     'CyberEther',
     ['cpp'],
-    version: '1.12.0',  # [VERSION HOOK]
+    version: '1.13.1',  # [VERSION HOOK]
     meson_version: '>=1.11.0',
     default_options: [
         'cpp_std=c++20',
@@ -107,6 +107,7 @@ dep_lst = [
     dependency('threads'),
 ]
 whole_dep_lst = []
+lib_link_args = []
 inc_lst = [
     include_directories('include'),
     include_directories('src'),
@@ -174,6 +175,7 @@ else
         cpp_args: ['-DJST_IS_LIBRARY'],
         include_directories: inc_lst,
         dependencies: dep_lst + whole_dep_lst,
+        link_args: lib_link_args,
         install: true
     )
 

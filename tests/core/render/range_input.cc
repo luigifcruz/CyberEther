@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
 #include <imgui.h>
@@ -52,9 +53,11 @@ class RangeInputUi {
         io.DeltaTime = 1.0f / 60.0f;
         io.Fonts->AddFontDefault();
         ctx.render = &window;
+        ctx.palette = palette;
     }
 
-    void frame(const FlowgraphConfigRangeField& field) {
+    template<typename Field>
+    void frame(const Field& field) {
         ImGui::NewFrame();
         ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
         ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
@@ -62,8 +65,27 @@ class RangeInputUi {
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
         field.render(ctx);
         inputRect = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+        F32 minimum = FLT_MAX;
+        F32 maximum = -FLT_MAX;
+        for (const auto& vertex : ImGui::GetWindowDrawList()->VtxBuffer) {
+            if (vertex.col == IM_COL32(255, 0, 255, 255)) {
+                minimum = std::min(minimum, vertex.pos.x);
+                maximum = std::max(maximum, vertex.pos.x);
+            }
+        }
+        knobFraction = ((minimum + maximum) * 0.5f - inputRect.Min.x) / inputRect.GetWidth();
         ImGui::End();
         ImGui::Render();
+    }
+
+    F32 move(const F32 fraction) {
+        const F32 x = std::floor(inputRect.Min.x + fraction * inputRect.GetWidth());
+        ImGui::GetIO().AddMousePosEvent(x, inputRect.GetCenter().y);
+        return (x - inputRect.Min.x) / inputRect.GetWidth();
+    }
+
+    F32 position() const {
+        return knobFraction;
     }
 
     void beginEdit(const FlowgraphConfigRangeField& field) {
@@ -96,8 +118,10 @@ class RangeInputUi {
  private:
     std::unique_ptr<ImGuiContext, decltype(&ImGui::DestroyContext)> ui;
     RangeInputWindow window;
+    Sakura::Palette palette{{"frame_bg_active", {1.0f, 0.0f, 1.0f, 1.0f}}};
     Sakura::Context ctx;
     ImRect inputRect;
+    F32 knobFraction = 0.0f;
 };
 
 struct UnsignedRangeCase {
@@ -137,7 +161,7 @@ TEST_CASE("Unsigned range edits reject unsafe conversions before applying config
         .label = "Averaging",
         .format = {{"type", "range"}, {"min", 1.0f}, {"max", 256.0f}, {"unit", "samples"}, {"value_type", "uint"}},
         .values = {{"averaging", static_cast<U64>(std::stoull(initial))}},
-        .onApply = [&](Parser::Map patch, bool) {
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) {
             applied.push_back(std::any_cast<U64>(patch.at("averaging")));
         },
         .onError = [&](Result result, std::string message) {
@@ -189,7 +213,7 @@ TEST_CASE("Float range edits preserve finite values outside the slider range",
         .label = "Range",
         .format = {{"type", "range"}, {"min", 0.0f}, {"max", 1.0f}},
         .values = {{"range", 0.5f}},
-        .onApply = [&](Parser::Map patch, bool) {
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)>) {
             applied.push_back(std::any_cast<F32>(patch.at("range")));
         },
         .onError = [&](Result result, std::string message) {
@@ -210,4 +234,188 @@ TEST_CASE("Float range edits preserve finite values outside the slider range",
         CHECK(applied.empty());
         REQUIRE(errors.size() == 1);
     }
+}
+
+TEST_CASE("Range drags ignore stale and snapped backend values while held still",
+          "[core][render][sakura][range-input][drag]") {
+    RangeInputUi ui;
+    Sakura::NodeRangeInput input;
+    std::vector<F32> applied;
+    Sakura::NodeRangeInput::Config config{
+        .id = "gain",
+        .min = 0.0f,
+        .max = 100.0f,
+        .value = 25.0f,
+        .onChange = [&](const F32 value) { applied.push_back(value); },
+    };
+    input.update(config);
+    ui.frame(input);
+    const F32 target = ui.move(0.617f);
+    ui.frame(input);
+    ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+    ui.frame(input);
+    REQUIRE(ui.position() == Catch::Approx(target));
+    REQUIRE(applied.size() == 1);
+    REQUIRE(applied.front() == Catch::Approx(target * 100.0f));
+    for (int frame = 0; frame < 8; ++frame) {
+        input.update(config);
+        ui.frame(input);
+    }
+    REQUIRE(applied.size() == 1);
+    REQUIRE(applied.front() == Catch::Approx(target * 100.0f));
+
+    for (const F32 echo : {25.0f, 60.0f, 61.0f}) {
+        config.value = echo;
+        for (int frame = 0; frame < 20; ++frame) {
+            input.update(config);
+            ui.frame(input);
+            REQUIRE(ui.position() == Catch::Approx(target));
+        }
+    }
+    ImGui::GetIO().DisplaySize.x = 600.0f;
+    ui.frame(input);
+    REQUIRE(ui.position() == Catch::Approx(target));
+    REQUIRE(applied.size() == 1);
+
+    ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+    ui.frame(input);
+    REQUIRE(applied.size() == 1);
+    ui.frame(input);
+    REQUIRE(ui.position() == Catch::Approx(0.61f));
+}
+
+TEST_CASE("Range drags submit changes immediately and preserve the final pointer position on release",
+          "[core][render][sakura][range-input][drag]") {
+    RangeInputUi ui;
+    Sakura::NodeRangeInput input;
+    std::vector<F32> applied;
+    input.update({
+        .id = "gain",
+        .min = 0.0f,
+        .max = 100.0f,
+        .value = 25.0f,
+        .onChange = [&](const F32 value) { applied.push_back(value); },
+    });
+    ui.frame(input);
+    ui.move(0.3f);
+    ui.frame(input);
+    ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+    ui.frame(input);
+    REQUIRE(applied.size() == 1);
+    for (const F32 fraction : {0.4f, 0.5f, 0.6f, 0.7f, 0.8f}) {
+        const auto count = applied.size();
+        const F32 target = ui.move(fraction);
+        ui.frame(input);
+        REQUIRE(applied.size() == count + 1);
+        REQUIRE(applied.back() == Catch::Approx(target * 100.0f));
+        for (int frame = 0; frame < 3; ++frame) {
+            ui.frame(input);
+        }
+        REQUIRE(ui.position() == Catch::Approx(target));
+        REQUIRE(applied.size() == count + 1);
+    }
+    const F32 target = ui.move(0.9f);
+    ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+    ui.frame(input);
+    REQUIRE(applied.size() == 7);
+    REQUIRE(applied.back() == Catch::Approx(target * 100.0f));
+    for (int frame = 0; frame < 10; ++frame) {
+        ui.frame(input);
+    }
+    REQUIRE(applied.size() == 7);
+}
+
+TEST_CASE("Integer range drags compare rounded values before submitting",
+          "[core][render][sakura][range-input][drag]") {
+    RangeInputUi ui;
+    Sakura::NodeRangeInput input;
+    std::vector<F32> applied;
+    input.update({
+        .id = "averaging",
+        .min = 0.0f,
+        .max = 10.0f,
+        .value = 5.0f,
+        .integer = true,
+        .onChange = [&](const F32 value) { applied.push_back(value); },
+    });
+    ui.frame(input);
+    ui.move(0.52f);
+    ui.frame(input);
+    ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+    for (int frame = 0; frame < 20; ++frame) {
+        ui.frame(input);
+    }
+    REQUIRE(applied.empty());
+    REQUIRE(ui.position() == Catch::Approx(0.5f));
+    ui.move(0.62f);
+    for (int frame = 0; frame < 20; ++frame) {
+        ui.frame(input);
+    }
+    REQUIRE(applied == std::vector<F32>{6.0f});
+    REQUIRE(ui.position() == Catch::Approx(0.6f));
+    ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+    ui.frame(input);
+    REQUIRE(applied == std::vector<F32>{6.0f});
+}
+
+TEST_CASE("Range clicks retain the newest value until its configuration edit completes",
+          "[core][render][sakura][range-input][pending]") {
+    const auto result = GENERATE(Result::SUCCESS, Result::ERROR, Result::WARNING);
+    RangeInputUi ui;
+    FlowgraphConfigRangeField field;
+    std::vector<F32> applied;
+    std::vector<std::function<void(Result)>> completions;
+    FlowgraphConfigFieldConfig config{
+        .id = "gain",
+        .name = "gain",
+        .label = "Gain",
+        .format = {{"type", "range"}, {"min", 0.0f}, {"max", 100.0f}},
+        .values = {{"gain", 100.0f}},
+        .onApply = [&](Parser::Map patch, bool, std::function<void(Result)> complete) {
+            applied.push_back(std::any_cast<F32>(patch.at("gain")));
+            completions.push_back(std::move(complete));
+        },
+    };
+    const auto frame = [&] {
+        REQUIRE(field.update(config) == Result::SUCCESS);
+        ui.frame(field);
+    };
+    const auto click = [&](const F32 fraction) {
+        const F32 target = ui.move(fraction);
+        frame();
+        ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+        frame();
+        ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+        frame();
+        return target;
+    };
+
+    frame();
+    frame();
+    const F32 middle = click(0.5f);
+    REQUIRE(applied.size() == 1);
+    for (int i = 0; i < 60; ++i) {
+        frame();
+        REQUIRE(ui.position() == Catch::Approx(middle));
+    }
+    REQUIRE(applied.size() == 1);
+
+    const F32 latest = click(0.3f);
+    REQUIRE(applied.size() == 2);
+    config.values["gain"] = 48.0f;
+    completions[0](Result::SUCCESS);
+    for (int i = 0; i < 60; ++i) {
+        frame();
+        REQUIRE(ui.position() == Catch::Approx(latest));
+    }
+    REQUIRE(applied.size() == 2);
+
+    const F32 resolved = result == Result::SUCCESS ? 28.0f : 48.0f;
+    config.values["gain"] = resolved;
+    completions[1](result);
+    for (int i = 0; i < 10; ++i) {
+        frame();
+        REQUIRE(ui.position() == Catch::Approx(resolved / 100.0f));
+    }
+    REQUIRE(applied.size() == 2);
 }

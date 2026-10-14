@@ -1417,7 +1417,9 @@ ImRect GetNodeRectAtCurrentOrigin(const ImNodesEditorContext& editor, const ImNo
 
 bool IsNodeInputOccluded(const ImNodesEditorContext& editor, const int node_idx)
 {
-    if (!GImNodes->CanvasRectScreenSpace.Contains(GImNodes->MousePos))
+    if (!GImNodes->CanvasRectScreenSpace.Contains(GImNodes->MousePos) ||
+        !ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_NoPopupHierarchy |
+                                ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))
     {
         return false;
     }

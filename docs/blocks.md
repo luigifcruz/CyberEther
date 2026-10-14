@@ -74,7 +74,9 @@ Sources and sinks: hardware, files, audio, and the network.
 | Audio | `audio` | Plays audio through a sound device. |
 | File Reader | `file_reader` | Reads raw binary signal data from a file. |
 | File Writer | `file_writer` | Writes raw binary signal data to a file. |
-| Soapy SDR | `soapy` | Receives samples from a SoapySDR radio. |
+| SDR | `sdr` | Receives samples from a USB radio. |
+| SDR Sweep | `sdr_sweep` | Sweeps a radio across a wide band. |
+| SoapySDR | `soapy` | Receives samples through an installed SoapySDR. |
 | WebSocket | `websocket` | Receives data streams over WebSocket. |
 
 ## Visualization

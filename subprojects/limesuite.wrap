@@ -7,4 +7,3 @@ patch_directory = limesuite
 
 [provide]
 limesuite = limesuite_dep
-soapylms7 = soapylms7_dep

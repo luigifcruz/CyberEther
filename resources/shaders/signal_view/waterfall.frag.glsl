@@ -49,7 +49,7 @@ void main() {
         }
         float magnitude = filtered[wrapped * uniforms.width + column];
         float mapped = 0.5 + 0.5 * tanh(4.0 * (magnitude - 0.5));
-        outColor = texture(sampler2D(lutTex, lutSam), vec2(mapped, 0.0));
+        outColor = textureLod(sampler2D(lutTex, lutSam), vec2(mapped, 0.0), 0.0);
         return;
     }
     float magnitude = sampleWaterfall(inTexcoord.x, y, -4) * 0.0162162162;
@@ -63,5 +63,5 @@ void main() {
     magnitude += sampleWaterfall(inTexcoord.x, y, 4) * 0.0162162162;
 
     float mapped = 0.5 + 0.5 * tanh(4.0 * (magnitude - 0.5));
-    outColor = texture(sampler2D(lutTex, lutSam), vec2(mapped, 0.0));
+    outColor = textureLod(sampler2D(lutTex, lutSam), vec2(mapped, 0.0), 0.0);
 }

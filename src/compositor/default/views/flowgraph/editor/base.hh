@@ -54,7 +54,7 @@ struct FlowgraphEditor {
         std::function<void(const std::string&, DeviceType, RuntimeType, ProviderType)> onChangeBlockDevice;
         std::function<void(const std::string&, const std::string&, const std::string&, const std::string&)> onConnectBlock;
         std::function<void(const std::string&, const std::string&)> onDisconnectBlock;
-        std::function<void(const std::string&, Parser::Map, bool)> onReconfigureBlock;
+        std::function<void(const std::string&, Parser::Map, bool, std::function<void(Result)>)> onReconfigureBlock;
         std::function<void(Result, std::string)> onConfigError;
         std::function<void(bool, std::vector<std::string>, std::function<void(std::string)>)> onBrowseConfigPath;
         std::function<void(const std::string&, F32, F32, F32, F32, std::optional<FlowgraphNode::Layout>)> onNodeLayout;
@@ -175,9 +175,10 @@ struct FlowgraphEditor {
                 pinIdToInfo[nodeId][pinKey(FlowgraphPinId(output.port.id), false)] = {block.name, output.port.id, false};
             }
             for (auto& field : nodeBlock.configFields) {
-                field.onApply = [onReconfigureBlock, blockName = block.name](Parser::Map values, const bool silent) {
+                field.onApply = [onReconfigureBlock, blockName = block.name](
+                    Parser::Map values, const bool silent, std::function<void(Result)> onComplete) {
                     if (onReconfigureBlock) {
-                        onReconfigureBlock(blockName, std::move(values), silent);
+                        onReconfigureBlock(blockName, std::move(values), silent, std::move(onComplete));
                     }
                 };
                 field.onError = this->config.onConfigError;
@@ -211,7 +212,7 @@ struct FlowgraphEditor {
                 },
                 .onInspectApply = [this, blockName = block.name](Parser::Map values) {
                     if (this->config.onReconfigureBlock) {
-                        this->config.onReconfigureBlock(blockName, std::move(values), false);
+                        this->config.onReconfigureBlock(blockName, std::move(values), false, {});
                     }
                 },
                 .onDelete = [this, blockName = block.name]() {

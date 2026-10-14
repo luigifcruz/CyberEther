@@ -8,6 +8,7 @@
 #include <mutex>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #include "jetstream/platform.hh"
 
@@ -18,6 +19,13 @@ struct Settings::Impl {
 
     static Impl& Instance();
     static Result ResolvePath(std::filesystem::path& path);
+    static Result ReadDocument(const std::filesystem::path& path, Parser::Map& document);
+    static Parser::Map MergeDocument(const Parser::Map& existing,
+                                     const Parser::Map& known,
+                                     const std::vector<std::string>& scope);
+    static bool OwnsField(const std::vector<std::string>& scope,
+                          const std::string& key,
+                          const std::any& value);
     static Result LoadFile(const std::filesystem::path& path, Settings& settings);
     static Result SaveFile(const std::filesystem::path& path, const Settings& settings);
 
@@ -111,8 +119,8 @@ Result Settings::Impl::ResolvePath(std::filesystem::path& path) {
     return Result::SUCCESS;
 }
 
-Result Settings::Impl::LoadFile(const std::filesystem::path& path, Settings& settings) {
-    settings = {};
+Result Settings::Impl::ReadDocument(const std::filesystem::path& path, Parser::Map& document) {
+    document.clear();
 
     std::error_code ec;
     const bool exists = std::filesystem::exists(path, ec);
@@ -134,14 +142,82 @@ Result Settings::Impl::LoadFile(const std::filesystem::path& path, Settings& set
     const std::string yaml((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     file.close();
 
+    return Parser::YamlDecode(yaml, document);
+}
+
+Parser::Map Settings::Impl::MergeDocument(const Parser::Map& existing,
+                                          const Parser::Map& known,
+                                          const std::vector<std::string>& scope) {
+    Parser::Map merged;
+
+    for (const auto& [key, value] : existing) {
+        if (known.contains(key)) {
+            const auto& update = known.at(key);
+            if (value.type() == typeid(Parser::Map) && update.type() == typeid(Parser::Map)) {
+                auto nestedScope = scope;
+                nestedScope.push_back(key);
+                merged[key] = MergeDocument(std::any_cast<const Parser::Map&>(value),
+                                            std::any_cast<const Parser::Map&>(update),
+                                            nestedScope);
+            } else {
+                merged[key] = update;
+            }
+        } else if (!OwnsField(scope, key, value)) {
+            merged[key] = value;
+        }
+    }
+
+    for (const auto& [key, value] : known) {
+        if (!existing.contains(key)) {
+            merged[key] = value;
+        }
+    }
+
+    return merged;
+}
+
+bool Settings::Impl::OwnsField(const std::vector<std::string>& scope,
+                               const std::string& key,
+                               const std::any& value) {
+    Parser::Map probe{{key, value}};
+    for (auto it = scope.rbegin(); it != scope.rend(); ++it) {
+        probe = Parser::Map{{*it, std::move(probe)}};
+    }
+
+    Settings probed;
+    if (probed.deserialize(probe) != Result::SUCCESS) {
+        return true;
+    }
+
+    Parser::Map defaults;
     Parser::Map data;
-    JST_CHECK(Parser::YamlDecode(yaml, data));
+    if (Settings{}.serialize(defaults) != Result::SUCCESS || probed.serialize(data) != Result::SUCCESS) {
+        return false;
+    }
+
+    return !(data == defaults);
+}
+
+Result Settings::Impl::LoadFile(const std::filesystem::path& path, Settings& settings) {
+    settings = {};
+
+    Parser::Map data;
+    JST_CHECK(ReadDocument(path, data));
     return settings.deserialize(data);
 }
 
 Result Settings::Impl::SaveFile(const std::filesystem::path& path, const Settings& settings) {
-    Parser::Map data;
-    JST_CHECK(settings.serialize(data));
+    Parser::Map existing;
+    if (ReadDocument(path, existing) != Result::SUCCESS) {
+        JST_ERROR("[SETTINGS] Refusing to overwrite unreadable settings file '{}'.",
+                  Platform::PathToUtf8(path));
+        return Result::ERROR;
+    }
+
+    Parser::Map known;
+    JST_CHECK(settings.serialize(known));
+
+    const auto data = MergeDocument(existing, known, {});
 
     std::string yaml;
     JST_CHECK(Parser::YamlEncode(data, yaml));

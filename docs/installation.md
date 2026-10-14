@@ -11,7 +11,7 @@ CyberEther can be installed through pre-built binaries, container images, or by 
 
 The easiest way to install CyberEther is to download a pre-built binary from the [CyberEther website](https://cyberether.org).
 
-Linux releases include CPU and CUDA variants for `x86_64` and `aarch64`. The CUDA artifacts use a `-cuda` suffix and require a compatible NVIDIA driver and CUDA 13 runtime libraries on the target system.
+Linux releases include CPU and CUDA variants for `x86_64` and `aarch64`. The CUDA artifacts use a `-cuda` suffix and require a compatible NVIDIA driver and CUDA 12 runtime libraries on the target system.
 
 If your platform is not listed or you want to customize the build, follow the [Build From Source](#build-from-source) instructions below.
 
@@ -73,7 +73,7 @@ python -m pip install onnxruntime-gpu    # CPU+CUDA
 
 The TensorRT mode requires an ONNX Runtime build with both CUDA and TensorRT execution providers enabled, plus the matching NVIDIA TensorRT libraries in the environment.
 
-No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build.
+No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build. Drivers for RTL-SDR, Airspy, Airspy HF+, HackRF, LimeSDR, bladeRF, and PlutoSDR are built in. The optional SoapySDR block uses a SoapySDR 0.8 installation and its device modules when one is present at runtime.
 
 </details>
 
@@ -113,7 +113,7 @@ python -m pip install onnxruntime-gpu    # CPU+CUDA
 
 The TensorRT mode requires an ONNX Runtime build with both CUDA and TensorRT execution providers enabled, plus the matching NVIDIA TensorRT libraries in the environment.
 
-No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build.
+No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build. Drivers for RTL-SDR, Airspy, Airspy HF+, HackRF, LimeSDR, bladeRF, and PlutoSDR are built in. The optional SoapySDR block uses a SoapySDR 0.8 installation and its device modules when one is present at runtime.
 
 </details>
 
@@ -145,7 +145,7 @@ Machine learning inference support depends on the ONNX Runtime.
 brew install onnxruntime
 ```
 
-No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build.
+No system GLFW, SoapySDR, or GStreamer packages are required for the normal source build. Drivers for RTL-SDR, Airspy, Airspy HF+, HackRF, LimeSDR, bladeRF, and PlutoSDR are built in. The optional SoapySDR block uses a SoapySDR 0.8 installation and its device modules when one is present at runtime.
 
 Vulkan backend (required for Intel-based Macs).
 ```bash

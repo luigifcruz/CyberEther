@@ -39,6 +39,10 @@ DefaultCompositor::DefaultCompositor() :
         .enqueueCommand = [this](std::function<Result()> fn, bool silent) {
             Compositor::Impl::enqueue(std::move(fn), silent);
         },
+        .enqueueCommandWithCompletion = [this](std::function<Result()> fn, bool silent,
+                                               std::function<void(Result)> onComplete) {
+            Compositor::Impl::enqueue(std::move(fn), silent, std::move(onComplete));
+        },
         .enqueueCommandWithMail = [this](std::function<Result()> fn, bool silent, Mail mail) {
             Compositor::Impl::enqueue(std::move(fn), silent, [this, mail = std::move(mail)](const Result result) {
                 if (result == Result::SUCCESS) {

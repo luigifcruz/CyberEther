@@ -1,11 +1,13 @@
 #include "common.hh"
 
 #include <algorithm>
-#include <any>
 #include <array>
+#include <optional>
 #include <span>
 
 #include <glm/gtc/matrix_transform.hpp>
+
+#include <jetstream/memory/attributes.hh>
 
 #include "lineplot.hh"
 #include "waterfall.hh"
@@ -123,15 +125,22 @@ F32 PanTranslation(const SurfaceInteractionState& interaction) {
 
 }  // namespace
 
-SignalViewFrequency SignalViewFrequencyOf(const Tensor& input) {
-    if (!input.hasAttribute("frequency") || !input.hasAttribute("sampleRate")) {
-        return {};
+Result SignalViewFrequency::read(const Tensor& input) {
+    *this = {};
+
+    std::optional<F32> frequency;
+    std::optional<F32> rate;
+    JST_CHECK(ReadAttribute(input, "frequency", frequency));
+    JST_CHECK(ReadAttribute(input, "sampleRate", rate));
+    if (frequency && rate) {
+        *this = {
+            .valid = true,
+            .center = *frequency,
+            .sampleRate = *rate,
+        };
     }
-    return {
-        .valid = true,
-        .center = std::any_cast<F32>(input.attribute("frequency")),
-        .sampleRate = std::any_cast<F32>(input.attribute("sampleRate")),
-    };
+
+    return Result::SUCCESS;
 }
 
 void SignalViewCanvas::reset(const SignalView& config) {
@@ -767,6 +776,12 @@ void SignalViewCanvas::updateLabels(const Context& context) {
     // Update tick labels via axis component.
 
     if (axis) {
+        const std::string resolvedXLabel = !frequency.valid && config.xLabel == "Frequency (MHz)"
+            ? "Normalized Frequency"
+            : config.xLabel;
+        axis->updateTitles(resolvedXLabel, combined ? "" : (lineplot
+            ? config.amplitudeLabel
+            : config.waterfallLabel));
         const bool ticksVisible = lineplot &&
             interaction.placement != SurfacePlacementType::Attached;
         axis->setShowFrameTicks(ticksVisible);

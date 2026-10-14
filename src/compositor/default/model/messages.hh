@@ -395,6 +395,7 @@ struct MailReconfigureBlock {
     std::string blockId;
     Parser::Map config;
     bool silent = false;
+    std::function<void(Result)> onComplete;
 };
 
 struct MailCopyBlock {

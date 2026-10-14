@@ -1,5 +1,6 @@
 import gc
 import importlib
+import importlib.machinery
 import importlib.metadata
 import os
 import sys
@@ -33,14 +34,28 @@ def _jetstream_inside(path, root):
         return False
 
 
+def _jetstream_native_packages():
+    suffixes = tuple(importlib.machinery.EXTENSION_SUFFIXES)
+    names = set()
+    for name, module in tuple(sys.modules.items()):
+        loader = getattr(getattr(module, "__spec__", None), "loader", None)
+        path = getattr(module, "__file__", None) or ""
+        if isinstance(loader, importlib.machinery.ExtensionFileLoader) or path.endswith(suffixes):
+            names.add(name.partition(".")[0])
+    return names
+
+
 def _jetstream_switch_packages(previous, current):
     previous = os.path.realpath(previous) if previous else ""
     current = os.path.realpath(current) if current else ""
     if previous == current:
-        return
+        return []
 
     supplied = _jetstream_package_names(current)
+    native = _jetstream_native_packages()
     for name, module in tuple(sys.modules.items()):
+        if name.partition(".")[0] in native:
+            continue
         origin = getattr(getattr(module, "__spec__", None), "origin", None)
         if origin in ("built-in", "frozen"):
             continue
@@ -65,3 +80,11 @@ def _jetstream_switch_packages(previous, current):
         sys.path_importer_cache.pop(current, None)
     importlib.invalidate_caches()
     gc.collect()
+
+    kept = []
+    for name in sorted(native & supplied):
+        module = sys.modules.get(name)
+        path = getattr(module, "__file__", None) or next(iter(getattr(module, "__path__", ())), None)
+        if module is not None and not _jetstream_inside(path, current):
+            kept.append(name)
+    return kept
