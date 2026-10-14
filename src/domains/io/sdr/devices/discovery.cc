@@ -18,6 +18,9 @@
 #ifdef JETSTREAM_LOADER_BLADERF_AVAILABLE
 #include "bladerf/bladerf.hh"
 #endif
+#ifdef JETSTREAM_LOADER_PLUTOSDR_AVAILABLE
+#include "plutosdr/plutosdr.hh"
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -97,6 +100,9 @@ std::vector<Device::Driver> BuiltinDrivers() {
 #endif
 #ifdef JETSTREAM_LOADER_BLADERF_AVAILABLE
     drivers.push_back({"bladerf", &BladeRfDevice::Enumerate, &BladeRfDevice::Create});
+#endif
+#ifdef JETSTREAM_LOADER_PLUTOSDR_AVAILABLE
+    drivers.push_back({"plutosdr", &PlutoSdrDevice::Enumerate, &PlutoSdrDevice::Create});
 #endif
     return drivers;
 }
