@@ -9,6 +9,7 @@
 #include <limits>
 #include <mutex>
 #include <new>
+#include <string_view>
 
 #include <ConnectionRegistry.h>
 #include <LimeSuite.h>
@@ -38,7 +39,31 @@ std::mutex& TuningMutex() {
     return mutex;
 }
 
+void LogMessage(const int level, const char* message) {
+    std::string_view text = message ? message : "";
+    while (text.ends_with('\n') || text.ends_with('\r')) {
+        text.remove_suffix(1);
+    }
+    switch (level) {
+        case LMS_LOG_CRITICAL:
+        case LMS_LOG_ERROR:
+            JST_ERROR("[SDR_LIMESDR] {}", text);
+            break;
+        case LMS_LOG_WARNING:
+            JST_WARN("[SDR_LIMESDR] {}", text);
+            break;
+        case LMS_LOG_INFO:
+            JST_DEBUG("[SDR_LIMESDR] {}", text);
+            break;
+        default:
+            JST_TRACE("[SDR_LIMESDR] {}", text);
+            break;
+    }
+}
+
 std::vector<lime::ConnectionHandle> FindBoards() {
+    static std::once_flag logging;
+    std::call_once(logging, [] { LMS_RegisterLogHandler(&LogMessage); });
     try {
         return lime::ConnectionRegistry::findConnections();
     } catch (const std::exception& e) {
