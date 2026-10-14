@@ -92,9 +92,11 @@ struct FlowgraphEditorPresenter {
             },
             .onReconfigureBlock = [enqueue, flowgraphId](const std::string& blockName,
                                                          Parser::Map blockConfig,
-                                                         const bool silent) {
+                                                         const bool silent,
+                                                         std::function<void(Result)> onComplete) {
                 enqueue(MailReconfigureBlock{flowgraphId, blockName,
-                                             std::move(blockConfig), silent});
+                                             std::move(blockConfig), silent,
+                                             std::move(onComplete)});
             },
             .onConfigError =
                 [enqueue](const Result result, const std::string& message) {

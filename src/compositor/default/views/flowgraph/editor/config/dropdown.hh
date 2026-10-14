@@ -38,7 +38,7 @@ struct FlowgraphConfigDropdownField {
                 Parser::Map patch;
                 patch[this->config.name] = values.at(index);
                 if (this->config.onApply) {
-                    this->config.onApply(std::move(patch), false);
+                    this->config.onApply(std::move(patch), false, {});
                 }
             },
         });

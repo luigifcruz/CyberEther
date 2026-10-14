@@ -34,7 +34,7 @@ struct FlowgraphConfigFloatField {
                 Parser::Map patch;
                 patch[this->config.name] = nextValue * multiplier;
                 if (this->config.onApply) {
-                    this->config.onApply(std::move(patch), false);
+                    this->config.onApply(std::move(patch), false, {});
                 }
             },
             .onStepChange = [this](F32 nextStep) {
@@ -44,7 +44,7 @@ struct FlowgraphConfigFloatField {
                 Parser::Map patch;
                 patch[stepConfig] = nextStep * multiplier;
                 if (this->config.onApply) {
-                    this->config.onApply(std::move(patch), false);
+                    this->config.onApply(std::move(patch), false, {});
                 }
             },
         });

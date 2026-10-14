@@ -9,6 +9,10 @@ struct NodeRangeInput::Impl {
     bool editing = false;
     bool focusEditor = false;
     F32 editValue = 0.0f;
+    bool dragging = false;
+    F32 dragValue = 0.0f;
+    F32 submittedValue = 0.0f;
+    F32 mouseX = 0.0f;
 };
 
 NodeRangeInput::NodeRangeInput() {
@@ -20,6 +24,11 @@ NodeRangeInput::NodeRangeInput(NodeRangeInput&&) noexcept = default;
 NodeRangeInput& NodeRangeInput::operator=(NodeRangeInput&&) noexcept = default;
 
 bool NodeRangeInput::update(Config config) {
+    if (this->impl->config.id != config.id) {
+        this->impl->editing = false;
+        this->impl->focusEditor = false;
+        this->impl->dragging = false;
+    }
     this->impl->config = std::move(config);
     return true;
 }
@@ -34,7 +43,7 @@ void NodeRangeInput::render(const Context& ctx) const {
     const F32 availWidth = ImGui::GetContentRegionAvail().x;
     const F32 frameHeight = ImGui::GetTextLineHeight() + Scale(ctx, 6.0f);
 
-    F32 value = config.value;
+    F32 value = this->impl->dragging ? this->impl->dragValue : config.value;
     ImGui::PushID(config.id.c_str());
 
     if (this->impl->editing) {
@@ -71,8 +80,6 @@ void NodeRangeInput::render(const Context& ctx) const {
     ImGui::GetWindowDrawList()->AddRectFilled(rectMin, rectMax, bgColor, rounding);
 
     const F32 range = config.max - config.min;
-    F32 fraction = (range != 0.0f) ? (value - config.min) / range : 0.0f;
-    fraction = std::clamp(fraction, 0.0f, 1.0f);
     bool changed = false;
 
     if (ImGui::IsItemHovered() &&
@@ -80,17 +87,32 @@ void NodeRangeInput::render(const Context& ctx) const {
         this->impl->editValue = value;
         this->impl->editing = true;
         this->impl->focusEditor = true;
-    } else if (ImGui::IsItemActive()) {
+        this->impl->dragging = false;
+    } else if (ImGui::IsItemActive() || this->impl->dragging) {
+        const bool active = ImGui::IsItemActive();
         const F32 mouseX = ImGui::GetIO().MousePos.x;
-        const F32 newFraction = std::clamp((mouseX - rectMin.x) / (rectMax.x - rectMin.x), 0.0f, 1.0f);
-        const F32 newValue = config.min + newFraction * range;
-        if (newValue != value) {
-            value = config.integer ? std::round(newValue) : newValue;
-            fraction = newFraction;
-            changed = true;
+        const bool activated = !this->impl->dragging;
+        if (activated) {
+            this->impl->dragging = true;
+            this->impl->dragValue = value;
+            this->impl->submittedValue = value;
         }
+        if ((activated || mouseX != this->impl->mouseX) && rectMax.x > rectMin.x) {
+            const F32 fraction = std::clamp((mouseX - rectMin.x) / (rectMax.x - rectMin.x), 0.0f, 1.0f);
+            F32 nextValue = config.min + fraction * range;
+            if (config.integer) {
+                nextValue = std::round(nextValue);
+            }
+            this->impl->dragValue = nextValue;
+        }
+        this->impl->mouseX = mouseX;
+        value = this->impl->dragValue;
+        changed = value != this->impl->submittedValue;
+        this->impl->dragging = active;
     }
 
+    F32 fraction = (range != 0.0f) ? (value - config.min) / range : 0.0f;
+    fraction = std::clamp(fraction, 0.0f, 1.0f);
     const F32 sliderWidth = (rectMax.x - rectMin.x) * fraction;
     const ImU32 sliderColor = ImGui::ColorConvertFloat4ToU32(Private::ImColor(ctx, "frame_bg_hovered"));
     const F32 knobWidth = ImMax(Scale(ctx, 8.0f), rounding * 2.0f);
@@ -114,6 +136,7 @@ void NodeRangeInput::render(const Context& ctx) const {
     }
 
     if (changed && config.onChange) {
+        this->impl->submittedValue = value;
         config.onChange(value);
     }
     ImGui::PopID();

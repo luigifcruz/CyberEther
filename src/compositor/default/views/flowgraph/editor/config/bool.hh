@@ -24,7 +24,7 @@ struct FlowgraphConfigBoolField {
                 Parser::Map patch;
                 patch[this->config.name] = nextValue;
                 if (this->config.onApply) {
-                    this->config.onApply(std::move(patch), false);
+                    this->config.onApply(std::move(patch), false, {});
                 }
             },
         });

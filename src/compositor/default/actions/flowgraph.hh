@@ -473,6 +473,9 @@ struct FlowgraphActions {
 
     Result handle(const MailReconfigureBlock& msg) {
         if (!state.flowgraph.items.contains(msg.flowgraph)) {
+            if (msg.onComplete) {
+                msg.onComplete(Result::ERROR);
+            }
             JST_ERROR("Failed to reconfigure block because flowgraph was not found.");
             return Result::ERROR;
         }
@@ -481,9 +484,14 @@ struct FlowgraphActions {
         auto blockId = msg.blockId;
         auto config = msg.config;
 
-        callbacks.enqueueCommand([flowgraph, blockId, config]() -> Result {
+        auto command = [flowgraph, blockId, config]() -> Result {
             return flowgraph->blockReconfigure(blockId, config);
-        }, msg.silent);
+        };
+        if (msg.onComplete) {
+            callbacks.enqueueCommandWithCompletion(std::move(command), msg.silent, msg.onComplete);
+        } else {
+            callbacks.enqueueCommand(std::move(command), msg.silent);
+        }
 
         return Result::SUCCESS;
     }
