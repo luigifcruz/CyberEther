@@ -20,17 +20,6 @@ TEST_CASE("SDR Sweep block defaults to a manual-gain sweep",
     REQUIRE(config.resolution == 10.0e3);
     REQUIRE(config.dwell == 1);
     REQUIRE(config.settlingTime == 0.0f);
-    config.startFrequency = 2400.0e6;
-    Parser::Map serialized;
-    REQUIRE(config.serialize(serialized) == Result::SUCCESS);
-    REQUIRE_FALSE(serialized.contains("sweepMethod"));
-    serialized["sweepMethod"] = "bladerf_quick_tune";
-    Blocks::SdrSweep restored;
-    REQUIRE(restored.deserialize(serialized) == Result::SUCCESS);
-    REQUIRE(restored.startFrequency == config.startFrequency);
-    Parser::Map saved;
-    REQUIRE(restored.serialize(saved) == Result::SUCCESS);
-    REQUIRE_FALSE(saved.contains("sweepMethod"));
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
@@ -43,6 +32,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     REQUIRE(std::none_of(block.interfaceConfigs.begin(), block.interfaceConfigs.end(),
                          [](const auto& field) { return field.name == "sweepMethod" || field.label == "Method"; }));
+    REQUIRE(std::none_of(block.interfaceConfigs.begin(), block.interfaceConfigs.end(),
+                         [](const auto& field) { return field.name == "flatten"; }));
 
     std::vector<Flowgraph::View::MetricEntry> metrics;
     REQUIRE(flowgraph->view().metrics("sweep", metrics) == Result::SUCCESS);

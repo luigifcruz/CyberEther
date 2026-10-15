@@ -6,7 +6,9 @@
 #include <complex>
 #include <cstring>
 #include <limits>
+#include <optional>
 #include <numbers>
+#include <numeric>
 #include <random>
 #include <vector>
 
@@ -95,12 +97,10 @@ std::vector<CF32> HopCapture(const Modules::Sweep::Plan& plan, const U64 hop,
     return samples;
 }
 
-std::vector<CF32> Synthesize(const Modules::Sweep::Plan& plan, const std::vector<Tone>& tones,
-                             const std::vector<CF32>& noise = {}) {
-    Modules::Sweep::Assembler assembler;
-    REQUIRE(assembler.configure(plan) == Result::SUCCESS);
+void Capture(Modules::Sweep::Assembler& assembler, const Modules::Sweep::Plan& plan,
+             const std::vector<Tone>& tones, const std::vector<CF32>& noise = {}) {
     for (U64 hop = 0; hop < plan.hops.size(); ++hop) {
-        const auto samples = HopCapture(plan, hop, tones, 0, noise);
+        const auto samples = HopCapture(plan, hop, tones, 7919 * hop + 101, noise);
         const Radio::Device::SweepCapture capture{
             .hop = hop,
             .frequency = plan.hops[hop].frequency,
@@ -109,14 +109,46 @@ std::vector<CF32> Synthesize(const Modules::Sweep::Plan& plan, const std::vector
         REQUIRE(assembler.add(capture) == Result::SUCCESS);
     }
     REQUIRE(assembler.complete());
+}
+
+std::vector<CF32> Synthesize(const Modules::Sweep::Plan& plan, const std::vector<Tone>& tones,
+                             const std::vector<CF32>& noise = {}) {
+    Modules::Sweep::Assembler assembler;
+    REQUIRE(assembler.configure(plan) == Result::SUCCESS);
+    Capture(assembler, plan, tones, noise);
     std::vector<CF32> frame(plan.outputBins);
     REQUIRE(assembler.synthesize(frame) == Result::SUCCESS);
     return frame;
 }
 
-// Runs a frame through the modules of the Spectrum Analyzer chain: Blackman
-// window, Invert, Multiply, FFT, and Amplitude. Returns dBFS per display bin.
-std::vector<F32> SpectrumAnalyzerDb(const std::vector<CF32>& frame) {
+std::vector<F64> BlackmanTaps(const U64 size) {
+    std::vector<F64> taps(size);
+    for (U64 n = 0; n < size; ++n) {
+        const F64 position = static_cast<F64>(n) / static_cast<F64>(size - 1);
+        taps[n] = 0.42 - 0.5 * std::cos(2.0 * std::numbers::pi * position) +
+                  0.08 * std::cos(4.0 * std::numbers::pi * position);
+    }
+    return taps;
+}
+
+F64 CoherentGain(const U64 size) {
+    const auto taps = BlackmanTaps(size);
+    return std::accumulate(taps.begin(), taps.end(), 0.0) / static_cast<F64>(size);
+}
+
+F64 NoiseGain(const U64 size) {
+    F64 energy = 0.0;
+    for (const auto tap : BlackmanTaps(size)) {
+        energy += tap * tap;
+    }
+    return energy / (static_cast<F64>(size) * static_cast<F64>(size));
+}
+
+F64 ToneDb(const Modules::Sweep::Plan& plan, const F64 amplitude) {
+    return 20.0 * std::log10(amplitude * CoherentGain(plan.segmentLength));
+}
+
+std::vector<F32> SpectrumAnalyzerDb(const std::vector<CF32>& frame, const bool synthetic = true) {
     const U64 size = frame.size();
     const auto run = [](TestContext& context) {
         REQUIRE(context.run() == Result::SUCCESS);
@@ -130,33 +162,41 @@ std::vector<F32> SpectrumAnalyzerDb(const std::vector<CF32>& frame) {
     axes(input);
 
     TestContext window("window", DeviceType::CPU, RuntimeType::NATIVE, "generic");
-    Modules::Window windowConfig;
-    windowConfig.size = size;
-    window.setConfig(windowConfig);
-    run(window);
-    Tensor taps = window.output("window");
-    axes(taps);
-
     TestContext invert("invert", DeviceType::CPU, RuntimeType::NATIVE, "generic");
-    invert.setConfig(Modules::Invert{});
-    invert.setInput("signal", taps);
-    run(invert);
-    Tensor inverted = invert.output("signal");
-    axes(inverted);
-
     TestContext multiply("multiply", DeviceType::CPU, RuntimeType::NATIVE, "generic");
-    multiply.setConfig(Modules::Multiply{});
-    multiply.setInput("a", input);
-    multiply.setInput("b", inverted);
-    run(multiply);
-    Tensor product = multiply.output("product");
-    axes(product);
+    Tensor signal;
+    if (synthetic) {
+        invert.setConfig(Modules::Invert{});
+        invert.setInput("signal", input);
+        run(invert);
+        signal = invert.output("signal");
+    } else {
+        Modules::Window windowConfig;
+        windowConfig.size = size;
+        window.setConfig(windowConfig);
+        run(window);
+        Tensor taps = window.output("window");
+        axes(taps);
+
+        invert.setConfig(Modules::Invert{});
+        invert.setInput("signal", taps);
+        run(invert);
+        Tensor inverted = invert.output("signal");
+        axes(inverted);
+
+        multiply.setConfig(Modules::Multiply{});
+        multiply.setInput("a", input);
+        multiply.setInput("b", inverted);
+        run(multiply);
+        signal = multiply.output("product");
+    }
+    axes(signal);
 
     TestContext fft("fft", DeviceType::CPU, RuntimeType::NATIVE, "generic");
     Modules::Fft fftConfig;
     fftConfig.forward = true;
     fft.setConfig(fftConfig);
-    fft.setInput("signal", product);
+    fft.setInput("signal", signal);
     run(fft);
     Tensor spectrum = fft.output("signal");
     axes(spectrum);
@@ -169,7 +209,6 @@ std::vector<F32> SpectrumAnalyzerDb(const std::vector<CF32>& frame) {
     return {decibels.data<F32>(), decibels.data<F32>() + size};
 }
 
-// A directly captured tone of the same amplitude at display bin `bin`.
 std::vector<CF32> DirectTone(const U64 size, const F64 bin, const F64 amplitude) {
     std::vector<CF32> frame(size);
     const F64 offset = bin - static_cast<F64>(size / 2);
@@ -181,8 +220,16 @@ std::vector<CF32> DirectTone(const U64 size, const F64 bin, const F64 amplitude)
     return frame;
 }
 
-F32 PeakBinLevel(const std::vector<F32>& decibels, const U64 bin) {
-    return decibels[bin];
+std::vector<U64> Contributors(const Modules::Sweep::Plan& plan) {
+    std::vector<U64> contributors(plan.outputBins, 0);
+    for (const auto& hop : plan.hops) {
+        for (const auto& run : hop.runs) {
+            for (U64 i = 0; i < run.length; ++i) {
+                ++contributors[run.grid + i];
+            }
+        }
+    }
+    return contributors;
 }
 
 U64 ArgMax(const std::vector<F32>& values) {
@@ -210,22 +257,33 @@ std::vector<CF32> WhiteNoise(const U64 count, const F64 variance, const U32 seed
 // Planning.
 //
 
-TEST_CASE("SDR Sweep plans a uniform half-open grid with one contributor per bin",
+TEST_CASE("SDR Sweep plans overlapping hops whose geometric weights cover every bin",
           "[modules][sdr_sweep][plan]") {
-    F64 resolution = 0.0;
+    F64 resolution = 10.0e3;
     F64 dc = 0.0;
-    SECTION("even capture length") {
-        resolution = 10.0e3;
-    }
+    F64 end = 120.0e6;
+    std::optional<U64> hops;
+    SECTION("even capture length") {}
     SECTION("odd capture length") {
         resolution = 9.0e3;
     }
+    SECTION("odd output length") {
+        end = 104.005e6;
+    }
     SECTION("DC exclusion") {
-        resolution = 10.0e3;
         dc = 25.0e3;
     }
+    SECTION("single hop") {
+        end = 101.0e6;
+        hops = 1;
+    }
+    SECTION("DC hole inside a single capture") {
+        end = 101.0e6;
+        dc = 25.0e3;
+        hops = 2;
+    }
 
-    const auto plan = RequirePlan({.startFrequency = 100.0e6, .endFrequency = 120.0e6,
+    const auto plan = RequirePlan({.startFrequency = 100.0e6, .endFrequency = end,
                                    .resolution = resolution}, TestCaps(dc));
     const U64 length = static_cast<U64>(std::ceil(2.0e6 / resolution));
     REQUIRE(plan.mode == Mode::Retune);
@@ -233,33 +291,53 @@ TEST_CASE("SDR Sweep plans a uniform half-open grid with one contributor per bin
     REQUIRE(plan.binWidth == 2.0e6 / static_cast<F64>(length));
     REQUIRE(plan.binWidth <= resolution);
     REQUIRE(plan.startFrequency == 100.0e6);
-    REQUIRE(plan.endFrequency() >= 120.0e6);
-    REQUIRE(plan.endFrequency() < 120.0e6 + plan.binWidth);
-    REQUIRE(plan.outputBins == static_cast<U64>(std::ceil(20.0e6 / plan.binWidth)));
+    REQUIRE(plan.endFrequency() >= end);
+    REQUIRE(plan.endFrequency() < end + plan.binWidth);
+    REQUIRE(plan.outputBins == static_cast<U64>(std::ceil((end - 100.0e6) / plan.binWidth)));
     REQUIRE(plan.span() == static_cast<F64>(plan.outputBins) * plan.binWidth);
     REQUIRE(plan.centerFrequency() == BinCenter(plan, static_cast<F64>(plan.outputBins / 2)));
+    REQUIRE(plan.weights.size() == length);
+    if (hops) {
+        REQUIRE(plan.hops.size() == *hops);
+    }
 
     const auto center = static_cast<I64>(length / 2);
     const auto half = static_cast<I64>(std::floor(0.75 * static_cast<F64>(length) / 2.0));
-    const auto dcBins = static_cast<I64>(std::ceil(dc / plan.binWidth));
-    std::vector<U64> contributors(plan.outputBins, 0);
+    const auto dcBins = static_cast<I64>(std::ceil(dc / plan.binWidth)) + (dc > 0.0 ? 3 : 0);
+    const auto step = half - dcBins;
+    std::vector<F64> weights(plan.outputBins, 0.0);
     for (const auto& hop : plan.hops) {
         for (const auto& run : hop.runs) {
             for (U64 i = 0; i < run.length; ++i) {
                 const auto offset = static_cast<I64>(run.segment + i) - center;
                 REQUIRE(offset >= -half);
                 REQUIRE(offset < half);
-                REQUIRE(std::abs(offset) >= dcBins);
-                ++contributors[run.grid + i];
-                // Hops tune on whole hertz, so a bin lands within half a hertz of its grid frequency.
+                REQUIRE((offset < -dcBins || offset >= dcBins));
+                REQUIRE(plan.weights[run.segment + i] > 0.0f);
+                REQUIRE(plan.weights[run.segment + i] ==
+                        plan.weights[static_cast<U64>(2 * center - 1) - (run.segment + i)]);
+                weights[run.grid + i] += plan.weights[run.segment + i];
                 const F64 segmentFrequency = hop.frequency + static_cast<F64>(offset) * plan.binWidth;
                 REQUIRE_THAT(segmentFrequency,
                              WithinAbs(BinCenter(plan, static_cast<F64>(run.grid + i)), 0.5));
             }
         }
     }
+    for (U64 h = 1; h < plan.hops.size(); ++h) {
+        REQUIRE_THAT(plan.hops[h].frequency - plan.hops[h - 1].frequency,
+                     WithinAbs(static_cast<F64>(step) * plan.binWidth, 1.0));
+    }
+
+    const auto contributors = Contributors(plan);
     REQUIRE(std::all_of(contributors.begin(), contributors.end(),
-                        [](const U64 count) { return count == 1; }));
+                        [](const U64 count) { return count >= 1; }));
+    REQUIRE(std::all_of(weights.begin(), weights.end(), [](const F64 weight) { return weight > 0.0; }));
+    for (U64 bin = 2 * static_cast<U64>(half); bin + 2 * static_cast<U64>(half) < plan.outputBins; ++bin) {
+        REQUIRE(contributors[bin] == 2);
+        if (dc == 0.0) {
+            REQUIRE_THAT(weights[bin], WithinAbs(1.0, 1e-5));
+        }
+    }
 }
 
 TEST_CASE("SDR Sweep places retune hops on whole hertz so fine bins survive driver rounding",
@@ -427,7 +505,7 @@ TEST_CASE("SDR Sweep Auto preserves targets that Retune can meet without firmwar
     // A supported method still needs a physically valid plan. Candidate errors
     // must not prevent using the valid firmware sequence.
     request.resolution = 1.0e3;
-    caps.frequencyRanges = {{0.0, 108.0e6}};
+    caps.frequencyRanges = {{0.0, 100.0e6}};
     REQUIRE(RequirePlan(request, caps).mode == Mode::Firmware);
 }
 
@@ -562,12 +640,17 @@ TEST_CASE("SDR Sweep firmware sweeps place HackRF bands on the output grid",
         REQUIRE(hop.runs[1].grid == first + plan.segmentLength / 2);
         REQUIRE(hop.runs[1].length == quarter);
     }
+    REQUIRE(plan.weights == std::vector<F32>(plan.segmentLength, 1.0f));
+    const auto contributors = Contributors(plan);
+    REQUIRE(std::all_of(contributors.begin(), contributors.end(),
+                        [](const U64 count) { return count == 1; }));
 
     // Tones land on their grid bins through the firmware mapping as well.
     const Tone tone{.frequency = BinCenter(plan, 777), .amplitude = 0.25};
     const auto frame = Synthesize(plan, {tone});
     const auto decibels = SpectrumAnalyzerDb(frame);
     REQUIRE(ArgMax(decibels) == 777);
+    REQUIRE_THAT(decibels[777], WithinAbs(ToneDb(plan, 0.25), 0.05));
 
     SECTION("automatic selection falls back when firmware limits do not fit") {
         REQUIRE(Modules::Sweep::Plan::ResolveMode({.resolution = 10.0e3}, caps) ==
@@ -608,130 +691,353 @@ TEST_CASE("SDR Sweep synthetic IQ shows tones at the direct Spectrum Analyzer le
                                    .resolution = resolution}, TestCaps(dc));
     const U64 bins = plan.outputBins;
     const F64 amplitude = 0.1;
+    const auto expected = static_cast<F32>(ToneDb(plan, amplitude));
 
-    // Interior, seam, first, and last bins. The seam is the first bin of the
-    // second hop's lower run.
-    const auto& seamRun = plan.hops[1].runs.front();
-    for (const U64 bin : {bins / 3, seamRun.grid, seamRun.grid - 1, U64{0}, bins - 1}) {
+    const auto& overlap = plan.hops[1].runs.front();
+    const auto& center = plan.hops[1].runs.back();
+    for (const U64 bin : {bins / 3, overlap.grid, overlap.grid - 1, center.grid, U64{0}, bins - 1}) {
         DYNAMIC_SECTION("Bin " << bin << " of " << bins) {
             const auto decibels = SpectrumAnalyzerDb(
                 Synthesize(plan, {{.frequency = BinCenter(plan, static_cast<F64>(bin)),
                                    .amplitude = amplitude}}));
-            const auto reference = SpectrumAnalyzerDb(DirectTone(bins, static_cast<F64>(bin), amplitude));
+            const auto direct = SpectrumAnalyzerDb(DirectTone(bins, static_cast<F64>(bin), amplitude), false);
             REQUIRE(ArgMax(decibels) == bin);
-            REQUIRE_THAT(PeakBinLevel(decibels, bin), WithinAbs(reference[bin], 0.05));
+            REQUIRE_THAT(decibels[bin], WithinAbs(expected, 0.05));
+            REQUIRE_THAT(decibels[bin], WithinAbs(direct[bin], 0.1));
 
-            // Display bin `k` is labeled `center + (k - floor(M / 2)) * span / M`.
             const F64 label = plan.centerFrequency() +
                               (static_cast<F64>(bin) - static_cast<F64>(bins / 2)) * plan.span() /
                               static_cast<F64>(bins);
             REQUIRE_THAT(label, WithinAbs(BinCenter(plan, static_cast<F64>(bin)), 1e-6));
 
-            // The display transform is circular, so edge tones leak across
-            // the opposite edge exactly like a direct capture does.
             if (bin == 0) {
-                REQUIRE_THAT(decibels[bins - 1], WithinAbs(decibels[1], 0.05));
-                REQUIRE_THAT(decibels[bins - 1], WithinAbs(reference[bins - 1], 0.05));
+                REQUIRE(decibels[bins - 1] < decibels[0] - 80.0f);
+            }
+            if (bin == bins - 1) {
+                REQUIRE(decibels[0] < decibels[bins - 1] - 80.0f);
             }
         }
     }
 }
 
-TEST_CASE("SDR Sweep characterizes off-bin tones, seam ripple, and spreading",
+TEST_CASE("SDR Sweep keeps off-bin tones level across hop overlaps with unrelated capture phases",
           "[modules][sdr_sweep][dsp][seams]") {
     const auto plan = RequirePlan({.startFrequency = 100.0e6, .endFrequency = 104.0e6,
                                    .resolution = 10.0e3}, TestCaps());
     const U64 bins = plan.outputBins;
-    const U64 seam = plan.hops[1].runs.front().grid;
     const F64 amplitude = 0.1;
 
-    // Off-bin tones follow the Blackman scalloping of a direct capture.
-    for (const F64 fraction : {0.25, 0.5}) {
-        const F64 bin = static_cast<F64>(bins / 3) + fraction;
-        const auto decibels = SpectrumAnalyzerDb(
+    const auto peakOf = [&](const F64 bin) {
+        return SpectrumAnalyzerDb(
             Synthesize(plan, {{.frequency = BinCenter(plan, bin), .amplitude = amplitude}}));
-        const auto reference = SpectrumAnalyzerDb(DirectTone(bins, bin, amplitude));
-        const auto peak = ArgMax(reference);
+    };
+
+    std::vector<F32> scalloped;
+    for (const F64 fraction : {0.0, 0.25, 0.5, 0.75}) {
+        const F64 bin = static_cast<F64>(bins / 3) + fraction;
+        const auto decibels = peakOf(bin);
+        const auto direct = SpectrumAnalyzerDb(DirectTone(bins, bin, amplitude), false);
+        const auto peak = ArgMax(direct);
         REQUIRE(ArgMax(decibels) == peak);
-        REQUIRE_THAT(decibels[peak], WithinAbs(reference[peak], 0.3));
+        REQUIRE_THAT(decibels[peak], WithinAbs(direct[peak], 0.3));
+        scalloped.push_back(decibels[peak]);
     }
 
-    // A tone crossing a seam keeps its level within 1 dB, and spurs outside
-    // the main lobe stay 40 dB down. Each hop's captures are acquired at
-    // different times, so this bounds the stitching artifact only.
-    const auto interior = SpectrumAnalyzerDb(DirectTone(bins, static_cast<F64>(bins / 3) + 0.5, amplitude));
-    const F32 scalloped = *std::max_element(interior.begin(), interior.end());
-    for (F64 offset = -2.0; offset <= 2.0; offset += 0.25) {
-        INFO("Offset " << offset);
-        const F64 bin = static_cast<F64>(seam) + offset;
-        const auto decibels = SpectrumAnalyzerDb(
-            Synthesize(plan, {{.frequency = BinCenter(plan, bin), .amplitude = amplitude}}));
+    const U64 lower = plan.hops[1].runs.front().grid;
+    const U64 upper = plan.hops[0].runs.back().grid + plan.hops[0].runs.back().length;
+    const U64 middle = plan.hops[1].runs.back().grid;
+    for (const U64 boundary : {lower, upper, middle}) {
+        for (F64 offset = -2.0; offset <= 2.0; offset += 0.25) {
+            const F64 bin = static_cast<F64>(boundary) + offset;
+            INFO("Boundary " << boundary << " offset " << offset);
+            const auto decibels = peakOf(bin);
+            const auto peak = ArgMax(decibels);
+            const F64 fraction = bin - std::floor(bin);
+            REQUIRE(std::abs(static_cast<F64>(peak) - bin) <= 0.5);
+            REQUIRE_THAT(decibels[peak], WithinAbs(scalloped[static_cast<U64>(fraction * 4.0)], 0.05));
+            F32 spur = -std::numeric_limits<F32>::infinity();
+            for (U64 k = 0; k < bins; ++k) {
+                if (std::abs(static_cast<F64>(k) - bin) > 4.0) {
+                    spur = std::max(spur, decibels[k]);
+                }
+            }
+            REQUIRE(spur <= decibels[peak] - 50.0f);
+        }
+    }
+}
+
+TEST_CASE("SDR Sweep blends equal-power contributors in opposite phase without cancelling",
+          "[modules][sdr_sweep][dsp][seams]") {
+    const auto plan = RequirePlan({.startFrequency = 100.0e6, .endFrequency = 104.0e6,
+                                   .resolution = 10.0e3}, TestCaps());
+    const U64 bin = plan.hops[1].runs.front().grid + 5;
+    REQUIRE(Contributors(plan)[bin] == 2);
+    const F64 amplitude = 0.2;
+    const Tone tone{.frequency = BinCenter(plan, static_cast<F64>(bin)), .amplitude = amplitude};
+
+    const auto assemble = [&](const bool opposite) {
+        Modules::Sweep::Assembler assembler;
+        REQUIRE(assembler.configure(plan) == Result::SUCCESS);
+        for (U64 hop = 0; hop < plan.hops.size(); ++hop) {
+            auto samples = HopCapture(plan, hop, {tone});
+            if (opposite && hop % 2 == 1) {
+                for (auto& sample : samples) {
+                    sample = -sample;
+                }
+            }
+            REQUIRE(assembler.add({.hop = hop, .frequency = plan.hops[hop].frequency,
+                                   .samples = samples}) == Result::SUCCESS);
+        }
+        REQUIRE(assembler.complete());
+        std::vector<CF32> spectrum(assembler.spectrum().begin(), assembler.spectrum().end());
+        std::vector<CF32> frame(plan.outputBins);
+        REQUIRE(assembler.synthesize(frame) == Result::SUCCESS);
+        return std::pair{spectrum, SpectrumAnalyzerDb(frame)};
+    };
+
+    const auto [aligned, alignedDb] = assemble(false);
+    const auto [opposed, opposedDb] = assemble(true);
+    const F64 expected = amplitude * CoherentGain(plan.segmentLength);
+    REQUIRE_THAT(std::abs(aligned[bin]), WithinAbs(expected, 1e-5));
+    REQUIRE_THAT(std::abs(opposed[bin]), WithinAbs(expected, 1e-5));
+    REQUIRE_THAT(opposedDb[bin], WithinAbs(ToneDb(plan, amplitude), 0.02));
+    REQUIRE_THAT(opposedDb[bin], WithinAbs(alignedDb[bin], 0.02));
+    for (U64 k = 0; k < plan.outputBins; ++k) {
+        REQUIRE_THAT(std::abs(opposed[k]), WithinAbs(std::abs(aligned[k]), 1e-6 * expected));
+    }
+}
+
+TEST_CASE("SDR Sweep rejects receiver DC before it spreads through the capture window",
+          "[modules][sdr_sweep][dsp][dc]") {
+    auto caps = TestCaps(5.0e3);
+    caps.sweepSampleRate = 2.4e6;
+    F64 resolution = 10.0e3;
+    U64 dwell = 1;
+    SECTION("default RTL-SDR captures") {}
+    SECTION("different complex offsets in each dwell capture") {
+        dwell = 3;
+    }
+    SECTION("odd capture length") {
+        resolution = 9.0e3;
+        dwell = 3;
+    }
+
+    const auto plan = RequirePlan({.startFrequency = 88.0e6, .endFrequency = 108.0e6,
+                                   .resolution = resolution, .dwell = dwell}, caps);
+    Modules::Sweep::Assembler assembler;
+    REQUIRE(assembler.configure(plan) == Result::SUCCESS);
+    std::vector<CF32> samples(plan.captureSamples());
+    std::vector<CF32> frame(plan.outputBins);
+    for (U64 sweep = 0; sweep < 2; ++sweep) {
+        for (U64 hop = 0; hop < plan.hops.size(); ++hop) {
+            for (U64 j = 0; j < dwell; ++j) {
+                const CF32 offset = dwell == 1 && sweep == 0
+                    ? CF32{0.01f, 0.0f}
+                    : CF32{0.01f * static_cast<F32>(hop + j + sweep + 1),
+                           -0.02f * static_cast<F32>(j + sweep + 1)};
+                std::fill_n(samples.begin() + static_cast<std::ptrdiff_t>(j * plan.segmentLength),
+                            plan.segmentLength, offset);
+            }
+            REQUIRE(assembler.add({.hop = hop, .frequency = plan.hops[hop].frequency,
+                                   .samples = samples}) == Result::SUCCESS);
+        }
+        REQUIRE(assembler.complete());
+        F32 peak = 0.0f;
+        for (const auto value : assembler.spectrum()) {
+            peak = std::max(peak, std::abs(value));
+        }
+        INFO("Peak DC leakage: " << 20.0f * std::log10(peak) << " dBFS");
+        REQUIRE(peak < 1e-9f);
+        REQUIRE(assembler.synthesize(frame) == Result::SUCCESS);
+        const auto decibels = SpectrumAnalyzerDb(frame);
+        REQUIRE(std::all_of(decibels.begin(), decibels.end(), [](const F32 value) {
+            return value < -140.0f;
+        }));
+    }
+}
+
+TEST_CASE("SDR Sweep preserves nearby tones while rejecting receiver DC",
+          "[modules][sdr_sweep][dsp][dc]") {
+    auto caps = TestCaps(5.0e3);
+    caps.sweepSampleRate = 2.4e6;
+    const auto plan = RequirePlan({.startFrequency = 88.0e6, .endFrequency = 108.0e6,
+                                   .resolution = 10.0e3}, caps);
+    const auto center = static_cast<U64>(std::llround(
+        (plan.hops[1].frequency - plan.startFrequency) / plan.binWidth - 0.5));
+    for (const I64 offset : {-2, -1, 0, 1, 2}) {
+        const U64 bin = static_cast<U64>(static_cast<I64>(center) + offset);
+        const std::vector<Tone> tones{{.frequency = BinCenter(plan, static_cast<F64>(bin)),
+                                       .amplitude = 0.1}};
+        const auto clean = SpectrumAnalyzerDb(Synthesize(plan, tones));
+        const auto shifted = SpectrumAnalyzerDb(Synthesize(plan, tones, {CF32{0.01f, -0.02f}}));
+        INFO("Tone offset from hop center: " << offset);
+        REQUIRE(ArgMax(shifted) == bin);
+        REQUIRE_THAT(shifted[bin], WithinAbs(ToneDb(plan, 0.1), 0.05));
+        REQUIRE_THAT(shifted[bin], WithinAbs(clean[bin], 0.01));
+    }
+}
+
+TEST_CASE("SDR Sweep keeps off-bin tones accurate around excluded DC neighborhoods",
+          "[modules][sdr_sweep][dsp][dc][seams]") {
+    auto caps = TestCaps(5.0e3);
+    caps.sweepSampleRate = 2.4e6;
+    F64 resolution = 10.0e3;
+    F64 end = 108.0e6;
+    U64 dwell = 1;
+    I64 last = 64;
+    SECTION("default RTL-SDR captures") {}
+    SECTION("odd capture length") {
+        resolution = 9.0e3;
+    }
+    SECTION("averaged captures") {
+        dwell = 3;
+    }
+    SECTION("DC outside the requested band on a DC-safe receiver") {
+        caps.dcExclusion = 0.0;
+        end = 88.89e6;
+        last = -16;
+    }
+
+    const auto plan = RequirePlan({.startFrequency = 88.0e6, .endFrequency = end,
+                                   .resolution = resolution, .dwell = dwell}, caps);
+    const auto& hop = plan.hops[plan.hops.size() > 1 ? 1 : 0];
+    const F64 center = std::round((hop.frequency - plan.startFrequency) / plan.binWidth - 0.5);
+    const auto taps = BlackmanTaps(plan.segmentLength);
+    constexpr F64 Amplitude = 0.1;
+    for (I64 offset = -64; offset <= last; ++offset) {
+        const F64 bin = center + static_cast<F64>(offset) / 8.0;
+        const F64 fraction = bin - std::round(bin);
+        CF64 response{};
+        for (U64 n = 0; n < plan.segmentLength; ++n) {
+            response += taps[n] * std::polar(1.0, 2.0 * std::numbers::pi * fraction *
+                                                  static_cast<F64>(n) / static_cast<F64>(plan.segmentLength));
+        }
+        const F64 expected = 20.0 * std::log10(Amplitude * std::abs(response) /
+                                              static_cast<F64>(plan.segmentLength));
+        const auto decibels = SpectrumAnalyzerDb(Synthesize(plan, {
+            {.frequency = BinCenter(plan, bin), .amplitude = Amplitude},
+        }));
         const auto peak = ArgMax(decibels);
-        REQUIRE(std::abs(static_cast<F64>(peak) - bin) <= 1.0);
-        REQUIRE(decibels[peak] >= scalloped - 1.0f);
+        INFO("Tone offset from hop center: " << static_cast<F64>(offset) / 8.0);
+        CHECK(std::abs(static_cast<F64>(peak) - bin) <= 0.5);
+        CHECK_THAT(decibels[peak], WithinAbs(expected, 0.05));
         F32 spur = -std::numeric_limits<F32>::infinity();
-        for (U64 k = 0; k < bins; ++k) {
+        for (U64 k = 0; k < plan.outputBins; ++k) {
             if (std::abs(static_cast<F64>(k) - bin) > 4.0) {
                 spur = std::max(spur, decibels[k]);
             }
         }
-        REQUIRE(spur <= decibels[peak] - 40.0f);
+        CHECK(spur <= decibels[peak] - 50.0f);
     }
 }
 
-TEST_CASE("SDR Sweep noise floor follows the capture bin width",
+TEST_CASE("SDR Sweep noise floor follows the windowed capture bin width without learned shaping",
           "[modules][sdr_sweep][dsp][noise]") {
-    const auto plan = RequirePlan({.startFrequency = 100.0e6, .endFrequency = 104.0e6,
-                                   .resolution = 10.0e3}, TestCaps());
-    const F64 variance = 1.0e-4;
-    constexpr U32 Realizations = 8;
-
-    // Each displayed bin averages independent capture bins weighted by the
-    // display window, so its mean power is `sum(w^2) / M * variance / N`.
-    // That equals the floor of a direct capture with the same bin width and
-    // noise density, and is not rescaled per sweep.
-    const U64 bins = plan.outputBins;
-    F64 energy = 0.0;
-    for (U64 n = 0; n < bins; ++n) {
-        const F64 tap = 0.42 - 0.5 * std::cos(2.0 * std::numbers::pi * n / (bins - 1)) +
-                        0.08 * std::cos(4.0 * std::numbers::pi * n / (bins - 1));
-        energy += tap * tap;
+    F64 dc = 0.0;
+    SECTION("full captures") {}
+    SECTION("DC-excluded captures") {
+        dc = 25.0e3;
     }
-    const F64 expected = energy / static_cast<F64>(bins) * variance /
-                         static_cast<F64>(plan.segmentLength);
+    const auto plan = RequirePlan({.startFrequency = 100.0e6, .endFrequency = 104.0e6,
+                                   .resolution = 10.0e3}, TestCaps(dc));
+    const F64 variance = 1.0e-4;
+    const F64 expected = variance * NoiseGain(plan.segmentLength);
+    constexpr U32 Realizations = 8;
+    const U64 bins = plan.outputBins;
+
+    Modules::Sweep::Assembler assembler;
+    REQUIRE(assembler.configure(plan) == Result::SUCCESS);
+    std::vector<F64> quarters(4, 0.0);
     F64 measured = 0.0;
     for (U32 seed = 1; seed <= Realizations; ++seed) {
         const auto noise = WhiteNoise(plan.captureSamples() * plan.hops.size(), variance, seed);
-        for (const auto value : SpectrumAnalyzerDb(Synthesize(plan, {}, noise))) {
-            measured += std::pow(10.0, value / 10.0);
+        Capture(assembler, plan, {}, noise);
+        const std::vector<CF32> first(assembler.spectrum().begin(), assembler.spectrum().end());
+        std::vector<CF32> frame(bins);
+        REQUIRE(assembler.synthesize(frame) == Result::SUCCESS);
+        Capture(assembler, plan, {}, noise);
+        REQUIRE(std::equal(first.begin(), first.end(), assembler.spectrum().begin()));
+
+        const auto decibels = SpectrumAnalyzerDb(frame);
+        for (U64 k = 0; k < bins; ++k) {
+            REQUIRE_THAT(decibels[k], WithinAbs(20.0 * std::log10(std::abs(first[k])), 0.05));
+            const F64 power = std::pow(10.0, decibels[k] / 10.0);
+            measured += power;
+            quarters[4 * k / bins] += power;
         }
     }
     measured /= static_cast<F64>(bins) * Realizations;
     REQUIRE_THAT(10.0 * std::log10(measured / expected), WithinAbs(0.0, 0.3));
+    for (const auto quarter : quarters) {
+        const F64 mean = quarter / (static_cast<F64>(bins / 4) * Realizations);
+        REQUIRE_THAT(10.0 * std::log10(mean / expected), WithinAbs(0.0, 0.5));
+    }
 }
 
-TEST_CASE("SDR Sweep dwell averages magnitudes without cancelling phases",
+TEST_CASE("SDR Sweep keeps clean regions untouched by a strong signal elsewhere",
+          "[modules][sdr_sweep][dsp][noise]") {
+    const auto plan = RequirePlan({.startFrequency = 100.0e6, .endFrequency = 108.0e6,
+                                   .resolution = 10.0e3}, TestCaps());
+    const U64 bins = plan.outputBins;
+    const F64 variance = 1.0e-4;
+    const F64 floor = variance * NoiseGain(plan.segmentLength);
+    const F64 level = std::sqrt(floor * std::pow(10.0, 0.9)) / CoherentGain(plan.segmentLength);
+    constexpr U64 First = 200;
+    constexpr U64 Width = 20;
+    std::vector<Tone> signal;
+    for (U64 k = First; k < First + Width; ++k) {
+        signal.push_back({.frequency = BinCenter(plan, static_cast<F64>(k)), .amplitude = level});
+    }
+
+    Modules::Sweep::Assembler clean;
+    Modules::Sweep::Assembler loaded;
+    REQUIRE(clean.configure(plan) == Result::SUCCESS);
+    REQUIRE(loaded.configure(plan) == Result::SUCCESS);
+    const U64 reach = First + Width + plan.segmentLength;
+    REQUIRE(reach < bins);
+    constexpr U32 Sweeps = 20;
+    F64 cleanPower = 0.0;
+    F64 signalPower = 0.0;
+    for (U32 sweep = 1; sweep <= Sweeps; ++sweep) {
+        const auto noise = WhiteNoise(plan.captureSamples() * plan.hops.size(), variance, sweep);
+        Capture(clean, plan, {}, noise);
+        Capture(loaded, plan, signal, noise);
+        for (U64 k = reach; k < bins; ++k) {
+            REQUIRE(loaded.spectrum()[k] == clean.spectrum()[k]);
+            cleanPower += std::norm(loaded.spectrum()[k]);
+        }
+        for (U64 k = First; k < First + Width; ++k) {
+            signalPower += std::norm(loaded.spectrum()[k]);
+        }
+    }
+    cleanPower /= static_cast<F64>((bins - reach) * Sweeps);
+    signalPower /= static_cast<F64>(Width * Sweeps);
+    REQUIRE_THAT(10.0 * std::log10(cleanPower / floor), WithinAbs(0.0, 0.3));
+    REQUIRE(10.0 * std::log10(signalPower / floor) > 9.0);
+}
+
+TEST_CASE("SDR Sweep dwell averages power without cancelling phases",
           "[modules][sdr_sweep][dsp][dwell]") {
     auto plan = RequirePlan({.startFrequency = 100.0e6, .endFrequency = 104.0e6,
                              .resolution = 10.0e3, .dwell = 3}, TestCaps());
     REQUIRE(plan.captureSamples() == 3 * plan.segmentLength);
 
-    // A tone half a bin off the capture grid changes phase between captures.
     const U64 bin = plan.outputBins / 3;
     Modules::Sweep::Assembler assembler;
     REQUIRE(assembler.configure(plan) == Result::SUCCESS);
     const Tone tone{.frequency = BinCenter(plan, static_cast<F64>(bin)), .amplitude = 0.2};
     for (U64 hop = 0; hop < plan.hops.size(); ++hop) {
         auto samples = HopCapture(plan, hop, {tone});
-        // Rotate the second capture so complex averaging would cancel it.
         for (U64 n = plan.segmentLength; n < 2 * plan.segmentLength; ++n) {
             samples[n] = -samples[n];
         }
+        std::fill(samples.begin() + static_cast<std::ptrdiff_t>(2 * plan.segmentLength), samples.end(), CF32{});
         REQUIRE(assembler.add({.hop = hop, .frequency = plan.hops[hop].frequency,
                                .samples = samples}) == Result::SUCCESS);
     }
     REQUIRE(assembler.complete());
-    REQUIRE_THAT(std::abs(assembler.spectrum()[bin]), WithinAbs(0.2, 1e-4));
+    const F64 expected = 0.2 * CoherentGain(plan.segmentLength) * std::sqrt(2.0 / 3.0);
+    REQUIRE_THAT(std::abs(assembler.spectrum()[bin]), WithinAbs(expected, 1e-5));
 }
 
 TEST_CASE("SDR Sweep never completes partial, stale, or mistuned coverage",
@@ -1139,8 +1445,8 @@ TEST_CASE_METHOD(ScriptedDrivers,
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,
-                 "SDR Sweep module ignores legacy method selections and preserves an automatic target",
-                 "[modules][sdr_sweep][config][legacy][hackrf]") {
+                 "SDR Sweep module preserves its automatic resolution target",
+                 "[modules][sdr_sweep][config][hackrf]") {
     TestScript().budget = 0;
     TestScript().firmware = HackRfCaps().firmwareSweep;
     auto config = ScriptedSweep();
@@ -1148,19 +1454,6 @@ TEST_CASE_METHOD(ScriptedDrivers,
     config.endFrequency = 108.0e6;
     config.sampleRate = 20.0e6;
     config.resolution = 1.0e3;
-    Parser::Map legacy;
-    REQUIRE(config.serialize(legacy) == Result::SUCCESS);
-    REQUIRE_FALSE(legacy.contains("sweepMethod"));
-    SECTION("old explicit firmware selection") {
-        legacy["sweepMethod"] = "hackrf_firmware";
-    }
-    SECTION("old unrecognized method") {
-        legacy["sweepMethod"] = "teleport";
-    }
-    REQUIRE(config.deserialize(legacy) == Result::SUCCESS);
-    Parser::Map saved;
-    REQUIRE(config.serialize(saved) == Result::SUCCESS);
-    REQUIRE_FALSE(saved.contains("sweepMethod"));
     const auto module = BuildSweepModule();
     const SweepCleanup cleanup{module};
     REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
@@ -1173,22 +1466,22 @@ TEST_CASE_METHOD(ScriptedDrivers,
 }
 
 TEST_CASE_METHOD(ScriptedFlowgraph,
-                 "SDR Sweep loads old graph method entries without exposing or honoring a selector",
-                 "[modules][sdr_sweep][block][config][legacy]") {
+                 "SDR Sweep block exposes automatic selection and sweep metrics",
+                 "[modules][sdr_sweep][block][config]") {
     TestScript().budget = 0;
     Blocks::SdrSweep config;
     config.deviceString = Selector;
     config.startFrequency = 100.0e6;
     config.endFrequency = 104.0e6;
-    Parser::Map legacy;
-    REQUIRE(config.serialize(legacy) == Result::SUCCESS);
-    legacy["sweepMethod"] = "bladerf_quick_tune";
-    REQUIRE(flowgraph->blockCreate("sweep", "sdr_sweep", legacy, {}) == Result::SUCCESS);
+    REQUIRE(flowgraph->blockCreate("sweep", config, {}) == Result::SUCCESS);
     const auto block = viewBlock("sweep");
     REQUIRE(block.state == Block::State::Created);
     REQUIRE_FALSE(block.config.contains("sweepMethod"));
+    REQUIRE_FALSE(block.config.contains("flatten"));
     REQUIRE(std::none_of(block.interfaceConfigs.begin(), block.interfaceConfigs.end(),
                          [](const auto& field) { return field.name == "sweepMethod" || field.label == "Method"; }));
+    REQUIRE(std::none_of(block.interfaceConfigs.begin(), block.interfaceConfigs.end(),
+                         [](const auto& field) { return field.name == "flatten" || field.label == "Flatten"; }));
     REQUIRE(std::any_cast<std::string>(block.outputs.at("signal").tensor.attribute("sweepMethod")) == "retune");
     std::vector<Flowgraph::View::MetricEntry> metrics;
     REQUIRE(flowgraph->view().metrics("sweep", metrics) == Result::SUCCESS);
@@ -1263,9 +1556,8 @@ TEST_CASE_METHOD(ScriptedDrivers,
 
     std::vector<CF32> frame(output.data<CF32>(), output.data<CF32>() + output.size());
     const auto decibels = SpectrumAnalyzerDb(frame);
-    const auto reference = SpectrumAnalyzerDb(DirectTone(plan.outputBins, 123, 0.3));
     REQUIRE(ArgMax(decibels) == 123);
-    REQUIRE_THAT(decibels[123], WithinAbs(reference[123], 0.05));
+    REQUIRE_THAT(decibels[123], WithinAbs(ToneDb(plan, 0.3), 0.05));
 
     // One complete sweep per output, and a consumed sweep is never repeated.
     REQUIRE(WaitFor([&] { return scheduler->hasPendingCompute() == Result::SUCCESS; },
@@ -1333,15 +1625,13 @@ TEST_CASE_METHOD(ScriptedDrivers,
     auto* sweep = module->getImpl<Modules::SdrSweepImpl>();
     const auto begin = std::chrono::steady_clock::now();
     REQUIRE(module->reconfigure({{"automaticGain", true}, {"manualGain", 42.0f},
-                                  {"dwell", U64{2}}, {"settlingTime", 3.0f},
-                                  {"flatten", !config.flatten}}) == Result::SUCCESS);
+                                  {"dwell", U64{2}}, {"settlingTime", 3.0f}}) == Result::SUCCESS);
     REQUIRE(std::chrono::steady_clock::now() - begin < std::chrono::seconds(1));
     REQUIRE(sweep->automaticGain);
     REQUIRE(sweep->manualGain == 42.0f);
     REQUIRE(sweep->dwell == 2);
     REQUIRE(sweep->settlingTime == 3.0f);
     REQUIRE(sweep->sweepPlan().dwell == 2);
-    REQUIRE(sweep->sweepPlan().flatten == !config.flatten);
     const auto calls = TestScript().calls();
     REQUIRE(std::count(calls.begin(), calls.end(), "mode:true") == 1);
     REQUIRE(std::count(calls.begin(), calls.end(), "gain:42") == 1);
@@ -1570,9 +1860,8 @@ TEST_CASE_METHOD(ScriptedDrivers,
     REQUIRE(runtime->computeSubmit() == Result::SUCCESS);
     const std::vector<CF32> frame(output.data<CF32>(), output.data<CF32>() + output.size());
     const auto decibels = SpectrumAnalyzerDb(frame);
-    const auto reference = SpectrumAnalyzerDb(DirectTone(plan.outputBins, 77, 0.3));
     REQUIRE(ArgMax(decibels) == 77);
-    REQUIRE_THAT(decibels[77], WithinAbs(reference[77], 0.05));
+    REQUIRE_THAT(decibels[77], WithinAbs(ToneDb(plan, 0.3), 0.05));
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,
@@ -1739,6 +2028,7 @@ std::vector<std::vector<I32>> DecodeSweeps(const std::vector<Radio::HackRfTransf
     plan.segmentLength = 4;
     plan.binWidth = 1.0;
     plan.outputBins = 12;
+    plan.weights.assign(plan.segmentLength, 1.0f);
     for (U64 hop = 0; hop < headers.size(); ++hop) {
         plan.hops.push_back({.frequency = static_cast<F64>(headers[hop]),
                              .runs = {{.segment = 0, .grid = hop * 4, .length = 4}}});
@@ -1755,9 +2045,8 @@ std::vector<std::vector<I32>> DecodeSweeps(const std::vector<Radio::HackRfTransf
             if (assembler.add(capture) == Result::SUCCESS && assembler.complete()) {
                 std::vector<I32> markers;
                 for (U64 hop = 0; hop < headers.size(); ++hop) {
-                    // A constant payload lands on the center bin of each run.
-                    markers.push_back(static_cast<I32>(
-                        std::lround(assembler.spectrum()[hop * 4 + 2].real() * 128.0f)));
+                    markers.push_back(static_cast<I32>(std::lround(
+                        assembler.spectrum()[hop * 4 + 2].real() * 128.0 / CoherentGain(plan.segmentLength))));
                 }
                 sweeps.push_back(markers);
                 REQUIRE(assembler.synthesize(frame) == Result::SUCCESS);

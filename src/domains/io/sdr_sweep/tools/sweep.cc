@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <new>
 #include <optional>
 
 #include "jetstream/logger.hh"
@@ -23,6 +24,7 @@ using SweepLayout = Radio::Device::SweepLayout;
 using Range = Radio::Device::Range;
 
 constexpr F64 BinTolerance = 0.05;
+constexpr U64 BlackmanGuardBins = 3;
 
 std::optional<U64> CeilDiv(const F64 numerator, const F64 denominator, const U64 limit) {
     const F64 quotient = std::ceil(numerator / denominator - 1e-9);
@@ -32,28 +34,30 @@ std::optional<U64> CeilDiv(const F64 numerator, const F64 denominator, const U64
     return static_cast<U64>(quotient);
 }
 
-void AssignRun(Hop& hop, std::vector<char>& covered, const I64 grid, const U64 segment,
-               const U64 length) {
-    std::optional<Run> run;
-    for (U64 i = 0; i < length; ++i) {
-        const I64 bin = grid + static_cast<I64>(i);
-        const bool usable = bin >= 0 && bin < static_cast<I64>(covered.size()) &&
-                            !covered[static_cast<U64>(bin)];
-        if (usable) {
-            covered[static_cast<U64>(bin)] = 1;
-            if (run && run->grid + run->length == static_cast<U64>(bin)) {
-                ++run->length;
-                continue;
+void AddRun(Hop& hop, const I64 grid, const U64 segment, const U64 length, const U64 bins) {
+    const I64 first = std::max<I64>(grid, 0);
+    const I64 last = std::min(grid + static_cast<I64>(length), static_cast<I64>(bins));
+    if (first < last) {
+        hop.runs.push_back({.segment = segment + static_cast<U64>(first - grid),
+                            .grid = static_cast<U64>(first),
+                            .length = static_cast<U64>(last - first)});
+    }
+}
+
+Result CheckCoverage(const Plan& plan) {
+    std::vector<F64> coverage(plan.outputBins, 0.0);
+    for (const auto& hop : plan.hops) {
+        for (const auto& run : hop.runs) {
+            for (U64 i = 0; i < run.length; ++i) {
+                coverage[run.grid + i] += plan.weights[run.segment + i];
             }
-            if (run) {
-                hop.runs.push_back(*run);
-            }
-            run = Run{.segment = segment + i, .grid = static_cast<U64>(bin), .length = 1};
         }
     }
-    if (run) {
-        hop.runs.push_back(*run);
+    if (std::any_of(coverage.begin(), coverage.end(), [](const F64 weight) { return !(weight > 0.0); })) {
+        JST_ERROR("[MODULE_SDR_SWEEP] The sweep hops do not cover every output bin.");
+        return Result::ERROR;
     }
+    return Result::SUCCESS;
 }
 
 Result CheckOutputBins(const std::optional<U64> bins, const F64 needed) {
@@ -113,7 +117,7 @@ std::optional<U64> CaptureLength(const Request& request, const F64 rate, const F
     desired = std::max(desired, lengths.at(first));
     const auto fits = [&](const U64 length) {
         const auto bins = CeilDiv(span, rate / static_cast<F64>(length), MaxOutputBins);
-        return bins && sizeof(CF32) * (length * (request.dwell + 3) + 4 * *bins) <=
+        return bins && sizeof(CF32) * (length * (request.dwell + 4) + 6 * *bins) <=
                        MaxWorkingSetBytes;
     };
     if (desired >= MinSegmentLength && desired <= limit && fits(desired)) {
@@ -174,7 +178,9 @@ Result PlanRetune(const Request& request, const Capabilities& caps, Plan& plan,
     const auto dcBins = caps.dcExclusion > 0.0
         ? CeilDiv(caps.dcExclusion, binWidth, length)
         : std::optional<U64>(0);
-    const I64 dc = dcBins ? static_cast<I64>(*dcBins) : half;
+    const I64 dc = dcBins
+        ? static_cast<I64>(*dcBins + (caps.dcExclusion > 0.0 ? BlackmanGuardBins : 0))
+        : half;
     if (half - dc < 1) {
         if (!quiet) {
             JST_ERROR("[MODULE_SDR_SWEEP] The usable capture bandwidth is too narrow at this resolution.");
@@ -197,17 +203,26 @@ Result PlanRetune(const Request& request, const Capabilities& caps, Plan& plan,
     plan.outputBins = *stitched;
 
     const auto center = static_cast<I64>(length / 2);
+    plan.weights.assign(length, 0.0f);
+    for (I64 offset = -half; offset < half; ++offset) {
+        if (offset >= -dc && offset < dc) {
+            continue;
+        }
+        const F64 taper = std::cos(JST_PI * (static_cast<F64>(offset) + 0.5) / (2.0 * static_cast<F64>(half)));
+        plan.weights[static_cast<U64>(center + offset)] = static_cast<F32>(taper * taper);
+    }
+
     const U64 bins = plan.outputBins;
+    const auto step = half - dc;
     std::vector<char> covered(bins, 0);
     U64 first = 0;
-    while (first < bins) {
+    for (I64 grid = half; first < bins; grid += step) {
         if (plan.hops.size() >= MaxHops) {
             if (!quiet) {
                 JST_ERROR("[MODULE_SDR_SWEEP] The sweep needs more than {} hops.", MaxHops);
             }
             return Result::ERROR;
         }
-        const I64 grid = static_cast<I64>(first) + half;
         Hop hop;
         hop.frequency = std::round(plan.startFrequency + (static_cast<F64>(grid) + 0.5) * binWidth);
         if (!Range::Contains(caps.frequencyRanges, hop.frequency)) {
@@ -217,17 +232,17 @@ Result PlanRetune(const Request& request, const Capabilities& caps, Plan& plan,
             }
             return Result::ERROR;
         }
-        const U64 below = static_cast<U64>(half - dc);
-        AssignRun(hop, covered, grid - half, static_cast<U64>(center - half), below);
-        const I64 aboveStart = dc == 0 ? 0 : dc;
-        AssignRun(hop, covered, grid + aboveStart, static_cast<U64>(center + aboveStart),
-                  static_cast<U64>(half - aboveStart));
+        AddRun(hop, grid - half, static_cast<U64>(center - half), static_cast<U64>(step), bins);
+        AddRun(hop, grid + dc, static_cast<U64>(center + dc), static_cast<U64>(step), bins);
+        for (const auto& run : hop.runs) {
+            std::fill_n(covered.begin() + static_cast<std::ptrdiff_t>(run.grid), run.length, 1);
+        }
         plan.hops.push_back(std::move(hop));
         while (first < bins && covered[first]) {
             ++first;
         }
     }
-    return Result::SUCCESS;
+    return CheckCoverage(plan);
 }
 
 Result PlanFirmware(const Request& request, const Capabilities& caps, Plan& plan) {
@@ -268,7 +283,7 @@ Result PlanFirmware(const Request& request, const Capabilities& caps, Plan& plan
     const U64 center = length / 2;
     const F64 origin = plan.startFrequency + 0.5 * binWidth;
 
-    std::vector<char> covered(plan.outputBins, 0);
+    plan.weights.assign(length, 1.0f);
     for (const auto& source : layout.hops) {
         Hop hop;
         hop.frequency = source.frequency;
@@ -279,16 +294,12 @@ Result PlanFirmware(const Request& request, const Capabilities& caps, Plan& plan
                 JST_ERROR("[MODULE_SDR_SWEEP] Firmware sweep bins do not align with the output grid.");
                 return Result::ERROR;
             }
-            AssignRun(hop, covered, static_cast<I64>(std::llround(offset)), band.offset,
-                      band.length);
+            AddRun(hop, static_cast<I64>(std::llround(offset)), band.offset, band.length,
+                   plan.outputBins);
         }
         plan.hops.push_back(std::move(hop));
     }
-    if (std::find(covered.begin(), covered.end(), 0) != covered.end()) {
-        JST_ERROR("[MODULE_SDR_SWEEP] Firmware sweep bands do not cover the output grid.");
-        return Result::ERROR;
-    }
-    return Result::SUCCESS;
+    return CheckCoverage(plan);
 }
 
 }  // namespace
@@ -319,7 +330,12 @@ U64 Plan::captureSamples() const {
 }
 
 U64 Plan::workingSetBytes() const {
-    return sizeof(CF32) * (captureSamples() + 3 * segmentLength + 4 * outputBins);
+    U64 runs = 0;
+    for (const auto& hop : hops) {
+        runs += hop.runs.size();
+    }
+    return sizeof(CF32) * (captureSamples() + 4 * segmentLength + 6 * outputBins) +
+           sizeof(Hop) * hops.size() + sizeof(Run) * runs;
 }
 
 Radio::Device::SweepRequest Plan::deviceRequest() const {
@@ -394,7 +410,6 @@ Result Plan::Create(const Request& request, const Capabilities& caps, Plan& plan
     const auto mode = ResolveMode(request, caps);
     plan.mode = mode;
     plan.dwell = request.dwell;
-    plan.flatten = request.flatten;
     if (mode == Mode::Firmware) {
         if (request.settlingTime > 0.0) {
             JST_ERROR("[MODULE_SDR_SWEEP] Firmware sweeps have fixed settling timing and cannot honor "
@@ -421,22 +436,17 @@ Result Plan::Create(const Request& request, const Capabilities& caps, Plan& plan
 }
 
 struct Assembler::Impl {
-    void flatten();
+    void finish();
 
     Plan plan;
-    std::vector<U64> groupStart;
-    std::vector<U64> groupBins;
-    std::vector<F32> levels;
-    std::vector<F32> floors;
-    std::vector<F64> sums;
-    std::vector<U64> counts;
-    std::vector<F32> shape;
-    std::vector<bool> valid;
-    bool shapeReady = false;
+    std::vector<F32> taps;
+    std::vector<F32> scales;
+    std::vector<U32> owners;
+    std::vector<F32> power;
+    std::vector<F32> capturePower;
     std::vector<CF32> spectrum;
     std::vector<CF32> transform;
-    std::vector<CF32> combined;
-    std::vector<F32> magnitude;
+    std::vector<CF32> reference;
     std::vector<CF32> reordered;
     U64 nextHop = 0;
     bool active = false;
@@ -447,46 +457,58 @@ Assembler::Assembler() : impl(std::make_unique<Impl>()) {}
 Assembler::~Assembler() = default;
 
 Result Assembler::configure(const Plan& plan) {
-    if (plan.segmentLength == 0 || plan.outputBins == 0 || plan.hops.empty()) {
-        JST_ERROR("[MODULE_SDR_SWEEP] Cannot assemble an empty sweep plan.");
+    if (plan.segmentLength == 0 || plan.outputBins == 0 || plan.hops.empty() || plan.dwell == 0 ||
+        plan.weights.size() != plan.segmentLength || plan.hops.size() > MaxHops) {
+        JST_ERROR("[MODULE_SDR_SWEEP] Cannot assemble an empty or inconsistent sweep plan.");
         return Result::ERROR;
     }
+    const U64 length = plan.segmentLength;
+    const U64 bins = plan.outputBins;
     try {
         impl->plan = plan;
-        impl->spectrum.assign(plan.outputBins, CF32{});
-        impl->reordered.assign(plan.outputBins, CF32{});
-        impl->transform.assign(plan.segmentLength, CF32{});
-        impl->combined.assign(plan.segmentLength, CF32{});
-        impl->magnitude.assign(plan.segmentLength, 0.0f);
+        impl->spectrum.assign(bins, CF32{});
+        impl->reordered.assign(bins, CF32{});
+        impl->power.assign(bins, 0.0f);
+        impl->transform.assign(length, CF32{});
+        impl->reference.assign(length, CF32{});
+        impl->capturePower.assign(length, 0.0f);
 
-        const U64 length = plan.segmentLength;
-        impl->groupStart.assign(length + 1, 0);
-        for (const auto& hop : plan.hops) {
-            for (const auto& run : hop.runs) {
+        impl->taps.resize(length);
+        for (U64 i = 0; i < length; ++i) {
+            const F64 position = length > 1 ? static_cast<F64>(i) / static_cast<F64>(length - 1) : 0.5;
+            impl->taps[i] = static_cast<F32>(0.42 - 0.50 * std::cos(2.0 * JST_PI * position) +
+                                             0.08 * std::cos(4.0 * JST_PI * position));
+        }
+
+        std::vector<F32> best(bins, 0.0f);
+        impl->scales.assign(bins, 0.0f);
+        impl->owners.assign(bins, 0);
+        for (U64 h = 0; h < plan.hops.size(); ++h) {
+            for (const auto& run : plan.hops[h].runs) {
+                if (run.segment + run.length > length || run.grid + run.length > bins) {
+                    JST_ERROR("[MODULE_SDR_SWEEP] Cannot assemble an empty or inconsistent sweep plan.");
+                    return Result::ERROR;
+                }
                 for (U64 i = 0; i < run.length; ++i) {
-                    ++impl->groupStart[run.segment + i + 1];
+                    const F32 weight = plan.weights[run.segment + i];
+                    const U64 bin = run.grid + i;
+                    impl->scales[bin] += weight;
+                    if (weight > best[bin]) {
+                        best[bin] = weight;
+                        impl->owners[bin] = static_cast<U32>(h);
+                    }
                 }
             }
         }
-        for (U64 u = 0; u < length; ++u) {
-            impl->groupStart[u + 1] += impl->groupStart[u];
-        }
-        impl->groupBins.assign(impl->groupStart.back(), 0);
-        std::vector<U64> cursor(impl->groupStart.begin(), impl->groupStart.end() - 1);
-        for (const auto& hop : plan.hops) {
-            for (const auto& run : hop.runs) {
-                for (U64 i = 0; i < run.length; ++i) {
-                    impl->groupBins[cursor[run.segment + i]++] = run.grid + i;
-                }
+        const F64 gain = 1.0 / (static_cast<F64>(length) * static_cast<F64>(length) *
+                                static_cast<F64>(plan.dwell));
+        for (auto& scale : impl->scales) {
+            if (!(scale > 0.0f)) {
+                JST_ERROR("[MODULE_SDR_SWEEP] The sweep hops do not cover every output bin.");
+                return Result::ERROR;
             }
+            scale = static_cast<F32>(gain / static_cast<F64>(scale));
         }
-        impl->levels.clear();
-        impl->floors.assign(length, 0.0f);
-        impl->sums.assign(length + 1, 0.0);
-        impl->counts.assign(length + 1, 0);
-        impl->shape.assign(length, 0.0f);
-        impl->valid.assign(length, false);
-        impl->shapeReady = false;
     } catch (const std::bad_alloc&) {
         JST_ERROR("[MODULE_SDR_SWEEP] Failed to allocate the sweep buffers.");
         return Result::ERROR;
@@ -497,6 +519,7 @@ Result Assembler::configure(const Plan& plan) {
 }
 
 void Assembler::begin() {
+    std::fill(impl->power.begin(), impl->power.end(), 0.0f);
     std::fill(impl->spectrum.begin(), impl->spectrum.end(), CF32{});
     impl->nextHop = 0;
     impl->active = true;
@@ -532,34 +555,52 @@ Result Assembler::add(const Radio::Device::SweepCapture& capture) {
     const pocketfft::shape_t shape{static_cast<std::size_t>(length)};
     const pocketfft::stride_t stride{static_cast<std::ptrdiff_t>(sizeof(CF32))};
     const pocketfft::shape_t axes{0};
+    const U64 center = length / 2;
+    const U64 low = center > BlackmanGuardBins ? center - BlackmanGuardBins : 0;
+    const U64 high = std::min(length, center + BlackmanGuardBins + 1);
+    const bool removeDc = std::none_of(hop.runs.begin(), hop.runs.end(), [low, high](const auto& run) {
+        return run.segment < high && low < run.segment + run.length;
+    });
     for (U64 j = 0; j < plan.dwell; ++j) {
+        const CF32* samples = capture.samples.data() + j * length;
+        CF64 mean{};
+        if (removeDc) {
+            for (U64 i = 0; i < length; ++i) {
+                mean += static_cast<CF64>(samples[i]);
+            }
+            mean /= static_cast<F64>(length);
+        }
+        const CF32 offset = static_cast<CF32>(mean);
+        for (U64 i = 0; i < length; ++i) {
+            state.transform[i] = (samples[i] - offset) * state.taps[i];
+        }
         pocketfft::c2c(shape, stride, stride, axes, pocketfft::FORWARD,
-                       capture.samples.data() + j * length, state.transform.data(), 1.0f);
+                       state.transform.data(), state.transform.data(), 1.0f);
         if (j == 0) {
-            std::copy(state.transform.begin(), state.transform.end(), state.combined.begin());
+            std::copy(state.transform.begin(), state.transform.end(), state.reference.begin());
         }
         for (U64 i = 0; i < length; ++i) {
-            const F32 value = std::abs(state.transform[i]);
-            state.magnitude[i] = j == 0 ? value : state.magnitude[i] + value;
-        }
-    }
-    if (plan.dwell > 1) {
-        const F32 scale = 1.0f / static_cast<F32>(plan.dwell);
-        for (U64 i = 0; i < length; ++i) {
-            state.combined[i] = std::polar(state.magnitude[i] * scale, std::arg(state.combined[i]));
+            const F32 value = std::norm(state.transform[i]);
+            state.capturePower[i] = j == 0 ? value : state.capturePower[i] + value;
         }
     }
 
-    const F32 gain = 1.0f / static_cast<F32>(length);
     const U64 shift = length - length / 2;
     for (const auto& run : hop.runs) {
         for (U64 i = 0; i < run.length; ++i) {
-            const U64 unshifted = (run.segment + i + shift) % length;
-            state.spectrum[run.grid + i] = state.combined[unshifted] * gain;
+            const U64 segment = run.segment + i;
+            const U64 bin = run.grid + i;
+            const U64 unshifted = (segment + shift) % length;
+            state.power[bin] += plan.weights[segment] * state.capturePower[unshifted];
+            if (state.owners[bin] == capture.hop) {
+                state.spectrum[bin] = state.reference[unshifted];
+            }
         }
     }
 
-    ++state.nextHop;
+    if (++state.nextHop == plan.hops.size()) {
+        state.finish();
+    }
     return Result::SUCCESS;
 }
 
@@ -571,72 +612,10 @@ U64 Assembler::completedHops() const {
     return impl->active ? impl->nextHop : 0;
 }
 
-void Assembler::Impl::flatten() {
-    constexpr U64 MinimumHops = 3;
-    constexpr F32 MaximumCorrection = 20.0f;
-    constexpr F32 Smoothing = 0.2f;
-    constexpr F32 CarrierMargin = 10.0f;
-
-    const U64 length = plan.segmentLength;
-    for (U64 u = 0; u < length; ++u) {
-        const U64 begin = groupStart[u];
-        const U64 end = groupStart[u + 1];
-        valid[u] = end - begin >= MinimumHops;
-        if (!valid[u]) {
-            continue;
-        }
-        levels.clear();
-        for (U64 g = begin; g < end; ++g) {
-            levels.push_back(10.0f * std::log10(std::norm(spectrum[groupBins[g]]) + 1e-30f));
-        }
-        const auto middle = levels.begin() + static_cast<std::ptrdiff_t>(levels.size() / 2);
-        std::nth_element(levels.begin(), middle, levels.end());
-        const F32 ceiling = *middle + CarrierMargin;
-        F64 sum = 0.0;
-        U64 count = 0;
-        for (const auto level : levels) {
-            if (level <= ceiling) {
-                sum += level;
-                ++count;
-            }
-        }
-        floors[u] = static_cast<F32>(sum / static_cast<F64>(count));
-    }
-
-    for (U64 u = 0; u < length; ++u) {
-        sums[u + 1] = sums[u] + (valid[u] ? floors[u] : 0.0);
-        counts[u + 1] = counts[u] + (valid[u] ? 1 : 0);
-    }
-    const U64 radius = std::max<U64>(1, length / 128);
-    levels.clear();
-    for (U64 u = 0; u < length; ++u) {
-        if (!valid[u]) {
-            continue;
-        }
-        const U64 low = u > radius ? u - radius : 0;
-        const U64 high = std::min(length, u + radius + 1);
-        const F32 smoothed = static_cast<F32>((sums[high] - sums[low]) /
-                                              static_cast<F64>(counts[high] - counts[low]));
-        shape[u] = shapeReady ? shape[u] + Smoothing * (smoothed - shape[u]) : smoothed;
-        levels.push_back(shape[u]);
-    }
-    shapeReady = true;
-    if (levels.empty()) {
-        return;
-    }
-
-    const auto middle = levels.begin() + static_cast<std::ptrdiff_t>(levels.size() / 2);
-    std::nth_element(levels.begin(), middle, levels.end());
-    const F32 reference = *middle;
-    for (U64 u = 0; u < length; ++u) {
-        if (!valid[u]) {
-            continue;
-        }
-        const F32 correction = std::clamp(shape[u] - reference, -MaximumCorrection, MaximumCorrection);
-        const F32 factor = std::pow(10.0f, -correction / 20.0f);
-        for (U64 g = groupStart[u]; g < groupStart[u + 1]; ++g) {
-            spectrum[groupBins[g]] *= factor;
-        }
+void Assembler::Impl::finish() {
+    for (U64 k = 0; k < plan.outputBins; ++k) {
+        const F32 magnitude = std::sqrt(power[k] * scales[k]);
+        spectrum[k] = std::polar(magnitude, std::arg(spectrum[k]));
     }
 }
 
@@ -645,9 +624,6 @@ Result Assembler::synthesize(std::span<CF32> output) {
     const U64 bins = state.plan.outputBins;
     if (!complete() || output.size() < bins) {
         return Result::ERROR;
-    }
-    if (state.plan.flatten) {
-        state.flatten();
     }
 
     const U64 shift = bins - bins / 2;

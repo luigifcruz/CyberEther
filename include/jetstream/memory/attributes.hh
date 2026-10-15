@@ -34,6 +34,9 @@ JETSTREAM_API Result ReadAttribute(const Tensor& tensor,
                                    std::any& value);
 JETSTREAM_API Result ReadAttribute(const Tensor& tensor,
                                    const std::string& key,
+                                   std::optional<bool>& value);
+JETSTREAM_API Result ReadAttribute(const Tensor& tensor,
+                                   const std::string& key,
                                    std::optional<F32>& value);
 JETSTREAM_API Result ReadAttribute(const Tensor& tensor,
                                    const std::string& key,
