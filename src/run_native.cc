@@ -101,7 +101,15 @@ Instance::Remote::Config BuildRemoteConfig(const Settings& settings) {
         .framerate = static_cast<U32>(settings.remote.framerate),
         .encoder = StringToRemoteEncoder(settings.remote.encoder),
         .codec = StringToRemoteCodec(settings.remote.codec),
+        .transport = StringToRemoteTransport(settings.remote.transport),
+        .minPort = static_cast<U16>(settings.remote.minPort),
+        .maxPort = static_cast<U16>(settings.remote.maxPort),
     };
+
+    if (!IsRemotePortRangeValid(settings.remote.minPort, settings.remote.maxPort)) {
+        JST_ERROR("Invalid remote port range {}-{}.", settings.remote.minPort, settings.remote.maxPort);
+        throw Result::ERROR;
+    }
 
     return config;
 }
@@ -142,6 +150,20 @@ std::string RemoteEncoderOptionsString() {
     return options;
 }
 
+std::string RemoteTransportOptionsString() {
+    std::string options;
+
+    for (const auto transport : RemoteTransportTypes) {
+        if (!options.empty()) {
+            options += ", ";
+        }
+
+        options += GetRemoteTransportName(transport);
+    }
+
+    return options;
+}
+
 enum class CommandType {
     Run,
     Benchmark,
@@ -167,6 +189,12 @@ bool IsRemoteCodec(const std::string& value) {
 bool IsRemoteEncoder(const std::string& value) {
     return std::any_of(RemoteEncoderTypes.begin(), RemoteEncoderTypes.end(), [&](const auto encoder) {
         return value == GetRemoteEncoderName(encoder);
+    });
+}
+
+bool IsRemoteTransport(const std::string& value) {
+    return std::any_of(RemoteTransportTypes.begin(), RemoteTransportTypes.end(), [&](const auto transport) {
+        return value == GetRemoteTransportName(transport);
     });
 }
 
@@ -387,6 +415,12 @@ static void printUsage(const char* program,
         if (!encoderChoicesSecond.empty()) {
             jst::fmt::print("  {:<29}           {}\n", "", encoderChoicesSecond);
         }
+        jst::fmt::print("  --transport <transport>      Streaming transport (current: {})\n",
+                        settings.remote.transport);
+        jst::fmt::print("  {:<29}  Choices: {}\n", "", RemoteTransportOptionsString());
+        jst::fmt::print("  --port-range <min-max>       Streaming port range (current: {})\n",
+                        settings.remote.minPort == 0 ? "any" : GetRemotePortRangeName(settings.remote.minPort,
+                                                                                      settings.remote.maxPort));
     }
 
     if (!command.has_value() || *command == CommandType::Benchmark) {
@@ -825,6 +859,43 @@ int Run(int argc, char* argv[]) {
             continue;
         }
 
+        if (!positionalOnly && arg == "--transport") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Missing value for --transport. Expected one of: {}.", RemoteTransportOptionsString()));
+            }
+            value = Lowercase(value);
+            if (!IsRemoteTransport(value)) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --transport: '{}'. Expected one of: {}.",
+                    value,
+                    RemoteTransportOptionsString()));
+            }
+            settings.remote.transport = value;
+            runOption = arg;
+            remoteSettingOption = arg;
+            continue;
+        }
+
+        if (!positionalOnly && arg == "--port-range") {
+            std::string value;
+            if (!takeValue(value)) {
+                return PrintUsageError(argv[0], "Missing value for --port-range. Expected MIN-MAX.");
+            }
+            U16 minPort = 0;
+            U16 maxPort = 0;
+            if (!ParseRemotePortRange(value, minPort, maxPort)) {
+                return PrintUsageError(argv[0], jst::fmt::format(
+                    "Invalid value for --port-range: '{}'. Expected MIN-MAX between 1 and 65535.", value));
+            }
+            settings.remote.minPort = minPort;
+            settings.remote.maxPort = maxPort;
+            runOption = arg;
+            remoteSettingOption = arg;
+            continue;
+        }
+
         if (!positionalOnly && arg == "--auto-join-sessions") {
             if (const int error = rejectInlineValue()) {
                 return error;
@@ -923,7 +994,8 @@ int Run(int argc, char* argv[]) {
         try {
             remoteConfig = BuildRemoteConfig(settings);
         } catch (const Result&) {
-            return PrintUsageError(argv[0], "The configured CyberEther Remote codec or encoder is invalid.");
+            return PrintUsageError(argv[0],
+                                   "The configured CyberEther Remote codec, encoder, transport, or port range is invalid.");
         }
     }
 

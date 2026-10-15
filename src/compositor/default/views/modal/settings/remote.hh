@@ -21,11 +21,16 @@ struct RemoteSettingsPanel {
         Instance::Remote::EncoderType encoder = Instance::Remote::EncoderType::Auto;
         std::vector<Instance::Remote::EncoderType> available;
         bool autoJoinSessions = false;
+        Instance::Remote::TransportType transport = Instance::Remote::TransportType::Auto;
+        U16 minPort = 0;
+        U16 maxPort = 0;
         std::function<void(const std::string&)> onBrokerUrlChange;
         std::function<void(Instance::Remote::CodecType)> onCodecChange;
         std::function<void(U32)> onFramerateChange;
         std::function<void(Instance::Remote::EncoderType)> onEncoderChange;
         std::function<void(bool)> onAutoJoinSessionsChange;
+        std::function<void(Instance::Remote::TransportType)> onTransportChange;
+        std::function<void(U16, U16)> onPortRangeChange;
     };
 
     void update(Config config) {
@@ -174,6 +179,43 @@ struct RemoteSettingsPanel {
                 }
             },
         });
+
+        transportField.update({
+            .id = "RemoteTransportField",
+            .label = "Transport",
+            .description = "The network protocols offered for the media connection. TCP helps on networks that block UDP.",
+        });
+
+        transportCombo.update({
+            .id = "##app-settings-transport",
+            .options = transportOptions(),
+            .value = GetRemoteTransportPrettyName(this->config.transport),
+            .onChange = [this](const std::string& label) {
+                if (this->config.onTransportChange) {
+                    this->config.onTransportChange(transportValue(label));
+                }
+            },
+        });
+
+        portRangeField.update({
+            .id = "RemotePortRangeField",
+            .label = "Port Range",
+            .description = "The local ports used for the media connection, written as MIN-MAX. Leave empty to let the system choose.",
+        });
+
+        portRangeInput.update({
+            .id = "##app-settings-port-range",
+            .value = GetRemotePortRangeName(this->config.minPort, this->config.maxPort),
+            .hint = "Any",
+            .submit = Sakura::TextInput::Submit::OnCommit,
+            .onChange = [this](const std::string& value) {
+                U16 minPort = 0;
+                U16 maxPort = 0;
+                if (this->config.onPortRangeChange && ParseRemotePortRange(value, minPort, maxPort)) {
+                    this->config.onPortRangeChange(minPort, maxPort);
+                }
+            },
+        });
     }
 
     void render(const Sakura::Context& ctx) const {
@@ -208,6 +250,14 @@ struct RemoteSettingsPanel {
 
         brokerField.render(ctx, [&](const Sakura::Context& ctx) {
             brokerInput.render(ctx);
+        });
+
+        transportField.render(ctx, [&](const Sakura::Context& ctx) {
+            transportCombo.render(ctx);
+        });
+
+        portRangeField.render(ctx, [&](const Sakura::Context& ctx) {
+            portRangeInput.render(ctx);
         });
     }
 
@@ -265,6 +315,24 @@ struct RemoteSettingsPanel {
         return options;
     }
 
+    static std::vector<std::string> transportOptions() {
+        std::vector<std::string> options;
+        options.reserve(RemoteTransportTypes.size());
+        for (const auto transport : RemoteTransportTypes) {
+            options.push_back(GetRemoteTransportPrettyName(transport));
+        }
+        return options;
+    }
+
+    static Instance::Remote::TransportType transportValue(const std::string& label) {
+        for (const auto transport : RemoteTransportTypes) {
+            if (label == GetRemoteTransportPrettyName(transport)) {
+                return transport;
+            }
+        }
+        return Instance::Remote::TransportType::Auto;
+    }
+
     static Instance::Remote::EncoderType encoderValue(const std::string& label) {
         try {
             return StringToRemoteEncoder(label);
@@ -286,11 +354,15 @@ struct RemoteSettingsPanel {
     Sakura::SettingField framerateField;
     Sakura::SettingField encoderField;
     Sakura::SettingField approvalField;
+    Sakura::SettingField transportField;
+    Sakura::SettingField portRangeField;
     Sakura::TextInput brokerInput;
+    Sakura::TextInput portRangeInput;
     Sakura::Combo codecCombo;
     Sakura::Combo framerateCombo;
     Sakura::Combo encoderCombo;
     Sakura::Combo approvalCombo;
+    Sakura::Combo transportCombo;
 };
 
 }  // namespace Jetstream

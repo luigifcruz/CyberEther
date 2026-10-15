@@ -152,6 +152,21 @@ Result DefaultCompositor::create() {
                  settings.remote.encoder);
     }
 
+    try {
+        state.remote.transport = StringToRemoteTransport(settings.remote.transport);
+    } catch (const Result&) {
+        JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Invalid saved remote transport '{}'. Using default.",
+                 settings.remote.transport);
+    }
+
+    if (IsRemotePortRangeValid(settings.remote.minPort, settings.remote.maxPort)) {
+        state.remote.minPort = static_cast<U16>(settings.remote.minPort);
+        state.remote.maxPort = static_cast<U16>(settings.remote.maxPort);
+    } else {
+        JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Invalid saved remote port range {}-{}. Using default.",
+                 settings.remote.minPort, settings.remote.maxPort);
+    }
+
     // Initialize Sakura rendering resources.
 
     state.sakura.runtime.update({

@@ -24,6 +24,9 @@ struct RemoteStreamingModalPresenter {
         const auto remoteEncoder = context.state.remote.encoder;
         const bool remoteAutoJoinSessions = context.state.remote.autoJoinSessions;
         const U32 remoteFramerate = context.state.remote.framerate;
+        const auto remoteTransport = context.state.remote.transport;
+        const U16 remoteMinPort = context.state.remote.minPort;
+        const U16 remoteMaxPort = context.state.remote.maxPort;
 
         return RemoteView::Config{
             .started = isStarted,
@@ -37,13 +40,19 @@ struct RemoteStreamingModalPresenter {
                         remoteCodec,
                         remoteEncoder,
                         remoteAutoJoinSessions,
-                        remoteFramerate]() {
+                        remoteFramerate,
+                        remoteTransport,
+                        remoteMinPort,
+                        remoteMaxPort]() {
                 Instance::Remote::Config remoteConfig;
                 remoteConfig.broker = remoteBrokerUrl;
                 remoteConfig.codec = remoteCodec;
                 remoteConfig.encoder = remoteEncoder;
                 remoteConfig.autoJoinSessions = remoteAutoJoinSessions;
                 remoteConfig.framerate = remoteFramerate;
+                remoteConfig.transport = remoteTransport;
+                remoteConfig.minPort = remoteMinPort;
+                remoteConfig.maxPort = remoteMaxPort;
                 enqueue(MailStartRemote{remoteConfig});
             },
             .onConfigure = [enqueue]() {

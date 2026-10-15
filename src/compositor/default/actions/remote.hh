@@ -21,7 +21,9 @@ struct RemoteActions {
                               MailSetRemoteCodec,
                               MailSetRemoteFramerate,
                               MailSetRemoteEncoder,
-                              MailSetRemoteAutoJoinSessions>;
+                              MailSetRemoteAutoJoinSessions,
+                              MailSetRemoteTransport,
+                              MailSetRemotePortRange>;
 
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
@@ -105,6 +107,28 @@ struct RemoteActions {
 
         JST_CHECK(PersistSettings([&](Settings& settings) {
             settings.remote.autoJoinSessions = msg.value;
+        }));
+
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetRemoteTransport& msg) {
+        state.remote.transport = msg.value;
+
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.remote.transport = GetRemoteTransportName(msg.value);
+        }));
+
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetRemotePortRange& msg) {
+        state.remote.minPort = msg.minPort;
+        state.remote.maxPort = msg.maxPort;
+
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.remote.minPort = msg.minPort;
+            settings.remote.maxPort = msg.maxPort;
         }));
 
         return Result::SUCCESS;

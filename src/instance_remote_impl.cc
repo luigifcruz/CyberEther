@@ -68,6 +68,10 @@ Result Instance::Remote::create(const Config& config) {
         JST_ERROR("[REMOTE] Broker URL must use HTTP or HTTPS.");
         return Result::ERROR;
     }
+    if (!IsRemotePortRangeValid(config.minPort, config.maxPort)) {
+        JST_ERROR("[REMOTE] Invalid port range {}-{}.", config.minPort, config.maxPort);
+        return Result::ERROR;
+    }
     return impl->create(config);
 }
 
@@ -1591,6 +1595,22 @@ Result Instance::Remote::Impl::createWebRtcSession(const std::string& sessionId,
     gst_util_set_object_arg(G_OBJECT(session->queue), "leaky", "upstream");
 
     g_object_set(session->webrtc, "bundle-policy", GST_WEBRTC_BUNDLE_POLICY_MAX_BUNDLE, nullptr);
+
+    GstWebRTCICE* ice = nullptr;
+    g_object_get(session->webrtc, "ice-agent", &ice, nullptr);
+    if (!ice) {
+        JST_ERROR("[REMOTE] Failed to find WebRTC ICE agent.");
+        return fail();
+    }
+    g_object_set(ice,
+                 "ice-udp", config.transport != Instance::Remote::TransportType::TCP,
+                 "ice-tcp", config.transport != Instance::Remote::TransportType::UDP,
+                 nullptr);
+    if (config.minPort != 0) {
+        g_object_set(ice, "min-rtp-port", static_cast<guint>(config.minPort),
+                     "max-rtp-port", static_cast<guint>(config.maxPort), nullptr);
+    }
+    gst_object_unref(ice);
 
     GstElement* rtpbin = gst_bin_get_by_name(GST_BIN(session->webrtc), "rtpbin");
     if (!rtpbin) {

@@ -35,8 +35,11 @@ struct JETSTREAM_API Settings {
         std::string encoder = "auto";
         bool autoJoinSessions = false;
         U64 framerate = 30;
+        std::string transport = "auto";
+        U64 minPort = 0;
+        U64 maxPort = 0;
 
-        JST_SERDES(brokerUrl, codec, encoder, autoJoinSessions, framerate);
+        JST_SERDES(brokerUrl, codec, encoder, autoJoinSessions, framerate, transport, minPort, maxPort);
     };
 
     struct Interface {

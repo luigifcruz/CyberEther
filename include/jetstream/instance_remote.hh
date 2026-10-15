@@ -32,12 +32,21 @@ struct JETSTREAM_API Instance::Remote {
         MediaFoundation,
     };
 
+    enum class TransportType {
+        Auto,
+        UDP,
+        TCP,
+    };
+
     struct Config {
         std::string broker = "https://cyberether.org";
         bool autoJoinSessions = false;
         U32 framerate = 30;
         EncoderType encoder = EncoderType::Auto;
         CodecType codec = CodecType::H264;
+        TransportType transport = TransportType::Auto;
+        U16 minPort = 0;
+        U16 maxPort = 0;
     };
 
     struct ClientInfo {
@@ -78,6 +87,14 @@ JETSTREAM_API std::string GetRemoteEncoderName(const Instance::Remote::EncoderTy
 JETSTREAM_API Instance::Remote::EncoderType StringToRemoteEncoder(const std::string& encoder);
 JETSTREAM_API const char* GetRemoteEncoderPrettyName(const Instance::Remote::EncoderType& encoder);
 
+JETSTREAM_API std::string GetRemoteTransportName(const Instance::Remote::TransportType& transport);
+JETSTREAM_API Instance::Remote::TransportType StringToRemoteTransport(const std::string& transport);
+JETSTREAM_API const char* GetRemoteTransportPrettyName(const Instance::Remote::TransportType& transport);
+
+JETSTREAM_API bool IsRemotePortRangeValid(U64 minPort, U64 maxPort);
+JETSTREAM_API bool ParseRemotePortRange(const std::string& value, U16& minPort, U16& maxPort);
+JETSTREAM_API std::string GetRemotePortRangeName(U64 minPort, U64 maxPort);
+
 static inline constexpr std::array<Instance::Remote::CodecType, 4> RemoteCodecTypes = {
     Instance::Remote::CodecType::H264,
     Instance::Remote::CodecType::AV1,
@@ -94,6 +111,12 @@ static inline constexpr std::array<Instance::Remote::EncoderType, 6> RemoteEncod
     Instance::Remote::EncoderType::MediaFoundation,
 };
 
+static inline constexpr std::array<Instance::Remote::TransportType, 3> RemoteTransportTypes = {
+    Instance::Remote::TransportType::Auto,
+    Instance::Remote::TransportType::UDP,
+    Instance::Remote::TransportType::TCP,
+};
+
 inline std::ostream& operator<<(std::ostream& os, const Instance::Remote::EncoderType& encoder) {
     return os << GetRemoteEncoderPrettyName(encoder);
 }
@@ -102,9 +125,14 @@ inline std::ostream& operator<<(std::ostream& os, const Instance::Remote::CodecT
     return os << GetRemoteCodecPrettyName(codec);
 }
 
+inline std::ostream& operator<<(std::ostream& os, const Instance::Remote::TransportType& transport) {
+    return os << GetRemoteTransportPrettyName(transport);
+}
+
 }  // namespace Jetstream
 
 template <> struct jst::fmt::formatter<Jetstream::Instance::Remote::CodecType> : ostream_formatter {};
 template <> struct jst::fmt::formatter<Jetstream::Instance::Remote::EncoderType> : ostream_formatter {};
+template <> struct jst::fmt::formatter<Jetstream::Instance::Remote::TransportType> : ostream_formatter {};
 
 #endif  // JETSTREAM_INSTANCE_REMOTE_HH

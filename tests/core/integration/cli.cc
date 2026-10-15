@@ -478,6 +478,16 @@ TEST_CASE("CLI accepts every documented enum value", "[core][integration][cli]")
          "Streaming encoder (current: videotoolbox)"},
         {"encoder mediafoundation", {"--remote", "--encoder=MEDIAFOUNDATION", "--help"},
          "Streaming encoder (current: mediafoundation)"},
+        {"transport auto", {"--remote", "--transport=AUTO", "--help"},
+         "Streaming transport (current: auto)"},
+        {"transport udp", {"--remote", "--transport=UDP", "--help"},
+         "Streaming transport (current: udp)"},
+        {"transport tcp", {"--remote", "--transport=TCP", "--help"},
+         "Streaming transport (current: tcp)"},
+        {"port range", {"--remote", "--port-range=40000-40100", "--help"},
+         "Streaming port range (current: 40000-40100)"},
+        {"port range single", {"--remote", "--port-range", "50000-50000", "--help"},
+         "Streaming port range (current: 50000-50000)"},
         {"format markdown", {"benchmark", "--format=MARKDOWN", "--help"},
          "Output format (current: markdown)"},
         {"format json", {"benchmark", "--format=JSON", "--help"},
@@ -694,6 +704,15 @@ TEST_CASE("CLI enforces option values and dependencies", "[core][integration][cl
         {"--codec=invalid", "Invalid value for --codec"},
         {"--encoder", "Missing value for --encoder"},
         {"--encoder=invalid", "Invalid value for --encoder"},
+        {"--transport", "Missing value for --transport"},
+        {"--transport=quic", "Invalid value for --transport"},
+        {"--port-range", "Missing value for --port-range"},
+        {"--port-range=", "Missing value for --port-range"},
+        {"--port-range=40000", "Invalid value for --port-range"},
+        {"--port-range=40100-40000", "Invalid value for --port-range"},
+        {"--port-range=0-40000", "Invalid value for --port-range"},
+        {"--port-range=40000-65536", "Invalid value for --port-range"},
+        {"--port-range=+40000-40100", "Invalid value for --port-range"},
         {"--format", "Missing value for --format"},
         {"--format=xml", "Invalid value for --format"},
         {"--help=true", "does not accept a value"},
@@ -711,6 +730,8 @@ TEST_CASE("CLI enforces option values and dependencies", "[core][integration][cl
     Expect("codec dependency", {"--codec", "h264"}, 2, {}, {"requires --remote"});
     Expect("encoder dependency", {"--encoder", "auto"}, 2, {}, {"requires --remote"});
     Expect("auto join dependency", {"--auto-join-sessions"}, 2, {}, {"requires --remote"});
+    Expect("transport dependency", {"--transport", "tcp"}, 2, {}, {"requires --remote"});
+    Expect("port range dependency", {"--port-range", "40000-40100"}, 2, {}, {"requires --remote"});
 }
 
 TEST_CASE("CLI validates numeric values", "[core][integration][cli]") {
@@ -800,14 +821,23 @@ TEST_CASE("CLI reports invalid retained remote settings before backend startup",
           "[core][integration][cli]") {
     SettingsGuard settings;
     Jetstream::Settings invalid = settings.previous();
-    invalid.remote.codec = "not-a-codec";
+    SECTION("codec") {
+        invalid.remote.codec = "not-a-codec";
+    }
+    SECTION("transport") {
+        invalid.remote.transport = "quic";
+    }
+    SECTION("port range") {
+        invalid.remote.minPort = 40100;
+        invalid.remote.maxPort = 40000;
+    }
     REQUIRE(Jetstream::Settings::Set(invalid, false) == Jetstream::Result::SUCCESS);
 
     const InvocationResult result = Invoke({"--remote"});
     CAPTURE(result.code, result.out, result.err);
     CHECK(result.code == 2);
     CHECK(result.err == UsageError(
-        "The configured CyberEther Remote codec or encoder is invalid."));
+        "The configured CyberEther Remote codec, encoder, transport, or port range is invalid."));
     CHECK(result.sandboxUntouched);
 }
 

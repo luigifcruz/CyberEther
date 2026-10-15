@@ -179,6 +179,15 @@ struct MailSetRemoteAutoJoinSessions {
     bool value = false;
 };
 
+struct MailSetRemoteTransport {
+    Instance::Remote::TransportType value = Instance::Remote::TransportType::Auto;
+};
+
+struct MailSetRemotePortRange {
+    U16 minPort = 0;
+    U16 maxPort = 0;
+};
+
 struct MailSetPythonRuntimePath {
     std::string value;
 };
@@ -467,6 +476,8 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetRemoteFramerate,
                           MailSetRemoteEncoder,
                           MailSetRemoteAutoJoinSessions,
+                          MailSetRemoteTransport,
+                          MailSetRemotePortRange,
                           MailSetPythonRuntimePath,
                           MailSetRuntimeDependencyPolicy,
                           MailOpenPythonEnvironmentCache,

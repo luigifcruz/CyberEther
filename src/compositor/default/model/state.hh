@@ -151,6 +151,9 @@ struct DefaultCompositorState {
         Instance::Remote::EncoderType encoder = Instance::Remote::EncoderType::Auto;
         bool autoJoinSessions = false;
         U32 framerate = 30;
+        Instance::Remote::TransportType transport = Instance::Remote::TransportType::Auto;
+        U16 minPort = 0;
+        U16 maxPort = 0;
 
         bool supported = false;
         bool started = false;

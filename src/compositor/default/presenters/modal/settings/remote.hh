@@ -26,6 +26,9 @@ struct RemoteSettingsPresenter {
             .encoder = context.state.remote.encoder,
             .available = available,
             .autoJoinSessions = context.state.remote.autoJoinSessions,
+            .transport = context.state.remote.transport,
+            .minPort = context.state.remote.minPort,
+            .maxPort = context.state.remote.maxPort,
             .onBrokerUrlChange = [enqueue](const std::string& value) {
                 enqueue(MailSetRemoteBrokerUrl{.value = value});
             },
@@ -40,6 +43,12 @@ struct RemoteSettingsPresenter {
             },
             .onAutoJoinSessionsChange = [enqueue](bool value) {
                 enqueue(MailSetRemoteAutoJoinSessions{.value = value});
+            },
+            .onTransportChange = [enqueue](Instance::Remote::TransportType value) {
+                enqueue(MailSetRemoteTransport{.value = value});
+            },
+            .onPortRangeChange = [enqueue](U16 minPort, U16 maxPort) {
+                enqueue(MailSetRemotePortRange{.minPort = minPort, .maxPort = maxPort});
             },
         };
     }
