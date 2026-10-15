@@ -49,7 +49,6 @@ void SdrSweepImpl::MetricState::advance(const Clock::time_point now, const bool 
                 ? static_cast<F64>(droppedFrames) / static_cast<F64>(producedFrames) : 0.0,
             .sweepSpeed = static_cast<F32>(displayed),
             .sweepRate = spanGHz > 0.0 ? static_cast<F32>(displayed / spanGHz) : 0.0f,
-            .peakSweepSpeed = static_cast<F32>(peak),
         };
     }
     if (!active) {
@@ -69,7 +68,6 @@ void SdrSweepImpl::MetricState::publish(const Clock::time_point now, const bool 
         const F64 frames = static_cast<F64>(producedFrames - sampledFrames);
         const F64 rate = frames * spanGHz / elapsedRate.count();
         speed += (rate - speed) * -std::expm1(-elapsedRate.count() / MetricSmoothing);
-        peak = std::max(peak, speed);
         cadence = elapsedRate.count() / frames;
         sampledFrames = producedFrames;
         rateStarted = now;

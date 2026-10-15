@@ -152,17 +152,12 @@ Result SdrSweepImpl::define() {
                                     "Sweep Speed",
                                     "Spectrum covered per second in GHz/s, counting overlapping frequencies only once. "
                                     "The value in parentheses is the number of complete sweeps per second. "
-                                    "Both are smoothed and include capture and processing time. "
-                                    "The bar shows current speed relative to the highest speed measured since startup.",
-                                    {{"type", "progressbar"}},
+                                    "Both are smoothed and include capture and processing time.",
+                                    {{"type", "label"}},
         [this]() -> std::any {
             const auto metrics = moduleImpl ? moduleImpl->getMetrics()
                                              : Modules::SdrSweepImpl::MetricSnapshot{};
-            const F32 fraction = metrics.peakSweepSpeed > 0.0f
-                ? metrics.sweepSpeed / metrics.peakSweepSpeed : 0.0f;
-            return std::pair<std::string, F32>{
-                jst::fmt::format("{:.2f} GHz/s ({:.1f} Hz)", metrics.sweepSpeed, metrics.sweepRate),
-                fraction};
+            return jst::fmt::format("{:.2f} GHz/s ({:.1f} Hz)", metrics.sweepSpeed, metrics.sweepRate);
         }));
 
     return Result::SUCCESS;

@@ -921,7 +921,6 @@ TEST_CASE("SDR Sweep output-slot loss counts only overwritten and expired comple
     REQUIRE(stopped.bufferLoss == 0.0);
     REQUIRE(stopped.sweepSpeed == 0.0f);
     REQUIRE(stopped.sweepRate == 0.0f);
-    REQUIRE(stopped.peakSweepSpeed == 0.0f);
     REQUIRE_FALSE(sweep.completeAt(Clock::now()));
 }
 
@@ -939,13 +938,11 @@ TEST_CASE("SDR Sweep throughput scales with span and includes the first hop and 
     REQUIRE_THAT(metrics.sweepSpeed, WithinAbs(0.05 * (1.0 - std::exp(-2.0 / 1.5)), 1e-6));
     REQUIRE_THAT(metrics.sweepRate, WithinAbs(0.5 * (1.0 - std::exp(-2.0 / 1.5)), 1e-6));
     REQUIRE(metrics.sweepSpeed > 0.0f);
-    REQUIRE(metrics.peakSweepSpeed == metrics.sweepSpeed);
     REQUIRE(std::isfinite(metrics.sweepSpeed));
     const F32 first = metrics.sweepSpeed;
     metrics = sweep.getMetrics(start + std::chrono::seconds(8));
     REQUIRE(metrics.sweepSpeed < first);
     REQUIRE_THAT(metrics.sweepRate * 0.1, WithinAbs(metrics.sweepSpeed, 1e-6));
-    REQUIRE(metrics.peakSweepSpeed == first);
     sweep.fail();
     REQUIRE(sweep.getMetrics(start + std::chrono::milliseconds(8001)).sweepSpeed == 0.0f);
     REQUIRE(sweep.getMetrics(start + std::chrono::milliseconds(8001)).sweepRate == 0.0f);
@@ -996,7 +993,6 @@ TEST_CASE("SDR Sweep metrics throttle fast completions and reset without zero-du
     REQUIRE(metrics.droppedFrames == 0);
     REQUIRE(metrics.snapshot.bufferHealth == 0.0f);
     REQUIRE(metrics.snapshot.bufferLoss == 0.0);
-    REQUIRE(metrics.snapshot.peakSweepSpeed == 0.0f);
     metrics.publish(start + std::chrono::seconds(2), false);
     metrics.advance(start + std::chrono::seconds(2), true);
     REQUIRE(metrics.snapshot.sweepSpeed == 0.0f);
@@ -1060,12 +1056,10 @@ TEST_CASE("SDR Sweep steady throughput is independent of presentation polling",
     REQUIRE(frequent.snapshot.sweepSpeed == sparse.snapshot.sweepSpeed);
     REQUIRE(frequent.snapshot.sweepSpeed < 0.0001f);
     REQUIRE(frequent.speed == estimate);
-    REQUIRE_THAT(frequent.snapshot.peakSweepSpeed, WithinAbs(expected, 0.001));
     frequent.advance(idle + std::chrono::milliseconds(1), false, false);
     REQUIRE(frequent.snapshot.sweepSpeed == 0.0f);
     frequent.reset(idle + std::chrono::seconds(1));
     REQUIRE(frequent.snapshot.sweepSpeed == 0.0f);
-    REQUIRE(frequent.snapshot.peakSweepSpeed == 0.0f);
     REQUIRE(frequent.producedFrames == 0);
 }
 
@@ -1634,7 +1628,7 @@ TEST_CASE_METHOD(ScriptedFlowgraph,
     REQUIRE(metrics[0].label == "Buffer Health");
     REQUIRE(metrics[1].label == "Buffer Loss");
     REQUIRE(metrics[2].label == "Sweep Speed");
-    REQUIRE(std::any_cast<std::pair<std::string, F32>>(metrics[2].value).first == "0.00 GHz/s (0.0 Hz)");
+    REQUIRE(std::any_cast<std::string>(metrics[2].value) == "0.00 GHz/s (0.0 Hz)");
     auto saved = viewBlock("sweep").config;
     REQUIRE(Parser::Get<F64>(saved, "resolution") == config.resolution);
     Blocks::SdrSweep restored;

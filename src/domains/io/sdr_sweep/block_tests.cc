@@ -34,7 +34,7 @@ TEST_CASE("SDR Sweep block defaults to a manual-gain sweep",
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,
-                 "SDR Sweep block selects operation automatically and offers graphical metrics",
+                 "SDR Sweep block offers buffer bars and text sweep speed",
                  "[modules][io][sdr_sweep][block]") {
     REQUIRE_FALSE(Registry::ListAvailableModules("sdr_sweep").empty());
     REQUIRE(flowgraph->blockCreate("sweep", "sdr_sweep", {}, {}) == Result::SUCCESS);
@@ -53,12 +53,16 @@ TEST_CASE_METHOD(FlowgraphFixture,
     for (U64 i = 0; i < metrics.size(); ++i) {
         REQUIRE(metrics[i].name == names[i]);
         REQUIRE(metrics[i].label == labels[i]);
+    }
+    for (U64 i = 0; i < 2; ++i) {
         REQUIRE(metrics[i].format == Parser::Map{{"type", "progressbar"}});
         const auto [value, fraction] = std::any_cast<std::pair<std::string, F32>>(metrics[i].value);
         REQUIRE(value == expectedValues[i]);
         REQUIRE(fraction == 0.0f);
     }
+    REQUIRE(metrics[2].format == Parser::Map{{"type", "label"}});
+    REQUIRE(std::any_cast<std::string>(metrics[2].value) == expectedValues[2]);
     REQUIRE(metrics[0].help.find("software slot") != std::string::npos);
     REQUIRE(metrics[1].help.find("completed frames produced") != std::string::npos);
-    REQUIRE(metrics[2].help.find("highest speed measured") != std::string::npos);
+    REQUIRE(metrics[2].help.find("complete sweeps per second") != std::string::npos);
 }
