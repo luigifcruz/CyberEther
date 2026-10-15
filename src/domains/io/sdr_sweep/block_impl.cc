@@ -150,9 +150,10 @@ Result SdrSweepImpl::define() {
 
     JST_CHECK(defineInterfaceMetric("sweepSpeed",
                                     "Sweep Speed",
-                                    "Smoothed sweep throughput in GHz/s: unique output span times completed sweeps "
-                                    "per second, including the first hop and synthesis. Overlapping hops are counted once. "
-                                    "The bar is relative to the peak measured smoothed speed since startup.",
+                                    "Spectrum covered per second in GHz/s, counting overlapping frequencies only once. "
+                                    "The value in parentheses is the number of complete sweeps per second. "
+                                    "Both are smoothed and include capture and processing time. "
+                                    "The bar shows current speed relative to the highest speed measured since startup.",
                                     {{"type", "progressbar"}},
         [this]() -> std::any {
             const auto metrics = moduleImpl ? moduleImpl->getMetrics()
@@ -160,7 +161,8 @@ Result SdrSweepImpl::define() {
             const F32 fraction = metrics.peakSweepSpeed > 0.0f
                 ? metrics.sweepSpeed / metrics.peakSweepSpeed : 0.0f;
             return std::pair<std::string, F32>{
-                jst::fmt::format("{:.2f} GHz/s", metrics.sweepSpeed), fraction};
+                jst::fmt::format("{:.2f} GHz/s ({:.1f} Hz)", metrics.sweepSpeed, metrics.sweepRate),
+                fraction};
         }));
 
     return Result::SUCCESS;

@@ -920,6 +920,7 @@ TEST_CASE("SDR Sweep output-slot loss counts only overwritten and expired comple
     REQUIRE(stopped.bufferHealth == 0.0f);
     REQUIRE(stopped.bufferLoss == 0.0);
     REQUIRE(stopped.sweepSpeed == 0.0f);
+    REQUIRE(stopped.sweepRate == 0.0f);
     REQUIRE(stopped.peakSweepSpeed == 0.0f);
     REQUIRE_FALSE(sweep.completeAt(Clock::now()));
 }
@@ -936,15 +937,18 @@ TEST_CASE("SDR Sweep throughput scales with span and includes the first hop and 
     REQUIRE(sweep.completeAt(start + std::chrono::seconds(2)));
     auto metrics = sweep.getMetrics(start + std::chrono::seconds(2));
     REQUIRE_THAT(metrics.sweepSpeed, WithinAbs(0.05 * (1.0 - std::exp(-2.0 / 1.5)), 1e-6));
+    REQUIRE_THAT(metrics.sweepRate, WithinAbs(0.5 * (1.0 - std::exp(-2.0 / 1.5)), 1e-6));
     REQUIRE(metrics.sweepSpeed > 0.0f);
     REQUIRE(metrics.peakSweepSpeed == metrics.sweepSpeed);
     REQUIRE(std::isfinite(metrics.sweepSpeed));
     const F32 first = metrics.sweepSpeed;
     metrics = sweep.getMetrics(start + std::chrono::seconds(8));
     REQUIRE(metrics.sweepSpeed < first);
+    REQUIRE_THAT(metrics.sweepRate * 0.1, WithinAbs(metrics.sweepSpeed, 1e-6));
     REQUIRE(metrics.peakSweepSpeed == first);
     sweep.fail();
     REQUIRE(sweep.getMetrics(start + std::chrono::milliseconds(8001)).sweepSpeed == 0.0f);
+    REQUIRE(sweep.getMetrics(start + std::chrono::milliseconds(8001)).sweepRate == 0.0f);
 
     SweepAccess slow;
     slow.initializeSlot(start, 3.0e9);
@@ -954,6 +958,7 @@ TEST_CASE("SDR Sweep throughput scales with span and includes the first hop and 
     REQUIRE(slow.completeAt(start + std::chrono::seconds(8)));
     const auto measured = slow.getMetrics(start + std::chrono::seconds(8));
     REQUIRE_THAT(measured.sweepSpeed, WithinAbs(0.375 * (1.0 - std::exp(-8.0 / 1.5)), 1e-6));
+    REQUIRE_THAT(measured.sweepRate, WithinAbs(0.125 * (1.0 - std::exp(-8.0 / 1.5)), 1e-6));
 
     SweepAccess quick;
     quick.initializeSlot(start);
@@ -1629,7 +1634,7 @@ TEST_CASE_METHOD(ScriptedFlowgraph,
     REQUIRE(metrics[0].label == "Buffer Health");
     REQUIRE(metrics[1].label == "Buffer Loss");
     REQUIRE(metrics[2].label == "Sweep Speed");
-    REQUIRE(std::any_cast<std::pair<std::string, F32>>(metrics[2].value).first == "0.00 GHz/s");
+    REQUIRE(std::any_cast<std::pair<std::string, F32>>(metrics[2].value).first == "0.00 GHz/s (0.0 Hz)");
     auto saved = viewBlock("sweep").config;
     REQUIRE(Parser::Get<F64>(saved, "resolution") == config.resolution);
     Blocks::SdrSweep restored;

@@ -49,7 +49,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(metrics.size() == 3);
     const std::vector<std::string> names{"bufferHealth", "bufferLoss", "sweepSpeed"};
     const std::vector<std::string> labels{"Buffer Health", "Buffer Loss", "Sweep Speed"};
-    const std::vector<std::string> expectedValues{"0.0%", "0.00%", "0.00 GHz/s"};
+    const std::vector<std::string> expectedValues{"0.0%", "0.00%", "0.00 GHz/s (0.0 Hz)"};
     for (U64 i = 0; i < metrics.size(); ++i) {
         REQUIRE(metrics[i].name == names[i]);
         REQUIRE(metrics[i].label == labels[i]);
@@ -60,5 +60,5 @@ TEST_CASE_METHOD(FlowgraphFixture,
     }
     REQUIRE(metrics[0].help.find("software slot") != std::string::npos);
     REQUIRE(metrics[1].help.find("completed frames produced") != std::string::npos);
-    REQUIRE(metrics[2].help.find("peak measured") != std::string::npos);
+    REQUIRE(metrics[2].help.find("highest speed measured") != std::string::npos);
 }

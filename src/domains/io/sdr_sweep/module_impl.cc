@@ -48,11 +48,13 @@ void SdrSweepImpl::MetricState::advance(const Clock::time_point now, const bool 
             .bufferLoss = producedFrames > 0
                 ? static_cast<F64>(droppedFrames) / static_cast<F64>(producedFrames) : 0.0,
             .sweepSpeed = static_cast<F32>(displayed),
+            .sweepRate = spanGHz > 0.0 ? static_cast<F32>(displayed / spanGHz) : 0.0f,
             .peakSweepSpeed = static_cast<F32>(peak),
         };
     }
     if (!active) {
         snapshot.sweepSpeed = 0.0f;
+        snapshot.sweepRate = 0.0f;
     }
 }
 

@@ -33,6 +33,7 @@ struct JETSTREAM_API SdrSweepImpl : public Module::Impl, public DynamicConfig<Sd
         F32 bufferHealth = 0.0f;
         F64 bufferLoss = 0.0;
         F32 sweepSpeed = 0.0f;
+        F32 sweepRate = 0.0f;
         F32 peakSweepSpeed = 0.0f;
     };
 
