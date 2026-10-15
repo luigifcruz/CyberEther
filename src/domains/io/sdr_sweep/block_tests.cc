@@ -49,7 +49,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(metrics.size() == 3);
     const std::vector<std::string> names{"bufferHealth", "bufferLoss", "sweepSpeed"};
     const std::vector<std::string> labels{"Buffer Health", "Buffer Loss", "Sweep Speed"};
-    const std::vector<std::string> expectedValues{"0.0%", "0.00%", "0.0 sweeps/s"};
+    const std::vector<std::string> expectedValues{"0.0%", "0.00%", "0.00 GHz/s"};
     for (U64 i = 0; i < metrics.size(); ++i) {
         REQUIRE(metrics[i].name == names[i]);
         REQUIRE(metrics[i].label == labels[i]);

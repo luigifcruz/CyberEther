@@ -21,8 +21,9 @@ std::atomic<U64>& Instances() {
 
 }  // namespace
 
-void SdrSweepImpl::MetricState::reset(const Clock::time_point now) {
+void SdrSweepImpl::MetricState::reset(const Clock::time_point now, const F64 span) {
     *this = {};
+    spanGHz = span / 1e9;
     occupancyUpdated = now;
     reported = now;
     rateStarted = now;
@@ -64,7 +65,7 @@ void SdrSweepImpl::MetricState::publish(const Clock::time_point now, const bool 
     if (now > rateStarted) {
         const std::chrono::duration<F64> elapsedRate = now - rateStarted;
         const F64 frames = static_cast<F64>(producedFrames - sampledFrames);
-        const F64 rate = frames / elapsedRate.count();
+        const F64 rate = frames * spanGHz / elapsedRate.count();
         speed += (rate - speed) * -std::expm1(-elapsedRate.count() / MetricSmoothing);
         peak = std::max(peak, speed);
         cadence = elapsedRate.count() / frames;
@@ -330,7 +331,7 @@ Result SdrSweepImpl::startWorker() {
     running = true;
     {
         std::lock_guard lock(slotMutex);
-        metrics.reset(Clock::now());
+        metrics.reset(Clock::now(), plan.span());
     }
     try {
         worker = std::thread([this] {

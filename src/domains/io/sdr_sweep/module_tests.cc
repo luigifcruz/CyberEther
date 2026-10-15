@@ -793,9 +793,9 @@ struct SweepAccess : Modules::SdrSweepImpl {
     using Frame = Modules::SdrSweepImpl::Frame;
     using MetricState = Modules::SdrSweepImpl::MetricState;
 
-    void initializeSlot(const Clock::time_point now) {
+    void initializeSlot(const Clock::time_point now, const F64 span = 1.0e9) {
         running = true;
-        metrics.reset(now);
+        metrics.reset(now, span);
         staging.assign(1, CF32{0.5f, 0.0f});
         slot.assign(1, CF32{});
         buffer = Tensor(DeviceType::CPU, DataType::CF32, {1, 1});
@@ -865,7 +865,7 @@ TEST_CASE("SDR Sweep slot occupancy integrates real occupied time and decays whe
     using Clock = Modules::SdrSweepImpl::Clock;
     const auto start = Clock::time_point{};
     SweepAccess::MetricState metrics;
-    metrics.reset(start);
+    metrics.reset(start, 1.0e9);
     metrics.advance(start + std::chrono::milliseconds(500), false);
     REQUIRE(metrics.snapshot.bufferHealth == 0.0f);
     REQUIRE(metrics.snapshot.bufferLoss == 0.0);
@@ -924,18 +924,18 @@ TEST_CASE("SDR Sweep output-slot loss counts only overwritten and expired comple
     REQUIRE_FALSE(sweep.completeAt(Clock::now()));
 }
 
-TEST_CASE("SDR Sweep completed-frame speed includes the first hop and single-hop synthesis",
+TEST_CASE("SDR Sweep throughput scales with span and includes the first hop and synthesis",
           "[modules][sdr_sweep][metrics][rate]") {
     using Clock = Modules::SdrSweepImpl::Clock;
     const auto start = Clock::time_point{};
     SweepAccess sweep;
-    sweep.initializeSlot(start);
+    sweep.initializeSlot(start, 100.0e6);
     // One complete frame after two seconds of acquisition and synthesis, even
     // when the legacy single-hop duration is zero.
     REQUIRE(sweep.getMetrics(start + std::chrono::seconds(1)).sweepSpeed == 0.0f);
     REQUIRE(sweep.completeAt(start + std::chrono::seconds(2)));
     auto metrics = sweep.getMetrics(start + std::chrono::seconds(2));
-    REQUIRE_THAT(metrics.sweepSpeed, WithinAbs(0.5 * (1.0 - std::exp(-2.0 / 1.5)), 1e-6));
+    REQUIRE_THAT(metrics.sweepSpeed, WithinAbs(0.05 * (1.0 - std::exp(-2.0 / 1.5)), 1e-6));
     REQUIRE(metrics.sweepSpeed > 0.0f);
     REQUIRE(metrics.peakSweepSpeed == metrics.sweepSpeed);
     REQUIRE(std::isfinite(metrics.sweepSpeed));
@@ -947,13 +947,13 @@ TEST_CASE("SDR Sweep completed-frame speed includes the first hop and single-hop
     REQUIRE(sweep.getMetrics(start + std::chrono::milliseconds(8001)).sweepSpeed == 0.0f);
 
     SweepAccess slow;
-    slow.initializeSlot(start);
+    slow.initializeSlot(start, 3.0e9);
     for (U64 i = 1; i < 32; ++i) {
         REQUIRE(slow.getMetrics(start + std::chrono::milliseconds(250 * i)).sweepSpeed == 0.0f);
     }
     REQUIRE(slow.completeAt(start + std::chrono::seconds(8)));
     const auto measured = slow.getMetrics(start + std::chrono::seconds(8));
-    REQUIRE_THAT(measured.sweepSpeed, WithinAbs(0.125 * (1.0 - std::exp(-8.0 / 1.5)), 1e-6));
+    REQUIRE_THAT(measured.sweepSpeed, WithinAbs(0.375 * (1.0 - std::exp(-8.0 / 1.5)), 1e-6));
 
     SweepAccess quick;
     quick.initializeSlot(start);
@@ -968,7 +968,7 @@ TEST_CASE("SDR Sweep metrics throttle fast completions and reset without zero-du
     using Clock = Modules::SdrSweepImpl::Clock;
     const auto start = Clock::time_point{};
     SweepAccess::MetricState metrics;
-    metrics.reset(start);
+    metrics.reset(start, 1.0e9);
     F32 previous = 0.0f;
     for (U64 i = 1; i <= 40; ++i) {
         metrics.publish(start + std::chrono::milliseconds(25 * i), i > 1);
@@ -986,7 +986,7 @@ TEST_CASE("SDR Sweep metrics throttle fast completions and reset without zero-du
     metrics.advance(start + std::chrono::milliseconds(1001), false, false);
     REQUIRE(metrics.snapshot.sweepSpeed == 0.0f);
 
-    metrics.reset(start + std::chrono::seconds(2));
+    metrics.reset(start + std::chrono::seconds(2), 100.0e6);
     REQUIRE(metrics.producedFrames == 0);
     REQUIRE(metrics.droppedFrames == 0);
     REQUIRE(metrics.snapshot.bufferHealth == 0.0f);
@@ -1004,21 +1004,21 @@ TEST_CASE("SDR Sweep metrics throttle fast completions and reset without zero-du
     REQUIRE(metrics.snapshot.sweepSpeed > 0.0f);
 }
 
-TEST_CASE("SDR Sweep steady completion rates are independent of presentation polling",
+TEST_CASE("SDR Sweep steady throughput is independent of presentation polling",
           "[modules][sdr_sweep][metrics][rate]") {
     using Clock = Modules::SdrSweepImpl::Clock;
     const auto start = Clock::time_point{};
     U64 ticksPerSweep = 4;
-    F64 expected = 1.0;
+    F64 expected = 0.1;
     SECTION("one completed sweep per second") {}
     SECTION("one completed sweep every five seconds") {
         ticksPerSweep = 20;
-        expected = 0.2;
+        expected = 0.02;
     }
     SweepAccess::MetricState frequent;
     SweepAccess::MetricState sparse;
-    frequent.reset(start);
-    sparse.reset(start);
+    frequent.reset(start, 100.0e6);
+    sparse.reset(start, 100.0e6);
     const U64 lastTick = 20 * ticksPerSweep;
     for (U64 tick = 1; tick <= lastTick; ++tick) {
         const auto now = start + std::chrono::milliseconds(250 * tick);
@@ -1629,7 +1629,7 @@ TEST_CASE_METHOD(ScriptedFlowgraph,
     REQUIRE(metrics[0].label == "Buffer Health");
     REQUIRE(metrics[1].label == "Buffer Loss");
     REQUIRE(metrics[2].label == "Sweep Speed");
-    REQUIRE(std::any_cast<std::pair<std::string, F32>>(metrics[2].value).first == "0.0 sweeps/s");
+    REQUIRE(std::any_cast<std::pair<std::string, F32>>(metrics[2].value).first == "0.00 GHz/s");
     auto saved = viewBlock("sweep").config;
     REQUIRE(Parser::Get<F64>(saved, "resolution") == config.resolution);
     Blocks::SdrSweep restored;
