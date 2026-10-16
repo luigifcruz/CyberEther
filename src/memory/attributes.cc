@@ -166,6 +166,12 @@ Result ReadAttribute(const Tensor& tensor,
 
 Result ReadAttribute(const Tensor& tensor,
                      const std::string& key,
+                     std::optional<bool>& value) {
+    return ReadTypedAttribute(tensor, key, "bool", value);
+}
+
+Result ReadAttribute(const Tensor& tensor,
+                     const std::string& key,
                      std::optional<F32>& value) {
     return ReadTypedAttribute(tensor, key, "F32", value);
 }

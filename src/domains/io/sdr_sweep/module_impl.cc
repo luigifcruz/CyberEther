@@ -21,8 +21,9 @@ std::atomic<U64>& Instances() {
 
 }  // namespace
 
-void SdrSweepImpl::MetricState::reset(const Clock::time_point now) {
+void SdrSweepImpl::MetricState::reset(const Clock::time_point now, const F64 span) {
     *this = {};
+    spanGHz = span / 1e9;
     occupancyUpdated = now;
     reported = now;
     rateStarted = now;
@@ -47,11 +48,12 @@ void SdrSweepImpl::MetricState::advance(const Clock::time_point now, const bool 
             .bufferLoss = producedFrames > 0
                 ? static_cast<F64>(droppedFrames) / static_cast<F64>(producedFrames) : 0.0,
             .sweepSpeed = static_cast<F32>(displayed),
-            .peakSweepSpeed = static_cast<F32>(peak),
+            .sweepRate = spanGHz > 0.0 ? static_cast<F32>(displayed / spanGHz) : 0.0f,
         };
     }
     if (!active) {
         snapshot.sweepSpeed = 0.0f;
+        snapshot.sweepRate = 0.0f;
     }
 }
 
@@ -64,9 +66,8 @@ void SdrSweepImpl::MetricState::publish(const Clock::time_point now, const bool 
     if (now > rateStarted) {
         const std::chrono::duration<F64> elapsedRate = now - rateStarted;
         const F64 frames = static_cast<F64>(producedFrames - sampledFrames);
-        const F64 rate = frames / elapsedRate.count();
+        const F64 rate = frames * spanGHz / elapsedRate.count();
         speed += (rate - speed) * -std::expm1(-elapsedRate.count() / MetricSmoothing);
-        peak = std::max(peak, speed);
         cadence = elapsedRate.count() / frames;
         sampledFrames = producedFrames;
         rateStarted = now;
@@ -150,7 +151,6 @@ Result SdrSweepImpl::create() {
         .resolution = resolution,
         .dwell = dwell,
         .settlingTime = settlingTime / 1e3,
-        .flatten = flatten,
     };
     if (const auto result = Sweep::Plan::Create(request, caps, plan); result != Result::SUCCESS) {
         radio.reset();
@@ -272,7 +272,6 @@ Result SdrSweepImpl::reconfigure() {
             .resolution = config.resolution,
             .dwell = config.dwell,
             .settlingTime = config.settlingTime / 1e3,
-            .flatten = config.flatten,
         };
         if (Sweep::Plan::Create(request, radio->capabilities(), next) != Result::SUCCESS ||
             next.mode != plan.mode || next.sampleRate != plan.sampleRate ||
@@ -292,7 +291,6 @@ Result SdrSweepImpl::reconfigure() {
         manualGain = gainRange ? static_cast<F32>(radio->applied().gain) : config.manualGain;
         dwell = config.dwell;
         settlingTime = config.settlingTime;
-        flatten = config.flatten;
         return Result::SUCCESS;
     });
 }
@@ -330,7 +328,7 @@ Result SdrSweepImpl::startWorker() {
     running = true;
     {
         std::lock_guard lock(slotMutex);
-        metrics.reset(Clock::now());
+        metrics.reset(Clock::now(), plan.span());
     }
     try {
         worker = std::thread([this] {

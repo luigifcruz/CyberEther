@@ -1,5 +1,6 @@
 #include "plutosdr.hh"
 
+#include "sweep_buffer.hh"
 #include "../../tools/capture_queue.hh"
 #include "../../tools/samples.hh"
 
@@ -21,7 +22,8 @@ namespace {
 
 constexpr const char* ScanFilter = "usb=0456:b673";
 constexpr F64 SettlingTime = 1.0e-3;
-constexpr F64 SweepSampleRate = 8.0e6;
+constexpr auto SettlePollInterval = std::chrono::duration<F64>(0.01);
+constexpr F64 SweepSampleRate = 20.0e6;
 constexpr F64 MinBandwidth = 200.0e3;
 constexpr F64 MaxBandwidth = 56.0e6;
 constexpr unsigned long RangeSampleRate = 3000000;
@@ -29,6 +31,7 @@ constexpr F64 FirDecimation = 4.0;
 constexpr F32 Q11Scale = 2048.0f;
 constexpr unsigned ContextTimeout = 2000;
 constexpr unsigned KernelBuffers = 4;
+constexpr unsigned SweepKernelBuffers = 1;
 constexpr F64 TransferDuration = 10.0e-3;
 constexpr U64 TransferAlignment = 4096;
 constexpr U64 LowLatencySamples = 8192;
@@ -39,6 +42,10 @@ struct Board {
     std::string uri;
     std::string serial;
 };
+
+U64 GainBand(const F64 frequency) {
+    return frequency <= 1.3e9 ? 0 : frequency <= 4.0e9 ? 1 : 2;
+}
 
 std::string ErrorText(const long long error) {
     char text[256] = {};
@@ -356,15 +363,28 @@ Result PlutoSdrDevice::Impl::setFrequency(const F64 frequency) {
         return Result::ERROR;
     }
     long long applied = target;
-    iio_channel_attr_read_longlong(oscillator, "frequency", &applied);
+    if (const int status = iio_channel_attr_read_longlong(oscillator, "frequency", &applied);
+        status < 0) {
+        JST_ERROR("[SDR_PLUTOSDR] Failed to read back the tuned frequency: {}", ErrorText(status));
+        return Result::ERROR;
+    }
     device.appliedSettings.frequency = static_cast<F64>(applied);
     return Result::SUCCESS;
 }
 
 Result PlutoSdrDevice::Impl::retune(const F64 frequency) {
+    if (GainBand(frequency) != GainBand(device.appliedSettings.frequency)) {
+        device.appliedSettings.gainRange.reset();
+    }
     JST_CHECK(setFrequency(frequency));
-    JST_CHECK(refreshGainRange());
-    JST_CHECK(applyGain(device.requestedSettings.gain, true));
+    if (!device.appliedSettings.gainRange) {
+        JST_CHECK(refreshGainRange());
+        if (const auto result = applyGain(device.requestedSettings.gain, true);
+            result != Result::SUCCESS) {
+            device.appliedSettings.gainRange.reset();
+            return result;
+        }
+    }
     device.requestedSettings.frequency = frequency;
     return Result::SUCCESS;
 }
@@ -426,16 +446,92 @@ Device::Capture PlutoSdrDevice::read(std::span<CF32> samples, const std::chrono:
     return pimpl->queue.pop(samples, timeout);
 }
 
-Result PlutoSdrDevice::tuneHop(const U64 hop) {
-    if (!pimpl->worker.joinable()) {
-        JST_ERROR("[SDR_PLUTOSDR] Cannot retune a stopped stream.");
+Result PlutoSdrDevice::runSweep(const SweepRunning& running, const SweepSink& sink) {
+    if (!sweepPrepared || sweepRequest.firmware) {
+        return Device::runSweep(running, sink);
+    }
+    const auto& request = sweepRequest;
+    const auto layout = PlutoSweepBufferLayout::Create(request.captureLength, request.dwell);
+    if (!layout || request.frequencies.empty() || appliedSettings.sampleRate <= 0.0) {
+        JST_ERROR("[SDR_PLUTOSDR] Invalid sweep capture size, frequency list, or sample rate.");
         return Result::ERROR;
     }
-    const F64 frequency = sweepRequest.frequencies[hop];
-    JST_CHECK(pimpl->retune(frequency));
-    pimpl->streamGeneration = nextGeneration();
-    pimpl->queue.retune(pimpl->streamGeneration, KernelBuffers + 1, guardLength,
-                        appliedSettings.frequency);
+    const U64 required = layout->captureSamples;
+    std::vector<CF32> samples;
+    try {
+        samples.resize(required);
+    } catch (const std::exception&) {
+        JST_ERROR("[SDR_PLUTOSDR] Failed to allocate the sweep capture buffer.");
+        return Result::ERROR;
+    }
+
+    pimpl->stopStream();
+    if (const int status = iio_device_set_kernel_buffers_count(pimpl->receiver, SweepKernelBuffers);
+        status < 0) {
+        JST_ERROR("[SDR_PLUTOSDR] Failed to set the sweep buffer count: {}", ErrorText(status));
+        return Result::ERROR;
+    }
+    std::unique_ptr<iio_buffer, decltype(&iio_buffer_destroy)> buffer(
+        iio_device_create_buffer(pimpl->receiver, layout->transferSamples, false),
+        &iio_buffer_destroy);
+    if (!buffer) {
+        JST_ERROR("[SDR_PLUTOSDR] Failed to create the sweep buffer: {}", ErrorText(errno));
+        return Result::ERROR;
+    }
+    if (iio_buffer_step(buffer.get()) != 2 * sizeof(I16)) {
+        JST_ERROR("[SDR_PLUTOSDR] Unexpected sweep sample format.");
+        return Result::ERROR;
+    }
+
+    using Clock = std::chrono::steady_clock;
+    U64 hop = 0;
+    U64 failures = 0;
+    while (running()) {
+        if (pimpl->retune(request.frequencies[hop]) != Result::SUCCESS) {
+            JST_CHECK(fail(failures));
+            continue;
+        }
+        nextGeneration();
+        const auto settle = std::chrono::duration<F64>(
+            static_cast<F64>(guardLength) / appliedSettings.sampleRate);
+        const auto settled = Clock::now() + settle;
+        while (running() && Clock::now() < settled) {
+            const auto remaining = std::chrono::duration<F64>(settled - Clock::now());
+            std::this_thread::sleep_for(std::min(remaining, SettlePollInterval));
+        }
+        U64 filled = 0;
+        unsigned discard = SweepKernelBuffers + 1;
+        while (running() && filled < required) {
+            const auto bytes = iio_buffer_refill(buffer.get());
+            if (bytes < 0) {
+                JST_ERROR("[SDR_PLUTOSDR] Sweep reception stopped: {}", ErrorText(bytes));
+                return Result::ERROR;
+            }
+            if (discard > 0) {
+                --discard;
+                continue;
+            }
+            const U64 count = std::min(layout->batchSamples, required - filled);
+            if (static_cast<U64>(bytes) / (2 * sizeof(I16)) < count) {
+                break;
+            }
+            const auto* data = static_cast<const I16*>(iio_buffer_start(buffer.get()));
+            ConvertI16(data, samples.data() + filled, count, Q11Scale);
+            filled += count;
+        }
+        if (!running()) {
+            break;
+        }
+        if (filled != required) {
+            JST_CHECK(fail(failures));
+            continue;
+        }
+        failures = 0;
+        if (!sink({.hop = hop, .frequency = appliedSettings.frequency, .samples = samples})) {
+            break;
+        }
+        hop = (hop + 1) % request.frequencies.size();
+    }
     return Result::SUCCESS;
 }
 

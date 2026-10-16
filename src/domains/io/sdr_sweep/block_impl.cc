@@ -35,7 +35,6 @@ Result SdrSweepImpl::configure() {
     moduleConfig->resolution = resolution;
     moduleConfig->dwell = dwell;
     moduleConfig->settlingTime = settlingTime;
-    moduleConfig->flatten = flatten;
 
     return Result::SUCCESS;
 }
@@ -91,7 +90,7 @@ Result SdrSweepImpl::define() {
 
     JST_CHECK(defineInterfaceConfig("dwell",
                                     "Dwell",
-                                    "Captures per hop. Their magnitudes are averaged.",
+                                    "Captures per hop. Their power is averaged.",
                                     {{"type", "uint"}, {"unit", "captures"}}));
 
     JST_CHECK(defineInterfaceConfig("settlingTime",
@@ -100,11 +99,6 @@ Result SdrSweepImpl::define() {
                                     "Zero uses the radio's default. A nonzero override makes a HackRF retune "
                                     "instead of running a firmware sweep.",
                                     {{"type", "float"}, {"unit", "ms"}, {"precision", 3}}));
-
-    JST_CHECK(defineInterfaceConfig("flatten",
-                                    "Flatten",
-                                    "Remove the receiver shape that repeats in every hop.",
-                                    {{"type", "bool"}}));
 
     JST_CHECK(defineInterfaceConfig("automaticGain",
                                     "Automatic Gain",
@@ -150,16 +144,14 @@ Result SdrSweepImpl::define() {
 
     JST_CHECK(defineInterfaceMetric("sweepSpeed",
                                     "Sweep Speed",
-                                    "Smoothed completed sweeps per second, including the first hop and synthesis. "
-                                    "The bar is relative to the peak measured smoothed speed since startup.",
-                                    {{"type", "progressbar"}},
+                                    "Spectrum covered per second in GHz/s, counting overlapping frequencies only once. "
+                                    "The value in parentheses is the number of complete sweeps per second. "
+                                    "Both are smoothed and include capture and processing time.",
+                                    {{"type", "label"}},
         [this]() -> std::any {
             const auto metrics = moduleImpl ? moduleImpl->getMetrics()
                                              : Modules::SdrSweepImpl::MetricSnapshot{};
-            const F32 fraction = metrics.peakSweepSpeed > 0.0f
-                ? metrics.sweepSpeed / metrics.peakSweepSpeed : 0.0f;
-            return std::pair<std::string, F32>{
-                jst::fmt::format("{:.1f} sweeps/s", metrics.sweepSpeed), fraction};
+            return jst::fmt::format("{:.2f} GHz/s ({:.1f} Hz)", metrics.sweepSpeed, metrics.sweepRate);
         }));
 
     return Result::SUCCESS;
