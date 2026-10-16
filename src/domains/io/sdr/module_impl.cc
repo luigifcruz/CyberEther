@@ -94,11 +94,11 @@ Result SdrImpl::create() {
     deviceGaps.publish(0);
     deviceLostSamples.publish(0);
 
-    JST_CHECK(Radio::Device::Open(deviceString, radio));
-    antennas = radio->capabilities().antennas;
-    if (const auto rates = radio->capabilities().fixedSampleRates();
-        !rates.empty() && !Radio::Device::Range::Contains(radio->capabilities().sampleRateRanges,
-                                                          sampleRate)) {
+    JST_CHECK(Radio::Stream::Open(deviceString, radio));
+    const auto& caps = radio->capabilities();
+    antennas = caps.antennas;
+    if (const auto rates = caps.fixedSampleRates();
+        !rates.empty() && !Radio::Device::Range::Contains(caps.sampleRateRanges, sampleRate)) {
         JST_INFO("[MODULE_SDR] {:.3f} MHz is not a rate of {}. Using {:.3f} MHz.",
                  sampleRate / 1e6, radio->info().label, rates.front() / 1e6);
         sampleRate = static_cast<F32>(rates.front());
@@ -193,7 +193,7 @@ Result SdrImpl::reconfigure() {
     });
 }
 
-Radio::Device::Settings SdrImpl::settingsOf(const Sdr& config) const {
+Radio::Stream::Settings SdrImpl::settingsOf(const Sdr& config) const {
     return {
         .frequency = config.frequency,
         .sampleRate = config.sampleRate,
@@ -333,7 +333,7 @@ std::vector<std::string> SdrImpl::listAntennas() const {
     return antennas;
 }
 
-Radio::Device::Applied SdrImpl::getApplied() const {
+Radio::Stream::Applied SdrImpl::getApplied() const {
     return published.get();
 }
 

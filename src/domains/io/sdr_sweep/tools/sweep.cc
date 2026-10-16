@@ -19,8 +19,8 @@ using Run = Plan::Run;
 using Hop = Plan::Hop;
 using Request = Plan::Request;
 using Capabilities = Radio::Device::Capabilities;
-using FirmwareSweep = Radio::Device::FirmwareSweep;
-using SweepLayout = Radio::Device::SweepLayout;
+using FirmwareSweep = Radio::Device::Firmware;
+using SweepLayout = Radio::Device::Layout;
 using Range = Radio::Device::Range;
 
 constexpr F64 BinTolerance = 0.05;
@@ -338,8 +338,8 @@ U64 Plan::workingSetBytes() const {
            sizeof(Hop) * hops.size() + sizeof(Run) * runs;
 }
 
-Radio::Device::SweepRequest Plan::deviceRequest() const {
-    Radio::Device::SweepRequest request;
+Radio::Sweep::Request Plan::deviceRequest() const {
+    Radio::Sweep::Request request;
     request.firmware = mode == Mode::Firmware;
     request.sampleRate = sampleRate;
     request.captureLength = segmentLength;
@@ -525,7 +525,7 @@ void Assembler::begin() {
     impl->active = true;
 }
 
-Result Assembler::add(const Radio::Device::SweepCapture& capture) {
+Result Assembler::add(const Radio::Sweep::Capture& capture) {
     auto& state = *impl;
     const auto& plan = state.plan;
 

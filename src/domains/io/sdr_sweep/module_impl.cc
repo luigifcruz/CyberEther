@@ -140,7 +140,7 @@ Result SdrSweepImpl::create() {
     sweepCounter = 0;
     instance = ++Instances();
 
-    JST_CHECK(Radio::Device::Open(deviceString, radio));
+    JST_CHECK(Radio::Sweep::Open(deviceString, radio));
     const auto& caps = radio->capabilities();
     antennas = caps.antennas;
 
@@ -157,17 +157,15 @@ Result SdrSweepImpl::create() {
         return result;
     }
 
-    const Radio::Device::Settings settings{
-        .frequency = plan.hops.front().frequency,
+    const Radio::Sweep::Settings settings{
         .sampleRate = plan.sampleRate,
         .antenna = antenna,
         .automaticGain = automaticGain,
         .biasTee = biasTee,
         .settlingTime = settlingTime > 0.0f ? settlingTime / 1e3 : -1.0,
         .gain = manualGain,
-        .lowLatency = true,
     };
-    if (const auto result = radio->start(settings); result != Result::SUCCESS) {
+    if (const auto result = radio->configure(settings); result != Result::SUCCESS) {
         radio.reset();
         return result;
     }
@@ -210,7 +208,7 @@ Result SdrSweepImpl::create() {
         JST_WARN("[MODULE_SDR_SWEEP] Automatic gain is on. Levels of different hops are not "
                  "directly comparable.");
     }
-    if (const auto result = radio->prepareSweep(plan.deviceRequest()); result != Result::SUCCESS) {
+    if (const auto result = radio->start(plan.deviceRequest()); result != Result::SUCCESS) {
         radio.reset();
         return result;
     }
@@ -256,10 +254,10 @@ Result SdrSweepImpl::destroy() {
 
 Result SdrSweepImpl::reconfigure() {
     const auto& config = *candidate();
-    if (!radio || errored || config.deviceString != deviceString || config.antenna != antenna ||
-        config.biasTee != biasTee || config.startFrequency != startFrequency ||
-        config.endFrequency != endFrequency || config.sampleRate != sampleRate ||
-        config.resolution != resolution) {
+    if (!radio || errored || config.deviceString != deviceString ||
+        config.antenna != antenna || config.biasTee != biasTee ||
+        config.startFrequency != startFrequency || config.endFrequency != endFrequency ||
+        config.sampleRate != sampleRate || config.resolution != resolution) {
         return Result::RECREATE;
     }
 
@@ -288,25 +286,37 @@ Result SdrSweepImpl::reconfigure() {
         JST_CHECK(applyPlan(next, settings));
 
         automaticGain = config.automaticGain;
-        manualGain = gainRange ? static_cast<F32>(radio->applied().gain) : config.manualGain;
+        manualGain = gainRange ? static_cast<F32>(radio->applied().gain)
+                               : config.manualGain;
         dwell = config.dwell;
         settlingTime = config.settlingTime;
         return Result::SUCCESS;
     });
 }
 
-Result SdrSweepImpl::applyPlan(const Sweep::Plan& next, const Radio::Device::Settings& settings) {
+Result SdrSweepImpl::applyPlan(const Sweep::Plan& next, const Radio::Sweep::Settings& settings) {
     const auto previous = radio->settings();
-    JST_CHECK(radio->update(settings));
+    if (const auto result = radio->update(settings); result != Result::SUCCESS) {
+        if (result == Result::FATAL) {
+            errored = true;
+            return Result::ERROR;
+        }
+        return result;
+    }
+    const auto request = next.deviceRequest();
     const auto result = [&] {
         JST_CHECK(assembler.configure(next));
-        JST_CHECK(radio->prepareSweep(next.deviceRequest()));
+        if (request != radio->request()) {
+            JST_CHECK(radio->start(request));
+        }
         return Result::SUCCESS;
     }();
     if (result != Result::SUCCESS) {
+        const auto current = plan.deviceRequest();
+        const auto restoredSweep = radio->request() == current ? Result::SUCCESS
+                                                               : radio->start(current);
         const auto restoredSettings = radio->update(previous);
         const auto restoredAssembler = assembler.configure(plan);
-        const auto restoredSweep = radio->prepareSweep(plan.deviceRequest());
         if (restoredSettings != Result::SUCCESS || restoredAssembler != Result::SUCCESS ||
             restoredSweep != Result::SUCCESS) {
             errored = true;
@@ -375,7 +385,7 @@ Result SdrSweepImpl::workerLoop() {
         if (errored) {
             return Result::ERROR;
         }
-        const auto result = radio->runSweep(
+        const auto result = radio->run(
             [this] { return running.load() && !access.interrupted(); },
             [this](const auto& capture) { return handleCapture(capture); });
         if (errored) {
@@ -386,7 +396,7 @@ Result SdrSweepImpl::workerLoop() {
     return Result::SUCCESS;
 }
 
-bool SdrSweepImpl::handleCapture(const Radio::Device::SweepCapture& capture) {
+bool SdrSweepImpl::handleCapture(const Radio::Sweep::Capture& capture) {
     const auto now = Clock::now();
     if (capture.hop == 0) {
         sweepStarted = now;

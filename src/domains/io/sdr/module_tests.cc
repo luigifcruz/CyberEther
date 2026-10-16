@@ -14,6 +14,8 @@
 #include <vector>
 
 #include "domains/io/sdr/devices/device.hh"
+#include "domains/io/sdr/devices/stream.hh"
+#include "domains/io/sdr/devices/sweep.hh"
 #include "domains/io/sdr/tools/capture_queue.hh"
 #include "domains/io/sdr/tools/stream_access.hh"
 #include "domains/io/sdr/tools/samples.hh"
@@ -38,56 +40,132 @@ using namespace TestRadio;
 
 struct ScriptedFlowgraph : ScriptedDrivers, FlowgraphFixture {};
 
-// Vendor calls are injected, but tuning transactions, epoch validity, and
-// captureHop use the same shared paths as the restart-based adapters.
-class RestartDevice final : public Radio::Device {
+// A hop sweep with trivial hardware, so the shared hop loop and settling run
+// exactly as the adapters drive them.
+class TestSweep : public Radio::Sweep::Retune {
  public:
-    using Radio::Device::captureHop;
+    U64 configures = 0;
 
+    TestSweep() {
+        deviceCapabilities.frequencyRanges = {{10.0e6, 2000.0e6}};
+        deviceCapabilities.sampleRateRanges = {{1.0e6, 20.0e6}};
+    }
+
+ protected:
+    Result apply(const Settings& settings) override {
+        ++configures;
+        requestedSettings = settings;
+        appliedSettings.sampleRate = settings.sampleRate;
+        return Result::SUCCESS;
+    }
+
+    Result open() override {
+        return Result::SUCCESS;
+    }
+
+    void close() override {}
+
+    Result setAutomaticGain(const bool automaticGain) override {
+        requestedSettings.automaticGain = automaticGain;
+        return Result::SUCCESS;
+    }
+
+    Result setGain(const F64 gain) override {
+        requestedSettings.gain = gain;
+        return Result::SUCCESS;
+    }
+};
+
+// A stream whose live tune or receive start can be failed.
+class RestartStream final : public Radio::Stream {
+ public:
     bool setterFails = false;
-    bool restartFails = false;
-    bool restoreFails = false;
-    bool inactive = false;
+    bool configureFails = false;
+    F64 openFailsAt = 0.0;
     bool streaming = false;
-    U64 starts = 0;
-    U64 reads = 0;
-    U64 guardReads = 0;
+    U64 configures = 0;
+    U64 opens = 0;
 
-    Result start(const Radio::Device::Settings& settings) override {
-        ++starts;
-        if (restoreFails) {
+    RestartStream() {
+        deviceCapabilities.frequencyRanges = {{10.0e6, 2000.0e6}};
+        deviceCapabilities.sampleRateRanges = {{1.0e6, 20.0e6}};
+    }
+
+    Radio::Device::Capture read(std::span<CF32> samples, const std::chrono::milliseconds) override {
+        if (!streaming) {
+            return {.status = Radio::Device::Status::Failure};
+        }
+        return {.status = Radio::Device::Status::Samples, .count = samples.size(),
+                .generation = generation()};
+    }
+
+ protected:
+    Result apply(const Settings& settings) override {
+        ++configures;
+        if (configureFails) {
             return Result::ERROR;
         }
         requestedSettings = settings;
         appliedSettings.frequency = settings.frequency;
         appliedSettings.sampleRate = settings.sampleRate;
-        guardLength = guardSamples(settings, settings.sampleRate);
-        return startStream();
+        return Result::SUCCESS;
     }
 
-    void stop() override {
+    Result open() override {
+        ++opens;
+        if (appliedSettings.sampleRate == openFailsAt) {
+            return Result::ERROR;
+        }
+        nextGeneration();
+        streaming = true;
+        return Result::SUCCESS;
+    }
+
+    void close() override {
         streaming = false;
     }
 
     Result tune(const F64 frequency) override {
-        return restart([&] {
-            if (setterFails) {
-                return Result::ERROR;
-            }
-            requestedSettings.frequency = frequency;
-            appliedSettings.frequency = frequency;
-            if (restartFails) {
-                return Result::ERROR;
-            }
-            return startStream();
-        });
+        if (setterFails) {
+            return Result::ERROR;
+        }
+        requestedSettings.frequency = frequency;
+        appliedSettings.frequency = frequency;
+        return Result::SUCCESS;
+    }
+
+    Result setAutomaticGain(const bool automaticGain) override {
+        requestedSettings.automaticGain = automaticGain;
+        return Result::SUCCESS;
+    }
+
+    Result setGain(const F64 gain) override {
+        requestedSettings.gain = gain;
+        return Result::SUCCESS;
+    }
+};
+
+// Restarts a timestamped stream on every hop, so the settling guard is
+// discarded by the timestamp filter like the LimeSDR and bladeRF adapters.
+class TimestampSweep final : public TestSweep {
+ public:
+    using Retune::capture;
+
+    bool inactive = false;
+    U64 reads = 0;
+    U64 guardReads = 0;
+
+ protected:
+    Result tune(const U64 hop) override {
+        tunedFrequency = sweepRequest.frequencies[hop];
+        timestamp = 0;
+        timestamps.restart(guard(), 0);
+        nextGeneration();
+        return Result::SUCCESS;
     }
 
     Radio::Device::Capture read(std::span<CF32> samples, const std::chrono::milliseconds timeout) override {
         ++reads;
-        if (!streaming) {
-            return {.status = Radio::Device::Status::Failure};
-        }
         if (inactive) {
             std::this_thread::sleep_for(timeout);
             return {.status = Radio::Device::Status::Timeout};
@@ -107,19 +185,7 @@ class RestartDevice final : public Radio::Device {
                 .epoch = timestamps.epoch(), .error = decision.error};
     }
 
-    F64 requestedFrequency() const {
-        return requestedSettings.frequency;
-    }
-
  private:
-    Result startStream() {
-        timestamp = 0;
-        timestamps.restart(guardLength, 0);
-        nextGeneration();
-        streaming = true;
-        return Result::SUCCESS;
-    }
-
     Radio::TimestampFilter timestamps;
     U64 timestamp = 0;
 };
@@ -128,14 +194,12 @@ class RestartDevice final : public Radio::Device {
 // it kept. Reads listed in `lossAt` report a gap of `Lost` samples instead,
 // reads in `staleAt` or all reads with `staleReads` deliver samples under the
 // previous generation, and `emptyReads` returns samples without any data.
-class CounterDevice final : public Radio::Device {
+class CounterSweep final : public TestSweep {
  public:
-    using Radio::Device::captureHop;
+    using Retune::capture;
 
     static constexpr U64 Lost = 7;
 
-    U64 starts = 0;
-    U64 stops = 0;
     U64 reads = 0;
     U64 readLimit = 40;
     bool emptyReads = false;
@@ -144,23 +208,11 @@ class CounterDevice final : public Radio::Device {
     std::vector<U64> staleAt;
     std::vector<F64> tunes;
 
-    Result start(const Radio::Device::Settings& settings) override {
-        ++starts;
-        requestedSettings = settings;
-        appliedSettings.frequency = settings.frequency;
-        appliedSettings.sampleRate = settings.sampleRate;
-        nextGeneration();
-        return Result::SUCCESS;
-    }
-
-    void stop() override {
-        ++stops;
-    }
-
-    Result tune(const F64 frequency) override {
+ protected:
+    Result tune(const U64 hop) override {
+        const F64 frequency = sweepRequest.frequencies[hop];
         tunes.push_back(frequency);
-        requestedSettings.frequency = frequency;
-        appliedSettings.frequency = frequency;
+        tunedFrequency = frequency;
         nextGeneration();
         return Result::SUCCESS;
     }
@@ -177,7 +229,7 @@ class CounterDevice final : public Radio::Device {
         }
         if (emptyReads) {
             return {.status = Radio::Device::Status::Samples, .generation = generation(),
-                    .frequency = appliedSettings.frequency};
+                    .frequency = tunedFrequency};
         }
         const bool stale = staleReads ||
                            std::find(staleAt.begin(), staleAt.end(), index) != staleAt.end();
@@ -187,7 +239,7 @@ class CounterDevice final : public Radio::Device {
         }
         return {.status = Radio::Device::Status::Samples, .count = count,
                 .generation = generation() - (stale ? 1 : 0),
-                .frequency = appliedSettings.frequency};
+                .frequency = tunedFrequency};
     }
 
  private:
@@ -198,30 +250,20 @@ class CounterDevice final : public Radio::Device {
 // the live tuner and delivers each one after it completes, so a transfer can
 // straddle a retune or arrive after it. Hops retune exactly like the
 // RTL-SDR, Airspy, and HackRF adapters.
-class StreamingDevice final : public Radio::Device {
+class StreamingSweep final : public TestSweep {
  public:
     static constexpr U64 TransferSamples = 256;
 
-    std::atomic<U64> starts{0};
-    std::atomic<U64> stops{0};
-    std::atomic<U64> transfers{0};
-
-    ~StreamingDevice() override {
-        stop();
+    ~StreamingSweep() override {
+        close();
     }
 
-    Result start(const Radio::Device::Settings& settings) override {
-        stop();
-        ++starts;
-        requestedSettings = settings;
-        appliedSettings.frequency = settings.frequency;
-        appliedSettings.sampleRate = settings.sampleRate;
-        guardLength = guardSamples(settings, settings.sampleRate);
-        tuner = settings.frequency;
+ protected:
+    Result open() override {
+        tuner = sweepRequest.frequencies.front();
         JST_CHECK(queue.resize(4 * TransferSamples));
         streamGeneration = nextGeneration();
-        queue.reset(streamGeneration, guardLength, appliedSettings.frequency,
-                    appliedSettings.sampleRate);
+        queue.reset(streamGeneration, guard(), tuner, appliedSettings.sampleRate);
         streaming = true;
         producer = std::thread([this] {
             std::vector<CF32> transfer(TransferSamples);
@@ -237,34 +279,29 @@ class StreamingDevice final : public Radio::Device {
                            [&](CF32* output, const U64 offset, const U64 count) {
                                std::copy_n(transfer.data() + offset, count, output);
                            });
-                ++transfers;
             }
         });
         return Result::SUCCESS;
     }
 
-    void stop() override {
-        if (!producer.joinable()) {
-            return;
-        }
-        ++stops;
+    void close() override {
         streaming = false;
-        producer.join();
+        if (producer.joinable()) {
+            producer.join();
+        }
         queue.close();
+    }
+
+    Result tune(const U64 hop) override {
+        tunedFrequency = sweepRequest.frequencies[hop];
+        tuner = tunedFrequency;
+        streamGeneration = nextGeneration();
+        queue.retune(streamGeneration, 1, guard(), tunedFrequency);
+        return Result::SUCCESS;
     }
 
     Radio::Device::Capture read(std::span<CF32> samples, const std::chrono::milliseconds timeout) override {
         return queue.pop(samples, timeout);
-    }
-
- protected:
-    Result tuneHop(const U64 hop) override {
-        tuner = sweepRequest.frequencies[hop];
-        requestedSettings.frequency = tuner;
-        appliedSettings.frequency = tuner;
-        streamGeneration = nextGeneration();
-        queue.retune(streamGeneration, 1, guardLength, appliedSettings.frequency);
-        return Result::SUCCESS;
     }
 
  private:
@@ -369,32 +406,32 @@ TEST_CASE("SDR device labels keep distinct devices with duplicate names",
 TEST_CASE_METHOD(ScriptedDrivers,
                  "SDR opening selects exactly one connected device",
                  "[modules][sdr][backend][selection]") {
-    std::unique_ptr<Radio::Device> device;
+    std::unique_ptr<Radio::Stream> device;
 
-    REQUIRE(Radio::Device::Open("not a selector", device) == Result::ERROR);
-    REQUIRE(Radio::Device::Open("driver=missing,serial=A", device) == Result::INCOMPLETE);
-    REQUIRE(Radio::Device::Open("driver=scripted,serial=B", device) == Result::INCOMPLETE);
+    REQUIRE(Radio::Stream::Open("not a selector", device) == Result::ERROR);
+    REQUIRE(Radio::Stream::Open("driver=missing,serial=A", device) == Result::INCOMPLETE);
+    REQUIRE(Radio::Stream::Open("driver=scripted,serial=B", device) == Result::INCOMPLETE);
     REQUIRE(TestScript().opens == 0);
 
     {
         std::lock_guard lock(TestScript().mutex);
         TestScript().devices = {{.serial = "A", .label = "One"}, {.serial = "A", .label = "Two"}};
     }
-    REQUIRE(Radio::Device::Open(Selector, device) == Result::INCOMPLETE);
+    REQUIRE(Radio::Stream::Open(Selector, device) == Result::INCOMPLETE);
     REQUIRE(TestScript().opens == 0);
 
     {
         std::lock_guard lock(TestScript().mutex);
         TestScript().devices = {{.serial = "B", .label = "Other"}, {.serial = "A", .label = "One"}};
     }
-    REQUIRE(Radio::Device::Open(Selector, device) == Result::SUCCESS);
+    REQUIRE(Radio::Stream::Open(Selector, device) == Result::SUCCESS);
     REQUIRE(device->info().serial == "A");
     REQUIRE(device->info().driver == "scripted");
     REQUIRE(TestScript().opens == 1);
 
     device.reset();
     TestScript().failAt = "open";
-    REQUIRE(Radio::Device::Open(Selector, device) == Result::ERROR);
+    REQUIRE(Radio::Stream::Open(Selector, device) == Result::ERROR);
     REQUIRE(device == nullptr);
 }
 
@@ -530,47 +567,54 @@ TEST_CASE("SDR settling guards round up at the actual capture rate",
     REQUIRE(Radio::GuardSamples(below, 1.0) == static_cast<U64>(below));
 }
 
-TEST_CASE("SDR restart tuning restores setter and receive-start failures",
+TEST_CASE("SDR stream updates restore setter and receive-start failures",
           "[modules][sdr][backend][lifecycle]") {
-    RestartDevice device;
-    const Radio::Device::Settings previous{.frequency = 100.0e6, .sampleRate = 20.0e6,
-                                    .settlingTime = 0.002};
-    REQUIRE(device.start(previous) == Result::SUCCESS);
+    const Radio::Stream::Settings previous{.frequency = 100.0e6, .sampleRate = 20.0e6,
+                                           .settlingTime = 0.002};
+    RestartStream stream;
+    REQUIRE(stream.start(previous) == Result::SUCCESS);
+    auto next = previous;
+    next.frequency = 200.0e6;
+    bool restored = true;
     SECTION("setter failure") {
-        device.setterFails = true;
+        stream.setterFails = true;
     }
-    SECTION("FIFO reset or receive-start failure") {
-        device.restartFails = true;
+    SECTION("receive-start failure") {
+        next.sampleRate = 10.0e6;
+        stream.openFailsAt = next.sampleRate;
     }
     SECTION("restoration also fails") {
-        device.restartFails = true;
-        device.restoreFails = true;
+        stream.setterFails = true;
+        stream.configureFails = true;
+        restored = false;
     }
     SECTION("success does not reapply all settings") {
-        REQUIRE(device.tune(200.0e6) == Result::SUCCESS);
-        REQUIRE(device.starts == 1);
-        REQUIRE(device.applied().frequency == 200.0e6);
-        REQUIRE(device.streaming);
+        REQUIRE(stream.update(next) == Result::SUCCESS);
+        REQUIRE(stream.configures == 1);
+        REQUIRE(stream.opens == 1);
+        REQUIRE(stream.applied().frequency == 200.0e6);
+        REQUIRE(stream.streaming);
         return;
     }
-    REQUIRE(device.tune(200.0e6) == Result::ERROR);
-    REQUIRE(device.starts == 2);
-    REQUIRE(device.requestedFrequency() == previous.frequency);
-    REQUIRE(device.applied().frequency == previous.frequency);
-    REQUIRE(device.applied().sampleRate == previous.sampleRate);
-    REQUIRE(device.streaming == !device.restoreFails);
-    if (device.streaming) {
-        std::vector<CF32> samples(40001);
-        REQUIRE(device.read(samples, std::chrono::milliseconds(100)).status == Radio::Device::Status::Samples);
+    const U64 generation = stream.generation();
+    REQUIRE(stream.update(next) == Result::ERROR);
+    REQUIRE(stream.settings().frequency == previous.frequency);
+    REQUIRE(stream.applied().frequency == previous.frequency);
+    REQUIRE(stream.applied().sampleRate == previous.sampleRate);
+    REQUIRE(stream.streaming == restored);
+    if (restored) {
+        REQUIRE(stream.generation() > generation);
+        std::vector<CF32> samples(16);
+        REQUIRE(stream.read(samples, std::chrono::milliseconds(100)).status == Radio::Device::Status::Samples);
     }
 }
 
 TEST_CASE("SDR generic hop capture budgets elapsed settling time instead of guard reads",
           "[modules][sdr][backend][capture][lime]") {
-    RestartDevice device;
     F64 guard = 0.002;
     U64 length = 200;
     bool cancel = false;
+    bool inactive = false;
     SECTION("100 kHz bins and a 2 ms guard") {}
     SECTION("10 kHz bins and a 5 ms override") {
         guard = 0.005;
@@ -580,26 +624,27 @@ TEST_CASE("SDR generic hop capture budgets elapsed settling time instead of guar
         cancel = true;
     }
     SECTION("real inactivity still times out") {
-        device.inactive = true;
+        inactive = true;
     }
-    REQUIRE(device.start({.frequency = 100.0e6, .sampleRate = 20.0e6,
-                           .settlingTime = guard}) == Result::SUCCESS);
-    REQUIRE(device.prepareSweep({.frequencies = {101.0e6}, .sampleRate = 20.0e6,
-                                  .captureLength = length}) == Result::SUCCESS);
+    TimestampSweep sweep;
+    REQUIRE(sweep.configure({.sampleRate = 20.0e6, .settlingTime = guard}) == Result::SUCCESS);
+    REQUIRE(sweep.start({.frequencies = {101.0e6}, .sampleRate = 20.0e6,
+                         .captureLength = length}) == Result::SUCCESS);
+    sweep.inactive = inactive;
     std::vector<CF32> samples(length);
-    Radio::Device::SweepCapture capture;
+    Radio::Sweep::Capture capture;
     U64 segments = 0;
-    const auto result = device.captureHop(0, samples, segments, capture, [&] {
-        return !cancel || device.reads < 30;
+    const auto result = sweep.capture(0, samples, segments, capture, [&] {
+        return !cancel || sweep.reads < 30;
     });
-    if (cancel && !device.inactive) {
+    if (cancel) {
         REQUIRE(result == Result::YIELD);
-        REQUIRE(device.reads == 30);
-    } else if (device.inactive) {
+        REQUIRE(sweep.reads == 30);
+    } else if (inactive) {
         REQUIRE(result == Result::TIMEOUT);
     } else {
         REQUIRE(result == Result::SUCCESS);
-        REQUIRE(device.guardReads > 21);
+        REQUIRE(sweep.guardReads > 21);
         REQUIRE(capture.samples.front().real() == static_cast<F32>(Radio::GuardSamples(guard, 20.0e6)));
         REQUIRE(capture.samples.size() == length);
     }
@@ -668,17 +713,16 @@ TEST_CASE("SDR capture queues relabel a running stream without keeping pre-retun
 
 TEST_CASE("SDR sweeps retune a running stream and never label earlier samples with a hop",
           "[modules][sdr][backend][capture][retune]") {
-    StreamingDevice device;
-    REQUIRE(device.start({.frequency = 100.0e6, .sampleRate = 2.0e6, .settlingTime = 0.0}) ==
+    StreamingSweep sweep;
+    REQUIRE(sweep.configure({.sampleRate = 2.0e6, .settlingTime = 0.0}) == Result::SUCCESS);
+    REQUIRE(sweep.start({.frequencies = {100.0e6, 200.0e6, 300.0e6, 400.0e6},
+                         .sampleRate = 2.0e6, .captureLength = 64, .dwell = 2}) ==
             Result::SUCCESS);
-    REQUIRE(device.prepareSweep({.frequencies = {100.0e6, 200.0e6, 300.0e6, 400.0e6},
-                                 .sampleRate = 2.0e6, .captureLength = 64,
-                                 .dwell = 2}) == Result::SUCCESS);
 
     U64 captures = 0;
     U64 mislabeled = 0;
     std::vector<U64> hops;
-    REQUIRE(device.runSweep([] { return true; }, [&](const Radio::Device::SweepCapture& capture) {
+    REQUIRE(sweep.run([] { return true; }, [&](const Radio::Sweep::Capture& capture) {
         for (const auto& sample : capture.samples) {
             if (sample.real() != static_cast<F32>(capture.frequency / 1e6)) {
                 ++mislabeled;
@@ -689,38 +733,37 @@ TEST_CASE("SDR sweeps retune a running stream and never label earlier samples wi
     }) == Result::SUCCESS);
 
     REQUIRE(mislabeled == 0);
-    REQUIRE(device.starts == 1);
-    REQUIRE(device.stops == 0);
+    REQUIRE(sweep.configures == 1);
     REQUIRE(hops.size() == 200);
     for (U64 i = 0; i < hops.size(); ++i) {
         REQUIRE(hops[i] == i % 4);
     }
-    REQUIRE(device.statistics().failedHops == 0);
+    REQUIRE(sweep.statistics().failedHops == 0);
 }
 
 TEST_CASE("SDR hop captures keep finished dwell segments across local loss",
           "[modules][sdr][backend][capture][dwell]") {
-    CounterDevice device;
-    REQUIRE(device.start({.frequency = 100.0e6, .sampleRate = 2.0e6}) == Result::SUCCESS);
-    REQUIRE(device.prepareSweep({.frequencies = {100.0e6, 101.0e6}, .sampleRate = 2.0e6,
-                                 .captureLength = 100, .dwell = 3}) == Result::SUCCESS);
+    CounterSweep sweep;
+    REQUIRE(sweep.configure({.sampleRate = 2.0e6}) == Result::SUCCESS);
+    REQUIRE(sweep.start({.frequencies = {100.0e6, 101.0e6}, .sampleRate = 2.0e6,
+                         .captureLength = 100, .dwell = 3}) == Result::SUCCESS);
     U64 failedHops = 0;
     U64 tunes = 1;
-    U64 resumeAt = 120 + CounterDevice::Lost;
+    U64 resumeAt = 120 + CounterSweep::Lost;
     SECTION("a gap inside the second segment only repeats that segment") {
-        device.lossAt = {3};
+        sweep.lossAt = {3};
     }
     SECTION("a failed hop is retuned in place and keeps the first segment") {
         for (U64 read = 3; read < 12; ++read) {
-            device.lossAt.push_back(read);
+            sweep.lossAt.push_back(read);
         }
         failedHops = 1;
         tunes = 2;
-        resumeAt = 120 + 9 * CounterDevice::Lost;
+        resumeAt = 120 + 9 * CounterSweep::Lost;
     }
 
     std::vector<F32> kept;
-    REQUIRE(device.runSweep([] { return true; }, [&](const Radio::Device::SweepCapture& capture) {
+    REQUIRE(sweep.run([] { return true; }, [&](const Radio::Sweep::Capture& capture) {
         REQUIRE(capture.hop == 0);
         for (const auto& sample : capture.samples) {
             kept.push_back(sample.real());
@@ -735,25 +778,24 @@ TEST_CASE("SDR hop captures keep finished dwell segments across local loss",
     for (U64 i = 100; i < 300; ++i) {
         REQUIRE(kept[i] == static_cast<F32>(resumeAt + i - 100));
     }
-    REQUIRE(device.statistics().failedHops == failedHops);
-    REQUIRE(device.tunes == std::vector<F64>(tunes, 100.0e6));
-    REQUIRE(device.starts == 1);
-    REQUIRE(device.stops == 0);
+    REQUIRE(sweep.statistics().failedHops == failedHops);
+    REQUIRE(sweep.tunes == std::vector<F64>(tunes, 100.0e6));
+    REQUIRE(sweep.configures == 1);
 }
 
 TEST_CASE("SDR hop captures never bridge an FFT across samples of another generation",
           "[modules][sdr][backend][capture][dwell]") {
-    CounterDevice device;
-    REQUIRE(device.start({.frequency = 100.0e6, .sampleRate = 2.0e6}) == Result::SUCCESS);
-    REQUIRE(device.prepareSweep({.frequencies = {100.0e6}, .sampleRate = 2.0e6,
-                                 .captureLength = 100, .dwell = 3}) == Result::SUCCESS);
+    CounterSweep sweep;
+    REQUIRE(sweep.configure({.sampleRate = 2.0e6}) == Result::SUCCESS);
+    REQUIRE(sweep.start({.frequencies = {100.0e6}, .sampleRate = 2.0e6,
+                         .captureLength = 100, .dwell = 3}) == Result::SUCCESS);
     // The stale read arrives 20 samples into the second FFT.
-    device.staleAt = {3};
+    sweep.staleAt = {3};
 
     std::vector<CF32> samples(300);
     U64 segments = 0;
-    Radio::Device::SweepCapture capture;
-    REQUIRE(device.captureHop(0, samples, segments, capture, [] { return true; }) ==
+    Radio::Sweep::Capture capture;
+    REQUIRE(sweep.capture(0, samples, segments, capture, [] { return true; }) ==
             Result::SUCCESS);
     for (U64 i = 0; i < 100; ++i) {
         REQUIRE(samples[i].real() == static_cast<F32>(i));
@@ -765,25 +807,25 @@ TEST_CASE("SDR hop captures never bridge an FFT across samples of another genera
 
 TEST_CASE("SDR hop captures stay bounded and cancellable without usable samples",
           "[modules][sdr][backend][capture][timing]") {
-    CounterDevice device;
-    REQUIRE(device.start({.frequency = 100.0e6, .sampleRate = 2.0e6}) == Result::SUCCESS);
-    REQUIRE(device.prepareSweep({.frequencies = {100.0e6}, .sampleRate = 2.0e6,
-                                 .captureLength = 100, .dwell = 3}) == Result::SUCCESS);
+    CounterSweep sweep;
+    REQUIRE(sweep.configure({.sampleRate = 2.0e6}) == Result::SUCCESS);
+    REQUIRE(sweep.start({.frequencies = {100.0e6}, .sampleRate = 2.0e6,
+                         .captureLength = 100, .dwell = 3}) == Result::SUCCESS);
     SECTION("zero-count reads") {
-        device.emptyReads = true;
+        sweep.emptyReads = true;
     }
     SECTION("reads from another generation") {
-        device.staleReads = true;
+        sweep.staleReads = true;
     }
 
     std::vector<CF32> samples(300);
-    Radio::Device::SweepCapture capture;
+    Radio::Sweep::Capture capture;
     U64 segments = 0;
-    REQUIRE(device.captureHop(0, samples, segments, capture, [&] { return device.reads < 50; }) ==
+    REQUIRE(sweep.capture(0, samples, segments, capture, [&] { return sweep.reads < 50; }) ==
             Result::YIELD);
     REQUIRE(segments == 0);
     const auto start = std::chrono::steady_clock::now();
-    REQUIRE(device.captureHop(0, samples, segments, capture, [] { return true; }) ==
+    REQUIRE(sweep.capture(0, samples, segments, capture, [] { return true; }) ==
             Result::TIMEOUT);
     REQUIRE(std::chrono::steady_clock::now() - start < std::chrono::seconds(4));
     REQUIRE(segments == 0);
@@ -791,23 +833,23 @@ TEST_CASE("SDR hop captures stay bounded and cancellable without usable samples"
 
 TEST_CASE("SDR sweeps stop after bounded failures of any hop",
           "[modules][sdr][backend][capture][failure]") {
-    CounterDevice device;
-    REQUIRE(device.start({.frequency = 100.0e6, .sampleRate = 2.0e6}) == Result::SUCCESS);
-    REQUIRE(device.prepareSweep({.frequencies = {100.0e6, 101.0e6, 102.0e6}, .sampleRate = 2.0e6,
-                                 .captureLength = 16}) == Result::SUCCESS);
+    CounterSweep sweep;
+    REQUIRE(sweep.configure({.sampleRate = 2.0e6}) == Result::SUCCESS);
+    REQUIRE(sweep.start({.frequencies = {100.0e6, 101.0e6, 102.0e6}, .sampleRate = 2.0e6,
+                         .captureLength = 16}) == Result::SUCCESS);
     // The first hop keeps succeeding. Every read of the third hop is a gap.
-    device.readLimit = 16;
+    sweep.readLimit = 16;
     for (U64 read = 2; read < 2 + 3 * 9; ++read) {
-        device.lossAt.push_back(read);
+        sweep.lossAt.push_back(read);
     }
     U64 captures = 0;
-    REQUIRE(device.runSweep([] { return true; }, [&](const Radio::Device::SweepCapture&) {
+    REQUIRE(sweep.run([] { return true; }, [&](const Radio::Sweep::Capture&) {
         ++captures;
         return true;
     }) == Result::ERROR);
     REQUIRE(captures == 2);
-    REQUIRE(device.statistics().failedHops == 3);
-    REQUIRE(device.tunes == std::vector<F64>{100.0e6, 101.0e6, 102.0e6, 102.0e6, 102.0e6});
+    REQUIRE(sweep.statistics().failedHops == 3);
+    REQUIRE(sweep.tunes == std::vector<F64>{100.0e6, 101.0e6, 102.0e6, 102.0e6, 102.0e6});
 }
 
 TEST_CASE("SDR stream buffers never mix generations in a frame",
@@ -985,26 +1027,27 @@ TEST_CASE("SDR timestamp filter tracks retune-only streams without a restart",
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,
-                 "SDR devices restore the previous settings after a failed change",
+                 "SDR streams restore the previous settings after a failed change",
                  "[modules][sdr][backend][lifecycle]") {
-    std::unique_ptr<Radio::Device> device;
-    REQUIRE(Radio::Device::Open(Selector, device) == Result::SUCCESS);
-    REQUIRE(device->start({.frequency = 100.0e6, .sampleRate = 2.0e6}) == Result::SUCCESS);
-    const U64 generation = device->generation();
+    std::unique_ptr<Radio::Stream> stream;
+    REQUIRE(Radio::Stream::Open(Selector, stream) == Result::SUCCESS);
+    REQUIRE(stream->start({.frequency = 100.0e6, .sampleRate = 2.0e6}) == Result::SUCCESS);
+    const U64 generation = stream->generation();
 
-    TestScript().failAt = "start:300";
-    REQUIRE(device->apply({.frequency = 300.0e6, .sampleRate = 4.0e6}) == Result::ERROR);
-    REQUIRE(device->applied().frequency == 100.0e6);
-    REQUIRE(device->applied().sampleRate == 2.0e6);
-    REQUIRE(device->generation() > generation);
+    TestScript().failAt = "configure:300";
+    REQUIRE(stream->update({.frequency = 300.0e6, .sampleRate = 4.0e6}) == Result::ERROR);
+    REQUIRE(stream->applied().frequency == 100.0e6);
+    REQUIRE(stream->applied().sampleRate == 2.0e6);
+    REQUIRE(stream->generation() > generation);
     const auto calls = TestScript().calls();
-    REQUIRE(std::count(calls.begin(), calls.end(), "start:300") == 1);
-    REQUIRE(calls.back() == "start:100");
+    REQUIRE(std::count(calls.begin(), calls.end(), "configure:300") == 1);
+    REQUIRE(calls.end()[-2] == "configure:100");
+    REQUIRE(calls.back() == "start");
 
     TestScript().failAt.clear();
-    REQUIRE(device->apply({.frequency = 300.0e6, .sampleRate = 4.0e6}) == Result::SUCCESS);
-    REQUIRE(device->applied().frequency == 300.0e6);
-    REQUIRE(device->applied().sampleRate == 4.0e6);
+    REQUIRE(stream->update({.frequency = 300.0e6, .sampleRate = 4.0e6}) == Result::SUCCESS);
+    REQUIRE(stream->applied().frequency == 300.0e6);
+    REQUIRE(stream->applied().sampleRate == 4.0e6);
 }
 
 //
@@ -1156,7 +1199,7 @@ TEST_CASE_METHOD(ScriptedDrivers,
     const auto& stream = sdr->*SdrImplAccess::streamMember();
     const auto calls = [&] {
         const auto all = TestScript().calls();
-        const auto created = std::find(all.begin(), all.end(), "biastee:true");
+        const auto created = std::find(all.begin(), all.end(), "start");
         return std::vector<std::string>(created + 1, all.end());
     };
     REQUIRE(calls().empty());
@@ -1184,7 +1227,7 @@ TEST_CASE_METHOD(ScriptedDrivers,
     // Rate and gain changes need the full configuration path.
     REQUIRE(module->reconfigure({{"sampleRate", 4.0e6f}}) == Result::SUCCESS);
     REQUIRE(WaitFor([&] { return sdr->getApplied().sampleRate == 4.0e6; }));
-    REQUIRE(calls() == std::vector<std::string>{"tune:250", "stop", "start:250"});
+    REQUIRE(calls() == std::vector<std::string>{"tune:250", "stop", "configure:250", "start"});
     REQUIRE(sdr->getApplied().sampleRate == 4.0e6);
     REQUIRE(sdr->getApplied().frequency == 250.0e6);
 }
@@ -1211,7 +1254,7 @@ TEST_CASE_METHOD(ScriptedDrivers,
     SECTION("sample rate") {
         edit = {{"sampleRate", 4.0e6f}};
         edit["frequency"] = 300.0e6f;
-        failure = "start:300";
+        failure = "configure:300";
     }
     SECTION("automatic gain") {
         edit = {{"automaticGain", true}};
@@ -1280,15 +1323,15 @@ TEST_CASE_METHOD(ScriptedDrivers,
         REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
         REQUIRE(module->destroy() == Result::SUCCESS);
         REQUIRE(TestScript().calls() == std::vector<std::string>{
-            "open", "start:100", "biastee:true", "stop", "biastee:false", "close",
+            "open", "configure:100", "biastee:true", "start", "stop", "biastee:false", "close",
         });
     }
 
     SECTION("failed startup closes the device") {
-        TestScript().failAt = "start";
+        TestScript().failAt = "configure";
         const auto module = BuildSdrModule();
         REQUIRE(module->create("test", config, {}) == Result::ERROR);
-        REQUIRE(TestScript().calls() == std::vector<std::string>{"open", "start:100", "close"});
+        REQUIRE(TestScript().calls() == std::vector<std::string>{"open", "configure:100", "close"});
     }
 
     SECTION("repeated open and close cycles reuse the device") {
@@ -1369,7 +1412,7 @@ TEST_CASE_METHOD(ScriptedFlowgraph,
     {
         std::lock_guard lock(TestScript().mutex);
         TestScript().sampleRates = {{10.0e6, 10.0e6}, {2.5e6, 2.5e6}};
-        TestScript().failAt = "start";
+        TestScript().failAt = "configure";
     }
     Blocks::Sdr config;
     config.deviceString = Selector;

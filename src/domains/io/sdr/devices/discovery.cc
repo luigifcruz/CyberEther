@@ -1,25 +1,27 @@
 #include "device.hh"
+#include "stream.hh"
+#include "sweep.hh"
 
 #ifdef JETSTREAM_LOADER_RTLSDR_AVAILABLE
-#include "rtlsdr/rtlsdr.hh"
+#include "rtlsdr/base.hh"
 #endif
 #ifdef JETSTREAM_LOADER_AIRSPY_AVAILABLE
-#include "airspy/airspy.hh"
+#include "airspy/base.hh"
 #endif
 #ifdef JETSTREAM_LOADER_AIRSPYHF_AVAILABLE
-#include "airspyhf/airspyhf.hh"
+#include "airspyhf/base.hh"
 #endif
 #ifdef JETSTREAM_LOADER_HACKRF_AVAILABLE
-#include "hackrf/hackrf.hh"
+#include "hackrf/base.hh"
 #endif
 #ifdef JETSTREAM_LOADER_LIMESUITE_AVAILABLE
-#include "limesdr/limesdr.hh"
+#include "limesdr/base.hh"
 #endif
 #ifdef JETSTREAM_LOADER_BLADERF_AVAILABLE
-#include "bladerf/bladerf.hh"
+#include "bladerf/base.hh"
 #endif
 #ifdef JETSTREAM_LOADER_PLUTOSDR_AVAILABLE
-#include "plutosdr/plutosdr.hh"
+#include "plutosdr/base.hh"
 #endif
 
 #include <algorithm>
@@ -84,25 +86,25 @@ int WebUsbRevision() {
 std::vector<Device::Driver> BuiltinDrivers() {
     std::vector<Device::Driver> drivers;
 #ifdef JETSTREAM_LOADER_RTLSDR_AVAILABLE
-    drivers.push_back({"rtlsdr", &RtlSdrDevice::Enumerate, &RtlSdrDevice::Create});
+    drivers.push_back({"rtlsdr", &RtlSdr::Enumerate, &RtlSdr::Stream, &RtlSdr::Sweep});
 #endif
 #ifdef JETSTREAM_LOADER_AIRSPY_AVAILABLE
-    drivers.push_back({"airspy", &AirspyDevice::Enumerate, &AirspyDevice::Create});
+    drivers.push_back({"airspy", &Airspy::Enumerate, &Airspy::Stream, &Airspy::Sweep});
 #endif
 #ifdef JETSTREAM_LOADER_AIRSPYHF_AVAILABLE
-    drivers.push_back({"airspyhf", &AirspyHfDevice::Enumerate, &AirspyHfDevice::Create});
+    drivers.push_back({"airspyhf", &AirspyHf::Enumerate, &AirspyHf::Stream, &AirspyHf::Sweep});
 #endif
 #ifdef JETSTREAM_LOADER_HACKRF_AVAILABLE
-    drivers.push_back({"hackrf", &HackRfDevice::Enumerate, &HackRfDevice::Create});
+    drivers.push_back({"hackrf", &HackRf::Enumerate, &HackRf::Stream, &HackRf::Sweep});
 #endif
 #ifdef JETSTREAM_LOADER_LIMESUITE_AVAILABLE
-    drivers.push_back({"limesdr", &LimeSdrDevice::Enumerate, &LimeSdrDevice::Create});
+    drivers.push_back({"limesdr", &LimeSdr::Enumerate, &LimeSdr::Stream, &LimeSdr::Sweep});
 #endif
 #ifdef JETSTREAM_LOADER_BLADERF_AVAILABLE
-    drivers.push_back({"bladerf", &BladeRfDevice::Enumerate, &BladeRfDevice::Create});
+    drivers.push_back({"bladerf", &BladeRf::Enumerate, &BladeRf::Stream, &BladeRf::Sweep});
 #endif
 #ifdef JETSTREAM_LOADER_PLUTOSDR_AVAILABLE
-    drivers.push_back({"plutosdr", &PlutoSdrDevice::Enumerate, &PlutoSdrDevice::Create});
+    drivers.push_back({"plutosdr", &PlutoSdr::Enumerate, &PlutoSdr::Stream, &PlutoSdr::Sweep});
 #endif
     return drivers;
 }
@@ -122,6 +124,65 @@ std::vector<Device::Info> Enumerate(const std::vector<Device::Driver>& drivers) 
         }
     }
     return devices;
+}
+
+template<typename Mode, typename Factory>
+Result OpenMode(const std::string& selector, Factory Device::Driver::* factory,
+                std::unique_ptr<Mode>& mode) {
+    mode.reset();
+
+    const auto selection = Device::Selection::Parse(selector);
+    if (!selection) {
+        JST_ERROR("[SDR] Device selection '{}' is not a valid direct device selection.", selector);
+        return Result::ERROR;
+    }
+
+    const auto drivers = Device::Drivers();
+    const auto driver = std::find_if(drivers.begin(), drivers.end(), [&](const auto& entry) {
+        return entry.name == selection->driver;
+    });
+    if (driver == drivers.end()) {
+        JST_ERROR("[SDR] Driver '{}' is not available in this build.", selection->driver);
+        return Result::INCOMPLETE;
+    }
+
+    std::vector<Device::Info> matches;
+    for (const auto& info : Device::List(true)) {
+        if (selection->matches(info)) {
+            matches.push_back(info);
+        }
+    }
+    if (matches.empty()) {
+        JST_ERROR("[SDR] Selected device ({}) is not connected.", selector);
+        return Result::INCOMPLETE;
+    }
+    if (matches.size() != 1) {
+        JST_ERROR("[SDR] Device selection ({}) is ambiguous: {} devices share this "
+                  "serial number.", selector, matches.size());
+        return Result::INCOMPLETE;
+    }
+
+    Result result = Result::ERROR;
+    try {
+        result = ((*driver).*factory)(matches.front(), mode);
+    } catch (const std::exception& e) {
+        JST_ERROR("[SDR] Failed to open device ({}): {}", selector, e.what());
+        result = Result::ERROR;
+    } catch (...) {
+        JST_ERROR("[SDR] Failed to open device ({}).", selector);
+        result = Result::ERROR;
+    }
+
+    if (result != Result::SUCCESS || !mode) {
+        mode.reset();
+        Device::ClearCache();
+        return result == Result::SUCCESS ? Result::ERROR : result;
+    }
+
+    auto& cache = Cache();
+    std::lock_guard lock(cache.mutex);
+    cache.capabilities[selector] = mode->capabilities();
+    return Result::SUCCESS;
 }
 
 }  // namespace
@@ -267,61 +328,12 @@ bool Device::SupportsBiasTee(const std::string& selector) {
     return true;
 }
 
-Result Device::Open(const std::string& selector, std::unique_ptr<Device>& device) {
-    device.reset();
+Result Stream::Open(const std::string& selector, std::unique_ptr<Stream>& stream) {
+    return OpenMode(selector, &Device::Driver::stream, stream);
+}
 
-    const auto selection = Selection::Parse(selector);
-    if (!selection) {
-        JST_ERROR("[SDR] Device selection '{}' is not a valid direct device selection.", selector);
-        return Result::ERROR;
-    }
-
-    const auto drivers = Drivers();
-    const auto driver = std::find_if(drivers.begin(), drivers.end(), [&](const auto& entry) {
-        return entry.name == selection->driver;
-    });
-    if (driver == drivers.end()) {
-        JST_ERROR("[SDR] Driver '{}' is not available in this build.", selection->driver);
-        return Result::INCOMPLETE;
-    }
-
-    std::vector<Info> matches;
-    for (const auto& info : List(true)) {
-        if (selection->matches(info)) {
-            matches.push_back(info);
-        }
-    }
-    if (matches.empty()) {
-        JST_ERROR("[SDR] Selected device ({}) is not connected.", selector);
-        return Result::INCOMPLETE;
-    }
-    if (matches.size() != 1) {
-        JST_ERROR("[SDR] Device selection ({}) is ambiguous: {} devices share this "
-                  "serial number.", selector, matches.size());
-        return Result::INCOMPLETE;
-    }
-
-    Result result = Result::ERROR;
-    try {
-        result = driver->create(matches.front(), device);
-    } catch (const std::exception& e) {
-        JST_ERROR("[SDR] Failed to open device ({}): {}", selector, e.what());
-        result = Result::ERROR;
-    } catch (...) {
-        JST_ERROR("[SDR] Failed to open device ({}).", selector);
-        result = Result::ERROR;
-    }
-
-    if (result != Result::SUCCESS || !device) {
-        device.reset();
-        ClearCache();
-        return result == Result::SUCCESS ? Result::ERROR : result;
-    }
-
-    auto& cache = Cache();
-    std::lock_guard lock(cache.mutex);
-    cache.capabilities[selector] = device->capabilities();
-    return Result::SUCCESS;
+Result Sweep::Open(const std::string& selector, std::unique_ptr<Sweep>& sweep) {
+    return OpenMode(selector, &Device::Driver::sweep, sweep);
 }
 
 }  // namespace Jetstream::Radio

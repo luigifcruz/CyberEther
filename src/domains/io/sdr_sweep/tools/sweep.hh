@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "domains/io/sdr/devices/device.hh"
+#include "domains/io/sdr/devices/sweep.hh"
 
 namespace Jetstream::Modules::Sweep {
 
@@ -68,7 +68,7 @@ struct JETSTREAM_API Plan {
     F64 span() const;
     U64 captureSamples() const;
     U64 workingSetBytes() const;
-    Radio::Device::SweepRequest deviceRequest() const;
+    Radio::Sweep::Request deviceRequest() const;
 };
 
 class JETSTREAM_API Assembler {
@@ -80,7 +80,7 @@ class JETSTREAM_API Assembler {
 
     void begin();
 
-    Result add(const Radio::Device::SweepCapture& capture);
+    Result add(const Radio::Sweep::Capture& capture);
 
     bool complete() const;
     U64 completedHops() const;

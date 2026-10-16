@@ -15,6 +15,8 @@
 #include <vector>
 
 #include "domains/io/sdr/devices/device.hh"
+#include "domains/io/sdr/devices/stream.hh"
+#include "domains/io/sdr/devices/sweep.hh"
 #include "domains/io/sdr/tools/samples.hh"
 #include "jetstream/logger.hh"
 
@@ -41,7 +43,7 @@ struct Script {
     std::vector<Tone> tones;
     F64 rateOffset = 0.0;
     F64 frequencyOffset = 0.0;
-    std::optional<Radio::Device::FirmwareSweep> firmware;
+    std::optional<Radio::Device::Firmware> firmware;
     std::vector<Radio::Device::Range> sampleRates;
     U64 readLimit = 0;
     std::chrono::milliseconds readDelay{0};
@@ -93,101 +95,43 @@ inline Script& TestScript() {
     return script;
 }
 
-class ScriptedDevice final : public Radio::Device {
+inline Radio::Device::Capabilities ScriptedCapabilities() {
+    Radio::Device::Capabilities caps;
+    caps.frequencyRanges = {{10.0e6, 2000.0e6}};
+    caps.sampleRateRanges = {{1.0e6, 10.0e6}};
+    caps.antennas = {"RX1", "RX2"};
+    caps.automaticGain = true;
+    caps.biasTee = true;
+    caps.sweepSampleRate = 2.0e6;
+    caps.usableBandwidth = 0.75;
+    caps.dcExclusion = 0.0;
+    std::lock_guard lock(TestScript().mutex);
+    caps.firmwareSweep = TestScript().firmware;
+    if (TestScript().firmware) {
+        caps.sampleRateRanges = {{1.0e6, 20.0e6}};
+    }
+    if (!TestScript().sampleRates.empty()) {
+        caps.sampleRateRanges = TestScript().sampleRates;
+    }
+    return caps;
+}
+
+class ScriptedScene {
  public:
-    explicit ScriptedDevice(const Radio::Device::Info& info) {
-        deviceInfo = info;
-        deviceCapabilities.frequencyRanges = {{10.0e6, 2000.0e6}};
-        deviceCapabilities.sampleRateRanges = {{1.0e6, 10.0e6}};
-        deviceCapabilities.antennas = {"RX1", "RX2"};
-        deviceCapabilities.automaticGain = true;
-        deviceCapabilities.biasTee = true;
-        deviceCapabilities.sweepSampleRate = 2.0e6;
-        deviceCapabilities.usableBandwidth = 0.75;
-        deviceCapabilities.dcExclusion = 0.0;
-        appliedSettings.gainRange = Radio::Device::Range{0.0, 60.0};
-        defaultSettlingTime = 1.0e-3;
-        {
-            std::lock_guard lock(TestScript().mutex);
-            deviceCapabilities.firmwareSweep = TestScript().firmware;
-            if (TestScript().firmware) {
-                deviceCapabilities.sampleRateRanges = {{1.0e6, 20.0e6}};
-            }
-            if (!TestScript().sampleRates.empty()) {
-                deviceCapabilities.sampleRateRanges = TestScript().sampleRates;
-            }
-        }
-        ++TestScript().opens;
-        TestScript().record("open");
-    }
-
-    ~ScriptedDevice() override {
-        stop();
-        if (biasTeeEnabled) {
-            TestScript().record("biastee:false");
-        }
-        TestScript().record("close");
-    }
-
-    Result start(const Radio::Device::Settings& settings) override {
-        const auto call = jst::fmt::format("start:{:.0f}", settings.frequency / 1e6);
-        TestScript().record(call);
-        if (TestScript().fails("start") || TestScript().fails(call)) {
-            return Result::ERROR;
-        }
-        if (settings.biasTee != biasTeeEnabled) {
-            TestScript().record(settings.biasTee ? "biastee:true" : "biastee:false");
-            biasTeeEnabled = settings.biasTee;
-        }
-        requestedSettings = settings;
-        appliedSettings.frequency = settings.frequency + TestScript().frequencyOffset;
-        appliedSettings.sampleRate = settings.sampleRate + TestScript().rateOffset;
-        appliedSettings.antenna = settings.antenna;
-        appliedSettings.automaticGain = settings.automaticGain;
-        appliedSettings.gain = resolveGain(settings.gain, appliedSettings.gainRange);
-        appliedSettings.biasTee = settings.biasTee;
-        guardLength = guardSamples(settings, appliedSettings.sampleRate);
-        if (guardLength == std::numeric_limits<U64>::max()) {
-            return Result::ERROR;
-        }
-        nextGeneration();
-        started = true;
-        return Result::SUCCESS;
-    }
-
-    void stop() override {
-        if (started) {
-            TestScript().record("stop");
-        }
-        started = false;
-    }
-
-    // Frequency-only path, like the adapters: other settings stay applied.
-    Result tune(const F64 frequency) override {
-        const auto call = jst::fmt::format("tune:{:.0f}", frequency / 1e6);
-        TestScript().record(call);
-        nextGeneration();
-        if (TestScript().fails(call)) {
-            return Result::ERROR;
-        }
-        requestedSettings.frequency = frequency;
-        appliedSettings.frequency = frequency + TestScript().frequencyOffset;
-        return Result::SUCCESS;
-    }
-
-    Radio::Device::Capture read(std::span<CF32> samples, const std::chrono::milliseconds) override {
+    Radio::Device::Capture produce(std::span<CF32> samples, const U64 generation, const bool running,
+                                   const F64 frequency, const F64 rate) {
         ++TestScript().activeReads;
         struct Reading {
             ~Reading() { --TestScript().activeReads; }
         } reading;
-        if (!started) {
+        if (!running) {
             return {.status = Radio::Device::Status::Failure, .error = "stopped"};
         }
         {
             std::lock_guard lock(TestScript().mutex);
             if (auto scripted = TestScript().nextRead) {
                 TestScript().nextRead.reset();
-                scripted->generation = generation();
+                scripted->generation = generation;
                 return *scripted;
             }
         }
@@ -209,7 +153,7 @@ class ScriptedDevice final : public Radio::Device {
         }
         if (const long allowed = budget.load(); allowed == 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            return {.status = Radio::Device::Status::Timeout, .generation = generation()};
+            return {.status = Radio::Device::Status::Timeout, .generation = generation};
         } else if (allowed > 0) {
             count = std::min<U64>(count, static_cast<U64>(allowed));
             budget -= static_cast<long>(count);
@@ -221,21 +165,20 @@ class ScriptedDevice final : public Radio::Device {
             tones = TestScript().tones;
         }
         if (tones.empty()) {
-            const CF32 value{static_cast<F32>(appliedSettings.frequency / 1e6),
-                             static_cast<F32>(generation())};
+            const CF32 value{static_cast<F32>(frequency / 1e6),
+                             static_cast<F32>(generation)};
             std::fill_n(samples.begin(), count, value);
         } else {
             // The scene runs on one continuous clock across retunes.
-            const F64 rate = appliedSettings.sampleRate;
             for (U64 i = 0; i < count; ++i) {
                 const F64 time = static_cast<F64>(clock + i) / rate;
                 std::complex<F64> sample;
                 for (const auto& tone : tones) {
                     // Models the front-end anti-alias filter.
-                    if (std::abs(tone.frequency - appliedSettings.frequency) >= rate / 2.0) {
+                    if (std::abs(tone.frequency - frequency) >= rate / 2.0) {
                         continue;
                     }
-                    const F64 phase = 2.0 * std::numbers::pi * (tone.frequency - appliedSettings.frequency) * time;
+                    const F64 phase = 2.0 * std::numbers::pi * (tone.frequency - frequency) * time;
                     sample += std::polar(tone.amplitude, phase);
                 }
                 samples[i] = CF32{static_cast<F32>(sample.real()), static_cast<F32>(sample.imag())};
@@ -245,10 +188,86 @@ class ScriptedDevice final : public Radio::Device {
         return {
             .status = Radio::Device::Status::Samples,
             .count = count,
-            .generation = generation(),
-            .frequency = appliedSettings.frequency,
-            .sampleRate = appliedSettings.sampleRate,
+            .generation = generation,
+            .frequency = frequency,
+            .sampleRate = rate,
         };
+    }
+
+ private:
+    U64 clock = 0;
+};
+
+class ScriptedStream final : public Radio::Stream {
+ public:
+    explicit ScriptedStream(const Radio::Device::Info& info) {
+        deviceInfo = info;
+        deviceCapabilities = ScriptedCapabilities();
+        appliedSettings.gainRange = Radio::Device::Range{0.0, 60.0};
+        defaultSettlingTime = 1.0e-3;
+        ++TestScript().opens;
+        TestScript().record("open");
+    }
+
+    ~ScriptedStream() override {
+        close();
+        if (biasTeeEnabled) {
+            TestScript().record("biastee:false");
+        }
+        TestScript().record("close");
+    }
+
+    Radio::Device::Capture read(std::span<CF32> samples, const std::chrono::milliseconds) override {
+        return scene.produce(samples, generation(), running, appliedSettings.frequency,
+                             appliedSettings.sampleRate);
+    }
+
+ protected:
+    Result apply(const Settings& settings) override {
+        const auto call = jst::fmt::format("configure:{:.0f}", settings.frequency / 1e6);
+        TestScript().record(call);
+        if (TestScript().fails("configure") || TestScript().fails(call)) {
+            return Result::ERROR;
+        }
+        if (settings.biasTee != biasTeeEnabled) {
+            TestScript().record(settings.biasTee ? "biastee:true" : "biastee:false");
+            biasTeeEnabled = settings.biasTee;
+        }
+        requestedSettings = settings;
+        appliedSettings.frequency = settings.frequency + TestScript().frequencyOffset;
+        appliedSettings.sampleRate = settings.sampleRate + TestScript().rateOffset;
+        appliedSettings.antenna = settings.antenna;
+        appliedSettings.automaticGain = settings.automaticGain;
+        appliedSettings.gain = resolveGain(settings.gain, appliedSettings.gainRange);
+        appliedSettings.biasTee = settings.biasTee;
+        return Result::SUCCESS;
+    }
+
+    Result open() override {
+        TestScript().record("start");
+        nextGeneration();
+        running = true;
+        return Result::SUCCESS;
+    }
+
+    void close() override {
+        if (running) {
+            TestScript().record("stop");
+        }
+        running = false;
+    }
+
+    // Frequency-only path, like the adapters: other settings stay applied.
+    Result tune(const F64 frequency) override {
+        const auto call = jst::fmt::format("tune:{:.0f}", frequency / 1e6);
+        TestScript().record(call);
+        nextGeneration();
+        if (TestScript().fails(call)) {
+            return Result::ERROR;
+        }
+        requestedSettings.frequency = frequency;
+        appliedSettings.frequency = frequency + TestScript().frequencyOffset;
+        return Result::SUCCESS;
     }
 
     Result setAutomaticGain(const bool automatic) override {
@@ -273,19 +292,112 @@ class ScriptedDevice final : public Radio::Device {
         return Result::SUCCESS;
     }
 
-    Result prepareSweep(const SweepRequest& request) override {
-        const auto call = jst::fmt::format("prepare:{}", request.dwell);
+ private:
+    ScriptedScene scene;
+    bool running = false;
+    bool biasTeeEnabled = false;
+};
+
+class ScriptedSweep final : public Radio::Sweep::Retune {
+ public:
+    explicit ScriptedSweep(const Radio::Device::Info& info) {
+        deviceInfo = info;
+        deviceCapabilities = ScriptedCapabilities();
+        appliedSettings.gainRange = Radio::Device::Range{0.0, 60.0};
+        defaultSettlingTime = 1.0e-3;
+        ++TestScript().opens;
+        TestScript().record("open");
+    }
+
+    ~ScriptedSweep() override {
+        close();
+        if (biasTeeEnabled) {
+            TestScript().record("biastee:false");
+        }
+        TestScript().record("close");
+    }
+
+ protected:
+    Result apply(const Settings& settings) override {
+        const auto call = jst::fmt::format("configure:{:.0f}", settings.sampleRate / 1e6);
+        TestScript().record(call);
+        if (TestScript().fails("configure") || TestScript().fails(call)) {
+            return Result::ERROR;
+        }
+        if (settings.biasTee != biasTeeEnabled) {
+            TestScript().record(settings.biasTee ? "biastee:true" : "biastee:false");
+            biasTeeEnabled = settings.biasTee;
+        }
+        requestedSettings = settings;
+        appliedSettings.sampleRate = settings.sampleRate + TestScript().rateOffset;
+        appliedSettings.antenna = settings.antenna;
+        appliedSettings.automaticGain = settings.automaticGain;
+        appliedSettings.gain = resolveGain(settings.gain, appliedSettings.gainRange);
+        appliedSettings.biasTee = settings.biasTee;
+        return Result::SUCCESS;
+    }
+
+    Result open() override {
+        const auto call = jst::fmt::format("prepare:{}", sweepRequest.dwell);
+        TestScript().record(call);
+        if (TestScript().fails(call) || sweepRequest.firmware) {
+            return Result::ERROR;
+        }
+        TestScript().record("start");
+        running = true;
+        return Result::SUCCESS;
+    }
+
+    void close() override {
+        if (running) {
+            TestScript().record("stop");
+        }
+        running = false;
+    }
+
+    Result tune(const U64 hop) override {
+        const F64 frequency = sweepRequest.frequencies[hop];
+        const auto call = jst::fmt::format("tune:{:.0f}", frequency / 1e6);
+        TestScript().record(call);
+        nextGeneration();
+        if (TestScript().fails(call)) {
+            return Result::ERROR;
+        }
+        tunedFrequency = frequency + TestScript().frequencyOffset;
+        return Result::SUCCESS;
+    }
+
+    Radio::Device::Capture read(std::span<CF32> samples, const std::chrono::milliseconds) override {
+        return scene.produce(samples, generation(), running, tunedFrequency,
+                             appliedSettings.sampleRate);
+    }
+
+    Result setAutomaticGain(const bool automatic) override {
+        const auto call = automatic ? "mode:true" : "mode:false";
         TestScript().record(call);
         if (TestScript().fails(call)) {
             return Result::ERROR;
         }
-        return Device::prepareSweep(request);
+        requestedSettings.automaticGain = automatic;
+        appliedSettings.automaticGain = automatic;
+        return Result::SUCCESS;
+    }
+
+    Result setGain(const F64 gain) override {
+        const auto call = jst::fmt::format("gain:{:.0f}", gain);
+        TestScript().record(call);
+        if (TestScript().fails(call)) {
+            return Result::ERROR;
+        }
+        requestedSettings.gain = gain;
+        appliedSettings.gain = resolveGain(gain, appliedSettings.gainRange);
+        return Result::SUCCESS;
     }
 
  private:
-    bool started = false;
+    ScriptedScene scene;
+    bool running = false;
     bool biasTeeEnabled = false;
-    U64 clock = 0;
 };
 
 inline Radio::Device::Driver ScriptedDriver() {
@@ -295,11 +407,18 @@ inline Radio::Device::Driver ScriptedDriver() {
             std::lock_guard lock(TestScript().mutex);
             return TestScript().devices;
         },
-        .create = [](const Radio::Device::Info& info, std::unique_ptr<Radio::Device>& device) {
+        .stream = [](const Radio::Device::Info& info, std::unique_ptr<Radio::Stream>& stream) {
             if (TestScript().fails("open")) {
                 return Result::ERROR;
             }
-            device = std::make_unique<ScriptedDevice>(info);
+            stream = std::make_unique<ScriptedStream>(info);
+            return Result::SUCCESS;
+        },
+        .sweep = [](const Radio::Device::Info& info, std::unique_ptr<Radio::Sweep>& sweep) {
+            if (TestScript().fails("open")) {
+                return Result::ERROR;
+            }
+            sweep = std::make_unique<ScriptedSweep>(info);
             return Result::SUCCESS;
         },
     };

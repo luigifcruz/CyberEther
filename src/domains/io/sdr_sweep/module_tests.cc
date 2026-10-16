@@ -13,9 +13,9 @@
 #include <vector>
 
 #include "domains/io/sdr/tools/samples.hh"
-#include "domains/io/sdr/devices/hackrf/sweep.hh"
-#include "domains/io/sdr/devices/hackrf/sweep_decoder.hh"
-#include "domains/io/sdr/devices/hackrf/transfer_queue.hh"
+#include "domains/io/sdr/devices/hackrf/tools/firmware.hh"
+#include "domains/io/sdr/devices/hackrf/tools/sweep_decoder.hh"
+#include "domains/io/sdr/devices/hackrf/tools/transfer_queue.hh"
 #include "flowgraph_fixture.hh"
 #include "jetstream/domains/core/multiply/module.hh"
 #include "jetstream/domains/dsp/amplitude/module.hh"
@@ -57,7 +57,7 @@ Radio::Device::Capabilities HackRfCaps() {
     auto caps = TestCaps();
     caps.sampleRateRanges = {{2.0e6, 20.0e6}};
     caps.sweepSampleRate = 20.0e6;
-    caps.firmwareSweep = Radio::HackRfSweep::Capability();
+    caps.firmwareSweep = Radio::HackRfFirmware::Capability();
     return caps;
 }
 
@@ -101,7 +101,7 @@ void Capture(Modules::Sweep::Assembler& assembler, const Modules::Sweep::Plan& p
              const std::vector<Tone>& tones, const std::vector<CF32>& noise = {}) {
     for (U64 hop = 0; hop < plan.hops.size(); ++hop) {
         const auto samples = HopCapture(plan, hop, tones, 7919 * hop + 101, noise);
-        const Radio::Device::SweepCapture capture{
+        const Radio::Sweep::Capture capture{
             .hop = hop,
             .frequency = plan.hops[hop].frequency,
             .samples = samples,
@@ -631,7 +631,7 @@ TEST_CASE("SDR Sweep firmware sweeps place HackRF bands on the output grid",
     // `[f, f + 5 MHz)` and the lower one at `[f + 10 MHz, f + 15 MHz)`.
     const U64 quarter = plan.segmentLength / 4;
     for (const auto& hop : plan.hops) {
-        const F64 header = hop.frequency - Radio::HackRfSweep::Offset;
+        const F64 header = hop.frequency - Radio::HackRfFirmware::Offset;
         const auto first = static_cast<U64>(std::llround((header - plan.startFrequency) / plan.binWidth));
         REQUIRE(hop.runs.size() == 2);
         REQUIRE(hop.runs[0] == Modules::Sweep::Plan::Run{
@@ -1415,7 +1415,7 @@ TEST_CASE_METHOD(ScriptedDrivers,
     const auto calls = TestScript().calls();
     REQUIRE(calls.size() == 3);
     REQUIRE(calls.front() == "open");
-    REQUIRE(calls[1].starts_with("start:"));
+    REQUIRE(calls[1].starts_with("configure:"));
     REQUIRE(calls.back() == "close");
 }
 
@@ -1503,7 +1503,7 @@ TEST_CASE_METHOD(ScriptedDrivers,
         config.endFrequency = 9.0e6;
     }
     SECTION("startup failure") {
-        TestScript().failAt = "start";
+        TestScript().failAt = "configure";
     }
     const auto module = BuildSweepModule();
     REQUIRE(module->create("test", config, {}) == Result::ERROR);
@@ -1518,7 +1518,7 @@ TEST_CASE_METHOD(ScriptedDrivers,
     REQUIRE(Modules::Sweep::Plan::Create({.startFrequency = config.startFrequency,
                                        .endFrequency = config.endFrequency,
                                        .resolution = config.resolution},
-                                      ScriptedDevice({}).capabilities(), plan) == Result::SUCCESS);
+                                      ScriptedCapabilities(), plan) == Result::SUCCESS);
     TestScript().reset();
     {
         std::lock_guard lock(TestScript().mutex);
@@ -1604,7 +1604,8 @@ TEST_CASE_METHOD(ScriptedDrivers,
             return call.starts_with(prefix);
         });
     };
-    REQUIRE(count("start:") == 1);
+    REQUIRE(count("configure:") == 1);
+    REQUIRE(count("start") == 1);
     REQUIRE(count("stop") == 1);
     REQUIRE(count("tune:") >= static_cast<I64>(3 * hops));
     REQUIRE(calls.end()[-2] == "stop");
@@ -1612,7 +1613,7 @@ TEST_CASE_METHOD(ScriptedDrivers,
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,
-                 "SDR Sweep live edits interrupt capture synchronously and preserve the receive session",
+                 "SDR Sweep live edits interrupt capture synchronously and keep the radio configured",
                  "[modules][sdr_sweep][reconfigure][control]") {
     TestScript().budget = 0;
     TestScript().readDelay = std::chrono::milliseconds(10);
@@ -1637,9 +1638,10 @@ TEST_CASE_METHOD(ScriptedDrivers,
     REQUIRE(std::count(calls.begin(), calls.end(), "gain:42") == 1);
     REQUIRE(std::count(calls.begin(), calls.end(), "prepare:2") == 1);
     REQUIRE(std::count_if(calls.begin(), calls.end(), [](const auto& call) {
-        return call.starts_with("start:");
+        return call.starts_with("configure:");
     }) == 1);
-    REQUIRE(std::count(calls.begin(), calls.end(), "stop") == 0);
+    REQUIRE(std::count(calls.begin(), calls.end(), "start") == 2);
+    REQUIRE(std::count(calls.begin(), calls.end(), "stop") == 1);
     REQUIRE(TestScript().concurrentChanges == 0);
 
     TestScript().budget = -1;
@@ -1826,7 +1828,7 @@ TEST_CASE_METHOD(ScriptedDrivers,
     // The radio applies 2.1 MS/s when asked for 2 MS/s.
     TestScript().rateOffset = 0.1e6;
     const auto config = ScriptedSweep();
-    auto caps = ScriptedDevice({}).capabilities();
+    auto caps = ScriptedCapabilities();
     const auto plan = RequirePlan({.startFrequency = config.startFrequency,
                                    .endFrequency = config.endFrequency,
                                    .sampleRate = 2.1e6,
@@ -2041,7 +2043,7 @@ std::vector<std::vector<I32>> DecodeSweeps(const std::vector<Radio::HackRfTransf
     decoder.configure(headers, 1, 4, TestBlockBytes, 0.0);
     std::vector<std::vector<I32>> sweeps;
     for (const auto& transfer : transfers) {
-        REQUIRE(decoder.decode(transfer, [&](const Radio::Device::SweepCapture& capture) {
+        REQUIRE(decoder.decode(transfer, [&](const Radio::Sweep::Capture& capture) {
             if (assembler.add(capture) == Result::SUCCESS && assembler.complete()) {
                 std::vector<I32> markers;
                 for (U64 hop = 0; hop < headers.size(); ++hop) {

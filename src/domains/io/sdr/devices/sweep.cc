@@ -1,7 +1,10 @@
-#include "device.hh"
+#include "sweep.hh"
+
+#include "../tools/samples.hh"
 
 #include <algorithm>
 #include <chrono>
+#include <limits>
 #include <new>
 
 #include "jetstream/logger.hh"
@@ -16,19 +19,132 @@ constexpr U64 MaxSweepFailures = 3;
 
 }  // namespace
 
-Result Device::prepareSweep(const SweepRequest& request) {
-    if (request.firmware) {
-        JST_ERROR("[SDR] Firmware sweeps are not supported by {}.", deviceInfo.label);
+const Device::Info& Sweep::info() const {
+    return deviceInfo;
+}
+
+const Device::Capabilities& Sweep::capabilities() const {
+    return deviceCapabilities;
+}
+
+const Sweep::Settings& Sweep::settings() const {
+    return requestedSettings;
+}
+
+const Sweep::Applied& Sweep::applied() const {
+    return appliedSettings;
+}
+
+const Sweep::Request& Sweep::request() const {
+    return sweepRequest;
+}
+
+Sweep::Statistics Sweep::statistics() const {
+    return {.failedHops = failedHops.load()};
+}
+
+F64 Sweep::resolveGain(const F64 gain, const std::optional<Device::Range>& range) const {
+    return range ? std::clamp(gain, range->minimum, range->maximum) : gain;
+}
+
+U64 Sweep::guard() const {
+    const F64 seconds = requestedSettings.settlingTime >= 0.0
+        ? requestedSettings.settlingTime
+        : defaultSettlingTime;
+    return GuardSamples(seconds, appliedSettings.sampleRate);
+}
+
+Result Sweep::configure(const Settings& settings) {
+    close();
+    JST_CHECK(apply(settings));
+    if (guard() == std::numeric_limits<U64>::max()) {
+        JST_ERROR("[SDR] Settling guard exceeds the sample count range.");
         return Result::ERROR;
     }
-    sweepRequest = request;
-    sweepPrepared = true;
     return Result::SUCCESS;
 }
 
-Result Device::captureHop(const U64 hop, std::span<CF32> samples, U64& segments,
-                          SweepCapture& capture, const SweepRunning& running) {
-    if (!sweepPrepared || hop >= sweepRequest.frequencies.size()) {
+Result Sweep::start(const Request& request) {
+    if (request.frequencies.empty() || request.captureLength == 0 || request.dwell == 0) {
+        JST_ERROR("[SDR] Sweep request on {} has no hops or no capture length.",
+                  deviceInfo.label);
+        return Result::ERROR;
+    }
+    if (request.firmware && !deviceCapabilities.firmwareSweep) {
+        JST_ERROR("[SDR] Firmware sweeps are not supported by {}.", deviceInfo.label);
+        return Result::ERROR;
+    }
+    close();
+    sweepRequest = request;
+    return open();
+}
+
+Result Sweep::setSettlingTime(const F64 settlingTime) {
+    const auto previous = requestedSettings.settlingTime;
+    requestedSettings.settlingTime = settlingTime;
+    if (guard() == std::numeric_limits<U64>::max()) {
+        requestedSettings.settlingTime = previous;
+        JST_ERROR("[SDR] Settling guard exceeds the sample count range.");
+        return Result::ERROR;
+    }
+    return Result::SUCCESS;
+}
+
+Result Sweep::update(const Settings& settings) {
+    const auto previous = requestedSettings;
+    const auto change = [&](const Settings& target) {
+        if (target.automaticGain != requestedSettings.automaticGain) {
+            JST_CHECK(setAutomaticGain(target.automaticGain));
+        }
+        if (target.gain != requestedSettings.gain ||
+            resolveGain(target.gain, appliedSettings.gainRange) != appliedSettings.gain) {
+            JST_CHECK(setGain(target.gain));
+        }
+        if (target.settlingTime != requestedSettings.settlingTime) {
+            JST_CHECK(setSettlingTime(target.settlingTime));
+        }
+        return Result::SUCCESS;
+    };
+    const auto result = change(settings);
+    if (result == Result::SUCCESS) {
+        return result;
+    }
+    const auto restored = [&] {
+        JST_CHECK(setAutomaticGain(previous.automaticGain));
+        JST_CHECK(setGain(previous.gain));
+        JST_CHECK(setSettlingTime(previous.settlingTime));
+        return Result::SUCCESS;
+    }();
+    if (restored != Result::SUCCESS) {
+        close();
+        JST_ERROR("[SDR] Failed to restore the previous sweep settings of {}. The sweep is "
+                  "stopped.", deviceInfo.label);
+        return Result::FATAL;
+    }
+    return result;
+}
+
+Result Sweep::fail(U64& failures) {
+    ++failedHops;
+    if (++failures < MaxSweepFailures) {
+        return Result::SUCCESS;
+    }
+    JST_ERROR("[SDR] Stopping the sweep on {} after {} failed hops in a row.",
+              deviceInfo.label, failures);
+    return Result::ERROR;
+}
+
+U64 Sweep::Retune::generation() const {
+    return currentGeneration.load();
+}
+
+U64 Sweep::Retune::nextGeneration() {
+    return ++currentGeneration;
+}
+
+Result Sweep::Retune::capture(const U64 hop, std::span<CF32> samples, U64& segments,
+                                      Capture& capture, const Running& running) {
+    if (hop >= sweepRequest.frequencies.size()) {
         JST_ERROR("[SDR] Sweep hop {} is not part of the prepared plan.", hop);
         return Result::ERROR;
     }
@@ -42,17 +158,16 @@ Result Device::captureHop(const U64 hop, std::span<CF32> samples, U64& segments,
     if (!running()) {
         return Result::YIELD;
     }
-    JST_CHECK(tuneHop(hop));
+    JST_CHECK(tune(hop));
 
     const U64 generation = this->generation();
     const auto timeout = std::chrono::milliseconds(100);
+    const F64 sampleRate = appliedSettings.sampleRate;
     U64 filled = segments * length;
     U64 discontinuities = 0;
     auto idleSince = std::chrono::steady_clock::now();
-    const F64 idleLimit = std::chrono::duration<F64>(StallTimeout).count() +
-        (appliedSettings.sampleRate > 0.0
-            ? static_cast<F64>(guardLength) / appliedSettings.sampleRate
-            : 0.0);
+    const F64 idleLimit = std::chrono::duration<F64>(Device::StallTimeout).count() +
+        (sampleRate > 0.0 ? static_cast<F64>(guard()) / sampleRate : 0.0);
     while (filled < required) {
         if (!running()) {
             return Result::YIELD;
@@ -61,19 +176,21 @@ Result Device::captureHop(const U64 hop, std::span<CF32> samples, U64& segments,
         const auto received = read(samples.subspan(filled, chunk), timeout);
         const auto now = std::chrono::steady_clock::now();
 
-        if (received.status == Status::Disconnected || received.status == Status::Failure) {
-            JST_ERROR("[SDR] Sweep capture failed on {}: {}", deviceInfo.label, received.error);
+        if (received.status == Device::Status::Disconnected ||
+            received.status == Device::Status::Failure) {
+            JST_ERROR("[SDR] Sweep capture failed on {}: {}", deviceInfo.label,
+                      received.error);
             return Result::FATAL;
         }
-        if (received.status == Status::Samples && received.generation != generation) {
+        if (received.status == Device::Status::Samples && received.generation != generation) {
             filled = segments * length;
-        } else if (received.status == Status::Samples && received.count > 0) {
+        } else if (received.status == Device::Status::Samples && received.count > 0) {
             filled += received.count;
             segments = filled / length;
             idleSince = now;
             continue;
         }
-        if (received.status == Status::Discontinuity) {
+        if (received.status == Device::Status::Discontinuity) {
             filled = segments * length;
             idleSince = now;
             if (++discontinuities > MaxHopDiscontinuities) {
@@ -92,35 +209,14 @@ Result Device::captureHop(const U64 hop, std::span<CF32> samples, U64& segments,
     }
 
     capture.hop = hop;
-    capture.frequency = appliedSettings.frequency;
+    capture.frequency = tunedFrequency;
     capture.samples = samples.first(required);
     return Result::SUCCESS;
 }
 
-Result Device::fail(U64& failures) {
-    {
-        std::lock_guard lock(statisticsMutex);
-        ++deviceStatistics.failedHops;
-    }
-    if (++failures < MaxSweepFailures) {
-        return Result::SUCCESS;
-    }
-    JST_ERROR("[SDR] Stopping the sweep on {} after {} failed hops in a row.", deviceInfo.label,
-              failures);
-    return Result::ERROR;
-}
-
-Result Device::tuneHop(const U64 hop) {
-    return tune(sweepRequest.frequencies[hop]);
-}
-
-Result Device::runSweep(const SweepRunning& running, const SweepSink& sink) {
-    if (!sweepPrepared || sweepRequest.firmware) {
-        JST_ERROR("[SDR] No sweep is prepared on {}.", deviceInfo.label);
-        return Result::ERROR;
-    }
+Result Sweep::Retune::run(const Running& running, const Sink& sink) {
     try {
-        sweepBuffer.assign(sweepRequest.captureLength * sweepRequest.dwell, CF32{});
+        buffer.assign(sweepRequest.captureLength * sweepRequest.dwell, CF32{});
     } catch (const std::bad_alloc&) {
         JST_ERROR("[SDR] Failed to allocate the sweep capture buffer.");
         return Result::ERROR;
@@ -130,21 +226,21 @@ Result Device::runSweep(const SweepRunning& running, const SweepSink& sink) {
     U64 segments = 0;
     U64 failures = 0;
     while (running()) {
-        SweepCapture capture;
-        const auto result = captureHop(hop, sweepBuffer, segments, capture, running);
-        if (result == Result::YIELD || !running()) {
+        Capture result;
+        const auto status = capture(hop, buffer, segments, result, running);
+        if (status == Result::YIELD || !running()) {
             break;
         }
-        if (result == Result::FATAL) {
+        if (status == Result::FATAL) {
             return Result::ERROR;
         }
-        if (result != Result::SUCCESS) {
+        if (status != Result::SUCCESS) {
             JST_CHECK(fail(failures));
             continue;
         }
         failures = 0;
         segments = 0;
-        if (!sink(capture)) {
+        if (!sink(result)) {
             return Result::SUCCESS;
         }
         hop = (hop + 1) % sweepRequest.frequencies.size();

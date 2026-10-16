@@ -1,11 +1,15 @@
 src_lst += files([
-    'sweep_buffer.cc',
+    'tools/sweep_buffer.cc',
 ])
 
 if cfg_lst.get('JETSTREAM_LOADER_PLUTOSDR_AVAILABLE', false)
-    src_lst += files('plutosdr.cc')
+    src_lst += files([
+        'enumerate.cc',
+        'stream.cc',
+        'sweep.cc',
+    ])
 endif
 
 module_test_lst += files([
-    'device_tests.cc',
+    'tests.cc',
 ])

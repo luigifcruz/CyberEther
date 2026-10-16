@@ -9,7 +9,7 @@
 #include <jetstream/detail/module_impl.hh>
 #include <jetstream/tools/snapshot.hh>
 
-#include "domains/io/sdr/devices/device.hh"
+#include "domains/io/sdr/devices/stream.hh"
 #include "domains/io/sdr/tools/stream_access.hh"
 #include "domains/io/sdr/tools/stream_buffer.hh"
 
@@ -35,7 +35,7 @@ struct JETSTREAM_API SdrImpl : public Module::Impl, public DynamicConfig<Sdr> {
     LossSnapshot getLoss() const;
     std::pair<F32, F32> getThroughput() const;
     std::vector<std::string> listAntennas() const;
-    Radio::Device::Applied getApplied() const;
+    Radio::Stream::Applied getApplied() const;
     std::optional<Radio::Device::Range> getGainRange() const;
 
  protected:
@@ -57,17 +57,17 @@ struct JETSTREAM_API SdrImpl : public Module::Impl, public DynamicConfig<Sdr> {
     Tools::Snapshot<std::pair<F32, F32>> throughput{{0.0f, 0.0f}};
     Tools::Snapshot<U64> deviceGaps{0};
     Tools::Snapshot<U64> deviceLostSamples{0};
-    Tools::Snapshot<Radio::Device::Applied> published;
+    Tools::Snapshot<Radio::Stream::Applied> published;
 
     Result receiveLoop();
     Result emitFrame();
     Result publishMetadata(const Radio::StreamBuffer::Metadata& metadata);
 
  private:
-    std::unique_ptr<Radio::Device> radio;
+    std::unique_ptr<Radio::Stream> radio;
     std::vector<std::string> antennas;
 
-    Radio::Device::Settings settingsOf(const Sdr& config) const;
+    Radio::Stream::Settings settingsOf(const Sdr& config) const;
     void resetStream();
     Result startReceiver();
     void stopReceiver();
