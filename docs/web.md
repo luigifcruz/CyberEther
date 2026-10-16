@@ -3,6 +3,7 @@ title: Web
 description: Run CyberEther inside a browser tab with nothing to install.
 order: 41
 category: Usage
+parent: platforms
 ---
 
 The web version is the same CyberEther compiled to WebAssembly and drawn with WebGPU. It is not a web frontend to a native process. The flowgraph, the scheduler, and the signal processing all run inside the browser tab, so there is nothing to install and nothing running on a server. It is the quickest way to try CyberEther, give a demo, or share a flowgraph with someone.
