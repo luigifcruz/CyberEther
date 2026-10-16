@@ -22,6 +22,7 @@ namespace Jetstream::Radio {
 namespace {
 
 using Status = Device::Status;
+using Clock = std::chrono::steady_clock;
 
 constexpr F32 Latency = 0.15f;
 constexpr F64 SettlingTime = 2.0e-3;
@@ -29,11 +30,13 @@ constexpr unsigned MaxGain = 73;
 constexpr U64 PacketSamples = 1360;
 constexpr U64 DrainSamples = 65536;
 constexpr U64 UsbTransfers = 16;
-
-using Clock = std::chrono::steady_clock;
+constexpr U32 FifoSamples = 1 << 20;
+constexpr F64 SweepSampleRate = 20.0e6;
+constexpr F64 MinCalibrationBandwidth = 2.5e6;
 
 std::chrono::milliseconds Remaining(const Clock::time_point deadline) {
-    const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - Clock::now());
+    const auto left =
+        std::chrono::duration_cast<std::chrono::milliseconds>(deadline - Clock::now());
     return std::max(left, std::chrono::milliseconds(1));
 }
 
@@ -55,10 +58,10 @@ class LimeSdrSweep final : public Sweep::Retune {
 
  private:
     void disconnect();
-    bool poll();
-    Result applyGain(F64 gain, bool force);
     Result setOscillator(F64 frequency, bool useCache);
     Result tuneOscillator(F64 frequency, bool useCache);
+    bool poll();
+    Result applyGain(F64 gain, bool force);
 
     lms_device_t* handle = nullptr;
     std::vector<int> antennaIndices;
@@ -120,7 +123,7 @@ Result LimeSdrSweep::connect(const Device::Info& info) {
     deviceInfo = info;
 
     if (LMS_Init(handle) != 0 || LMS_EnableChannel(handle, LMS_CH_RX, 0, true) != 0) {
-        JST_ERROR("[SDR_LIMESDR] Failed to initialize device: {}", LMS_GetLastErrorMessage());
+        JST_ERROR("[SDR_LIMESDR] Failed to initialize the device: {}", LMS_GetLastErrorMessage());
         return Result::ERROR;
     }
 
@@ -151,11 +154,13 @@ Result LimeSdrSweep::connect(const Device::Info& info) {
     }
     caps.automaticGain = false;
     caps.biasTee = false;
-    caps.sweepSampleRate = std::min(rate.max, 20.0e6);
+    caps.sweepSampleRate = std::min(rate.max, SweepSampleRate);
     caps.usableBandwidth = 0.8;
     caps.dcExclusion = 20.0e3;
     defaultSettlingTime = SettlingTime;
     appliedSettings.gainRange = Device::Range{0.0, static_cast<F64>(MaxGain)};
+
+    JST_DEBUG("[SDR_LIMESDR] Opened '{}' at {}.", info.label, match);
     return Result::SUCCESS;
 }
 
@@ -184,17 +189,20 @@ Result LimeSdrSweep::apply(const Settings& settings) {
     if (settings.automaticGain) {
         JST_WARN("[SDR_LIMESDR] LimeSDR has no automatic gain control. Using the manual gain.");
     }
+    if (settings.biasTee) {
+        JST_WARN("[SDR_LIMESDR] Bias-T is not supported by LimeSDR.");
+    }
 
     {
         std::lock_guard lock(LimeSdrLibrary::TuningMutex());
         if (LMS_SetSampleRate(handle, settings.sampleRate, 0) != 0) {
-            JST_ERROR("[SDR_LIMESDR] Failed to configure device: {}", LMS_GetLastErrorMessage());
+            JST_ERROR("[SDR_LIMESDR] Failed to set the sample rate: {}", LMS_GetLastErrorMessage());
             return Result::ERROR;
         }
         if (antenna != antennas.end() &&
             LMS_SetAntenna(handle, LMS_CH_RX, 0,
                            antennaIndices[antenna - antennas.begin()]) != 0) {
-            JST_ERROR("[SDR_LIMESDR] Failed to select antenna: {}", LMS_GetLastErrorMessage());
+            JST_ERROR("[SDR_LIMESDR] Failed to select the antenna: {}", LMS_GetLastErrorMessage());
             return Result::ERROR;
         }
         JST_CHECK(applyGain(settings.gain, true));
@@ -212,7 +220,8 @@ Result LimeSdrSweep::apply(const Settings& settings) {
     F64 hostRate = 0.0;
     F64 rfRate = 0.0;
     if (LMS_GetSampleRate(handle, LMS_CH_RX, 0, &hostRate, &rfRate) != 0) {
-        JST_ERROR("[SDR_LIMESDR] Failed to read back the applied settings.");
+        JST_ERROR("[SDR_LIMESDR] Failed to read back the sample rate: {}",
+                  LMS_GetLastErrorMessage());
         return Result::ERROR;
     }
 
@@ -221,9 +230,25 @@ Result LimeSdrSweep::apply(const Settings& settings) {
     appliedSettings.antenna = settings.antenna;
     appliedSettings.automaticGain = false;
     appliedSettings.biasTee = false;
+    return Result::SUCCESS;
+}
 
-    if (settings.biasTee) {
-        JST_WARN("[SDR_LIMESDR] Bias-T is not supported by LimeSDR.");
+Result LimeSdrSweep::setOscillator(const F64 frequency, const bool useCache) {
+    bool tuned = false;
+    {
+        std::lock_guard lock(LimeSdrLibrary::TuningMutex());
+        if (useCache) {
+            LMS_EnableCache(handle, true);
+        }
+        tuned = LMS_SetLOFrequency(handle, LMS_CH_RX, 0, frequency) == 0;
+        if (useCache) {
+            LMS_EnableCache(handle, false);
+        }
+    }
+    if (!tuned) {
+        JST_ERROR("[SDR_LIMESDR] Failed to tune to {:.3f} MHz: {}", frequency / 1e6,
+                  LMS_GetLastErrorMessage());
+        return Result::ERROR;
     }
     return Result::SUCCESS;
 }
@@ -240,31 +265,6 @@ Result LimeSdrSweep::tuneOscillator(const F64 frequency, const bool useCache) {
     return Result::SUCCESS;
 }
 
-Result LimeSdrSweep::tune(const U64 hop) {
-    if (!streaming) {
-        JST_ERROR("[SDR_LIMESDR] Cannot retune a stopped sweep.");
-        return Result::ERROR;
-    }
-    const bool useCache = cachedTuning && LimeSdrLibrary::OpenDevices() == 1;
-    JST_CHECK(tuneOscillator(sweepRequest.frequencies[hop], useCache));
-    queueGeneration = nextGeneration();
-
-    lms_stream_status_t status = {};
-    if (LMS_GetStreamStatus(&stream, &status) != 0) {
-        JST_ERROR("[SDR_LIMESDR] Failed to read the stream position after retuning.");
-        return Result::ERROR;
-    }
-    const U64 settle = guard();
-    const U64 margin = PacketSamples * (streamBatch * UsbTransfers + 2);
-    if (settle > std::numeric_limits<U64>::max() - margin ||
-        status.timestamp > std::numeric_limits<U64>::max() - margin - settle) {
-        JST_ERROR("[SDR_LIMESDR] Settling guard exceeds the hardware timestamp range.");
-        return Result::ERROR;
-    }
-    timestamps.retune(status.timestamp + margin + settle);
-    return Result::SUCCESS;
-}
-
 Result LimeSdrSweep::open() {
     if (streamReady || !handle) {
         const auto settings = requestedSettings;
@@ -278,10 +278,11 @@ Result LimeSdrSweep::open() {
     JST_CHECK(tuneOscillator(sweepRequest.frequencies.front(), false));
     if (!calibrated) {
         std::lock_guard lock(LimeSdrLibrary::TuningMutex());
-        const F64 bandwidth = std::max(requestedSettings.sampleRate, 2.5e6);
+        const F64 bandwidth = std::max(requestedSettings.sampleRate, MinCalibrationBandwidth);
         calibrated = LMS_Calibrate(handle, LMS_CH_RX, 0, bandwidth, 0) == 0;
         if (!calibrated) {
-            JST_WARN("[SDR_LIMESDR] Calibration failed: {}", LMS_GetLastErrorMessage());
+            JST_WARN("[SDR_LIMESDR] Failed to calibrate the receiver: {}",
+                     LMS_GetLastErrorMessage());
         }
     }
     const F64 sampleRate = appliedSettings.sampleRate;
@@ -295,7 +296,7 @@ Result LimeSdrSweep::open() {
         stream = {};
         stream.isTx = false;
         stream.channel = 0;
-        stream.fifoSize = 1 << 20;
+        stream.fifoSize = FifoSamples;
         stream.throughputVsLatency = Latency;
         stream.dataFmt = lms_stream_t::LMS_FMT_F32;
         if (LMS_SetupStream(handle, &stream) != 0) {
@@ -333,6 +334,31 @@ void LimeSdrSweep::close() {
     streaming = false;
 }
 
+Result LimeSdrSweep::tune(const U64 hop) {
+    if (!streaming) {
+        JST_ERROR("[SDR_LIMESDR] Cannot retune a stopped sweep.");
+        return Result::ERROR;
+    }
+    const bool useCache = cachedTuning && LimeSdrLibrary::OpenDevices() == 1;
+    JST_CHECK(tuneOscillator(sweepRequest.frequencies[hop], useCache));
+    queueGeneration = nextGeneration();
+
+    lms_stream_status_t status = {};
+    if (LMS_GetStreamStatus(&stream, &status) != 0) {
+        JST_ERROR("[SDR_LIMESDR] Failed to read the stream position after retuning.");
+        return Result::ERROR;
+    }
+    const U64 settle = guard();
+    const U64 margin = PacketSamples * (streamBatch * UsbTransfers + 2);
+    if (settle > std::numeric_limits<U64>::max() - margin ||
+        status.timestamp > std::numeric_limits<U64>::max() - margin - settle) {
+        JST_ERROR("[SDR_LIMESDR] Settling guard exceeds the hardware timestamp range.");
+        return Result::ERROR;
+    }
+    timestamps.retune(status.timestamp + margin + settle);
+    return Result::SUCCESS;
+}
+
 bool LimeSdrSweep::poll() {
     lms_stream_status_t status = {};
     if (LMS_GetStreamStatus(&stream, &status) != 0) {
@@ -349,7 +375,7 @@ bool LimeSdrSweep::poll() {
 }
 
 Device::Capture LimeSdrSweep::read(std::span<CF32> samples,
-                                              const std::chrono::milliseconds timeout) {
+                                   const std::chrono::milliseconds timeout) {
     const auto finish = [&](Device::Capture capture) {
         capture.generation = queueGeneration;
         capture.frequency = tunedFrequency;
@@ -360,7 +386,7 @@ Device::Capture LimeSdrSweep::read(std::span<CF32> samples,
     const auto receive = [&](CF32* data, const U64 count, lms_stream_meta_t& meta,
                              const std::chrono::milliseconds wait) {
         const int delivered = LMS_RecvStream(&stream, data, count, &meta,
-                                          static_cast<unsigned>(wait.count()));
+                                             static_cast<unsigned>(wait.count()));
         if (delivered > 0) {
             received = Clock::now();
         }
@@ -465,26 +491,6 @@ Result LimeSdrSweep::applyGain(const F64 gain, const bool force) {
         return Result::ERROR;
     }
     appliedSettings.gain = target;
-    return Result::SUCCESS;
-}
-
-Result LimeSdrSweep::setOscillator(const F64 frequency, const bool useCache) {
-    bool tuned = false;
-    {
-        std::lock_guard lock(LimeSdrLibrary::TuningMutex());
-        if (useCache) {
-            LMS_EnableCache(handle, true);
-        }
-        tuned = LMS_SetLOFrequency(handle, LMS_CH_RX, 0, frequency) == 0;
-        if (useCache) {
-            LMS_EnableCache(handle, false);
-        }
-    }
-    if (!tuned) {
-        JST_ERROR("[SDR_LIMESDR] Failed to tune to {:.3f} MHz: {}", frequency / 1e6,
-                  LMS_GetLastErrorMessage());
-        return Result::ERROR;
-    }
     return Result::SUCCESS;
 }
 

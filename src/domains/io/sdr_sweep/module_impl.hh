@@ -13,7 +13,7 @@
 
 #include "domains/io/sdr/devices/sweep.hh"
 #include "domains/io/sdr/tools/stream_access.hh"
-#include "domains/io/sdr_sweep/tools/sweep.hh"
+#include "domains/io/sdr_sweep/tools/sweep_plan.hh"
 
 namespace Jetstream::Modules {
 
@@ -48,7 +48,7 @@ struct JETSTREAM_API SdrSweepImpl : public Module::Impl, public DynamicConfig<Sd
     MetricSnapshot getMetrics(Clock::time_point now = Clock::now());
     std::vector<std::string> listAntennas() const;
     std::optional<Radio::Device::Range> getGainRange() const;
-    const Sweep::Plan& sweepPlan() const;
+    const Radio::SweepPlan& sweepPlan() const;
 
  protected:
     struct JETSTREAM_API MetricState {
@@ -108,15 +108,15 @@ struct JETSTREAM_API SdrSweepImpl : public Module::Impl, public DynamicConfig<Sd
     std::unique_ptr<Radio::Sweep> radio;
     std::vector<std::string> antennas;
     Radio::StreamAccess access;
-    Sweep::Plan plan;
+    Radio::SweepPlan plan;
     std::optional<Radio::Device::Range> gainRange;
-    Sweep::Assembler assembler;
+    Radio::SweepAssembler assembler;
     U64 instance = 0;
 
     Clock::time_point sweepStarted{};
     U64 sweepCounter = 0;
 
-    Result applyPlan(const Sweep::Plan& next, const Radio::Sweep::Settings& settings);
+    Result applyPlan(const Radio::SweepPlan& next, const Radio::Sweep::Settings& settings);
     Result startWorker();
     void stopWorker();
 };

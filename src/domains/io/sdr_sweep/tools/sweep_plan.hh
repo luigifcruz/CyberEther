@@ -1,23 +1,16 @@
-#ifndef JETSTREAM_DOMAINS_IO_SDR_SWEEP_TOOLS_SWEEP_HH
-#define JETSTREAM_DOMAINS_IO_SDR_SWEEP_TOOLS_SWEEP_HH
+#ifndef JETSTREAM_DOMAINS_IO_SDR_SWEEP_TOOLS_SWEEP_PLAN_HH
+#define JETSTREAM_DOMAINS_IO_SDR_SWEEP_TOOLS_SWEEP_PLAN_HH
 
+#include <memory>
 #include <span>
 #include <string>
 #include <vector>
 
 #include "domains/io/sdr/devices/sweep.hh"
 
-namespace Jetstream::Modules::Sweep {
+namespace Jetstream::Radio {
 
-constexpr U64 MaxOutputBins = U64{1} << 18;
-constexpr U64 MinOutputBins = 16;
-constexpr U64 MaxSegmentLength = U64{1} << 16;
-constexpr U64 MinSegmentLength = 16;
-constexpr U64 MaxHops = U64{1} << 16;
-constexpr U64 MaxDwell = 64;
-constexpr U64 MaxWorkingSetBytes = U64{256} << 20;
-
-struct JETSTREAM_API Plan {
+struct JETSTREAM_API SweepPlan {
     enum class Mode : U8 {
         Automatic,
         Retune,
@@ -47,6 +40,14 @@ struct JETSTREAM_API Plan {
         F64 settlingTime = 0.0;
     };
 
+    static constexpr U64 MaxOutputBins = U64{1} << 18;
+    static constexpr U64 MinOutputBins = 16;
+    static constexpr U64 MaxSegmentLength = U64{1} << 16;
+    static constexpr U64 MinSegmentLength = 16;
+    static constexpr U64 MaxHops = U64{1} << 16;
+    static constexpr U64 MaxDwell = 64;
+    static constexpr U64 MaxWorkingSetBytes = U64{256} << 20;
+
     Mode mode = Mode::Retune;
     F64 sampleRate = 0.0;
     U64 segmentLength = 0;
@@ -57,10 +58,9 @@ struct JETSTREAM_API Plan {
     std::vector<Hop> hops;
     std::vector<F32> weights;
 
-    static Result Create(const Request& request, const Radio::Device::Capabilities& capabilities,
-                         Plan& plan);
-    static Mode ResolveMode(const Request& request,
-                            const Radio::Device::Capabilities& capabilities);
+    static Result Create(const Request& request, const Device::Capabilities& capabilities,
+                         SweepPlan& plan);
+    static Mode ResolveMode(const Request& request, const Device::Capabilities& capabilities);
     static std::string ModeName(Mode mode);
 
     F64 endFrequency() const;
@@ -68,19 +68,19 @@ struct JETSTREAM_API Plan {
     F64 span() const;
     U64 captureSamples() const;
     U64 workingSetBytes() const;
-    Radio::Sweep::Request deviceRequest() const;
+    Sweep::Request radioRequest() const;
 };
 
-class JETSTREAM_API Assembler {
+class JETSTREAM_API SweepAssembler {
  public:
-    Assembler();
-    ~Assembler();
+    SweepAssembler();
+    ~SweepAssembler();
 
-    Result configure(const Plan& plan);
+    Result configure(const SweepPlan& plan);
 
     void begin();
 
-    Result add(const Radio::Sweep::Capture& capture);
+    Result add(const Sweep::Capture& capture);
 
     bool complete() const;
     U64 completedHops() const;
@@ -93,6 +93,6 @@ class JETSTREAM_API Assembler {
     std::unique_ptr<Impl> impl;
 };
 
-}  // namespace Jetstream::Modules::Sweep
+}  // namespace Jetstream::Radio
 
-#endif  // JETSTREAM_DOMAINS_IO_SDR_SWEEP_TOOLS_SWEEP_HH
+#endif  // JETSTREAM_DOMAINS_IO_SDR_SWEEP_TOOLS_SWEEP_PLAN_HH

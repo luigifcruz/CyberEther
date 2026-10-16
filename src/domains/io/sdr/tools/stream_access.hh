@@ -46,6 +46,6 @@ class StreamAccess {
     std::atomic<unsigned> changes{0};
 };
 
-}
+}  // namespace Jetstream::Radio
 
-#endif
+#endif  // JETSTREAM_DOMAINS_IO_SDR_TOOLS_STREAM_ACCESS_HH

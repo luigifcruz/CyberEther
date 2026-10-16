@@ -7,8 +7,8 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
-#include <limits>
 #include <condition_variable>
+#include <limits>
 #include <mutex>
 #include <thread>
 
@@ -81,6 +81,7 @@ class RtlSdrStream final : public Stream {
  private:
     static void Callback(unsigned char* buffer, uint32_t length, void* context);
 
+    Result setFrequency(F64 frequency);
     Result applyGainMode(bool automatic, F64 gain);
     Result applyGain(F64 gain, bool force);
 
@@ -90,7 +91,7 @@ class RtlSdrStream final : public Stream {
     CaptureQueue queue;
     std::thread worker;
     std::atomic<bool> stopping{false};
-    std::atomic<U64> streamGeneration{0};
+    std::atomic<U64> queueGeneration{0};
     std::mutex finishedMutex;
     std::condition_variable finishedCondition;
     bool finished = true;
@@ -175,10 +176,7 @@ Result RtlSdrStream::apply(const Settings& settings) {
         JST_ERROR("[SDR_RTLSDR] Failed to set the sample rate.");
         return Result::ERROR;
     }
-    if (rtlsdr_set_center_freq(handle, static_cast<U32>(std::llround(settings.frequency))) < 0) {
-        JST_ERROR("[SDR_RTLSDR] Failed to tune to {:.3f} MHz.", settings.frequency / 1e6);
-        return Result::ERROR;
-    }
+    JST_CHECK(setFrequency(settings.frequency));
 
     JST_CHECK(applyGainMode(settings.automaticGain, settings.gain));
 
@@ -190,15 +188,8 @@ Result RtlSdrStream::apply(const Settings& settings) {
         biasTeeEnabled = settings.biasTee;
     }
 
-    const U32 actual = rtlsdr_get_center_freq(handle);
-    if (actual == 0) {
-        JST_ERROR("[SDR_RTLSDR] Failed to read back the tuned frequency.");
-        return Result::ERROR;
-    }
-
     requestedSettings = settings;
     appliedSettings.sampleRate = rtlsdr_get_sample_rate(handle);
-    appliedSettings.frequency = actual;
     appliedSettings.antenna.clear();
     appliedSettings.automaticGain = settings.automaticGain;
     appliedSettings.biasTee = settings.biasTee;
@@ -211,7 +202,7 @@ void RtlSdrStream::Callback(unsigned char* buffer, const uint32_t length, void* 
         return;
     }
     const U8* data = buffer;
-    stream->queue.push(stream->streamGeneration, length / 2,
+    stream->queue.push(stream->queueGeneration, length / 2,
                        [data](CF32* output, const U64 offset, const U64 count) {
                            ConvertU8(data + offset * 2, output, count);
                        });
@@ -228,8 +219,8 @@ Result RtlSdrStream::open() {
     const U64 capacity = std::max<U64>(static_cast<U64>(sampleRate / 2.0),
                                        static_cast<U64>(transferBytes) * InFlightTransfers);
     JST_CHECK(queue.resize(capacity));
-    streamGeneration = nextGeneration();
-    queue.reset(streamGeneration, guard(), appliedSettings.frequency, sampleRate);
+    queueGeneration = nextGeneration();
+    queue.reset(queueGeneration, guard(), appliedSettings.frequency, sampleRate);
 
     finished = false;
     try {
@@ -269,7 +260,7 @@ void RtlSdrStream::close() {
     queue.close();
 }
 
-Result RtlSdrStream::tune(const F64 frequency) {
+Result RtlSdrStream::setFrequency(const F64 frequency) {
     if (rtlsdr_set_center_freq(handle, static_cast<U32>(std::llround(frequency))) < 0) {
         JST_ERROR("[SDR_RTLSDR] Failed to tune to {:.3f} MHz.", frequency / 1e6);
         return Result::ERROR;
@@ -279,13 +270,18 @@ Result RtlSdrStream::tune(const F64 frequency) {
         JST_ERROR("[SDR_RTLSDR] Failed to read back the tuned frequency.");
         return Result::ERROR;
     }
-    requestedSettings.frequency = frequency;
     appliedSettings.frequency = actual;
+    return Result::SUCCESS;
+}
+
+Result RtlSdrStream::tune(const F64 frequency) {
+    JST_CHECK(setFrequency(frequency));
+    requestedSettings.frequency = frequency;
     if (!worker.joinable()) {
         return Result::SUCCESS;
     }
-    streamGeneration = nextGeneration();
-    queue.retune(streamGeneration, InFlightTransfers, guard(), appliedSettings.frequency);
+    queueGeneration = nextGeneration();
+    queue.retune(queueGeneration, InFlightTransfers, guard(), appliedSettings.frequency);
     return Result::SUCCESS;
 }
 

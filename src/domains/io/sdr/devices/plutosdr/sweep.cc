@@ -1,16 +1,16 @@
 #include "base.hh"
-#include "tools/sweep_buffer.hh"
+#include "tools/sweep_layout.hh"
 
 #include "../sweep.hh"
 #include "../../tools/samples.hh"
 
 #include <algorithm>
-#include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <cmath>
-#include <limits>
 #include <cstdio>
+#include <exception>
+#include <limits>
 #include <optional>
 #include <string>
 #include <thread>
@@ -25,8 +25,19 @@ namespace Jetstream::Radio {
 
 namespace {
 
+using Clock = std::chrono::steady_clock;
+
 constexpr const char* ScanFilter = "usb=0456:b673";
 constexpr F32 Q11Scale = 2048.0f;
+constexpr F64 SettlingTime = 1.0e-3;
+constexpr F64 SweepSampleRate = 20.0e6;
+constexpr F64 MinBandwidth = 200.0e3;
+constexpr F64 MaxBandwidth = 56.0e6;
+constexpr unsigned long RangeSampleRate = 3000000;
+constexpr F64 FirDecimation = 4.0;
+constexpr unsigned ContextTimeout = 2000;
+constexpr auto SettlePollInterval = std::chrono::duration<F64>(0.01);
+constexpr unsigned KernelBuffers = 1;
 
 struct Board {
     std::string uri;
@@ -66,14 +77,6 @@ std::vector<Board> Scan() {
     return boards;
 }
 
-constexpr F64 SettlingTime = 1.0e-3;
-constexpr F64 SweepSampleRate = 20.0e6;
-constexpr F64 MinBandwidth = 200.0e3;
-constexpr F64 MaxBandwidth = 56.0e6;
-constexpr unsigned long RangeSampleRate = 3000000;
-constexpr F64 FirDecimation = 4.0;
-constexpr unsigned ContextTimeout = 2000;
-
 U64 GainBand(const F64 frequency) {
     return frequency <= 1.3e9 ? 0 : frequency <= 4.0e9 ? 1 : 2;
 }
@@ -91,9 +94,6 @@ std::optional<Device::Range> ReadRange(const iio_channel* channel, const char* a
     }
     return Device::Range{minimum, maximum};
 }
-
-constexpr auto SettlePollInterval = std::chrono::duration<F64>(0.01);
-constexpr unsigned SweepKernelBuffers = 1;
 
 class PlutoSdrSweep final : public Sweep {
  public:
@@ -113,7 +113,7 @@ class PlutoSdrSweep final : public Sweep {
  private:
     Result write(const char* attribute, long long value, const char* what);
     Result configureStreamRate();
-    Result setOscillator(F64 frequency);
+    Result tuneOscillator(F64 frequency);
     Result retune(F64 frequency);
     Result refreshGainRange();
     Result applyGainMode(bool automatic, F64 gain);
@@ -125,7 +125,7 @@ class PlutoSdrSweep final : public Sweep {
     iio_channel* control = nullptr;
     iio_channel* oscillator = nullptr;
     iio_channel* inPhase = nullptr;
-    std::optional<PlutoSweepBufferLayout> layout;
+    std::optional<PlutoSdrSweepLayout> layout;
     F64 tunedFrequency = 0.0;
 };
 
@@ -249,7 +249,7 @@ Result PlutoSdrSweep::apply(const Settings& settings) {
     return Result::SUCCESS;
 }
 
-Result PlutoSdrSweep::setOscillator(const F64 frequency) {
+Result PlutoSdrSweep::tuneOscillator(const F64 frequency) {
     const auto target = std::llround(frequency);
     if (const int status = iio_channel_attr_write_longlong(oscillator, "frequency", target);
         status < 0) {
@@ -271,7 +271,7 @@ Result PlutoSdrSweep::retune(const F64 frequency) {
     if (GainBand(frequency) != GainBand(tunedFrequency)) {
         appliedSettings.gainRange.reset();
     }
-    JST_CHECK(setOscillator(frequency));
+    JST_CHECK(tuneOscillator(frequency));
     if (!appliedSettings.gainRange) {
         JST_CHECK(refreshGainRange());
         if (const auto result = applyGain(requestedSettings.gain, true);
@@ -284,7 +284,7 @@ Result PlutoSdrSweep::retune(const F64 frequency) {
 }
 
 Result PlutoSdrSweep::open() {
-    layout = PlutoSweepBufferLayout::Create(sweepRequest.captureLength, sweepRequest.dwell);
+    layout = PlutoSdrSweepLayout::Create(sweepRequest.captureLength, sweepRequest.dwell);
     if (!layout || appliedSettings.sampleRate <= 0.0) {
         JST_ERROR("[SDR_PLUTOSDR] Invalid sweep capture size or sample rate.");
         return Result::ERROR;
@@ -312,18 +312,16 @@ Result PlutoSdrSweep::run(const Running& running, const Sink& sink) {
         return Result::ERROR;
     }
 
-    if (const int status = iio_device_set_kernel_buffers_count(receiver, SweepKernelBuffers);
+    if (const int status = iio_device_set_kernel_buffers_count(receiver, KernelBuffers);
         status < 0) {
-        JST_ERROR("[SDR_PLUTOSDR] Failed to set the sweep buffer count: {}",
-                  ErrorText(status));
+        JST_ERROR("[SDR_PLUTOSDR] Failed to set the sweep buffer count: {}", ErrorText(status));
         return Result::ERROR;
     }
     std::unique_ptr<iio_buffer, decltype(&iio_buffer_destroy)> buffer(
         iio_device_create_buffer(receiver, layout->transferSamples, false),
         &iio_buffer_destroy);
     if (!buffer) {
-        JST_ERROR("[SDR_PLUTOSDR] Failed to create the sweep buffer: {}",
-                  ErrorText(errno));
+        JST_ERROR("[SDR_PLUTOSDR] Failed to create the sweep buffer: {}", ErrorText(errno));
         return Result::ERROR;
     }
     if (iio_buffer_step(buffer.get()) != 2 * sizeof(I16)) {
@@ -331,7 +329,6 @@ Result PlutoSdrSweep::run(const Running& running, const Sink& sink) {
         return Result::ERROR;
     }
 
-    using Clock = std::chrono::steady_clock;
     U64 hop = 0;
     U64 failures = 0;
     while (running()) {
@@ -347,12 +344,11 @@ Result PlutoSdrSweep::run(const Running& running, const Sink& sink) {
             std::this_thread::sleep_for(std::min(remaining, SettlePollInterval));
         }
         U64 filled = 0;
-        unsigned discard = SweepKernelBuffers + 1;
+        unsigned discard = KernelBuffers + 1;
         while (running() && filled < required) {
             const auto bytes = iio_buffer_refill(buffer.get());
             if (bytes < 0) {
-                JST_ERROR("[SDR_PLUTOSDR] Sweep reception stopped: {}",
-                          ErrorText(bytes));
+                JST_ERROR("[SDR_PLUTOSDR] Sweep reception stopped: {}", ErrorText(bytes));
                 return Result::ERROR;
             }
             if (discard > 0) {

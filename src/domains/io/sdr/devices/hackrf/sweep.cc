@@ -10,8 +10,11 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <chrono>
 #include <limits>
 #include <mutex>
+#include <utility>
+#include <vector>
 
 #include <hackrf.h>
 
@@ -71,17 +74,17 @@ class HackRfSweep final : public Sweep::Retune {
 
     Result setFrequency(F64 frequency);
     Result setSampleRate(F64 sampleRate);
+    Result applyGain(F64 gain, bool force);
     Result prepareFirmware();
     Result runFirmware(const Running& running, const Sink& sink);
-    Result applyGain(F64 gain, bool force);
 
     hackrf_device* handle = nullptr;
     bool biasTeeEnabled = false;
     bool streaming = false;
     CaptureQueue queue;
     std::atomic<U64> queueGeneration{0};
-    HackRfFirmware::Range range;
-    std::vector<U64> headers;
+    HackRfFirmware::Range firmwareRange;
+    std::vector<U64> firmwareHeaders;
     HackRfTransferQueue transfers{BlockQueueDepth};
 };
 
@@ -162,9 +165,9 @@ int HackRfSweep::Callback(hackrf_transfer* transfer) {
     auto* sweep = static_cast<HackRfSweep*>(transfer->rx_ctx);
     const auto* data = reinterpret_cast<const I8*>(transfer->buffer);
     sweep->queue.push(sweep->queueGeneration, static_cast<U64>(transfer->valid_length) / 2,
-                       [data](CF32* output, const U64 offset, const U64 count) {
-                           ConvertI8(data + offset * 2, output, count);
-                       });
+                      [data](CF32* output, const U64 offset, const U64 count) {
+                          ConvertI8(data + offset * 2, output, count);
+                      });
     return 0;
 }
 
@@ -224,7 +227,7 @@ Result HackRfSweep::tune(const U64 hop) {
 }
 
 Device::Capture HackRfSweep::read(std::span<CF32> samples,
-                                   const std::chrono::milliseconds timeout) {
+                                  const std::chrono::milliseconds timeout) {
     auto capture = queue.pop(samples, timeout);
     if (capture.status == Device::Status::Timeout && streaming &&
         hackrf_is_streaming(handle) != HACKRF_TRUE) {
@@ -309,8 +312,8 @@ Result HackRfSweep::prepareFirmware() {
             return Result::ERROR;
         }
     }
-    range = *snapped;
-    headers = HackRfFirmware::Headers(range);
+    firmwareRange = *snapped;
+    firmwareHeaders = HackRfFirmware::Headers(firmwareRange);
     return Result::SUCCESS;
 }
 
@@ -326,8 +329,8 @@ Result HackRfSweep::runFirmware(const Running& running, const Sink& sink) {
     JST_CHECK(setSampleRate(HackRfFirmware::SampleRate));
     JST_CHECK(applyGain(requestedSettings.gain, true));
 
-    const uint16_t ranges[2] = {static_cast<uint16_t>(range.start),
-                                static_cast<uint16_t>(range.end)};
+    const U16 ranges[2] = {static_cast<U16>(firmwareRange.start),
+                           static_cast<U16>(firmwareRange.end)};
     if (hackrf_init_sweep(handle, ranges, 1,
                           static_cast<U32>(request.dwell * HackRfFirmware::BlockBytes),
                           static_cast<U32>(HackRfFirmware::StepWidth),
@@ -338,8 +341,8 @@ Result HackRfSweep::runFirmware(const Running& running, const Sink& sink) {
     }
 
     HackRfSweepDecoder decoder;
-    decoder.configure(headers, request.dwell, request.captureLength, HackRfFirmware::BlockBytes,
-                      HackRfFirmware::Offset);
+    decoder.configure(firmwareHeaders, request.dwell, request.captureLength,
+                      HackRfFirmware::BlockBytes, HackRfFirmware::Offset);
     transfers.clear();
 
     if (hackrf_start_rx_sweep(handle, &HackRfSweep::FirmwareCallback, this) != HACKRF_SUCCESS) {

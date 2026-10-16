@@ -1,7 +1,7 @@
 #define POCKETFFT_NO_MULTITHREADING
 #include "domains/dsp/fft/pocketfft.hh"
 
-#include "sweep.hh"
+#include "sweep_plan.hh"
 
 #include <algorithm>
 #include <cmath>
@@ -10,18 +10,18 @@
 
 #include "jetstream/logger.hh"
 
-namespace Jetstream::Modules::Sweep {
+namespace Jetstream::Radio {
 
 namespace {
 
-using Mode = Plan::Mode;
-using Run = Plan::Run;
-using Hop = Plan::Hop;
-using Request = Plan::Request;
-using Capabilities = Radio::Device::Capabilities;
-using FirmwareSweep = Radio::Device::Firmware;
-using SweepLayout = Radio::Device::Layout;
-using Range = Radio::Device::Range;
+using Mode = SweepPlan::Mode;
+using Run = SweepPlan::Run;
+using Hop = SweepPlan::Hop;
+using Request = SweepPlan::Request;
+using Capabilities = Device::Capabilities;
+using FirmwareSweep = Device::Firmware;
+using SweepLayout = Device::Layout;
+using Range = Device::Range;
 
 constexpr F64 BinTolerance = 0.05;
 constexpr U64 BlackmanGuardBins = 3;
@@ -44,7 +44,7 @@ void AddRun(Hop& hop, const I64 grid, const U64 segment, const U64 length, const
     }
 }
 
-Result CheckCoverage(const Plan& plan) {
+Result CheckCoverage(const SweepPlan& plan) {
     std::vector<F64> coverage(plan.outputBins, 0.0);
     for (const auto& hop : plan.hops) {
         for (const auto& run : hop.runs) {
@@ -63,12 +63,12 @@ Result CheckCoverage(const Plan& plan) {
 Result CheckOutputBins(const std::optional<U64> bins, const F64 needed) {
     if (!bins) {
         JST_ERROR("[MODULE_SDR_SWEEP] The sweep needs {:.3g} bins, above the limit of {}. Narrow the span "
-                  "or use a coarser resolution.", needed, MaxOutputBins);
+                  "or use a coarser resolution.", needed, SweepPlan::MaxOutputBins);
         return Result::ERROR;
     }
-    if (*bins < MinOutputBins) {
+    if (*bins < SweepPlan::MinOutputBins) {
         JST_ERROR("[MODULE_SDR_SWEEP] The sweep has only {} bins. Widen the span or use a finer "
-                  "resolution to get at least {}.", *bins, MinOutputBins);
+                  "resolution to get at least {}.", *bins, SweepPlan::MinOutputBins);
         return Result::ERROR;
     }
     return Result::SUCCESS;
@@ -93,11 +93,12 @@ struct Lengths {
 
 std::optional<U64> CaptureLength(const Request& request, const F64 rate, const F64 span,
                                 const U64 maximum, const Lengths& lengths) {
-    const U64 limit = std::min(maximum, MaxSegmentLength);
+    const U64 limit = std::min(maximum, SweepPlan::MaxSegmentLength);
     const U64 units = lengths.count(limit);
     const auto enough = [&](const U64 length) {
         const F64 bins = span / (rate / static_cast<F64>(length));
-        return length >= MinSegmentLength && std::ceil(bins - 1e-9) >= MinOutputBins;
+        return length >= SweepPlan::MinSegmentLength &&
+               std::ceil(bins - 1e-9) >= SweepPlan::MinOutputBins;
     };
     if (units == 0 || !enough(lengths.at(units))) {
         return std::nullopt;
@@ -116,11 +117,12 @@ std::optional<U64> CaptureLength(const Request& request, const F64 rate, const F
     U64 desired = requested ? lengths.above(*requested) : lengths.at(units);
     desired = std::max(desired, lengths.at(first));
     const auto fits = [&](const U64 length) {
-        const auto bins = CeilDiv(span, rate / static_cast<F64>(length), MaxOutputBins);
+        const auto bins = CeilDiv(span, rate / static_cast<F64>(length),
+                                  SweepPlan::MaxOutputBins);
         return bins && sizeof(CF32) * (length * (request.dwell + 4) + 6 * *bins) <=
-                       MaxWorkingSetBytes;
+                       SweepPlan::MaxWorkingSetBytes;
     };
-    if (desired >= MinSegmentLength && desired <= limit && fits(desired)) {
+    if (desired >= SweepPlan::MinSegmentLength && desired <= limit && fits(desired)) {
         return desired;
     }
 
@@ -149,7 +151,7 @@ std::optional<U64> FirmwareCaptureLength(const Request& request, const FirmwareS
                          {.base = sweep.captureBase, .step = sweep.captureStep});
 }
 
-Result PlanRetune(const Request& request, const Capabilities& caps, Plan& plan,
+Result PlanRetune(const Request& request, const Capabilities& caps, SweepPlan& plan,
                   const bool quiet = false) {
     const F64 sampleRate = request.sampleRate > 0.0 ? request.sampleRate : caps.sweepSampleRate;
     if (!Range::Contains(caps.sampleRateRanges, sampleRate)) {
@@ -162,12 +164,13 @@ Result PlanRetune(const Request& request, const Capabilities& caps, Plan& plan,
 
     const auto segment = CaptureLength(request, sampleRate,
                                        request.endFrequency - request.startFrequency,
-                                       MaxSegmentLength, {});
-    if (!segment || *segment < MinSegmentLength) {
+                                       SweepPlan::MaxSegmentLength, {});
+    if (!segment || *segment < SweepPlan::MinSegmentLength) {
         if (!quiet) {
             JST_ERROR("[MODULE_SDR_SWEEP] A resolution of {:.3g} Hz at {:.3f} MS/s needs {:.3g}-point captures, "
                       "outside {} to {}.", request.resolution, sampleRate / 1e6,
-                      sampleRate / request.resolution, MinSegmentLength, MaxSegmentLength);
+                      sampleRate / request.resolution, SweepPlan::MinSegmentLength,
+                      SweepPlan::MaxSegmentLength);
         }
         return Result::ERROR;
     }
@@ -189,10 +192,10 @@ Result PlanRetune(const Request& request, const Capabilities& caps, Plan& plan,
     }
 
     const auto stitched = CeilDiv(request.endFrequency - request.startFrequency, binWidth,
-                                  MaxOutputBins);
+                                  SweepPlan::MaxOutputBins);
     if (!quiet) {
         JST_CHECK(CheckOutputBins(stitched, (request.endFrequency - request.startFrequency) / binWidth));
-    } else if (!stitched || *stitched < MinOutputBins) {
+    } else if (!stitched || *stitched < SweepPlan::MinOutputBins) {
         return Result::ERROR;
     }
 
@@ -217,9 +220,10 @@ Result PlanRetune(const Request& request, const Capabilities& caps, Plan& plan,
     std::vector<char> covered(bins, 0);
     U64 first = 0;
     for (I64 grid = half; first < bins; grid += step) {
-        if (plan.hops.size() >= MaxHops) {
+        if (plan.hops.size() >= SweepPlan::MaxHops) {
             if (!quiet) {
-                JST_ERROR("[MODULE_SDR_SWEEP] The sweep needs more than {} hops.", MaxHops);
+                JST_ERROR("[MODULE_SDR_SWEEP] The sweep needs more than {} hops.",
+                          SweepPlan::MaxHops);
             }
             return Result::ERROR;
         }
@@ -245,7 +249,7 @@ Result PlanRetune(const Request& request, const Capabilities& caps, Plan& plan,
     return CheckCoverage(plan);
 }
 
-Result PlanFirmware(const Request& request, const Capabilities& caps, Plan& plan) {
+Result PlanFirmware(const Request& request, const Capabilities& caps, SweepPlan& plan) {
     const auto& sweep = *caps.firmwareSweep;
     if (request.sampleRate > 0.0 && request.sampleRate != sweep.sampleRate) {
         JST_ERROR("[MODULE_SDR_SWEEP] Firmware sweeps capture at {:.0f} MS/s. Set Capture Rate to 0 or "
@@ -271,7 +275,7 @@ Result PlanFirmware(const Request& request, const Capabilities& caps, Plan& plan
     }
     const F64 span = layout.endFrequency - layout.startFrequency;
     const F64 binWidth = sweep.sampleRate / static_cast<F64>(length);
-    const auto bins = CeilDiv(span, binWidth, MaxOutputBins);
+    const auto bins = CeilDiv(span, binWidth, SweepPlan::MaxOutputBins);
     JST_CHECK(CheckOutputBins(bins, span / binWidth));
 
     plan.sampleRate = sweep.sampleRate;
@@ -304,7 +308,7 @@ Result PlanFirmware(const Request& request, const Capabilities& caps, Plan& plan
 
 }  // namespace
 
-std::string Plan::ModeName(const Mode mode) {
+std::string SweepPlan::ModeName(const Mode mode) {
     switch (mode) {
         case Mode::Automatic: return "auto";
         case Mode::Retune:    return "retune";
@@ -313,23 +317,23 @@ std::string Plan::ModeName(const Mode mode) {
     return "unknown";
 }
 
-F64 Plan::endFrequency() const {
+F64 SweepPlan::endFrequency() const {
     return startFrequency + span();
 }
 
-F64 Plan::centerFrequency() const {
+F64 SweepPlan::centerFrequency() const {
     return startFrequency + (static_cast<F64>(outputBins / 2) + 0.5) * binWidth;
 }
 
-F64 Plan::span() const {
+F64 SweepPlan::span() const {
     return static_cast<F64>(outputBins) * binWidth;
 }
 
-U64 Plan::captureSamples() const {
+U64 SweepPlan::captureSamples() const {
     return segmentLength * dwell;
 }
 
-U64 Plan::workingSetBytes() const {
+U64 SweepPlan::workingSetBytes() const {
     U64 runs = 0;
     for (const auto& hop : hops) {
         runs += hop.runs.size();
@@ -338,8 +342,8 @@ U64 Plan::workingSetBytes() const {
            sizeof(Hop) * hops.size() + sizeof(Run) * runs;
 }
 
-Radio::Sweep::Request Plan::deviceRequest() const {
-    Radio::Sweep::Request request;
+Sweep::Request SweepPlan::radioRequest() const {
+    Sweep::Request request;
     request.firmware = mode == Mode::Firmware;
     request.sampleRate = sampleRate;
     request.captureLength = segmentLength;
@@ -352,7 +356,7 @@ Radio::Sweep::Request Plan::deviceRequest() const {
     return request;
 }
 
-Plan::Mode Plan::ResolveMode(const Request& request, const Capabilities& caps) {
+SweepPlan::Mode SweepPlan::ResolveMode(const Request& request, const Capabilities& caps) {
     if (request.mode != Mode::Automatic) {
         return request.mode;
     }
@@ -369,7 +373,7 @@ Plan::Mode Plan::ResolveMode(const Request& request, const Capabilities& caps) {
         }
         if (rate && fits && request.settlingTime == 0.0 && request.dwell <= sweep.maxDwell) {
             if (!meetsTarget) {
-                Plan retune;
+                SweepPlan retune;
                 retune.dwell = request.dwell;
                 if (PlanRetune(request, caps, retune, true) == Result::SUCCESS &&
                     retune.binWidth <= request.resolution) {
@@ -382,7 +386,7 @@ Plan::Mode Plan::ResolveMode(const Request& request, const Capabilities& caps) {
     return Mode::Retune;
 }
 
-Result Plan::Create(const Request& request, const Capabilities& caps, Plan& plan) {
+Result SweepPlan::Create(const Request& request, const Capabilities& caps, SweepPlan& plan) {
     plan = {};
 
     if (!std::isfinite(request.startFrequency) || !std::isfinite(request.endFrequency) ||
@@ -435,10 +439,10 @@ Result Plan::Create(const Request& request, const Capabilities& caps, Plan& plan
     return Result::SUCCESS;
 }
 
-struct Assembler::Impl {
+struct SweepAssembler::Impl {
     void finish();
 
-    Plan plan;
+    SweepPlan plan;
     std::vector<F32> taps;
     std::vector<F32> scales;
     std::vector<U32> owners;
@@ -452,13 +456,13 @@ struct Assembler::Impl {
     bool active = false;
 };
 
-Assembler::Assembler() : impl(std::make_unique<Impl>()) {}
+SweepAssembler::SweepAssembler() : impl(std::make_unique<Impl>()) {}
 
-Assembler::~Assembler() = default;
+SweepAssembler::~SweepAssembler() = default;
 
-Result Assembler::configure(const Plan& plan) {
+Result SweepAssembler::configure(const SweepPlan& plan) {
     if (plan.segmentLength == 0 || plan.outputBins == 0 || plan.hops.empty() || plan.dwell == 0 ||
-        plan.weights.size() != plan.segmentLength || plan.hops.size() > MaxHops) {
+        plan.weights.size() != plan.segmentLength || plan.hops.size() > SweepPlan::MaxHops) {
         JST_ERROR("[MODULE_SDR_SWEEP] Cannot assemble an empty or inconsistent sweep plan.");
         return Result::ERROR;
     }
@@ -518,14 +522,14 @@ Result Assembler::configure(const Plan& plan) {
     return Result::SUCCESS;
 }
 
-void Assembler::begin() {
+void SweepAssembler::begin() {
     std::fill(impl->power.begin(), impl->power.end(), 0.0f);
     std::fill(impl->spectrum.begin(), impl->spectrum.end(), CF32{});
     impl->nextHop = 0;
     impl->active = true;
 }
 
-Result Assembler::add(const Radio::Sweep::Capture& capture) {
+Result SweepAssembler::add(const Sweep::Capture& capture) {
     auto& state = *impl;
     const auto& plan = state.plan;
 
@@ -604,22 +608,22 @@ Result Assembler::add(const Radio::Sweep::Capture& capture) {
     return Result::SUCCESS;
 }
 
-bool Assembler::complete() const {
+bool SweepAssembler::complete() const {
     return impl->active && impl->nextHop == impl->plan.hops.size();
 }
 
-U64 Assembler::completedHops() const {
+U64 SweepAssembler::completedHops() const {
     return impl->active ? impl->nextHop : 0;
 }
 
-void Assembler::Impl::finish() {
+void SweepAssembler::Impl::finish() {
     for (U64 k = 0; k < plan.outputBins; ++k) {
         const F32 magnitude = std::sqrt(power[k] * scales[k]);
         spectrum[k] = std::polar(magnitude, std::arg(spectrum[k]));
     }
 }
 
-Result Assembler::synthesize(std::span<CF32> output) {
+Result SweepAssembler::synthesize(std::span<CF32> output) {
     auto& state = *impl;
     const U64 bins = state.plan.outputBins;
     if (!complete() || output.size() < bins) {
@@ -638,8 +642,8 @@ Result Assembler::synthesize(std::span<CF32> output) {
     return Result::SUCCESS;
 }
 
-std::span<const CF32> Assembler::spectrum() const {
+std::span<const CF32> SweepAssembler::spectrum() const {
     return impl->spectrum;
 }
 
-}  // namespace Jetstream::Modules::Sweep
+}  // namespace Jetstream::Radio

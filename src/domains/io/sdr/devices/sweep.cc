@@ -145,7 +145,7 @@ U64 Sweep::Retune::nextGeneration() {
 }
 
 Result Sweep::Retune::capture(const U64 hop, std::span<CF32> samples, U64& segments,
-                                      Capture& capture, const Running& running) {
+                              Capture& capture, const Running& running) {
     if (hop >= sweepRequest.frequencies.size()) {
         JST_ERROR("[SDR] Sweep hop {} is not part of the prepared plan.", hop);
         return Result::ERROR;

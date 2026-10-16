@@ -20,10 +20,10 @@ struct SdrImpl : public Block::Impl, public DynamicConfig<Blocks::Sdr> {
     Modules::SdrImpl* moduleImpl = nullptr;
 
  private:
-    Parser::Map antennaFormat(const Blocks::Sdr& config);
-    Parser::Map sampleRateFormat(const Blocks::Sdr& config);
     const Modules::SdrImpl* createdModule(const Blocks::Sdr& config);
     Parser::Map manualGainFormat(const Blocks::Sdr& config);
+    Parser::Map antennaFormat(const Blocks::Sdr& config);
+    Parser::Map sampleRateFormat(const Blocks::Sdr& config);
 };
 
 Result SdrImpl::validate() {

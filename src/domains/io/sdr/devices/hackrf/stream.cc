@@ -8,8 +8,10 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <chrono>
 #include <limits>
 #include <mutex>
+#include <utility>
 
 #include <hackrf.h>
 
@@ -62,6 +64,7 @@ class HackRfStream final : public Stream {
  private:
     static int Callback(hackrf_transfer* transfer);
 
+    Result setFrequency(F64 frequency);
     Result setSampleRate(F64 sampleRate);
     Result applyGain(F64 gain, bool force);
 
@@ -69,7 +72,7 @@ class HackRfStream final : public Stream {
     bool biasTeeEnabled = false;
     bool streaming = false;
     CaptureQueue queue;
-    std::atomic<U64> streamGeneration{0};
+    std::atomic<U64> queueGeneration{0};
 };
 
 HackRfStream::~HackRfStream() {
@@ -134,11 +137,7 @@ Result HackRfStream::apply(const Settings& settings) {
 
     JST_CHECK(setSampleRate(settings.sampleRate));
     JST_CHECK(applyGain(settings.gain, true));
-    if (hackrf_set_freq(handle, static_cast<U64>(std::llround(settings.frequency))) !=
-        HACKRF_SUCCESS) {
-        JST_ERROR("[SDR_HACKRF] Failed to tune to {:.3f} MHz.", settings.frequency / 1e6);
-        return Result::ERROR;
-    }
+    JST_CHECK(setFrequency(settings.frequency));
     if (settings.biasTee || biasTeeEnabled) {
         if (hackrf_set_antenna_enable(handle, settings.biasTee ? 1 : 0) != HACKRF_SUCCESS) {
             JST_ERROR("[SDR_HACKRF] Failed to set Bias-T.");
@@ -149,7 +148,6 @@ Result HackRfStream::apply(const Settings& settings) {
 
     requestedSettings = settings;
     appliedSettings.sampleRate = settings.sampleRate;
-    appliedSettings.frequency = std::round(settings.frequency);
     appliedSettings.antenna.clear();
     appliedSettings.automaticGain = false;
     appliedSettings.biasTee = settings.biasTee;
@@ -159,7 +157,7 @@ Result HackRfStream::apply(const Settings& settings) {
 int HackRfStream::Callback(hackrf_transfer* transfer) {
     auto* stream = static_cast<HackRfStream*>(transfer->rx_ctx);
     const auto* data = reinterpret_cast<const I8*>(transfer->buffer);
-    stream->queue.push(stream->streamGeneration, static_cast<U64>(transfer->valid_length) / 2,
+    stream->queue.push(stream->queueGeneration, static_cast<U64>(transfer->valid_length) / 2,
                        [data](CF32* output, const U64 offset, const U64 count) {
                            ConvertI8(data + offset * 2, output, count);
                        });
@@ -169,8 +167,8 @@ int HackRfStream::Callback(hackrf_transfer* transfer) {
 Result HackRfStream::open() {
     const F64 sampleRate = appliedSettings.sampleRate;
     JST_CHECK(queue.resize(std::max<U64>(static_cast<U64>(sampleRate / 2.0), 1 << 18)));
-    streamGeneration = nextGeneration();
-    queue.reset(streamGeneration, guard(), appliedSettings.frequency, sampleRate);
+    queueGeneration = nextGeneration();
+    queue.reset(queueGeneration, guard(), appliedSettings.frequency, sampleRate);
     if (hackrf_start_rx(handle, &HackRfStream::Callback, this) != HACKRF_SUCCESS) {
         JST_ERROR("[SDR_HACKRF] Failed to start reception.");
         hackrf_stop_rx(handle);
@@ -190,18 +188,23 @@ void HackRfStream::close() {
     queue.close();
 }
 
-Result HackRfStream::tune(const F64 frequency) {
+Result HackRfStream::setFrequency(const F64 frequency) {
     if (hackrf_set_freq(handle, static_cast<U64>(std::llround(frequency))) != HACKRF_SUCCESS) {
         JST_ERROR("[SDR_HACKRF] Failed to tune to {:.3f} MHz.", frequency / 1e6);
         return Result::ERROR;
     }
-    requestedSettings.frequency = frequency;
     appliedSettings.frequency = std::round(frequency);
+    return Result::SUCCESS;
+}
+
+Result HackRfStream::tune(const F64 frequency) {
+    JST_CHECK(setFrequency(frequency));
+    requestedSettings.frequency = frequency;
     if (!streaming) {
         return Result::SUCCESS;
     }
-    streamGeneration = nextGeneration();
-    queue.retune(streamGeneration, InFlightTransfers, guard(), appliedSettings.frequency);
+    queueGeneration = nextGeneration();
+    queue.retune(queueGeneration, InFlightTransfers, guard(), appliedSettings.frequency);
     return Result::SUCCESS;
 }
 

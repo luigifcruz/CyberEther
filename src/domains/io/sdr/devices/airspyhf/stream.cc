@@ -46,7 +46,7 @@ class AirspyHfStream final : public Stream {
     airspyhf_device_t* handle = nullptr;
     bool streaming = false;
     CaptureQueue queue;
-    std::atomic<U64> streamGeneration{0};
+    std::atomic<U64> queueGeneration{0};
 };
 
 AirspyHfStream::~AirspyHfStream() {
@@ -71,15 +71,15 @@ Result AirspyHfStream::connect(const Device::Info& info) {
     }
     deviceInfo = info;
 
+    if (airspyhf_set_lib_dsp(handle, 1) != AIRSPYHF_SUCCESS) {
+        JST_ERROR("[SDR_AIRSPYHF] Failed to enable IQ correction.");
+        return Result::ERROR;
+    }
     U32 count = 0;
     airspyhf_get_samplerates(handle, &count, 0);
     std::vector<U32> rates(count);
     if (count == 0 || airspyhf_get_samplerates(handle, rates.data(), count) != AIRSPYHF_SUCCESS) {
         JST_ERROR("[SDR_AIRSPYHF] Failed to query sample rates.");
-        return Result::ERROR;
-    }
-    if (airspyhf_set_lib_dsp(handle, 1) != AIRSPYHF_SUCCESS) {
-        JST_ERROR("[SDR_AIRSPYHF] Failed to enable IQ correction.");
         return Result::ERROR;
     }
 
@@ -142,7 +142,7 @@ Result AirspyHfStream::apply(const Settings& settings) {
 int AirspyHfStream::Callback(airspyhf_transfer_t* transfer) {
     auto* stream = static_cast<AirspyHfStream*>(transfer->ctx);
     const auto* data = transfer->samples;
-    stream->queue.push(stream->streamGeneration, static_cast<U64>(transfer->sample_count),
+    stream->queue.push(stream->queueGeneration, static_cast<U64>(transfer->sample_count),
                        [data](CF32* output, const U64 offset, const U64 count) {
                            for (U64 i = 0; i < count; ++i) {
                                output[i] = {data[offset + i].re, data[offset + i].im};
@@ -155,8 +155,8 @@ int AirspyHfStream::Callback(airspyhf_transfer_t* transfer) {
 Result AirspyHfStream::open() {
     const F64 sampleRate = appliedSettings.sampleRate;
     JST_CHECK(queue.resize(std::max<U64>(static_cast<U64>(sampleRate / 2.0), 1 << 16)));
-    streamGeneration = nextGeneration();
-    queue.reset(streamGeneration, guard(), appliedSettings.frequency, sampleRate);
+    queueGeneration = nextGeneration();
+    queue.reset(queueGeneration, guard(), appliedSettings.frequency, sampleRate);
 
     if (airspyhf_start(handle, &AirspyHfStream::Callback, this) != AIRSPYHF_SUCCESS) {
         JST_ERROR("[SDR_AIRSPYHF] Failed to start reception.");
@@ -187,13 +187,13 @@ Result AirspyHfStream::tune(const F64 frequency) {
     if (!streaming) {
         return Result::SUCCESS;
     }
-    streamGeneration = nextGeneration();
-    queue.retune(streamGeneration, InFlightTransfers, guard(), appliedSettings.frequency);
+    queueGeneration = nextGeneration();
+    queue.retune(queueGeneration, InFlightTransfers, guard(), appliedSettings.frequency);
     return Result::SUCCESS;
 }
 
 Device::Capture AirspyHfStream::read(std::span<CF32> samples,
-                                   const std::chrono::milliseconds timeout) {
+                                     const std::chrono::milliseconds timeout) {
     auto capture = queue.pop(samples, timeout);
     if (capture.status == Device::Status::Timeout && streaming &&
         airspyhf_is_streaming(handle) == 0) {

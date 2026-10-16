@@ -1,6 +1,7 @@
 #include "base.hh"
 
 #include <mutex>
+#include <string>
 
 #include <hackrf.h>
 

@@ -1,5 +1,5 @@
 src_lst += files([
-    'tools/sweep_buffer.cc',
+    'tools/sweep_layout.cc',
 ])
 
 if cfg_lst.get('JETSTREAM_LOADER_PLUTOSDR_AVAILABLE', false)

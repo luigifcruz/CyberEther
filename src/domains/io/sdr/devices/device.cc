@@ -3,8 +3,6 @@
 #include <algorithm>
 #include <cmath>
 
-#include "jetstream/logger.hh"
-
 namespace Jetstream::Radio {
 
 bool Device::Range::Contains(const std::vector<Range>& ranges, const F64 value) {

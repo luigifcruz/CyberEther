@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <chrono>
 #include <map>
+#include <mutex>
 
 #include "jetstream/logger.hh"
 

@@ -72,15 +72,15 @@ Result AirspyHfSweep::connect(const Device::Info& info) {
     }
     deviceInfo = info;
 
+    if (airspyhf_set_lib_dsp(handle, 1) != AIRSPYHF_SUCCESS) {
+        JST_ERROR("[SDR_AIRSPYHF] Failed to enable IQ correction.");
+        return Result::ERROR;
+    }
     U32 count = 0;
     airspyhf_get_samplerates(handle, &count, 0);
     std::vector<U32> rates(count);
     if (count == 0 || airspyhf_get_samplerates(handle, rates.data(), count) != AIRSPYHF_SUCCESS) {
         JST_ERROR("[SDR_AIRSPYHF] Failed to query sample rates.");
-        return Result::ERROR;
-    }
-    if (airspyhf_set_lib_dsp(handle, 1) != AIRSPYHF_SUCCESS) {
-        JST_ERROR("[SDR_AIRSPYHF] Failed to enable IQ correction.");
         return Result::ERROR;
     }
 
@@ -189,7 +189,7 @@ Result AirspyHfSweep::tune(const U64 hop) {
 }
 
 Device::Capture AirspyHfSweep::read(std::span<CF32> samples,
-                                  const std::chrono::milliseconds timeout) {
+                                    const std::chrono::milliseconds timeout) {
     auto capture = queue.pop(samples, timeout);
     if (capture.status == Device::Status::Timeout && streaming &&
         airspyhf_is_streaming(handle) == 0) {

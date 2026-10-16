@@ -35,18 +35,18 @@ namespace Jetstream::Radio {
 namespace {
 
 using Status = Device::Status;
+using Clock = std::chrono::steady_clock;
 
 constexpr F64 SettlingTime = 1.0e-3;
-constexpr U64 MaxProfiles = 256;
+constexpr U64 MaxQuickTuneProfiles = 256;
 constexpr unsigned SyncBuffers = 16;
 constexpr unsigned SyncBufferSize = 8192;
 constexpr unsigned SyncTransfers = 8;
+constexpr unsigned SyncTimeout = 3500;
 constexpr U64 DrainSamples = 65536;
 constexpr U64 MessageSamples = 508;
 constexpr F32 Q11Scale = 2048.0f;
-const bladerf_channel Channel = BLADERF_CHANNEL_RX(0);
-
-using Clock = std::chrono::steady_clock;
+constexpr bladerf_channel Channel = BLADERF_CHANNEL_RX(0);
 
 U64 GainBand(const F64 frequency) {
     return frequency <= 1.3e9 ? 0 : frequency <= 4.0e9 ? 1 : 2;
@@ -61,7 +61,8 @@ std::vector<Device::Range> ToRanges(const bladerf_range* range) {
 }
 
 std::chrono::milliseconds Remaining(const Clock::time_point deadline) {
-    const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - Clock::now());
+    const auto left =
+        std::chrono::duration_cast<std::chrono::milliseconds>(deadline - Clock::now());
     return std::max(left, std::chrono::milliseconds(1));
 }
 
@@ -93,8 +94,8 @@ class BladeRfSweep final : public Sweep::Retune {
     Result setGain(F64 gain) override;
 
  private:
-    Result prepare();
-    Result retune(F64 frequency);
+    Result prepareQuickTune();
+    Result setFrequency(F64 frequency);
     Result resynchronize(U64 settle);
     Result applyGainMode(bool requested, F64 gain);
     Result applyGain(F64 gain, bool force);
@@ -109,7 +110,7 @@ class BladeRfSweep final : public Sweep::Retune {
     TimestampFilter timestamps;
     std::vector<I16> raw;
     std::vector<I16> drain;
-    QuickTuneBudget budget;
+    BladeRfQuickTuneBudget budget;
     std::vector<bladerf_quick_tune> profiles;
     std::vector<F64> actualFrequencies;
     bool quickTune = false;
@@ -132,7 +133,7 @@ Result BladeRfSweep::connect(const Device::Info& info) {
     std::strncpy(devinfo.serial, info.serial.c_str(), BLADERF_SERIAL_LENGTH - 1);
     if (const int status = bladerf_open_with_devinfo(&handle, &devinfo); status != 0) {
         handle = nullptr;
-        JST_ERROR("[SDR_BLADERF] Failed to open device '{}': {}", info.label,
+        JST_ERROR("[SDR_BLADERF] Failed to open device '{}' ({}).", info.label,
                   bladerf_strerror(status));
         return Result::ERROR;
     }
@@ -148,7 +149,8 @@ Result BladeRfSweep::connect(const Device::Info& info) {
     }
 
     const bool second = board == "bladerf2";
-    budget = QuickTuneBudget(second ? std::optional<U64>(MaxProfiles) : std::nullopt);
+    budget = BladeRfQuickTuneBudget(second ? std::optional<U64>(MaxQuickTuneProfiles)
+                                           : std::nullopt);
     auto& caps = deviceCapabilities;
     caps.frequencyRanges = ToRanges(frequency);
     caps.sampleRateRanges = ToRanges(rate);
@@ -202,7 +204,74 @@ Result BladeRfSweep::apply(const Settings& settings) {
     return Result::SUCCESS;
 }
 
-Result BladeRfSweep::retune(const F64 frequency) {
+Result BladeRfSweep::open() {
+    JST_CHECK(prepareQuickTune());
+    try {
+        drain.resize(DrainSamples * 2);
+    } catch (const std::bad_alloc&) {
+        JST_ERROR("[SDR_BLADERF] Failed to allocate the drain buffer.");
+        return Result::ERROR;
+    }
+    if (bladerf_sync_config(handle, BLADERF_RX_X1, BLADERF_FORMAT_SC16_Q11_META,
+                            SyncBuffers, SyncBufferSize, SyncTransfers, SyncTimeout) != 0 ||
+        bladerf_enable_module(handle, Channel, true) != 0) {
+        JST_ERROR("[SDR_BLADERF] Failed to start reception.");
+        return Result::ERROR;
+    }
+    streaming = true;
+    ++epoch;
+    queueGeneration = nextGeneration();
+    return resynchronize(guard());
+}
+
+Result BladeRfSweep::prepareQuickTune() {
+    const auto& frequencies = sweepRequest.frequencies;
+    quickTune = false;
+    gainBand.reset();
+
+    switch (budget.plan(frequencies)) {
+        case BladeRfQuickTuneBudget::Decision::Reuse:
+            quickTune = true;
+            return Result::SUCCESS;
+        case BladeRfQuickTuneBudget::Decision::Fallback:
+            JST_WARN("[SDR_BLADERF] The sweep needs {} quick-tune profiles but only {} remain "
+                     "on this handle. Using normal tuning.", frequencies.size(),
+                     budget.remaining().value_or(0));
+            return Result::SUCCESS;
+        case BladeRfQuickTuneBudget::Decision::Build:
+            break;
+    }
+
+    const F64 restore = frequencies.front();
+    profiles.assign(frequencies.size(), {});
+    actualFrequencies.clear();
+    for (U64 i = 0; i < frequencies.size(); ++i) {
+        const auto frequency = static_cast<bladerf_frequency>(std::llround(frequencies[i]));
+        const bool tuned = bladerf_set_frequency(handle, Channel, frequency) == 0;
+        bladerf_frequency actual = 0;
+        if (!tuned || bladerf_get_quick_tune(handle, Channel, &profiles[i]) != 0 ||
+            bladerf_get_frequency(handle, Channel, &actual) != 0) {
+            budget.failed(tuned ? i + 1 : i);
+            JST_WARN("[SDR_BLADERF] Failed to create quick-tune profile {}. Using normal "
+                     "tuning.", i);
+            return setFrequency(restore);
+        }
+        actualFrequencies.push_back(static_cast<F64>(actual));
+    }
+    budget.built(frequencies);
+    quickTune = true;
+    return setFrequency(restore);
+}
+
+void BladeRfSweep::close() {
+    if (streaming) {
+        bladerf_enable_module(handle, Channel, false);
+    }
+    streaming = false;
+    synchronized = false;
+}
+
+Result BladeRfSweep::setFrequency(const F64 frequency) {
     const auto previousBand = gainBand;
     gainBand.reset();
     const auto target = static_cast<bladerf_frequency>(std::llround(frequency));
@@ -222,65 +291,6 @@ Result BladeRfSweep::retune(const F64 frequency) {
     return Result::SUCCESS;
 }
 
-Result BladeRfSweep::open() {
-    JST_CHECK(prepare());
-    try {
-        drain.resize(DrainSamples * 2);
-    } catch (const std::bad_alloc&) {
-        JST_ERROR("[SDR_BLADERF] Failed to allocate the drain buffer.");
-        return Result::ERROR;
-    }
-    if (bladerf_sync_config(handle, BLADERF_RX_X1, BLADERF_FORMAT_SC16_Q11_META,
-                            SyncBuffers, SyncBufferSize, SyncTransfers, 3500) != 0 ||
-        bladerf_enable_module(handle, Channel, true) != 0) {
-        JST_ERROR("[SDR_BLADERF] Failed to start the stream.");
-        return Result::ERROR;
-    }
-    streaming = true;
-    ++epoch;
-    queueGeneration = nextGeneration();
-    return resynchronize(guard());
-}
-
-Result BladeRfSweep::prepare() {
-    const auto& frequencies = sweepRequest.frequencies;
-    quickTune = false;
-    gainBand.reset();
-
-    switch (budget.plan(frequencies)) {
-        case QuickTuneBudget::Decision::Reuse:
-            quickTune = true;
-            return Result::SUCCESS;
-        case QuickTuneBudget::Decision::Fallback:
-            JST_WARN("[SDR_BLADERF] The sweep needs {} quick-tune profiles but only {} remain "
-                     "on this handle. Using normal tuning.", frequencies.size(),
-                     budget.remaining().value_or(0));
-            return Result::SUCCESS;
-        case QuickTuneBudget::Decision::Build:
-            break;
-    }
-
-    const F64 restore = frequencies.front();
-    profiles.assign(frequencies.size(), {});
-    actualFrequencies.clear();
-    for (U64 i = 0; i < frequencies.size(); ++i) {
-        const auto frequency = static_cast<bladerf_frequency>(std::llround(frequencies[i]));
-        const bool tuned = bladerf_set_frequency(handle, Channel, frequency) == 0;
-        bladerf_frequency actual = 0;
-        if (!tuned || bladerf_get_quick_tune(handle, Channel, &profiles[i]) != 0 ||
-            bladerf_get_frequency(handle, Channel, &actual) != 0) {
-            budget.failed(tuned ? i + 1 : i);
-            JST_WARN("[SDR_BLADERF] Failed to create quick-tune profile {}. Using normal "
-                     "tuning.", i);
-            return retune(restore);
-        }
-        actualFrequencies.push_back(static_cast<F64>(actual));
-    }
-    budget.built(frequencies);
-    quickTune = true;
-    return retune(restore);
-}
-
 Result BladeRfSweep::tune(const U64 hop) {
     if (!streaming) {
         JST_ERROR("[SDR_BLADERF] Cannot retune a stopped sweep.");
@@ -296,21 +306,13 @@ Result BladeRfSweep::tune(const U64 hop) {
             queueGeneration = nextGeneration();
             return resynchronize(guard());
         }
-        JST_WARN("[SDR_BLADERF] Quick tune to hop {} failed ({}). Using normal tuning.", hop,
+        JST_WARN("[SDR_BLADERF] Quick-tune to hop {} failed ({}). Using normal tuning.", hop,
                  bladerf_strerror(status));
         quickTune = false;
     }
-    JST_CHECK(retune(frequency));
+    JST_CHECK(setFrequency(frequency));
     queueGeneration = nextGeneration();
     return resynchronize(guard());
-}
-
-void BladeRfSweep::close() {
-    if (streaming) {
-        bladerf_enable_module(handle, Channel, false);
-    }
-    streaming = false;
-    synchronized = false;
 }
 
 Result BladeRfSweep::resynchronize(const U64 settle) {
@@ -330,7 +332,7 @@ Result BladeRfSweep::resynchronize(const U64 settle) {
 }
 
 Device::Capture BladeRfSweep::read(std::span<CF32> samples,
-                                              const std::chrono::milliseconds timeout) {
+                                   const std::chrono::milliseconds timeout) {
     const auto finish = [&](Device::Capture capture) {
         capture.generation = queueGeneration;
         capture.frequency = tunedFrequency;
@@ -348,8 +350,8 @@ Device::Capture BladeRfSweep::read(std::span<CF32> samples,
             const U64 latest = std::numeric_limits<U64>::max() - MessageSamples -
                                meta.actual_count;
             timestamps.lose(meta.timestamp > latest
-                ? std::numeric_limits<U64>::max()
-                : meta.timestamp + meta.actual_count + MessageSamples);
+                            ? std::numeric_limits<U64>::max()
+                            : meta.timestamp + meta.actual_count + MessageSamples);
         }
         return status;
     };

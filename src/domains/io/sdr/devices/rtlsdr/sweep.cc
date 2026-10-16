@@ -7,8 +7,8 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
-#include <limits>
 #include <condition_variable>
+#include <limits>
 #include <mutex>
 #include <thread>
 
@@ -22,7 +22,7 @@ namespace {
 
 constexpr F64 SettlingTime = 5.0e-3;
 constexpr U32 InFlightTransfers = 2;
-constexpr U32 MinTransferBytes = 16384;
+constexpr U32 TransferBytes = 16384;
 
 const char* TunerName(const rtlsdr_tuner tuner) {
     switch (tuner) {
@@ -163,6 +163,7 @@ Result RtlSdrSweep::apply(const Settings& settings) {
         JST_ERROR("[SDR_RTLSDR] Failed to set the sample rate.");
         return Result::ERROR;
     }
+
     JST_CHECK(applyGainMode(settings.automaticGain, settings.gain));
 
     if (settings.biasTee || biasTeeEnabled) {
@@ -188,9 +189,9 @@ void RtlSdrSweep::Callback(unsigned char* buffer, const uint32_t length, void* c
     }
     const U8* data = buffer;
     sweep->queue.push(sweep->queueGeneration, length / 2,
-                       [data](CF32* output, const U64 offset, const U64 count) {
-                           ConvertU8(data + offset * 2, output, count);
-                       });
+                      [data](CF32* output, const U64 offset, const U64 count) {
+                          ConvertU8(data + offset * 2, output, count);
+                      });
 }
 
 Result RtlSdrSweep::open() {
@@ -202,7 +203,7 @@ Result RtlSdrSweep::open() {
 
     const F64 sampleRate = appliedSettings.sampleRate;
     const U64 capacity = std::max<U64>(static_cast<U64>(sampleRate / 2.0),
-                                       static_cast<U64>(MinTransferBytes) * InFlightTransfers);
+                                       static_cast<U64>(TransferBytes) * InFlightTransfers);
     JST_CHECK(queue.resize(capacity));
     queueGeneration = nextGeneration();
     queue.reset(queueGeneration, guard(), tunedFrequency, sampleRate);
@@ -211,7 +212,7 @@ Result RtlSdrSweep::open() {
     try {
         worker = std::thread([this] {
             const int status = rtlsdr_read_async(handle, &RtlSdrSweep::Callback, this,
-                                                 InFlightTransfers, MinTransferBytes);
+                                                 InFlightTransfers, TransferBytes);
             if (status < 0 && !stopping) {
                 queue.fail(Device::Status::Disconnected,
                            jst::fmt::format("reception stopped ({})", status));
@@ -271,7 +272,7 @@ Result RtlSdrSweep::tune(const U64 hop) {
 }
 
 Device::Capture RtlSdrSweep::read(std::span<CF32> samples,
-                                   const std::chrono::milliseconds timeout) {
+                                  const std::chrono::milliseconds timeout) {
     return queue.pop(samples, timeout);
 }
 

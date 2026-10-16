@@ -645,33 +645,33 @@ TEST_CASE("SDR device labels keep distinct devices with duplicate names",
 TEST_CASE_METHOD(ScriptedDrivers,
                  "SDR opening selects exactly one connected device",
                  "[modules][sdr][backend][selection]") {
-    std::unique_ptr<Radio::Stream> device;
+    std::unique_ptr<Radio::Stream> stream;
 
-    REQUIRE(Radio::Stream::Open("not a selector", device) == Result::ERROR);
-    REQUIRE(Radio::Stream::Open("driver=missing,serial=A", device) == Result::INCOMPLETE);
-    REQUIRE(Radio::Stream::Open("driver=scripted,serial=B", device) == Result::INCOMPLETE);
+    REQUIRE(Radio::Stream::Open("not a selector", stream) == Result::ERROR);
+    REQUIRE(Radio::Stream::Open("driver=missing,serial=A", stream) == Result::INCOMPLETE);
+    REQUIRE(Radio::Stream::Open("driver=scripted,serial=B", stream) == Result::INCOMPLETE);
     REQUIRE(TestScript().opens == 0);
 
     {
         std::lock_guard lock(TestScript().mutex);
         TestScript().devices = {{.serial = "A", .label = "One"}, {.serial = "A", .label = "Two"}};
     }
-    REQUIRE(Radio::Stream::Open(Selector, device) == Result::INCOMPLETE);
+    REQUIRE(Radio::Stream::Open(Selector, stream) == Result::INCOMPLETE);
     REQUIRE(TestScript().opens == 0);
 
     {
         std::lock_guard lock(TestScript().mutex);
         TestScript().devices = {{.serial = "B", .label = "Other"}, {.serial = "A", .label = "One"}};
     }
-    REQUIRE(Radio::Stream::Open(Selector, device) == Result::SUCCESS);
-    REQUIRE(device->info().serial == "A");
-    REQUIRE(device->info().driver == "scripted");
+    REQUIRE(Radio::Stream::Open(Selector, stream) == Result::SUCCESS);
+    REQUIRE(stream->info().serial == "A");
+    REQUIRE(stream->info().driver == "scripted");
     REQUIRE(TestScript().opens == 1);
 
-    device.reset();
+    stream.reset();
     TestScript().failAt = "open";
-    REQUIRE(Radio::Stream::Open(Selector, device) == Result::ERROR);
-    REQUIRE(device == nullptr);
+    REQUIRE(Radio::Stream::Open(Selector, stream) == Result::ERROR);
+    REQUIRE(stream == nullptr);
 }
 
 TEST_CASE("SDR capture queues reject samples from previous generations",

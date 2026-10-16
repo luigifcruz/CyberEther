@@ -1,4 +1,5 @@
 #include "base.hh"
+
 #include "../stream.hh"
 #include "../../tools/capture_queue.hh"
 #include "../../tools/samples.hh"
@@ -8,8 +9,8 @@
 #include <cerrno>
 #include <chrono>
 #include <cmath>
-#include <limits>
 #include <cstdio>
+#include <limits>
 #include <optional>
 #include <string>
 #include <thread>
@@ -26,6 +27,18 @@ namespace {
 
 constexpr const char* ScanFilter = "usb=0456:b673";
 constexpr F32 Q11Scale = 2048.0f;
+constexpr F64 SettlingTime = 1.0e-3;
+constexpr F64 SweepSampleRate = 20.0e6;
+constexpr F64 MinBandwidth = 200.0e3;
+constexpr F64 MaxBandwidth = 56.0e6;
+constexpr unsigned long RangeSampleRate = 3000000;
+constexpr F64 FirDecimation = 4.0;
+constexpr unsigned ContextTimeout = 2000;
+constexpr unsigned KernelBuffers = 4;
+constexpr F64 TransferDuration = 10.0e-3;
+constexpr U64 TransferAlignment = 4096;
+constexpr U64 MinTransferSamples = 16384;
+constexpr U64 MaxTransferSamples = 1 << 20;
 
 struct Board {
     std::string uri;
@@ -65,14 +78,6 @@ std::vector<Board> Scan() {
     return boards;
 }
 
-constexpr F64 SettlingTime = 1.0e-3;
-constexpr F64 SweepSampleRate = 20.0e6;
-constexpr F64 MinBandwidth = 200.0e3;
-constexpr F64 MaxBandwidth = 56.0e6;
-constexpr unsigned long RangeSampleRate = 3000000;
-constexpr F64 FirDecimation = 4.0;
-constexpr unsigned ContextTimeout = 2000;
-
 U64 GainBand(const F64 frequency) {
     return frequency <= 1.3e9 ? 0 : frequency <= 4.0e9 ? 1 : 2;
 }
@@ -90,12 +95,6 @@ std::optional<Device::Range> ReadRange(const iio_channel* channel, const char* a
     }
     return Device::Range{minimum, maximum};
 }
-
-constexpr unsigned KernelBuffers = 4;
-constexpr F64 TransferDuration = 10.0e-3;
-constexpr U64 TransferAlignment = 4096;
-constexpr U64 MinTransferSamples = 16384;
-constexpr U64 MaxTransferSamples = 1 << 20;
 
 U64 TransferSamples(const F64 sampleRate) {
     const auto samples = static_cast<U64>(sampleRate * TransferDuration);
@@ -122,7 +121,7 @@ class PlutoSdrStream final : public Stream {
  private:
     Result write(const char* attribute, long long value, const char* what);
     Result configureStreamRate();
-    Result setOscillator(F64 frequency);
+    Result tuneOscillator(F64 frequency);
     Result retune(F64 frequency);
     Result refreshGainRange();
     Result applyGainMode(bool automatic, F64 gain);
@@ -138,7 +137,7 @@ class PlutoSdrStream final : public Stream {
     CaptureQueue queue;
     std::thread worker;
     std::atomic<bool> stopping{false};
-    std::atomic<U64> streamGeneration{0};
+    std::atomic<U64> queueGeneration{0};
 };
 
 PlutoSdrStream::~PlutoSdrStream() {
@@ -254,7 +253,7 @@ Result PlutoSdrStream::apply(const Settings& settings) {
     }
     const F64 bandwidth = std::clamp(settings.sampleRate, MinBandwidth, MaxBandwidth);
     JST_CHECK(write("rf_bandwidth", std::llround(bandwidth), "the RF bandwidth"));
-    JST_CHECK(setOscillator(settings.frequency));
+    JST_CHECK(tuneOscillator(settings.frequency));
     JST_CHECK(refreshGainRange());
     JST_CHECK(applyGainMode(settings.automaticGain, settings.gain));
 
@@ -267,7 +266,7 @@ Result PlutoSdrStream::apply(const Settings& settings) {
     return Result::SUCCESS;
 }
 
-Result PlutoSdrStream::setOscillator(const F64 frequency) {
+Result PlutoSdrStream::tuneOscillator(const F64 frequency) {
     const auto target = std::llround(frequency);
     if (const int status = iio_channel_attr_write_longlong(oscillator, "frequency", target);
         status < 0) {
@@ -289,7 +288,7 @@ Result PlutoSdrStream::retune(const F64 frequency) {
     if (GainBand(frequency) != GainBand(appliedSettings.frequency)) {
         appliedSettings.gainRange.reset();
     }
-    JST_CHECK(setOscillator(frequency));
+    JST_CHECK(tuneOscillator(frequency));
     if (!appliedSettings.gainRange) {
         JST_CHECK(refreshGainRange());
         if (const auto result = applyGain(requestedSettings.gain, true);
@@ -311,14 +310,12 @@ Result PlutoSdrStream::open() {
 
     if (const int status = iio_device_set_kernel_buffers_count(receiver, KernelBuffers);
         status < 0) {
-        JST_ERROR("[SDR_PLUTOSDR] Failed to set the kernel buffer count: {}",
-                  ErrorText(status));
+        JST_ERROR("[SDR_PLUTOSDR] Failed to set the kernel buffer count: {}", ErrorText(status));
         return Result::ERROR;
     }
     buffer = iio_device_create_buffer(receiver, transferSamples, false);
     if (!buffer) {
-        JST_ERROR("[SDR_PLUTOSDR] Failed to create the receive buffer: {}",
-                  ErrorText(errno));
+        JST_ERROR("[SDR_PLUTOSDR] Failed to create the receive buffer: {}", ErrorText(errno));
         return Result::ERROR;
     }
     if (iio_buffer_step(buffer) != 2 * sizeof(I16)) {
@@ -328,8 +325,8 @@ Result PlutoSdrStream::open() {
         return Result::ERROR;
     }
 
-    streamGeneration = nextGeneration();
-    queue.reset(streamGeneration, guard(), appliedSettings.frequency, sampleRate);
+    queueGeneration = nextGeneration();
+    queue.reset(queueGeneration, guard(), appliedSettings.frequency, sampleRate);
 
     try {
         worker = std::thread([this] {
@@ -337,17 +334,16 @@ Result PlutoSdrStream::open() {
                 const auto bytes = iio_buffer_refill(buffer);
                 if (bytes < 0) {
                     if (!stopping) {
-                        queue.fail(Device::Status::Disconnected, jst::fmt::format(
-                            "reception stopped ({})", ErrorText(bytes)));
+                        queue.fail(Device::Status::Disconnected,
+                                   jst::fmt::format("reception stopped ({})", ErrorText(bytes)));
                     }
                     return;
                 }
                 const auto* data = static_cast<const I16*>(iio_buffer_start(buffer));
                 const U64 samples = static_cast<U64>(bytes) / (2 * sizeof(I16));
-                queue.push(streamGeneration, samples,
+                queue.push(queueGeneration, samples,
                            [data](CF32* output, const U64 offset, const U64 count) {
-                               ConvertI16(data + offset * 2, output, count,
-                                          Q11Scale);
+                               ConvertI16(data + offset * 2, output, count, Q11Scale);
                            });
             }
         });
@@ -380,8 +376,8 @@ Result PlutoSdrStream::tune(const F64 frequency) {
     if (!buffer) {
         return Result::SUCCESS;
     }
-    streamGeneration = nextGeneration();
-    queue.retune(streamGeneration, KernelBuffers + 1, guard(), appliedSettings.frequency);
+    queueGeneration = nextGeneration();
+    queue.retune(queueGeneration, KernelBuffers + 1, guard(), appliedSettings.frequency);
     return Result::SUCCESS;
 }
 

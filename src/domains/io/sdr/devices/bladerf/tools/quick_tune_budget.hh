@@ -9,7 +9,7 @@
 
 namespace Jetstream::Radio {
 
-class JETSTREAM_API QuickTuneBudget {
+class JETSTREAM_API BladeRfQuickTuneBudget {
  public:
     enum class Decision : U8 {
         Reuse,
@@ -17,11 +17,11 @@ class JETSTREAM_API QuickTuneBudget {
         Fallback,
     };
 
-    explicit QuickTuneBudget(std::optional<U64> capacity = std::nullopt);
+    explicit BladeRfQuickTuneBudget(std::optional<U64> capacity = std::nullopt);
 
     Decision plan(const std::vector<F64>& frequencies) const;
     void built(const std::vector<F64>& frequencies);
-    void failed(U64 allocated);
+    void failed(U64 partial);
     U64 used() const;
     std::optional<U64> remaining() const;
 

@@ -26,7 +26,8 @@ std::array<U8, 3> StageGains(U64 total) {
     while (total > 0) {
         U64 next = stages.size();
         for (U64 i = 0; i < stages.size(); ++i) {
-            if (stages[i] < MaxStageGains[i] && (next == stages.size() || stages[i] < stages[next])) {
+            if (stages[i] < MaxStageGains[i] &&
+                (next == stages.size() || stages[i] < stages[next])) {
                 next = i;
             }
         }

@@ -11,7 +11,6 @@ using namespace Jetstream;
 
 TEST_CASE("HackRF firmware sweeps follow the interleaved firmware sequence",
           "[devices][sdr][hackrf][layout]") {
-    // Line-by-line port of the interleaved stepping in `usb_api_sweep.c`.
     const auto firmware = [&](const U64 low, const U64 high) {
         std::vector<U64> sequence;
         U64 frequency = low * 1000000;
@@ -92,7 +91,6 @@ TEST_CASE("HackRF tracks firmware cycles through dwell repeats and losses",
         return sequence.next(frequency, hop, repetition);
     };
 
-    // The stream may start mid-cycle or at a repeated first header.
     REQUIRE(next(10) == Event::Waiting);
     REQUIRE(next(10) == Event::Waiting);
     REQUIRE(next(20) == Event::Waiting);
@@ -104,19 +102,16 @@ TEST_CASE("HackRF tracks firmware cycles through dwell repeats and losses",
     REQUIRE(next(20) == Event::Capture);
     REQUIRE((hop == 1 && repetition == 0));
 
-    // A dropped block shows up as an early header and restarts at a cycle.
     REQUIRE(next(30) == Event::Invalid);
     REQUIRE(next(30) == Event::Waiting);
     REQUIRE(next(10) == Event::Capture);
     REQUIRE(next(10) == Event::Capture);
 
-    // A third repeat of a dwell header is not a new cycle.
     REQUIRE(next(10) == Event::Invalid);
     REQUIRE(next(20) == Event::Waiting);
     REQUIRE(next(99) == Event::Invalid);
     REQUIRE(next(10) == Event::Waiting);
 
-    // Only breaks of a synchronized cycle count as lost hops.
     REQUIRE(sequence.losses() == 2);
 }
 
@@ -142,7 +137,6 @@ TEST_CASE("HackRF decoders report progress while waiting for a full firmware cyc
         return true;
     };
 
-    // A wide, high-dwell sweep starts mid-cycle and waits for the first hop.
     Radio::HackRfTransferQueue::Transfer waiting;
     for (const U64 frequency : {20, 30}) {
         for (U64 i = 0; i < Dwell; ++i) {
@@ -182,7 +176,6 @@ TEST_CASE("HackRF transfer queues mark loss where it happened",
     REQUIRE_FALSE(transfer.gapBefore);
     REQUIRE_FALSE(queue.pop(transfer, std::chrono::milliseconds(1)));
 
-    // The gap is reported with the first transfer after it.
     queue.push(bytes, 3);
     queue.push(bytes, 1);
     REQUIRE(queue.pop(transfer, std::chrono::milliseconds(1)));

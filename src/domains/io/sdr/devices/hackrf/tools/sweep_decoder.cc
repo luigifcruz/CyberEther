@@ -6,8 +6,9 @@
 
 namespace Jetstream::Radio {
 
-std::optional<HackRfSweepDecoder::Block> HackRfSweepDecoder::Block::Parse(const U8* data, const U64 size,
-                                                              const U64 blockBytes) {
+std::optional<HackRfSweepDecoder::Block> HackRfSweepDecoder::Block::Parse(const U8* data,
+                                                                          const U64 size,
+                                                                          const U64 blockBytes) {
     if (!data || blockBytes <= HeaderBytes || size < blockBytes ||
         data[0] != 0x7f || data[1] != 0x7f) {
         return std::nullopt;
@@ -25,7 +26,8 @@ std::optional<HackRfSweepDecoder::Block> HackRfSweepDecoder::Block::Parse(const 
     };
 }
 
-void HackRfSweepDecoder::Sequence::configure(std::vector<U64> nextFrequencies, const U64 nextDwell) {
+void HackRfSweepDecoder::Sequence::configure(std::vector<U64> nextFrequencies,
+                                             const U64 nextDwell) {
     frequencies = std::move(nextFrequencies);
     dwell = std::max<U64>(nextDwell, 1);
     invalidate();
@@ -42,8 +44,9 @@ void HackRfSweepDecoder::Sequence::invalidate() {
     repetition = 0;
 }
 
-HackRfSweepDecoder::Sequence::Event HackRfSweepDecoder::Sequence::next(const U64 frequency, U64& captureHop,
-                                                           U64& captureRepetition) {
+HackRfSweepDecoder::Sequence::Event HackRfSweepDecoder::Sequence::next(const U64 frequency,
+                                                                       U64& captureHop,
+                                                                       U64& captureRepetition) {
     if (frequencies.empty()) {
         return Event::Invalid;
     }
@@ -86,8 +89,8 @@ U64 HackRfSweepDecoder::Sequence::losses() const {
 }
 
 void HackRfSweepDecoder::configure(std::vector<U64> headers, const U64 nextDwell,
-                             const U64 nextCaptureLength, const U64 nextBlockBytes,
-                             const F64 nextOffset) {
+                                   const U64 nextCaptureLength, const U64 nextBlockBytes,
+                                   const F64 nextOffset) {
     dwell = std::max<U64>(nextDwell, 1);
     captureLength = nextCaptureLength;
     blockBytes = nextBlockBytes;
@@ -98,7 +101,7 @@ void HackRfSweepDecoder::configure(std::vector<U64> headers, const U64 nextDwell
 }
 
 bool HackRfSweepDecoder::decode(const HackRfTransferQueue::Transfer& transfer,
-                          const Sweep::Sink& sink) {
+                                const Sweep::Sink& sink) {
     if (transfer.gapBefore) {
         sequence.invalidate();
     }

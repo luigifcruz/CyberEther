@@ -4,10 +4,11 @@
 
 namespace Jetstream::Radio {
 
-QuickTuneBudget::QuickTuneBudget(const std::optional<U64> profileCapacity)
+BladeRfQuickTuneBudget::BladeRfQuickTuneBudget(const std::optional<U64> profileCapacity)
     : capacity(profileCapacity) {}
 
-QuickTuneBudget::Decision QuickTuneBudget::plan(const std::vector<F64>& frequencies) const {
+BladeRfQuickTuneBudget::Decision BladeRfQuickTuneBudget::plan(
+    const std::vector<F64>& frequencies) const {
     if (!prepared.empty() && prepared == frequencies) {
         return Decision::Reuse;
     }
@@ -17,21 +18,21 @@ QuickTuneBudget::Decision QuickTuneBudget::plan(const std::vector<F64>& frequenc
     return Decision::Build;
 }
 
-void QuickTuneBudget::built(const std::vector<F64>& frequencies) {
+void BladeRfQuickTuneBudget::built(const std::vector<F64>& frequencies) {
     allocated += frequencies.size();
     prepared = frequencies;
 }
 
-void QuickTuneBudget::failed(const U64 partial) {
+void BladeRfQuickTuneBudget::failed(const U64 partial) {
     allocated += partial;
     prepared.clear();
 }
 
-U64 QuickTuneBudget::used() const {
+U64 BladeRfQuickTuneBudget::used() const {
     return allocated;
 }
 
-std::optional<U64> QuickTuneBudget::remaining() const {
+std::optional<U64> BladeRfQuickTuneBudget::remaining() const {
     if (!capacity) {
         return std::nullopt;
     }

@@ -26,7 +26,8 @@ std::array<U8, 3> StageGains(U64 total) {
     while (total > 0) {
         U64 next = stages.size();
         for (U64 i = 0; i < stages.size(); ++i) {
-            if (stages[i] < MaxStageGains[i] && (next == stages.size() || stages[i] < stages[next])) {
+            if (stages[i] < MaxStageGains[i] &&
+                (next == stages.size() || stages[i] < stages[next])) {
                 next = i;
             }
         }
@@ -65,7 +66,7 @@ class AirspyStream final : public Stream {
     bool biasTeeEnabled = false;
     bool streaming = false;
     CaptureQueue queue;
-    std::atomic<U64> streamGeneration{0};
+    std::atomic<U64> queueGeneration{0};
 };
 
 AirspyStream::~AirspyStream() {
@@ -170,7 +171,7 @@ Result AirspyStream::apply(const Settings& settings) {
 int AirspyStream::Callback(airspy_transfer* transfer) {
     auto* stream = static_cast<AirspyStream*>(transfer->ctx);
     const auto* data = static_cast<const F32*>(transfer->samples);
-    stream->queue.push(stream->streamGeneration, static_cast<U64>(transfer->sample_count),
+    stream->queue.push(stream->queueGeneration, static_cast<U64>(transfer->sample_count),
                        [data](CF32* output, const U64 offset, const U64 count) {
                            for (U64 i = 0; i < count; ++i) {
                                output[i] = {data[2 * (offset + i)], data[2 * (offset + i) + 1]};
@@ -183,8 +184,8 @@ int AirspyStream::Callback(airspy_transfer* transfer) {
 Result AirspyStream::open() {
     const F64 sampleRate = appliedSettings.sampleRate;
     JST_CHECK(queue.resize(std::max<U64>(static_cast<U64>(sampleRate / 2.0), 1 << 18)));
-    streamGeneration = nextGeneration();
-    queue.reset(streamGeneration, guard(), appliedSettings.frequency, sampleRate);
+    queueGeneration = nextGeneration();
+    queue.reset(queueGeneration, guard(), appliedSettings.frequency, sampleRate);
 
     if (airspy_start_rx(handle, &AirspyStream::Callback, this) != AIRSPY_SUCCESS) {
         JST_ERROR("[SDR_AIRSPY] Failed to start reception.");
@@ -215,8 +216,8 @@ Result AirspyStream::tune(const F64 frequency) {
     if (!streaming) {
         return Result::SUCCESS;
     }
-    streamGeneration = nextGeneration();
-    queue.retune(streamGeneration, InFlightTransfers, guard(), appliedSettings.frequency);
+    queueGeneration = nextGeneration();
+    queue.retune(queueGeneration, InFlightTransfers, guard(), appliedSettings.frequency);
     return Result::SUCCESS;
 }
 

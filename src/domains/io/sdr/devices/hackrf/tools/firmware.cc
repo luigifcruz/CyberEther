@@ -17,7 +17,7 @@ Device::Firmware HackRfFirmware::Capability() {
 }
 
 std::optional<HackRfFirmware::Range> HackRfFirmware::Snap(const F64 startFrequency,
-                                                    const F64 endFrequency) {
+                                                          const F64 endFrequency) {
     const auto step = static_cast<U64>(StepWidth / Granularity);
     const F64 start = std::floor(startFrequency / Granularity);
     const F64 end = std::ceil(endFrequency / Granularity - 1e-9);
@@ -55,7 +55,7 @@ std::vector<U64> HackRfFirmware::Headers(const Range& range) {
 }
 
 bool HackRfFirmware::Layout(const F64 startFrequency, const F64 endFrequency,
-                         const U64 captureLength, Device::Layout& layout) {
+                            const U64 captureLength, Device::Layout& layout) {
     const auto range = Snap(startFrequency, endFrequency);
     if (!range || captureLength == 0) {
         return false;

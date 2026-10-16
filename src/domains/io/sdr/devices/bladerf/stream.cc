@@ -1,5 +1,4 @@
 #include "base.hh"
-#include "tools/quick_tune_budget.hh"
 
 #include "../stream.hh"
 #include "../../tools/samples.hh"
@@ -35,17 +34,17 @@ namespace Jetstream::Radio {
 namespace {
 
 using Status = Device::Status;
+using Clock = std::chrono::steady_clock;
 
 constexpr F64 SettlingTime = 1.0e-3;
 constexpr unsigned SyncBuffers = 16;
 constexpr unsigned SyncBufferSize = 8192;
 constexpr unsigned SyncTransfers = 8;
+constexpr unsigned SyncTimeout = 3500;
 constexpr U64 DrainSamples = 65536;
 constexpr U64 MessageSamples = 508;
 constexpr F32 Q11Scale = 2048.0f;
-const bladerf_channel Channel = BLADERF_CHANNEL_RX(0);
-
-using Clock = std::chrono::steady_clock;
+constexpr bladerf_channel Channel = BLADERF_CHANNEL_RX(0);
 
 U64 GainBand(const F64 frequency) {
     return frequency <= 1.3e9 ? 0 : frequency <= 4.0e9 ? 1 : 2;
@@ -60,7 +59,8 @@ std::vector<Device::Range> ToRanges(const bladerf_range* range) {
 }
 
 std::chrono::milliseconds Remaining(const Clock::time_point deadline) {
-    const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - Clock::now());
+    const auto left =
+        std::chrono::duration_cast<std::chrono::milliseconds>(deadline - Clock::now());
     return std::max(left, std::chrono::milliseconds(1));
 }
 
@@ -92,7 +92,7 @@ class BladeRfStream final : public Stream {
     Result setGain(F64 gain) override;
 
  private:
-    Result retune(F64 frequency);
+    Result setFrequency(F64 frequency);
     Result resynchronize(U64 settle);
     Result applyGainMode(bool requested, F64 gain);
     Result applyGain(F64 gain, bool force);
@@ -125,7 +125,7 @@ Result BladeRfStream::connect(const Device::Info& info) {
     std::strncpy(devinfo.serial, info.serial.c_str(), BLADERF_SERIAL_LENGTH - 1);
     if (const int status = bladerf_open_with_devinfo(&handle, &devinfo); status != 0) {
         handle = nullptr;
-        JST_ERROR("[SDR_BLADERF] Failed to open device '{}': {}", info.label,
+        JST_ERROR("[SDR_BLADERF] Failed to open device '{}' ({}).", info.label,
                   bladerf_strerror(status));
         return Result::ERROR;
     }
@@ -196,10 +196,37 @@ Result BladeRfStream::apply(const Settings& settings) {
     appliedSettings.sampleRate = actualRate;
     appliedSettings.antenna.clear();
     appliedSettings.biasTee = settings.biasTee && deviceCapabilities.biasTee;
-    return retune(settings.frequency);
+    return setFrequency(settings.frequency);
 }
 
-Result BladeRfStream::retune(const F64 frequency) {
+Result BladeRfStream::open() {
+    try {
+        drain.resize(DrainSamples * 2);
+    } catch (const std::bad_alloc&) {
+        JST_ERROR("[SDR_BLADERF] Failed to allocate the drain buffer.");
+        return Result::ERROR;
+    }
+    if (bladerf_sync_config(handle, BLADERF_RX_X1, BLADERF_FORMAT_SC16_Q11_META,
+                            SyncBuffers, SyncBufferSize, SyncTransfers, SyncTimeout) != 0 ||
+        bladerf_enable_module(handle, Channel, true) != 0) {
+        JST_ERROR("[SDR_BLADERF] Failed to start reception.");
+        return Result::ERROR;
+    }
+    streaming = true;
+    ++epoch;
+    queueGeneration = nextGeneration();
+    return resynchronize(guard());
+}
+
+void BladeRfStream::close() {
+    if (streaming) {
+        bladerf_enable_module(handle, Channel, false);
+    }
+    streaming = false;
+    synchronized = false;
+}
+
+Result BladeRfStream::setFrequency(const F64 frequency) {
     const auto target = static_cast<bladerf_frequency>(std::llround(frequency));
     if (bladerf_set_frequency(handle, Channel, target) != 0) {
         JST_ERROR("[SDR_BLADERF] Failed to tune to {:.3f} MHz.", frequency / 1e6);
@@ -218,39 +245,12 @@ Result BladeRfStream::retune(const F64 frequency) {
 }
 
 Result BladeRfStream::tune(const F64 frequency) {
-    JST_CHECK(retune(frequency));
+    JST_CHECK(setFrequency(frequency));
     if (!streaming) {
         return Result::SUCCESS;
     }
     queueGeneration = nextGeneration();
     return resynchronize(guard());
-}
-
-Result BladeRfStream::open() {
-    try {
-        drain.resize(DrainSamples * 2);
-    } catch (const std::bad_alloc&) {
-        JST_ERROR("[SDR_BLADERF] Failed to allocate the drain buffer.");
-        return Result::ERROR;
-    }
-    if (bladerf_sync_config(handle, BLADERF_RX_X1, BLADERF_FORMAT_SC16_Q11_META,
-                            SyncBuffers, SyncBufferSize, SyncTransfers, 3500) != 0 ||
-        bladerf_enable_module(handle, Channel, true) != 0) {
-        JST_ERROR("[SDR_BLADERF] Failed to start the stream.");
-        return Result::ERROR;
-    }
-    streaming = true;
-    ++epoch;
-    queueGeneration = nextGeneration();
-    return resynchronize(guard());
-}
-
-void BladeRfStream::close() {
-    if (streaming) {
-        bladerf_enable_module(handle, Channel, false);
-    }
-    streaming = false;
-    synchronized = false;
 }
 
 Result BladeRfStream::resynchronize(const U64 settle) {
@@ -270,7 +270,7 @@ Result BladeRfStream::resynchronize(const U64 settle) {
 }
 
 Device::Capture BladeRfStream::read(std::span<CF32> samples,
-                                              const std::chrono::milliseconds timeout) {
+                                   const std::chrono::milliseconds timeout) {
     const auto finish = [&](Device::Capture capture) {
         capture.generation = queueGeneration;
         capture.frequency = appliedSettings.frequency;
@@ -288,8 +288,8 @@ Device::Capture BladeRfStream::read(std::span<CF32> samples,
             const U64 latest = std::numeric_limits<U64>::max() - MessageSamples -
                                meta.actual_count;
             timestamps.lose(meta.timestamp > latest
-                ? std::numeric_limits<U64>::max()
-                : meta.timestamp + meta.actual_count + MessageSamples);
+                            ? std::numeric_limits<U64>::max()
+                            : meta.timestamp + meta.actual_count + MessageSamples);
         }
         return status;
     };

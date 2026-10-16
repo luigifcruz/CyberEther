@@ -14,13 +14,13 @@
 #include "domains/io/sdr/devices/device.hh"
 #include "domains/io/sdr/devices/stream.hh"
 #include "domains/io/sdr/devices/sweep.hh"
-#include "domains/io/sdr_sweep/tools/sweep.hh"
+#include "domains/io/sdr_sweep/tools/sweep_plan.hh"
 #include "jetstream/logger.hh"
 
 using namespace Jetstream;
 using namespace std::chrono_literals;
 using Clock = std::chrono::steady_clock;
-using Plan = Modules::Sweep::Plan;
+using Plan = Radio::SweepPlan;
 using Radio::Device;
 using Radio::Stream;
 using Radio::Sweep;
@@ -293,7 +293,7 @@ void Controls(const Device::Info& info) {
 }
 
 void SweepRun(Sweep& sweep, const Plan& plan, Sweep::Settings& settings, const bool controls) {
-    Modules::Sweep::Assembler assembler;
+    Radio::SweepAssembler assembler;
     Success(assembler.configure(plan), "configure sweep assembler");
     std::vector<CF32> output(plan.outputBins);
     std::vector<U64> captured(plan.hops.size());
@@ -412,10 +412,10 @@ void Sweeps(const Device::Info& info, const Plan::Mode mode) {
     request.sampleRate = sweep->applied().sampleRate;
     Success(Plan::Create(request, caps, plan), "replan at applied sample rate");
     Require(plan.hops.size() > 1, "plan is not multi-hop");
-    Success(sweep->start(plan.deviceRequest()), "start sweep");
+    Success(sweep->start(plan.radioRequest()), "start sweep");
     SweepRun(*sweep, plan, settings, false);
     SweepRun(*sweep, plan, settings, true);
-    Success(sweep->start(plan.deviceRequest()), "stop/restart sweep");
+    Success(sweep->start(plan.radioRequest()), "stop/restart sweep");
     SweepRun(*sweep, plan, settings, false);
 }
 
