@@ -127,7 +127,12 @@ Result Implementation::create() {
     pipelineInfo.layout = pipelineLayout;
     pipelineInfo.stage = kernelStageInfo;
 
-    JST_VK_CHECK(vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline), [&]{
+    JST_VK_CHECK(vkCreateComputePipelines(device,
+                                          Backend::State<DeviceType::Vulkan>()->getPipelineCache(),
+                                          1,
+                                          &pipelineInfo,
+                                          nullptr,
+                                          &pipeline), [&]{
         JST_ERROR("[VULKAN] Failed to create compute pipeline.");
     });
 

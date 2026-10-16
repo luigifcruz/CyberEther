@@ -91,6 +91,10 @@ class JETSTREAM_API Vulkan {
         return descriptorPool;
     }
 
+    constexpr VkPipelineCache& getPipelineCache() {
+        return pipelineCache;
+    }
+
     constexpr VkFence& getDefaultFence() {
         return defaultFence;
     }
@@ -110,6 +114,7 @@ class JETSTREAM_API Vulkan {
     VkPhysicalDevice physicalDevice;
     VkPhysicalDeviceProperties properties;
     VkDescriptorPool descriptorPool;
+    VkPipelineCache pipelineCache = VK_NULL_HANDLE;
     VkFence defaultFence;
     VkCommandBuffer defaultCommandBuffer;
     VkCommandPool defaultCommandPool;
@@ -148,8 +153,6 @@ class JETSTREAM_API Vulkan {
     std::set<std::string> getOptionalDeviceExtensions();
     std::set<std::string> checkDeviceExtensionSupport(const VkPhysicalDevice& device,
                                                       const std::set<std::string>& extensions);
-
-    bool isDeviceSuitable(const VkPhysicalDevice& device);
 };
 
 }  // namespace Jetstream::Backend

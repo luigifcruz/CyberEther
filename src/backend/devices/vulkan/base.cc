@@ -524,6 +524,17 @@ Vulkan::Vulkan(const Config& _config) : config(_config), cache({}) {
         });
     }
 
+    // Create pipeline cache.
+
+    {
+        VkPipelineCacheCreateInfo pipelineCacheInfo{};
+        pipelineCacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+
+        JST_VK_CHECK_THROW(vkCreatePipelineCache(device, &pipelineCacheInfo, nullptr, &pipelineCache), [&]{
+            JST_FATAL("[VULKAN] Can't create pipeline cache.")
+        });
+    }
+
     // Create default command pool.
 
     {
@@ -593,6 +604,9 @@ Vulkan::~Vulkan() {
     vkFreeCommandBuffers(device, defaultCommandPool, 1, &defaultCommandBuffer);
     vkDestroyCommandPool(device, defaultCommandPool, nullptr);
     vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+    if (pipelineCache != VK_NULL_HANDLE) {
+        vkDestroyPipelineCache(device, pipelineCache, nullptr);
+    }
 
     if (debugReportCallback != VK_NULL_HANDLE) {
         PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT =

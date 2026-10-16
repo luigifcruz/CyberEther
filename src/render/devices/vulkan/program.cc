@@ -305,7 +305,12 @@ Result Implementation::create(VkRenderPass& renderPass,
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 
-    JST_VK_CHECK(vkCreateGraphicsPipelines(device, nullptr, 1, &pipelineInfo, nullptr, &graphicsPipeline), [&]{
+    JST_VK_CHECK(vkCreateGraphicsPipelines(device,
+                                           Backend::State<DeviceType::Vulkan>()->getPipelineCache(),
+                                           1,
+                                           &pipelineInfo,
+                                           nullptr,
+                                           &graphicsPipeline), [&]{
         JST_ERROR("[VULKAN] Can't create graphics pipeline.");
     });
 
