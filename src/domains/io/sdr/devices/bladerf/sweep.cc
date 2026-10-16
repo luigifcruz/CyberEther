@@ -48,6 +48,10 @@ const bladerf_channel Channel = BLADERF_CHANNEL_RX(0);
 
 using Clock = std::chrono::steady_clock;
 
+U64 GainBand(const F64 frequency) {
+    return frequency <= 1.3e9 ? 0 : frequency <= 4.0e9 ? 1 : 2;
+}
+
 std::vector<Device::Range> ToRanges(const bladerf_range* range) {
     if (!range) {
         return {};
@@ -109,6 +113,7 @@ class BladeRfSweep final : public Sweep::Retune {
     std::vector<bladerf_quick_tune> profiles;
     std::vector<F64> actualFrequencies;
     bool quickTune = false;
+    std::optional<U64> gainBand;
 };
 
 BladeRfSweep::~BladeRfSweep() {
@@ -198,6 +203,8 @@ Result BladeRfSweep::apply(const Settings& settings) {
 }
 
 Result BladeRfSweep::retune(const F64 frequency) {
+    const auto previousBand = gainBand;
+    gainBand.reset();
     const auto target = static_cast<bladerf_frequency>(std::llround(frequency));
     if (bladerf_set_frequency(handle, Channel, target) != 0) {
         JST_ERROR("[SDR_BLADERF] Failed to tune to {:.3f} MHz.", frequency / 1e6);
@@ -209,7 +216,10 @@ Result BladeRfSweep::retune(const F64 frequency) {
         return Result::ERROR;
     }
     tunedFrequency = static_cast<F64>(actual);
-    return applyGain(requestedSettings.gain, false);
+    const U64 band = board == "bladerf2" ? GainBand(tunedFrequency) : 0;
+    JST_CHECK(applyGain(requestedSettings.gain, !previousBand || *previousBand != band));
+    gainBand = band;
+    return Result::SUCCESS;
 }
 
 Result BladeRfSweep::open() {
@@ -235,6 +245,7 @@ Result BladeRfSweep::open() {
 Result BladeRfSweep::prepare() {
     const auto& frequencies = sweepRequest.frequencies;
     quickTune = false;
+    gainBand.reset();
 
     switch (budget.plan(frequencies)) {
         case QuickTuneBudget::Decision::Reuse:
@@ -272,7 +283,8 @@ Result BladeRfSweep::prepare() {
 
 Result BladeRfSweep::tune(const U64 hop) {
     const F64 frequency = sweepRequest.frequencies[hop];
-    if (quickTune) {
+    const U64 band = board == "bladerf2" ? GainBand(frequency) : 0;
+    if (quickTune && gainBand && *gainBand == band) {
         const int status = bladerf_schedule_retune(handle, Channel,
                                                    BLADERF_RETUNE_NOW, 0, &profiles[hop]);
         if (status == 0) {
@@ -425,10 +437,13 @@ Result BladeRfSweep::applyGainMode(const bool requested, const F64 gain) {
 
 Result BladeRfSweep::applyGain(const F64 gain, const bool force) {
     const bladerf_range* range = nullptr;
-    if (bladerf_get_gain_range(handle, Channel, &range) == 0 && range) {
-        appliedSettings.gainRange = Device::Range{static_cast<F64>(range->min) * range->scale,
-                                                 static_cast<F64>(range->max) * range->scale};
+    if (bladerf_get_gain_range(handle, Channel, &range) != 0 || !range) {
+        JST_ERROR("[SDR_BLADERF] Failed to query the gain range.");
+        appliedSettings.gainRange.reset();
+        return Result::ERROR;
     }
+    appliedSettings.gainRange = Device::Range{static_cast<F64>(range->min) * range->scale,
+                                             static_cast<F64>(range->max) * range->scale};
     const F64 target = resolveGain(gain, appliedSettings.gainRange);
     const bool unchanged = !force && target == appliedSettings.gain;
     if (!appliedSettings.automaticGain && !unchanged &&

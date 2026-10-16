@@ -47,6 +47,10 @@ const bladerf_channel Channel = BLADERF_CHANNEL_RX(0);
 
 using Clock = std::chrono::steady_clock;
 
+U64 GainBand(const F64 frequency) {
+    return frequency <= 1.3e9 ? 0 : frequency <= 4.0e9 ? 1 : 2;
+}
+
 std::vector<Device::Range> ToRanges(const bladerf_range* range) {
     if (!range) {
         return {};
@@ -206,9 +210,11 @@ Result BladeRfStream::retune(const F64 frequency) {
         JST_ERROR("[SDR_BLADERF] Failed to read back the tuned frequency.");
         return Result::ERROR;
     }
+    const bool changedBand = board == "bladerf2" &&
+        GainBand(appliedSettings.frequency) != GainBand(static_cast<F64>(actual));
     requestedSettings.frequency = frequency;
     appliedSettings.frequency = static_cast<F64>(actual);
-    return applyGain(requestedSettings.gain, false);
+    return applyGain(requestedSettings.gain, changedBand);
 }
 
 Result BladeRfStream::tune(const F64 frequency) {
@@ -376,10 +382,13 @@ Result BladeRfStream::applyGainMode(const bool requested, const F64 gain) {
 
 Result BladeRfStream::applyGain(const F64 gain, const bool force) {
     const bladerf_range* range = nullptr;
-    if (bladerf_get_gain_range(handle, Channel, &range) == 0 && range) {
-        appliedSettings.gainRange = Device::Range{static_cast<F64>(range->min) * range->scale,
-                                                 static_cast<F64>(range->max) * range->scale};
+    if (bladerf_get_gain_range(handle, Channel, &range) != 0 || !range) {
+        JST_ERROR("[SDR_BLADERF] Failed to query the gain range.");
+        appliedSettings.gainRange.reset();
+        return Result::ERROR;
     }
+    appliedSettings.gainRange = Device::Range{static_cast<F64>(range->min) * range->scale,
+                                             static_cast<F64>(range->max) * range->scale};
     const F64 target = resolveGain(gain, appliedSettings.gainRange);
     const bool unchanged = !force && target == appliedSettings.gain;
     if (!appliedSettings.automaticGain && !unchanged &&

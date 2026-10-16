@@ -419,6 +419,94 @@ void Sweeps(const Device::Info& info, const Plan::Mode mode) {
     SweepRun(*sweep, plan, settings, false);
 }
 
+void SweepGains(const Device::Info& info) {
+    auto stream = OpenStream(info);
+    const auto base = Settings(stream->capabilities());
+    const auto band = FrequencyBand(stream->capabilities());
+    auto streamSettings = base;
+    Success(stream->start(streamSettings), "start gain-range reference stream");
+    std::vector<F64> frequencies;
+    std::vector<Device::Range> ranges;
+    for (const F64 position : {0.1, 0.3, 0.5, 0.7, 0.9}) {
+        streamSettings.frequency = std::round(band.minimum + position * (band.maximum - band.minimum));
+        Success(stream->update(streamSettings), "tune gain-range reference");
+        GainRange(stream->applied().gainRange);
+        frequencies.push_back(streamSettings.frequency);
+        ranges.push_back(*stream->applied().gainRange);
+    }
+    const F64 requestedGain = std::min_element(ranges.begin(), ranges.end(), [](const auto& a, const auto& b) {
+        return a.minimum < b.minimum;
+    })->minimum;
+    std::vector<F64> gains;
+    for (const auto& range : ranges) {
+        gains.push_back(stream->resolveGain(requestedGain, range));
+    }
+    stream.reset();
+
+    auto sweep = OpenSweep(info);
+    Success(sweep->configure({.sampleRate = base.sampleRate, .antenna = base.antenna,
+                              .automaticGain = false, .gain = requestedGain}), "configure cross-band sweep");
+    const Sweep::Request request{
+        .frequencies = frequencies,
+        .sampleRate = sweep->applied().sampleRate,
+        .captureLength = 2048,
+    };
+    Success(sweep->start(request), "start cross-band sweep");
+    U64 captures = 0;
+    const auto deadline = Clock::now() + 15s;
+    Success(sweep->run([&] { return Clock::now() < deadline; }, [&](const auto& capture) {
+        Require(capture.hop == captures % frequencies.size(), "cross-band hop mismatch");
+        const auto& applied = sweep->applied();
+        GainRange(applied.gainRange);
+        const auto& expected = ranges[capture.hop];
+        Require(std::abs(applied.gainRange->minimum - expected.minimum) < 1e-6 &&
+                std::abs(applied.gainRange->maximum - expected.maximum) < 1e-6,
+                "sweep/stream gain-range mismatch");
+        Require(Near(applied.gain, gains[capture.hop]), "cross-band applied gain mismatch");
+        if (captures < frequencies.size()) {
+            jst::fmt::print("  {:.3f} MHz: gain range [{:.1f}, {:.1f}], applied gain {:.1f}\n",
+                            capture.frequency / 1e6, applied.gainRange->minimum,
+                            applied.gainRange->maximum, applied.gain);
+        }
+        return ++captures < frequencies.size() * 2;
+    }), "capture cross-band sweep");
+    Require(captures == frequencies.size() * 2, "cross-band sweep stalled");
+    jst::fmt::print("  cross-band sweep: {} captures, matching stream gain ranges and clamped gain\n", captures);
+}
+
+void SweepRestarts(const Device::Info& info) {
+    auto sweep = OpenSweep(info);
+    const auto base = Settings(sweep->capabilities());
+    const F64 lowRate = Rates(sweep->capabilities()).front();
+    Sweep::Settings settings{
+        .sampleRate = lowRate,
+        .antenna = base.antenna,
+        .automaticGain = false,
+    };
+    for (const auto rate : {lowRate, base.sampleRate}) {
+        settings.sampleRate = rate;
+        Success(sweep->configure(settings), "configure sweep restart rate");
+        const Sweep::Request request{
+            .frequencies = {base.frequency, base.frequency + lowRate},
+            .sampleRate = sweep->applied().sampleRate,
+            .captureLength = 2048,
+        };
+        for (U64 restart = 0; restart < 3; ++restart) {
+            Success(sweep->start(request), "start/restart sweep");
+            U64 captures = 0;
+            const auto deadline = Clock::now() + 10s;
+            Success(sweep->run([&] { return Clock::now() < deadline; }, [&](const auto& capture) {
+                Require(capture.hop == captures % request.frequencies.size(), "restart hop mismatch");
+                Require(capture.samples.size() == request.captureLength, "short restart capture");
+                return ++captures < 6;
+            }), "capture after sweep restart");
+            Require(captures == 6, "sweep restart stalled");
+            jst::fmt::print("  sweep restart {} at {:.3f} MS/s: {} captures\n",
+                            restart + 1, rate / 1e6, captures);
+        }
+    }
+}
+
 void Recovery(const Device::Info& info) {
     for (U64 cycle = 0; cycle < 3; ++cycle) {
         {
@@ -515,6 +603,8 @@ int main() {
         }
         results.run("streaming controls and restart", [&] { Controls(info); });
         results.run("retune sweep and restart", [&] { Sweeps(info, Plan::Mode::Retune); });
+        results.run("sweep/stream cross-band gain consistency", [&] { SweepGains(info); });
+        results.run("low-rate sweep restart and rate recovery", [&] { SweepRestarts(info); });
         if (info.driver == "hackrf") {
             results.run("firmware sweep and restart", [&] { Sweeps(info, Plan::Mode::Firmware); });
         }

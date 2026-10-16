@@ -54,6 +54,7 @@ class LimeSdrSweep final : public Sweep::Retune {
     Result setGain(F64 gain) override;
 
  private:
+    void disconnect();
     bool poll();
     Result applyGain(F64 gain, bool force);
     Result setOscillator(F64 frequency, bool useCache);
@@ -62,7 +63,6 @@ class LimeSdrSweep final : public Sweep::Retune {
     lms_device_t* handle = nullptr;
     std::vector<int> antennaIndices;
     lms_stream_t stream = {};
-    F64 streamSampleRate = 0.0;
     U64 streamBatch = 1;
     bool streamReady = false;
     bool streaming = false;
@@ -75,14 +75,21 @@ class LimeSdrSweep final : public Sweep::Retune {
 };
 
 LimeSdrSweep::~LimeSdrSweep() {
+    disconnect();
+}
+
+void LimeSdrSweep::disconnect() {
     close();
     if (handle) {
         if (streamReady) {
             LMS_DestroyStream(handle, &stream);
+            streamReady = false;
         }
         LMS_Close(handle);
+        handle = nullptr;
         --LimeSdrLibrary::OpenDevices();
     }
+    calibrated = false;
 }
 
 Result LimeSdrSweep::connect(const Device::Info& info) {
@@ -128,6 +135,8 @@ Result LimeSdrSweep::connect(const Device::Info& info) {
     auto& caps = deviceCapabilities;
     caps.frequencyRanges = {{frequency.min, frequency.max}};
     caps.sampleRateRanges = {{rate.min, rate.max}};
+    caps.antennas.clear();
+    antennaIndices.clear();
     const int antennaCount = LMS_GetAntennaList(handle, LMS_CH_RX, 0, nullptr);
     if (antennaCount > 0) {
         auto names = std::make_unique<lms_name_t[]>(static_cast<std::size_t>(antennaCount));
@@ -151,6 +160,16 @@ Result LimeSdrSweep::connect(const Device::Info& info) {
 }
 
 Result LimeSdrSweep::apply(const Settings& settings) {
+    if (streamReady) {
+        disconnect();
+    }
+    if (!handle) {
+        const auto info = deviceInfo;
+        if (const auto result = connect(info); result != Result::SUCCESS) {
+            disconnect();
+            return result;
+        }
+    }
     if (!Device::Range::Contains(deviceCapabilities.sampleRateRanges, settings.sampleRate)) {
         JST_ERROR("[SDR_LIMESDR] Sample rate ({:.3f} MHz) not supported.",
                   settings.sampleRate / 1e6);
@@ -247,6 +266,10 @@ Result LimeSdrSweep::tune(const U64 hop) {
 }
 
 Result LimeSdrSweep::open() {
+    if (streamReady || !handle) {
+        const auto settings = requestedSettings;
+        JST_CHECK(apply(settings));
+    }
     cachedTuning = LimeSdrLibrary::OpenDevices() == 1;
     if (!cachedTuning) {
         JST_WARN("[SDR_LIMESDR] Several LimeSDR devices are open. Cached tuning maps are "
@@ -268,13 +291,6 @@ Result LimeSdrSweep::open() {
         JST_ERROR("[SDR_LIMESDR] Failed to allocate the drain buffer.");
         return Result::ERROR;
     }
-    if (streamReady && streamSampleRate != sampleRate) {
-        if (LMS_DestroyStream(handle, &stream) != 0) {
-            JST_ERROR("[SDR_LIMESDR] Failed to reconfigure the stream: {}", LMS_GetLastErrorMessage());
-            return Result::ERROR;
-        }
-        streamReady = false;
-    }
     if (!streamReady) {
         stream = {};
         stream.isTx = false;
@@ -287,11 +303,11 @@ Result LimeSdrSweep::open() {
             return Result::ERROR;
         }
         const F64 limit = (sampleRate / 1.0e6 + 5.0) * Latency;
+        streamBatch = 1;
         for (U64 batch = 1; static_cast<F64>(batch) < limit; batch *= 2) {
             streamBatch = batch;
         }
         streamReady = true;
-        streamSampleRate = sampleRate;
     }
     if (LMS_StartStream(&stream) != 0) {
         JST_ERROR("[SDR_LIMESDR] Failed to start the stream: {}", LMS_GetLastErrorMessage());
