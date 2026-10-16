@@ -281,7 +281,7 @@ Result SdrSweepImpl::reconfigure() {
 
         auto settings = radio->settings();
         settings.automaticGain = config.automaticGain;
-        settings.gain = radio->resolveGain(config.manualGain, gainRange);
+        settings.gain = config.manualGain;
         settings.settlingTime = config.settlingTime > 0.0f ? config.settlingTime / 1e3 : -1.0;
         JST_CHECK(applyPlan(next, settings));
 

@@ -117,10 +117,12 @@ Result Sweep::update(const Settings& settings) {
     }();
     if (restored != Result::SUCCESS) {
         close();
-        JST_ERROR("[SDR] Failed to restore the previous sweep settings of {}. The sweep is "
-                  "stopped.", deviceInfo.label);
+        JST_ERROR("[SDR] Failed to restore the previous sweep settings of {} after a failed change. "
+                  "The sweep is stopped.", deviceInfo.label);
         return Result::FATAL;
     }
+    JST_WARN("[SDR] Restored the previous sweep settings of {} after a failed change.",
+             deviceInfo.label);
     return result;
 }
 

@@ -242,7 +242,7 @@ Result LimeSdrSweep::tuneOscillator(const F64 frequency, const bool useCache) {
 
 Result LimeSdrSweep::tune(const U64 hop) {
     if (!streaming) {
-        JST_ERROR("[SDR_LIMESDR] Cannot retune a stopped stream.");
+        JST_ERROR("[SDR_LIMESDR] Cannot retune a stopped sweep.");
         return Result::ERROR;
     }
     const bool useCache = cachedTuning && LimeSdrLibrary::OpenDevices() == 1;

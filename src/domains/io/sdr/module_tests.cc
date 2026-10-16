@@ -547,6 +547,14 @@ struct SdrImplAccess : Modules::SdrImpl {
     static auto streamMember() {
         return &SdrImplAccess::stream;
     }
+
+    static void pauseReceiver(Modules::SdrImpl& impl) {
+        (impl.*&SdrImplAccess::streaming) = false;
+        auto& receiver = impl.*&SdrImplAccess::receiver;
+        if (receiver.joinable()) {
+            receiver.join();
+        }
+    }
 };
 
 std::shared_ptr<Module> BuildSdrModule() {
@@ -819,6 +827,11 @@ TEST_CASE("SDR stream updates restore setter and receive-start failures",
         stream.configureFails = true;
         restored = false;
     }
+    SECTION("restored receive-start fails") {
+        stream.setterFails = true;
+        stream.openFailsAt = previous.sampleRate;
+        restored = false;
+    }
     SECTION("success does not reapply all settings") {
         REQUIRE(stream.update(next) == Result::SUCCESS);
         REQUIRE(stream.configures == 1);
@@ -828,7 +841,7 @@ TEST_CASE("SDR stream updates restore setter and receive-start failures",
         return;
     }
     const U64 generation = stream.generation();
-    REQUIRE(stream.update(next) == Result::ERROR);
+    REQUIRE(stream.update(next) == (restored ? Result::ERROR : Result::FATAL));
     REQUIRE(stream.settings().frequency == previous.frequency);
     REQUIRE(stream.applied().frequency == previous.frequency);
     REQUIRE(stream.applied().sampleRate == previous.sampleRate);
@@ -1836,6 +1849,31 @@ TEST_CASE_METHOD(ScriptedDrivers,
     REQUIRE(sdr->getApplied().automaticGain == config.automaticGain);
     REQUIRE(sdr->getApplied().gain == config.manualGain);
     REQUIRE(TestScript().concurrentChanges == 0);
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR failed restoration reaches the scheduler before another receive",
+                 "[modules][sdr][reconfigure][control][restore]") {
+    TestScript().budget = 0;
+    const auto module = BuildSdrModule();
+    const ModuleCleanup cleanup{module};
+    const auto config = ScriptedConfig();
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    auto* sdr = module->getImpl<Modules::SdrImpl>();
+    SdrImplAccess::pauseReceiver(*sdr);
+    const auto runtime = RuntimeOf(module);
+    REQUIRE(runtime->computeSubmit() == Result::YIELD);
+    {
+        std::lock_guard lock(TestScript().mutex);
+        TestScript().failAt = "configure";
+    }
+    REQUIRE(module->reconfigure({{"sampleRate", 4.0e6f}}) == Result::ERROR);
+    REQUIRE(runtime->computeSubmit() == Result::ERROR);
+    {
+        std::lock_guard lock(TestScript().mutex);
+        TestScript().failAt.clear();
+    }
+    REQUIRE(module->reconfigure({{"sampleRate", 4.0e6f}}) == Result::RECREATE);
 }
 
 TEST_CASE_METHOD(ScriptedFlowgraph,

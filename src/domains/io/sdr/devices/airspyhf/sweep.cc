@@ -179,7 +179,7 @@ Result AirspyHfSweep::setFrequency(const F64 frequency) {
 
 Result AirspyHfSweep::tune(const U64 hop) {
     if (!streaming) {
-        JST_ERROR("[SDR_AIRSPYHF] Cannot retune a stopped stream.");
+        JST_ERROR("[SDR_AIRSPYHF] Cannot retune a stopped sweep.");
         return Result::ERROR;
     }
     JST_CHECK(setFrequency(sweepRequest.frequencies[hop]));

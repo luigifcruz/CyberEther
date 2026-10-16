@@ -176,6 +176,10 @@ Result SdrImpl::reconfigure() {
         const auto previous = radio->applied();
         const U64 generation = radio->generation();
         const auto result = radio->update(settingsOf(config));
+        if (result == Result::FATAL) {
+            errored = true;
+            return Result::ERROR;
+        }
         const auto& applied = radio->applied();
         if (radio->generation() != generation || applied.frequency != previous.frequency ||
             applied.sampleRate != previous.sampleRate) {
@@ -272,6 +276,10 @@ Result SdrImpl::receiveLoop() {
         const auto lock = access.lock();
         if (!streaming) {
             break;
+        }
+
+        if (errored) {
+            return Result::ERROR;
         }
 
         const auto capture = radio->read(scratch, ReadTimeout);

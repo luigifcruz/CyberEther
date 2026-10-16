@@ -261,7 +261,7 @@ Result RtlSdrSweep::setFrequency(const F64 frequency) {
 
 Result RtlSdrSweep::tune(const U64 hop) {
     if (!worker.joinable()) {
-        JST_ERROR("[SDR_RTLSDR] Cannot retune a stopped stream.");
+        JST_ERROR("[SDR_RTLSDR] Cannot retune a stopped sweep.");
         return Result::ERROR;
     }
     JST_CHECK(setFrequency(sweepRequest.frequencies[hop]));

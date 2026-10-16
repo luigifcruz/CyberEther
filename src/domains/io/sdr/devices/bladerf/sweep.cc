@@ -282,6 +282,10 @@ Result BladeRfSweep::prepare() {
 }
 
 Result BladeRfSweep::tune(const U64 hop) {
+    if (!streaming) {
+        JST_ERROR("[SDR_BLADERF] Cannot retune a stopped sweep.");
+        return Result::ERROR;
+    }
     const F64 frequency = sweepRequest.frequencies[hop];
     const U64 band = board == "bladerf2" ? GainBand(frequency) : 0;
     if (quickTune && gainBand && *gainBand == band) {
@@ -379,7 +383,8 @@ Device::Capture BladeRfSweep::read(std::span<CF32> samples,
         if (Clock::now() >= deadline) {
             return finish({.status = Status::Timeout});
         }
-        limit = meta.actual_count < count ? samples.size() : DrainSamples;
+        limit = meta.actual_count < count ? std::min<U64>(samples.size(), DrainSamples)
+                                          : DrainSamples;
     }
 
     bladerf_metadata meta = {};

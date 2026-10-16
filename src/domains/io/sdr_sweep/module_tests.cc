@@ -1649,6 +1649,38 @@ TEST_CASE_METHOD(ScriptedDrivers,
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR Sweep live gain edits preserve the request before driver clamping",
+                 "[modules][sdr_sweep][reconfigure][control][gain]") {
+    TestScript().budget = 0;
+    auto driver = ScriptedDriver();
+    const auto create = driver.sweep;
+    Radio::Sweep* radio = nullptr;
+    driver.sweep = [&](const Radio::Device::Info& info, std::unique_ptr<Radio::Sweep>& sweep) {
+        const auto result = create(info, sweep);
+        radio = sweep.get();
+        return result;
+    };
+    Radio::Device::Override(std::vector<Radio::Device::Driver>{driver});
+    auto config = ScriptedSweep();
+    config.automaticGain = false;
+    const auto module = BuildSweepModule();
+    const SweepCleanup cleanup{module};
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    REQUIRE(radio != nullptr);
+    F32 requested = 75.0f;
+    F64 applied = 60.0;
+    SECTION("above the gain range") {}
+    SECTION("below the gain range") {
+        requested = -5.0f;
+        applied = 0.0;
+    }
+    REQUIRE(module->reconfigure({{"manualGain", requested}}) == Result::SUCCESS);
+    REQUIRE(radio->settings().gain == requested);
+    REQUIRE(radio->applied().gain == applied);
+    REQUIRE(module->getImpl<Modules::SdrSweepImpl>()->manualGain == applied);
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
                  "SDR Sweep failed live edits restore settings and the plan before returning",
                  "[modules][sdr_sweep][reconfigure][control]") {
     TestScript().budget = 0;

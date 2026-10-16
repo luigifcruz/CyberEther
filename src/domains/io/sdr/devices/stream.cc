@@ -45,12 +45,12 @@ U64 Stream::guard() const {
 }
 
 Result Stream::start(const Settings& settings) {
-    close();
     JST_CHECK(configure(settings));
     return open();
 }
 
 Result Stream::configure(const Settings& settings) {
+    close();
     JST_CHECK(apply(settings));
     if (guard() == std::numeric_limits<U64>::max()) {
         JST_ERROR("[SDR] Settling guard exceeds the sample count range.");
@@ -77,32 +77,32 @@ Result Stream::update(const Settings& settings) {
         return restart(settings, previous);
     }
 
-    const auto result = [&] {
-        if (settings.frequency != previous.frequency) {
-            if (!Device::Range::Contains(deviceCapabilities.frequencyRanges, settings.frequency)) {
+    const auto change = [&](const Settings& target) {
+        if (target.frequency != previous.frequency) {
+            if (!Device::Range::Contains(deviceCapabilities.frequencyRanges, target.frequency)) {
                 JST_ERROR("[SDR] Frequency ({:.3f} MHz) not supported by {}.",
-                          settings.frequency / 1e6, deviceInfo.label);
+                          target.frequency / 1e6, deviceInfo.label);
                 return Result::ERROR;
             }
-            JST_CHECK(tune(settings.frequency));
+            JST_CHECK(tune(target.frequency));
         }
-        if (settings.automaticGain != previous.automaticGain) {
-            JST_CHECK(setAutomaticGain(settings.automaticGain));
+        if (target.automaticGain != previous.automaticGain) {
+            JST_CHECK(setAutomaticGain(target.automaticGain));
         }
-        if (settings.gain != previous.gain ||
-            resolveGain(settings.gain, appliedSettings.gainRange) != appliedSettings.gain) {
-            JST_CHECK(setGain(settings.gain));
+        if (target.gain != previous.gain ||
+            resolveGain(target.gain, appliedSettings.gainRange) != appliedSettings.gain) {
+            JST_CHECK(setGain(target.gain));
         }
-        if (settings.settlingTime != previous.settlingTime) {
-            JST_CHECK(setSettlingTime(settings.settlingTime));
+        if (target.settlingTime != previous.settlingTime) {
+            JST_CHECK(setSettlingTime(target.settlingTime));
         }
         return Result::SUCCESS;
-    }();
+    };
+    const auto result = change(settings);
     return result == Result::SUCCESS ? result : restore(previous, result);
 }
 
 Result Stream::restart(const Settings& settings, const Settings& previous) {
-    close();
     auto result = configure(settings);
     if (result == Result::SUCCESS) {
         result = open();
@@ -111,16 +111,15 @@ Result Stream::restart(const Settings& settings, const Settings& previous) {
 }
 
 Result Stream::restore(const Settings& previous, const Result failure) {
-    close();
     if (configure(previous) == Result::SUCCESS && open() == Result::SUCCESS) {
-        JST_WARN("[SDR] Restored the previous settings of {} after a failed change.",
+        JST_WARN("[SDR] Restored the previous stream settings of {} after a failed change.",
                  deviceInfo.label);
         return failure == Result::SUCCESS ? Result::ERROR : failure;
     }
     close();
-    JST_ERROR("[SDR] Failed to restore {} after a failed change. The stream is stopped.",
-              deviceInfo.label);
-    return Result::ERROR;
+    JST_ERROR("[SDR] Failed to restore the previous stream settings of {} after a failed change. "
+              "The stream is stopped.", deviceInfo.label);
+    return Result::FATAL;
 }
 
 }  // namespace Jetstream::Radio

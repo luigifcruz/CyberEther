@@ -214,7 +214,7 @@ Result HackRfSweep::setFrequency(const F64 frequency) {
 
 Result HackRfSweep::tune(const U64 hop) {
     if (!streaming) {
-        JST_ERROR("[SDR_HACKRF] Cannot retune a stopped stream.");
+        JST_ERROR("[SDR_HACKRF] Cannot retune a stopped sweep.");
         return Result::ERROR;
     }
     JST_CHECK(setFrequency(sweepRequest.frequencies[hop]));
