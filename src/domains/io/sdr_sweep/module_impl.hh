@@ -33,7 +33,7 @@ struct JETSTREAM_API SdrSweepImpl : public Module::Impl, public DynamicConfig<Sd
         F32 bufferHealth = 0.0f;
         F64 bufferLoss = 0.0;
         F32 sweepSpeed = 0.0f;
-        F32 peakSweepSpeed = 0.0f;
+        F32 sweepRate = 0.0f;
     };
 
     ~SdrSweepImpl() override;
@@ -52,7 +52,7 @@ struct JETSTREAM_API SdrSweepImpl : public Module::Impl, public DynamicConfig<Sd
 
  protected:
     struct JETSTREAM_API MetricState {
-        void reset(Clock::time_point now);
+        void reset(Clock::time_point now, F64 span = 0.0);
         void advance(Clock::time_point now, bool occupied, bool active = true);
         void publish(Clock::time_point now, bool occupied);
         void discard(Clock::time_point now, bool occupied);
@@ -60,9 +60,9 @@ struct JETSTREAM_API SdrSweepImpl : public Module::Impl, public DynamicConfig<Sd
         U64 producedFrames = 0;
         U64 droppedFrames = 0;
         U64 sampledFrames = 0;
+        F64 spanGHz = 0.0;
         F64 health = 0.0;
         F64 speed = 0.0;
-        F64 peak = 0.0;
         F64 cadence = 0.0;
         Clock::time_point occupancyUpdated{};
         Clock::time_point reported{};

@@ -45,7 +45,6 @@ struct JETSTREAM_API Plan {
         U64 dwell = 1;
         Mode mode = Mode::Automatic;
         F64 settlingTime = 0.0;
-        bool flatten = false;
     };
 
     Mode mode = Mode::Retune;
@@ -56,7 +55,7 @@ struct JETSTREAM_API Plan {
     F64 startFrequency = 0.0;
     U64 outputBins = 0;
     std::vector<Hop> hops;
-    bool flatten = false;
+    std::vector<F32> weights;
 
     static Result Create(const Request& request, const Radio::Device::Capabilities& capabilities,
                          Plan& plan);

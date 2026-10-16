@@ -42,6 +42,7 @@ struct SpectrumAnalyzerImpl : public Block::Impl,
         Index sampleAxis = 0;
         U64 windowSize = 0;
         std::string windowShape;
+        bool synthetic = false;
     };
 
     std::shared_ptr<Modules::Window> windowConfig =
@@ -106,8 +107,15 @@ Result SpectrumAnalyzerImpl::validate() {
         }
     }
 
+    std::optional<bool> synthetic;
+    if (ReadAttribute(inputTensor, "sweepSynthetic", synthetic) != Result::SUCCESS) {
+        JST_ERROR("[BLOCK_SPECTRUM_ANALYZER] Input sweep metadata is invalid.");
+        return Result::ERROR;
+    }
+
     CandidatePlan plan;
     plan.sampleAxis = *axes.sample;
+    plan.synthetic = synthetic.value_or(false);
     plan.windowSize = inputTensor.shape(plan.sampleAxis);
     plan.windowShape = "[";
     for (Index dimension = 0; dimension < inputTensor.rank(); ++dimension) {
@@ -201,35 +209,45 @@ Result SpectrumAnalyzerImpl::create() {
         return Result::ERROR;
     }
 
-    windowConfig->size = candidatePlan->windowSize;
-    reshapeWindowConfig->shape = candidatePlan->windowShape;
+    if (candidatePlan->synthetic) {
+        JST_CHECK(moduleCreate("invert", invertConfig, {
+            {"signal", inputs().at("buffer")}
+        }));
 
-    JST_CHECK(moduleCreate("window", windowConfig, {}));
-    auto windowOutput = moduleGetOutput({"window", "window"});
-    JST_CHECK(SetSignalAxes(windowOutput.tensor, {
-        .sample = Index{0},
-    }));
+        JST_CHECK(moduleCreate("fft", fftConfig, {
+            {"signal", moduleGetOutput({"invert", "signal"})}
+        }));
+    } else {
+        windowConfig->size = candidatePlan->windowSize;
+        reshapeWindowConfig->shape = candidatePlan->windowShape;
 
-    JST_CHECK(moduleCreate("invert", invertConfig, {
-        {"signal", windowOutput}
-    }));
+        JST_CHECK(moduleCreate("window", windowConfig, {}));
+        auto windowOutput = moduleGetOutput({"window", "window"});
+        JST_CHECK(SetSignalAxes(windowOutput.tensor, {
+            .sample = Index{0},
+        }));
 
-    JST_CHECK(moduleCreate("reshape_window", reshapeWindowConfig, {
-        {"buffer", moduleGetOutput({"invert", "signal"})}
-    }));
-    auto reshapedWindow = moduleGetOutput({"reshape_window", "buffer"});
-    JST_CHECK(SetSignalAxes(reshapedWindow.tensor, {
-        .sample = candidatePlan->sampleAxis,
-    }));
+        JST_CHECK(moduleCreate("invert", invertConfig, {
+            {"signal", windowOutput}
+        }));
 
-    JST_CHECK(moduleCreate("multiply", multiplyConfig, {
-        {"a", inputs().at("buffer")},
-        {"b", reshapedWindow}
-    }));
+        JST_CHECK(moduleCreate("reshape_window", reshapeWindowConfig, {
+            {"buffer", moduleGetOutput({"invert", "signal"})}
+        }));
+        auto reshapedWindow = moduleGetOutput({"reshape_window", "buffer"});
+        JST_CHECK(SetSignalAxes(reshapedWindow.tensor, {
+            .sample = candidatePlan->sampleAxis,
+        }));
 
-    JST_CHECK(moduleCreate("fft", fftConfig, {
-        {"signal", moduleGetOutput({"multiply", "product"})}
-    }));
+        JST_CHECK(moduleCreate("multiply", multiplyConfig, {
+            {"a", inputs().at("buffer")},
+            {"b", reshapedWindow}
+        }));
+
+        JST_CHECK(moduleCreate("fft", fftConfig, {
+            {"signal", moduleGetOutput({"multiply", "product"})}
+        }));
+    }
 
     JST_CHECK(moduleCreate("amplitude", amplitudeConfig, {
         {"signal", moduleGetOutput({"fft", "signal"})}
