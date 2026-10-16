@@ -46,7 +46,7 @@ See [Remote Streaming](/docs/remote) for setup, network requirements, security, 
 | Setup effort | Install and run | Open a link | Install on the host, share a link |
 | Compute | Local, all backends | CPU via WebAssembly | Host, all native backends |
 | Hardware access | Full | Browser APIs only | Full, on the host |
-| Python blocks | Yes | No | Yes, on the host |
+| Python blocks | Yes | Yes, in the browser | Yes, on the host |
 | Interface latency | Lowest | Low | Depends on the network |
 | Best for | Daily use, development, deployment | Trying it, demos, sharing | Headless and high-performance systems |
 

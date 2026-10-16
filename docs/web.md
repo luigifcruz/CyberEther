@@ -17,6 +17,7 @@ The browser build shares its code with the native application. Only the layer th
 
 - **Rendering** uses WebGPU, the browser's interface to the GPU.
 - **Compute** runs the CPU implementation of each block, compiled to WebAssembly. No blocks target WebGPU compute yet.
+- **Python blocks** run on a build of CPython compiled to WebAssembly and provided by the page, instead of a Python installation on your machine.
 - **The main loop** is driven by the browser's animation loop, since a browser tab cannot own its main loop. Modules that must run on the main thread are moved there for creation and destruction.
 - **Files and settings** live in browser storage, private to the site, instead of on your disk.
 
@@ -33,7 +34,6 @@ Clearing the browser data for the site deletes everything stored there, includin
 
 ## Limitations
 
-- **Python blocks** are unavailable, since they need a Python installation that does not exist inside the browser sandbox.
 - **Hardware access** is limited to what browser APIs expose, so sources that need native drivers, such as most SDRs, are out of reach.
 - **Compute** runs on the CPU only, so large flowgraphs run slower than on the native version.
 - **Remote Streaming** is not available, since it relies on native encoders and networking.
