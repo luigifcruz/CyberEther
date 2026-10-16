@@ -3,6 +3,7 @@ title: Remote Streaming
 description: Stream the CyberEther interface to a browser on another device, hosted entirely on your own machine.
 order: 42
 category: Usage
+parent: platforms
 ---
 
 CyberEther Remote streams the full interface of a running instance to a web browser on another device and sends keyboard and mouse input back. The flowgraph keeps running on the host, with every native backend and device that machine has, while the viewer only needs a browser. It is the way to drive a headless server, a radio on a rooftop, or a GPU box in another room from a laptop or a phone.

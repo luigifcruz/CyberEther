@@ -3,6 +3,7 @@ title: Native
 description: Run CyberEther as a native application with direct access to the GPU and local hardware.
 order: 40
 category: Usage
+parent: platforms
 ---
 
 The native application is the primary way to run CyberEther. It is a plain binary with direct access to the GPU, every compute backend the platform provides, and any hardware attached to the machine, such as SDRs and audio devices. It is the right choice for daily use, development, and unattended deployments.
