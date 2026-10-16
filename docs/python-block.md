@@ -1,7 +1,7 @@
 ---
 title: Python Block
 description: Run custom Python compute code inside a flowgraph.
-order: 40
+order: 43
 category: Usage
 ---
 

@@ -146,11 +146,7 @@ struct DefaultCompositorState {
     };
 
     struct RemoteState {
-        std::string brokerUrl = "https://cyberether.org";
-        Instance::Remote::CodecType codec = Instance::Remote::CodecType::H264;
-        Instance::Remote::EncoderType encoder = Instance::Remote::EncoderType::Auto;
-        bool autoJoinSessions = false;
-        U32 framerate = 30;
+        Instance::Remote::Config config;
 
         bool supported = false;
         bool started = false;

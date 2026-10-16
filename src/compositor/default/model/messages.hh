@@ -159,8 +159,8 @@ struct MailApplyUpdate {};
 
 struct MailDismissUpdate {};
 
-struct MailSetRemoteBrokerUrl {
-    std::string value;
+struct MailSetRemoteBroker {
+    Instance::Remote::Config::Broker value;
 };
 
 struct MailSetRemoteCodec {
@@ -175,8 +175,21 @@ struct MailSetRemoteEncoder {
     Instance::Remote::EncoderType value = Instance::Remote::EncoderType::Auto;
 };
 
-struct MailSetRemoteAutoJoinSessions {
+struct MailSetRemoteAutoApprove {
     bool value = false;
+};
+
+struct MailSetRemoteTransport {
+    Instance::Remote::TransportType value = Instance::Remote::TransportType::Auto;
+};
+
+struct MailSetRemotePortRange {
+    U16 minPort = 0;
+    U16 maxPort = 0;
+};
+
+struct MailSetRemoteMediaAddress {
+    std::string value;
 };
 
 struct MailSetPythonRuntimePath {
@@ -462,11 +475,14 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailDownloadUpdate,
                           MailApplyUpdate,
                           MailDismissUpdate,
-                          MailSetRemoteBrokerUrl,
+                          MailSetRemoteBroker,
                           MailSetRemoteCodec,
                           MailSetRemoteFramerate,
                           MailSetRemoteEncoder,
-                          MailSetRemoteAutoJoinSessions,
+                          MailSetRemoteAutoApprove,
+                          MailSetRemoteTransport,
+                          MailSetRemotePortRange,
+                          MailSetRemoteMediaAddress,
                           MailSetPythonRuntimePath,
                           MailSetRuntimeDependencyPolicy,
                           MailOpenPythonEnvironmentCache,

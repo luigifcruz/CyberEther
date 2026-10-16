@@ -17,11 +17,14 @@ struct RemoteActions {
     using Filter = std::tuple<MailStartRemote,
                               MailStopRemote,
                               MailApproveRemoteClient,
-                              MailSetRemoteBrokerUrl,
+                              MailSetRemoteBroker,
                               MailSetRemoteCodec,
                               MailSetRemoteFramerate,
                               MailSetRemoteEncoder,
-                              MailSetRemoteAutoJoinSessions>;
+                              MailSetRemoteAutoApprove,
+                              MailSetRemoteTransport,
+                              MailSetRemotePortRange,
+                              MailSetRemoteMediaAddress>;
 
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
@@ -60,51 +63,87 @@ struct RemoteActions {
         return Result::SUCCESS;
     }
 
-    Result handle(const MailSetRemoteBrokerUrl& msg) {
-        state.remote.brokerUrl = msg.value;
+    Result handle(const MailSetRemoteBroker& msg) {
+        state.remote.config.broker = msg.value;
 
         JST_CHECK(PersistSettings([&](Settings& settings) {
-            settings.remote.brokerUrl = msg.value;
+            settings.remote.broker.address = msg.value.address;
+            settings.remote.broker.port = msg.value.port;
+            settings.remote.broker.publicUrl = msg.value.publicUrl;
+            settings.remote.broker.certificate = msg.value.certificate;
+            settings.remote.broker.key = msg.value.key;
         }));
 
         return Result::SUCCESS;
     }
 
     Result handle(const MailSetRemoteCodec& msg) {
-        state.remote.codec = msg.value;
+        state.remote.config.video.codec = msg.value;
 
         JST_CHECK(PersistSettings([&](Settings& settings) {
-            settings.remote.codec = GetRemoteCodecName(msg.value);
+            settings.remote.video.codec = GetRemoteCodecName(msg.value);
         }));
 
         return Result::SUCCESS;
     }
 
     Result handle(const MailSetRemoteFramerate& msg) {
-        state.remote.framerate = msg.value;
+        state.remote.config.video.framerate = msg.value;
 
         JST_CHECK(PersistSettings([&](Settings& settings) {
-            settings.remote.framerate = msg.value;
+            settings.remote.video.framerate = msg.value;
         }));
 
         return Result::SUCCESS;
     }
 
     Result handle(const MailSetRemoteEncoder& msg) {
-        state.remote.encoder = msg.value;
+        state.remote.config.video.encoder = msg.value;
 
         JST_CHECK(PersistSettings([&](Settings& settings) {
-            settings.remote.encoder = GetRemoteEncoderName(msg.value);
+            settings.remote.video.encoder = GetRemoteEncoderName(msg.value);
         }));
 
         return Result::SUCCESS;
     }
 
-    Result handle(const MailSetRemoteAutoJoinSessions& msg) {
-        state.remote.autoJoinSessions = msg.value;
+    Result handle(const MailSetRemoteAutoApprove& msg) {
+        state.remote.config.access.autoApprove = msg.value;
 
         JST_CHECK(PersistSettings([&](Settings& settings) {
-            settings.remote.autoJoinSessions = msg.value;
+            settings.remote.access.autoApprove = msg.value;
+        }));
+
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetRemoteTransport& msg) {
+        state.remote.config.media.transport = msg.value;
+
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.remote.media.transport = GetRemoteTransportName(msg.value);
+        }));
+
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetRemotePortRange& msg) {
+        state.remote.config.media.minPort = msg.minPort;
+        state.remote.config.media.maxPort = msg.maxPort;
+
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.remote.media.minPort = msg.minPort;
+            settings.remote.media.maxPort = msg.maxPort;
+        }));
+
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetRemoteMediaAddress& msg) {
+        state.remote.config.media.address = msg.value;
+
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.remote.media.address = msg.value;
         }));
 
         return Result::SUCCESS;

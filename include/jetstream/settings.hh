@@ -30,13 +30,45 @@ struct JETSTREAM_API Settings {
     };
 
     struct Remote {
-        std::string brokerUrl = "https://cyberether.org";
-        std::string codec = "h264";
-        std::string encoder = "auto";
-        bool autoJoinSessions = false;
-        U64 framerate = 30;
+        struct Access {
+            bool autoApprove = false;
 
-        JST_SERDES(brokerUrl, codec, encoder, autoJoinSessions, framerate);
+            JST_SERDES(autoApprove);
+        };
+
+        struct Video {
+            U64 framerate = 30;
+            std::string codec = "h264";
+            std::string encoder = "auto";
+
+            JST_SERDES(framerate, codec, encoder);
+        };
+
+        struct Broker {
+            std::string address = "0.0.0.0";
+            U64 port = 8686;
+            std::string publicUrl;
+            std::string certificate;
+            std::string key;
+
+            JST_SERDES(address, port, publicUrl, certificate, key);
+        };
+
+        struct Media {
+            std::string transport = "auto";
+            U64 minPort = 0;
+            U64 maxPort = 0;
+            std::string address;
+
+            JST_SERDES(transport, minPort, maxPort, address);
+        };
+
+        Access access;
+        Video video;
+        Broker broker;
+        Media media;
+
+        JST_SERDES(access, video, broker, media);
     };
 
     struct Interface {
