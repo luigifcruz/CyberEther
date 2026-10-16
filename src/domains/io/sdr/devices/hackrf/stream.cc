@@ -25,6 +25,7 @@ constexpr U32 LnaGainStep = 8;
 constexpr U32 MaxVgaGain = 62;
 constexpr U32 VgaGainStep = 2;
 constexpr U16 SweepApiVersion = 0x0104;
+constexpr U64 InFlightTransfers = 4;
 
 bool InitLibrary() {
     static std::once_flag flag;
@@ -196,7 +197,11 @@ Result HackRfStream::tune(const F64 frequency) {
     }
     requestedSettings.frequency = frequency;
     appliedSettings.frequency = std::round(frequency);
-    queue.relabel(appliedSettings.frequency);
+    if (!streaming) {
+        return Result::SUCCESS;
+    }
+    streamGeneration = nextGeneration();
+    queue.retune(streamGeneration, InFlightTransfers, guard(), appliedSettings.frequency);
     return Result::SUCCESS;
 }
 

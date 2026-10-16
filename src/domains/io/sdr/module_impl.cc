@@ -281,7 +281,8 @@ Result SdrImpl::receiveLoop() {
 
         switch (capture.status) {
             case Radio::Device::Status::Samples: {
-                stream.push(capture.generation, scratch.data(), capture.count);
+                stream.push(capture.generation, scratch.data(), capture.count, capture.timestamp,
+                            capture.epoch);
                 const U64 capacity = stream.capacity();
                 if (capacity > 0) {
                     const F32 level = static_cast<F32>(stream.size()) / static_cast<F32>(capacity);
@@ -297,6 +298,7 @@ Result SdrImpl::receiveLoop() {
             case Radio::Device::Status::Timeout:
                 break;
             case Radio::Device::Status::Discontinuity:
+                stream.split(capture.generation);
                 deviceGaps.publish(++gaps);
                 lost += capture.lost;
                 deviceLostSamples.publish(lost);

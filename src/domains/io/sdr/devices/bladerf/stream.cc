@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <new>
 #include <string>
 #include <vector>
 
@@ -39,6 +40,8 @@ constexpr F64 SettlingTime = 1.0e-3;
 constexpr unsigned SyncBuffers = 16;
 constexpr unsigned SyncBufferSize = 8192;
 constexpr unsigned SyncTransfers = 8;
+constexpr U64 DrainSamples = 65536;
+constexpr U64 MessageSamples = 508;
 constexpr F32 Q11Scale = 2048.0f;
 const bladerf_channel Channel = BLADERF_CHANNEL_RX(0);
 
@@ -99,6 +102,7 @@ class BladeRfStream final : public Stream {
     U64 queueGeneration = 0;
     TimestampFilter timestamps;
     std::vector<I16> raw;
+    std::vector<I16> drain;
 };
 
 BladeRfStream::~BladeRfStream() {
@@ -197,18 +201,32 @@ Result BladeRfStream::retune(const F64 frequency) {
         JST_ERROR("[SDR_BLADERF] Failed to tune to {:.3f} MHz.", frequency / 1e6);
         return Result::ERROR;
     }
-    bladerf_frequency actual = target;
-    bladerf_get_frequency(handle, Channel, &actual);
+    bladerf_frequency actual = 0;
+    if (bladerf_get_frequency(handle, Channel, &actual) != 0) {
+        JST_ERROR("[SDR_BLADERF] Failed to read back the tuned frequency.");
+        return Result::ERROR;
+    }
     requestedSettings.frequency = frequency;
     appliedSettings.frequency = static_cast<F64>(actual);
     return applyGain(requestedSettings.gain, false);
 }
 
 Result BladeRfStream::tune(const F64 frequency) {
-    return retune(frequency);
+    JST_CHECK(retune(frequency));
+    if (!streaming) {
+        return Result::SUCCESS;
+    }
+    queueGeneration = nextGeneration();
+    return resynchronize(guard());
 }
 
 Result BladeRfStream::open() {
+    try {
+        drain.resize(DrainSamples * 2);
+    } catch (const std::bad_alloc&) {
+        JST_ERROR("[SDR_BLADERF] Failed to allocate the drain buffer.");
+        return Result::ERROR;
+    }
     if (bladerf_sync_config(handle, BLADERF_RX_X1, BLADERF_FORMAT_SC16_Q11_META,
                             SyncBuffers, SyncBufferSize, SyncTransfers, 3500) != 0 ||
         bladerf_enable_module(handle, Channel, true) != 0) {
@@ -254,27 +272,38 @@ Device::Capture BladeRfStream::read(std::span<CF32> samples,
         capture.epoch = epoch;
         return capture;
     };
-    const auto receive = [&](const U64 count, bladerf_metadata& meta,
+    const auto receive = [&](I16* data, const U64 count, bladerf_metadata& meta,
                              const std::chrono::milliseconds wait) {
         meta.flags = BLADERF_META_FLAG_RX_NOW;
-        return bladerf_sync_rx(handle, raw.data(), static_cast<unsigned>(count),
-                               &meta, static_cast<unsigned>(wait.count()));
+        const int status = bladerf_sync_rx(handle, data, static_cast<unsigned>(count),
+                                           &meta, static_cast<unsigned>(wait.count()));
+        if (status == 0 && (meta.status & BLADERF_META_STATUS_OVERRUN) != 0 &&
+            meta.actual_count >= count) {
+            const U64 latest = std::numeric_limits<U64>::max() - MessageSamples -
+                               meta.actual_count;
+            timestamps.lose(meta.timestamp > latest
+                ? std::numeric_limits<U64>::max()
+                : meta.timestamp + meta.actual_count + MessageSamples);
+        }
+        return status;
     };
 
     if (!streaming) {
         return finish({.status = Status::Failure, .error = "stream is not running"});
     }
-    if (!synchronized && resynchronize(0) != Result::SUCCESS) {
+    if (!synchronized && resynchronize(guard()) != Result::SUCCESS) {
         return finish({.status = Status::Failure,
                        .error = "failed to read the hardware timestamp"});
     }
 
     raw.resize(samples.size() * 2);
     const auto deadline = Clock::now() + timeout;
+    U64 limit = DrainSamples;
     while (const U64 pending = timestamps.pending()) {
         bladerf_metadata meta = {};
-        if (const int status = receive(std::min<U64>(pending, samples.size()), meta,
-                                       Remaining(deadline)); status != 0) {
+        const U64 count = std::min(pending, limit);
+        if (const int status = receive(drain.data(), count, meta, Remaining(deadline));
+            status != 0) {
             return finish(Failed(status));
         }
         if (meta.actual_count == 0) {
@@ -288,10 +317,13 @@ Device::Capture BladeRfStream::read(std::span<CF32> samples,
         if (Clock::now() >= deadline) {
             return finish({.status = Status::Timeout});
         }
+        limit = meta.actual_count < count ? std::min<U64>(samples.size(), DrainSamples)
+                                          : DrainSamples;
     }
 
     bladerf_metadata meta = {};
-    if (const int status = receive(samples.size(), meta, Remaining(deadline)); status != 0) {
+    if (const int status = receive(raw.data(), samples.size(), meta, Remaining(deadline));
+        status != 0) {
         return finish(Failed(status));
     }
     const U64 count = std::min<U64>(meta.actual_count, samples.size());

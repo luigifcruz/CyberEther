@@ -50,6 +50,8 @@ struct Script {
     std::atomic<U64> largestRead{0};
     std::atomic<unsigned> activeReads{0};
     std::atomic<U64> concurrentChanges{0};
+    std::atomic<bool> counter{false};
+    std::atomic<U64> jump{0};
 
     void reset() {
         std::lock_guard lock(mutex);
@@ -69,6 +71,8 @@ struct Script {
         largestRead = 0;
         activeReads = 0;
         concurrentChanges = 0;
+        counter = false;
+        jump = 0;
     }
 
     void record(const std::string& call) {
@@ -164,7 +168,13 @@ class ScriptedScene {
             std::lock_guard lock(TestScript().mutex);
             tones = TestScript().tones;
         }
-        if (tones.empty()) {
+        clock += TestScript().jump.exchange(0);
+        const U64 first = clock;
+        if (TestScript().counter) {
+            for (U64 i = 0; i < count; ++i) {
+                samples[i] = CF32{static_cast<F32>(clock + i), static_cast<F32>(generation)};
+            }
+        } else if (tones.empty()) {
             const CF32 value{static_cast<F32>(frequency / 1e6),
                              static_cast<F32>(generation)};
             std::fill_n(samples.begin(), count, value);
@@ -191,6 +201,8 @@ class ScriptedScene {
             .generation = generation,
             .frequency = frequency,
             .sampleRate = rate,
+            .timestamp = TestScript().counter ? std::optional<U64>(first) : std::nullopt,
+            .epoch = 1,
         };
     }
 

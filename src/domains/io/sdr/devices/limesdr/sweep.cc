@@ -54,7 +54,7 @@ class LimeSdrSweep final : public Sweep::Retune {
     Result setGain(F64 gain) override;
 
  private:
-    void poll();
+    bool poll();
     Result applyGain(F64 gain, bool force);
     Result setOscillator(F64 frequency, bool useCache);
     Result tuneOscillator(F64 frequency, bool useCache);
@@ -211,8 +211,12 @@ Result LimeSdrSweep::apply(const Settings& settings) {
 
 Result LimeSdrSweep::tuneOscillator(const F64 frequency, const bool useCache) {
     JST_CHECK(setOscillator(frequency, useCache));
-    F64 actual = frequency;
-    LMS_GetLOFrequency(handle, LMS_CH_RX, 0, &actual);
+    F64 actual = 0.0;
+    if (LMS_GetLOFrequency(handle, LMS_CH_RX, 0, &actual) != 0) {
+        JST_ERROR("[SDR_LIMESDR] Failed to read back the tuned frequency: {}",
+                  LMS_GetLastErrorMessage());
+        return Result::ERROR;
+    }
     tunedFrequency = actual;
     return Result::SUCCESS;
 }
@@ -252,10 +256,10 @@ Result LimeSdrSweep::open() {
     if (!calibrated) {
         std::lock_guard lock(LimeSdrLibrary::TuningMutex());
         const F64 bandwidth = std::max(requestedSettings.sampleRate, 2.5e6);
-        if (LMS_Calibrate(handle, LMS_CH_RX, 0, bandwidth, 0) != 0) {
+        calibrated = LMS_Calibrate(handle, LMS_CH_RX, 0, bandwidth, 0) == 0;
+        if (!calibrated) {
             JST_WARN("[SDR_LIMESDR] Calibration failed: {}", LMS_GetLastErrorMessage());
         }
-        calibrated = true;
     }
     const F64 sampleRate = appliedSettings.sampleRate;
     try {
@@ -294,7 +298,11 @@ Result LimeSdrSweep::open() {
         return Result::ERROR;
     }
     lms_stream_status_t status = {};
-    LMS_GetStreamStatus(&stream, &status);
+    if (LMS_GetStreamStatus(&stream, &status) != 0) {
+        LMS_StopStream(&stream);
+        JST_ERROR("[SDR_LIMESDR] Failed to read the stream status.");
+        return Result::ERROR;
+    }
     queueGeneration = nextGeneration();
     received = Clock::now();
     timestamps.restart(guard(), static_cast<U64>(sampleRate));
@@ -309,18 +317,19 @@ void LimeSdrSweep::close() {
     streaming = false;
 }
 
-void LimeSdrSweep::poll() {
+bool LimeSdrSweep::poll() {
     lms_stream_status_t status = {};
     if (LMS_GetStreamStatus(&stream, &status) != 0) {
-        return;
+        return false;
     }
     if (status.droppedPackets == 0 && status.overrun == 0) {
-        return;
+        return true;
     }
     const U64 margin = 2 * PacketSamples;
     timestamps.lose(status.timestamp > std::numeric_limits<U64>::max() - margin
         ? std::numeric_limits<U64>::max()
         : status.timestamp + margin);
+    return true;
 }
 
 Device::Capture LimeSdrSweep::read(std::span<CF32> samples,
@@ -339,10 +348,10 @@ Device::Capture LimeSdrSweep::read(std::span<CF32> samples,
         if (delivered > 0) {
             received = Clock::now();
         }
-        if (delivered >= 0) {
-            poll();
-        }
         return delivered;
+    };
+    const auto blind = [&] {
+        return finish({.status = Status::Failure, .error = "failed to read the stream status"});
     };
     const auto idle = [&] {
         if (Clock::now() - received > Device::StallTimeout) {
@@ -364,6 +373,9 @@ Device::Capture LimeSdrSweep::read(std::span<CF32> samples,
         if (delivered < 0) {
             return finish({.status = Status::Disconnected, .error = LMS_GetLastErrorMessage()});
         }
+        if (!poll()) {
+            return blind();
+        }
         if (delivered == 0) {
             return idle();
         }
@@ -381,6 +393,9 @@ Device::Capture LimeSdrSweep::read(std::span<CF32> samples,
     const int delivered = receive(samples.data(), samples.size(), meta, Remaining(deadline));
     if (delivered < 0) {
         return finish({.status = Status::Disconnected, .error = LMS_GetLastErrorMessage()});
+    }
+    if (!poll()) {
+        return blind();
     }
     if (delivered == 0) {
         return idle();

@@ -2,7 +2,9 @@
 #define JETSTREAM_DOMAINS_IO_SDR_TOOLS_STREAM_BUFFER_HH
 
 #include <chrono>
+#include <deque>
 #include <mutex>
+#include <optional>
 
 #include "jetstream/macros.hh"
 #include "jetstream/tools/circular_buffer.hh"
@@ -24,11 +26,14 @@ class JETSTREAM_API StreamBuffer {
         U64 pushedSamples = 0;
         U64 overwrittenSamples = 0;
         U64 rejectedSamples = 0;
+        U64 discardedSamples = 0;
     };
 
     Result resize(U64 capacity);
     void reset(const Metadata& metadata);
-    bool push(U64 generation, const CF32* data, U64 count);
+    bool push(U64 generation, const CF32* data, U64 count,
+              std::optional<U64> timestamp = std::nullopt, U64 epoch = 0);
+    void split(U64 generation);
     Result pop(CF32* data, U64 count, Metadata& metadata);
     Result waitForSize(U64 count, std::chrono::milliseconds timeout);
 
@@ -39,10 +44,17 @@ class JETSTREAM_API StreamBuffer {
     Statistics statistics() const;
 
  private:
+    void mark();
+    void prune();
+
     mutable std::mutex mutex;
     Tools::CircularBuffer<CF32> samples;
     Metadata current;
     Statistics accumulated;
+    U64 written = 0;
+    std::deque<U64> breaks;
+    std::optional<U64> expected;
+    U64 expectedEpoch = 0;
 };
 
 }  // namespace Jetstream::Radio

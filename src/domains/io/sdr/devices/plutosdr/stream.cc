@@ -377,7 +377,11 @@ void PlutoSdrStream::close() {
 
 Result PlutoSdrStream::tune(const F64 frequency) {
     JST_CHECK(retune(frequency));
-    queue.relabel(appliedSettings.frequency);
+    if (!buffer) {
+        return Result::SUCCESS;
+    }
+    streamGeneration = nextGeneration();
+    queue.retune(streamGeneration, KernelBuffers + 1, guard(), appliedSettings.frequency);
     return Result::SUCCESS;
 }
 

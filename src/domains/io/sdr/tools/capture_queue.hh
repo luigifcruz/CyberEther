@@ -20,7 +20,6 @@ class JETSTREAM_API CaptureQueue {
     Result resize(U64 capacity);
     void reset(U64 generation, U64 discard, F64 frequency, F64 sampleRate);
     void retune(U64 generation, U64 transfers, U64 discard, F64 frequency);
-    void relabel(F64 frequency);
     void close();
     void push(U64 generation, U64 count, const Converter& convert, U64 deviceLost = 0);
     void fail(Device::Status status, const std::string& error);

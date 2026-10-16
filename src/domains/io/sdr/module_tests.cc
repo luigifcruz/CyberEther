@@ -6,9 +6,11 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <functional>
 #include <future>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -310,6 +312,235 @@ class StreamingSweep final : public TestSweep {
     std::atomic<bool> streaming{false};
     std::atomic<F64> tuner{0.0};
     std::atomic<U64> streamGeneration{0};
+};
+
+class FifoStream final : public Radio::Stream {
+ public:
+    static constexpr U64 Backlog = 300;
+    static constexpr U64 InFlight = 40;
+    static constexpr U64 Margin = 64;
+
+    explicit FifoStream(const Radio::Device::Info& info = {}) {
+        deviceInfo = info;
+        deviceCapabilities.frequencyRanges = {{10.0e6, 2000.0e6}};
+        deviceCapabilities.sampleRateRanges = {{1.0e6, 20.0e6}};
+    }
+
+    Radio::Device::Capture read(std::span<CF32> samples, const std::chrono::milliseconds) override {
+        const auto finish = [&](Radio::Device::Capture capture) {
+            capture.generation = generation();
+            capture.frequency = appliedSettings.frequency;
+            capture.sampleRate = appliedSettings.sampleRate;
+            capture.epoch = timestamps.epoch();
+            return capture;
+        };
+        if (!streaming) {
+            return finish({.status = Radio::Device::Status::Failure, .error = "stopped"});
+        }
+        std::this_thread::sleep_for(std::chrono::microseconds(200));
+        while (const U64 pending = timestamps.pending()) {
+            const U64 count = std::min<U64>(pending, samples.size());
+            const auto decision = timestamps.accept(cursor, count);
+            cursor += count;
+            if (decision.status == Radio::Device::Status::Failure ||
+                decision.status == Radio::Device::Status::Discontinuity) {
+                return finish({.status = decision.status, .error = decision.error});
+            }
+        }
+        const U64 start = cursor;
+        cursor += samples.size();
+        const auto decision = timestamps.accept(start, samples.size());
+        if (decision.status != Radio::Device::Status::Samples) {
+            return finish({.status = decision.status, .error = decision.error});
+        }
+        const U64 count = samples.size() - decision.skip;
+        for (U64 i = 0; i < count; ++i) {
+            const U64 timestamp = start + decision.skip + i;
+            samples[i] = CF32{oscillatorAt(timestamp), static_cast<F32>(timestamp)};
+        }
+        return finish({.status = Radio::Device::Status::Samples, .count = count,
+                       .timestamp = start + decision.skip});
+    }
+
+ protected:
+    Result apply(const Settings& settings) override {
+        requestedSettings = settings;
+        appliedSettings.frequency = settings.frequency;
+        appliedSettings.sampleRate = settings.sampleRate;
+        segments = {{0, static_cast<F32>(settings.frequency / 1e6)}};
+        return Result::SUCCESS;
+    }
+
+    Result open() override {
+        cursor = 0;
+        nextGeneration();
+        timestamps.restart(guard(), 0);
+        streaming = true;
+        return Result::SUCCESS;
+    }
+
+    void close() override {
+        streaming = false;
+    }
+
+    Result tune(const F64 frequency) override {
+        const U64 latest = cursor + Backlog;
+        segments.push_back({latest + InFlight, std::numeric_limits<F32>::quiet_NaN()});
+        segments.push_back({latest + InFlight + guard(), static_cast<F32>(frequency / 1e6)});
+        requestedSettings.frequency = frequency;
+        appliedSettings.frequency = frequency;
+        if (streaming) {
+            nextGeneration();
+            timestamps.retune(latest + Margin + guard());
+        }
+        return Result::SUCCESS;
+    }
+
+    Result setAutomaticGain(const bool automaticGain) override {
+        requestedSettings.automaticGain = automaticGain;
+        return Result::SUCCESS;
+    }
+
+    Result setGain(const F64 gain) override {
+        requestedSettings.gain = gain;
+        return Result::SUCCESS;
+    }
+
+ private:
+    F32 oscillatorAt(const U64 timestamp) const {
+        F32 value = segments.front().second;
+        for (const auto& [start, frequency] : segments) {
+            if (start <= timestamp) {
+                value = frequency;
+            }
+        }
+        return value;
+    }
+
+    Radio::TimestampFilter timestamps;
+    std::vector<std::pair<U64, F32>> segments;
+    U64 cursor = 0;
+    bool streaming = false;
+};
+
+class CallbackStream final : public Radio::Stream {
+ public:
+    static constexpr U64 TransferSamples = 16;
+    static constexpr U64 InFlightTransfers = 3;
+
+    struct Transfer {
+        U64 generation = 0;
+        U64 lost = 0;
+        std::vector<CF32> samples;
+    };
+
+    std::function<void()> between;
+    bool failTune = false;
+    U64 boundary = 0;
+
+    CallbackStream() {
+        deviceCapabilities.frequencyRanges = {{10.0e6, 2000.0e6}};
+        deviceCapabilities.sampleRateRanges = {{1.0e6, 20.0e6}};
+    }
+
+    Transfer complete(const U64 lost = 0) {
+        produced += lost;
+        std::vector<CF32> samples;
+        for (U64 i = 0; i < TransferSamples; ++i, ++produced) {
+            samples.push_back(CF32{oscillatorAt(produced), static_cast<F32>(produced)});
+        }
+        return {.generation = streamGeneration, .lost = lost, .samples = std::move(samples)};
+    }
+
+    void deliver(const Transfer& transfer) {
+        queue.push(transfer.generation, transfer.samples.size(),
+                   [&](CF32* output, const U64 offset, const U64 count) {
+                       std::copy_n(transfer.samples.data() + offset, count, output);
+                   },
+                   transfer.lost);
+    }
+
+    void callback(const U64 lost = 0) {
+        deliver(complete(lost));
+    }
+
+    Radio::Device::Capture read(std::span<CF32> samples, const std::chrono::milliseconds timeout) override {
+        return queue.pop(samples, timeout);
+    }
+
+ protected:
+    Result apply(const Settings& settings) override {
+        requestedSettings = settings;
+        appliedSettings.frequency = settings.frequency;
+        appliedSettings.sampleRate = settings.sampleRate;
+        segments = {{produced, static_cast<F32>(settings.frequency / 1e6)}};
+        return Result::SUCCESS;
+    }
+
+    Result open() override {
+        JST_CHECK(queue.resize(16 * TransferSamples));
+        streamGeneration = nextGeneration();
+        queue.reset(streamGeneration, guard(), appliedSettings.frequency,
+                    appliedSettings.sampleRate);
+        streaming = true;
+        return Result::SUCCESS;
+    }
+
+    void close() override {
+        if (!streaming) {
+            return;
+        }
+        streaming = false;
+        queue.close();
+    }
+
+    Result tune(const F64 frequency) override {
+        if (failTune) {
+            return Result::ERROR;
+        }
+        boundary = produced + InFlightTransfers * TransferSamples;
+        segments.push_back({boundary - TransferSamples / 2,
+                            std::numeric_limits<F32>::quiet_NaN()});
+        segments.push_back({boundary + guard(), static_cast<F32>(frequency / 1e6)});
+        requestedSettings.frequency = frequency;
+        appliedSettings.frequency = frequency;
+        if (!streaming) {
+            return Result::SUCCESS;
+        }
+        streamGeneration = nextGeneration();
+        if (between) {
+            between();
+        }
+        queue.retune(streamGeneration, InFlightTransfers, guard(), appliedSettings.frequency);
+        return Result::SUCCESS;
+    }
+
+    Result setAutomaticGain(const bool automaticGain) override {
+        requestedSettings.automaticGain = automaticGain;
+        return Result::SUCCESS;
+    }
+
+    Result setGain(const F64 gain) override {
+        requestedSettings.gain = gain;
+        return Result::SUCCESS;
+    }
+
+ private:
+    F32 oscillatorAt(const U64 timestamp) const {
+        F32 value = segments.front().second;
+        for (const auto& [start, frequency] : segments) {
+            if (start <= timestamp) {
+                value = frequency;
+            }
+        }
+        return value;
+    }
+
+    Radio::CaptureQueue queue;
+    std::vector<std::pair<U64, F32>> segments;
+    std::atomic<U64> streamGeneration{0};
+    U64 produced = 0;
+    bool streaming = false;
 };
 
 struct SdrImplAccess : Modules::SdrImpl {
@@ -650,7 +881,7 @@ TEST_CASE("SDR generic hop capture budgets elapsed settling time instead of guar
     }
 }
 
-TEST_CASE("SDR capture queues relabel a running stream without keeping pre-retune samples",
+TEST_CASE("SDR capture queues retune a running stream without keeping pre-retune samples",
           "[modules][sdr][backend][capture][retune]") {
     Radio::CaptureQueue queue;
     REQUIRE(queue.resize(64) == Result::SUCCESS);
@@ -888,6 +1119,256 @@ TEST_CASE("SDR stream buffers keep loss totals across resets",
     const auto stats = buffer.statistics();
     REQUIRE(stats.pushedSamples == 8);
     REQUIRE(stats.overwrittenSamples == 2);
+}
+
+TEST_CASE("SDR stream buffers never complete a frame across a gap",
+          "[modules][sdr][backend][capture][gap]") {
+    std::vector<CF32> ramp(64);
+    for (U64 i = 0; i < ramp.size(); ++i) {
+        ramp[i] = CF32{static_cast<F32>(i), 0.0f};
+    }
+    std::vector<CF32> frame(8);
+    Radio::StreamBuffer::Metadata metadata;
+    Radio::StreamBuffer buffer;
+    REQUIRE(buffer.resize(32) == Result::SUCCESS);
+    buffer.reset({.generation = 1});
+    const auto pops = [&](const F32 first) {
+        REQUIRE(buffer.pop(frame.data(), 8, metadata) == Result::SUCCESS);
+        for (U64 i = 0; i < frame.size(); ++i) {
+            REQUIRE(frame[i].real() == first + static_cast<F32>(i));
+        }
+    };
+
+    SECTION("a reported gap inside a frame drops only the partial frame") {
+        REQUIRE(buffer.push(1, ramp.data(), 12));
+        buffer.split(1);
+        REQUIRE(buffer.push(1, ramp.data() + 20, 8));
+        pops(0.0f);
+        pops(20.0f);
+        REQUIRE(buffer.statistics().discardedSamples == 4);
+    }
+    SECTION("a gap on a frame boundary keeps every sample") {
+        REQUIRE(buffer.push(1, ramp.data(), 8));
+        buffer.split(1);
+        REQUIRE(buffer.push(1, ramp.data() + 20, 8));
+        pops(0.0f);
+        pops(20.0f);
+        REQUIRE(buffer.statistics().discardedSamples == 0);
+    }
+    SECTION("timestamp jumps and epoch changes split without a reported gap") {
+        REQUIRE(buffer.push(1, ramp.data(), 4, 0, 1));
+        REQUIRE(buffer.push(1, ramp.data() + 4, 4, 4, 1));
+        REQUIRE(buffer.push(1, ramp.data() + 10, 4, 10, 1));
+        REQUIRE(buffer.push(1, ramp.data() + 14, 4, 14, 2));
+        REQUIRE(buffer.push(1, ramp.data() + 18, 8, 18, 2));
+        pops(0.0f);
+        pops(14.0f);
+        REQUIRE(buffer.statistics().discardedSamples == 4);
+        REQUIRE(buffer.pop(frame.data(), 8, metadata) == Result::INCOMPLETE);
+    }
+    SECTION("overwrites never realign a frame across a gap") {
+        REQUIRE(buffer.resize(16) == Result::SUCCESS);
+        buffer.reset({.generation = 1});
+        REQUIRE(buffer.push(1, ramp.data(), 12));
+        buffer.split(1);
+        REQUIRE(buffer.push(1, ramp.data() + 20, 12));
+        REQUIRE(buffer.statistics().overwrittenSamples == 8);
+        pops(20.0f);
+        REQUIRE(buffer.statistics().discardedSamples == 4);
+    }
+    SECTION("gaps of another generation and empty buffers split nothing") {
+        buffer.split(1);
+        REQUIRE(buffer.push(1, ramp.data(), 4));
+        buffer.split(2);
+        REQUIRE(buffer.push(1, ramp.data() + 4, 4));
+        pops(0.0f);
+        REQUIRE(buffer.statistics().discardedSamples == 0);
+    }
+}
+
+TEST_CASE("SDR timestamped streams never label queued IQ with a live retune",
+          "[modules][sdr][backend][capture][retune]") {
+    FifoStream stream;
+    REQUIRE(stream.start({.frequency = 100.0e6, .sampleRate = 2.0e6, .settlingTime = 1.0e-4}) ==
+            Result::SUCCESS);
+    std::vector<CF32> samples(32);
+    U64 cursor = 0;
+    for (U64 i = 0; i < 8; ++i) {
+        const auto capture = stream.read(samples, std::chrono::milliseconds(10));
+        if (capture.status == Radio::Device::Status::Samples) {
+            REQUIRE(samples[0].real() == 100.0f);
+            cursor = *capture.timestamp + capture.count;
+        }
+    }
+    REQUIRE(cursor > 0);
+    const U64 generation = stream.generation();
+    REQUIRE(stream.update({.frequency = 250.0e6, .sampleRate = 2.0e6, .settlingTime = 1.0e-4}) ==
+            Result::SUCCESS);
+    REQUIRE(stream.generation() > generation);
+
+    U64 kept = 0;
+    std::optional<U64> first;
+    for (U64 i = 0; i < 64; ++i) {
+        const auto capture = stream.read(samples, std::chrono::milliseconds(10));
+        if (capture.status != Radio::Device::Status::Samples) {
+            continue;
+        }
+        REQUIRE(capture.generation == stream.generation());
+        REQUIRE(capture.frequency == 250.0e6);
+        first = first.value_or(*capture.timestamp);
+        for (U64 j = 0; j < capture.count; ++j) {
+            REQUIRE(samples[j].real() == 250.0f);
+        }
+        kept += capture.count;
+    }
+    REQUIRE(kept > 0);
+    REQUIRE(*first == cursor + FifoStream::Backlog + FifoStream::Margin + 200);
+}
+
+TEST_CASE("SDR callback streams never label queued or in-flight IQ with a live retune",
+          "[modules][sdr][backend][capture][retune]") {
+    constexpr auto Now = std::chrono::milliseconds(0);
+    constexpr U64 Guard = 20;
+    constexpr U64 Transfer = CallbackStream::TransferSamples;
+    const Radio::Stream::Settings before{.frequency = 100.0e6, .sampleRate = 2.0e6,
+                                         .settlingTime = 1.0e-5};
+    auto after = before;
+    after.frequency = 250.0e6;
+
+    CallbackStream stream;
+    REQUIRE(stream.start(before) == Result::SUCCESS);
+    std::vector<CF32> samples(64);
+    std::vector<CF32> received;
+    U64 gaps = 0;
+    U64 lost = 0;
+    Radio::StreamBuffer buffer;
+    REQUIRE(buffer.resize(256) == Result::SUCCESS);
+    const auto collect = [&] {
+        while (true) {
+            const auto capture = stream.read(samples, Now);
+            if (capture.status == Radio::Device::Status::Timeout) {
+                return;
+            }
+            REQUIRE(capture.generation == stream.generation());
+            REQUIRE(capture.frequency == 250.0e6);
+            if (capture.status == Radio::Device::Status::Discontinuity) {
+                ++gaps;
+                lost += capture.lost;
+                buffer.split(capture.generation);
+                continue;
+            }
+            REQUIRE(capture.status == Radio::Device::Status::Samples);
+            REQUIRE(buffer.push(capture.generation, samples.data(), capture.count));
+            received.insert(received.end(), samples.begin(), samples.begin() + capture.count);
+        }
+    };
+    const auto clean = [&] {
+        REQUIRE_FALSE(received.empty());
+        for (const auto& sample : received) {
+            REQUIRE(sample.real() == 250.0f);
+        }
+    };
+
+    SECTION("buffered, late, and in-flight transfers are dropped before settling") {
+        for (U64 i = 0; i < 4; ++i) {
+            stream.callback();
+        }
+        const auto capture = stream.read(std::span(samples).first(10), Now);
+        REQUIRE(capture.status == Radio::Device::Status::Samples);
+        REQUIRE(capture.frequency == 100.0e6);
+        REQUIRE(samples[0] == CF32{100.0f, static_cast<F32>(Guard)});
+        stream.callback(3);
+        const auto late = stream.complete();
+
+        const U64 generation = stream.generation();
+        REQUIRE(stream.update(after) == Result::SUCCESS);
+        REQUIRE(stream.generation() == generation + 1);
+        REQUIRE(stream.applied().frequency == 250.0e6);
+        REQUIRE(stream.read(samples, Now).status == Radio::Device::Status::Timeout);
+
+        stream.deliver(late);
+        for (U64 i = 0; i < CallbackStream::InFlightTransfers; ++i) {
+            stream.callback();
+        }
+        REQUIRE(stream.read(samples, Now).status == Radio::Device::Status::Timeout);
+
+        buffer.reset({.frequency = 250.0e6, .sampleRate = 2.0e6,
+                      .generation = stream.generation()});
+        for (U64 i = 0; i < 4; ++i) {
+            stream.callback();
+            collect();
+        }
+        stream.callback(5);
+        collect();
+        for (U64 i = 0; i < 2; ++i) {
+            stream.callback();
+            collect();
+        }
+
+        clean();
+        REQUIRE(received.front().imag() == static_cast<F32>(stream.boundary + Guard));
+        REQUIRE(received.size() == 4 * Transfer - Guard + 3 * Transfer);
+        REQUIRE(gaps == 1);
+        REQUIRE(lost == 5);
+
+        std::vector<CF32> frame(8);
+        Radio::StreamBuffer::Metadata metadata;
+        U64 frames = 0;
+        while (buffer.pop(frame.data(), frame.size(), metadata) == Result::SUCCESS) {
+            REQUIRE(metadata.generation == stream.generation());
+            REQUIRE(metadata.frequency == 250.0e6);
+            for (U64 i = 1; i < frame.size(); ++i) {
+                REQUIRE(frame[i].imag() == frame[0].imag() + static_cast<F32>(i));
+            }
+            ++frames;
+        }
+        REQUIRE(frames == 11);
+        REQUIRE(buffer.statistics().discardedSamples == 4);
+    }
+
+    SECTION("a callback that loads the new generation before the queue retunes is dropped") {
+        stream.callback();
+        stream.callback();
+        stream.between = [&] {
+            stream.callback();
+        };
+        REQUIRE(stream.update(after) == Result::SUCCESS);
+        stream.between = nullptr;
+        REQUIRE(stream.read(samples, Now).status == Radio::Device::Status::Timeout);
+
+        buffer.reset({.frequency = 250.0e6, .sampleRate = 2.0e6,
+                      .generation = stream.generation()});
+        for (U64 i = 0; i < 6; ++i) {
+            stream.callback();
+            collect();
+        }
+        clean();
+        REQUIRE(received.front().imag() == static_cast<F32>(stream.boundary + Transfer + Guard));
+        REQUIRE(gaps == 0);
+    }
+
+    SECTION("a failed tune restarts on the previous frequency with a new generation") {
+        stream.callback();
+        stream.callback();
+        stream.failTune = true;
+        const U64 generation = stream.generation();
+        REQUIRE(stream.update(after) == Result::ERROR);
+        REQUIRE(stream.generation() > generation);
+        REQUIRE(stream.applied().frequency == 100.0e6);
+        REQUIRE(stream.read(samples, Now).status == Radio::Device::Status::Timeout);
+
+        for (U64 i = 0; i < 3; ++i) {
+            stream.callback();
+        }
+        const auto capture = stream.read(samples, Now);
+        REQUIRE(capture.status == Radio::Device::Status::Samples);
+        REQUIRE(capture.generation == stream.generation());
+        REQUIRE(capture.frequency == 100.0e6);
+        REQUIRE(capture.count == 3 * Transfer - Guard);
+        for (U64 i = 0; i < capture.count; ++i) {
+            REQUIRE(samples[i].real() == 100.0f);
+        }
+    }
 }
 
 TEST_CASE("SDR stream access interrupts captures and applies changes on the caller",
@@ -1183,6 +1664,71 @@ TEST_CASE_METHOD(ScriptedDrivers,
     const auto& output = module->outputs().at("signal").tensor;
     REQUIRE(AttributeOf(output, "frequency") == 100.0e6f);
     REQUIRE(output.data<CF32>()[0].real() == 100.0f);
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR output frames never bridge a device gap",
+                 "[modules][sdr][capture][gap]") {
+    TestScript().counter = true;
+    TestScript().budget = 4;
+    const auto module = BuildSdrModule();
+    const ModuleCleanup cleanup{module};
+    REQUIRE(module->create("test", ScriptedConfig(), {}) == Result::SUCCESS);
+    auto* sdr = module->getImpl<Modules::SdrImpl>();
+    const auto& stream = sdr->*SdrImplAccess::streamMember();
+    const auto& output = module->outputs().at("signal").tensor;
+    REQUIRE(WaitFor([&] { return stream.size() == 4; }));
+
+    F32 first = 4.0f;
+    SECTION("reported gap") {
+        {
+            std::lock_guard lock(TestScript().mutex);
+            TestScript().nextRead = Radio::Device::Capture{
+                .status = Radio::Device::Status::Discontinuity, .lost = 64};
+        }
+        REQUIRE(WaitFor([&] { return sdr->getLoss().deviceGaps == 1; }));
+    }
+    SECTION("timestamp jump") {
+        TestScript().jump = 100;
+        first = 104.0f;
+    }
+    TestScript().budget = 8;
+    REQUIRE(WaitFor([&] { return stream.size() == 12; }));
+    REQUIRE(RuntimeOf(module)->computeSubmit() == Result::SUCCESS);
+    for (U64 i = 0; i < output.size(); ++i) {
+        REQUIRE(output.data<CF32>()[i].real() == first + static_cast<F32>(i));
+    }
+    REQUIRE(stream.statistics().discardedSamples == 4);
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR live retunes of a timestamped stream emit only settled new-frequency frames",
+                 "[modules][sdr][metadata][retune]") {
+    auto driver = ScriptedDriver();
+    driver.stream = [](const Radio::Device::Info& info, std::unique_ptr<Radio::Stream>& stream) {
+        stream = std::make_unique<FifoStream>(info);
+        return Result::SUCCESS;
+    };
+    Radio::Device::Override(std::vector<Radio::Device::Driver>{driver});
+    const auto module = BuildSdrModule();
+    const ModuleCleanup cleanup{module};
+    REQUIRE(module->create("test", ScriptedConfig(), {}) == Result::SUCCESS);
+    const auto runtime = RuntimeOf(module);
+    const auto& output = module->outputs().at("signal").tensor;
+    const auto frame = [&] {
+        REQUIRE(WaitFor([&] { return runtime->computeSubmit() == Result::SUCCESS; }));
+    };
+
+    frame();
+    REQUIRE(output.data<CF32>()[0].real() == 100.0f);
+    REQUIRE(module->reconfigure({{"frequency", 250.0e6f}}) == Result::SUCCESS);
+    for (int i = 0; i < 16; ++i) {
+        frame();
+        REQUIRE(AttributeOf(output, "frequency") == 250.0e6f);
+        for (U64 j = 0; j < output.size(); ++j) {
+            REQUIRE(output.data<CF32>()[j].real() == 250.0f);
+        }
+    }
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,

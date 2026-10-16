@@ -21,7 +21,7 @@ namespace Jetstream::Radio {
 namespace {
 
 constexpr F64 SettlingTime = 5.0e-3;
-constexpr U32 InFlightTransfers = 12;
+constexpr U32 InFlightTransfers = 2;
 constexpr U32 MinTransferBytes = 16384;
 
 const char* TunerName(const rtlsdr_tuner tuner) {
@@ -250,7 +250,12 @@ Result RtlSdrSweep::setFrequency(const F64 frequency) {
         JST_ERROR("[SDR_RTLSDR] Failed to tune to {:.3f} MHz.", frequency / 1e6);
         return Result::ERROR;
     }
-    tunedFrequency = rtlsdr_get_center_freq(handle);
+    const U32 actual = rtlsdr_get_center_freq(handle);
+    if (actual == 0) {
+        JST_ERROR("[SDR_RTLSDR] Failed to read back the tuned frequency.");
+        return Result::ERROR;
+    }
+    tunedFrequency = actual;
     return Result::SUCCESS;
 }
 

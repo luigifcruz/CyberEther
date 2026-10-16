@@ -28,6 +28,7 @@ constexpr F64 SettlingTime = 2.0e-3;
 constexpr unsigned MaxGain = 73;
 constexpr U64 PacketSamples = 1360;
 constexpr U64 DrainSamples = 65536;
+constexpr U64 UsbTransfers = 16;
 
 using Clock = std::chrono::steady_clock;
 
@@ -53,7 +54,7 @@ class LimeSdrStream final : public Stream {
     Result setGain(F64 gain) override;
 
  private:
-    void poll();
+    bool poll();
     Result applyGain(F64 gain, bool force);
     Result setOscillator(F64 frequency, bool useCache);
     Result tuneOscillator(F64 frequency, bool useCache);
@@ -62,6 +63,7 @@ class LimeSdrStream final : public Stream {
     std::vector<int> antennaIndices;
     lms_stream_t stream = {};
     F64 streamSampleRate = 0.0;
+    U64 streamBatch = 1;
     bool streamReady = false;
     bool streaming = false;
     U64 queueGeneration = 0;
@@ -219,15 +221,38 @@ Result LimeSdrStream::apply(const Settings& settings) {
 
 Result LimeSdrStream::tuneOscillator(const F64 frequency, const bool useCache) {
     JST_CHECK(setOscillator(frequency, useCache));
-    F64 actual = frequency;
-    LMS_GetLOFrequency(handle, LMS_CH_RX, 0, &actual);
+    F64 actual = 0.0;
+    if (LMS_GetLOFrequency(handle, LMS_CH_RX, 0, &actual) != 0) {
+        JST_ERROR("[SDR_LIMESDR] Failed to read back the tuned frequency: {}",
+                  LMS_GetLastErrorMessage());
+        return Result::ERROR;
+    }
     requestedSettings.frequency = frequency;
     appliedSettings.frequency = actual;
     return Result::SUCCESS;
 }
 
 Result LimeSdrStream::tune(const F64 frequency) {
-    return tuneOscillator(frequency, false);
+    JST_CHECK(tuneOscillator(frequency, false));
+    if (!streaming) {
+        return Result::SUCCESS;
+    }
+    queueGeneration = nextGeneration();
+
+    lms_stream_status_t status = {};
+    if (LMS_GetStreamStatus(&stream, &status) != 0) {
+        JST_ERROR("[SDR_LIMESDR] Failed to read the stream position after retuning.");
+        return Result::ERROR;
+    }
+    const U64 settle = guard();
+    const U64 margin = PacketSamples * (streamBatch * UsbTransfers + 2);
+    if (settle > std::numeric_limits<U64>::max() - margin ||
+        status.timestamp > std::numeric_limits<U64>::max() - margin - settle) {
+        JST_ERROR("[SDR_LIMESDR] Settling guard exceeds the hardware timestamp range.");
+        return Result::ERROR;
+    }
+    timestamps.retune(status.timestamp + margin + settle);
+    return Result::SUCCESS;
 }
 
 Result LimeSdrStream::open() {
@@ -256,6 +281,10 @@ Result LimeSdrStream::open() {
             JST_ERROR("[SDR_LIMESDR] Failed to set up the stream: {}", LMS_GetLastErrorMessage());
             return Result::ERROR;
         }
+        const F64 limit = (sampleRate / 1.0e6 + 5.0) * Latency;
+        for (U64 batch = 1; static_cast<F64>(batch) < limit; batch *= 2) {
+            streamBatch = batch;
+        }
         streamReady = true;
         streamSampleRate = sampleRate;
     }
@@ -264,7 +293,11 @@ Result LimeSdrStream::open() {
         return Result::ERROR;
     }
     lms_stream_status_t status = {};
-    LMS_GetStreamStatus(&stream, &status);
+    if (LMS_GetStreamStatus(&stream, &status) != 0) {
+        LMS_StopStream(&stream);
+        JST_ERROR("[SDR_LIMESDR] Failed to read the stream status.");
+        return Result::ERROR;
+    }
     queueGeneration = nextGeneration();
     received = Clock::now();
     timestamps.restart(guard(), static_cast<U64>(sampleRate));
@@ -279,18 +312,19 @@ void LimeSdrStream::close() {
     streaming = false;
 }
 
-void LimeSdrStream::poll() {
+bool LimeSdrStream::poll() {
     lms_stream_status_t status = {};
     if (LMS_GetStreamStatus(&stream, &status) != 0) {
-        return;
+        return false;
     }
     if (status.droppedPackets == 0 && status.overrun == 0) {
-        return;
+        return true;
     }
     const U64 margin = 2 * PacketSamples;
     timestamps.lose(status.timestamp > std::numeric_limits<U64>::max() - margin
         ? std::numeric_limits<U64>::max()
         : status.timestamp + margin);
+    return true;
 }
 
 Device::Capture LimeSdrStream::read(std::span<CF32> samples,
@@ -309,10 +343,10 @@ Device::Capture LimeSdrStream::read(std::span<CF32> samples,
         if (delivered > 0) {
             received = Clock::now();
         }
-        if (delivered >= 0) {
-            poll();
-        }
         return delivered;
+    };
+    const auto blind = [&] {
+        return finish({.status = Status::Failure, .error = "failed to read the stream status"});
     };
     const auto idle = [&] {
         if (Clock::now() - received > Device::StallTimeout) {
@@ -334,6 +368,9 @@ Device::Capture LimeSdrStream::read(std::span<CF32> samples,
         if (delivered < 0) {
             return finish({.status = Status::Disconnected, .error = LMS_GetLastErrorMessage()});
         }
+        if (!poll()) {
+            return blind();
+        }
         if (delivered == 0) {
             return idle();
         }
@@ -351,6 +388,9 @@ Device::Capture LimeSdrStream::read(std::span<CF32> samples,
     const int delivered = receive(samples.data(), samples.size(), meta, Remaining(deadline));
     if (delivered < 0) {
         return finish({.status = Status::Disconnected, .error = LMS_GetLastErrorMessage()});
+    }
+    if (!poll()) {
+        return blind();
     }
     if (delivered == 0) {
         return idle();

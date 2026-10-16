@@ -190,9 +190,15 @@ Result RtlSdrStream::apply(const Settings& settings) {
         biasTeeEnabled = settings.biasTee;
     }
 
+    const U32 actual = rtlsdr_get_center_freq(handle);
+    if (actual == 0) {
+        JST_ERROR("[SDR_RTLSDR] Failed to read back the tuned frequency.");
+        return Result::ERROR;
+    }
+
     requestedSettings = settings;
     appliedSettings.sampleRate = rtlsdr_get_sample_rate(handle);
-    appliedSettings.frequency = rtlsdr_get_center_freq(handle);
+    appliedSettings.frequency = actual;
     appliedSettings.antenna.clear();
     appliedSettings.automaticGain = settings.automaticGain;
     appliedSettings.biasTee = settings.biasTee;
@@ -268,9 +274,18 @@ Result RtlSdrStream::tune(const F64 frequency) {
         JST_ERROR("[SDR_RTLSDR] Failed to tune to {:.3f} MHz.", frequency / 1e6);
         return Result::ERROR;
     }
+    const U32 actual = rtlsdr_get_center_freq(handle);
+    if (actual == 0) {
+        JST_ERROR("[SDR_RTLSDR] Failed to read back the tuned frequency.");
+        return Result::ERROR;
+    }
     requestedSettings.frequency = frequency;
-    appliedSettings.frequency = rtlsdr_get_center_freq(handle);
-    queue.relabel(appliedSettings.frequency);
+    appliedSettings.frequency = actual;
+    if (!worker.joinable()) {
+        return Result::SUCCESS;
+    }
+    streamGeneration = nextGeneration();
+    queue.retune(streamGeneration, InFlightTransfers, guard(), appliedSettings.frequency);
     return Result::SUCCESS;
 }
 

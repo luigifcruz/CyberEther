@@ -19,6 +19,7 @@ namespace {
 constexpr F64 SettlingTime = 5.0e-3;
 constexpr F64 AttenuationStep = 6.0;
 constexpr U8 MaxAttenuation = 8;
+constexpr U64 InFlightTransfers = 24;
 
 class AirspyHfStream final : public Stream {
  public:
@@ -183,7 +184,11 @@ Result AirspyHfStream::tune(const F64 frequency) {
     }
     requestedSettings.frequency = frequency;
     appliedSettings.frequency = std::round(frequency);
-    queue.relabel(appliedSettings.frequency);
+    if (!streaming) {
+        return Result::SUCCESS;
+    }
+    streamGeneration = nextGeneration();
+    queue.retune(streamGeneration, InFlightTransfers, guard(), appliedSettings.frequency);
     return Result::SUCCESS;
 }
 

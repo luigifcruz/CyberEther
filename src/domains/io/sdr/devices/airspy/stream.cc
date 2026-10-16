@@ -19,6 +19,7 @@ namespace {
 
 constexpr F64 SettlingTime = 10.0e-3;
 constexpr std::array<U8, 3> MaxStageGains = {14, 15, 15};
+constexpr U64 InFlightTransfers = 24;
 
 std::array<U8, 3> StageGains(U64 total) {
     std::array<U8, 3> stages = {0, 0, 0};
@@ -211,7 +212,11 @@ Result AirspyStream::tune(const F64 frequency) {
     }
     requestedSettings.frequency = frequency;
     appliedSettings.frequency = std::round(frequency);
-    queue.relabel(appliedSettings.frequency);
+    if (!streaming) {
+        return Result::SUCCESS;
+    }
+    streamGeneration = nextGeneration();
+    queue.retune(streamGeneration, InFlightTransfers, guard(), appliedSettings.frequency);
     return Result::SUCCESS;
 }
 
