@@ -53,7 +53,8 @@ jobs:
         run: |
           set -euo pipefail
           brew untap aws/tap 2>/dev/null || true
-          brew install pkg-config spirv-cross glslang nasm
+          brew install pkg-config spirv-cross glslang bison nasm
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
 
       - name: Install Python dependencies
         run: |
@@ -68,7 +69,8 @@ jobs:
             --default-library=shared \
             -Dbuildtype=release \
             -Dexamples=false \
-            -Dremote=enabled
+            -Dremote=enabled \
+            -Dgstreamer-full:build-tools-source=system
           meson compile -C build cyberether jetstream-core-tests jetstream-modules-tests
 
       - name: Validate binary
