@@ -135,9 +135,10 @@ python3 -m pip install meson ninja numpy mapbox_earcut
 
 #### Optional
 
-Remote streaming support uses bundled GStreamer sources, but still needs NASM.
+Remote streaming support uses bundled GStreamer sources. Install NASM and Bison 2.4+ to use system build tools.
 ```bash
-brew install nasm
+brew install bison nasm
+export PATH="$(brew --prefix bison)/bin:$PATH"
 ```
 
 Machine learning inference support depends on the ONNX Runtime.
