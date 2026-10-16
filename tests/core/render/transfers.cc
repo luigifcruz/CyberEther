@@ -8,6 +8,7 @@
 #include <limits>
 #include <optional>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "jetstream/render/base/buffer.hh"
@@ -47,10 +48,14 @@ class TestTexture final : public Render::Texture {
 
     Result create() override {
         createCount++;
+        if (creationResult == Result::SUCCESS) {
+            markAllocated();
+        }
         return creationResult;
     }
     Result destroy() override {
         destroyCount++;
+        markDeallocated();
         return Result::SUCCESS;
     }
     uint64_t raw() const override { return 0; }
@@ -62,6 +67,19 @@ class TestTexture final : public Render::Texture {
 
  private:
     Result creationResult = Result::SUCCESS;
+};
+
+class RebindingProgram final : public Render::Program {
+ public:
+    explicit RebindingProgram(const Config& config) : Program(config) {}
+
+    Result rebindTextures() override {
+        rebinds++;
+        return std::exchange(rebindResult, Result::SUCCESS);
+    }
+
+    U64 rebinds = 0;
+    Result rebindResult = Result::SUCCESS;
 };
 
 class TestDraw final : public Render::Draw {
@@ -149,6 +167,7 @@ class TestSurface final : public Render::Surface {
         return shouldDraw(framebufferChanged);
     }
     bool wantsGraphics(const bool visible) { return shouldDrawGraphics(visible); }
+    Result bindingResult() const { return drawResult(); }
     void recreateFramebuffer() { resetFramebuffer(); }
     void blockDestruction() { destructionBlocked.store(true, std::memory_order_release); }
     void resumeDestruction() { destructionBlocked.store(false, std::memory_order_release); }
@@ -213,6 +232,7 @@ class TestWindow final : public Render::Window {
 
         for (const auto& surface : surfaces) {
             surface->wantsDraw();
+            JST_CHECK(surface->bindingResult());
         }
 
         if (submissionResult != Result::SUCCESS) {
@@ -277,6 +297,16 @@ std::shared_ptr<TestSurface> MakeRetainedSurface(
 std::shared_ptr<TestSurface> MakeFramebufferSurface(const std::shared_ptr<Render::Texture>& texture) {
     Render::Surface::Config config;
     config.framebuffer = texture;
+    config.retained = true;
+    return std::make_shared<TestSurface>(config);
+}
+
+std::shared_ptr<TestSurface> MakeBorrowedSurface(const std::shared_ptr<Render::Texture>& texture) {
+    Render::Program::Config programConfig;
+    programConfig.textures.push_back(texture);
+    programConfig.borrowedTextures = true;
+    Render::Surface::Config config;
+    config.programs.push_back(std::make_shared<RebindingProgram>(programConfig));
     config.retained = true;
     return std::make_shared<TestSurface>(config);
 }
@@ -1520,4 +1550,478 @@ TEST_CASE("Surfaces collect their complete transfer dependency graph",
     surface->commitDraw();
     textureBatch.commit();
     REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Drawn surface graphics advance the framebuffer content revision", "[core][render][surface]") {
+    auto framebuffer = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    auto surface = MakeFramebufferSurface(framebuffer);
+    REQUIRE(surface->create() == Result::SUCCESS);
+    REQUIRE(framebuffer->contentRevision() == 0);
+
+    REQUIRE(surface->wantsDraw());
+    REQUIRE(surface->wantsGraphics(false));
+    REQUIRE(framebuffer->contentRevision() == 1);
+    surface->commitDraw();
+
+    REQUIRE_FALSE(surface->wantsDraw());
+    REQUIRE(framebuffer->contentRevision() == 1);
+
+    surface->invalidate();
+    REQUIRE(surface->wantsDraw());
+    REQUIRE_FALSE(surface->wantsGraphics(false));
+    surface->commitDraw();
+    REQUIRE(framebuffer->contentRevision() == 1);
+
+    REQUIRE(surface->wantsDraw());
+    REQUIRE(surface->wantsGraphics(true));
+    surface->commitDraw();
+    REQUIRE(framebuffer->contentRevision() == 2);
+
+    REQUIRE(surface->wantsDraw(true));
+    REQUIRE(surface->wantsGraphics(false));
+    surface->commitDraw();
+    REQUIRE(framebuffer->contentRevision() == 3);
+}
+
+TEST_CASE("Retained surfaces redraw when borrowed textures change content", "[core][render][surface]") {
+    auto producedTexture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    auto otherTexture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    REQUIRE(producedTexture->create() == Result::SUCCESS);
+    REQUIRE(otherTexture->create() == Result::SUCCESS);
+    auto producer = MakeFramebufferSurface(producedTexture);
+    REQUIRE(producer->create() == Result::SUCCESS);
+
+    Render::Program::Config programConfig;
+    programConfig.textures.push_back(producedTexture);
+    programConfig.textures.push_back(otherTexture);
+    programConfig.borrowedTextures = true;
+
+    Render::Surface::Config consumerConfig;
+    consumerConfig.programs.push_back(std::make_shared<Render::Program>(programConfig));
+    consumerConfig.retained = true;
+    auto consumer = std::make_shared<TestSurface>(consumerConfig);
+
+    REQUIRE(consumer->wantsDraw());
+    consumer->commitDraw();
+    REQUIRE_FALSE(consumer->wantsDraw());
+
+    REQUIRE(producer->wantsDraw());
+    REQUIRE(producer->wantsGraphics(true));
+    producer->commitDraw();
+    REQUIRE(consumer->wantsDraw());
+    consumer->commitDraw();
+    REQUIRE_FALSE(consumer->wantsDraw());
+
+    producer->invalidate();
+    REQUIRE(producer->wantsDraw());
+    REQUIRE_FALSE(producer->wantsGraphics(false));
+    producer->commitDraw();
+    REQUIRE_FALSE(consumer->wantsDraw());
+
+    REQUIRE(producer->wantsDraw());
+    REQUIRE(producer->wantsGraphics(true));
+    producer->commitDraw();
+    REQUIRE(consumer->wantsDraw());
+    REQUIRE(consumer->wantsDraw());
+    consumer->commitDraw();
+    REQUIRE_FALSE(consumer->wantsDraw());
+
+    otherTexture->markContentChanged();
+    REQUIRE(consumer->wantsDraw());
+    consumer->commitDraw();
+    REQUIRE_FALSE(consumer->wantsDraw());
+}
+
+TEST_CASE("Sampled textures that are not borrowed do not trigger content redraws", "[core][render][surface]") {
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    auto borrowedTexture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    REQUIRE(borrowedTexture->create() == Result::SUCCESS);
+
+    auto sampled = MakeRetainedSurface(std::static_pointer_cast<Render::Texture>(texture));
+    REQUIRE(sampled->wantsDraw());
+    sampled->commitDraw();
+    texture->markContentChanged();
+    REQUIRE_FALSE(sampled->wantsDraw());
+
+    Render::Program::Config borrowedConfig;
+    borrowedConfig.textures.push_back(borrowedTexture);
+    borrowedConfig.borrowedTextures = true;
+
+    Render::Program::Config ownedConfig;
+    ownedConfig.textures.push_back(texture);
+
+    Render::Surface::Config config;
+    config.programs.push_back(std::make_shared<Render::Program>(ownedConfig));
+    config.programs.push_back(std::make_shared<Render::Program>(borrowedConfig));
+    config.retained = true;
+    auto mixed = std::make_shared<TestSurface>(config);
+
+    REQUIRE(mixed->wantsDraw());
+    mixed->commitDraw();
+    texture->markContentChanged();
+    REQUIRE_FALSE(mixed->wantsDraw());
+    borrowedTexture->markContentChanged();
+    REQUIRE(mixed->wantsDraw());
+    mixed->commitDraw();
+    REQUIRE_FALSE(mixed->wantsDraw());
+}
+
+TEST_CASE("Disabled borrowed programs do not redraw their surface when the producer draws",
+          "[core][render][surface][visibility]") {
+    auto hiddenTexture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    auto shownTexture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    REQUIRE(hiddenTexture->create() == Result::SUCCESS);
+    REQUIRE(shownTexture->create() == Result::SUCCESS);
+    auto hiddenProducer = MakeFramebufferSurface(hiddenTexture);
+    auto shownProducer = MakeFramebufferSurface(shownTexture);
+    REQUIRE(hiddenProducer->create() == Result::SUCCESS);
+    REQUIRE(shownProducer->create() == Result::SUCCESS);
+    const auto produce = [](const std::shared_ptr<TestSurface>& producer) {
+        producer->invalidate();
+        REQUIRE(producer->wantsDraw());
+        REQUIRE(producer->wantsGraphics(true));
+        producer->commitDraw();
+    };
+
+    Render::Program::Config hiddenConfig;
+    hiddenConfig.textures.push_back(hiddenTexture);
+    hiddenConfig.borrowedTextures = true;
+    auto hiddenProgram = std::make_shared<Render::Program>(hiddenConfig);
+
+    Render::Program::Config shownConfig;
+    shownConfig.textures.push_back(shownTexture);
+    shownConfig.borrowedTextures = true;
+    auto shownProgram = std::make_shared<Render::Program>(shownConfig);
+
+    Render::Surface::Config consumerConfig;
+    consumerConfig.programs.push_back(hiddenProgram);
+    consumerConfig.programs.push_back(shownProgram);
+    consumerConfig.retained = true;
+    auto consumer = std::make_shared<TestSurface>(consumerConfig);
+
+    REQUIRE(consumer->wantsDraw());
+    consumer->commitDraw();
+    REQUIRE_FALSE(consumer->wantsDraw());
+
+    hiddenProgram->setEnabled(false);
+    REQUIRE(consumer->wantsDraw());
+    consumer->commitDraw();
+    REQUIRE_FALSE(consumer->wantsDraw());
+
+    for (int frame = 0; frame < 3; ++frame) {
+        produce(hiddenProducer);
+        REQUIRE_FALSE(consumer->wantsDraw());
+    }
+
+    produce(shownProducer);
+    REQUIRE(consumer->wantsDraw());
+    consumer->commitDraw();
+    REQUIRE_FALSE(consumer->wantsDraw());
+
+    hiddenProgram->setEnabled(true);
+    REQUIRE(consumer->wantsDraw());
+    consumer->commitDraw();
+    REQUIRE_FALSE(consumer->wantsDraw());
+
+    produce(hiddenProducer);
+    REQUIRE(consumer->wantsDraw());
+    consumer->commitDraw();
+    REQUIRE_FALSE(consumer->wantsDraw());
+}
+
+TEST_CASE("Borrowed programs rebind once after their texture is reallocated, even at the same size or while hidden",
+          "[core][render][surface]") {
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {64, 32}});
+    REQUIRE(texture->create() == Result::SUCCESS);
+
+    Render::Program::Config programConfig;
+    programConfig.textures = {texture};
+    programConfig.borrowedTextures = true;
+    auto program = std::make_shared<RebindingProgram>(programConfig);
+
+    Render::Surface::Config config;
+    config.retained = true;
+    config.programs.push_back(program);
+    TestSurface surface(config);
+    REQUIRE(surface.create() == Result::SUCCESS);
+
+    REQUIRE(surface.wantsDraw());
+    REQUIRE(program->rebinds == 0);
+    surface.commitDraw();
+    REQUIRE_FALSE(surface.wantsDraw());
+
+    REQUIRE(texture->destroy() == Result::SUCCESS);
+    REQUIRE(texture->create() == Result::SUCCESS);
+    REQUIRE(surface.wantsDraw());
+    REQUIRE(program->rebinds == 1);
+    surface.commitDraw();
+    REQUIRE_FALSE(surface.wantsDraw());
+    REQUIRE(program->rebinds == 1);
+
+    program->setEnabled(false);
+    REQUIRE(surface.wantsDraw());
+    surface.commitDraw();
+    REQUIRE_FALSE(surface.wantsDraw());
+    REQUIRE(texture->destroy() == Result::SUCCESS);
+    REQUIRE(texture->create() == Result::SUCCESS);
+    REQUIRE_FALSE(surface.wantsDraw());
+    REQUIRE(program->rebinds == 1);
+    program->setEnabled(true);
+    REQUIRE(surface.wantsDraw());
+    REQUIRE(program->rebinds == 2);
+    surface.commitDraw();
+    REQUIRE_FALSE(surface.wantsDraw());
+}
+
+TEST_CASE("Borrowed programs rebind when their texture is reallocated before the first draw or while disabled",
+          "[core][render][surface]") {
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {64, 32}});
+    REQUIRE(texture->create() == Result::SUCCESS);
+
+    Render::Program::Config programConfig;
+    programConfig.textures = {texture};
+    programConfig.borrowedTextures = true;
+    auto program = std::make_shared<RebindingProgram>(programConfig);
+    program->setEnabled(false);
+
+    Render::Surface::Config config;
+    config.retained = true;
+    config.programs.push_back(program);
+    TestSurface surface(config);
+    REQUIRE(surface.create() == Result::SUCCESS);
+
+    REQUIRE(texture->create() == Result::SUCCESS);
+    surface.wantsDraw();
+    REQUIRE(program->rebinds == 0);
+
+    program->setEnabled(true);
+    surface.wantsDraw();
+    REQUIRE(program->rebinds == 1);
+    surface.wantsDraw();
+    REQUIRE(program->rebinds == 1);
+}
+
+TEST_CASE("Borrowers preserve texture allocations after the producer is unbound",
+          "[core][render][window][surface]") {
+    TestWindow window;
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    auto producer = MakeFramebufferSurface(texture);
+    bool standalone = false;
+    SECTION("Framebuffer producer") {}
+    SECTION("Standalone producer") { standalone = true; }
+    auto borrower = MakeBorrowedSurface(texture);
+    const std::shared_ptr<Render::WindowAttachment> source = standalone ?
+        std::static_pointer_cast<Render::WindowAttachment>(texture) : producer;
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(source) == Result::SUCCESS);
+    REQUIRE(window.bind(borrower) == Result::SUCCESS);
+    REQUIRE(texture->createCount == 1);
+    REQUIRE(window.start() == Result::SUCCESS);
+    REQUIRE(window.unbind(source) == Result::SUCCESS);
+    for (int frame = 0; frame < 8; ++frame) {
+        REQUIRE(window.begin() == Result::SUCCESS);
+        REQUIRE(window.end() == Result::SUCCESS);
+    }
+    REQUIRE(texture->destroyCount == 0);
+    REQUIRE(texture->allocated());
+    texture->markContentChanged();
+    REQUIRE(borrower->wantsDraw());
+    borrower->commitDraw();
+    REQUIRE_FALSE(borrower->wantsDraw());
+    REQUIRE(window.unbind(borrower) == Result::SUCCESS);
+    REQUIRE(window.stop() == Result::SUCCESS);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+    REQUIRE(texture->destroyCount == 1);
+    REQUIRE_FALSE(texture->allocated());
+}
+
+TEST_CASE("Borrowers reject unbound foreign and retiring texture sources without allocation",
+          "[core][render][window][surface]") {
+    TestWindow window;
+    TestWindow foreign;
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    auto borrower = MakeBorrowedSurface(texture);
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(foreign.create() == Result::SUCCESS);
+    U64 expectedCreations = 0;
+    SECTION("Unbound source") {}
+    SECTION("Foreign source") {
+        REQUIRE(foreign.bind(texture) == Result::SUCCESS);
+        expectedCreations = 1;
+    }
+    SECTION("Retiring source") {
+        REQUIRE(window.bind(texture) == Result::SUCCESS);
+        REQUIRE(window.unbind(texture) == Result::SUCCESS);
+        expectedCreations = 1;
+    }
+    REQUIRE(window.bind(borrower) == Result::ERROR);
+    REQUIRE(texture->createCount == expectedCreations);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+    REQUIRE(foreign.destroy() == Result::SUCCESS);
+    REQUIRE(texture->destroyCount == expectedCreations);
+}
+
+TEST_CASE("Failed borrowed texture refresh aborts the frame without acknowledging invalidation",
+          "[core][render][surface][window]") {
+    TestWindow window;
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    auto borrower = MakeBorrowedSurface(texture);
+    auto program = std::dynamic_pointer_cast<RebindingProgram>(borrower->getConfig().programs.front());
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(texture) == Result::SUCCESS);
+    REQUIRE(window.bind(borrower) == Result::SUCCESS);
+    REQUIRE(window.start() == Result::SUCCESS);
+    REQUIRE(window.begin() == Result::SUCCESS);
+    REQUIRE(window.end() == Result::SUCCESS);
+    REQUIRE_FALSE(borrower->wantsDraw());
+    const U64 rebinds = program->rebinds;
+    REQUIRE(texture->destroy() == Result::SUCCESS);
+    REQUIRE(texture->create() == Result::SUCCESS);
+    program->rebindResult = Result::ERROR;
+    REQUIRE(window.begin() == Result::SUCCESS);
+    REQUIRE(window.end() == Result::ERROR);
+    REQUIRE(borrower->bindingResult() == Result::ERROR);
+    borrower->commitDraw();
+    REQUIRE(program->rebinds == rebinds + 1);
+    REQUIRE(borrower->wantsDraw());
+    REQUIRE(program->rebinds == rebinds + 2);
+    REQUIRE(borrower->bindingResult() == Result::SUCCESS);
+    REQUIRE(borrower->wantsDraw());
+    REQUIRE(window.begin() == Result::SUCCESS);
+    REQUIRE(window.end() == Result::SUCCESS);
+    REQUIRE_FALSE(borrower->wantsDraw());
+    REQUIRE(window.stop() == Result::SUCCESS);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Deallocated borrowed textures cannot acknowledge or encode stale bindings",
+          "[core][render][surface]") {
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    REQUIRE(texture->create() == Result::SUCCESS);
+    auto borrower = MakeBorrowedSurface(texture);
+    REQUIRE(borrower->wantsDraw());
+    borrower->commitDraw();
+    REQUIRE_FALSE(borrower->wantsDraw());
+    const U64 allocation = texture->allocation();
+    REQUIRE(texture->destroy() == Result::SUCCESS);
+    REQUIRE(texture->allocation() != allocation);
+    REQUIRE_FALSE(borrower->wantsDraw());
+    REQUIRE(borrower->bindingResult() == Result::ERROR);
+    borrower->commitDraw();
+    REQUIRE(texture->create() == Result::SUCCESS);
+    REQUIRE(borrower->wantsDraw());
+    borrower->commitDraw();
+    REQUIRE_FALSE(borrower->wantsDraw());
+}
+
+TEST_CASE("Borrowed texture uploads invalidate consumers only when collected or committed",
+          "[core][render][transfer][surface]") {
+    TestWindow window;
+    std::array<U8, 16> source{};
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{
+        .size = {2, 2}, .buffer = source.data(),
+    });
+    auto borrower = MakeBorrowedSurface(texture);
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(texture) == Result::SUCCESS);
+    REQUIRE(window.bind(borrower) == Result::SUCCESS);
+    REQUIRE(borrower->wantsDraw());
+    borrower->commitDraw();
+    REQUIRE_FALSE(borrower->wantsDraw());
+    REQUIRE(texture->fill() == Result::SUCCESS);
+    REQUIRE(texture->contentRevision() == 0);
+    {
+        Render::Transfer::Batch aborted;
+        REQUIRE(window.collectFrameTransfers(aborted) == Result::SUCCESS);
+        REQUIRE(aborted.textures().size() == 1);
+        REQUIRE(borrower->wantsDraw());
+    }
+    REQUIRE(texture->contentRevision() == 0);
+    Render::Transfer::Batch retry;
+    REQUIRE(window.collectFrameTransfers(retry) == Result::SUCCESS);
+    REQUIRE(retry.textures().size() == 1);
+    REQUIRE(borrower->wantsDraw());
+    borrower->commitDraw();
+    REQUIRE_FALSE(borrower->wantsDraw());
+    source.fill(42);
+    REQUIRE(texture->fillRow(1, 1) == Result::SUCCESS);
+    retry.commit();
+    REQUIRE(texture->contentRevision() == 1);
+    REQUIRE(borrower->wantsDraw());
+    borrower->commitDraw();
+    REQUIRE_FALSE(borrower->wantsDraw());
+    Render::Transfer::Batch next;
+    REQUIRE(window.collectFrameTransfers(next) == Result::SUCCESS);
+    REQUIRE(next.textures().size() == 1);
+    REQUIRE(next.textures().front().destinationRow == 1);
+    REQUIRE(borrower->wantsDraw());
+    next.commit();
+    REQUIRE(texture->contentRevision() == 2);
+    REQUIRE(borrower->wantsDraw());
+    borrower->commitDraw();
+    REQUIRE_FALSE(borrower->wantsDraw());
+    REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Failed texture upload submission preserves borrowed redraw and content revisions",
+          "[core][render][transfer][surface]") {
+    TestWindow window;
+    std::array<U8, 16> source{};
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{
+        .size = {2, 2}, .buffer = source.data(),
+    });
+    auto borrower = MakeBorrowedSurface(texture);
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(texture) == Result::SUCCESS);
+    REQUIRE(window.bind(borrower) == Result::SUCCESS);
+    REQUIRE(window.start() == Result::SUCCESS);
+    REQUIRE(window.begin() == Result::SUCCESS);
+    REQUIRE(window.end() == Result::SUCCESS);
+    REQUIRE_FALSE(borrower->wantsDraw());
+    REQUIRE(texture->fill() == Result::SUCCESS);
+    window.nextSubmissionResult(Result::ERROR);
+    REQUIRE(window.begin() == Result::SUCCESS);
+    REQUIRE(window.end() == Result::ERROR);
+    REQUIRE(texture->contentRevision() == 0);
+    REQUIRE(borrower->wantsDraw());
+    window.nextSubmissionResult(Result::SUCCESS);
+    REQUIRE(window.begin() == Result::SUCCESS);
+    REQUIRE(window.end() == Result::SUCCESS);
+    REQUIRE(texture->contentRevision() == 1);
+    REQUIRE(borrower->wantsDraw());
+    borrower->commitDraw();
+    REQUIRE_FALSE(borrower->wantsDraw());
+    REQUIRE(window.stop() == Result::SUCCESS);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Texture revisions can be sampled while their producer reallocates",
+          "[core][render][program][threading]") {
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    Render::Program::Config config;
+    config.textures.push_back(texture);
+    std::atomic<bool> finished = false;
+    std::thread producer([&] {
+        for (int iteration = 0; iteration < 10000; ++iteration) {
+            texture->create();
+            texture->markContentChanged();
+            texture->destroy();
+        }
+        finished.store(true, std::memory_order_release);
+    });
+    U64 previousAllocation = 0;
+    U64 previousContent = 0;
+    bool monotonic = true;
+    do {
+        Render::Program program(config);
+        const U64 allocation = program.textureAllocations().front();
+        const U64 content = texture->contentRevision();
+        monotonic &= allocation >= previousAllocation && content >= previousContent;
+        previousAllocation = allocation;
+        previousContent = content;
+    } while (!finished.load(std::memory_order_acquire));
+    producer.join();
+    REQUIRE(monotonic);
+    REQUIRE(texture->allocation() == 20000);
+    REQUIRE(texture->contentRevision() == 10000);
 }

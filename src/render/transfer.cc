@@ -456,6 +456,12 @@ void Transfer::Batch::collect(const std::shared_ptr<Texture>& texture) {
 }
 
 void Transfer::Batch::commit() {
+    for (const auto& transfer : textureTransfers) {
+        if (transfer.upload.generation ==
+            transfer.destination->uploadGeneration.load(std::memory_order_acquire)) {
+            transfer.destination->markContentChanged();
+        }
+    }
     bufferTransfers.clear();
     textureTransfers.clear();
     collectedBuffers.clear();

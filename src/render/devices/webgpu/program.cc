@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <utility>
 
 #include "jetstream/render/devices/webgpu/buffer.hh"
 #include "jetstream/render/devices/webgpu/draw.hh"
@@ -94,49 +95,8 @@ Result Implementation::create(const WGPUTextureFormat& pixelFormat) {
         pipelineLayout = wgpuDeviceCreatePipelineLayout(device, &layoutDesc);
     }
 
-    bindingOffset = 0;
-    for (U64 i = 0; i < buffers.size(); i++) {
-        auto& [buffer, target] = buffers[i];
-
-        WGPUBindGroupEntry bindGroupEntry = WGPU_BIND_GROUP_ENTRY_INIT;
-        bindGroupEntry.binding = bindingOffset++;
-        bindGroupEntry.buffer = buffer->getHandle();
-        bindGroupEntry.size = buffer->byteSize();
-        bindGroupEntry.offset = 0;
-
-        bindGroupEntries.push_back(bindGroupEntry);
-    }
-
-    for (U64 i = 0; i < textures.size(); i++) {
-        auto& texture = textures[i];
-
-        {
-            WGPUBindGroupEntry bindGroupEntry = WGPU_BIND_GROUP_ENTRY_INIT;
-            bindGroupEntry.binding = bindingOffset++;
-            bindGroupEntry.textureView = texture->getViewHandle();
-            bindGroupEntry.offset = 0;
-
-            bindGroupEntries.push_back(bindGroupEntry);
-        }
-
-        {
-            WGPUBindGroupEntry bindGroupEntry = WGPU_BIND_GROUP_ENTRY_INIT;
-            bindGroupEntry.binding = bindingOffset++;
-            bindGroupEntry.sampler = texture->getSamplerHandle();
-            bindGroupEntry.offset = 0;
-
-            bindGroupEntries.push_back(bindGroupEntry);
-        }
-    }
-
-    if (!bindings.empty()) {
-        WGPUBindGroupDescriptor bindGroupDescriptor = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
-        bindGroupDescriptor.layout = bindGroupLayout;
-        bindGroupDescriptor.entryCount = static_cast<uint32_t>(bindGroupEntries.size());
-        bindGroupDescriptor.entries = bindGroupEntries.data();
-
-        bindGroup = wgpuDeviceCreateBindGroup(device, &bindGroupDescriptor);
-    }
+    bindGroup = createBindGroup();
+    JST_ASSERT(bindings.empty() || bindGroup, "Failed to create bind group.");
 
     WGPUBlendState blendState = WGPU_BLEND_STATE_INIT;
     blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
@@ -181,13 +141,132 @@ Result Implementation::create(const WGPUTextureFormat& pixelFormat) {
     return Result::SUCCESS;
 }
 
+WGPUBindGroup Implementation::createBindGroup() {
+    bindGroupEntries.clear();
+
+    U32 bindingOffset = 0;
+    for (U64 i = 0; i < buffers.size(); i++) {
+        auto& [buffer, target] = buffers[i];
+
+        WGPUBindGroupEntry bindGroupEntry = WGPU_BIND_GROUP_ENTRY_INIT;
+        bindGroupEntry.binding = bindingOffset++;
+        bindGroupEntry.buffer = buffer->getHandle();
+        bindGroupEntry.size = buffer->byteSize();
+        bindGroupEntry.offset = 0;
+
+        bindGroupEntries.push_back(bindGroupEntry);
+    }
+
+    for (U64 i = 0; i < textures.size(); i++) {
+        auto& texture = textures[i];
+
+        {
+            WGPUBindGroupEntry bindGroupEntry = WGPU_BIND_GROUP_ENTRY_INIT;
+            bindGroupEntry.binding = bindingOffset++;
+            bindGroupEntry.textureView = texture->getViewHandle();
+            bindGroupEntry.offset = 0;
+
+            bindGroupEntries.push_back(bindGroupEntry);
+        }
+
+        {
+            WGPUBindGroupEntry bindGroupEntry = WGPU_BIND_GROUP_ENTRY_INIT;
+            bindGroupEntry.binding = bindingOffset++;
+            bindGroupEntry.sampler = texture->getSamplerHandle();
+            bindGroupEntry.offset = 0;
+
+            bindGroupEntries.push_back(bindGroupEntry);
+        }
+    }
+
+    if (!bindings.empty()) {
+        auto device = Backend::State<DeviceType::WebGPU>()->getDevice();
+
+        WGPUBindGroupDescriptor bindGroupDescriptor = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
+        bindGroupDescriptor.layout = bindGroupLayout;
+        bindGroupDescriptor.entryCount = static_cast<uint32_t>(bindGroupEntries.size());
+        bindGroupDescriptor.entries = bindGroupEntries.data();
+
+        return wgpuDeviceCreateBindGroup(device, &bindGroupDescriptor);
+    }
+    return nullptr;
+}
+
+Implementation::BindGroupCandidate::~BindGroupCandidate() {
+    if (handle) {
+        wgpuBindGroupRelease(handle);
+    }
+}
+
+Result Implementation::rebindTextures() {
+    if (bindings.empty() || textures.empty()) {
+        return Result::SUCCESS;
+    }
+
+    const auto allocations = textureAllocations();
+    if (pendingBindGroup && pendingBindGroup->allocations != allocations) {
+        pendingBindGroup.reset();
+    }
+    if (!pendingBindGroup) {
+        for (const auto& texture : textures) {
+            if (!texture || !texture->allocated() || !texture->getViewHandle() ||
+                !texture->getSamplerHandle()) {
+                return Result::ERROR;
+            }
+        }
+
+        auto candidate = std::make_shared<BindGroupCandidate>();
+        candidate->allocations = allocations;
+        auto device = Backend::State<DeviceType::WebGPU>()->getDevice();
+        wgpuDevicePushErrorScope(device, WGPUErrorFilter_Validation);
+        candidate->handle = createBindGroup();
+
+        WGPUPopErrorScopeCallbackInfo callback = WGPU_POP_ERROR_SCOPE_CALLBACK_INFO_INIT;
+        callback.mode = WGPUCallbackMode_AllowSpontaneous;
+        callback.userdata1 = new std::shared_ptr<BindGroupCandidate>(candidate);
+        callback.callback = [](WGPUPopErrorScopeStatus status, WGPUErrorType type,
+                               WGPUStringView, void* userdata1, void*) {
+            std::unique_ptr<std::shared_ptr<BindGroupCandidate>> state(
+                static_cast<std::shared_ptr<BindGroupCandidate>*>(userdata1));
+            const bool valid = status == WGPUPopErrorScopeStatus_Success &&
+                               type == WGPUErrorType_NoError && (*state)->handle;
+            (*state)->result.store(valid ? Result::SUCCESS : Result::ERROR,
+                                   std::memory_order_release);
+        };
+        (void)wgpuDevicePopErrorScope(device, callback);
+        pendingBindGroup = std::move(candidate);
+    }
+
+    const Result result = pendingBindGroup->result.load(std::memory_order_acquire);
+    if (result == Result::SKIP) {
+        return result;
+    }
+    if (result != Result::SUCCESS) {
+        pendingBindGroup.reset();
+        return result;
+    }
+
+    const auto previous = bindGroup;
+    bindGroup = std::exchange(pendingBindGroup->handle, nullptr);
+    pendingBindGroup.reset();
+    if (previous) {
+        wgpuBindGroupRelease(previous);
+    }
+
+    return Result::SUCCESS;
+}
+
 Result Implementation::destroy() {
+    pendingBindGroup.reset();
     for (auto& draw : draws) {
         JST_CHECK(draw->destroy());
     }
 
     if (!bindings.empty()) {
-        wgpuBindGroupRelease(bindGroup);
+        if (bindGroup) {
+            wgpuBindGroupRelease(bindGroup);
+            bindGroup = nullptr;
+        }
         wgpuBindGroupLayoutRelease(bindGroupLayout);
         wgpuPipelineLayoutRelease(pipelineLayout);
     }

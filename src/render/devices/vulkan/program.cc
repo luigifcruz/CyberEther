@@ -136,42 +136,7 @@ Result Implementation::create(VkRenderPass& renderPass,
         vkUpdateDescriptorSets(device, 1, &descriptorWriteBuffer, 0, nullptr);
     }
 
-    for (U64 i = 0; i < textures.size(); i++) {
-        auto& texture = textures[i];
-
-        {
-            VkDescriptorImageInfo imageInfo{};
-            imageInfo.imageView = texture->getViewHandle();
-            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-            VkWriteDescriptorSet descriptorWriteBuffer{};
-            descriptorWriteBuffer.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            descriptorWriteBuffer.dstSet = descriptorSet;
-            descriptorWriteBuffer.dstBinding = bindingOffset++;
-            descriptorWriteBuffer.dstArrayElement = 0;
-            descriptorWriteBuffer.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-            descriptorWriteBuffer.descriptorCount = 1;
-            descriptorWriteBuffer.pImageInfo = &imageInfo;
-
-            vkUpdateDescriptorSets(device, 1, &descriptorWriteBuffer, 0, nullptr);
-        }
-
-        {
-            VkDescriptorImageInfo samplerInfo{};
-            samplerInfo.sampler = texture->getSamplerHandler();
-
-            VkWriteDescriptorSet descriptorWriteBuffer{};
-            descriptorWriteBuffer.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            descriptorWriteBuffer.dstSet = descriptorSet;
-            descriptorWriteBuffer.dstBinding = bindingOffset++;
-            descriptorWriteBuffer.dstArrayElement = 0;
-            descriptorWriteBuffer.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-            descriptorWriteBuffer.descriptorCount = 1;
-            descriptorWriteBuffer.pImageInfo = &samplerInfo;
-
-            vkUpdateDescriptorSets(device, 1, &descriptorWriteBuffer, 0, nullptr);
-        }
-    }
+    JST_CHECK(writeTextureDescriptors());
 
     // Attach Vertex buffers.
 
@@ -318,6 +283,69 @@ Result Implementation::create(VkRenderPass& renderPass,
 
     vkDestroyShaderModule(device, fragShaderModule, nullptr);
     vkDestroyShaderModule(device, vertShaderModule, nullptr);
+
+    return Result::SUCCESS;
+}
+
+Result Implementation::writeTextureDescriptors() {
+    auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
+
+    for (const auto& texture : textures) {
+        if (!texture || !texture->allocated() ||
+            texture->getViewHandle() == VK_NULL_HANDLE ||
+            texture->getSamplerHandler() == VK_NULL_HANDLE) {
+            return Result::ERROR;
+        }
+    }
+    U64 binding = buffers.size();
+    for (U64 i = 0; i < textures.size(); i++) {
+        auto& texture = textures[i];
+        {
+            VkDescriptorImageInfo imageInfo{};
+            imageInfo.imageView = texture->getViewHandle();
+            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+            VkWriteDescriptorSet descriptorWriteBuffer{};
+            descriptorWriteBuffer.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWriteBuffer.dstSet = descriptorSet;
+            descriptorWriteBuffer.dstBinding = binding++;
+            descriptorWriteBuffer.dstArrayElement = 0;
+            descriptorWriteBuffer.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+            descriptorWriteBuffer.descriptorCount = 1;
+            descriptorWriteBuffer.pImageInfo = &imageInfo;
+
+            vkUpdateDescriptorSets(device, 1, &descriptorWriteBuffer, 0, nullptr);
+        }
+
+        {
+            VkDescriptorImageInfo samplerInfo{};
+            samplerInfo.sampler = texture->getSamplerHandler();
+
+            VkWriteDescriptorSet descriptorWriteBuffer{};
+            descriptorWriteBuffer.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWriteBuffer.dstSet = descriptorSet;
+            descriptorWriteBuffer.dstBinding = binding++;
+            descriptorWriteBuffer.dstArrayElement = 0;
+            descriptorWriteBuffer.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+            descriptorWriteBuffer.descriptorCount = 1;
+            descriptorWriteBuffer.pImageInfo = &samplerInfo;
+
+            vkUpdateDescriptorSets(device, 1, &descriptorWriteBuffer, 0, nullptr);
+        }
+    }
+    return Result::SUCCESS;
+}
+
+Result Implementation::rebindTextures() {
+    if (bindings.empty() || textures.empty()) {
+        return Result::SUCCESS;
+    }
+
+    JST_VK_CHECK(vkQueueWaitIdle(Backend::State<DeviceType::Vulkan>()->getGraphicsQueue()), [&]{
+        JST_ERROR("[VULKAN] Can't wait for graphics queue before rebinding textures.");
+    });
+
+    JST_CHECK(writeTextureDescriptors());
 
     return Result::SUCCESS;
 }

@@ -74,6 +74,20 @@ class JETSTREAM_API Texture : public WindowAttachment {
         return presentationFrame != frame || presentationVisible;
     }
 
+    void markContentChanged() const {
+        contentRevisionValue.fetch_add(1, std::memory_order_release);
+    }
+    U64 contentRevision() const {
+        return contentRevisionValue.load(std::memory_order_acquire);
+    }
+
+    U64 allocation() const {
+        return allocationValue.load(std::memory_order_acquire);
+    }
+    bool allocated() const {
+        return allocationLive.load(std::memory_order_acquire);
+    }
+
     template<DeviceType D>
     static std::shared_ptr<Texture> Factory(const Config& config) {
         return std::make_shared<TextureImp<D>>(config);
@@ -81,6 +95,15 @@ class JETSTREAM_API Texture : public WindowAttachment {
 
  protected:
     Result validateFillRow(const U64& y, const U64& height) const;
+
+    void markAllocated() {
+        allocationLive.store(true, std::memory_order_release);
+        allocationValue.fetch_add(1, std::memory_order_release);
+    }
+    void markDeallocated() {
+        allocationLive.store(false, std::memory_order_release);
+        allocationValue.fetch_add(1, std::memory_order_release);
+    }
 
     Config config;
 
@@ -94,6 +117,9 @@ class JETSTREAM_API Texture : public WindowAttachment {
     std::atomic<U64> uploadGeneration = 0;
     mutable U64 presentationFrame = ~U64{0};
     mutable bool presentationVisible = true;
+    mutable std::atomic<U64> contentRevisionValue = 0;
+    std::atomic<U64> allocationValue = 0;
+    std::atomic<bool> allocationLive = false;
 
     friend class Transfer;
     friend class Transfer::Batch;

@@ -193,7 +193,9 @@ Result Implementation::prepare() {
 }
 
 Result Implementation::encode(VkCommandBuffer& commandBuffer, bool visible) {
-    if (!shouldDraw(framebufferChanged)) {
+    const bool required = shouldDraw(framebufferChanged);
+    JST_CHECK(drawResult());
+    if (!required) {
         return Result::SUCCESS;
     }
 

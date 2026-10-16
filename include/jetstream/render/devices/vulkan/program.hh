@@ -11,6 +11,8 @@ class JETSTREAM_API ProgramImp<DeviceType::Vulkan> : public Program {
  public:
     explicit ProgramImp(const Config& config);
 
+    Result rebindTextures() override;
+
  protected:
     Result create(VkRenderPass& renderPass,
                   const Extent2D<U64>& framebufferSize,
@@ -29,6 +31,8 @@ class JETSTREAM_API ProgramImp<DeviceType::Vulkan> : public Program {
     std::vector<VkDescriptorSetLayoutBinding> bindings;
     std::vector<std::shared_ptr<TextureImp<DeviceType::Vulkan>>> textures;
     std::vector<std::pair<std::shared_ptr<BufferImp<DeviceType::Vulkan>>, Program::Target>> buffers;
+
+    Result writeTextureDescriptors();
 
     static VkShaderStageFlags TargetToShaderStage(const Program::Target& target);
     static VkDescriptorType BufferDescriptorType(const std::shared_ptr<Buffer>& buffer);

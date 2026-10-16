@@ -555,6 +555,11 @@ std::vector<std::shared_ptr<WindowAttachment>> Window::surfaceResourceList(
     for (const auto& texture : surface->dependencyTextures) {
         resources.push_back(texture);
     }
+    for (const auto& texture : surface->borrowedTextures) {
+        if (!surface->dependencyTextures.contains(texture)) {
+            resources.push_back(texture);
+        }
+    }
     return resources;
 }
 
@@ -564,6 +569,12 @@ Result Window::acquireSurfaceResources(const std::shared_ptr<Surface>& surface) 
     std::vector<std::shared_ptr<WindowAttachment>> acquired;
     acquired.reserve(resources.size());
 
+    const auto isBorrowed = [&](const std::shared_ptr<WindowAttachment>& resource) {
+        const auto texture = std::dynamic_pointer_cast<Texture>(resource);
+        return texture && surface->borrowedTextures.contains(texture) &&
+               !surface->dependencyTextures.contains(texture);
+    };
+
     const auto rollback = [&]() {
         Result cleanupResult = Result::SUCCESS;
         for (auto it = acquired.rbegin(); it != acquired.rend(); ++it) {
@@ -572,7 +583,7 @@ Result Window::acquireSurfaceResources(const std::shared_ptr<Surface>& surface) 
                 lease->second.framebufferOwner == surface.get()) {
                 lease->second.framebufferOwner = nullptr;
             }
-            const Result result = releaseSurfaceResource(*it);
+            const Result result = releaseSurfaceResource(*it, isBorrowed(*it));
             if (result != Result::SUCCESS && result != Result::RELOAD) {
                 cleanupResult = result;
             }
@@ -583,6 +594,18 @@ Result Window::acquireSurfaceResources(const std::shared_ptr<Surface>& surface) 
     for (const auto& resource : resources) {
         const bool framebuffer = resource.get() == surface->config.framebuffer.get();
         auto lease = resourceLeases.find(resource.get());
+        if (isBorrowed(resource)) {
+            if (lease == resourceLeases.end() ||
+                resource->owner.load(std::memory_order_acquire) != this ||
+                (lease->second.surfaceReferences == 0 && !lease->second.root) ||
+                !std::static_pointer_cast<Texture>(resource)->allocated()) {
+                const Result cleanupResult = rollback();
+                return cleanupResult == Result::SUCCESS ? Result::ERROR : cleanupResult;
+            }
+            lease->second.borrowedReferences++;
+            acquired.push_back(resource);
+            continue;
+        }
         if (lease == resourceLeases.end()) {
             Window* owner = resource->owner.load(std::memory_order_acquire);
             if (owner && owner != this) {
@@ -639,7 +662,10 @@ Result Window::releaseSurfaceResources(const std::shared_ptr<Surface>& surface) 
             lease->second.framebufferOwner == surface.get()) {
             lease->second.framebufferOwner = nullptr;
         }
-        const Result result = releaseSurfaceResource(resource);
+        const auto texture = std::dynamic_pointer_cast<Texture>(resource);
+        const bool borrowed = texture && surface->borrowedTextures.contains(texture) &&
+                              !surface->dependencyTextures.contains(texture);
+        const Result result = releaseSurfaceResource(resource, borrowed);
         if (result != Result::SUCCESS && result != Result::RELOAD) {
             cleanupResult = result;
         }
@@ -648,14 +674,19 @@ Result Window::releaseSurfaceResources(const std::shared_ptr<Surface>& surface) 
     return cleanupResult;
 }
 
-Result Window::releaseSurfaceResource(const std::shared_ptr<WindowAttachment>& resource) {
+Result Window::releaseSurfaceResource(const std::shared_ptr<WindowAttachment>& resource,
+                                      bool borrowed) {
     auto lease = resourceLeases.find(resource.get());
-    if (lease == resourceLeases.end() || lease->second.surfaceReferences == 0) {
+    if (lease == resourceLeases.end()) {
         return Result::ERROR;
     }
 
-    lease->second.surfaceReferences--;
-    if (lease->second.surfaceReferences != 0 || lease->second.root) {
+    auto& references = borrowed ? lease->second.borrowedReferences : lease->second.surfaceReferences;
+    if (references == 0) {
+        return Result::ERROR;
+    }
+    references--;
+    if (lease->second.surfaceReferences != 0 || lease->second.borrowedReferences != 0 || lease->second.root) {
         return Result::SUCCESS;
     }
     if (lease->second.rootReleaseExpiration > frameCount) {
@@ -734,7 +765,8 @@ Result Window::processAttachmentQueues() {
             }
             attachments.erase(std::remove(attachments.begin(), attachments.end(), attachment),
                               attachments.end());
-            if (lease == resourceLeases.end() || lease->second.surfaceReferences == 0) {
+            if (lease == resourceLeases.end() ||
+                (lease->second.surfaceReferences == 0 && lease->second.borrowedReferences == 0)) {
                 belated.push_back(attachment);
             }
             continue;

@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_BASE_SURFACE_HH
 
 #include <memory>
+#include <tuple>
 #include <unordered_set>
 #include <vector>
 
@@ -64,6 +65,7 @@ class JETSTREAM_API Surface : public WindowAttachment {
     bool dirty = true;
 
     bool shouldDraw(bool framebufferChanged = false);
+    Result drawResult() const;
     bool shouldDrawGraphics(bool visible);
     void resetFramebuffer();
     void markDrawn();
@@ -73,12 +75,17 @@ class JETSTREAM_API Surface : public WindowAttachment {
     void collectTransfers(Transfer::Batch& batch) const;
     bool affectedBy(const Transfer::Batch& batch) const;
 
+    Result refreshBorrowedTextures();
+
     bool drawPending = false;
     bool imageInitialized = false;
     bool graphicsSkipped = false;
     std::unordered_set<std::shared_ptr<Buffer>> dependencyBuffers;
     std::unordered_set<std::shared_ptr<Draw>> dependencyDraws;
     std::unordered_set<std::shared_ptr<Texture>> dependencyTextures;
+    std::unordered_set<std::shared_ptr<Texture>> borrowedTextures;
+    std::vector<std::tuple<const Texture*, U64, U64>> borrowedRevisions;
+    Result textureBindingsResult = Result::SUCCESS;
 
     friend class Window;
 };

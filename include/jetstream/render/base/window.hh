@@ -189,6 +189,7 @@ class JETSTREAM_API Window {
 
     struct ResourceLease {
         size_t surfaceReferences = 0;
+        size_t borrowedReferences = 0;
         bool root = false;
         uint32_t rootReleaseExpiration = 0;
         const Surface* framebufferOwner = nullptr;
@@ -198,7 +199,8 @@ class JETSTREAM_API Window {
     std::vector<std::shared_ptr<WindowAttachment>> surfaceResourceList(const std::shared_ptr<Surface>& surface) const;
     Result acquireSurfaceResources(const std::shared_ptr<Surface>& surface);
     Result releaseSurfaceResources(const std::shared_ptr<Surface>& surface);
-    Result releaseSurfaceResource(const std::shared_ptr<WindowAttachment>& resource);
+    Result releaseSurfaceResource(const std::shared_ptr<WindowAttachment>& resource,
+                                  bool borrowed = false);
     Result finalizeAttachmentDestruction(const std::shared_ptr<WindowAttachment>& attachment);
 
     mutable std::mutex attachmentStateMutex;

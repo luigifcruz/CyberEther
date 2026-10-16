@@ -183,6 +183,8 @@ Result Implementation::create() {
 
     // Fill image with initial data.
 
+    markAllocated();
+
     if (config.buffer) {
         JST_CHECK(fill());
     }
@@ -192,6 +194,8 @@ Result Implementation::create() {
 
 Result Implementation::destroy() {
     JST_DEBUG("[VULKAN] Destroying texture.");
+
+    markDeallocated();
 
     auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
     auto& descriptorPool = Backend::State<DeviceType::Vulkan>()->getDescriptorPool();

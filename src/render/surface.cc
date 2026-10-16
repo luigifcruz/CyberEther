@@ -3,6 +3,15 @@
 namespace Jetstream::Render {
 
 Surface::Surface(const Config& config) : config(config) {
+    for (const auto& program : config.programs) {
+        if (program && program->getConfig().borrowedTextures) {
+            for (const auto& texture : program->getConfig().textures) {
+                if (texture) {
+                    borrowedTextures.insert(texture);
+                }
+            }
+        }
+    }
     const auto addBuffer = [&](const std::shared_ptr<Buffer>& buffer) {
         if (buffer) {
             dependencyBuffers.insert(buffer);
@@ -35,8 +44,10 @@ Surface::Surface(const Config& config) : config(config) {
         for (const auto& [buffer, _] : programConfig.buffers) {
             addBuffer(buffer);
         }
-        for (const auto& texture : programConfig.textures) {
-            addTexture(texture);
+        if (!programConfig.borrowedTextures) {
+            for (const auto& texture : programConfig.textures) {
+                addTexture(texture);
+            }
         }
 
         for (const auto& draw : programConfig.draws) {
@@ -97,6 +108,9 @@ void Surface::collectTransfers(Transfer::Batch& batch) const {
     for (const auto& texture : dependencyTextures) {
         batch.collect(texture);
     }
+    for (const auto& texture : borrowedTextures) {
+        batch.collect(texture);
+    }
 }
 
 bool Surface::affectedBy(const Transfer::Batch& batch) const {
@@ -119,11 +133,23 @@ bool Surface::affectedBy(const Transfer::Batch& batch) const {
             return true;
         }
     }
+    for (const auto& program : config.programs) {
+        if (program && program->enabled() && program->getConfig().borrowedTextures) {
+            for (const auto& texture : program->getConfig().textures) {
+                if (batch.contains(texture)) {
+                    return true;
+                }
+            }
+        }
+    }
 
     return false;
 }
 
 void Surface::commitDraw() {
+    if (textureBindingsResult != Result::SUCCESS) {
+        return;
+    }
     if (drawPending) {
         for (const auto& kernel : config.kernels) {
             if (kernel) {
@@ -141,10 +167,40 @@ const Extent2D<U64>& Surface::size() const {
     return NullSize2D;
 }
 
+Result Surface::refreshBorrowedTextures() {
+    std::vector<std::tuple<const Texture*, U64, U64>> revisions;
+    for (const auto& program : config.programs) {
+        if (!program || !program->enabled() || !program->getConfig().borrowedTextures) {
+            continue;
+        }
+        JST_CHECK(program->refreshTextureBindings());
+        for (const auto& texture : program->getConfig().textures) {
+            if (texture) {
+                revisions.emplace_back(texture.get(), texture->contentRevision(), texture->allocation());
+            }
+        }
+    }
+    if (revisions != borrowedRevisions) {
+        invalidate();
+        borrowedRevisions = std::move(revisions);
+    }
+    return Result::SUCCESS;
+}
+
+Result Surface::drawResult() const {
+    return textureBindingsResult;
+}
+
 bool Surface::shouldDraw(bool framebufferChanged) {
     graphicsSkipped = false;
     if (framebufferChanged) {
         resetFramebuffer();
+    }
+    textureBindingsResult = refreshBorrowedTextures();
+    if (textureBindingsResult != Result::SUCCESS) {
+        invalidate();
+        drawPending = true;
+        return false;
     }
     drawPending = drawPending || !config.retained || dirty || framebufferChanged;
     return drawPending;
@@ -153,6 +209,9 @@ bool Surface::shouldDraw(bool framebufferChanged) {
 bool Surface::shouldDrawGraphics(bool visible) {
     // Initialize new images even when hidden; only skip the graphics pass.
     graphicsSkipped = !visible && imageInitialized;
+    if (!graphicsSkipped && config.framebuffer) {
+        config.framebuffer->markContentChanged();
+    }
     return !graphicsSkipped;
 }
 
