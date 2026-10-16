@@ -15,6 +15,7 @@ struct JETSTREAM_API Instance::Remote {
  public:
     struct Impl;
     struct Supervisor;
+    struct Broker;
 
     enum class CodecType : uint32_t {
         H264,
@@ -39,14 +40,35 @@ struct JETSTREAM_API Instance::Remote {
     };
 
     struct Config {
-        std::string broker = "https://cyberether.org";
-        bool autoJoinSessions = false;
-        U32 framerate = 30;
-        EncoderType encoder = EncoderType::Auto;
-        CodecType codec = CodecType::H264;
-        TransportType transport = TransportType::Auto;
-        U16 minPort = 0;
-        U16 maxPort = 0;
+        struct Access {
+            bool autoApprove = false;
+        };
+
+        struct Video {
+            U32 framerate = 30;
+            CodecType codec = CodecType::H264;
+            EncoderType encoder = EncoderType::Auto;
+        };
+
+        struct Broker {
+            std::string address = "0.0.0.0";
+            U16 port = 8686;
+            std::string publicUrl;
+            std::string certificate;
+            std::string key;
+        };
+
+        struct Media {
+            TransportType transport = TransportType::Auto;
+            U16 minPort = 0;
+            U16 maxPort = 0;
+            std::string address;
+        };
+
+        Access access;
+        Video video;
+        Broker broker;
+        Media media;
     };
 
     struct ClientInfo {
@@ -81,7 +103,7 @@ JETSTREAM_API std::string GetRemoteCodecName(const Instance::Remote::CodecType& 
 JETSTREAM_API Instance::Remote::CodecType StringToRemoteCodec(const std::string& codec);
 JETSTREAM_API const char* GetRemoteCodecPrettyName(const Instance::Remote::CodecType& codec);
 
-JETSTREAM_API bool IsRemoteBrokerSchemeSupported(const std::string& broker);
+JETSTREAM_API bool IsRemotePublicUrlValid(const std::string& url);
 
 JETSTREAM_API std::string GetRemoteEncoderName(const Instance::Remote::EncoderType& encoder);
 JETSTREAM_API Instance::Remote::EncoderType StringToRemoteEncoder(const std::string& encoder);

@@ -163,11 +163,15 @@ void RequireDefaults(const Settings& settings) {
     REQUIRE(settings.graphics.size.height == 1080);
     REQUIRE(settings.graphics.scale == 1.0f);
     REQUIRE(settings.graphics.framerate == 60);
-    REQUIRE(settings.remote.brokerUrl == "https://cyberether.org");
-    REQUIRE(settings.remote.codec == "h264");
-    REQUIRE(settings.remote.encoder == "auto");
-    REQUIRE_FALSE(settings.remote.autoJoinSessions);
-    REQUIRE(settings.remote.framerate == 30);
+    REQUIRE(settings.remote.broker.address == "0.0.0.0");
+    REQUIRE(settings.remote.broker.port == 8686);
+    REQUIRE(settings.remote.broker.publicUrl.empty());
+    REQUIRE(settings.remote.broker.certificate.empty());
+    REQUIRE(settings.remote.broker.key.empty());
+    REQUIRE(settings.remote.video.codec == "h264");
+    REQUIRE(settings.remote.video.encoder == "auto");
+    REQUIRE_FALSE(settings.remote.access.autoApprove);
+    REQUIRE(settings.remote.video.framerate == 30);
     REQUIRE(settings.interface.themeKey == "Dark");
     REQUIRE(settings.interface.infoPanelEnabled);
     REQUIRE(settings.interface.backgroundParticles);
@@ -222,11 +226,11 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     settings.interface.themeKey = "Light";
     settings.interface.infoPanelEnabled = false;
     settings.interface.backgroundParticles = false;
-    settings.remote.brokerUrl = "https://example.com";
-    settings.remote.codec = "av1";
-    settings.remote.encoder = "software";
-    settings.remote.autoJoinSessions = true;
-    settings.remote.framerate = 24;
+    settings.remote.broker.publicUrl = "https://example.com";
+    settings.remote.video.codec = "av1";
+    settings.remote.video.encoder = "software";
+    settings.remote.access.autoApprove = true;
+    settings.remote.video.framerate = 24;
     settings.developer.logLevel = 4;
     settings.developer.latencyEnabled = true;
     settings.developer.timingEnabled = true;
@@ -269,11 +273,11 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     REQUIRE(restored.interface.themeKey == "Light");
     REQUIRE_FALSE(restored.interface.infoPanelEnabled);
     REQUIRE_FALSE(restored.interface.backgroundParticles);
-    REQUIRE(restored.remote.brokerUrl == "https://example.com");
-    REQUIRE(restored.remote.codec == "av1");
-    REQUIRE(restored.remote.encoder == "software");
-    REQUIRE(restored.remote.autoJoinSessions);
-    REQUIRE(restored.remote.framerate == 24);
+    REQUIRE(restored.remote.broker.publicUrl == "https://example.com");
+    REQUIRE(restored.remote.video.codec == "av1");
+    REQUIRE(restored.remote.video.encoder == "software");
+    REQUIRE(restored.remote.access.autoApprove);
+    REQUIRE(restored.remote.video.framerate == 24);
     REQUIRE(restored.developer.logLevel == 4);
     REQUIRE(restored.developer.latencyEnabled);
     REQUIRE(restored.developer.timingEnabled);
@@ -298,8 +302,10 @@ TEST_CASE("Settings loads partial YAML over defaults", "[core][settings][persist
               "  themeKey: Solarized\n"
               "  infoPanelEnabled: false\n"
               "remote:\n"
-              "  brokerUrl: https://example.net\n"
-              "  autoJoinSessions: true\n"
+              "  broker:\n"
+              "    publicUrl: https://example.net\n"
+              "  access:\n"
+              "    autoApprove: true\n"
               "developer:\n"
               "  logLevel: 4\n"
               "registry:\n"
@@ -323,9 +329,9 @@ TEST_CASE("Settings loads partial YAML over defaults", "[core][settings][persist
     REQUIRE(settings.interface.themeKey == "Solarized");
     REQUIRE_FALSE(settings.interface.infoPanelEnabled);
     REQUIRE(settings.interface.backgroundParticles);
-    REQUIRE(settings.remote.brokerUrl == "https://example.net");
-    REQUIRE(settings.remote.autoJoinSessions);
-    REQUIRE(settings.remote.codec == "h264");
+    REQUIRE(settings.remote.broker.publicUrl == "https://example.net");
+    REQUIRE(settings.remote.access.autoApprove);
+    REQUIRE(settings.remote.video.codec == "h264");
     REQUIRE(settings.developer.logLevel == 4);
     REQUIRE(settings.registry.plugins.size() == 1);
     REQUIRE(settings.registry.plugins[0] == "/tmp/cyberether-extra.cep");
@@ -423,12 +429,12 @@ TEST_CASE("Transient settings can be restored before a retained update",
 
     Settings retained;
     retained.graphics.scale = 1.25f;
-    retained.remote.brokerUrl = "https://retained.example.com";
+    retained.remote.broker.publicUrl = "https://retained.example.com";
     REQUIRE(Settings::Set(retained) == Result::SUCCESS);
 
     Settings runtime = retained;
     runtime.graphics.scale = 3.0f;
-    runtime.remote.brokerUrl = "https://runtime.example.com";
+    runtime.remote.broker.publicUrl = "https://runtime.example.com";
     REQUIRE(Settings::Set(runtime, false) == Result::SUCCESS);
     REQUIRE(Settings::Set(retained, false) == Result::SUCCESS);
 
