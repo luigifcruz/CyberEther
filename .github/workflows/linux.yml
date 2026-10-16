@@ -34,10 +34,10 @@ env:
     libwayland-egl.so.1
     libudev.so.1
     libgudev-1.0.so.0
+    libcuda.so.1
   BUNDLED_LINUX_LIBS: |
     libjetstream.so
-  CUDA_SHARED_LIBS: |
-    libcuda.so.1
+  CUDA_RUNTIME_LIBS: |
     libcudart.so.12
     libnvrtc.so.12
     libnvrtc-builtins.so.12.0
@@ -167,6 +167,18 @@ jobs:
           patchelf --set-rpath '$ORIGIN' .dist/bin/cyberether
           tar -C .dist/bin -czf ".dist/artifacts/${ARCHIVE}" cyberether libjetstream.so
 
+      - name: Stage CUDA runtime libraries
+        if: ${{ inputs.package_desktop && contains(matrix.tag, 'cuda') }}
+        run: |
+          set -euo pipefail
+          mkdir -p .dist/cuda-runtime
+          # Copy the toolkit runtimes, including libraries loaded through dlopen.
+          # libcuda.so.1 must come from the host NVIDIA driver, never the toolkit stubs.
+          while IFS= read -r library; do
+            [[ -n "$library" ]] || continue
+            cp -L "/usr/local/cuda/lib64/$library" ".dist/cuda-runtime/$library"
+          done <<< "$CUDA_RUNTIME_LIBS"
+
       - name: Check binary dynamic dependencies
         uses: ./.github/actions/check-dynamic-deps
         with:
@@ -174,15 +186,24 @@ jobs:
           targets: |
             .dist/bin/cyberether
             .dist/bin/libjetstream.so
+            .dist/cuda-runtime/*.so.*
           allowlist: |
             ${{ env.SYSTEM_SHARED_LIBS }}
             ${{ env.BUNDLED_LINUX_LIBS }}
-            ${{ env.CUDA_SHARED_LIBS }}
+            ${{ env.CUDA_RUNTIME_LIBS }}
 
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: .dist/artifacts/${{ matrix.archive }}
+
+      - name: Upload CUDA runtime libraries
+        if: ${{ inputs.package_desktop && contains(matrix.tag, 'cuda') }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: cyberether-cuda-runtime-linux-${{ matrix.arch }}
+          path: .dist/cuda-runtime/
+          if-no-files-found: error
 
   package:
     if: ${{ inputs.package_desktop }}
@@ -198,6 +219,7 @@ jobs:
       APPIMAGE_SUFFIX: ${{ matrix.appimage_suffix }}
       CYBERETHER_BINARY: .dist/bin/cyberether
       JETSTREAM_SO: .dist/bin/libjetstream.so
+      CUDA_RUNTIME_DIR: ${{ contains(matrix.tag, 'cuda') && '.dist/cuda-runtime' || '' }}
       OUTPUT_DIR: .dist/linux
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -208,6 +230,13 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: .dist/artifacts
+
+      - name: Download CUDA runtime libraries
+        if: ${{ contains(matrix.tag, 'cuda') }}
+        uses: actions/download-artifact@v4.3.0
+        with:
+          name: cyberether-cuda-runtime-linux-${{ matrix.arch }}
+          path: .dist/cuda-runtime
 
       - uses: actions/download-artifact@v4.3.0
         with:
@@ -237,6 +266,18 @@ jobs:
 
       - name: Package desktop release
         run: apps/linux/create-package.sh
+
+      - name: Check AppImage payload dependencies
+        uses: ./.github/actions/check-dynamic-deps
+        with:
+          format: elf
+          targets: |
+            .dist/linux/.pack/cyberether
+            .dist/linux/.pack/*.so*
+          allowlist: |
+            ${{ env.SYSTEM_SHARED_LIBS }}
+            ${{ env.BUNDLED_LINUX_LIBS }}
+            ${{ env.CUDA_RUNTIME_LIBS }}
 
       - uses: actions/upload-artifact@v7
         with:
