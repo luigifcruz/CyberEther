@@ -71,6 +71,7 @@ JETSTREAM_API void WriteInterruptMessage(const char* message, std::size_t size) 
 JETSTREAM_API bool ShutdownSocketRead(std::uintptr_t socket) noexcept;
 JETSTREAM_API void DisableSocketSigPipe(std::uintptr_t socket) noexcept;
 JETSTREAM_API void IgnoreBrokenPipe() noexcept;
+JETSTREAM_API Result LocalNetworkAddress(std::string& address);
 #endif
 
 //

@@ -1,7 +1,7 @@
 ---
 title: Installing Plugins
 description: How to install, manage, and remove CyberEther plugins.
-order: 42
+order: 45
 category: Usage
 ---
 

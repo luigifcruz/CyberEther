@@ -119,9 +119,18 @@ Result DefaultCompositor::create() {
 
     // Restore remote streaming preferences.
 
-    state.remote.brokerUrl = settings.remote.brokerUrl;
-    state.remote.autoJoinSessions = settings.remote.autoJoinSessions;
-    state.remote.framerate = static_cast<U32>(settings.remote.framerate);
+    state.remote.config.broker.address = settings.remote.broker.address;
+    state.remote.config.broker.publicUrl = settings.remote.broker.publicUrl;
+    state.remote.config.broker.certificate = settings.remote.broker.certificate;
+    state.remote.config.broker.key = settings.remote.broker.key;
+    if (settings.remote.broker.port <= 65535) {
+        state.remote.config.broker.port = static_cast<U16>(settings.remote.broker.port);
+    } else {
+        JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Invalid saved broker port {}. Using default.",
+                 settings.remote.broker.port);
+    }
+    state.remote.config.access.autoApprove = settings.remote.access.autoApprove;
+    state.remote.config.video.framerate = static_cast<U32>(settings.remote.video.framerate);
 
     // Restore runtime preferences.
 
@@ -139,33 +148,35 @@ Result DefaultCompositor::create() {
     state.runtime.initialPythonValidation = state.runtime.pythonValidation;
 
     try {
-        state.remote.codec = StringToRemoteCodec(settings.remote.codec);
+        state.remote.config.video.codec = StringToRemoteCodec(settings.remote.video.codec);
     } catch (const Result&) {
         JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Invalid saved remote codec '{}'. Using default.",
-                 settings.remote.codec);
+                 settings.remote.video.codec);
     }
 
     try {
-        state.remote.encoder = StringToRemoteEncoder(settings.remote.encoder);
+        state.remote.config.video.encoder = StringToRemoteEncoder(settings.remote.video.encoder);
     } catch (const Result&) {
         JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Invalid saved remote encoder '{}'. Using default.",
-                 settings.remote.encoder);
+                 settings.remote.video.encoder);
     }
 
     try {
-        state.remote.transport = StringToRemoteTransport(settings.remote.transport);
+        state.remote.config.media.transport = StringToRemoteTransport(settings.remote.media.transport);
     } catch (const Result&) {
         JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Invalid saved remote transport '{}'. Using default.",
-                 settings.remote.transport);
+                 settings.remote.media.transport);
     }
 
-    if (IsRemotePortRangeValid(settings.remote.minPort, settings.remote.maxPort)) {
-        state.remote.minPort = static_cast<U16>(settings.remote.minPort);
-        state.remote.maxPort = static_cast<U16>(settings.remote.maxPort);
+    if (IsRemotePortRangeValid(settings.remote.media.minPort, settings.remote.media.maxPort)) {
+        state.remote.config.media.minPort = static_cast<U16>(settings.remote.media.minPort);
+        state.remote.config.media.maxPort = static_cast<U16>(settings.remote.media.maxPort);
     } else {
         JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Invalid saved remote port range {}-{}. Using default.",
-                 settings.remote.minPort, settings.remote.maxPort);
+                 settings.remote.media.minPort, settings.remote.media.maxPort);
     }
+
+    state.remote.config.media.address = settings.remote.media.address;
 
     // Initialize Sakura rendering resources.
 

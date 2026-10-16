@@ -16,21 +16,32 @@ struct RemoteSettingsPresenter {
     RemoteSettingsPanel::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
         const auto remote = context.state.system.instance->remote();
-        const auto available = remote->available(context.state.remote.codec);
+        const auto available = remote->available(context.state.remote.config.video.codec);
 
         return RemoteSettingsPanel::Config{
             .started = context.state.remote.started,
-            .brokerUrl = context.state.remote.brokerUrl,
-            .codec = context.state.remote.codec,
-            .framerate = context.state.remote.framerate,
-            .encoder = context.state.remote.encoder,
+            .broker = context.state.remote.config.broker,
+            .codec = context.state.remote.config.video.codec,
+            .framerate = context.state.remote.config.video.framerate,
+            .encoder = context.state.remote.config.video.encoder,
             .available = available,
-            .autoJoinSessions = context.state.remote.autoJoinSessions,
-            .transport = context.state.remote.transport,
-            .minPort = context.state.remote.minPort,
-            .maxPort = context.state.remote.maxPort,
-            .onBrokerUrlChange = [enqueue](const std::string& value) {
-                enqueue(MailSetRemoteBrokerUrl{.value = value});
+            .autoApprove = context.state.remote.config.access.autoApprove,
+            .transport = context.state.remote.config.media.transport,
+            .minPort = context.state.remote.config.media.minPort,
+            .maxPort = context.state.remote.config.media.maxPort,
+            .mediaAddress = context.state.remote.config.media.address,
+            .onBrokerChange = [enqueue](const Instance::Remote::Config::Broker& value) {
+                enqueue(MailSetRemoteBroker{.value = value});
+            },
+            .onBrowseFile = [enqueue](const std::string& currentPath,
+                                      std::vector<std::string> extensions,
+                                      std::function<void(std::string)> onSelect) {
+                enqueue(MailBrowseConfigPath{
+                    .path = currentPath,
+                    .save = false,
+                    .extensions = std::move(extensions),
+                    .onSelect = std::move(onSelect),
+                });
             },
             .onCodecChange = [enqueue](Instance::Remote::CodecType value) {
                 enqueue(MailSetRemoteCodec{.value = value});
@@ -41,14 +52,17 @@ struct RemoteSettingsPresenter {
             .onEncoderChange = [enqueue](Instance::Remote::EncoderType value) {
                 enqueue(MailSetRemoteEncoder{.value = value});
             },
-            .onAutoJoinSessionsChange = [enqueue](bool value) {
-                enqueue(MailSetRemoteAutoJoinSessions{.value = value});
+            .onAutoApproveChange = [enqueue](bool value) {
+                enqueue(MailSetRemoteAutoApprove{.value = value});
             },
             .onTransportChange = [enqueue](Instance::Remote::TransportType value) {
                 enqueue(MailSetRemoteTransport{.value = value});
             },
             .onPortRangeChange = [enqueue](U16 minPort, U16 maxPort) {
                 enqueue(MailSetRemotePortRange{.minPort = minPort, .maxPort = maxPort});
+            },
+            .onMediaAddressChange = [enqueue](const std::string& value) {
+                enqueue(MailSetRemoteMediaAddress{.value = value});
             },
         };
     }

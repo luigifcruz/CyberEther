@@ -4,11 +4,25 @@
 
 #include <algorithm>
 #include <cctype>
+#include <string_view>
 
 namespace Jetstream {
 
-bool IsRemoteBrokerSchemeSupported(const std::string& broker) {
-    return broker.starts_with("https://") || broker.starts_with("http://");
+bool IsRemotePublicUrlValid(const std::string& url) {
+    std::string_view rest = url;
+    if (rest.starts_with("https://")) {
+        rest.remove_prefix(8);
+    } else if (rest.starts_with("http://")) {
+        rest.remove_prefix(7);
+    } else {
+        return false;
+    }
+
+    if (rest.ends_with("/")) {
+        rest.remove_suffix(1);
+    }
+
+    return !rest.empty() && rest.find_first_of("/?#@ \t\r\n") == std::string_view::npos;
 }
 
 std::string GetRemoteCodecName(const Instance::Remote::CodecType& codec) {
