@@ -17,14 +17,13 @@ struct SdrSweep : public Block::Config {
     F64 resolution = 10.0e3;
     U64 dwell = 1;
     F32 settlingTime = 0.0f;
-    bool flatten = true;
 
     JST_BLOCK_TYPE(sdr_sweep);
     JST_BLOCK_DOMAIN("IO");
     JST_BLOCK_NODE_SIZE(M);
     JST_BLOCK_PARAMS(deviceString, antenna, automaticGain, manualGain, biasTee,
                      startFrequency, endFrequency, sampleRate, resolution,
-                     dwell, settlingTime, flatten);
+                     dwell, settlingTime);
     JST_BLOCK_DESCRIPTION(
         "SDR Sweep",
         "Sweeps a radio across a wide band.",
@@ -36,8 +35,8 @@ struct SdrSweep : public Block::Config {
         "\n"
         "- **Each sweep is one buffer.** A buffer comes out only after every hop of a "
         "sweep was captured.\n"
-        "- **Hops are captured at different times.** The output pictures the band but "
-        "is not one recording.\n"
+        "- **Hops are captured at different times.** Phase is not continuous from one "
+        "hop to the next.\n"
         "- **Labels describe the stitched band.** The `frequency` attribute is its "
         "center and `sampleRate` is its width.\n"
         "- **Automatic Gain is off by default.** Manual Gain keeps the levels of "
@@ -49,7 +48,9 @@ struct SdrSweep : public Block::Config {
         "|---|---|---|\n"
         "| **Output** (out) | CF32 | One batch x one sample per bin, on a `batchAxis` "
         "then a `sampleAxis`. Sets `frequency` to the band center and `sampleRate` to "
-        "the band width, and adds `sweep` attributes with the grid and sweep number. |\n"
+        "the band width, and adds `sweep` attributes with the grid and sweep number. "
+        "The `sweepSynthetic` attribute tells the Spectrum Analyzer to skip its own "
+        "window. |\n"
         "\n"
         "## Settings\n"
         "\n"
@@ -70,14 +71,11 @@ struct SdrSweep : public Block::Config {
         "each hop. Zero picks the radio's preferred rate, and Airspy and Airspy HF+ "
         "show a list. "
         "HackRF firmware sweeps need 0 or 20 MHz. |\n"
-        "| **Dwell** | 1 | 1 to 64 | Captures averaged per hop, which smooths the noise"
-        " floor. |\n"
+        "| **Dwell** | 1 | 1 to 64 | Captures averaged in power per hop, which smooths "
+        "the noise floor. |\n"
         "| **Settling Time** | 0 ms | 0 or more | Time skipped after each retune. Zero "
         "uses the radio's default. A nonzero value makes HackRF retune instead of "
         "sweeping in firmware. |\n"
-        "| **Flatten** | On | On, Off | Removes the receiver shape that repeats in every "
-        "hop. It is learned from the level at each offset across the hops of a sweep, "
-        "ignoring carriers, and settles over a few sweeps. Needs three or more hops. |\n"
         "| **Automatic Gain** | Off | On, Off | Lets the radio set its gain, which "
         "makes hop levels not comparable. |\n"
         "| **Manual Gain** | 30 dB | Within the radio's gain range | Receive gain, shown "
@@ -94,22 +92,24 @@ struct SdrSweep : public Block::Config {
         " Near 100% means the chain is falling behind. |\n"
         "| **Buffer Loss** | Share of finished sweeps replaced or expired before the "
         "chain read them. |\n"
-        "| **Sweep Speed** | Finished sweeps per second, relative to the fastest since "
-        "startup. |\n"
+        "| **Sweep Speed** | Band covered per second in GHz/s, followed by complete "
+        "sweeps per second in Hz. Both are smoothed. |\n"
         "\n"
         "## Recipes\n"
         "\n"
-        "Rows without a named radio assume an RTL-SDR at its preferred 2.4 MS/s.\n"
+        "Rows without a named radio assume an RTL-SDR at its preferred 2.4 MS/s. The "
+        "rate is the `sampleRate` label, and sweeps arrive as often as Sweep Speed "
+        "shows.\n"
         "\n"
         "| Goal | Settings | Output |\n"
         "|---|---|---|\n"
-        "| Broadcast FM band | Defaults | 2,000 complex samples per sweep, 10 kHz bins "
-        "from 88 to 108 MHz, 16 hops |\n"
+        "| Broadcast FM band | Defaults | 2,000 complex samples at 20 MS/s per sweep, "
+        "10 kHz bins from 88 to 108 MHz, 23 hops |\n"
         "| Land mobile radio | Start Frequency 400 MHz, End Frequency 470 MHz | 7,000 "
-        "complex samples per sweep, 10 kHz bins, 53 hops |\n"
+        "complex samples at 70 MS/s per sweep, 10 kHz bins, 81 hops |\n"
         "| Wi-Fi band on a HackRF | Start Frequency 2,400 MHz, End Frequency 2,500 MHz "
-        "| 10,020 complex samples per sweep, 9.98 kHz bins, 10 firmware hops at 20 MS/s"
-        " |\n"
+        "| 10,020 complex samples at 100 MS/s per sweep, 9.98 kHz bins, 10 firmware "
+        "hops captured at 20 MS/s |\n"
         "| Calmer noise floor | Dwell 4 | Same as the first row, with 4 captures "
         "averaged per hop |\n"
         "\n"
@@ -141,9 +141,11 @@ struct SdrSweep : public Block::Config {
         "\n"
         "## Under the Hood\n"
         "\n"
-        "Each hop uses the radio's fastest tuning method and drops samples that can "
-        "predate the retune. Its flat central bins join a common grid that an inverse "
-        "transform turns back into samples.\n"
+        "Every capture gets a Blackman window and a transform, and Dwell averages the "
+        "captures of each hop in power. Retuned hops overlap and blend in power with "
+        "less weight near capture edges, while HackRF firmware hops use fixed bands "
+        "that never overlap. An inverse transform turns the blended spectrum back into "
+        "samples, keeping the phase of the hop that weighs most at each frequency.\n"
         "\n"
         "## See Also\n"
         "\n"

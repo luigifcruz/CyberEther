@@ -35,7 +35,6 @@ Result SdrSweepImpl::configure() {
     moduleConfig->resolution = resolution;
     moduleConfig->dwell = dwell;
     moduleConfig->settlingTime = settlingTime;
-    moduleConfig->flatten = flatten;
 
     return Result::SUCCESS;
 }
@@ -91,7 +90,7 @@ Result SdrSweepImpl::define() {
 
     JST_CHECK(defineInterfaceConfig("dwell",
                                     "Dwell",
-                                    "Captures per hop. Their magnitudes are averaged.",
+                                    "Captures per hop. Their power is averaged.",
                                     {{"type", "uint"}, {"unit", "captures"}}));
 
     JST_CHECK(defineInterfaceConfig("settlingTime",
@@ -100,11 +99,6 @@ Result SdrSweepImpl::define() {
                                     "Zero uses the radio's default. A nonzero override makes a HackRF retune "
                                     "instead of running a firmware sweep.",
                                     {{"type", "float"}, {"unit", "ms"}, {"precision", 3}}));
-
-    JST_CHECK(defineInterfaceConfig("flatten",
-                                    "Flatten",
-                                    "Remove the receiver shape that repeats in every hop.",
-                                    {{"type", "bool"}}));
 
     JST_CHECK(defineInterfaceConfig("automaticGain",
                                     "Automatic Gain",
