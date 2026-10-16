@@ -1,8 +1,11 @@
 #include "jetstream/platform.hh"
 
 #if defined(JST_OS_WINDOWS)
+#define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#undef ERROR
+#undef FATAL
 #else
 #include <arpa/inet.h>
 #include <csignal>
