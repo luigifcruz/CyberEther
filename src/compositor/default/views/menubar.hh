@@ -246,14 +246,12 @@ struct MenubarView {
             .id = this->config.id + ":agent",
             .label = "Show Agent Window",
             .selected = this->config.agentVisible,
-            .enabled = this->config.intelligenceEnabled,
             .onClick = [this]() { emit(Action::ToggleAgent); },
         });
         voiceItem.update({
             .id = this->config.id + ":voice",
             .label = "Show Voice Window",
             .selected = this->config.voiceVisible,
-            .enabled = this->config.intelligenceEnabled,
             .onClick = [this]() { emit(Action::ToggleVoice); },
         });
 
@@ -456,10 +454,12 @@ struct MenubarView {
             });
 
 #ifndef JST_OS_BROWSER
-            intelligenceMenu.render(ctx, [this](const Sakura::Context& ctx) {
-                agentItem.render(ctx);
-                voiceItem.render(ctx);
-            });
+            if (config.intelligenceEnabled) {
+                intelligenceMenu.render(ctx, [this](const Sakura::Context& ctx) {
+                    agentItem.render(ctx);
+                    voiceItem.render(ctx);
+                });
+            }
 #endif
 
             remoteMenu.render(ctx, [this](const Sakura::Context& ctx) {
