@@ -14,6 +14,8 @@ namespace Jetstream::Render {
 
 namespace {
 
+constexpr uint32_t kRetiredComponentFrames = 4;
+
 template<typename T>
 bool Contains(const std::vector<std::shared_ptr<T>>& items, const std::shared_ptr<T>& item) {
     return std::find(items.begin(), items.end(), item) != items.end();
@@ -155,7 +157,9 @@ Result Window::destroyInternal() {
     }
     JST_CHECK(processAttachmentQueues());
 
-    std::lock_guard<std::mutex> frameLock(newFrameQueueMutex);
+    decltype(retiredComponents) expiredComponents;
+    std::unique_lock<std::mutex> frameLock(newFrameQueueMutex);
+    JST_CHECK(underlyingSynchronize());
 
     // Process pending attachment destruction.
 
@@ -194,7 +198,10 @@ Result Window::destroyInternal() {
 
     if (res == Result::SUCCESS || res == Result::RELOAD) {
         created = false;
+        std::lock_guard<std::mutex> lock(attachmentStateMutex);
+        expiredComponents.swap(retiredComponents);
     }
+    frameLock.unlock();
     return res;
 }
 
@@ -298,6 +305,7 @@ Result Window::stop() {
 
 Result Window::end() {
     JST_ASSERT(frameActive, "Window frame is not active.");
+    std::vector<std::shared_ptr<Components::Generic>> expiredComponents;
     std::unique_lock<std::mutex> frameLock(newFrameQueueMutex, std::adopt_lock);
 
     // Call frame end.
@@ -319,9 +327,19 @@ Result Window::end() {
     // Process attachment destruction queue.
 
     std::vector<std::shared_ptr<WindowAttachment>> expiredAttachments;
+    bool retirementReady = false;
 
     {
         std::lock_guard<std::mutex> lock(attachmentStateMutex);
+
+        if (res == Result::SUCCESS) {
+            for (auto& [remaining, component] : retiredComponents) {
+                if (remaining > 0) {
+                    --remaining;
+                }
+            }
+            retirementReady = !retiredComponents.empty() && retiredComponents.front().first == 0;
+        }
 
         int count = destroyQueue.size();
         while (count > 0) {
@@ -343,6 +361,18 @@ Result Window::end() {
     }
 
     Result result = res;
+    if (retirementReady) {
+        const Result syncResult = underlyingSynchronize();
+        if (syncResult == Result::SUCCESS || syncResult == Result::RELOAD) {
+            std::lock_guard<std::mutex> lock(attachmentStateMutex);
+            while (!retiredComponents.empty() && retiredComponents.front().first == 0) {
+                expiredComponents.push_back(std::move(retiredComponents.front().second));
+                retiredComponents.pop_front();
+            }
+        } else {
+            result = syncResult;
+        }
+    }
     for (auto& attachment : expiredAttachments) {
         const Result destroyResult = attachment->destroy();
         std::lock_guard<std::mutex> lock(attachmentStateMutex);
@@ -362,6 +392,7 @@ Result Window::end() {
         }
     }
 
+    frameLock.unlock();
     return result;
 }
 
@@ -920,6 +951,11 @@ Result Window::unbind(const std::shared_ptr<Components::Generic>& component) {
         const auto it = components.begin() + std::min(position, components.size());
         components.insert(it, component);
         return res;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(attachmentStateMutex);
+        retiredComponents.emplace_back(kRetiredComponentFrames, component);
     }
 
     return Result::SUCCESS;

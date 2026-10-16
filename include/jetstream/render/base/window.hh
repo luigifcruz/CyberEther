@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_RENDER_BASE_WINDOW_HH
 #define JETSTREAM_RENDER_BASE_WINDOW_HH
 
+#include <deque>
 #include <queue>
 #include <cstdint>
 #include <functional>
@@ -205,6 +206,7 @@ class JETSTREAM_API Window {
     std::queue<std::shared_ptr<WindowAttachment>> bindQueue;
     std::queue<std::shared_ptr<WindowAttachment>> unbindQueue;
     std::queue<PendingDestruction> destroyQueue;
+    std::deque<std::pair<uint32_t, std::shared_ptr<Components::Generic>>> retiredComponents;
 
     std::vector<std::shared_ptr<WindowAttachment>> attachments;
     std::unordered_set<const WindowAttachment*> destroyingAttachments;

@@ -189,6 +189,9 @@ class TestWindow final : public Render::Window {
         return destructions;
     }
 
+    std::function<Result()> synchronizeHandler;
+    U64 outstandingSubmissions = 0;
+
  protected:
     Result bindSurface(const std::shared_ptr<Render::Surface>& surface) override {
         surfaces.push_back(std::dynamic_pointer_cast<TestSurface>(surface));
@@ -220,9 +223,16 @@ class TestWindow final : public Render::Window {
             surface->commitDraw();
         }
         batch.commit();
+        ++outstandingSubmissions;
         return Result::SUCCESS;
     }
-    Result underlyingSynchronize() override { return Result::SUCCESS; }
+    Result underlyingSynchronize() override {
+        const Result result = synchronizeHandler ? synchronizeHandler() : Result::SUCCESS;
+        if (result == Result::SUCCESS || result == Result::RELOAD) {
+            outstandingSubmissions = 0;
+        }
+        return result;
+    }
 
  private:
     Stats statsData{};
@@ -287,6 +297,158 @@ std::shared_ptr<TestSurface> MakeRetainedSurface(const std::shared_ptr<Render::B
 }
 
 }  // namespace
+
+TEST_CASE("Retired components survive failed frames and synchronization failures",
+          "[core][render][window][retirement]") {
+    TestWindow window;
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.start() == Result::SUCCESS);
+    auto component = std::make_shared<Render::Components::Generic>();
+    std::weak_ptr<Render::Components::Generic> lifetime = component;
+    REQUIRE(window.bind(component) == Result::SUCCESS);
+    for (int frame = 0; frame < 3; ++frame) {
+        REQUIRE(window.begin() == Result::SUCCESS);
+        REQUIRE(window.end() == Result::SUCCESS);
+    }
+    REQUIRE(window.outstandingSubmissions == 3);
+    REQUIRE(window.unbind(component) == Result::SUCCESS);
+    component.reset();
+
+    window.nextSubmissionResult(Result::ERROR);
+    for (int frame = 0; frame < 260; ++frame) {
+        REQUIRE(window.begin() == Result::SUCCESS);
+        REQUIRE(window.end() == Result::ERROR);
+        REQUIRE_FALSE(lifetime.expired());
+    }
+    REQUIRE(window.outstandingSubmissions == 3);
+    REQUIRE(window.begin() == Result::SUCCESS);
+    REQUIRE(window.cancel() == Result::SUCCESS);
+    REQUIRE_FALSE(lifetime.expired());
+
+    window.nextSubmissionResult(Result::SUCCESS);
+    window.synchronizeHandler = [&]() {
+        REQUIRE_FALSE(lifetime.expired());
+        return Result::ERROR;
+    };
+    for (int frame = 0; frame < 3; ++frame) {
+        REQUIRE(window.begin() == Result::SUCCESS);
+        REQUIRE(window.end() == Result::SUCCESS);
+        REQUIRE_FALSE(lifetime.expired());
+    }
+    REQUIRE(window.begin() == Result::SUCCESS);
+    REQUIRE(window.end() == Result::ERROR);
+    REQUIRE_FALSE(lifetime.expired());
+    window.synchronizeHandler = {};
+    REQUIRE(window.begin() == Result::SUCCESS);
+    REQUIRE(window.end() == Result::SUCCESS);
+    REQUIRE(lifetime.expired());
+    REQUIRE(window.outstandingSubmissions == 0);
+    REQUIRE(window.stop() == Result::SUCCESS);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Component retirement countdowns saturate and preserve independent grace periods",
+          "[core][render][window][retirement]") {
+    TestWindow window;
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.start() == Result::SUCCESS);
+    const auto retire = [&]() {
+        auto component = std::make_shared<Render::Components::Generic>();
+        REQUIRE(window.bind(component) == Result::SUCCESS);
+        REQUIRE(window.unbind(component) == Result::SUCCESS);
+        return std::weak_ptr<Render::Components::Generic>(component);
+    };
+    const auto frame = [&]() {
+        REQUIRE(window.begin() == Result::SUCCESS);
+        return window.end();
+    };
+    auto first = retire();
+    window.synchronizeHandler = []() { return Result::ERROR; };
+    for (int count = 0; count < 260; ++count) {
+        REQUIRE(frame() == (count < 3 ? Result::SUCCESS : Result::ERROR));
+        REQUIRE_FALSE(first.expired());
+    }
+    auto second = retire();
+    window.synchronizeHandler = {};
+    REQUIRE(frame() == Result::SUCCESS);
+    REQUIRE(first.expired());
+    REQUIRE_FALSE(second.expired());
+    for (int count = 0; count < 2; ++count) {
+        REQUIRE(frame() == Result::SUCCESS);
+        REQUIRE_FALSE(second.expired());
+    }
+    REQUIRE(frame() == Result::SUCCESS);
+    REQUIRE(second.expired());
+    REQUIRE(window.stop() == Result::SUCCESS);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Window destruction drains retired storage without subsequent frames and supports reuse",
+          "[core][render][window][retirement]") {
+    TestWindow window;
+    REQUIRE(window.create() == Result::SUCCESS);
+    auto component = std::make_shared<Render::Components::Generic>();
+    std::weak_ptr<Render::Components::Generic> lifetime = component;
+    REQUIRE(window.bind(component) == Result::SUCCESS);
+    component.reset();
+    window.synchronizeHandler = [&]() {
+        REQUIRE_FALSE(lifetime.expired());
+        return Result::ERROR;
+    };
+    REQUIRE(window.destroy() == Result::ERROR);
+    REQUIRE_FALSE(lifetime.expired());
+    REQUIRE(window.destructionCount() == 0);
+    window.synchronizeHandler = {};
+    window.nextDestructionResult(Result::ERROR);
+    REQUIRE(window.destroy() == Result::ERROR);
+    REQUIRE_FALSE(lifetime.expired());
+    window.nextDestructionResult(Result::SUCCESS);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+    REQUIRE(lifetime.expired());
+
+    REQUIRE(window.create() == Result::SUCCESS);
+    component = std::make_shared<Render::Components::Generic>();
+    lifetime = component;
+    REQUIRE(window.bind(component) == Result::SUCCESS);
+    REQUIRE(window.unbind(component) == Result::SUCCESS);
+    component.reset();
+    REQUIRE(window.destroy() == Result::SUCCESS);
+    REQUIRE(lifetime.expired());
+}
+
+TEST_CASE("Retired component destructors can reenter window synchronization and state queries",
+          "[core][render][window][retirement]") {
+    struct ReentrantComponent final : Render::Components::Generic {
+        std::function<void()> onRelease;
+        ~ReentrantComponent() override { onRelease(); }
+    };
+    TestWindow window;
+    bool released = false;
+    bool releaseOnDestroy = false;
+    SECTION("Frame retirement") {}
+    SECTION("Window destruction") { releaseOnDestroy = true; }
+    REQUIRE(window.create() == Result::SUCCESS);
+    auto component = std::make_shared<ReentrantComponent>();
+    component->onRelease = [&]() {
+        Render::Transfer::Batch batch;
+        released = window.synchronize() == Result::SUCCESS &&
+                   window.collectFrameTransfers(batch) == Result::SUCCESS;
+    };
+    REQUIRE(window.bind(component) == Result::SUCCESS);
+    REQUIRE(window.unbind(component) == Result::SUCCESS);
+    component.reset();
+    if (!releaseOnDestroy) {
+        REQUIRE(window.start() == Result::SUCCESS);
+        for (int frame = 0; frame < 4; ++frame) {
+            REQUIRE(window.begin() == Result::SUCCESS);
+            REQUIRE(window.end() == Result::SUCCESS);
+        }
+        REQUIRE(released);
+        REQUIRE(window.stop() == Result::SUCCESS);
+    }
+    REQUIRE(window.destroy() == Result::SUCCESS);
+    REQUIRE(released);
+}
 
 TEST_CASE("Render transfer ranges align and reject overflow", "[core][render][transfer]") {
     U64 used = 3;
