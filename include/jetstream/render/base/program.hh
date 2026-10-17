@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_RENDER_BASE_PROGRAM_HH
 #define JETSTREAM_RENDER_BASE_PROGRAM_HH
 
+#include <atomic>
 #include <optional>
 #include <utility>
 #include <memory>
@@ -71,8 +72,11 @@ class JETSTREAM_API Program {
     uint32_t drawIndex = 0;
 
  private:
+    std::atomic_bool surfaceOwned = false;
     bool enabledState = true;
     std::vector<U64> boundAllocations;
+
+    friend class Surface;
 };
 
 inline std::vector<U64> Program::textureAllocations() const {

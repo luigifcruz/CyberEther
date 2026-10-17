@@ -5,8 +5,11 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <exception>
 #include <limits>
+#include <new>
 #include <optional>
+#include <stdexcept>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -26,10 +29,14 @@ class TestBuffer final : public Render::Buffer {
 
     Result create() override {
         createCount++;
-        return Result::SUCCESS;
+        live = true;
+        return creationHandler ? creationHandler() : Result::SUCCESS;
     }
     Result destroy() override {
         destroyCount++;
+        if (destructionResult == Result::SUCCESS) {
+            live = false;
+        }
         return destructionResult;
     }
 
@@ -37,6 +44,8 @@ class TestBuffer final : public Render::Buffer {
 
     U64 createCount = 0;
     U64 destroyCount = 0;
+    bool live = false;
+    std::function<Result()> creationHandler;
 
  private:
     Result destructionResult = Result::SUCCESS;
@@ -51,7 +60,7 @@ class TestTexture final : public Render::Texture {
         if (creationResult == Result::SUCCESS) {
             markAllocated();
         }
-        return creationResult;
+        return creationHandler ? creationHandler() : creationResult;
     }
     Result destroy() override {
         destroyCount++;
@@ -64,6 +73,7 @@ class TestTexture final : public Render::Texture {
 
     U64 createCount = 0;
     U64 destroyCount = 0;
+    std::function<Result()> creationHandler;
 
  private:
     Result creationResult = Result::SUCCESS;
@@ -146,19 +156,64 @@ class TestKernel final : public Render::Kernel {
     void scheduled() { markScheduled(); }
 };
 
+struct CreationState {
+    virtual ~CreationState() = default;
+
+    Result create() {
+        ++creates;
+        live = true;
+        return creationResult;
+    }
+    Result destroy() {
+        ++destroys;
+        live = false;
+        return Result::SUCCESS;
+    }
+
+    Result creationResult = Result::SUCCESS;
+    U64 creates = 0;
+    U64 destroys = 0;
+    bool live = false;
+};
+
+class CreationProgram final : public Render::Program, public CreationState {
+ public:
+    explicit CreationProgram(const Config& config = {}) : Program(config) {}
+};
+
+class CreationKernel final : public Render::Kernel, public CreationState {
+ public:
+    explicit CreationKernel(const Config& config = {}) : Kernel(config) {}
+};
+
 class TestSurface final : public Render::Surface {
  public:
-    explicit TestSurface(const Config& config) : Surface(config) {}
+    explicit TestSurface(const Config& config) : Surface(config),
+                                                 backendPrograms(config.programs),
+                                                 backendKernels(config.kernels) {}
 
     Result create() override {
+        backendPrograms = config.programs;
+        backendKernels = config.kernels;
         resetFramebuffer();
-        return Result::SUCCESS;
+        return creationHandler ? creationHandler() : Result::SUCCESS;
     }
     Result destroy() override {
         destructionStarted.store(true, std::memory_order_release);
         while (destructionBlocked.load(std::memory_order_acquire)) {
             std::this_thread::yield();
         }
+        if (destructionHandler) {
+            JST_CHECK(destructionHandler());
+        }
+        for (const auto& kernel : backendKernels) {
+            destroyObject(kernel);
+        }
+        for (const auto& program : backendPrograms) {
+            destroyObject(program);
+        }
+        backendKernels.clear();
+        backendPrograms.clear();
         return Result::SUCCESS;
     }
     const Extent2D<U64>& size(const Extent2D<U64>&) override { return NullSize2D; }
@@ -175,7 +230,62 @@ class TestSurface final : public Render::Surface {
         return destructionStarted.load(std::memory_order_acquire);
     }
 
+    bool acceptsAppends = false;
+    U64 appendCalls = 0;
+    U64 firstAppendedProgram = 0;
+    U64 firstAppendedKernel = 0;
+    U64 reorderCalls = 0;
+    Result reorderResult = Result::SUCCESS;
+    bool typedAppends = false;
+    std::function<Result()> creationHandler;
+    std::function<Result()> destructionHandler;
+    std::vector<std::shared_ptr<Render::Program>> backendPrograms;
+    std::vector<std::shared_ptr<Render::Kernel>> backendKernels;
+
+ protected:
+    Result reorderPrograms(const std::vector<std::shared_ptr<Render::Program>>& ordered) override {
+        ++reorderCalls;
+        if (reorderResult != Result::SUCCESS) {
+            return std::exchange(reorderResult, Result::SUCCESS);
+        }
+        backendPrograms = ordered;
+        return Result::SUCCESS;
+    }
+    bool appendable() const override { return acceptsAppends; }
+    Result validateAppend(const std::vector<std::shared_ptr<Render::Program>>& programs,
+                          const std::vector<std::shared_ptr<Render::Kernel>>& kernels) const override {
+        JST_CHECK(Surface::validateAppend(programs, kernels));
+        if (typedAppends) {
+            for (const auto& program : programs) {
+                if (!std::dynamic_pointer_cast<CreationProgram>(program)) {
+                    return Result::ERROR;
+                }
+            }
+            for (const auto& kernel : kernels) {
+                if (!std::dynamic_pointer_cast<CreationKernel>(kernel)) {
+                    return Result::ERROR;
+                }
+            }
+        }
+        return Result::SUCCESS;
+    }
+    Result createAppended(const std::vector<std::shared_ptr<Render::Program>>& programs,
+                          const std::vector<std::shared_ptr<Render::Kernel>>& kernels) override {
+        ++appendCalls;
+        firstAppendedProgram = backendPrograms.size();
+        firstAppendedKernel = backendKernels.size();
+        return appendObjects(programs, kernels, backendPrograms, backendKernels, [](const auto& object) {
+            auto state = std::dynamic_pointer_cast<CreationState>(object);
+            return state ? state->create() : Result::SUCCESS;
+        }, [](const auto& object) { return destroyObject(object); });
+    }
+
  private:
+    static Result destroyObject(const auto& object) {
+        auto state = std::dynamic_pointer_cast<CreationState>(object);
+        return state ? state->destroy() : Result::SUCCESS;
+    }
+
     std::atomic<bool> destructionBlocked = false;
     std::atomic<bool> destructionStarted = false;
 };
@@ -209,14 +319,20 @@ class TestWindow final : public Render::Window {
     }
 
     std::function<Result()> synchronizeHandler;
+    std::function<Result(const std::shared_ptr<Render::Surface>&)> bindHandler;
+    std::function<Result(const std::shared_ptr<Render::Surface>&)> unbindHandler;
     U64 outstandingSubmissions = 0;
+    U64 registeredSurfaceCount() const { return surfaces.size(); }
 
  protected:
     Result bindSurface(const std::shared_ptr<Render::Surface>& surface) override {
         surfaces.push_back(std::dynamic_pointer_cast<TestSurface>(surface));
-        return Result::SUCCESS;
+        return bindHandler ? bindHandler(surface) : Result::SUCCESS;
     }
     Result unbindSurface(const std::shared_ptr<Render::Surface>& surface) override {
+        if (unbindHandler) {
+            JST_CHECK(unbindHandler(surface));
+        }
         std::erase(surfaces, std::dynamic_pointer_cast<TestSurface>(surface));
         return Result::SUCCESS;
     }
@@ -327,6 +443,893 @@ std::shared_ptr<TestSurface> MakeRetainedSurface(const std::shared_ptr<Render::B
 }
 
 }  // namespace
+
+TEST_CASE("Surface reordering preserves the exact program multiset and invalidates only changes",
+          "[core][render][surface][reorder]") {
+    auto first = std::make_shared<Render::Program>(Render::Program::Config{});
+    auto second = std::make_shared<Render::Program>(Render::Program::Config{});
+    Render::Surface::Config config;
+    config.programs = {first, second, first};
+    config.retained = true;
+    TestSurface surface(config);
+    REQUIRE(surface.wantsDraw());
+    surface.commitDraw();
+    REQUIRE_FALSE(surface.wantsDraw());
+
+    REQUIRE(surface.reorder({first, second, first}) == Result::SUCCESS);
+    REQUIRE(surface.reorderCalls == 0);
+    REQUIRE_FALSE(surface.wantsDraw());
+    REQUIRE(surface.reorder({first, second}) == Result::ERROR);
+    REQUIRE(surface.reorder({first, second, second}) == Result::ERROR);
+    REQUIRE(surface.getConfig().programs == config.programs);
+    REQUIRE(surface.reorderCalls == 0);
+    REQUIRE_FALSE(surface.wantsDraw());
+
+    const std::vector<std::shared_ptr<Render::Program>> reordered = {second, first, first};
+    REQUIRE(surface.reorder(reordered) == Result::SUCCESS);
+    REQUIRE(surface.getConfig().programs == reordered);
+    REQUIRE(surface.reorderCalls == 1);
+    REQUIRE(surface.wantsDraw());
+    surface.commitDraw();
+    REQUIRE_FALSE(surface.wantsDraw());
+}
+
+TEST_CASE("Surface extension appends programs and kernels without recreating shared resources",
+          "[core][render][surface][extend]") {
+    TestWindow window;
+    std::array<U32, 2> sharedSource = {1, 2};
+    std::array<U32, 2> appendedSource = {3, 4};
+    auto sharedBuffer = MakeBuffer(sharedSource);
+    auto appendedBuffer = MakeBuffer(appendedSource);
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    auto surface = MakeRetainedSurface(sharedBuffer, texture);
+    auto sibling = MakeRetainedSurface(sharedBuffer, texture);
+    surface->acceptsAppends = true;
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(surface) == Result::SUCCESS);
+    REQUIRE(window.bind(sibling) == Result::SUCCESS);
+    REQUIRE(sharedBuffer->createCount == 1);
+    REQUIRE(texture->createCount == 1);
+    REQUIRE(surface->wantsDraw());
+    surface->commitDraw();
+    REQUIRE_FALSE(surface->wantsDraw());
+
+    Render::Program::Config programConfig;
+    programConfig.buffers = {{sharedBuffer, Render::Program::Target::VERTEX},
+                             {appendedBuffer, Render::Program::Target::FRAGMENT}};
+    programConfig.textures = {texture};
+    auto program = std::make_shared<Render::Program>(programConfig);
+    Render::Kernel::Config kernelConfig;
+    kernelConfig.buffers = {{appendedBuffer, Render::Kernel::AccessMode::READ}};
+    auto kernel = std::make_shared<TestKernel>(kernelConfig);
+    REQUIRE(window.extend(surface, {program}, {kernel}) == Result::SUCCESS);
+    REQUIRE(surface->appendCalls == 1);
+    REQUIRE(surface->firstAppendedProgram == 1);
+    REQUIRE(surface->firstAppendedKernel == 1);
+    REQUIRE(surface->getConfig().programs.size() == 2);
+    REQUIRE(surface->getConfig().programs.back() == program);
+    REQUIRE(surface->getConfig().kernels.size() == 2);
+    REQUIRE(surface->getConfig().kernels.back() == kernel);
+    REQUIRE(surface->wantsDraw());
+    REQUIRE(sharedBuffer->createCount == 1);
+    REQUIRE(appendedBuffer->createCount == 1);
+    REQUIRE(texture->createCount == 1);
+
+    REQUIRE(appendedBuffer->update() == Result::SUCCESS);
+    Render::Transfer::Batch batch;
+    REQUIRE(window.collectFrameTransfers(batch) == Result::SUCCESS);
+    REQUIRE(batch.contains(appendedBuffer));
+    batch.commit();
+    REQUIRE(window.unbind(surface) == Result::SUCCESS);
+    REQUIRE(sharedBuffer->destroyCount == 0);
+    REQUIRE(texture->destroyCount == 0);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+    REQUIRE(sharedBuffer->destroyCount == 1);
+    REQUIRE(appendedBuffer->destroyCount == 1);
+    REQUIRE(texture->destroyCount == 1);
+}
+
+TEST_CASE("Surface extension preserves borrowed leases and falls back for ownership changes",
+          "[core][render][surface][extend][borrowed]") {
+    TestWindow window;
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    auto unboundTexture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    auto producer = MakeFramebufferSurface(texture);
+    auto consumer = MakeBorrowedSurface(texture);
+    consumer->acceptsAppends = true;
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(producer) == Result::SUCCESS);
+    REQUIRE(window.bind(consumer) == Result::SUCCESS);
+
+    Render::Program::Config config;
+    config.borrowedTextures = true;
+    config.textures = {unboundTexture};
+    REQUIRE(window.extend(consumer, {std::make_shared<Render::Program>(config)}, {}) == Result::SKIP);
+    REQUIRE(unboundTexture->createCount == 0);
+    config.borrowedTextures = false;
+    config.textures = {texture};
+    REQUIRE(window.extend(consumer, {std::make_shared<Render::Program>(config)}, {}) == Result::SKIP);
+    REQUIRE(consumer->appendCalls == 0);
+    REQUIRE(consumer->getConfig().programs.size() == 1);
+
+    config.borrowedTextures = true;
+    REQUIRE(window.extend(consumer, {std::make_shared<Render::Program>(config)}, {}) == Result::SUCCESS);
+    REQUIRE(consumer->appendCalls == 1);
+    REQUIRE(consumer->getConfig().programs.size() == 2);
+    REQUIRE(texture->createCount == 1);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+    REQUIRE(texture->destroyCount == 1);
+}
+
+TEST_CASE("Surface extension rejects null surfaces and leaves unsupported or unbound surfaces unchanged",
+          "[core][render][surface][extend]") {
+    TestWindow window;
+    auto surface = std::make_shared<TestSurface>(Render::Surface::Config{});
+    auto program = std::make_shared<Render::Program>(Render::Program::Config{});
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.extend(nullptr, {program}, {}) == Result::ERROR);
+    surface->acceptsAppends = true;
+    REQUIRE(window.extend(surface, {program}, {}) == Result::SKIP);
+    surface->acceptsAppends = false;
+    REQUIRE(window.bind(surface) == Result::SUCCESS);
+    REQUIRE(window.extend(surface, {program}, {}) == Result::SKIP);
+    REQUIRE(surface->appendCalls == 0);
+    REQUIRE(surface->getConfig().programs.empty());
+    REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Failed surface reorders preserve configuration and backend order until retry succeeds",
+          "[core][render][surface][reorder]") {
+    Result failure = Result::ERROR;
+    SECTION("Error") {}
+    SECTION("Skip") { failure = Result::SKIP; }
+    auto first = std::make_shared<Render::Program>(Render::Program::Config{});
+    auto second = std::make_shared<Render::Program>(Render::Program::Config{});
+    Render::Surface::Config config;
+    config.programs = {first, second};
+    config.retained = true;
+    TestSurface surface(config);
+    REQUIRE(surface.wantsDraw());
+    surface.commitDraw();
+    REQUIRE_FALSE(surface.wantsDraw());
+    surface.reorderResult = failure;
+    REQUIRE(surface.reorder({second, first}) == failure);
+    REQUIRE(surface.getConfig().programs == config.programs);
+    REQUIRE(surface.backendPrograms == config.programs);
+    REQUIRE(surface.reorderCalls == 1);
+    REQUIRE_FALSE(surface.wantsDraw());
+    REQUIRE(surface.reorder({second, first}) == Result::SUCCESS);
+    REQUIRE(surface.reorderCalls == 2);
+    REQUIRE(surface.getConfig().programs == std::vector<std::shared_ptr<Render::Program>>{second, first});
+    REQUIRE(surface.backendPrograms == surface.getConfig().programs);
+    REQUIRE(surface.wantsDraw());
+}
+
+TEST_CASE("Failed surface appends roll back partial backend creation dependencies and leases",
+          "[core][render][surface][extend]") {
+    U64 failedObject = 0;
+    SECTION("First program") {}
+    SECTION("Later program") { failedObject = 1; }
+    SECTION("First kernel") { failedObject = 2; }
+    SECTION("Later kernel") { failedObject = 3; }
+
+    TestWindow window;
+    std::array<U32, 2> source = {1, 2};
+    auto buffer = MakeBuffer(source);
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    auto surface = std::make_shared<TestSurface>(Render::Surface::Config{.retained = true});
+    surface->acceptsAppends = true;
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(surface) == Result::SUCCESS);
+    auto original = std::make_shared<CreationProgram>();
+    REQUIRE(window.extend(surface, {original}, {}) == Result::SUCCESS);
+    REQUIRE(original->creates == 1);
+    REQUIRE(surface->wantsDraw());
+    surface->commitDraw();
+    REQUIRE_FALSE(surface->wantsDraw());
+    const auto originalConfig = surface->getConfig();
+
+    Render::Program::Config programConfig;
+    programConfig.buffers = {{buffer, Render::Program::Target::VERTEX}};
+    programConfig.textures = {texture};
+    auto firstProgram = std::make_shared<CreationProgram>(programConfig);
+    auto secondProgram = std::make_shared<CreationProgram>(programConfig);
+    Render::Kernel::Config kernelConfig;
+    kernelConfig.buffers = {{buffer, Render::Kernel::AccessMode::READ}};
+    auto firstKernel = std::make_shared<CreationKernel>(kernelConfig);
+    auto secondKernel = std::make_shared<CreationKernel>(kernelConfig);
+    std::array<CreationState*, 4> objects = {firstProgram.get(), secondProgram.get(), firstKernel.get(), secondKernel.get()};
+
+    for (const Result failure : {Result::ERROR, Result::SKIP}) {
+        const U64 attemptsBefore = objects[failedObject]->creates;
+        objects[failedObject]->creationResult = failure;
+        REQUIRE(window.extend(surface, {firstProgram, secondProgram}, {firstKernel, secondKernel}) == failure);
+        REQUIRE(surface->getConfig().programs == originalConfig.programs);
+        REQUIRE(surface->getConfig().kernels == originalConfig.kernels);
+        REQUIRE(surface->backendPrograms == originalConfig.programs);
+        REQUIRE(surface->backendKernels == originalConfig.kernels);
+        REQUIRE_FALSE(surface->wantsDraw());
+        REQUIRE(original->creates == 1);
+        REQUIRE(original->destroys == 0);
+        REQUIRE(original->live);
+        for (U64 i = 0; i < objects.size(); ++i) {
+            REQUIRE_FALSE(objects[i]->live);
+            REQUIRE(objects[i]->creates == objects[i]->destroys);
+            REQUIRE(objects[i]->creates == (i <= failedObject ? attemptsBefore + 1 : 0));
+        }
+        REQUIRE(buffer->createCount == buffer->destroyCount);
+        REQUIRE(texture->createCount == texture->destroyCount);
+        REQUIRE(buffer->update() == Result::SUCCESS);
+        Render::Transfer::Batch batch;
+        REQUIRE(window.collectFrameTransfers(batch) == Result::SUCCESS);
+        REQUIRE_FALSE(batch.contains(buffer));
+        REQUIRE_FALSE(batch.contains(texture));
+        REQUIRE_FALSE(surface->wantsDraw());
+    }
+
+    objects[failedObject]->creationResult = Result::SUCCESS;
+    REQUIRE(window.extend(surface, {firstProgram, secondProgram}, {firstKernel, secondKernel}) == Result::SUCCESS);
+    REQUIRE(surface->getConfig().programs.size() == 3);
+    REQUIRE(surface->getConfig().kernels.size() == 2);
+    REQUIRE(surface->backendPrograms == surface->getConfig().programs);
+    REQUIRE(surface->backendKernels == surface->getConfig().kernels);
+    REQUIRE(surface->wantsDraw());
+    REQUIRE(buffer->createCount == 3);
+    REQUIRE(texture->createCount == 3);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+    REQUIRE(buffer->destroyCount == 3);
+    REQUIRE(texture->destroyCount == 3);
+    REQUIRE(original->destroys == 1);
+    for (auto* object : objects) {
+        REQUIRE_FALSE(object->live);
+        REQUIRE(object->creates == object->destroys);
+    }
+}
+
+TEST_CASE("Throwing surface acquisitions release claims partial allocations and earlier leases",
+          "[core][render][surface][extend][exceptions]") {
+    bool initialBind = false;
+    U64 failure = 1;
+    bool discard = false;
+    SECTION("Append first dependency") {}
+    SECTION("Append later dependency") { failure = 2; }
+    SECTION("Initial bind first dependency") { initialBind = true; }
+    SECTION("Initial bind later dependency") { initialBind = true; failure = 2; }
+    SECTION("Discard rejected append") { discard = true; failure = 2; }
+    SECTION("Discard rejected initial bind") { initialBind = true; discard = true; failure = 2; }
+
+    TestWindow window;
+    std::array<U32, 2> source = {1, 2};
+    auto liveBuffer = MakeBuffer(source);
+    auto first = MakeBuffer(source);
+    auto second = MakeBuffer(source);
+    auto liveSurface = MakeRetainedSurface(liveBuffer);
+    liveSurface->acceptsAppends = true;
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(liveSurface) == Result::SUCCESS);
+    REQUIRE(liveSurface->wantsDraw());
+    liveSurface->commitDraw();
+    const auto before = liveSurface->getConfig();
+    U64 attempts = 0;
+    first->creationHandler = second->creationHandler = [&]() {
+        if (++attempts == failure) {
+            throw std::runtime_error("dependency creation");
+        }
+        return Result::SUCCESS;
+    };
+    Render::Program::Config programConfig;
+    programConfig.buffers = {{liveBuffer, Render::Program::Target::VERTEX},
+                             {first, Render::Program::Target::VERTEX},
+                             {second, Render::Program::Target::FRAGMENT}};
+    auto program = std::make_shared<CreationProgram>(programConfig);
+    auto kernel = std::make_shared<CreationKernel>();
+    auto target = liveSurface;
+    if (initialBind) {
+        target = std::make_shared<TestSurface>(Render::Surface::Config{
+            .kernels = {kernel}, .programs = {program}, .retained = true,
+        });
+    }
+    const auto request = [&]() {
+        return initialBind ? window.bind(target) : window.extend(target, {program}, {kernel});
+    };
+    REQUIRE_THROWS_AS(request(), std::runtime_error);
+    REQUIRE(attempts == failure);
+    REQUIRE(program->creates == 0);
+    REQUIRE(kernel->creates == 0);
+    REQUIRE(first->createCount == first->destroyCount);
+    REQUIRE(second->createCount == second->destroyCount);
+    REQUIRE_FALSE(first->live);
+    REQUIRE_FALSE(second->live);
+    REQUIRE(liveBuffer->createCount == 1);
+    REQUIRE(liveBuffer->destroyCount == 0);
+    REQUIRE(liveBuffer->live);
+    REQUIRE(liveSurface->getConfig().programs == before.programs);
+    REQUIRE(liveSurface->getConfig().kernels == before.kernels);
+    REQUIRE_FALSE(liveSurface->wantsDraw());
+    first->creationHandler = second->creationHandler = {};
+    if (discard) {
+        std::weak_ptr<Render::Program> lifetime = program;
+        target.reset();
+        program.reset();
+        kernel.reset();
+        REQUIRE(lifetime.expired());
+    } else {
+        REQUIRE(request() == Result::SUCCESS);
+        REQUIRE(first->live);
+        REQUIRE(second->live);
+        REQUIRE(target->getConfig().programs.back() == program);
+        REQUIRE(target->getConfig().kernels.back() == kernel);
+    }
+    REQUIRE(window.destroy() == Result::SUCCESS);
+    REQUIRE(first->createCount == first->destroyCount);
+    REQUIRE(second->createCount == second->destroyCount);
+    REQUIRE(liveBuffer->destroyCount == 1);
+    REQUIRE_FALSE(liveBuffer->live);
+}
+
+TEST_CASE("Rejected initial surfaces retain retryable cleanup and release claims while remaining alive",
+          "[core][render][surface][extend][exceptions][registration]") {
+    bool registration = false;
+    bool throws = true;
+    bool cleanupFails = false;
+    bool cleanupThrows = false;
+    bool unbindFails = false;
+    bool retryBind = false;
+    SECTION("Initial creation throws") {}
+    SECTION("Initial creation returns error") { throws = false; }
+    SECTION("Registration throws after insertion") { registration = true; }
+    SECTION("Registration returns error after insertion") { registration = true; throws = false; }
+    SECTION("Initial cleanup returns error") { cleanupFails = true; }
+    SECTION("Initial cleanup throws") { cleanupFails = true; cleanupThrows = true; }
+    SECTION("Registration unbind returns error") { registration = true; cleanupFails = true; unbindFails = true; }
+    SECTION("Registration unbind throws") { registration = true; cleanupFails = true; cleanupThrows = true; unbindFails = true; }
+    SECTION("Retry same rejected surface") { retryBind = true; }
+
+    TestWindow window;
+    std::array<U32, 2> source = {1, 2};
+    auto buffer = MakeBuffer(source);
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    auto vertex = std::make_shared<Render::Vertex>(Render::Vertex::Config{});
+    auto draw = std::make_shared<TestDraw>(Render::Draw::Config{.buffer = vertex});
+    Render::Program::Config programConfig;
+    programConfig.buffers = {{buffer, Render::Program::Target::VERTEX}};
+    programConfig.textures = {texture};
+    programConfig.draws = {draw};
+    auto program = std::make_shared<CreationProgram>(programConfig);
+    auto kernel = std::make_shared<CreationKernel>();
+    auto failed = std::make_shared<TestSurface>(Render::Surface::Config{
+        .kernels = {kernel}, .programs = {program}, .retained = true,
+    });
+    auto target = std::make_shared<TestSurface>(Render::Surface::Config{.retained = true});
+    target->acceptsAppends = true;
+    const auto failure = [&]() -> Result {
+        if (throws) throw std::runtime_error("initial surface");
+        return Result::ERROR;
+    };
+    failed->creationHandler = [&]() {
+        JST_CHECK(program->create());
+        JST_CHECK(kernel->create());
+        return registration ? Result::SUCCESS : failure();
+    };
+    if (registration) {
+        window.bindHandler = [&](const auto& surface) {
+            return surface == failed ? failure() : Result::SUCCESS;
+        };
+    }
+    const auto cleanup = [&]() -> Result {
+        if (!cleanupFails) return Result::SUCCESS;
+        if (cleanupThrows) throw std::runtime_error("initial cleanup");
+        return Result::ERROR;
+    };
+    if (unbindFails) {
+        window.unbindHandler = [&](const auto& surface) {
+            return surface == failed ? cleanup() : Result::SUCCESS;
+        };
+    } else {
+        failed->destructionHandler = cleanup;
+    }
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(target) == Result::SUCCESS);
+    if (throws) REQUIRE_THROWS_AS(window.bind(failed), std::runtime_error);
+    else REQUIRE(window.bind(failed) == Result::ERROR);
+    REQUIRE(failed->getConfig().programs.front() == program);
+    REQUIRE(failed->getConfig().kernels.front() == kernel);
+    REQUIRE(buffer->createCount == 1);
+    REQUIRE(texture->createCount == 1);
+    if (cleanupFails) {
+        REQUIRE(program->live);
+        REQUIRE(kernel->live);
+        REQUIRE(buffer->destroyCount == 0);
+        REQUIRE(texture->allocated());
+        REQUIRE(window.extend(target, {program}, {kernel}) == Result::ERROR);
+        REQUIRE(window.bind(failed) == Result::ERROR);
+        REQUIRE(window.start() == Result::SUCCESS);
+        if (unbindFails) {
+            REQUIRE(window.begin() == Result::ERROR);
+            REQUIRE(window.registeredSurfaceCount() == 2);
+            REQUIRE(program->live);
+            REQUIRE(texture->allocated());
+        }
+        cleanupFails = false;
+        REQUIRE(window.begin() == Result::SUCCESS);
+        REQUIRE(window.end() == Result::SUCCESS);
+        REQUIRE(window.stop() == Result::SUCCESS);
+    }
+    REQUIRE_FALSE(program->live);
+    REQUIRE_FALSE(kernel->live);
+    REQUIRE(buffer->destroyCount == 1);
+    REQUIRE(texture->destroyCount == 1);
+    REQUIRE_FALSE(texture->allocated());
+    REQUIRE(window.registeredSurfaceCount() == 1);
+    window.bindHandler = {};
+    window.unbindHandler = {};
+    failed->destructionHandler = {};
+    if (retryBind) {
+        failed->creationHandler = [&]() {
+            JST_CHECK(program->create());
+            return kernel->create();
+        };
+        REQUIRE(window.bind(failed) == Result::SUCCESS);
+    } else {
+        REQUIRE(window.extend(target, {program}, {kernel}) == Result::SUCCESS);
+    }
+    REQUIRE(failed.use_count() >= 1);
+    REQUIRE(program->live);
+    REQUIRE(kernel->live);
+    REQUIRE(program->creates == 2);
+    REQUIRE(kernel->creates == 2);
+    REQUIRE(buffer->createCount == 2);
+    REQUIRE(texture->createCount == 2);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+    REQUIRE(program->destroys == 2);
+    REQUIRE(kernel->destroys == 2);
+    REQUIRE(buffer->destroyCount == 2);
+    REQUIRE(texture->destroyCount == 2);
+}
+
+TEST_CASE("Mixed queued root failures roll back every unregistered surface and preserve earlier registrations",
+          "[core][render][surface][extend][exceptions][threading][queued-bind]") {
+    bool textureRoot = false;
+    bool returnsError = false;
+    bool badAllocation = false;
+    bool surfaceCleanupFails = false;
+    bool surfaceCleanupThrows = false;
+    bool rootCleanupFails = false;
+    bool promoteShared = false;
+    SECTION("Buffer creation throws") {}
+    SECTION("Texture creation throws") { textureRoot = true; }
+    SECTION("Buffer allocation throws") { badAllocation = true; }
+    SECTION("Texture allocation throws") { textureRoot = true; badAllocation = true; }
+    SECTION("Buffer creation returns error") { returnsError = true; }
+    SECTION("Texture creation returns error") { textureRoot = true; returnsError = true; }
+    SECTION("Surface cleanup fails") { surfaceCleanupFails = true; }
+    SECTION("Surface cleanup throws") { surfaceCleanupFails = true; surfaceCleanupThrows = true; }
+    SECTION("Root cleanup fails") { rootCleanupFails = true; }
+    SECTION("Earlier shared resource becomes a root") { promoteShared = true; }
+
+    TestWindow window;
+    std::array<U32, 2> source = {1, 2};
+    auto shared = MakeBuffer(source);
+    Render::Program::Config originalConfig;
+    originalConfig.buffers = {{shared, Render::Program::Target::VERTEX}};
+    auto original = std::make_shared<CreationProgram>(originalConfig);
+    auto target = std::make_shared<TestSurface>(Render::Surface::Config{.programs = {original}, .retained = true});
+    target->creationHandler = [&]() { return original->create(); };
+    target->acceptsAppends = true;
+    std::array<std::shared_ptr<TestSurface>, 2> candidates;
+    std::array<std::shared_ptr<CreationProgram>, 2> programs;
+    std::array<std::shared_ptr<CreationKernel>, 2> kernels;
+    std::array<std::shared_ptr<TestBuffer>, 2> buffers;
+    std::array<std::shared_ptr<TestTexture>, 2> textures;
+    for (U64 i = 0; i < candidates.size(); ++i) {
+        buffers[i] = MakeBuffer(source);
+        textures[i] = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+        auto vertex = std::make_shared<Render::Vertex>(Render::Vertex::Config{.vertices = {{buffers[i], 2}}});
+        auto draw = std::make_shared<TestDraw>(Render::Draw::Config{.buffer = vertex});
+        Render::Program::Config config;
+        config.draws = {draw};
+        config.buffers = {{shared, Render::Program::Target::VERTEX}, {buffers[i], Render::Program::Target::VERTEX}};
+        config.textures = {textures[i]};
+        programs[i] = std::make_shared<CreationProgram>(config);
+        kernels[i] = std::make_shared<CreationKernel>();
+        candidates[i] = std::make_shared<TestSurface>(Render::Surface::Config{
+            .kernels = {kernels[i]}, .programs = {programs[i]}, .retained = true,
+        });
+        candidates[i]->creationHandler = [&, i]() {
+            JST_CHECK(programs[i]->create());
+            return kernels[i]->create();
+        };
+    }
+    candidates[0]->destructionHandler = [&]() -> Result {
+        if (!surfaceCleanupFails) return Result::SUCCESS;
+        if (surfaceCleanupThrows) throw std::runtime_error("surface cleanup");
+        return Result::ERROR;
+    };
+    auto rootBuffer = MakeBuffer(source);
+    auto rootTexture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {2, 2}});
+    std::shared_ptr<Render::WindowAttachment> root = textureRoot ?
+        std::static_pointer_cast<Render::WindowAttachment>(rootTexture) : rootBuffer;
+    const auto createRoot = [&]() -> Result {
+        if (returnsError) return Result::ERROR;
+        if (badAllocation) throw std::bad_alloc();
+        throw std::runtime_error("queued root creation");
+    };
+    rootBuffer->creationHandler = rootTexture->creationHandler = createRoot;
+    if (rootCleanupFails) rootBuffer->nextDestructionResult(Result::ERROR);
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(target) == Result::SUCCESS);
+    REQUIRE(window.start() == Result::SUCCESS);
+    REQUIRE(window.begin() == Result::SUCCESS);
+    REQUIRE(window.end() == Result::SUCCESS);
+    REQUIRE_FALSE(target->wantsDraw());
+    std::array<Result, 4> results{};
+    std::vector<std::thread> workers;
+    workers.reserve(4);
+    const auto enqueue = [&](const std::shared_ptr<Render::WindowAttachment>& attachment, U64 index) {
+        const auto before = attachment.use_count();
+        workers.emplace_back([&, attachment, index]() { results[index] = window.bind(attachment); });
+        while (attachment.use_count() < before + 2) std::this_thread::yield();
+    };
+    enqueue(candidates[0], 0);
+    enqueue(candidates[1], 1);
+    if (promoteShared) enqueue(buffers[0], 2);
+    enqueue(root, promoteShared ? 3 : 2);
+    std::exception_ptr exception;
+    Result beginResult = Result::ERROR;
+    try {
+        beginResult = window.begin();
+    } catch (...) {
+        exception = std::current_exception();
+    }
+    for (auto& worker : workers) worker.join();
+    if (beginResult == Result::SUCCESS) REQUIRE(window.cancel() == Result::SUCCESS);
+    REQUIRE(window.stop() == Result::SUCCESS);
+    if (returnsError) {
+        REQUIRE_FALSE(exception);
+        REQUIRE(beginResult == Result::ERROR);
+    } else {
+        REQUIRE(exception);
+        if (badAllocation) REQUIRE_THROWS_AS(std::rethrow_exception(exception), std::bad_alloc);
+        else REQUIRE_THROWS_AS(std::rethrow_exception(exception), std::runtime_error);
+    }
+    for (U64 i = 0; i < workers.size(); ++i) REQUIRE(results[i] == Result::SUCCESS);
+    REQUIRE(window.registeredSurfaceCount() == 1);
+    REQUIRE(original->live);
+    REQUIRE(original->creates == 1);
+    REQUIRE(original->destroys == 0);
+    REQUIRE(shared->createCount == 1);
+    REQUIRE(shared->destroyCount == 0);
+    if (promoteShared) REQUIRE(window.bind(buffers[0]) == Result::SUCCESS);
+    REQUIRE_FALSE(target->wantsDraw());
+    if (rootCleanupFails) {
+        Render::Program::Config config;
+        config.buffers = {{rootBuffer, Render::Program::Target::VERTEX}};
+        auto consumer = std::make_shared<CreationProgram>(config);
+        REQUIRE(window.extend(target, {consumer}, {}) == Result::ERROR);
+        REQUIRE(consumer->creates == 0);
+        REQUIRE(rootBuffer->createCount == 1);
+    }
+    for (U64 i = 0; i < candidates.size(); ++i) {
+        REQUIRE(candidates[i]->getConfig().programs.front() == programs[i]);
+        REQUIRE(programs[i]->creates == 1);
+        REQUIRE(kernels[i]->creates == 1);
+        if (i == 0 && surfaceCleanupFails) {
+            REQUIRE(programs[i]->live);
+            REQUIRE(textures[i]->allocated());
+            REQUIRE(window.extend(target, {programs[i]}, {kernels[i]}) == Result::ERROR);
+        } else {
+            REQUIRE_FALSE(programs[i]->live);
+            REQUIRE(programs[i]->destroys == 1);
+            REQUIRE(kernels[i]->destroys == 1);
+            REQUIRE(buffers[i]->destroyCount == (promoteShared && i == 0 ? 0 : 1));
+            REQUIRE_FALSE(textures[i]->allocated());
+        }
+    }
+    if (surfaceCleanupFails || rootCleanupFails) {
+        surfaceCleanupFails = false;
+        rootBuffer->nextDestructionResult(Result::SUCCESS);
+        REQUIRE(window.start() == Result::SUCCESS);
+        REQUIRE(window.begin() == Result::SUCCESS);
+        REQUIRE(window.end() == Result::SUCCESS);
+        REQUIRE(window.stop() == Result::SUCCESS);
+    }
+    REQUIRE(window.extend(target, {programs[0], programs[1]}, {kernels[0], kernels[1]}) == Result::SUCCESS);
+    rootBuffer->creationHandler = rootTexture->creationHandler = {};
+    REQUIRE(window.bind(root) == Result::SUCCESS);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+    REQUIRE(original->destroys == 1);
+    REQUIRE(shared->destroyCount == 1);
+    for (U64 i = 0; i < programs.size(); ++i) {
+        REQUIRE(programs[i]->creates == 2);
+        REQUIRE(programs[i]->destroys == 2);
+        REQUIRE(kernels[i]->creates == 2);
+        REQUIRE(kernels[i]->destroys == 2);
+        REQUIRE(buffers[i]->createCount == (promoteShared && i == 0 ? 1 : 2));
+        REQUIRE(buffers[i]->destroyCount == (promoteShared && i == 0 ? 1 : 2));
+        REQUIRE(textures[i]->createCount == 2);
+        REQUIRE(textures[i]->destroyCount == 2);
+    }
+    if (textureRoot) {
+        REQUIRE(rootTexture->createCount == 2);
+        REQUIRE(rootTexture->destroyCount == 2);
+    } else {
+        REQUIRE(rootBuffer->createCount == 2);
+        REQUIRE(rootBuffer->destroyCount == (rootCleanupFails ? 3 : 2));
+    }
+}
+
+TEST_CASE("Mixed binding registration rollback never revisits an already registered surface or root",
+          "[core][render][surface][extend][exceptions][threading][queued-bind]") {
+    U64 failedIndex = 1;
+    bool throws = true;
+    SECTION("Later registration throws") {}
+    SECTION("First registration throws") { failedIndex = 0; }
+    SECTION("Later registration returns error") { throws = false; }
+    TestWindow window;
+    auto target = std::make_shared<TestSurface>(Render::Surface::Config{.retained = true});
+    target->acceptsAppends = true;
+    std::array<std::shared_ptr<CreationProgram>, 2> programs;
+    std::array<std::shared_ptr<TestSurface>, 2> candidates;
+    for (U64 i = 0; i < candidates.size(); ++i) {
+        programs[i] = std::make_shared<CreationProgram>();
+        candidates[i] = std::make_shared<TestSurface>(Render::Surface::Config{.programs = {programs[i]}});
+        candidates[i]->creationHandler = [&, i]() { return programs[i]->create(); };
+    }
+    std::array<U32, 2> source = {1, 2};
+    auto root = MakeBuffer(source);
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(target) == Result::SUCCESS);
+    REQUIRE(window.start() == Result::SUCCESS);
+    REQUIRE(window.begin() == Result::SUCCESS);
+    REQUIRE(window.end() == Result::SUCCESS);
+    window.bindHandler = [&](const auto& surface) -> Result {
+        if (surface != candidates[failedIndex]) return Result::SUCCESS;
+        if (throws) throw std::runtime_error("queued registration");
+        return Result::ERROR;
+    };
+    std::array<Result, 3> results{};
+    std::vector<std::thread> workers;
+    workers.reserve(3);
+    const auto enqueue = [&](const std::shared_ptr<Render::WindowAttachment>& attachment, U64 index) {
+        const auto before = attachment.use_count();
+        workers.emplace_back([&, attachment, index]() { results[index] = window.bind(attachment); });
+        while (attachment.use_count() < before + 2) std::this_thread::yield();
+    };
+    enqueue(candidates[0], 0);
+    enqueue(candidates[1], 1);
+    enqueue(root, 2);
+    bool threw = false;
+    Result result = Result::ERROR;
+    try {
+        result = window.begin();
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    for (auto& worker : workers) worker.join();
+    if (result == Result::SUCCESS) REQUIRE(window.cancel() == Result::SUCCESS);
+    REQUIRE(window.stop() == Result::SUCCESS);
+    REQUIRE(threw == throws);
+    REQUIRE(result == Result::ERROR);
+    REQUIRE(window.registeredSurfaceCount() == failedIndex + 1);
+    REQUIRE(root->live);
+    REQUIRE(root->createCount == 1);
+    REQUIRE(root->destroyCount == 0);
+    window.bindHandler = {};
+    for (U64 i = 0; i < candidates.size(); ++i) {
+        REQUIRE(programs[i]->creates == 1);
+        if (i < failedIndex) {
+            REQUIRE(programs[i]->live);
+            REQUIRE(programs[i]->destroys == 0);
+            REQUIRE(window.extend(target, {programs[i]}, {}) == Result::ERROR);
+        } else {
+            REQUIRE_FALSE(programs[i]->live);
+            REQUIRE(programs[i]->destroys == 1);
+            REQUIRE(window.extend(target, {programs[i]}, {}) == Result::SUCCESS);
+        }
+    }
+    REQUIRE(window.bind(root) == Result::SUCCESS);
+    REQUIRE(root->createCount == 1);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+    REQUIRE(root->destroyCount == 1);
+    for (U64 i = 0; i < programs.size(); ++i) {
+        REQUIRE(programs[i]->destroys == (i < failedIndex ? 1 : 2));
+    }
+}
+
+TEST_CASE("Surface append validation rejects null and incompatible backend objects before acquisition",
+          "[core][render][surface][extend]") {
+    TestWindow window;
+    auto surface = std::make_shared<TestSurface>(Render::Surface::Config{.retained = true});
+    surface->acceptsAppends = true;
+    surface->typedAppends = true;
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(surface) == Result::SUCCESS);
+    REQUIRE(surface->wantsDraw());
+    surface->commitDraw();
+    std::array<U32, 2> source = {1, 2};
+    auto buffer = MakeBuffer(source);
+    Render::Program::Config programConfig;
+    programConfig.buffers = {{buffer, Render::Program::Target::VERTEX}};
+    Render::Kernel::Config kernelConfig;
+    kernelConfig.buffers = {{buffer, Render::Kernel::AccessMode::READ}};
+    auto validProgram = std::make_shared<CreationProgram>(programConfig);
+    auto validKernel = std::make_shared<CreationKernel>(kernelConfig);
+    std::vector<std::shared_ptr<Render::Program>> programs = {validProgram};
+    std::vector<std::shared_ptr<Render::Kernel>> kernels = {validKernel};
+    SECTION("Null program") { programs.push_back(nullptr); }
+    SECTION("Wrong program backend") { programs.push_back(std::make_shared<Render::Program>(programConfig)); }
+    SECTION("Null kernel") { kernels.push_back(nullptr); }
+    SECTION("Wrong kernel backend") { kernels.push_back(std::make_shared<TestKernel>(kernelConfig)); }
+    REQUIRE(window.extend(surface, programs, kernels) == Result::ERROR);
+    REQUIRE(surface->appendCalls == 0);
+    REQUIRE(surface->getConfig().programs.empty());
+    REQUIRE(surface->getConfig().kernels.empty());
+    REQUIRE(surface->backendPrograms.empty());
+    REQUIRE(surface->backendKernels.empty());
+    REQUIRE(buffer->createCount == 0);
+    REQUIRE_FALSE(surface->wantsDraw());
+    REQUIRE(window.extend(surface, {validProgram}, {validKernel}) == Result::SUCCESS);
+    REQUIRE(validProgram->creates == 1);
+    REQUIRE(validKernel->creates == 1);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+    REQUIRE(validProgram->destroys == 1);
+    REQUIRE(validKernel->destroys == 1);
+    REQUIRE(buffer->destroyCount == 1);
+}
+
+TEST_CASE("Surface appends reject mutable object aliases without recreating live resources",
+          "[core][render][surface][extend]") {
+    TestWindow window;
+    TestWindow otherWindow;
+    auto surface = std::make_shared<TestSurface>(Render::Surface::Config{.retained = true});
+    auto sibling = std::make_shared<TestSurface>(Render::Surface::Config{.retained = true});
+    surface->acceptsAppends = true;
+    sibling->acceptsAppends = true;
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(otherWindow.create() == Result::SUCCESS);
+    REQUIRE(window.bind(surface) == Result::SUCCESS);
+    REQUIRE(otherWindow.bind(sibling) == Result::SUCCESS);
+    auto vertex = std::make_shared<Render::Vertex>(Render::Vertex::Config{});
+    auto draw = std::make_shared<TestDraw>(Render::Draw::Config{.buffer = vertex});
+    Render::Program::Config config;
+    config.draws = {draw};
+    auto program = std::make_shared<CreationProgram>(config);
+    auto kernel = std::make_shared<CreationKernel>();
+    REQUIRE(window.extend(surface, {program}, {kernel}) == Result::SUCCESS);
+    REQUIRE(window.start() == Result::SUCCESS);
+    REQUIRE(window.begin() == Result::SUCCESS);
+    REQUIRE(window.end() == Result::SUCCESS);
+    REQUIRE(window.outstandingSubmissions == 1);
+    REQUIRE_FALSE(surface->wantsDraw());
+
+    auto target = surface;
+    TestWindow* targetWindow = &window;
+    std::vector<std::shared_ptr<Render::Program>> programs;
+    std::vector<std::shared_ptr<Render::Kernel>> kernels;
+    SECTION("Existing program") { programs = {program}; }
+    SECTION("Existing kernel") { kernels = {kernel}; }
+    SECTION("Duplicate programs") {
+        auto fresh = std::make_shared<CreationProgram>();
+        programs = {fresh, fresh};
+    }
+    SECTION("Duplicate kernels") {
+        auto fresh = std::make_shared<CreationKernel>();
+        kernels = {fresh, fresh};
+    }
+    SECTION("Live draw") { programs = {std::make_shared<CreationProgram>(config)}; }
+    SECTION("Live vertex") {
+        config.draws = {std::make_shared<TestDraw>(Render::Draw::Config{.buffer = vertex})};
+        programs = {std::make_shared<CreationProgram>(config)};
+    }
+    SECTION("Duplicate draws") {
+        auto fresh = std::make_shared<TestDraw>(Render::Draw::Config{});
+        config.draws = {fresh, fresh};
+        programs = {std::make_shared<CreationProgram>(config)};
+    }
+    SECTION("Duplicate vertices") {
+        auto fresh = std::make_shared<Render::Vertex>(Render::Vertex::Config{});
+        config.draws = {std::make_shared<TestDraw>(Render::Draw::Config{.buffer = fresh}),
+                        std::make_shared<TestDraw>(Render::Draw::Config{.buffer = fresh})};
+        programs = {std::make_shared<CreationProgram>(config)};
+    }
+    SECTION("Draw shared by appended programs") {
+        auto fresh = std::make_shared<TestDraw>(Render::Draw::Config{});
+        config.draws = {fresh};
+        programs = {std::make_shared<CreationProgram>(config), std::make_shared<CreationProgram>(config)};
+    }
+    SECTION("Another window") {
+        target = sibling;
+        targetWindow = &otherWindow;
+        programs = {program};
+    }
+    SECTION("Retiring program") {
+        REQUIRE(window.unbind(surface) == Result::SUCCESS);
+        target = sibling;
+        targetWindow = &otherWindow;
+        programs = {program};
+    }
+    SECTION("Retiring kernel") {
+        REQUIRE(window.unbind(surface) == Result::SUCCESS);
+        target = sibling;
+        targetWindow = &otherWindow;
+        kernels = {kernel};
+    }
+    SECTION("Retiring draw") {
+        REQUIRE(window.unbind(surface) == Result::SUCCESS);
+        target = sibling;
+        targetWindow = &otherWindow;
+        programs = {std::make_shared<CreationProgram>(config)};
+    }
+    SECTION("Retiring vertex") {
+        REQUIRE(window.unbind(surface) == Result::SUCCESS);
+        target = sibling;
+        targetWindow = &otherWindow;
+        config.draws = {std::make_shared<TestDraw>(Render::Draw::Config{.buffer = vertex})};
+        programs = {std::make_shared<CreationProgram>(config)};
+    }
+    const U64 appendCalls = target->appendCalls;
+    const auto before = target->getConfig();
+    REQUIRE(targetWindow->extend(target, programs, kernels) == Result::ERROR);
+    REQUIRE(target->appendCalls == appendCalls);
+    REQUIRE(target->getConfig().programs == before.programs);
+    REQUIRE(target->getConfig().kernels == before.kernels);
+    REQUIRE(program->creates == 1);
+    REQUIRE(kernel->creates == 1);
+    REQUIRE(program->destroys == 0);
+    REQUIRE(kernel->destroys == 0);
+    REQUIRE_FALSE(surface->wantsDraw());
+    REQUIRE(window.outstandingSubmissions == 1);
+    REQUIRE(window.stop() == Result::SUCCESS);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+    REQUIRE(program->destroys == 1);
+    REQUIRE(kernel->destroys == 1);
+    REQUIRE(otherWindow.extend(sibling, {program}, {kernel}) == Result::SUCCESS);
+    REQUIRE(program->creates == 2);
+    REQUIRE(kernel->creates == 2);
+    REQUIRE(otherWindow.destroy() == Result::SUCCESS);
+    REQUIRE(program->destroys == 2);
+    REQUIRE(kernel->destroys == 2);
+}
+
+TEST_CASE("Extending from an active graphical frame returns promptly and preserves frame completion",
+          "[core][render][surface][extend][window]") {
+    bool cancelFrame = false;
+    SECTION("End") {}
+    SECTION("Cancel") { cancelFrame = true; }
+    auto window = std::make_shared<TestWindow>();
+    auto surface = std::make_shared<TestSurface>(Render::Surface::Config{});
+    auto program = std::make_shared<CreationProgram>();
+    surface->acceptsAppends = true;
+    REQUIRE(window->create() == Result::SUCCESS);
+    REQUIRE(window->bind(surface) == Result::SUCCESS);
+    REQUIRE(window->start() == Result::SUCCESS);
+    auto result = std::make_shared<std::array<Result, 3>>();
+    auto completed = std::make_shared<std::atomic_bool>(false);
+    std::thread worker([=]() {
+        (*result)[0] = window->begin();
+        (*result)[1] = window->extend(surface, {program}, {});
+        (*result)[2] = cancelFrame ? window->cancel() : window->end();
+        completed->store(true, std::memory_order_release);
+    });
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (!completed->load(std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::yield();
+    }
+    if (!completed->load(std::memory_order_acquire)) {
+        worker.detach();
+        FAIL("Active-frame extension did not return within two seconds");
+    }
+    worker.join();
+    REQUIRE((*result)[0] == Result::SUCCESS);
+    REQUIRE((*result)[1] == Result::SKIP);
+    REQUIRE((*result)[2] == Result::SUCCESS);
+    REQUIRE(surface->appendCalls == 0);
+    REQUIRE(surface->getConfig().programs.empty());
+    REQUIRE(program->creates == 0);
+    REQUIRE(window->stop() == Result::SUCCESS);
+    REQUIRE(window->extend(surface, {program}, {}) == Result::SUCCESS);
+    REQUIRE(window->destroy() == Result::SUCCESS);
+}
 
 TEST_CASE("Retired components survive failed frames and synchronization failures",
           "[core][render][window][retirement]") {
@@ -960,7 +1963,7 @@ TEST_CASE("Failed surface resource acquisition rolls back prior leases",
     REQUIRE(buffer->createCount == 1);
     REQUIRE(buffer->destroyCount == 1);
     REQUIRE(texture->createCount == 1);
-    REQUIRE(texture->destroyCount == 0);
+    REQUIRE(texture->destroyCount == 1);
     REQUIRE(failedWindow.destroy() == Result::SUCCESS);
 
     texture->nextCreationResult(Result::SUCCESS);
@@ -970,7 +1973,7 @@ TEST_CASE("Failed surface resource acquisition rolls back prior leases",
     REQUIRE(texture->createCount == 2);
     REQUIRE(replacement.destroy() == Result::SUCCESS);
     REQUIRE(buffer->destroyCount == 2);
-    REQUIRE(texture->destroyCount == 1);
+    REQUIRE(texture->destroyCount == 2);
 }
 
 TEST_CASE("Failed resource destruction delays backend teardown and remains retryable",
@@ -1104,6 +2107,91 @@ TEST_CASE("Window destruction rejects concurrent resource binding",
     REQUIRE(bindResult == Result::ERROR);
     REQUIRE(destructionResult == Result::SUCCESS);
     REQUIRE(buffer->destroyCount == 1);
+}
+
+TEST_CASE("Concurrent binding can snapshot retirement records while backend cleanup completes",
+          "[core][render][window][retirement][threading]") {
+    bool failCleanup = false;
+    SECTION("Successful cleanup") {}
+    SECTION("Failed cleanup followed by retry") { failCleanup = true; }
+    TestWindow window;
+    std::array<U32, 2> source = {10, 20};
+    auto retiringBuffer = MakeBuffer(source);
+    auto retiring = MakeRetainedSurface(retiringBuffer);
+    constexpr U64 count = 128;
+    std::array<std::shared_ptr<TestBuffer>, count> unrelated;
+    Render::Kernel::Config kernelConfig;
+    for (auto& buffer : unrelated) {
+        buffer = MakeBuffer(source);
+        kernelConfig.buffers.push_back({buffer, Render::Kernel::AccessMode::READ});
+    }
+    auto live = std::make_shared<TestSurface>(Render::Surface::Config{
+        .kernels = {std::make_shared<Render::Kernel>(kernelConfig)}, .retained = true,
+    });
+    retiring->destructionHandler = [&]() { return failCleanup ? Result::ERROR : Result::SUCCESS; };
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(retiring) == Result::SUCCESS);
+    REQUIRE(window.bind(live) == Result::SUCCESS);
+    REQUIRE(window.unbind(retiring) == Result::SUCCESS);
+    REQUIRE(window.start() == Result::SUCCESS);
+    for (U64 frame = 0; frame < 4; ++frame) {
+        REQUIRE(window.begin() == Result::SUCCESS);
+        REQUIRE(window.end() == Result::SUCCESS);
+    }
+    REQUIRE_FALSE(retiring->hasStartedDestruction());
+    retiring->blockDestruction();
+    Result beginResult = Result::ERROR;
+    Result endResult = Result::ERROR;
+    std::thread renderer([&]() {
+        beginResult = window.begin();
+        if (beginResult == Result::SUCCESS) endResult = window.end();
+    });
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (!retiring->hasStartedDestruction() && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::yield();
+    }
+    const bool started = retiring->hasStartedDestruction();
+    std::array<Result, count> bindings{};
+    std::atomic<U64> completed = 0;
+    std::thread binder;
+    if (started) {
+        binder = std::thread([&]() {
+            for (U64 i = 0; i < unrelated.size(); ++i) {
+                bindings[i] = window.bind(unrelated[i]);
+                completed.fetch_add(1, std::memory_order_release);
+            }
+        });
+        while (completed.load(std::memory_order_acquire) < 16 &&
+               std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::yield();
+        }
+    }
+    const bool boundDuringCleanup = completed.load(std::memory_order_acquire) >= 16;
+    retiring->resumeDestruction();
+    renderer.join();
+    if (binder.joinable()) binder.join();
+    REQUIRE(started);
+    REQUIRE(boundDuringCleanup);
+    REQUIRE(beginResult == Result::SUCCESS);
+    REQUIRE(endResult == (failCleanup ? Result::ERROR : Result::SUCCESS));
+    REQUIRE(completed.load() == count);
+    for (U64 i = 0; i < unrelated.size(); ++i) {
+        REQUIRE(bindings[i] == Result::SUCCESS);
+        REQUIRE(unrelated[i]->createCount == 1);
+        REQUIRE(unrelated[i]->destroyCount == 0);
+    }
+    REQUIRE(window.registeredSurfaceCount() == 1);
+    if (failCleanup) {
+        REQUIRE(retiringBuffer->destroyCount == 0);
+        REQUIRE(window.bind(retiring) == Result::ERROR);
+        failCleanup = false;
+        REQUIRE(window.begin() == Result::SUCCESS);
+        REQUIRE(window.end() == Result::SUCCESS);
+    }
+    REQUIRE(retiringBuffer->destroyCount == 1);
+    REQUIRE(window.stop() == Result::SUCCESS);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+    for (const auto& buffer : unrelated) REQUIRE(buffer->destroyCount == 1);
 }
 
 TEST_CASE("Cancelled render frames release the window", "[core][render][window]") {

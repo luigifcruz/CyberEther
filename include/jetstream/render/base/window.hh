@@ -7,6 +7,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <type_traits>
 #include <unordered_map>
@@ -78,6 +79,9 @@ class JETSTREAM_API Window {
 
     Result bind(const std::shared_ptr<WindowAttachment>& attachment);
     Result unbind(const std::shared_ptr<WindowAttachment>& attachment);
+    Result extend(const std::shared_ptr<Surface>& surface,
+                  const std::vector<std::shared_ptr<Program>>& programs,
+                  const std::vector<std::shared_ptr<Kernel>>& kernels);
 
     template<class T>
     inline Result JETSTREAM_API build(std::shared_ptr<T>& member,
@@ -176,7 +180,7 @@ class JETSTREAM_API Window {
     uint32_t frameCount;
     bool created = false;
     bool graphicalLoopThreadStarted;
-    bool frameActive = false;
+    std::atomic_bool frameActive = false;
     std::thread::id graphicalLoopThreadId;
     std::mutex newFrameQueueMutex;
 
@@ -185,6 +189,9 @@ class JETSTREAM_API Window {
     struct PendingDestruction {
         uint32_t expiration;
         std::shared_ptr<WindowAttachment> attachment;
+        bool unbindBeforeDestroy = false;
+        bool destroyBackend = true;
+        bool releaseResources = true;
     };
 
     struct ResourceLease {
@@ -196,12 +203,16 @@ class JETSTREAM_API Window {
     };
 
     Result processAttachmentQueues();
+    Result destroyAttachment(PendingDestruction& pending);
     std::vector<std::shared_ptr<WindowAttachment>> surfaceResourceList(const std::shared_ptr<Surface>& surface) const;
     Result acquireSurfaceResources(const std::shared_ptr<Surface>& surface);
+    Result acquireSurfaceResources(const std::shared_ptr<Surface>& surface,
+                                   const std::vector<std::shared_ptr<WindowAttachment>>& resources);
     Result releaseSurfaceResources(const std::shared_ptr<Surface>& surface);
     Result releaseSurfaceResource(const std::shared_ptr<WindowAttachment>& resource,
                                   bool borrowed = false);
-    Result finalizeAttachmentDestruction(const std::shared_ptr<WindowAttachment>& attachment);
+    Result finalizeAttachmentDestruction(const std::shared_ptr<WindowAttachment>& attachment,
+                                         bool releaseResources = true);
 
     mutable std::mutex attachmentStateMutex;
     bool destructionInProgress = false;

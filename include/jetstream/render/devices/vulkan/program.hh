@@ -21,11 +21,13 @@ class JETSTREAM_API ProgramImp<DeviceType::Vulkan> : public Program {
     Result destroy();
 
  private:
-    VkPipelineLayout pipelineLayout;
-    VkPipeline graphicsPipeline;
-    U64 bindingOffset;
-    VkDescriptorSet descriptorSet;
-    VkDescriptorSetLayout descriptorSetLayout;
+    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+    VkPipeline graphicsPipeline = VK_NULL_HANDLE;
+    U64 bindingOffset = 0;
+    VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+    VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+    VkShaderModule vertShaderModule = VK_NULL_HANDLE;
+    VkShaderModule fragShaderModule = VK_NULL_HANDLE;
 
     std::vector<std::shared_ptr<DrawImp<DeviceType::Vulkan>>> draws;
     std::vector<VkDescriptorSetLayoutBinding> bindings;

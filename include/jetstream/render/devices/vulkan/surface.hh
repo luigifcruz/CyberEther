@@ -17,6 +17,12 @@ class JETSTREAM_API SurfaceImp<DeviceType::Vulkan> : public Surface {
     const Extent2D<U64>& size(const Extent2D<U64>& size) override;
 
  protected:
+    Result reorderPrograms(const std::vector<std::shared_ptr<Program>>& ordered) override;
+    bool appendable() const override;
+    Result validateAppend(const std::vector<std::shared_ptr<Program>>& programs,
+                          const std::vector<std::shared_ptr<Kernel>>& kernels) const override;
+    Result createAppended(const std::vector<std::shared_ptr<Program>>& programs,
+                          const std::vector<std::shared_ptr<Kernel>>& kernels) override;
     Result prepare();
     Result encode(VkCommandBuffer& commandBuffer, bool visible = true);
     void commit();
@@ -24,8 +30,8 @@ class JETSTREAM_API SurfaceImp<DeviceType::Vulkan> : public Surface {
  private:
     std::shared_ptr<TextureImp<DeviceType::Vulkan>> framebufferResolve;
     std::shared_ptr<TextureImp<DeviceType::Vulkan>> framebuffer;
-    VkFramebuffer framebufferObject;
-    VkRenderPass renderPass;
+    VkFramebuffer framebufferObject = VK_NULL_HANDLE;
+    VkRenderPass renderPass = VK_NULL_HANDLE;
     Extent2D<U64> requestedSize;
     bool framebufferChanged = false;
 

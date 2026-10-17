@@ -137,6 +137,9 @@ Result Implementation::create(const WGPUTextureFormat& pixelFormat) {
     renderPipelineDescriptor.vertex.entryPoint = {"main", WGPU_STRLEN};
 
     pipeline = wgpuDeviceCreateRenderPipeline(device, &renderPipelineDescriptor);
+    if (!pipeline) {
+        return Result::ERROR;
+    }
 
     return Result::SUCCESS;
 }
@@ -262,17 +265,30 @@ Result Implementation::destroy() {
         JST_CHECK(draw->destroy());
     }
 
-    if (!bindings.empty()) {
-        if (bindGroup) {
-            wgpuBindGroupRelease(bindGroup);
-            bindGroup = nullptr;
-        }
-        wgpuBindGroupLayoutRelease(bindGroupLayout);
-        wgpuPipelineLayoutRelease(pipelineLayout);
+    if (bindGroup) {
+        wgpuBindGroupRelease(bindGroup);
+        bindGroup = nullptr;
     }
-    wgpuRenderPipelineRelease(pipeline);
-    wgpuShaderModuleRelease(fragShaderModule);
-    wgpuShaderModuleRelease(vertShaderModule);
+    if (bindGroupLayout) {
+        wgpuBindGroupLayoutRelease(bindGroupLayout);
+        bindGroupLayout = nullptr;
+    }
+    if (pipelineLayout) {
+        wgpuPipelineLayoutRelease(pipelineLayout);
+        pipelineLayout = nullptr;
+    }
+    if (pipeline) {
+        wgpuRenderPipelineRelease(pipeline);
+        pipeline = nullptr;
+    }
+    if (fragShaderModule) {
+        wgpuShaderModuleRelease(fragShaderModule);
+        fragShaderModule = nullptr;
+    }
+    if (vertShaderModule) {
+        wgpuShaderModuleRelease(vertShaderModule);
+        vertShaderModule = nullptr;
+    }
 
     bindings.clear();
     bindGroupEntries.clear();

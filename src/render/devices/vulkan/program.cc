@@ -3,6 +3,7 @@
 #include "jetstream/render/devices/vulkan/texture.hh"
 #include "jetstream/render/devices/vulkan/program.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
+#include "creation.hh"
 
 namespace Jetstream::Render {
 
@@ -44,8 +45,8 @@ Result Implementation::create(VkRenderPass& renderPass,
     }
 
     const auto& shader = config.shaders[DeviceType::Vulkan];
-    VkShaderModule vertShaderModule = Backend::LoadShader(shader[0], device);
-    VkShaderModule fragShaderModule = Backend::LoadShader(shader[1], device);
+    vertShaderModule = Backend::LoadShader(shader[0], device);
+    fragShaderModule = Backend::LoadShader(shader[1], device);
 
     VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
     vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -100,7 +101,9 @@ Result Implementation::create(VkRenderPass& renderPass,
         info.bindingCount = static_cast<U32>(bindings.size());
         info.pBindings = bindings.data();
 
-        JST_VK_CHECK(vkCreateDescriptorSetLayout(device, &info, nullptr, &descriptorSetLayout), [&]{
+        JST_VK_CHECK(Detail::CreateHandle(descriptorSetLayout, [&](auto* output) {
+            return vkCreateDescriptorSetLayout(device, &info, nullptr, output);
+        }), [&]{
             JST_ERROR("[VULKAN] Can't create descriptor set layout.");
         });
 
@@ -110,7 +113,9 @@ Result Implementation::create(VkRenderPass& renderPass,
         allocInfo.descriptorSetCount = 1;
         allocInfo.pSetLayouts = &descriptorSetLayout;
 
-        JST_VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet), [&]{
+        JST_VK_CHECK(Detail::CreateHandle(descriptorSet, [&](auto* output) {
+            return vkAllocateDescriptorSets(device, &allocInfo, output);
+        }), [&]{
             JST_ERROR("[VULKAN] Failed to allocate descriptor sets.");
         });
     }
@@ -240,7 +245,9 @@ Result Implementation::create(VkRenderPass& renderPass,
     }
     pipelineLayoutInfo.pushConstantRangeCount = 0;
 
-    JST_VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout), [&]{
+    JST_VK_CHECK(Detail::CreateHandle(pipelineLayout, [&](auto* output) {
+        return vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, output);
+    }), [&]{
         JST_ERROR("[VULKAN] Failed to create pipeline layout.");
     });
 
@@ -270,12 +277,14 @@ Result Implementation::create(VkRenderPass& renderPass,
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 
-    JST_VK_CHECK(vkCreateGraphicsPipelines(device,
-                                           Backend::State<DeviceType::Vulkan>()->getPipelineCache(),
-                                           1,
-                                           &pipelineInfo,
-                                           nullptr,
-                                           &graphicsPipeline), [&]{
+    JST_VK_CHECK(Detail::CreateHandle(graphicsPipeline, [&](auto* output) {
+        return vkCreateGraphicsPipelines(device,
+                                         Backend::State<DeviceType::Vulkan>()->getPipelineCache(),
+                                         1,
+                                         &pipelineInfo,
+                                         nullptr,
+                                         output);
+    }), [&]{
         JST_ERROR("[VULKAN] Can't create graphics pipeline.");
     });
 
@@ -283,6 +292,8 @@ Result Implementation::create(VkRenderPass& renderPass,
 
     vkDestroyShaderModule(device, fragShaderModule, nullptr);
     vkDestroyShaderModule(device, vertShaderModule, nullptr);
+    fragShaderModule = VK_NULL_HANDLE;
+    vertShaderModule = VK_NULL_HANDLE;
 
     return Result::SUCCESS;
 }
@@ -358,13 +369,20 @@ Result Implementation::destroy() {
     auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
     auto& descriptorPool = Backend::State<DeviceType::Vulkan>()->getDescriptorPool();
 
-    if (!bindings.empty()) {
+    if (descriptorSet != VK_NULL_HANDLE) {
         vkFreeDescriptorSets(device, descriptorPool, 1, &descriptorSet);
-        vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
     }
-
+    vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
     vkDestroyPipeline(device, graphicsPipeline, nullptr);
+    vkDestroyShaderModule(device, fragShaderModule, nullptr);
+    vkDestroyShaderModule(device, vertShaderModule, nullptr);
+    descriptorSet = VK_NULL_HANDLE;
+    descriptorSetLayout = VK_NULL_HANDLE;
+    pipelineLayout = VK_NULL_HANDLE;
+    graphicsPipeline = VK_NULL_HANDLE;
+    fragShaderModule = VK_NULL_HANDLE;
+    vertShaderModule = VK_NULL_HANDLE;
     bindings.clear();
 
     return Result::SUCCESS;

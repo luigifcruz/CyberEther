@@ -25,25 +25,25 @@ Result Implementation::create() {
     const auto& kernels = config.kernels[DeviceType::Metal];
     auto device = Backend::State<DeviceType::Metal>()->getDevice();
 
-    MTL::CompileOptions* opts = MTL::CompileOptions::alloc()->init();
+    auto opts = NS::TransferPtr(MTL::CompileOptions::alloc()->init());
     opts->setFastMathEnabled(true);
     opts->setLanguageVersion(MTL::LanguageVersion3_0);
     opts->setLibraryType(MTL::LibraryTypeExecutable);
 
-    auto source = NS::String::alloc()->init((char*)kernels[0].data(), kernels[0].size(), NS::UTF8StringEncoding, false);
-    auto library = device->newLibrary(source, opts, &err);
+    auto source = NS::TransferPtr(NS::String::alloc()->init((char*)kernels[0].data(), kernels[0].size(), NS::UTF8StringEncoding, false));
+    auto library = NS::TransferPtr(device->newLibrary(source.get(), opts.get(), &err));
 
     if (!library) {
         JST_ERROR("Library error:\n{}", err->description()->utf8String());
         return Result::ERROR;
     }
 
-    MTL::Function* func = library->newFunction(
+    auto func = NS::TransferPtr(library->newFunction(
         NS::String::string("main0", NS::UTF8StringEncoding)
-    );
+    ));
     JST_ASSERT(func, "Failed to create function.");
 
-    pipelineState = device->newComputePipelineState(func, &err);
+    pipelineState = device->newComputePipelineState(func.get(), &err);
     if (!pipelineState) {
         JST_ERROR("Failed to create pipeline state:\n{}", err->description()->utf8String());
         return Result::ERROR;
@@ -55,7 +55,10 @@ Result Implementation::create() {
 }
 
 Result Implementation::destroy() {
-    pipelineState->release();
+    if (pipelineState) {
+        pipelineState->release();
+        pipelineState = nullptr;
+    }
 
     return Result::SUCCESS;
 }

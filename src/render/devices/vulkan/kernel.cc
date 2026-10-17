@@ -1,6 +1,7 @@
 #include "jetstream/render/devices/vulkan/buffer.hh"
 #include "jetstream/render/devices/vulkan/kernel.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
+#include "creation.hh"
 
 namespace Jetstream::Render {
 
@@ -40,7 +41,7 @@ Result Implementation::create() {
     }
 
     const auto& kernels = config.kernels[DeviceType::Vulkan];
-    VkShaderModule kernelModule = Backend::LoadShader(kernels[0], device);
+    kernelModule = Backend::LoadShader(kernels[0], device);
 
     VkPipelineShaderStageCreateInfo kernelStageInfo{};
     kernelStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -68,7 +69,9 @@ Result Implementation::create() {
         layoutInfo.bindingCount = static_cast<U32>(bindings.size());
         layoutInfo.pBindings = bindings.data();
 
-        JST_VK_CHECK(vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout), [&]{
+        JST_VK_CHECK(Detail::CreateHandle(descriptorSetLayout, [&](auto* output) {
+            return vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, output);
+        }), [&]{
             JST_ERROR("[VULKAN] Failed to create descriptor set layout.");
         });
 
@@ -80,7 +83,9 @@ Result Implementation::create() {
         allocInfo.descriptorSetCount = 1;
         allocInfo.pSetLayouts = &descriptorSetLayout;
 
-        JST_VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet), [&]{
+        JST_VK_CHECK(Detail::CreateHandle(descriptorSet, [&](auto* output) {
+            return vkAllocateDescriptorSets(device, &allocInfo, output);
+        }), [&]{
             JST_ERROR("[VULKAN] Failed to allocate descriptor set.");
         });
     }
@@ -116,7 +121,9 @@ Result Implementation::create() {
         pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
     }
 
-    JST_VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout), [&]{
+    JST_VK_CHECK(Detail::CreateHandle(pipelineLayout, [&](auto* output) {
+        return vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, output);
+    }), [&]{
         JST_ERROR("[VULKAN] Failed to create pipeline layout.");
     });
 
@@ -127,18 +134,21 @@ Result Implementation::create() {
     pipelineInfo.layout = pipelineLayout;
     pipelineInfo.stage = kernelStageInfo;
 
-    JST_VK_CHECK(vkCreateComputePipelines(device,
-                                          Backend::State<DeviceType::Vulkan>()->getPipelineCache(),
-                                          1,
-                                          &pipelineInfo,
-                                          nullptr,
-                                          &pipeline), [&]{
+    JST_VK_CHECK(Detail::CreateHandle(pipeline, [&](auto* output) {
+        return vkCreateComputePipelines(device,
+                                        Backend::State<DeviceType::Vulkan>()->getPipelineCache(),
+                                        1,
+                                        &pipelineInfo,
+                                        nullptr,
+                                        output);
+    }), [&]{
         JST_ERROR("[VULKAN] Failed to create compute pipeline.");
     });
 
     // Clean up.
 
     vkDestroyShaderModule(device, kernelModule, nullptr);
+    kernelModule = VK_NULL_HANDLE;
 
     update();
 
@@ -149,13 +159,18 @@ Result Implementation::destroy() {
     auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
     auto& descriptorPool = Backend::State<DeviceType::Vulkan>()->getDescriptorPool();
 
-    if (!bindings.empty()) {
+    if (descriptorSet != VK_NULL_HANDLE) {
         vkFreeDescriptorSets(device, descriptorPool, 1, &descriptorSet);
-        vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
     }
-
+    vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
     vkDestroyPipeline(device, pipeline, nullptr);
+    vkDestroyShaderModule(device, kernelModule, nullptr);
+    descriptorSet = VK_NULL_HANDLE;
+    descriptorSetLayout = VK_NULL_HANDLE;
+    pipelineLayout = VK_NULL_HANDLE;
+    pipeline = VK_NULL_HANDLE;
+    kernelModule = VK_NULL_HANDLE;
     bindings.clear();
 
     return Result::SUCCESS;

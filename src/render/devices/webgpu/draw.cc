@@ -77,11 +77,10 @@ Result Implementation::create(WGPURenderPipelineDescriptor& renderDescriptor) {
 Result Implementation::destroy() {
     JST_DEBUG("[WebGPU] Destroying draw.");
 
-    if (buffer->isBuffered()) {
-        indexedDrawCommands.clear();
-    } else {
-        drawCommands.clear();
-    }
+    indexedDrawCommands.clear();
+    drawCommands.clear();
+    attributeDescription.clear();
+    vertexLayouts.clear();
 
     JST_CHECK(buffer->destroy());
 

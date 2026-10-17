@@ -23,8 +23,8 @@ class JETSTREAM_API BufferImp<DeviceType::Vulkan> : public Buffer {
     }
 
  private:
-    VkBuffer buffer;
-    VkDeviceMemory memory;
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
 
     friend class SurfaceImp<DeviceType::Vulkan>;
     friend class ProgramImp<DeviceType::Vulkan>;

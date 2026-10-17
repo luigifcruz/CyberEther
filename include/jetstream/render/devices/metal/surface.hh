@@ -17,6 +17,12 @@ class JETSTREAM_API SurfaceImp<DeviceType::Metal> : public Surface {
     const Extent2D<U64>& size(const Extent2D<U64>& size) override;
 
  protected:
+    Result reorderPrograms(const std::vector<std::shared_ptr<Program>>& ordered) override;
+    bool appendable() const override;
+    Result validateAppend(const std::vector<std::shared_ptr<Program>>& programs,
+                          const std::vector<std::shared_ptr<Kernel>>& kernels) const override;
+    Result createAppended(const std::vector<std::shared_ptr<Program>>& programs,
+                          const std::vector<std::shared_ptr<Kernel>>& kernels) override;
     Result prepare();
     Result draw(MTL::CommandBuffer* commandBuffer, bool visible = true);
 

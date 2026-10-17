@@ -1,5 +1,6 @@
 #include "jetstream/render/devices/vulkan/texture.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
+#include "creation.hh"
 
 namespace Jetstream::Render {
 
@@ -54,7 +55,9 @@ Result Implementation::create() {
         imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     }
 
-    JST_VK_CHECK(vkCreateImage(device, &imageCreateInfo, nullptr, &texture), [&]{
+    JST_VK_CHECK(Detail::CreateHandle(texture, [&](auto* output) {
+        return vkCreateImage(device, &imageCreateInfo, nullptr, output);
+    }), [&]{
         JST_ERROR("[VULKAN] Failed to create texture.");   
     });
 
@@ -70,7 +73,9 @@ Result Implementation::create() {
                                                                  memoryRequirements.memoryTypeBits,
                                                                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-    JST_VK_CHECK(vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &memory), [&]{
+    JST_VK_CHECK(Detail::CreateHandle(memory, [&](auto* output) {
+        return vkAllocateMemory(device, &memoryAllocateInfo, nullptr, output);
+    }), [&]{
         JST_ERROR("[VULKAN] Failed to allocate texture memory.");
     });
 
@@ -97,7 +102,9 @@ Result Implementation::create() {
     createInfo.subresourceRange.baseArrayLayer = 0;
     createInfo.subresourceRange.layerCount = 1;
 
-    JST_VK_CHECK(vkCreateImageView(device, &createInfo, nullptr, &imageView), [&]{
+    JST_VK_CHECK(Detail::CreateHandle(imageView, [&](auto* output) {
+        return vkCreateImageView(device, &createInfo, nullptr, output);
+    }), [&]{
         JST_ERROR("[VULKAN] Failed to create image view."); 
     });
 
@@ -134,7 +141,9 @@ Result Implementation::create() {
     samplerCreateInfo.minLod = 0.0f;
     samplerCreateInfo.maxLod = 1.0f;
 
-    JST_VK_CHECK(vkCreateSampler(device, &samplerCreateInfo, nullptr, &sampler), [&]{
+    JST_VK_CHECK(Detail::CreateHandle(sampler, [&](auto* output) {
+        return vkCreateSampler(device, &samplerCreateInfo, nullptr, output);
+    }), [&]{
         JST_ERROR("[VULKAN] Can't create texture sampler.");
     });
 
@@ -153,7 +162,9 @@ Result Implementation::create() {
     info.bindingCount = 1;
     info.pBindings = &binding;
 
-    JST_VK_CHECK(vkCreateDescriptorSetLayout(device, &info, nullptr, &descriptorSetLayout), [&]{
+    JST_VK_CHECK(Detail::CreateHandle(descriptorSetLayout, [&](auto* output) {
+        return vkCreateDescriptorSetLayout(device, &info, nullptr, output);
+    }), [&]{
         JST_ERROR("[VULKAN] Can't create descriptor set layout.");
     });
 
@@ -163,7 +174,9 @@ Result Implementation::create() {
     allocInfo.descriptorSetCount = 1;
     allocInfo.pSetLayouts = &descriptorSetLayout;
 
-    JST_VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet), [&]{
+    JST_VK_CHECK(Detail::CreateHandle(descriptorSet, [&](auto* output) {
+        return vkAllocateDescriptorSets(device, &allocInfo, output);
+    }), [&]{
         JST_ERROR("[VULKAN] Failed to allocate descriptor set.");
     });
 

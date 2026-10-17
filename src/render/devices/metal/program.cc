@@ -39,30 +39,30 @@ Result Implementation::create(const MTL::PixelFormat& pixelFormat, bool multisam
     const auto& shaders = config.shaders[DeviceType::Metal];
     auto device = Backend::State<DeviceType::Metal>()->getDevice();
 
-    MTL::CompileOptions* opts = MTL::CompileOptions::alloc()->init();
+    auto opts = NS::TransferPtr(MTL::CompileOptions::alloc()->init());
     opts->setFastMathEnabled(true);
     opts->setLanguageVersion(MTL::LanguageVersion3_0);
     opts->setLibraryType(MTL::LibraryTypeExecutable);
 
-    auto vertSource = NS::String::alloc()->init((char*)shaders[0].data(), shaders[0].size(), NS::UTF8StringEncoding, false);
-    auto vertLibrary = device->newLibrary(vertSource, opts, &err);
+    auto vertSource = NS::TransferPtr(NS::String::alloc()->init((char*)shaders[0].data(), shaders[0].size(), NS::UTF8StringEncoding, false));
+    auto vertLibrary = NS::TransferPtr(device->newLibrary(vertSource.get(), opts.get(), &err));
 
-    auto fragSource = NS::String::alloc()->init((char*)shaders[1].data(), shaders[1].size(), NS::UTF8StringEncoding, false);
-    auto fragLibrary = device->newLibrary(fragSource, opts, &err);
+    auto fragSource = NS::TransferPtr(NS::String::alloc()->init((char*)shaders[1].data(), shaders[1].size(), NS::UTF8StringEncoding, false));
+    auto fragLibrary = NS::TransferPtr(device->newLibrary(fragSource.get(), opts.get(), &err));
 
     if (!vertLibrary || !fragLibrary) {
         JST_ERROR("Library error:\n{}", err->description()->utf8String());
         return Result::ERROR;
     }
 
-    MTL::Function* vertFunc = vertLibrary->newFunction(
+    auto vertFunc = NS::TransferPtr(vertLibrary->newFunction(
         NS::String::string("main0", NS::UTF8StringEncoding)
-    );
+    ));
     JST_ASSERT(vertFunc, "Failed to create vertex function.");
 
-    MTL::Function* fragFunc = fragLibrary->newFunction(
+    auto fragFunc = NS::TransferPtr(fragLibrary->newFunction(
         NS::String::string("main0", NS::UTF8StringEncoding)
-    );
+    ));
     JST_ASSERT(fragFunc, "Failed to create fragment function.");
 
     U64 indexOffset = 0;
@@ -72,17 +72,17 @@ Result Implementation::create(const MTL::PixelFormat& pixelFormat, bool multisam
             indexOffset++;
         }
     }
-    auto vertDesc = MTL::VertexDescriptor::alloc()->init();
+    auto vertDesc = NS::TransferPtr(MTL::VertexDescriptor::alloc()->init());
 
     for (auto& draw : draws) {
-        JST_CHECK(draw->create(vertDesc, indexOffset));
+        JST_CHECK(draw->create(vertDesc.get(), indexOffset));
     }
 
-    auto renderPipelineDescriptor = MTL::RenderPipelineDescriptor::alloc()->init();
+    auto renderPipelineDescriptor = NS::TransferPtr(MTL::RenderPipelineDescriptor::alloc()->init());
     JST_ASSERT(renderPipelineDescriptor, "Failed to create render pipeline descriptor.");
-    renderPipelineDescriptor->setVertexDescriptor(vertDesc);
-    renderPipelineDescriptor->setVertexFunction(vertFunc);
-    renderPipelineDescriptor->setFragmentFunction(fragFunc);
+    renderPipelineDescriptor->setVertexDescriptor(vertDesc.get());
+    renderPipelineDescriptor->setVertexFunction(vertFunc.get());
+    renderPipelineDescriptor->setFragmentFunction(fragFunc.get());
     if (multisampled) {
         renderPipelineDescriptor->setSampleCount(Backend::State<DeviceType::Metal>()->getMultisampling());
     }
@@ -100,13 +100,11 @@ Result Implementation::create(const MTL::PixelFormat& pixelFormat, bool multisam
         colorAttachment->setAlphaBlendOperation(MTL::BlendOperationAdd);
     }
 
-    renderPipelineState = device->newRenderPipelineState(renderPipelineDescriptor, &err);
+    renderPipelineState = device->newRenderPipelineState(renderPipelineDescriptor.get(), &err);
     if (!renderPipelineState) {
         JST_ERROR("Failed to create pipeline state:\n{}", err->description()->utf8String());
         return Result::ERROR;
     }
-
-    renderPipelineDescriptor->release();
 
     return Result::SUCCESS;
 }
@@ -116,7 +114,10 @@ Result Implementation::destroy() {
         JST_CHECK(draw->destroy());
     }
 
-    renderPipelineState->release();
+    if (renderPipelineState) {
+        renderPipelineState->release();
+        renderPipelineState = nullptr;
+    }
 
     return Result::SUCCESS;
 }

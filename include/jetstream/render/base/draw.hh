@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_BASE_DRAW_HH
 
 #include <algorithm>
+#include <atomic>
 #include <memory>
 #include <vector>
 
@@ -55,6 +56,8 @@ class JETSTREAM_API Draw {
     std::vector<std::shared_ptr<Buffer>> transferBuffers;
 
  private:
+    std::atomic_bool surfaceOwned = false;
+
     friend class Surface;
 };
 

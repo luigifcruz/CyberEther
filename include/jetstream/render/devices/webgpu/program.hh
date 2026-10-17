@@ -22,12 +22,12 @@ class JETSTREAM_API ProgramImp<DeviceType::WebGPU> : public Program {
                 const Extent2D<U64>& framebufferSize);
 
  private:
-    WGPURenderPipeline pipeline;
-    WGPUPipelineLayout pipelineLayout;
-    WGPUBindGroupLayout bindGroupLayout;
+    WGPURenderPipeline pipeline = nullptr;
+    WGPUPipelineLayout pipelineLayout = nullptr;
+    WGPUBindGroupLayout bindGroupLayout = nullptr;
     WGPUBindGroup bindGroup = nullptr;
-    WGPUShaderModule vertShaderModule;
-    WGPUShaderModule fragShaderModule;
+    WGPUShaderModule vertShaderModule = nullptr;
+    WGPUShaderModule fragShaderModule = nullptr;
 
     std::vector<WGPUBindGroupLayoutEntry> bindings;
     std::vector<WGPUBindGroupEntry> bindGroupEntries;

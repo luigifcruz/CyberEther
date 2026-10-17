@@ -17,11 +17,11 @@ class JETSTREAM_API KernelImp<DeviceType::WebGPU> : public Kernel {
     Result encode(WGPUComputePassEncoder& computePassEncoder);
 
  private:
-    WGPUComputePipeline pipeline;
-    WGPUPipelineLayout pipelineLayout;
-    WGPUBindGroupLayout bindGroupLayout;
-    WGPUBindGroup bindGroup;
-    WGPUShaderModule kernelModule;
+    WGPUComputePipeline pipeline = nullptr;
+    WGPUPipelineLayout pipelineLayout = nullptr;
+    WGPUBindGroupLayout bindGroupLayout = nullptr;
+    WGPUBindGroup bindGroup = nullptr;
+    WGPUShaderModule kernelModule = nullptr;
 
     std::vector<WGPUBindGroupLayoutEntry> bindings;
     std::vector<WGPUBindGroupEntry> bindGroupEntries;

@@ -1,5 +1,6 @@
 #include "jetstream/render/devices/vulkan/buffer.hh"
 #include "jetstream/backend/devices/vulkan/helpers.hh"
+#include "buffer_allocation.hh"
 
 namespace Jetstream::Render {
 
@@ -10,6 +11,10 @@ Implementation::BufferImp(const Config& config) : Buffer(config) {
 
 Result Implementation::create() {
     JST_DEBUG("[VULKAN] Creating buffer.");
+
+    if (buffer != VK_NULL_HANDLE || memory != VK_NULL_HANDLE) {
+        return Result::ERROR;
+    }
 
     if (config.buffer && !config.enableZeroCopy) {
         JST_CHECK(validateUpdate(0, config.size));
@@ -63,34 +68,58 @@ Result Implementation::create() {
         bufferInfo.usage = bufferUsageFlag;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-        JST_VK_CHECK(vkCreateBuffer(device, &bufferInfo, nullptr, &buffer), [&]{
-            JST_ERROR("[VULKAN] Can't create memory buffer.");
+        const Result allocation = Detail::AllocateBuffer(buffer, memory, [&](VkBuffer& candidate) {
+            JST_VK_CHECK(vkCreateBuffer(device, &bufferInfo, nullptr, &candidate), [&]{
+                JST_ERROR("[VULKAN] Can't create memory buffer.");
+            });
+            return Result::SUCCESS;
+        }, [&](VkBuffer created, VkDeviceMemory& candidate) {
+
+            // Allocate backing memory.
+
+            VkMemoryRequirements memoryRequirements;
+            vkGetBufferMemoryRequirements(device, created, &memoryRequirements);
+
+            VkMemoryAllocateInfo memoryAllocateInfo = {};
+            memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+            memoryAllocateInfo.allocationSize = memoryRequirements.size;
+            memoryAllocateInfo.memoryTypeIndex = Backend::FindMemoryType(physicalDevice,
+                                                                         memoryRequirements.memoryTypeBits,
+                                                                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+            JST_VK_CHECK(vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &candidate), [&]{
+                JST_ERROR("[VULKAN] Failed to allocate buffer memory.");
+            });
+            return Result::SUCCESS;
+        }, [&](VkBuffer created, VkDeviceMemory allocated) {
+            JST_VK_CHECK(vkBindBufferMemory(device, created, allocated, 0), [&]{
+                JST_ERROR("[VULKAN] Failed to bind memory to the buffer.");
+            });
+            return Result::SUCCESS;
+        }, [&](VkBuffer created, VkDeviceMemory allocated) {
+            if (created != VK_NULL_HANDLE) {
+                vkDestroyBuffer(device, created, nullptr);
+            }
+            if (allocated != VK_NULL_HANDLE) {
+                vkFreeMemory(device, allocated, nullptr);
+            }
         });
-
-        // Allocate backing memory.
-
-        VkMemoryRequirements memoryRequirements;
-        vkGetBufferMemoryRequirements(device, buffer, &memoryRequirements);
-
-        VkMemoryAllocateInfo memoryAllocateInfo = {};
-        memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        memoryAllocateInfo.allocationSize = memoryRequirements.size;
-        memoryAllocateInfo.memoryTypeIndex = Backend::FindMemoryType(physicalDevice,
-                                                                    memoryRequirements.memoryTypeBits,
-                                                                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-        JST_VK_CHECK(vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &memory), [&]{
-            JST_ERROR("[VULKAN] Failed to allocate buffer memory.");
-        });
-
-        JST_VK_CHECK(vkBindBufferMemory(device, buffer, memory, 0), [&]{
-            JST_ERROR("[VULKAN] Failed to bind memory to the buffer.");
-        });
+        JST_CHECK(allocation);
 
         // Populate memory with initial data.
 
         if (config.buffer) {
-            JST_CHECK(update());
+            Result result;
+            try {
+                result = update();
+            } catch (...) {
+                destroy();
+                throw;
+            }
+            if (result != Result::SUCCESS && result != Result::RELOAD) {
+                destroy();
+                return result;
+            }
         }
     }
 
@@ -100,13 +129,17 @@ Result Implementation::create() {
 Result Implementation::destroy() {
     JST_DEBUG("[VULKAN] Destroying buffer.");
 
-    if (!config.enableZeroCopy) {
+    if (!config.enableZeroCopy && (buffer != VK_NULL_HANDLE || memory != VK_NULL_HANDLE)) {
         auto& device = Backend::State<DeviceType::Vulkan>()->getDevice();
-        vkDestroyBuffer(device, buffer, nullptr);
-        vkFreeMemory(device, memory, nullptr);
-        buffer = VK_NULL_HANDLE;
-        memory = VK_NULL_HANDLE;
+        if (buffer != VK_NULL_HANDLE) {
+            vkDestroyBuffer(device, buffer, nullptr);
+        }
+        if (memory != VK_NULL_HANDLE) {
+            vkFreeMemory(device, memory, nullptr);
+        }
     }
+    buffer = VK_NULL_HANDLE;
+    memory = VK_NULL_HANDLE;
 
     return Result::SUCCESS;
 }

@@ -67,13 +67,16 @@ Result Implementation::create(MTL::VertexDescriptor* vertDesc, const U64& offset
 Result Implementation::destroy() {
     JST_DEBUG("[METAL] Destroying draw.");
 
-    if (buffer->isBuffered()) {
+    if (indexedIndirectBuffer) {
         JST_CHECK(indexedIndirectBuffer->destroy());
-        indexedDrawCommands.clear();
-    } else {
-        JST_CHECK(indirectBuffer->destroy());
-        drawCommands.clear();
+        indexedIndirectBuffer.reset();
     }
+    if (indirectBuffer) {
+        JST_CHECK(indirectBuffer->destroy());
+        indirectBuffer.reset();
+    }
+    indexedDrawCommands.clear();
+    drawCommands.clear();
     transferBuffers.clear();
 
     JST_CHECK(buffer->destroy());

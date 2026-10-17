@@ -17,10 +17,11 @@ class JETSTREAM_API KernelImp<DeviceType::Vulkan> : public Kernel {
     Result encode(VkCommandBuffer& commandBuffer);
 
  private:
-    VkPipeline pipeline;
-    VkPipelineLayout pipelineLayout;
-    VkDescriptorSetLayout descriptorSetLayout;
-    VkDescriptorSet descriptorSet;
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+    VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+    VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+    VkShaderModule kernelModule = VK_NULL_HANDLE;
 
     std::vector<VkDescriptorSetLayoutBinding> bindings;
 

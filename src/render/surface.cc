@@ -1,52 +1,37 @@
 #include "jetstream/render/base/surface.hh"
 
+#include <type_traits>
+#include <unordered_map>
+
 namespace Jetstream::Render {
 
-Surface::Surface(const Config& config) : config(config) {
-    for (const auto& program : config.programs) {
-        if (program && program->getConfig().borrowedTextures) {
-            for (const auto& texture : program->getConfig().textures) {
-                if (texture) {
-                    borrowedTextures.insert(texture);
-                }
-            }
-        }
-    }
-    const auto addBuffer = [&](const std::shared_ptr<Buffer>& buffer) {
-        if (buffer) {
-            dependencyBuffers.insert(buffer);
-        }
-    };
+namespace {
 
-    const auto addTexture = [&](const std::shared_ptr<Texture>& texture) {
-        if (texture) {
-            dependencyTextures.insert(texture);
-        }
-    };
-
-    addTexture(config.framebuffer);
-
-    for (const auto& kernel : config.kernels) {
+template<typename Visit>
+void VisitDependencies(const std::vector<std::shared_ptr<Program>>& programs,
+                       const std::vector<std::shared_ptr<Kernel>>& kernels,
+                       Visit&& visit) {
+    for (const auto& kernel : kernels) {
         if (!kernel) {
             continue;
         }
         for (const auto& [buffer, _] : kernel->getConfig().buffers) {
-            addBuffer(buffer);
+            visit(buffer);
         }
     }
 
-    for (const auto& program : config.programs) {
+    for (const auto& program : programs) {
         if (!program) {
             continue;
         }
 
         const auto& programConfig = program->getConfig();
         for (const auto& [buffer, _] : programConfig.buffers) {
-            addBuffer(buffer);
+            visit(buffer);
         }
         if (!programConfig.borrowedTextures) {
             for (const auto& texture : programConfig.textures) {
-                addTexture(texture);
+                visit(texture);
             }
         }
 
@@ -55,7 +40,7 @@ Surface::Surface(const Config& config) : config(config) {
                 continue;
             }
 
-            dependencyDraws.insert(draw);
+            visit(draw);
 
             const auto& vertex = draw->getConfig().buffer;
             if (!vertex) {
@@ -63,15 +48,132 @@ Surface::Surface(const Config& config) : config(config) {
             }
 
             const auto& vertexConfig = vertex->getConfig();
-            addBuffer(vertexConfig.indices);
+            visit(vertexConfig.indices);
             for (const auto& [buffer, _] : vertexConfig.vertices) {
-                addBuffer(buffer);
+                visit(buffer);
             }
             for (const auto& [buffer, _] : vertexConfig.instances) {
-                addBuffer(buffer);
+                visit(buffer);
             }
         }
     }
+}
+
+}  // namespace
+
+Surface::Surface(const Config& config) : config(config) {
+    if (config.framebuffer) {
+        dependencyTextures.insert(config.framebuffer);
+    }
+    track(config.programs, config.kernels);
+}
+
+Surface::~Surface() {
+    releaseObjects();
+}
+
+Result Surface::claimObjects(const std::vector<std::shared_ptr<Program>>& programs,
+                             const std::vector<std::shared_ptr<Kernel>>& kernels) {
+    std::vector<std::atomic_bool*> claims;
+    std::unordered_set<std::atomic_bool*> seen;
+    const auto add = [&](auto& object) {
+        return object && seen.insert(&object->surfaceOwned).second &&
+               (claims.push_back(&object->surfaceOwned), true);
+    };
+    for (const auto& kernel : kernels) {
+        if (!add(kernel)) {
+            return Result::ERROR;
+        }
+    }
+    for (const auto& program : programs) {
+        if (!add(program)) {
+            return Result::ERROR;
+        }
+        for (const auto& draw : program->getConfig().draws) {
+            if (!add(draw)) {
+                return Result::ERROR;
+            }
+            const auto& vertex = draw->getConfig().buffer;
+            if (vertex && !add(vertex)) {
+                return Result::ERROR;
+            }
+        }
+    }
+    const U64 first = objectClaims.size();
+    objectClaims.reserve(first + claims.size());
+    for (auto* claim : claims) {
+        if (claim->exchange(true, std::memory_order_acq_rel)) {
+            releaseObjects(first);
+            return Result::ERROR;
+        }
+        objectClaims.push_back(claim);
+    }
+    return Result::SUCCESS;
+}
+
+void Surface::releaseObjects(U64 first) {
+    while (objectClaims.size() > first) {
+        objectClaims.back()->store(false, std::memory_order_release);
+        objectClaims.pop_back();
+    }
+}
+
+void Surface::track(const std::vector<std::shared_ptr<Program>>& programs,
+                    const std::vector<std::shared_ptr<Kernel>>& kernels) {
+    track(programs, kernels, dependencyBuffers, dependencyDraws, dependencyTextures, borrowedTextures);
+}
+
+void Surface::track(const std::vector<std::shared_ptr<Program>>& programs,
+                    const std::vector<std::shared_ptr<Kernel>>& kernels,
+                    std::unordered_set<std::shared_ptr<Buffer>>& buffers,
+                    std::unordered_set<std::shared_ptr<Draw>>& draws,
+                    std::unordered_set<std::shared_ptr<Texture>>& textures,
+                    std::unordered_set<std::shared_ptr<Texture>>& borrowed) {
+    for (const auto& program : programs) {
+        if (program && program->getConfig().borrowedTextures) {
+            for (const auto& texture : program->getConfig().textures) {
+                if (texture) {
+                    borrowed.insert(texture);
+                }
+            }
+        }
+    }
+    VisitDependencies(programs, kernels, [&](const auto& dependency) {
+        if (!dependency) {
+            return;
+        }
+        using T = std::decay_t<decltype(dependency)>;
+        if constexpr (std::is_same_v<T, std::shared_ptr<Buffer>>) {
+            buffers.insert(dependency);
+        } else if constexpr (std::is_same_v<T, std::shared_ptr<Texture>>) {
+            textures.insert(dependency);
+        } else {
+            draws.insert(dependency);
+        }
+    });
+}
+
+std::vector<std::shared_ptr<WindowAttachment>> Surface::untracked(
+    const std::vector<std::shared_ptr<Program>>& programs,
+    const std::vector<std::shared_ptr<Kernel>>& kernels) const {
+    std::vector<std::shared_ptr<WindowAttachment>> resources;
+    std::unordered_set<const WindowAttachment*> seen;
+    VisitDependencies(programs, kernels, [&](const auto& dependency) {
+        if (!dependency) {
+            return;
+        }
+        using T = std::decay_t<decltype(dependency)>;
+        if constexpr (std::is_same_v<T, std::shared_ptr<Buffer>>) {
+            if (!dependencyBuffers.contains(dependency) && seen.insert(dependency.get()).second) {
+                resources.push_back(dependency);
+            }
+        } else if constexpr (std::is_same_v<T, std::shared_ptr<Texture>>) {
+            if (!dependencyTextures.contains(dependency) && seen.insert(dependency.get()).second) {
+                resources.push_back(dependency);
+            }
+        }
+    });
+    return resources;
 }
 
 void Surface::clearColor(const ColorRGBA<F32>& color) {
@@ -86,6 +188,57 @@ void Surface::clearColor(const ColorRGBA<F32>& color) {
 
 void Surface::invalidate() {
     dirty = true;
+}
+
+Result Surface::reorder(const std::vector<std::shared_ptr<Program>>& programs) {
+    if (programs == config.programs) {
+        return Result::SUCCESS;
+    }
+    if (programs.size() != config.programs.size()) {
+        return Result::ERROR;
+    }
+    std::unordered_map<const Program*, I64> counts;
+    for (const auto& program : config.programs) {
+        ++counts[program.get()];
+    }
+    for (const auto& program : programs) {
+        if (--counts[program.get()] < 0) {
+            return Result::ERROR;
+        }
+    }
+    auto candidate = programs;
+    JST_CHECK(reorderPrograms(candidate));
+    config.programs.swap(candidate);
+    invalidate();
+    return Result::SUCCESS;
+}
+
+Result Surface::reorderPrograms(const std::vector<std::shared_ptr<Program>>&) {
+    return Result::SUCCESS;
+}
+
+bool Surface::appendable() const {
+    return false;
+}
+
+Result Surface::validateAppend(const std::vector<std::shared_ptr<Program>>& programs,
+                               const std::vector<std::shared_ptr<Kernel>>& kernels) const {
+    for (const auto& program : programs) {
+        if (!program) {
+            return Result::ERROR;
+        }
+    }
+    for (const auto& kernel : kernels) {
+        if (!kernel) {
+            return Result::ERROR;
+        }
+    }
+    return Result::SUCCESS;
+}
+
+Result Surface::createAppended(const std::vector<std::shared_ptr<Program>>&,
+                               const std::vector<std::shared_ptr<Kernel>>&) {
+    return Result::ERROR;
 }
 
 void Surface::prepareFrame() {
