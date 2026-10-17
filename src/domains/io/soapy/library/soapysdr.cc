@@ -425,7 +425,20 @@ Result SoapyReceiver::setAutomaticGain(const bool automaticGain) {
         return Result::ERROR;
     }
 
-    if (library->api().setGainMode(device, SoapyAbi::RX, 0, automaticGain) != 0) {
+    const auto& api = library->api();
+    const bool supported = api.hasGainMode(device, SoapyAbi::RX, 0);
+    if (api.lastStatus() != 0) {
+        JST_ERROR("[MODULE_SOAPY] Failed to query gain mode support: {}", failure());
+        return Result::ERROR;
+    }
+    if (!supported) {
+        if (automaticGain) {
+            JST_WARN("[MODULE_SOAPY] Automatic gain control is not supported by the selected device.");
+        }
+        return Result::SUCCESS;
+    }
+
+    if (api.setGainMode(device, SoapyAbi::RX, 0, automaticGain) != 0) {
         JST_ERROR("[MODULE_SOAPY] Failed to set gain mode: {}", failure());
         return Result::ERROR;
     }
