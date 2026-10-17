@@ -9,6 +9,10 @@
 
 #include "tools/imgui_impl_glfw.h"
 
+#ifdef JST_OS_MAC
+#include "tools/cocoa_titlebar.hh"
+#endif
+
 static void PrintGLFWError(int, const char* description) {
     JST_FATAL("[VULKAN] GLFW error: {}", description);
 }
@@ -113,6 +117,8 @@ Result Implementation::destroy() {
     vkDestroySurfaceKHR(instance, surface, nullptr);
 
     // Destroy GLFW.
+
+    titlebar.reset();
 
     glfwDestroyWindow(window);
     glfwTerminate();
@@ -447,6 +453,11 @@ Result Implementation::waitEvents() {
     {
         std::scoped_lock lock(frameScopeMutex);
         glfwPollEvents();
+#ifdef JST_OS_MAC
+        if (titlebar) {
+            titlebar->poll();
+        }
+#endif
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(3));
     return Result::SUCCESS;
@@ -456,12 +467,42 @@ Result Implementation::pollEvents() {
     {
         std::scoped_lock lock(frameScopeMutex);
         glfwPollEvents();
+#ifdef JST_OS_MAC
+        if (titlebar) {
+            titlebar->poll();
+        }
+#endif
     }
     return Result::SUCCESS;
 }
 
 bool Implementation::keepRunning() {
     return !glfwWindowShouldClose(window);
+}
+
+Render::TitlebarChrome Implementation::titlebarChrome() const {
+#ifdef JST_OS_MAC
+    if (titlebar) {
+        return titlebar->chrome();
+    }
+#endif
+    return {};
+}
+
+void Implementation::beginWindowDrag() {
+#ifdef JST_OS_MAC
+    if (titlebar) {
+        titlebar->beginDrag();
+    }
+#endif
+}
+
+void Implementation::zoomWindow() {
+#ifdef JST_OS_MAC
+    if (titlebar) {
+        titlebar->zoom();
+    }
+#endif
 }
 
 }  // namespace Jetstream::Viewport

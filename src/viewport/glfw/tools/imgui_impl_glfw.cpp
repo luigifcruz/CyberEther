@@ -179,9 +179,119 @@
 // - This is not particularly optimized as we expect size to be small and queries to be rare.
 struct ImGui_ImplGlfw_WindowToContext { GLFWwindow* Window; ImGuiContext* Context; };
 static ImVector<ImGui_ImplGlfw_WindowToContext> g_ContextMap;
-static void ImGui_ImplGlfw_ContextMap_Add(GLFWwindow* window, ImGuiContext* ctx) { g_ContextMap.push_back(ImGui_ImplGlfw_WindowToContext{ window, ctx }); }
-static void ImGui_ImplGlfw_ContextMap_Remove(GLFWwindow* window)                 { for (ImGui_ImplGlfw_WindowToContext& entry : g_ContextMap) if (entry.Window == window) { g_ContextMap.erase_unsorted(&entry); return; } }
+#if defined(__APPLE__) && !defined(__EMSCRIPTEN__)
+static void ImGui_ImplGlfw_InputOwner_Register(GLFWwindow* window, ImGuiContext* context);
+static void ImGui_ImplGlfw_InputOwner_Unregister(GLFWwindow* window);
+#endif
+
+static void ImGui_ImplGlfw_ContextMap_Add(GLFWwindow* window, ImGuiContext* ctx)
+{
+    g_ContextMap.push_back(ImGui_ImplGlfw_WindowToContext{ window, ctx });
+#if defined(__APPLE__) && !defined(__EMSCRIPTEN__)
+    ImGui_ImplGlfw_InputOwner_Register(window, ctx);
+#endif
+}
+
+static void ImGui_ImplGlfw_ContextMap_Remove(GLFWwindow* window)
+{
+#if defined(__APPLE__) && !defined(__EMSCRIPTEN__)
+    ImGui_ImplGlfw_InputOwner_Unregister(window);
+#endif
+    for (ImGui_ImplGlfw_WindowToContext& entry : g_ContextMap)
+        if (entry.Window == window)
+        {
+            g_ContextMap.erase_unsorted(&entry);
+            return;
+        }
+}
 static ImGuiContext* ImGui_ImplGlfw_ContextMap_Get(GLFWwindow* window)           { for (ImGui_ImplGlfw_WindowToContext& entry : g_ContextMap) if (entry.Window == window) return entry.Context; return nullptr; }
+
+#if defined(__APPLE__) && !defined(__EMSCRIPTEN__)
+#include "imgui_impl_glfw_internal.hh"
+#include "imgui_internal.h"
+#include <memory>
+#include <mutex>
+#include <unordered_map>
+
+struct ImGui_ImplGlfw_InputContext
+{
+    ImGuiContext* Context = nullptr;
+    ImGuiID Hook = 0;
+};
+
+struct ImGui_ImplGlfw_InputOwner
+{
+    std::shared_ptr<ImGui_ImplGlfw_InputContext> Lifetime;
+};
+
+static std::mutex g_InputOwnerMutex;
+static std::unordered_map<ImGuiContext*, std::shared_ptr<ImGui_ImplGlfw_InputContext>> g_InputContexts;
+static std::unordered_map<GLFWwindow*, std::shared_ptr<ImGui_ImplGlfw_InputOwner>> g_InputOwners;
+
+static void ImGui_ImplGlfw_InputOwner_Shutdown(ImGuiContext* context, bool remove_hook = true)
+{
+    std::lock_guard lock(g_InputOwnerMutex);
+    auto entry = g_InputContexts.find(context);
+    if (entry == g_InputContexts.end())
+        return;
+
+    auto lifetime = entry->second;
+    lifetime->Context = nullptr;
+    if (remove_hook)
+        ImGui::RemoveContextHook(context, lifetime->Hook);
+    for (auto owner = g_InputOwners.begin(); owner != g_InputOwners.end();)
+        if (owner->second->Lifetime == lifetime)
+            owner = g_InputOwners.erase(owner);
+        else
+            ++owner;
+    g_InputContexts.erase(entry);
+}
+
+static void ImGui_ImplGlfw_InputOwner_Init(ImGuiContext* context)
+{
+    std::lock_guard lock(g_InputOwnerMutex);
+    IM_ASSERT(g_InputContexts.find(context) == g_InputContexts.end());
+    auto lifetime = std::make_shared<ImGui_ImplGlfw_InputContext>();
+    lifetime->Context = context;
+    ImGuiContextHook hook;
+    hook.Type = ImGuiContextHookType_Shutdown;
+    hook.Callback = [](ImGuiContext* context, ImGuiContextHook*) {
+        ImGui_ImplGlfw_InputOwner_Shutdown(context, false);
+    };
+    lifetime->Hook = ImGui::AddContextHook(context, &hook);
+    g_InputContexts.emplace(context, std::move(lifetime));
+}
+
+static void ImGui_ImplGlfw_InputOwner_Register(GLFWwindow* window, ImGuiContext* context)
+{
+    std::lock_guard lock(g_InputOwnerMutex);
+    auto entry = g_InputContexts.find(context);
+    if (entry != g_InputContexts.end())
+        g_InputOwners[window] = std::make_shared<ImGui_ImplGlfw_InputOwner>(ImGui_ImplGlfw_InputOwner{entry->second});
+}
+
+static void ImGui_ImplGlfw_InputOwner_Unregister(GLFWwindow* window)
+{
+    std::lock_guard lock(g_InputOwnerMutex);
+    g_InputOwners.erase(window);
+}
+
+std::function<void()> ImGui_ImplGlfw_MakeLeftButtonRelease(GLFWwindow* window)
+{
+    std::lock_guard lock(g_InputOwnerMutex);
+    auto entry = g_InputOwners.find(window);
+    if (entry == g_InputOwners.end())
+        return {};
+
+    auto owner = entry->second;
+    return [owner, window] {
+        std::lock_guard lock(g_InputOwnerMutex);
+        auto entry = g_InputOwners.find(window);
+        if (entry != g_InputOwners.end() && entry->second == owner && owner->Lifetime->Context)
+            ImGui::GetIO(owner->Lifetime->Context).AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+    };
+}
+#endif
 
 // GLFW data
 enum GlfwClientApi
@@ -669,6 +779,9 @@ static bool ImGui_ImplGlfw_Init(GLFWwindow* window, bool install_callbacks, Glfw
     bd->Context = ImGui::GetCurrentContext();
     bd->Window = window;
     bd->Time = 0.0;
+#if defined(__APPLE__) && !defined(__EMSCRIPTEN__)
+    ImGui_ImplGlfw_InputOwner_Init(bd->Context);
+#endif
     ImGui_ImplGlfw_ContextMap_Add(window, bd->Context);
 
     ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
@@ -783,6 +896,9 @@ void ImGui_ImplGlfw_Shutdown()
     IM_ASSERT(bd != nullptr && "No platform backend to shutdown, or already shutdown?");
     ImGuiIO& io = ImGui::GetIO();
 
+#if defined(__APPLE__) && !defined(__EMSCRIPTEN__)
+    ImGui_ImplGlfw_InputOwner_Shutdown(bd->Context);
+#endif
     ImGui_ImplGlfw_ShutdownMultiViewportSupport();
 
     if (bd->InstalledCallbacks)

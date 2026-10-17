@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_VIEWPORT_PLATFORM_GLFW_METAL_HH
 #define JETSTREAM_VIEWPORT_PLATFORM_GLFW_METAL_HH
 
+#include <memory>
+
 #include "jetstream/viewport/adapters/metal.hh"
 #include "jetstream/viewport/platforms/glfw/generic.hh"
 
@@ -40,8 +42,13 @@ class GLFW<DeviceType::Metal> : public Adapter<DeviceType::Metal> {
     Result pollEvents();
     bool keepRunning();
 
+    Render::TitlebarChrome titlebarChrome() const;
+    void beginWindowDrag();
+    void zoomWindow();
+
  private:
     GLFWwindow* window = nullptr;
+    std::shared_ptr<CocoaTitlebar> titlebar;
     CA::MetalLayer* swapchain;
 };
 

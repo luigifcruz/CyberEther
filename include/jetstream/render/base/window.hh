@@ -75,6 +75,10 @@ class JETSTREAM_API Window {
     virtual constexpr DeviceType device() const = 0;
     virtual bool supportsEraseBlending() const { return false; }
 
+    TitlebarChrome titlebarChrome() const;
+    void beginWindowDrag();
+    void zoomWindow();
+
     Result bind(const std::shared_ptr<Components::Generic>& component);
     Result unbind(const std::shared_ptr<Components::Generic>& component);
 
@@ -147,6 +151,8 @@ class JETSTREAM_API Window {
     virtual Result underlyingCancel() { return Result::SUCCESS; }
 
     virtual Result underlyingSynchronize() = 0;
+
+    virtual Viewport::Generic* underlyingViewport() const { return nullptr; }
 
     Result collectTransfers(Transfer::Batch& batch) const;
     void abortImguiFrame();

@@ -39,6 +39,8 @@ class JETSTREAM_API WindowImp<DeviceType::Metal> : public Window {
 
     Result underlyingSynchronize() override;
 
+    Viewport::Generic* underlyingViewport() const override { return viewport.get(); }
+
  private:
     static constexpr size_t FramesInFlight = 3;
 

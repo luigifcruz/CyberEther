@@ -38,6 +38,8 @@ class JETSTREAM_API WindowImp<DeviceType::WebGPU> : public Window {
 
     Result underlyingSynchronize() override;
 
+    Viewport::Generic* underlyingViewport() const override { return viewport.get(); }
+
  private:
     Stats statsData;
     ImGuiIO* io = nullptr;

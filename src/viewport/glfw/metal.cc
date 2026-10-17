@@ -5,6 +5,7 @@
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
 
+#include "tools/cocoa_titlebar.hh"
 #include "tools/imgui_impl_glfw.h"
 
 #include <string>
@@ -80,6 +81,8 @@ Result Implementation::create() {
 }
 
 Result Implementation::destroy() {
+    titlebar.reset();
+
     glfwDestroyWindow(window);
     glfwTerminate();
 
@@ -128,16 +131,38 @@ void* Implementation::nextDrawable() {
 
 Result Implementation::waitEvents() {
     glfwWaitEventsTimeout(0.150);
+    if (titlebar) {
+        titlebar->poll();
+    }
     return Result::SUCCESS;
 }
 
 Result Implementation::pollEvents() {
     glfwPollEvents();
+    if (titlebar) {
+        titlebar->poll();
+    }
     return Result::SUCCESS;
 }
 
 bool Implementation::keepRunning() {
     return !glfwWindowShouldClose(window);
+}
+
+Render::TitlebarChrome Implementation::titlebarChrome() const {
+    return titlebar ? titlebar->chrome() : Render::TitlebarChrome{};
+}
+
+void Implementation::beginWindowDrag() {
+    if (titlebar) {
+        titlebar->beginDrag();
+    }
+}
+
+void Implementation::zoomWindow() {
+    if (titlebar) {
+        titlebar->zoom();
+    }
 }
 
 }  // namespace Jetstream::Viewport

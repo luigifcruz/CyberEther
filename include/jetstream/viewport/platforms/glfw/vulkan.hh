@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_VIEWPORT_PLATFORM_GLFW_VULKAN_HH
 #define JETSTREAM_VIEWPORT_PLATFORM_GLFW_VULKAN_HH
 
+#include <memory>
 #include <mutex>
 #include <vector>
 
@@ -47,6 +48,11 @@ class GLFW<DeviceType::Vulkan> : public Adapter<DeviceType::Vulkan> {
     Result waitEvents();
     Result pollEvents();
     bool keepRunning();
+
+    Render::TitlebarChrome titlebarChrome() const;
+    void beginWindowDrag();
+    void zoomWindow();
+
     Result nextDrawable(VkSemaphore& semaphore);
     Result commitDrawable(std::vector<VkSemaphore>& semaphores);
 
@@ -64,6 +70,7 @@ class GLFW<DeviceType::Vulkan> : public Adapter<DeviceType::Vulkan> {
     };
 
     GLFWwindow* window = nullptr;
+    std::shared_ptr<CocoaTitlebar> titlebar;
     U32 _currentDrawableIndex;
     VkSurfaceKHR surface;
     VkSwapchainKHR swapchain;

@@ -5,6 +5,7 @@
 #include "jetstream/types.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/parser.hh"
+#include "jetstream/render/types.hh"
 #include "jetstream/render/tools/imgui.h"
 
 #include <mutex>
@@ -31,7 +32,7 @@ struct Config {
     U64 framerate = 60;
 };
 
-class Generic {
+class JETSTREAM_API Generic {
  public:
     explicit Generic(const Config& config);
     virtual ~Generic() = default;
@@ -53,8 +54,10 @@ class Generic {
     virtual Result pollEvents() = 0;
     virtual bool keepRunning() = 0;
 
-    Result addMousePosEvent(F32 x, F32 y);
-    Result addMouseButtonEvent(U64 button, bool down);
+    virtual Render::TitlebarChrome titlebarChrome() const;
+    virtual void beginWindowDrag();
+    virtual void zoomWindow();
+
     Result addFileDropEvent(std::vector<std::string> paths);
 
     std::vector<std::string> takeDroppedFiles();

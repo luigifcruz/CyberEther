@@ -1150,6 +1150,32 @@ Result Window::collectTransfers(Transfer::Batch& batch) const {
     return Result::SUCCESS;
 }
 
+TitlebarChrome Window::titlebarChrome() const {
+    const auto* viewport = underlyingViewport();
+    if (!viewport) {
+        return {};
+    }
+
+    auto chrome = viewport->titlebarChrome();
+    if (_scalingFactor > 0.0f) {
+        chrome.leadingInset /= _scalingFactor;
+        chrome.height /= _scalingFactor;
+    }
+    return chrome;
+}
+
+void Window::beginWindowDrag() {
+    if (auto* viewport = underlyingViewport()) {
+        viewport->beginWindowDrag();
+    }
+}
+
+void Window::zoomWindow() {
+    if (auto* viewport = underlyingViewport()) {
+        viewport->zoomWindow();
+    }
+}
+
 void Window::updateScalingFactor(const Viewport::Generic& viewport) {
     _scalingFactor = viewport.scale(config.scale);
 

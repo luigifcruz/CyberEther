@@ -11,17 +11,13 @@ Extent2D<F32> Generic::displaySize() const {
     return {static_cast<F32>(config.size.x), static_cast<F32>(config.size.y)};
 }
 
-Result Generic::addMousePosEvent(F32 x, F32 y) {
-    ImGui::GetIO().AddMousePosEvent(x, y);
-
-    return Result::SUCCESS;
+Render::TitlebarChrome Generic::titlebarChrome() const {
+    return {};
 }
 
-Result Generic::addMouseButtonEvent(U64 button, bool down) {
-    ImGui::GetIO().AddMouseButtonEvent(button, down);
+void Generic::beginWindowDrag() {}
 
-    return Result::SUCCESS;
-}
+void Generic::zoomWindow() {}
 
 Result Generic::addFileDropEvent(std::vector<std::string> paths) {
     std::lock_guard lock(droppedFilesMutex);

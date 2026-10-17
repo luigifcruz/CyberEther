@@ -88,6 +88,21 @@ if not jst_is_windows
 endif
 
 core_test_targets = []
+if jst_is_macos and cfg_lst.get('JETSTREAM_LOADER_GLFW_AVAILABLE', false)
+    cocoa_titlebar_tests = executable(
+        'jetstream-core-cocoa-titlebar-tests',
+        'render/cocoa_titlebar.mm',
+        '../../src/render/tools/imgui.cpp',
+        '../../src/render/tools/imgui_draw.cpp',
+        '../../src/render/tools/imgui_tables.cpp',
+        '../../src/render/tools/imgui_widgets.cpp',
+        dependencies: dep_lst + [catch2_dep],
+        include_directories: inc_lst + [core_test_includes],
+    )
+    core_test_targets += [cocoa_titlebar_tests]
+    test('core-cocoa-titlebar', cocoa_titlebar_tests,
+         suite: 'core', is_parallel: false, timeout: 60)
+endif
 if cfg_lst.get('JETSTREAM_RENDER_METAL_AVAILABLE', false)
     metal_program_cache_sources = ['render/metal_program_cache.cc']
     if not jst_is_browser and not jst_is_static

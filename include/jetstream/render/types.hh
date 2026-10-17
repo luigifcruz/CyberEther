@@ -28,6 +28,12 @@ struct ScissorRect {
     U32 height = 0;
 };
 
+struct TitlebarChrome {
+    bool integrated = false;
+    F32 leadingInset = 0.0f;
+    F32 height = 0.0f;
+};
+
 }  // namespace Jetstream::Render
 
 #endif

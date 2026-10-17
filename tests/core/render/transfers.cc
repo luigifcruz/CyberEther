@@ -18,6 +18,7 @@
 #include "jetstream/render/base/surface.hh"
 #include "jetstream/render/base/transfer.hh"
 #include "jetstream/render/base/window.hh"
+#include "jetstream/viewport/adapters/generic.hh"
 
 using namespace Jetstream;
 
@@ -327,7 +328,14 @@ class TestWindow final : public Render::Window {
     U64 outstandingSubmissions = 0;
     U64 registeredSurfaceCount() const { return surfaces.size(); }
 
+    void attachViewport(Viewport::Generic* viewport) {
+        attachedViewport = viewport;
+        updateScalingFactor(*viewport);
+    }
+
  protected:
+    Viewport::Generic* underlyingViewport() const override { return attachedViewport; }
+
     Result bindSurface(const std::shared_ptr<Render::Surface>& surface) override {
         surfaces.push_back(std::dynamic_pointer_cast<TestSurface>(surface));
         return bindHandler ? bindHandler(surface) : Result::SUCCESS;
@@ -380,6 +388,37 @@ class TestWindow final : public Render::Window {
     Result submissionResult = Result::SUCCESS;
     U64 destructions = 0;
     std::vector<std::shared_ptr<TestSurface>> surfaces;
+    Viewport::Generic* attachedViewport = nullptr;
+};
+
+class TestViewport final : public Viewport::Generic {
+ public:
+    TestViewport() : Generic(Viewport::Config{}) {}
+
+    std::string id() const override { return "test"; }
+    std::string name() const override { return "Test"; }
+    DeviceType device() const override { return DeviceType::None; }
+
+    Result create() override { return Result::SUCCESS; }
+    Result destroy() override { return Result::SUCCESS; }
+    Result createImgui() override { return Result::SUCCESS; }
+    Result destroyImgui() override { return Result::SUCCESS; }
+
+    F32 scale(const F32&) const override { return 2.0f; }
+
+    Result waitEvents() override { return Result::SUCCESS; }
+    Result pollEvents() override { return Result::SUCCESS; }
+    bool keepRunning() override { return true; }
+
+    Render::TitlebarChrome titlebarChrome() const override {
+        return {.integrated = true, .leadingInset = 80.0f, .height = 32.0f};
+    }
+
+    void beginWindowDrag() override { ++drags; }
+    void zoomWindow() override { ++zooms; }
+
+    U64 drags = 0;
+    U64 zooms = 0;
 };
 
 std::shared_ptr<TestBuffer> MakeBuffer(std::array<U32, 2>& source) {
@@ -1907,6 +1946,55 @@ TEST_CASE("Failed render window creation rolls back its backend", "[core][render
 
     REQUIRE(replacement.create() == Result::SUCCESS);
     REQUIRE(replacement.destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Render window chrome defaults to the system frame", "[core][render][window]") {
+    TestWindow window;
+
+    const auto chrome = window.titlebarChrome();
+    REQUIRE_FALSE(chrome.integrated);
+    REQUIRE(chrome.leadingInset == 0.0f);
+    REQUIRE(chrome.height == 0.0f);
+
+    window.beginWindowDrag();
+    window.zoomWindow();
+
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE_FALSE(window.titlebarChrome().integrated);
+    window.beginWindowDrag();
+    window.zoomWindow();
+    REQUIRE(window.destroy() == Result::SUCCESS);
+
+    TestViewport viewport;
+    const auto fallback = viewport.Viewport::Generic::titlebarChrome();
+    REQUIRE_FALSE(fallback.integrated);
+    REQUIRE(fallback.leadingInset == 0.0f);
+    REQUIRE(fallback.height == 0.0f);
+    viewport.Viewport::Generic::beginWindowDrag();
+    viewport.Viewport::Generic::zoomWindow();
+    REQUIRE(viewport.drags == 0);
+    REQUIRE(viewport.zooms == 0);
+}
+
+TEST_CASE("Render window chrome forwards to its viewport in logical units", "[core][render][window]") {
+    TestWindow window;
+    TestViewport viewport;
+
+    REQUIRE(window.create() == Result::SUCCESS);
+    window.attachViewport(&viewport);
+
+    const auto chrome = window.titlebarChrome();
+    REQUIRE(chrome.integrated);
+    REQUIRE(chrome.leadingInset == 40.0f);
+    REQUIRE(chrome.height == 16.0f);
+
+    window.beginWindowDrag();
+    window.zoomWindow();
+    window.zoomWindow();
+    REQUIRE(viewport.drags == 1);
+    REQUIRE(viewport.zooms == 2);
+
+    REQUIRE(window.destroy() == Result::SUCCESS);
 }
 
 TEST_CASE("Failed render window destruction remains retryable", "[core][render][window]") {
