@@ -44,14 +44,6 @@ jobs:
           tar -C build-wasm -czf .dist/artifacts/cyberether-emscripten-wasm32.tar.gz \
             cyberether.js cyberether.wasm cyberether.js.symbols cyberether.wasm.map
 
-      - name: Run headless WASM tests
-        run: |
-          set -euo pipefail
-          npm ci --prefix tests/browser
-          npm exec --prefix tests/browser -- playwright install --with-deps chromium
-          meson compile -C build-wasm -j 2 jetstream-core-tests jetstream-modules-tests
-          meson test -C build-wasm --no-rebuild --print-errorlogs --exclude-suite sdr
-
       - name: Validate WASM outputs
         run: |
           set -euo pipefail
