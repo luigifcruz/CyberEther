@@ -46,6 +46,7 @@ core_test_domains = {
     ],
     'sakura': [
         'sakura/interface_controls.cc',
+        'sakura/scissor.cc',
         'sakura/key_value.cc',
         'sakura/metric_label.cc',
         'sakura/node.cc',

@@ -39,8 +39,8 @@ inline Render::ScissorRect RectToScissor(const Rect& rect, const Extent2D<U64>& 
     return {
         static_cast<U32>(std::floor(x)),
         static_cast<U32>(std::floor(y)),
-        static_cast<U32>(std::ceil(endX - x)),
-        static_cast<U32>(std::ceil(endY - y)),
+        endX > x ? static_cast<U32>(std::ceil(endX) - std::floor(x)) : 0,
+        endY > y ? static_cast<U32>(std::ceil(endY) - std::floor(y)) : 0,
     };
 }
 
