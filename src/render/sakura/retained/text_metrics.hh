@@ -16,6 +16,7 @@ namespace Jetstream::Sakura::Retained {
 struct TextMetrics {
     Render::Window* window = nullptr;
     std::unordered_map<std::string, std::unique_ptr<Render::Components::Text>> labels;
+    std::unordered_map<std::string, F32> widths;
 
     void setWindow(Render::Window* nextWindow) {
         if (window == nextWindow) {
@@ -23,6 +24,7 @@ struct TextMetrics {
         }
         window = nextWindow;
         labels.clear();
+        widths.clear();
     }
 
     Render::Components::Text* label(const std::string& fontName) {
@@ -55,7 +57,22 @@ struct TextMetrics {
         if (!text) {
             return 0.0f;
         }
-        return text->advance(value, scale(*text, fontSize));
+        const auto nameSize = fontName.size();
+        const auto* font = text->getConfig().font.get();
+        std::string key(reinterpret_cast<const char*>(&nameSize), sizeof(nameSize));
+        key += fontName;
+        key.append(reinterpret_cast<const char*>(&fontSize), sizeof(fontSize));
+        key.append(reinterpret_cast<const char*>(&font), sizeof(font));
+        key += value;
+        if (const auto it = widths.find(key); it != widths.end()) {
+            return it->second;
+        }
+        const F32 width = text->advance(value, scale(*text, fontSize));
+        if (widths.size() >= kWidthCacheCapacity) {
+            widths.clear();
+        }
+        widths.emplace(std::move(key), width);
+        return width;
     }
 
     std::vector<F32> advances(const std::string& fontName, const std::string& value, F32 fontSize) {
@@ -67,6 +84,8 @@ struct TextMetrics {
     }
 
  private:
+    static constexpr U64 kWidthCacheCapacity = 256;
+
     static F32 scale(const Render::Components::Text& text, F32 fontSize) {
         if (!text.getConfig().font) {
             return 0.0f;

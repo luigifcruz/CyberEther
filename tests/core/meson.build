@@ -57,6 +57,7 @@ core_test_domains = {
         'sakura/syntax_highlighter.cc',
         'sakura/text_grid.cc',
         'sakura/text_markdown.cc',
+        'sakura/text_metrics.cc',
         'sakura/vstack.cc',
         'sakura/workspace_background.cc',
     ],
