@@ -244,17 +244,18 @@ struct Canvas::Impl {
         return true;
     }
 
-    void handleMouse(const MouseEvent& rawEvent) {
+    bool handleMouse(const MouseEvent& rawEvent) {
         const MouseEvent event = ConvertMouse(rawEvent, context.framebufferSize);
 
         if (!root) {
-            return;
+            return false;
         }
 
-        Impl::event(*root, event);
+        const bool consumed = Impl::event(*root, event);
         if (resourceDirty(*root) || paintDirty(*root)) {
             invalidateSurface();
         }
+        return consumed;
     }
 
     Result paintTree() {
@@ -289,6 +290,13 @@ bool Canvas::update(Config config) {
         JST_ERROR("[SAKURA] Canvas '{}' failed to create render surface.", this->impl->config.id);
     }
     return true;
+}
+
+bool Canvas::ForwardInput(Impl* impl, const InputEvent& event) {
+    if (const auto mouse = SurfaceMouseEvent(event)) {
+        return impl->handleMouse(*mouse);
+    }
+    return false;
 }
 
 void Canvas::render(const Sakura::Context& ctx) {
@@ -388,9 +396,7 @@ void Canvas::render(const Sakura::Context& ctx) {
             impl->handleResize(resize);
         },
         .onInput = [impl = impl.get()](InputEvent event) {
-            if (const auto mouse = SurfaceMouseEvent(event)) {
-                impl->handleMouse(*mouse);
-            }
+            ForwardInput(impl, event);
         },
     });
     impl->surfaceView.render(ctx);

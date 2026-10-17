@@ -114,7 +114,8 @@ SurfaceInteractionState ProcessSurfaceInteraction(SurfaceInteractionState state,
             case MouseEventType::Enter: {
                 break;
             }
-            case MouseEventType::Leave: {
+            case MouseEventType::Leave:
+            case MouseEventType::Cancel: {
                 state.dragging = false;
                 break;
             }

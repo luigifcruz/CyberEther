@@ -14,6 +14,8 @@
 
 namespace Jetstream::Sakura::Retained {
 
+struct Canvas;
+
 struct CodeEditor {
     enum class Language : U8 {
         Python,
@@ -59,6 +61,7 @@ struct CodeEditor {
  private:
     struct Impl;
     std::unique_ptr<Impl> impl;
+    Canvas& canvas();
 };
 
 }  // namespace Jetstream::Sakura::Retained

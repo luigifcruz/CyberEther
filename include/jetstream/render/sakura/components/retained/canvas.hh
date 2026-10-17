@@ -40,6 +40,7 @@ struct Canvas {
  private:
     struct Impl;
     std::unique_ptr<Impl> impl;
+    static bool ForwardInput(Impl* impl, const InputEvent& event);
 };
 
 }  // namespace Jetstream::Sakura::Retained

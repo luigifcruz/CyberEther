@@ -140,7 +140,8 @@ struct SignalViewSplitInteraction {
                  bool enabled,
                  bool& commit) {
         commit = false;
-        if (event.type == MouseEventType::Leave) {
+        if (event.type == MouseEventType::Leave || event.type == MouseEventType::Cancel ||
+            (event.type == MouseEventType::Release && event.cancel)) {
             const bool consumed = dragging;
             dragging = false;
             return consumed;

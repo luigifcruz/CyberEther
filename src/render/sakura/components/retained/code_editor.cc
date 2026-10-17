@@ -175,6 +175,9 @@ struct CodeEditorRoot : public Component {
 
     bool handleChromeMouse(const MouseEvent& event) {
         switch (event.type) {
+            case MouseEventType::Cancel:
+                consoleResizing = false;
+                return false;
             case MouseEventType::Click: {
                 if (event.button != MouseButton::Left) {
                     return false;
@@ -362,8 +365,12 @@ bool CodeEditor::update(Config config) {
     return true;
 }
 
+Canvas& CodeEditor::canvas() {
+    return impl->canvas;
+}
+
 void CodeEditor::render(const Sakura::Context& ctx) {
-    impl->canvas.render(ctx);
+    canvas().render(ctx);
 }
 
 }  // namespace Jetstream::Sakura::Retained

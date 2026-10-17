@@ -52,7 +52,11 @@ Result GeoMap::processInteraction(std::span<const SurfaceEvent> surfaceEvents,
     for (const auto& event : surfaceEvents) {
         JST_CHECK(pimpl->navigation.resize(event, context));
     }
-    for (const auto& event : mouseEvents) {
+    for (auto event : mouseEvents) {
+        if (event.type == MouseEventType::Cancel ||
+            (event.type == MouseEventType::Release && event.cancel)) {
+            event.type = MouseEventType::Leave;
+        }
         if (event.type == MouseEventType::Leave) {
             context.cursor.reset();
         } else {

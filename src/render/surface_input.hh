@@ -20,10 +20,12 @@ struct JETSTREAM_API SurfaceInputState {
 
     bool focused = false;
     bool macOS = false;
+    bool leftPressed = false;
+    Extent2D<F32> lastPosition = {0.0f, 0.0f};
     int lastFrame = -1;
     std::array<bool, ImGuiKey_NamedKey_COUNT> heldKeys{};
 
-    void observe(std::function<void(const InputEvent&)> emit);
+    std::function<void(const InputEvent&)> observe(std::function<void(const InputEvent&)> emit);
     void reset(const std::function<void(const InputEvent&)>& emit);
 
  private:
@@ -57,6 +59,10 @@ inline ImGuiMouseCursor ToImGuiMouseCursor(const SurfaceCursor cursor) {
             return ImGuiMouseCursor_Arrow;
     }
 }
+
+KeyCode SurfaceKeyCode(ImGuiKey key, bool macOS);
+KeyModifiers SurfaceKeyModifiers();
+void UpdateSurfaceModifiers(KeyModifiers& modifiers, ImGuiKey key, bool down, bool macOS);
 
 JETSTREAM_API void ForwardSurfaceInputEvents(const ImVec2& origin,
                                              const ImVec2& size,

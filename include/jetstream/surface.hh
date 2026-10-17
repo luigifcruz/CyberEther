@@ -77,9 +77,15 @@ struct JETSTREAM_API KeyEvent {
     bool repeat = false;
 };
 
+struct JETSTREAM_API TextEvent {
+    char32_t codepoint = 0;
+    KeyModifiers modifiers;
+};
+
 enum class JETSTREAM_API MouseButton : U8 {
     Left = 0,
     Right = 1,
+    Middle = 2,
 };
 
 enum class JETSTREAM_API MouseEventType : U8 {
@@ -89,6 +95,7 @@ enum class JETSTREAM_API MouseEventType : U8 {
     Scroll = 3,
     Enter = 4,
     Leave = 5,
+    Cancel = 6,
 };
 
 struct JETSTREAM_API MouseEvent {
@@ -97,6 +104,8 @@ struct JETSTREAM_API MouseEvent {
     Extent2D<F32> position;
     Extent2D<F32> scroll;
     KeyModifiers modifiers;
+    U8 clicks = 1;
+    bool cancel = false;
 };
 
 struct JETSTREAM_API FocusEvent {
@@ -107,6 +116,11 @@ using InputEvent = std::variant<MouseEvent, KeyEvent, FocusEvent>;
 
 inline std::optional<MouseEvent> SurfaceMouseEvent(const InputEvent& event) {
     if (const auto* mouse = std::get_if<MouseEvent>(&event)) {
+        if (mouse->type == MouseEventType::Release && mouse->cancel) {
+            auto cancelled = *mouse;
+            cancelled.type = MouseEventType::Cancel;
+            return cancelled;
+        }
         return *mouse;
     }
     if (const auto* focus = std::get_if<FocusEvent>(&event); focus && !focus->focused) {

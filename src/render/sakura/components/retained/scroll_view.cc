@@ -219,6 +219,9 @@ void ScrollView::layout(const Context& ctx) {
 
 bool ScrollView::event(const MouseEvent& event) {
     switch (event.type) {
+        case MouseEventType::Cancel:
+            impl->dragAxis = Impl::DragAxis::None;
+            return false;
         case MouseEventType::Scroll: {
             if (!impl->config.wheel || !impl->viewport.contains(event.position.x, event.position.y)) {
                 return false;

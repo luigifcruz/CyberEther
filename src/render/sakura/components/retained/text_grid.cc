@@ -1788,6 +1788,9 @@ struct TextGrid::Impl {
     bool handleMouse(const MouseEvent& event) {
         const Extent2D<F32> position{event.position.x, event.position.y};
         switch (event.type) {
+            case MouseEventType::Cancel:
+                mouseSelecting = false;
+                return false;
             case MouseEventType::Click: {
                 if (event.button != MouseButton::Left) {
                     return false;

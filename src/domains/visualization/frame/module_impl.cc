@@ -579,7 +579,8 @@ void FrameImpl::processInputEvents(const std::vector<InputEvent>& events) {
             case MouseEventType::Enter: {
                 break;
             }
-            case MouseEventType::Leave: {
+            case MouseEventType::Leave:
+            case MouseEventType::Cancel: {
                 view.dragging = false;
                 view.selecting = false;
                 view.hasCursor = false;

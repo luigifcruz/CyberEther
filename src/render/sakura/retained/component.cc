@@ -203,16 +203,17 @@ void Component::layoutChildren(const Context& ctx) {
 bool Component::eventChildren(const MouseEvent& event) {
     for (auto it = impl->children.rbegin(); it != impl->children.rend(); ++it) {
         auto* child = *it;
-        if (!child || !child->impl->visible) {
+        if (!child || (!child->impl->visible && event.type != MouseEventType::Cancel)) {
             continue;
         }
         if (event.type != MouseEventType::Move &&
             event.type != MouseEventType::Leave &&
             event.type != MouseEventType::Release &&
+            event.type != MouseEventType::Cancel &&
             !child->impl->clip.contains(event.position.x, event.position.y)) {
             continue;
         }
-        if (child->event(event)) {
+        if (child->event(event) && event.type != MouseEventType::Cancel) {
             return true;
         }
     }

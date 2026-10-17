@@ -544,6 +544,18 @@ SurfaceCursor SignalViewCanvas::processInputEvents(std::vector<InputEvent>&& eve
         const auto mouse = SurfaceMouseEvent(input);
         if (!mouse) continue;
         const auto& event = *mouse;
+        if (event.type == MouseEventType::Cancel) {
+            cursor.inside = false;
+            if (markerDrag.index && *markerDrag.index < context.config.markers.size() &&
+                *markerDrag.index < markerPositions.size()) {
+                markerPositions[*markerDrag.index] = context.config.markers[*markerDrag.index];
+            }
+            markerDrag = {};
+            splitter.dragging = false;
+            splitter.ratio = splitRatio;
+            plotEvents.push_back(event);
+            continue;
+        }
         if (event.type == MouseEventType::Move) {
             cursor.inside = true;
             cursor.position = event.position;

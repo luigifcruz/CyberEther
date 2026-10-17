@@ -1,7 +1,7 @@
 src_lst += files([
     'runtime.cc',
     'state.cc',
-    'clipboard.cc',
+    'input_bridge.cc',
     'dockspace.cc',
     'metrics.cc',
     'palette.cc',

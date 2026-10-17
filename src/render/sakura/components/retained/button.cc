@@ -132,6 +132,7 @@ bool Button::event(const MouseEvent& event) {
             setState(inside, impl->pressed && inside);
             return false;
         case MouseEventType::Leave:
+        case MouseEventType::Cancel:
             setState(false, false);
             return false;
         case MouseEventType::Click:

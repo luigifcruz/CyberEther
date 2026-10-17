@@ -570,7 +570,8 @@ void SignalViewWaterfall3D::processInputEvents(std::vector<InputEvent>&& events)
             case MouseEventType::Enter: {
                 break;
             }
-            case MouseEventType::Leave: {
+            case MouseEventType::Leave:
+            case MouseEventType::Cancel: {
                 drag.orbiting = false;
                 drag.panning = false;
                 break;

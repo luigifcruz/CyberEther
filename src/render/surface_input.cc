@@ -23,6 +23,18 @@ ImGuiKey SurfaceNativeKey(ImGuiKey key, bool macOS) {
     return key;
 }
 
+}  // namespace
+
+void UpdateSurfaceModifiers(KeyModifiers& modifiers, ImGuiKey key, bool down, bool macOS) {
+    switch (SurfaceNativeKey(key, macOS)) {
+        case ImGuiMod_Ctrl: modifiers.control = down; break;
+        case ImGuiMod_Shift: modifiers.shift = down; break;
+        case ImGuiMod_Alt: modifiers.alt = down; break;
+        case ImGuiMod_Super: modifiers.super = down; break;
+        default: break;
+    }
+}
+
 KeyCode SurfaceKeyCode(ImGuiKey key, bool macOS) {
     key = SurfaceNativeKey(key, macOS);
     if (key >= ImGuiKey_0 && key <= ImGuiKey_9) {
@@ -101,32 +113,22 @@ KeyModifiers SurfaceKeyModifiers() {
             io.ConfigMacOSXBehaviors ? io.KeyCtrl : io.KeySuper};
 }
 
-void UpdateSurfaceModifiers(KeyModifiers& modifiers, ImGuiKey key, bool down, bool macOS) {
-    switch (SurfaceNativeKey(key, macOS)) {
-        case ImGuiMod_Ctrl: modifiers.control = down; break;
-        case ImGuiMod_Shift: modifiers.shift = down; break;
-        case ImGuiMod_Alt: modifiers.alt = down; break;
-        case ImGuiMod_Super: modifiers.super = down; break;
-        default: break;
-    }
-}
-
-}  // namespace
-
 SurfaceInputState::~SurfaceInputState() {
     removeHooks();
     if (callback) reset(callback);
 }
 
-void SurfaceInputState::observe(std::function<void(const InputEvent&)> emit) {
+std::function<void(const InputEvent&)> SurfaceInputState::observe(std::function<void(const InputEvent&)> emit) {
     auto* current = ImGui::GetCurrentContext();
     if (context && context != current) {
         reset(callback);
         removeHooks();
     }
-    callback = std::move(emit);
+    if (!focused && !leftPressed && std::none_of(heldKeys.begin(), heldKeys.end(), [](bool held) { return held; })) {
+        callback = std::move(emit);
+    }
     lastFrame = current->FrameCount;
-    if (context) return;
+    if (context) return callback;
 
     context = current;
     ImGuiContextHook hook;
@@ -146,20 +148,36 @@ void SurfaceInputState::observe(std::function<void(const InputEvent&)> emit) {
         state.reset(state.callback);
     };
     shutdownHook = ImGui::AddContextHook(context, &hook);
+    return callback;
 }
 
 void SurfaceInputState::reset(const std::function<void(const InputEvent&)>& emit) {
+    const auto recipient = callback ? callback : emit;
+    std::vector<InputEvent> events;
     for (int key = ImGuiKey_Tab; key <= ImGuiKey_Oem102; ++key) {
         if (heldKeys[key - ImGuiKey_NamedKey_BEGIN]) {
-            emit(InputEvent{KeyEvent{KeyEventType::Release,
-                                    SurfaceKeyCode(static_cast<ImGuiKey>(key), macOS), {}}});
+            events.push_back(KeyEvent{KeyEventType::Release,
+                                      SurfaceKeyCode(static_cast<ImGuiKey>(key), macOS), {}});
         }
     }
     heldKeys.fill(false);
+    if (leftPressed) {
+        events.push_back(MouseEvent{
+            .type = MouseEventType::Release,
+            .button = MouseButton::Left,
+            .position = lastPosition,
+            .cancel = true,
+        });
+    }
+    leftPressed = false;
+    lastPosition = {0.0f, 0.0f};
     if (focused) {
-        emit(InputEvent{FocusEvent{false}});
+        events.push_back(FocusEvent{false});
     }
     focused = false;
+    if (recipient) {
+        for (const auto& event : events) recipient(event);
+    }
 }
 
 void SurfaceInputState::removeHooks() {
@@ -171,8 +189,8 @@ void SurfaceInputState::removeHooks() {
 
 void ForwardSurfaceInputEvents(const ImVec2& origin, const ImVec2& size,
                                SurfaceInputState& state,
-                               const std::function<void(const InputEvent&)>& emit) {
-    state.observe(emit);
+                               const std::function<void(const InputEvent&)>& callback) {
+    const auto emit = state.observe(callback);
     if (!std::isfinite(size.x) || !std::isfinite(size.y) || size.x <= 0.0f || size.y <= 0.0f) {
         state.reset(emit);
         return;
@@ -206,8 +224,14 @@ void ForwardSurfaceInputEvents(const ImVec2& origin, const ImVec2& size,
     }
 
     const auto position = ImGui::GetMousePos();
+    const bool positionValid = ImGui::IsMousePosValid(&position);
     MouseEvent mouse{};
-    mouse.position = {(position.x - origin.x) / size.x, (position.y - origin.y) / size.y};
+    mouse.position = positionValid
+        ? Extent2D<F32>{(position.x - origin.x) / size.x, (position.y - origin.y) / size.y}
+        : state.lastPosition;
+    if (positionValid) {
+        state.lastPosition = mouse.position;
+    }
     bool buttonPending = mouseEligible;
     if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         mouse.type = MouseEventType::Click;
@@ -222,6 +246,9 @@ void ForwardSurfaceInputEvents(const ImVec2& origin, const ImVec2& size,
         mouse.type = MouseEventType::Release;
         mouse.button = MouseButton::Right;
     } else {
+        buttonPending = false;
+    }
+    if (mouse.type == MouseEventType::Release && mouse.button == MouseButton::Left && !state.leftPressed) {
         buttonPending = false;
     }
     bool wheelPending = hovered && (io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f);
@@ -239,7 +266,13 @@ void ForwardSurfaceInputEvents(const ImVec2& origin, const ImVec2& size,
             emit(InputEvent{FocusEvent{true}});
         }
         mouse.modifiers = modifiers;
+        mouse.clicks = mouse.type == MouseEventType::Click
+            ? static_cast<U8>(std::max(1, static_cast<int>(io.MouseClickedCount[static_cast<int>(mouse.button)])))
+            : 1;
         emit(InputEvent{mouse});
+        if (mouse.button == MouseButton::Left) {
+            state.leftPressed = mouse.type == MouseEventType::Click;
+        }
         buttonPending = false;
     };
     const auto emitWheel = [&](const Extent2D<F32>& scroll) {
@@ -283,7 +316,16 @@ void ForwardSurfaceInputEvents(const ImVec2& origin, const ImVec2& size,
             }
         }
     }
-    if (mouseEligible) {
+    if (state.leftPressed && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        MouseEvent release = mouse;
+        release.type = MouseEventType::Release;
+        release.button = MouseButton::Left;
+        release.modifiers = modifiers;
+        release.cancel = true;
+        emit(InputEvent{release});
+        state.leftPressed = false;
+    }
+    if (mouseEligible && positionValid) {
         mouse.type = MouseEventType::Move;
         mouse.scroll = {0.0f, 0.0f};
         mouse.modifiers = modifiers;
