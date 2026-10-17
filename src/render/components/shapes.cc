@@ -25,7 +25,7 @@ struct Shapes::Impl {
 
     struct UniformBuffer {
         glm::vec2 pixelSize;
-        glm::vec2 _padding;
+        glm::vec2 translation;
     };
 
     struct ShapeProperties {
@@ -37,7 +37,7 @@ struct Shapes::Impl {
         glm::mat4 transform;
         glm::vec4 fillColor;
         glm::vec4 borderColor;
-        glm::vec4 shapeParams; // x=type, y=borderWidth, z=cornerRadius, w=unused
+        glm::vec4 shapeParams; // x=type, y=borderWidth, z=cornerRadius, w=corner mask (0 = all)
     };
 
     // Internal Types.
@@ -53,7 +53,7 @@ struct Shapes::Impl {
     // Variables.
 
     const Config& config;
-    UniformBuffer uniforms;
+    UniformBuffer uniforms{};
     U64 totalNumberOfInstances = 0;
     U64 totalNumberOfVertices = 0;
     U64 totalNumberOfIndices = 0;
@@ -66,6 +66,8 @@ struct Shapes::Impl {
     bool visible = true;
 
     bool updateUniformBufferFlag = false;
+
+    bool updateTranslationBufferFlag = false;
     bool updateVerticesBufferFlag = false;
     bool updateIndicesBufferFlag = false;
 
@@ -103,8 +105,6 @@ struct Shapes::Impl {
     std::shared_ptr<Render::Buffer> rotationsBuffer;
     std::shared_ptr<Render::Buffer> sizesBuffer;
     std::shared_ptr<Render::Buffer> positionsBuffer;
-    std::shared_ptr<Render::Buffer> borderWidthsBuffer;
-    std::shared_ptr<Render::Buffer> borderColorsBuffer;
 
     std::shared_ptr<Render::Vertex> vertex;
     std::shared_ptr<Render::Draw> draw;
@@ -511,10 +511,40 @@ Result Shapes::updateProperties(const std::string& elementId,
     for (U64 i = 0; i < element.config.numberOfInstances; ++i) {
         auto& prop = pimpl->properties.at(instanceOffset + i);
         prop.borderColor = glm::vec4(borderColor.r, borderColor.g, borderColor.b, borderColor.a);
-        prop.shapeParams = glm::vec4(element.config.type, borderWidth, cornerRadius, 0.0f);
+        prop.shapeParams = glm::vec4(element.config.type, borderWidth, cornerRadius, prop.shapeParams.w);
     }
 
     pimpl->updatePropertiesBufferFlag = true;
+    return Result::SUCCESS;
+}
+
+Result Shapes::updateCorners(const std::string& elementId, std::span<const U8> corners) {
+    const auto it = pimpl->elementIndex.find(elementId);
+    if (it == pimpl->elementIndex.end()) {
+        JST_ERROR("[SHAPES] Element not found (corners).");
+        return Result::ERROR;
+    }
+
+    U64 instanceOffset = 0;
+    for (U64 i = 0; i < it->second; ++i) {
+        instanceOffset += pimpl->elements[i].config.numberOfInstances;
+    }
+
+    const auto& element = pimpl->elements[it->second];
+    const U64 count = std::min<U64>(corners.size(), element.config.numberOfInstances);
+    bool changed = false;
+    for (U64 i = 0; i < count; ++i) {
+        auto& prop = pimpl->properties.at(instanceOffset + i);
+        const F32 mask = static_cast<F32>(corners[i]);
+        if (prop.shapeParams.w != mask) {
+            prop.shapeParams.w = mask;
+            changed = true;
+        }
+    }
+
+    if (changed) {
+        pimpl->updatePropertiesBufferFlag = true;
+    }
     return Result::SUCCESS;
 }
 
@@ -557,6 +587,15 @@ Result Shapes::updatePixelSize(const Extent2D<F32>& pixelSize) {
     return Result::SUCCESS;
 }
 
+Result Shapes::updateTranslation(const Extent2D<F32>& translation) {
+    const glm::vec2 next(translation.x, translation.y);
+    if (pimpl->uniforms.translation != next) {
+        pimpl->uniforms.translation = next;
+        pimpl->updateTranslationBufferFlag = true;
+    }
+    return Result::SUCCESS;
+}
+
 Result Shapes::updateScissorRect(const std::optional<Render::ScissorRect>& rect) {
     pimpl->program->scissorRect(rect);
     return Result::SUCCESS;
@@ -583,7 +622,11 @@ Result Shapes::present() {
     if (pimpl->updateUniformBufferFlag) {
         pimpl->uniformBuffer->update();
         pimpl->updateUniformBufferFlag = false;
+        pimpl->updateTranslationBufferFlag = false;
         pimpl->computeInstanceBufferFlag = true;
+    } else if (pimpl->updateTranslationBufferFlag) {
+        pimpl->uniformBuffer->update();
+        pimpl->updateTranslationBufferFlag = false;
     }
 
     // Update compute buffers.

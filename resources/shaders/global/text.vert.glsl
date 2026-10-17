@@ -5,6 +5,8 @@ layout(set = 0, binding = 0) uniform ShaderUniforms {
     vec3 color;
     float sharpness;
     float atlasPixelRange;
+    float _padding;
+    vec2 translation;
 } uniforms;
 
 layout(location = 0) in vec2 inPosition;
@@ -23,6 +25,7 @@ layout(location = 1) out vec4 outColor;
 void main() {
     mat4 inTransform = mat4(inTransform0, inTransform1, inTransform2, inTransform3);
     gl_Position = inTransform * vec4(inPosition, 1.0, 1.0);
+    gl_Position.xy += uniforms.translation * gl_Position.w;
     outTexcoord = inTexcoord;
     outColor = inColor;
 }

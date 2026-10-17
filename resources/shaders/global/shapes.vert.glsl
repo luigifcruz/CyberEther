@@ -3,7 +3,7 @@
 
 layout(set = 0, binding = 0) uniform ShaderUniforms {
     vec2 pixelSize;
-    vec2 _padding;
+    vec2 translation;
 } uniforms;
 
 layout(location = 0) in vec2 inPosition;
@@ -16,7 +16,7 @@ layout(location = 4) in vec4 inTransform3;
 
 layout(location = 5) in vec4 inFillColor;
 layout(location = 6) in vec4 inBorderColor;
-layout(location = 7) in vec4 inShapeParams; // x=type, y=borderWidth, z=cornerRadius, w=unused
+layout(location = 7) in vec4 inShapeParams; // x=type, y=borderWidth, z=cornerRadius, w=corner mask (0 = all)
 
 layout(location = 0) out vec2 outLocalPos;
 layout(location = 1) out vec4 outFillColor;
@@ -28,6 +28,7 @@ void main() {
     mat4 inTransform = mat4(inTransform0, inTransform1, inTransform2, inTransform3);
 
     gl_Position = inTransform * vec4(inPosition, 1.0, 1.0);
+    gl_Position.xy += uniforms.translation * gl_Position.w;
 
     // Pass local position for distance calculations in fragment shader
     outLocalPos = inPosition;

@@ -5,6 +5,8 @@ layout(set = 0, binding = 0) uniform ShaderUniforms {
     vec3 color;
     float sharpness;
     float atlasPixelRange;
+    float _padding;
+    vec2 translation;
 } uniforms;
 
 layout(location = 0) in vec2 inTexcoord;

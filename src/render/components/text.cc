@@ -56,7 +56,8 @@ struct Text::Impl {
         glm::vec3 color;
         F32 sharpness;
         F32 atlasPixelRange;
-        F32 padding[3];
+        F32 padding;
+        glm::vec2 translation;
     };
 
     struct InstanceData {
@@ -78,7 +79,7 @@ struct Text::Impl {
     // Variables.
 
     const Config& config;
-    UniformBuffer uniforms;
+    UniformBuffer uniforms{};
     std::unordered_map<std::string, Element> elements;
     U64 vertexCount = 0;
 
@@ -451,8 +452,27 @@ Result Text::updatePixelSize(const Extent2D<F32>& pixelSize) {
     return Result::SUCCESS;
 }
 
+Result Text::updateTranslation(const Extent2D<F32>& translation) {
+    const glm::vec2 next(translation.x, translation.y);
+    if (pimpl->uniforms.translation != next) {
+        pimpl->uniforms.translation = next;
+        pimpl->updateFontUniformBufferFlag = true;
+    }
+    return Result::SUCCESS;
+}
+
 Result Text::updateScissorRect(const std::optional<Render::ScissorRect>& rect) {
     pimpl->fontProgram->scissorRect(rect);
+    return Result::SUCCESS;
+}
+
+Result Text::updateColor(const ColorRGBA<F32>& color) {
+    if (config.color == color) {
+        return Result::SUCCESS;
+    }
+    config.color = color;
+    JST_CHECK(pimpl->updateUniforms());
+    JST_CHECK(pimpl->updateInstances());
     return Result::SUCCESS;
 }
 

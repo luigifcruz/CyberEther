@@ -69,7 +69,10 @@ class JETSTREAM_API Shapes : public Generic {
                             F32 borderWidth,
                             const ColorRGBA<F32>& borderColor);
 
+    Result updateCorners(const std::string& elementId, std::span<const U8> corners);
+
     Result updatePixelSize(const Extent2D<F32>& pixelSize);
+    Result updateTranslation(const Extent2D<F32>& translation);
     Result updateScissorRect(const std::optional<Render::ScissorRect>& rect);
     void enabled(bool value);
 

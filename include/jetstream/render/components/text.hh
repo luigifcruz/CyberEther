@@ -65,7 +65,9 @@ class JETSTREAM_API Text : public Generic {
     void enabled(bool value);
 
     Result updatePixelSize(const Extent2D<F32>& pixelSize);
+    Result updateTranslation(const Extent2D<F32>& translation);
     Result updateScissorRect(const std::optional<Render::ScissorRect>& rect);
+    Result updateColor(const ColorRGBA<F32>& color);
 
     constexpr const Config& getConfig() const {
         return config;
