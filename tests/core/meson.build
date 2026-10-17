@@ -111,14 +111,24 @@ foreach domain, sources : core_test_domains
         [core_test_main] + sources,
         dependencies: core_test_dependencies,
         include_directories: core_test_includes,
+        link_args: test_link_args,
+        link_depends: browser_exe_link_depends,
+        build_by_default: test_build_by_default,
         cpp_args: domain == 'runtime' ? [
             '-DJETSTREAM_PYTHON_TEST_WHEEL="' + (meson.current_source_dir() /
                 'runtime/fixtures/cyberether_cache_fixture-1.0-py3-none-any.whl') + '"',
         ] : [],
     )
     core_test_targets += [domain_tests]
-    test('core-' + domain, domain_tests,
-         suite: 'core', is_parallel: false, timeout: 180)
+    if jst_is_browser
+        test('core-' + domain, node,
+             args: [files('../browser/run.cjs'), domain_tests.full_path()],
+             depends: domain_tests,
+             suite: ['core', 'wasm'], is_parallel: false, timeout: 180)
+    else
+        test('core-' + domain, domain_tests,
+             suite: 'core', is_parallel: false, timeout: 180)
+    endif
 endforeach
 
 # TODO: Re-enable after CLI output capture supports separate Windows static CRTs.
@@ -128,10 +138,20 @@ if not jst_is_ios and not jst_is_android and not jst_is_windows
         'integration/cli.cc',
         dependencies: core_test_dependencies,
         include_directories: core_test_includes,
+        link_args: test_link_args,
+        link_depends: browser_exe_link_depends,
+        build_by_default: test_build_by_default,
     )
     core_test_targets += [core_integration_tests]
-    test('core-integration', core_integration_tests,
-         suite: 'core', is_parallel: false, timeout: 60)
+    if jst_is_browser
+        test('core-integration', node,
+             args: [files('../browser/run.cjs'), core_integration_tests.full_path(), '--timeout', '45000'],
+             depends: core_integration_tests,
+             suite: ['core', 'wasm'], is_parallel: false, timeout: 60)
+    else
+        test('core-integration', core_integration_tests,
+             suite: 'core', is_parallel: false, timeout: 60)
+    endif
 endif
 
 alias_target('jetstream-core-tests', core_test_targets)

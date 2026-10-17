@@ -992,9 +992,16 @@ TEST_CASE("CLI rejects invalid retained broker settings before backend startup",
 }
 
 int main(int argc, char* argv[]) {
+#ifdef JST_OS_BROWSER
+    (void)argc;
+    (void)argv;
+    jst::fmt::print("[SKIP] Native CLI commands are not available in the browser entry point.\n");
+    return 77;
+#else
     SettingsSandbox sandbox;
     settingsSandbox = &sandbox;
     const int code = Catch::Session().run(argc, argv);
     settingsSandbox = nullptr;
     return code;
+#endif
 }
