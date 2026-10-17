@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_DOMAINS_VISUALIZATION_FRAME_MODULE_IMPL_HH
 #define JETSTREAM_DOMAINS_VISUALIZATION_FRAME_MODULE_IMPL_HH
 
+#include <optional>
 #include <array>
 #include <atomic>
 #include <string>
@@ -47,6 +48,7 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
     std::atomic<F32> autoRangeMax{1.0f};
 
     SurfaceInteractionState interaction;
+    std::optional<SurfaceTheme> appliedTheme;
 
     struct {
         F32 zoom = 1.0f;
@@ -102,6 +104,7 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
     Result createPresent();
     Result destroyPresent();
     Result present();
+    Result applyTheme();
 
     void processInputEvents(const std::vector<InputEvent>& events);
     void clampViewCenter();

@@ -85,6 +85,8 @@ Result ConstellationImpl::createPresent() {
         return Result::SUCCESS;
     }
 
+    appliedTheme.reset();
+
     JST_DEBUG("[MODULE_CONSTELLATION] Creating present resources...");
 
     if (!window->hasFont("default_mono")) {
@@ -136,7 +138,7 @@ Result ConstellationImpl::createPresent() {
     {
         Render::Surface::Config cfg;
         cfg.framebuffer = framebufferTexture;
-        cfg.clearColor = {0.0f, 0.0f, 0.0f, 1.0f};
+        cfg.clearColor = interaction.theme.background;
         JST_CHECK(axis->surfaceUnderlay(cfg));
         JST_CHECK(shapes->surface(cfg));
         JST_CHECK(axis->surfaceOverlay(cfg));
@@ -169,6 +171,25 @@ Result ConstellationImpl::destroyPresent() {
     JST_CHECK(window->unbind(axis));
     JST_CHECK(window->unbind(shapes));
 
+    return Result::SUCCESS;
+}
+
+Result ConstellationImpl::applyTheme() {
+    const auto& theme = interaction.theme;
+    if (appliedTheme == theme) {
+        return Result::SUCCESS;
+    }
+    if (renderSurface) {
+        renderSurface->clearColor(theme.background);
+    }
+    if (axis) {
+        JST_CHECK(axis->updateColors(theme.grid, theme.majorGrid, theme.foreground));
+    }
+    std::span<ColorRGBA<F32>> colors;
+    JST_CHECK(shapes->getColors("constellation_points", colors));
+    std::fill(colors.begin(), colors.end(), theme.foreground);
+    JST_CHECK(shapes->updateColors("constellation_points"));
+    appliedTheme = theme;
     return Result::SUCCESS;
 }
 
@@ -209,6 +230,8 @@ Result ConstellationImpl::present() {
             interaction.zoom = 1.0f;
         }
     }
+
+    JST_CHECK(applyTheme());
 
     if (interaction.viewChanged) {
         renderSurface->size(interaction.viewSize);

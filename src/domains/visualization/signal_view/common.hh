@@ -303,6 +303,7 @@ struct SignalViewCanvas {
     Result destroy(const std::shared_ptr<Render::Window>& window);
 
     Result processSurfaceEvents(std::vector<SurfaceEvent>&& events);
+    Result applyTheme(const Context& context);
     SurfaceCursor processInputEvents(std::vector<InputEvent>&& events,
                                      const Context& context,
                                      const Edits& edits);
@@ -311,6 +312,7 @@ struct SignalViewCanvas {
     Result present(const Context& context);
 
     SurfaceInteractionState interaction;
+    std::optional<SurfaceTheme> appliedTheme;
     detail::SignalViewSplitInteraction splitter;
     CursorState cursor;
     bool displayHeld = false;

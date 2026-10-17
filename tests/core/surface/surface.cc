@@ -134,3 +134,17 @@ TEST_CASE("Surface interaction restores unchanged placement on plain resize",
     REQUIRE(result.viewChanged);
     REQUIRE(result.placement == SurfacePlacementType::Detached);
 }
+
+TEST_CASE("Resize events carry the surface theme into the interaction state",
+          "[core][surface][interaction][theme]") {
+    SurfaceInteractionState state;
+    CHECK(state.theme == SurfaceTheme{});
+    SurfaceTheme theme;
+    theme.background = {0.98f, 0.98f, 0.985f, 1.0f};
+    theme.accent = {0.86f, 0.52f, 0.0f, 1.0f};
+    state = ProcessSurfaceInteraction(state, {{.type = SurfaceEventType::Resize, .size = {320, 200}, .theme = theme}}, {});
+    CHECK(state.theme == theme);
+    CHECK(state.viewChanged);
+    state = ProcessSurfaceInteraction(state, {}, {});
+    CHECK(state.theme == theme);
+}

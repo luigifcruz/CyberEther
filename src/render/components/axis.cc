@@ -361,6 +361,23 @@ Result Axis::create(Window* window) {
     return Result::SUCCESS;
 }
 
+Result Axis::updateColors(const ColorRGBA<F32>& gridColor,
+                          const ColorRGBA<F32>& majorGridColor,
+                          const ColorRGBA<F32>& labelColor) {
+    if (config.gridColor != gridColor || config.majorGridColor != majorGridColor) {
+        config.gridColor = gridColor;
+        config.majorGridColor = majorGridColor;
+        pimpl->gridUniforms.gridColor = {gridColor.r, gridColor.g, gridColor.b, gridColor.a};
+        pimpl->gridUniforms.majorColor = {majorGridColor.r, majorGridColor.g, majorGridColor.b, majorGridColor.a};
+        pimpl->updateGridUniformsFlag = true;
+    }
+    config.labelColor = labelColor;
+    if (pimpl->text) {
+        JST_CHECK(pimpl->text->updateColor(labelColor));
+    }
+    return Result::SUCCESS;
+}
+
 Result Axis::destroy(Window* window) {
     JST_CHECK(window->unbind(pimpl->text));
     return Result::SUCCESS;

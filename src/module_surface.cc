@@ -39,7 +39,7 @@ SurfaceInteractionState ProcessSurfaceInteraction(SurfaceInteractionState state,
             if (scaleChanged) {
                 state.scale = event.scale;
             }
-            state.backgroundColor = event.backgroundColor;
+            state.theme = event.theme;
             state.placement = event.placement;
 
             if (sizeChanged || scaleChanged || placementChanged) {

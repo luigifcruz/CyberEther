@@ -51,6 +51,8 @@ struct WorkbenchActions {
             .render = state.system.render.get(),
         });
 
+        RethemeSurfaces(state.flowgraph.surfaces, state.sakura.colorMap);
+
         Settings settings;
         JST_CHECK(Settings::Get(settings));
         settings.interface.themeKey = state.sakura.themeKey;

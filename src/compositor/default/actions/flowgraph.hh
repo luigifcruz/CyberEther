@@ -625,11 +625,12 @@ struct FlowgraphActions {
         event.type = SurfaceEventType::Resize;
         event.size = msg.resize.framebufferSize;
         event.scale = msg.resize.scale;
-        event.backgroundColor = {0.0f, 0.0f, 0.0f, 1.0f};
         event.placement = (msg.placement == SurfacePlacement::Attached)
                               ? SurfacePlacementType::Attached
                               : SurfacePlacementType::Detached;
+        event.theme = MakeSurfaceTheme(state.sakura.colorMap, event.placement);
         msg.surface->pushSurfaceEvent(event);
+        state.flowgraph.surfaces[msg.surface.get()] = {.surface = msg.surface, .event = event};
 
         return Result::SUCCESS;
     }

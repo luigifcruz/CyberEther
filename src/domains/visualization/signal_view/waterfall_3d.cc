@@ -32,8 +32,6 @@ constexpr F32 kAgeFadeStrength = 0.3f;
 constexpr F32 kAgeFadeExponent = 1.5f;
 constexpr F32 kTraceWidthPx = 2.0f;
 constexpr F32 kHoldGapPx = 10.0f;
-constexpr ColorRGBA<F32> kFrameColor = {0.62f, 0.66f, 0.72f, 1.0f};
-constexpr ColorRGBA<F32> kHoldColor = {1.0f, 0.85f, 0.0f, 1.0f};
 
 std::string TickElementId(const char* prefix, const U64 index) {
     return jst::fmt::format("{}-{}", prefix, index);
@@ -97,7 +95,7 @@ Result SignalViewWaterfall3D::create(const std::shared_ptr<Render::Window>& wind
     {
         Render::Components::Text::Config cfg;
         cfg.maxCharacters = 512;
-        cfg.color = {0.86f, 0.88f, 0.92f, 1.0f};
+        cfg.color = interaction.theme.foreground;
         cfg.font = window->font("default_mono");
         for (const char* prefix : {"freq", "time", "amp"}) {
             for (U64 index = 0; index < kTickCount; ++index) {
@@ -107,7 +105,7 @@ Result SignalViewWaterfall3D::create(const std::shared_ptr<Render::Window>& wind
         cfg.elements["x-title"] = {.scale = kTitleScale, .fill = " "};
         cfg.elements["time-title"] = {.scale = kTitleScale, .fill = " "};
         cfg.elements["amp-title"] = {.scale = kTitleScale, .fill = " "};
-        cfg.elements["hold"] = {.scale = kTitleScale, .fill = " ", .color = kHoldColor};
+        cfg.elements["hold"] = {.scale = kTitleScale, .fill = " ", .color = interaction.theme.accent};
         JST_CHECK(window->build(text, cfg));
         JST_CHECK(window->bind(text));
     }
@@ -344,7 +342,7 @@ Result SignalViewWaterfall3D::create(const std::shared_ptr<Render::Window>& wind
         Render::Surface::Config cfg;
         cfg.framebuffer = framebufferTexture;
         cfg.multisampled = true;
-        cfg.clearColor = interaction.backgroundColor;
+        cfg.clearColor = interaction.theme.background;
         cfg.kernels = {filterKernel};
         cfg.programs = {backdrop.program};
         JST_CHECK(text->surface(cfg));
@@ -357,7 +355,9 @@ Result SignalViewWaterfall3D::create(const std::shared_ptr<Render::Window>& wind
         JST_CHECK(window->bind(renderSurface));
     }
 
-    frameUniforms.color = {kFrameColor.r, kFrameColor.g, kFrameColor.b, kFrameColor.a};
+    appliedTheme = interaction.theme;
+    const auto& frameColor = interaction.theme.secondary;
+    frameUniforms.color = {frameColor.r, frameColor.g, frameColor.b, frameColor.a};
     frameUniforms.lineColor = frameUniforms.color;
     JST_CHECK(frameUniformBuffer->update());
 
@@ -396,9 +396,20 @@ Result SignalViewWaterfall3D::present(std::vector<SurfaceEvent>&& surfaceEvents,
     interaction = ProcessSurfaceInteraction(interaction, std::move(surfaceEvents), {});
     processInputEvents(std::move(inputEvents));
 
+    if (interaction.theme != appliedTheme) {
+        const auto& theme = interaction.theme;
+        renderSurface->clearColor(theme.background);
+        JST_CHECK(text->updateColor(theme.foreground));
+        auto hold = text->get("hold");
+        hold.color = theme.accent;
+        JST_CHECK(text->update("hold", hold));
+        frameUniforms.color = {theme.secondary.r, theme.secondary.g, theme.secondary.b, theme.secondary.a};
+        appliedTheme = theme;
+        sceneDirty = true;
+    }
+
     if (interaction.viewChanged) {
         renderSurface->size(interaction.viewSize);
-        renderSurface->clearColor(interaction.backgroundColor);
         pixelSize = {
             (2.0f * interaction.scale) / interaction.viewSize.x,
             (2.0f * interaction.scale) / interaction.viewSize.y,
@@ -632,9 +643,9 @@ Result SignalViewWaterfall3D::updateScene() {
         0.0f, 0.0f);
     meshUniforms.lightDirection = glm::vec4(light, kAmbientLight);
     meshUniforms.fade = glm::vec4(kAgeFadeStrength, kAgeFadeExponent, 0.0f, 0.0f);
-    meshUniforms.background = glm::vec4(interaction.backgroundColor.r,
-                                        interaction.backgroundColor.g,
-                                        interaction.backgroundColor.b,
+    meshUniforms.background = glm::vec4(interaction.theme.background.r,
+                                        interaction.theme.background.g,
+                                        interaction.theme.background.b,
                                         1.0f);
     meshUniforms.viewport = glm::vec4(static_cast<F32>(interaction.viewSize.x),
                                       static_cast<F32>(interaction.viewSize.y),
@@ -654,7 +665,7 @@ Result SignalViewWaterfall3D::updateScene() {
 
     // Frame geometry.
 
-    const ColorRGBA<F32> lineColor = displayHeld ? kHoldColor : kFrameColor;
+    const ColorRGBA<F32> lineColor = displayHeld ? interaction.theme.accent : interaction.theme.secondary;
     frameUniforms.lineColor = {lineColor.r, lineColor.g, lineColor.b, lineColor.a};
     JST_CHECK(frameUniformBuffer->update());
 

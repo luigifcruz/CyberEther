@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_DOMAINS_VISUALIZATION_SPECTROGRAM_MODULE_IMPL_HH
 #define JETSTREAM_DOMAINS_VISUALIZATION_SPECTROGRAM_MODULE_IMPL_HH
 
+#include <optional>
 #include <jetstream/domains/visualization/spectrogram/module.hh>
 #include <jetstream/detail/module_impl.hh>
 #include <jetstream/surface.hh>
@@ -41,6 +42,7 @@ struct SpectrogramImpl : public Module::Impl, public DynamicConfig<Spectrogram> 
 
     // Surface interaction state.
     SurfaceInteractionState interaction;
+    std::optional<SurfaceTheme> appliedTheme;
 
     // Rendering members.
 
@@ -75,6 +77,7 @@ struct SpectrogramImpl : public Module::Impl, public DynamicConfig<Spectrogram> 
     Result createPresent();
     Result destroyPresent();
     Result present();
+    Result applyTheme();
     Result updateAxisState();
 };
 

@@ -13,6 +13,13 @@ namespace Jetstream::Modules {
 
 namespace {
 
+constexpr F32 kSelectionFillAlpha = 0.15f;
+constexpr F32 kSelectionEdgeAlpha = 0.9f;
+
+}  // namespace
+
+namespace {
+
 bool IsValidFit(const std::string& fit) {
     return fit == "contain" || fit == "cover" || fit == "stretch";
 }
@@ -141,6 +148,8 @@ Result FrameImpl::createPresent() {
         return Result::SUCCESS;
     }
 
+    appliedTheme.reset();
+
     JST_DEBUG("[MODULE_FRAME] Creating present resources...");
 
     if (!window->hasFont("default_mono")) {
@@ -223,6 +232,7 @@ Result FrameImpl::createPresent() {
                                  Render::Program::Target::FRAGMENT},
             {frameBuffer, Render::Program::Target::FRAGMENT},
         };
+        cfg.enableAlphaBlending = true;
         JST_CHECK(window->build(frameProgram, cfg));
     }
 
@@ -287,7 +297,7 @@ Result FrameImpl::createPresent() {
         Render::Surface::Config cfg;
         cfg.framebuffer = framebufferTexture;
         cfg.multisampled = false;
-        cfg.clearColor = {0.0f, 0.0f, 0.0f, 1.0f};
+        cfg.clearColor = interaction.theme.background;
         cfg.programs.push_back(frameProgram);
         JST_CHECK(axis->surfaceUnderlay(cfg));
         JST_CHECK(axis->surfaceOverlay(cfg));
@@ -323,6 +333,32 @@ Result FrameImpl::destroyPresent() {
     return Result::SUCCESS;
 }
 
+Result FrameImpl::applyTheme() {
+    const auto& theme = interaction.theme;
+    if (appliedTheme == theme) {
+        return Result::SUCCESS;
+    }
+    if (renderSurface) {
+        renderSurface->clearColor(theme.background);
+    }
+    if (axis) {
+        JST_CHECK(axis->updateColors(theme.grid, theme.majorGrid, theme.foreground));
+    }
+    if (text) {
+        JST_CHECK(text->updateColor(theme.foreground));
+    }
+    if (selection) {
+        std::span<ColorRGBA<F32>> colors;
+        JST_CHECK(selection->getColors("selection", colors));
+        std::fill(colors.begin(), colors.end(), SurfaceAlpha(theme.foreground, kSelectionFillAlpha));
+        JST_CHECK(selection->updateColors("selection"));
+        JST_CHECK(selection->updateProperties("selection", 0.0f, interaction.scale,
+                                              SurfaceAlpha(theme.foreground, kSelectionEdgeAlpha)));
+    }
+    appliedTheme = theme;
+    return Result::SUCCESS;
+}
+
 Result FrameImpl::present() {
     auto inputEvents = surfaceConsumeInputEvents();
 
@@ -340,9 +376,10 @@ Result FrameImpl::present() {
         return Result::SUCCESS;
     }
 
+    JST_CHECK(applyTheme());
+
     if (interaction.viewChanged) {
         renderSurface->size(interaction.viewSize);
-        renderSurface->clearColor(interaction.backgroundColor);
         surfaceUpdateManifestSize("default", interaction.viewSize);
     }
 
@@ -499,7 +536,7 @@ Result FrameImpl::updateSelectionState() {
     JST_CHECK(selection->updatePositions("selection"));
     JST_CHECK(selection->updateSizes("selection"));
     JST_CHECK(selection->updateProperties("selection", 0.0f, interaction.scale,
-                                          {1.0f, 1.0f, 1.0f, 0.9f}));
+                                          SurfaceAlpha(interaction.theme.foreground, kSelectionEdgeAlpha)));
 
     return Result::SUCCESS;
 }

@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_DOMAINS_VISUALIZATION_CONSTELLATION_MODULE_IMPL_HH
 #define JETSTREAM_DOMAINS_VISUALIZATION_CONSTELLATION_MODULE_IMPL_HH
 
+#include <optional>
 #include <jetstream/domains/visualization/constellation/module.hh>
 #include <jetstream/detail/module_impl.hh>
 #include <jetstream/surface.hh>
@@ -29,6 +30,7 @@ struct ConstellationImpl : public Module::Impl,
 
     // Surface interaction state.
     SurfaceInteractionState interaction;
+    std::optional<SurfaceTheme> appliedTheme;
 
     // Rendering state.
     std::shared_ptr<Render::Texture> framebufferTexture;
@@ -42,6 +44,7 @@ struct ConstellationImpl : public Module::Impl,
     Result createPresent();
     Result destroyPresent();
     Result present();
+    Result applyTheme();
     Result updateAxisState();
     Result updatePointPositions();
 };

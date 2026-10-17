@@ -461,7 +461,6 @@ Result Superluminal::start() {
                                         event.type = SurfaceEventType::Resize;
                                         event.size = {expectedWidth, expectedHeight};
                                         event.scale = 0.5f * impl->config.interfaceScale * io.DisplayFramebufferScale.x;
-                                        event.backgroundColor = {0.0f, 0.0f, 0.0f, 1.0f};
                                         surface->pushSurfaceEvent(event);
                                     }
 

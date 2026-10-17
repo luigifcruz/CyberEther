@@ -142,11 +142,28 @@ enum class JETSTREAM_API SurfacePlacementType : U8 {
     Detached = 1,
 };
 
+struct JETSTREAM_API SurfaceTheme {
+    ColorRGBA<F32> background = {0.0f, 0.0f, 0.0f, 1.0f};
+    ColorRGBA<F32> foreground = {1.0f, 1.0f, 1.0f, 1.0f};
+    ColorRGBA<F32> secondary = {0.62f, 0.66f, 0.72f, 1.0f};
+    ColorRGBA<F32> grid = {0.12f, 0.12f, 0.12f, 1.0f};
+    ColorRGBA<F32> majorGrid = {0.5f, 0.5f, 0.5f, 1.0f};
+    ColorRGBA<F32> accent = {1.0f, 0.85f, 0.0f, 1.0f};
+    ColorRGBA<F32> halo = {0.0f, 0.0f, 0.0f, 0.65f};
+    ColorRGBA<F32> pill = {0.07f, 0.07f, 0.07f, 0.9f};
+
+    bool operator==(const SurfaceTheme&) const = default;
+};
+
+inline ColorRGBA<F32> SurfaceAlpha(const ColorRGBA<F32>& color, F32 alpha) {
+    return {color.r, color.g, color.b, alpha};
+}
+
 struct JETSTREAM_API SurfaceEvent {
     SurfaceEventType type;
     Extent2D<U64> size;
     F32 scale = 1.0f;
-    ColorRGBA<F32> backgroundColor = {0.0f, 0.0f, 0.0f, 1.0f};
+    SurfaceTheme theme;
     SurfacePlacementType placement = SurfacePlacementType::Detached;
 };
 
@@ -184,7 +201,7 @@ struct JETSTREAM_API SurfaceInteractionState {
     F32 offset = 0.0f;
     F32 scale = 1.0f;
     Extent2D<U64> viewSize = {512, 512};
-    ColorRGBA<F32> backgroundColor = {0.0f, 0.0f, 0.0f, 1.0f};
+    SurfaceTheme theme;
 
     Extent2D<F32> cursorNormalized = {0.0f, 0.0f};
 

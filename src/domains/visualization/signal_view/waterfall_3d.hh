@@ -568,6 +568,7 @@ class SignalViewWaterfall3D {
     SignalViewWaterfall3DLabels labels;
 
     SurfaceInteractionState interaction;
+    SurfaceTheme appliedTheme;
     detail::Waterfall3DCamera camera;
     detail::Waterfall3DCamera cameraGoal;
     bool cameraHome = true;

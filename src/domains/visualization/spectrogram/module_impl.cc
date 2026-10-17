@@ -145,6 +145,8 @@ Result SpectrogramImpl::createPresent() {
         return Result::SUCCESS;
     }
 
+    appliedTheme.reset();
+
     JST_DEBUG("[MODULE_SPECTROGRAM] Creating present resources...");
 
     if (!window->hasFont("default_mono")) {
@@ -267,6 +269,7 @@ Result SpectrogramImpl::createPresent() {
         Render::Surface::Config cfg;
         cfg.framebuffer = framebufferTexture;
         cfg.multisampled = false;
+        cfg.clearColor = interaction.theme.background;
         cfg.programs.push_back(signalProgram);
         JST_CHECK(axis->surfaceUnderlay(cfg));
         JST_CHECK(axis->surfaceOverlay(cfg));
@@ -299,6 +302,21 @@ Result SpectrogramImpl::destroyPresent() {
     return Result::SUCCESS;
 }
 
+Result SpectrogramImpl::applyTheme() {
+    const auto& theme = interaction.theme;
+    if (appliedTheme == theme) {
+        return Result::SUCCESS;
+    }
+    if (renderSurface) {
+        renderSurface->clearColor(theme.background);
+    }
+    if (axis) {
+        JST_CHECK(axis->updateColors(theme.grid, theme.majorGrid, theme.foreground));
+    }
+    appliedTheme = theme;
+    return Result::SUCCESS;
+}
+
 Result SpectrogramImpl::present() {
     if (!signalBuffer) {
         return Result::SUCCESS;
@@ -307,6 +325,8 @@ Result SpectrogramImpl::present() {
     interaction = ProcessSurfaceInteraction(interaction,
                                             surfaceConsumeSurfaceEvents(),
                                             surfaceConsumeInputEvents());
+
+    JST_CHECK(applyTheme());
 
     if (interaction.viewChanged) {
         renderSurface->size(interaction.viewSize);

@@ -6,6 +6,7 @@ core_test_domains = {
     'application': ['application/instance_backend.cc'],
     'compositor': [
         'compositor/compositor.cc',
+        'compositor/surface_theme.cc',
         'compositor/stacks.cc',
     ],
     'extensions': [

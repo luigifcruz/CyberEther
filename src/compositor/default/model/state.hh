@@ -18,6 +18,7 @@
 #include "ui.hh"
 #include "meta.hh"
 #include "file_picker.hh"
+#include "surface_theme.hh"
 
 #include <future>
 #include <memory>
@@ -125,6 +126,7 @@ struct DefaultCompositorState {
         std::unordered_map<std::string, std::unordered_map<std::string, StackWindowState>> stacks;
         std::unordered_map<std::string, std::vector<BlockSnapshot>> blocks;
         std::unordered_map<std::string, std::string> liveMarkdown;
+        SurfaceTracks surfaces;
     };
 
     struct ClipboardState {

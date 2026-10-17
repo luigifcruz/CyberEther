@@ -57,6 +57,10 @@ class JETSTREAM_API Axis : public Generic {
 
     Result setShowFrameTicks(bool visible);
 
+    Result updateColors(const ColorRGBA<F32>& gridColor,
+                        const ColorRGBA<F32>& majorGridColor,
+                        const ColorRGBA<F32>& labelColor);
+
     Result updateTickFormatters(TickFormatter xFormatter,
                                 TickFormatter yFormatter = {});
 

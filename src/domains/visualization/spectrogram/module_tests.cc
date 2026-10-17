@@ -262,6 +262,63 @@ TEST_CASE("Spectrogram presents live metadata without view changes",
     REQUIRE(axis->destroy(&window) == Result::SUCCESS);
     REQUIRE(module->destroy() == Result::SUCCESS);
 }
+
+TEST_CASE("Spectrogram recolors its axis from the surface theme",
+          "[modules][spectrogram][present][theme]") {
+    Tensor input(DeviceType::CPU, DataType::F32, {32});
+    TensorMap inputs;
+    inputs["signal"].requested("source", "signal");
+    inputs["signal"].tensor = input;
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("spectrogram", DeviceType::CPU,
+                                  RuntimeType::NATIVE, "generic", module) ==
+            Result::SUCCESS);
+    Modules::Spectrogram config;
+    config.height = 4;
+    REQUIRE(module->create("spectrogram", config, inputs) == Result::SUCCESS);
+
+    LabelTestWindow window;
+    Render::Components::Axis::Config axisConfig;
+    axisConfig.showInteriorGrid = false;
+    axisConfig.font = std::make_shared<Render::Components::Font>(
+        Render::Components::Font::Config{});
+    auto axis = std::make_shared<LabelTestAxis>(axisConfig);
+    REQUIRE(axis->create(&window) == Result::SUCCESS);
+
+    auto* impl = module->getImpl<Modules::SpectrogramImpl>();
+    REQUIRE(impl);
+    impl->*SpectrogramImplAccess::axisMember() = axis;
+    impl->*SpectrogramImplAccess::signalBufferMember() =
+        std::make_shared<LabelTestBuffer>();
+    impl->*SpectrogramImplAccess::signalUniformBufferMember() =
+        std::make_shared<LabelTestBuffer>();
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+
+    const auto apply = [&](const SurfaceTheme& theme) {
+        module->surface()->pushSurfaceEvent({
+            .type = SurfaceEventType::Resize,
+            .size = {512, 512},
+            .theme = theme,
+        });
+        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        const auto& applied = axis->getConfig();
+        CHECK(applied.gridColor == theme.grid);
+        CHECK(applied.majorGridColor == theme.majorGrid);
+        CHECK(applied.labelColor == theme.foreground);
+    };
+
+    SurfaceTheme light;
+    light.background = {0.98f, 0.98f, 0.985f, 1.0f};
+    light.foreground = {0.12f, 0.12f, 0.14f, 1.0f};
+    light.grid = {0.89f, 0.89f, 0.90f, 1.0f};
+    light.majorGrid = {0.58f, 0.58f, 0.61f, 1.0f};
+    apply(light);
+    apply(SurfaceTheme{});
+
+    REQUIRE(axis->destroy(&window) == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
 #endif
 
 TEST_CASE("Spectrogram module accepts valid height boundaries and input ranks",
