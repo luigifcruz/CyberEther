@@ -12,6 +12,8 @@
 #include "resources/fonts/compressed_jbmm.hh"
 #include "resources/fonts/compressed_jbmb.hh"
 #include "resources/fonts/compressed_sg.hh"
+#include "resources/fonts/compressed_sgr.hh"
+#include "resources/fonts/compressed_sgsb.hh"
 #include "resources/fonts/compressed_inter.hh"
 #include "resources/fonts/compressed_fa.hh"
 
@@ -241,10 +243,32 @@ Result Instance::create(const Config& config) {
 
         Render::Components::Font::Config cfg;
         cfg.data = sg_compressed_data;
-        cfg.size = 32.0f;
+        cfg.size = 64.0f;
 
         JST_CHECK(impl->render->build(font, cfg));
         JST_CHECK(impl->render->addFont("default_display", font));
+    }
+
+    {
+        std::shared_ptr<Render::Components::Font> font;
+
+        Render::Components::Font::Config cfg;
+        cfg.data = sgsb_compressed_data;
+        cfg.size = 32.0f;
+
+        JST_CHECK(impl->render->build(font, cfg));
+        JST_CHECK(impl->render->addFont("default_display_semibold", font));
+    }
+
+    {
+        std::shared_ptr<Render::Components::Font> font;
+
+        Render::Components::Font::Config cfg;
+        cfg.data = sgr_compressed_data;
+        cfg.size = 32.0f;
+
+        JST_CHECK(impl->render->build(font, cfg));
+        JST_CHECK(impl->render->addFont("default_display_regular", font));
     }
 
     {
@@ -321,6 +345,12 @@ Result Instance::destroy() {
     }
     if (impl->render && impl->render->hasFont("default_display")) {
         JST_CHECK(impl->render->removeFont("default_display"));
+    }
+    if (impl->render && impl->render->hasFont("default_display_semibold")) {
+        JST_CHECK(impl->render->removeFont("default_display_semibold"));
+    }
+    if (impl->render && impl->render->hasFont("default_display_regular")) {
+        JST_CHECK(impl->render->removeFont("default_display_regular"));
     }
     if (impl->render && impl->render->hasFont("default_body")) {
         JST_CHECK(impl->render->removeFont("default_body"));
