@@ -4,6 +4,7 @@
 #include "file_picker.hh"
 #include "messages.hh"
 
+#include "jetstream/agent/tools.hh"
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/types.hh"
 
@@ -22,9 +23,7 @@ struct DefaultCompositorCallbacks {
     std::function<void(Result, const std::string&)> notifyResult;
     std::function<void(const std::string&)> setClipboardText;
     std::function<Result(FilePickerRequest)> requestFile;
-    std::function<void(const std::string&, const std::string&, Rect, Extent2D<F32>,
-                       std::optional<Extent2D<F32>>)> recordNodeBounds;
-    std::function<void(const std::string&, Rect, Rect)> recordViewport;
+    std::function<void(const std::string&, Agent::Tools::Layout)> layout;
     std::function<void()> checkForUpdates;
     std::function<void()> downloadUpdate;
     std::function<bool()> applyUpdate;

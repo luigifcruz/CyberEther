@@ -7,6 +7,7 @@
 #include "jetstream/instance_remote.hh"
 #include "jetstream/module_surface.hh"
 #include "jetstream/parser.hh"
+#include "jetstream/settings.hh"
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/types.hh"
 
@@ -19,6 +20,92 @@
 #include <vector>
 
 namespace Jetstream {
+
+struct MailSetAgentEnabled {
+    bool value = true;
+};
+
+struct MailSetAgentChatVisible {
+    bool value = false;
+    bool focus = false;
+};
+
+struct MailSetAgentVoiceVisible {
+    bool value = false;
+};
+
+struct MailStartAgentVoice {};
+
+enum class AgentComposer : U8 {
+    Dock,
+    Welcome,
+};
+
+struct MailSubmitAgentChat {
+    AgentComposer composer = AgentComposer::Dock;
+    std::string text;
+    bool reveal = false;
+};
+
+struct MailCancelAgentChat {};
+struct MailClearAgentChat {};
+
+struct MailSelectAgentModel {
+    std::string provider;
+    std::string model;
+};
+
+struct MailSetAgentReasoningEffort {
+    std::string provider;
+    std::string model;
+    std::string value;
+};
+
+struct MailOpenAgentModelPicker {};
+
+struct MailSetAgentModelSearch {
+    std::string value;
+};
+
+struct MailAddAgentModel {
+    Settings::Intelligence::Model value;
+};
+
+struct MailRemoveAgentModel {
+    Settings::Intelligence::Model value;
+};
+
+struct MailOpenAgentProviderEditor {
+    std::optional<std::string> name;
+};
+
+struct MailSaveAgentProvider {
+    Settings::Intelligence::Provider value;
+    std::optional<std::string> replaceName;
+    std::string apiKey;
+};
+
+struct MailRemoveAgentProvider {
+    std::string name;
+};
+
+struct MailTestAgentProvider {
+    Settings::Intelligence::Provider value;
+    U64 revision = 0;
+    std::string apiKey;
+};
+
+struct MailSetAgentVoiceBackend {
+    Settings::Intelligence::Model value;
+};
+
+struct MailSetAgentVoiceModel {
+    std::string value;
+};
+
+struct MailSetAgentVoiceName {
+    std::string value;
+};
 
 struct MailNewFlowgraph {};
 
@@ -468,6 +555,26 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetGraphicsScale,
                           MailSetGraphicsDevice,
                           MailSetGraphicsFramerate,
+                          MailSetAgentEnabled,
+                          MailSetAgentChatVisible,
+                          MailSetAgentVoiceVisible,
+                          MailStartAgentVoice,
+                          MailSubmitAgentChat,
+                          MailCancelAgentChat,
+                          MailClearAgentChat,
+                          MailSelectAgentModel,
+                          MailSetAgentReasoningEffort,
+                          MailOpenAgentModelPicker,
+                          MailSetAgentModelSearch,
+                          MailAddAgentModel,
+                          MailRemoveAgentModel,
+                          MailOpenAgentProviderEditor,
+                          MailSaveAgentProvider,
+                          MailRemoveAgentProvider,
+                          MailTestAgentProvider,
+                          MailSetAgentVoiceBackend,
+                          MailSetAgentVoiceModel,
+                          MailSetAgentVoiceName,
                           MailSetDebugLatencyEnabled,
                           MailSetDebugTimingEnabled,
                           MailSetDebugLogLevel,

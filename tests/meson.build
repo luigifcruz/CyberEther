@@ -3,6 +3,7 @@ add_test_setup('default', is_default: true, exclude_suites: ['sdr'])
 subdir('hardware')
 
 if catch2_dep.found()
+    subdir('agent')
     subdir('core')
     subdir('modules')
 endif

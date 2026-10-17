@@ -32,6 +32,8 @@ struct MenubarView {
         OpenExamples,
         ReloadPlugins,
         ToggleInfoPanel,
+        ToggleAgent,
+        ToggleVoice,
         ToggleBackgroundParticles,
         RemoteStreaming,
         OpenSettings,
@@ -52,6 +54,9 @@ struct MenubarView {
         std::string id;
         bool hasFocusedFlowgraph = false;
         bool infoPanelEnabled = false;
+        bool intelligenceEnabled = true;
+        bool agentVisible = false;
+        bool voiceVisible = false;
         bool backgroundParticles = false;
         bool flowgraphMetadataVisible = false;
         bool flowgraphEnvironmentVisible = false;
@@ -230,6 +235,24 @@ struct MenubarView {
             .id = this->config.id + ":open-settings",
             .label = "Open In Settings",
             .onClick = [this]() { emit(Action::OpenSettings); },
+        });
+
+        intelligenceMenu.update({
+            .id = this->config.id + ":intelligence",
+            .label = "Intelligence",
+            .scale = 1.04f,
+        });
+        agentItem.update({
+            .id = this->config.id + ":agent",
+            .label = "Show Agent Window",
+            .selected = this->config.agentVisible,
+            .onClick = [this]() { emit(Action::ToggleAgent); },
+        });
+        voiceItem.update({
+            .id = this->config.id + ":voice",
+            .label = "Show Voice Window",
+            .selected = this->config.voiceVisible,
+            .onClick = [this]() { emit(Action::ToggleVoice); },
         });
 
         remoteMenu.update({
@@ -430,6 +453,15 @@ struct MenubarView {
                 openSettingsItem.render(ctx);
             });
 
+#ifndef JST_OS_BROWSER
+            if (config.intelligenceEnabled) {
+                intelligenceMenu.render(ctx, [this](const Sakura::Context& ctx) {
+                    agentItem.render(ctx);
+                    voiceItem.render(ctx);
+                });
+            }
+#endif
+
             remoteMenu.render(ctx, [this](const Sakura::Context& ctx) {
                 remoteStreamingItem.render(ctx);
                 dividers[6].render(ctx);
@@ -495,6 +527,7 @@ struct MenubarView {
     Sakura::Menu flowgraphMenu;
     Sakura::Menu viewMenu;
     Sakura::Menu themeMenu;
+    Sakura::Menu intelligenceMenu;
     Sakura::Menu remoteMenu;
     Sakura::Menu developerMenu;
     Sakura::Menu logLevelMenu;
@@ -516,6 +549,8 @@ struct MenubarView {
     Sakura::MenuItem openExamplesItem;
     Sakura::MenuItem reloadPluginsItem;
     Sakura::MenuItem infoPanelItem;
+    Sakura::MenuItem agentItem;
+    Sakura::MenuItem voiceItem;
     Sakura::MenuItem backgroundParticlesItem;
     std::vector<Sakura::MenuItem> themeItems;
     Sakura::MenuItem remoteStreamingItem;

@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "compositor/default/live_markdown.hh"
+#include "compositor/default/support/live_markdown.hh"
 #include "compositor/default/presenters/flowgraph/detached_config.hh"
 #include "compositor/default/presenters/flowgraph/stack.hh"
 #include "jetstream/flowgraph_environment.hh"

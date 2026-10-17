@@ -191,9 +191,6 @@ ChatMessageList::ChatMessageList(const Chat::Config& config) : config(config) {
     setClipsChildren(true);
     add(bubbleBoxes);
     add(scroll);
-    ensureSlots(userSlots, kUserSlotPoolSize);
-    ensureSlots(markdownSlots, kMarkdownSlotPoolSize);
-    ensureSlots(disclosureSlots, kDisclosureSlotPoolSize);
 }
 
 void ChatMessageList::reset() {
@@ -237,6 +234,9 @@ void ChatMessageList::layout(const Context& ctx) {
     clampScroll(m, height);
 
     auto placements = place(m);
+    ensureSlots(userSlots, std::min<U64>(kUserSlotPoolSize, placements.users.size()));
+    ensureSlots(markdownSlots, std::min<U64>(kMarkdownSlotPoolSize, placements.markdown.size()));
+    ensureSlots(disclosureSlots, std::min<U64>(kDisclosureSlotPoolSize, placements.disclosures.size()));
     LimitPlacements(placements.users, userSlots, userSlots.size(), followTail);
     LimitPlacements(placements.markdown, markdownSlots, markdownSlots.size(), followTail);
     LimitPlacements(placements.disclosures, disclosureSlots,
@@ -758,7 +758,7 @@ void ChatMessageList::bindBubbles(const Context& ctx, const Metrics& m,
         .cornerRadius = m.lineHeight * 0.5f + m.textPad,
         .borderWidth = 1.0f * m.unit,
         .borderColor = ctx.color("chat_user_bubble_outline"),
-        .capacity = std::max<U64>(1, userSlots.size()),
+        .capacity = kUserSlotPoolSize,
     });
     layoutChild(ctx, bubbleBoxes, m.bounds);
 }

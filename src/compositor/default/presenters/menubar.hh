@@ -4,7 +4,7 @@
 #include "context.hh"
 
 #include "../model/messages.hh"
-#include "../themes.hh"
+#include "../support/themes.hh"
 #include "../views/menubar.hh"
 
 #include <string>
@@ -20,6 +20,9 @@ struct MenubarPresenter {
         const auto enqueue = context.callbacks.enqueueMail;
         const auto focusedFlowgraph = context.state.interface.focusedFlowgraph;
         const bool infoPanelEnabled = context.state.interface.infoPanelEnabled;
+        const bool intelligenceEnabled = context.state.agent.settings.enabled;
+        const bool agentVisible = context.state.agent.ui.visible;
+        const bool voiceVisible = context.state.agent.ui.voiceVisible;
         const bool backgroundParticles = context.state.interface.backgroundParticles;
         const bool flowgraphMetadataVisible = context.state.interface.flowgraphMetadataVisible;
         const bool flowgraphEnvironmentVisible = context.state.interface.flowgraphEnvironmentVisible;
@@ -36,6 +39,9 @@ struct MenubarPresenter {
             .id = "main-menubar",
             .hasFocusedFlowgraph = focusedFlowgraph.has_value(),
             .infoPanelEnabled = infoPanelEnabled,
+            .intelligenceEnabled = intelligenceEnabled,
+            .agentVisible = agentVisible,
+            .voiceVisible = voiceVisible,
             .backgroundParticles = backgroundParticles,
             .flowgraphMetadataVisible = flowgraphMetadataVisible,
             .flowgraphEnvironmentVisible = flowgraphEnvironmentVisible,
@@ -50,6 +56,8 @@ struct MenubarPresenter {
             .onAction = [enqueue,
                          focusedFlowgraph,
                          infoPanelEnabled,
+                         agentVisible,
+                         voiceVisible,
                          backgroundParticles,
                          flowgraphMetadataVisible,
                          flowgraphEnvironmentVisible,
@@ -149,6 +157,12 @@ struct MenubarPresenter {
                         break;
                     case MenubarView::Action::ToggleInfoPanel:
                         enqueue(MailSetInfoPanelEnabled{.value = !infoPanelEnabled});
+                        break;
+                    case MenubarView::Action::ToggleAgent:
+                        enqueue(MailSetAgentChatVisible{.value = !agentVisible});
+                        break;
+                    case MenubarView::Action::ToggleVoice:
+                        enqueue(MailSetAgentVoiceVisible{.value = !voiceVisible});
                         break;
                     case MenubarView::Action::ToggleBackgroundParticles:
                         enqueue(MailSetBackgroundParticles{.value = !backgroundParticles});

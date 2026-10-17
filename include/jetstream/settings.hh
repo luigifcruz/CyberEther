@@ -79,6 +79,52 @@ struct JETSTREAM_API Settings {
         JST_SERDES(themeKey, infoPanelEnabled, backgroundParticles);
     };
 
+    struct Intelligence {
+        struct Provider {
+            std::string name;
+            std::string host;
+            std::string api;
+            std::string chatPath;
+            std::string modelsPath;
+            std::string apiKeyId;
+            bool requestReasoning = false;
+
+            JST_SERDES(name, host, api, chatPath, modelsPath, apiKeyId, requestReasoning);
+        };
+
+        struct Model {
+            std::string provider;
+            std::string id;
+            std::string name;
+            U64 contextLength = 0;
+            U64 maxOutputTokens = 0;
+            std::string reasoningEffort;
+            std::string reasoningContext;
+            U64 outputLength = 0;
+            std::vector<std::string> reasoningEfforts;
+
+            JST_SERDES(provider, id, name, contextLength, maxOutputTokens, reasoningEffort, reasoningContext, outputLength,
+                       reasoningEfforts);
+        };
+
+        struct Voice {
+            std::string model;
+            std::string voice;
+            Model backend;
+
+            JST_SERDES(model, voice, backend);
+        };
+
+        bool enabled = false;
+        std::string provider;
+        std::string model;
+        std::vector<Model> models;
+        std::vector<Provider> customProviders;
+        Voice voice;
+
+        JST_SERDES(enabled, provider, model, models, customProviders, voice);
+    };
+
     struct Developer {
         I32 logLevel = JST_LOG_DEBUG_DEFAULT_LEVEL;
         bool latencyEnabled = false;
@@ -115,12 +161,13 @@ struct JETSTREAM_API Settings {
     Graphics graphics;
     Remote remote;
     Interface interface;
+    Intelligence intelligence;
     Developer developer;
     Benchmark benchmark;
     Registry registry;
     Runtime runtime;
 
-    JST_SERDES(graphics, remote, interface, developer, registry, runtime);
+    JST_SERDES(graphics, remote, interface, intelligence, developer, registry, runtime);
 
     static Result Get(Settings& settings);
     static Result Set(const Settings& settings, bool persist = true);

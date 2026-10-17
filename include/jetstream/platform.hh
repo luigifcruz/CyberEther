@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "jetstream/types.hh"
@@ -73,6 +74,110 @@ JETSTREAM_API void DisableSocketSigPipe(std::uintptr_t socket) noexcept;
 JETSTREAM_API void IgnoreBrokenPipe() noexcept;
 JETSTREAM_API Result LocalNetworkAddress(std::string& address);
 #endif
+
+//
+// HTTP
+//
+
+class JETSTREAM_API Http {
+ public:
+    using Headers = std::vector<std::pair<std::string, std::string>>;
+
+    struct Error {
+        enum class Kind {
+            None,
+            Connection,
+            Timeout,
+            Tls,
+            Cancelled,
+            Unsupported,
+        };
+
+        Kind kind = Kind::None;
+        std::string message;
+
+        explicit operator bool() const {
+            return kind != Kind::None;
+        }
+    };
+
+    struct Request {
+        std::string method = "GET";
+        std::string host;
+        std::string path = "/";
+        Headers headers;
+        std::string body;
+        U64 timeoutSeconds = 30;
+        std::function<bool(I32 status, const Headers& headers)> onResponse;
+        std::function<bool(std::string_view data)> onData;
+        std::function<bool()> cancelled;
+    };
+
+    struct Response {
+        I32 status = 0;
+        Headers headers;
+        std::string body;
+        Error error;
+
+        std::string header(std::string_view name) const;
+    };
+
+    static Response Send(const Request& request);
+};
+
+//
+// WebSocket
+//
+
+class JETSTREAM_API WebSocket {
+ public:
+    enum class Message {
+        Text,
+        Binary,
+        Timeout,
+        Closed,
+    };
+
+    struct Config {
+        std::string url;
+        Http::Headers headers;
+        std::vector<std::string> protocols;
+        U64 connectTimeoutSeconds = 300;
+        U64 readTimeoutSeconds = 0;
+        U64 writeTimeoutSeconds = 5;
+        U64 pingIntervalSeconds = 30;
+        U64 maxMissedPongs = 0;
+        U64 bufferBytes = 0;
+        bool verifyCertificate = true;
+    };
+
+    struct Connection {
+        I32 status = -1;
+        std::string error;
+
+        explicit operator bool() const {
+            return error.empty();
+        }
+    };
+
+    explicit WebSocket(Config config);
+    ~WebSocket();
+
+    WebSocket(const WebSocket&) = delete;
+    WebSocket& operator=(const WebSocket&) = delete;
+
+    bool valid() const;
+    Connection connect();
+    Message read(std::string& payload);
+    bool send(std::string_view text);
+    void close();
+    void interrupt();
+    bool open() const;
+
+ private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+};
 
 //
 // Worker Thread

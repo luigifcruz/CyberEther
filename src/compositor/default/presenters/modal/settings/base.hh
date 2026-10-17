@@ -4,6 +4,7 @@
 #include "about.hh"
 #include "developer.hh"
 #include "general.hh"
+#include "intelligence.hh"
 #include "legal.hh"
 #include "registry.hh"
 #include "remote.hh"
@@ -22,6 +23,7 @@ struct SettingsModalPresenter {
     RemoteSettingsPresenter remote;
     RuntimeSettingsPresenter runtime;
     RegistrySettingsPresenter registry;
+    IntelligenceSettingsPresenter intelligence;
     DeveloperSettingsPresenter developer;
     AboutPresenter about;
     LegalSettingsPresenter legal;
@@ -31,6 +33,7 @@ struct SettingsModalPresenter {
                                                                        remote(context),
                                                                        runtime(context),
                                                                        registry(context),
+                                                                       intelligence(context),
                                                                        developer(context),
                                                                        about(context),
                                                                        legal(context) {}
@@ -43,6 +46,7 @@ struct SettingsModalPresenter {
         config.remote = remote.build();
         config.runtime = runtime.build();
         config.registry = registry.build();
+        config.intelligence = intelligence.build();
         config.developer = developer.build();
         config.about = about.build();
         config.legal = legal.build();

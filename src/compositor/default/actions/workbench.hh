@@ -5,7 +5,7 @@
 #include "../model/callbacks.hh"
 #include "../model/messages.hh"
 #include "../model/state.hh"
-#include "../themes.hh"
+#include "../support/themes.hh"
 
 #include "jetstream/settings.hh"
 #include "jetstream/platform.hh"

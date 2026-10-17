@@ -175,6 +175,10 @@ void RequireDefaults(const Settings& settings) {
     REQUIRE(settings.interface.themeKey == "Dark");
     REQUIRE(settings.interface.infoPanelEnabled);
     REQUIRE(settings.interface.backgroundParticles);
+    REQUIRE(settings.intelligence.provider.empty());
+    REQUIRE(settings.intelligence.model.empty());
+    REQUIRE(settings.intelligence.models.empty());
+    REQUIRE(settings.intelligence.customProviders.empty());
     REQUIRE(settings.developer.logLevel == defaults.developer.logLevel);
     REQUIRE_FALSE(settings.developer.latencyEnabled);
     REQUIRE_FALSE(settings.developer.timingEnabled);

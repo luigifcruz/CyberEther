@@ -81,6 +81,8 @@ if not jst_is_windows
         'compositor': core_test_domains['compositor'] + [
             'compositor/config_edits.cc',
             'compositor/live_markdown.cc',
+            'compositor/agent_bridge.cc',
+            'compositor/agent_responsiveness.cc',
         ],
         'render': core_test_domains['render'] + [
             'render/dockspace_window.cc',
