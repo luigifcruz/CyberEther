@@ -1,4 +1,12 @@
-add_test_setup('default', is_default: true, exclude_suites: ['sdr'])
+if jst_is_browser
+    node = find_program('node', native: true, required: true)
+    test_link_args = browser_exe_link_args + ['-O0', '-g0']
+else
+    test_link_args = []
+    add_test_setup('default', is_default: true, exclude_suites: ['sdr'])
+endif
+
+test_build_by_default = not jst_is_browser
 
 subdir('hardware')
 

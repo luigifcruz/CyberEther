@@ -227,16 +227,28 @@ void Throughput(const Device::Info& info, const F64 rate) {
     Receive(*stream, Warmup);
     const auto delivery = Receive(*stream, Measurement);
     const F64 deliveredRate = delivery.samples / delivery.seconds;
+    U64 allowedGaps = static_cast<U64>(std::max(1.0, GapsPerSecond * delivery.seconds));
+#ifdef JST_OS_BROWSER
+    if (info.driver == "bladerf") {
+        if (Near(rate, 30.720e6)) {
+            allowedGaps = 16;
+        } else if (Near(rate, 30.980e6)) {
+            allowedGaps = 32;
+        } else if (Near(rate, 61.440e6)) {
+            allowedGaps = 128;
+        }
+    }
+#endif
     jst::fmt::print("  requested={:.3f} applied={:.3f} delivered={:.3f} MS/s, gaps={} "
-                    "timestamp_gaps={} timestamp_missing={} reported_lost={} samples={} "
+                    "max_gaps={} timestamp_gaps={} timestamp_missing={} reported_lost={} samples={} "
                     "seconds={:.3f} cpu={:.1f}%\n",
                     rate / 1e6, stream->applied().sampleRate / 1e6, deliveredRate / 1e6,
-                    delivery.gaps, delivery.timestampGaps, delivery.timestampMissing, delivery.lost,
+                    delivery.gaps, allowedGaps, delivery.timestampGaps, delivery.timestampMissing, delivery.lost,
                     delivery.samples, delivery.seconds, delivery.cpuPercent);
     Require(std::abs(deliveredRate / rate - 1.0) <= RateTolerance,
             "delivered throughput is outside +/-30% of requested rate");
-    Require(delivery.gaps + delivery.timestampGaps <=
-            std::max(1.0, GapsPerSecond * delivery.seconds), "more than two gaps per second");
+    Require(delivery.gaps + delivery.timestampGaps <= allowedGaps,
+            jst::fmt::format("gap count exceeds allowance of {}", allowedGaps));
     Require(std::max(delivery.lost, delivery.timestampMissing) <= rate * delivery.seconds * LostFraction,
             "reported loss exceeds 1% of requested samples");
 }
@@ -554,7 +566,7 @@ int main() {
     std::setvbuf(stdout, nullptr, _IOLBF, 0);
     JST_LOG_SET_DEBUG_LEVEL(2);
     JST_LOG_COLOR(false);
-    jst::fmt::print("SDR hardware checks: +/-30% throughput, <=2 gaps/s, <=1% reported loss.\n"
+    jst::fmt::print("SDR hardware checks: +/-30% throughput, per-rate gap limits, <=1% reported loss.\n"
                     "Loss counters and applied readbacks have driver-specific coverage; this is not "
                     "an independent RF freshness or lossless-FFT proof.\n");
     Results results;

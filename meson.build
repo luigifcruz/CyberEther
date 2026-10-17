@@ -46,6 +46,7 @@ endif
 if jst_is_browser
     threads_dep = declare_dependency(compile_args: ['-pthread'], link_args: ['-pthread'])
     meson.override_dependency('threads', threads_dep)
+    add_project_link_arguments('-Wl,-mllvm,-wasm-enable-eh', language: 'cpp')
 endif
 
 browser_exe_link_args = []
@@ -249,7 +250,6 @@ endif
 #
 
 if get_option('tests') and \
-   not jst_is_browser and \
    not jst_is_ios and \
    not jst_is_android
     subdir('tests')
