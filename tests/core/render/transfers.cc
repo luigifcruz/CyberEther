@@ -223,6 +223,9 @@ class TestSurface final : public Render::Surface {
     }
     bool wantsGraphics(const bool visible) { return shouldDrawGraphics(visible); }
     Result bindingResult() const { return drawResult(); }
+    bool idleWhileHidden(const bool visible, const bool changed = false) const {
+        return hiddenAndIdle(visible, changed);
+    }
     void recreateFramebuffer() { resetFramebuffer(); }
     void blockDestruction() { destructionBlocked.store(true, std::memory_order_release); }
     void resumeDestruction() { destructionBlocked.store(false, std::memory_order_release); }
@@ -2815,6 +2818,69 @@ TEST_CASE("Disabled borrowed programs do not redraw their surface when the produ
     REQUIRE(consumer->wantsDraw());
     consumer->commitDraw();
     REQUIRE_FALSE(consumer->wantsDraw());
+}
+
+TEST_CASE("Hidden retained surfaces are idle only once initialized and without pending work",
+          "[core][render][surface][visibility]") {
+    TestWindow window;
+    std::array<U32, 2> source = {10, 20};
+    auto buffer = MakeBuffer(source);
+    Render::Kernel::Config kernelConfig;
+    kernelConfig.buffers.push_back({buffer, Render::Kernel::AccessMode::READ});
+    auto kernel = std::make_shared<TestKernel>(kernelConfig);
+    Render::Surface::Config config;
+    config.kernels.push_back(kernel);
+    config.retained = true;
+    auto surface = std::make_shared<TestSurface>(config);
+
+    REQUIRE(window.create() == Result::SUCCESS);
+    REQUIRE(window.bind(surface) == Result::SUCCESS);
+    REQUIRE_FALSE(surface->idleWhileHidden(false));
+    REQUIRE(surface->wantsDraw());
+    REQUIRE(surface->wantsGraphics(false));
+    surface->commitDraw();
+
+    REQUIRE(surface->idleWhileHidden(false));
+    REQUIRE_FALSE(surface->idleWhileHidden(true));
+    REQUIRE_FALSE(surface->idleWhileHidden(false, true));
+
+    surface->invalidate();
+    REQUIRE(surface->wantsDraw());
+    REQUIRE_FALSE(surface->wantsGraphics(false));
+    surface->commitDraw();
+    REQUIRE(surface->idleWhileHidden(false));
+
+    REQUIRE(buffer->update() == Result::SUCCESS);
+    kernel->update();
+    Render::Transfer::Batch batch;
+    REQUIRE(window.collectFrameTransfers(batch) == Result::SUCCESS);
+    REQUIRE(kernel->wantsDispatch());
+    REQUIRE_FALSE(surface->idleWhileHidden(false));
+    REQUIRE(surface->wantsDraw());
+    kernel->scheduled();
+    REQUIRE_FALSE(surface->wantsGraphics(false));
+    surface->commitDraw();
+    batch.commit();
+
+    Render::Transfer::Batch nextFrame;
+    REQUIRE(window.collectFrameTransfers(nextFrame) == Result::SUCCESS);
+    REQUIRE_FALSE(kernel->wantsDispatch());
+    REQUIRE(surface->idleWhileHidden(false));
+    nextFrame.commit();
+
+    surface->recreateFramebuffer();
+    REQUIRE_FALSE(surface->idleWhileHidden(false));
+    REQUIRE(surface->wantsDraw());
+    REQUIRE(surface->wantsGraphics(false));
+    surface->commitDraw();
+    REQUIRE(surface->idleWhileHidden(false));
+    REQUIRE(window.destroy() == Result::SUCCESS);
+
+    TestSurface immediate(Render::Surface::Config{});
+    REQUIRE(immediate.wantsDraw());
+    REQUIRE(immediate.wantsGraphics(false));
+    immediate.commitDraw();
+    REQUIRE_FALSE(immediate.idleWhileHidden(false));
 }
 
 TEST_CASE("Borrowed programs rebind once after their texture is reallocated, even at the same size or while hidden",

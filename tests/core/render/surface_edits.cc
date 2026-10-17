@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <utility>
+
 #include "jetstream/render/base/surface.hh"
 #include "jetstream/render/base/window.hh"
 
@@ -47,6 +49,152 @@ class ValidationSurface final : public Render::SurfaceImp<D> {
 };
 
 template<DeviceType D>
+class HiddenSurface final : public Render::SurfaceImp<D> {
+ public:
+    using Render::SurfaceImp<D>::SurfaceImp;
+    bool wantsDraw() { return this->shouldDraw(); }
+    bool wantsGraphics(bool visible) { return this->shouldDrawGraphics(visible); }
+    Result bindingResult() const { return this->drawResult(); }
+    Result hiddenFrame() {
+#ifdef JETSTREAM_RENDER_METAL_AVAILABLE
+        if constexpr (D == DeviceType::Metal) {
+            return this->draw(nullptr, false);
+        }
+#endif
+#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+        if constexpr (D == DeviceType::Vulkan) {
+            VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+            return this->encode(commandBuffer, false);
+        }
+#endif
+#ifdef JETSTREAM_RENDER_WEBGPU_AVAILABLE
+        if constexpr (D == DeviceType::WebGPU) {
+            WGPUCommandEncoder commandEncoder = nullptr;
+            return this->draw(commandEncoder, false);
+        }
+#endif
+    }
+};
+
+template<DeviceType D>
+class HiddenTexture final : public Render::TextureImp<D> {
+ public:
+    using Render::TextureImp<D>::TextureImp;
+    void allocate() { this->markAllocated(); }
+    void deallocate() { this->markDeallocated(); }
+};
+
+template<DeviceType D>
+class HiddenProgram final : public Render::ProgramImp<D> {
+ public:
+    using Render::ProgramImp<D>::ProgramImp;
+    Result rebindTextures() override {
+        ++rebinds;
+        return std::exchange(rebindResult, Result::SUCCESS);
+    }
+    U64 rebinds = 0;
+    Result rebindResult = Result::SUCCESS;
+};
+
+template<DeviceType D>
+void CheckHiddenCancelledGraphics() {
+    auto framebuffer = std::make_shared<HiddenTexture<D>>(Render::Texture::Config{.size = {2, 2}});
+    HiddenSurface<D> surface(Render::Surface::Config{.framebuffer = framebuffer, .retained = true});
+    REQUIRE(surface.wantsDraw());
+    REQUIRE(surface.wantsGraphics(true));
+    surface.commitDraw();
+    REQUIRE_FALSE(surface.wantsDraw());
+
+    surface.invalidate();
+    REQUIRE(surface.wantsDraw());
+    REQUIRE(surface.wantsGraphics(true));
+    const U64 revision = framebuffer->contentRevision();
+    for (U64 frame = 0; frame < 3; ++frame) {
+        REQUIRE(surface.hiddenFrame() == Result::SUCCESS);
+        surface.commitDraw();
+        REQUIRE(framebuffer->contentRevision() == revision);
+        REQUIRE(surface.wantsDraw());
+    }
+
+    REQUIRE(surface.wantsGraphics(true));
+    surface.commitDraw();
+    REQUIRE(framebuffer->contentRevision() == revision + 1);
+    REQUIRE_FALSE(surface.wantsDraw());
+    REQUIRE(surface.hiddenFrame() == Result::SUCCESS);
+    surface.commitDraw();
+    REQUIRE_FALSE(surface.wantsDraw());
+}
+
+template<DeviceType D>
+void CheckHiddenBorrowedTextures() {
+    auto texture = std::make_shared<HiddenTexture<D>>(Render::Texture::Config{.size = {2, 2}});
+    texture->allocate();
+    auto program = std::make_shared<HiddenProgram<D>>(Render::Program::Config{
+        .textures = {texture}, .borrowedTextures = true,
+    });
+    HiddenSurface<D> surface(Render::Surface::Config{.programs = {program}, .retained = true});
+    const auto drawVisible = [&]() {
+        REQUIRE(surface.wantsDraw());
+        REQUIRE(surface.bindingResult() == Result::SUCCESS);
+        REQUIRE(surface.wantsGraphics(true));
+        surface.commitDraw();
+        REQUIRE_FALSE(surface.wantsDraw());
+    };
+    drawVisible();
+    REQUIRE(program->rebinds == 0);
+
+    SECTION("A pending visible rebind failure is retried while hidden") {
+        texture->deallocate();
+        texture->allocate();
+        program->rebindResult = Result::ERROR;
+        REQUIRE_FALSE(surface.wantsDraw());
+        REQUIRE(surface.bindingResult() == Result::ERROR);
+        REQUIRE(program->rebinds == 1);
+        REQUIRE(surface.hiddenFrame() == Result::SUCCESS);
+        REQUIRE(program->rebinds == 2);
+        surface.commitDraw();
+        drawVisible();
+    }
+    SECTION("Hidden reallocation failures propagate and retry without losing redraw") {
+        texture->deallocate();
+        texture->allocate();
+        program->rebindResult = Result::ERROR;
+        REQUIRE(surface.hiddenFrame() == Result::ERROR);
+        REQUIRE(surface.bindingResult() == Result::ERROR);
+        REQUIRE(program->rebinds == 1);
+        surface.commitDraw();
+        REQUIRE(surface.hiddenFrame() == Result::SUCCESS);
+        REQUIRE(program->rebinds == 2);
+        surface.commitDraw();
+        drawVisible();
+    }
+    SECTION("Hidden deallocation remains an error until the producer is live") {
+        texture->deallocate();
+        for (U64 frame = 0; frame < 2; ++frame) {
+            REQUIRE(surface.hiddenFrame() == Result::ERROR);
+            REQUIRE(surface.bindingResult() == Result::ERROR);
+            REQUIRE(program->rebinds == 0);
+            surface.commitDraw();
+        }
+        texture->allocate();
+        REQUIRE(surface.hiddenFrame() == Result::SUCCESS);
+        REQUIRE(program->rebinds == 1);
+        surface.commitDraw();
+        drawVisible();
+    }
+    SECTION("Hidden producer content changes preserve a later visible redraw") {
+        texture->markContentChanged();
+        REQUIRE(surface.hiddenFrame() == Result::SUCCESS);
+        REQUIRE(program->rebinds == 0);
+        surface.commitDraw();
+        drawVisible();
+    }
+    REQUIRE(surface.hiddenFrame() == Result::SUCCESS);
+    surface.commitDraw();
+    REQUIRE_FALSE(surface.wantsDraw());
+}
+
+template<DeviceType D>
 void CheckCompatibility() {
     auto texture = std::make_shared<Render::TextureImp<D>>(Render::Texture::Config{.size = {2, 2}});
     ValidationSurface<D> surface(Render::Surface::Config{.framebuffer = texture});
@@ -91,6 +239,16 @@ void CheckCompatibility() {
 }  // namespace
 
 #ifdef JETSTREAM_RENDER_METAL_AVAILABLE
+TEST_CASE("Metal hidden frames preserve cancelled visible redraws",
+          "[core][render][surface][visibility][metal]") {
+    CheckHiddenCancelledGraphics<DeviceType::Metal>();
+}
+
+TEST_CASE("Metal hidden frames refresh borrowed textures and propagate binding failures",
+          "[core][render][surface][visibility][metal]") {
+    CheckHiddenBorrowedTextures<DeviceType::Metal>();
+}
+
 TEST_CASE("Metal surface append validation rejects incompatible objects without backend allocation",
           "[core][render][surface][extend][metal]") {
     CheckCompatibility<DeviceType::Metal>();
@@ -98,6 +256,16 @@ TEST_CASE("Metal surface append validation rejects incompatible objects without 
 #endif
 
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+TEST_CASE("Vulkan hidden frames preserve cancelled visible redraws",
+          "[core][render][surface][visibility][vulkan]") {
+    CheckHiddenCancelledGraphics<DeviceType::Vulkan>();
+}
+
+TEST_CASE("Vulkan hidden frames refresh borrowed textures and propagate binding failures",
+          "[core][render][surface][visibility][vulkan]") {
+    CheckHiddenBorrowedTextures<DeviceType::Vulkan>();
+}
+
 TEST_CASE("Vulkan surface append validation rejects incompatible objects without backend allocation",
           "[core][render][surface][extend][vulkan]") {
     CheckCompatibility<DeviceType::Vulkan>();
@@ -223,6 +391,16 @@ TEST_CASE("Vulkan failed creation outputs never become owned rollback handles",
 #endif
 
 #ifdef JETSTREAM_RENDER_WEBGPU_AVAILABLE
+TEST_CASE("WebGPU hidden frames preserve cancelled visible redraws",
+          "[core][render][surface][visibility][webgpu]") {
+    CheckHiddenCancelledGraphics<DeviceType::WebGPU>();
+}
+
+TEST_CASE("WebGPU hidden frames refresh borrowed textures and propagate binding failures",
+          "[core][render][surface][visibility][webgpu]") {
+    CheckHiddenBorrowedTextures<DeviceType::WebGPU>();
+}
+
 TEST_CASE("WebGPU surface append validation rejects incompatible objects without backend allocation",
           "[core][render][surface][extend][webgpu]") {
     CheckCompatibility<DeviceType::WebGPU>();

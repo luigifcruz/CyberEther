@@ -175,6 +175,10 @@ Result Implementation::draw(MTL::CommandBuffer* commandBuffer, bool visible) {
     if (!required) {
         return Result::SUCCESS;
     }
+    if (hiddenAndIdle(visible, framebufferChanged)) {
+        shouldDrawGraphics(visible);
+        return Result::SUCCESS;
+    }
 
     // Encode kernels.
 

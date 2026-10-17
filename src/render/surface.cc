@@ -1,5 +1,6 @@
 #include "jetstream/render/base/surface.hh"
 
+#include <algorithm>
 #include <type_traits>
 #include <unordered_map>
 
@@ -357,6 +358,15 @@ bool Surface::shouldDraw(bool framebufferChanged) {
     }
     drawPending = drawPending || !config.retained || dirty || framebufferChanged;
     return drawPending;
+}
+
+bool Surface::hiddenAndIdle(bool visible, bool framebufferChanged) const {
+    if (visible || framebufferChanged || !config.retained || !imageInitialized) {
+        return false;
+    }
+    return std::none_of(config.kernels.begin(), config.kernels.end(), [](const auto& kernel) {
+        return kernel && kernel->shouldEncode();
+    });
 }
 
 bool Surface::shouldDrawGraphics(bool visible) {
