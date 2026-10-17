@@ -350,6 +350,12 @@ bool Surface::shouldDraw(bool framebufferChanged) {
     if (framebufferChanged) {
         resetFramebuffer();
     }
+    for (const auto& program : config.programs) {
+        if (program && program->stateDirty) {
+            invalidate();
+            program->stateDirty = false;
+        }
+    }
     textureBindingsResult = refreshBorrowedTextures();
     if (textureBindingsResult != Result::SUCCESS) {
         invalidate();

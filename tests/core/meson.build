@@ -35,6 +35,7 @@ core_test_domains = {
     'registry': ['registry/registry.cc'],
     'render': [
         'render/colormap.cc',
+        'render/components.cc',
         'render/transfers.cc',
         'render/surface_edits.cc',
         'render/geomap_labels.cc',

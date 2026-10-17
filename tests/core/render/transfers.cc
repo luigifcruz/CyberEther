@@ -2461,7 +2461,7 @@ TEST_CASE("Failed transfer submission leaves retained surfaces dirty",
     REQUIRE(window.destroy() == Result::SUCCESS);
 }
 
-TEST_CASE("Semantic changes still require explicit retained invalidation",
+TEST_CASE("Program state invalidation preserves explicit compute invalidation",
           "[core][render][transfer][surface]") {
     TestWindow window;
     std::array<U32, 2> source = {10, 20};
@@ -2488,11 +2488,15 @@ TEST_CASE("Semantic changes still require explicit retained invalidation",
 
     kernel->update();
     REQUIRE(draw->updateVertexCount(1) == Result::SUCCESS);
-    program->scissorRect(Render::ScissorRect{0, 0, 1, 1});
 
     Render::Transfer::Batch batch;
     REQUIRE(window.collectFrameTransfers(batch) == Result::SUCCESS);
     REQUIRE(batch.empty());
+    REQUIRE_FALSE(surface->wantsDraw());
+
+    program->scissorRect(Render::ScissorRect{0, 0, 1, 1});
+    REQUIRE(surface->wantsDraw());
+    surface->commitDraw();
     REQUIRE_FALSE(surface->wantsDraw());
 
     surface->invalidate();

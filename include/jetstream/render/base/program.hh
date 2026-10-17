@@ -48,11 +48,20 @@ class JETSTREAM_API Program {
     }
 
     void setEnabled(bool enabled) {
+        stateDirty = stateDirty || enabledState != enabled;
         enabledState = enabled;
     }
 
     void scissorRect(const std::optional<ScissorRect>& rect) {
+        if (config.scissorRect.has_value() == rect.has_value() &&
+            (!rect || (config.scissorRect->x == rect->x &&
+                       config.scissorRect->y == rect->y &&
+                       config.scissorRect->width == rect->width &&
+                       config.scissorRect->height == rect->height))) {
+            return;
+        }
         config.scissorRect = rect;
+        stateDirty = true;
     }
 
     virtual Result rebindTextures() {
@@ -75,6 +84,7 @@ class JETSTREAM_API Program {
  private:
     std::atomic_bool surfaceOwned = false;
     bool enabledState = true;
+    bool stateDirty = true;
     std::vector<U64> boundAllocations;
 
     friend class Surface;

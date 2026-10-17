@@ -3,6 +3,9 @@ src_lst += files([
     'font.cc',
     'text.cc',
     'shapes.cc',
+    'mesh.cc',
+    'image.cc',
+    'curves.cc',
     'map_context.cc',
     'map_layer.cc',
 ])
