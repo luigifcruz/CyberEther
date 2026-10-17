@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <limits>
 
@@ -100,6 +101,60 @@ TEST_CASE("Soapy can load an installed system runtime without opening a radio",
     REQUIRE(Modules::SoapyRuntime::Availability().available);
     REQUIRE(std::string(library->api().getABIVersion()) == Modules::SoapyAbi::Version);
     REQUIRE_FALSE(library->path().empty());
+}
+
+TEST_CASE_METHOD(TestSoapy::Runtime,
+                 "Soapy gain control respects device capabilities during startup and reconfiguration",
+                 "[modules][soapy][devices][agc]") {
+    const bool supported = GENERATE(true, false);
+    const bool enabled = GENERATE(true, false);
+    CAPTURE(supported, enabled);
+    TestSoapy::State().automaticGainSupported = supported;
+
+    const auto module = BuildSoapyModule();
+    struct Cleanup {
+        std::shared_ptr<Module> module;
+        ~Cleanup() { static_cast<void>(module->destroy()); }
+    } cleanup{module};
+    Modules::Soapy config;
+    config.deviceString = "driver=scripted";
+    config.automaticGain = enabled;
+    config.manualGain = 30.0f;
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    const auto outputId = module->outputs().at("signal").tensor.id();
+    U64 expectedWrites = supported ? 1 : 0;
+    REQUIRE(TestSoapy::State().gainModeWrites == expectedWrites);
+    REQUIRE(TestSoapy::State().settings().automaticGain == (supported && enabled));
+
+    for (const bool gain : {!enabled, enabled}) {
+        REQUIRE(module->reconfigure({{"automaticGain", gain}}) == Result::SUCCESS);
+        REQUIRE(module->state() == Module::State::CREATED);
+        REQUIRE(module->outputs().at("signal").tensor.id() == outputId);
+        REQUIRE(static_cast<const Modules::Soapy&>(module->config()).automaticGain == gain);
+        if (supported) {
+            ++expectedWrites;
+        }
+        REQUIRE(TestSoapy::State().gainModeWrites == expectedWrites);
+        REQUIRE(TestSoapy::State().settings().automaticGain == (supported && gain));
+    }
+    REQUIRE(TestSoapy::State().concurrentChanges == 0);
+}
+
+TEST_CASE_METHOD(TestSoapy::Runtime,
+                 "Soapy reports gain control failures on devices advertising AGC",
+                 "[modules][soapy][devices][agc]") {
+    TestSoapy::State().fail("automaticGain");
+    Modules::Soapy config;
+    config.deviceString = "driver=scripted";
+    config.numberOfBatches = 1;
+    config.numberOfTimeSamples = 8;
+
+    const auto module = BuildSoapyModule();
+    REQUIRE(module->create("test", config, {}) == Result::ERROR);
+    REQUIRE(TestSoapy::State().gainModeWrites == 1);
+    REQUIRE(module->state() == Module::State::DESTROYED);
 }
 
 TEST_CASE_METHOD(TestSoapy::Runtime,

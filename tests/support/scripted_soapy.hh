@@ -24,6 +24,8 @@ struct Script {
     std::mutex mutex;
     Settings applied;
     std::string failure;
+    bool automaticGainSupported = true;
+    std::atomic<U64> gainModeWrites{0};
     std::atomic<unsigned> activeReads{0};
     std::atomic<U64> concurrentChanges{0};
 
@@ -31,6 +33,8 @@ struct Script {
         std::lock_guard lock(mutex);
         applied = {};
         failure.clear();
+        automaticGainSupported = true;
+        gainModeWrites = 0;
         activeReads = 0;
         concurrentChanges = 0;
     }
@@ -111,7 +115,14 @@ inline SoapyApi Api() {
     api.setSampleRate = [](SoapyAbi::Device*, int, std::size_t, double value) {
         return State().set("sampleRate", &Settings::sampleRate, value);
     };
+    api.hasGainMode = [](const SoapyAbi::Device*, int, std::size_t) {
+        return State().automaticGainSupported;
+    };
     api.setGainMode = [](SoapyAbi::Device*, int, std::size_t, bool value) {
+        ++State().gainModeWrites;
+        if (!State().automaticGainSupported) {
+            return -1;
+        }
         return State().set("automaticGain", &Settings::automaticGain, value);
     };
     api.setGain = [](SoapyAbi::Device*, int, std::size_t, double value) {
