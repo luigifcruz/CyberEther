@@ -248,6 +248,7 @@ Result DefaultCompositor::poll() {
     actions.reconcileFilePicker();
     actions.restoreStacks();
     actions.refreshLiveMarkdown();
+    actions.refreshMetrics();
     updateFeedbackState();
 
     // Build view configs while flowgraph access is confined to poll.
