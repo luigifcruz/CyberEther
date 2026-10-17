@@ -3,7 +3,49 @@
 #include "jetstream/render/devices/metal/texture.hh"
 #include "jetstream/render/devices/metal/program.hh"
 
+#include "program_cache.hh"
+
 namespace Jetstream::Render {
+
+namespace {
+
+using Detail::MetalProgramCache;
+
+MetalProgramCache& ProgramCache() {
+    static MetalProgramCache cache;
+    return cache;
+}
+
+NS::SharedPtr<MTL::Function> CachedFunction(MetalProgramCache::Device& cache, const std::vector<U8>& source) {
+    std::string key(reinterpret_cast<const char*>(source.data()), source.size());
+    if (auto function = cache.findFunction(key)) {
+        return function;
+    }
+
+    auto opts = NS::TransferPtr(MTL::CompileOptions::alloc()->init());
+    opts->setFastMathEnabled(true);
+    opts->setLanguageVersion(MTL::LanguageVersion3_0);
+    opts->setLibraryType(MTL::LibraryTypeExecutable);
+
+    NS::Error* err = nullptr;
+    auto text = NS::TransferPtr(NS::String::alloc()->init(const_cast<U8*>(source.data()), source.size(), NS::UTF8StringEncoding, false));
+    auto library = NS::TransferPtr(cache.handle->newLibrary(text.get(), opts.get(), &err));
+    if (!library) {
+        JST_ERROR("Library error:\n{}", err ? err->description()->utf8String() : "unknown");
+        return {};
+    }
+
+    auto function = NS::TransferPtr(library->newFunction(NS::String::string("main0", NS::UTF8StringEncoding)));
+    if (!function) {
+        JST_ERROR("[METAL] Failed to create shader function.");
+        return {};
+    }
+
+    cache.insertFunction(std::move(key), function);
+    return function;
+}
+
+}  // namespace
 
 using Implementation = ProgramImp<DeviceType::Metal>;
 
@@ -35,35 +77,18 @@ Result Implementation::create(const MTL::PixelFormat& pixelFormat, bool multisam
         return Result::ERROR;
     }
 
-    NS::Error* err = nullptr;
     const auto& shaders = config.shaders[DeviceType::Metal];
     auto device = Backend::State<DeviceType::Metal>()->getDevice();
 
-    auto opts = NS::TransferPtr(MTL::CompileOptions::alloc()->init());
-    opts->setFastMathEnabled(true);
-    opts->setLanguageVersion(MTL::LanguageVersion3_0);
-    opts->setLibraryType(MTL::LibraryTypeExecutable);
+    auto& programCache = ProgramCache();
+    std::lock_guard<std::mutex> lock(programCache.mutex);
+    auto& cache = programCache.forDevice(device);
 
-    auto vertSource = NS::TransferPtr(NS::String::alloc()->init((char*)shaders[0].data(), shaders[0].size(), NS::UTF8StringEncoding, false));
-    auto vertLibrary = NS::TransferPtr(device->newLibrary(vertSource.get(), opts.get(), &err));
-
-    auto fragSource = NS::TransferPtr(NS::String::alloc()->init((char*)shaders[1].data(), shaders[1].size(), NS::UTF8StringEncoding, false));
-    auto fragLibrary = NS::TransferPtr(device->newLibrary(fragSource.get(), opts.get(), &err));
-
-    if (!vertLibrary || !fragLibrary) {
-        JST_ERROR("Library error:\n{}", err->description()->utf8String());
+    auto vertFunc = CachedFunction(cache, shaders[0]);
+    auto fragFunc = CachedFunction(cache, shaders[1]);
+    if (!vertFunc || !fragFunc) {
         return Result::ERROR;
     }
-
-    auto vertFunc = NS::TransferPtr(vertLibrary->newFunction(
-        NS::String::string("main0", NS::UTF8StringEncoding)
-    ));
-    JST_ASSERT(vertFunc, "Failed to create vertex function.");
-
-    auto fragFunc = NS::TransferPtr(fragLibrary->newFunction(
-        NS::String::string("main0", NS::UTF8StringEncoding)
-    ));
-    JST_ASSERT(fragFunc, "Failed to create fragment function.");
 
     U64 indexOffset = 0;
     for (U64 i = 0; i < buffers.size(); i++) {
@@ -78,13 +103,40 @@ Result Implementation::create(const MTL::PixelFormat& pixelFormat, bool multisam
         JST_CHECK(draw->create(vertDesc.get(), indexOffset));
     }
 
+    const U64 sampleCount = multisampled ? Backend::State<DeviceType::Metal>()->getMultisampling() : 1;
+    std::string key = jst::fmt::format("{}:{}:{}:{}:{}:{}",
+                                       static_cast<const void*>(vertFunc.get()),
+                                       static_cast<const void*>(fragFunc.get()),
+                                       static_cast<U64>(pixelFormat),
+                                       sampleCount,
+                                       config.enableAlphaBlending,
+                                       indexOffset);
+    key += config.eraseBlending ? "|erase" : "";
+    for (const auto& draw : config.draws) {
+        const auto& vertex = draw->getConfig().buffer->getConfig();
+        key += "|v";
+        for (const auto& [_, stride] : vertex.vertices) {
+            key += jst::fmt::format(":{}", stride);
+        }
+        key += "|i";
+        for (const auto& [_, stride] : vertex.instances) {
+            key += jst::fmt::format(":{}", stride);
+        }
+    }
+
+    if (auto pipeline = cache.findPipeline(key)) {
+        renderPipelineState = pipeline.get();
+        renderPipelineState->retain();
+        return Result::SUCCESS;
+    }
+
     auto renderPipelineDescriptor = NS::TransferPtr(MTL::RenderPipelineDescriptor::alloc()->init());
     JST_ASSERT(renderPipelineDescriptor, "Failed to create render pipeline descriptor.");
     renderPipelineDescriptor->setVertexDescriptor(vertDesc.get());
     renderPipelineDescriptor->setVertexFunction(vertFunc.get());
     renderPipelineDescriptor->setFragmentFunction(fragFunc.get());
     if (multisampled) {
-        renderPipelineDescriptor->setSampleCount(Backend::State<DeviceType::Metal>()->getMultisampling());
+        renderPipelineDescriptor->setSampleCount(sampleCount);
     }
 
     const auto& colorAttachment = renderPipelineDescriptor->colorAttachments()->object(0)->init();
@@ -108,11 +160,16 @@ Result Implementation::create(const MTL::PixelFormat& pixelFormat, bool multisam
         colorAttachment->setAlphaBlendOperation(MTL::BlendOperationAdd);
     }
 
-    renderPipelineState = device->newRenderPipelineState(renderPipelineDescriptor.get(), &err);
-    if (!renderPipelineState) {
-        JST_ERROR("Failed to create pipeline state:\n{}", err->description()->utf8String());
+    NS::Error* err = nullptr;
+    auto pipeline = NS::TransferPtr(device->newRenderPipelineState(renderPipelineDescriptor.get(), &err));
+    if (!pipeline) {
+        JST_ERROR("Failed to create pipeline state:\n{}", err ? err->description()->utf8String() : "unknown");
         return Result::ERROR;
     }
+
+    cache.insertPipeline(std::move(key), vertFunc, fragFunc, pipeline);
+    renderPipelineState = pipeline.get();
+    renderPipelineState->retain();
 
     return Result::SUCCESS;
 }

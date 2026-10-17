@@ -86,6 +86,15 @@ if not jst_is_windows
 endif
 
 core_test_targets = []
+if cfg_lst.get('JETSTREAM_RENDER_METAL_AVAILABLE', false)
+    metal_program_cache_sources = ['render/metal_program_cache.cc']
+    if not jst_is_browser and not jst_is_static
+        metal_program_cache_sources += ['../../src/render/devices/metal/program.cc']
+    endif
+    core_test_domains += {
+        'metal-program-cache': metal_program_cache_sources,
+    }
+endif
 if cfg_lst.get('JETSTREAM_LOADER_GSTREAMER_AVAILABLE', false) and not jst_is_windows
     core_test_domains += {
         'application': core_test_domains['application'] + ['application/remote_stream.cc'],
