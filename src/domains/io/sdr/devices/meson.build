@@ -1,6 +1,7 @@
 src_lst += files([
     'device.cc',
     'discovery.cc',
+    'stream.cc',
     'sweep.cc',
 ])
 

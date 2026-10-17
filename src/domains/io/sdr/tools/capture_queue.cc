@@ -59,11 +59,6 @@ void CaptureQueue::retune(const U64 nextGeneration, const U64 nextTransfers,
     available.notify_all();
 }
 
-void CaptureQueue::relabel(const F64 nextFrequency) {
-    std::lock_guard lock(mutex);
-    frequency = nextFrequency;
-}
-
 void CaptureQueue::close() {
     {
         std::lock_guard lock(mutex);

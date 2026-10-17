@@ -13,9 +13,9 @@
 #include <vector>
 
 #include "domains/io/sdr/tools/samples.hh"
-#include "domains/io/sdr/devices/hackrf/sweep.hh"
-#include "domains/io/sdr/devices/hackrf/sweep_decoder.hh"
-#include "domains/io/sdr/devices/hackrf/transfer_queue.hh"
+#include "domains/io/sdr/devices/hackrf/tools/firmware.hh"
+#include "domains/io/sdr/devices/hackrf/tools/sweep_decoder.hh"
+#include "domains/io/sdr/devices/hackrf/tools/transfer_queue.hh"
 #include "flowgraph_fixture.hh"
 #include "jetstream/domains/core/multiply/module.hh"
 #include "jetstream/domains/dsp/amplitude/module.hh"
@@ -33,7 +33,7 @@
 #include "jetstream/testing.hh"
 #include "module_impl.hh"
 #include "scripted_radio.hh"
-#include "domains/io/sdr_sweep/tools/sweep.hh"
+#include "domains/io/sdr_sweep/tools/sweep_plan.hh"
 
 using namespace Jetstream;
 using namespace TestRadio;
@@ -41,7 +41,7 @@ using Catch::Matchers::WithinAbs;
 
 namespace {
 
-using Mode = Modules::Sweep::Plan::Mode;
+using Mode = Radio::SweepPlan::Mode;
 
 Radio::Device::Capabilities TestCaps(const F64 dcExclusion = 0.0) {
     Radio::Device::Capabilities caps;
@@ -57,25 +57,25 @@ Radio::Device::Capabilities HackRfCaps() {
     auto caps = TestCaps();
     caps.sampleRateRanges = {{2.0e6, 20.0e6}};
     caps.sweepSampleRate = 20.0e6;
-    caps.firmwareSweep = Radio::HackRfSweep::Capability();
+    caps.firmwareSweep = Radio::HackRfFirmware::Capability();
     return caps;
 }
 
-Modules::Sweep::Plan RequirePlan(const Modules::Sweep::Plan::Request& request,
+Radio::SweepPlan RequirePlan(const Radio::SweepPlan::Request& request,
                                  const Radio::Device::Capabilities& caps) {
-    Modules::Sweep::Plan plan;
-    REQUIRE(Modules::Sweep::Plan::Create(request, caps, plan) == Result::SUCCESS);
+    Radio::SweepPlan plan;
+    REQUIRE(Radio::SweepPlan::Create(request, caps, plan) == Result::SUCCESS);
     return plan;
 }
 
-F64 BinCenter(const Modules::Sweep::Plan& plan, const F64 bin) {
+F64 BinCenter(const Radio::SweepPlan& plan, const F64 bin) {
     return plan.startFrequency + (bin + 0.5) * plan.binWidth;
 }
 
 // Captures of one hop observing tones through the hop LO. Each capture of a
 // dwell starts at `start` samples of a continuous clock. Tones outside the
 // capture's Nyquist band are removed, as the front-end filter would.
-std::vector<CF32> HopCapture(const Modules::Sweep::Plan& plan, const U64 hop,
+std::vector<CF32> HopCapture(const Radio::SweepPlan& plan, const U64 hop,
                              const std::vector<Tone>& tones, const U64 start = 0,
                              const std::vector<CF32>& noise = {}) {
     std::vector<CF32> samples(plan.captureSamples());
@@ -97,11 +97,11 @@ std::vector<CF32> HopCapture(const Modules::Sweep::Plan& plan, const U64 hop,
     return samples;
 }
 
-void Capture(Modules::Sweep::Assembler& assembler, const Modules::Sweep::Plan& plan,
+void Capture(Radio::SweepAssembler& assembler, const Radio::SweepPlan& plan,
              const std::vector<Tone>& tones, const std::vector<CF32>& noise = {}) {
     for (U64 hop = 0; hop < plan.hops.size(); ++hop) {
         const auto samples = HopCapture(plan, hop, tones, 7919 * hop + 101, noise);
-        const Radio::Device::SweepCapture capture{
+        const Radio::Sweep::Capture capture{
             .hop = hop,
             .frequency = plan.hops[hop].frequency,
             .samples = samples,
@@ -111,9 +111,9 @@ void Capture(Modules::Sweep::Assembler& assembler, const Modules::Sweep::Plan& p
     REQUIRE(assembler.complete());
 }
 
-std::vector<CF32> Synthesize(const Modules::Sweep::Plan& plan, const std::vector<Tone>& tones,
+std::vector<CF32> Synthesize(const Radio::SweepPlan& plan, const std::vector<Tone>& tones,
                              const std::vector<CF32>& noise = {}) {
-    Modules::Sweep::Assembler assembler;
+    Radio::SweepAssembler assembler;
     REQUIRE(assembler.configure(plan) == Result::SUCCESS);
     Capture(assembler, plan, tones, noise);
     std::vector<CF32> frame(plan.outputBins);
@@ -144,7 +144,7 @@ F64 NoiseGain(const U64 size) {
     return energy / (static_cast<F64>(size) * static_cast<F64>(size));
 }
 
-F64 ToneDb(const Modules::Sweep::Plan& plan, const F64 amplitude) {
+F64 ToneDb(const Radio::SweepPlan& plan, const F64 amplitude) {
     return 20.0 * std::log10(amplitude * CoherentGain(plan.segmentLength));
 }
 
@@ -220,7 +220,7 @@ std::vector<CF32> DirectTone(const U64 size, const F64 bin, const F64 amplitude)
     return frame;
 }
 
-std::vector<U64> Contributors(const Modules::Sweep::Plan& plan) {
+std::vector<U64> Contributors(const Radio::SweepPlan& plan) {
     std::vector<U64> contributors(plan.outputBins, 0);
     for (const auto& hop : plan.hops) {
         for (const auto& run : hop.runs) {
@@ -350,7 +350,7 @@ TEST_CASE("SDR Sweep places retune hops on whole hertz so fine bins survive driv
     REQUIRE(plan.binWidth < 10.0);
     REQUIRE(plan.hops.size() > 1);
 
-    Modules::Sweep::Assembler assembler;
+    Radio::SweepAssembler assembler;
     REQUIRE(assembler.configure(plan) == Result::SUCCESS);
     const std::vector<CF32> samples(plan.captureSamples());
     for (U64 hop = 0; hop < plan.hops.size(); ++hop) {
@@ -364,12 +364,12 @@ TEST_CASE("SDR Sweep places retune hops on whole hertz so fine bins survive driv
 
 TEST_CASE("SDR Sweep rejects invalid and impractical plans with guidance",
           "[modules][sdr_sweep][plan][limits]") {
-    const Modules::Sweep::Plan::Request valid{
+    const Radio::SweepPlan::Request valid{
         .startFrequency = 100.0e6, .endFrequency = 120.0e6, .resolution = 10.0e3,
     };
     auto caps = TestCaps();
     auto request = valid;
-    Modules::Sweep::Plan plan;
+    Radio::SweepPlan plan;
 
     SECTION("start at or above end") {
         request.endFrequency = request.startFrequency;
@@ -381,7 +381,7 @@ TEST_CASE("SDR Sweep rejects invalid and impractical plans with guidance",
         request.resolution = 0.0;
     }
     SECTION("dwell outside limits") {
-        request.dwell = Modules::Sweep::MaxDwell + 1;
+        request.dwell = Radio::SweepPlan::MaxDwell + 1;
     }
     SECTION("capture rate the radio does not support") {
         request.sampleRate = 20.0e6;
@@ -395,13 +395,13 @@ TEST_CASE("SDR Sweep rejects invalid and impractical plans with guidance",
     SECTION("explicit firmware mode the radio lacks") {
         request.mode = Mode::Firmware;
     }
-    REQUIRE(Modules::Sweep::Plan::Create(request, caps, plan) == Result::ERROR);
-    REQUIRE(Modules::Sweep::Plan::Create(valid, TestCaps(), plan) == Result::SUCCESS);
+    REQUIRE(Radio::SweepPlan::Create(request, caps, plan) == Result::ERROR);
+    REQUIRE(Radio::SweepPlan::Create(valid, TestCaps(), plan) == Result::SUCCESS);
 }
 
 TEST_CASE("SDR Sweep coarsens only enough to fit the final output grid",
           "[modules][sdr_sweep][plan][adaptive]") {
-    using namespace Modules::Sweep;
+    using Plan = Radio::SweepPlan;
     auto caps = TestCaps();
     caps.frequencyRanges = {{10.0e6, 6000.0e6}};
     Plan::Request request{.startFrequency = 100.0e6, .endFrequency = 3012.0e6,
@@ -410,12 +410,12 @@ TEST_CASE("SDR Sweep coarsens only enough to fit the final output grid",
     REQUIRE((request.endFrequency - request.startFrequency) / request.resolution == 291200);
     REQUIRE(wide.segmentLength == 180);
     REQUIRE(wide.outputBins == 262080);
-    REQUIRE(wide.outputBins <= MaxOutputBins);
-    REQUIRE(wide.workingSetBytes() <= MaxWorkingSetBytes);
+    REQUIRE(wide.outputBins <= Plan::MaxOutputBins);
+    REQUIRE(wide.workingSetBytes() <= Plan::MaxWorkingSetBytes);
     REQUIRE(wide.endFrequency() >= request.endFrequency);
     REQUIRE(wide.binWidth > request.resolution);
     REQUIRE(std::ceil((request.endFrequency - request.startFrequency) /
-                       (wide.sampleRate / static_cast<F64>(wide.segmentLength + 1))) > MaxOutputBins);
+                       (wide.sampleRate / static_cast<F64>(wide.segmentLength + 1))) > Plan::MaxOutputBins);
 
     request.endFrequency = 120.0e6;
     const auto narrow = RequirePlan(request, caps);
@@ -423,34 +423,34 @@ TEST_CASE("SDR Sweep coarsens only enough to fit the final output grid",
     REQUIRE(narrow.binWidth == request.resolution);
 
     request.resolution = 5.0e3;
-    request.endFrequency = request.startFrequency + MaxOutputBins * request.resolution;
+    request.endFrequency = request.startFrequency + Plan::MaxOutputBins * request.resolution;
     const auto exact = RequirePlan(request, caps);
-    REQUIRE(exact.outputBins == MaxOutputBins);
+    REQUIRE(exact.outputBins == Plan::MaxOutputBins);
     REQUIRE(exact.segmentLength == 400);
     request.endFrequency += 1.0;
     const auto over = RequirePlan(request, caps);
     REQUIRE(over.segmentLength == 399);
-    REQUIRE(over.outputBins <= MaxOutputBins);
+    REQUIRE(over.outputBins <= Plan::MaxOutputBins);
     REQUIRE(over.endFrequency() >= request.endFrequency);
 
     request.endFrequency = request.startFrequency + 50.0e3;
     request.resolution = 10.0e3;
     const auto small = RequirePlan(request, caps);
-    REQUIRE(small.outputBins == MinOutputBins);
+    REQUIRE(small.outputBins == Plan::MinOutputBins);
     REQUIRE(small.segmentLength == 601);
     request.endFrequency = 120.0e6;
     request.resolution = 200.0e3;
     const auto shortCapture = RequirePlan(request, caps);
-    REQUIRE(shortCapture.segmentLength == MinSegmentLength);
+    REQUIRE(shortCapture.segmentLength == Plan::MinSegmentLength);
 }
 
 TEST_CASE("SDR Sweep bounds capture lengths and firmware padding before allocation",
           "[modules][sdr_sweep][plan][adaptive][hackrf]") {
-    using namespace Modules::Sweep;
+    using Plan = Radio::SweepPlan;
     const auto capture = RequirePlan({.startFrequency = 100.0e6, .endFrequency = 101.0e6,
-                                      .resolution = 10.0, .dwell = MaxDwell}, TestCaps());
-    REQUIRE(capture.segmentLength == MaxSegmentLength);
-    REQUIRE(capture.workingSetBytes() <= MaxWorkingSetBytes);
+                                      .resolution = 10.0, .dwell = Plan::MaxDwell}, TestCaps());
+    REQUIRE(capture.segmentLength == Plan::MaxSegmentLength);
+    REQUIRE(capture.workingSetBytes() <= Plan::MaxWorkingSetBytes);
 
     auto caps = HackRfCaps();
     caps.frequencyRanges = {{0.0, 6000.0e6}};
@@ -462,7 +462,7 @@ TEST_CASE("SDR Sweep bounds capture lengths and firmware padding before allocati
     REQUIRE((padded.segmentLength + 4) % 8 == 0);
     REQUIRE(padded.outputBins == 261476);
     REQUIRE(padded.endFrequency() >= 2707.9e6);
-    REQUIRE(131 * (padded.segmentLength + 8) > MaxOutputBins);
+    REQUIRE(131 * (padded.segmentLength + 8) > Plan::MaxOutputBins);
 
     // The capture length never exceeds what the device advertises.
     const auto payload = RequirePlan({.startFrequency = 88.0e6, .endFrequency = 108.0e6,
@@ -482,7 +482,7 @@ TEST_CASE("SDR Sweep bounds capture lengths and firmware padding before allocati
 
 TEST_CASE("SDR Sweep Auto preserves targets that Retune can meet without firmware coarsening",
           "[modules][sdr_sweep][plan][adaptive][hackrf]") {
-    using namespace Modules::Sweep;
+    using Plan = Radio::SweepPlan;
     auto caps = HackRfCaps();
     Plan::Request request{.startFrequency = 88.0e6, .endFrequency = 108.0e6,
                      .sampleRate = 20.0e6, .resolution = 1.0e3};
@@ -511,7 +511,7 @@ TEST_CASE("SDR Sweep Auto preserves targets that Retune can meet without firmwar
 
 TEST_CASE("SDR Sweep Auto retains bounded firmware adaptation when neither method meets the target",
           "[modules][sdr_sweep][plan][adaptive][hackrf]") {
-    using namespace Modules::Sweep;
+    using Plan = Radio::SweepPlan;
     auto caps = HackRfCaps();
     caps.frequencyRanges = {{0.0, 6000.0e6}};
     Plan::Request request{.startFrequency = 88.0e6, .endFrequency = 108.0e6,
@@ -524,28 +524,28 @@ TEST_CASE("SDR Sweep Auto retains bounded firmware adaptation when neither metho
     const auto firmware = RequirePlan(request, caps);
     REQUIRE(firmware.mode == Mode::Firmware);
     REQUIRE(firmware.binWidth > request.resolution);
-    REQUIRE(firmware.outputBins <= MaxOutputBins);
-    REQUIRE(firmware.workingSetBytes() <= MaxWorkingSetBytes);
+    REQUIRE(firmware.outputBins <= Plan::MaxOutputBins);
+    REQUIRE(firmware.workingSetBytes() <= Plan::MaxWorkingSetBytes);
     REQUIRE(firmware.endFrequency() >= request.endFrequency);
     request.mode = Mode::Retune;
     const auto retune = RequirePlan(request, caps);
     REQUIRE(retune.binWidth > request.resolution);
-    REQUIRE(retune.outputBins <= MaxOutputBins);
-    REQUIRE(retune.workingSetBytes() <= MaxWorkingSetBytes);
+    REQUIRE(retune.outputBins <= Plan::MaxOutputBins);
+    REQUIRE(retune.workingSetBytes() <= Plan::MaxWorkingSetBytes);
     REQUIRE(retune.endFrequency() >= request.endFrequency);
 }
 
 TEST_CASE("SDR Sweep respects fixed firmware timing and explicit methods",
           "[modules][sdr_sweep][plan][hackrf][settling]") {
     auto caps = HackRfCaps();
-    Modules::Sweep::Plan::Request request{.startFrequency = 88.0e6, .endFrequency = 108.0e6,
+    Radio::SweepPlan::Request request{.startFrequency = 88.0e6, .endFrequency = 108.0e6,
                                     .resolution = 10.0e3};
     REQUIRE(RequirePlan(request, caps).mode == Mode::Firmware);
     request.settlingTime = 0.010;
     REQUIRE(RequirePlan(request, caps).mode == Mode::Retune);
     request.mode = Mode::Firmware;
-    Modules::Sweep::Plan plan;
-    REQUIRE(Modules::Sweep::Plan::Create(request, caps, plan) == Result::ERROR);
+    Radio::SweepPlan plan;
+    REQUIRE(Radio::SweepPlan::Create(request, caps, plan) == Result::ERROR);
     request.settlingTime = 0.0;
     REQUIRE(RequirePlan(request, caps).mode == Mode::Firmware);
 
@@ -560,7 +560,7 @@ TEST_CASE("SDR Sweep picks generic HackRF retuning only when firmware cannot hon
     // The same capabilities come from native USB and WebUSB, so these rules
     // decide the method in the browser as well.
     const auto caps = HackRfCaps();
-    const Modules::Sweep::Plan::Request defaults{.startFrequency = 88.0e6,
+    const Radio::SweepPlan::Request defaults{.startFrequency = 88.0e6,
                                                  .endFrequency = 108.0e6,
                                                  .resolution = 10.0e3};
     REQUIRE(RequirePlan(defaults, caps).mode == Mode::Firmware);
@@ -580,29 +580,29 @@ TEST_CASE("SDR Sweep picks generic HackRF retuning only when firmware cannot hon
     const auto plan = RequirePlan(request, caps);
     REQUIRE(plan.mode == Mode::Retune);
     REQUIRE(plan.binWidth <= request.resolution);
-    REQUIRE(plan.deviceRequest().firmware == false);
-    REQUIRE(plan.deviceRequest().frequencies.size() == plan.hops.size());
+    REQUIRE(plan.radioRequest().firmware == false);
+    REQUIRE(plan.radioRequest().frequencies.size() == plan.hops.size());
 
     // Real device limits still reject impossible requests.
-    Modules::Sweep::Plan rejected;
+    Radio::SweepPlan rejected;
     request.sampleRate = 25.0e6;
-    REQUIRE(Modules::Sweep::Plan::Create(request, caps, rejected) == Result::ERROR);
+    REQUIRE(Radio::SweepPlan::Create(request, caps, rejected) == Result::ERROR);
 }
 
 TEST_CASE("SDR Sweep limits keep the source and default display within budget",
           "[modules][sdr_sweep][plan][limits]") {
-    using namespace Modules::Sweep;
+    using Plan = Radio::SweepPlan;
     // Worst-case working set allowed by the plan limits.
     Plan worst;
-    worst.segmentLength = MaxSegmentLength;
-    worst.dwell = MaxDwell;
-    worst.outputBins = MaxOutputBins;
-    REQUIRE(worst.workingSetBytes() <= MaxWorkingSetBytes);
+    worst.segmentLength = Plan::MaxSegmentLength;
+    worst.dwell = Plan::MaxDwell;
+    worst.outputBins = Plan::MaxOutputBins;
+    REQUIRE(worst.workingSetBytes() <= Plan::MaxWorkingSetBytes);
 
     // Spectrum Analyzer waterfalls hold four bytes per bin and row, indexed
     // with I32. The documented height for the largest output fits 256 MiB.
-    REQUIRE(MaxOutputBins * 1024 <= static_cast<U64>(std::numeric_limits<I32>::max()));
-    REQUIRE(MaxOutputBins * 256 * sizeof(F32) == U64{256} << 20);
+    REQUIRE(Plan::MaxOutputBins * 1024 <= static_cast<U64>(std::numeric_limits<I32>::max()));
+    REQUIRE(Plan::MaxOutputBins * 256 * sizeof(F32) == U64{256} << 20);
 
     // The default block configuration stays small with the default display.
     const auto plan = RequirePlan({.startFrequency = 88.0e6, .endFrequency = 108.0e6,
@@ -631,10 +631,10 @@ TEST_CASE("SDR Sweep firmware sweeps place HackRF bands on the output grid",
     // `[f, f + 5 MHz)` and the lower one at `[f + 10 MHz, f + 15 MHz)`.
     const U64 quarter = plan.segmentLength / 4;
     for (const auto& hop : plan.hops) {
-        const F64 header = hop.frequency - Radio::HackRfSweep::Offset;
+        const F64 header = hop.frequency - Radio::HackRfFirmware::Offset;
         const auto first = static_cast<U64>(std::llround((header - plan.startFrequency) / plan.binWidth));
         REQUIRE(hop.runs.size() == 2);
-        REQUIRE(hop.runs[0] == Modules::Sweep::Plan::Run{
+        REQUIRE(hop.runs[0] == Radio::SweepPlan::Run{
             .segment = (1 + plan.segmentLength * 5 / 8 + plan.segmentLength / 2) % plan.segmentLength,
             .grid = first, .length = quarter});
         REQUIRE(hop.runs[1].grid == first + plan.segmentLength / 2);
@@ -653,14 +653,14 @@ TEST_CASE("SDR Sweep firmware sweeps place HackRF bands on the output grid",
     REQUIRE_THAT(decibels[777], WithinAbs(ToneDb(plan, 0.25), 0.05));
 
     SECTION("automatic selection falls back when firmware limits do not fit") {
-        REQUIRE(Modules::Sweep::Plan::ResolveMode({.resolution = 10.0e3}, caps) ==
+        REQUIRE(Radio::SweepPlan::ResolveMode({.resolution = 10.0e3}, caps) ==
                 Mode::Firmware);
-        REQUIRE(Modules::Sweep::Plan::ResolveMode({.sampleRate = 10.0e6, .resolution = 10.0e3}, caps) ==
+        REQUIRE(Radio::SweepPlan::ResolveMode({.sampleRate = 10.0e6, .resolution = 10.0e3}, caps) ==
                 Mode::Retune);
-        REQUIRE(Modules::Sweep::Plan::ResolveMode({.startFrequency = 88.0e6, .endFrequency = 108.0e6,
+        REQUIRE(Radio::SweepPlan::ResolveMode({.startFrequency = 88.0e6, .endFrequency = 108.0e6,
                                                .resolution = 1.0e3}, caps) == Mode::Retune);
-        Modules::Sweep::Plan rejected;
-        REQUIRE(Modules::Sweep::Plan::Create({.startFrequency = 88.0e6, .endFrequency = 108.0e6,
+        Radio::SweepPlan rejected;
+        REQUIRE(Radio::SweepPlan::Create({.startFrequency = 88.0e6, .endFrequency = 108.0e6,
                                            .sampleRate = 10.0e6, .resolution = 10.0e3,
                                            .mode = Mode::Firmware},
                                           caps, rejected) == Result::ERROR);
@@ -776,7 +776,7 @@ TEST_CASE("SDR Sweep blends equal-power contributors in opposite phase without c
     const Tone tone{.frequency = BinCenter(plan, static_cast<F64>(bin)), .amplitude = amplitude};
 
     const auto assemble = [&](const bool opposite) {
-        Modules::Sweep::Assembler assembler;
+        Radio::SweepAssembler assembler;
         REQUIRE(assembler.configure(plan) == Result::SUCCESS);
         for (U64 hop = 0; hop < plan.hops.size(); ++hop) {
             auto samples = HopCapture(plan, hop, {tone});
@@ -824,7 +824,7 @@ TEST_CASE("SDR Sweep rejects receiver DC before it spreads through the capture w
 
     const auto plan = RequirePlan({.startFrequency = 88.0e6, .endFrequency = 108.0e6,
                                    .resolution = resolution, .dwell = dwell}, caps);
-    Modules::Sweep::Assembler assembler;
+    Radio::SweepAssembler assembler;
     REQUIRE(assembler.configure(plan) == Result::SUCCESS);
     std::vector<CF32> samples(plan.captureSamples());
     std::vector<CF32> frame(plan.outputBins);
@@ -945,7 +945,7 @@ TEST_CASE("SDR Sweep noise floor follows the windowed capture bin width without 
     constexpr U32 Realizations = 8;
     const U64 bins = plan.outputBins;
 
-    Modules::Sweep::Assembler assembler;
+    Radio::SweepAssembler assembler;
     REQUIRE(assembler.configure(plan) == Result::SUCCESS);
     std::vector<F64> quarters(4, 0.0);
     F64 measured = 0.0;
@@ -989,8 +989,8 @@ TEST_CASE("SDR Sweep keeps clean regions untouched by a strong signal elsewhere"
         signal.push_back({.frequency = BinCenter(plan, static_cast<F64>(k)), .amplitude = level});
     }
 
-    Modules::Sweep::Assembler clean;
-    Modules::Sweep::Assembler loaded;
+    Radio::SweepAssembler clean;
+    Radio::SweepAssembler loaded;
     REQUIRE(clean.configure(plan) == Result::SUCCESS);
     REQUIRE(loaded.configure(plan) == Result::SUCCESS);
     const U64 reach = First + Width + plan.segmentLength;
@@ -1023,7 +1023,7 @@ TEST_CASE("SDR Sweep dwell averages power without cancelling phases",
     REQUIRE(plan.captureSamples() == 3 * plan.segmentLength);
 
     const U64 bin = plan.outputBins / 3;
-    Modules::Sweep::Assembler assembler;
+    Radio::SweepAssembler assembler;
     REQUIRE(assembler.configure(plan) == Result::SUCCESS);
     const Tone tone{.frequency = BinCenter(plan, static_cast<F64>(bin)), .amplitude = 0.2};
     for (U64 hop = 0; hop < plan.hops.size(); ++hop) {
@@ -1046,7 +1046,7 @@ TEST_CASE("SDR Sweep never completes partial, stale, or mistuned coverage",
                                    .resolution = 10.0e3}, TestCaps());
     const U64 hops = plan.hops.size();
     REQUIRE(hops >= 3);
-    Modules::Sweep::Assembler assembler;
+    Radio::SweepAssembler assembler;
     REQUIRE(assembler.configure(plan) == Result::SUCCESS);
     std::vector<CF32> frame(plan.outputBins);
 
@@ -1415,7 +1415,7 @@ TEST_CASE_METHOD(ScriptedDrivers,
     const auto calls = TestScript().calls();
     REQUIRE(calls.size() == 3);
     REQUIRE(calls.front() == "open");
-    REQUIRE(calls[1].starts_with("start:"));
+    REQUIRE(calls[1].starts_with("configure:"));
     REQUIRE(calls.back() == "close");
 }
 
@@ -1503,7 +1503,7 @@ TEST_CASE_METHOD(ScriptedDrivers,
         config.endFrequency = 9.0e6;
     }
     SECTION("startup failure") {
-        TestScript().failAt = "start";
+        TestScript().failAt = "configure";
     }
     const auto module = BuildSweepModule();
     REQUIRE(module->create("test", config, {}) == Result::ERROR);
@@ -1514,11 +1514,11 @@ TEST_CASE_METHOD(ScriptedDrivers,
                  "SDR Sweep module emits complete synthetic sweeps with grid metadata",
                  "[modules][sdr_sweep][metadata][receive]") {
     const auto config = ScriptedSweep();
-    Modules::Sweep::Plan plan;
-    REQUIRE(Modules::Sweep::Plan::Create({.startFrequency = config.startFrequency,
+    Radio::SweepPlan plan;
+    REQUIRE(Radio::SweepPlan::Create({.startFrequency = config.startFrequency,
                                        .endFrequency = config.endFrequency,
                                        .resolution = config.resolution},
-                                      ScriptedDevice({}).capabilities(), plan) == Result::SUCCESS);
+                                      ScriptedCapabilities(), plan) == Result::SUCCESS);
     TestScript().reset();
     {
         std::lock_guard lock(TestScript().mutex);
@@ -1604,7 +1604,8 @@ TEST_CASE_METHOD(ScriptedDrivers,
             return call.starts_with(prefix);
         });
     };
-    REQUIRE(count("start:") == 1);
+    REQUIRE(count("configure:") == 1);
+    REQUIRE(count("start") == 1);
     REQUIRE(count("stop") == 1);
     REQUIRE(count("tune:") >= static_cast<I64>(3 * hops));
     REQUIRE(calls.end()[-2] == "stop");
@@ -1612,7 +1613,7 @@ TEST_CASE_METHOD(ScriptedDrivers,
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,
-                 "SDR Sweep live edits interrupt capture synchronously and preserve the receive session",
+                 "SDR Sweep live edits interrupt capture synchronously and keep the radio configured",
                  "[modules][sdr_sweep][reconfigure][control]") {
     TestScript().budget = 0;
     TestScript().readDelay = std::chrono::milliseconds(10);
@@ -1637,13 +1638,46 @@ TEST_CASE_METHOD(ScriptedDrivers,
     REQUIRE(std::count(calls.begin(), calls.end(), "gain:42") == 1);
     REQUIRE(std::count(calls.begin(), calls.end(), "prepare:2") == 1);
     REQUIRE(std::count_if(calls.begin(), calls.end(), [](const auto& call) {
-        return call.starts_with("start:");
+        return call.starts_with("configure:");
     }) == 1);
-    REQUIRE(std::count(calls.begin(), calls.end(), "stop") == 0);
+    REQUIRE(std::count(calls.begin(), calls.end(), "start") == 2);
+    REQUIRE(std::count(calls.begin(), calls.end(), "stop") == 1);
     REQUIRE(TestScript().concurrentChanges == 0);
 
     TestScript().budget = -1;
     REQUIRE(WaitFor([&] { return sweep->getProgress().sweeps > 0; }));
+}
+
+TEST_CASE_METHOD(ScriptedDrivers,
+                 "SDR Sweep live gain edits preserve the request before driver clamping",
+                 "[modules][sdr_sweep][reconfigure][control][gain]") {
+    TestScript().budget = 0;
+    auto driver = ScriptedDriver();
+    const auto create = driver.sweep;
+    Radio::Sweep* radio = nullptr;
+    driver.sweep = [&](const Radio::Device::Info& info, std::unique_ptr<Radio::Sweep>& sweep) {
+        const auto result = create(info, sweep);
+        radio = sweep.get();
+        return result;
+    };
+    Radio::Device::Override(std::vector<Radio::Device::Driver>{driver});
+    auto config = ScriptedSweep();
+    config.automaticGain = false;
+    const auto module = BuildSweepModule();
+    const SweepCleanup cleanup{module};
+    REQUIRE(module->create("test", config, {}) == Result::SUCCESS);
+    REQUIRE(radio != nullptr);
+    F32 requested = 75.0f;
+    F64 applied = 60.0;
+    SECTION("above the gain range") {}
+    SECTION("below the gain range") {
+        requested = -5.0f;
+        applied = 0.0;
+    }
+    REQUIRE(module->reconfigure({{"manualGain", requested}}) == Result::SUCCESS);
+    REQUIRE(radio->settings().gain == requested);
+    REQUIRE(radio->applied().gain == applied);
+    REQUIRE(module->getImpl<Modules::SdrSweepImpl>()->manualGain == applied);
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,
@@ -1773,9 +1807,10 @@ TEST_CASE_METHOD(ScriptedFlowgraph,
 
 TEST_CASE("SDR Sweep rejects extreme finite inputs before any conversion",
           "[modules][sdr_sweep][plan][limits]") {
-    Modules::Sweep::Plan plan;
-    const auto reject = [&](const Modules::Sweep::Plan::Request& request, const Radio::Device::Capabilities& caps) {
-        REQUIRE(Modules::Sweep::Plan::Create(request, caps, plan) == Result::ERROR);
+    Radio::SweepPlan plan;
+    const auto reject = [&](const Radio::SweepPlan::Request& request,
+                            const Radio::Device::Capabilities& caps) {
+        REQUIRE(Radio::SweepPlan::Create(request, caps, plan) == Result::ERROR);
         REQUIRE(plan.hops.empty());
         REQUIRE(plan.outputBins == 0);
     };
@@ -1784,7 +1819,7 @@ TEST_CASE("SDR Sweep rejects extreme finite inputs before any conversion",
     reject({.startFrequency = 0.0, .endFrequency = 1e-300, .resolution = 1e-300}, TestCaps());
     const auto fine = RequirePlan({.startFrequency = 100.0e6, .endFrequency = 101.0e6,
                                    .resolution = std::numeric_limits<F64>::denorm_min()}, TestCaps());
-    REQUIRE(fine.segmentLength == Modules::Sweep::MaxSegmentLength);
+    REQUIRE(fine.segmentLength == Radio::SweepPlan::MaxSegmentLength);
     // A huge span with a huge resolution needs too few capture points.
     reject({.startFrequency = 1e300, .endFrequency = 1.5e300, .resolution = 1e299}, TestCaps());
     // A huge span at a normal resolution needs too many bins.
@@ -1800,7 +1835,7 @@ TEST_CASE("SDR Sweep rejects extreme finite inputs before any conversion",
     const auto firmwareFine = RequirePlan({.startFrequency = 88.0e6, .endFrequency = 108.0e6,
                                            .resolution = 1e-300, .mode = firmware}, caps);
     REQUIRE(firmwareFine.segmentLength == caps.firmwareSweep->maxCaptureLength);
-    REQUIRE(Modules::Sweep::Plan::ResolveMode({.resolution = 1e-300}, caps) == firmware);
+    REQUIRE(Radio::SweepPlan::ResolveMode({.resolution = 1e-300}, caps) == firmware);
 }
 
 TEST_CASE_METHOD(ScriptedDrivers,
@@ -1826,7 +1861,7 @@ TEST_CASE_METHOD(ScriptedDrivers,
     // The radio applies 2.1 MS/s when asked for 2 MS/s.
     TestScript().rateOffset = 0.1e6;
     const auto config = ScriptedSweep();
-    auto caps = ScriptedDevice({}).capabilities();
+    auto caps = ScriptedCapabilities();
     const auto plan = RequirePlan({.startFrequency = config.startFrequency,
                                    .endFrequency = config.endFrequency,
                                    .sampleRate = 2.1e6,
@@ -1882,7 +1917,7 @@ TEST_CASE_METHOD(ScriptedDrivers,
                                        .sampleRate = 2.123e6, .resolution = config.resolution}, TestCaps());
     REQUIRE(plan.segmentLength == expected.segmentLength);
     REQUIRE(plan.outputBins == expected.outputBins);
-    REQUIRE(plan.outputBins <= Modules::Sweep::MaxOutputBins);
+    REQUIRE(plan.outputBins <= Radio::SweepPlan::MaxOutputBins);
     REQUIRE(plan.endFrequency() >= config.endFrequency);
     REQUIRE(plan.binWidth > config.resolution);
     REQUIRE(sweep->resolution == config.resolution);
@@ -1954,7 +1989,7 @@ TEST_CASE_METHOD(ScriptedDrivers,
                  "[modules][sdr_sweep][lifecycle][cancellation]") {
     auto config = ScriptedSweep();
     config.resolution = 1.0e3;
-    config.dwell = Modules::Sweep::MaxDwell;
+    config.dwell = Radio::SweepPlan::MaxDwell;
 
     SECTION("bounded read requests") {
         const auto module = BuildSweepModule();
@@ -2022,7 +2057,7 @@ Radio::HackRfTransferQueue::Transfer SweepTransfer(const std::vector<std::vector
 // every hop of each completed sweep.
 std::vector<std::vector<I32>> DecodeSweeps(const std::vector<Radio::HackRfTransferQueue::Transfer>& transfers) {
     const std::vector<U64> headers{10, 20, 30};
-    Modules::Sweep::Plan plan;
+    Radio::SweepPlan plan;
     plan.mode = Mode::Firmware;
     plan.sampleRate = 4.0;
     plan.segmentLength = 4;
@@ -2033,7 +2068,7 @@ std::vector<std::vector<I32>> DecodeSweeps(const std::vector<Radio::HackRfTransf
         plan.hops.push_back({.frequency = static_cast<F64>(headers[hop]),
                              .runs = {{.segment = 0, .grid = hop * 4, .length = 4}}});
     }
-    Modules::Sweep::Assembler assembler;
+    Radio::SweepAssembler assembler;
     REQUIRE(assembler.configure(plan) == Result::SUCCESS);
     std::vector<CF32> frame(plan.outputBins);
 
@@ -2041,7 +2076,7 @@ std::vector<std::vector<I32>> DecodeSweeps(const std::vector<Radio::HackRfTransf
     decoder.configure(headers, 1, 4, TestBlockBytes, 0.0);
     std::vector<std::vector<I32>> sweeps;
     for (const auto& transfer : transfers) {
-        REQUIRE(decoder.decode(transfer, [&](const Radio::Device::SweepCapture& capture) {
+        REQUIRE(decoder.decode(transfer, [&](const Radio::Sweep::Capture& capture) {
             if (assembler.add(capture) == Result::SUCCESS && assembler.complete()) {
                 std::vector<I32> markers;
                 for (U64 hop = 0; hop < headers.size(); ++hop) {

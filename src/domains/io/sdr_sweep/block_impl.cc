@@ -18,9 +18,9 @@ struct SdrSweepImpl : public Block::Impl, public DynamicConfig<Blocks::SdrSweep>
 
  private:
     const Modules::SdrSweepImpl* createdModule(const Blocks::SdrSweep& config);
+    Parser::Map manualGainFormat(const Blocks::SdrSweep& config);
     Parser::Map antennaFormat(const Blocks::SdrSweep& config);
     Parser::Map sampleRateFormat(const Blocks::SdrSweep& config);
-    Parser::Map manualGainFormat(const Blocks::SdrSweep& config);
 };
 
 Result SdrSweepImpl::configure() {
@@ -44,7 +44,8 @@ Result SdrSweepImpl::define() {
 
     JST_CHECK(defineInterfaceOutput("signal",
                                     "Output",
-                                    "Synthetic complex samples whose spectrum is the stitched sweep."));
+                                    "Synthetic complex samples whose spectrum is the stitched "
+                                    "sweep."));
 
     Parser::Sequence deviceOptions{Parser::Map{{"label", "None"}, {"value", ""}}};
     bool selectionListed = config.deviceString.empty();
@@ -71,21 +72,26 @@ Result SdrSweepImpl::define() {
     JST_CHECK(defineInterfaceConfig("startFrequency",
                                     "Start Frequency",
                                     "Lower edge of the sweep.",
-                                    {{"type", "float"}, {"unit", "MHz"}, {"scale", 1.0e6f}, {"precision", 3}}));
+                                    {{"type", "float"}, {"unit", "MHz"}, {"scale", 1.0e6f},
+                                     {"precision", 3}}));
 
     JST_CHECK(defineInterfaceConfig("endFrequency",
                                     "End Frequency",
                                     "Upper edge of the sweep.",
-                                    {{"type", "float"}, {"unit", "MHz"}, {"scale", 1.0e6f}, {"precision", 3}}));
+                                    {{"type", "float"}, {"unit", "MHz"}, {"scale", 1.0e6f},
+                                     {"precision", 3}}));
 
     JST_CHECK(defineInterfaceConfig("resolution",
                                     "Resolution",
-                                    "Target bin width. Automatically coarsened when capture or output limits require it.",
-                                    {{"type", "float"}, {"unit", "kHz"}, {"scale", 1.0e3f}, {"precision", 3}}));
+                                    "Target bin width. Automatically coarsened when capture or "
+                                    "output limits require it.",
+                                    {{"type", "float"}, {"unit", "kHz"}, {"scale", 1.0e3f},
+                                     {"precision", 3}}));
 
     JST_CHECK(defineInterfaceConfig("sampleRate",
                                     "Capture Rate",
-                                    "Hardware sample rate of each hop. Zero uses the radio's preferred rate.",
+                                    "Hardware sample rate of each hop. Zero uses the radio's "
+                                    "preferred rate.",
                                     sampleRateFormat(config)));
 
     JST_CHECK(defineInterfaceConfig("dwell",
@@ -95,14 +101,16 @@ Result SdrSweepImpl::define() {
 
     JST_CHECK(defineInterfaceConfig("settlingTime",
                                     "Settling Time",
-                                    "Time skipped after each retune, once samples queued before it are dropped. "
-                                    "Zero uses the radio's default. A nonzero override makes a HackRF retune "
-                                    "instead of running a firmware sweep.",
+                                    "Time skipped after each retune, once samples queued before "
+                                    "it are dropped. Zero uses the radio's default. A nonzero "
+                                    "override makes a HackRF retune instead of running a firmware "
+                                    "sweep.",
                                     {{"type", "float"}, {"unit", "ms"}, {"precision", 3}}));
 
     JST_CHECK(defineInterfaceConfig("automaticGain",
                                     "Automatic Gain",
-                                    "Lets the radio set its gain. Hop levels are then not comparable.",
+                                    "Lets the radio set its gain. Hop levels are then not "
+                                    "comparable.",
                                     {{"type", "bool"}}));
 
     if (!config.automaticGain) {
@@ -121,8 +129,8 @@ Result SdrSweepImpl::define() {
 
     JST_CHECK(defineInterfaceMetric("bufferHealth",
                                     "Buffer Health",
-                                    "Smoothed occupancy of the single latest-completed-frame software slot, "
-                                    "not the radio's hardware FIFO.",
+                                    "Smoothed occupancy of the single latest-completed-frame "
+                                    "software slot, not the radio's hardware FIFO.",
                                     {{"type", "progressbar"}},
         [this]() -> std::any {
             const F32 health = moduleImpl ? moduleImpl->getMetrics().bufferHealth : 0.0f;
@@ -131,9 +139,9 @@ Result SdrSweepImpl::define() {
 
     JST_CHECK(defineInterfaceMetric("bufferLoss",
                                     "Buffer Loss",
-                                    "Completed output frames overwritten or expired before consumption, "
-                                    "as a share of completed frames produced. Settling skips and failed hops "
-                                    "are not software-buffer loss.",
+                                    "Completed output frames overwritten or expired before "
+                                    "consumption, as a share of completed frames produced. "
+                                    "Settling skips and failed hops are not software-buffer loss.",
                                     {{"type", "progressbar"}},
         [this]() -> std::any {
             const F64 loss = moduleImpl ? moduleImpl->getMetrics().bufferLoss : 0.0;
@@ -144,14 +152,16 @@ Result SdrSweepImpl::define() {
 
     JST_CHECK(defineInterfaceMetric("sweepSpeed",
                                     "Sweep Speed",
-                                    "Spectrum covered per second in GHz/s, counting overlapping frequencies only once. "
-                                    "The value in parentheses is the number of complete sweeps per second. "
-                                    "Both are smoothed and include capture and processing time.",
+                                    "Spectrum covered per second in GHz/s, counting overlapping "
+                                    "frequencies only once. The value in parentheses is the number "
+                                    "of complete sweeps per second. Both are smoothed and include "
+                                    "capture and processing time.",
                                     {{"type", "label"}},
         [this]() -> std::any {
             const auto metrics = moduleImpl ? moduleImpl->getMetrics()
                                              : Modules::SdrSweepImpl::MetricSnapshot{};
-            return jst::fmt::format("{:.2f} GHz/s ({:.1f} Hz)", metrics.sweepSpeed, metrics.sweepRate);
+            return jst::fmt::format("{:.2f} GHz/s ({:.1f} Hz)", metrics.sweepSpeed,
+                                    metrics.sweepRate);
         }));
 
     return Result::SUCCESS;
@@ -182,14 +192,6 @@ Result SdrSweepImpl::reconfigure() {
     return Result::SUCCESS;
 }
 
-Parser::Map SdrSweepImpl::manualGainFormat(const Blocks::SdrSweep& config) {
-    const auto* sweep = createdModule(config);
-    const auto range = sweep ? sweep->getGainRange() : std::nullopt;
-    const F32 minimum = range ? static_cast<F32>(range->minimum) : 0.0f;
-    const F32 maximum = range ? static_cast<F32>(range->maximum) : 60.0f;
-    return {{"type", "range"}, {"min", minimum}, {"max", maximum}, {"unit", "dB"}};
-}
-
 const Modules::SdrSweepImpl* SdrSweepImpl::createdModule(const Blocks::SdrSweep& config) {
     const auto module = moduleHandle("sdr_sweep");
     if (!module || module->state() != Module::State::CREATED) {
@@ -197,6 +199,14 @@ const Modules::SdrSweepImpl* SdrSweepImpl::createdModule(const Blocks::SdrSweep&
     }
     const auto* sweep = module->getImpl<Modules::SdrSweepImpl>();
     return sweep && sweep->deviceString == config.deviceString ? sweep : nullptr;
+}
+
+Parser::Map SdrSweepImpl::manualGainFormat(const Blocks::SdrSweep& config) {
+    const auto* sweep = createdModule(config);
+    const auto range = sweep ? sweep->getGainRange() : std::nullopt;
+    const F32 minimum = range ? static_cast<F32>(range->minimum) : 0.0f;
+    const F32 maximum = range ? static_cast<F32>(range->maximum) : 60.0f;
+    return {{"type", "range"}, {"min", minimum}, {"max", maximum}, {"unit", "dB"}};
 }
 
 Parser::Map SdrSweepImpl::antennaFormat(const Blocks::SdrSweep& config) {

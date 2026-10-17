@@ -94,11 +94,11 @@ Result SdrImpl::create() {
     deviceGaps.publish(0);
     deviceLostSamples.publish(0);
 
-    JST_CHECK(Radio::Device::Open(deviceString, radio));
-    antennas = radio->capabilities().antennas;
-    if (const auto rates = radio->capabilities().fixedSampleRates();
-        !rates.empty() && !Radio::Device::Range::Contains(radio->capabilities().sampleRateRanges,
-                                                          sampleRate)) {
+    JST_CHECK(Radio::Stream::Open(deviceString, radio));
+    const auto& caps = radio->capabilities();
+    antennas = caps.antennas;
+    if (const auto rates = caps.fixedSampleRates();
+        !rates.empty() && !Radio::Device::Range::Contains(caps.sampleRateRanges, sampleRate)) {
         JST_INFO("[MODULE_SDR] {:.3f} MHz is not a rate of {}. Using {:.3f} MHz.",
                  sampleRate / 1e6, radio->info().label, rates.front() / 1e6);
         sampleRate = static_cast<F32>(rates.front());
@@ -176,6 +176,10 @@ Result SdrImpl::reconfigure() {
         const auto previous = radio->applied();
         const U64 generation = radio->generation();
         const auto result = radio->update(settingsOf(config));
+        if (result == Result::FATAL) {
+            errored = true;
+            return Result::ERROR;
+        }
         const auto& applied = radio->applied();
         if (radio->generation() != generation || applied.frequency != previous.frequency ||
             applied.sampleRate != previous.sampleRate) {
@@ -193,7 +197,7 @@ Result SdrImpl::reconfigure() {
     });
 }
 
-Radio::Device::Settings SdrImpl::settingsOf(const Sdr& config) const {
+Radio::Stream::Settings SdrImpl::settingsOf(const Sdr& config) const {
     return {
         .frequency = config.frequency,
         .sampleRate = config.sampleRate,
@@ -274,6 +278,10 @@ Result SdrImpl::receiveLoop() {
             break;
         }
 
+        if (errored) {
+            return Result::ERROR;
+        }
+
         const auto capture = radio->read(scratch, ReadTimeout);
         if (!streaming) {
             break;
@@ -281,7 +289,8 @@ Result SdrImpl::receiveLoop() {
 
         switch (capture.status) {
             case Radio::Device::Status::Samples: {
-                stream.push(capture.generation, scratch.data(), capture.count);
+                stream.push(capture.generation, scratch.data(), capture.count, capture.timestamp,
+                            capture.epoch);
                 const U64 capacity = stream.capacity();
                 if (capacity > 0) {
                     const F32 level = static_cast<F32>(stream.size()) / static_cast<F32>(capacity);
@@ -297,6 +306,7 @@ Result SdrImpl::receiveLoop() {
             case Radio::Device::Status::Timeout:
                 break;
             case Radio::Device::Status::Discontinuity:
+                stream.split(capture.generation);
                 deviceGaps.publish(++gaps);
                 lost += capture.lost;
                 deviceLostSamples.publish(lost);
@@ -333,7 +343,7 @@ std::vector<std::string> SdrImpl::listAntennas() const {
     return antennas;
 }
 
-Radio::Device::Applied SdrImpl::getApplied() const {
+Radio::Stream::Applied SdrImpl::getApplied() const {
     return published.get();
 }
 

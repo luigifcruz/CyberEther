@@ -17,7 +17,7 @@ if catch2_dep.found() and module_test_lst.length() > 0
             test_kind = 'module'
         elif test_filename == 'block_tests.cc'
             test_kind = 'block'
-        elif test_filename == 'device_tests.cc'
+        elif test_filename == 'tests.cc'
             test_kind = 'device'
             test_domain = module_test_fs.name(module_test_fs.parent(module_test_fs.parent(test_component_path)))
         else

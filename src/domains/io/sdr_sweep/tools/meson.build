@@ -1,3 +1,3 @@
 src_lst += files([
-    'sweep.cc',
+    'sweep_plan.cc',
 ])
