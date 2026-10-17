@@ -27,6 +27,7 @@ class JETSTREAM_API Surface : public WindowAttachment {
         ColorRGBA<F32> clearColor = {0.0f, 0.0f, 0.0f, 1.0f};
         bool multisampled = false;
         bool retained = false;
+        bool composite = false;
     };
 
     explicit Surface(const Config& config);

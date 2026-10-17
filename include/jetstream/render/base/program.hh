@@ -31,6 +31,7 @@ class JETSTREAM_API Program {
         std::vector<std::pair<std::shared_ptr<Buffer>, Target>> buffers;
         std::unordered_map<DeviceType, std::vector<std::vector<U8>>> shaders;
         bool enableAlphaBlending = false;
+        bool eraseBlending = false;
         bool borrowedTextures = false;
         std::optional<ScissorRect> scissorRect;
     };

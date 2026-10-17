@@ -1,3 +1,5 @@
+#include <algorithm>
+
 #include "jetstream/render/devices/metal/window.hh"
 #include "jetstream/render/devices/metal/surface.hh"
 
@@ -14,7 +16,14 @@ Implementation::WindowImp(const Config& config,
 
 Result Implementation::bindSurface(const std::shared_ptr<Surface>& surface) {
     auto _resource = std::dynamic_pointer_cast<SurfaceImp<DeviceType::Metal>>(surface);
-    surfaces.push_back(_resource);
+    if (_resource->getConfig().composite) {
+        surfaces.push_back(_resource);
+    } else {
+        const auto firstComposite = std::find_if(surfaces.begin(), surfaces.end(), [](const auto& other) {
+            return other->getConfig().composite;
+        });
+        surfaces.insert(firstComposite, _resource);
+    }
     return Result::SUCCESS;
 }
 

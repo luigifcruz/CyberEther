@@ -22,6 +22,10 @@ class JETSTREAM_API WindowImp<DeviceType::Vulkan> : public Window {
         return DeviceType::Vulkan;
     };
 
+    bool supportsEraseBlending() const override {
+        return true;
+    }
+
  protected:
     Result bindSurface(const std::shared_ptr<Surface>& surface) override;
     Result unbindSurface(const std::shared_ptr<Surface>& surface) override;

@@ -90,7 +90,15 @@ Result Implementation::create(const MTL::PixelFormat& pixelFormat, bool multisam
     const auto& colorAttachment = renderPipelineDescriptor->colorAttachments()->object(0)->init();
     colorAttachment->setPixelFormat(pixelFormat);
 
-    if (config.enableAlphaBlending) {
+    if (config.eraseBlending) {
+        colorAttachment->setBlendingEnabled(true);
+        colorAttachment->setSourceRGBBlendFactor(MTL::BlendFactorZero);
+        colorAttachment->setDestinationRGBBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
+        colorAttachment->setRgbBlendOperation(MTL::BlendOperationAdd);
+        colorAttachment->setSourceAlphaBlendFactor(MTL::BlendFactorZero);
+        colorAttachment->setDestinationAlphaBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
+        colorAttachment->setAlphaBlendOperation(MTL::BlendOperationAdd);
+    } else if (config.enableAlphaBlending) {
         colorAttachment->setBlendingEnabled(true);
         colorAttachment->setSourceRGBBlendFactor(MTL::BlendFactorSourceAlpha);
         colorAttachment->setDestinationRGBBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);

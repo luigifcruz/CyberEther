@@ -73,6 +73,7 @@ class JETSTREAM_API Window {
     virtual std::string info() const = 0;
 
     virtual constexpr DeviceType device() const = 0;
+    virtual bool supportsEraseBlending() const { return false; }
 
     Result bind(const std::shared_ptr<Components::Generic>& component);
     Result unbind(const std::shared_ptr<Components::Generic>& component);
