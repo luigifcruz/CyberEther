@@ -146,7 +146,6 @@ struct SignalViewSplitInteraction {
             dragging = false;
             return consumed;
         }
-        const F32 x = event.position.x * size.x;
         const F32 y = event.position.y * size.y;
         if (dragging) {
             if ((event.type == MouseEventType::Move ||

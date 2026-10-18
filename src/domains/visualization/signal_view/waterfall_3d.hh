@@ -170,11 +170,6 @@ inline void Waterfall3DDecimateRow(const F32* bins,
     }
 }
 
-inline F32 Waterfall3DElevation(const F32 magnitude) {
-    const F32 gain = kWaterfall3DElevationGain;
-    return 0.5f + 0.5f * std::tanh(gain * (magnitude - 0.5f)) / std::tanh(gain * 0.5f);
-}
-
 inline F32 Waterfall3DMagnitude(const F32 elevation) {
     const F32 gain = kWaterfall3DElevationGain;
     return 0.5f + std::atanh((2.0f * elevation - 1.0f) * std::tanh(gain * 0.5f)) / gain;
