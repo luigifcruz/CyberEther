@@ -347,6 +347,19 @@ TEST_CASE_METHOD(FlowgraphFixture,
     REQUIRE(hasConfig("lineplotAveraging"));
     REQUIRE(hasConfig("waterfallHeight"));
 
+    REQUIRE(hasConfig("density"));
+    REQUIRE_FALSE(hasConfig("persistence"));
+
+    Parser::Map withDensity;
+    withDensity["density"] = true;
+    withDensity["persistence"] = U64{64};
+    REQUIRE(flowgraph->blockReconfigure("analyzer", withDensity) == Result::SUCCESS);
+    REQUIRE(viewBlock("analyzer").state == Block::State::Created);
+    REQUIRE(viewBlock("analyzer").surfaces.size() == 1);
+    REQUIRE(hasConfig("persistence"));
+    REQUIRE(hasConfig("waterfallHeight"));
+    REQUIRE(flowgraph->compute() == Result::SUCCESS);
+
     Parser::Map invalid;
     invalid["mode"] = std::string("surface");
     REQUIRE(flowgraph->blockReconfigure("analyzer", invalid) == Result::SUCCESS);

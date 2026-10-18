@@ -145,6 +145,8 @@ Result SpectrumAnalyzerImpl::configure() {
     signalViewConfig->rangeMax = rangeMax;
     signalViewConfig->waterfallHeight = waterfallHeight;
     signalViewConfig->colormap = colormap;
+    signalViewConfig->density = density;
+    signalViewConfig->persistence = persistence;
     signalViewConfig->splitRatio = splitRatio;
     signalViewConfig->markers = markers;
     signalViewConfig->pins = pins;
@@ -163,7 +165,7 @@ Result SpectrumAnalyzerImpl::define() {
     JST_CHECK(defineInterfaceConfig("mode", "Mode",
                                     "Which views the analyzer renders.",
                                     {{"type", "dropdown"}, {"options", Parser::Sequence{
-                                        Parser::Map{{"label", "Lineplot + Waterfall"}, {"value", "lineplot_waterfall"}},
+                                        Parser::Map{{"label", "Spectrum + Waterfall"}, {"value", "lineplot_waterfall"}},
                                         Parser::Map{{"label", "Spectrum"}, {"value", "lineplot"}},
                                         Parser::Map{{"label", "Waterfall"}, {"value", "waterfall"}},
                                         Parser::Map{{"label", "3D Waterfall"}, {"value", "waterfall_3d"}},
@@ -180,7 +182,7 @@ Result SpectrumAnalyzerImpl::define() {
                                     "Maximum displayed amplitude.",
                                     {{"type", "range"}, {"min", -300.0f}, {"max", 0.0f}, {"unit", "dBFS"}}));
     if (SpectrumAnalyzerHasLineplot(candidateMode)) {
-        JST_CHECK(defineInterfaceConfig("lineplotAveraging", "Lineplot Averaging",
+        JST_CHECK(defineInterfaceConfig("lineplotAveraging", "Spectrum Averaging",
                                         "Trace smoothing factor.",
                                         {{"type", "range"}, {"min", 1.0f}, {"max", 256.0f}, {"value_type", "uint"}}));
     }
@@ -193,6 +195,14 @@ Result SpectrumAnalyzerImpl::define() {
         JST_CHECK(defineInterfaceConfig("maxHold", "Max Hold",
                                         "Enable maximum hold trace.",
                                         {{"type", "bool"}}));
+        JST_CHECK(defineInterfaceConfig("density", "Spectral Density",
+                                        "Enable spectral density behind the trace.",
+                                        {{"type", "bool"}}));
+        if (candidate()->density) {
+            JST_CHECK(defineInterfaceConfig("persistence", "Persistence",
+                                            "Number of spectra for the density to fade to half.",
+                                            {{"type", "range"}, {"min", 1.0f}, {"max", 4096.0f}, {"value_type", "uint"}, {"unit", "spectra"}}));
+        }
     }
     if (SpectrumAnalyzerHasWaterfall(candidateMode)) {
         JST_CHECK(defineInterfaceConfig("waterfallHeight", "Waterfall Height",

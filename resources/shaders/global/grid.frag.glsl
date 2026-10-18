@@ -8,7 +8,7 @@ layout(set = 0, binding = 0) uniform ShaderUniforms {
     uint numberOfLines;
 } uniforms;
 
-layout(location = 0) in vec3 fragColor;
+layout(location = 0) in vec4 fragColor;
 layout(location = 1) in vec2 fragNormal;
 
 layout(location = 0) out vec4 outColor;
@@ -27,5 +27,5 @@ void main() {
     float alpha = smoothstep(0.5 - edgeSharpness * width, 0.5 + edgeSharpness * width, distance);
 
     // Output the color with the calculated alpha.
-    outColor = vec4(fragColor, alpha);
+    outColor = vec4(fragColor.rgb, fragColor.a * alpha);
 }

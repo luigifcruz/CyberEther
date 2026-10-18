@@ -91,6 +91,18 @@ Result SignalViewImplNativeCpu::presentSubmit() {
 Result SignalViewImplNativeCpu::computeSubmit() {
     const F32* inputData = static_cast<const F32*>(input.data());
 
+    const auto copyRows = [&](F32* destination, const WaterfallWritePlan& plan, const U64 height) {
+        for (U64 row = 0; row < plan.rowCount; ++row) {
+            const U64 sourceBatch = plan.sourceRow + row;
+            const U64 destinationRow = (plan.destinationRow + row) % height;
+            for (U64 element = 0; element < numberOfElements; ++element) {
+                const F32 value = inputData[sourceBatch * inputBatchStride + element * inputElementStride];
+                destination[destinationRow * numberOfElements + element] =
+                    std::isfinite(value) ? value : (value > 0.0f ? 1.0f : 0.0f);
+            }
+        }
+    };
+
     bool updateMaxHold = false;
     if (lineplotEnabled) {
         F32* sumsData = static_cast<F32*>(sums.data());
@@ -125,7 +137,8 @@ Result SignalViewImplNativeCpu::computeSubmit() {
                 average += amplitude / lineplotAveraging;
             }
 
-            const F32 displayed = std::tanh(2.0f * average);
+            const F32 displayed = densityEnabled ? std::clamp(average, -1.0f, 1.0f)
+                                                 : std::tanh(2.0f * average);
             signalData[(i * 2) + 1] = displayed;
 
             if (maxData) {
@@ -177,20 +190,19 @@ Result SignalViewImplNativeCpu::computeSubmit() {
                 }
             }
         } else {
-            for (U64 row = 0; row < plan.rowCount; ++row) {
-                const U64 sourceBatch = plan.sourceRow + row;
-                const U64 destinationBatch =
-                    (plan.destinationRow + row) % waterfallHeight;
-                for (U64 element = 0; element < numberOfElements; ++element) {
-                    const F32 value = inputData[sourceBatch * inputBatchStride + element * inputElementStride];
-                    waterfallData[destinationBatch * numberOfElements + element] =
-                        std::isfinite(value) ? value : (value > 0.0f ? 1.0f : 0.0f);
-                }
-            }
+            copyRows(waterfallData, plan, waterfallHeight);
         }
 
         waterfallAveragingCount = averagePlan.pendingRows;
         waterfallHistory.advance(averagePlan.rowCount, waterfallHeight);
+    }
+
+    if (densityEnabled) {
+        const U64 height = detail::kDensityHistoryRows;
+        copyRows(densityBins.data<F32>(),
+                 PlanWaterfallWrite(densityHistory.writeIndex, numberOfBatches, height),
+                 height);
+        densityHistory.advance(numberOfBatches, height);
     }
 
     return Result::SUCCESS;

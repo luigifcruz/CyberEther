@@ -54,6 +54,14 @@ struct SignalViewImplAccess : Modules::SignalViewImpl {
         return &SignalViewImplAccess::waterfallHistory;
     }
 
+    static auto densityBinsMember() {
+        return &SignalViewImplAccess::densityBins;
+    }
+
+    static auto densityHistoryMember() {
+        return &SignalViewImplAccess::densityHistory;
+    }
+
     static Modules::SignalViewCanvas& canvasOf(Modules::SignalViewImpl& impl) {
         return impl.*&SignalViewImplAccess::canvas;
     }
@@ -2144,6 +2152,14 @@ TEST_CASE("Signal View validation is mode aware",
                 REQUIRE(ctx.run() == Result::ERROR);
             }
 
+            SECTION("density settings") {
+                Modules::SignalView config;
+                config.mode = "lineplot";
+                config.density = true;
+                config.persistence = 0;
+                RequireSignalViewValidationError(implementation, config, input);
+            }
+
             SECTION("waterfall accepts one column") {
                 TestContext ctx("signal_view", implementation.device,
                                 implementation.runtime, implementation.provider);
@@ -2156,6 +2172,108 @@ TEST_CASE("Signal View validation is mode aware",
                 ctx.setInput("signal", oneColumn);
                 REQUIRE(ctx.run() == Result::SUCCESS);
             }
+        }
+    }
+}
+
+TEST_CASE("Density columns cap wide spectra and cover every bin",
+          "[modules][signal_view][density]") {
+    const auto narrow = Modules::detail::PlanDensityColumns(1024);
+    REQUIRE(narrow.binsPerColumn == 1);
+    REQUIRE(narrow.columns == 1024);
+
+    const auto limit = Modules::detail::PlanDensityColumns(
+        Modules::detail::kDensityMaxColumns);
+    REQUIRE(limit.binsPerColumn == 1);
+    REQUIRE(limit.columns == Modules::detail::kDensityMaxColumns);
+
+    for (const U64 width : {U64{8193}, U64{65536}, U64{100000}}) {
+        const auto plan = Modules::detail::PlanDensityColumns(width);
+        REQUIRE(plan.columns <= Modules::detail::kDensityMaxColumns);
+        REQUIRE(plan.columns * plan.binsPerColumn >= width);
+        REQUIRE((plan.columns - 1) * plan.binsPerColumn < width);
+    }
+
+    REQUIRE(Modules::detail::DensityDecay(1.0f) == Catch::Approx(0.5f));
+    REQUIRE(std::pow(Modules::detail::DensityDecay(256.0f), 256.0f) ==
+            Catch::Approx(0.5f));
+}
+
+TEST_CASE("Signal View spectral density keeps its own history ring under a linear trace",
+          "[modules][signal_view][density]") {
+    const auto implementations = Registry::ListAvailableModules("signal_view");
+    REQUIRE(!implementations.empty());
+    const std::string mode = GENERATE("lineplot", "lineplot_waterfall");
+    CAPTURE(mode);
+
+    for (const auto& implementation : implementations) {
+        DYNAMIC_SECTION("Device: " << implementation.device
+                        << " Runtime: " << implementation.runtime) {
+            Tensor cpuInput;
+            REQUIRE(cpuInput.create(DeviceType::CPU, DataType::F32, {3, 16}) ==
+                    Result::SUCCESS);
+            REQUIRE(SetSignalAxes(cpuInput, {
+                .sample = Index{1},
+                .batch = Index{0},
+            }) == Result::SUCCESS);
+            for (U64 i = 0; i < cpuInput.size(); ++i) {
+                cpuInput.data<F32>()[i] = static_cast<F32>(i) / cpuInput.size();
+            }
+
+            Tensor input;
+            if (implementation.device == DeviceType::CPU) {
+                input = cpuInput;
+            } else {
+                REQUIRE(input.create(implementation.device, cpuInput) == Result::SUCCESS);
+            }
+
+            TensorMap inputs;
+            inputs["signal"].requested("source", "signal");
+            inputs["signal"].tensor = input;
+
+            std::shared_ptr<Module> module;
+            REQUIRE(Registry::BuildModule("signal_view",
+                                          implementation.device,
+                                          implementation.runtime,
+                                          implementation.provider,
+                                          module) == Result::SUCCESS);
+
+            Modules::SignalView config;
+            config.mode = mode;
+            config.density = true;
+            config.waterfallHeight = 4;
+            REQUIRE(module->create("signal_view", config, inputs) == Result::SUCCESS);
+
+            Runtime runtime("signal_view", implementation.device, implementation.runtime);
+            REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
+            std::unordered_set<std::string> skipped;
+            std::unordered_set<std::string> failed;
+            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+
+            auto* impl = module->getImpl<Modules::SignalViewImpl>();
+            REQUIRE(impl != nullptr);
+            const auto bins = ReadTensor(impl->*SignalViewImplAccess::densityBinsMember(),
+                                         "density history");
+            REQUIRE(bins.size() == Modules::detail::kDensityHistoryRows * 16);
+            for (U64 i = 0; i < cpuInput.size(); ++i) {
+                REQUIRE(bins[i] == cpuInput.data<F32>()[i]);
+            }
+            const auto& history = impl->*SignalViewImplAccess::densityHistoryMember();
+            REQUIRE(history.writeIndex == 3);
+            REQUIRE(history.dirtyRows == 3);
+            if (mode == "lineplot_waterfall") {
+                REQUIRE(ReadWaterfallBins(module).size() == 4 * 16);
+            }
+
+            const auto& lineplot = SignalViewImplAccess::lineplotOf(*impl);
+            REQUIRE(lineplot.config.overlay);
+            REQUIRE_FALSE(lineplot.config.fill);
+            const auto points = ReadSignalPoints(module);
+            REQUIRE(points.size() == 32);
+            REQUIRE(points[1] == Catch::Approx(-1.0f / 3.0f).margin(1e-5f));
+
+            REQUIRE(runtime.destroy() == Result::SUCCESS);
+            REQUIRE(module->destroy() == Result::SUCCESS);
         }
     }
 }

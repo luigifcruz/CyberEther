@@ -41,7 +41,7 @@ graph:
         **Samples** is the FFT size. With 2048 samples over 2 MHz, each bin is about 1 kHz wide. Doubling it sharpens the frequency detail and halves how often new rows arrive. Leave **Batches** and **Buffer Multiplier** alone unless you are tuning performance.
         
         ## Smoothing
-        - **Lineplot Averaging** smooths the trace over time. Higher is calmer but slower to react.
+        - **Spectrum Averaging** smooths the trace over time. Higher is calmer but slower to react.
         - **Waterfall Averaging** combines several spectra into each row, so the waterfall scrolls slower and looks cleaner.
         - **Waterfall Height** is how many rows of history are kept.
         

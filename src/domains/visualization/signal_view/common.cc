@@ -10,6 +10,7 @@
 #include <jetstream/memory/attributes.hh>
 
 #include "lineplot.hh"
+#include "density.hh"
 #include "waterfall.hh"
 
 namespace Jetstream::Modules {
@@ -174,7 +175,8 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
             ? config.amplitudeLabel
             : config.waterfallLabel);
         cfg.yLabelOnRight = lineplot;
-        cfg.gridColor = {0.12f, 0.12f, 0.12f, 1.0f};
+        cfg.gridColor = context.density ? ColorRGBA<F32>{1.0f, 1.0f, 1.0f, 0.06f}
+                                        : ColorRGBA<F32>{0.12f, 0.12f, 0.12f, 1.0f};
         cfg.majorGridColor = {0.5f, 0.5f, 0.5f, 1.0f};
         JST_CHECK(window->build(axis, cfg));
         JST_CHECK(window->bind(axis));
@@ -452,6 +454,9 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
         if (waterfall) {
             context.waterfall->attach(cfg);
         }
+        if (context.density) {
+            context.density->attach(cfg);
+        }
         JST_CHECK(axis->surfaceUnderlay(cfg));
         if (lineplot) {
             context.lineplot->attach(cfg);
@@ -717,6 +722,17 @@ void SignalViewCanvas::updateState(const Context& context) {
         }
     }
 
+    if (context.density) {
+        if (combined) {
+            context.density->layout(panels.line,
+                                    paddingScale.x,
+                                    paddingScale.y * linePanelScale,
+                                    paddingScale.y * (1.0f - linePanelScale));
+        } else {
+            context.density->layout(panels.plot, paddingScale.x, paddingScale.y, 0.0f);
+        }
+    }
+
     const auto& vs = interaction.viewSize;
     axis->updateScissorRect({0, 0,
                              static_cast<U32>(vs.x),
@@ -802,8 +818,10 @@ void SignalViewCanvas::updateLabels(const Context& context) {
 
         Render::Components::Axis::TickFormatter yFormatter;
         if (lineplot) {
-            yFormatter = [min = config.rangeMin, max = config.rangeMax](const F32 position) {
-                return detail::LineplotAmplitudeLabel(position, min, max);
+            yFormatter = [min = config.rangeMin,
+                          max = config.rangeMax,
+                          linear = context.density != nullptr](const F32 position) {
+                return detail::LineplotAmplitudeLabel(position, min, max, linear);
             };
         }
 
@@ -942,7 +960,8 @@ std::string SignalViewCanvas::formatSpanX(const Context& context, const F32 delt
 
 std::string SignalViewCanvas::formatAmplitude(const Context& context, const F32 yPoint) const {
     const auto& config = context.config;
-    const auto value = detail::LineplotAmplitudeValue(yPoint, config.rangeMin, config.rangeMax);
+    const auto value = detail::LineplotAmplitudeValue(yPoint, config.rangeMin, config.rangeMax,
+                                                      context.density != nullptr);
     if (!value) {
         return {};
     }
