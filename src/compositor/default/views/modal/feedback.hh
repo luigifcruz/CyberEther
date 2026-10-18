@@ -25,8 +25,9 @@ struct FeedbackView {
     void update(Config config) {
         this->config = std::move(config);
 
+        using Text = Sakura::Text;
+
         header.update({
-            .id = "FeedbackModalHeader",
             .title = ICON_FA_COMMENT_DOTS " Send Feedback (CTRL+G)",
             .description = "Share bugs, feature ideas, or general comments. "
                            "All feedback helps. It's anonymous, with no follow-up.",
@@ -37,25 +38,25 @@ struct FeedbackView {
         const bool underMinimum = this->config.text.size() < this->config.minLength;
 
         countText.update({
-            .id = "FeedbackModalCount",
             .str = countStr,
-            .tone = overLimit ? Sakura::Text::Tone::Warning
-                    : underMinimum ? Sakura::Text::Tone::Disabled
-                                    : Sakura::Text::Tone::Secondary,
-            .align = Sakura::Text::Align::Right,
+            .tone = overLimit ? Text::Tone::Warning
+                    : underMinimum ? Text::Tone::Disabled
+                                    : Text::Tone::Secondary,
+            .align = Text::Align::Right,
             .scale = 0.85f,
         });
 
         feedbackInput.update({
             .id = "FeedbackModalEditor",
             .value = this->config.text,
-            .size = {0.0f, 160.0f},
-            .language = Sakura::Retained::CodeEditor::Language::Markdown,
+            .height = 160.0f,
+            .language = Sakura::CodeEditor::Language::Markdown,
             .lineNumbers = false,
             .lineWrapping = true,
             .showActiveLine = false,
             .padding = Sakura::Padding{6.0f, 6.0f, 6.0f, 6.0f},
             .backgroundColorKey = "card",
+            .rounding = 8.0f,
             .onChange = [this](std::string value) {
                 if (this->config.onTextChange) {
                     this->config.onTextChange(value);
@@ -67,10 +68,9 @@ struct FeedbackView {
         const bool canSubmit = !underMinimum && !overLimit && !submitting;
 
         submitButton.update({
-            .id = "FeedbackModalSubmit",
             .str = submitting ? ICON_FA_SPINNER " Submitting..."
                               : ICON_FA_PAPER_PLANE " Submit Feedback",
-            .size = {-1.0f, 40.0f},
+            .size = {Sakura::Fill, 40.0f},
             .variant = Sakura::Button::Variant::Action,
             .disabled = !canSubmit,
             .onClick = [this]() {
@@ -79,25 +79,36 @@ struct FeedbackView {
                 }
             },
         });
+        divider.update({});
+        stack.update({
+            .items = {
+                {.child = &header},
+                {.child = &feedbackInput, .size = 160.0f},
+                {.child = &countText},
+                {.child = &divider},
+                {.child = &submitButton},
+            },
+        });
+        panel.update({
+            .id = "FeedbackModal",
+            .content = &stack,
+            .backgroundColorKey = "popup_bg",
+        });
     }
 
-    void render(const Sakura::Context& ctx) {
-        header.render(ctx);
-
-        feedbackInput.render(ctx);
-        countText.render(ctx);
-
-        divider.render(ctx);
-        submitButton.render(ctx);
+    Sakura::Component& component() {
+        return panel;
     }
 
  private:
     Config config;
     ModalHeader header;
-    Sakura::Retained::CodeEditor feedbackInput;
+    Sakura::CodeEditor feedbackInput;
     Sakura::Text countText;
     Sakura::Divider divider;
     Sakura::Button submitButton;
+    Sakura::Stack stack;
+    Sakura::Panel panel;
 };
 
 }  // namespace Jetstream

@@ -3,6 +3,8 @@
 
 #include "types.hh"
 
+#include "../field_tooltip.hh"
+
 namespace Jetstream {
 
 struct FlowgraphConfigMultilineField {
@@ -20,17 +22,20 @@ struct FlowgraphConfigMultilineField {
             buffer = nextValue;
             parsedEncoded = nextValue;
         }
+        help.update(this->config.id, this->config.help);
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
-            .help = this->config.help,
+            .tooltip = help.overlay(),
+            .content = &editor,
         });
         const bool dirty = buffer != parsedEncoded;
         editor.update({
             .id = this->config.id + "Editor",
             .value = buffer,
             .status = dirty ? "Edited. Press Ctrl+Enter to apply." : this->config.status,
-            .statusTone = dirty ? Sakura::NodeCodeEditor::StatusTone::Info : this->config.statusTone,
+            .height = 200.0f,
+            .statusTone = dirty ? Sakura::StatusTone::Info : this->config.statusTone,
             .collapsible = collapsible,
             .backgroundColorKey = "card",
             .onChange = [this](std::string nextValue) {
@@ -48,10 +53,8 @@ struct FlowgraphConfigMultilineField {
         return Result::SUCCESS;
     }
 
-    void render(const Sakura::Context& ctx) const {
-        frame.render(ctx, [this](const Sakura::Context& ctx) {
-            editor.render(ctx);
-        });
+    Sakura::Component& component() {
+        return frame;
     }
 
  private:
@@ -60,8 +63,9 @@ struct FlowgraphConfigMultilineField {
     std::string parsedEncoded;
     std::string buffer;
     bool collapsible = false;
+    FlowgraphFieldTooltip help;
     Sakura::NodeField frame;
-    Sakura::NodeCodeEditor editor;
+    Sakura::CodeEditor editor;
 };
 
 }  // namespace Jetstream

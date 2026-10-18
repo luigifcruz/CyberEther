@@ -26,6 +26,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace Jetstream {
@@ -54,12 +55,15 @@ struct DefaultCompositorState {
 
         std::optional<std::string> focusedFlowgraph;
         std::optional<std::string> pendingFocusedFlowgraph;
+        bool startTab = false;
+        bool startTabFocused = false;
+        U64 startTabBaseline = 0;
+        U64 startTabRequests = 0;
     };
 
     struct GraphicsState {
         std::optional<DeviceType> device;
         F32 scale = 1.0f;
-        U64 framerate = 60;
     };
 
     struct SettingsState {
@@ -85,7 +89,6 @@ struct DefaultCompositorState {
 
     struct DebugState {
         int logLevel = JST_LOG_DEBUG_DEFAULT_LEVEL;
-        bool latencyEnabled = false;
         bool timingEnabled = false;
     };
 
@@ -105,15 +108,15 @@ struct DefaultCompositorState {
     };
 
     struct FlowgraphState {
-        struct StackWindowState {
-            StackMeta meta;
-            bool restoreDockLayout = false;
-            bool dockInMainDockspace = true;
-        };
-
         struct BlockSnapshot {
             std::string name;
             Flowgraph::View::BlockData data;
+        };
+
+        struct Documentation {
+            std::string block;
+            std::string title;
+            std::string markdown;
         };
 
         static std::string LiveMarkdownKey(const std::string& flowgraphId,
@@ -123,9 +126,11 @@ struct DefaultCompositorState {
         }
 
         std::unordered_map<std::string, std::shared_ptr<Flowgraph>> items;
-        std::unordered_map<std::string, std::unordered_map<std::string, StackWindowState>> stacks;
+        std::unordered_map<std::string, TileMeta> layouts;
+        std::unordered_set<std::string> restoredLayouts;
         std::unordered_map<std::string, std::vector<BlockSnapshot>> blocks;
         std::unordered_map<std::string, std::string> liveMarkdown;
+        std::unordered_map<std::string, Documentation> documentation;
         SurfaceTracks surfaces;
     };
 

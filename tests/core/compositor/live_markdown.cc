@@ -6,13 +6,12 @@
 
 #include "compositor/default/live_markdown.hh"
 #include "compositor/default/presenters/flowgraph/detached_config.hh"
-#include "compositor/default/presenters/flowgraph/stack.hh"
 #include "jetstream/flowgraph_environment.hh"
 
 using namespace Jetstream;
 
-TEST_CASE("Detached configs and stacks use block snapshots with live markdown previews",
-          "[core][compositor][live-markdown][stacks][config]") {
+TEST_CASE("Detached configs use block snapshots with live markdown previews",
+          "[core][compositor][live-markdown][config]") {
     DefaultCompositorState state;
     DefaultCompositorCallbacks callbacks;
     std::vector<Mail> messages;
@@ -48,13 +47,6 @@ TEST_CASE("Detached configs and stacks use block snapshots with live markdown pr
     CHECK(reconfigure.blockId == "note");
     CHECK(reconfigure.silent);
     CHECK(Parser::Get<std::string>(reconfigure.config, "content") == "Updated");
-
-    state.flowgraph.stacks["graph"]["stack_0"] = {};
-    const auto stacks = StackPresenter(context).build("graph", flowgraph);
-    REQUIRE(stacks.size() == 1);
-    REQUIRE(stacks[0].dockables.size() == 2);
-    CHECK(stacks[0].dockables[0].key == "flowgraph");
-    CHECK(stacks[0].dockables[1].key == MakeStackConfigItemKey("note"));
 }
 
 TEST_CASE("Live markdown expands stats fences with LF and CRLF line endings",

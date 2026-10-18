@@ -27,58 +27,36 @@ struct RuntimeSettingsPanel {
     };
 
     void update(Config config) {
-        this->config = std::move(config);
+        using Text = Sakura::Text;
+        using Stack = Sakura::Stack;
 
+        this->config = std::move(config);
         title.update({
-            .id = "RuntimeTitle",
             .str = "Runtime",
-            .font = Sakura::Text::Font::Bold,
+            .font = Text::Font::Bold,
             .scale = 1.2f,
         });
-
         description.update({
-            .id = "RuntimeDescription",
             .str = "Configure external runtime integrations.",
-            .tone = Sakura::Text::Tone::Secondary,
+            .tone = Text::Tone::Secondary,
             .wrapped = true,
         });
-
-        divider.update({
-            .id = "RuntimeHeaderDivider",
-        });
-
-        runtimeField.update({
-            .id = "PythonRuntimeSelectorField",
-        });
-
-        labelRow.update({
-            .id = "PythonRuntimeLabelRow",
-            .spacing = 4.0f,
-        });
-
-        labelText.update({
-            .id = "PythonRuntimeLabelText",
-            .str = "Python Runtime",
-        });
-
+        divider.update({});
+        labelText.update({.str = "Python Runtime"});
         runtimeDescription.update({
-            .id = "PythonRuntimeDescription",
             .str = "Choose one of the Python installations found on your system, or a custom path.",
-            .tone = Sakura::Text::Tone::Disabled,
+            .tone = Text::Tone::Disabled,
             .wrapped = true,
         });
-
         runtimeCombo.update({
-            .id = "##app-settings-python-runtime-selector",
+            .id = "settings:python-runtime-selector",
             .options = runtimeOptions(),
             .value = selectedRuntimeOption(),
             .onChange = [this](const std::string& value) {
                 handleRuntimeOptionChange(value);
             },
         });
-
         pythonPathInput.update({
-            .id = "##app-settings-python-runtime-path",
             .value = this->config.pythonPath,
             .hint = "Path to Python (e.g. /path/to/python).",
             .submit = Sakura::TextInput::Submit::OnCommit,
@@ -88,11 +66,9 @@ struct RuntimeSettingsPanel {
                 }
             },
         });
-
         browseButton.update({
-            .id = "PythonRuntimeBrowse",
             .str = "Browse File",
-            .size = {-1.0f, 0.0f},
+            .size = {Sakura::Fill, 0.0f},
             .onClick = [this]() {
                 if (this->config.onBrowsePythonPath) {
                     this->config.onBrowsePythonPath(this->config.pythonPath, [this](std::string path) {
@@ -103,21 +79,31 @@ struct RuntimeSettingsPanel {
                 }
             },
         });
-
         statusText.update({
-            .id = "PythonRuntimeStatusText",
             .str = validationBadge(),
             .colorKey = validationBadgeColorKey(),
         });
 
-        dependencyPolicyField.update({
-            .id = "RuntimeDependencyPolicyField",
-            .label = "Dependency Installation Policy",
-            .description = "Choose how requested dependencies are installed.",
+        std::vector<Stack::Item> labelItems = {{.child = &labelText}};
+        if (!validationBadge().empty()) {
+            labelItems.push_back({.child = &statusText});
+        }
+        labelRow.update({
+            .axis = Stack::Axis::Horizontal,
+            .spacing = 12.0f,
+            .items = std::move(labelItems),
         });
+        std::vector<Stack::Item> runtimeItems = {{.child = &labelRow}, {.child = &runtimeCombo}};
+        if (selectedRuntimeOption() == CustomPathLabel()) {
+            runtimeItems.push_back({.child = &pythonPathInput});
+            runtimeItems.push_back({.child = &browseButton});
+        }
+        runtimeItems.push_back({.child = &runtimeDescription});
+        runtimeControls.update({.items = std::move(runtimeItems)});
+        runtimeField.update({.control = &runtimeControls});
 
         dependencyPolicyCombo.update({
-            .id = "##app-settings-runtime-dependency-policy",
+            .id = "settings:runtime-dependency-policy",
             .options = {
                 "Ask Every Time",
                 "Install Automatically",
@@ -130,62 +116,40 @@ struct RuntimeSettingsPanel {
                 }
             },
         });
-
-        cacheTitle.update({
-            .id = "PythonEnvironmentCacheTitle",
-            .str = "Python Environment Cache",
+        dependencyPolicyField.update({
+            .label = "Dependency Installation Policy",
+            .description = "Choose how requested dependencies are installed.",
+            .control = &dependencyPolicyCombo,
         });
-
+        cacheTitle.update({.str = "Python Environment Cache"});
         cacheButton.update({
-            .id = "PythonEnvironmentCacheButton",
             .str = "Open Cache Folder",
-            .size = {-1.0f, 34.0f},
+            .size = {Sakura::Fill, 34.0f},
             .onClick = this->config.onOpenPythonEnvironmentCache,
         });
-
         cacheDescription.update({
-            .id = "PythonEnvironmentCacheDescription",
             .str = "Browse cached Python dependency environments in your file manager.",
-            .tone = Sakura::Text::Tone::Secondary,
+            .tone = Text::Tone::Secondary,
             .wrapped = true,
         });
-
-        cacheFooterDivider.update({
-            .id = "PythonEnvironmentCacheFooterDivider",
+        cacheFooterDivider.update({});
+        stack.update({
+            .items = {
+                {.child = &title},
+                {.child = &description},
+                {.child = &divider},
+                {.child = &dependencyPolicyField},
+                {.child = &runtimeField},
+                {.child = &cacheTitle},
+                {.child = &cacheButton},
+                {.child = &cacheDescription},
+                {.child = &cacheFooterDivider},
+            },
         });
     }
 
-    void render(const Sakura::Context& ctx) const {
-        title.render(ctx);
-        description.render(ctx);
-        divider.render(ctx);
-
-        dependencyPolicyField.render(ctx, [&](const Sakura::Context& ctx) {
-            dependencyPolicyCombo.render(ctx);
-        });
-
-        runtimeField.render(ctx, [&](const Sakura::Context& ctx) {
-            Sakura::HStack::Children labelChildren;
-            labelChildren.push_back([this](const Sakura::Context& ctx) { labelText.render(ctx); });
-            if (!validationBadge().empty()) {
-                labelChildren.push_back([this](const Sakura::Context& ctx) { statusText.render(ctx); });
-            }
-            labelRow.render(ctx, std::move(labelChildren));
-
-            runtimeCombo.render(ctx);
-
-            if (selectedRuntimeOption() == CustomPathLabel()) {
-                pythonPathInput.render(ctx);
-                browseButton.render(ctx);
-            }
-
-            runtimeDescription.render(ctx);
-        });
-
-        cacheTitle.render(ctx);
-        cacheButton.render(ctx);
-        cacheDescription.render(ctx);
-        cacheFooterDivider.render(ctx);
+    Sakura::Component& content() {
+        return stack;
     }
 
  private:
@@ -301,20 +265,22 @@ struct RuntimeSettingsPanel {
     Sakura::Text title;
     Sakura::Text description;
     Sakura::Divider divider;
-    Sakura::SettingField runtimeField;
-    Sakura::HStack labelRow;
     Sakura::Text labelText;
-    Sakura::Text runtimeDescription;
+    Sakura::Text statusText;
+    Sakura::Stack labelRow;
     Sakura::Combo runtimeCombo;
     Sakura::TextInput pythonPathInput;
     Sakura::Button browseButton;
-    Sakura::Text statusText;
-    Sakura::SettingField dependencyPolicyField;
+    Sakura::Text runtimeDescription;
+    Sakura::Stack runtimeControls;
+    Sakura::SettingField runtimeField;
     Sakura::Combo dependencyPolicyCombo;
+    Sakura::SettingField dependencyPolicyField;
     Sakura::Text cacheTitle;
     Sakura::Button cacheButton;
     Sakura::Text cacheDescription;
     Sakura::Divider cacheFooterDivider;
+    Sakura::Stack stack;
     bool customPathSelected = false;
 };
 

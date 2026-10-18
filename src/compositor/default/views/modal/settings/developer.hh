@@ -12,58 +12,30 @@ namespace Jetstream {
 
 struct DeveloperSettingsPanel {
     struct Config {
-        bool latencyEnabled = false;
         bool timingEnabled = false;
         int logLevel = JST_LOG_DEBUG_DEFAULT_LEVEL;
-        std::function<void(bool)> onLatencyEnabledChange;
         std::function<void(bool)> onTimingEnabledChange;
         std::function<void(int)> onLogLevelChange;
+        std::function<void()> onShowBenchmarks;
+        std::function<void()> onReloadPlugins;
     };
 
     void update(Config config) {
-        this->config = std::move(config);
+        using Text = Sakura::Text;
 
+        this->config = std::move(config);
         title.update({
-            .id = "DeveloperTitle",
             .str = "Developer",
-            .font = Sakura::Text::Font::Bold,
+            .font = Text::Font::Bold,
             .scale = 1.2f,
         });
-
         description.update({
-            .id = "DeveloperDescription",
             .str = "Diagnostics and development tools.",
-            .tone = Sakura::Text::Tone::Secondary,
+            .tone = Text::Tone::Secondary,
             .wrapped = true,
         });
-
-        divider.update({
-            .id = "DeveloperHeaderDivider",
-        });
-
-        latencyField.update({
-            .id = "DeveloperLatencyField",
-            .description = "Display real-time signal latency measurements.",
-        });
-
-        latencyCheckbox.update({
-            .id = "DeveloperLatencyCheckbox",
-            .label = "Show latency window",
-            .value = this->config.latencyEnabled,
-            .onChange = [this](bool value) {
-                if (this->config.onLatencyEnabledChange) {
-                    this->config.onLatencyEnabledChange(value);
-                }
-            },
-        });
-
-        timingField.update({
-            .id = "DeveloperTimingField",
-            .description = "Display engine timing information.",
-        });
-
+        divider.update({});
         timingCheckbox.update({
-            .id = "DeveloperTimingCheckbox",
             .label = "Show timing",
             .value = this->config.timingEnabled,
             .onChange = [this](bool value) {
@@ -72,16 +44,12 @@ struct DeveloperSettingsPanel {
                 }
             },
         });
-
-        logLevelField.update({
-            .id = "DeveloperLogLevelField",
-            .label = "Log Level",
-            .description = "Set the verbosity level for console and file log output.",
-            .divider = false,
+        timingField.update({
+            .description = "Display engine timing information.",
+            .control = &timingCheckbox,
         });
-
         logLevelCombo.update({
-            .id = "##app-settings-log-level",
+            .id = "settings:log-level",
             .options = {
                 "Fatal / Error",
                 "Warnings",
@@ -97,24 +65,55 @@ struct DeveloperSettingsPanel {
                 }
             },
         });
+        logLevelField.update({
+            .label = "Log Level",
+            .description = "Set the verbosity level for console and file log output.",
+            .control = &logLevelCombo,
+        });
+        benchmarksButton.update({
+            .str = "Open Benchmarks",
+            .size = {Sakura::Fill, 0.0f},
+            .onClick = [this]() {
+                if (this->config.onShowBenchmarks) {
+                    this->config.onShowBenchmarks();
+                }
+            },
+        });
+        benchmarksField.update({
+            .label = "Benchmarks",
+            .description = "Measure the throughput of every block on the available devices.",
+            .control = &benchmarksButton,
+        });
+        reloadButton.update({
+            .str = "Reload Plugins",
+            .size = {Sakura::Fill, 0.0f},
+            .onClick = [this]() {
+                if (this->config.onReloadPlugins) {
+                    this->config.onReloadPlugins();
+                }
+            },
+        });
+        reloadField.update({
+            .label = "Plugins",
+            .description = "Reload every registered plugin from disk.",
+            .control = &reloadButton,
+            .divider = false,
+        });
+        stack.update({
+            .items = {
+                {.child = &title},
+                {.child = &description},
+                {.child = &divider},
+                {.child = &timingField},
+                {.child = &logLevelField},
+                {.child = &benchmarksField},
+                {.child = &reloadField},
+            },
+        });
     }
 
-    void render(const Sakura::Context& ctx) const {
-        title.render(ctx);
-        description.render(ctx);
-        divider.render(ctx);
-
-        latencyField.render(ctx, [&](const Sakura::Context& ctx) {
-            latencyCheckbox.render(ctx);
-        });
-
-        timingField.render(ctx, [&](const Sakura::Context& ctx) {
-            timingCheckbox.render(ctx);
-        });
-
-        logLevelField.render(ctx, [&](const Sakura::Context& ctx) {
-            logLevelCombo.render(ctx);
-        });
+    Sakura::Component& content() {
+        return stack;
     }
 
  private:
@@ -142,12 +141,15 @@ struct DeveloperSettingsPanel {
     Sakura::Text title;
     Sakura::Text description;
     Sakura::Divider divider;
-    Sakura::SettingField latencyField;
-    Sakura::SettingField timingField;
-    Sakura::SettingField logLevelField;
-    Sakura::Checkbox latencyCheckbox;
     Sakura::Checkbox timingCheckbox;
     Sakura::Combo logLevelCombo;
+    Sakura::SettingField timingField;
+    Sakura::SettingField logLevelField;
+    Sakura::Button benchmarksButton;
+    Sakura::Button reloadButton;
+    Sakura::SettingField benchmarksField;
+    Sakura::SettingField reloadField;
+    Sakura::Stack stack;
 };
 
 }  // namespace Jetstream

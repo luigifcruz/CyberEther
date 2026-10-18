@@ -15,6 +15,14 @@ Render::TitlebarChrome Generic::titlebarChrome() const {
     return {};
 }
 
+void Generic::setIntegratedTitlebar(bool enabled) {
+    config.integratedTitlebar = enabled;
+}
+
+bool Generic::integratedTitlebar() const {
+    return config.integratedTitlebar;
+}
+
 void Generic::beginWindowDrag() {}
 
 void Generic::zoomWindow() {}

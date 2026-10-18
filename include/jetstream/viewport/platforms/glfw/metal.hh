@@ -43,6 +43,7 @@ class GLFW<DeviceType::Metal> : public Adapter<DeviceType::Metal> {
     bool keepRunning();
 
     Render::TitlebarChrome titlebarChrome() const;
+    void setIntegratedTitlebar(bool enabled) override;
     void beginWindowDrag();
     void zoomWindow();
 

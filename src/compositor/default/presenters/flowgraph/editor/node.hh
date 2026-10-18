@@ -162,7 +162,6 @@ struct FlowgraphNodePresenter {
             .name = blockName,
             .module = blockData.type,
             .title = blockData.title,
-            .documentation = blockData.description,
             .device = blockData.device,
             .runtime = blockData.runtime,
             .provider = blockData.provider,

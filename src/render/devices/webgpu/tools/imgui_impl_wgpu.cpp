@@ -115,6 +115,7 @@ struct ImGui_ImplWGPU_Data
     WGPUTextureFormat       renderTargetFormat = WGPUTextureFormat_Undefined;
     WGPUTextureFormat       depthStencilFormat = WGPUTextureFormat_Undefined;
     WGPURenderPipeline      pipelineState = nullptr;
+    WGPURenderPipeline      pipelinePremultiplied = nullptr;
 
     RenderResources         renderResources;
     FrameResources*         pFrameResources = nullptr;
@@ -774,6 +775,9 @@ bool ImGui_ImplWGPU_CreateDeviceObjects()
 
     bd->pipelineState = wgpuDeviceCreateRenderPipeline(bd->wgpuDevice, &graphics_pipeline_desc);
 
+    blend_state.color.srcFactor = WGPUBlendFactor_One;
+    bd->pipelinePremultiplied = wgpuDeviceCreateRenderPipeline(bd->wgpuDevice, &graphics_pipeline_desc);
+
     ImGui_ImplWGPU_CreateUniformBuffer();
 
     // Create sampler
@@ -816,6 +820,7 @@ void ImGui_ImplWGPU_InvalidateDeviceObjects()
         return;
 
     SafeRelease(bd->pipelineState);
+    SafeRelease(bd->pipelinePremultiplied);
     SafeRelease(bd->renderResources);
 
     // Destroy all textures
@@ -825,6 +830,15 @@ void ImGui_ImplWGPU_InvalidateDeviceObjects()
 
     for (unsigned int i = 0; i < bd->numFramesInFlight; i++)
         SafeRelease(bd->pFrameResources[i]);
+}
+
+void ImGui_ImplWGPU_PremultipliedAlphaCallback(const ImDrawList*, const ImDrawCmd*)
+{
+    ImGui_ImplWGPU_Data* bd = ImGui_ImplWGPU_GetBackendData();
+    ImGui_ImplWGPU_RenderState* render_state = (ImGui_ImplWGPU_RenderState*)ImGui::GetPlatformIO().Renderer_RenderState;
+    if (bd == nullptr || render_state == nullptr || bd->pipelinePremultiplied == nullptr)
+        return;
+    wgpuRenderPassEncoderSetPipeline(render_state->RenderPassEncoder, bd->pipelinePremultiplied);
 }
 
 bool ImGui_ImplWGPU_Init(ImGui_ImplWGPU_InitInfo* init_info)

@@ -4,6 +4,7 @@
 #include "jetstream/render/devices/metal/surface.hh"
 
 #include "tools/imgui_impl_metal.h"
+#include "jetstream/render/tools/imgui_blend_ext.h"
 
 namespace Jetstream::Render {
 
@@ -101,8 +102,6 @@ Result Implementation::createImgui() {
     style = &ImGui::GetStyle();
     io->IniFilename = nullptr;
 
-    io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-
     Result viewportResult;
     try {
         viewportResult = viewport->createImgui();
@@ -122,6 +121,7 @@ Result Implementation::createImgui() {
     try {
         this->updateScalingFactor(*viewport);
         ImGui_ImplMetal_Init(dev);
+        ImGui::RegisterPremultipliedAlphaCallback(ImGui_ImplMetal_PremultipliedAlphaCallback);
     } catch (...) {
         viewport->destroyImgui();
         ImGui::DestroyContext();
@@ -137,6 +137,7 @@ Result Implementation::createImgui() {
 Result Implementation::destroyImgui() {
     JST_DEBUG("[METAL] Destroying ImGui.");
 
+    ImGui::UnregisterPremultipliedAlphaCallback(ImGui_ImplMetal_PremultipliedAlphaCallback);
     ImGui_ImplMetal_Shutdown();
     const Result result = viewport->destroyImgui();
     ImGui::DestroyContext();

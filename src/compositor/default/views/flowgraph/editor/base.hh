@@ -7,29 +7,29 @@
 
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
+#include <algorithm>
 #include <functional>
+#include <memory>
 #include <optional>
+#include <cmath>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 namespace Jetstream {
 
 struct FlowgraphEditor {
+    static constexpr F32 ZoomPillWidth = 100.0f;
+    static constexpr F32 PillGap = 8.0f;
+
     struct Config {
         std::string id;
         bool clipboardHasData = false;
         bool debugTimingEnabled = false;
-        bool openBlockPicker = false;
         std::function<std::vector<FlowgraphBlockPicker::BlockOption>()> onBuildBlockOptions;
 
-        std::string title;
-        std::string summary;
-        std::string author;
-        std::string license;
-        std::string description;
-        std::string path;
         std::vector<FlowgraphNode::BlockData> graph;
 
         std::function<void(const std::string&, std::optional<Extent2D<F32>>, DeviceType, RuntimeType, ProviderType)> onCreateBlock;
@@ -38,6 +38,7 @@ struct FlowgraphEditor {
         std::function<void(const std::string&)> onRenameBlock;
         std::function<void(const std::string&)> onReloadBlock;
         std::function<void(const std::string&)> onDeleteBlock;
+        std::function<void(const std::string&)> onOpenDocumentation;
         std::function<void(const std::string&, DeviceType, RuntimeType, ProviderType)> onChangeBlockDevice;
         std::function<void(const std::string&, const std::string&, const std::string&, const std::string&)> onConnectBlock;
         std::function<void(const std::string&, const std::string&)> onDisconnectBlock;
@@ -52,126 +53,105 @@ struct FlowgraphEditor {
     void update(Config config) {
         this->config = std::move(config);
 
-        pinIdToInfo.clear();
-        nodeIdToBlockName.clear();
-        linkIdToConnection.clear();
         nodeViewIds.clear();
         linkViewIds.clear();
+        liveBlocks.clear();
 
-        nodeEditor.update({
-            .id = this->config.id + "editor",
-            .pasteEnabled = this->config.clipboardHasData,
-            .onEditorContextMenu = [this](Extent2D<F32> gridPosition, Extent2D<F32>) {
-                flowgraphContextMenuGridPos = gridPosition;
-                flowgraphContextMenuOpen = true;
+        blockPicker.update({
+            .id = this->config.id + ":block-picker",
+            .onOpenRequest = [this]() {
+                openBlockPicker(FlowgraphBlockPicker::Mode::Pill, viewportGridCenter);
             },
-            .onEditorDoubleClick = [this](Extent2D<F32> gridPosition) {
-                if (blockPickerOpen || suppressEditorDoubleClick) {
-                    suppressEditorDoubleClick = false;
-                    return;
+            .onCreateBlock = [this](const std::string& moduleId,
+                                    Extent2D<F32> gridPosition,
+                                    DeviceType device,
+                                    RuntimeType runtime,
+                                    ProviderType provider) {
+                if (this->config.onCreateBlock) {
+                    this->config.onCreateBlock(moduleId, gridPosition, device, runtime, provider);
                 }
-                openBlockPickerAtGrid(gridPosition);
-            },
-            .onLinkCreated = [this](Sakura::NodeEditor::PinRef startPin,
-                                    Sakura::NodeEditor::PinRef endPin) {
-                handleLinkCreation(startPin, endPin);
-            },
-            .onLinkDestroyed = [this](const std::string& linkId) {
-                handleLinkDestruction(linkId);
-            },
-            .onCopyShortcut = [this](const std::vector<std::string>& selectedNodes) {
-                if (!selectedNodes.empty() && nodeIdToBlockName.contains(selectedNodes[0]) && this->config.onCopyBlock) {
-                    this->config.onCopyBlock(nodeIdToBlockName.at(selectedNodes[0]));
-                }
-            },
-            .onPasteShortcut = [this](Extent2D<F32> gridPosition) {
-                if (this->config.onPasteBlock) {
-                    this->config.onPasteBlock(gridPosition);
-                }
-            },
-            .onMouseGridPositionChange = [this](Extent2D<F32> gridPosition) {
-                mouseGridPosition = gridPosition;
-            },
-            .onViewportGridCenterChange = [this](Extent2D<F32> gridPosition) {
-                viewportGridCenter = gridPosition;
             },
         });
 
-        if (this->config.openBlockPicker) {
-            openBlockPickerAtGrid(viewportGridCenter);
+        for (const auto& block : this->config.graph) {
+            if (block.state != Block::State::Destroying && block.state != Block::State::Destroyed) {
+                liveBlocks.insert(block.name);
+            }
         }
-        if (blockPickerWasOpen && !blockPickerOpen) {
-            blockPicker = FlowgraphBlockPicker();
-        }
-
-        if (blockPickerOpen) {
-            blockPicker.update({
-                .id = this->config.id + ":block-picker",
-                .search = blockPickerSearch,
-                .selectedIndex = blockPickerSelectedIndex,
-                .blocks = this->config.onBuildBlockOptions
-                    ? this->config.onBuildBlockOptions()
-                    : std::vector<FlowgraphBlockPicker::BlockOption>{},
-                .onResolveGridPosition = [this]() {
-                    return blockPickerGridPosition;
-                },
-                .onSearchChange = [this](const std::string& value) {
-                    blockPickerSearch = value;
-                },
-                .onSelectIndex = [this](const int index) {
-                    blockPickerSelectedIndex = index;
-                },
-                .onCreateBlock = [this](const std::string& moduleId,
-                                        Extent2D<F32> gridPosition,
-                                        DeviceType device,
-                                        RuntimeType runtime,
-                                        ProviderType provider) {
-                    suppressEditorDoubleClick = true;
-                    if (this->config.onCreateBlock) {
-                        this->config.onCreateBlock(moduleId, gridPosition, device, runtime, provider);
-                    }
-                },
-                .onClose = [this]() {
-                    suppressEditorDoubleClick = true;
-                    blockPickerOpen = false;
-                },
-            });
-        }
-        blockPickerWasOpen = blockPickerOpen;
 
         for (const auto& block : this->config.graph) {
-            if (block.state == Block::State::Destroying ||
-                block.state == Block::State::Destroyed) {
+            if (!liveBlocks.contains(block.name)) {
+                continue;
+            }
+            for (const auto& input : block.inputs) {
+                if (!input.source.has_value() || !liveBlocks.contains(input.source->block)) {
+                    continue;
+                }
+
+                const auto& source = input.source.value();
+                const std::string linkId = FlowgraphLinkId(block.name, input.port.id);
+                auto& linkView = linkViews[linkId];
+                linkView.update({
+                    .id = linkId,
+                    .start = {
+                        .nodeId = source.block,
+                        .pinId = source.port,
+                        .isInput = false,
+                    },
+                    .end = {
+                        .nodeId = block.name,
+                        .pinId = input.port.id,
+                        .isInput = true,
+                    },
+                    .connection = {
+                        .consumerName = block.name,
+                        .inputSlot = input.port.id,
+                        .producerName = source.block,
+                        .producerPort = source.port,
+                        .resolved = source.resolved,
+                        .tensor = source.tensor,
+                    },
+                });
+                linkViewIds.push_back(linkId);
+            }
+        }
+
+        std::erase_if(linkViews, [this](const auto& entry) {
+            return std::find(linkViewIds.begin(), linkViewIds.end(), entry.first) == linkViewIds.end();
+        });
+
+        for (auto& block : this->config.graph) {
+            if (!liveBlocks.contains(block.name)) {
                 continue;
             }
 
-            const std::string nodeId = FlowgraphNodeId(block.name);
-            nodeIdToBlockName[nodeId] = block.name;
-
-            FlowgraphNode::BlockData nodeBlock = block;
-            auto onReconfigureBlock = this->config.onReconfigureBlock;
-            for (auto& input : nodeBlock.inputs) {
-                pinIdToInfo[nodeId][pinKey(FlowgraphPinId(input.port.id), true)] = {block.name, input.port.id, true};
-            }
-            for (auto& output : nodeBlock.outputs) {
-                pinIdToInfo[nodeId][pinKey(FlowgraphPinId(output.port.id), false)] = {block.name, output.port.id, false};
-            }
-            for (auto& field : nodeBlock.configFields) {
-                field.onApply = [onReconfigureBlock, blockName = block.name](Parser::Map values, const bool silent) {
-                    if (onReconfigureBlock) {
-                        onReconfigureBlock(blockName, std::move(values), silent);
+            const std::string blockName = block.name;
+            for (auto& field : block.configFields) {
+                field.onApply = [this, blockName](Parser::Map values, const bool silent) {
+                    if (this->config.onReconfigureBlock) {
+                        this->config.onReconfigureBlock(blockName, std::move(values), silent);
                     }
                 };
-                field.onError = this->config.onConfigError;
-                field.onBrowsePath = this->config.onBrowseConfigPath;
+                field.onError = [this](Result result, std::string message) {
+                    if (this->config.onConfigError) {
+                        this->config.onConfigError(result, std::move(message));
+                    }
+                };
+                field.onBrowsePath = [this](bool save,
+                                            std::vector<std::string> extensions,
+                                            std::function<void(std::string)> onPicked) {
+                    if (this->config.onBrowseConfigPath) {
+                        this->config.onBrowseConfigPath(save, std::move(extensions), std::move(onPicked));
+                    }
+                };
             }
             FlowgraphNode::Config nodeConfig{
-                .id = block.name,
-                .inspectorId = this->config.id + ":" + block.name + ":inspector",
-                .block = std::move(nodeBlock),
+                .id = blockName,
+                .inspectorId = this->config.id + ":" + blockName + ":inspector",
+                .block = std::move(block),
                 .pasteEnabled = this->config.clipboardHasData,
                 .timingEnabled = this->config.debugTimingEnabled,
-                .onCopy = [this, blockName = block.name]() {
+                .onCopy = [this, blockName]() {
                     if (this->config.onCopyBlock) {
                         this->config.onCopyBlock(blockName);
                     }
@@ -181,242 +161,229 @@ struct FlowgraphEditor {
                         this->config.onPasteBlock(pastePos);
                     }
                 },
-                .onRename = [this, blockName = block.name]() {
+                .onRename = [this, blockName]() {
                     if (this->config.onRenameBlock) {
                         this->config.onRenameBlock(blockName);
                     }
                 },
-                .onReload = [this, blockName = block.name]() {
+                .onReload = [this, blockName]() {
                     if (this->config.onReloadBlock) {
                         this->config.onReloadBlock(blockName);
                     }
                 },
-                .onInspectApply = [this, blockName = block.name](Parser::Map values) {
+                .onInspectApply = [this, blockName](Parser::Map values) {
                     if (this->config.onReconfigureBlock) {
                         this->config.onReconfigureBlock(blockName, std::move(values), false);
                     }
                 },
-                .onDelete = [this, blockName = block.name]() {
+                .onDelete = [this, blockName]() {
                     if (this->config.onDeleteBlock) {
                         this->config.onDeleteBlock(blockName);
                     }
                 },
-                .onDeviceSelect = [this, blockName = block.name](DeviceType device,
-                                                                 RuntimeType runtime,
-                                                                 ProviderType provider) {
+                .onDocumentation = [this, blockName]() {
+                    if (this->config.onOpenDocumentation) {
+                        this->config.onOpenDocumentation(blockName);
+                    }
+                },
+                .onDeviceSelect = [this, blockName](DeviceType device,
+                                                    RuntimeType runtime,
+                                                    ProviderType provider) {
                     if (!this->config.onChangeBlockDevice) {
                         return;
                     }
 
                     this->config.onChangeBlockDevice(blockName, device, runtime, provider);
                 },
-                .onLayout = [this, blockName = block.name](F32 x, F32 y, F32 width, F32 height) {
+                .onLayout = [this, blockName](F32 x, F32 y, F32 width, F32 height) {
                     if (this->config.onNodeLayout) {
                         this->config.onNodeLayout(blockName, x, y, width, height);
                     }
                 },
-                .onConfigCollapse = [this, blockName = block.name](bool collapsed) {
+                .onConfigCollapse = [this, blockName](bool collapsed) {
                     if (this->config.onNodeConfigCollapse) {
                         this->config.onNodeConfigCollapse(blockName, collapsed);
                     }
                 },
-                .onConfigDetach = [this, blockName = block.name](bool detached) {
+                .onConfigDetach = [this, blockName](bool detached) {
                     if (this->config.onNodeConfigDetach) {
                         this->config.onNodeConfigDetach(blockName, detached);
                     }
                 },
             };
 
-            auto& nodeView = nodeViews[nodeConfig.id];
-            nodeView.update(std::move(nodeConfig));
-            nodeViewIds.push_back(block.name);
+            nodeViews[blockName].update(std::move(nodeConfig));
+            nodeViewIds.push_back(blockName);
         }
 
-        for (auto it = nodeViews.begin(); it != nodeViews.end();) {
-            if (!nodeIdToBlockName.contains(FlowgraphNodeId(it->first))) {
-                it = nodeViews.erase(it);
-            } else {
-                ++it;
-            }
+        std::erase_if(nodeViews, [this](const auto& entry) {
+            return !liveBlocks.contains(entry.first);
+        });
+
+        std::vector<Sakura::NodeEditor::Node> nodes;
+        nodes.reserve(nodeViewIds.size());
+        for (const auto& nodeViewId : nodeViewIds) {
+            nodes.push_back(nodeViews.at(nodeViewId).takeNode());
+        }
+        std::vector<Sakura::NodeEditor::Link> links;
+        links.reserve(linkViewIds.size());
+        for (const auto& linkViewId : linkViewIds) {
+            links.push_back(linkViews.at(linkViewId).takeLink());
         }
 
-        for (const auto& block : this->config.graph) {
-            for (const auto& input : block.inputs) {
-                if (!input.source.has_value()) {
-                    continue;
+        nodeEditor.update({
+            .id = this->config.id + "editor",
+            .pasteEnabled = this->config.clipboardHasData,
+            .nodes = std::move(nodes),
+            .links = std::move(links),
+            .onEditorContextMenu = [this](Extent2D<F32> gridPosition) {
+                flowgraphContextMenuGridPos = gridPosition;
+                flowgraphContextMenuOpen = true;
+            },
+            .onEditorDoubleClick = [this](Extent2D<F32> gridPosition) {
+                if (!blockPicker.isOpen()) {
+                    openBlockPicker(FlowgraphBlockPicker::Mode::Cursor, gridPosition);
                 }
-
-                const auto& source = input.source.value();
-                const std::string inNodeId = FlowgraphNodeId(block.name);
-                const std::string outNodeId = FlowgraphNodeId(source.block);
-                const std::string inPinId = FlowgraphPinId(input.port.id);
-                const std::string outPinId = FlowgraphPinId(source.port);
-                const std::string linkId = FlowgraphLinkId(block.name, input.port.id);
-
-                if (!hasPinInfo(inNodeId, inPinId, true) || !hasPinInfo(outNodeId, outPinId, false)) {
-                    continue;
+            },
+            .onLinkCreated = [this](Sakura::NodeEditor::PinRef startPin,
+                                    Sakura::NodeEditor::PinRef endPin) {
+                handleLinkCreation(startPin, endPin);
+            },
+            .onLinkDestroyed = [this](const std::string& linkId) {
+                handleLinkDestruction(linkId);
+            },
+            .onCopyShortcut = [this](const std::vector<std::string>& selectedNodes) {
+                if (!selectedNodes.empty() && liveBlocks.contains(selectedNodes[0]) && this->config.onCopyBlock) {
+                    this->config.onCopyBlock(selectedNodes[0]);
                 }
-
-                FlowgraphLink::Connection connection{
-                    .consumerName = block.name,
-                    .inputSlot = input.port.id,
-                    .producerName = source.block,
-                    .producerPort = source.port,
-                    .resolved = source.resolved,
-                    .tensor = source.tensor,
-                };
-
-                linkIdToConnection[linkId] = connection;
-                auto& linkView = linkViews[linkId];
-                linkView.update({
-                    .id = linkId,
-                    .start = {
-                        .nodeId = outNodeId,
-                        .pinId = outPinId,
-                        .isInput = false,
-                    },
-                    .end = {
-                        .nodeId = inNodeId,
-                        .pinId = inPinId,
-                        .isInput = true,
-                    },
-                    .connection = std::move(connection),
-                });
-                linkViewIds.push_back(linkId);
-            }
-        }
-
-        std::vector<std::string> staleLinkIds;
-        for (const auto& [linkId, _] : linkViews) {
-            if (!linkIdToConnection.contains(linkId)) {
-                staleLinkIds.push_back(linkId);
-            }
-        }
-        for (const auto& linkId : staleLinkIds) {
-            linkViews.erase(linkId);
-        }
-
-        flowgraphPasteMenuItem.update({
-            .id = this->config.id + ":context-menu:paste",
-            .label = ICON_FA_PASTE " Paste Block",
-            .shortcut = "CTRL+V",
-            .enabled = this->config.clipboardHasData,
-            .onClick = [this]() {
+            },
+            .onPasteShortcut = [this](Extent2D<F32> gridPosition) {
                 if (this->config.onPasteBlock) {
-                    this->config.onPasteBlock(flowgraphContextMenuGridPos);
+                    this->config.onPasteBlock(gridPosition);
                 }
+            },
+            .onViewportGridCenterChange = [this](Extent2D<F32> gridPosition) {
+                viewportGridCenter = gridPosition;
             },
         });
 
         flowgraphContextMenu.update({
-            .id = this->config.id + ":context-menu",
+            .entries = {
+                {
+                    .label = ICON_FA_PASTE " Paste Block",
+                    .shortcut = "CTRL+V",
+                    .enabled = this->config.clipboardHasData,
+                    .onClick = [this]() {
+                        if (this->config.onPasteBlock) {
+                            this->config.onPasteBlock(flowgraphContextMenuGridPos);
+                        }
+                    },
+                },
+            },
+            .open = flowgraphContextMenuOpen,
             .onClose = [this]() {
                 flowgraphContextMenuOpen = false;
             },
         });
+
+        using Item = Sakura::Overlay::Item;
+        std::vector<Item> items = {{.child = &nodeEditor}};
+        for (const auto& nodeViewId : nodeViewIds) {
+            items.push_back({.child = &nodeViews.at(nodeViewId).menuComponent()});
+        }
+        items.push_back({.child = &flowgraphContextMenu});
+        const F32 zoom = nodeEditor.zoom();
+        zoomPill.update({
+            .label = std::to_string(static_cast<int>(std::lround(zoom * 100.0f))) + "%",
+            .canDecrement = nodeEditor.canZoom(-1),
+            .canIncrement = nodeEditor.canZoom(1),
+            .size = {ZoomPillWidth, FlowgraphBlockPicker::PillHeight},
+            .onDecrement = [this]() {
+                nodeEditor.zoomStep(-1);
+            },
+            .onIncrement = [this]() {
+                nodeEditor.zoomStep(1);
+            },
+            .onReset = [this]() {
+                nodeEditor.zoomReset();
+            },
+        });
+        items.push_back({
+            .child = &zoomPill,
+            .anchor = Sakura::Anchor::TopRight,
+            .offset = {-(FlowgraphBlockPicker::PillMargin + FlowgraphBlockPicker::PillWidth + PillGap),
+                       FlowgraphBlockPicker::PillMargin},
+            .size = {ZoomPillWidth, FlowgraphBlockPicker::PillHeight},
+        });
+        const Extent2D<F32> pillSize = {FlowgraphBlockPicker::PillWidth, FlowgraphBlockPicker::PillHeight};
+        const Extent2D<F32> pillOffset = {-FlowgraphBlockPicker::PillMargin, FlowgraphBlockPicker::PillMargin};
+        items.push_back({
+            .child = &blockPicker.pillComponent(),
+            .anchor = Sakura::Anchor::TopRight,
+            .offset = pillOffset,
+            .size = pillSize,
+        });
+        items.push_back({
+            .child = &blockPicker.popupComponent(),
+            .anchor = Sakura::Anchor::TopRight,
+            .offset = pillOffset,
+            .size = pillSize,
+        });
+        overlay.update({.items = std::move(items)});
     }
 
-    void render(const Sakura::Context& ctx) {
-        nodeEditor.render(ctx, [this](const Sakura::Context& ctx) {
-            for (const auto& nodeViewId : nodeViewIds) {
-                nodeViews.at(nodeViewId).render(ctx);
-            }
-            for (const auto& linkViewId : linkViewIds) {
-                linkViews.at(linkViewId).render(ctx);
-            }
-            if (blockPickerOpen) {
-                blockPicker.render(ctx);
-            }
-        });
-        suppressEditorDoubleClick = false;
+    Sakura::Component& component() {
+        return overlay;
+    }
 
-        if (flowgraphContextMenuOpen) {
-            flowgraphContextMenu.render(ctx, [&](const Sakura::Context& ctx) {
-                flowgraphPasteMenuItem.render(ctx);
-            });
+    void appendWindows(std::vector<Sakura::FloatingLayer::Window>& windows) {
+        for (const auto& nodeViewId : nodeViewIds) {
+            nodeViews.at(nodeViewId).appendWindows(windows);
         }
     }
 
  private:
-    void openBlockPickerAtGrid(const Extent2D<F32>& blockGridPosition) {
-        blockPickerGridPosition = blockGridPosition;
-        blockPickerSearch.clear();
-        blockPickerSelectedIndex = 0;
-        blockPickerOpen = true;
-    }
-
-    struct PinInfo {
-        std::string block;
-        std::string port;
-        bool isInput = false;
-    };
-
-    static std::string pinKey(const std::string& pinId, const bool isInput) {
-        return (isInput ? "in:" : "out:") + pinId;
-    }
-
-    bool hasPinInfo(const std::string& nodeId, const std::string& pinId, const bool isInput) const {
-        const auto nodeIt = pinIdToInfo.find(nodeId);
-        return nodeIt != pinIdToInfo.end() && nodeIt->second.contains(pinKey(pinId, isInput));
-    }
-
-    const PinInfo* resolvePinInfo(const Sakura::NodeEditor::PinRef& pin) const {
-        const auto nodeIt = pinIdToInfo.find(pin.nodeId);
-        if (nodeIt == pinIdToInfo.end()) {
-            return nullptr;
-        }
-
-        const auto pinIt = nodeIt->second.find(pinKey(pin.pinId, pin.isInput));
-        if (pinIt == nodeIt->second.end()) {
-            return nullptr;
-        }
-
-        return &pinIt->second;
+    void openBlockPicker(FlowgraphBlockPicker::Mode mode, const Extent2D<F32>& gridPosition) {
+        blockPicker.open(config.onBuildBlockOptions ? config.onBuildBlockOptions()
+                                                    : std::vector<FlowgraphBlockPicker::BlockOption>{},
+                         mode,
+                         gridPosition);
     }
 
     void handleLinkCreation(const Sakura::NodeEditor::PinRef& startPin,
                             const Sakura::NodeEditor::PinRef& endPin) const {
-        const auto* startInfo = resolvePinInfo(startPin);
-        const auto* endInfo = resolvePinInfo(endPin);
-        if (!startInfo || !endInfo || !config.onConnectBlock) {
+        if (startPin.isInput == endPin.isInput || !config.onConnectBlock) {
             return;
         }
-        if (startInfo->isInput == endInfo->isInput) {
+        if (!liveBlocks.contains(startPin.nodeId) || !liveBlocks.contains(endPin.nodeId)) {
             return;
         }
 
-        const auto& input = startInfo->isInput ? *startInfo : *endInfo;
-        const auto& output = startInfo->isInput ? *endInfo : *startInfo;
-        config.onConnectBlock(input.block, input.port, output.block, output.port);
+        const auto& input = startPin.isInput ? startPin : endPin;
+        const auto& output = startPin.isInput ? endPin : startPin;
+        config.onConnectBlock(input.nodeId, input.pinId, output.nodeId, output.pinId);
     }
 
     void handleLinkDestruction(const std::string& linkId) const {
-        if (!linkIdToConnection.contains(linkId) || !config.onDisconnectBlock) {
+        const auto it = linkViews.find(linkId);
+        if (it == linkViews.end() || !config.onDisconnectBlock) {
             return;
         }
 
-        const auto& info = linkIdToConnection.at(linkId);
+        const auto& info = it->second.connection();
         config.onDisconnectBlock(info.consumerName, info.inputSlot);
     }
 
     Config config;
+    Sakura::Overlay overlay;
     Sakura::NodeEditor nodeEditor;
     FlowgraphBlockPicker blockPicker;
-    bool blockPickerOpen = false;
-    bool blockPickerWasOpen = false;
-    bool suppressEditorDoubleClick = false;
-    std::string blockPickerSearch;
-    int blockPickerSelectedIndex = 0;
-    Extent2D<F32> blockPickerGridPosition;
-    Sakura::ContextMenu flowgraphContextMenu;
-    Sakura::MenuItem flowgraphPasteMenuItem;
+    Sakura::PillStepper zoomPill;
+    Sakura::Menu flowgraphContextMenu;
     bool flowgraphContextMenuOpen = false;
     Extent2D<F32> flowgraphContextMenuGridPos;
-    Extent2D<F32> mouseGridPosition;
     Extent2D<F32> viewportGridCenter;
-    std::unordered_map<std::string, std::unordered_map<std::string, PinInfo>> pinIdToInfo;
-    std::unordered_map<std::string, std::string> nodeIdToBlockName;
-    std::unordered_map<std::string, FlowgraphLink::Connection> linkIdToConnection;
+    std::unordered_set<std::string> liveBlocks;
     std::vector<std::string> nodeViewIds;
     std::vector<std::string> linkViewIds;
     std::unordered_map<std::string, FlowgraphLink> linkViews;

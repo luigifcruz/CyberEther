@@ -57,6 +57,12 @@ struct CocoaTitlebar::State {
     CGFloat leadingInset = 0.0;
     mutable std::mutex mutex;
     Render::TitlebarChrome chrome;
+    NSWindowStyleMask originalStyleMask = 0;
+    BOOL originalTransparent = NO;
+    NSWindowTitleVisibility originalTitleVisibility = NSWindowTitleVisible;
+    NSTitlebarSeparatorStyle originalSeparatorStyle = NSTitlebarSeparatorStyleAutomatic;
+    BOOL originalMovable = NO;
+    std::array<NSRect, 3> originalButtonFrames{};
 
     void finishDrag(U64 expected = 0) {
         bool release;
@@ -250,6 +256,16 @@ CocoaTitlebar::CocoaTitlebar(GLFWwindow* handle) : state(std::make_shared<State>
             return;
         }
 
+        state->originalStyleMask = [window styleMask];
+        state->originalTransparent = [window titlebarAppearsTransparent];
+        state->originalTitleVisibility = [window titleVisibility];
+        state->originalSeparatorStyle = [window titlebarSeparatorStyle];
+        state->originalMovable = [window isMovable];
+        const auto buttons = WindowButtons(window);
+        for (U64 index = 0; index < buttons.size(); ++index) {
+            state->originalButtonFrames[index] = [buttons[index] frame];
+        }
+
         [window setStyleMask:[window styleMask] | NSWindowStyleMaskFullSizeContentView];
         [window setTitlebarAppearsTransparent:YES];
         [window setTitleVisibility:NSWindowTitleHidden];
@@ -286,6 +302,19 @@ CocoaTitlebar::~CocoaTitlebar() {
         }
         [state->observers release];
         state->observers = nil;
+    }
+    if (state->window) {
+        NSWindow* window = state->window;
+        [window setStyleMask:([window styleMask] & ~NSWindowStyleMaskFullSizeContentView) |
+                             (state->originalStyleMask & NSWindowStyleMaskFullSizeContentView)];
+        [window setTitlebarAppearsTransparent:state->originalTransparent];
+        [window setTitleVisibility:state->originalTitleVisibility];
+        [window setTitlebarSeparatorStyle:state->originalSeparatorStyle];
+        [window setMovable:state->originalMovable];
+        const auto buttons = WindowButtons(window);
+        for (U64 index = 0; index < buttons.size(); ++index) {
+            [buttons[index] setFrame:state->originalButtonFrames[index]];
+        }
     }
     state->window = nil;
 }

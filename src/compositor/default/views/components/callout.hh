@@ -9,7 +9,7 @@
 
 namespace Jetstream {
 
-struct Callout {
+struct Callout : public Sakura::Div {
     enum class Tone {
         Info,
         Success,
@@ -18,7 +18,6 @@ struct Callout {
     };
 
     struct Config {
-        std::string id;
         std::string str;
         std::string icon;
         Tone tone = Tone::Info;
@@ -27,29 +26,19 @@ struct Callout {
     void update(Config config) {
         this->config = std::move(config);
         const std::string key = "banner_" + toneKey();
-        box.update({
-            .id = this->config.id + "Box",
-            .padding = 8.0f,
-            .rounding = 8.0f,
-            .border = true,
-            .scrollbar = false,
-            .mouseScroll = false,
-            .inputs = false,
-            .colorKey = key + "_bg",
-            .borderColorKey = key + "_border",
-        });
         text.update({
-            .id = this->config.id + "Text",
             .str = (this->config.icon.empty() ? toneIcon() : this->config.icon) + " " +
                    this->config.str,
             .colorKey = key + "_text",
             .wrapped = true,
         });
-    }
-
-    void render(const Sakura::Context& ctx) const {
-        box.render(ctx, [this](const Sakura::Context& ctx) {
-            text.render(ctx);
+        Div::update({
+            .content = &text,
+            .padding = 8.0f,
+            .rounding = 8.0f,
+            .border = true,
+            .colorKey = key + "_bg",
+            .borderColorKey = key + "_border",
         });
     }
 
@@ -83,7 +72,6 @@ struct Callout {
     }
 
     Config config;
-    Sakura::Div box;
     Sakura::Text text;
 };
 

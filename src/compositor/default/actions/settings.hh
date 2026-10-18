@@ -23,9 +23,7 @@ struct SettingsActions {
                               MailSetBackgroundParticles,
                               MailSetGraphicsScale,
                               MailSetGraphicsDevice,
-                              MailSetGraphicsFramerate,
                               MailSetSettingsSection,
-                              MailSetDebugLatencyEnabled,
                               MailSetDebugTimingEnabled,
                               MailSetDebugLogLevel,
                               MailCheckForUpdates,
@@ -95,30 +93,8 @@ struct SettingsActions {
         return Result::SUCCESS;
     }
 
-    Result handle(const MailSetGraphicsFramerate& msg) {
-        state.graphics.framerate = msg.value;
-
-        Settings settings;
-        JST_CHECK(Settings::Get(settings));
-        settings.graphics.framerate = msg.value;
-        JST_CHECK(Settings::Set(settings));
-
-        return Result::SUCCESS;
-    }
-
     Result handle(const MailSetSettingsSection& msg) {
         state.settings.section = msg.section;
-        return Result::SUCCESS;
-    }
-
-    Result handle(const MailSetDebugLatencyEnabled& msg) {
-        state.debug.latencyEnabled = msg.value;
-
-        Settings settings;
-        JST_CHECK(Settings::Get(settings));
-        settings.developer.latencyEnabled = msg.value;
-        JST_CHECK(Settings::Set(settings));
-
         return Result::SUCCESS;
     }
 

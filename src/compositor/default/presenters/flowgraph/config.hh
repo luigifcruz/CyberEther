@@ -37,8 +37,8 @@ inline std::vector<FlowgraphConfigFieldConfig> BuildFlowgraphConfigFields(
                 }
                 if (const auto* diagnostic = std::any_cast<Runtime::Context::Diagnostic>(&metric.value)) {
                     field.status = diagnostic->status;
-                    field.statusTone = diagnostic->healthy ? Sakura::NodeCodeEditor::StatusTone::Success
-                                                          : Sakura::NodeCodeEditor::StatusTone::Error;
+                    field.statusTone = diagnostic->healthy ? Sakura::StatusTone::Success
+                                                          : Sakura::StatusTone::Error;
                     field.consoleOutput = diagnostic->console;
                     field.consoleVisible = !field.consoleOutput.empty();
                 }
@@ -46,7 +46,7 @@ inline std::vector<FlowgraphConfigFieldConfig> BuildFlowgraphConfigFields(
             }
             if (field.status.empty() && !block.diagnostic.empty()) {
                 field.status = "Not running.";
-                field.statusTone = Sakura::NodeCodeEditor::StatusTone::Error;
+                field.statusTone = Sakura::StatusTone::Error;
                 field.consoleOutput = {block.diagnostic};
                 field.consoleVisible = true;
             }

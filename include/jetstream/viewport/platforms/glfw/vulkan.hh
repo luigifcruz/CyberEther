@@ -50,6 +50,7 @@ class GLFW<DeviceType::Vulkan> : public Adapter<DeviceType::Vulkan> {
     bool keepRunning();
 
     Render::TitlebarChrome titlebarChrome() const;
+    void setIntegratedTitlebar(bool enabled) override;
     void beginWindowDrag();
     void zoomWindow();
 

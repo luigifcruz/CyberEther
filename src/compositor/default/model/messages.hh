@@ -22,6 +22,12 @@ namespace Jetstream {
 
 struct MailNewFlowgraph {};
 
+struct MailOpenStartTab {};
+
+struct MailCloseStartTab {};
+
+struct MailFocusStartTab {};
+
 struct MailOpenFlowgraph {};
 
 struct MailCloseFlowgraph {
@@ -133,14 +139,6 @@ struct MailSetGraphicsScale {
 
 struct MailSetGraphicsDevice {
     DeviceType value = DeviceType::None;
-};
-
-struct MailSetGraphicsFramerate {
-    U64 value = 60;
-};
-
-struct MailSetDebugLatencyEnabled {
-    bool value = false;
 };
 
 struct MailSetDebugTimingEnabled {
@@ -338,39 +336,29 @@ struct MailSetConfigDetached {
     bool detached = false;
 };
 
-struct MailCreateStack {
+struct MailSetFlowgraphLayout {
     std::string flowgraph;
+    std::optional<TileMeta> tiles;
 };
 
-struct MailDeleteStack {
-    std::string flowgraph;
-    std::string stackId;
-};
-
-struct MailSetStackGeometry {
-    std::string flowgraph;
-    std::string stackId;
-    F32 x = 0.0f;
-    F32 y = 0.0f;
-    F32 width = 0.0f;
-    F32 height = 0.0f;
-};
-
-struct MailSetStackLayout {
-    std::string flowgraph;
-    std::string stackId;
-    std::optional<StackDockLayoutMeta> layout;
-};
-
-struct MailRemoveStackBlock {
+struct MailRemoveLayoutBlock {
     std::string flowgraph;
     std::string block;
 };
 
-struct MailRenameStackBlock {
+struct MailRenameLayoutBlock {
     std::string flowgraph;
     std::string oldId;
     std::string newId;
+};
+
+struct MailOpenDocumentation {
+    std::string flowgraph;
+    std::string block;
+};
+
+struct MailCloseDocumentation {
+    std::string flowgraph;
 };
 
 struct MailSetSurfaceDetached {
@@ -423,6 +411,9 @@ struct MailResizeSurface {
 };
 
 using Mail = std::variant<MailNewFlowgraph,
+                          MailOpenStartTab,
+                          MailCloseStartTab,
+                          MailFocusStartTab,
                           MailOpenFlowgraph,
                           MailCreateBlock,
                           MailCloseFlowgraph,
@@ -452,8 +443,6 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetFlowgraphEnvironmentSearch,
                           MailSetGraphicsScale,
                           MailSetGraphicsDevice,
-                          MailSetGraphicsFramerate,
-                          MailSetDebugLatencyEnabled,
                           MailSetDebugTimingEnabled,
                           MailSetDebugLogLevel,
                           MailCheckForUpdates,
@@ -495,12 +484,11 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetNodeMeta,
                           MailSetConfigCollapsed,
                           MailSetConfigDetached,
-                          MailCreateStack,
-                          MailDeleteStack,
-                          MailSetStackGeometry,
-                          MailSetStackLayout,
-                          MailRemoveStackBlock,
-                          MailRenameStackBlock,
+                          MailSetFlowgraphLayout,
+                          MailRemoveLayoutBlock,
+                          MailRenameLayoutBlock,
+                          MailOpenDocumentation,
+                          MailCloseDocumentation,
                           MailSetSurfaceDetached,
                           MailSetSurfaceConfigCollapsed,
                           MailStartRemote,

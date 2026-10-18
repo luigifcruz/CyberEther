@@ -30,6 +30,8 @@ struct Config {
 
     /// @brief The framerate of the remote viewport.
     U64 framerate = 60;
+
+    bool integratedTitlebar = false;
 };
 
 class JETSTREAM_API Generic {
@@ -55,6 +57,8 @@ class JETSTREAM_API Generic {
     virtual bool keepRunning() = 0;
 
     virtual Render::TitlebarChrome titlebarChrome() const;
+    virtual void setIntegratedTitlebar(bool enabled);
+    bool integratedTitlebar() const;
     virtual void beginWindowDrag();
     virtual void zoomWindow();
 

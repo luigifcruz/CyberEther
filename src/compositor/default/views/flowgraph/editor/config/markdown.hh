@@ -29,32 +29,14 @@ struct FlowgraphConfigMarkdownField {
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
-            .help = this->config.help,
             .title = false,
             .background = false,
+            .content = &markdownField,
         });
-        updateEditor();
-        return Result::SUCCESS;
-    }
-
-    void setAllocatedHeight(std::optional<F32> height) {
-        allocatedHeight = height;
-        updateEditor();
-    }
-
-    void render(const Sakura::Context& ctx) const {
-        frame.render(ctx, [this](const Sakura::Context& ctx) {
-            markdownField.render(ctx);
-        });
-    }
-
- private:
-    void updateEditor() {
         markdownField.update({
             .id = this->config.id + "Markdown",
             .value = editing ? buffer : this->config.preview.value_or(value),
             .editing = editing,
-            .height = allocatedHeight,
             .onChange = [this](std::string nextValue) {
                 buffer = std::move(nextValue);
             },
@@ -71,16 +53,21 @@ struct FlowgraphConfigMarkdownField {
                 editing = false;
             },
         });
+        return Result::SUCCESS;
     }
 
+    Sakura::Component& component() {
+        return frame;
+    }
+
+ private:
     Config config;
-    std::optional<F32> allocatedHeight;
     std::string parsedEncoded;
     std::string value;
     bool editing = false;
     std::string buffer;
     Sakura::NodeField frame;
-    Sakura::Retained::MarkdownEditor markdownField;
+    Sakura::MarkdownEditor markdownField;
 };
 
 }  // namespace Jetstream

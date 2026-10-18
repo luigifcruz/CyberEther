@@ -8,6 +8,7 @@
 #include "jetstream/config.hh"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -36,31 +37,21 @@ struct AboutSettingsPanel {
     };
 
     void update(Config config) {
-        this->config = std::move(config);
+        using Text = Sakura::Text;
 
+        this->config = std::move(config);
         title.update({
-            .id = "AboutTitle",
             .str = "About",
-            .font = Sakura::Text::Font::Bold,
+            .font = Text::Font::Bold,
             .scale = 1.2f,
         });
-
         description.update({
-            .id = "AboutDescription",
             .str = "Installation details and update management.",
-            .tone = Sakura::Text::Tone::Secondary,
+            .tone = Text::Tone::Secondary,
             .wrapped = true,
         });
-
-        divider.update({
-            .id = "AboutHeaderDivider",
-        });
-
-        spacing.update({
-            .id = "AboutSpacing",
-            .lines = 2,
-        });
-
+        divider.update({});
+        spacing.update({.lines = 2});
         updateCard.update({
             .version = jst::fmt::format("CyberEther v{}", JETSTREAM_VERSION_STR),
             .supported = this->config.updateSupported,
@@ -80,55 +71,48 @@ struct AboutSettingsPanel {
             .onDownloadUpdate = this->config.onDownloadUpdate,
             .onApplyUpdate = this->config.onApplyUpdate,
         });
-
-        infoTables.resize(this->config.infoTables.size());
-        for (U64 i = 0; i < infoTables.size(); ++i) {
-            infoTables[i].update(this->config.infoTables[i]);
+        while (infoTables.size() < this->config.infoTables.size()) {
+            infoTables.push_back(std::make_unique<AboutInfoTable>());
         }
-
-        feedbackDividerTop.update({
-            .id = "AboutFeedbackDividerTop",
-        });
-        feedbackDivider.update({
-            .id = "AboutFeedbackDivider",
-        });
-
-        feedbackField.update({
-            .id = "AboutFeedbackField",
-            .label = "Feedback",
-            .description = "Help us improve. Report bugs or suggest improvements.",
-            .divider = false,
-        });
-
+        for (U64 i = 0; i < this->config.infoTables.size(); ++i) {
+            infoTables[i]->update(this->config.infoTables[i]);
+        }
+        feedbackDividerTop.update({});
+        feedbackDivider.update({});
         feedbackButton.update({
-            .id = "AboutSendFeedback",
             .str = ICON_FA_COMMENT_DOTS " Send Feedback (CTRL+G)",
-            .size = {-1.0f, 38.0f},
+            .size = {Sakura::Fill, 38.0f},
             .onClick = [this]() {
                 if (this->config.onSendFeedback) {
                     this->config.onSendFeedback();
                 }
             },
         });
-    }
-
-    void render(const Sakura::Context& ctx) const {
-        title.render(ctx);
-        description.render(ctx);
-        divider.render(ctx);
-        updateCard.render(ctx);
-        spacing.render(ctx);
-
-        feedbackDividerTop.render(ctx);
-        feedbackField.render(ctx, [&](const Sakura::Context& ctx) {
-            feedbackButton.render(ctx);
+        feedbackField.update({
+            .label = "Feedback",
+            .description = "Help us improve. Report bugs or suggest improvements.",
+            .control = &feedbackButton,
+            .divider = false,
         });
 
-        feedbackDivider.render(ctx);
-
-        for (const auto& infoTable : infoTables) {
-            infoTable.render(ctx);
+        std::vector<Sakura::Stack::Item> items = {
+            {.child = &title},
+            {.child = &description},
+            {.child = &divider},
+            {.child = &updateCard},
+            {.child = &spacing},
+            {.child = &feedbackDividerTop},
+            {.child = &feedbackField},
+            {.child = &feedbackDivider},
+        };
+        for (U64 i = 0; i < this->config.infoTables.size(); ++i) {
+            items.push_back({.child = infoTables[i].get()});
         }
+        stack.update({.items = std::move(items)});
+    }
+
+    Sakura::Component& content() {
+        return stack;
     }
 
  private:
@@ -136,13 +120,14 @@ struct AboutSettingsPanel {
     Sakura::Text title;
     Sakura::Text description;
     Sakura::Divider divider;
-    Sakura::Spacing spacing;
+    Sakura::Spacer spacing;
     AboutUpdateCard updateCard;
-    std::vector<AboutInfoTable> infoTables;
+    std::vector<std::unique_ptr<AboutInfoTable>> infoTables;
     Sakura::Divider feedbackDividerTop;
     Sakura::Divider feedbackDivider;
-    Sakura::SettingField feedbackField;
     Sakura::Button feedbackButton;
+    Sakura::SettingField feedbackField;
+    Sakura::Stack stack;
 };
 
 }  // namespace Jetstream

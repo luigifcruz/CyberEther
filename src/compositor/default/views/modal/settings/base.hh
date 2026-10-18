@@ -13,6 +13,7 @@
 
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
+#include <array>
 #include <functional>
 
 namespace Jetstream {
@@ -32,100 +33,75 @@ struct SettingsView {
 
     void update(Config config) {
         this->config = std::move(config);
-
         header.update({
-            .id = "AppSettingsHeader",
             .title = ICON_FA_SLIDERS " Preferences",
-            .description = "",
         });
-
-        layout.update({
-            .id = "AppSettingsLayout",
-            .leftWidth = 220.0f,
-            .fillHeight = true,
-            .reservedHeight = 80.0f,
-        });
-
-        navigationDiv.update({
-            .id = "AppSettingsNavigationDiv",
-            .scrollbar = false,
-            .mouseScroll = false,
-        });
-
-        editorDiv.update({
-            .id = "AppSettingsEditorDiv",
-        });
-
-        navigation.update({
-            .id = "AppSettingsNavigation",
-            .title = "Sections",
-            .items = {
-                {
-                    .label = ICON_FA_DESKTOP " General",
-                    .selected = this->config.section == SettingsSection::General,
-                    .onSelect = [this]() {
-                        if (this->config.onSectionChange) {
-                            this->config.onSectionChange(SettingsSection::General);
-                        }
-                    },
-                },
-                {
-                    .label = ICON_FA_TOWER_BROADCAST " Remote",
-                    .selected = this->config.section == SettingsSection::Remote,
-                    .onSelect = [this]() {
-                        if (this->config.onSectionChange) {
-                            this->config.onSectionChange(SettingsSection::Remote);
-                        }
-                    },
-                },
-                {
-                    .label = ICON_FA_MICROCHIP " Runtime",
-                    .selected = this->config.section == SettingsSection::Runtime,
-                    .onSelect = [this]() {
-                        if (this->config.onSectionChange) {
-                            this->config.onSectionChange(SettingsSection::Runtime);
-                        }
-                    },
-                },
-                {
-                    .label = ICON_FA_DATABASE " Registry",
-                    .selected = this->config.section == SettingsSection::Registry,
-                    .onSelect = [this]() {
-                        if (this->config.onSectionChange) {
-                            this->config.onSectionChange(SettingsSection::Registry);
-                        }
-                    },
-                },
-                {
-                    .label = ICON_FA_FLASK " Developer",
-                    .selected = this->config.section == SettingsSection::Developer,
-                    .onSelect = [this]() {
-                        if (this->config.onSectionChange) {
-                            this->config.onSectionChange(SettingsSection::Developer);
-                        }
-                    },
-                },
-                {
-                    .label = ICON_FA_CIRCLE_INFO " About",
-                    .selected = this->config.section == SettingsSection::About,
-                    .onSelect = [this]() {
-                        if (this->config.onSectionChange) {
-                            this->config.onSectionChange(SettingsSection::About);
-                        }
-                    },
-                },
-                {
-                    .label = ICON_FA_SCALE_BALANCED " Legal",
-                    .selected = this->config.section == SettingsSection::Legal,
-                    .onSelect = [this]() {
-                        if (this->config.onSectionChange) {
-                            this->config.onSectionChange(SettingsSection::Legal);
-                        }
-                    },
-                },
+        navigationTitle.update({.str = "Sections"});
+        navigationDivider.update({.spacing = 0.0f});
+        navigationSpacing.update({});
+        navItem(SettingsSection::General).update({
+            .label = ICON_FA_DESKTOP " General",
+            .selected = this->config.section == SettingsSection::General,
+            .onSelect = [this]() {
+                if (this->config.onSectionChange) {
+                    this->config.onSectionChange(SettingsSection::General);
+                }
             },
         });
-
+        navItem(SettingsSection::Remote).update({
+            .label = ICON_FA_TOWER_BROADCAST " Remote",
+            .selected = this->config.section == SettingsSection::Remote,
+            .onSelect = [this]() {
+                if (this->config.onSectionChange) {
+                    this->config.onSectionChange(SettingsSection::Remote);
+                }
+            },
+        });
+        navItem(SettingsSection::Runtime).update({
+            .label = ICON_FA_MICROCHIP " Runtime",
+            .selected = this->config.section == SettingsSection::Runtime,
+            .onSelect = [this]() {
+                if (this->config.onSectionChange) {
+                    this->config.onSectionChange(SettingsSection::Runtime);
+                }
+            },
+        });
+        navItem(SettingsSection::Registry).update({
+            .label = ICON_FA_DATABASE " Registry",
+            .selected = this->config.section == SettingsSection::Registry,
+            .onSelect = [this]() {
+                if (this->config.onSectionChange) {
+                    this->config.onSectionChange(SettingsSection::Registry);
+                }
+            },
+        });
+        navItem(SettingsSection::Developer).update({
+            .label = ICON_FA_FLASK " Developer",
+            .selected = this->config.section == SettingsSection::Developer,
+            .onSelect = [this]() {
+                if (this->config.onSectionChange) {
+                    this->config.onSectionChange(SettingsSection::Developer);
+                }
+            },
+        });
+        navItem(SettingsSection::About).update({
+            .label = ICON_FA_CIRCLE_INFO " About",
+            .selected = this->config.section == SettingsSection::About,
+            .onSelect = [this]() {
+                if (this->config.onSectionChange) {
+                    this->config.onSectionChange(SettingsSection::About);
+                }
+            },
+        });
+        navItem(SettingsSection::Legal).update({
+            .label = ICON_FA_SCALE_BALANCED " Legal",
+            .selected = this->config.section == SettingsSection::Legal,
+            .onSelect = [this]() {
+                if (this->config.onSectionChange) {
+                    this->config.onSectionChange(SettingsSection::Legal);
+                }
+            },
+        });
         general.update(this->config.general);
         remote.update(this->config.remote);
         runtime.update(this->config.runtime);
@@ -133,53 +109,81 @@ struct SettingsView {
         developer.update(this->config.developer);
         about.update(this->config.about);
         legal.update(this->config.legal);
-    }
 
-    void render(const Sakura::Context& ctx) const {
-        header.render(ctx);
-        layout.render(ctx, {
-            [this](const Sakura::Context& ctx) {
-                navigationDiv.render(ctx, [this](const Sakura::Context& ctx) {
-                    navigation.render(ctx);
-                });
+        std::vector<Sakura::Stack::Item> navigationItems = {
+            {.child = &navigationTitle},
+            {.child = &navigationDivider},
+            {.child = &navigationSpacing},
+        };
+        for (auto& item : navigationButtons) {
+            navigationItems.push_back({.child = &item});
+        }
+        navigation.update({.items = std::move(navigationItems)});
+        navigationArea.update({
+            .content = &navigation,
+            .alwaysScrollbar = false,
+        });
+        editorArea.update({
+            .content = &section(),
+            .alwaysScrollbar = false,
+        });
+        layout.update({
+            .left = &navigationArea,
+            .right = &editorArea,
+            .leftWidth = 220.0f,
+            .height = Sakura::Fill,
+        });
+        stack.update({
+            .items = {
+                {.child = &header},
+                {.child = &layout, .grow = 1.0f},
             },
-            [this](const Sakura::Context& ctx) {
-                editorDiv.render(ctx, [this](const Sakura::Context& ctx) {
-                    switch (config.section) {
-                        case SettingsSection::General:
-                            general.render(ctx);
-                            break;
-                        case SettingsSection::Remote:
-                            remote.render(ctx);
-                            break;
-                        case SettingsSection::Runtime:
-                            runtime.render(ctx);
-                            break;
-                        case SettingsSection::Registry:
-                            registry.render(ctx);
-                            break;
-                        case SettingsSection::Developer:
-                            developer.render(ctx);
-                            break;
-                        case SettingsSection::About:
-                            about.render(ctx);
-                            break;
-                        case SettingsSection::Legal:
-                            legal.render(ctx);
-                            break;
-                    }
-                });
-            },
+        });
+        panel.update({
+            .id = "AppSettings",
+            .content = &stack,
+            .size = {Sakura::Fill, Sakura::Fill},
+            .backgroundColorKey = "popup_bg",
         });
     }
 
+    Sakura::Component& component() {
+        return panel;
+    }
+
  private:
+    Sakura::NavigationItem& navItem(SettingsSection section) {
+        return navigationButtons[static_cast<U64>(section)];
+    }
+
+    Sakura::Component& section() {
+        switch (config.section) {
+            case SettingsSection::General:
+                return general.content();
+            case SettingsSection::Remote:
+                return remote.content();
+            case SettingsSection::Runtime:
+                return runtime.content();
+            case SettingsSection::Registry:
+                return registry.content();
+            case SettingsSection::Developer:
+                return developer.content();
+            case SettingsSection::About:
+                return about.content();
+            case SettingsSection::Legal:
+                return legal.content();
+        }
+        return general.content();
+    }
+
     Config config;
     ModalHeader header;
-    Sakura::SplitView layout;
-    Sakura::Div navigationDiv;
-    Sakura::Div editorDiv;
-    Sakura::NavigationList navigation;
+    Sakura::Text navigationTitle;
+    Sakura::Divider navigationDivider;
+    Sakura::Spacer navigationSpacing;
+    std::array<Sakura::NavigationItem, 7> navigationButtons;
+    Sakura::Stack navigation;
+    Sakura::ScrollArea navigationArea;
     GeneralSettingsPanel general;
     RemoteSettingsPanel remote;
     RuntimeSettingsPanel runtime;
@@ -187,6 +191,10 @@ struct SettingsView {
     DeveloperSettingsPanel developer;
     AboutSettingsPanel about;
     LegalSettingsPanel legal;
+    Sakura::ScrollArea editorArea;
+    Sakura::SplitView layout;
+    Sakura::Stack stack;
+    Sakura::Panel panel;
 };
 
 }  // namespace Jetstream

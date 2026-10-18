@@ -44,14 +44,6 @@ Extent2D<F32> FramebufferScale(const Context& ctx) {
     return RenderWindow(ctx).framebufferScale();
 }
 
-Extent2D<U64> FramebufferSize(const Context& ctx, const Extent2D<F32>& displaySize) {
-    return RenderWindow(ctx).framebufferSize(displaySize);
-}
-
-Extent2D<U64> LogicalFramebufferSize(const Context& ctx, const Extent2D<F32>& logicalSize) {
-    return FramebufferSize(ctx, Scale(ctx, logicalSize));
-}
-
 F32 SurfaceScale(const Context& ctx) {
     return ScalingFactor(ctx) * FramebufferScale(ctx).x * 0.5f;
 }
@@ -98,6 +90,10 @@ std::optional<SurfaceResize> ResolveSurfaceResize(const Context& ctx, const Exte
 
 F32 FrameRate() {
     return ImGui::GetIO().Framerate;
+}
+
+F32 LogicalViewportHeight(const Context& ctx) {
+    return static_cast<F32>(ctx.framebufferSize.y) / std::max(1e-3f, ScalingFactor(ctx) * FramebufferScale(ctx).y);
 }
 
 }  // namespace Jetstream::Sakura

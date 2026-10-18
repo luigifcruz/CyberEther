@@ -3,6 +3,8 @@
 
 #include "types.hh"
 
+#include "../field_tooltip.hh"
+
 namespace Jetstream {
 
 struct FlowgraphConfigBoolField {
@@ -12,10 +14,12 @@ struct FlowgraphConfigBoolField {
         this->config = std::move(config);
         value = false;
         JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, value));
+        help.update(this->config.id, this->config.help);
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
-            .help = this->config.help,
+            .tooltip = help.overlay(),
+            .content = &input,
         });
         input.update({
             .id = this->config.id + "Input",
@@ -31,15 +35,14 @@ struct FlowgraphConfigBoolField {
         return Result::SUCCESS;
     }
 
-    void render(const Sakura::Context& ctx) const {
-        frame.render(ctx, [this](const Sakura::Context& ctx) {
-            input.render(ctx);
-        });
+    Sakura::Component& component() {
+        return frame;
     }
 
  private:
     Config config;
     bool value = false;
+    FlowgraphFieldTooltip help;
     Sakura::NodeField frame;
     Sakura::NodeBoolInput input;
 };

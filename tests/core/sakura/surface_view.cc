@@ -2,7 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
-#include <jetstream/render/sakura/components/surface_view.hh>
+#include "render/sakura/surface_view.hh"
 #include <jetstream/render/sakura/surface.hh>
 
 #include "harness.hh"
@@ -15,15 +15,20 @@ using namespace Jetstream;
 
 using SakuraTest::ResizeLog;
 
+namespace {
+
+class Texture final : public Render::Texture {
+ public:
+    Texture() : Render::Texture(Config{.size = {200, 100}}) {}
+    Result create() override { return Result::SUCCESS; }
+    Result destroy() override { return Result::SUCCESS; }
+    uint64_t raw() const override { return 123; }
+};
+
+}  // namespace
+
 TEST_CASE("SurfaceView visibility follows the displayed texture and draw clip",
           "[core][sakura][surface_view][visibility]") {
-    class Texture final : public Render::Texture {
-     public:
-        Texture() : Render::Texture(Config{.size = {200, 100}}) {}
-        Result create() override { return Result::SUCCESS; }
-        Result destroy() override { return Result::SUCCESS; }
-        uint64_t raw() const override { return 123; }
-    };
     SakuraTest::HeadlessUi ui;
     auto texture = std::make_shared<Texture>();
     Sakura::SurfaceView surface;
@@ -37,7 +42,7 @@ TEST_CASE("SurfaceView visibility follows the displayed texture and draw clip",
     SECTION("An expanded draw clip preserves off-window images") { customClip = visible = true; }
     SECTION("A reduced draw clip suppresses an on-window image") { customClip = true; }
     SECTION("An overridden texture does not hide its unused textureSource") {
-        config.onResolveTexture = [] { return U64(456); };
+        config.resolveTexture = [] { return U64(456); };
         differentTexture = true;
     }
     surface.update(config);
@@ -50,11 +55,15 @@ TEST_CASE("SurfaceView visibility follows the displayed texture and draw clip",
             list->PushClipRect(visible ? ImVec2(0, 0) : ImVec2(1000, 1000),
                                visible ? ImVec2(20000, 20000) : ImVec2(1100, 1100), false);
         }
-        if (!customClip || visible) ImGui::SetCursorScreenPos({10000, 10000});
+        if (!customClip || visible) {
+            ImGui::SetCursorScreenPos({10000, 10000});
+        }
         surface.render(ui.sakura());
         REQUIRE(texture->visibleForPresentation(frame) == (visible || differentTexture));
         REQUIRE((list->IdxBuffer.Size > indices) == visible);
-        if (customClip) list->PopClipRect();
+        if (customClip) {
+            list->PopClipRect();
+        }
         ImGui::SetCursorScreenPos(origin);
         if (secondView) {
             surface.render(ui.sakura());
@@ -65,19 +74,12 @@ TEST_CASE("SurfaceView visibility follows the displayed texture and draw clip",
     });
 }
 
-TEST_CASE("Surface visibility accounts for finalized texture consumers",
+TEST_CASE("Surface visibility accounts for finalized texture consumers only within their frame",
           "[core][sakura][surface_view][visibility]") {
     class Window final : public SakuraTest::FakeWindow {
      public:
         using Render::Window::prepareImgui;
         using Render::Window::textureVisibleForPresentation;
-    };
-    class Texture final : public Render::Texture {
-     public:
-        Texture() : Render::Texture(Config{.size = {200, 100}}) {}
-        Result create() override { return Result::SUCCESS; }
-        Result destroy() override { return Result::SUCCESS; }
-        uint64_t raw() const override { return 123; }
     };
     SakuraTest::HeadlessUi ui;
     Window window;
@@ -106,7 +108,9 @@ TEST_CASE("Surface visibility accounts for finalized texture consumers",
     SECTION("A second visible view overrides a hidden view") { visible = true; }
 
     ui.frame([&] {
-        if (hinted) texture.presentationHint(ImGui::GetFrameCount(), false);
+        if (hinted) {
+            texture.presentationHint(ImGui::GetFrameCount(), false);
+        }
         if (hinted && visible && !sampled && !callback) {
             texture.presentationHint(ImGui::GetFrameCount(), true);
             texture.presentationHint(ImGui::GetFrameCount(), false);
@@ -128,13 +132,12 @@ TEST_CASE("Surface visibility accounts for finalized texture consumers",
     window.prepareImgui();
     REQUIRE(window.textureVisibleForPresentation(texture) == visible);
 
-    // Neither sampled textures nor custom callbacks carry into the next frame.
     ui.frame([&] { texture.presentationHint(ImGui::GetFrameCount(), false); });
     window.prepareImgui();
     REQUIRE_FALSE(window.textureVisibleForPresentation(texture));
 }
 
-TEST_CASE("SurfaceView falls back to the available region when size is zero",
+TEST_CASE("SurfaceView falls back to the whole available window region when size is zero",
           "[core][sakura][surface_view]") {
     SakuraTest::HeadlessUi ui;
     const auto ctx = ui.sakura();
@@ -148,21 +151,20 @@ TEST_CASE("SurfaceView falls back to the available region when size is zero",
         log.record(resize);
     };
 
-    REQUIRE(surface.update(config));
+    surface.update(config);
     ui.frame([&] {
         surface.render(ctx);
     });
 
-    // Root window content area is 400x300 at scale 1.
     REQUIRE(log.count() == 1);
-    REQUIRE(log.entries[0].logicalSize.x == 400);
-    REQUIRE(log.entries[0].logicalSize.y == 300);
-    REQUIRE(log.entries[0].framebufferSize.x == 400);
-    REQUIRE(log.entries[0].framebufferSize.y == 300);
+    REQUIRE(log.entries[0].logicalSize.x == SakuraTest::HeadlessUi::kWindowWidth);
+    REQUIRE(log.entries[0].logicalSize.y == SakuraTest::HeadlessUi::kWindowHeight);
+    REQUIRE(log.entries[0].framebufferSize.x == SakuraTest::HeadlessUi::kWindowWidth);
+    REQUIRE(log.entries[0].framebufferSize.y == SakuraTest::HeadlessUi::kWindowHeight);
     REQUIRE(log.entries[0].scale == Catch::Approx(0.5f));
 }
 
-TEST_CASE("SurfaceView honors the explicit height override",
+TEST_CASE("SurfaceView height override wins over the fallback height and truncates to whole units",
           "[core][sakura][surface_view]") {
     SakuraTest::HeadlessUi ui;
     const auto ctx = ui.sakura();
@@ -177,20 +179,18 @@ TEST_CASE("SurfaceView honors the explicit height override",
         log.record(resize);
     };
 
-    REQUIRE(surface.update(config));
+    surface.update(config);
     ui.frame([&] {
         surface.render(ctx);
     });
 
-    // Height override wins; width still falls back and truncates to units.
     REQUIRE(log.count() == 1);
     REQUIRE(log.entries[0].logicalSize.x == 400);
     REQUIRE(log.entries[0].logicalSize.y == 123);
     REQUIRE(log.entries[0].framebufferSize.y == 123);
 }
 
-TEST_CASE("SurfaceView ignores invalid height overrides",
-          "[core][sakura][surface_view]") {
+TEST_CASE("SurfaceView treats invalid height overrides as zero and reports no size", "[core][sakura][surface_view]") {
     SakuraTest::HeadlessUi ui;
     const auto ctx = ui.sakura();
 
@@ -205,18 +205,16 @@ TEST_CASE("SurfaceView ignores invalid height overrides",
             log.record(resize);
         };
 
-        REQUIRE(surface.update(config));
+        surface.update(config);
         ui.frame([&] {
             surface.render(ctx);
         });
 
-        // Invalid heights clamp to zero: the render is a no-op, reports nothing.
         REQUIRE(log.count() == 0);
     }
 }
 
-TEST_CASE("SurfaceView emits resize only when the resolved size changes",
-          "[core][sakura][surface_view][dedupe]") {
+TEST_CASE("SurfaceView emits resize only when the resolved size changes", "[core][sakura][surface_view][dedupe]") {
     SakuraTest::HeadlessUi ui;
     const auto ctx = ui.sakura();
 
@@ -230,7 +228,7 @@ TEST_CASE("SurfaceView emits resize only when the resolved size changes",
         log.record(resize);
     };
 
-    REQUIRE(surface.update(config));
+    surface.update(config);
 
     ui.frame([&] {
         surface.render(ctx);
@@ -241,7 +239,7 @@ TEST_CASE("SurfaceView emits resize only when the resolved size changes",
     REQUIRE(log.count() == 1);
 
     config.height = 200.0f;
-    REQUIRE(surface.update(config));
+    surface.update(config);
     ui.frame([&] {
         surface.render(ctx);
     });
@@ -254,7 +252,7 @@ TEST_CASE("SurfaceView emits resize only when the resolved size changes",
     REQUIRE(log.count() == 2);
 }
 
-TEST_CASE("SurfaceView re-emits after a skipped frame",
+TEST_CASE("SurfaceView re-emits an unchanged size after a frame where it was not rendered",
           "[core][sakura][surface_view][dedupe]") {
     SakuraTest::HeadlessUi ui;
     const auto ctx = ui.sakura();
@@ -269,7 +267,7 @@ TEST_CASE("SurfaceView re-emits after a skipped frame",
         log.record(resize);
     };
 
-    REQUIRE(surface.update(config));
+    surface.update(config);
 
     ui.frame([&] {
         surface.render(ctx);
@@ -279,17 +277,15 @@ TEST_CASE("SurfaceView re-emits after a skipped frame",
     });
     REQUIRE(log.count() == 1);
 
-    // The surface is not rendered during this frame (e.g. node hidden).
     ui.frame([] {});
 
-    // Identical size, but the dedupe state was dropped for stale frames.
     ui.frame([&] {
         surface.render(ctx);
     });
     REQUIRE(log.count() == 2);
 }
 
-TEST_CASE("SurfaceView tolerates missing callbacks and textures",
+TEST_CASE("SurfaceView renders as a safe no-op without callbacks or textures",
           "[core][sakura][surface_view][robustness]") {
     SakuraTest::HeadlessUi ui;
     const auto ctx = ui.sakura();
@@ -298,15 +294,14 @@ TEST_CASE("SurfaceView tolerates missing callbacks and textures",
     Sakura::SurfaceView::Config config;
     config.id = "inert";
 
-    REQUIRE(surface.update(config));
+    surface.update(config);
 
-    // No texture, no callbacks: the render must be a safe no-op.
     ui.frame([&] {
         surface.render(ctx);
     });
 }
 
-TEST_CASE("SurfaceView reports framebuffer metrics for the window scaling factor",
+TEST_CASE("SurfaceView reports halved logical size and framebuffer metrics for the window scaling factor",
           "[core][sakura][surface_view][scaling]") {
     SakuraTest::HeadlessUi ui(2.0f);
     const auto ctx = ui.sakura();
@@ -320,70 +315,15 @@ TEST_CASE("SurfaceView reports framebuffer metrics for the window scaling factor
         log.record(resize);
     };
 
-    REQUIRE(surface.update(config));
+    surface.update(config);
     ui.frame([&] {
         surface.render(ctx);
     });
 
-    // 400x300 device pixels = 200x150 logical at scale 2; scale = 2 * 0.5.
     REQUIRE(log.count() == 1);
     REQUIRE(log.entries[0].logicalSize.x == 200);
     REQUIRE(log.entries[0].logicalSize.y == 150);
     REQUIRE(log.entries[0].framebufferSize.x == 400);
     REQUIRE(log.entries[0].framebufferSize.y == 300);
     REQUIRE(log.entries[0].scale == Catch::Approx(1.0f));
-}
-
-TEST_CASE("SurfaceView captures both mouse buttons through release outside the surface",
-          "[core][sakura][surface_view][capture]") {
-    const auto button = GENERATE(ImGuiMouseButton_Left, ImGuiMouseButton_Right);
-    SakuraTest::HeadlessUi ui;
-    const auto ctx = ui.sakura();
-    std::vector<MouseEvent> events;
-    Sakura::SurfaceView surface;
-    Sakura::SurfaceView::Config config;
-    config.id = "capture";
-    config.size = {200.0f, 100.0f};
-    config.texture = 1;
-    config.onInput = [&](const InputEvent& event) {
-        if (const auto* mouse = std::get_if<MouseEvent>(&event)) events.push_back(*mouse);
-    };
-    REQUIRE(surface.update(config));
-
-    const auto frame = [&](const ImVec2& position, const bool down) {
-        events.clear();
-        ui.setMouse(position, button == ImGuiMouseButton_Left && down);
-        ImGui::GetIO().MouseDown[ImGuiMouseButton_Right] = button == ImGuiMouseButton_Right && down;
-        ui.frame([&] {
-            ImGui::SetCursorScreenPos({20.0f, 20.0f});
-            surface.render(ctx);
-        });
-    };
-    const auto count = [&](const MouseEventType type) {
-        return std::count_if(events.begin(), events.end(),
-                             [type](const auto& event) { return event.type == type; });
-    };
-
-    frame({120.0f, 70.0f}, false);
-    frame({120.0f, 70.0f}, false);
-    frame({120.0f, 70.0f}, true);
-    REQUIRE(count(MouseEventType::Click) == 1);
-
-    frame({260.0f, 90.0f}, true);
-    REQUIRE(count(MouseEventType::Move) == 1);
-    REQUIRE(events.back().position.x == Catch::Approx(1.2f));
-    frame({280.0f, 100.0f}, false);
-    REQUIRE(count(MouseEventType::Release) == 1);
-    const auto released = std::find_if(events.begin(), events.end(), [](const auto& event) {
-        return event.type == MouseEventType::Release;
-    });
-    REQUIRE(released->button == (button == ImGuiMouseButton_Left ? MouseButton::Left : MouseButton::Right));
-    REQUIRE(released->position.x == Catch::Approx(1.3f));
-    REQUIRE(released->position.y == Catch::Approx(0.8f));
-
-    frame({280.0f, 100.0f}, false);
-    REQUIRE(events.empty());
-    frame({120.0f, 70.0f}, false);
-    REQUIRE(count(MouseEventType::Release) == 0);
-    REQUIRE(count(MouseEventType::Click) == 0);
 }

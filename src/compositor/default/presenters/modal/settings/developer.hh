@@ -16,17 +16,19 @@ struct DeveloperSettingsPresenter {
     DeveloperSettingsPanel::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
         return DeveloperSettingsPanel::Config{
-            .latencyEnabled = context.state.debug.latencyEnabled,
             .timingEnabled = context.state.debug.timingEnabled,
             .logLevel = context.state.debug.logLevel,
-            .onLatencyEnabledChange = [enqueue](bool value) {
-                enqueue(MailSetDebugLatencyEnabled{.value = value});
-            },
             .onTimingEnabledChange = [enqueue](bool value) {
                 enqueue(MailSetDebugTimingEnabled{.value = value});
             },
             .onLogLevelChange = [enqueue](int value) {
                 enqueue(MailSetDebugLogLevel{.value = value});
+            },
+            .onShowBenchmarks = [enqueue]() {
+                enqueue(MailOpenModal{.content = ModalContent::Benchmark});
+            },
+            .onReloadPlugins = [enqueue]() {
+                enqueue(MailReloadAllPlugins{});
             },
         };
     }

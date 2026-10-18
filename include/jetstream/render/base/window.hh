@@ -63,10 +63,7 @@ class JETSTREAM_API Window {
 
     Result synchronize();
 
-    void frameClearColor(const ColorRGBA<F32>& color, ImDrawList* background = nullptr) {
-        frameBackground = color;
-        frameBackgroundDrawList = background;
-    }
+    void frameClearColor(const ColorRGBA<F32>& color) { frameBackground = color; }
     const ColorRGBA<F32>& frameClearColor() const { return frameBackground; }
 
     virtual const Stats& stats() const = 0;
@@ -133,6 +130,9 @@ class JETSTREAM_API Window {
     Extent2D<U64> framebufferSize(const Extent2D<F32>& displaySize) const;
 
     bool hasFont(const std::string& name) const;
+    U64 fontRevision() const {
+        return _fontRevision;
+    }
     Result addFont(const std::string& name, const std::shared_ptr<Components::Font>& font);
     Result removeFont(const std::string& name);
     const std::shared_ptr<Components::Font>& font(const std::string& name) const;
@@ -162,6 +162,7 @@ class JETSTREAM_API Window {
     // Font.
 
     std::unordered_map<std::string, std::shared_ptr<Components::Font>> fonts;
+    U64 _fontRevision = 0;
 
     // Scaling.
 
@@ -172,7 +173,6 @@ class JETSTREAM_API Window {
 
  private:
     ColorRGBA<F32> frameBackground = {0.0f, 0.0f, 0.0f, 1.0f};
-    ImDrawList* frameBackgroundDrawList = nullptr;
     std::unordered_set<ImTextureID> frameSampledTextures;
     bool frameCustomDraws = true;
     bool shouldDeferAttachmentQueueProcessing();

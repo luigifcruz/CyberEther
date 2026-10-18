@@ -17,48 +17,47 @@ struct InfoHudView {
 
     void update(Config config) {
         this->config = std::move(config);
-        hud.update({
-            .id = "Info HUD",
-            .anchor = Sakura::Hud::Anchor::BottomLeft,
-            .padding = 16.0f,
-            .backgroundColorKey = "info_hud_background",
-        });
-        row.update({
-            .id = "InfoHudRow",
-            .spacing = 4.0f,
-        });
+        using Text = Sakura::Text;
+        using Stack = Sakura::Stack;
+
         frameRateText.update({
-            .id = "InfoHudFrameRate",
             .str = jst::fmt::format("{:.0f} Hz", this->config.frameRate),
-            .tone = this->config.frameRate > 50.0f ? Sakura::Text::Tone::Success : Sakura::Text::Tone::Primary,
+            .tone = this->config.frameRate > 50.0f ? Text::Tone::Success : Text::Tone::Primary,
         });
-        viewportText.update({
-            .id = "InfoHudViewport",
-            .str = this->config.viewportName,
+        viewportText.update({.str = this->config.viewportName});
+        renderText.update({.str = this->config.renderInfo});
+        row.update({
+            .axis = Stack::Axis::Horizontal,
+            .spacing = 12.0f,
+            .items = {{.child = &frameRateText}, {.child = &viewportText}},
         });
-        renderText.update({
-            .id = "InfoHudRenderInfo",
-            .str = this->config.renderInfo,
+        stack.update({.items = {{.child = &row}, {.child = &renderText}}});
+        panel.update({
+            .id = "InfoHud",
+            .content = &stack,
+            .size = {0.0f, 0.0f},
+            .transparent = true,
+            .backgroundColorKey = "info_hud_background",
         });
     }
 
-    void render(const Sakura::Context& ctx) const {
-        hud.render(ctx, [this](const Sakura::Context& ctx) {
-            row.render(ctx, {
-                [this](const Sakura::Context& ctx) { frameRateText.render(ctx); },
-                [this](const Sakura::Context& ctx) { viewportText.render(ctx); },
-            });
-            renderText.render(ctx);
-        });
+    Sakura::HudLayer::Hud hud() {
+        return {
+            .content = &panel,
+            .anchor = Sakura::Anchor::BottomLeft,
+            .margin = 16.0f,
+            .backgroundColorKey = "info_hud_background",
+        };
     }
 
  private:
     Config config;
-    Sakura::Hud hud;
-    Sakura::HStack row;
     Sakura::Text frameRateText;
     Sakura::Text viewportText;
     Sakura::Text renderText;
+    Sakura::Stack row;
+    Sakura::Stack stack;
+    Sakura::Panel panel;
 };
 
 }  // namespace Jetstream

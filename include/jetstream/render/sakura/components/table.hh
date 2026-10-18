@@ -4,18 +4,13 @@
 #include <jetstream/render/sakura/component.hh>
 #include <jetstream/types.hh>
 
-#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace Jetstream::Sakura {
 
-struct Table {
-    using Cell = std::function<void(const Context&)>;
-    using Row = std::vector<Cell>;
-    using Rows = std::vector<Row>;
-
+struct Table : public Component {
     struct Node {
         std::string id;
         std::string label;
@@ -23,36 +18,40 @@ struct Table {
         std::vector<Node> children;
         bool open = false;
         bool secondary = false;
+
+        bool operator==(const Node&) const = default;
     };
     using Nodes = std::vector<Node>;
 
     struct Config {
-        std::string id;
         std::vector<std::string> columns;
         std::vector<std::vector<std::string>> rows;
+        std::vector<std::vector<Component*>> cellRows;
+        std::vector<Node> nodes;
         std::vector<F32> fixedColumnWidths;
-        Extent2D<F32> size = {0.0f, 0.0f};
+        Extent2D<F32> size = {Fill, 0.0f};
         F32 maxHeight = 0.0f;
         bool showHeaders = true;
         bool wrapped = false;
         bool resizable = false;
+
+        bool operator==(const Config&) const = default;
     };
 
     Table();
     ~Table();
 
-    Table(Table&&) noexcept;
-    Table& operator=(Table&&) noexcept;
+    void update(Config config);
 
-    Table(const Table&) = delete;
-    Table& operator=(const Table&) = delete;
-
-    bool update(Config config);
-    void render(const Context& ctx) const;
-    void render(const Context& ctx, Rows rows) const;
-    void render(const Context& ctx, const Nodes& nodes) const;
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
+    bool mouseEvent(const MouseEvent& event) override;
+    std::optional<SurfaceCursor> cursorAt(const Extent2D<F32>& point) const override;
 
  private:
+    void rebuild();
+
     struct Impl;
     std::unique_ptr<Impl> impl;
 };

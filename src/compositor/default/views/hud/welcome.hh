@@ -10,46 +10,44 @@
 
 namespace Jetstream {
 
-struct WelcomeHudTitle {
+struct WelcomeHudTitle : public Sakura::Stack {
     struct Config {
         std::string title;
         std::string slogan;
     };
 
     void update(Config config) {
-        this->config = std::move(config);
+        using Text = Sakura::Text;
+
         title.update({
-            .id = "WelcomeTitle",
-            .str = this->config.title,
-            .font = Sakura::Text::Font::Display,
-            .align = Sakura::Text::Align::Center,
+            .str = config.title,
+            .font = Text::Font::Display,
+            .align = Text::Align::Center,
             .colorKey = "cyber_blue",
             .scale = 8.5f,
         });
         slogan.update({
-            .id = "WelcomeSlogan",
-            .str = this->config.slogan,
-            .font = Sakura::Text::Font::Display,
-            .tone = Sakura::Text::Tone::Secondary,
-            .align = Sakura::Text::Align::Center,
+            .str = config.slogan,
+            .font = Text::Font::Display,
+            .tone = Text::Tone::Secondary,
+            .align = Text::Align::Center,
             .scale = 2.3f,
+        });
+        Stack::update({
+            .items = {
+                {.child = &title},
+                {.child = &slogan},
+            },
         });
     }
 
-    void render(const Sakura::Context& ctx) const {
-        title.render(ctx);
-        slogan.render(ctx);
-    }
-
  private:
-    Config config;
     Sakura::Text title;
     Sakura::Text slogan;
 };
 
-struct WelcomeHudCell {
+struct WelcomeHudCell : public Sakura::Div {
     struct Config {
-        std::string id;
         std::string icon;
         std::string title;
         std::string iconColorKey;
@@ -57,15 +55,35 @@ struct WelcomeHudCell {
     };
 
     void update(Config config) {
+        using Text = Sakura::Text;
+
         this->config = std::move(config);
-        card.update({
-            .id = this->config.id,
-            .size = {0.0f, 118.0f},
+        icon.update({
+            .str = this->config.icon,
+            .align = Text::Align::Center,
+            .colorKey = this->config.iconColorKey,
+            .scale = 2.0f,
+            .verticalOffset = 13.0f,
+        });
+        title.update({
+            .str = this->config.title,
+            .font = Text::Font::Bold,
+            .align = Text::Align::Center,
+            .scale = 1.15f,
+            .verticalOffset = 4.0f,
+        });
+        content.update({
+            .items = {
+                {.child = &icon},
+                {.child = &title},
+            },
+        });
+        Div::update({
+            .content = &content,
+            .size = {Sakura::Fill, 118.0f},
             .padding = 16.0f,
             .rounding = 16.0f,
             .border = true,
-            .scrollbar = false,
-            .mouseScroll = false,
             .colorKey = "card",
             .hoveredColorKey = "header_hovered",
             .borderColorKey = "border",
@@ -75,42 +93,13 @@ struct WelcomeHudCell {
                 }
             },
         });
-        content.update({
-            .id = this->config.id + "Content",
-        });
-        icon.update({
-            .id = this->config.id + "Icon",
-            .str = this->config.icon,
-            .align = Sakura::Text::Align::Center,
-            .colorKey = this->config.iconColorKey,
-            .scale = 2.0f,
-            .verticalOffset = 13.0f,
-        });
-        title.update({
-            .id = this->config.id + "Title",
-            .str = this->config.title,
-            .font = Sakura::Text::Font::Bold,
-            .align = Sakura::Text::Align::Center,
-            .scale = 1.15f,
-            .verticalOffset = 4.0f,
-        });
-    }
-
-    void render(const Sakura::Context& ctx) const {
-        card.render(ctx, [this](const Sakura::Context& ctx) {
-            content.render(ctx, {
-                [this](const Sakura::Context& ctx) { icon.render(ctx); },
-                [this](const Sakura::Context& ctx) { title.render(ctx); },
-            });
-        });
     }
 
  private:
     Config config;
-    Sakura::Div card;
-    Sakura::VStack content;
     Sakura::Text icon;
     Sakura::Text title;
+    Sakura::Stack content;
 };
 
 struct WelcomeHudView {
@@ -127,46 +116,14 @@ struct WelcomeHudView {
 
     void update(Config config) {
         this->config = std::move(config);
-        hud.update({
-            .id = "Welcome",
-            .anchor = Sakura::Hud::Anchor::Center,
-            .padding = 0.0f,
-            .size = Extent2D<F32>{560.0f, 0.0f},
-            .windowPadding = Extent2D<F32>{2.0f, 0.0f},
-            .borderSize = 0.0f,
-            .backgroundColorKey = "transparent",
-            .borderColorKey = "transparent",
-        });
         title.update({
             .title = "CyberEther",
             .slogan = "GPU-ACCELERATED SIGNAL PROCESSING",
         });
-        actions.update({
-            .id = "WelcomeActions",
-            .columns = 3,
-            .size = {560.0f, 126.0f},
-            .cellPadding = {4.0f, 2.0f},
-        });
-        links.update({
-            .id = "WelcomeLinks",
-            .columns = 4,
-            .size = {560.0f, 42.0f},
-            .cellPadding = {4.0f, 2.0f},
-        });
-        welcomeSpacing.update({
-            .id = "WelcomeSpacing",
-            .lines = 4,
-        });
-        buttonSpacing.update({
-            .id = "WelcomeButtonSpacing",
-            .lines = 1,
-        });
-        versionSpacing.update({
-            .id = "WelcomeVersionSpacing",
-            .lines = 1,
-        });
+        welcomeSpacing.update({.lines = 4});
+        buttonSpacing.update({});
+        versionSpacing.update({});
         newCell.update({
-            .id = "WelcomeNewCard",
             .icon = ICON_FA_FILE_CIRCLE_PLUS,
             .title = "New Flowgraph",
             .iconColorKey = "welcome_icon_new",
@@ -177,7 +134,6 @@ struct WelcomeHudView {
             },
         });
         openCell.update({
-            .id = "WelcomeOpenCard",
             .icon = ICON_FA_FOLDER_OPEN,
             .title = "Open Flowgraph",
             .iconColorKey = "welcome_icon_open",
@@ -188,7 +144,6 @@ struct WelcomeHudView {
             },
         });
         examplesCell.update({
-            .id = "WelcomeExamplesCard",
             .icon = ICON_FA_FLASK,
             .title = "Examples",
             .iconColorKey = "welcome_icon_examples",
@@ -199,67 +154,83 @@ struct WelcomeHudView {
             },
         });
         websiteButton.update({
-            .id = "WelcomeWebsite",
             .str = ICON_FA_GLOBE " Website",
-            .size = {-FLT_MIN, 34.0f},
+            .size = {Sakura::Fill, 34.0f},
             .onClick = this->config.onOpenWebsite,
         });
         docsButton.update({
-            .id = "WelcomeDocs",
             .str = ICON_FA_BOOK " Docs",
-            .size = {-FLT_MIN, 34.0f},
+            .size = {Sakura::Fill, 34.0f},
             .onClick = this->config.onOpenDocs,
         });
         settingsButton.update({
-            .id = "WelcomeSettings",
             .str = ICON_FA_GEAR " Settings",
-            .size = {-FLT_MIN, 34.0f},
+            .size = {Sakura::Fill, 34.0f},
             .onClick = this->config.onOpenSettings,
         });
         aboutButton.update({
-            .id = "WelcomeAbout",
             .str = ICON_FA_CIRCLE_INFO " About",
-            .size = {-FLT_MIN, 34.0f},
+            .size = {Sakura::Fill, 34.0f},
             .onClick = this->config.onOpenAbout,
         });
         version.update({
-            .id = "WelcomeVersion",
             .str = this->config.version,
             .tone = Sakura::Text::Tone::Disabled,
             .align = Sakura::Text::Align::Center,
         });
+        actions.update({
+            .columns = 3,
+            .size = {Sakura::Fill, 126.0f},
+            .cellPadding = {4.0f, 2.0f},
+            .items = {&newCell, &openCell, &examplesCell},
+        });
+        links.update({
+            .columns = 4,
+            .size = {Sakura::Fill, 42.0f},
+            .cellPadding = {4.0f, 2.0f},
+            .items = {&websiteButton, &docsButton, &settingsButton, &aboutButton},
+        });
+        stack.update({
+            .items = {
+                {.child = &title},
+                {.child = &welcomeSpacing},
+                {.child = &actions},
+                {.child = &buttonSpacing},
+                {.child = &links},
+                {.child = &versionSpacing},
+                {.child = &version},
+            },
+        });
+        panel.update({
+            .id = "Welcome",
+            .content = &stack,
+            .transparent = true,
+        });
     }
 
-    void render(const Sakura::Context& ctx) const {
-        hud.render(ctx, [this](const Sakura::Context& ctx) {
-            title.render(ctx);
-            welcomeSpacing.render(ctx);
-            actions.render(ctx, {
-                [this](const Sakura::Context& ctx) { newCell.render(ctx); },
-                [this](const Sakura::Context& ctx) { openCell.render(ctx); },
-                [this](const Sakura::Context& ctx) { examplesCell.render(ctx); },
-            });
-            buttonSpacing.render(ctx);
-            links.render(ctx, {
-                [this](const Sakura::Context& ctx) { websiteButton.render(ctx); },
-                [this](const Sakura::Context& ctx) { docsButton.render(ctx); },
-                [this](const Sakura::Context& ctx) { settingsButton.render(ctx); },
-                [this](const Sakura::Context& ctx) { aboutButton.render(ctx); },
-            });
-            versionSpacing.render(ctx);
-            version.render(ctx);
-        });
+    Sakura::Component& component() {
+        return panel;
+    }
+
+    Sakura::HudLayer::Hud hud() {
+        return {
+            .content = &panel,
+            .anchor = Sakura::Anchor::Center,
+            .margin = 0.0f,
+            .padding = {2.0f, 0.0f},
+            .borderSize = 0.0f,
+            .backgroundColorKey = "transparent",
+            .borderColorKey = "transparent",
+            .size = Extent2D<F32>{560.0f, 0.0f},
+        };
     }
 
  private:
     Config config;
-    Sakura::Hud hud;
     WelcomeHudTitle title;
-    Sakura::Grid actions;
-    Sakura::Grid links;
-    Sakura::Spacing welcomeSpacing;
-    Sakura::Spacing buttonSpacing;
-    Sakura::Spacing versionSpacing;
+    Sakura::Spacer welcomeSpacing;
+    Sakura::Spacer buttonSpacing;
+    Sakura::Spacer versionSpacing;
     WelcomeHudCell newCell;
     WelcomeHudCell openCell;
     WelcomeHudCell examplesCell;
@@ -268,6 +239,10 @@ struct WelcomeHudView {
     Sakura::Button settingsButton;
     Sakura::Button aboutButton;
     Sakura::Text version;
+    Sakura::Grid actions;
+    Sakura::Grid links;
+    Sakura::Stack stack;
+    Sakura::Panel panel;
 };
 
 }  // namespace Jetstream

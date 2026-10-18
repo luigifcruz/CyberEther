@@ -4,6 +4,8 @@
 #include "error.hh"
 #include "types.hh"
 
+#include "../field_tooltip.hh"
+
 namespace Jetstream {
 
 struct FlowgraphMetricTable {
@@ -12,11 +14,13 @@ struct FlowgraphMetricTable {
     void update(Config config) {
         this->config = std::move(config);
         parseValue();
+        help.update(this->config.id, this->config.help);
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
-            .help = this->config.help,
+            .tooltip = help.overlay(),
             .background = false,
+            .content = errorText.empty() ? static_cast<Sakura::Component*>(&table) : &error.component(),
         });
         table.update({
             .id = this->config.id + "Table",
@@ -30,14 +34,8 @@ struct FlowgraphMetricTable {
         });
     }
 
-    void render(const Sakura::Context& ctx) const {
-        frame.render(ctx, [this](const Sakura::Context& ctx) {
-            if (!errorText.empty()) {
-                error.render(ctx);
-            } else {
-                table.render(ctx);
-            }
-        });
+    Sakura::Component& component() {
+        return frame;
     }
 
  private:
@@ -87,6 +85,7 @@ struct FlowgraphMetricTable {
     std::vector<std::string> columns;
     std::vector<std::vector<std::string>> rows;
     std::string errorText;
+    FlowgraphFieldTooltip help;
     Sakura::NodeField frame;
     FlowgraphMetricError error;
     Sakura::NodeTable table;

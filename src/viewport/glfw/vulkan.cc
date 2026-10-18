@@ -98,6 +98,8 @@ Result Implementation::create() {
     // Create swapchain.
     JST_CHECK(createSwapchain());
 
+    setIntegratedTitlebar(config.integratedTitlebar);
+
     return Result::SUCCESS;
 }
 
@@ -121,9 +123,21 @@ Result Implementation::destroy() {
     titlebar.reset();
 
     glfwDestroyWindow(window);
+    window = nullptr;
     glfwTerminate();
 
     return Result::SUCCESS;
+}
+
+void Implementation::setIntegratedTitlebar(bool enabled) {
+    Generic::setIntegratedTitlebar(enabled);
+#ifdef JST_OS_MAC
+    if (enabled && window && !titlebar) {
+        titlebar = std::make_shared<CocoaTitlebar>(window);
+    } else if (!enabled) {
+        titlebar.reset();
+    }
+#endif
 }
 
 Result Implementation::createSwapchain() {

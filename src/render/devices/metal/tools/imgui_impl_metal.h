@@ -82,6 +82,8 @@ IMGUI_IMPL_API void ImGui_ImplMetal_UpdateTexture(ImTextureData* tex);
 #endif
 #endif
 
+IMGUI_IMPL_API void ImGui_ImplMetal_PremultipliedAlphaCallback(const ImDrawList* drawList, const ImDrawCmd* command);
+
 //-----------------------------------------------------------------------------
 
 #endif // #ifndef IMGUI_DISABLE

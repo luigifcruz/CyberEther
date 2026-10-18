@@ -8,6 +8,7 @@
 #include "jetstream/benchmark.hh"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,21 +28,21 @@ struct BenchmarkView {
     };
 
     void update(Config config) {
-        this->config = std::move(config);
+        using Text = Sakura::Text;
+        using Button = Sakura::Button;
+        using Stack = Sakura::Stack;
 
+        this->config = std::move(config);
         header.update({
-            .id = "BenchmarkHeader",
             .title = ICON_FA_GAUGE_HIGH " Module Benchmarks",
             .description = "Run performance benchmarks for registered modules. Results show operations per second and timing information.",
         });
         moduleLabel.update({
-            .id = "BenchmarkModuleLabel",
             .str = "Module",
-            .font = Sakura::Text::Font::Bold,
-            .scale = 1.0f,
+            .font = Text::Font::Bold,
         });
         moduleCombo.update({
-            .id = "##benchmark-module",
+            .id = "benchmark:module",
             .options = this->config.moduleOptions,
             .value = this->config.selectedModule,
             .disabled = this->config.running,
@@ -52,10 +53,9 @@ struct BenchmarkView {
             },
         });
         runButton.update({
-            .id = "BenchmarkRun",
             .str = ICON_FA_PLAY " Run Benchmarks",
-            .size = {-1.0f, 36.0f},
-            .variant = Sakura::Button::Variant::Action,
+            .size = {Sakura::Fill, 36.0f},
+            .variant = Button::Variant::Action,
             .disabled = this->config.running,
             .onClick = [this]() {
                 if (this->config.onRun) {
@@ -64,9 +64,8 @@ struct BenchmarkView {
             },
         });
         resetButton.update({
-            .id = "BenchmarkReset",
             .str = ICON_FA_ROTATE_LEFT " Reset Results",
-            .size = {-1.0f, 36.0f},
+            .size = {Sakura::Fill, 36.0f},
             .disabled = this->config.running || this->config.results.empty(),
             .onClick = [this]() {
                 if (this->config.onReset) {
@@ -75,31 +74,29 @@ struct BenchmarkView {
             },
         });
         progressBar.update({
-            .id = "BenchmarkProgress",
             .value = this->config.progress,
             .overlay = jst::fmt::format("{:.0f}%", this->config.progress * 100.0f),
         });
         emptyText.update({
-            .id = "BenchmarkEmpty",
             .str = "No results yet. Click 'Run Benchmarks' to start.",
-            .tone = Sakura::Text::Tone::Disabled,
-            .align = Sakura::Text::Align::Center,
+            .tone = Text::Tone::Disabled,
+            .align = Text::Align::Center,
         });
-        resultsDiv.update({
-            .id = "BenchmarkResults",
-            .size = {0.0f, 300.0f},
-        });
-        resultTitles.resize(this->config.results.size());
-        resultTables.resize(this->config.results.size());
+        divider.update({});
+        progressDivider.update({});
+
+        while (results.size() < this->config.results.size()) {
+            results.push_back(std::make_unique<ResultBlock>());
+        }
+        std::vector<Stack::Item> resultItems;
         U64 i = 0;
         for (const auto& [module, entries] : this->config.results) {
-            resultTitles[i].update({
-                .id = "BenchmarkTitle" + std::to_string(i),
+            auto& block = *results[i++];
+            block.title.update({
                 .str = module,
-                .font = Sakura::Text::Font::H2,
+                .font = Text::Font::H2,
                 .scale = 1.05f,
             });
-
             std::vector<std::vector<std::string>> rows;
             rows.reserve(entries.size());
             for (const auto& entry : entries) {
@@ -110,53 +107,73 @@ struct BenchmarkView {
                     jst::fmt::format("{:.2f}%", entry.error * 100.0),
                 });
             }
-
-            resultTables[i].update({
-                .id = "BenchmarkResults" + std::to_string(i),
+            block.table.update({
                 .columns = {"Variant", "Ops/sec", "ms/Op", "Error %"},
-                .rows = rows,
+                .rows = std::move(rows),
             });
-            i += 1;
+            block.divider.update({});
+            resultItems.push_back({.child = &block.title});
+            resultItems.push_back({.child = &block.table});
+            resultItems.push_back({.child = &block.divider});
         }
+        resultsContent.update({.items = std::move(resultItems)});
+        resultsArea.update({
+            .content = &resultsContent,
+            .height = 300.0f,
+            .alwaysScrollbar = false,
+        });
+
+        std::vector<Stack::Item> items = {
+            {.child = &header},
+            {.child = &moduleLabel},
+            {.child = &moduleCombo},
+            {.child = &runButton},
+            {.child = &resetButton},
+            {.child = &divider},
+        };
+        if (this->config.running) {
+            items.push_back({.child = &progressBar});
+            items.push_back({.child = &progressDivider});
+        }
+        if (this->config.results.empty() && !this->config.running) {
+            items.push_back({.child = &emptyText});
+        } else if (!this->config.results.empty()) {
+            items.push_back({.child = &resultsArea});
+        }
+        stack.update({.items = std::move(items)});
+        panel.update({
+            .id = "Benchmark",
+            .content = &stack,
+            .backgroundColorKey = "popup_bg",
+        });
     }
 
-    void render(const Sakura::Context& ctx) const {
-        header.render(ctx);
-        moduleLabel.render(ctx);
-        moduleCombo.render(ctx);
-        runButton.render(ctx);
-        resetButton.render(ctx);
-        divider.render(ctx);
-        if (config.running) {
-            progressBar.render(ctx);
-            divider.render(ctx);
-        }
-        if (config.results.empty() && !config.running) {
-            emptyText.render(ctx);
-        } else if (!config.results.empty()) {
-            resultsDiv.render(ctx, [this](const Sakura::Context& ctx) {
-                for (U64 i = 0; i < resultTables.size(); ++i) {
-                    resultTitles[i].render(ctx);
-                    resultTables[i].render(ctx);
-                    divider.render(ctx);
-                }
-            });
-        }
+    Sakura::Component& component() {
+        return panel;
     }
 
  private:
+    struct ResultBlock {
+        Sakura::Text title;
+        Sakura::Table table;
+        Sakura::Divider divider;
+    };
+
     Config config;
     ModalHeader header;
     Sakura::Text moduleLabel;
     Sakura::Combo moduleCombo;
     Sakura::Button runButton;
     Sakura::Button resetButton;
-    Sakura::ProgressBar progressBar;
-    Sakura::Text emptyText;
-    Sakura::Div resultsDiv;
     Sakura::Divider divider;
-    std::vector<Sakura::Text> resultTitles;
-    std::vector<Sakura::Table> resultTables;
+    Sakura::ProgressBar progressBar;
+    Sakura::Divider progressDivider;
+    Sakura::Text emptyText;
+    std::vector<std::unique_ptr<ResultBlock>> results;
+    Sakura::Stack resultsContent;
+    Sakura::ScrollArea resultsArea;
+    Sakura::Stack stack;
+    Sakura::Panel panel;
 };
 
 }  // namespace Jetstream

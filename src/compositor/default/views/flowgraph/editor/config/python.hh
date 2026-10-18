@@ -26,42 +26,24 @@ struct FlowgraphConfigPythonField {
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
-            .help = this->config.help,
             .title = false,
             .background = false,
+            .content = &editor,
         });
-        updateEditor();
-        return Result::SUCCESS;
-    }
-
-    void setAllocatedHeight(std::optional<F32> height) {
-        allocatedHeight = height;
-        updateEditor();
-    }
-
-    void render(const Sakura::Context& ctx) const {
-        frame.render(ctx, [this](const Sakura::Context& ctx) {
-            editor.render(ctx);
-        });
-    }
-
- private:
-    void updateEditor() {
         const bool dirty = buffer != parsedEncoded;
         editor.update({
             .id = this->config.id + "Editor",
             .value = buffer,
             .consoleOutput = this->config.consoleOutput,
             .status = dirty ? "Edited. Press Ctrl+Enter to run." : this->config.status,
-            .statusTone = dirty ? Sakura::NodeCodeEditor::StatusTone::Info : this->config.statusTone,
+            .height = 0.0f,
+            .statusTone = dirty ? Sakura::StatusTone::Info : this->config.statusTone,
             .consoleVisible = this->config.consoleVisible,
-            .autoHeight = true,
-            .height = allocatedHeight,
             .maxAutoHeightWindowRatio = 0.65f,
-            .language = Sakura::NodeCodeEditor::Language::Python,
+            .language = Sakura::CodeEditor::Language::Python,
             .lineNumbers = true,
             .lineWrapping = false,
-            .editorFontSize = 15.0f,
+            .fontSize = 15.0f,
             .onChange = [this](std::string nextValue) {
                 buffer = std::move(nextValue);
             },
@@ -74,14 +56,19 @@ struct FlowgraphConfigPythonField {
                 }
             },
         });
+        return Result::SUCCESS;
     }
 
+    Sakura::Component& component() {
+        return frame;
+    }
+
+ private:
     Config config;
-    std::optional<F32> allocatedHeight;
     std::string parsedEncoded;
     std::string buffer;
     Sakura::NodeField frame;
-    Sakura::NodeCodeEditor editor;
+    Sakura::CodeEditor editor;
 };
 
 }  // namespace Jetstream

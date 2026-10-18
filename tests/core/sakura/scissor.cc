@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "render/sakura/retained/helpers.hh"
+#include "render/sakura/detail/helpers.hh"
 
 using namespace Jetstream;
 
@@ -9,7 +9,7 @@ namespace {
 void RequireScissor(const Rect& rect, const Extent2D<U64>& framebufferSize,
                     const Render::ScissorRect& expected) {
     CAPTURE(rect.x, rect.y, rect.width, rect.height, framebufferSize.x, framebufferSize.y);
-    const auto actual = Sakura::Retained::RectToScissor(rect, framebufferSize);
+    const auto actual = Sakura::RectToScissor(rect, framebufferSize);
     CHECK(actual.x == expected.x);
     CHECK(actual.y == expected.y);
     CHECK(actual.width == expected.width);

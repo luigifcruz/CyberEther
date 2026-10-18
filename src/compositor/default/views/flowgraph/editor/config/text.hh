@@ -3,6 +3,8 @@
 
 #include "types.hh"
 
+#include "../field_tooltip.hh"
+
 namespace Jetstream {
 
 struct FlowgraphConfigTextField {
@@ -12,15 +14,17 @@ struct FlowgraphConfigTextField {
         this->config = std::move(config);
         value.clear();
         JST_CHECK(Parser::Deserialize(this->config.values, this->config.name, value));
+        help.update(this->config.id, this->config.help);
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
-            .help = this->config.help,
+            .tooltip = help.overlay(),
+            .content = &input,
         });
         input.update({
             .id = this->config.id + "Input",
             .value = value,
-            .submit = Sakura::TextInput::Submit::OnEnter,
+            .submit = Sakura::NodeTextInput::Submit::OnEnter,
             .onChange = [this](const std::string& nextValue) {
                 Parser::Map patch;
                 patch[this->config.name] = nextValue;
@@ -32,15 +36,14 @@ struct FlowgraphConfigTextField {
         return Result::SUCCESS;
     }
 
-    void render(const Sakura::Context& ctx) const {
-        frame.render(ctx, [this](const Sakura::Context& ctx) {
-            input.render(ctx);
-        });
+    Sakura::Component& component() {
+        return frame;
     }
 
  private:
     Config config;
     std::string value;
+    FlowgraphFieldTooltip help;
     Sakura::NodeField frame;
     Sakura::NodeTextInput input;
 };

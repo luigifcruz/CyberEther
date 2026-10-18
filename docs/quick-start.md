@@ -41,8 +41,8 @@ The CyberEther editor is a node-based flowgraph editor. You build a pipeline by 
 
 Open the block browser in one of two ways:
 
-- Click the **Blocks** button in the toolbar at the top of the flowgraph window.
-- Double-click anywhere on the empty canvas.
+- Click the **Search blocks** pill at the top right of the flowgraph editor.
+- Double-click anywhere on the empty canvas. The browser opens where you clicked, and the new block lands there.
 
 Find and add a **Signal Generator** block. This block produces a synthetic signal so you do not need any hardware to get started. If you have an RTL-SDR, use a **SoapySDR** block instead to work with a real radio signal.
 
@@ -81,9 +81,19 @@ Each block shows its configurable fields directly inside the node on the canvas.
 
 You can leave the other blocks at their defaults for now. For the complete reference on any block, right-click the block and select **Documentation**.
 
+Documentation opens in one tile beside the editor. Opening another block's documentation replaces that tile's contents; the tile is not saved with the flowgraph layout.
+
 ### 5. Watch it run
 
 Because the flowgraph is always running, the **Line Plot** block starts showing a live spectrum of the generated tone as soon as the blocks are wired and configured. If the trace looks too small or clipped, adjust the **Range** block until the signal is clearly visible. If you change a property or add another block, the pipeline updates in real time.
+
+### Navigating the editor and arranging tiles
+
+Click a block to select it. Shift-click adds blocks to the selection, and Shift-drag on empty canvas selects a group. Clicking or panning empty canvas clears the selection. Use **Cmd/Ctrl + Plus**, **Minus**, or **0** to zoom in, zoom out, or reset the editor zoom. Zoom lasts for the current session and is not saved.
+
+Detached plots and configuration panes use dock tiles. Layouts saved by older versions discard their old stack arrangement when opened; detached panes are placed using their per-block metadata. Saving writes the new tile layout, not the old stacks.
+
+The latency overlay setting and graphics framerate control are no longer available. The interface runs at 60 Hz.
 
 ## Ready-to-go example flowgraphs
 

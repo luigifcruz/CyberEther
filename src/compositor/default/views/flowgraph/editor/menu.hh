@@ -19,6 +19,7 @@ struct FlowgraphNodeMenu {
 
     struct Config {
         std::string id;
+        bool open = false;
         bool pasteEnabled = false;
         bool configDetachEnabled = false;
         bool configDetached = false;
@@ -36,57 +37,15 @@ struct FlowgraphNodeMenu {
     };
 
     void update(Config config) {
+        using Entry = Sakura::MenuEntry;
+
         this->config = std::move(config);
 
-        popup.update({
-            .id = this->config.id,
-            .onClose = this->config.onClose,
-        });
-        copy.update({
-            .id = this->config.id + ":copy",
-            .label = ICON_FA_COPY " Copy Block",
-            .shortcut = "CTRL+C",
-            .onClick = this->config.onCopy,
-        });
-        paste.update({
-            .id = this->config.id + ":paste",
-            .label = ICON_FA_PASTE " Paste Block",
-            .shortcut = "CTRL+V",
-            .enabled = this->config.pasteEnabled,
-            .onClick = this->config.onPaste,
-        });
-        rename.update({
-            .id = this->config.id + ":rename",
-            .label = ICON_FA_TAG " Rename Block",
-            .onClick = this->config.onRename,
-        });
-        inspect.update({
-            .id = this->config.id + ":inspect",
-            .label = ICON_FA_CODE " Inspect & Edit",
-            .onClick = this->config.onInspect,
-        });
-        configDetach.update({
-            .id = this->config.id + ":config-detach",
-            .label = this->config.configDetached ? ICON_FA_WINDOW_RESTORE " Attach Config"
-                                                 : ICON_FA_UP_RIGHT_FROM_SQUARE " Detach Config",
-            .enabled = this->config.configDetachEnabled,
-            .onClick = this->config.onToggleConfigDetach,
-        });
-        deviceSeparator.update({
-            .id = this->config.id + ":device-separator",
-            .spacing = 0.0f,
-        });
-        deviceMenu.update({
-            .id = this->config.id + ":device",
-            .label = ICON_FA_MICROCHIP " Change Device",
-            .enabled = !this->config.devices.empty(),
-        });
-
-        deviceItems.resize(this->config.devices.size());
-        for (U64 i = 0; i < deviceItems.size(); ++i) {
+        std::vector<Entry> devices;
+        devices.reserve(this->config.devices.size());
+        for (U64 i = 0; i < this->config.devices.size(); ++i) {
             const auto& device = this->config.devices[i];
-            deviceItems[i].update({
-                .id = this->config.id + ":device:" + device.label,
+            devices.push_back({
                 .label = device.label,
                 .selected = device.selected,
                 .onClick = [this, i]() {
@@ -97,69 +56,67 @@ struct FlowgraphNodeMenu {
             });
         }
 
-        actionSeparator.update({
-            .id = this->config.id + ":action-separator",
-            .spacing = 0.0f,
-        });
-        reload.update({
-            .id = this->config.id + ":reload",
-            .label = ICON_FA_ARROW_ROTATE_RIGHT " Reload Block",
-            .onClick = this->config.onReload,
-        });
-        deleteBlock.update({
-            .id = this->config.id + ":delete",
-            .label = ICON_FA_XMARK " Delete Block",
-            .colorKey = "error_red",
-            .onClick = this->config.onDelete,
-        });
-        documentationSeparator.update({
-            .id = this->config.id + ":documentation-separator",
-            .spacing = 0.0f,
-        });
-        documentation.update({
-            .id = this->config.id + ":documentation",
-            .label = ICON_FA_BOOK " Documentation",
-            .onClick = this->config.onDocumentation,
+        menu.update({
+            .entries = {
+                {
+                    .label = ICON_FA_COPY " Copy Block",
+                    .shortcut = "CTRL+C",
+                    .onClick = this->config.onCopy,
+                },
+                {
+                    .label = ICON_FA_PASTE " Paste Block",
+                    .shortcut = "CTRL+V",
+                    .enabled = this->config.pasteEnabled,
+                    .onClick = this->config.onPaste,
+                },
+                {
+                    .label = ICON_FA_TAG " Rename Block",
+                    .onClick = this->config.onRename,
+                },
+                {
+                    .label = ICON_FA_CODE " Inspect & Edit",
+                    .onClick = this->config.onInspect,
+                },
+                {
+                    .label = this->config.configDetached ? ICON_FA_WINDOW_RESTORE " Attach Config"
+                                                         : ICON_FA_UP_RIGHT_FROM_SQUARE " Detach Config",
+                    .enabled = this->config.configDetachEnabled,
+                    .onClick = this->config.onToggleConfigDetach,
+                },
+                {.separator = true},
+                {
+                    .label = ICON_FA_MICROCHIP " Change Device",
+                    .enabled = !devices.empty(),
+                    .children = std::move(devices),
+                },
+                {
+                    .label = ICON_FA_ARROW_ROTATE_RIGHT " Reload Block",
+                    .onClick = this->config.onReload,
+                },
+                {.separator = true},
+                {
+                    .label = ICON_FA_BOOK " Documentation",
+                    .onClick = this->config.onDocumentation,
+                },
+                {.separator = true},
+                {
+                    .label = ICON_FA_XMARK " Delete Block",
+                    .colorKey = "error_red",
+                    .onClick = this->config.onDelete,
+                },
+            },
+            .open = this->config.open,
+            .onClose = this->config.onClose,
         });
     }
 
-    void render(const Sakura::Context& ctx) {
-        popup.render(ctx, [this](const Sakura::Context& ctx) {
-            copy.render(ctx);
-            paste.render(ctx);
-            rename.render(ctx);
-            inspect.render(ctx);
-            configDetach.render(ctx);
-            deviceSeparator.render(ctx);
-            deviceMenu.render(ctx, [this](const Sakura::Context& ctx) {
-                for (const auto& item : deviceItems) {
-                    item.render(ctx);
-                }
-            });
-            reload.render(ctx);
-            documentationSeparator.render(ctx);
-            documentation.render(ctx);
-            actionSeparator.render(ctx);
-            deleteBlock.render(ctx);
-        });
+    Sakura::Component& component() {
+        return menu;
     }
 
  private:
     Config config;
-    Sakura::ContextMenu popup;
-    Sakura::MenuItem copy;
-    Sakura::MenuItem paste;
-    Sakura::MenuItem rename;
-    Sakura::MenuItem inspect;
-    Sakura::MenuItem configDetach;
-    Sakura::Divider deviceSeparator;
-    Sakura::Menu deviceMenu;
-    std::vector<Sakura::MenuItem> deviceItems;
-    Sakura::Divider actionSeparator;
-    Sakura::MenuItem reload;
-    Sakura::MenuItem deleteBlock;
-    Sakura::Divider documentationSeparator;
-    Sakura::MenuItem documentation;
+    Sakura::Menu menu;
 };
 
 }  // namespace Jetstream

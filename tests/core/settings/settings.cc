@@ -201,7 +201,6 @@ void RequireDefaults(const Settings& settings) {
     REQUIRE(settings.interface.infoPanelEnabled);
     REQUIRE(settings.interface.backgroundParticles);
     REQUIRE(settings.developer.logLevel == defaults.developer.logLevel);
-    REQUIRE_FALSE(settings.developer.latencyEnabled);
     REQUIRE_FALSE(settings.developer.timingEnabled);
     REQUIRE(settings.benchmark.format == "markdown");
     REQUIRE(settings.registry.plugins.empty());
@@ -257,7 +256,6 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     settings.remote.autoJoinSessions = true;
     settings.remote.framerate = 24;
     settings.developer.logLevel = 4;
-    settings.developer.latencyEnabled = true;
     settings.developer.timingEnabled = true;
     settings.registry.plugins.push_back(pluginPath);
     settings.runtime.python.path = runtimePath;
@@ -304,7 +302,6 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     REQUIRE(restored.remote.autoJoinSessions);
     REQUIRE(restored.remote.framerate == 24);
     REQUIRE(restored.developer.logLevel == 4);
-    REQUIRE(restored.developer.latencyEnabled);
     REQUIRE(restored.developer.timingEnabled);
     REQUIRE(restored.benchmark.format == "markdown");
     REQUIRE(restored.registry.plugins == settings.registry.plugins);

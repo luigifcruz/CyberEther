@@ -25,49 +25,57 @@ struct FlowgraphKeyValueWindow {
     void update(Config config) {
         this->config = std::move(config);
 
-        window.update({
-            .id = this->config.id,
-            .title = this->config.title,
-            .size = {500.0f, 700.0f},
-            .padding = Extent2D<F32>{8.0f, 8.0f},
-            .onClose = this->config.onClose,
-        });
         searchInput.update({
-            .id = this->config.id + ":search",
             .value = this->config.search,
             .hint = this->config.searchHint,
             .submit = Sakura::TextInput::Submit::OnEdit,
             .onChange = this->config.onSearchChange,
         });
         countText.update({
-            .id = this->config.id + ":count",
             .str = this->config.entryCount,
             .tone = Sakura::Text::Tone::Secondary,
         });
         table.update({
-            .id = this->config.id + ":table",
             .columns = {"Key", "Value"},
+            .nodes = this->config.nodes,
             .fixedColumnWidths = {180.0f},
-            .size = {0.0f, -1.0f},
+            .size = {Sakura::Fill, Sakura::Fill},
             .wrapped = true,
             .resizable = true,
         });
+        stack.update({
+            .items = {
+                {.child = &searchInput},
+                {.child = &countText},
+                {.child = &table, .grow = 1.0f},
+            },
+        });
+        panel.update({
+            .id = this->config.id + ":panel",
+            .content = &stack,
+            .size = {Sakura::Fill, Sakura::Fill},
+            .transparent = true,
+        });
     }
 
-    void render(const Sakura::Context& ctx) {
-        window.render(ctx, [this](const Sakura::Context& ctx) {
-            searchInput.render(ctx);
-            countText.render(ctx);
-            table.render(ctx, this->config.nodes);
-        });
+    Sakura::FloatingLayer::Window window() {
+        return {
+            .id = config.id,
+            .title = config.title,
+            .content = &panel,
+            .size = {500.0f, 700.0f},
+            .padding = 8.0f,
+            .onClose = config.onClose,
+        };
     }
 
  private:
     Config config;
-    Sakura::Window window;
     Sakura::TextInput searchInput;
     Sakura::Text countText;
     Sakura::Table table;
+    Sakura::Stack stack;
+    Sakura::Panel panel;
 };
 
 }  // namespace Jetstream

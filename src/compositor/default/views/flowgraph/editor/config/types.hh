@@ -33,7 +33,7 @@ struct FlowgraphConfigFieldConfig {
     std::string help;
     Parser::Map format;
     std::string status;
-    Sakura::NodeCodeEditor::StatusTone statusTone = Sakura::NodeCodeEditor::StatusTone::Info;
+    Sakura::StatusTone statusTone = Sakura::StatusTone::Info;
     std::vector<std::string> consoleOutput;
     bool consoleVisible = false;
     Parser::Map values;

@@ -41,12 +41,6 @@ struct FlowgraphEditorPresenter {
             .onBuildBlockOptions = [catalog = catalog]() {
                 return catalog.buildBlockCatalog();
             },
-            .title = flowgraph->title(),
-            .summary = flowgraph->summary(),
-            .author = flowgraph->author(),
-            .license = flowgraph->license(),
-            .description = flowgraph->description(),
-            .path = flowgraph->path(),
             .onCreateBlock =
                 [enqueue, flowgraphId](const std::string& moduleId,
                                        std::optional<Extent2D<F32>> gridPosition,
@@ -71,6 +65,9 @@ struct FlowgraphEditorPresenter {
             },
             .onDeleteBlock = [enqueue, flowgraphId](const std::string& blockName) {
                 enqueue(MailDeleteBlock{flowgraphId, blockName});
+            },
+            .onOpenDocumentation = [enqueue, flowgraphId](const std::string& blockName) {
+                enqueue(MailOpenDocumentation{flowgraphId, blockName});
             },
             .onChangeBlockDevice = [enqueue, flowgraphId](const std::string& blockName,
                                                           DeviceType device,

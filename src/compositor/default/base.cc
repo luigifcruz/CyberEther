@@ -9,11 +9,6 @@
 #include "presenters/base.hh"
 #include "themes.hh"
 
-#include "resources/fonts/compressed_jbmm.hh"
-#include "resources/fonts/compressed_jbmb.hh"
-#include "resources/fonts/compressed_fa.hh"
-#include "resources/fonts/compressed_sg.hh"
-
 #include "jetstream/platform.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/instance_remote.hh"
@@ -76,6 +71,12 @@ DefaultCompositor::DefaultCompositor() :
     actions(state, callbacks),
     presenters(state, callbacks) {}
 
+DefaultCompositor::~DefaultCompositor() {
+    if (viewport && previousIntegratedTitlebar.has_value()) {
+        viewport->setIntegratedTitlebar(*previousIntegratedTitlebar);
+    }
+}
+
 Result DefaultCompositor::create() {
     JST_INFO("[COMPOSITOR_IMPL_DEFAULT] Creating compositor.");
 
@@ -99,7 +100,6 @@ Result DefaultCompositor::create() {
 
     state.graphics.device = settings.graphics.device;
     state.graphics.scale = settings.graphics.scale;
-    state.graphics.framerate = settings.graphics.framerate;
 
     // Restore interface preferences.
 
@@ -109,7 +109,6 @@ Result DefaultCompositor::create() {
     // Restore debug preferences.
 
     state.debug.logLevel = settings.developer.logLevel;
-    state.debug.latencyEnabled = settings.developer.latencyEnabled;
     state.debug.timingEnabled = settings.developer.timingEnabled;
     JST_LOG_SET_DEBUG_LEVEL(state.debug.logLevel);
 
@@ -154,31 +153,13 @@ Result DefaultCompositor::create() {
         .palette = &state.sakura.colorMap,
         .render = state.system.render.get(),
     });
-    state.sakura.runtime.create({
-        .body = {
-            .data = jbmm_compressed_data,
-            .size = jbmm_compressed_size,
-        },
-        .bold = {
-            .data = jbmb_compressed_data,
-            .size = jbmb_compressed_size,
-        },
-        .iconRegular = {
-            .data = far_compressed_data,
-            .size = far_compressed_size,
-        },
-        .iconSolid = {
-            .data = fas_compressed_data,
-            .size = fas_compressed_size,
-        },
-        .display = {
-            .data = sg_compressed_data,
-            .size = sg_compressed_size,
-        },
-    });
 
     // Prime the initial workbench view state.
 
+    if (viewport && !previousIntegratedTitlebar.has_value()) {
+        previousIntegratedTitlebar = viewport->integratedTitlebar();
+        viewport->setIntegratedTitlebar(true);
+    }
     workbench.update(presenters.build());
 
     updater.start();
@@ -193,6 +174,11 @@ Result DefaultCompositor::destroy() {
     actions.cancelFilePicker();
     updater.shutdown();
     feedback.shutdown();
+
+    if (viewport && previousIntegratedTitlebar.has_value()) {
+        viewport->setIntegratedTitlebar(*previousIntegratedTitlebar);
+        previousIntegratedTitlebar.reset();
+    }
 
     return Result::SUCCESS;
 }
@@ -236,6 +222,14 @@ Result DefaultCompositor::poll() {
         callbacks.notifyResult(completed.result, completed.message);
     }
 
+    pending.clear();
+    pending.swap(pendingMail);
+    for (const auto& mail : pending) {
+        if (state.system.instance) {
+            JST_CHECK(actions.handle(mail));
+        }
+    }
+
     // Update the state snapshots used by presenters.
 
     updateWorkbenchState();
@@ -246,7 +240,8 @@ Result DefaultCompositor::poll() {
     updateRemoteState();
     updateUpdaterState();
     actions.reconcileFilePicker();
-    actions.restoreStacks();
+    actions.restoreLayouts();
+    actions.settleStartTab();
     actions.refreshLiveMarkdown();
     actions.refreshMetrics();
     updateFeedbackState();

@@ -6,43 +6,49 @@
 #include <jetstream/render/sakura/palette.hh>
 #include <jetstream/types.hh>
 
+#include "input.hh"
+
 #include <functional>
+#include <memory>
+#include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
+namespace Jetstream::Render::Components {
+class Generic;
+}  // namespace Jetstream::Render::Components
+
 namespace Jetstream::Sakura {
-
-struct FontHandle {
-    void* native = nullptr;
-};
-
-struct Fonts {
-    FontHandle body;
-    FontHandle h1;
-    FontHandle h2;
-    FontHandle bold;
-    FontHandle display;
-};
 
 const Palette& EmptyPalette();
 
-namespace Retained {
 struct Drawable;
-}  // namespace Retained
+struct PopupLayer;
+struct DockDrag;
+struct Component;
 
 struct Context {
     std::reference_wrapper<const Palette> palette = EmptyPalette();
     Render::Window* render = nullptr;
-    Fonts fonts;
     F32 pixelRatio = 1.0f;
     Extent2D<U64> framebufferSize = {0, 0};
-    bool hovered = false;
-    bool active = false;
     bool windowFocused = false;
-    std::function<void()> invalidate;
-    std::function<void(Retained::Drawable*)> release;
-    Render::Surface::Config* surface = nullptr;
-    std::vector<Retained::Drawable*>* drawables = nullptr;
+    std::optional<Extent2D<F32>> mouse;
+    const InputFrame* input = nullptr;
+    PopupLayer* popups = nullptr;
+    DockDrag* dockDrag = nullptr;
+    Extent2D<F32> translation = {0.0f, 0.0f};
+    F32 fontSize = 0.0f;
+    F64 time = 0.0;
+    F32 deltaTime = 0.0f;
+    U64 frame = 0;
+    F32 hoverDelay = 0.0f;
+    bool underlays = false;
+    std::string backdropColorKey;
+    std::string backdropTopColorKey;
+    std::function<void(Drawable*, std::shared_ptr<Render::Components::Generic>)> release;
+    std::function<Result(const Component&, Drawable*)> attach;
 
     ColorRGBA<F32> color(const std::string& key, ColorRGBA<F32> fallback = {}) const {
         if (key.empty()) {
@@ -63,10 +69,13 @@ struct Context {
         };
     }
 
-    void invalidateSurface() const {
-        if (invalidate) {
-            invalidate();
+    Context translated(Extent2D<F32> offset) const {
+        Context next = *this;
+        next.translation = {translation.x + offset.x, translation.y + offset.y};
+        if (next.mouse.has_value()) {
+            next.mouse = Extent2D<F32>{next.mouse->x - offset.x, next.mouse->y - offset.y};
         }
+        return next;
     }
 };
 

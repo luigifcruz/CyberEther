@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cctype>
 #include <functional>
+#include <memory>
 #include <set>
 #include <string>
 #include <utility>
@@ -36,6 +37,8 @@ struct RemoteView {
     };
 
     void update(Config config) {
+        using Button = Sakura::Button;
+
         this->config = std::move(config);
         if (this->config.started) {
             updateQrCode(this->config.inviteUrl);
@@ -44,18 +47,14 @@ struct RemoteView {
             cachedQrData.clear();
             cachedQrWidth = 0;
         }
-
         header.update({
-            .id = "RemoteStreamingHeader",
             .title = ICON_FA_TOWER_BROADCAST " Remote Streaming",
             .description = "Share this session with remote clients via WebRTC.",
         });
-
         startButton.update({
-            .id = "RemoteStreamingStart",
             .str = ICON_FA_PLAY " Start Streaming",
-            .size = {-1.0f, 40.0f},
-            .variant = Sakura::Button::Variant::Action,
+            .size = {Sakura::Fill, 40.0f},
+            .variant = Button::Variant::Action,
             .onClick = [this]() {
                 if (this->config.onStart) {
                     this->config.onStart();
@@ -63,23 +62,15 @@ struct RemoteView {
             },
         });
         configureButton.update({
-            .id = "RemoteStreamingConfigure",
             .str = ICON_FA_GEAR " Configure Remote Settings",
-            .size = {-1.0f, 40.0f},
+            .size = {Sakura::Fill, 40.0f},
             .onClick = [this]() {
                 if (this->config.onConfigure) {
                     this->config.onConfigure();
                 }
             },
         });
-
-        qrSplit.update({
-            .id = "RemoteStreamingQrSplit",
-            .leftWidth = 190.0f,
-            .height = 300.0f,
-        });
         qrCode.update({
-            .id = "RemoteStreamingQrCode",
             .data = cachedQrData,
             .width = cachedQrWidth,
             .moduleSize = 5.0f,
@@ -88,51 +79,43 @@ struct RemoteView {
             },
         });
         openInviteButton.update({
-            .id = "RemoteStreamingOpenInvite",
             .str = ICON_FA_ARROW_UP_RIGHT_FROM_SQUARE " Open in browser",
-            .size = {-1.0f, 34.0f},
+            .size = {Sakura::Fill, 34.0f},
             .onClick = [this]() {
                 openInvite();
             },
         });
         copyTokenButton.update({
-            .id = "RemoteStreamingCopyToken",
             .str = "Copy Access Token",
-            .size = {-1.0f, 34.0f},
+            .size = {Sakura::Fill, 34.0f},
             .onClick = [this]() {
                 copy("Access token", this->config.accessToken);
             },
         });
-        clientTable.update({
-            .id = "RemoteStreamingClientsTable",
-            .columns = {"Client", "Status"},
-            .fixedColumnWidths = {0.0f, 160.0f},
-            .size = {0.0f, 270.0f},
-        });
         stopButton.update({
-            .id = "RemoteStreamingStop",
             .str = ICON_FA_STOP " Stop Streaming",
-            .size = {-1.0f, 40.0f},
-            .variant = Sakura::Button::Variant::Destructive,
+            .size = {Sakura::Fill, 40.0f},
+            .variant = Button::Variant::Destructive,
             .onClick = [this]() {
                 if (this->config.onStop) {
                     this->config.onStop();
                 }
             },
         });
+        divider.update({});
+
         clientRows = buildClientRows();
-        clientCodeTexts.resize(clientRows.size());
-        clientApproveButtons.resize(clientRows.size());
+        while (clientCells.size() < clientRows.size()) {
+            clientCells.push_back(std::make_unique<ClientCells>());
+        }
+        std::vector<std::vector<Sakura::Component*>> cellRows;
         for (U64 i = 0; i < clientRows.size(); ++i) {
             const auto& row = clientRows[i];
-            clientCodeTexts[i].update({
-                .id = "RemoteStreamingClient" + row.sessionId,
-                .str = row.code,
-            });
-            clientApproveButtons[i].update({
-                .id = "RemoteStreamingApprove" + row.sessionId,
+            auto& cells = *clientCells[i];
+            cells.code.update({.str = row.code});
+            cells.approve.update({
                 .str = row.pending ? "Approve" : "Approved",
-                .size = {-1.0f, 0.0f},
+                .size = {Sakura::Fill, 0.0f},
                 .disabled = !row.pending,
                 .onClick = [this, code = row.code]() {
                     if (this->config.onApprove) {
@@ -140,28 +123,48 @@ struct RemoteView {
                     }
                 },
             });
+            cellRows.push_back({&cells.code, &cells.approve});
         }
+        clientTable.update({
+            .columns = {"Client", "Status"},
+            .cellRows = std::move(cellRows),
+            .fixedColumnWidths = {0.0f, 160.0f},
+            .size = {Sakura::Fill, 270.0f},
+        });
+
+        qrColumn.update({
+            .items = {
+                {.child = &qrCode},
+                {.child = &openInviteButton},
+                {.child = &copyTokenButton},
+            },
+        });
+        qrSplit.update({
+            .left = &qrColumn,
+            .right = &clientTable,
+            .leftWidth = 190.0f,
+            .height = 300.0f,
+        });
+
+        std::vector<Sakura::Stack::Item> items = {{.child = &header}};
+        if (!this->config.started) {
+            items.push_back({.child = &startButton});
+            items.push_back({.child = &configureButton});
+        } else {
+            items.push_back({.child = &qrSplit});
+            items.push_back({.child = &divider});
+            items.push_back({.child = &stopButton});
+        }
+        stack.update({.items = std::move(items)});
+        panel.update({
+            .id = "RemoteStreaming",
+            .content = &stack,
+            .backgroundColorKey = "popup_bg",
+        });
     }
 
-    void render(const Sakura::Context& ctx) const {
-        header.render(ctx);
-        if (!config.started) {
-            startButton.render(ctx);
-            configureButton.render(ctx);
-        } else {
-            qrSplit.render(ctx, {
-                [this](const Sakura::Context& ctx) {
-                    qrCode.render(ctx);
-                    openInviteButton.render(ctx);
-                    copyTokenButton.render(ctx);
-                },
-                [this](const Sakura::Context& ctx) {
-                    renderClientTable(ctx);
-                },
-            });
-            divider.render(ctx);
-            stopButton.render(ctx);
-        }
+    Sakura::Component& component() {
+        return panel;
     }
 
  private:
@@ -210,20 +213,6 @@ struct RemoteView {
         return rows;
     }
 
-    void renderClientTable(const Sakura::Context& ctx) const {
-        Sakura::Table::Rows rows;
-        rows.reserve(clientRows.size());
-        for (U64 i = 0; i < clientRows.size(); ++i) {
-            Sakura::Table::Row row;
-            row.push_back([this, i](const Sakura::Context& ctx) { clientCodeTexts[i].render(ctx); });
-            row.push_back([this, i](const Sakura::Context& ctx) {
-                clientApproveButtons[i].render(ctx);
-            });
-            rows.push_back(std::move(row));
-        }
-        clientTable.render(ctx, std::move(rows));
-    }
-
     void updateQrCode(const std::string& url) {
         if (cachedQrUrl == url) {
             return;
@@ -258,20 +247,27 @@ struct RemoteView {
         }
     }
 
+    struct ClientCells {
+        Sakura::Text code;
+        Sakura::Button approve;
+    };
+
     Config config;
     ModalHeader header;
     Sakura::Button startButton;
     Sakura::Button configureButton;
-    Sakura::SplitView qrSplit;
     Sakura::QrCode qrCode;
     Sakura::Button openInviteButton;
     Sakura::Button copyTokenButton;
+    Sakura::Stack qrColumn;
+    std::vector<ClientRow> clientRows;
+    std::vector<std::unique_ptr<ClientCells>> clientCells;
     Sakura::Table clientTable;
+    Sakura::SplitView qrSplit;
     Sakura::Divider divider;
     Sakura::Button stopButton;
-    std::vector<ClientRow> clientRows;
-    std::vector<Sakura::Text> clientCodeTexts;
-    std::vector<Sakura::Button> clientApproveButtons;
+    Sakura::Stack stack;
+    Sakura::Panel panel;
     std::string cachedQrUrl;
     std::vector<U8> cachedQrData;
     int cachedQrWidth = 0;

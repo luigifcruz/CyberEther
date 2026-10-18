@@ -393,7 +393,7 @@ class TestWindow final : public Render::Window {
 
 class TestViewport final : public Viewport::Generic {
  public:
-    TestViewport() : Generic(Viewport::Config{}) {}
+    explicit TestViewport(const Viewport::Config& config = {}) : Generic(config) {}
 
     std::string id() const override { return "test"; }
     std::string name() const override { return "Test"; }
@@ -416,9 +416,14 @@ class TestViewport final : public Viewport::Generic {
 
     void beginWindowDrag() override { ++drags; }
     void zoomWindow() override { ++zooms; }
+    void setIntegratedTitlebar(bool enabled) override {
+        activations.push_back(enabled);
+        Generic::setIntegratedTitlebar(enabled);
+    }
 
     U64 drags = 0;
     U64 zooms = 0;
+    std::vector<bool> activations;
 };
 
 std::shared_ptr<TestBuffer> MakeBuffer(std::array<U32, 2>& source) {
@@ -1974,6 +1979,24 @@ TEST_CASE("Render window chrome defaults to the system frame", "[core][render][w
     viewport.Viewport::Generic::zoomWindow();
     REQUIRE(viewport.drags == 0);
     REQUIRE(viewport.zooms == 0);
+}
+
+TEST_CASE("Integrated titlebar activation is opt in and forwards through the viewport API",
+          "[core][render][window][review17]") {
+    CHECK_FALSE(Viewport::Config{}.integratedTitlebar);
+    TestViewport legacy;
+    CHECK_FALSE(legacy.integratedTitlebar());
+    CHECK(legacy.activations.empty());
+    TestViewport retained(Viewport::Config{.integratedTitlebar = true});
+    CHECK(retained.integratedTitlebar());
+    Viewport::Generic& viewport = legacy;
+    viewport.setIntegratedTitlebar(true);
+    CHECK(viewport.integratedTitlebar());
+    viewport.setIntegratedTitlebar(true);
+    viewport.setIntegratedTitlebar(false);
+    CHECK_FALSE(viewport.integratedTitlebar());
+    CHECK(legacy.activations == std::vector<bool>{true, true, false});
+    CHECK_FALSE(retained.Viewport::Generic::titlebarChrome().integrated);
 }
 
 TEST_CASE("Render window chrome forwards to its viewport in logical units", "[core][render][window]") {

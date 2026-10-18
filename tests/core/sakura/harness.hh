@@ -2,7 +2,6 @@
 #define JETSTREAM_TESTS_CORE_SAKURA_HARNESS_HH
 
 #include <imgui.h>
-#include <imnodes.h>
 
 #include "jetstream/render/base/window.hh"
 #include "jetstream/render/components/font.hh"
@@ -18,8 +17,6 @@
 
 namespace SakuraTest {
 
-// Minimal Render::Window: only scaling metrics matter; every lifecycle
-// hook is a no-op. The scaling factor is set directly (protected member).
 class FakeWindow : public Jetstream::Render::Window {
  public:
     explicit FakeWindow(Jetstream::F32 scalingFactor = 1.0f) : Window(Config{scalingFactor}) {
@@ -69,9 +66,6 @@ class FakeWindow : public Jetstream::Render::Window {
     }
 };
 
-// Fake window whose fonts carry real glyph metrics for measurement tests.
-// Font::create sets glyph metrics before its atlas upload, which the fake
-// window cannot perform, so the upload failure is ignored.
 class FontWindow : public FakeWindow {
  public:
     void load(const std::string& name, const unsigned int* data) {
@@ -81,23 +75,19 @@ class FontWindow : public FakeWindow {
         auto font = std::make_shared<Jetstream::Render::Components::Font>(config);
         (void)font->create(this);
         fonts[name] = font;
+        ++_fontRevision;
     }
 };
 
-// Owns an ImGui context styled for deterministic measurement:
-// no window padding, no item spacing, a fixed-size root window at the
-// origin, and no ini file writes.
 class HeadlessUi {
  public:
     explicit HeadlessUi(Jetstream::F32 scalingFactor = 1.0f, ImVec2 displaySize = ImVec2(400.0f, 300.0f)) {
         context = ImGui::CreateContext();
-        ImNodes::CreateContext();
 
         this->displaySize = displaySize;
 
         ImGuiIO& io = ImGui::GetIO();
         io.IniFilename = nullptr;
-        // Declare texture support: skips the font-atlas requirement headlessly.
         io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
         io.DisplaySize = displaySize;
         io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
@@ -114,7 +104,6 @@ class HeadlessUi {
     }
 
     ~HeadlessUi() {
-        ImNodes::DestroyContext();
         ImGui::DestroyContext(context);
     }
 
@@ -128,13 +117,11 @@ class HeadlessUi {
         return ctx;
     }
 
-    // Positions the synthetic mouse before the next frame.
     void setMouse(ImVec2 position, bool leftDown) {
         mousePosition = position;
         mouseLeftDown = leftDown;
     }
 
-    // One ImGui frame with a fixed-size root window as the content area.
     template<typename Body>
     void frame(Body body) {
         ImGuiIO& io = ImGui::GetIO();
@@ -154,17 +141,6 @@ class HeadlessUi {
         ImGui::Render();
     }
 
-    // Same as frame(), wrapped in an imnodes editor canvas so components
-    // that call ImNodes::BeginNode/EndNode can render.
-    template<typename Body>
-    void editorFrame(Body body) {
-        frame([&] {
-            ImNodes::BeginNodeEditor();
-            body();
-            ImNodes::EndNodeEditor();
-        });
-    }
-
     static constexpr Jetstream::F32 kWindowWidth = 400.0f;
     static constexpr Jetstream::F32 kWindowHeight = 300.0f;
 
@@ -176,7 +152,6 @@ class HeadlessUi {
     bool mouseLeftDown = false;
 };
 
-// Records Sakura::SurfaceResize emissions from component callbacks.
 struct ResizeLog {
     std::vector<Jetstream::Sakura::SurfaceResize> entries;
 

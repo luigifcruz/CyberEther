@@ -23,12 +23,10 @@ struct RenameBlockView {
         this->config = std::move(config);
 
         header.update({
-            .id = "RenameBlockHeader",
             .title = ICON_FA_TAG " Rename Block",
             .description = "Enter a new block identifier.",
         });
         input.update({
-            .id = "##rename-block-new-id",
             .value = newName,
             .hint = "Block name",
             .submit = Sakura::TextInput::Submit::OnEdit,
@@ -43,22 +41,32 @@ struct RenameBlockView {
             },
         });
         renameButton.update({
-            .id = "RenameBlockConfirm",
             .str = "Rename Block",
-            .size = {-1.0f, 40.0f},
+            .size = {Sakura::Fill, 40.0f},
             .variant = Sakura::Button::Variant::Action,
             .disabled = !canSubmit(),
             .onClick = [this]() {
                 submit();
             },
         });
+        divider.update({});
+        stack.update({
+            .items = {
+                {.child = &header},
+                {.child = &input},
+                {.child = &divider},
+                {.child = &renameButton},
+            },
+        });
+        panel.update({
+            .id = "RenameBlock",
+            .content = &stack,
+            .backgroundColorKey = "popup_bg",
+        });
     }
 
-    void render(const Sakura::Context& ctx) const {
-        header.render(ctx);
-        input.render(ctx);
-        divider.render(ctx);
-        renameButton.render(ctx);
+    Sakura::Component& component() {
+        return panel;
     }
 
  private:
@@ -78,6 +86,8 @@ struct RenameBlockView {
     Sakura::TextInput input;
     Sakura::Divider divider;
     Sakura::Button renameButton;
+    Sakura::Stack stack;
+    Sakura::Panel panel;
 };
 
 }  // namespace Jetstream

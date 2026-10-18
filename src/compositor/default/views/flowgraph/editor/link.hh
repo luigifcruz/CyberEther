@@ -41,8 +41,27 @@ struct FlowgraphLink {
 
     void update(Config config) {
         this->config = std::move(config);
-
-        nodeLink.update({
+        const bool asked = linkTooltip.requested();
+        const bool resolved = this->config.connection.resolved;
+        bool changed = false;
+        if (resolved && linkTooltip.prepared()) {
+            const auto& connection = this->config.connection;
+            FlowgraphTooltipRows link = {
+                {"Producer", jst::fmt::format("{}.{}", connection.producerName, connection.producerPort)},
+                {"Consumer", jst::fmt::format("{}.{}", connection.consumerName, connection.inputSlot)},
+                {"Tensor ID", jst::fmt::format("{}", connection.tensor.id())},
+            };
+            auto layout = FlowgraphTensorLayoutRows(connection.tensor);
+            auto attributes = FlowgraphTensorAttributeRows(connection.tensor);
+            changed = link != linkRows || layout != layoutRows || attributes != attributeRows;
+            if (changed) {
+                ++tooltipRevision;
+                linkRows = std::move(link);
+                layoutRows = std::move(layout);
+                attributeRows = std::move(attributes);
+            }
+        }
+        linkSpec = {
             .id = this->config.id,
             .start = {
                 .nodeId = this->config.start.nodeId,
@@ -55,125 +74,109 @@ struct FlowgraphLink {
                 .isInput = this->config.end.isInput,
             },
             .unresolved = !this->config.connection.resolved,
-            .onHover = [this](const bool hovered) {
-                tooltipActive = hovered;
+            .tooltip = {
+                .content = [this]() -> Sakura::Component* {
+                    if (!this->config.connection.resolved) {
+                        return nullptr;
+                    }
+                    return linkTooltip.show();
+                },
+                .revision = tooltipRevision,
             },
-        });
-
-        if (!tooltipActive || !this->config.connection.resolved) {
-            hasAttributes = false;
-            return;
+        };
+        if (resolved && (asked || changed)) {
+            prepareTooltip();
         }
+    }
 
-        const auto& tensor = this->config.connection.tensor;
+    Sakura::NodeEditor::Link takeLink() {
+        return std::move(linkSpec);
+    }
 
-        std::vector<std::vector<std::string>> attributeRows;
-        for (const auto& key : tensor.attributeKeys()) {
-            std::string encoded;
-            const std::any value = tensor.attribute(key);
-            if (!value.has_value() ||
-                Parser::TypedToString(value, encoded) != Result::SUCCESS) {
-                encoded = "?";
-            }
-            attributeRows.push_back({key, encoded});
-        }
-        hasAttributes = !attributeRows.empty();
+    const Connection& connection() const {
+        return config.connection;
+    }
+
+ private:
+    void prepareTooltip() {
+        using Text = Sakura::Text;
+
+        const bool hasAttributes = !attributeRows.empty();
 
         tooltipTitle.update({
-            .id = this->config.id + ":tooltip:title",
             .str = ICON_FA_MEMORY " Tensor Metadata",
+            .wrapped = true,
         });
-        tooltipHeaderDivider.update({
-            .id = this->config.id + ":tooltip:header-divider",
-            .spacing = 0.0f,
-        });
+        tooltipHeaderDivider.update({.spacing = 0.0f});
         tooltipHelp.update({
-            .id = this->config.id + ":tooltip:help",
             .str = ICON_FA_CIRCLE_INFO " Click on the end of the link to detach it.",
-            .tone = Sakura::Text::Tone::Secondary,
+            .tone = Text::Tone::Secondary,
+            .wrapped = true,
         });
-        tooltipHelpDivider.update({
-            .id = this->config.id + ":tooltip:help-divider",
-            .spacing = 0.0f,
-        });
+        tooltipHelpDivider.update({.spacing = 0.0f});
         linkSection.update({
-            .id = this->config.id + ":tooltip:link-section",
             .str = "Link",
-            .font = Sakura::Text::Font::Bold,
+            .font = Text::Font::Bold,
         });
         layoutSection.update({
-            .id = this->config.id + ":tooltip:layout-section",
             .str = "Layout",
-            .font = Sakura::Text::Font::Bold,
+            .font = Text::Font::Bold,
         });
         attributesSection.update({
-            .id = this->config.id + ":tooltip:attributes-section",
             .str = "Attributes",
-            .font = Sakura::Text::Font::Bold,
+            .font = Text::Font::Bold,
         });
         linkMetadataTable.update({
-            .id = this->config.id + ":tooltip:link-table",
             .columns = {"", ""},
-            .rows = {
-                {"Producer", jst::fmt::format("{}.{}",
-                                               this->config.connection.producerName,
-                                               this->config.connection.producerPort)},
-                {"Consumer", jst::fmt::format("{}.{}",
-                                               this->config.connection.consumerName,
-                                               this->config.connection.inputSlot)},
-                {"Tensor ID", jst::fmt::format("{}", tensor.id())},
-            },
+            .rows = linkRows,
             .fixedColumnWidths = {72.0f},
             .showHeaders = false,
             .wrapped = true,
         });
         layoutMetadataTable.update({
-            .id = this->config.id + ":tooltip:layout-table",
             .columns = {"", ""},
-            .rows = {
-                {"Device", jst::fmt::format("{}", tensor.device())},
-                {"Type", jst::fmt::format("{}", tensor.dtype())},
-                {"Shape", jst::fmt::format("{}", tensor.shape())},
-                {"Strides", jst::fmt::format("{} ({})", tensor.stride(),
-                                                        tensor.contiguous() ? "Contiguous" :
-                                                                              "Non-contiguous")},
-                {"Offset", jst::fmt::format("{} bytes", tensor.offsetBytes())},
-            },
+            .rows = layoutRows,
             .fixedColumnWidths = {72.0f},
             .showHeaders = false,
             .wrapped = true,
         });
         attributeMetadataTable.update({
-            .id = this->config.id + ":tooltip:attribute-table",
             .columns = {"", ""},
-            .rows = std::move(attributeRows),
+            .rows = attributeRows,
             .fixedColumnWidths = {120.0f},
             .showHeaders = false,
             .wrapped = true,
         });
-    }
 
-    void render(const Sakura::Context& ctx) const {
-        nodeLink.render(ctx, [this](const Sakura::Context& ctx) {
-            tooltipTitle.render(ctx);
-            tooltipHeaderDivider.render(ctx);
-            tooltipHelp.render(ctx);
-            tooltipHelpDivider.render(ctx);
-
-            linkSection.render(ctx);
-            linkMetadataTable.render(ctx);
-            layoutSection.render(ctx);
-            layoutMetadataTable.render(ctx);
-            if (hasAttributes) {
-                attributesSection.render(ctx);
-                attributeMetadataTable.render(ctx);
-            }
+        std::vector<Sakura::Stack::Item> items = {
+            {.child = &tooltipTitle},
+            {.child = &tooltipHeaderDivider},
+            {.child = &tooltipHelp},
+            {.child = &tooltipHelpDivider},
+            {.child = &linkSection},
+            {.child = &linkMetadataTable},
+            {.child = &layoutSection},
+            {.child = &layoutMetadataTable},
+        };
+        if (hasAttributes) {
+            items.push_back({.child = &attributesSection});
+            items.push_back({.child = &attributeMetadataTable});
+        }
+        tooltipContent.update({.items = std::move(items)});
+        linkTooltip.update({
+            .id = this->config.id + ":tooltip",
+            .content = &tooltipContent,
+            .wrapWidth = 420.0f,
         });
     }
 
- private:
     Config config;
-    Sakura::NodeLink nodeLink;
+    Sakura::NodeEditor::Link linkSpec;
+    FlowgraphTooltipRows linkRows;
+    FlowgraphTooltipRows layoutRows;
+    FlowgraphTooltipRows attributeRows;
+    U64 tooltipRevision = 0;
+    Tooltip linkTooltip;
     Sakura::Text tooltipTitle;
     Sakura::Divider tooltipHeaderDivider;
     Sakura::Text tooltipHelp;
@@ -184,8 +187,7 @@ struct FlowgraphLink {
     Sakura::Table layoutMetadataTable;
     Sakura::Text attributesSection;
     Sakura::Table attributeMetadataTable;
-    bool hasAttributes = false;
-    bool tooltipActive = false;
+    Sakura::Stack tooltipContent;
 };
 
 }  // namespace Jetstream

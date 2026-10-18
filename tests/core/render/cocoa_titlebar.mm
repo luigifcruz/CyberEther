@@ -70,6 +70,9 @@ std::function<void()> nativeDrag;
  @public
     NSUInteger mask;
     bool movable;
+    BOOL transparent;
+    NSWindowTitleVisibility titleVisibility;
+    NSTitlebarSeparatorStyle separatorStyle;
     int drags;
     int zooms;
     int minimizations;
@@ -80,9 +83,13 @@ std::function<void()> nativeDrag;
 @implementation TitlebarTestWindow
 - (NSUInteger)styleMask { return mask; }
 - (void)setStyleMask:(NSUInteger)value { mask = value; }
-- (void)setTitlebarAppearsTransparent:(BOOL)value { (void)value; }
-- (void)setTitleVisibility:(NSWindowTitleVisibility)value { (void)value; }
-- (void)setTitlebarSeparatorStyle:(NSTitlebarSeparatorStyle)value { (void)value; }
+- (BOOL)titlebarAppearsTransparent { return transparent; }
+- (void)setTitlebarAppearsTransparent:(BOOL)value { transparent = value; }
+- (NSWindowTitleVisibility)titleVisibility { return titleVisibility; }
+- (void)setTitleVisibility:(NSWindowTitleVisibility)value { titleVisibility = value; }
+- (NSTitlebarSeparatorStyle)titlebarSeparatorStyle { return separatorStyle; }
+- (void)setTitlebarSeparatorStyle:(NSTitlebarSeparatorStyle)value { separatorStyle = value; }
+- (BOOL)isMovable { return movable; }
 - (void)setMovable:(BOOL)value { movable = value; }
 - (NSButton*)standardWindowButton:(NSWindowButton)button { (void)button; return nil; }
 - (void)performWindowDragWithEvent:(TitlebarTestEvent*)event {
@@ -230,6 +237,42 @@ TEST_CASE("Cocoa pending drag cannot attach to another window press", "[core][re
     fixture.titlebar->beginDrag();
     DrainQueue();
     REQUIRE(fixture.a->drags == 0);
+}
+
+TEST_CASE("Cocoa integrated titlebar teardown restores the native chrome and cancels pending actions",
+          "[core][render][cocoa][review17]") {
+    TitlebarFixture fixture;
+    fixture.titlebar.reset();
+    fixture.a->mask = NSWindowStyleMaskTitled;
+    fixture.a->movable = true;
+    fixture.a->transparent = NO;
+    fixture.a->titleVisibility = NSWindowTitleVisible;
+    fixture.a->separatorStyle = NSTitlebarSeparatorStyleLine;
+    fixture.titlebar = std::make_unique<Jetstream::Viewport::CocoaTitlebar>(TitlebarFixture::handle(fixture.a));
+    REQUIRE_FALSE(fixture.a->movable);
+    REQUIRE(fixture.a->transparent);
+    REQUIRE(fixture.a->titleVisibility == NSWindowTitleHidden);
+    REQUIRE((fixture.a->mask & NSWindowStyleMaskFullSizeContentView) != 0);
+    fixture.a->mask |= NSWindowStyleMaskResizable;
+    fixture.pressA();
+    fixture.titlebar->beginDrag();
+    fixture.titlebar->zoom();
+    fixture.titlebar.reset();
+    DrainQueue();
+    CHECK(fixture.a->movable);
+    CHECK_FALSE(fixture.a->transparent);
+    CHECK(fixture.a->titleVisibility == NSWindowTitleVisible);
+    CHECK(fixture.a->separatorStyle == NSTitlebarSeparatorStyleLine);
+    CHECK(fixture.a->mask == (NSWindowStyleMaskTitled | NSWindowStyleMaskResizable));
+    CHECK(fixture.a->drags == 0);
+    CHECK(fixture.a->zooms == 0);
+    CHECK(fixture.releases(fixture.contextA) == 1);
+    CHECK([eventMonitors count] == 0);
+
+    fixture.titlebar = std::make_unique<Jetstream::Viewport::CocoaTitlebar>(TitlebarFixture::handle(fixture.a));
+    CHECK_FALSE(fixture.a->movable);
+    fixture.titlebar.reset();
+    CHECK(fixture.a->movable);
 }
 
 TEST_CASE("Cocoa drag completion releases only its living input owner", "[core][render][cocoa]") {

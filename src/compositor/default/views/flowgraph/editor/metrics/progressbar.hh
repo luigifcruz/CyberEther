@@ -4,6 +4,8 @@
 #include "error.hh"
 #include "types.hh"
 
+#include "../field_tooltip.hh"
+
 #include <algorithm>
 
 namespace Jetstream {
@@ -13,18 +15,19 @@ struct FlowgraphMetricProgressBar {
 
     void update(Config config) {
         this->config = std::move(config);
+        help.update(this->config.id, this->config.help);
+        parseValue();
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
-            .help = this->config.help,
+            .tooltip = help.overlay(),
             .background = false,
+            .content = errorText.empty() ? static_cast<Sakura::Component*>(&progress) : &error.component(),
         });
-        parseValue();
         progress.update({
             .id = this->config.id + "Progress",
             .value = value,
             .overlay = overlay,
-            .size = {-1.0f, 0.0f},
         });
         error.update({
             .id = this->config.id + "Error",
@@ -32,14 +35,8 @@ struct FlowgraphMetricProgressBar {
         });
     }
 
-    void render(const Sakura::Context& ctx) const {
-        frame.render(ctx, [this](const Sakura::Context& ctx) {
-            if (!errorText.empty()) {
-                error.render(ctx);
-            } else {
-                progress.render(ctx);
-            }
-        });
+    Sakura::Component& component() {
+        return frame;
     }
 
  private:
@@ -65,6 +62,7 @@ struct FlowgraphMetricProgressBar {
     std::string overlay;
     F32 value = 0.0f;
     std::string errorText;
+    FlowgraphFieldTooltip help;
     Sakura::NodeField frame;
     FlowgraphMetricError error;
     Sakura::NodeProgressBar progress;

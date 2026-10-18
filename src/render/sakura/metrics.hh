@@ -6,20 +6,77 @@
 #include <jetstream/render/sakura/metrics.hh>
 #include <jetstream/render/sakura/surface.hh>
 
+#include <jetstream/render/sakura/typography.hh>
+
+#include <algorithm>
+#include <cmath>
 #include <optional>
 
 namespace Jetstream::Sakura {
+
+constexpr F32 kFramePaddingX = 12.0f;
+constexpr F32 kCellPaddingX = 6.0f;
+constexpr F32 kCellPaddingY = 4.0f;
+constexpr F32 kFramePaddingY = 5.0f;
+constexpr F32 kFrameRounding = 8.0f;
+constexpr F32 kPanelRounding = 12.0f;
+constexpr F32 kPopupRounding = 18.0f;
+constexpr F32 kWindowPadding = 12.0f;
+constexpr F32 kItemSpacing = 8.0f;
+constexpr F32 kDisabledAlpha = 0.6f;
+constexpr F32 kShadowSoftness = 6.0f;
+constexpr F32 kShadowDrop = 2.0f;
+constexpr F32 kScrollbarThickness = 8.0f;
+constexpr F32 kScrollbarMargin = 3.0f;
+constexpr F32 kWheelStep = 48.0f;
+
+inline F32 Px(const Context& ctx, F32 logical) {
+    return logical * ctx.pixelRatio;
+}
+
+inline F32 Hairline(const Context& ctx) {
+    return std::max(1.0f, std::round(ctx.pixelRatio));
+}
+
+inline ColorRGBA<F32> WithAlpha(ColorRGBA<F32> color, F32 alpha) {
+    color.a *= std::clamp(alpha, 0.0f, 1.0f);
+    return color;
+}
+
+inline F32 FrameHeightPx(const Context& ctx) {
+    return Px(ctx, Typography::FontSize + 2.0f * kFramePaddingY);
+}
+
+inline F32 FillLength(F32 available, F32 natural = 0.0f) {
+    return std::isfinite(available) ? available : natural;
+}
+
+inline F32 FitLength(F32 length, F32 available) {
+    return std::isfinite(available) ? std::min(length, std::max(0.0f, available)) : length;
+}
+
+inline Extent2D<F32> FitExtent(Extent2D<F32> size, Extent2D<F32> available) {
+    return {FitLength(size.x, available.x), FitLength(size.y, available.y)};
+}
+
+inline F32 ResolveLength(const Context& ctx, F32 size, F32 natural, F32 available) {
+    const F32 length = size > 0.0f ? Px(ctx, size) : size < 0.0f ? FillLength(available, natural) : natural;
+    return FitLength(length, available);
+}
 
 F32 ScalingFactor(const Context& ctx);
 F32 Unscale(const Context& ctx, F32 value);
 Extent2D<F32> Unscale(const Context& ctx, Extent2D<F32> value);
 Extent2D<F32> FramebufferScale(const Context& ctx);
-Extent2D<U64> FramebufferSize(const Context& ctx, const Extent2D<F32>& displaySize);
-Extent2D<U64> LogicalFramebufferSize(const Context& ctx, const Extent2D<F32>& logicalSize);
 F32 SurfaceScale(const Context& ctx);
 Extent2D<F32> SnapToFramebuffer(const Context& ctx, const Extent2D<F32>& displayPosition);
 Extent2D<F32> FramebufferToDisplay(const Context& ctx, const Extent2D<U64>& framebufferSize);
 std::optional<SurfaceResize> ResolveSurfaceResize(const Context& ctx, const Extent2D<F32>& logicalSize);
+F32 LogicalViewportHeight(const Context& ctx);
+
+inline F32 Fringe(const Context& ctx) {
+    return ctx.render ? std::max(1e-3f, FramebufferScale(ctx).x) : 1.0f;
+}
 
 }  // namespace Jetstream::Sakura
 

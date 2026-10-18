@@ -22,20 +22,14 @@ struct PluginView {
     void update(Config config) {
         this->config = std::move(config);
 
+        using Button = Sakura::Button;
+
         header.update({
-            .id = "RegistryPluginHeader",
             .title = ICON_FA_FOLDER_OPEN " Register Plugin",
             .description = "Load a plugin that registers additional blocks.",
         });
 
-        pathField.update({
-            .id = "RegistryPluginPathField",
-            .label = "Plugin Path",
-            .description = "Path to a .cep plugin bundle that registers additional blocks.",
-        });
-
         pathInput.update({
-            .id = "##registry-plugin-path",
             .value = path,
             .submit = Sakura::TextInput::Submit::OnEdit,
             .onChange = [this](const std::string& value) {
@@ -47,9 +41,8 @@ struct PluginView {
         });
 
         browseButton.update({
-            .id = "RegistryPluginBrowse",
             .str = "Browse File",
-            .size = {-1.0f, 0.0f},
+            .size = {Sakura::Fill, 0.0f},
             .onClick = [this]() {
                 if (this->config.onBrowse) {
                     this->config.onBrowse(path, [this](std::string nextPath) {
@@ -62,15 +55,7 @@ struct PluginView {
             },
         });
 
-        trustField.update({
-            .id = "RegistryPluginTrustField",
-            .label = "Trust Source",
-            .description = "Plugins run native code inside CyberEther as soon as they load. Only register plugins you built yourself or received from a source you trust.",
-            .divider = false,
-        });
-
         trustCheckbox.update({
-            .id = "RegistryPluginTrustCheckbox",
             .label = "I trust the source of this plugin.",
             .value = sourceTrusted,
             .onChange = [this](bool value) {
@@ -79,10 +64,9 @@ struct PluginView {
         });
 
         registerButton.update({
-            .id = "RegistryPluginRegister",
             .str = "Register Plugin",
-            .size = {-1.0f, 40.0f},
-            .variant = Sakura::Button::Variant::Action,
+            .size = {Sakura::Fill, 40.0f},
+            .variant = Button::Variant::Action,
             .disabled = !sourceTrusted,
             .onClick = [this]() {
                 if (!sourceTrusted) {
@@ -93,19 +77,38 @@ struct PluginView {
                 }
             },
         });
+
+        pathControls.update({.items = {{.child = &pathInput}, {.child = &browseButton}}});
+        pathField.update({
+            .label = "Plugin Path",
+            .description = "Path to a .cep plugin bundle that registers additional blocks.",
+            .control = &pathControls,
+        });
+        trustField.update({
+            .label = "Trust Source",
+            .description = "Plugins run native code inside CyberEther as soon as they load. Only register plugins you built yourself or received from a source you trust.",
+            .control = &trustCheckbox,
+            .divider = false,
+        });
+        divider.update({});
+        stack.update({
+            .items = {
+                {.child = &header},
+                {.child = &pathField},
+                {.child = &trustField},
+                {.child = &divider},
+                {.child = &registerButton},
+            },
+        });
+        panel.update({
+            .id = "RegistryPlugin",
+            .content = &stack,
+            .backgroundColorKey = "popup_bg",
+        });
     }
 
-    void render(const Sakura::Context& ctx) const {
-        header.render(ctx);
-        pathField.render(ctx, [this](const Sakura::Context& ctx) {
-            pathInput.render(ctx);
-            browseButton.render(ctx);
-        });
-        trustField.render(ctx, [this](const Sakura::Context& ctx) {
-            trustCheckbox.render(ctx);
-        });
-        divider.render(ctx);
-        registerButton.render(ctx);
+    Sakura::Component& component() {
+        return panel;
     }
 
  private:
@@ -113,13 +116,16 @@ struct PluginView {
     std::string path;
     bool sourceTrusted = false;
     ModalHeader header;
-    Sakura::SettingField pathField;
     Sakura::TextInput pathInput;
     Sakura::Button browseButton;
-    Sakura::SettingField trustField;
+    Sakura::Stack pathControls;
+    Sakura::SettingField pathField;
     Sakura::Checkbox trustCheckbox;
+    Sakura::SettingField trustField;
     Sakura::Divider divider;
     Sakura::Button registerButton;
+    Sakura::Stack stack;
+    Sakura::Panel panel;
 };
 
 }  // namespace Jetstream

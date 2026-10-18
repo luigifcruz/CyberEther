@@ -6,59 +6,55 @@
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace Jetstream {
 
-struct FlowgraphExampleCell {
+struct FlowgraphExampleCell : public Sakura::Div {
     struct Config {
-        std::string id;
         std::string title;
         std::string summary;
         std::function<void()> onOpen;
     };
 
     void update(Config config) {
-        this->config = std::move(config);
+        using Text = Sakura::Text;
 
-        div.update({
-            .id = this->config.id + "Div",
+        this->config = std::move(config);
+        title.update({
+            .str = this->config.title,
+            .font = Text::Font::Bold,
+        });
+        subtitle.update({
+            .str = this->config.summary,
+            .tone = Text::Tone::Secondary,
+        });
+        content.update({
+            .items = {
+                {.child = &title},
+                {.child = &subtitle},
+            },
+        });
+        Div::update({
+            .content = &content,
             .padding = 11.0f,
             .rounding = 8.0f,
             .border = true,
-            .scrollbar = false,
-            .mouseScroll = false,
             .onClick = [this]() {
                 if (this->config.onOpen) {
                     this->config.onOpen();
                 }
             },
         });
-        title.update({
-            .id = this->config.id + "Title",
-            .str = this->config.title,
-            .font = Sakura::Text::Font::Bold,
-        });
-        subtitle.update({
-            .id = this->config.id + "Subtitle",
-            .str = this->config.summary,
-            .tone = Sakura::Text::Tone::Secondary,
-        });
-    }
-
-    void render(const Sakura::Context& ctx) const {
-        div.render(ctx, [this](const Sakura::Context& ctx) {
-            title.render(ctx);
-            subtitle.render(ctx);
-        });
     }
 
  private:
     Config config;
-    Sakura::Div div;
     Sakura::Text title;
     Sakura::Text subtitle;
+    Sakura::Stack content;
 };
 
 struct FlowgraphExamplesView {
@@ -75,29 +71,25 @@ struct FlowgraphExamplesView {
     };
 
     void update(Config config) {
+        using Text = Sakura::Text;
+
         this->config = std::move(config);
         header.update({
-            .id = "FlowgraphExamplesHeader",
             .title = ICON_FA_STORE " Flowgraph Examples",
             .description = "Examples open in a fresh tab and start processing automatically once their inputs and devices are ready.",
         });
         emptyText.update({
-            .id = "FlowgraphExamplesEmpty",
             .str = "No example flowgraphs registered.",
-            .tone = Sakura::Text::Tone::Disabled,
-            .align = Sakura::Text::Align::Center,
+            .tone = Text::Tone::Disabled,
+            .align = Text::Align::Center,
         });
-        grid.update({
-            .id = "FlowgraphExamplesGrid",
-            .columns = 2,
-            .size = {0.0f, 300.0f},
-            .cellPadding = {4.0f, 4.0f},
-        });
-        exampleCells.resize(this->config.examples.size());
-        for (U64 i = 0; i < exampleCells.size(); ++i) {
+        while (exampleCells.size() < this->config.examples.size()) {
+            exampleCells.push_back(std::make_unique<FlowgraphExampleCell>());
+        }
+        std::vector<Sakura::Component*> cells;
+        for (U64 i = 0; i < this->config.examples.size(); ++i) {
             const auto& example = this->config.examples[i];
-            exampleCells[i].update({
-                .id = "FlowgraphExample" + example.key,
+            exampleCells[i]->update({
                 .title = example.title,
                 .summary = example.summary,
                 .onOpen = [this, i]() {
@@ -106,31 +98,39 @@ struct FlowgraphExamplesView {
                     }
                 },
             });
+            cells.push_back(exampleCells[i].get());
         }
+        grid.update({
+            .columns = 2,
+            .size = {Sakura::Fill, 300.0f},
+            .cellPadding = {4.0f, 4.0f},
+            .items = std::move(cells),
+        });
+        stack.update({
+            .items = {
+                {.child = &header},
+                {.child = this->config.examples.empty() ? static_cast<Sakura::Component*>(&emptyText) : &grid},
+            },
+        });
+        panel.update({
+            .id = "FlowgraphExamples",
+            .content = &stack,
+            .backgroundColorKey = "popup_bg",
+        });
     }
 
-    void render(const Sakura::Context& ctx) const {
-        header.render(ctx);
-        if (config.examples.empty()) {
-            emptyText.render(ctx);
-        } else {
-            Sakura::Grid::Children children;
-            children.reserve(exampleCells.size());
-            for (U64 i = 0; i < exampleCells.size(); ++i) {
-                children.emplace_back([this, i](const Sakura::Context& ctx) {
-                    exampleCells[i].render(ctx);
-                });
-            }
-            grid.render(ctx, std::move(children));
-        }
+    Sakura::Component& component() {
+        return panel;
     }
 
  private:
     Config config;
     ModalHeader header;
     Sakura::Text emptyText;
+    std::vector<std::unique_ptr<FlowgraphExampleCell>> exampleCells;
     Sakura::Grid grid;
-    std::vector<FlowgraphExampleCell> exampleCells;
+    Sakura::Stack stack;
+    Sakura::Panel panel;
 };
 
 }  // namespace Jetstream

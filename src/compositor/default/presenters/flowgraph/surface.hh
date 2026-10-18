@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_FLOWGRAPH_SURFACE_HH
 
 #include "labels.hh"
+#include "layout.hh"
 #include "config.hh"
 
 #include "../context.hh"
@@ -34,7 +35,6 @@ struct FlowgraphDetachedSurfacePresenter {
     std::vector<FlowgraphDetachedSurface::Config> build(const std::string& flowgraphId,
                                                         const std::shared_ptr<Flowgraph>& flowgraph) const {
         const auto enqueue = context.callbacks.enqueueMail;
-        const auto referencedSurfaces = buildReferencedSurfaces(flowgraphId);
         std::vector<FlowgraphDetachedSurface::Config> configs;
 
         if (!flowgraph) {
@@ -60,27 +60,20 @@ struct FlowgraphDetachedSurfacePresenter {
                     SurfaceMeta surfaceMeta;
                     flowgraph->metadata().get(surfaceMetaKey, surfaceMeta, blockName);
 
-                    if (!surfaceMeta.detached && !referencedSurfaces.contains({blockName, manifest.id})) {
+                    if (!surfaceMeta.detached) {
                         continue;
                     }
 
-                    const std::string windowId = MakeDetachedSurfaceWindowId(flowgraphId,
-                                                                             blockName,
-                                                                             manifest.id,
-                                                                             surfaceMeta);
+                    const std::string key = MakeSurfaceTileKey(blockName, manifest.id);
 
                     configs.push_back({
-                        .id = windowId,
-                        .title = MakeDetachedSurfaceWindowTitle(blockName, blockData.title),
-                        .logicalSize = {
-                            static_cast<F32>(surfaceMeta.detachedWidth),
-                            static_cast<F32>(surfaceMeta.detachedHeight),
-                        },
+                        .id = key,
+                        .title = MakeSurfaceTileTitle(blockName, blockData.title),
                         .configFields = BuildFlowgraphDetachedConfigFields(enqueue,
                                                                            context.state.flowgraph,
                                                                            flowgraphId,
                                                                            blockName,
-                                                                           windowId,
+                                                                           key,
                                                                            blockData),
                         .configOpen = !surfaceMeta.configCollapsed,
                         .texture = manifest.surface,
@@ -108,7 +101,7 @@ struct FlowgraphDetachedSurfacePresenter {
                                 .event = event,
                             });
                         },
-                        .onResolveCursor = [surface]() {
+                        .resolveCursor = [surface]() {
                             return surface->cursor();
                         },
                         .onClose = [enqueue, flowgraphId, blockName, surfaceId = manifest.id]() {
@@ -135,40 +128,6 @@ struct FlowgraphDetachedSurfacePresenter {
         return configs;
     }
 
- private:
-    std::set<std::pair<std::string, std::string>> buildReferencedSurfaces(const std::string& flowgraphId) const {
-        std::set<std::pair<std::string, std::string>> referenced;
-        const auto stacksIt = context.state.flowgraph.stacks.find(flowgraphId);
-        if (stacksIt == context.state.flowgraph.stacks.end()) {
-            return referenced;
-        }
-
-        for (const auto& [_, stack] : stacksIt->second) {
-            if (!stack.meta.layout.has_value()) {
-                continue;
-            }
-            collectReferencedSurfaces(*stack.meta.layout, referenced);
-        }
-        return referenced;
-    }
-
-    static void collectReferencedSurfaces(const StackDockLayoutMeta& layout,
-                                          std::set<std::pair<std::string, std::string>>& referenced) {
-        if (layout.surfaces.has_value()) {
-            for (const auto& surface : *layout.surfaces) {
-                if (surface.block.empty() || surface.surface.empty()) {
-                    continue;
-                }
-                referenced.emplace(surface.block, surface.surface);
-            }
-        }
-        if (!layout.children.has_value()) {
-            return;
-        }
-        for (const auto& child : *layout.children) {
-            collectReferencedSurfaces(child, referenced);
-        }
-    }
 };
 
 }  // namespace Jetstream

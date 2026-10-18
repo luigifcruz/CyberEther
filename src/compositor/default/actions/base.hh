@@ -6,11 +6,11 @@
 #include "feedback.hh"
 #include "file_picker.hh"
 #include "flowgraph.hh"
+#include "layout.hh"
 #include "live_markdown.hh"
 #include "metrics.hh"
 #include "remote.hh"
 #include "settings.hh"
-#include "stacks.hh"
 #include "workbench.hh"
 
 #include "jetstream/logger.hh"
@@ -33,7 +33,7 @@ class DefaultActions {
         filePicker = std::make_shared<FilePickerActions>(state, callbacks);
         flowgraph = std::make_shared<FlowgraphActions>(state, callbacks);
         dependencies = std::make_shared<DependencyActions>(callbacks);
-        stacks = std::make_shared<StackActions>(state.flowgraph, callbacks);
+        layouts = std::make_shared<LayoutActions>(state.flowgraph);
         liveMarkdown = std::make_shared<LiveMarkdownActions>(state.flowgraph);
         metrics = std::make_shared<MetricActions>(state.flowgraph);
         feedback = std::make_shared<FeedbackActions>(state, callbacks);
@@ -62,7 +62,7 @@ class DefaultActions {
         if (Handle(*dependencies, mail, result)) {
             return result;
         }
-        if (Handle(*stacks, mail, result)) {
+        if (Handle(*layouts, mail, result)) {
             return result;
         }
         if (Handle(*feedback, mail, result)) {
@@ -81,8 +81,12 @@ class DefaultActions {
         filePicker->reconcileAvailability();
     }
 
-    void restoreStacks() {
-        stacks->restoreFromMetadata();
+    void settleStartTab() {
+        workbench->settleStartTab();
+    }
+
+    void restoreLayouts() {
+        layouts->restoreFromMetadata();
     }
 
     void refreshLiveMarkdown() {
@@ -123,7 +127,7 @@ class DefaultActions {
     std::shared_ptr<MetricActions> metrics;
     std::shared_ptr<RemoteActions> remote;
     std::shared_ptr<SettingsActions> settings;
-    std::shared_ptr<StackActions> stacks;
+    std::shared_ptr<LayoutActions> layouts;
     std::shared_ptr<WorkbenchActions> workbench;
     std::shared_ptr<FeedbackActions> feedback;
 };

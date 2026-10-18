@@ -3,6 +3,8 @@
 
 #include "types.hh"
 
+#include "../field_tooltip.hh"
+
 namespace Jetstream {
 
 struct FlowgraphConfigTensorField {
@@ -14,19 +16,19 @@ struct FlowgraphConfigTensorField {
             parseFormat();
         }
         JST_CHECK(readValues());
+        help.update(this->config.id, this->config.help);
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
-            .help = this->config.help,
+            .tooltip = help.overlay(),
+            .content = &row,
         });
         updateRow();
         return Result::SUCCESS;
     }
 
-    void render(const Sakura::Context& ctx) const {
-        frame.render(ctx, [this](const Sakura::Context& ctx) {
-            row.render(ctx);
-        });
+    Sakura::Component& component() {
+        return frame;
     }
 
  private:
@@ -208,6 +210,7 @@ struct FlowgraphConfigTensorField {
     U64 entryIndex = 0;
     std::vector<TensorSpec> tensorSpecs;
     Sakura::NodeInputRow row;
+    FlowgraphFieldTooltip help;
     Sakura::NodeField frame;
 };
 

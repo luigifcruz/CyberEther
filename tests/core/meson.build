@@ -6,9 +6,11 @@ core_test_domains = {
     'application': ['application/instance_backend.cc'],
     'compositor': [
         'compositor/compositor.cc',
+        'compositor/layout.cc',
         'compositor/metrics.cc',
+        'compositor/start_tab.cc',
         'compositor/surface_theme.cc',
-        'compositor/stacks.cc',
+        'compositor/tiles.cc',
     ],
     'extensions': [
         'extensions/plugins.cc',
@@ -48,9 +50,29 @@ core_test_domains = {
         'sakura/interface_controls.cc',
         'sakura/scissor.cc',
         'sakura/key_value.cc',
-        'sakura/metric_label.cc',
-        'sakura/node.cc',
+        'sakura/flowgraph_editor_views.cc',
+        'sakura/flowgraph_node_view.cc',
+        'sakura/flowgraph_pane.cc',
         'sakura/node_metadata.cc',
+        'sakura/component.cc',
+        'sakura/controls.cc',
+        'sakura/dock.cc',
+        'sakura/geometry.cc',
+        'sakura/input.cc',
+        'sakura/input_ownership.cc',
+        'sakura/modal_input.cc',
+        'sakura/config_identity.cc',
+        'sakura/popup_lifetime.cc',
+        'sakura/layout.cc',
+        'sakura/node_editor.cc',
+        'sakura/node_fields.cc',
+        'sakura/retention.cc',
+        'sakura/retention_shell.cc',
+        'sakura/search.cc',
+        'sakura/shell.cc',
+        'sakura/table.cc',
+        'sakura/views.cc',
+        'sakura/sizing.cc',
         'sakura/surface_view.cc',
         'sakura/surface_input.cc',
         'sakura/superluminal_surface.cc',
@@ -58,8 +80,6 @@ core_test_domains = {
         'sakura/text_grid.cc',
         'sakura/text_markdown.cc',
         'sakura/text_metrics.cc',
-        'sakura/vstack.cc',
-        'sakura/workspace_background.cc',
     ],
     'runtime': [
         'runtime/scheduler.cc',
@@ -81,11 +101,9 @@ core_test_domains = {
 # Internal compositor and Sakura components are not exported from the Windows shared library.
 if not jst_is_windows
     core_test_domains += {
-        'compositor': core_test_domains['compositor'] + ['compositor/live_markdown.cc'],
-        'render': core_test_domains['render'] + [
-            'render/dockspace_window.cc',
-            'render/field_grid.cc',
-            'render/range_input.cc',
+        'compositor': core_test_domains['compositor'] + [
+            'compositor/apply_theme.cc',
+            'compositor/live_markdown.cc',
         ],
     }
 endif
@@ -122,9 +140,8 @@ if cfg_lst.get('JETSTREAM_LOADER_GSTREAMER_AVAILABLE', false) and not jst_is_win
 endif
 
 foreach domain, sources : core_test_domains
-    # The sakura suite drives the node editor through imnodes internals
-    # (editor context, node pool), which are not exported from the shared
-    # library on Windows.
+    # The sakura suite drives Sakura internals, which are not exported from
+    # the shared library on Windows.
     if domain == 'sakura' and jst_is_windows
         continue
     endif

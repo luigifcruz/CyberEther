@@ -15,15 +15,14 @@ struct FlowgraphMetricError {
         text.update({
             .id = config.id,
             .str = std::move(config.str),
-            .tone = Sakura::Text::Tone::Secondary,
-            .align = Sakura::Text::Align::Center,
-            .clipped = true,
+            .colorKey = "text_secondary",
+            .align = Sakura::NodeLabel::Align::Center,
             .boxed = true,
         });
     }
 
-    void render(const Sakura::Context& ctx) const {
-        text.render(ctx);
+    Sakura::Component& component() {
+        return text;
     }
 
  private:

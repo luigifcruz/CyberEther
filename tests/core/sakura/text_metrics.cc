@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "harness.hh"
-#include "render/sakura/retained/text_metrics.hh"
+#include "render/sakura/detail/text_metrics.hh"
 
 #include <memory>
 #include <string>
@@ -29,7 +29,7 @@ TEST_CASE("Text widths reuse cached results and separate font, size, and text",
     MetricsWindow window;
     window.install("default_mono");
     window.install("other");
-    Sakura::Retained::TextMetrics metrics;
+    Sakura::TextMetrics metrics;
     metrics.setWindow(&window);
 
     CHECK(metrics.measure("default_mono", "hello", 16.0f) == 0.0f);
@@ -53,7 +53,7 @@ TEST_CASE("Text width keys preserve binary font and text boundaries",
           "[core][sakura][text-metrics]") {
     MetricsWindow window;
     window.install("default_mono");
-    Sakura::Retained::TextMetrics metrics;
+    Sakura::TextMetrics metrics;
     metrics.setWindow(&window);
     const F32 size = 16.0f;
     const auto* font = metrics.label("")->getConfig().font.get();
@@ -74,7 +74,7 @@ TEST_CASE("Text width capacity clears on a miss but not a hit",
           "[core][sakura][text-metrics]") {
     MetricsWindow window;
     window.install("default_mono");
-    Sakura::Retained::TextMetrics metrics;
+    Sakura::TextMetrics metrics;
     metrics.setWindow(&window);
     for (U64 i = 0; i < 256; ++i) {
         CHECK(metrics.measure("", std::to_string(i), 16.0f) == 0.0f);
@@ -99,7 +99,7 @@ TEST_CASE("Text metric windows retain or clear both caches together",
     MetricsWindow second;
     first.install("default_mono");
     second.install("default_mono");
-    Sakura::Retained::TextMetrics metrics;
+    Sakura::TextMetrics metrics;
     metrics.setWindow(&first);
     CHECK(metrics.measure("", "hello", 16.0f) == 0.0f);
     REQUIRE(metrics.widths.size() == 1);
@@ -128,7 +128,7 @@ TEST_CASE("Text metric windows retain or clear both caches together",
 TEST_CASE("Text widths track fallback availability without caching failed measurements",
           "[core][sakura][text-metrics]") {
     MetricsWindow window;
-    Sakura::Retained::TextMetrics metrics;
+    Sakura::TextMetrics metrics;
     CHECK(metrics.measure("named", "hello", 16.0f) == 0.0f);
     metrics.setWindow(&window);
     CHECK(metrics.measure("named", "hello", 16.0f) == 0.0f);
@@ -158,7 +158,7 @@ TEST_CASE("Per-byte text advances do not consult or populate the width cache",
           "[core][sakura][text-metrics]") {
     MetricsWindow window;
     window.install("default_mono");
-    Sakura::Retained::TextMetrics metrics;
+    Sakura::TextMetrics metrics;
     metrics.setWindow(&window);
     const std::string value("a\xc3\xa9\n\t\0z", 7);
     CHECK(metrics.advances("", value, 16.0f) == std::vector<F32>(value.size(), 0.0f));

@@ -4,6 +4,7 @@
 #include "jetstream/render/sakura/base.hh"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -32,28 +33,24 @@ struct RegistrySettingsPanel {
     };
 
     void update(Config config) {
-        this->config = std::move(config);
+        using Text = Sakura::Text;
+        using Stack = Sakura::Stack;
+        using Button = Sakura::Button;
 
+        this->config = std::move(config);
         title.update({
-            .id = "RegistryTitle",
             .str = "Registry",
-            .font = Sakura::Text::Font::Bold,
+            .font = Text::Font::Bold,
             .scale = 1.2f,
         });
-
         description.update({
-            .id = "RegistryDescription",
             .str = "Registered block domains and the blocks available in each domain.",
-            .tone = Sakura::Text::Tone::Secondary,
+            .tone = Text::Tone::Secondary,
             .wrapped = true,
         });
-
-        divider.update({
-            .id = "RegistryHeaderDivider",
-        });
-
+        divider.update({});
+        pluginDivider.update({});
         table.update({
-            .id = "RegistryDomainTable",
             .columns = {
                 "Domain",
                 "Blocks",
@@ -65,34 +62,85 @@ struct RegistrySettingsPanel {
             },
             .wrapped = true,
         });
-
-        pluginTitle.update({
-            .id = "RegistryPluginTitle",
-            .str = "Plugins",
-        });
-
+        pluginTitle.update({.str = "Plugins"});
         pluginDescription.update({
-            .id = "RegistryPluginDescription",
             .str = "Load additional block domains from plugins at startup.",
-            .tone = Sakura::Text::Tone::Secondary,
+            .tone = Text::Tone::Secondary,
             .wrapped = true,
         });
-
         pluginButton.update({
-            .id = "RegistryPluginButton",
             .str = "Add Plugin",
-            .size = {-1.0f, 34.0f},
+            .size = {Sakura::Fill, 34.0f},
             .onClick = this->config.onAddPlugin,
         });
+        emptyPluginText.update({
+            .str = "No plugins registered.",
+            .tone = Text::Tone::Disabled,
+        });
+        emptyText.update({
+            .str = "No registered blocks.",
+            .tone = Text::Tone::Disabled,
+        });
 
+        while (plugins.size() < this->config.plugins.size()) {
+            plugins.push_back(std::make_unique<PluginCells>());
+        }
+        std::vector<std::vector<Sakura::Component*>> cellRows;
+        if (this->config.plugins.empty()) {
+            cellRows.push_back({&emptyPluginText});
+        }
+        for (U64 i = 0; i < this->config.plugins.size(); ++i) {
+            const auto& plugin = this->config.plugins[i];
+            auto& cells = *plugins[i];
+            cells.name.update({
+                .str = plugin.name,
+                .wrapped = true,
+            });
+            cells.version.update({
+                .str = plugin.version,
+                .wrapped = true,
+            });
+            cells.status.update({
+                .str = plugin.status,
+                .tone = statusTone(plugin.status),
+                .wrapped = true,
+            });
+            cells.reload.update({
+                .str = "Reload",
+                .variant = Button::Variant::Text,
+                .onClick = [this, path = plugin.path]() {
+                    if (this->config.onReloadPlugin) {
+                        this->config.onReloadPlugin(path);
+                    }
+                },
+            });
+            cells.remove.update({
+                .str = "Delete",
+                .variant = Button::Variant::Text,
+                .onClick = [this, path = plugin.path]() {
+                    if (this->config.onRemovePlugin) {
+                        this->config.onRemovePlugin(path);
+                    }
+                },
+            });
+            cells.actions.update({
+                .axis = Stack::Axis::Horizontal,
+                .spacing = 16.0f,
+                .items = {
+                    {.child = &cells.reload},
+                    {.child = &cells.remove},
+                },
+            });
+            cellRows.push_back({&cells.name, &cells.version, &cells.status, &cells.actions});
+        }
         pluginTable.update({
-            .id = "RegistryPluginTable",
             .columns = {
                 "Plugin",
                 "Version",
                 "Status",
                 "Action",
             },
+            .cellRows = std::move(cellRows),
             .fixedColumnWidths = {
                 0.0f,
                 80.0f,
@@ -102,85 +150,23 @@ struct RegistrySettingsPanel {
             .wrapped = true,
         });
 
-        pluginNameTexts.resize(this->config.plugins.size());
-        pluginVersionTexts.resize(this->config.plugins.size());
-        pluginStatusTexts.resize(this->config.plugins.size());
-        pluginActionRows.resize(this->config.plugins.size());
-        pluginReloadButtons.resize(this->config.plugins.size());
-        pluginDeleteButtons.resize(this->config.plugins.size());
-        for (U64 i = 0; i < this->config.plugins.size(); ++i) {
-            const auto& plugin = this->config.plugins[i];
-            pluginNameTexts[i].update({
-                .id = "RegistryPluginNameText" + std::to_string(i),
-                .str = plugin.name,
-                .wrapped = true,
-            });
-            pluginVersionTexts[i].update({
-                .id = "RegistryPluginVersionText" + std::to_string(i),
-                .str = plugin.version,
-                .wrapped = true,
-            });
-            pluginStatusTexts[i].update({
-                .id = "RegistryPluginStatusText" + std::to_string(i),
-                .str = plugin.status,
-                .tone = statusTone(plugin.status),
-                .wrapped = true,
-            });
-            pluginActionRows[i].update({
-                .id = "RegistryPluginActions" + std::to_string(i),
-                .spacing = 8.0f,
-            });
-            pluginReloadButtons[i].update({
-                .id = "RegistryPluginReload" + std::to_string(i),
-                .str = "Reload",
-                .variant = Sakura::Button::Variant::Text,
-                .onClick = [this, path = plugin.path]() {
-                    if (this->config.onReloadPlugin) {
-                        this->config.onReloadPlugin(path);
-                    }
-                },
-            });
-            pluginDeleteButtons[i].update({
-                .id = "RegistryPluginDelete" + std::to_string(i),
-                .str = "Delete",
-                .variant = Sakura::Button::Variant::Text,
-                .onClick = [this, path = plugin.path]() {
-                    if (this->config.onRemovePlugin) {
-                        this->config.onRemovePlugin(path);
-                    }
-                },
-            });
-        }
-
-        emptyPluginText.update({
-            .id = "RegistryPluginEmptyText",
-            .str = "No plugins registered.",
-            .tone = Sakura::Text::Tone::Disabled,
-        });
-
-        emptyText.update({
-            .id = "RegistryEmptyText",
-            .str = "No registered blocks.",
-            .tone = Sakura::Text::Tone::Disabled,
+        stack.update({
+            .items = {
+                {.child = &title},
+                {.child = &description},
+                {.child = &divider},
+                {.child = this->config.domains.empty() ? static_cast<Sakura::Component*>(&emptyText) : &table},
+                {.child = &pluginDivider},
+                {.child = &pluginTitle},
+                {.child = &pluginTable},
+                {.child = &pluginButton},
+                {.child = &pluginDescription},
+            },
         });
     }
 
-    void render(const Sakura::Context& ctx) const {
-        title.render(ctx);
-        description.render(ctx);
-        divider.render(ctx);
-
-        if (config.domains.empty()) {
-            emptyText.render(ctx);
-        } else {
-            table.render(ctx);
-        }
-
-        divider.render(ctx);
-        pluginTitle.render(ctx);
-        renderPluginTable(ctx);
-        pluginButton.render(ctx);
-        pluginDescription.render(ctx);
+    Sakura::Component& content() {
+        return stack;
     }
 
  private:
@@ -219,41 +205,14 @@ struct RegistrySettingsPanel {
         return rows;
     }
 
-    void renderPluginTable(const Sakura::Context& ctx) const {
-        Sakura::Table::Rows rows;
-
-        if (config.plugins.empty()) {
-            Sakura::Table::Row row;
-            row.push_back([this](const Sakura::Context& ctx) {
-                emptyPluginText.render(ctx);
-            });
-            rows.push_back(std::move(row));
-            pluginTable.render(ctx, std::move(rows));
-            return;
-        }
-
-        rows.reserve(config.plugins.size());
-        for (U64 i = 0; i < config.plugins.size(); ++i) {
-            Sakura::Table::Row row;
-            row.push_back([this, i](const Sakura::Context& ctx) {
-                pluginNameTexts[i].render(ctx);
-            });
-            row.push_back([this, i](const Sakura::Context& ctx) {
-                pluginVersionTexts[i].render(ctx);
-            });
-            row.push_back([this, i](const Sakura::Context& ctx) {
-                pluginStatusTexts[i].render(ctx);
-            });
-            row.push_back([this, i](const Sakura::Context& ctx) {
-                pluginActionRows[i].render(ctx, {
-                    [this, i](const Sakura::Context& ctx) { pluginReloadButtons[i].render(ctx); },
-                    [this, i](const Sakura::Context& ctx) { pluginDeleteButtons[i].render(ctx); },
-                });
-            });
-            rows.push_back(std::move(row));
-        }
-        pluginTable.render(ctx, std::move(rows));
-    }
+    struct PluginCells {
+        Sakura::Text name;
+        Sakura::Text version;
+        Sakura::Text status;
+        Sakura::Button reload;
+        Sakura::Button remove;
+        Sakura::Stack actions;
+    };
 
     Config config;
     Sakura::Text title;
@@ -261,17 +220,14 @@ struct RegistrySettingsPanel {
     Sakura::Divider divider;
     Sakura::Table table;
     Sakura::Text emptyText;
+    Sakura::Divider pluginDivider;
     Sakura::Text pluginTitle;
     Sakura::Text pluginDescription;
     Sakura::Button pluginButton;
-    Sakura::Table pluginTable;
     Sakura::Text emptyPluginText;
-    std::vector<Sakura::Text> pluginNameTexts;
-    std::vector<Sakura::Text> pluginVersionTexts;
-    std::vector<Sakura::Text> pluginStatusTexts;
-    std::vector<Sakura::HStack> pluginActionRows;
-    std::vector<Sakura::Button> pluginReloadButtons;
-    std::vector<Sakura::Button> pluginDeleteButtons;
+    std::vector<std::unique_ptr<PluginCells>> plugins;
+    Sakura::Table pluginTable;
+    Sakura::Stack stack;
 };
 
 }  // namespace Jetstream

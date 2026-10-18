@@ -22,26 +22,20 @@ struct FlowgraphNodeInspector {
     void update(Config config) {
         this->config = std::move(config);
 
-        window.update({
-            .id = this->config.id,
-            .title = "Inspect & Edit (" + this->config.name + ")",
-            .size = {640.0f, 520.0f},
-            .padding = Extent2D<F32>{4.0f, 4.0f},
-            .borderSize = 0.5f,
-            .onClose = this->config.onClose,
-        });
         editor.update({
             .id = this->config.id + ":yaml",
             .value = buffer,
             .status = status,
-            .size = {0.0f, 0.0f},
+            .height = Sakura::Fill,
             .statusTone = statusTone,
+            .backgroundColorKey = "tile_bg",
+            .rounding = Sakura::FloatingLayer::Rounding,
             .onChange = [this](std::string value) {
                 buffer = std::move(value);
                 status = canApply()
                     ? "Edited. Press Cmd+Enter to apply."
                     : "Block configuration YAML.";
-                statusTone = Sakura::Retained::CodeEditor::StatusTone::Info;
+                statusTone = Sakura::CodeEditor::StatusTone::Info;
             },
             .onSubmit = [this](std::string value) {
                 buffer = std::move(value);
@@ -56,20 +50,24 @@ struct FlowgraphNodeInspector {
             buffer.clear();
             appliedBuffer.clear();
             status = "Unable to serialize this block configuration.";
-            statusTone = Sakura::Retained::CodeEditor::StatusTone::Error;
+            statusTone = Sakura::CodeEditor::StatusTone::Error;
             return;
         }
 
         buffer = std::move(yaml);
         appliedBuffer = buffer;
         status = "Block configuration YAML.";
-        statusTone = Sakura::Retained::CodeEditor::StatusTone::Info;
+        statusTone = Sakura::CodeEditor::StatusTone::Info;
     }
 
-    void render(const Sakura::Context& ctx) {
-        window.render(ctx, [this](const Sakura::Context& ctx) {
-            editor.render(ctx);
-        });
+    Sakura::FloatingLayer::Window window() {
+        return {
+            .id = config.id,
+            .title = "Inspect & Edit (" + config.name + ")",
+            .content = &editor,
+            .size = {640.0f, 520.0f},
+            .onClose = config.onClose,
+        };
     }
 
  private:
@@ -85,13 +83,13 @@ struct FlowgraphNodeInspector {
         Parser::Map value;
         if (Parser::YamlDecode(buffer, value) != Result::SUCCESS) {
             status = "Invalid YAML. Fix the document before applying changes.";
-            statusTone = Sakura::Retained::CodeEditor::StatusTone::Error;
+            statusTone = Sakura::CodeEditor::StatusTone::Error;
             return;
         }
 
         appliedBuffer = buffer;
         status = "Changes applied.";
-        statusTone = Sakura::Retained::CodeEditor::StatusTone::Success;
+        statusTone = Sakura::CodeEditor::StatusTone::Success;
         config.onApply(std::move(value));
     }
 
@@ -99,10 +97,9 @@ struct FlowgraphNodeInspector {
     std::string buffer;
     std::string appliedBuffer;
     std::string status;
-    Sakura::Retained::CodeEditor::StatusTone statusTone =
-        Sakura::Retained::CodeEditor::StatusTone::Info;
-    Sakura::Window window;
-    Sakura::Retained::CodeEditor editor;
+    Sakura::CodeEditor::StatusTone statusTone =
+        Sakura::CodeEditor::StatusTone::Info;
+    Sakura::CodeEditor editor;
 };
 
 }  // namespace Jetstream

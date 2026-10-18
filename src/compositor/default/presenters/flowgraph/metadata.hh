@@ -85,7 +85,7 @@ struct FlowgraphMetadataWindowPresenter {
         const auto enqueue = context.callbacks.enqueueMail;
         return FlowgraphKeyValueWindow::Config{
             .id = "flowgraph-metadata-window",
-            .title = "Flowgraph Metadata (" + MakeFlowgraphWindowTitle(flowgraphId, flowgraph) + ")",
+            .title = "Flowgraph Metadata (" + MakeFlowgraphTitle(flowgraphId, flowgraph) + ")",
             .search = context.state.interface.flowgraphMetadataSearch,
             .searchHint = "Search metadata keys...",
             .entryCount = FlowgraphKeyValueDetail::EntryCount(nodes.size(), totalEntries),

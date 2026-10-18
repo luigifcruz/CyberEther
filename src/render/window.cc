@@ -7,6 +7,7 @@
 #include "jetstream/platform.hh"
 #include "jetstream/viewport/adapters/generic.hh"
 #include "jetstream/render/tools/imgui_internal.h"
+#include "jetstream/render/tools/imgui_blend_ext.h"
 
 #include <algorithm>
 
@@ -229,7 +230,6 @@ Result Window::begin() {
     Result res;
     try {
         frameBackground = {0.0f, 0.0f, 0.0f, 1.0f};
-        frameBackgroundDrawList = nullptr;
         res = underlyingBegin();
     } catch (...) {
         abortImguiFrame();
@@ -249,33 +249,16 @@ Result Window::begin() {
 
 void Window::prepareImgui() {
     ImGui::Render();
-    auto* background = frameBackgroundDrawList;
-    frameBackgroundDrawList = nullptr;
-
     const auto* data = ImGui::GetDrawData();
-    const ImDrawIdx rectangle[] = {0, 1, 2, 0, 2, 3};
-    bool folded = false;
-    if (background && data && data->CmdListsCount > 0 && data->CmdLists[0] == background &&
-        !background->CmdBuffer.empty() && background->IdxBuffer.Size >= 6) {
-        auto& command = background->CmdBuffer[0];
-        if (!command.UserCallback && command.IdxOffset == 0 && command.VtxOffset == 0 &&
-            command.ElemCount >= 6 &&
-            std::equal(std::begin(rectangle), std::end(rectangle), background->IdxBuffer.begin())) {
-            command.IdxOffset += 6;
-            command.ElemCount -= 6;
-            folded = true;
-        }
-    }
-    if (background && !folded) {
-        frameBackground = {0.0f, 0.0f, 0.0f, 1.0f};
-    }
 
     frameSampledTextures.clear();
     frameCustomDraws = data == nullptr;
     if (data) {
         for (const auto* list : data->CmdLists) {
             for (const auto& command : list->CmdBuffer) {
-                frameCustomDraws |= command.UserCallback != nullptr;
+                const bool stateOnly = command.UserCallback == ImDrawCallback_ResetRenderState ||
+                                       command.UserCallback == ImGui::PremultipliedAlphaCallback;
+                frameCustomDraws |= command.UserCallback != nullptr && !stateOnly;
                 if (command.ElemCount > 0) {
                     frameSampledTextures.insert(command.TexRef.GetTexID());
                 }
@@ -1272,6 +1255,7 @@ Result Window::addFont(const std::string& name, const std::shared_ptr<Components
     // Add to list.
 
     fonts[name] = font;
+    ++_fontRevision;
 
     return Result::SUCCESS;
 }
@@ -1292,6 +1276,7 @@ Result Window::removeFont(const std::string& name) {
     // Remove from list.
 
     fonts.erase(name);
+    ++_fontRevision;
 
     return Result::SUCCESS;
 }

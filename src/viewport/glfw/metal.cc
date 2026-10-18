@@ -77,6 +77,8 @@ Result Implementation::create() {
     native->contentView()->setLayer(swapchain);
     native->contentView()->setWantsLayer(true);
 
+    setIntegratedTitlebar(config.integratedTitlebar);
+
     return Result::SUCCESS;
 }
 
@@ -84,6 +86,7 @@ Result Implementation::destroy() {
     titlebar.reset();
 
     glfwDestroyWindow(window);
+    window = nullptr;
     glfwTerminate();
 
     swapchain->release();
@@ -95,6 +98,15 @@ Result Implementation::createImgui() {
     ImGui_ImplGlfw_InitForOther(window, true);
 
     return Result::SUCCESS;
+}
+
+void Implementation::setIntegratedTitlebar(bool enabled) {
+    Generic::setIntegratedTitlebar(enabled);
+    if (enabled && window && !titlebar) {
+        titlebar = std::make_shared<CocoaTitlebar>(window);
+    } else if (!enabled) {
+        titlebar.reset();
+    }
 }
 
 Extent2D<F32> Implementation::displaySize() const {

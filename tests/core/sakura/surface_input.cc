@@ -2,17 +2,11 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
-#include <jetstream/render/sakura/components/surface_view.hh>
-#include <jetstream/render/sakura/components/window.hh>
 #include <jetstream/render/sakura/clipboard.hh>
-#include <jetstream/render/sakura/components/retained/button.hh>
-#include <jetstream/render/sakura/components/retained/canvas.hh>
-#include <jetstream/render/sakura/components/retained/code_editor.hh>
-#include <jetstream/render/sakura/components/retained/scroll_view.hh>
-#include <jetstream/render/sakura/components/retained/text_grid.hh>
 #include <imgui_internal.h>
 
 #include "harness.hh"
+#include "legacy_surface_input.hh"
 #include "render/sakura/input.hh"
 #include "render/sakura/detail/input_router.hh"
 #include "superluminal/surface_interaction.hh"
@@ -25,12 +19,13 @@
 #include <vector>
 
 using namespace Jetstream;
+using namespace LegacyInputTest;
 
 namespace {
 
 struct InputSurface {
     std::vector<InputEvent> events;
-    Sakura::SurfaceView view;
+    LegacyInputTest::SurfaceView view;
     detail::SurfaceInputState input;
     const char* id;
     ImVec2 origin;
@@ -112,108 +107,6 @@ struct WaterfallCameraMember {
 
 template struct InputMemberAccess<WaterfallInputMember, &Modules::SignalViewWaterfall3D::processInputEvents>;
 template struct InputMemberAccess<WaterfallCameraMember, &Modules::SignalViewWaterfall3D::cameraGoal>;
-
-template<typename Tag, auto member>
-struct RetainedMemberAccess {
-    friend auto RetainedMember(Tag) { return member; }
-};
-
-struct CanvasStorage { friend auto RetainedMember(CanvasStorage); };
-struct CanvasInput { friend auto RetainedMember(CanvasInput); };
-struct CodeEditorCanvas { friend auto RetainedMember(CodeEditorCanvas); };
-template struct RetainedMemberAccess<CanvasStorage, &Sakura::Retained::Canvas::impl>;
-template struct RetainedMemberAccess<CanvasInput, &Sakura::Retained::Canvas::ForwardInput>;
-template struct RetainedMemberAccess<CodeEditorCanvas, &Sakura::Retained::CodeEditor::canvas>;
-
-bool SendRetained(Sakura::Retained::Canvas& canvas, const InputEvent& event) {
-    return RetainedMember(CanvasInput{})((canvas.*RetainedMember(CanvasStorage{})).get(), event);
-}
-
-struct CancellationSink : Sakura::Component {
-    U64 cancellations = 0;
-    bool event(const MouseEvent& event) override {
-        if (event.type == MouseEventType::Cancel) {
-            ++cancellations;
-            return true;
-        }
-        return false;
-    }
-};
-
-struct RetainedInputRoot : Sakura::Component {
-    Sakura::Component& widget;
-    CancellationSink sink;
-
-    explicit RetainedInputRoot(Sakura::Component& widget) : widget(widget) {
-        setClipsChildren(true);
-        add(widget);
-        add(sink);
-    }
-
-    void layout(const Sakura::Context& ctx) override {
-        layoutChild(ctx, widget, {20, 20, 200, 200});
-        layoutChild(ctx, sink, {0, 0, 1, 1});
-    }
-};
-
-struct RetainedSurface {
-    struct Texture final : Render::Texture {
-        Texture() : Render::Texture(Config{.size = {256, 256}}) {}
-        Result create() override { return Result::SUCCESS; }
-        Result destroy() override { return Result::SUCCESS; }
-        uint64_t raw() const override { return 1; }
-    };
-
-    SakuraTest::HeadlessUi ui{1.0f, {500, 500}};
-    Sakura::Retained::Canvas& canvas;
-    std::function<void(const Sakura::Context&)> layout;
-    std::vector<InputEvent> events;
-    std::vector<bool> consumed;
-    Sakura::SurfaceView::Config config;
-    Sakura::SurfaceView view;
-
-    RetainedSurface(Sakura::Retained::Canvas& canvas,
-                    std::function<void(const Sakura::Context&)> layout)
-        : canvas(canvas), layout(std::move(layout)) {
-        config.id = "retained-input";
-        config.texture = 1;
-        config.textureSource = std::make_shared<Texture>();
-        config.size = {256, 256};
-        config.onInput = [this](const InputEvent& event) {
-            events.push_back(event);
-            consumed.push_back(SendRetained(this->canvas, event));
-        };
-        view.update(config);
-    }
-
-    void draw() {
-        layout(ui.sakura());
-        ImGui::SetCursorScreenPos({0, 0});
-        view.render(ui.sakura());
-    }
-
-    void frame(ImVec2 point, bool down) {
-        ui.setMouse(point, down);
-        ui.frame([&] { draw(); });
-    }
-
-    void cancel(int boundary) {
-        events.clear();
-        consumed.clear();
-        if (boundary == 0) {
-            ImGui::GetIO().AddMouseButtonEvent(1, true);
-            frame({350, 350}, true);
-        } else if (boundary == 1) {
-            ui.frame([] {});
-        } else if (boundary == 2 || boundary == 3) {
-            if (boundary == 2) config.id += "-replacement";
-            else config.textureSource = std::make_shared<Texture>();
-            view.update(config);
-        } else {
-            CHECK_FALSE(SendRetained(canvas, MouseEvent{.type = MouseEventType::Cancel, .position = {-1, -1}}));
-        }
-    }
-};
 
 }  // namespace
 
@@ -754,8 +647,6 @@ TEST_CASE("Collapsed windows release surface input while their content is skippe
     const bool superluminal = GENERATE(false, true);
     SakuraTest::HeadlessUi ui;
     InputSurface surface("collapsed", {20, 40}, superluminal);
-    Sakura::Window window;
-    window.update({.id = "surface-window", .title = "Surface", .size = {300, 200}});
     SurfaceInteractionState interaction;
     interaction.zoom = 2;
     bool rendered = false;
@@ -766,10 +657,12 @@ TEST_CASE("Collapsed windows release surface input while their content is skippe
         ui.frame([&] {
             ImGui::SetNextWindowPos({0, 0});
             ImGui::SetNextWindowCollapsed(collapsed);
-            window.render(ui.sakura(), [&](const Sakura::Context& ctx) {
+            ImGui::SetNextWindowSize({300, 200}, ImGuiCond_FirstUseEver);
+            if (ImGui::Begin("Surface###surface-window")) {
                 rendered = true;
-                surface.render(ctx);
-            });
+                surface.render(ui.sakura());
+            }
+            ImGui::End();
         });
         auto events = surface.events;
         interaction = ProcessSurfaceInteraction(interaction, {}, std::move(events));
@@ -805,7 +698,7 @@ TEST_CASE("Surface visibility tracking handles either context or surface destruc
     const auto key = GENERATE(ImGuiKey_A, ImGuiKey_Space);
     std::vector<InputEvent> events;
     auto ui = std::make_unique<SakuraTest::HeadlessUi>();
-    auto view = std::make_unique<Sakura::SurfaceView>();
+    auto view = std::make_unique<LegacyInputTest::SurfaceView>();
     auto input = std::make_unique<detail::SurfaceInputState>();
     const auto emit = [&](const InputEvent& event) { events.push_back(event); };
     view->update({.id = "lifetime", .texture = 1, .size = {150, 100}, .onInput = emit});
@@ -1559,8 +1452,8 @@ TEST_CASE("Legacy callback epochs keep normal delivery and cancellation with one
     SakuraTest::HeadlessUi ui;
     std::vector<InputEvent> first;
     std::vector<InputEvent> second;
-    Sakura::SurfaceView view;
-    Sakura::SurfaceView::Config config;
+    LegacyInputTest::SurfaceView view;
+    LegacyInputTest::SurfaceView::Config config;
     config.id = "recipient-epoch";
     config.texture = 1;
     config.size = {100, 100};
@@ -1731,23 +1624,20 @@ TEST_CASE("SignalView marker clearing followed by a cancelled left release prese
     CHECK(requests == (enabled ? 1 : 0));
 }
 
-TEST_CASE("Legacy canvas cancellation stops retained scrollbar drags through every reset boundary",
+TEST_CASE("Legacy surface cancellation stops retained scrollbar drags through every reset boundary",
           "[core][sakura][surface][retained-cancel][scroll-cancel]") {
     const int boundary = GENERATE(0, 1, 2, 3, 4);
     const bool horizontal = GENERATE(false, true);
     CAPTURE(boundary, horizontal);
     F32 value = 0.0f;
     U64 changes = 0;
-    Sakura::Retained::ScrollView scroll;
+    Sakura::Scroller scroll;
     scroll.update({.id = "cancel-scroll", .contentWidth = horizontal ? 1000.0f : 200.0f,
                    .contentHeight = horizontal ? 200.0f : 1000.0f, .thickness = 10, .margin = 0,
                    .onScrollY = [&](F32 next) { value = next; ++changes; },
                    .onScrollX = [&](F32 next) { value = next; ++changes; }});
     RetainedInputRoot root(scroll);
-    Sakura::Retained::Canvas canvas;
-    canvas.mount(root);
-    canvas.update({.id = "scroll-canvas", .size = {256, 256}});
-    RetainedSurface surface(canvas, [&](const auto& ctx) { canvas.render(ctx); });
+    RetainedSurface surface(root);
     const ImVec2 start = horizontal ? ImVec2(25, 215) : ImVec2(215, 25);
     const ImVec2 drag = horizontal ? ImVec2(70, 215) : ImVec2(215, 70);
     const ImVec2 later = horizontal ? ImVec2(180, 215) : ImVec2(215, 180);
@@ -1767,23 +1657,20 @@ TEST_CASE("Legacy canvas cancellation stops retained scrollbar drags through eve
     CHECK(changes == callbacks);
 }
 
-TEST_CASE("Legacy canvas cancellation ends retained text selection without editing or reselection",
+TEST_CASE("Legacy surface cancellation ends retained text selection without editing or reselection",
           "[core][sakura][surface][retained-cancel][selection-cancel]") {
     const int boundary = GENERATE(0, 1, 2, 3, 4);
     U64 edits = 0;
-    CAPTURE(boundary);
     U64 selections = 0;
-    Sakura::Retained::TextGrid grid;
+    CAPTURE(boundary);
+    Sakura::TextGrid grid;
     grid.update({.id = "cancel-grid", .value = "abcdefghijklmnopqrstuvwxyz", .editable = true,
                  .fontSize = 15, .lineNumbers = false, .scrollbar = false,
                  .padding = Sakura::Padding{},
                  .onChange = [&](const auto&) { ++edits; },
                  .onSelect = [&](auto, auto) { ++selections; }});
     RetainedInputRoot root(grid);
-    Sakura::Retained::Canvas canvas;
-    canvas.mount(root);
-    canvas.update({.id = "grid-canvas", .size = {256, 256}});
-    RetainedSurface surface(canvas, [&](const auto& ctx) { canvas.render(ctx); });
+    RetainedSurface surface(root);
     surface.frame({25, 30}, false);
     surface.frame({25, 30}, true);
     surface.frame({80, 30}, true);
@@ -1800,18 +1687,15 @@ TEST_CASE("Legacy canvas cancellation ends retained text selection without editi
     CHECK(selections == callbacks);
 }
 
-TEST_CASE("Legacy canvas cancellation clears retained button presses without activation",
+TEST_CASE("Legacy surface cancellation clears retained button presses without activation",
           "[core][sakura][surface][retained-cancel][button-cancel]") {
     const int boundary = GENERATE(0, 1, 2, 3, 4);
     U64 clicks = 0;
     CAPTURE(boundary);
-    Sakura::Retained::Button button;
-    button.update({.id = "cancel-button", .onClick = [&] { ++clicks; }});
+    Sakura::Button button;
+    button.update({.onClick = [&] { ++clicks; }});
     RetainedInputRoot root(button);
-    Sakura::Retained::Canvas canvas;
-    canvas.mount(root);
-    canvas.update({.id = "button-canvas", .size = {256, 256}});
-    RetainedSurface surface(canvas, [&](const auto& ctx) { canvas.render(ctx); });
+    RetainedSurface surface(root);
     surface.frame({50, 50}, false);
     surface.frame({50, 50}, true);
     surface.cancel(boundary);
@@ -1819,42 +1703,52 @@ TEST_CASE("Legacy canvas cancellation clears retained button presses without act
     CHECK(clicks == 0);
     surface.frame({60, 60}, false);
     CHECK(clicks == 0);
-    CHECK_FALSE(SendRetained(canvas, MouseEvent{.type = MouseEventType::Release, .position = {0.2f, 0.2f}}));
+    SendRetained(root, MouseEvent{.type = MouseEventType::Release, .position = {0.2f, 0.2f}});
     CHECK(clicks == 0);
-    REQUIRE(SendRetained(canvas, MouseEvent{.type = MouseEventType::Click, .position = {0.2f, 0.2f}}));
-    REQUIRE(SendRetained(canvas, MouseEvent{.type = MouseEventType::Release, .position = {0.2f, 0.2f}}));
+    REQUIRE(SendRetained(root, MouseEvent{.type = MouseEventType::Click, .position = {0.2f, 0.2f}}));
+    REQUIRE(SendRetained(root, MouseEvent{.type = MouseEventType::Release, .position = {0.2f, 0.2f}}));
     CHECK(clicks == 1);
 }
 
-TEST_CASE("Legacy code editor cancellation discards the console resize preview",
+TEST_CASE("Legacy surface cancellation discards the retained console resize preview",
           "[core][sakura][surface][retained-cancel][resize-cancel]") {
     const int boundary = GENERATE(0, 1, 2, 3, 4);
     U64 changes = 0;
     CAPTURE(boundary);
-    Sakura::Retained::CodeEditor editor;
-    editor.update({.id = "cancel-editor", .size = {256, 256}, .consoleVisible = true,
+    Sakura::CodeEditor editor;
+    editor.update({.id = "cancel-editor", .height = 256, .consoleVisible = true,
                    .onChange = [&](const auto&) { ++changes; }});
-    auto& canvas = (editor.*RetainedMember(CodeEditorCanvas{}))();
-    RetainedSurface surface(canvas, [&](const auto& ctx) { editor.render(ctx); });
+    RetainedSurface surface(editor);
     surface.frame({20, 20}, false);
-    REQUIRE(SendRetained(canvas, MouseEvent{.type = MouseEventType::Click, .position = {0.91f, 0.95f}}));
-    surface.frame({20, 20}, false);
-    const F32 headerY = (256.0f - Sakura::Retained::StatusBar::Height - 128.0f - 6.0f) / 256.0f;
-    const ImVec2 start{128, headerY * 256.0f};
+    std::vector<Sakura::StatusBar*> bars;
+    SakuraTest::Collect(editor, bars);
+    REQUIRE(bars.size() == 1);
+    const auto bar = SakuraTest::Peek::Frame(*bars.front());
+    const Extent2D<F32> toggle{(bar.right() - 15.0f) / 256.0f, (bar.y + bar.height * 0.5f) / 256.0f};
+    REQUIRE(SendRetained(editor, MouseEvent{.type = MouseEventType::Click, .position = toggle}));
+    SendRetained(editor, MouseEvent{.type = MouseEventType::Release, .position = toggle});
+    surface.layout();
+    std::vector<Sakura::TextView*> consoles;
+    SakuraTest::Collect(editor, consoles);
+    REQUIRE(consoles.size() == 1);
+    const auto before = SakuraTest::Peek::Frame(*consoles.front());
+    const ImVec2 start{128, before.y - 6.0f};
     surface.frame(start, true);
     REQUIRE(surface.consumed.back());
     surface.frame({128, start.y + 30}, true);
     REQUIRE(surface.consumed.back());
     surface.cancel(boundary);
+    surface.layout();
+    CHECK(SakuraTest::Peek::Frame(*consoles.front()) == before);
     CHECK(changes == 0);
-    CHECK_FALSE(SendRetained(canvas, MouseEvent{.type = MouseEventType::Move, .position = {0.5f, 0.05f}}));
     surface.frame({20, 20}, false);
-    ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow);
-    REQUIRE(SendRetained(canvas, MouseEvent{.type = MouseEventType::Click, .position = {0.5f, headerY}}));
-    REQUIRE(SendRetained(canvas, MouseEvent{.type = MouseEventType::Move, .position = {0.5f, 0.05f}}));
-    CHECK(ImGui::GetMouseCursor() == ImGuiMouseCursor_ResizeNS);
-    CHECK_FALSE(SendRetained(canvas, MouseEvent{.type = MouseEventType::Cancel,
-                                               .position = {std::numeric_limits<F32>::quiet_NaN(), -1}}));
-    CHECK_FALSE(SendRetained(canvas, MouseEvent{.type = MouseEventType::Move, .position = {0.5f, 0.05f}}));
+    CHECK(SakuraTest::Peek::Frame(*consoles.front()) == before);
+    REQUIRE(SendRetained(editor, MouseEvent{.type = MouseEventType::Click,
+                                          .position = {0.5f, start.y / 256.0f}}));
+    REQUIRE(SendRetained(editor, MouseEvent{.type = MouseEventType::Move, .position = {0.5f, 0.05f}}));
+    SendRetained(editor, MouseEvent{.type = MouseEventType::Cancel,
+                                  .position = {std::numeric_limits<F32>::quiet_NaN(), -1}});
+    surface.layout();
+    CHECK(SakuraTest::Peek::Frame(*consoles.front()) == before);
     CHECK(changes == 0);
 }

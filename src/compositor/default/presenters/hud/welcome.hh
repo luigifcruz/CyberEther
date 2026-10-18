@@ -19,10 +19,21 @@ struct WelcomeHudPresenter {
 
     std::optional<WelcomeHudView::Config> build() const {
         if (!context.state.flowgraph.items.empty() || context.state.modal.content.has_value() ||
-            context.state.filePicker.active) {
+            context.state.filePicker.active || context.state.interface.startTab) {
             return std::nullopt;
         }
+        return config();
+    }
 
+    std::optional<WelcomeHudView::Config> buildStartTab() const {
+        if (!context.state.interface.startTab) {
+            return std::nullopt;
+        }
+        return config();
+    }
+
+ private:
+    WelcomeHudView::Config config() const {
         const auto enqueue = context.callbacks.enqueueMail;
         return WelcomeHudView::Config{
             .version = "v" JETSTREAM_VERSION_STR,

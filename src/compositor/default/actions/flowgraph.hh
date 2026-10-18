@@ -156,6 +156,7 @@ struct FlowgraphActions {
     Result handle(const MailFocusFlowgraph& msg) {
         if (state.flowgraph.items.contains(msg.flowgraph)) {
             state.interface.focusedFlowgraph = msg.flowgraph;
+            state.interface.startTabFocused = false;
         }
 
         return Result::SUCCESS;
@@ -346,7 +347,7 @@ struct FlowgraphActions {
         const auto newId = msg.newId;
         callbacks.enqueueCommandWithMail([flowgraph, oldId, newId]() -> Result {
             return flowgraph->blockRename(oldId, newId);
-        }, false, MailRenameStackBlock{
+        }, false, MailRenameLayoutBlock{
             .flowgraph = msg.flowgraph,
             .oldId = oldId,
             .newId = newId,
@@ -371,7 +372,7 @@ struct FlowgraphActions {
 
         callbacks.enqueueCommandWithMail([flowgraph, blockId]() -> Result {
             return flowgraph->blockDestroy(blockId);
-        }, false, MailRemoveStackBlock{
+        }, false, MailRemoveLayoutBlock{
             .flowgraph = msg.flowgraph,
             .block = blockId,
         });
@@ -612,13 +613,10 @@ struct FlowgraphActions {
             SurfaceMeta surfaceMeta;
             auto flowgraph = state.flowgraph.items.at(msg.flowgraph);
             flowgraph->metadata().get(msg.metaKey, surfaceMeta, msg.block);
-            if (msg.placement == SurfacePlacement::Attached) {
+            if (msg.placement == SurfacePlacement::Attached && surfaceMeta.attachedHeight != msg.resize.logicalSize.y) {
                 surfaceMeta.attachedHeight = msg.resize.logicalSize.y;
-            } else {
-                surfaceMeta.detachedWidth = msg.resize.logicalSize.x;
-                surfaceMeta.detachedHeight = msg.resize.logicalSize.y;
+                flowgraph->metadata().set(msg.metaKey, surfaceMeta, msg.block);
             }
-            flowgraph->metadata().set(msg.metaKey, surfaceMeta, msg.block);
         }
 
         SurfaceEvent event;

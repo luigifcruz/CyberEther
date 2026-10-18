@@ -8,6 +8,7 @@ namespace Jetstream::Sakura {
 struct Typography {
     static constexpr F32 FontSize = 15.0f;
     static constexpr F32 ChromeScale = 0.90f;
+    static constexpr F32 ConsoleScale = 0.92f;
     static constexpr const char* MonoFont = "default_mono";
     static constexpr const char* BodyFont = "default_body";
     static constexpr const char* IconFont = "default_icons";

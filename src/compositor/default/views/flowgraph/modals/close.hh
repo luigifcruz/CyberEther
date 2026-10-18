@@ -16,17 +16,17 @@ struct FlowgraphCloseView {
     };
 
     void update(Config config) {
+        using Button = Sakura::Button;
+
         this->config = std::move(config);
         header.update({
-            .id = "FlowgraphCloseHeader",
             .title = ICON_FA_TRIANGLE_EXCLAMATION " Close Flowgraph",
             .description = "You are about to close a flowgraph without saving it. Are you sure you want to continue?",
         });
         saveButton.update({
-            .id = "FlowgraphCloseSave",
             .str = ICON_FA_FLOPPY_DISK " Save",
-            .size = {-1.0f, 40.0f},
-            .variant = Sakura::Button::Variant::Action,
+            .size = {Sakura::Fill, 40.0f},
+            .variant = Button::Variant::Action,
             .onClick = [this]() {
                 if (this->config.onSave) {
                     this->config.onSave();
@@ -34,21 +34,30 @@ struct FlowgraphCloseView {
             },
         });
         dontSaveButton.update({
-            .id = "FlowgraphCloseDontSave",
             .str = "Don't Save",
-            .size = {-1.0f, 40.0f},
+            .size = {Sakura::Fill, 40.0f},
             .onClick = [this]() {
                 if (this->config.onDontSave) {
                     this->config.onDontSave();
                 }
             },
         });
+        stack.update({
+            .items = {
+                {.child = &header},
+                {.child = &saveButton},
+                {.child = &dontSaveButton},
+            },
+        });
+        panel.update({
+            .id = "FlowgraphClose",
+            .content = &stack,
+            .backgroundColorKey = "popup_bg",
+        });
     }
 
-    void render(const Sakura::Context& ctx) const {
-        header.render(ctx);
-        saveButton.render(ctx);
-        dontSaveButton.render(ctx);
+    Sakura::Component& component() {
+        return panel;
     }
 
  private:
@@ -56,6 +65,8 @@ struct FlowgraphCloseView {
     ModalHeader header;
     Sakura::Button saveButton;
     Sakura::Button dontSaveButton;
+    Sakura::Stack stack;
+    Sakura::Panel panel;
 };
 
 }  // namespace Jetstream

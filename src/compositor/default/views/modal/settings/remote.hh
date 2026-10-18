@@ -32,58 +32,41 @@ struct RemoteSettingsPanel {
         this->config = std::move(config);
 
         title.update({
-            .id = "RemoteTitle",
             .str = "Remote",
             .font = Sakura::Text::Font::Bold,
             .scale = 1.2f,
         });
 
         description.update({
-            .id = "RemoteDescription",
             .str = "Configure default remote streaming parameters.",
             .tone = Sakura::Text::Tone::Secondary,
             .wrapped = true,
         });
 
-        divider.update({
-            .id = "RemoteHeaderDivider",
-        });
-
-        activeCard.update({
-            .id = "RemoteActiveCard",
-            .padding = 16.0f,
-            .rounding = 8.0f,
-            .border = true,
-            .scrollbar = false,
-            .mouseScroll = false,
-        });
+        divider.update({});
 
         activeWarning.update({
-            .id = "RemoteActiveWarning",
             .str = ICON_FA_TOWER_BROADCAST " Remote streaming is currently active.",
             .tone = Sakura::Text::Tone::Warning,
             .scale = 1.05f,
         });
 
         activeDescription.update({
-            .id = "RemoteActiveDescription",
             .str = "Updates here take effect after the current session ends.",
             .tone = Sakura::Text::Tone::Disabled,
             .wrapped = true,
         });
 
-        activeSpacing.update({
-            .id = "RemoteActiveSpacing",
-        });
+        activeSpacing.update({});
+        activeTrailing.update({});
 
         brokerField.update({
-            .id = "RemoteBrokerField",
             .label = "Broker URL",
             .description = "The WebSocket broker endpoint that coordinates remote client connections.",
+            .control = &brokerInput,
         });
 
         brokerInput.update({
-            .id = "##app-settings-broker-url",
             .value = this->config.brokerUrl,
             .submit = Sakura::TextInput::Submit::OnEdit,
             .onChange = [this](const std::string& value) {
@@ -94,13 +77,13 @@ struct RemoteSettingsPanel {
         });
 
         codecField.update({
-            .id = "RemoteCodecField",
             .label = "Video Codec",
             .description = "The video compression format used for streaming.",
+            .control = &codecCombo,
         });
 
         codecCombo.update({
-            .id = "##app-settings-codec",
+            .id = "settings:codec",
             .options = {
                 "H264",
                 "AV1",
@@ -116,13 +99,13 @@ struct RemoteSettingsPanel {
         });
 
         framerateField.update({
-            .id = "RemoteFramerateField",
             .label = "Framerate",
             .description = "Target frame rate for the outgoing video stream.",
+            .control = &framerateCombo,
         });
 
         framerateCombo.update({
-            .id = "##app-settings-framerate",
+            .id = "settings:framerate",
             .options = {
                 "15 FPS",
                 "30 FPS",
@@ -138,13 +121,13 @@ struct RemoteSettingsPanel {
         });
 
         encoderField.update({
-            .id = "RemoteEncoderField",
             .label = "Encoder",
             .description = "The hardware or software encoder used to compress the video stream.",
+            .control = &encoderCombo,
         });
 
         encoderCombo.update({
-            .id = "##app-settings-encoder",
+            .id = "settings:encoder",
             .options = encoderOptions(this->config.available),
             .value = encoderLabel(this->config.encoder, this->config.available),
             .disabled = this->config.available.empty(),
@@ -156,13 +139,13 @@ struct RemoteSettingsPanel {
         });
 
         approvalField.update({
-            .id = "RemoteApprovalField",
             .label = "Client Approval",
             .description = "Whether new remote clients are accepted automatically or require manual approval.",
+            .control = &approvalCombo,
         });
 
         approvalCombo.update({
-            .id = "##app-settings-client-approval",
+            .id = "settings:client-approval",
             .options = {
                 "Manual Approval",
                 "Auto Approve",
@@ -174,41 +157,39 @@ struct RemoteSettingsPanel {
                 }
             },
         });
+
+        activeContent.update({
+            .items = {
+                {.child = &activeWarning},
+                {.child = &activeSpacing},
+                {.child = &activeDescription},
+            },
+        });
+        activeCard.update({
+            .content = &activeContent,
+            .padding = 16.0f,
+            .rounding = 8.0f,
+            .border = true,
+        });
+        std::vector<Sakura::Stack::Item> items = {
+            {.child = &title},
+            {.child = &description},
+            {.child = &divider},
+        };
+        if (this->config.started) {
+            items.push_back({.child = &activeCard});
+            items.push_back({.child = &activeTrailing});
+        }
+        items.push_back({.child = &codecField});
+        items.push_back({.child = &encoderField});
+        items.push_back({.child = &framerateField});
+        items.push_back({.child = &approvalField});
+        items.push_back({.child = &brokerField});
+        stack.update({.items = std::move(items)});
     }
 
-    void render(const Sakura::Context& ctx) const {
-        title.render(ctx);
-        description.render(ctx);
-        divider.render(ctx);
-
-        if (config.started) {
-            activeCard.render(ctx, [&](const Sakura::Context& ctx) {
-                activeWarning.render(ctx);
-                activeSpacing.render(ctx);
-                activeDescription.render(ctx);
-            });
-            activeSpacing.render(ctx);
-        }
-
-        codecField.render(ctx, [&](const Sakura::Context& ctx) {
-            codecCombo.render(ctx);
-        });
-
-        encoderField.render(ctx, [&](const Sakura::Context& ctx) {
-            encoderCombo.render(ctx);
-        });
-
-        framerateField.render(ctx, [&](const Sakura::Context& ctx) {
-            framerateCombo.render(ctx);
-        });
-
-        approvalField.render(ctx, [&](const Sakura::Context& ctx) {
-            approvalCombo.render(ctx);
-        });
-
-        brokerField.render(ctx, [&](const Sakura::Context& ctx) {
-            brokerInput.render(ctx);
-        });
+    Sakura::Component& content() {
+        return stack;
     }
 
  private:
@@ -277,20 +258,23 @@ struct RemoteSettingsPanel {
     Sakura::Text title;
     Sakura::Text description;
     Sakura::Divider divider;
-    Sakura::Div activeCard;
     Sakura::Text activeWarning;
     Sakura::Text activeDescription;
-    Sakura::Spacing activeSpacing;
-    Sakura::SettingField brokerField;
-    Sakura::SettingField codecField;
-    Sakura::SettingField framerateField;
-    Sakura::SettingField encoderField;
-    Sakura::SettingField approvalField;
+    Sakura::Spacer activeSpacing;
+    Sakura::Spacer activeTrailing;
+    Sakura::Stack activeContent;
+    Sakura::Div activeCard;
     Sakura::TextInput brokerInput;
     Sakura::Combo codecCombo;
     Sakura::Combo framerateCombo;
     Sakura::Combo encoderCombo;
     Sakura::Combo approvalCombo;
+    Sakura::SettingField brokerField;
+    Sakura::SettingField codecField;
+    Sakura::SettingField framerateField;
+    Sakura::SettingField encoderField;
+    Sakura::SettingField approvalField;
+    Sakura::Stack stack;
 };
 
 }  // namespace Jetstream

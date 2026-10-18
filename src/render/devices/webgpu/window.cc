@@ -4,6 +4,7 @@
 #include "jetstream/render/devices/webgpu/surface.hh"
 
 #include "tools/imgui_impl_wgpu.h"
+#include "jetstream/render/tools/imgui_blend_ext.h"
 
 namespace Jetstream::Render {
 
@@ -85,8 +86,6 @@ Result Implementation::createImgui() {
     style = &ImGui::GetStyle();
     io->IniFilename = nullptr;
 
-    io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-
     Result viewportResult;
     try {
         viewportResult = viewport->createImgui();
@@ -114,6 +113,7 @@ Result Implementation::createImgui() {
         info.RenderTargetFormat = WGPUTextureFormat_BGRA8Unorm;
         info.DepthStencilFormat = WGPUTextureFormat_Undefined;
         ImGui_ImplWGPU_Init(&info);
+        ImGui::RegisterPremultipliedAlphaCallback(ImGui_ImplWGPU_PremultipliedAlphaCallback);
     } catch (...) {
         viewport->destroyImgui();
         ImGui::DestroyContext();
@@ -129,6 +129,7 @@ Result Implementation::createImgui() {
 Result Implementation::destroyImgui() {
     JST_DEBUG("[WebGPU] Destroying ImGui.");
 
+    ImGui::UnregisterPremultipliedAlphaCallback(ImGui_ImplWGPU_PremultipliedAlphaCallback);
     ImGui_ImplWGPU_InvalidateDeviceObjects();
     ImGui_ImplWGPU_Shutdown();
     const Result result = viewport->destroyImgui();

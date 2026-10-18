@@ -7,6 +7,7 @@
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -40,112 +41,77 @@ struct DependencyReviewView {
         std::function<void()> onInstall;
     };
 
-    DependencyReviewView() {
-        consoleCanvas.mount(consoleTextView);
-    }
-
     void update(Config config) {
-        this->config = std::move(config);
+        using Text = Sakura::Text;
+        using Button = Sakura::Button;
 
+        this->config = std::move(config);
         header.update({
-            .id = "DependencyReviewHeader",
             .title = ICON_FA_BOX " Install Python Dependencies",
             .description = "Review and install the Python packages requested by blocks.",
         });
-
         overviewText.update({
-            .id = "DependencyReviewOverview",
             .str = "Blocks declared " + packageNoun() + " that are not installed yet. "
                    "Approving installs them with pip into a shared environment managed by "
                    "CyberEther, separate from your system Python. Blocks that depend on them "
                    "stay paused until installation completes, then reload automatically.",
-            .tone = Sakura::Text::Tone::Secondary,
+            .tone = Text::Tone::Secondary,
             .wrapped = true,
         });
-
         thirdPartyCallout.update({
-            .id = "DependencyReviewThirdParty",
             .str = "Python packages are third-party code. Only approve dependencies you trust.",
             .icon = ICON_FA_SHIELD_HALVED,
             .tone = Callout::Tone::Warning,
         });
-
-        dependencyTable.update({
-            .id = "DependencyReviewTable",
-            .columns = {"Package", "Requested By"},
-            .fixedColumnWidths = {0.0f, 190.0f},
-            .maxHeight = 320.0f,
-        });
-        requirementTexts.resize(this->config.dependencies.size());
-        requestedByTexts.resize(this->config.dependencies.size());
+        while (dependencyCells.size() < this->config.dependencies.size()) {
+            dependencyCells.push_back(std::make_unique<DependencyCells>());
+        }
+        std::vector<std::vector<Sakura::Component*>> cellRows;
         for (U64 i = 0; i < this->config.dependencies.size(); ++i) {
             const auto& entry = this->config.dependencies[i];
-            requirementTexts[i].update({
-                .id = "DependencyReviewRequirement" + std::to_string(i),
+            auto& cells = *dependencyCells[i];
+            cells.requirement.update({
                 .str = entry.requirement,
                 .wrapped = true,
             });
             const bool attributed = !entry.requestedBy.empty();
-            requestedByTexts[i].update({
-                .id = "DependencyReviewRequestedBy" + std::to_string(i),
+            cells.requestedBy.update({
                 .str = attributed ? entry.requestedBy : "Unknown",
-                .tone = attributed ? Sakura::Text::Tone::Secondary : Sakura::Text::Tone::Disabled,
+                .tone = attributed ? Text::Tone::Secondary : Text::Tone::Disabled,
             });
+            cellRows.push_back({&cells.requirement, &cells.requestedBy});
         }
-        emptySpacing.update({
-            .id = "DependencyReviewEmptySpacing",
-            .lines = 2,
+        dependencyTable.update({
+            .columns = {"Package", "Requested By"},
+            .cellRows = std::move(cellRows),
+            .fixedColumnWidths = {0.0f, 190.0f},
+            .maxHeight = 320.0f,
         });
+        emptySpacingTop.update({.lines = 2});
+        emptySpacingBottom.update({.lines = 2});
         emptyText.update({
-            .id = "DependencyReviewEmpty",
             .str = "No dependencies are pending approval.",
-            .tone = Sakura::Text::Tone::Disabled,
-            .align = Sakura::Text::Align::Center,
+            .tone = Text::Tone::Disabled,
+            .align = Text::Align::Center,
         });
-
         staleCallout.update({
-            .id = "DependencyReviewStale",
             .str = "The dependency list changed. Close this window and review it again.",
             .tone = Callout::Tone::Warning,
         });
         statusCallout.update({
-            .id = "DependencyReviewStatus",
             .str = statusLine(),
             .tone = statusTone(),
         });
-        consoleCanvas.update({
-            .id = "DependencyReviewConsoleCanvas",
-            .size = {0.0f, 300.0f},
-            .clearColor = {0.0f, 0.0f, 0.0f, 0.0f},
-            .onLayout = [this](const Sakura::Retained::Canvas::Layout& layout) {
-                consoleFontSizePixels = 15.0f * layout.pixelRatio;
-                consolePadding = {6.0f * layout.pixelRatio, 6.0f * layout.pixelRatio,
-                                  6.0f * layout.pixelRatio, 6.0f * layout.pixelRatio};
-            },
-        });
-        consoleTextView.update({
-            .id = "DependencyReviewConsoleText",
+        console.update({
             .value = consoleText(),
-            .fontSize = consoleFontSizePixels,
-            .fontName = "default_mono",
-            .monospace = true,
-            .lineNumbers = false,
+            .height = 300.0f,
             .stickToBottom = installing() || installed(),
-            .scrollbar = true,
-            .wrap = Sakura::Retained::TextGrid::Wrap::Word,
-            .padding = consolePadding,
-            .backgroundColorKey = "editor_console_background",
-            .textColorKey = "editor_text",
         });
-
-        installDivider.update({
-            .id = "DependencyReviewInstallDivider",
-        });
+        installDivider.update({});
         installButton.update({
-            .id = "DependencyReviewInstall",
             .str = installLabel(),
-            .size = {-1.0f, 40.0f},
-            .variant = Sakura::Button::Variant::Action,
+            .size = {Sakura::Fill, 40.0f},
+            .variant = Button::Variant::Action,
             .disabled = !this->config.installEnabled,
             .onClick = [this]() {
                 if (this->config.onInstall) {
@@ -153,55 +119,46 @@ struct DependencyReviewView {
                 }
             },
         });
-    }
 
-    void render(const Sakura::Context& ctx) {
-        header.render(ctx);
-
+        std::vector<Sakura::Stack::Item> items = {{.child = &header}};
         if (reviewLayout() || denied()) {
-            if (reviewLayout() && !config.dependencies.empty()) {
-                overviewText.render(ctx);
+            if (reviewLayout() && !this->config.dependencies.empty()) {
+                items.push_back({.child = &overviewText});
             }
-            if (config.dependencies.empty()) {
-                emptySpacing.render(ctx);
-                emptyText.render(ctx);
-                emptySpacing.render(ctx);
+            if (this->config.dependencies.empty()) {
+                items.push_back({.child = &emptySpacingTop});
+                items.push_back({.child = &emptyText});
+                items.push_back({.child = &emptySpacingBottom});
             } else {
-                Sakura::Table::Rows rows;
-                rows.reserve(config.dependencies.size());
-                for (U64 i = 0; i < config.dependencies.size(); ++i) {
-                    Sakura::Table::Row row;
-                    row.push_back([this, i](const Sakura::Context& ctx) {
-                        requirementTexts[i].render(ctx);
-                    });
-                    row.push_back([this, i](const Sakura::Context& ctx) {
-                        requestedByTexts[i].render(ctx);
-                    });
-                    rows.push_back(std::move(row));
-                }
-                dependencyTable.render(ctx, std::move(rows));
+                items.push_back({.child = &dependencyTable});
             }
         }
-
-        if (config.stale) {
-            staleCallout.render(ctx);
+        if (this->config.stale) {
+            items.push_back({.child = &staleCallout});
         }
-
         if (hasStatus()) {
-            statusCallout.render(ctx);
+            items.push_back({.child = &statusCallout});
         }
-
         if (showConsole()) {
-            consoleCanvas.render(ctx);
+            items.push_back({.child = &console});
         }
-
         if (showInstallButton()) {
             if (reviewLayout()) {
-                thirdPartyCallout.render(ctx);
+                items.push_back({.child = &thirdPartyCallout});
             }
-            installDivider.render(ctx);
-            installButton.render(ctx);
+            items.push_back({.child = &installDivider});
+            items.push_back({.child = &installButton});
         }
+        stack.update({.items = std::move(items)});
+        panel.update({
+            .id = "DependencyReview",
+            .content = &stack,
+            .backgroundColorKey = "popup_bg",
+        });
+    }
+
+    Sakura::Component& component() {
+        return panel;
     }
 
  private:
@@ -293,29 +250,27 @@ struct DependencyReviewView {
         }
     }
 
+    struct DependencyCells {
+        Sakura::Text requirement;
+        Sakura::Text requestedBy;
+    };
+
     Config config;
-    F32 consoleFontSizePixels = 15.0f;
-    Sakura::Padding consolePadding = {6.0f, 6.0f, 6.0f, 6.0f};
-
     ModalHeader header;
-
     Sakura::Text overviewText;
     Callout thirdPartyCallout;
-
+    std::vector<std::unique_ptr<DependencyCells>> dependencyCells;
     Sakura::Table dependencyTable;
-    std::vector<Sakura::Text> requirementTexts;
-    std::vector<Sakura::Text> requestedByTexts;
-    Sakura::Spacing emptySpacing;
+    Sakura::Spacer emptySpacingTop;
+    Sakura::Spacer emptySpacingBottom;
     Sakura::Text emptyText;
-
     Callout staleCallout;
-
     Callout statusCallout;
-    Sakura::Retained::Canvas consoleCanvas;
-    Sakura::Retained::TextView consoleTextView;
-
+    Sakura::LogView console;
     Sakura::Divider installDivider;
     Sakura::Button installButton;
+    Sakura::Stack stack;
+    Sakura::Panel panel;
 };
 
 }  // namespace Jetstream

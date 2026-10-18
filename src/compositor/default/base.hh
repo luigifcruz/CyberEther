@@ -13,6 +13,7 @@
 #include "views/workbench.hh"
 
 #include <deque>
+#include <optional>
 #include <string>
 
 namespace Jetstream {
@@ -20,6 +21,7 @@ namespace Jetstream {
 class DefaultCompositor : public Compositor::Impl {
  public:
     DefaultCompositor();
+    ~DefaultCompositor() override;
 
     Result create();
     Result destroy();
@@ -37,6 +39,7 @@ class DefaultCompositor : public Compositor::Impl {
 
     std::deque<Mail> pendingMail;
     WorkbenchView workbench;
+    std::optional<bool> previousIntegratedTitlebar;
 
     void enqueue(Mail&& mail);
 

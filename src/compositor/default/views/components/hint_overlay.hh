@@ -4,8 +4,8 @@
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
-#include <cfloat>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -33,54 +33,33 @@ struct HintOverlay {
     };
 
     void update(Config config) {
+        using Text = Sakura::Text;
+
         this->config = std::move(config);
-        const bool interactive = !this->config.actions.empty();
-        overlay.update({
-            .id = this->config.id + ":overlay",
-            .size = this->config.size,
-            .anchor = Sakura::Overlay::Anchor::Center,
-            .inputs = interactive,
-        });
-        card.update({
-            .id = this->config.id + ":card",
-            .size = this->config.size,
-            .padding = 24.0f,
-            .rounding = 16.0f,
-            .border = true,
-            .scrollbar = false,
-            .mouseScroll = false,
-            .inputs = interactive,
-        });
-        stack.update({
-            .id = this->config.id + ":stack",
-            .spacing = 8.0f,
-        });
         icon.update({
-            .id = this->config.id + ":icon",
             .str = this->config.icon,
-            .tone = Sakura::Text::Tone::Accent,
-            .align = Sakura::Text::Align::Center,
+            .tone = Text::Tone::Accent,
+            .align = Text::Align::Center,
             .scale = 2.5f,
         });
         title.update({
-            .id = this->config.id + ":title",
             .str = this->config.title,
-            .font = Sakura::Text::Font::H2,
-            .align = Sakura::Text::Align::Center,
+            .font = Text::Font::H2,
+            .align = Text::Align::Center,
             .scale = 1.2f,
         });
         subtitle.update({
-            .id = this->config.id + ":subtitle",
             .str = this->config.subtitle,
-            .tone = Sakura::Text::Tone::Secondary,
-            .align = Sakura::Text::Align::Center,
+            .tone = Text::Tone::Secondary,
+            .align = Text::Align::Center,
         });
-        stepTexts.resize(this->config.steps.size());
+        while (stepTexts.size() < this->config.steps.size()) {
+            stepTexts.push_back(std::make_unique<Text>());
+        }
         for (U64 i = 0; i < this->config.steps.size(); ++i) {
-            stepTexts[i].update({
-                .id = this->config.id + ":step-" + std::to_string(i),
+            stepTexts[i]->update({
                 .str = std::to_string(i + 1) + ". " + this->config.steps[i],
-                .align = Sakura::Text::Align::Center,
+                .align = Text::Align::Center,
             });
         }
         if (this->config.hints.empty()) {
@@ -97,58 +76,76 @@ struct HintOverlay {
         }
         if (!this->config.hints.empty()) {
             hintText.update({
-                .id = this->config.id + ":hint",
                 .str = "Tip: " + this->config.hints[*selectedHintIndex],
-                .tone = Sakura::Text::Tone::Disabled,
-                .align = Sakura::Text::Align::Center,
+                .tone = Text::Tone::Disabled,
+                .align = Text::Align::Center,
             });
         }
-        actionButtons.resize(this->config.actions.size());
+        while (actionButtons.size() < this->config.actions.size()) {
+            actionButtons.push_back(std::make_unique<Sakura::Button>());
+        }
         for (U64 i = 0; i < this->config.actions.size(); ++i) {
             const auto& action = this->config.actions[i];
-            actionButtons[i].update({
-                .id = this->config.id + ":action-" + action.id,
+            actionButtons[i]->update({
                 .str = action.label,
-                .size = {-FLT_MIN, 34.0f},
+                .size = {Sakura::Fill, 34.0f},
                 .variant = action.variant,
                 .onClick = action.onClick,
             });
         }
+
+        std::vector<Sakura::Stack::Item> items = {
+            {.child = &icon},
+            {.child = &title},
+            {.child = &subtitle},
+        };
+        for (U64 i = 0; i < this->config.steps.size(); ++i) {
+            items.push_back({.child = stepTexts[i].get()});
+        }
+        if (!this->config.hints.empty()) {
+            items.push_back({.child = &hintText});
+        }
+        for (U64 i = 0; i < this->config.actions.size(); ++i) {
+            items.push_back({.child = actionButtons[i].get()});
+        }
+        stack.update({
+            .spacing = 24.0f,
+            .items = std::move(items),
+        });
+        card.update({
+            .content = &stack,
+            .size = this->config.size,
+            .padding = 24.0f,
+            .rounding = 16.0f,
+            .border = true,
+        });
+        panel.update({
+            .id = this->config.id + ":panel",
+            .content = &card,
+            .transparent = true,
+            .backgroundColorKey = "card",
+        });
     }
 
-    void render(const Sakura::Context& ctx) {
-        overlay.render(ctx, [this](const Sakura::Context& ctx) {
-            card.render(ctx, [this](const Sakura::Context& ctx) {
-                Sakura::VStack::Children children = {
-                    [this](const Sakura::Context& ctx) { icon.render(ctx); },
-                    [this](const Sakura::Context& ctx) { title.render(ctx); },
-                    [this](const Sakura::Context& ctx) { subtitle.render(ctx); },
-                };
-                for (U64 i = 0; i < stepTexts.size(); ++i) {
-                    children.push_back([this, i](const Sakura::Context& ctx) { stepTexts[i].render(ctx); });
-                }
-                if (!config.hints.empty()) {
-                    children.push_back([this](const Sakura::Context& ctx) { hintText.render(ctx); });
-                }
-                for (U64 i = 0; i < actionButtons.size(); ++i) {
-                    children.push_back([this, i](const Sakura::Context& ctx) { actionButtons[i].render(ctx); });
-                }
-                stack.render(ctx, std::move(children));
-            });
-        });
+    Sakura::Component& component() {
+        return panel;
+    }
+
+    Extent2D<F32> size() const {
+        return config.size;
     }
 
  private:
     Config config;
-    Sakura::Overlay overlay;
-    Sakura::Div card;
-    Sakura::VStack stack;
     Sakura::Text icon;
     Sakura::Text title;
     Sakura::Text subtitle;
-    std::vector<Sakura::Text> stepTexts;
+    std::vector<std::unique_ptr<Sakura::Text>> stepTexts;
     Sakura::Text hintText;
-    std::vector<Sakura::Button> actionButtons;
+    std::vector<std::unique_ptr<Sakura::Button>> actionButtons;
+    Sakura::Stack stack;
+    Sakura::Div card;
+    Sakura::Panel panel;
     std::optional<U64> selectedHintIndex;
     std::string selectedHintId;
     std::vector<std::string> selectedHints;

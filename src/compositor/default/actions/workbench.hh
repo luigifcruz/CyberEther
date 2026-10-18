@@ -26,7 +26,10 @@ struct WorkbenchActions {
                               MailSetFlowgraphMetadataSearch,
                               MailSetFlowgraphEnvironmentVisible,
                               MailSetFlowgraphEnvironmentSearch,
-                              MailQuit>;
+                              MailQuit,
+                              MailOpenStartTab,
+                              MailCloseStartTab,
+                              MailFocusStartTab>;
 
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
@@ -35,6 +38,41 @@ struct WorkbenchActions {
                      DefaultCompositorCallbacks& callbacks) :
         state(state),
         callbacks(callbacks) {}
+
+    Result handle(const MailOpenStartTab&) {
+        if (!state.interface.startTab) {
+            state.interface.startTab = true;
+            state.interface.startTabBaseline = state.flowgraph.items.size();
+        }
+        ++state.interface.startTabRequests;
+        state.interface.startTabFocused = true;
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailCloseStartTab&) {
+        state.interface.startTab = false;
+        state.interface.startTabFocused = false;
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailFocusStartTab&) {
+        state.interface.startTabFocused = state.interface.startTab;
+        return Result::SUCCESS;
+    }
+
+    void settleStartTab() {
+        auto& ui = state.interface;
+        if (!ui.startTab) {
+            return;
+        }
+        const U64 count = state.flowgraph.items.size();
+        if (count > ui.startTabBaseline) {
+            ui.startTab = false;
+            ui.startTabFocused = false;
+            return;
+        }
+        ui.startTabBaseline = count;
+    }
 
     Result handle(const MailApplyTheme& msg) {
         if (!themes.contains(msg.themeKey)) {
@@ -50,7 +88,6 @@ struct WorkbenchActions {
             .palette = &state.sakura.colorMap,
             .render = state.system.render.get(),
         });
-
         RethemeSurfaces(state.flowgraph.surfaces, state.sakura.colorMap);
 
         Settings settings;

@@ -14,45 +14,25 @@ struct LegalSettingsPanel {
     };
 
     void update(Config config) {
-        this->config = std::move(config);
+        using Text = Sakura::Text;
 
+        this->config = std::move(config);
         title.update({
-            .id = "LegalTitle",
             .str = "Legal",
-            .font = Sakura::Text::Font::Bold,
+            .font = Text::Font::Bold,
             .scale = 1.2f,
         });
-
         description.update({
-            .id = "LegalDescription",
             .str = "Software license and third-party acknowledgments.",
-            .tone = Sakura::Text::Tone::Secondary,
+            .tone = Text::Tone::Secondary,
             .wrapped = true,
         });
-
-        divider.update({
-            .id = "LegalHeaderDivider",
-        });
-
-        tabs.update({
-            .id = "##legal-tabs",
-            .labels = {"License", "Third-Party Licenses"},
-        });
-
-        spacing.update({
-            .id = "LegalSpacing",
-        });
-
-        licenseScroll.update({
-            .id = "license_scroll",
-        });
-
-        thirdPartyScroll.update({
-            .id = "oss_scroll",
-        });
-
+        divider.update({});
+        licenseSpacing.update({});
+        introSpacing.update({});
+        scrollSpacing.update({});
+        buttonSpacing.update({});
         licenseText.update({
-            .id = "LegalLicenseText",
             .str = "MIT License\n"
                    "\n"
                    "Copyright (c) 2021-2026 Luigi F. Cruz\n"
@@ -75,16 +55,12 @@ struct LegalSettingsPanel {
                    "OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\n"
                    "SOFTWARE.",
         });
-
         introText.update({
-            .id = "LegalIntroText",
             .str = "CyberEther utilizes the following open-source third-party software,\n"
                    "and we extend our gratitude to the creators of these libraries for\n"
                    "their valuable contributions to the open-source community.",
         });
-
         thirdPartyText.update({
-            .id = "LegalThirdPartyText",
             .str = "- Miniaudio - MIT License\n"
                    "- Dear ImGui - MIT License\n"
                    "- ImNodes - MIT License\n"
@@ -144,44 +120,49 @@ struct LegalSettingsPanel {
                    "- Velopack - MIT License\n"
                    // [NEW DEPENDENCY HOOK]
         });
-
         viewFullLicensesButton.update({
-            .id = "LegalViewFullLicenses",
             .str = "View Full Licenses",
-            .size = {-1.0f, 0.0f},
+            .size = {Sakura::Fill, 0.0f},
             .onClick = [this]() {
                 if (this->config.onViewFullLicenses) {
                     this->config.onViewFullLicenses();
                 }
             },
         });
-    }
-
-    void render(const Sakura::Context& ctx) const {
-        title.render(ctx);
-        description.render(ctx);
-        divider.render(ctx);
-
-        tabs.render(ctx, {
-            [this](const Sakura::Context& ctx) {
-                spacing.render(ctx);
-                licenseScroll.render(ctx, [&](const Sakura::Context& ctx) {
-                    licenseText.render(ctx);
-                });
-            },
-            [this](const Sakura::Context& ctx) {
-                spacing.render(ctx);
-                introText.render(ctx);
-                spacing.render(ctx);
-
-                thirdPartyScroll.render(ctx, [&](const Sakura::Context& ctx) {
-                    thirdPartyText.render(ctx);
-                });
-
-                spacing.render(ctx);
-                viewFullLicensesButton.render(ctx);
+        licenseScroll.update({.content = &licenseText});
+        thirdPartyScroll.update({.content = &thirdPartyText});
+        licensePage.update({
+            .items = {
+                {.child = &licenseSpacing},
+                {.child = &licenseScroll},
             },
         });
+        thirdPartyPage.update({
+            .items = {
+                {.child = &introSpacing},
+                {.child = &introText},
+                {.child = &scrollSpacing},
+                {.child = &thirdPartyScroll},
+                {.child = &buttonSpacing},
+                {.child = &viewFullLicensesButton},
+            },
+        });
+        tabs.update({
+            .labels = {"License", "Third-Party Licenses"},
+            .pages = {&licensePage, &thirdPartyPage},
+        });
+        stack.update({
+            .items = {
+                {.child = &title},
+                {.child = &description},
+                {.child = &divider},
+                {.child = &tabs},
+            },
+        });
+    }
+
+    Sakura::Component& content() {
+        return stack;
     }
 
  private:
@@ -189,14 +170,20 @@ struct LegalSettingsPanel {
     Sakura::Text title;
     Sakura::Text description;
     Sakura::Divider divider;
-    Sakura::TabBar tabs;
-    Sakura::Spacing spacing;
-    Sakura::ScrollArea licenseScroll;
-    Sakura::ScrollArea thirdPartyScroll;
-    Sakura::Button viewFullLicensesButton;
+    Sakura::Spacer licenseSpacing;
+    Sakura::Spacer introSpacing;
+    Sakura::Spacer scrollSpacing;
+    Sakura::Spacer buttonSpacing;
     Sakura::Text licenseText;
     Sakura::Text introText;
     Sakura::Text thirdPartyText;
+    Sakura::Button viewFullLicensesButton;
+    Sakura::ScrollArea licenseScroll;
+    Sakura::ScrollArea thirdPartyScroll;
+    Sakura::Stack licensePage;
+    Sakura::Stack thirdPartyPage;
+    Sakura::TabBar tabs;
+    Sakura::Stack stack;
 };
 
 }  // namespace Jetstream

@@ -4,6 +4,8 @@
 #include "error.hh"
 #include "types.hh"
 
+#include "../field_tooltip.hh"
+
 namespace Jetstream {
 
 struct FlowgraphMetricLabel {
@@ -12,17 +14,18 @@ struct FlowgraphMetricLabel {
     void update(Config config) {
         this->config = std::move(config);
         parseValue();
+        help.update(this->config.id, this->config.help);
         frame.update({
             .id = this->config.id,
             .label = this->config.label,
-            .help = this->config.help,
+            .tooltip = help.overlay(),
             .background = false,
+            .content = errorText.empty() ? static_cast<Sakura::Component*>(&text) : &error.component(),
         });
         text.update({
             .id = this->config.id + "Text",
             .str = value,
-            .align = Sakura::Text::Align::Right,
-            .clipped = true,
+            .align = Sakura::NodeLabel::Align::Right,
         });
         error.update({
             .id = this->config.id + "Error",
@@ -30,14 +33,8 @@ struct FlowgraphMetricLabel {
         });
     }
 
-    void render(const Sakura::Context& ctx) const {
-        frame.render(ctx, [this](const Sakura::Context& ctx) {
-            if (!errorText.empty()) {
-                error.render(ctx);
-            } else {
-                text.render(ctx);
-            }
-        });
+    Sakura::Component& component() {
+        return frame;
     }
 
  private:
@@ -59,6 +56,7 @@ struct FlowgraphMetricLabel {
     Config config;
     std::string value;
     std::string errorText;
+    FlowgraphFieldTooltip help;
     Sakura::NodeField frame;
     FlowgraphMetricError error;
     Sakura::NodeLabel text;

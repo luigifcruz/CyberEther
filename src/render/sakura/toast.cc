@@ -1,6 +1,9 @@
 #include <jetstream/render/sakura/toast.hh>
 
 #include "helpers.hh"
+#include "toast_queue.hh"
+
+#include <mutex>
 
 #include <regex>
 
@@ -11,23 +14,30 @@ std::string CleanUserMessage(std::string message) {
     return std::regex_replace(message, prefix, "");
 }
 
-void PushToast(const ToastType type, const I32 durationMs, const std::string& message) {
-    ImGuiToastType toastType = ImGuiToastType_Info;
-    switch (type) {
-        case ToastType::Info:
-            toastType = ImGuiToastType_Info;
-            break;
-        case ToastType::Success:
-            toastType = ImGuiToastType_Success;
-            break;
-        case ToastType::Warning:
-            toastType = ImGuiToastType_Warning;
-            break;
-        case ToastType::Error:
-            toastType = ImGuiToastType_Error;
-            break;
-    }
-    ImGui::InsertNotification({toastType, durationMs, message.c_str()});
+namespace {
+
+std::mutex& ToastMutex() {
+    static std::mutex mutex;
+    return mutex;
+}
+
+std::vector<Private::QueuedToast>& ToastQueue() {
+    static std::vector<Private::QueuedToast> queue;
+    return queue;
+}
+
+}  // namespace
+
+std::vector<Private::QueuedToast> Private::TakeToasts() {
+    std::lock_guard<std::mutex> lock(ToastMutex());
+    std::vector<QueuedToast> taken;
+    taken.swap(ToastQueue());
+    return taken;
+}
+
+void PushToast(const ToastType type, const I32 durationMs, const std::string& message, const std::string& title) {
+    std::lock_guard<std::mutex> lock(ToastMutex());
+    ToastQueue().push_back({.type = type, .durationMs = durationMs, .message = message, .title = title});
 }
 
 void PushToastResult(const Result value, const std::string& message) {

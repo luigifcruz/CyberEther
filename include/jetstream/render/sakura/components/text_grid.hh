@@ -1,0 +1,161 @@
+#ifndef JETSTREAM_RENDER_SAKURA_TEXT_GRID_HH
+#define JETSTREAM_RENDER_SAKURA_TEXT_GRID_HH
+
+#include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/typography.hh>
+#include <jetstream/types.hh>
+
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace Jetstream::Sakura {
+
+struct TextGrid : public Component {
+    struct Position {
+        U64 line = 0;
+        U64 column = 0;
+
+        bool operator==(const Position&) const = default;
+    };
+
+    using StyleId = U8;
+
+    enum class Wrap : U8 {
+        None,
+        Character,
+        Word,
+    };
+
+    struct LineMetrics {
+        F32 top = 0.0f;
+        F32 height = 0.0f;
+    };
+
+    struct Metrics {
+        F32 contentHeight = 0.0f;
+        F32 contentWidth = 0.0f;
+        F32 scrollX = 0.0f;
+        F32 scrollY = 0.0f;
+        F32 scrollbarGutter = 0.0f;
+        Padding padding;
+        std::vector<LineMetrics> sourceLines;
+    };
+
+    enum class RowMode : U8 {
+        Next,
+        Same,
+        Below,
+    };
+
+    struct WidthLayout {
+        std::vector<F32> lineIndent;
+        std::vector<F32> lineWrapWidth;
+        std::vector<RowMode> lineRowMode;
+        F32 contentMinWidth = 0.0f;
+
+        bool operator==(const WidthLayout&) const = default;
+    };
+
+    struct Config {
+        std::string id;
+        std::string value;
+        bool editable = false;
+        F32 fontSize = Typography::FontSize;
+        F32 fontScale = 1.0f;
+        F32 lineHeight = Typography::CodeLineHeight;
+        std::string fontName = "default_mono";
+        bool monospace = true;
+        bool lineNumbers = false;
+        bool showActiveLine = true;
+        bool stickToBottom = false;
+        bool scrollbar = true;
+        Extent2D<F32> scrollbarInset = {0.0f, 0.0f};
+        Wrap wrap = Wrap::None;
+        std::optional<Padding> padding;
+        std::vector<F32> lineScale;
+        std::vector<F32> lineTopGap;
+        std::vector<F32> lineIndent;
+        std::vector<RowMode> lineRowMode;
+        std::vector<F32> lineWrapWidth;
+        std::vector<F32> lineRightInset;
+        F32 contentMinWidth = 0.0f;
+        U64 visibleLineCapacity = 64;
+        std::string backgroundColorKey = "transparent";
+        std::string textColorKey = "text_primary";
+        std::string lineNumberColorKey = "editor_line_number";
+        std::string gutterSeparatorColorKey = "editor_gutter_separator";
+        std::string selectionColorKey = "editor_selection";
+        std::string selectionMatchColorKey = "editor_selection_match";
+        std::string activeLineColorKey = "editor_active_line";
+        std::string cursorColorKey = "editor_cursor";
+        std::string scrollbarTrackColorKey = "editor_scrollbar_track";
+        std::string scrollbarThumbColorKey = "editor_scrollbar_thumb";
+        std::vector<std::string> styleColorKeys;
+        std::vector<std::string> styleFonts;
+        std::vector<std::string> styleBackgroundColorKeys;
+        std::vector<F32> styleScales;
+        std::string iconFont = Typography::IconFont;
+        U64 maxLineSegments = 64;
+        U64 styleRevision = 0;
+        bool submitOnEnter = false;
+        bool singleLine = false;
+        bool selectAllOnFocus = false;
+        Callback<bool(U32)> characterFilter;
+        Callback<const std::vector<std::vector<StyleId>>&(
+            const std::vector<std::string>& lines, U64 revision)> styler;
+        Callback<WidthLayout(F32 textWidth)> widthLayout;
+        Callback<bool(StyleId)> isStyleCommentOrString;
+        Callback<void(std::string)> onChange;
+        Callback<void(std::string)> onSubmit;
+        Callback<void()> onCancel;
+        Callback<void(bool)> onFocusChange;
+        Callback<void(Position start, Position end)> onSelect;
+        Callback<bool(Position)> onPositionClick;
+        Callback<bool(Position)> isPositionInteractive;
+        Callback<void(const Metrics&)> onLayout;
+        Callback<std::optional<std::string>(
+            const std::vector<std::string>& lines, Position cursor)> computeNewlineIndent;
+        Callback<std::optional<std::pair<Position, Position>>(
+            const std::vector<std::string>& lines, Position anchor, Position cursor)> expandSelection;
+
+        bool operator==(const Config&) const = default;
+    };
+
+    TextGrid();
+    ~TextGrid();
+
+    void update(Config config);
+    const Metrics& metrics() const;
+    F32 naturalWidth() const;
+
+    Position cursor() const;
+    void setCursor(Position position);
+    bool focused() const;
+    void focus(bool selectAll = false);
+    void offerFocus(bool offered, bool selectAll = false);
+    void blur();
+    void revert();
+    void moveCursorRows(I64 delta, bool extendSelection = false);
+
+ protected:
+    Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
+    void layout(const Context& ctx) override;
+    bool mouseEvent(const MouseEvent& event) override;
+    std::optional<SurfaceCursor> cursorAt(const Extent2D<F32>& point) const override;
+    bool keyEvent(const KeyEvent& event) override;
+    bool textEvent(const TextEvent& event) override;
+    void focusChanged(bool focused) override;
+    bool editsText() const override;
+
+ private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+};
+
+}  // namespace Jetstream::Sakura
+
+#endif  // JETSTREAM_RENDER_SAKURA_TEXT_GRID_HH

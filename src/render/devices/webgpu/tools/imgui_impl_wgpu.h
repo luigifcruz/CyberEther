@@ -52,6 +52,7 @@ struct ImGui_ImplWGPU_InitInfo
 IMGUI_IMPL_API bool ImGui_ImplWGPU_Init(ImGui_ImplWGPU_InitInfo* init_info);
 IMGUI_IMPL_API void ImGui_ImplWGPU_Shutdown();
 IMGUI_IMPL_API void ImGui_ImplWGPU_NewFrame();
+IMGUI_IMPL_API void ImGui_ImplWGPU_PremultipliedAlphaCallback(const ImDrawList* drawList, const ImDrawCmd* command);
 IMGUI_IMPL_API void ImGui_ImplWGPU_RenderDrawData(ImDrawData* draw_data, WGPURenderPassEncoder pass_encoder);
 
 // Use if you want to reset your rendering device without losing Dear ImGui state.
