@@ -1139,7 +1139,7 @@ TEST_CASE("Titlebar presenter uses integrated window chrome and routes bar press
     config = TitlebarPresenter(mailbox.context()).build();
     CHECK(config.leadingInset == 0.0f);
     CHECK(config.height == 0.0f);
-    CHECK_NOTHROW(TitlebarPresenter::BarPress(nullptr, 2));
+    CHECK_NOTHROW(Sakura::Titlebar::Press(nullptr, 2));
 }
 
 TEST_CASE("Titlebar presenter opens the about settings but checks for updates only when a check can start",

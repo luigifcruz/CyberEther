@@ -3,7 +3,7 @@
 #include "compositor/default/actions/flowgraph.hh"
 #include "compositor/default/actions/workbench.hh"
 #include "compositor/default/model/surface_theme.hh"
-#include "compositor/default/themes.hh"
+#include "render/sakura/themes.hh"
 
 #include "jetstream/platform.hh"
 #include "jetstream/settings.hh"
@@ -107,8 +107,8 @@ TEST_CASE("Applying a theme rethemes tracked surfaces in place and saves the the
     if (!settingsPath) {
         SKIP("Settings cannot be redirected away from the user configuration on this platform.");
     }
-    REQUIRE(themes.contains("Dark"));
-    REQUIRE(themes.contains("Light"));
+    REQUIRE(Sakura::Themes.contains("Dark"));
+    REQUIRE(Sakura::Themes.contains("Light"));
 
     DefaultCompositorState state;
     DefaultCompositorCallbacks callbacks;
@@ -117,25 +117,25 @@ TEST_CASE("Applying a theme rethemes tracked surfaces in place and saves the the
         notifications.push_back(message);
     };
     state.sakura.themeKey = "Dark";
-    state.sakura.colorMap = themes.at("Dark");
+    state.sakura.colorMap = Sakura::Themes.at("Dark");
     const auto surfaces = TrackSurfaces(state, callbacks);
     WorkbenchActions actions(state, callbacks);
 
     REQUIRE(actions.handle(MailApplyTheme{"Light"}) == Result::SUCCESS);
     CHECK(notifications.empty());
     CHECK(state.sakura.themeKey == "Light");
-    CHECK(state.sakura.colorMap == themes.at("Light"));
+    CHECK(state.sakura.colorMap == Sakura::Themes.at("Light"));
     CHECK(&state.sakura.runtime.context().palette.get() == &state.sakura.colorMap);
 
-    const auto& light = themes.at("Light");
+    const auto& light = Sakura::Themes.at("Light");
     const auto& attached = state.flowgraph.surfaces.at(surfaces.attached.get()).event;
     CHECK(attached.placement == SurfacePlacementType::Attached);
-    CHECK(attached.theme == MakeSurfaceTheme(light, SurfacePlacementType::Attached));
+    CHECK(attached.theme == Sakura::MakeSurfaceTheme(light, SurfacePlacementType::Attached));
     CHECK(attached.size == Extent2D<U64>{320, 200});
     CHECK(attached.scale == 1.0f);
     const auto& detached = state.flowgraph.surfaces.at(surfaces.detached.get()).event;
     CHECK(detached.placement == SurfacePlacementType::Detached);
-    CHECK(detached.theme == MakeSurfaceTheme(light, SurfacePlacementType::Detached));
+    CHECK(detached.theme == Sakura::MakeSurfaceTheme(light, SurfacePlacementType::Detached));
     CHECK(detached.size == Extent2D<U64>{640, 480});
     CHECK(detached.scale == 2.0f);
 
@@ -152,7 +152,7 @@ TEST_CASE("Applying an unknown theme notifies and leaves surfaces and settings u
     if (!settingsPath) {
         SKIP("Settings cannot be redirected away from the user configuration on this platform.");
     }
-    REQUIRE(themes.contains("Dark"));
+    REQUIRE(Sakura::Themes.contains("Dark"));
 
     DefaultCompositorState state;
     DefaultCompositorCallbacks callbacks;
@@ -161,7 +161,7 @@ TEST_CASE("Applying an unknown theme notifies and leaves surfaces and settings u
         notifications.emplace_back(type, message);
     };
     state.sakura.themeKey = "Dark";
-    state.sakura.colorMap = themes.at("Dark");
+    state.sakura.colorMap = Sakura::Themes.at("Dark");
     const auto surfaces = TrackSurfaces(state, callbacks);
     const auto attachedTheme = state.flowgraph.surfaces.at(surfaces.attached.get()).event.theme;
     const auto detachedTheme = state.flowgraph.surfaces.at(surfaces.detached.get()).event.theme;
@@ -172,7 +172,7 @@ TEST_CASE("Applying an unknown theme notifies and leaves surfaces and settings u
     CHECK(notifications.front().first == Sakura::ToastType::Error);
     CHECK_FALSE(notifications.front().second.empty());
     CHECK(state.sakura.themeKey == "Dark");
-    CHECK(state.sakura.colorMap == themes.at("Dark"));
+    CHECK(state.sakura.colorMap == Sakura::Themes.at("Dark"));
     CHECK(state.flowgraph.surfaces.at(surfaces.attached.get()).event.theme == attachedTheme);
     CHECK(state.flowgraph.surfaces.at(surfaces.detached.get()).event.theme == detachedTheme);
     CHECK_FALSE(std::filesystem::exists(*settingsPath));

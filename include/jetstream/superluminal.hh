@@ -170,12 +170,12 @@ class Superluminal {
     }
 
     static Result Slider(const std::string& label, F32 min, F32 max, U64& value) {
-        F32 fValue = static_cast<F32>(value);
-        auto result = GetInstance()->slider(label, min, max, fValue);
-        value = static_cast<U64>(fValue);
-        return result;
+        return GetInstance()->slider(label, min, max, value);
     }
 
+    static Result Markdown(const std::string& content) {
+        return GetInstance()->markdown(content);
+    }
 
     static std::string RemoteRoomId();
     static std::string RemoteInviteUrl();
@@ -213,6 +213,8 @@ class Superluminal {
     Result box(const std::string& title, const Mosaic& mosaic, const std::function<void()>& callback);
     Result text(const std::string& content);
     Result slider(const std::string& label, F32 min, F32 max, F32& value);
+    Result slider(const std::string& label, F32 min, F32 max, U64& value);
+    Result markdown(const std::string& content);
 };
 
 }  // namespace Jetstream

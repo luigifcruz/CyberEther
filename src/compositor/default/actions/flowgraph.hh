@@ -626,7 +626,7 @@ struct FlowgraphActions {
         event.placement = (msg.placement == SurfacePlacement::Attached)
                               ? SurfacePlacementType::Attached
                               : SurfacePlacementType::Detached;
-        event.theme = MakeSurfaceTheme(state.sakura.colorMap, event.placement);
+        event.theme = Sakura::MakeSurfaceTheme(state.sakura.colorMap, event.placement);
         msg.surface->pushSurfaceEvent(event);
         state.flowgraph.surfaces[msg.surface.get()] = {.surface = msg.surface, .event = event};
 

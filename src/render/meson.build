@@ -3,7 +3,6 @@ src_lst += files([
     'colormap.cc',
     'kernel.cc',
     'surface.cc',
-    'surface_input.cc',
     'texture.cc',
     'transfer.cc',
     'window.cc',

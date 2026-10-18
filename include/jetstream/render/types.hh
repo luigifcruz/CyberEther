@@ -32,6 +32,7 @@ struct TitlebarChrome {
     bool integrated = false;
     F32 leadingInset = 0.0f;
     F32 height = 0.0f;
+    F32 controlsCenter = 0.0f;
 };
 
 }  // namespace Jetstream::Render

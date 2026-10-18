@@ -6,6 +6,8 @@
 #include "../model/messages.hh"
 #include "../views/titlebar.hh"
 
+#include "render/sakura/titlebar.hh"
+
 #include <memory>
 #include <string>
 
@@ -15,17 +17,6 @@ struct TitlebarPresenter {
     const PresenterContext& context;
 
     explicit TitlebarPresenter(const PresenterContext& context) : context(context) {}
-
-    static void BarPress(Render::Window* render, U8 clicks) {
-        if (!render) {
-            return;
-        }
-        if (clicks >= 2) {
-            render->zoomWindow();
-        } else {
-            render->beginWindowDrag();
-        }
-    }
 
     TitlebarView::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
@@ -40,7 +31,7 @@ struct TitlebarPresenter {
                                         !context.state.update.ready &&
                                         !context.state.update.applying;
         const std::shared_ptr<Render::Window> render = context.state.system.render;
-        const Render::TitlebarChrome chrome = render ? render->titlebarChrome() : Render::TitlebarChrome{};
+        const Sakura::Titlebar::Chrome chrome = Sakura::Titlebar::Resolve(render.get());
 
         const auto missing = [enqueue](const std::string& message) {
             enqueue(MailNotify{.type = Sakura::ToastType::Error, .durationMs = 5000, .message = message});
@@ -48,8 +39,8 @@ struct TitlebarPresenter {
 
         return TitlebarView::Config{
             .id = "main-titlebar",
-            .leadingInset = chrome.integrated ? chrome.leadingInset : 0.0f,
-            .height = chrome.integrated ? chrome.height : 0.0f,
+            .leadingInset = chrome.leadingInset,
+            .height = chrome.height,
             .remoteSupported = context.state.remote.supported,
             .remoteStarted = context.state.remote.started,
             .updateAvailable = context.state.update.available,
@@ -187,7 +178,7 @@ struct TitlebarPresenter {
                 }
             },
             .onBarPress = [render](U8 clicks) {
-                BarPress(render.get(), clicks);
+                Sakura::Titlebar::Press(render.get(), clicks);
             },
         };
     }

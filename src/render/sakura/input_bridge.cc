@@ -1,7 +1,6 @@
 #include <jetstream/render/sakura/clipboard.hh>
 
 #include "input.hh"
-#include "../surface_input.hh"
 
 #include "jetstream/render/tools/imgui_internal.h"
 
@@ -49,6 +48,132 @@ InputSource* GetInputSource(ImGuiContext* context) {
     return source;
 }
 
+ImGuiKey NativeKey(ImGuiKey key, bool macOS) {
+    if (macOS) {
+        switch (key) {
+            case ImGuiMod_Ctrl: return ImGuiMod_Super;
+            case ImGuiMod_Super: return ImGuiMod_Ctrl;
+            case ImGuiKey_LeftCtrl: return ImGuiKey_LeftSuper;
+            case ImGuiKey_RightCtrl: return ImGuiKey_RightSuper;
+            case ImGuiKey_LeftSuper: return ImGuiKey_LeftCtrl;
+            case ImGuiKey_RightSuper: return ImGuiKey_RightCtrl;
+            default: break;
+        }
+    }
+    return key;
+}
+
+void UpdateModifiers(KeyModifiers& modifiers, ImGuiKey key, bool down, bool macOS) {
+    switch (NativeKey(key, macOS)) {
+        case ImGuiMod_Ctrl: modifiers.control = down; break;
+        case ImGuiMod_Shift: modifiers.shift = down; break;
+        case ImGuiMod_Alt: modifiers.alt = down; break;
+        case ImGuiMod_Super: modifiers.super = down; break;
+        default: break;
+    }
+}
+
+KeyCode ToKeyCode(ImGuiKey key, bool macOS) {
+    key = NativeKey(key, macOS);
+    if (key >= ImGuiKey_0 && key <= ImGuiKey_9) {
+        return static_cast<KeyCode>(static_cast<U16>(KeyCode::Digit0) + key - ImGuiKey_0);
+    }
+    if (key >= ImGuiKey_A && key <= ImGuiKey_Z) {
+        return static_cast<KeyCode>(static_cast<U16>(KeyCode::A) + key - ImGuiKey_A);
+    }
+    if (key >= ImGuiKey_F1 && key <= ImGuiKey_F24) {
+        return static_cast<KeyCode>(static_cast<U16>(KeyCode::F1) + key - ImGuiKey_F1);
+    }
+    if (key >= ImGuiKey_Keypad0 && key <= ImGuiKey_Keypad9) {
+        return static_cast<KeyCode>(static_cast<U16>(KeyCode::Keypad0) + key - ImGuiKey_Keypad0);
+    }
+    switch (key) {
+#define JST_BRIDGE_KEY(name) case ImGuiKey_##name: return KeyCode::name;
+        JST_BRIDGE_KEY(Tab)
+        JST_BRIDGE_KEY(LeftArrow)
+        JST_BRIDGE_KEY(RightArrow)
+        JST_BRIDGE_KEY(UpArrow)
+        JST_BRIDGE_KEY(DownArrow)
+        JST_BRIDGE_KEY(PageUp)
+        JST_BRIDGE_KEY(PageDown)
+        JST_BRIDGE_KEY(Home)
+        JST_BRIDGE_KEY(End)
+        JST_BRIDGE_KEY(Insert)
+        JST_BRIDGE_KEY(Delete)
+        JST_BRIDGE_KEY(Backspace)
+        JST_BRIDGE_KEY(Space)
+        JST_BRIDGE_KEY(Enter)
+        JST_BRIDGE_KEY(Escape)
+        JST_BRIDGE_KEY(LeftCtrl)
+        JST_BRIDGE_KEY(LeftShift)
+        JST_BRIDGE_KEY(LeftAlt)
+        JST_BRIDGE_KEY(LeftSuper)
+        JST_BRIDGE_KEY(RightCtrl)
+        JST_BRIDGE_KEY(RightShift)
+        JST_BRIDGE_KEY(RightAlt)
+        JST_BRIDGE_KEY(RightSuper)
+        JST_BRIDGE_KEY(Menu)
+        JST_BRIDGE_KEY(Apostrophe)
+        JST_BRIDGE_KEY(Comma)
+        JST_BRIDGE_KEY(Minus)
+        JST_BRIDGE_KEY(Period)
+        JST_BRIDGE_KEY(Slash)
+        JST_BRIDGE_KEY(Semicolon)
+        JST_BRIDGE_KEY(Equal)
+        JST_BRIDGE_KEY(LeftBracket)
+        JST_BRIDGE_KEY(Backslash)
+        JST_BRIDGE_KEY(RightBracket)
+        JST_BRIDGE_KEY(GraveAccent)
+        JST_BRIDGE_KEY(CapsLock)
+        JST_BRIDGE_KEY(ScrollLock)
+        JST_BRIDGE_KEY(NumLock)
+        JST_BRIDGE_KEY(PrintScreen)
+        JST_BRIDGE_KEY(Pause)
+        JST_BRIDGE_KEY(KeypadDecimal)
+        JST_BRIDGE_KEY(KeypadDivide)
+        JST_BRIDGE_KEY(KeypadMultiply)
+        JST_BRIDGE_KEY(KeypadSubtract)
+        JST_BRIDGE_KEY(KeypadAdd)
+        JST_BRIDGE_KEY(KeypadEnter)
+        JST_BRIDGE_KEY(KeypadEqual)
+        JST_BRIDGE_KEY(AppBack)
+        JST_BRIDGE_KEY(AppForward)
+        JST_BRIDGE_KEY(Oem102)
+#undef JST_BRIDGE_KEY
+        default: return KeyCode::Unknown;
+    }
+}
+
+KeyModifiers CurrentModifiers() {
+    const auto& io = ImGui::GetIO();
+    return {io.ConfigMacOSXBehaviors ? io.KeySuper : io.KeyCtrl,
+            io.KeyShift, io.KeyAlt,
+            io.ConfigMacOSXBehaviors ? io.KeyCtrl : io.KeySuper};
+}
+
+ImGuiMouseCursor ToImGuiMouseCursor(const SurfaceCursor cursor) {
+    switch (cursor) {
+        case SurfaceCursor::Hand:
+            return ImGuiMouseCursor_Hand;
+        case SurfaceCursor::ResizeEW:
+            return ImGuiMouseCursor_ResizeEW;
+        case SurfaceCursor::ResizeNS:
+            return ImGuiMouseCursor_ResizeNS;
+        case SurfaceCursor::ResizeAll:
+            return ImGuiMouseCursor_ResizeAll;
+        case SurfaceCursor::ResizeNESW:
+            return ImGuiMouseCursor_ResizeNESW;
+        case SurfaceCursor::ResizeNWSE:
+            return ImGuiMouseCursor_ResizeNWSE;
+        case SurfaceCursor::TextInput:
+            return ImGuiMouseCursor_TextInput;
+        case SurfaceCursor::NotAllowed:
+            return ImGuiMouseCursor_NotAllowed;
+        default:
+            return ImGuiMouseCursor_Arrow;
+    }
+}
+
 }  // namespace
 
 void SetClipboardText(const std::string& value) {
@@ -94,7 +219,7 @@ void SampleInput(InputFrame& destination) {
     frame.advance(io.DeltaTime);
     frame.time = ImGui::GetTime();
     frame.windowFocused = !io.AppFocusLost;
-    frame.modifiers = detail::SurfaceKeyModifiers();
+    frame.modifiers = CurrentModifiers();
 
     const ImVec2 position = io.MousePos;
     frame.pointer.reset();
@@ -119,7 +244,7 @@ void SampleInput(InputFrame& destination) {
     KeyModifiers modifiers = frame.modifiers;
     for (int index = trail.Size - 1; index >= 0; --index) {
         if (trail[index].Type == ImGuiInputEventType_Key) {
-            detail::UpdateSurfaceModifiers(modifiers, trail[index].Key.Key, !trail[index].Key.Down, macOS);
+            UpdateModifiers(modifiers, trail[index].Key.Key, !trail[index].Key.Down, macOS);
         }
     }
 
@@ -176,8 +301,8 @@ void SampleInput(InputFrame& destination) {
                 if (!focused) source.clicks = {};
                 break;
             case ImGuiInputEventType_Key: {
-                detail::UpdateSurfaceModifiers(modifiers, event.Key.Key, event.Key.Down, macOS);
-                const KeyCode code = detail::SurfaceKeyCode(event.Key.Key, macOS);
+                UpdateModifiers(modifiers, event.Key.Key, event.Key.Down, macOS);
+                const KeyCode code = ToKeyCode(event.Key.Key, macOS);
                 if (focused && code != KeyCode::Unknown) {
                     frame.events.push_back(KeyEvent{event.Key.Down ? KeyEventType::Press : KeyEventType::Release,
                                                     code, modifiers});
@@ -222,7 +347,7 @@ void SampleInput(InputFrame& destination) {
 
     for (int value = ImGuiKey_NamedKey_BEGIN; value < ImGuiKey_NamedKey_END; ++value) {
         const auto key = static_cast<ImGuiKey>(value);
-        const KeyCode code = detail::SurfaceKeyCode(key, macOS);
+        const KeyCode code = ToKeyCode(key, macOS);
         if (focused && code != KeyCode::Unknown && ImGui::IsKeyDown(key) && ImGui::GetKeyData(key)->DownDuration > 0.0f &&
             ImGui::IsKeyPressed(key, true)) {
             frame.events.push_back(KeyEvent{KeyEventType::Press, code, frame.modifiers, true});
@@ -236,7 +361,7 @@ void SampleInput(InputFrame& destination) {
 
 void ApplyCursor(SurfaceCursor cursor) {
     if (cursor != SurfaceCursor::Default) {
-        ImGui::SetMouseCursor(detail::ToImGuiMouseCursor(cursor));
+        ImGui::SetMouseCursor(ToImGuiMouseCursor(cursor));
     }
 }
 

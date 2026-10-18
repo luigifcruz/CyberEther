@@ -4,6 +4,7 @@
 #include <jetstream/render/sakura/components/image.hh>
 
 #include "harness.hh"
+#include "scene.hh"
 #include "render/sakura/detail/input_router.hh"
 #include "render/sakura/detail/root_component.hh"
 
@@ -362,4 +363,31 @@ TEST_CASE("Same surface identity keeps a gesture through callback-only polling u
     CHECK(Count(events, MouseEventType::Cancel) == 0);
     CHECK(FocusCount(events, true) == 1);
     CHECK(FocusCount(events, false) == 0);
+}
+
+TEST_CASE("Surface images deliver the release of every button they were pressed with",
+          "[core][sakura][surface]") {
+    const auto texture = std::make_shared<InputTexture>();
+    std::vector<MouseEvent> events;
+    Sakura::SurfaceImage image;
+    image.update({
+        .texture = texture,
+        .onInput = [&](InputEvent event) {
+            if (const auto* mouse = std::get_if<MouseEvent>(&event)) {
+                events.push_back(*mouse);
+            }
+        },
+    });
+    SakuraTest::Host host(image);
+    SakuraTest::Scene scene;
+    host.place(scene.ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+    for (const auto button : {MouseButton::Middle, MouseButton::Left, MouseButton::Right}) {
+        events.clear();
+        CHECK(host.send(SakuraTest::Mouse(MouseEventType::Click, 50.0f, 50.0f, button)));
+        CHECK(host.send(SakuraTest::Mouse(MouseEventType::Release, 150.0f, 50.0f, button)));
+        REQUIRE(events.size() == 2);
+        CHECK(events[1].type == MouseEventType::Release);
+        CHECK(events[1].button == button);
+        CHECK_FALSE(host.send(SakuraTest::Mouse(MouseEventType::Release, 150.0f, 50.0f, button)));
+    }
 }

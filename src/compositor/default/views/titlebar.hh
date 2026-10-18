@@ -3,6 +3,8 @@
 
 #include "jetstream/render/sakura/base.hh"
 
+#include "render/sakura/titlebar.hh"
+
 #include <algorithm>
 #include <array>
 #include <functional>
@@ -14,7 +16,7 @@
 namespace Jetstream {
 
 struct TitlebarView {
-    static constexpr F32 MinimumHeight = 38.0f;
+    static constexpr F32 MinimumHeight = Sakura::Titlebar::MinimumHeight;
 
     enum class Action {
         About,

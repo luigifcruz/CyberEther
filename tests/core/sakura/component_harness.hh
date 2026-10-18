@@ -18,7 +18,7 @@
 #include "render/sakura/detail/popup_layer.hh"
 #include "render/sakura/detail/root_component.hh"
 
-#include "compositor/default/themes.hh"
+#include "render/sakura/themes.hh"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
@@ -704,7 +704,7 @@ inline void Release(LayerHost& host, Frames& frames, F32 x, F32 y) {
 inline const Jetstream::Sakura::Palette& DistinctPalette() {
     static const Jetstream::Sakura::Palette palette = [] {
         std::set<std::string> keys;
-        for (const auto& [name, theme] : Jetstream::themes) {
+        for (const auto& [name, theme] : Jetstream::Sakura::Themes) {
             for (const auto& [key, color] : theme) {
                 keys.insert(key);
             }

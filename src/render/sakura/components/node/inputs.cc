@@ -97,7 +97,7 @@ std::string FormatFloat(F32 value, I32 precision) {
 
 std::string FormatGeneral(F32 value) {
     char buffer[64];
-    std::snprintf(buffer, sizeof(buffer), "%.6g", static_cast<double>(value));
+    std::snprintf(buffer, sizeof(buffer), "%.*g", std::numeric_limits<F32>::max_digits10, static_cast<double>(value));
     return buffer;
 }
 

@@ -6,7 +6,7 @@
 #include "../../../model/messages.hh"
 #include "../../../views/modal/settings/general.hh"
 
-#include "compositor/default/themes.hh"
+#include "render/sakura/themes.hh"
 
 #include <string>
 
@@ -20,7 +20,7 @@ struct GeneralSettingsPresenter {
     GeneralSettingsPanel::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
         return GeneralSettingsPanel::Config{
-            .themes = BuildThemeKeys(),
+            .themes = Sakura::BuildThemeKeys(),
             .currentThemeKey = context.state.sakura.themeKey,
             .interfaceScale = context.state.graphics.scale,
             .renderer = context.state.graphics.device.has_value()

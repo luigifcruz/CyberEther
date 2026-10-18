@@ -7,7 +7,7 @@
 
 #include "actions/base.hh"
 #include "presenters/base.hh"
-#include "themes.hh"
+#include "render/sakura/themes.hh"
 
 #include "jetstream/platform.hh"
 #include "jetstream/logger.hh"
@@ -93,8 +93,8 @@ Result DefaultCompositor::create() {
 
     // Restore Sakura theme state.
 
-    state.sakura.themeKey = ResolveThemeKey(settings.interface.themeKey);
-    state.sakura.colorMap = themes.at(state.sakura.themeKey);
+    state.sakura.themeKey = Sakura::ResolveThemeKey(settings.interface.themeKey);
+    state.sakura.colorMap = Sakura::Themes.at(state.sakura.themeKey);
 
     // Restore graphics preferences.
 

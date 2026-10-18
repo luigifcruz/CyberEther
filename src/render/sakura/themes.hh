@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_THEMES_HH
-#define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_THEMES_HH
+#ifndef JETSTREAM_RENDER_SAKURA_THEMES_HH
+#define JETSTREAM_RENDER_SAKURA_THEMES_HH
 
 #include <jetstream/render/sakura/palette.hh>
 #include <jetstream/surface.hh>
@@ -10,9 +10,9 @@
 #include <unordered_map>
 #include <vector>
 
-namespace Jetstream {
+namespace Jetstream::Sakura {
 
-inline const std::unordered_map<std::string, Sakura::Palette> themes = {
+inline const std::unordered_map<std::string, Palette> Themes = {
     {
         "Dark", {
             // Core Brand Colors
@@ -396,7 +396,7 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
 };
 
 inline std::string ResolveThemeKey(const std::string& value) {
-    for (const auto& [key, _] : themes) {
+    for (const auto& [key, _] : Themes) {
         if (std::equal(key.begin(), key.end(), value.begin(), value.end(),
                        [](unsigned char lhs, unsigned char rhs) {
                            return std::tolower(lhs) == std::tolower(rhs);
@@ -409,14 +409,33 @@ inline std::string ResolveThemeKey(const std::string& value) {
 
 inline std::vector<std::string> BuildThemeKeys() {
     std::vector<std::string> themeKeys;
-    themeKeys.reserve(themes.size());
-    for (const auto& [themeKey, _] : themes) {
+    themeKeys.reserve(Themes.size());
+    for (const auto& [themeKey, _] : Themes) {
         themeKeys.push_back(themeKey);
     }
     std::sort(themeKeys.begin(), themeKeys.end());
     return themeKeys;
 }
 
-}  // namespace Jetstream
+inline SurfaceTheme MakeSurfaceTheme(const Palette& palette, SurfacePlacementType placement) {
+    SurfaceTheme theme;
+    const auto color = [&palette](const char* key, const ColorRGBA<F32>& fallback) {
+        const auto it = palette.find(key);
+        return it == palette.end() ? fallback : it->second;
+    };
+    theme.background = color(placement == SurfacePlacementType::Attached ? "node_background" : "tile_bg",
+                             theme.background);
+    theme.background.a = 1.0f;
+    theme.foreground = color("text_primary", theme.foreground);
+    theme.secondary = color("text_secondary", theme.secondary);
+    theme.grid = color("plot_grid", theme.grid);
+    theme.majorGrid = color("plot_grid_major", theme.majorGrid);
+    theme.accent = color("plot_accent", theme.accent);
+    theme.halo = color("plot_halo", theme.halo);
+    theme.pill = color("pill_field_bg", theme.pill);
+    return theme;
+}
 
-#endif  // JETSTREAM_COMPOSITOR_IMPL_DEFAULT_THEMES_HH
+}  // namespace Jetstream::Sakura
+
+#endif  // JETSTREAM_RENDER_SAKURA_THEMES_HH

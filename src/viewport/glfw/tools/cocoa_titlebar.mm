@@ -55,6 +55,7 @@ struct CocoaTitlebar::State {
     bool layingOut = false;
     CGFloat spacing = 0.0;
     CGFloat leadingInset = 0.0;
+    CGFloat controlsCenter = 0.0;
     mutable std::mutex mutex;
     Render::TitlebarChrome chrome;
     NSWindowStyleMask originalStyleMask = 0;
@@ -168,6 +169,8 @@ struct CocoaTitlebar::State {
             }
             if (i + 1 == buttons.size()) {
                 leadingInset = origin.x + size.width + LeadingGap;
+                const CGFloat middle = origin.y + size.height / 2.0;
+                controlsCenter = [[buttons[i] superview] isFlipped] ? middle : TitlebarHeight - middle;
             }
         }
 
@@ -180,6 +183,7 @@ struct CocoaTitlebar::State {
         if (window && !Fullscreen(window)) {
             next.leadingInset = static_cast<F32>(leadingInset);
             next.height = static_cast<F32>(TitlebarHeight);
+            next.controlsCenter = static_cast<F32>(controlsCenter);
         }
 
         std::lock_guard lock(mutex);

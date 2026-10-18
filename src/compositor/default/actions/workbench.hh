@@ -4,7 +4,7 @@
 #include "../model/callbacks.hh"
 #include "../model/messages.hh"
 #include "../model/state.hh"
-#include "../themes.hh"
+#include "render/sakura/themes.hh"
 
 #include "jetstream/settings.hh"
 #include "jetstream/platform.hh"
@@ -75,7 +75,7 @@ struct WorkbenchActions {
     }
 
     Result handle(const MailApplyTheme& msg) {
-        if (!themes.contains(msg.themeKey)) {
+        if (!Sakura::Themes.contains(msg.themeKey)) {
             callbacks.notify(Sakura::ToastType::Error,
                              5000,
                              "Cannot apply theme because it doesn't exist.");
@@ -83,7 +83,7 @@ struct WorkbenchActions {
         }
 
         state.sakura.themeKey = msg.themeKey;
-        state.sakura.colorMap = themes.at(state.sakura.themeKey);
+        state.sakura.colorMap = Sakura::Themes.at(state.sakura.themeKey);
         state.sakura.runtime.update({
             .palette = &state.sakura.colorMap,
             .render = state.system.render.get(),

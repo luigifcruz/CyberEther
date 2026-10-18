@@ -2,7 +2,7 @@
 
 #include "compositor/default/actions/flowgraph.hh"
 #include "compositor/default/model/surface_theme.hh"
-#include "compositor/default/themes.hh"
+#include "render/sakura/themes.hh"
 
 #include <memory>
 
@@ -10,9 +10,9 @@ using namespace Jetstream;
 
 TEST_CASE("Surface theme follows the placement background and the plot keys of each theme",
           "[core][compositor][surface-theme]") {
-    for (const auto& [key, palette] : themes) {
-        const auto detached = MakeSurfaceTheme(palette, SurfacePlacementType::Detached);
-        const auto attached = MakeSurfaceTheme(palette, SurfacePlacementType::Attached);
+    for (const auto& [key, palette] : Sakura::Themes) {
+        const auto detached = Sakura::MakeSurfaceTheme(palette, SurfacePlacementType::Detached);
+        const auto attached = Sakura::MakeSurfaceTheme(palette, SurfacePlacementType::Attached);
         CHECK(detached.background == palette.at("tile_bg"));
         CHECK(attached.background.r == palette.at("node_background").r);
         CHECK(attached.background.a == 1.0f);
@@ -24,7 +24,7 @@ TEST_CASE("Surface theme follows the placement background and the plot keys of e
         CHECK(detached.halo == palette.at("plot_halo"));
         CHECK(detached.pill == palette.at("pill_field_bg"));
     }
-    CHECK(MakeSurfaceTheme({}, SurfacePlacementType::Detached) == SurfaceTheme{});
+    CHECK(Sakura::MakeSurfaceTheme({}, SurfacePlacementType::Detached) == SurfaceTheme{});
 }
 
 TEST_CASE("Resized surfaces are tracked and rethemed when the theme changes",
@@ -32,8 +32,8 @@ TEST_CASE("Resized surfaces are tracked and rethemed when the theme changes",
     DefaultCompositorState state;
     DefaultCompositorCallbacks callbacks;
     FlowgraphActions actions(state, callbacks);
-    REQUIRE(themes.size() >= 2);
-    const auto first = themes.begin();
+    REQUIRE(Sakura::Themes.size() >= 2);
+    const auto first = Sakura::Themes.begin();
     const auto second = std::next(first);
     state.sakura.colorMap = first->second;
 
@@ -50,23 +50,23 @@ TEST_CASE("Resized surfaces are tracked and rethemed when the theme changes",
     const auto& tracked = state.flowgraph.surfaces.at(live.get()).event;
     CHECK(tracked.size == Extent2D<U64>{640, 480});
     CHECK(tracked.scale == 2.0f);
-    CHECK(tracked.theme == MakeSurfaceTheme(first->second, SurfacePlacementType::Detached));
+    CHECK(tracked.theme == Sakura::MakeSurfaceTheme(first->second, SurfacePlacementType::Detached));
 
     gone.reset();
     RethemeSurfaces(state.flowgraph.surfaces, second->second);
     REQUIRE(state.flowgraph.surfaces.size() == 1);
     const auto& rethemed = state.flowgraph.surfaces.at(live.get()).event;
-    CHECK(rethemed.theme == MakeSurfaceTheme(second->second, SurfacePlacementType::Detached));
+    CHECK(rethemed.theme == Sakura::MakeSurfaceTheme(second->second, SurfacePlacementType::Detached));
     CHECK(rethemed.size == Extent2D<U64>{640, 480});
     CHECK(rethemed.placement == SurfacePlacementType::Detached);
 }
 
 TEST_CASE("Every theme defines the same palette keys including the surface theme keys",
           "[core][compositor][surface-theme][palette]") {
-    REQUIRE(themes.contains("Dark"));
-    REQUIRE(themes.contains("Light"));
-    const auto& dark = themes.at("Dark");
-    for (const auto& [key, palette] : themes) {
+    REQUIRE(Sakura::Themes.contains("Dark"));
+    REQUIRE(Sakura::Themes.contains("Light"));
+    const auto& dark = Sakura::Themes.at("Dark");
+    for (const auto& [key, palette] : Sakura::Themes) {
         CAPTURE(key);
         for (const auto& [color, _] : dark) {
             CAPTURE(color);

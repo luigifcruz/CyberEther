@@ -147,11 +147,15 @@ NB_MODULE(_impl, m) {
     static std::vector<std::shared_ptr<nb::object>> stored_callbacks;
 
     m.def("box", [](const std::string& title, const Superluminal::Mosaic& mosaic, nb::object callback) {
-        stored_callbacks.push_back(std::make_shared<nb::object>(std::move(callback)));
-        return Superluminal::Box(title, mosaic, [&]() {
-            if (Py_IsInitialized()) {
-                nb::gil_scoped_acquire gil;
-                (*stored_callbacks.back())();
+        auto stored = std::make_shared<nb::object>(std::move(callback));
+        stored_callbacks.push_back(stored);
+        return Superluminal::Box(title, mosaic, [weak = std::weak_ptr<nb::object>(stored)]() {
+            if (!Py_IsInitialized()) {
+                return;
+            }
+            nb::gil_scoped_acquire gil;
+            if (const auto callback = weak.lock()) {
+                (*callback)();
             }
         });
     }, nb::arg("title"), nb::arg("mosaic"), nb::arg("callback"));
@@ -174,6 +178,8 @@ NB_MODULE(_impl, m) {
         value_list[0] = value;
         return result;
     }, nb::arg("label"), nb::arg("min"), nb::arg("max"), nb::arg("value"));
+
+    m.def("markdown", &Superluminal::Markdown, nb::arg("content"));
 
     m.def("mosaic_layout", &Superluminal::MosaicLayout);
 }

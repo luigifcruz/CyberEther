@@ -15,10 +15,15 @@
 #include "jetstream/superluminal.hh"
 #include "jetstream/macros.hh"
 #include "jetstream/module_surface.hh"
-#include "imgui.h"
+#include "jetstream/render/base/window.hh"
+#include "jetstream/render/sakura/components/root.hh"
+
+#include "render/sakura/runtime.hh"
+#include "render/sakura/themes.hh"
+#include "render/sakura/titlebar.hh"
 
 #include "dmi_block.hh"
-#include "surface_interaction.hh"
+#include "view.hh"
 
 namespace Jetstream {
 
@@ -136,7 +141,7 @@ struct Superluminal::Impl {
     std::thread presentThread;
     std::unique_ptr<Instance::Remote::Supervisor> supervisor;
 
-    Extent2D<U8> mosaicDims;
+    Extent2D<U8> mosaicDims = {0, 0};
 
     struct PlotState {
         std::string name;
@@ -145,21 +150,33 @@ struct Superluminal::Impl {
         Extent2D<U8> mosaicSize;
         PlotConfig config;
         std::string block;
-        std::function<void()> callback;
+        SuperluminalView::InterfaceCallback callback;
         bool active = false;
-        U64 surfaceWidth = 0;
-        U64 surfaceHeight = 0;
-        std::unordered_map<ImGuiID, detail::SurfaceInputState> surfaceInputs;
     };
 
     std::unordered_map<std::string, PlotState> plots;
-    std::function<void()> globalCallback;
-    F32 globalCallbackHeight = 0.0f;
+    SuperluminalView::InterfaceCallback globalCallback;
+
+    Sakura::Palette palette;
+    Sakura::Runtime runtime;
+    std::shared_ptr<Render::Window> render;
+    std::shared_ptr<Viewport::Generic> viewport;
+    std::optional<bool> previousIntegratedTitlebar;
+    std::unique_ptr<SuperluminalView> view;
+    std::unique_ptr<Sakura::Root> root;
+
+    ~Impl() {
+        destroyView();
+    }
+
+    void createView();
+    void destroyView();
+    Result updateView();
+    Result renderView();
 
     Result createGraph();
     Result destroyGraph();
 
-    Result validateBounds();
     Result validateMosaic(const Mosaic& mosaic);
     Result validateName(const std::string& name);
 
@@ -345,11 +362,9 @@ Result Superluminal::start() {
 
     JST_CHECK(impl->instance->start());
 
-    // Customize ImGui style.
+    // Create the retained interface.
 
-    ImGui::GetStyle().ScaleAllSizes(impl->config.interfaceScale);
-    ImGui::GetStyle().Colors[ImGuiCol_WindowBg] = ImVec4(0.0f, 0.0f, 0.0f, 1.0f);
-    ImGui::GetStyle().WindowRounding = 0.0f;
+    impl->createView();
 
     if (impl->config.remote && impl->instance->remote()) {
         impl->supervisor = std::make_unique<Instance::Remote::Supervisor>(
@@ -388,114 +403,21 @@ Result Superluminal::start() {
     });
 
     impl->presentThread = std::thread([&]{
+        bool rendered = true;
         while (impl->instance->presenting()) {
+            if (rendered) {
+                rendered = false;
+                if (impl->updateView() != Result::SUCCESS) {
+                    break;
+                }
+            }
+
             auto res = impl->instance->present([&]() -> Result {
+                rendered = true;
                 if (!impl->running) {
                     return Result::SUCCESS;
                 }
-
-                if (impl->globalCallback) {
-                    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-
-                    ImGui::SetNextWindowPos(viewport->WorkPos);
-                    ImGui::SetNextWindowSize({viewport->WorkSize.x, 0.0f});
-
-                    ImGui::Begin("Global Interface", nullptr, ImGuiWindowFlags_NoSavedSettings |
-                                                              ImGuiWindowFlags_NoMove |
-                                                              ImGuiWindowFlags_NoDecoration);
-
-                    impl->globalCallback();
-
-                    impl->globalCallbackHeight = ImGui::GetWindowSize().y;
-
-                    ImGui::End();
-                }
-
-                for (auto& [_, plot] : impl->plots) {
-                    static ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration |
-                                                    ImGuiWindowFlags_NoMove |
-                                                    ImGuiWindowFlags_NoSavedSettings;
-
-                    // TODO: Implement more than one block for mosaic.
-
-                    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-
-                    const F32 controlsOffset = impl->globalCallbackHeight;
-
-                    ImVec2 workSize = {
-                        (viewport->WorkSize.x / impl->mosaicDims.x) * plot.mosaicSize.x,
-                        ((viewport->WorkSize.y - controlsOffset) / impl->mosaicDims.y) * plot.mosaicSize.y
-                    };
-
-                    ImVec2 workPos = {
-                        viewport->WorkPos.x + ((viewport->WorkSize.x / impl->mosaicDims.x) * plot.mosaicOffset.x),
-                        viewport->WorkPos.y + controlsOffset + (((viewport->WorkSize.y - controlsOffset) / impl->mosaicDims.y) * plot.mosaicOffset.y)
-                    };
-
-                    ImGui::SetNextWindowPos(workPos);
-                    ImGui::SetNextWindowSize(workSize);
-
-                    ImGui::Begin(plot.name.c_str(), nullptr, flags);
-
-                    if (plot.config.type == Type::Interface) {
-                        plot.callback();
-                    } else if (!plot.block.empty()) {
-                        std::vector<std::shared_ptr<Module::Surface>> surfaces;
-                        if (impl->flowgraph->view().surfaces(plot.block, surfaces) == Result::SUCCESS) {
-                            for (const auto& surface : surfaces) {
-                                for (const auto& manifest : surface->manifests()) {
-                                    const auto availableRegion = ImGui::GetContentRegionAvail();
-                                    const auto& io = ImGui::GetIO();
-
-                                    const U64 expectedWidth = availableRegion.x * io.DisplayFramebufferScale.x;
-                                    const U64 expectedHeight = availableRegion.y * io.DisplayFramebufferScale.y;
-
-                                    if (plot.surfaceWidth != static_cast<U64>(availableRegion.x) ||
-                                        plot.surfaceHeight != static_cast<U64>(availableRegion.y) ||
-                                        manifest.size.x != expectedWidth ||
-                                        manifest.size.y != expectedHeight) {
-                                        plot.surfaceWidth = availableRegion.x;
-                                        plot.surfaceHeight = availableRegion.y;
-
-                                        SurfaceEvent event;
-                                        event.type = SurfaceEventType::Resize;
-                                        event.size = {expectedWidth, expectedHeight};
-                                        event.scale = 0.5f * impl->config.interfaceScale * io.DisplayFramebufferScale.x;
-                                        surface->pushSurfaceEvent(event);
-                                    }
-
-                                    const auto cursorPos = ImGui::GetCursorScreenPos();
-                                    ImGui::Image(ImTextureRef(manifest.surface->raw()), availableRegion);
-
-                                    ImGui::SetCursorScreenPos(cursorPos);
-                                    ImGui::PushID(surface.get());
-                                    ImGui::PushID(manifest.id.c_str());
-                                    ImGui::InvisibleButton("##surface", availableRegion,
-                                                           ImGuiButtonFlags_MouseButtonLeft |
-                                                           ImGuiButtonFlags_MouseButtonRight);
-
-                                    detail::ForwardSuperluminalSurfaceInputEvents(
-                                        cursorPos, availableRegion, plot.surfaceInputs[ImGui::GetItemID()],
-                                        [surface](const InputEvent& event) {
-                                            surface->pushInputEvent(event);
-                                        });
-                                    if (ImGui::IsItemHovered() || ImGui::IsItemActive()) {
-                                        const auto cursor = surface->cursor();
-                                        if (cursor != SurfaceCursor::Default) {
-                                            ImGui::SetMouseCursor(detail::ToImGuiMouseCursor(cursor));
-                                        }
-                                    }
-                                    ImGui::PopID();
-                                    ImGui::PopID();
-                                }
-                            }
-                        }
-                    }
-
-                    ImGui::End();
-                }
-
-                return Result::SUCCESS;
+                return impl->renderView();
             });
 
             if (res != Result::SUCCESS) {
@@ -557,6 +479,10 @@ Result Superluminal::stop() {
     if (impl->presentThread.joinable()) {
         impl->presentThread.join();
     }
+
+    // Destroy the retained interface.
+
+    impl->destroyView();
 
     // Destroy graph.
 
@@ -1110,7 +1036,6 @@ Result Superluminal::Impl::destroyGraph() {
     // Destroy plots graph.
 
     for (auto& [_, state] : plots) {
-        state.surfaceInputs.clear();
         state.block = {};
     }
 
@@ -1802,12 +1727,141 @@ Result Superluminal::box(const std::string& title, const Mosaic& mosaic, const s
 }
 
 Result Superluminal::text(const std::string& content) {
-    ImGui::TextUnformatted(content.c_str());
-    return Result::SUCCESS;
+    if (!impl->view) {
+        JST_ERROR("[SUPERLUMINAL] Text must be called from an interface, box, or global interface callback.");
+        return Result::ERROR;
+    }
+    return impl->view->interface().text(content);
 }
 
 Result Superluminal::slider(const std::string& label, F32 min, F32 max, F32& value) {
-    ImGui::SliderFloat(label.c_str(), &value, min, max);
+    if (!impl->view) {
+        JST_ERROR("[SUPERLUMINAL] Slider must be called from an interface, box, or global interface callback.");
+        return Result::ERROR;
+    }
+    return impl->view->interface().slider(label, min, max, value, false);
+}
+
+Result Superluminal::slider(const std::string& label, F32 min, F32 max, U64& value) {
+    if (!impl->view) {
+        JST_ERROR("[SUPERLUMINAL] Slider must be called from an interface, box, or global interface callback.");
+        return Result::ERROR;
+    }
+    return impl->view->interface().slider(label, min, max, value);
+}
+
+Result Superluminal::markdown(const std::string& content) {
+    if (!impl->view) {
+        JST_ERROR("[SUPERLUMINAL] Markdown must be called from an interface, box, or global interface callback.");
+        return Result::ERROR;
+    }
+    return impl->view->interface().markdown(content);
+}
+
+void Superluminal::Impl::createView() {
+    palette = Sakura::Themes.at(Sakura::ResolveThemeKey({}));
+    render.reset();
+    instance->renderGet(render);
+    instance->viewportGet(viewport);
+    if (viewport && !previousIntegratedTitlebar.has_value()) {
+        previousIntegratedTitlebar = viewport->integratedTitlebar();
+        viewport->setIntegratedTitlebar(true);
+    }
+    view = std::make_unique<SuperluminalView>();
+    root = std::make_unique<Sakura::Root>();
+}
+
+void Superluminal::Impl::destroyView() {
+    root.reset();
+    view.reset();
+    runtime.update({});
+    if (viewport && previousIntegratedTitlebar.has_value()) {
+        viewport->setIntegratedTitlebar(*previousIntegratedTitlebar);
+        previousIntegratedTitlebar.reset();
+    }
+    viewport.reset();
+    render.reset();
+}
+
+Result Superluminal::Impl::updateView() {
+    if (!view || !root) {
+        return Result::SUCCESS;
+    }
+
+    const auto theme = Sakura::MakeSurfaceTheme(palette, SurfacePlacementType::Detached);
+
+    SuperluminalView::Config viewConfig;
+    viewConfig.title = config.windowTitle.empty() ? std::string("Superluminal") : config.windowTitle;
+    viewConfig.chrome = Sakura::Titlebar::Resolve(render.get());
+    viewConfig.onBarPress = [window = render.get()](U8 clicks) {
+        Sakura::Titlebar::Press(window, clicks);
+    };
+    viewConfig.global = globalCallback;
+    viewConfig.mosaic = mosaicDims;
+    for (const auto& [name, plot] : plots) {
+        SuperluminalView::Tile tile = {
+            .name = name,
+            .offset = plot.mosaicOffset,
+            .size = plot.mosaicSize,
+        };
+        if (plot.config.type == Type::Interface) {
+            tile.callback = plot.callback;
+        } else if (!plot.block.empty() && flowgraph) {
+            std::vector<std::shared_ptr<Module::Surface>> surfaces;
+            if (flowgraph->view().surfaces(plot.block, surfaces) == Result::SUCCESS) {
+                for (const auto& surface : surfaces) {
+                    if (!surface) {
+                        continue;
+                    }
+                    for (const auto& manifest : surface->manifests()) {
+                        if (!manifest.surface) {
+                            continue;
+                        }
+                        tile.surfaces.push_back({
+                            .texture = manifest.surface,
+                            .onSize = [surface, theme](const Sakura::SurfaceResize& resize) {
+                                SurfaceEvent event;
+                                event.type = SurfaceEventType::Resize;
+                                event.size = resize.framebufferSize;
+                                event.scale = resize.scale;
+                                event.placement = SurfacePlacementType::Detached;
+                                event.theme = theme;
+                                surface->pushSurfaceEvent(event);
+                            },
+                            .onInput = [surface](InputEvent event) {
+                                surface->pushInputEvent(event);
+                            },
+                            .resolveCursor = [surface]() {
+                                return surface->cursor();
+                            },
+                        });
+                    }
+                }
+            }
+        }
+        viewConfig.tiles.push_back(std::move(tile));
+    }
+
+    view->update(std::move(viewConfig));
+    root->update({
+        .id = "superluminal",
+        .layers = view->layers(),
+    });
+
+    return Result::SUCCESS;
+}
+
+Result Superluminal::Impl::renderView() {
+    if (!root) {
+        return Result::SUCCESS;
+    }
+
+    runtime.update({
+        .palette = &palette,
+        .render = render.get(),
+    });
+    root->render(runtime.context());
+
     return Result::SUCCESS;
 }
 
