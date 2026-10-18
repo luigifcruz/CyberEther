@@ -175,10 +175,10 @@ Result SignalViewLineplot::create(const std::shared_ptr<Render::Window>& window,
     signalUniforms.traceColor[2] = 0.0f;
     signalUniforms.traceColor[3] = 0.25f;
 
-    holdUniforms.traceColor[0] = 0.6f;
-    holdUniforms.traceColor[1] = 0.45f;
-    holdUniforms.traceColor[2] = 0.0f;
-    holdUniforms.traceColor[3] = 0.7f;
+    holdUniforms.traceColor[0] = 0.85f;
+    holdUniforms.traceColor[1] = 0.12f;
+    holdUniforms.traceColor[2] = 0.1f;
+    holdUniforms.traceColor[3] = 0.75f;
 
     return Result::SUCCESS;
 }
@@ -205,11 +205,11 @@ void SignalViewLineplot::layout(const glm::mat4& transform,
                                 const F32 panelScale,
                                 const F32 zoom,
                                 const Render::ScissorRect& scissor) {
+    const F32 width = detail::kSignalViewLineThickness * (config.overlay ? 2.0f : 3.0f);
     for (auto* uniforms : {&signalUniforms, &holdUniforms}) {
         uniforms->transform = transform;
-        uniforms->thickness[0] = pixelSize.x * detail::kSignalViewLineThickness * 3.0f;
-        uniforms->thickness[1] =
-            pixelSize.y * detail::kSignalViewLineThickness * 3.0f / panelScale;
+        uniforms->thickness[0] = pixelSize.x * width;
+        uniforms->thickness[1] = pixelSize.y * width / panelScale;
         uniforms->zoom = zoom;
         uniforms->numberOfPoints = config.numberOfElements;
     }

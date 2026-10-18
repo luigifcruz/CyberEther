@@ -49,7 +49,7 @@ struct Frame : public Block::Config {
         " Cover fills the view and crops the edges. Stretch fills the view and changes "
         "the proportions. |\n"
         "| **Colormap** | Grayscale | Grayscale, Turbo, Viridis, Inferno, Magma, "
-        "Plasma, Jet | Palette from low to high values. Shown only for single-channel "
+        "Plasma, Jet, Density | Palette from low to high values. Shown only for single-channel "
         "frames. |\n"
         "| **Auto Range** | On | On, Off | Maps the lowest and highest color value of "
         "each frame to the full display range. Off shows values from 0 to 1, and alpha "
@@ -110,7 +110,7 @@ struct Frame : public Block::Config {
         "## See Also\n"
         "\n"
         "- **Reshape** arranges a stream into rows for this view.\n"
-        "- **Spectrogram** shows how often each level occurs per bin.\n"
+        "- **Spectrum Analyzer** shows level density per bin with Spectral Density on.\n"
         "- **Waterfall** shows spectra as a scrolling image.\n"
         "- **Cast** converts other types to F32."
     );

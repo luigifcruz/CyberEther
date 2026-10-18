@@ -19,7 +19,7 @@ namespace {
 constexpr U64 kThreadsPerBlock = 256;
 constexpr U64 kMaxGridSizeX = std::numeric_limits<I32>::max();
 constexpr const char* kLineplotKernelName = "lineplot_update";
-constexpr const char* kLineplotWaterfallKernelName = "lineplot_waterfall_update";
+constexpr const char* kHistoryCopyKernelName = "history_copy_update";
 constexpr const char* kWaterfallAverageKernelName = "waterfall_average_update";
 constexpr const char* kLineplotKernelSource = R"(
 extern "C" __global__ void lineplot_update(const float* input,
@@ -33,7 +33,8 @@ extern "C" __global__ void lineplot_update(const float* input,
                                            float normalizationFactor,
                                            unsigned long long lineplotAveraging,
                                            unsigned int maxHoldEnabled,
-                                           unsigned int averagingInitialized) {
+                                           unsigned int averagingInitialized,
+                                           unsigned int linearAmplitude) {
     const unsigned long long index =
         (static_cast<unsigned long long>(blockIdx.x) * blockDim.x) + threadIdx.x;
     if (index >= numberOfElements) {
@@ -58,7 +59,8 @@ extern "C" __global__ void lineplot_update(const float* input,
     }
 
     lineplotAveragingBuffer[index] = average;
-    const float displayed = tanhf(2.0f * average);
+    const float displayed = linearAmplitude != 0 ? fminf(fmaxf(average, -1.0f), 1.0f)
+                                                 : tanhf(2.0f * average);
     signalPoints[(index * 2) + 1] = displayed;
 
     if (maxHoldEnabled != 0) {
@@ -70,17 +72,17 @@ extern "C" __global__ void lineplot_update(const float* input,
 }
 )";
 
-constexpr const char* kLineplotWaterfallKernelSource = R"(
+constexpr const char* kHistoryCopyKernelSource = R"(
 extern "C" __global__ void
-lineplot_waterfall_update(const float* input,
-                          float* waterfallBins,
-                          unsigned long long elementCount,
-                          unsigned long long inputElementStride,
-                          unsigned long long inputBatchStride,
-                          unsigned long long retainedBatches,
-                          unsigned long long height,
-                          unsigned long long sourceRow,
-                          unsigned long long destinationRow) {
+history_copy_update(const float* input,
+                    float* history,
+                    unsigned long long elementCount,
+                    unsigned long long inputElementStride,
+                    unsigned long long inputBatchStride,
+                    unsigned long long retainedBatches,
+                    unsigned long long height,
+                    unsigned long long sourceRow,
+                    unsigned long long destinationRow) {
     const unsigned long long index =
         (static_cast<unsigned long long>(blockIdx.x) * blockDim.x) + threadIdx.x;
     const unsigned long long workItemCount = retainedBatches * elementCount;
@@ -95,7 +97,7 @@ lineplot_waterfall_update(const float* input,
         (destinationRow + retainedBatch) % height;
 
     const float value = input[(sourceBatch * inputBatchStride) + (element * inputElementStride)];
-    waterfallBins[(destinationBatch * elementCount) + element] =
+    history[(destinationBatch * elementCount) + element] =
         isfinite(value) ? value : (value > 0.0f ? 1.0f : 0.0f);
 }
 )";
@@ -164,14 +166,17 @@ struct SignalViewImplNativeCuda : public SignalViewImpl,
     U64 waterfallGridSize = 0;
     U64 validatedLineplotGridSize = 0;
     U64 validatedWaterfallGridSize = 0;
+    U64 densityGridSize = 0;
+    U64 validatedDensityGridSize = 0;
     bool lineplotKernelCreated = false;
-    bool waterfallKernelCreated = false;
+    bool historyKernelCreated = false;
     bool waterfallAverageKernelCreated = false;
 };
 
 Result SignalViewImplNativeCuda::validate() {
     validatedLineplotGridSize = 0;
     validatedWaterfallGridSize = 0;
+    validatedDensityGridSize = 0;
     JST_CHECK(SignalViewImpl::validate());
 
     if (!inputs().contains("signal")) {
@@ -221,6 +226,18 @@ Result SignalViewImplNativeCuda::validate() {
         }
     }
 
+    if (validatedDensityEnabled) {
+        const U64 workItems = std::min(validatedNumberOfBatches, detail::kDensityHistoryRows) *
+                              validatedNumberOfElements;
+        validatedDensityGridSize = workItems / kThreadsPerBlock +
+                                   (workItems % kThreadsPerBlock != 0);
+        if (validatedDensityGridSize > kMaxGridSizeX) {
+            JST_ERROR("[MODULE_SIGNAL_VIEW_NATIVE_CUDA] Density size exceeds "
+                      "the CUDA grid limit.");
+            return Result::ERROR;
+        }
+    }
+
     return Result::SUCCESS;
 }
 
@@ -229,6 +246,7 @@ Result SignalViewImplNativeCuda::create() {
 
     lineplotGridSize = validatedLineplotGridSize;
     waterfallGridSize = validatedWaterfallGridSize;
+    densityGridSize = validatedDensityGridSize;
 
     if (lineplotEnabled) {
         JST_CHECK(lineplotAveragingBuffer.create(device(), DataType::F32, {numberOfElements}));
@@ -292,10 +310,12 @@ Result SignalViewImplNativeCuda::computeInitialize() {
         JST_CHECK(createKernel(kLineplotKernelName, kLineplotKernelSource));
         lineplotKernelCreated = true;
     }
+    if (waterfallEnabled || densityEnabled) {
+        JST_CHECK(createKernel(kHistoryCopyKernelName,
+                               kHistoryCopyKernelSource));
+        historyKernelCreated = true;
+    }
     if (waterfallEnabled) {
-        JST_CHECK(createKernel(kLineplotWaterfallKernelName,
-                               kLineplotWaterfallKernelSource));
-        waterfallKernelCreated = true;
         JST_CHECK(createKernel(kWaterfallAverageKernelName,
                                kWaterfallAverageKernelSource));
         waterfallAverageKernelCreated = true;
@@ -332,6 +352,7 @@ Result SignalViewImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
             maxHold && detail::LineplotMaxHoldReady(maxHoldWarmupBlocks, lineplotAveraging);
         U32 maxHoldEnabled = updateMaxHold ? 1 : 0;
         U32 averagingInitialized = lineplotAveragingInitialized ? 1 : 0;
+        U32 linearAmplitude = densityEnabled ? 1 : 0;
         void* arguments[] = {
             &inputArgument,
             &signalData,
@@ -345,6 +366,7 @@ Result SignalViewImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
             &lineplotAveraging,
             &maxHoldEnabled,
             &averagingInitialized,
+            &linearAmplitude,
         };
         const Extent3D<U64> grid = {
             lineplotGridSize,
@@ -413,7 +435,7 @@ Result SignalViewImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
                 1,
                 1,
             };
-            JST_CHECK(scheduleKernel(kLineplotWaterfallKernelName,
+            JST_CHECK(scheduleKernel(kHistoryCopyKernelName,
                                      stream,
                                      waterfallGrid,
                                      block,
@@ -421,6 +443,40 @@ Result SignalViewImplNativeCuda::computeSubmit(const cudaStream_t& stream) {
         }
         waterfallAveragingCount = averagePlan.pendingRows;
         waterfallHistory.advance(averagePlan.rowCount, waterfallHeight);
+    }
+
+    if (densityEnabled) {
+        void* densityData = densityBins.buffer().data();
+        if (!densityData) {
+            JST_ERROR("[MODULE_SIGNAL_VIEW_NATIVE_CUDA] Missing density "
+                      "state buffer.");
+            return Result::ERROR;
+        }
+
+        U64 height = detail::kDensityHistoryRows;
+        auto plan = PlanWaterfallWrite(densityHistory.writeIndex, numberOfBatches, height);
+        void* densityArguments[] = {
+            &inputArgument,
+            &densityData,
+            &numberOfElements,
+            &inputElementStride,
+            &inputBatchStride,
+            &plan.rowCount,
+            &height,
+            &plan.sourceRow,
+            &plan.destinationRow,
+        };
+        const Extent3D<U64> densityGrid = {
+            densityGridSize,
+            1,
+            1,
+        };
+        JST_CHECK(scheduleKernel(kHistoryCopyKernelName,
+                                 stream,
+                                 densityGrid,
+                                 block,
+                                 densityArguments));
+        densityHistory.advance(numberOfBatches, height);
     }
 
     if (lineplotEnabled && maxHold && maxHoldWarmupBlocks < lineplotAveraging) {
@@ -440,8 +496,8 @@ Result SignalViewImplNativeCuda::computeDeinitialize() {
         destroyKernel(kLineplotKernelName) != Result::SUCCESS) {
         result = Result::ERROR;
     }
-    if (waterfallKernelCreated &&
-        destroyKernel(kLineplotWaterfallKernelName) != Result::SUCCESS) {
+    if (historyKernelCreated &&
+        destroyKernel(kHistoryCopyKernelName) != Result::SUCCESS) {
         result = Result::ERROR;
     }
     if (waterfallAverageKernelCreated &&
@@ -450,7 +506,7 @@ Result SignalViewImplNativeCuda::computeDeinitialize() {
     }
 
     lineplotKernelCreated = false;
-    waterfallKernelCreated = false;
+    historyKernelCreated = false;
     waterfallAverageKernelCreated = false;
     return result;
 }

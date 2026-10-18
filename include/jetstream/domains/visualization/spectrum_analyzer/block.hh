@@ -18,6 +18,8 @@ struct SpectrumAnalyzer : public Block::Config {
     F32 rangeMax = 0.0f;
     U64 waterfallHeight = 1024;
     std::string colormap = "turbo";
+    bool density = false;
+    U64 persistence = 256;
     F32 splitRatio = 0.5f;
     std::vector<F32> markers;
     std::vector<U64> pins;
@@ -30,6 +32,7 @@ struct SpectrumAnalyzer : public Block::Config {
     JST_BLOCK_NODE_SIZE(L);
     JST_BLOCK_PARAMS(mode, lineplotAveraging, waterfallAveraging, maxHold,
                      fill, rangeMin, rangeMax, waterfallHeight, colormap,
+                     density, persistence,
                      splitRatio, markers, pins, xLabel, amplitudeLabel, waterfallLabel);
     JST_BLOCK_DESCRIPTION(
         "Spectrum Analyzer",
@@ -59,16 +62,16 @@ struct SpectrumAnalyzer : public Block::Config {
         "\n"
         "| Setting | Default | Range | Effect |\n"
         "|---|---|---|---|\n"
-        "| **Mode** | Lineplot + Waterfall | Lineplot + Waterfall, Spectrum, Waterfall,"
+        "| **Mode** | Spectrum + Waterfall | Spectrum + Waterfall, Spectrum, Waterfall,"
         " 3D Waterfall | Views drawn. The 3D option draws the history as a surface, "
         "without markers. |\n"
         "| **Colormap** | Turbo | Grayscale, Turbo, Viridis, Inferno, Magma, Plasma, "
-        "Jet | Palette from Range Min to Range Max. Hidden for Spectrum. |\n"
+        "Jet, Density | Palette from Range Min to Range Max. Hidden for Spectrum. |\n"
         "| **Range Min** | -100 dBFS | Any, slider -300 to 0 | Level at the bottom of "
         "the trace and the colors. |\n"
         "| **Range Max** | 0 dBFS | Any, slider -300 to 0 | Level at the top of the "
         "trace and the colors. |\n"
-        "| **Lineplot Averaging** | 1 | 1 or more, slider up to 256 | Smooths the trace"
+        "| **Spectrum Averaging** | 1 | 1 or more, slider up to 256 | Smooths the trace"
         " with an exponential average over about this many buffers. Averaging in dB "
         "reads noise about 2.51 dB below its mean power. Hidden for Waterfall and 3D "
         "Waterfall. |\n"
@@ -76,6 +79,12 @@ struct SpectrumAnalyzer : public Block::Config {
         "spectra averaged into each row. Hidden for Spectrum. |\n"
         "| **Max Hold** | Off | On, Off | Adds a trace of the highest level seen. "
         "Hidden for Waterfall and 3D Waterfall. |\n"
+        "| **Spectral Density** | Off | On, Off | Draws how often each level occurs "
+        "behind the trace, with a linear amplitude axis. Hidden for Waterfall and 3D "
+        "Waterfall. |\n"
+        "| **Persistence** | 256 spectra | 1 or more, slider up to 4,096 | Spectra it "
+        "takes for the density to fade to half. Hidden while Spectral Density is off, "
+        "and for Waterfall and 3D Waterfall. |\n"
         "| **Waterfall Height** | 1,024 rows | 1 to 8,192, at least 2 for 3D Waterfall "
         "| Rows of history. Hidden for Spectrum. |\n"
         "\n"
@@ -87,7 +96,7 @@ struct SpectrumAnalyzer : public Block::Config {
         "|---|---|---|---|\n"
         "| Live band view | Defaults | 8,192 samples per buffer | 8,192 bins and 1,024 "
         "rows covering 4.2 seconds |\n"
-        "| Steady trace with peaks | Spectrum, Lineplot Averaging 16, Max Hold on | "
+        "| Steady trace with peaks | Spectrum, Spectrum Averaging 16, Max Hold on | "
         "8,192 samples per buffer | A trace averaged over about 66 ms, plus the peak "
         "trace |\n"
         "| Long history | Waterfall, Waterfall Averaging 8 | 8,192 samples per buffer |"
@@ -127,7 +136,7 @@ struct SpectrumAnalyzer : public Block::Config {
         "| Show the distances to neighboring markers | Hover a marker tag, click it to "
         "pin |\n"
         "| Unpin every tag | Escape |\n"
-        "| Resize the trace and waterfall | Drag the border between them. Lineplot + "
+        "| Resize the trace and waterfall | Drag the border between them. Spectrum + "
         "Waterfall only. |\n"
         "| Orbit around the surface | Drag in 3D Waterfall |\n"
         "| Pan the view | Right Drag in 3D Waterfall |\n"
@@ -139,9 +148,8 @@ struct SpectrumAnalyzer : public Block::Config {
         "Each batch gets a Blackman window and an FFT centered on the tuned frequency, "
         "then the magnitude is converted to dBFS. Stitched sweeps from SDR Sweep are "
         "already windowed per hop, so they skip the window and only get the centered "
-        "FFT. The trace keeps an exponential "
-        "average, the waterfall keeps a ring buffer of rows, and both compress levels "
-        "past the range softly instead of clipping.\n"
+        "FFT. Levels past the range are compressed softly, except on the trace with "
+        "Spectral Density on, where they clip.\n"
         "\n"
         "## See Also\n"
         "\n"

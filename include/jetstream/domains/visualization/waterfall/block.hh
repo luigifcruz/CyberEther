@@ -53,7 +53,7 @@ struct Waterfall : public Block::Config {
         "| **Averaging** | 1 | 1 or more, slider up to 64 | Consecutive rows averaged "
         "into each displayed row. |\n"
         "| **Colormap** | Turbo | Grayscale, Turbo, Viridis, Inferno, Magma, Plasma, "
-        "Jet | Palette from low to high values. |\n"
+        "Jet, Density | Palette from low to high values. |\n"
         "\n"
         "## Recipes\n"
         "\n"
