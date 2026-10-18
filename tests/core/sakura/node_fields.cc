@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 #include <variant>
@@ -493,6 +494,37 @@ TEST_CASE("Full width node grid items break the column groups around them", kTag
 
     grid.update({.id = "grid"});
     CHECK(host.measureOf(ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 0.0f});
+}
+
+TEST_CASE("Node field grid columns and full width rows preserve the parent clip at every pixel ratio", kTags) {
+    const F32 scale = GENERATE(1.0f, 2.0f);
+    const U64 columns = GENERATE(1, 2, 3);
+    const bool fullWidth = GENERATE(false, true);
+    auto ctx = MakeContext();
+    ctx.pixelRatio = scale;
+    std::vector<std::unique_ptr<Probe>> probes;
+    Sakura::NodeFieldGrid grid;
+    Sakura::NodeFieldGrid::Config config{.id = "clipped-grid"};
+    for (U64 i = 0; i < columns * 2; ++i) {
+        probes.push_back(std::make_unique<Probe>(Extent2D<F32>{0.0f, 40.0f * scale}));
+        config.items.push_back({.child = probes.back().get(), .fullWidth = fullWidth});
+    }
+    grid.update(std::move(config));
+    const F32 width = 160.0f * columns * scale;
+    Place placement(grid, {100.0f, 100.0f, width, 300.0f * scale});
+    Host host(placement, true);
+    const Rect clip{100.0f, 100.0f + 5.0f * scale, width - 20.0f * scale, 50.0f * scale};
+    host.place(ctx, clip);
+    CHECK(Peek::Clip(host) == clip);
+    REQUIRE_FALSE(probes.front()->laidClip.empty());
+    for (const auto& probe : probes) {
+        if (!probe->laidClip.empty()) {
+            CHECK(probe->laidClip.x >= clip.x);
+            CHECK(probe->laidClip.y >= clip.y);
+            CHECK(probe->laidClip.right() <= clip.right());
+            CHECK(probe->laidClip.bottom() <= clip.bottom());
+        }
+    }
 }
 
 TEST_CASE("Node content stacks space items by default, custom and trailing gaps and skip hidden items", kTags) {
@@ -1465,6 +1497,12 @@ TEST_CASE("Node label values stay one line tall for long, unbroken and multi-lin
     SECTION("device name") {
         value = "LimeSDR Mini [USB 3.0] 1D4249D8AEC2A9";
     }
+    SECTION("short value") {
+        value = "AAAA";
+    }
+
+    Sakura::TextMetrics metrics;
+    metrics.setWindow(scene.ctx.render);
 
     for (const auto align : {Sakura::NodeLabel::Align::Left, Sakura::NodeLabel::Align::Right,
                              Sakura::NodeLabel::Align::Center}) {
@@ -1473,6 +1511,17 @@ TEST_CASE("Node label values stay one line tall for long, unbroken and multi-lin
             CAPTURE(width);
             CHECK(host.measureOf(scene.ctx, {width, kInfinite}) == Extent2D<F32>{width, 15.0f});
             host.place(scene.ctx, {0.0f, 0.0f, width, 15.0f});
+            const auto labels = Find<Sakura::Label>(label);
+            REQUIRE(labels.size() == 1);
+            const auto& config = labels.front()->config();
+            REQUIRE(config.instances.size() == 1);
+            const auto& instance = config.instances.front();
+            CHECK(instance.str == value.substr(0, value.find('\n')));
+            CHECK(instance.rect == Rect{0.0f, 0.0f, width, 15.0f});
+            const bool overflows = metrics.measure(config.fontName, instance.str, instance.fontSize) > width;
+            const I32 alignment = overflows || align == Sakura::NodeLabel::Align::Left ? 0
+                                  : align == Sakura::NodeLabel::Align::Right ? 2 : 1;
+            CHECK(instance.alignment == Extent2D<I32>{alignment, 1});
         }
     }
 }
@@ -1508,11 +1557,26 @@ TEST_CASE("Boxed node labels reserve an eight pixel inset around one line at eve
         label.update({.id = "error", .str = "No metric", .colorKey = "text_secondary",
                       .align = Sakura::NodeLabel::Align::Center, .boxed = true});
         Host host(label);
+        Sakura::TextMetrics metrics;
+        metrics.setWindow(ctx.render);
         for (const F32 width : {320.0f, 120.0f, 40.0f, 320.0f}) {
             CAPTURE(scale, width);
             const auto size = host.measureOf(ctx, {width, kInfinite});
             CHECK(size == Extent2D<F32>{width, 15.0f * scale + 16.0f * scale});
             host.place(ctx, {0.0f, 0.0f, width, size.y});
+            const auto labels = Find<Sakura::Label>(label);
+            REQUIRE(labels.size() == 1);
+            const auto& config = labels.front()->config();
+            REQUIRE(config.instances.size() == 1);
+            const auto& instance = config.instances.front();
+            CHECK(instance.str == "No metric");
+            CHECK(instance.rect == Rect{8.0f * scale, 8.0f * scale,
+                                        width - 16.0f * scale, 15.0f * scale});
+            CHECK(instance.rect.x + instance.rect.width * 0.5f == width * 0.5f);
+            REQUIRE(config.clip.has_value());
+            CHECK(*config.clip == instance.rect);
+            const bool fits = metrics.measure(config.fontName, instance.str, instance.fontSize) <= instance.rect.width;
+            CHECK(instance.alignment == Extent2D<I32>{fits ? 1 : 0, 1});
         }
     }
 }

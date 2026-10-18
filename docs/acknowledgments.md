@@ -22,8 +22,7 @@ CyberEther uses the following open-source libraries.
 | Library | Purpose | License |
 |---------|---------|---------|
 | [Miniaudio](https://miniaud.io/) | Audio playback and capture. | MIT |
-| [Dear ImGui](https://github.com/ocornut/imgui) | Immediate mode graphical interface. | MIT |
-| [ImNodes](https://github.com/Nelarius/imnodes) | Node editor for flowgraphs. | MIT |
+| [Dear ImGui](https://github.com/ocornut/imgui) | Frame presentation and input handling. | MIT |
 | [PocketFFT](https://gitlab.mpcdf.mpg.de/mtr/pocketfft) | Fast Fourier Transform on CPU. | BSD-3-Clause |
 | [RapidYAML](https://github.com/biojppm/rapidyaml) | YAML file parser. | MIT |
 | [toml++](https://github.com/marzer/tomlplusplus) | TOML file parser. | MIT |
@@ -46,7 +45,6 @@ CyberEther uses the following open-source libraries.
 | [tree-sitter-json](https://github.com/tree-sitter/tree-sitter-json) | JSON grammar for tree-sitter. | MIT |
 | [ONNX Runtime](https://github.com/microsoft/onnxruntime) | Machine learning inference runtime. | MIT |
 | [GLFW](https://www.glfw.org/) | Window and input handling. | zlib/libpng |
-| [imgui-notify](https://github.com/patrickcjk/imgui-notify) | Toast notification system. | MIT |
 | [spirv-cross](https://github.com/KhronosGroup/SPIRV-Cross) | Shader conversion to Metal. | Apache-2.0 |
 | [Apple metal-cpp](https://developer.apple.com/metal/cpp/) | C++ bindings for the Metal backend. | Apache-2.0 |
 | [Nanobench](https://nanobench.ankerl.com/) | Performance benchmarking tools. | MIT |
@@ -106,7 +104,7 @@ SOFTWARE.
 </details>
 
 ### Dear ImGui
-Immediate mode GUI library by Omar Cornut. Used for the CyberEther GUI. Licensed under MIT. [GitHub](https://github.com/ocornut/imgui)
+Immediate mode GUI library by Omar Cornut. Used to present frames and read input. Licensed under MIT. [GitHub](https://github.com/ocornut/imgui)
 
 <details>
   <summary>View License</summary>
@@ -133,25 +131,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
-</details>
-
-### ImNodes
-Node editor for Dear ImGui. Used for the flowgraph editor. Licensed under MIT. [GitHub](https://github.com/Nelarius/imnodes)
-
-<details>
-  <summary>View License</summary>
-
-```
-MIT License
-
-Copyright (c) 2019 Johann Muszynski
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 </details>
 
@@ -1818,38 +1797,6 @@ The origin of this software must not be misrepresented; you must not claim that 
 Altered source versions must be plainly marked as such, and must not be misrepresented as being the original software.
 
 This notice may not be removed or altered from any source distribution.
-```
-</details>
-
-### imgui-notify
-Notification system for Dear ImGui. Used for notifications. Licensed under MIT. [GitHub](https://github.com/patrickcjk/imgui-notify)
-
-
-<details>
-  <summary>View License</summary>
-
-```
-MIT License
-
-Copyright (c) 2021 Patrick
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
 ```
 </details>
 

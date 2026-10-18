@@ -63,7 +63,6 @@ struct LegalSettingsPanel {
         thirdPartyText.update({
             .str = "- Miniaudio - MIT License\n"
                    "- Dear ImGui - MIT License\n"
-                   "- ImNodes - MIT License\n"
                    "- PocketFFT - BSD-3-Clause License\n"
                    "- RapidYAML - MIT License\n"
                    "- toml++ - MIT License\n"
@@ -86,7 +85,6 @@ struct LegalSettingsPanel {
                    "- tree-sitter-json - MIT License\n"
                    "- ONNX Runtime - MIT License\n"
                    "- GLFW - zlib/libpng License\n"
-                   "- imgui-notify - MIT License\n"
                    "- spirv-cross - Apache License 2.0\n"
                    "- Apple metal-cpp - Apache License 2.0\n"
                    "- glslang - BSD-3-Clause License\n"

@@ -23,8 +23,6 @@
 #include "jetstream/render/types.hh"
 #include "jetstream/render/base/implementations.hh"
 #include "jetstream/render/tools/imgui.h"
-#include "jetstream/render/tools/imgui_stdlib.h"
-#include "jetstream/render/tools/imgui_fmtlib.h"
 
 namespace Jetstream::Render::Components { class Font; }
 namespace Jetstream::Viewport { class Generic; }
@@ -180,9 +178,6 @@ class JETSTREAM_API Window {
     Result destroyInternal();
 
     std::vector<std::shared_ptr<Components::Generic>> components;
-
-    std::vector<std::function<void(const F32& scalingFactor)>> styleSetupCallbacks;
-    std::vector<std::function<void(const F32& scalingFactor)>> styleScaleCallbacks;
 
     uint32_t frameCount;
     bool created = false;
