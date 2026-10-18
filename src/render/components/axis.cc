@@ -463,16 +463,6 @@ Result Axis::updatePixelSize(const Extent2D<F32>& pixelSize) {
     return Result::SUCCESS;
 }
 
-Result Axis::updateZoom(F32 zoom, F32 translation) {
-    pimpl->zoom = zoom;
-    pimpl->translation = translation;
-    pimpl->gridUniforms.transform = pimpl->gridTransform(zoom, translation);
-    pimpl->gridUniforms.zoom = zoom;
-    pimpl->updateGridUniformsFlag = true;
-
-    return Result::SUCCESS;
-}
-
 Result Axis::updateScissorRect(const Render::ScissorRect& rect) {
     pimpl->gridProgram->scissorRect(rect);
     return Result::SUCCESS;

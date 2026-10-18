@@ -79,8 +79,6 @@ class JETSTREAM_API Program {
  protected:
     Config config;
 
-    uint32_t drawIndex = 0;
-
  private:
     std::atomic_bool surfaceOwned = false;
     bool enabledState = true;

@@ -99,10 +99,6 @@ class JETSTREAM_API Vulkan {
         return defaultFence;
     }
 
-    constexpr VkCommandPool& getDefaultCommandPool() {
-        return defaultCommandPool;
-    }
-
     constexpr VkCommandBuffer& getDefaultCommandBuffer() {
         return defaultCommandBuffer;
     }

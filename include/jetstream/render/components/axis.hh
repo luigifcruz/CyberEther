@@ -51,7 +51,6 @@ class JETSTREAM_API Axis : public Generic {
     Result present();
 
     Result updatePixelSize(const Extent2D<F32>& pixelSize);
-    Result updateZoom(F32 zoom, F32 translation);
     Result updateVerticalScale(F32 scale);
     Result updateScissorRect(const Render::ScissorRect& rect);
 
