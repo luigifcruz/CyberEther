@@ -1,6 +1,6 @@
 // Looks like Windows static build crashes if multitheading is enabled.
 #define POCKETFFT_NO_MULTITHREADING
-#include "pocketfft.hh"
+#include <pocketfft_hdronly.h>
 
 #include <cstddef>
 #include <limits>

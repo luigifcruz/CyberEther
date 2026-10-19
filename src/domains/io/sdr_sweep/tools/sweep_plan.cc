@@ -1,5 +1,5 @@
 #define POCKETFFT_NO_MULTITHREADING
-#include "domains/dsp/fft/pocketfft.hh"
+#include <pocketfft_hdronly.h>
 
 #include "sweep_plan.hh"
 
