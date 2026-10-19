@@ -735,11 +735,15 @@ TEST_CASE("SDR Sweep keeps off-bin tones level across hop overlaps with unrelate
     std::vector<F32> scalloped;
     for (const F64 fraction : {0.0, 0.25, 0.5, 0.75}) {
         const F64 bin = static_cast<F64>(bins / 3) + fraction;
+        INFO("Bin " << bin);
         const auto decibels = peakOf(bin);
         const auto direct = SpectrumAnalyzerDb(DirectTone(bins, bin, amplitude), false);
-        const auto peak = ArgMax(direct);
-        REQUIRE(ArgMax(decibels) == peak);
-        REQUIRE_THAT(decibels[peak], WithinAbs(direct[peak], 0.3));
+        const auto peak = ArgMax(decibels);
+        const auto directPeak = ArgMax(direct);
+        // Half-bin tones have two tied peaks; FFT roundoff can select either.
+        REQUIRE(std::abs(static_cast<F64>(peak) - bin) <= 0.5);
+        REQUIRE(std::abs(static_cast<F64>(directPeak) - bin) <= 0.5);
+        REQUIRE_THAT(decibels[peak], WithinAbs(direct[directPeak], 0.3));
         scalloped.push_back(decibels[peak]);
     }
 

@@ -1,0 +1,123 @@
+--- a/pocketfft_hdronly.h
++++ b/pocketfft_hdronly.h
+@@ -1547,12 +1547,14 @@
+     }
+   }
+ 
+-template<bool fwd, typename T, bool use_neon=false> void pass_all(T c[], T0 fct) const
++// Optional scratch is call-local, contains at least length elements, and must
++// not alias c. Reuse it across the sub-transforms of a single C2C call.
++template<bool fwd, typename T, bool use_neon=false> void pass_all(T c[], T0 fct, T *scratch=nullptr) const
+   {
+   if (length==1) { c[0]*=fct; return; }
+   size_t l1=1;
+-  arr<T> ch(length);
+-  T *p1=c, *p2=ch.data();
++  arr<T> ch(scratch ? 0 : length);
++  T *p1=c, *p2=scratch ? scratch : ch.data();
+ 
+   for(size_t k1=0; k1<fact.size(); k1++)
+     {
+@@ -1585,7 +1587,7 @@
+     {
+     if (fct!=1.)
+       for (size_t i=0; i<length; ++i)
+-        c[i] = ch[i]*fct;
++        c[i] = p1[i]*fct;
+     else
+       std::copy_n (p1, length, c);
+     }
+@@ -1596,17 +1598,17 @@
+   }
+ 
+   public:
+-    template<typename T> void exec(T c[], T0 fct, bool fwd) const
++    template<typename T> void exec(T c[], T0 fct, bool fwd, T *scratch=nullptr) const
+       {
+ #ifdef POCKETFFT_NEON_INTRATRANSFORM
+       if (std::is_same<T,cmplx<float>>::value && std::is_same<T0,float>::value
+         && (length<=single_transform_limit))
+         {
+-        fwd ? pass_all<true,T,true>(c, fct) : pass_all<false,T,true>(c, fct);
++        fwd ? pass_all<true,T,true>(c, fct, scratch) : pass_all<false,T,true>(c, fct, scratch);
+         return;
+         }
+ #endif
+-      fwd ? pass_all<true>(c, fct) : pass_all<false>(c, fct);
++      fwd ? pass_all<true>(c, fct, scratch) : pass_all<false>(c, fct, scratch);
+       }
+ 
+   private:
+@@ -1739,21 +1741,56 @@
+ #endif
+     }
+ 
++  // Gather several column FFTs together, then write full adjacent output
++  // spans. Keep the temporary tile call-local and reuse the FFT scratch.
++  template<bool forward, size_t groups> size_t finish_columns(const V *data,
++    cmplx<float> *out, float fct, V *scratch) const
++    {
++    arr<V> packed(r*groups);
++    size_t k=0;
++    for (; k+4<=c; )
++      {
++      const size_t count=std::min(groups,(c-k)/4);
++      for (size_t g=0; g<r/4; ++g)
++        for (size_t t=0; t<count; ++t)
++          {
++          const V *p=data+g*c+k+4*t;
++          F re[4],im[4];
++          transpose4(p[0].r,p[1].r,p[2].r,p[3].r,re);
++          transpose4(p[0].i,p[1].i,p[2].i,p[3].i,im);
++          for (size_t i=0; i<4; ++i) packed[t*r+4*g+i]={re[i],im[i]};
++          }
++      for (size_t t=0; t<count; ++t)
++        cols.exec(packed.data()+t*r,fct,forward,scratch);
++      for (size_t j=0; j<r; ++j)
++        for (size_t t=0; t<count; ++t)
++          store4(out+j*c+k+4*t,packed[t*r+j]);
++      k+=4*count;
++      }
++    return k;
++    }
++
+   template<bool forward> void execute(const cmplx<float> *in,
+     cmplx<float> *out, float fct) const
+     {
+-    arr<V> data(n/4), work(r);
++    arr<V> data(n/4), work(n<65536 ? r : 0), scratch(std::max(r,c));
++    // Tile the input transpose to keep both streams in L1.
++    for (size_t gb=0; gb<r/4; gb+=8)
++      for (size_t jb=0; jb<c; jb+=32)
++        for (size_t g=gb; g<std::min(gb+8,r/4); ++g)
++          for (size_t j=jb; j<std::min(jb+32,c); ++j)
++            data[g*c+j]=load4(in+j*r+4*g);
+     for (size_t g=0; g<r/4; ++g)
+-      for (size_t j=0; j<c; ++j)
+-        data[g*c+j]=load4(in+j*r+4*g);
+-    for (size_t g=0; g<r/4; ++g)
+-      {
+-      rows.exec(data.data()+g*c,1.f,forward);
++      {
++      rows.exec(data.data()+g*c,1.f,forward,scratch.data());
+       for (size_t j=0; j<c; ++j)
+         data[g*c+j]=data[g*c+j].template special_mul<forward>(phase[g*c+j]);
+       }
+     size_t k=0;
+-    for (; k+4<=c; k+=4)
++    if (n>=65536)
++      k=n<131072 ? finish_columns<forward,4>(data.data(),out,fct,scratch.data())
++                 : finish_columns<forward,8>(data.data(),out,fct,scratch.data());
++    else for (; k+4<=c; k+=4)
+       {
+       for (size_t g=0; g<r/4; ++g)
+         {
+@@ -1763,7 +1800,7 @@
+         transpose4(p[0].i,p[1].i,p[2].i,p[3].i,im);
+         for (size_t i=0; i<4; ++i) work[4*g+i]={re[i],im[i]};
+         }
+-      cols.exec(work.data(),fct,forward);
++      cols.exec(work.data(),fct,forward,scratch.data());
+       for (size_t j=0; j<r; ++j) store4(out+j*c+k,work[j]);
+       }
+     if (k<c)
