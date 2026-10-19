@@ -5,6 +5,7 @@
 
 #include "../detail/drawable.hh"
 #include "../detail/helpers.hh"
+#include "../detail/occlusion.hh"
 
 #include <algorithm>
 #include <span>
@@ -30,6 +31,7 @@ struct Box::Impl : public Drawable {
     bool instancesDirty = true;
     Extent2D<U64> uploadedFramebuffer = {0, 0};
     std::vector<U8> corners;
+    std::vector<Rect> holes;
 
     Render::Components::Shapes* shape() const {
         return as<Render::Components::Shapes>();
@@ -66,6 +68,7 @@ struct Box::Impl : public Drawable {
         capacity = requiredCapacity(config);
         liveSlots = 0;
         instancesDirty = true;
+        holes.assign(capacity, Rect{});
 
         Render::Components::Shapes::Config shapeConfig;
         shapeConfig.pixelSize = context->pixelSize();
@@ -91,16 +94,25 @@ struct Box::Impl : public Drawable {
         }
     }
 
+    std::span<const Instance> rendered() const {
+        return std::span<const Instance>(config.instances).first(std::min<U64>(config.instances.size(), capacity));
+    }
+
+    std::optional<Rect> screenClip() const {
+        if (const auto bounds = scissor(config.clip)) {
+            return Rect{static_cast<F32>(bounds->x), static_cast<F32>(bounds->y), static_cast<F32>(bounds->width),
+                        static_cast<F32>(bounds->height)};
+        }
+        return std::nullopt;
+    }
+
     bool covers(const Rect& target) const override {
         if (!active || !component || !context || config.softness > 0.0f) {
             return false;
         }
-        std::optional<Rect> clip;
-        if (const auto bounds = scissor(config.clip)) {
-            clip = Rect{static_cast<F32>(bounds->x), static_cast<F32>(bounds->y), static_cast<F32>(bounds->width),
-                        static_cast<F32>(bounds->height)};
-        }
-        return std::any_of(config.instances.begin(), config.instances.end(), [&](const auto& instance) {
+        const auto clip = screenClip();
+        const auto instances = rendered();
+        return std::any_of(instances.begin(), instances.end(), [&](const auto& instance) {
             const Rect shape = {instance.rect.x + translation.x, instance.rect.y + translation.y, instance.rect.width,
                                 instance.rect.height};
             return instance.visible && OpaqueCovers(shape, config.cornerRadius, instance.backgroundColor, clip, target);
@@ -108,6 +120,57 @@ struct Box::Impl : public Drawable {
     }
 
     bool active = false;
+
+    void opaqueRects(std::vector<Rect>& rects) const override {
+        if (!active || !component || !context) {
+            return;
+        }
+        const auto clip = screenClip();
+        for (const auto& instance : rendered()) {
+            if (!instance.visible) {
+                continue;
+            }
+            const Rect interior = OpaqueInterior(instance.rect.translated(translation.x, translation.y),
+                                                 config.cornerRadius, config.borderWidth, config.softness,
+                                                 instance.backgroundColor, clip);
+            if (!interior.empty()) {
+                rects.push_back(interior);
+            }
+        }
+    }
+
+    Result occlude(const std::vector<Rect>& later) override {
+        if (!active || !component || !context) {
+            return Result::SUCCESS;
+        }
+        std::vector<Rect> occluders;
+        occluders.reserve(later.size());
+        for (const auto& occluder : later) {
+            occluders.push_back(occluder.translated(-translation.x, -translation.y));
+        }
+        std::span<Rect> uploaded;
+        JST_CHECK(shape()->getHoles(kRectElementId, uploaded));
+        bool changed = false;
+        for (U64 i = 0; i < holes.size() && i < uploaded.size(); ++i) {
+            Rect hole;
+            if (i < config.instances.size() && config.instances[i].visible && !config.instances[i].rect.empty()) {
+                const auto& instance = config.instances[i];
+                const Rect own = HollowInterior(instance.rect, config.cornerRadius, config.borderWidth,
+                                                config.softness, instance.backgroundColor);
+                hole = LocalHole(instance.rect, LargestHole(instance.rect, own, occluders));
+            }
+            if (holes[i] != hole) {
+                holes[i] = hole;
+                uploaded[i] = hole;
+                changed = true;
+            }
+        }
+        if (changed) {
+            JST_CHECK(shape()->updateHoles(kRectElementId));
+            JST_CHECK(shape()->present());
+        }
+        return Result::SUCCESS;
+    }
 
     Result upload() override {
         if (!component || !context) {

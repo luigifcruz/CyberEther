@@ -49,10 +49,15 @@ struct InstanceData {
     vec4 fillColor;
     vec4 borderColor;
     vec4 shapeParams; // x=type, y=borderWidth, z=cornerRadius, w=corner mask (0 = all)
+    vec4 hole; // xy=local origin, zw=local size (empty = no hole)
 };
 
 layout(std430, set = 0, binding = 6) buffer InstanceDataBuffer {
     InstanceData instances[];
+};
+
+layout(std430, set = 0, binding = 7) readonly buffer HolesBuffer {
+    vec4 holes[];
 };
 
 //
@@ -126,4 +131,5 @@ void main() {
     instances[i].fillColor = fillColor;
     instances[i].borderColor = borderColor;
     instances[i].shapeParams = shapeParams;
+    instances[i].hole = holes[i];
 }

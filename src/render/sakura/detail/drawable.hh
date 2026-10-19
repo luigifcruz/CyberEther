@@ -10,6 +10,7 @@
 
 #include <memory>
 #include <optional>
+#include <vector>
 
 namespace Jetstream::Sakura {
 
@@ -36,6 +37,12 @@ struct Drawable {
 
     virtual bool covers(const Rect&) const {
         return false;
+    }
+
+    virtual void opaqueRects(std::vector<Rect>&) const {}
+
+    virtual Result occlude(const std::vector<Rect>&) {
+        return Result::SUCCESS;
     }
 
     bool attached() const {

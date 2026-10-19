@@ -18,6 +18,7 @@
 #include "render/sakura/detail/corner_mask.hh"
 #include "render/sakura/detail/drawable.hh"
 #include "render/sakura/detail/helpers.hh"
+#include "render/sakura/detail/occlusion.hh"
 #include "render/sakura/detail/underlay.hh"
 #include "render/sakura/surface_presenter.hh"
 
@@ -1470,6 +1471,77 @@ TEST_CASE("Opaque covers hide a target only inside their rounded body and clip",
     REQUIRE_FALSE(Sakura::OpaqueCovers(card, 0.0f, opaque, Rect{0.0f, 0.0f, 50.0f, 100.0f},
                                          {40.0f, 10.0f, 20.0f, 10.0f}));
     REQUIRE(Sakura::OpaqueCovers(card, 0.0f, opaque, Rect{0.0f, 0.0f, 50.0f, 100.0f}, {10.0f, 10.0f, 20.0f, 10.0f}));
+}
+
+TEST_CASE("Transparent bordered boxes hollow out past their stroke and rounded corners",
+          "[core][sakura][geometry][occlusion]") {
+    const Rect tile = {0.0f, 0.0f, 400.0f, 300.0f};
+    const ColorRGBA<F32> clear = {0.0f, 0.0f, 0.0f, 0.0f};
+    REQUIRE(Sakura::HollowInterior(tile, 4.0f, 2.0f, 0.0f, clear) == Rect{5.0f, 5.0f, 390.0f, 290.0f});
+    REQUIRE(Sakura::HollowInterior(tile, 12.0f, 2.0f, 0.0f, clear) == Rect{12.0f, 12.0f, 376.0f, 276.0f});
+    REQUIRE(Sakura::HollowInterior(tile, 4.0f, 0.0f, 0.0f, clear).empty());
+    REQUIRE(Sakura::HollowInterior(tile, 4.0f, 2.0f, 6.0f, clear).empty());
+    REQUIRE(Sakura::HollowInterior(tile, 4.0f, 2.0f, 0.0f, {0.0f, 0.0f, 0.0f, 0.01f}).empty());
+}
+
+TEST_CASE("Opaque interiors exclude rounded corners, translucent strokes, clips, and small boxes",
+          "[core][sakura][geometry][occlusion]") {
+    const Rect card = {100.0f, 100.0f, 400.0f, 300.0f};
+    const ColorRGBA<F32> opaque = {0.2f, 0.2f, 0.2f, 1.0f};
+    REQUIRE(Sakura::OpaqueInterior(card, 8.0f, 1.0f, 0.0f, opaque, std::nullopt) ==
+            Rect{109.0f, 109.0f, 382.0f, 282.0f});
+    REQUIRE(Sakura::OpaqueInterior(card, 0.0f, 3.0f, 0.0f, opaque, std::nullopt) ==
+            Rect{104.0f, 104.0f, 392.0f, 292.0f});
+    REQUIRE(Sakura::OpaqueInterior(card, 0.0f, 0.0f, 0.0f, opaque, Rect{0.0f, 0.0f, 300.0f, 1000.0f}) ==
+            Rect{101.0f, 101.0f, 199.0f, 298.0f});
+    REQUIRE(Sakura::OpaqueInterior(card, 0.0f, 0.0f, 0.0f, {0.2f, 0.2f, 0.2f, 0.99f}, std::nullopt).empty());
+    REQUIRE(Sakura::OpaqueInterior(card, 0.0f, 0.0f, 4.0f, opaque, std::nullopt).empty());
+    REQUIRE(Sakura::OpaqueInterior({0.0f, 0.0f, 40.0f, 40.0f}, 0.0f, 0.0f, 0.0f, opaque, std::nullopt).empty());
+}
+
+TEST_CASE("The largest covered region inside a box becomes its hole", "[core][sakura][geometry][occlusion]") {
+    const Rect shape = {0.0f, 0.0f, 1000.0f, 800.0f};
+    const Rect own = {10.0f, 10.0f, 100.0f, 100.0f};
+    const std::vector<Rect> occluders = {
+        {500.0f, 400.0f, 1000.0f, 1000.0f},
+        {-50.0f, -50.0f, 600.0f, 300.0f},
+        {2000.0f, 0.0f, 500.0f, 500.0f},
+    };
+    REQUIRE(Sakura::LargestHole(shape, own, occluders) == Rect{500.0f, 400.0f, 500.0f, 400.0f});
+    REQUIRE(Sakura::LargestHole(shape, own, {}) == own);
+    REQUIRE(Sakura::LargestHole(shape, {0.0f, 0.0f, 10.0f, 10.0f}, {{0.0f, 0.0f, 20.0f, 20.0f}}).empty());
+}
+
+TEST_CASE("Holes map into the local space of the shape with Y pointing up", "[core][sakura][geometry][occlusion]") {
+    const Rect shape = {100.0f, 200.0f, 400.0f, 200.0f};
+    REQUIRE(Sakura::LocalHole(shape, shape) == Rect{-0.5f, -0.5f, 1.0f, 1.0f});
+    REQUIRE(Sakura::LocalHole(shape, {100.0f, 200.0f, 200.0f, 50.0f}) == Rect{-0.5f, 0.25f, 0.5f, 0.25f});
+    REQUIRE(Sakura::LocalHole(shape, {}).empty());
+}
+
+TEST_CASE("Box instances past capacity never occlude or cover what lies beneath",
+          "[core][sakura][geometry][occlusion]") {
+    Rig rig;
+    if (!rig.supported()) {
+        SKIP("Unbound shape resources require Vulkan or WebGPU support.");
+    }
+    const ColorRGBA<F32> opaque = {0.2f, 0.2f, 0.2f, 1.0f};
+    Sakura::Box box;
+    box.update({
+        .instances = {
+            {.rect = {0.0f, 0.0f, 200.0f, 200.0f}, .backgroundColor = opaque},
+            {.rect = {300.0f, 0.0f, 200.0f, 200.0f}, .backgroundColor = opaque},
+        },
+        .capacity = 1,
+    });
+    REQUIRE(rig.build(box) == Result::SUCCESS);
+    REQUIRE(Sakura::Access::paint(box) == Result::SUCCESS);
+
+    std::vector<Rect> rects;
+    rig.drawable().opaqueRects(rects);
+    REQUIRE(rects == std::vector<Rect>{{1.0f, 1.0f, 198.0f, 198.0f}});
+    CHECK(rig.drawable().covers({10.0f, 10.0f, 50.0f, 50.0f}));
+    CHECK_FALSE(rig.drawable().covers({310.0f, 10.0f, 50.0f, 50.0f}));
 }
 
 TEST_CASE("Overlapping live images keep punching only when opaque paint separates them",

@@ -19,6 +19,7 @@
 #include <optional>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace Jetstream::Sakura {
 
@@ -519,12 +520,25 @@ struct Canvas::Impl {
         }
     }
 
+    Result occludeHidden() {
+        std::vector<Rect> later;
+        for (auto it = attachments.rbegin(); it != attachments.rend(); ++it) {
+            if (!it->drawable) {
+                continue;
+            }
+            JST_CHECK(it->drawable->occlude(later));
+            it->drawable->opaqueRects(later);
+        }
+        return Result::SUCCESS;
+    }
+
     Result paintTree() {
         if (!surfaceDirty || !root || !bound) {
             return Result::SUCCESS;
         }
 
         JST_CHECK(Access::paint(*root));
+        JST_CHECK(occludeHidden());
 
         if (!Access::resourceDirty(*root)) {
             surfaceDirty = false;
