@@ -1,6 +1,7 @@
 src_lst += files([
     'canvas.cc',
     'box.cc',
+    'card.cc',
     'polyline.cc',
     'image.cc',
     'root.cc',

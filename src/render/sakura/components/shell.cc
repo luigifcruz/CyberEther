@@ -1,6 +1,7 @@
 #include <jetstream/render/sakura/components/shell.hh>
 
 #include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/card.hh>
 #include <jetstream/render/sakura/components/controls.hh>
 #include <jetstream/render/sakura/components/layout.hh>
 #include <jetstream/render/sakura/components/text.hh>
@@ -8,10 +9,8 @@
 #include <jetstream/render/tools/icons_fa.hh>
 
 #include "../context.hh"
-#include "../helpers.hh"
 #include "../metrics.hh"
 #include "../toast_queue.hh"
-#include "../detail/card_set.hh"
 #include "../detail/helpers.hh"
 #include "../detail/access.hh"
 
@@ -347,13 +346,10 @@ struct FloatingLayer::Impl {
     };
 
     struct Chrome {
-        Box shadow;
-        Box card;
+        Card base;
         Text label;
         Text close;
-        Box border;
-        Box highlight;
-        Box rim;
+        Card frame;
     };
 
     enum class Drag {
@@ -451,11 +447,11 @@ struct FloatingLayer::Impl {
                 continue;
             }
             auto& parts = *found->second;
-            result.insert(result.end(), {&parts.shadow, &parts.card, &parts.label, &parts.close});
+            result.insert(result.end(), {&parts.base, &parts.label, &parts.close});
             if (item->content) {
                 result.push_back(item->content);
             }
-            result.insert(result.end(), {&parts.border, &parts.highlight, &parts.rim});
+            result.push_back(&parts.frame);
         }
         return result;
     }
@@ -535,7 +531,6 @@ void FloatingLayer::layout(const Context& ctx) {
     const F32 stroke = Px(ctx, 1.0f);
     const F32 softness = Px(ctx, kShadowSoftness);
     const F32 drop = Px(ctx, kShadowDrop);
-    const ColorRGBA<F32> clear = {0.0f, 0.0f, 0.0f, 0.0f};
     impl->titleHeight = std::round(Px(ctx, kFloatingTitleHeight));
     impl->titlePadX = Px(ctx, kFloatingTitlePadX);
     impl->closeButton = Px(ctx, kFloatingCloseButton);
@@ -565,39 +560,18 @@ void FloatingLayer::layout(const Context& ctx) {
         state.rect.y = std::clamp(state.rect.y, bounds.y, std::max(bounds.y, bounds.bottom() - impl->titleHeight));
 
         const Rect rect = state.rect;
-        const Rect shadow = Inflate({rect.x, rect.y + drop, rect.width, rect.height}, softness);
-        chrome.shadow.update({
-            .instances = {{.rect = shadow, .backgroundColor = ctx.color("tile_shadow")}},
+        Card::Config card = {
+            .rects = {rect},
             .cornerRadius = radius,
             .softness = softness,
-        });
-        chrome.card.update({
-            .instances = {{.rect = rect, .backgroundColor = ctx.color("tile_bg")}},
-            .cornerRadius = radius,
-        });
-        chrome.border.update({
-            .instances = {{.rect = rect, .backgroundColor = clear}},
-            .cornerRadius = radius,
+            .drop = drop,
             .borderWidth = stroke,
-            .borderColor = ctx.color("tile_border"),
-            .strokeFringe = true,
-        });
-        chrome.highlight.update({
-            .instances = {{.rect = rect, .backgroundColor = clear}},
-            .cornerRadius = radius,
-            .borderWidth = stroke,
-            .borderColor = ctx.color("tile_highlight"),
-            .strokeFringe = true,
-            .topLit = true,
-        });
-        chrome.rim.update({
-            .instances = {{.rect = Inset(rect, stroke), .backgroundColor = clear}},
-            .cornerRadius = std::max(0.0f, radius - stroke),
-            .borderWidth = stroke,
-            .borderColor = ctx.color("tile_rim"),
-            .strokeFringe = true,
-            .topLit = true,
-        });
+            .lineWidth = stroke,
+            .layer = Card::Layer::Base,
+        };
+        chrome.base.update(card);
+        card.layer = Card::Layer::Frame;
+        chrome.frame.update(std::move(card));
         chrome.label.update(impl->titleConfig(*item));
         chrome.close.update(impl->closeConfig(id));
 
@@ -607,8 +581,7 @@ void FloatingLayer::layout(const Context& ctx) {
         const Rect title = {rect.x + impl->titlePadX, rect.y + std::round((impl->titleHeight - titleSize) * 0.5f),
                             std::max(0.0f, close.x - rect.x - impl->titlePadX), titleSize};
 
-        layoutChild(ctx, chrome.shadow, shadow);
-        layoutChild(ctx, chrome.card, rect);
+        layoutChild(ctx, chrome.base, rect);
         layoutChild(ctx, chrome.label, title, title);
         layoutChild(ctx, chrome.close,
                     {std::round(close.x + (close.width - glyph.x) * 0.5f),
@@ -618,9 +591,7 @@ void FloatingLayer::layout(const Context& ctx) {
         if (item->content) {
             layoutChild(inner, *item->content, Inset(body, Px(ctx, item->padding)), body);
         }
-        layoutChild(ctx, chrome.border, rect);
-        layoutChild(ctx, chrome.highlight, rect);
-        layoutChild(ctx, chrome.rim, rect);
+        layoutChild(ctx, chrome.frame, rect);
     }
 }
 
@@ -793,7 +764,7 @@ struct ToastLayer::Impl {
         std::string message;
         Rect card;
         Rect close;
-        CardSet chrome;
+        Card chrome;
         Text icon;
         Text heading;
         Text content;
@@ -801,7 +772,7 @@ struct ToastLayer::Impl {
         Text closeGlyph;
 
         std::vector<Component*> parts() {
-            std::vector<Component*> result = chrome.parts();
+            std::vector<Component*> result = {&chrome};
             result.push_back(&icon);
             result.push_back(&heading);
             if (!message.empty()) {
@@ -989,11 +960,18 @@ void ToastLayer::layout(const Context& ctx) {
         bottom = card.y - Px(ctx, kToastSpacing);
         item.card = card;
 
-        item.chrome.update(ctx, {card}, bounds, radius, softness, Px(ctx, kToastShadowDrop), 1.0f, "notification_bg",
-                           opacity);
-        for (auto* part : item.chrome.parts()) {
-            layoutChild(ctx, *part, bounds);
-        }
+        item.chrome.update({
+            .rects = {card},
+            .clip = bounds,
+            .cornerRadius = radius,
+            .softness = softness,
+            .drop = Px(ctx, kToastShadowDrop),
+            .borderWidth = Px(ctx, 1.0f),
+            .lineWidth = Px(ctx, 1.0f),
+            .fillKey = "notification_bg",
+            .opacity = opacity,
+        });
+        layoutChild(ctx, item.chrome, bounds);
 
         const F32 textX = card.x + padding + icon + gap;
         const F32 textY = card.y + std::floor((card.height - textHeight) * 0.5f);

@@ -3,7 +3,8 @@
 #include <jetstream/render/base.hh>
 #include <jetstream/render/components/generic.hh>
 
-#include "../helpers.hh"
+#include "../context.hh"
+#include "../metrics.hh"
 #include "../input.hh"
 #include "../detail/access.hh"
 #include "../detail/component.hh"

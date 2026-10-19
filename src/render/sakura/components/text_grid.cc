@@ -6,7 +6,8 @@
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/scroller.hh>
 
-#include "../helpers.hh"
+#include "../context.hh"
+#include "../metrics.hh"
 #include "../detail/helpers.hh"
 #include "../detail/text_grid_viewport.hh"
 #include "../detail/text_lines.hh"

@@ -3,7 +3,7 @@
 #include <jetstream/render/base.hh>
 #include <jetstream/render/components/image.hh>
 
-#include "../helpers.hh"
+#include "../context.hh"
 #include "../metrics.hh"
 #include "../surface_presenter.hh"
 #include "../detail/drawable.hh"

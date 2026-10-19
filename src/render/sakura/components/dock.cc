@@ -1,6 +1,7 @@
 #include <jetstream/render/sakura/components/dock.hh>
 
 #include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/card.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/typography.hh>
 #include <jetstream/render/tools/icons_fa.hh>
@@ -518,12 +519,9 @@ struct Dock::Impl {
     Box tabRim;
     Box badges;
     Box dividers;
-    Box shadows;
-    Box cards;
-    Box highlights;
-    Box rims;
+    Card tileBase;
     Box splitterBoxes;
-    Box borders;
+    Card tileFrame;
     TextMetrics metrics;
     std::unordered_map<std::string, Caption> tabCaptions;
     std::unordered_map<std::string, Caption> headerCaptions;
@@ -579,9 +577,9 @@ struct Dock::Impl {
 
     std::vector<Component*> childOrder() {
         std::vector<Component*> order = {&backgrounds, &separators, &track, &tabBoxes, &activeTab, &tabHighlight,
-                                         &tabRim, &dividers, &badges, &shadows, &cards, &splitterBoxes};
+                                         &tabRim, &dividers, &badges, &tileBase, &splitterBoxes};
         order.insert(order.end(), managed.begin(), managed.end());
-        order.insert(order.end(), {&borders, &highlights, &rims});
+        order.push_back(&tileFrame);
         return order;
     }
     std::vector<Rect> tabRects;
@@ -1395,11 +1393,8 @@ void Dock::layout(const Context& ctx) {
     std::vector<Box::Instance> tabRimInstances;
     std::vector<Box::Instance> badgeInstances;
     std::vector<Box::Instance> dividerInstances;
-    std::vector<Box::Instance> shadowInstances;
-    std::vector<Box::Instance> rimInstances;
-    std::vector<Box::Instance> cardInstances;
+    std::vector<Rect> tileRects;
     std::vector<Box::Instance> splitterInstances;
-    std::vector<Box::Instance> borderInstances;
     std::vector<Component*> labels;
     std::vector<Component*> chrome;
     std::vector<Component*> contents;
@@ -1602,12 +1597,7 @@ void Dock::layout(const Context& ctx) {
         const bool closable = item ? item->closable : true;
         Rect content = leaf.tile;
         if (!tabs) {
-            const F32 softness = Px(ctx, kShadowSoftness);
-            const Rect shadow = {leaf.tile.x, leaf.tile.y + Px(ctx, kShadowDrop), leaf.tile.width, leaf.tile.height};
-            shadowInstances.push_back({.rect = Inflate(shadow, softness), .backgroundColor = ctx.color("tile_shadow")});
-            cardInstances.push_back({.rect = leaf.tile, .backgroundColor = ctx.color("tile_bg")});
-            borderInstances.push_back({.rect = leaf.tile, .backgroundColor = {0.0f, 0.0f, 0.0f, 0.0f}});
-            rimInstances.push_back({.rect = Inset(leaf.tile, Px(ctx, 1.0f)), .backgroundColor = {0.0f, 0.0f, 0.0f, 0.0f}});
+            tileRects.push_back(leaf.tile);
         }
         if (s.showHeaders) {
             leaf.header = {leaf.tile.x, leaf.tile.y, leaf.tile.width, std::min(headerHeight, leaf.tile.height)};
@@ -1731,45 +1721,25 @@ void Dock::layout(const Context& ctx) {
                      .borderWidth = Px(ctx, 1.0f), .borderColor = ctx.color("tile_border"), .strokeFringe = true,
                      .capacity = kBoxCapacity});
     s.dividers.update({.instances = std::move(dividerInstances), .clip = s.bounds, .capacity = kBoxCapacity});
-    s.shadows.update({.instances = std::move(shadowInstances), .clip = s.bounds, .cornerRadius = radius,
-                      .softness = Px(ctx, kShadowSoftness), .capacity = kBoxCapacity});
-    s.cards.update({.instances = std::move(cardInstances), .clip = s.bounds, .cornerRadius = radius,
-                    .capacity = kBoxCapacity});
+    Card::Config tile = {
+        .rects = std::move(tileRects),
+        .clip = s.bounds,
+        .cornerRadius = radius,
+        .softness = Px(ctx, kShadowSoftness),
+        .drop = Px(ctx, kShadowDrop),
+        .borderWidth = Px(ctx, 1.0f),
+        .lineWidth = Px(ctx, 1.0f),
+        .layer = Card::Layer::Base,
+        .capacity = kBoxCapacity,
+    };
+    s.tileBase.update(tile);
+    tile.layer = Card::Layer::Frame;
+    s.tileFrame.update(std::move(tile));
     s.splitterBoxes.update({.instances = std::move(splitterInstances), .clip = s.bounds,
                             .cornerRadius = splitterLine * 0.5f, .capacity = kBoxCapacity});
-    s.rims.update({
-        .instances = std::move(rimInstances),
-        .clip = s.bounds,
-        .cornerRadius = std::max(0.0f, radius - Px(ctx, 1.0f)),
-        .borderWidth = Px(ctx, 1.0f),
-        .borderColor = ctx.color("tile_rim"),
-        .strokeFringe = true,
-        .topLit = true,
-        .capacity = kBoxCapacity,
-    });
-    s.highlights.update({
-        .instances = borderInstances,
-        .clip = s.bounds,
-        .cornerRadius = radius,
-        .borderWidth = Px(ctx, 1.0f),
-        .borderColor = ctx.color("tile_highlight"),
-        .strokeFringe = true,
-        .topLit = true,
-        .capacity = kBoxCapacity,
-    });
-    s.borders.update({
-        .instances = std::move(borderInstances),
-        .clip = s.bounds,
-        .cornerRadius = radius,
-        .borderWidth = Px(ctx, 1.0f),
-        .borderColor = ctx.color("tile_border"),
-        .strokeFringe = true,
-        .capacity = kBoxCapacity,
-    });
     for (auto* primitive : std::initializer_list<Component*>{&s.backgrounds, &s.separators, &s.track, &s.tabBoxes,
-                                                             &s.activeTab, &s.tabHighlight, &s.tabRim, &s.dividers, &s.badges, &s.shadows,
-                                                             &s.cards, &s.splitterBoxes,
-                                                             &s.borders, &s.highlights, &s.rims}) {
+                                                             &s.activeTab, &s.tabHighlight, &s.tabRim, &s.dividers, &s.badges, &s.tileBase,
+                                                             &s.splitterBoxes, &s.tileFrame}) {
         layoutChild(ctx, *primitive, s.bounds);
     }
 

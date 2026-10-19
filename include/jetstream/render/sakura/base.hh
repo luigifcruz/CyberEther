@@ -9,6 +9,7 @@
 
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/canvas.hh>
+#include <jetstream/render/sakura/components/card.hh>
 #include <jetstream/render/sakura/components/code_editor.hh>
 #include <jetstream/render/sakura/components/console.hh>
 #include <jetstream/render/sakura/components/controls.hh>

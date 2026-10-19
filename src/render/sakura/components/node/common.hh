@@ -4,7 +4,7 @@
 #include <jetstream/render/sakura/components/node/field.hh>
 #include <jetstream/render/sakura/typography.hh>
 
-#include "../../helpers.hh"
+#include "../../context.hh"
 #include "../../metrics.hh"
 #include "../../detail/helpers.hh"
 #include "../../detail/popup_layer.hh"

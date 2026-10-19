@@ -6,7 +6,7 @@
 #include <jetstream/render/sakura/components/status_bar.hh>
 #include <jetstream/render/sakura/components/text_view.hh>
 
-#include "../helpers.hh"
+#include "../context.hh"
 #include "../metrics.hh"
 #include "../detail/corner_mask.hh"
 #include "../detail/text_lines.hh"

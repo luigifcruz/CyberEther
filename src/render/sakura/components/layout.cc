@@ -6,7 +6,7 @@
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/typography.hh>
 
-#include "../helpers.hh"
+#include "../context.hh"
 #include "../metrics.hh"
 #include "../detail/helpers.hh"
 

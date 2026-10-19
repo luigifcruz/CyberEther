@@ -1,6 +1,7 @@
 #include <jetstream/render/sakura/toast.hh>
 
-#include "helpers.hh"
+#include "context.hh"
+#include "metrics.hh"
 #include "toast_queue.hh"
 
 #include <mutex>

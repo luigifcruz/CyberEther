@@ -532,8 +532,8 @@ TEST_CASE("Pill fields and steppers fill with the pill field color", "[core][sak
         }
         host.place(ctx, {0.0f, 0.0f, 240.0f, 34.0f});
         bool found = false;
-        for (auto* child : Peek::Children(*component)) {
-            if (auto* box = dynamic_cast<Sakura::Box*>(child); box && box->config().borderWidth == 1.5f) {
+        for (auto* box : Find<Sakura::Box>(*component)) {
+            if (box->config().borderWidth == 1.5f) {
                 REQUIRE(box->config().instances.size() == 1);
                 CHECK(box->config().instances.front().backgroundColor == fill);
                 found = true;

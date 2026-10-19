@@ -1,6 +1,7 @@
 #include <jetstream/render/sakura/components/search.hh>
 
 #include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/card.hh>
 #include <jetstream/render/sakura/components/controls.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/layout.hh>
@@ -9,7 +10,6 @@
 #include <jetstream/render/tools/icons_fa.hh>
 
 #include "../context.hh"
-#include "../detail/card_set.hh"
 #include "../detail/helpers.hh"
 #include "../detail/text_metrics.hh"
 #include "../metrics.hh"
@@ -100,7 +100,7 @@ U64 Capacity(U64 needed) {
 
 struct PillField::Impl {
     Config config;
-    CardSet card;
+    Card card;
     Text icon;
     Text placeholder;
     Text trailing;
@@ -111,7 +111,7 @@ struct PillField::Impl {
     std::vector<Component*> mounted;
 
     void mount(PillField& self) {
-        std::vector<Component*> children = card.parts();
+        std::vector<Component*> children = {&card};
         children.push_back(&icon);
         if (config.editing) {
             children.push_back(&input);
@@ -180,11 +180,17 @@ void PillField::layout(const Context& ctx) {
     impl->bounds = bounds;
     const F32 infinite = std::numeric_limits<F32>::infinity();
     const F32 radius = bounds.height * 0.5f;
-    impl->card.update(ctx, {bounds}, clip(), radius, Px(ctx, kPillShadowSoftness), Px(ctx, kPillShadowDrop),
-                      kPillBorder, kPillFill);
-    for (auto* part : impl->card.parts()) {
-        layoutChild(ctx, *part, bounds);
-    }
+    impl->card.update({
+        .rects = {bounds},
+        .clip = clip(),
+        .cornerRadius = radius,
+        .softness = Px(ctx, kPillShadowSoftness),
+        .drop = Px(ctx, kPillShadowDrop),
+        .borderWidth = Px(ctx, kPillBorder),
+        .lineWidth = Px(ctx, 1.0f),
+        .fillKey = kPillFill,
+    });
+    layoutChild(ctx, impl->card, bounds);
 
     F32 x = bounds.x + Px(ctx, kPillPadX);
     F32 right = bounds.right() - Px(ctx, kPillPadX);
@@ -255,7 +261,7 @@ struct PillStepper::Impl {
     };
 
     Config config;
-    CardSet card;
+    Card card;
     Box hover;
     Box marks;
     Text value;
@@ -285,7 +291,7 @@ struct PillStepper::Impl {
 
 PillStepper::PillStepper() {
     impl = std::make_unique<Impl>();
-    std::vector<Component*> children = impl->card.parts();
+    std::vector<Component*> children = {&impl->card};
     children.push_back(&impl->hover);
     children.push_back(&impl->marks);
     children.push_back(&impl->value);
@@ -319,11 +325,17 @@ void PillStepper::layout(const Context& ctx) {
     auto& s = *impl;
     const Rect bounds = frame();
     const F32 infinite = std::numeric_limits<F32>::infinity();
-    s.card.update(ctx, {bounds}, clip(), bounds.height * 0.5f, Px(ctx, kPillShadowSoftness), Px(ctx, kPillShadowDrop),
-                  kPillBorder, kPillFill);
-    for (auto* part : s.card.parts()) {
-        layoutChild(ctx, *part, bounds);
-    }
+    s.card.update({
+        .rects = {bounds},
+        .clip = clip(),
+        .cornerRadius = bounds.height * 0.5f,
+        .softness = Px(ctx, kPillShadowSoftness),
+        .drop = Px(ctx, kPillShadowDrop),
+        .borderWidth = Px(ctx, kPillBorder),
+        .lineWidth = Px(ctx, 1.0f),
+        .fillKey = kPillFill,
+    });
+    layoutChild(ctx, s.card, bounds);
     const F32 inset = Px(ctx, kStepperInset);
     const F32 button = Px(ctx, kStepperButton);
     s.decrementRect = {bounds.x + inset, bounds.y, button, bounds.height};
@@ -1005,7 +1017,7 @@ struct SearchCatalog::Impl {
     Config config;
     std::vector<U64> order;
     std::vector<std::string> ids;
-    CardSet cards;
+    Card cards;
     ChipStrip chips;
     std::vector<std::string> groups;
     bool chipsShown = false;
@@ -1218,7 +1230,7 @@ void SearchCatalog::update(Config config) {
 
 void SearchCatalog::mountParts() {
     auto& s = *impl;
-    std::vector<Component*> children = s.cards.parts();
+    std::vector<Component*> children = {&s.cards};
     if (s.config.field) {
         children.push_back(s.config.field);
     }
@@ -1299,11 +1311,17 @@ void SearchCatalog::layout(const Context& ctx) {
     if (docs) {
         rects.push_back(s.docsCard);
     }
-    s.cards.update(ctx, rects, clip(), Px(ctx, kCardRadius), Px(ctx, kCardShadowSoftness), Px(ctx, kCardShadowDrop),
-                   1.0f, kPillFill);
-    for (auto* part : s.cards.parts()) {
-        layoutChild(ctx, *part, bounds);
-    }
+    s.cards.update({
+        .rects = std::move(rects),
+        .clip = clip(),
+        .cornerRadius = Px(ctx, kCardRadius),
+        .softness = Px(ctx, kCardShadowSoftness),
+        .drop = Px(ctx, kCardShadowDrop),
+        .borderWidth = Px(ctx, 1.0f),
+        .lineWidth = Px(ctx, 1.0f),
+        .fillKey = kPillFill,
+    });
+    layoutChild(ctx, s.cards, bounds);
     Rect listArea = {s.listCard.x + padding, s.listCard.y + padding, std::max(0.0f, s.listCard.width - 2.0f * padding),
                      std::max(0.0f, s.listCard.height - 2.0f * padding)};
     if (s.chipsShown) {

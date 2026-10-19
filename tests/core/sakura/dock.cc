@@ -156,7 +156,7 @@ std::vector<Rect> TextFrames(Sakura::Component& dock) {
 }
 
 const Sakura::Box::Config* BoxWith(Sakura::Component& dock, const Rect& rect) {
-    for (auto* box : Direct<Sakura::Box>(dock)) {
+    for (auto* box : Find<Sakura::Box>(dock)) {
         for (const auto& instance : box->config().instances) {
             if (instance.rect == rect) {
                 return &box->config();
@@ -1847,7 +1847,7 @@ TEST_CASE("Tile cards cast a soft dropped shadow and carry a top lit edge and ri
     CHECK(shadows->instances[1].rect == Rect{397.0f, 2.0f, 403.0f, 600.0f});
 
     std::vector<const Sakura::Box::Config*> lit;
-    for (auto* box : Direct<Sakura::Box>(dock)) {
+    for (auto* box : Find<Sakura::Box>(dock)) {
         if (box->config().topLit && !box->config().instances.empty()) {
             lit.push_back(&box->config());
         }

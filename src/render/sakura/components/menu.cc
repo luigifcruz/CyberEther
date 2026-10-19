@@ -6,7 +6,6 @@
 #include <jetstream/render/sakura/typography.hh>
 
 #include "../context.hh"
-#include "../helpers.hh"
 #include "../metrics.hh"
 #include "../detail/helpers.hh"
 #include "../detail/popup_layer.hh"

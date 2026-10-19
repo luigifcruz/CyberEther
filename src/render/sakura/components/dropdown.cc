@@ -5,7 +5,7 @@
 #include <jetstream/render/sakura/components/scroller.hh>
 #include <jetstream/render/sakura/typography.hh>
 
-#include "../helpers.hh"
+#include "../context.hh"
 #include "../metrics.hh"
 #include "../detail/access.hh"
 #include "../detail/popup_layer.hh"

@@ -4,7 +4,8 @@
 #include <jetstream/render/base/texture.hh>
 #include <jetstream/render/sakura/surface.hh>
 
-#include "helpers.hh"
+#include "context.hh"
+#include "metrics.hh"
 
 #include <functional>
 #include <optional>

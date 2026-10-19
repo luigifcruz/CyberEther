@@ -5,6 +5,7 @@
 #include "component_harness.hh"
 #include "scene.hh"
 
+#include <jetstream/render/sakura/components/card.hh>
 #include <jetstream/render/sakura/components/dropdown.hh>
 #include <jetstream/render/sakura/components/menu.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
@@ -62,8 +63,14 @@ struct ToastProbe : Sakura::ToastLayer {
     std::vector<T*> parts() const {
         std::vector<T*> found;
         for (auto* child : children()) {
-            if (auto* match = dynamic_cast<T*>(child); match && child->visible()) {
-                found.push_back(match);
+            if (!child->visible()) {
+                continue;
+            }
+            const bool card = dynamic_cast<Sakura::Card*>(child) != nullptr;
+            for (auto* part : card ? Peek::Children(*child) : std::vector<Sakura::Component*>{child}) {
+                if (auto* match = dynamic_cast<T*>(part); match && part->visible()) {
+                    found.push_back(match);
+                }
             }
         }
         return found;
@@ -86,8 +93,14 @@ struct FloatingProbe : Sakura::FloatingLayer {
     std::vector<T*> parts() const {
         std::vector<T*> found;
         for (auto* child : children()) {
-            if (auto* match = dynamic_cast<T*>(child); match && child->visible()) {
-                found.push_back(match);
+            if (!child->visible()) {
+                continue;
+            }
+            const bool card = dynamic_cast<Sakura::Card*>(child) != nullptr;
+            for (auto* part : card ? Peek::Children(*child) : std::vector<Sakura::Component*>{child}) {
+                if (auto* match = dynamic_cast<T*>(part); match && part->visible()) {
+                    found.push_back(match);
+                }
             }
         }
         return found;
