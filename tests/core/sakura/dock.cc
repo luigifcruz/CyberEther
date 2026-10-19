@@ -7,7 +7,7 @@
 #include <jetstream/render/sakura/components/image.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
 
-#include <jetstream/render/tools/imgui_icons_ext.hh>
+#include <jetstream/render/tools/icons_fa.hh>
 
 #include "harness.hh"
 #include "fonts.hh"

@@ -10,7 +10,7 @@
 #include "jetstream/block.hh"
 #include "jetstream/parser.hh"
 #include "jetstream/render/base/texture.hh"
-#include "jetstream/render/tools/imgui_icons_ext.hh"
+#include "jetstream/render/tools/icons_fa.hh"
 
 #include <algorithm>
 #include <cmath>

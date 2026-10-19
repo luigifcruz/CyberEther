@@ -10,7 +10,7 @@
 #include <jetstream/render/sakura/components/polyline.hh>
 #include <jetstream/render/sakura/components/shell.hh>
 #include <jetstream/render/sakura/toast.hh>
-#include <jetstream/render/tools/imgui_icons_ext.hh>
+#include <jetstream/render/tools/icons_fa.hh>
 
 #include "render/sakura/toast_queue.hh"
 

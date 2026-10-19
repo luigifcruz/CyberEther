@@ -62,7 +62,7 @@ enum class JETSTREAM_API KeyCode : U16 {
     CapsLock, ScrollLock, NumLock, PrintScreen, Pause,
     Keypad0, Keypad1, Keypad2, Keypad3, Keypad4, Keypad5, Keypad6, Keypad7, Keypad8, Keypad9,
     KeypadDecimal, KeypadDivide, KeypadMultiply, KeypadSubtract, KeypadAdd, KeypadEnter, KeypadEqual,
-    AppBack, AppForward, Oem102,
+    Oem102,
 };
 
 enum class JETSTREAM_API KeyEventType : U8 {

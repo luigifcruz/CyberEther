@@ -62,7 +62,6 @@ struct LegalSettingsPanel {
         });
         thirdPartyText.update({
             .str = "- Miniaudio - MIT License\n"
-                   "- Dear ImGui - MIT License\n"
                    "- PocketFFT - BSD-3-Clause License\n"
                    "- RapidYAML - MIT License\n"
                    "- toml++ - MIT License\n"

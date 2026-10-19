@@ -6,7 +6,7 @@
 #include <jetstream/render/sakura/typography.hh>
 
 #include <jetstream/render/components/text.hh>
-#include <jetstream/render/tools/imgui_icons_ext.hh>
+#include <jetstream/render/tools/icons_fa.hh>
 
 #include "../context.hh"
 #include "../metrics.hh"

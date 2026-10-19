@@ -11,7 +11,7 @@
 #include "remote.hh"
 #include "runtime.hh"
 
-#include "jetstream/render/tools/imgui_icons_ext.hh"
+#include "jetstream/render/tools/icons_fa.hh"
 
 #include <array>
 #include <functional>

@@ -4,10 +4,10 @@
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
+#include <jetstream/render/tools/icons_fa.hh>
 
 #include "../context.hh"
 #include "../detail/helpers.hh"
-#include "jetstream/render/tools/imgui_icons_ext.hh"
 #include "../detail/text_lines.hh"
 #include "../detail/syntax_highlighter.hh"
 #include "../detail/text_metrics.hh"

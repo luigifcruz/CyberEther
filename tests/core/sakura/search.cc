@@ -5,13 +5,13 @@
 #include "component_harness.hh"
 
 #include "render/sakura/detail/access.hh"
-#include "jetstream/render/tools/imgui_icons_ext.hh"
 #include "scene.hh"
 
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/controls.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/layout.hh>
+#include <jetstream/render/tools/icons_fa.hh>
 #include <jetstream/render/sakura/components/search.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
