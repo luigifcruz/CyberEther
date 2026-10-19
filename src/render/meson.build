@@ -7,6 +7,7 @@ src_lst += files([
     'texture.cc',
     'transfer.cc',
     'window.cc',
+    'window_metrics.cc',
 ])
 
 subdir('components')
