@@ -59,7 +59,8 @@ struct WorkbenchPresenter {
         config.flowgraphEnvironment = flowgraphEnvironment.build();
         config.modal = modal.build();
         config.filePicker = filePicker.build();
-        config.backgroundParticles = context.state.interface.backgroundParticles;
+        config.backgroundParticles = context.state.interface.backgroundParticles &&
+                                     (config.filePending || (config.flowgraphs.empty() && !config.startTab));
         return config;
     }
 };

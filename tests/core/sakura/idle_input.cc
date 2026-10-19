@@ -5,6 +5,7 @@
 
 #include "compositor/default/actions/layout.hh"
 #include "compositor/default/presenters/flowgraph/pane.hh"
+#include "compositor/default/presenters/workbench.hh"
 #include "compositor/default/views/flowgraph/pane.hh"
 #include "compositor/default/views/titlebar.hh"
 #include "compositor/default/views/workbench.hh"
@@ -39,6 +40,33 @@
 
 using namespace Jetstream;
 using namespace SakuraTest;
+
+TEST_CASE("Workbench particles animate only while enabled",
+          "[core][sakura][idle][workbench][particles]") {
+    FakeWindow window(1.0f, {800.0f, 600.0f});
+    Sakura::Runtime runtime;
+    runtime.update({.render = &window});
+    WorkbenchView workbench;
+    WorkbenchView::Config config;
+    const auto check = [&](bool animated) {
+        workbench.update(config);
+        for (U64 frame = 0; frame < 8; ++frame) {
+            window.viewport.platform().clock += 1.0 / 60.0;
+            REQUIRE(window.begin() == Result::SUCCESS);
+            const U64 runs = Sakura::Access::layoutRuns();
+            workbench.render(runtime.context());
+            if (frame > 1) {
+                CHECK((Sakura::Access::layoutRuns() != runs) == animated);
+            }
+            REQUIRE(window.end() == Result::SUCCESS);
+        }
+    };
+    check(true);
+    config.backgroundParticles = false;
+    check(false);
+    config.backgroundParticles = true;
+    check(true);
+}
 
 #ifdef JETSTREAM_RENDER_METAL_AVAILABLE
 
@@ -149,6 +177,7 @@ struct Workbench : FlowgraphFixture {
     WorkspaceShellView workspace;
     Sakura::Layer content;
     Sakura::FloatingLayer floating;
+    std::unique_ptr<WorkbenchView> full;
     std::unique_ptr<Sakura::Root> root = std::make_unique<Sakura::Root>();
 
     Workbench() {
@@ -184,6 +213,7 @@ struct Workbench : FlowgraphFixture {
     }
 
     ~Workbench() {
+        full.reset();
         root.reset();
         (void)window->synchronize();
         (void)window->stop();
@@ -218,6 +248,13 @@ struct Workbench : FlowgraphFixture {
         workspace.updatePanes(panes);
         floating.update({.windows = std::move(windows)});
         root->update({.id = "workbench", .layers = {&content, &floating}});
+        if (full) {
+            full->update({
+                .backgroundParticles = WorkbenchPresenter(context).build().backgroundParticles,
+                .titlebar = {.focusedFlowgraph = kGraph},
+                .flowgraphs = {panePresenter.build(kGraph, state.flowgraph.items.at(kGraph))},
+            });
+        }
 
         LayoutActions actions(state.flowgraph);
         for (const auto& mail : std::exchange(mails, {})) {
@@ -240,7 +277,11 @@ struct Workbench : FlowgraphFixture {
         REQUIRE(window->begin() == Result::SUCCESS);
         runtime.update({.palette = &palette, .render = window.get()});
         Tick tick;
-        root->render(runtime.context());
+        if (full) {
+            full->render(runtime.context());
+        } else {
+            root->render(runtime.context());
+        }
         std::vector<std::pair<std::shared_ptr<Render::Texture>, U64>> revisions;
         for (const auto& texture : window->framebuffers) {
             revisions.emplace_back(texture, texture->contentRevision());
@@ -397,6 +438,33 @@ TEST_CASE("A queued flowgraph click lets the window idle",
                     Render::InputQueue::Button{MouseButton::Left, true},
                     Render::InputQueue::Button{MouseButton::Left, false}});
     REQUIRE(workbench.settle());
+    workbench.checkIdle();
+}
+
+TEST_CASE("The full flowgraph workbench idles with background particles enabled",
+          "[core][sakura][idle][flowgraph][workbench]") {
+    Workbench workbench;
+    workbench.start();
+    Extent2D<F32> point;
+    SECTION("background") {
+        const auto editor = workbench.editorFrame();
+        point = {editor.x + editor.width * 0.6f, editor.y + editor.height * 0.7f};
+    }
+    SECTION("node") {
+        const auto node = workbench.nodeContentFrame();
+        point = {node.x + 20.0f, node.y - 10.0f};
+    }
+    workbench.full = std::make_unique<WorkbenchView>();
+    workbench.poll();
+    for (U64 frame = 0; frame < kSettleFrames; ++frame) {
+        workbench.step();
+    }
+    workbench.checkIdle();
+    workbench.step({Render::InputQueue::Pointer{point}, Render::InputQueue::Button{MouseButton::Left, true}});
+    workbench.step({Render::InputQueue::Button{MouseButton::Left, false}});
+    for (U64 frame = 0; frame < kSettleFrames; ++frame) {
+        workbench.step();
+    }
     workbench.checkIdle();
 }
 

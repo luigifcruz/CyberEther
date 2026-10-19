@@ -1325,6 +1325,22 @@ TEST_CASE("New tab opens the start tab, which takes over the welcome screen and 
     CHECK(mailbox.count<MailCloseStartTab>() == 1);
 }
 
+TEST_CASE("Workbench enables particles only while the background is exposed", "[core][sakura][views]") {
+    Mailbox mailbox;
+    const auto context = mailbox.context();
+    mailbox.state.interface.backgroundParticles = true;
+    CHECK(WorkbenchPresenter(context).build().backgroundParticles);
+
+    mailbox.state.interface.startTab = true;
+    CHECK_FALSE(WorkbenchPresenter(context).build().backgroundParticles);
+
+    mailbox.state.interface.filePending = true;
+    CHECK(WorkbenchPresenter(context).build().backgroundParticles);
+
+    mailbox.state.interface.backgroundParticles = false;
+    CHECK_FALSE(WorkbenchPresenter(context).build().backgroundParticles);
+}
+
 TEST_CASE("Start tab pill close button calls its close callback and the shell settles as the tab opens and closes",
           "[core][sakura][views]") {
     TitleRig rig;
