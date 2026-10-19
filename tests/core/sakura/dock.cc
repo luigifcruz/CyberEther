@@ -185,7 +185,6 @@ TEST_CASE("Tab mode lays out only the active pane below the tab bar", "[core][sa
 
 TEST_CASE("Tab mode presents only the active pane's surface and swaps hints when the tab changes",
           "[core][sakura][dock]") {
-    const ImGuiContextGuard imgui;
     SakuraTest::FakeWindow window;
     auto ctx = MakeContext();
     ctx.render = &window;
@@ -1669,7 +1668,6 @@ TEST_CASE("Strip tabs share one track with a bordered active capsule, dividers a
 
 TEST_CASE("Strip tab titles are ellipsized to the tab and tabs shrink evenly to fit the bar",
           "[core][sakura][dock]") {
-    const ImGuiContextGuard imgui;
     MonoFontWindow window;
     auto ctx = MakeContext();
     ctx.render = &window;
@@ -2111,7 +2109,6 @@ TEST_CASE("Maximize buttons appear only for maximizable panes with company", "[c
 }
 
 TEST_CASE("A maximized tile hides the other surfaces until restored", "[core][sakura][dock]") {
-    const ImGuiContextGuard imgui;
     SakuraTest::FakeWindow window;
     auto ctx = MakeContext();
     ctx.render = &window;

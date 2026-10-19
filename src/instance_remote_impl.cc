@@ -21,6 +21,7 @@
 #include <string_view>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 
 #include <gst/app/gstappsrc.h>
 #include <gst/sdp/sdp.h>
@@ -607,56 +608,56 @@ void Instance::Remote::Impl::handleInput(const std::string& sessionId,
         return static_cast<float>(std::round(n));
     };
 
-    auto mapKey = [](const std::string& code, const std::string& key) -> ImGuiKey {
+    auto mapKey = [](const std::string& code, const std::string& key) -> KeyCode {
         if (code.size() == 4 && code.rfind("Key", 0) == 0) {
             char c = static_cast<char>(std::toupper(static_cast<unsigned char>(code[3])));
-            if (c >= 'A' && c <= 'Z') return static_cast<ImGuiKey>(ImGuiKey_A + (c - 'A'));
+            if (c >= 'A' && c <= 'Z') return static_cast<KeyCode>(static_cast<U16>(KeyCode::A) + (c - 'A'));
         }
         if (code.rfind("Digit", 0) == 0 && code.size() == 6 && std::isdigit(static_cast<unsigned char>(code[5]))) {
             char d = code[5];
-            return static_cast<ImGuiKey>(ImGuiKey_0 + (d - '0'));
+            return static_cast<KeyCode>(static_cast<U16>(KeyCode::Digit0) + (d - '0'));
         }
         if (!code.empty() && code[0] == 'F' && code.size() <= 3 && std::isdigit(static_cast<unsigned char>(code[1]))) {
             int f = std::clamp(std::stoi(code.substr(1)), 1, 24);
-            return static_cast<ImGuiKey>(ImGuiKey_F1 + (f - 1));
+            return static_cast<KeyCode>(static_cast<U16>(KeyCode::F1) + (f - 1));
         }
-        if (code == "ArrowLeft")                       return ImGuiKey_LeftArrow;
-        if (code == "ArrowRight")                      return ImGuiKey_RightArrow;
-        if (code == "ArrowUp")                         return ImGuiKey_UpArrow;
-        if (code == "ArrowDown")                       return ImGuiKey_DownArrow;
-        if (code == "AltLeft")                         return ImGuiKey_LeftAlt;
-        if (code == "AltRight")                        return ImGuiKey_RightAlt;
-        if (code == "ControlLeft")                     return ImGuiKey_LeftCtrl;
-        if (code == "ControlRight")                    return ImGuiKey_RightCtrl;
-        if (code == "ShiftLeft")                       return ImGuiKey_LeftShift;
-        if (code == "ShiftRight")                      return ImGuiKey_RightShift;
-        if (code == "MetaLeft")                        return ImGuiKey_LeftSuper;
-        if (code == "MetaRight")                       return ImGuiKey_RightSuper;
-        if (code == "Enter" || key == "Enter")         return ImGuiKey_Enter;
-        if (code == "Escape" || key == "Escape")       return ImGuiKey_Escape;
-        if (code == "Backspace" || key == "Backspace") return ImGuiKey_Backspace;
-        if (code == "Tab" || key == "Tab")             return ImGuiKey_Tab;
-        if (code == "Space" || key == " ")             return ImGuiKey_Space;
-        if (code == "Delete")                          return ImGuiKey_Delete;
-        if (code == "Insert")                          return ImGuiKey_Insert;
-        if (code == "Home")                            return ImGuiKey_Home;
-        if (code == "End")                             return ImGuiKey_End;
-        if (code == "PageUp")                          return ImGuiKey_PageUp;
-        if (code == "PageDown")                        return ImGuiKey_PageDown;
-        if (code == "Minus")                           return ImGuiKey_Minus;
-        if (code == "Equal")                           return ImGuiKey_Equal;
-        if (code == "BracketLeft")                     return ImGuiKey_LeftBracket;
-        if (code == "BracketRight")                    return ImGuiKey_RightBracket;
-        if (code == "Backslash")                       return ImGuiKey_Backslash;
-        if (code == "Semicolon")                       return ImGuiKey_Semicolon;
-        if (code == "Quote")                           return ImGuiKey_Apostrophe;
-        if (code == "Comma")                           return ImGuiKey_Comma;
-        if (code == "Period")                          return ImGuiKey_Period;
-        if (code == "Slash")                           return ImGuiKey_Slash;
+        if (code == "ArrowLeft")                       return KeyCode::LeftArrow;
+        if (code == "ArrowRight")                      return KeyCode::RightArrow;
+        if (code == "ArrowUp")                         return KeyCode::UpArrow;
+        if (code == "ArrowDown")                       return KeyCode::DownArrow;
+        if (code == "AltLeft")                         return KeyCode::LeftAlt;
+        if (code == "AltRight")                        return KeyCode::RightAlt;
+        if (code == "ControlLeft")                     return KeyCode::LeftCtrl;
+        if (code == "ControlRight")                    return KeyCode::RightCtrl;
+        if (code == "ShiftLeft")                       return KeyCode::LeftShift;
+        if (code == "ShiftRight")                      return KeyCode::RightShift;
+        if (code == "MetaLeft")                        return KeyCode::LeftSuper;
+        if (code == "MetaRight")                       return KeyCode::RightSuper;
+        if (code == "Enter" || key == "Enter")         return KeyCode::Enter;
+        if (code == "Escape" || key == "Escape")       return KeyCode::Escape;
+        if (code == "Backspace" || key == "Backspace") return KeyCode::Backspace;
+        if (code == "Tab" || key == "Tab")             return KeyCode::Tab;
+        if (code == "Space" || key == " ")             return KeyCode::Space;
+        if (code == "Delete")                          return KeyCode::Delete;
+        if (code == "Insert")                          return KeyCode::Insert;
+        if (code == "Home")                            return KeyCode::Home;
+        if (code == "End")                             return KeyCode::End;
+        if (code == "PageUp")                          return KeyCode::PageUp;
+        if (code == "PageDown")                        return KeyCode::PageDown;
+        if (code == "Minus")                           return KeyCode::Minus;
+        if (code == "Equal")                           return KeyCode::Equal;
+        if (code == "BracketLeft")                     return KeyCode::LeftBracket;
+        if (code == "BracketRight")                    return KeyCode::RightBracket;
+        if (code == "Backslash")                       return KeyCode::Backslash;
+        if (code == "Semicolon")                       return KeyCode::Semicolon;
+        if (code == "Quote")                           return KeyCode::Apostrophe;
+        if (code == "Comma")                           return KeyCode::Comma;
+        if (code == "Period")                          return KeyCode::Period;
+        if (code == "Slash")                           return KeyCode::Slash;
         if (code == "Backquote" ||
             code == "Backtick"  ||
-            code == "QuoteLeft")                       return ImGuiKey_GraveAccent;
-        return ImGuiKey_None;
+            code == "QuoteLeft")                       return KeyCode::GraveAccent;
+        return KeyCode::Unknown;
     };
 
     if (kind == "mouse") {
@@ -667,39 +668,40 @@ void Instance::Remote::Impl::handleInput(const std::string& sessionId,
         const int w = size.x;
         const int h = size.y;
 
-        ImGuiIO& io = ImGui::GetIO();
-        const float px = denorm(nx, w) / io.DisplayFramebufferScale.x;
-        const float py = denorm(ny, h) / io.DisplayFramebufferScale.y;
+        const auto scale = framebufferScale();
+        const float px = denorm(nx, w) / scale.x;
+        const float py = denorm(ny, h) / scale.y;
 
         if (act == "move") {
             JST_TRACE("[REMOTE] Mouse: move (x='{}', y='{}', nx='{}', ny='{}')", px, py, nx, ny);
-            io.AddMousePosEvent(px, py);
+            pushInput(Render::InputQueue::Pointer{Extent2D<F32>{px, py}});
             return;
         }
 
         if (act == "down" || act == "up" || act == "click" || act == "dblclick") {
             const int domButton = j.value("button", 0);
-            const int b = mapMouseButton(domButton);
-            if (b < 0 || b >= ImGuiMouseButton_COUNT) {
+            const auto pressed = Render::InputQueue::ButtonFromIndex(mapMouseButton(domButton));
+            if (!pressed) {
                 return;
             }
+            const MouseButton b = *pressed;
 
-            io.AddMousePosEvent(px, py);
+            pushInput(Render::InputQueue::Pointer{Extent2D<F32>{px, py}});
 
             if (act == "down") {
-                JST_TRACE("[REMOTE] Mouse: down (b='{}', x='{}', y='{}')", b, px, py);
+                JST_TRACE("[REMOTE] Mouse: down (b='{}', x='{}', y='{}')", static_cast<int>(b), px, py);
                 remoteInputStates[sessionId].mouseButtons.insert(b);
-                io.AddMouseButtonEvent(b, true);
+                pushInput(Render::InputQueue::Button{b, true});
                 return;
             }
             if (act == "up") {
-                JST_TRACE("[REMOTE] Mouse: up b={}, x={}, y={}", b, px, py);
+                JST_TRACE("[REMOTE] Mouse: up b={}, x={}, y={}", static_cast<int>(b), px, py);
                 remoteInputStates[sessionId].mouseButtons.erase(b);
-                io.AddMouseButtonEvent(b, false);
+                pushInput(Render::InputQueue::Button{b, false});
                 return;
             }
             if (act == "click" || act == "dblclick") {
-                JST_TRACE("[REMOTE] Mouse: ignore (b='{}', x='{}', y='{}')", b, px, py);
+                JST_TRACE("[REMOTE] Mouse: ignore (b='{}', x='{}', y='{}')", static_cast<int>(b), px, py);
                 return;
             }
         }
@@ -719,8 +721,7 @@ void Instance::Remote::Impl::handleInput(const std::string& sessionId,
         dx = -dx;
         dy = -dy;
 
-        ImGuiIO& io = ImGui::GetIO();
-        io.AddMouseWheelEvent(static_cast<float>(dx), static_cast<float>(dy));
+        pushInput(Render::InputQueue::Wheel{{static_cast<F32>(dx), static_cast<F32>(dy)}});
         JST_TRACE("[REMOTE] Wheel: (dx='{}', dy='{}', mode='{}')", dx, dy, deltaMode);
         return;
     }
@@ -735,7 +736,9 @@ void Instance::Remote::Impl::handleInput(const std::string& sessionId,
             JST_WARN("[REMOTE] Rejected invalid text input size.");
             return;
         }
-        ImGui::GetIO().AddInputCharactersUTF8(text.c_str());
+        if (viewport) {
+            viewport->input().pushText(text);
+        }
         return;
     }
 
@@ -760,8 +763,8 @@ void Instance::Remote::Impl::handleInput(const std::string& sessionId,
         state.shift = shift;
         state.meta = meta;
 
-        const ImGuiKey k = mapKey(code, key);
-        if (k != ImGuiKey_None) {
+        const KeyCode k = mapKey(code, key);
+        if (k != KeyCode::Unknown) {
             if (pressed) state.keys.insert(k);
             else state.keys.erase(k);
         }
@@ -771,6 +774,17 @@ void Instance::Remote::Impl::handleInput(const std::string& sessionId,
     }
 
     JST_TRACE("[REMOTE] Unknown control (kind='{}').", kind);
+}
+
+void Instance::Remote::Impl::pushInput(Render::InputQueue::Event event) {
+    if (!viewport) {
+        return;
+    }
+    viewport->input().push(std::move(event));
+}
+
+Extent2D<F32> Instance::Remote::Impl::framebufferScale() const {
+    return viewport ? viewport->metrics(1.0f).framebufferScale : Extent2D<F32>{1.0f, 1.0f};
 }
 
 void Instance::Remote::Impl::enqueueInput(std::string sessionId, nlohmann::json payload) {
@@ -791,15 +805,15 @@ void Instance::Remote::Impl::resetInput(const std::string& sessionId) {
     if (it == remoteInputStates.end()) {
         return;
     }
-    for (const int button : it->second.mouseButtons) {
-        ImGui::GetIO().AddMouseButtonEvent(button, false);
+    for (const MouseButton button : it->second.mouseButtons) {
+        pushInput(Render::InputQueue::Button{button, false});
     }
     remoteInputStates.erase(it);
     synchronizeKeyboardState();
 }
 
 void Instance::Remote::Impl::synchronizeKeyboardState() {
-    std::unordered_set<ImGuiKey> keys;
+    std::unordered_set<KeyCode> keys;
     bool alt = false;
     bool ctrl = false;
     bool shift = false;
@@ -813,17 +827,18 @@ void Instance::Remote::Impl::synchronizeKeyboardState() {
         meta |= state.meta;
     }
 
-    ImGuiIO& io = ImGui::GetIO();
-    io.AddKeyEvent(ImGuiMod_Alt, alt);
-    io.AddKeyEvent(ImGuiMod_Ctrl, ctrl);
-    io.AddKeyEvent(ImGuiMod_Shift, shift);
-    io.AddKeyEvent(ImGuiMod_Super, meta);
+    pushInput(Render::InputQueue::Modifiers{KeyModifiers{
+        .control = ctrl,
+        .shift = shift,
+        .alt = alt,
+        .super = meta,
+    }});
 
-    for (const ImGuiKey key : appliedRemoteKeys) {
-        if (!keys.contains(key)) io.AddKeyEvent(key, false);
+    for (const KeyCode key : appliedRemoteKeys) {
+        if (!keys.contains(key)) pushInput(Render::InputQueue::Key{key, false});
     }
-    for (const ImGuiKey key : keys) {
-        if (!appliedRemoteKeys.contains(key)) io.AddKeyEvent(key, true);
+    for (const KeyCode key : keys) {
+        if (!appliedRemoteKeys.contains(key)) pushInput(Render::InputQueue::Key{key, true});
     }
     appliedRemoteKeys = std::move(keys);
 }

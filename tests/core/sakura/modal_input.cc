@@ -139,7 +139,6 @@ struct ModalBody : Sakura::Component {
 };
 
 struct ModalFixture {
-    ImGuiContext* imgui = ImGui::CreateContext();
     Sakura::Context ctx;
     Sakura::RootComponent root;
     Sakura::InputRouter router;
@@ -150,7 +149,6 @@ struct ModalFixture {
         ctx.framebufferSize = {800, 600};
         ctx.windowFocused = true;
     }
-    ~ModalFixture() { ImGui::DestroyContext(imgui); }
 
     void place() {
         ++ctx.frame;

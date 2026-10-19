@@ -6,9 +6,14 @@
 #include "jetstream/macros.hh"
 #include "jetstream/parser.hh"
 #include "jetstream/render/types.hh"
-#include "jetstream/render/tools/imgui.h"
+#include "jetstream/render/base/input.hh"
+#include "jetstream/render/base/window_metrics.hh"
+#include "jetstream/surface.hh"
 
+#include <atomic>
+#include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -36,8 +41,19 @@ struct Config {
 
 class JETSTREAM_API Generic {
  public:
+    class Platform {
+     public:
+        virtual ~Platform() = default;
+
+        virtual F64 time() const = 0;
+        virtual void poll() = 0;
+        virtual void setCursor(SurfaceCursor cursor) = 0;
+        virtual std::string clipboardText() const = 0;
+        virtual void setClipboardText(const std::string& text) = 0;
+    };
+
     explicit Generic(const Config& config);
-    virtual ~Generic() = default;
+    virtual ~Generic();
 
     virtual std::string id() const = 0;
     virtual std::string name() const = 0;
@@ -46,11 +62,12 @@ class JETSTREAM_API Generic {
     virtual Result create() = 0;
     virtual Result destroy() = 0;
 
-    virtual Result createImgui() = 0;
-    virtual Result destroyImgui() = 0;
-
     virtual Extent2D<F32> displaySize() const;
-    virtual F32 scale(const F32& scale) const = 0;
+    virtual Extent2D<F32> framebufferSize() const;
+    virtual Extent2D<F32> contentScale() const;
+    virtual Render::WindowMetrics::Policy scalePolicy() const;
+
+    Render::WindowMetrics metrics(F32 interfaceScale) const;
 
     virtual Result waitEvents() = 0;
     virtual Result pollEvents() = 0;
@@ -62,6 +79,19 @@ class JETSTREAM_API Generic {
     virtual void beginWindowDrag();
     virtual void zoomWindow();
 
+    virtual bool macOSBehaviors() const;
+    virtual bool retainedPresent() const;
+    virtual void waitIdle(F64 seconds);
+
+    F64 inputTime() const;
+    void setCursor(SurfaceCursor cursor);
+    std::string clipboardText() const;
+    void setClipboardText(const std::string& text);
+    void requestRedraw();
+    bool consumeRedraw();
+
+    Render::InputQueue& input();
+
     Result addFileDropEvent(std::vector<std::string> paths);
 
     std::vector<std::string> takeDroppedFiles();
@@ -69,7 +99,23 @@ class JETSTREAM_API Generic {
  protected:
     Config config;
 
+    void attachPlatform(std::unique_ptr<Platform> next);
+    void detachPlatform();
+    void pumpPlatform();
+
  private:
+    struct Snapshot {
+        Extent2D<F32> displaySize;
+        Extent2D<F32> framebufferSize;
+        Extent2D<F32> contentScale;
+    };
+
+    std::unique_ptr<Platform> platform;
+    mutable std::mutex snapshotMutex;
+    std::optional<Snapshot> snapshot;
+    std::string clipboard;
+    Render::InputQueue inputQueue;
+    std::atomic<bool> redrawRequested = true;
     std::mutex droppedFilesMutex;
     std::vector<std::string> droppedFiles;
 };

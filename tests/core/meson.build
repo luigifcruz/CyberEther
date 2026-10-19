@@ -41,6 +41,7 @@ core_test_domains = {
         'render/colormap.cc',
         'render/components.cc',
         'render/input_state.cc',
+        'render/present_list.cc',
         'render/transfers.cc',
         'render/surface_edits.cc',
         'render/geomap_labels.cc',
@@ -59,6 +60,7 @@ core_test_domains = {
         'sakura/controls.cc',
         'sakura/dock.cc',
         'sakura/geometry.cc',
+        'sakura/idle_input.cc',
         'sakura/input.cc',
         'sakura/input_ownership.cc',
         'sakura/modal_input.cc',
@@ -81,6 +83,7 @@ core_test_domains = {
         'sakura/text_grid.cc',
         'sakura/text_markdown.cc',
         'sakura/text_metrics.cc',
+        'sakura/window_metrics.cc',
     ],
     'runtime': [
         'runtime/scheduler.cc',
@@ -114,10 +117,6 @@ if jst_is_macos and cfg_lst.get('JETSTREAM_LOADER_GLFW_AVAILABLE', false)
     cocoa_titlebar_tests = executable(
         'jetstream-core-cocoa-titlebar-tests',
         'render/cocoa_titlebar.mm',
-        '../../src/render/tools/imgui.cpp',
-        '../../src/render/tools/imgui_draw.cpp',
-        '../../src/render/tools/imgui_tables.cpp',
-        '../../src/render/tools/imgui_widgets.cpp',
         dependencies: dep_lst + [catch2_dep],
         include_directories: inc_lst + [core_test_includes],
     )

@@ -5,10 +5,11 @@
 #include "jetstream/render/base/window.hh"
 #include "jetstream/render/devices/webgpu/transfer.hh"
 #include "jetstream/backend/base.hh"
-#include "jetstream/render/tools/imgui.h"
 #include "jetstream/viewport/base.hh"
 
 #include <webgpu/webgpu.h>
+
+#include <memory>
 
 namespace Jetstream::Render {
 
@@ -18,7 +19,8 @@ class JETSTREAM_API WindowImp<DeviceType::WebGPU> : public Window {
     explicit WindowImp(const Config& config,
                        const std::shared_ptr<Viewport::Adapter<DeviceType::WebGPU>>& viewport);
 
-    const Stats& stats() const override;
+    ~WindowImp() override;
+
     std::string info() const override;
 
     constexpr DeviceType device() const override {
@@ -37,31 +39,24 @@ class JETSTREAM_API WindowImp<DeviceType::WebGPU> : public Window {
     Result underlyingCancel() override;
 
     Result underlyingSynchronize() override;
+    Result underlyingRecreate() override;
 
     Viewport::Generic* underlyingViewport() const override { return viewport.get(); }
 
  private:
     struct Presenter;
 
-    Stats statsData;
-    ImGuiIO* io = nullptr;
-    ImGuiStyle* style = nullptr;
     WGPUCommandEncoder encoder = nullptr;
-    WGPURenderPassColorAttachment colorAttachments{};
-    WGPURenderPassDescriptor renderPassDesc{};
     WGPUQueue queue = nullptr;
     WGPUTextureView framebufferTexture = nullptr;
     TransferImp<DeviceType::WebGPU> transferEncoder;
     std::vector<std::shared_ptr<SurfaceImp<DeviceType::WebGPU>>> surfaces;
-    bool imguiCreated = false;
+    std::unique_ptr<Presenter> presenter;
 
     std::shared_ptr<Viewport::Adapter<DeviceType::WebGPU>> viewport;
 
-    Result recreate();
-    Result createImgui();
-    Result destroyImgui();
-    Result beginImgui();
-    Result endImgui();
+    Result createPresenter();
+    Result encodePresent();
 };
 
 }  // namespace Jetstream::Render

@@ -75,7 +75,7 @@ class JETSTREAM_API Transfer {
 
         bool empty() const;
         bool contains(const std::shared_ptr<Buffer>& buffer) const;
-        bool contains(const std::shared_ptr<Texture>& texture) const;
+        bool contains(const Texture* texture) const;
         void collect(const std::shared_ptr<Buffer>& buffer);
         void collect(const std::shared_ptr<Texture>& texture);
         void commit();

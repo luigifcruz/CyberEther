@@ -2,7 +2,8 @@
 
 #include "jetstream/instance_remote.hh"
 #include "jetstream/viewport/capture.hh"
-#include "jetstream/render/tools/imgui.h"
+#include "jetstream/render/base/input.hh"
+#include "jetstream/surface.hh"
 
 #include <atomic>
 #include <chrono>
@@ -181,8 +182,8 @@ struct Instance::Remote::Impl {
     };
 
     struct RemoteInputState {
-        std::unordered_set<ImGuiKey> keys;
-        std::unordered_set<int> mouseButtons;
+        std::unordered_set<KeyCode> keys;
+        std::unordered_set<MouseButton> mouseButtons;
         bool alt = false;
         bool ctrl = false;
         bool shift = false;
@@ -193,13 +194,15 @@ struct Instance::Remote::Impl {
     std::deque<std::string> inputSessionOrder;
     std::deque<QueuedInput> inputQueue;
     std::unordered_map<std::string, RemoteInputState> remoteInputStates;
-    std::unordered_set<ImGuiKey> appliedRemoteKeys;
+    std::unordered_set<KeyCode> appliedRemoteKeys;
 
     void enqueueInput(std::string sessionId, nlohmann::json payload);
     void enqueueInputReset(const std::string& sessionId);
     void handleInput(const std::string& sessionId, const std::string& kind, const nlohmann::json& j);
     void resetInput(const std::string& sessionId);
     void synchronizeKeyboardState();
+    void pushInput(Render::InputQueue::Event event);
+    Extent2D<F32> framebufferScale() const;
     void createControlChannel(const std::string& sessionId);
     static void onMessageCallback(GstWebRTCDataChannel* self, gchar* data, gpointer user_data);
     static void onChannelClosedCallback(GstWebRTCDataChannel* self, gpointer user_data);

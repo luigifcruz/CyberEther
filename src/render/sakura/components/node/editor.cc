@@ -152,10 +152,6 @@ Extent2D<F32> GridToPx(const Rect& viewport, Extent2D<F32> offset, F32 ratio, Ex
     return {viewport.x + grid.x * ratio + offset.x, viewport.y + grid.y * ratio + offset.y};
 }
 
-bool Overlaps(const Rect& a, const Rect& b) {
-    return a.x < b.right() && b.x < a.right() && a.y < b.bottom() && b.y < a.bottom();
-}
-
 Extent2D<F32> PointOnRoundedRect(const Rect& rect, F32 radius, F32 distance) {
     const F32 width = rect.width;
     const F32 height = rect.height;

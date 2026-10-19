@@ -57,7 +57,6 @@ inline const std::unordered_map<std::string, Palette> Themes = {
             {"plot_accent", {1.00f, 0.85f, 0.00f, 1.0f}},
             {"plot_halo", {0.00f, 0.00f, 0.00f, 0.65f}},
             {"transparent", {0.00f, 0.00f, 0.00f, 0.00f}},
-            {"info_hud_background", {0.00f, 0.00f, 0.00f, 0.35f}},
             {"remote_btn", {0.13f, 0.62f, 0.30f, 1.0f}},
             {"remote_btn_hovered", {0.16f, 0.68f, 0.34f, 1.0f}},
 
@@ -247,7 +246,6 @@ inline const std::unordered_map<std::string, Palette> Themes = {
             {"plot_accent", {0.86f, 0.52f, 0.00f, 1.0f}},
             {"plot_halo", {1.00f, 1.00f, 1.00f, 0.75f}},
             {"transparent", {0.00f, 0.00f, 0.00f, 0.00f}},
-            {"info_hud_background", {0.97f, 0.97f, 0.98f, 0.82f}},
             {"remote_btn", {0.18f, 0.68f, 0.36f, 1.0f}},
             {"remote_btn_hovered", {0.22f, 0.73f, 0.40f, 1.0f}},
 

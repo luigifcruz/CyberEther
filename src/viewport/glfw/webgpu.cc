@@ -4,7 +4,7 @@
 #include <GLFW/emscripten_glfw3.h>
 #include <emscripten/html5.h>
 
-#include "tools/imgui_impl_glfw.h"
+#include "tools/glfw_input.hh"
 
 static void PrintGLFWError(int, const char* description) {
     JST_FATAL("[WebGPU] GLFW error: {}", description);
@@ -52,6 +52,15 @@ Result Implementation::create() {
         return Result::ERROR;
     }
 
+    attachPlatform(std::make_unique<GlfwInput>(window, *this));
+    pumpPlatform();
+    emscripten_glfw_make_canvas_resizable(window, "#canvas", nullptr);
+#if defined(EMSCRIPTEN_USE_PORT_CONTRIB_GLFW3) && EMSCRIPTEN_USE_PORT_CONTRIB_GLFW3 >= 34020240817
+    if (emscripten::glfw3::IsRuntimePlatformApple()) {
+        emscripten::glfw3::SetSuperPlusKeyTimeouts(10, 10);
+    }
+#endif
+
     int framebufferWidth = 0;
     int framebufferHeight = 0;
     glfwGetFramebufferSize(window, &framebufferWidth, &framebufferHeight);
@@ -72,6 +81,7 @@ Result Implementation::create() {
 
     surface = wgpuInstanceCreateSurface(instance, &surfaceDesc);
     if (!surface) {
+        detachPlatform();
         glfwDestroyWindow(window);
         glfwTerminate();
         JST_ERROR("[WebGPU] Failed to create canvas surface.");
@@ -93,6 +103,7 @@ Result Implementation::destroy() {
         surface = nullptr;
     }
 
+    detachPlatform();
     glfwDestroyWindow(window);
     glfwTerminate();
 
@@ -120,13 +131,6 @@ Result Implementation::destroySwapchain() {
     return Result::SUCCESS;
 }
 
-Result Implementation::createImgui() {
-    ImGui_ImplGlfw_InitForOther(window, true);
-    ImGui_ImplGlfw_InstallEmscriptenCallbacks(window, "#canvas");
-
-    return Result::SUCCESS;
-}
-
 Extent2D<F32> Implementation::displaySize() const {
     int width = 0;
     int height = 0;
@@ -134,20 +138,24 @@ Extent2D<F32> Implementation::displaySize() const {
     return {static_cast<F32>(width), static_cast<F32>(height)};
 }
 
-F32 Implementation::scale(const F32& scale) const {
-    // No scaling needed. ImGui was modified to handle HiDPI.
-    return scale;
+Extent2D<F32> Implementation::framebufferSize() const {
+    int width = 0;
+    int height = 0;
+    glfwGetFramebufferSize(window, &width, &height);
+    return {static_cast<F32>(width), static_cast<F32>(height)};
 }
 
-Result Implementation::destroyImgui() {
-    ImGui_ImplGlfw_Shutdown();
+void Implementation::waitIdle(F64) {}
 
-    return Result::SUCCESS;
+bool Implementation::macOSBehaviors() const {
+#if defined(EMSCRIPTEN_USE_PORT_CONTRIB_GLFW3) && EMSCRIPTEN_USE_PORT_CONTRIB_GLFW3 >= 34020240817
+    return emscripten::glfw3::IsRuntimePlatformApple();
+#else
+    return false;
+#endif
 }
 
 Result Implementation::nextDrawable() {
-    glfwPollEvents();
-
     int framebufferWidth = 0;
     int framebufferHeight = 0;
     glfwGetFramebufferSize(window, &framebufferWidth, &framebufferHeight);
@@ -164,9 +172,11 @@ Result Implementation::nextDrawable() {
        return Result::RECREATE;
     }
 
-    ImGui_ImplGlfw_NewFrame();
-
     return Result::SUCCESS;
+}
+
+Extent2D<U64> Implementation::getSwapchainSize() const {
+    return swapchainSize;
 }
 
 Result Implementation::commitDrawable(WGPUTextureView* framebufferTexture) {
@@ -181,17 +191,23 @@ Result Implementation::commitDrawable(WGPUTextureView* framebufferTexture) {
 
     *framebufferTexture = wgpuTextureCreateView(st.texture, nullptr);
 
-    return (*framebufferTexture != nullptr) ? Result::SUCCESS : Result::RECREATE;
+    return Result::SUCCESS;
 }
 
 Result Implementation::waitEvents() {
     glfwWaitEventsTimeout(0.150);
+    pumpPlatform();
     return Result::SUCCESS;
 }
 
 Result Implementation::pollEvents() {
     glfwPollEvents();
+    pumpPlatform();
     return Result::SUCCESS;
+}
+
+bool Implementation::retainedPresent() const {
+    return true;
 }
 
 bool Implementation::keepRunning() {

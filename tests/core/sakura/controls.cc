@@ -6,7 +6,6 @@
 #include <jetstream/render/sakura/components/controls.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
-#include <jetstream/render/tools/imgui.h>
 
 #include "harness.hh"
 #include "scene.hh"
@@ -289,16 +288,51 @@ TEST_CASE("Combo opens a dropdown below itself and reports the chosen option", "
     host.place(scene.ctx, kScreen);
     CHECK_FALSE(host.popups.interactiveAt({150.0f, 150.0f}));
 
-    CHECK(host.click(150.0f, 112.0f));
-    host.place(scene.ctx, kScreen);
+    using Queue = Render::InputQueue;
+    InputDriver driver;
+    CHECK(driver.run(host, scene.ctx, kScreen, {
+        Queue::Pointer{Extent2D<F32>{150.0f, 112.0f}},
+        Queue::Button{MouseButton::Left, true},
+        Queue::Button{MouseButton::Left, false},
+    }) > 1);
     CHECK(host.popups.interactiveAt({100.0f, 125.0f}));
     CHECK(host.popups.interactiveAt({299.0f, 209.0f}));
     CHECK_FALSE(host.popups.interactiveAt({150.0f, 210.0f}));
-
-    CHECK(host.click(150.0f, 167.0f));
-    CHECK(events == std::vector<std::string>{"select:1", "change:beta"});
     host.place(scene.ctx, kScreen);
+    CHECK(events.empty());
+
+    driver.run(host, scene.ctx, kScreen, {
+        Queue::Pointer{Extent2D<F32>{150.0f, 167.0f}},
+        Queue::Button{MouseButton::Left, true},
+        Queue::Button{MouseButton::Left, false},
+    });
+    CHECK(events == std::vector<std::string>{"select:1", "change:beta"});
     CHECK_FALSE(host.popups.interactiveAt({150.0f, 150.0f}));
+    events.clear();
+
+    Sakura::Combo second;
+    second.update({
+        .id = "batched",
+        .options = {"alpha", "beta", "gamma"},
+        .value = "alpha",
+        .onChange = [&](const std::string& value) { events.push_back("change:" + value); },
+        .onSelect = [&](U64 index) { events.push_back("select:" + std::to_string(index)); },
+    });
+    LayerSlot batchedMount;
+    batchedMount.hold(second, {100.0f, 100.0f, 200.0f, 25.0f});
+    LayerHost batchedHost({&batchedMount});
+    batchedHost.place(scene.ctx, kScreen);
+    InputDriver batched;
+    batched.run(batchedHost, scene.ctx, kScreen, {
+        Queue::Pointer{Extent2D<F32>{150.0f, 112.0f}},
+        Queue::Button{MouseButton::Left, true},
+        Queue::Button{MouseButton::Left, false},
+        Queue::Pointer{Extent2D<F32>{150.0f, 167.0f}},
+        Queue::Button{MouseButton::Left, true},
+        Queue::Button{MouseButton::Left, false},
+    });
+    CHECK(events == std::vector<std::string>{"select:1", "change:beta"});
+    CHECK_FALSE(batchedHost.popups.interactiveAt({150.0f, 150.0f}));
 }
 
 TEST_CASE("Combo closes its dropdown on a second click and stays shut while disabled",

@@ -20,6 +20,8 @@
 #include "jetstream/render/base/window.hh"
 #include "jetstream/viewport/adapters/generic.hh"
 
+#include "harness.hh"
+
 using namespace Jetstream;
 
 namespace {
@@ -294,13 +296,14 @@ class TestSurface final : public Render::Surface {
     std::atomic<bool> destructionStarted = false;
 };
 
-class TestWindow final : public Render::Window {
+class TestWindow final : public RenderTest::Window {
  public:
-    TestWindow() : Window(Config{}) {}
-
-    constexpr DeviceType device() const override { return DeviceType::None; }
-    const Stats& stats() const override { return statsData; }
-    std::string info() const override { return "Test"; }
+    TestWindow() {
+        attached = false;
+        viewport.content = {2.0f, 2.0f};
+        viewport.policy = Render::WindowMetrics::Policy::ContentScale;
+        viewport.chrome = Render::TitlebarChrome{.integrated = true, .leadingInset = 80.0f, .height = 32.0f};
+    }
 
     Result collectFrameTransfers(Render::Transfer::Batch& batch) const {
         return collectTransfers(batch);
@@ -328,14 +331,12 @@ class TestWindow final : public Render::Window {
     U64 outstandingSubmissions = 0;
     U64 registeredSurfaceCount() const { return surfaces.size(); }
 
-    void attachViewport(Viewport::Generic* viewport) {
-        attachedViewport = viewport;
-        updateScalingFactor(*viewport);
+    void attachViewport() {
+        attached = true;
+        updateMetrics(viewport);
     }
 
  protected:
-    Viewport::Generic* underlyingViewport() const override { return attachedViewport; }
-
     Result bindSurface(const std::shared_ptr<Render::Surface>& surface) override {
         surfaces.push_back(std::dynamic_pointer_cast<TestSurface>(surface));
         return bindHandler ? bindHandler(surface) : Result::SUCCESS;
@@ -382,13 +383,11 @@ class TestWindow final : public Render::Window {
     }
 
  private:
-    Stats statsData{};
     Result creationResult = Result::SUCCESS;
     Result destructionResult = Result::SUCCESS;
     Result submissionResult = Result::SUCCESS;
     U64 destructions = 0;
     std::vector<std::shared_ptr<TestSurface>> surfaces;
-    Viewport::Generic* attachedViewport = nullptr;
 };
 
 class TestViewport final : public Viewport::Generic {
@@ -401,11 +400,6 @@ class TestViewport final : public Viewport::Generic {
 
     Result create() override { return Result::SUCCESS; }
     Result destroy() override { return Result::SUCCESS; }
-    Result createImgui() override { return Result::SUCCESS; }
-    Result destroyImgui() override { return Result::SUCCESS; }
-
-    F32 scale(const F32&) const override { return 2.0f; }
-
     Result waitEvents() override { return Result::SUCCESS; }
     Result pollEvents() override { return Result::SUCCESS; }
     bool keepRunning() override { return true; }
@@ -710,7 +704,7 @@ TEST_CASE("Failed surface appends roll back partial backend creation dependencie
         Render::Transfer::Batch batch;
         REQUIRE(window.collectFrameTransfers(batch) == Result::SUCCESS);
         REQUIRE_FALSE(batch.contains(buffer));
-        REQUIRE_FALSE(batch.contains(texture));
+        REQUIRE_FALSE(batch.contains(texture.get()));
         REQUIRE_FALSE(surface->wantsDraw());
     }
 
@@ -1919,7 +1913,7 @@ TEST_CASE("Standalone attachments do not make transfer collection order-dependen
         Render::Transfer::Batch batch;
         REQUIRE(window.collectFrameTransfers(batch) == Result::SUCCESS);
         REQUIRE(batch.textures().size() == 1);
-        REQUIRE(batch.contains(texture));
+        REQUIRE(batch.contains(texture.get()));
         REQUIRE(surface->wantsDraw());
 
         surface->commitDraw();
@@ -1970,7 +1964,7 @@ TEST_CASE("Render window chrome defaults to the system frame", "[core][render][w
     window.zoomWindow();
     REQUIRE(window.destroy() == Result::SUCCESS);
 
-    TestViewport viewport;
+    RenderTest::Viewport viewport;
     const auto fallback = viewport.Viewport::Generic::titlebarChrome();
     REQUIRE_FALSE(fallback.integrated);
     REQUIRE(fallback.leadingInset == 0.0f);
@@ -2001,10 +1995,10 @@ TEST_CASE("Integrated titlebar activation is opt in and forwards through the vie
 
 TEST_CASE("Render window chrome forwards to its viewport in logical units", "[core][render][window]") {
     TestWindow window;
-    TestViewport viewport;
+    auto& viewport = window.viewport;
 
     REQUIRE(window.create() == Result::SUCCESS);
-    window.attachViewport(&viewport);
+    window.attachViewport();
 
     const auto chrome = window.titlebarChrome();
     REQUIRE(chrome.integrated);

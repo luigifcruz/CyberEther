@@ -14,7 +14,6 @@ class ShapesWindow final : public Render::Window {
  public:
     ShapesWindow() : Window(Config{}) {}
 
-    const Stats& stats() const override { return windowStats; }
     std::string info() const override { return "ShapesWindow"; }
     constexpr DeviceType device() const override {
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
@@ -38,9 +37,6 @@ class ShapesWindow final : public Render::Window {
     Result underlyingBegin() override { return Result::SUCCESS; }
     Result underlyingEnd() override { return Result::SUCCESS; }
     Result underlyingSynchronize() override { return Result::SUCCESS; }
-
- private:
-    Stats windowStats{};
 };
 
 }  // namespace

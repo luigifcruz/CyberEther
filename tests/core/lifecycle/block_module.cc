@@ -766,10 +766,6 @@ struct SchedulerHarness {
 struct SyntheticWindow : Render::Window {
     SyntheticWindow() : Render::Window({}) {}
 
-    const Stats& stats() const override {
-        return windowStats;
-    }
-
     std::string info() const override {
         return "synthetic-lifecycle-window";
     }
@@ -806,9 +802,6 @@ struct SyntheticWindow : Render::Window {
     Result underlyingSynchronize() override {
         return Result::SUCCESS;
     }
-
- private:
-    Stats windowStats{};
 };
 
 Parser::Map ConfigWithValue(const std::string& value) {

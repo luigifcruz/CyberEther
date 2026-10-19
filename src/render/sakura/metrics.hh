@@ -3,7 +3,6 @@
 
 #include "context.hh"
 
-#include <jetstream/render/sakura/metrics.hh>
 #include <jetstream/render/sakura/surface.hh>
 
 #include <jetstream/render/sakura/typography.hh>
@@ -64,13 +63,25 @@ inline F32 ResolveLength(const Context& ctx, F32 size, F32 natural, F32 availabl
     return FitLength(length, available);
 }
 
+struct DisplayMetrics {
+    static constexpr F32 kSurfaceScale = 0.5f;
+
+    static Rect RootRegion(const Render::WindowMetrics& metrics, F32 topOffset);
+    static Rect RootClip(const Render::WindowMetrics& metrics, const Rect& region);
+    static Extent2D<U64> CanvasFramebuffer(const Render::WindowMetrics& metrics, const Extent2D<F32>& logical);
+    static Extent2D<F32> FramebufferToDisplay(const Render::WindowMetrics& metrics, const Extent2D<U64>& framebuffer);
+    static Extent2D<F32> LogicalSize(const Render::WindowMetrics& metrics, const Extent2D<F32>& display);
+    static Extent2D<F32> Snap(const Render::WindowMetrics& metrics, const Extent2D<F32>& display);
+    static F32 SurfaceScale(const Render::WindowMetrics& metrics);
+    static F32 PixelRatio(const SurfaceResize& resize);
+    static F32 LogicalHeight(const Render::WindowMetrics& metrics, U64 framebufferHeight);
+};
+
+const Render::WindowMetrics& Metrics(const Context& ctx);
 F32 ScalingFactor(const Context& ctx);
-F32 Unscale(const Context& ctx, F32 value);
-Extent2D<F32> Unscale(const Context& ctx, Extent2D<F32> value);
+F32 Scale(const Context& ctx, F32 value);
+Extent2D<F32> Scale(const Context& ctx, Extent2D<F32> value);
 Extent2D<F32> FramebufferScale(const Context& ctx);
-F32 SurfaceScale(const Context& ctx);
-Extent2D<F32> SnapToFramebuffer(const Context& ctx, const Extent2D<F32>& displayPosition);
-Extent2D<F32> FramebufferToDisplay(const Context& ctx, const Extent2D<U64>& framebufferSize);
 std::optional<SurfaceResize> ResolveSurfaceResize(const Context& ctx, const Extent2D<F32>& logicalSize);
 F32 LogicalViewportHeight(const Context& ctx);
 

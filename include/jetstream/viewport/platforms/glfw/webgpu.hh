@@ -29,20 +29,22 @@ class GLFW<DeviceType::WebGPU> : public Adapter<DeviceType::WebGPU> {
     Result create();
     Result destroy();
 
-    Result createImgui();
-    Result destroyImgui();
     Extent2D<F32> displaySize() const;
-    F32 scale(const F32& scale) const;
+    Extent2D<F32> framebufferSize() const;
+    void waitIdle(F64 seconds);
+    bool macOSBehaviors() const;
 
     Result createSwapchain();
     Result destroySwapchain();
 
     Result nextDrawable();
     Result commitDrawable(WGPUTextureView* framebufferTexture);
+    Extent2D<U64> getSwapchainSize() const;
 
     Result waitEvents();
     Result pollEvents();
     bool keepRunning();
+    bool retainedPresent() const override;
 
  private:
     GLFWwindow* window;

@@ -2,6 +2,10 @@
 #include "jetstream/backend/devices/vulkan/helpers.hh"
 #include "creation.hh"
 
+#include "present_layout.hh"
+
+#include <array>
+
 namespace Jetstream::Render {
 
 using Implementation = TextureImp<DeviceType::Vulkan>;
@@ -147,26 +151,11 @@ Result Implementation::create() {
         JST_ERROR("[VULKAN] Can't create texture sampler.");
     });
 
-    // Register descriptor for ImGui attachment.
+    // Register descriptor for window presentation.
 
     auto& backend = Backend::State<DeviceType::Vulkan>();
 
-    VkDescriptorSetLayoutBinding binding{};
-    binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    binding.descriptorCount = 1;
-    binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-    binding.binding = 0;
-
-    VkDescriptorSetLayoutCreateInfo info{};
-    info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    info.bindingCount = 1;
-    info.pBindings = &binding;
-
-    JST_VK_CHECK(Detail::CreateHandle(descriptorSetLayout, [&](auto* output) {
-        return vkCreateDescriptorSetLayout(device, &info, nullptr, output);
-    }), [&]{
-        JST_ERROR("[VULKAN] Can't create descriptor set layout.");
-    });
+    JST_CHECK(Detail::CreatePresentLayout(device, descriptorSetLayout));
 
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -181,18 +170,27 @@ Result Implementation::create() {
     });
 
     VkDescriptorImageInfo descImage{};
-    descImage.sampler = sampler;
     descImage.imageView = imageView;
     descImage.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-    VkWriteDescriptorSet writeDesc{};
-    writeDesc.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writeDesc.dstSet = descriptorSet;
-    writeDesc.descriptorCount = 1;
-    writeDesc.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    writeDesc.pImageInfo = &descImage;
+    VkDescriptorImageInfo descSampler{};
+    descSampler.sampler = sampler;
 
-    vkUpdateDescriptorSets(device, 1, &writeDesc, 0, nullptr);
+    std::array<VkWriteDescriptorSet, 2> writes{};
+    writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[0].dstSet = descriptorSet;
+    writes[0].dstBinding = 0;
+    writes[0].descriptorCount = 1;
+    writes[0].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    writes[0].pImageInfo = &descImage;
+    writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[1].dstSet = descriptorSet;
+    writes[1].dstBinding = 1;
+    writes[1].descriptorCount = 1;
+    writes[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+    writes[1].pImageInfo = &descSampler;
+
+    vkUpdateDescriptorSets(device, static_cast<U32>(writes.size()), writes.data(), 0, nullptr);
 
     // Fill image with initial data.
 

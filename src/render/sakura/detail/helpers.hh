@@ -22,6 +22,10 @@ constexpr Rect Inset(const Rect& rect, F32 inset) {
             std::max(0.0f, rect.height - 2.0f * inset)};
 }
 
+constexpr bool Overlaps(const Rect& a, const Rect& b) {
+    return a.x < b.right() && b.x < a.right() && a.y < b.bottom() && b.y < a.bottom();
+}
+
 constexpr Rect Inflate(const Rect& rect, F32 amount) {
     return {rect.x - amount, rect.y - amount, rect.width + 2.0f * amount, rect.height + 2.0f * amount};
 }

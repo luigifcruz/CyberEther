@@ -1425,10 +1425,9 @@ TEST_CASE("Surface presenters give up waiting after the settle frame budget",
 
 TEST_CASE("Canvases punch live images only on erase capable backends with an opaque background",
           "[core][sakura][geometry]") {
-    REQUIRE(Sakura::UnderlaysAvailable(true, true, {0.0f, 0.0f, 0.0f, 1.0f}));
-    REQUIRE_FALSE(Sakura::UnderlaysAvailable(false, true, {0.0f, 0.0f, 0.0f, 1.0f}));
-    REQUIRE_FALSE(Sakura::UnderlaysAvailable(true, false, {0.0f, 0.0f, 0.0f, 1.0f}));
-    REQUIRE_FALSE(Sakura::UnderlaysAvailable(true, true, {0.0f, 0.0f, 0.0f, 0.5f}));
+    REQUIRE(Sakura::UnderlaysAvailable(true, {0.0f, 0.0f, 0.0f, 1.0f}));
+    REQUIRE_FALSE(Sakura::UnderlaysAvailable(false, {0.0f, 0.0f, 0.0f, 1.0f}));
+    REQUIRE_FALSE(Sakura::UnderlaysAvailable(true, {0.0f, 0.0f, 0.0f, 0.5f}));
 }
 
 TEST_CASE("Live image underlays follow the translated image rect and its scissor",

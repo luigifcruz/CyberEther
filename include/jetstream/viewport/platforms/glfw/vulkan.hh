@@ -37,10 +37,10 @@ class GLFW<DeviceType::Vulkan> : public Adapter<DeviceType::Vulkan> {
     Result create();
     Result destroy();
 
-    Result createImgui();
-    Result destroyImgui();
     Extent2D<F32> displaySize() const;
-    F32 scale(const F32& scale) const;
+    Extent2D<F32> framebufferSize() const;
+    Extent2D<F32> contentScale() const;
+    Render::WindowMetrics::Policy scalePolicy() const;
 
     Result createSwapchain();
     Result destroySwapchain();
@@ -48,6 +48,7 @@ class GLFW<DeviceType::Vulkan> : public Adapter<DeviceType::Vulkan> {
     Result waitEvents();
     Result pollEvents();
     bool keepRunning();
+    bool retainedPresent() const override;
 
     Render::TitlebarChrome titlebarChrome() const;
     void setIntegratedTitlebar(bool enabled) override;

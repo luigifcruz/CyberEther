@@ -1693,9 +1693,9 @@ struct TextGrid::Impl {
     void copySelectionOrLine() {
         if (hasSelection()) {
             const auto [start, end] = selectionRange();
-            SetClipboardText(textInRange(start, end));
+            SetClipboardText(textMetrics.window, textInRange(start, end));
         } else {
-            SetClipboardText(lines[cursor.line] + "\n");
+            SetClipboardText(textMetrics.window, lines[cursor.line] + "\n");
         }
     }
 
@@ -1929,7 +1929,7 @@ struct TextGrid::Impl {
             return true;
         }
         if (key == KeyCode::V && !repeat) {
-            const std::string clipboardText = acceptedText(GetClipboardText());
+            const std::string clipboardText = acceptedText(GetClipboardText(textMetrics.window));
             if (!clipboardText.empty()) {
                 insertText(clipboardText);
             }

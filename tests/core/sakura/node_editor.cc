@@ -53,7 +53,6 @@ struct Block {
 };
 
 struct Graph {
-    ImGuiContextGuard imgui;
     SakuraTest::FakeWindow window;
     NodeEditor editor;
     Host host{editor};
@@ -786,7 +785,6 @@ TEST_CASE("Hovering a wire requests its tooltip and the hover follows a moved no
 
 TEST_CASE("Lazily prepared wire tooltips appear after the delay and follow the pointer along the wire",
           "[core][sakura][node-editor]") {
-    ImGuiContextGuard imgui;
     SakuraTest::FakeWindow window;
     NodeEditor editor;
     LayerSlot slot;

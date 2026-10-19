@@ -7,6 +7,8 @@
 #include "jetstream/backend/base.hh"
 #include "jetstream/viewport/base.hh"
 
+#include <memory>
+
 namespace Jetstream::Render {
 
 template<>
@@ -15,7 +17,8 @@ class JETSTREAM_API WindowImp<DeviceType::Vulkan> : public Window {
     explicit WindowImp(const Config& config,
                        const std::shared_ptr<Viewport::Adapter<DeviceType::Vulkan>>& viewport);
 
-    const Stats& stats() const override;
+    ~WindowImp() override;
+
     std::string info() const override;
 
     constexpr DeviceType device() const override {
@@ -38,16 +41,14 @@ class JETSTREAM_API WindowImp<DeviceType::Vulkan> : public Window {
     Result underlyingCancel() override;
 
     Result underlyingSynchronize() override;
+    Result underlyingRecreate() override;
 
     Viewport::Generic* underlyingViewport() const override { return viewport.get(); }
 
  private:
     struct Presenter;
 
-    Stats statsData;
-    ImGuiIO* io = nullptr;
     size_t currentFrame = 0;
-    ImGuiStyle* style = nullptr;
     VkRenderPass renderPass = VK_NULL_HANDLE;
     VkCommandPool commandPool = VK_NULL_HANDLE;
     std::vector<VkFramebuffer> swapchainFramebuffers;
@@ -59,18 +60,15 @@ class JETSTREAM_API WindowImp<DeviceType::Vulkan> : public Window {
     TransferImp<DeviceType::Vulkan> transferEncoder;
     std::vector<std::shared_ptr<SurfaceImp<DeviceType::Vulkan>>> surfaces;
     bool commandBuffersAllocated = false;
-    bool imguiCreated = false;
+    std::unique_ptr<Presenter> presenter;
     bool windowCreated = false;
 
     std::shared_ptr<Viewport::Adapter<DeviceType::Vulkan>> viewport;
 
-    Result createImgui();
-    Result destroyImgui();
+    Result createPresenter();
+    Result encodePresent();
     Result createFramebuffer();
     Result destroyFramebuffer();
-    Result beginImgui();
-    Result endImgui();
-    Result recreate();
     Result createSynchronizationObjects();
     Result destroySynchronizationObjects();
 };

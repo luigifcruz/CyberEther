@@ -19,8 +19,7 @@
 namespace Jetstream {
 
 struct SettingsActions {
-    using Filter = std::tuple<MailSetInfoPanelEnabled,
-                              MailSetBackgroundParticles,
+    using Filter = std::tuple<MailSetBackgroundParticles,
                               MailSetGraphicsScale,
                               MailSetGraphicsDevice,
                               MailSetSettingsSection,
@@ -45,17 +44,6 @@ struct SettingsActions {
                     DefaultCompositorCallbacks& callbacks) :
         state(state),
         callbacks(callbacks) {}
-
-    Result handle(const MailSetInfoPanelEnabled& msg) {
-        state.interface.infoPanelEnabled = msg.value;
-
-        Settings settings;
-        JST_CHECK(Settings::Get(settings));
-        settings.interface.infoPanelEnabled = msg.value;
-        JST_CHECK(Settings::Set(settings));
-
-        return Result::SUCCESS;
-    }
 
     Result handle(const MailSetBackgroundParticles& msg) {
         state.interface.backgroundParticles = msg.value;

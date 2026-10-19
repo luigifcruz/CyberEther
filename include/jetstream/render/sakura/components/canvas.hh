@@ -28,7 +28,7 @@ struct Canvas {
     void mount(Component& root);
     void unmount(const Component& component);
     void update(Config config);
-    void render(const Sakura::Context& ctx);
+    void render(const Sakura::Context& ctx, const Rect& region);
     void requestCursor(SurfaceCursor cursor);
     bool dispatching() const;
 

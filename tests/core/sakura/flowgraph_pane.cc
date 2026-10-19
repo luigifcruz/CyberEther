@@ -92,7 +92,6 @@ std::vector<std::string> LayoutPanes(const TileMeta& tiles) {
 }
 
 struct PaneRig : FlowgraphFixture {
-    ImGuiContextGuard imgui;
     MonoFontWindow window;
     Sakura::Context ctx = MakeContext();
     DefaultCompositorState state;

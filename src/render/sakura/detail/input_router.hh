@@ -80,15 +80,25 @@ struct InputRouter {
                 (!edge && mouse->type != MouseEventType::Move && mouse->type != MouseEventType::Scroll)) {
                 continue;
             }
-            if (!valid(mouse->position)) {
+            if (!mouse->positioned) {
+                if (mouse->type == MouseEventType::Click) {
+                    output.outsideClick |= mouse->button != MouseButton::Middle;
+                } else if (mouse->type == MouseEventType::Release && buttons[index]) {
+                    cancel(output, true);
+                    pointerCancelled = true;
+                }
+                continue;
+            } else if (!valid(mouse->position)) {
                 cancel(output);
                 pointerCancelled = true;
                 continue;
+            } else {
+                locate(mouse->position);
+                pointerCancelled = false;
             }
-            locate(mouse->position);
-            pointerCancelled = false;
             MouseEvent routedEvent = *mouse;
             routedEvent.position = position;
+            routedEvent.positioned = true;
             switch (mouse->type) {
                 case MouseEventType::Click:
                     if (!hovered) {

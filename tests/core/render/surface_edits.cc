@@ -427,7 +427,6 @@ TEST_CASE("WebGPU surface extensions fall back before allocating unvalidated can
     class Window final : public Render::Window {
      public:
         Window() : Render::Window(Config{}) {}
-        const Stats& stats() const override { return data; }
         std::string info() const override { return "fallback"; }
         constexpr DeviceType device() const override { return DeviceType::WebGPU; }
 
@@ -440,8 +439,6 @@ TEST_CASE("WebGPU surface extensions fall back before allocating unvalidated can
         Result underlyingEnd() override { return Result::SUCCESS; }
         Result underlyingSynchronize() override { return Result::SUCCESS; }
 
-     private:
-        Stats data{};
     };
     Window window;
     auto surface = std::make_shared<Surface>(Render::Surface::Config{.retained = true});

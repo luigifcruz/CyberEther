@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_RENDER_SAKURA_SURFACE_VIEW_HH
 #define JETSTREAM_RENDER_SAKURA_SURFACE_VIEW_HH
 
+#include <jetstream/render/base/present.hh>
 #include <jetstream/render/sakura/component.hh>
 #include <jetstream/render/sakura/surface.hh>
 #include <jetstream/surface.hh>
@@ -14,15 +15,19 @@
 namespace Jetstream::Sakura {
 
 struct SurfaceView {
+    struct Frame {
+        Rect rect;
+        std::optional<Render::PresentList::Layer> layer;
+        Render::PresentList::Blend blend = Render::PresentList::Blend::Straight;
+    };
+
     struct Config {
         std::string id;
-        U64 texture = 0;
         std::shared_ptr<const Render::Texture> textureSource;
         Extent2D<F32> size = {0.0f, 0.0f};
         std::optional<F32> height;
-        F32 rounding = 0.0f;
         bool premultiplied = false;
-        std::function<U64()> resolveTexture;
+        std::function<std::shared_ptr<const Render::Texture>()> resolveTexture;
         std::function<void(const SurfaceResize&)> onSize;
     };
 
@@ -36,7 +41,7 @@ struct SurfaceView {
     SurfaceView& operator=(const SurfaceView&) = delete;
 
     void update(Config config);
-    void render(const Context& ctx) const;
+    Frame render(const Context& ctx, const Rect& region, const Rect& clip) const;
 
  private:
     struct Impl;

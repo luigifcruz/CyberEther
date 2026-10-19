@@ -36,7 +36,6 @@ Result FailAllocation(int countdown, auto&& operation) {
 class UnsupportedWindow final : public Render::Window {
  public:
     UnsupportedWindow() : Window(Config{}) {}
-    const Stats& stats() const override { return windowStats; }
     std::string info() const override { return "UnsupportedWindow"; }
     DeviceType device() const override {
         ++deviceQueries;
@@ -53,8 +52,6 @@ class UnsupportedWindow final : public Render::Window {
     Result underlyingEnd() override { return Result::SUCCESS; }
     Result underlyingSynchronize() override { return Result::SUCCESS; }
 
- private:
-    Stats windowStats{};
 };
 
 class UnallocatedTexture final : public Render::Texture {

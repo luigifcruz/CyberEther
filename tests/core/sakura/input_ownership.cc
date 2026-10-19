@@ -84,7 +84,6 @@ struct InputRoot : Sakura::RootComponent {
 };
 
 struct InputFixture {
-    ImGuiContext* imgui = ImGui::CreateContext();
     SakuraTest::FakeWindow window;
     Sakura::Context ctx;
 
@@ -94,8 +93,6 @@ struct InputFixture {
         ctx.framebufferSize = {800, 300};
         ctx.windowFocused = true;
     }
-
-    ~InputFixture() { ImGui::DestroyContext(imgui); }
 
     void place(InputRoot& root) {
         ++ctx.frame;

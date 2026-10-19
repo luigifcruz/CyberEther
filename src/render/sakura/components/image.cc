@@ -236,7 +236,7 @@ void SurfaceImage::layout(const Context& ctx) {
 
     const auto& texture = impl->config.texture;
     const bool visible = texture && !clipRect.empty() && this->visible();
-    const bool settled = impl->presenter.settle(texture.get(), resize, static_cast<int>(ctx.frame));
+    const bool settled = impl->presenter.settle(texture.get(), resize, ctx.frame);
 
     Rect imageRect = bounds;
     impl->textureSize = texture ? texture->size() : Extent2D<U64>{0, 0};
@@ -337,13 +337,13 @@ std::optional<SurfaceCursor> SurfaceImage::cursorAt(const Extent2D<F32>& point) 
 }
 
 void SurfaceImage::wentOnscreen(U64 frame) {
-    const bool resumed = impl->presenter.beginFrame(static_cast<int>(frame));
+    const bool resumed = impl->presenter.beginFrame(frame);
     const auto& texture = impl->config.texture;
     if (!texture) {
         return;
     }
     texture->presentationHint(frame, !Intersect(impl->bounds, clip()).empty());
-    const bool settling = !impl->presenter.settled && impl->presenter.ready(texture.get(), static_cast<int>(frame));
+    const bool settling = !impl->presenter.settled && impl->presenter.ready(texture.get(), frame);
     if (resumed || settling || texture->size() != impl->textureSize) {
         invalidate(Dirty::Layout);
     }

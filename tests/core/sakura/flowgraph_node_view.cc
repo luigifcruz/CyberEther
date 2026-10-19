@@ -37,8 +37,7 @@ constexpr F32 kEditorMinimum = 120.0f;
 
 struct ScaledFontWindow : MonoFontWindow {
     explicit ScaledFontWindow(F32 scale) {
-        _scalingFactor = scale;
-        _previousScalingFactor = scale;
+        rescale(scale);
     }
 };
 
@@ -123,7 +122,6 @@ struct SurfaceState {
 };
 
 struct NodeSession {
-    SakuraTest::HeadlessUi ui;
     ScaledFontWindow window;
     F32 scale;
     FlowgraphNode node;
@@ -222,7 +220,7 @@ struct NodeSession {
             }
         };
         editor.update({.id = "editor", .nodes = {std::move(spec)}});
-        ui.frame([this] {
+        window.frame([this] {
             frames.run();
         });
     }

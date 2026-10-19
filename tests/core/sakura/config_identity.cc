@@ -24,7 +24,6 @@ FlowgraphConfigFieldConfig IdentityField(const std::string& kind, const std::str
 TEST_CASE("Replacing a config slot with another same-type field discards its focused draft before rebinding",
           "[core][sakura][config-identity]") {
     const std::string kind = GENERATE(std::string("float"), std::string("int"), std::string("text"));
-    const ImGuiContextGuard imgui;
     std::vector<Parser::Map> oldPatches;
     std::vector<Parser::Map> newPatches;
     FlowgraphConfigFieldInstance field;
@@ -63,7 +62,6 @@ TEST_CASE("Replacing a config slot with another same-type field discards its foc
 
 TEST_CASE("Same-ID config polling preserves a focused draft and submits it through the current callback",
           "[core][sakura][config-identity]") {
-    const ImGuiContextGuard imgui;
     std::vector<Parser::Map> oldPatches;
     std::vector<Parser::Map> currentPatches;
     FlowgraphConfigFieldInstance field;

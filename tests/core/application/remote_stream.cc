@@ -4,6 +4,9 @@
 #include <algorithm>
 
 #include "../../../src/instance_remote_impl.hh"
+#include "jetstream/viewport/adapters/generic.hh"
+
+#include "../render/harness.hh"
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
 #include "jetstream/backend/base.hh"
@@ -253,28 +256,64 @@ struct PadProbe {
     }
 };
 
-struct InputContext {
-    ImGuiContext* context = ImGui::CreateContext();
+struct InputView {
+    const Render::InputState& input;
+    std::vector<Render::InputState::Event> collected;
 
-    InputContext() {
-        auto& io = ImGui::GetIO();
-        io.IniFilename = nullptr;
-        io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
-        io.DisplaySize = {320.0f, 240.0f};
-        io.ConfigInputTrickleEventQueue = false;
-        io.Fonts->AddFontDefault();
+    bool keyDown(KeyCode key) const { return input.keyDown(key); }
+    const KeyModifiers& modifiers() const { return input.modifiers(); }
+    const std::array<bool, 3>& buttons() const { return input.buttons(); }
+    const std::optional<Extent2D<F32>>& pointer() const { return input.pointer(); }
+    const std::vector<Render::InputState::Event>& events() const { return collected; }
+};
+
+struct InputContext {
+    RenderTest::Window window;
+
+    explicit InputContext(bool macOS = false) {
+        window.viewport.macOS = macOS;
+        REQUIRE(window.open() == Result::SUCCESS);
     }
 
-    ~InputContext() { ImGui::DestroyContext(context); }
+    void attach(Instance::Remote::Impl& remote) {
+        remote.viewport = &window.viewport;
+    }
 
     template<typename Check>
     void frame(Instance::Remote::Impl& remote, Check check) {
         REQUIRE(remote.processInput() == Result::SUCCESS);
-        ImGui::NewFrame();
-        check(ImGui::GetIO());
-        ImGui::EndFrame();
+        InputView view{window.input(), {}};
+        do {
+            REQUIRE(window.inject({}) == Result::SUCCESS);
+            const auto& events = window.input().events();
+            view.collected.insert(view.collected.end(), events.begin(), events.end());
+        } while (window.input().hasPending());
+        check(view);
     }
 };
+
+U64 TextCount(const InputView& state) {
+    return RenderTest::Only<TextEvent>(state.events()).size();
+}
+
+char32_t FirstText(const InputView& state) {
+    const auto text = RenderTest::Only<TextEvent>(state.events());
+    return text.empty() ? 0 : text.front().codepoint;
+}
+
+F32 WheelY(const InputView& state) {
+    F32 total = 0.0f;
+    for (const auto& mouse : RenderTest::Only<MouseEvent>(state.events())) {
+        if (mouse.type == MouseEventType::Scroll) {
+            total += mouse.scroll.y;
+        }
+    }
+    return total;
+}
+
+F32 PointerX(const InputView& state) {
+    return state.pointer().has_value() ? state.pointer()->x : -1.0f;
+}
 
 void SendInput(Instance::Remote::Impl& remote, const std::string& sessionId, const nlohmann::json& input) {
     Instance::Remote::Impl::ControlChannelContext context{&remote, sessionId};
@@ -289,11 +328,11 @@ TEST_CASE("Only the first remote consumer can control the interface",
     const std::string sender = GENERATE("z-first", "a-second", "unknown");
     const bool controls = sender == "z-first";
     const bool macOS = GENERATE(false, true);
-    InputContext input;
-    ImGui::GetIO().ConfigMacOSXBehaviors = macOS;
+    InputContext input(macOS);
     Stream stream;
     stream.start();
     auto& remote = stream.remote;
+    input.attach(remote);
     REQUIRE(remote.createWebRtcSession("z-first", "first") == Result::SUCCESS);
     REQUIRE(remote.createWebRtcSession("a-second", "second") == Result::SUCCESS);
 
@@ -301,26 +340,45 @@ TEST_CASE("Only the first remote consumer can control the interface",
     SendInput(remote, sender, {{"kind", "mouse"}, {"act", "down"}, {"button", 0}, {"x", 0.5}, {"y", 0.5}});
     SendInput(remote, sender, {{"kind", "wheel"}, {"deltaY", -100}});
     SendInput(remote, sender, {{"kind", "text"}, {"text", "x"}});
-    input.frame(remote, [&](const ImGuiIO& io) {
-        CHECK(ImGui::IsKeyDown(ImGuiKey_A) == controls);
-        // ImGui swaps Ctrl/Super and maps Ctrl+left click to right click on macOS.
-        CHECK(io.KeyCtrl == (controls && !macOS));
-        CHECK(io.KeySuper == (controls && macOS));
-        CHECK(io.MouseDown[0] == (controls && !macOS));
-        CHECK(io.MouseDown[1] == (controls && macOS));
-        CHECK(io.MouseWheel == (controls ? 1.0f : 0.0f));
-        CHECK(io.InputQueueCharacters.Size == (controls ? 1 : 0));
-        CHECK((io.MousePos.x == 160.0f) == controls);
+    input.frame(remote, [&](const InputView& state) {
+        CHECK(state.keyDown(KeyCode::A) == controls);
+        CHECK(state.modifiers().control == controls);
+        CHECK_FALSE(state.modifiers().super);
+        CHECK(state.buttons()[0] == (controls && !macOS));
+        CHECK(state.buttons()[1] == (controls && macOS));
+        CHECK(WheelY(state) == (controls ? 1.0f : 0.0f));
+        CHECK(TextCount(state) == (controls ? 1u : 0u));
+        CHECK((PointerX(state) == 160.0f) == controls);
     });
 
     Instance::Remote::Impl::ControlChannelContext context{&remote, sender};
     Instance::Remote::Impl::onChannelClosedCallback(nullptr, &context);
-    input.frame(remote, [](const ImGuiIO& io) {
-        CHECK_FALSE(ImGui::IsKeyDown(ImGuiKey_A));
-        CHECK_FALSE(io.KeyCtrl);
-        CHECK_FALSE(io.KeySuper);
-        CHECK_FALSE(io.MouseDown[0]);
-        CHECK_FALSE(io.MouseDown[1]);
+    input.frame(remote, [](const InputView& state) {
+        CHECK_FALSE(state.keyDown(KeyCode::A));
+        CHECK_FALSE(state.modifiers().control);
+        CHECK_FALSE(state.modifiers().super);
+        CHECK_FALSE(state.buttons()[0]);
+        CHECK_FALSE(state.buttons()[1]);
+    });
+}
+
+TEST_CASE("Remote pointer coordinates follow the viewport framebuffer scale",
+          "[core][application][remote][input]") {
+    InputContext input;
+    input.window.viewport.display = {800.0f, 600.0f};
+    input.window.viewport.scale = 2.0f;
+    Stream stream;
+    stream.start();
+    auto& remote = stream.remote;
+    input.attach(remote);
+    remote.size = {1600, 1200};
+    REQUIRE(remote.createWebRtcSession("z-first", "first") == Result::SUCCESS);
+
+    SendInput(remote, "z-first", {{"kind", "mouse"}, {"act", "move"}, {"x", 0.5}, {"y", 0.5}});
+    input.frame(remote, [](const InputView& state) {
+        REQUIRE(state.pointer().has_value());
+        CHECK(state.pointer()->x == 400.0f);
+        CHECK(state.pointer()->y == 300.0f);
     });
 }
 
@@ -330,6 +388,7 @@ TEST_CASE("Remote control follows connection order and releases input on handoff
     Stream stream;
     stream.start();
     auto& remote = stream.remote;
+    input.attach(remote);
     REQUIRE(remote.createWebRtcSession("z-first", "first") == Result::SUCCESS);
     REQUIRE(remote.createWebRtcSession("m-second", "second") == Result::SUCCESS);
     REQUIRE(remote.createWebRtcSession("a-third", "third") == Result::SUCCESS);
@@ -338,10 +397,10 @@ TEST_CASE("Remote control follows connection order and releases input on handoff
 
     SendInput(remote, "z-first", {{"kind", "keyboard"}, {"action", "down"}, {"code", "KeyA"}, {"shiftKey", true}});
     SendInput(remote, "z-first", {{"kind", "mouse"}, {"act", "down"}, {"button", 0}, {"x", 0.5}, {"y", 0.5}});
-    input.frame(remote, [](const ImGuiIO& io) {
-        CHECK(ImGui::IsKeyDown(ImGuiKey_A));
-        CHECK(io.KeyShift);
-        CHECK(io.MouseDown[0]);
+    input.frame(remote, [](const InputView& state) {
+        CHECK(state.keyDown(KeyCode::A));
+        CHECK(state.modifiers().shift);
+        CHECK(state.buttons()[0]);
     });
 
     // Already queued input from the departed controller and spectator input
@@ -354,14 +413,14 @@ TEST_CASE("Remote control follows connection order and releases input on handoff
     SendInput(remote, "a-third", {{"kind", "text"}, {"text", "viewer"}});
     SendInput(remote, "m-second", {{"kind", "keyboard"}, {"action", "down"}, {"code", "KeyB"}});
     SendInput(remote, "m-second", {{"kind", "text"}, {"text", "b"}});
-    input.frame(remote, [](const ImGuiIO& io) {
-        CHECK_FALSE(ImGui::IsKeyDown(ImGuiKey_A));
-        CHECK(ImGui::IsKeyDown(ImGuiKey_B));
-        CHECK_FALSE(io.KeyShift);
-        CHECK_FALSE(io.MouseDown[0]);
-        CHECK(io.MousePos.x == 160.0f);
-        CHECK(io.InputQueueCharacters.Size == 1);
-        if (io.InputQueueCharacters.Size == 1) CHECK(io.InputQueueCharacters[0] == 'b');
+    input.frame(remote, [](const InputView& state) {
+        CHECK_FALSE(state.keyDown(KeyCode::A));
+        CHECK(state.keyDown(KeyCode::B));
+        CHECK_FALSE(state.modifiers().shift);
+        CHECK_FALSE(state.buttons()[0]);
+        CHECK(PointerX(state) == 160.0f);
+        CHECK(TextCount(state) == 1u);
+        CHECK(FirstText(state) == U'b');
     });
 
     // A reconnect joins at the back, even if it was the original controller.
@@ -369,25 +428,25 @@ TEST_CASE("Remote control follows connection order and releases input on handoff
     remote.destroyWebRtcSession("m-second");
     SendInput(remote, "z-first", {{"kind", "text"}, {"text", "reconnected"}});
     SendInput(remote, "a-third", {{"kind", "text"}, {"text", "c"}});
-    input.frame(remote, [](const ImGuiIO& io) {
-        CHECK_FALSE(ImGui::IsKeyDown(ImGuiKey_B));
-        CHECK(io.InputQueueCharacters.Size == 1);
-        if (io.InputQueueCharacters.Size == 1) CHECK(io.InputQueueCharacters[0] == 'c');
+    input.frame(remote, [](const InputView& state) {
+        CHECK_FALSE(state.keyDown(KeyCode::B));
+        CHECK(TextCount(state) == 1u);
+        CHECK(FirstText(state) == U'c');
     });
 
     // Removing a spectator cannot release the controller's held input.
     SendInput(remote, "a-third", {{"kind", "mouse"}, {"act", "down"}, {"button", 0}});
     remote.destroyWebRtcSession("z-first");
-    input.frame(remote, [](const ImGuiIO& io) { CHECK(io.MouseDown[0]); });
+    input.frame(remote, [](const InputView& state) { CHECK(state.buttons()[0]); });
 
     stream.stop();
     stream.start();
     REQUIRE(remote.createWebRtcSession("new-first", "new") == Result::SUCCESS);
     SendInput(remote, "new-first", {{"kind", "text"}, {"text", "d"}});
-    input.frame(remote, [](const ImGuiIO& io) {
-        CHECK_FALSE(io.MouseDown[0]);
-        CHECK(io.InputQueueCharacters.Size == 1);
-        if (io.InputQueueCharacters.Size == 1) CHECK(io.InputQueueCharacters[0] == 'd');
+    input.frame(remote, [](const InputView& state) {
+        CHECK_FALSE(state.buttons()[0]);
+        CHECK(TextCount(state) == 1u);
+        CHECK(FirstText(state) == U'd');
     });
 }
 
@@ -398,6 +457,7 @@ TEST_CASE("Broker disconnect stops remote streaming and releases its room and in
     REQUIRE(WaitFor([&] { return broker.server.is_running(); }));
     Stream stream;
     auto& remote = stream.remote;
+    input.attach(remote);
     gst_init(nullptr, nullptr);
     gst_init_static_plugins();
     remote.config.broker = broker.origin;
@@ -418,10 +478,10 @@ TEST_CASE("Broker disconnect stops remote streaming and releases its room and in
         SendInput(remote, "viewer", {{"kind", "keyboard"}, {"action", "down"},
                                       {"code", "KeyA"}, {"shiftKey", true}});
         SendInput(remote, "viewer", {{"kind", "mouse"}, {"act", "down"}, {"button", 0}});
-        input.frame(remote, [](const ImGuiIO& io) {
-            CHECK(ImGui::IsKeyDown(ImGuiKey_A));
-            CHECK(io.KeyShift);
-            CHECK(io.MouseDown[0]);
+        input.frame(remote, [](const InputView& state) {
+            CHECK(state.keyDown(KeyCode::A));
+            CHECK(state.modifiers().shift);
+            CHECK(state.buttons()[0]);
         });
         REQUIRE(remote.captureFrame() == Result::SUCCESS);
         REQUIRE(remote.started_);
@@ -441,10 +501,10 @@ TEST_CASE("Broker disconnect stops remote streaming and releases its room and in
         CHECK(remote.clients_.empty());
         CHECK(remote.waitlist_.empty());
         CHECK(remote.inputSessionOrder.empty());
-        input.frame(remote, [](const ImGuiIO& io) {
-            CHECK_FALSE(ImGui::IsKeyDown(ImGuiKey_A));
-            CHECK_FALSE(io.KeyShift);
-            CHECK_FALSE(io.MouseDown[0]);
+        input.frame(remote, [](const InputView& state) {
+            CHECK_FALSE(state.keyDown(KeyCode::A));
+            CHECK_FALSE(state.modifiers().shift);
+            CHECK_FALSE(state.buttons()[0]);
         });
         REQUIRE(remote.destroy() == Result::SUCCESS);
     }

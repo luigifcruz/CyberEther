@@ -6,11 +6,7 @@
 #include <GLFW/glfw3native.h>
 
 #include "tools/cocoa_titlebar.hh"
-#include "tools/imgui_impl_glfw.h"
-
-#include <string>
-#include <utility>
-#include <vector>
+#include "tools/glfw_input.hh"
 
 namespace Jetstream::Viewport {
 
@@ -51,21 +47,8 @@ Result Implementation::create() {
         return Result::ERROR;
     }
 
-    glfwSetWindowUserPointer(window, this);
-    glfwSetDropCallback(window, [](GLFWwindow* handle, int count, const char** paths) {
-        auto* viewport = static_cast<Implementation*>(glfwGetWindowUserPointer(handle));
-        if (!viewport || count <= 0 || !paths) {
-            return;
-        }
-        std::vector<std::string> files;
-        files.reserve(static_cast<U64>(count));
-        for (int i = 0; i < count; ++i) {
-            if (paths[i]) {
-                files.emplace_back(paths[i]);
-            }
-        }
-        (void)viewport->addFileDropEvent(std::move(files));
-    });
+    attachPlatform(std::make_unique<GlfwInput>(window, *this));
+    pumpPlatform();
 
     auto* device = Backend::State<DeviceType::Metal>()->getDevice();
 
@@ -84,6 +67,7 @@ Result Implementation::create() {
 
 Result Implementation::destroy() {
     titlebar.reset();
+    detachPlatform();
 
     glfwDestroyWindow(window);
     window = nullptr;
@@ -94,16 +78,12 @@ Result Implementation::destroy() {
     return Result::SUCCESS;
 }
 
-Result Implementation::createImgui() {
-    ImGui_ImplGlfw_InitForOther(window, true);
-
-    return Result::SUCCESS;
-}
-
 void Implementation::setIntegratedTitlebar(bool enabled) {
     Generic::setIntegratedTitlebar(enabled);
     if (enabled && window && !titlebar) {
-        titlebar = std::make_shared<CocoaTitlebar>(window);
+        titlebar = std::make_shared<CocoaTitlebar>(window, [this]() {
+            input().push(Render::InputQueue::Button{MouseButton::Left, false});
+        });
     } else if (!enabled) {
         titlebar.reset();
     }
@@ -117,15 +97,12 @@ Extent2D<F32> Implementation::displaySize() const {
     return {static_cast<F32>(width), static_cast<F32>(height)};
 }
 
-F32 Implementation::scale(const F32& scale) const {
-    // Scaling is handled gracefully by macOS/iOS.
-    return scale;
-}
+Extent2D<F32> Implementation::framebufferSize() const {
+    int width = 0;
+    int height = 0;
+    glfwGetFramebufferSize(window, &width, &height);
 
-Result Implementation::destroyImgui() {
-    ImGui_ImplGlfw_Shutdown();
-
-    return Result::SUCCESS;
+    return {static_cast<F32>(width), static_cast<F32>(height)};
 }
 
 void* Implementation::nextDrawable() {
@@ -136,8 +113,6 @@ void* Implementation::nextDrawable() {
         static_cast<CGFloat>(height)
     });
 
-    ImGui_ImplGlfw_NewFrame();
-
     return static_cast<void*>(swapchain->nextDrawable());
 }
 
@@ -146,6 +121,7 @@ Result Implementation::waitEvents() {
     if (titlebar) {
         titlebar->poll();
     }
+    pumpPlatform();
     return Result::SUCCESS;
 }
 
@@ -154,7 +130,12 @@ Result Implementation::pollEvents() {
     if (titlebar) {
         titlebar->poll();
     }
+    pumpPlatform();
     return Result::SUCCESS;
+}
+
+bool Implementation::retainedPresent() const {
+    return true;
 }
 
 bool Implementation::keepRunning() {

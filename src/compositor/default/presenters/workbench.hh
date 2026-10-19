@@ -6,7 +6,6 @@
 #include "flowgraph/environment.hh"
 #include "flowgraph/metadata.hh"
 #include "flowgraph/pane.hh"
-#include "hud/info.hh"
 #include "hud/welcome.hh"
 #include "modal/container.hh"
 #include "titlebar.hh"
@@ -20,7 +19,6 @@ struct WorkbenchPresenter {
     FilePickerPresenter filePicker;
     TitlebarPresenter titlebar;
     WelcomeHudPresenter welcomeHud;
-    InfoHudPresenter infoHud;
     FlowgraphPanePresenter flowgraphPane;
     FlowgraphMetadataWindowPresenter flowgraphMetadata;
     FlowgraphEnvironmentWindowPresenter flowgraphEnvironment;
@@ -30,7 +28,6 @@ struct WorkbenchPresenter {
                                                                    filePicker(context),
                                                                    titlebar(context),
                                                                    welcomeHud(context),
-                                                                   infoHud(context),
                                                                    flowgraphPane(context),
                                                                    flowgraphMetadata(context),
                                                                    flowgraphEnvironment(context),
@@ -39,7 +36,6 @@ struct WorkbenchPresenter {
     WorkbenchView::Config build() const {
         WorkbenchView::Config config;
         config.filePending = context.state.interface.filePending;
-        config.backgroundParticles = context.state.interface.backgroundParticles;
         config.titlebar = titlebar.build();
         config.welcomeHud = welcomeHud.build();
         if (auto welcome = welcomeHud.buildStartTab()) {
@@ -55,7 +51,6 @@ struct WorkbenchPresenter {
             };
         }
         config.startTabRequests = context.state.interface.startTabRequests;
-        config.infoHud = infoHud.build();
         config.flowgraphs.reserve(context.state.flowgraph.items.size());
         for (const auto& [flowgraphId, flowgraph] : context.state.flowgraph.items) {
             config.flowgraphs.push_back(flowgraphPane.build(flowgraphId, flowgraph));
@@ -64,6 +59,7 @@ struct WorkbenchPresenter {
         config.flowgraphEnvironment = flowgraphEnvironment.build();
         config.modal = modal.build();
         config.filePicker = filePicker.build();
+        config.backgroundParticles = context.state.interface.backgroundParticles;
         return config;
     }
 };

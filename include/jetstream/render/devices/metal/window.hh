@@ -7,6 +7,8 @@
 #include "jetstream/backend/base.hh"
 #include "jetstream/viewport/base.hh"
 
+#include <memory>
+
 namespace Jetstream::Render {
 
 template<>
@@ -15,7 +17,8 @@ class JETSTREAM_API WindowImp<DeviceType::Metal> : public Window {
     explicit WindowImp(const Config& config,
                        const std::shared_ptr<Viewport::Adapter<DeviceType::Metal>>& viewport);
 
-    const Stats& stats() const override;
+    ~WindowImp() override;
+
     std::string info() const override;
 
     constexpr DeviceType device() const override {
@@ -46,10 +49,6 @@ class JETSTREAM_API WindowImp<DeviceType::Metal> : public Window {
 
     struct Presenter;
 
-    Stats statsData;
-    ImGuiIO* io = nullptr;
-    ImGuiStyle* style = nullptr;
-    MTL::Device* dev = nullptr;
     NS::AutoreleasePool* innerPool = nullptr;
     NS::AutoreleasePool* outerPool = nullptr;
     CA::MetalDrawable* drawable = nullptr;
@@ -59,14 +58,12 @@ class JETSTREAM_API WindowImp<DeviceType::Metal> : public Window {
     std::array<MTL::CommandBuffer*, FramesInFlight> inFlightCommandBuffers{};
     TransferImp<DeviceType::Metal> transferEncoder;
     MTL::RenderPassDescriptor* renderPassDescriptor = nullptr;
-    bool imguiCreated = false;
+    std::unique_ptr<Presenter> presenter;
     std::vector<std::shared_ptr<SurfaceImp<DeviceType::Metal>>> surfaces;
     std::shared_ptr<Viewport::Adapter<DeviceType::Metal>> viewport;
 
-    Result createImgui();
-    Result destroyImgui();
-    Result beginImgui();
-    Result endImgui();
+    Result createPresenter();
+    void encodePresent();
 };
 
 }  // namespace Jetstream::Render

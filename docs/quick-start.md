@@ -93,7 +93,7 @@ Click a block to select it. Shift-click adds blocks to the selection, and Shift-
 
 Detached plots and configuration panes use dock tiles. Layouts saved by older versions discard their old stack arrangement when opened; detached panes are placed using their per-block metadata. Saving writes the new tile layout, not the old stacks.
 
-The latency overlay setting and graphics framerate control are no longer available. The interface runs at 60 Hz.
+The latency overlay setting and graphics framerate control are no longer available. The interface redraws only when something changes.
 
 ## Ready-to-go example flowgraphs
 

@@ -26,7 +26,6 @@ struct GeneralSettingsPresenter {
             .renderer = context.state.graphics.device.has_value()
                 ? GetDevicePrettyName(context.state.graphics.device.value())
                 : GetDevicePrettyName(context.state.system.render->device()),
-            .infoPanelEnabled = context.state.interface.infoPanelEnabled,
             .backgroundParticles = context.state.interface.backgroundParticles,
             .onThemeChange = [enqueue](const std::string& themeKey) {
                 enqueue(MailApplyTheme{themeKey});
@@ -36,9 +35,6 @@ struct GeneralSettingsPresenter {
             },
             .onRendererChange = [enqueue](DeviceType value) {
                 enqueue(MailSetGraphicsDevice{.value = value});
-            },
-            .onInfoPanelChange = [enqueue](bool value) {
-                enqueue(MailSetInfoPanelEnabled{.value = value});
             },
             .onBackgroundParticlesChange = [enqueue](bool value) {
                 enqueue(MailSetBackgroundParticles{.value = value});

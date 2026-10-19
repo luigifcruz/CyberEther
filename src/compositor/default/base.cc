@@ -46,8 +46,8 @@ DefaultCompositor::DefaultCompositor() :
         .notifyResult = [](Result result, const std::string& message) {
             Sakura::PushToastResult(result, message);
         },
-        .setClipboardText = [](const std::string& value) {
-            Sakura::SetClipboardText(value);
+        .setClipboardText = [this](const std::string& value) {
+            Sakura::SetClipboardText(state.system.render.get(), value);
         },
         .requestFile = [this](FilePickerRequest request) {
             return actions.requestFile(std::move(request));
@@ -103,7 +103,6 @@ Result DefaultCompositor::create() {
 
     // Restore interface preferences.
 
-    state.interface.infoPanelEnabled = settings.interface.infoPanelEnabled;
     state.interface.backgroundParticles = settings.interface.backgroundParticles;
 
     // Restore debug preferences.

@@ -41,10 +41,9 @@ struct JETSTREAM_API Settings {
 
     struct Interface {
         std::string themeKey = "Dark";
-        bool infoPanelEnabled = true;
         bool backgroundParticles = true;
 
-        JST_SERDES(themeKey, infoPanelEnabled, backgroundParticles);
+        JST_SERDES(themeKey, backgroundParticles);
     };
 
     struct Developer {

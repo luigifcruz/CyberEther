@@ -11,7 +11,6 @@
 #include <jetstream/render/sakura/components/node/inputs.hh>
 #include <jetstream/render/sakura/components/node/panel.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
-#include <jetstream/render/tools/imgui.h>
 
 #include "harness.hh"
 #include "compositor/default/views/components/tooltip.hh"
@@ -64,7 +63,6 @@ struct Pointer {
 };
 
 struct Bench {
-    ImGuiContextGuard imgui;
     MonoFontWindow window;
     LayerSlot slot;
     LayerHost host{std::vector<Sakura::Layer*>{&slot}};

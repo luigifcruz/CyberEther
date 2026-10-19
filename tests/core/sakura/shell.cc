@@ -504,7 +504,6 @@ TEST_CASE("Clickable HUDs call onClick for clicks their content does not handle"
 }
 
 TEST_CASE("Modal layer centers its content at the minimum width", "[core][sakura][shell]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     Probe content({100.0f, 50.0f});
     Sakura::ModalLayer modal;
@@ -522,7 +521,6 @@ TEST_CASE("Modal layer centers its content at the minimum width", "[core][sakura
 
 TEST_CASE("Modal width is clamped to the layer and an explicit size is honoured",
           "[core][sakura][shell]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     Probe narrow({100.0f, 50.0f});
     Sakura::ModalLayer clamped;
@@ -567,7 +565,6 @@ TEST_CASE("Modal layer covers everything only while it has content", "[core][sak
 
 TEST_CASE("Modal footer close button calls onClose while dim clicks are swallowed",
           "[core][sakura][shell]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     Probe content({100.0f, 50.0f});
     Probe below({800.0f, 600.0f});
@@ -749,7 +746,6 @@ TEST_CASE("Floating window chrome matches the tile outline with no visible grip"
 
 TEST_CASE("Toast layer drains the queue and stacks titled cards upward from the bottom left",
           "[core][sakura][shell]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     (void)Sakura::Private::TakeToasts();
     ToastProbe layer;
@@ -801,7 +797,6 @@ TEST_CASE("Toast layer drains the queue and stacks titled cards upward from the 
 }
 
 TEST_CASE("Toasts slide in from the left while they fade in", "[core][sakura][shell]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     (void)Sakura::Private::TakeToasts();
     ToastProbe layer;
@@ -831,7 +826,6 @@ TEST_CASE("Toasts slide in from the left while they fade in", "[core][sakura][sh
 
 TEST_CASE("Hovering a toast shows its close badge and holds it, and the badge dismisses it across updates",
           "[core][sakura][shell]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     (void)Sakura::Private::TakeToasts();
     ToastProbe layer;
@@ -1408,7 +1402,6 @@ TEST_CASE("HUD offsets shift the HUD away from its anchor", "[core][sakura][shel
 
 TEST_CASE("Menu entries draw a checkmark when selected, a shortcut column, and their label color",
           "[core][sakura][shell]") {
-    const ImGuiContextGuard imguiContext;
     MonoFontWindow window;
     auto ctx = WindowContext(window);
     ctx.palette = Tones();
@@ -2068,7 +2061,6 @@ TEST_CASE("Cancelling or leaving over a clickable HUD reaches its content withou
 
 TEST_CASE("Modal layers scale their margin, padding, fixed size and close button at a pixel ratio of two",
           "[core][sakura][shell][pixel-ratio]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     auto ctx = WindowContext(window, {1600.0f, 1200.0f});
     ctx.pixelRatio = 2.0f;
@@ -2109,7 +2101,6 @@ TEST_CASE("Modal layers scale their margin, padding, fixed size and close button
 
 TEST_CASE("Modal sizes fill the room inside the margin or measure the content width when natural",
           "[core][sakura][shell][sizing]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     const auto place = [&](Probe& content, Extent2D<F32> size, U64* closed = nullptr) {
         auto modal = std::make_unique<Sakura::ModalLayer>();
@@ -2185,7 +2176,6 @@ TEST_CASE("Floating windows scale their initial size, title bar, padding, close 
 
 TEST_CASE("Toasts scale their margin, spacing, padding and card metrics at a pixel ratio of two",
           "[core][sakura][shell][pixel-ratio]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     struct Cards {
         std::vector<Rect> rects;
@@ -2647,7 +2637,6 @@ TEST_CASE("Open dropdowns follow their anchor width without any other body chang
 
 TEST_CASE("An open chrome button menu runs the newest entry callback after a callback-only update",
           "[core][sakura][shell]") {
-    const ImGuiContextGuard imguiContext;
     MonoFontWindow window;
     Sakura::ChromeButton button;
     U64 stale = 0;
@@ -2685,7 +2674,6 @@ TEST_CASE("An open chrome button menu runs the newest entry callback after a cal
 
 TEST_CASE("Closing a toast after a long clean hover starts its fade instead of expiring it at once",
           "[core][sakura][shell]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     (void)Sakura::Private::TakeToasts();
     ToastProbe layer;
@@ -2733,7 +2721,6 @@ TEST_CASE("Closing a toast after a long clean hover starts its fade instead of e
 
 TEST_CASE("Hovering a toast late in its life pauses only from the hover onward",
           "[core][sakura][shell]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     (void)Sakura::Private::TakeToasts();
     ToastProbe layer;

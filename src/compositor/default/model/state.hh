@@ -46,7 +46,6 @@ struct DefaultCompositorState {
 
     struct InterfaceState {
         bool filePending = false;
-        bool infoPanelEnabled = true;
         bool backgroundParticles = true;
         bool flowgraphMetadataVisible = false;
         std::string flowgraphMetadataSearch;

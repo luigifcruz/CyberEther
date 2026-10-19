@@ -31,16 +31,15 @@ class GLFW<DeviceType::Metal> : public Adapter<DeviceType::Metal> {
     Result create();
     Result destroy();
 
-    Result createImgui();
-    Result destroyImgui();
     Extent2D<F32> displaySize() const;
-    F32 scale(const F32& scale) const;
+    Extent2D<F32> framebufferSize() const;
 
     void* nextDrawable();
     
     Result waitEvents();
     Result pollEvents();
     bool keepRunning();
+    bool retainedPresent() const override;
 
     Render::TitlebarChrome titlebarChrome() const;
     void setIntegratedTitlebar(bool enabled) override;

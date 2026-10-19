@@ -12,12 +12,12 @@
 namespace Jetstream::Sakura::Private {
 
 struct SurfacePresenter {
-    static constexpr int kSettleFrames = 30;
+    static constexpr U64 kSettleFrames = 30;
 
     std::optional<SurfaceResize> lastResize;
-    int lastFrame = -1;
+    std::optional<U64> lastFrame;
     bool settled = false;
-    std::optional<int> settleStart;
+    std::optional<U64> settleStart;
 
     void resetResize() {
         lastResize.reset();
@@ -28,8 +28,8 @@ struct SurfacePresenter {
         settleStart.reset();
     }
 
-    bool beginFrame(int frame) {
-        const bool resumed = lastFrame >= 0 && frame > lastFrame + 1;
+    bool beginFrame(U64 frame) {
+        const bool resumed = lastFrame.has_value() && frame > *lastFrame + 1;
         if (resumed) {
             lastResize.reset();
         }
@@ -45,15 +45,15 @@ struct SurfacePresenter {
         }
     }
 
-    bool ready(const Render::Texture* texture, int frame) const {
+    bool ready(const Render::Texture* texture, U64 frame) const {
         if (settled || !texture) {
             return true;
         }
         const bool matched = lastResize.has_value() && texture->size() == lastResize->framebufferSize;
-        return matched || (settleStart.has_value() && frame - *settleStart >= kSettleFrames);
+        return matched || (settleStart.has_value() && frame >= *settleStart && frame - *settleStart >= kSettleFrames);
     }
 
-    bool settle(const Render::Texture* texture, const std::optional<SurfaceResize>& resize, int frame) {
+    bool settle(const Render::Texture* texture, const std::optional<SurfaceResize>& resize, U64 frame) {
         if (!texture) {
             settled = true;
             return true;
@@ -63,7 +63,7 @@ struct SurfacePresenter {
                 settleStart = frame;
             }
             const bool matched = resize.has_value() && texture->size() == resize->framebufferSize;
-            settled = matched || frame - *settleStart >= kSettleFrames;
+            settled = matched || (frame >= *settleStart && frame - *settleStart >= kSettleFrames);
         }
         return settled;
     }

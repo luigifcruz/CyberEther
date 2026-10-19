@@ -4,7 +4,6 @@
 #include "flowgraph/key_value.hh"
 #include "flowgraph/pane.hh"
 #include "file_picker.hh"
-#include "hud/info.hh"
 #include "hud/welcome.hh"
 #include "modal/container.hh"
 #include "start_tab.hh"
@@ -84,7 +83,6 @@ struct WorkbenchView {
     struct Config {
         bool filePending = false;
         bool backgroundParticles = true;
-        std::optional<InfoHudView::Config> infoHud;
         std::optional<WelcomeHudView::Config> welcomeHud;
         std::optional<StartTabView::Config> startTab;
         U64 startTabRequests = 0;
@@ -133,10 +131,6 @@ struct WorkbenchView {
         if (this->config.welcomeHud.has_value()) {
             welcomeHud.update(std::move(this->config.welcomeHud.value()));
             hudItems.push_back(welcomeHud.hud());
-        }
-        if (this->config.infoHud.has_value()) {
-            infoHud.update(std::move(this->config.infoHud.value()));
-            hudItems.push_back(infoHud.hud());
         }
         huds.update({.huds = std::move(hudItems)});
 
@@ -209,7 +203,6 @@ struct WorkbenchView {
     Sakura::ModalLayer filePickerLayer;
     Sakura::Text filePendingText;
     Sakura::Panel filePendingPanel;
-    InfoHudView infoHud;
     WelcomeHudView welcomeHud;
     StartTabView startTab;
     U64 startTabRequests = 0;

@@ -641,27 +641,7 @@ void Root::update(Config config) {
 }
 
 void Root::render(const Sakura::Context& ctx) {
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    const F32 top = Scale(ctx, impl->config.topOffset);
-    ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x, viewport->Pos.y + top));
-    ImGui::SetNextWindowSize(ImVec2(viewport->Size.x, std::max(0.0f, viewport->Size.y - top)));
-    ImGui::SetNextWindowViewport(viewport->ID);
-
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration |
-                                   ImGuiWindowFlags_NoMove |
-                                   ImGuiWindowFlags_NoResize |
-                                   ImGuiWindowFlags_NoSavedSettings |
-                                   ImGuiWindowFlags_NoBringToFrontOnFocus |
-                                   ImGuiWindowFlags_NoNav |
-                                   ImGuiWindowFlags_NoBackground;
-    const std::string label = impl->config.id + "###" + impl->config.id;
-    ImGui::Begin(label.c_str(), nullptr, flags);
-    ImGui::PopStyleVar(3);
-    impl->canvas.render(ctx);
-    ImGui::End();
+    impl->canvas.render(ctx, DisplayMetrics::RootRegion(Metrics(ctx), impl->config.topOffset));
 }
 
 }  // namespace Jetstream::Sakura

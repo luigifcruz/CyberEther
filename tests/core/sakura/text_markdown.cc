@@ -105,7 +105,6 @@ TEST_CASE("Consecutive code blocks keep their backgrounds apart", "[core][sakura
 }
 
 TEST_CASE("Narrow viewports can scroll to code behind the line number gutter", "[core][sakura][markdown]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextMarkdown markdown;
     Host host(markdown);
@@ -169,7 +168,6 @@ TEST_CASE("Narrow viewports keep every table column reachable", "[core][sakura][
 }
 
 TEST_CASE("Overflowing tables scroll horizontally so every column is reachable", "[core][sakura][markdown]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextMarkdown markdown;
     Host host(markdown);
@@ -190,7 +188,6 @@ TEST_CASE("Overflowing tables scroll horizontally so every column is reachable",
 
 TEST_CASE("Default markdown views scroll overflowing tables without a scrollbar",
           "[core][sakura][markdown]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextMarkdown markdown;
     Host host(markdown);
@@ -207,7 +204,6 @@ TEST_CASE("Default markdown views scroll overflowing tables without a scrollbar"
 }
 
 TEST_CASE("Scrolling to the bottom of a table note survives repeated layouts", "[core][sakura][markdown]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextMarkdown markdown;
     Host host(markdown);
@@ -231,7 +227,6 @@ TEST_CASE("Scrolling to the bottom of a table note survives repeated layouts", "
 }
 
 TEST_CASE("Aligned cells do not extend the horizontal scroll range", "[core][sakura][markdown]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextMarkdown markdown;
     Host host(markdown);
@@ -246,7 +241,6 @@ TEST_CASE("Aligned cells do not extend the horizontal scroll range", "[core][sak
 }
 
 TEST_CASE("A table that fits vertically reserves no scrollbar gutter", "[core][sakura][markdown]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextMarkdown markdown;
     Host host(markdown);
@@ -261,7 +255,6 @@ TEST_CASE("A table that fits vertically reserves no scrollbar gutter", "[core][s
 
 TEST_CASE("Horizontal overflow shows a draggable scrollbar without vertical overflow",
           "[core][sakura][markdown]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextMarkdown markdown;
     Host host(markdown);
@@ -295,7 +288,6 @@ TEST_CASE("Horizontal overflow shows a draggable scrollbar without vertical over
 }
 
 TEST_CASE("Measuring after layout leaves the live table geometry in place", "[core][sakura][markdown]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextMarkdown markdown;
     Host host(markdown);
@@ -314,7 +306,6 @@ TEST_CASE("Measuring after layout leaves the live table geometry in place", "[co
 }
 
 TEST_CASE("Fractional column widths do not create phantom overflow", "[core][sakura][markdown]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextMarkdown markdown;
     Host host(markdown);
@@ -332,7 +323,6 @@ TEST_CASE("Fractional column widths do not create phantom overflow", "[core][sak
 
 TEST_CASE("Fractional padding and a shifted origin do not create phantom overflow",
           "[core][sakura][markdown]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextMarkdown markdown;
     Host host(markdown);
@@ -349,7 +339,6 @@ TEST_CASE("Fractional padding and a shifted origin do not create phantom overflo
 }
 
 TEST_CASE("Laying a callout out at its measured width keeps its height", "[core][sakura][markdown]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextMarkdown markdown;
     Host host(markdown);
@@ -380,7 +369,6 @@ TEST_CASE("Backslash runs before a pipe escape it only when odd", "[core][sakura
 
 TEST_CASE("Unbounded measurement keeps the intrinsic table width before and after layout",
           "[core][sakura][markdown]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextMarkdown markdown;
     Host host(markdown);
@@ -398,7 +386,6 @@ TEST_CASE("Unbounded measurement keeps the intrinsic table width before and afte
 
 TEST_CASE("Repeated markdown measures follow table content changes",
           "[core][sakura][text-markdown][measure]") {
-    const ImGuiContextGuard imgui;
     MonoFontWindow window;
     auto ctx = MakeContext();
     ctx.render = &window;
@@ -424,7 +411,6 @@ TEST_CASE("Repeated markdown measures follow table content changes",
 
 TEST_CASE("Horizontal wheel scrolling an overflowing markdown table repaints without rebuilding",
           "[core][sakura][markdown][retention]") {
-    const ImGuiContextGuard imgui;
     MonoFontWindow window;
     TextMarkdown markdown;
     Host host(markdown);
@@ -447,7 +433,6 @@ TEST_CASE("Horizontal wheel scrolling an overflowing markdown table repaints wit
 }
 
 TEST_CASE("Markdown font size changes repaint without rebuilding", "[core][sakura][markdown][retention]") {
-    const ImGuiContextGuard imgui;
     MonoFontWindow window;
     TextMarkdown markdown;
     Host host(markdown);

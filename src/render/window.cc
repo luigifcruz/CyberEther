@@ -6,16 +6,17 @@
 #include "jetstream/render/base/window.hh"
 #include "jetstream/platform.hh"
 #include "jetstream/viewport/adapters/generic.hh"
-#include "jetstream/render/tools/imgui_internal.h"
-#include "jetstream/render/tools/imgui_blend_ext.h"
 
 #include <algorithm>
+#include <utility>
+#include <vector>
 
 namespace Jetstream::Render {
 
 namespace {
 
 constexpr uint32_t kRetiredComponentFrames = 4;
+constexpr F64 kIdleInterval = 1.0 / 60.0;
 
 template<typename T>
 bool Contains(const std::vector<std::shared_ptr<T>>& items, const std::shared_ptr<T>& item) {
@@ -55,13 +56,80 @@ bool QueueRemove(std::queue<std::shared_ptr<WindowAttachment>>& queue,
 
 }  // namespace
 
+struct Window::PresentState {
+    struct Entry {
+        const Texture* texture = nullptr;
+        U64 handle = 0;
+        U64 allocation = 0;
+        U64 revision = 0;
+        Rect rect;
+        ScissorRect scissor;
+        PresentList::Blend blend = PresentList::Blend::Straight;
+
+        bool operator==(const Entry&) const = default;
+
+        static Entry Of(const PresentList::Quad& quad) {
+            return {
+                .texture = quad.texture.get(),
+                .handle = quad.handle,
+                .allocation = quad.texture ? quad.texture->allocation() : 0,
+                .revision = quad.texture ? quad.texture->contentRevision() : 0,
+                .rect = quad.rect,
+                .scissor = quad.scissor,
+                .blend = quad.blend,
+            };
+        }
+    };
+
+    PresentList list;
+    std::vector<Entry> entries;
+    WindowMetrics metrics;
+    ColorRGBA<F32> clearColor = {0.0f, 0.0f, 0.0f, 0.0f};
+    bool valid = false;
+    bool idlePending = false;
+
+    bool changed(const WindowMetrics& next, const ColorRGBA<F32>& color) const {
+        if (!valid || !(next == metrics) || !(color == clearColor) || entries.size() != list.quads.size()) {
+            return true;
+        }
+        for (U64 index = 0; index < entries.size(); ++index) {
+            if (!(Entry::Of(list.quads[index]) == entries[index])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void presented(const WindowMetrics& next, const ColorRGBA<F32>& color) {
+        entries.clear();
+        for (const auto& quad : list.quads) {
+            entries.push_back(Entry::Of(quad));
+        }
+        metrics = next;
+        clearColor = color;
+        valid = true;
+    }
+
+    void invalidate() {
+        valid = false;
+    }
+};
+
+Window::Window(const Config& config) : config(config), presentState(std::make_unique<PresentState>()) {}
+
+Window::~Window() = default;
+
 Result Window::create() {
     JST_ASSERT(!created, "Window is already created.");
 
     // Set variables.
 
-    _scalingFactor = 1.0f;
-    _previousScalingFactor = 0.0f;
+    _metrics = {};
+    _input = InputState{};
+    _requestedCursor = SurfaceCursor::Default;
+    *presentState = PresentState{};
+    frameStats = {};
+    _frameIndex = 0;
     graphicalLoopThreadStarted = false;
     frameCount = 0;
 
@@ -222,6 +290,12 @@ Result Window::begin() {
         graphicalLoopThreadId = std::this_thread::get_id();
     }
 
+    if (std::exchange(presentState->idlePending, false)) {
+        if (auto* viewport = underlyingViewport()) {
+            viewport->waitIdle(kIdleInterval);
+        }
+    }
+
     // Process attachment queues.
     JST_CHECK(processAttachmentQueues());
 
@@ -230,46 +304,96 @@ Result Window::begin() {
     Result res;
     try {
         frameBackground = {0.0f, 0.0f, 0.0f, 1.0f};
+        presentState->list.clear();
         res = underlyingBegin();
     } catch (...) {
-        abortImguiFrame();
+        presentState->invalidate();
         underlyingCancel();
         throw;
     }
 
     if (res == Result::SUCCESS) {
+        ++_frameIndex;
         frameActive = true;
         frameLock.release();
     } else {
-        abortImguiFrame();
+        presentState->invalidate();
     }
 
     return res;
 }
 
-void Window::prepareImgui() {
-    ImGui::Render();
-    const auto* data = ImGui::GetDrawData();
-
-    frameSampledTextures.clear();
-    frameCustomDraws = data == nullptr;
-    if (data) {
-        for (const auto* list : data->CmdLists) {
-            for (const auto& command : list->CmdBuffer) {
-                const bool stateOnly = command.UserCallback == ImDrawCallback_ResetRenderState ||
-                                       command.UserCallback == ImGui::PremultipliedAlphaCallback;
-                frameCustomDraws |= command.UserCallback != nullptr && !stateOnly;
-                if (command.ElemCount > 0) {
-                    frameSampledTextures.insert(command.TexRef.GetTexID());
-                }
-            }
-        }
-    }
+bool Window::textureVisibleForPresentation(const Texture& texture) const {
+    return texture.visibleForPresentation(_frameIndex) || presentState->list.samples(texture);
 }
 
-bool Window::textureVisibleForPresentation(const Texture& texture) const {
-    return frameCustomDraws || texture.visibleForPresentation(ImGui::GetFrameCount()) ||
-           frameSampledTextures.contains(static_cast<ImTextureID>(texture.raw()));
+const PresentList& Window::framePresentList() const {
+    return presentState->list;
+}
+
+void Window::present(PresentList list) {
+    presentState->list.append(std::move(list));
+}
+
+Window::PresentPass Window::beginPresent(const Transfer::Batch& batch) {
+    PresentPass pass;
+    auto* viewport = underlyingViewport();
+    if (!viewport || !viewport->retainedPresent()) {
+        pass.required = true;
+    } else {
+        if (viewport->consumeRedraw()) {
+            presentState->invalidate();
+        }
+        const auto& quads = presentState->list.quads;
+        pass.required = presentState->changed(_metrics, frameBackground) ||
+                        std::any_of(quads.begin(), quads.end(), [&](const auto& quad) {
+                            return batch.contains(quad.texture.get());
+                        });
+    }
+    pass.presenting = pass.required;
+    return pass;
+}
+
+void Window::acquired(PresentPass& pass, Acquire result) {
+    if (result == Acquire::Ready) {
+        return;
+    }
+    if (result == Acquire::Dropped) {
+        ++frameStats.droppedFrames;
+    } else {
+        ++frameStats.recreatedFrames;
+        pass.recreate = true;
+    }
+    presentState->invalidate();
+    pass.presenting = false;
+}
+
+Result Window::finishPresent(const PresentPass& pass) {
+    if (pass.recreate) {
+        JST_CHECK(underlyingRecreate());
+        return Result::SKIP;
+    }
+    if (pass.presenting) {
+        presentState->presented(_metrics, frameBackground);
+        ++frameStats.presentedFrames;
+    } else if (!pass.required) {
+        ++frameStats.skippedPresents;
+        presentState->idlePending = !_input.hasPending();
+    }
+    return Result::SUCCESS;
+}
+
+std::string Window::clipboardText() const {
+    if (const auto* viewport = underlyingViewport()) {
+        return viewport->clipboardText();
+    }
+    return {};
+}
+
+void Window::setClipboardText(const std::string& text) {
+    if (auto* viewport = underlyingViewport()) {
+        viewport->setClipboardText(text);
+    }
 }
 
 Result Window::start() {
@@ -302,8 +426,8 @@ Result Window::end() {
     try {
         res = underlyingEnd();
     } catch (...) {
-        abortImguiFrame();
         frameActive = false;
+        presentState->invalidate();
         try {
             underlyingCancel();
         } catch (...) {
@@ -311,7 +435,10 @@ Result Window::end() {
         throw;
     }
     frameActive = false;
-    abortImguiFrame();
+    presentState->list.clear();
+    if (res != Result::SUCCESS && res != Result::RELOAD) {
+        presentState->invalidate();
+    }
 
     // Process attachment destruction queue.
 
@@ -402,7 +529,8 @@ Result Window::cancel() {
     std::unique_lock<std::mutex> frameLock(newFrameQueueMutex, std::adopt_lock);
     frameActive = false;
 
-    abortImguiFrame();
+    presentState->list.clear();
+    presentState->invalidate();
     return underlyingCancel();
 }
 
@@ -411,13 +539,6 @@ Result Window::synchronize() {
 
     // Call frame synchronize.
     return underlyingSynchronize();
-}
-
-void Window::abortImguiFrame() {
-    ImGuiContext* context = ImGui::GetCurrentContext();
-    if (context && context->WithinFrameScope) {
-        ImGui::EndFrame();
-    }
 }
 
 Result Window::bind(const std::shared_ptr<WindowAttachment>& attachment) {
@@ -1140,10 +1261,11 @@ TitlebarChrome Window::titlebarChrome() const {
     }
 
     auto chrome = viewport->titlebarChrome();
-    if (_scalingFactor > 0.0f) {
-        chrome.leadingInset /= _scalingFactor;
-        chrome.height /= _scalingFactor;
-        chrome.controlsCenter /= _scalingFactor;
+    const F32 scale = _metrics.scalingFactor;
+    if (scale > 0.0f) {
+        chrome.leadingInset /= scale;
+        chrome.height /= scale;
+        chrome.controlsCenter /= scale;
     }
     return chrome;
 }
@@ -1160,21 +1282,15 @@ void Window::zoomWindow() {
     }
 }
 
-void Window::updateScalingFactor(const Viewport::Generic& viewport) {
-    _scalingFactor = viewport.scale(config.scale);
-
-    _previousScalingFactor = _scalingFactor;
+void Window::updateMetrics(const Viewport::Generic& viewport) {
+    _metrics = viewport.metrics(config.scale);
 }
 
-Extent2D<F32> Window::framebufferScale() const {
-    const auto scale = ImGui::GetIO().DisplayFramebufferScale;
-    return {scale.x, scale.y};
-}
+void Window::updateInput(Viewport::Generic& viewport) {
+    viewport.setCursor(std::exchange(_requestedCursor, SurfaceCursor::Default));
 
-Extent2D<U64> Window::framebufferSize(const Extent2D<F32>& displaySize) const {
-    const auto scale = framebufferScale();
-    return {static_cast<U64>(displaySize.x * scale.x),
-            static_cast<U64>(displaySize.y * scale.y)};
+    _input.configure({.macOS = viewport.macOSBehaviors()});
+    _input.advance(viewport.inputTime(), viewport.input().drain());
 }
 
 Result Window::bind(const std::shared_ptr<Components::Generic>& component) {

@@ -18,6 +18,10 @@ const Render::Window& RenderWindow(const Context& ctx) {
 
 }  // namespace
 
+const Render::WindowMetrics& Metrics(const Context& ctx) {
+    return RenderWindow(ctx).metrics();
+}
+
 F32 ScalingFactor(const Context& ctx) {
     return RenderWindow(ctx).scalingFactor();
 }
@@ -26,41 +30,68 @@ F32 Scale(const Context& ctx, const F32 value) {
     return value * ScalingFactor(ctx);
 }
 
-F32 Unscale(const Context& ctx, const F32 value) {
-    return value / ScalingFactor(ctx);
-}
-
 Extent2D<F32> Scale(const Context& ctx, const Extent2D<F32> value) {
     return {value.x < 0.0f ? value.x : Scale(ctx, value.x),
             value.y < 0.0f ? value.y : Scale(ctx, value.y)};
-}
-
-Extent2D<F32> Unscale(const Context& ctx, const Extent2D<F32> value) {
-    return {value.x < 0.0f ? value.x : Unscale(ctx, value.x),
-            value.y < 0.0f ? value.y : Unscale(ctx, value.y)};
 }
 
 Extent2D<F32> FramebufferScale(const Context& ctx) {
     return RenderWindow(ctx).framebufferScale();
 }
 
-F32 SurfaceScale(const Context& ctx) {
-    return ScalingFactor(ctx) * FramebufferScale(ctx).x * 0.5f;
+Rect DisplayMetrics::RootRegion(const Render::WindowMetrics& metrics, F32 topOffset) {
+    const F32 top = topOffset * metrics.scalingFactor;
+    return {0.0f, std::trunc(top), std::trunc(metrics.displaySize.x),
+            std::trunc(std::max(0.0f, metrics.displaySize.y - top))};
 }
 
-Extent2D<F32> SnapToFramebuffer(const Context& ctx, const Extent2D<F32>& displayPosition) {
-    const auto scale = FramebufferScale(ctx);
+Rect DisplayMetrics::RootClip(const Render::WindowMetrics& metrics, const Rect& region) {
+    const F32 left = std::max(0.0f, std::floor(0.5f + region.x));
+    const F32 top = std::max(0.0f, std::floor(0.5f + region.y));
+    const F32 right = std::min(metrics.displaySize.x, std::floor(region.right()));
+    const F32 bottom = std::min(metrics.displaySize.y, std::floor(region.bottom()));
+    return {left, top, std::max(0.0f, right - left), std::max(0.0f, bottom - top)};
+}
+
+Extent2D<U64> DisplayMetrics::CanvasFramebuffer(const Render::WindowMetrics& metrics, const Extent2D<F32>& logical) {
+    constexpr F32 kSnapEpsilon = 1e-3f;
+    const Extent2D<F32> display = {logical.x * metrics.scalingFactor, logical.y * metrics.scalingFactor};
+    return {
+        static_cast<U64>(std::floor(display.x * metrics.framebufferScale.x + kSnapEpsilon)),
+        static_cast<U64>(std::floor(display.y * metrics.framebufferScale.y + kSnapEpsilon)),
+    };
+}
+
+Extent2D<F32> DisplayMetrics::FramebufferToDisplay(const Render::WindowMetrics& metrics,
+                                                   const Extent2D<U64>& framebuffer) {
+    const auto& scale = metrics.framebufferScale;
+    return {scale.x > 0.0f ? static_cast<F32>(framebuffer.x) / scale.x : 0.0f,
+            scale.y > 0.0f ? static_cast<F32>(framebuffer.y) / scale.y : 0.0f};
+}
+
+Extent2D<F32> DisplayMetrics::LogicalSize(const Render::WindowMetrics& metrics, const Extent2D<F32>& display) {
+    return {std::max(0.0f, display.x / metrics.scalingFactor), std::max(0.0f, display.y / metrics.scalingFactor)};
+}
+
+Extent2D<F32> DisplayMetrics::Snap(const Render::WindowMetrics& metrics, const Extent2D<F32>& display) {
+    const auto& scale = metrics.framebufferScale;
     if (scale.x <= 0.0f || scale.y <= 0.0f) {
-        return displayPosition;
+        return display;
     }
-    return {std::round(displayPosition.x * scale.x) / scale.x,
-            std::round(displayPosition.y * scale.y) / scale.y};
+    return {std::round(display.x * scale.x) / scale.x, std::round(display.y * scale.y) / scale.y};
 }
 
-Extent2D<F32> FramebufferToDisplay(const Context& ctx, const Extent2D<U64>& framebufferSize) {
-    const auto scale = FramebufferScale(ctx);
-    return {scale.x > 0.0f ? static_cast<F32>(framebufferSize.x) / scale.x : 0.0f,
-            scale.y > 0.0f ? static_cast<F32>(framebufferSize.y) / scale.y : 0.0f};
+F32 DisplayMetrics::SurfaceScale(const Render::WindowMetrics& metrics) {
+    return metrics.pixelRatio * kSurfaceScale;
+}
+
+F32 DisplayMetrics::PixelRatio(const SurfaceResize& resize) {
+    return resize.scale > 0.0f ? resize.scale / kSurfaceScale : 1.0f;
+}
+
+F32 DisplayMetrics::LogicalHeight(const Render::WindowMetrics& metrics, U64 framebufferHeight) {
+    return static_cast<F32>(framebufferHeight) /
+           std::max(1e-3f, metrics.scalingFactor * metrics.framebufferScale.y);
 }
 
 std::optional<SurfaceResize> ResolveSurfaceResize(const Context& ctx, const Extent2D<F32>& logicalSize) {
@@ -68,16 +99,10 @@ std::optional<SurfaceResize> ResolveSurfaceResize(const Context& ctx, const Exte
         return std::nullopt;
     }
 
-    constexpr F32 kSnapEpsilon = 1e-3f;
-    const auto framebufferScale = FramebufferScale(ctx);
-    const auto displaySize = Scale(ctx, logicalSize);
     const SurfaceResize resize{
         .logicalSize = {static_cast<U64>(logicalSize.x), static_cast<U64>(logicalSize.y)},
-        .framebufferSize = {
-            static_cast<U64>(std::floor(displaySize.x * framebufferScale.x + kSnapEpsilon)),
-            static_cast<U64>(std::floor(displaySize.y * framebufferScale.y + kSnapEpsilon)),
-        },
-        .scale = SurfaceScale(ctx),
+        .framebufferSize = DisplayMetrics::CanvasFramebuffer(Metrics(ctx), logicalSize),
+        .scale = DisplayMetrics::SurfaceScale(Metrics(ctx)),
     };
 
     if (resize.logicalSize.x == 0 || resize.logicalSize.y == 0 ||
@@ -88,12 +113,8 @@ std::optional<SurfaceResize> ResolveSurfaceResize(const Context& ctx, const Exte
     return resize;
 }
 
-F32 FrameRate() {
-    return ImGui::GetIO().Framerate;
-}
-
 F32 LogicalViewportHeight(const Context& ctx) {
-    return static_cast<F32>(ctx.framebufferSize.y) / std::max(1e-3f, ScalingFactor(ctx) * FramebufferScale(ctx).y);
+    return DisplayMetrics::LogicalHeight(Metrics(ctx), ctx.framebufferSize.y);
 }
 
 }  // namespace Jetstream::Sakura

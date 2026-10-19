@@ -3,7 +3,6 @@
 
 #include <jetstream/render/sakura/clipboard.hh>
 #include <jetstream/render/sakura/component.hh>
-#include <jetstream/render/sakura/metrics.hh>
 #include <jetstream/render/sakura/palette.hh>
 #include <jetstream/render/sakura/surface.hh>
 #include <jetstream/render/sakura/toast.hh>

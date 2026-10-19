@@ -1045,7 +1045,6 @@ TEST_CASE("An open dropdown settles, repaints once per row hover, and stays clea
 }
 
 TEST_CASE("An open node combo settles and stays clean after it closes", "[core][sakura][retention]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     std::string value = "AM";
     Sakura::NodeCombo combo;
@@ -1129,7 +1128,6 @@ TEST_CASE("Paint changes inside a hidden subtree stay off the frame until the su
 
 TEST_CASE("A surface image inside a hidden subtree hints not visible until the subtree is shown again",
           "[core][sakura][retention]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     const auto texture = std::make_shared<SurfaceTexture>();
     Sakura::SurfaceImage image;
@@ -1187,7 +1185,6 @@ TEST_CASE("A HUD layer updated every frame stays clean and ignores moves inside 
 
 TEST_CASE("A modal layer stays clean while empty and while open, and toggling it never rebuilds",
           "[core][sakura][retention]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     Probe content({100.0f, 50.0f});
     bool open = false;
@@ -1233,7 +1230,6 @@ TEST_CASE("A modal layer stays clean while empty and while open, and toggling it
 }
 
 TEST_CASE("A composed shell settles and stays clean under identical updates", "[core][sakura][retention]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     (void)Sakura::Private::TakeToasts();
     TileDock workspace;
@@ -1395,7 +1391,6 @@ TEST_CASE("A floating window title drag held still stays clean and repaints only
 
 TEST_CASE("A toast layer stays clean when empty and repaints only while a toast fades",
           "[core][sakura][retention]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     (void)Sakura::Private::TakeToasts();
     Sakura::ToastLayer layer;
@@ -1485,7 +1480,6 @@ TEST_CASE("A background layer with particles repaints every frame without rebuil
 
 TEST_CASE("A node field panel with node inputs updated every frame stays clean",
           "[core][sakura][retention]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     F32 gainValue = 1.5f;
     Sakura::NodeFloatInput gain;
@@ -1582,7 +1576,6 @@ TEST_CASE("A node field panel with node inputs updated every frame stays clean",
 
 TEST_CASE("A node editor with two nodes and a wire stays clean under identical updates",
           "[core][sakura][retention]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     GraphNodes nodes;
     Sakura::NodeLabel status;
@@ -1631,7 +1624,6 @@ TEST_CASE("A node editor with two nodes and a wire stays clean under identical u
 
 TEST_CASE("Dragging a node repaints while moving and settles once its geometry is fed back",
           "[core][sakura][retention]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     GraphNodes nodes;
     Sakura::NodeLabel status;
@@ -1734,7 +1726,6 @@ TEST_CASE("A column dock settles, and column resizes and new panes settle again 
 
 TEST_CASE("Hovering a toast repaints once for its close badge and stays clean while held",
           "[core][sakura][retention]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     (void)Sakura::Private::TakeToasts();
     Sakura::ToastLayer layer;
@@ -2142,7 +2133,6 @@ TEST_CASE("HUD config changes only repaint, a new HUD restructures once, and rem
 
 TEST_CASE("Swapping modal content restructures once for new content and only repaints for content shown before",
           "[core][sakura][retention]") {
-    const ImGuiContextGuard imguiContext;
     SakuraTest::FakeWindow window;
     Probe first({100.0f, 50.0f});
     Probe second({200.0f, 80.0f});

@@ -4,7 +4,6 @@
 
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
-#include <jetstream/render/tools/imgui.h>
 
 #include "../../../resources/fonts/compressed_inter.hh"
 #include "harness.hh"
@@ -105,7 +104,6 @@ TEST_CASE("Text line metrics rescale cached row heights and gaps when the font s
 }
 
 TEST_CASE("Vertical cursor moves stay on short wrapped rows", "[core][sakura][text-grid][cursor]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextGrid grid;
     Host host(grid);
@@ -135,7 +133,6 @@ TEST_CASE("Vertical cursor moves stay on short wrapped rows", "[core][sakura][te
 
 TEST_CASE("Mouse drags past a wrapped row edge select its last character",
           "[core][sakura][text-grid][cursor]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextGrid grid;
     Host host(grid);
@@ -167,7 +164,6 @@ TEST_CASE("Mouse drags past a wrapped row edge select its last character",
 
 TEST_CASE("Vertical cursor moves forget their pixel column when metrics change",
           "[core][sakura][text-grid][cursor]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextGrid grid;
     Host host(grid);
@@ -221,7 +217,6 @@ TEST_CASE("Monospace wrapping counts characters rather than bytes", "[core][saku
 
 TEST_CASE("Vertical cursor moves climb wrapped rows ending in multibyte characters",
           "[core][sakura][text-grid][cursor]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextGrid grid;
     Host host(grid);
@@ -251,7 +246,6 @@ TEST_CASE("Vertical cursor moves climb wrapped rows ending in multibyte characte
 
 TEST_CASE("Text grids keep document geometry independent of parent clipping",
           "[core][sakura][text-grid][viewport]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     DocumentHost host;
     const Rect window{0.0f, 0.0f, 400.0f, 300.0f};
@@ -349,7 +343,6 @@ TEST_CASE("Text grid row capacity jumps once from its minimum to the surface hei
 
 TEST_CASE("Same-row lines share a band and resolve mouse hits by column",
           "[core][sakura][text-grid][row-group]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextGrid grid;
     Host host(grid);
@@ -395,7 +388,6 @@ TEST_CASE("Same-row lines share a band and resolve mouse hits by column",
 
 TEST_CASE("Cursor visibility follows the visual row of a same-row cell",
           "[core][sakura][text-grid][row-group]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextGrid grid;
     Host host(grid);
@@ -447,7 +439,6 @@ TEST_CASE("Monospace lines honor per-line wrap widths", "[core][sakura][text-gri
 
 TEST_CASE("Scaled monospace lines place columns with scaled advances",
           "[core][sakura][text-grid][row-group]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextGrid grid;
     Host host(grid);
@@ -478,7 +469,6 @@ TEST_CASE("Scaled monospace lines place columns with scaled advances",
 }
 
 TEST_CASE("Clicks on a wrapped row boundary resolve to the row below", "[core][sakura][text-grid][cursor]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextGrid grid;
     Host host(grid);
@@ -513,7 +503,6 @@ TEST_CASE("Clicks on a wrapped row boundary resolve to the row below", "[core][s
 
 TEST_CASE("Vertical cursor moves cross row groups by horizontal position",
           "[core][sakura][text-grid][row-group]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextGrid grid;
     Host host(grid);
@@ -562,7 +551,6 @@ TEST_CASE("Vertical cursor moves cross row groups by horizontal position",
 
 TEST_CASE("Hit testing deep inside a long wrapped line resolves by row",
           "[core][sakura][text-grid][cursor]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextGrid grid;
     Host host(grid);
@@ -592,7 +580,6 @@ TEST_CASE("Hit testing deep inside a long wrapped line resolves by row",
 }
 
 TEST_CASE("Horizontal scrolling reveals indented same-row cells", "[core][sakura][text-grid][row-group]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextGrid grid;
     Host host(grid);
@@ -630,7 +617,6 @@ TEST_CASE("Horizontal scrolling reveals indented same-row cells", "[core][sakura
 
 TEST_CASE("Clipped grids with a long wrapped column lay out beside short cells",
           "[core][sakura][text-grid][row-group][viewport]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     DocumentHost host;
     const Rect window{0.0f, 0.0f, 400.0f, 200.0f};
@@ -666,7 +652,6 @@ TEST_CASE("Clipped grids with a long wrapped column lay out beside short cells",
 
 TEST_CASE("Line numbers label only the first cell of a same-row band",
           "[core][sakura][text-grid][row-group]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextGrid grid;
     Host host(grid);
@@ -725,7 +710,6 @@ TEST_CASE("Clearing the width layout hook restores static wrapping", "[core][sak
 
 TEST_CASE("Horizontal overflow in an editor does not create vertical scrolling",
           "[core][sakura][text-grid][scroll]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextGrid grid;
     Host host(grid);
@@ -751,7 +735,6 @@ TEST_CASE("Horizontal overflow in an editor does not create vertical scrolling",
 
 TEST_CASE("Cursor stays visible when a scrollbar appears and rewraps the text",
           "[core][sakura][text-grid][scroll]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextGrid grid;
     Host host(grid);
@@ -797,7 +780,6 @@ TEST_CASE("Cursor stays visible when a scrollbar appears and rewraps the text",
 
 TEST_CASE("Editable wrapped grids measure the height their layout will use",
           "[core][sakura][text-grid][scroll]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextGrid grid;
     Host host(grid);
@@ -820,7 +802,6 @@ TEST_CASE("Editable wrapped grids measure the height their layout will use",
 }
 
 TEST_CASE("Switching wrap modes re-resolves scrollbar reservations", "[core][sakura][text-grid][scroll]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextGrid grid;
     Host host(grid);
@@ -852,7 +833,6 @@ TEST_CASE("Switching wrap modes re-resolves scrollbar reservations", "[core][sak
 
 TEST_CASE("A key reaches the focused grid once however often it lays out",
           "[core][sakura][text-grid][input]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     TextGrid grid;
     Host host(grid);
@@ -882,7 +862,6 @@ TEST_CASE("A key reaches the focused grid once however often it lays out",
 
 TEST_CASE("Repeated measures follow content, padding, and width changes",
           "[core][sakura][text-grid][measure]") {
-    const ImGuiContextGuard imgui;
     MonoFontWindow window;
     auto ctx = MakeContext();
     ctx.render = &window;
@@ -926,7 +905,6 @@ TEST_CASE("Repeated measures follow content, padding, and width changes",
 
 TEST_CASE("Repeated measures follow fonts registered after a fallback measure",
           "[core][sakura][text-grid][measure]") {
-    const ImGuiContextGuard imgui;
     MonoFontWindow window;
     auto ctx = MakeContext();
     ctx.render = &window;
@@ -954,7 +932,6 @@ TEST_CASE("Repeated measures follow fonts registered after a fallback measure",
 
 TEST_CASE("Repeated measures follow late fonts beyond the first sixty-three styles",
           "[core][sakura][text-grid][measure]") {
-    const ImGuiContextGuard imgui;
     MonoFontWindow window;
     auto ctx = MakeContext();
     ctx.render = &window;
@@ -993,7 +970,6 @@ TEST_CASE("Repeated measures follow late fonts beyond the first sixty-three styl
 }
 
 TEST_CASE("Text grid font size changes repaint without rebuilding", "[core][sakura][text-grid][retention]") {
-    const ImGuiContextGuard imgui;
     MonoFontWindow window;
     TextGrid grid;
     Host host(grid);
@@ -1016,7 +992,6 @@ TEST_CASE("Text grid font size changes repaint without rebuilding", "[core][saku
 
 TEST_CASE("Same-row text grids settle and repaint without rebuilding when a cell moves",
           "[core][sakura][text-grid][row-group][retention]") {
-    const ImGuiContextGuard imgui;
     MonoFontWindow window;
     TextGrid grid;
     Host host(grid);
@@ -1048,7 +1023,6 @@ TEST_CASE("Same-row text grids settle and repaint without rebuilding when a cell
 
 TEST_CASE("Horizontal wheel scrolling an overflowing text grid repaints without rebuilding",
           "[core][sakura][text-grid][scroll][retention]") {
-    const ImGuiContextGuard imgui;
     MonoFontWindow window;
     TextGrid grid;
     Host host(grid);
@@ -1077,7 +1051,6 @@ TEST_CASE("Horizontal wheel scrolling an overflowing text grid repaints without 
 
 TEST_CASE("Moving the cursor of a focused text grid repaints without rebuilding",
           "[core][sakura][text-grid][cursor][retention]") {
-    const ImGuiContextGuard imgui;
     MonoFontWindow window;
     TextGrid grid;
     Host host(grid);
@@ -1102,7 +1075,6 @@ TEST_CASE("Moving the cursor of a focused text grid repaints without rebuilding"
 
 TEST_CASE("A focused grid keeps focus across an id change and gives it up when destroyed",
           "[core][sakura][text-grid][focus]") {
-    const ImGuiContextGuard imgui;
     const auto ctx = MakeContext();
     auto grid = std::make_unique<TextGrid>();
     Host host(*grid);

@@ -122,7 +122,6 @@ class LabelTestWindow final : public Render::Window {
  public:
     LabelTestWindow() : Window(Config{}) {}
 
-    const Stats& stats() const override { return windowStats; }
     std::string info() const override { return "LabelTestWindow"; }
     constexpr DeviceType device() const override { return DeviceType::Vulkan; }
 
@@ -139,8 +138,6 @@ class LabelTestWindow final : public Render::Window {
     Result underlyingEnd() override { return Result::SUCCESS; }
     Result underlyingSynchronize() override { return Result::SUCCESS; }
 
- private:
-    Stats windowStats{};
 };
 
 class LabelTestAxis final : public Render::Components::Axis {

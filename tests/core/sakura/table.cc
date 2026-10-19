@@ -415,7 +415,6 @@ TEST_CASE("Table borders are not draggable unless the table is resizable", "[cor
 }
 
 TEST_CASE("Wrapped table text grows the row to fit the column", "[core][sakura][table]") {
-    const ImGuiContextGuard imgui;
     MonoFontWindow window;
     auto ctx = MakeContext();
     ctx.render = &window;
@@ -439,7 +438,6 @@ TEST_CASE("Wrapped table text grows the row to fit the column", "[core][sakura][
 }
 
 TEST_CASE("Identical table updates settle without rebuilds", "[core][sakura][table]") {
-    const ImGuiContextGuard imgui;
     MonoFontWindow window;
     auto ctx = MakeContext();
     ctx.render = &window;
@@ -461,7 +459,6 @@ TEST_CASE("Identical table updates settle without rebuilds", "[core][sakura][tab
 }
 
 TEST_CASE("Column resize moves that keep the same width stay clean", "[core][sakura][table]") {
-    const ImGuiContextGuard imgui;
     MonoFontWindow window;
     auto ctx = MakeContext();
     ctx.render = &window;
@@ -497,7 +494,6 @@ TEST_CASE("Column resize moves that keep the same width stay clean", "[core][sak
 }
 
 TEST_CASE("Table cell text changes repaint without restructuring", "[core][sakura][table][retention]") {
-    const ImGuiContextGuard imgui;
     MonoFontWindow window;
     auto ctx = MakeContext();
     ctx.render = &window;
@@ -526,7 +522,6 @@ TEST_CASE("Table cell text changes repaint without restructuring", "[core][sakur
 }
 
 TEST_CASE("Adding table rows restructures once and removing them parks the cells", "[core][sakura][table][retention]") {
-    const ImGuiContextGuard imgui;
     MonoFontWindow window;
     auto ctx = MakeContext();
     ctx.render = &window;
@@ -562,7 +557,6 @@ TEST_CASE("Adding table rows restructures once and removing them parks the cells
 
 TEST_CASE("Adding table cell rows restructures once and removing them parks the cells",
           "[core][sakura][table][retention]") {
-    const ImGuiContextGuard imgui;
     MonoFontWindow window;
     auto ctx = MakeContext();
     ctx.render = &window;

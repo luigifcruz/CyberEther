@@ -109,10 +109,6 @@ struct MailCopyText {
 
 struct MailQuit {};
 
-struct MailSetInfoPanelEnabled {
-    bool value = false;
-};
-
 struct MailSetBackgroundParticles {
     bool value = false;
 };
@@ -435,7 +431,6 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailOpenUrl,
                           MailCopyText,
                           MailQuit,
-                          MailSetInfoPanelEnabled,
                           MailSetBackgroundParticles,
                           MailSetFlowgraphMetadataVisible,
                           MailSetFlowgraphMetadataSearch,

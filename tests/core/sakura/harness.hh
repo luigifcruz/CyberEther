@@ -1,14 +1,14 @@
 #ifndef JETSTREAM_TESTS_CORE_SAKURA_HARNESS_HH
 #define JETSTREAM_TESTS_CORE_SAKURA_HARNESS_HH
 
-#include <imgui.h>
-
 #include "jetstream/render/base/window.hh"
 #include "jetstream/render/components/font.hh"
 #include "jetstream/render/sakura/surface.hh"
 #include "jetstream/types.hh"
 
 #include "render/sakura/context.hh"
+
+#include "../render/harness.hh"
 
 #include <memory>
 #include <string>
@@ -17,52 +17,24 @@
 
 namespace SakuraTest {
 
-class FakeWindow : public Jetstream::Render::Window {
+class FakeWindow : public RenderTest::Window {
  public:
-    explicit FakeWindow(Jetstream::F32 scalingFactor = 1.0f) : Window(Config{scalingFactor}) {
-        _scalingFactor = scalingFactor;
-        _previousScalingFactor = scalingFactor;
+    explicit FakeWindow(Jetstream::F32 scalingFactor = 1.0f, Jetstream::Extent2D<Jetstream::F32> display = {0.0f, 0.0f})
+        : RenderTest::Window(scalingFactor) {
+        viewport.display = display;
+        (void)open();
     }
 
-    const Stats& stats() const override {
-        static const Stats stats{0, 0};
-        return stats;
+    void rescale(Jetstream::F32 scalingFactor) {
+        setScale(scalingFactor);
+        (void)frame();
     }
 
-    std::string info() const override {
-        return "FakeWindow";
-    }
-    constexpr Jetstream::DeviceType device() const override {
-        return Jetstream::DeviceType::None;
-    }
-
- protected:
-    Jetstream::Result bindSurface(const std::shared_ptr<Jetstream::Render::Surface>&) override {
-        return Jetstream::Result::SUCCESS;
-    }
-
-    Jetstream::Result unbindSurface(const std::shared_ptr<Jetstream::Render::Surface>&) override {
-        return Jetstream::Result::SUCCESS;
-    }
-
-    Jetstream::Result underlyingCreate() override {
-        return Jetstream::Result::SUCCESS;
-    }
-
-    Jetstream::Result underlyingDestroy() override {
-        return Jetstream::Result::SUCCESS;
-    }
-
-    Jetstream::Result underlyingBegin() override {
-        return Jetstream::Result::SUCCESS;
-    }
-
-    Jetstream::Result underlyingEnd() override {
-        return Jetstream::Result::SUCCESS;
-    }
-
-    Jetstream::Result underlyingSynchronize() override {
-        return Jetstream::Result::SUCCESS;
+    Jetstream::Sakura::Context sakura() {
+        Jetstream::Sakura::Context ctx;
+        ctx.render = this;
+        ctx.pixelRatio = 1.0f;
+        return ctx;
     }
 };
 
@@ -77,79 +49,6 @@ class FontWindow : public FakeWindow {
         fonts[name] = font;
         ++_fontRevision;
     }
-};
-
-class HeadlessUi {
- public:
-    explicit HeadlessUi(Jetstream::F32 scalingFactor = 1.0f, ImVec2 displaySize = ImVec2(400.0f, 300.0f)) {
-        context = ImGui::CreateContext();
-
-        this->displaySize = displaySize;
-
-        ImGuiIO& io = ImGui::GetIO();
-        io.IniFilename = nullptr;
-        io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
-        io.DisplaySize = displaySize;
-        io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
-        io.DeltaTime = 1.0f / 60.0f;
-        io.Fonts->AddFontDefault();
-
-        ImGui::StyleColorsDark();
-        ImGuiStyle& style = ImGui::GetStyle();
-        style.WindowPadding = ImVec2(0.0f, 0.0f);
-        style.ItemSpacing = ImVec2(0.0f, 0.0f);
-        style.ItemInnerSpacing = ImVec2(0.0f, 0.0f);
-
-        window = std::make_unique<FakeWindow>(scalingFactor);
-    }
-
-    ~HeadlessUi() {
-        ImGui::DestroyContext(context);
-    }
-
-    HeadlessUi(const HeadlessUi&) = delete;
-    HeadlessUi& operator=(const HeadlessUi&) = delete;
-
-    Jetstream::Sakura::Context sakura() const {
-        Jetstream::Sakura::Context ctx;
-        ctx.render = window.get();
-        ctx.pixelRatio = 1.0f;
-        return ctx;
-    }
-
-    void setMouse(ImVec2 position, bool leftDown) {
-        mousePosition = position;
-        mouseLeftDown = leftDown;
-    }
-
-    template<typename Body>
-    void frame(Body body) {
-        ImGuiIO& io = ImGui::GetIO();
-        io.MousePos = mousePosition;
-        io.MouseDown[0] = mouseLeftDown;
-
-        ImGui::NewFrame();
-        ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-        ImGui::SetNextWindowSize(displaySize);
-        ImGui::Begin("sakura-test",
-                     nullptr,
-                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
-                         ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar |
-                         ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoNav);
-        body();
-        ImGui::End();
-        ImGui::Render();
-    }
-
-    static constexpr Jetstream::F32 kWindowWidth = 400.0f;
-    static constexpr Jetstream::F32 kWindowHeight = 300.0f;
-
- private:
-    ImGuiContext* context = nullptr;
-    std::unique_ptr<FakeWindow> window;
-    ImVec2 displaySize = ImVec2(400.0f, 300.0f);
-    ImVec2 mousePosition = ImVec2(-100.0f, -100.0f);
-    bool mouseLeftDown = false;
 };
 
 struct ResizeLog {
