@@ -114,7 +114,7 @@ struct Table::Impl {
     void flatten(const std::vector<Node>& nodes, U64 depth, const std::string& prefix) {
         for (const auto& node : nodes) {
             const std::string& segment = node.id.empty() ? node.label : node.id;
-            const std::string key = prefix + "/" + std::to_string(segment.size()) + ":" + segment;
+            const std::string key = jst::fmt::format("{}/{}:{}", prefix, segment.size(), segment);
             const bool expandable = !node.children.empty();
             const auto it = expanded.find(key);
             const bool open = expandable && (it != expanded.end() ? it->second : node.open);

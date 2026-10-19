@@ -92,7 +92,7 @@ struct DependencyReviewModalPresenter {
 
         auto flowgraphId = flowgraphIdFor(dependency.view);
         if (!flowgraphId.empty() && !block.empty()) {
-            return flowgraphId + " / " + block;
+            return jst::fmt::format("{} / {}", flowgraphId, block);
         }
         return flowgraphId.empty() ? block : flowgraphId;
     }

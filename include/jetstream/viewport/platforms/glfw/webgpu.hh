@@ -44,7 +44,7 @@ class GLFW<DeviceType::WebGPU> : public Adapter<DeviceType::WebGPU> {
     Result waitEvents();
     Result pollEvents();
     bool keepRunning();
-    bool retainedPresent() const override;
+    bool retainedPresent() const;
 
  private:
     GLFWwindow* window;

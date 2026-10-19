@@ -1206,7 +1206,7 @@ void NodeInputRow::update(Config config) {
     for (U64 i = 0; i < impl->config.combos.size(); ++i) {
         const auto& combo = impl->config.combos[i];
         impl->combos[i]->update({
-            .id = impl->config.id + ":combo" + std::to_string(i),
+            .id = jst::fmt::format("{}:combo{}", impl->config.id, i),
             .options = combo.options,
             .value = combo.value,
             .onChange = combo.onChange,

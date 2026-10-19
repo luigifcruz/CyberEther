@@ -21,7 +21,7 @@ namespace Jetstream {
 class DefaultCompositor : public Compositor::Impl {
  public:
     DefaultCompositor();
-    ~DefaultCompositor() override;
+    ~DefaultCompositor();
 
     Result create();
     Result destroy();

@@ -51,10 +51,11 @@ struct DependencyReviewView {
             .description = "Review and install the Python packages requested by blocks.",
         });
         overviewText.update({
-            .str = "Blocks declared " + packageNoun() + " that are not installed yet. "
-                   "Approving installs them with pip into a shared environment managed by "
-                   "CyberEther, separate from your system Python. Blocks that depend on them "
-                   "stay paused until installation completes, then reload automatically.",
+            .str = jst::fmt::format("Blocks declared {} that are not installed yet. "
+                                     "Approving installs them with pip into a shared environment managed by "
+                                     "CyberEther, separate from your system Python. Blocks that depend on them "
+                                     "stay paused until installation completes, then reload automatically.",
+                                     packageNoun()),
             .tone = Text::Tone::Secondary,
             .wrapped = true,
         });
@@ -195,7 +196,7 @@ struct DependencyReviewView {
         if (count == 0) {
             return "Python packages";
         }
-        return std::to_string(count) + (count == 1 ? " Python package" : " Python packages");
+        return jst::fmt::format("{} Python {}", count, count == 1 ? "package" : "packages");
     }
 
     std::string installLabel() const {
@@ -220,11 +221,10 @@ struct DependencyReviewView {
                            : config.message;
             case State::Installing:
                 return config.message.empty()
-                           ? "Installing " + packageNoun() +
-                                 " with pip. This may take a few minutes."
+                           ? jst::fmt::format("Installing {} with pip. This may take a few minutes.", packageNoun())
                            : config.message;
             case State::Installed:
-                return config.message.empty() ? "Installed " + packageNoun() + " successfully."
+                return config.message.empty() ? jst::fmt::format("Installed {} successfully.", packageNoun())
                                               : config.message;
             case State::Failed:
                 return config.approved

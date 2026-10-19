@@ -13,7 +13,7 @@
 namespace Jetstream {
 
 inline std::string FlowgraphLinkId(const std::string& consumerName, const std::string& inputSlot) {
-    return consumerName + ":" + inputSlot + "link";
+    return jst::fmt::format("{}:{}link", consumerName, inputSlot);
 }
 
 struct FlowgraphLink {

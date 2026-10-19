@@ -58,7 +58,7 @@ struct HintOverlay {
         }
         for (U64 i = 0; i < this->config.steps.size(); ++i) {
             stepTexts[i]->update({
-                .str = std::to_string(i + 1) + ". " + this->config.steps[i],
+                .str = jst::fmt::format("{}. {}", i + 1, this->config.steps[i]),
                 .align = Text::Align::Center,
             });
         }

@@ -1192,7 +1192,7 @@ void SearchCatalog::update(Config config) {
         std::vector<Stack::Item> buttons;
         for (U64 index = 0; index < item.badges.size(); ++index) {
             s.docsButtons[index]->update({
-                .str = item.badges[index] + " " + ICON_FA_ARROW_RIGHT,
+                .str = jst::fmt::format("{} {}", item.badges[index], ICON_FA_ARROW_RIGHT),
                 .colorKey = "action_btn",
                 .hoveredColorKey = "action_btn",
                 .activeColorKey = "action_btn",

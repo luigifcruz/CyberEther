@@ -63,7 +63,7 @@ struct FlowgraphNodeInspector {
     Sakura::FloatingLayer::Window window() {
         return {
             .id = config.id,
-            .title = "Inspect & Edit (" + config.name + ")",
+            .title = jst::fmt::format("Inspect & Edit ({})", config.name),
             .content = &editor,
             .size = {640.0f, 520.0f},
             .onClose = config.onClose,

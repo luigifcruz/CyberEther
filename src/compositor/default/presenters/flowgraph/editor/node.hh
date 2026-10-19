@@ -87,7 +87,7 @@ struct FlowgraphNodePresenter {
             }
 
             block.metrics.push_back({
-                .id = nodeViewId + ":metric:" + metric.name,
+                .id = jst::fmt::format("{}:metric:{}", nodeViewId, metric.name),
                 .label = metric.label,
                 .help = metric.help,
                 .format = metric.format,
@@ -153,7 +153,7 @@ struct FlowgraphNodePresenter {
                                    const std::shared_ptr<Flowgraph>& flowgraph,
                                    const std::string& blockName,
                                    const Flowgraph::View::BlockData& blockData) const {
-        const std::string nodeViewId = flowgraphId + ":" + blockName;
+        const std::string nodeViewId = jst::fmt::format("{}:{}", flowgraphId, blockName);
         const Block::State blockState = blockData.state;
         const bool hasDiagnostic = (blockState == Block::State::Errored ||
                                      blockState == Block::State::Incomplete) &&

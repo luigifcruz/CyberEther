@@ -121,7 +121,7 @@ struct DefaultCompositorState {
         static std::string LiveMarkdownKey(const std::string& flowgraphId,
                                            const std::string& blockName,
                                            const std::string& fieldName) {
-            return flowgraphId + ":" + blockName + ":" + fieldName;
+            return jst::fmt::format("{}:{}:{}", flowgraphId, blockName, fieldName);
         }
 
         std::unordered_map<std::string, std::shared_ptr<Flowgraph>> items;

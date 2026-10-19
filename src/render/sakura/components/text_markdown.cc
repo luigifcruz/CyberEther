@@ -927,7 +927,7 @@ struct DocumentBuilder {
             addLine(std::move(display), scale, gap, block.indent, std::move(styles), std::move(links),
                     TextGrid::RowMode::Next, block.indent);
         };
-        addCalloutLine(std::string(kCalloutIcons[block.tone]) + "  " + kCalloutTitles[block.tone], Style::Bold,
+        addCalloutLine(jst::fmt::format("{}  {}", kCalloutIcons[block.tone], kCalloutTitles[block.tone]), Style::Bold,
                        kCalloutTitleScale, block.topGap, true);
         if (!block.text.empty()) {
             F32 gap = body * kCalloutTitleGapEmRatio;

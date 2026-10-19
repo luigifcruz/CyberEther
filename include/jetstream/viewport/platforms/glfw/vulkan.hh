@@ -48,10 +48,10 @@ class GLFW<DeviceType::Vulkan> : public Adapter<DeviceType::Vulkan> {
     Result waitEvents();
     Result pollEvents();
     bool keepRunning();
-    bool retainedPresent() const override;
+    bool retainedPresent() const;
 
     Render::TitlebarChrome titlebarChrome() const;
-    void setIntegratedTitlebar(bool enabled) override;
+    void setIntegratedTitlebar(bool enabled);
     void beginWindowDrag();
     void zoomWindow();
 

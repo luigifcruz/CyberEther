@@ -16,7 +16,7 @@ inline constexpr const char* kLayoutEditorPane = "flowgraph";
 inline constexpr const char* kLayoutDocumentationPane = "documentation";
 
 inline std::string MakeSurfaceTileKey(const std::string& block, const std::string& surface) {
-    return "surface:" + block + ":" + surface;
+    return jst::fmt::format("surface:{}:{}", block, surface);
 }
 
 inline std::optional<std::pair<std::string, std::string>> ParseSurfaceTileKey(const std::string& key) {

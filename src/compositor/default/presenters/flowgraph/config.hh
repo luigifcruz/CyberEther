@@ -21,7 +21,7 @@ inline std::vector<FlowgraphConfigFieldConfig> BuildFlowgraphConfigFields(
     fields.reserve(block.interfaceConfigs.size());
     for (const auto& entry : block.interfaceConfigs) {
         FlowgraphConfigFieldConfig field{
-            .id = viewId + ":config:" + entry.name,
+            .id = jst::fmt::format("{}:config:{}", viewId, entry.name),
             .name = entry.name,
             .label = entry.label.empty() ? entry.name : entry.label,
             .help = entry.help,

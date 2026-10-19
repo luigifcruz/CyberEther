@@ -332,7 +332,7 @@ struct SettingsActions {
         const auto count = settings.registry.plugins.size();
         callbacks.notify(Sakura::ToastType::Success,
                          3000,
-                         "Reloaded modules from " + std::to_string(count) + (count == 1 ? " plugin." : " plugins."));
+                         jst::fmt::format("Reloaded modules from {} {}.", count, count == 1 ? "plugin" : "plugins"));
         return Result::SUCCESS;
     }
 

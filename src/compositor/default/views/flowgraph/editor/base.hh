@@ -147,7 +147,7 @@ struct FlowgraphEditor {
             }
             FlowgraphNode::Config nodeConfig{
                 .id = blockName,
-                .inspectorId = this->config.id + ":" + blockName + ":inspector",
+                .inspectorId = jst::fmt::format("{}:{}:inspector", this->config.id, blockName),
                 .block = std::move(block),
                 .pasteEnabled = this->config.clipboardHasData,
                 .timingEnabled = this->config.debugTimingEnabled,
@@ -294,7 +294,7 @@ struct FlowgraphEditor {
         items.push_back({.child = &flowgraphContextMenu});
         const F32 zoom = nodeEditor.zoom();
         zoomPill.update({
-            .label = std::to_string(static_cast<int>(std::lround(zoom * 100.0f))) + "%",
+            .label = jst::fmt::format("{}%", std::lround(zoom * 100.0f)),
             .canDecrement = nodeEditor.canZoom(-1),
             .canIncrement = nodeEditor.canZoom(1),
             .size = {ZoomPillWidth, FlowgraphBlockPicker::PillHeight},

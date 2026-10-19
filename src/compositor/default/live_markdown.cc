@@ -814,7 +814,7 @@ void Repeat(Context& context, const Line& line, std::vector<std::string>& output
 std::string TableRow(const std::vector<std::string>& cells) {
     std::string row = "|";
     for (const auto& cell : cells) {
-        row += " " + cell + " |";
+        row += jst::fmt::format(" {} |", cell);
     }
     return row;
 }

@@ -65,7 +65,7 @@ struct FilePickerView {
             ? "Select where to save on the server."
             : "Choose a file from the server to open.";
         if (!save && !this->config.extensions.empty()) {
-            description = "Choose a file from the server to open (" + extensionList() + ").";
+            description = jst::fmt::format("Choose a file from the server to open ({}).", extensionList());
         }
         header.update({
             .title = save ? ICON_FA_FLOPPY_DISK " Save to Server"
@@ -155,7 +155,7 @@ struct FilePickerView {
                 .value = filename,
                 .hint = this->config.extensions.empty()
                     ? "Filename"
-                    : "Filename (" + extensionList() + ")",
+                    : jst::fmt::format("Filename ({})", extensionList()),
                 .submit = Sakura::TextInput::Submit::OnEdit,
                 .onChange = [this](const std::string& value) {
                     filename = value;

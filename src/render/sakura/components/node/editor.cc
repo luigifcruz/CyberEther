@@ -1649,7 +1649,7 @@ struct GraphRoot : public Component {
             const auto mouse = toGrid(*mousePx);
             const std::string topmost = topmostNodeAt(mouse);
             if (const auto* frame = frameFor(topmost)) {
-                key.tooltip = topmost + ":" + std::to_string(frame->tooltipIndexAt(mouse));
+                key.tooltip = jst::fmt::format("{}:{}", topmost, frame->tooltipIndexAt(mouse));
             }
         }
         return key;
