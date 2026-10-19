@@ -370,7 +370,11 @@ bool Surface::hiddenAndIdle(bool visible, bool framebufferChanged) const {
     if (visible || framebufferChanged || !config.retained || !imageInitialized) {
         return false;
     }
-    return std::none_of(config.kernels.begin(), config.kernels.end(), [](const auto& kernel) {
+    return !kernelsPending();
+}
+
+bool Surface::kernelsPending() const {
+    return std::any_of(config.kernels.begin(), config.kernels.end(), [](const auto& kernel) {
         return kernel && kernel->shouldEncode();
     });
 }

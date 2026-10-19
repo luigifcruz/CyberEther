@@ -182,11 +182,13 @@ Result Implementation::draw(MTL::CommandBuffer* commandBuffer, bool visible) {
 
     // Encode kernels.
 
-    auto computeCmdEncoder = commandBuffer->computeCommandEncoder();
-    for (auto& kernel : kernels) {
-        JST_CHECK(kernel->encode(computeCmdEncoder));
+    if (kernelsPending()) {
+        auto computeCmdEncoder = commandBuffer->computeCommandEncoder();
+        for (auto& kernel : kernels) {
+            JST_CHECK(kernel->encode(computeCmdEncoder));
+        }
+        computeCmdEncoder->endEncoding();
     }
-    computeCmdEncoder->endEncoding();
 
     if (!shouldDrawGraphics(visible)) {
         return Result::SUCCESS;

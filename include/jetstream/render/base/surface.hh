@@ -204,6 +204,7 @@ class JETSTREAM_API Surface : public WindowAttachment {
     bool shouldDraw(bool framebufferChanged = false);
     Result drawResult() const;
     bool hiddenAndIdle(bool visible, bool framebufferChanged) const;
+    bool kernelsPending() const;
     bool shouldDrawGraphics(bool visible);
     void resetFramebuffer();
     void markDrawn();

@@ -105,14 +105,16 @@ Result Implementation::draw(WGPUCommandEncoder& commandEncoder, bool visible) {
 
     // Encode kernels.
 
-    WGPUComputePassEncoder computePassEncoder =
-        wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
+    if (kernelsPending()) {
+        WGPUComputePassEncoder computePassEncoder =
+            wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
 
-    for (auto& kernel : kernels) {
-        JST_CHECK(kernel->encode(computePassEncoder));
+        for (auto& kernel : kernels) {
+            JST_CHECK(kernel->encode(computePassEncoder));
+        }
+
+        wgpuComputePassEncoderEnd(computePassEncoder);
     }
-
-    wgpuComputePassEncoderEnd(computePassEncoder);
 
     if (!shouldDrawGraphics(visible)) {
         return Result::SUCCESS;
