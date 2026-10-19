@@ -1,6 +1,7 @@
 src_lst += files([
     'buffer.cc',
     'colormap.cc',
+    'input.cc',
     'kernel.cc',
     'surface.cc',
     'texture.cc',

@@ -106,6 +106,7 @@ struct JETSTREAM_API MouseEvent {
     KeyModifiers modifiers;
     U8 clicks = 1;
     bool cancel = false;
+    bool positioned = true;
 };
 
 struct JETSTREAM_API FocusEvent {

@@ -40,6 +40,7 @@ core_test_domains = {
     'render': [
         'render/colormap.cc',
         'render/components.cc',
+        'render/input_state.cc',
         'render/transfers.cc',
         'render/surface_edits.cc',
         'render/geomap_labels.cc',
