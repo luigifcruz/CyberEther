@@ -41,6 +41,8 @@ class JETSTREAM_API WindowImp<DeviceType::WebGPU> : public Window {
     Viewport::Generic* underlyingViewport() const override { return viewport.get(); }
 
  private:
+    struct Presenter;
+
     Stats statsData;
     ImGuiIO* io = nullptr;
     ImGuiStyle* style = nullptr;

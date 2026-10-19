@@ -42,6 +42,8 @@ class JETSTREAM_API WindowImp<DeviceType::Vulkan> : public Window {
     Viewport::Generic* underlyingViewport() const override { return viewport.get(); }
 
  private:
+    struct Presenter;
+
     Stats statsData;
     ImGuiIO* io = nullptr;
     size_t currentFrame = 0;

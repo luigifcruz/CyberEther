@@ -26,6 +26,8 @@ struct ScissorRect {
     U32 y = 0;
     U32 width = 0;
     U32 height = 0;
+
+    bool operator==(const ScissorRect&) const = default;
 };
 
 struct TitlebarChrome {

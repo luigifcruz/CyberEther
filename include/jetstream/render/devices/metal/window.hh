@@ -44,6 +44,8 @@ class JETSTREAM_API WindowImp<DeviceType::Metal> : public Window {
  private:
     static constexpr size_t FramesInFlight = 3;
 
+    struct Presenter;
+
     Stats statsData;
     ImGuiIO* io = nullptr;
     ImGuiStyle* style = nullptr;

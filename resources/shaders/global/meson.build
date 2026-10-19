@@ -8,6 +8,7 @@ shader_pkg_lst += [{
         files(['curves.vert.glsl', 'curves.frag.glsl']),
         files(['image.vert.glsl', 'image.frag.glsl']),
         files(['punch.vert.glsl', 'punch.frag.glsl']),
+        files(['present.vert.glsl', 'present.frag.glsl']),
     ],
     'kernels': [
         files(['thicklinestrip.comp']),
