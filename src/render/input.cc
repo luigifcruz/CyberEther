@@ -197,6 +197,7 @@ void InputState::advance(F64 now, const std::vector<InputQueue::Event>& queued) 
 
 bool InputState::process(const InputQueue::Event& event, Trickle& trickle) {
     if (const auto* focus = std::get_if<InputQueue::Focus>(&event)) {
+        hostFocused = focus->focused;
         focusLost = !focus->focused;
         if (focusLost) {
             clear();
@@ -211,9 +212,24 @@ bool InputState::process(const InputQueue::Event& event, Trickle& trickle) {
         return true;
     }
 
-    if (!focused) {
+    const bool remote = std::visit([](const auto& typed) {
+        if constexpr (requires { typed.remote; }) {
+            return typed.remote;
+        } else {
+            return false;
+        }
+    }, event);
+    if (!hostFocused && !remote) {
         track(event);
         return true;
+    }
+    if (!focused) {
+        focused = true;
+        focusLost = false;
+        if (pointerInside) {
+            pointerPosition = lastValidPointer;
+        }
+        frameEvents.push_back(FocusEvent{true});
     }
 
     const Extent2D<F32> point = pointerPosition.value_or(Extent2D<F32>{0.0f, 0.0f});

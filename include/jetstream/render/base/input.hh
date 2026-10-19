@@ -20,28 +20,34 @@ class JETSTREAM_API InputQueue {
  public:
     struct Pointer {
         std::optional<Extent2D<F32>> position;
+        bool remote = false;
     };
 
     struct Button {
         MouseButton button = MouseButton::Left;
         bool down = false;
+        bool remote = false;
     };
 
     struct Wheel {
         Extent2D<F32> delta = {0.0f, 0.0f};
+        bool remote = false;
     };
 
     struct Key {
         KeyCode key = KeyCode::Unknown;
         bool down = false;
+        bool remote = false;
     };
 
     struct Modifiers {
         KeyModifiers modifiers;
+        bool remote = false;
     };
 
     struct Text {
         char32_t codepoint = 0;
+        bool remote = false;
     };
 
     struct Focus {
@@ -108,6 +114,7 @@ class JETSTREAM_API InputState {
     F64 elapsed = 0.0;
     F32 delta = 0.0f;
 
+    bool hostFocused = true;
     bool focused = true;
     bool focusLost = false;
     KeyModifiers currentModifiers;

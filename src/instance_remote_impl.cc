@@ -762,8 +762,8 @@ void Instance::Remote::Impl::handleInput(const std::string& sessionId,
             JST_WARN("[REMOTE] Rejected invalid text input size.");
             return;
         }
-        if (viewport) {
-            viewport->input().pushText(text);
+        for (const char32_t codepoint : Render::InputQueue::DecodeUtf8(text)) {
+            pushInput(Render::InputQueue::Text{codepoint});
         }
         return;
     }
@@ -806,6 +806,11 @@ void Instance::Remote::Impl::pushInput(Render::InputQueue::Event event) {
     if (!viewport) {
         return;
     }
+    std::visit([](auto& typed) {
+        if constexpr (requires { typed.remote; }) {
+            typed.remote = true;
+        }
+    }, event);
     viewport->input().push(std::move(event));
 }
 

@@ -288,6 +288,7 @@ TEST_CASE("The click that refocuses the window lands where the pointer moved whi
 
 TEST_CASE("Focus restores a cached pointer only while it is inside", "[core][render][input_state]") {
     const bool outside = GENERATE(false, true);
+    const bool remote = GENERATE(false, true);
     Feed feed;
     feed.frame({Queue::Pointer{Extent2D<F32>{40.0f, 50.0f}}});
     feed.frame({Queue::Focus{false}});
@@ -296,7 +297,11 @@ TEST_CASE("Focus restores a cached pointer only while it is inside", "[core][ren
         feed.frame({Queue::Hover{false}});
     }
 
-    feed.frame({Queue::Focus{true}, Queue::Button{MouseButton::Left, true}});
+    if (remote) {
+        feed.frame({Queue::Button{MouseButton::Left, true, true}});
+    } else {
+        feed.frame({Queue::Focus{true}, Queue::Button{MouseButton::Left, true}});
+    }
     CHECK(feed.state.pointer().has_value() == !outside);
     const auto clicks = Mouse(feed.state);
     REQUIRE(clicks.size() == 1);
@@ -305,7 +310,7 @@ TEST_CASE("Focus restores a cached pointer only while it is inside", "[core][ren
         CHECK(clicks[0].position == Extent2D<F32>{40.0f, 50.0f});
     }
 
-    feed.settle({Queue::Button{MouseButton::Left, false}, Queue::Hover{true}});
+    feed.settle({Queue::Focus{true}, Queue::Button{MouseButton::Left, false}, Queue::Hover{true}});
     REQUIRE(feed.state.pointer().has_value());
     CHECK(*feed.state.pointer() == Extent2D<F32>{40.0f, 50.0f});
 }
@@ -344,6 +349,87 @@ TEST_CASE("Focus loss forgets click history and click counts saturate", "[core][
         clicks = ClickAt(feed, {10.0f, 10.0f}, 0.01);
     }
     CHECK(clicks == std::numeric_limits<U8>::max());
+}
+
+TEST_CASE("Remote input engages an unfocused window while local input stays gated",
+          "[core][render][input_state]") {
+    Feed feed;
+    feed.frame({Queue::Focus{false}});
+    feed.frame({Queue::Button{MouseButton::Left, true}, Queue::Text{'a'}});
+    CHECK_FALSE(feed.state.windowFocused());
+    CHECK(feed.state.events().empty());
+
+    feed.frame({Queue::Button{MouseButton::Left, false}});
+    feed.frame({
+        Queue::Pointer{Extent2D<F32>{12.0f, 34.0f}, true},
+        Queue::Button{MouseButton::Left, true, true},
+    });
+    CHECK(feed.state.windowFocused());
+    const auto focus = Only<FocusEvent>(feed.state.events());
+    REQUIRE(focus.size() == 1);
+    CHECK(focus[0].focused);
+    REQUIRE(feed.state.pointer().has_value());
+    CHECK(*feed.state.pointer() == Extent2D<F32>{12.0f, 34.0f});
+    const auto clicks = Mouse(feed.state);
+    REQUIRE(clicks.size() == 1);
+    CHECK(clicks[0].type == MouseEventType::Click);
+
+    feed.frame({Queue::Wheel{{0.0f, 1.0f}}, Queue::Button{MouseButton::Right, true}});
+    CHECK(feed.state.windowFocused());
+    CHECK(feed.state.events().empty());
+    CHECK_FALSE(feed.state.buttons()[1]);
+    CHECK_FALSE(feed.state.hasPending());
+
+    feed.frame({Queue::Focus{false}, Queue::Wheel{{0.0f, -1.0f}, true}});
+    CHECK(feed.state.windowFocused());
+    CHECK_FALSE(feed.state.buttons()[0]);
+    CHECK_FALSE(feed.state.hasPending());
+    const auto remoteScroll = Mouse(feed.state);
+    REQUIRE(remoteScroll.size() == 1);
+    CHECK(remoteScroll[0].type == MouseEventType::Scroll);
+    CHECK(remoteScroll[0].scroll == Extent2D<F32>{0.0f, -1.0f});
+    CHECK(remoteScroll[0].positioned);
+    CHECK(remoteScroll[0].position == Extent2D<F32>{12.0f, 34.0f});
+
+    feed.frame({Queue::Focus{true}, Queue::Wheel{{0.0f, 1.0f}}});
+    CHECK(feed.state.windowFocused());
+    REQUIRE(feed.state.events().size() == 1);
+    const auto nativeScroll = Mouse(feed.state);
+    REQUIRE(nativeScroll.size() == 1);
+    CHECK(nativeScroll[0].type == MouseEventType::Scroll);
+    CHECK(nativeScroll[0].scroll == Extent2D<F32>{0.0f, 1.0f});
+    CHECK(nativeScroll[0].positioned);
+    CHECK(nativeScroll[0].position == Extent2D<F32>{12.0f, 34.0f});
+}
+
+TEST_CASE("Remote input survives a host focus loss in the same frame",
+          "[core][render][input_state]") {
+    Feed feed;
+
+    SECTION("Remote text") {
+        feed.frame({Queue::Focus{false}, Queue::Text{U'\u00e9', true}});
+        CHECK(Text(feed.state) == std::vector<char32_t>{U'\u00e9'});
+        CHECK_FALSE(feed.state.pointer().has_value());
+    }
+
+    SECTION("Remote pointer and button") {
+        feed.frame({Queue::Focus{false}, Queue::Pointer{Extent2D<F32>{12.0f, 34.0f}, true},
+                    Queue::Button{MouseButton::Left, true, true}});
+        REQUIRE(feed.state.pointer().has_value());
+        CHECK(*feed.state.pointer() == Extent2D<F32>{12.0f, 34.0f});
+        const auto clicks = Mouse(feed.state);
+        REQUIRE(clicks.size() == 1);
+        CHECK(clicks[0].type == MouseEventType::Click);
+        CHECK(clicks[0].position == Extent2D<F32>{12.0f, 34.0f});
+        CHECK(feed.state.buttons()[0]);
+    }
+
+    CHECK(feed.state.windowFocused());
+    CHECK_FALSE(feed.state.hasPending());
+    const auto focus = Only<FocusEvent>(feed.state.events());
+    REQUIRE(focus.size() == 2);
+    CHECK_FALSE(focus[0].focused);
+    CHECK(focus[1].focused);
 }
 
 TEST_CASE("Losing and regaining focus in one frame releases held keys and buttons",

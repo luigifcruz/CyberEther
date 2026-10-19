@@ -262,6 +262,7 @@ struct InputView {
     std::vector<Render::InputState::Event> collected;
 
     bool keyDown(KeyCode key) const { return input.keyDown(key); }
+    bool windowFocused() const { return input.windowFocused(); }
     const KeyModifiers& modifiers() const { return input.modifiers(); }
     const std::array<bool, 3>& buttons() const { return input.buttons(); }
     const std::optional<Extent2D<F32>>& pointer() const { return input.pointer(); }
@@ -380,6 +381,26 @@ TEST_CASE("Remote pointer coordinates follow the viewport framebuffer scale",
         REQUIRE(state.pointer().has_value());
         CHECK(state.pointer()->x == 400.0f);
         CHECK(state.pointer()->y == 300.0f);
+    });
+}
+
+TEST_CASE("Remote control keeps working while the host window is unfocused",
+          "[core][application][remote][input]") {
+    InputContext input;
+    Stream stream;
+    stream.start();
+    auto& remote = stream.remote;
+    input.attach(remote);
+    REQUIRE(remote.createWebRtcSession("z-first", "first") == Result::SUCCESS);
+
+    input.window.viewport.input().push(Render::InputQueue::Focus{false});
+    input.window.viewport.input().push(Render::InputQueue::Button{MouseButton::Left, true});
+    SendInput(remote, "z-first", {{"kind", "mouse"}, {"act", "down"}, {"button", 0}, {"x", 0.5}, {"y", 0.5}});
+    SendInput(remote, "z-first", {{"kind", "keyboard"}, {"action", "down"}, {"code", "KeyA"}});
+    input.frame(remote, [](const InputView& state) {
+        CHECK(state.windowFocused());
+        CHECK(state.buttons()[0]);
+        CHECK(state.keyDown(KeyCode::A));
     });
 }
 
