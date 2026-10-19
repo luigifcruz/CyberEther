@@ -704,7 +704,7 @@ TEST_CASE("Failed surface appends roll back partial backend creation dependencie
         Render::Transfer::Batch batch;
         REQUIRE(window.collectFrameTransfers(batch) == Result::SUCCESS);
         REQUIRE_FALSE(batch.contains(buffer));
-        REQUIRE_FALSE(batch.contains(texture.get()));
+        REQUIRE_FALSE(batch.contains(texture));
         REQUIRE_FALSE(surface->wantsDraw());
     }
 
@@ -1913,7 +1913,7 @@ TEST_CASE("Standalone attachments do not make transfer collection order-dependen
         Render::Transfer::Batch batch;
         REQUIRE(window.collectFrameTransfers(batch) == Result::SUCCESS);
         REQUIRE(batch.textures().size() == 1);
-        REQUIRE(batch.contains(texture.get()));
+        REQUIRE(batch.contains(texture));
         REQUIRE(surface->wantsDraw());
 
         surface->commitDraw();

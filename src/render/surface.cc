@@ -283,14 +283,14 @@ bool Surface::affectedBy(const Transfer::Batch& batch) const {
     }
 
     for (const auto& texture : dependencyTextures) {
-        if (batch.contains(texture.get())) {
+        if (batch.contains(texture)) {
             return true;
         }
     }
     for (const auto& program : config.programs) {
         if (program && program->enabled() && program->getConfig().borrowedTextures) {
             for (const auto& texture : program->getConfig().textures) {
-                if (batch.contains(texture.get())) {
+                if (batch.contains(texture)) {
                     return true;
                 }
             }

@@ -347,7 +347,7 @@ Window::PresentPass Window::beginPresent(const Transfer::Batch& batch) {
         const auto& quads = presentState->list.quads;
         pass.required = presentState->changed(_metrics, frameBackground) ||
                         std::any_of(quads.begin(), quads.end(), [&](const auto& quad) {
-                            return batch.contains(quad.texture.get());
+                            return batch.contains(quad.texture);
                         });
     }
     pass.presenting = pass.required;
