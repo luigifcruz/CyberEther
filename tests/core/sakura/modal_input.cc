@@ -153,6 +153,7 @@ struct ModalFixture {
     void place() {
         ++ctx.frame;
         ctx.time += 0.02;
+        Sakura::Access::advance(ctx.time);
         Sakura::Access::layout(root, ctx, {0, 0, 800, 600});
         Sakura::Access::present(root, ctx.frame);
         Sakura::Access::settleFocus(root);

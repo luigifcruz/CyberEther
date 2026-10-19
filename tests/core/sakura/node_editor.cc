@@ -310,6 +310,48 @@ TEST_CASE("Dragging the empty canvas pans the grid by the pointer delta", "[core
     CheckGeometry(graph.blocks[0]->last(), {40.0f, 40.0f}, {120.0f, 80.0f});
 }
 
+TEST_CASE("Stationary hover samples do not redraw an active graph interaction",
+          "[core][sakura][node-editor][retention][stationary]") {
+    const F32 ratio = GENERATE(1.0f, 2.0f);
+    Graph graph(ratio);
+    auto& node = graph.add("a", {40.0f, 40.0f});
+    node.content.consume = false;
+    REQUIRE(Settle(graph));
+    Extent2D<F32> point;
+    bool draggingNode = false;
+    SECTION("background pan") {
+        point = {600.0f, 400.0f};
+    }
+    SECTION("node drag") {
+        point = {45.0f * ratio, 45.0f * ratio};
+        draggingNode = true;
+    }
+    graph.press(point.x, point.y);
+    REQUIRE(Settle(graph));
+    const auto stationary = [&] {
+        for (U64 frame = 0; frame < 100; ++frame) {
+            graph.send(MouseEventType::Move, point.x, point.y);
+            INFO("idle frame " << frame);
+            CHECK(graph.step().clean());
+        }
+    };
+    stationary();
+    const auto center = *graph.center;
+    point.x += 20.0f * ratio;
+    point.y += 20.0f * ratio;
+    graph.move(point.x, point.y);
+    if (draggingNode) {
+        CheckPoint(node.last().gridPosition, 60.0f, 60.0f);
+    } else {
+        CheckPoint(*graph.center, center.x - 20.0f, center.y - 20.0f);
+    }
+    REQUIRE(Settle(graph));
+    stationary();
+    graph.release(point.x, point.y);
+    REQUIRE(Settle(graph));
+    stationary();
+}
+
 TEST_CASE("Panning at a pixel ratio of two moves the grid by half the pointer delta",
           "[core][sakura][node-editor]") {
     Graph graph(2.0f);
@@ -936,6 +978,25 @@ TEST_CASE("Dragging a node past the viewport edge auto pans by the frame delta t
     graph.release(400.0f, 300.0f);
     graph.step();
     CheckPoint(*graph.center, 600.0f, 300.0f);
+}
+
+TEST_CASE("Stationary moves past the viewport edge keep auto panning once per frame",
+          "[core][sakura][node-editor]") {
+    Graph graph;
+    Block& a = graph.add("a", {40.0f, 40.0f});
+    a.content.consume = false;
+    graph.step();
+
+    graph.press(100.0f, 100.0f);
+    graph.frames.ctx.deltaTime = 0.1f;
+    graph.move(900.0f, 300.0f);
+    CheckPoint(*graph.center, 500.0f, 300.0f);
+    for (U64 frame = 1; frame <= 3; ++frame) {
+        graph.move(900.0f, 300.0f);
+        CheckPoint(*graph.center, 500.0f + 100.0f * static_cast<F32>(frame), 300.0f);
+        CheckPoint(a.last().gridPosition, 940.0f + 100.0f * static_cast<F32>(frame), 240.0f);
+    }
+    graph.release(900.0f, 300.0f);
 }
 
 TEST_CASE("Panning or resizing past the viewport edge never auto pans", "[core][sakura][node-editor]") {

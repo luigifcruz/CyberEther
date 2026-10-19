@@ -1659,8 +1659,8 @@ struct GraphRoot : public Component {
         const HoverKey before = hoverKey();
         const auto previous = mousePx;
         const bool handled = dispatchMouse(event);
-        if (event.type != MouseEventType::Move || interaction != Interaction::None || hoverKey() != before ||
-            (tooltipFollowing && mousePx != previous)) {
+        if (event.type != MouseEventType::Move || hoverKey() != before ||
+            ((interaction != Interaction::None || tooltipFollowing) && mousePx != previous)) {
             invalidate(Dirty::Layout);
         }
         return handled;
