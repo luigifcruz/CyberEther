@@ -33,7 +33,7 @@ struct Instance::Remote::Impl {
         return Result::SUCCESS;
     }
 
-    Result captureFrame() {
+    Result captureFrame(bool) {
         return Result::SUCCESS;
     }
 
@@ -78,8 +78,8 @@ bool Instance::Remote::started() const {
     return impl->started_;
 }
 
-Result Instance::Remote::captureFrame() {
-    return impl->captureFrame();
+Result Instance::Remote::captureFrame(bool presented) {
+    return impl->captureFrame(presented);
 }
 
 const std::string& Instance::Remote::roomId() const {

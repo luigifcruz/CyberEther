@@ -54,7 +54,7 @@ struct JETSTREAM_API Instance::Remote {
     Result destroy();
 
     bool started() const;
-    Result captureFrame();
+    Result captureFrame(bool presented);
 
     const std::string& roomId() const;
     const std::string& accessToken() const;

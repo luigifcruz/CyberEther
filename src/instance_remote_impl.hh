@@ -39,7 +39,9 @@ struct Instance::Remote::Impl {
     Result destroy();
     Result rollbackCreate();
     Result processInput();
-    Result captureFrame(std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now());
+    void requestKeyframe();
+    Result captureFrame(bool presented,
+                        std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now());
     Result approveClient(const std::string& code);
 
     Config config;
@@ -120,6 +122,7 @@ struct Instance::Remote::Impl {
         gulong iceHandler = 0;
         gulong channelHandler = 0;
         gulong negotiationHandler = 0;
+        gulong connectionHandler = 0;
         bool negotiationReady = false;
         bool offerPending = false;
     };
@@ -209,6 +212,7 @@ struct Instance::Remote::Impl {
     static void onChannelCallback(GstElement* self, GstWebRTCDataChannel* channel, gpointer user_data);
     static void onIceCandidateCallback(GstElement* self, guint mlineIndex, gchar* candidate, gpointer user_data);
     static void onNegotiationNeededCallback(GstElement* self, gpointer user_data);
+    static void onConnectionStateCallback(GstElement* self, GParamSpec* pspec, gpointer user_data);
     static void onOfferCreatedCallback(GstPromise* promise, gpointer user_data);
     static void onAnswerCreatedCallback(GstPromise* promise, gpointer user_data);
 
@@ -219,6 +223,8 @@ struct Instance::Remote::Impl {
 
     std::unique_ptr<Viewport::FrameCapture> frameCapture;
     std::chrono::steady_clock::time_point nextCaptureTime{};
+    bool capturePending = false;
+    std::atomic<bool> captureRequested = false;
     std::thread frameSubmissionThread;
     std::atomic<bool> frameSubmissionRunning = false;
 

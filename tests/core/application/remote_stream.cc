@@ -15,6 +15,7 @@
 #include <gst/app/gstappsink.h>
 #include <gst/app/gstappsrc.h>
 #include <gst/rtp/gstrtcpbuffer.h>
+#include <gst/video/video-event.h>
 #include <gst/video/video-info.h>
 
 using namespace Jetstream;
@@ -483,11 +484,11 @@ TEST_CASE("Broker disconnect stops remote streaming and releases its room and in
             CHECK(state.modifiers().shift);
             CHECK(state.buttons()[0]);
         });
-        REQUIRE(remote.captureFrame() == Result::SUCCESS);
+        REQUIRE(remote.captureFrame(true) == Result::SUCCESS);
         REQUIRE(remote.started_);
         REQUIRE(remote.sendSignallerMessage({{"type", "disconnect"}}));
         REQUIRE(WaitFor([&] { return !remote.signallerRunning; }));
-        REQUIRE(remote.captureFrame() == Result::SUCCESS);
+        REQUIRE(remote.captureFrame(true) == Result::SUCCESS);
 
         CHECK_FALSE(remote.started_);
         CHECK_FALSE(remote.streaming);
@@ -532,19 +533,244 @@ TEST_CASE("Remote capture honors the configured frame rate without catch-up burs
     const auto start = std::chrono::steady_clock::time_point(1s);
     for (U32 frame = 0; frame < renderFps * 2; ++frame) {
         const auto now = start + std::chrono::nanoseconds(frame * GST_SECOND / renderFps);
-        REQUIRE(remote.captureFrame(now) == Result::SUCCESS);
+        REQUIRE(remote.captureFrame(true, now) == Result::SUCCESS);
     }
     CHECK(counter->frames == std::min(renderFps, captureFps) * 2);
 
     const auto before = counter->frames;
     const auto resumed = start + 10s;
-    REQUIRE(remote.captureFrame(resumed) == Result::SUCCESS);
+    REQUIRE(remote.captureFrame(true, resumed) == Result::SUCCESS);
     for (unsigned i = 0; i < 8; ++i) {
-        REQUIRE(remote.captureFrame(resumed + 1ms) == Result::SUCCESS);
+        REQUIRE(remote.captureFrame(true, resumed + 1ms) == Result::SUCCESS);
     }
     CHECK(counter->frames == before + 1);
-    REQUIRE(remote.captureFrame(resumed + std::chrono::nanoseconds(GST_SECOND / captureFps)) == Result::SUCCESS);
+    REQUIRE(remote.captureFrame(true, resumed + std::chrono::nanoseconds(GST_SECOND / captureFps)) == Result::SUCCESS);
     CHECK(counter->frames == before + 2);
+}
+
+TEST_CASE("Remote capture skips frames that presented nothing", "[core][application][remote][capture]") {
+    struct Capture final : Viewport::FrameCapture {
+        unsigned frames = 0;
+        Result create(Viewport::Generic*, const DeviceType&) override { return Result::SUCCESS; }
+        Result destroy() override { return Result::SUCCESS; }
+        Result stop() override { return Result::SUCCESS; }
+        Result captureFrame() override { ++frames; return Result::SUCCESS; }
+        Result getFrameData(Tensor&) override { return Result::ERROR; }
+        Result releaseFrame() override { return Result::SUCCESS; }
+    };
+    Instance::Remote::Impl remote;
+    remote.config.framerate = 60;
+    auto capture = std::make_unique<Capture>();
+    auto* counter = capture.get();
+    remote.frameCapture = std::move(capture);
+    const auto start = std::chrono::steady_clock::time_point(1s);
+    REQUIRE(remote.captureFrame(false, start) == Result::SUCCESS);
+    REQUIRE(remote.captureFrame(false, start + 1s) == Result::SUCCESS);
+    CHECK(counter->frames == 0);
+    REQUIRE(remote.captureFrame(true, start + 2s) == Result::SUCCESS);
+    CHECK(counter->frames == 1);
+}
+
+TEST_CASE("A redraw inside the capture interval is captured once the interval elapses",
+          "[core][application][remote][capture]") {
+    struct Capture final : Viewport::FrameCapture {
+        unsigned frames = 0;
+        Result create(Viewport::Generic*, const DeviceType&) override { return Result::SUCCESS; }
+        Result destroy() override { return Result::SUCCESS; }
+        Result stop() override { return Result::SUCCESS; }
+        Result captureFrame() override { ++frames; return Result::SUCCESS; }
+        Result getFrameData(Tensor&) override { return Result::ERROR; }
+        Result releaseFrame() override { return Result::SUCCESS; }
+    };
+    RenderTest::Viewport viewport;
+    Instance::Remote::Impl remote;
+    remote.viewport = &viewport;
+    remote.config.framerate = 60;
+    auto capture = std::make_unique<Capture>();
+    auto* counter = capture.get();
+    remote.frameCapture = std::move(capture);
+    (void)viewport.consumeRedraw();
+
+    const auto start = std::chrono::steady_clock::time_point(1s);
+    REQUIRE(remote.captureFrame(true, start) == Result::SUCCESS);
+    CHECK(counter->frames == 1);
+    REQUIRE(remote.captureFrame(true, start + 1ms) == Result::SUCCESS);
+    CHECK(counter->frames == 1);
+    REQUIRE(remote.captureFrame(false, start + 2ms) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+
+    REQUIRE(remote.captureFrame(false, start + 1s) == Result::SUCCESS);
+    CHECK(counter->frames == 1);
+    CHECK(viewport.consumeRedraw());
+    REQUIRE(remote.captureFrame(true, start + 1s + 1ms) == Result::SUCCESS);
+    CHECK(counter->frames == 2);
+
+    REQUIRE(remote.captureFrame(false, start + 2s) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+    CHECK(counter->frames == 2);
+}
+
+TEST_CASE("A keyframe request on an idle window asks for a frame and captures it",
+          "[core][application][remote][capture]") {
+    struct Capture final : Viewport::FrameCapture {
+        unsigned frames = 0;
+        Result create(Viewport::Generic*, const DeviceType&) override { return Result::SUCCESS; }
+        Result destroy() override { return Result::SUCCESS; }
+        Result stop() override { return Result::SUCCESS; }
+        Result captureFrame() override { ++frames; return Result::SUCCESS; }
+        Result getFrameData(Tensor&) override { return Result::ERROR; }
+        Result releaseFrame() override { return Result::SUCCESS; }
+    };
+    RenderTest::Viewport viewport;
+    Instance::Remote::Impl remote;
+    remote.viewport = &viewport;
+    remote.config.framerate = 60;
+    auto capture = std::make_unique<Capture>();
+    auto* counter = capture.get();
+    remote.frameCapture = std::move(capture);
+    (void)viewport.consumeRedraw();
+
+    const auto start = std::chrono::steady_clock::time_point(1s);
+    remote.requestKeyframe();
+    CHECK(viewport.consumeRedraw());
+    REQUIRE(remote.captureFrame(false, start) == Result::SUCCESS);
+    CHECK(counter->frames == 0);
+    CHECK(viewport.consumeRedraw());
+    REQUIRE(remote.captureFrame(true, start + 1ms) == Result::SUCCESS);
+    CHECK(counter->frames == 1);
+    REQUIRE(remote.captureFrame(false, start + 1s) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+}
+
+TEST_CASE("A busy capture slot keeps the frame pending until a capture is accepted",
+          "[core][application][remote][capture]") {
+    struct Capture final : Viewport::FrameCapture {
+        unsigned attempts = 0;
+        unsigned frames = 0;
+        Result create(Viewport::Generic*, const DeviceType&) override { return Result::SUCCESS; }
+        Result destroy() override { return Result::SUCCESS; }
+        Result stop() override { return Result::SUCCESS; }
+        Result captureFrame() override {
+            if (++attempts == 1) {
+                return Result::SKIP;
+            }
+            ++frames;
+            return Result::SUCCESS;
+        }
+        Result getFrameData(Tensor&) override { return Result::ERROR; }
+        Result releaseFrame() override { return Result::SUCCESS; }
+    };
+    RenderTest::Viewport viewport;
+    Instance::Remote::Impl remote;
+    remote.viewport = &viewport;
+    remote.config.framerate = 60;
+    auto capture = std::make_unique<Capture>();
+    auto* counter = capture.get();
+    remote.frameCapture = std::move(capture);
+    (void)viewport.consumeRedraw();
+
+    const auto start = std::chrono::steady_clock::time_point(1s);
+    REQUIRE(remote.captureFrame(true, start) == Result::SUCCESS);
+    CHECK(counter->frames == 0);
+    REQUIRE(remote.captureFrame(false, start + 1ms) == Result::SUCCESS);
+    CHECK(viewport.consumeRedraw());
+    REQUIRE(remote.captureFrame(true, start + 2ms) == Result::SUCCESS);
+    CHECK(counter->frames == 1);
+    REQUIRE(remote.captureFrame(false, start + 1s) == Result::SUCCESS);
+    CHECK_FALSE(viewport.consumeRedraw());
+}
+
+TEST_CASE("Upstream encoder keyframe requests wake idle capture across stream restarts",
+          "[core][application][remote][stream][capture][keyframe]") {
+    RenderTest::Viewport viewport;
+    Stream stream;
+    auto& remote = stream.remote;
+    remote.viewport = &viewport;
+
+    for (unsigned i = 0; i < 2; ++i) {
+        CAPTURE(i);
+        stream.start(false);
+        remote.captureRequested = false;
+        remote.forceKeyframe = false;
+        (void)viewport.consumeRedraw();
+        GstPad* encoderSrc = gst_element_get_static_pad(remote.encoder, "src");
+        REQUIRE(encoderSrc);
+        const bool accepted = gst_pad_send_event(encoderSrc,
+            gst_video_event_new_upstream_force_key_unit(GST_CLOCK_TIME_NONE, TRUE, 0));
+        gst_object_unref(encoderSrc);
+        CHECK(accepted);
+        CHECK(remote.captureRequested.load());
+        CHECK(viewport.consumeRedraw());
+        stream.stop();
+    }
+}
+
+TEST_CASE("An idle remote viewer requests a fresh frame after connecting",
+          "[core][application][remote][stream][capture][keyframe]") {
+    struct Capture final : Viewport::FrameCapture {
+        unsigned frames = 0;
+        Result create(Viewport::Generic*, const DeviceType&) override { return Result::SUCCESS; }
+        Result destroy() override { return Result::SUCCESS; }
+        Result stop() override { return Result::SUCCESS; }
+        Result captureFrame() override { ++frames; return Result::SUCCESS; }
+        Result getFrameData(Tensor&) override { return Result::ERROR; }
+        Result releaseFrame() override { return Result::SUCCESS; }
+    };
+    RenderTest::Viewport viewport;
+    std::atomic<bool> submitted = false;
+    Stream stream;
+    stream.start(false);
+    Peer viewer(stream, "viewer");
+    viewer.prepare();
+    auto& remote = stream.remote;
+    remote.viewport = &viewport;
+    auto capture = std::make_unique<Capture>();
+    auto* counter = capture.get();
+    remote.frameCapture = std::move(capture);
+    remote.handleStartSession({{"sessionId", viewer.id}, {"peerId", "loopback"}});
+    REQUIRE(remote.captureFrame(true) == Result::SUCCESS);
+    CHECK(counter->frames == 1);
+
+    stream.producer = std::thread([&] {
+        remote.pushNewFrame(stream.frame.data());
+        submitted = true;
+    });
+    std::unique_ptr<GstWebRTCSessionDescription, decltype(&gst_webrtc_session_description_free)>
+        offer(nullptr, gst_webrtc_session_description_free);
+    REQUIRE(WaitFor([&] {
+        GstWebRTCSessionDescription* desc = nullptr;
+        g_object_get(viewer.sender, "local-description", &desc, nullptr);
+        offer.reset(desc);
+        return offer != nullptr;
+    }));
+    REQUIRE(WaitFor([&] { return submitted.load(); }));
+    stream.producer.join();
+    remote.captureRequested = false;
+    (void)viewport.consumeRedraw();
+
+    SetDescription(viewer.receiver, "set-remote-description", offer.get());
+    Negotiate(viewer.receiver, viewer.sender, false);
+    REQUIRE(WaitFor([&] {
+        GstWebRTCPeerConnectionState state;
+        g_object_get(viewer.sender, "connection-state", &state, nullptr);
+        return state == GST_WEBRTC_PEER_CONNECTION_STATE_CONNECTED;
+    }));
+    REQUIRE(WaitFor([&] { return remote.captureRequested.load(); }));
+    bool redraw = false;
+    REQUIRE(WaitFor([&] {
+        redraw = redraw || viewport.consumeRedraw();
+        return redraw;
+    }));
+    REQUIRE(remote.captureFrame(true, remote.nextCaptureTime) == Result::SUCCESS);
+    CHECK(counter->frames == 2);
+    submitted = false;
+    stream.producer = std::thread([&] {
+        remote.pushNewFrame(stream.frame.data());
+        submitted = true;
+    });
+    REQUIRE(WaitFor([&] { return viewer.packets > 0; }));
+    REQUIRE(WaitFor([&] { return submitted.load(); }));
+    stream.producer.join();
 }
 
 TEST_CASE("Remote CPU encoding preserves the configured frame rate and source colorimetry",

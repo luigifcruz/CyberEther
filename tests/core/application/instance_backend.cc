@@ -551,8 +551,8 @@ TEST_CASE("Remote without a viewport is inert and reports unsupported operations
 
     requireInertState();
 
-    REQUIRE(remote.captureFrame() == Result::SUCCESS);
-    REQUIRE(remote.captureFrame() == Result::SUCCESS);
+    REQUIRE(remote.captureFrame(true) == Result::SUCCESS);
+    REQUIRE(remote.captureFrame(true) == Result::SUCCESS);
     REQUIRE(remote.approveClient("") == Result::ERROR);
     REQUIRE(remote.approveClient("client") == Result::ERROR);
     REQUIRE(remote.create({}) == Result::ERROR);

@@ -80,8 +80,8 @@ bool Instance::Remote::started() const {
     return impl->started_;
 }
 
-Result Instance::Remote::captureFrame() {
-    return impl->captureFrame();
+Result Instance::Remote::captureFrame(bool presented) {
+    return impl->captureFrame(presented);
 }
 
 const std::string& Instance::Remote::roomId() const {
@@ -258,22 +258,48 @@ Result Instance::Remote::Impl::rollbackCreate() {
     return result;
 }
 
-Result Instance::Remote::Impl::captureFrame(std::chrono::steady_clock::time_point now) {
+Result Instance::Remote::Impl::captureFrame(bool presented, std::chrono::steady_clock::time_point now) {
     if (this->started_ && !this->signallerRunning) {
         JST_WARN("[REMOTE] Stopping remote streaming after the signaller disconnected.");
         return this->destroy();
     }
 
     JST_CHECK(processInput());
-    if (this->frameCapture && now >= this->nextCaptureTime) {
-        const auto interval = std::chrono::nanoseconds(GST_SECOND / config.framerate);
-        if (now - this->nextCaptureTime >= interval) {
-            this->nextCaptureTime = now;
-        }
-        this->nextCaptureTime += interval;
-        this->frameCapture->captureFrame();
+    if (!this->frameCapture) {
+        return Result::SUCCESS;
     }
+    if (this->captureRequested.exchange(false)) {
+        this->capturePending = true;
+    }
+    if (now < this->nextCaptureTime) {
+        this->capturePending = this->capturePending || presented;
+        return Result::SUCCESS;
+    }
+    if (!presented) {
+        if (this->capturePending && viewport) {
+            viewport->requestRedraw();
+        }
+        return Result::SUCCESS;
+    }
+    if (this->frameCapture->captureFrame() == Result::SKIP) {
+        this->capturePending = true;
+        return Result::SUCCESS;
+    }
+    const auto interval = std::chrono::nanoseconds(GST_SECOND / config.framerate);
+    if (now - this->nextCaptureTime >= interval) {
+        this->nextCaptureTime = now;
+    }
+    this->nextCaptureTime += interval;
+    this->capturePending = false;
     return Result::SUCCESS;
+}
+
+void Instance::Remote::Impl::requestKeyframe() {
+    forceKeyframe.store(true);
+    captureRequested.store(true);
+    if (viewport) {
+        viewport->requestRedraw();
+    }
 }
 
 Result Instance::Remote::Impl::processInput() {
@@ -1271,6 +1297,16 @@ Result Instance::Remote::Impl::startStream() {
         }
     }
 
+    GstPad* encoderSrcPad = gst_element_get_static_pad(newEncoder, "src");
+    gst_pad_add_probe(encoderSrcPad, GST_PAD_PROBE_TYPE_EVENT_UPSTREAM,
+        +[](GstPad*, GstPadProbeInfo* info, gpointer data) {
+            if (gst_video_event_is_force_key_unit(GST_PAD_PROBE_INFO_EVENT(info))) {
+                reinterpret_cast<Impl*>(data)->requestKeyframe();
+            }
+            return GST_PAD_PROBE_OK;
+        }, this, nullptr);
+    gst_object_unref(encoderSrcPad);
+
     if (config.codec == Instance::Remote::CodecType::H264) {
         if (!makeElement("encodedcaps", "capsfilter")) {
             return fail();
@@ -1350,7 +1386,7 @@ Result Instance::Remote::Impl::startStream() {
 
     initialFrameTime = std::chrono::steady_clock::now();
     lastKeyframeTime = initialFrameTime;
-    forceKeyframe.store(true);
+    requestKeyframe();
 
     {
         std::lock_guard<std::mutex> lock(streamMutex);
@@ -1672,6 +1708,16 @@ Result Instance::Remote::Impl::createWebRtcSession(const std::string& sessionId,
                                                         },
                                                         GConnectFlags(0));
 
+    auto* connectionContext = new WebRtcSignalContext{this, sessionId};
+    session->connectionHandler = g_signal_connect_data(G_OBJECT(session->webrtc),
+                                                        "notify::connection-state",
+                                                        G_CALLBACK(onConnectionStateCallback),
+                                                        connectionContext,
+                                                        [](gpointer data, GClosure*) {
+                                                            delete reinterpret_cast<WebRtcSignalContext*>(data);
+                                                        },
+                                                        GConnectFlags(0));
+
     if (!gst_element_sync_state_with_parent(session->payloader) ||
         !gst_element_sync_state_with_parent(session->rtpCaps) ||
         !gst_element_sync_state_with_parent(session->webrtc) ||
@@ -1700,7 +1746,7 @@ Result Instance::Remote::Impl::createWebRtcSession(const std::string& sessionId,
         std::lock_guard<std::mutex> inputLock(inputMutex);
         inputSessionOrder.push_back(sessionId);
     }
-    forceKeyframe.store(true);
+    requestKeyframe();
 
     return Result::SUCCESS;
 }
@@ -1738,6 +1784,10 @@ void Instance::Remote::Impl::destroyWebRtcSession(const std::string& sessionId) 
         if (session->negotiationHandler) {
             g_signal_handler_disconnect(G_OBJECT(session->webrtc), session->negotiationHandler);
             session->negotiationHandler = 0;
+        }
+        if (session->connectionHandler) {
+            g_signal_handler_disconnect(G_OBJECT(session->webrtc), session->connectionHandler);
+            session->connectionHandler = 0;
         }
     }
 
@@ -2280,6 +2330,16 @@ void Instance::Remote::Impl::onNegotiationNeededCallback(GstElement* self, gpoin
         it->second->negotiationReady = true;
     }
     context->impl->createOfferIfReady(context->sessionId);
+}
+
+void Instance::Remote::Impl::onConnectionStateCallback(GstElement* self, GParamSpec* pspec, gpointer user_data) {
+    (void)pspec;
+    auto* context = reinterpret_cast<WebRtcSignalContext*>(user_data);
+    GstWebRTCPeerConnectionState state;
+    g_object_get(self, "connection-state", &state, nullptr);
+    if (state == GST_WEBRTC_PEER_CONNECTION_STATE_CONNECTED) {
+        context->impl->requestKeyframe();
+    }
 }
 
 void Instance::Remote::Impl::onOfferCreatedCallback(GstPromise* promise, gpointer user_data) {

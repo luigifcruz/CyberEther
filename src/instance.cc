@@ -586,6 +586,7 @@ Result Instance::present(const std::function<Result()>& callback) {
 
     // Finish the render frame.
 
+    const U64 presentedFrames = impl->render->stats().presentedFrames;
     const auto& endRes = impl->render->end();
     frameGuard.active = false;
     if (endRes == Result::SKIP) {
@@ -599,7 +600,7 @@ Result Instance::present(const std::function<Result()>& callback) {
     // Capture frame.
 
     if (impl->remote && impl->remote->started()) {
-        impl->remote->captureFrame();
+        impl->remote->captureFrame(impl->render->stats().presentedFrames != presentedFrames);
     }
 
     // Process compositor interactions.
