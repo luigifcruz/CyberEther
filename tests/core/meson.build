@@ -9,7 +9,6 @@ core_test_domains = {
         'compositor/layout.cc',
         'compositor/metrics.cc',
         'compositor/start_tab.cc',
-        'compositor/surface_theme.cc',
         'compositor/tiles.cc',
     ],
     'extensions': [
@@ -106,7 +105,6 @@ core_test_domains = {
 if not jst_is_windows
     core_test_domains += {
         'compositor': core_test_domains['compositor'] + [
-            'compositor/apply_theme.cc',
             'compositor/live_markdown.cc',
         ],
     }
