@@ -16,6 +16,7 @@
 #include "jetstream/testing.hh"
 
 #include "module_impl.hh"
+#include "surface_fixture.hh"
 
 using namespace Jetstream;
 
@@ -28,6 +29,10 @@ struct FrameImplAccess : Modules::FrameImpl {
 
     static auto displayRangeMember() {
         return &FrameImplAccess::displayRange;
+    }
+
+    static auto renderSurfaceMember() {
+        return &FrameImplAccess::renderSurface;
     }
 };
 
@@ -56,8 +61,7 @@ struct FrameViewFixture {
     void present() {
         auto* presenter = module->getImpl<Scheduler::Context>();
         REQUIRE(presenter);
-        REQUIRE(presenter->presentCapture() == Result::SUCCESS);
-        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
     }
 
     void zoomTo(const F32 zoom) {
@@ -166,6 +170,59 @@ TEST_CASE("Frame presents captured pixels with their captured auto range", "[mod
     REQUIRE(runtime.destroy() == Result::SUCCESS);
     REQUIRE(module->destroy() == Result::SUCCESS);
 }
+
+#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+TEST_CASE("Frame redraws its retained surface only on input and new data",
+          "[modules][frame][present][retained]") {
+    Tensor input(DeviceType::CPU, DataType::F32, {4, 4});
+    TensorMap inputs;
+    inputs["frame"].tensor = input;
+    auto window = std::make_shared<SurfaceTestWindow>();
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("frame", DeviceType::CPU, RuntimeType::NATIVE,
+                                  "generic", module) == Result::SUCCESS);
+    REQUIRE(module->create("test", Modules::Frame{}, inputs, window) == Result::SUCCESS);
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+    REQUIRE(presenter->presentInitialize() == Result::SUCCESS);
+    Runtime runtime("test", DeviceType::CPU, RuntimeType::NATIVE);
+    REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
+
+    auto* frame = module->getImpl<Modules::FrameImpl>();
+    REQUIRE(frame);
+    auto& surface = *(frame->*FrameImplAccess::renderSurfaceMember());
+
+    std::unordered_set<std::string> skipped, failed;
+    F32 level = 0.1f;
+    const auto compute = [&] {
+        std::fill_n(input.data<F32>(), input.size(), level);
+        level += 0.1f;
+        REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+    };
+
+    compute();
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+    SurfaceProbe::consumeInvalidation(surface);
+    REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+
+    compute();
+    REQUIRE(PresentRedraws(*presenter, surface));
+    REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+
+    module->surface()->pushSurfaceEvent({.type = SurfaceEventType::Resize, .size = {640, 480}});
+    REQUIRE(PresentRedraws(*presenter, surface));
+    REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Scroll, .position = {0.5f, 0.5f}, .scroll = {0.0f, 1.0f},
+    });
+    REQUIRE(PresentRedraws(*presenter, surface));
+    REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+#endif
 
 TEST_CASE("Frame module accepts valid F32 frames", "[modules][frame]") {
     auto implementations = Registry::ListAvailableModules("frame");

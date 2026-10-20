@@ -18,6 +18,7 @@
 #include "jetstream/render/base/window.hh"
 
 #include "module_impl.hh"
+#include "surface_fixture.hh"
 
 using namespace Jetstream;
 
@@ -447,10 +448,7 @@ TEST_CASE("ADS-B layered surface presents, resizes, clears and recreates",
     guard.started = true;
     auto frame = [&] {
         REQUIRE(guard.instance->poll(false) == Result::SUCCESS);
-        REQUIRE(guard.instance->present([&] {
-            JST_CHECK(scheduler->presentCapture());
-            return scheduler->presentSubmit();
-        }) == Result::SUCCESS);
+        REQUIRE(guard.instance->present([&] { return PresentFrame(*scheduler); }) == Result::SUCCESS);
         REQUIRE(window->synchronize() == Result::SUCCESS);
     };
     frame();

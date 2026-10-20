@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <span>
 
@@ -141,6 +142,7 @@ Result FrameImpl::reconfigure() {
     interpolation = config.interpolation;
     xLabel = config.xLabel;
     yLabel = config.yLabel;
+    redrawFlag = true;
 
     return Result::SUCCESS;
 }
@@ -302,6 +304,7 @@ Result FrameImpl::createPresent() {
         Render::Surface::Config cfg;
         cfg.framebuffer = framebufferTexture;
         cfg.multisampled = false;
+        cfg.retained = true;
         cfg.clearColor = interaction.theme.background;
         cfg.programs.push_back(frameProgram);
         JST_CHECK(axis->surfaceUnderlay(cfg));
@@ -372,6 +375,7 @@ Result FrameImpl::capture() {
     displayRangeMin = autoRangeMin;
     displayRangeMax = autoRangeMax;
     updateFrameFlag = false;
+    redrawFlag = true;
 
     if (frameBuffer) {
         std::copy_n(input.data<F32>(), pixels.size(), pixels.begin());
@@ -393,9 +397,12 @@ std::pair<F32, F32> FrameImpl::displayRange() const {
 
 Result FrameImpl::present() {
     auto inputEvents = surfaceConsumeInputEvents();
+    auto surfaceEvents = surfaceConsumeSurfaceEvents();
+    const bool redraw = !inputEvents.empty() || !surfaceEvents.empty() ||
+                        std::exchange(redrawFlag, false);
 
     interaction = ProcessSurfaceInteraction(interaction,
-                                            surfaceConsumeSurfaceEvents(),
+                                            std::move(surfaceEvents),
                                             {},
                                             {.enableZoom = false,
                                              .enablePan = false,
@@ -441,11 +448,18 @@ Result FrameImpl::present() {
     frameUniforms.paddingScaleX = axis->paddingScale().x;
     frameUniforms.paddingScaleY = axis->paddingScale().y;
 
-    frameUniformBuffer->update();
+    if (std::memcmp(&frameUniforms, &uploadedFrameUniforms, sizeof(frameUniforms)) != 0) {
+        JST_CHECK(frameUniformBuffer->update());
+        uploadedFrameUniforms = frameUniforms;
+    }
 
     JST_CHECK(axis->present());
     JST_CHECK(text->present());
     JST_CHECK(selection->present());
+
+    if (redraw) {
+        renderSurface->invalidate();
+    }
 
     return Result::SUCCESS;
 }

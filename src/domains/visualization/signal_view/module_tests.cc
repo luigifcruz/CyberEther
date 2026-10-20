@@ -12,6 +12,7 @@
 #include <optional>
 #include <stdexcept>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "jetstream/domains/visualization/signal_view/module.hh"
@@ -25,6 +26,7 @@
 #include "jetstream/scheduler_context.hh"
 #include "jetstream/testing.hh"
 #include "flowgraph_fixture.hh"
+#include "surface_fixture.hh"
 
 #include "module_impl.hh"
 #include "waterfall_3d.hh"
@@ -32,11 +34,6 @@
 using namespace Jetstream;
 
 namespace {
-
-Result PresentFrame(Scheduler::Context& presenter) {
-    JST_CHECK(presenter.presentCapture());
-    return presenter.presentSubmit();
-}
 
 struct SignalViewImplAccess : Modules::SignalViewImpl {
     static auto signalPointsMember() {
@@ -77,6 +74,10 @@ struct SignalViewImplAccess : Modules::SignalViewImpl {
 
     static Modules::SignalViewWaterfall& waterfallOf(Modules::SignalViewImpl& impl) {
         return impl.*&SignalViewImplAccess::waterfall;
+    }
+
+    static Modules::SignalViewWaterfall3D& waterfall3dOf(Modules::SignalViewImpl& impl) {
+        return impl.*&SignalViewImplAccess::waterfall3d;
     }
 
     static auto configChangePendingMember() {
@@ -129,30 +130,6 @@ struct InteractiveSignalViewBlock : Block::Impl, DynamicConfig<InteractiveSignal
 JST_REGISTER_BLOCK(InteractiveSignalViewBlock, {"signal_view"});
 
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
-// Build the axis's CPU-side label state without creating GPU resources or a
-// viewport. The Vulkan resource constructors only describe pending resources.
-class LabelTestWindow final : public Render::Window {
- public:
-    LabelTestWindow() : Window(Config{}) {}
-
-    std::string info() const override { return "LabelTestWindow"; }
-    constexpr DeviceType device() const override { return DeviceType::Vulkan; }
-
- protected:
-    Result bindSurface(const std::shared_ptr<Render::Surface>&) override {
-        return Result::SUCCESS;
-    }
-    Result unbindSurface(const std::shared_ptr<Render::Surface>&) override {
-        return Result::SUCCESS;
-    }
-    Result underlyingCreate() override { return Result::SUCCESS; }
-    Result underlyingDestroy() override { return Result::SUCCESS; }
-    Result underlyingBegin() override { return Result::SUCCESS; }
-    Result underlyingEnd() override { return Result::SUCCESS; }
-    Result underlyingSynchronize() override { return Result::SUCCESS; }
-
-};
-
 class LabelTestAxis final : public Render::Components::Axis {
  public:
     explicit LabelTestAxis(const Config& config) : Axis(config) {}
@@ -248,7 +225,7 @@ void SignalViewImplAccess::wirePresentResources(
 }
 
 std::shared_ptr<LabelTestText> MakeMarkerText(const std::shared_ptr<Render::Components::Font>& font,
-                                              LabelTestWindow& window) {
+                                              SurfaceTestWindow& window) {
     Render::Components::Text::Config config;
     config.font = font;
     config.maxCharacters = 1024;
@@ -470,7 +447,7 @@ TEST_CASE("Signal View amplitude labels invert the soft display mapping",
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
 TEST_CASE("Axis vertical scale can move the divider without recreating resources",
           "[modules][signal_view][split][axis][regression]") {
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config config;
     config.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
     LabelTestAxis axis(config);
@@ -494,7 +471,7 @@ TEST_CASE("Axis vertical scale can move the divider without recreating resources
 
 TEST_CASE("Axis created in split mode reserves full height tick geometry",
           "[modules][signal_view][split][axis][capacity][regression]") {
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config config;
     config.verticalScale = 0.5f;
     config.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
@@ -579,7 +556,7 @@ TEST_CASE("Signal View safely presents live metadata without view changes",
     config.waterfallHeight = 4;
     REQUIRE(module->create("waterfall", config, inputs) == Result::SUCCESS);
 
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config axisConfig;
     axisConfig.showInteriorGrid = false;
     axisConfig.font = std::make_shared<Render::Components::Font>(
@@ -651,7 +628,7 @@ TEST_CASE("Signal View recolors its axis from the surface theme",
     CAPTURE(config.mode);
     REQUIRE(module->create("signal_view", config, inputs) == Result::SUCCESS);
 
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config axisConfig;
     axisConfig.showInteriorGrid = false;
     axisConfig.font = std::make_shared<Render::Components::Font>(
@@ -702,7 +679,7 @@ TEST_CASE("Signal View cursor readout uses frequency only when both attributes a
     config.mode = "lineplot";
     REQUIRE(module->create("plot", config, inputs) == Result::SUCCESS);
 
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config axisConfig;
     axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
     auto axis = std::make_shared<LabelTestAxis>(axisConfig);
@@ -794,7 +771,7 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
     Runtime runtime("plot", DeviceType::CPU, RuntimeType::NATIVE);
     REQUIRE(runtime.create({{"plot", module}}) == Result::SUCCESS);
 
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config axisConfig;
     axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
     auto axis = std::make_shared<LabelTestAxis>(axisConfig);
@@ -1108,7 +1085,7 @@ TEST_CASE("Standalone marker displays survive resizing and follow reconfiguratio
     config.markers = {0.5f};
     REQUIRE(module->create("plot", config, inputs) == Result::SUCCESS);
 
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config axisConfig;
     axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
     auto axis = std::make_shared<LabelTestAxis>(axisConfig);
@@ -1242,7 +1219,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Production plot markers persist after recrea
     REQUIRE(observer.module);
     const auto original = observer.module;
 
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config axisConfig;
     axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
     auto axis = std::make_shared<LabelTestAxis>(axisConfig);
@@ -1317,7 +1294,7 @@ TEST_CASE("Cursor stays inside the zoomed plot and interpolates between sparse s
     Runtime runtime("plot", DeviceType::CPU, RuntimeType::NATIVE);
     REQUIRE(runtime.create({{"plot", module}}) == Result::SUCCESS);
 
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config axisConfig;
     axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
     auto axis = std::make_shared<LabelTestAxis>(axisConfig);
@@ -1452,7 +1429,7 @@ TEST_CASE("Space holds displayed plots while processing continues and resumes at
     Runtime runtime("plot", DeviceType::CPU, RuntimeType::NATIVE);
     REQUIRE(runtime.create({{"plot", module}}) == Result::SUCCESS);
 
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config axisConfig;
     axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
     auto axis = std::make_shared<LabelTestAxis>(axisConfig);
@@ -1594,7 +1571,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Marker drags commit the release position wit
     const auto& interaction = SignalViewImplAccess::canvasOf(*impl).interaction;
     const auto& cursor = SignalViewImplAccess::canvasOf(*impl).cursor;
 
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config axisConfig;
     axisConfig.verticalScale = 0.5f;
     axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
@@ -1688,7 +1665,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View markers persist through the owni
     REQUIRE(impl);
     const auto& cursor = SignalViewImplAccess::canvasOf(*impl).cursor;
 
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config axisConfig;
     axisConfig.verticalScale = 0.5f;
     axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
@@ -1847,7 +1824,7 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View drag requests round trip through
     auto& splitter = SignalViewImplAccess::canvasOf(*impl).splitter;
     auto& interaction = SignalViewImplAccess::canvasOf(*impl).interaction;
 
-    LabelTestWindow window;
+    SurfaceTestWindow window;
     Render::Components::Axis::Config axisConfig;
     axisConfig.verticalScale = 0.5f;
     axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
@@ -1939,6 +1916,78 @@ TEST_CASE_METHOD(FlowgraphFixture, "Signal View drag requests round trip through
     REQUIRE(text->destroy(&window) == Result::SUCCESS);
     REQUIRE(axis->destroy(&window) == Result::SUCCESS);
 }
+
+TEST_CASE("Signal view redraws its retained surface only on input and new data",
+          "[modules][signal_view][present][retained]") {
+    const std::string mode = GENERATE("lineplot_waterfall", "waterfall_3d");
+    CAPTURE(mode);
+    const bool flat = mode != "waterfall_3d";
+
+    Tensor input(DeviceType::CPU, DataType::F32, {2, 8});
+    REQUIRE(SetSignalAxes(input, {.sample = Index{1}, .batch = Index{0}}) == Result::SUCCESS);
+    TensorMap inputs;
+    inputs["signal"].tensor = input;
+    auto window = std::make_shared<SurfaceTestWindow>();
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("signal_view", DeviceType::CPU,
+                                  RuntimeType::NATIVE, "generic", module) == Result::SUCCESS);
+    Modules::SignalView config;
+    config.mode = mode;
+    config.waterfallHeight = 4;
+    REQUIRE(module->create("plot", config, inputs, window) == Result::SUCCESS);
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+    REQUIRE(presenter->presentInitialize() == Result::SUCCESS);
+    Runtime runtime("plot", DeviceType::CPU, RuntimeType::NATIVE);
+    REQUIRE(runtime.create({{"plot", module}}) == Result::SUCCESS);
+
+    auto* impl = module->getImpl<Modules::SignalViewImpl>();
+    REQUIRE(impl);
+    auto& surface = flat ? *SignalViewImplAccess::canvasOf(*impl).renderSurface
+                         : *SignalViewImplAccess::waterfall3dOf(*impl).surface();
+
+    std::unordered_set<std::string> skipped, failed;
+    F32 level = 0.1f;
+    const auto compute = [&] {
+        std::fill_n(input.data<F32>(), input.size(), level);
+        level += 0.1f;
+        REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+    };
+
+    compute();
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+    SurfaceProbe::consumeInvalidation(surface);
+    REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+
+    compute();
+    REQUIRE(PresentRedraws(*presenter, surface));
+    REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+
+    module->surface()->pushSurfaceEvent({.type = SurfaceEventType::Resize, .size = {640, 480}});
+    REQUIRE(PresentRedraws(*presenter, surface));
+    REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+
+    if (flat) {
+        module->surface()->pushInputEvent(MouseEvent{
+            .type = MouseEventType::Move, .position = {0.5f, 0.5f},
+        });
+        REQUIRE(PresentRedraws(*presenter, surface));
+        REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+
+        module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Space, {}});
+        REQUIRE(PresentRedraws(*presenter, surface));
+        compute();
+        REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+        module->surface()->pushInputEvent(KeyEvent{KeyEventType::Press, KeyCode::Space, {}});
+        REQUIRE(PresentRedraws(*presenter, surface));
+        REQUIRE(PresentRedraws(*presenter, surface));
+        REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+    }
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
 #endif
 
 TEST_CASE("Signal View splitter hit testing uses the padded plot and commits on release",

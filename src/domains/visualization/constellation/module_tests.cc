@@ -3,16 +3,30 @@
 #include <algorithm>
 #include <any>
 #include <limits>
+#include <memory>
+#include <string>
+#include <unordered_set>
 
 #include "jetstream/domains/visualization/constellation/module.hh"
 #include "jetstream/memory/axis.hh"
 #include "jetstream/module_interface.hh"
 #include "jetstream/testing.hh"
 #include "jetstream/registry.hh"
+#include "jetstream/runtime.hh"
+#include "jetstream/scheduler_context.hh"
+
+#include "module_impl.hh"
+#include "surface_fixture.hh"
 
 using namespace Jetstream;
 
 namespace {
+
+struct ConstellationImplAccess : Modules::ConstellationImpl {
+    static auto renderSurfaceMember() {
+        return &ConstellationImplAccess::renderSurface;
+    }
+};
 
 void RequireConstellationValidationError(const Registry::ModuleRegistration& impl,
                                          const DataType dtype,
@@ -191,3 +205,56 @@ TEST_CASE("Constellation module stays stable across repeated computes",
         }
     }
 }
+
+#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+TEST_CASE("Constellation redraws its retained surface only on input and new data",
+          "[modules][constellation][present][retained]") {
+    Tensor input(DeviceType::CPU, DataType::CF32, {16});
+    TensorMap inputs;
+    inputs["signal"].tensor = input;
+    auto window = std::make_shared<SurfaceTestWindow>();
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("constellation", DeviceType::CPU, RuntimeType::NATIVE,
+                                  "generic", module) == Result::SUCCESS);
+    REQUIRE(module->create("test", Modules::Constellation{}, inputs, window) == Result::SUCCESS);
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+    REQUIRE(presenter->presentInitialize() == Result::SUCCESS);
+    Runtime runtime("test", DeviceType::CPU, RuntimeType::NATIVE);
+    REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
+
+    auto* constellation = module->getImpl<Modules::ConstellationImpl>();
+    REQUIRE(constellation);
+    auto& surface = *(constellation->*ConstellationImplAccess::renderSurfaceMember());
+
+    std::unordered_set<std::string> skipped, failed;
+    F32 level = 0.1f;
+    const auto compute = [&] {
+        std::fill_n(input.data<CF32>(), input.size(), CF32(level, -level));
+        level += 0.1f;
+        REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+    };
+
+    compute();
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+    SurfaceProbe::consumeInvalidation(surface);
+    REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+
+    compute();
+    REQUIRE(PresentRedraws(*presenter, surface));
+    REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+
+    module->surface()->pushSurfaceEvent({.type = SurfaceEventType::Resize, .size = {640, 480}});
+    REQUIRE(PresentRedraws(*presenter, surface));
+    REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Scroll, .position = {0.5f, 0.5f}, .scroll = {0.0f, 1.0f},
+    });
+    REQUIRE(PresentRedraws(*presenter, surface));
+    REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+#endif

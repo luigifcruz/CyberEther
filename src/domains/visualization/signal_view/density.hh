@@ -95,6 +95,7 @@ struct SignalViewDensity {
     Config config;
     detail::DensityColumns columns;
     Uniforms uniforms{};
+    Uniforms uploadedUniforms{};
     AccumulateUniforms accumulateUniforms{};
     std::vector<std::array<U32, 2>> state;
     bool accumulateDirty = false;

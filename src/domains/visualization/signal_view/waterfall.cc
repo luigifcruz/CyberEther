@@ -1,6 +1,7 @@
 #include "waterfall.hh"
 
 #include <algorithm>
+#include <cstring>
 
 #include "jetstream/constants.hh"
 #include "resources/shaders/signal_view_shaders.hh"
@@ -199,6 +200,10 @@ Result SignalViewWaterfall::present(const SurfaceInteractionState& interaction,
     uniforms.height = static_cast<int>(config.height);
     uniforms.offset = interaction.offset + 0.5f * (1.0f - 1.0f / interaction.zoom);
     uniforms.zoom = interaction.zoom;
+    if (std::memcmp(&uniforms, &uploadedUniforms, sizeof(uniforms)) == 0) {
+        return Result::SUCCESS;
+    }
+    uploadedUniforms = uniforms;
     return uniformBuffer->update();
 }
 

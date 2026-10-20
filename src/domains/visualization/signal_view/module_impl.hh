@@ -71,6 +71,7 @@ struct SignalViewImpl : public Module::Impl,
     SignalViewWaterfall3D waterfall3d;
     SignalViewDensity densityMap;
     bool updateLayoutFlag = false;
+    bool redrawFlag = false;
 
     Result createPresent();
     Result destroyPresent();

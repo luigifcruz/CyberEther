@@ -46,6 +46,7 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
 
     std::vector<F32> pixels;
     bool updateFrameFlag = false;
+    bool redrawFlag = false;
 
     F32 autoRangeMin = 0.0f;
     F32 autoRangeMax = 1.0f;
@@ -87,6 +88,7 @@ struct FrameImpl : public Module::Impl, public DynamicConfig<Frame> {
         float paddingScaleX;
         float paddingScaleY;
     } frameUniforms{};
+    decltype(frameUniforms) uploadedFrameUniforms{};
 
     std::shared_ptr<Render::Buffer> fillScreenVerticesBuffer;
     std::shared_ptr<Render::Buffer> fillScreenTextureVerticesBuffer;

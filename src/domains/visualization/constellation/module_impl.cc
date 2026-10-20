@@ -141,6 +141,7 @@ Result ConstellationImpl::createPresent() {
     {
         Render::Surface::Config cfg;
         cfg.framebuffer = framebufferTexture;
+        cfg.retained = true;
         cfg.clearColor = interaction.theme.background;
         JST_CHECK(axis->surfaceUnderlay(cfg));
         JST_CHECK(shapes->surface(cfg));
@@ -217,6 +218,7 @@ Result ConstellationImpl::present() {
 
     auto surfaceEvents = surfaceConsumeSurfaceEvents();
     auto inputEvents = surfaceConsumeInputEvents();
+    bool redraw = !surfaceEvents.empty() || !inputEvents.empty();
 
     interaction = ProcessSurfaceInteraction(interaction,
                                             std::move(surfaceEvents),
@@ -261,10 +263,15 @@ Result ConstellationImpl::present() {
         JST_CHECK(updatePointPositions());
         JST_CHECK(shapes->updatePositions());
         updatePositionsFlag = false;
+        redraw = true;
     }
 
     JST_CHECK(shapes->present());
     JST_CHECK(axis->present());
+
+    if (redraw) {
+        renderSurface->invalidate();
+    }
 
     return Result::SUCCESS;
 }

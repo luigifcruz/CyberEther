@@ -486,6 +486,10 @@ class SignalViewWaterfall3D {
         return framebufferTexture;
     }
 
+    const std::shared_ptr<Render::Surface>& surface() const {
+        return renderSurface;
+    }
+
     const Extent2D<U64>& viewSize() const {
         return interaction.viewSize;
     }

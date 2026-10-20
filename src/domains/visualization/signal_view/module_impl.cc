@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <utility>
 
 #include "jetstream/memory/axis.hh"
 #include "jetstream/tools/numeric.hh"
@@ -358,6 +359,7 @@ Result SignalViewImpl::reconfigure() {
         updateLayoutFlag |= config.splitRatio != splitRatio;
         splitRatio = config.splitRatio;
         canvas.updateMarkersFlag |= config.markers != markers || config.pins != pins;
+        redrawFlag = true;
         markers = config.markers;
         pins = config.pins;
         lineplotAveraging = config.lineplotAveraging;
@@ -506,18 +508,24 @@ Result SignalViewImpl::capture() {
     }
 
     if (waterfallEnabled) {
-        JST_CHECK(waterfall.update(waterfallFrame()));
+        const auto frame = waterfallFrame();
+        redrawFlag |= frame.dirty.firstRowCount + frame.dirty.secondRowCount > 0;
+        JST_CHECK(waterfall.update(frame));
         waterfallHistory.clearDirty();
     }
 
     if (densityEnabled) {
-        JST_CHECK(densityMap.update(densityFrame()));
+        const auto frame = densityFrame();
+        redrawFlag |= frame.dirty.firstRowCount + frame.dirty.secondRowCount > 0 ||
+                      frame.elapsedRows > 0;
+        JST_CHECK(densityMap.update(frame));
         densityHistory.clearDirty();
     }
 
     if (lineplotEnabled && updateSignalPointsFlag) {
         JST_CHECK(lineplot.upload(signalPoints, updateHoldPointsFlag));
         updateSignalPointsFlag = false;
+        redrawFlag = true;
     }
 
     return Result::SUCCESS;
@@ -541,9 +549,13 @@ Result SignalViewImpl::present() {
     }
 
     const auto context = canvasContext();
+    auto surfaceEvents = surfaceConsumeSurfaceEvents();
+    auto inputEvents = surfaceConsumeInputEvents();
+    const bool redraw = !surfaceEvents.empty() || !inputEvents.empty() ||
+                        std::exchange(redrawFlag, false);
 
-    JST_CHECK(canvas.processSurfaceEvents(surfaceConsumeSurfaceEvents()));
-    surfaceSetCursor(canvas.processInputEvents(surfaceConsumeInputEvents(), context, {
+    JST_CHECK(canvas.processSurfaceEvents(std::move(surfaceEvents)));
+    surfaceSetCursor(canvas.processInputEvents(std::move(inputEvents), context, {
         .splitEnabled = lineplotEnabled && waterfallEnabled && configChangeEnabled("splitRatio"),
         .pending = [this] { return configChangePending(); },
         .enabled = [this](const std::string& name) { return configChangeEnabled(name); },
@@ -569,7 +581,12 @@ Result SignalViewImpl::present() {
         JST_CHECK(lineplot.present());
     }
 
-    return canvas.present(context);
+    JST_CHECK(canvas.present(context));
+    if (redraw) {
+        canvas.renderSurface->invalidate();
+    }
+
+    return Result::SUCCESS;
 }
 
 SignalViewCanvas::Context SignalViewImpl::canvasContext() {

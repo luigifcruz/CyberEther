@@ -343,6 +343,7 @@ Result SignalViewWaterfall3D::create(const std::shared_ptr<Render::Window>& wind
         Render::Surface::Config cfg;
         cfg.framebuffer = framebufferTexture;
         cfg.multisampled = true;
+        cfg.retained = true;
         cfg.clearColor = interaction.theme.background;
         cfg.kernels = {filterKernel};
         cfg.programs = {backdrop.program};
@@ -479,6 +480,7 @@ Result SignalViewWaterfall3D::present(std::vector<SurfaceEvent>&& surfaceEvents,
 
     if (sceneDirty || cameraMoved || dataChanged) {
         JST_CHECK(updateScene());
+        renderSurface->invalidate();
         sceneDirty = false;
         dataChanged = false;
     }
