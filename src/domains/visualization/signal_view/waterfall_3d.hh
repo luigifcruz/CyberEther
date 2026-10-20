@@ -475,9 +475,9 @@ class SignalViewWaterfall3D {
                   const std::string& colormap);
     Result destroy(const std::shared_ptr<Render::Window>& window);
 
+    Result capture(const WaterfallFrame& frame);
     Result present(std::vector<SurfaceEvent>&& surfaceEvents,
                    std::vector<InputEvent>&& inputEvents,
-                   const WaterfallFrame& frame,
                    const SignalViewWaterfall3DLabels& labels,
                    const std::string& colormap,
                    bool& viewChanged);
@@ -571,6 +571,7 @@ class SignalViewWaterfall3D {
     std::chrono::steady_clock::time_point lastFrameTime;
     bool clockStarted = false;
     bool displayHeld = false;
+    bool dataChanged = false;
     bool sceneDirty = true;
     bool ticksDirty = true;
 

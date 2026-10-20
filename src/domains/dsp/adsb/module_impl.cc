@@ -172,7 +172,7 @@ Result AdsbImpl::destroyPresent() {
     return Result::SUCCESS;
 }
 
-Result AdsbImpl::present() {
+Result AdsbImpl::capture() {
     if (!renderSurface || !geoMapComponent) return Result::SUCCESS;
 
     // One coherent presentation snapshot: icon positions, tracks and picking
@@ -203,6 +203,14 @@ Result AdsbImpl::present() {
         }
     }
 
+    return Result::SUCCESS;
+}
+
+Result AdsbImpl::present() {
+    if (!renderSurface || !geoMapComponent) return Result::SUCCESS;
+
+    const auto now = static_cast<U64>(std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
     const auto surfaceEvents = surfaceConsumeSurfaceEvents();
     std::vector<MouseEvent> mouseEvents;
     for (const auto& input : surfaceConsumeInputEvents()) {

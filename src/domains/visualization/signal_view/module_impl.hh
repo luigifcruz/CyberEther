@@ -63,6 +63,8 @@ struct SignalViewImpl : public Module::Impl,
     Tensor densityBins;
     WaterfallHistory densityHistory;
 
+    SignalViewFrequency inputFrequency;
+
     SignalViewCanvas canvas;
     SignalViewLineplot lineplot;
     SignalViewWaterfall waterfall;
@@ -72,12 +74,13 @@ struct SignalViewImpl : public Module::Impl,
 
     Result createPresent();
     Result destroyPresent();
+    Result capture();
     Result present();
 
-    SignalViewCanvas::Context canvasContext(const SignalViewFrequency& frequency);
+    SignalViewCanvas::Context canvasContext();
     WaterfallFrame waterfallFrame() const;
     WaterfallFrame densityFrame() const;
-    SignalViewWaterfall3DLabels waterfall3dLabels(const SignalViewFrequency& frequency) const;
+    SignalViewWaterfall3DLabels waterfall3dLabels() const;
     Result resetLineplotHistory();
     Result resetHistoryState();
     virtual Buffer::Config renderStateBufferConfig() const = 0;

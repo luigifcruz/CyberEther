@@ -116,8 +116,13 @@ Result FrameImpl::create() {
 
     frameLabel = jst::fmt::format("{} x {}  {}", width, height, ChannelLabel(channels));
 
-    autoRangeMin.store(0.0f);
-    autoRangeMax.store(1.0f);
+    pixels.assign(input.size(), 0.0f);
+    updateFrameFlag = false;
+
+    autoRangeMin = 0.0f;
+    autoRangeMax = 1.0f;
+    displayRangeMin = 0.0f;
+    displayRangeMax = 1.0f;
 
     return Result::SUCCESS;
 }
@@ -203,8 +208,8 @@ Result FrameImpl::createPresent() {
 
     {
         Render::Buffer::Config cfg;
-        cfg.buffer = input.data();
-        cfg.size = input.size();
+        cfg.buffer = pixels.data();
+        cfg.size = pixels.size();
         cfg.elementByteSize = sizeof(F32);
         cfg.target = Render::Buffer::Target::STORAGE;
         cfg.enableZeroCopy = false;
@@ -359,6 +364,33 @@ Result FrameImpl::applyTheme() {
     return Result::SUCCESS;
 }
 
+Result FrameImpl::capture() {
+    if (!updateFrameFlag) {
+        return Result::SUCCESS;
+    }
+
+    displayRangeMin = autoRangeMin;
+    displayRangeMax = autoRangeMax;
+    updateFrameFlag = false;
+
+    if (frameBuffer) {
+        std::copy_n(input.data<F32>(), pixels.size(), pixels.begin());
+        JST_CHECK(frameBuffer->update());
+    }
+
+    return Result::SUCCESS;
+}
+
+std::pair<F32, F32> FrameImpl::displayRange() const {
+    F32 lower = autoRange ? displayRangeMin : 0.0f;
+    F32 upper = autoRange ? displayRangeMax : 1.0f;
+    if (!std::isfinite(lower) || !std::isfinite(upper) || upper <= lower) {
+        lower = std::isfinite(lower) ? lower : 0.0f;
+        upper = lower + 1.0f;
+    }
+    return {lower, upper};
+}
+
 Result FrameImpl::present() {
     auto inputEvents = surfaceConsumeInputEvents();
 
@@ -390,12 +422,7 @@ Result FrameImpl::present() {
     JST_CHECK(updateTextState());
     JST_CHECK(updateSelectionState());
 
-    F32 lower = autoRange ? autoRangeMin.load() : 0.0f;
-    F32 upper = autoRange ? autoRangeMax.load() : 1.0f;
-    if (!std::isfinite(lower) || !std::isfinite(upper) || upper <= lower) {
-        lower = std::isfinite(lower) ? lower : 0.0f;
-        upper = lower + 1.0f;
-    }
+    const auto [lower, upper] = displayRange();
 
     frameUniforms.width = static_cast<int>(width);
     frameUniforms.height = static_cast<int>(height);
@@ -414,7 +441,6 @@ Result FrameImpl::present() {
     frameUniforms.paddingScaleX = axis->paddingScale().x;
     frameUniforms.paddingScaleY = axis->paddingScale().y;
 
-    frameBuffer->update();
     frameUniformBuffer->update();
 
     JST_CHECK(axis->present());
@@ -706,7 +732,7 @@ void FrameImpl::updateCursorReadout() {
         if (image.x >= 0.0f && image.x < 1.0f && image.y >= 0.0f && image.y < 1.0f) {
             const U64 x = std::min(static_cast<U64>(image.x * static_cast<F32>(width)), width - 1);
             const U64 y = std::min(static_cast<U64>(image.y * static_cast<F32>(height)), height - 1);
-            const F32* data = input.data<F32>() + ((y * width) + x) * channels;
+            const F32* data = pixels.data() + ((y * width) + x) * channels;
 
             if (channels == 1) {
                 label = jst::fmt::format("X {}  Y {}  {:.4g}", x, y, data[0]);

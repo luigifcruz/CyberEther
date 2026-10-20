@@ -420,8 +420,7 @@ Result SignalViewImpl::resetHistoryState() {
 }
 
 Result SignalViewImpl::createPresent() {
-    SignalViewFrequency frequency;
-    JST_CHECK(frequency.read(input));
+    JST_CHECK(inputFrequency.read(input));
     auto& window = render();
 
     if (!window) {
@@ -466,7 +465,7 @@ Result SignalViewImpl::createPresent() {
         JST_CHECK(densityMap.create(window, densityBins));
     }
 
-    JST_CHECK(canvas.create(window, canvasContext(frequency)));
+    JST_CHECK(canvas.create(window, canvasContext()));
 
     JST_CHECK(surfaceCreateManifest({
         .id = "default",
@@ -491,19 +490,46 @@ Result SignalViewImpl::destroyPresent() {
     return canvas.destroy(window);
 }
 
-Result SignalViewImpl::present() {
-    SignalViewFrequency frequency;
-    JST_CHECK(frequency.read(input));
+Result SignalViewImpl::capture() {
+    JST_CHECK(inputFrequency.read(input));
 
+    if (waterfall3dEnabled) {
+        if (!waterfall3d.held()) {
+            JST_CHECK(waterfall3d.capture(waterfallFrame()));
+            waterfallHistory.clearDirty();
+        }
+        return Result::SUCCESS;
+    }
+
+    if (!canvas.renderSurface || canvas.displayHeld) {
+        return Result::SUCCESS;
+    }
+
+    if (waterfallEnabled) {
+        JST_CHECK(waterfall.update(waterfallFrame()));
+        waterfallHistory.clearDirty();
+    }
+
+    if (densityEnabled) {
+        JST_CHECK(densityMap.update(densityFrame()));
+        densityHistory.clearDirty();
+    }
+
+    if (lineplotEnabled && updateSignalPointsFlag) {
+        JST_CHECK(lineplot.upload(signalPoints, updateHoldPointsFlag));
+        updateSignalPointsFlag = false;
+    }
+
+    return Result::SUCCESS;
+}
+
+Result SignalViewImpl::present() {
     if (waterfall3dEnabled) {
         bool viewChanged = false;
         JST_CHECK(waterfall3d.present(surfaceConsumeSurfaceEvents(),
                                       surfaceConsumeInputEvents(),
-                                      waterfallFrame(), waterfall3dLabels(frequency), colormap,
+                                      waterfall3dLabels(), colormap,
                                       viewChanged));
-        if (!waterfall3d.held()) {
-            waterfallHistory.clearDirty();
-        }
         if (viewChanged) {
             surfaceUpdateManifestSize("default", waterfall3d.viewSize());
         }
@@ -514,7 +540,7 @@ Result SignalViewImpl::present() {
         return Result::SUCCESS;
     }
 
-    const auto context = canvasContext(frequency);
+    const auto context = canvasContext();
 
     JST_CHECK(canvas.processSurfaceEvents(surfaceConsumeSurfaceEvents()));
     surfaceSetCursor(canvas.processInputEvents(surfaceConsumeInputEvents(), context, {
@@ -532,36 +558,24 @@ Result SignalViewImpl::present() {
     }
 
     if (waterfallEnabled) {
-        if (!canvas.displayHeld) {
-            JST_CHECK(waterfall.update(waterfallFrame()));
-            waterfallHistory.clearDirty();
-        }
         JST_CHECK(waterfall.present(canvas.interaction, colormap));
     }
 
     if (densityEnabled) {
-        if (!canvas.displayHeld) {
-            JST_CHECK(densityMap.update(densityFrame()));
-            densityHistory.clearDirty();
-        }
         JST_CHECK(densityMap.present(canvas.interaction));
     }
 
     if (lineplotEnabled) {
-        if (updateSignalPointsFlag && !canvas.displayHeld) {
-            JST_CHECK(lineplot.upload(signalPoints, updateHoldPointsFlag));
-            updateSignalPointsFlag = false;
-        }
         JST_CHECK(lineplot.present());
     }
 
     return canvas.present(context);
 }
 
-SignalViewCanvas::Context SignalViewImpl::canvasContext(const SignalViewFrequency& frequency) {
+SignalViewCanvas::Context SignalViewImpl::canvasContext() {
     return {
         .config = *this,
-        .frequency = frequency,
+        .frequency = inputFrequency,
         .numberOfElements = numberOfElements,
         .lineplot = lineplotEnabled ? &lineplot : nullptr,
         .waterfall = waterfallEnabled ? &waterfall : nullptr,
@@ -585,8 +599,8 @@ WaterfallFrame SignalViewImpl::densityFrame() const {
     };
 }
 
-SignalViewWaterfall3DLabels SignalViewImpl::waterfall3dLabels(
-    const SignalViewFrequency& frequency) const {
+SignalViewWaterfall3DLabels SignalViewImpl::waterfall3dLabels() const {
+    const auto& frequency = inputFrequency;
     SignalViewWaterfall3DLabels labels;
     labels.frequency = xLabel;
     labels.time = waterfallLabel;

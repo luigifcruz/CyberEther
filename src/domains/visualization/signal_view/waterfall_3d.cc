@@ -82,6 +82,7 @@ Result SignalViewWaterfall3D::create(const std::shared_ptr<Render::Window>& wind
     drag = {};
     clockStarted = false;
     displayHeld = false;
+    dataChanged = false;
     sceneDirty = true;
     ticksDirty = true;
 
@@ -382,9 +383,40 @@ Result SignalViewWaterfall3D::destroy(const std::shared_ptr<Render::Window>& win
     return Result::SUCCESS;
 }
 
+Result SignalViewWaterfall3D::capture(const WaterfallFrame& frame) {
+    if (!renderSurface || displayHeld) {
+        return Result::SUCCESS;
+    }
+
+    const F32 viewWidth = static_cast<F32>(interaction.viewSize.x) /
+                          std::max(interaction.scale, 1e-3f);
+    const U64 targetColumns = std::min(detail::Waterfall3DMeshColumns(width, viewWidth),
+                                       columnCapacity);
+    writeIndex = frame.writeIndex;
+    if (targetColumns != columns) {
+        JST_CHECK(resizeMesh(frame.bins, targetColumns));
+        JST_CHECK(filterRows(height, true));
+        dataChanged = true;
+        return Result::SUCCESS;
+    }
+
+    if (frame.dirty.firstRowCount > 0) {
+        JST_CHECK(uploadRows(frame.bins, frame.dirty.startRow, frame.dirty.firstRowCount));
+    }
+    if (frame.dirty.secondRowCount > 0) {
+        JST_CHECK(uploadRows(frame.bins, 0, frame.dirty.secondRowCount));
+    }
+    const U64 rows = frame.dirty.firstRowCount + frame.dirty.secondRowCount;
+    if (rows > 0) {
+        JST_CHECK(filterRows(rows, false));
+        dataChanged = true;
+    }
+
+    return Result::SUCCESS;
+}
+
 Result SignalViewWaterfall3D::present(std::vector<SurfaceEvent>&& surfaceEvents,
                                   std::vector<InputEvent>&& inputEvents,
-                                  const WaterfallFrame& frame,
                                   const SignalViewWaterfall3DLabels& nextLabels,
                                   const std::string& colormap,
                                   bool& viewChanged) {
@@ -439,32 +471,6 @@ Result SignalViewWaterfall3D::present(std::vector<SurfaceEvent>&& surfaceEvents,
 
     const bool cameraMoved = advanceCamera();
 
-    bool dataChanged = false;
-    const F32 viewWidth = static_cast<F32>(interaction.viewSize.x) /
-                          std::max(interaction.scale, 1e-3f);
-    const U64 targetColumns = std::min(detail::Waterfall3DMeshColumns(width, viewWidth),
-                                       columnCapacity);
-    if (!displayHeld) {
-        writeIndex = frame.writeIndex;
-        if (targetColumns != columns) {
-            JST_CHECK(resizeMesh(frame.bins, targetColumns));
-            JST_CHECK(filterRows(height, true));
-            dataChanged = true;
-        } else {
-            if (frame.dirty.firstRowCount > 0) {
-                JST_CHECK(uploadRows(frame.bins, frame.dirty.startRow, frame.dirty.firstRowCount));
-            }
-            if (frame.dirty.secondRowCount > 0) {
-                JST_CHECK(uploadRows(frame.bins, 0, frame.dirty.secondRowCount));
-            }
-            const U64 rows = frame.dirty.firstRowCount + frame.dirty.secondRowCount;
-            if (rows > 0) {
-                JST_CHECK(filterRows(rows, false));
-                dataChanged = true;
-            }
-        }
-    }
-
     if (ticksDirty) {
         updateTicks();
         ticksDirty = false;
@@ -474,6 +480,7 @@ Result SignalViewWaterfall3D::present(std::vector<SurfaceEvent>&& surfaceEvents,
     if (sceneDirty || cameraMoved || dataChanged) {
         JST_CHECK(updateScene());
         sceneDirty = false;
+        dataChanged = false;
     }
 
     JST_CHECK(text->present());

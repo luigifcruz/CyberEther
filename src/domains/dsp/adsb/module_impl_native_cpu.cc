@@ -123,6 +123,7 @@ struct AdsbImplNativeCpu : public AdsbImpl,
     Result destroy() final;
 
     Result presentInitialize() override;
+    Result presentCapture() override;
     Result presentSubmit() override;
     Result computeSubmit() override;
 
@@ -323,6 +324,10 @@ Result AdsbImplNativeCpu::computeSubmit() {
 
 Result AdsbImplNativeCpu::presentInitialize() {
     return createPresent();
+}
+
+Result AdsbImplNativeCpu::presentCapture() {
+    return capture();
 }
 
 Result AdsbImplNativeCpu::presentSubmit() {

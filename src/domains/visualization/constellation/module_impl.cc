@@ -67,6 +67,9 @@ Result ConstellationImpl::create() {
     // Calculate number of points.
 
     numberOfPoints = input.size();
+    samples.assign(numberOfPoints, {});
+    displayedSamples.assign(numberOfPoints, {});
+    updateSamplesFlag = false;
 
     return Result::SUCCESS;
 }
@@ -147,7 +150,7 @@ Result ConstellationImpl::createPresent() {
     }
 
     JST_CHECK(updateAxisState());
-    JST_CHECK(updatePointPositions());
+    updatePositionsFlag = true;
 
     // Register surface manifest.
 
@@ -190,6 +193,18 @@ Result ConstellationImpl::applyTheme() {
     std::fill(colors.begin(), colors.end(), theme.foreground);
     JST_CHECK(shapes->updateColors("constellation_points"));
     appliedTheme = theme;
+    return Result::SUCCESS;
+}
+
+Result ConstellationImpl::capture() {
+    if (!updateSamplesFlag) {
+        return Result::SUCCESS;
+    }
+
+    std::copy(samples.begin(), samples.end(), displayedSamples.begin());
+    updateSamplesFlag = false;
+    updatePositionsFlag = true;
+
     return Result::SUCCESS;
 }
 
@@ -237,12 +252,13 @@ Result ConstellationImpl::present() {
         renderSurface->size(interaction.viewSize);
         surfaceUpdateManifestSize("default", interaction.viewSize);
         JST_CHECK(updateAxisState());
-        JST_CHECK(updatePointPositions());
+        updatePositionsFlag = true;
     }
 
     // Process update flags.
 
     if (updatePositionsFlag) {
+        JST_CHECK(updatePointPositions());
         JST_CHECK(shapes->updatePositions());
         updatePositionsFlag = false;
     }

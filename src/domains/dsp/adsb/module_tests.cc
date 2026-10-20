@@ -447,7 +447,10 @@ TEST_CASE("ADS-B layered surface presents, resizes, clears and recreates",
     guard.started = true;
     auto frame = [&] {
         REQUIRE(guard.instance->poll(false) == Result::SUCCESS);
-        REQUIRE(guard.instance->present([&] { return scheduler->presentSubmit(); }) == Result::SUCCESS);
+        REQUIRE(guard.instance->present([&] {
+            JST_CHECK(scheduler->presentCapture());
+            return scheduler->presentSubmit();
+        }) == Result::SUCCESS);
         REQUIRE(window->synchronize() == Result::SUCCESS);
     };
     frame();

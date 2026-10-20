@@ -2,12 +2,16 @@
 #include <catch2/catch_approx.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
+#include <unordered_set>
+#include <utility>
 
 #include "jetstream/domains/visualization/frame/module.hh"
 #include "jetstream/module_interface.hh"
 #include "jetstream/registry.hh"
+#include "jetstream/runtime.hh"
 #include "jetstream/scheduler_context.hh"
 #include "jetstream/testing.hh"
 
@@ -20,6 +24,10 @@ namespace {
 struct FrameImplAccess : Modules::FrameImpl {
     static auto viewMember() {
         return &FrameImplAccess::view;
+    }
+
+    static auto displayRangeMember() {
+        return &FrameImplAccess::displayRange;
     }
 };
 
@@ -48,6 +56,7 @@ struct FrameViewFixture {
     void present() {
         auto* presenter = module->getImpl<Scheduler::Context>();
         REQUIRE(presenter);
+        REQUIRE(presenter->presentCapture() == Result::SUCCESS);
         REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
     }
 
@@ -114,6 +123,49 @@ void RequireFrameValidationError(const Registry::ModuleRegistration& impl,
 }
 
 }  // namespace
+
+TEST_CASE("Frame presents captured pixels with their captured auto range", "[modules][frame]") {
+    Tensor input;
+    REQUIRE(input.create(DeviceType::CPU, DataType::F32, {2, 2}) == Result::SUCCESS);
+    TensorMap inputs;
+    inputs["frame"].requested("test", "frame");
+    inputs["frame"].tensor = input;
+
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("frame", DeviceType::CPU, RuntimeType::NATIVE,
+                                  "generic", module) == Result::SUCCESS);
+    REQUIRE(module->create("test", Modules::Frame{}, inputs) == Result::SUCCESS);
+    auto* frame = module->getImpl<Modules::FrameImpl>();
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(frame);
+    REQUIRE(presenter);
+
+    Runtime runtime("test", DeviceType::CPU, RuntimeType::NATIVE);
+    REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
+    std::unordered_set<std::string> skipped;
+    std::unordered_set<std::string> failed;
+    const auto compute = [&](const std::array<F32, 4>& values) {
+        std::copy(values.begin(), values.end(), input.data<F32>());
+        REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+        REQUIRE(failed.empty());
+    };
+    const auto range = [&] {
+        return (frame->*FrameImplAccess::displayRangeMember())();
+    };
+
+    compute({0.25f, 0.5f, 0.75f, 1.0f});
+    REQUIRE(presenter->presentCapture() == Result::SUCCESS);
+    compute({-4.0f, 0.0f, 4.0f, 8.0f});
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(range() == std::pair<F32, F32>{0.25f, 1.0f});
+
+    REQUIRE(presenter->presentCapture() == Result::SUCCESS);
+    REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+    REQUIRE(range() == std::pair<F32, F32>{-4.0f, 8.0f});
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
 
 TEST_CASE("Frame module accepts valid F32 frames", "[modules][frame]") {
     auto implementations = Registry::ListAvailableModules("frame");

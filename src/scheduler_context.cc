@@ -6,6 +6,10 @@ Result Scheduler::Context::presentInitialize() {
     return Result::SUCCESS;
 }
 
+Result Scheduler::Context::presentCapture() {
+    return Result::SUCCESS;
+}
+
 Result Scheduler::Context::presentSubmit() {
     return Result::SUCCESS;
 }
