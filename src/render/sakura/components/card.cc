@@ -62,7 +62,7 @@ void Card::layout(const Context& ctx) {
     const bool full = config.layer == Layer::Full;
     const bool base = config.layer != Layer::Frame;
     const bool edge = config.layer != Layer::Base;
-    impl->shadow.setVisible(base);
+    impl->shadow.setVisible(base && (config.softness > 0.0f || config.drop > 0.0f));
     impl->fill.setVisible(base);
     impl->border.setVisible(!full && edge);
     impl->highlight.setVisible(edge);

@@ -1,6 +1,7 @@
 #include <jetstream/render/sakura/components/div.hh>
 
 #include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/card.hh>
 
 #include "../context.hh"
 #include "../metrics.hh"
@@ -17,6 +18,7 @@ namespace Jetstream::Sakura {
 struct Div::Impl {
     Config config;
     Box frame;
+    Card card;
     bool hovered = false;
 
     bool interactive() const {
@@ -27,6 +29,7 @@ struct Div::Impl {
 Div::Div() {
     impl = std::make_unique<Impl>();
     addChild(impl->frame);
+    addChild(impl->card);
 }
 
 Div::~Div() = default;
@@ -35,7 +38,7 @@ void Div::update(Config config) {
     if (config != impl->config) {
         invalidate(Dirty::Layout);
     }
-    std::vector<Component*> children = {&impl->frame};
+    std::vector<Component*> children = {&impl->frame, &impl->card};
     if (config.content) {
         children.push_back(config.content);
     }
@@ -69,16 +72,27 @@ void Div::layout(const Context& ctx) {
     const F32 padding = Px(ctx, config.padding);
     const bool highlighted = config.selected || (impl->hovered && impl->interactive());
     const auto key = config.selected ? config.selectedColorKey : highlighted ? config.hoveredColorKey : config.colorKey;
-    const auto borderColor = ctx.color(config.borderColorKey);
+    impl->frame.setVisible(!config.chrome);
     impl->frame.update({
         .instances = {{.rect = bounds, .visible = !bounds.empty(), .backgroundColor = ctx.color(key)}},
         .clip = bounds,
         .cornerRadius = Px(ctx, config.rounding),
         .borderWidth = config.border ? Px(ctx, config.borderWidth) : 0.0f,
-        .borderColor = borderColor,
+        .borderColor = ctx.color(config.borderColorKey),
         .strokeFringe = true,
     });
     layoutChild(ctx, impl->frame, bounds);
+    impl->card.setVisible(config.chrome);
+    impl->card.update({
+        .rects = {bounds},
+        .clip = clip(),
+        .cornerRadius = Px(ctx, config.rounding),
+        .borderWidth = config.border ? Px(ctx, config.borderWidth) : 0.0f,
+        .lineWidth = Px(ctx, 1.0f),
+        .fillKey = key,
+        .capacity = 1,
+    });
+    layoutChild(ctx, impl->card, bounds);
     if (config.content) {
         layoutChild(ctx, *config.content, {bounds.x + padding, bounds.y + padding,
                                            std::max(0.0f, bounds.width - 2.0f * padding),

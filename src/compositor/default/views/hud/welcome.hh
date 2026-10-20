@@ -87,9 +87,9 @@ struct WelcomeHudCell : public Sakura::Div {
             .padding = 16.0f,
             .rounding = 16.0f,
             .border = true,
-            .colorKey = "card",
-            .hoveredColorKey = "header_hovered",
-            .borderColorKey = "border",
+            .chrome = true,
+            .colorKey = "welcome_card_bg",
+            .hoveredColorKey = "welcome_card_hovered",
             .onClick = [this]() {
                 if (this->config.onClick) {
                     this->config.onClick();
@@ -176,21 +176,37 @@ struct WelcomeHudView {
         websiteButton.update({
             .str = ICON_FA_GLOBE " Website",
             .size = {Sakura::Fill, 34.0f},
+            .chrome = true,
+            .colorKey = "welcome_card_bg",
+            .hoveredColorKey = "welcome_card_hovered",
+            .activeColorKey = "welcome_card_bg",
             .onClick = this->config.onOpenWebsite,
         });
         docsButton.update({
             .str = ICON_FA_BOOK " Docs",
             .size = {Sakura::Fill, 34.0f},
+            .chrome = true,
+            .colorKey = "welcome_card_bg",
+            .hoveredColorKey = "welcome_card_hovered",
+            .activeColorKey = "welcome_card_bg",
             .onClick = this->config.onOpenDocs,
         });
         settingsButton.update({
             .str = ICON_FA_GEAR " Settings",
             .size = {Sakura::Fill, 34.0f},
+            .chrome = true,
+            .colorKey = "welcome_card_bg",
+            .hoveredColorKey = "welcome_card_hovered",
+            .activeColorKey = "welcome_card_bg",
             .onClick = this->config.onOpenSettings,
         });
         aboutButton.update({
             .str = ICON_FA_CIRCLE_INFO " About",
             .size = {Sakura::Fill, 34.0f},
+            .chrome = true,
+            .colorKey = "welcome_card_bg",
+            .hoveredColorKey = "welcome_card_hovered",
+            .activeColorKey = "welcome_card_bg",
             .onClick = this->config.onOpenAbout,
         });
         version.update({

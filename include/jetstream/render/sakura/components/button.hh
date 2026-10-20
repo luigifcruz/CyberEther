@@ -24,6 +24,7 @@ struct Button : public Component {
         Extent2D<F32> size = {0.0f, 0.0f};
         Variant variant = Variant::Default;
         bool disabled = false;
+        bool chrome = false;
         std::string colorKey;
         std::string hoveredColorKey;
         std::string activeColorKey;

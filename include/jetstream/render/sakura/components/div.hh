@@ -18,6 +18,7 @@ struct Div : public Component {
         F32 rounding = 0.0f;
         bool border = true;
         F32 borderWidth = 1.0f;
+        bool chrome = false;
         bool selected = false;
         std::string colorKey = "card";
         std::string hoveredColorKey = "header_hovered";
