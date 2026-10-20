@@ -635,6 +635,20 @@ TEST_CASE("Floating windows are centered and cascade, with content below the tit
     CHECK_FALSE(layer.covers({100.0f, 100.0f}));
 }
 
+TEST_CASE("Floating windows keep their logical geometry across pixel ratio changes", "[core][sakura][shell]") {
+    Probe content;
+    Sakura::FloatingLayer layer;
+    layer.update({.windows = {{.id = "a", .title = "A", .content = &content, .size = {300.0f, 200.0f}}}});
+    LayerHost host({&layer});
+    host.place(MakeContext(), kScreen);
+    const Rect before = content.laidFrame;
+
+    auto dense = MakeContext({kScreen.width * 2.0f, kScreen.height * 2.0f});
+    dense.pixelRatio = 2.0f;
+    host.place(dense, {0.0f, 0.0f, kScreen.width * 2.0f, kScreen.height * 2.0f});
+    CHECK(content.laidFrame == Rect{before.x * 2.0f, before.y * 2.0f, before.width * 2.0f, before.height * 2.0f});
+}
+
 TEST_CASE("Floating window close button calls onClose", "[core][sakura][shell]") {
     Probe content;
     U64 closed = 0;

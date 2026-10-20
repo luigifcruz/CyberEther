@@ -34,6 +34,7 @@
 #include "scene.hh"
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <memory>
 #include <string>
@@ -481,6 +482,19 @@ TEST_CASE("Node field grids split into as many 140 pixel columns as fit and stre
     CHECK(a.laidFrame == Rect{0.0f, 0.0f, 281.0f, 21.0f});
     CHECK(b.laidFrame == Rect{0.0f, 23.0f, 281.0f, 30.0f});
     CHECK(c.laidFrame == Rect{0.0f, 55.0f, 281.0f, 10.0f});
+}
+
+TEST_CASE("Node field grids measured without a width bound stack in one finite column", kTags) {
+    const auto ctx = MakeContext();
+    Probe a({0.0f, 21.0f});
+    Probe b({0.0f, 30.0f});
+    Sakura::NodeFieldGrid grid;
+    grid.update({.id = "unbounded-grid", .items = {{.child = &a}, {.child = &b}}});
+    Host host(grid);
+
+    const auto size = host.measureOf(ctx, {kInfinite, kInfinite});
+    CHECK(std::isfinite(size.x));
+    CHECK(size.y == 53.0f);
 }
 
 TEST_CASE("Full width node grid items break the column groups around them", kTags) {

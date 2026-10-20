@@ -1247,6 +1247,16 @@ TEST_CASE("Node timing lines all fit, including the total after many module line
     REQUIRE(timing);
     CHECK(timing->config().instances.size() == 9);
     CHECK(timing->config().capacity >= 9);
+
+    const U64 capacity = timing->config().capacity;
+    const U64 rebuilds = graph.frames.rebuilds;
+    const auto lines = block.spec.timing;
+    block.spec.timing.clear();
+    REQUIRE(graph.frames.settle([&] { graph.update(); }));
+    block.spec.timing = lines;
+    REQUIRE(graph.frames.settle([&] { graph.update(); }));
+    CHECK(timing->config().capacity == capacity);
+    CHECK(graph.frames.rebuilds == rebuilds);
 }
 
 TEST_CASE("Clicking inside a focused node field moves the caret without blurring or committing it",

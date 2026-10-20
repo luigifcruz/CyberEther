@@ -88,6 +88,7 @@ void Button::update(Config config) {
         .str = impl->config.str,
         .colorKey = impl->textKey(),
         .scale = impl->config.textScale,
+        .opacity = impl->config.disabled && !impl->textual() ? kDisabledAlpha : 1.0f,
     });
     if (impl->config.disabled) {
         impl->hovered = false;
@@ -131,7 +132,7 @@ void Button::layout(const Context& ctx) {
                    std::floor(std::max(0.0f, bounds.width - 2.0f * impl->padding(ctx).x - text.x) * config.textAlign),
                bounds.y + std::floor((bounds.height - text.y) * 0.5f), text.x, text.y};
     layoutChild(ctx, impl->frame, bounds);
-    layoutChild(ctx, impl->label, textRect);
+    layoutChild(ctx, impl->label, textRect, bounds);
 
     const F32 line = Hairline(ctx);
     impl->underline.update({

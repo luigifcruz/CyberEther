@@ -115,7 +115,8 @@ void ChromeButton::layout(const Context& ctx) {
     const auto size = measureChild(impl->label, ctx, {infinite, infinite});
     impl->label.setVisible(config.glyph == Glyph::None);
     layoutChild(ctx, impl->label, {bounds.x + std::floor((bounds.width - size.x) * 0.5f),
-                                   bounds.y + std::floor((bounds.height - size.y) * 0.5f), size.x, size.y});
+                                   bounds.y + std::floor((bounds.height - size.y) * 0.5f), size.x, size.y},
+                bounds);
 
     std::vector<Polyline::Instance> marks;
     if (config.glyph == Glyph::Plus) {

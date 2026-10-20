@@ -1,6 +1,8 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/text_markdown.hh>
 
 #include "harness.hh"
@@ -452,4 +454,49 @@ TEST_CASE("Markdown font size changes repaint without rebuilding", "[core][sakur
     CHECK(frames.run(update).clean());
     CHECK(frames.rebuilds == 1);
     CHECK(frames.restructures == 0);
+}
+
+TEST_CASE("Offscreen list markers leave room for the numbers in view", "[core][sakura][markdown]") {
+    const auto ctx = MakeContext();
+    TextMarkdown markdown;
+    Host host(markdown);
+    std::string value;
+    for (int i = 0; i < 300; ++i) {
+        value += "- item\n";
+    }
+    value += "\n1. last\n";
+    markdown.update({.id = "long-list", .value = value, .fontSize = 15.0f, .scrollbar = true});
+    const Jetstream::Rect frame{0.0f, 0.0f, 200.0f, 100.0f};
+    host.place(ctx, frame);
+    REQUIRE(host.send(Wheel(100.0f, 50.0f, 0.0f, -100000.0f)));
+    host.place(ctx, frame);
+
+    bool numbered = false;
+    for (auto* label : Find<Sakura::Label>(markdown)) {
+        for (const auto& instance : label->config().instances) {
+            numbered = numbered || (instance.str == "1." && instance.visible);
+        }
+    }
+    CHECK(numbered);
+}
+
+TEST_CASE("Tables far down a note keep their chrome when scrolled into view", "[core][sakura][markdown]") {
+    const auto ctx = MakeContext();
+    TextMarkdown markdown;
+    Host host(markdown);
+    std::string value;
+    for (int i = 0; i < 100; ++i) {
+        value += "text\n\n";
+    }
+    value += "| a | b |\n|---|---|\n| c | d |\n";
+    markdown.update({.id = "late-table", .value = value, .fontSize = 15.0f, .scrollbar = false});
+    const Jetstream::Rect frame{0.0f, 0.0f, 200.0f, 100.0f};
+    host.place(ctx, frame);
+    REQUIRE(host.send(Wheel(100.0f, 50.0f, 0.0f, -100000.0f)));
+    host.place(ctx, frame);
+    REQUIRE(markdown.metrics().scrollY > 0.0f);
+
+    const auto boxes = Direct<Sakura::Box>(markdown);
+    REQUIRE(boxes.size() >= 2);
+    CHECK_FALSE(boxes[boxes.size() - 2]->config().instances.empty());
 }

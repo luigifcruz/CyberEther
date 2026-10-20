@@ -1761,7 +1761,7 @@ struct TextGrid::Impl {
         }
     }
 
-    void autoscrollSelection(const Extent2D<F32>& pixel) {
+    bool autoscrollSelection(const Extent2D<F32>& pixel) {
         const F32 margin = fontSizePixels * kDragScrollMarginFontRatio;
         const F32 maxStep = kDragScrollMaxLines * lineHeightPixels();
         F32 delta = 0.0f;
@@ -1772,9 +1772,11 @@ struct TextGrid::Impl {
             const F32 distance = std::min(margin, pixel.y - rect.bottom());
             delta = maxStep * std::max(0.1f, distance / std::max(1.0f, margin));
         }
+        const F32 previous = currentScrollY;
         if (std::abs(delta) > 1e-3f) {
             currentScrollY = std::clamp(currentScrollY + delta, 0.0f, maxScrollYPixels());
         }
+        return currentScrollY != previous;
     }
 
     Position positionFromMouse(const Extent2D<F32>& pixel) const {
@@ -1827,8 +1829,12 @@ struct TextGrid::Impl {
                 if (!mouseSelecting) {
                     return false;
                 }
-                autoscrollSelection(position);
-                moveCursorTo(positionFromMouse(position), true);
+                const bool scrolled = autoscrollSelection(position);
+                const Position target = positionFromMouse(position);
+                if (!scrolled && selectionActive && target == cursor) {
+                    return true;
+                }
+                moveCursorTo(target, true);
                 return true;
             }
             case MouseEventType::Cancel: {

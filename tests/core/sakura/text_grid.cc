@@ -1206,3 +1206,35 @@ TEST_CASE("Arrow navigation in a focused editor restarts the caret blink on that
     frames.run(update);
     CHECK_FALSE(caret());
 }
+
+TEST_CASE("Stationary selection drags stay clean", "[core][sakura][text-grid][retention]") {
+    Scene scene;
+    TextGrid grid;
+    Host host(grid);
+    U64 selects = 0;
+    const auto update = [&] {
+        grid.update({
+            .id = "stationary-drag",
+            .value = "abcdefghijk\nlmnopqrstuv",
+            .editable = true,
+            .fontSize = 15.0f,
+            .scrollbar = false,
+            .padding = kNoPadding,
+            .onSelect = [&](TextGrid::Position, TextGrid::Position) { ++selects; },
+        });
+    };
+    Frames frames(host, {0.0f, 0.0f, 300.0f, 200.0f}, scene.context());
+    REQUIRE(frames.settle(update));
+
+    REQUIRE(host.send(Mouse(MouseEventType::Click, 1.0f, 5.0f)));
+    REQUIRE(host.send(Mouse(MouseEventType::Move, 40.0f, 5.0f)));
+    CHECK(RepaintOnly(frames.run(update)));
+    REQUIRE(frames.settle(update));
+    const U64 settled = selects;
+    for (int frame = 0; frame < 3; ++frame) {
+        CHECK(host.send(Mouse(MouseEventType::Move, 40.0f, 5.0f)));
+        CHECK(frames.run(update).clean());
+    }
+    CHECK(selects == settled);
+    CHECK(host.send(Mouse(MouseEventType::Release, 40.0f, 5.0f)));
+}

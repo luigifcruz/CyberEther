@@ -476,9 +476,25 @@ void Component::setChildren(const std::vector<Component*>& order) {
         impl->relayout();
         return;
     }
-    clearChildren();
+    const std::vector<Component*> current = children;
+    for (auto* child : current) {
+        if (child && std::find(order.begin(), order.end(), child) == order.end()) {
+            removeChild(*child);
+        }
+    }
+    std::vector<Component*> next;
+    next.reserve(order.size());
     for (auto* child : order) {
-        addChild(*child);
+        if (std::find(next.begin(), next.end(), child) == next.end()) {
+            addChild(*child);
+            next.push_back(child);
+        }
+    }
+    if (children != next) {
+        children = std::move(next);
+        ++impl->childGeneration;
+        impl->invalidate(Dirty::Order);
+        impl->relayout();
     }
 }
 

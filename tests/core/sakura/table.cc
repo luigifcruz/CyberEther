@@ -5,6 +5,8 @@
 #include "scene.hh"
 
 #include <jetstream/render/sakura/components/button.hh>
+#include <jetstream/render/sakura/components/polyline.hh>
+#include <jetstream/render/sakura/components/scroll_area.hh>
 #include <jetstream/render/sakura/components/table.hh>
 
 #include <memory>
@@ -677,4 +679,85 @@ TEST_CASE("A cancelled column resize clears the tree row hover it started on", "
     CHECK(RepaintOnly(frames.run(update)));
     CHECK_FALSE(highlighted());
     CHECK(frames.run(update).clean());
+}
+
+TEST_CASE("Tree tables draw arrows only for rows in view within a viewport budget", "[core][sakura][table]") {
+    const auto nodes = [](U64 count) {
+        Sakura::Table::Nodes nodes;
+        for (U64 i = 0; i < count; ++i) {
+            nodes.push_back({.id = std::to_string(i), .label = "Node", .cells = {"1"},
+                             .children = {{.label = "Child", .cells = {"2"}}}});
+        }
+        return nodes;
+    };
+    Sakura::Table table;
+    table.update({.columns = {"Key", "Value"}, .nodes = nodes(120)});
+    Host host(table);
+    const auto ctx = MakeContext();
+    const Rect bounds = {0.0f, 0.0f, 400.0f, 100.0f};
+    host.place(ctx, bounds);
+
+    const auto arrows = [&] { return Find<Sakura::Polyline>(table).at(0); };
+    CHECK_FALSE(arrows()->config().instances.empty());
+    CHECK(arrows()->config().instances.size() < 20);
+    const U64 capacity = arrows()->config().capacity;
+
+    for (int notch = 0; notch < 200; ++notch) {
+        host.send(Wheel(50.0f, 50.0f, -1.0f));
+        host.place(ctx, bounds);
+    }
+    CHECK_FALSE(arrows()->config().instances.empty());
+    CHECK(arrows()->config().instances.size() < 20);
+
+    table.update({.columns = {"Key", "Value"}, .nodes = nodes(240)});
+    host.place(ctx, bounds);
+    CHECK(arrows()->config().capacity == capacity);
+}
+
+TEST_CASE("Removing columns during a border drag ends the drag", "[core][sakura][table]") {
+    Cells cells;
+    Sakura::Table table;
+    auto config = ProbeRows(cells, 1);
+    config.showHeaders = false;
+    config.resizable = true;
+    table.update(config);
+    Host host(table);
+    const auto ctx = MakeContext();
+    host.place(ctx, {10.0f, 0.0f, 400.0f, 100.0f});
+    REQUIRE(host.send(Mouse(MouseEventType::Click, 111.0f, 10.0f)));
+
+    auto& only = cells.make();
+    table.update({.columns = {"Name"}, .cellRows = {{&only}}, .showHeaders = false, .resizable = true});
+    host.place(ctx, {10.0f, 0.0f, 400.0f, 100.0f});
+    host.send(Mouse(MouseEventType::Move, 200.0f, 10.0f));
+    host.send(Mouse(MouseEventType::Release, 200.0f, 10.0f));
+    host.place(ctx, {10.0f, 0.0f, 400.0f, 100.0f});
+    CHECK(only.laidFrame.width == 388.0f);
+}
+
+TEST_CASE("Natural height tables inside a scroll area draw only the rows its clip shows", "[core][sakura][table]") {
+    Sakura::Table::Nodes nodes;
+    for (U64 i = 0; i < 120; ++i) {
+        nodes.push_back({.id = std::to_string(i), .label = "Node", .cells = {"1"},
+                         .children = {{.label = "Child", .cells = {"2"}}}});
+    }
+    Sakura::Table table;
+    table.update({.columns = {"Key", "Value"}, .nodes = nodes});
+    Sakura::ScrollArea area;
+    area.update({.content = &table, .height = 120.0f});
+    Host host(area);
+    const auto ctx = MakeContext();
+    const Rect bounds = {0.0f, 0.0f, 400.0f, 120.0f};
+    host.place(ctx, bounds);
+
+    const auto arrows = [&] { return Find<Sakura::Polyline>(table).at(0); };
+    CHECK_FALSE(arrows()->config().instances.empty());
+    CHECK(arrows()->config().instances.size() < 20);
+
+    for (int notch = 0; notch < 200; ++notch) {
+        host.send(Wheel(50.0f, 50.0f, -1.0f));
+        host.place(ctx, bounds);
+    }
+    CHECK_FALSE(arrows()->config().instances.empty());
+    CHECK(arrows()->config().instances.size() < 20);
 }

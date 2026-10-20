@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -169,11 +170,14 @@ void StatusBar::layout(const Context& ctx) {
         .instances = std::move(caretInstances),
     });
 
+    const F32 messageWidth = std::max(0.0f, messageRight - messageLeft);
+    std::string message = impl.textMetrics.ellipsize("default_mono", config.status, fontSize, messageWidth);
+    const bool messageFits = impl.textMetrics.measure("default_mono", message, fontSize) <= messageWidth;
     impl.labels.update({
         .instances = {
-            {.rect = {messageLeft, bar.y, std::max(0.0f, messageRight - messageLeft), bar.height},
-             .str = config.status,
-             .visible = statusTextOn,
+            {.rect = {messageLeft, bar.y, messageWidth, bar.height},
+             .str = std::move(message),
+             .visible = statusTextOn && messageFits,
              .color = textColor,
              .fontSize = fontSize,
              .alignment = {0, 1}},

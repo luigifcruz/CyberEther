@@ -5,6 +5,7 @@
 #include "../../metrics.hh"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <utility>
 
@@ -41,7 +42,7 @@ struct NodeFieldGrid::Impl {
         const F32 minColumnWidth = Px(ctx, kFieldColumnMinWidth);
         const U64 columns = std::min<U64>(
             std::max<U64>(1, items.size()),
-            (width > 0.0f && minColumnWidth > 0.0f)
+            (std::isfinite(width) && width > 0.0f && minColumnWidth > 0.0f)
                 ? std::max<U64>(1, static_cast<U64>((width + gap) / (minColumnWidth + gap)))
                 : 1);
 

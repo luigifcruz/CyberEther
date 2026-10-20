@@ -212,9 +212,12 @@ struct CodeEditor::Impl {
             case MouseEventType::Move: {
                 if (consoleResizing) {
                     self.requestCursor(SurfaceCursor::ResizeNS);
-                    consoleResizeHeightPixels = editorContentBottomPixels() - event.position.y -
-                                                consoleDividerHeightPixels() * 0.5f;
-                    self.invalidate(Dirty::Layout);
+                    const F32 height = editorContentBottomPixels() - event.position.y -
+                                       consoleDividerHeightPixels() * 0.5f;
+                    if (height != consoleResizeHeightPixels) {
+                        consoleResizeHeightPixels = height;
+                        self.invalidate(Dirty::Layout);
+                    }
                     return true;
                 }
                 return false;

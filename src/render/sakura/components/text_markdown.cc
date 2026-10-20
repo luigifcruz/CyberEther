@@ -1711,11 +1711,22 @@ struct TextMarkdown::Impl {
         }
     }
 
+    static bool offscreen(const DecorationFrame& frame, const Deco& deco) {
+        if (!frame.clip.has_value() || deco.kind == Deco::Kind::Table || deco.kind == Deco::Kind::Stats) {
+            return false;
+        }
+        const F32 pad = frame.body;
+        return frame.lineBottom(deco.last) + pad <= frame.clip->y || frame.lineTop(deco.first) - pad >= frame.clip->bottom();
+    }
+
     DecorationPools buildDecorations(const DecorationFrame& frame) const {
         DecorationPools pools;
         for (const auto& deco : document.decos) {
             if (pools.full()) {
                 break;
+            }
+            if (offscreen(frame, deco)) {
+                continue;
             }
             switch (deco.kind) {
                 case Deco::Kind::Rule: addRule(frame, deco, pools); break;

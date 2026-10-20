@@ -273,6 +273,7 @@ void Text::layout(const Context& ctx) {
     });
     impl->icons.update({
         .instances = std::move(glyphs),
+        .clip = bounds,
         .fontName = kIconFont,
         .maxCharacters = 4,
     });

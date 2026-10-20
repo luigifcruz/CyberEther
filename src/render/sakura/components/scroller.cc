@@ -160,13 +160,13 @@ struct Scroller::Impl {
     }
 
     F32 scrollYFromThumbTop(F32 thumbTop) const {
-        const auto track = verticalTrackRect();
+        const auto track = thumbTrack(verticalTrackRect());
         const F32 range = std::max(1e-3f, track.height - verticalThumbRect().height);
         return std::clamp((thumbTop - track.y) / range, 0.0f, 1.0f) * maxScrollY();
     }
 
     F32 scrollXFromThumbLeft(F32 thumbLeft) const {
-        const auto track = horizontalTrackRect();
+        const auto track = thumbTrack(horizontalTrackRect());
         const F32 range = std::max(1e-3f, track.width - horizontalThumbRect().width);
         return std::clamp((thumbLeft - track.x) / range, 0.0f, 1.0f) * maxScrollX();
     }

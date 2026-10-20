@@ -657,7 +657,7 @@ struct NodeFrame : public Component {
             .clip = clipRect,
             .fontName = Typography::MonoFont,
             .maxCharacters = 128,
-            .capacity = std::max<U64>(kTextCapacity, pins.size()),
+            .capacity = std::max<U64>({kTextCapacity, pins.size(), texts.config().capacity}),
         });
 
         std::vector<Label::Instance> iconInstances;
@@ -705,7 +705,7 @@ struct NodeFrame : public Component {
             .clip = clipRect,
             .fontName = Typography::MonoFont,
             .maxCharacters = 128,
-            .capacity = std::bit_ceil(std::max<U64>(kTimingCapacity, spec.timing.size())),
+            .capacity = std::max(timing.config().capacity, std::bit_ceil(std::max<U64>(kTimingCapacity, spec.timing.size()))),
         });
 
         for (Component* part : {static_cast<Component*>(&chrome), static_cast<Component*>(&shapes),

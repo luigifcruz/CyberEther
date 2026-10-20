@@ -7,7 +7,9 @@
 #include <jetstream/render/sakura/components/checkbox.hh>
 #include <jetstream/render/sakura/components/combo.hh>
 #include <jetstream/render/sakura/components/progress_bar.hh>
+#include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/qr_code.hh>
+#include <jetstream/render/sakura/components/status_bar.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
 #include <jetstream/render/sakura/components/text_input.hh>
@@ -15,8 +17,10 @@
 #include "harness.hh"
 #include "scene.hh"
 
+#include <algorithm>
 #include <limits>
 #include <string>
+#include <variant>
 #include <vector>
 
 using namespace Jetstream;
@@ -174,6 +178,45 @@ TEST_CASE("Button measure wraps the label in padding unless a size is given",
     const F32 doubled = TextWidth(scene.ctx, "Connect");
     CHECK(measure({}) == Extent2D<F32>{doubled + 48.0f, 50.0f});
     CHECK(measure({.size = {120.0f, 40.0f}}) == Extent2D<F32>{240.0f, 80.0f});
+}
+
+TEST_CASE("Squeezed buttons clip their caption and disabled buttons fade it", "[core][sakura][controls]") {
+    const Scene scene;
+    Sakura::Button button;
+    button.update({.str = "A caption far wider than the button"});
+    Host host(button);
+    host.place(scene.ctx, {0.0f, 0.0f, 40.0f, 25.0f});
+
+    std::vector<DrawnLeaf> drawn;
+    CollectDrawn(button, drawn);
+    const auto caption = std::find_if(drawn.begin(), drawn.end(), [](const DrawnLeaf& leaf) {
+        return std::holds_alternative<Sakura::Label::Config>(leaf.config);
+    });
+    REQUIRE(caption != drawn.end());
+    REQUIRE(caption->clip.has_value());
+    CHECK(caption->clip->right() <= 40.0f);
+
+    CHECK(Find<Sakura::Text>(button).at(0)->config().opacity == 1.0f);
+    button.update({.str = "Open", .disabled = true});
+    CHECK(Find<Sakura::Text>(button).at(0)->config().opacity == 0.6f);
+    button.update({.str = "Open", .variant = Sakura::Button::Variant::Text, .disabled = true});
+    CHECK(Find<Sakura::Text>(button).at(0)->config().opacity == 1.0f);
+}
+
+TEST_CASE("Long status messages end before the toggle pill", "[core][sakura][controls]") {
+    const Scene scene;
+    Sakura::StatusBar bar;
+    const std::string status = "Invalid YAML. Fix the document before applying changes.";
+    bar.update({.id = "status", .status = status, .toggleText = "Console", .onToggle = [] {}});
+    Host host(bar);
+    host.place(scene.ctx, {0.0f, 0.0f, 200.0f, 24.0f});
+
+    const auto& message = Find<Sakura::Label>(bar).at(0)->config().instances.at(0);
+    CHECK(message.str != status);
+    CHECK(message.str.ends_with("..."));
+
+    host.place(scene.ctx, {0.0f, 0.0f, 90.0f, 24.0f});
+    CHECK_FALSE(Find<Sakura::Label>(bar).at(0)->config().instances.at(0).visible);
 }
 
 TEST_CASE("Navigation items fill the width and select on click", "[core][sakura][controls]") {

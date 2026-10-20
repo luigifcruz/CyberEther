@@ -35,6 +35,7 @@ constexpr F32 kResizeSlack = 4.0f;
 struct FloatingLayer::Impl {
     struct State {
         Rect rect;
+        F32 pixelRatio = 1.0f;
         bool placed = false;
     };
 
@@ -244,7 +245,14 @@ void FloatingLayer::layout(const Context& ctx) {
             const F32 offset = Px(ctx, kFloatingCascade) * static_cast<F32>(impl->cascade++ % kFloatingCascadeSteps);
             state.rect = {std::round(bounds.x + (bounds.width - size.x) * 0.5f + offset),
                           std::round(bounds.y + (bounds.height - size.y) * 0.5f + offset), size.x, size.y};
+            state.pixelRatio = ctx.pixelRatio;
             state.placed = true;
+        }
+        if (state.pixelRatio != ctx.pixelRatio && state.pixelRatio > 0.0f) {
+            const F32 scale = ctx.pixelRatio / state.pixelRatio;
+            state.rect = {std::round(state.rect.x * scale), std::round(state.rect.y * scale),
+                          std::round(state.rect.width * scale), std::round(state.rect.height * scale)};
+            state.pixelRatio = ctx.pixelRatio;
         }
         const F32 minimum = impl->titleHeight * 3.0f;
         state.rect.width = std::max(minimum, state.rect.width);
