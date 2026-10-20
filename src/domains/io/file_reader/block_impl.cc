@@ -80,7 +80,7 @@ Result FileReaderImpl::define() {
             }
             const F32 progress = static_cast<F32>(moduleImpl->getCurrentPosition()) /
                                  static_cast<F32>(size);
-            return std::pair<std::string, F32>{jst::fmt::format("{:.1f}%", progress * 100.0f), progress};
+            return std::pair<std::string, F32>{jst::fmt::format("{:.0f}%", progress * 100.0f), progress};
         }));
 
     JST_CHECK(defineInterfaceMetric("currentBandwidth",

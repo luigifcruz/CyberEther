@@ -150,7 +150,7 @@ Result SoapyImpl::define() {
                 return std::pair<std::string, F32>{"0.0%", 0.0f};
             }
             const F32 bufferHealth = moduleImpl->getBufferHealth();
-            return std::pair<std::string, F32>{jst::fmt::format("{:.1f}%", bufferHealth * 100.0f),
+            return std::pair<std::string, F32>{jst::fmt::format("{:.0f}%", bufferHealth * 100.0f),
                                                bufferHealth};
         }));
 
@@ -161,8 +161,8 @@ Result SoapyImpl::define() {
         [this]() -> std::any {
             const F64 loss = moduleImpl ? moduleImpl->getBufferLoss() : 0.0;
             const U64 deviceOverflows = moduleImpl ? moduleImpl->getDeviceOverflows() : 0;
-            auto label = loss > 0.0 && loss < 0.0001
-                ? std::string("<0.01%") : jst::fmt::format("{:.2f}%", loss * 100.0);
+            auto label = loss > 0.0 && loss < 0.001
+                ? std::string("<0.1%") : jst::fmt::format("{:.1f}%", loss * 100.0);
             if (deviceOverflows > 0) {
                 label = jst::fmt::format("{} ({} OVF)", label, deviceOverflows);
             }
