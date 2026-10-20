@@ -194,7 +194,9 @@ struct FlowgraphNodePresenter {
         if (blockState != Block::State::Creating) {
             buildBlockMetrics(block, nodeViewId, blockData);
             buildConfigFields(block, flowgraphId, blockName, nodeViewId, blockData);
-            buildTiming(block, blockData);
+            if (context.state.debug.timingEnabled) {
+                buildTiming(block, blockData);
+            }
             surfaces.buildSurfaces(block, flowgraph, flowgraphId, blockName, nodeViewId, blockData);
         }
 

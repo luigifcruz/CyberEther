@@ -57,7 +57,9 @@ void NodeProgressBar::layout(const Context& ctx) {
         .cornerRadius = rounding,
     });
 
-    const F32 fillEnd = std::round(bounds.x + bounds.width * fraction);
+    const F32 fillEnd = fraction <= 0.0f ? bounds.x
+                      : fraction >= 1.0f ? bounds.right()
+                      : std::clamp(std::round(bounds.x + bounds.width * fraction), bounds.x, bounds.right());
     impl->fill.update({
         .instances = {{.rect = Snap(bounds), .visible = !bounds.empty() && fillEnd > bounds.x,
                        .backgroundColor = ctx.color(config.colorKey)}},

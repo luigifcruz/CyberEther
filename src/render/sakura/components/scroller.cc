@@ -3,6 +3,7 @@
 #include <jetstream/render/sakura/components/box.hh>
 
 #include "../context.hh"
+#include "../detail/helpers.hh"
 #include "../metrics.hh"
 
 #include <algorithm>
@@ -213,7 +214,8 @@ void Scroller::layout(const Context& ctx) {
         .cornerRadius = kScrollbarPillRadius,
     });
     impl->vThumb.update({
-        .instances = {{.rect = impl->verticalThumbRect(), .visible = vVisible, .backgroundColor = impl->thumbColor}},
+        .instances = {{.rect = vVisible ? Snap(impl->verticalThumbRect()) : Rect{}, .visible = vVisible,
+                       .backgroundColor = impl->thumbColor}},
         .cornerRadius = kScrollbarPillRadius,
     });
     impl->hTrack.update({
@@ -221,7 +223,8 @@ void Scroller::layout(const Context& ctx) {
         .cornerRadius = kScrollbarPillRadius,
     });
     impl->hThumb.update({
-        .instances = {{.rect = impl->horizontalThumbRect(), .visible = hVisible, .backgroundColor = impl->thumbColor}},
+        .instances = {{.rect = hVisible ? Snap(impl->horizontalThumbRect()) : Rect{}, .visible = hVisible,
+                       .backgroundColor = impl->thumbColor}},
         .cornerRadius = kScrollbarPillRadius,
     });
 
