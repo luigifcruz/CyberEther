@@ -106,6 +106,13 @@ void Generic::pumpPlatform() {
         return;
     }
     platform->poll();
+    refreshSnapshot();
+}
+
+void Generic::refreshSnapshot() {
+    if (!platform) {
+        return;
+    }
     const Snapshot next = {displaySize(), framebufferSize(), contentScale()};
     std::lock_guard lock(snapshotMutex);
     snapshot = next;

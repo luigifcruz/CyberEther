@@ -318,7 +318,17 @@ struct GlfwInput::Impl {
     }
 
     static void OnRefresh(GLFWwindow* window) {
-        From(window).viewport.requestRedraw();
+        auto& viewport = From(window).viewport;
+        viewport.refreshSnapshot();
+        viewport.requestRedraw();
+    }
+
+    static void OnResize(GLFWwindow* window, int, int) {
+        OnRefresh(window);
+    }
+
+    static void OnScale(GLFWwindow* window, float, float) {
+        OnRefresh(window);
     }
 
     static void OnIconify(GLFWwindow* window, int) {
@@ -354,6 +364,9 @@ GlfwInput::GlfwInput(GLFWwindow* window, Generic& viewport) {
     glfwSetCharCallback(window, &Impl::OnChar);
     glfwSetDropCallback(window, &Impl::OnDrop);
     glfwSetWindowRefreshCallback(window, &Impl::OnRefresh);
+    glfwSetWindowSizeCallback(window, &Impl::OnResize);
+    glfwSetFramebufferSizeCallback(window, &Impl::OnResize);
+    glfwSetWindowContentScaleCallback(window, &Impl::OnScale);
     glfwSetWindowIconifyCallback(window, &Impl::OnIconify);
 
     GLFWerrorfun previous = glfwSetErrorCallback(nullptr);
@@ -377,6 +390,9 @@ GlfwInput::~GlfwInput() {
     glfwSetCharCallback(impl->window, nullptr);
     glfwSetDropCallback(impl->window, nullptr);
     glfwSetWindowRefreshCallback(impl->window, nullptr);
+    glfwSetWindowSizeCallback(impl->window, nullptr);
+    glfwSetFramebufferSizeCallback(impl->window, nullptr);
+    glfwSetWindowContentScaleCallback(impl->window, nullptr);
     glfwSetWindowIconifyCallback(impl->window, nullptr);
     glfwSetWindowUserPointer(impl->window, nullptr);
 
