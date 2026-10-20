@@ -13,6 +13,8 @@
 #include <jetstream/module_context.hh>
 #include <jetstream/runtime.hh>
 #include <jetstream/module.hh>
+#include <jetstream/instance.hh>
+#include <jetstream/viewport/adapters/generic.hh>
 
 #include <atomic>
 #include <algorithm>
@@ -68,6 +70,7 @@ struct SynchronousScheduler : public Scheduler::Impl {
     void waitForPresentToFinish(std::unique_lock<std::mutex>& lock);
     void notifyCompute();
     void notifyPresent();
+    void wakePresent();
     Result lockState(const std::function<Result()>& func);
 
     std::atomic_flag computeHalt = ATOMIC_FLAG_INIT;
@@ -82,6 +85,7 @@ struct SynchronousScheduler : public Scheduler::Impl {
     std::atomic<bool> presentWantsIn{false};
     std::atomic<bool> stopping{false};
     std::atomic<U64> generation{0};
+    std::weak_ptr<Viewport::Generic> viewport;
 
     std::unordered_map<std::string, std::shared_ptr<Module>> modules;
     std::vector<std::string> topoOrder;
@@ -108,6 +112,11 @@ struct SynchronousScheduler : public Scheduler::Impl {
 Result SynchronousScheduler::create() {
     JST_DEBUG("[SCHEDULER_SYNCHRONOUS] Creating scheduler.");
     stopping.store(false, std::memory_order_release);
+    if (instance) {
+        std::shared_ptr<Viewport::Generic> instanceViewport;
+        JST_CHECK(instance->viewportGet(instanceViewport));
+        viewport = instanceViewport;
+    }
     return Result::SUCCESS;
 }
 
@@ -488,6 +497,7 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
         // Priority Yield: Check if present wants in before each segment.
 
         if (isPresentRequested()) {
+            wakePresent();
             while (isPresentRequested()) {
                 if (isStopping()) {
                     clearPresentRequest();
@@ -872,6 +882,12 @@ void SynchronousScheduler::notifyCompute() {
 
 void SynchronousScheduler::notifyPresent() {
     presentCond.notify_all();
+}
+
+void SynchronousScheduler::wakePresent() {
+    if (const auto target = viewport.lock()) {
+        target->input().wake();
+    }
 }
 
 Result SynchronousScheduler::lockState(const std::function<Result()>& func) {
