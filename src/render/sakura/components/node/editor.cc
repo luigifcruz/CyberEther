@@ -255,7 +255,7 @@ struct NodeFrame : public Component {
     Label badgeText;
     Label timing;
     TextMetrics metrics;
-    bool loadingMounted = false;
+    bool loadingShown = false;
     struct Measured {
         U64 revision = 0;
         U64 epoch = 0;
@@ -284,23 +284,18 @@ struct NodeFrame : public Component {
         addChild(texts);
         addChild(icons);
         addChild(timing);
-        if (loadingMounted) {
-            mountLoading();
-        }
-    }
-
-    void mountLoading() {
         addChild(loadingBorder);
         addChild(chase);
         addChild(badge);
         addChild(badgeText);
+        showLoading(loadingShown);
     }
 
-    void unmountLoading() {
-        removeChild(loadingBorder);
-        removeChild(chase);
-        removeChild(badge);
-        removeChild(badgeText);
+    void showLoading(const bool visible) {
+        for (Component* part : {static_cast<Component*>(&loadingBorder), static_cast<Component*>(&chase),
+                                static_cast<Component*>(&badge), static_cast<Component*>(&badgeText)}) {
+            part->setVisible(visible);
+        }
     }
 
     void apply(NodeEditor::Node next) {
@@ -312,13 +307,9 @@ struct NodeFrame : public Component {
             rebuildChildren();
         }
         const bool loading = next.state == NodeState::Loading;
-        if (loading != loadingMounted) {
-            loadingMounted = loading;
-            if (loading) {
-                mountLoading();
-            } else {
-                unmountLoading();
-            }
+        if (loading != loadingShown) {
+            loadingShown = loading;
+            showLoading(loading);
         }
 
         const bool resizeX = HasAxis(next.resize, ResizeAxes::X);
@@ -717,7 +708,7 @@ struct NodeFrame : public Component {
                                 static_cast<Component*>(&timing)}) {
             layoutChild(ctx, *part, f.viewport);
         }
-        if (loadingMounted) {
+        if (loadingShown) {
             for (Component* part : {static_cast<Component*>(&loadingBorder), static_cast<Component*>(&chase),
                                     static_cast<Component*>(&badge), static_cast<Component*>(&badgeText)}) {
                 layoutChild(ctx, *part, f.viewport);
