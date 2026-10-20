@@ -3,7 +3,10 @@
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/label.hh>
 
-#include "common.hh"
+#include "../../detail/helpers.hh"
+#include "../../detail/text_metrics.hh"
+#include "../../metrics.hh"
+#include "pointer.hh"
 
 #include <algorithm>
 #include <limits>
@@ -11,7 +14,17 @@
 
 namespace Jetstream::Sakura {
 
-using namespace NodeStyle;
+namespace {
+
+constexpr F32 kLabelFont = Typography::FontSize * 0.75f;
+constexpr F32 kCardLabelOffsetX = 6.0f;
+constexpr F32 kCardLabelOffsetY = 2.0f;
+
+F32 CardLabelHeight(const Context& ctx) {
+    return NodeFontOf(ctx) + 14.0f;
+}
+
+}  // namespace
 
 struct NodeField::Impl {
     Config config;
@@ -26,9 +39,9 @@ struct NodeField::Impl {
             return 0.0f;
         }
         if (config.background) {
-            return Px(ctx, CardLabelOffsetY + LabelFont);
+            return Px(ctx, kCardLabelOffsetY + kLabelFont);
         }
-        return Px(ctx, LabelFont + 4.0f);
+        return Px(ctx, kLabelFont + 4.0f);
     }
 };
 
@@ -97,15 +110,15 @@ void NodeField::layout(const Context& ctx) {
                 .backgroundColor = ctx.color("card"),
             }},
             .clip = bounds,
-            .cornerRadius = Px(ctx, FrameRounding),
+            .cornerRadius = Px(ctx, kFrameRounding),
         });
         layoutChild(ctx, impl->card, bounds);
     }
 
-    const F32 labelY = bounds.y + (config.background ? Px(ctx, CardLabelOffsetY) : 0.0f);
-    const F32 labelX = bounds.x + Px(ctx, CardLabelOffsetX);
-    const F32 labelSize = Px(ctx, LabelFont);
-    const F32 labelWidth = impl->metrics.measure(MonoFont, config.label, labelSize);
+    const F32 labelY = bounds.y + (config.background ? Px(ctx, kCardLabelOffsetY) : 0.0f);
+    const F32 labelX = bounds.x + Px(ctx, kCardLabelOffsetX);
+    const F32 labelSize = Px(ctx, kLabelFont);
+    const F32 labelWidth = impl->metrics.measure(Typography::MonoFont, config.label, labelSize);
     const Rect labelRect = {labelX, labelY, std::max(0.0f, bounds.right() - labelX), labelSize};
 
     if (titled) {
@@ -119,7 +132,7 @@ void NodeField::layout(const Context& ctx) {
                 .alignment = {0, 1},
             }},
             .clip = Intersect(bounds, labelRect),
-            .fontName = MonoFont,
+            .fontName = Typography::MonoFont,
             .maxCharacters = 128,
         });
         layoutChild(ctx, impl->label, bounds);

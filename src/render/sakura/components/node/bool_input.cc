@@ -4,14 +4,15 @@
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/tools/icons_fa.hh>
 
-#include "common.hh"
+#include "../../detail/helpers.hh"
+#include "../../detail/text_metrics.hh"
+#include "../../metrics.hh"
+#include "pointer.hh"
 
 #include <algorithm>
 #include <utility>
 
 namespace Jetstream::Sakura {
-
-using namespace NodeStyle;
 
 struct NodeBoolInput::Impl {
     Config config;
@@ -40,7 +41,7 @@ void NodeBoolInput::update(Config config) {
 }
 
 Extent2D<F32> NodeBoolInput::measure(const Context& ctx, Extent2D<F32> available) {
-    return {FillLength(available.x), FitLength(Px(ctx, FrameHeight(ctx)), available.y)};
+    return {FillLength(available.x), FitLength(Px(ctx, NodeFrameHeight(ctx)), available.y)};
 }
 
 void NodeBoolInput::layout(const Context& ctx) {
@@ -49,16 +50,16 @@ void NodeBoolInput::layout(const Context& ctx) {
     impl->rect = bounds;
     impl->metrics.setWindow(ctx.render);
 
-    const F32 fontSize = Px(ctx, FontOf(ctx));
-    const F32 pad = Px(ctx, FramePadX);
+    const F32 fontSize = Px(ctx, NodeFontOf(ctx));
+    const F32 pad = Px(ctx, kNodeFramePadX);
     const F32 iconSize = fontSize * 0.8f;
     const char* glyph = config.value ? ICON_FA_TOGGLE_ON : ICON_FA_TOGGLE_OFF;
-    const F32 iconWidth = impl->metrics.measure(IconFont, glyph, iconSize);
+    const F32 iconWidth = impl->metrics.measure(Typography::IconFont, glyph, iconSize);
 
     impl->background.update({
         .instances = {{.rect = Snap(bounds), .visible = !bounds.empty(), .backgroundColor = ctx.color("card")}},
         .clip = bounds,
-        .cornerRadius = Px(ctx, FrameRounding),
+        .cornerRadius = Px(ctx, kFrameRounding),
     });
     impl->text.update({
         .instances = {{
@@ -70,7 +71,7 @@ void NodeBoolInput::layout(const Context& ctx) {
             .alignment = {0, 1},
         }},
         .clip = bounds,
-        .fontName = MonoFont,
+        .fontName = Typography::MonoFont,
         .maxCharacters = 16,
     });
     impl->icon.update({
@@ -83,7 +84,7 @@ void NodeBoolInput::layout(const Context& ctx) {
             .alignment = {0, 1},
         }},
         .clip = bounds,
-        .fontName = IconFont,
+        .fontName = Typography::IconFont,
         .maxCharacters = 4,
     });
 

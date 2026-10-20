@@ -2,9 +2,11 @@
 
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/node/combo.hh>
+#include <jetstream/render/sakura/components/node/content_stack.hh>
 #include <jetstream/render/sakura/components/node/text_input.hh>
 
-#include "common.hh"
+#include "../../detail/helpers.hh"
+#include "../../metrics.hh"
 
 #include <algorithm>
 #include <limits>
@@ -12,7 +14,11 @@
 
 namespace Jetstream::Sakura {
 
-using namespace NodeStyle;
+namespace {
+
+constexpr F32 kStackedGap = 3.0f;
+
+}  // namespace
 
 struct NodeInputRow::Impl {
     Config config;
@@ -24,7 +30,7 @@ struct NodeInputRow::Impl {
     F32 combosWidth(const Context& ctx) const {
         F32 width = 0.0f;
         for (const auto& combo : config.combos) {
-            width += Px(ctx, combo.width) + Px(ctx, ItemSpacing);
+            width += Px(ctx, combo.width) + Px(ctx, NodeContentStack::Spacing);
         }
         return width;
     }
@@ -32,7 +38,7 @@ struct NodeInputRow::Impl {
     bool stackedFor(const Context& ctx, F32 available) const {
         const F32 minShape = Px(ctx, config.shapeMinWidth);
         const F32 minAxes = config.onAxesChange ? Px(ctx, config.axesMinWidth) : 0.0f;
-        const F32 fieldsSpacing = config.onAxesChange ? Px(ctx, ItemSpacing) : 0.0f;
+        const F32 fieldsSpacing = config.onAxesChange ? Px(ctx, NodeContentStack::Spacing) : 0.0f;
         return available < minShape + minAxes + combosWidth(ctx) + fieldsSpacing;
     }
 
@@ -92,20 +98,20 @@ void NodeInputRow::update(Config config) {
 }
 
 Extent2D<F32> NodeInputRow::measure(const Context& ctx, Extent2D<F32> available) {
-    const F32 frameHeight = Px(ctx, FrameHeight(ctx));
+    const F32 frameHeight = Px(ctx, NodeFrameHeight(ctx));
     if (!impl->stackedFor(ctx, available.x)) {
         return {FillLength(available.x), FitLength(frameHeight, available.y)};
     }
     const F32 rows = impl->rows();
-    return {FillLength(available.x), FitLength(frameHeight * rows + Px(ctx, StackedGap) * (rows - 1.0f), available.y)};
+    return {FillLength(available.x), FitLength(frameHeight * rows + Px(ctx, kStackedGap) * (rows - 1.0f), available.y)};
 }
 
 void NodeInputRow::layout(const Context& ctx) {
     const auto& config = impl->config;
     const Rect bounds = frame();
-    const F32 frameHeight = Px(ctx, FrameHeight(ctx));
-    const F32 spacing = Px(ctx, ItemSpacing);
-    const F32 stackedSpacing = Px(ctx, StackedGap);
+    const F32 frameHeight = Px(ctx, NodeFrameHeight(ctx));
+    const F32 spacing = Px(ctx, NodeContentStack::Spacing);
+    const F32 stackedSpacing = Px(ctx, kStackedGap);
 
     const bool stacked = impl->stackedFor(ctx, bounds.width);
 
@@ -118,7 +124,7 @@ void NodeInputRow::layout(const Context& ctx) {
             .backgroundColor = ctx.color("card"),
         }},
         .clip = bounds,
-        .cornerRadius = Px(ctx, FrameRounding),
+        .cornerRadius = Px(ctx, kFrameRounding),
     });
     layoutChild(ctx, impl->background, bounds);
 

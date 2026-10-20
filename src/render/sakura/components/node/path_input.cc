@@ -2,17 +2,19 @@
 
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/label.hh>
+#include <jetstream/render/sakura/components/node/content_stack.hh>
 #include <jetstream/render/sakura/components/node/text_input.hh>
 #include <jetstream/render/tools/icons_fa.hh>
 
-#include "common.hh"
+#include "../../detail/helpers.hh"
+#include "../../detail/text_metrics.hh"
+#include "../../metrics.hh"
+#include "pointer.hh"
 
 #include <algorithm>
 #include <utility>
 
 namespace Jetstream::Sakura {
-
-using namespace NodeStyle;
 
 struct NodePathInput::Impl {
     Config config;
@@ -50,7 +52,7 @@ void NodePathInput::update(Config config) {
 }
 
 Extent2D<F32> NodePathInput::measure(const Context& ctx, Extent2D<F32> available) {
-    return {FillLength(available.x), FitLength(Px(ctx, FrameHeight(ctx)), available.y)};
+    return {FillLength(available.x), FitLength(Px(ctx, NodeFrameHeight(ctx)), available.y)};
 }
 
 void NodePathInput::layout(const Context& ctx) {
@@ -59,9 +61,9 @@ void NodePathInput::layout(const Context& ctx) {
     const Rect clipRect = Intersect(bounds, clip());
     impl->metrics.setWindow(ctx.render);
 
-    const F32 frameHeight = Px(ctx, FrameHeight(ctx));
+    const F32 frameHeight = Px(ctx, NodeFrameHeight(ctx));
     const F32 buttonWidth = frameHeight;
-    const F32 connector = Px(ctx, ItemSpacing);
+    const F32 connector = Px(ctx, NodeContentStack::Spacing);
     const F32 inputWidth = std::max(0.0f, bounds.width - buttonWidth - connector);
     impl->inputRect = {bounds.x, bounds.y, inputWidth, frameHeight};
     impl->buttonRect = {bounds.x + inputWidth + connector, bounds.y, buttonWidth, frameHeight};
@@ -72,11 +74,11 @@ void NodePathInput::layout(const Context& ctx) {
              .visible = !bounds.empty(), .backgroundColor = ctx.color("card")},
         },
         .clip = bounds,
-        .cornerRadius = Px(ctx, FrameRounding),
+        .cornerRadius = Px(ctx, kFrameRounding),
     });
 
-    const F32 iconSize = Px(ctx, FontOf(ctx)) * 0.7f;
-    const F32 iconWidth = impl->metrics.measure(IconFont, ICON_FA_FOLDER_OPEN, iconSize);
+    const F32 iconSize = Px(ctx, NodeFontOf(ctx)) * 0.7f;
+    const F32 iconWidth = impl->metrics.measure(Typography::IconFont, ICON_FA_FOLDER_OPEN, iconSize);
     impl->icon.update({
         .instances = {{
             .rect = {impl->buttonRect.x + (impl->buttonRect.width - iconWidth) * 0.5f, impl->buttonRect.y,
@@ -88,7 +90,7 @@ void NodePathInput::layout(const Context& ctx) {
             .alignment = {0, 1},
         }},
         .clip = bounds,
-        .fontName = IconFont,
+        .fontName = Typography::IconFont,
         .maxCharacters = 4,
     });
 

@@ -4,7 +4,10 @@
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/node/text_input.hh>
 
-#include "common.hh"
+#include "../../detail/helpers.hh"
+#include "../../detail/text_metrics.hh"
+#include "../../metrics.hh"
+#include "parse.hh"
 
 #include <algorithm>
 #include <cmath>
@@ -12,8 +15,6 @@
 #include <utility>
 
 namespace Jetstream::Sakura {
-
-using namespace NodeStyle;
 
 namespace {
 
@@ -101,7 +102,7 @@ void NodeRangeInput::update(Config config) {
 }
 
 Extent2D<F32> NodeRangeInput::measure(const Context& ctx, Extent2D<F32> available) {
-    return {FillLength(available.x), FitLength(Px(ctx, FrameHeight(ctx)), available.y)};
+    return {FillLength(available.x), FitLength(Px(ctx, NodeFrameHeight(ctx)), available.y)};
 }
 
 void NodeRangeInput::layout(const Context& ctx) {
@@ -114,7 +115,7 @@ void NodeRangeInput::layout(const Context& ctx) {
     const F32 value = impl->dragValue.value_or(config.value);
     const F32 range = config.max - config.min;
     const F32 fraction = std::clamp(range != 0.0f ? (value - config.min) / range : 0.0f, 0.0f, 1.0f);
-    const F32 rounding = Px(ctx, FrameRounding);
+    const F32 rounding = Px(ctx, kFrameRounding);
     const F32 knobWidth = std::max(Px(ctx, 8.0f), rounding * 2.0f);
     const F32 knobX = std::clamp(bounds.x + bounds.width * fraction - knobWidth * 0.5f,
                                  bounds.x,
@@ -144,9 +145,9 @@ void NodeRangeInput::layout(const Context& ctx) {
         .cornerRadius = rounding,
     });
 
-    const F32 fontSize = Px(ctx, FontOf(ctx));
-    const F32 pad = Px(ctx, FramePadX);
-    const F32 unitWidth = impl->metrics.measure(MonoFont, config.unit, fontSize);
+    const F32 fontSize = Px(ctx, NodeFontOf(ctx));
+    const F32 pad = Px(ctx, kNodeFramePadX);
+    const F32 unitWidth = impl->metrics.measure(Typography::MonoFont, config.unit, fontSize);
     impl->labels.update({
         .instances = {
             {
@@ -158,7 +159,7 @@ void NodeRangeInput::layout(const Context& ctx) {
                 .alignment = {0, 1},
             },
             {
-                .rect = {bounds.right() - unitWidth - Px(ctx, UnitInset), bounds.y, unitWidth, bounds.height},
+                .rect = {bounds.right() - unitWidth - Px(ctx, kNodeUnitInset), bounds.y, unitWidth, bounds.height},
                 .str = config.unit,
                 .visible = visible && !config.unit.empty(),
                 .color = ctx.color("text_secondary"),
@@ -167,7 +168,7 @@ void NodeRangeInput::layout(const Context& ctx) {
             },
         },
         .clip = bounds,
-        .fontName = MonoFont,
+        .fontName = Typography::MonoFont,
         .maxCharacters = 64,
     });
 

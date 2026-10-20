@@ -1,6 +1,6 @@
 #include <jetstream/render/sakura/components/node/content_stack.hh>
 
-#include "common.hh"
+#include "../../metrics.hh"
 
 #include <algorithm>
 #include <cmath>
@@ -8,8 +8,6 @@
 #include <utility>
 
 namespace Jetstream::Sakura {
-
-using namespace NodeStyle;
 
 struct NodeContentStack::Impl {
     Config config;
@@ -27,7 +25,7 @@ struct NodeContentStack::Impl {
     }
 
     F32 gapBefore(const Context& ctx, const Item& item) const {
-        return Px(ctx, item.gap.value_or(ItemSpacing));
+        return Px(ctx, item.gap.value_or(Spacing));
     }
 
     struct Arrangement {
@@ -165,10 +163,10 @@ bool NodeContentStack::empty() const {
 F32 NodeContentStack::leadingGap() const {
     for (const auto& item : impl->config.items) {
         if (impl->active(item)) {
-            return item.gap.value_or(NodeStyle::ItemSpacing);
+            return item.gap.value_or(Spacing);
         }
     }
-    return NodeStyle::ItemSpacing;
+    return Spacing;
 }
 
 bool NodeContentStack::hasFlexible() const {

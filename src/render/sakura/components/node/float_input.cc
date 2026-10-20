@@ -4,14 +4,15 @@
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/node/text_input.hh>
 
-#include "common.hh"
+#include "../../detail/helpers.hh"
+#include "../../metrics.hh"
+#include "parse.hh"
+#include "pointer.hh"
 
 #include <algorithm>
 #include <utility>
 
 namespace Jetstream::Sakura {
-
-using namespace NodeStyle;
 
 namespace {
 
@@ -103,22 +104,22 @@ void NodeFloatInput::update(Config config) {
 }
 
 Extent2D<F32> NodeFloatInput::measure(const Context& ctx, Extent2D<F32> available) {
-    const F32 height = impl->stepped() ? FrameHeight(ctx) + FontOf(ctx) + 4.0f : FrameHeight(ctx);
+    const F32 height = impl->stepped() ? NodeFrameHeight(ctx) + NodeFontOf(ctx) + 4.0f : NodeFrameHeight(ctx);
     return {FillLength(available.x), FitLength(Px(ctx, height), available.y)};
 }
 
 void NodeFloatInput::layout(const Context& ctx) {
     const Rect bounds = frame();
     const Rect clipRect = Intersect(bounds, clip());
-    const F32 fontSize = Px(ctx, FontOf(ctx));
+    const F32 fontSize = Px(ctx, NodeFontOf(ctx));
 
     if (!impl->stepped()) {
         layoutChild(ctx, impl->input, bounds);
         return;
     }
 
-    const F32 inputHeight = Px(ctx, FrameHeight(ctx));
-    const F32 buttonHeight = Px(ctx, FontOf(ctx) + 4.0f);
+    const F32 inputHeight = Px(ctx, NodeFrameHeight(ctx));
+    const F32 buttonHeight = Px(ctx, NodeFontOf(ctx) + 4.0f);
     const F32 buttonWidth = bounds.width * 0.2f;
     const F32 toggleWidth = bounds.width - buttonWidth * 2.0f;
     const F32 rowY = bounds.y + inputHeight;
@@ -133,7 +134,7 @@ void NodeFloatInput::layout(const Context& ctx) {
             .backgroundColor = ctx.color("card"),
         }},
         .clip = bounds,
-        .cornerRadius = Px(ctx, FrameRounding),
+        .cornerRadius = Px(ctx, kFrameRounding),
     });
 
     const auto hoveredRect = [&](const Rect& rect) {
@@ -156,7 +157,7 @@ void NodeFloatInput::layout(const Context& ctx) {
              .fontSize = fontSize, .alignment = {1, 1}},
         },
         .clip = bounds,
-        .fontName = MonoFont,
+        .fontName = Typography::MonoFont,
         .maxCharacters = 32,
         .capacity = 3,
     });

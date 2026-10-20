@@ -4,14 +4,14 @@
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
 
-#include "common.hh"
+#include "../../detail/helpers.hh"
+#include "../../detail/text_metrics.hh"
+#include "../../metrics.hh"
 
 #include <algorithm>
 #include <utility>
 
 namespace Jetstream::Sakura {
-
-using namespace NodeStyle;
 
 struct NodeTextInput::Impl {
     Config config;
@@ -74,7 +74,7 @@ void NodeTextInput::focusWhenPlaced(bool selectAll) {
 }
 
 Extent2D<F32> NodeTextInput::measure(const Context& ctx, Extent2D<F32> available) {
-    return {FillLength(available.x), ResolveLength(ctx, impl->config.height, Px(ctx, FrameHeight(ctx)), available.y)};
+    return {FillLength(available.x), ResolveLength(ctx, impl->config.height, Px(ctx, NodeFrameHeight(ctx)), available.y)};
 }
 
 void NodeTextInput::layout(const Context& ctx) {
@@ -85,8 +85,8 @@ void NodeTextInput::layout(const Context& ctx) {
 
     impl->metrics.setWindow(ctx.render);
 
-    const F32 fontSize = Px(ctx, FontOf(ctx));
-    const F32 padX = Px(ctx, FramePadX);
+    const F32 fontSize = Px(ctx, NodeFontOf(ctx));
+    const F32 padX = Px(ctx, kNodeFramePadX);
     const F32 padY = std::max(0.0f, (bounds.height - fontSize) * 0.5f);
 
     impl->frame.update({
@@ -96,7 +96,7 @@ void NodeTextInput::layout(const Context& ctx) {
             .backgroundColor = ctx.color("card"),
         }},
         .clip = bounds,
-        .cornerRadius = Px(ctx, FrameRounding),
+        .cornerRadius = Px(ctx, kFrameRounding),
     });
 
     impl->grid.update({
@@ -105,7 +105,7 @@ void NodeTextInput::layout(const Context& ctx) {
         .editable = true,
         .fontSize = fontSize,
         .lineHeight = 1.0f,
-        .fontName = MonoFont,
+        .fontName = Typography::MonoFont,
         .monospace = true,
         .lineNumbers = false,
         .showActiveLine = false,
@@ -144,9 +144,9 @@ void NodeTextInput::layout(const Context& ctx) {
         },
     });
 
-    const F32 unitWidth = impl->metrics.measure(MonoFont, config.unit, fontSize);
+    const F32 unitWidth = impl->metrics.measure(Typography::MonoFont, config.unit, fontSize);
     const Rect lineRect = {bounds.x + padX, bounds.y + padY, std::max(0.0f, bounds.width - 2.0f * padX), fontSize};
-    const Rect unitRect = {bounds.right() - Px(ctx, UnitInset) - unitWidth, bounds.y, unitWidth, bounds.height};
+    const Rect unitRect = {bounds.right() - Px(ctx, kNodeUnitInset) - unitWidth, bounds.y, unitWidth, bounds.height};
     impl->overlay.update({
         .instances = {
             {
@@ -167,7 +167,7 @@ void NodeTextInput::layout(const Context& ctx) {
             },
         },
         .clip = bounds,
-        .fontName = MonoFont,
+        .fontName = Typography::MonoFont,
         .maxCharacters = 128,
     });
 

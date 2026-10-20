@@ -2,7 +2,7 @@
 
 #include <jetstream/render/sakura/components/box.hh>
 
-#include "common.hh"
+#include "../../metrics.hh"
 
 #include <cmath>
 #include <limits>

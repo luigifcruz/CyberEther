@@ -3,7 +3,8 @@
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/label.hh>
 
-#include "common.hh"
+#include "../../detail/helpers.hh"
+#include "../../detail/text_metrics.hh"
 #include "../../metrics.hh"
 
 #include <algorithm>
@@ -11,8 +12,6 @@
 #include <utility>
 
 namespace Jetstream::Sakura {
-
-using namespace NodeStyle;
 
 struct NodeLabel::Impl {
     Config config;
@@ -41,14 +40,14 @@ void NodeLabel::update(Config config) {
 }
 
 Extent2D<F32> NodeLabel::measure(const Context& ctx, Extent2D<F32> available) {
-    const F32 line = Px(ctx, FontOf(ctx));
+    const F32 line = Px(ctx, NodeFontOf(ctx));
     return {FillLength(available.x), FitLength(impl->config.boxed ? line + Px(ctx, 16.0f) : line, available.y)};
 }
 
 void NodeLabel::layout(const Context& ctx) {
     const auto& config = impl->config;
     const Rect bounds = frame();
-    const F32 fontSize = Px(ctx, FontOf(ctx));
+    const F32 fontSize = Px(ctx, NodeFontOf(ctx));
     const F32 padding = config.boxed ? std::min(Px(ctx, 8.0f), bounds.width * 0.5f) : 0.0f;
     const F32 paddingY = config.boxed ? Px(ctx, 8.0f) : 0.0f;
     const Rect textRect = {bounds.x + padding, bounds.y + paddingY, std::max(0.0f, bounds.width - 2.0f * padding), fontSize};
@@ -70,7 +69,7 @@ void NodeLabel::layout(const Context& ctx) {
     impl->metrics.setWindow(ctx.render);
     std::string line = config.str.substr(0, config.str.find('\n'));
     const bool overflows = config.align != Align::Left &&
-                           impl->metrics.measure(MonoFont, line, fontSize) > textRect.width;
+                           impl->metrics.measure(Typography::MonoFont, line, fontSize) > textRect.width;
     const I32 alignX = overflows                     ? 0
                        : config.align == Align::Center ? 1
                        : config.align == Align::Right  ? 2
@@ -85,7 +84,7 @@ void NodeLabel::layout(const Context& ctx) {
             .alignment = {alignX, 1},
         }},
         .clip = Intersect(bounds, textRect),
-        .fontName = MonoFont,
+        .fontName = Typography::MonoFont,
         .maxCharacters = 256,
     });
 

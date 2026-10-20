@@ -7,8 +7,9 @@
 #include <jetstream/render/sakura/components/surface_image.hh>
 #include <jetstream/render/tools/icons_fa.hh>
 
-#include "common.hh"
+#include "../../detail/helpers.hh"
 #include "../../metrics.hh"
+#include "pointer.hh"
 
 #include <cmath>
 #include <limits>
@@ -16,8 +17,6 @@
 #include <utility>
 
 namespace Jetstream::Sakura {
-
-using namespace NodeStyle;
 
 struct NodeSurface::Impl {
     Config config;

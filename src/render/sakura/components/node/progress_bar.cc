@@ -2,8 +2,10 @@
 
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/label.hh>
+#include <jetstream/render/sakura/components/node/content_stack.hh>
 
-#include "common.hh"
+#include "../../detail/helpers.hh"
+#include "../../detail/text_metrics.hh"
 #include "../../metrics.hh"
 
 #include <algorithm>
@@ -11,8 +13,6 @@
 #include <utility>
 
 namespace Jetstream::Sakura {
-
-using namespace NodeStyle;
 
 struct NodeProgressBar::Impl {
     Config config;
@@ -39,15 +39,15 @@ void NodeProgressBar::update(Config config) {
 }
 
 Extent2D<F32> NodeProgressBar::measure(const Context& ctx, Extent2D<F32> available) {
-    return {FillLength(available.x), FitLength(Px(ctx, FontOf(ctx) + 10.0f), available.y)};
+    return {FillLength(available.x), FitLength(Px(ctx, NodeFontOf(ctx) + 10.0f), available.y)};
 }
 
 void NodeProgressBar::layout(const Context& ctx) {
     const auto& config = impl->config;
     const Rect bounds = frame();
     const F32 fraction = std::clamp(config.value, 0.0f, 1.0f);
-    const F32 rounding = Px(ctx, FrameRounding);
-    const F32 fontSize = Px(ctx, FontOf(ctx));
+    const F32 rounding = Px(ctx, kFrameRounding);
+    const F32 fontSize = Px(ctx, NodeFontOf(ctx));
     impl->metrics.setWindow(ctx.render);
 
     impl->frame.update({
@@ -64,8 +64,8 @@ void NodeProgressBar::layout(const Context& ctx) {
         .cornerRadius = rounding,
     });
 
-    const F32 textWidth = impl->metrics.measure(MonoFont, config.overlay, fontSize);
-    const F32 textX = std::clamp(fillEnd + Px(ctx, ItemSpacing),
+    const F32 textWidth = impl->metrics.measure(Typography::MonoFont, config.overlay, fontSize);
+    const F32 textX = std::clamp(fillEnd + Px(ctx, NodeContentStack::Spacing),
                                  bounds.x,
                                  std::max(bounds.x, bounds.right() - textWidth - Px(ctx, 8.0f)));
     impl->overlay.update({
@@ -78,7 +78,7 @@ void NodeProgressBar::layout(const Context& ctx) {
             .alignment = {0, 1},
         }},
         .clip = bounds,
-        .fontName = MonoFont,
+        .fontName = Typography::MonoFont,
         .maxCharacters = 256,
     });
 

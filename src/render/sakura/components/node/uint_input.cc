@@ -2,15 +2,14 @@
 
 #include <jetstream/render/sakura/components/node/text_input.hh>
 
-#include "common.hh"
+#include "../../metrics.hh"
+#include "parse.hh"
 
 #include <cerrno>
 #include <cstdlib>
 #include <utility>
 
 namespace Jetstream::Sakura {
-
-using namespace NodeStyle;
 
 namespace {
 
@@ -64,7 +63,7 @@ void NodeUIntInput::update(Config config) {
 }
 
 Extent2D<F32> NodeUIntInput::measure(const Context& ctx, Extent2D<F32> available) {
-    return {FillLength(available.x), FitLength(Px(ctx, FrameHeight(ctx)), available.y)};
+    return {FillLength(available.x), FitLength(Px(ctx, NodeFrameHeight(ctx)), available.y)};
 }
 
 void NodeUIntInput::layout(const Context& ctx) {

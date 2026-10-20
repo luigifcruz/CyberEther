@@ -29,7 +29,8 @@
 #include "harness.hh"
 #include "compositor/default/views/components/tooltip.hh"
 #include "compositor/default/views/flowgraph/editor/field_tooltip.hh"
-#include "render/sakura/components/node/common.hh"
+#include "render/sakura/metrics.hh"
+#include "render/sakura/detail/text_metrics.hh"
 #include "scene.hh"
 
 #include <algorithm>
@@ -59,7 +60,7 @@ Sakura::Context NodeContext(Render::Window* window) {
     auto ctx = MakeContext();
     ctx.render = window;
     ctx.palette = DistinctPalette();
-    ctx.fontSize = Sakura::NodeStyle::NodeFont;
+    ctx.fontSize = Sakura::kNodeFont;
     ctx.mouse = Extent2D<F32>{790.0f, 590.0f};
     return ctx;
 }
@@ -1674,17 +1675,17 @@ TEST_CASE("Node text ellipsizing keeps fitting text and cuts long text on a char
     REQUIRE(glyph > 0.0f);
     REQUIRE(metrics.measure(font, "AAAAA", 15.0f) == glyph * 5.0f);
 
-    CHECK(Sakura::NodeStyle::Ellipsize(metrics, font, "abc", 15.0f, 1000.0f) == "abc");
-    CHECK(Sakura::NodeStyle::Ellipsize(metrics, font, "abcde", 15.0f, glyph * 5.0f) == "abcde");
+    CHECK(metrics.ellipsize(font, "abc", 15.0f, 1000.0f) == "abc");
+    CHECK(metrics.ellipsize(font, "abcde", 15.0f, glyph * 5.0f) == "abcde");
 
     const F32 width = glyph * 5.0f + 0.5f;
-    const std::string cut = Sakura::NodeStyle::Ellipsize(metrics, font, "abcdefghij", 15.0f, width);
+    const std::string cut = metrics.ellipsize(font, "abcdefghij", 15.0f, width);
     CHECK(cut == "ab...");
     CHECK(metrics.measure(font, cut, 15.0f) <= width);
-    CHECK(Sakura::NodeStyle::Ellipsize(metrics, font, "abcdefghij", 15.0f, glyph) == "...");
+    CHECK(metrics.ellipsize(font, "abcdefghij", 15.0f, glyph) == "...");
 
     const std::string accents = "\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9";
-    const std::string accented = Sakura::NodeStyle::Ellipsize(metrics, font, accents, 15.0f, width);
+    const std::string accented = metrics.ellipsize(font, accents, 15.0f, width);
     REQUIRE(accented.size() >= 3);
     CHECK(accented.substr(accented.size() - 3) == "...");
     CHECK((accented.size() - 3) % 2 == 0);

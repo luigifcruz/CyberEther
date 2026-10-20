@@ -5,15 +5,15 @@
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
 
+#include "../../detail/helpers.hh"
 #include "../../detail/options.hh"
-#include "common.hh"
+#include "../../metrics.hh"
+#include "pointer.hh"
 
 #include <algorithm>
 #include <utility>
 
 namespace Jetstream::Sakura {
-
-using namespace NodeStyle;
 
 struct NodeCombo::Impl {
     Config config;
@@ -45,25 +45,25 @@ void NodeCombo::update(Config config) {
         .id = current.id,
         .options = current.options,
         .selected = SelectedOption(current),
-        .padding = FramePadX,
-        .rowPadding = {FramePadX, FramePadY},
+        .padding = kNodeFramePadX,
+        .rowPadding = {kNodeFramePadX, kNodeFramePadY},
         .onSelect = OptionSelected(impl->config),
     });
 }
 
 Extent2D<F32> NodeCombo::measure(const Context& ctx, Extent2D<F32> available) {
-    return {FillLength(available.x), FitLength(Px(ctx, FrameHeight(ctx)), available.y)};
+    return {FillLength(available.x), FitLength(Px(ctx, NodeFrameHeight(ctx)), available.y)};
 }
 
 void NodeCombo::layout(const Context& ctx) {
     const auto& config = impl->config;
     Rect bounds = frame();
-    bounds.height = std::min(bounds.height, Px(ctx, FrameHeight(ctx)));
+    bounds.height = std::min(bounds.height, Px(ctx, NodeFrameHeight(ctx)));
     const Rect clipRect = Intersect(bounds, clip());
     impl->rect = bounds;
     impl->hovered = impl->pointer.inside(clipRect);
 
-    const F32 rounding = Px(ctx, FrameRounding);
+    const F32 rounding = Px(ctx, kFrameRounding);
     const F32 arrowSize = bounds.height;
     const F32 valueX2 = std::max(bounds.x, bounds.right() - arrowSize);
     const bool visible = !bounds.empty();
@@ -84,8 +84,8 @@ void NodeCombo::layout(const Context& ctx) {
         .cornerRadius = rounding,
     });
 
-    const F32 fontSize = Px(ctx, FontOf(ctx));
-    const F32 padY = Px(ctx, FramePadY);
+    const F32 fontSize = Px(ctx, NodeFontOf(ctx));
+    const F32 padY = Px(ctx, kNodeFramePadY);
     const F32 r = fontSize * 0.40f;
     const Extent2D<F32> center = {valueX2 + padY + fontSize * 0.5f, bounds.y + padY + fontSize * 0.5f};
     impl->arrow.update({
@@ -97,13 +97,13 @@ void NodeCombo::layout(const Context& ctx) {
             },
             .color = ctx.color("text_primary"),
             .filled = true,
-            .visible = visible && valueX2 + arrowSize - Px(ctx, FramePadX) <= bounds.right(),
+            .visible = visible && valueX2 + arrowSize - Px(ctx, kNodeFramePadX) <= bounds.right(),
         }},
         .clip = bounds,
         .fringe = Fringe(ctx),
     });
 
-    const F32 padX = Px(ctx, FramePadX);
+    const F32 padX = Px(ctx, kNodeFramePadX);
     const Rect previewRect = {bounds.x + padX, bounds.y + padY, std::max(0.0f, valueX2 - bounds.x - padX), fontSize};
     impl->preview.update({
         .instances = {{
@@ -115,7 +115,7 @@ void NodeCombo::layout(const Context& ctx) {
             .alignment = {0, 1},
         }},
         .clip = Intersect(bounds, {bounds.x, bounds.y, std::max(0.0f, valueX2 - bounds.x), bounds.height}),
-        .fontName = MonoFont,
+        .fontName = Typography::MonoFont,
         .maxCharacters = 128,
     });
 

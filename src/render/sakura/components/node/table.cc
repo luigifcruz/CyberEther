@@ -3,7 +3,8 @@
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/label.hh>
 
-#include "common.hh"
+#include "../../detail/helpers.hh"
+#include "../../detail/text_metrics.hh"
 #include "../../metrics.hh"
 
 #include <algorithm>
@@ -13,8 +14,6 @@
 #include <vector>
 
 namespace Jetstream::Sakura {
-
-using namespace NodeStyle;
 
 namespace {
 
@@ -36,7 +35,7 @@ struct NodeTable::Impl {
     }
 
     F32 rowHeight(const Context& ctx) const {
-        return Px(ctx, FontOf(ctx) + 8.0f);
+        return Px(ctx, NodeFontOf(ctx) + 8.0f);
     }
 };
 
@@ -98,7 +97,7 @@ void NodeTable::layout(const Context& ctx) {
         for (auto& column : impl->columns) {
             column->update({
                 .instances = {},
-                .fontName = MonoFont,
+                .fontName = Typography::MonoFont,
                 .maxCharacters = kCellCharacters,
                 .capacity = rowCapacity,
             });
@@ -111,18 +110,18 @@ void NodeTable::layout(const Context& ctx) {
         return;
     }
 
-    const F32 fontSize = Px(ctx, FontOf(ctx));
-    const F32 cellPadX = Px(ctx, FramePadX);
+    const F32 fontSize = Px(ctx, NodeFontOf(ctx));
+    const F32 cellPadX = Px(ctx, kNodeFramePadX);
     const F32 line = Hairline(ctx);
 
     if (impl->weightsFontSize != fontSize || impl->weights.size() != columns) {
         impl->weightsFontSize = fontSize;
         impl->weights.assign(columns, 1.0f);
         for (U64 c = 0; c < columns; ++c) {
-            F32 width = config.showHeaders ? impl->metrics.measure(MonoFont, config.columns[c], fontSize) : 0.0f;
+            F32 width = config.showHeaders ? impl->metrics.measure(Typography::MonoFont, config.columns[c], fontSize) : 0.0f;
             for (const auto& row : config.rows) {
                 if (c < row.size()) {
-                    width = std::max(width, impl->metrics.measure(MonoFont, row[c], fontSize));
+                    width = std::max(width, impl->metrics.measure(Typography::MonoFont, row[c], fontSize));
                 }
             }
             impl->weights[c] = std::max(width, fontSize);
@@ -215,7 +214,7 @@ void NodeTable::layout(const Context& ctx) {
         impl->columns[c]->update({
             .instances = std::move(cells[c]),
             .clip = Intersect(bounds, columnRect),
-            .fontName = MonoFont,
+            .fontName = Typography::MonoFont,
             .maxCharacters = kCellCharacters,
             .capacity = rowCapacity,
         });

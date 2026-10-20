@@ -2,7 +2,7 @@
 
 #include <jetstream/render/sakura/components/node/field.hh>
 
-#include "common.hh"
+#include "../../metrics.hh"
 
 #include <algorithm>
 #include <limits>
@@ -10,7 +10,11 @@
 
 namespace Jetstream::Sakura {
 
-using namespace NodeStyle;
+namespace {
+
+constexpr F32 kFieldColumnMinWidth = 140.0f;
+
+}  // namespace
 
 struct NodeFieldGrid::Impl {
     Config config;
@@ -34,7 +38,7 @@ struct NodeFieldGrid::Impl {
         }
 
         const F32 gap = Px(ctx, NodeField::Gap);
-        const F32 minColumnWidth = Px(ctx, FieldColumnMinWidth);
+        const F32 minColumnWidth = Px(ctx, kFieldColumnMinWidth);
         const U64 columns = std::min<U64>(
             std::max<U64>(1, items.size()),
             (width > 0.0f && minColumnWidth > 0.0f)

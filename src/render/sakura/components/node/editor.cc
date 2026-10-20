@@ -1,16 +1,17 @@
 #include <jetstream/render/sakura/components/node/editor.hh>
 
 #include <jetstream/render/sakura/components/box.hh>
-#include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/curves.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
 #include <jetstream/render/tools/icons_fa.hh>
 
-#include "common.hh"
-#include "../../metrics.hh"
 #include "../../detail/access.hh"
+#include "../../detail/helpers.hh"
+#include "../../detail/text_metrics.hh"
+#include "../../metrics.hh"
+#include "pointer.hh"
 
 #include <algorithm>
 #include <bit>
@@ -23,8 +24,6 @@
 #include <utility>
 
 namespace Jetstream::Sakura {
-
-using namespace NodeStyle;
 
 namespace {
 
@@ -49,9 +48,9 @@ constexpr U64 kTextCapacity = 16;
 constexpr std::array<F32, 10> kZoomSteps = {0.5f, 0.67f, 0.8f, 0.9f, 1.0f, 1.1f, 1.25f, 1.5f, 1.75f, 2.0f};
 constexpr F32 kLinkHoverDistance = 10.0f;
 constexpr F32 kPinHoverRadius = 10.0f;
-constexpr F32 kTitleFont = BaseFont * 1.15f;
+constexpr F32 kTitleFont = Typography::FontSize * 1.15f;
 constexpr U64 kTimingCapacity = 8;
-constexpr F32 kSubtitleFont = BaseFont * 0.75f;
+constexpr F32 kSubtitleFont = Typography::FontSize * 0.75f;
 constexpr F32 kSubtitlePull = 14.0f;
 constexpr F32 kTitleGap = 8.0f;
 constexpr F32 kTimingOffset = 4.0f;
@@ -391,7 +390,7 @@ struct NodeFrame : public Component {
         if (spec.header) {
             const bool hasDiagnostic = spec.state != NodeState::Normal && !spec.diagnostic.empty();
             const bool hasChevron = spec.collapsible && spec.onToggleCollapse;
-            const F32 iconWidth = NodeFont;
+            const F32 iconWidth = kNodeFont;
             F32 reserved = 0.0f;
             if (hasChevron) {
                 reserved += iconWidth;
@@ -407,16 +406,16 @@ struct NodeFrame : public Component {
             }
             const F32 titleAvail = std::max(0.0f, width - reserved);
             const F32 centerSafe = std::max(0.0f, width - 2.0f * reserved);
-            const F32 titleWidth = metrics.measure(HeaderFont, spec.title, kTitleFont * r) / r;
+            const F32 titleWidth = metrics.measure(Typography::DisplaySemiboldFont, spec.title, kTitleFont * r) / r;
             displayTitle = spec.title;
             F32 zone = width;
             if (titleWidth > centerSafe) {
                 if (titleWidth > titleAvail) {
-                    displayTitle = Ellipsize(metrics, HeaderFont, spec.title, kTitleFont * r, titleAvail * r);
+                    displayTitle = metrics.ellipsize(Typography::DisplaySemiboldFont, spec.title, kTitleFont * r, titleAvail * r);
                 }
                 zone = titleAvail;
             }
-            const F32 displayWidth = metrics.measure(HeaderFont, displayTitle, kTitleFont * r) / r;
+            const F32 displayWidth = metrics.measure(Typography::DisplaySemiboldFont, displayTitle, kTitleFont * r) / r;
             titleX = std::max(0.0f, (zone - displayWidth) * 0.5f);
 
             const F32 iconY = (kTitleFont - iconWidth) * 0.5f;
@@ -428,14 +427,14 @@ struct NodeFrame : public Component {
                 skullRect = {skullX, iconY, iconWidth, iconWidth};
             }
 
-            const F32 subtitleWidth = metrics.measure(HeaderFont, spec.subtitle, kSubtitleFont * r) / r;
+            const F32 subtitleWidth = metrics.measure(Typography::DisplaySemiboldFont, spec.subtitle, kSubtitleFont * r) / r;
             subtitleX = std::max(0.0f, (width - subtitleWidth) * 0.5f);
             widest = std::max(widest, subtitleWidth);
 
             const F32 contentOrigin = kTitleFont + 2.0f * kPadding;
             const F32 subtitleTop = contentOrigin - kSubtitlePull;
             lastBottom = subtitleTop + kSubtitleFont;
-            cursor = lastBottom + ItemSpacing;
+            cursor = lastBottom + NodeContentStack::Spacing;
             any = true;
         }
 
@@ -443,12 +442,12 @@ struct NodeFrame : public Component {
         for (U64 i = 0; i < spec.pins.size(); ++i) {
             const auto& pin = spec.pins[i];
             const F32 top = any ? cursor : 0.0f;
-            const F32 labelWidth = metrics.measure(MonoFont, pin.label, NodeFont * r) / r;
+            const F32 labelWidth = metrics.measure(Typography::MonoFont, pin.label, kNodeFont * r) / r;
             widest = std::max(widest, labelWidth);
             const F32 x = pin.isInput ? 0.0f : std::max(0.0f, width - labelWidth);
-            pins[i].label = {x, top, labelWidth, NodeFont};
-            lastBottom = top + NodeFont;
-            cursor = lastBottom + ItemSpacing;
+            pins[i].label = {x, top, labelWidth, kNodeFont};
+            lastBottom = top + kNodeFont;
+            cursor = lastBottom + NodeContentStack::Spacing;
             any = true;
         }
 
@@ -489,7 +488,7 @@ struct NodeFrame : public Component {
 
         for (U64 i = 0; i < pins.size(); ++i) {
             const auto& pin = spec.pins[i];
-            const F32 cy = origin.y + kPadding + pins[i].label.y + NodeFont * 0.5f;
+            const F32 cy = origin.y + kPadding + pins[i].label.y + kNodeFont * 0.5f;
             pins[i].center = {pin.isInput ? rect.x : rect.right(), cy};
         }
         measured = Measured{
@@ -517,13 +516,13 @@ struct NodeFrame : public Component {
 
     Rect reach(const Rect& nodePx, F32 r) const {
         const F32 side = kPinRadius * r + 2.0f;
-        const F32 below = (kTimingOffset + static_cast<F32>(spec.timing.size()) * NodeFont) * r + 2.0f;
+        const F32 below = (kTimingOffset + static_cast<F32>(spec.timing.size()) * kNodeFont) * r + 2.0f;
         const F32 right = spec.timing.empty() ? side : std::max(side, nodePx.width * 3.0f);
         return {nodePx.x - side, nodePx.y - 2.0f, nodePx.width + side + right, nodePx.height + 2.0f + below};
     }
 
     Rect gripHandle() const {
-        const F32 size = NodeFont * 0.9f;
+        const F32 size = kNodeFont * 0.9f;
         return {rect.right() - size, rect.bottom() - size, size, size};
     }
 
@@ -587,7 +586,7 @@ struct NodeFrame : public Component {
                                                             : "resize_grip");
             const auto gripColor = Doubled(gripBase);
             const F32 margin = kPadding * 0.5f;
-            const F32 size = NodeFont * 0.60f;
+            const F32 size = kNodeFont * 0.60f;
             const F32 step = size * 0.35f;
             const Extent2D<F32> corner = {rect.right() - margin, rect.bottom() - margin};
             for (int line = 0; line < 2; ++line) {
@@ -639,24 +638,24 @@ struct NodeFrame : public Component {
         for (U64 i = 0; i < pins.size(); ++i) {
             const auto& label = pins[i].label;
             textInstances.push_back({
-                .rect = {top.x + label.x * r, top.y + label.y * r, std::max(1.0f, label.width) * r, NodeFont * r},
+                .rect = {top.x + label.x * r, top.y + label.y * r, std::max(1.0f, label.width) * r, kNodeFont * r},
                 .str = spec.pins[i].label,
                 .color = ctx.color("text_primary"),
-                .fontSize = NodeFont * r,
+                .fontSize = kNodeFont * r,
                 .alignment = {0, 1},
             });
         }
         header.update({
             .instances = std::move(headerInstances),
             .clip = clipRect,
-            .fontName = HeaderFont,
+            .fontName = Typography::DisplaySemiboldFont,
             .maxCharacters = 128,
             .capacity = 2,
         });
         texts.update({
             .instances = std::move(textInstances),
             .clip = clipRect,
-            .fontName = MonoFont,
+            .fontName = Typography::MonoFont,
             .maxCharacters = 128,
             .capacity = std::max<U64>(kTextCapacity, pins.size()),
         });
@@ -667,7 +666,7 @@ struct NodeFrame : public Component {
                 .rect = {top.x + chevronRect.x * r, top.y + chevronRect.y * r, chevronRect.width * r, chevronRect.height * r},
                 .str = spec.collapsed ? ICON_FA_CHEVRON_RIGHT : ICON_FA_CHEVRON_DOWN,
                 .color = ctx.color(f.chevronHovered ? "text_primary" : "text_secondary"),
-                .fontSize = NodeFont * r,
+                .fontSize = kNodeFont * r,
                 .alignment = {1, 1},
             });
         }
@@ -676,14 +675,14 @@ struct NodeFrame : public Component {
                 .rect = {top.x + skullRect.x * r, top.y + skullRect.y * r, skullRect.width * r, skullRect.height * r},
                 .str = ICON_FA_SKULL,
                 .color = stateColor,
-                .fontSize = NodeFont * r,
+                .fontSize = kNodeFont * r,
                 .alignment = {1, 1},
             });
         }
         icons.update({
             .instances = std::move(iconInstances),
             .clip = clipRect,
-            .fontName = IconFont,
+            .fontName = Typography::IconFont,
             .maxCharacters = 4,
             .capacity = 2,
         });
@@ -692,19 +691,19 @@ struct NodeFrame : public Component {
 
         std::vector<Label::Instance> timingInstances;
         for (U64 i = 0; i < spec.timing.size(); ++i) {
-            const F32 y = nodePx.bottom() + kTimingOffset * r + static_cast<F32>(i) * NodeFont * r;
+            const F32 y = nodePx.bottom() + kTimingOffset * r + static_cast<F32>(i) * kNodeFont * r;
             timingInstances.push_back({
-                .rect = {nodePx.x, y, std::max(1.0f, nodePx.width * 4.0f), NodeFont * r},
+                .rect = {nodePx.x, y, std::max(1.0f, nodePx.width * 4.0f), kNodeFont * r},
                 .str = spec.timing[i],
                 .color = ctx.color(i + 1 == spec.timing.size() ? "text_primary" : "text_secondary"),
-                .fontSize = NodeFont * r,
+                .fontSize = kNodeFont * r,
                 .alignment = {0, 1},
             });
         }
         timing.update({
             .instances = std::move(timingInstances),
             .clip = clipRect,
-            .fontName = MonoFont,
+            .fontName = Typography::MonoFont,
             .maxCharacters = 128,
             .capacity = std::bit_ceil(std::max<U64>(kTimingCapacity, spec.timing.size())),
         });
@@ -735,7 +734,7 @@ struct NodeFrame : public Component {
     I64 tooltipIndexAt(Extent2D<F32> gridPoint) const {
         const Extent2D<F32> top = {origin.x + kPadding, origin.y + kPadding};
         for (U64 i = 0; i < pins.size() && i < spec.pins.size(); ++i) {
-            const Rect label = {top.x + pins[i].label.x, top.y + pins[i].label.y, pins[i].label.width, NodeFont};
+            const Rect label = {top.x + pins[i].label.x, top.y + pins[i].label.y, pins[i].label.width, kNodeFont};
             if (spec.pins[i].tooltip && label.contains(gridPoint.x, gridPoint.y)) {
                 return static_cast<I64>(i);
             }
@@ -750,7 +749,7 @@ struct NodeFrame : public Component {
     std::optional<std::pair<Rect, Component*>> tooltipAt(Extent2D<F32> gridPoint) const {
         const Extent2D<F32> top = {origin.x + kPadding, origin.y + kPadding};
         for (U64 i = 0; i < pins.size() && i < spec.pins.size(); ++i) {
-            const Rect label = {top.x + pins[i].label.x, top.y + pins[i].label.y, pins[i].label.width, NodeFont};
+            const Rect label = {top.x + pins[i].label.x, top.y + pins[i].label.y, pins[i].label.width, kNodeFont};
             if (spec.pins[i].tooltip && label.contains(gridPoint.x, gridPoint.y)) {
                 return std::make_pair(label, spec.pins[i].tooltip());
             }
@@ -830,8 +829,8 @@ struct NodeFrame : public Component {
         });
 
         const char* label = "LOADING";
-        const F32 fontSize = BaseFont * r;
-        const F32 textWidth = metrics.measure(BoldFont, label, fontSize);
+        const F32 fontSize = Typography::FontSize * r;
+        const F32 textWidth = metrics.measure(Typography::MonoBoldFont, label, fontSize);
         const F32 padX = 10.0f * r;
         const F32 padY = 5.0f * r;
         const Extent2D<F32> badgeSize = {textWidth + padX * 2.0f, fontSize + padY * 2.0f};
@@ -856,7 +855,7 @@ struct NodeFrame : public Component {
                 .alignment = {0, 1},
             }},
             .clip = f.viewport,
-            .fontName = BoldFont,
+            .fontName = Typography::MonoBoldFont,
             .maxCharacters = 16,
         });
     }
@@ -1315,7 +1314,7 @@ struct GraphRoot : public Component {
 
         Context measureCtx = ctx;
         measureCtx.pixelRatio = ratio;
-        measureCtx.fontSize = NodeFont;
+        measureCtx.fontSize = kNodeFont;
         measureCtx.backdropColorKey = "node_background";
         for (const auto& id : depth) {
             frameFor(id)->measureLayout(measureCtx);
@@ -1356,7 +1355,7 @@ struct GraphRoot : public Component {
 
         Context nodeCtx = ctx.translated(offset);
         nodeCtx.pixelRatio = ratio;
-        nodeCtx.fontSize = NodeFont;
+        nodeCtx.fontSize = kNodeFont;
         nodeCtx.backdropColorKey = "node_background";
         for (U64 i = 0; i < depth.size(); ++i) {
             auto* frame = frameFor(depth[i]);

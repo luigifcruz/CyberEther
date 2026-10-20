@@ -38,6 +38,10 @@ constexpr F32 kPillShadowSoftness = 4.0f;
 constexpr F32 kPillShadowDrop = 1.0f;
 constexpr F32 kPillBorder = 1.5f;
 constexpr const char* kPillFill = "pill_field_bg";
+constexpr F32 kNodeFont = Typography::FontSize * Typography::ChromeScale;
+constexpr F32 kNodeFramePadX = 6.0f;
+constexpr F32 kNodeFramePadY = 3.0f;
+constexpr F32 kNodeUnitInset = 3.0f;
 
 inline F32 Px(const Context& ctx, F32 logical) {
     return logical * ctx.pixelRatio;
@@ -54,6 +58,14 @@ inline ColorRGBA<F32> WithAlpha(ColorRGBA<F32> color, F32 alpha) {
 
 inline F32 FontPx(const Context& ctx) {
     return Px(ctx, Typography::FontSize);
+}
+
+inline F32 NodeFontOf(const Context& ctx) {
+    return ctx.fontSize > 0.0f ? ctx.fontSize : Typography::FontSize;
+}
+
+inline F32 NodeFrameHeight(const Context& ctx) {
+    return NodeFontOf(ctx) + 2.0f * kNodeFramePadY;
 }
 
 inline F32 FrameHeightPx(const Context& ctx) {
