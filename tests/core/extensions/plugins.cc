@@ -364,7 +364,7 @@ TEST_CASE("Plugin ABI metadata remains a fixed public contract",
     REQUIRE(sizeof(JetstreamPluginAbi) == 3 * sizeof(std::uint32_t));
     REQUIRE(abi.magic == UINT32_C(0x4a535450));
     REQUIRE(abi.size == sizeof(JetstreamPluginAbi));
-    REQUIRE(abi.abi_version == 9);
+    REQUIRE(abi.abi_version == 10);
 }
 
 TEST_CASE("Plugin public entry points reject invalid bundle paths",
