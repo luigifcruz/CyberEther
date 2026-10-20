@@ -16,6 +16,7 @@
 #include "flowgraph_fixture.hh"
 #include "scene.hh"
 
+#include <jetstream/render/sakura/components/node/content_stack.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
 
 #include <any>
@@ -212,6 +213,7 @@ struct EditorRig {
     LayerSlot slot;
     LayerHost host;
     std::vector<Created> created;
+    std::vector<FlowgraphNode::BlockData> graph;
     U64 catalogs = 0;
 
     EditorRig() {
@@ -223,6 +225,7 @@ struct EditorRig {
     void frame(std::optional<Extent2D<F32>> mouse = std::nullopt) {
         editor.update({
             .id = "graph",
+            .graph = graph,
             .onBuildBlockOptions = [this]() {
                 ++catalogs;
                 return std::vector<FlowgraphBlockPicker::BlockOption>{
@@ -727,6 +730,34 @@ TEST_CASE("Double clicking empty canvas opens the block search at that grid poin
     CHECK(rig.created[1].type == "fft");
     CHECK(rig.created[1].position.x - cursor.x == 360.0f);
     CHECK(rig.created[1].position.y - cursor.y == 240.0f);
+}
+
+TEST_CASE("Blocks keep their node while they are destroyed for reconstruction and drop it once gone",
+          "[core][sakura][flowgraph][editor-views]") {
+    EditorRig rig;
+    FlowgraphNode::BlockData block;
+    block.name = "radio";
+    block.module = "sdr";
+    block.title = "Radio";
+    block.state = Block::State::Created;
+    rig.graph = {block};
+    rig.frame();
+    const auto nodes = [&] {
+        return Find<Sakura::NodeContentStack>(rig.host).size();
+    };
+    REQUIRE(nodes() == 1);
+
+    rig.graph.front().state = Block::State::Destroying;
+    rig.frame();
+    CHECK(nodes() == 1);
+
+    rig.graph.front().state = Block::State::Creating;
+    rig.frame();
+    CHECK(nodes() == 1);
+
+    rig.graph.clear();
+    rig.frame();
+    CHECK(nodes() == 0);
 }
 
 TEST_CASE("Double clicking the canvas while the block search is open only dismisses it",
