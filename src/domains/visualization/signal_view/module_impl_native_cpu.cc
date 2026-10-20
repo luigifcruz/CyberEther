@@ -137,8 +137,22 @@ Result SignalViewImplNativeCpu::computeSubmit() {
                 average += amplitude / lineplotAveraging;
             }
 
-            const F32 displayed = densityEnabled ? std::clamp(average, -1.0f, 1.0f)
-                                                 : std::tanh(2.0f * average);
+            F32 displayed;
+            if (densityEnabled) {
+                displayed = std::clamp(average, -1.0f, 1.0f);
+            } else {
+                const F32 x = 2.0f * average;
+                if (std::abs(x) <= 2.0f) {
+                    // [7/6] Pade approximation of tanh on the normal display range.
+                    // Keep libm for out-of-range values rather than clamping them.
+                    const F32 x2 = x * x;
+                    const F32 numerator = x * (135135.0f + x2 * (17325.0f + x2 * (378.0f + x2)));
+                    const F32 denominator = 135135.0f + x2 * (62370.0f + x2 * (3150.0f + 28.0f * x2));
+                    displayed = numerator / denominator;
+                } else {
+                    displayed = std::tanh(x);
+                }
+            }
             signalData[(i * 2) + 1] = displayed;
 
             if (maxData) {
