@@ -3,6 +3,8 @@
 
 #include <jetstream/types.hh>
 
+#include "tools/text.hh"
+
 #include <cerrno>
 #include <cmath>
 #include <cstdlib>
@@ -10,15 +12,6 @@
 #include <string>
 
 namespace Jetstream::Sakura {
-
-inline std::string Trim(const std::string& value) {
-    const auto begin = value.find_first_not_of(" \t\r\n");
-    if (begin == std::string::npos) {
-        return {};
-    }
-    const auto end = value.find_last_not_of(" \t\r\n");
-    return value.substr(begin, end - begin + 1);
-}
 
 inline bool DecimalCharacter(U32 character) {
     return (character >= '0' && character <= '9') || character == '.' || character == '+' || character == '-';
@@ -29,7 +22,7 @@ inline bool ScientificCharacter(U32 character) {
 }
 
 inline std::optional<F64> ParseFloat(const std::string& text) {
-    const std::string trimmed = Trim(text);
+    const std::string trimmed = Jetstream::Text::TrimBlank(text);
     if (trimmed.empty()) {
         return std::nullopt;
     }

@@ -1,6 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
+#include <future>
+#include <chrono>
 #include <unordered_map>
 
 #include "flowgraph_fixture.hh"
@@ -32,6 +34,7 @@ struct ConfigEditModule : Module::Impl,
     bool failDestroy = false;
     U64 reconfigurations = 0;
     U64 destructions = 0;
+    std::function<void()> onReconfigure;
     Tensor output;
 
     Result validate() override {
@@ -73,6 +76,7 @@ struct ConfigEditModule : Module::Impl,
     }
     Result reconfigure() override {
         ++reconfigurations;
+        if (onReconfigure) onReconfigure();
         if (failApply) {
             JST_ERROR("[CONFIG_EDIT_TEST] Forced apply failure.");
             return Result::ERROR;
@@ -134,6 +138,44 @@ Parser::Map Level(F32 level) {
 }
 
 }  // namespace
+
+TEST_CASE_METHOD(FlowgraphFixture, "Presentation reads the last coherent block while reconfiguration waits",
+                 "[core][flowgraph][config-edits][responsiveness]") {
+    using namespace std::chrono_literals;
+    REQUIRE(flowgraph->blockCreate("edit", ConfigEditBlockConfig{}, {}) == Result::SUCCESS);
+    std::promise<void> entered, release;
+    auto arrival = entered.get_future();
+    auto released = release.get_future().share();
+    Control()->onReconfigure = [&] { entered.set_value(); released.wait(); };
+    Parser::Map patch;
+    patch["threshold"] = 0.25f;
+    auto changing = std::async(std::launch::async, [&] { return flowgraph->blockReconfigure("edit", patch); });
+    const bool started = arrival.wait_for(3s) == std::future_status::ready;
+    auto presenting = std::async(std::launch::async, [&] {
+        for (int frame = 0; frame < 32; ++frame) {
+            Flowgraph::View::BlockData data;
+            Parser::Map config;
+            std::vector<std::string> keys;
+            if (flowgraph->present() != Result::SUCCESS ||
+                flowgraph->view().keys(keys) != Result::SUCCESS || keys.size() != 1 ||
+                !flowgraph->view().has("edit") ||
+                flowgraph->view().block("edit", data) != Result::SUCCESS ||
+                flowgraph->blockConfig("edit", config) != Result::SUCCESS ||
+                std::any_cast<F32>(data.config.at("threshold")) != 0.5f ||
+                std::any_cast<F32>(config.at("threshold")) != 0.5f) return false;
+        }
+        return true;
+    });
+    const bool progressed = presenting.wait_for(3s) == std::future_status::ready;
+    release.set_value();
+    const auto result = changing.get();
+    const bool coherent = presenting.get();
+    CHECK(started);
+    CHECK(progressed);
+    CHECK(coherent);
+    REQUIRE(result == Result::SUCCESS);
+    CHECK(std::any_cast<F32>(viewBlock("edit").config.at("threshold")) == 0.25f);
+}
 
 TEST_CASE_METHOD(FlowgraphFixture, "Module edits are deferred, mapped, coalesced and applied to all children",
                  "[core][flowgraph][config-edits]") {

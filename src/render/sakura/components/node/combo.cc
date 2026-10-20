@@ -35,6 +35,10 @@ NodeCombo::NodeCombo() {
 
 NodeCombo::~NodeCombo() = default;
 
+const NodeCombo::Config& NodeCombo::config() const {
+    return impl->config;
+}
+
 void NodeCombo::update(Config config) {
     if (config != impl->config) {
         invalidate(Dirty::Layout);

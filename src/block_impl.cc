@@ -28,6 +28,10 @@ Result Block::Impl::destroy() {
     return Result::SUCCESS;
 }
 
+Result Block::Impl::reconfigure() {
+    return Result::SUCCESS;
+}
+
 Result Block::Impl::moduleCreate(const std::string name,
                                  const std::shared_ptr<Module::Config>& config,
                                  const TensorMap& inputs) {

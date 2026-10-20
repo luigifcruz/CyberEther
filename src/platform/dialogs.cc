@@ -36,9 +36,9 @@ EM_JS(void, _jst_start_pick_file, (const char* ext_json), {
     channel.close();
 });
 
-EM_JS(void, _jst_start_save_file, (), {
+EM_JS(void, _jst_start_save_file, (const char* name, const char* ext_json), {
     const channel = new BroadcastChannel('jst_file_picker');
-    channel.postMessage({ type: 'saveFile' });
+    channel.postMessage({ type: 'saveFile', name: UTF8ToString(name), extensions: UTF8ToString(ext_json) });
     channel.close();
 });
 
@@ -68,7 +68,7 @@ void AppendWindowsFilter(std::vector<wchar_t>& filter, const std::wstring& value
     filter.push_back(L'\0');
 }
 
-std::vector<wchar_t> WindowsOpenFileFilter(const std::vector<std::string>& extensions) {
+std::vector<wchar_t> WindowsFileFilter(const std::vector<std::string>& extensions) {
     std::vector<wchar_t> filter;
     AppendWindowsFilter(filter, L"All Files");
     AppendWindowsFilter(filter, L"*.*");
@@ -110,6 +110,31 @@ bool InitializeWindowsDialogPath(const std::string& path,
 }
 
 }  // namespace
+#elif defined(JST_OS_BROWSER)
+namespace {
+
+std::string ExtensionJson(const std::vector<std::string>& extensions) {
+    std::string json = "[";
+    for (std::size_t i = 0; i < extensions.size(); ++i) {
+        if (i > 0) json += ",";
+        json += "\"" + extensions[i] + "\"";
+    }
+    return json + "]";
+}
+
+}  // namespace
+#elif defined(JST_OS_LINUX)
+namespace {
+
+std::string ZenityFilter(const std::vector<std::string>& extensions) {
+    std::string filter = "Selected files |";
+    for (const auto& extension : extensions) {
+        filter += " *." + extension;
+    }
+    return filter;
+}
+
+}  // namespace
 #endif
 
 #if defined(JST_OS_MAC) || defined(JST_OS_IOS)
@@ -125,16 +150,9 @@ Result PickFile(std::string& path,
         return Result::ERROR;
     }
 
-    std::string extensionJson = "[";
-    for (std::size_t i = 0; i < extensions.size(); ++i) {
-        if (i > 0) extensionJson += ",";
-        extensionJson += "\"" + extensions[i] + "\"";
-    }
-    extensionJson += "]";
-
     _filePicking = true;
     _fileCallback = std::move(callback);
-    _jst_start_pick_file(extensionJson.c_str());
+    _jst_start_pick_file(ExtensionJson(extensions).c_str());
     return Result::ERROR;
 }
 
@@ -145,11 +163,7 @@ Result PickFile(std::string& path,
                 std::function<void(std::string)> callback) {
     std::vector<std::string> arguments = {"--file-selection"};
     if (!extensions.empty()) {
-        std::string filter = "Selected files |";
-        for (const auto& extension : extensions) {
-            filter += " *." + extension;
-        }
-        arguments.push_back("--file-filter=" + filter);
+        arguments.push_back("--file-filter=" + ZenityFilter(extensions));
     }
 
     if (RunProcess("zenity", arguments, path) != Result::SUCCESS || path.empty()) {
@@ -172,7 +186,7 @@ Result PickFile(std::string& path,
         return Result::ERROR;
     }
 
-    auto filter = WindowsOpenFileFilter(extensions);
+    auto filter = WindowsFileFilter(extensions);
     OPENFILENAMEW dialog = {};
     dialog.lStructSize = sizeof(dialog);
     dialog.lpstrFile = buffer.data();
@@ -249,25 +263,35 @@ Result PickFolder(std::string&, std::function<void(std::string)>) {
 
 #elif defined(JST_OS_BROWSER)
 
-Result SaveFile(std::string&, std::function<void(std::string)> callback) {
+Result SaveFile(std::string& path,
+                const std::vector<std::string>& extensions,
+                std::function<void(std::string)> callback) {
     if (_filePicking) {
         return Result::ERROR;
     }
     _filePicking = true;
     _fileCallback = std::move(callback);
-    _jst_start_save_file();
+    const std::string name = PathToUtf8(PathFromUtf8(path).filename());
+    _jst_start_save_file(name.c_str(), ExtensionJson(extensions).c_str());
     return Result::ERROR;
 }
 
 #elif defined(JST_OS_LINUX)
 
-Result SaveFile(std::string& path, std::function<void(std::string)> callback) {
-    const std::vector<std::string> arguments = {
+Result SaveFile(std::string& path,
+                const std::vector<std::string>& extensions,
+                std::function<void(std::string)> callback) {
+    std::vector<std::string> arguments = {
         "--file-selection",
         "--save",
         "--confirm-overwrite",
-        "--file-filter=YAML files | *.yml *.yaml",
     };
+    if (!path.empty()) {
+        arguments.push_back("--filename=" + path);
+    }
+    if (!extensions.empty()) {
+        arguments.push_back("--file-filter=" + ZenityFilter(extensions));
+    }
     if (RunProcess("zenity", arguments, path) != Result::SUCCESS || path.empty()) {
         JST_ERROR("No file selected or operation cancelled.");
         return Result::ERROR;
@@ -279,21 +303,24 @@ Result SaveFile(std::string& path, std::function<void(std::string)> callback) {
 
 #elif defined(JST_OS_WINDOWS)
 
-Result SaveFile(std::string& path, std::function<void(std::string)> callback) {
+Result SaveFile(std::string& path,
+                const std::vector<std::string>& extensions,
+                std::function<void(std::string)> callback) {
     std::array<wchar_t, WindowsDialogPathCapacity> buffer = {};
     if (!InitializeWindowsDialogPath(path, buffer)) {
         JST_ERROR("Initial file path is too long.");
         return Result::ERROR;
     }
 
-    static constexpr wchar_t filter[] =
-        L"All Files\0*.*\0CyberEther Flowgraphs (.yml, .yaml)\0*.yml;*.yaml\0\0";
+    auto filter = WindowsFileFilter(extensions);
+    const auto defaultExtension = extensions.empty() ? std::wstring{} : PathFromUtf8(extensions.front()).native();
     OPENFILENAMEW dialog = {};
     dialog.lStructSize = sizeof(dialog);
     dialog.lpstrFile = buffer.data();
     dialog.nMaxFile = static_cast<DWORD>(buffer.size());
-    dialog.lpstrFilter = filter;
-    dialog.nFilterIndex = 2;
+    dialog.lpstrFilter = filter.data();
+    dialog.nFilterIndex = extensions.empty() ? 1 : 2;
+    dialog.lpstrDefExt = defaultExtension.empty() ? nullptr : defaultExtension.c_str();
     if (!GetSaveFileNameW(&dialog)) {
         JST_ERROR("No file selected or operation cancelled.");
         return Result::ERROR;
@@ -311,7 +338,7 @@ Result SaveFile(std::string& path, std::function<void(std::string)> callback) {
 
 #else
 
-Result SaveFile(std::string&, std::function<void(std::string)>) {
+Result SaveFile(std::string&, const std::vector<std::string>&, std::function<void(std::string)>) {
     JST_ERROR("Saving files is not supported in this platform.");
     return Result::ERROR;
 }

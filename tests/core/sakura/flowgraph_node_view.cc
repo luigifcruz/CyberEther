@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
+#include "compositor/default/actions/flowgraph.hh"
 #include "compositor/default/model/meta.hh"
 #include "compositor/default/views/flowgraph/editor/node.hh"
 
@@ -133,8 +134,11 @@ struct NodeSession {
     ConfigMeta configMeta;
     bool feedLayout = true;
     std::optional<NodeMeta> layoutMail;
+    std::optional<FlowgraphNode::Layout> layoutMailBase;
+    std::function<NodeMeta(const NodeMeta&, const std::optional<FlowgraphNode::Layout>&)> merge;
     std::optional<bool> collapseMail;
     std::vector<NodeMeta> layouts;
+    std::vector<std::optional<FlowgraphNode::Layout>> layoutBases;
     std::vector<bool> toggles;
     std::unordered_map<std::string, SurfaceState> surfaces;
     std::optional<NodeEditor::Geometry> geometry;
@@ -169,7 +173,7 @@ struct NodeSession {
 
     void tick() {
         if (layoutMail.has_value()) {
-            meta = *layoutMail;
+            meta = merge ? merge(*layoutMail, layoutMailBase) : *layoutMail;
             layoutMail.reset();
         }
         if (collapseMail.has_value()) {
@@ -199,10 +203,12 @@ struct NodeSession {
             config.block.layout = FlowgraphNode::Layout{meta.x, meta.y, meta.width, meta.height};
         }
         config.block.configCollapsed = configMeta.collapsed;
-        config.onLayout = [this](F32 x, F32 y, F32 width, F32 height) {
+        config.onLayout = [this, base = config.block.layout](F32 x, F32 y, F32 width, F32 height) {
             const NodeMeta next{.x = x, .y = y, .width = width, .height = height};
+            layoutBases.push_back(base);
             layouts.push_back(next);
             layoutMail = next;
+            layoutMailBase = base;
         };
         config.onConfigCollapse = [this](bool collapsed) {
             toggles.push_back(collapsed);
@@ -422,6 +428,148 @@ TEST_CASE("Auto-height nodes report zero height and ignore saved layout heights"
     session.run(3);
     CHECK(session.meta.height == 0.0f);
     CHECK(session.layouts.back().height == 0.0f);
+}
+
+TEST_CASE("Auto-sized flowgraph nodes publish outer bounds in graph coordinates",
+          "[core][sakura][flowgraph][node-view]") {
+    const F32 scale = GENERATE(1.0f, 2.0f);
+    CAPTURE(scale);
+    NodeSession session(MakeConfig(MakeBlock("auto-bounds")), scale,
+                        NodeMeta{.x = 20.0f, .y = 30.0f, .width = 0.0f, .height = 0.0f});
+    std::vector<Rect> bounds;
+    session.config.onBounds = [&](Rect rect, Extent2D<F32>, std::optional<Extent2D<F32>>) {
+        bounds.push_back(rect);
+    };
+    session.run(4);
+    REQUIRE_FALSE(bounds.empty());
+    REQUIRE(session.geometry.has_value());
+    CHECK(bounds.back().x == Catch::Approx(20.0f));
+    CHECK(bounds.back().y == Catch::Approx(30.0f));
+    CHECK(bounds.back().width == Catch::Approx(session.geometry->dimensions.x));
+    CHECK(bounds.back().height == Catch::Approx(session.geometry->dimensions.y));
+    CHECK(bounds.back().width > DefaultNodeWidth(session.config.block.nodeSize));
+    CHECK(bounds.back().height > 0.0f);
+
+    const U64 reported = bounds.size();
+    session.config.block.state = Block::State::Creating;
+    session.run(2);
+    CHECK(bounds.size() == reported);
+
+    session.config.block.state = Block::State::Created;
+    session.run(2);
+    REQUIRE(bounds.size() > reported);
+    session.layoutMail.reset();
+    session.meta.x = 320.0f;
+    session.run(3);
+    CHECK(bounds.back().x == Catch::Approx(320.0f));
+}
+
+TEST_CASE("Consecutive node drag frames emit each move against the layout the node last received",
+          "[core][sakura][flowgraph][node-view]") {
+    NodeSession session(MakeConfig(MakeBlock("dragged")), 1.0f,
+                        NodeMeta{.x = 20.0f, .y = 30.0f, .width = 200.0f, .height = 0.0f});
+    session.run(4);
+    session.layouts.clear();
+    session.layoutBases.clear();
+
+    Extent2D<F32> point = session.header();
+    session.send(MouseEventType::Move, point);
+    session.tick();
+    session.send(MouseEventType::Click, point);
+    session.tick();
+    for (int step = 0; step < 5; ++step) {
+        point.x += 10.0f;
+        session.send(MouseEventType::Move, point);
+        session.tick();
+    }
+    session.send(MouseEventType::Release, point);
+    session.run(3);
+
+    REQUIRE(session.layouts.size() >= 2);
+    for (U64 i = 0; i < session.layouts.size(); ++i) {
+        CAPTURE(i);
+        REQUIRE(session.layoutBases[i].has_value());
+        const NodeMeta seen = i == 0 ? NodeMeta{.x = 20.0f, .y = 30.0f, .width = 200.0f, .height = 0.0f}
+                                     : session.layouts[i - 1];
+        CHECK(session.layoutBases[i]->x == Catch::Approx(seen.x));
+        CHECK(session.layoutBases[i]->y == Catch::Approx(seen.y));
+    }
+    CHECK(session.meta.x > 20.0f);
+    CHECK(session.meta.x == Catch::Approx(session.origin().x));
+}
+
+TEST_CASE("A node layout write in flight never overwrites an external edit that lands before it",
+          "[core][sakura][flowgraph][node-view]") {
+    const NodeMeta initial{.x = 20.0f, .y = 30.0f, .width = 200.0f, .height = 0.0f};
+    NodeSession session(MakeConfig(MakeBlock("contested")), 1.0f, initial);
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    FlowgraphActions actions(state, callbacks);
+    auto flowgraph = std::make_shared<Flowgraph>();
+    state.flowgraph.items["graph"] = flowgraph;
+    REQUIRE(flowgraph->metadata().set("node", initial, "contested") == Result::SUCCESS);
+    const auto stored = [&] {
+        NodeMeta saved;
+        REQUIRE(flowgraph->metadata().get("node", saved, "contested") == Result::SUCCESS);
+        return saved;
+    };
+    session.merge = [&](const NodeMeta& next, const std::optional<FlowgraphNode::Layout>& base) {
+        std::optional<NodeMeta> saved;
+        if (base.has_value()) {
+            saved = NodeMeta{base->x, base->y, base->width, base->height};
+        }
+        REQUIRE(actions.handle(MailSetNodeMeta{"graph", "contested", next, saved}) == Result::SUCCESS);
+        return stored();
+    };
+    session.run(4);
+
+    Extent2D<F32> point = session.header();
+    session.send(MouseEventType::Move, point);
+    session.tick();
+    session.send(MouseEventType::Click, point);
+    session.tick();
+    for (int step = 0; step < 3; ++step) {
+        point.x += 10.0f;
+        session.send(MouseEventType::Move, point);
+        session.tick();
+    }
+    session.send(MouseEventType::Release, point);
+
+    NodeMeta external = stored();
+    REQUIRE(external.x > initial.x);
+    external.x = 500.0f;
+    REQUIRE(flowgraph->metadata().set("node", external, "contested") == Result::SUCCESS);
+    session.meta = external;
+    session.run(4);
+    CHECK(stored().x == Catch::Approx(500.0f));
+    CHECK(session.origin().x == Catch::Approx(500.0f));
+}
+
+TEST_CASE("Offscreen flowgraph nodes publish their bounds without a stale content measurement",
+          "[core][sakura][flowgraph][node-view]") {
+    auto config = MakeConfig(MakeBlock("culled"));
+    config.block.configFields.push_back(EditorField("culled:field:0"));
+    NodeSession session(config, 1.0f, NodeMeta{.x = 20.0f, .y = 30.0f, .width = 200.0f, .height = 0.0f});
+    std::vector<std::optional<Extent2D<F32>>> contents;
+    session.config.onBounds = [&](Rect, Extent2D<F32>, std::optional<Extent2D<F32>> content) {
+        contents.push_back(content);
+    };
+    session.run(4);
+    REQUIRE_FALSE(contents.empty());
+    CHECK(contents.back().has_value());
+
+    session.layoutMail.reset();
+    session.meta.x = 5000.0f;
+    session.run(4);
+    REQUIRE(session.geometry.has_value());
+    CHECK_FALSE(session.geometry->onscreen);
+    CHECK_FALSE(contents.back().has_value());
+
+    session.layoutMail.reset();
+    session.meta.x = 20.0f;
+    session.run(4);
+    CHECK(session.geometry->onscreen);
+    CHECK(contents.back().has_value());
 }
 
 TEST_CASE("User resize grows the node and hands all growth to the attached surface",

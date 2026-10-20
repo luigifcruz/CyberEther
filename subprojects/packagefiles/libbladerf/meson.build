@@ -68,6 +68,9 @@ private_args = [
   '-DLOGGING_ENABLED',
   '-DHAVE_LIBUSB_GET_VERSION',
   '-DNUAND_MODIFICATIONS',
+  '-DSHA256_Init=bladerf_SHA256_Init',
+  '-DSHA256_Update=bladerf_SHA256_Update',
+  '-DSHA256_Final=bladerf_SHA256_Final',
   '-DLIBBLADERF_SEARCH_PREFIX="' + get_option('prefix').replace('\\', '\\\\') + '"',
 ]
 if system == 'linux'

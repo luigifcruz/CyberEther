@@ -18,11 +18,11 @@ graph:
         
         This graph does the same job as the **Multi-FM Receiver** example: capture 2 MHz of the FM band, cut two stations out of it, and play one. The difference is that nothing is hidden. Every stage that the Filter block bundles is a separate block here, laid out left to right, with a numbered note beside it.
         
-        1. Open the **Device** dropdown on the **Soapy SDR** block and choose your radio.
+        1. Open the **Device** dropdown on the **SDR** block and choose your radio.
         2. Leave **Frequency** at 96.900 MHz for now. The two stations this graph expects sit at 96.5 and 97.3 MHz. Retune to a center that has stations 400 kHz either side of it in your city.
         3. Adjust **Volume** on the **Audio** block to a comfortable level.
 
-        **Radio not listed?** Check the cable and plug the dongle directly into the computer rather than a hub. Close any other program that is using it, only one program can open a radio at a time. Then reopen this example from the **Flowgraph** menu under **Open Examples** so the list is rebuilt. On Linux, the kernel's DVB-T driver can claim an RTL-SDR before SoapySDR sees it. On Windows, the dongle needs the WinUSB driver installed with Zadig.
+        **Radio not listed?** Check the cable and plug the dongle directly into the computer rather than a hub. Close any other program that is using it, only one program can open a radio at a time. Then reopen this example from the **Flowgraph** menu under **Open Examples** so the list is rebuilt. On Linux, the kernel's DVB-T driver can claim an RTL-SDR before CyberEther sees it. On Windows, the dongle needs the WinUSB driver installed with Zadig.
         
         ## How to read the canvas
         The upper row prepares the two filters and never touches the radio. The lower row carries radio samples. They meet at **Multiply**, where filtering actually happens, and everything after that is shared. Follow the four numbered notes in order. Each one ends with a link if you want the theory behind it.
@@ -180,15 +180,13 @@ graph:
         y: 75
         width: 140
         height: 0
-  - name: soapy
-    module: soapy
+  - name: sdr
+    module: sdr
     device: cpu
     runtime: native
     provider: generic
     config:
-      modulePath: ''
       deviceString: ''
-      streamString: ''
       antenna: ''
       frequency: 9.69e+07
       frequencyStep: 1000000
@@ -204,7 +202,7 @@ graph:
         y: 361
         width: 286
         height: 0
-  - name: pad_soapy
+  - name: pad_sdr
     module: pad
     device: cpu
     runtime: native
@@ -213,14 +211,14 @@ graph:
       size: 100
       axis: 1
     input:
-      unpadded: '${graph.soapy.output.signal}'
+      unpadded: '${graph.sdr.output.signal}'
     meta:
       node:
         x: 364
         y: 360.99997
         width: 120
         height: 0
-  - name: fft_soapy
+  - name: fft_sdr
     module: fft
     device: cpu
     runtime: native
@@ -229,7 +227,7 @@ graph:
       forward: true
       complexOutput: false
     input:
-      signal: '${graph.pad_soapy.output.padded}'
+      signal: '${graph.pad_sdr.output.padded}'
     meta:
       node:
         x: 519
@@ -244,7 +242,7 @@ graph:
     config:
       axis: 1
     input:
-      buffer: '${graph.fft_soapy.output.signal}'
+      buffer: '${graph.fft_sdr.output.signal}'
     meta:
       node:
         x: 674

@@ -9,7 +9,7 @@
 #include "../context.hh"
 #include "../metrics.hh"
 #include "../detail/corner_mask.hh"
-#include "../detail/text_lines.hh"
+#include "tools/text.hh"
 
 #include <algorithm>
 #include <cmath>
@@ -61,7 +61,7 @@ struct Console::Impl {
         syncedRatio = ratio;
         outputView.update({
             .id = config.id + ":output",
-            .value = JoinLines(config.output),
+            .value = Jetstream::Text::JoinLines(config.output),
             .fontSize = fontSizePixels,
             .fontScale = Typography::ConsoleScale,
             .stickToBottom = true,

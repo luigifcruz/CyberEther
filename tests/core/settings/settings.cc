@@ -10,6 +10,9 @@
 #include <stdexcept>
 #include <string>
 
+#include "environment.hh"
+#include "jetstream/compositor.hh"
+#include "jetstream/logger.hh"
 #include "jetstream/platform.hh"
 #include "jetstream/settings.hh"
 
@@ -17,63 +20,7 @@ using namespace Jetstream;
 
 namespace {
 
-bool SetEnvValue(const char* name, const std::optional<std::string>& value) {
-#if defined(JST_OS_WINDOWS)
-    return _putenv_s(name, value ? value->c_str() : "") == 0;
-#else
-    if (value) {
-        return setenv(name, value->c_str(), 1) == 0;
-    }
-
-    return unsetenv(name) == 0;
-#endif
-}
-
-struct ScopedEnvVar {
-    explicit ScopedEnvVar(const char* name) : name(name) {
-        if (const char* value = std::getenv(name)) {
-            originalValue = value;
-        }
-    }
-
-    ~ScopedEnvVar() {
-        (void)SetEnvValue(name.c_str(), originalValue);
-    }
-
-    bool set(const std::optional<std::string>& value) const {
-        return SetEnvValue(name.c_str(), value);
-    }
-
-    std::string name;
-    std::optional<std::string> originalValue;
-};
-
-#if defined(JST_OS_WINDOWS)
-
-bool SetWideEnvValue(const wchar_t* name, const std::optional<std::wstring>& value) {
-    return _wputenv_s(name, value ? value->c_str() : L"") == 0;
-}
-
-struct ScopedWideEnvVar {
-    explicit ScopedWideEnvVar(const wchar_t* name) : name(name) {
-        if (const wchar_t* value = _wgetenv(name)) {
-            originalValue = value;
-        }
-    }
-
-    ~ScopedWideEnvVar() {
-        (void)SetWideEnvValue(name.c_str(), originalValue);
-    }
-
-    bool set(const std::optional<std::wstring>& value) const {
-        return SetWideEnvValue(name.c_str(), value);
-    }
-
-    std::wstring name;
-    std::optional<std::wstring> originalValue;
-};
-
-#endif
+using ScopedEnvVar = TestSupport::ScopedEnvironment;
 
 struct TempPathRoot {
     explicit TempPathRoot(const std::string& label) {
@@ -100,7 +47,7 @@ struct SettingsSandbox {
         , homeEnv("HOME")
         , xdgConfigEnv("XDG_CONFIG_HOME")
 #elif defined(JST_OS_WINDOWS)
-        , appDataEnv(L"APPDATA")
+        , appDataEnv("APPDATA")
 #elif defined(JST_OS_MAC)
         , fixedHomeEnv("CFFIXED_USER_HOME")
 #endif
@@ -111,7 +58,7 @@ struct SettingsSandbox {
             throw std::runtime_error("failed to redirect settings test environment");
         }
 #elif defined(JST_OS_WINDOWS)
-        if (!appDataEnv.set((tempRoot.root / "AppData" / "Roaming").wstring())) {
+        if (!appDataEnv.set(Platform::PathToUtf8(tempRoot.root / "AppData" / "Roaming"))) {
             throw std::runtime_error("failed to redirect settings test environment");
         }
 #elif defined(JST_OS_MAC)
@@ -148,7 +95,7 @@ struct SettingsSandbox {
     ScopedEnvVar homeEnv;
     ScopedEnvVar xdgConfigEnv;
 #elif defined(JST_OS_WINDOWS)
-    ScopedWideEnvVar appDataEnv;
+    ScopedEnvVar appDataEnv;
 #elif defined(JST_OS_MAC)
     ScopedEnvVar fixedHomeEnv;
 #endif
@@ -182,6 +129,30 @@ void WriteFile(const std::filesystem::path& path, const std::string& content) {
     }
 }
 
+Parser::Map ReadDocument(const std::filesystem::path& path) {
+    Parser::Map document;
+    if (Parser::YamlDecode(ReadFile(path), document) != Result::SUCCESS) {
+        throw std::runtime_error("failed to decode settings file");
+    }
+    return document;
+}
+
+const Parser::Map& Section(const Parser::Map& map, const std::string& key) {
+    return std::any_cast<const Parser::Map&>(map.at(key));
+}
+
+const Parser::Sequence& List(const Parser::Map& map, const std::string& key) {
+    return std::any_cast<const Parser::Sequence&>(map.at(key));
+}
+
+std::string Scalar(const Parser::Map& map, const std::string& key) {
+    return std::any_cast<const std::string&>(map.at(key));
+}
+
+std::string Scalar(const Parser::Sequence& sequence, std::size_t index) {
+    return std::any_cast<const std::string&>(sequence.at(index));
+}
+
 void RequireDefaults(const Settings& settings) {
     const Settings defaults;
 
@@ -192,13 +163,21 @@ void RequireDefaults(const Settings& settings) {
     REQUIRE(settings.graphics.size.height == 1080);
     REQUIRE(settings.graphics.scale == 1.0f);
     REQUIRE(settings.graphics.framerate == 60);
-    REQUIRE(settings.remote.brokerUrl == "https://cyberether.org");
-    REQUIRE(settings.remote.codec == "h264");
-    REQUIRE(settings.remote.encoder == "auto");
-    REQUIRE_FALSE(settings.remote.autoJoinSessions);
-    REQUIRE(settings.remote.framerate == 30);
+    REQUIRE(settings.remote.broker.address == "0.0.0.0");
+    REQUIRE(settings.remote.broker.port == 8686);
+    REQUIRE(settings.remote.broker.publicUrl.empty());
+    REQUIRE(settings.remote.broker.certificate.empty());
+    REQUIRE(settings.remote.broker.key.empty());
+    REQUIRE(settings.remote.video.codec == "h264");
+    REQUIRE(settings.remote.video.encoder == "auto");
+    REQUIRE_FALSE(settings.remote.access.autoApprove);
+    REQUIRE(settings.remote.video.framerate == 30);
     REQUIRE(settings.interface.themeKey == "Dark");
     REQUIRE(settings.interface.backgroundParticles);
+    REQUIRE(settings.intelligence.provider.empty());
+    REQUIRE(settings.intelligence.model.empty());
+    REQUIRE(settings.intelligence.models.empty());
+    REQUIRE(settings.intelligence.customProviders.empty());
     REQUIRE(settings.developer.logLevel == defaults.developer.logLevel);
     REQUIRE_FALSE(settings.developer.timingEnabled);
     REQUIRE(settings.benchmark.format == "markdown");
@@ -248,11 +227,11 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     settings.graphics.framerate = 75;
     settings.interface.themeKey = "Light";
     settings.interface.backgroundParticles = false;
-    settings.remote.brokerUrl = "https://example.com";
-    settings.remote.codec = "av1";
-    settings.remote.encoder = "software";
-    settings.remote.autoJoinSessions = true;
-    settings.remote.framerate = 24;
+    settings.remote.broker.publicUrl = "https://example.com";
+    settings.remote.video.codec = "av1";
+    settings.remote.video.encoder = "software";
+    settings.remote.access.autoApprove = true;
+    settings.remote.video.framerate = 24;
     settings.developer.logLevel = 4;
     settings.developer.timingEnabled = true;
     settings.registry.plugins.push_back(pluginPath);
@@ -293,11 +272,11 @@ TEST_CASE("Settings persists serialized fields and reloads them from disk",
     REQUIRE(restored.graphics.framerate == 75);
     REQUIRE(restored.interface.themeKey == "Light");
     REQUIRE_FALSE(restored.interface.backgroundParticles);
-    REQUIRE(restored.remote.brokerUrl == "https://example.com");
-    REQUIRE(restored.remote.codec == "av1");
-    REQUIRE(restored.remote.encoder == "software");
-    REQUIRE(restored.remote.autoJoinSessions);
-    REQUIRE(restored.remote.framerate == 24);
+    REQUIRE(restored.remote.broker.publicUrl == "https://example.com");
+    REQUIRE(restored.remote.video.codec == "av1");
+    REQUIRE(restored.remote.video.encoder == "software");
+    REQUIRE(restored.remote.access.autoApprove);
+    REQUIRE(restored.remote.video.framerate == 24);
     REQUIRE(restored.developer.logLevel == 4);
     REQUIRE(restored.developer.timingEnabled);
     REQUIRE(restored.benchmark.format == "markdown");
@@ -320,8 +299,10 @@ TEST_CASE("Settings loads partial YAML over defaults", "[core][settings][persist
               "interface:\n"
               "  themeKey: Solarized\n"
               "remote:\n"
-              "  brokerUrl: https://example.net\n"
-              "  autoJoinSessions: true\n"
+              "  broker:\n"
+              "    publicUrl: https://example.net\n"
+              "  access:\n"
+              "    autoApprove: true\n"
               "developer:\n"
               "  logLevel: 4\n"
               "registry:\n"
@@ -344,9 +325,9 @@ TEST_CASE("Settings loads partial YAML over defaults", "[core][settings][persist
     REQUIRE(settings.graphics.deviceId == 0);
     REQUIRE(settings.interface.themeKey == "Solarized");
     REQUIRE(settings.interface.backgroundParticles);
-    REQUIRE(settings.remote.brokerUrl == "https://example.net");
-    REQUIRE(settings.remote.autoJoinSessions);
-    REQUIRE(settings.remote.codec == "h264");
+    REQUIRE(settings.remote.broker.publicUrl == "https://example.net");
+    REQUIRE(settings.remote.access.autoApprove);
+    REQUIRE(settings.remote.video.codec == "h264");
     REQUIRE(settings.developer.logLevel == 4);
     REQUIRE(settings.registry.plugins.size() == 1);
     REQUIRE(settings.registry.plugins[0] == "/tmp/cyberether-extra.cep");
@@ -375,18 +356,81 @@ TEST_CASE("Settings can update memory without persisting", "[core][settings][per
     REQUIRE(restored.runtime.dependencyPolicy == "allow");
 }
 
+TEST_CASE("Queued settings publish immediately and preserve persistence ordering", "[core][settings][persistence]") {
+    SettingsSandbox sandbox("async");
+    Settings settings;
+    for (int i = 0; i < 64; ++i) {
+        settings.interface.themeKey = "Queued " + std::to_string(i);
+        REQUIRE(Settings::SetAsync(settings) == Result::SUCCESS);
+        Settings visible;
+        REQUIRE(Settings::Get(visible) == Result::SUCCESS);
+        CHECK(visible.interface.themeKey == settings.interface.themeKey);
+    }
+    REQUIRE(Settings::Flush() == Result::SUCCESS);
+    CHECK(ReadFile(sandbox.path).find("Queued 63") != std::string::npos);
+    settings.interface.themeKey = "Before barrier";
+    REQUIRE(Settings::SetAsync(settings) == Result::SUCCESS);
+    settings.interface.themeKey = "Synchronous barrier";
+    REQUIRE(Settings::Set(settings) == Result::SUCCESS);
+    CHECK(ReadFile(sandbox.path).find("Synchronous barrier") != std::string::npos);
+    CHECK_FALSE(Settings::TakePersistenceError());
+}
+
+TEST_CASE("Queued settings failures reach the owner without reverting newer memory", "[core][settings][persistence]") {
+    SettingsSandbox sandbox("async-failure");
+    std::filesystem::create_directories(sandbox.path);
+    Settings settings;
+    settings.interface.themeKey = "Visible despite disk failure";
+    REQUIRE(Settings::SetAsync(settings) == Result::SUCCESS);
+    REQUIRE(Settings::Flush() == Result::ERROR);
+    const auto error = Settings::TakePersistenceError();
+    REQUIRE(error);
+    CHECK(error->find("Could not save settings") != std::string::npos);
+    Settings visible;
+    REQUIRE(Settings::Get(visible) == Result::SUCCESS);
+    CHECK(visible.interface.themeKey == settings.interface.themeKey);
+    CHECK_FALSE(Settings::TakePersistenceError());
+}
+
+TEST_CASE("Compositor shutdown reports failed async settings saves without aborting cleanup",
+          "[core][settings][persistence][compositor][shutdown]") {
+    SettingsSandbox sandbox("shutdown-failure");
+    std::filesystem::create_directories(sandbox.path);
+    Compositor compositor{CompositorType::DEFAULT};
+
+    JST_LOG_LAST_ERROR().clear();
+    REQUIRE(Settings::SetAsync(Settings{}) == Result::SUCCESS);
+
+    SECTION("shutdown drains the queued save") {
+        // Let destroy() wait for the failed write rather than flushing it here.
+    }
+
+    SECTION("the async failure was already reported before shutdown") {
+        REQUIRE(Settings::Flush() == Result::ERROR);
+        REQUIRE(Settings::TakePersistenceError());
+    }
+
+    // Instance::destroy() checks this result before tearing down its resources.
+    CHECK(compositor.destroy() == Result::SUCCESS);
+    CHECK(JST_LOG_LAST_ERROR() ==
+          "[COMPOSITOR_IMPL_DEFAULT] Failed to save settings during shutdown. Continuing cleanup.");
+    CHECK(Settings::Flush() == Result::ERROR);
+
+    while (Settings::TakePersistenceError()) {}
+}
+
 TEST_CASE("Transient settings can be restored before a retained update",
           "[core][settings][persistence]") {
     SettingsSandbox sandbox("transient-restore");
 
     Settings retained;
     retained.graphics.scale = 1.25f;
-    retained.remote.brokerUrl = "https://retained.example.com";
+    retained.remote.broker.publicUrl = "https://retained.example.com";
     REQUIRE(Settings::Set(retained) == Result::SUCCESS);
 
     Settings runtime = retained;
     runtime.graphics.scale = 3.0f;
-    runtime.remote.brokerUrl = "https://runtime.example.com";
+    runtime.remote.broker.publicUrl = "https://runtime.example.com";
     REQUIRE(Settings::Set(runtime, false) == Result::SUCCESS);
     REQUIRE(Settings::Set(retained, false) == Result::SUCCESS);
 
@@ -496,6 +540,166 @@ TEST_CASE("Settings replaces an existing file without leaving a temporary file",
     REQUIRE_FALSE(std::filesystem::exists(TempSettingsPath(sandbox.path)));
 }
 
+TEST_CASE("Settings preserves unknown sections and nested fields when saving",
+          "[core][settings][persistence][compatibility]") {
+    SettingsSandbox sandbox("preserve-unknown");
+    WriteFile(sandbox.path,
+              "graphics:\n"
+              "  scale: 1.5\n"
+              "  vsync: adaptive\n"
+              "  size:\n"
+              "    width: 640\n"
+              "    density: 2\n"
+              "interface:\n"
+              "  themeKey: Dark\n"
+              "  accent: teal\n"
+              "runtime:\n"
+              "  dependencyPolicy: deny\n"
+              "  python:\n"
+              "    path: /opt/python/lib/libpython3.12.so\n"
+              "    venv: /opt/venv\n"
+              "telemetry:\n"
+              "  enabled: true\n"
+              "  endpoints:\n"
+              "    - https://a.example\n"
+              "    - https://b.example\n"
+              "  window:\n"
+              "    days: 7\n");
+
+    Settings settings;
+    REQUIRE(Settings::Get(settings) == Result::SUCCESS);
+    settings.interface.themeKey = "Light";
+    REQUIRE(Settings::Set(settings) == Result::SUCCESS);
+
+    const auto requirePreserved = [&](const std::string& themeKey) {
+        const auto document = ReadDocument(sandbox.path);
+
+        const auto& graphics = Section(document, "graphics");
+        CHECK(Scalar(graphics, "vsync") == "adaptive");
+        CHECK(Scalar(graphics, "scale") == "1.5");
+        CHECK(Scalar(Section(graphics, "size"), "density") == "2");
+        CHECK(Scalar(Section(graphics, "size"), "width") == "640");
+
+        const auto& interface = Section(document, "interface");
+        CHECK(Scalar(interface, "accent") == "teal");
+        CHECK(Scalar(interface, "themeKey") == themeKey);
+
+        const auto& python = Section(Section(document, "runtime"), "python");
+        CHECK(Scalar(python, "venv") == "/opt/venv");
+        CHECK(Scalar(python, "path") == "/opt/python/lib/libpython3.12.so");
+
+        const auto& telemetry = Section(document, "telemetry");
+        CHECK(Scalar(telemetry, "enabled") == "true");
+        const auto& endpoints = List(telemetry, "endpoints");
+        REQUIRE(endpoints.size() == 2);
+        CHECK(Scalar(endpoints, 0) == "https://a.example");
+        CHECK(Scalar(endpoints, 1) == "https://b.example");
+        CHECK(Scalar(Section(telemetry, "window"), "days") == "7");
+    };
+
+    requirePreserved("Light");
+
+    settings.interface.themeKey = "Queued";
+    REQUIRE(Settings::SetAsync(settings) == Result::SUCCESS);
+    REQUIRE(Settings::Flush() == Result::SUCCESS);
+    requirePreserved("Queued");
+    CHECK_FALSE(Settings::TakePersistenceError());
+
+    Settings restored;
+    REQUIRE(Settings::Get(restored) == Result::SUCCESS);
+    CHECK(restored.interface.themeKey == "Queued");
+    CHECK(restored.graphics.size.width == 640);
+}
+
+TEST_CASE("Settings removes cleared fields without touching unknown siblings",
+          "[core][settings][persistence][compatibility]") {
+    SettingsSandbox sandbox("clear-known");
+    WriteFile(sandbox.path,
+              "graphics:\n"
+              "  device: cpu\n"
+              "  vsync: adaptive\n"
+              "registry:\n"
+              "  plugins:\n"
+              "    - /plugins/a.cep\n"
+              "    - /plugins/b.cep\n"
+              "  mirror: https://plugins.example\n"
+              "runtime:\n"
+              "  python:\n"
+              "    path: /opt/python/lib/libpython3.12.so\n");
+
+    Settings settings;
+    REQUIRE(Settings::Get(settings) == Result::SUCCESS);
+    REQUIRE(settings.graphics.device == DeviceType::CPU);
+
+    settings.graphics.device.reset();
+    settings.registry.plugins = {"/plugins/a.cep"};
+    settings.runtime.python.path.clear();
+    REQUIRE(Settings::Set(settings) == Result::SUCCESS);
+
+    const auto document = ReadDocument(sandbox.path);
+    const auto& graphics = Section(document, "graphics");
+    CHECK_FALSE(graphics.contains("device"));
+    CHECK(Scalar(graphics, "vsync") == "adaptive");
+
+    const auto& registry = Section(document, "registry");
+    const auto& plugins = List(registry, "plugins");
+    REQUIRE(plugins.size() == 1);
+    CHECK(Scalar(plugins, 0) == "/plugins/a.cep");
+    CHECK(Scalar(registry, "mirror") == "https://plugins.example");
+
+    {
+        SettingsSandbox cacheSwitch("clear-known-cache-switch");
+        Settings ignored;
+        REQUIRE(Settings::Get(ignored) == Result::SUCCESS);
+    }
+
+    Settings restored;
+    REQUIRE(Settings::Get(restored) == Result::SUCCESS);
+    CHECK_FALSE(restored.graphics.device.has_value());
+    CHECK(restored.registry.plugins == settings.registry.plugins);
+    CHECK(restored.runtime.python.path.empty());
+}
+
+TEST_CASE("Settings refuses to overwrite a malformed file",
+          "[core][settings][corruption]") {
+    SettingsSandbox sandbox("malformed-save");
+    const std::string malformed = "graphics: [unterminated\nfuture: value\n";
+    WriteFile(sandbox.path, malformed);
+
+    Settings settings;
+    settings.interface.themeKey = "Rejected";
+    REQUIRE(Settings::Set(settings) == Result::ERROR);
+    CHECK(ReadFile(sandbox.path) == malformed);
+
+    REQUIRE(Settings::SetAsync(settings) == Result::SUCCESS);
+    REQUIRE(Settings::Flush() == Result::ERROR);
+    CHECK(Settings::TakePersistenceError());
+    CHECK(ReadFile(sandbox.path) == malformed);
+    CHECK_FALSE(std::filesystem::exists(TempSettingsPath(sandbox.path)));
+}
+
+TEST_CASE("Settings repairs invalid known values while keeping unknown fields",
+          "[core][settings][corruption][compatibility]") {
+    SettingsSandbox sandbox("repair-known");
+    WriteFile(sandbox.path,
+              "graphics: not-a-map\n"
+              "future:\n"
+              "  flag: on\n");
+
+    Settings rejected;
+    REQUIRE(Settings::Get(rejected) == Result::ERROR);
+
+    REQUIRE(Settings::Set(Settings{}) == Result::SUCCESS);
+
+    const auto document = ReadDocument(sandbox.path);
+    CHECK(Scalar(Section(document, "graphics"), "framerate") == "60");
+    CHECK(Scalar(Section(document, "future"), "flag") == "on");
+
+    Settings restored;
+    REQUIRE(Settings::Get(restored) == Result::SUCCESS);
+    RequireDefaults(restored);
+}
+
 #if defined(JST_OS_LINUX)
 
 TEST_CASE("Settings falls back to HOME when XDG_CONFIG_HOME is relative",
@@ -529,7 +733,7 @@ TEST_CASE("Settings reports an error when Linux config environment is unavailabl
 
 TEST_CASE("Settings reports an error when Windows config environment is unavailable",
           "[core][settings][environment]") {
-    ScopedWideEnvVar appDataEnv(L"APPDATA");
+    ScopedEnvVar appDataEnv("APPDATA");
     REQUIRE(appDataEnv.set(std::nullopt));
 
     Settings settings;

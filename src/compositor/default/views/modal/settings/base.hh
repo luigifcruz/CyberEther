@@ -6,6 +6,7 @@
 #include "about.hh"
 #include "developer.hh"
 #include "general.hh"
+#include "intelligence.hh"
 #include "legal.hh"
 #include "registry.hh"
 #include "remote.hh"
@@ -25,6 +26,7 @@ struct SettingsView {
         RemoteSettingsPanel::Config remote;
         RuntimeSettingsPanel::Config runtime;
         RegistrySettingsPanel::Config registry;
+        IntelligenceSettingsPanel::Config intelligence;
         DeveloperSettingsPanel::Config developer;
         AboutSettingsPanel::Config about;
         LegalSettingsPanel::Config legal;
@@ -75,6 +77,15 @@ struct SettingsView {
                 }
             },
         });
+        navItem(SettingsSection::Intelligence).update({
+            .label = ICON_FA_WAND_MAGIC_SPARKLES " Intelligence",
+            .selected = this->config.section == SettingsSection::Intelligence,
+            .onSelect = [this]() {
+                if (this->config.onSectionChange) {
+                    this->config.onSectionChange(SettingsSection::Intelligence);
+                }
+            },
+        });
         navItem(SettingsSection::Developer).update({
             .label = ICON_FA_FLASK " Developer",
             .selected = this->config.section == SettingsSection::Developer,
@@ -106,6 +117,7 @@ struct SettingsView {
         remote.update(this->config.remote);
         runtime.update(this->config.runtime);
         registry.update(this->config.registry);
+        intelligence.update(this->config.intelligence);
         developer.update(this->config.developer);
         about.update(this->config.about);
         legal.update(this->config.legal);
@@ -115,8 +127,13 @@ struct SettingsView {
             {.child = &navigationDivider},
             {.child = &navigationSpacing},
         };
-        for (auto& item : navigationButtons) {
-            navigationItems.push_back({.child = &item});
+        for (U64 i = 0; i < navigationButtons.size(); ++i) {
+#ifdef JST_OS_BROWSER
+            if (static_cast<SettingsSection>(i) == SettingsSection::Intelligence) {
+                continue;
+            }
+#endif
+            navigationItems.push_back({.child = &navigationButtons[i]});
         }
         navigation.update({.items = std::move(navigationItems)});
         navigationArea.update({
@@ -166,6 +183,8 @@ struct SettingsView {
                 return runtime.content();
             case SettingsSection::Registry:
                 return registry.content();
+            case SettingsSection::Intelligence:
+                return intelligence.content();
             case SettingsSection::Developer:
                 return developer.content();
             case SettingsSection::About:
@@ -181,13 +200,14 @@ struct SettingsView {
     Sakura::Text navigationTitle;
     Sakura::Divider navigationDivider;
     Sakura::Spacer navigationSpacing;
-    std::array<Sakura::NavigationItem, 7> navigationButtons;
+    std::array<Sakura::NavigationItem, 8> navigationButtons;
     Sakura::Stack navigation;
     Sakura::ScrollArea navigationArea;
     GeneralSettingsPanel general;
     RemoteSettingsPanel remote;
     RuntimeSettingsPanel runtime;
     RegistrySettingsPanel registry;
+    IntelligenceSettingsPanel intelligence;
     DeveloperSettingsPanel developer;
     AboutSettingsPanel about;
     LegalSettingsPanel legal;

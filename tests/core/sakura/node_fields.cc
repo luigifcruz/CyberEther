@@ -886,6 +886,79 @@ TEST_CASE("Node range inputs draw their dragged value when the owner does not ec
     CHECK(shown() == "4");
 }
 
+TEST_CASE("Node range inputs hold their dragged value against owner echoes until release", kTags) {
+    Sakura::NodeRangeInput range;
+    Bench bench(range, {10.0f, 10.0f, 200.0f, 19.5f});
+    bench.frames.verify = false;
+    std::vector<F32> reported;
+    F32 value = 4.0f;
+    const auto update = [&] {
+        range.update({.id = "range", .min = 0.0f, .max = 10.0f, .value = value, .unit = "dB",
+                      .onChange = [&](F32 next) { reported.push_back(next); }});
+    };
+    const auto shown = [&]() -> std::string {
+        for (auto* label : Find<Sakura::Label>(range)) {
+            for (const auto& instance : label->config().instances) {
+                if (instance.str != "dB") {
+                    return instance.str;
+                }
+            }
+        }
+        return {};
+    };
+    REQUIRE(bench.settle(update));
+
+    bench.pointer.send(Mouse(MouseEventType::Click, 60.0f, 15.0f));
+    bench.frames.run(update);
+    bench.pointer.send(Mouse(MouseEventType::Move, 160.0f, 15.0f));
+    bench.frames.run(update);
+    REQUIRE(shown() == "8");
+    REQUIRE(reported == std::vector<F32>{2.5f, 7.5f});
+
+    for (const F32 echo : {2.5f, 7.0f, 6.0f}) {
+        value = echo;
+        for (int frame = 0; frame < 3; ++frame) {
+            bench.pointer.send(Mouse(MouseEventType::Move, 160.0f, 15.0f));
+            bench.frames.run(update);
+            CHECK(shown() == "8");
+        }
+    }
+    CHECK(reported == std::vector<F32>{2.5f, 7.5f});
+
+    bench.pointer.send(Mouse(MouseEventType::Release, 160.0f, 15.0f));
+    bench.frames.run(update);
+    bench.frames.run(update);
+    CHECK(shown() == "6");
+    CHECK(reported == std::vector<F32>{2.5f, 7.5f});
+}
+
+TEST_CASE("Node range inputs drop a drag when they are reused for another field", kTags) {
+    Sakura::NodeRangeInput range;
+    Bench bench(range, {10.0f, 10.0f, 200.0f, 19.5f});
+    bench.frames.verify = false;
+    std::vector<F32> reported;
+    std::string id = "first";
+    F32 value = 4.0f;
+    const auto update = [&] {
+        range.update({.id = id, .min = 0.0f, .max = 10.0f, .value = value,
+                      .onChange = [&](F32 next) { reported.push_back(next); }});
+    };
+    REQUIRE(bench.settle(update));
+
+    bench.pointer.send(Mouse(MouseEventType::Click, 60.0f, 15.0f));
+    bench.frames.run(update);
+    REQUIRE(reported == std::vector<F32>{2.5f});
+
+    id = "second";
+    value = 1.0f;
+    bench.frames.run(update);
+    bench.pointer.send(Mouse(MouseEventType::Move, 160.0f, 15.0f));
+    bench.frames.run(update);
+    bench.pointer.send(Mouse(MouseEventType::Release, 160.0f, 15.0f));
+    bench.frames.run(update);
+    CHECK(reported == std::vector<F32>{2.5f});
+}
+
 TEST_CASE("Node range inputs draw their value with the configured precision unless integer", kTags) {
     Sakura::NodeRangeInput range;
     Bench bench(range, {10.0f, 10.0f, 200.0f, 19.5f});

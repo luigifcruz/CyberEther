@@ -14,6 +14,15 @@ namespace Jetstream {
 
 class JETSTREAM_API Flowgraph::Metadata {
  public:
+    struct NodeLayout {
+        F32 x = 0.0f;
+        F32 y = 0.0f;
+        F32 width = 0.0f;
+        F32 height = 0.0f;
+
+        JST_SERDES(x, y, width, height);
+    };
+
     explicit Metadata(const std::shared_ptr<Flowgraph::Impl>& impl);
 
     Metadata(const Metadata&) = delete;

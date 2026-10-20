@@ -12,14 +12,17 @@
 
 namespace Jetstream {
 
+inline bool WelcomeShown(const DefaultCompositorState& state) {
+    return state.flowgraph.items.empty() && !state.modal.content.has_value() && !state.filePicker.active;
+}
+
 struct WelcomeHudPresenter {
     const PresenterContext& context;
 
     explicit WelcomeHudPresenter(const PresenterContext& context) : context(context) {}
 
     std::optional<WelcomeHudView::Config> build() const {
-        if (!context.state.flowgraph.items.empty() || context.state.modal.content.has_value() ||
-            context.state.filePicker.active || context.state.interface.startTab) {
+        if (!WelcomeShown(context.state) || context.state.interface.startTab) {
             return std::nullopt;
         }
         return config();
@@ -37,6 +40,13 @@ struct WelcomeHudPresenter {
         const auto enqueue = context.callbacks.enqueueMail;
         return WelcomeHudView::Config{
             .version = "v" JETSTREAM_VERSION_STR,
+            .assistantClearRequest = context.state.agent.chat.welcomeAccepted,
+            .onAssistantSubmit = [enqueue](const std::string& text) {
+                enqueue(MailSubmitAgentChat{.composer = AgentComposer::Welcome, .text = text, .reveal = true});
+            },
+            .onAssistantVoice = [enqueue]() {
+                enqueue(MailSetAgentVoiceVisible{.value = true});
+            },
             .onNewFlowgraph = [enqueue]() {
                 enqueue(MailNewFlowgraph{});
             },

@@ -39,7 +39,7 @@ struct FilePickerActions {
         if (!shouldUseServerPicker()) {
             std::string path = request.initialPath;
             if (request.mode == FilePickerMode::Save) {
-                return Platform::SaveFile(path, std::move(request.callback));
+                return Platform::SaveFile(path, request.extensions, std::move(request.callback));
             }
             return Platform::PickFile(path, request.extensions, std::move(request.callback));
         }

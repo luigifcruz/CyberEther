@@ -1,6 +1,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <jetstream/render/sakura/components/button.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/node/content_stack.hh>
 #include <jetstream/render/sakura/components/node/editor.hh>
@@ -65,6 +66,7 @@ struct Graph {
     std::vector<Extent2D<F32>> menus;
     std::vector<Extent2D<F32>> doubleClicks;
     std::vector<std::vector<std::string>> copies;
+    std::optional<Rect> viewport;
     std::optional<Extent2D<F32>> center;
     U64 centerReports = 0;
 
@@ -144,8 +146,9 @@ struct Graph {
             .onCopyShortcut = [this](const std::vector<std::string>& ids) {
                 copies.push_back(ids);
             },
-            .onViewportGridCenterChange = [this](Extent2D<F32> point) {
-                center = point;
+            .onViewportGridChange = [this](Rect next) {
+                viewport = next;
+                center = Extent2D<F32>{next.x + next.width * 0.5f, next.y + next.height * 0.5f};
                 ++centerReports;
             },
         });
@@ -260,19 +263,24 @@ U64 Dirty(Graph& graph) {
 
 }  // namespace
 
-TEST_CASE("An idle editor reports the viewport center in grid coordinates",
+TEST_CASE("An idle editor reports the visible viewport in grid coordinates",
           "[core][sakura][node-editor]") {
     SECTION("At a pixel ratio of one") {
         Graph graph;
         graph.step();
         REQUIRE(graph.center.has_value());
         CheckPoint(*graph.center, 400.0f, 300.0f);
+        REQUIRE(graph.viewport.has_value());
+        CheckPoint({graph.viewport->x, graph.viewport->y}, 0.0f, 0.0f);
+        CheckPoint({graph.viewport->width, graph.viewport->height}, 800.0f, 600.0f);
     }
     SECTION("At a pixel ratio of two") {
         Graph graph(2.0f);
         graph.step();
         REQUIRE(graph.center.has_value());
         CheckPoint(*graph.center, 200.0f, 150.0f);
+        REQUIRE(graph.viewport.has_value());
+        CheckPoint({graph.viewport->width, graph.viewport->height}, 400.0f, 300.0f);
     }
 }
 
@@ -1259,6 +1267,68 @@ TEST_CASE("Node timing lines all fit, including the total after many module line
     CHECK(graph.frames.rebuilds == rebuilds);
 }
 
+TEST_CASE("Covered parts of a node button ignore presses until its node rises above the cover",
+          "[core][sakura][node-editor]") {
+    Graph graph;
+    U64 clicks = 0;
+    Sakura::Button button;
+    button.update({.str = "Covered", .size = {Sakura::Fill, 40.0f}, .onClick = [&] { ++clicks; }});
+    Block& back = graph.add("back", {20.0f, 20.0f}, {220.0f, 0.0f});
+    back.content.consume = false;
+    back.field = &button;
+    Block& front = graph.add("front", {140.0f, 20.0f}, {200.0f, 200.0f}, ResizeAxes::XY);
+    graph.step();
+    graph.step();
+
+    const Rect frame = Peek::Frame(button);
+    REQUIRE_FALSE(frame.empty());
+    const F32 y = frame.y + frame.height * 0.5f;
+    const F32 exposed = front.last().gridPosition.x - 10.0f;
+    const F32 covered = front.last().gridPosition.x + 10.0f;
+    REQUIRE(exposed > frame.x);
+    REQUIRE(covered < frame.right());
+
+    graph.move(covered, y);
+    graph.click(covered, y);
+    CHECK(clicks == 0);
+
+    graph.move(exposed, y);
+    graph.press(exposed, y);
+    graph.move(covered, y);
+    graph.release(covered, y);
+    CHECK(clicks == 1);
+
+    graph.move(covered, y);
+    graph.click(covered, y);
+    CHECK(clicks == 2);
+}
+
+TEST_CASE("Node editors report which nodes are on screen and whether they are shown",
+          "[core][sakura][node-editor]") {
+    Graph graph;
+    Block& near = graph.add("near", {20.0f, 20.0f});
+    Block& far = graph.add("far", {5000.0f, 5000.0f});
+    graph.step();
+    graph.step();
+    REQUIRE_FALSE(near.reports.empty());
+    REQUIRE_FALSE(far.reports.empty());
+    CHECK(near.last().onscreen);
+    CHECK_FALSE(far.last().onscreen);
+    CHECK(graph.editor.shown());
+
+    far.spec.gridPosition = {60.0f, 200.0f};
+    graph.step();
+    graph.step();
+    CHECK(far.last().onscreen);
+
+    graph.editor.setVisible(false);
+    graph.step();
+    CHECK_FALSE(graph.editor.shown());
+    graph.editor.setVisible(true);
+    graph.step();
+    CHECK(graph.editor.shown());
+}
+
 TEST_CASE("Clicking inside a focused node field moves the caret without blurring or committing it",
           "[core][sakura][node-editor]") {
     Graph graph;
@@ -1588,7 +1658,9 @@ TEST_CASE("Pasting while another layer covers the pointer places the block at th
             .nodes = {{.id = "a", .header = false, .title = "a", .content = &stack, .resize = ResizeAxes::X,
                        .dimensions = {120.0f, 0.0f}, .gridPosition = Extent2D<F32>{40.0f, 40.0f}}},
             .onPasteShortcut = [&](Extent2D<F32> point) { pastes.push_back(point); },
-            .onViewportGridCenterChange = [&](Extent2D<F32> point) { center = point; },
+            .onViewportGridChange = [&](Rect next) {
+                center = Extent2D<F32>{next.x + next.width * 0.5f, next.y + next.height * 0.5f};
+            },
         });
     };
     REQUIRE(frames.settle(update));

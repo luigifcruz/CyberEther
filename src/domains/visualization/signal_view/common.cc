@@ -1,13 +1,16 @@
 #include "common.hh"
 
 #include <algorithm>
-#include <any>
 #include <array>
+#include <optional>
 #include <span>
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <jetstream/memory/attributes.hh>
+
 #include "lineplot.hh"
+#include "density.hh"
 #include "waterfall.hh"
 
 namespace Jetstream::Modules {
@@ -17,6 +20,7 @@ namespace {
 constexpr F32 kCursorLineAlpha = 0.35f;
 constexpr F32 kCursorPillEdgeAlpha = 0.22f;
 constexpr F32 kMarkerSpanAlpha = 0.6f;
+constexpr F32 kDensityGridAlpha = 0.06f;
 constexpr std::array<ColorRGBA<F32>, detail::MaxMarkers> kMarkerPalette = {{
     {0.31f, 0.76f, 0.97f, 1.0f},
     {1.00f, 0.44f, 0.26f, 1.0f},
@@ -113,6 +117,10 @@ std::string SpanElement(const U64 index, const char* suffix) {
     return jst::fmt::format("span-{}-{}", index, suffix);
 }
 
+ColorRGBA<F32> GridColor(const SurfaceTheme& theme, bool density) {
+    return density ? SurfaceAlpha(theme.foreground, kDensityGridAlpha) : theme.grid;
+}
+
 F32 PanTranslation(const SurfaceInteractionState& interaction) {
     const F32 maxTranslation = std::abs((1.0f / interaction.zoom) - 1.0f);
     return std::clamp(-2.0f * interaction.offset, -maxTranslation, maxTranslation);
@@ -120,15 +128,22 @@ F32 PanTranslation(const SurfaceInteractionState& interaction) {
 
 }  // namespace
 
-SignalViewFrequency SignalViewFrequencyOf(const Tensor& input) {
-    if (!input.hasAttribute("frequency") || !input.hasAttribute("sampleRate")) {
-        return {};
+Result SignalViewFrequency::read(const Tensor& input) {
+    *this = {};
+
+    std::optional<F32> frequency;
+    std::optional<F32> rate;
+    JST_CHECK(ReadAttribute(input, "frequency", frequency));
+    JST_CHECK(ReadAttribute(input, "sampleRate", rate));
+    if (frequency && rate) {
+        *this = {
+            .valid = true,
+            .center = *frequency,
+            .sampleRate = *rate,
+        };
     }
-    return {
-        .valid = true,
-        .center = std::any_cast<F32>(input.attribute("frequency")),
-        .sampleRate = std::any_cast<F32>(input.attribute("sampleRate")),
-    };
+
+    return Result::SUCCESS;
 }
 
 void SignalViewCanvas::reset(const SignalView& config) {
@@ -162,7 +177,7 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
             ? config.amplitudeLabel
             : config.waterfallLabel);
         cfg.yLabelOnRight = lineplot;
-        cfg.gridColor = interaction.theme.grid;
+        cfg.gridColor = GridColor(interaction.theme, context.density != nullptr);
         cfg.majorGridColor = interaction.theme.majorGrid;
         cfg.labelColor = interaction.theme.foreground;
         JST_CHECK(window->build(axis, cfg));
@@ -417,6 +432,9 @@ Result SignalViewCanvas::create(const std::shared_ptr<Render::Window>& window,
         if (waterfall) {
             context.waterfall->attach(cfg);
         }
+        if (context.density) {
+            context.density->attach(cfg);
+        }
         JST_CHECK(axis->surfaceUnderlay(cfg));
         if (lineplot) {
             context.lineplot->attach(cfg);
@@ -455,7 +473,7 @@ Result SignalViewCanvas::applyTheme(const Context& context) {
         renderSurface->clearColor(theme.background);
     }
     if (axis) {
-        JST_CHECK(axis->updateColors(theme.grid, theme.majorGrid, theme.foreground));
+        JST_CHECK(axis->updateColors(GridColor(theme, context.density != nullptr), theme.majorGrid, theme.foreground));
     }
 
     if (text) {
@@ -780,6 +798,17 @@ void SignalViewCanvas::updateState(const Context& context) {
         }
     }
 
+    if (context.density) {
+        if (combined) {
+            context.density->layout(panels.line,
+                                    paddingScale.x,
+                                    paddingScale.y * linePanelScale,
+                                    paddingScale.y * (1.0f - linePanelScale));
+        } else {
+            context.density->layout(panels.plot, paddingScale.x, paddingScale.y, 0.0f);
+        }
+    }
+
     const auto& vs = interaction.viewSize;
     axis->updateScissorRect({0, 0,
                              static_cast<U32>(vs.x),
@@ -840,6 +869,12 @@ void SignalViewCanvas::updateLabels(const Context& context) {
     // Update tick labels via axis component.
 
     if (axis) {
+        const std::string resolvedXLabel = !frequency.valid && config.xLabel == "Frequency (MHz)"
+            ? "Normalized Frequency"
+            : config.xLabel;
+        axis->updateTitles(resolvedXLabel, combined ? "" : (lineplot
+            ? config.amplitudeLabel
+            : config.waterfallLabel));
         const bool ticksVisible = lineplot &&
             interaction.placement != SurfacePlacementType::Attached;
         axis->setShowFrameTicks(ticksVisible);
@@ -860,8 +895,10 @@ void SignalViewCanvas::updateLabels(const Context& context) {
 
         Render::Components::Axis::TickFormatter yFormatter;
         if (lineplot) {
-            yFormatter = [min = config.rangeMin, max = config.rangeMax](const F32 position) {
-                return detail::LineplotAmplitudeLabel(position, min, max);
+            yFormatter = [min = config.rangeMin,
+                          max = config.rangeMax,
+                          linear = context.density != nullptr](const F32 position) {
+                return detail::LineplotAmplitudeLabel(position, min, max, linear);
             };
         }
 
@@ -1000,7 +1037,8 @@ std::string SignalViewCanvas::formatSpanX(const Context& context, const F32 delt
 
 std::string SignalViewCanvas::formatAmplitude(const Context& context, const F32 yPoint) const {
     const auto& config = context.config;
-    const auto value = detail::LineplotAmplitudeValue(yPoint, config.rangeMin, config.rangeMax);
+    const auto value = detail::LineplotAmplitudeValue(yPoint, config.rangeMin, config.rangeMax,
+                                                      context.density != nullptr);
     if (!value) {
         return {};
     }

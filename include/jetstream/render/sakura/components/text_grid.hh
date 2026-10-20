@@ -74,6 +74,9 @@ struct TextGrid : public Component {
         bool stickToBottom = false;
         bool scrollbar = true;
         Extent2D<F32> scrollbarInset = {0.0f, 0.0f};
+        bool scrollPastEnd = true;
+        F32 minLines = 0.0f;
+        F32 maxLines = 0.0f;
         Wrap wrap = Wrap::None;
         std::optional<Padding> padding;
         std::vector<F32> lineScale;
@@ -104,6 +107,7 @@ struct TextGrid : public Component {
         bool submitOnEnter = false;
         bool singleLine = false;
         bool selectAllOnFocus = false;
+        bool masked = false;
         Callback<bool(U32)> characterFilter;
         Callback<const std::vector<std::vector<StyleId>>&(
             const std::vector<std::string>& lines, U64 revision)> styler;

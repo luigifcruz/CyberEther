@@ -3,8 +3,11 @@
 
 #include "base.hh"
 
+#include <algorithm>
+#include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -13,16 +16,51 @@ namespace Jetstream {
 struct FlowgraphConfigFieldStack {
     using Stack = Sakura::NodeContentStack;
 
-    void update(std::vector<FlowgraphConfigFieldConfig> configs) {
+    void update(std::vector<FlowgraphConfigFieldConfig> configs, std::function<void()> onOverflow = {}) {
+        this->onOverflow = std::move(onOverflow);
         while (fields.size() > configs.size()) {
             fields.pop_back();
         }
         while (fields.size() < configs.size()) {
             fields.push_back(std::make_unique<FlowgraphConfigFieldInstance>());
         }
+        overflows.resize(fields.size());
+        kinds.resize(fields.size());
         for (U64 i = 0; i < fields.size(); ++i) {
+            auto kind = Parser::Get<std::string>(configs[i].format, "type");
+            if (kind != kinds[i]) {
+                kinds[i] = std::move(kind);
+                overflows[i].reset();
+            }
+            configs[i].onContentOverflow = [this, i](Extent2D<F32> overflow) {
+                if (overflows[i] == overflow) {
+                    return;
+                }
+                overflows[i] = overflow;
+                if (this->onOverflow) {
+                    this->onOverflow();
+                }
+            };
             fields[i]->update(std::move(configs[i]));
         }
+    }
+
+    std::optional<Extent2D<F32>> content(Extent2D<F32> inner, F32 minimumHeight) const {
+        std::optional<Extent2D<F32>> content;
+        for (const auto& overflow : overflows) {
+            if (!overflow.has_value()) {
+                continue;
+            }
+            if (!content.has_value()) {
+                content = inner;
+            }
+            content->x = std::max(content->x, inner.x + overflow->x);
+            content->y += overflow->y;
+        }
+        if (content.has_value()) {
+            content->y = std::max(content->y, minimumHeight);
+        }
+        return content;
     }
 
     bool hasFlexible() const {
@@ -78,6 +116,9 @@ struct FlowgraphConfigFieldStack {
  private:
     std::vector<std::unique_ptr<Sakura::NodeFieldGrid>> grids;
     std::vector<std::unique_ptr<FlowgraphConfigFieldInstance>> fields;
+    std::vector<std::optional<Extent2D<F32>>> overflows;
+    std::vector<std::string> kinds;
+    std::function<void()> onOverflow;
 };
 
 }  // namespace Jetstream

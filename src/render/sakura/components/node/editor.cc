@@ -506,6 +506,9 @@ struct NodeFrame : public Component {
             .gridPosition = origin,
             .contentDimensions = {contentSize.x > 0.0f ? contentSize.x : contentWidth,
                                   contentSize.y > 0.0f ? contentSize.y : rect.height - 2.0f * kPadding},
+            .dimensions = {rect.width, rect.height},
+            .minimumHeight = effectiveMinimumHeight(),
+            .onscreen = visible(),
         };
     }
 
@@ -1559,7 +1562,11 @@ struct GraphRoot : public Component {
                 changed = !(near(last.gridPosition.x, geometry.gridPosition.x) &&
                             near(last.gridPosition.y, geometry.gridPosition.y) &&
                             near(last.contentDimensions.x, geometry.contentDimensions.x) &&
-                            near(last.contentDimensions.y, geometry.contentDimensions.y));
+                            near(last.contentDimensions.y, geometry.contentDimensions.y) &&
+                            near(last.dimensions.x, geometry.dimensions.x) &&
+                            near(last.dimensions.y, geometry.dimensions.y) &&
+                            near(last.minimumHeight, geometry.minimumHeight) &&
+                            last.onscreen == geometry.onscreen);
             }
             if (changed) {
                 frame->lastGeometry = geometry;
@@ -1915,11 +1922,12 @@ struct GraphRoot : public Component {
 
 struct NodeEditor::Impl {
     GraphRoot root;
+    bool shown = false;
     Box background;
     Polyline corners;
     Box border;
     Rect bounds;
-    std::optional<Extent2D<F32>> reportedCenter;
+    std::optional<Rect> reportedViewport;
 };
 
 NodeEditor::NodeEditor() {
@@ -1969,11 +1977,13 @@ void NodeEditor::layout(const Context& ctx) {
     });
     layoutChild(ctx, impl->border, bounds);
 
-    if (config.onViewportGridCenterChange && !bounds.empty()) {
-        const auto center = root.toGrid({bounds.x + bounds.width * 0.5f, bounds.y + bounds.height * 0.5f});
-        if (impl->reportedCenter != center) {
-            impl->reportedCenter = center;
-            config.onViewportGridCenterChange(center);
+    if (config.onViewportGridChange && !bounds.empty()) {
+        const auto origin = root.toGrid({bounds.x, bounds.y});
+        const auto end = root.toGrid({bounds.right(), bounds.bottom()});
+        const Rect viewport = {origin.x, origin.y, end.x - origin.x, end.y - origin.y};
+        if (impl->reportedViewport != viewport) {
+            impl->reportedViewport = viewport;
+            config.onViewportGridChange(viewport);
         }
     }
 
@@ -2047,6 +2057,18 @@ void NodeEditor::zoomStep(int direction) {
 
 void NodeEditor::zoomReset() {
     impl->root.zoomTo(1.0f);
+}
+
+bool NodeEditor::shown() const {
+    return impl->shown;
+}
+
+void NodeEditor::wentOnscreen(U64) {
+    impl->shown = true;
+}
+
+void NodeEditor::wentOffscreen(U64) {
+    impl->shown = false;
 }
 
 }  // namespace Jetstream::Sakura

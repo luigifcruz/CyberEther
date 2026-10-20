@@ -72,6 +72,11 @@ class JETSTREAM_API Window {
     const Stats& stats() const {
         return frameStats;
     }
+
+    Result capture(const std::shared_ptr<const Texture>& texture,
+                   Extent2D<U64>& size, std::vector<U8>& pixels);
+
+    virtual bool supportsCapture() const { return false; }
     virtual std::string info() const = 0;
 
     virtual constexpr DeviceType device() const = 0;

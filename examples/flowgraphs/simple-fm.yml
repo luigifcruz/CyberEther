@@ -16,11 +16,11 @@ graph:
         # Simple FM Receiver
         **Pick a radio, tune a station, and listen.**
         
-        1. Plug in your SDR and choose it in the **Device** dropdown on the **Soapy SDR** block. An RTL-SDR shows up as something like **Generic RTL2832U OEM**.
+        1. Plug in your SDR and choose it in the **Device** dropdown on the **SDR** block. An RTL-SDR shows up as something like **Generic RTL2832U OEM**.
         2. Type a local station into **Frequency**. The default is 88.900 MHz. The **+** and **-** buttons move a full megahertz, so type finer values directly.
         3. Audio plays through the **Audio** block. **Default** is your system output. Turn your speakers up or drag **Volume**.
         
-        **Radio not listed?** Check the cable and plug the dongle directly into the computer rather than a hub. Close any other program that is using it, only one program can open a radio at a time. Then reopen this example from the **Flowgraph** menu under **Open Examples** so the list is rebuilt. On Linux, the kernel's DVB-T driver can claim an RTL-SDR before SoapySDR sees it. On Windows, the dongle needs the WinUSB driver installed with Zadig.
+        **Radio not listed?** Check the cable and plug the dongle directly into the computer rather than a hub. Close any other program that is using it, only one program can open a radio at a time. Then reopen this example from the **Flowgraph** menu under **Open Examples** so the list is rebuilt. On Linux, the kernel's DVB-T driver can claim an RTL-SDR before CyberEther sees it. On Windows, the dongle needs the WinUSB driver installed with Zadig.
         
         Not sure where the stations are? Open the **Spectrum Analyzer** example first. It shows 2 MHz of the band at once and every hump is a station.
         
@@ -36,7 +36,7 @@ graph:
         4. Push **Volume** above 1. Values above 1 amplify and can clip on loud passages. Bring it back to 1.
         
         ## Reading the numbers
-        - **Sample Rate** appears on three blocks and all three must agree. Change it on the **Soapy SDR** block and update the **FM Demodulator** and **Audio** blocks to match, or the audio plays at the wrong pitch or stops.
+        - **Sample Rate** appears on three blocks and all three must agree. Change it on the **SDR** block and update the **FM Demodulator** and **Audio** blocks to match, or the audio plays at the wrong pitch or stops.
         - **Wideband** needs a sample rate of at least 200 kHz to capture the stereo subcarrier. The default 240 kHz satisfies that.
         - **Automatic Gain** stays on. Broadcast FM is strong and the demodulator does not care about level, only frequency.
         - **Buffer Loss** should read 0.00%. Dropouts in the audio usually show up here first.
@@ -53,15 +53,13 @@ graph:
         y: 81
         width: 503
         height: 663
-  - name: soapy
-    module: soapy
+  - name: sdr
+    module: sdr
     device: cpu
     runtime: native
     provider: generic
     config:
-      modulePath: ''
       deviceString: ''
-      streamString: ''
       antenna: ''
       frequency: 8.89e+07
       frequencyStep: 1000000
@@ -87,7 +85,7 @@ graph:
       deemphasis: none
       sampleRate: 240000
     input:
-      signal: '${graph.soapy.output.signal}'
+      signal: '${graph.sdr.output.signal}'
     meta:
       node:
         x: 288
@@ -112,7 +110,7 @@ graph:
       amplitudeLabel: Amplitude (dBFS)
       waterfallLabel: Time
     input:
-      buffer: '${graph.soapy.output.signal}'
+      buffer: '${graph.sdr.output.signal}'
     meta:
       node:
         x: 286

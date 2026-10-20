@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_LIVE_MARKDOWN_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_LIVE_MARKDOWN_HH
 
-#include "../live_markdown.hh"
+#include "../support/live_markdown.hh"
 #include "../model/state.hh"
 
 #include "jetstream/flowgraph_environment.hh"

@@ -1204,6 +1204,37 @@ TEST_CASE("A HUD layer updated every frame stays clean and ignores moves inside 
     CHECK(frames.run(update).clean());
 }
 
+TEST_CASE("A modal taller than the window fits inside it, scrolls its content, and keeps the close button",
+          "[core][sakura][retention]") {
+    SakuraTest::FakeWindow window;
+    Probe content({100.0f, 2000.0f});
+    content.consume = false;
+    U64 closed = 0;
+    Sakura::ModalLayer modal;
+    Sakura::Layer base;
+    LayerHost host({&base, &modal});
+    Frames frames(host, kScreen, ShellContext(&window));
+    const auto update = [&] {
+        modal.update({.content = &content, .onClose = [&] { ++closed; }});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(DirtyFrames(frames, update) == 0);
+    const U64 rebuilds = frames.rebuilds;
+
+    const Rect first = Peek::Frame(content);
+    CHECK(first.height == 2000.0f);
+    CHECK(first.y > 19.0f);
+    CHECK(host.click(400.0f, 600.0f - 19.0f - 12.0f - 20.0f));
+    CHECK(closed == 1);
+
+    host.send(Wheel(400.0f, 300.0f, 0.0f, -3.0f));
+    CHECK_FALSE(frames.run(update).rebuilt);
+    REQUIRE(frames.settle(update));
+    CHECK(Peek::Frame(content).y < first.y);
+    CHECK(DirtyFrames(frames, update) == 0);
+    CHECK(frames.rebuilds == rebuilds);
+}
+
 TEST_CASE("A modal layer stays clean while empty and while open, and toggling it never rebuilds",
           "[core][sakura][retention]") {
     SakuraTest::FakeWindow window;

@@ -1,5 +1,5 @@
 diff --git a/libusb/os/emscripten_webusb.cpp b/libusb/os/emscripten_webusb.cpp
-index 026594f1..a0090890 100644
+index 026594f1..ff610b51 100644
 --- a/libusb/os/emscripten_webusb.cpp
 +++ b/libusb/os/emscripten_webusb.cpp
 @@ -30,6 +30,7 @@ static_assert((__EMSCRIPTEN_major__ * 100 * 100 + __EMSCRIPTEN_minor__ * 100 +
@@ -21,19 +21,115 @@ index 026594f1..a0090890 100644
  			let errorCode = -99; // LIBUSB_ERROR_OTHER
  			if (error instanceof DOMException) {
  				const ERROR_CODES = {
-@@ -91,6 +94,24 @@ EM_JS(EM_VAL, usbi_em_promise_catch, (EM_VAL handle), {
+@@ -91,6 +94,120 @@ EM_JS(EM_VAL, usbi_em_promise_catch, (EM_VAL handle), {
  	return Emval.toHandle(promise);
  });
  
-+EM_JS(EM_VAL, usbi_em_make_cancellable_promise, (usbi_transfer* transfer, EM_VAL handle), {
-+	const promise = Emval.toValue(handle);
-+	let cancel;
-+	const cancellation = new Promise(resolve => cancel = resolve);
++EM_JS(EM_VAL, usbi_em_device_call, (usbi_transfer* transfer, EM_VAL device, EM_VAL method, EM_VAL args, unsigned timeout), {
++	device = Emval.toValue(device);
++	method = Emval.toValue(method);
++	args = Emval.toValue(args);
++	const state = device[Symbol.for('libusb.transfers')] ||=
++		{pending: new Set(), barrier: null, failure: null};
++	let resolve, reject;
++	const promise = new Promise((accept, fail) => { resolve = accept; reject = fail; });
++	let drained;
 +	const cancellations = Module.libusbTransferCancellations ||=
 +		new Map();
-+	cancellations.set(transfer, cancel);
-+	return Emval.toHandle(
-+		Promise.race([promise, cancellation]).finally(() => cancellations.delete(transfer)));
++	const record = {
++		done: false, submitted: false, timer: null,
++		drained: new Promise(resolve => { drained = resolve; }),
++		retire() {
++			record.submitted = false;
++			state.pending.delete(record);
++			drained();
++		},
++		finish(value, error) {
++			if (record.done) return;
++			record.done = true;
++			clearTimeout(record.timer);
++			if (transfer) cancellations.delete(transfer);
++			if (error) reject(error);
++			else resolve(value);
++		},
++	};
++	const drain = () => {
++		if (!record.submitted || state.barrier) return;
++		const interrupted = [...state.pending];
++		let timer;
++		const timeout = new Promise(resolve => { timer = setTimeout(() => resolve(true), 1000); });
++		state.barrier = Promise.race([
++			Promise.all(interrupted.map(pending => pending.drained)).then(() => false),
++			timeout,
++		]).then(async expired => {
++			clearTimeout(timer);
++			if (!expired || interrupted.every(pending => !pending.submitted)) return;
++			const chain = Symbol.for('libusb.open_close_chain');
++			const previous = device[chain] || Promise.resolve(0);
++			const recovery = previous.then(async refCount => {
++				const configuration = device.configuration;
++				const interfaces = configuration ? configuration.interfaces
++					.filter(iface => iface.claimed)
++					.map(iface => [iface.interfaceNumber, iface.alternate.alternateSetting]) : [];
++				if (refCount) await device.close();
++				const error = new DOMException('USB transfer interrupted by recovery', 'AbortError');
++				for (const pending of interrupted) {
++					pending.retire();
++					pending.finish(undefined, error);
++				}
++				if (refCount) {
++					await device.open();
++					if (configuration && device.configuration?.configurationValue !== configuration.configurationValue) {
++						await device.selectConfiguration(configuration.configurationValue);
++					}
++					for (const [iface, alternate] of interfaces) {
++						await device.claimInterface(iface);
++						await device.selectAlternateInterface(iface, alternate);
++					}
++				}
++				return refCount;
++			});
++			device[chain] = recovery.catch(() => previous);
++			await recovery;
++		}).catch(error => {
++			state.failure = error;
++			for (const pending of interrupted) pending.finish(undefined, error);
++			throw error;
++		}).finally(() => {
++			clearTimeout(timer);
++			state.barrier = null;
++		});
++		state.barrier.catch(() => {});
++	};
++	if (transfer) cancellations.set(transfer, () => {
++		drain();
++		record.finish(undefined);
++	});
++	const complete = (value, error) => {
++		record.retire();
++		record.finish(value, error);
++	};
++	const start = () => {
++		if (record.done) return;
++		if (state.barrier) {
++			state.barrier.then(start, error => record.finish(undefined, error));
++			return;
++		}
++		try {
++			if (state.failure) throw state.failure;
++			record.submitted = true;
++			state.pending.add(record);
++			if (timeout) record.timer = setTimeout(() => {
++				drain();
++				record.finish(undefined, new DOMException('USB transfer timed out', 'TimeoutError'));
++			}, timeout);
++			Promise.resolve(device[method](...args)).then(value => complete(value), error => complete(undefined, error));
++		} catch (error) {
++			complete(undefined, error);
++		}
++	};
++	start();
++	return Emval.toHandle(promise);
 +});
 +
 +EM_JS(bool, usbi_em_cancel_promise, (usbi_transfer* transfer), {
@@ -46,24 +142,99 @@ index 026594f1..a0090890 100644
  EM_JS(void, usbi_em_copy_from_dataview, (void* dst, EM_VAL src), {
  	src = Emval.toValue(src);
  	src = new Uint8Array(src.buffer, src.byteOffset, src.byteLength);
-@@ -793,6 +814,10 @@ int em_submit_transfer(usbi_transfer* itransfer) {
- 			default:
- 				return LIBUSB_ERROR_NOT_SUPPORTED;
- 		}
-+		auto cancellable = val::take_ownership(
-+			usbi_em_make_cancellable_promise(itransfer, transfer_promise.as_handle()));
-+		transfer_promise = std::move(cancellable);
+@@ -124,6 +241,8 @@ EM_JS(EM_VAL, usbi_em_device_safe_open_close, (EM_VAL device, bool open), {
+ 		if (open) {
+ 			if (!refCount++) {
+ 				await device.open();
++				const state = device[Symbol.for('libusb.transfers')];
++				if (state) state.failure = null;
+ 			}
+ 		} else {
+ 			if (!--refCount) {
+@@ -295,9 +414,20 @@ static std::invoke_result_t<Func>::AwaitResult awaitOnMain(Func&& func) {
+ 	return func().await();
+ }
+ 
++template <typename... Args>
++val callDevice(usbi_transfer* transfer, const val& device, const char* method, Args&&... args) {
++	auto arguments = val::array();
++	unsigned index = 0;
++	(arguments.set(index++, std::forward<Args>(args)), ...);
++	return val::take_ownership(usbi_em_device_call(
++		transfer, device.as_handle(), val(method).as_handle(), arguments.as_handle(),
++		transfer ? USBI_TRANSFER_TO_LIBUSB_TRANSFER(transfer)->timeout : 0));
++}
 +
- 		// Not a coroutine because we don't want to block on this promise, just
- 		// schedule an asynchronous callback.
- 		promiseThen(CaughtPromise(std::move(transfer_promise)),
-@@ -809,7 +834,14 @@ void em_clear_transfer_priv(usbi_transfer* itransfer) {
+ // A helper that makes a control transfer given a setup pointer (assumed to be
+ // followed by data payload for out-transfers).
+-val makeControlTransferPromise(const val& dev, libusb_control_setup* setup) {
++val makeControlTransferPromise(const val& dev, libusb_control_setup* setup,
++							   usbi_transfer* transfer = nullptr) {
+ 	auto params = val::object();
+ 
+ 	const char* request_type = "unknown";
+@@ -334,9 +464,9 @@ val makeControlTransferPromise(const val& dev, libusb_control_setup* setup) {
+ 	params.set("index", setup->wIndex);
+ 
+ 	if (setup->bmRequestType & LIBUSB_ENDPOINT_IN) {
+-		return dev.call<val>("controlTransferIn", params, setup->wLength);
++		return callDevice(transfer, dev, "controlTransferIn", params, setup->wLength);
+ 	} else {
+-		return dev.call<val>("controlTransferOut", params,
++		return callDevice(transfer, dev, "controlTransferOut", params,
+ 							 getUnsharedMemoryView(setup + 1, setup->wLength));
+ 	}
+ }
+@@ -454,8 +584,8 @@ struct CachedDevice {
+ 	template <typename... Args>
+ 	int awaitOnMain(const char* methodName, Args&&... args) const {
+ 		return ::awaitOnMain([&] {
+-				   return CaughtPromise(device.call<val>(
+-					   methodName, std::forward<Args>(args)...));
++				   return CaughtPromise(callDevice(
++					   nullptr, device, methodName, std::forward<Args>(args)...));
+ 			   })
+ 			.error;
+ 	}
+@@ -760,6 +890,7 @@ void em_destroy_device(libusb_device* dev) {
+ }
+ 
+ int em_submit_transfer(usbi_transfer* itransfer) {
++	itransfer->timeout_flags |= USBI_TRANSFER_OS_HANDLES_TIMEOUT;
+ 	return runOnMain([itransfer] {
+ 		auto transfer = USBI_TRANSFER_TO_LIBUSB_TRANSFER(itransfer);
+ 		auto& web_usb_device = WebUsbDevicePtr(transfer->dev_handle)
+@@ -769,7 +900,7 @@ int em_submit_transfer(usbi_transfer* itransfer) {
+ 			case LIBUSB_TRANSFER_TYPE_CONTROL: {
+ 				transfer_promise = makeControlTransferPromise(
+ 					web_usb_device,
+-					libusb_control_transfer_get_setup(transfer));
++					libusb_control_transfer_get_setup(transfer), itransfer);
+ 				break;
+ 			}
+ 			case LIBUSB_TRANSFER_TYPE_BULK:
+@@ -778,13 +909,13 @@ int em_submit_transfer(usbi_transfer* itransfer) {
+ 					transfer->endpoint & LIBUSB_ENDPOINT_ADDRESS_MASK;
+ 
+ 				if (IS_XFERIN(transfer)) {
+-					transfer_promise = web_usb_device.call<val>(
+-						"transferIn", endpoint, transfer->length);
++					transfer_promise = callDevice(
++						itransfer, web_usb_device, "transferIn", endpoint, transfer->length);
+ 				} else {
+ 					auto data = getUnsharedMemoryView(transfer->buffer,
+ 													  transfer->length);
+ 					transfer_promise =
+-						web_usb_device.call<val>("transferOut", endpoint, data);
++						callDevice(itransfer, web_usb_device, "transferOut", endpoint, data);
+ 				}
+ 
+ 				break;
+@@ -809,7 +940,12 @@ void em_clear_transfer_priv(usbi_transfer* itransfer) {
  }
  
  int em_cancel_transfer(usbi_transfer* itransfer) {
 -	return LIBUSB_SUCCESS;
-+	// libusb sets this after the backend returns, while resolving the cancellation
-+	// promise schedules its completion callback for a later microtask.
 +	itransfer->state_flags |= USBI_TRANSFER_CANCELLING;
 +	return runOnMain([itransfer] {
 +		return usbi_em_cancel_promise(itransfer)
@@ -73,3 +244,13 @@ index 026594f1..a0090890 100644
  }
  
  int em_handle_transfer_completion(usbi_transfer* itransfer) {
+@@ -826,6 +962,9 @@ int em_handle_transfer_completion(usbi_transfer* itransfer) {
+ 			return LIBUSB_TRANSFER_CANCELLED;
+ 		}
+ 
++		if (result.error == LIBUSB_ERROR_TIMEOUT) {
++			return LIBUSB_TRANSFER_TIMED_OUT;
++		}
+ 		if (result.error) {
+ 			return LIBUSB_TRANSFER_ERROR;
+ 		}

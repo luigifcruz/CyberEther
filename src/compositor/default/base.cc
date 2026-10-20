@@ -17,6 +17,7 @@
 #include <chrono>
 #include <deque>
 #include <functional>
+#include <future>
 #include <memory>
 #include <optional>
 #include <string>
@@ -32,6 +33,10 @@ DefaultCompositor::DefaultCompositor() :
         },
         .enqueueCommand = [this](std::function<Result()> fn, bool silent) {
             Compositor::Impl::enqueue(std::move(fn), silent);
+        },
+        .enqueueCommandWithCompletion = [this](std::function<Result()> fn, bool silent,
+                                               std::function<void(Result)> onComplete) {
+            Compositor::Impl::enqueue(std::move(fn), silent, std::move(onComplete));
         },
         .enqueueCommandWithMail = [this](std::function<Result()> fn, bool silent, Mail mail) {
             Compositor::Impl::enqueue(std::move(fn), silent, [this, mail = std::move(mail)](const Result result) {
@@ -52,6 +57,9 @@ DefaultCompositor::DefaultCompositor() :
         .requestFile = [this](FilePickerRequest request) {
             return actions.requestFile(std::move(request));
         },
+        .layout = [this](const std::string& flowgraph, Agent::Tools::Layout layout) {
+            agent.executor().layout(flowgraph, std::move(layout));
+        },
         .checkForUpdates = [this]() {
             updater.check();
         },
@@ -68,7 +76,8 @@ DefaultCompositor::DefaultCompositor() :
             feedback.submit(text);
         },
     },
-    actions(state, callbacks),
+    agent(state, callbacks),
+    actions(state, callbacks, agent),
     presenters(state, callbacks) {}
 
 DefaultCompositor::~DefaultCompositor() {
@@ -105,6 +114,15 @@ Result DefaultCompositor::create() {
 
     state.interface.backgroundParticles = settings.interface.backgroundParticles;
 
+    // Restore intelligence preferences.
+
+    state.agent.captureSupported = render && render->supportsCapture();
+
+    state.agent.settings = settings.intelligence;
+#ifdef JST_OS_BROWSER
+    state.agent.settings.enabled = false;
+#endif
+
     // Restore debug preferences.
 
     state.debug.logLevel = settings.developer.logLevel;
@@ -113,9 +131,18 @@ Result DefaultCompositor::create() {
 
     // Restore remote streaming preferences.
 
-    state.remote.brokerUrl = settings.remote.brokerUrl;
-    state.remote.autoJoinSessions = settings.remote.autoJoinSessions;
-    state.remote.framerate = static_cast<U32>(settings.remote.framerate);
+    state.remote.config.broker.address = settings.remote.broker.address;
+    state.remote.config.broker.publicUrl = settings.remote.broker.publicUrl;
+    state.remote.config.broker.certificate = settings.remote.broker.certificate;
+    state.remote.config.broker.key = settings.remote.broker.key;
+    if (settings.remote.broker.port <= 65535) {
+        state.remote.config.broker.port = static_cast<U16>(settings.remote.broker.port);
+    } else {
+        JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Invalid saved broker port {}. Using default.",
+                 settings.remote.broker.port);
+    }
+    state.remote.config.access.autoApprove = settings.remote.access.autoApprove;
+    state.remote.config.video.framerate = static_cast<U32>(settings.remote.video.framerate);
 
     // Restore runtime preferences.
 
@@ -133,18 +160,35 @@ Result DefaultCompositor::create() {
     state.runtime.initialPythonValidation = state.runtime.pythonValidation;
 
     try {
-        state.remote.codec = StringToRemoteCodec(settings.remote.codec);
+        state.remote.config.video.codec = StringToRemoteCodec(settings.remote.video.codec);
     } catch (const Result&) {
         JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Invalid saved remote codec '{}'. Using default.",
-                 settings.remote.codec);
+                 settings.remote.video.codec);
     }
 
     try {
-        state.remote.encoder = StringToRemoteEncoder(settings.remote.encoder);
+        state.remote.config.video.encoder = StringToRemoteEncoder(settings.remote.video.encoder);
     } catch (const Result&) {
         JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Invalid saved remote encoder '{}'. Using default.",
-                 settings.remote.encoder);
+                 settings.remote.video.encoder);
     }
+
+    try {
+        state.remote.config.media.transport = StringToRemoteTransport(settings.remote.media.transport);
+    } catch (const Result&) {
+        JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Invalid saved remote transport '{}'. Using default.",
+                 settings.remote.media.transport);
+    }
+
+    if (IsRemotePortRangeValid(settings.remote.media.minPort, settings.remote.media.maxPort)) {
+        state.remote.config.media.minPort = static_cast<U16>(settings.remote.media.minPort);
+        state.remote.config.media.maxPort = static_cast<U16>(settings.remote.media.maxPort);
+    } else {
+        JST_WARN("[COMPOSITOR_IMPL_DEFAULT] Invalid saved remote port range {}-{}. Using default.",
+                 settings.remote.media.minPort, settings.remote.media.maxPort);
+    }
+
+    state.remote.config.media.address = settings.remote.media.address;
 
     // Initialize Sakura rendering resources.
 
@@ -171,8 +215,13 @@ Result DefaultCompositor::destroy() {
     JST_INFO("[COMPOSITOR_IMPL_DEFAULT] Destroying compositor.");
 
     actions.cancelFilePicker();
+    agent.shutdown();
+    actions.shutdownAgent();
     updater.shutdown();
     feedback.shutdown();
+    if (Settings::Flush() != Result::SUCCESS) {
+        JST_ERROR("[COMPOSITOR_IMPL_DEFAULT] Failed to save settings during shutdown. Continuing cleanup.");
+    }
 
     if (viewport && previousIntegratedTitlebar.has_value()) {
         viewport->setIntegratedTitlebar(*previousIntegratedTitlebar);
@@ -206,6 +255,11 @@ Result DefaultCompositor::poll() {
         }
 
         JST_CHECK(actions.handle(mail));
+    }
+
+    agent.poll();
+    while (const auto error = Settings::TakePersistenceError()) {
+        callbacks.notify(Sakura::ToastType::Error, 5000, *error);
     }
 
     // Surface completed async command results as notifications.
@@ -243,6 +297,7 @@ Result DefaultCompositor::poll() {
     actions.settleStartTab();
     actions.refreshLiveMarkdown();
     actions.refreshMetrics();
+    actions.reconcileAgent();
     updateFeedbackState();
 
     // Build view configs while flowgraph access is confined to poll.
@@ -267,7 +322,7 @@ Result DefaultCompositor::present() {
 
 void DefaultCompositor::updateWorkbenchState() {
     if (state.interface.pendingFocusedFlowgraph.has_value() &&
-        state.flowgraph.items.contains(state.interface.pendingFocusedFlowgraph.value())) {
+        state.flowgraph.items.contains(*state.interface.pendingFocusedFlowgraph)) {
         state.interface.focusedFlowgraph = state.interface.pendingFocusedFlowgraph;
         state.interface.pendingFocusedFlowgraph.reset();
     }

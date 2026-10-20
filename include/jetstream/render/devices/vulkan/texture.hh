@@ -20,6 +20,8 @@ class JETSTREAM_API TextureImp<DeviceType::Vulkan> : public Texture {
     }
 
  protected:
+    Result underlyingDump(uint8_t* output) const override;
+
     constexpr const VkFormat& getPixelFormat() const {
         return pixelFormat;
     }
@@ -42,7 +44,6 @@ class JETSTREAM_API TextureImp<DeviceType::Vulkan> : public Texture {
 
     static VkFormat ConvertPixelFormat(const PixelFormat&,
                                        const PixelType&);
-    static U64 GetPixelByteSize(const VkFormat&);
 
  private:
     VkImage texture = VK_NULL_HANDLE;

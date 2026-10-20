@@ -155,10 +155,7 @@ struct Access {
     }
 
     static void releaseFocusWithin(Component& subtree) {
-        const auto scope = subtree.impl->root().focusScope;
-        if (scope && scope->owner && scope->owner->impl->within(&subtree)) {
-            scope->owner->releaseFocus();
-        }
+        subtree.releaseFocusWithin(subtree);
     }
 
     static Component* focusedInTree(const Component& component) {

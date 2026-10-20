@@ -44,7 +44,7 @@ Open the block browser in one of two ways:
 - Click the **Search blocks** pill at the top right of the flowgraph editor.
 - Double-click anywhere on the empty canvas. The browser opens where you clicked, and the new block lands there.
 
-Find and add a **Signal Generator** block. This block produces a synthetic signal so you do not need any hardware to get started. If you have an RTL-SDR, use a **SoapySDR** block instead to work with a real radio signal.
+Find and add a **Signal Generator** block. This block produces a synthetic signal so you do not need any hardware to get started. If you have an RTL-SDR, Airspy, Airspy HF+, HackRF, LimeSDR, bladeRF, or PlutoSDR, use an **SDR** block instead to work with a real radio signal.
 
 ### 2. Add processing blocks
 

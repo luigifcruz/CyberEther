@@ -5,6 +5,7 @@
 #include "jetstream/render/tools/icons_fa.hh"
 
 #include "jetstream/types.hh"
+#include "tools/value.hh"
 
 #include <algorithm>
 #include <functional>

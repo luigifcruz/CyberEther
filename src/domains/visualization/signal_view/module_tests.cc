@@ -54,6 +54,14 @@ struct SignalViewImplAccess : Modules::SignalViewImpl {
         return &SignalViewImplAccess::waterfallHistory;
     }
 
+    static auto densityBinsMember() {
+        return &SignalViewImplAccess::densityBins;
+    }
+
+    static auto densityHistoryMember() {
+        return &SignalViewImplAccess::densityHistory;
+    }
+
     static Modules::SignalViewCanvas& canvasOf(Modules::SignalViewImpl& impl) {
         return impl.*&SignalViewImplAccess::canvas;
     }
@@ -534,8 +542,8 @@ TEST_CASE("Axis created in split mode reserves full height tick geometry",
     REQUIRE(axis.destroy(&window) == Result::SUCCESS);
 }
 
-TEST_CASE("Standalone waterfall presents live metadata without view changes",
-          "[modules][signal_view][waterfall][present][metadata][regression]") {
+TEST_CASE("Signal View safely presents live metadata without view changes",
+          "[modules][signal_view][present][metadata][regression]") {
     Tensor input(DeviceType::CPU, DataType::F32, {32});
     F32 frequency = 100.0e6f;
     F32 sampleRate = 2.0e6f;
@@ -562,7 +570,7 @@ TEST_CASE("Standalone waterfall presents live metadata without view changes",
                                   RuntimeType::NATIVE, "generic", module) ==
             Result::SUCCESS);
     Modules::SignalView config;
-    config.mode = "waterfall";
+    config.mode = GENERATE("lineplot", "waterfall", "lineplot_waterfall");
     config.waterfallHeight = 4;
     REQUIRE(module->create("waterfall", config, inputs) == Result::SUCCESS);
 
@@ -576,11 +584,7 @@ TEST_CASE("Standalone waterfall presents live metadata without view changes",
 
     auto* impl = module->getImpl<Modules::SignalViewImpl>();
     REQUIRE(impl);
-    SignalViewImplAccess::canvasOf(*impl).axis = axis;
-    SignalViewImplAccess::canvasOf(*impl).renderSurface =
-        std::make_shared<LabelTestSurface>();
-    SignalViewImplAccess::waterfallOf(*impl).uniformBuffer =
-        std::make_shared<LabelTestBuffer>();
+    SignalViewImplAccess::wirePresentResources(*impl, axis, {});
     auto* presenter = module->getImpl<Scheduler::Context>();
     REQUIRE(presenter);
 
@@ -602,6 +606,139 @@ TEST_CASE("Standalone waterfall presents live metadata without view changes",
     sampleRate = 4.0e6f;
     present();
 
+    for (const auto* attribute : {"frequency", "sampleRate"}) {
+        for (const auto& value : {std::any{}, std::any{std::string("invalid")},
+                                  std::any{F64{2.0e6}},
+                                  std::any{std::numeric_limits<F64>::infinity()},
+                                  std::any{std::numeric_limits<F32>::quiet_NaN()}}) {
+            CAPTURE(config.mode, attribute, value.type().name());
+            REQUIRE(input.setDerivedAttribute(attribute, [value] { return value; }) ==
+                    Result::SUCCESS);
+            REQUIRE(presenter->presentSubmit() == Result::ERROR);
+            CHECK(JST_LOG_LAST_ERROR().find(attribute) != std::string::npos);
+            REQUIRE(presenter->presentSubmit() == Result::ERROR);
+
+            // The direct presenter returns a recoverable error to the scheduler.
+            REQUIRE(input.setDerivedAttribute(attribute, [=]() -> std::any {
+                return std::string(attribute) == "frequency" ? frequency : sampleRate;
+            }) == Result::SUCCESS);
+            REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        }
+    }
+
+    REQUIRE(axis->destroy(&window) == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Signal View recolors its axis from the surface theme",
+          "[modules][signal_view][present][theme]") {
+    Tensor input(DeviceType::CPU, DataType::F32, {32});
+    TensorMap inputs;
+    inputs["signal"].requested("source", "signal");
+    inputs["signal"].tensor = input;
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("signal_view", DeviceType::CPU,
+                                  RuntimeType::NATIVE, "generic", module) ==
+            Result::SUCCESS);
+    Modules::SignalView config;
+    config.mode = GENERATE("lineplot", "waterfall", "lineplot_waterfall");
+    config.waterfallHeight = 4;
+    CAPTURE(config.mode);
+    REQUIRE(module->create("signal_view", config, inputs) == Result::SUCCESS);
+
+    LabelTestWindow window;
+    Render::Components::Axis::Config axisConfig;
+    axisConfig.showInteriorGrid = false;
+    axisConfig.font = std::make_shared<Render::Components::Font>(
+        Render::Components::Font::Config{});
+    auto axis = std::make_shared<LabelTestAxis>(axisConfig);
+    REQUIRE(axis->create(&window) == Result::SUCCESS);
+
+    auto* impl = module->getImpl<Modules::SignalViewImpl>();
+    REQUIRE(impl);
+    SignalViewImplAccess::wirePresentResources(*impl, axis, {});
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+
+    const auto apply = [&](const SurfaceTheme& theme) {
+        module->surface()->pushSurfaceEvent({
+            .type = SurfaceEventType::Resize,
+            .size = {512, 512},
+            .theme = theme,
+        });
+        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        const auto& applied = axis->getConfig();
+        CHECK(applied.gridColor == theme.grid);
+        CHECK(applied.majorGridColor == theme.majorGrid);
+        CHECK(applied.labelColor == theme.foreground);
+    };
+
+    SurfaceTheme light;
+    light.background = {0.98f, 0.98f, 0.985f, 1.0f};
+    light.foreground = {0.12f, 0.12f, 0.14f, 1.0f};
+    light.grid = {0.89f, 0.89f, 0.90f, 1.0f};
+    light.majorGrid = {0.58f, 0.58f, 0.61f, 1.0f};
+    apply(light);
+    apply(SurfaceTheme{});
+
+    REQUIRE(axis->destroy(&window) == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Signal View cursor readout uses frequency only when both attributes are F32",
+          "[modules][signal_view][present][metadata][regression]") {
+    Tensor input(DeviceType::CPU, DataType::F32, {8});
+    TensorMap inputs;
+    inputs["signal"].tensor = input;
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("signal_view", DeviceType::CPU,
+                                  RuntimeType::NATIVE, "generic", module) == Result::SUCCESS);
+    Modules::SignalView config;
+    config.mode = "lineplot";
+    REQUIRE(module->create("plot", config, inputs) == Result::SUCCESS);
+
+    LabelTestWindow window;
+    Render::Components::Axis::Config axisConfig;
+    axisConfig.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
+    auto axis = std::make_shared<LabelTestAxis>(axisConfig);
+    REQUIRE(axis->create(&window) == Result::SUCCESS);
+    Render::Components::Text::Config cursorConfig;
+    cursorConfig.font = axisConfig.font;
+    cursorConfig.maxCharacters = 64;
+    cursorConfig.elements = {{"cursor-x", {}}, {"cursor-y", {}}};
+    auto cursorText = std::make_shared<LabelTestText>(cursorConfig);
+    REQUIRE(cursorText->create(&window) == Result::SUCCESS);
+    auto* impl = module->getImpl<Modules::SignalViewImpl>();
+    REQUIRE(impl);
+    SignalViewImplAccess::wirePresentResources(*impl, axis, {}, cursorText);
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+
+    const auto cursorX = [&]() {
+        module->surface()->pushInputEvent(MouseEvent{
+            .type = MouseEventType::Move, .position = {0.5f, 0.5f},
+        });
+        REQUIRE(presenter->presentSubmit() == Result::SUCCESS);
+        return cursorText->get("cursor-x").fill;
+    };
+
+    CHECK(cursorX() == "0.0000");
+    REQUIRE(input.setAttribute("frequency", F32{100.0e6f}) == Result::SUCCESS);
+    CHECK(cursorX() == "0.0000");
+    REQUIRE(input.setAttribute("sampleRate", F32{2.0e6f}) == Result::SUCCESS);
+    CHECK(cursorX() == "100.0000 MHz");
+    REQUIRE(input.setAttribute("frequency", F32{-1.0e6f}) == Result::SUCCESS);
+    CHECK(cursorX() == "-1.0000 MHz");
+    REQUIRE(input.removeAttribute("frequency") == Result::SUCCESS);
+    CHECK(cursorX() == "0.0000");
+
+    REQUIRE(input.setAttribute("sampleRate", F64{2.0e6}) == Result::SUCCESS);
+    REQUIRE(presenter->presentSubmit() == Result::ERROR);
+    CHECK(JST_LOG_LAST_ERROR().find("sampleRate") != std::string::npos);
+    REQUIRE(input.setAttribute("sampleRate", F32{2.0e6f}) == Result::SUCCESS);
+    CHECK(cursorX() == "0.0000");
+
+    REQUIRE(cursorText->destroy(&window) == Result::SUCCESS);
     REQUIRE(axis->destroy(&window) == Result::SUCCESS);
     REQUIRE(module->destroy() == Result::SUCCESS);
 }
@@ -2067,6 +2204,14 @@ TEST_CASE("Signal View validation is mode aware",
                 REQUIRE(ctx.run() == Result::ERROR);
             }
 
+            SECTION("density settings") {
+                Modules::SignalView config;
+                config.mode = "lineplot";
+                config.density = true;
+                config.persistence = 0;
+                RequireSignalViewValidationError(implementation, config, input);
+            }
+
             SECTION("waterfall accepts one column") {
                 TestContext ctx("signal_view", implementation.device,
                                 implementation.runtime, implementation.provider);
@@ -2079,6 +2224,108 @@ TEST_CASE("Signal View validation is mode aware",
                 ctx.setInput("signal", oneColumn);
                 REQUIRE(ctx.run() == Result::SUCCESS);
             }
+        }
+    }
+}
+
+TEST_CASE("Density columns cap wide spectra and cover every bin",
+          "[modules][signal_view][density]") {
+    const auto narrow = Modules::detail::PlanDensityColumns(1024);
+    REQUIRE(narrow.binsPerColumn == 1);
+    REQUIRE(narrow.columns == 1024);
+
+    const auto limit = Modules::detail::PlanDensityColumns(
+        Modules::detail::kDensityMaxColumns);
+    REQUIRE(limit.binsPerColumn == 1);
+    REQUIRE(limit.columns == Modules::detail::kDensityMaxColumns);
+
+    for (const U64 width : {U64{8193}, U64{65536}, U64{100000}}) {
+        const auto plan = Modules::detail::PlanDensityColumns(width);
+        REQUIRE(plan.columns <= Modules::detail::kDensityMaxColumns);
+        REQUIRE(plan.columns * plan.binsPerColumn >= width);
+        REQUIRE((plan.columns - 1) * plan.binsPerColumn < width);
+    }
+
+    REQUIRE(Modules::detail::DensityDecay(1.0f) == Catch::Approx(0.5f));
+    REQUIRE(std::pow(Modules::detail::DensityDecay(256.0f), 256.0f) ==
+            Catch::Approx(0.5f));
+}
+
+TEST_CASE("Signal View spectral density keeps its own history ring under a linear trace",
+          "[modules][signal_view][density]") {
+    const auto implementations = Registry::ListAvailableModules("signal_view");
+    REQUIRE(!implementations.empty());
+    const std::string mode = GENERATE("lineplot", "lineplot_waterfall");
+    CAPTURE(mode);
+
+    for (const auto& implementation : implementations) {
+        DYNAMIC_SECTION("Device: " << implementation.device
+                        << " Runtime: " << implementation.runtime) {
+            Tensor cpuInput;
+            REQUIRE(cpuInput.create(DeviceType::CPU, DataType::F32, {3, 16}) ==
+                    Result::SUCCESS);
+            REQUIRE(SetSignalAxes(cpuInput, {
+                .sample = Index{1},
+                .batch = Index{0},
+            }) == Result::SUCCESS);
+            for (U64 i = 0; i < cpuInput.size(); ++i) {
+                cpuInput.data<F32>()[i] = static_cast<F32>(i) / cpuInput.size();
+            }
+
+            Tensor input;
+            if (implementation.device == DeviceType::CPU) {
+                input = cpuInput;
+            } else {
+                REQUIRE(input.create(implementation.device, cpuInput) == Result::SUCCESS);
+            }
+
+            TensorMap inputs;
+            inputs["signal"].requested("source", "signal");
+            inputs["signal"].tensor = input;
+
+            std::shared_ptr<Module> module;
+            REQUIRE(Registry::BuildModule("signal_view",
+                                          implementation.device,
+                                          implementation.runtime,
+                                          implementation.provider,
+                                          module) == Result::SUCCESS);
+
+            Modules::SignalView config;
+            config.mode = mode;
+            config.density = true;
+            config.waterfallHeight = 4;
+            REQUIRE(module->create("signal_view", config, inputs) == Result::SUCCESS);
+
+            Runtime runtime("signal_view", implementation.device, implementation.runtime);
+            REQUIRE(runtime.create({{"signal_view", module}}) == Result::SUCCESS);
+            std::unordered_set<std::string> skipped;
+            std::unordered_set<std::string> failed;
+            REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+
+            auto* impl = module->getImpl<Modules::SignalViewImpl>();
+            REQUIRE(impl != nullptr);
+            const auto bins = ReadTensor(impl->*SignalViewImplAccess::densityBinsMember(),
+                                         "density history");
+            REQUIRE(bins.size() == Modules::detail::kDensityHistoryRows * 16);
+            for (U64 i = 0; i < cpuInput.size(); ++i) {
+                REQUIRE(bins[i] == cpuInput.data<F32>()[i]);
+            }
+            const auto& history = impl->*SignalViewImplAccess::densityHistoryMember();
+            REQUIRE(history.writeIndex == 3);
+            REQUIRE(history.dirtyRows == 3);
+            if (mode == "lineplot_waterfall") {
+                REQUIRE(ReadWaterfallBins(module).size() == 4 * 16);
+            }
+
+            const auto& lineplot = SignalViewImplAccess::lineplotOf(*impl);
+            REQUIRE(lineplot.config.overlay);
+            REQUIRE_FALSE(lineplot.config.fill);
+            const auto points = ReadSignalPoints(module);
+            REQUIRE(points.size() == 32);
+            REQUIRE(points[1] == Catch::Approx(-1.0f / 3.0f).margin(1e-5f));
+
+            REQUIRE(runtime.destroy() == Result::SUCCESS);
+            REQUIRE(module->destroy() == Result::SUCCESS);
         }
     }
 }
@@ -2152,7 +2399,7 @@ TEST_CASE("Signal View validates signal axis roles",
     }
 }
 
-TEST_CASE("Signal View rejects non-finite configuration and metadata",
+TEST_CASE("Signal View rejects non-finite configuration",
           "[modules][signal_view][validation]") {
     const auto implementations = Registry::ListAvailableModules("signal_view");
     REQUIRE(!implementations.empty());
@@ -2167,14 +2414,52 @@ TEST_CASE("Signal View rejects non-finite configuration and metadata",
             Modules::SignalView config;
             config.rangeMin = -std::numeric_limits<F32>::infinity();
             RequireSignalViewValidationError(implementation, config, input);
-
-            REQUIRE(input.setAttribute("sampleRate", F64{1.0e6}) ==
-                    Result::SUCCESS);
-            RequireSignalViewValidationError(implementation,
-                                             Modules::SignalView{},
-                                             input);
         }
     }
+}
+
+TEST_CASE("Signal View rejects invalid frequency metadata at creation and presentation",
+          "[modules][signal_view][metadata][regression]") {
+    const auto attribute = GENERATE("frequency", "sampleRate");
+    const auto value = GENERATE(std::any{}, std::any{std::string("invalid")},
+                               std::any{F64{2.0e6}},
+                               std::any{I64{123}}, std::any{true},
+                               std::any{std::vector<F32>{1.0f}}, std::any{CF32{1, 2}},
+                               std::any{std::numeric_limits<F32>::quiet_NaN()},
+                               std::any{std::numeric_limits<F64>::quiet_NaN()},
+                               std::any{std::numeric_limits<F32>::infinity()},
+                               std::any{-std::numeric_limits<F64>::infinity()},
+                               std::any{std::numeric_limits<F64>::max()});
+    const auto mode = GENERATE("lineplot", "waterfall", "lineplot_waterfall", "waterfall_3d");
+    CAPTURE(mode, attribute, value.type().name());
+    Tensor input(DeviceType::CPU, DataType::F32, {32});
+    // A malformed attribute is an error even if its companion is absent.
+    REQUIRE(input.setAttribute(attribute, value) == Result::SUCCESS);
+
+    TensorMap inputs;
+    inputs["signal"].produced("source", "signal", input);
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("signal_view", DeviceType::CPU,
+                                  RuntimeType::NATIVE, "generic", module) == Result::SUCCESS);
+    Modules::SignalView config;
+    config.mode = mode;
+    config.waterfallHeight = 4;
+    REQUIRE(module->create("plot", config, inputs) == Result::ERROR);
+    REQUIRE(module->state() == Module::State::ERRORED);
+    CHECK(JST_LOG_LAST_ERROR().find(attribute) != std::string::npos);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+
+    REQUIRE(input.removeAttribute(attribute) == Result::SUCCESS);
+    REQUIRE(Registry::BuildModule("signal_view", DeviceType::CPU,
+                                  RuntimeType::NATIVE, "generic", module) == Result::SUCCESS);
+    REQUIRE(module->create("plot", config, inputs) == Result::SUCCESS);
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+    REQUIRE(presenter->presentInitialize() == Result::SUCCESS);
+    REQUIRE(input.setAttribute(attribute, value) == Result::SUCCESS);
+    REQUIRE(presenter->presentSubmit() == Result::ERROR);
+    CHECK(JST_LOG_LAST_ERROR().find(attribute) != std::string::npos);
+    REQUIRE(module->destroy() == Result::SUCCESS);
 }
 
 TEST_CASE("Waterfall history tracks wrapped dirty rows",

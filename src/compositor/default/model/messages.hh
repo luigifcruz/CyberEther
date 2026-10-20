@@ -7,6 +7,7 @@
 #include "jetstream/instance_remote.hh"
 #include "jetstream/module_surface.hh"
 #include "jetstream/parser.hh"
+#include "jetstream/settings.hh"
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/types.hh"
 
@@ -19,6 +20,92 @@
 #include <vector>
 
 namespace Jetstream {
+
+struct MailSetAgentEnabled {
+    bool value = true;
+};
+
+struct MailSetAgentChatVisible {
+    bool value = false;
+    bool focus = false;
+};
+
+struct MailSetAgentVoiceVisible {
+    bool value = false;
+};
+
+struct MailStartAgentVoice {};
+
+enum class AgentComposer : U8 {
+    Dock,
+    Welcome,
+};
+
+struct MailSubmitAgentChat {
+    AgentComposer composer = AgentComposer::Dock;
+    std::string text;
+    bool reveal = false;
+};
+
+struct MailCancelAgentChat {};
+struct MailClearAgentChat {};
+
+struct MailSelectAgentModel {
+    std::string provider;
+    std::string model;
+};
+
+struct MailSetAgentReasoningEffort {
+    std::string provider;
+    std::string model;
+    std::string value;
+};
+
+struct MailOpenAgentModelPicker {};
+
+struct MailSetAgentModelSearch {
+    std::string value;
+};
+
+struct MailAddAgentModel {
+    Settings::Intelligence::Model value;
+};
+
+struct MailRemoveAgentModel {
+    Settings::Intelligence::Model value;
+};
+
+struct MailOpenAgentProviderEditor {
+    std::optional<std::string> name;
+};
+
+struct MailSaveAgentProvider {
+    Settings::Intelligence::Provider value;
+    std::optional<std::string> replaceName;
+    std::string apiKey;
+};
+
+struct MailRemoveAgentProvider {
+    std::string name;
+};
+
+struct MailTestAgentProvider {
+    Settings::Intelligence::Provider value;
+    U64 revision = 0;
+    std::string apiKey;
+};
+
+struct MailSetAgentVoiceBackend {
+    Settings::Intelligence::Model value;
+};
+
+struct MailSetAgentVoiceModel {
+    std::string value;
+};
+
+struct MailSetAgentVoiceName {
+    std::string value;
+};
 
 struct MailNewFlowgraph {};
 
@@ -153,8 +240,8 @@ struct MailApplyUpdate {};
 
 struct MailDismissUpdate {};
 
-struct MailSetRemoteBrokerUrl {
-    std::string value;
+struct MailSetRemoteBroker {
+    Instance::Remote::Config::Broker value;
 };
 
 struct MailSetRemoteCodec {
@@ -169,8 +256,21 @@ struct MailSetRemoteEncoder {
     Instance::Remote::EncoderType value = Instance::Remote::EncoderType::Auto;
 };
 
-struct MailSetRemoteAutoJoinSessions {
+struct MailSetRemoteAutoApprove {
     bool value = false;
+};
+
+struct MailSetRemoteTransport {
+    Instance::Remote::TransportType value = Instance::Remote::TransportType::Auto;
+};
+
+struct MailSetRemotePortRange {
+    U16 minPort = 0;
+    U16 maxPort = 0;
+};
+
+struct MailSetRemoteMediaAddress {
+    std::string value;
 };
 
 struct MailSetPythonRuntimePath {
@@ -302,6 +402,7 @@ struct MailReconfigureBlock {
     std::string blockId;
     Parser::Map config;
     bool silent = false;
+    std::function<void(Result)> onComplete;
 };
 
 struct MailCopyBlock {
@@ -318,6 +419,7 @@ struct MailSetNodeMeta {
     std::string flowgraph;
     std::string block;
     NodeMeta meta;
+    std::optional<NodeMeta> base;
 };
 
 struct MailSetConfigCollapsed {
@@ -438,17 +540,40 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetFlowgraphEnvironmentSearch,
                           MailSetGraphicsScale,
                           MailSetGraphicsDevice,
+                          MailSetAgentEnabled,
+                          MailSetAgentChatVisible,
+                          MailSetAgentVoiceVisible,
+                          MailStartAgentVoice,
+                          MailSubmitAgentChat,
+                          MailCancelAgentChat,
+                          MailClearAgentChat,
+                          MailSelectAgentModel,
+                          MailSetAgentReasoningEffort,
+                          MailOpenAgentModelPicker,
+                          MailSetAgentModelSearch,
+                          MailAddAgentModel,
+                          MailRemoveAgentModel,
+                          MailOpenAgentProviderEditor,
+                          MailSaveAgentProvider,
+                          MailRemoveAgentProvider,
+                          MailTestAgentProvider,
+                          MailSetAgentVoiceBackend,
+                          MailSetAgentVoiceModel,
+                          MailSetAgentVoiceName,
                           MailSetDebugTimingEnabled,
                           MailSetDebugLogLevel,
                           MailCheckForUpdates,
                           MailDownloadUpdate,
                           MailApplyUpdate,
                           MailDismissUpdate,
-                          MailSetRemoteBrokerUrl,
+                          MailSetRemoteBroker,
                           MailSetRemoteCodec,
                           MailSetRemoteFramerate,
                           MailSetRemoteEncoder,
-                          MailSetRemoteAutoJoinSessions,
+                          MailSetRemoteAutoApprove,
+                          MailSetRemoteTransport,
+                          MailSetRemotePortRange,
+                          MailSetRemoteMediaAddress,
                           MailSetPythonRuntimePath,
                           MailSetRuntimeDependencyPolicy,
                           MailOpenPythonEnvironmentCache,

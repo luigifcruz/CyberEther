@@ -75,6 +75,13 @@ void NodeRangeInput::update(Config config) {
     if (config != impl->config) {
         invalidate(Dirty::Layout);
     }
+    if (config.id != impl->config.id && (impl->dragging || impl->editing)) {
+        impl->dragging = false;
+        impl->dragValue.reset();
+        impl->editing = false;
+        impl->editor.setVisible(false);
+        cancelMouse(impl->editor);
+    }
     impl->config = std::move(config);
     if (!impl->dragging && impl->dragValue.has_value()) {
         if (*impl->dragValue != impl->config.value) {

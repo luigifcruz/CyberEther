@@ -19,6 +19,10 @@ class JETSTREAM_API WindowImp<DeviceType::Vulkan> : public Window {
 
     ~WindowImp() override;
 
+    bool supportsCapture() const override {
+        return true;
+    }
+
     std::string info() const override;
 
     constexpr DeviceType device() const override {

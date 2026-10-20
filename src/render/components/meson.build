@@ -6,6 +6,7 @@ src_lst += files([
     'mesh.cc',
     'image.cc',
     'curves.cc',
+    'orb.cc',
     'map_context.cc',
     'map_layer.cc',
 ])

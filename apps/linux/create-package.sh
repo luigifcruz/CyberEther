@@ -17,6 +17,7 @@ ARCH="${ARCH:-}"
 APPIMAGE_SUFFIX="${APPIMAGE_SUFFIX:-}"
 CYBERETHER_BINARY="${CYBERETHER_BINARY:-$ROOT_DIR/build/cyberether}"
 JETSTREAM_SO="${JETSTREAM_SO:-$ROOT_DIR/build/libjetstream.so}"
+CUDA_RUNTIME_DIR="${CUDA_RUNTIME_DIR:-}"
 ICON_SOURCE="${ICON_SOURCE:-$ROOT_DIR/resources/assets/icon.png}"
 OUTPUT_DIR="${OUTPUT_DIR:-$ROOT_DIR/.dist/linux}"
 RELEASE_NOTES="${RELEASE_NOTES:-/dev/null}"
@@ -90,6 +91,10 @@ CHANNEL="linux-$RUNTIME_ARCH$APPIMAGE_SUFFIX"
 
 CYBERETHER_BINARY="$(abs_path "$CYBERETHER_BINARY")"
 JETSTREAM_SO="$(abs_path "$JETSTREAM_SO")"
+if [[ -n "$CUDA_RUNTIME_DIR" ]]; then
+    CUDA_RUNTIME_DIR="$(abs_path "$CUDA_RUNTIME_DIR")"
+    [[ -d "$CUDA_RUNTIME_DIR" ]] || die "CUDA runtime directory does not exist: $CUDA_RUNTIME_DIR"
+fi
 ICON_SOURCE="$(abs_path "$ICON_SOURCE")"
 OUTPUT_DIR="$(abs_path "$OUTPUT_DIR")"
 PACK_DIR="$(abs_path "${PACK_DIR:-$OUTPUT_DIR/.pack}")"
@@ -121,6 +126,18 @@ if [[ "$load_path" != "$JETSTREAM_SO_NAME" ]]; then
 fi
 patchelf --set-rpath '$ORIGIN' "$PACK_DIR/$EXECUTABLE_NAME"
 patchelf --set-rpath '$ORIGIN' "$PACK_DIR/$JETSTREAM_SO_NAME"
+
+if [[ -n "$CUDA_RUNTIME_DIR" ]]; then
+    for library in "$CUDA_RUNTIME_DIR"/lib*.so.*; do
+        [[ -f "$library" ]] || die "CUDA runtime library does not exist: $library"
+        library_name="${library##*/}"
+        [[ "$library_name" != libcuda.so.* ]] || die "NVIDIA driver libraries must not be bundled: $library_name"
+        cp -L "$library" "$PACK_DIR/$library_name"
+        chmod 755 "$PACK_DIR/$library_name"
+        # Resolve transitive dependencies and dlopen-loaded CUDA libraries locally.
+        patchelf --set-rpath '$ORIGIN' "$PACK_DIR/$library_name"
+    done
+fi
 
 PACKAGER_PATH="$(resolve_packager)"
 "$PACKAGER_PATH" pack \

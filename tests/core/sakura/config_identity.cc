@@ -16,7 +16,7 @@ FlowgraphConfigFieldConfig IdentityField(const std::string& kind, const std::str
     else if (kind == "int") values[name] = I32(1);
     else values[name] = F32(1);
     return {.id = id, .name = name, .label = name, .format = {{"type", kind}}, .values = std::move(values),
-            .onApply = [&patches](Parser::Map patch, bool) { patches.push_back(std::move(patch)); }};
+            .onApply = [&patches](Parser::Map patch, bool, std::function<void(Result)>) { patches.push_back(std::move(patch)); }};
 }
 
 }  // namespace

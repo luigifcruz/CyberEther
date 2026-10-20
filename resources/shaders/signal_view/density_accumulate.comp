@@ -1,0 +1,70 @@
+#version 450
+
+layout(local_size_x = 64) in;
+
+layout(set = 0, binding = 0) uniform AccumulateUniforms {
+    uint width;
+    uint columns;
+    uint levels;
+    uint binsPerColumn;
+    uint history;
+    uint writeIndex;
+    uint version;
+    uint origin;
+    uint epoch;
+    float decay;
+    float padding0;
+    float padding1;
+} uniforms;
+
+layout(std430, set = 0, binding = 1) readonly buffer History {
+    float data[];
+};
+
+layout(std430, set = 0, binding = 2) buffer Density {
+    float density[];
+};
+
+layout(std430, set = 0, binding = 3) buffer State {
+    uvec2 state[];
+};
+
+float binLevel(uint row, uint bin) {
+    return data[row * uniforms.width + bin] * float(uniforms.levels);
+}
+
+void main() {
+    uint column = gl_GlobalInvocationID.x;
+    if (column >= uniforms.columns) {
+        return;
+    }
+
+    uvec2 previous = state[column];
+    bool fresh = previous.y != uniforms.epoch;
+    uint elapsed = fresh ? uniforms.version - uniforms.origin : uniforms.version - previous.x;
+    uint pending = min(elapsed, uniforms.history);
+    if (!fresh && elapsed == 0u) {
+        return;
+    }
+
+    uint base = column * uniforms.levels;
+    float fade = pow(uniforms.decay, float(elapsed));
+    for (uint l = 0u; l < uniforms.levels; ++l) {
+        density[base + l] = fresh ? 0.0 : density[base + l] * fade;
+    }
+
+    uint first = column * uniforms.binsPerColumn;
+    uint last = min(first + uniforms.binsPerColumn, uniforms.width) - 1u;
+    float top = float(uniforms.levels) - 1.0;
+    float share = 1.0 / float(last - first + 1u);
+
+    for (uint i = 0u; i < pending; ++i) {
+        uint row = (uniforms.writeIndex + uniforms.history - pending + i) % uniforms.history;
+        float weight = pow(uniforms.decay, float(pending - 1u - i)) * share;
+        for (uint bin = first; bin <= last; ++bin) {
+            density[base + uint(clamp(floor(binLevel(row, bin)), 0.0, top))] += weight;
+        }
+    }
+
+    state[column] = uvec2(uniforms.version, uniforms.epoch);
+}

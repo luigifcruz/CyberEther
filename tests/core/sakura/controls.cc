@@ -529,3 +529,68 @@ TEST_CASE("Text inputs take focus when clicked or configured to focus", "[core][
     CHECK(first.focused());
     CHECK_FALSE(second.focused());
 }
+
+TEST_CASE("Password text inputs draw a mask instead of their text", "[core][sakura][controls]") {
+    const Scene scene;
+    Sakura::TextInput input;
+    input.update({.value = "hunter2", .password = true});
+    Host host(input);
+    host.place(scene.ctx, {0.0f, 0.0f, 300.0f, 25.0f});
+
+    std::vector<std::string> drawn;
+    for (auto* label : Find<Sakura::Label>(input)) {
+        for (const auto& instance : label->config().instances) {
+            if (instance.visible && !instance.str.empty()) {
+                drawn.push_back(instance.str);
+            }
+        }
+    }
+    REQUIRE_FALSE(drawn.empty());
+    for (const auto& str : drawn) {
+        CHECK(str.find("hunter") == std::string::npos);
+    }
+    CHECK(std::find(drawn.begin(), drawn.end(), "*******") != drawn.end());
+
+    input.update({.value = "hunter2"});
+    host.place(scene.ctx, {0.0f, 0.0f, 300.0f, 25.0f});
+    bool plain = false;
+    for (auto* label : Find<Sakura::Label>(input)) {
+        for (const auto& instance : label->config().instances) {
+            plain = plain || (instance.visible && instance.str == "hunter2");
+        }
+    }
+    CHECK(plain);
+}
+
+TEST_CASE("Disabled text inputs ignore clicks, show no cursor, and give up focus", "[core][sakura][controls]") {
+    const Scene scene;
+    std::vector<std::string> changes;
+    Sakura::TextInput input;
+    const auto configure = [&](bool disabled) {
+        input.update({.value = "alpha", .disabled = disabled,
+                      .onChange = [&](const std::string& value) { changes.push_back(value); }});
+    };
+    configure(false);
+    Host host(input);
+    const Rect bounds = {0.0f, 0.0f, 300.0f, 25.0f};
+    host.place(scene.ctx, bounds);
+    CHECK(Peek::CursorAt(input, {40.0f, 12.0f}) == SurfaceCursor::TextInput);
+    CHECK(host.click(40.0f, 12.0f));
+    REQUIRE(input.focused());
+
+    configure(true);
+    host.place(scene.ctx, bounds);
+    CHECK_FALSE(input.focused());
+    CHECK_FALSE(Peek::CursorAt(input, {40.0f, 12.0f}).has_value());
+    CHECK(Sakura::Access::cursor(host, {40.0f, 12.0f}) == SurfaceCursor::Default);
+    CHECK_FALSE(host.click(40.0f, 12.0f));
+    host.place(scene.ctx, bounds);
+    CHECK_FALSE(input.focused());
+    Type(host, "b");
+    CHECK(changes.empty());
+
+    configure(true);
+    input.update({.value = "alpha", .focus = true, .disabled = true});
+    host.place(scene.ctx, bounds);
+    CHECK_FALSE(input.focused());
+}

@@ -10,6 +10,8 @@
 #include "modal/container.hh"
 #include "titlebar.hh"
 
+#include "agent/chat.hh"
+#include "agent/voice.hh"
 #include "../views/workbench.hh"
 
 namespace Jetstream {
@@ -23,6 +25,8 @@ struct WorkbenchPresenter {
     FlowgraphMetadataWindowPresenter flowgraphMetadata;
     FlowgraphEnvironmentWindowPresenter flowgraphEnvironment;
     ModalPresenter modal;
+    AgentChatPresenter agentChat;
+    AgentVoicePresenter agentVoice;
 
     explicit WorkbenchPresenter(const PresenterContext& context) : context(context),
                                                                    filePicker(context),
@@ -31,14 +35,24 @@ struct WorkbenchPresenter {
                                                                    flowgraphPane(context),
                                                                    flowgraphMetadata(context),
                                                                    flowgraphEnvironment(context),
-                                                                   modal(context) {}
+                                                                   modal(context),
+                                                                   agentChat{context},
+                                                                   agentVoice{context} {}
 
     WorkbenchView::Config build() const {
         WorkbenchView::Config config;
         config.filePending = context.state.interface.filePending;
         config.titlebar = titlebar.build();
+        config.agentChat = agentChat.build();
+        config.agentVoice = agentVoice.build();
         config.welcomeHud = welcomeHud.build();
+        if (config.welcomeHud.has_value()) {
+            config.welcomeHud->chatOpen = !config.agentChat.hidden;
+            config.welcomeHud->assistantEnabled = context.state.agent.settings.enabled;
+        }
         if (auto welcome = welcomeHud.buildStartTab()) {
+            welcome->chatOpen = !config.agentChat.hidden;
+            welcome->assistantEnabled = context.state.agent.settings.enabled;
             const auto enqueue = context.callbacks.enqueueMail;
             config.startTab = StartTabView::Config{
                 .welcome = std::move(*welcome),

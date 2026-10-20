@@ -27,6 +27,7 @@ struct NodeCombo : public Component {
     ~NodeCombo();
 
     void update(Config config);
+    const Config& config() const;
 
  protected:
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;

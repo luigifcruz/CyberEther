@@ -12,6 +12,9 @@
 #include <jetstream/render/sakura/components/button.hh>
 #include <jetstream/render/sakura/components/canvas.hh>
 #include <jetstream/render/sakura/components/card.hh>
+#include <jetstream/render/sakura/components/chat.hh>
+#include <jetstream/render/sakura/components/chat_composer.hh>
+#include <jetstream/render/sakura/components/chat_dock.hh>
 #include <jetstream/render/sakura/components/checkbox.hh>
 #include <jetstream/render/sakura/components/chrome_button.hh>
 #include <jetstream/render/sakura/components/code_editor.hh>
@@ -33,6 +36,7 @@
 #include <jetstream/render/sakura/components/markdown_editor.hh>
 #include <jetstream/render/sakura/components/menu.hh>
 #include <jetstream/render/sakura/components/modal_layer.hh>
+#include <jetstream/render/sakura/components/model_picker.hh>
 #include <jetstream/render/sakura/components/overlay.hh>
 #include <jetstream/render/sakura/components/panel.hh>
 #include <jetstream/render/sakura/components/pill_button.hh>
@@ -62,6 +66,7 @@
 #include <jetstream/render/sakura/components/text_markdown.hh>
 #include <jetstream/render/sakura/components/text_view.hh>
 #include <jetstream/render/sakura/components/toast_layer.hh>
+#include <jetstream/render/sakura/components/voice.hh>
 
 #include <jetstream/render/sakura/components/node/bool_input.hh>
 #include <jetstream/render/sakura/components/node/combo.hh>

@@ -951,3 +951,53 @@ TEST_CASE("Pointer validity follows input from the state to the router", "[core]
         return event.type == MouseEventType::Cancel;
     }));
 }
+
+TEST_CASE("Masked text grids never write their text to the clipboard",
+          "[core][sakura][input][text-grid]") {
+    std::string value = "secret";
+    Sakura::TextGrid grid;
+    Host host(grid);
+    grid.update({
+        .id = "masked",
+        .value = value,
+        .editable = true,
+        .fontSize = 15.0f,
+        .singleLine = true,
+        .masked = true,
+        .onChange = [&](const std::string& next) { value = next; },
+    });
+    SakuraTest::FakeWindow window;
+    auto ctx = MakeContext({200.0f, 30.0f});
+    ctx.render = &window;
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 30.0f});
+    grid.focus();
+    REQUIRE(FocusOwner(host) == &grid);
+
+    Sakura::SetClipboardText(&window, "untouched");
+    REQUIRE(Tap(host, KeyCode::A, {.control = true}));
+    Tap(host, KeyCode::C, {.control = true});
+    CHECK(Sakura::GetClipboardText(&window) == "untouched");
+    Tap(host, KeyCode::X, {.control = true});
+    CHECK(Sakura::GetClipboardText(&window) == "untouched");
+    CHECK(value == "secret");
+
+    Sakura::SetClipboardText(&window, "typed");
+    CHECK(Tap(host, KeyCode::V, {.control = true}));
+    CHECK(value == "typed");
+
+    Type(host, "(\"[");
+    CHECK(value == "typed(\"[");
+    Type(host, ")");
+    CHECK(value == "typed(\"[)");
+
+    Tap(host, KeyCode::LeftArrow);
+    Tap(host, KeyCode::Backspace);
+    CHECK(value == "typed(\")");
+
+    grid.update({.id = "masked", .value = "    ", .editable = true, .fontSize = 15.0f, .singleLine = true,
+                 .masked = true, .onChange = [&](const std::string& next) { value = next; }});
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 30.0f});
+    Tap(host, KeyCode::End);
+    Tap(host, KeyCode::Backspace);
+    CHECK(value == "   ");
+}

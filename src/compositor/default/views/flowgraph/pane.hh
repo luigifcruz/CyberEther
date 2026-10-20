@@ -41,10 +41,12 @@ struct FlowgraphPane {
         std::function<void(std::optional<Sakura::DockTiles>)> onLayout;
         std::function<void()> onReviewDependencies;
         std::function<void()> onOpenExamples;
+        std::function<void(FlowgraphEditor::Measured)> onMeasure;
     };
 
     void update(Config config) {
         auto editorConfig = std::move(config.editor);
+        editorConfig.onLayout = std::move(config.onMeasure);
         this->config = std::move(config);
 
         const std::vector<std::string> flowgraphHints = {

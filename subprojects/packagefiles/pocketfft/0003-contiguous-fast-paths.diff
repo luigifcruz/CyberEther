@@ -1,0 +1,104 @@
+--- a/pocketfft_hdronly.h
++++ b/pocketfft_hdronly.h
+@@ -58,6 +58,7 @@
+ #include <vector>
+ #include <complex>
+ #include <algorithm>
++#include <type_traits>
+ #if POCKETFFT_CACHE_SIZE!=0
+ #include <array>
+ #include <mutex>
+@@ -101,6 +102,9 @@
+ 
+ using shape_t = std::vector<size_t>;
+ using stride_t = std::vector<ptrdiff_t>;
++
++// Bound the fast paths to sizes validated on Cortex-A76.
++constexpr size_t single_transform_limit = 65536;
+ 
+ constexpr bool FORWARD  = true,
+                BACKWARD = false;
+@@ -3140,9 +3144,15 @@
+       util::thread_count(nthreads, in.shape(), axes[iax], VLEN<T>::val),
+       [&] {
+         constexpr auto vlen = VLEN<T0>::val;
+-        auto storage = alloc_tmp<T0>(in.shape(), len, sizeof(T));
+         const auto &tin(iax==0? in : out);
+         multi_iter<vlen> it(tin, out, axes[iax]);
++        // Scalar transforms can use a contiguous output as their work buffer.
++        // Allocate staging only when a vector group or a strided output needs it.
++        const bool needs_storage = (len>single_transform_limit) || !allow_inplace
++          || it.stride_out()!=sizeof(T)
++          || ((vlen>1) && (it.remaining()>=vlen));
++        auto storage = needs_storage
++          ? alloc_tmp<T0>(in.shape(), len, sizeof(T)) : arr<char>();
+ #ifndef POCKETFFT_NO_VECTORS
+         if (vlen>1)
+           while (it.remaining()>=vlen)
+@@ -3391,6 +3401,17 @@
+   {
+   if (util::prod(shape)==0) return;
+   util::sanity_check(shape, stride_in, stride_out, data_in==data_out, axes);
++  // A single contiguous transform does not need ND views or a lane iterator.
++  if ((axes.size()==1) && (shape[axes[0]]<=single_transform_limit)
++    && (util::prod(shape)==shape[axes[0]])
++    && (stride_in[axes[0]]==sizeof(std::complex<T>))
++    && (stride_out[axes[0]]==sizeof(std::complex<T>)))
++    {
++    auto plan = get_plan<pocketfft_c<T>>(shape[axes[0]]);
++    if (data_in!=data_out) std::copy_n(data_in, shape[axes[0]], data_out);
++    plan->exec(reinterpret_cast<cmplx<T> *>(data_out), fct, forward);
++    return;
++    }
+   cndarr<cmplx<T>> ain(data_in, shape, stride_in);
+   ndarr<cmplx<T>> aout(data_out, shape, stride_out);
+   general_nd<pocketfft_c<T>>(ain, aout, axes, fct, nthreads, ExecC2C{forward});
+@@ -3439,6 +3460,27 @@
+   {
+   if (util::prod(shape_in)==0) return;
+   util::sanity_check(shape_in, stride_in, stride_out, false, axis);
++  if ((shape_in[axis]<=single_transform_limit)
++    && (util::prod(shape_in)==shape_in[axis])
++    && (stride_in[axis]==sizeof(T))
++    && (stride_out[axis]==sizeof(std::complex<T>)))
++    {
++    const size_t len = shape_in[axis];
++    auto plan = get_plan<pocketfft_r<T>>(len);
++    // The complex output has room for all len packed real values. Unpack
++    // backwards so writing a complex pair cannot overwrite unread values.
++    auto packed = reinterpret_cast<T *>(data_out);
++    if (data_in!=packed) std::copy_n(data_in, len, packed);
++    plan->exec(packed, fct, true);
++    for (size_t k=len/2; k>0; --k)
++      {
++      const T re = packed[2*k-1];
++      const T im = 2*k<len ? packed[2*k] : T(0);
++      data_out[k] = std::complex<T>(re, forward ? im : -im);
++      }
++    data_out[0] = std::complex<T>(packed[0], T(0));
++    return;
++    }
+   cndarr<T> ain(data_in, shape_in, stride_in);
+   shape_t shape_out(shape_in);
+   shape_out[axis] = shape_in[axis]/2 + 1;
+@@ -3511,6 +3553,20 @@
+   {
+   if (util::prod(shape)==0) return;
+   util::sanity_check(shape, stride_in, stride_out, data_in==data_out, axes);
++  if ((axes.size()==1) && (shape[axes[0]]<=single_transform_limit)
++    && (util::prod(shape)==shape[axes[0]])
++    && (stride_in[axes[0]]==sizeof(T)) && (stride_out[axes[0]]==sizeof(T)))
++    {
++    const size_t len = shape[axes[0]];
++    auto plan = get_plan<pocketfft_r<T>>(len);
++    if (data_in!=data_out) std::copy_n(data_in, len, data_out);
++    if (!real2hermitian && forward)
++      for (size_t i=2; i<len; i+=2) data_out[i] = -data_out[i];
++    plan->exec(data_out, fct, real2hermitian);
++    if (real2hermitian && !forward)
++      for (size_t i=2; i<len; i+=2) data_out[i] = -data_out[i];
++    return;
++    }
+   cndarr<T> ain(data_in, shape, stride_in);
+   ndarr<T> aout(data_out, shape, stride_out);
+   general_nd<pocketfft_r<T>>(ain, aout, axes, fct, nthreads,

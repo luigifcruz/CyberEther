@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <any>
 #include <atomic>
@@ -276,6 +277,58 @@ TEST_CASE_METHOD(FlowgraphFixture,
         return line.find("reloaded output") != std::string::npos;
     }));
     REQUIRE(flowgraph->blockDestroy("python_switch", false) == Result::SUCCESS);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Python F64 plot metadata errors only the consuming plot block",
+                 "[modules][python][block][visualization][metadata][regression]") {
+    const std::string attribute = GENERATE("frequency", "sampleRate");
+    const std::string plotType = GENERATE("lineplot", "waterfall", "waterfall_3d");
+    CAPTURE(attribute, plotType);
+
+    Blocks::Python config;
+    config.inputCount = 0;
+    config.outputCount = 1;
+    config.outputTensorSpecs = {{.shape = "[32]"}};
+    config.code = "cycle = 0\n"
+                  "def compute(ctx):\n"
+                  "    global cycle\n"
+                  "    cycle += 1\n"
+                  "    ctx.outputs[0][...] = cycle\n"
+                  "    ctx.output_attrs[0][\"" + attribute + "\"] = 2.0e6\n";
+    REQUIRE(flowgraph->blockCreate("python_axis", config, {}, DeviceType::CPU,
+                                   RuntimeType::PYTHON) == Result::SUCCESS);
+    if (viewBlock("python_axis").state == Block::State::Errored &&
+        OptionalPythonRuntimeUnavailableForBlock()) {
+        SKIP("Optional Python runtime is unavailable.");
+    }
+    REQUIRE(viewBlock("python_axis").state == Block::State::Created);
+
+    // The plot starts before Python publishes its first attributes, as in a
+    // running observation. A sibling consumer must survive the plot's failure.
+    TensorMap plotInputs;
+    plotInputs["signal"].requested("python_axis", "output0");
+    REQUIRE(flowgraph->blockCreate("plot", plotType, {}, plotInputs) == Result::SUCCESS);
+    REQUIRE(viewBlock("plot").state == Block::State::Created);
+    TensorMap sinkInputs;
+    sinkInputs["buffer"].requested("python_axis", "output0");
+    REQUIRE(flowgraph->blockCreate("sink", TestFlowgraph::kSyntheticPassType, {},
+                                   sinkInputs) == Result::SUCCESS);
+
+    for (U64 cycle = 1; cycle <= 3; ++cycle) {
+        REQUIRE(flowgraph->compute() == Result::SUCCESS);
+        REQUIRE(flowgraph->present() == Result::SUCCESS);
+        const auto plot = viewBlock("plot");
+        REQUIRE(plot.state == Block::State::Errored);
+        CHECK(plot.diagnostic.find(attribute) != std::string::npos);
+        CHECK(plot.diagnostic.find("F32") != std::string::npos);
+        CHECK(plot.diagnostic.find("F64") != std::string::npos);
+        CHECK(plot.diagnostic.find("np.float32") != std::string::npos);
+        REQUIRE(viewBlock("python_axis").state == Block::State::Created);
+        const auto sink = viewBlock("sink");
+        REQUIRE(sink.state == Block::State::Created);
+        CHECK(sink.outputs.at("buffer").tensor.at<F32>(0) == static_cast<F32>(cycle));
+    }
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,

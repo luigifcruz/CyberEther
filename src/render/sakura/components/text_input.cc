@@ -61,11 +61,14 @@ void TextInput::update(Config config) {
         invalidate(Dirty::Layout);
     }
     impl->config = std::move(config);
+    if (impl->config.disabled && impl->grid.focused()) {
+        impl->grid.blur();
+    }
     const bool focused = impl->grid.focused();
     if (!focused) {
         impl->buffer = impl->config.value;
     }
-    impl->grid.offerFocus(impl->config.focus && !focused, impl->config.selectAllOnFocus);
+    impl->grid.offerFocus(impl->config.focus && !impl->config.disabled && !focused, impl->config.selectAllOnFocus);
 }
 
 bool TextInput::focused() const {
@@ -81,12 +84,15 @@ void TextInput::layout(const Context& ctx) {
     auto& config = impl->config;
     const Rect bounds = frame();
     const bool focused = impl->grid.focused();
+    const F32 alpha = config.disabled ? kDisabledAlpha : 1.0f;
 
     const F32 fontSize = FontPx(ctx);
     const F32 padX = Px(ctx, config.padding.x);
     const F32 padY = config.multiline ? Px(ctx, config.padding.y) : std::max(0.0f, (bounds.height - fontSize) * 0.5f);
     impl->frame.update({
-        .instances = {{.rect = bounds, .visible = !bounds.empty(), .backgroundColor = ctx.color(config.backgroundColorKey)}},
+        .instances = {{.rect = bounds,
+                       .visible = !bounds.empty(),
+                       .backgroundColor = WithAlpha(ctx.color(config.backgroundColorKey), alpha)}},
         .clip = bounds,
         .cornerRadius = Px(ctx, kFrameRounding),
     });
@@ -94,7 +100,7 @@ void TextInput::layout(const Context& ctx) {
     impl->grid.update({
         .id = impl->gridId,
         .value = focused ? impl->buffer : config.value,
-        .editable = true,
+        .editable = !config.disabled,
         .fontSize = fontSize,
         .lineHeight = 1.0f,
         .fontName = Typography::MonoFont,
@@ -106,7 +112,7 @@ void TextInput::layout(const Context& ctx) {
         .padding = Padding{padX, padY, padX, padY},
         .visibleLineCapacity = config.multiline ? 64u : 4u,
         .backgroundColorKey = "transparent",
-        .textColorKey = "text_primary",
+        .textColorKey = config.disabled ? "text_disabled" : "text_primary",
         .selectionColorKey = "text_selected_bg",
         .selectionMatchColorKey = "transparent",
         .activeLineColorKey = "transparent",
@@ -114,6 +120,7 @@ void TextInput::layout(const Context& ctx) {
         .submitOnEnter = !config.multiline && (config.submit != Submit::OnEdit || config.onSubmit),
         .singleLine = !config.multiline,
         .selectAllOnFocus = config.selectAllOnFocus,
+        .masked = config.password,
         .onChange = [this](std::string value) {
             impl->buffer = std::move(value);
             if (impl->config.submit == Submit::OnEdit && impl->config.onChange) {
@@ -147,7 +154,7 @@ void TextInput::layout(const Context& ctx) {
             .rect = {bounds.x + padX, bounds.y + padY, std::max(0.0f, bounds.width - 2.0f * padX), fontSize},
             .str = config.hint,
             .visible = impl->buffer.empty() && !config.hint.empty() && !bounds.empty(),
-            .color = ctx.color("text_secondary"),
+            .color = WithAlpha(ctx.color("text_secondary"), alpha),
             .fontSize = fontSize,
             .alignment = {0, 1},
         }},
@@ -162,11 +169,21 @@ void TextInput::layout(const Context& ctx) {
 }
 
 bool TextInput::mouseEvent(const MouseEvent& event) {
+    if (impl->config.disabled) {
+        return false;
+    }
     return mouseEventChildren(event);
 }
 
+std::optional<SurfaceCursor> TextInput::cursorOverChildren(const Extent2D<F32>& point) const {
+    if (!impl->config.disabled || !frame().contains(point.x, point.y)) {
+        return std::nullopt;
+    }
+    return SurfaceCursor::Default;
+}
+
 std::optional<SurfaceCursor> TextInput::cursorAt(const Extent2D<F32>& point) const {
-    if (!frame().contains(point.x, point.y)) {
+    if (impl->config.disabled || !frame().contains(point.x, point.y)) {
         return std::nullopt;
     }
     return SurfaceCursor::TextInput;

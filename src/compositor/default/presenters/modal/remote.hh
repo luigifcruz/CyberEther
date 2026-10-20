@@ -19,11 +19,7 @@ struct RemoteStreamingModalPresenter {
     RemoteView::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
         const bool isStarted = context.state.remote.started;
-        const std::string remoteBrokerUrl = context.state.remote.brokerUrl;
-        const auto remoteCodec = context.state.remote.codec;
-        const auto remoteEncoder = context.state.remote.encoder;
-        const bool remoteAutoJoinSessions = context.state.remote.autoJoinSessions;
-        const U32 remoteFramerate = context.state.remote.framerate;
+        const auto remoteConfig = context.state.remote.config;
 
         return RemoteView::Config{
             .started = isStarted,
@@ -32,18 +28,7 @@ struct RemoteStreamingModalPresenter {
             .accessToken = isStarted ? context.state.remote.accessToken : "",
             .clients = isStarted ? context.state.remote.clients : std::vector<Instance::Remote::ClientInfo>{},
             .waitlist = isStarted ? context.state.remote.waitlist : std::vector<std::string>{},
-            .onStart = [enqueue,
-                        remoteBrokerUrl,
-                        remoteCodec,
-                        remoteEncoder,
-                        remoteAutoJoinSessions,
-                        remoteFramerate]() {
-                Instance::Remote::Config remoteConfig;
-                remoteConfig.broker = remoteBrokerUrl;
-                remoteConfig.codec = remoteCodec;
-                remoteConfig.encoder = remoteEncoder;
-                remoteConfig.autoJoinSessions = remoteAutoJoinSessions;
-                remoteConfig.framerate = remoteFramerate;
+            .onStart = [enqueue, remoteConfig]() {
                 enqueue(MailStartRemote{remoteConfig});
             },
             .onConfigure = [enqueue]() {

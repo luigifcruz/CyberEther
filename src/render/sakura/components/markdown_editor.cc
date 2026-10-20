@@ -11,6 +11,7 @@
 #include "../metrics.hh"
 
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -39,6 +40,7 @@ struct MarkdownEditor::Impl {
     F32 appliedFontSize = -1.0f;
     F32 appliedPixelRatio = -1.0f;
     bool appliedEditing = false;
+    std::optional<F32> reportedOverflow;
 
     void apply(Config next) {
         if (config.editing != next.editing) {
@@ -180,6 +182,15 @@ void MarkdownEditor::layout(const Context& ctx) {
         layoutChild(ctx, impl->editor, contentRect);
     } else {
         layoutChild(ctx, impl->preview, contentRect);
+    }
+    if (impl->config.onContentOverflow) {
+        const auto& metrics = impl->config.editing ? impl->editor.metrics() : impl->preview.metrics();
+        const F32 overflow = (metrics.contentHeight + kContentFitSlackPixels - contentRect.height) /
+                             std::max(1e-3f, pixelRatio);
+        if (impl->reportedOverflow != overflow) {
+            impl->reportedOverflow = overflow;
+            impl->config.onContentOverflow({0.0f, overflow});
+        }
     }
 
     impl->button.update({

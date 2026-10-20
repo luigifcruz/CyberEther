@@ -99,7 +99,7 @@ struct FlowgraphConfigVectorField {
                         }
                         patch[config.name] = nextValues;
                         if (config.onApply) {
-                            config.onApply(std::move(patch), false);
+                            config.onApply(std::move(patch), false, {});
                         }
                     },
                 });
@@ -118,7 +118,7 @@ struct FlowgraphConfigVectorField {
                         }
                         patch[config.name] = nextValues;
                         if (config.onApply) {
-                            config.onApply(std::move(patch), false);
+                            config.onApply(std::move(patch), false, {});
                         }
                     },
                 });

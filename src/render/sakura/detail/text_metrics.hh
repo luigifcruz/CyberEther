@@ -52,6 +52,21 @@ struct TextMetrics {
     }
 };
 
+inline std::vector<U8> FontAvailability(const Render::Window* window,
+                                        const std::string& primary,
+                                        const std::vector<std::string>& extras) {
+    std::vector<U8> available;
+    if (!window) {
+        return available;
+    }
+    available.reserve(extras.size() + 1);
+    available.push_back(window->hasFont(primary) ? 1 : 0);
+    for (const auto& fontName : extras) {
+        available.push_back(window->hasFont(fontName) ? 1 : 0);
+    }
+    return available;
+}
+
 }  // namespace Jetstream::Sakura
 
 #endif  // JETSTREAM_RENDER_SAKURA_DETAIL_TEXT_METRICS_HH

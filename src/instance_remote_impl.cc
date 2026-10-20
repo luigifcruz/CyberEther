@@ -33,17 +33,6 @@ extern "C" void gst_init_static_plugins(void);
 
 namespace Jetstream {
 
-namespace {
-
-std::chrono::milliseconds DurationMs(const nlohmann::json& j, const char* key) {
-    if (!j.contains(key) || !j[key].is_number_unsigned()) {
-        return {};
-    }
-    return std::chrono::milliseconds(std::min<uint64_t>(j[key].get<uint64_t>(), 3'600'000));
-}
-
-}  // namespace
-
 Instance::Remote::Remote(Viewport::Generic* viewport) {
     impl = std::make_shared<Impl>();
     impl->viewport = viewport;
@@ -61,12 +50,12 @@ std::vector<Instance::Remote::EncoderType> Instance::Remote::available(CodecType
 }
 
 Result Instance::Remote::create(const Config& config) {
-    if (config.broker.empty()) {
-        JST_ERROR("[REMOTE] Missing broker address.");
+    if (!IsRemotePortRangeValid(config.media.minPort, config.media.maxPort)) {
+        JST_ERROR("[REMOTE] Invalid port range {}-{}.", config.media.minPort, config.media.maxPort);
         return Result::ERROR;
     }
-    if (!IsRemoteBrokerSchemeSupported(config.broker)) {
-        JST_ERROR("[REMOTE] Broker URL must use HTTP or HTTPS.");
+    if (!config.media.address.empty() && !g_hostname_is_ip_address(config.media.address.c_str())) {
+        JST_ERROR("[REMOTE] Invalid media address '{}'. Expected an IP address.", config.media.address);
         return Result::ERROR;
     }
     return impl->create(config);
@@ -130,7 +119,7 @@ Result Instance::Remote::Impl::create(const Instance::Remote::Config& config) {
 
     this->config = config;
 
-    if (config.framerate == 0) {
+    if (config.video.framerate == 0) {
         JST_ERROR("[REMOTE] Frame rate must be greater than zero.");
         return Result::ERROR;
     }
@@ -285,7 +274,7 @@ Result Instance::Remote::Impl::captureFrame(bool presented, std::chrono::steady_
         this->capturePending = true;
         return Result::SUCCESS;
     }
-    const auto interval = std::chrono::nanoseconds(GST_SECOND / config.framerate);
+    const auto interval = std::chrono::nanoseconds(GST_SECOND / config.video.framerate);
     if (now - this->nextCaptureTime >= interval) {
         this->nextCaptureTime = now;
     }
@@ -520,18 +509,18 @@ Result Instance::Remote::Impl::createStream() {
 
     JST_CHECK(checkGstreamerPlugins(plugins));
 
-    if (config.codec == Instance::Remote::CodecType::AV1) {
+    if (config.video.codec == Instance::Remote::CodecType::AV1) {
         JST_ERROR("[REMOTE] AV1 remote encoding is not implemented in the native WebRTC path.");
         return Result::ERROR;
     }
 
-    const auto combinations = encodingCombinations(config.codec);
+    const auto combinations = encodingCombinations(config.video.codec);
 
     bool requestedEncoderFound = false;
 
     for (const auto& combination : combinations) {
-        if (config.encoder != Instance::Remote::EncoderType::Auto) {
-            if (!EncoderMatchesStrategy(config.encoder, combination.strategy)) {
+        if (config.video.encoder != Instance::Remote::EncoderType::Auto) {
+            if (!EncoderMatchesStrategy(config.video.encoder, combination.strategy)) {
                 continue;
             }
 
@@ -550,9 +539,9 @@ Result Instance::Remote::Impl::createStream() {
         JST_DEBUG("[REMOTE] Failed to find plugins: {}", combination.plugins);
     }
 
-    if (config.encoder != Instance::Remote::EncoderType::Auto) {
-        const std::string encoderName = Jetstream::GetRemoteEncoderPrettyName(config.encoder);
-        const std::string codecName = Jetstream::GetRemoteCodecName(config.codec);
+    if (config.video.encoder != Instance::Remote::EncoderType::Auto) {
+        const std::string encoderName = Jetstream::GetRemoteEncoderPrettyName(config.video.encoder);
+        const std::string codecName = Jetstream::GetRemoteCodecName(config.video.codec);
 
         if (!requestedEncoderFound) {
             JST_ERROR("[REMOTE] Requested encoder '{}' is not available for codec '{}' on this system.",
@@ -1021,7 +1010,7 @@ Result Instance::Remote::Impl::startStream() {
                                         "format", G_TYPE_STRING, "BGRA",
                                         "width", G_TYPE_INT, static_cast<int>(size.x),
                                         "height", G_TYPE_INT, static_cast<int>(size.y),
-                                        "framerate", GST_TYPE_FRACTION, config.framerate, 1,
+                                        "framerate", GST_TYPE_FRACTION, config.video.framerate, 1,
                                         "interlace-mode", G_TYPE_STRING, "progressive",
                                         "colorimetry", G_TYPE_STRING, GST_VIDEO_COLORIMETRY_SRGB,
                                         nullptr);
@@ -1071,7 +1060,7 @@ Result Instance::Remote::Impl::startStream() {
             return fail();
         }
 
-        switch(config.codec) {
+        switch(config.video.codec) {
             case Instance::Remote::CodecType::H264: {
                 newEncoder = makeElement("encoder", "openh264enc");
                 if (!newEncoder) {
@@ -1128,7 +1117,7 @@ Result Instance::Remote::Impl::startStream() {
 
     if (encodingStrategy == EncodingStrategyType::HardwareNVENC) {
         constexpr guint bitrate = 25'000'000 / 1024;
-        switch(config.codec) {
+        switch(config.video.codec) {
             case Instance::Remote::CodecType::H264:
                 newEncoder = makeElement("encoder", "nvh264enc");
                 if (!newEncoder) {
@@ -1170,7 +1159,7 @@ Result Instance::Remote::Impl::startStream() {
             return fail();
         }
 
-        switch(config.codec) {
+        switch(config.video.codec) {
             case Instance::Remote::CodecType::H264: {
                 newEncoder = makeElement("encoder", "v4l2h264enc");
                 if (!newEncoder) {
@@ -1215,7 +1204,7 @@ Result Instance::Remote::Impl::startStream() {
             return fail();
         }
 
-        switch(config.codec) {
+        switch(config.video.codec) {
             case Instance::Remote::CodecType::H264: {
                 newEncoder = makeElement("encoder", "vtenc_h264_hw");
                 if (!newEncoder) {
@@ -1226,7 +1215,7 @@ Result Instance::Remote::Impl::startStream() {
                 g_object_set(elements["encoder"], "bitrate", 25*1024, nullptr);
                 g_object_set(elements["encoder"], "realtime", true, nullptr);
                 g_object_set(elements["encoder"], "allow-frame-reordering", false, nullptr);
-                g_object_set(elements["encoder"], "max-keyframe-interval", static_cast<int>(config.framerate), nullptr);
+                g_object_set(elements["encoder"], "max-keyframe-interval", static_cast<int>(config.video.framerate), nullptr);
 
                 if (!makeElement("hwcaps", "capsfilter")) {
                     return fail();
@@ -1266,7 +1255,7 @@ Result Instance::Remote::Impl::startStream() {
             return fail();
         }
 
-        switch(config.codec) {
+        switch(config.video.codec) {
             case Instance::Remote::CodecType::H264: {
                 newEncoder = makeElement("encoder", "mfh264enc");
                 if (!newEncoder) {
@@ -1312,7 +1301,7 @@ Result Instance::Remote::Impl::startStream() {
         }, this, nullptr);
     gst_object_unref(encoderSrcPad);
 
-    if (config.codec == Instance::Remote::CodecType::H264) {
+    if (config.video.codec == Instance::Remote::CodecType::H264) {
         if (!makeElement("encodedcaps", "capsfilter")) {
             return fail();
         }
@@ -1493,7 +1482,7 @@ Result Instance::Remote::Impl::stopStream() {
 GstElement* Instance::Remote::Impl::createPayloader() {
     GstElement* element = nullptr;
 
-    switch(config.codec) {
+    switch(config.video.codec) {
         case Instance::Remote::CodecType::H264:
             element = gst_element_factory_make("rtph264pay", nullptr);
             if (element) {
@@ -1529,7 +1518,7 @@ GstElement* Instance::Remote::Impl::createRtpCapsFilter() {
     }
 
     GstCaps* caps = nullptr;
-    switch(config.codec) {
+    switch(config.video.codec) {
         case Instance::Remote::CodecType::H264:
             caps = gst_caps_new_simple("application/x-rtp",
                                        "media", G_TYPE_STRING, "video",
@@ -1647,6 +1636,31 @@ Result Instance::Remote::Impl::createWebRtcSession(const std::string& sessionId,
     gst_util_set_object_arg(G_OBJECT(session->queue), "leaky", "upstream");
 
     g_object_set(session->webrtc, "bundle-policy", GST_WEBRTC_BUNDLE_POLICY_MAX_BUNDLE, nullptr);
+
+    GstWebRTCICE* ice = nullptr;
+    g_object_get(session->webrtc, "ice-agent", &ice, nullptr);
+    if (!ice) {
+        JST_ERROR("[REMOTE] Failed to find WebRTC ICE agent.");
+        return fail();
+    }
+    g_object_set(ice,
+                 "ice-udp", config.media.transport != Instance::Remote::TransportType::TCP,
+                 "ice-tcp", config.media.transport != Instance::Remote::TransportType::UDP,
+                 nullptr);
+    if (config.media.minPort != 0) {
+        g_object_set(ice, "min-rtp-port", static_cast<guint>(config.media.minPort),
+                     "max-rtp-port", static_cast<guint>(config.media.maxPort), nullptr);
+    }
+    if (!config.media.address.empty()) {
+        gboolean added = FALSE;
+        g_signal_emit_by_name(ice, "add-local-ip-address", config.media.address.c_str(), &added);
+        if (!added) {
+            JST_ERROR("[REMOTE] Failed to use media address '{}'.", config.media.address);
+            gst_object_unref(ice);
+            return fail();
+        }
+    }
+    gst_object_unref(ice);
 
     GstElement* rtpbin = gst_bin_get_by_name(GST_BIN(session->webrtc), "rtpbin");
     if (!rtpbin) {
@@ -1884,16 +1898,11 @@ void Instance::Remote::Impl::handleSignallerMessage(const std::string& payload) 
             return;
         }
 
-        bool rejoin = false;
         {
             std::lock_guard<std::mutex> lock(roomMutex);
             signallerReady = true;
-            rejoin = !producerToken.empty();
         }
         roomCondition.notify_all();
-        if (rejoin) {
-            (void)sendSignallerMessage({{"type", "rejoinRoom"}});
-        }
         return;
     }
 
@@ -1922,34 +1931,14 @@ void Instance::Remote::Impl::handleSignallerMessage(const std::string& payload) 
             return;
         }
 
-        const auto reconnect = DurationMs(j, "reconnectWindowMs");
-        const auto interval = DurationMs(j, "heartbeatIntervalMs");
-        const auto timeout = DurationMs(j, "heartbeatTimeoutMs");
-        const std::string recoveryToken = j.contains("producerToken") && j["producerToken"].is_string()
-                                            ? j["producerToken"].get<std::string>()
-                                            : "";
-
         {
             std::lock_guard<std::mutex> lock(roomMutex);
             roomId_ = roomId;
             consumerToken = token;
             clientDomain = domain;
-            producerToken = recoveryToken;
-            heartbeatInterval = interval;
-            rejoinWindow = timeout + reconnect;
             roomReady = true;
         }
         roomCondition.notify_all();
-        return;
-    }
-
-    if (type == "roomRejoined") {
-        {
-            std::lock_guard<std::mutex> lock(roomMutex);
-            roomReady = true;
-        }
-        roomCondition.notify_all();
-        JST_INFO("[REMOTE] Rejoined remote room.");
         return;
     }
 

@@ -2,6 +2,9 @@ src_lst += files([
     'canvas.cc',
     'box.cc',
     'card.cc',
+    'chat.cc',
+    'chat_composer.cc',
+    'chat_dock.cc',
     'polyline.cc',
     'image.cc',
     'root.cc',
@@ -35,6 +38,7 @@ src_lst += files([
     'layer.cc',
     'log_view.cc',
     'markdown.cc',
+    'model_picker.cc',
     'modal_layer.cc',
     'overlay.cc',
     'panel.cc',
@@ -54,6 +58,7 @@ src_lst += files([
     'tab_bar.cc',
     'text_input.cc',
     'toast_layer.cc',
+    'voice.cc',
 ])
 
 subdir('node')

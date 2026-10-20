@@ -61,6 +61,27 @@ Result EnvironmentVariable(const std::string& name, std::string& value) {
     return Result::SUCCESS;
 }
 
+Result WriteEnvironmentVariable(const std::string& name, const std::optional<std::string>& value) {
+    if (name.empty()) {
+        return Result::ERROR;
+    }
+
+    try {
+#if defined(JST_OS_WINDOWS)
+        const auto nativeName = PathFromUtf8(name).native();
+        const auto nativeValue = value ? PathFromUtf8(*value).native() : std::wstring();
+        return SetEnvironmentVariableW(nativeName.c_str(), value ? nativeValue.c_str() : nullptr) != FALSE
+            ? Result::SUCCESS
+            : Result::ERROR;
+#else
+        const int status = value ? setenv(name.c_str(), value->c_str(), 1) : unsetenv(name.c_str());
+        return status == 0 ? Result::SUCCESS : Result::ERROR;
+#endif
+    } catch (...) {
+        return Result::ERROR;
+    }
+}
+
 Result EnvironmentPath(const std::string& name, std::filesystem::path& path) {
     try {
 #if defined(JST_OS_WINDOWS)

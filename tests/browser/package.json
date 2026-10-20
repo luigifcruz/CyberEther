@@ -1,0 +1,6 @@
+{
+  "name": "cyberether-wasm-tests",
+  "private": true,
+  "engines": {"node": ">=20"},
+  "dependencies": {"playwright": "1.63.0"}
+}

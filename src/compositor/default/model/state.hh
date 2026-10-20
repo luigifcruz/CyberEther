@@ -10,6 +10,7 @@
 #include "jetstream/parser.hh"
 #include "jetstream/render/base/window.hh"
 #include "jetstream/runtime_context_python.hh"
+#include "jetstream/settings.hh"
 #include "jetstream/viewport/adapters/generic.hh"
 
 #include "render/sakura/runtime.hh"
@@ -20,18 +21,115 @@
 #include "file_picker.hh"
 #include "surface_theme.hh"
 
+#include "jetstream/agent/provider.hh"
+#include "jetstream/agent/session.hh"
+#include "jetstream/render/sakura/toast.hh"
+
+#include <atomic>
 #include <future>
+#include <map>
 #include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace Jetstream {
 
 struct DefaultCompositorState {
+    struct AgentState {
+        struct ModelListResult {
+            std::vector<Settings::Intelligence::Model> models;
+            std::string error;
+            std::map<std::string, Agent::Provider::Error::Kind> health;
+        };
+
+        struct ProviderKeyResult {
+            bool success = false;
+            std::string message;
+        };
+
+        struct ProviderKeyTask {
+            enum class Kind {
+                Save,
+                Remove,
+            };
+
+            bool running = false;
+            Kind kind = Kind::Save;
+            U64 session = 0;
+            Settings::Intelligence::Provider provider;
+            std::string previousName;
+            std::future<ProviderKeyResult> future;
+        };
+
+        struct ProvidersState {
+            std::map<std::string, Agent::Provider::Error::Kind> health;
+            std::optional<Settings::Intelligence::Provider> editTarget;
+            U64 editSession = 0;
+            ProviderKeyTask keyTask;
+        };
+
+        struct CatalogState {
+            std::vector<Settings::Intelligence::Model> models;
+            std::string search;
+            bool loading = false;
+            bool refreshPending = false;
+            bool contextLengthsChecked = false;
+            std::string error;
+            std::future<ModelListResult> future;
+            std::shared_ptr<std::atomic<bool>> cancel;
+        };
+
+        struct ProviderTestState {
+            bool running = false;
+            bool completed = false;
+            bool success = false;
+            U64 revision = 0;
+            std::string message;
+            std::future<std::pair<bool, std::string>> future;
+            std::shared_ptr<std::atomic<bool>> cancel;
+        };
+
+        struct Conversation {
+            U64 generation = 0;
+            bool streaming = false;
+            U64 contextTokens = 0;
+            std::vector<std::shared_ptr<const Agent::Session::Entry>> messages;
+        };
+
+        struct ChatState {
+            Conversation conversation;
+            U64 dockAccepted = 0;
+            U64 welcomeAccepted = 0;
+        };
+
+        struct VoiceState {
+            Agent::Session::Phase phase = Agent::Session::Phase::Idle;
+            F32 input = 0.0f;
+            F32 output = 0.0f;
+        };
+
+        struct UiState {
+            bool visible = false;
+            bool voiceVisible = false;
+            bool settingsShown = false;
+            U64 chatFocusRequests = 0;
+        };
+
+        Settings::Intelligence settings;
+        bool captureSupported = false;
+        ProvidersState providers;
+        CatalogState catalog;
+        ProviderTestState providerTest;
+        ChatState chat;
+        VoiceState voice;
+        UiState ui;
+    };
+
     struct SystemState {
         std::shared_ptr<Instance> instance;
         std::shared_ptr<Render::Window> render;
@@ -152,11 +250,7 @@ struct DefaultCompositorState {
     };
 
     struct RemoteState {
-        std::string brokerUrl = "https://cyberether.org";
-        Instance::Remote::CodecType codec = Instance::Remote::CodecType::H264;
-        Instance::Remote::EncoderType encoder = Instance::Remote::EncoderType::Auto;
-        bool autoJoinSessions = false;
-        U32 framerate = 30;
+        Instance::Remote::Config config;
 
         bool supported = false;
         bool started = false;
@@ -197,6 +291,7 @@ struct DefaultCompositorState {
     InterfaceState interface;
     GraphicsState graphics;
     SettingsState settings;
+    AgentState agent;
     RuntimeState runtime;
     ModalState modal;
     DebugState debug;

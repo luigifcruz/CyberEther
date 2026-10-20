@@ -124,11 +124,15 @@ TEST_CASE("Startup configuration defaults are stable",
     REQUIRE(backend.pythonRuntimePath.empty());
 
     const Instance::Remote::Config remote;
-    REQUIRE(remote.broker == "https://cyberether.org");
-    REQUIRE_FALSE(remote.autoJoinSessions);
-    REQUIRE(remote.framerate == 30);
-    REQUIRE(remote.encoder == Instance::Remote::EncoderType::Auto);
-    REQUIRE(remote.codec == Instance::Remote::CodecType::H264);
+    REQUIRE(remote.broker.address == "0.0.0.0");
+    REQUIRE(remote.broker.port == 8686);
+    REQUIRE(remote.broker.publicUrl.empty());
+    REQUIRE(remote.broker.certificate.empty());
+    REQUIRE(remote.broker.key.empty());
+    REQUIRE_FALSE(remote.access.autoApprove);
+    REQUIRE(remote.video.framerate == 30);
+    REQUIRE(remote.video.encoder == Instance::Remote::EncoderType::Auto);
+    REQUIRE(remote.video.codec == Instance::Remote::CodecType::H264);
 }
 
 TEST_CASE("Application configuration snapshots retain every explicit value",
@@ -184,24 +188,26 @@ TEST_CASE("Application configuration snapshots retain every explicit value",
     REQUIRE(backendSnapshot.pythonRuntimePath == "backend-python");
 
     Instance::Remote::Config remote = {
-        .broker = "http://remote.invalid/root/",
-        .autoJoinSessions = true,
-        .framerate = 24,
-        .encoder = Instance::Remote::EncoderType::Software,
-        .codec = Instance::Remote::CodecType::VP9,
+        .access = {.autoApprove = true},
+        .video = {
+            .framerate = 24,
+            .codec = Instance::Remote::CodecType::VP9,
+            .encoder = Instance::Remote::EncoderType::Software,
+        },
+        .broker = {.publicUrl = "http://remote.invalid/root/"},
     };
     const auto remoteSnapshot = remote;
-    remote.broker.clear();
-    remote.autoJoinSessions = false;
-    remote.framerate = 1;
-    remote.encoder = Instance::Remote::EncoderType::Auto;
-    remote.codec = Instance::Remote::CodecType::H264;
+    remote.broker.publicUrl.clear();
+    remote.access.autoApprove = false;
+    remote.video.framerate = 1;
+    remote.video.encoder = Instance::Remote::EncoderType::Auto;
+    remote.video.codec = Instance::Remote::CodecType::H264;
 
-    REQUIRE(remoteSnapshot.broker == "http://remote.invalid/root/");
-    REQUIRE(remoteSnapshot.autoJoinSessions);
-    REQUIRE(remoteSnapshot.framerate == 24);
-    REQUIRE(remoteSnapshot.encoder == Instance::Remote::EncoderType::Software);
-    REQUIRE(remoteSnapshot.codec == Instance::Remote::CodecType::VP9);
+    REQUIRE(remoteSnapshot.broker.publicUrl == "http://remote.invalid/root/");
+    REQUIRE(remoteSnapshot.access.autoApprove);
+    REQUIRE(remoteSnapshot.video.framerate == 24);
+    REQUIRE(remoteSnapshot.video.encoder == Instance::Remote::EncoderType::Software);
+    REQUIRE(remoteSnapshot.video.codec == Instance::Remote::CodecType::VP9);
 }
 
 // TODO: Expose the native settings-to-Instance and settings-to-Remote builders
@@ -559,10 +565,9 @@ TEST_CASE("Remote without a viewport is inert and reports unsupported operations
     REQUIRE(remote.create({}) == Result::ERROR);
 
     Instance::Remote::Config invalidConfig;
-    invalidConfig.broker.clear();
-    invalidConfig.framerate = 0;
-    invalidConfig.encoder = static_cast<Instance::Remote::EncoderType>(255);
-    invalidConfig.codec = static_cast<Instance::Remote::CodecType>(255);
+    invalidConfig.video.framerate = 0;
+    invalidConfig.video.encoder = static_cast<Instance::Remote::EncoderType>(255);
+    invalidConfig.video.codec = static_cast<Instance::Remote::CodecType>(255);
     REQUIRE(remote.create(invalidConfig) == Result::ERROR);
     requireInertState();
 
@@ -575,24 +580,23 @@ TEST_CASE("Remote without a viewport is inert and reports unsupported operations
     requireInertState();
 }
 
-TEST_CASE("Remote broker scheme validation matches the transport",
+TEST_CASE("Remote broker public URL accepts only HTTP and HTTPS origins",
           "[core][application][instance][remote]") {
-    REQUIRE(IsRemoteBrokerSchemeSupported("https://example.com"));
-    REQUIRE(IsRemoteBrokerSchemeSupported("http://localhost:8080/root"));
-    REQUIRE(IsRemoteBrokerSchemeSupported("https://example.com/path?key=value"));
-    REQUIRE_FALSE(IsRemoteBrokerSchemeSupported("ftp://example.com"));
-    REQUIRE_FALSE(IsRemoteBrokerSchemeSupported("wss://example.com"));
-    REQUIRE_FALSE(IsRemoteBrokerSchemeSupported("HTTPS://example.com"));
-    REQUIRE_FALSE(IsRemoteBrokerSchemeSupported("https:/example.com"));
-    REQUIRE_FALSE(IsRemoteBrokerSchemeSupported(" https://example.com"));
-    REQUIRE_FALSE(IsRemoteBrokerSchemeSupported(""));
-
-    Instance::Remote remote(nullptr);
-    Instance::Remote::Config config;
-    config.broker = "ftp://example.com";
-    JST_LOG_LAST_ERROR().clear();
-    REQUIRE(remote.create(config) == Result::ERROR);
-    REQUIRE(JST_LOG_LAST_ERROR() == "[REMOTE] Broker URL must use HTTP or HTTPS.");
+    REQUIRE(IsRemotePublicUrlValid("https://example.com"));
+    REQUIRE(IsRemotePublicUrlValid("https://example.com/"));
+    REQUIRE(IsRemotePublicUrlValid("http://192.168.1.5:8686"));
+    REQUIRE(IsRemotePublicUrlValid("https://[::1]:8443"));
+    REQUIRE_FALSE(IsRemotePublicUrlValid("https://example.com/ce"));
+    REQUIRE_FALSE(IsRemotePublicUrlValid("https://example.com/ce/"));
+    REQUIRE_FALSE(IsRemotePublicUrlValid("https://example.com?key=value"));
+    REQUIRE_FALSE(IsRemotePublicUrlValid("https://example.com#fragment"));
+    REQUIRE_FALSE(IsRemotePublicUrlValid("https://user@example.com"));
+    REQUIRE_FALSE(IsRemotePublicUrlValid("https://"));
+    REQUIRE_FALSE(IsRemotePublicUrlValid("ftp://example.com"));
+    REQUIRE_FALSE(IsRemotePublicUrlValid("wss://example.com"));
+    REQUIRE_FALSE(IsRemotePublicUrlValid("HTTPS://example.com"));
+    REQUIRE_FALSE(IsRemotePublicUrlValid(" https://example.com"));
+    REQUIRE_FALSE(IsRemotePublicUrlValid(""));
 }
 
 TEST_CASE("Remote supervisor treats a null remote as a stopped transport",

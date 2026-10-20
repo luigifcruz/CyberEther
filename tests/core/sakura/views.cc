@@ -481,13 +481,13 @@ struct SettingsRig : ModalRig {
             .onBackgroundParticlesChange = [log](bool value) { log("particles:" + Flag(value)); },
         };
         config.remote = {
-            .brokerUrl = "https://broker.example",
+            .broker = {.address = "127.0.0.1", .port = 8686},
             .onCodecChange = [log](Instance::Remote::CodecType value) {
                 log("codec:" + std::to_string(static_cast<U32>(value)));
             },
             .onFramerateChange = [log](U32 value) { log("fps:" + std::to_string(value)); },
             .onEncoderChange = [log](Instance::Remote::EncoderType) { log("encoder"); },
-            .onAutoJoinSessionsChange = [log](bool value) { log("autojoin:" + Flag(value)); },
+            .onAutoApproveChange = [log](bool value) { log("approve:" + Flag(value)); },
         };
         config.runtime = {
             .pythonCandidates = {{.label = "Homebrew", .path = "/opt/homebrew/bin/python3"}},
@@ -2099,12 +2099,12 @@ TEST_CASE("Settings navigation reports every section in order", "[core][sakura][
     CHECK(Peek::Frame(rig.view.component()).width == 856.0f);
 
     auto sections = Find<Sakura::NavigationItem>(rig.view.component());
-    REQUIRE(sections.size() == 7);
+    REQUIRE(sections.size() == 8);
     for (auto* section : sections) {
         CHECK(Press(rig.host, *section));
     }
     CHECK(rig.calls == std::vector<std::string>{"section:0", "section:1", "section:2", "section:3", "section:4",
-                                                 "section:5", "section:6"});
+                                                 "section:5", "section:6", "section:7"});
 }
 
 TEST_CASE("Settings sections replace the editor content", "[core][sakura][views]") {
@@ -2114,7 +2114,7 @@ TEST_CASE("Settings sections replace the editor content", "[core][sakura][views]
     CHECK(Find<Sakura::Checkbox>(rig.view.component()).size() == 1);
 
     rig.show(SettingsSection::Remote);
-    CHECK(rig.combos().size() == 4);
+    CHECK(rig.combos().size() == 5);
     CHECK(Find<Sakura::Checkbox>(rig.view.component()).empty());
 
     rig.show(SettingsSection::Registry);
@@ -2181,13 +2181,13 @@ TEST_CASE("Remote settings report codec, framerate, and approval while the encod
           "[core][sakura][views]") {
     SettingsRig rig;
     rig.show(SettingsSection::Remote);
-    REQUIRE(rig.combos().size() == 4);
+    REQUIRE(rig.combos().size() == 5);
 
+    rig.choose(2, 1);
+    rig.choose(1, 2);
+    rig.choose(3, 0);
     rig.choose(0, 1);
-    rig.choose(1, 0);
-    rig.choose(2, 2);
-    rig.choose(3, 1);
-    CHECK(rig.calls == std::vector<std::string>{"codec:1", "fps:60", "autojoin:true"});
+    CHECK(rig.calls == std::vector<std::string>{"codec:1", "fps:60", "approve:true"});
 }
 
 TEST_CASE("Runtime settings pick interpreters and browse for a custom path", "[core][sakura][views]") {
@@ -2483,8 +2483,9 @@ TEST_CASE("Benchmark module combo reports the chosen module", "[core][sakura][vi
 TEST_CASE("Remote modal starts streaming or opens the remote settings", "[core][sakura][views]") {
     ModalRig rig;
     Mailbox mailbox;
-    mailbox.state.remote.brokerUrl = "https://broker.example";
-    mailbox.state.remote.framerate = 60;
+    mailbox.state.remote.config.broker.address = "127.0.0.1";
+    mailbox.state.remote.config.broker.port = 9000;
+    mailbox.state.remote.config.video.framerate = 60;
     RemoteView view;
     view.update(RemoteStreamingModalPresenter(mailbox.context()).build());
     rig.show({.content = &view.component()});
@@ -2495,8 +2496,9 @@ TEST_CASE("Remote modal starts streaming or opens the remote settings", "[core][
     CHECK(Press(rig.host, *buttons[1]));
     REQUIRE(mailbox.mails.size() == 2);
     const auto& start = std::get<MailStartRemote>(mailbox.mails[0]);
-    CHECK(start.config.broker == "https://broker.example");
-    CHECK(start.config.framerate == 60);
+    CHECK(start.config.broker.address == "127.0.0.1");
+    CHECK(start.config.broker.port == 9000);
+    CHECK(start.config.video.framerate == 60);
     CHECK(std::get<MailOpenModal>(mailbox.mails[1]).settings == SettingsSection::Remote);
 }
 
@@ -2942,8 +2944,8 @@ TEST_CASE("Settings navigation, toggles, combos, and text fields repaint without
         .onBackgroundParticlesChange = [&](bool value) { config.general.backgroundParticles = value; },
     };
     config.remote = {
-        .brokerUrl = "wss://broker",
-        .onBrokerUrlChange = [&](const std::string& value) { config.remote.brokerUrl = value; },
+        .broker = {.address = "127.0.0.1", .port = 8686},
+        .onBrokerChange = [&](const Instance::Remote::Config::Broker& value) { config.remote.broker = value; },
     };
     config.onSectionChange = [&](SettingsSection section) { config.section = section; };
     SettingsView view;
@@ -2959,7 +2961,7 @@ TEST_CASE("Settings navigation, toggles, combos, and text fields repaint without
     const U64 rebuilds = rig.frames.rebuilds;
 
     auto sections = Find<Sakura::NavigationItem>(view.component());
-    REQUIRE(sections.size() == 7);
+    REQUIRE(sections.size() == 8);
     CheckHover(rig.host, step, *sections[1], away);
 
     for (const auto section : {SettingsSection::Remote, SettingsSection::Runtime}) {
@@ -3011,18 +3013,31 @@ TEST_CASE("Settings navigation, toggles, combos, and text fields repaint without
     CHECK(RepaintOnly(rig.frame()));
     CHECK(rig.settles());
     auto inputs = Find<Sakura::TextInput>(view.component());
-    REQUIRE(inputs.size() == 1);
+    REQUIRE_FALSE(inputs.empty());
     auto& broker = *inputs[0];
+    const auto shown = [&] {
+        const auto center = Center(broker);
+        return Peek::Clip(broker).contains(center.x, center.y);
+    };
+    const auto areas = Find<Sakura::ScrollArea>(view.component());
+    REQUIRE(areas.size() == 2);
+    const auto editor = Center(*areas[1]);
+    for (int notch = 0; notch < 40 && !shown(); ++notch) {
+        rig.host.send(Wheel(editor.x, editor.y, 0.0f, -1.0f));
+        CHECK_FALSE(rig.frame().rebuilt);
+    }
+    REQUIRE(shown());
+    CHECK(rig.settles());
     CHECK(RepaintOnly(rig.click(Center(broker))));
     CHECK(broker.focused());
     CHECK(rig.settles());
-    CHECK(RepaintOnly(rig.type("/x")));
-    CHECK(config.remote.brokerUrl == "wss://broker/x");
+    CHECK(RepaintOnly(rig.type("1")));
+    CHECK(config.remote.broker.address == "127.0.0.1");
     CHECK(rig.settles());
     CHECK(RepaintOnly(rig.click(away)));
     CHECK_FALSE(broker.focused());
     CHECK(rig.settles());
-    CHECK(config.remote.brokerUrl == "wss://broker/x");
+    CHECK(config.remote.broker.address == "127.0.0.11");
     CHECK(rig.frames.rebuilds == rebuilds);
 }
 

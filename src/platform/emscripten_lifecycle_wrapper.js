@@ -182,6 +182,7 @@
     });
 
     const { lifecycle, controller } = createLifecycle(moduleArg, factory);
+    lifecycle.secrets = moduleArg.cyberether?.secrets ?? null;
     moduleArg.cyberether = lifecycle;
     moduleArg[channel] = controller;
 

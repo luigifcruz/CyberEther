@@ -3,6 +3,7 @@
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/button.hh>
 #include <jetstream/render/sakura/components/divider.hh>
+#include <jetstream/render/sakura/components/scroll_area.hh>
 #include <jetstream/render/sakura/components/stack.hh>
 
 #include "../context.hh"
@@ -24,7 +25,18 @@ struct ModalLayer::Impl {
     Divider divider;
     Button close;
     Stack stack;
+    ScrollArea scroll;
     Rect rect;
+    F32 fitted = 0.0f;
+
+    bool scrolls() const {
+        return config.size.x != 0.0f && config.size.y == 0.0f;
+    }
+
+    void fit(F32 height) {
+        fitted = height;
+        scroll.update({.content = config.content, .height = fitted, .alwaysScrollbar = false, .border = false});
+    }
 };
 
 ModalLayer::ModalLayer() {
@@ -54,9 +66,12 @@ void ModalLayer::update(Config config) {
         return;
     }
     const bool fixedHeight = impl->config.size.y != 0.0f;
+    if (impl->scrolls()) {
+        impl->fit(impl->fitted);
+    }
     impl->stack.update({
         .items = {
-            {.child = impl->config.content, .grow = fixedHeight ? 1.0f : 0.0f},
+            {.child = impl->scrolls() ? &impl->scroll : impl->config.content, .grow = fixedHeight ? 1.0f : 0.0f},
             {.child = &impl->divider},
             {.child = &impl->close},
         },
@@ -89,10 +104,22 @@ void ModalLayer::layout(const Context& ctx) {
     }
     const F32 width = ResolveLength(ctx, config.size.x, natural, room.x);
     natural = 0.0f;
-    if (config.size.y == 0.0f) {
-        natural = measureChild(impl->stack, ctx, {std::max(0.0f, width - 2.0f * padding), infinite}).y + 2.0f * padding;
+    const F32 inner = std::max(0.0f, width - 2.0f * padding);
+    F32 chrome = 0.0f;
+    if (impl->scrolls()) {
+        const F32 content = measureChild(*config.content, ctx, {inner, infinite}).y;
+        chrome = measureChild(impl->stack, ctx, {inner, infinite}).y - measureChild(impl->scroll, ctx, {inner, infinite}).y;
+        natural = content + chrome + 2.0f * padding;
+    } else if (config.size.y == 0.0f) {
+        natural = measureChild(impl->stack, ctx, {inner, infinite}).y + 2.0f * padding;
     }
     const F32 height = ResolveLength(ctx, config.size.y, natural, room.y);
+    if (impl->scrolls()) {
+        const F32 fitted = height < natural ? std::max(0.0f, height - 2.0f * padding - chrome) / ctx.pixelRatio : 0.0f;
+        if (fitted != impl->fitted) {
+            impl->fit(fitted);
+        }
+    }
     const Rect rect = {std::round(bounds.x + (bounds.width - width) * 0.5f),
                        std::round(bounds.y + (bounds.height - height) * 0.5f), std::ceil(width), std::ceil(height)};
     impl->rect = rect;

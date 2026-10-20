@@ -20,6 +20,7 @@ Result PickFile(std::string& path,
 Result PickFolder(std::string& path,
                   std::function<void(std::string)> callback);
 Result SaveFile(std::string& path,
+                const std::vector<std::string>& extensions,
                 std::function<void(std::string)> callback);
 
 }  // namespace Jetstream::Platform

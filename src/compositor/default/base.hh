@@ -4,9 +4,10 @@
 #include "jetstream/detail/compositor_impl.hh"
 
 #include "updater.hh"
-#include "feedback.hh"
+#include "support/feedback.hh"
 
 #include "actions/base.hh"
+#include "support/agent/runtime.hh"
 #include "model/callbacks.hh"
 #include "model/state.hh"
 #include "presenters/base.hh"
@@ -34,6 +35,7 @@ class DefaultCompositor : public Compositor::Impl {
     Updater updater;
     Feedback feedback;
     DefaultCompositorCallbacks callbacks;
+    AgentRuntime agent;
     DefaultActions actions;
     DefaultPresenterRegistry presenters;
 

@@ -220,7 +220,9 @@ struct LinkFixture {
                       {.id = "dst", .header = false, .pins = {{.id = "in", .isInput = true, .label = "in"}},
                        .dimensions = {120, 0}, .gridPosition = Extent2D<F32>{1040, 240}}},
             .onLinkCreated = [&](auto start, auto end) { links.emplace_back(std::move(start), std::move(end)); },
-            .onViewportGridCenterChange = [&](auto next) { center = next; },
+            .onViewportGridChange = [&](Rect next) {
+                center = Extent2D<F32>{next.x + next.width * 0.5f, next.y + next.height * 0.5f};
+            },
         };
         editor.update(config);
         layer.set(editor);

@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_WORKBENCH_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_WORKBENCH_HH
 
+#include "agent/chat.hh"
+#include "agent/voice.hh"
 #include "flowgraph/key_value.hh"
 #include "flowgraph/pane.hh"
 #include "file_picker.hh"
@@ -83,6 +85,8 @@ struct WorkbenchView {
     struct Config {
         bool filePending = false;
         bool backgroundParticles = true;
+        AgentChatView::Config agentChat;
+        AgentVoiceView::Config agentVoice;
         std::optional<WelcomeHudView::Config> welcomeHud;
         std::optional<StartTabView::Config> startTab;
         U64 startTabRequests = 0;
@@ -127,10 +131,17 @@ struct WorkbenchView {
             return;
         }
 
+        this->config.agentChat.topOffset = workspaceShell.bar().height();
+        agentChat.update(std::move(this->config.agentChat));
+        agentVoice.update(std::move(this->config.agentVoice));
+
         std::vector<Sakura::HudLayer::Hud> hudItems;
         if (this->config.welcomeHud.has_value()) {
             welcomeHud.update(std::move(this->config.welcomeHud.value()));
             hudItems.push_back(welcomeHud.hud());
+        }
+        if (agentVoice.shown()) {
+            hudItems.push_back(agentVoice.hud());
         }
         huds.update({.huds = std::move(hudItems)});
 
@@ -181,9 +192,16 @@ struct WorkbenchView {
         filePicker.update(std::move(this->config.filePicker));
         filePickerLayer.update(filePicker.layer());
 
+        std::vector<Sakura::Layer*> layers = {&background, &content, &floating, &huds};
+        if (agentChat.shown() && !agentVoice.shown()) {
+            layers.push_back(&agentChat.layer());
+        }
+        layers.push_back(&toasts);
+        layers.push_back(&modalLayer);
+        layers.push_back(&filePickerLayer);
         root.update({
             .id = "workbench",
-            .layers = {&background, &content, &floating, &huds, &toasts, &modalLayer, &filePickerLayer},
+            .layers = std::move(layers),
         });
     }
 
@@ -204,6 +222,8 @@ struct WorkbenchView {
     Sakura::Text filePendingText;
     Sakura::Panel filePendingPanel;
     WelcomeHudView welcomeHud;
+    AgentChatView agentChat;
+    AgentVoiceView agentVoice;
     StartTabView startTab;
     U64 startTabRequests = 0;
     WorkspaceShellView workspaceShell;

@@ -14,7 +14,7 @@ namespace Jetstream::Sakura {
 namespace {
 
 std::optional<U64> ParseUInt(const std::string& text) {
-    const std::string trimmed = Trim(text);
+    const std::string trimmed = Jetstream::Text::TrimBlank(text);
     if (trimmed.empty() || trimmed.front() == '-') {
         return std::nullopt;
     }

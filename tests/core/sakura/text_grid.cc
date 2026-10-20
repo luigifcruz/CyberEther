@@ -3,6 +3,7 @@
 #include <catch2/generators/catch_generators.hpp>
 
 #include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
 
 #include "../../../resources/fonts/compressed_inter.hh"
@@ -1237,4 +1238,55 @@ TEST_CASE("Stationary selection drags stay clean", "[core][sakura][text-grid][re
     }
     CHECK(selects == settled);
     CHECK(host.send(Mouse(MouseEventType::Release, 40.0f, 5.0f)));
+}
+
+TEST_CASE("Text grids bound their natural height between their minimum and maximum lines",
+          "[core][sakura][text-grid][sizing]") {
+    const auto ctx = MakeContext();
+    TextGrid grid;
+    Host host(grid);
+    const F32 line = 15.0f * Sakura::Typography::CodeLineHeight;
+    const auto measure = [&](std::string value, F32 minLines, F32 maxLines, bool editable, bool scrollPastEnd) {
+        grid.update({
+            .id = "bounded",
+            .value = std::move(value),
+            .editable = editable,
+            .fontSize = 15.0f,
+            .scrollbar = false,
+            .scrollPastEnd = scrollPastEnd,
+            .minLines = minLines,
+            .maxLines = maxLines,
+            .padding = kNoPadding,
+        });
+        return host.measureOf(ctx, {300.0f, kInfinite}).y;
+    };
+
+    CHECK(measure("a", 0.0f, 0.0f, false, true) == Catch::Approx(line));
+    CHECK(measure("a", 2.0f, 0.0f, false, true) == Catch::Approx(2.0f * line));
+    CHECK(measure("a\nb\nc\nd\ne\nf", 0.0f, 3.0f, false, true) == Catch::Approx(3.0f * line));
+    CHECK(measure("a\nb\nc\nd\ne\nf", 2.0f, 3.0f, true, false) == Catch::Approx(3.0f * line));
+    CHECK(measure("a\nb", 2.0f, 3.0f, true, false) == Catch::Approx(2.0f * line));
+}
+
+TEST_CASE("Masked text grids draw one mask glyph per character", "[core][sakura][text-grid]") {
+    Scene scene;
+    TextGrid grid;
+    Host host(grid);
+    grid.update({.id = "masked", .value = "pässword", .editable = true, .fontSize = 15.0f, .singleLine = true,
+                 .masked = true});
+    host.place(scene.ctx, {0.0f, 0.0f, 300.0f, 30.0f});
+    std::vector<std::string> drawn;
+    for (auto* label : Find<Sakura::Label>(grid)) {
+        for (const auto& instance : label->config().instances) {
+            if (instance.visible && !instance.str.empty()) {
+                drawn.push_back(instance.str);
+            }
+        }
+    }
+    REQUIRE_FALSE(drawn.empty());
+    std::string joined;
+    for (const auto& str : drawn) {
+        joined += str;
+    }
+    CHECK(joined == "********");
 }

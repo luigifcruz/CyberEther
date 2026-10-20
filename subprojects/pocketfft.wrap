@@ -1,0 +1,10 @@
+[wrap-file]
+directory = pocketfft-5fb931a048d4ed6e2be304bbfb608f655f3da6bf
+source_url = https://codeload.github.com/mreineck/pocketfft/tar.gz/5fb931a048d4ed6e2be304bbfb608f655f3da6bf
+source_filename = pocketfft-5fb931a048d4ed6e2be304bbfb608f655f3da6bf.tar.gz
+source_hash = 425d9b206d3719c1f733403fff1139b291d63676d3134e6a5ab86476cfc5db3b
+patch_directory = pocketfft
+diff_files = pocketfft/0001-plan-cache.diff, pocketfft/0002-android-allocation.diff, pocketfft/0003-contiguous-fast-paths.diff, pocketfft/0004-neon-radix8.diff, pocketfft/0005-blocked-c2c.diff, pocketfft/0006-column-tiling-scratch.diff
+
+[provide]
+pocketfft = pocketfft_dep

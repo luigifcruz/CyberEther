@@ -48,10 +48,11 @@ struct FlowgraphConfigMarkdownField {
                 Parser::Map patch;
                 patch[this->config.name] = buffer;
                 if (this->config.onApply) {
-                    this->config.onApply(std::move(patch), false);
+                    this->config.onApply(std::move(patch), false, {});
                 }
                 editing = false;
             },
+            .onContentOverflow = this->config.onContentOverflow,
         });
         return Result::SUCCESS;
     }

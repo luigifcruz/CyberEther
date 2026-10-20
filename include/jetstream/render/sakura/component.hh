@@ -74,6 +74,7 @@ struct Component {
     bool requestFocus();
     void offerFocus(bool offered = true);
     void releaseFocus();
+    void releaseFocusWithin(Component& child);
     bool hasFocus() const;
     bool textEditorFocused() const;
 
