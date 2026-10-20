@@ -1,9 +1,15 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <jetstream/render/sakura/components/box.hh>
-#include <jetstream/render/sakura/components/layout.hh>
+#include <jetstream/render/sakura/components/div.hh>
+#include <jetstream/render/sakura/components/grid.hh>
+#include <jetstream/render/sakura/components/layer.hh>
+#include <jetstream/render/sakura/components/overlay.hh>
+#include <jetstream/render/sakura/components/panel.hh>
 #include <jetstream/render/sakura/components/scroller.hh>
-#include <jetstream/render/sakura/components/shell.hh>
+#include <jetstream/render/sakura/components/spacer.hh>
+#include <jetstream/render/sakura/components/split_view.hh>
+#include <jetstream/render/sakura/components/stack.hh>
 
 #include "component_harness.hh"
 

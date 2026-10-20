@@ -5,11 +5,20 @@
 #include "component_harness.hh"
 #include "scene.hh"
 
+#include <jetstream/render/sakura/components/background_layer.hh>
 #include <jetstream/render/sakura/components/card.hh>
+#include <jetstream/render/sakura/components/chrome_button.hh>
 #include <jetstream/render/sakura/components/dropdown.hh>
+#include <jetstream/render/sakura/components/floating_layer.hh>
+#include <jetstream/render/sakura/components/hud_layer.hh>
+#include <jetstream/render/sakura/components/layer.hh>
 #include <jetstream/render/sakura/components/menu.hh>
+#include <jetstream/render/sakura/components/modal_layer.hh>
+#include <jetstream/render/sakura/components/overlay.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
-#include <jetstream/render/sakura/components/shell.hh>
+#include <jetstream/render/sakura/components/popup.hh>
+#include <jetstream/render/sakura/components/text.hh>
+#include <jetstream/render/sakura/components/toast_layer.hh>
 #include <jetstream/render/sakura/toast.hh>
 #include <jetstream/render/tools/icons_fa.hh>
 

@@ -11,9 +11,11 @@
 #include "compositor/default/views/workbench.hh"
 #include "flowgraph_fixture.hh"
 
+#include <jetstream/render/sakura/components/floating_layer.hh>
+#include <jetstream/render/sakura/components/layer.hh>
+#include <jetstream/render/sakura/components/node/content_stack.hh>
 #include <jetstream/render/sakura/components/node/editor.hh>
 #include <jetstream/render/sakura/components/root.hh>
-#include <jetstream/render/sakura/components/shell.hh>
 
 #include "render/sakura/runtime.hh"
 #include "render/sakura/themes.hh"

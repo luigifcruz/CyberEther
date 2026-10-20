@@ -1,12 +1,17 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
-#include <jetstream/render/sakura/components/controls.hh>
+#include <jetstream/render/sakura/components/button.hh>
+#include <jetstream/render/sakura/components/floating_layer.hh>
 #include <jetstream/render/sakura/components/image.hh>
+#include <jetstream/render/sakura/components/layer.hh>
+#include <jetstream/render/sakura/components/modal_layer.hh>
 #include <jetstream/render/sakura/components/node/editor.hh>
-#include <jetstream/render/sakura/components/shell.hh>
+#include <jetstream/render/sakura/components/popup.hh>
 #include <jetstream/render/sakura/components/shortcuts.hh>
+#include <jetstream/render/sakura/components/surface_image.hh>
 #include <jetstream/render/sakura/components/table.hh>
+#include <jetstream/render/sakura/components/text_input.hh>
 
 #include "render/sakura/detail/input_router.hh"
 #include "render/sakura/detail/root_component.hh"

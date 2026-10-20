@@ -5,9 +5,9 @@
 
 #include <jetstream/render/sakura/clipboard.hh>
 #include <jetstream/render/sakura/components/box.hh>
-#include <jetstream/render/sakura/components/controls.hh>
 #include <jetstream/render/sakura/components/shortcuts.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
+#include <jetstream/render/sakura/components/text_input.hh>
 
 #include "render/sakura/input.hh"
 #include "render/sakura/detail/input_router.hh"

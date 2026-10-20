@@ -4,7 +4,7 @@
 #include "component_harness.hh"
 #include "scene.hh"
 
-#include <jetstream/render/sakura/components/controls.hh>
+#include <jetstream/render/sakura/components/button.hh>
 #include <jetstream/render/sakura/components/table.hh>
 
 #include <memory>

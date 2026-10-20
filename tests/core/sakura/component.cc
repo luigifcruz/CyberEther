@@ -3,8 +3,8 @@
 #include "component_harness.hh"
 
 #include <jetstream/render/sakura/components/box.hh>
-#include <jetstream/render/sakura/components/controls.hh>
-#include <jetstream/render/sakura/components/layout.hh>
+#include <jetstream/render/sakura/components/stack.hh>
+#include <jetstream/render/sakura/components/text_input.hh>
 
 #include "scene.hh"
 

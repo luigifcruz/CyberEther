@@ -6,10 +6,24 @@
 
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/label.hh>
-#include <jetstream/render/sakura/components/node/display.hh>
+#include <jetstream/render/sakura/components/layer.hh>
+#include <jetstream/render/sakura/components/node/bool_input.hh>
+#include <jetstream/render/sakura/components/node/combo.hh>
+#include <jetstream/render/sakura/components/node/content_stack.hh>
 #include <jetstream/render/sakura/components/node/field.hh>
-#include <jetstream/render/sakura/components/node/inputs.hh>
-#include <jetstream/render/sakura/components/node/panel.hh>
+#include <jetstream/render/sakura/components/node/field_grid.hh>
+#include <jetstream/render/sakura/components/node/field_panel.hh>
+#include <jetstream/render/sakura/components/node/float_input.hh>
+#include <jetstream/render/sakura/components/node/input_row.hh>
+#include <jetstream/render/sakura/components/node/int_input.hh>
+#include <jetstream/render/sakura/components/node/label.hh>
+#include <jetstream/render/sakura/components/node/path_input.hh>
+#include <jetstream/render/sakura/components/node/progress_bar.hh>
+#include <jetstream/render/sakura/components/node/range_input.hh>
+#include <jetstream/render/sakura/components/node/surface.hh>
+#include <jetstream/render/sakura/components/node/table.hh>
+#include <jetstream/render/sakura/components/node/text_input.hh>
+#include <jetstream/render/sakura/components/node/uint_input.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
 
 #include "harness.hh"

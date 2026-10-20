@@ -41,7 +41,7 @@ constexpr F32 kHeaderButtonGap = 2.0f;
 constexpr F32 kHeaderIconGap = 6.0f;
 constexpr F32 kPillBarHeight = 38.0f;
 constexpr F32 kPillGap = 6.0f;
-constexpr F32 kPillIconGap = 6.0f;
+constexpr F32 kPillCloseGap = 6.0f;
 constexpr F32 kPillClose = 16.0f;
 constexpr F32 kPillCloseMargin = 7.0f;
 constexpr F32 kTrackHeight = 32.0f;
@@ -1472,7 +1472,7 @@ void Dock::layout(const Context& ctx) {
         const F32 badge = Px(ctx, kBadgeSize);
         const F32 badgeY = tabY + std::floor((tabHeight - badge) * 0.5f);
         const F32 padding = Px(ctx, kTabPadX);
-        const F32 reserve = Px(ctx, kPillIconGap) + closeSize + Px(ctx, kPillCloseMargin);
+        const F32 reserve = Px(ctx, kPillCloseGap) + closeSize + Px(ctx, kPillCloseMargin);
         tabRadius = tabHeight * 0.5f;
         trackRadius = trackHeight * 0.5f;
         const U64 count = s.order.size();

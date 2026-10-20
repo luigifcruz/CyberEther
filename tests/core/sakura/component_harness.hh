@@ -7,8 +7,8 @@
 #include <jetstream/render/sakura/components/dock.hh>
 #include <jetstream/render/sakura/components/image.hh>
 #include <jetstream/render/sakura/components/label.hh>
+#include <jetstream/render/sakura/components/layer.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
-#include <jetstream/render/sakura/components/root.hh>
 
 #include "render/sakura/context.hh"
 #include "render/sakura/detail/access.hh"

@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_RENDER_SAKURA_NODE_COMMON_HH
 #define JETSTREAM_RENDER_SAKURA_NODE_COMMON_HH
 
-#include <jetstream/render/sakura/components/node/field.hh>
+#include <jetstream/render/sakura/components/node/content_stack.hh>
 #include <jetstream/render/sakura/typography.hh>
 
 #include "../../context.hh"
@@ -11,7 +11,9 @@
 #include "../../detail/text_metrics.hh"
 
 #include <algorithm>
+#include <cerrno>
 #include <cmath>
+#include <cstdlib>
 #include <optional>
 #include <string>
 
@@ -116,6 +118,62 @@ inline std::string Ellipsize(TextMetrics& metrics,
                              F32 width) {
     return metrics.ellipsize(fontName, text, fontSize, width);
 }
+
+inline std::string Trim(const std::string& value) {
+    const auto begin = value.find_first_not_of(" \t\r\n");
+    if (begin == std::string::npos) {
+        return {};
+    }
+    const auto end = value.find_last_not_of(" \t\r\n");
+    return value.substr(begin, end - begin + 1);
+}
+
+inline bool DecimalCharacter(U32 character) {
+    return (character >= '0' && character <= '9') || character == '.' || character == '+' || character == '-';
+}
+
+inline bool ScientificCharacter(U32 character) {
+    return DecimalCharacter(character) || character == 'e' || character == 'E';
+}
+
+inline std::optional<F64> ParseFloat(const std::string& text) {
+    const std::string trimmed = Trim(text);
+    if (trimmed.empty()) {
+        return std::nullopt;
+    }
+    char* end = nullptr;
+    errno = 0;
+    const F64 value = std::strtod(trimmed.c_str(), &end);
+    if (end == trimmed.c_str() || errno == ERANGE || !std::isfinite(value)) {
+        return std::nullopt;
+    }
+    return value;
+}
+
+struct Pressable {
+    bool pressed = false;
+
+    bool click(const MouseEvent& event, const Rect& rect) {
+        if (event.type == MouseEventType::Click && event.button == MouseButton::Left &&
+            rect.contains(event.position.x, event.position.y)) {
+            pressed = true;
+            return true;
+        }
+        return false;
+    }
+
+    bool release(const MouseEvent& event, const Rect& rect, bool requireInside = true) {
+        if (event.type == MouseEventType::Cancel || event.type == MouseEventType::Leave) {
+            pressed = false;
+            return false;
+        }
+        if (event.type != MouseEventType::Release || event.button != MouseButton::Left || !pressed) {
+            return false;
+        }
+        pressed = false;
+        return !requireInside || rect.contains(event.position.x, event.position.y);
+    }
+};
 
 }  // namespace Jetstream::Sakura::NodeStyle
 

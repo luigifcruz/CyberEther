@@ -2,6 +2,9 @@
 #include <catch2/generators/catch_generators.hpp>
 
 #include <jetstream/render/sakura/components/image.hh>
+#include <jetstream/render/sakura/components/layer.hh>
+#include <jetstream/render/sakura/components/popup.hh>
+#include <jetstream/render/sakura/components/surface_image.hh>
 
 #include "harness.hh"
 #include "scene.hh"

@@ -3,9 +3,14 @@
 #include "fonts.hh"
 #include "component_harness.hh"
 
-#include <jetstream/render/sakura/components/controls.hh>
+#include <jetstream/render/sakura/components/button.hh>
+#include <jetstream/render/sakura/components/checkbox.hh>
+#include <jetstream/render/sakura/components/combo.hh>
+#include <jetstream/render/sakura/components/progress_bar.hh>
+#include <jetstream/render/sakura/components/qr_code.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
+#include <jetstream/render/sakura/components/text_input.hh>
 
 #include "harness.hh"
 #include "scene.hh"

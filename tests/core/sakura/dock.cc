@@ -5,7 +5,10 @@
 #include <jetstream/render/base/texture.hh>
 #include <jetstream/render/sakura/components/dock.hh>
 #include <jetstream/render/sakura/components/image.hh>
+#include <jetstream/render/sakura/components/layer.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
+#include <jetstream/render/sakura/components/surface_image.hh>
+#include <jetstream/render/sakura/components/text.hh>
 
 #include <jetstream/render/tools/icons_fa.hh>
 

@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_NODE_EDITOR_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/components/node/content_stack.hh>
 #include <jetstream/render/sakura/components/node/field.hh>
 #include <jetstream/types.hh>
 

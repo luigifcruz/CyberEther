@@ -1,10 +1,11 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <jetstream/render/sakura/components/label.hh>
+#include <jetstream/render/sakura/components/node/content_stack.hh>
 #include <jetstream/render/sakura/components/node/editor.hh>
 #include <jetstream/render/sakura/components/node/field.hh>
-#include <jetstream/render/sakura/components/node/inputs.hh>
-#include <jetstream/render/sakura/components/label.hh>
+#include <jetstream/render/sakura/components/node/text_input.hh>
 #include <jetstream/render/sakura/typography.hh>
 
 #include "harness.hh"

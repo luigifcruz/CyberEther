@@ -28,6 +28,16 @@ constexpr F32 kShadowDrop = 2.0f;
 constexpr F32 kScrollbarThickness = 8.0f;
 constexpr F32 kScrollbarMargin = 3.0f;
 constexpr F32 kWheelStep = 48.0f;
+constexpr F32 kInnerSpacing = 8.0f;
+constexpr F32 kNaturalControlWidth = 200.0f;
+constexpr F32 kScrollbarSize = 12.0f;
+constexpr F32 kScrollbarGrabInset = 3.0f;
+constexpr F32 kPillHeight = 34.0f;
+constexpr F32 kPillIconGap = 8.0f;
+constexpr F32 kPillShadowSoftness = 4.0f;
+constexpr F32 kPillShadowDrop = 1.0f;
+constexpr F32 kPillBorder = 1.5f;
+constexpr const char* kPillFill = "pill_field_bg";
 
 inline F32 Px(const Context& ctx, F32 logical) {
     return logical * ctx.pixelRatio;
@@ -40,6 +50,10 @@ inline F32 Hairline(const Context& ctx) {
 inline ColorRGBA<F32> WithAlpha(ColorRGBA<F32> color, F32 alpha) {
     color.a *= std::clamp(alpha, 0.0f, 1.0f);
     return color;
+}
+
+inline F32 FontPx(const Context& ctx) {
+    return Px(ctx, Typography::FontSize);
 }
 
 inline F32 FrameHeightPx(const Context& ctx) {

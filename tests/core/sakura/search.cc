@@ -8,11 +8,15 @@
 #include "scene.hh"
 
 #include <jetstream/render/sakura/components/box.hh>
-#include <jetstream/render/sakura/components/controls.hh>
+#include <jetstream/render/sakura/components/button.hh>
+#include <jetstream/render/sakura/components/pill_button.hh>
+#include <jetstream/render/sakura/components/pill_field.hh>
+#include <jetstream/render/sakura/components/pill_stepper.hh>
+#include <jetstream/render/sakura/components/scroll_area.hh>
+#include <jetstream/render/sakura/components/search_catalog.hh>
+#include <jetstream/render/sakura/components/text_input.hh>
 #include <jetstream/render/sakura/components/label.hh>
-#include <jetstream/render/sakura/components/layout.hh>
 #include <jetstream/render/tools/icons_fa.hh>
-#include <jetstream/render/sakura/components/search.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
 
