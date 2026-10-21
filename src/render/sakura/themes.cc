@@ -34,7 +34,7 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"banner_warning_text", {0.98f, 0.90f, 0.70f, 1.00f}},
             {"banner_success_bg", {0.30f, 0.85f, 0.45f, 0.10f}},
             {"banner_success_border", {0.30f, 0.85f, 0.45f, 0.35f}},
-            {"banner_success_text", {0.80f, 0.95f, 0.85f, 1.00f}},
+            {"banner_success_text", {0.55f, 0.92f, 0.66f, 1.00f}},
             {"banner_error_bg", {0.95f, 0.35f, 0.35f, 0.10f}},
             {"banner_error_border", {0.95f, 0.35f, 0.35f, 0.35f}},
             {"banner_error_text", {0.98f, 0.82f, 0.82f, 1.00f}},
@@ -194,6 +194,19 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"pill_text", {0.88f, 0.88f, 0.90f, 1.00f}},
             {"chrome_button_hover", {1.00f, 1.00f, 1.00f, 0.10f}},
 
+            // Settings Colors
+            {"setting_card_bg", {0.09f, 0.09f, 0.09f, 1.00f}},
+            {"setting_card_border", {1.00f, 1.00f, 1.00f, 0.08f}},
+            {"setting_card_hovered", {1.00f, 1.00f, 1.00f, 0.04f}},
+            {"primary_btn", {0.96f, 0.96f, 0.96f, 1.00f}},
+            {"primary_btn_hovered", {0.86f, 0.86f, 0.86f, 1.00f}},
+            {"primary_btn_text", {0.06f, 0.06f, 0.06f, 1.00f}},
+            {"toggle_on", {0.25f, 0.47f, 0.95f, 1.00f}},
+            {"toggle_on_hovered", {0.32f, 0.53f, 0.98f, 1.00f}},
+            {"toggle_off", {0.26f, 0.26f, 0.26f, 1.00f}},
+            {"toggle_off_hovered", {0.31f, 0.31f, 0.31f, 1.00f}},
+            {"toggle_knob", {1.00f, 1.00f, 1.00f, 1.00f}},
+
             // Table Colors
             {"table_header_bg", {0.06f, 0.06f, 0.06f, 0.95f}},
             {"table_border_strong", {0.15f, 0.15f, 0.15f, 0.70f}},
@@ -243,7 +256,7 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"banner_warning_text", {0.55f, 0.35f, 0.05f, 1.00f}},
             {"banner_success_bg", {0.10f, 0.60f, 0.30f, 0.08f}},
             {"banner_success_border", {0.10f, 0.60f, 0.30f, 0.35f}},
-            {"banner_success_text", {0.08f, 0.40f, 0.20f, 1.00f}},
+            {"banner_success_text", {0.04f, 0.42f, 0.18f, 1.00f}},
             {"banner_error_bg", {0.85f, 0.20f, 0.20f, 0.08f}},
             {"banner_error_border", {0.85f, 0.20f, 0.20f, 0.35f}},
             {"banner_error_text", {0.60f, 0.12f, 0.12f, 1.00f}},
@@ -402,6 +415,19 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"pill_active_bg", {1.00f, 1.00f, 1.00f, 1.00f}},
             {"pill_text", {0.14f, 0.14f, 0.16f, 1.00f}},
             {"chrome_button_hover", {0.00f, 0.00f, 0.00f, 0.07f}},
+
+            // Settings Colors
+            {"setting_card_bg", {1.00f, 1.00f, 1.00f, 1.00f}},
+            {"setting_card_border", {0.00f, 0.00f, 0.00f, 0.09f}},
+            {"setting_card_hovered", {0.00f, 0.00f, 0.00f, 0.03f}},
+            {"primary_btn", {0.10f, 0.10f, 0.10f, 1.00f}},
+            {"primary_btn_hovered", {0.22f, 0.22f, 0.22f, 1.00f}},
+            {"primary_btn_text", {0.98f, 0.98f, 0.98f, 1.00f}},
+            {"toggle_on", {0.20f, 0.45f, 0.95f, 1.00f}},
+            {"toggle_on_hovered", {0.16f, 0.40f, 0.90f, 1.00f}},
+            {"toggle_off", {0.80f, 0.80f, 0.80f, 1.00f}},
+            {"toggle_off_hovered", {0.75f, 0.75f, 0.75f, 1.00f}},
+            {"toggle_knob", {1.00f, 1.00f, 1.00f, 1.00f}},
 
             // Table Colors
             {"table_header_bg", {0.94f, 0.94f, 0.95f, 0.95f}},

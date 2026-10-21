@@ -89,6 +89,7 @@ void Button::update(Config config) {
     impl->config = std::move(config);
     impl->label.update({
         .str = impl->config.str,
+        .font = impl->config.font,
         .colorKey = impl->textKey(),
         .scale = impl->config.textScale,
         .opacity = impl->config.disabled && !impl->textual() ? kDisabledAlpha : 1.0f,

@@ -30,7 +30,10 @@ struct WorkbenchActions {
                               MailQuit,
                               MailOpenStartTab,
                               MailCloseStartTab,
-                              MailFocusStartTab>;
+                              MailFocusStartTab,
+                              MailOpenSettings,
+                              MailCloseSettings,
+                              MailFocusSettings>;
 
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
@@ -47,6 +50,7 @@ struct WorkbenchActions {
         }
         ++state.interface.startTabRequests;
         state.interface.startTabFocused = true;
+        state.interface.settingsTabFocused = false;
         return Result::SUCCESS;
     }
 
@@ -58,7 +62,46 @@ struct WorkbenchActions {
 
     Result handle(const MailFocusStartTab&) {
         state.interface.startTabFocused = state.interface.startTab;
+        state.interface.settingsTabFocused = false;
         return Result::SUCCESS;
+    }
+
+    Result handle(const MailOpenSettings& msg) {
+        state.settings.section = msg.section;
+        state.settings.registryPage = RegistryPage::Overview;
+        state.settings.registryPlugin.clear();
+        state.settings.intelligencePage = IntelligencePage::Overview;
+        state.interface.settingsTab = true;
+        ++state.interface.settingsTabRequests;
+        state.interface.settingsTabFocused = true;
+        state.interface.startTabFocused = false;
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailCloseSettings&) {
+        state.interface.settingsTab = false;
+        state.interface.settingsTabFocused = false;
+        state.settings.registryPage = RegistryPage::Overview;
+        state.settings.registryPlugin.clear();
+        state.settings.intelligencePage = IntelligencePage::Overview;
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailFocusSettings&) {
+        state.interface.settingsTabFocused = state.interface.settingsTab;
+        state.interface.startTabFocused = false;
+        return Result::SUCCESS;
+    }
+
+    void settlePendingFocus() {
+        auto& ui = state.interface;
+        if (!ui.pendingFocusedFlowgraph || !state.flowgraph.items.contains(*ui.pendingFocusedFlowgraph)) {
+            return;
+        }
+        ui.focusedFlowgraph = ui.pendingFocusedFlowgraph;
+        ui.pendingFocusedFlowgraph.reset();
+        ui.startTabFocused = false;
+        ui.settingsTabFocused = false;
     }
 
     void settleStartTab() {
@@ -105,9 +148,6 @@ struct WorkbenchActions {
             state.modal.dependencyRequest = state.runtime.dependencyRequest;
         } else {
             state.modal.dependencyRequest.reset();
-        }
-        if (msg.settings.has_value()) {
-            state.settings.section = msg.settings.value();
         }
         if (msg.content != ModalContent::RenameBlock) {
             state.modal.renameBlockOldName.reset();

@@ -51,7 +51,7 @@ Extent2D<F32> SplitView::measure(const Context& ctx, Extent2D<F32> available) {
     F32 natural = 0.0f;
     if (config.height == 0.0f) {
         const F32 infinite = std::numeric_limits<F32>::infinity();
-        const F32 padX = Px(ctx, kCellPaddingX);
+        const F32 padX = Px(ctx, config.gutter);
         const F32 leftWidth = std::min(Px(ctx, config.leftWidth), width);
         const F32 rightWidth = std::max(0.0f, width - leftWidth - 2.0f * padX - Hairline(ctx));
         if (config.left) {
@@ -60,14 +60,14 @@ Extent2D<F32> SplitView::measure(const Context& ctx, Extent2D<F32> available) {
         if (config.right) {
             natural = std::max(natural, measureChild(*config.right, ctx, {rightWidth, infinite}).y);
         }
-        natural += Px(ctx, kCellPaddingY);
+        natural += 2.0f * Px(ctx, kCellPaddingY);
     }
     return {width, ResolveLength(ctx, config.height, natural, available.y)};
 }
 
 void SplitView::layout(const Context& ctx) {
     const Rect bounds = frame();
-    const F32 padX = Px(ctx, kCellPaddingX);
+    const F32 padX = Px(ctx, impl->config.gutter);
     const F32 padY = Px(ctx, kCellPaddingY);
     const F32 leftWidth = std::min(Px(ctx, impl->config.leftWidth), bounds.width);
     const F32 line = Hairline(ctx);
@@ -79,7 +79,7 @@ void SplitView::layout(const Context& ctx) {
         .clip = bounds,
     });
     layoutChild(ctx, impl->line, bounds);
-    const F32 innerHeight = std::max(0.0f, bounds.height - padY);
+    const F32 innerHeight = std::max(0.0f, bounds.height - 2.0f * padY);
     if (impl->config.left) {
         layoutChild(ctx, *impl->config.left, {bounds.x, bounds.y + padY, leftWidth, innerHeight});
     }

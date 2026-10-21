@@ -21,6 +21,7 @@ struct Stack : public Component {
         Component* child = nullptr;
         F32 size = 0.0f;
         F32 grow = 0.0f;
+        F32 shrink = 0.0f;
 
         bool operator==(const Item&) const = default;
     };

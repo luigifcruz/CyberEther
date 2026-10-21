@@ -90,6 +90,10 @@ class DefaultActions {
         workbench->settleStartTab();
     }
 
+    void settlePendingFocus() {
+        workbench->settlePendingFocus();
+    }
+
     void restoreLayouts() {
         layouts->restoreFromMetadata();
     }

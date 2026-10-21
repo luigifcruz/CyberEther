@@ -22,6 +22,8 @@ struct TitlebarPresenter {
         const auto enqueue = context.callbacks.enqueueMail;
         const auto focusedFlowgraph = context.state.interface.focusedFlowgraph;
         const bool startTabFocused = context.state.interface.startTab && context.state.interface.startTabFocused;
+        const bool settingsTabFocused = context.state.interface.settingsTab &&
+                                        context.state.interface.settingsTabFocused;
         const bool flowgraphMetadataVisible = context.state.interface.flowgraphMetadataVisible;
         const bool flowgraphEnvironmentVisible = context.state.interface.flowgraphEnvironmentVisible;
         const bool canCheckForUpdates = context.state.update.supported &&
@@ -53,7 +55,7 @@ struct TitlebarPresenter {
             .flowgraphEnvironmentVisible = flowgraphEnvironmentVisible,
             .debugTimingEnabled = context.state.debug.timingEnabled,
             .debugLogLevel = context.state.debug.logLevel,
-            .onAction = [enqueue, focusedFlowgraph, startTabFocused, canCheckForUpdates, missing,
+            .onAction = [enqueue, focusedFlowgraph, startTabFocused, settingsTabFocused, canCheckForUpdates, missing,
                          timing = context.state.debug.timingEnabled,
                          agentVisible = context.state.agent.ui.visible,
                          voiceVisible = context.state.agent.ui.voiceVisible](TitlebarView::Action action) {
@@ -63,16 +65,16 @@ struct TitlebarPresenter {
                         enqueue(MailOpenModal{.content = ModalContent::About});
                         break;
                     case Action::Settings:
-                        enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::General});
+                        enqueue(MailOpenSettings{.section = SettingsSection::General});
                         break;
                     case Action::CheckForUpdates:
-                        enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::About});
+                        enqueue(MailOpenSettings{.section = SettingsSection::About});
                         if (canCheckForUpdates) {
                             enqueue(MailCheckForUpdates{});
                         }
                         break;
                     case Action::OpenUpdateModal:
-                        enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::About});
+                        enqueue(MailOpenSettings{.section = SettingsSection::About});
                         break;
                     case Action::RemoteStreaming:
                         enqueue(MailOpenModal{.content = ModalContent::RemoteStreaming});
@@ -111,7 +113,7 @@ struct TitlebarPresenter {
                         enqueue(MailReloadAllPlugins{});
                         break;
                     case Action::OpenDeveloperSettings:
-                        enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::Developer});
+                        enqueue(MailOpenSettings{.section = SettingsSection::Developer});
                         break;
                     case Action::NewTab:
                         enqueue(MailOpenStartTab{});
@@ -145,6 +147,8 @@ struct TitlebarPresenter {
                     case Action::CloseFlowgraph:
                         if (startTabFocused) {
                             enqueue(MailCloseStartTab{});
+                        } else if (settingsTabFocused) {
+                            enqueue(MailCloseSettings{});
                         } else if (focusedFlowgraph.has_value()) {
                             enqueue(MailCloseFlowgraph{focusedFlowgraph.value()});
                         } else {

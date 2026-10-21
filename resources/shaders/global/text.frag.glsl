@@ -5,7 +5,7 @@ layout(set = 0, binding = 0) uniform ShaderUniforms {
     vec3 color;
     float sharpness;
     float atlasPixelRange;
-    float _padding;
+    float weight;
     vec2 translation;
 } uniforms;
 
@@ -45,7 +45,7 @@ void main() {
                 uv,
                 0.0
             ).r;
-            float signedDistance = (sampleValue - edge) * screenPixelRange;
+            float signedDistance = (sampleValue - edge) * screenPixelRange + uniforms.weight;
             alpha += clamp(signedDistance * slope + 0.5, 0.0, 1.0);
         }
     }

@@ -41,6 +41,10 @@ struct TableBody : public Component {
         mountChildren(children);
     }
 
+    bool owns(const Component& child) const {
+        return hasChild(child);
+    }
+
     bool dispatch(const MouseEvent& event) {
         return mouseEventChildren(event);
     }
@@ -275,7 +279,12 @@ Table::Table() {
 Table::~Table() = default;
 
 void Table::update(Config config) {
-    if (impl->built && config == impl->config) {
+    const bool mounted = std::all_of(config.cellRows.begin(), config.cellRows.end(), [this](const auto& cells) {
+        return std::all_of(cells.begin(), cells.end(), [this](const Component* cell) {
+            return !cell || hasChild(*cell) || impl->body.owns(*cell);
+        });
+    });
+    if (impl->built && mounted && config == impl->config) {
         impl->config = std::move(config);
         return;
     }

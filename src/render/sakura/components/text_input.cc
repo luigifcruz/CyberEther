@@ -94,7 +94,10 @@ void TextInput::layout(const Context& ctx) {
                        .visible = !bounds.empty(),
                        .backgroundColor = WithAlpha(ctx.color(config.backgroundColorKey), alpha)}},
         .clip = bounds,
-        .cornerRadius = Px(ctx, kFrameRounding),
+        .cornerRadius = Px(ctx, config.rounding),
+        .borderWidth = config.borderColorKey.empty() ? 0.0f : Px(ctx, 1.0f),
+        .borderColor = WithAlpha(ctx.color(config.borderColorKey), alpha),
+        .strokeFringe = !config.borderColorKey.empty(),
     });
 
     impl->grid.update({

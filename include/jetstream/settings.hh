@@ -101,9 +101,12 @@ struct JETSTREAM_API Settings {
             std::string reasoningContext;
             U64 outputLength = 0;
             std::vector<std::string> reasoningEfforts;
+            bool priced = false;
+            F64 inputCost = 0.0;
+            F64 outputCost = 0.0;
 
             JST_SERDES(provider, id, name, contextLength, maxOutputTokens, reasoningEffort, reasoningContext, outputLength,
-                       reasoningEfforts);
+                       reasoningEfforts, priced, inputCost, outputCost);
         };
 
         struct Voice {

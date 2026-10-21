@@ -8,6 +8,7 @@
 #include "file_picker.hh"
 #include "hud/welcome.hh"
 #include "modal/container.hh"
+#include "settings/base.hh"
 #include "start_tab.hh"
 #include "titlebar.hh"
 
@@ -38,7 +39,7 @@ struct WorkspaceShellView {
             .tabBarHeight = titlebar.height(),
             .leadingInset = titlebar.leadingInset(),
             .onTabMenu = [this](const std::string& pane, Extent2D<F32> point) {
-                if (pane != StartTabView::PaneId) {
+                if (pane != StartTabView::PaneId && pane != SettingsView::PaneId) {
                     titlebar.openTabMenu(pane, point);
                 }
             },
@@ -90,6 +91,8 @@ struct WorkbenchView {
         std::optional<WelcomeHudView::Config> welcomeHud;
         std::optional<StartTabView::Config> startTab;
         U64 startTabRequests = 0;
+        std::optional<SettingsView::Config> settings;
+        U64 settingsTabRequests = 0;
         TitlebarView::Config titlebar;
         ModalView::Config modal;
         std::optional<FlowgraphKeyValueWindow::Config> flowgraphMetadata;
@@ -172,6 +175,14 @@ struct WorkbenchView {
             }
         }
         startTabRequests = this->config.startTabRequests;
+        if (this->config.settings.has_value()) {
+            settings.update(std::move(this->config.settings.value()));
+            panes.push_back(settings.pane());
+            if (this->config.settingsTabRequests != settingsTabRequests) {
+                activate = SettingsView::PaneId;
+            }
+        }
+        settingsTabRequests = this->config.settingsTabRequests;
         workspaceShell.updatePanes(std::move(panes), std::move(activate));
         content.update({.content = &workspaceShell.component()});
 
@@ -226,6 +237,8 @@ struct WorkbenchView {
     AgentVoiceView agentVoice;
     StartTabView startTab;
     U64 startTabRequests = 0;
+    SettingsView settings;
+    U64 settingsTabRequests = 0;
     WorkspaceShellView workspaceShell;
     std::vector<std::string> flowgraphOrder;
     std::unordered_map<std::string, FlowgraphPane> flowgraphPanes;

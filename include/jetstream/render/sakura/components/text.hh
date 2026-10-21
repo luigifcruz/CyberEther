@@ -17,6 +17,8 @@ struct Text : public Component {
         Bold,
         Display,
         DisplaySemiBold,
+        Sans,
+        SansBold,
     };
 
     enum class Tone {
@@ -42,6 +44,8 @@ struct Text : public Component {
         std::string colorKey;
         bool wrapped = false;
         F32 scale = 1.0f;
+        F32 lineHeight = 1.0f;
+        F32 weight = 0.0f;
         F32 verticalOffset = 0.0f;
         U64 maxCharacters = 256;
         F32 opacity = 1.0f;

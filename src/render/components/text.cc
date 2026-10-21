@@ -56,7 +56,7 @@ struct Text::Impl {
         glm::vec3 color;
         F32 sharpness;
         F32 atlasPixelRange;
-        F32 padding;
+        F32 weight;
         glm::vec2 translation;
     };
 
@@ -484,6 +484,7 @@ Result Text::Impl::updateUniforms() {
     // Set data.
     uniforms.color = glm::vec3(config.color.r, config.color.g, config.color.b);
     uniforms.sharpness = config.sharpness;
+    uniforms.weight = config.weight;
     uniforms.atlasPixelRange = config.font->atlasPixelRange();
 
     // Set flag to update buffer.

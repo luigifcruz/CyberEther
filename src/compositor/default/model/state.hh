@@ -156,6 +156,9 @@ struct DefaultCompositorState {
         bool startTabFocused = false;
         U64 startTabBaseline = 0;
         U64 startTabRequests = 0;
+        bool settingsTab = false;
+        bool settingsTabFocused = false;
+        U64 settingsTabRequests = 0;
     };
 
     struct GraphicsState {
@@ -165,6 +168,9 @@ struct DefaultCompositorState {
 
     struct SettingsState {
         SettingsSection section = SettingsSection::General;
+        RegistryPage registryPage = RegistryPage::Overview;
+        std::string registryPlugin;
+        IntelligencePage intelligencePage = IntelligencePage::Overview;
     };
 
     struct RuntimeState {

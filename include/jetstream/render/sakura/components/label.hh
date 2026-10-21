@@ -29,6 +29,7 @@ struct Label : public Component {
         std::optional<Rect> clip;
         std::string fontName = "default_mono";
         F32 sharpness = 0.45f;
+        F32 weight = 0.0f;
         U64 maxCharacters = 128;
         U64 capacity = 0;
 

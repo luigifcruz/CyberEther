@@ -56,6 +56,10 @@ void ResolveModelMetadata(Agent::Provider::Model& model, Agent::Provider::Kind k
     if (model.reasoningEfforts.empty()) {
         model.reasoningEfforts = known->reasoningEfforts;
     }
+    if (!model.inputCost || !model.outputCost) {
+        model.inputCost = known->inputCost;
+        model.outputCost = known->outputCost;
+    }
 }
 
 void AppendProviderError(std::string& errors, const std::string& provider, const std::string& message) {
@@ -252,6 +256,9 @@ DefaultCompositorState::AgentState::ModelListResult AgentProviders::Models(std::
                 .contextLength = model.contextLength,
                 .outputLength = model.outputLength,
                 .reasoningEfforts = std::move(model.reasoningEfforts),
+                .priced = model.inputCost.has_value() && model.outputCost.has_value(),
+                .inputCost = model.inputCost.value_or(0.0),
+                .outputCost = model.outputCost.value_or(0.0),
             });
         }
     }

@@ -163,7 +163,7 @@ struct AgentActions {
     }
 
     Result handle(const MailOpenAgentModelPicker&) {
-        state.modal.content = ModalContent::IntelligenceModel;
+        openIntelligencePage(IntelligencePage::AddModel);
         state.agent.catalog.search.clear();
         ensureModels();
         return Result::SUCCESS;
@@ -236,7 +236,7 @@ struct AgentActions {
 
         providers.editSession++;
         resetProviderTest();
-        state.modal.content = ModalContent::IntelligenceProvider;
+        openIntelligencePage(IntelligencePage::Provider);
         return Result::SUCCESS;
     }
 
@@ -500,8 +500,13 @@ struct AgentActions {
     }
 
     void returnToSettings() {
+        state.settings.intelligencePage = IntelligencePage::Overview;
+    }
+
+    void openIntelligencePage(IntelligencePage page) {
         state.settings.section = SettingsSection::Intelligence;
-        state.modal.content = ModalContent::Settings;
+        state.settings.intelligencePage = page;
+        state.interface.settingsTab = true;
     }
 
     void renameProvider(const std::string& previous, const std::string& next) {
@@ -546,7 +551,8 @@ struct AgentActions {
                          jst::fmt::format("Provider '{}' {}.", provider.name, verb));
 
         const bool sameSession = agent.providers.editSession == agent.providers.keyTask.session;
-        const bool editorOpen = state.modal.content == ModalContent::IntelligenceProvider;
+        const bool editorOpen = state.interface.settingsTab &&
+                                state.settings.intelligencePage == IntelligencePage::Provider;
         if (sameSession && editorOpen) {
             agent.providers.editTarget.reset();
             returnToSettings();
@@ -628,7 +634,7 @@ struct AgentActions {
         agent.catalog.contextLengthsChecked = true;
         const bool missing = std::any_of(models.begin(), models.end(), [](const auto& model) {
             const bool missingLimits = model.contextLength == 0 || model.outputLength == 0;
-            const bool missingDetails = model.name.empty() || model.reasoningEfforts.empty();
+            const bool missingDetails = model.name.empty() || model.reasoningEfforts.empty() || !model.priced;
             return missingLimits || missingDetails;
         });
         if (missing && !agent.catalog.loading) {
@@ -638,8 +644,7 @@ struct AgentActions {
 
     void checkSettingsSection() {
         auto& agent = state.agent;
-        const bool shown = state.modal.content == ModalContent::Settings &&
-                           state.settings.section == SettingsSection::Intelligence;
+        const bool shown = state.interface.settingsTab && state.settings.section == SettingsSection::Intelligence;
         const bool entered = shown && !agent.ui.settingsShown;
         agent.ui.settingsShown = shown;
 
@@ -754,6 +759,13 @@ struct AgentActions {
         }
         if (!model.reasoningEfforts.empty() && model.reasoningEfforts != saved.reasoningEfforts) {
             saved.reasoningEfforts = model.reasoningEfforts;
+            changed = true;
+        }
+        const bool repriced = model.inputCost != saved.inputCost || model.outputCost != saved.outputCost;
+        if (model.priced && (!saved.priced || repriced)) {
+            saved.priced = true;
+            saved.inputCost = model.inputCost;
+            saved.outputCost = model.outputCost;
             changed = true;
         }
 

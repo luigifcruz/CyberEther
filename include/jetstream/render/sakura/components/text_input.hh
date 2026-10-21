@@ -33,6 +33,8 @@ struct TextInput : public Component {
         std::string backgroundColorKey = "card";
         Callback<void()> onCancel;
         Extent2D<F32> padding = {12.0f, 5.0f};
+        std::string borderColorKey;
+        F32 rounding = 8.0f;
 
         bool operator==(const Config&) const = default;
     };

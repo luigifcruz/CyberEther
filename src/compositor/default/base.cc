@@ -321,11 +321,7 @@ Result DefaultCompositor::present() {
 }
 
 void DefaultCompositor::updateWorkbenchState() {
-    if (state.interface.pendingFocusedFlowgraph.has_value() &&
-        state.flowgraph.items.contains(*state.interface.pendingFocusedFlowgraph)) {
-        state.interface.focusedFlowgraph = state.interface.pendingFocusedFlowgraph;
-        state.interface.pendingFocusedFlowgraph.reset();
-    }
+    actions.settlePendingFocus();
 
     if (state.flowgraph.items.empty()) {
         state.interface.focusedFlowgraph.reset();

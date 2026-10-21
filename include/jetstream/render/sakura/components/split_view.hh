@@ -14,6 +14,7 @@ struct SplitView : public Component {
         Component* right = nullptr;
         F32 leftWidth = 220.0f;
         F32 height = 0.0f;
+        F32 gutter = 6.0f;
 
         bool operator==(const Config&) const = default;
     };

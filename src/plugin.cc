@@ -656,8 +656,8 @@ Plugin::Info Plugin::Impl::buildInfo(const Record& plugin) {
     info.minimumJetstreamVersion = plugin.manifest.metadata.minimumJetstreamVersion;
     info.status = "Loaded";
     info.registeredModules = static_cast<U64>(plugin.registrations.modules.size());
-    info.registeredBlocks = static_cast<U64>(plugin.registrations.blocks.size());
-    info.registeredExamples = static_cast<U64>(plugin.registrations.flowgraphs.size());
+    info.blocks = plugin.registrations.blocks;
+    info.examples = plugin.registrations.flowgraphs;
     info.registeredBenchmarks = static_cast<U64>(plugin.registrations.benchmarks.size());
 
     info.targets.reserve(plugin.manifest.targets.size());

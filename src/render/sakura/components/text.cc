@@ -38,6 +38,10 @@ const char* FontName(Text::Font font) {
             return "default_display";
         case Text::Font::DisplaySemiBold:
             return "default_display_semibold";
+        case Text::Font::Sans:
+            return Typography::BodyFont;
+        case Text::Font::SansBold:
+            return "default_body_bold";
         case Text::Font::Body:
             break;
     }
@@ -216,7 +220,7 @@ Extent2D<F32> Text::measure(const Context& ctx, Extent2D<F32> available) {
     if (std::isfinite(available.x) && (impl->config.wrapped || impl->config.align != Align::Left)) {
         width = std::max(width, available.x);
     }
-    return FitExtent({width, impl->fontSize(ctx) * static_cast<F32>(impl->lines.size()) +
+    return FitExtent({width, std::round(impl->fontSize(ctx) * impl->config.lineHeight) * static_cast<F32>(impl->lines.size()) +
                                  impl->config.verticalOffset * ctx.pixelRatio},
                      available);
 }
@@ -234,7 +238,9 @@ void Text::layout(const Context& ctx) {
     std::vector<Label::Instance> glyphs;
     for (U64 i = 0; i < impl->lines.size(); ++i) {
         const auto& line = impl->lines[i];
-        const F32 y = bounds.y + impl->config.verticalOffset * ctx.pixelRatio + size * static_cast<F32>(i);
+        const F32 pitch = std::round(size * impl->config.lineHeight);
+        const F32 y = bounds.y + impl->config.verticalOffset * ctx.pixelRatio + pitch * static_cast<F32>(i) +
+                      std::round((pitch - size) * 0.5f);
         F32 x = bounds.x;
         if (impl->config.align == Align::Center) {
             x += std::floor((bounds.width - line.width) * 0.5f);
@@ -269,6 +275,7 @@ void Text::layout(const Context& ctx) {
         .clip = bounds,
         .fontName = FontName(impl->config.font),
         .sharpness = impl->config.font == Font::Display ? kDisplaySharpness : kSharpness,
+        .weight = impl->config.weight * Fringe(ctx),
         .maxCharacters = impl->config.maxCharacters,
     });
     impl->icons.update({

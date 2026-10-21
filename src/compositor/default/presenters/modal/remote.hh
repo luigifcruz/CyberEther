@@ -32,7 +32,8 @@ struct RemoteStreamingModalPresenter {
                 enqueue(MailStartRemote{remoteConfig});
             },
             .onConfigure = [enqueue]() {
-                enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::Remote});
+                enqueue(MailCloseModal{});
+                enqueue(MailOpenSettings{.section = SettingsSection::Remote});
             },
             .onStop = [enqueue]() {
                 enqueue(MailStopRemote{});

@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <jetstream/render/sakura/base.hh>
+#include <jetstream/render/tools/icons_fa.hh>
 
 #include "component_harness.hh"
 #include "fonts.hh"
@@ -110,6 +111,21 @@ TEST_CASE("Components measure to finite sizes within the available space", "[cor
     }));
     subjects.push_back(Make<Sakura::SearchCatalog>("empty search catalog", {.query = "nothing"}));
     subjects.push_back(Make<Sakura::NavigationItem>("navigation item", {.label = "General"}));
+    subjects.push_back(Make<Sakura::SidebarItem>("sidebar item", {.icon = ICON_FA_GEAR, .label = "General"}));
+    subjects.push_back(Make<Sakura::Toggle>("toggle", {.value = true}));
+    subjects.push_back(Make<Sakura::Badge>("badge", {.label = "Valid"}));
+    subjects.push_back(Make<Sakura::FeatureCard>("feature card", {
+        .title = "Update available",
+        .description = "Restart to apply it.",
+        .content = probe(),
+    }));
+    subjects.push_back(Make<Sakura::SettingCard>("setting card", {
+        .rows = {
+            {.label = "Automatic gain", .description = "Adjusts the gain to keep the signal level steady.",
+             .control = Own<Sakura::Toggle>(owned, {.value = true})},
+            {.label = "Sample rate", .control = Own<Sakura::Combo>(owned, {.options = {"1 MHz"}, .value = "1 MHz"})},
+        },
+    }));
     subjects.push_back(Make<Sakura::SettingField>("setting field", {
         .label = "Automatic gain",
         .description = "Adjusts the gain to keep the signal level steady.",
@@ -359,7 +375,7 @@ TEST_CASE("Split views size their height naturally, fixed, or filling", "[core][
     Host host(split);
 
     split.update({.left = &left, .right = &right, .height = 0.0f});
-    CHECK(host.measureOf(scene.ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 64.0f});
+    CHECK(host.measureOf(scene.ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 68.0f});
     CHECK(host.measureOf(scene.ctx, {300.0f, 50.0f}) == Extent2D<F32>{300.0f, 50.0f});
 
     split.update({.left = &left, .right = &right, .height = 100.0f});
@@ -620,12 +636,12 @@ TEST_CASE("Split views scale their left width and gutters with the pixel ratio",
     const Rect bounds = {0.0f, 0.0f, 600.0f, 100.0f};
 
     host.place(scene.ctx, bounds);
-    CHECK(left.laidFrame == Rect{0.0f, 4.0f, 220.0f, 96.0f});
-    CHECK(right.laidFrame == Rect{233.0f, 4.0f, 367.0f, 96.0f});
+    CHECK(left.laidFrame == Rect{0.0f, 4.0f, 220.0f, 92.0f});
+    CHECK(right.laidFrame == Rect{233.0f, 4.0f, 367.0f, 92.0f});
 
     host.place(Doubled(scene.ctx), bounds);
-    CHECK(left.laidFrame == Rect{0.0f, 8.0f, 440.0f, 92.0f});
-    CHECK(right.laidFrame == Rect{466.0f, 8.0f, 134.0f, 92.0f});
+    CHECK(left.laidFrame == Rect{0.0f, 8.0f, 440.0f, 84.0f});
+    CHECK(right.laidFrame == Rect{466.0f, 8.0f, 134.0f, 84.0f});
 }
 
 TEST_CASE("Controls scale their frames and paddings with the pixel ratio", "[core][sakura][sizing]") {

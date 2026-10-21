@@ -70,7 +70,9 @@ void Panel::layout(const Context& ctx) {
     });
     layoutChild(ctx, impl->background, bounds);
     if (config.content) {
-        layoutChild(ctx, *config.content, bounds);
+        const F32 width = config.maxWidth > 0.0f ? std::min(bounds.width, Px(ctx, config.maxWidth)) : bounds.width;
+        layoutChild(ctx, *config.content,
+                    {bounds.x + std::floor((bounds.width - width) * 0.5f), bounds.y, width, bounds.height});
     }
 }
 

@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_BUTTON_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/types.hh>
 
 #include <functional>
@@ -36,6 +37,7 @@ struct Button : public Component {
         F32 textAlign = 0.5f;
         Callback<void()> onClick;
         Callback<void()> onDoubleClick;
+        Text::Font font = Text::Font::Body;
 
         bool operator==(const Config&) const = default;
     };

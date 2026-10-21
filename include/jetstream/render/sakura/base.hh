@@ -8,6 +8,7 @@
 #include <jetstream/render/sakura/toast.hh>
 
 #include <jetstream/render/sakura/components/background_layer.hh>
+#include <jetstream/render/sakura/components/badge.hh>
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/button.hh>
 #include <jetstream/render/sakura/components/canvas.hh>
@@ -25,6 +26,7 @@
 #include <jetstream/render/sakura/components/divider.hh>
 #include <jetstream/render/sakura/components/dock.hh>
 #include <jetstream/render/sakura/components/dropdown.hh>
+#include <jetstream/render/sakura/components/feature_card.hh>
 #include <jetstream/render/sakura/components/floating_layer.hh>
 #include <jetstream/render/sakura/components/grid.hh>
 #include <jetstream/render/sakura/components/hud_layer.hh>
@@ -50,7 +52,9 @@
 #include <jetstream/render/sakura/components/scroll_area.hh>
 #include <jetstream/render/sakura/components/scroller.hh>
 #include <jetstream/render/sakura/components/search_catalog.hh>
+#include <jetstream/render/sakura/components/setting_card.hh>
 #include <jetstream/render/sakura/components/setting_field.hh>
+#include <jetstream/render/sakura/components/sidebar_item.hh>
 #include <jetstream/render/sakura/components/shortcuts.hh>
 #include <jetstream/render/sakura/components/spacer.hh>
 #include <jetstream/render/sakura/components/split_view.hh>
@@ -65,6 +69,7 @@
 #include <jetstream/render/sakura/components/text_input.hh>
 #include <jetstream/render/sakura/components/text_markdown.hh>
 #include <jetstream/render/sakura/components/text_view.hh>
+#include <jetstream/render/sakura/components/toggle.hh>
 #include <jetstream/render/sakura/components/toast_layer.hh>
 #include <jetstream/render/sakura/components/voice.hh>
 

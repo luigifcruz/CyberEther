@@ -25,6 +25,8 @@ struct SettingsActions {
                               MailSetGraphicsScale,
                               MailSetGraphicsDevice,
                               MailSetSettingsSection,
+                              MailSetRegistryPage,
+                              MailSetIntelligencePage,
                               MailSetDebugTimingEnabled,
                               MailSetDebugLogLevel,
                               MailCheckForUpdates,
@@ -82,6 +84,20 @@ struct SettingsActions {
 
     Result handle(const MailSetSettingsSection& msg) {
         state.settings.section = msg.section;
+        state.settings.registryPage = RegistryPage::Overview;
+        state.settings.registryPlugin.clear();
+        state.settings.intelligencePage = IntelligencePage::Overview;
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetIntelligencePage& msg) {
+        state.settings.intelligencePage = msg.page;
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetRegistryPage& msg) {
+        state.settings.registryPage = msg.page;
+        state.settings.registryPlugin = msg.plugin;
         return Result::SUCCESS;
     }
 
@@ -220,7 +236,9 @@ struct SettingsActions {
         JST_CHECK(Settings::SetAsync(settings));
 
         state.settings.section = SettingsSection::Registry;
-        state.modal.content = ModalContent::Settings;
+        state.settings.registryPage = RegistryPage::Overview;
+        state.settings.registryPlugin.clear();
+        state.interface.settingsTab = true;
         callbacks.notify(Sakura::ToastType::Success, 3000, "Plugin loaded.");
         return Result::SUCCESS;
     }
@@ -242,6 +260,10 @@ struct SettingsActions {
         }
 
         JST_CHECK(Settings::SetAsync(settings));
+        if (state.settings.registryPlugin == msg.path) {
+            state.settings.registryPage = RegistryPage::Overview;
+            state.settings.registryPlugin.clear();
+        }
         callbacks.notify(Sakura::ToastType::Success, 5000, "Plugin removed. Restart CyberEther to unload registered blocks.");
         return Result::SUCCESS;
     }

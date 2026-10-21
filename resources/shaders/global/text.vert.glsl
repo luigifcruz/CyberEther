@@ -5,7 +5,7 @@ layout(set = 0, binding = 0) uniform ShaderUniforms {
     vec3 color;
     float sharpness;
     float atlasPixelRange;
-    float _padding;
+    float weight;
     vec2 translation;
 } uniforms;
 

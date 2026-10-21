@@ -115,6 +115,14 @@ struct MailCloseStartTab {};
 
 struct MailFocusStartTab {};
 
+struct MailOpenSettings {
+    SettingsSection section = SettingsSection::General;
+};
+
+struct MailCloseSettings {};
+
+struct MailFocusSettings {};
+
 struct MailOpenFlowgraph {};
 
 struct MailCloseFlowgraph {
@@ -149,12 +157,20 @@ struct MailApplyTheme {
 
 struct MailOpenModal {
     ModalContent content;
-    std::optional<SettingsSection> settings;
     std::optional<std::string> flowgraph;
 };
 
 struct MailSetSettingsSection {
     SettingsSection section = SettingsSection::General;
+};
+
+struct MailSetIntelligencePage {
+    IntelligencePage page = IntelligencePage::Overview;
+};
+
+struct MailSetRegistryPage {
+    RegistryPage page = RegistryPage::Overview;
+    std::string plugin;
 };
 
 struct MailAddPluginPath {
@@ -512,6 +528,9 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailOpenStartTab,
                           MailCloseStartTab,
                           MailFocusStartTab,
+                          MailOpenSettings,
+                          MailCloseSettings,
+                          MailFocusSettings,
                           MailOpenFlowgraph,
                           MailCreateBlock,
                           MailCloseFlowgraph,
@@ -523,6 +542,8 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailApplyTheme,
                           MailOpenModal,
                           MailSetSettingsSection,
+                          MailSetRegistryPage,
+                          MailSetIntelligencePage,
                           MailAddPluginPath,
                           MailRemovePluginPath,
                           MailReloadPlugin,

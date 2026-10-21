@@ -4,11 +4,7 @@
 #include "benchmark.hh"
 #include "dependencies.hh"
 #include "feedback.hh"
-#include "intelligence_model.hh"
-#include "intelligence_provider.hh"
-#include "plugin.hh"
 #include "remote.hh"
-#include "settings/base.hh"
 
 #include "../context.hh"
 #include "../flowgraph/modals/close.hh"
@@ -23,30 +19,22 @@ namespace Jetstream {
 
 struct ModalPresenter {
     const PresenterContext& context;
-    SettingsModalPresenter settings;
     FlowgraphExamplesModalPresenter flowgraphExamples;
     FlowgraphInfoModalPresenter flowgraphInfo;
     FlowgraphCloseModalPresenter flowgraphClose;
     RenameBlockModalPresenter renameBlock;
     BenchmarkModalPresenter benchmark;
     RemoteStreamingModalPresenter remoteStreaming;
-    PluginPresenter plugin;
-    IntelligenceProviderPresenter intelligenceProvider;
-    IntelligenceModelPresenter intelligenceModel;
     DependencyReviewModalPresenter dependencies;
     FeedbackModalPresenter feedback;
 
     explicit ModalPresenter(const PresenterContext& context) : context(context),
-                                                               settings(context),
                                                                flowgraphExamples(context),
                                                                flowgraphInfo(context),
                                                                flowgraphClose(context),
                                                                renameBlock(context),
                                                                benchmark(context),
                                                                remoteStreaming(context),
-                                                               plugin(context),
-                                                               intelligenceProvider(context),
-                                                               intelligenceModel(context),
                                                                dependencies(context),
                                                                feedback(context) {}
 
@@ -55,16 +43,7 @@ struct ModalPresenter {
 
         ModalView::Config config;
         config.content = context.state.modal.content;
-        config.onClose = [enqueue, content = config.content]() {
-            if (content == ModalContent::Plugin) {
-                enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::Registry});
-                return;
-            }
-            if (content == ModalContent::IntelligenceProvider ||
-                content == ModalContent::IntelligenceModel) {
-                enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::Intelligence});
-                return;
-            }
+        config.onClose = [enqueue]() {
             enqueue(MailCloseModal{});
         };
 
@@ -92,18 +71,6 @@ struct ModalPresenter {
                 break;
             case ModalContent::RemoteStreaming:
                 config.remoteStreaming = remoteStreaming.build();
-                break;
-            case ModalContent::Settings:
-                config.appSettings = settings.build();
-                break;
-            case ModalContent::Plugin:
-                config.plugin = plugin.build();
-                break;
-            case ModalContent::IntelligenceProvider:
-                config.intelligenceProvider = intelligenceProvider.build();
-                break;
-            case ModalContent::IntelligenceModel:
-                config.intelligenceModel = intelligenceModel.build();
                 break;
             case ModalContent::Dependencies:
                 config.dependencies = dependencies.build();

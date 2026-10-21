@@ -9,10 +9,6 @@
 #include "../flowgraph/modals/info.hh"
 #include "../flowgraph/modals/rename.hh"
 #include "feedback.hh"
-#include "intelligence_model.hh"
-#include "intelligence_provider.hh"
-#include "settings/base.hh"
-#include "plugin.hh"
 #include "../../model/ui.hh"
 #include "remote.hh"
 
@@ -29,14 +25,10 @@ struct ModalView {
         std::optional<ModalContent> content;
         FlowgraphExamplesView::Config flowgraphExamples;
         std::optional<FlowgraphInfoView::Config> flowgraphInfo;
-        SettingsView::Config appSettings;
         std::optional<FlowgraphCloseView::Config> flowgraphClose;
         std::optional<RenameBlockView::Config> renameBlock;
         BenchmarkView::Config benchmark;
         RemoteView::Config remoteStreaming;
-        PluginView::Config plugin;
-        IntelligenceProviderView::Config intelligenceProvider;
-        IntelligenceModelView::Config intelligenceModel;
         DependencyReviewView::Config dependencies;
         FeedbackView::Config feedback;
         std::function<void()> onClose;
@@ -70,11 +62,6 @@ struct ModalView {
                     flowgraphInfoView.update(std::move(viewConfig));
                 }
                 break;
-            case ModalContent::Settings: {
-                auto viewConfig = this->config.appSettings;
-                appSettingsView.update(std::move(viewConfig));
-                break;
-            }
             case ModalContent::FlowgraphClose:
                 if (this->config.flowgraphClose.has_value()) {
                     auto viewConfig = this->config.flowgraphClose.value();
@@ -95,21 +82,6 @@ struct ModalView {
             case ModalContent::RemoteStreaming: {
                 auto viewConfig = this->config.remoteStreaming;
                 remoteView.update(std::move(viewConfig));
-                break;
-            }
-            case ModalContent::Plugin: {
-                auto viewConfig = this->config.plugin;
-                pluginView.update(std::move(viewConfig));
-                break;
-            }
-            case ModalContent::IntelligenceProvider: {
-                auto viewConfig = this->config.intelligenceProvider;
-                intelligenceProviderView.update(std::move(viewConfig));
-                break;
-            }
-            case ModalContent::IntelligenceModel: {
-                auto viewConfig = this->config.intelligenceModel;
-                intelligenceModelView.update(std::move(viewConfig));
                 break;
             }
             case ModalContent::Dependencies: {
@@ -151,8 +123,6 @@ struct ModalView {
                 return &flowgraphExamplesView.component();
             case ModalContent::FlowgraphInfo:
                 return config.flowgraphInfo.has_value() ? &flowgraphInfoView.component() : nullptr;
-            case ModalContent::Settings:
-                return &appSettingsView.component();
             case ModalContent::FlowgraphClose:
                 return config.flowgraphClose.has_value() ? &flowgraphCloseView.component() : nullptr;
             case ModalContent::RenameBlock:
@@ -161,12 +131,6 @@ struct ModalView {
                 return &benchmarkView.component();
             case ModalContent::RemoteStreaming:
                 return &remoteView.component();
-            case ModalContent::Plugin:
-                return &pluginView.component();
-            case ModalContent::IntelligenceProvider:
-                return &intelligenceProviderView.component();
-            case ModalContent::IntelligenceModel:
-                return &intelligenceModelView.component();
             case ModalContent::Dependencies:
                 return &dependencyReviewView.component();
             case ModalContent::Feedback:
@@ -176,18 +140,6 @@ struct ModalView {
     }
 
     Extent2D<F32> modalSize() const {
-        if (config.content == ModalContent::Settings) {
-            return Extent2D<F32>{880.0f, 700.0f};
-        }
-        if (config.content == ModalContent::Plugin) {
-            return Extent2D<F32>{620.0f, 0.0f};
-        }
-        if (config.content == ModalContent::IntelligenceProvider) {
-            return Extent2D<F32>{620.0f, 0.0f};
-        }
-        if (config.content == ModalContent::IntelligenceModel) {
-            return Extent2D<F32>{680.0f, 0.0f};
-        }
         if (config.content == ModalContent::Feedback) {
             return Extent2D<F32>{520.0f, 0.0f};
         }
@@ -202,14 +154,10 @@ struct ModalView {
     AboutView aboutView;
     FlowgraphExamplesView flowgraphExamplesView;
     FlowgraphInfoView flowgraphInfoView;
-    SettingsView appSettingsView;
     FlowgraphCloseView flowgraphCloseView;
     RenameBlockView renameBlockView;
     BenchmarkView benchmarkView;
     RemoteView remoteView;
-    PluginView pluginView;
-    IntelligenceProviderView intelligenceProviderView;
-    IntelligenceModelView intelligenceModelView;
     DependencyReviewView dependencyReviewView;
     FeedbackView feedbackView;
 };

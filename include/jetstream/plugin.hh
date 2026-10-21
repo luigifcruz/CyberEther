@@ -28,8 +28,8 @@ class JETSTREAM_API Plugin {
         std::string status;
         std::vector<TargetInfo> targets;
         U64 registeredModules = 0;
-        U64 registeredBlocks = 0;
-        U64 registeredExamples = 0;
+        std::vector<std::string> blocks;
+        std::vector<std::string> examples;
         U64 registeredBenchmarks = 0;
     };
 

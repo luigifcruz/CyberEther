@@ -12,12 +12,20 @@ enum class ModalContent : I32 {
     RenameBlock,
     Benchmark,
     RemoteStreaming,
-    Settings,
-    Plugin,
-    IntelligenceProvider,
-    IntelligenceModel,
     Dependencies,
     Feedback,
+};
+
+enum class RegistryPage : I32 {
+    Overview = 0,
+    AddPlugin,
+    Plugin,
+};
+
+enum class IntelligencePage : I32 {
+    Overview = 0,
+    Provider,
+    AddModel,
 };
 
 enum class SettingsSection : I32 {

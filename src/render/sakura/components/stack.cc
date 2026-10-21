@@ -55,7 +55,10 @@ Stack::Stack() {
 Stack::~Stack() = default;
 
 void Stack::update(Config config) {
-    if (config == impl->config) {
+    const bool mounted = std::all_of(config.items.begin(), config.items.end(), [this](const Item& item) {
+        return !item.child || hasChild(*item.child);
+    });
+    if (mounted && config == impl->config) {
         impl->config = std::move(config);
         return;
     }
@@ -111,6 +114,23 @@ void Stack::layout(const Context& ctx) {
         }
     }
     const F32 extent = vertical ? bounds.height : bounds.width;
+    F32 shrink = 0.0f;
+    for (U64 i = 0; i < impl->config.items.size(); ++i) {
+        if (impl->active(impl->config.items[i])) {
+            shrink += impl->config.items[i].shrink;
+        }
+    }
+    if (used > extent && shrink > 0.0f) {
+        const F32 overflow = used - extent;
+        for (U64 i = 0; i < impl->config.items.size(); ++i) {
+            const auto& item = impl->config.items[i];
+            if (impl->active(item) && item.shrink > 0.0f) {
+                const F32 cut = std::min(sizes[i], overflow * item.shrink / shrink);
+                sizes[i] -= cut;
+                used -= cut;
+            }
+        }
+    }
     const F32 remaining = std::max(0.0f, extent - used);
     if (grow > 0.0f) {
         for (U64 i = 0; i < impl->config.items.size(); ++i) {

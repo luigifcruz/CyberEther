@@ -466,6 +466,35 @@ bool StartsBlock(const std::string& line) {
     return IsFence(line) || IsRule(line) || HeadingLevel(line) > 0 || IsQuoteLine(line) || IsListItem(line);
 }
 
+std::string AutolinkLabel(const std::string& url) {
+    std::string_view path = url;
+    bool matched = false;
+    for (const std::string_view prefix : {"https://github.com/", "http://github.com/", "https://www.github.com/"}) {
+        if (path.starts_with(prefix)) {
+            path.remove_prefix(prefix.size());
+            matched = true;
+            break;
+        }
+    }
+    if (!matched) {
+        return url;
+    }
+    std::vector<std::string_view> parts;
+    while (!path.empty()) {
+        const U64 slash = path.find('/');
+        parts.push_back(path.substr(0, slash));
+        path = slash == std::string_view::npos ? std::string_view{} : path.substr(slash + 1);
+    }
+    if (parts.size() == 4 && (parts[2] == "pull" || parts[2] == "issues") && !parts[3].empty() &&
+        std::all_of(parts[3].begin(), parts[3].end(), [](char c) { return std::isdigit(static_cast<unsigned char>(c)); })) {
+        return "#" + std::string(parts[3]);
+    }
+    if (parts.size() == 4 && parts[2] == "compare" && !parts[3].empty()) {
+        return std::string(parts[3]);
+    }
+    return url;
+}
+
 void ParseInline(const std::string& line, StyleId baseStyle, std::string& display, std::vector<StyleId>& styles,
                  std::vector<LinkSpan>& links) {
     const U64 n = line.size();
@@ -532,6 +561,33 @@ void ParseInline(const std::string& line, StyleId baseStyle, std::string& displa
         }
         if (resume != 0) {
             i = resume;
+            continue;
+        }
+        if ((line.compare(i, 7, "http://") == 0 || line.compare(i, 8, "https://") == 0) &&
+            (i == 0 || !isWord(line[i - 1]))) {
+            U64 end = i;
+            while (end < n && !isSpace(line[end]) && line[end] != '<' && line[end] != '>') {
+                ++end;
+            }
+            while (end > i) {
+                const char last = line[end - 1];
+                if (last == ')') {
+                    const auto span = std::string_view(line).substr(i, end - i);
+                    if (std::count(span.begin(), span.end(), '(') >= std::count(span.begin(), span.end(), ')')) {
+                        break;
+                    }
+                } else if (std::string_view(".,;:!?'\"").find(last) == std::string_view::npos) {
+                    break;
+                }
+                --end;
+            }
+            const std::string url = line.substr(i, end - i);
+            const U64 startCol = display.size();
+            for (const char k : AutolinkLabel(url)) {
+                emit(k, Style::Link);
+            }
+            links.push_back({startCol, display.size(), url});
+            i = end;
             continue;
         }
         if (c == '[') {

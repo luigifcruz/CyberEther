@@ -500,3 +500,49 @@ TEST_CASE("Tables far down a note keep their chrome when scrolled into view", "[
     REQUIRE(boxes.size() >= 2);
     CHECK_FALSE(boxes[boxes.size() - 2]->config().instances.empty());
 }
+
+TEST_CASE("Markdown turns bare URLs into links and collapses GitHub pull and compare URLs",
+          "[core][sakura][markdown]") {
+    const auto ctx = MakeContext();
+    const auto drawn = [&](const char* value) {
+        TextMarkdown markdown;
+        Host host(markdown);
+        markdown.update({.id = "autolink", .value = value, .fontSize = 15.0f});
+        host.place(ctx, {0.0f, 0.0f, 800.0f, 200.0f});
+        std::string text;
+        for (const auto* label : Find<Sakura::Label>(markdown)) {
+            for (const auto& instance : label->config().instances) {
+                text += instance.str;
+            }
+        }
+        return text;
+    };
+    const auto pull = drawn("see https://github.com/acme/repo/pull/400 now");
+    CHECK(pull.find("#400") != std::string::npos);
+    CHECK(pull.find("github.com") == std::string::npos);
+    const auto compare = drawn("diff https://github.com/acme/repo/compare/v1...v2.");
+    CHECK(compare.find("v1...v2") != std::string::npos);
+    CHECK(compare.find("github.com") == std::string::npos);
+    CHECK(drawn("see https://example.com/acme/repo/pull/400 now").find("example.com/acme") != std::string::npos);
+    CHECK(drawn("see https://evilgithub.com/acme/repo/pull/400").find("evilgithub.com") != std::string::npos);
+    CHECK(drawn("see https://example.com/github.com/a/b/pull/1").find("example.com/github.com") != std::string::npos);
+}
+
+TEST_CASE("Markdown autolinks keep balanced parentheses and drop trailing punctuation", "[core][sakura][markdown]") {
+    const auto ctx = MakeContext();
+    TextMarkdown markdown;
+    Host host(markdown);
+    markdown.update({.id = "parens",
+                     .value = "(see https://github.com/a/b/pull/7) and https://github.com/a/b/compare/v1_(x).",
+                     .fontSize = 15.0f});
+    host.place(ctx, {0.0f, 0.0f, 800.0f, 200.0f});
+    std::string text;
+    for (const auto* label : Find<Sakura::Label>(markdown)) {
+        for (const auto& instance : label->config().instances) {
+            text += instance.str;
+        }
+    }
+    CHECK(text.find("(see #7) and") != std::string::npos);
+    CHECK(text.find("v1_(x).") != std::string::npos);
+    CHECK(text.find("github.com") == std::string::npos);
+}

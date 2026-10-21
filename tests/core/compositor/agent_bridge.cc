@@ -7,7 +7,7 @@
 #include "compositor/default/support/agent/executor.hh"
 #include "compositor/default/model/callbacks.hh"
 #include "compositor/default/model/state.hh"
-#include "compositor/default/presenters/modal/intelligence_model.hh"
+#include "compositor/default/presenters/settings/intelligence_model.hh"
 #include "jetstream/flowgraph_metadata.hh"
 #include "jetstream/registry.hh"
 

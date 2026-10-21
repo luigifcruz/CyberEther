@@ -13,7 +13,8 @@
 namespace Jetstream {
 
 inline bool WelcomeShown(const DefaultCompositorState& state) {
-    return state.flowgraph.items.empty() && !state.modal.content.has_value() && !state.filePicker.active;
+    return state.flowgraph.items.empty() && !state.interface.settingsTab && !state.modal.content.has_value() &&
+           !state.filePicker.active;
 }
 
 struct WelcomeHudPresenter {
@@ -63,7 +64,7 @@ struct WelcomeHudPresenter {
                 enqueue(MailOpenUrl{.url = "https://cyberether.org/docs"});
             },
             .onOpenSettings = [enqueue]() {
-                enqueue(MailOpenModal{.content = ModalContent::Settings, .settings = SettingsSection::General});
+                enqueue(MailOpenSettings{.section = SettingsSection::General});
             },
             .onOpenAbout = [enqueue]() {
                 enqueue(MailOpenModal{.content = ModalContent::About});

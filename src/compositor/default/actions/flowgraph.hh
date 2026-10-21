@@ -155,6 +155,7 @@ struct FlowgraphActions {
         if (state.flowgraph.items.contains(msg.flowgraph)) {
             state.interface.focusedFlowgraph = msg.flowgraph;
             state.interface.startTabFocused = false;
+            state.interface.settingsTabFocused = false;
         }
 
         return Result::SUCCESS;

@@ -8,6 +8,7 @@
 #include "flowgraph/pane.hh"
 #include "hud/welcome.hh"
 #include "modal/container.hh"
+#include "settings/base.hh"
 #include "titlebar.hh"
 
 #include "agent/chat.hh"
@@ -25,6 +26,7 @@ struct WorkbenchPresenter {
     FlowgraphMetadataWindowPresenter flowgraphMetadata;
     FlowgraphEnvironmentWindowPresenter flowgraphEnvironment;
     ModalPresenter modal;
+    SettingsPresenter settings;
     AgentChatPresenter agentChat;
     AgentVoicePresenter agentVoice;
 
@@ -36,6 +38,7 @@ struct WorkbenchPresenter {
                                                                    flowgraphMetadata(context),
                                                                    flowgraphEnvironment(context),
                                                                    modal(context),
+                                                                   settings(context),
                                                                    agentChat{context},
                                                                    agentVoice{context} {}
 
@@ -65,6 +68,10 @@ struct WorkbenchPresenter {
             };
         }
         config.startTabRequests = context.state.interface.startTabRequests;
+        if (context.state.interface.settingsTab) {
+            config.settings = settings.build();
+        }
+        config.settingsTabRequests = context.state.interface.settingsTabRequests;
         config.flowgraphs.reserve(context.state.flowgraph.items.size());
         for (const auto& [flowgraphId, flowgraph] : context.state.flowgraph.items) {
             config.flowgraphs.push_back(flowgraphPane.build(flowgraphId, flowgraph));
@@ -74,7 +81,7 @@ struct WorkbenchPresenter {
         config.modal = modal.build();
         config.filePicker = filePicker.build();
         config.backgroundParticles = context.state.interface.backgroundParticles &&
-                                     (config.filePending || (config.flowgraphs.empty() && !config.startTab));
+                                     (config.filePending || (config.flowgraphs.empty() && !config.startTab && !config.settings));
         return config;
     }
 };

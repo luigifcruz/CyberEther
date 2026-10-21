@@ -443,8 +443,8 @@ TEST_CASE("Split views give the left pane its configured width", "[core][sakura]
 
     host.place(ctx, {0.0f, 0.0f, 500.0f, 300.0f});
 
-    CHECK(left.laidFrame == Rect{0.0f, 4.0f, 220.0f, 296.0f});
-    CHECK(right.laidFrame == Rect{233.0f, 4.0f, 267.0f, 296.0f});
+    CHECK(left.laidFrame == Rect{0.0f, 4.0f, 220.0f, 292.0f});
+    CHECK(right.laidFrame == Rect{233.0f, 4.0f, 267.0f, 292.0f});
 
     const auto measured = host.measureOf(ctx, {500.0f, kInfinite});
     CHECK(measured.x == 500.0f);
@@ -461,8 +461,8 @@ TEST_CASE("Split views clamp the left pane to narrow frames", "[core][sakura][la
 
     host.place(ctx, {0.0f, 0.0f, 80.0f, 50.0f});
 
-    CHECK(left.laidFrame == Rect{0.0f, 4.0f, 80.0f, 46.0f});
-    CHECK(right.laidFrame == Rect{93.0f, 4.0f, 0.0f, 46.0f});
+    CHECK(left.laidFrame == Rect{0.0f, 4.0f, 80.0f, 42.0f});
+    CHECK(right.laidFrame == Rect{93.0f, 4.0f, 0.0f, 42.0f});
     CHECK(left.laidClip == Rect{0.0f, 0.0f, 80.0f, 50.0f});
 }
 
@@ -655,4 +655,42 @@ TEST_CASE("Dragging an inset scroller thumb in place keeps the scroll offset", "
     REQUIRE(host.send(Mouse(MouseEventType::Click, x, end.y + 4.0f)));
     host.send(Mouse(MouseEventType::Move, x, end.y + 4.0f));
     CHECK(scrollY == bottom);
+}
+
+TEST_CASE("Stacks reclaim a child another parent mounted while their config was unchanged",
+          "[core][sakura][layout]") {
+    Sakura::Spacer child;
+    Sakura::Stack first;
+    Sakura::Stack second;
+    const auto owns = [](const Sakura::Component& parent, const Sakura::Component& component) {
+        const auto& children = Peek::Children(parent);
+        return std::find(children.begin(), children.end(), &component) != children.end();
+    };
+
+    first.update({.items = {{.child = &child}}});
+    CHECK(owns(first, child));
+    second.update({.items = {{.child = &child}}});
+    CHECK(owns(second, child));
+    CHECK_FALSE(owns(first, child));
+
+    first.update({.items = {{.child = &child}}});
+    CHECK(owns(first, child));
+    CHECK(child.visible());
+}
+
+TEST_CASE("Horizontal stacks shrink flagged items when their children overflow", "[core][sakura][layout]") {
+    const auto ctx = MakeContext();
+    Probe wide({300.0f, 20.0f});
+    Probe fixed({80.0f, 20.0f});
+    Sakura::Stack stack;
+    stack.update({
+        .axis = Sakura::Stack::Axis::Horizontal,
+        .spacing = 0.0f,
+        .items = {{.child = &wide, .shrink = 1.0f}, {.child = &fixed}},
+    });
+    Host host(stack);
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 20.0f});
+    CHECK(Peek::Frame(wide).width == 120.0f);
+    CHECK(Peek::Frame(fixed).x == 120.0f);
+    CHECK(Peek::Frame(fixed).width == 80.0f);
 }
