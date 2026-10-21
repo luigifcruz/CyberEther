@@ -107,6 +107,10 @@ module_test_lst = []
 dep_lst = [
     dependency('threads'),
 ]
+if jst_is_linux
+    # Snapshot<T> needs atomic runtime support independently of remote/GLib.
+    dep_lst += dependency('atomic')
+endif
 whole_dep_lst = []
 lib_link_args = []
 inc_lst = [
