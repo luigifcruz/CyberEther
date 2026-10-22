@@ -267,7 +267,9 @@ struct AgentActions {
         task.previousName = previousName;
         task.session = agent.providers.editSession;
 
-        if (!msg.apiKey.empty()) {
+        if (AgentProviders::External(provider)) {
+            provider.apiKeyId = previous.apiKeyId;
+        } else if (!msg.apiKey.empty()) {
             if (previous.apiKeyId.empty()) {
                 provider.apiKeyId = Random::HexToken();
             } else {
