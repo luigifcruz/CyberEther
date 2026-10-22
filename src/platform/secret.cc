@@ -489,15 +489,24 @@ bool LoadSymbol(void* handle, const char* name, F& target) {
 
 template<typename F>
 bool LoadGlibSymbol(void* handle, const char* name, F& target) {
+#if defined(__GLIBC__)
+    return LoadSymbol(handle, name, target);
+#else
     return LoadSymbol(RTLD_DEFAULT, name, target) || LoadSymbol(handle, name, target);
+#endif
 }
 
 const Libsecret& GetLibsecret() {
     static Libsecret library;
     static std::once_flag flag;
     std::call_once(flag, [] {
+#if defined(__GLIBC__)
+        constexpr auto visibility = DynamicLibraryVisibility::Isolated;
+#else
+        constexpr auto visibility = DynamicLibraryVisibility::Local;
+#endif
         std::string error;
-        library.handle = OpenDynamicLibrary("libsecret-1.so.0", DynamicLibraryVisibility::Local, error);
+        library.handle = OpenDynamicLibrary("libsecret-1.so.0", visibility, error);
         if (!library.handle) {
             return;
         }

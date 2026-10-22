@@ -439,6 +439,40 @@ TEST_CASE("Platform dynamic library errors include a reason",
     SECTION("global visibility") {
         requireOpenFailure(Platform::DynamicLibraryVisibility::Global);
     }
+
+    SECTION("isolated visibility") {
+        requireOpenFailure(Platform::DynamicLibraryVisibility::Isolated);
+    }
+}
+
+TEST_CASE("Isolated dynamic libraries cannot bind to the application's runtime",
+          "[core][platform][dynamic-library]") {
+    ScopedDynamicLibrary library;
+    std::string error = "stale error";
+#if defined(JST_OS_LINUX) && defined(__GLIBC__)
+    Dl_info info = {};
+    const auto loader = reinterpret_cast<void*>(&dlopen);
+    REQUIRE(dladdr(loader, &info) != 0);
+    REQUIRE(info.dli_fname);
+    library.handle = Platform::OpenDynamicLibrary(
+        info.dli_fname, Platform::DynamicLibraryVisibility::Isolated, error);
+    INFO(error);
+    REQUIRE(library.handle);
+    CHECK(error.empty());
+
+    Lmid_t namespaceId = LM_ID_BASE;
+    REQUIRE(dlinfo(library.handle, RTLD_DI_LMID, &namespaceId) == 0);
+    CHECK(namespaceId != LM_ID_BASE);
+    const auto isolatedLoader = Platform::LoadDynamicLibrarySymbol(library.handle, "dlopen", error);
+    REQUIRE(isolatedLoader);
+    CHECK(isolatedLoader != loader);
+    CHECK(error.empty());
+#else
+    library.handle = Platform::OpenDynamicLibrary(
+        "unused", Platform::DynamicLibraryVisibility::Isolated, error);
+    CHECK_FALSE(library.handle);
+    CHECK(error.find("not supported") != std::string::npos);
+#endif
 }
 
 #if defined(JST_OS_WINDOWS) || defined(JST_OS_LINUX) || defined(JST_OS_MAC)

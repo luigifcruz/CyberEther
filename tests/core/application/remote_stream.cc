@@ -23,6 +23,12 @@
 #include <cstdio>
 #include <filesystem>
 
+#if defined(JST_OS_LINUX)
+#include "agent_provider.hh"
+#include "compositor/default/support/agent/providers.hh"
+#include "tools/random.hh"
+#endif
+
 using namespace Jetstream;
 using namespace std::chrono_literals;
 
@@ -816,6 +822,66 @@ TEST_CASE("Remote RTP delivery survives reconnects while other viewers keep rece
         }
     }
 }
+
+#if defined(JST_OS_LINUX)
+TEST_CASE("Keyring credentials and authenticated discovery coexist with WebRTC reconnects",
+          "[core][application][remote][keyring][store]") {
+    std::string enabled;
+    if (Platform::EnvironmentVariable("CYBERETHER_TEST_SECRET_STORE", enabled) != Result::SUCCESS || enabled != "1") {
+        SKIP("Set CYBERETHER_TEST_SECRET_STORE=1 inside an isolated keyring session");
+    }
+
+    Stream stream;
+    stream.start();
+    REQUIRE(Platform::SecretStoreAvailable());
+
+    AgentTest::ProviderServer server;
+    std::atomic<unsigned> authenticated = 0;
+    server.server.Get("/models", [&](const auto& request, auto& response) {
+        if (request.get_header_value("Authorization") != "Bearer keyring-webrtc-test-key") {
+            response.status = 401;
+            return;
+        }
+        ++authenticated;
+        response.set_content(R"({"data":[{"id":"test-model"}]})", "application/json");
+    });
+    server.start();
+
+    struct StoredKey {
+        std::string id = "webrtc-test-" + Random::HexToken();
+        ~StoredKey() {
+            AgentProviders::Erase(id);
+        }
+    } key;
+    REQUIRE(AgentProviders::Store(key.id, server.origin, "keyring-webrtc-test-key").success);
+    const Settings::Intelligence::Provider provider{
+        .name = "Keyring WebRTC test",
+        .host = server.origin,
+        .modelsPath = "/models",
+        .apiKeyId = key.id,
+    };
+    const auto client = AgentProviders::Client(provider);
+
+    for (unsigned connection = 0; connection < 2; ++connection) {
+        CAPTURE(connection);
+        std::vector<Agent::Provider::Model> models;
+        Agent::Provider::Error error;
+        REQUIRE(client->models(models, &error) == Result::SUCCESS);
+        REQUIRE(models.size() == 1);
+        CHECK(models.front().id == "test-model");
+        CHECK(authenticated.load() == connection + 1);
+
+        Peer viewer(stream, "keyring-viewer");
+        viewer.connect();
+        REQUIRE(WaitFor([&] { return viewer.packets >= 20; }));
+    }
+
+    REQUIRE(AgentProviders::Erase(key.id).success);
+    std::string secret;
+    CHECK(Platform::ReadSecret("CyberEther Intelligence", key.id, secret) == Result::ERROR);
+    CHECK(AgentProviders::Erase(key.id).success);
+}
+#endif
 
 TEST_CASE("Remote pipeline services its bus and sends RTCP sender reports",
           "[core][application][remote][stream]") {
