@@ -1,7 +1,7 @@
 project(
     'CyberEther',
     ['cpp'],
-    version: '1.16.1',  # [VERSION HOOK]
+    version: '1.16.2',  # [VERSION HOOK]
     meson_version: '>=1.11.0',
     default_options: [
         'cpp_std=c++20',
