@@ -193,7 +193,8 @@ Provider::Error Validate(const Config& config, bool models, const std::string& m
     }
 
     const auto scope = models ? Provider::Scope::Models : Provider::Scope::Chat;
-    if (!Provider::Profile::Find(config.kind).ready(scope, !key.empty())) {
+    if ((config.requireApiKey && key.empty()) ||
+        !Provider::Profile::Find(config.kind).ready(scope, !key.empty())) {
         return {Kind::MissingCredentials, 0, Detail::Diagnostics::MissingKey()};
     }
 

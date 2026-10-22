@@ -218,6 +218,7 @@ JETSTREAM_API Result RunProcess(const std::string& executable,
 enum class DynamicLibraryVisibility {
     Local,
     Global,
+    Isolated,
 };
 
 JETSTREAM_API void* OpenDynamicLibrary(const std::string& path,

@@ -87,9 +87,10 @@ struct JETSTREAM_API Settings {
             std::string chatPath;
             std::string modelsPath;
             std::string apiKeyId;
+            std::string apiKeyEnv;
             bool requestReasoning = false;
 
-            JST_SERDES(name, host, api, chatPath, modelsPath, apiKeyId, requestReasoning);
+            JST_SERDES(name, host, api, chatPath, modelsPath, apiKeyId, apiKeyEnv, requestReasoning);
         };
 
         struct Model {
