@@ -248,7 +248,7 @@ Provider::Error Diagnostics::Transport(const Platform::Http::Error& failure) {
     return error;
 }
 
-Provider::Error Diagnostics::Response(const Platform::Http::Response& response, nlohmann::json& body) {
+Provider::Error Diagnostics::Response(const Platform::Http::Client::Response& response, nlohmann::json& body) {
     if (response.error) {
         return Transport(response.error);
     }

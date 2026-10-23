@@ -31,7 +31,7 @@ class Diagnostics {
     static Provider::Error Payload(const nlohmann::json& payload, I32 status = 0, const std::string& retryAfter = {});
     static Provider::Error Http(I32 status, const std::string& body, const std::string& retryAfter);
     static Provider::Error Transport(const Platform::Http::Error& failure);
-    static Provider::Error Response(const Platform::Http::Response& response, nlohmann::json& body);
+    static Provider::Error Response(const Platform::Http::Client::Response& response, nlohmann::json& body);
 };
 
 class Retry {
