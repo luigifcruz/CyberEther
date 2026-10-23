@@ -305,6 +305,12 @@ Agent::Session::ToolExecutor AgentExecutor::bind() {
     };
 }
 
+Agent::Session::ToolExecutor AgentExecutor::focused() {
+    return [this](const auto& name, const auto& args, const auto& cancelled) {
+        return execute(name, args, cancelled, nullptr);
+    };
+}
+
 Agent::Tools::Output AgentExecutor::execute(const std::string& name,
                                             const std::string& args,
                                             const Agent::Cancellation& shouldAbort,
@@ -470,10 +476,11 @@ void AgentExecutor::dispatch() {
     }
 
     shared->graphs = state.flowgraph.items;
-    if (state.interface.focusedFlowgraph.has_value()) {
-        const auto it = state.flowgraph.items.find(*state.interface.focusedFlowgraph);
+    for (const auto& focus : {state.interface.pendingFocusedFlowgraph, state.interface.focusedFlowgraph}) {
+        const auto it = focus ? state.flowgraph.items.find(*focus) : state.flowgraph.items.end();
         if (it != state.flowgraph.items.end()) {
             shared->focused = it->second;
+            break;
         }
     }
 

@@ -101,28 +101,76 @@ class JETSTREAM_API Http {
         }
     };
 
-    struct Request {
-        std::string method = "GET";
-        std::string host;
-        std::string path = "/";
-        Headers headers;
-        std::string body;
-        U64 timeoutSeconds = 30;
-        std::function<bool(I32 status, const Headers& headers)> onResponse;
-        std::function<bool(std::string_view data)> onData;
-        std::function<bool()> cancelled;
+    class JETSTREAM_API Client {
+     public:
+        struct Request {
+            std::string method = "GET";
+            std::string host;
+            std::string path = "/";
+            Headers headers;
+            std::string body;
+            U64 timeoutSeconds = 30;
+            std::function<bool(I32 status, const Headers& headers)> onResponse;
+            std::function<bool(std::string_view data)> onData;
+            std::function<bool()> cancelled;
+        };
+
+        struct Response {
+            I32 status = 0;
+            Headers headers;
+            std::string body;
+            Error error;
+
+            std::string header(std::string_view name) const;
+        };
+
+        static Response Send(const Request& request);
     };
 
-    struct Response {
-        I32 status = 0;
-        Headers headers;
-        std::string body;
-        Error error;
+    class JETSTREAM_API Server {
+     public:
+        struct Request {
+            std::string method;
+            std::string path;
+            std::string query;
+            Headers headers;
+            std::string body;
 
-        std::string header(std::string_view name) const;
+            std::string header(std::string_view name) const;
+        };
+
+        struct Response {
+            I32 status = 200;
+            Headers headers;
+            std::string contentType;
+            std::string body;
+        };
+
+        using Handler = std::function<Response(const Request&)>;
+
+        struct Config {
+            std::string address = "127.0.0.1";
+            U16 port = 0;
+            U64 maxBodyBytes = 8 * 1024 * 1024;
+            Handler handler;
+        };
+
+        Server();
+        ~Server();
+
+        Server(const Server&) = delete;
+        Server& operator=(const Server&) = delete;
+
+        Result start(const Config& config);
+        void stop();
+
+        bool running() const;
+        U16 port() const;
+
+     private:
+        struct Impl;
+        std::unique_ptr<Impl> impl;
     };
-
-    static Response Send(const Request& request);
 };
 
 //

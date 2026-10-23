@@ -6,7 +6,6 @@
 #include "../../../model/messages.hh"
 #include "../../../views/modal/settings/intelligence.hh"
 
-#include <map>
 #include <string>
 
 namespace Jetstream {
@@ -28,10 +27,8 @@ struct IntelligenceSettingsPresenter {
 
         const AgentProviders providers(agent);
 
-        std::map<std::string, AgentProviderStatus> statuses;
         for (const auto& provider : providers.all()) {
             const auto status = AgentLabels::Status(agent, provider);
-            statuses.try_emplace(provider.name, status);
             config.providers.push_back({
                 .name = provider.name,
                 .status = status.label,
@@ -72,22 +69,6 @@ struct IntelligenceSettingsPresenter {
         voiceRow.voices.assign(voices.begin(), voices.end());
         voiceRow.voice = voice.voice;
 
-        if (availability.state == AgentProviders::VoiceAvailability::State::Ready) {
-            const auto cached = statuses.find(voice.backend.provider);
-            AgentProviderStatus status;
-            if (cached != statuses.end()) {
-                status = cached->second;
-            } else {
-                const auto provider = providers.find(voice.backend.provider);
-                status = AgentLabels::Status(agent, provider);
-            }
-            voiceRow.ready = status.ready;
-            voiceRow.pending = status.pending;
-            voiceRow.status = std::move(status.label);
-        } else {
-            voiceRow.status = AgentLabels::Voice(availability.state);
-        }
-
         config.onVoiceBackendSelect = [enqueue, backends](U64 index) {
             if (index < backends.size()) {
                 enqueue(MailSetAgentVoiceBackend{.value = backends[index]});
@@ -98,6 +79,15 @@ struct IntelligenceSettingsPresenter {
         };
         config.onVoiceChange = [enqueue](const std::string& name) {
             enqueue(MailSetAgentVoiceName{.value = name});
+        };
+
+        config.mcp = {
+            .settings = agent.settings.mcp,
+            .url = agent.mcp.url,
+            .error = agent.mcp.error,
+        };
+        config.onMcpChange = [enqueue](const Settings::Intelligence::Mcp& value) {
+            enqueue(MailSetAgentMcp{.value = value});
         };
 
         config.onOpenAddProvider = [enqueue]() {

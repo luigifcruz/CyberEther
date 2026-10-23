@@ -24,6 +24,7 @@ class AgentExecutor {
     ~AgentExecutor();
 
     Agent::Session::ToolExecutor bind();
+    Agent::Session::ToolExecutor focused();
     void layout(const std::string& flowgraph, Agent::Tools::Layout layout);
     void poll();
     void shutdown();
