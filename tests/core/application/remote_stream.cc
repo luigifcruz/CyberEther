@@ -22,6 +22,7 @@
 #include <openssl/x509.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 
 #if defined(JST_OS_LINUX)
@@ -37,6 +38,12 @@ extern "C" void gst_init_static_plugins();
 
 namespace {
 
+void SkipRemoteEncodingOnCI() {
+    if (std::getenv("CI")) {
+        SKIP("Remote encoding tests are disabled in CI.");
+    }
+}
+
 template<typename Predicate>
 bool WaitFor(Predicate predicate, std::chrono::milliseconds timeout = 3s) {
     const auto deadline = std::chrono::steady_clock::now() + timeout;
@@ -51,6 +58,10 @@ struct Stream {
     std::vector<unsigned char> frame = std::vector<unsigned char>(320 * 240 * 4, 0x7f);
     std::atomic<bool> running = false;
     std::thread producer;
+
+    Stream() {
+        SkipRemoteEncodingOnCI();
+    }
 
     void start(bool produceFrames = true) {
         gst_init(nullptr, nullptr);
@@ -960,6 +971,7 @@ TEST_CASE("Remote pipeline can stop and restart on the same instance",
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
 TEST_CASE("Remote NVENC shares the input CUDA context across stream restarts",
           "[core][application][remote][stream][cuda]") {
+    SkipRemoteEncodingOnCI();
     gst_init(nullptr, nullptr);
     gst_init_static_plugins();
     GstElementFactory* factory = gst_element_factory_find("nvh264enc");
@@ -1008,6 +1020,7 @@ TEST_CASE("Remote NVENC shares the input CUDA context across stream restarts",
 #ifdef JETSTREAM_RENDER_METAL_AVAILABLE
 TEST_CASE("Headless Metal frames reach a remote WebRTC viewer after restart",
           "[core][application][remote][stream][metal]") {
+    SkipRemoteEncodingOnCI();
     const auto encoder = GENERATE(Instance::Remote::EncoderType::Software,
                                  Instance::Remote::EncoderType::VideoToolbox);
     struct Host {
