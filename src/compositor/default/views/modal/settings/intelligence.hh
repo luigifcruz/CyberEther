@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_INTELLIGENCE_HH
 
 #include "components/action_table.hh"
+#include "components/settings_group.hh"
 
 #include "jetstream/logger.hh"
 #include "jetstream/render/sakura/base.hh"
@@ -30,9 +31,6 @@ struct IntelligenceSettingsPanel {
     };
 
     struct VoiceRow {
-        std::string status;
-        bool ready = false;
-        bool pending = false;
         bool available = false;
         std::vector<std::string> backends;
         std::optional<U64> backend;
@@ -79,10 +77,32 @@ struct IntelligenceSettingsPanel {
             .id = "IntelligenceHeaderDivider",
         });
 
+        featuresSection.update({
+            .id = "IntelligenceFeaturesSection",
+            .title = "Features",
+            .description = "Whether the assistant and other AI features are available.",
+        });
+        providersSection.update({
+            .id = "IntelligenceProvidersSection",
+            .title = "Providers",
+            .description = "OpenAI-compatible endpoints the agent can use.",
+        });
+        modelsSection.update({
+            .id = "IntelligenceModelsSection",
+            .title = "Models",
+            .description = "Models available to the agent chat.",
+        });
+        voiceSection.update({
+            .id = "IntelligenceVoiceSection",
+            .title = "Voice",
+            .description = "The voice model listens and speaks with the chosen voice, and hands reasoning and tool "
+                           "calls to the backend model. Only saved models from providers with live voice support "
+                           "can be the backend, and that provider supplies the endpoint and API key.",
+        });
         enabledField.update({
             .id = "IntelligenceEnabledField",
             .description = "Hide all AI features and disconnect from model providers.",
-            .divider = this->config.enabled,
+            .divider = false,
         });
 
         enabledCheckbox.update({
@@ -94,18 +114,6 @@ struct IntelligenceSettingsPanel {
                     this->config.onEnabledChange(value);
                 }
             },
-        });
-
-        providersTitle.update({
-            .id = "IntelligenceProvidersTitle",
-            .str = "Providers",
-        });
-
-        providersDescription.update({
-            .id = "IntelligenceProvidersDescription",
-            .str = "OpenAI-compatible endpoints the agent can use.",
-            .tone = Sakura::Text::Tone::Secondary,
-            .wrapped = true,
         });
 
         std::vector<ActionTable::Row> providerRows;
@@ -168,18 +176,6 @@ struct IntelligenceSettingsPanel {
             },
         });
 
-        modelsTitle.update({
-            .id = "IntelligenceModelsTitle",
-            .str = "Models",
-        });
-
-        modelsDescription.update({
-            .id = "IntelligenceModelsDescription",
-            .str = "Models available to the agent chat.",
-            .tone = Sakura::Text::Tone::Secondary,
-            .wrapped = true,
-        });
-
         std::vector<ActionTable::Row> modelRows;
         modelRows.reserve(this->config.models.size());
         for (const auto& model : this->config.models) {
@@ -235,35 +231,8 @@ struct IntelligenceSettingsPanel {
             },
         });
 
-        voiceDivider.update({
-            .id = "IntelligenceVoiceDivider",
-        });
-
-        voiceTitle.update({
-            .id = "IntelligenceVoiceTitle",
-            .str = "Voice",
-        });
-
-        voiceDescription.update({
-            .id = "IntelligenceVoiceDescription",
-            .str = "The voice model listens and speaks with the chosen voice, and hands reasoning and tool calls "
-                   "to the backend model. Only saved models from providers with live voice support can be the "
-                   "backend, and that provider supplies the endpoint and API key.",
-            .tone = Sakura::Text::Tone::Secondary,
-            .wrapped = true,
-        });
-
         const auto& voice = this->config.voice;
         const bool voiceEnabled = voice.available && !voice.backends.empty();
-
-        voiceStatusText.update({
-            .id = "IntelligenceVoiceStatus",
-            .str = voice.status,
-            .tone = !voice.available || voice.pending ? Sakura::Text::Tone::Disabled
-                  : voice.ready                       ? Sakura::Text::Tone::Success
-                                                      : Sakura::Text::Tone::Warning,
-            .wrapped = true,
-        });
 
         voiceTable.update({
             .id = "IntelligenceVoiceTable",
@@ -271,13 +240,11 @@ struct IntelligenceSettingsPanel {
                 "Backend Model",
                 "Voice Model",
                 "Voice",
-                "Status",
             },
             .fixedColumnWidths = {
                 0.0f,
                 150.0f,
                 130.0f,
-                120.0f,
             },
             .wrapped = true,
         });
@@ -325,43 +292,40 @@ struct IntelligenceSettingsPanel {
         description.render(ctx);
         divider.render(ctx);
 
-        enabledField.render(ctx, [&](const Sakura::Context& ctx) {
-            enabledCheckbox.render(ctx);
+        featuresSection.render(ctx, [&](const Sakura::Context& ctx) {
+            enabledField.render(ctx, [&](const Sakura::Context& ctx) {
+                enabledCheckbox.render(ctx);
+            });
         });
         if (!config.enabled) {
             return;
         }
 
-        providersTitle.render(ctx);
-        providersTable.render(ctx);
-        addProviderButton.render(ctx);
-        providersDescription.render(ctx);
+        providersSection.render(ctx, [&](const Sakura::Context& ctx) {
+            providersTable.render(ctx);
+            addProviderButton.render(ctx);
+        });
 
-        divider.render(ctx);
-        modelsTitle.render(ctx);
-        modelsTable.render(ctx);
-        addModelButton.render(ctx);
-        modelsDescription.render(ctx);
+        modelsSection.render(ctx, [&](const Sakura::Context& ctx) {
+            modelsTable.render(ctx);
+            addModelButton.render(ctx);
+        });
 
-        voiceDivider.render(ctx);
-        voiceTitle.render(ctx);
-        Sakura::Table::Row voiceRow;
-        voiceRow.push_back([this](const Sakura::Context& ctx) {
-            voiceBackendCombo.render(ctx);
+        voiceSection.render(ctx, [&](const Sakura::Context& ctx) {
+            Sakura::Table::Row voiceRow;
+            voiceRow.push_back([this](const Sakura::Context& ctx) {
+                voiceBackendCombo.render(ctx);
+            });
+            voiceRow.push_back([this](const Sakura::Context& ctx) {
+                voiceModelCombo.render(ctx);
+            });
+            voiceRow.push_back([this](const Sakura::Context& ctx) {
+                voiceNameCombo.render(ctx);
+            });
+            Sakura::Table::Rows voiceRows;
+            voiceRows.push_back(std::move(voiceRow));
+            voiceTable.render(ctx, std::move(voiceRows));
         });
-        voiceRow.push_back([this](const Sakura::Context& ctx) {
-            voiceModelCombo.render(ctx);
-        });
-        voiceRow.push_back([this](const Sakura::Context& ctx) {
-            voiceNameCombo.render(ctx);
-        });
-        voiceRow.push_back([this](const Sakura::Context& ctx) {
-            voiceStatusText.render(ctx);
-        });
-        Sakura::Table::Rows voiceRows;
-        voiceRows.push_back(std::move(voiceRow));
-        voiceTable.render(ctx, std::move(voiceRows));
-        voiceDescription.render(ctx);
     }
 
  private:
@@ -369,20 +333,16 @@ struct IntelligenceSettingsPanel {
     Sakura::Text title;
     Sakura::Text description;
     Sakura::Divider divider;
+    SettingsGroup featuresSection;
+    SettingsGroup providersSection;
+    SettingsGroup modelsSection;
+    SettingsGroup voiceSection;
     Sakura::SettingField enabledField;
     Sakura::Checkbox enabledCheckbox;
-    Sakura::Text providersTitle;
-    Sakura::Text providersDescription;
     ActionTable providersTable;
     Sakura::Button addProviderButton;
-    Sakura::Text modelsTitle;
-    Sakura::Text modelsDescription;
     ActionTable modelsTable;
     Sakura::Button addModelButton;
-    Sakura::Divider voiceDivider;
-    Sakura::Text voiceTitle;
-    Sakura::Text voiceDescription;
-    Sakura::Text voiceStatusText;
     Sakura::Table voiceTable;
     Sakura::Combo voiceBackendCombo;
     Sakura::Combo voiceModelCombo;

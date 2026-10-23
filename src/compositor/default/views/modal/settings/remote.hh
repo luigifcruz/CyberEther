@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_REMOTE_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_MODAL_SETTINGS_REMOTE_HH
 
+#include "components/settings_group.hh"
+
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/imgui_icons_ext.hh"
 
@@ -15,66 +17,6 @@
 namespace Jetstream {
 
 struct RemoteSettingsPanel {
-    struct Section {
-        void update(const std::string& id,
-                    const std::string& title,
-                    const std::string& description,
-                    const std::string& warning = "") {
-            titleText.update({
-                .id = id + "Title",
-                .str = title,
-                .font = Sakura::Text::Font::Bold,
-                .scale = 1.1f,
-            });
-            descriptionText.update({
-                .id = id + "Description",
-                .str = description,
-                .tone = Sakura::Text::Tone::Secondary,
-                .wrapped = true,
-            });
-            warningText.update({
-                .id = id + "Warning",
-                .str = warning.empty() ? "" : ICON_FA_TRIANGLE_EXCLAMATION " " + warning,
-                .tone = Sakura::Text::Tone::Warning,
-                .wrapped = true,
-            });
-            hasWarning = !warning.empty();
-            card.update({
-                .id = id + "Card",
-                .padding = 16.0f,
-                .rounding = 8.0f,
-                .border = true,
-                .scrollbar = false,
-                .mouseScroll = false,
-                .colorKey = "transparent",
-                .hoveredColorKey = "transparent",
-            });
-            spacing.update({
-                .id = id + "Spacing",
-            });
-        }
-
-        void render(const Sakura::Context& ctx, const std::function<void(const Sakura::Context&)>& fields) const {
-            titleText.render(ctx);
-            descriptionText.render(ctx);
-            if (hasWarning) {
-                warningText.render(ctx);
-            }
-            spacing.render(ctx);
-            card.render(ctx, fields);
-            spacing.render(ctx);
-            spacing.render(ctx);
-        }
-
-     private:
-        Sakura::Text titleText;
-        Sakura::Text descriptionText;
-        Sakura::Text warningText;
-        bool hasWarning = false;
-        Sakura::Div card;
-        Sakura::Spacing spacing;
-    };
-
     struct Config {
         bool started = false;
         Instance::Remote::Config::Broker broker;
@@ -146,13 +88,27 @@ struct RemoteSettingsPanel {
             .id = "RemoteActiveSpacing",
         });
 
-        accessSection.update("RemoteAccessSection", "Access", "Who can join a remote session.");
-        videoSection.update("RemoteVideoSection", "Video", "How the interface is encoded for viewers.");
-        brokerSection.update("RemoteBrokerSection",
-                             "Broker",
-                             "The server on this machine that hosts the viewer page and connects viewers.",
-                             "Do not expose the broker directly to the internet.");
-        mediaSection.update("RemoteMediaSection", "Media", "Network settings for the video connection.");
+        accessSection.update({
+            .id = "RemoteAccessSection",
+            .title = "Access",
+            .description = "Who can join a remote session.",
+        });
+        videoSection.update({
+            .id = "RemoteVideoSection",
+            .title = "Video",
+            .description = "How the interface is encoded for viewers.",
+        });
+        brokerSection.update({
+            .id = "RemoteBrokerSection",
+            .title = "Broker",
+            .description = "The server on this machine that hosts the viewer page and connects viewers.",
+            .warning = "Do not expose the broker directly to the internet.",
+        });
+        mediaSection.update({
+            .id = "RemoteMediaSection",
+            .title = "Media",
+            .description = "Network settings for the video connection.",
+        });
 
         brokerAddressField.update({
             .id = "RemoteBrokerAddressField",
@@ -605,10 +561,10 @@ struct RemoteSettingsPanel {
     Sakura::Text activeWarning;
     Sakura::Text activeDescription;
     Sakura::Spacing activeSpacing;
-    Section accessSection;
-    Section videoSection;
-    Section brokerSection;
-    Section mediaSection;
+    SettingsGroup accessSection;
+    SettingsGroup videoSection;
+    SettingsGroup brokerSection;
+    SettingsGroup mediaSection;
     Sakura::SettingField brokerAddressField;
     Sakura::SettingField brokerPortField;
     Sakura::SettingField brokerPublicUrlField;
