@@ -6,7 +6,10 @@
 
 #include "jetstream/logger.hh"
 #include "jetstream/render/sakura/base.hh"
+#include "jetstream/settings.hh"
 
+#include <algorithm>
+#include <cctype>
 #include <functional>
 #include <optional>
 #include <string>
@@ -40,12 +43,20 @@ struct IntelligenceSettingsPanel {
         std::string voice;
     };
 
+    struct McpRow {
+        Settings::Intelligence::Mcp settings;
+        std::string url;
+        std::string error;
+    };
+
     struct Config {
         bool enabled = true;
         std::vector<ProviderRow> providers;
         std::vector<ModelRow> models;
         VoiceRow voice;
+        McpRow mcp;
         std::function<void(bool)> onEnabledChange;
+        std::function<void(const Settings::Intelligence::Mcp&)> onMcpChange;
         std::function<void(U64)> onVoiceBackendSelect;
         std::function<void(const std::string&)> onVoiceModelChange;
         std::function<void(const std::string&)> onVoiceChange;
@@ -77,6 +88,8 @@ struct IntelligenceSettingsPanel {
             .id = "IntelligenceHeaderDivider",
         });
 
+        const auto& mcp = this->config.mcp;
+
         featuresSection.update({
             .id = "IntelligenceFeaturesSection",
             .title = "Features",
@@ -99,6 +112,14 @@ struct IntelligenceSettingsPanel {
                            "calls to the backend model. Only saved models from providers with live voice support "
                            "can be the backend, and that provider supplies the endpoint and API key.",
         });
+        mcpSection.update({
+            .id = "IntelligenceMcpSection",
+            .title = "MCP Server",
+            .description = "Lets external agents connect over the Model Context Protocol and use the same tools as "
+                           "the built-in assistant. Each call acts on the flowgraph focused in this window.",
+            .warning = "Do not expose the MCP server directly to the internet.",
+        });
+
         enabledField.update({
             .id = "IntelligenceEnabledField",
             .description = "Hide all AI features and disconnect from model providers.",
@@ -285,6 +306,72 @@ struct IntelligenceSettingsPanel {
                 }
             },
         });
+
+        mcpEnabledField.update({
+            .id = "IntelligenceMcpEnabledField",
+            .description = "Serve the agent tools at the address and port below.",
+        });
+
+        mcpStatusText.update({
+            .id = "IntelligenceMcpStatus",
+            .str = !mcp.url.empty()   ? "Listening on " + mcp.url
+                 : !mcp.error.empty() ? mcp.error
+                                      : "Stopped",
+            .tone = !mcp.url.empty()   ? Sakura::Text::Tone::Success
+                  : !mcp.error.empty() ? Sakura::Text::Tone::Warning
+                                       : Sakura::Text::Tone::Disabled,
+            .wrapped = true,
+        });
+
+        mcpEnabledCheckbox.update({
+            .id = "IntelligenceMcpEnabledCheckbox",
+            .label = "Enable MCP server",
+            .value = mcp.settings.enabled,
+            .onChange = [this](bool value) {
+                auto settings = this->config.mcp.settings;
+                settings.enabled = value;
+                changeMcp(settings);
+            },
+        });
+
+        mcpAddressField.update({
+            .id = "IntelligenceMcpAddressField",
+            .label = "Address",
+            .description = "The network address the server listens on. Use 0.0.0.0 to accept clients on every "
+                           "interface.",
+        });
+
+        mcpAddressInput.update({
+            .id = "##intelligence-mcp-address",
+            .value = mcp.settings.address,
+            .submit = Sakura::TextInput::Submit::OnCommit,
+            .onChange = [this](const std::string& value) {
+                auto settings = this->config.mcp.settings;
+                settings.address = value.empty() ? Settings::Intelligence::Mcp{}.address : value;
+                changeMcp(settings);
+            },
+        });
+
+        mcpPortField.update({
+            .id = "IntelligenceMcpPortField",
+            .label = "Port",
+            .description = "The port that serves MCP clients.",
+            .divider = false,
+        });
+
+        mcpPortInput.update({
+            .id = "##intelligence-mcp-port",
+            .value = jst::fmt::format("{}", mcp.settings.port),
+            .submit = Sakura::TextInput::Submit::OnCommit,
+            .onChange = [this](const std::string& value) {
+                U16 port = 0;
+                if (portValue(value, port)) {
+                    auto settings = this->config.mcp.settings;
+                    settings.port = port;
+                    changeMcp(settings);
+                }
+            },
+        });
     }
 
     void render(const Sakura::Context& ctx) const {
@@ -326,9 +413,42 @@ struct IntelligenceSettingsPanel {
             voiceRows.push_back(std::move(voiceRow));
             voiceTable.render(ctx, std::move(voiceRows));
         });
+
+        mcpSection.render(ctx, [&](const Sakura::Context& ctx) {
+            mcpEnabledField.render(ctx, [&](const Sakura::Context& ctx) {
+                mcpEnabledCheckbox.render(ctx);
+                mcpStatusText.render(ctx);
+            });
+            mcpAddressField.render(ctx, [&](const Sakura::Context& ctx) {
+                mcpAddressInput.render(ctx);
+            });
+            mcpPortField.render(ctx, [&](const Sakura::Context& ctx) {
+                mcpPortInput.render(ctx);
+            });
+        });
     }
 
  private:
+    void changeMcp(const Settings::Intelligence::Mcp& settings) const {
+        if (config.onMcpChange) {
+            config.onMcpChange(settings);
+        }
+    }
+
+    static bool portValue(const std::string& label, U16& port) {
+        if (label.empty() || label.size() > 5 || !std::all_of(label.begin(), label.end(), [](unsigned char c) {
+            return std::isdigit(c);
+        })) {
+            return false;
+        }
+        const U64 value = std::stoull(label);
+        if (value == 0 || value > 65535) {
+            return false;
+        }
+        port = static_cast<U16>(value);
+        return true;
+    }
+
     Config config;
     Sakura::Text title;
     Sakura::Text description;
@@ -337,6 +457,7 @@ struct IntelligenceSettingsPanel {
     SettingsGroup providersSection;
     SettingsGroup modelsSection;
     SettingsGroup voiceSection;
+    SettingsGroup mcpSection;
     Sakura::SettingField enabledField;
     Sakura::Checkbox enabledCheckbox;
     ActionTable providersTable;
@@ -347,6 +468,13 @@ struct IntelligenceSettingsPanel {
     Sakura::Combo voiceBackendCombo;
     Sakura::Combo voiceModelCombo;
     Sakura::Combo voiceNameCombo;
+    Sakura::SettingField mcpEnabledField;
+    Sakura::Checkbox mcpEnabledCheckbox;
+    Sakura::Text mcpStatusText;
+    Sakura::SettingField mcpAddressField;
+    Sakura::TextInput mcpAddressInput;
+    Sakura::SettingField mcpPortField;
+    Sakura::TextInput mcpPortInput;
 };
 
 }  // namespace Jetstream

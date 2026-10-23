@@ -107,6 +107,10 @@ struct MailSetAgentVoiceName {
     std::string value;
 };
 
+struct MailSetAgentMcp {
+    Settings::Intelligence::Mcp value;
+};
+
 struct MailNewFlowgraph {};
 
 struct MailOpenFlowgraph {};
@@ -575,6 +579,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailSetAgentVoiceBackend,
                           MailSetAgentVoiceModel,
                           MailSetAgentVoiceName,
+                          MailSetAgentMcp,
                           MailSetDebugLatencyEnabled,
                           MailSetDebugTimingEnabled,
                           MailSetDebugLogLevel,

@@ -45,7 +45,8 @@ struct AgentActions {
                               MailTestAgentProvider,
                               MailSetAgentVoiceBackend,
                               MailSetAgentVoiceModel,
-                              MailSetAgentVoiceName>;
+                              MailSetAgentVoiceName,
+                              MailSetAgentMcp>;
 
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
@@ -368,6 +369,11 @@ struct AgentActions {
 
     Result handle(const MailSetAgentVoiceName& msg) {
         state.agent.settings.voice.voice = msg.value;
+        return persist();
+    }
+
+    Result handle(const MailSetAgentMcp& msg) {
+        state.agent.settings.mcp = msg.value;
         return persist();
     }
 
