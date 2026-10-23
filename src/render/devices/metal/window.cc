@@ -174,9 +174,9 @@ Result Implementation::underlyingBegin() {
 
     innerPool = NS::AutoreleasePool::alloc()->init();
 
-    drawable = static_cast<CA::MetalDrawable*>(viewport->nextDrawable());
+    auto* texture = viewport->nextDrawable(drawable);
 
-    if (!drawable) {
+    if (!texture) {
         statsData.droppedFrames += 1;
         innerPool->release();
         innerPool = nullptr;
@@ -184,7 +184,7 @@ Result Implementation::underlyingBegin() {
     }
 
     auto colorAttachDescriptor = renderPassDescriptor->colorAttachments()->object(0)->init();
-    colorAttachDescriptor->setTexture(drawable->texture());
+    colorAttachDescriptor->setTexture(texture);
     colorAttachDescriptor->setLoadAction(MTL::LoadActionClear);
     colorAttachDescriptor->setStoreAction(MTL::StoreActionStore);
     colorAttachDescriptor->setClearColor(MTL::ClearColor(0, 0, 0, 1.0));
@@ -250,7 +250,13 @@ Result Implementation::underlyingEnd() {
         return abortFrame(result);
     }
 
-    commandBuffer->presentDrawable(drawable);
+    result = viewport->encodeCapture(commandBuffer, renderPassDescriptor->colorAttachments()->object(0)->texture());
+    if (result != Result::SUCCESS && result != Result::RELOAD) {
+        return abortFrame(result);
+    }
+    if (drawable) {
+        commandBuffer->presentDrawable(drawable);
+    }
     commandBuffer->retain();
     commandBuffer->commit();
     inFlightCommandBuffers[currentFrame] = commandBuffer;

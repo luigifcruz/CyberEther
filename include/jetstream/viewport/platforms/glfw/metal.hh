@@ -34,13 +34,16 @@ class GLFW<DeviceType::Metal> : public Adapter<DeviceType::Metal> {
     Extent2D<F32> displaySize() const;
     F32 scale(const F32& scale) const;
 
-    void* nextDrawable();
+    MTL::Texture* nextDrawable(CA::MetalDrawable*& drawable);
+    Extent2D<U64> getSwapchainExtent() const;
     
     Result waitEvents();
     Result pollEvents();
     bool keepRunning();
 
  private:
+    void setCaptureEnabled(bool enabled);
+
     GLFWwindow* window = nullptr;
     CA::MetalLayer* swapchain;
 };

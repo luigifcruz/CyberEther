@@ -208,8 +208,9 @@ Result Superluminal::initialize(const InstanceConfig& config) {
         JST_CHECK(terminate());
     }
 
-    if (config.remote && config.device != DeviceType::None && config.device != DeviceType::Vulkan) {
-        JST_ERROR("[SUPERLUMINAL] Remote requires the Vulkan backend.");
+    if (config.remote && config.device != DeviceType::None &&
+        config.device != DeviceType::Vulkan && config.device != DeviceType::Metal) {
+        JST_ERROR("[SUPERLUMINAL] Remote requires the Vulkan or Metal backend.");
         return Result::ERROR;
     }
 
@@ -225,9 +226,7 @@ Result Superluminal::initialize(const InstanceConfig& config) {
         .scale = impl->config.interfaceScale,
     };
 
-    if (impl->config.remote && impl->config.device == DeviceType::None) {
-        instanceConfig.device = DeviceType::Vulkan;
-    } else if (impl->config.device != DeviceType::None) {
+    if (impl->config.device != DeviceType::None) {
         instanceConfig.device = impl->config.device;
     }
 
