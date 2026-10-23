@@ -5,6 +5,7 @@
 
 #include "../../../src/instance_remote_impl.hh"
 #include "jetstream/platform.hh"
+#include "jetstream/viewport/adapters/generic.hh"
 
 #ifdef JETSTREAM_BACKEND_CUDA_AVAILABLE
 #include "jetstream/backend/base.hh"
@@ -1004,6 +1005,71 @@ TEST_CASE("Remote NVENC shares the input CUDA context across stream restarts",
 }
 #endif
 
+#ifdef JETSTREAM_RENDER_METAL_AVAILABLE
+TEST_CASE("Headless Metal frames reach a remote WebRTC viewer after restart",
+          "[core][application][remote][stream][metal]") {
+    const auto encoder = GENERATE(Instance::Remote::EncoderType::Software,
+                                 Instance::Remote::EncoderType::VideoToolbox);
+    struct Host {
+        Instance instance;
+        bool created = false;
+
+        Host() {
+            REQUIRE(instance.create({.headless = true,
+                                     .size = {320, 240}, .framerate = 120}) == Result::SUCCESS);
+            created = true;
+            REQUIRE(instance.start() == Result::SUCCESS);
+        }
+
+        ~Host() {
+            if (created) {
+                instance.destroy();
+            }
+        }
+    } host;
+    std::shared_ptr<Viewport::Generic> viewport;
+    REQUIRE(host.instance.viewportGet(viewport) == Result::SUCCESS);
+    REQUIRE(viewport->device() == DeviceType::Metal);
+    REQUIRE(host.instance.remote()->supported());
+    const auto encoders = host.instance.remote()->available(Instance::Remote::CodecType::H264);
+    if (std::find(encoders.begin(), encoders.end(), encoder) == encoders.end()) {
+        SKIP("Requested H264 encoder is unavailable.");
+    }
+
+    Stream stream;
+    auto& remote = stream.remote;
+    remote.viewport = viewport.get();
+    remote.viewportDevice = viewport->device();
+    Instance::Remote::Config config;
+    config.video.encoder = encoder;
+    config.broker = {.address = "127.0.0.1", .port = 0};
+
+    for (unsigned attempt = 0; attempt < 2; ++attempt) {
+        CAPTURE(attempt, encoder);
+        REQUIRE(remote.create(config) == Result::SUCCESS);
+        {
+            Peer peer(stream, "metal-viewer");
+            peer.connect();
+            const auto deadline = std::chrono::steady_clock::now() + 10s;
+            while (peer.packets < 3 && std::chrono::steady_clock::now() < deadline) {
+                REQUIRE(host.instance.present() == Result::SUCCESS);
+                REQUIRE(remote.captureFrame() == Result::SUCCESS);
+            }
+            REQUIRE(peer.packets >= 3);
+        }
+        REQUIRE(remote.destroy() == Result::SUCCESS);
+    }
+
+    const auto ownedRemote = host.instance.remote();
+    REQUIRE(ownedRemote->create(config) == Result::SUCCESS);
+    for (unsigned i = 0; i < 4; ++i) {
+        REQUIRE(host.instance.present() == Result::SUCCESS);
+    }
+    REQUIRE(host.instance.destroy() == Result::SUCCESS);
+    host.created = false;
+    REQUIRE_FALSE(ownedRemote->started());
+}
+#endif
 
 TEST_CASE("Remote broker rejects incomplete or unreadable TLS configuration",
           "[core][application][remote][broker]") {

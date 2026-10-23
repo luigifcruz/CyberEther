@@ -115,7 +115,7 @@ Result Instance::create(const Config& config) {
         };
 #endif  // JETSTREAM_VIEWPORT_GLFW_AVAILABLE
 
-#ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+#if defined(JETSTREAM_RENDER_VULKAN_AVAILABLE) || defined(JETSTREAM_RENDER_METAL_AVAILABLE)
         auto buildHeadless = [&]<DeviceType D>() -> Result {
             JST_CHECK(Backend::Initialize<D>(backendConfig));
 
@@ -136,12 +136,18 @@ Result Instance::create(const Config& config) {
 
             return Result::SUCCESS;
         };
-#endif  // JETSTREAM_RENDER_VULKAN_AVAILABLE
+#endif
 
         std::optional<Result> result;
 
         for (const auto& device : priority) {
             if (config.headless) {
+#ifdef JETSTREAM_RENDER_METAL_AVAILABLE
+                if (device == DeviceType::Metal) {
+                    result = buildHeadless.template operator()<DeviceType::Metal>();
+                    break;
+                }
+#endif
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
                 if (device == DeviceType::Vulkan) {
                     result = buildHeadless.template operator()<DeviceType::Vulkan>();
