@@ -69,9 +69,6 @@ DefaultCompositor::DefaultCompositor() :
         .applyUpdate = [this]() {
             return updater.apply();
         },
-        .dismissUpdate = [this]() {
-            updater.dismiss();
-        },
         .submitFeedback = [this](const std::string& text) {
             feedback.submit(text);
         },

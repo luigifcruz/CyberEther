@@ -83,7 +83,6 @@ struct Plugin::Impl {
         std::vector<void*> handles;
         Registrations registrations;
         Manifest manifest;
-        std::vector<std::string> loadedTargets;
     };
 
     struct RegistrySnapshot {
@@ -655,23 +654,8 @@ Plugin::Info Plugin::Impl::buildInfo(const Record& plugin) {
     info.version = plugin.manifest.metadata.version;
     info.minimumJetstreamVersion = plugin.manifest.metadata.minimumJetstreamVersion;
     info.status = "Loaded";
-    info.registeredModules = static_cast<U64>(plugin.registrations.modules.size());
     info.blocks = plugin.registrations.blocks;
     info.examples = plugin.registrations.flowgraphs;
-    info.registeredBenchmarks = static_cast<U64>(plugin.registrations.benchmarks.size());
-
-    info.targets.reserve(plugin.manifest.targets.size());
-    for (const auto& target : plugin.manifest.targets) {
-        info.targets.push_back({
-            .path = target.path,
-            .system = target.system,
-            .device = target.device,
-            .arch = target.arch,
-            .compatible = isCompatibleTarget(target),
-            .loaded = containsString(plugin.loadedTargets, target.path),
-        });
-    }
-
     return info;
 }
 
@@ -1079,7 +1063,6 @@ Result Plugin::Impl::loadPluginCopy(const std::string& sourcePath, Record& plugi
 
     std::string extractedPath;
     std::vector<void*> handles;
-    std::vector<std::string> loadedTargets;
     auto fail = [&]() {
         (void)Registry::DiscardStaticRegistrations();
         rollbackRegistrations(diffRegistrations(before, snapshotRegistry()));
@@ -1135,8 +1118,6 @@ Result Plugin::Impl::loadPluginCopy(const std::string& sourcePath, Record& plugi
         if (Registry::DrainStaticRegistrations() != Result::SUCCESS) {
             return fail();
         }
-
-        loadedTargets.push_back(target.path);
     }
 
     if (!loadedCompatibleTarget) {
@@ -1157,7 +1138,6 @@ Result Plugin::Impl::loadPluginCopy(const std::string& sourcePath, Record& plugi
     plugin.handles = std::move(handles);
     plugin.registrations = diffRegistrations(before, snapshotRegistry());
     plugin.manifest = std::move(manifest);
-    plugin.loadedTargets = std::move(loadedTargets);
     return Result::SUCCESS;
 }
 

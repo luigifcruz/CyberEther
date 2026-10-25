@@ -254,8 +254,6 @@ struct MailDownloadUpdate {};
 
 struct MailApplyUpdate {};
 
-struct MailDismissUpdate {};
-
 struct MailSetRemoteBroker {
     Instance::Remote::Config::Broker value;
 };
@@ -586,7 +584,6 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailCheckForUpdates,
                           MailDownloadUpdate,
                           MailApplyUpdate,
-                          MailDismissUpdate,
                           MailSetRemoteBroker,
                           MailSetRemoteCodec,
                           MailSetRemoteFramerate,

@@ -39,7 +39,6 @@ class Updater {
     void check();
     void download();
     bool apply(bool restart = true);
-    void dismiss();
     void shutdown();
 
  private:

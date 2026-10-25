@@ -32,7 +32,6 @@ struct SettingsActions {
                               MailCheckForUpdates,
                               MailDownloadUpdate,
                               MailApplyUpdate,
-                              MailDismissUpdate,
                               MailSetPythonRuntimePath,
                               MailSetRuntimeDependencyPolicy,
                               MailOpenPythonEnvironmentCache,
@@ -136,11 +135,6 @@ struct SettingsActions {
         if (callbacks.applyUpdate()) {
             return state.system.instance->requestStop();
         }
-        return Result::SUCCESS;
-    }
-
-    Result handle(const MailDismissUpdate&) {
-        callbacks.dismissUpdate();
         return Result::SUCCESS;
     }
 

@@ -11,26 +11,14 @@ namespace Jetstream {
 
 class JETSTREAM_API Plugin {
  public:
-    struct TargetInfo {
-        std::string path;
-        std::string system;
-        std::string device;
-        std::string arch;
-        bool compatible = false;
-        bool loaded = false;
-    };
-
     struct Info {
         std::string path;
         std::string name;
         std::string version;
         std::string minimumJetstreamVersion;
         std::string status;
-        std::vector<TargetInfo> targets;
-        U64 registeredModules = 0;
         std::vector<std::string> blocks;
         std::vector<std::string> examples;
-        U64 registeredBenchmarks = 0;
     };
 
     static Result Load(const std::string& path);

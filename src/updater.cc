@@ -291,23 +291,6 @@ bool Updater::apply(bool restart) {
     return false;
 }
 
-void Updater::dismiss() {
-    std::lock_guard lock(pimpl->mutex);
-    if (pimpl->busy || !pimpl->state.available || pimpl->state.ready) {
-        return;
-    }
-
-    pimpl->state.available = false;
-    pimpl->state.upToDate = false;
-    pimpl->state.failed = false;
-    pimpl->state.version.clear();
-    pimpl->state.releaseNotes.clear();
-    pimpl->state.message.clear();
-#if defined(JETSTREAM_LOADER_VELOPACK_AVAILABLE)
-    pimpl->update.reset();
-#endif
-}
-
 void Updater::shutdown() {
     std::lock_guard workerLock(pimpl->workerMutex);
     {
