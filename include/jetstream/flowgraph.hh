@@ -113,6 +113,8 @@ class JETSTREAM_API Flowgraph {
     View& view();
     const View& view() const;
 
+    static Result ReadTitle(const std::string& path, std::string& title);
+
  private:
     Result blockSetErroredFromModules(const std::unordered_set<std::string>& moduleNames);
     Result retryIncompleteBlocks();

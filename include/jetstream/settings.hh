@@ -72,10 +72,21 @@ struct JETSTREAM_API Settings {
     };
 
     struct Interface {
+        struct FlowgraphEntry {
+            std::string path;
+            std::string title;
+            U64 accessed = 0;
+
+            JST_SERDES(path, title, accessed);
+        };
+
         std::string themeKey = "Dark";
         bool backgroundParticles = true;
+        bool showTips = true;
+        std::vector<FlowgraphEntry> recentFlowgraphs;
+        std::vector<FlowgraphEntry> favoriteFlowgraphs;
 
-        JST_SERDES(themeKey, backgroundParticles);
+        JST_SERDES(themeKey, backgroundParticles, showTips, recentFlowgraphs, favoriteFlowgraphs);
     };
 
     struct Intelligence {

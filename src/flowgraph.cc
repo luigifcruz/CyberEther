@@ -1309,6 +1309,21 @@ Result Flowgraph::importFromFile(const std::string& path) {
     return importFromBlob(blob);
 }
 
+Result Flowgraph::ReadTitle(const std::string& path, std::string& title) {
+    title.clear();
+
+    std::ifstream file(Platform::PathFromUtf8(path), std::ios::binary);
+    if (!file) {
+        JST_ERROR("[FLOWGRAPH] Can't open flowgraph file '{}'.", path);
+        return Result::ERROR;
+    }
+
+    const std::string yamlText((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    Parser::Map root;
+    JST_CHECK(Parser::YamlDecode(yamlText, root));
+    return Parser::Deserialize(root, "title", title);
+}
+
 Result Flowgraph::importFromBlob(const std::vector<char>& blob) {
     JST_ASSERT(impl->created.load(), "[FLOWGRAPH] Flowgraph not created.")
 

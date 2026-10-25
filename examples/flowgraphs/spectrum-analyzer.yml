@@ -1,10 +1,85 @@
 ---
 version: 2
+revision: 1
 title: Spectrum Analyzer
-summary: View a live radio spectrum.
+summary: Connect a radio, tune to a band, and watch its signals as a live trace and waterfall.
 author: Luigi
 license: MIT
-description: Applies a window and FFT to RTL-SDR samples and displays the spectrum in a line plot and waterfall.
+category: Basics
+accent: '#12c8d8'
+diagram: |-
+  sdr[SDR] --> spectrum[Spectrum]
+compatibility: '>=1.16.0'
+description: |-
+  ## Overview
+
+  <!-- hook: preview -->
+
+  A spectrum analyzer is the first thing most people open on a new radio, because it shows at a glance what is on the air. In this flowgraph, an SDR block receives 2 MHz of spectrum around 94.9 MHz, in the FM broadcast band, and a Spectrum Analyzer block draws it as a live trace above a scrolling waterfall. In the United States, FM stations sit 200 kHz apart between 88 and 108 MHz,[^fcc-fm-channels] so the window can hold up to ten of them.
+
+  The file opens with no radio selected, and a note on the canvas walks through choosing one, reading the display, and fixing common problems. It is a good first step before the [Simple FM Receiver](/gallery/flowgraphs/simple-fm), which demodulates one station and plays it. Running it needs an antenna for the FM broadcast band and a radio with a built-in driver, such as an RTL-SDR, Airspy, Airspy HF+, HackRF, LimeSDR, bladeRF, or PlutoSDR.
+
+  ## How it works
+
+  The radio shifts the band around the tuned frequency down to zero and delivers complex I/Q samples, pairs of numbers that tell frequencies above the tuned one apart from those below it.[^pysdr-iq] At 2 MS/s, the analyzer sees from 1 MHz below the tuned frequency to 1 MHz above it.
+
+  For each batch, the Spectrum Analyzer tapers both ends with a window, which keeps a strong station from smearing across the plot.[^pysdr-frequency] It then takes a 2,048-point FFT, which splits the batch into frequency bins, and converts each bin to decibels. Each bin is just under 1 kHz wide, the sample rate divided by the FFT size.[^pysdr-frequency] The trace smooths the spectra over time, and the waterfall stacks them, averaging every four into one row of color.
+
+  The vertical scale is in dBFS, decibels relative to the largest signal the radio's converter can represent. The levels are relative, not calibrated power. The window lowers every peak, so even a full-scale tone would sit about 7.5 dB below zero.
+
+  ## What to look for
+
+  Each station shows up as a broad hump in the trace and a vertical stripe in the waterfall, where blue is quiet and red is strong. A steady stripe is a transmitter that never stops, such as a broadcast station, and a short dash is a burst. The newest row is at the top, and the 1,024 rows kept cover about four seconds.
+
+  A narrow spike exactly at the center that stays put when you retune is the radio's own DC offset, not a transmitter.[^pysdr-iq] Tuning a few hundred kilohertz to one side moves a station away from it.
+
+  Turning on Max Hold adds a second trace that keeps the highest level seen in each bin, which catches signals that come and go. Scrolling over the plot zooms in, dragging pans, and right-clicking resets the view. On the SDR block, Buffer Loss should read 0.00%. Anything higher means samples were dropped and the display has gaps.
+
+  For a gentle introduction to I/Q samples, FFTs, and waterfalls, see the sources below.
+
+  ## Going further
+
+  A Python block can name the strongest signal in the window. Give it one input and no outputs, connect it to the SDR output, and paste the code below. Once per second it computes the same windowed spectrum as the analyzer, skips the few bins at the center where the DC spike sits, and prints the frequency and level of the highest peak. The level matches the analyzer for a steady tone and reads a few decibels above its smoothed trace for a station.
+
+  ```python
+  import time
+
+  import numpy as np
+
+  _LAST = 0.0
+
+
+  def compute(ctx):
+      global _LAST
+      if time.monotonic() - _LAST < 1.0:
+          return
+      _LAST = time.monotonic()
+      x = np.asarray(ctx.inputs[0])
+      n = x.shape[-1]
+      rate = ctx.input_attrs[0].get("sampleRate", 0.0)
+      center = ctx.input_attrs[0].get("frequency", 0.0)
+      spectrum = np.fft.fftshift(np.fft.fft(x * np.blackman(n), axis=-1), axes=-1)
+      power = np.mean(np.abs(spectrum) ** 2, axis=0)
+      power[n // 2 - 4 : n // 2 + 5] = 0.0
+      peak = int(np.argmax(power))
+      if power[peak] == 0.0:
+          print("Strongest signal: none")
+          return
+      frequency = center + (peak - n // 2) * rate / n
+      level = 10 * np.log10(power[peak] / n**2)
+      print(f"Strongest signal: {frequency / 1e6:.3f} MHz at {level:.1f} dBFS")
+  ```
+
+  Raising Sample Rate widens the window. An RTL-SDR accepts up to 3.2 MS/s, but RTL-SDR Blog, which makes its own dongles, puts the highest rate that does not drop samples at 2.56 MS/s.[^rtl-sdr-about] The Samples setting on the SDR block is also the FFT size. Doubling it halves the bin width, which sharpens the detail, and halves how often new rows arrive. Spectrum Averaging and Waterfall Averaging trade a quick response for a calmer picture.
+
+  To try the same analyzer with no radio, open the [Signal Generator](/gallery/flowgraphs/signal-generator) or [First Steps](/gallery/flowgraphs/first-steps). The [Python QPSK Generator](/gallery/flowgraphs/python-qpsk) flowgraph feeds it from a Python block. The [block catalog](/docs/blocks) and the [Python block reference](/docs/python-block) cover the blocks used here.
+
+  ## References
+
+  [^fcc-fm-channels]: U.S. Federal Communications Commission, "[Numerical designation of FM broadcast channels](https://www.ecfr.gov/current/title-47/chapter-I/subchapter-C/part-73/subpart-B/section-73.201)," *Code of Federal Regulations*, Title 47, Sec. 73.201.
+  [^pysdr-iq]: M. Lichtman, "IQ sampling," PySDR: A Guide to SDR and DSP using Python. [pysdr.org/content/sampling.html](https://pysdr.org/content/sampling.html)
+  [^pysdr-frequency]: M. Lichtman, "Frequency domain," PySDR: A Guide to SDR and DSP using Python. [pysdr.org/content/frequency_domain.html](https://pysdr.org/content/frequency_domain.html)
+  [^rtl-sdr-about]: RTL-SDR Blog, "About RTL-SDR," RTL-SDR.com. [rtl-sdr.com/about-rtl-sdr](https://www.rtl-sdr.com/about-rtl-sdr/)
 graph:
   - name: note
     module: note
@@ -15,48 +90,48 @@ graph:
       content: |-
         # Spectrum Analyzer
         **This example opens with no radio selected. Pick one first.**
-        
+
         1. Plug in your SDR and choose it in the **Device** dropdown on the **SDR** block. An RTL-SDR shows up as something like **Generic RTL2832U OEM**. Choose **None** to disconnect.
         2. Type a local station into **Frequency** or leave it at 94.900 MHz, in the FM broadcast band.
         3. Watch the display. It starts a moment after you pick a device. There is no Start button, every block runs as soon as its inputs are ready.
-        
-        **Radio not listed?** Check the cable and plug the dongle directly into the computer rather than a hub. Close any other program that is using it, only one program can open a radio at a time. Then reopen this example from the **Flowgraph** menu under **Open Examples** so the list is rebuilt. On Linux, the kernel's DVB-T driver can claim an RTL-SDR before CyberEther sees it. On Windows, the dongle needs the WinUSB driver installed with Zadig.
-        
+
+        **Radio not listed?** Check the cable and plug the dongle directly into the computer rather than a hub. Close any other program that is using it, only one program can open a radio at a time. Then reopen this example from the gallery on the **Start** tab so the list is rebuilt. On Linux, the kernel's DVB-T driver can claim an RTL-SDR before CyberEther sees it. On Windows, the dongle needs the WinUSB driver installed with Zadig.
+
         ## What you are looking at
         The top pane is the **spectrum**: frequency runs left to right and signal strength runs bottom to top. Each bump is a transmitter. The bottom pane is the **waterfall**: the same spectrum painted as a row of color, newest row at the top, older rows scrolling down. Blue is quiet and red is strong. A steady vertical stripe is a station that never stops talking. A short dash is a burst.
-        
+
         The default tuning is 94.900 MHz, in the FM broadcast band. Stations there are about 200 kHz wide and easy to see with the small antenna that ships with most dongles. Pick a station you know from your car radio, type its frequency into **Frequency**, and watch it appear.
-        
+
         ## Try it
         1. Change **Frequency** to a local station. The **+** and **-** buttons move by the **Step Size** of 1 MHz.
         2. Scroll over the plot to zoom into a peak. Drag left or right to pan. Right-click to reset the view.
         3. Drag the line between the spectrum and the waterfall to give one of them more room.
         4. Turn on **Max Hold**. A second trace remembers the highest level seen in every bin, which is useful for catching signals that come and go. Turn it off to clear it.
-        
+
         ## Reading the numbers
         The vertical scale is **dBFS**, decibels relative to the receiver's full scale. Zero is the converter's full scale, and even a full-scale tone peaks several dB below it on this plot. These are relative levels, not calibrated power. Comparing two peaks is meaningful, quoting a dBm value is not. If the noise floor hides below the pane, lower **Range Min**. If the floor jumps and false peaks appear across the band when a strong signal arrives, the receiver is overloading: turn off **Automatic Gain** or use a smaller antenna.
-        
+
         **Sample Rate** sets the span you see. At 2.000 MHz the plot covers 2 MHz of spectrum. An RTL-SDR is comfortable up to about 2.56 MHz. Asking for more produces gaps, which show up as **Buffer Loss**.
-        
+
         **Samples** is the FFT size. With 2048 samples over 2 MHz, each bin is about 1 kHz wide. Doubling it sharpens the frequency detail and halves how often new rows arrive. Leave **Batches** and **Buffer Multiplier** alone unless you are tuning performance.
-        
+
         ## Smoothing
         - **Spectrum Averaging** smooths the trace over time. Higher is calmer but slower to react.
         - **Waterfall Averaging** combines several spectra into each row, so the waterfall scrolls slower and looks cleaner.
         - **Waterfall Height** is how many rows of history are kept.
-        
+
         ## Is it keeping up?
         - **Buffer Health** should stay low. A rising bar means the computer is falling behind.
         - **Buffer Loss** should read 0.00%. Anything else means samples were dropped. Lower the sample rate or try a different USB port.
         - **Throughput** shows what arrives against what was requested. The two numbers should match.
-        
+
         ## Common surprises
         - **A spike in the exact center that never moves** is the tuner's own DC offset, not a transmitter. Tune 300 kHz to one side of the station you want and it moves out of the way.
         - **The whole trace pumps up and down** as a strong station comes and goes. That is **Automatic Gain** chasing it. Turn it off for a steadier picture.
         - **Flat line and no peaks** usually means the antenna is loose or the room is shielded. Try near a window.
         - **Bias-T** sends power up the antenna cable to feed an amplifier. Leave it off unless you know you have one.
-        
-        **Next:** open the **Simple FM Receiver** example to hear the station you just found.
+
+        **Next:** find **Simple FM Receiver** in the gallery on the **Start** tab to hear the station you just found.
     meta:
       node:
         x: 48.587524
@@ -112,7 +187,5 @@ graph:
         height: 0
       surface_default:
         attachedHeight: 626
-        detachedWidth: 504
-        detachedHeight: 463
         detached: false
         configCollapsed: true
