@@ -35,6 +35,9 @@ struct SynchronousScheduler : public Scheduler::Impl {
     Result destroy() override;
     Result start() override;
     Result stop() override;
+    Result pause() override;
+    Result resume() override;
+    bool paused() const override;
 
     Result add(const std::shared_ptr<Module>& module) override;
     Result remove(const std::shared_ptr<Module>& module) override;
@@ -84,6 +87,7 @@ struct SynchronousScheduler : public Scheduler::Impl {
     bool computeSync = false;
     std::atomic<bool> presentWantsIn{false};
     std::atomic<bool> stopping{false};
+    std::atomic<bool> pausing{false};
     std::atomic<U64> generation{0};
     std::weak_ptr<Viewport::Generic> viewport;
 
@@ -173,6 +177,22 @@ Result SynchronousScheduler::stop() {
     notifyPresent();
 
     return Result::SUCCESS;
+}
+
+Result SynchronousScheduler::pause() {
+    pausing.store(true, std::memory_order_release);
+
+    return Result::SUCCESS;
+}
+
+Result SynchronousScheduler::resume() {
+    pausing.store(false, std::memory_order_release);
+
+    return Result::SUCCESS;
+}
+
+bool SynchronousScheduler::paused() const {
+    return pausing.load(std::memory_order_acquire);
 }
 
 Result SynchronousScheduler::add(const std::shared_ptr<Module>& module) {
@@ -362,6 +382,10 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
         return Result::SUCCESS;
     }
 
+    if (paused()) {
+        return Result::SUCCESS;
+    }
+
     // Phase 1: Snapshot source modules.
 
     std::vector<std::shared_ptr<Module>> localSourceModules;
@@ -432,7 +456,7 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
                 return Result::SUCCESS;
             }
 
-            if (currentGeneration() != localGeneration) {
+            if (currentGeneration() != localGeneration || paused()) {
                 return Result::SUCCESS;
             }
 
@@ -443,7 +467,7 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
                     return Result::SUCCESS;
                 }
 
-                if (currentGeneration() != localGeneration) {
+                if (currentGeneration() != localGeneration || paused()) {
                     return Result::SUCCESS;
                 }
 
@@ -465,7 +489,7 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
                     return Result::SUCCESS;
                 }
 
-                if (currentGeneration() != localGeneration) {
+                if (currentGeneration() != localGeneration || paused()) {
                     return Result::SUCCESS;
                 }
 
@@ -490,6 +514,7 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
 
     Result res = Result::SUCCESS;
     std::unordered_set<std::string> skippedModules;
+    bool started = false;
 
     for (U64 i = 0; i < localRuntimeCount; i++) {
         std::vector<std::string> pendingModules;
@@ -518,7 +543,7 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
         {
             std::unique_lock dataLock(dataMutex);
 
-            if (currentGeneration() != localGeneration) {
+            if (currentGeneration() != localGeneration || (!started && paused())) {
                 return Result::SUCCESS;
             }
 
@@ -567,6 +592,7 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
                 }
             }
 
+            started = true;
             res = runtimes[i].runtime->compute(pendingModules, skippedModules, failedModules);
 
             if (res == Result::SUCCESS) {

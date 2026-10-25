@@ -1,11 +1,13 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <atomic>
 #include <chrono>
 #include <functional>
 #include <initializer_list>
 #include <latch>
 #include <memory>
 #include <stdexcept>
+#include <stop_token>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -38,6 +40,7 @@ struct SyntheticSpec {
     std::vector<Result> presentCaptureResults;
     std::vector<Result> presentResults;
     std::function<void()> pendingAction;
+    std::function<void()> pollAction;
     std::function<void()> computeAction;
 };
 
@@ -200,6 +203,11 @@ struct SyntheticModuleBase : Module::Impl,
             syntheticState().invoke("pending_compute", name(), {});
             action();
             return Result::YIELD;
+        }
+        if (spec.pollAction) {
+            auto action = std::move(spec.pollAction);
+            spec.pollAction = {};
+            action();
         }
 
         return syntheticState().invoke("pending_compute", name(), spec.pendingComputeResults);
@@ -577,6 +585,238 @@ TEST_CASE("Scheduler stop cancels source polling before compute submission",
     REQUIRE(failedModules.empty());
     REQUIRE(state.count("pending_compute", "cancel_source") == 1);
     REQUIRE(state.count("compute", "cancel_source") == 0);
+}
+
+TEST_CASE("Scheduler pause returns at once without polling sources until resume",
+          "[core][runtime][scheduler][pause]") {
+    auto& state = syntheticState();
+    state.reset();
+    state.configure("paused_source");
+
+    SchedulerFixture fixture;
+    auto source = fixture.module("paused_source");
+    REQUIRE(fixture.scheduler.add(source) == Result::SUCCESS);
+
+    REQUIRE_FALSE(fixture.scheduler.paused());
+    REQUIRE(fixture.scheduler.pause() == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.paused());
+
+    state.clearEvents();
+    std::unordered_set<std::string> failedModules;
+    const auto begin = std::chrono::steady_clock::now();
+    for (U64 call = 0; call < 200; ++call) {
+        REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    }
+    const auto elapsed = std::chrono::steady_clock::now() - begin;
+
+    REQUIRE(failedModules.empty());
+    REQUIRE(elapsed < std::chrono::milliseconds(100));
+    REQUIRE(state.count("pending_compute", "paused_source") == 0);
+    REQUIRE(state.count("compute", "paused_source") == 0);
+
+    REQUIRE(fixture.scheduler.resume() == Result::SUCCESS);
+    REQUIRE_FALSE(fixture.scheduler.paused());
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(state.count("compute", "paused_source") == 1);
+}
+
+TEST_CASE("Scheduler resume restarts a compute thread polling while paused",
+          "[core][runtime][scheduler][pause]") {
+    auto& state = syntheticState();
+    state.reset();
+    std::atomic<bool> computed{false};
+    state.configure("wake_source").computeAction = [&] {
+        computed.store(true);
+    };
+
+    SchedulerFixture fixture;
+    auto source = fixture.module("wake_source");
+    REQUIRE(fixture.scheduler.add(source) == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.pause() == Result::SUCCESS);
+
+    std::atomic<U64> loops{0};
+    std::jthread computeThread([&](std::stop_token token) {
+        std::unordered_set<std::string> computeFailures;
+        while (!token.stop_requested()) {
+            (void)fixture.scheduler.compute(computeFailures);
+            loops.fetch_add(1);
+            if (fixture.scheduler.paused()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        }
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    CHECK(loops.load() > 0);
+    CHECK_FALSE(computed.load());
+
+    REQUIRE(fixture.scheduler.resume() == Result::SUCCESS);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (!computed.load() && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    CHECK(computed.load());
+
+    REQUIRE(fixture.scheduler.pause() == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.stop() == Result::SUCCESS);
+    computeThread.request_stop();
+    computeThread.join();
+}
+
+TEST_CASE("Scheduler pause cancels source polling before compute submission",
+          "[core][runtime][scheduler][pause]") {
+    auto& state = syntheticState();
+    state.reset();
+    state.configure("pause_polling_source");
+
+    SchedulerFixture fixture;
+    auto source = fixture.module("pause_polling_source");
+    REQUIRE(fixture.scheduler.add(source) == Result::SUCCESS);
+
+    state.clearEvents();
+    state.configure("pause_polling_source").pendingAction = [&] {
+        REQUIRE(fixture.scheduler.pause() == Result::SUCCESS);
+    };
+
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(failedModules.empty());
+    REQUIRE(state.count("pending_compute", "pause_polling_source") == 1);
+    REQUIRE(state.count("compute", "pause_polling_source") == 0);
+}
+
+TEST_CASE("Scheduler pause stops source polling after a ready source",
+          "[core][runtime][scheduler][pause]") {
+    auto& state = syntheticState();
+    state.reset();
+    state.configure("pause_ready_first");
+    state.configure("pause_ready_second");
+
+    SchedulerFixture fixture;
+    auto first = fixture.module("pause_ready_first");
+    auto second = fixture.module("pause_ready_second");
+    REQUIRE(fixture.scheduler.add(first) == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.add(second) == Result::SUCCESS);
+
+    state.clearEvents();
+    const auto pause = [&] {
+        REQUIRE(fixture.scheduler.pause() == Result::SUCCESS);
+    };
+    state.configure("pause_ready_first").pollAction = pause;
+    state.configure("pause_ready_second").pollAction = pause;
+
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(failedModules.empty());
+    REQUIRE(state.calls("pending_compute").size() == 1);
+    REQUIRE(state.calls("compute").empty());
+
+    state.configure("pause_ready_first").pollAction = {};
+    state.configure("pause_ready_second").pollAction = {};
+    REQUIRE(fixture.scheduler.resume() == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(state.calls("compute").size() == 2);
+}
+
+TEST_CASE("Scheduler pause finishes a started cycle and holds the next one",
+          "[core][runtime][scheduler][pause]") {
+    auto& state = syntheticState();
+    state.reset();
+    state.configure("pause_segment_source");
+    state.configure("pause_segment_python").inputs = {"in"};
+    state.configure("pause_segment_sink").inputs = {"in"};
+
+    SchedulerFixture fixture;
+    auto source = fixture.module("pause_segment_source");
+    auto python = fixture.module(
+        "pause_segment_python",
+        makeInputs({{"in", "pause_segment_source"}}),
+        RuntimeType::PYTHON);
+    auto sink = fixture.module(
+        "pause_segment_sink",
+        makeInputs({{"in", "pause_segment_python"}}));
+    REQUIRE(fixture.scheduler.add(source) == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.add(python) == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.add(sink) == Result::SUCCESS);
+
+    state.clearEvents();
+    state.configure("pause_segment_source").computeAction = [&] {
+        REQUIRE(fixture.scheduler.pause() == Result::SUCCESS);
+    };
+
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(failedModules.empty());
+    REQUIRE(fixture.scheduler.paused());
+    const std::vector<std::string> cycle = {
+        "pause_segment_source",
+        "pause_segment_python",
+        "pause_segment_sink",
+    };
+    REQUIRE(state.calls("compute") == cycle);
+
+    state.configure("pause_segment_source").computeAction = {};
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(state.calls("compute") == cycle);
+
+    REQUIRE(fixture.scheduler.resume() == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(state.calls("compute") == std::vector<std::string>{
+        "pause_segment_source",
+        "pause_segment_python",
+        "pause_segment_sink",
+        "pause_segment_source",
+        "pause_segment_python",
+        "pause_segment_sink",
+    });
+
+    REQUIRE(fixture.shutdown() == Result::SUCCESS);
+}
+
+TEST_CASE("Scheduler mutates and stops cleanly while paused",
+          "[core][runtime][scheduler][pause]") {
+    auto& state = syntheticState();
+    state.reset();
+    state.configure("paused_mutation_source");
+    state.configure("paused_mutation_sink").inputs = {"in"};
+
+    SchedulerFixture fixture;
+    auto source = fixture.module("paused_mutation_source");
+    auto sink = fixture.module("paused_mutation_sink", makeInputs({{"in", "paused_mutation_source"}}));
+    REQUIRE(fixture.scheduler.add(source) == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.pause() == Result::SUCCESS);
+
+    REQUIRE(fixture.scheduler.add(sink) == Result::SUCCESS);
+    bool synchronized = false;
+    REQUIRE(fixture.scheduler.synchronize([&] {
+        synchronized = true;
+        return Result::SUCCESS;
+    }) == Result::SUCCESS);
+    REQUIRE(synchronized);
+    REQUIRE(fixture.scheduler.paused());
+
+    state.clearEvents();
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(state.calls("compute").empty());
+
+    REQUIRE(fixture.scheduler.stop() == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(state.calls("compute").empty());
+
+    REQUIRE(fixture.scheduler.start() == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.paused());
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(state.calls("compute").empty());
+
+    REQUIRE(fixture.scheduler.resume() == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    REQUIRE(state.calls("compute") ==
+            std::vector<std::string>{"paused_mutation_source", "paused_mutation_sink"});
+
+    REQUIRE(fixture.scheduler.pause() == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.stop() == Result::SUCCESS);
+    REQUIRE(fixture.shutdown() == Result::SUCCESS);
 }
 
 TEST_CASE("Scheduler rolls back a failed CPU Runtime addition",

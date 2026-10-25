@@ -42,6 +42,9 @@ class JETSTREAM_API Flowgraph {
                   const std::shared_ptr<Compositor>& compositor);
     Result start();
     Result stop();
+    Result pause();
+    Result resume();
+    bool paused() const;
     Result destroy();
 
     std::string title() const;

@@ -538,6 +538,26 @@ Result Flowgraph::stop() {
     return Result::SUCCESS;
 }
 
+Result Flowgraph::pause() {
+    if (!impl->created.load() || !impl->scheduler) {
+        return Result::SUCCESS;
+    }
+
+    return impl->scheduler->pause();
+}
+
+Result Flowgraph::resume() {
+    if (!impl->created.load() || !impl->scheduler) {
+        return Result::SUCCESS;
+    }
+
+    return impl->scheduler->resume();
+}
+
+bool Flowgraph::paused() const {
+    return impl->created.load() && impl->scheduler && impl->scheduler->paused();
+}
+
 Result Flowgraph::blockCreate(const std::string name,
                               const Block::Config& config,
                               const TensorMap& inputs,

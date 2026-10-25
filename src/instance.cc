@@ -499,8 +499,14 @@ Result Instance::compute() {
         return Result::SUCCESS;
     }
 
+    bool active = false;
     for (const auto& flowgraph : flowgraphs) {
         JST_CHECK(flowgraph->compute());
+        active = active || !flowgraph->paused();
+    }
+
+    if (!active) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
     return Result::SUCCESS;
