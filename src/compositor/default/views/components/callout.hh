@@ -2,7 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_COMPONENTS_CALLOUT_HH
 
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <string>
 #include <utility>
@@ -60,15 +60,15 @@ struct Callout : public Sakura::Div {
     std::string toneIcon() const {
         switch (config.tone) {
             case Tone::Success:
-                return ICON_FA_CIRCLE_CHECK;
+                return ICON_LC_CIRCLE_CHECK;
             case Tone::Warning:
-                return ICON_FA_TRIANGLE_EXCLAMATION;
+                return ICON_LC_TRIANGLE_ALERT;
             case Tone::Error:
-                return ICON_FA_CIRCLE_XMARK;
+                return ICON_LC_CIRCLE_X;
             case Tone::Info:
                 break;
         }
-        return ICON_FA_CIRCLE_INFO;
+        return ICON_LC_INFO;
     }
 
     Config config;

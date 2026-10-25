@@ -4,7 +4,7 @@
 #include <jetstream/render/sakura/typography.hh>
 
 #include <jetstream/render/components/text.hh>
-#include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "../context.hh"
 #include "../metrics.hh"
@@ -105,7 +105,7 @@ struct Text::Impl {
         while (pos < str.size()) {
             U32 codepoint = 0;
             const U64 next = pos + std::max<U64>(1, Unicode::Decode(str, pos, codepoint));
-            const bool icon = codepoint >= ICON_MIN_FA && codepoint <= ICON_MAX_FA;
+            const bool icon = codepoint >= ICON_MIN_LC && codepoint <= ICON_MAX_LC;
             if (line.runs.empty() || line.runs.back().icon != icon || icon) {
                 line.runs.push_back({.icon = icon});
             }

@@ -3,7 +3,7 @@
 
 #include "../../components/modal_header.hh"
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <functional>
 
@@ -20,11 +20,11 @@ struct FlowgraphCloseView {
 
         this->config = std::move(config);
         header.update({
-            .title = ICON_FA_TRIANGLE_EXCLAMATION " Close Flowgraph",
+            .title = ICON_LC_TRIANGLE_ALERT " Close Flowgraph",
             .description = "You are about to close a flowgraph without saving it. Are you sure you want to continue?",
         });
         saveButton.update({
-            .str = ICON_FA_FLOPPY_DISK " Save",
+            .str = ICON_LC_SAVE " Save",
             .size = {Sakura::Fill, 40.0f},
             .variant = Button::Variant::Action,
             .onClick = [this]() {

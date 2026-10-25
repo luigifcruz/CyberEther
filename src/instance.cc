@@ -15,7 +15,8 @@
 #include "resources/fonts/compressed_sgr.hh"
 #include "resources/fonts/compressed_sgsb.hh"
 #include "resources/fonts/compressed_inter.hh"
-#include "resources/fonts/compressed_fa.hh"
+#include "resources/fonts/compressed_fa_node.hh"
+#include "resources/fonts/compressed_lucide.hh"
 
 #include <unordered_map>
 #include <chrono>
@@ -275,12 +276,24 @@ Result Instance::create(const Config& config) {
         std::shared_ptr<Render::Components::Font> font;
 
         Render::Components::Font::Config cfg;
-        cfg.data = fas_compressed_data;
+        cfg.data = lucide_compressed_data;
         cfg.size = 32.0f;
         cfg.icons = true;
 
         JST_CHECK(impl->render->build(font, cfg));
         JST_CHECK(impl->render->addFont("default_icons", font));
+    }
+
+    {
+        std::shared_ptr<Render::Components::Font> font;
+
+        Render::Components::Font::Config cfg;
+        cfg.data = fa_node_compressed_data;
+        cfg.size = 32.0f;
+        cfg.icons = true;
+
+        JST_CHECK(impl->render->build(font, cfg));
+        JST_CHECK(impl->render->addFont("default_node_icons", font));
     }
 
     {

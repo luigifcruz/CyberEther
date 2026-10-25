@@ -25,7 +25,8 @@
 #include "jetstream/render/components/font.hh"
 #include "jetstream/render/devices/metal/window.hh"
 #include "jetstream/viewport/adapters/metal.hh"
-#include "../../../resources/fonts/compressed_fa.hh"
+#include "../../../resources/fonts/compressed_fa_node.hh"
+#include "../../../resources/fonts/compressed_lucide.hh"
 #include "../../../resources/fonts/compressed_inter.hh"
 #include "../../../resources/fonts/compressed_jbmb.hh"
 #include "../../../resources/fonts/compressed_jbmm.hh"
@@ -194,7 +195,8 @@ struct Workbench : FlowgraphFixture {
         font("default_display", sg_compressed_data, 64.0f);
         font("default_display_semibold", sgsb_compressed_data, 32.0f);
         font("default_display_regular", sgr_compressed_data, 32.0f);
-        font("default_icons", fas_compressed_data, 32.0f, true);
+        font("default_icons", lucide_compressed_data, 32.0f, true);
+        font("default_node_icons", fa_node_compressed_data, 32.0f, true);
         font("default_body", inter_regular_compressed_data, 32.0f);
         font("default_body_italic", inter_italic_compressed_data, 32.0f);
         font("default_body_bold", inter_bold_compressed_data, 32.0f);

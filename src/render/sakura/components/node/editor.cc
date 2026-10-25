@@ -676,7 +676,7 @@ struct NodeFrame : public Component {
         icons.update({
             .instances = std::move(iconInstances),
             .clip = clipRect,
-            .fontName = Typography::IconFont,
+            .fontName = Typography::NodeIconFont,
             .maxCharacters = 4,
             .capacity = 2,
         });

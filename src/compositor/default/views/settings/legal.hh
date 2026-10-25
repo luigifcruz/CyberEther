@@ -161,6 +161,7 @@ struct LegalSettingsPanel {
             {"OpenSSL", "Apache License 2.0"},
             {"Nanobench", "MIT"},
             {"Catch2", "Boost Software License"},
+            {"Lucide", "ISC License"},
             {"Font Awesome", "Font Awesome Free License"},
             {"JetBrains Mono", "SIL Open Font License 1.1"},
             {"Space Grotesk", "SIL Open Font License 1.1"},

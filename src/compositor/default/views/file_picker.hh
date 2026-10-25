@@ -5,7 +5,7 @@
 #include "components/modal_header.hh"
 
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <algorithm>
 #include <filesystem>
@@ -68,8 +68,8 @@ struct FilePickerView {
             description = jst::fmt::format("Choose a file from the server to open ({}).", extensionList());
         }
         header.update({
-            .title = save ? ICON_FA_FLOPPY_DISK " Save to Server"
-                          : ICON_FA_FOLDER_OPEN " Open from Server",
+            .title = save ? ICON_LC_SAVE " Save to Server"
+                          : ICON_LC_FOLDER_OPEN " Open from Server",
             .description = description,
         });
 
@@ -100,7 +100,7 @@ struct FilePickerView {
         for (U64 i = 0; i < this->config.entries.size(); ++i) {
             const auto& entry = this->config.entries[i];
             entryItems[i]->update({
-                .label = std::string(entry.directory ? ICON_FA_FOLDER " " : ICON_FA_FILE_LINES " ") + entry.name,
+                .label = std::string(entry.directory ? ICON_LC_FOLDER " " : ICON_LC_FILE_TEXT " ") + entry.name,
                 .selected = this->config.selectedPath == entry.path,
                 .onSelect = [this, i]() {
                     if (i < this->config.entries.size() && this->config.onSelect) {
@@ -190,16 +190,16 @@ struct FilePickerView {
                                                });
             canConfirm = selected != this->config.entries.end() && !selected->directory;
             selectionText.update({
-                .str = canConfirm ? std::string(ICON_FA_FILE_LINES " ") + selected->name
+                .str = canConfirm ? std::string(ICON_LC_FILE_TEXT " ") + selected->name
                                   : "No file selected.",
                 .tone = canConfirm ? Text::Tone::Secondary : Text::Tone::Disabled,
             });
         }
 
         confirmButton.update({
-            .str = !save ? ICON_FA_FOLDER_OPEN " Open"
-                         : (this->config.overwritePending ? ICON_FA_TRIANGLE_EXCLAMATION " Overwrite"
-                                                          : ICON_FA_FLOPPY_DISK " Save"),
+            .str = !save ? ICON_LC_FOLDER_OPEN " Open"
+                         : (this->config.overwritePending ? ICON_LC_TRIANGLE_ALERT " Overwrite"
+                                                          : ICON_LC_SAVE " Save"),
             .size = {Sakura::Fill, 40.0f},
             .variant = this->config.overwritePending ? Button::Variant::Destructive
                                                      : Button::Variant::Action,

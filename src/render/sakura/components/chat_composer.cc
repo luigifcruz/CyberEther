@@ -5,7 +5,7 @@
 #include <jetstream/render/sakura/components/model_picker.hh>
 #include <jetstream/render/sakura/components/popup.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
-#include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "../context.hh"
 #include "../metrics.hh"
@@ -485,7 +485,7 @@ struct ChatComposer::Impl {
     void configure() {
         const F32 control = controlSize();
         attach.update({
-            .str = ICON_FA_PLUS,
+            .str = ICON_LC_PLUS,
             .fontSize = config.style.fontSize * kAttachScale,
             .rounding = 0.5f * control,
             .onClick = [this]() {
@@ -720,7 +720,7 @@ void ChatComposer::layout(const Context& ctx) {
 
     const bool voice = state.voiceReady();
     state.send.update({
-        .str = config.busy ? ICON_FA_STOP : voice ? "" : ICON_FA_ARROW_UP,
+        .str = config.busy ? ICON_LC_SQUARE : voice ? "" : ICON_LC_ARROW_UP,
         .fontSize = style.fontSize,
         .rounding = 0.5f * state.controlSize(),
         .disabled = !config.busy && !voice && Jetstream::Text::IsBlank(state.text),

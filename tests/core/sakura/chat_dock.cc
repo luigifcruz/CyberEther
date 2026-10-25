@@ -14,7 +14,7 @@
 #include <jetstream/render/sakura/components/text_grid.hh>
 #include <jetstream/render/sakura/components/voice.hh>
 #include <jetstream/render/sakura/typography.hh>
-#include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "render/sakura/detail/orb.hh"
 
@@ -624,7 +624,7 @@ TEST_CASE("Voice orbs center the orb and park the dismiss badge on its top right
     CHECK(rig.badge().config().cornerRadius == 11.0f);
     CHECK(rig.badge().config().borderWidth == 1.0f);
     CHECK_FALSE(rig.badge().config().instances.front().visible);
-    CHECK(rig.glyph().config().str == ICON_FA_XMARK);
+    CHECK(rig.glyph().config().str == ICON_LC_X);
     CHECK(rig.glyph().config().opacity == 0.0f);
 }
 

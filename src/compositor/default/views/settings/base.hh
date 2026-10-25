@@ -11,7 +11,7 @@
 #include "remote.hh"
 #include "runtime.hh"
 
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <array>
 #include <functional>
@@ -80,14 +80,14 @@ struct SettingsView {
         applicationSpacing.update({.lines = 3});
         applicationHeading.update("Application");
         headingSpacing.update({});
-        navItem(SettingsSection::General, ICON_FA_DESKTOP, "General");
-        navItem(SettingsSection::Remote, ICON_FA_TOWER_BROADCAST, "Remote");
-        navItem(SettingsSection::Runtime, ICON_FA_MICROCHIP, "Runtime");
-        navItem(SettingsSection::Registry, ICON_FA_DATABASE, "Registry");
-        navItem(SettingsSection::Intelligence, ICON_FA_WAND_MAGIC_SPARKLES, "Intelligence");
-        navItem(SettingsSection::Developer, ICON_FA_FLASK, "Developer");
-        navItem(SettingsSection::About, ICON_FA_CIRCLE_INFO, "About");
-        navItem(SettingsSection::Legal, ICON_FA_SCALE_BALANCED, "Legal");
+        navItem(SettingsSection::General, ICON_LC_MONITOR, "General");
+        navItem(SettingsSection::Remote, ICON_LC_RADIO_TOWER, "Remote");
+        navItem(SettingsSection::Runtime, ICON_LC_CPU, "Runtime");
+        navItem(SettingsSection::Registry, ICON_LC_DATABASE, "Registry");
+        navItem(SettingsSection::Intelligence, ICON_LC_WAND_SPARKLES, "Intelligence");
+        navItem(SettingsSection::Developer, ICON_LC_FLASK_CONICAL, "Developer");
+        navItem(SettingsSection::About, ICON_LC_INFO, "About");
+        navItem(SettingsSection::Legal, ICON_LC_SCALE, "Legal");
         general.update(this->config.general);
         remote.update(this->config.remote);
         runtime.update(this->config.runtime);

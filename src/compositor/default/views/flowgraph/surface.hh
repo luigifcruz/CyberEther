@@ -3,7 +3,7 @@
 
 #include "jetstream/render/sakura/base.hh"
 
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 #include "jetstream/surface.hh"
 
 #include "editor/config/base.hh"
@@ -83,7 +83,7 @@ struct FlowgraphDetachedSurface {
             return {};
         }
         return {{
-            .icon = ICON_FA_SLIDERS,
+            .icon = ICON_LC_SLIDERS_HORIZONTAL,
             .active = configVisible,
             .onClick = [this]() {
                 configVisible = !configVisible;

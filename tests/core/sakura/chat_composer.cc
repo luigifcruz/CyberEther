@@ -13,7 +13,7 @@
 #include <jetstream/render/sakura/components/text_grid.hh>
 #include <jetstream/render/sakura/components/text_input.hh>
 #include <jetstream/render/sakura/typography.hh>
-#include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "render/sakura/detail/text_metrics.hh"
 #include "render/sakura/metrics.hh"
@@ -343,15 +343,15 @@ TEST_CASE("Model pickers open an effort panel and select models by identity", kP
     CHECK(rig.host.popups.interactiveAt(kEffortBottom));
     CHECK(ShowsAt(rig.host, "Medium", kTitleY));
     CHECK(ShowsAt(rig.host, "Medium", kField.y));
-    CHECK(Shows(rig.host, ICON_FA_CHEVRON_RIGHT));
+    CHECK(Shows(rig.host, ICON_LC_CHEVRON_RIGHT));
 
     rig.click(kModelRow);
     REQUIRE(rig.settle());
     CHECK_FALSE(rig.host.popups.interactiveAt(kEffortBottom));
     CHECK(ShowsAt(rig.host, "Same label", kListTop));
     CHECK(ShowsAt(rig.host, "Same label", kListTop + kRowHeight));
-    REQUIRE(Texts(rig.host, ICON_FA_CHECK).size() == 1);
-    CHECK(Texts(rig.host, ICON_FA_CHECK).front().rect.y == kListTop);
+    REQUIRE(Texts(rig.host, ICON_LC_CHECK).size() == 1);
+    CHECK(Texts(rig.host, ICON_LC_CHECK).front().rect.y == kListTop);
 
     rig.click(kFirstRow);
     REQUIRE(rig.settle());
@@ -535,7 +535,7 @@ TEST_CASE("Model picker lists fit the space beside the field and scroll by rows"
     CHECK(ShowsAt(rig.host, "Model 00", kField.y));
     CHECK(ShowsAt(rig.host, "Model 01", top));
     CHECK(ShowsAt(rig.host, "Model 11", top + 10.0f * kRowHeight));
-    CHECK(Texts(rig.host, ICON_FA_CHECK).empty());
+    CHECK(Texts(rig.host, ICON_LC_CHECK).empty());
 
     for (U64 i = 0; i < 40; ++i) {
         rig.host.send(Wheel(150.0f, 100.0f, -1.0f));
@@ -726,10 +726,10 @@ TEST_CASE("Chat composers measure their input, controls, and margins before the 
     CHECK(rig.host.measureOf(ctx, {kComposerWidth, kInfinite}).y > first.y + 30.0f);
 
     rig.config.style.minLines = 1.0f;
-    rig.config.style.icon = ICON_FA_CHECK;
+    rig.config.style.icon = ICON_LC_CHECK;
     rig.place();
     CHECK(rig.points().grid.x == kPad + 1.8f * Sakura::Typography::FontSize);
-    CHECK(Shows(rig.host, ICON_FA_CHECK));
+    CHECK(Shows(rig.host, ICON_LC_CHECK));
 }
 
 TEST_CASE("Chat composers scale padding, margins, and rounding with the pixel ratio", kComposerTags) {
@@ -769,7 +769,7 @@ TEST_CASE("Chat composers cancel while busy and route the send button by state",
     rig.config.focusRequest = 1;
     rig.place();
     REQUIRE(FocusOwner(rig.host) == rig.grid());
-    CHECK(Shows(rig.host, ICON_FA_STOP));
+    CHECK(Shows(rig.host, ICON_LC_SQUARE));
     CHECK(VoiceBars(rig.host) == 0);
     CHECK(Shows(rig.host, "Ask"));
     rig.host.click(rig.points().send.x, rig.points().send.y);
@@ -777,8 +777,8 @@ TEST_CASE("Chat composers cancel while busy and route the send button by state",
 
     rig.config.busy = false;
     rig.place();
-    CHECK_FALSE(Shows(rig.host, ICON_FA_STOP));
-    CHECK_FALSE(Shows(rig.host, ICON_FA_ARROW_UP));
+    CHECK_FALSE(Shows(rig.host, ICON_LC_SQUARE));
+    CHECK_FALSE(Shows(rig.host, ICON_LC_ARROW_UP));
     CHECK(VoiceBars(rig.host) == 5);
     rig.host.click(rig.points().send.x, rig.points().send.y);
     CHECK(rig.voices == 1);
@@ -786,7 +786,7 @@ TEST_CASE("Chat composers cancel while busy and route the send button by state",
 
     Type(rig.host, "hello");
     rig.place();
-    CHECK(Shows(rig.host, ICON_FA_ARROW_UP));
+    CHECK(Shows(rig.host, ICON_LC_ARROW_UP));
     CHECK(VoiceBars(rig.host) == 0);
     CHECK_FALSE(Shows(rig.host, "Ask"));
     rig.host.click(rig.points().send.x, rig.points().send.y);
@@ -800,7 +800,7 @@ TEST_CASE("Chat composers cancel while busy and route the send button by state",
 
     rig.config.onVoice = {};
     rig.place();
-    const auto arrows = Texts(rig.host, ICON_FA_ARROW_UP);
+    const auto arrows = Texts(rig.host, ICON_LC_ARROW_UP);
     REQUIRE(arrows.size() == 1);
     CHECK(arrows.front().color.a == Sakura::kDisabledAlpha);
     CHECK(Sakura::Access::cursor(rig.host, rig.points().send) != SurfaceCursor::Hand);
@@ -944,7 +944,7 @@ TEST_CASE("Chat composer controls place attach, clear, the model picker, and the
     rig.config.style.compact = true;
     rig.place();
     CHECK(Find<Sakura::ModelPicker>(rig.host).empty());
-    CHECK_FALSE(Shows(rig.host, ICON_FA_PLUS));
+    CHECK_FALSE(Shows(rig.host, ICON_LC_PLUS));
     CHECK(VisibleInstances(*BoxesWithCapacity(rig.host, 48).front()) == 0);
 }
 
@@ -1043,7 +1043,7 @@ TEST_CASE("Chat composers settle and repaint only for visual changes", kComposer
     background = "agent_composer";
     CHECK(RepaintOnly(frames.run(update)));
     CHECK(Retains(frames, update));
-    icon = ICON_FA_CHECK;
+    icon = ICON_LC_CHECK;
     CHECK(RepaintOnly(frames.run(update)));
     CHECK(Retains(frames, update));
     CHECK(frames.restructures == 0);
@@ -1107,7 +1107,7 @@ TEST_CASE("Typing into a chat composer switches the send button from voice to su
     Type(place, "a");
     CHECK(RepaintOnly(frames.run(update)));
     CHECK(VoiceBars(place) == 0);
-    CHECK(Shows(place, ICON_FA_ARROW_UP));
+    CHECK(Shows(place, ICON_LC_ARROW_UP));
     CHECK_FALSE(Shows(place, "Ask"));
     CHECK(Retains(frames, update));
 }

@@ -3,7 +3,7 @@
 
 #include "../components/modal_header.hh"
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 #include "jetstream/types.hh"
 
 #include <functional>
@@ -28,7 +28,7 @@ struct FeedbackView {
         using Text = Sakura::Text;
 
         header.update({
-            .title = ICON_FA_COMMENT_DOTS " Send Feedback (CTRL+G)",
+            .title = ICON_LC_MESSAGE_CIRCLE_MORE " Send Feedback (CTRL+G)",
             .description = "Share bugs, feature ideas, or general comments. "
                            "All feedback helps. It's anonymous, with no follow-up.",
         });
@@ -68,8 +68,8 @@ struct FeedbackView {
         const bool canSubmit = !underMinimum && !overLimit && !submitting;
 
         submitButton.update({
-            .str = submitting ? ICON_FA_SPINNER " Submitting..."
-                              : ICON_FA_PAPER_PLANE " Submit Feedback",
+            .str = submitting ? ICON_LC_LOADER_CIRCLE " Submitting..."
+                              : ICON_LC_SEND " Submit Feedback",
             .size = {Sakura::Fill, 40.0f},
             .variant = Sakura::Button::Variant::Action,
             .disabled = !canSubmit,

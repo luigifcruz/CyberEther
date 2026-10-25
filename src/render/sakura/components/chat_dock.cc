@@ -4,7 +4,7 @@
 #include <jetstream/render/sakura/components/button.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/typography.hh>
-#include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "../context.hh"
 #include "../metrics.hh"
@@ -236,12 +236,12 @@ void ChatDock::update(Config config) {
     state.unread = unread;
     state.config = std::move(config);
     state.pushChat(*this);
-    state.clear.update(state.iconButton(ICON_FA_PEN_TO_SQUARE, [this]() {
+    state.clear.update(state.iconButton(ICON_LC_SQUARE_PEN, [this]() {
         if (impl->config.chat.onClear) {
             impl->config.chat.onClear();
         }
     }));
-    state.minimize.update(state.iconButton(ICON_FA_MINUS, [this]() {
+    state.minimize.update(state.iconButton(ICON_LC_MINUS, [this]() {
         if (!requestFocus()) {
             return;
         }

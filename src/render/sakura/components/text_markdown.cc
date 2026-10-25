@@ -4,7 +4,7 @@
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
-#include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "../context.hh"
 #include "../detail/helpers.hh"
@@ -80,8 +80,8 @@ constexpr std::array<const char*, kCalloutTones> kCalloutTitles = {
     "Note", "Tip", "Important", "Warning", "Caution", "Error",
 };
 constexpr std::array<const char*, kCalloutTones> kCalloutIcons = {
-    ICON_FA_CIRCLE_INFO, ICON_FA_LIGHTBULB, ICON_FA_COMMENT_DOTS,
-    ICON_FA_TRIANGLE_EXCLAMATION, ICON_FA_HAND, ICON_FA_CIRCLE_XMARK,
+    ICON_LC_INFO, ICON_LC_LIGHTBULB, ICON_LC_MESSAGE_CIRCLE_MORE,
+    ICON_LC_TRIANGLE_ALERT, ICON_LC_HAND, ICON_LC_CIRCLE_X,
 };
 constexpr std::array<const char*, kCalloutTones> kCalloutColorKeys = {
     "callout_note", "callout_tip", "callout_important", "callout_warning", "callout_caution", "callout_error",

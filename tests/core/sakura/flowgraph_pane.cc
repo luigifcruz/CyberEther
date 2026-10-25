@@ -9,7 +9,7 @@
 #include "compositor/default/presenters/flowgraph/pane.hh"
 #include "compositor/default/views/flowgraph/pane.hh"
 #include "flowgraph_fixture.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <algorithm>
 #include <functional>
@@ -52,8 +52,8 @@ std::vector<Jetstream::Rect> HeaderLabels(Sakura::Component& dock) {
     std::vector<Jetstream::Rect> labels;
     for (auto* text : Direct<Sakura::Text>(dock)) {
         const auto& str = text->config().str;
-        if (str != ICON_FA_XMARK && str != ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER &&
-            str != ICON_FA_DOWN_LEFT_AND_UP_RIGHT_TO_CENTER) {
+        if (str != ICON_LC_X && str != ICON_LC_MAXIMIZE_2 &&
+            str != ICON_LC_MINIMIZE_2) {
             labels.push_back(Peek::Frame(*text));
         }
     }
@@ -513,7 +513,7 @@ TEST_CASE("Detached surfaces become columns with their image and close callback"
     CHECK(Peek::Frame(*surfaces[0]) == Padded(Body({774.0f, 38.0f, 420.0f, 556.0f}), Sakura::Dock::ContentPadding));
     CHECK(Find<Sakura::SurfaceImage>(rig.layoutDock()).size() == 1);
     for (auto* text : Direct<Sakura::Text>(rig.layoutDock())) {
-        CHECK(text->config().str != ICON_FA_CHART_AREA);
+        CHECK(text->config().str != ICON_LC_CHART_AREA);
     }
 
     const auto close = CloseOf({774.0f, 38.0f, 420.0f, 556.0f});

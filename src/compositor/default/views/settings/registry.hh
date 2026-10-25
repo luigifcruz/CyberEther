@@ -8,7 +8,7 @@
 #include "../../model/ui.hh"
 
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <array>
 #include <functional>
@@ -117,7 +117,7 @@ struct RegistrySettingsPanel {
             const auto& plugin = config.plugins[index];
             auto& entry = *entries[index];
             entry.chevron.update({
-                .str = ICON_FA_CHEVRON_RIGHT,
+                .str = ICON_LC_CHEVRON_RIGHT,
                 .tone = Sakura::Text::Tone::Secondary,
                 .scale = 0.8f,
             });

@@ -20,7 +20,7 @@
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/toast_layer.hh>
 #include <jetstream/render/sakura/toast.hh>
-#include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "render/sakura/toast_queue.hh"
 
@@ -878,7 +878,7 @@ TEST_CASE("Hovering a toast shows its close badge and holds it, and the badge di
 
     const auto glyph = [&]() -> const Sakura::Text* {
         for (auto* text : layer.parts<Sakura::Text>()) {
-            if (text->config().str == ICON_FA_XMARK) {
+            if (text->config().str == ICON_LC_X) {
                 return text;
             }
         }
@@ -1242,7 +1242,7 @@ TEST_CASE("The drag ghost is a pill with the pane icon and title that follows th
     host.drag.active = true;
     host.drag.pane = "scope";
     host.drag.title = "Scope";
-    host.drag.icon = ICON_FA_CHART_LINE;
+    host.drag.icon = ICON_LC_CHART_LINE;
     auto ctx = MakeContext();
     ctx.mouse = Extent2D<F32>{300.0f, 200.0f};
     host.send(Mouse(MouseEventType::Move, 300.0f, 200.0f));
@@ -1765,7 +1765,7 @@ TEST_CASE("Floating window close glyph lights up on hover with a single repaint"
         layer.update(config);
     };
     const auto glyph = [&] {
-        auto* text = Named(layer, ICON_FA_XMARK);
+        auto* text = Named(layer, ICON_LC_X);
         return text ? text->config().colorKey : std::string();
     };
     REQUIRE(frames.settle(update));
@@ -2728,7 +2728,7 @@ TEST_CASE("Closing a toast after a long clean hover starts its fade instead of e
 
     const auto glyph = [&]() -> const Sakura::Text* {
         for (auto* text : layer.parts<Sakura::Text>()) {
-            if (text->config().str == ICON_FA_XMARK) {
+            if (text->config().str == ICON_LC_X) {
                 return text;
             }
         }

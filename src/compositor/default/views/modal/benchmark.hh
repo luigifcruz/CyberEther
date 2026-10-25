@@ -3,7 +3,7 @@
 
 #include "../components/modal_header.hh"
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include "jetstream/benchmark.hh"
 
@@ -34,7 +34,7 @@ struct BenchmarkView {
 
         this->config = std::move(config);
         header.update({
-            .title = ICON_FA_GAUGE_HIGH " Module Benchmarks",
+            .title = ICON_LC_GAUGE " Module Benchmarks",
             .description = "Run performance benchmarks for registered modules. Results show operations per second and timing information.",
         });
         moduleLabel.update({
@@ -53,7 +53,7 @@ struct BenchmarkView {
             },
         });
         runButton.update({
-            .str = ICON_FA_PLAY " Run Benchmarks",
+            .str = ICON_LC_PLAY " Run Benchmarks",
             .size = {Sakura::Fill, 36.0f},
             .variant = Button::Variant::Action,
             .disabled = this->config.running,
@@ -64,7 +64,7 @@ struct BenchmarkView {
             },
         });
         resetButton.update({
-            .str = ICON_FA_ROTATE_LEFT " Reset Results",
+            .str = ICON_LC_ROTATE_CCW " Reset Results",
             .size = {Sakura::Fill, 36.0f},
             .disabled = this->config.running || this->config.results.empty(),
             .onClick = [this]() {

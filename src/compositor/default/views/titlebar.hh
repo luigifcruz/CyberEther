@@ -153,7 +153,7 @@ struct TitlebarView {
 
         const bool updatePending = this->config.updateReady || this->config.updateAvailable;
         remoteButton.update({
-            .icon = ICON_FA_TOWER_BROADCAST,
+            .icon = ICON_LC_RADIO_TOWER,
             .label = "Remote Sharing",
             .colorKey = "action_btn_text",
             .backgroundColorKey = "remote_btn",
@@ -162,7 +162,7 @@ struct TitlebarView {
             .onClick = action(Action::RemoteStreaming),
         });
         updateButton.update({
-            .icon = ICON_FA_CIRCLE_ARROW_UP,
+            .icon = ICON_LC_CIRCLE_ARROW_UP,
             .label = this->config.updateReady ? "Update Ready" : "Update Available",
             .colorKey = "action_btn_text",
             .backgroundColorKey = "action_btn",
@@ -171,7 +171,7 @@ struct TitlebarView {
             .onClick = updatePending ? action(Action::OpenUpdateModal) : std::function<void()>(),
         });
         helpButton.update({
-            .icon = ICON_FA_CIRCLE_QUESTION,
+            .icon = ICON_LC_CIRCLE_QUESTION_MARK,
             .colorKey = "text_secondary",
             .backgroundColorKey = "transparent",
             .hoverColorKey = "chrome_button_hover",

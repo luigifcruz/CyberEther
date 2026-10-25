@@ -4,7 +4,7 @@
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
 #include <jetstream/render/sakura/components/popup.hh>
-#include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "../context.hh"
 #include "../metrics.hh"
@@ -424,7 +424,7 @@ struct PickerBody : public Component {
         });
         icons.update({
             .instances = {{.rect = {modelX + modelWidth + chevronGap, modelRow.y, chevron, modelRow.height},
-                           .str = ICON_FA_CHEVRON_RIGHT, .visible = !modelRow.empty(), .color = rowColor,
+                           .str = ICON_LC_CHEVRON_RIGHT, .visible = !modelRow.empty(), .color = rowColor,
                            .fontSize = chevron, .alignment = {0, 1}}},
             .clip = bounds,
             .fontName = Typography::IconFont,
@@ -463,7 +463,7 @@ struct PickerBody : public Component {
                               .str = option.detail, .visible = !option.detail.empty(), .color = detailColor,
                               .fontSize = m.font, .alignment = {0, 1}});
             if (option.id == config.value) {
-                check = {.rect = {row.right() - m.font, row.y, m.font, row.height}, .str = ICON_FA_CHECK,
+                check = {.rect = {row.right() - m.font, row.y, m.font, row.height}, .str = ICON_LC_CHECK,
                          .color = textColor, .fontSize = m.font * kCheckScale, .alignment = {1, 1}};
             }
         }

@@ -16,7 +16,7 @@
 #include <jetstream/render/sakura/components/search_catalog.hh>
 #include <jetstream/render/sakura/components/text_input.hh>
 #include <jetstream/render/sakura/components/label.hh>
-#include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
 
@@ -601,7 +601,7 @@ TEST_CASE("Pill button is a capsule with an icon and label that highlights and c
     Sakura::PillButton button;
     Host host(button);
     U64 clicks = 0;
-    button.update({.icon = ICON_FA_CIRCLE_ARROW_UP, .label = "Update Available", .colorKey = "warning_yellow",
+    button.update({.icon = ICON_LC_CIRCLE_ARROW_UP, .label = "Update Available", .colorKey = "warning_yellow",
                    .onClick = [&]() {
                        ++clicks;
                    }});
@@ -627,7 +627,7 @@ TEST_CASE("Pill button is a capsule with an icon and label that highlights and c
     REQUIRE(texts.size() == 2);
     CHECK(fill->config().cornerRadius == 14.0f);
     CHECK(fill->config().instances.front().backgroundColor == scene.ctx.color("pill_bg"));
-    CHECK(texts[0]->config().str == ICON_FA_CIRCLE_ARROW_UP);
+    CHECK(texts[0]->config().str == ICON_LC_CIRCLE_ARROW_UP);
     CHECK(texts[1]->config().str == "Update Available");
     for (auto* text : texts) {
         CHECK(text->config().colorKey == "warning_yellow");
@@ -1115,7 +1115,7 @@ TEST_CASE("Icon only pill button is a square with the icon centered", "[core][sa
     Sakura::PillButton button;
     Host host(button);
     U64 clicks = 0;
-    button.update({.icon = ICON_FA_CIRCLE_ARROW_UP, .onClick = [&] { ++clicks; }});
+    button.update({.icon = ICON_LC_CIRCLE_ARROW_UP, .onClick = [&] { ++clicks; }});
     CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{28.0f, 28.0f});
     host.place(scene.ctx, {100.0f, 10.0f, 28.0f, 28.0f});
 
@@ -1132,7 +1132,7 @@ TEST_CASE("Icon only pill button is a square with the icon centered", "[core][sa
     CHECK(icon.x + icon.width * 0.5f == Catch::Approx(114.0f).margin(1.0f));
     CHECK(icon.y + icon.height * 0.5f == Catch::Approx(24.0f).margin(1.0f));
 
-    button.update({.icon = ICON_FA_CIRCLE_ARROW_UP, .height = 34.0f});
+    button.update({.icon = ICON_LC_CIRCLE_ARROW_UP, .height = 34.0f});
     CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{34.0f, 34.0f});
 }
 

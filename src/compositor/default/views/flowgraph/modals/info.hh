@@ -3,7 +3,7 @@
 
 #include "../../components/modal_header.hh"
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <functional>
 #include <optional>
@@ -37,7 +37,7 @@ struct FlowgraphInfoView {
         }
         this->config = std::move(config);
         header.update({
-            .title = ICON_FA_CIRCLE_INFO " Flowgraph Information",
+            .title = ICON_LC_INFO " Flowgraph Information",
             .description = "Edit the focused flowgraph metadata and save location.",
         });
         titleInput.update({
@@ -86,7 +86,7 @@ struct FlowgraphInfoView {
             },
         });
         saveButton.update({
-            .str = ICON_FA_FLOPPY_DISK " Save Flowgraph",
+            .str = ICON_LC_SAVE " Save Flowgraph",
             .size = {Sakura::Fill, 40.0f},
             .variant = Sakura::Button::Variant::Action,
             .onClick = [this]() {

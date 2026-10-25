@@ -5,7 +5,7 @@
 #include "components/settings_header.hh"
 
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include "jetstream/instance_remote.hh"
 
@@ -54,7 +54,7 @@ struct RemoteSettingsPanel {
         });
 
         activeWarning.update({
-            .str = ICON_FA_TOWER_BROADCAST " Remote streaming is currently active.",
+            .str = ICON_LC_RADIO_TOWER " Remote streaming is currently active.",
             .font = Text::Font::Sans,
             .tone = Text::Tone::Warning,
             .scale = 1.05f,

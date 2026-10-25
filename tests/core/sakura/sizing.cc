@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <jetstream/render/sakura/base.hh>
-#include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "component_harness.hh"
 #include "fonts.hh"
@@ -111,7 +111,7 @@ TEST_CASE("Components measure to finite sizes within the available space", "[cor
     }));
     subjects.push_back(Make<Sakura::SearchCatalog>("empty search catalog", {.query = "nothing"}));
     subjects.push_back(Make<Sakura::NavigationItem>("navigation item", {.label = "General"}));
-    subjects.push_back(Make<Sakura::SidebarItem>("sidebar item", {.icon = ICON_FA_GEAR, .label = "General"}));
+    subjects.push_back(Make<Sakura::SidebarItem>("sidebar item", {.icon = ICON_LC_SETTINGS, .label = "General"}));
     subjects.push_back(Make<Sakura::Toggle>("toggle", {.value = true}));
     subjects.push_back(Make<Sakura::Badge>("badge", {.label = "Valid"}));
     subjects.push_back(Make<Sakura::FeatureCard>("feature card", {

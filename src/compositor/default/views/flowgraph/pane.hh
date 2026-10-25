@@ -8,7 +8,7 @@
 #include "surface.hh"
 #include "../components/callout.hh"
 
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <functional>
 #include <optional>
@@ -131,7 +131,7 @@ struct FlowgraphPane {
                 .actions = {
                     {
                         .id = "open-examples",
-                        .label = ICON_FA_FLASK " Open Examples",
+                        .label = ICON_LC_LAYOUT_GRID " Open Examples",
                         .variant = Sakura::Button::Variant::Action,
                         .onClick = this->config.onOpenExamples,
                     },
@@ -164,7 +164,7 @@ struct FlowgraphPane {
             .id = this->config.editorPane,
             .title = "Flowgraph",
             .group = this->config.layoutGroup,
-            .icon = ICON_FA_CUBES,
+            .icon = ICON_LC_BOXES,
             .content = &paneOverlay,
             .closable = false,
             .padding = Sakura::Dock::ContentPadding,
@@ -175,7 +175,7 @@ struct FlowgraphPane {
                 .id = surfaceId,
                 .title = surface.title(),
                 .group = this->config.layoutGroup,
-                .icon = ICON_FA_CHART_AREA,
+                .icon = ICON_LC_CHART_AREA,
                 .content = &surface.component(),
                 .padding = Sakura::Dock::ContentPadding,
                 .onClose = surface.closeCallback(),
@@ -188,7 +188,7 @@ struct FlowgraphPane {
                 .id = configId,
                 .title = detached.title(),
                 .group = this->config.layoutGroup,
-                .icon = ICON_FA_SLIDERS,
+                .icon = ICON_LC_SLIDERS_HORIZONTAL,
                 .content = &detached.component(),
                 .padding = Sakura::Dock::ContentPadding,
                 .onClose = detached.closeCallback(),
@@ -199,7 +199,7 @@ struct FlowgraphPane {
                 .id = documentation.id(),
                 .title = documentation.title(),
                 .group = this->config.layoutGroup,
-                .icon = ICON_FA_BOOK,
+                .icon = ICON_LC_BOOK,
                 .content = &documentation.component(),
                 .padding = Sakura::Dock::ContentPadding,
                 .onClose = documentation.closeCallback(),
@@ -236,15 +236,15 @@ struct FlowgraphPane {
     std::pair<const char*, const char*> dependencyGlyph() const {
         switch (config.dependencyReviewTone) {
             case Callout::Tone::Error:
-                return {ICON_FA_CIRCLE_EXCLAMATION, "error_red"};
+                return {ICON_LC_CIRCLE_ALERT, "error_red"};
             case Callout::Tone::Warning:
-                return {ICON_FA_TRIANGLE_EXCLAMATION, "warning_yellow"};
+                return {ICON_LC_TRIANGLE_ALERT, "warning_yellow"};
             case Callout::Tone::Success:
-                return {ICON_FA_CIRCLE_CHECK, "success_green"};
+                return {ICON_LC_CIRCLE_CHECK, "success_green"};
             case Callout::Tone::Info:
                 break;
         }
-        return {ICON_FA_BOX, "info_blue"};
+        return {ICON_LC_PACKAGE, "info_blue"};
     }
 
     Config config;

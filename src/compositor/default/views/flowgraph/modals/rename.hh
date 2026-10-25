@@ -3,7 +3,7 @@
 
 #include "../../components/modal_header.hh"
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <functional>
 #include <string>
@@ -23,7 +23,7 @@ struct RenameBlockView {
         this->config = std::move(config);
 
         header.update({
-            .title = ICON_FA_TAG " Rename Block",
+            .title = ICON_LC_TAG " Rename Block",
             .description = "Enter a new block identifier.",
         });
         input.update({

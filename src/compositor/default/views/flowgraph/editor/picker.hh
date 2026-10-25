@@ -2,7 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_PICKER_HH
 
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include "jetstream/types.hh"
 #include "tools/value.hh"
@@ -66,7 +66,7 @@ struct FlowgraphBlockPicker {
             }
             items.push_back({
                 .id = block.type,
-                .icon = ICON_FA_CUBE,
+                .icon = ICON_LC_BOX,
                 .title = block.title,
                 .summary = block.summary,
                 .group = block.category == "Other" ? std::string() : block.category,
@@ -95,7 +95,7 @@ struct FlowgraphBlockPicker {
             selected = 0;
         };
         pill.update(Pill::Config{
-            .icon = ICON_FA_MAGNIFYING_GLASS,
+            .icon = ICON_LC_SEARCH,
             .placeholder = "Search blocks",
             .query = mode == Mode::Pill ? query : std::string(),
             .editing = mode == Mode::Pill,
@@ -107,7 +107,7 @@ struct FlowgraphBlockPicker {
             },
         });
         cursorField.update(Pill::Config{
-            .icon = ICON_FA_MAGNIFYING_GLASS,
+            .icon = ICON_LC_SEARCH,
             .placeholder = "Search blocks",
             .query = query,
             .editing = mode == Mode::Cursor,

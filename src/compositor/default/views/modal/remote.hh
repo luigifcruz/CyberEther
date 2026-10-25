@@ -3,7 +3,7 @@
 
 #include "../components/modal_header.hh"
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include "jetstream/instance_remote.hh"
 
@@ -48,11 +48,11 @@ struct RemoteView {
             cachedQrWidth = 0;
         }
         header.update({
-            .title = ICON_FA_TOWER_BROADCAST " Remote Streaming",
+            .title = ICON_LC_RADIO_TOWER " Remote Streaming",
             .description = "Share this session with remote clients via WebRTC.",
         });
         startButton.update({
-            .str = ICON_FA_PLAY " Start Streaming",
+            .str = ICON_LC_PLAY " Start Streaming",
             .size = {Sakura::Fill, 40.0f},
             .variant = Button::Variant::Action,
             .onClick = [this]() {
@@ -62,7 +62,7 @@ struct RemoteView {
             },
         });
         configureButton.update({
-            .str = ICON_FA_GEAR " Configure Remote Settings",
+            .str = ICON_LC_SETTINGS " Configure Remote Settings",
             .size = {Sakura::Fill, 40.0f},
             .onClick = [this]() {
                 if (this->config.onConfigure) {
@@ -79,7 +79,7 @@ struct RemoteView {
             },
         });
         openInviteButton.update({
-            .str = ICON_FA_ARROW_UP_RIGHT_FROM_SQUARE " Open in browser",
+            .str = ICON_LC_EXTERNAL_LINK " Open in browser",
             .size = {Sakura::Fill, 34.0f},
             .onClick = [this]() {
                 openInvite();
@@ -93,7 +93,7 @@ struct RemoteView {
             },
         });
         stopButton.update({
-            .str = ICON_FA_STOP " Stop Streaming",
+            .str = ICON_LC_SQUARE " Stop Streaming",
             .size = {Sakura::Fill, 40.0f},
             .variant = Button::Variant::Destructive,
             .onClick = [this]() {

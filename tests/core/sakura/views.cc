@@ -2,7 +2,7 @@
 
 #include "fonts.hh"
 #include "harness.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 #include "jetstream/viewport/adapters/generic.hh"
 #include "component_harness.hh"
 
@@ -181,8 +181,8 @@ struct TitleRig {
     void update() {
         shell.updateTitlebar(config);
         shell.updatePanes({
-            {.id = "a", .title = "Alpha", .group = "main", .icon = ICON_FA_DIAGRAM_PROJECT, .content = &a},
-            {.id = "b", .title = "Beta", .group = "main", .icon = ICON_FA_DIAGRAM_PROJECT, .content = &b},
+            {.id = "a", .title = "Alpha", .group = "main", .icon = ICON_LC_WORKFLOW, .content = &a},
+            {.id = "b", .title = "Beta", .group = "main", .icon = ICON_LC_WORKFLOW, .content = &b},
         });
     }
 
@@ -235,7 +235,7 @@ Sakura::Component* Indicator(TitlebarView& bar, const char* icon) {
 }
 
 Sakura::Component& Help(TitlebarView& bar) {
-    auto* help = Indicator(bar, ICON_FA_CIRCLE_QUESTION);
+    auto* help = Indicator(bar, ICON_LC_CIRCLE_QUESTION_MARK);
     REQUIRE(help != nullptr);
     return *help;
 }
@@ -1591,11 +1591,11 @@ TEST_CASE("Remote sharing shows as a raised pill in the top right of the title r
     CHECK(built.remoteStarted);
 
     TitleRig rig;
-    CHECK(Indicator(rig.shell.bar(), ICON_FA_TOWER_BROADCAST) == nullptr);
+    CHECK(Indicator(rig.shell.bar(), ICON_LC_RADIO_TOWER) == nullptr);
     rig.config.remoteStarted = true;
     rig.update();
     rig.place();
-    auto* indicator = Indicator(rig.shell.bar(), ICON_FA_TOWER_BROADCAST);
+    auto* indicator = Indicator(rig.shell.bar(), ICON_LC_RADIO_TOWER);
     REQUIRE(indicator != nullptr);
     auto& remote = *indicator;
     const auto frame = Peek::Frame(remote);
@@ -1613,7 +1613,7 @@ TEST_CASE("Remote sharing shows as a raised pill in the top right of the title r
     rig.update();
     rig.place();
     const auto shifted = Peek::Frame(remote);
-    auto* pending = Indicator(rig.shell.bar(), ICON_FA_CIRCLE_ARROW_UP);
+    auto* pending = Indicator(rig.shell.bar(), ICON_LC_CIRCLE_ARROW_UP);
     REQUIRE(pending != nullptr);
     const auto update = Peek::Frame(*pending);
     CHECK(std::abs(shifted.right() + TitlebarView::IndicatorGap - update.x) <= 0.5f);
@@ -3323,12 +3323,12 @@ TEST_CASE("Update button sits in the top right corner of the title row only whil
           "[core][sakura][views]") {
     using Action = TitlebarView::Action;
     TitleRig rig;
-    CHECK(Indicator(rig.shell.bar(), ICON_FA_CIRCLE_ARROW_UP) == nullptr);
+    CHECK(Indicator(rig.shell.bar(), ICON_LC_CIRCLE_ARROW_UP) == nullptr);
 
     rig.config.updateAvailable = true;
     rig.update();
     rig.place();
-    auto* button = Indicator(rig.shell.bar(), ICON_FA_CIRCLE_ARROW_UP);
+    auto* button = Indicator(rig.shell.bar(), ICON_LC_CIRCLE_ARROW_UP);
     REQUIRE(button != nullptr);
     const auto frame = Peek::Frame(*button);
     const auto plus = Peek::Frame(rig.shell.bar().trailing());
@@ -3337,7 +3337,7 @@ TEST_CASE("Update button sits in the top right corner of the title row only whil
     CHECK(frame.height == 28.0f);
     std::optional<F32> closeCenter;
     for (auto* child : Peek::Children(rig.shell.dock())) {
-        if (auto* text = dynamic_cast<Sakura::Text*>(child); text && text->config().str == ICON_FA_XMARK) {
+        if (auto* text = dynamic_cast<Sakura::Text*>(child); text && text->config().str == ICON_LC_X) {
             const auto glyph = Peek::Frame(*text);
             closeCenter = glyph.y + glyph.height * 0.5f;
         }
@@ -3366,7 +3366,7 @@ TEST_CASE("Update button sits in the top right corner of the title row only whil
     rig.config.updateReady = true;
     rig.update();
     rig.place();
-    REQUIRE(Indicator(rig.shell.bar(), ICON_FA_CIRCLE_ARROW_UP) == button);
+    REQUIRE(Indicator(rig.shell.bar(), ICON_LC_CIRCLE_ARROW_UP) == button);
     bool ready = false;
     for (auto* child : Peek::Children(*button)) {
         if (auto* text = dynamic_cast<Sakura::Text*>(child)) {
@@ -3378,8 +3378,8 @@ TEST_CASE("Update button sits in the top right corner of the title row only whil
     rig.config.updateReady = false;
     rig.update();
     rig.place();
-    CHECK(Indicator(rig.shell.bar(), ICON_FA_CIRCLE_ARROW_UP) == nullptr);
-    CHECK(Indicator(rig.shell.bar(), ICON_FA_CIRCLE_QUESTION) != nullptr);
+    CHECK(Indicator(rig.shell.bar(), ICON_LC_CIRCLE_ARROW_UP) == nullptr);
+    CHECK(Indicator(rig.shell.bar(), ICON_LC_CIRCLE_QUESTION_MARK) != nullptr);
 }
 
 TEST_CASE("Help button is always in the top right corner, faint, and opens feedback",
@@ -3405,7 +3405,7 @@ TEST_CASE("Help button is always in the top right corner, faint, and opens feedb
     }
     REQUIRE(boxes.size() == 3);
     REQUIRE(glyph);
-    CHECK(glyph->config().str == ICON_FA_CIRCLE_QUESTION);
+    CHECK(glyph->config().str == ICON_LC_CIRCLE_QUESTION_MARK);
     CHECK(glyph->config().colorKey == "text_secondary");
     const auto glyphFrame = Peek::Frame(*glyph);
     CHECK(std::abs(glyphFrame.x + glyphFrame.width * 0.5f - (frame.x + 14.0f)) <= 0.5f);

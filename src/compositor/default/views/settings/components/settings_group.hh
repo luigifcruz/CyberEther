@@ -2,7 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_COMPONENTS_SETTINGS_GROUP_HH
 
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <string>
 #include <utility>
@@ -40,7 +40,7 @@ struct SettingsGroup : public Sakura::Stack {
             .lineHeight = 1.05f,
         });
         warningText.update({
-            .str = config.warning.empty() ? "" : ICON_FA_TRIANGLE_EXCLAMATION "  " + config.warning,
+            .str = config.warning.empty() ? "" : ICON_LC_TRIANGLE_ALERT "  " + config.warning,
             .font = Text::Font::Sans,
             .colorKey = "banner_warning_text",
             .wrapped = true,

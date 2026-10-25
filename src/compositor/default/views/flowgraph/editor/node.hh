@@ -11,7 +11,7 @@
 #include "jetstream/block.hh"
 #include "jetstream/parser.hh"
 #include "jetstream/render/base/texture.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <algorithm>
 #include <cmath>
@@ -158,7 +158,7 @@ struct FlowgraphDiagnosticTooltip {
             return;
         }
         headerIcon.update({
-            .str = ICON_FA_TRIANGLE_EXCLAMATION,
+            .str = ICON_LC_TRIANGLE_ALERT,
             .colorKey = colorKey,
         });
         headerLabel.update({.str = "Diagnostic"});

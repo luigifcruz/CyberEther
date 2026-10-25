@@ -4,7 +4,7 @@
 #include <jetstream/render/sakura/components/card.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/typography.hh>
-#include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "../context.hh"
 #include "../detail/dock_drag.hh"
@@ -1543,7 +1543,7 @@ void Dock::layout(const Context& ctx) {
                                         : Rect{};
             s.tabCloseRects.push_back(showClose ? close : Rect{});
             if (closable && caption) {
-                glyphButton(*caption->close, close, ICON_FA_XMARK,
+                glyphButton(*caption->close, close, ICON_LC_X,
                             hovered && s.hoveredTabClose ? "tile_button_hover" : textKey, kCloseGlyph,
                             !showClose ? 0.0f : hovered ? 1.0f : kIdleCloseOpacity);
             }
@@ -1610,7 +1610,7 @@ void Dock::layout(const Context& ctx) {
             F32 right = leaf.tile.right() - inset;
             if (closable) {
                 const char* closeKey = s.hoveredHeaderClose == leaf.pane ? "tile_button_hover" : "tile_header_text";
-                const Extent2D<F32> size = caption ? prepareGlyph(*caption->close, ICON_FA_XMARK, closeKey, kCloseGlyph, 1.0f)
+                const Extent2D<F32> size = caption ? prepareGlyph(*caption->close, ICON_LC_X, closeKey, kCloseGlyph, 1.0f)
                                                    : Extent2D<F32>{Px(ctx, kCloseGlyph), Px(ctx, kCloseGlyph)};
                 const F32 centerX = right - size.x * 0.5f;
                 leaf.close = {std::round(centerX - button * 0.5f), buttonY, button, button};
@@ -1624,8 +1624,8 @@ void Dock::layout(const Context& ctx) {
                 right = leaf.maximize.x - Px(ctx, kHeaderButtonGap);
                 if (caption) {
                     glyphButton(*caption->maximize, leaf.maximize,
-                                s.maximized == leaf.pane ? ICON_FA_DOWN_LEFT_AND_UP_RIGHT_TO_CENTER
-                                                         : ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER,
+                                s.maximized == leaf.pane ? ICON_LC_MINIMIZE_2
+                                                         : ICON_LC_MAXIMIZE_2,
                                 s.hoveredHeaderMaximize == leaf.pane ? "tile_button_hover" : "tile_header_text",
                                 kMaximizeGlyph);
                 }

@@ -5,7 +5,7 @@
 #include "components/settings_header.hh"
 
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 #include "jetstream/runtime_context_python.hh"
 
 #include <algorithm>
@@ -265,7 +265,7 @@ struct RuntimeSettingsPanel {
             return "";
         }
 
-        return config.pythonValidation.valid ? ICON_FA_CHECK "  Valid" : ICON_FA_XMARK "  Invalid";
+        return config.pythonValidation.valid ? ICON_LC_CHECK "  Valid" : ICON_LC_X "  Invalid";
     }
 
     std::string validationDescription() const {

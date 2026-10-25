@@ -549,7 +549,7 @@ TEST_CASE("Detached surface header action toggles its config panel and reports t
     CHECK(Find<Sakura::NodeFieldPanel>(surface.component()).empty());
     auto actions = surface.actions();
     REQUIRE(actions.size() == 1);
-    CHECK(actions[0].icon == ICON_FA_SLIDERS);
+    CHECK(actions[0].icon == ICON_LC_SLIDERS_HORIZONTAL);
     CHECK_FALSE(actions[0].active);
     const Jetstream::Rect collapsed = image();
     CHECK(collapsed.y == 0.0f);

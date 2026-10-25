@@ -9,7 +9,7 @@
 #include <jetstream/render/sakura/components/stack.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/typography.hh>
-#include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "../context.hh"
 #include "../detail/text_metrics.hh"
@@ -703,7 +703,7 @@ void SearchCatalog::update(Config config) {
         std::vector<Stack::Item> buttons;
         for (U64 index = 0; index < item.badges.size(); ++index) {
             s.docsButtons[index]->update({
-                .str = jst::fmt::format("{} {}", item.badges[index], ICON_FA_ARROW_RIGHT),
+                .str = jst::fmt::format("{} {}", item.badges[index], ICON_LC_ARROW_RIGHT),
                 .colorKey = "action_btn",
                 .hoveredColorKey = "action_btn",
                 .activeColorKey = "action_btn",

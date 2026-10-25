@@ -5,7 +5,7 @@
 #include "node.hh"
 #include "picker.hh"
 
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <algorithm>
 #include <functional>
@@ -294,7 +294,7 @@ struct FlowgraphEditor {
         flowgraphContextMenu.update({
             .entries = {
                 {
-                    .label = ICON_FA_PASTE " Paste Block",
+                    .label = ICON_LC_CLIPBOARD_PASTE " Paste Block",
                     .shortcut = "CTRL+V",
                     .enabled = this->config.clipboardHasData,
                     .onClick = [this]() {

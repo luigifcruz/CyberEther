@@ -2,7 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_COMPONENTS_HINT_OVERLAY_HH
 
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <functional>
 #include <memory>
@@ -23,7 +23,7 @@ struct HintOverlay {
 
     struct Config {
         std::string id;
-        std::string icon = ICON_FA_LIGHTBULB;
+        std::string icon = ICON_LC_LIGHTBULB;
         std::string title;
         std::string subtitle;
         std::vector<std::string> steps;

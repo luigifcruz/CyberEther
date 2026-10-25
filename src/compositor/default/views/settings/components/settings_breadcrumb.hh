@@ -2,7 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_COMPONENTS_SETTINGS_BREADCRUMB_HH
 
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <functional>
 #include <string>
@@ -28,7 +28,7 @@ struct SettingsBreadcrumb : public Sakura::Stack {
             .font = Text::Font::Sans,
         });
         chevron.update({
-            .str = ICON_FA_CHEVRON_RIGHT,
+            .str = ICON_LC_CHEVRON_RIGHT,
             .tone = Text::Tone::Secondary,
             .scale = 0.7f,
             .verticalOffset = 1.0f,

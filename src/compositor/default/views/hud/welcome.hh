@@ -4,7 +4,7 @@
 #include "../components/assistant_composer.hh"
 
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <functional>
 #include <string>
@@ -144,7 +144,7 @@ struct WelcomeHudView {
         buttonSpacing.update({});
         versionSpacing.update({});
         newCell.update({
-            .icon = ICON_FA_FILE_CIRCLE_PLUS,
+            .icon = ICON_LC_FILE_PLUS_2,
             .title = "New Flowgraph",
             .iconColorKey = "welcome_icon_new",
             .onClick = [this]() {
@@ -154,7 +154,7 @@ struct WelcomeHudView {
             },
         });
         openCell.update({
-            .icon = ICON_FA_FOLDER_OPEN,
+            .icon = ICON_LC_FOLDER_OPEN,
             .title = "Open Flowgraph",
             .iconColorKey = "welcome_icon_open",
             .onClick = [this]() {
@@ -164,7 +164,7 @@ struct WelcomeHudView {
             },
         });
         examplesCell.update({
-            .icon = ICON_FA_FLASK,
+            .icon = ICON_LC_FLASK_CONICAL,
             .title = "Examples",
             .iconColorKey = "welcome_icon_examples",
             .onClick = [this]() {
@@ -174,7 +174,7 @@ struct WelcomeHudView {
             },
         });
         websiteButton.update({
-            .str = ICON_FA_GLOBE " Website",
+            .str = ICON_LC_GLOBE " Website",
             .size = {Sakura::Fill, 34.0f},
             .chrome = true,
             .colorKey = "welcome_card_bg",
@@ -183,7 +183,7 @@ struct WelcomeHudView {
             .onClick = this->config.onOpenWebsite,
         });
         docsButton.update({
-            .str = ICON_FA_BOOK " Docs",
+            .str = ICON_LC_BOOK " Docs",
             .size = {Sakura::Fill, 34.0f},
             .chrome = true,
             .colorKey = "welcome_card_bg",
@@ -192,7 +192,7 @@ struct WelcomeHudView {
             .onClick = this->config.onOpenDocs,
         });
         settingsButton.update({
-            .str = ICON_FA_GEAR " Settings",
+            .str = ICON_LC_SETTINGS " Settings",
             .size = {Sakura::Fill, 34.0f},
             .chrome = true,
             .colorKey = "welcome_card_bg",
@@ -201,7 +201,7 @@ struct WelcomeHudView {
             .onClick = this->config.onOpenSettings,
         });
         aboutButton.update({
-            .str = ICON_FA_CIRCLE_INFO " About",
+            .str = ICON_LC_INFO " About",
             .size = {Sakura::Fill, 34.0f},
             .chrome = true,
             .colorKey = "welcome_card_bg",

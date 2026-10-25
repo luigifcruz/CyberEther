@@ -3,7 +3,7 @@
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/typography.hh>
-#include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "../context.hh"
 #include "../metrics.hh"
@@ -174,7 +174,7 @@ void Voice::layout(const Context& ctx) {
     layoutChild(ctx, state.badge, bounds);
 
     state.glyph.update({
-        .str = ICON_FA_XMARK,
+        .str = ICON_LC_X,
         .colorKey = "text_secondary",
         .scale = kDismissGlyph / Typography::FontSize,
         .opacity = badgeShown ? alpha : 0.0f,

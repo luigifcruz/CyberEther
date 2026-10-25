@@ -10,7 +10,7 @@
 #include <jetstream/render/sakura/components/surface_image.hh>
 #include <jetstream/render/sakura/components/text.hh>
 
-#include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "harness.hh"
 #include "fonts.hh"
@@ -130,8 +130,8 @@ class SurfaceTexture final : public Render::Texture {
 
 bool ButtonGlyph(const Sakura::Text& text) {
     const auto& str = text.config().str;
-    return str == ICON_FA_XMARK || str == ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER ||
-           str == ICON_FA_DOWN_LEFT_AND_UP_RIGHT_TO_CENTER;
+    return str == ICON_LC_X || str == ICON_LC_MAXIMIZE_2 ||
+           str == ICON_LC_MINIMIZE_2;
 }
 
 const Sakura::Text* GlyphIn(Sakura::Component& dock, const Rect& card, const std::string& icon) {
@@ -1584,7 +1584,7 @@ TEST_CASE("Strip tab icons sit centered in a badge before the title", "[core][sa
     Dock dock;
     Host host(dock);
     auto paneA = MakePane("a", &a);
-    paneA.icon = ICON_FA_TERMINAL;
+    paneA.icon = ICON_LC_TERMINAL;
     dock.update({.tabs = true, .panes = {paneA, MakePane("b", &b)}, .activate = "a",
                  .onBarPress = [&](U8 clicks) { presses.push_back(clicks); }});
     host.place(ctx, kScreen);
@@ -1610,7 +1610,7 @@ TEST_CASE("Strip tabs share one track with a bordered active capsule, dividers a
     Dock dock;
     Host host(dock);
     auto paneB = MakePane("b");
-    paneB.icon = ICON_FA_TERMINAL;
+    paneB.icon = ICON_LC_TERMINAL;
     dock.update({.tabs = true, .panes = {MakePane("a"), paneB, MakePane("c"), MakePane("d")}, .activate = "a"});
     host.place(ctx, kScreen);
 
@@ -1884,7 +1884,7 @@ TEST_CASE("Tile headers show only the title, aligned to the content edge, with b
     Dock dock;
     Host host(dock);
     auto paneA = MakePane("a", &a);
-    paneA.icon = ICON_FA_CHART_LINE;
+    paneA.icon = ICON_LC_CHART_LINE;
     paneA.onClose = [&] { ++closedA; };
     auto paneB = MakePane("b", &b);
     paneB.padding = 12.0f;
@@ -1907,12 +1907,12 @@ TEST_CASE("Tile headers show only the title, aligned to the content edge, with b
     }
 
     const Rect card = {6.0f, 6.0f, 391.0f, 588.0f};
-    const auto* cross = GlyphIn(dock, card, ICON_FA_XMARK);
+    const auto* cross = GlyphIn(dock, card, ICON_LC_X);
     REQUIRE(cross);
     const Rect glyph = Peek::Frame(*cross);
     CHECK(glyph.right() == Catch::Approx(card.right() - (texts[0].x - card.x)));
     CHECK(glyph.y + glyph.height * 0.5f == Catch::Approx(texts[0].y + texts[0].height * 0.5f));
-    const auto* crossB = GlyphIn(dock, {403.0f, 6.0f, 391.0f, 588.0f}, ICON_FA_XMARK);
+    const auto* crossB = GlyphIn(dock, {403.0f, 6.0f, 391.0f, 588.0f}, ICON_LC_X);
     REQUIRE(crossB);
     CHECK(Peek::Frame(*crossB).right() == Catch::Approx(794.0f - 12.0f));
 
@@ -1953,13 +1953,13 @@ TEST_CASE("Header buttons are centered icon glyphs that recolor on hover and fli
         return text->config();
     };
     const Rect card = {6.0f, 6.0f, 391.0f, 588.0f};
-    const auto expand = std::string(ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER);
-    const auto compress = std::string(ICON_FA_DOWN_LEFT_AND_UP_RIGHT_TO_CENTER);
-    CHECK(glyph(card, ICON_FA_XMARK).colorKey == "tile_header_text");
+    const auto expand = std::string(ICON_LC_MAXIMIZE_2);
+    const auto compress = std::string(ICON_LC_MINIMIZE_2);
+    CHECK(glyph(card, ICON_LC_X).colorKey == "tile_header_text");
     CHECK(glyph(card, expand).colorKey == "tile_header_text");
-    CHECK(glyph(card, expand).scale < glyph(card, ICON_FA_XMARK).scale);
+    CHECK(glyph(card, expand).scale < glyph(card, ICON_LC_X).scale);
     const Rect expandFrame = Peek::Frame(*GlyphIn(dock, card, expand));
-    const Rect crossFrame = Peek::Frame(*GlyphIn(dock, card, ICON_FA_XMARK));
+    const Rect crossFrame = Peek::Frame(*GlyphIn(dock, card, ICON_LC_X));
     CHECK(expandFrame.y + expandFrame.height * 0.5f == Catch::Approx(crossFrame.y + crossFrame.height * 0.5f));
     CHECK(expandFrame.right() < crossFrame.x);
 
@@ -1967,7 +1967,7 @@ TEST_CASE("Header buttons are centered icon glyphs that recolor on hover and fli
     host.send(Mouse(MouseEventType::Move, point.x, point.y));
     host.place(ctx, kScreen);
     CHECK(glyph(card, expand).colorKey == "tile_button_hover");
-    CHECK(glyph(card, ICON_FA_XMARK).colorKey == "tile_header_text");
+    CHECK(glyph(card, ICON_LC_X).colorKey == "tile_header_text");
     CHECK(Direct<Sakura::Box>(dock).size() > 0);
     for (auto* box : Direct<Sakura::Box>(dock)) {
         for (const auto& instance : box->config().instances) {
@@ -1985,7 +1985,7 @@ TEST_CASE("Header buttons are centered icon glyphs that recolor on hover and fli
     host.send(Mouse(MouseEventType::Move, closePoint.x, closePoint.y));
     host.place(ctx, kScreen);
     CHECK(glyph(full, compress).colorKey == "tile_header_text");
-    CHECK(glyph(full, ICON_FA_XMARK).colorKey == "tile_button_hover");
+    CHECK(glyph(full, ICON_LC_X).colorKey == "tile_button_hover");
 }
 
 TEST_CASE("Header buttons are not drag handles while the rest of the header is", "[core][sakura][dock]") {
@@ -2534,15 +2534,15 @@ TEST_CASE("Pane header actions sit left of maximize, show their state and hover,
     const auto update = [&] {
         auto paneA = MakePane("a");
         paneA.onClose = [] {};
-        paneA.actions = {{.icon = ICON_FA_SLIDERS, .active = active, .onClick = [&] { ++clicks; }}};
+        paneA.actions = {{.icon = ICON_LC_SLIDERS_HORIZONTAL, .active = active, .onClick = [&] { ++clicks; }}};
         dock.update({.panes = {paneA, MakePane("b")}});
         host.place(ctx, kScreen);
     };
     update();
 
     const Rect card = {6.0f, 6.0f, 391.0f, 588.0f};
-    const auto* action = GlyphIn(dock, card, ICON_FA_SLIDERS);
-    const auto* expand = GlyphIn(dock, card, ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER);
+    const auto* action = GlyphIn(dock, card, ICON_LC_SLIDERS_HORIZONTAL);
+    const auto* expand = GlyphIn(dock, card, ICON_LC_MAXIMIZE_2);
     REQUIRE(action);
     REQUIRE(expand);
     const Rect actionFrame = Peek::Frame(*action);
@@ -2550,16 +2550,16 @@ TEST_CASE("Pane header actions sit left of maximize, show their state and hover,
     CHECK(actionFrame.right() < expandFrame.x);
     CHECK(actionFrame.y + actionFrame.height * 0.5f == Catch::Approx(expandFrame.y + expandFrame.height * 0.5f));
     CHECK(action->config().colorKey == "tile_header_text");
-    CHECK_FALSE(GlyphIn(dock, {403.0f, 6.0f, 391.0f, 588.0f}, ICON_FA_SLIDERS));
+    CHECK_FALSE(GlyphIn(dock, {403.0f, 6.0f, 391.0f, 588.0f}, ICON_LC_SLIDERS_HORIZONTAL));
 
     active = true;
     update();
-    CHECK(GlyphIn(dock, card, ICON_FA_SLIDERS)->config().colorKey == "cyber_blue");
+    CHECK(GlyphIn(dock, card, ICON_LC_SLIDERS_HORIZONTAL)->config().colorKey == "cyber_blue");
 
     const Extent2D<F32> center = {actionFrame.x + actionFrame.width * 0.5f, actionFrame.y + actionFrame.height * 0.5f};
     host.send(Mouse(MouseEventType::Move, center.x, center.y));
     update();
-    CHECK(GlyphIn(dock, card, ICON_FA_SLIDERS)->config().colorKey == "tile_button_hover");
+    CHECK(GlyphIn(dock, card, ICON_LC_SLIDERS_HORIZONTAL)->config().colorKey == "tile_button_hover");
     CHECK(Peek::CursorAt(dock, center) == SurfaceCursor::Hand);
 
     host.send(Mouse(MouseEventType::Click, center.x, center.y));
@@ -2586,7 +2586,7 @@ TEST_CASE("Strip tab close button shows on the active or hovered tab, faint unti
     const auto opacities = [&] {
         std::vector<F32> values;
         for (auto* text : Direct<Sakura::Text>(dock)) {
-            if (text->config().str == ICON_FA_XMARK && text->config().opacity > 0.0f) {
+            if (text->config().str == ICON_LC_X && text->config().opacity > 0.0f) {
                 values.push_back(text->config().opacity);
             }
         }
@@ -2594,7 +2594,7 @@ TEST_CASE("Strip tab close button shows on the active or hovered tab, faint unti
     };
     CHECK(opacities() == std::vector<F32>{0.35f});
     for (auto* text : Direct<Sakura::Text>(dock)) {
-        if (text->config().str == ICON_FA_XMARK && text->config().opacity > 0.0f) {
+        if (text->config().str == ICON_LC_X && text->config().opacity > 0.0f) {
             const Rect frame = Peek::Frame(*text);
             CHECK(frame.x + frame.width * 0.5f == Catch::Approx(492.0f - 7.0f - 8.0f));
         }
@@ -2609,7 +2609,7 @@ TEST_CASE("Strip tab close button shows on the active or hovered tab, faint unti
     CHECK(opacities() == std::vector<F32>{1.0f, 0.35f});
     std::vector<F32> centers;
     for (auto* text : Direct<Sakura::Text>(dock)) {
-        if (text->config().str == ICON_FA_XMARK && text->config().opacity > 0.0f) {
+        if (text->config().str == ICON_LC_X && text->config().opacity > 0.0f) {
             const Rect frame = Peek::Frame(*text);
             centers.push_back(frame.x + frame.width * 0.5f);
         }

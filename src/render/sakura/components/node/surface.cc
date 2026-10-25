@@ -5,7 +5,7 @@
 #include <jetstream/render/sakura/components/image.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/surface_image.hh>
-#include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "../../detail/helpers.hh"
 #include "../../metrics.hh"
@@ -49,7 +49,7 @@ void NodeSurface::update(Config config) {
         .onSize = impl->config.onSize,
     });
     impl->icon.update({
-        .str = ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER,
+        .str = ICON_LC_MAXIMIZE_2,
         .colorKey = "action_btn_text",
     });
 }

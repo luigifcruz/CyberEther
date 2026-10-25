@@ -3,7 +3,7 @@
 
 #include "../../components/modal_header.hh"
 #include "jetstream/render/sakura/base.hh"
-#include "jetstream/render/tools/icons_fa.hh"
+#include "jetstream/render/tools/icons_lucide.hh"
 
 #include <functional>
 #include <memory>
@@ -75,7 +75,7 @@ struct FlowgraphExamplesView {
 
         this->config = std::move(config);
         header.update({
-            .title = ICON_FA_STORE " Flowgraph Examples",
+            .title = ICON_LC_STORE " Flowgraph Examples",
             .description = "Examples open in a fresh tab and start processing automatically once their inputs and devices are ready.",
         });
         emptyText.update({
