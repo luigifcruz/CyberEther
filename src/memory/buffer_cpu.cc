@@ -192,6 +192,10 @@ class CpuBackend final : public Backend {
         return dataPtr;
     }
 
+    const void* hostAddress() const override {
+        return dataPtr;
+    }
+
     bool isBorrowed() const override {
         return borrowed;
     }

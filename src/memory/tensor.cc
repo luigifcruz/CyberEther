@@ -1166,6 +1166,31 @@ const Index& Tensor::id() const {
     return impl->identifier;
 }
 
+bool Tensor::sharesStorage(const Tensor& other) const {
+    if (!impl || !other.impl) {
+        return false;
+    }
+
+    for (auto lhs = impl->storage; lhs; lhs = lhs->backingStorage) {
+        for (auto rhs = other.impl->storage; rhs; rhs = rhs->backingStorage) {
+            if (lhs == rhs) {
+                return true;
+            }
+
+            for (const auto& [_, lhsBuffer] : lhs->buffers) {
+                for (const auto& [_, rhsBuffer] : rhs->buffers) {
+                    if (PointerRangesOverlap(lhsBuffer.hostData(), lhsBuffer.sizeBytes(),
+                                             rhsBuffer.hostData(), rhsBuffer.sizeBytes())) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
 bool Tensor::hasAttribute(const std::string& key) const {
     if (!impl) {
         return false;
@@ -1288,6 +1313,30 @@ std::any Tensor::attribute(const std::string& key) const {
 
     JST_ERROR("[MEMORY:TENSOR] Attribute '{}' does not exist.", key);
     return std::any();
+}
+
+bool Tensor::inheritsAttributes(const Tensor& other) const {
+    if (!impl || !other.impl) {
+        return false;
+    }
+
+    for (const Impl* current = impl->attributeSource.get(); current; current = current->attributeSource.get()) {
+        if (current == other.impl.get()) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool Tensor::derivesAttributes() const {
+    for (const Impl* current = impl.get(); current; current = current->attributeSource.get()) {
+        if (!current->derivedAttributes.empty()) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 Result Tensor::propagateAttributes(const Tensor& source) {
