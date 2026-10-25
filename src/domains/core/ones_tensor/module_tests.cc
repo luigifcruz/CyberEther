@@ -100,8 +100,9 @@ TEST_CASE("Ones Tensor Module - Repeated compute rematerializes the same tensor"
             REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
 
             std::unordered_set<std::string> skippedModules;
+            std::unordered_set<std::string> stalledModules;
             std::unordered_set<std::string> failedModules;
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
             REQUIRE(skippedModules.empty());
 
             const auto initialId = module->outputs().at("buffer").tensor.id();
@@ -116,7 +117,9 @@ TEST_CASE("Ones Tensor Module - Repeated compute rematerializes the same tensor"
             corruptedOutput.at<F32>(3) = 0.0f;
 
             skippedModules.clear();
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+
+            stalledModules.clear();
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
             REQUIRE(skippedModules.empty());
 
             const auto& secondOutput = module->outputs().at("buffer").tensor;

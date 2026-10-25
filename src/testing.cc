@@ -168,8 +168,9 @@ Result TestContext::compute() {
     }
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    const auto computeResult = pimpl->runtime->compute({}, skippedModules, failedModules);
+    const auto computeResult = pimpl->runtime->compute({}, skippedModules, stalledModules, failedModules);
     if (computeResult != Result::SUCCESS) {
         JST_ERROR("[TESTING] Failed to run compute: {}", pimpl->moduleType);
         return computeResult;

@@ -529,7 +529,9 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
                 }
             }
 
-            res = runtimes[i].runtime->compute(pendingModules, skippedModules, failedModules);
+            std::unordered_set<std::string> stalledModules;
+            res = runtimes[i].runtime->compute(pendingModules, skippedModules, stalledModules, failedModules);
+            skippedModules.insert(stalledModules.begin(), stalledModules.end());
 
             if (res == Result::SUCCESS) {
                 for (const auto& name : pendingModules) {

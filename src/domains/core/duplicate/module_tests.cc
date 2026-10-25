@@ -226,8 +226,9 @@ TEST_CASE("Duplicate Module - Rejected target preserves live output",
     REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
 
     const auto outputId = module->outputs().at("buffer").tensor.id();
     Parser::Map rejected;
@@ -244,8 +245,9 @@ TEST_CASE("Duplicate Module - Rejected target preserves live output",
     input.at<F32>(0) = 3.0f;
     input.at<F32>(1) = 4.0f;
     skippedModules.clear();
+    stalledModules.clear();
     failedModules.clear();
-    REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
 
     const auto& output = module->outputs().at("buffer").tensor;
     REQUIRE(output.id() == outputId);
@@ -291,8 +293,9 @@ TEST_CASE("Duplicate Module - None preserves input device",
             REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
 
             std::unordered_set<std::string> skippedModules;
+            std::unordered_set<std::string> stalledModules;
             std::unordered_set<std::string> failedModules;
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
             REQUIRE(skippedModules.empty());
 
             const auto& output = module->outputs().at("buffer").tensor;
@@ -357,8 +360,9 @@ TEST_CASE("Duplicate Module - CUDA preserves non-contiguous views", "[modules][d
             REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
 
             std::unordered_set<std::string> skippedModules;
+            std::unordered_set<std::string> stalledModules;
             std::unordered_set<std::string> failedModules;
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
             REQUIRE(skippedModules.empty());
 
             const auto& output = module->outputs().at("buffer").tensor;
@@ -422,8 +426,9 @@ TEST_CASE("Duplicate Module - CPU runtime can target CUDA output", "[modules][du
     REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+    REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
     REQUIRE(skippedModules.empty());
 
     const auto& output = module->outputs().at("buffer").tensor;
@@ -478,8 +483,9 @@ TEST_CASE("Duplicate Module - CUDA runtime can target CPU output", "[modules][du
             REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
 
             std::unordered_set<std::string> skippedModules;
+            std::unordered_set<std::string> stalledModules;
             std::unordered_set<std::string> failedModules;
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
             REQUIRE(skippedModules.empty());
 
             const auto& output = module->outputs().at("buffer").tensor;
