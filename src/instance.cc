@@ -1,4 +1,5 @@
 #include "jetstream/instance.hh"
+#include "jetstream/detail/scheduler_impl.hh"
 #include "jetstream/instance_remote.hh"
 #include "jetstream/logger.hh"
 #include "jetstream/types.hh"
@@ -446,6 +447,8 @@ Result Instance::compute() {
         JST_ASSERT(false, "[INSTANCE] Instance not started.");
     }
 
+    const U64 epoch = Scheduler::Impl::BeginComputeRound();
+
     // Copy flowgraph pointers while holding lock, then release before compute.
 
     std::vector<std::shared_ptr<Flowgraph>> flowgraphs;
@@ -465,6 +468,8 @@ Result Instance::compute() {
     for (const auto& flowgraph : flowgraphs) {
         JST_CHECK(flowgraph->compute());
     }
+
+    Scheduler::Impl::WaitComputeRound(epoch, std::chrono::milliseconds(100));
 
     return Result::SUCCESS;
 }

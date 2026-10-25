@@ -15,9 +15,9 @@ The structure is a chain of ownership. One instance owns the flowgraphs, each fl
 
 **Flowgraph** owns the graph itself: the blocks, the edges between them, the creation order, and the three shared facilities documented in [Metadata](/docs/metadata), namely the environment, the per-block metrics view, and the block metadata. All graph mutations go through it (`blockCreate`, `blockConnect`, `blockRecreate`, and friends), which is where downstream propagation, incomplete-block retries, and YAML import and export live. Each flowgraph owns one scheduler.
 
-**Scheduler** turns the module set into an execution plan. It keeps a topological order, identifies source modules, partitions the order into segments by runtime, and coordinates the compute and present threads. The synchronous scheduler guarantees that present never blocks waiting for compute, that compute yields to present at segment boundaries, and that structural changes safely halt both threads.
+**Scheduler** turns the module set into an execution plan. It keeps a topological order, identifies source modules, partitions the order into segments by runtime, and coordinates the compute and present threads. The synchronous scheduler guarantees that present never blocks waiting for compute, that compute yields to present at segment boundaries, and that structural changes safely halt both threads. Branches fed by different sources run independently, every module consumes exactly one frame from each input per step, and joins only pair inputs that come from the same source frames, as described in [the compute contract](/docs/blocks-and-modules#compute-contract).
 
-**Runtimes** execute segments. The native runtime calls module hooks directly, the Python runtime routes them through the embedded interpreter bridge. A runtime owns the modules assigned to its segment and reports per-module skip and failure sets back to the scheduler.
+**Runtimes** execute segments. The native runtime calls module hooks directly, the Python runtime routes them through the embedded interpreter bridge. A runtime owns the modules assigned to its segment and reports per-module skip, stall, and failure sets back to the scheduler.
 
 **Blocks and Modules** are the subject of [their own page](/docs/blocks-and-modules). In one sentence, blocks are the user-facing nodes a flowgraph stores, and modules are the device-specific kernels the scheduler runs.
 
@@ -33,7 +33,7 @@ The structure is a chain of ownership. One instance owns the flowgraphs, each fl
 
 CyberEther runs on two long-lived threads started by the run target:
 
-- The **compute thread** loops `instance->compute()`, which runs each flowgraph's scheduler cycle back to back. Its natural rate comes from source modules blocking in `hasPendingCompute()` until data is available. A graph with no blocking source is free-running.
+- The **compute thread** loops `instance->compute()`, which runs one scheduler cycle of every flowgraph back to back. Sources answer `hasPendingCompute()` immediately and notify the scheduler when new data arrives. When no flowgraph made progress in a round, the instance sleeps until a source notifies, a throttled module is due, or 100 ms pass. A graph whose sources are always ready is free-running.
 - The **present thread** loops `instance->present()`, which begins a render frame, lets each flowgraph present its surfaces, draws the compositor, and ends the frame. It runs at display rate.
 
 The synchronous scheduler mediates between them with a priority rule: present never waits for compute, and compute checks for a pending present request at every segment boundary and yields. This keeps the UI responsive regardless of how heavy the DSP is.
@@ -42,7 +42,7 @@ Graph mutations can originate from either thread, and from others besides, since
 
 Three consequences worth internalizing:
 
-- Anything called from the compute path must not block, or the entire flowgraph stalls. Sources are the single exception, and only inside `hasPendingCompute()`.
+- Anything called from the compute path must not block, or every branch of every flowgraph stalls. That includes `hasPendingCompute()`, which must return right away.
 - Shapes are settled when a block is created. The pipeline buffers are prepared then and reused on every cycle, and a change that alters a shape is a graph mutation rather than something the running pipeline absorbs.
 - Render resources are bound through queues processed at frame boundaries, so creating blocks with surfaces is safe from any thread. That is what makes the retry and remote paths sound.
 
@@ -50,7 +50,7 @@ Three consequences worth internalizing:
 
 **Creating a block.** `Flowgraph::blockCreate` builds the block through the registry, resolves the requested input links against existing block outputs, and runs the block lifecycle. The candidate interface is defined before semantic validation, so an invalid block can still expose its ports and editable fields. The block's `create()` instantiates modules, each module registers with the scheduler, and the scheduler rebuilds its topological order and segments. A block whose inputs cannot resolve yet is kept in the incomplete state rather than rejected.
 
-**A compute cycle.** The scheduler snapshots the source modules, polls each source's `hasPendingCompute()` until all report ready (this is where a blocking source paces the graph), then executes the segments in order. Each runtime runs its modules' `computeSubmit`, honoring the skip propagation and failure semantics described in [the compute contract](/docs/blocks-and-modules#compute-contract). Module failures are collected and converted into errored blocks after the cycle, and the rest of the graph keeps running.
+**A compute cycle.** The scheduler snapshots the source modules and polls each source's `hasPendingCompute()` once, without waiting. It then walks the segments in order and selects every module whose inputs all carry a frame it has not read, whose inputs come from the same source frames, and whose previous output has been read by all of its consumers. Each runtime runs the selected modules' `computeSubmit`, honoring the skip, stall, and failure semantics described in [the compute contract](/docs/blocks-and-modules#compute-contract). Module failures are collected and converted into errored blocks after the cycle, and the rest of the graph keeps running. When nothing ran, the scheduler reports its next throttle deadline and returns, and the instance decides whether to sleep.
 
 **Editing a configuration.** The compositor writes the change through `blockReconfigure`, which synchronizes with the scheduler and calls the block's `reconfigure`. An in-place change ends there. A `RECREATE` answer rebuilds affected blocks with the new configuration. Semantic validation errors also rebuild and publish the candidate as an errored block, preserving requested downstream links for recovery. If applying a validated edit fails, the flowgraph restores the previous graph state and returns the error.
 

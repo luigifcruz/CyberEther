@@ -64,7 +64,7 @@ Result WebsocketImplNativeCpu::create() {
 
 Result WebsocketImplNativeCpu::hasPendingCompute() {
     if (circularBuffer.size() < buffer.sizeBytes()) {
-        return circularBuffer.waitForSize(buffer.sizeBytes());
+        return Result::TIMEOUT;
     }
 
     return Result::SUCCESS;

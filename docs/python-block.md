@@ -110,7 +110,7 @@ def compute(ctx):
     ctx.outputs[0][...] = decode_symbol(ctx.inputs[0])
 ```
 
-The block and every downstream block are skipped for that cycle. All output tensors keep their fixed allocations, but their contents are not consumed downstream. The scheduler retries the block on the next cycle. Returning `None` (including an implicit return) or any other value completes the cycle normally. The global `SKIP` name is reserved for this behavior.
+The block emits an empty frame instead, and every downstream block drops its frames for that step without running. All output tensors keep their fixed allocations, but their contents are not consumed downstream. The block runs again on the next frame. Returning `None` (including an implicit return) or any other value completes the cycle normally. The global `SKIP` name is reserved for this behavior.
 
 ### CUDA Notes
 

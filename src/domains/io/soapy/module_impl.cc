@@ -6,6 +6,7 @@
 #include <new>
 
 #include <jetstream/memory/axis.hh>
+#include <jetstream/scheduler_context.hh>
 #include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Modules {
@@ -174,6 +175,7 @@ Result SoapyImpl::startReceiver() {
                 errored = true;
                 JST_FATAL("[MODULE_SOAPY] Device thread crashed.");
             }
+            Scheduler::Context::NotifyPendingCompute();
         });
     } catch (const std::exception& e) {
         streaming = false;
@@ -308,6 +310,7 @@ Result SoapyImpl::soapyThreadLoop() {
             break;
         } else if (action == SoapyReceiveStatus::Action::Samples) {
             stream.push(readGeneration, tmp.data(), received.sampleCount);
+            Scheduler::Context::NotifyPendingCompute();
             const U64 capacity = stream.capacity();
             if (capacity > 0) {
                 const F32 newHealth = static_cast<F32>(stream.size()) /

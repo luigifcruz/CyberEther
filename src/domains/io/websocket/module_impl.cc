@@ -5,6 +5,7 @@
 
 #include <jetstream/memory/axis.hh>
 #include <jetstream/memory/macros.hh>
+#include <jetstream/scheduler_context.hh>
 #include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Modules {
@@ -210,7 +211,9 @@ void WebsocketImpl::receiveBinaryData(const I8* data, const U64 numBytes) {
         return;
     }
 
-    if (circularBuffer.push(data, numBytes) != Result::SUCCESS) {
+    const auto pushed = circularBuffer.push(data, numBytes);
+    Scheduler::Context::NotifyPendingCompute();
+    if (pushed != Result::SUCCESS) {
         errored = true;
         return;
     }

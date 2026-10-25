@@ -11,7 +11,8 @@ struct JETSTREAM_API Scheduler::Context {
     virtual Result presentSubmit();
 
     virtual Result hasPendingCompute();
-    virtual Result hasPendingPresent();
+
+    static void NotifyPendingCompute();
 };
 
 }  // namespace Jetstream
