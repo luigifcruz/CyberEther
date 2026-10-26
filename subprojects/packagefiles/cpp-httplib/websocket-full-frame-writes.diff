@@ -1,0 +1,73 @@
+diff --git a/httplib.h b/httplib.h
+--- a/httplib.h
++++ b/httplib.h
+@@ -5786,6 +5786,16 @@
+ inline bool write_websocket_frame(Stream &strm, ws::Opcode opcode,
+                                   const char *data, size_t len, bool fin,
+                                   bool mask) {
++  auto write_all = [&strm](const char *d, size_t l) {
++    while (l > 0) {
++      auto n = strm.write(d, l);
++      if (n <= 0) { return false; }
++      d += n;
++      l -= static_cast<size_t>(n);
++    }
++    return true;
++  };
++
+   // First byte: FIN + opcode
+   uint8_t header[2];
+   header[0] = static_cast<uint8_t>((fin ? 0x80 : 0x00) |
+@@ -5795,32 +5805,32 @@
+   if (len < 126) {
+     header[1] = static_cast<uint8_t>(len);
+     if (mask) { header[1] |= 0x80; }
+-    if (strm.write(reinterpret_cast<char *>(header), 2) < 0) { return false; }
++    if (!write_all(reinterpret_cast<char *>(header), 2)) { return false; }
+   } else if (len <= 0xFFFF) {
+     header[1] = 126;
+     if (mask) { header[1] |= 0x80; }
+-    if (strm.write(reinterpret_cast<char *>(header), 2) < 0) { return false; }
++    if (!write_all(reinterpret_cast<char *>(header), 2)) { return false; }
+     uint8_t ext[2];
+     ext[0] = static_cast<uint8_t>((len >> 8) & 0xFF);
+     ext[1] = static_cast<uint8_t>(len & 0xFF);
+-    if (strm.write(reinterpret_cast<char *>(ext), 2) < 0) { return false; }
++    if (!write_all(reinterpret_cast<char *>(ext), 2)) { return false; }
+   } else {
+     header[1] = 127;
+     if (mask) { header[1] |= 0x80; }
+-    if (strm.write(reinterpret_cast<char *>(header), 2) < 0) { return false; }
++    if (!write_all(reinterpret_cast<char *>(header), 2)) { return false; }
+     uint8_t ext[8];
+     for (int i = 7; i >= 0; i--) {
+       ext[7 - i] =
+           static_cast<uint8_t>((static_cast<uint64_t>(len) >> (i * 8)) & 0xFF);
+     }
+-    if (strm.write(reinterpret_cast<char *>(ext), 8) < 0) { return false; }
++    if (!write_all(reinterpret_cast<char *>(ext), 8)) { return false; }
+   }
+ 
+   if (mask) {
+     // Generate random mask key
+     uint8_t mask_key[4];
+     fill_random_bytes(mask_key, sizeof(mask_key));
+-    if (strm.write(reinterpret_cast<char *>(mask_key), 4) < 0) { return false; }
++    if (!write_all(reinterpret_cast<char *>(mask_key), 4)) { return false; }
+ 
+     // Write masked payload in chunks
+     const size_t chunk_size = 4096;
+@@ -5831,11 +5841,11 @@
+         buf[i] =
+             data[offset + i] ^ static_cast<char>(mask_key[(offset + i) % 4]);
+       }
+-      if (strm.write(buf.data(), n) < 0) { return false; }
++      if (!write_all(buf.data(), n)) { return false; }
+     }
+   } else {
+     if (len > 0) {
+-      if (strm.write(data, len) < 0) { return false; }
++      if (!write_all(data, len)) { return false; }
+     }
+   }
+ 

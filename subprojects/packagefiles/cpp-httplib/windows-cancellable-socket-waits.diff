@@ -1,7 +1,7 @@
 diff --git a/httplib.h b/httplib.h
 --- a/httplib.h
 +++ b/httplib.h
-@@ -1941,6 +1941,10 @@
+@@ -2045,6 +2045,10 @@
  
  protected:
    Error error_ = Error::Success;
@@ -12,37 +12,34 @@ diff --git a/httplib.h b/httplib.h
  };
  
  class TaskQueue {
-@@ -2914,7 +2918,11 @@
-   // These are all protected under socket_mutex
+@@ -3023,6 +3027,9 @@
    size_t socket_requests_in_flight_ = 0;
    std::thread::id socket_requests_are_from_thread_ = std::thread::id();
-+#ifdef _WIN32
-+  std::atomic<bool> socket_should_be_closed_when_request_is_done_{false};
-+#else
    bool socket_should_be_closed_when_request_is_done_ = false;
++#ifdef _WIN32
++  std::atomic<bool> socket_cancelled_{false};
 +#endif
  
    // Hostname to connection target map. The value is an IP literal or another
    // hostname; only the connection target changes, never the identity.
-@@ -6427,6 +6435,42 @@
- inline ssize_t select_write(socket_t sock, time_t sec, time_t usec) {
+@@ -6721,6 +6728,32 @@
    return select_impl(sock, POLLOUT, sec, usec);
  }
-+
+ 
 +#ifdef _WIN32
-+inline ssize_t select_impl(socket_t sock, short events, time_t sec,
-+                           time_t usec, const std::atomic<bool> *cancelled) {
-+  if (!cancelled) { return select_impl(sock, events, sec, usec); }
++// Winsock shutdown does not reliably wake WSAPoll. Bound each wait so
++// ClientImpl::stop() also interrupts a blocked write, preserving the full
++// write timeout when the request has not been cancelled.
++inline ssize_t select_write(socket_t sock, time_t sec, time_t usec,
++                            const std::atomic<bool> *cancelled) {
++  if (!cancelled) { return select_write(sock, sec, usec); }
 +
-+  // Winsock shutdown does not reliably wake WSAPoll. Bound each wait so
-+  // ClientImpl::stop() also interrupts an idle peer, preserving the full
-+  // read/write timeout when the request has not been cancelled.
 +  auto timeout = sec < 0 ? -1 : static_cast<int>(sec * 1000 + usec / 1000);
 +  const auto deadline = std::chrono::steady_clock::now() +
 +                        std::chrono::milliseconds(timeout);
 +  while (!cancelled->load()) {
 +    auto interval = timeout < 0 ? 20 : (std::min)(timeout, 20);
-+    auto ret = select_impl(sock, events, 0, interval * 1000);
++    auto ret = select_impl(sock, POLLOUT, 0, interval * 1000);
 +    if (ret != 0 || timeout == 0) { return ret; }
 +    if (timeout > 0) {
 +      const auto remaining = deadline - std::chrono::steady_clock::now();
@@ -53,41 +50,12 @@ diff --git a/httplib.h b/httplib.h
 +  }
 +  return -1;
 +}
++#endif
 +
-+inline ssize_t select_read(socket_t sock, time_t sec, time_t usec,
-+                           const std::atomic<bool> *cancelled) {
-+  return select_impl(sock, POLLIN, sec, usec, cancelled);
-+}
-+
-+inline ssize_t select_write(socket_t sock, time_t sec, time_t usec,
-+                            const std::atomic<bool> *cancelled) {
-+  return select_impl(sock, POLLOUT, sec, usec, cancelled);
-+}
-+#endif
- 
- inline Error wait_until_socket_is_ready(socket_t sock, time_t sec,
-                                         time_t usec) {
-@@ -11974,7 +12018,11 @@
- 
- inline bool SocketStream::wait_readable() const {
-   if (max_timeout_msec_ <= 0) {
-+#ifdef _WIN32
-+    return select_read(sock_, read_timeout_sec_, read_timeout_usec_, cancelled_) > 0;
-+#else
-     return select_read(sock_, read_timeout_sec_, read_timeout_usec_) > 0;
-+#endif
-   }
- 
-   time_t read_timeout_sec;
-@@ -11982,11 +12030,19 @@
-   calc_actual_timeout(max_timeout_msec_, duration(), read_timeout_sec_,
-                       read_timeout_usec_, read_timeout_sec, read_timeout_usec);
- 
-+#ifdef _WIN32
-+  return select_read(sock_, read_timeout_sec, read_timeout_usec, cancelled_) > 0;
-+#else
-   return select_read(sock_, read_timeout_sec, read_timeout_usec) > 0;
-+#endif
+ // The point sec and usec from now, for select_until(). A negative sec never
+ // comes, as a negative timeout waits forever in select_impl().
+ inline std::chrono::steady_clock::time_point deadline_after(time_t sec,
+@@ -12662,7 +12695,11 @@
  }
  
  inline bool SocketStream::wait_writable() const {
@@ -99,27 +67,7 @@ diff --git a/httplib.h b/httplib.h
  }
  
  inline bool SocketStream::ensure_readable() {
-@@ -12524,7 +12580,11 @@
- 
- inline bool SSLSocketStream::wait_readable() const {
-   if (max_timeout_msec_ <= 0) {
-+#ifdef _WIN32
-+    return select_read(sock_, read_timeout_sec_, read_timeout_usec_, cancelled_) > 0;
-+#else
-     return select_read(sock_, read_timeout_sec_, read_timeout_usec_) > 0;
-+#endif
-   }
- 
-   time_t read_timeout_sec;
-@@ -12532,11 +12592,19 @@
-   calc_actual_timeout(max_timeout_msec_, duration(), read_timeout_sec_,
-                       read_timeout_usec_, read_timeout_sec, read_timeout_usec);
- 
-+#ifdef _WIN32
-+  return select_read(sock_, read_timeout_sec, read_timeout_usec, cancelled_) > 0;
-+#else
-   return select_read(sock_, read_timeout_sec, read_timeout_usec) > 0;
-+#endif
+@@ -13233,7 +13270,11 @@
  }
  
  inline bool SSLSocketStream::wait_writable() const {
@@ -131,13 +79,34 @@ diff --git a/httplib.h b/httplib.h
           !tls::is_peer_closed(session_, sock_);
  }
  
-@@ -14927,6 +14995,9 @@
+@@ -15651,6 +15692,9 @@
+     // of the request, we know another thread instructed us to close the
+     // socket.
+     socket_should_be_closed_when_request_is_done_ = false;
++#ifdef _WIN32
++    socket_cancelled_ = false;
++#endif
+ 
+     auto is_alive = false;
+     if (socket_.is_open()) {
+@@ -15717,6 +15761,10 @@
    });
  
    ret = process_socket(socket_, req.start_time_, [&](Stream &strm) {
 +#ifdef _WIN32
-+    strm.cancelled_ = &socket_should_be_closed_when_request_is_done_;
++    strm.cancelled_ = &socket_cancelled_;
++    strm.set_read_interrupt([this] { return socket_cancelled_.load(); });
 +#endif
      return handle_request(strm, req, res, close_connection, error);
    });
+ 
+@@ -17920,6 +17968,9 @@
+     // Aside from that, we set a flag for the socket to be closed when we're
+     // done.
+     socket_should_be_closed_when_request_is_done_ = true;
++#ifdef _WIN32
++    socket_cancelled_ = true;
++#endif
+     return;
+   }
  
