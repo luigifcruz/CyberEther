@@ -48,6 +48,12 @@ constexpr auto kCloseGrace = std::chrono::milliseconds(750);
 constexpr auto kSocketCloseGrace = std::chrono::milliseconds(1000);
 constexpr U64 kPingIntervalSeconds = 20;
 constexpr auto kIdleWait = std::chrono::milliseconds(10);
+constexpr const char* kGreeting = "Greet the user now with one short sentence and ask what they want "
+                                  "to work on, then pause and listen.";
+constexpr const char* kSummaryRequest = "The tool budget for this request is used up. Do not call any tools. "
+                                        "Summarize for the user what was done and what remains.";
+constexpr const char* kBudgetNotice = "Tell the user in one short sentence that the tool budget for this request "
+                                      "ran out, then ask how they want to continue.";
 
 std::string EventError(const nlohmann::json& event) {
     auto message = Detail::Wire::Error(event);
@@ -97,6 +103,7 @@ struct Live::Impl {
     std::atomic<bool> closing{false};
     std::atomic<bool> sessionClosed{false};
     std::atomic<bool> delegating{false};
+    std::atomic<bool> toolsExhausted{false};
     std::atomic<bool> readerDone{false};
     std::atomic<bool> orphaned{false};
     std::atomic<std::thread::id> ioId{};
@@ -193,6 +200,25 @@ struct Live::Impl {
 
         sentEvents.fetch_add(1);
         return true;
+    }
+
+    bool appendCommentary(const std::string& content) {
+        return sendEvent({
+            {"type", "session.commentary.append"},
+            {"delegation_id", nullptr},
+            {"content", content},
+        });
+    }
+
+    bool appendUserMessage(const std::string& text, const std::vector<std::string>& images = {}) {
+        return sendEvent({
+            {"type", "response.item.create"},
+            {"item", {
+                {"type", "message"},
+                {"role", "user"},
+                {"content", Detail::Responses::InputContent(text, images)},
+            }},
+        });
     }
 
     std::string describeTransportFailure() const {
@@ -343,6 +369,9 @@ struct Live::Impl {
         }
 
         const bool input = type == "session.input_transcript.done";
+        if (input) {
+            toolsExhausted.store(false);
+        }
         emit(input ? callbacks.onInputTranscriptDone : callbacks.onOutputTranscriptDone);
         return true;
     }
@@ -367,6 +396,7 @@ struct Live::Impl {
             JST_INFO("[LIVE] Voice session started with '{}' delegating to '{}'.",
                      config.model, config.backendModel);
             setState(State::Listening);
+            appendCommentary(kGreeting);
             return;
         }
 
@@ -536,6 +566,7 @@ struct Live::Impl {
     void resetSession() {
         closing.store(false);
         sessionClosed.store(false);
+        toolsExhausted.store(false);
         receivedEvents.store(0);
         sentEvents.store(0);
         lastEventLabel.clear();
@@ -678,37 +709,30 @@ void Live::send(const std::vector<I16>& samples) {
 }
 
 void Live::reply(const ToolOutputs& outputs, bool disableTools) {
-    nlohmann::json imageMessages = nlohmann::json::array();
+    const bool stalled = impl->toolsExhausted.exchange(disableTools) && disableTools;
+
     for (const auto& [call, result] : outputs) {
         impl->sendEvent({
             {"type", "response.item.create"},
             {"item", Detail::Responses::FunctionOutput(call.id, result.content)},
         });
+    }
 
+    for (const auto& [call, result] : outputs) {
         if (!result.images.empty()) {
-            imageMessages.push_back({
-                {"type", "message"},
-                {"role", "user"},
-                {"content", Detail::Responses::InputContent(call.caption(), result.images)},
-            });
+            impl->appendUserMessage(call.caption(), result.images);
         }
     }
 
-    for (auto& message : imageMessages) {
-        impl->sendEvent({
-            {"type", "response.item.create"},
-            {"item", std::move(message)},
-        });
+    if (stalled) {
+        impl->appendCommentary(kBudgetNotice);
+        impl->emit(impl->callbacks.onDelegation, false);
+        return;
     }
-
     if (disableTools) {
-        impl->sendEvent({
-            {"type", "response.create"},
-            {"response", {{"tool_choice", "none"}}},
-        });
-    } else {
-        impl->sendEvent({{"type", "response.create"}});
+        impl->appendUserMessage(kSummaryRequest);
     }
+    impl->sendEvent({{"type", "response.create"}});
 }
 
 }  // namespace Jetstream::Agent
