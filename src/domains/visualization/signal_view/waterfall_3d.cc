@@ -583,8 +583,10 @@ void SignalViewWaterfall3D::processInputEvents(std::vector<InputEvent>&& events)
                 break;
             }
             case MouseEventType::Scroll: {
-                cameraGoal.dolly(std::exp(-event.scroll.y * detail::kWaterfall3DDollySpeed));
-                cameraHome = false;
+                if (event.scroll.y != 0.0f) {
+                    cameraGoal.dolly(std::exp(-event.scroll.y * detail::kWaterfall3DDollySpeed));
+                    cameraHome = false;
+                }
                 break;
             }
             case MouseEventType::Enter: {

@@ -41,6 +41,7 @@ core_test_domains = {
     'render': [
         'render/colormap.cc',
         'render/components.cc',
+        'render/browser_wheel.cc',
         'render/input_state.cc',
         'render/present_list.cc',
         'render/transfers.cc',
@@ -131,6 +132,16 @@ if jst_is_macos and cfg_lst.get('JETSTREAM_LOADER_GLFW_AVAILABLE', false)
     )
     core_test_targets += [cocoa_titlebar_tests]
     test('core-cocoa-titlebar', cocoa_titlebar_tests,
+         suite: 'core', is_parallel: false, timeout: 60)
+    cocoa_pointer_tests = executable(
+        'jetstream-core-cocoa-pointer-tests',
+        'render/cocoa_pointer.mm',
+        dependencies: dep_lst + [catch2_dep],
+        link_with: libjetstream,
+        include_directories: inc_lst + [core_test_includes],
+    )
+    core_test_targets += [cocoa_pointer_tests]
+    test('core-cocoa-pointer', cocoa_pointer_tests,
          suite: 'core', is_parallel: false, timeout: 60)
 endif
 if cfg_lst.get('JETSTREAM_RENDER_METAL_AVAILABLE', false)

@@ -98,6 +98,15 @@ enum class JETSTREAM_API MouseEventType : U8 {
     Cancel = 6,
 };
 
+enum class JETSTREAM_API ScrollPhase : U8 {
+    None = 0,
+    Began = 1,
+    Changed = 2,
+    Ended = 3,
+    Momentum = 4,
+    MomentumEnded = 5,
+};
+
 struct JETSTREAM_API MouseEvent {
     MouseEventType type;
     MouseButton button;
@@ -107,6 +116,8 @@ struct JETSTREAM_API MouseEvent {
     U8 clicks = 1;
     bool cancel = false;
     bool positioned = true;
+    ScrollPhase phase = ScrollPhase::None;
+    bool precise = false;
 };
 
 struct JETSTREAM_API FocusEvent {
