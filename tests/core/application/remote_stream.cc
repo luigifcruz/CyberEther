@@ -1393,6 +1393,66 @@ TEST_CASE("Remote broker admits, relays, and ends a viewer session",
     CHECK(next.closed());
 }
 
+TEST_CASE("Remote hosts approve and remove viewer sessions by their full id",
+          "[core][application][remote][broker]") {
+    Stream stream;
+    auto& remote = stream.remote;
+    gst_init(nullptr, nullptr);
+    gst_init_static_plugins();
+    remote.config.broker = {.address = "127.0.0.1", .port = 0};
+    remote.size = {320, 240};
+    remote.inputMemoryDevice_ = DeviceType::CPU;
+    remote.encodingStrategy = Instance::Remote::Impl::EncodingStrategyType::Software;
+    REQUIRE(remote.createBroker() == Result::SUCCESS);
+    remote.started_ = true;
+
+    const auto join = [&](BrokerPeer& viewer) {
+        REQUIRE(viewer.connect());
+        viewer.send({{"type", "setPeerStatus"}, {"roles", {"listener"}}, {"meta", {{"token", remote.consumerToken}}}});
+        return viewer.next("sessionRegistered")["sessionId"].get<std::string>();
+    };
+    const auto roster = [&](std::size_t active, std::vector<std::string> waiting) {
+        return WaitFor([&] {
+            std::lock_guard<std::mutex> lock(remote.remoteStateMutex);
+            return remote.clients_.size() == active && remote.waitlist_ == waiting;
+        });
+    };
+
+    BrokerPeer first(remote.broker->origin(), "?tokenHash=" + BrokerTokenHash(remote.consumerToken));
+    BrokerPeer second(remote.broker->origin(), "?tokenHash=" + BrokerTokenHash(remote.consumerToken));
+    const std::string firstId = join(first);
+    REQUIRE(roster(0, {firstId}));
+    const std::string secondId = join(second);
+    REQUIRE(roster(0, {firstId, secondId}));
+
+    CHECK(remote.approveClient("") == Result::ERROR);
+    CHECK(remote.approveClient(firstId.substr(firstId.size() - 6)) == Result::ERROR);
+    CHECK(remote.removeClient("") == Result::ERROR);
+    CHECK(remote.removeClient("unknown-session") == Result::ERROR);
+
+    REQUIRE(remote.approveClient(firstId) == Result::SUCCESS);
+    CHECK(first.next("sessionStarted")["sessionId"] == firstId);
+    REQUIRE(roster(1, {secondId}));
+    {
+        std::lock_guard<std::mutex> lock(remote.remoteStateMutex);
+        CHECK(remote.clients_.front().sessionId == firstId);
+    }
+    CHECK(remote.approveClient(firstId) == Result::ERROR);
+
+    REQUIRE(remote.removeClient(secondId) == Result::SUCCESS);
+    CHECK(second.next("endSession")["sessionId"] == secondId);
+    REQUIRE(roster(1, {}));
+
+    REQUIRE(remote.removeClient(firstId) == Result::SUCCESS);
+    CHECK(first.next("endSession")["sessionId"] == firstId);
+    REQUIRE(roster(0, {}));
+
+    remote.started_ = false;
+    CHECK(remote.approveClient(firstId) == Result::ERROR);
+    CHECK(remote.removeClient(firstId) == Result::ERROR);
+    REQUIRE(remote.destroy() == Result::SUCCESS);
+}
+
 TEST_CASE("Remote streaming hosts its own broker",
           "[core][application][remote][broker]") {
     Stream stream;

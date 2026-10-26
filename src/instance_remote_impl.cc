@@ -95,8 +95,12 @@ std::vector<std::string> Instance::Remote::waitlist() const {
     return impl->waitlist_;
 }
 
-Result Instance::Remote::approveClient(const std::string& code) {
-    return impl->approveClient(code);
+Result Instance::Remote::approveClient(const std::string& sessionId) {
+    return impl->approveClient(sessionId);
+}
+
+Result Instance::Remote::removeClient(const std::string& sessionId) {
+    return impl->removeClient(sessionId);
 }
 
 bool Instance::Remote::Impl::supported() const {
@@ -313,41 +317,58 @@ Result Instance::Remote::Impl::processInput() {
     return Result::SUCCESS;
 }
 
-Result Instance::Remote::Impl::approveClient(const std::string& code) {
+Result Instance::Remote::Impl::approveClient(const std::string& sessionId) {
     if (!this->started_) {
         JST_ERROR("[REMOTE] Can't approve client when session is not started.");
         return Result::ERROR;
     }
 
-    auto to_lower = [](std::string_view s) {
-        std::string out(s);
-        std::transform(out.begin(), out.end(), out.begin(),
-                       [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
-        return out;
-    };
-
-    std::vector<std::string> waitlist;
+    bool waiting = false;
     {
         std::lock_guard<std::mutex> lock(remoteStateMutex);
-        waitlist = waitlist_;
+        waiting = !sessionId.empty() && std::ranges::find(waitlist_, sessionId) != waitlist_.end();
     }
-    for (const auto& sessionId : waitlist) {
-        JST_DEBUG("[REMOTE] Candidate session: {}", sessionId);
-
-        if (sessionId.ends_with(to_lower(code))) {
-            JST_INFO("[REMOTE] Client authorization code '{}' approved.", code);
-
-            if (!sendSignallerMessage({{"type", "approveSession"}, {"sessionId", sessionId}})) {
-                JST_ERROR("[REMOTE] Failed to send client approval.");
-                return Result::ERROR;
-            }
-
-            return Result::SUCCESS;
-        }
+    if (!waiting) {
+        JST_ERROR("[REMOTE] Client session '{}' not found.", sessionId);
+        return Result::ERROR;
     }
 
-    JST_ERROR("[REMOTE] Client authorization code '{}' not found.", code);
-    return Result::ERROR;
+    if (!sendSignallerMessage({{"type", "approveSession"}, {"sessionId", sessionId}})) {
+        JST_ERROR("[REMOTE] Failed to send client approval.");
+        return Result::ERROR;
+    }
+
+    JST_INFO("[REMOTE] Client session '{}' approved.", sessionId);
+    return Result::SUCCESS;
+}
+
+Result Instance::Remote::Impl::removeClient(const std::string& sessionId) {
+    if (!this->started_) {
+        JST_ERROR("[REMOTE] Can't remove client when session is not started.");
+        return Result::ERROR;
+    }
+
+    bool known = false;
+    {
+        std::lock_guard<std::mutex> lock(remoteStateMutex);
+        known = !sessionId.empty() &&
+                (std::ranges::find(waitlist_, sessionId) != waitlist_.end() ||
+                 std::ranges::any_of(clients_, [&](const auto& client) {
+                     return client.sessionId == sessionId;
+                 }));
+    }
+    if (!known) {
+        JST_ERROR("[REMOTE] Client session '{}' not found.", sessionId);
+        return Result::ERROR;
+    }
+
+    if (!sendSignallerMessage({{"type", "endSession"}, {"sessionId", sessionId}})) {
+        JST_ERROR("[REMOTE] Failed to remove client.");
+        return Result::ERROR;
+    }
+
+    JST_INFO("[REMOTE] Client session '{}' removed.", sessionId);
+    return Result::SUCCESS;
 }
 
 //

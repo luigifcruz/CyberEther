@@ -38,8 +38,8 @@ struct RemoteStreamingModalPresenter {
             .onStop = [enqueue]() {
                 enqueue(MailStopRemote{});
             },
-            .onApprove = [enqueue](const std::string& code) {
-                enqueue(MailApproveRemoteClient{code});
+            .onApprove = [enqueue](const std::string& sessionId) {
+                enqueue(MailApproveRemoteClient{sessionId});
             },
             .onOpenUrl = [enqueue](const std::string& url) {
                 enqueue(MailOpenUrl{.url = url, .notifyResult = true});

@@ -494,7 +494,11 @@ struct MailStartRemote {
 struct MailStopRemote {};
 
 struct MailApproveRemoteClient {
-    std::string code;
+    std::string sessionId;
+};
+
+struct MailRemoveRemoteClient {
+    std::string sessionId;
 };
 
 struct MailSurfaceInput {
@@ -632,6 +636,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailStartRemote,
                           MailStopRemote,
                           MailApproveRemoteClient,
+                          MailRemoveRemoteClient,
                           MailSurfaceInput,
                           MailResizeSurface>;
 

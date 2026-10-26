@@ -1,5 +1,4 @@
 #include "jetstream/instance_remote.hh"
-#include "jetstream/viewport/adapters/generic.hh"
 #include "jetstream/logger.hh"
 
 #include <memory>
@@ -7,8 +6,6 @@
 namespace Jetstream {
 
 struct Instance::Remote::Impl {
-    Viewport::Generic* viewport = nullptr;
-    DeviceType viewportDevice = DeviceType::None;
     bool started_ = false;
     std::string roomId_;
     std::string consumerToken;
@@ -40,12 +37,14 @@ struct Instance::Remote::Impl {
     Result approveClient(const std::string&) {
         return Result::ERROR;
     }
+
+    Result removeClient(const std::string&) {
+        return Result::ERROR;
+    }
 };
 
-Instance::Remote::Remote(Viewport::Generic* viewport) {
+Instance::Remote::Remote(Viewport::Generic*) {
     impl = std::make_shared<Impl>();
-    impl->viewport = viewport;
-    impl->viewportDevice = viewport ? viewport->device() : DeviceType::None;
 }
 
 Instance::Remote::~Remote() = default;
@@ -94,8 +93,12 @@ std::vector<std::string> Instance::Remote::waitlist() const {
     return impl->waitlist_;
 }
 
-Result Instance::Remote::approveClient(const std::string& code) {
-    return impl->approveClient(code);
+Result Instance::Remote::approveClient(const std::string& sessionId) {
+    return impl->approveClient(sessionId);
+}
+
+Result Instance::Remote::removeClient(const std::string& sessionId) {
+    return impl->removeClient(sessionId);
 }
 
 }  // namespace Jetstream

@@ -93,7 +93,8 @@ struct JETSTREAM_API Instance::Remote {
     std::vector<ClientInfo> clients() const;
     std::vector<std::string> waitlist() const;
 
-    Result approveClient(const std::string& code);
+    Result approveClient(const std::string& sessionId);
+    Result removeClient(const std::string& sessionId);
 
  private:
     std::shared_ptr<Impl> impl;

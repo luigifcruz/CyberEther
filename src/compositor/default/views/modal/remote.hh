@@ -117,9 +117,9 @@ struct RemoteView {
                 .str = row.pending ? "Approve" : "Approved",
                 .size = {Sakura::Fill, 0.0f},
                 .disabled = !row.pending,
-                .onClick = [this, code = row.code]() {
+                .onClick = [this, sessionId = row.sessionId]() {
                     if (this->config.onApprove) {
-                        this->config.onApprove(code);
+                        this->config.onApprove(sessionId);
                     }
                 },
             });

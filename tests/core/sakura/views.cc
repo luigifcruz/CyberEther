@@ -2716,8 +2716,8 @@ TEST_CASE("Remote modal shares the invite and approves only pending clients", "[
                        "open:https://cyberether.org/remote/abc",
                        "open:https://cyberether.org/remote/abc",
                        "copy:Access token:token-123",
-                       "approve:CDEF12",
-                       "approve:NDING9",
+                       "approve:session-abcdef12",
+                       "approve:zz-pending9",
                        "stop",
                    });
 }
