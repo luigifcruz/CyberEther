@@ -815,12 +815,14 @@ void SignalViewCanvas::updateState(const Context& context) {
                              static_cast<U32>(vs.x),
                              static_cast<U32>(vs.y)});
 
-    updateLabels(context);
+    if (updateLabels(context) != Result::SUCCESS) {
+        JST_ERROR("[MODULE_SIGNAL_VIEW] Failed to update plot labels.");
+    }
 }
 
 Result SignalViewCanvas::present(const Context& context) {
     JST_CHECK(applyTheme(context));
-    updateLabels(context);
+    JST_CHECK(updateLabels(context));
     JST_CHECK(updateMarkers(context));
     JST_CHECK(updateCursor(context));
 
@@ -859,7 +861,7 @@ Result SignalViewCanvas::present(const Context& context) {
     return Result::SUCCESS;
 }
 
-void SignalViewCanvas::updateLabels(const Context& context) {
+Result SignalViewCanvas::updateLabels(const Context& context) {
     const auto& config = context.config;
     const auto& paddingScale = axis->paddingScale();
     const bool lineplot = context.lineplot != nullptr;
@@ -876,9 +878,10 @@ void SignalViewCanvas::updateLabels(const Context& context) {
         axis->updateTitles(resolvedXLabel, combined ? "" : (lineplot
             ? config.amplitudeLabel
             : config.waterfallLabel));
-        const bool ticksVisible = lineplot &&
-            interaction.placement != SurfacePlacementType::Attached;
-        axis->setShowFrameTicks(ticksVisible);
+        JST_CHECK(axis->setShowFrameTicks(lineplot));
+        JST_CHECK(axis->setMinorTicks(interaction.placement == SurfacePlacementType::Attached
+            ? Render::Components::Axis::AttachedMinorTicks
+            : Render::Components::Axis::DetachedMinorTicks));
 
         auto xFormatter = [frequency, lineplot,
                            zoom = interaction.zoom, translation](const F32 position) {
@@ -935,38 +938,42 @@ void SignalViewCanvas::updateLabels(const Context& context) {
         text->update("hold", holdLabel);
 
         auto header = text->get("header");
-        if (interaction.placement == SurfacePlacementType::Attached) {
-            header.fill = " ";
-        } else {
-            header.position = {-paddingScale.x + pixelSize.x * tickOffset,
-                               paddingScale.y - pixelSize.y * tickOffset};
-            if (frequency.valid) {
-                header.fill = jst::fmt::format("CENTER {:.3f} MHz   SPAN {:.3f} MHz",
-                                               frequency.center / 1e6f,
-                                               frequency.sampleRate / 1e6f);
-            } else {
-                header.fill = "CENTER 0.000   SPAN 1.000";
-            }
-        }
-        text->update("header", header);
+        header.position = {-paddingScale.x + pixelSize.x * tickOffset,
+                           paddingScale.y - pixelSize.y * tickOffset};
+        const std::string center = frequency.valid
+            ? jst::fmt::format("CENTER {:.3f} MHz", frequency.center / 1e6f)
+            : std::string("CENTER 0.000");
+        const std::string span = frequency.valid
+            ? jst::fmt::format("SPAN {:.3f} MHz", frequency.sampleRate / 1e6f)
+            : std::string("SPAN 1.000");
+        const std::string full = center + "   " + span;
 
         auto zoomLabel = text->get("zoom");
         zoomLabel.position = {
-            paddingScale.x -
-                pixelSize.x * (axis->getConfig().majorTickLengthPx + 4.0f),
-            paddingScale.y -
-                pixelSize.y * (axis->getConfig().majorTickLengthPx + 4.0f),
+            paddingScale.x - pixelSize.x * tickOffset,
+            paddingScale.y - pixelSize.y * tickOffset,
         };
         zoomLabel.alignment = {2, 0};
         if (splitter.dragging) {
             zoomLabel.fill = jst::fmt::format("SPLIT {:.0f}%", splitter.ratio * 100.0f);
-        } else if (interaction.placement == SurfacePlacementType::Attached) {
-            zoomLabel.fill = " ";
         } else if (std::abs(interaction.zoom - 1.0f) > 0.01f) {
             zoomLabel.fill = jst::fmt::format("ZOOM {:.1f}x", interaction.zoom);
         } else {
             zoomLabel.fill = " ";
         }
+
+        const F32 room = pixelSize.x > 0.0f ? 2.0f * paddingScale.x / pixelSize.x - 2.0f * tickOffset : 0.0f;
+        const F32 zoomWidth = zoomLabel.fill == " " ? 0.0f : text->advance(zoomLabel.fill, zoomLabel.scale);
+        const auto fit = detail::FitSignalViewHeader(room,
+                                                     text->advance(full, header.scale),
+                                                     text->advance(center, header.scale),
+                                                     zoomWidth,
+                                                     tickOffset);
+        header.fill = fit.span ? full : center;
+        if (!fit.zoom) {
+            zoomLabel.fill = " ";
+        }
+        text->update("header", header);
         text->update("zoom", zoomLabel);
 
         auto amplitudeTitle = text->get("amplitude-title");
@@ -982,6 +989,8 @@ void SignalViewCanvas::updateLabels(const Context& context) {
         waterfallTitle.fill = combined ? config.waterfallLabel : " ";
         text->update("waterfall-title", waterfallTitle);
     }
+
+    return Result::SUCCESS;
 }
 
 F32 SignalViewCanvas::viewTranslation() const {
@@ -991,7 +1000,6 @@ F32 SignalViewCanvas::viewTranslation() const {
 std::optional<F32> SignalViewCanvas::cursorPoint(const Context& context) const {
     const bool visible = cursor.inside &&
                          !splitter.dragging &&
-                         interaction.placement != SurfacePlacementType::Attached &&
                          insidePlot(cursor.position) &&
                          context.numberOfElements >= 2;
     if (!visible) {
@@ -1095,8 +1103,7 @@ F32 SignalViewCanvas::pointAtX(const F32 x) const {
 
 std::optional<U64> SignalViewCanvas::markerAt(const Context& context,
                                               const Extent2D<F32>& position) const {
-    if (interaction.placement == SurfacePlacementType::Attached ||
-        context.numberOfElements < 2 || !insidePlot(position)) {
+    if (context.numberOfElements < 2 || !insidePlot(position)) {
         return std::nullopt;
     }
     const F32 pointerNdc = position.x * 2.0f - 1.0f;
@@ -1345,7 +1352,7 @@ Result SignalViewCanvas::updateMarkers(const Context& context) {
     const F32 lineHeight = markerText ? markerText->lineHeight(kLabelScale) : 0.0f;
     const F32 tagLineHeight = tagText ? tagText->lineHeight(kLabelScale) : 0.0f;
     const F32 headerOffset = axis->getConfig().majorTickLengthPx + 4.0f;
-    const F32 headerHeight = table ? tagLineHeight + 8.0f : 0.0f;
+    const F32 headerHeight = tagLineHeight + 8.0f;
     const F32 tagPadX = 6.0f;
     const F32 tagPadY = 2.0f;
     const F32 tagHeight = (tagPadY * 2.0f + tagLineHeight) * pixelSize.y;

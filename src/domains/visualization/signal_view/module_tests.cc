@@ -444,6 +444,32 @@ TEST_CASE("Signal View amplitude labels invert the soft display mapping",
     }
 }
 
+TEST_CASE("Signal View headers drop the span first and then the zoom label when narrow",
+          "[modules][signal_view][lineplot][labels]") {
+    using Modules::detail::FitSignalViewHeader;
+    const F32 full = 260.0f;
+    const F32 brief = 120.0f;
+    const F32 zoom = 70.0f;
+    const F32 gap = 10.0f;
+
+    auto fit = FitSignalViewHeader(400.0f, full, brief, zoom, gap);
+    CHECK(fit.span);
+    CHECK(fit.zoom);
+
+    fit = FitSignalViewHeader(full + gap + zoom - 1.0f, full, brief, zoom, gap);
+    CHECK_FALSE(fit.span);
+    CHECK(fit.zoom);
+
+    fit = FitSignalViewHeader(brief + gap + zoom - 1.0f, full, brief, zoom, gap);
+    CHECK_FALSE(fit.span);
+    CHECK_FALSE(fit.zoom);
+
+    fit = FitSignalViewHeader(full, full, brief, 0.0f, gap);
+    CHECK(fit.span);
+    fit = FitSignalViewHeader(full - 1.0f, full, brief, 0.0f, gap);
+    CHECK_FALSE(fit.span);
+}
+
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
 TEST_CASE("Axis vertical scale can move the divider without recreating resources",
           "[modules][signal_view][split][axis][regression]") {
@@ -521,6 +547,32 @@ TEST_CASE("Axis created in split mode reserves full height tick geometry",
             REQUIRE(std::equal(frame.begin(), frame.end(), data + (fullHeightLines - 4) * 4));
         }
     }
+    REQUIRE(axis.destroy(&window) == Result::SUCCESS);
+}
+
+TEST_CASE("Axis clamps minor ticks to the reserved capacity without reallocating",
+          "[modules][signal_view][axis][capacity]") {
+    using Axis = Render::Components::Axis;
+    SurfaceTestWindow window;
+    Axis::Config config;
+    config.minorTicks = 9;
+    config.font = std::make_shared<Render::Components::Font>(Render::Components::Font::Config{});
+    LabelTestAxis axis(config);
+    REQUIRE(axis.create(&window) == Result::SUCCESS);
+    REQUIRE(axis.getConfig().minorTicks == Axis::DetachedMinorTicks);
+    REQUIRE(axis.updatePixelSize({2.0f / 16384.0f, 2.0f / 16384.0f}) == Result::SUCCESS);
+    REQUIRE(axis.setShowFrameTicks(true) == Result::SUCCESS);
+
+    Render::Surface::Config resources;
+    REQUIRE(axis.surfaceUnderlay(resources) == Result::SUCCESS);
+    const auto& points = resources.kernels.front()->getConfig().buffers[1].first->getConfig();
+    const auto* originalPoints = points.buffer;
+
+    REQUIRE(axis.setMinorTicks(Axis::AttachedMinorTicks) == Result::SUCCESS);
+    CHECK(axis.getConfig().minorTicks == Axis::AttachedMinorTicks);
+    REQUIRE(axis.setMinorTicks(7) == Result::SUCCESS);
+    CHECK(axis.getConfig().minorTicks == Axis::DetachedMinorTicks);
+    CHECK(points.buffer == originalPoints);
     REQUIRE(axis.destroy(&window) == Result::SUCCESS);
 }
 
@@ -1032,21 +1084,36 @@ TEST_CASE("Cursor readout follows the mouse over the plot and hides when it leav
     shiftClick(quarter);
     REQUIRE(markerLabel(0, "tag") == "M1");
     REQUIRE(markerLabel(0, "x") == "100.5000 MHz");
+    REQUIRE(axis->getConfig().minorTicks == Render::Components::Axis::DetachedMinorTicks);
     module->surface()->pushSurfaceEvent({.type = SurfaceEventType::Resize,
                                          .size = {512, 512},
                                          .placement = SurfacePlacementType::Attached});
     REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+    REQUIRE(axis->getConfig().minorTicks == Render::Components::Axis::AttachedMinorTicks);
+    if (lineplot) REQUIRE(text->get("header").fill == "CENTER 100.000 MHz   SPAN 2.000 MHz");
     REQUIRE(cursorText->get("cursor-x").fill == " ");
     REQUIRE(cursorText->get("cursor-y").fill == " ");
     REQUIRE(markerLabel(0, "tag") == "M1");
     REQUIRE(markerLabel(0, "id") == " ");
     REQUIRE(markerLabel(0, "x") == " ");
     REQUIRE(markerLabel(0, "y") == " ");
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Move, .position = {0.5f, 0.5f},
+    });
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+    REQUIRE(cursorText->get("cursor-x").fill == "100.0000 MHz");
+    REQUIRE(cursorText->get("cursor-y").fill == amplitudeAt(4));
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Move, .position = quarter,
+    });
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+    REQUIRE(cursorText->get("cursor-x").fill == " ");
 
     module->surface()->pushSurfaceEvent({.type = SurfaceEventType::Resize,
                                          .size = {512, 512},
                                          .placement = SurfacePlacementType::Detached});
     REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+    REQUIRE(axis->getConfig().minorTicks == Render::Components::Axis::DetachedMinorTicks);
     REQUIRE(cursorText->get("cursor-x").fill == " ");
     module->surface()->pushInputEvent(MouseEvent{
         .type = MouseEventType::Move, .position = {0.5f, 0.5f},

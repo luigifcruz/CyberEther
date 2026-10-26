@@ -34,6 +34,10 @@ struct FrameImplAccess : Modules::FrameImpl {
     static auto renderSurfaceMember() {
         return &FrameImplAccess::renderSurface;
     }
+
+    static auto textMember() {
+        return &FrameImplAccess::text;
+    }
 };
 
 struct FrameViewFixture {
@@ -218,6 +222,62 @@ TEST_CASE("Frame redraws its retained surface only on input and new data",
     });
     REQUIRE(PresentRedraws(*presenter, surface));
     REQUIRE_FALSE(PresentRedraws(*presenter, surface));
+
+    REQUIRE(runtime.destroy() == Result::SUCCESS);
+    REQUIRE(module->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Frame header shows only the zoom while attached and hides the readout",
+          "[modules][frame][present][attached]") {
+    Tensor input(DeviceType::CPU, DataType::F32, {4, 4});
+    TensorMap inputs;
+    inputs["frame"].tensor = input;
+    auto window = std::make_shared<SurfaceTestWindow>();
+    std::shared_ptr<Module> module;
+    REQUIRE(Registry::BuildModule("frame", DeviceType::CPU, RuntimeType::NATIVE,
+                                  "generic", module) == Result::SUCCESS);
+    REQUIRE(module->create("test", Modules::Frame{}, inputs, window) == Result::SUCCESS);
+    auto* presenter = module->getImpl<Scheduler::Context>();
+    REQUIRE(presenter);
+    REQUIRE(presenter->presentInitialize() == Result::SUCCESS);
+    Runtime runtime("test", DeviceType::CPU, RuntimeType::NATIVE);
+    REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
+
+    auto* frame = module->getImpl<Modules::FrameImpl>();
+    REQUIRE(frame);
+    const auto& text = *(frame->*FrameImplAccess::textMember());
+
+    std::unordered_set<std::string> skipped, failed;
+    std::fill_n(input.data<F32>(), input.size(), 0.5f);
+    REQUIRE(runtime.compute({}, skipped, failed) == Result::SUCCESS);
+    module->surface()->pushInputEvent(MouseEvent{.type = MouseEventType::Move, .position = {0.5f, 0.5f}});
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+    const std::string frameLabel = text.get("header").fill;
+    REQUIRE(frameLabel.starts_with("4 x 4"));
+    REQUIRE(text.get("readout").fill.starts_with("X "));
+
+    module->surface()->pushSurfaceEvent({.type = SurfaceEventType::Resize,
+                                         .size = {512, 512},
+                                         .placement = SurfacePlacementType::Attached});
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+    REQUIRE(text.get("header").fill == " ");
+    REQUIRE(text.get("readout").fill == " ");
+
+    module->surface()->pushInputEvent(MouseEvent{
+        .type = MouseEventType::Scroll,
+        .position = {0.5f, 0.5f},
+        .scroll = {0.0f, std::log(2.0f) / Modules::kFrameZoomSpeed},
+    });
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+    REQUIRE(text.get("header").fill == "ZOOM 2.0x");
+    REQUIRE(text.get("readout").fill == " ");
+
+    module->surface()->pushSurfaceEvent({.type = SurfaceEventType::Resize,
+                                         .size = {512, 512},
+                                         .placement = SurfacePlacementType::Detached});
+    REQUIRE(PresentFrame(*presenter) == Result::SUCCESS);
+    REQUIRE(text.get("header").fill == frameLabel + "   ZOOM 2.0x");
+    REQUIRE(text.get("readout").fill.starts_with("X "));
 
     REQUIRE(runtime.destroy() == Result::SUCCESS);
     REQUIRE(module->destroy() == Result::SUCCESS);
