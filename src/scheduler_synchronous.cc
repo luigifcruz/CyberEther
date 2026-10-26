@@ -683,9 +683,9 @@ Result SynchronousScheduler::rebuildOrder() {
             }
 
             const U64 producer = indices.at(link.producer->module);
-            const bool aliasesInput = std::ranges::any_of(mod->outputs(), [&](const auto& entry) {
-                return entry.second.tensor.sharesStorage(link.tensor) ||
-                       entry.second.tensor.inheritsAttributes(link.tensor) ||
+            const bool aliasesInput = std::ranges::any_of(mod->outputs(), [&tensor = link.tensor](const auto& entry) {
+                return entry.second.tensor.sharesStorage(tensor) ||
+                       entry.second.tensor.inheritsAttributes(tensor) ||
                        entry.second.tensor.derivesAttributes();
             });
 
