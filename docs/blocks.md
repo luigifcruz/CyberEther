@@ -77,6 +77,8 @@ Sources and sinks: hardware, files, audio, and the network.
 | SDR | `sdr` | Receives samples from a USB radio. |
 | SDR Sweep | `sdr_sweep` | Sweeps a radio across a wide band. |
 | SoapySDR | `soapy` | Receives samples through an installed SoapySDR. |
+| UDP Receiver | `udp_receiver` | Receives data streams over UDP. |
+| UDP Transmitter | `udp_transmitter` | Sends data streams over UDP. |
 | WebSocket | `websocket` | Receives data streams over WebSocket. |
 
 ## Visualization
