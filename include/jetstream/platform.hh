@@ -73,6 +73,42 @@ JETSTREAM_API bool ShutdownSocketRead(std::uintptr_t socket) noexcept;
 JETSTREAM_API void DisableSocketSigPipe(std::uintptr_t socket) noexcept;
 JETSTREAM_API void IgnoreBrokenPipe() noexcept;
 JETSTREAM_API Result LocalNetworkAddress(std::string& address);
+
+class JETSTREAM_API UdpSocket {
+ public:
+    struct Config {
+        std::string address;
+        U16 port = 0;
+        std::string interfaceName;
+        std::string source;
+        U64 bufferBytes = 0;
+        U64 timeoutMilliseconds = 0;
+    };
+
+    struct Interface {
+        std::string name;
+        std::vector<std::string> addresses;
+    };
+
+    static Result ListInterfaces(std::vector<Interface>& interfaces);
+
+    UdpSocket();
+    ~UdpSocket();
+
+    UdpSocket(const UdpSocket&) = delete;
+    UdpSocket& operator=(const UdpSocket&) = delete;
+
+    Result bind(const Config& config, std::string& error);
+    Result connect(const Config& config, std::string& error);
+    Result receive(void* data, U64 size, U64& received);
+    Result send(const void* data, U64 size);
+    void close();
+    bool open() const;
+
+ private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+};
 #endif
 
 //
