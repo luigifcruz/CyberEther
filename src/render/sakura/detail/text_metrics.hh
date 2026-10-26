@@ -39,6 +39,11 @@ struct TextMetrics {
         return text->advances(value, scale(*text, fontSize));
     }
 
+    F32 inkOffset(const std::string& fontName, const std::string& value, F32 fontSize) {
+        auto* text = label(fontName);
+        return text ? text->inkOffset(value, scale(*text, fontSize)) : 0.0f;
+    }
+
     std::string ellipsize(const std::string& fontName, const std::string& text, F32 fontSize, F32 width);
 
  private:

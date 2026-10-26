@@ -2,11 +2,10 @@
 #extension GL_ARB_separate_shader_objects : enable
 
 layout(set = 0, binding = 0) uniform ShaderUniforms {
-    vec3 color;
+    vec2 translation;
     float sharpness;
     float atlasPixelRange;
     float weight;
-    vec2 translation;
 } uniforms;
 
 layout(location = 0) in vec2 inTexcoord;

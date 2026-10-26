@@ -167,6 +167,7 @@ struct Label::Impl : public Drawable {
                 .scale = instance.fontSize / fontPixelSize(),
                 .position = PixelToNdc(framebufferSize, anchor.x, anchor.y),
                 .alignment = instance.alignment,
+                .rotationDeg = instance.rotation,
                 .fill = instance.str.substr(0, Unicode::Advance(instance.str, 0, characterCapacity)),
                 .color = instance.color,
             }));

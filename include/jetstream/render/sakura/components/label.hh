@@ -20,6 +20,7 @@ struct Label : public Component {
         ColorRGBA<F32> color = {1.0f, 1.0f, 1.0f, 1.0f};
         F32 fontSize = Typography::FontSize;
         Extent2D<I32> alignment = {0, 0};
+        F32 rotation = 0.0f;
 
         bool operator==(const Instance&) const = default;
     };

@@ -63,6 +63,7 @@ class JETSTREAM_API Text : public Generic {
     F32 advance(const std::string& fill, F32 scale = 1.0f) const;
     std::vector<F32> advances(const std::string& fill, F32 scale = 1.0f) const;
     F32 lineHeight(F32 scale = 1.0f) const;
+    F32 inkOffset(const std::string& fill, F32 scale = 1.0f) const;
     void enabled(bool value);
 
     Result updatePixelSize(const Extent2D<F32>& pixelSize);

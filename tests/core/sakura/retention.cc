@@ -187,6 +187,27 @@ TEST_CASE("Labels repaint only when their text instances change", "[core][sakura
     CHECK(Retains(frames, update));
 }
 
+TEST_CASE("Labels repaint only when their rotation changes", "[core][sakura][retention]") {
+    Scene scene;
+    Sakura::Label label;
+    Host host(label);
+    Frames frames(host, kScreen, scene.context());
+    F32 rotation = 0.0f;
+    const auto update = [&] {
+        label.update({.instances = {{.rect = {10.0f, 10.0f, 32.0f, 200.0f}, .str = "Spine", .rotation = rotation}}});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    rotation = -90.0f;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    rotation = 0.0f;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(frames.rebuilds == 1);
+}
+
 TEST_CASE("Polylines repaint only when their geometry or clip change", "[core][sakura][retention]") {
     Scene scene;
     Sakura::Polyline line;
