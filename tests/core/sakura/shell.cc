@@ -774,8 +774,8 @@ TEST_CASE("Floating window chrome matches the tile outline with no visible grip"
             topLit += box->config().topLit ? 1 : 0;
         }
     }
-    CHECK(strokes == 3);
-    CHECK(topLit == 2);
+    CHECK(strokes == 2);
+    CHECK(topLit == 1);
     CHECK(layer.parts<Sakura::Polyline>().empty());
     CHECK(content.laidFrame == Rect{250.0f, 232.0f, 300.0f, 168.0f});
 }

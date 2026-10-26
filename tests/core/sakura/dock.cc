@@ -16,6 +16,7 @@
 #include "fonts.hh"
 #include "component_harness.hh"
 #include "scene.hh"
+#include "render/sakura/metrics.hh"
 
 #include <algorithm>
 #include <cmath>
@@ -1830,7 +1831,7 @@ TEST_CASE("Tile cards keep a gap at the edges and between cards with the splitte
     CHECK(a.count(MouseEventType::Click) == 0);
 }
 
-TEST_CASE("Tile cards cast a soft dropped shadow and carry a top lit edge and rim without painting corner masks",
+TEST_CASE("Tile cards cast a soft dropped shadow and carry a top lit tonal rim without painting corner masks",
           "[core][sakura][dock]") {
     const auto ctx = MakeContext();
     Dock dock;
@@ -1855,18 +1856,13 @@ TEST_CASE("Tile cards cast a soft dropped shadow and carry a top lit edge and ri
             lit.push_back(&box->config());
         }
     }
-    REQUIRE(lit.size() == 2);
-    std::sort(lit.begin(), lit.end(), [](const auto* a, const auto* b) { return a->cornerRadius > b->cornerRadius; });
+    REQUIRE(lit.size() == 1);
     CHECK(lit[0]->cornerRadius == 12.0f);
     CHECK(lit[0]->borderWidth == 1.0f);
+    CHECK(lit[0]->borderColor == Sakura::RimColor(ctx.color("tile_bg")));
     REQUIRE(lit[0]->instances.size() == 2);
     CHECK(lit[0]->instances[0].rect == cardA);
     CHECK(lit[0]->instances[1].rect == cardB);
-    CHECK(lit[1]->cornerRadius == 11.0f);
-    CHECK(lit[1]->borderWidth == 1.0f);
-    REQUIRE(lit[1]->instances.size() == 2);
-    CHECK(lit[1]->instances[0].rect == Rect{7.0f, 7.0f, 389.0f, 586.0f});
-    CHECK(lit[1]->instances[1].rect == Rect{404.0f, 7.0f, 389.0f, 586.0f});
 
     for (auto* polyline : Direct<Sakura::Polyline>(dock)) {
         for (const auto& instance : polyline->config().instances) {

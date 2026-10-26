@@ -1,5 +1,7 @@
 #include "text_metrics.hh"
 
+#include <jetstream/render/sakura/typography.hh>
+
 namespace Jetstream::Sakura {
 
 Render::Components::Text* TextMetrics::label(const std::string& fontName) {
@@ -7,12 +9,12 @@ Render::Components::Text* TextMetrics::label(const std::string& fontName) {
         return nullptr;
     }
 
-    std::string resolved = fontName.empty() ? std::string("default_mono") : fontName;
+    std::string resolved = fontName.empty() ? std::string(Typography::MonoFont) : fontName;
     if (!window->hasFont(resolved)) {
-        if (!window->hasFont("default_mono")) {
+        if (!window->hasFont(Typography::MonoFont)) {
             return nullptr;
         }
-        resolved = "default_mono";
+        resolved = Typography::MonoFont;
     }
 
     auto it = labels.find(resolved);

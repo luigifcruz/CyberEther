@@ -115,7 +115,7 @@ void StatusBar::layout(const Context& ctx) {
 
     impl.toggleRect = {};
     if (toggleOn) {
-        const F32 textWidth = impl.textMetrics.measure("default_mono", config.toggleText, fontSize);
+        const F32 textWidth = impl.textMetrics.measure(Typography::MonoFont, config.toggleText, fontSize);
         const F32 width = std::round(textWidth + gap + caretWidth + 2.0f * pad);
         impl.toggleRect = {std::round(bar.right() - pad - width),
                            std::round(bar.y + inset),
@@ -171,8 +171,8 @@ void StatusBar::layout(const Context& ctx) {
     });
 
     const F32 messageWidth = std::max(0.0f, messageRight - messageLeft);
-    std::string message = impl.textMetrics.ellipsize("default_mono", config.status, fontSize, messageWidth);
-    const bool messageFits = impl.textMetrics.measure("default_mono", message, fontSize) <= messageWidth;
+    std::string message = impl.textMetrics.ellipsize(Typography::MonoFont, config.status, fontSize, messageWidth);
+    const bool messageFits = impl.textMetrics.measure(Typography::MonoFont, message, fontSize) <= messageWidth;
     impl.labels.update({
         .instances = {
             {.rect = {messageLeft, bar.y, messageWidth, bar.height},
@@ -188,7 +188,7 @@ void StatusBar::layout(const Context& ctx) {
              .fontSize = fontSize,
              .alignment = {0, 1}},
         },
-        .fontName = "default_mono",
+        .fontName = Typography::MonoFont,
     });
 
     layoutChild(ctx, impl.bar, bar);

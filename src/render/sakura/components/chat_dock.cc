@@ -325,7 +325,7 @@ void ChatDock::layout(const Context& ctx) {
             .alignment = {0, 1},
         }},
         .clip = card,
-        .fontName = "default_body_bold",
+        .fontName = Typography::BodyBoldFont,
         .maxCharacters = kTitleCharacters,
     });
     layoutChild(ctx, state.title, bounds);

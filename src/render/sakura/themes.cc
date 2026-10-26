@@ -19,19 +19,39 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"welcome_icon_open", {0.30f, 0.75f, 0.95f, 1.0f}},
             {"welcome_icon_examples", {0.30f, 0.75f, 0.95f, 1.0f}},
 
+            // Gallery Accent Colors
+            {"gallery_green", {0.329f, 0.800f, 0.522f, 1.0f}},
+            {"gallery_lime", {0.580f, 0.765f, 0.325f, 1.0f}},
+            {"gallery_blue", {0.494f, 0.702f, 0.996f, 1.0f}},
+            {"gallery_cyan", {0.071f, 0.784f, 0.847f, 1.0f}},
+            {"gallery_orange", {0.984f, 0.576f, 0.310f, 1.0f}},
+            {"gallery_amber", {0.902f, 0.639f, 0.141f, 1.0f}},
+            {"gallery_coral", {1.000f, 0.545f, 0.506f, 1.0f}},
+            {"gallery_teal", {0.373f, 0.820f, 0.706f, 1.0f}},
+            {"gallery_purple", {0.800f, 0.584f, 0.976f, 1.0f}},
+
             // Status Colors
             {"success_green", {0.0f, 1.0f, 0.0f, 1.0f}},
             {"warning_yellow", {1.0f, 0.8f, 0.0f, 1.0f}},
+            {"favorite_star", {1.0f, 0.76f, 0.22f, 1.0f}},
             {"error_red", {1.0f, 0.0f, 0.0f, 1.0f}},
             {"info_blue", {0.35f, 0.62f, 1.0f, 1.0f}},
+            {"run_state_running", {0.36f, 0.86f, 0.52f, 1.0f}},
+            {"run_state_paused", {1.0f, 0.62f, 0.26f, 1.0f}},
 
             // Banner Colors
-            {"banner_info_bg", {0.30f, 0.75f, 0.95f, 0.10f}},
-            {"banner_info_border", {0.30f, 0.75f, 0.95f, 0.35f}},
-            {"banner_info_text", {0.80f, 0.90f, 0.98f, 1.00f}},
+            {"banner_info_bg", {0.30f, 0.55f, 1.00f, 0.16f}},
+            {"banner_info_border", {0.30f, 0.55f, 1.00f, 0.55f}},
+            {"banner_info_text", {0.62f, 0.78f, 1.00f, 1.00f}},
             {"banner_warning_bg", {1.00f, 0.80f, 0.00f, 0.10f}},
             {"banner_warning_border", {1.00f, 0.80f, 0.00f, 0.35f}},
             {"banner_warning_text", {0.98f, 0.90f, 0.70f, 1.00f}},
+            {"tint_green_hover", {0.25f, 0.95f, 0.45f, 0.22f}},
+            {"tint_green_text", {0.45f, 1.00f, 0.60f, 1.00f}},
+            {"tint_red_bg", {1.00f, 0.25f, 0.32f, 0.14f}},
+            {"tint_red_hover", {1.00f, 0.25f, 0.32f, 0.24f}},
+            {"tint_red_border", {1.00f, 0.25f, 0.32f, 0.65f}},
+            {"tint_red_text", {1.00f, 0.42f, 0.46f, 1.00f}},
             {"banner_success_bg", {0.30f, 0.85f, 0.45f, 0.10f}},
             {"banner_success_border", {0.30f, 0.85f, 0.45f, 0.35f}},
             {"banner_success_text", {0.55f, 0.92f, 0.66f, 1.00f}},
@@ -128,8 +148,8 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"callout_error", {1.00f, 0.48f, 0.45f, 1.00f}},
 
             // Markdown Code Block Colors
-            {"markdown_code_block", {0.085f, 0.09f, 0.10f, 1.00f}},
-            {"markdown_code_block_border", {0.20f, 0.21f, 0.24f, 1.00f}},
+            {"markdown_code_block", {0.09f, 0.09f, 0.09f, 1.00f}},
+            {"markdown_code_block_border", {0.20f, 0.20f, 0.20f, 1.00f}},
 
             // Chat Colors
             {"chat_user_bubble", {0.20f, 0.47f, 0.96f, 1.00f}},
@@ -140,6 +160,13 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"voice_orb_busy", {0.96f, 0.36f, 0.30f, 1.0f}},
             {"voice_orb_listening_accent", {0.10f, 1.00f, 1.00f, 1.0f}},
             {"voice_orb_busy_accent", {1.00f, 0.80f, 0.38f, 1.0f}},
+
+            // Voice Colors
+            {"voice_bg", {0.035f, 0.035f, 0.04f, 1.0f}},
+            {"voice_listening", {0.35f, 0.65f, 1.00f, 1.0f}},
+            {"voice_busy", {1.00f, 0.58f, 0.32f, 1.0f}},
+            {"voice_dim", {0.55f, 0.55f, 0.60f, 1.0f}},
+            {"voice_stop", {0.92f, 0.30f, 0.28f, 1.0f}},
 
             // Border Colors
             {"border", {0.18f, 0.18f, 0.18f, 0.75f}},
@@ -183,6 +210,7 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"tile_border", {1.00f, 1.00f, 1.00f, 0.08f}},
             {"tile_header_text", {0.68f, 0.68f, 0.70f, 1.00f}},
             {"tile_button_hover", {0.97f, 0.97f, 0.98f, 1.00f}},
+            {"tile_button_active_bg", {0.30f, 0.75f, 0.95f, 0.18f}},
             {"tile_shadow", {0.00f, 0.00f, 0.00f, 0.55f}},
             {"tile_highlight", {1.00f, 1.00f, 1.00f, 0.06f}},
             {"tile_rim", {1.00f, 1.00f, 1.00f, 0.00f}},
@@ -191,6 +219,7 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"pill_bg", {0.06f, 0.06f, 0.065f, 1.00f}},
             {"pill_hover_bg", {0.10f, 0.10f, 0.11f, 1.00f}},
             {"pill_active_bg", {0.16f, 0.16f, 0.175f, 1.00f}},
+            {"pill_selected_bg", {0.19f, 0.19f, 0.205f, 1.00f}},
             {"pill_text", {0.88f, 0.88f, 0.90f, 1.00f}},
             {"chrome_button_hover", {1.00f, 1.00f, 1.00f, 0.10f}},
 
@@ -235,25 +264,45 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"accent_color", {0.80f, 0.45f, 0.25f, 1.00f}},
 
             // Welcome Card Colors
-            {"welcome_card_bg", {0.93f, 0.93f, 0.93f, 1.00f}},
-            {"welcome_card_hovered", {0.89f, 0.89f, 0.89f, 1.00f}},
+            {"welcome_card_bg", {1.00f, 1.00f, 1.00f, 1.00f}},
+            {"welcome_card_hovered", {0.965f, 0.965f, 0.97f, 1.00f}},
             {"welcome_icon_new", {0.15f, 0.55f, 0.85f, 1.0f}},
             {"welcome_icon_open", {0.15f, 0.55f, 0.85f, 1.0f}},
             {"welcome_icon_examples", {0.15f, 0.55f, 0.85f, 1.0f}},
 
+            // Gallery Accent Colors
+            {"gallery_green", {0.10f, 0.52f, 0.28f, 1.0f}},
+            {"gallery_lime", {0.33f, 0.48f, 0.08f, 1.0f}},
+            {"gallery_blue", {0.16f, 0.38f, 0.80f, 1.0f}},
+            {"gallery_cyan", {0.02f, 0.46f, 0.53f, 1.0f}},
+            {"gallery_orange", {0.76f, 0.34f, 0.07f, 1.0f}},
+            {"gallery_amber", {0.62f, 0.40f, 0.02f, 1.0f}},
+            {"gallery_coral", {0.80f, 0.27f, 0.23f, 1.0f}},
+            {"gallery_teal", {0.07f, 0.50f, 0.42f, 1.0f}},
+            {"gallery_purple", {0.50f, 0.27f, 0.78f, 1.0f}},
+
             // Status Colors
             {"success_green", {0.0f, 0.6f, 0.0f, 1.0f}},
             {"warning_yellow", {0.64f, 0.38f, 0.0f, 1.0f}},
+            {"favorite_star", {0.78f, 0.50f, 0.00f, 1.0f}},
             {"error_red", {0.9f, 0.15f, 0.15f, 1.0f}},
             {"info_blue", {0.15f, 0.4f, 0.9f, 1.0f}},
+            {"run_state_running", {0.13f, 0.60f, 0.32f, 1.0f}},
+            {"run_state_paused", {0.88f, 0.45f, 0.08f, 1.0f}},
 
             // Banner Colors
-            {"banner_info_bg", {0.15f, 0.55f, 0.85f, 0.08f}},
-            {"banner_info_border", {0.15f, 0.55f, 0.85f, 0.35f}},
-            {"banner_info_text", {0.10f, 0.32f, 0.55f, 1.00f}},
+            {"banner_info_bg", {0.15f, 0.40f, 0.90f, 0.08f}},
+            {"banner_info_border", {0.15f, 0.40f, 0.90f, 0.35f}},
+            {"banner_info_text", {0.08f, 0.25f, 0.60f, 1.00f}},
             {"banner_warning_bg", {0.80f, 0.55f, 0.00f, 0.10f}},
             {"banner_warning_border", {0.80f, 0.55f, 0.00f, 0.40f}},
             {"banner_warning_text", {0.55f, 0.35f, 0.05f, 1.00f}},
+            {"tint_green_hover", {0.10f, 0.65f, 0.30f, 0.14f}},
+            {"tint_green_text", {0.05f, 0.50f, 0.22f, 1.00f}},
+            {"tint_red_bg", {0.90f, 0.15f, 0.20f, 0.08f}},
+            {"tint_red_hover", {0.90f, 0.15f, 0.20f, 0.14f}},
+            {"tint_red_border", {0.90f, 0.15f, 0.20f, 0.50f}},
+            {"tint_red_text", {0.80f, 0.10f, 0.15f, 1.00f}},
             {"banner_success_bg", {0.10f, 0.60f, 0.30f, 0.08f}},
             {"banner_success_border", {0.10f, 0.60f, 0.30f, 0.35f}},
             {"banner_success_text", {0.04f, 0.42f, 0.18f, 1.00f}},
@@ -350,8 +399,8 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"callout_error", {0.64f, 0.05f, 0.15f, 1.00f}},
 
             // Markdown Code Block Colors
-            {"markdown_code_block", {0.965f, 0.968f, 0.975f, 1.00f}},
-            {"markdown_code_block_border", {0.84f, 0.85f, 0.87f, 1.00f}},
+            {"markdown_code_block", {0.965f, 0.965f, 0.965f, 1.00f}},
+            {"markdown_code_block_border", {0.85f, 0.85f, 0.85f, 1.00f}},
 
             // Chat Colors
             {"chat_user_bubble", {0.20f, 0.47f, 0.96f, 1.00f}},
@@ -362,6 +411,13 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"voice_orb_busy", {0.96f, 0.36f, 0.30f, 1.0f}},
             {"voice_orb_listening_accent", {0.10f, 1.00f, 1.00f, 1.0f}},
             {"voice_orb_busy_accent", {1.00f, 0.80f, 0.38f, 1.0f}},
+
+            // Voice Colors
+            {"voice_bg", {0.99f, 0.99f, 0.995f, 1.0f}},
+            {"voice_listening", {0.18f, 0.46f, 0.92f, 1.0f}},
+            {"voice_busy", {0.88f, 0.42f, 0.14f, 1.0f}},
+            {"voice_dim", {0.62f, 0.62f, 0.66f, 1.0f}},
+            {"voice_stop", {0.82f, 0.18f, 0.16f, 1.0f}},
 
             // Border Colors
             {"border", {0.78f, 0.78f, 0.80f, 0.75f}},
@@ -405,6 +461,7 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"tile_border", {0.00f, 0.00f, 0.00f, 0.10f}},
             {"tile_header_text", {0.32f, 0.32f, 0.35f, 1.00f}},
             {"tile_button_hover", {0.04f, 0.04f, 0.05f, 1.00f}},
+            {"tile_button_active_bg", {0.15f, 0.55f, 0.85f, 0.14f}},
             {"tile_shadow", {0.00f, 0.00f, 0.00f, 0.14f}},
             {"tile_highlight", {1.00f, 1.00f, 1.00f, 0.00f}},
             {"tile_rim", {1.00f, 1.00f, 1.00f, 1.00f}},
@@ -413,6 +470,7 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"pill_bg", {0.92f, 0.92f, 0.93f, 1.00f}},
             {"pill_hover_bg", {0.96f, 0.96f, 0.97f, 1.00f}},
             {"pill_active_bg", {1.00f, 1.00f, 1.00f, 1.00f}},
+            {"pill_selected_bg", {0.91f, 0.91f, 0.92f, 1.00f}},
             {"pill_text", {0.14f, 0.14f, 0.16f, 1.00f}},
             {"chrome_button_hover", {0.00f, 0.00f, 0.00f, 0.07f}},
 

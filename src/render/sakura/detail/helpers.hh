@@ -17,6 +17,12 @@ constexpr Rect Intersect(Rect a, Rect b) {
     return {x0, y0, std::max(0.0f, x1 - x0), std::max(0.0f, y1 - y0)};
 }
 
+constexpr Rect Union(Rect a, Rect b) {
+    const F32 x0 = std::min(a.x, b.x);
+    const F32 y0 = std::min(a.y, b.y);
+    return {x0, y0, std::max(a.right(), b.right()) - x0, std::max(a.bottom(), b.bottom()) - y0};
+}
+
 constexpr Rect Inset(const Rect& rect, F32 inset) {
     return {rect.x + inset, rect.y + inset, std::max(0.0f, rect.width - 2.0f * inset),
             std::max(0.0f, rect.height - 2.0f * inset)};

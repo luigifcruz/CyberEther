@@ -26,8 +26,8 @@ namespace Jetstream::Sakura {
 
 namespace {
 
-constexpr const char* kTitleFont = "default_display_semibold";
-constexpr const char* kBodyFont = "default_display_regular";
+constexpr const char* kTitleFont = Typography::DisplaySemiboldFont;
+constexpr const char* kBodyFont = Typography::DisplayRegularFont;
 constexpr const char* kSummaryFont = Typography::BodyFont;
 constexpr const char* kAllLabel = "All";
 constexpr const char* kActionLabel = "Add on";

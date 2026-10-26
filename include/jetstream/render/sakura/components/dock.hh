@@ -24,6 +24,7 @@ struct DockTiles {
 struct Dock : public Component {
     static constexpr F32 ContentPadding = 6.0f;
     static constexpr F32 HeaderHeight = 20.0f;
+    static constexpr F32 TileRounding = 12.0f;
 
     struct Action {
         std::string icon;

@@ -11,8 +11,13 @@ struct Typography {
     static constexpr F32 ConsoleScale = 0.92f;
     static constexpr const char* MonoFont = "default_mono";
     static constexpr const char* MonoBoldFont = "default_mono_bold";
+    static constexpr const char* DisplayFont = "default_display";
     static constexpr const char* DisplaySemiboldFont = "default_display_semibold";
+    static constexpr const char* DisplayRegularFont = "default_display_regular";
     static constexpr const char* BodyFont = "default_body";
+    static constexpr const char* BodyItalicFont = "default_body_italic";
+    static constexpr const char* BodyBoldFont = "default_body_bold";
+    static constexpr const char* BodyBoldItalicFont = "default_body_bold_italic";
     static constexpr const char* IconFont = "default_icons";
     static constexpr const char* NodeIconFont = "default_node_icons";
     static constexpr F32 CodeLineHeight = 1.15f;

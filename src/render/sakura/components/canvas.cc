@@ -26,7 +26,7 @@ namespace {
 constexpr F32 kHoverDelay = 0.15f;
 constexpr U64 kDefaultFramebufferWidth = 512;
 constexpr U64 kDefaultFramebufferHeight = 512;
-constexpr const char* kRequiredFontName = "default_mono";
+constexpr const char* kRequiredFontName = Typography::MonoFont;
 constexpr U64 kCompactionMinimumPrograms = 64;
 constexpr U64 kMaximumDeferredBuilds = 2;
 

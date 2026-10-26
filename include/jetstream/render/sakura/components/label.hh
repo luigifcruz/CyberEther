@@ -28,7 +28,7 @@ struct Label : public Component {
     struct Config {
         std::vector<Instance> instances;
         std::optional<Rect> clip;
-        std::string fontName = "default_mono";
+        std::string fontName = Typography::MonoFont;
         F32 sharpness = 0.45f;
         F32 weight = 0.0f;
         U64 maxCharacters = 128;

@@ -21,8 +21,11 @@
 #include "render/sakura/detail/occlusion.hh"
 #include "render/sakura/detail/underlay.hh"
 #include "render/sakura/surface_presenter.hh"
+#include "render/sakura/metrics.hh"
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <numbers>
 #include <optional>
@@ -31,6 +34,97 @@
 
 using namespace Jetstream;
 using namespace SakuraTest;
+
+TEST_CASE("Wave row capacities cover subpixel periods and clipped sample phases", "[core][sakura][geometry][wave-metrics]") {
+    auto ctx = MakeContext();
+    ctx.framebufferSize = {3840, 2160};
+    for (const F32 period : {0.25f, 0.5f, 1.0f, 12.0f, 63.0f}) {
+        CAPTURE(period);
+        const auto points = Sakura::WavePoints(-10.0f, 100.0f, 3840.0f, period, 2.0f, -10.0f, 3830.0f);
+        REQUIRE(points.size() == static_cast<U64>(std::ceil(3840.0 * 12.0 / period)) + 1);
+        CHECK(points.size() * Sakura::kWavePointVertices <= Sakura::WaveRowCapacity(ctx, period));
+        CHECK(points.front().x == -10.0f);
+        CHECK(points.front().y == 100.0f);
+        CHECK(points[3].x == Catch::Approx(-10.0f + period * 0.25f));
+        CHECK(points[3].y == 98.0f);
+        CHECK(points[9].y == 102.0f);
+        CHECK(points.back().x >= 3830.0f);
+        CHECK(points.back().x <= 3830.0f + period / 12.0f);
+
+        const auto clipped = Sakura::WavePoints(-10.0f, 100.0f, 1e9f, period, 2.0f, 100.1f, 110.2f);
+        REQUIRE_FALSE(clipped.empty());
+        CHECK(clipped.front().x <= 100.1f);
+        CHECK(clipped.back().x >= 110.2f);
+        for (const auto& point : clipped) {
+            CHECK(std::find(points.begin(), points.end(), point) != points.end());
+        }
+
+        for (const F32 left : {-1000000.0f, -10.0f, 0.0f, 0.1f}) {
+            const auto visible = Sakura::WavePoints(left, 100.0f, 1e9f, period, 2.0f, 0.0f, 3840.0f);
+            REQUIRE_FALSE(visible.empty());
+            CHECK(visible.size() * Sakura::kWavePointVertices <= Sakura::WaveRowCapacity(ctx, period));
+        }
+    }
+}
+
+TEST_CASE("Wave ranges clip before sampling and retain their endpoint brackets", "[core][sakura][geometry][wave-metrics]") {
+    const auto whole = Sakura::WavePoints(10.0f, 0.0f, 100.25f, 12.0f, 1.0f, 10.0f, 110.25f);
+    REQUIRE(whole.size() == 102);
+    CHECK(whole.front().x == 10.0f);
+    CHECK(whole.back().x == 111.0f);
+    CHECK(Sakura::WavePoints(10.0f, 0.0f, 100.25f, 12.0f, 1.0f, -100.0f, 200.0f) == whole);
+    CHECK(Sakura::WavePoints(10.0f, 0.0f, 100.25f, 12.0f, 1.0f, -100.0f, 9.9f).empty());
+    CHECK(Sakura::WavePoints(10.0f, 0.0f, 100.25f, 12.0f, 1.0f, 110.5f, 200.0f).empty());
+    CHECK(Sakura::WavePoints(10.0f, 0.0f, 100.25f, 12.0f, 1.0f, 20.0f, 10.0f).empty());
+    CHECK(Sakura::WavePoints(10.0f, 0.0f, 0.0f, 12.0f, 1.0f, 10.0f, 20.0f).empty());
+    CHECK(Sakura::WavePoints(10.0f, 0.0f, -1.0f, 12.0f, 1.0f, 10.0f, 20.0f).empty());
+    const auto point = Sakura::WavePoints(10.0f, 0.0f, 100.25f, 12.0f, 1.0f, 20.0f, 20.0f);
+    REQUIRE(point.size() == 1);
+    CHECK(point.front() == whole[10]);
+}
+
+TEST_CASE("Wave helpers reject nonfinite inputs and bound extreme finite sampling", "[core][sakura][geometry][wave-metrics]") {
+    auto ctx = MakeContext();
+    ctx.framebufferSize = {3840, 2160};
+    for (const F32 invalid : {std::numeric_limits<F32>::quiet_NaN(), std::numeric_limits<F32>::infinity(),
+                              -std::numeric_limits<F32>::infinity()}) {
+        for (U64 parameter = 0; parameter < 7; ++parameter) {
+            CAPTURE(invalid, parameter);
+            F32 args[] = {0.0f, 0.0f, 100.0f, 12.0f, 1.0f, 0.0f, 100.0f};
+            args[parameter] = invalid;
+            CHECK(Sakura::WavePoints(args[0], args[1], args[2], args[3], args[4], args[5], args[6]).empty());
+        }
+        CHECK(Sakura::WaveRowCapacity(ctx, invalid) == 0);
+    }
+    for (const F32 period : {0.0f, -1.0f}) {
+        CHECK(Sakura::WavePoints(0.0f, 0.0f, 100.0f, period, 1.0f, 0.0f, 100.0f).empty());
+        CHECK(Sakura::WaveRowCapacity(ctx, period) == 0);
+    }
+    for (const F32 period : {std::numeric_limits<F32>::denorm_min(), std::numeric_limits<F32>::min(), 1e-20f}) {
+        CAPTURE(period);
+        CHECK(Sakura::WavePoints(0.0f, 0.0f, 100.0f, period, 1.0f, 0.0f, 100.0f).empty());
+        CHECK(Sakura::WaveRowCapacity(ctx, period) <= Sakura::kWaveMaxPoints * Sakura::kWavePointVertices);
+    }
+
+    const F32 huge = std::numeric_limits<F32>::max();
+    CHECK(Sakura::WavePoints(-huge, 0.0f, huge, 12.0f, 1.0f, -10.0f, 0.0f).empty());
+    CHECK(Sakura::WavePoints(huge, 0.0f, huge, huge, 1.0f, huge, huge).size() == 1);
+    CHECK(Sakura::WavePoints(0.0f, huge, 100.0f, 12.0f, huge, 0.0f, 100.0f).empty());
+    CHECK(Sakura::WavePoints(0.0f, 0.0f, huge, 12.0f, 1.0f, 0.0f, huge).empty());
+    const auto distant = Sakura::WavePoints(-1e9f, 0.0f, 2e9f, 12.0f, 1.0f, 0.0f, 10.0f);
+    REQUIRE(distant.size() == 11);
+    CHECK(distant.front().x == 0.0f);
+    CHECK(distant.back().x == 10.0f);
+    CHECK(distant.front().y == Catch::Approx(-std::sin(2.0 * std::numbers::pi / 3.0)));
+
+    ctx.framebufferSize.x = std::numeric_limits<U64>::max();
+    CHECK(Sakura::WaveRowCapacity(ctx, 1.0f) == Sakura::kWaveMaxPoints * Sakura::kWavePointVertices);
+    ctx.framebufferSize.x = 0;
+    CHECK(Sakura::WaveRowCapacity(ctx, 12.0f) == 0);
+    const F32 limit = static_cast<F32>(Sakura::kWaveMaxPoints - 1);
+    CHECK(Sakura::WavePoints(0.0f, 0.0f, limit, 12.0f, 1.0f, 0.0f, limit).size() == Sakura::kWaveMaxPoints);
+    CHECK(Sakura::WavePoints(0.0f, 0.0f, limit + 1.0f, 12.0f, 1.0f, 0.0f, limit + 1.0f).empty());
+}
 
 namespace {
 

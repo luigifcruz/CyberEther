@@ -67,7 +67,7 @@ struct TextGrid : public Component {
         F32 fontSize = Typography::FontSize;
         F32 fontScale = 1.0f;
         F32 lineHeight = Typography::CodeLineHeight;
-        std::string fontName = "default_mono";
+        std::string fontName = Typography::MonoFont;
         bool monospace = true;
         bool lineNumbers = false;
         bool showActiveLine = true;

@@ -33,15 +33,15 @@ const char* FontName(Text::Font font) {
         case Text::Font::H1:
         case Text::Font::H2:
         case Text::Font::Bold:
-            return "default_mono_bold";
+            return Typography::MonoBoldFont;
         case Text::Font::Display:
-            return "default_display";
+            return Typography::DisplayFont;
         case Text::Font::DisplaySemiBold:
-            return "default_display_semibold";
+            return Typography::DisplaySemiboldFont;
         case Text::Font::Sans:
             return Typography::BodyFont;
         case Text::Font::SansBold:
-            return "default_body_bold";
+            return Typography::BodyBoldFont;
         case Text::Font::Body:
             break;
     }

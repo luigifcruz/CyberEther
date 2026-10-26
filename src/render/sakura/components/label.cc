@@ -15,7 +15,7 @@ namespace Jetstream::Sakura {
 
 namespace {
 
-constexpr const char* kFallbackFontName = "default_mono";
+constexpr const char* kFallbackFontName = Typography::MonoFont;
 
 std::string LabelElementId(U64 index) {
     return jst::fmt::format("label{:06}", index);

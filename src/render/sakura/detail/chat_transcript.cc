@@ -59,8 +59,8 @@ constexpr U64 kToggleCharacters = 128;
 constexpr F64 kShimmerPeriod = 1.8;
 constexpr F32 kShimmerBandRatio = 0.35f;
 constexpr F32 kShimmerDim = 0.55f;
-constexpr const char* kToggleFont = "default_body_bold";
-constexpr const char* kSummaryFont = "default_body_italic";
+constexpr const char* kToggleFont = Typography::BodyBoldFont;
+constexpr const char* kSummaryFont = Typography::BodyItalicFont;
 constexpr F32 kUnbounded = std::numeric_limits<F32>::infinity();
 
 TextView::Config UserText(std::string id, std::string value, F32 font, std::optional<Padding> padding) {
