@@ -86,7 +86,7 @@ struct FlowgraphPanePresenter {
                 for (auto& [block, node] : measured.nodes) {
                     converted.nodes[block] = {node.bounds, node.size, node.content};
                 }
-                converted.viewport = Agent::Tools::Layout::Viewport{measured.viewport, measured.toolbar};
+                converted.viewport = Agent::Tools::Layout::Viewport{.visible = measured.viewport};
                 layout(flowgraphId, std::move(converted));
             },
         };

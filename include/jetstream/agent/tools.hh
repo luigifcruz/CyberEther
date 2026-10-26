@@ -31,7 +31,6 @@ class JETSTREAM_API Tools {
 
         struct Viewport {
             Rect visible;
-            Rect toolbar;
         };
 
         std::unordered_map<std::string, Node> nodes;
