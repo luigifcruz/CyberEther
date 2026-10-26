@@ -181,15 +181,16 @@ TEST_CASE("Window - direct runtime rematerializes output", "[modules][window][st
     REQUIRE(runtime.create({{"window_rematerialize", module}}) == Result::SUCCESS);
 
     std::unordered_set<std::string> skippedModules;
+    std::unordered_set<std::string> stalledModules;
     std::unordered_set<std::string> failedModules;
-    REQUIRE(runtime.compute({"window_rematerialize"}, skippedModules, failedModules) ==
+    REQUIRE(runtime.compute({"window_rematerialize"}, skippedModules, stalledModules, failedModules) ==
             Result::SUCCESS);
 
     Tensor output = module->outputs().at("window").tensor;
     const CF32 expected = output.at<CF32>(17);
     output.at<CF32>(17) = CF32(123.0f, 456.0f);
 
-    REQUIRE(runtime.compute({"window_rematerialize"}, skippedModules, failedModules) ==
+    REQUIRE(runtime.compute({"window_rematerialize"}, skippedModules, stalledModules, failedModules) ==
             Result::SUCCESS);
     REQUIRE(output.at<CF32>(17) == expected);
 

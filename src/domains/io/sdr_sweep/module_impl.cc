@@ -5,6 +5,7 @@
 #include <new>
 
 #include <jetstream/memory/axis.hh>
+#include <jetstream/scheduler_context.hh>
 
 namespace Jetstream::Modules {
 
@@ -355,6 +356,7 @@ Result SdrSweepImpl::startWorker() {
                 errored = true;
             }
             slotReady.notify_all();
+            Scheduler::Context::NotifyPendingCompute();
         });
     } catch (const std::exception& e) {
         running = false;
@@ -440,6 +442,7 @@ bool SdrSweepImpl::publishFrame(const Clock::time_point now) {
         slotFresh = true;
     }
     slotReady.notify_all();
+    Scheduler::Context::NotifyPendingCompute();
     sweeps.publish(sweepCounter);
     sweepDuration.publish(std::chrono::duration<F64>(now - sweepStarted).count());
     return running;

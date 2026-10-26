@@ -480,8 +480,9 @@ TEST_CASE("OverlapAdd - Channels preserve independent state across computes",
             Runtime runtime("test", impl.device, impl.runtime);
             REQUIRE(runtime.create({{"test", module}}) == Result::SUCCESS);
             std::unordered_set<std::string> skippedModules;
+            std::unordered_set<std::string> stalledModules;
             std::unordered_set<std::string> failedModules;
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
 
             Tensor output = module->outputs().at("buffer").tensor;
             for (U64 head = 0; head < 2; ++head) {
@@ -498,8 +499,9 @@ TEST_CASE("OverlapAdd - Channels preserve independent state across computes",
                 overlap.at<F32>(1, sample) = static_cast<F32>(400 + 100 * sample);
             }
             skippedModules.clear();
+            stalledModules.clear();
             failedModules.clear();
-            REQUIRE(runtime.compute({}, skippedModules, failedModules) == Result::SUCCESS);
+            REQUIRE(runtime.compute({}, skippedModules, stalledModules, failedModules) == Result::SUCCESS);
 
             for (U64 sample = 0; sample < 3; ++sample) {
                 REQUIRE(output.at<F32>(0, sample) ==

@@ -153,8 +153,9 @@ void Benchmark::Impl::run(const std::string& outputType,
                 try {
                     bench.run(benchName, [&]() {
                         std::unordered_set<std::string> skippedModules;
+                        std::unordered_set<std::string> stalledModules;
                         std::unordered_set<std::string> failedModules;
-                        if (runtime.compute({}, skippedModules, failedModules) != Result::SUCCESS) {
+                        if (runtime.compute({}, skippedModules, stalledModules, failedModules) != Result::SUCCESS) {
                             throw ComputeFailed{};
                         }
                     });

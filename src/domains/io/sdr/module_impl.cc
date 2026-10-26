@@ -5,6 +5,7 @@
 #include <new>
 
 #include <jetstream/memory/axis.hh>
+#include <jetstream/scheduler_context.hh>
 #include <jetstream/tools/numeric.hh>
 
 namespace Jetstream::Modules {
@@ -251,6 +252,7 @@ Result SdrImpl::startReceiver() {
             if (result != Result::SUCCESS) {
                 errored = true;
             }
+            Scheduler::Context::NotifyPendingCompute();
         });
     } catch (const std::exception& e) {
         streaming = false;
@@ -291,6 +293,7 @@ Result SdrImpl::receiveLoop() {
             case Radio::Device::Status::Samples: {
                 stream.push(capture.generation, scratch.data(), capture.count, capture.timestamp,
                             capture.epoch);
+                Scheduler::Context::NotifyPendingCompute();
                 const U64 capacity = stream.capacity();
                 if (capacity > 0) {
                     const F32 level = static_cast<F32>(stream.size()) / static_cast<F32>(capacity);

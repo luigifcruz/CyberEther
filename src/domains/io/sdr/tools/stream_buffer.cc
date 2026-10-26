@@ -73,10 +73,6 @@ Result StreamBuffer::pop(CF32* data, const U64 count, Metadata& metadata) {
     return Result::SUCCESS;
 }
 
-Result StreamBuffer::waitForSize(const U64 count, const std::chrono::milliseconds timeout) {
-    return samples.waitForSize(count, timeout);
-}
-
 StreamBuffer::Metadata StreamBuffer::metadata() const {
     std::lock_guard lock(mutex);
     return current;
