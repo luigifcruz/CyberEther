@@ -1821,14 +1821,14 @@ TEST_CASE("Scheduler decides throttle deadlines once per cycle across runtime se
     REQUIRE(fixture.scheduler.add(display) == Result::SUCCESS);
 
     state.clearEvents();
-    const auto start = std::chrono::steady_clock::now();
     computeCycles(fixture.scheduler, 2);
     REQUIRE(state.count("compute", "deadline_source") == 2);
     REQUIRE(state.count("compute", "deadline_view") == 2);
     REQUIRE(state.count("compute", "deadline_display") == 1);
 
-    std::this_thread::sleep_until(start + std::chrono::milliseconds(70));
-    state.configure("deadline_source").computeDelay = std::chrono::milliseconds(60);
+    // Cross the 100 ms deadline inside compute, without a preparatory sleep
+    // that could overshoot and make the display due before this cycle starts.
+    state.configure("deadline_source").computeDelay = std::chrono::milliseconds(120);
     computeCycles(fixture.scheduler, 1);
     state.configure("deadline_source").computeDelay = std::chrono::milliseconds(0);
     REQUIRE(state.count("compute", "deadline_source") == 3);
@@ -1862,14 +1862,18 @@ TEST_CASE("Scheduler does not sleep past a throttle deadline that expires during
     REQUIRE(fixture.scheduler.add(slow) == Result::SUCCESS);
 
     state.clearEvents();
-    const auto start = std::chrono::steady_clock::now();
     computeCycles(fixture.scheduler, 1);
     REQUIRE(state.count("compute", "expire_display") == 1);
 
-    std::this_thread::sleep_until(start + std::chrono::milliseconds(70));
-    state.configure("expire_slow").computeDelay = std::chrono::milliseconds(60);
+    state.configure("expire_slow").computeDelay = std::chrono::milliseconds(120);
     state.configure("expire_slow").computeResults = {Result::YIELD};
-    REQUIRE(timedCompute(fixture.scheduler) < std::chrono::milliseconds(110));
+    const auto epoch = Scheduler::Impl::BeginComputeRound();
+    computeCycles(fixture.scheduler, 1);
+
+    // Measure only the idle wait: the slow module's sleep may overshoot on CI.
+    const auto start = std::chrono::steady_clock::now();
+    Scheduler::Impl::WaitComputeRound(epoch, std::chrono::milliseconds(100));
+    REQUIRE(std::chrono::steady_clock::now() - start < std::chrono::milliseconds(50));
     REQUIRE(state.count("compute", "expire_display") == 1);
 
     state.configure("expire_slow").computeDelay = std::chrono::milliseconds(0);
@@ -2000,11 +2004,10 @@ TEST_CASE("Scheduler never shows a throttled view consumer the same frame twice"
     }
 
     state.clearEvents();
-    const auto start = std::chrono::steady_clock::now();
     computeCycles(fixture.scheduler, 2);
 
-    std::this_thread::sleep_until(start + std::chrono::milliseconds(70));
-    state.configure("frames_source").computeDelay = std::chrono::milliseconds(60);
+    // Keep the deadline crossing inside the source's compute submission.
+    state.configure("frames_source").computeDelay = std::chrono::milliseconds(120);
     computeCycles(fixture.scheduler, 1);
     state.configure("frames_source").computeDelay = std::chrono::milliseconds(0);
     computeCycles(fixture.scheduler, 3);
