@@ -101,6 +101,9 @@ Result DefaultCompositor::create() {
 
     state.sakura.themeKey = Sakura::ResolveThemeKey(settings.interface.themeKey);
     state.sakura.colorMap = Sakura::Themes.at(state.sakura.themeKey);
+    if (render) {
+        render->setDarkAppearance(state.sakura.dark());
+    }
 
     // Restore graphics preferences.
 

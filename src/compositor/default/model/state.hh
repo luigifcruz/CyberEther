@@ -140,6 +140,10 @@ struct DefaultCompositorState {
         Sakura::Runtime runtime;
         std::string themeKey = "Dark";
         Sakura::Palette colorMap;
+
+        bool dark() const {
+            return themeKey != "Light";
+        }
     };
 
     struct InterfaceState {

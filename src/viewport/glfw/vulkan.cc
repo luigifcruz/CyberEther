@@ -502,4 +502,13 @@ void Implementation::zoomWindow() {
 #endif
 }
 
+bool Implementation::setDarkAppearance(bool dark) {
+#ifdef JST_OS_MAC
+    return CocoaTitlebar::SetAppearance(window, dark);
+#else
+    (void)dark;
+    return false;
+#endif
+}
+
 }  // namespace Jetstream::Viewport

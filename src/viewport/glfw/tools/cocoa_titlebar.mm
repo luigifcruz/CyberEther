@@ -353,6 +353,23 @@ void CocoaTitlebar::poll() {
     }
 }
 
+bool CocoaTitlebar::SetAppearance(GLFWwindow* handle, bool dark) {
+    NSWindow* window = handle ? [glfwGetCocoaWindow(handle) retain] : nil;
+    if (!window) {
+        return false;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @autoreleasepool {
+            NSString* name = dark ? NSAppearanceNameDarkAqua : NSAppearanceNameAqua;
+            if (![[[window appearance] name] isEqualToString:name]) {
+                [window setAppearance:[NSAppearance appearanceNamed:name]];
+            }
+            [window release];
+        }
+    });
+    return true;
+}
+
 Render::TitlebarChrome CocoaTitlebar::chrome() const {
     std::lock_guard lock(state->mutex);
     return state->chrome;

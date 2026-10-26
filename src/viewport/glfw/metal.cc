@@ -158,4 +158,8 @@ void Implementation::zoomWindow() {
     }
 }
 
+bool Implementation::setDarkAppearance(bool dark) {
+    return CocoaTitlebar::SetAppearance(window, dark);
+}
+
 }  // namespace Jetstream::Viewport

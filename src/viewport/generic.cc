@@ -53,6 +53,8 @@ void Generic::beginWindowDrag() {}
 
 void Generic::zoomWindow() {}
 
+bool Generic::setDarkAppearance(bool) { return false; }
+
 F64 Generic::inputTime() const {
     if (platform) {
         return platform->time();

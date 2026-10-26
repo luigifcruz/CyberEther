@@ -45,6 +45,7 @@ class GLFW<DeviceType::Metal> : public Adapter<DeviceType::Metal> {
     void setIntegratedTitlebar(bool enabled);
     void beginWindowDrag();
     void zoomWindow();
+    bool setDarkAppearance(bool dark);
 
  private:
     GLFWwindow* window = nullptr;
