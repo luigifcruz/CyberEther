@@ -82,7 +82,7 @@ Result Implementation::create() {
         JST_CHECK(kernel->create());
     }
 
-    requestedSize = framebufferResolve->size();
+    resizeResult = Result::SUCCESS;
     resetFramebuffer();
 
     return Result::SUCCESS;
@@ -152,30 +152,30 @@ Result Implementation::destroyFramebuffer() {
     return Result::SUCCESS;
 }
 
-Result Implementation::prepare() {
-    framebufferChanged = framebufferResolve->size(requestedSize);
-    if (framebufferChanged) {
-        resetFramebuffer();
-        if (config.multisampled) {
-            framebuffer->size(requestedSize);
-        }
+bool Implementation::created() const {
+    return renderPassDescriptor != nullptr;
+}
 
-        JST_CHECK(destroyFramebuffer());
-        JST_CHECK(framebufferResolve->destroy());
-        JST_CHECK(framebufferResolve->create());
-        JST_CHECK(createFramebuffer());
+Result Implementation::rebuildFramebuffer() {
+    if (config.multisampled) {
+        framebuffer->size(requestedSize);
     }
+
+    JST_CHECK(destroyFramebuffer());
+    JST_CHECK(framebufferResolve->destroy());
+    JST_CHECK(framebufferResolve->create());
+    JST_CHECK(createFramebuffer());
 
     return Result::SUCCESS;
 }
 
 Result Implementation::draw(MTL::CommandBuffer* commandBuffer, bool visible) {
-    const bool required = shouldDraw(framebufferChanged);
+    const bool required = shouldDraw(framebufferResized);
     JST_CHECK(drawResult());
     if (!required) {
         return Result::SUCCESS;
     }
-    if (hiddenAndIdle(visible, framebufferChanged)) {
+    if (hiddenAndIdle(visible, framebufferResized)) {
         shouldDrawGraphics(visible);
         return Result::SUCCESS;
     }
@@ -218,17 +218,6 @@ Result Implementation::draw(MTL::CommandBuffer* commandBuffer, bool visible) {
     renderCmdEncoder->endEncoding();
 
     return Result::SUCCESS;
-}
-
-const Extent2D<U64>& Implementation::size(const Extent2D<U64>& size) {
-    if (!framebufferResolve) {
-        return NullSize2D;
-    }
-
-    requestedSize = size;
-    invalidate();
-
-    return framebufferResolve->size();
 }
 
 }  // namespace Jetstream::Render

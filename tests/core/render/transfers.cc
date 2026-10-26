@@ -301,6 +301,37 @@ class TestSurface final : public Render::Surface {
     std::atomic<bool> destructionStarted = false;
 };
 
+class ResizingSurface final : public Render::Surface {
+ public:
+    explicit ResizingSurface(const Config& config) : Surface(config) {}
+
+    Result create() override {
+        live = true;
+        resizeResult = Result::SUCCESS;
+        resetFramebuffer();
+        return Result::SUCCESS;
+    }
+    Result destroy() override {
+        live = false;
+        return Result::SUCCESS;
+    }
+
+    Result frame() { return prepare(); }
+    bool resized() const { return framebufferResized; }
+    Result bindingResult() const { return drawResult(); }
+
+    bool live = false;
+    U64 rebuilds = 0;
+    Result rebuildResult = Result::SUCCESS;
+
+ protected:
+    bool created() const override { return live; }
+    Result rebuildFramebuffer() override {
+        ++rebuilds;
+        return rebuildResult;
+    }
+};
+
 class TestWindow final : public RenderTest::Window {
  public:
     TestWindow() {
@@ -3366,4 +3397,61 @@ TEST_CASE("Texture revisions can be sampled while their producer reallocates",
     REQUIRE(monotonic);
     REQUIRE(texture->allocation() == 20000);
     REQUIRE(texture->contentRevision() == 10000);
+}
+
+TEST_CASE("Surface resizes apply at once after creation and failed rebuilds retry until they succeed",
+          "[core][render][surface][resize]") {
+    auto texture = std::make_shared<TestTexture>(Render::Texture::Config{.size = {8, 6}});
+    ResizingSurface surface(Render::Surface::Config{.framebuffer = texture});
+
+    CHECK(surface.size({16, 12}) == Extent2D<U64>{8, 6});
+    CHECK(surface.rebuilds == 0);
+
+    REQUIRE(surface.create() == Result::SUCCESS);
+    REQUIRE(surface.frame() == Result::SUCCESS);
+    CHECK(texture->size() == Extent2D<U64>{16, 12});
+    CHECK(surface.rebuilds == 1);
+    CHECK(surface.resized());
+
+    REQUIRE(surface.frame() == Result::SUCCESS);
+    CHECK_FALSE(surface.resized());
+
+    CHECK(surface.size({20, 10}) == Extent2D<U64>{20, 10});
+    CHECK(surface.rebuilds == 2);
+    CHECK(surface.resized());
+    CHECK(surface.size({20, 10}) == Extent2D<U64>{20, 10});
+    CHECK(surface.rebuilds == 2);
+
+    surface.rebuildResult = Result::ERROR;
+    CHECK(surface.size({24, 12}) == Extent2D<U64>{24, 12});
+    CHECK(surface.rebuilds == 3);
+    CHECK(surface.bindingResult() == Result::ERROR);
+    CHECK(surface.frame() == Result::ERROR);
+    CHECK(surface.rebuilds == 4);
+    CHECK(surface.frame() == Result::ERROR);
+    CHECK(surface.rebuilds == 5);
+
+    surface.rebuildResult = Result::SUCCESS;
+    CHECK(surface.frame() == Result::SUCCESS);
+    CHECK(surface.rebuilds == 6);
+    CHECK(surface.resized());
+    CHECK(surface.bindingResult() == Result::SUCCESS);
+    CHECK(surface.frame() == Result::SUCCESS);
+    CHECK(surface.rebuilds == 6);
+    CHECK_FALSE(surface.resized());
+
+    CHECK(surface.size({32, 16}) == Extent2D<U64>{32, 16});
+    CHECK(surface.bindingResult() == Result::SUCCESS);
+    CHECK(surface.frame() == Result::SUCCESS);
+    CHECK(surface.rebuilds == 7);
+
+    surface.rebuildResult = Result::ERROR;
+    CHECK(surface.size({40, 20}) == Extent2D<U64>{40, 20});
+    CHECK(surface.bindingResult() == Result::ERROR);
+    REQUIRE(surface.destroy() == Result::SUCCESS);
+    REQUIRE(surface.create() == Result::SUCCESS);
+    CHECK(surface.bindingResult() == Result::SUCCESS);
+    surface.rebuildResult = Result::SUCCESS;
+    CHECK(surface.frame() == Result::SUCCESS);
+    CHECK(surface.rebuilds == 8);
 }

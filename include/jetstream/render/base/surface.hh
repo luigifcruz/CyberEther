@@ -56,7 +56,7 @@ class JETSTREAM_API Surface : public WindowAttachment {
     void commitDraw();
 
     const Extent2D<U64>& size() const;
-    virtual const Extent2D<U64>& size(const Extent2D<U64>& size) = 0;
+    virtual const Extent2D<U64>& size(const Extent2D<U64>& size);
 
     template<DeviceType D>
     static std::shared_ptr<Surface> Factory(const Config& config) {
@@ -66,6 +66,13 @@ class JETSTREAM_API Surface : public WindowAttachment {
  protected:
     Config config;
     bool dirty = true;
+    Extent2D<U64> requestedSize;
+    bool framebufferResized = false;
+    Result resizeResult = Result::SUCCESS;
+
+    Result prepare();
+    virtual bool created() const;
+    virtual Result rebuildFramebuffer();
 
     virtual Result reorderPrograms(const std::vector<std::shared_ptr<Program>>& programs);
     virtual bool appendable() const;
