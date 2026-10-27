@@ -72,7 +72,7 @@ struct TcpReceiver : public Block::Config {
         "100%. Near 100% means the chain is falling behind. |\n"
         "| **Buffer Loss** | Share of samples overwritten before the chain read them "
         "since the stream started. |\n"
-        "| **Throughput** | Rate the chain reads in MB/s, refreshed as data arrives. |\n"
+        "| **Throughput** | Rate the chain reads in MB/s. |\n"
         "\n"
         "## Recipes\n"
         "\n"

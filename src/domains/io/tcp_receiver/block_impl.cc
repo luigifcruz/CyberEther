@@ -105,7 +105,7 @@ Result TcpReceiverImpl::define() {
 
     JST_CHECK(defineInterfaceMetric("throughput",
                                     "Throughput",
-                                    "Current data throughput.",
+                                    "Rate the chain reads.",
                                     {{"type", "label"}},
         [this]() -> std::any {
             if (!moduleImpl) {

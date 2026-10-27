@@ -24,7 +24,7 @@ Result FileWriterImpl::define() {
 
 Result FileWriterImpl::create() {
     bytesWritten.publish(0);
-    currentBandwidth.publish(0.0f);
+    throughputMBs.publish(0.0f);
     filePath.clear();
     bytesSinceLastMeasurement = 0;
     lastMeasurementTime = std::chrono::steady_clock::now();
@@ -80,7 +80,7 @@ Result FileWriterImpl::destroy() {
         JST_INFO("[MODULE_FILE_WRITER] Closed '{}' ({} bytes written).", filepath, bytesWritten.get());
     }
 
-    currentBandwidth.publish(0.0f);
+    throughputMBs.publish(0.0f);
     bytesSinceLastMeasurement = 0;
 
     return Result::SUCCESS;
@@ -90,28 +90,28 @@ U64 FileWriterImpl::getBytesWritten() const {
     return bytesWritten.get();
 }
 
-F32 FileWriterImpl::getCurrentBandwidth() const {
-    return currentBandwidth.get();
+F32 FileWriterImpl::getThroughput() const {
+    return throughputMBs.get();
 }
 
-void FileWriterImpl::updateBandwidth(const U64 deltaBytes) {
-    constexpr double kBandwidthMeasurementPeriodSeconds = 0.10;
-    constexpr double kBandwidthEmaAlpha = 0.3;
+void FileWriterImpl::updateThroughput(const U64 deltaBytes) {
+    constexpr double kMeasurementPeriodSeconds = 0.10;
+    constexpr double kEmaAlpha = 0.3;
 
     bytesSinceLastMeasurement += deltaBytes;
 
     const auto now = std::chrono::steady_clock::now();
     const double elapsedSeconds = std::chrono::duration<double>(now - lastMeasurementTime).count();
-    if (elapsedSeconds < kBandwidthMeasurementPeriodSeconds) {
+    if (elapsedSeconds < kMeasurementPeriodSeconds) {
         return;
     }
 
-    const double instantBandwidth = static_cast<double>(bytesSinceLastMeasurement) /
-                                    static_cast<double>(JST_MB) /
-                                    elapsedSeconds;
-    const double smoothedBandwidth = kBandwidthEmaAlpha * instantBandwidth +
-                                     (1.0 - kBandwidthEmaAlpha) * currentBandwidth.get();
-    currentBandwidth.publish(static_cast<F32>(smoothedBandwidth));
+    const double instantThroughput = static_cast<double>(bytesSinceLastMeasurement) /
+                                     1e6 /
+                                     elapsedSeconds;
+    const double smoothedThroughput = kEmaAlpha * instantThroughput +
+                                      (1.0 - kEmaAlpha) * throughputMBs.get();
+    throughputMBs.publish(static_cast<F32>(smoothedThroughput));
 
     bytesSinceLastMeasurement = 0;
     lastMeasurementTime = now;

@@ -139,8 +139,8 @@ Result SdrImpl::define() {
 
     JST_CHECK(defineInterfaceMetric("bufferLoss",
                                     "Buffer Loss",
-                                    "Samples overwritten before the chain read them, plus device "
-                                    "stream gaps (GAP) since the stream started.",
+                                    "Share of samples overwritten before the chain read them since the stream started. "
+                                    "Gaps the radio reported (GAP) show next to it.",
                                     {{"type", "progressbar"}},
         [this]() -> std::any {
             const auto loss = moduleImpl ? moduleImpl->getLoss()
@@ -155,7 +155,7 @@ Result SdrImpl::define() {
 
     JST_CHECK(defineInterfaceMetric("throughput",
                                     "Throughput",
-                                    "Rate the chain reads relative to the rate the radio sends.",
+                                    "Rate the chain reads next to the rate the radio sends.",
                                     {{"type", "progressbar"}},
         [this]() -> std::any {
             const auto [actual, expected] = moduleImpl ? moduleImpl->getThroughput()

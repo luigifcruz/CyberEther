@@ -52,7 +52,7 @@ Result FileReaderImpl::define() {
                                     {{"type", "dropdown"}, {"options", std::move(dataTypes)}}));
 
     JST_CHECK(defineInterfaceConfig("batchSize",
-                                    "Batch Size",
+                                    "Samples",
                                     "Samples read per cycle and the FFT size downstream.",
                                     {{"type", "uint"}, {"unit", "samples"}}));
 
@@ -83,15 +83,15 @@ Result FileReaderImpl::define() {
             return std::pair<std::string, F32>{jst::fmt::format("{:.1f}%", progress * 100.0f), progress};
         }));
 
-    JST_CHECK(defineInterfaceMetric("currentBandwidth",
-                                    "Bandwidth",
-                                    "Smoothed recent file read rate.",
+    JST_CHECK(defineInterfaceMetric("throughput",
+                                    "Throughput",
+                                    "Smoothed recent read rate.",
                                     {{"type", "label"}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::string("N/A");
             }
-            return jst::fmt::format("{:.1f} MB/s", moduleImpl->getCurrentBandwidth());
+            return jst::fmt::format("{:.1f} MB/s", moduleImpl->getThroughput());
         }));
 
     return Result::SUCCESS;

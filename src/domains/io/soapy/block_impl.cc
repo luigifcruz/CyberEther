@@ -156,7 +156,8 @@ Result SoapyImpl::define() {
 
     JST_CHECK(defineInterfaceMetric("bufferLoss",
                                     "Buffer Loss",
-                                    "Buffer loss percentage and reported device overflows (OVF) since stream start.",
+                                    "Share of samples overwritten before the chain read them since the stream started. "
+                                    "Overflows the radio reported (OVF) show next to it.",
                                     {{"type", "progressbar"}},
         [this]() -> std::any {
             const F64 loss = moduleImpl ? moduleImpl->getBufferLoss() : 0.0;
@@ -171,14 +172,14 @@ Result SoapyImpl::define() {
 
     JST_CHECK(defineInterfaceMetric("throughput",
                                     "Throughput",
-                                    "Current data throughput.",
-                                    {{"type", "label"}},
+                                    "Rate the chain reads next to the rate the radio sends.",
+                                    {{"type", "progressbar"}},
         [this]() -> std::any {
-            if (!moduleImpl) {
-                return std::string("N/A");
-            }
-            const auto [actual, expected] = moduleImpl->getThroughput();
-            return jst::fmt::format("{:.1f} / {:.1f} MB/s", actual, expected);
+            const auto [actual, expected] = moduleImpl ? moduleImpl->getThroughput()
+                                                       : std::pair<F32, F32>{0.0f, 0.0f};
+            const F32 fraction = expected > 0.0f ? actual / expected : 0.0f;
+            return std::pair<std::string, F32>{
+                jst::fmt::format("{:.1f} / {:.1f} MB/s", actual, expected), fraction};
         }));
 
     return Result::SUCCESS;
