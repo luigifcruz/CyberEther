@@ -9,8 +9,10 @@
 
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/button.hh>
+#include <jetstream/render/sakura/components/overlay.hh>
 #include <jetstream/render/sakura/components/pill_button.hh>
 #include <jetstream/render/sakura/components/pill_field.hh>
+#include <jetstream/render/sakura/components/pill_icon_button.hh>
 #include <jetstream/render/sakura/components/pill_stepper.hh>
 #include <jetstream/render/sakura/components/scroll_area.hh>
 #include <jetstream/render/sakura/components/search_catalog.hh>
@@ -21,6 +23,7 @@
 #include <jetstream/render/sakura/components/text_grid.hh>
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <optional>
 #include <string>
@@ -1243,4 +1246,242 @@ TEST_CASE("Pills keep a left press across releases of other buttons", "[core][sa
     }
     CHECK(steps == 1);
     CHECK(opens == 1);
+}
+
+namespace {
+
+constexpr const char* kIconButtonTags = "[core][sakura][pill-icon-button]";
+
+const Sakura::Box& IconButtonHalo(const Sakura::PillIconButton& button) {
+    return *dynamic_cast<const Sakura::Box*>(Peek::Children(button).at(1));
+}
+
+const Sakura::Text& IconButtonGlyph(const Sakura::PillIconButton& button) {
+    return *dynamic_cast<const Sakura::Text*>(Peek::Children(button).at(2));
+}
+
+}  // namespace
+
+TEST_CASE("Pill icon buttons measure square pills and honor fixed and filling sizes", kIconButtonTags) {
+    const Scene scene;
+    Sakura::PillIconButton button;
+    Host host(button);
+
+    button.update({.icon = ICON_LC_INFO, .size = {0.0f, 0.0f}});
+    CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{34.0f, 34.0f});
+    CHECK(host.measureOf(scene.ctx, {20.0f, 10.0f}) == Extent2D<F32>{20.0f, 10.0f});
+
+    button.update({.icon = ICON_LC_INFO});
+    CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{34.0f, 34.0f});
+
+    button.update({.icon = ICON_LC_INFO, .size = {40.0f, 30.0f}});
+    CHECK(host.measureOf(scene.ctx, {300.0f, 300.0f}) == Extent2D<F32>{40.0f, 30.0f});
+
+    button.update({.icon = ICON_LC_INFO, .size = {Sakura::Fill, Sakura::Fill}});
+    CHECK(host.measureOf(scene.ctx, {120.0f, 50.0f}) == Extent2D<F32>{120.0f, 50.0f});
+    CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{34.0f, 34.0f});
+
+    auto dense = scene.ctx;
+    dense.pixelRatio = 2.0f;
+    button.update({.icon = ICON_LC_INFO});
+    CHECK(host.measureOf(dense, {kInfinite, kInfinite}) == Extent2D<F32>{68.0f, 68.0f});
+}
+
+TEST_CASE("Pill icon buttons act on a left release over the button they were pressed on", kIconButtonTags) {
+    const Scene scene;
+    U64 clicks = 0;
+    Sakura::PillIconButton button;
+    Host host(button);
+    button.update({.icon = ICON_LC_PAUSE, .onClick = [&] { ++clicks; }});
+    host.place(scene.ctx, {0.0f, 0.0f, 34.0f, 34.0f});
+
+    CHECK(Peek::CursorAt(button, {17.0f, 17.0f}) == SurfaceCursor::Hand);
+    CHECK_FALSE(Peek::CursorAt(button, {60.0f, 17.0f}).has_value());
+
+    CHECK(host.send(Mouse(MouseEventType::Click, 17.0f, 17.0f)));
+    CHECK(clicks == 0);
+    CHECK(host.send(Mouse(MouseEventType::Release, 17.0f, 17.0f)));
+    CHECK(clicks == 1);
+
+    CHECK_FALSE(host.send(Mouse(MouseEventType::Release, 17.0f, 17.0f)));
+    CHECK(clicks == 1);
+
+    host.send(Mouse(MouseEventType::Click, 17.0f, 17.0f));
+    host.send(Mouse(MouseEventType::Release, 80.0f, 17.0f));
+    CHECK(clicks == 1);
+
+    host.click(17.0f, 17.0f, MouseButton::Right);
+    CHECK(clicks == 1);
+
+    host.send(Mouse(MouseEventType::Click, 17.0f, 17.0f));
+    host.send(Mouse(MouseEventType::Cancel, 17.0f, 17.0f));
+    host.send(Mouse(MouseEventType::Release, 17.0f, 17.0f));
+    CHECK(clicks == 1);
+
+    host.send(Mouse(MouseEventType::Click, 17.0f, 17.0f));
+    host.send(Mouse(MouseEventType::Release, 17.0f, 17.0f, MouseButton::Right));
+    host.send(Mouse(MouseEventType::Release, 17.0f, 17.0f));
+    CHECK(clicks == 2);
+
+    CHECK_FALSE(host.send(Wheel(17.0f, 17.0f, -1.0f)));
+}
+
+TEST_CASE("Pill icon buttons leave whole secondary gestures to the component beneath", kIconButtonTags) {
+    const Scene scene;
+    U64 clicks = 0;
+    Probe behind({100.0f, 100.0f});
+    behind.prepare();
+    Sakura::PillIconButton button;
+    button.update({.icon = ICON_LC_PAUSE, .onClick = [&] { ++clicks; }});
+    Sakura::Overlay overlay;
+    overlay.update({.items = {{.child = &behind}, {.child = &button, .anchor = Sakura::Anchor::TopLeft}}});
+    Host host(overlay);
+    host.place(scene.ctx, {0.0f, 0.0f, 100.0f, 100.0f});
+    REQUIRE(Peek::Frame(button) == Rect{0.0f, 0.0f, 34.0f, 34.0f});
+    const auto received = [&](MouseEventType type, MouseButton pressed) {
+        return std::count_if(behind.events.begin(), behind.events.end(), [&](const MouseEvent& event) {
+            return event.type == type && event.button == pressed;
+        });
+    };
+
+    for (const auto secondary : {MouseButton::Right, MouseButton::Middle}) {
+        CHECK(host.send(Mouse(MouseEventType::Click, 17.0f, 17.0f, secondary)));
+        CHECK(host.send(Mouse(MouseEventType::Release, 17.0f, 17.0f, secondary)));
+        CHECK(received(MouseEventType::Click, secondary) == 1);
+        CHECK(received(MouseEventType::Release, secondary) == 1);
+    }
+    CHECK(clicks == 0);
+
+    CHECK(host.send(Mouse(MouseEventType::Click, 17.0f, 17.0f)));
+    CHECK(host.send(Mouse(MouseEventType::Click, 17.0f, 17.0f, MouseButton::Right)));
+    CHECK(host.send(Mouse(MouseEventType::Release, 17.0f, 17.0f, MouseButton::Right)));
+    CHECK(host.send(Mouse(MouseEventType::Release, 17.0f, 17.0f)));
+    CHECK(clicks == 1);
+    CHECK(received(MouseEventType::Click, MouseButton::Right) == 2);
+    CHECK(received(MouseEventType::Release, MouseButton::Right) == 2);
+    CHECK(received(MouseEventType::Click, MouseButton::Left) == 0);
+    CHECK(received(MouseEventType::Release, MouseButton::Left) == 0);
+}
+
+TEST_CASE("Pill icon buttons settle and repaint only for hover and icon changes", kIconButtonTags) {
+    Scene scene;
+    Sakura::PillIconButton button;
+    Place place(button, {10.0f, 10.0f, 34.0f, 34.0f});
+    Frames frames(place, kScreen, scene.context());
+    Sakura::PillIconButton::Config config{.icon = ICON_LC_PAUSE, .iconColorKey = "run_state_running", .tinted = true};
+    const auto update = [&] {
+        button.update(config);
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    CHECK_FALSE(IconButtonHalo(button).config().instances.front().visible);
+    CHECK(IconButtonGlyph(button).config().colorKey == "run_state_running");
+
+    CheckHoverRepaintsOnce(frames, place, update, {27.0f, 27.0f}, {200.0f, 200.0f});
+    CheckLeaveRepaintsOnce(frames, place, update, {27.0f, 27.0f});
+
+    place.send(Mouse(MouseEventType::Move, 27.0f, 27.0f));
+    CHECK(RepaintOnly(frames.run(update)));
+    const auto& halo = IconButtonHalo(button).config();
+    REQUIRE(halo.instances.size() == 1);
+    CHECK(halo.instances.front().visible);
+    CHECK(halo.instances.front().rect == Rect{10.0f, 10.0f, 34.0f, 34.0f});
+    CHECK(halo.cornerRadius == 17.0f);
+    CHECK(halo.instances.front().backgroundColor == DistinctPalette().at("chrome_button_hover"));
+    place.send(Mouse(MouseEventType::Leave, 27.0f, 27.0f));
+    REQUIRE(frames.settle(update));
+
+    config.icon = ICON_LC_PLAY;
+    config.iconColorKey = "run_state_paused";
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(IconButtonGlyph(button).config().colorKey == "run_state_paused");
+    CHECK(frames.rebuilds == 1);
+    CHECK(frames.restructures == 0);
+}
+
+TEST_CASE("Pill icon buttons scale their halo with the pixel ratio", kIconButtonTags) {
+    Scene scene;
+    Sakura::PillIconButton button;
+    Host host(button);
+    button.update({.icon = ICON_LC_INFO});
+    auto ctx = scene.context();
+    ctx.pixelRatio = 2.0f;
+    host.place(ctx, {0.0f, 0.0f, 68.0f, 68.0f});
+    host.send(Mouse(MouseEventType::Move, 34.0f, 34.0f));
+    host.place(ctx, {0.0f, 0.0f, 68.0f, 68.0f});
+    const auto& halo = IconButtonHalo(button).config();
+    REQUIRE(halo.instances.size() == 1);
+    CHECK(halo.instances.front().visible);
+    CHECK(halo.instances.front().rect == Rect{3.0f, 3.0f, 62.0f, 62.0f});
+    CHECK(halo.cornerRadius == 31.0f);
+    const Rect glyph = Peek::Frame(IconButtonGlyph(button));
+    CHECK(glyph.x == std::round(glyph.x));
+    CHECK(glyph.y == std::round(glyph.y));
+}
+
+TEST_CASE("Pill icon buttons draw a colored ring only when tinted", kIconButtonTags) {
+    Scene scene;
+    Sakura::PillIconButton button;
+    Host host(button);
+    const auto ctx = scene.context();
+    const auto hovered = [&](bool tinted) {
+        button.update({.icon = ICON_LC_PAUSE, .iconColorKey = "run_state_running", .tinted = tinted});
+        host.place(ctx, {0.0f, 0.0f, 34.0f, 34.0f});
+        host.send(Mouse(MouseEventType::Move, 17.0f, 17.0f));
+        host.place(ctx, {0.0f, 0.0f, 34.0f, 34.0f});
+        return IconButtonHalo(button).config();
+    };
+
+    const auto plain = hovered(false);
+    REQUIRE(plain.instances.size() == 1);
+    CHECK(plain.instances.front().rect == Rect{1.5f, 1.5f, 31.0f, 31.0f});
+    CHECK(plain.borderWidth == 0.0f);
+
+    const auto tinted = hovered(true);
+    REQUIRE(tinted.instances.size() == 1);
+    CHECK(tinted.instances.front().rect == Rect{0.0f, 0.0f, 34.0f, 34.0f});
+    CHECK(tinted.borderWidth == 1.5f);
+    CHECK(tinted.borderColor.r == ctx.color("run_state_running").r);
+    CHECK(tinted.borderColor.a == Catch::Approx(ctx.color("run_state_running").a * 0.7f));
+}
+
+TEST_CASE("Pill icon buttons show their tooltip below after the hover delay and drop it on leave", kIconButtonTags) {
+    Scene scene;
+    Sakura::PillIconButton button;
+    LayerSlot slot;
+    LayerHost host({&slot});
+    slot.hold(button, {700.0f, 12.0f, 34.0f, 34.0f});
+    Frames frames(host, kScreen, scene.context());
+    frames.timeStep = 0.1;
+    frames.ctx.hoverDelay = 0.25f;
+    const auto update = [&] {
+        button.update({.icon = ICON_LC_SAVE, .tooltip = "Save flowgraph"});
+    };
+    const auto tooltip = [&]() -> std::optional<Jetstream::Rect> {
+        for (auto* text : Find<Sakura::Text>(host.popups)) {
+            if (text->config().str == "Save flowgraph") {
+                return Peek::Frame(*text);
+            }
+        }
+        return std::nullopt;
+    };
+    REQUIRE(frames.settle(update));
+    CHECK_FALSE(tooltip().has_value());
+
+    Hover(host, frames, 717.0f, 29.0f);
+    frames.run(update);
+    CHECK_FALSE(tooltip().has_value());
+    for (U64 frame = 0; frame < 6; ++frame) {
+        frames.run(update);
+    }
+    REQUIRE(tooltip().has_value());
+    CHECK(tooltip()->y > 46.0f);
+    CHECK(tooltip()->right() <= 734.0f);
+    CHECK(Retains(frames, update));
+
+    Hover(host, frames, 300.0f, 300.0f);
+    frames.run(update);
+    CHECK_FALSE(tooltip().has_value());
+    CHECK(Retains(frames, update));
 }

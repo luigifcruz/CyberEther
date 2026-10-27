@@ -5,15 +5,19 @@
 #include <jetstream/render/sakura/components/grid.hh>
 #include <jetstream/render/sakura/components/layer.hh>
 #include <jetstream/render/sakura/components/overlay.hh>
+#include <jetstream/render/sakura/components/polyline.hh>
+#include <jetstream/render/sakura/components/reveal.hh>
 #include <jetstream/render/sakura/components/panel.hh>
 #include <jetstream/render/sakura/components/scroller.hh>
 #include <jetstream/render/sakura/components/spacer.hh>
 #include <jetstream/render/sakura/components/split_view.hh>
 #include <jetstream/render/sakura/components/stack.hh>
+#include <jetstream/render/sakura/components/wave_line.hh>
 
 #include "component_harness.hh"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <vector>
@@ -693,4 +697,194 @@ TEST_CASE("Horizontal stacks shrink flagged items when their children overflow",
     CHECK(Peek::Frame(wide).width == 120.0f);
     CHECK(Peek::Frame(fixed).x == 120.0f);
     CHECK(Peek::Frame(fixed).width == 80.0f);
+}
+
+TEST_CASE("Wave lines draw one sine stroke across their width inside the amplitude", "[core][sakura][layout]") {
+    const auto ctx = MakeContext();
+    Sakura::WaveLine wave;
+    wave.update({.period = 20.0f});
+    Host host(wave);
+    const auto size = host.measureOf(ctx, {400.0f, 100.0f});
+    CHECK(size.x == 400.0f);
+    CHECK(size.y >= 12.0f);
+    CHECK(size.y <= 16.0f);
+    host.place(ctx, {10.0f, 20.0f, 400.0f, size.y});
+
+    const auto lines = Find<Sakura::Polyline>(wave);
+    REQUIRE(lines.size() == 1);
+    const auto& config = lines[0]->config();
+    REQUIRE(config.instances.size() == 1);
+    const auto& points = config.instances[0].points;
+    REQUIRE(points.size() > 200);
+    CHECK(points.front().x == 10.0f);
+    CHECK(points.back().x >= 400.0f);
+    const F32 center = 20.0f + size.y * 0.5f;
+    for (const auto& point : points) {
+        CHECK(std::abs(point.y - center) <= 5.0f + 1e-3f);
+    }
+    wave.update({.period = 20.0f, .span = 0.5f});
+    host.place(ctx, {10.0f, 20.0f, 400.0f, size.y});
+    const auto& centered = Find<Sakura::Polyline>(wave).front()->config().instances.front().points;
+    CHECK(centered.front().x == 110.0f);
+    CHECK(centered.back().x <= 310.0f);
+    CHECK(centered.back().x > 300.0f);
+}
+
+TEST_CASE("Wave lines size their vertex budget from the viewport so a full width wave is never dropped",
+          "[core][sakura][layout]") {
+    Sakura::WaveLine wave;
+    wave.update({});
+    Host host(wave);
+    host.place(MakeContext(), {0.0f, 0.0f, 800.0f, 16.0f});
+    const auto lines = Find<Sakura::Polyline>(wave);
+    REQUIRE(lines.size() == 1);
+    CHECK(lines[0]->config().capacity == 16384);
+
+    host.place(MakeContext({7680.0f, 4320.0f}), {0.0f, 0.0f, 7680.0f, 16.0f});
+    const auto& config = lines[0]->config();
+    REQUIRE(config.instances.size() == 1);
+    const auto& points = config.instances[0].points;
+    CHECK(points.front().x == 0.0f);
+    CHECK(points.back().x >= 7680.0f);
+    CHECK(4 * points.size() > 16384);
+    CHECK(4 * points.size() <= config.capacity);
+}
+
+TEST_CASE("Wave lines settle, repaint on period and span changes, and scale with the pixel ratio",
+          "[core][sakura][layout][retention]") {
+    Sakura::WaveLine wave;
+    Place place(wave, {10.0f, 10.0f, 400.0f, 16.0f});
+    Frames frames(place, kScreen, MakeContext());
+    F32 period = 18.0f;
+    F32 span = 1.0f;
+    const auto update = [&] {
+        wave.update({.period = period, .span = span});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    CHECK(QuietMoves(frames, update, {{50.0f, 15.0f}, {60.0f, 15.0f}}, [&](const MouseEvent& e) {
+        return place.send(e);
+    }));
+    period = 24.0f;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    span = 0.5f;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == 0);
+
+    Sakura::WaveLine scaled;
+    scaled.update({.period = 20.0f});
+    Host host(scaled);
+    const auto ctx = MakeContext();
+    auto doubled = ctx;
+    doubled.pixelRatio = 2.0f;
+    const auto single = host.measureOf(ctx, {400.0f, kInfinite});
+    const auto dense = host.measureOf(doubled, {400.0f, kInfinite});
+    CHECK(dense.y >= 2.0f * single.y - 2.0f);
+    host.place(doubled, {0.0f, 0.0f, 400.0f, dense.y});
+    const auto& instance = Find<Sakura::Polyline>(scaled).front()->config().instances.front();
+    CHECK(instance.thickness == 3.2f);
+    F32 reach = 0.0f;
+    for (const auto& point : instance.points) {
+        reach = std::max(reach, std::abs(point.y - dense.y * 0.5f));
+    }
+    CHECK(reach <= 10.0f + 1e-3f);
+    CHECK(reach > 9.0f);
+}
+
+TEST_CASE("Reveal grows and shrinks its child with the gap and holds it for the minimum duration",
+          "[core][sakura][layout]") {
+    auto ctx = MakeContext();
+    Probe child({100.0f, 40.0f});
+    child.prepare();
+    Sakura::Reveal reveal;
+    reveal.update({.child = &child, .gap = 10.0f, .minimumDuration = 1.0});
+    Probe after({100.0f, 10.0f});
+    after.prepare();
+    Stack stack;
+    stack.update({.spacing = 0.0f, .centerCross = false, .items = {{.child = &reveal}, {.child = &after}}});
+    Host host(stack);
+    const auto height = [&](F64 time) {
+        ctx.time = time;
+        host.place(ctx, {0.0f, 0.0f, 200.0f, 500.0f});
+        return after.currentFrame().y;
+    };
+
+    CHECK(height(0.0) == 0.0f);
+    reveal.update({.child = &child, .shown = true, .gap = 10.0f, .minimumDuration = 1.0});
+    CHECK(height(5.0) == 0.0f);
+    CHECK(height(5.125) == 25.0f);
+    CHECK(height(5.25) == 50.0f);
+
+    reveal.update({.child = &child, .gap = 10.0f, .minimumDuration = 1.0});
+    CHECK(height(5.5) == 50.0f);
+    CHECK(height(6.0) == 50.0f);
+    CHECK(height(6.125) == 25.0f);
+    CHECK(height(6.25) == 0.0f);
+    CHECK_FALSE(child.visible());
+
+    reveal.update({.child = &child, .shown = true, .gap = 10.0f, .minimumDuration = 1.0});
+    CHECK(height(20.0) == 0.0f);
+    CHECK(height(20.25) == 50.0f);
+    CHECK(child.currentFrame() == Rect{0.0f, 10.0f, 200.0f, 40.0f});
+
+    reveal.update({.child = &child, .gap = 10.0f, .minimumDuration = 1.0, .linger = 2.0});
+    CHECK(height(30.0) == 50.0f);
+    CHECK(height(31.5) == 50.0f);
+    CHECK(height(32.0) == 50.0f);
+    CHECK(height(32.125) == 25.0f);
+    CHECK(height(32.25) == 0.0f);
+}
+
+TEST_CASE("Reveal measures its child at its natural height, caps to the space and scales the gap",
+          "[core][sakura][layout]") {
+    auto ctx = MakeContext();
+    Probe child({100.0f, 40.0f});
+    child.prepare();
+    Sakura::Reveal reveal;
+    Host host(reveal);
+    reveal.update({.child = &child, .shown = true, .gap = 10.0f});
+    CHECK(child.visible());
+    ctx.time = 1.0;
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+    ctx.time = 2.0;
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+
+    CHECK(host.measureOf(ctx, {200.0f, kInfinite}) == Extent2D<F32>{200.0f, 50.0f});
+    CHECK(host.measureOf(ctx, {200.0f, 30.0f}) == Extent2D<F32>{200.0f, 30.0f});
+    auto doubled = ctx;
+    doubled.pixelRatio = 2.0f;
+    CHECK(host.measureOf(doubled, {200.0f, kInfinite}) == Extent2D<F32>{200.0f, 60.0f});
+    host.place(doubled, {0.0f, 0.0f, 200.0f, 60.0f});
+    CHECK(child.currentFrame() == Rect{0.0f, 20.0f, 200.0f, 40.0f});
+}
+
+TEST_CASE("Reveal drops focus and held presses inside its child once it collapses", "[core][sakura][layout]") {
+    auto ctx = MakeContext();
+    Probe child({100.0f, 40.0f});
+    child.prepare();
+    Sakura::Reveal reveal;
+    Host host(reveal);
+    const auto place = [&](bool shown, F64 time) {
+        reveal.update({.child = &child, .shown = shown});
+        ctx.time = time;
+        host.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+    };
+    place(true, 1.0);
+    place(true, 2.0);
+    REQUIRE(child.currentFrame().height == 40.0f);
+    REQUIRE(Sakura::Access::focus(child));
+    REQUIRE(FocusOwner(host) == &child);
+    host.send(Mouse(MouseEventType::Click, 50.0f, 20.0f));
+    const U64 cancels = child.count(MouseEventType::Cancel);
+
+    place(false, 3.0);
+    CHECK(child.visible());
+    CHECK(FocusOwner(host) == &child);
+
+    place(false, 4.0);
+    CHECK_FALSE(child.visible());
+    CHECK(FocusOwner(host) == nullptr);
+    CHECK(child.count(MouseEventType::Cancel) == cancels + 1);
 }

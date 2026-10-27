@@ -22,6 +22,7 @@
 #include <jetstream/render/sakura/components/progress_bar.hh>
 #include <jetstream/render/sakura/components/node/progress_bar.hh>
 #include <jetstream/render/sakura/components/qr_code.hh>
+#include <jetstream/render/sakura/components/reveal.hh>
 #include <jetstream/render/sakura/components/scroll_area.hh>
 #include <jetstream/render/sakura/components/scroller.hh>
 #include <jetstream/render/sakura/components/search_catalog.hh>
@@ -776,6 +777,82 @@ TEST_CASE("Interactive divs settle and repaint once per hover transition", "[cor
     selected = true;
     CHECK(RepaintOnly(frames.run(update)));
     CHECK(Retains(frames, update));
+}
+
+TEST_CASE("Reveals lay out only while animating and stay clean while holding or with a frozen clock",
+          "[core][sakura][retention]") {
+    Probe child({100.0f, 40.0f});
+    child.prepare();
+    Sakura::Reveal reveal;
+    Place place(reveal, {10.0f, 10.0f, 200.0f, 50.0f});
+    Frames frames(place, kScreen, MakeContext());
+    bool shown = false;
+    const auto update = [&] {
+        reveal.update({.child = &child, .shown = shown, .gap = 10.0f, .minimumDuration = 1.0, .linger = 0.5});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    CHECK_FALSE(child.visible());
+
+    shown = true;
+    CHECK(frames.run(update).laidOut);
+    CHECK(child.visible());
+    CHECK(Retains(frames, update));
+
+    frames.timeStep = 1.0 / 60.0;
+    REQUIRE(frames.settle(update, 60));
+    CHECK(Retains(frames, update));
+
+    shown = false;
+    CHECK(frames.run(update).laidOut);
+    const U64 held = frames.layouts;
+    for (U64 frame = 0; frame < 20; ++frame) {
+        frames.run(update);
+    }
+    CHECK(frames.layouts == held);
+    CHECK(child.visible());
+
+    for (U64 frame = 0; frame < 60; ++frame) {
+        frames.run(update);
+    }
+    REQUIRE(frames.settle(update, 120));
+    CHECK(Retains(frames, update));
+    CHECK_FALSE(child.visible());
+}
+
+TEST_CASE("Collapsed reveals stop laying out an animated child and settle", "[core][sakura][retention]") {
+    struct Ticker : Probe {
+        using Probe::Probe;
+
+     protected:
+        void layout(const Sakura::Context& ctx) override {
+            Probe::layout(ctx);
+            requestFrame();
+        }
+    };
+
+    Ticker child({100.0f, 40.0f});
+    child.prepare();
+    Sakura::Reveal reveal;
+    Place place(reveal, {10.0f, 10.0f, 200.0f, 50.0f});
+    Frames frames(place, kScreen, MakeContext());
+    frames.timeStep = 1.0 / 60.0;
+    bool shown = true;
+    const auto update = [&] {
+        reveal.update({.child = &child, .shown = shown, .gap = 10.0f});
+    };
+    for (U64 frame = 0; frame < 30; ++frame) {
+        frames.run(update);
+    }
+    CHECK(child.visible());
+    CHECK(child.layouts > 20);
+
+    shown = false;
+    REQUIRE(frames.settle(update, 120));
+    CHECK_FALSE(child.visible());
+    const U64 laid = child.layouts;
+    CHECK(Retains(frames, update));
+    CHECK(child.layouts == laid);
 }
 
 TEST_CASE("Passive divs ignore hover changes", "[core][sakura][retention]") {

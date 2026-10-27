@@ -1,3 +1,4 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include "fonts.hh"
@@ -8,6 +9,8 @@
 #include <jetstream/render/sakura/components/progress_bar.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/qr_code.hh>
+#include <jetstream/render/sakura/components/spinner.hh>
+#include <jetstream/render/sakura/components/polyline.hh>
 #include <jetstream/render/sakura/components/status_bar.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
@@ -17,6 +20,7 @@
 #include "scene.hh"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <string>
 #include <variant>
@@ -557,4 +561,111 @@ TEST_CASE("Disabled text inputs ignore clicks, show no cursor, and give up focus
     input.update({.value = "alpha", .focus = true, .disabled = true});
     host.place(scene.ctx, bounds);
     CHECK_FALSE(input.focused());
+}
+
+TEST_CASE("Spinners measure their size and turn their arc as time passes", "[core][sakura][controls]") {
+    auto ctx = MakeContext();
+    Sakura::Spinner spinner;
+    Host host(spinner);
+    spinner.update({.diameter = 20.0f, .thickness = 2.0f, .period = 0.8f});
+    CHECK(host.measureOf(ctx, {100.0f, 100.0f}) == Extent2D<F32>{20.0f, 20.0f});
+
+    const auto head = [&](F64 time) {
+        ctx.time = time;
+        host.place(ctx, {10.0f, 10.0f, 20.0f, 20.0f});
+        const auto lines = Direct<Sakura::Polyline>(spinner);
+        REQUIRE(lines.size() == 1);
+        const auto& instances = lines.front()->config().instances;
+        REQUIRE(instances.size() == 2);
+        CHECK(instances[0].closed);
+        return instances[1].points.front();
+    };
+    const auto start = head(0.0);
+    CHECK(start.x == Catch::Approx(29.0f).margin(0.01f));
+    CHECK(start.y == Catch::Approx(20.0f).margin(0.01f));
+    const auto quarter = head(0.2);
+    CHECK(quarter.x == Catch::Approx(20.0f).margin(0.01f));
+    CHECK(quarter.y == Catch::Approx(29.0f).margin(0.01f));
+    const auto turned = head(0.8);
+    CHECK(turned.x == Catch::Approx(start.x).margin(0.01f));
+    CHECK(turned.y == Catch::Approx(start.y).margin(0.01f));
+}
+
+TEST_CASE("Spinners resolve their diameter and scale with the pixel ratio", "[core][sakura][controls]") {
+    auto ctx = MakeContext();
+    Sakura::Spinner spinner;
+    Host host(spinner);
+    spinner.update({});
+    CHECK(host.measureOf(ctx, {kInfinite, kInfinite}) == Extent2D<F32>{16.0f, 16.0f});
+    CHECK(host.measureOf(ctx, {10.0f, 100.0f}) == Extent2D<F32>{10.0f, 10.0f});
+
+    spinner.update({.diameter = 24.0f});
+    CHECK(host.measureOf(ctx, {kInfinite, kInfinite}) == Extent2D<F32>{24.0f, 24.0f});
+    CHECK(host.measureOf(ctx, {100.0f, 12.0f}) == Extent2D<F32>{12.0f, 12.0f});
+
+    spinner.update({.diameter = Sakura::Fill});
+    CHECK(host.measureOf(ctx, {80.0f, 50.0f}) == Extent2D<F32>{50.0f, 50.0f});
+    CHECK(host.measureOf(ctx, {kInfinite, kInfinite}) == Extent2D<F32>{16.0f, 16.0f});
+
+    auto dense = ctx;
+    dense.pixelRatio = 2.0f;
+    spinner.update({.diameter = 20.0f, .thickness = 2.0f, .period = 0.8f});
+    CHECK(host.measureOf(dense, {kInfinite, kInfinite}) == Extent2D<F32>{40.0f, 40.0f});
+    host.place(dense, {0.0f, 0.0f, 40.0f, 40.0f});
+    const auto lines = Direct<Sakura::Polyline>(spinner);
+    REQUIRE(lines.size() == 1);
+    const auto& instances = lines.front()->config().instances;
+    REQUIRE(instances.size() == 2);
+    CHECK(instances[0].thickness == 4.0f);
+    CHECK(instances[1].points.front().x == Catch::Approx(38.0f).margin(0.01f));
+}
+
+TEST_CASE("Spinner tracks are closed rings without a duplicated seam point at the track alpha",
+          "[core][sakura][controls]") {
+    auto ctx = MakeContext();
+    Sakura::Spinner spinner;
+    Host host(spinner);
+    spinner.update({.diameter = 20.0f});
+    host.place(ctx, {10.0f, 10.0f, 20.0f, 20.0f});
+    const auto lines = Direct<Sakura::Polyline>(spinner);
+    REQUIRE(lines.size() == 1);
+    const auto& instances = lines.front()->config().instances;
+    REQUIRE(instances.size() == 2);
+    const auto& track = instances[0];
+    REQUIRE(track.points.size() > 2);
+    CHECK(track.closed);
+    const auto first = track.points.front();
+    const auto last = track.points.back();
+    CHECK(std::hypot(last.x - first.x, last.y - first.y) > 0.5f);
+    CHECK(track.color.a == Catch::Approx(instances[1].color.a * 0.2f));
+}
+
+TEST_CASE("Spinners repaint only while the clock ticks and settle when frozen or static",
+          "[core][sakura][controls][retention]") {
+    Scene scene;
+    Sakura::Spinner spinner;
+    Place place(spinner, {10.0f, 10.0f, 20.0f, 20.0f});
+    Frames frames(place, kScreen, scene.context());
+    F32 period = 0.9f;
+    const auto update = [&] {
+        spinner.update({.period = period});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    frames.timeStep = 0.05;
+    for (U64 frame = 0; frame < 4; ++frame) {
+        CAPTURE(frame);
+        CHECK(RepaintOnly(frames.run(update)));
+    }
+
+    frames.timeStep = 0.0;
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    period = 0.0f;
+    frames.timeStep = 0.05;
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == 0);
 }

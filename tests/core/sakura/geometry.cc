@@ -11,6 +11,7 @@
 #include <jetstream/render/components/mesh.hh>
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/curves.hh>
+#include <jetstream/render/sakura/components/flowgraph_card.hh>
 #include <jetstream/render/sakura/components/image.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
@@ -30,6 +31,7 @@
 #include <numbers>
 #include <optional>
 #include <span>
+#include <string>
 #include <vector>
 
 using namespace Jetstream;
@@ -1045,6 +1047,57 @@ TEST_CASE("Attached labels rebuild only when their instance or character capacit
     }
     label.update(config);
     CHECK_FALSE(Sakura::Access::resourceDirty(label));
+}
+
+TEST_CASE("Attached flowgraph cards redraw new content without rebuilding and stay within capacity",
+          "[core][sakura][geometry][retention]") {
+    Rig rig;
+    if (!rig.supported()) {
+        SKIP("Unbound card resources require Vulkan or WebGPU support.");
+    }
+    MonoFontWindow fonts;
+    REQUIRE(rig.window.addFont("default_mono", fonts.font("default_mono")) == Result::SUCCESS);
+
+    Sakura::FlowgraphCard card;
+    Host host(card);
+    const auto show = [&](const std::string& diagram, const std::string& title, const std::string& description) {
+        card.update({.diagram = diagram, .category = "Basics", .title = title, .description = description});
+        host.place(rig.ctx, {0.0f, 0.0f, 260.0f, 320.0f});
+    };
+    show("a[A] --> b[B]", "First", "Short.");
+    REQUIRE(rig.build(host) == Result::SUCCESS);
+    REQUIRE_FALSE(Sakura::Access::resourceDirty(host));
+    const U64 programs = rig.surface.programs.size();
+    REQUIRE(programs > 0);
+
+    std::string chain = "n0[Node 0]";
+    for (U64 index = 1; index < 40; ++index) {
+        chain += " --> n" + std::to_string(index) + "[Node " + std::to_string(index) + "]";
+    }
+    show(chain, "Second", "Other words.");
+    CHECK_FALSE(Sakura::Access::resourceDirty(host));
+    CHECK_FALSE(Sakura::Access::structureDirty(host));
+    for (const auto* box : Find<Sakura::Box>(card)) {
+        const auto& config = box->config();
+        CAPTURE(config.instances.size(), config.capacity);
+        CHECK_FALSE(Sakura::Access::resourceDirty(*box));
+        CHECK((config.capacity == 0 || config.instances.size() <= config.capacity));
+    }
+    for (const auto* label : Find<Sakura::Label>(card)) {
+        const auto& config = label->config();
+        CAPTURE(config.instances.size(), config.capacity, config.fontName);
+        CHECK_FALSE(Sakura::Access::resourceDirty(*label));
+        CHECK((config.capacity == 0 || config.instances.size() <= config.capacity));
+    }
+    CHECK_FALSE(Sakura::Access::hasUnbuilt(host));
+    REQUIRE(Sakura::Access::buildPending(host, rig.ctx) == Result::SUCCESS);
+    CHECK(rig.surface.programs.size() == programs);
+
+    show("a[A] --> b[B]", "First", "Short.");
+    CHECK_FALSE(Sakura::Access::resourceDirty(host));
+    CHECK_FALSE(Sakura::Access::hasUnbuilt(host));
+    REQUIRE(Sakura::Access::buildPending(host, rig.ctx) == Result::SUCCESS);
+    CHECK(rig.surface.programs.size() == programs);
 }
 
 TEST_CASE("Attached images rebuild when the texture is swapped and repaint for visual changes",

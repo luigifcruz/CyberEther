@@ -26,6 +26,7 @@
 #include <jetstream/render/sakura/components/dock.hh>
 #include <jetstream/render/sakura/components/dropdown.hh>
 #include <jetstream/render/sakura/components/feature_card.hh>
+#include <jetstream/render/sakura/components/flowgraph_card.hh>
 #include <jetstream/render/sakura/components/floating_layer.hh>
 #include <jetstream/render/sakura/components/grid.hh>
 #include <jetstream/render/sakura/components/hud_layer.hh>
@@ -42,20 +43,24 @@
 #include <jetstream/render/sakura/components/panel.hh>
 #include <jetstream/render/sakura/components/pill_button.hh>
 #include <jetstream/render/sakura/components/pill_field.hh>
+#include <jetstream/render/sakura/components/pill_icon_button.hh>
 #include <jetstream/render/sakura/components/pill_stepper.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
 #include <jetstream/render/sakura/components/popup.hh>
 #include <jetstream/render/sakura/components/progress_bar.hh>
 #include <jetstream/render/sakura/components/qr_code.hh>
+#include <jetstream/render/sakura/components/reveal.hh>
 #include <jetstream/render/sakura/components/root.hh>
 #include <jetstream/render/sakura/components/scroll_area.hh>
 #include <jetstream/render/sakura/components/scroller.hh>
 #include <jetstream/render/sakura/components/search_catalog.hh>
 #include <jetstream/render/sakura/components/setting_card.hh>
 #include <jetstream/render/sakura/components/setting_field.hh>
+#include <jetstream/render/sakura/components/pill_tabs.hh>
 #include <jetstream/render/sakura/components/sidebar_item.hh>
 #include <jetstream/render/sakura/components/shortcuts.hh>
 #include <jetstream/render/sakura/components/spacer.hh>
+#include <jetstream/render/sakura/components/spinner.hh>
 #include <jetstream/render/sakura/components/split_view.hh>
 #include <jetstream/render/sakura/components/stack.hh>
 #include <jetstream/render/sakura/components/status_bar.hh>
@@ -67,7 +72,9 @@
 #include <jetstream/render/sakura/components/text_input.hh>
 #include <jetstream/render/sakura/components/text_markdown.hh>
 #include <jetstream/render/sakura/components/text_view.hh>
+#include <jetstream/render/sakura/components/tip_banner.hh>
 #include <jetstream/render/sakura/components/toggle.hh>
+#include <jetstream/render/sakura/components/wave_line.hh>
 #include <jetstream/render/sakura/components/toast_layer.hh>
 #include <jetstream/render/sakura/components/voice.hh>
 

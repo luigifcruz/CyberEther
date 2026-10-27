@@ -80,6 +80,7 @@ TEST_CASE("Components measure to finite sizes within the available space", "[cor
     subjects.push_back(Make<Sakura::ScrollArea>("scroll area", {.content = probe(), .height = 0.0f}));
     subjects.push_back(Make<Sakura::SplitView>("split view", {.left = probe(), .right = probe()}));
     subjects.push_back(Make<Sakura::Grid>("grid", {.items = {probe(), probe(), probe()}}));
+    subjects.push_back(Make<Sakura::Reveal>("reveal", {.child = probe(), .shown = true, .gap = 8.0f}));
     subjects.push_back(Make<Sakura::Spacer>("spacer", {.lines = 3}));
     subjects.push_back(Make<Sakura::Divider>("divider", {}));
     subjects.push_back(Make<Sakura::Button>("button", {.str = "Run"}));
@@ -96,8 +97,10 @@ TEST_CASE("Components measure to finite sizes within the available space", "[cor
     subjects.push_back(Make<Sakura::MarkdownEditor>("markdown editor", {.value = "Notes"}));
     subjects.push_back(Make<Sakura::PillField>("pill field", {.placeholder = "Search blocks"}));
     subjects.push_back(Make<Sakura::PillStepper>("pill stepper", {.label = "100%"}));
+    subjects.push_back(Make<Sakura::PillIconButton>("pill icon button", {.icon = ICON_LC_INFO}));
     subjects.push_back(Make<Sakura::PillButton>("pill button", {.label = "Open"}));
     subjects.push_back(Make<Sakura::QrCode>("qr code", {.data = std::vector<U8>(21 * 21, 1), .width = 21}));
+    subjects.push_back(Make<Sakura::TipBanner>("tip banner", {.str = "Drag blocks to move them.", .icon = ICON_LC_LIGHTBULB}));
     subjects.push_back(Make<Sakura::Table>("table", {.columns = {"Key", "Value"}, .rows = {{"Gain", "1.0"}}}));
     subjects.push_back(Make<Sakura::ChromeButton>("chrome button", {.label = "File"}));
     subjects.push_back(Make<Sakura::ChromeButton>("glyph chrome button", {.glyph = Sakura::ChromeButton::Glyph::Plus}));
@@ -112,6 +115,21 @@ TEST_CASE("Components measure to finite sizes within the available space", "[cor
     subjects.push_back(Make<Sakura::SidebarItem>("sidebar item", {.icon = ICON_LC_SETTINGS, .label = "General"}));
     subjects.push_back(Make<Sakura::Toggle>("toggle", {.value = true}));
     subjects.push_back(Make<Sakura::Badge>("badge", {.label = "Valid"}));
+    subjects.push_back(Make<Sakura::FlowgraphCard>("flowgraph card", {
+        .diagram = "tone[Tone] --> add[Add] --> spectrum[Spectrum]\nnoise[Noise] --> add",
+        .category = "Basics",
+        .title = "First Steps",
+        .description = "Build a spectrum analyzer.",
+    }));
+    subjects.push_back(Make<Sakura::PillTabs>("pill tabs", {
+        .items = {{.icon = ICON_LC_LAYOUT_GRID, .label = "All"}, {.label = "Plugins"}},
+    }));
+    subjects.push_back(Make<Sakura::PillTabs>("compact pill tabs", {
+        .items = {{.label = "All"}, {.label = "Basics"}, {.label = "Receivers"}},
+        .selected = 1,
+        .compact = true,
+    }));
+    subjects.push_back(Make<Sakura::WaveLine>("wave line", {.span = 0.6f}));
     subjects.push_back(Make<Sakura::FeatureCard>("feature card", {
         .title = "Update available",
         .description = "Restart to apply it.",
@@ -188,6 +206,8 @@ TEST_CASE("Components measure to finite sizes within the available space", "[cor
         subjects.push_back(Make<Sakura::Chat>("chat", {.id = "chat", .snapshot = std::move(snapshot)}));
     }
     subjects.push_back(Make<Sakura::Voice>("voice", {}));
+    subjects.push_back(Make<Sakura::Spinner>("spinner", {}));
+    subjects.push_back(Make<Sakura::Spinner>("filling spinner", {.diameter = Sakura::Fill}));
 
     const std::vector<Extent2D<F32>> spaces = {
         {kInfinite, kInfinite}, {300.0f, kInfinite}, {kInfinite, 200.0f}, {300.0f, 200.0f}, {40.0f, 10.0f},
@@ -202,6 +222,47 @@ TEST_CASE("Components measure to finite sizes within the available space", "[cor
             CHECK(measured.y <= available.y);
         }
     }
+}
+
+TEST_CASE("Expanded reveals measure within the available space and rewrap text at capped widths",
+          "[core][sakura][sizing]") {
+    Scene scene;
+    Probe probe({120.0f, 45.0f});
+    probe.prepare();
+    Sakura::Text text;
+    text.update({.str = "alpha beta gamma delta epsilon zeta eta theta iota kappa", .wrapped = true});
+    Sakura::Reveal probed;
+    probed.update({.child = &probe, .shown = true, .gap = 8.0f});
+    Sakura::Reveal wrapped;
+    wrapped.update({.child = &text, .shown = true, .gap = 8.0f});
+    Host probedHost(probed);
+    Host wrappedHost(wrapped);
+    auto ctx = scene.ctx;
+    for (auto* host : {&probedHost, &wrappedHost}) {
+        ctx.time = 1.0;
+        host->place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
+        ctx.time = 2.0;
+        host->place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
+    }
+    CHECK(probedHost.measureOf(ctx, {300.0f, kInfinite}).y == 53.0f);
+
+    const std::vector<Extent2D<F32>> spaces = {
+        {kInfinite, kInfinite}, {300.0f, kInfinite}, {kInfinite, 200.0f}, {300.0f, 200.0f}, {40.0f, 10.0f},
+    };
+    for (auto* host : {&probedHost, &wrappedHost}) {
+        for (const auto& available : spaces) {
+            CAPTURE(host == &probedHost, available.x, available.y);
+            const auto measured = host->measureOf(ctx, available);
+            CHECK(Finite(measured));
+            CHECK(measured.x <= available.x);
+            CHECK(measured.y <= available.y);
+        }
+    }
+
+    const F32 wide = wrappedHost.measureOf(ctx, {600.0f, kInfinite}).y;
+    const F32 narrow = wrappedHost.measureOf(ctx, {80.0f, kInfinite}).y;
+    CHECK(wide > 8.0f);
+    CHECK(narrow > wide);
 }
 
 TEST_CASE("Sizes resolve to natural, fixed, or filling lengths", "[core][sakura][sizing]") {
