@@ -1,10 +1,13 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "compositor/default/actions/gallery.hh"
 #include "compositor/default/actions/settings.hh"
 #include "compositor/default/presenters/agent/labels.hh"
 #include "compositor/default/actions/workbench.hh"
+#include "environment.hh"
 
 #include <memory>
+#include <string>
 
 using namespace Jetstream;
 
@@ -127,4 +130,24 @@ TEST_CASE("Closing settings resets its sub-pages so late saves do not reopen it"
     CHECK_FALSE(state.interface.settingsTab);
     CHECK(state.settings.intelligencePage == IntelligencePage::Overview);
     CHECK(state.settings.registryPage == RegistryPage::Overview);
+}
+
+TEST_CASE("Adding a plugin path that fails validation leaves the settings tab and registry snapshot alone",
+          "[core][compositor][settings-tab]") {
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    std::string notice;
+    callbacks.notify = [&](Sakura::ToastType, I32, const std::string& message) {
+        notice = message;
+    };
+    TestSupport::SettingsSandbox sandbox("compositor-settings");
+    sandbox.require();
+    GalleryActions(state).refreshRegistry();
+    SettingsActions actions(state, callbacks);
+
+    REQUIRE(actions.handle(MailAddPluginPath{.path = "/plugins/alpha.txt"}) == Result::SUCCESS);
+    CHECK(notice == "Plugins must be .cep bundles.");
+    CHECK_FALSE(state.interface.settingsTab);
+    CHECK(state.interface.settingsTabRequests == 0);
+    CHECK_FALSE(state.registry.stale);
 }

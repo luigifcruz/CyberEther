@@ -229,6 +229,7 @@ struct SettingsActions {
 
         settings.registry.plugins.push_back(msg.path);
         JST_CHECK(Settings::SetAsync(settings));
+        state.registry.stale = true;
 
         state.settings.section = SettingsSection::Registry;
         state.settings.registryPage = RegistryPage::Overview;
@@ -255,6 +256,7 @@ struct SettingsActions {
         }
 
         JST_CHECK(Settings::SetAsync(settings));
+        state.registry.stale = true;
         if (state.settings.registryPlugin == msg.path) {
             state.settings.registryPage = RegistryPage::Overview;
             state.settings.registryPlugin.clear();
@@ -286,6 +288,7 @@ struct SettingsActions {
             return Result::SUCCESS;
         }
 
+        state.registry.stale = true;
         if (Plugin::Reload(msg.path) != Result::SUCCESS) {
             callbacks.notify(Sakura::ToastType::Error, 5000, "Failed to reload plugin.");
             return Result::SUCCESS;
@@ -332,6 +335,7 @@ struct SettingsActions {
             }
         }
 
+        state.registry.stale = true;
         for (const auto& path : settings.registry.plugins) {
             if (Plugin::Reload(path) != Result::SUCCESS) {
                 callbacks.notify(Sakura::ToastType::Error,

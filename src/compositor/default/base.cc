@@ -217,6 +217,7 @@ Result DefaultCompositor::destroy() {
     actions.cancelFilePicker();
     agent.shutdown();
     actions.shutdownAgent();
+    actions.shutdownGallery();
     updater.shutdown();
     feedback.shutdown();
     if (Settings::Flush() != Result::SUCCESS) {
@@ -295,6 +296,8 @@ Result DefaultCompositor::poll() {
     actions.reconcileFilePicker();
     actions.restoreLayouts();
     actions.settleStartTab();
+    actions.reconcileGallery();
+    actions.refreshRegistry();
     actions.refreshLiveMarkdown();
     actions.refreshMetrics();
     actions.reconcileAgent();

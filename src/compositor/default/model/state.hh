@@ -8,6 +8,8 @@
 #include "jetstream/instance.hh"
 #include "jetstream/instance_remote.hh"
 #include "jetstream/parser.hh"
+#include "jetstream/plugin.hh"
+#include "jetstream/registry.hh"
 #include "jetstream/render/base/window.hh"
 #include "jetstream/runtime_context_python.hh"
 #include "jetstream/settings.hh"
@@ -26,6 +28,7 @@
 #include "jetstream/render/sakura/toast.hh"
 
 #include <atomic>
+#include <chrono>
 #include <future>
 #include <map>
 #include <memory>
@@ -271,6 +274,44 @@ struct DefaultCompositorState {
         std::vector<std::string> waitlist;
     };
 
+    struct RegistryState {
+        struct BlockEntry {
+            std::string type;
+            std::string domain;
+            std::string title;
+            std::string summary;
+        };
+
+        struct PluginEntry {
+            std::string path;
+            std::optional<Plugin::Info> info;
+            bool exists = false;
+        };
+
+        struct GalleryFetch {
+            struct Fetched {
+                std::vector<Registry::FlowgraphRegistration> flowgraphs;
+                bool complete = true;
+            };
+
+            std::vector<Registry::FlowgraphRegistration> flowgraphs;
+            std::future<std::optional<Fetched>> future;
+            std::shared_ptr<std::atomic<bool>> cancel;
+            std::chrono::steady_clock::time_point started;
+            std::chrono::steady_clock::time_point next;
+            bool cached = false;
+            bool loading = false;
+            bool attempted = false;
+            bool failed = false;
+        };
+
+        bool stale = true;
+        std::vector<BlockEntry> blocks;
+        std::vector<Registry::FlowgraphRegistration> flowgraphs;
+        GalleryFetch gallery;
+        std::vector<PluginEntry> registered;
+    };
+
     struct FilePickerState {
         bool active = false;
         bool overwritePending = false;
@@ -309,6 +350,7 @@ struct DefaultCompositorState {
     BenchmarkState benchmark;
     ClipboardState clipboard;
     RemoteState remote;
+    RegistryState registry;
     FilePickerState filePicker;
     FeedbackState feedback;
 
