@@ -39,18 +39,18 @@ TEST_CASE_METHOD(FlowgraphFixture, "Cast block delegates invalid output type",
     REQUIRE(viewBlock("cast_bad").outputs.empty());
 }
 
-TEST_CASE_METHOD(FlowgraphFixture, "Cast block delegates unsupported conversion pair",
+TEST_CASE_METHOD(FlowgraphFixture, "Cast block delegates complex to real conversion",
                  "[modules][cast][block][validation]") {
     Blocks::OnesTensor source;
     source.shape = {4};
-    source.dataType = "F64";
+    source.dataType = "CF64";
     REQUIRE(flowgraph->blockCreate("cast_pair_src", source, {}) == Result::SUCCESS);
 
     TensorMap inputs;
     inputs["buffer"].requested("cast_pair_src", "buffer");
 
     Blocks::Cast config;
-    config.outputType = "CF32";
+    config.outputType = "F32";
     REQUIRE(flowgraph->blockCreate("cast_pair", config, inputs) == Result::SUCCESS);
     REQUIRE(viewBlock("cast_pair").state == Block::State::Errored);
     REQUIRE(viewBlock("cast_pair").outputs.empty());
