@@ -1177,25 +1177,25 @@ TEST_CASE("SDR Sweep slot occupancy integrates real occupied time and decays whe
     SweepAccess::MetricState metrics;
     metrics.reset(start, 1.0e9);
     metrics.advance(start + std::chrono::milliseconds(500), false);
-    REQUIRE(metrics.snapshot.bufferHealth == 0.0f);
+    REQUIRE(metrics.snapshot.bufferFill == 0.0f);
     REQUIRE(metrics.snapshot.bufferLoss == 0.0);
     REQUIRE(metrics.snapshot.sweepSpeed == 0.0f);
 
     metrics.publish(start + std::chrono::milliseconds(500), false);
     metrics.advance(start + std::chrono::milliseconds(550), true);
-    REQUIRE(metrics.health > 0.0);
-    REQUIRE(metrics.snapshot.bufferHealth == 0.0f);
+    REQUIRE(metrics.fill > 0.0);
+    REQUIRE(metrics.snapshot.bufferFill == 0.0f);
     metrics.advance(start + std::chrono::seconds(1), true);
     const F64 occupied = 1.0 - std::exp(-0.5 / 1.5);
-    REQUIRE_THAT(metrics.snapshot.bufferHealth, WithinAbs(occupied, 1e-6));
-    REQUIRE(metrics.snapshot.bufferHealth < 1.0f);
+    REQUIRE_THAT(metrics.snapshot.bufferFill, WithinAbs(occupied, 1e-6));
+    REQUIRE(metrics.snapshot.bufferFill < 1.0f);
 
     // Consume at one second, then leave the actual slot empty for a second.
     metrics.advance(start + std::chrono::seconds(1), true);
     metrics.advance(start + std::chrono::seconds(2), false);
-    REQUIRE_THAT(metrics.snapshot.bufferHealth, WithinAbs(occupied * std::exp(-1.0 / 1.5), 1e-6));
+    REQUIRE_THAT(metrics.snapshot.bufferFill, WithinAbs(occupied * std::exp(-1.0 / 1.5), 1e-6));
     metrics.advance(start + std::chrono::seconds(20), false);
-    REQUIRE(metrics.snapshot.bufferHealth < 0.0001f);
+    REQUIRE(metrics.snapshot.bufferFill < 0.0001f);
     REQUIRE(metrics.snapshot.sweepSpeed < 0.0001f);
 }
 
@@ -1209,8 +1209,8 @@ TEST_CASE("SDR Sweep output-slot loss counts only overwritten and expired comple
     REQUIRE(sweep.completeAt(start + std::chrono::milliseconds(500)));
     auto metrics = sweep.getMetrics(start + std::chrono::milliseconds(500));
     REQUIRE(metrics.bufferLoss == 0.5);
-    REQUIRE(metrics.bufferHealth > 0.0f);
-    REQUIRE(metrics.bufferHealth < 1.0f);
+    REQUIRE(metrics.bufferFill > 0.0f);
+    REQUIRE(metrics.bufferFill < 1.0f);
     REQUIRE(sweep.consumeAt(start + std::chrono::milliseconds(750)) == Result::SUCCESS);
     REQUIRE(sweep.completeAt(start + std::chrono::seconds(1)));
     metrics = sweep.getMetrics(start + std::chrono::milliseconds(1250));
@@ -1223,11 +1223,11 @@ TEST_CASE("SDR Sweep output-slot loss counts only overwritten and expired comple
     REQUIRE(sweep.consumeAt(start + std::chrono::seconds(4)) == Result::YIELD);
     metrics = sweep.getMetrics(start + std::chrono::seconds(20));
     REQUIRE_THAT(metrics.bufferLoss, WithinAbs(2.0 / 3.0, 1e-12));
-    REQUIRE(metrics.bufferHealth < 0.0001f);
+    REQUIRE(metrics.bufferFill < 0.0001f);
     REQUIRE(sweep.getProgress().expiredFrames == 1);
     REQUIRE(sweep.destroy() == Result::SUCCESS);
     const auto stopped = sweep.getMetrics();
-    REQUIRE(stopped.bufferHealth == 0.0f);
+    REQUIRE(stopped.bufferFill == 0.0f);
     REQUIRE(stopped.bufferLoss == 0.0);
     REQUIRE(stopped.sweepSpeed == 0.0f);
     REQUIRE(stopped.sweepRate == 0.0f);
@@ -1301,7 +1301,7 @@ TEST_CASE("SDR Sweep metrics throttle fast completions and reset without zero-du
     metrics.reset(start + std::chrono::seconds(2), 100.0e6);
     REQUIRE(metrics.producedFrames == 0);
     REQUIRE(metrics.droppedFrames == 0);
-    REQUIRE(metrics.snapshot.bufferHealth == 0.0f);
+    REQUIRE(metrics.snapshot.bufferFill == 0.0f);
     REQUIRE(metrics.snapshot.bufferLoss == 0.0);
     metrics.publish(start + std::chrono::seconds(2), false);
     metrics.advance(start + std::chrono::seconds(2), true);
@@ -1493,7 +1493,7 @@ TEST_CASE_METHOD(ScriptedFlowgraph,
         return Parser::Get<std::string>(metric.format, "visibility") == "internal";
     });
     REQUIRE(metrics.size() == 3);
-    REQUIRE(metrics[0].label == "Buffer Health");
+    REQUIRE(metrics[0].label == "Buffer Fill");
     REQUIRE(metrics[1].label == "Buffer Loss");
     REQUIRE(metrics[2].label == "Sweep Speed");
 }
@@ -1953,7 +1953,7 @@ TEST_CASE_METHOD(ScriptedFlowgraph,
         return Parser::Get<std::string>(metric.format, "visibility") == "internal";
     });
     REQUIRE(metrics.size() == 3);
-    REQUIRE(metrics[0].label == "Buffer Health");
+    REQUIRE(metrics[0].label == "Buffer Fill");
     REQUIRE(metrics[1].label == "Buffer Loss");
     REQUIRE(metrics[2].label == "Sweep Speed");
     REQUIRE(std::any_cast<std::string>(metrics[2].value) == "0.00 GHz/s (0.0 Hz)");

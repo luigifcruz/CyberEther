@@ -128,13 +128,13 @@ Result SdrImpl::define() {
                                     "Internal buffer size multiplier.",
                                     {{"type", "uint"}, {"unit", "x"}}));
 
-    JST_CHECK(defineInterfaceMetric("bufferHealth",
-                                    "Buffer Health",
-                                    "Current buffer occupancy level.",
+    JST_CHECK(defineInterfaceMetric("bufferFill",
+                                    "Buffer Fill",
+                                    "How full the internal buffer is. Near 100% means the chain is falling behind.",
                                     {{"type", "progressbar"}},
         [this]() -> std::any {
-            const F32 health = moduleImpl ? moduleImpl->getBufferHealth() : 0.0f;
-            return std::pair<std::string, F32>{jst::fmt::format("{:.1f}%", health * 100.0f), health};
+            const F32 fill = moduleImpl ? moduleImpl->getBufferFill() : 0.0f;
+            return std::pair<std::string, F32>{jst::fmt::format("{:.1f}%", fill * 100.0f), fill};
         }));
 
     JST_CHECK(defineInterfaceMetric("bufferLoss",

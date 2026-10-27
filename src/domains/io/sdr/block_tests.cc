@@ -73,7 +73,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     std::vector<Flowgraph::View::MetricEntry> metrics;
     REQUIRE(flowgraph->view().metrics("radio", metrics) == Result::SUCCESS);
-    for (const auto* name : {"bufferHealth", "bufferLoss", "throughput"}) {
+    for (const auto* name : {"bufferFill", "bufferLoss", "throughput"}) {
         INFO(name);
         const auto metric = std::find_if(metrics.begin(), metrics.end(),
                                          [&](const auto& entry) { return entry.name == name; });

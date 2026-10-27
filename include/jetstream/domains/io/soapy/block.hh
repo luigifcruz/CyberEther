@@ -81,7 +81,7 @@ struct Soapy : public Block::Config {
         "\n"
         "| Readout | Shows |\n"
         "|---|---|\n"
-        "| **Buffer Health** | How full the internal buffer is, smoothed, from 0 to "
+        "| **Buffer Fill** | How full the internal buffer is, smoothed, from 0 to "
         "100%. Near 100% means the chain is falling behind. |\n"
         "| **Buffer Loss** | Share of samples overwritten before the chain read them "
         "since the stream started. Overflows the radio reported show next to it as OVF."

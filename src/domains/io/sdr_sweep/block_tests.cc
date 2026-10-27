@@ -38,8 +38,8 @@ TEST_CASE_METHOD(FlowgraphFixture,
     std::vector<Flowgraph::View::MetricEntry> metrics;
     REQUIRE(flowgraph->view().metrics("sweep", metrics) == Result::SUCCESS);
     REQUIRE(metrics.size() == 3);
-    const std::vector<std::string> names{"bufferHealth", "bufferLoss", "sweepSpeed"};
-    const std::vector<std::string> labels{"Buffer Health", "Buffer Loss", "Sweep Speed"};
+    const std::vector<std::string> names{"bufferFill", "bufferLoss", "sweepSpeed"};
+    const std::vector<std::string> labels{"Buffer Fill", "Buffer Loss", "Sweep Speed"};
     const std::vector<std::string> expectedValues{"0.0%", "0.00%", "0.00 GHz/s (0.0 Hz)"};
     for (U64 i = 0; i < metrics.size(); ++i) {
         REQUIRE(metrics[i].name == names[i]);

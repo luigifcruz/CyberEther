@@ -127,14 +127,14 @@ Result SdrSweepImpl::define() {
                                         {{"type", "bool"}}));
     }
 
-    JST_CHECK(defineInterfaceMetric("bufferHealth",
-                                    "Buffer Health",
+    JST_CHECK(defineInterfaceMetric("bufferFill",
+                                    "Buffer Fill",
                                     "Smoothed occupancy of the single latest-completed-frame "
                                     "software slot, not the radio's hardware FIFO.",
                                     {{"type", "progressbar"}},
         [this]() -> std::any {
-            const F32 health = moduleImpl ? moduleImpl->getMetrics().bufferHealth : 0.0f;
-            return std::pair<std::string, F32>{jst::fmt::format("{:.1f}%", health * 100.0f), health};
+            const F32 fill = moduleImpl ? moduleImpl->getMetrics().bufferFill : 0.0f;
+            return std::pair<std::string, F32>{jst::fmt::format("{:.1f}%", fill * 100.0f), fill};
         }));
 
     JST_CHECK(defineInterfaceMetric("bufferLoss",

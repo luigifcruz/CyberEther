@@ -141,17 +141,17 @@ Result SoapyImpl::define() {
                                     "Internal buffer size multiplier.",
                                     {{"type", "uint"}, {"unit", "x"}}));
 
-    JST_CHECK(defineInterfaceMetric("bufferHealth",
-                                    "Buffer Health",
-                                    "Current buffer occupancy level.",
+    JST_CHECK(defineInterfaceMetric("bufferFill",
+                                    "Buffer Fill",
+                                    "How full the internal buffer is. Near 100% means the chain is falling behind.",
                                     {{"type", "progressbar"}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::pair<std::string, F32>{"0.0%", 0.0f};
             }
-            const F32 bufferHealth = moduleImpl->getBufferHealth();
-            return std::pair<std::string, F32>{jst::fmt::format("{:.1f}%", bufferHealth * 100.0f),
-                                               bufferHealth};
+            const F32 bufferFill = moduleImpl->getBufferFill();
+            return std::pair<std::string, F32>{jst::fmt::format("{:.1f}%", bufferFill * 100.0f),
+                                               bufferFill};
         }));
 
     JST_CHECK(defineInterfaceMetric("bufferLoss",

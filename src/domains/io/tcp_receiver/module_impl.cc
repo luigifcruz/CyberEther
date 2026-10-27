@@ -99,7 +99,7 @@ Result TcpReceiverImpl::create() {
     }
 
     errored = false;
-    bufferHealth.publish(0.0f);
+    bufferFill.publish(0.0f);
     throughputMBs.publish(0.0f);
 
     JST_CHECK(buffer.create(device(), validatedDataType,
@@ -150,7 +150,7 @@ Result TcpReceiverImpl::destroy() {
     }
     listener.close();
 
-    bufferHealth.publish(0.0f);
+    bufferFill.publish(0.0f);
     throughputMBs.publish(0.0f);
 
     return Result::SUCCESS;
@@ -255,17 +255,17 @@ void TcpReceiverImpl::receiveBinaryData(const I8* data, const U64 numBytes) {
 
     const U64 capacity = circularBuffer.capacity();
     if (capacity > 0) {
-        const F32 newHealth = static_cast<F32>(circularBuffer.size()) /
+        const F32 newFill = static_cast<F32>(circularBuffer.size()) /
                               static_cast<F32>(capacity);
-        const F32 smoothedHealth = bufferHealth.get() * 0.99f + newHealth * 0.01f;
-        bufferHealth.publish(smoothedHealth);
+        const F32 smoothedFill = bufferFill.get() * 0.99f + newFill * 0.01f;
+        bufferFill.publish(smoothedFill);
     }
 
     throughputMBs.publish(static_cast<F32>(circularBuffer.throughput()) / 1e6f);
 }
 
-F32 TcpReceiverImpl::getBufferHealth() const {
-    return bufferHealth.get();
+F32 TcpReceiverImpl::getBufferFill() const {
+    return bufferFill.get();
 }
 
 F64 TcpReceiverImpl::getBufferLoss() const {

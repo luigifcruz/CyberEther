@@ -46,7 +46,7 @@ graph:
         - **Waterfall Height** is how many rows of history are kept.
         
         ## Is it keeping up?
-        - **Buffer Health** should stay low. A rising bar means the computer is falling behind.
+        - **Buffer Fill** should stay low. A rising bar means the computer is falling behind.
         - **Buffer Loss** should read 0.00%. Anything else means samples were dropped. Lower the sample rate or try a different USB port.
         - **Throughput** shows what arrives against what was requested. The two numbers should match.
         
