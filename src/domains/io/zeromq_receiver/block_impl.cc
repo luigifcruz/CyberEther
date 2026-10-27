@@ -89,23 +89,23 @@ Result ZeromqReceiverImpl::define() {
                                     "Internal buffer size multiplier.",
                                     {{"type", "uint"}, {"unit", "x"}}));
 
-    JST_CHECK(defineInterfaceMetric("bufferHealth",
-                                    "Buffer Health",
-                                    "Current buffer occupancy level.",
-                                    {{"type", "progressbar"}},
+    JST_CHECK(defineInterfaceMetric("bufferFill",
+                                    "Buffer Fill",
+                                    "How full the internal buffer is. Near 100% means the chain is falling behind.",
+                                    {{"type", "progressbar"}, {"warning_above", 0.5f}, {"error_above", 0.75f}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::pair<std::string, F32>{"0.0%", 0.0f};
             }
-            const F32 bufferHealth = moduleImpl->getBufferHealth();
-            return std::pair<std::string, F32>{jst::fmt::format("{:.1f}%", bufferHealth * 100.0f),
-                                               bufferHealth};
+            const F32 bufferFill = moduleImpl->getBufferFill();
+            return std::pair<std::string, F32>{jst::fmt::format("{:.1f}%", bufferFill * 100.0f),
+                                               bufferFill};
         }));
 
     JST_CHECK(defineInterfaceMetric("bufferLoss",
                                     "Buffer Loss",
                                     "Share of samples overwritten before the chain read them since the stream started.",
-                                    {{"type", "progressbar"}},
+                                    {{"type", "progressbar"}, {"warning_above", 0.0f}, {"error_above", 0.01f}},
         [this]() -> std::any {
             const F64 loss = moduleImpl ? moduleImpl->getBufferLoss() : 0.0;
             const auto label = loss > 0.0 && loss < 0.0001
@@ -115,7 +115,7 @@ Result ZeromqReceiverImpl::define() {
 
     JST_CHECK(defineInterfaceMetric("throughput",
                                     "Throughput",
-                                    "Current data throughput.",
+                                    "Rate the chain reads.",
                                     {{"type", "label"}},
         [this]() -> std::any {
             if (!moduleImpl) {

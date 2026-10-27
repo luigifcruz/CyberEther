@@ -42,7 +42,7 @@ struct TcpTransmitter : public Block::Config {
         "\n"
         "| Setting | Default | Range | Effect |\n"
         "|---|---|---|---|\n"
-        "| **Mode** | Server | Server or Client | Serve every client that connects, or "
+        "| **Mode** | Server | Server, Client | Serve every client that connects, or "
         "connect to one receiver. |\n"
         "| **Address** | 0.0.0.0 | An address or a host name | Local address to listen "
         "on, where 127.0.0.1 keeps the server private to this machine. In Client mode, "

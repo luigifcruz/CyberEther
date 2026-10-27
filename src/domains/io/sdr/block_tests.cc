@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 
 #include "flowgraph_fixture.hh"
@@ -73,13 +74,22 @@ TEST_CASE_METHOD(FlowgraphFixture,
 
     std::vector<Flowgraph::View::MetricEntry> metrics;
     REQUIRE(flowgraph->view().metrics("radio", metrics) == Result::SUCCESS);
-    for (const auto* name : {"bufferHealth", "bufferLoss", "throughput"}) {
+    const std::vector<std::pair<std::string, Parser::Map>> formats{
+        {"bufferFill", {{"type", "progressbar"}, {"warning_above", 0.5f}, {"error_above", 0.75f}}},
+        {"bufferLoss", {{"type", "progressbar"}, {"warning_above", 0.0f}, {"error_above", 0.01f}}},
+        {"throughput", {{"type", "progressbar"}, {"warning_below", 0.95f}, {"error_below", 0.8f}}},
+    };
+    for (const auto& [name, format] : formats) {
         INFO(name);
         const auto metric = std::find_if(metrics.begin(), metrics.end(),
                                          [&](const auto& entry) { return entry.name == name; });
         REQUIRE(metric != metrics.end());
-        REQUIRE(metric->format == Parser::Map{{"type", "progressbar"}});
+        REQUIRE(metric->format == format);
     }
+
+    const auto throughput = std::find_if(metrics.begin(), metrics.end(),
+                                         [](const auto& entry) { return entry.name == "throughput"; });
+    REQUIRE(std::isnan(std::any_cast<std::pair<std::string, F32>>(throughput->value).second));
 }
 
 TEST_CASE_METHOD(FlowgraphFixture,

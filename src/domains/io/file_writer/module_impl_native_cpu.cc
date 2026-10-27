@@ -85,7 +85,7 @@ Result FileWriterImplNativeCpu::computeSubmit() {
     const U64 actualBytesWritten = static_cast<U64>(committedBytes);
     bytesWritten.publish(bytesWritten.get() + actualBytesWritten);
     if (actualBytesWritten > 0) {
-        updateBandwidth(actualBytesWritten);
+        updateThroughput(actualBytesWritten);
     }
 
     return Result::SUCCESS;

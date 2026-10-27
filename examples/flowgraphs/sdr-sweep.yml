@@ -31,7 +31,7 @@ graph:
         4. Watch **Sweep Speed** for completed sweeps per second.
 
         ## Is it keeping up?
-        - **Buffer Health** shows smoothed occupancy of the latest-completed-frame software slot, not a hardware FIFO.
+        - **Buffer Fill** shows smoothed occupancy of the latest-completed-frame software slot, not a hardware FIFO.
         - **Buffer Loss** counts completed frames overwritten or expired before the chain reads them.
 
         ## Notes

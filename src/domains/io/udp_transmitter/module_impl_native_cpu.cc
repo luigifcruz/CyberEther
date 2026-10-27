@@ -25,8 +25,12 @@ Result UdpTransmitterImplNativeCpu::computeSubmit() {
     U64 dropped = 0;
     for (U64 offset = 0; offset < totalBytes; offset += payloadBytes) {
         const U64 size = std::min(payloadBytes, totalBytes - offset);
-        if (socket.send(data + offset, size) == Result::SUCCESS) {
+        const Result result = socket.send(data + offset, size);
+        if (result == Result::SUCCESS) {
             sentBytes += size;
+        } else if (result == Result::TIMEOUT) {
+            dropped += (totalBytes - offset + payloadBytes - 1) / payloadBytes;
+            break;
         } else {
             dropped += 1;
         }

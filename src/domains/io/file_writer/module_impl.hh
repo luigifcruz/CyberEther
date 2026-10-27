@@ -19,17 +19,17 @@ struct FileWriterImpl : public Module::Impl, public DynamicConfig<FileWriter> {
     Result destroy() override;
 
     U64 getBytesWritten() const;
-    F32 getCurrentBandwidth() const;
+    F32 getThroughput() const;
 
  protected:
-    void updateBandwidth(const U64 deltaBytes);
+    void updateThroughput(const U64 deltaBytes);
 
     std::ofstream dataFile;
     std::filesystem::path filePath;
     U64 bytesSinceLastMeasurement = 0;
     std::chrono::steady_clock::time_point lastMeasurementTime{};
     Tools::Snapshot<U64> bytesWritten{0};
-    Tools::Snapshot<F32> currentBandwidth{0.0f};
+    Tools::Snapshot<F32> throughputMBs{0.0f};
 };
 
 }  // namespace Jetstream::Modules

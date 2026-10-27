@@ -26,7 +26,7 @@ struct ZeromqReceiverImpl : public Module::Impl, public DynamicConfig<ZeromqRece
     Result create() override;
     Result destroy() override;
 
-    F32 getBufferHealth() const;
+    F32 getBufferFill() const;
     F64 getBufferLoss() const;
     F32 getThroughput() const;
     U64 getPeers() const;
@@ -45,7 +45,7 @@ struct ZeromqReceiverImpl : public Module::Impl, public DynamicConfig<ZeromqRece
     std::atomic<bool> receiving{false};
 
     Tools::CircularBuffer<I8> circularBuffer;
-    Tools::Snapshot<F32> bufferHealth{0.0f};
+    Tools::Snapshot<F32> bufferFill{0.0f};
     Tools::Snapshot<F32> throughputMBs{0.0f};
     std::atomic<U64> lostMessages{0};
 

@@ -21,10 +21,10 @@ struct FileReaderImpl : public Module::Impl, public DynamicConfig<FileReader> {
 
     U64 getCurrentPosition() const;
     U64 getFileSize() const;
-    F32 getCurrentBandwidth() const;
+    F32 getThroughput() const;
 
  protected:
-    void updateBandwidth(const U64 deltaBytes);
+    void updateThroughput(const U64 deltaBytes);
 
     Tensor buffer;
     DataType validatedDataType = DataType::None;
@@ -36,7 +36,7 @@ struct FileReaderImpl : public Module::Impl, public DynamicConfig<FileReader> {
     std::chrono::steady_clock::time_point lastMeasurementTime{};
     Tools::Snapshot<U64> fileSize{0};
     Tools::Snapshot<U64> currentPosition{0};
-    Tools::Snapshot<F32> currentBandwidth{0.0f};
+    Tools::Snapshot<F32> throughputMBs{0.0f};
 };
 
 }  // namespace Jetstream::Modules

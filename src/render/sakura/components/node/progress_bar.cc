@@ -26,7 +26,7 @@ bool NodeProgressBar::update(Config config) {
         .value = impl->config.value,
         .overlay = impl->config.overlay,
         .size = impl->config.size,
-        .colorKey = "button_active",
+        .colorKey = impl->config.colorKey,
     });
     return true;
 }

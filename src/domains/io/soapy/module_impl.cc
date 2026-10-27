@@ -106,7 +106,7 @@ Result SoapyImpl::create() {
 
     errored = false;
     streaming = false;
-    bufferHealth.publish(0.0f);
+    bufferFill.publish(0.0f);
     deviceOverflows.publish(0);
     throughput.publish({0.0f, 0.0f});
 
@@ -202,7 +202,7 @@ Result SoapyImpl::destroy() {
     stopReceiver();
     receiverDevice.reset();
 
-    bufferHealth.publish(0.0f);
+    bufferFill.publish(0.0f);
     throughput.publish({0.0f, 0.0f});
 
     return Result::SUCCESS;
@@ -313,10 +313,10 @@ Result SoapyImpl::soapyThreadLoop() {
             Scheduler::Context::NotifyPendingCompute();
             const U64 capacity = stream.capacity();
             if (capacity > 0) {
-                const F32 newHealth = static_cast<F32>(stream.size()) /
+                const F32 newFill = static_cast<F32>(stream.size()) /
                                       static_cast<F32>(capacity);
-                const F32 smoothedHealth = bufferHealth.get() * 0.99f + newHealth * 0.01f;
-                bufferHealth.publish(smoothedHealth);
+                const F32 smoothedFill = bufferFill.get() * 0.99f + newFill * 0.01f;
+                bufferFill.publish(smoothedFill);
             }
             const F32 actualMB = static_cast<F32>(stream.throughput() * sizeof(CF32)) / 1e6f;
             const F32 expectedMB = static_cast<F32>(stream.metadata().sampleRate * sizeof(CF32)) / 1e6f;
@@ -327,8 +327,8 @@ Result SoapyImpl::soapyThreadLoop() {
     return Result::SUCCESS;
 }
 
-F32 SoapyImpl::getBufferHealth() const {
-    return bufferHealth.get();
+F32 SoapyImpl::getBufferFill() const {
+    return bufferFill.get();
 }
 
 F64 SoapyImpl::getBufferLoss() const {

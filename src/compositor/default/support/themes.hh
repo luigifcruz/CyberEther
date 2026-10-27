@@ -28,6 +28,8 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"success_green", {0.0f, 1.0f, 0.0f, 1.0f}},
             {"warning_yellow", {1.0f, 0.8f, 0.0f, 1.0f}},
             {"error_red", {1.0f, 0.0f, 0.0f, 1.0f}},
+            {"progress_warning", {0.56f, 0.40f, 0.10f, 1.0f}},
+            {"progress_error", {0.56f, 0.18f, 0.18f, 1.0f}},
             {"info_blue", {0.0f, 0.0f, 1.0f, 1.0f}},
 
             // Banner Colors
@@ -255,6 +257,8 @@ inline const std::unordered_map<std::string, Sakura::Palette> themes = {
             {"success_green", {0.0f, 0.6f, 0.0f, 1.0f}},
             {"warning_yellow", {0.64f, 0.38f, 0.0f, 1.0f}},
             {"error_red", {0.9f, 0.15f, 0.15f, 1.0f}},
+            {"progress_warning", {0.98f, 0.78f, 0.45f, 1.0f}},
+            {"progress_error", {0.95f, 0.60f, 0.60f, 1.0f}},
             {"info_blue", {0.15f, 0.4f, 0.9f, 1.0f}},
 
             // Banner Colors

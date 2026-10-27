@@ -172,7 +172,7 @@ Result define() override {
 Choose a display format based on what you want to show:
 
 - **Text labels** are useful for readings such as "12.3 MB/s" or "Connected". Set the format's `type` to `label` and return a string containing the text you want to display. Convert numeric values to text first.
-- **Progress bars** work well for file positions, buffer usage, and similar measurements. Set the type to `progressbar` and return a pair containing the display text and a fraction between 0 and 1.
+- **Progress bars** work well for file positions, buffer usage, and similar measurements. Set the type to `progressbar` and return a pair containing the display text and a fraction between 0 and 1. To turn the bar amber or red when a reading needs attention, add `warning_above` and `error_above` for readings where higher is worse, or `warning_below` and `error_below` for readings where lower is worse. Return NaN as the fraction while there is no reading yet, which leaves the bar empty and uncolored.
 - **Tables** let you show several related values in rows and columns. Set the type to `table` and return a map with `columns` for the column names and `rows` for the cell text. Each row needs one cell per column. You can build both from vectors using `Parser::Serialize`, and the cell text can include tabs and line breaks.
 
 Metrics appear in the node by default. Set `visibility` to `internal` when a metric is intended for a dedicated view, as with runtime timing and Python diagnostics. This hides it from the node body but keeps it available to code. You can still read it from C++, or from Python when its value can be converted. The visibility setting is only available for metrics.

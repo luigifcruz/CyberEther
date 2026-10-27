@@ -88,7 +88,7 @@ struct SdrSweep : public Block::Config {
         "\n"
         "| Readout | Shows |\n"
         "|---|---|\n"
-        "| **Buffer Health** | How often a finished sweep waits unread, from 0 to 100%."
+        "| **Buffer Fill** | How often a finished sweep waits unread, from 0 to 100%."
         " Near 100% means the chain is falling behind. |\n"
         "| **Buffer Loss** | Share of finished sweeps replaced or expired before the "
         "chain read them. |\n"

@@ -31,7 +31,7 @@ struct JETSTREAM_API SdrImpl : public Module::Impl, public DynamicConfig<Sdr> {
     Result destroy() override;
     Result reconfigure() override;
 
-    F32 getBufferHealth() const;
+    F32 getBufferFill() const;
     LossSnapshot getLoss() const;
     std::pair<F32, F32> getThroughput() const;
     std::vector<std::string> listAntennas() const;
@@ -53,7 +53,7 @@ struct JETSTREAM_API SdrImpl : public Module::Impl, public DynamicConfig<Sdr> {
     Radio::StreamAccess access;
     Radio::StreamBuffer::Metadata publishedMetadata;
 
-    Tools::Snapshot<F32> bufferHealth{0.0f};
+    Tools::Snapshot<F32> bufferFill{0.0f};
     Tools::Snapshot<std::pair<F32, F32>> throughput{{0.0f, 0.0f}};
     Tools::Snapshot<U64> deviceGaps{0};
     Tools::Snapshot<U64> deviceLostSamples{0};

@@ -79,7 +79,7 @@ Result FileReaderImplNativeCpu::computeSubmit() {
     currentPosition.publish(currentOffset);
 
     if (actualBytesRead > 0) {
-        updateBandwidth(actualBytesRead);
+        updateThroughput(actualBytesRead);
     }
 
     return Result::SUCCESS;
