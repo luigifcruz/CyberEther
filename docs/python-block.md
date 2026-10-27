@@ -196,7 +196,7 @@ The `ctx.metrics` mapping gives read-only access to metrics published by other b
 ```python
 def compute(ctx):
     progress = ctx.metrics.get_value("file_reader", "progress", default=0.0)
-    throughput = ctx.metrics.get_value("websocket", "throughput")
+    throughput = ctx.metrics.get_value("websocket_receiver", "throughput")
 ```
 
 The function takes a block name, a metric name, and an optional default. If the metric is missing or has not yet arrived, it returns the default instead of raising.

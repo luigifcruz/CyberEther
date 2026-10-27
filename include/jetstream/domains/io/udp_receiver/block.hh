@@ -128,7 +128,7 @@ struct UdpReceiver : public Block::Config {
         "## See Also\n"
         "\n"
         "- Samples from a **UDP Transmitter** arrive here as sent.\n"
-        "- **WebSocket** receives the same raw samples over a connection.\n"
+        "- **WebSocket Receiver** receives the same raw samples over a connection.\n"
         "- **Cast** scales integer samples to F32 or CF32."
     );
 };

@@ -1,39 +1,24 @@
-#include <jetstream/domains/io/websocket/block.hh>
+#include <jetstream/domains/io/websocket_receiver/block.hh>
 #include <jetstream/detail/block_impl.hh>
 
-#include <jetstream/domains/io/websocket/module.hh>
+#include <jetstream/domains/io/websocket_receiver/module.hh>
 #include "module_impl.hh"
 
 namespace Jetstream::Blocks {
 
-struct WebsocketImpl : public Block::Impl,
-                       public DynamicConfig<Blocks::Websocket> {
-    Result validate() override;
+struct WebsocketReceiverImpl : public Block::Impl,
+                               public DynamicConfig<Blocks::WebsocketReceiver> {
     Result configure() override;
     Result define() override;
     Result create() override;
 
  protected:
-    std::shared_ptr<Modules::Websocket> moduleConfig =
-        std::make_shared<Modules::Websocket>();
-    Modules::WebsocketImpl* moduleImpl = nullptr;
+    std::shared_ptr<Modules::WebsocketReceiver> moduleConfig =
+        std::make_shared<Modules::WebsocketReceiver>();
+    Modules::WebsocketReceiverImpl* moduleImpl = nullptr;
 };
 
-Result WebsocketImpl::validate() {
-    const auto& config = *candidate();
-
-    if (url != config.url ||
-        dataType != config.dataType ||
-        numberOfBatches != config.numberOfBatches ||
-        numberOfTimeSamples != config.numberOfTimeSamples ||
-        bufferMultiplier != config.bufferMultiplier) {
-        return Result::RECREATE;
-    }
-
-    return Result::SUCCESS;
-}
-
-Result WebsocketImpl::configure() {
+Result WebsocketReceiverImpl::configure() {
     moduleConfig->url = url;
     moduleConfig->dataType = dataType;
     moduleConfig->numberOfBatches = numberOfBatches;
@@ -43,10 +28,10 @@ Result WebsocketImpl::configure() {
     return Result::SUCCESS;
 }
 
-Result WebsocketImpl::define() {
+Result WebsocketReceiverImpl::define() {
     JST_CHECK(defineInterfaceOutput("signal",
                                     "Output",
-                                    "The output buffer containing samples from the WebSocket."));
+                                    "The output buffer containing samples received over WebSocket."));
 
     JST_CHECK(defineInterfaceConfig("url",
                                     "URL",
@@ -105,15 +90,15 @@ Result WebsocketImpl::define() {
     return Result::SUCCESS;
 }
 
-Result WebsocketImpl::create() {
-    JST_CHECK(moduleCreate("websocket", moduleConfig, {}));
-    JST_CHECK(moduleExposeOutput("signal", {"websocket", "signal"}));
+Result WebsocketReceiverImpl::create() {
+    JST_CHECK(moduleCreate("websocket_receiver", moduleConfig, {}));
+    JST_CHECK(moduleExposeOutput("signal", {"websocket_receiver", "signal"}));
 
-    moduleImpl = moduleHandle("websocket")->getImpl<Modules::WebsocketImpl>();
+    moduleImpl = moduleHandle("websocket_receiver")->getImpl<Modules::WebsocketReceiverImpl>();
 
     return Result::SUCCESS;
 }
 
-JST_REGISTER_BLOCK(WebsocketImpl, {"websocket"});
+JST_REGISTER_BLOCK(WebsocketReceiverImpl, {"websocket_receiver"});
 
 }  // namespace Jetstream::Blocks
