@@ -109,6 +109,37 @@ class JETSTREAM_API UdpSocket {
     struct Impl;
     std::unique_ptr<Impl> impl;
 };
+
+class JETSTREAM_API TcpSocket {
+ public:
+    struct Config {
+        std::string address;
+        U16 port = 0;
+        U64 bufferBytes = 0;
+        U64 connectTimeoutMilliseconds = 0;
+        U64 readTimeoutMilliseconds = 0;
+        U64 writeTimeoutMilliseconds = 0;
+    };
+
+    TcpSocket();
+    ~TcpSocket();
+
+    TcpSocket(const TcpSocket&) = delete;
+    TcpSocket& operator=(const TcpSocket&) = delete;
+
+    Result listen(const Config& config, std::string& error);
+    Result accept(TcpSocket& connection, U64 timeoutMilliseconds, std::string& error);
+    Result connect(const Config& config, std::string& error);
+    Result receive(void* data, U64 size, U64& received);
+    Result send(const void* data, U64 size);
+    bool alive();
+    void close();
+    bool open() const;
+
+ private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+};
 #endif
 
 //

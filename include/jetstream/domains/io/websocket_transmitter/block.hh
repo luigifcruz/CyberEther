@@ -9,7 +9,7 @@ struct WebsocketTransmitter : public Block::Config {
     std::string mode = "server";
     std::string address = "0.0.0.0";
     U64 port = 8765;
-    std::string url = "ws://localhost:8765";
+    std::string url = "ws://127.0.0.1:8765";
 
     JST_BLOCK_TYPE(websocket_transmitter);
     JST_BLOCK_DOMAIN("IO");
@@ -49,7 +49,7 @@ struct WebsocketTransmitter : public Block::Config {
         "listen on. The default covers every IPv4 interface, and 127.0.0.1 keeps the "
         "server private to this machine. Server mode only. |\n"
         "| **Port** | 8765 | 1 to 65535 | Local port to listen on. Server mode only. |\n"
-        "| **URL** | ws://localhost:8765 | A ws:// or wss:// address with a host and no"
+        "| **URL** | ws://127.0.0.1:8765 | A ws:// or wss:// address with a host and no"
         " # fragment | Server to send to. Client mode only. |\n"
         "\n"
         "## Readouts\n"
