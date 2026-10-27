@@ -52,8 +52,7 @@ std::vector<Jetstream::Rect> HeaderLabels(Sakura::Component& dock) {
     std::vector<Jetstream::Rect> labels;
     for (auto* text : Direct<Sakura::Text>(dock)) {
         const auto& str = text->config().str;
-        if (str != ICON_LC_X && str != ICON_LC_MAXIMIZE_2 &&
-            str != ICON_LC_MINIMIZE_2) {
+        if (str != ICON_LC_X && str != ICON_LC_MAXIMIZE_2 && str != ICON_LC_MINIMIZE_2 && str != ICON_LC_MINUS) {
             labels.push_back(Peek::Frame(*text));
         }
     }

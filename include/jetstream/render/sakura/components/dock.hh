@@ -42,6 +42,10 @@ struct Dock : public Component {
         Component* content = nullptr;
         bool closable = true;
         bool maximizable = true;
+        bool card = true;
+        bool leftmost = false;
+        bool startMinimized = false;
+        F32 width = 0.0f;
         F32 padding = 0.0f;
         Callback<void()> onClose;
         Callback<void()> onFocus;
@@ -52,6 +56,7 @@ struct Dock : public Component {
 
     struct Config {
         bool tabs = false;
+        bool hideTabs = false;
         std::string accepts;
         std::vector<Pane> panes;
         std::optional<DockTiles> tiles;
@@ -61,6 +66,8 @@ struct Dock : public Component {
         Component* leading = nullptr;
         Component* trailing = nullptr;
         Component* end = nullptr;
+        Component* aside = nullptr;
+        F32 asideWidth = 0.0f;
         F32 tabBarHeight = 0.0f;
         F32 leadingInset = 0.0f;
         Callback<void(const std::string&, Extent2D<F32>)> onTabMenu;
@@ -68,6 +75,8 @@ struct Dock : public Component {
         bool columns = false;
         std::string flexPane;
         bool loneHeader = false;
+        bool headers = true;
+        bool resizable = true;
 
         bool operator==(const Config&) const = default;
     };
@@ -78,6 +87,7 @@ struct Dock : public Component {
     void update(Config config);
     bool resizing() const;
     std::string paneAt(const Extent2D<F32>& point) const;
+    std::optional<Rect> tabRect(const std::string& pane) const;
 
  protected:
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;

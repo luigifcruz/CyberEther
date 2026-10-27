@@ -2,11 +2,13 @@
 
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/card.hh>
+#include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/typography.hh>
 #include <jetstream/render/tools/icons_lucide.hh>
 
 #include "../context.hh"
+#include "../detail/access.hh"
 #include "../detail/dock_drag.hh"
 #include "../detail/helpers.hh"
 #include "../detail/text_metrics.hh"
@@ -15,6 +17,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <set>
 #include <unordered_map>
 #include <utility>
 
@@ -24,7 +27,6 @@ namespace {
 
 constexpr F32 kDragThreshold = 6.0f;
 constexpr F32 kCardGap = Dock::ContentPadding;
-constexpr F32 kCardRadius = kPanelRounding;
 constexpr F32 kColumnWidth = 420.0f;
 constexpr F32 kFlexColumnWidth = 480.0f;
 constexpr F32 kMinColumnWidth = 240.0f;
@@ -34,8 +36,12 @@ constexpr F32 kHeaderTitleTop = 6.0f;
 constexpr F32 kHeaderPadX = 12.0f;
 constexpr F32 kHeaderButton = 20.0f;
 constexpr F32 kCloseGlyph = 13.0f;
-constexpr F32 kMaximizeGlyph = 10.0f;
-constexpr F32 kActionGlyph = 11.0f;
+constexpr F32 kHeaderGlyph = 12.0f;
+constexpr F32 kStripWidth = 32.0f;
+constexpr F32 kStripPad = 12.0f;
+constexpr F32 kStripRotation = -90.0f;
+constexpr F32 kStripTitleSize = 17.0f;
+constexpr F32 kInkNudge = 0.5f;
 constexpr F32 kIdleCloseOpacity = 0.35f;
 constexpr F32 kHeaderButtonGap = 2.0f;
 constexpr F32 kHeaderIconGap = 6.0f;
@@ -50,9 +56,7 @@ constexpr F32 kTrackInset = 2.0f;
 constexpr F32 kTabMaxWidth = 240.0f;
 constexpr F32 kTabGap = 4.0f;
 constexpr F32 kTabPadX = 10.0f;
-constexpr F32 kBadgeSize = 22.0f;
-constexpr F32 kBadgeRadius = 6.0f;
-constexpr F32 kBadgeGap = 10.0f;
+constexpr F32 kIconGap = 6.0f;
 constexpr F32 kDividerHeight = 15.0f;
 constexpr F32 kHeaderTitleSize = 16.0f;
 constexpr const char* kTabFont = Typography::DisplayFont;
@@ -436,12 +440,18 @@ std::string Fit(TextMetrics& metrics, const std::string& text, F32 size, F32 wid
 
 struct Dock::Impl {
     struct Caption {
+        Caption() {
+            spine->update({.fontName = kHeaderFont});
+        }
+
         std::string title;
         std::string icon;
         std::unique_ptr<Text> text = std::make_unique<Text>();
         std::unique_ptr<Text> glyph = std::make_unique<Text>();
         std::unique_ptr<Text> close = std::make_unique<Text>();
         std::unique_ptr<Text> maximize = std::make_unique<Text>();
+        std::unique_ptr<Text> minimize = std::make_unique<Text>();
+        std::unique_ptr<Label> spine = std::make_unique<Label>();
         std::vector<std::unique_ptr<Text>> actions;
     };
 
@@ -451,9 +461,12 @@ struct Dock::Impl {
         Rect header;
         Rect close;
         Rect maximize;
+        Rect minimize;
         std::vector<Rect> actions;
         Rect body;
         Rect content;
+        bool minimized = false;
+        bool strip = false;
     };
 
     struct SplitterLayout {
@@ -464,6 +477,8 @@ struct Dock::Impl {
         F32 spanStart = 0.0f;
         F32 spanEnd = 0.0f;
         bool column = false;
+        U64 left = 0;
+        U64 right = 0;
     };
 
     enum class Press {
@@ -473,6 +488,7 @@ struct Dock::Impl {
         Header,
         HeaderClose,
         HeaderMaximize,
+        HeaderMinimize,
         HeaderAction,
         Splitter,
         Handled,
@@ -486,6 +502,8 @@ struct Dock::Impl {
     std::string focusedPane;
     std::string pendingFocus;
     std::string maximized;
+    std::set<std::string> minimized;
+    std::set<std::string> introduced;
     std::vector<ColumnModel> columns;
 
     struct State {
@@ -494,6 +512,7 @@ struct Dock::Impl {
         std::optional<DockTiles> tree;
         std::string focusedPane;
         std::string maximized;
+        std::set<std::string> minimized;
         std::vector<ColumnModel> columns;
 
         bool operator==(const State&) const = default;
@@ -501,7 +520,7 @@ struct Dock::Impl {
 
     State state() const {
         return {.order = order, .active = active, .tree = tree, .focusedPane = focusedPane,
-                .maximized = maximized, .columns = columns};
+                .maximized = maximized, .minimized = minimized, .columns = columns};
     }
     Rect viewport;
     std::vector<Rect> columnRects;
@@ -515,12 +534,11 @@ struct Dock::Impl {
     Box tabBoxes;
     Box track;
     Box activeTab;
-    Box tabHighlight;
     Box tabRim;
-    Box badges;
     Box dividers;
     Card tileBase;
     Box splitterBoxes;
+    Box buttonHover;
     Card tileFrame;
     TextMetrics metrics;
     std::unordered_map<std::string, Caption> tabCaptions;
@@ -534,13 +552,15 @@ struct Dock::Impl {
     Rect trailingRect;
     Rect endRect;
     std::vector<Component*> mountedChrome;
+    Component* parkedAside = nullptr;
     std::vector<Component*> ordered;
     std::vector<Component*> managed;
 
     void collectManaged() {
         managed.clear();
         const auto captionParts = [&](Caption& caption) {
-            managed.insert(managed.end(), {caption.text.get(), caption.glyph.get(), caption.close.get(), caption.maximize.get()});
+            managed.insert(managed.end(), {caption.text.get(), caption.glyph.get(), caption.close.get(), caption.maximize.get(),
+                                            caption.minimize.get(), caption.spine.get()});
             for (auto& action : caption.actions) {
                 managed.push_back(action.get());
             }
@@ -567,17 +587,17 @@ struct Dock::Impl {
                 managed.push_back(it->second.get());
             }
         }
-        managed.insert(managed.end(), mountedChrome.begin(), mountedChrome.end());
         for (const auto& item : config.panes) {
             if (item.content) {
                 managed.push_back(item.content);
             }
         }
+        managed.insert(managed.end(), mountedChrome.begin(), mountedChrome.end());
     }
 
     std::vector<Component*> childOrder() {
-        std::vector<Component*> order = {&backgrounds, &separators, &track, &tabBoxes, &activeTab, &tabHighlight,
-                                         &tabRim, &dividers, &badges, &tileBase, &splitterBoxes};
+        std::vector<Component*> order = {&backgrounds, &separators, &track, &tabBoxes, &activeTab,
+                                         &tabRim, &dividers, &tileBase, &splitterBoxes, &buttonHover};
         order.insert(order.end(), managed.begin(), managed.end());
         order.push_back(&tileFrame);
         return order;
@@ -604,9 +624,30 @@ struct Dock::Impl {
     bool hoveredTabClose = false;
     std::string hoveredHeaderClose;
     std::string hoveredHeaderMaximize;
+    std::string hoveredHeaderMinimize;
+    std::string restored;
     std::optional<std::pair<std::string, U64>> hoveredHeaderAction;
     U64 pressAction = 0;
     std::optional<U64> hoveredSplitter;
+
+    Rect hoveredHeaderButton() const {
+        for (const auto& leaf : leaves) {
+            if (hoveredHeaderClose == leaf.pane) {
+                return leaf.close;
+            }
+            if (hoveredHeaderMaximize == leaf.pane) {
+                return leaf.maximize;
+            }
+            if (hoveredHeaderMinimize == leaf.pane) {
+                return leaf.minimize;
+            }
+            if (hoveredHeaderAction.has_value() && hoveredHeaderAction->first == leaf.pane &&
+                hoveredHeaderAction->second < leaf.actions.size()) {
+                return leaf.actions[hoveredHeaderAction->second];
+            }
+        }
+        return {};
+    }
 
     const Pane* pane(const std::string& id) const {
         for (const auto& item : config.panes) {
@@ -623,6 +664,9 @@ struct Dock::Impl {
         }
         if (!maximized.empty()) {
             return maximized == id;
+        }
+        if (minimized.contains(id)) {
+            return false;
         }
         const auto tiles = placed();
         return std::find(tiles.begin(), tiles.end(), id) != tiles.end();
@@ -651,10 +695,57 @@ struct Dock::Impl {
         if (config.flexPane.empty()) {
             return std::nullopt;
         }
-        if (const auto found = locate(config.flexPane)) {
+        if (const auto found = locate(config.flexPane); found && !collapsed(columns[found->first])) {
             return found->first;
         }
         return std::nullopt;
+    }
+
+    bool collapsed(const ColumnModel& column) const {
+        return std::all_of(column.panes.begin(), column.panes.end(), [this](const std::string& id) {
+            return minimized.contains(id);
+        });
+    }
+
+    bool canMinimize(const std::string& id) const {
+        if (!columnMode() || !maximized.empty()) {
+            return false;
+        }
+        if (minimized.contains(id)) {
+            return true;
+        }
+        U64 open = 0;
+        for (const auto& column : columns) {
+            for (const auto& pane : column.panes) {
+                open += minimized.contains(pane) ? 0 : 1;
+            }
+        }
+        return open > 1;
+    }
+
+    void toggleMinimized(const std::string& id) {
+        if (minimized.erase(id) > 0) {
+            focus(id);
+            return;
+        }
+        if (canMinimize(id)) {
+            minimized.insert(id);
+        }
+    }
+
+    void settleMinimized() {
+        if (!columnMode() || !config.headers) {
+            minimized.clear();
+            return;
+        }
+        std::erase_if(minimized, [this](const std::string& id) {
+            return !locate(id).has_value();
+        });
+        if (std::all_of(columns.begin(), columns.end(), [this](const ColumnModel& column) {
+                return collapsed(column);
+            })) {
+            minimized.clear();
+        }
     }
 
     void rebuild() {
@@ -684,11 +775,22 @@ struct Dock::Impl {
             synced = config.tiles;
             columns = ToColumns(config.tiles);
         }
+        std::erase_if(introduced, [this](const std::string& id) {
+            return !known(id);
+        });
         bool added = false;
         for (const auto& item : config.panes) {
             if (!locate(item.id)) {
-                columns.push_back({.panes = {item.id}, .weights = {1.0f}});
+                ColumnModel column{.panes = {item.id}, .weights = {1.0f}, .width = item.width};
+                if (item.leftmost) {
+                    columns.insert(columns.begin(), std::move(column));
+                } else {
+                    columns.push_back(std::move(column));
+                }
                 added = true;
+            }
+            if (introduced.insert(item.id).second && item.startMinimized) {
+                minimized.insert(item.id);
             }
         }
         rebuild();
@@ -730,6 +832,7 @@ struct Dock::Impl {
             into.weights.insert(into.weights.begin() + static_cast<I64>(at), half);
         }
         maximized.clear();
+        minimized.erase(id);
         rebuild();
         focus(id);
         commit();
@@ -739,6 +842,7 @@ struct Dock::Impl {
         const F32 width = takeColumn(id);
         columns.push_back({.panes = {id}, .weights = {1.0f}, .width = width});
         maximized.clear();
+        minimized.erase(id);
         rebuild();
         focus(id);
         commit();
@@ -755,16 +859,18 @@ struct Dock::Impl {
 
     void bakeColumns() {
         for (U64 index = 0; index < columns.size() && index < pressWidths.size(); ++index) {
-            columns[index].width = pressWidths[index] / pixelRatio;
+            if (!collapsed(columns[index])) {
+                columns[index].width = pressWidths[index] / pixelRatio;
+            }
         }
     }
 
     bool resizeColumns(const SplitterLayout& splitter, const Extent2D<F32>& point) {
         const auto before = columns;
         if (splitter.column) {
-            const U64 left = splitter.index;
-            const U64 right = left + 1;
-            if (right >= columns.size() || right >= pressWidths.size() || right >= pressBases.size()) {
+            const U64 left = splitter.left;
+            const U64 right = splitter.right;
+            if (left >= right || right >= columns.size() || right >= pressWidths.size() || right >= pressBases.size()) {
                 return false;
             }
             const F32 minimum = kMinColumnWidth * pixelRatio;
@@ -795,36 +901,36 @@ struct Dock::Impl {
                 return false;
             }
             auto& column = columns[splitter.path.front()];
-            if (splitter.index + 1 >= column.panes.size()) {
+            if (splitter.left >= splitter.right || splitter.right >= column.panes.size()) {
                 return false;
             }
             column.weights.resize(column.panes.size(), 1.0f);
-            const F32 pair = column.weights[splitter.index] + column.weights[splitter.index + 1];
+            const F32 pair = column.weights[splitter.left] + column.weights[splitter.right];
             const F32 span = std::max(1.0f, splitter.spanEnd - splitter.spanStart);
             const F32 minimum = std::min(0.45f, (48.0f * pixelRatio) / span);
             const F32 t = std::clamp((point.y - splitter.spanStart) / span, minimum, 1.0f - minimum);
-            column.weights[splitter.index] = pair * t;
-            column.weights[splitter.index + 1] = pair * (1.0f - t);
+            column.weights[splitter.left] = pair * t;
+            column.weights[splitter.right] = pair * (1.0f - t);
         }
         rebuild();
         return columns != before;
     }
 
-    static void evenPair(std::vector<F32>& weights, U64 index) {
-        if (index + 1 >= weights.size()) {
+    static void evenPair(std::vector<F32>& weights, U64 first, U64 second) {
+        if (first >= weights.size() || second >= weights.size()) {
             return;
         }
-        const F32 half = (weights[index] + weights[index + 1]) * 0.5f;
-        weights[index] = half;
-        weights[index + 1] = half;
+        const F32 half = (weights[first] + weights[second]) * 0.5f;
+        weights[first] = half;
+        weights[second] = half;
     }
 
     void equalize(const SplitterLayout& splitter) {
         if (columnMode()) {
             if (splitter.column) {
-                const U64 left = splitter.index;
-                const U64 right = left + 1;
-                if (right >= columns.size() || right >= columnWidths.size()) {
+                const U64 left = splitter.left;
+                const U64 right = splitter.right;
+                if (left >= right || right >= columns.size() || right >= columnWidths.size()) {
                     return;
                 }
                 pressColumns();
@@ -844,7 +950,7 @@ struct Dock::Impl {
             } else if (!splitter.path.empty() && splitter.path.front() < columns.size()) {
                 auto& column = columns[splitter.path.front()];
                 column.weights.resize(column.panes.size(), 1.0f);
-                evenPair(column.weights, splitter.index);
+                evenPair(column.weights, splitter.left, splitter.right);
             }
             rebuild();
         } else if (tree.has_value()) {
@@ -853,7 +959,7 @@ struct Dock::Impl {
                 return;
             }
             auto weights = Weights(*node);
-            evenPair(weights, splitter.index);
+            evenPair(weights, splitter.index, splitter.index + 1);
             node->weights = std::move(weights);
         }
         commit();
@@ -873,51 +979,125 @@ struct Dock::Impl {
             return;
         }
         const auto flex = flexColumn();
-        std::vector<F32> widths(count);
+        const F32 strip = std::round(kStripWidth * pixelRatio);
+        std::vector<F32> widths(count, strip);
+        std::vector<F32> open;
+        std::optional<U64> openFlex;
+        F32 room = std::max(0.0f, area.width - gap * static_cast<F32>(count - 1));
         for (U64 index = 0; index < count; ++index) {
+            if (collapsed(columns[index])) {
+                room = std::max(0.0f, room - strip);
+                continue;
+            }
             const F32 fallback = flex == index ? kFlexColumnWidth : kColumnWidth;
             const F32 stored = columns[index].width >= kStoredWidthFloor ? columns[index].width : fallback;
             widths[index] = std::round(std::max(stored, kMinColumnWidth) * pixelRatio);
+            if (flex == index) {
+                openFlex = open.size();
+            }
+            open.push_back(widths[index]);
         }
         columnBases = widths;
-        const F32 room = std::max(0.0f, area.width - gap * static_cast<F32>(count - 1));
-        widths = FitColumns(std::move(widths), room, flex, kMinColumnWidth * pixelRatio);
+        open = FitColumns(std::move(open), room, openFlex, kMinColumnWidth * pixelRatio);
+        for (U64 index = 0, slot = 0; index < count; ++index) {
+            if (!collapsed(columns[index])) {
+                widths[index] = open[slot++];
+            }
+        }
         F32 x = area.x;
         for (U64 index = 0; index < count; ++index) {
             const Rect rect = {x, area.y, widths[index], area.height};
             x += widths[index] + gap;
             columnRects.push_back(rect);
-            if (index > 0) {
-                splitters.push_back({.index = index - 1, .rect = {rect.x - gap, area.y, gap, area.height}, .column = true});
-            }
             const auto& column = columns[index];
-            std::vector<F32> weights = column.weights;
-            weights.resize(column.panes.size(), 1.0f);
-            F32 total = 0.0f;
-            for (auto& weight : weights) {
-                weight = std::max(weight, 1.0e-3f);
-                total += weight;
+            const bool strips = collapsed(column);
+            if (index > 0) {
+                std::optional<U64> before;
+                for (U64 scan = index; scan-- > 0;) {
+                    if (!collapsed(columns[scan])) {
+                        before = scan;
+                        break;
+                    }
+                }
+                std::optional<U64> after;
+                for (U64 scan = index; scan < count; ++scan) {
+                    if (!collapsed(columns[scan])) {
+                        after = scan;
+                        break;
+                    }
+                }
+                if (before.has_value() && after.has_value()) {
+                    splitters.push_back({.index = index - 1, .rect = {rect.x - gap, area.y, gap, area.height},
+                                         .column = true, .left = *before, .right = *after});
+                }
             }
             const U64 rows = column.panes.size();
-            const F32 usable = std::max(0.0f, rect.height - gap * static_cast<F32>(rows - 1));
-            F32 y = rect.y;
-            F32 previous = rect.y;
+            std::vector<bool> shaded(rows, false);
+            std::vector<F32> weights = column.weights;
+            weights.resize(rows, 1.0f);
+            F32 total = 0.0f;
+            F32 fixed = 0.0f;
             for (U64 row = 0; row < rows; ++row) {
-                const F32 end = row + 1 == rows ? rect.bottom() : std::round(y + usable * weights[row] / total);
-                const Rect tile = {rect.x, y, rect.width, std::max(0.0f, end - y)};
-                if (row > 0) {
-                    splitters.push_back({
-                        .path = {static_cast<U8>(index)},
-                        .index = row - 1,
-                        .vertical = true,
-                        .rect = {rect.x, y - gap, rect.width, gap},
-                        .spanStart = previous,
-                        .spanEnd = end,
-                    });
+                shaded[row] = !strips && minimized.contains(column.panes[row]);
+                if (shaded[row]) {
+                    fixed += strip;
+                    continue;
                 }
-                leaves.push_back({.pane = column.panes[row], .tile = tile});
-                previous = y;
-                y = end + gap;
+                weights[row] = std::max(weights[row], 1.0e-3f);
+                total += weights[row];
+            }
+            const F32 usable = std::max(0.0f, rect.height - gap * static_cast<F32>(rows - 1) - fixed);
+            std::vector<F32> heights(rows);
+            F32 used = 0.0f;
+            std::optional<U64> last;
+            for (U64 row = 0; row < rows; ++row) {
+                heights[row] = shaded[row] ? strip : std::round(usable * weights[row] / total);
+                used += heights[row];
+                if (!shaded[row]) {
+                    last = row;
+                }
+            }
+            if (last.has_value()) {
+                heights[*last] = std::max(0.0f, heights[*last] + usable + fixed - used);
+            }
+            std::vector<F32> tops(rows);
+            F32 y = rect.y;
+            for (U64 row = 0; row < rows; ++row) {
+                tops[row] = y;
+                leaves.push_back({.pane = column.panes[row], .tile = {rect.x, y, rect.width, heights[row]},
+                                  .minimized = minimized.contains(column.panes[row]), .strip = strips});
+                y += heights[row] + gap;
+            }
+            for (U64 boundary = 1; boundary < rows; ++boundary) {
+                std::optional<U64> upper;
+                for (U64 scan = boundary; scan-- > 0;) {
+                    if (!shaded[scan]) {
+                        upper = scan;
+                        break;
+                    }
+                }
+                std::optional<U64> lower;
+                for (U64 scan = boundary; scan < rows; ++scan) {
+                    if (!shaded[scan]) {
+                        lower = scan;
+                        break;
+                    }
+                }
+                if (!upper.has_value() || !lower.has_value()) {
+                    continue;
+                }
+                const F32 above = tops[boundary] - gap - (tops[*upper] + heights[*upper]);
+                const F32 below = tops[*lower] - tops[boundary];
+                splitters.push_back({
+                    .path = {static_cast<U8>(index)},
+                    .index = boundary - 1,
+                    .vertical = true,
+                    .rect = {rect.x, tops[boundary] - gap, rect.width, gap},
+                    .spanStart = tops[*upper] + above,
+                    .spanEnd = tops[*lower] + heights[*lower] - below,
+                    .left = *upper,
+                    .right = *lower,
+                });
             }
         }
         columnWidths = std::move(widths);
@@ -934,7 +1114,8 @@ struct Dock::Impl {
         if (maximized.empty()) {
             return;
         }
-        if (config.tabs || !tree.has_value() || !Contains(*tree, maximized) || Leaves(*tree).size() < 2) {
+        if (config.tabs || !config.headers || !tree.has_value() || !Contains(*tree, maximized) ||
+            Leaves(*tree).size() < 2) {
             maximized.clear();
         }
     }
@@ -1256,6 +1437,7 @@ void Dock::update(Config config) {
     }
     impl->flushPendingFocus();
     impl->settleMaximized();
+    impl->settleMinimized();
     if (before.has_value() && *before != impl->state()) {
         invalidate(Dirty::Layout);
     }
@@ -1265,15 +1447,20 @@ void Dock::update(Config config) {
             item.content->setVisible(impl->displays(item.id));
         }
     }
+    const std::vector<Component*> mounted = children();
+    if (impl->config.aside) {
+        impl->parkedAside = impl->config.aside;
+    } else if (std::find(mounted.begin(), mounted.end(), impl->parkedAside) == mounted.end()) {
+        impl->parkedAside = nullptr;
+    }
     std::vector<Component*> chrome;
     if (impl->config.tabs) {
-        for (auto* item : {impl->config.leading, impl->config.trailing, impl->config.end}) {
+        for (auto* item : {impl->config.leading, impl->config.trailing, impl->config.end, impl->parkedAside}) {
             if (item) {
                 chrome.push_back(item);
             }
         }
     }
-    const std::vector<Component*> mounted = children();
     for (auto* item : impl->mountedChrome) {
         const bool live = std::find(mounted.begin(), mounted.end(), item) != mounted.end();
         if (live && std::find(chrome.begin(), chrome.end(), item) == chrome.end()) {
@@ -1363,6 +1550,18 @@ std::string Dock::paneAt(const Extent2D<F32>& point) const {
     return leaf ? leaf->pane : std::string();
 }
 
+std::optional<Rect> Dock::tabRect(const std::string& pane) const {
+    for (U64 index = 0; index < impl->tabPanes.size() && index < impl->tabRects.size(); ++index) {
+        if (impl->tabPanes[index] == pane) {
+            const Rect& tab = impl->tabRects[index];
+            const F32 scale = impl->pixelRatio;
+            return Rect{(tab.x - frame().x) / scale, (tab.y - frame().y) / scale, tab.width / scale,
+                        tab.height / scale};
+        }
+    }
+    return std::nullopt;
+}
+
 Extent2D<F32> Dock::measure(const Context&, Extent2D<F32> available) {
     return {FillLength(available.x), FillLength(available.y)};
 }
@@ -1375,12 +1574,13 @@ void Dock::layout(const Context& ctx) {
     s.dragAlive = s.drag ? std::weak_ptr<bool>(s.drag->alive) : std::weak_ptr<bool>();
     s.metrics.setWindow(ctx.render);
     s.settleMaximized();
+    s.settleMinimized();
     const bool tabs = s.config.tabs;
     const F32 font = Px(ctx, Typography::FontSize);
     const F32 infinite = std::numeric_limits<F32>::infinity();
     const F32 line = Hairline(ctx);
     const F32 gap = Px(ctx, kCardGap);
-    const F32 radius = Px(ctx, kCardRadius);
+    const F32 radius = Px(ctx, TileRounding);
     const F32 closeSize = Px(ctx, kPillClose);
     F32 tabRadius = 0.0f;
     F32 trackRadius = 0.0f;
@@ -1391,7 +1591,6 @@ void Dock::layout(const Context& ctx) {
     std::vector<Box::Instance> trackInstances;
     std::vector<Box::Instance> activeInstances;
     std::vector<Box::Instance> tabRimInstances;
-    std::vector<Box::Instance> badgeInstances;
     std::vector<Box::Instance> dividerInstances;
     std::vector<Rect> tileRects;
     std::vector<Box::Instance> splitterInstances;
@@ -1469,13 +1668,11 @@ void Dock::layout(const Context& ctx) {
         const F32 trackY = s.tabBar.y + std::floor((height - trackHeight) * 0.5f) + drop;
         const F32 tabHeight = trackHeight - 2.0f * inset;
         const F32 tabY = trackY + inset;
-        const F32 badge = Px(ctx, kBadgeSize);
-        const F32 badgeY = tabY + std::floor((tabHeight - badge) * 0.5f);
         const F32 padding = Px(ctx, kTabPadX);
         const F32 reserve = Px(ctx, kPillCloseGap) + closeSize + Px(ctx, kPillCloseMargin);
         tabRadius = tabHeight * 0.5f;
         trackRadius = trackHeight * 0.5f;
-        const U64 count = s.order.size();
+        const U64 count = s.config.hideTabs ? 0 : s.order.size();
         const F32 tabGap = Px(ctx, kTabGap);
         const F32 gaps = count > 1 ? tabGap * static_cast<F32>(count - 1) : 0.0f;
         const F32 room = std::max(0.0f, limit - x - 2.0f * inset - gaps);
@@ -1497,7 +1694,7 @@ void Dock::layout(const Context& ctx) {
             const bool hovered = s.hoveredTab == index;
             if (selected) {
                 activeInstances.push_back({.rect = tab, .backgroundColor = ctx.color("pill_active_bg")});
-                tabRimInstances.push_back({.rect = Inset(tab, Px(ctx, 1.0f)),
+                tabRimInstances.push_back({.rect = tab,
                                            .backgroundColor = {0.0f, 0.0f, 0.0f, 0.0f}});
             } else if (hovered) {
                 tabInstances.push_back({.rect = tab, .backgroundColor = ctx.color("pill_hover_bg")});
@@ -1515,16 +1712,12 @@ void Dock::layout(const Context& ctx) {
             const auto textKey = selected ? "text_primary" : "text_secondary";
             F32 cursor = tab.x + padding;
             if (caption && !caption->icon.empty()) {
-                const Rect box = {cursor, badgeY, badge, badge};
-                badgeInstances.push_back({.rect = box, .backgroundColor = ctx.color("tile_bg")});
                 caption->glyph->update({.str = caption->icon, .colorKey = textKey});
                 const auto glyph = measureChild(*caption->glyph, ctx, {infinite, infinite});
                 layoutChild(ctx, *caption->glyph,
-                            {box.x + std::floor((badge - glyph.x) * 0.5f), box.y + std::floor((badge - glyph.y) * 0.5f),
-                             glyph.x, glyph.y},
-                            tab);
+                            {cursor, tabY + std::floor((tabHeight - glyph.y) * 0.5f), glyph.x, glyph.y}, tab);
                 labels.push_back(caption->glyph.get());
-                cursor = box.right() + Px(ctx, kBadgeGap);
+                cursor += glyph.x + Px(ctx, kIconGap);
             }
             const F32 titleRoom = std::max(0.0f, tab.right() - cursor - (closable ? reserve : padding));
             if (caption) {
@@ -1559,6 +1752,20 @@ void Dock::layout(const Context& ctx) {
         const F32 contentTop = s.tabBar.height - overlap;
         s.contentArea = {s.bounds.x, s.bounds.y + contentTop, s.bounds.width,
                          std::max(0.0f, s.bounds.height - contentTop)};
+        if (auto* aside = s.config.aside) {
+            const F32 room = std::max(0.0f, s.contentArea.width * 0.5f - gap);
+            const F32 natural = s.config.asideWidth == 0.0f
+                                    ? measureChild(*aside, ctx, {room, s.contentArea.height}).x
+                                    : 0.0f;
+            const F32 width = std::round(ResolveLength(ctx, s.config.asideWidth, natural, room)) + gap;
+            const Rect area = {s.contentArea.right() - width, s.contentArea.y, width, s.contentArea.height};
+            s.contentArea.width -= width - gap;
+            if (!s.config.hideTabs) {
+                backgroundInstances.push_back({.rect = area, .backgroundColor = ctx.color("background")});
+            }
+            layoutChild(ctx, *aside, area, area);
+            chrome.push_back(aside);
+        }
     } else {
         s.tabBar = {};
         s.contentArea = s.bounds;
@@ -1572,6 +1779,14 @@ void Dock::layout(const Context& ctx) {
         std::vector<U8> path;
         s.arrange(*tileTree, tabs ? s.contentArea : Inset(s.contentArea, gap), path, gap);
     }
+    if (!s.config.resizable) {
+        s.splitters.clear();
+        s.hoveredSplitter.reset();
+        if (s.press == Impl::Press::Splitter) {
+            s.commit();
+            s.press = Impl::Press::None;
+        }
+    }
     const auto lone = [&s, total]() {
         if (s.config.loneHeader || total != 1 || s.leaves.size() != 1) {
             return false;
@@ -1579,7 +1794,7 @@ void Dock::layout(const Context& ctx) {
         const auto* item = s.pane(s.leaves.front().pane);
         return item && !item->closable;
     };
-    s.showHeaders = !tabs && !lone();
+    s.showHeaders = !tabs && s.config.headers && !lone();
 
     const F32 headerHeight = std::round(Px(ctx, Dock::HeaderHeight));
     const F32 button = Px(ctx, kHeaderButton);
@@ -1596,13 +1811,64 @@ void Dock::layout(const Context& ctx) {
         }
         const bool closable = item ? item->closable : true;
         Rect content = leaf.tile;
-        if (!tabs) {
+        if (!tabs && item && !item->card) {
+            content = Intersect(Inflate(leaf.tile, gap), s.contentArea);
+        }
+        if (!tabs && (!item || item->card)) {
             tileRects.push_back(leaf.tile);
         }
-        if (s.showHeaders) {
-            leaf.header = {leaf.tile.x, leaf.tile.y, leaf.tile.width, std::min(headerHeight, leaf.tile.height)};
+        const bool fullscreenable = item && item->maximizable && total > 1;
+        const bool minimizable = item && !leaf.minimized && s.canMinimize(leaf.pane);
+        const auto fullscreenButton = [&](Impl::Caption* caption, const Rect& rect) {
+            leaf.maximize = rect;
+            if (caption) {
+                const bool fullscreen = s.maximized == leaf.pane;
+                glyphButton(*caption->maximize, rect, fullscreen ? ICON_LC_MINIMIZE_2 : ICON_LC_MAXIMIZE_2,
+                            s.hoveredHeaderMaximize == leaf.pane ? "tile_button_hover"
+                            : fullscreen                         ? "cyber_blue"
+                                                                 : "tile_header_text",
+                            kHeaderGlyph);
+            }
+        };
+        if (s.showHeaders && leaf.strip) {
+            leaf.header = leaf.tile;
+            const auto found = s.headerCaptions.find(leaf.pane);
+            auto* caption = found == s.headerCaptions.end() ? nullptr : &found->second;
+            const F32 left = std::round(leaf.tile.x + (leaf.tile.width - button) * 0.5f);
+            const F32 margin = left - leaf.tile.x;
+            if (fullscreenable) {
+                fullscreenButton(caption, {left, leaf.tile.bottom() - margin - button, button, button});
+            }
+            if (caption) {
+                const F32 reserve = std::max(Px(ctx, kStripPad), margin + button + Px(ctx, kHeaderButtonGap));
+                const F32 room = std::max(0.0f, leaf.tile.height - 2.0f * reserve);
+                const F32 spineSize = Px(ctx, kStripTitleSize);
+                const std::string spine = Fit(s.metrics, caption->title, spineSize, room, kHeaderFont);
+                const F32 ink = s.metrics.inkOffset(kHeaderFont, spine, spineSize) - Px(ctx, kInkNudge);
+                caption->spine->update({
+                    .instances = {{
+                        .rect = {leaf.tile.x + ink, leaf.tile.y, leaf.tile.width, leaf.tile.height},
+                        .str = spine,
+                        .visible = !leaf.tile.empty(),
+                        .color = ctx.color("tile_header_text"),
+                        .fontSize = spineSize,
+                        .alignment = {1, 1},
+                        .rotation = kStripRotation,
+                    }},
+                    .clip = leaf.tile,
+                    .fontName = kHeaderFont,
+                });
+                layoutChild(ctx, *caption->spine, leaf.tile);
+                labels.push_back(caption->spine.get());
+            }
+            content = {};
+        } else if (s.showHeaders) {
+            leaf.header = leaf.minimized ? leaf.tile
+                                         : Rect{leaf.tile.x, leaf.tile.y, leaf.tile.width,
+                                                std::min(headerHeight, leaf.tile.height)};
             const F32 inset = Px(ctx, std::max(kHeaderPadX, item ? item->padding : 0.0f));
-            const F32 titleY = leaf.header.y + std::round(Px(ctx, kHeaderTitleTop));
+            const F32 titleY = leaf.header.y + (leaf.minimized ? std::round((leaf.header.height - titleSize) * 0.5f)
+                                                               : std::round(Px(ctx, kHeaderTitleTop)));
             const F32 centerY = titleY + titleSize * 0.5f;
             const F32 buttonY = std::round(centerY - button * 0.5f);
             const auto found = s.headerCaptions.find(leaf.pane);
@@ -1610,8 +1876,8 @@ void Dock::layout(const Context& ctx) {
             F32 right = leaf.tile.right() - inset;
             if (closable) {
                 const char* closeKey = s.hoveredHeaderClose == leaf.pane ? "tile_button_hover" : "tile_header_text";
-                const Extent2D<F32> size = caption ? prepareGlyph(*caption->close, ICON_LC_X, closeKey, kCloseGlyph, 1.0f)
-                                                   : Extent2D<F32>{Px(ctx, kCloseGlyph), Px(ctx, kCloseGlyph)};
+                const Extent2D<F32> size = caption ? prepareGlyph(*caption->close, ICON_LC_X, closeKey, kHeaderGlyph, 1.0f)
+                                                   : Extent2D<F32>{Px(ctx, kHeaderGlyph), Px(ctx, kHeaderGlyph)};
                 const F32 centerX = right - size.x * 0.5f;
                 leaf.close = {std::round(centerX - button * 0.5f), buttonY, button, button};
                 if (caption) {
@@ -1619,18 +1885,20 @@ void Dock::layout(const Context& ctx) {
                 }
                 right = leaf.close.x - Px(ctx, kHeaderButtonGap);
             }
-            if (item && item->maximizable && total > 1) {
-                leaf.maximize = {right - button, buttonY, button, button};
+            if (fullscreenable) {
+                fullscreenButton(caption, {right - button, buttonY, button, button});
                 right = leaf.maximize.x - Px(ctx, kHeaderButtonGap);
+            }
+            if (minimizable) {
+                leaf.minimize = {right - button, buttonY, button, button};
+                right = leaf.minimize.x - Px(ctx, kHeaderButtonGap);
                 if (caption) {
-                    glyphButton(*caption->maximize, leaf.maximize,
-                                s.maximized == leaf.pane ? ICON_LC_MINIMIZE_2
-                                                         : ICON_LC_MAXIMIZE_2,
-                                s.hoveredHeaderMaximize == leaf.pane ? "tile_button_hover" : "tile_header_text",
-                                kMaximizeGlyph);
+                    glyphButton(*caption->minimize, leaf.minimize, ICON_LC_MINUS,
+                                s.hoveredHeaderMinimize == leaf.pane ? "tile_button_hover" : "tile_header_text",
+                                kHeaderGlyph);
                 }
             }
-            if (item) {
+            if (item && !leaf.minimized) {
                 for (U64 index = 0; index < item->actions.size(); ++index) {
                     const auto& action = item->actions[index];
                     const Rect rect = {right - button, buttonY, button, button};
@@ -1641,31 +1909,39 @@ void Dock::layout(const Context& ctx) {
                                              std::optional<std::pair<std::string, U64>>(std::make_pair(leaf.pane, index));
                         glyphButton(*caption->actions[index], rect, action.icon.c_str(),
                                     hovered ? "tile_button_hover" : action.active ? "cyber_blue" : "tile_header_text",
-                                    kActionGlyph);
+                                    kHeaderGlyph);
                     }
                 }
             }
             if (caption) {
                 const F32 cursor = leaf.tile.x + inset;
                 const F32 room = std::max(0.0f, right - Px(ctx, kHeaderIconGap) - cursor);
-                caption->text->update({.str = Fit(s.metrics, caption->title, titleSize, room, kHeaderFont),
+                const std::string title = Fit(s.metrics, caption->title, titleSize, room, kHeaderFont);
+                const F32 ink = leaf.minimized
+                                    ? std::round(s.metrics.inkOffset(kHeaderFont, title, titleSize) - Px(ctx, kInkNudge))
+                                    : 0.0f;
+                caption->text->update({.str = title,
                                       .font = Text::Font::DisplaySemiBold,
                                       .colorKey = "tile_header_text",
                                       .scale = kHeaderTitleSize / Typography::FontSize});
                 const Extent2D<F32> textSize = measureChild(*caption->text, ctx, {infinite, infinite});
                 const F32 width = std::min(textSize.x, room);
-                layoutChild(ctx, *caption->text, {cursor, titleY, width, textSize.y},
+                layoutChild(ctx, *caption->text, {cursor, titleY - ink, width, textSize.y},
                             {cursor, leaf.tile.y, room, leaf.tile.height});
                 labels.push_back(caption->text.get());
             }
-            content = {leaf.tile.x, leaf.header.bottom(), leaf.tile.width,
-                       std::max(0.0f, leaf.tile.bottom() - leaf.header.bottom())};
+            content = leaf.minimized ? Rect{}
+                                     : Rect{leaf.tile.x, leaf.header.bottom(), leaf.tile.width,
+                                            std::max(0.0f, leaf.tile.bottom() - leaf.header.bottom())};
         }
-        if (tabs) {
+        if (tabs && !s.config.hideTabs) {
             backgroundInstances.push_back({.rect = content, .backgroundColor = ctx.color("background")});
         }
         leaf.body = content;
         leaf.content = Inset(content, Px(ctx, item ? item->padding : 0.0f));
+        if (leaf.minimized) {
+            continue;
+        }
         if (item && item->content) {
             contents.push_back(item->content);
         }
@@ -1693,8 +1969,34 @@ void Dock::layout(const Context& ctx) {
     std::vector<Component*> shown = std::move(labels);
     shown.insert(shown.end(), chrome.begin(), chrome.end());
     shown.insert(shown.end(), contents.begin(), contents.end());
+    const std::weak_ptr<bool> token = Access::alive(*this);
+    const std::vector<Component*>& mounted = children();
+    std::vector<std::pair<Component*, std::weak_ptr<bool>>> managed;
     for (auto* child : s.managed) {
-        child->setVisible(std::find(shown.begin(), shown.end(), child) != shown.end());
+        if (std::find(mounted.begin(), mounted.end(), child) != mounted.end()) {
+            managed.push_back({child, Access::alive(*child)});
+        }
+    }
+    const auto present = [&](Component* child, const std::weak_ptr<bool>& alive) {
+        return !token.expired() && !alive.expired() && hasChild(*child);
+    };
+    for (const auto& [child, alive] : managed) {
+        if (!present(child, alive)) {
+            continue;
+        }
+        const bool visible = std::find(shown.begin(), shown.end(), child) != shown.end();
+        if (!visible && child->visible()) {
+            cancelMouse(*child);
+            if (present(child, alive)) {
+                releaseFocusWithin(*child);
+            }
+        }
+        if (present(child, alive)) {
+            child->setVisible(visible);
+        }
+    }
+    if (token.expired()) {
+        return;
     }
 
     s.backgrounds.update({.instances = std::move(backgroundInstances), .clip = s.bounds, .capacity = kBoxCapacity});
@@ -1703,22 +2005,12 @@ void Dock::layout(const Context& ctx) {
                        .capacity = kBoxCapacity});
     s.track.update({.instances = std::move(trackInstances), .clip = s.bounds, .cornerRadius = trackRadius,
                     .capacity = kBoxCapacity});
-    std::vector<Box::Instance> tabHighlightInstances;
-    for (const auto& instance : activeInstances) {
-        tabHighlightInstances.push_back({.rect = instance.rect, .backgroundColor = {0.0f, 0.0f, 0.0f, 0.0f}});
-    }
     s.activeTab.update({.instances = std::move(activeInstances), .clip = s.bounds, .cornerRadius = tabRadius,
                         .borderWidth = Px(ctx, 1.0f), .borderColor = ctx.color("tile_border"), .strokeFringe = true,
                         .capacity = kBoxCapacity});
-    s.tabHighlight.update({.instances = std::move(tabHighlightInstances), .clip = s.bounds, .cornerRadius = tabRadius,
-                           .borderWidth = Px(ctx, 1.0f), .borderColor = ctx.color("tile_highlight"),
-                           .strokeFringe = true, .topLit = true, .capacity = kBoxCapacity});
     s.tabRim.update({.instances = std::move(tabRimInstances), .clip = s.bounds,
-                     .cornerRadius = std::max(0.0f, tabRadius - Px(ctx, 1.0f)), .borderWidth = Px(ctx, 1.0f),
-                     .borderColor = ctx.color("tile_rim"), .strokeFringe = true, .topLit = true,
-                     .capacity = kBoxCapacity});
-    s.badges.update({.instances = std::move(badgeInstances), .clip = s.bounds, .cornerRadius = Px(ctx, kBadgeRadius),
-                     .borderWidth = Px(ctx, 1.0f), .borderColor = ctx.color("tile_border"), .strokeFringe = true,
+                     .cornerRadius = tabRadius, .borderWidth = Px(ctx, 1.0f),
+                     .borderColor = RimColor(ctx.color("pill_active_bg")), .strokeFringe = true, .topLit = true,
                      .capacity = kBoxCapacity});
     s.dividers.update({.instances = std::move(dividerInstances), .clip = s.bounds, .capacity = kBoxCapacity});
     Card::Config tile = {
@@ -1737,21 +2029,40 @@ void Dock::layout(const Context& ctx) {
     s.tileFrame.update(std::move(tile));
     s.splitterBoxes.update({.instances = std::move(splitterInstances), .clip = s.bounds,
                             .cornerRadius = splitterLine * 0.5f, .capacity = kBoxCapacity});
+    const Rect hoveredButton = s.hoveredHeaderButton();
+    std::vector<Box::Instance> buttonInstances;
+    F32 buttonRadius = hoveredButton.width * 0.5f;
+    for (const auto& leaf : s.leaves) {
+        if (s.maximized == leaf.pane && !leaf.maximize.empty()) {
+            buttonInstances.push_back({.rect = leaf.maximize, .backgroundColor = ctx.color("tile_button_active_bg")});
+            buttonRadius = leaf.maximize.width * 0.5f;
+        }
+    }
+    const bool activeHovered = std::any_of(buttonInstances.begin(), buttonInstances.end(), [&](const auto& instance) {
+        return instance.rect == hoveredButton;
+    });
+    if (!hoveredButton.empty() && !activeHovered) {
+        buttonInstances.push_back({.rect = hoveredButton, .backgroundColor = ctx.color("chrome_button_hover")});
+    }
+    s.buttonHover.update({
+        .instances = std::move(buttonInstances),
+        .clip = s.bounds,
+        .cornerRadius = buttonRadius,
+        .capacity = 2,
+    });
     for (auto* primitive : std::initializer_list<Component*>{&s.backgrounds, &s.separators, &s.track, &s.tabBoxes,
-                                                             &s.activeTab, &s.tabHighlight, &s.tabRim, &s.dividers, &s.badges, &s.tileBase,
-                                                             &s.splitterBoxes, &s.tileFrame}) {
+                                                             &s.activeTab, &s.tabRim, &s.dividers, &s.tileBase,
+                                                             &s.splitterBoxes, &s.buttonHover, &s.tileFrame}) {
         layoutChild(ctx, *primitive, s.bounds);
     }
 
-    Context inner = ctx;
-    if (!tabs) {
-        inner.backdropColorKey = "tile_bg";
-        inner.backdropTopColorKey.clear();
-    }
+    Context carded = ctx;
+    carded.backdropColorKey = "tile_bg";
+    carded.backdropTopColorKey.clear();
     for (const auto& leaf : s.leaves) {
         const auto* item = s.pane(leaf.pane);
-        if (item && item->content) {
-            layoutChild(inner, *item->content, leaf.content, leaf.body);
+        if (item && item->content && !leaf.minimized) {
+            layoutChild(!tabs && item->card ? carded : ctx, *item->content, leaf.content, leaf.body);
         }
     }
 
@@ -1893,7 +2204,7 @@ bool Dock::mouseEvent(const MouseEvent& event) {
                     s.drag->pane = s.pressPane;
                     s.drag->group = item->group;
                     s.drag->title = item->title;
-                    s.drag->icon = item->icon;
+                    s.drag->icon = s.config.tabs ? item->icon : std::string();
                     s.drag->source = this;
                     s.dragging = true;
                     s.dragPoint = point;
@@ -1906,6 +2217,7 @@ bool Dock::mouseEvent(const MouseEvent& event) {
             const bool tabClose = tab.has_value() && s.tabCloseRects[*tab].contains(point.x, point.y);
             std::string headerClose;
             std::string headerMaximize;
+            std::string headerMinimize;
             std::optional<std::pair<std::string, U64>> headerAction;
             for (const auto& leaf : s.leaves) {
                 if (leaf.close.contains(point.x, point.y)) {
@@ -1913,6 +2225,9 @@ bool Dock::mouseEvent(const MouseEvent& event) {
                 }
                 if (leaf.maximize.contains(point.x, point.y)) {
                     headerMaximize = leaf.pane;
+                }
+                if (leaf.minimize.contains(point.x, point.y)) {
+                    headerMinimize = leaf.pane;
                 }
                 for (U64 index = 0; index < leaf.actions.size(); ++index) {
                     if (leaf.actions[index].contains(point.x, point.y)) {
@@ -1922,12 +2237,14 @@ bool Dock::mouseEvent(const MouseEvent& event) {
             }
             const auto splitter = s.splitterAt(point);
             if (tab != s.hoveredTab || tabClose != s.hoveredTabClose || headerClose != s.hoveredHeaderClose ||
-                headerMaximize != s.hoveredHeaderMaximize || headerAction != s.hoveredHeaderAction ||
+                headerMaximize != s.hoveredHeaderMaximize || headerMinimize != s.hoveredHeaderMinimize ||
+                headerAction != s.hoveredHeaderAction ||
                 splitter != s.hoveredSplitter) {
                 s.hoveredTab = tab;
                 s.hoveredTabClose = tabClose;
                 s.hoveredHeaderClose = headerClose;
                 s.hoveredHeaderMaximize = headerMaximize;
+                s.hoveredHeaderMinimize = headerMinimize;
                 s.hoveredHeaderAction = headerAction;
                 s.hoveredSplitter = splitter;
                 invalidate(Dirty::Layout);
@@ -1938,6 +2255,9 @@ bool Dock::mouseEvent(const MouseEvent& event) {
             return mouseEventChildren(event);
         }
         case MouseEventType::Click: {
+            if (event.clicks < 2) {
+                s.restored.clear();
+            }
             if (event.button == MouseButton::Right && s.config.tabs) {
                 if (const auto tab = s.tabAt(point)) {
                     if (s.config.onTabMenu && *tab < s.tabPanes.size()) {
@@ -1975,6 +2295,12 @@ bool Dock::mouseEvent(const MouseEvent& event) {
                         s.pressPoint = point;
                         return true;
                     }
+                    if (leaf.minimize.contains(point.x, point.y)) {
+                        s.press = Impl::Press::HeaderMinimize;
+                        s.pressPane = leaf.pane;
+                        s.pressPoint = point;
+                        return true;
+                    }
                     for (U64 index = 0; index < leaf.actions.size(); ++index) {
                         if (leaf.actions[index].contains(point.x, point.y)) {
                             s.press = Impl::Press::HeaderAction;
@@ -1986,7 +2312,8 @@ bool Dock::mouseEvent(const MouseEvent& event) {
                     }
                     if (leaf.header.contains(point.x, point.y)) {
                         const auto* item = s.pane(leaf.pane);
-                        if (event.clicks >= 2 && item && item->maximizable && s.placed().size() > 1) {
+                        if (event.clicks >= 2 && !leaf.minimized && s.restored != leaf.pane && item &&
+                            item->maximizable && s.placed().size() > 1) {
                             s.press = Impl::Press::Handled;
                             s.maximized = s.maximized == leaf.pane ? std::string() : leaf.pane;
                             s.focus(leaf.pane);
@@ -2072,6 +2399,27 @@ bool Dock::mouseEvent(const MouseEvent& event) {
                 }
                 return true;
             }
+            if (press == Impl::Press::Header) {
+                for (const auto& leaf : s.leaves) {
+                    if (leaf.pane == s.pressPane && leaf.minimized && leaf.tile.contains(point.x, point.y)) {
+                        s.toggleMinimized(leaf.pane);
+                        s.restored = leaf.pane;
+                        invalidate(Dirty::Layout);
+                        break;
+                    }
+                }
+                return true;
+            }
+            if (press == Impl::Press::HeaderMinimize) {
+                for (const auto& leaf : s.leaves) {
+                    if (leaf.pane == s.pressPane && leaf.minimize.contains(point.x, point.y)) {
+                        s.toggleMinimized(leaf.pane);
+                        invalidate(Dirty::Layout);
+                        break;
+                    }
+                }
+                return true;
+            }
             if (press == Impl::Press::HeaderAction) {
                 std::function<void()> onClick;
                 for (const auto& leaf : s.leaves) {
@@ -2121,7 +2469,8 @@ bool Dock::mouseEvent(const MouseEvent& event) {
         case MouseEventType::Cancel: {
             const bool changed = s.dragging || s.press != Impl::Press::None || s.hoveredTab.has_value() ||
                                  s.hoveredTabClose || !s.hoveredHeaderClose.empty() ||
-                                 !s.hoveredHeaderMaximize.empty() || s.hoveredHeaderAction.has_value() ||
+                                 !s.hoveredHeaderMaximize.empty() || !s.hoveredHeaderMinimize.empty() ||
+                                 s.hoveredHeaderAction.has_value() ||
                                  s.hoveredSplitter.has_value();
             if (s.dragging && s.drag) {
                 s.drag->reset();
@@ -2135,6 +2484,7 @@ bool Dock::mouseEvent(const MouseEvent& event) {
             s.hoveredTabClose = false;
             s.hoveredHeaderClose.clear();
             s.hoveredHeaderMaximize.clear();
+            s.hoveredHeaderMinimize.clear();
             s.hoveredHeaderAction.reset();
             s.hoveredSplitter.reset();
             if (changed) {
@@ -2159,7 +2509,7 @@ std::optional<SurfaceCursor> Dock::cursorAt(const Extent2D<F32>& point) const {
         return !rect.empty() && rect.contains(point.x, point.y);
     };
     for (const auto& leaf : s.leaves) {
-        if (over(leaf.close) || over(leaf.maximize) ||
+        if (over(leaf.close) || over(leaf.maximize) || over(leaf.minimize) || (leaf.minimized && over(leaf.tile)) ||
             std::any_of(leaf.actions.begin(), leaf.actions.end(), over)) {
             return SurfaceCursor::Hand;
         }
