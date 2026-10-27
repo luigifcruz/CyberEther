@@ -29,6 +29,10 @@ struct TextMetrics {
 
     Render::Components::Text* label(const std::string& fontName);
 
+    bool loaded(const std::string& fontName) const {
+        return window && window->hasFont(fontName);
+    }
+
     F32 measure(const std::string& fontName, const std::string& value, F32 fontSize);
 
     std::vector<F32> advances(const std::string& fontName, const std::string& value, F32 fontSize) {

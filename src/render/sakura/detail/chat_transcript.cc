@@ -90,13 +90,19 @@ TextView::Config SummaryText(std::string id, std::string value, F32 font) {
     };
 }
 
-TextMarkdown::Config MarkdownText(std::string id, std::string value, F32 font, bool disclosure) {
+TextMarkdown::Config MarkdownText(std::string id, std::string value, F32 font, bool disclosure,
+                                  std::vector<bool> details) {
     return {
         .id = std::move(id),
         .value = std::move(value),
         .fontSize = font,
         .textColorKey = disclosure ? "editor_text" : "text_primary",
+        .detailsOpen = std::move(details),
     };
+}
+
+U64 DetailsRevision(U64 revision, const std::vector<bool>& details) {
+    return revision ^ (std::hash<std::vector<bool>>{}(details) * 0x9E3779B97F4A7C15ull);
 }
 
 bool HasExpandablePart(const std::vector<Part>& parts, U64 key) {
@@ -309,6 +315,9 @@ struct ChatTranscript::Impl {
     std::vector<std::shared_ptr<const Message>> rowMessages;
     RowContext rowContext;
     std::map<std::pair<U64, U64>, bool> expansions;
+    std::map<Key, std::vector<bool>> markdownDetails;
+    std::vector<F32> markdownTops;
+    F32 revealMargin = 0.0f;
     U64 disclosureRevision = 0;
 
     std::vector<Toggle> toggles;
@@ -446,6 +455,7 @@ struct ChatTranscript::Impl {
         measurements.clear();
         rowMessages.clear();
         expansions.clear();
+        markdownDetails.clear();
         ++disclosureRevision;
         hovered.reset();
         pressed.reset();
@@ -458,6 +468,10 @@ struct ChatTranscript::Impl {
         for (auto& slot : summaries) {
             slot->key.reset();
         }
+    }
+
+    std::string measureId(const char* element, const Key& key) const {
+        return jst::fmt::format("{}:measure-{}:{}:{}:{}", config.id, element, key.generation, key.message, key.part);
     }
 
     std::string slotId(const char* element, U64 index) const {
@@ -613,11 +627,13 @@ struct ChatTranscript::Impl {
 
     void addMarkdown(ChatTranscript& self, const Context& ctx, const Metrics& m, U64 index, const Part& part) {
         Block block = makeBlock(index, part.key, Kind::Markdown);
-        block.revision = part.revision;
+        const auto& details = detailsFor(block.key);
+        block.revision = DetailsRevision(part.revision, details);
         block.text = &part.text;
         auto& cached = measurements[block.key];
         if (!cached.matches(block, m.contentWidth, m)) {
-            markdownMeasurer.update(MarkdownText(config.id + ":measure-markdown", part.text, m.font, false));
+            markdownMeasurer.update(MarkdownText(measureId("markdown", block.key), part.text, m.font, false,
+                                                 details));
             cached.store(block, m.contentWidth, m);
             cached.height =
                 std::max(m.lineHeight, self.measureChild(markdownMeasurer, ctx, {m.contentWidth, kUnbounded}).y);
@@ -628,7 +644,8 @@ struct ChatTranscript::Impl {
 
     void addDisclosure(ChatTranscript& self, const Context& ctx, const Metrics& m, U64 index, const Part& part) {
         Block block = makeBlock(index, part.key, Kind::Disclosure);
-        block.revision = part.revision;
+        const auto& details = detailsFor(block.key);
+        block.revision = DetailsRevision(part.revision, details);
         block.expanded = part.expandable && expanded(index, part.key);
         block.busy = part.busy;
         block.summary = &part.summary;
@@ -654,7 +671,8 @@ struct ChatTranscript::Impl {
                 cached.height += m.summaryGap + cached.summaryHeight;
             }
             if (block.expanded) {
-                markdownMeasurer.update(MarkdownText(config.id + ":measure-body", part.text, m.font, true));
+                markdownMeasurer.update(MarkdownText(measureId("body", block.key), part.text, m.font, true,
+                                                     details));
                 cached.bodyHeight = self.measureChild(markdownMeasurer, ctx, {m.contentWidth, kUnbounded}).y;
                 cached.height += m.partGap + cached.bodyHeight;
             }
@@ -819,8 +837,35 @@ struct ChatTranscript::Impl {
         self.layoutChild(ctx, bubbles, m.bounds);
     }
 
+    const std::vector<bool>& detailsFor(const Key& key) const {
+        static const std::vector<bool> kNone;
+        const auto found = markdownDetails.find(key);
+        return found != markdownDetails.end() ? found->second : kNone;
+    }
+
+    void toggleDetails(ChatTranscript& self, U64 slot, const std::vector<bool>& open) {
+        if (slot >= markdowns.size() || !markdowns[slot]->key) {
+            return;
+        }
+        markdownDetails[*markdowns[slot]->key] = open;
+        ++disclosureRevision;
+        self.invalidate(Dirty::Layout);
+    }
+
+    bool reveal(ChatTranscript& self, U64 slot, F32 offset) {
+        if (slot >= markdownTops.size()) {
+            return false;
+        }
+        scrollY = std::max(0.0f, markdownTops[slot] + offset - revealMargin);
+        followTail = false;
+        self.invalidate(Dirty::Layout);
+        return true;
+    }
+
     void layoutMarkdown(ChatTranscript& self, const Context& ctx, const Metrics& m,
                         const std::vector<const MarkdownPlacement*>& bySlot) {
+        markdownTops.assign(markdowns.size(), 0.0f);
+        revealMargin = m.lineHeight;
         for (U64 i = 0; i < markdowns.size(); ++i) {
             auto& slot = *markdowns[i];
             const auto* placement = bySlot[i];
@@ -830,8 +875,17 @@ struct ChatTranscript::Impl {
             }
             const bool disclosure = placement->block->key.kind == Kind::Disclosure;
             Bind(self, slot, placement->block->revision, *placement->block->text, m.font, [&](std::string value) {
-                return MarkdownText(slotId("markdown", i), std::move(value), m.font, disclosure);
+                auto text = MarkdownText(slotId("markdown", i), std::move(value), m.font, disclosure,
+                                         detailsFor(placement->block->key));
+                text.onDetailsToggle = [this, &self, i](const std::vector<bool>& open) {
+                    toggleDetails(self, i, open);
+                };
+                text.onReveal = [this, &self, i](F32 offset) {
+                    return reveal(self, i, offset);
+                };
+                return text;
             });
+            markdownTops[i] = placement->rect.y - m.bounds.y + scrollY + overscrollY;
             self.layoutChild(ctx, slot.view, placement->rect);
         }
     }

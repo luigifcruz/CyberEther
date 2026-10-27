@@ -116,6 +116,7 @@ struct TextGrid : public Component {
         std::vector<std::string> styleFonts;
         std::vector<std::string> styleBackgroundColorKeys;
         std::vector<F32> styleScales;
+        std::vector<F32> styleRaises;
         std::string iconFont = Typography::IconFont;
         U64 maxLineSegments = 64;
         U64 styleRevision = 0;
@@ -159,7 +160,8 @@ struct TextGrid : public Component {
     void blur();
     void revert();
     void moveCursorRows(I64 delta, bool extendSelection = false);
-    void scrollToLine(U64 line);
+    void scrollToLine(U64 line, U64 column = 0);
+    F32 positionTop(Position position) const;
 
  protected:
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;

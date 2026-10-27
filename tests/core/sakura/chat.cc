@@ -1051,3 +1051,173 @@ TEST_CASE("Replacing a chat conversation drops the previous conversation stretch
     frames.run(update);
     CHECK(Bottom(transcript) == Approx(kRect.bottom()).margin(1.0f));
 }
+
+TEST_CASE("Expanding a details section inside a chat message grows its row instead of clipping it",
+          "[core][sakura][chat]") {
+    Scene scene;
+    Transcript transcript;
+    Place place(transcript, kRect);
+    Frames frames(place, kScreen, scene.context());
+    Chat::Snapshot snapshot;
+    snapshot.messages.push_back(AssistantMessage({MarkdownPart(
+        1, 1, "<details>\n<summary>More</summary>\n\nLine one.\n\nLine two.\n\nLine three.\n\n</details>")}));
+    const auto update = [&] {
+        transcript.update({.id = "chat", .snapshot = snapshot});
+    };
+    REQUIRE(frames.settle(update));
+    const auto markdowns = Find<Sakura::TextMarkdown>(transcript);
+    REQUIRE(markdowns.size() == 1);
+    auto& markdown = *markdowns.front();
+    const F32 collapsed = Peek::Frame(markdown).height;
+    const auto& row = markdown.metrics().sourceLines.at(0);
+    const Extent2D<F32> center = {Peek::Frame(markdown).x + 40.0f, row.top + row.height * 0.5f};
+    REQUIRE(Sakura::Access::cursor(markdown, center) == SurfaceCursor::Hand);
+    place.send(Mouse(MouseEventType::Click, center.x, center.y));
+    place.send(Mouse(MouseEventType::Release, center.x, center.y));
+    frames.run(update);
+
+    const Rect frame = Peek::Frame(markdown);
+    CHECK(frame.height > collapsed + 20.0f);
+    F32 bottom = 0.0f;
+    bool expanded = false;
+    for (auto* label : Find<Sakura::Label>(markdown)) {
+        for (const auto& instance : label->config().instances) {
+            if (instance.visible && !instance.str.empty()) {
+                bottom = std::max(bottom, instance.rect.bottom());
+                expanded = expanded || instance.str.find("Line three.") != std::string::npos;
+            }
+        }
+    }
+    REQUIRE(expanded);
+    CHECK(bottom <= frame.bottom() + 0.5f);
+}
+
+TEST_CASE("A footnote back reference inside a chat message scrolls the transcript to its citation",
+          "[core][sakura][chat]") {
+    Scene scene;
+    Transcript transcript;
+    Place place(transcript, kRect);
+    Frames frames(place, kScreen, scene.context());
+    std::string text = "Claim.[^a]\n\n";
+    for (int i = 0; i < 40; ++i) {
+        text += "Filler paragraph " + std::to_string(i) + ".\n\n";
+    }
+    text += "[^a]: Source.";
+    Chat::Snapshot snapshot;
+    snapshot.messages.push_back(AssistantMessage({MarkdownPart(1, 1, text)}));
+    const auto update = [&] {
+        transcript.update({.id = "chat", .snapshot = snapshot});
+    };
+    REQUIRE(frames.settle(update));
+    const auto markdowns = Find<Sakura::TextMarkdown>(transcript);
+    REQUIRE(markdowns.size() == 1);
+    auto& markdown = *markdowns.front();
+    const F32 before = Peek::Frame(markdown).y;
+    REQUIRE(before < kRect.y - 100.0f);
+
+    const auto& footnote = markdown.metrics().sourceLines.back();
+    const F32 y = footnote.top + footnote.height * 0.5f;
+    std::optional<F32> x;
+    for (F32 probe = kRect.x; probe < kRect.right() && !x; probe += 1.0f) {
+        if (Sakura::Access::cursor(markdown, {probe, y}) == SurfaceCursor::Hand) {
+            x = probe + 2.0f;
+        }
+    }
+    REQUIRE(x.has_value());
+    place.send(Mouse(MouseEventType::Click, *x, y));
+    place.send(Mouse(MouseEventType::Release, *x, y));
+    frames.run(update);
+
+    CHECK(Peek::Frame(markdown).y > before + 100.0f);
+    const auto& citation = markdown.metrics().sourceLines.front();
+    CHECK(citation.top >= kRect.y - 1.0f);
+    CHECK(citation.top + citation.height <= kRect.bottom() + 1.0f);
+}
+
+TEST_CASE("Chat details stay expanded after their message scrolls out of the recycled views and back",
+          "[core][sakura][chat]") {
+    Scene scene;
+    Transcript transcript;
+    Place place(transcript, kRect);
+    Frames frames(place, kScreen, scene.context());
+    Chat::Snapshot snapshot;
+    snapshot.messages.push_back(AssistantMessage({MarkdownPart(
+        1, 1, "<details>\n<summary>More</summary>\n\nLine one.\n\nLine two.\n\nLine three.\n\n</details>")}));
+    for (int i = 0; i < 40; ++i) {
+        snapshot.messages.push_back(AssistantMessage({MarkdownPart(1, 1, "Answer " + std::to_string(i) + ".")}));
+    }
+    const auto update = [&] {
+        transcript.update({.id = "chat", .snapshot = snapshot});
+    };
+    const auto wheel = [&](F32 dy) {
+        place.send(Wheel(200.0f, 150.0f, dy));
+        frames.run(update);
+    };
+    const auto top = [&]() -> Sakura::TextMarkdown* {
+        Sakura::TextMarkdown* found = nullptr;
+        for (auto* markdown : Find<Sakura::TextMarkdown>(transcript)) {
+            if (!found || Peek::Frame(*markdown).y < Peek::Frame(*found).y) {
+                found = markdown;
+            }
+        }
+        return found;
+    };
+    const auto expanded = [&](Sakura::TextMarkdown& markdown) {
+        for (auto* label : Find<Sakura::Label>(markdown)) {
+            for (const auto& instance : label->config().instances) {
+                if (instance.visible && instance.str.find("Line three.") != std::string::npos) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+    REQUIRE(frames.settle(update));
+    wheel(1000.0f);
+    auto* first = top();
+    REQUIRE(first != nullptr);
+    REQUIRE_FALSE(expanded(*first));
+    const auto& row = first->metrics().sourceLines.at(0);
+    const Extent2D<F32> summary = {Peek::Frame(*first).x + 40.0f, row.top + row.height * 0.5f};
+    REQUIRE(Sakura::Access::cursor(*first, summary) == SurfaceCursor::Hand);
+    place.send(Mouse(MouseEventType::Click, summary.x, summary.y));
+    place.send(Mouse(MouseEventType::Release, summary.x, summary.y));
+    frames.run(update);
+    REQUIRE(expanded(*top()));
+
+    wheel(-1000.0f);
+    wheel(1000.0f);
+    REQUIRE(top() != nullptr);
+    CHECK(expanded(*top()));
+}
+
+TEST_CASE("Chat messages with matching details summaries are measured with their own open state",
+          "[core][sakura][chat]") {
+    Scene scene;
+    Transcript transcript;
+    Place place(transcript, kRect);
+    Frames frames(place, kScreen, scene.context());
+    const std::string body = "<summary>More</summary>\n\nLine one.\n\nLine two.\n\nLine three.\n\n</details>";
+    Chat::Snapshot snapshot;
+    snapshot.messages.push_back(AssistantMessage({MarkdownPart(1, 1, "<details>\n" + body)}));
+    snapshot.messages.push_back(AssistantMessage({MarkdownPart(1, 1, "<details open>\n" + body)}));
+    const auto update = [&] {
+        transcript.update({.id = "chat", .snapshot = snapshot});
+    };
+    REQUIRE(frames.settle(update));
+    const auto markdowns = Find<Sakura::TextMarkdown>(transcript);
+    REQUIRE(markdowns.size() == 2);
+    bool expanded = false;
+    for (auto* markdown : markdowns) {
+        const Rect frame = Peek::Frame(*markdown);
+        for (auto* label : Find<Sakura::Label>(*markdown)) {
+            for (const auto& instance : label->config().instances) {
+                if (instance.visible && instance.str.find("Line three.") != std::string::npos) {
+                    expanded = true;
+                    CHECK(instance.rect.bottom() <= frame.bottom() + 0.5f);
+                }
+            }
+        }
+    }
+    CHECK(expanded);
+}

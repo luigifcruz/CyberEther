@@ -506,7 +506,7 @@ struct TextGrid::Impl {
             return false;
         }
         for (const auto& fontName : extraFontNames) {
-            if (textMetrics.measure(fontName, "0", fontSize) <= 0.0f) {
+            if (!textMetrics.loaded(fontName) && textMetrics.measure(fontName, "0", fontSize) <= 0.0f) {
                 return false;
             }
         }
@@ -1123,6 +1123,10 @@ struct TextGrid::Impl {
         return scale > 0.0f ? scale : 1.0f;
     }
 
+    F32 raiseForStyle(StyleId id) const {
+        return id == 0 || id > config.styleRaises.size() ? 0.0f : config.styleRaises[id - 1];
+    }
+
     ColorRGBA<F32> backgroundForStyle(StyleId id) const {
         if (id == 0 || id > theme.styleBackgrounds.size()) {
             return {0.0f, 0.0f, 0.0f, 0.0f};
@@ -1578,11 +1582,16 @@ struct TextGrid::Impl {
         currentScrollX = std::clamp(currentScrollX, 0.0f, maxScrollXPixels());
     }
 
-    void scrollToLine(U64 line) {
+    F32 positionTop(Position position) {
+        clampPosition(position);
+        return rowTopContent(visualRowForPosition(position));
+    }
+
+    void scrollToLine(U64 line, U64 column) {
         if (liveLayout) {
             resolveViewport(true);
         }
-        Position position = {line, 0};
+        Position position = {line, column};
         clampPosition(position);
         const F32 top = rowTopContent(visualRowForPosition(position)) - lineHeightPixels();
         currentScrollY = std::clamp(top, 0.0f, maxScrollYPixels());
@@ -2582,7 +2591,8 @@ struct TextGrid::Impl {
             auto& target = textPool(pools, ctx, fontForRun(style, icon));
             if (target.size() < frame.segmentCapacity) {
                 target.push_back({
-                    .rect = {segX + leftPad, ctx.top, std::max(0.0f, segW - leftPad - rightPad), ctx.height},
+                    .rect = {segX + leftPad, ctx.top - raiseForStyle(style) * ctx.glyphSize,
+                             std::max(0.0f, segW - leftPad - rightPad), ctx.height},
                     .str = config.masked ? MaskedRange(ctx.line, startColumn, endColumn)
                                          : ctx.line.substr(startColumn, endColumn - startColumn),
                     .visible = true,
@@ -2948,9 +2958,13 @@ void TextGrid::moveCursorRows(I64 delta, bool extendSelection) {
     invalidate(Dirty::Layout);
 }
 
-void TextGrid::scrollToLine(U64 line) {
-    impl->scrollToLine(line);
+void TextGrid::scrollToLine(U64 line, U64 column) {
+    impl->scrollToLine(line, column);
     invalidate(Dirty::Layout);
+}
+
+F32 TextGrid::positionTop(Position position) const {
+    return impl->positionTop(position);
 }
 
 const TextGrid::Metrics& TextGrid::metrics() const {
