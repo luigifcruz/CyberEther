@@ -83,6 +83,8 @@ Sources and sinks: hardware, files, audio, and the network.
 | UDP Transmitter | `udp_transmitter` | Sends data streams over UDP. |
 | WebSocket Receiver | `websocket_receiver` | Receives data streams over WebSocket. |
 | WebSocket Transmitter | `websocket_transmitter` | Sends data streams over WebSocket. |
+| ZeroMQ Receiver | `zeromq_receiver` | Receives data streams over ZeroMQ. |
+| ZeroMQ Transmitter | `zeromq_transmitter` | Sends data streams over ZeroMQ. |
 
 ## Visualization
 
