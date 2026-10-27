@@ -44,7 +44,7 @@ struct WebsocketTransmitter : public Block::Config {
         "\n"
         "| Setting | Default | Range | Effect |\n"
         "|---|---|---|---|\n"
-        "| **Mode** | Server | Server or Client | Host a server, or connect to one. |\n"
+        "| **Mode** | Server | Server, Client | Host a server, or connect to one. |\n"
         "| **Address** | 0.0.0.0 | A local address or a host name | Local address to "
         "listen on. The default covers every IPv4 interface, and 127.0.0.1 keeps the "
         "server private to this machine. Server mode only. |\n"
