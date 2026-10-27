@@ -222,45 +222,75 @@ class JETSTREAM_API WebSocket {
         Closed,
     };
 
-    struct Config {
-        std::string url;
-        Http::Headers headers;
-        std::vector<std::string> protocols;
-        U64 connectTimeoutSeconds = 300;
-        U64 readTimeoutSeconds = 0;
-        U64 writeTimeoutSeconds = 5;
-        U64 pingIntervalSeconds = 30;
-        U64 maxMissedPongs = 0;
-        U64 bufferBytes = 0;
-        bool verifyCertificate = true;
+    class JETSTREAM_API Client {
+     public:
+        struct Config {
+            std::string url;
+            Http::Headers headers;
+            std::vector<std::string> protocols;
+            U64 connectTimeoutSeconds = 300;
+            U64 readTimeoutSeconds = 0;
+            U64 writeTimeoutSeconds = 5;
+            U64 pingIntervalSeconds = 30;
+            U64 maxMissedPongs = 0;
+            U64 bufferBytes = 0;
+            bool verifyCertificate = true;
+        };
+
+        struct Connection {
+            I32 status = -1;
+            std::string error;
+
+            explicit operator bool() const {
+                return error.empty();
+            }
+        };
+
+        explicit Client(Config config);
+        ~Client();
+
+        Client(const Client&) = delete;
+        Client& operator=(const Client&) = delete;
+
+        static bool NormalizeUrl(const std::string& url, std::string& normalized);
+
+        bool valid() const;
+        Connection connect();
+        Message read(std::string& payload);
+        bool send(std::string_view data, Message kind = Message::Text);
+        void close();
+        void interrupt();
+        bool open() const;
+
+     private:
+        struct Impl;
+        std::unique_ptr<Impl> impl;
     };
 
-    struct Connection {
-        I32 status = -1;
-        std::string error;
+    class JETSTREAM_API Server {
+     public:
+        struct Config {
+            std::string address = "0.0.0.0";
+            U16 port = 0;
+            U64 writeTimeoutSeconds = 1;
+            U64 pingIntervalSeconds = 30;
+        };
 
-        explicit operator bool() const {
-            return error.empty();
-        }
+        explicit Server(Config config);
+        ~Server();
+
+        Server(const Server&) = delete;
+        Server& operator=(const Server&) = delete;
+
+        Result start(std::string& error);
+        void stop();
+        U64 broadcast(std::string_view data, Message kind);
+        U64 clients() const;
+
+     private:
+        struct Impl;
+        std::unique_ptr<Impl> impl;
     };
-
-    explicit WebSocket(Config config);
-    ~WebSocket();
-
-    WebSocket(const WebSocket&) = delete;
-    WebSocket& operator=(const WebSocket&) = delete;
-
-    bool valid() const;
-    Connection connect();
-    Message read(std::string& payload);
-    bool send(std::string_view text);
-    void close();
-    void interrupt();
-    bool open() const;
-
- private:
-    struct Impl;
-    std::unique_ptr<Impl> impl;
 };
 
 //

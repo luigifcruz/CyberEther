@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_DOMAINS_IO_WEBSOCKET_TEST_SERVER_HH
-#define JETSTREAM_DOMAINS_IO_WEBSOCKET_TEST_SERVER_HH
+#ifndef JETSTREAM_DOMAINS_IO_WEBSOCKET_RECEIVER_TEST_SERVER_HH
+#define JETSTREAM_DOMAINS_IO_WEBSOCKET_RECEIVER_TEST_SERVER_HH
 
 #include <jetstream/config.hh>
 
@@ -9,6 +9,12 @@
 #include <thread>
 
 #include <httplib.h>
+#ifdef ERROR
+#undef ERROR
+#endif
+#ifdef interface
+#undef interface
+#endif
 
 namespace Jetstream::Tests {
 
@@ -49,4 +55,4 @@ class WebsocketTestServer {
 
 #endif  // JST_OS_BROWSER
 
-#endif  // JETSTREAM_DOMAINS_IO_WEBSOCKET_TEST_SERVER_HH
+#endif  // JETSTREAM_DOMAINS_IO_WEBSOCKET_RECEIVER_TEST_SERVER_HH

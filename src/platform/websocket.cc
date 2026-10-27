@@ -1,10 +1,13 @@
 #include "jetstream/platform.hh"
 #include "jetstream/config.hh"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
+#include <thread>
+#include <vector>
 
 #if defined(JST_OS_BROWSER)
 #include <deque>
@@ -16,12 +19,40 @@
 EM_JS_DEPS(jst_websocket_deps, "$UTF8ToString,$stringToNewUTF8,malloc,free");
 #elif defined(JETSTREAM_LOADER_CPPHTTPLIB_AVAILABLE)
 #include <httplib.h>
+#ifdef ERROR
+#undef ERROR
+#endif
 #endif
 
 // TODO: Port src/instance_remote_socket.cc and src/instance_remote_impl.hh to Platform::WebSocket.
-// TODO: Port src/domains/io/websocket/module_impl.cc, module_impl.hh, and module_impl_native_cpu.cc to Platform::WebSocket.
 
 namespace Jetstream::Platform {
+
+bool WebSocket::Client::NormalizeUrl(const std::string& url, std::string& normalized) {
+    normalized.clear();
+    if (url.find('#') != std::string::npos) {
+        return false;
+    }
+
+    const bool secure = url.starts_with("wss://");
+    if (!secure && !url.starts_with("ws://")) {
+        return false;
+    }
+
+    const std::size_t authorityStart = secure ? 6 : 5;
+    const std::size_t pathStart = url.find_first_of("/?", authorityStart);
+    if (authorityStart >= url.size() || pathStart == authorityStart) {
+        return false;
+    }
+
+    normalized = url;
+    if (pathStart == std::string::npos) {
+        normalized += '/';
+    } else if (normalized[pathStart] == '?') {
+        normalized.insert(pathStart, 1, '/');
+    }
+    return true;
+}
 
 #if defined(JST_OS_BROWSER)
 
@@ -99,10 +130,17 @@ void jst_websocket_on_close(U32 id, const char* reason) {
 
 }
 
-struct WebSocket::Impl {
+struct WebSocket::Client::Impl {
     Config config;
     U32 id = 0;
+    mutable std::mutex mutex;
     std::shared_ptr<Channel> channel;
+    bool interrupted = false;
+
+    std::shared_ptr<Channel> current() const {
+        std::lock_guard lock(mutex);
+        return channel;
+    }
 
     void release() {
         if (!id) {
@@ -115,20 +153,20 @@ struct WebSocket::Impl {
     }
 };
 
-WebSocket::WebSocket(Config config) : impl(std::make_unique<Impl>()) {
+WebSocket::Client::Client(Config config) : impl(std::make_unique<Impl>()) {
     impl->config = std::move(config);
 }
 
-WebSocket::~WebSocket() {
+WebSocket::Client::~Client() {
     impl->release();
 }
 
-bool WebSocket::valid() const {
+bool WebSocket::Client::valid() const {
     const auto& url = impl->config.url;
     return url.starts_with("ws://") || url.starts_with("wss://");
 }
 
-WebSocket::Connection WebSocket::connect() {
+WebSocket::Client::Connection WebSocket::Client::connect() {
     if (!valid()) {
         return {-1, "Invalid WebSocket URL"};
     }
@@ -138,10 +176,15 @@ WebSocket::Connection WebSocket::connect() {
 
     impl->release();
     impl->id = nextChannel.fetch_add(1);
-    impl->channel = std::make_shared<Channel>();
+    auto created = std::make_shared<Channel>();
+    {
+        std::lock_guard lock(impl->mutex);
+        created->interrupted = impl->interrupted;
+        impl->channel = created;
+    }
     {
         std::lock_guard lock(channelsMutex);
-        channels.emplace(impl->id, impl->channel);
+        channels.emplace(impl->id, created);
     }
 
     std::string protocols;
@@ -190,7 +233,7 @@ WebSocket::Connection WebSocket::connect() {
         return {-1, "Invalid WebSocket URL"};
     }
 
-    auto& channel = *impl->channel;
+    auto& channel = *created;
     std::unique_lock lock(channel.mutex);
     channel.changed.wait_for(lock, std::chrono::seconds(impl->config.connectTimeoutSeconds), [&] {
         return channel.opened || channel.closed || channel.interrupted;
@@ -210,12 +253,13 @@ WebSocket::Connection WebSocket::connect() {
     return {-1, std::move(reason)};
 }
 
-WebSocket::Message WebSocket::read(std::string& payload) {
-    if (!impl->channel) {
+WebSocket::Message WebSocket::Client::read(std::string& payload) {
+    const auto current = impl->current();
+    if (!current) {
         return Message::Closed;
     }
 
-    auto& channel = *impl->channel;
+    auto& channel = *current;
     const auto ready = [&] {
         return !channel.messages.empty() || channel.closed || channel.interrupted;
     };
@@ -239,7 +283,7 @@ WebSocket::Message WebSocket::read(std::string& payload) {
     return kind;
 }
 
-bool WebSocket::send(std::string_view text) {
+bool WebSocket::Client::send(std::string_view data, Message kind) {
     if (!open()) {
         return false;
     }
@@ -250,47 +294,55 @@ bool WebSocket::send(std::string_view text) {
         if (!socket || socket.readyState !== 1) {
             return 0;
         }
-        socket.send(new TextDecoder().decode(HEAPU8.slice($1, $1 + $2)));
+        const bytes = HEAPU8.slice($1, $1 + $2);
+        socket.send($3 ? bytes : new TextDecoder().decode(bytes));
         return 1;
-    }, impl->id, text.data(), text.size()) != 0;
+    }, impl->id, data.data(), data.size(), kind == Message::Binary ? 1 : 0) != 0;
     // clang-format on
 }
 
-void WebSocket::close() {
+void WebSocket::Client::close() {
     if (impl->id) {
         CloseChannel(impl->id);
     }
 }
 
-void WebSocket::interrupt() {
-    if (!impl->channel) {
+void WebSocket::Client::interrupt() {
+    std::shared_ptr<Channel> current;
+    {
+        std::lock_guard lock(impl->mutex);
+        impl->interrupted = true;
+        current = impl->channel;
+    }
+    if (!current) {
         return;
     }
     {
-        std::lock_guard lock(impl->channel->mutex);
-        impl->channel->interrupted = true;
+        std::lock_guard lock(current->mutex);
+        current->interrupted = true;
     }
-    impl->channel->changed.notify_all();
+    current->changed.notify_all();
 }
 
-bool WebSocket::open() const {
-    if (!impl->channel) {
+bool WebSocket::Client::open() const {
+    const auto current = impl->current();
+    if (!current) {
         return false;
     }
-    std::lock_guard lock(impl->channel->mutex);
-    return impl->channel->opened && !impl->channel->closed;
+    std::lock_guard lock(current->mutex);
+    return current->opened && !current->closed;
 }
 
 #elif defined(JETSTREAM_LOADER_CPPHTTPLIB_AVAILABLE)
 
-struct WebSocket::Impl {
+struct WebSocket::Client::Impl {
     std::unique_ptr<httplib::ws::WebSocketClient> client;
     std::atomic<socket_t> handle{INVALID_SOCKET};
     U64 connectTimeoutSeconds = 0;
     U64 readTimeoutSeconds = 0;
 };
 
-WebSocket::WebSocket(Config config) : impl(std::make_unique<Impl>()) {
+WebSocket::Client::Client(Config config) : impl(std::make_unique<Impl>()) {
     impl->connectTimeoutSeconds = config.connectTimeoutSeconds;
     impl->readTimeoutSeconds = config.readTimeoutSeconds;
 
@@ -340,13 +392,13 @@ WebSocket::WebSocket(Config config) : impl(std::make_unique<Impl>()) {
     });
 }
 
-WebSocket::~WebSocket() = default;
+WebSocket::Client::~Client() = default;
 
-bool WebSocket::valid() const {
+bool WebSocket::Client::valid() const {
     return impl->client && impl->client->is_valid();
 }
 
-WebSocket::Connection WebSocket::connect() {
+WebSocket::Client::Connection WebSocket::Client::connect() {
     if (!valid()) {
         return {-1, "Invalid WebSocket URL"};
     }
@@ -367,7 +419,7 @@ WebSocket::Connection WebSocket::connect() {
     return {result.status(), {}};
 }
 
-WebSocket::Message WebSocket::read(std::string& payload) {
+WebSocket::Message WebSocket::Client::read(std::string& payload) {
     if (!impl->client) {
         return Message::Closed;
     }
@@ -384,11 +436,17 @@ WebSocket::Message WebSocket::read(std::string& payload) {
     }
 }
 
-bool WebSocket::send(std::string_view text) {
-    return impl->client && impl->client->send(std::string(text));
+bool WebSocket::Client::send(std::string_view data, Message kind) {
+    if (!impl->client) {
+        return false;
+    }
+    if (kind == Message::Binary) {
+        return impl->client->send(data.data(), data.size());
+    }
+    return impl->client->send(std::string(data));
 }
 
-void WebSocket::close() {
+void WebSocket::Client::close() {
     if (!impl->client) {
         return;
     }
@@ -396,47 +454,182 @@ void WebSocket::close() {
     (void)impl->client->send("", 0);
 }
 
-void WebSocket::interrupt() {
+void WebSocket::Client::interrupt() {
     const socket_t handle = impl->handle.exchange(INVALID_SOCKET);
     if (handle != INVALID_SOCKET) {
         (void)ShutdownSocketRead(static_cast<std::uintptr_t>(handle));
     }
 }
 
-bool WebSocket::open() const {
+bool WebSocket::Client::open() const {
     return impl->client && impl->client->is_open();
+}
+
+struct WebSocket::Server::Impl {
+    struct Peer {
+        httplib::ws::WebSocket* socket = nullptr;
+        bool dropped = false;
+    };
+
+    static constexpr time_t kReadPollMicroseconds = 200000;
+
+    Config config;
+    std::unique_ptr<httplib::Server> server;
+    std::thread thread;
+    std::atomic<bool> running{false};
+    mutable std::mutex mutex;
+    std::vector<Peer> peers;
+
+    bool serving(const httplib::ws::WebSocket* socket) const {
+        std::lock_guard lock(mutex);
+        const auto peer = std::ranges::find(peers, socket, &Peer::socket);
+        return running && peer != peers.end() && !peer->dropped;
+    }
+};
+
+WebSocket::Server::Server(Config config) : impl(std::make_unique<Impl>()) {
+    impl->config = std::move(config);
+}
+
+WebSocket::Server::~Server() {
+    stop();
+}
+
+Result WebSocket::Server::start(std::string& error) {
+    stop();
+
+    auto server = std::make_unique<httplib::Server>();
+    server->set_write_timeout(static_cast<time_t>(impl->config.writeTimeoutSeconds));
+    server->set_websocket_ping_interval(static_cast<time_t>(impl->config.pingIntervalSeconds));
+    server->set_socket_options([](const socket_t socket) {
+#ifdef JST_OS_WINDOWS
+        httplib::set_socket_opt(socket, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, 1);
+#else
+        httplib::set_socket_opt(socket, SOL_SOCKET, SO_REUSEADDR, 1);
+#endif
+        DisableSocketSigPipe(static_cast<std::uintptr_t>(socket));
+    });
+    server->WebSocket(R"(/.*)", [impl = impl.get()](const httplib::Request&, httplib::ws::WebSocket& socket) {
+        {
+            std::lock_guard lock(impl->mutex);
+            impl->peers.push_back({.socket = &socket});
+        }
+        socket.set_read_timeout(0, Impl::kReadPollMicroseconds);
+        std::string message;
+        while (impl->serving(&socket) && socket.read(message) != httplib::ws::Fail) {
+        }
+        std::lock_guard lock(impl->mutex);
+        std::erase_if(impl->peers, [&](const Impl::Peer& peer) { return peer.socket == &socket; });
+    });
+
+    if (!server->bind_to_port(impl->config.address, impl->config.port)) {
+        error = "Could not bind the address and port";
+        return Result::ERROR;
+    }
+
+    impl->server = std::move(server);
+    impl->running = true;
+    impl->thread = std::thread([server = impl->server.get()]() { server->listen_after_bind(); });
+    impl->server->wait_until_ready();
+    return Result::SUCCESS;
+}
+
+void WebSocket::Server::stop() {
+    if (!impl->server) {
+        return;
+    }
+    impl->running = false;
+    {
+        std::lock_guard lock(impl->mutex);
+        for (auto& peer : impl->peers) {
+            peer.socket->close(httplib::ws::CloseStatus::GoingAway, "server stopped");
+        }
+    }
+    impl->server->stop();
+    if (impl->thread.joinable()) {
+        impl->thread.join();
+    }
+    impl->server.reset();
+}
+
+U64 WebSocket::Server::broadcast(std::string_view data, WebSocket::Message kind) {
+    std::lock_guard lock(impl->mutex);
+    U64 delivered = 0;
+    for (auto& peer : impl->peers) {
+        if (peer.dropped) {
+            continue;
+        }
+        const bool sent = kind == WebSocket::Message::Binary ? peer.socket->send(data.data(), data.size())
+                                                             : peer.socket->send(std::string(data));
+        if (sent) {
+            delivered += 1;
+        } else {
+            peer.dropped = true;
+        }
+    }
+    return delivered;
+}
+
+U64 WebSocket::Server::clients() const {
+    std::lock_guard lock(impl->mutex);
+    return std::ranges::count(impl->peers, false, &Impl::Peer::dropped);
 }
 
 #else
 
-struct WebSocket::Impl {};
+struct WebSocket::Client::Impl {};
 
-WebSocket::WebSocket(Config) : impl(std::make_unique<Impl>()) {}
+WebSocket::Client::Client(Config) : impl(std::make_unique<Impl>()) {}
 
-WebSocket::~WebSocket() = default;
+WebSocket::Client::~Client() = default;
 
-bool WebSocket::valid() const {
+bool WebSocket::Client::valid() const {
     return false;
 }
 
-WebSocket::Connection WebSocket::connect() {
+WebSocket::Client::Connection WebSocket::Client::connect() {
     return {-1, "This build has no WebSocket support"};
 }
 
-WebSocket::Message WebSocket::read(std::string&) {
+WebSocket::Message WebSocket::Client::read(std::string&) {
     return Message::Closed;
 }
 
-bool WebSocket::send(std::string_view) {
+bool WebSocket::Client::send(std::string_view, Message) {
     return false;
 }
 
-void WebSocket::close() {}
+void WebSocket::Client::close() {}
 
-void WebSocket::interrupt() {}
+void WebSocket::Client::interrupt() {}
 
-bool WebSocket::open() const {
+bool WebSocket::Client::open() const {
     return false;
+}
+
+#endif
+
+#if defined(JST_OS_BROWSER) || !defined(JETSTREAM_LOADER_CPPHTTPLIB_AVAILABLE)
+
+struct WebSocket::Server::Impl {};
+
+WebSocket::Server::Server(Config) : impl(std::make_unique<Impl>()) {}
+
+WebSocket::Server::~Server() = default;
+
+Result WebSocket::Server::start(std::string& error) {
+    error = "This build cannot host a WebSocket server";
+    return Result::ERROR;
+}
+
+void WebSocket::Server::stop() {}
+
+U64 WebSocket::Server::broadcast(std::string_view, WebSocket::Message) {
+    return 0;
+}
+
+U64 WebSocket::Server::clients() const {
+    return 0;
 }
 
 #endif

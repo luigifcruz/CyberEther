@@ -19,6 +19,7 @@ struct UdpReceiverImpl : public Module::Impl, public DynamicConfig<UdpReceiver> 
     Result destroy() override;
 
     F32 getBufferHealth() const;
+    F64 getBufferLoss() const;
     F32 getThroughput() const;
 
  protected:

@@ -187,6 +187,13 @@ F32 UdpReceiverImpl::getBufferHealth() const {
     return bufferHealth.get();
 }
 
+F64 UdpReceiverImpl::getBufferLoss() const {
+    const auto stats = circularBuffer.statistics();
+    return stats.pushedElements > 0
+        ? static_cast<F64>(stats.overwrittenElements) / static_cast<F64>(stats.pushedElements)
+        : 0.0;
+}
+
 F32 UdpReceiverImpl::getThroughput() const {
     return throughputMBs.get();
 }

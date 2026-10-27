@@ -5,7 +5,7 @@
 #include <limits>
 #include <string>
 
-#include "jetstream/domains/io/websocket/module.hh"
+#include "jetstream/domains/io/websocket_receiver/module.hh"
 #include "jetstream/module_interface.hh"
 #include "jetstream/registry.hh"
 #include "module_impl.hh"
@@ -15,11 +15,11 @@ using namespace Jetstream;
 
 namespace {
 
-void RequireWebsocketValidationResult(const Registry::ModuleRegistration& impl,
-                                       const Modules::Websocket& config,
+void RequireReceiverValidationResult(const Registry::ModuleRegistration& impl,
+                                       const Modules::WebsocketReceiver& config,
                                        const Result expected) {
     std::shared_ptr<Module> module;
-    REQUIRE(Registry::BuildModule("websocket", impl.device, impl.runtime,
+    REQUIRE(Registry::BuildModule("websocket_receiver", impl.device, impl.runtime,
                                   impl.provider, module) == Result::SUCCESS);
 
     Result result = Result::SUCCESS;
@@ -32,68 +32,68 @@ void RequireWebsocketValidationResult(const Registry::ModuleRegistration& impl,
     REQUIRE(module->outputs().empty());
 
     const auto& retained =
-        static_cast<const Modules::Websocket&>(module->config());
-    REQUIRE(retained.url == Modules::Websocket{}.url);
-    REQUIRE(retained.dataType == Modules::Websocket{}.dataType);
-    REQUIRE(retained.numberOfBatches == Modules::Websocket{}.numberOfBatches);
+        static_cast<const Modules::WebsocketReceiver&>(module->config());
+    REQUIRE(retained.url == Modules::WebsocketReceiver{}.url);
+    REQUIRE(retained.dataType == Modules::WebsocketReceiver{}.dataType);
+    REQUIRE(retained.numberOfBatches == Modules::WebsocketReceiver{}.numberOfBatches);
     REQUIRE(retained.numberOfTimeSamples ==
-            Modules::Websocket{}.numberOfTimeSamples);
-    REQUIRE(retained.bufferMultiplier == Modules::Websocket{}.bufferMultiplier);
+            Modules::WebsocketReceiver{}.numberOfTimeSamples);
+    REQUIRE(retained.bufferMultiplier == Modules::WebsocketReceiver{}.bufferMultiplier);
 }
 
-void RequireWebsocketValidationSuccess(const Registry::ModuleRegistration& impl,
-                                        const Modules::Websocket& config) {
+void RequireReceiverValidationSuccess(const Registry::ModuleRegistration& impl,
+                                        const Modules::WebsocketReceiver& config) {
     std::shared_ptr<Module> module;
-    REQUIRE(Registry::BuildModule("websocket", impl.device, impl.runtime,
+    REQUIRE(Registry::BuildModule("websocket_receiver", impl.device, impl.runtime,
                                   impl.provider, module) == Result::SUCCESS);
 
-    auto* websocket = module->getImpl<Modules::WebsocketImpl>();
-    REQUIRE(websocket != nullptr);
-    *websocket->candidate() = config;
-    REQUIRE(websocket->validate() == Result::SUCCESS);
+    auto* receiver = module->getImpl<Modules::WebsocketReceiverImpl>();
+    REQUIRE(receiver != nullptr);
+    *receiver->candidate() = config;
+    REQUIRE(receiver->validate() == Result::SUCCESS);
     REQUIRE(module->state() == Module::State::NONE);
     REQUIRE(module->outputs().empty());
 }
 
 }  // namespace
 
-TEST_CASE("Websocket module rejects invalid configuration during validation",
-          "[modules][websocket][validation][phase]") {
-    const auto implementations = Registry::ListAvailableModules("websocket");
+TEST_CASE("WebSocket Receiver module rejects invalid configuration during validation",
+          "[modules][websocket_receiver][validation][phase]") {
+    const auto implementations = Registry::ListAvailableModules("websocket_receiver");
     if (implementations.empty()) {
-        SUCCEED("Websocket module is unavailable in this build.");
+        SUCCEED("WebSocket Receiver module is unavailable in this build.");
         return;
     }
 
     for (const auto& impl : implementations) {
         SECTION("numberOfBatches must be > 0") {
-            Modules::Websocket config;
+            Modules::WebsocketReceiver config;
             config.numberOfBatches = 0;
-            RequireWebsocketValidationResult(impl, config, Result::ERROR);
+            RequireReceiverValidationResult(impl, config, Result::ERROR);
         }
 
         SECTION("numberOfTimeSamples must be > 0") {
-            Modules::Websocket config;
+            Modules::WebsocketReceiver config;
             config.numberOfTimeSamples = 0;
-            RequireWebsocketValidationResult(impl, config, Result::ERROR);
+            RequireReceiverValidationResult(impl, config, Result::ERROR);
         }
 
         SECTION("bufferMultiplier must be > 0") {
-            Modules::Websocket config;
+            Modules::WebsocketReceiver config;
             config.bufferMultiplier = 0;
-            RequireWebsocketValidationResult(impl, config, Result::ERROR);
+            RequireReceiverValidationResult(impl, config, Result::ERROR);
         }
 
         SECTION("dataType must be valid") {
-            Modules::Websocket config;
+            Modules::WebsocketReceiver config;
             config.dataType = "CS8";
-            RequireWebsocketValidationResult(impl, config, Result::ERROR);
+            RequireReceiverValidationResult(impl, config, Result::ERROR);
         }
 
         SECTION("url must be non-empty") {
-            Modules::Websocket config;
+            Modules::WebsocketReceiver config;
             config.url = "";
-            RequireWebsocketValidationResult(impl, config, Result::INCOMPLETE);
+            RequireReceiverValidationResult(impl, config, Result::INCOMPLETE);
         }
 
         SECTION("url syntax must be valid") {
@@ -103,9 +103,9 @@ TEST_CASE("Websocket module rejects invalid configuration during validation",
                      "ws:///feed",
                  }) {
                 DYNAMIC_SECTION(url) {
-                    Modules::Websocket config;
+                    Modules::WebsocketReceiver config;
                     config.url = url;
-                    RequireWebsocketValidationResult(impl, config, Result::ERROR);
+                    RequireReceiverValidationResult(impl, config, Result::ERROR);
                 }
             }
         }
@@ -118,56 +118,56 @@ TEST_CASE("Websocket module rejects invalid configuration during validation",
                      "ws://[2001:db8::1/feed",
                  }) {
                 DYNAMIC_SECTION(url) {
-                    Modules::Websocket config;
+                    Modules::WebsocketReceiver config;
                     config.url = url;
-                    RequireWebsocketValidationResult(impl, config, Result::ERROR);
+                    RequireReceiverValidationResult(impl, config, Result::ERROR);
                 }
             }
         }
 #endif
 
         SECTION("output dimensions must not overflow") {
-            Modules::Websocket config;
+            Modules::WebsocketReceiver config;
             config.numberOfBatches = std::numeric_limits<U64>::max();
             config.numberOfTimeSamples = 2;
-            RequireWebsocketValidationResult(impl, config, Result::ERROR);
+            RequireReceiverValidationResult(impl, config, Result::ERROR);
         }
 
         SECTION("output byte size must not overflow") {
-            Modules::Websocket config;
+            Modules::WebsocketReceiver config;
             config.dataType = "CF32";
             config.numberOfBatches = std::numeric_limits<U64>::max() /
                                      DataTypeSize(DataType::CF32) + 1;
             config.numberOfTimeSamples = 1;
             config.bufferMultiplier = 1;
-            RequireWebsocketValidationResult(impl, config, Result::ERROR);
+            RequireReceiverValidationResult(impl, config, Result::ERROR);
         }
 
         SECTION("circular buffer size must not overflow") {
-            Modules::Websocket config;
+            Modules::WebsocketReceiver config;
             config.dataType = "U8";
             config.numberOfBatches = std::numeric_limits<U64>::max() / 2 + 1;
             config.numberOfTimeSamples = 1;
             config.bufferMultiplier = 2;
-            RequireWebsocketValidationResult(impl, config, Result::ERROR);
+            RequireReceiverValidationResult(impl, config, Result::ERROR);
         }
 
         SECTION("output allocation must be representable") {
-            Modules::Websocket config;
+            Modules::WebsocketReceiver config;
             config.dataType = "U8";
             config.numberOfBatches = std::numeric_limits<std::size_t>::max();
             config.numberOfTimeSamples = 1;
             config.bufferMultiplier = 1;
-            RequireWebsocketValidationResult(impl, config, Result::ERROR);
+            RequireReceiverValidationResult(impl, config, Result::ERROR);
         }
     }
 }
 
-TEST_CASE("Websocket supported dtypes validate without network access",
-          "[modules][websocket][validation]") {
-    const auto implementations = Registry::ListAvailableModules("websocket");
+TEST_CASE("WebSocket Receiver supported dtypes validate without network access",
+          "[modules][websocket_receiver][validation]") {
+    const auto implementations = Registry::ListAvailableModules("websocket_receiver");
     if (implementations.empty()) {
-        SUCCEED("Websocket module is unavailable in this build.");
+        SUCCEED("WebSocket Receiver module is unavailable in this build.");
         return;
     }
 
@@ -178,32 +178,32 @@ TEST_CASE("Websocket supported dtypes validate without network access",
     for (const auto& impl : implementations) {
         for (const auto& dataType : validTypes) {
             DYNAMIC_SECTION("type=" << dataType << " device=" << impl.device) {
-                Modules::Websocket config;
+                Modules::WebsocketReceiver config;
                 config.dataType = dataType;
                 config.numberOfBatches = 2;
                 config.numberOfTimeSamples = 64;
                 config.bufferMultiplier = 2;
-                RequireWebsocketValidationSuccess(impl, config);
+                RequireReceiverValidationSuccess(impl, config);
             }
         }
     }
 }
 
 #ifndef JST_OS_BROWSER
-TEST_CASE("Websocket module rolls back native URL validation rejection",
-          "[modules][websocket][validation][reconfigure]") {
+TEST_CASE("WebSocket Receiver module rolls back native URL validation rejection",
+          "[modules][websocket_receiver][validation][reconfigure]") {
     Tests::WebsocketTestServer server;
     REQUIRE(server.valid());
 
-    const auto implementations = Registry::ListAvailableModules("websocket");
+    const auto implementations = Registry::ListAvailableModules("websocket_receiver");
     REQUIRE(!implementations.empty());
     for (const auto& impl : implementations) {
         DYNAMIC_SECTION("device=" << impl.device << " runtime=" << impl.runtime) {
             std::shared_ptr<Module> module;
-            REQUIRE(Registry::BuildModule("websocket", impl.device, impl.runtime,
+            REQUIRE(Registry::BuildModule("websocket_receiver", impl.device, impl.runtime,
                                           impl.provider, module) == Result::SUCCESS);
 
-            Modules::Websocket config;
+            Modules::WebsocketReceiver config;
             config.url = server.url();
             config.dataType = "U8";
             config.numberOfBatches = 1;
@@ -225,7 +225,7 @@ TEST_CASE("Websocket module rolls back native URL validation rejection",
             REQUIRE(module->reconfigure(rejected) == Result::ERROR);
             REQUIRE(module->state() == Module::State::CREATED);
             const auto& retained =
-                static_cast<const Modules::Websocket&>(module->config());
+                static_cast<const Modules::WebsocketReceiver&>(module->config());
             REQUIRE(retained.url == config.url);
             REQUIRE(module->outputs().at("signal").tensor.id() == outputId);
 

@@ -1,25 +1,25 @@
-#ifndef JETSTREAM_DOMAINS_IO_WEBSOCKET_BLOCK_HH
-#define JETSTREAM_DOMAINS_IO_WEBSOCKET_BLOCK_HH
+#ifndef JETSTREAM_DOMAINS_IO_WEBSOCKET_RECEIVER_BLOCK_HH
+#define JETSTREAM_DOMAINS_IO_WEBSOCKET_RECEIVER_BLOCK_HH
 
 #include "jetstream/block.hh"
 
 namespace Jetstream::Blocks {
 
-struct Websocket : public Block::Config {
+struct WebsocketReceiver : public Block::Config {
     std::string url = "ws://localhost:8765";
     std::string dataType = "CF32";
     U64 numberOfBatches = 8;
     U64 numberOfTimeSamples = 8192;
     U64 bufferMultiplier = 4;
 
-    JST_BLOCK_TYPE(websocket);
+    JST_BLOCK_TYPE(websocket_receiver);
     JST_BLOCK_DOMAIN("IO");
     JST_BLOCK_PARAMS(url, dataType, numberOfBatches, numberOfTimeSamples,
                      bufferMultiplier);
     JST_BLOCK_DESCRIPTION(
-        "WebSocket",
+        "WebSocket Receiver",
         "Receives data streams over WebSocket.",
-        "# WebSocket\n"
+        "# WebSocket Receiver\n"
         "\n"
         "Receives raw samples as binary messages from a WebSocket server and cuts them "
         "into buffers of batches. It usually starts a chain in place of a radio, fed by"
@@ -29,6 +29,8 @@ struct Websocket : public Block::Config {
         "has sent all of its bytes.\n"
         "- **Messages join into one byte stream.** Message boundaries are ignored, and "
         "text messages are dropped.\n"
+        "- **Lost connections are retried.** The block keeps reconnecting until the "
+        "server answers again.\n"
         "- **Samples come out as sent.** Integer types are not scaled, so convert them "
         "with a Cast block.\n"
         "\n"
@@ -61,6 +63,8 @@ struct Websocket : public Block::Config {
         "|---|---|\n"
         "| **Buffer Health** | How full the internal buffer is, smoothed, from 0 to "
         "100%. Near 100% means the chain is falling behind. |\n"
+        "| **Buffer Loss** | Share of samples overwritten before the chain read them "
+        "since the stream started. |\n"
         "| **Throughput** | Rate the chain reads in MB/s, refreshed as messages arrive."
         " |\n"
         "\n"
@@ -83,28 +87,32 @@ struct Websocket : public Block::Config {
         "\n"
         "| Symptom | Cause | Fix |\n"
         "|---|---|---|\n"
-        "| The block reports that it failed to connect | No server answers at URL when "
-        "the block starts | Start the server, then edit URL or reopen the flowgraph. |\n"
-        "| The output stops updating and the log warns that the connection closed | The"
-        " server dropped the connection, and the block does not reconnect | Restart the"
-        " server, then reopen the flowgraph. |\n"
+        "| The output never updates and the log warns that it failed to connect | No "
+        "server answers at URL | Start the server. The block connects once it answers. "
+        "|\n"
+        "| The output pauses and the log warns that the connection closed | The server "
+        "dropped the connection | Wait for the block to reconnect, or restart the "
+        "server. |\n"
         "| The block reports an invalid WebSocket URL | The URL lacks ws:// or wss://, "
         "lacks a host, or has a # fragment | Write it as ws://host:port/path. |\n"
         "| The output looks like noise | Data Type does not match the format the server"
         " sends | Set Data Type to the server format. |\n"
-        "| Buffer Health stays near 100% | The chain reads slower than the server "
-        "sends, so the oldest samples are overwritten | Lighten the chain. Raise Buffer"
-        " Multiplier for short stalls. |\n"
+        "| Buffer Loss rises above 0% | The chain reads slower than the server sends, "
+        "or one burst outgrows the internal buffer | Lighten the chain. Raise Buffer "
+        "Multiplier for short stalls and large bursts. |\n"
         "\n"
         "## Under the Hood\n"
         "\n"
-        "Incoming binary messages are appended to a ring buffer, and each cycle copies "
-        "out one full buffer once enough bytes have arrived. When the ring buffer is "
-        "full, new bytes overwrite the oldest without a warning. Outside the browser, "
-        "secure connections skip certificate checks.\n"
+        "A background thread connects to the server, retries twice a second while it is"
+        " unreachable, and appends each binary message to a ring buffer. Each cycle "
+        "copies out one full buffer, and when the ring buffer is full, new bytes "
+        "overwrite the oldest, which Buffer Loss counts. Every new connection starts "
+        "from an empty ring buffer, and outside the browser secure connections skip "
+        "certificate checks.\n"
         "\n"
         "## See Also\n"
         "\n"
+        "- Samples from a **WebSocket Transmitter** arrive here as sent.\n"
         "- **File Reader** reads the same raw samples from a file.\n"
         "- **Cast** scales integer samples to F32 or CF32.\n"
         "- **Spectrum Analyzer** shows what the server sends."
@@ -113,4 +121,4 @@ struct Websocket : public Block::Config {
 
 }  // namespace Jetstream::Blocks
 
-#endif  // JETSTREAM_DOMAINS_IO_WEBSOCKET_BLOCK_HH
+#endif  // JETSTREAM_DOMAINS_IO_WEBSOCKET_RECEIVER_BLOCK_HH
