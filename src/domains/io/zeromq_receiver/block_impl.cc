@@ -92,7 +92,7 @@ Result ZeromqReceiverImpl::define() {
     JST_CHECK(defineInterfaceMetric("bufferFill",
                                     "Buffer Fill",
                                     "How full the internal buffer is. Near 100% means the chain is falling behind.",
-                                    {{"type", "progressbar"}},
+                                    {{"type", "progressbar"}, {"warning_above", 0.5f}, {"error_above", 0.75f}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::pair<std::string, F32>{"0.0%", 0.0f};
@@ -105,7 +105,7 @@ Result ZeromqReceiverImpl::define() {
     JST_CHECK(defineInterfaceMetric("bufferLoss",
                                     "Buffer Loss",
                                     "Share of samples overwritten before the chain read them since the stream started.",
-                                    {{"type", "progressbar"}},
+                                    {{"type", "progressbar"}, {"warning_above", 0.0f}, {"error_above", 0.01f}},
         [this]() -> std::any {
             const F64 loss = moduleImpl ? moduleImpl->getBufferLoss() : 0.0;
             const auto label = loss > 0.0 && loss < 0.0001

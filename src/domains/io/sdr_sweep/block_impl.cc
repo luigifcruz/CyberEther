@@ -131,7 +131,7 @@ Result SdrSweepImpl::define() {
                                     "Buffer Fill",
                                     "Smoothed occupancy of the single latest-completed-frame "
                                     "software slot, not the radio's hardware FIFO.",
-                                    {{"type", "progressbar"}},
+                                    {{"type", "progressbar"}, {"warning_above", 0.5f}, {"error_above", 0.75f}},
         [this]() -> std::any {
             const F32 fill = moduleImpl ? moduleImpl->getMetrics().bufferFill : 0.0f;
             return std::pair<std::string, F32>{jst::fmt::format("{:.1f}%", fill * 100.0f), fill};
@@ -142,7 +142,7 @@ Result SdrSweepImpl::define() {
                                     "Completed output frames overwritten or expired before "
                                     "consumption, as a share of completed frames produced. "
                                     "Settling skips and failed hops are not software-buffer loss.",
-                                    {{"type", "progressbar"}},
+                                    {{"type", "progressbar"}, {"warning_above", 0.0f}, {"error_above", 0.01f}},
         [this]() -> std::any {
             const F64 loss = moduleImpl ? moduleImpl->getMetrics().bufferLoss : 0.0;
             const auto label = loss > 0.0 && loss < 0.0001

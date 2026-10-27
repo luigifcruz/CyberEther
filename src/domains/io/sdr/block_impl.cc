@@ -5,6 +5,7 @@
 #include "module_impl.hh"
 
 #include <cmath>
+#include <limits>
 
 namespace Jetstream::Blocks {
 
@@ -131,7 +132,7 @@ Result SdrImpl::define() {
     JST_CHECK(defineInterfaceMetric("bufferFill",
                                     "Buffer Fill",
                                     "How full the internal buffer is. Near 100% means the chain is falling behind.",
-                                    {{"type", "progressbar"}},
+                                    {{"type", "progressbar"}, {"warning_above", 0.5f}, {"error_above", 0.75f}},
         [this]() -> std::any {
             const F32 fill = moduleImpl ? moduleImpl->getBufferFill() : 0.0f;
             return std::pair<std::string, F32>{jst::fmt::format("{:.1f}%", fill * 100.0f), fill};
@@ -141,7 +142,7 @@ Result SdrImpl::define() {
                                     "Buffer Loss",
                                     "Share of samples overwritten before the chain read them since the stream started. "
                                     "Gaps the radio reported (GAP) show next to it.",
-                                    {{"type", "progressbar"}},
+                                    {{"type", "progressbar"}, {"warning_above", 0.0f}, {"error_above", 0.01f}},
         [this]() -> std::any {
             const auto loss = moduleImpl ? moduleImpl->getLoss()
                                          : Modules::SdrImpl::LossSnapshot{};
@@ -156,11 +157,12 @@ Result SdrImpl::define() {
     JST_CHECK(defineInterfaceMetric("throughput",
                                     "Throughput",
                                     "Rate the chain reads next to the rate the radio sends.",
-                                    {{"type", "progressbar"}},
+                                    {{"type", "progressbar"}, {"warning_below", 0.95f}, {"error_below", 0.8f}},
         [this]() -> std::any {
             const auto [actual, expected] = moduleImpl ? moduleImpl->getThroughput()
                                                        : std::pair<F32, F32>{0.0f, 0.0f};
-            const F32 fraction = expected > 0.0f ? actual / expected : 0.0f;
+            const F32 fraction = actual > 0.0f && expected > 0.0f ? actual / expected
+                                                                  : std::numeric_limits<F32>::quiet_NaN();
             return std::pair<std::string, F32>{
                 jst::fmt::format("{:.1f} / {:.1f} MB/s", actual, expected), fraction};
         }));
