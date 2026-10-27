@@ -33,6 +33,24 @@ Result CastImpl::define() {
                                     {{"type", "dropdown"}, {"options", Parser::Sequence{
                                         Parser::Map{{"label", "CF32"}, {"value", "CF32"}},
                                         Parser::Map{{"label", "F32"}, {"value", "F32"}},
+                                        Parser::Map{{"label", "CF64"}, {"value", "CF64"}},
+                                        Parser::Map{{"label", "F64"}, {"value", "F64"}},
+                                        Parser::Map{{"label", "CI8"}, {"value", "CI8"}},
+                                        Parser::Map{{"label", "I8"}, {"value", "I8"}},
+                                        Parser::Map{{"label", "CI16"}, {"value", "CI16"}},
+                                        Parser::Map{{"label", "I16"}, {"value", "I16"}},
+                                        Parser::Map{{"label", "CI32"}, {"value", "CI32"}},
+                                        Parser::Map{{"label", "I32"}, {"value", "I32"}},
+                                        Parser::Map{{"label", "CI64"}, {"value", "CI64"}},
+                                        Parser::Map{{"label", "I64"}, {"value", "I64"}},
+                                        Parser::Map{{"label", "CU8"}, {"value", "CU8"}},
+                                        Parser::Map{{"label", "U8"}, {"value", "U8"}},
+                                        Parser::Map{{"label", "CU16"}, {"value", "CU16"}},
+                                        Parser::Map{{"label", "U16"}, {"value", "U16"}},
+                                        Parser::Map{{"label", "CU32"}, {"value", "CU32"}},
+                                        Parser::Map{{"label", "U32"}, {"value", "U32"}},
+                                        Parser::Map{{"label", "CU64"}, {"value", "CU64"}},
+                                        Parser::Map{{"label", "U64"}, {"value", "U64"}},
                                     }}}));
 
     return Result::SUCCESS;
