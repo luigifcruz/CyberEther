@@ -17,7 +17,10 @@ struct ThrottleImpl : public Module::Impl, public DynamicConfig<Throttle> {
 
  protected:
     Tensor input;
-    std::chrono::steady_clock::time_point lastExecutionTime;
+    std::chrono::steady_clock::duration interval{};
+    std::chrono::steady_clock::time_point deadline;
+
+    void resetDeadline();
 };
 
 }  // namespace Jetstream::Modules

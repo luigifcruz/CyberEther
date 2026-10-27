@@ -18,17 +18,15 @@ struct ThrottleImplNativeCpu : public ThrottleImpl,
 };
 
 Result ThrottleImplNativeCpu::computeSubmit() {
-    auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now - lastExecutionTime);
-
-    // Sleep until the configured interval has elapsed.
-    if (elapsed < std::chrono::milliseconds(intervalMs)) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(intervalMs) - elapsed);
+    if (std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_until(deadline);
     }
 
-    // Update the timestamp for the next delay interval.
-    lastExecutionTime = std::chrono::steady_clock::now();
+    const auto now = std::chrono::steady_clock::now();
+    deadline += interval;
+    if (deadline <= now) {
+        deadline = now + interval;
+    }
 
     return Result::SUCCESS;
 }

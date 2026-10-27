@@ -1,12 +1,22 @@
 #include "module_impl.hh"
 
+#include <cmath>
+
 namespace Jetstream::Modules {
+
+namespace {
+
+constexpr F32 kMinIntervalMs = 0.001f;
+constexpr F32 kMaxIntervalMs = 86'400'000.0f;
+
+}  // namespace
 
 Result ThrottleImpl::validate() {
     const auto& config = *candidate();
 
-    if (config.intervalMs == 0) {
-        JST_ERROR("[MODULE_THROTTLE] Interval cannot be zero.");
+    if (!std::isfinite(config.intervalMs) || config.intervalMs < kMinIntervalMs ||
+        config.intervalMs > kMaxIntervalMs) {
+        JST_ERROR("[MODULE_THROTTLE] Interval must be between 0.001 ms and one day.");
         return Result::ERROR;
     }
 
@@ -27,9 +37,7 @@ Result ThrottleImpl::create() {
     // Install bypass - output is same as input.
     outputs()["buffer"].produced(name(), "buffer", input);
 
-    // Reset timing to allow immediate first pass.
-    lastExecutionTime = std::chrono::steady_clock::now() -
-                        std::chrono::milliseconds(intervalMs);
+    resetDeadline();
 
     return Result::SUCCESS;
 }
@@ -40,15 +48,18 @@ Result ThrottleImpl::reconfigure() {
     // Check if only interval changed.
     if (config.intervalMs != intervalMs) {
         intervalMs = config.intervalMs;
-
-        // Reset timing to allow immediate pass after change.
-        lastExecutionTime = std::chrono::steady_clock::now() -
-                            std::chrono::milliseconds(intervalMs);
+        resetDeadline();
 
         return Result::SUCCESS;
     }
 
     return Result::RECREATE;
+}
+
+void ThrottleImpl::resetDeadline() {
+    interval = std::chrono::ceil<std::chrono::steady_clock::duration>(
+        std::chrono::duration<F64, std::milli>(intervalMs));
+    deadline = std::chrono::steady_clock::now();
 }
 
 }  // namespace Jetstream::Modules
