@@ -200,11 +200,6 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"resize_grip_hovered", {0.28f, 0.28f, 0.28f, 0.80f}},
             {"resize_grip_active", {0.38f, 0.38f, 0.38f, 1.00f}},
 
-            // Tab Colors
-            {"tab", {0.08f, 0.08f, 0.09f, 1.00f}},
-            {"tab_hovered", {0.11f, 0.11f, 0.12f, 1.00f}},
-            {"tab_selected", {0.15f, 0.15f, 0.17f, 1.00f}},
-
             // Window Chrome Colors
             {"tile_bg", {0.055f, 0.055f, 0.06f, 1.00f}},
             {"tile_border", {1.00f, 1.00f, 1.00f, 0.08f}},
@@ -450,11 +445,6 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"resize_grip", {0.43f, 0.43f, 0.46f, 0.55f}},
             {"resize_grip_hovered", {0.38f, 0.38f, 0.41f, 0.70f}},
             {"resize_grip_active", {0.32f, 0.32f, 0.35f, 0.85f}},
-
-            // Tab Colors
-            {"tab", {0.92f, 0.92f, 0.93f, 1.00f}},
-            {"tab_hovered", {0.88f, 0.88f, 0.89f, 1.00f}},
-            {"tab_selected", {0.86f, 0.86f, 0.87f, 1.00f}},
 
             // Window Chrome Colors
             {"tile_bg", {0.98f, 0.98f, 0.985f, 1.00f}},

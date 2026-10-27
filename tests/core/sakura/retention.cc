@@ -2,7 +2,6 @@
 
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/button.hh>
-#include <jetstream/render/sakura/components/checkbox.hh>
 #include <jetstream/render/sakura/components/code_editor.hh>
 #include <jetstream/render/sakura/components/combo.hh>
 #include <jetstream/render/sakura/components/console.hh>
@@ -31,7 +30,6 @@
 #include <jetstream/render/sakura/components/split_view.hh>
 #include <jetstream/render/sakura/components/stack.hh>
 #include <jetstream/render/sakura/components/status_bar.hh>
-#include <jetstream/render/sakura/components/tab_bar.hh>
 #include <jetstream/render/sakura/components/table.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_editor.hh>
@@ -39,6 +37,7 @@
 #include <jetstream/render/sakura/components/text_input.hh>
 #include <jetstream/render/sakura/components/text_markdown.hh>
 #include <jetstream/render/sakura/components/text_view.hh>
+#include <jetstream/render/sakura/components/toggle.hh>
 
 #include "harness.hh"
 #include "fonts.hh"
@@ -1017,39 +1016,6 @@ TEST_CASE("Scrollers clamp a configured offset against the viewport they are lai
     CHECK(offset.y == 550.0f);
 }
 
-TEST_CASE("Tab bars settle, repaint on hover, and restructure when a new page mounts",
-          "[core][sakura][retention]") {
-    Scene scene;
-    Sakura::Text first;
-    Sakura::Text second;
-    Sakura::TabBar tabs;
-    Place place(tabs, {10.0f, 10.0f, 400.0f, 200.0f});
-    Frames frames(place, kScreen, scene.context());
-    const auto update = [&] {
-        first.update({.str = "First page"});
-        second.update({.str = "Second page"});
-        tabs.update({.labels = {"One", "Two"}, .pages = {&first, &second}});
-    };
-    REQUIRE(frames.settle(update));
-    CHECK(Retains(frames, update));
-    CheckHoverRepaintsOnce(frames, place, update, {95.0f, 20.0f}, {300.0f, 150.0f});
-    CheckLeaveRepaintsOnce(frames, place, update, {95.0f, 20.0f});
-
-    CHECK(place.send(Mouse(MouseEventType::Click, 95.0f, 20.0f)));
-    const auto switched = frames.run(update);
-    CHECK_FALSE(switched.rebuilt);
-    CHECK(switched.repainted);
-    CHECK(frames.settle(update));
-    CHECK(Retains(frames, update));
-
-    CHECK(place.send(Mouse(MouseEventType::Click, 30.0f, 20.0f)));
-    const auto back = frames.run(update);
-    CHECK_FALSE(back.rebuilt);
-    CHECK(back.repainted);
-    CHECK(frames.settle(update));
-    CHECK(Retains(frames, update));
-}
-
 TEST_CASE("Split views settle and repaint when the divider moves", "[core][sakura][retention]") {
     Scene scene;
     Sakura::Text left;
@@ -1272,44 +1238,6 @@ TEST_CASE("Navigation items settle and repaint on selection and hover", "[core][
     CheckLeaveRepaintsOnce(frames, place, update, {50.0f, 25.0f});
 
     selected = true;
-    CHECK(RepaintOnly(frames.run(update)));
-    CHECK(Retains(frames, update));
-}
-
-TEST_CASE("Checkboxes settle and repaint once per hover transition", "[core][sakura][retention]") {
-    Scene scene;
-    Sakura::Checkbox checkbox;
-    Place place(checkbox, {10.0f, 10.0f, 200.0f, 30.0f});
-    Frames frames(place, kScreen, scene.context());
-    bool value = false;
-    const auto update = [&] {
-        checkbox.update({.label = "Enabled", .value = value, .onChange = [&](bool next) { value = next; }});
-    };
-    REQUIRE(frames.settle(update));
-    CHECK(Retains(frames, update));
-    CheckHoverRepaintsOnce(frames, place, update, {20.0f, 20.0f}, {400.0f, 300.0f});
-    CheckLeaveRepaintsOnce(frames, place, update, {20.0f, 20.0f});
-}
-
-TEST_CASE("Checkbox toggles repaint without rebuilding", "[core][sakura][retention]") {
-    Scene scene;
-    Sakura::Checkbox checkbox;
-    Place place(checkbox, {10.0f, 10.0f, 200.0f, 30.0f});
-    Frames frames(place, kScreen, scene.context());
-    bool value = false;
-    const auto update = [&] {
-        checkbox.update({.label = "Enabled", .value = value, .onChange = [&](bool next) { value = next; }});
-    };
-    place.send(Mouse(MouseEventType::Move, 20.0f, 20.0f));
-    REQUIRE(frames.settle(update));
-
-    CHECK(place.send(Mouse(MouseEventType::Click, 20.0f, 20.0f)));
-    CHECK(place.send(Mouse(MouseEventType::Release, 20.0f, 20.0f)));
-    CHECK(value);
-    CHECK(RepaintOnly(frames.run(update)));
-    CHECK(Retains(frames, update));
-
-    value = false;
     CHECK(RepaintOnly(frames.run(update)));
     CHECK(Retains(frames, update));
 }
@@ -1559,13 +1487,13 @@ TEST_CASE("Focused text inputs repaint only on caret blinks", "[core][sakura][re
 
 TEST_CASE("Setting fields settle and repaint when the description changes", "[core][sakura][retention]") {
     Scene scene;
-    Sakura::Checkbox control;
+    Sakura::Toggle control;
     Sakura::SettingField field;
     Place place(field, {10.0f, 10.0f, 300.0f, 200.0f});
     Frames frames(place, kScreen, scene.context());
     std::string description = "Applies on restart.";
     const auto update = [&] {
-        control.update({.label = "Enabled"});
+        control.update({.value = true});
         field.update({.label = "Telemetry", .description = description, .control = &control});
     };
     REQUIRE(frames.settle(update));
@@ -1681,7 +1609,7 @@ TEST_CASE("A composed control panel stays retained under identical updates", "[c
     Scene scene;
     Sakura::Text title;
     Sakura::Button button;
-    Sakura::Checkbox checkbox;
+    Sakura::Toggle checkbox;
     Sakura::ProgressBar progress;
     Sakura::TextInput input;
     Sakura::Stack stack;
@@ -1693,7 +1621,7 @@ TEST_CASE("A composed control panel stays retained under identical updates", "[c
     const auto update = [&] {
         title.update({.str = "Receiver", .font = Sakura::Text::Font::H2});
         button.update({.str = "Start", .variant = Sakura::Button::Variant::Action, .onClick = [] {}});
-        checkbox.update({.label = "Automatic gain", .value = enabled, .onChange = [&](bool next) { enabled = next; }});
+        checkbox.update({.value = enabled, .onChange = [&](bool next) { enabled = next; }});
         progress.update({.value = value, .overlay = "Buffer"});
         input.update({.value = "100.0 MHz", .hint = "Frequency", .onChange = [](const std::string&) {}});
         stack.update({.items = {{.child = &title},
@@ -1731,41 +1659,6 @@ TEST_CASE("A composed control panel stays retained under identical updates", "[c
     CHECK(Retains(frames, update));
     CHECK(frames.rebuilds == 1);
     CHECK(frames.restructures == 0);
-}
-
-TEST_CASE("Tab bars restructure once when a page first mounts and repaint on later switches",
-          "[core][sakura][retention]") {
-    Scene scene;
-    Sakura::Text first;
-    Sakura::Text second;
-    Sakura::TabBar tabs;
-    Place place(tabs, {10.0f, 10.0f, 400.0f, 200.0f});
-    Frames frames(place, kScreen, scene.context());
-    const auto update = [&] {
-        first.update({.str = "First page"});
-        second.update({.str = "Second page"});
-        tabs.update({.labels = {"One", "Two"}, .pages = {&first, &second}});
-    };
-    REQUIRE(frames.settle(update));
-    REQUIRE(frames.restructures == 0);
-
-    CHECK(place.send(Mouse(MouseEventType::Click, 95.0f, 20.0f)));
-    const auto mounted = frames.run(update);
-    CHECK(mounted.restructured);
-    CHECK_FALSE(mounted.rebuilt);
-    CHECK(frames.run(update).clean());
-    CHECK(Retains(frames, update));
-    CHECK(frames.restructures == 1);
-
-    CHECK(place.send(Mouse(MouseEventType::Click, 30.0f, 20.0f)));
-    CHECK(RepaintOnly(frames.run(update)));
-    CHECK(Retains(frames, update));
-
-    CHECK(place.send(Mouse(MouseEventType::Click, 95.0f, 20.0f)));
-    CHECK(RepaintOnly(frames.run(update)));
-    CHECK(Retains(frames, update));
-    CHECK(frames.restructures == 1);
-    CHECK(frames.rebuilds == 1);
 }
 
 TEST_CASE("Grids restructure once when an item is added and park removed items with a repaint",

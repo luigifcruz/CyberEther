@@ -156,8 +156,6 @@ struct TextGrid::Impl {
         ColorRGBA<F32> selectionMatch = {0.3f, 0.4f, 0.6f, 0.3f};
         ColorRGBA<F32> activeLine = {1.0f, 1.0f, 1.0f, 0.04f};
         ColorRGBA<F32> cursor = {1.0f, 1.0f, 1.0f, 1.0f};
-        ColorRGBA<F32> scrollbarTrack = {1.0f, 1.0f, 1.0f, 0.08f};
-        ColorRGBA<F32> scrollbarThumb = {1.0f, 1.0f, 1.0f, 0.25f};
         std::vector<ColorRGBA<F32>> styleColors;
         std::vector<ColorRGBA<F32>> styleBackgrounds;
     };
@@ -963,8 +961,6 @@ struct TextGrid::Impl {
         theme.selectionMatch = ctx.color(config.selectionMatchColorKey);
         theme.activeLine = ctx.color(config.activeLineColorKey);
         theme.cursor = ctx.color(config.cursorColorKey);
-        theme.scrollbarTrack = ctx.color(config.scrollbarTrackColorKey);
-        theme.scrollbarThumb = ctx.color(config.scrollbarThumbColorKey);
 
         theme.styleColors.clear();
         theme.styleColors.reserve(config.styleColorKeys.size());

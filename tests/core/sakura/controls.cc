@@ -4,7 +4,6 @@
 #include "component_harness.hh"
 
 #include <jetstream/render/sakura/components/button.hh>
-#include <jetstream/render/sakura/components/checkbox.hh>
 #include <jetstream/render/sakura/components/combo.hh>
 #include <jetstream/render/sakura/components/progress_bar.hh>
 #include <jetstream/render/sakura/components/label.hh>
@@ -282,41 +281,6 @@ TEST_CASE("Navigation items select on a single click and route double clicks to 
     CHECK_FALSE(host.click(120.0f, 18.0f, MouseButton::Right));
     CHECK(selected == 1);
     CHECK(opened == 1);
-}
-
-TEST_CASE("Checkboxes request the toggled value on click", "[core][sakura][controls]") {
-    const Scene scene;
-    std::vector<bool> changes;
-    Sakura::Checkbox checkbox;
-    checkbox.update({.label = "Enabled", .value = false, .onChange = [&](bool value) { changes.push_back(value); }});
-    Host host(checkbox);
-    host.place(scene.ctx, {0.0f, 0.0f, 200.0f, 25.0f});
-
-    CHECK(host.click(10.0f, 10.0f));
-    CHECK(changes == std::vector<bool>{true});
-
-    checkbox.update({.label = "Enabled", .value = true, .onChange = [&](bool value) { changes.push_back(value); }});
-    CHECK(host.click(150.0f, 10.0f));
-    CHECK(changes == std::vector<bool>{true, false});
-
-    host.send(Mouse(MouseEventType::Click, 10.0f, 10.0f));
-    host.send(Mouse(MouseEventType::Release, 300.0f, 10.0f));
-    CHECK(changes.size() == 2);
-}
-
-TEST_CASE("Checkbox measure is a square plus the spaced label", "[core][sakura][controls]") {
-    const Scene scene;
-    Sakura::Checkbox bare;
-    bare.update({});
-    Host bareHost(bare);
-    CHECK(bareHost.measureOf(scene.ctx, {500.0f, 500.0f}) == Extent2D<F32>{25.0f, 25.0f});
-
-    Sakura::Checkbox labeled;
-    labeled.update({.label = "Enabled"});
-    Host labeledHost(labeled);
-    const F32 label = TextWidth(scene.ctx, "Enabled");
-    REQUIRE(label > 0.0f);
-    CHECK(labeledHost.measureOf(scene.ctx, {500.0f, 500.0f}) == Extent2D<F32>{25.0f + 8.0f + label, 25.0f});
 }
 
 TEST_CASE("Combo opens a dropdown below itself and reports the chosen option", "[core][sakura][controls]") {

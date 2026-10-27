@@ -80,13 +80,11 @@ TEST_CASE("Components measure to finite sizes within the available space", "[cor
     subjects.push_back(Make<Sakura::ScrollArea>("scroll area", {.content = probe(), .height = 0.0f}));
     subjects.push_back(Make<Sakura::SplitView>("split view", {.left = probe(), .right = probe()}));
     subjects.push_back(Make<Sakura::Grid>("grid", {.items = {probe(), probe(), probe()}}));
-    subjects.push_back(Make<Sakura::TabBar>("tab bar", {.labels = {"One", "Two"}, .pages = {probe(), probe()}}));
     subjects.push_back(Make<Sakura::Spacer>("spacer", {.lines = 3}));
     subjects.push_back(Make<Sakura::Divider>("divider", {}));
     subjects.push_back(Make<Sakura::Button>("button", {.str = "Run"}));
     subjects.push_back(Make<Sakura::Button>("filling button", {.str = "Run", .size = {Sakura::Fill, Sakura::Fill}}));
     subjects.push_back(Make<Sakura::TextInput>("text input", {.value = "alpha"}));
-    subjects.push_back(Make<Sakura::Checkbox>("checkbox", {.label = "Automatic gain"}));
     subjects.push_back(Make<Sakura::ProgressBar>("progress bar", {.value = 0.5f}));
     subjects.push_back(Make<Sakura::Combo>("combo", {.options = {"Alpha", "Beta"}, .value = "Alpha"}));
     subjects.push_back(Make<Sakura::Text>("text", {.str = "alpha beta gamma"}));
@@ -129,7 +127,7 @@ TEST_CASE("Components measure to finite sizes within the available space", "[cor
     subjects.push_back(Make<Sakura::SettingField>("setting field", {
         .label = "Automatic gain",
         .description = "Adjusts the gain to keep the signal level steady.",
-        .control = Own<Sakura::Checkbox>(owned, {.label = "Enabled"}),
+        .control = Own<Sakura::Toggle>(owned, {.value = true}),
     }));
     subjects.push_back(Make<Sakura::NodeLabel>("node label", {.str = "Gain"}));
     subjects.push_back(Make<Sakura::NodeLabel>("boxed node label", {.str = "Gain", .boxed = true}));
@@ -657,16 +655,6 @@ TEST_CASE("Controls scale their frames and paddings with the pixel ratio", "[cor
     input.update({.value = "alpha", .padding = {12.0f, 8.0f}});
     CHECK(inputHost.measureOf(scene.ctx, unbounded).y == 31.0f);
     CHECK(inputHost.measureOf(doubled, unbounded).y == 62.0f);
-
-    Sakura::Checkbox checkbox;
-    Host checkboxHost(checkbox);
-    checkbox.update({});
-    CHECK(checkboxHost.measureOf(scene.ctx, unbounded) == Extent2D<F32>{25.0f, 25.0f});
-    CHECK(checkboxHost.measureOf(doubled, unbounded) == Extent2D<F32>{50.0f, 50.0f});
-    checkbox.update({.label = "Automatic gain"});
-    const auto labeled = checkboxHost.measureOf(scene.ctx, unbounded);
-    REQUIRE(labeled.x > 33.0f);
-    CHECK(checkboxHost.measureOf(doubled, unbounded) == Extent2D<F32>{2.0f * labeled.x, 2.0f * labeled.y});
 
     Sakura::ProgressBar bar;
     Host barHost(bar);

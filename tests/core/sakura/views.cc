@@ -575,7 +575,7 @@ const Sakura::Palette& Shades() {
             "destructive_btn", "destructive_btn_active", "destructive_btn_hovered", "destructive_btn_outline",
             "destructive_btn_text", "card", "cyber_blue", "error_red", "frame_bg_active", "frame_bg_hovered",
             "header", "header_active", "header_hovered", "modal_dim", "popup_bg", "scrollbar_bg", "scrollbar_grab",
-            "separator", "success_green", "tab", "tab_hovered", "tab_selected", "text_disabled", "text_primary",
+            "separator", "success_green", "text_disabled", "text_primary",
             "text_secondary", "text_selected_bg", "warning_yellow", "accent_color", "editor_background",
             "editor_text", "editor_cursor", "editor_selection", "editor_active_line", "editor_scrollbar_track",
             "editor_scrollbar_thumb", "welcome_icon_new", "welcome_icon_open", "welcome_icon_examples",
@@ -2112,7 +2112,6 @@ TEST_CASE("Settings sections replace the editor content", "[core][sakura][views]
 
     rig.show(SettingsSection::Remote);
     CHECK(rig.combos().size() == 4);
-    CHECK(Find<Sakura::Checkbox>(rig.view.component()).empty());
     CHECK(Find<Sakura::Toggle>(rig.view.component()).size() == 1);
 
     rig.show(SettingsSection::Registry);
@@ -2121,7 +2120,7 @@ TEST_CASE("Settings sections replace the editor content", "[core][sakura][views]
     CHECK(Find<Sakura::SettingCard>(rig.view.component()).size() == 2);
 
     rig.show(SettingsSection::Legal);
-    CHECK(Find<Sakura::TabBar>(rig.view.component()).empty());
+    CHECK(Find<Sakura::SettingCard>(rig.view.component()).size() == 2);
 }
 
 TEST_CASE("General settings report theme, scale, and background particles", "[core][sakura][views]") {
@@ -2470,7 +2469,6 @@ TEST_CASE("Legal settings list the license and third-party software with a full 
     SettingsRig rig;
     rig.show(SettingsSection::Legal);
 
-    CHECK(Find<Sakura::TabBar>(rig.view.component()).empty());
     CHECK(Find<Sakura::SettingCard>(rig.view.component()).size() == 2);
     CHECK_FALSE(Find<Sakura::Badge>(rig.view.component()).empty());
     auto buttons = Buttons(rig.view.component());

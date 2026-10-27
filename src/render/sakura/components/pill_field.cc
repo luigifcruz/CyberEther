@@ -31,7 +31,6 @@ struct PillField::Impl {
     Text trailing;
     TextInput input;
     bool pressed = false;
-    bool hovered = false;
     Rect bounds;
     std::vector<Component*> mounted;
 
