@@ -3153,15 +3153,40 @@ TEST_CASE("Scheduler start wakes an idle compute round",
     REQUIRE(fixture.scheduler.add(source) == Result::SUCCESS);
     REQUIRE(fixture.scheduler.stop() == Result::SUCCESS);
 
-    std::thread restarter([&fixture] {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        REQUIRE(fixture.scheduler.start() == Result::SUCCESS);
+    std::promise<void> idle;
+    auto idleReady = idle.get_future();
+    std::unordered_set<std::string> failedModules;
+    auto waiter = std::async(std::launch::async, [&] {
+        const auto epoch = Scheduler::Impl::BeginComputeRound();
+        const auto result = fixture.scheduler.compute(failedModules);
+        idle.set_value();
+        Scheduler::Impl::WaitComputeRound(epoch, std::chrono::seconds(30));
+        return result;
     });
 
-    const auto elapsed = timedCompute(fixture.scheduler);
-    restarter.join();
+    // Restart only after the stopped scheduler has completed its idle round.
+    // Keep the fallback wait longer than the wake-up deadline so a missed
+    // notification still fails without depending on millisecond-scale timing.
+    idleReady.wait();
+    const bool wasWaiting = waiter.wait_for(std::chrono::milliseconds(0)) ==
+                            std::future_status::timeout;
+    const auto startResult = fixture.scheduler.start();
+    const bool woke = waiter.wait_for(std::chrono::seconds(5)) ==
+                      std::future_status::ready;
+    if (!woke) {
+        Scheduler::Context::NotifyPendingCompute();
+    }
+    const auto computeResult = waiter.get();
 
-    REQUIRE(elapsed < std::chrono::milliseconds(80));
+    REQUIRE(wasWaiting);
+    REQUIRE(startResult == Result::SUCCESS);
+    REQUIRE(woke);
+    REQUIRE(computeResult == Result::SUCCESS);
+    REQUIRE(failedModules.empty());
+    REQUIRE(state.count("compute", "restart_source") == 0);
+
+    computeCycles(fixture.scheduler, 1);
+    REQUIRE(state.count("compute", "restart_source") == 1);
 
     REQUIRE(fixture.shutdown() == Result::SUCCESS);
 }
