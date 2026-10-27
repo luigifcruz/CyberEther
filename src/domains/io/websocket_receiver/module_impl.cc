@@ -4,7 +4,6 @@
 #include <limits>
 #include <thread>
 #include <utility>
-#include <vector>
 
 #include <jetstream/memory/axis.hh>
 #include <jetstream/memory/macros.hh>
@@ -121,7 +120,6 @@ Result WebsocketReceiverImpl::create() {
     outputs()["signal"].produced(name(), "signal", buffer);
 
     JST_CHECK(circularBuffer.resize(validatedCircularBufferSize));
-    messageMultiplier = bufferMultiplier;
 
     receiving = true;
     receiveThread.start([this, url = validatedUrl]() { receiveLoop(url); });
@@ -203,25 +201,6 @@ void WebsocketReceiverImpl::receiveBinaryData(const I8* data, const U64 numBytes
         return;
     }
 
-    if (numBytes > circularBuffer.capacity() / messageMultiplier) {
-        U64 grownSize = 0;
-        std::vector<I8> unread(circularBuffer.size());
-        while (circularBuffer.pop(unread.data(), unread.size()) == Result::INCOMPLETE) {
-            unread.resize(circularBuffer.size());
-        }
-        if (!detail::CheckedMultiply(numBytes, messageMultiplier, grownSize) ||
-            circularBuffer.resize(grownSize) != Result::SUCCESS ||
-            circularBuffer.push(unread.data(), unread.size()) != Result::SUCCESS) {
-            JST_ERROR("[MODULE_WEBSOCKET_RECEIVER] Failed to grow the buffer for {} byte "
-                      "messages.", numBytes);
-            errored = true;
-            Scheduler::Context::NotifyPendingCompute();
-            return;
-        }
-        JST_INFO("[MODULE_WEBSOCKET_RECEIVER] Grew the buffer to {} bytes to hold {} byte "
-                 "messages.", grownSize, numBytes);
-    }
-
     const auto pushed = circularBuffer.push(data, numBytes);
     Scheduler::Context::NotifyPendingCompute();
     if (pushed != Result::SUCCESS) {
@@ -242,6 +221,13 @@ void WebsocketReceiverImpl::receiveBinaryData(const I8* data, const U64 numBytes
 
 F32 WebsocketReceiverImpl::getBufferHealth() const {
     return bufferHealth.get();
+}
+
+F64 WebsocketReceiverImpl::getBufferLoss() const {
+    const auto stats = circularBuffer.statistics();
+    return stats.pushedElements > 0
+        ? static_cast<F64>(stats.overwrittenElements) / static_cast<F64>(stats.pushedElements)
+        : 0.0;
 }
 
 F32 WebsocketReceiverImpl::getThroughput() const {

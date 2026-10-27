@@ -75,6 +75,17 @@ Result WebsocketReceiverImpl::define() {
                                                bufferHealth};
         }));
 
+    JST_CHECK(defineInterfaceMetric("bufferLoss",
+                                    "Buffer Loss",
+                                    "Share of samples overwritten before the chain read them since the stream started.",
+                                    {{"type", "progressbar"}},
+        [this]() -> std::any {
+            const F64 loss = moduleImpl ? moduleImpl->getBufferLoss() : 0.0;
+            const auto label = loss > 0.0 && loss < 0.0001
+                ? std::string("<0.01%") : jst::fmt::format("{:.2f}%", loss * 100.0);
+            return std::pair<std::string, F32>{label, static_cast<F32>(loss)};
+        }));
+
     JST_CHECK(defineInterfaceMetric("throughput",
                                     "Throughput",
                                     "Current data throughput.",

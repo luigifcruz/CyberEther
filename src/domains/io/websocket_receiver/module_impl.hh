@@ -22,6 +22,7 @@ struct WebsocketReceiverImpl : public Module::Impl, public DynamicConfig<Websock
     Result destroy() override;
 
     F32 getBufferHealth() const;
+    F64 getBufferLoss() const;
     F32 getThroughput() const;
 
  protected:
@@ -36,7 +37,6 @@ struct WebsocketReceiverImpl : public Module::Impl, public DynamicConfig<Websock
 
     DataType validatedDataType = DataType::None;
     U64 validatedCircularBufferSize = 0;
-    U64 messageMultiplier = 0;
     std::string validatedUrl;
 
     std::mutex socketMutex;
