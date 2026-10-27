@@ -1,3 +1,4 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include "harness.hh"
@@ -6,10 +7,12 @@
 #include "scene.hh"
 
 #include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/card.hh>
 #include <jetstream/render/sakura/components/chat_composer.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/model_picker.hh>
 #include <jetstream/render/sakura/components/stack.hh>
+#include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
 #include <jetstream/render/sakura/components/text_input.hh>
 #include <jetstream/render/sakura/typography.hh>
@@ -53,6 +56,7 @@ constexpr F32 kHighKnob = 227.0f;
 constexpr F32 kPad = 7.0f;
 constexpr F32 kTextPad = 6.0f;
 constexpr F32 kControl = 29.0f;
+constexpr F32 kStopMark = 9.0f;
 constexpr F32 kComposerWidth = 400.0f;
 
 std::vector<Sakura::Label::Instance> Texts(Sakura::Component& root, const std::string& str) {
@@ -829,6 +833,86 @@ TEST_CASE("Chat composers scale padding, margins, and rounding with the pixel ra
     CHECK(Find<Sakura::Box>(host).front()->config().cornerRadius == 8.0f);
 }
 
+TEST_CASE("Chat composers with chrome draw the elevated card instead of the flat background", kComposerTags) {
+    Scene scene;
+    Sakura::ChatComposer composer;
+    Host host(composer);
+    const auto ctx = scene.context();
+    const auto place = [&](bool chrome) {
+        composer.update({.id = "composer", .style = {.backgroundColorKey = "welcome_card_bg", .chrome = chrome}});
+        const auto size = host.measureOf(ctx, {kComposerWidth, kInfinite});
+        host.place(ctx, {0.0f, 0.0f, kComposerWidth, size.y});
+        return Rect{0.0f, 0.0f, kComposerWidth, size.y};
+    };
+    const auto backgrounds = [&](const Rect& bounds) {
+        U64 count = 0;
+        for (auto* box : Direct<Sakura::Box>(composer)) {
+            for (const auto& instance : box->config().instances) {
+                count += instance.visible && instance.rect == bounds ? 1 : 0;
+            }
+        }
+        return count;
+    };
+
+    const auto flat = place(false);
+    CHECK(Find<Sakura::Card>(host).empty());
+    CHECK(backgrounds(flat) == 1);
+
+    const auto raised = place(true);
+    CHECK(raised.height == flat.height);
+    const auto cards = Find<Sakura::Card>(host);
+    REQUIRE(cards.size() == 1);
+    CHECK(Peek::Frame(*cards.front()) == raised);
+    CHECK(backgrounds(raised) == 0);
+    CHECK(Find<Sakura::TextGrid>(host).size() == 1);
+}
+
+TEST_CASE("Chat composers mount the flat background once and then switch chrome without restructuring", kComposerRetentionTags) {
+    Scene scene;
+    Sakura::ChatComposer composer;
+    Place place(composer, {10.0f, 10.0f, kComposerWidth, 100.0f});
+    Frames frames(place, kScreen, scene.context());
+    bool chrome = true;
+    const auto update = [&] {
+        composer.update({.id = "composer", .style = {.chrome = chrome}});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    chrome = false;
+    CHECK(frames.run(update).restructured);
+    CHECK(Retains(frames, update));
+    chrome = true;
+    CHECK(Kept(frames.run(update)));
+    CHECK(Retains(frames, update));
+    chrome = false;
+    CHECK(Kept(frames.run(update)));
+    CHECK(Retains(frames, update));
+}
+
+TEST_CASE("Chat composer controls stay circular whatever rounding the card uses", kComposerTags) {
+    Scene scene;
+    Sakura::ChatComposer composer;
+    Host host(composer);
+    const auto ctx = scene.context();
+    const auto radius = [&](std::optional<F32> rounding) {
+        composer.update({.id = "composer", .style = {.rounding = rounding}, .onVoice = [] {}});
+        const auto size = host.measureOf(ctx, {kComposerWidth, kInfinite});
+        host.place(ctx, {0.0f, 0.0f, kComposerWidth, size.y});
+        std::optional<F32> found;
+        for (auto* box : Find<Sakura::Box>(host)) {
+            for (const auto& instance : box->config().instances) {
+                if (instance.visible && instance.rect.width == kControl && instance.rect.height == kControl) {
+                    found = box->config().cornerRadius;
+                }
+            }
+        }
+        return found;
+    };
+    CHECK(radius(std::nullopt) == std::optional<F32>(0.5f * kControl));
+    CHECK(radius(6.0f) == std::optional<F32>(0.5f * kControl));
+    CHECK(radius(40.0f) == std::optional<F32>(0.5f * kControl));
+}
+
 TEST_CASE("Chat composers cancel while busy and route the send button by state", kComposerTags) {
     ComposerRig rig;
     rig.config.busy = true;
@@ -836,7 +920,11 @@ TEST_CASE("Chat composers cancel while busy and route the send button by state",
     rig.config.focusRequest = 1;
     rig.place();
     REQUIRE(FocusOwner(rig.host) == rig.grid());
-    CHECK(Shows(rig.host, ICON_LC_SQUARE));
+    CHECK_FALSE(Shows(rig.host, ICON_LC_SQUARE));
+    const auto stop = Squares(rig.host, kStopMark);
+    REQUIRE(stop.size() == 1);
+    CHECK(stop.front().x + 0.5f * kStopMark == Catch::Approx(rig.points().send.x).margin(0.5f));
+    CHECK(stop.front().y + 0.5f * kStopMark == Catch::Approx(rig.points().send.y).margin(0.5f));
     CHECK(VoiceBars(rig.host) == 0);
     CHECK(Shows(rig.host, "Ask"));
     rig.host.click(rig.points().send.x, rig.points().send.y);
@@ -844,7 +932,7 @@ TEST_CASE("Chat composers cancel while busy and route the send button by state",
 
     rig.config.busy = false;
     rig.place();
-    CHECK_FALSE(Shows(rig.host, ICON_LC_SQUARE));
+    CHECK(Squares(rig.host, kStopMark).empty());
     CHECK_FALSE(Shows(rig.host, ICON_LC_ARROW_UP));
     CHECK(VoiceBars(rig.host) == 5);
     rig.host.click(rig.points().send.x, rig.points().send.y);
@@ -1207,4 +1295,57 @@ TEST_CASE("Chat composer model pickers mount once and park when the selector goe
     CHECK(RepaintOnly(frames.run(update)));
     CHECK(Retains(frames, update));
     CHECK(frames.restructures == restructures + 1);
+}
+
+TEST_CASE("Chat composer voice buttons show their shortcut hint after the hover delay only while voice is ready",
+          kComposerRetentionTags) {
+    Scene scene;
+    Sakura::ChatComposer composer;
+    LayerSlot slot;
+    LayerHost host({&slot});
+    const Rect bounds = {0.0f, 300.0f, kComposerWidth, 120.0f};
+    slot.hold(composer, bounds);
+    Frames frames(host, kScreen, scene.context());
+    frames.timeStep = 0.1;
+    frames.ctx.hoverDelay = 0.25f;
+    bool busy = false;
+    const auto update = [&] {
+        composer.update({.id = "composer", .busy = busy, .onVoice = [] {}, .voiceHint = "Start voice (Ctrl+J)"});
+    };
+    const auto hint = [&]() -> std::optional<Rect> {
+        for (auto* text : Find<Sakura::Text>(host.popups)) {
+            if (text->config().str == "Start voice (Ctrl+J)") {
+                return Peek::Frame(*text);
+            }
+        }
+        return std::nullopt;
+    };
+    REQUIRE(frames.settle(update));
+    const auto points = PointsOf(host, bounds);
+    CHECK_FALSE(hint().has_value());
+
+    Hover(host, frames, points.send.x, points.send.y);
+    frames.run(update);
+    CHECK_FALSE(hint().has_value());
+    for (U64 frame = 0; frame < 6; ++frame) {
+        frames.run(update);
+    }
+    REQUIRE(hint().has_value());
+    const Rect send = {points.send.x - 0.5f * kControl, points.send.y - 0.5f * kControl, kControl, kControl};
+    const Rect shown = *hint();
+    CHECK((shown.y >= send.bottom() || shown.bottom() <= send.y));
+    CHECK(shown.right() <= send.right() + kPad);
+    CHECK(Retains(frames, update));
+
+    Hover(host, frames, 100.0f, points.send.y);
+    frames.run(update);
+    CHECK_FALSE(hint().has_value());
+
+    busy = true;
+    frames.run(update);
+    Hover(host, frames, points.send.x, points.send.y);
+    for (U64 frame = 0; frame < 6; ++frame) {
+        frames.run(update);
+    }
+    CHECK_FALSE(hint().has_value());
 }

@@ -6,6 +6,7 @@
 #include <jetstream/render/sakura/components/chat_composer.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
+#include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
 #include <jetstream/render/sakura/components/text_markdown.hh>
 #include <jetstream/render/sakura/components/text_view.hh>
@@ -232,6 +233,130 @@ TEST_CASE("Chats place the transcript above a centered composer column", "[core]
     CHECK(content.x == 250.0f);
     CHECK(content.width == 300.0f);
     CHECK(content.bottom() == Approx(column.y - 8.0f));
+}
+
+TEST_CASE("Chats center a placeholder in the transcript area only while the conversation is empty",
+          "[core][sakura][chat]") {
+    Scene scene;
+    Sakura::Chat chat;
+    Probe placeholder({200.0f, 80.0f});
+    Host host(chat);
+    chat.update({.id = "chat", .placeholder = &placeholder});
+    host.place(scene.ctx, kChatRect);
+
+    const auto transcript = Peek::Frame(*Find<Transcript>(chat).at(0));
+    REQUIRE(placeholder.visible());
+    REQUIRE(placeholder.layouts > 0);
+    CHECK(placeholder.laidFrame.x == transcript.x);
+    CHECK(placeholder.laidFrame.width == transcript.width);
+    CHECK(placeholder.laidFrame.height == 80.0f);
+    CHECK(placeholder.laidFrame.y + 40.0f == Approx(transcript.y + transcript.height * 0.5f).margin(0.5f));
+    CHECK(placeholder.laidClip == transcript);
+
+    chat.update({.id = "chat", .snapshot = {.generation = 1, .streaming = true}, .placeholder = &placeholder});
+    host.place(scene.ctx, kChatRect);
+    CHECK_FALSE(placeholder.visible());
+
+    chat.update({.id = "chat", .snapshot = Conversation(2), .placeholder = &placeholder});
+    host.place(scene.ctx, kChatRect);
+    CHECK_FALSE(placeholder.visible());
+
+    chat.update({.id = "chat", .placeholder = &placeholder});
+    host.place(scene.ctx, kChatRect);
+    CHECK(placeholder.visible());
+
+    placeholder.resize({200.0f, 1000.0f});
+    host.place(scene.ctx, kChatRect);
+    CHECK(placeholder.laidFrame == transcript);
+
+    chat.update({.id = "chat"});
+    host.place(scene.ctx, kChatRect);
+    CHECK(Find<Probe>(chat).empty());
+}
+
+TEST_CASE("Chats remount a placeholder that came back from another owner", "[core][sakura][chat]") {
+    Scene scene;
+    Sakura::Chat chat;
+    Probe thief;
+    Probe placeholder({200.0f, 80.0f});
+    Host host(chat);
+    chat.update({.id = "chat", .placeholder = &placeholder});
+    host.place(scene.ctx, kChatRect);
+    REQUIRE(Find<Probe>(chat).size() == 1);
+
+    thief.adopt(placeholder);
+    REQUIRE(Find<Probe>(chat).empty());
+
+    chat.update({.id = "chat", .placeholder = &placeholder});
+    host.place(scene.ctx, kChatRect);
+    const auto probes = Find<Probe>(chat);
+    REQUIRE(probes.size() == 1);
+    CHECK(probes.front() == &placeholder);
+    CHECK(placeholder.visible());
+}
+
+TEST_CASE("Chats keep a parked placeholder mounted and show it again as a repaint",
+          "[core][sakura][chat][retention]") {
+    Scene scene;
+    Sakura::Chat chat;
+    Sakura::Text placeholder;
+    placeholder.update({.str = "Ask anything"});
+    Place place(chat, kChatRect);
+    Frames frames(place, kScreen, scene.context());
+    Chat::Snapshot snapshot;
+    Sakura::Component* current = &placeholder;
+    const auto update = [&] {
+        chat.update({.id = "chat", .snapshot = snapshot, .placeholder = current});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(placeholder.visible());
+    snapshot = Conversation(2);
+    REQUIRE(frames.settle(update));
+    CHECK_FALSE(placeholder.visible());
+    snapshot = {};
+    REQUIRE(frames.settle(update));
+    CHECK(placeholder.visible());
+    const U64 restructures = frames.restructures;
+    const U64 rebuilds = frames.rebuilds;
+
+    current = nullptr;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK_FALSE(placeholder.visible());
+    const auto& children = Peek::Children(chat);
+    CHECK(std::find(children.begin(), children.end(), &placeholder) != children.end());
+
+    current = &placeholder;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(placeholder.visible());
+
+    snapshot = Conversation(2);
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK_FALSE(placeholder.visible());
+    snapshot = {};
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(placeholder.visible());
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == restructures);
+    CHECK(frames.rebuilds == rebuilds);
+}
+
+TEST_CASE("Chats cancel a press held on the placeholder when the conversation starts", "[core][sakura][chat]") {
+    Scene scene;
+    Sakura::Chat chat;
+    Probe placeholder({200.0f, 80.0f});
+    Host host(chat);
+    chat.update({.id = "chat", .placeholder = &placeholder});
+    host.place(scene.ctx, kChatRect);
+    const auto frame = placeholder.laidFrame;
+    host.send(Mouse(MouseEventType::Click, frame.x + 10.0f, frame.y + 10.0f));
+    REQUIRE(placeholder.count(MouseEventType::Click) == 1);
+
+    chat.update({.id = "chat", .snapshot = Conversation(2), .placeholder = &placeholder});
+    host.place(scene.ctx, kChatRect);
+    CHECK_FALSE(placeholder.visible());
+    CHECK(placeholder.count(MouseEventType::Cancel) == 1);
 }
 
 TEST_CASE("Chats scale their surface padding and column width with the pixel ratio", "[core][sakura][chat]") {

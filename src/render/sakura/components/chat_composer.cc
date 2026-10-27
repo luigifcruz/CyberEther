@@ -1,9 +1,11 @@
 #include <jetstream/render/sakura/components/chat_composer.hh>
 
 #include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/card.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/model_picker.hh>
 #include <jetstream/render/sakura/components/popup.hh>
+#include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
 #include <jetstream/render/tools/icons_lucide.hh>
 
@@ -31,6 +33,8 @@ constexpr std::array<F32, 5> kVoiceBarHeights = {0.45f, 1.0f, 0.6f, 0.85f, 0.3f}
 constexpr F32 kVoiceIconHeight = 0.44f;
 constexpr F32 kVoiceBarWidth = 0.075f;
 constexpr F32 kVoiceBarGap = 0.06f;
+constexpr F32 kStopMark = 0.3f;
+constexpr F32 kStopRounding = 0.07f;
 constexpr U64 kUsageRingDots = 48;
 constexpr F32 kUsageRingRadius = 0.42f;
 constexpr F32 kUsageRingDot = 0.13f;
@@ -275,11 +279,13 @@ struct ChatComposer::Impl {
 
     Config config;
     Box background;
+    Card chrome;
     Label placeholder;
     Label icon;
     TextGrid input;
     RoundButton send;
     Box voiceBars;
+    Box stopMark;
     RoundButton attach;
     RoundButton clear;
     ModelPicker picker;
@@ -288,6 +294,9 @@ struct ChatComposer::Impl {
     std::vector<Component*> mounted;
     std::string text;
     Rect usageRect;
+    Rect sendRect;
+    Text hint;
+    bool sendHovered = false;
     bool usageHovered = false;
     bool stale = true;
     F32 syncedRatio = 0.0f;
@@ -298,6 +307,10 @@ struct ChatComposer::Impl {
 
     F32 controlSize() const {
         return config.style.fontSize + kControlPadding * scale();
+    }
+
+    F32 controlRounding() const {
+        return 0.5f * controlSize();
     }
 
     Metrics metrics(const Context& ctx) const {
@@ -333,6 +346,10 @@ struct ChatComposer::Impl {
 
     bool voiceReady() const {
         return !config.busy && config.onVoice && Jetstream::Text::IsBlank(text);
+    }
+
+    bool hintReady() const {
+        return voiceReady() && !config.voiceHint.empty();
     }
 
     std::vector<std::string> tooltipLines() const {
@@ -465,7 +482,8 @@ struct ChatComposer::Impl {
     }
 
     void mount(ChatComposer& self) {
-        std::vector<Component*> list = {&background, &placeholder, &icon, &input, &send, &voiceBars};
+        std::vector<Component*> list = {config.style.chrome ? static_cast<Component*>(&chrome) : &background,
+                                        &placeholder, &icon, &input, &send, &voiceBars, &stopMark};
         if (showsControls()) {
             list.push_back(&attach);
         }
@@ -487,7 +505,7 @@ struct ChatComposer::Impl {
         attach.update({
             .str = ICON_LC_PLUS,
             .fontSize = config.style.fontSize * kAttachScale,
-            .rounding = 0.5f * control,
+            .rounding = controlRounding(),
             .onClick = [this]() {
                 if (config.onAttach) {
                     config.onAttach();
@@ -499,7 +517,7 @@ struct ChatComposer::Impl {
             .fontName = Typography::BodyFont,
             .fontSize = config.style.fontSize,
             .padding = 0.5f * control,
-            .rounding = 0.5f * control,
+            .rounding = controlRounding(),
             .textColorKey = "text_secondary",
             .onClick = [this]() {
                 if (config.onClear) {
@@ -516,7 +534,7 @@ struct ChatComposer::Impl {
             .effort = selector.effort,
             .disabled = selector.disabled,
             .fontSize = config.style.fontSize,
-            .rounding = 0.5f * control,
+            .rounding = controlRounding(),
             .popupRounding = kPickerRounding * scale(),
             .accentColorKey = "agent_activity",
             .popupColorKey = config.style.backgroundColorKey,
@@ -610,6 +628,7 @@ ChatComposer::ChatComposer() {
     addChild(impl->input);
     addChild(impl->send);
     addChild(impl->voiceBars);
+    addChild(impl->stopMark);
     addChild(impl->attach);
     addChild(impl->clear);
     addChild(impl->picker);
@@ -670,15 +689,29 @@ void ChatComposer::layout(const Context& ctx) {
     const Rect bounds = state.inset(ctx, outer);
     const bool visible = !bounds.empty();
 
-    state.background.update({
-        .instances = {{.rect = bounds, .visible = visible, .backgroundColor = ctx.color(style.backgroundColorKey)}},
-        .clip = bounds,
-        .cornerRadius = Px(ctx, style.rounding.value_or(style.padding + 0.5f * state.controlSize())),
-        .borderWidth = Px(ctx, style.borderWidth),
-        .borderColor = ctx.color(style.borderColorKey),
-        .strokeFringe = true,
-    });
-    layoutChild(ctx, state.background, bounds);
+    const F32 rounding = Px(ctx, style.rounding.value_or(style.padding + 0.5f * state.controlSize()));
+    if (style.chrome) {
+        state.chrome.update({
+            .rects = {bounds},
+            .clip = clip(),
+            .cornerRadius = rounding,
+            .borderWidth = Px(ctx, style.borderWidth),
+            .lineWidth = Px(ctx, 1.0f),
+            .fillKey = style.backgroundColorKey,
+            .capacity = 1,
+        });
+        layoutChild(ctx, state.chrome, bounds);
+    } else {
+        state.background.update({
+            .instances = {{.rect = bounds, .visible = visible, .backgroundColor = ctx.color(style.backgroundColorKey)}},
+            .clip = bounds,
+            .cornerRadius = rounding,
+            .borderWidth = Px(ctx, style.borderWidth),
+            .borderColor = ctx.color(style.borderColorKey),
+            .strokeFringe = true,
+        });
+        layoutChild(ctx, state.background, bounds);
+    }
 
     const F32 measured = measureChild(state.input, ctx,
                                       {state.inputWidth(m, bounds.width), std::numeric_limits<F32>::infinity()}).y;
@@ -720,9 +753,9 @@ void ChatComposer::layout(const Context& ctx) {
 
     const bool voice = state.voiceReady();
     state.send.update({
-        .str = config.busy ? ICON_LC_SQUARE : voice ? "" : ICON_LC_ARROW_UP,
+        .str = config.busy || voice ? "" : ICON_LC_ARROW_UP,
         .fontSize = style.fontSize,
-        .rounding = 0.5f * state.controlSize(),
+        .rounding = state.controlRounding(),
         .disabled = !config.busy && !voice && Jetstream::Text::IsBlank(state.text),
         .colorKey = "contrast_btn",
         .hoveredColorKey = "contrast_btn_hovered",
@@ -733,6 +766,19 @@ void ChatComposer::layout(const Context& ctx) {
         },
     });
     layoutChild(ctx, state.send, rects.send);
+    state.sendRect = rects.send;
+    state.hint.update({.str = config.voiceHint, .scale = Typography::ChromeScale});
+    if (visible && state.hintReady() && state.sendHovered) {
+        RequestPopup(ctx, {
+            .content = &state.hint,
+            .anchor = rects.send,
+            .placement = PopupPlacement::BelowEnd,
+            .panel = true,
+            .padding = kTooltipPadding,
+            .interactive = false,
+            .delayed = true,
+        });
+    }
 
     const F32 barWidth = std::round(m.control * kVoiceBarWidth);
     const F32 barGap = std::round(m.control * kVoiceBarGap);
@@ -759,6 +805,20 @@ void ChatComposer::layout(const Context& ctx) {
     });
     layoutChild(ctx, state.voiceBars, rects.send);
 
+    const F32 stopSide = std::round(m.control * kStopMark);
+    state.stopMark.update({
+        .instances = {{
+            .rect = {std::round(rects.send.x + (rects.send.width - stopSide) * 0.5f),
+                     std::round(rects.send.y + (rects.send.height - stopSide) * 0.5f), stopSide, stopSide},
+            .visible = visible && config.busy,
+            .backgroundColor = ctx.color("contrast_btn_text"),
+        }},
+        .clip = rects.send,
+        .cornerRadius = std::round(m.control * kStopRounding),
+        .capacity = 1,
+    });
+    layoutChild(ctx, state.stopMark, rects.send);
+
     if (state.showsControls()) {
         state.layoutControls(*this, ctx, m, outer, bounds, rects.send);
     } else {
@@ -775,6 +835,12 @@ bool ChatComposer::mouseEvent(const MouseEvent& event) {
                              state.usageRect.contains(event.position.x, event.position.y);
         if (hovered != state.usageHovered) {
             state.usageHovered = hovered;
+            invalidate(Dirty::Layout);
+        }
+        const bool overSend = event.type == MouseEventType::Move && state.hintReady() &&
+                              state.sendRect.contains(event.position.x, event.position.y);
+        if (overSend != state.sendHovered) {
+            state.sendHovered = overSend;
             invalidate(Dirty::Layout);
         }
     }
