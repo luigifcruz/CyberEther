@@ -5,7 +5,6 @@
 #include <jetstream/render/sakura/surface.hh>
 #include <jetstream/types.hh>
 
-#include <functional>
 #include <memory>
 #include <string>
 
@@ -20,9 +19,9 @@ struct NodeSurface : public Component {
         std::string id;
         std::shared_ptr<const Render::Texture> texture;
         F32 minimumHeight = 150.0f;
-        bool detachOverlay = false;
         Callback<void(const SurfaceResize&)> onSize;
-        Callback<void()> onDetach;
+        Callback<void(InputEvent)> onInput;
+        Callback<SurfaceCursor()> resolveCursor;
 
         bool operator==(const Config&) const = default;
     };
@@ -35,7 +34,6 @@ struct NodeSurface : public Component {
  protected:
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
     void layout(const Context& ctx) override;
-    bool mouseEvent(const MouseEvent& event) override;
 
  private:
     struct Impl;

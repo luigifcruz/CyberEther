@@ -238,8 +238,10 @@ struct FlowgraphNode {
         std::shared_ptr<const Render::Texture> texture;
         F32 height = 512.0f;
         bool detached = false;
-        std::function<void()> onDetach;
+        std::function<void(bool)> onDetach;
         std::function<void(const Sakura::SurfaceResize&)> onAttachedSize;
+        std::function<void(InputEvent)> onInput;
+        std::function<SurfaceCursor()> resolveCursor;
     };
 
     struct DeviceOption {
@@ -400,9 +402,9 @@ struct FlowgraphNode {
                 .id = surface.id,
                 .texture = surface.texture,
                 .minimumHeight = SurfaceHeightSpec().minimum,
-                .detachOverlay = true,
                 .onSize = surface.onAttachedSize,
-                .onDetach = surface.onDetach,
+                .onInput = surface.detached ? nullptr : surface.onInput,
+                .resolveCursor = surface.detached ? nullptr : surface.resolveCursor,
             });
         }
 
@@ -461,6 +463,9 @@ struct FlowgraphNode {
                     this->config.onConfigCollapse(!this->config.block.configCollapsed);
                 }
             },
+            .onDetach = attachedSurfaceCount > 0 ? Sakura::Callback<void()>([this]() {
+                setSurfacesDetached(true);
+            }) : Sakura::Callback<void()>(),
             .pins = std::move(pins),
             .content = &content,
             .resize = resizeAxes,
@@ -496,6 +501,8 @@ struct FlowgraphNode {
             .pasteEnabled = this->config.pasteEnabled,
             .configDetachEnabled = hasConfigFields,
             .configDetached = block.configDetached,
+            .plotDetachEnabled = hasSurfaces,
+            .plotDetached = allSurfacesDetached,
             .devices = deviceOptions,
             .onCopy = this->config.onCopy,
             .onPaste = [this]() {
@@ -519,6 +526,9 @@ struct FlowgraphNode {
                 if (this->config.onConfigDetach) {
                     this->config.onConfigDetach(!this->config.block.configDetached);
                 }
+            },
+            .onTogglePlotDetach = [this, allSurfacesDetached]() {
+                setSurfacesDetached(!allSurfacesDetached);
             },
             .onReload = this->config.onReload,
             .onDelete = this->config.onDelete,
@@ -548,6 +558,14 @@ struct FlowgraphNode {
                 inspectorOpen = false;
             },
         });
+    }
+
+    void setSurfacesDetached(bool detached) {
+        for (const auto& surface : config.block.surfaces) {
+            if (surface.detached != detached && surface.onDetach) {
+                surface.onDetach(detached);
+            }
+        }
     }
 
     NodeEditor::Node takeNode() {

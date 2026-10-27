@@ -23,12 +23,15 @@ struct FlowgraphNodeMenu {
         bool pasteEnabled = false;
         bool configDetachEnabled = false;
         bool configDetached = false;
+        bool plotDetachEnabled = false;
+        bool plotDetached = false;
         std::vector<DeviceOption> devices;
         std::function<void()> onCopy;
         std::function<void()> onPaste;
         std::function<void()> onRename;
         std::function<void()> onInspect;
         std::function<void()> onToggleConfigDetach;
+        std::function<void()> onTogglePlotDetach;
         std::function<void()> onReload;
         std::function<void()> onDelete;
         std::function<void()> onDocumentation;
@@ -82,6 +85,12 @@ struct FlowgraphNodeMenu {
                                                          : ICON_LC_EXTERNAL_LINK " Detach Config",
                     .enabled = this->config.configDetachEnabled,
                     .onClick = this->config.onToggleConfigDetach,
+                },
+                {
+                    .label = this->config.plotDetached ? ICON_LC_MINIMIZE_2 " Attach Plot"
+                                                       : ICON_LC_MAXIMIZE_2 " Detach Plot",
+                    .enabled = this->config.plotDetachEnabled,
+                    .onClick = this->config.onTogglePlotDetach,
                 },
                 {.separator = true},
                 {

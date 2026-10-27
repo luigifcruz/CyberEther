@@ -1705,23 +1705,17 @@ TEST_CASE("Node progress bars and tables measure to fixed row heights", kTags) {
     host.place(ctx, {0.0f, 0.0f, 300.0f, 92.0f});
 }
 
-TEST_CASE("Node surfaces report their size and detach only from the hovered corner button", kTags) {
+TEST_CASE("Node surfaces report their size and scale their minimum height", kTags) {
     const Scene scene;
     auto ctx = scene.ctx;
     std::vector<Sakura::SurfaceResize> sizes;
-    U64 detached = 0;
     Sakura::NodeSurface surface;
-    const auto configure = [&](bool overlay) {
-        surface.update({.id = "surface", .detachOverlay = overlay,
-                        .onSize = [&](const Sakura::SurfaceResize& size) { sizes.push_back(size); },
-                        .onDetach = [&] { ++detached; }});
-    };
-    configure(true);
+    surface.update({.id = "surface",
+                    .onSize = [&](const Sakura::SurfaceResize& size) { sizes.push_back(size); }});
     Host host(surface);
 
     CHECK(host.measureOf(ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 150.0f});
     host.place(ctx, {0.0f, 0.0f, 300.0f, 150.0f});
-    host.send(Mouse(MouseEventType::Move, 150.0f, 75.0f));
     host.place(ctx, {0.0f, 0.0f, 300.0f, 150.0f});
     REQUIRE(sizes.size() == 1);
     CHECK(sizes[0].logicalSize == Extent2D<U64>{300, 150});
@@ -1731,26 +1725,54 @@ TEST_CASE("Node surfaces report their size and detach only from the hovered corn
     host.place(ctx, {0.0f, 0.0f, 240.0f, 150.0f});
     REQUIRE(sizes.size() == 2);
     CHECK(sizes[1].logicalSize == Extent2D<U64>{240, 150});
-    host.place(ctx, {0.0f, 0.0f, 300.0f, 150.0f});
-
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 150.0f, 75.0f)));
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 280.0f, 20.0f, MouseButton::Right)));
-    CHECK(detached == 0);
-    CHECK(host.send(Mouse(MouseEventType::Click, 280.0f, 20.0f)));
-    CHECK(detached == 1);
-
-    host.send(Mouse(MouseEventType::Leave, 150.0f, 75.0f));
-    host.place(ctx, {0.0f, 0.0f, 300.0f, 150.0f});
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 280.0f, 20.0f)));
-
-    host.send(Mouse(MouseEventType::Move, 150.0f, 75.0f));
-    configure(false);
-    host.place(ctx, {0.0f, 0.0f, 300.0f, 150.0f});
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 280.0f, 20.0f)));
-    CHECK(detached == 1);
 
     surface.update({.id = "surface", .minimumHeight = 90.0f});
     CHECK(host.measureOf(ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 90.0f});
+    ctx.pixelRatio = 2.0f;
+    CHECK(host.measureOf(ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 180.0f});
+}
+
+TEST_CASE("Attached node surfaces forward every mouse event to the plot", kTags) {
+    const Scene scene;
+    auto ctx = scene.ctx;
+    std::vector<MouseEvent> forwarded;
+    Sakura::NodeSurface surface;
+    surface.update({
+        .id = "surface",
+        .onInput = [&](InputEvent event) {
+            if (const auto* mouse = std::get_if<MouseEvent>(&event)) {
+                forwarded.push_back(*mouse);
+            }
+        },
+        .resolveCursor = [] { return SurfaceCursor::Hand; },
+    });
+    Host host(surface);
+    host.place(ctx, {0.0f, 0.0f, 300.0f, 150.0f});
+    CHECK(Sakura::Access::cursor(host, {150.0f, 75.0f}) == SurfaceCursor::Hand);
+
+    CHECK_FALSE(host.send(Mouse(MouseEventType::Move, 150.0f, 75.0f)));
+    REQUIRE(forwarded.size() == 1);
+    CHECK(forwarded[0].type == MouseEventType::Move);
+    CHECK(forwarded[0].position == Extent2D<F32>{0.5f, 0.5f});
+
+    CHECK(host.send(Mouse(MouseEventType::Click, 75.0f, 30.0f)));
+    CHECK(host.send(Mouse(MouseEventType::Release, 75.0f, 30.0f)));
+    CHECK(host.send(Mouse(MouseEventType::Click, 75.0f, 30.0f, MouseButton::Right)));
+    CHECK(host.send(Wheel(75.0f, 30.0f, -1.0f)));
+    CHECK(host.send(Mouse(MouseEventType::Click, 280.0f, 20.0f)));
+    REQUIRE(forwarded.size() == 6);
+    CHECK(forwarded[1].type == MouseEventType::Click);
+    CHECK(forwarded[1].position == Extent2D<F32>{0.25f, 0.2f});
+    CHECK(forwarded[2].type == MouseEventType::Release);
+    CHECK(forwarded[3].button == MouseButton::Right);
+    CHECK(forwarded[4].type == MouseEventType::Scroll);
+    CHECK(forwarded[5].type == MouseEventType::Click);
+
+    surface.update({.id = "surface"});
+    host.place(ctx, {0.0f, 0.0f, 300.0f, 150.0f});
+    CHECK(Sakura::Access::cursor(host, {150.0f, 75.0f}) != SurfaceCursor::Hand);
+    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 150.0f, 75.0f)));
+    CHECK_FALSE(host.send(Wheel(150.0f, 75.0f, -1.0f)));
 }
 
 TEST_CASE("Node text ellipsizing keeps fitting text and cuts long text on a character boundary", kTags) {
@@ -2505,52 +2527,6 @@ TEST_CASE("Node field grid gaps and column minimums scale with the pixel ratio",
 
     CHECK(host.measureOf(ctx, {564.0f, kInfinite}).y == 44.0f);
     CHECK(host.measureOf(ctx, {563.0f, kInfinite}) == Extent2D<F32>{563.0f, 69.0f});
-}
-
-TEST_CASE("Node surfaces scale their minimum height and detach button with the pixel ratio", kTags) {
-    const Scene scene;
-    auto ctx = scene.ctx;
-    ctx.pixelRatio = 2.0f;
-    U64 detached = 0;
-    Sakura::NodeSurface surface;
-    surface.update({.id = "surface", .detachOverlay = true, .onDetach = [&] { ++detached; }});
-    Host host(surface);
-
-    CHECK(host.measureOf(ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 300.0f});
-    host.place(ctx, {0.0f, 0.0f, 300.0f, 300.0f});
-    host.send(Mouse(MouseEventType::Move, 150.0f, 150.0f));
-    host.place(ctx, {0.0f, 0.0f, 300.0f, 300.0f});
-
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 290.0f, 10.0f)));
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 240.0f, 66.0f)));
-    CHECK(detached == 0);
-    CHECK(host.send(Mouse(MouseEventType::Click, 240.0f, 60.0f)));
-    CHECK(detached == 1);
-
-    surface.update({.id = "surface", .minimumHeight = 90.0f});
-    CHECK(host.measureOf(ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 180.0f});
-}
-
-TEST_CASE("Node surfaces detach on the press itself and ignore releases and cancels", kTags) {
-    const Scene scene;
-    auto ctx = scene.ctx;
-    U64 detached = 0;
-    Sakura::NodeSurface surface;
-    surface.update({.id = "surface", .detachOverlay = true, .onDetach = [&] { ++detached; }});
-    Host host(surface);
-    host.place(ctx, {0.0f, 0.0f, 300.0f, 150.0f});
-    host.send(Mouse(MouseEventType::Move, 150.0f, 75.0f));
-    host.place(ctx, {0.0f, 0.0f, 300.0f, 150.0f});
-
-    CHECK(host.send(Mouse(MouseEventType::Click, 280.0f, 20.0f)));
-    CHECK(detached == 1);
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Cancel, 280.0f, 20.0f)));
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Release, 280.0f, 20.0f)));
-    CHECK(detached == 1);
-
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Release, 500.0f, 500.0f)));
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Release, 280.0f, 20.0f)));
-    CHECK(detached == 1);
 }
 
 TEST_CASE("A cancelled press on a node combo row selects nothing and keeps the dropdown open", kTags) {

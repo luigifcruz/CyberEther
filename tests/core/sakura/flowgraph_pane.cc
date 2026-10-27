@@ -670,7 +670,7 @@ TEST_CASE("The editor's top right holds the search pill, the zoom pill to its le
     CHECK(label() == "100%");
     rig.host.click(zoom.right() - 10.0f, zoom.y + 17.0f);
     rig.frame();
-    CHECK(label() == "110%");
+    CHECK(label() == "105%");
     rig.host.click(zoom.x + zoom.width * 0.5f, zoom.y + 17.0f);
     rig.frame();
     CHECK(label() == "100%");

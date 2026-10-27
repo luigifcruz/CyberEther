@@ -4,6 +4,7 @@
 #include "labels.hh"
 #include "layout.hh"
 #include "config.hh"
+#include "surface_callbacks.hh"
 
 #include "../context.hh"
 
@@ -23,6 +24,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Jetstream {
@@ -65,6 +67,12 @@ struct FlowgraphDetachedSurfacePresenter {
                     }
 
                     const std::string key = MakeSurfaceTileKey(blockName, manifest.id);
+                    auto callbacks = FlowgraphSurfaceCallbacks::Build(enqueue,
+                                                                      surface,
+                                                                      flowgraphId,
+                                                                      blockName,
+                                                                      surfaceMetaKey,
+                                                                      SurfacePlacement::Detached);
 
                     configs.push_back({
                         .id = key,
@@ -77,33 +85,9 @@ struct FlowgraphDetachedSurfacePresenter {
                                                                            blockData),
                         .configOpen = !surfaceMeta.configCollapsed,
                         .texture = manifest.surface,
-                        .onSize = [enqueue,
-                                   surface,
-                                   flowgraphId,
-                                   surfaceMetaKey,
-                                   blockName](const Sakura::SurfaceResize& resize) {
-                            enqueue(MailResizeSurface{
-                                .surface = surface,
-                                .flowgraph = flowgraphId,
-                                .block = blockName,
-                                .metaKey = surfaceMetaKey,
-                                .placement = SurfacePlacement::Detached,
-                                .resize = {
-                                    .logicalSize = resize.logicalSize,
-                                    .framebufferSize = resize.framebufferSize,
-                                    .scale = resize.scale,
-                                },
-                            });
-                        },
-                        .onInput = [enqueue, surface](InputEvent event) {
-                            enqueue(MailSurfaceInput{
-                                .surface = surface,
-                                .event = event,
-                            });
-                        },
-                        .resolveCursor = [surface]() {
-                            return surface->cursor();
-                        },
+                        .onSize = std::move(callbacks.onSize),
+                        .onInput = std::move(callbacks.onInput),
+                        .resolveCursor = std::move(callbacks.resolveCursor),
                         .onClose = [enqueue, flowgraphId, blockName, surfaceId = manifest.id]() {
                             enqueue(MailSetSurfaceDetached{
                                 .flowgraph = flowgraphId,

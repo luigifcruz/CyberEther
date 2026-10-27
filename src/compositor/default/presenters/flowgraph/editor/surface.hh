@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_FLOWGRAPH_EDITOR_SURFACE_HH
 
 #include "../../context.hh"
+#include "../surface_callbacks.hh"
 
 #include "../../../model/messages.hh"
 #include "../../../model/meta.hh"
@@ -14,6 +15,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 
 namespace Jetstream {
 
@@ -39,37 +41,28 @@ struct FlowgraphSurfacePresenter {
                 SurfaceMeta surfaceMeta;
                 flowgraph->metadata().get(surfaceMetaKey, surfaceMeta, blockName);
 
+                auto callbacks = FlowgraphSurfaceCallbacks::Build(enqueue,
+                                                                  surface,
+                                                                  flowgraphId,
+                                                                  blockName,
+                                                                  surfaceMetaKey,
+                                                                  SurfacePlacement::Attached);
                 block.surfaces.push_back({
                     .id = jst::fmt::format("{}:surface:{}", nodeViewId, manifest.id),
                     .texture = manifest.surface,
                     .height = static_cast<F32>(surfaceMeta.attachedHeight),
                     .detached = surfaceMeta.detached,
-                    .onDetach = [enqueue, flowgraphId, blockName, surfaceId = manifest.id]() {
+                    .onDetach = [enqueue, flowgraphId, blockName, surfaceId = manifest.id](bool detached) {
                         enqueue(MailSetSurfaceDetached{
                             .flowgraph = flowgraphId,
                             .block = blockName,
                             .surface = surfaceId,
-                            .detached = true,
+                            .detached = detached,
                         });
                     },
-                    .onAttachedSize = [enqueue,
-                                        surface,
-                                       flowgraphId,
-                                       surfaceMetaKey,
-                                       blockName](const Sakura::SurfaceResize& resize) {
-                        enqueue(MailResizeSurface{
-                            .surface = surface,
-                            .flowgraph = flowgraphId,
-                            .block = blockName,
-                            .metaKey = surfaceMetaKey,
-                            .placement = SurfacePlacement::Attached,
-                            .resize = {
-                                .logicalSize = resize.logicalSize,
-                                .framebufferSize = resize.framebufferSize,
-                                .scale = resize.scale,
-                            },
-                        });
-                    },
+                    .onAttachedSize = std::move(callbacks.onSize),
+                    .onInput = std::move(callbacks.onInput),
+                    .resolveCursor = std::move(callbacks.resolveCursor),
                 });
             }
         }

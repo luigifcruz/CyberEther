@@ -6,6 +6,7 @@
 #include <jetstream/render/sakura/components/polyline.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
 #include <jetstream/render/tools/icons_fa.hh>
+#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "../../detail/access.hh"
 #include "../../detail/helpers.hh"
@@ -33,6 +34,7 @@ constexpr F32 kPadding = 8.0f;
 constexpr F32 kPinRadius = 4.0f;
 constexpr U64 kPinSegments = 16;
 constexpr F32 kGridSpacing = 23.0f;
+constexpr F32 kFrameMargin = 24.0f;
 constexpr F32 kBorderThickness = 2.0f;
 constexpr F32 kSelectedLighten = 0.25f;
 constexpr F32 kCornerRounding = 12.0f;
@@ -45,7 +47,9 @@ constexpr U64 kGridCapacity = 16384;
 constexpr U64 kGripCapacity = 64;
 constexpr U64 kChaseCapacity = 2560;
 constexpr U64 kTextCapacity = 16;
-constexpr std::array<F32, 10> kZoomSteps = {0.5f, 0.67f, 0.8f, 0.9f, 1.0f, 1.1f, 1.25f, 1.5f, 1.75f, 2.0f};
+constexpr F32 kZoomMin = 0.5f;
+constexpr F32 kZoomMax = 2.0f;
+constexpr F32 kZoomStep = 0.05f;
 constexpr F32 kLinkHoverDistance = 10.0f;
 constexpr F32 kPinHoverRadius = 10.0f;
 constexpr F32 kTitleFont = Typography::FontSize * 1.15f;
@@ -56,11 +60,17 @@ constexpr F32 kTitleGap = 8.0f;
 constexpr F32 kTimingOffset = 4.0f;
 constexpr F32 kLoadingMinHeight = 96.0f;
 constexpr F32 kAutoPanSpeed = 1000.0f;
-constexpr F32 kChevronDragTolerance = 3.0f;
+constexpr F32 kButtonDragTolerance = 3.0f;
 constexpr F32 Pi = std::numbers::pi_v<F32>;
 
 using NodeState = NodeEditor::NodeState;
 using ResizeAxes = NodeEditor::ResizeAxes;
+
+enum class HeaderButton : U8 {
+    None,
+    Chevron,
+    Detach,
+};
 
 bool HasAxis(ResizeAxes axes, ResizeAxes axis) {
     return (static_cast<U8>(axes) & static_cast<U8>(axis)) != 0;
@@ -239,6 +249,7 @@ struct NodeFrame : public Component {
     F32 titleX = 0.0f;
     F32 subtitleX = 0.0f;
     Rect chevronRect;
+    Rect detachRect;
     Rect skullRect;
     std::vector<PinLayout> pins;
     std::optional<NodeEditor::Geometry> lastGeometry;
@@ -249,6 +260,7 @@ struct NodeFrame : public Component {
     Label header;
     Label texts;
     Label icons;
+    Label actions;
     Box loadingBorder;
     Polyline chase;
     Box badge;
@@ -283,6 +295,7 @@ struct NodeFrame : public Component {
         addChild(header);
         addChild(texts);
         addChild(icons);
+        addChild(actions);
         addChild(timing);
         addChild(loadingBorder);
         addChild(chase);
@@ -377,24 +390,15 @@ struct NodeFrame : public Component {
 
         displayTitle.clear();
         chevronRect = {};
+        detachRect = {};
         skullRect = {};
         if (spec.header) {
             const bool hasDiagnostic = spec.state != NodeState::Normal && !spec.diagnostic.empty();
             const bool hasChevron = spec.collapsible && spec.onToggleCollapse;
+            const bool hasDetach = static_cast<bool>(spec.onDetach);
             const F32 iconWidth = kNodeFont;
-            F32 reserved = 0.0f;
-            if (hasChevron) {
-                reserved += iconWidth;
-            }
-            if (hasChevron && hasDiagnostic) {
-                reserved += kTitleGap;
-            }
-            if (hasDiagnostic) {
-                reserved += iconWidth;
-            }
-            if (reserved > 0.0f) {
-                reserved += kTitleGap;
-            }
+            const U64 iconCount = (hasChevron ? 1 : 0) + (hasDetach ? 1 : 0) + (hasDiagnostic ? 1 : 0);
+            const F32 reserved = static_cast<F32>(iconCount) * (iconWidth + kTitleGap);
             const F32 titleAvail = std::max(0.0f, width - reserved);
             const F32 centerSafe = std::max(0.0f, width - 2.0f * reserved);
             const F32 titleWidth = metrics.measure(Typography::DisplaySemiboldFont, spec.title, kTitleFont * r) / r;
@@ -410,12 +414,17 @@ struct NodeFrame : public Component {
             titleX = std::max(0.0f, (zone - displayWidth) * 0.5f);
 
             const F32 iconY = (kTitleFont - iconWidth) * 0.5f;
+            F32 iconX = width - iconWidth;
             if (hasChevron) {
-                chevronRect = {width - iconWidth, iconY, iconWidth, iconWidth};
+                chevronRect = {iconX, iconY, iconWidth, iconWidth};
+                iconX -= iconWidth + kTitleGap;
+            }
+            if (hasDetach) {
+                detachRect = {iconX, iconY, iconWidth, iconWidth};
+                iconX -= iconWidth + kTitleGap;
             }
             if (hasDiagnostic) {
-                const F32 skullX = hasChevron ? chevronRect.x - kTitleGap - iconWidth : width - iconWidth;
-                skullRect = {skullX, iconY, iconWidth, iconWidth};
+                skullRect = {iconX, iconY, iconWidth, iconWidth};
             }
 
             const F32 subtitleWidth = metrics.measure(Typography::DisplaySemiboldFont, spec.subtitle, kSubtitleFont * r) / r;
@@ -503,9 +512,27 @@ struct NodeFrame : public Component {
         };
     }
 
-    Rect chevronGridRect() const {
-        return {origin.x + kPadding + chevronRect.x, origin.y + kPadding + chevronRect.y,
-                chevronRect.width, chevronRect.height};
+    Rect headerGridRect(const Rect& local) const {
+        return {origin.x + kPadding + local.x, origin.y + kPadding + local.y, local.width, local.height};
+    }
+
+    HeaderButton headerButtonAt(const Extent2D<F32>& mouse) const {
+        if (chevronRect.width > 0.0f && headerGridRect(chevronRect).contains(mouse.x, mouse.y)) {
+            return HeaderButton::Chevron;
+        }
+        if (detachRect.width > 0.0f && headerGridRect(detachRect).contains(mouse.x, mouse.y)) {
+            return HeaderButton::Detach;
+        }
+        return HeaderButton::None;
+    }
+
+    void pressHeaderButton(HeaderButton button) const {
+        if (button == HeaderButton::Chevron && spec.onToggleCollapse) {
+            spec.onToggleCollapse();
+        }
+        if (button == HeaderButton::Detach && spec.onDetach) {
+            spec.onDetach();
+        }
     }
 
     Rect reach(const Rect& nodePx, F32 r) const {
@@ -528,7 +555,7 @@ struct NodeFrame : public Component {
         Rect viewport;
         bool gripHovered = false;
         bool gripActive = false;
-        bool chevronHovered = false;
+        HeaderButton hoveredButton = HeaderButton::None;
         bool selected = false;
 
         bool operator==(const Frame&) const = default;
@@ -659,7 +686,7 @@ struct NodeFrame : public Component {
             iconInstances.push_back({
                 .rect = {top.x + chevronRect.x * r, top.y + chevronRect.y * r, chevronRect.width * r, chevronRect.height * r},
                 .str = spec.collapsed ? ICON_FA_CHEVRON_RIGHT : ICON_FA_CHEVRON_DOWN,
-                .color = ctx.color(f.chevronHovered ? "text_primary" : "text_secondary"),
+                .color = ctx.color(f.hoveredButton == HeaderButton::Chevron ? "text_primary" : "text_secondary"),
                 .fontSize = kNodeFont * r,
                 .alignment = {1, 1},
             });
@@ -679,6 +706,24 @@ struct NodeFrame : public Component {
             .fontName = Typography::NodeIconFont,
             .maxCharacters = 4,
             .capacity = 2,
+        });
+
+        std::vector<Label::Instance> actionInstances;
+        if (detachRect.width > 0.0f) {
+            actionInstances.push_back({
+                .rect = {top.x + detachRect.x * r, top.y + detachRect.y * r, detachRect.width * r, detachRect.height * r},
+                .str = ICON_LC_MAXIMIZE_2,
+                .color = ctx.color(f.hoveredButton == HeaderButton::Detach ? "text_primary" : "text_secondary"),
+                .fontSize = kNodeFont * r,
+                .alignment = {1, 1},
+            });
+        }
+        actions.update({
+            .instances = std::move(actionInstances),
+            .clip = clipRect,
+            .fontName = Typography::IconFont,
+            .maxCharacters = 4,
+            .capacity = 1,
         });
 
         drawLoading(ctx, f, nodePx);
@@ -705,7 +750,7 @@ struct NodeFrame : public Component {
         for (Component* part : {static_cast<Component*>(&chrome), static_cast<Component*>(&shapes),
                                 static_cast<Component*>(&grip), static_cast<Component*>(&header),
                                 static_cast<Component*>(&texts), static_cast<Component*>(&icons),
-                                static_cast<Component*>(&timing)}) {
+                                static_cast<Component*>(&actions), static_cast<Component*>(&timing)}) {
             layoutChild(ctx, *part, f.viewport);
         }
         if (loadingShown) {
@@ -905,6 +950,10 @@ struct GraphRoot : public Component {
     Curves wire;
 
     Extent2D<F32> pan = {0.0f, 0.0f};
+    bool framed = false;
+    std::optional<Rect> framedBounds;
+    Extent2D<F32> framedViewport = {0.0f, 0.0f};
+    F32 framedRatio = 0.0f;
     F32 ratio = 1.0f;
     F32 scaling = 1.0f;
     F32 fringe = 1.0f;
@@ -916,6 +965,7 @@ struct GraphRoot : public Component {
     Interaction interaction = Interaction::None;
     bool middlePressed = false;
     std::string interactionNode;
+    U8 contentButtons = 0;
     Extent2D<F32> dragStartMouse = {0.0f, 0.0f};
     Extent2D<F32> panStart = {0.0f, 0.0f};
     std::vector<std::pair<std::string, Extent2D<F32>>> dragOrigins;
@@ -923,15 +973,15 @@ struct GraphRoot : public Component {
     std::vector<std::string> boxBase;
     Extent2D<F32> resizeStartContent = {0.0f, 0.0f};
     NodeEditor::PinRef linkStart;
-    bool chevronArmed = false;
-    Extent2D<F32> chevronPressMouse = {0.0f, 0.0f};
+    HeaderButton armedButton = HeaderButton::None;
+    Extent2D<F32> buttonPressMouse = {0.0f, 0.0f};
     bool childOrderDirty = true;
 
     std::string hoveredNode;
     std::optional<NodeEditor::PinRef> hoveredPin;
     std::string hoveredLink;
     std::string resizeHoverNode;
-    bool chevronHovered = false;
+    HeaderButton hoveredButton = HeaderButton::None;
     std::string moveTarget;
 
     struct LinkGeometry {
@@ -1133,8 +1183,7 @@ struct GraphRoot : public Component {
         if (frame->spec.resize != ResizeAxes::None && frame->gripHandle().contains(mouse.x, mouse.y)) {
             return SurfaceCursor::ResizeNWSE;
         }
-        if (frame->chevronRect.width > 0.0f && frame->chevronGridRect().contains(mouse.x, mouse.y) &&
-            !pinAt(mouse).has_value()) {
+        if (frame->headerButtonAt(mouse) != HeaderButton::None && !pinAt(mouse).has_value()) {
             return SurfaceCursor::Hand;
         }
         return std::nullopt;
@@ -1145,7 +1194,7 @@ struct GraphRoot : public Component {
         hoveredPin.reset();
         hoveredLink.clear();
         resizeHoverNode.clear();
-        chevronHovered = false;
+        hoveredButton = HeaderButton::None;
 
         if (!mousePx.has_value() || !viewport.contains(mousePx->x, mousePx->y)) {
             return;
@@ -1169,7 +1218,7 @@ struct GraphRoot : public Component {
             hoveredNode = topmost;
             if (!hoveredNode.empty()) {
                 const auto* frame = frameFor(hoveredNode);
-                chevronHovered = frame->chevronRect.width > 0.0f && frame->chevronGridRect().contains(mouse.x, mouse.y);
+                hoveredButton = frame->headerButtonAt(mouse);
             }
         }
 
@@ -1209,14 +1258,15 @@ struct GraphRoot : public Component {
     }
 
     void zoomTo(F32 next) {
-        next = std::clamp(next, kZoomSteps.front(), kZoomSteps.back());
+        framed = true;
+        next = std::clamp(next, kZoomMin, kZoomMax);
         if (next == zoom) {
             return;
         }
         const F32 nextRatio = ratio / zoom * next;
         if (viewport.width > 0.0f && viewport.height > 0.0f) {
             const Extent2D<F32> center = {viewport.x + viewport.width * 0.5f, viewport.y + viewport.height * 0.5f};
-            const Extent2D<F32> anchor = toGrid(center);
+            const Extent2D<F32> anchor = {(center.x - viewport.x) / ratio - pan.x, (center.y - viewport.y) / ratio - pan.y};
             pan = {(center.x - viewport.x) / nextRatio - anchor.x, (center.y - viewport.y) / nextRatio - anchor.y};
         }
         ratio = nextRatio;
@@ -1224,22 +1274,36 @@ struct GraphRoot : public Component {
         invalidate(Dirty::Layout);
     }
 
-    void zoomStep(int direction) {
-        if (direction > 0) {
-            for (const F32 step : kZoomSteps) {
-                if (step > zoom + 1e-3f) {
-                    zoomTo(step);
-                    return;
-                }
-            }
-        } else {
-            for (auto it = kZoomSteps.rbegin(); it != kZoomSteps.rend(); ++it) {
-                if (*it < zoom - 1e-3f) {
-                    zoomTo(*it);
-                    return;
-                }
-            }
+    void frameContent() {
+        if (framed || !config.frameOnOpen || depth.empty() || viewport.width <= 0.0f || viewport.height <= 0.0f) {
+            return;
         }
+        std::optional<Rect> bounds;
+        for (const auto& id : depth) {
+            const Rect& rect = frameFor(id)->rect;
+            if (rect.width <= 0.0f || rect.height <= 0.0f) {
+                return;
+            }
+            bounds = bounds.has_value() ? Union(*bounds, rect) : rect;
+        }
+        const Extent2D<F32> size = {viewport.width, viewport.height};
+        if (bounds == framedBounds && size == framedViewport && ratio == framedRatio) {
+            return;
+        }
+        const auto place = [&](F32 start, F32 extent, F32 available) {
+            const F32 room = available / ratio;
+            return extent + 2.0f * kFrameMargin <= room ? (room - extent) * 0.5f - start : kFrameMargin - start;
+        };
+        pan = {place(bounds->x, bounds->width, viewport.width), place(bounds->y, bounds->height, viewport.height)};
+        framedBounds = bounds;
+        framedViewport = size;
+        framedRatio = ratio;
+    }
+
+    void zoomStep(int direction) {
+        const F32 index = zoom / kZoomStep;
+        const F32 next = direction > 0 ? std::floor(index + 1e-3f) + 1.0f : std::ceil(index - 1e-3f) - 1.0f;
+        zoomTo(next * kZoomStep);
     }
 
     void autoPan(const Context& ctx) {
@@ -1299,7 +1363,7 @@ struct GraphRoot : public Component {
 
     void layout(const Context& ctx) override {
         viewport = frame();
-        ratio = std::max(1e-3f, ctx.pixelRatio) * zoom;
+        ratio = std::max(1e-3f, ctx.pixelRatio) * zoom * std::max(1e-3f, config.scale);
         scaling = std::max(1e-3f, ScalingFactor(ctx));
         fringe = std::max(1e-3f, ctx.pixelRatio) / scaling;
 
@@ -1313,6 +1377,7 @@ struct GraphRoot : public Component {
         for (const auto& id : depth) {
             frameFor(id)->measureLayout(measureCtx);
         }
+        frameContent();
 
         linkGeometry.clear();
         for (const auto& link : config.links) {
@@ -1370,7 +1435,7 @@ struct GraphRoot : public Component {
                 .viewport = localViewport,
                 .gripHovered = resizeHoverNode == depth[i],
                 .gripActive = interaction == Interaction::Resize && interactionNode == depth[i],
-                .chevronHovered = chevronHovered && hoveredNode == depth[i],
+                .hoveredButton = hoveredNode == depth[i] ? hoveredButton : HeaderButton::None,
                 .selected = selected(depth[i]),
             });
             layoutChild(nodeCtx, *frame, localViewport);
@@ -1627,7 +1692,7 @@ struct GraphRoot : public Component {
         std::optional<NodeEditor::PinRef> pin;
         std::string link;
         std::string resize;
-        bool chevron = false;
+        HeaderButton button = HeaderButton::None;
         std::string tooltip;
 
         bool operator==(const HoverKey&) const = default;
@@ -1640,7 +1705,7 @@ struct GraphRoot : public Component {
             .pin = hoveredPin,
             .link = hoveredLink,
             .resize = resizeHoverNode,
-            .chevron = chevronHovered,
+            .button = hoveredButton,
         };
         if (interaction == Interaction::None && mousePx.has_value() && viewport.contains(mousePx->x, mousePx->y)) {
             const auto mouse = toGrid(*mousePx);
@@ -1653,6 +1718,9 @@ struct GraphRoot : public Component {
     }
 
     bool mouseEvent(const MouseEvent& event) override {
+        if (event.type == MouseEventType::Click || event.type == MouseEventType::Scroll) {
+            framed = true;
+        }
         const HoverKey before = hoverKey();
         const auto previous = mousePx;
         const bool handled = dispatchMouse(event);
@@ -1694,6 +1762,11 @@ struct GraphRoot : public Component {
                     requestEditorCursor();
                     return false;
                 }
+                if (armedButton != HeaderButton::None &&
+                    (std::abs(mousePx->x - buttonPressMouse.x) / ratio >= kButtonDragTolerance ||
+                     std::abs(mousePx->y - buttonPressMouse.y) / ratio >= kButtonDragTolerance)) {
+                    armedButton = HeaderButton::None;
+                }
                 requestEditorCursor();
                 return true;
             }
@@ -1707,6 +1780,7 @@ struct GraphRoot : public Component {
             }
             case MouseEventType::Leave: {
                 moveTarget.clear();
+                armedButton = HeaderButton::None;
                 for (const auto& id : depth) {
                     frameFor(id)->dispatch(event);
                 }
@@ -1724,7 +1798,7 @@ struct GraphRoot : public Component {
             }
             case MouseEventType::Click: {
                 if (event.button == MouseButton::Right) {
-                    return rightClick();
+                    return rightClick(event);
                 }
                 if (event.button == MouseButton::Middle) {
                     middlePressed = true;
@@ -1737,11 +1811,33 @@ struct GraphRoot : public Component {
         }
     }
 
-    bool rightClick() {
+    static U8 ButtonBit(MouseButton button) {
+        return static_cast<U8>(1u << static_cast<U8>(button));
+    }
+
+    bool captureContent(const MouseEvent& event) {
+        if (auto* frame = frameFor(interactionNode)) {
+            frame->dispatch(event);
+        }
+        contentButtons |= ButtonBit(event.button);
+        return true;
+    }
+
+    bool rightClick(const MouseEvent& event) {
+        if (interaction == Interaction::Content) {
+            return captureContent(event);
+        }
         const auto mouse = toGrid(*mousePx);
         const std::string topmost = topmostNodeAt(mouse);
         if (!topmost.empty()) {
-            if (auto* frame = frameFor(topmost); frame && frame->spec.onContextMenu) {
+            auto* frame = frameFor(topmost);
+            if (frame && frame->dispatch(event)) {
+                if (interaction == Interaction::None) {
+                    interaction = Interaction::Content;
+                    interactionNode = topmost;
+                    contentButtons = ButtonBit(MouseButton::Right);
+                }
+            } else if (frame && frame->spec.onContextMenu) {
                 frame->spec.onContextMenu();
             }
             return true;
@@ -1753,6 +1849,9 @@ struct GraphRoot : public Component {
     }
 
     bool leftClick(const MouseEvent& event) {
+        if (interaction == Interaction::Content) {
+            return captureContent(event);
+        }
         if (interaction != Interaction::None) {
             return true;
         }
@@ -1810,6 +1909,7 @@ struct GraphRoot : public Component {
             if (frame->dispatch(event)) {
                 interaction = Interaction::Content;
                 interactionNode = hoveredNode;
+                contentButtons = ButtonBit(MouseButton::Left);
                 selection = {hoveredNode};
                 raise(selection);
                 return true;
@@ -1818,8 +1918,8 @@ struct GraphRoot : public Component {
                 toggleSelection(hoveredNode);
                 return true;
             }
-            chevronArmed = chevronHovered;
-            chevronPressMouse = *mousePx;
+            armedButton = hoveredButton;
+            buttonPressMouse = *mousePx;
             beginNodeDrag(hoveredNode);
             return true;
         }
@@ -1851,15 +1951,27 @@ struct GraphRoot : public Component {
         }
         interaction = Interaction::None;
         interactionNode.clear();
+        contentButtons = 0;
         dragOrigins.clear();
-        chevronArmed = false;
+        armedButton = HeaderButton::None;
     }
 
     bool release(const MouseEvent& event) {
         if (event.button == MouseButton::Middle) {
             return std::exchange(middlePressed, false);
         }
-        if (event.button != MouseButton::Left) {
+        if (interaction == Interaction::Content && (contentButtons & ButtonBit(event.button)) != 0) {
+            if (auto* frame = frameFor(interactionNode)) {
+                frame->dispatch(event);
+            }
+            contentButtons &= static_cast<U8>(~ButtonBit(event.button));
+            if (contentButtons == 0) {
+                interaction = Interaction::None;
+                interactionNode.clear();
+            }
+            return true;
+        }
+        if (event.button != MouseButton::Left || interaction == Interaction::Content) {
             for (const auto& id : depth) {
                 frameFor(id)->dispatch(event);
             }
@@ -1867,11 +1979,6 @@ struct GraphRoot : public Component {
         }
 
         switch (interaction) {
-            case Interaction::Content:
-                if (auto* frame = frameFor(interactionNode)) {
-                    frame->dispatch(event);
-                }
-                break;
             case Interaction::LinkCreation: {
                 resolveHover();
                 if (hoveredPin.has_value() && shouldSnap(*hoveredPin) && config.onLinkCreated) {
@@ -1884,13 +1991,12 @@ struct GraphRoot : public Component {
                 break;
             case Interaction::Node: {
                 auto* frame = frameFor(interactionNode);
-                if (chevronArmed && mousePx.has_value() && frame && frame->chevronRect.width > 0.0f) {
-                    const F32 dx = std::abs(mousePx->x - chevronPressMouse.x) / ratio;
-                    const F32 dy = std::abs(mousePx->y - chevronPressMouse.y) / ratio;
-                    const auto mouse = toGrid(*mousePx);
-                    if (frame->chevronGridRect().contains(mouse.x, mouse.y) && dx < kChevronDragTolerance &&
-                        dy < kChevronDragTolerance && frame->spec.onToggleCollapse) {
-                        frame->spec.onToggleCollapse();
+                if (armedButton != HeaderButton::None && mousePx.has_value() && frame) {
+                    const F32 dx = std::abs(mousePx->x - buttonPressMouse.x) / ratio;
+                    const F32 dy = std::abs(mousePx->y - buttonPressMouse.y) / ratio;
+                    if (frame->headerButtonAt(toGrid(*mousePx)) == armedButton && dx < kButtonDragTolerance &&
+                        dy < kButtonDragTolerance) {
+                        frame->pressHeaderButton(armedButton);
                     }
                 }
                 break;
@@ -1898,11 +2004,9 @@ struct GraphRoot : public Component {
             default:
                 break;
         }
-        chevronArmed = false;
-        if (interaction != Interaction::Content) {
-            for (const auto& id : depth) {
-                frameFor(id)->dispatch(event);
-            }
+        armedButton = HeaderButton::None;
+        for (const auto& id : depth) {
+            frameFor(id)->dispatch(event);
         }
         interaction = Interaction::None;
         interactionNode.clear();
@@ -2039,7 +2143,7 @@ F32 NodeEditor::zoom() const {
 
 bool NodeEditor::canZoom(int direction) const {
     const F32 zoom = impl->root.zoom;
-    return direction > 0 ? zoom < kZoomSteps.back() - 1e-3f : zoom > kZoomSteps.front() + 1e-3f;
+    return direction > 0 ? zoom < kZoomMax - 1e-3f : zoom > kZoomMin + 1e-3f;
 }
 
 void NodeEditor::zoomStep(int direction) {
@@ -2048,6 +2152,10 @@ void NodeEditor::zoomStep(int direction) {
 
 void NodeEditor::zoomReset() {
     impl->root.zoomTo(1.0f);
+}
+
+void NodeEditor::stopFraming() {
+    impl->root.framed = true;
 }
 
 bool NodeEditor::shown() const {

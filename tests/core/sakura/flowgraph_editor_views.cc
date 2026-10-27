@@ -4,6 +4,7 @@
 #include "component_harness.hh"
 #include "typist.hh"
 
+#include "compositor/default/presenters/flowgraph/editor/surface.hh"
 #include "compositor/default/presenters/flowgraph/surface.hh"
 #include "compositor/default/views/components/modal_header.hh"
 #include "compositor/default/views/flowgraph/detached_config.hh"
@@ -60,10 +61,11 @@ const F32 kPasteY = RowY(1, 0);
 const F32 kRenameY = RowY(2, 0);
 const F32 kInspectY = RowY(3, 0);
 const F32 kDetachY = RowY(4, 0);
-const F32 kDeviceY = RowY(5, 1);
-const F32 kReloadY = RowY(6, 1);
-const F32 kDocumentationY = RowY(7, 2);
-const F32 kDeleteY = RowY(8, 3);
+const F32 kPlotY = RowY(5, 0);
+const F32 kDeviceY = RowY(6, 1);
+const F32 kReloadY = RowY(7, 1);
+const F32 kDocumentationY = RowY(8, 2);
+const F32 kDeleteY = RowY(9, 3);
 
 template<typename Update>
 bool Settles(Frames& frames, Update update) {
@@ -96,6 +98,8 @@ struct MenuRig {
     bool pasteEnabled = true;
     bool configDetachEnabled = true;
     bool configDetached = false;
+    bool plotDetachEnabled = true;
+    bool plotDetached = false;
     std::vector<FlowgraphNodeMenu::DeviceOption> devices = {{.label = "CPU", .selected = true}, {.label = "Metal"}};
 
     MenuRig() {
@@ -116,12 +120,15 @@ struct MenuRig {
             .pasteEnabled = pasteEnabled,
             .configDetachEnabled = configDetachEnabled,
             .configDetached = configDetached,
+            .plotDetachEnabled = plotDetachEnabled,
+            .plotDetached = plotDetached,
             .devices = devices,
             .onCopy = record("copy"),
             .onPaste = record("paste"),
             .onRename = record("rename"),
             .onInspect = record("inspect"),
             .onToggleConfigDetach = record("detach"),
+            .onTogglePlotDetach = record("plot"),
             .onReload = record("reload"),
             .onDelete = record("delete"),
             .onDocumentation = record("documentation"),
@@ -155,6 +162,7 @@ struct NodeMenuRig {
     LayerSlot slot;
     LayerHost host;
     U64 documentation = 0;
+    std::vector<FlowgraphNode::Surface> surfaces;
 
     NodeMenuRig() {
         node.update(config());
@@ -164,6 +172,7 @@ struct NodeMenuRig {
 
     FlowgraphNode::Config config() {
         auto config = NodeConfig();
+        config.block.surfaces = surfaces;
         config.onDocumentation = [this] {
             ++documentation;
         };
@@ -322,6 +331,7 @@ TEST_CASE("Node menu entries close the menu and then run their action",
         {kRenameY, "rename"},
         {kInspectY, "inspect"},
         {kDetachY, "detach"},
+        {kPlotY, "plot"},
         {kReloadY, "reload"},
         {kDocumentationY, "documentation"},
         {kDeleteY, "delete"},
@@ -353,11 +363,13 @@ TEST_CASE("Node menu paste, detach, and device entries follow their enabled flag
     MenuRig rig;
     rig.pasteEnabled = false;
     rig.configDetachEnabled = false;
+    rig.plotDetachEnabled = false;
     rig.devices.clear();
     rig.show();
 
     rig.host.click(kMenuX, kPasteY);
     rig.host.click(kMenuX, kDetachY);
+    rig.host.click(kMenuX, kPlotY);
     rig.host.click(kMenuX, kDeviceY);
     rig.host.place(MakeContext(), kScreen);
     CHECK(rig.calls.empty());
@@ -369,6 +381,13 @@ TEST_CASE("Node menu paste, detach, and device entries follow their enabled flag
     rig.show();
     rig.host.click(kMenuX, kDetachY);
     CHECK(rig.calls == std::vector<std::string>{"close", "detach"});
+
+    rig.calls.clear();
+    rig.plotDetached = true;
+    rig.plotDetachEnabled = true;
+    rig.show();
+    rig.host.click(kMenuX, kPlotY);
+    CHECK(rig.calls == std::vector<std::string>{"close", "plot"});
 }
 
 TEST_CASE("Node menu device submenu reports the index of the chosen device",
@@ -947,4 +966,94 @@ TEST_CASE("Pin and wire tooltips refresh tensor attributes under a resting point
     retag("12 kHz");
     CHECK(labelRect("12 kHz").has_value());
     CHECK_FALSE(labelRect("96 kHz").has_value());
+}
+
+TEST_CASE("Node plot detach sends every attached surface out and the plot menu entry toggles them all",
+          "[core][sakura][flowgraph][editor-views]") {
+    NodeMenuRig rig;
+    std::vector<std::string> calls;
+    const auto plot = [&](const std::string& id, bool detached) {
+        return FlowgraphNode::Surface{
+            .id = id,
+            .detached = detached,
+            .onDetach = [&calls, id](bool value) {
+                calls.push_back(id + (value ? ":detach" : ":attach"));
+            },
+        };
+    };
+
+    rig.surfaces = {plot("a", false), plot("b", true)};
+    rig.node.update(rig.config());
+    auto spec = rig.node.takeNode();
+    REQUIRE(spec.onDetach);
+    spec.onDetach();
+    CHECK(calls == std::vector<std::string>{"a:detach"});
+
+    calls.clear();
+    rig.node.update(rig.config());
+    rig.choose(kPlotY);
+    CHECK(calls == std::vector<std::string>{"a:detach"});
+
+    calls.clear();
+    rig.surfaces[0].detached = true;
+    rig.node.update(rig.config());
+    CHECK_FALSE(rig.node.takeNode().onDetach);
+    rig.node.update(rig.config());
+    rig.choose(kPlotY);
+    CHECK(calls == std::vector<std::string>{"a:attach", "b:attach"});
+
+    calls.clear();
+    rig.surfaces.clear();
+    rig.node.update(rig.config());
+    CHECK_FALSE(rig.node.takeNode().onDetach);
+    rig.node.update(rig.config());
+    rig.choose(kPlotY);
+    CHECK(calls.empty());
+}
+
+TEST_CASE("Attached surface presenter forwards plot input and cursor and reports detach requests as surface mail",
+          "[core][sakura][flowgraph][editor-views]") {
+    SurfaceRig rig;
+    const auto& flowgraph = rig.state.flowgraph.items.at("graph");
+    REQUIRE(flowgraph->metadata().set("surface_default", SurfaceMeta{}, "source") == Result::SUCCESS);
+    auto data = ViewBlock(*flowgraph, "source");
+    data.surfaces = {rig.module->surface()};
+    FlowgraphNode::BlockData block;
+    FlowgraphSurfacePresenter(rig.context).buildSurfaces(block,
+                                                         rig.state.flowgraph.items.at("graph"),
+                                                         "graph",
+                                                         "source",
+                                                         "graph:source",
+                                                         data);
+    REQUIRE(block.surfaces.size() == 1);
+    const auto& surface = block.surfaces.front();
+    CHECK_FALSE(surface.detached);
+    REQUIRE(surface.onInput);
+    REQUIRE(surface.resolveCursor);
+    REQUIRE(surface.onAttachedSize);
+    REQUIRE(surface.onDetach);
+
+    surface.onInput(Mouse(MouseEventType::Click, 4.0f, 8.0f));
+    REQUIRE(rig.mails.size() == 1);
+    const auto input = std::get<MailSurfaceInput>(rig.mails[0]);
+    CHECK(input.surface == rig.module->surface());
+    REQUIRE(std::holds_alternative<MouseEvent>(input.event));
+    CHECK(std::get<MouseEvent>(input.event).type == MouseEventType::Click);
+    CHECK(surface.resolveCursor() == rig.module->surface()->cursor());
+
+    surface.onAttachedSize({.logicalSize = {120, 80}, .framebufferSize = {240, 160}, .scale = 2.0f});
+    REQUIRE(rig.mails.size() == 2);
+    const auto resize = std::get<MailResizeSurface>(rig.mails[1]);
+    CHECK(resize.surface == rig.module->surface());
+    CHECK(resize.placement == SurfacePlacement::Attached);
+    CHECK(resize.metaKey == "surface_default");
+    CHECK(resize.resize.framebufferSize == Extent2D<U64>{240, 160});
+
+    surface.onDetach(true);
+    REQUIRE(rig.mails.size() == 3);
+    const auto detach = std::get<MailSetSurfaceDetached>(rig.mails[2]);
+    CHECK(detach.flowgraph == "graph");
+    CHECK(detach.block == "source");
+    CHECK(detach.surface == "default");
+    CHECK(detach.detached);
 }
