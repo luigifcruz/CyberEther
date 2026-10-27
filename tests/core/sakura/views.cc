@@ -1774,7 +1774,7 @@ TEST_CASE("Opening at the cursor shows the catalog there with its own search fie
     CHECK_FALSE(rig.host.popups.interactiveAt({190.0f, 310.0f}));
     const auto fields = Find<Sakura::PillField>(rig.host.popups);
     REQUIRE(fields.size() == 1);
-    CHECK(Peek::Frame(*fields[0]) == Jetstream::Rect{200.0f, 300.0f, 300.0f, 34.0f});
+    CHECK(Peek::Frame(*fields[0]) == Jetstream::Rect{200.0f, 300.0f, 748.0f, 34.0f});
     CHECK(Find<Sakura::TextInput>(*fields[0]).size() == 1);
     CHECK(Find<Sakura::TextInput>(rig.picker.pillComponent()).empty());
 

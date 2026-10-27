@@ -15,6 +15,7 @@ struct SidebarItem : public Component {
         std::string icon;
         std::string label;
         bool selected = false;
+        F32 indent = 0.0f;
         Callback<void()> onSelect;
 
         bool operator==(const Config&) const = default;

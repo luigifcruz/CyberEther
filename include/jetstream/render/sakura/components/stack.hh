@@ -30,6 +30,7 @@ struct Stack : public Component {
         Axis axis = Axis::Vertical;
         F32 spacing = Spacing;
         bool centerCross = true;
+        Component* widthOf = nullptr;
         std::vector<Item> items;
 
         bool operator==(const Config&) const = default;

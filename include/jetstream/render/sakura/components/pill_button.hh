@@ -18,6 +18,7 @@ struct PillButton : public Component {
         std::string backgroundColorKey = "pill_bg";
         std::string hoverColorKey = "pill_hover_bg";
         bool raised = false;
+        bool disabled = false;
         F32 height = 28.0f;
         Callback<void()> onClick;
 

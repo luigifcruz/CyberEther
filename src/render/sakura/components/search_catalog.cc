@@ -14,6 +14,7 @@
 #include "../context.hh"
 #include "../detail/text_metrics.hh"
 #include "../metrics.hh"
+#include "tools/text.hh"
 
 #include <algorithm>
 #include <cctype>
@@ -47,9 +48,8 @@ constexpr F32 kLineGap = 3.0f;
 constexpr F32 kHeaderSize = 12.0f;
 constexpr F32 kRowIcon = 16.0f;
 constexpr F32 kRowIconGap = 10.0f;
-constexpr F32 kWheelStep = 48.0f;
 constexpr F32 kDocsMinHeight = 360.0f;
-constexpr F32 kDocsPadding = 14.0f;
+constexpr F32 kDocsPadding = 10.0f;
 constexpr F32 kDocsFooterPadding = 10.0f;
 constexpr F32 kDocsFooterGap = 10.0f;
 constexpr U64 kRowCapacity = 64;
@@ -57,13 +57,6 @@ constexpr F32 kChipHeight = 24.0f;
 constexpr F32 kChipPadX = 10.0f;
 constexpr F32 kChipGap = 6.0f;
 constexpr F32 kChipSize = 12.0f;
-
-std::string Lower(std::string value) {
-    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
-    });
-    return value;
-}
 
 std::string Upper(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
@@ -600,21 +593,21 @@ std::vector<U64> SearchCatalog::Rank(const std::vector<Item>& items,
         }
         return order;
     }
-    const std::string needle = Lower(query);
+    const std::string needle = Jetstream::Text::ToLower(query);
     std::vector<std::pair<U64, U64>> ranked;
     for (U64 index = 0; index < items.size(); ++index) {
         if (!included(items[index])) {
             continue;
         }
-        const std::string title = Lower(items[index].title);
+        const std::string title = Jetstream::Text::ToLower(items[index].title);
         U64 tier = 0;
         if (title.rfind(needle, 0) == 0) {
             tier = 0;
         } else if (title.find(needle) != std::string::npos) {
             tier = 1;
-        } else if (Lower(items[index].summary).find(needle) != std::string::npos) {
+        } else if (Jetstream::Text::ToLower(items[index].summary).find(needle) != std::string::npos) {
             tier = 2;
-        } else if (Lower(items[index].group).find(needle) != std::string::npos) {
+        } else if (Jetstream::Text::ToLower(items[index].group).find(needle) != std::string::npos) {
             tier = 3;
         } else {
             continue;
@@ -761,21 +754,21 @@ Extent2D<F32> SearchCatalog::measure(const Context& ctx, Extent2D<F32> available
     auto& s = *impl;
     const F32 infinite = std::numeric_limits<F32>::infinity();
     const F32 padding = Px(ctx, kCardPadding);
-    const F32 listContent = s.listHeight(*this, ctx, Px(ctx, s.config.listWidth)) + 2.0f * padding;
-    F32 card = std::min(Px(ctx, s.config.maxHeight), listContent);
+    const F32 gap = Px(ctx, kCardGap);
+    const F32 listWidth = FitLength(Px(ctx, s.config.listWidth), available.x);
+    const F32 full = Px(ctx, s.config.listWidth) + gap + Px(ctx, s.config.docsWidth);
+    const bool docsShell = (s.docs || s.config.height != 0.0f) && full <= available.x;
+    const F32 width = FitLength(std::ceil(docsShell ? full : listWidth), available.x);
+    const F32 field = s.config.field ? measureChild(*s.config.field, ctx, {width, infinite}).y + gap : 0.0f;
+    F32 natural = s.listHeight(*this, ctx, listWidth) + 2.0f * padding;
     if (s.docs) {
-        card = std::max(card, std::min(Px(ctx, s.config.maxHeight), Px(ctx, kDocsMinHeight)));
+        natural = std::max(natural, Px(ctx, kDocsMinHeight));
     }
-    F32 height = card;
-    if (s.config.field) {
-        height += measureChild(*s.config.field, ctx, {Px(ctx, s.config.listWidth), infinite}).y + Px(ctx, kCardGap);
+    natural += field;
+    if (s.config.maxHeight > 0.0f) {
+        natural = std::min(natural, Px(ctx, s.config.maxHeight));
     }
-    F32 width = Px(ctx, s.config.listWidth);
-    const F32 full = width + Px(ctx, kCardGap) + Px(ctx, s.config.docsWidth);
-    if (s.docs && full <= available.x) {
-        width = full;
-    }
-    return FitExtent({std::ceil(width), std::ceil(height)}, available);
+    return {width, ResolveLength(ctx, s.config.height, std::ceil(natural), available.y)};
 }
 
 void SearchCatalog::layout(const Context& ctx) {
@@ -787,28 +780,30 @@ void SearchCatalog::layout(const Context& ctx) {
     const bool fits = bounds.width >= Px(ctx, s.config.listWidth) + gap + Px(ctx, s.config.docsWidth);
     s.docsFit = fits;
     const bool docs = s.docs && s.docsFit;
+    const bool steady = s.config.height != 0.0f;
+    const bool docsShell = (s.docs || steady) && s.docsFit;
     for (auto* part : std::initializer_list<Component*>{&s.docsScroll, &s.docsDivider, &s.docsFooterLabel, &s.docsButtonRow}) {
         part->setVisible(docs);
     }
-    const F32 docsWidth = docs ? Px(ctx, s.config.docsWidth) : 0.0f;
+    const F32 docsWidth = docsShell ? Px(ctx, s.config.docsWidth) : 0.0f;
     const bool docsLeft = s.config.docsSide == DocsSide::Left;
-    const F32 listX = docs && docsLeft ? bounds.right() - listWidth : bounds.x;
+    const F32 listX = docsShell && docsLeft ? bounds.right() - listWidth : bounds.x;
     const F32 docsX = docsLeft ? bounds.x : listX + listWidth + gap;
 
     F32 top = bounds.y;
     if (s.config.field) {
-        const F32 height = measureChild(*s.config.field, ctx, {listWidth, infinite}).y;
-        layoutChild(ctx, *s.config.field, {listX, top, listWidth, height});
+        const F32 height = measureChild(*s.config.field, ctx, {bounds.width, infinite}).y;
+        layoutChild(ctx, *s.config.field, {bounds.x, top, bounds.width, height});
         top += height + gap;
     }
     const F32 cardHeight = std::max(0.0f, bounds.bottom() - top);
     const F32 padding = Px(ctx, kCardPadding);
     const F32 listContent = s.listHeight(*this, ctx, listWidth) + 2.0f * padding;
-    s.listCard = {listX, top, listWidth, std::min(cardHeight, listContent)};
-    s.docsCard = docs ? Rect{docsX, top, docsWidth, cardHeight} : Rect{};
+    s.listCard = {listX, top, listWidth, docs || steady ? cardHeight : std::min(cardHeight, listContent)};
+    s.docsCard = docsShell ? Rect{docsX, top, docsWidth, cardHeight} : Rect{};
 
     std::vector<Rect> rects = {s.listCard};
-    if (docs) {
+    if (docsShell) {
         rects.push_back(s.docsCard);
     }
     s.cards.update({

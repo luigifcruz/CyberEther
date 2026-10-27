@@ -4,10 +4,12 @@
 #include "fonts.hh"
 #include "component_harness.hh"
 
+#include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/button.hh>
 #include <jetstream/render/sakura/components/combo.hh>
 #include <jetstream/render/sakura/components/progress_bar.hh>
 #include <jetstream/render/sakura/components/label.hh>
+#include <jetstream/render/sakura/components/pill_button.hh>
 #include <jetstream/render/sakura/components/qr_code.hh>
 #include <jetstream/render/sakura/components/spinner.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
@@ -669,6 +671,76 @@ TEST_CASE("Spinners repaint only while the clock ticks and settle when frozen or
     period = 0.0f;
     frames.timeStep = 0.05;
     REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == 0);
+}
+
+TEST_CASE("Disabled pill buttons ignore clicks, drop hover and the hand cursor, and fade",
+          "[core][sakura][controls]") {
+    const Scene scene;
+    auto ctx = scene.context();
+    ctx.palette = DistinctPalette();
+    U64 clicked = 0;
+    Sakura::PillButton button;
+    const auto configure = [&](bool disabled) {
+        button.update({.icon = "+", .label = "Send", .disabled = disabled, .onClick = [&] { ++clicked; }});
+    };
+    const auto fill = [&] {
+        return Find<Sakura::Box>(button).at(1)->config().instances.at(0).backgroundColor;
+    };
+    Host host(button);
+    configure(false);
+    host.place(ctx, {10.0f, 10.0f, 120.0f, 28.0f});
+    const auto enabled = fill();
+    CHECK(Peek::CursorAt(button, {50.0f, 24.0f}) == SurfaceCursor::Hand);
+    CHECK(host.click(50.0f, 24.0f));
+    CHECK(clicked == 1);
+    host.send(Mouse(MouseEventType::Move, 50.0f, 24.0f));
+    host.place(ctx, {10.0f, 10.0f, 120.0f, 28.0f});
+    CHECK(fill().r == ctx.color("pill_hover_bg").r);
+
+    configure(true);
+    host.place(ctx, {10.0f, 10.0f, 120.0f, 28.0f});
+    CHECK(fill().r == ctx.color("pill_bg").r);
+    CHECK(fill().a == Catch::Approx(enabled.a * 0.6f));
+    for (const auto* text : Find<Sakura::Text>(button)) {
+        CHECK(text->config().opacity == 0.6f);
+    }
+    CHECK_FALSE(Peek::CursorAt(button, {50.0f, 24.0f}).has_value());
+    CHECK_FALSE(host.click(50.0f, 24.0f));
+    CHECK_FALSE(host.send(Mouse(MouseEventType::Move, 50.0f, 24.0f)));
+    CHECK(clicked == 1);
+
+    configure(false);
+    host.place(ctx, {10.0f, 10.0f, 120.0f, 28.0f});
+    CHECK(fill() == enabled);
+    CHECK(host.click(50.0f, 24.0f));
+    CHECK(clicked == 2);
+}
+
+TEST_CASE("Pill buttons repaint without rebuilding when they toggle disabled", "[core][sakura][controls]") {
+    Scene scene;
+    auto ctx = scene.context();
+    ctx.palette = DistinctPalette();
+    Sakura::PillButton button;
+    Place place(button, {10.0f, 10.0f, 120.0f, 28.0f});
+    Frames frames(place, kScreen, ctx);
+    bool disabled = false;
+    const auto update = [&] {
+        button.update({.label = "Send", .disabled = disabled, .onClick = [] {}});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    disabled = true;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(QuietMoves(frames, update, {{50.0f, 24.0f}, {60.0f, 24.0f}}, [&](const MouseEvent& event) {
+        return place.send(event);
+    }));
+
+    disabled = false;
+    CHECK(RepaintOnly(frames.run(update)));
     CHECK(Retains(frames, update));
     CHECK(frames.restructures == 0);
 }

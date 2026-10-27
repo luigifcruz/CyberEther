@@ -125,11 +125,11 @@ TEST_CASE("Search catalog lists results in rank order and pairs the list with a 
     CHECK(rig.bounds.height == 360.0f);
     const auto scrolls = rig.all<Sakura::ScrollArea>();
     REQUIRE(scrolls.size() == 1);
-    CHECK(Peek::Frame(*scrolls[0]).x == 308.0f + 14.0f);
+    CHECK(Peek::Frame(*scrolls[0]).x == 308.0f + 10.0f);
 
     rig.config.docsSide = Sakura::SearchCatalog::DocsSide::Left;
     rig.place();
-    CHECK(Peek::Frame(*rig.all<Sakura::ScrollArea>()[0]).x == 14.0f);
+    CHECK(Peek::Frame(*rig.all<Sakura::ScrollArea>()[0]).x == 10.0f);
 
     rig.config.query = "zzz";
     rig.place();
@@ -211,13 +211,13 @@ TEST_CASE("Search catalog follows trackpad scrolling point for point", "[core][s
     CHECK(rig.selections.back() == 4);
 }
 
-TEST_CASE("Search catalog stacks an optional field above the list", "[core][sakura][search]") {
+TEST_CASE("Search catalog stacks an optional field above both cards", "[core][sakura][search]") {
     CatalogRig rig;
     Sakura::PillField field;
     field.update({.placeholder = "Search", .editing = true, .size = {0.0f, 34.0f}});
     rig.config.field = &field;
     rig.place();
-    CHECK(Peek::Frame(field) == Jetstream::Rect{0.0f, 0.0f, 300.0f, 34.0f});
+    CHECK(Peek::Frame(field) == Jetstream::Rect{0.0f, 0.0f, 300.0f + 8.0f + 440.0f, 34.0f});
     CHECK(rig.bounds.height == 34.0f + 8.0f + 360.0f);
 }
 
@@ -328,7 +328,7 @@ TEST_CASE("Search catalog centers its empty label in the list", "[core][sakura][
     CHECK(rig.bounds.height == 36.0f + 48.0f + 12.0f);
 }
 
-TEST_CASE("Search catalog list card shrinks to its rows while the docs card keeps its height",
+TEST_CASE("Search catalog list card matches the docs card height beside it",
           "[core][sakura][search]") {
     CatalogRig rig;
     rig.config.query = "fil";
@@ -347,7 +347,7 @@ TEST_CASE("Search catalog list card shrinks to its rows while the docs card keep
         }
     }
     REQUIRE(cards.size() == 2);
-    CHECK(cards[0] == Jetstream::Rect{0.0f, 0.0f, 300.0f, 36.0f + 2.0f * 48.0f + 12.0f});
+    CHECK(cards[0] == Jetstream::Rect{0.0f, 0.0f, 300.0f, 360.0f});
     CHECK(cards[1].height == 360.0f);
 }
 
@@ -1086,6 +1086,8 @@ TEST_CASE("Pill fields ignore presses released elsewhere and right clicks",
     CHECK(opens == 0);
     pillHost.click(100.0f, 17.0f);
     CHECK(opens == 1);
+    CHECK_FALSE(pillHost.send(Wheel(100.0f, 17.0f, -1.0f)));
+    CHECK_FALSE(pillHost.send(Mouse(MouseEventType::Move, 100.0f, 17.0f)));
 }
 
 TEST_CASE("Pill steppers ignore presses released on another part and right clicks",
@@ -1214,8 +1216,8 @@ TEST_CASE("Search catalog bounds follow custom card widths and clamp the docs he
     CHECK(rig.bounds.height == 360.0f);
     const auto scrolls = rig.all<Sakura::ScrollArea>();
     REQUIRE(scrolls.size() == 1);
-    CHECK(Peek::Frame(*scrolls[0]).x == 208.0f + 14.0f);
-    CHECK(Peek::Frame(*scrolls[0]).width == 500.0f - 28.0f);
+    CHECK(Peek::Frame(*scrolls[0]).x == 208.0f + 10.0f);
+    CHECK(Peek::Frame(*scrolls[0]).width == 500.0f - 20.0f);
 
     rig.config.maxHeight = 200.0f;
     rig.place();
@@ -1232,6 +1234,135 @@ TEST_CASE("Search catalog bounds follow custom card widths and clamp the docs he
         }
     }
     CHECK(cards == 2);
+}
+
+TEST_CASE("Search catalog heights are natural, fixed, or filling and keep the docs card unless natural",
+          "[core][sakura][search]") {
+    CatalogRig rig;
+    rig.config.query = "zzz";
+    rig.catalog.update(rig.config);
+    const auto natural = rig.host.measureOf(rig.scene.ctx, {kInfinite, kInfinite});
+    CHECK(natural.x == 300.0f);
+    CHECK(natural.y < 300.0f);
+
+    rig.config.height = 400.0f;
+    rig.catalog.update(rig.config);
+    CHECK(rig.host.measureOf(rig.scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{748.0f, 400.0f});
+    CHECK(rig.host.measureOf(rig.scene.ctx, {kInfinite, 300.0f}).y == 300.0f);
+    auto doubled = rig.scene.ctx;
+    doubled.pixelRatio = 2.0f;
+    CHECK(rig.host.measureOf(doubled, {kInfinite, kInfinite}) == Extent2D<F32>{1496.0f, 800.0f});
+    rig.host.place(rig.scene.ctx, {0.0f, 0.0f, 748.0f, 400.0f});
+    U64 cards = 0;
+    for (auto* box : rig.all<Sakura::Box>()) {
+        if (box->config().cornerRadius == 12.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
+            for (const auto& instance : box->config().instances) {
+                if (instance.rect.width >= 300.0f) {
+                    CHECK(instance.rect.height == 400.0f);
+                    ++cards;
+                }
+            }
+        }
+    }
+    CHECK(cards == 2);
+
+    rig.config.height = Sakura::Fill;
+    rig.catalog.update(rig.config);
+    CHECK(rig.host.measureOf(rig.scene.ctx, {1000.0f, 500.0f}) == Extent2D<F32>{748.0f, 500.0f});
+    CHECK(rig.host.measureOf(rig.scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{748.0f, natural.y});
+
+    rig.config.query.clear();
+    rig.config.height = 0.0f;
+    rig.catalog.update(rig.config);
+    CHECK(rig.host.measureOf(rig.scene.ctx, {kInfinite, kInfinite}).y == 360.0f);
+    rig.config.height = 120.0f;
+    rig.catalog.update(rig.config);
+    CHECK(rig.host.measureOf(rig.scene.ctx, {kInfinite, kInfinite}).y == 120.0f);
+    rig.config.height = Sakura::Fill;
+    rig.catalog.update(rig.config);
+    CHECK(rig.host.measureOf(rig.scene.ctx, {kInfinite, kInfinite}).y == 360.0f);
+    CHECK(rig.host.measureOf(rig.scene.ctx, {kInfinite, 500.0f}).y == 500.0f);
+}
+
+TEST_CASE("Search catalog fixed heights size the whole component with the field above the cards",
+          "[core][sakura][search]") {
+    CatalogRig rig;
+    Sakura::PillField field;
+    field.update({.placeholder = "Search", .editing = true, .size = {0.0f, 34.0f}});
+    rig.config.field = &field;
+    rig.config.height = 400.0f;
+    rig.place();
+    CHECK(rig.bounds.height == 400.0f);
+    CHECK(Peek::Frame(field) == Jetstream::Rect{0.0f, 0.0f, 748.0f, 34.0f});
+    U64 cards = 0;
+    for (auto* box : rig.all<Sakura::Box>()) {
+        if (box->config().cornerRadius == 12.0f && box->config().borderWidth == 1.0f && !box->config().topLit) {
+            for (const auto& instance : box->config().instances) {
+                if (instance.rect.width >= 300.0f) {
+                    CHECK(instance.rect.y == 42.0f);
+                    CHECK(instance.rect.bottom() == 400.0f);
+                    ++cards;
+                }
+            }
+        }
+    }
+    CHECK(cards == 2);
+
+    auto doubled = rig.scene.ctx;
+    doubled.pixelRatio = 2.0f;
+    CHECK(rig.host.measureOf(doubled, {kInfinite, kInfinite}).y == 800.0f);
+    rig.config.height = Sakura::Fill;
+    rig.catalog.update(rig.config);
+    CHECK(rig.host.measureOf(rig.scene.ctx, {kInfinite, 500.0f}).y == 500.0f);
+}
+
+TEST_CASE("Search catalog treats a zero max height as no cap on its natural height", "[core][sakura][search]") {
+    CatalogRig rig;
+    rig.config.items.clear();
+    for (U64 index = 0; index < 20; ++index) {
+        rig.config.items.push_back({.id = "item" + std::to_string(index), .title = "Item", .group = "DSP"});
+    }
+    rig.config.maxHeight = 300.0f;
+    rig.catalog.update(rig.config);
+    CHECK(rig.host.measureOf(rig.scene.ctx, {kInfinite, kInfinite}).y == 300.0f);
+
+    rig.config.maxHeight = 0.0f;
+    rig.place();
+    CHECK(rig.bounds.height == 12.0f + 36.0f + 24.0f + 20.0f * 48.0f);
+    CHECK_FALSE(rig.host.send(Wheel(100.0f, 200.0f, 0.0f, -1.0f)));
+}
+
+TEST_CASE("Search catalog measures wrapped chips at the capped width it lays them out at",
+          "[core][sakura][search]") {
+    CatalogRig rig;
+    rig.config.items.clear();
+    rig.config.groups.clear();
+    for (U64 index = 0; index < 12; ++index) {
+        const std::string group = "Group " + std::to_string(index);
+        rig.config.items.push_back({.id = group, .title = group, .group = group});
+        rig.config.groups.push_back(group);
+    }
+    rig.config.maxHeight = 0.0f;
+    const auto rows = [&] {
+        std::vector<F32> found;
+        for (const auto& chip : ChipLabels(rig)) {
+            found.push_back(chip.rect.y);
+        }
+        std::sort(found.begin(), found.end());
+        found.erase(std::unique(found.begin(), found.end()), found.end());
+        return static_cast<F32>(found.size());
+    };
+
+    rig.place();
+    const F32 wide = rig.bounds.height;
+    const F32 wideRows = rows();
+
+    const auto narrow = rig.host.measureOf(rig.scene.ctx, {200.0f, kInfinite});
+    CHECK(narrow.x == 200.0f);
+    rig.host.place(rig.scene.ctx, {0.0f, 0.0f, narrow.x, narrow.y});
+    REQUIRE(rows() > wideRows);
+    CHECK(narrow.y - wide == (rows() - wideRows) * 30.0f);
+    CHECK_FALSE(rig.host.send(Wheel(100.0f, narrow.y - 20.0f, 0.0f, -1.0f)));
 }
 
 TEST_CASE("Search catalog drops the docs card when both cards do not fit and restores it when they do",

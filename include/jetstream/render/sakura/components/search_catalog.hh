@@ -41,6 +41,7 @@ struct SearchCatalog : public Component {
         F32 listWidth = 300.0f;
         F32 docsWidth = 440.0f;
         F32 maxHeight = 460.0f;
+        F32 height = 0.0f;
         Callback<void(U64)> onSelect;
         Callback<void(const std::string&, std::optional<U64>)> onActivate;
         Callback<void(const std::string&)> onGroup;

@@ -148,14 +148,21 @@ struct DeviceWindow : SakuraTest::FakeWindow {
     }
 };
 
-struct Rig {
-    DeviceWindow window;
+struct EraseWindow : DeviceWindow {
+    bool supportsEraseBlending() const override {
+        return true;
+    }
+};
+
+template<typename Window = DeviceWindow>
+struct BasicRig {
+    Window window;
     Sakura::Palette palette;
     Sakura::Context ctx = MakeContext();
     Render::Surface::Config surface;
     std::vector<Sakura::Drawable*> drawables;
 
-    Rig() {
+    BasicRig() {
         ctx.render = &window;
         ctx.palette = palette;
         ctx.attach = [this](const Sakura::Component&, Sakura::Drawable* drawable) {
@@ -164,8 +171,8 @@ struct Rig {
         };
     }
 
-    Rig(const Rig&) = delete;
-    Rig& operator=(const Rig&) = delete;
+    BasicRig(const BasicRig&) = delete;
+    BasicRig& operator=(const BasicRig&) = delete;
 
     bool supported() const {
         return window.device() != DeviceType::None;
@@ -187,6 +194,8 @@ struct Rig {
         return *surface.programs.back();
     }
 };
+
+using Rig = BasicRig<>;
 
 template<typename T>
 std::span<T> Contents(const std::shared_ptr<Render::Buffer>& buffer) {
@@ -1136,6 +1145,36 @@ TEST_CASE("Attached images rebuild when the texture is swapped and repaint for v
     CHECK(rig.surface.programs.size() == programs + 1);
 }
 
+TEST_CASE("Demoted live images keep their underlay until the in-canvas replacement is built",
+          "[core][sakura][geometry][underlay]") {
+    BasicRig<EraseWindow> rig;
+    if (!rig.supported()) {
+        SKIP("Unbound image resources require Vulkan or WebGPU support.");
+    }
+    rig.ctx.underlays = true;
+    const auto plot = std::make_shared<SizedTexture>(Extent2D<U64>{64, 64});
+    Sakura::Image image;
+    image.update({.texture = plot, .rect = {0.0f, 0.0f, 64.0f, 64.0f}, .live = true});
+    REQUIRE(rig.build(image) == Result::SUCCESS);
+    REQUIRE(Sakura::Access::paint(image) == Result::SUCCESS);
+    REQUIRE(rig.drawable().underlay().has_value());
+
+    rig.drawable().allowUnderlay(false);
+    CHECK(Sakura::Access::resourceDirty(image));
+    CHECK(rig.drawable().underlay().has_value());
+
+    REQUIRE(rig.build(image) == Result::SUCCESS);
+    REQUIRE(Sakura::Access::paint(image) == Result::SUCCESS);
+    CHECK_FALSE(rig.drawable().underlay().has_value());
+    CHECK(rig.drawable().liveRegion().has_value());
+
+    rig.drawable().allowUnderlay(true);
+    CHECK(Sakura::Access::resourceDirty(image));
+    REQUIRE(rig.build(image) == Result::SUCCESS);
+    REQUIRE(Sakura::Access::paint(image) == Result::SUCCESS);
+    CHECK(rig.drawable().underlay().has_value());
+}
+
 TEST_CASE("Corner mask updates fill four corners at exact capacity and clip to the visible rectangle",
           "[core][sakura][geometry]") {
     Rig rig;
@@ -1612,6 +1651,9 @@ TEST_CASE("Opaque covers hide a target only inside their rounded body and clip",
     const ColorRGBA<F32> opaque = {0.1f, 0.1f, 0.1f, 1.0f};
     REQUIRE(Sakura::OpaqueCovers(card, 8.0f, opaque, std::nullopt, {10.0f, 10.0f, 80.0f, 80.0f}));
     REQUIRE_FALSE(Sakura::OpaqueCovers(card, 8.0f, opaque, std::nullopt, {2.0f, 2.0f, 20.0f, 20.0f}));
+    REQUIRE(Sakura::OpaqueCovers(card, 13.0f, opaque, std::nullopt, {8.0f, 8.0f, 84.0f, 40.0f}));
+    REQUIRE_FALSE(Sakura::OpaqueCovers(card, 13.0f, opaque, std::nullopt, {3.0f, 3.0f, 40.0f, 40.0f}));
+    REQUIRE(Sakura::OpaqueCovers(card, 13.0f, opaque, std::nullopt, {0.0f, 20.0f, 100.0f, 40.0f}));
     REQUIRE_FALSE(Sakura::OpaqueCovers(card, 0.0f, {0.1f, 0.1f, 0.1f, 0.9f}, std::nullopt,
                                          {10.0f, 10.0f, 10.0f, 10.0f}));
     REQUIRE_FALSE(Sakura::OpaqueCovers(card, 0.0f, opaque, Rect{0.0f, 0.0f, 50.0f, 100.0f},
@@ -1688,6 +1730,35 @@ TEST_CASE("Box instances past capacity never occlude or cover what lies beneath"
     REQUIRE(rects == std::vector<Rect>{{1.0f, 1.0f, 198.0f, 198.0f}});
     CHECK(rig.drawable().covers({10.0f, 10.0f, 50.0f, 50.0f}));
     CHECK_FALSE(rig.drawable().covers({310.0f, 10.0f, 50.0f, 50.0f}));
+}
+
+TEST_CASE("Boxes never cover through a translucent border ring or their antialiased edge",
+          "[core][sakura][geometry][occlusion]") {
+    const auto covers = [](ColorRGBA<F32> border, const Rect& target) {
+        Rig rig;
+        if (!rig.supported()) {
+            return std::optional<bool>{};
+        }
+        Sakura::Box box;
+        box.update({
+            .instances = {{.rect = {0.0f, 0.0f, 200.0f, 200.0f}, .backgroundColor = {0.2f, 0.2f, 0.2f, 1.0f}}},
+            .borderWidth = 4.0f,
+            .borderColor = border,
+        });
+        REQUIRE(rig.build(box) == Result::SUCCESS);
+        REQUIRE(Sakura::Access::paint(box) == Result::SUCCESS);
+        return std::optional<bool>{rig.drawable().covers(target)};
+    };
+    const ColorRGBA<F32> translucent = {1.0f, 1.0f, 1.0f, 0.5f};
+    const ColorRGBA<F32> solid = {1.0f, 1.0f, 1.0f, 1.0f};
+    const auto ring = covers(translucent, {2.0f, 50.0f, 50.0f, 50.0f});
+    if (!ring.has_value()) {
+        SKIP("Unbound shape resources require Vulkan or WebGPU support.");
+    }
+    CHECK_FALSE(*ring);
+    CHECK(covers(translucent, {6.0f, 50.0f, 50.0f, 50.0f}) == std::optional<bool>{true});
+    CHECK(covers(solid, {2.0f, 50.0f, 50.0f, 50.0f}) == std::optional<bool>{true});
+    CHECK(covers(solid, {0.0f, 50.0f, 50.0f, 50.0f}) == std::optional<bool>{false});
 }
 
 TEST_CASE("Overlapping live images keep punching only when opaque paint separates them",

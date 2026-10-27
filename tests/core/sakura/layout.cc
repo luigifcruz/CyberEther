@@ -74,6 +74,38 @@ TEST_CASE("Vertical stacks measure the summed height and available width", "[cor
     CHECK(unbounded.y == 76.0f);
 }
 
+TEST_CASE("Vertical stacks size the column to the chosen item and center every child at that width",
+          "[core][sakura][layout]") {
+    const auto ctx = MakeContext();
+    Probe a({300.0f, 20.0f});
+    Probe b({120.0f, 10.0f});
+    Flow c(400.0f, 10.0f);
+    Stack stack;
+    stack.update({.spacing = 0.0f, .widthOf = &b, .items = {{.child = &a}, {.child = &b}, {.child = &c}}});
+    Host host(stack);
+
+    CHECK(host.measureOf(ctx, {kInfinite, kInfinite}).x == 120.0f);
+    const auto size = host.measureOf(ctx, {600.0f, kInfinite});
+    CHECK(size.x == 600.0f);
+    CHECK(size.y == 20.0f + 10.0f + std::ceil(4000.0f / 120.0f));
+    host.place(ctx, {10.0f, 20.0f, 600.0f, size.y});
+    CHECK(a.laidFrame == Rect{250.0f, 20.0f, 120.0f, 20.0f});
+    CHECK(b.laidFrame == Rect{250.0f, 40.0f, 120.0f, 10.0f});
+    CHECK(c.laidFrame == Rect{250.0f, 50.0f, 120.0f, std::ceil(4000.0f / 120.0f)});
+
+    b.resize({900.0f, 10.0f});
+    host.place(ctx, {10.0f, 20.0f, 600.0f, size.y});
+    CHECK(a.laidFrame.x == 10.0f);
+    CHECK(a.laidFrame.width == 600.0f);
+    CHECK(c.laidFrame.width == 600.0f);
+
+    Probe stray({50.0f, 10.0f});
+    stack.update({.spacing = 0.0f, .widthOf = &stray, .items = {{.child = &a}, {.child = &b}, {.child = &c}}});
+    host.place(ctx, {10.0f, 20.0f, 600.0f, size.y});
+    CHECK(a.laidFrame.x == 10.0f);
+    CHECK(a.laidFrame.width == 600.0f);
+}
+
 TEST_CASE("Stacks honour custom spacing and fixed item sizes", "[core][sakura][layout]") {
     const auto ctx = MakeContext();
     Probe a({40.0f, 20.0f});
@@ -409,6 +441,35 @@ TEST_CASE("Grids without outer padding start at the frame edge", "[core][sakura]
     CHECK(c.laidFrame == Rect{226.0f, 2.0f, 100.0f, 20.0f});
 }
 
+TEST_CASE("Grids with a minimum cell width drop columns as they narrow", "[core][sakura][layout]") {
+    const auto ctx = MakeContext();
+    Probe a({10.0f, 20.0f});
+    Probe b({10.0f, 20.0f});
+    Probe c({10.0f, 20.0f});
+    Grid grid;
+    grid.update({.columns = 3, .minCellWidth = 100.0f, .outerPadding = false, .items = {&a, &b, &c}});
+    Host host(grid);
+
+    host.place(ctx, {0.0f, 0.0f, 1000.0f, 400.0f});
+    CHECK(c.laidFrame.y == a.laidFrame.y);
+    CHECK(c.laidFrame.width > 300.0f);
+
+    host.place(ctx, {0.0f, 0.0f, 316.0f, 400.0f});
+    CHECK(a.laidFrame == Rect{0.0f, 2.0f, 100.0f, 20.0f});
+    CHECK(c.laidFrame == Rect{216.0f, 2.0f, 100.0f, 20.0f});
+
+    host.place(ctx, {0.0f, 0.0f, 250.0f, 400.0f});
+    CHECK(a.laidFrame == Rect{0.0f, 2.0f, 121.0f, 20.0f});
+    CHECK(b.laidFrame == Rect{129.0f, 2.0f, 121.0f, 20.0f});
+    CHECK(c.laidFrame == Rect{0.0f, 26.0f, 121.0f, 20.0f});
+    CHECK(host.measureOf(ctx, {250.0f, 400.0f}).y == 48.0f);
+
+    host.place(ctx, {0.0f, 0.0f, 60.0f, 400.0f});
+    CHECK(a.laidFrame == Rect{0.0f, 2.0f, 60.0f, 20.0f});
+    CHECK(b.laidFrame == Rect{0.0f, 26.0f, 60.0f, 20.0f});
+    CHECK(c.laidFrame == Rect{0.0f, 50.0f, 60.0f, 20.0f});
+}
+
 TEST_CASE("Overflowing grids reserve the scrollbar and clip items", "[core][sakura][layout]") {
     const auto ctx = MakeContext();
     Probe a({10.0f, 20.0f});
@@ -502,6 +563,74 @@ TEST_CASE("Divs inset content by the padding", "[core][sakura][layout]") {
     host.place(ctx, {10.0f, 10.0f, 200.0f, 100.0f});
 
     CHECK(content.laidFrame == Rect{20.0f, 20.0f, 180.0f, 80.0f});
+}
+
+TEST_CASE("Div waves tile sine rows inside the rounded corners", "[core][sakura][layout]") {
+    const auto ctx = MakeContext();
+    Probe content({50.0f, 20.0f});
+    Div div;
+    div.update({.content = &content, .rounding = 16.0f});
+    Host host(div);
+    host.place(ctx, {0.0f, 0.0f, 560.0f, 280.0f});
+    CHECK(Find<Sakura::Polyline>(div).empty());
+
+    div.update({.content = &content, .rounding = 16.0f, .waves = true});
+    host.place(ctx, {0.0f, 0.0f, 560.0f, 280.0f});
+    const auto waves = Find<Sakura::Polyline>(div);
+    REQUIRE(waves.size() == 1);
+    const auto& config = waves[0]->config();
+    REQUIRE(config.instances.size() == 10);
+    const auto& first = config.instances.front().points;
+    REQUIRE(first.size() > 4);
+    CHECK(first[0].x == 0.0f);
+    CHECK(first[0].y == 14.0f);
+    CHECK(std::abs(first[3].y - 3.5f) < 0.01f);
+    CHECK(first.back().x >= 560.0f);
+    CHECK(config.instances.front().color.a < 1.0f);
+    REQUIRE(config.clip.has_value());
+    const F32 corner = 16.0f * (1.0f - 0.70710678f);
+    CHECK(std::abs(config.clip->x - corner) < 0.01f);
+    CHECK(std::abs(config.clip->bottom() - (280.0f - corner)) < 0.01f);
+    CHECK(content.laidFrame == Rect{0.0f, 0.0f, 560.0f, 280.0f});
+}
+
+TEST_CASE("Div waves fit a viewport sized budget and only draw the rows inside the clip", "[core][sakura][layout]") {
+    const auto ctx = MakeContext({7680.0f, 4320.0f});
+    const auto vertices = [](const Sakura::Polyline::Config& config) {
+        U64 total = 0;
+        for (const auto& instance : config.instances) {
+            total += 4 * instance.points.size();
+        }
+        return total;
+    };
+    Div div;
+    div.update({.waves = true});
+    Host host(div);
+    host.place(ctx, {0.0f, 0.0f, 7680.0f, 4320.0f});
+    const auto waves = Find<Sakura::Polyline>(div);
+    REQUIRE(waves.size() == 1);
+    const auto& full = waves[0]->config();
+    REQUIRE_FALSE(full.instances.empty());
+    CHECK(full.instances.back().points.front().y >= 4320.0f - 28.0f);
+    CHECK(full.instances.back().points.back().x >= 7680.0f);
+    CHECK(vertices(full) <= full.capacity);
+    const U64 capacity = full.capacity;
+
+    Div tall;
+    tall.update({.waves = true});
+    Place slot(tall, {0.0f, -2000.0f, 600.0f, 8000.0f});
+    slot.place(ctx, {0.0f, 0.0f, 600.0f, 300.0f});
+    const auto& clipped = Find<Sakura::Polyline>(tall).at(0)->config();
+    CHECK(clipped.capacity == capacity);
+    CHECK(clipped.instances.size() == 12);
+    for (const auto& instance : clipped.instances) {
+        CHECK(instance.points.front().x == 0.0f);
+        CHECK(instance.points.front().y >= -28.0f);
+        CHECK(instance.points.front().y <= 328.0f);
+    }
+
+    host.place(MakeContext(), {0.0f, 0.0f, 800.0f, 600.0f});
+    CHECK(waves[0]->config().capacity == 65536);
 }
 
 TEST_CASE("Div clicks run the click callback", "[core][sakura][layout]") {
@@ -1016,6 +1145,73 @@ TEST_CASE("Horizontal stacks shrink flagged items when their children overflow",
     CHECK(Peek::Frame(fixed).width == 80.0f);
 }
 
+TEST_CASE("Stacks spread the overflow an item cannot absorb across the other shrinking items",
+          "[core][sakura][layout]") {
+    const auto ctx = MakeContext();
+    Probe narrow({20.0f, 20.0f});
+    Probe wide({300.0f, 20.0f});
+    Probe fixed({80.0f, 20.0f});
+    Sakura::Stack stack;
+    stack.update({
+        .axis = Sakura::Stack::Axis::Horizontal,
+        .spacing = 0.0f,
+        .items = {{.child = &narrow, .shrink = 3.0f}, {.child = &wide, .shrink = 1.0f}, {.child = &fixed}},
+    });
+    Host host(stack);
+    CHECK(host.measureOf(ctx, {200.0f, kInfinite}).x == 200.0f);
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 20.0f});
+    CHECK(Peek::Frame(narrow).width == 0.0f);
+    CHECK(Peek::Frame(wide).x == 0.0f);
+    CHECK(Peek::Frame(wide).width == 120.0f);
+    CHECK(Peek::Frame(fixed).x == 120.0f);
+    CHECK(Peek::Frame(fixed).width == 80.0f);
+
+    stack.update({
+        .axis = Sakura::Stack::Axis::Vertical,
+        .spacing = 0.0f,
+        .items = {{.child = &narrow, .shrink = 3.0f}, {.child = &wide, .shrink = 1.0f}, {.child = &fixed}},
+    });
+    narrow.resize({20.0f, 10.0f});
+    wide.resize({20.0f, 100.0f});
+    fixed.resize({20.0f, 30.0f});
+    CHECK(host.measureOf(ctx, {20.0f, 60.0f}).y == 60.0f);
+    host.place(ctx, {0.0f, 0.0f, 20.0f, 60.0f});
+    CHECK(Peek::Frame(narrow).height == 0.0f);
+    CHECK(Peek::Frame(wide).height == 30.0f);
+    CHECK(Peek::Frame(fixed).y == 30.0f);
+    CHECK(Peek::Frame(fixed).height == 30.0f);
+}
+
+TEST_CASE("Horizontal stacks measure shrunk items at their shrunk width", "[core][sakura][layout]") {
+    const auto ctx = MakeContext();
+    Flow wide(300.0f, 20.0f);
+    Probe fixed({80.0f, 20.0f});
+    Sakura::Stack stack;
+    stack.update({
+        .axis = Sakura::Stack::Axis::Horizontal,
+        .spacing = 0.0f,
+        .centerCross = false,
+        .items = {{.child = &wide, .shrink = 1.0f}, {.child = &fixed}},
+    });
+    Host host(stack);
+    CHECK(host.measureOf(ctx, {200.0f, kInfinite}) == Extent2D<F32>{200.0f, 50.0f});
+    CHECK(host.measureOf(ctx, {kInfinite, kInfinite}) == Extent2D<F32>{380.0f, 20.0f});
+
+    auto doubled = ctx;
+    doubled.pixelRatio = 2.0f;
+    stack.update({
+        .axis = Sakura::Stack::Axis::Horizontal,
+        .spacing = 10.0f,
+        .centerCross = false,
+        .items = {{.child = &wide, .shrink = 1.0f}, {.child = &fixed}},
+    });
+    CHECK(host.measureOf(doubled, {200.0f, kInfinite}) == Extent2D<F32>{200.0f, 60.0f});
+
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 50.0f});
+    CHECK(Peek::Frame(wide).width == 110.0f);
+    CHECK(Peek::Frame(wide).height == 50.0f);
+}
+
 TEST_CASE("Wave lines draw one sine stroke across their width inside the amplitude", "[core][sakura][layout]") {
     const auto ctx = MakeContext();
     Sakura::WaveLine wave;
@@ -1295,6 +1491,25 @@ TEST_CASE("Reveal drops focus and held presses inside its child once it collapse
     CHECK_FALSE(child.visible());
     CHECK(FocusOwner(host) == nullptr);
     CHECK(child.count(MouseEventType::Cancel) == cancels + 1);
+}
+
+TEST_CASE("Grids scale the minimum cell width with the pixel ratio", "[core][sakura][layout]") {
+    auto ctx = MakeContext();
+    ctx.pixelRatio = 2.0f;
+    Probe a({10.0f, 20.0f});
+    Probe b({10.0f, 20.0f});
+    Probe c({10.0f, 20.0f});
+    Grid grid;
+    grid.update({.columns = 3, .minCellWidth = 100.0f, .outerPadding = false, .items = {&a, &b, &c}});
+    Host host(grid);
+
+    host.place(ctx, {0.0f, 0.0f, 632.0f, 400.0f});
+    CHECK(a.laidFrame.y == c.laidFrame.y);
+    CHECK(a.laidFrame.width == 200.0f);
+
+    host.place(ctx, {0.0f, 0.0f, 500.0f, 400.0f});
+    CHECK(c.laidFrame.y > a.laidFrame.y);
+    CHECK(a.laidFrame.width == 242.0f);
 }
 
 TEST_CASE("Grabbing the scrollbar during spring-back takes over and the thumb follows the drag",

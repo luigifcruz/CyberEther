@@ -31,6 +31,7 @@ struct Button : public Component {
         std::string activeColorKey;
         std::string borderColorKey;
         std::string textColorKey;
+        std::string hoveredTextColorKey;
         F32 textScale = 1.0f;
         F32 rounding = 8.0f;
         Extent2D<F32> padding = {12.0f, 5.0f};

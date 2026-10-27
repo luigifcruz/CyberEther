@@ -66,7 +66,7 @@ void PillField::update(Config config) {
     impl->config = std::move(config);
     impl->icon.update({.str = impl->config.icon, .colorKey = impl->config.iconColorKey,
                        .scale = kPillIcon / Typography::FontSize});
-    impl->placeholder.update({.str = impl->config.placeholder, .tone = Text::Tone::Secondary});
+    impl->placeholder.update({.str = impl->config.placeholder, .font = Text::Font::Display, .tone = Text::Tone::Secondary});
     impl->trailing.update({.str = impl->config.trailing, .tone = Text::Tone::Secondary, .scale = 0.85f});
     impl->input.update({
         .value = impl->config.query,
@@ -78,6 +78,7 @@ void PillField::update(Config config) {
         .backgroundColorKey = "transparent",
         .onCancel = impl->config.onCancel,
         .padding = {0.0f, 0.0f},
+        .fontName = Typography::DisplayFont,
     });
     impl->mount(*this);
 }
@@ -165,7 +166,7 @@ bool PillField::mouseEvent(const MouseEvent& event) {
             impl->pressed = false;
             return false;
         default:
-            return inside;
+            return false;
     }
 }
 

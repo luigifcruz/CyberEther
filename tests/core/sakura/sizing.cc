@@ -755,7 +755,10 @@ TEST_CASE("Pill controls scale their paddings and heights with the pixel ratio",
     Sakura::PillStepper stepper;
     Host stepperHost(stepper);
     stepper.update({.label = "100%"});
-    const Sakura::Text::Config value = {.str = "100%", .colorKey = "text_primary", .scale = 13.0f / 15.0f};
+    const Sakura::Text::Config value = {.str = "100%",
+                                        .font = Sakura::Text::Font::Display,
+                                        .colorKey = "text_primary",
+                                        .scale = 14.0f / Sakura::Typography::FontSize};
     CHECK(stepperHost.measureOf(scene.ctx, unbounded) ==
           Extent2D<F32>{std::ceil(70.0f + TextWidth(scene.ctx, value)), 34.0f});
     CHECK(stepperHost.measureOf(doubled, unbounded) ==

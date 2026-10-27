@@ -18,8 +18,10 @@
 #include "component_harness.hh"
 #include "harness.hh"
 #include "scene.hh"
+#include "render/sakura/metrics.hh"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -261,6 +263,56 @@ TEST_CASE("Feature cards place the action beside the header and the content belo
     CHECK(bounds.height >= body.bottom() - bounds.y);
 }
 
+TEST_CASE("Setting and feature cards lay their children out over the card surface", "[core][sakura][settings]") {
+    const Scene scene;
+    BackdropProbe control({80.0f, 24.0f});
+    Sakura::SettingCard setting;
+    setting.update({.rows = {{.label = "Row", .control = &control}}});
+    Host settingHost(setting);
+    settingHost.place(scene.ctx, {0.0f, 0.0f, 600.0f, 100.0f});
+    CHECK(control.backdrop == "welcome_card_bg");
+
+    BackdropProbe action({80.0f, 24.0f});
+    BackdropProbe content({200.0f, 40.0f});
+    Sakura::FeatureCard feature;
+    feature.update({.title = "Title", .action = &action, .content = &content});
+    Host featureHost(feature);
+    featureHost.place(scene.ctx, {0.0f, 0.0f, 600.0f, 300.0f});
+    CHECK(action.backdrop == "welcome_card_bg");
+    CHECK(content.backdrop == "welcome_card_bg");
+}
+
+TEST_CASE("Text shrinks a single line to fit the width only when asked", "[core][sakura][settings]") {
+    const Scene scene;
+    Sakura::Text text;
+    Host host(text);
+    const auto update = [&](bool shrink) {
+        text.update({.str = "CyberEther", .shrinkToFit = shrink, .scale = 4.0f});
+    };
+
+    update(false);
+    const auto natural = host.measureOf(scene.ctx, {kInfinite, kInfinite});
+    CHECK(host.measureOf(scene.ctx, {natural.x * 0.5f, kInfinite}).y == natural.y);
+
+    update(true);
+    CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}) == natural);
+    CHECK(host.measureOf(scene.ctx, {natural.x * 2.0f, kInfinite}) == natural);
+    const auto half = host.measureOf(scene.ctx, {natural.x * 0.5f, kInfinite});
+    CHECK(half.x <= natural.x * 0.5f);
+    CHECK(half.x > natural.x * 0.4f);
+    CHECK(half.y < natural.y * 0.6f);
+
+    host.place(scene.ctx, {0.0f, 0.0f, natural.x * 0.5f, natural.y});
+    const auto* label = First<Sakura::Label>(text);
+    REQUIRE(label != nullptr);
+    REQUIRE(label->config().instances.size() == 1);
+    CHECK(label->config().instances.front().fontSize < Sakura::Typography::FontSize * 4.0f * 0.6f);
+    CHECK(label->config().instances.front().rect.right() <= natural.x * 0.5f);
+
+    host.place(scene.ctx, {0.0f, 0.0f, natural.x, natural.y});
+    CHECK(First<Sakura::Label>(text)->config().instances.front().fontSize == Sakura::Typography::FontSize * 4.0f);
+}
+
 TEST_CASE("Text line height spaces lines and weight reaches the label", "[core][sakura][settings]") {
     const Scene scene;
     Sakura::Text plain;
@@ -397,4 +449,281 @@ TEST_CASE("Toggle knobs stay inside narrow bounds", "[core][sakura][settings]") 
             CHECK(instance.rect.right() <= 10.0f);
         }
     }
+}
+
+TEST_CASE("Text inputs size their line to the configured font size", "[core][sakura][settings]") {
+    const Scene scene;
+    Sakura::TextInput input;
+    input.update({.hint = "Search"});
+    Host host(input);
+    const auto base = host.measureOf(scene.ctx, {300.0f, 500.0f});
+    input.update({.hint = "Search", .fontSize = 21.0f});
+    const auto large = host.measureOf(scene.ctx, {300.0f, 500.0f});
+    CHECK(large.y - base.y == 21.0f - Sakura::Typography::FontSize);
+}
+
+TEST_CASE("Feature cards repaint on text changes, restructure once for new parts, and park removed ones",
+          "[core][sakura][settings][retention]") {
+    Scene scene;
+    Probe action({80.0f, 24.0f});
+    Probe content({200.0f, 60.0f});
+    Sakura::FeatureCard card;
+    Place place(card, {0.0f, 0.0f, 600.0f, 400.0f});
+    Frames frames(place, kScreen, scene.context());
+    std::string title = "Update available";
+    std::string description = "Restart to apply it.";
+    bool parts = false;
+    const auto update = [&] {
+        card.update({
+            .title = title,
+            .description = description,
+            .action = parts ? &action : nullptr,
+            .content = parts ? &content : nullptr,
+        });
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    title = "Update ready";
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    description = "Restart now to apply it.";
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == 0);
+
+    parts = true;
+    const auto added = frames.run(update);
+    CHECK(added.restructured);
+    CHECK_FALSE(added.rebuilt);
+    REQUIRE(frames.settle(update));
+    CHECK(frames.restructures == 1);
+    CHECK(action.visible());
+    CHECK(content.visible());
+
+    parts = false;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK_FALSE(action.visible());
+    CHECK_FALSE(content.visible());
+
+    parts = true;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == 1);
+}
+
+TEST_CASE("Feature cards scale their paddings with the pixel ratio", "[core][sakura][settings]") {
+    const Scene scene;
+    Probe action({80.0f, 24.0f});
+    Probe content({200.0f, 60.0f});
+    Sakura::FeatureCard card;
+    card.update({.title = "Update available", .action = &action, .content = &content});
+    Host host(card);
+    host.place(scene.ctx, {0.0f, 0.0f, 600.0f, 400.0f});
+    CHECK(Peek::Frame(action).right() == 600.0f - 18.0f);
+    CHECK(Peek::Frame(content).x == 18.0f);
+    CHECK(Peek::Frame(content).width == 600.0f - 36.0f);
+
+    host.place(Doubled(scene.ctx), {0.0f, 0.0f, 600.0f, 400.0f});
+    CHECK(Peek::Frame(action).right() == 600.0f - 36.0f);
+    CHECK(Peek::Frame(content).x == 36.0f);
+    CHECK(Peek::Frame(content).width == 600.0f - 72.0f);
+    CHECK(Peek::Frame(content).y > Peek::Frame(action).bottom() + 36.0f);
+}
+
+TEST_CASE("Sidebar items repaint on selection, measure a natural width when unbounded, and scale with the pixel ratio",
+          "[core][sakura][settings]") {
+    Scene scene;
+    Sakura::SidebarItem item;
+    bool selected = false;
+    Place place(item, {10.0f, 10.0f, 200.0f, 30.0f});
+    Frames frames(place, kScreen, scene.context());
+    const auto update = [&] {
+        item.update({.icon = "*", .label = "General", .selected = selected});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    selected = true;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    selected = false;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == 0);
+
+    Sakura::SidebarItem measured;
+    measured.update({.icon = "*", .label = "General"});
+    Host host(measured);
+    const auto label = [&] {
+        for (auto* text : Find<Sakura::Text>(measured)) {
+            if (text->config().str == "General") {
+                return Peek::Frame(*text);
+            }
+        }
+        return Rect{};
+    };
+    const auto natural = host.measureOf(scene.ctx, {kInfinite, kInfinite});
+    CHECK(natural.y == 30.0f);
+    CHECK(host.measureOf(scene.ctx, {240.0f, 500.0f}).x == 240.0f);
+    host.place(scene.ctx, {0.0f, 0.0f, 400.0f, 30.0f});
+    CHECK(label().x == 33.0f);
+    CHECK(natural.x == std::ceil(label().right() + 9.0f));
+
+    const auto doubled = Doubled(scene.ctx);
+    const auto wide = host.measureOf(doubled, {kInfinite, kInfinite});
+    CHECK(wide.y == 60.0f);
+    host.place(doubled, {0.0f, 0.0f, 800.0f, 60.0f});
+    CHECK(label().x == 66.0f);
+    CHECK(wide.x == std::ceil(label().right() + 18.0f));
+}
+
+TEST_CASE("Setting cards repaint on label and description changes and scale with the pixel ratio",
+          "[core][sakura][settings]") {
+    Scene scene;
+    Sakura::SettingCard card;
+    Place place(card, {10.0f, 10.0f, 600.0f, 300.0f});
+    Frames frames(place, kScreen, scene.context());
+    std::string label = "Telemetry";
+    std::string description = "Applies on restart.";
+    const auto update = [&] {
+        card.update({.rows = {{.label = label, .description = description}, {.label = "Second"}}});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    label = "Diagnostics";
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    description = "Applies immediately.";
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == 0);
+
+    Probe wide({400.0f, 20.0f});
+    Probe narrow({400.0f, 20.0f});
+    Sakura::SettingCard scaled;
+    scaled.update({.rows = {{.label = "Wide", .control = &wide, .wide = true}, {.label = "Narrow", .control = &narrow}}});
+    Host host(scaled);
+    host.place(Doubled(scene.ctx), {0.0f, 0.0f, 600.0f, 400.0f});
+    CHECK(Peek::Frame(narrow).width == 264.0f);
+    CHECK(Peek::Frame(narrow).right() == 600.0f - 36.0f);
+    CHECK(Peek::Frame(wide).right() == 600.0f - 36.0f);
+    const auto* separators = dynamic_cast<const Sakura::Box*>(Peek::Children(scaled).at(2));
+    REQUIRE(separators != nullptr);
+    REQUIRE(separators->config().instances.size() == 1);
+    const Rect line = separators->config().instances.front().rect;
+    CHECK(line.x == 36.0f);
+    CHECK(line.width == 600.0f - 72.0f);
+    CHECK(line.height == 2.0f);
+}
+
+TEST_CASE("Setting cards keep a viewport separator budget and cull rules outside the clip",
+          "[core][sakura][settings]") {
+    struct Window : Place {
+        Window(Sakura::Component& child, Rect target) : Place(child, target) {
+            setClipsChildren(true);
+        }
+    };
+
+    const Scene scene;
+    Sakura::SettingCard card;
+    Window window(card, {0.0f, 0.0f, 600.0f, 300.0f});
+    const auto rows = [&](U64 count, F32 top) {
+        std::vector<Sakura::SettingCard::Row> list(count);
+        for (auto& row : list) {
+            row.label = "Row";
+        }
+        card.update({.rows = std::move(list)});
+        window.move({0.0f, top, 600.0f, count * 60.0f});
+        window.place(scene.ctx, {0.0f, 0.0f, 600.0f, 300.0f});
+    };
+    const auto separators = [&]() -> const Sakura::Box::Config& {
+        const auto* box = dynamic_cast<const Sakura::Box*>(Peek::Children(card).at(2));
+        REQUIRE(box != nullptr);
+        return box->config();
+    };
+
+    rows(3, 0.0f);
+    const U64 capacity = separators().capacity;
+    CHECK(capacity > 2);
+    CHECK(separators().instances.size() == 2);
+
+    rows(400, -2000.0f);
+    CHECK(separators().capacity == capacity);
+    REQUIRE_FALSE(separators().instances.empty());
+    CHECK(separators().instances.size() <= capacity);
+    for (const auto& instance : separators().instances) {
+        CHECK(instance.rect.bottom() >= 0.0f);
+        CHECK(instance.rect.y < 300.0f);
+    }
+
+    rows(1, 0.0f);
+    CHECK(separators().capacity == capacity);
+    CHECK(separators().instances.empty());
+}
+
+TEST_CASE("Text inputs scale their font size with the pixel ratio and draw the hint in the configured font",
+          "[core][sakura][settings]") {
+    const Scene scene;
+    Sakura::TextInput input;
+    input.update({.hint = "Search", .fontSize = 21.0f, .fontName = Sakura::Typography::BodyFont});
+    Host host(input);
+    const auto single = host.measureOf(scene.ctx, {300.0f, 500.0f});
+    CHECK(single.y == 31.0f);
+    const auto doubled = host.measureOf(Doubled(scene.ctx), {600.0f, 500.0f});
+    CHECK(doubled.y == 62.0f);
+
+    host.place(Doubled(scene.ctx), {0.0f, 0.0f, 600.0f, doubled.y});
+    bool found = false;
+    for (const auto* label : Find<Sakura::Label>(input)) {
+        if (label->config().instances.empty() || label->config().instances.front().str != "Search") {
+            continue;
+        }
+        found = true;
+        CHECK(label->config().fontName == Sakura::Typography::BodyFont);
+        CHECK(label->config().instances.front().fontSize == 42.0f);
+        CHECK(label->config().instances.front().rect.x == 24.0f);
+    }
+    CHECK(found);
+}
+
+TEST_CASE("Sidebar items indent their content and collapse the icon slot without an icon",
+          "[core][sakura][settings]") {
+    Scene scene;
+    struct Placed {
+        Extent2D<F32> natural = {0.0f, 0.0f};
+        Rect label = {};
+        U64 shown = 0;
+    };
+    const auto layoutOf = [&](const Sakura::SidebarItem::Config& config, const Sakura::Context& ctx, F32 width) {
+        Sakura::SidebarItem item;
+        item.update(config);
+        Host host(item);
+        Placed placed;
+        placed.natural = host.measureOf(ctx, {kInfinite, kInfinite});
+        host.place(ctx, {0.0f, 0.0f, width, placed.natural.y});
+        for (auto* text : Find<Sakura::Text>(item)) {
+            ++placed.shown;
+            if (text->config().str == "General") {
+                placed.label = Peek::Frame(*text);
+            }
+        }
+        return placed;
+    };
+
+    const auto icon = layoutOf({.icon = "*", .label = "General", .indent = 12.0f}, scene.ctx, 400.0f);
+    CHECK(icon.shown == 2);
+    CHECK(icon.label.x == 9.0f + 12.0f + 16.0f + 8.0f);
+    CHECK(icon.natural.x == std::ceil(icon.label.right() + 9.0f));
+
+    const auto bare = layoutOf({.label = "General", .indent = 12.0f}, scene.ctx, 400.0f);
+    CHECK(bare.shown == 1);
+    CHECK(bare.label.x == 9.0f + 12.0f);
+    CHECK(bare.natural.x == std::ceil(bare.label.right() + 9.0f));
+    CHECK(bare.natural.x < icon.natural.x);
+
+    const auto doubled = layoutOf({.label = "General", .indent = 12.0f}, Doubled(scene.ctx), 800.0f);
+    CHECK(doubled.shown == 1);
+    CHECK(doubled.label.x == 2.0f * (9.0f + 12.0f));
+    CHECK(doubled.natural.x == std::ceil(doubled.label.right() + 18.0f));
 }

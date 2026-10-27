@@ -279,6 +279,17 @@ struct Flow : Probe {
     }
 };
 
+struct BackdropProbe : Probe {
+    using Probe::Probe;
+    std::string backdrop;
+
+ protected:
+    void layout(const Jetstream::Sakura::Context& ctx) override {
+        Probe::layout(ctx);
+        backdrop = ctx.backdropColorKey;
+    }
+};
+
 struct Host : Jetstream::Sakura::Component {
     explicit Host(Jetstream::Sakura::Component& child, bool clipsChildren = false) : child(child) {
         setClipsChildren(clipsChildren);

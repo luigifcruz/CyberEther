@@ -33,7 +33,8 @@ constexpr F32 kConsoleMaxHeightRatio = 0.55f;
 bool SameEditorConfig(const CodeEditor::Config& a, const CodeEditor::Config& b) {
     return a.id == b.id && a.value == b.value && a.fontSize == b.fontSize && a.lineNumbers == b.lineNumbers &&
            a.showActiveLine == b.showActiveLine && a.lineWrapping == b.lineWrapping && a.language == b.language &&
-           a.padding == b.padding && a.rounding == b.rounding && a.backgroundColorKey == b.backgroundColorKey;
+           a.padding == b.padding && a.rounding == b.rounding && a.backgroundColorKey == b.backgroundColorKey &&
+           a.fontName == b.fontName;
 }
 
 TextEditor::Language ToEditorLanguage(CodeEditor::Language language) {
@@ -168,6 +169,8 @@ struct CodeEditor::Impl {
             .id = config.id + ":text",
             .value = config.value,
             .fontSize = fontSizePixels,
+            .fontName = config.fontName,
+            .monospace = IsMonospaceFont(config.fontName),
             .lineNumbers = config.lineNumbers,
             .showActiveLine = config.showActiveLine,
             .wrap = config.language == Language::Markdown ? TextGrid::Wrap::Word

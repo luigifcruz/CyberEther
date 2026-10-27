@@ -61,7 +61,11 @@ void SidebarItem::update(Config config) {
 }
 
 Extent2D<F32> SidebarItem::measure(const Context& ctx, Extent2D<F32> available) {
-    return {FillLength(available.x), FitLength(Px(ctx, kSidebarItemHeight), available.y)};
+    const F32 infinite = std::numeric_limits<F32>::infinity();
+    const F32 label = measureChild(impl->label, ctx, {infinite, infinite}).x;
+    const F32 slot = impl->config.icon.empty() ? 0.0f : Px(ctx, kSidebarItemIconSlot) + Px(ctx, kSidebarItemGap);
+    const F32 natural = std::ceil(2.0f * Px(ctx, kSidebarItemPadX) + Px(ctx, impl->config.indent) + slot + label);
+    return {FillLength(available.x, natural), FitLength(Px(ctx, kSidebarItemHeight), available.y)};
 }
 
 void SidebarItem::layout(const Context& ctx) {
@@ -77,13 +81,17 @@ void SidebarItem::layout(const Context& ctx) {
     });
     layoutChild(ctx, s.fill, bounds);
 
-    const F32 slotX = bounds.x + Px(ctx, kSidebarItemPadX);
-    const F32 slot = Px(ctx, kSidebarItemIconSlot);
-    const Extent2D<F32> icon = measureChild(s.icon, ctx, {infinite, infinite});
-    layoutChild(ctx, s.icon, {std::round(slotX + (slot - icon.x) * 0.5f),
-                              std::round(bounds.y + (bounds.height - icon.y) * 0.5f), icon.x, icon.y}, bounds);
+    const F32 slotX = bounds.x + Px(ctx, kSidebarItemPadX) + Px(ctx, s.config.indent);
+    const bool iconed = !s.config.icon.empty();
+    const F32 slot = iconed ? Px(ctx, kSidebarItemIconSlot) : 0.0f;
+    s.icon.setVisible(iconed);
+    if (iconed) {
+        const Extent2D<F32> icon = measureChild(s.icon, ctx, {infinite, infinite});
+        layoutChild(ctx, s.icon, {std::round(slotX + (slot - icon.x) * 0.5f),
+                                  std::round(bounds.y + (bounds.height - icon.y) * 0.5f), icon.x, icon.y}, bounds);
+    }
 
-    const F32 labelX = slotX + slot + Px(ctx, kSidebarItemGap);
+    const F32 labelX = slotX + (iconed ? slot + Px(ctx, kSidebarItemGap) : 0.0f);
     const F32 width = std::max(0.0f, bounds.right() - Px(ctx, kSidebarItemPadX) - labelX);
     const Extent2D<F32> label = measureChild(s.label, ctx, {infinite, infinite});
     layoutChild(ctx, s.label, {labelX, std::round(bounds.y + (bounds.height - label.y) * 0.5f),

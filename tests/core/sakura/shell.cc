@@ -536,6 +536,17 @@ TEST_CASE("Clickable HUDs call onClick for clicks their content does not handle"
     CHECK(clicked == 1);
 }
 
+TEST_CASE("HUDs with an oversized natural size stay inside the margin", "[core][sakura][shell]") {
+    Probe content({1000.0f, 700.0f});
+    Sakura::HudLayer layer;
+    layer.update({.huds = {{.content = &content, .anchor = Sakura::Anchor::TopLeft}}});
+    LayerHost host({&layer});
+    host.place(MakeContext(), kScreen);
+    CHECK(content.laidFrame == Rect{24.0f, 24.0f, 752.0f, 552.0f});
+    CHECK(layer.covers({787.0f, 587.0f}));
+    CHECK_FALSE(layer.covers({789.0f, 589.0f}));
+}
+
 TEST_CASE("Modals without a close button drop the footer, center their content and still close on Escape",
           "[core][sakura][shell]") {
     SakuraTest::FakeWindow window;

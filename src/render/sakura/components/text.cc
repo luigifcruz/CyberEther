@@ -88,13 +88,28 @@ struct Text::Impl {
     F32 linesWidth = -1.0f;
     F32 linesFontSize = -1.0f;
     U64 linesFonts = 0;
+    F32 fit = 1.0f;
 
-    F32 fontSize(const Context& ctx) const {
+    static constexpr U64 kFitPasses = 3;
+
+    F32 baseSize(const Context& ctx) const {
         return Typography::FontSize * config.scale * ctx.pixelRatio;
     }
 
+    F32 fontSize(const Context& ctx) const {
+        return baseSize(ctx) * fit;
+    }
+
     F32 iconSize(const Context& ctx) const {
-        return Typography::FontSize * config.scale * ctx.pixelRatio;
+        return fontSize(ctx);
+    }
+
+    F32 widest() const {
+        F32 width = 0.0f;
+        for (const auto& line : lines) {
+            width = std::max(width, line.width);
+        }
+        return width;
     }
 
     Line shape(const std::string& str, const Context& ctx) {
@@ -121,7 +136,7 @@ struct Text::Impl {
     }
 
     void wrap(const Context& ctx, F32 width) {
-        const F32 size = fontSize(ctx);
+        const F32 size = baseSize(ctx);
         const U64 fonts = ctx.render ? ctx.render->fontRevision() : 0;
         if (width == linesWidth && size == linesFontSize && fonts == linesFonts) {
             return;
@@ -129,8 +144,20 @@ struct Text::Impl {
         linesWidth = width;
         linesFontSize = size;
         linesFonts = fonts;
-        lines.clear();
         metrics.setWindow(ctx.render);
+        fit = 1.0f;
+        build(ctx, width);
+        if (!config.shrinkToFit || config.wrapped || !std::isfinite(width) || width <= 0.0f) {
+            return;
+        }
+        for (U64 pass = 0; pass < kFitPasses && widest() > width; ++pass) {
+            fit *= width / widest();
+            build(ctx, width);
+        }
+    }
+
+    void build(const Context& ctx, F32 width) {
+        lines.clear();
         const auto trimmed = [](std::string value) {
             while (!value.empty() && value.back() == ' ') {
                 value.pop_back();
@@ -205,7 +232,8 @@ void Text::update(Config config) {
     }
     invalidate(Dirty::Layout);
     if (config.str != impl->config.str || config.wrapped != impl->config.wrapped ||
-        config.font != impl->config.font || config.scale != impl->config.scale) {
+        config.font != impl->config.font || config.scale != impl->config.scale ||
+        config.shrinkToFit != impl->config.shrinkToFit) {
         impl->linesWidth = -1.0f;
     }
     impl->config = std::move(config);
@@ -213,10 +241,7 @@ void Text::update(Config config) {
 
 Extent2D<F32> Text::measure(const Context& ctx, Extent2D<F32> available) {
     impl->wrap(ctx, available.x);
-    F32 width = 0.0f;
-    for (const auto& line : impl->lines) {
-        width = std::max(width, line.width);
-    }
+    F32 width = impl->widest();
     if (std::isfinite(available.x) && (impl->config.wrapped || impl->config.align != Align::Left)) {
         width = std::max(width, available.x);
     }

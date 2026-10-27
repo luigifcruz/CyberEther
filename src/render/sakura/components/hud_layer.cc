@@ -67,10 +67,10 @@ void HudLayer::layout(const Context& ctx) {
             const F32 width = hud.size.x != 0.0f ? size.x - 2.0f * padding.x : std::max(0.0f, room.x - 2.0f * padding.x);
             const auto measured = measureChild(*hud.content, ctx, {width, infinite});
             if (hud.size.x == 0.0f) {
-                size.x = std::ceil(measured.x + 2.0f * padding.x);
+                size.x = std::min(room.x, std::ceil(measured.x + 2.0f * padding.x));
             }
             if (hud.size.y == 0.0f) {
-                size.y = std::ceil(measured.y + 2.0f * padding.y);
+                size.y = std::min(room.y, std::ceil(measured.y + 2.0f * padding.y));
             }
         }
         const Rect rect = Anchored(bounds, hud.anchor, size, {Px(ctx, hud.offset.x), Px(ctx, hud.offset.y)}, margin);

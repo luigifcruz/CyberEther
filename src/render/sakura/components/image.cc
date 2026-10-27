@@ -64,16 +64,13 @@ struct Image::Impl : public Drawable {
             return;
         }
         underlayAllowed = allowed;
-        if (punch && component) {
-            image()->enabled(active && punching());
-        }
         if (owner) {
             owner->invalidate(Dirty::Resource);
         }
     }
 
     bool punching() const {
-        return punch && underlayAllowed && component;
+        return punch && component;
     }
 
     Result upload() override {
@@ -83,7 +80,7 @@ struct Image::Impl : public Drawable {
         auto* image = this->image();
 
         active = config.visible && !config.rect.empty();
-        image->enabled(active && (!punch || punching()));
+        image->enabled(active);
         if (!active) {
             return Result::SUCCESS;
         }

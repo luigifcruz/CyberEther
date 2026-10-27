@@ -7,6 +7,7 @@
 #include "../detail/clip_layer.hh"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -24,10 +25,21 @@ struct Grid::Impl {
         return std::max<U64>(1, config.columns);
     }
 
+    U64 columns(const Context& ctx, F32 width) const {
+        const U64 most = columns();
+        if (config.minCellWidth <= 0.0f || !std::isfinite(width)) {
+            return most;
+        }
+        const F32 padX = Px(ctx, config.cellPadding.x);
+        const F32 outer = config.outerPadding ? padX : 0.0f;
+        const F32 fit = (width - 2.0f * outer + 2.0f * padX) / (Px(ctx, config.minCellWidth) + 2.0f * padX);
+        return std::clamp<U64>(static_cast<U64>(std::max(0.0f, std::floor(fit))), 1, most);
+    }
+
     F32 cellWidth(const Context& ctx, F32 width) const {
         const F32 padX = Px(ctx, config.cellPadding.x);
         const F32 outer = config.outerPadding ? padX : 0.0f;
-        const F32 n = static_cast<F32>(columns());
+        const F32 n = static_cast<F32>(columns(ctx, width));
         return std::max(0.0f, (width - 2.0f * outer - (n - 1.0f) * 2.0f * padX) / n);
     }
 
@@ -35,7 +47,7 @@ struct Grid::Impl {
     F32 measureRows(const Context& ctx, F32 width, const Measure& measure) {
         const F32 padY = Px(ctx, config.cellPadding.y);
         const F32 cell = cellWidth(ctx, width);
-        const U64 n = columns();
+        const U64 n = columns(ctx, width);
         rowHeights.assign((config.items.size() + n - 1) / n, 0.0f);
         for (U64 index = 0; index < config.items.size(); ++index) {
             auto* item = config.items[index];
@@ -132,7 +144,7 @@ void Grid::layout(const Context& ctx) {
     layoutChild(ctx, impl->scroll, bounds);
     layoutChild(ctx, impl->clipLayer, bounds);
 
-    const U64 n = impl->columns();
+    const U64 n = impl->columns(ctx, width);
     const F32 cell = impl->cellWidth(ctx, width);
     F32 y = bounds.y - impl->scrollY - impl->scroll.overscroll(ctx).y;
     for (U64 row = 0; row < impl->rowHeights.size(); ++row) {

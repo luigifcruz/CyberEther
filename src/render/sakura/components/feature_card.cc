@@ -113,7 +113,7 @@ void FeatureCard::update(Config config) {
 
 Extent2D<F32> FeatureCard::measure(const Context& ctx, Extent2D<F32> available) {
     const F32 width = FillLength(available.x);
-    const auto metrics = impl->metrics(*this, ctx, width);
+    const auto metrics = impl->metrics(*this, CardSurface(ctx), width);
     const F32 separator = impl->config.content ? Hairline(ctx) : 0.0f;
     return {width, FitLength(metrics.header + separator + metrics.content, available.y)};
 }
@@ -121,15 +121,16 @@ Extent2D<F32> FeatureCard::measure(const Context& ctx, Extent2D<F32> available) 
 void FeatureCard::layout(const Context& ctx) {
     auto& s = *impl;
     const Rect bounds = frame();
-    const auto metrics = s.metrics(*this, ctx, bounds.width);
+    const Context inner = CardSurface(ctx);
+    const auto metrics = s.metrics(*this, inner, bounds.width);
     const F32 padX = Px(ctx, kCardPadX);
     const F32 padY = Px(ctx, kFeaturePadY);
-    const F32 inner = std::max(0.0f, bounds.width - 2.0f * padX);
+    const F32 width = std::max(0.0f, bounds.width - 2.0f * padX);
     const F32 line = Hairline(ctx);
     s.card.update({
-        .instances = {{.rect = bounds, .visible = !bounds.empty(), .backgroundColor = ctx.color("setting_card_bg")}},
+        .instances = {{.rect = bounds, .visible = !bounds.empty(), .backgroundColor = ctx.color(kCardSurface)}},
         .clip = bounds,
-        .cornerRadius = Px(ctx, kCardRounding),
+        .cornerRadius = Px(ctx, kPanelRounding),
         .borderWidth = Px(ctx, 1.0f),
         .borderColor = ctx.color("setting_card_border"),
         .strokeFringe = true,
@@ -140,28 +141,28 @@ void FeatureCard::layout(const Context& ctx) {
     const F32 gap = metrics.description > 0.0f ? Px(ctx, kFeatureLineGap) : 0.0f;
     const F32 textHeight = metrics.title + gap + metrics.description;
     F32 y = std::round(bounds.y + (metrics.header - textHeight) * 0.5f);
-    layoutChild(ctx, s.title, {bounds.x + padX, y, metrics.text, metrics.title});
+    layoutChild(inner, s.title, {bounds.x + padX, y, metrics.text, metrics.title});
     y += metrics.title + gap;
     if (!s.config.description.empty()) {
-        layoutChild(ctx, s.description, {bounds.x + padX, y, metrics.text, metrics.description});
+        layoutChild(inner, s.description, {bounds.x + padX, y, metrics.text, metrics.description});
     }
     if (s.config.action) {
-        layoutChild(ctx, *s.config.action, {bounds.right() - padX - metrics.action.x,
-                                            std::round(bounds.y + (metrics.header - metrics.action.y) * 0.5f),
-                                            metrics.action.x, metrics.action.y});
+        layoutChild(inner, *s.config.action, {bounds.right() - padX - metrics.action.x,
+                                              std::round(bounds.y + (metrics.header - metrics.action.y) * 0.5f),
+                                              metrics.action.x, metrics.action.y});
     }
 
     if (s.config.content) {
         const F32 top = bounds.y + metrics.header;
         s.separator.update({
-            .instances = {{.rect = {bounds.x + padX, top, inner, line},
+            .instances = {{.rect = {bounds.x + padX, top, width, line},
                            .backgroundColor = ctx.color("setting_card_border")}},
             .clip = bounds,
             .capacity = 1,
         });
         layoutChild(ctx, s.separator, bounds);
-        layoutChild(ctx, *s.config.content, {bounds.x + padX, top + line + padY, inner,
-                                             std::max(0.0f, metrics.content - 2.0f * padY)});
+        layoutChild(inner, *s.config.content, {bounds.x + padX, top + line + padY, width,
+                                               std::max(0.0f, metrics.content - 2.0f * padY)});
     }
 }
 

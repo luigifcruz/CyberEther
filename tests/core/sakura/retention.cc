@@ -45,9 +45,11 @@
 #include "component_harness.hh"
 #include "scene.hh"
 
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <memory>
+#include <numbers>
 #include <optional>
 #include <string>
 #include <vector>
@@ -779,6 +781,119 @@ TEST_CASE("Interactive divs settle and repaint once per hover transition", "[cor
     CHECK(Retains(frames, update));
 }
 
+TEST_CASE("Chrome divs toggle their shadow with a repaint and scale it with the pixel ratio",
+          "[core][sakura][retention]") {
+    Scene scene;
+    Sakura::Div div;
+    Place place(div, {10.0f, 10.0f, 200.0f, 60.0f});
+    auto ctx = scene.context();
+    ctx.pixelRatio = 2.0f;
+    Frames frames(place, kScreen, ctx);
+    bool shadow = false;
+    const auto update = [&] {
+        div.update({.rounding = 8.0f, .chrome = true, .shadow = shadow});
+    };
+    const auto shadowed = [&]() -> const Sakura::Box* {
+        for (const auto* box : Find<Sakura::Box>(div)) {
+            if (box->config().softness > 0.0f) {
+                return box;
+            }
+        }
+        return nullptr;
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    CHECK(shadowed() == nullptr);
+
+    shadow = true;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    const auto* box = shadowed();
+    REQUIRE(box != nullptr);
+    CHECK(box->config().softness == 36.0f);
+    REQUIRE(box->config().instances.size() == 1);
+    CHECK(box->config().instances.front().rect == Rect{10.0f - 36.0f, 22.0f - 36.0f, 272.0f, 132.0f});
+
+    shadow = false;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(shadowed() == nullptr);
+    CHECK(frames.restructures == 0);
+}
+
+TEST_CASE("Plain divs draw their shadow behind the frame and toggle it with a repaint", "[core][sakura][retention]") {
+    Scene scene;
+    Sakura::Div div;
+    Place place(div, {10.0f, 10.0f, 200.0f, 60.0f});
+    Frames frames(place, kScreen, scene.context());
+    bool shadow = false;
+    const auto update = [&] {
+        div.update({.rounding = 8.0f, .shadow = shadow});
+    };
+    const auto shadowed = [&]() -> const Sakura::Box* {
+        for (const auto* box : Find<Sakura::Box>(div)) {
+            if (box->config().softness > 0.0f) {
+                return box;
+            }
+        }
+        return nullptr;
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    CHECK(shadowed() == nullptr);
+
+    shadow = true;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    const auto* box = shadowed();
+    REQUIRE(box != nullptr);
+    CHECK(box->config().softness == 18.0f);
+    REQUIRE(box->config().instances.size() == 1);
+    CHECK(box->config().instances.front().rect == Rect{10.0f - 18.0f, 16.0f - 18.0f, 236.0f, 96.0f});
+
+    shadow = false;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(shadowed() == nullptr);
+    CHECK(frames.restructures == 0);
+}
+
+TEST_CASE("Div waves settle, repaint on a color change and scale with the pixel ratio", "[core][sakura][retention]") {
+    Scene scene;
+    Sakura::Div div;
+    Place place(div, {10.0f, 10.0f, 300.0f, 120.0f});
+    Frames frames(place, kScreen, scene.context());
+    std::string border = "border";
+    const auto update = [&] {
+        div.update({.rounding = 16.0f, .waves = true, .borderColorKey = border});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    CHECK(QuietMoves(frames, update, {{50.0f, 50.0f}, {60.0f, 50.0f}}, [&](const MouseEvent& e) {
+        return place.send(e);
+    }));
+
+    border = "accent_color";
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == 0);
+
+    Sakura::Div scaled;
+    scaled.update({.rounding = 16.0f, .waves = true});
+    Host host(scaled);
+    auto doubled = MakeContext();
+    doubled.pixelRatio = 2.0f;
+    host.place(doubled, {0.0f, 0.0f, 600.0f, 240.0f});
+    const auto waves = Find<Sakura::Polyline>(scaled);
+    REQUIRE(waves.size() == 1);
+    const auto& config = waves.front()->config();
+    REQUIRE_FALSE(config.instances.empty());
+    CHECK(config.instances.front().thickness == 2.0f * 1.3f);
+    CHECK(config.instances.front().points.front().y == 28.0f);
+    REQUIRE(config.clip.has_value());
+    CHECK(config.clip->x == 32.0f * (1.0f - 1.0f / std::numbers::sqrt2_v<F32>));
+}
+
 TEST_CASE("Reveals lay out only while animating and stay clean while holding or with a frozen clock",
           "[core][sakura][retention]") {
     Probe child({100.0f, 40.0f});
@@ -853,6 +968,38 @@ TEST_CASE("Collapsed reveals stop laying out an animated child and settle", "[co
     const U64 laid = child.layouts;
     CHECK(Retains(frames, update));
     CHECK(child.layouts == laid);
+}
+
+TEST_CASE("Div waves toggle by visibility and build only once", "[core][sakura][retention]") {
+    Scene scene;
+    Sakura::Div div;
+    Place place(div, {10.0f, 10.0f, 200.0f, 60.0f});
+    Frames frames(place, kScreen, scene.context());
+    bool waves = false;
+    const auto update = [&] {
+        div.update({.rounding = 16.0f, .waves = waves});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Find<Sakura::Polyline>(div).empty());
+
+    waves = true;
+    frames.run(update);
+    CHECK(Find<Sakura::Polyline>(div).size() == 1);
+    REQUIRE(frames.settle(update));
+    const U64 restructures = frames.restructures;
+    const U64 rebuilds = frames.rebuilds;
+
+    waves = false;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Find<Sakura::Polyline>(div).empty());
+    REQUIRE(frames.settle(update));
+
+    waves = true;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Find<Sakura::Polyline>(div).size() == 1);
+    REQUIRE(frames.settle(update));
+    CHECK(frames.restructures == restructures);
+    CHECK(frames.rebuilds == rebuilds);
 }
 
 TEST_CASE("Passive divs ignore hover changes", "[core][sakura][retention]") {
@@ -1300,6 +1447,64 @@ TEST_CASE("Text buttons repaint their underline once per hover transition",
     CheckLeaveRepaintsOnce(frames, place, update, {30.0f, 15.0f});
 }
 
+TEST_CASE("Buttons tint their label with the hovered text color once per hover transition",
+          "[core][sakura][retention]") {
+    Scene scene;
+    Sakura::Button button;
+    Place place(button, {10.0f, 10.0f, 120.0f, 30.0f});
+    Frames frames(place, kScreen, scene.context());
+    const auto update = [&] {
+        button.update({.str = "Start", .hoveredTextColorKey = "cyber_blue", .onClick = [] {}});
+    };
+    const auto label = [&] {
+        const auto texts = Find<Sakura::Text>(button);
+        REQUIRE(texts.size() == 1);
+        return texts.front()->config().colorKey;
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    CHECK(label() != "cyber_blue");
+    CheckHoverRepaintsOnce(frames, place, update, {30.0f, 15.0f}, {400.0f, 300.0f});
+    CheckLeaveRepaintsOnce(frames, place, update, {30.0f, 15.0f});
+
+    place.send(Mouse(MouseEventType::Move, 30.0f, 15.0f));
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(label() == "cyber_blue");
+    place.send(Mouse(MouseEventType::Leave, 30.0f, 15.0f));
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(label() != "cyber_blue");
+    CHECK(frames.restructures == 0);
+}
+
+TEST_CASE("Buttons draw their label in the configured font", "[core][sakura][retention]") {
+    Scene scene;
+    Sakura::Button button;
+    Place place(button, {10.0f, 10.0f, 120.0f, 30.0f});
+    Frames frames(place, kScreen, scene.context());
+    Sakura::Text::Font font = Sakura::Text::Font::Body;
+    const auto update = [&] {
+        button.update({.str = "Start", .font = font});
+    };
+    const auto fontName = [&] {
+        for (const auto* label : Find<Sakura::Label>(button)) {
+            if (label->config().fontName != Sakura::Typography::IconFont) {
+                return label->config().fontName;
+            }
+        }
+        return std::string();
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(fontName() == Sakura::Typography::MonoFont);
+
+    font = Sakura::Text::Font::Sans;
+    CHECK(Kept(frames.run(update)));
+    REQUIRE(frames.settle(update));
+    CHECK(Find<Sakura::Text>(button).front()->config().font == Sakura::Text::Font::Sans);
+    CHECK(fontName() == Sakura::Typography::BodyFont);
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == 0);
+}
+
 TEST_CASE("Navigation items settle and repaint on selection and hover", "[core][sakura][retention]") {
     Scene scene;
     Sakura::NavigationItem item;
@@ -1612,6 +1817,30 @@ TEST_CASE("Code editor views settle under identical updates", "[core][sakura][re
     CHECK(Unpainted(frames.run(update)));
     CHECK(Retains(frames, update));
     CHECK(frames.restructures == 0);
+}
+
+TEST_CASE("Code editors draw their text with the configured font", "[core][sakura][code-editor]") {
+    Scene scene;
+    Sakura::CodeEditor view;
+    Place place(view, {10.0f, 10.0f, 400.0f, 300.0f});
+    Frames frames(place, kScreen, scene.context());
+    const auto update = [&] {
+        view.update({.id = "code", .value = "print('hello')\n", .height = 300.0f,
+                     .fontName = Sakura::Typography::BodyFont});
+    };
+    REQUIRE(frames.settle(update));
+    std::vector<std::string> fonts;
+    for (const auto* label : Find<Sakura::Label>(view)) {
+        for (const auto& instance : label->config().instances) {
+            if (instance.visible && instance.str.find("print") != std::string::npos) {
+                fonts.push_back(label->config().fontName);
+            }
+        }
+    }
+    REQUIRE_FALSE(fonts.empty());
+    CHECK(std::all_of(fonts.begin(), fonts.end(), [](const std::string& font) {
+        return font == Sakura::Typography::BodyFont;
+    }));
 }
 
 TEST_CASE("Expanding a code editor console repaints without restructuring", "[core][sakura][retention]") {

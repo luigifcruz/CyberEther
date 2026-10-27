@@ -59,7 +59,20 @@ struct Button::Impl {
         return config.variant == Variant::Text;
     }
 
+    void pushLabel() {
+        label.update({
+            .str = config.str,
+            .font = config.font,
+            .colorKey = textKey(),
+            .scale = config.textScale,
+            .opacity = config.disabled && !textual() ? kDisabledAlpha : 1.0f,
+        });
+    }
+
     std::string textKey() const {
+        if (hovered && !config.disabled && !config.hoveredTextColorKey.empty()) {
+            return config.hoveredTextColorKey;
+        }
         return textual() ? Pick(config.textColorKey, config.disabled ? "text_disabled" : "text_primary")
                          : Pick(config.textColorKey, VariantKeys(config.variant).text);
     }
@@ -87,17 +100,11 @@ void Button::update(Config config) {
         invalidate(Dirty::Layout);
     }
     impl->config = std::move(config);
-    impl->label.update({
-        .str = impl->config.str,
-        .font = impl->config.font,
-        .colorKey = impl->textKey(),
-        .scale = impl->config.textScale,
-        .opacity = impl->config.disabled && !impl->textual() ? kDisabledAlpha : 1.0f,
-    });
     if (impl->config.disabled) {
         impl->hovered = false;
         impl->pressed = false;
     }
+    impl->pushLabel();
 }
 
 Extent2D<F32> Button::measure(const Context& ctx, Extent2D<F32> available) {
@@ -171,6 +178,7 @@ bool Button::mouseEvent(const MouseEvent& event) {
         case MouseEventType::Move:
             if (inside != impl->hovered) {
                 impl->hovered = inside;
+                impl->pushLabel();
                 invalidate(Dirty::Layout);
             }
             return false;
@@ -179,6 +187,7 @@ bool Button::mouseEvent(const MouseEvent& event) {
             if (impl->hovered || impl->pressed) {
                 impl->hovered = false;
                 impl->pressed = false;
+                impl->pushLabel();
                 invalidate(Dirty::Layout);
             }
             return false;

@@ -27,7 +27,6 @@ constexpr F32 kCardLabel = 15.5f;
 constexpr F32 kCardDescription = 15.0f;
 constexpr F32 kCardDescriptionLineHeight = 1.05f;
 constexpr F32 kCardEmptyPadY = 22.0f;
-constexpr U64 kCardSeparatorBlock = 128;
 
 }  // namespace
 
@@ -166,12 +165,13 @@ Extent2D<F32> SettingCard::measure(const Context& ctx, Extent2D<F32> available) 
     const F32 width = FillLength(available.x);
     if (impl->config.rows.empty() && !impl->config.empty.empty()) {
         const F32 inner = std::max(0.0f, width - 2.0f * Px(ctx, kCardPadX));
-        const F32 text = measureChild(impl->emptyText, ctx, {inner, std::numeric_limits<F32>::infinity()}).y;
+        const F32 infinite = std::numeric_limits<F32>::infinity();
+        const F32 text = measureChild(impl->emptyText, CardSurface(ctx), {inner, infinite}).y;
         return {width, FitLength(text + 2.0f * Px(ctx, kCardEmptyPadY), available.y)};
     }
     F32 height = 0.0f;
     for (U64 index = 0; index < impl->config.rows.size(); ++index) {
-        height += impl->metrics(*this, ctx, index, width).height;
+        height += impl->metrics(*this, CardSurface(ctx), index, width).height;
     }
     if (impl->config.rows.size() > 1) {
         height += Hairline(ctx) * static_cast<F32>(impl->config.rows.size() - 1);
@@ -182,13 +182,14 @@ Extent2D<F32> SettingCard::measure(const Context& ctx, Extent2D<F32> available) 
 void SettingCard::layout(const Context& ctx) {
     auto& s = *impl;
     const Rect bounds = frame();
+    const Context inner = CardSurface(ctx);
     const F32 padX = Px(ctx, kCardPadX);
     const F32 line = Hairline(ctx);
 
     s.card.update({
-        .instances = {{.rect = bounds, .visible = !bounds.empty(), .backgroundColor = ctx.color("setting_card_bg")}},
+        .instances = {{.rect = bounds, .visible = !bounds.empty(), .backgroundColor = ctx.color(kCardSurface)}},
         .clip = bounds,
-        .cornerRadius = Px(ctx, kCardRounding),
+        .cornerRadius = Px(ctx, kPanelRounding),
         .borderWidth = Px(ctx, 1.0f),
         .borderColor = ctx.color("setting_card_border"),
         .strokeFringe = true,
@@ -197,25 +198,28 @@ void SettingCard::layout(const Context& ctx) {
     layoutChild(ctx, s.card, bounds);
 
     if (s.config.rows.empty() && !s.config.empty.empty()) {
-        const F32 inner = std::max(0.0f, bounds.width - 2.0f * padX);
-        const F32 height = measureChild(s.emptyText, ctx, {inner, std::numeric_limits<F32>::infinity()}).y;
-        layoutChild(ctx, s.emptyText, {bounds.x + padX, std::round(bounds.y + (bounds.height - height) * 0.5f),
-                                       inner, height});
+        const F32 width = std::max(0.0f, bounds.width - 2.0f * padX);
+        const F32 height = measureChild(s.emptyText, inner, {width, std::numeric_limits<F32>::infinity()}).y;
+        layoutChild(inner, s.emptyText, {bounds.x + padX, std::round(bounds.y + (bounds.height - height) * 0.5f),
+                                         width, height});
     }
 
+    const F32 minimumRow = std::max(1.0f, 2.0f * Px(ctx, kCardPadY));
+    const U64 capacity = static_cast<U64>(std::ceil(static_cast<F32>(ctx.framebufferSize.y) / minimumRow)) + 2;
+    const Rect visible = Intersect(bounds, clip());
     std::vector<Box::Instance> separators;
     s.rows.clear();
     F32 y = bounds.y;
     for (U64 index = 0; index < s.config.rows.size(); ++index) {
         const auto& row = s.config.rows[index];
         auto& text = *s.lines[index];
-        const auto metrics = s.metrics(*this, ctx, index, bounds.width);
+        const auto metrics = s.metrics(*this, inner, index, bounds.width);
         s.rows.push_back({bounds.x, y, bounds.width, metrics.height});
         const F32 right = bounds.right() - padX;
         if (row.control) {
-            layoutChild(ctx, *row.control, {right - metrics.control.x,
-                                            std::round(y + (metrics.height - metrics.control.y) * 0.5f),
-                                            metrics.control.x, metrics.control.y});
+            layoutChild(inner, *row.control, {right - metrics.control.x,
+                                              std::round(y + (metrics.height - metrics.control.y) * 0.5f),
+                                              metrics.control.x, metrics.control.y});
         }
         const F32 gap = row.control ? Px(ctx, kCardControlGap) : 0.0f;
         const F32 width = std::max(0.0f, right - metrics.control.x - gap - (bounds.x + padX));
@@ -223,20 +227,21 @@ void SettingCard::layout(const Context& ctx) {
         const F32 textHeight = metrics.label + spacing + metrics.description;
         F32 textY = std::round(y + (metrics.height - textHeight) * 0.5f);
         if (!row.label.empty()) {
-            layoutChild(ctx, text.label, {bounds.x + padX, textY, width, metrics.label});
+            layoutChild(inner, text.label, {bounds.x + padX, textY, width, metrics.label});
         }
         textY += metrics.label + spacing;
         if (!row.description.empty()) {
-            layoutChild(ctx, text.description, {bounds.x + padX, textY, width, metrics.description});
+            layoutChild(inner, text.description, {bounds.x + padX, textY, width, metrics.description});
         }
         y += metrics.height;
         if (index + 1 < s.config.rows.size()) {
-            separators.push_back({.rect = {bounds.x + padX, y, std::max(0.0f, bounds.width - 2.0f * padX), line},
-                                  .backgroundColor = ctx.color("setting_card_border")});
+            const Rect rule = {bounds.x + padX, y, std::max(0.0f, bounds.width - 2.0f * padX), line};
+            if (separators.size() < capacity && Overlaps(rule, visible)) {
+                separators.push_back({.rect = rule, .backgroundColor = ctx.color("setting_card_border")});
+            }
             y += line;
         }
     }
-    const U64 capacity = kCardSeparatorBlock * (s.config.rows.size() / kCardSeparatorBlock + 1);
     s.separators.update({.instances = std::move(separators), .clip = bounds, .capacity = capacity});
     layoutChild(ctx, s.separators, bounds);
 
@@ -254,7 +259,7 @@ void SettingCard::layout(const Context& ctx) {
                        .backgroundColor = ctx.color("setting_card_hovered"),
                        .corners = corners}},
         .clip = bounds,
-        .cornerRadius = std::max(0.0f, Px(ctx, kCardRounding) - line),
+        .cornerRadius = std::max(0.0f, Px(ctx, kPanelRounding) - line),
         .capacity = 1,
     });
     layoutChild(ctx, s.highlight, bounds);
