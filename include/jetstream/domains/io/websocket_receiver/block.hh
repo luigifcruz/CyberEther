@@ -6,7 +6,7 @@
 namespace Jetstream::Blocks {
 
 struct WebsocketReceiver : public Block::Config {
-    std::string url = "ws://localhost:8765";
+    std::string url = "ws://127.0.0.1:8765";
     std::string dataType = "CF32";
     U64 numberOfBatches = 8;
     U64 numberOfTimeSamples = 8192;
@@ -46,7 +46,7 @@ struct WebsocketReceiver : public Block::Config {
         "\n"
         "| Setting | Default | Range | Effect |\n"
         "|---|---|---|---|\n"
-        "| **URL** | ws://localhost:8765 | A ws:// or wss:// address with a host and no"
+        "| **URL** | ws://127.0.0.1:8765 | A ws:// or wss:// address with a host and no"
         " # fragment | Server to connect to. |\n"
         "| **Data Type** | CF32 | CF32, F32, CI8, I8, CU8, U8, CI16, I16, CU16, U16 | "
         "Type of each received sample, and of the output. It must match what the server"

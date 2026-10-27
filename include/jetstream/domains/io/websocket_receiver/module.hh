@@ -7,7 +7,7 @@
 namespace Jetstream::Modules {
 
 struct WebsocketReceiver : public Module::Config {
-    std::string url = "ws://localhost:8765";
+    std::string url = "ws://127.0.0.1:8765";
     std::string dataType = "CF32";
     U64 numberOfBatches = 8;
     U64 numberOfTimeSamples = 8192;
