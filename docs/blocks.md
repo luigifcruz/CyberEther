@@ -19,6 +19,8 @@ Tensor manipulation and general plumbing: shaping, casting, arithmetic, and the 
 | Arithmetic | `arithmetic` | Reduces a tensor along an axis using an arithmetic operation. |
 | Cast | `cast` | Casts the input to a type. |
 | Comparator | `comparator` | Compares inputs for numerical similarity. |
+| Complex Merge | `complex_merge` | Merges two signals into a complex one. |
+| Complex Split | `complex_split` | Splits a complex signal in two. |
 | Duplicate | `duplicate` | Copies and transfers signal data. |
 | Expand Dims | `expand_dims` | Inserts a new dimension of size 1 at a specified axis. |
 | Flatten | `flatten` | Flattens a tensor to one dimension. |
