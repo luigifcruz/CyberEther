@@ -325,11 +325,16 @@ struct SuperluminalView {
                         invalidate(Dirty::Layout);
                     }
                 },
+                .onOverscroll = [this] {
+                    requestFrame();
+                },
             });
             layoutChild(ctx, scroller, bounds);
             if (config.content) {
+                const F32 overscroll = scroller.overscroll(ctx).y;
                 layoutChild(ctx, *config.content,
-                            {bounds.x, bounds.y - offset, width, overflow ? natural : bounds.height}, bounds);
+                            {bounds.x, bounds.y - offset - overscroll, width, overflow ? natural : bounds.height},
+                            bounds);
             }
             const Extent2D<F32> reported = {std::ceil(natural) / ctx.pixelRatio, bounds.height / ctx.pixelRatio};
             if (config.onLayout && reported != last) {

@@ -8,6 +8,7 @@
 #include <jetstream/render/sakura/components/polyline.hh>
 #include <jetstream/render/sakura/components/reveal.hh>
 #include <jetstream/render/sakura/components/panel.hh>
+#include <jetstream/render/sakura/components/scroll_area.hh>
 #include <jetstream/render/sakura/components/scroller.hh>
 #include <jetstream/render/sakura/components/spacer.hh>
 #include <jetstream/render/sakura/components/split_view.hh>
@@ -577,6 +578,322 @@ TEST_CASE("Scroller track insets move the track off its edge and pull both ends 
     CHECK(horizontal == Rect{25.0f, 95.0f, 152.0f, 8.0f});
 }
 
+TEST_CASE("Scrollers follow trackpad gestures point for point and keep the wheel step for mouse wheels",
+          "[core][sakura][layout]") {
+    auto ctx = MakeContext();
+    Sakura::Scroller scroll;
+    Host host(scroll);
+    F32 scrollY = 0.0f;
+    const auto update = [&] {
+        scroll.update({.id = "scroll", .contentHeight = 2000.0f, .scrollY = scrollY, .wheelStep = 48.0f,
+                       .onScrollY = [&](F32 next) { scrollY = next; }});
+    };
+    const auto place = [&] {
+        update();
+        host.place(ctx, {0.0f, 0.0f, 200.0f, 300.0f});
+    };
+    const auto wheel = [&](F32 dy, ScrollPhase phase) {
+        auto event = Wheel(100.0f, 150.0f, dy);
+        event.phase = phase;
+        return host.send(event);
+    };
+
+    place();
+    REQUIRE(wheel(-1.0f, ScrollPhase::None));
+    CHECK(scrollY == 48.0f);
+    place();
+    REQUIRE(wheel(-0.5f, ScrollPhase::Changed));
+    CHECK(scrollY == 53.0f);
+    place();
+    REQUIRE(wheel(-0.3f, ScrollPhase::Momentum));
+    CHECK(scrollY == 56.0f);
+
+    ctx.pixelRatio = 2.0f;
+    place();
+    REQUIRE(wheel(-1.0f, ScrollPhase::Changed));
+    CHECK(scrollY == 76.0f);
+}
+
+namespace {
+
+struct ElasticRig {
+    Sakura::Context ctx = MakeContext();
+    Sakura::Scroller scroll;
+    Host host{scroll};
+    F32 scrollY = 0.0f;
+    U64 notified = 0;
+
+    ElasticRig() {
+        ctx.time = 1.0;
+        place();
+    }
+
+    void place() {
+        scroll.update({.id = "elastic",
+                       .contentHeight = 1000.0f,
+                       .scrollY = scrollY,
+                       .wheelStep = 48.0f,
+                       .onScrollY = [this](F32 next) { scrollY = next; },
+                       .onOverscroll = [this] { ++notified; }});
+        host.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+    }
+
+    bool wheel(F32 dy, ScrollPhase phase) {
+        auto event = Wheel(100.0f, 50.0f, dy);
+        event.phase = phase;
+        const bool handled = host.send(event);
+        place();
+        return handled;
+    }
+
+    bool precise(F32 dy) {
+        auto event = Wheel(100.0f, 50.0f, dy);
+        event.precise = true;
+        const bool handled = host.send(event);
+        place();
+        return handled;
+    }
+
+    F32 offset() {
+        return scroll.overscroll(ctx).y;
+    }
+
+    F32 advance(F64 seconds) {
+        for (F64 elapsed = 0.0; elapsed < seconds; elapsed += 1.0 / 60.0) {
+            ctx.time += 1.0 / 60.0;
+            place();
+        }
+        return offset();
+    }
+};
+
+}  // namespace
+
+TEST_CASE("Trackpad drags stretch past the edge with resistance and spring back once released",
+          "[core][sakura][layout]") {
+    ElasticRig rig;
+    REQUIRE(rig.wheel(0.0f, ScrollPhase::Began));
+    REQUIRE(rig.wheel(3.0f, ScrollPhase::Changed));
+    const F32 first = rig.offset();
+    CHECK(first < 0.0f);
+    CHECK(first > -30.0f);
+    CHECK(rig.scrollY == 0.0f);
+    REQUIRE(rig.wheel(3.0f, ScrollPhase::Changed));
+    const F32 second = rig.offset();
+    CHECK(second < first);
+    CHECK(first - second < -first);
+    CHECK(rig.notified > 0);
+
+    CHECK(rig.advance(0.2) == second);
+    CHECK_FALSE(rig.wheel(0.0f, ScrollPhase::Ended));
+    F32 previous = rig.offset();
+    for (U64 frame = 0; frame < 6; ++frame) {
+        const F32 next = rig.advance(1.0 / 60.0);
+        CHECK(next >= previous);
+        previous = next;
+    }
+    CHECK(previous < 0.0f);
+    CHECK(rig.advance(1.0) == 0.0f);
+    CHECK(rig.scrollY == 0.0f);
+}
+
+TEST_CASE("Momentum after a stretched release never bounces again once the spring settles",
+          "[core][sakura][layout]") {
+    ElasticRig rig;
+    rig.wheel(0.0f, ScrollPhase::Began);
+    rig.wheel(6.0f, ScrollPhase::Changed);
+    REQUIRE(rig.offset() < 0.0f);
+    rig.wheel(0.0f, ScrollPhase::Ended);
+    bool settled = false;
+    for (U64 frame = 0; frame < 120; ++frame) {
+        rig.wheel(1.0f, ScrollPhase::Momentum);
+        const F32 offset = rig.advance(1.0 / 60.0);
+        if (settled) {
+            CHECK(offset == 0.0f);
+        }
+        settled = settled || offset == 0.0f;
+    }
+    CHECK(settled);
+    CHECK(rig.scrollY == 0.0f);
+
+    rig.wheel(0.0f, ScrollPhase::MomentumEnded);
+    rig.wheel(0.0f, ScrollPhase::Began);
+    rig.wheel(3.0f, ScrollPhase::Changed);
+    CHECK(rig.offset() < 0.0f);
+}
+
+TEST_CASE("Stretched gestures that never report a lift release after a timeout", "[core][sakura][layout]") {
+    ElasticRig rig;
+    rig.wheel(0.0f, ScrollPhase::Began);
+    rig.wheel(4.0f, ScrollPhase::Changed);
+    const F32 held = rig.offset();
+    REQUIRE(held < 0.0f);
+    CHECK(rig.advance(0.25) == held);
+    CHECK(rig.advance(1.5) == 0.0f);
+}
+
+TEST_CASE("Stretches that start after an idle period hold until the gesture times out", "[core][sakura][layout]") {
+    ElasticRig rig;
+    rig.ctx.time += 5.0;
+    rig.wheel(0.0f, ScrollPhase::Began);
+    rig.wheel(4.0f, ScrollPhase::Changed);
+    const F32 held = rig.offset();
+    REQUIRE(held < 0.0f);
+    CHECK(rig.advance(0.2) == held);
+    CHECK(rig.advance(1.5) == 0.0f);
+}
+
+TEST_CASE("Scrollers leave trackpad gestures on an axis they cannot scroll to the scroller below",
+          "[core][sakura][layout]") {
+    auto ctx = MakeContext();
+    ctx.time = 1.0;
+    Sakura::Scroller scroll;
+    Host host(scroll);
+    scroll.update({.id = "sideways", .contentWidth = 600.0f, .contentHeight = 100.0f});
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+    const auto wheel = [&](F32 dx, F32 dy, ScrollPhase phase) {
+        auto event = Wheel(100.0f, 50.0f, dx, dy);
+        event.phase = phase;
+        const bool handled = host.send(event);
+        host.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+        return handled;
+    };
+
+    CHECK(wheel(0.0f, 0.0f, ScrollPhase::Began));
+    CHECK_FALSE(wheel(0.0f, -3.0f, ScrollPhase::Changed));
+    CHECK_FALSE(wheel(0.0f, -3.0f, ScrollPhase::Changed));
+    CHECK(wheel(-3.0f, 0.0f, ScrollPhase::Changed));
+}
+
+TEST_CASE("Momentum into an edge bounces out and settles while mouse wheels stay clamped",
+          "[core][sakura][layout]") {
+    ElasticRig rig;
+    rig.scrollY = 895.0f;
+    rig.place();
+    rig.wheel(0.0f, ScrollPhase::Ended);
+    rig.advance(0.1);
+    rig.wheel(-2.0f, ScrollPhase::Momentum);
+    CHECK(rig.scrollY == 900.0f);
+    F32 peak = 0.0f;
+    for (U64 frame = 0; frame < 20; ++frame) {
+        rig.wheel(-1.0f, ScrollPhase::Momentum);
+        peak = std::max(peak, rig.advance(1.0 / 60.0));
+    }
+    CHECK(peak > 0.0f);
+    CHECK(rig.advance(1.5) == 0.0f);
+    CHECK(rig.scrollY == 900.0f);
+
+    rig.scrollY = 0.0f;
+    rig.place();
+    CHECK(rig.wheel(5.0f, ScrollPhase::None));
+    CHECK(rig.scrollY == 0.0f);
+    CHECK(rig.offset() == 0.0f);
+}
+
+TEST_CASE("Momentum heading back into the content scrolls right after a bounce", "[core][sakura][layout]") {
+    ElasticRig rig;
+    const auto peak = [&] {
+        F32 highest = 0.0f;
+        for (U64 frame = 0; frame < 10; ++frame) {
+            highest = std::max(highest, rig.advance(1.0 / 60.0));
+        }
+        return highest;
+    };
+    rig.scrollY = 895.0f;
+    rig.place();
+    rig.wheel(-2.0f, ScrollPhase::Momentum);
+    CHECK(rig.scrollY == 900.0f);
+    CHECK(peak() > 0.0f);
+
+    rig.wheel(-1.0f, ScrollPhase::Momentum);
+    CHECK(rig.scrollY == 900.0f);
+
+    rig.wheel(3.0f, ScrollPhase::Momentum);
+    CHECK(rig.scrollY == 870.0f);
+    CHECK(rig.advance(1.5) == 0.0f);
+
+    rig.wheel(-4.0f, ScrollPhase::Momentum);
+    CHECK(rig.scrollY == 900.0f);
+    CHECK(peak() == 0.0f);
+
+    rig.wheel(0.0f, ScrollPhase::MomentumEnded);
+    rig.wheel(3.0f, ScrollPhase::Momentum);
+    rig.wheel(-4.0f, ScrollPhase::Momentum);
+    CHECK(rig.scrollY == 900.0f);
+    CHECK(peak() > 0.0f);
+}
+
+TEST_CASE("Precise scrolling without gesture phases moves one to one and clamps without overscroll",
+          "[core][sakura][layout]") {
+    ElasticRig rig;
+    rig.scrollY = 880.0f;
+    rig.place();
+    CHECK(rig.precise(-1.5f));
+    CHECK(rig.scrollY == 895.0f);
+    rig.precise(-4.0f);
+    CHECK(rig.scrollY == 900.0f);
+    CHECK(rig.offset() == 0.0f);
+    CHECK(rig.advance(0.5) == 0.0f);
+    rig.precise(2.0f);
+    CHECK(rig.scrollY == 880.0f);
+    CHECK(rig.notified == 0);
+}
+
+TEST_CASE("Scroll areas move their content with the stretch", "[core][sakura][layout]") {
+    auto ctx = MakeContext();
+    ctx.time = 1.0;
+    Probe child({100.0f, 1000.0f});
+    child.consume = false;
+    Sakura::ScrollArea area;
+    area.update({.id = "stretch", .content = &child, .height = 200.0f, .border = false});
+    Host host(area);
+    host.place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
+    const F32 rest = child.laidFrame.y;
+
+    auto event = Wheel(100.0f, 100.0f, 0.0f);
+    event.phase = ScrollPhase::Began;
+    host.send(event);
+    event.scroll.y = 5.0f;
+    event.phase = ScrollPhase::Changed;
+    host.send(event);
+    ctx.time += 1.0 / 60.0;
+    host.place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
+    CHECK(child.laidFrame.y > rest);
+}
+
+TEST_CASE("Scroll areas drop the stretch and gesture of the previous id", "[core][sakura][layout]") {
+    auto ctx = MakeContext();
+    ctx.time = 1.0;
+    Probe child({100.0f, 1000.0f});
+    child.consume = false;
+    Sakura::ScrollArea area;
+    area.update({.id = "a", .content = &child, .height = 200.0f, .border = false});
+    Host host(area);
+    host.place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
+    const F32 rest = child.laidFrame.y;
+
+    auto event = Wheel(100.0f, 100.0f, 0.0f);
+    event.phase = ScrollPhase::Began;
+    host.send(event);
+    event.scroll.y = 5.0f;
+    event.phase = ScrollPhase::Changed;
+    host.send(event);
+    ctx.time += 1.0 / 60.0;
+    host.place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
+    REQUIRE(child.laidFrame.y > rest);
+
+    area.update({.id = "b", .content = &child, .height = 200.0f, .border = false});
+    host.place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
+    CHECK(child.laidFrame.y == rest);
+    ctx.time += 1.0 / 60.0;
+    host.place(ctx, {0.0f, 0.0f, 300.0f, 200.0f});
+    CHECK(child.laidFrame.y == rest);
+
+    event.scroll = {0.0f, 0.0f};
+    event.phase = ScrollPhase::Ended;
+    CHECK_FALSE(host.send(event));
+}
+
 TEST_CASE("Panels and split views remount a child that came back from another owner", "[core][sakura][layout]") {
     const auto shown = [](Sakura::Component& root, Probe& probe) {
         const auto probes = Find<Probe>(root);
@@ -793,6 +1110,97 @@ TEST_CASE("Wave lines settle, repaint on period and span changes, and scale with
     CHECK(reach > 9.0f);
 }
 
+TEST_CASE("Overlay scroll areas give content the full width, draw the bar on top and leave the wheel to content first",
+          "[core][sakura][layout]") {
+    Probe content({0.0f, 600.0f});
+    Sakura::ScrollArea area;
+    Host host(area);
+    const auto ctx = MakeContext();
+    const auto place = [&](bool overlay) {
+        area.update({.content = &content, .height = Sakura::Fill, .alwaysScrollbar = false, .border = false,
+                     .overlay = overlay});
+        host.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+    };
+
+    place(false);
+    const F32 gutter = Peek::Frame(content).width;
+    CHECK(gutter < 200.0f);
+    CHECK(dynamic_cast<Sakura::Scroller*>(Peek::Children(area).front()) != nullptr);
+
+    place(true);
+    CHECK(Peek::Frame(content).width == 200.0f);
+    REQUIRE(dynamic_cast<Sakura::Scroller*>(Peek::Children(area).back()) != nullptr);
+    const auto scrollers = Find<Sakura::Scroller>(area);
+    REQUIRE(scrollers.size() == 1);
+    const auto boxes = Direct<Sakura::Box>(*scrollers.front());
+    REQUIRE_FALSE(boxes.empty());
+    CHECK(boxes.front()->config().instances.at(0).rect.right() <= 200.0f);
+
+    const F32 top = Peek::Frame(content).y;
+    CHECK(host.send(Wheel(100.0f, 50.0f, -1.0f)));
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+    CHECK(Peek::Frame(content).y == top);
+
+    content.consume = false;
+    CHECK(host.send(Wheel(100.0f, 50.0f, -1.0f)));
+    host.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+    CHECK(Peek::Frame(content).y < top);
+    CHECK_FALSE(host.send(Wheel(300.0f, 50.0f, -1.0f)));
+
+    place(false);
+    CHECK(Peek::Frame(content).width == gutter);
+}
+
+TEST_CASE("Scroll areas return to the top when their id changes and keep the offset otherwise",
+          "[core][sakura][layout]") {
+    Probe content({0.0f, 600.0f});
+    content.consume = false;
+    Sakura::ScrollArea area;
+    Host host(area);
+    const auto ctx = MakeContext();
+    const auto place = [&](const std::string& id) {
+        area.update({.id = id, .content = &content, .height = Sakura::Fill, .border = false});
+        host.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+    };
+
+    place("a");
+    const F32 top = Peek::Frame(content).y;
+    CHECK(host.send(Wheel(100.0f, 50.0f, -1.0f)));
+    place("a");
+    const F32 scrolled = Peek::Frame(content).y;
+    CHECK(scrolled < top);
+    place("a");
+    CHECK(Peek::Frame(content).y == scrolled);
+    place("b");
+    CHECK(Peek::Frame(content).y == top);
+}
+
+TEST_CASE("Scroll area scrollbar insets move the track off its edge and scale with the pixel ratio",
+          "[core][sakura][layout]") {
+    Probe content({100.0f, 600.0f});
+    Sakura::ScrollArea area;
+    Host host(area);
+    const auto track = [&](Extent2D<F32> inset, F32 ratio) {
+        auto ctx = MakeContext();
+        ctx.pixelRatio = ratio;
+        area.update({.content = &content, .height = Sakura::Fill, .border = false, .scrollbarInset = inset});
+        host.place(ctx, {0.0f, 0.0f, 200.0f, 100.0f});
+        const auto scrollers = Find<Sakura::Scroller>(area);
+        REQUIRE(scrollers.size() == 1);
+        const auto boxes = Direct<Sakura::Box>(*scrollers.front());
+        REQUIRE_FALSE(boxes.empty());
+        return boxes.front()->config().instances.at(0).rect;
+    };
+    for (const F32 ratio : {1.0f, 2.0f}) {
+        CAPTURE(ratio);
+        const Rect plain = track({0.0f, 0.0f}, ratio);
+        const Rect inset = track({4.0f, 12.0f}, ratio);
+        CHECK(inset.x == plain.x - 4.0f * ratio);
+        CHECK(inset.y == plain.y + 12.0f * ratio);
+        CHECK(inset.height == plain.height - 24.0f * ratio);
+    }
+}
+
 TEST_CASE("Reveal grows and shrinks its child with the gap and holds it for the minimum duration",
           "[core][sakura][layout]") {
     auto ctx = MakeContext();
@@ -887,4 +1295,76 @@ TEST_CASE("Reveal drops focus and held presses inside its child once it collapse
     CHECK_FALSE(child.visible());
     CHECK(FocusOwner(host) == nullptr);
     CHECK(child.count(MouseEventType::Cancel) == cancels + 1);
+}
+
+TEST_CASE("Grabbing the scrollbar during spring-back takes over and the thumb follows the drag",
+          "[core][sakura][layout]") {
+    ElasticRig rig;
+    REQUIRE(rig.wheel(0.0f, ScrollPhase::Began));
+    REQUIRE(rig.wheel(5.0f, ScrollPhase::Changed));
+    rig.wheel(0.0f, ScrollPhase::Ended);
+    rig.advance(2.0 / 60.0);
+    REQUIRE(rig.offset() < 0.0f);
+    const auto thumb = [&] {
+        return Direct<Sakura::Box>(rig.scroll)[1]->config().instances.at(0).rect;
+    };
+    const Rect grabbed = thumb();
+    const F32 x = grabbed.x + grabbed.width * 0.5f;
+    const F32 y = grabbed.y + grabbed.height * 0.5f;
+    REQUIRE(rig.host.send(Mouse(MouseEventType::Click, x, y)));
+    CHECK(rig.offset() == 0.0f);
+    REQUIRE(rig.host.send(Mouse(MouseEventType::Move, x, y + 30.0f)));
+    rig.place();
+    CHECK(rig.scrollY > 100.0f);
+    CHECK(thumb().y > grabbed.y + 10.0f);
+    CHECK(rig.host.send(Mouse(MouseEventType::Release, x, y + 30.0f)));
+}
+
+TEST_CASE("Ending a trackpad gesture releases an outer scroller stretched past a nested one",
+          "[core][sakura][layout]") {
+    struct Nested : Sakura::Component {
+        Sakura::Scroller outer;
+        Sakura::Scroller inner;
+        F32 y = 0.0f;
+        F32 x = 0.0f;
+        Nested() {
+            addChild(outer);
+            addChild(inner);
+        }
+        void tick() { invalidate(Dirty::Layout); }
+        void layout(const Sakura::Context& ctx) override {
+            outer.update({.id = "outer", .contentHeight = 1000.0f, .scrollY = y,
+                          .onScrollY = [this](F32 next) { y = next; }});
+            inner.update({.id = "inner", .contentWidth = 1000.0f, .scrollX = x,
+                          .onScrollX = [this](F32 next) { x = next; }});
+            layoutChild(ctx, outer, frame());
+            layoutChild(ctx, inner, frame());
+        }
+    };
+    auto ctx = MakeContext();
+    ctx.time = 1.0;
+    Nested nested;
+    Host host(nested);
+    const Rect bounds = {0.0f, 0.0f, 200.0f, 100.0f};
+    host.place(ctx, bounds);
+    const auto gesture = [&](F32 dy, ScrollPhase phase) {
+        auto event = Wheel(100.0f, 50.0f, dy);
+        event.phase = phase;
+        host.send(event);
+        nested.tick();
+        host.place(ctx, bounds);
+    };
+    gesture(0.0f, ScrollPhase::Began);
+    gesture(3.0f, ScrollPhase::Changed);
+    const F32 stretched = nested.outer.overscroll(ctx).y;
+    REQUIRE(stretched < 0.0f);
+    CHECK(nested.inner.overscroll(ctx) == Extent2D<F32>{0.0f, 0.0f});
+
+    gesture(0.0f, ScrollPhase::Ended);
+    for (U64 frame = 0; frame < 6; ++frame) {
+        ctx.time += 1.0 / 60.0;
+        nested.tick();
+        host.place(ctx, bounds);
+    }
+    CHECK(nested.outer.overscroll(ctx).y > stretched);
 }

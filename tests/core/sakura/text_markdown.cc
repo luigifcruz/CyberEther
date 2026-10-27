@@ -12,6 +12,8 @@
 #include "render/sakura/context.hh"
 
 #include <algorithm>
+#include <limits>
+#include <optional>
 #include <string>
 
 using namespace Jetstream;
@@ -23,6 +25,17 @@ using TextMarkdown = Sakura::TextMarkdown;
 
 Extent2D<F32> MeasureAt(Host& host, const Sakura::Context& ctx, F32 width) {
     return host.measureOf(ctx, {width, kInfinite});
+}
+
+std::optional<Jetstream::Rect> DrawnRect(Sakura::Component& markdown, const std::string& prefix) {
+    for (const auto* label : Find<Sakura::Label>(markdown)) {
+        for (const auto& instance : label->config().instances) {
+            if (instance.visible && instance.str.starts_with(prefix)) {
+                return instance.rect;
+            }
+        }
+    }
+    return std::nullopt;
 }
 
 struct Golden {
@@ -203,6 +216,51 @@ TEST_CASE("Default markdown views scroll overflowing tables without a scrollbar"
     const auto& scrolled = markdown.metrics();
     CHECK(scrolled.scrollX > 0.0f);
     CHECK(scrolled.contentWidth - scrolled.scrollX <= 30.0f + 1e-3f);
+}
+
+TEST_CASE("Horizontal rubber banding moves table chrome with its glyphs", "[core][sakura][markdown]") {
+    auto ctx = MakeContext();
+    ctx.time = 1.0;
+    TextMarkdown markdown;
+    Host host(markdown);
+    markdown.update({.id = "stretch-table", .value = "| a | b | c |\n|---|---|---|\n| 1 | 2 | 3 |",
+                     .fontSize = 15.0f});
+    const Jetstream::Rect frame{0.0f, 0.0f, 30.0f, 200.0f};
+    host.place(ctx, frame);
+    REQUIRE(markdown.metrics().contentWidth > 30.0f);
+
+    const auto chromeLeft = [&] {
+        F32 left = std::numeric_limits<F32>::max();
+        for (const auto* box : Find<Sakura::Box>(markdown)) {
+            for (const auto& instance : box->config().instances) {
+                if (instance.visible && instance.rect.width < 3.0f && instance.rect.height > instance.rect.width) {
+                    left = std::min(left, instance.rect.x);
+                }
+            }
+        }
+        return left;
+    };
+    const auto glyph = DrawnRect(markdown, "a");
+    REQUIRE(glyph.has_value());
+    const F32 glyphBefore = glyph->x;
+    const F32 chromeBefore = chromeLeft();
+
+    auto event = Wheel(15.0f, 20.0f, 0.0f, 0.0f);
+    event.phase = ScrollPhase::Began;
+    host.send(event);
+    event.scroll.x = 5.0f;
+    event.phase = ScrollPhase::Changed;
+    REQUIRE(host.send(event));
+    ctx.time += 1.0 / 60.0;
+    host.place(ctx, frame);
+
+    REQUIRE(markdown.metrics().scrollX == 0.0f);
+    REQUIRE(markdown.metrics().overscroll.x < 0.0f);
+    const auto stretched = DrawnRect(markdown, "a");
+    REQUIRE(stretched.has_value());
+    const F32 shift = stretched->x - glyphBefore;
+    CHECK(shift == Catch::Approx(-markdown.metrics().overscroll.x));
+    CHECK(chromeLeft() - chromeBefore == Catch::Approx(shift));
 }
 
 TEST_CASE("Scrolling to the bottom of a table note survives repeated layouts", "[core][sakura][markdown]") {

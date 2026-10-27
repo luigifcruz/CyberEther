@@ -4,6 +4,7 @@
 
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/label.hh>
+#include <jetstream/render/sakura/components/scroll_area.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
 
 #include "../../../resources/fonts/compressed_inter.hh"
@@ -17,6 +18,7 @@
 
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -1289,4 +1291,213 @@ TEST_CASE("Masked text grids draw one mask glyph per character", "[core][sakura]
         joined += str;
     }
     CHECK(joined == "********");
+}
+
+namespace {
+
+TextGrid::Config RegionText(std::string value) {
+    TextGrid::Config config;
+    config.id = "regions";
+    config.value = std::move(value);
+    config.scrollbar = false;
+    config.scrollPastEnd = false;
+    config.fontSize = 15;
+    config.padding = Sakura::Padding{0, 0, 0, 0};
+    return config;
+}
+
+std::string RegionLines(U64 count) {
+    std::string result;
+    for (U64 line = 0; line < count; ++line) {
+        result += (line == 0 ? "" : "\n") + std::string("abcdefghijklmnopqrstuvwx");
+    }
+    return result;
+}
+
+MouseEvent PreciseWheel(F32 x, F32 y, F32 dx, F32 dy, bool shift = false) {
+    auto event = Wheel(x, y, dx, dy);
+    event.precise = true;
+    event.modifiers.shift = shift;
+    return event;
+}
+
+}  // namespace
+
+TEST_CASE("Text regions take only mostly horizontal wheel events and leave vertical travel to the outer view",
+          "[core][sakura][text-grid][scroll-region]") {
+    struct Document : Sakura::Component {
+        TextGrid grid;
+        Document() { addChild(grid); }
+        Extent2D<F32> measure(const Sakura::Context&, Extent2D<F32> available) override { return {available.x, 600}; }
+        void layout(const Sakura::Context& ctx) override {
+            auto rect = frame();
+            rect.height = 50;
+            layoutChild(ctx, grid, rect);
+        }
+    };
+    auto ctx = MakeContext();
+    Document document;
+    auto config = RegionText(RegionLines(1));
+    config.scrollRegions = {{0, 0}};
+    document.grid.update(config);
+    Sakura::ScrollArea area;
+    area.update({.content = &document, .border = false, .overlay = true});
+    Host host(area);
+    host.place(ctx, {0, 0, 160, 100});
+
+    REQUIRE(document.grid.metrics().regions[0].maxScrollX > 10);
+    REQUIRE(host.send(PreciseWheel(50, 15, -1, -0.5f)));
+    host.place(ctx, {0, 0, 160, 100});
+    CHECK(document.grid.metrics().regions[0].scrollX == 10);
+    CHECK(Peek::Frame(document).y == 0);
+
+    REQUIRE(host.send(PreciseWheel(50, 15, -1, -2)));
+    host.place(ctx, {0, 0, 160, 100});
+    CHECK(document.grid.metrics().regions[0].scrollX == 10);
+    CHECK(Peek::Frame(document).y == Catch::Approx(-20));
+}
+
+TEST_CASE("Shift turns vertical wheel travel into horizontal only once across a text region",
+          "[core][sakura][text-grid][scroll-region]") {
+    const auto send = [](MouseEvent event) {
+        auto ctx = MakeContext();
+        TextGrid grid;
+        Host host(grid);
+        auto config = RegionText(RegionLines(30));
+        config.scrollRegions = {{0, 0}};
+        grid.update(config);
+        host.place(ctx, {0, 0, 100, 100});
+        REQUIRE(host.send(event));
+        host.place(ctx, {0, 0, 100, 100});
+        return std::make_tuple(grid.metrics().regions[0].scrollX, grid.metrics().scrollX, grid.metrics().scrollY);
+    };
+    CHECK(send(PreciseWheel(40, 8, 0, -2, true)) == std::make_tuple(20.0f, 0.0f, 0.0f));
+    CHECK(send(PreciseWheel(40, 8, -1, -2, true)) == std::make_tuple(0.0f, 10.0f, 20.0f));
+    CHECK(send(PreciseWheel(40, 8, -1, -2)) == std::make_tuple(0.0f, 10.0f, 20.0f));
+}
+
+TEST_CASE("A text region clips its caret at the same edges as its glyphs",
+          "[core][sakura][text-grid][scroll-region]") {
+    auto ctx = MakeContext();
+    TextGrid grid;
+    Host host(grid);
+    auto config = RegionText(RegionLines(1));
+    config.editable = true;
+    config.lineIndent = {40};
+    config.lineRightInset = {40};
+    config.scrollRegions = {{0, 0}};
+    grid.update(config);
+    host.place(ctx, {0, 0, 200, 100});
+    grid.focus();
+    grid.setCursor({0, 0});
+    host.place(ctx, {0, 0, 200, 100});
+    REQUIRE(host.send(PreciseWheel(70, 8, -2, 0)));
+    host.place(ctx, {0, 0, 200, 100});
+    REQUIRE(grid.metrics().regions[0].scrollX == 20);
+    const auto boxes = Direct<Sakura::Box>(grid);
+    REQUIRE(boxes.size() >= 7);
+    const auto& caret = boxes[6]->config();
+    REQUIRE(caret.instances.size() == 1);
+    REQUIRE(caret.instances[0].visible);
+    REQUIRE(caret.clip.has_value());
+    CHECK(caret.clip->x == Catch::Approx(40));
+    CHECK(Sakura::Intersect(caret.instances[0].rect, *caret.clip).empty());
+}
+
+TEST_CASE("Text regions with width-dependent insets get their own glyph clips",
+          "[core][sakura][text-grid][scroll-region]") {
+    auto ctx = MakeContext();
+    TextGrid grid;
+    Host host(grid);
+    auto config = RegionText(std::string(40, 'A') + "\n" + std::string(40, 'B'));
+    config.scrollRegions = {{0, 0}, {1, 1}};
+    config.widthLayout = [](F32) { return TextGrid::WidthLayout{.lineIndent = {20, 80}}; };
+    grid.update(config);
+    host.place(ctx, {0, 0, 200, 100});
+    REQUIRE(host.send(PreciseWheel(100, 30, -5, 0)));
+    host.place(ctx, {0, 0, 200, 100});
+    REQUIRE(grid.metrics().regions[1].scrollX == 50);
+    U64 found = 0;
+    for (auto* label : Find<Sakura::Label>(grid)) {
+        for (const auto& text : label->config().instances) {
+            if (text.str.starts_with("BBB")) {
+                ++found;
+                REQUIRE(label->config().clip.has_value());
+                CHECK(label->config().clip->x == Catch::Approx(80));
+            }
+        }
+    }
+    CHECK(found > 0);
+}
+
+TEST_CASE("Moving the caret from a scrolled long line into a text region brings it back on screen",
+          "[core][sakura][text-grid][scroll-region]") {
+    auto ctx = MakeContext();
+    TextGrid grid;
+    Host host(grid);
+    auto config = RegionText(std::string(200, 'a') + "\n" + std::string(40, 'b'));
+    config.editable = true;
+    config.scrollRegions = {{1, 1}};
+    grid.update(config);
+    host.place(ctx, {0, 0, 200, 100});
+    grid.focus();
+    grid.setCursor({0, 200});
+    host.place(ctx, {0, 0, 200, 100});
+    REQUIRE(grid.metrics().scrollX > 100);
+
+    grid.setCursor({1, 0});
+    host.place(ctx, {0, 0, 200, 100});
+    CHECK(grid.metrics().scrollX == 0);
+    CHECK(grid.metrics().regions[0].scrollX == 0);
+}
+
+TEST_CASE("Reverting text that changed a region's font keeps the region's glyph clip",
+          "[core][sakura][text-grid][scroll-region]") {
+    auto ctx = MakeContext();
+    TextGrid grid;
+    Host host(grid);
+    std::vector<std::vector<TextGrid::StyleId>> styles;
+    std::string edited;
+    auto config = RegionText(std::string(40, 'a'));
+    config.editable = true;
+    config.onChange = [&](std::string value) { edited = std::move(value); };
+    config.lineIndent = {40};
+    config.lineRightInset = {40};
+    config.scrollRegions = {{0, 0}};
+    config.styleFonts = {"heading"};
+    config.styler = [&styles](const std::vector<std::string>& lines, U64) -> const std::vector<std::vector<TextGrid::StyleId>>& {
+        styles.assign(lines.size(), {});
+        for (U64 line = 0; line < lines.size(); ++line) {
+            if (!lines[line].empty() && lines[line].front() == '#') {
+                styles[line].assign(lines[line].size(), 1);
+            }
+        }
+        return styles;
+    };
+    grid.update(config);
+    host.place(ctx, {0, 0, 200, 100});
+    const auto clipOf = [&](char glyph) -> std::optional<Rect> {
+        for (auto* label : Find<Sakura::Label>(grid)) {
+            for (const auto& text : label->config().instances) {
+                if (!text.str.empty() && text.str.find(glyph) != std::string::npos) {
+                    return label->config().clip;
+                }
+            }
+        }
+        return std::nullopt;
+    };
+    REQUIRE(clipOf('a').has_value());
+    REQUIRE(clipOf('a')->x == Catch::Approx(40));
+
+    grid.focus();
+    grid.setCursor({0, 0});
+    Type(host, "#");
+    host.place(ctx, {0, 0, 200, 100});
+    REQUIRE(edited.starts_with('#'));
+
+    grid.revert();
+    host.place(ctx, {0, 0, 200, 100});
+    REQUIRE(clipOf('a').has_value());
+    CHECK(clipOf('a')->x == Catch::Approx(40));
+    CHECK(clipOf('a')->right() == Catch::Approx(160));
 }

@@ -547,6 +547,73 @@ TEST_CASE("Model picker lists fit the space beside the field and scroll by rows"
     rig.host.send(Wheel(150.0f, 100.0f, 1.0f));
     REQUIRE(rig.settle());
     CHECK(ShowsAt(rig.host, "Model 28", top + 10.0f * kRowHeight));
+
+    auto trackpad = Wheel(150.0f, 100.0f, kRowHeight / 10.0f * 0.5f);
+    trackpad.phase = ScrollPhase::Changed;
+    rig.host.send(trackpad);
+    REQUIRE(rig.settle());
+    CHECK(ShowsAt(rig.host, "Model 28", top + 10.0f * kRowHeight));
+    rig.host.send(trackpad);
+    REQUIRE(rig.settle());
+    CHECK(ShowsAt(rig.host, "Model 27", top + 10.0f * kRowHeight));
+
+    auto down = trackpad;
+    down.scroll.y = -trackpad.scroll.y;
+    rig.host.send(down);
+    REQUIRE(rig.settle());
+    CHECK(ShowsAt(rig.host, "Model 27", top + 10.0f * kRowHeight));
+    rig.click(kFieldCenter);
+    REQUIRE(rig.settle());
+    REQUIRE_FALSE(rig.host.popups.interactiveAt({150.0f, 100.0f}));
+    rig.click(kFieldCenter);
+    REQUIRE(rig.settle());
+    REQUIRE(rig.host.popups.interactiveAt({150.0f, 100.0f}));
+    rig.host.send(down);
+    REQUIRE(rig.settle());
+    CHECK(ShowsAt(rig.host, "Model 00", top));
+}
+
+TEST_CASE("Model picker lists leave their endpoints on small inward trackpad deltas", kPickerTags) {
+    PickerRig rig;
+    rig.frames.verify = false;
+    rig.config.models.clear();
+    for (U64 i = 0; i < 30; ++i) {
+        const std::string index = (i < 10 ? "0" : "") + std::to_string(i);
+        rig.config.models.push_back({.id = "model-" + index, .label = "Model " + index, .detail = "Detail"});
+    }
+    rig.config.value = "model-00";
+    rig.config.efforts.clear();
+    rig.config.effort.clear();
+    REQUIRE(rig.settle());
+    rig.click(kFieldCenter);
+    REQUIRE(rig.settle());
+
+    const F32 top = 13.0f;
+    REQUIRE(ShowsAt(rig.host, "Model 00", top));
+
+    auto inward = Wheel(150.0f, 100.0f, -kRowHeight / 10.0f * 0.5f);
+    inward.phase = ScrollPhase::Changed;
+    rig.host.send(inward);
+    REQUIRE(rig.settle());
+    CHECK(ShowsAt(rig.host, "Model 00", top));
+    rig.host.send(inward);
+    REQUIRE(rig.settle());
+    CHECK(ShowsAt(rig.host, "Model 01", top));
+
+    for (U64 i = 0; i < 40; ++i) {
+        rig.host.send(Wheel(150.0f, 100.0f, -1.0f));
+    }
+    REQUIRE(rig.settle());
+    REQUIRE(ShowsAt(rig.host, "Model 29", top + 10.0f * kRowHeight));
+
+    auto up = inward;
+    up.scroll.y = -inward.scroll.y;
+    rig.host.send(up);
+    REQUIRE(rig.settle());
+    CHECK(ShowsAt(rig.host, "Model 29", top + 10.0f * kRowHeight));
+    rig.host.send(up);
+    REQUIRE(rig.settle());
+    CHECK(ShowsAt(rig.host, "Model 28", top + 10.0f * kRowHeight));
 }
 
 TEST_CASE("Closed model pickers settle and repaint once per hover transition and visual change",

@@ -18,6 +18,7 @@
 #include <jetstream/render/sakura/components/search_catalog.hh>
 #include <jetstream/render/sakura/components/text_input.hh>
 #include <jetstream/render/sakura/components/label.hh>
+#include <jetstream/render/sakura/components/markdown.hh>
 #include <jetstream/render/tools/icons_lucide.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
@@ -183,6 +184,31 @@ TEST_CASE("Search catalog scrolls with the wheel and reveals the selected result
     rig.place();
     rig.click(100.0f, 270.0f);
     CHECK(rig.selections.back() == 19);
+}
+
+TEST_CASE("Search catalog follows trackpad scrolling point for point", "[core][sakura][search]") {
+    CatalogRig rig;
+    rig.config.items.clear();
+    for (U64 index = 0; index < 20; ++index) {
+        rig.config.items.push_back({.id = "item" + std::to_string(index), .title = "Item", .group = "DSP"});
+    }
+    rig.config.maxHeight = 300.0f;
+    rig.place();
+    const auto trackpad = [&](F32 dy) {
+        auto event = Wheel(100.0f, 200.0f, 0.0f, dy);
+        event.phase = ScrollPhase::Changed;
+        rig.host.send(event);
+        rig.host.place(rig.scene.ctx, rig.bounds);
+    };
+
+    rig.click(100.0f, 250.0f);
+    CHECK(rig.selections.back() == 3);
+    trackpad(-0.5f);
+    rig.click(100.0f, 250.0f);
+    CHECK(rig.selections.back() == 3);
+    trackpad(-4.3f);
+    rig.click(100.0f, 250.0f);
+    CHECK(rig.selections.back() == 4);
 }
 
 TEST_CASE("Search catalog stacks an optional field above the list", "[core][sakura][search]") {
@@ -1137,6 +1163,45 @@ TEST_CASE("Icon only pill button is a square with the icon centered", "[core][sa
 
     button.update({.icon = ICON_LC_CIRCLE_ARROW_UP, .height = 34.0f});
     CHECK(host.measureOf(scene.ctx, {kInfinite, kInfinite}) == Extent2D<F32>{34.0f, 34.0f});
+}
+
+TEST_CASE("Search catalog docs scroll back to the top when the selected block changes", "[core][sakura][search]") {
+    CatalogRig rig;
+    std::string longDocs = "# Block";
+    for (U64 line = 0; line < 80; ++line) {
+        longDocs += jst::fmt::format("\n\nParagraph {} explains a detail of the block.", line);
+    }
+    rig.config.items[0].documentation = longDocs;
+    rig.config.items[1].documentation = longDocs;
+    rig.place();
+
+    const auto scrolls = rig.all<Sakura::ScrollArea>();
+    REQUIRE(scrolls.size() == 1);
+    const auto markdowns = Find<Sakura::Markdown>(*scrolls.front());
+    REQUIRE(markdowns.size() == 1);
+    const F32 top = Peek::Frame(*markdowns.front()).y;
+    const auto area = Peek::Frame(*scrolls.front());
+    const auto scrollDown = [&] {
+        for (U64 step = 0; step < 5; ++step) {
+            rig.host.send(Wheel(area.x + area.width * 0.5f, area.y + area.height * 0.5f, -3.0f));
+        }
+        rig.place();
+    };
+
+    scrollDown();
+    REQUIRE(Peek::Frame(*markdowns.front()).y < top);
+    rig.place();
+    CHECK(Peek::Frame(*markdowns.front()).y < top);
+
+    rig.config.selected = 1;
+    rig.place();
+    CHECK(Peek::Frame(*markdowns.front()).y == top);
+
+    scrollDown();
+    REQUIRE(Peek::Frame(*markdowns.front()).y < top);
+    rig.config.selected = 0;
+    rig.place();
+    CHECK(Peek::Frame(*markdowns.front()).y == top);
 }
 
 TEST_CASE("Search catalog bounds follow custom card widths and clamp the docs height to the max height",

@@ -1560,7 +1560,7 @@ struct TextMarkdown::Impl {
             .rule = ctx.color(config.gutterSeparatorColorKey),
             .marker = ctx.color(config.lineNumberColorKey),
             .callout = calloutColors(ctx),
-            .scrollX = metrics.scrollX,
+            .scrollX = metrics.scrollX + metrics.overscroll.x,
             .metrics = &metrics,
         };
     }

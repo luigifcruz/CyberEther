@@ -5,15 +5,19 @@
 #include <jetstream/types.hh>
 
 #include <memory>
+#include <string>
 
 namespace Jetstream::Sakura {
 
 struct ScrollArea : public Component {
     struct Config {
+        std::string id;
         Component* content = nullptr;
         F32 height = 240.0f;
         bool alwaysScrollbar = true;
         bool border = true;
+        bool overlay = false;
+        Extent2D<F32> scrollbarInset = {0.0f, 0.0f};
 
         bool operator==(const Config&) const = default;
     };
@@ -26,6 +30,7 @@ struct ScrollArea : public Component {
  protected:
     Extent2D<F32> measure(const Context& ctx, Extent2D<F32> available) override;
     void layout(const Context& ctx) override;
+    bool mouseEvent(const MouseEvent& event) override;
 
  private:
     struct Impl;

@@ -316,6 +316,7 @@ struct ChatTranscript::Impl {
     std::optional<Key> pressed;
 
     F32 scrollY = 0.0f;
+    F32 overscrollY = 0.0f;
     bool followTail = true;
     F32 lastMaxScroll = 0.0f;
     F32 tailSlack = 0.0f;
@@ -439,6 +440,8 @@ struct ChatTranscript::Impl {
 
     void reset() {
         scrollY = 0.0f;
+        overscrollY = 0.0f;
+        scroll.reset();
         followTail = true;
         measurements.clear();
         rowMessages.clear();
@@ -693,7 +696,7 @@ struct ChatTranscript::Impl {
 
     Placements place(const Metrics& m) const {
         Placements placements;
-        F32 y = std::round(m.bounds.y - scrollY);
+        F32 y = std::round(m.bounds.y - scrollY - overscrollY);
         for (U64 i = 0; i < rows.size(); ++i) {
             if (userAt(i)) {
                 placeUser(m, i, y, placements);
@@ -778,6 +781,9 @@ struct ChatTranscript::Impl {
                 scrollY = next;
                 followTail = next >= lastMaxScroll - tailSlack;
                 self.invalidate(Dirty::Layout);
+            },
+            .onOverscroll = [&self] {
+                self.requestFrame();
             },
         });
         self.layoutChild(ctx, scroll, m.bounds);
@@ -1019,6 +1025,7 @@ void ChatTranscript::layout(const Context& ctx) {
     state.buildRows(*this, ctx, m);
     const F32 height = state.contentHeight(m);
     state.clampScroll(m, height);
+    state.overscrollY = state.scroll.overscroll(ctx).y;
 
     auto placements = state.place(m);
     Impl::Limit(placements.users, state.users, state.followTail);

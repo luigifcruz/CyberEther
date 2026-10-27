@@ -90,6 +90,7 @@ struct PickerState {
     bool dragging = false;
     I64 dragIndex = -1;
     U64 firstRow = 0;
+    F32 travel = 0.0f;
     U64 rowLimit = 1;
     F32 anchorWidth = 0.0f;
     F32 thumb = -1.0f;
@@ -167,6 +168,7 @@ struct PickerState {
         dragging = false;
         dragIndex = -1;
         firstRow = 0;
+        travel = 0.0f;
         changed();
     }
 
@@ -224,6 +226,7 @@ struct PickerBody : public Component {
     F32 listTop = 0.0f;
     F32 rowHeight = 0.0f;
     U64 visibleRows = 0;
+    F32 pixelRatio = 1.0f;
 
     explicit PickerBody(PickerState& picker) : picker(picker) {
         setClipsChildren(true);
@@ -441,6 +444,7 @@ struct PickerBody : public Component {
         const U64 rows = config.models.size();
         rowHeight = RowHeight(m);
         visibleRows = rowsShown(ctx, m);
+        pixelRatio = ctx.pixelRatio;
         state.firstRow = std::min(state.firstRow, rows - visibleRows);
         listTop = bounds.y + pad;
         modelRow = {};
@@ -560,13 +564,19 @@ struct PickerBody : public Component {
                 setHover({});
                 return false;
             case MouseEventType::Scroll: {
-                if (!inside || state.activeMode() != Mode::Models || event.scroll.y == 0.0f) {
+                if (!inside || state.activeMode() != Mode::Models || event.scroll.y == 0.0f || rowHeight <= 0.0f) {
                     return inside;
                 }
                 const U64 rows = state.config.models.size();
                 const U64 last = rows - std::min(rows, visibleRows);
-                const U64 next = event.scroll.y > 0.0f ? (state.firstRow > 0 ? state.firstRow - 1 : 0)
-                                                       : std::min(last, state.firstRow + 1);
+                state.travel -= event.scroll.y * WheelStep(event, rowHeight, pixelRatio);
+                const I64 steps = static_cast<I64>(state.travel / rowHeight);
+                state.travel -= static_cast<F32>(steps) * rowHeight;
+                const I64 target = static_cast<I64>(state.firstRow) + steps;
+                if ((target <= 0 && state.travel < 0.0f) || (target >= static_cast<I64>(last) && state.travel > 0.0f)) {
+                    state.travel = 0.0f;
+                }
+                const U64 next = static_cast<U64>(std::clamp<I64>(target, 0, static_cast<I64>(last)));
                 if (next != state.firstRow) {
                     state.firstRow = next;
                     refresh();
@@ -604,6 +614,7 @@ struct PickerBody : public Component {
                 }
                 if (target.kind == Target::Kind::ModelRow) {
                     state.mode = Mode::Models;
+                    state.travel = 0.0f;
                     state.hover = {};
                     state.changed();
                 } else {

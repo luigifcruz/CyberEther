@@ -12,6 +12,7 @@
 #include <jetstream/render/sakura/components/spinner.hh>
 #include <jetstream/render/sakura/components/polyline.hh>
 #include <jetstream/render/sakura/components/status_bar.hh>
+#include <jetstream/render/sakura/components/table.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/components/text_grid.hh>
 #include <jetstream/render/sakura/components/text_input.hh>
@@ -22,6 +23,8 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <memory>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -668,4 +671,143 @@ TEST_CASE("Spinners repaint only while the clock ticks and settle when frozen or
     REQUIRE(frames.settle(update));
     CHECK(Retains(frames, update));
     CHECK(frames.restructures == 0);
+}
+
+TEST_CASE("Tables shift their rows with the elastic overscroll and spring back", "[core][sakura][controls]") {
+    std::vector<std::unique_ptr<Probe>> probes;
+    Sakura::Table::Config config{.columns = {"Name", "Value"}};
+    for (U64 row = 0; row < 10; ++row) {
+        auto& name = *probes.emplace_back(std::make_unique<Probe>(Extent2D<F32>{38.0f, 10.0f}));
+        auto& value = *probes.emplace_back(std::make_unique<Probe>(Extent2D<F32>{138.0f, 10.0f}));
+        name.consume = false;
+        value.consume = false;
+        config.cellRows.push_back({&name, &value});
+    }
+    Sakura::Table table;
+    table.update(config);
+    Host host(table);
+    auto ctx = MakeContext();
+    ctx.time = 1.0;
+    const Rect bounds = {0.0f, 0.0f, 400.0f, 100.0f};
+    host.place(ctx, bounds);
+    const F32 rest = probes[0]->laidFrame.y;
+    const auto trackpad = [&](F32 dy, ScrollPhase phase) {
+        auto event = Wheel(50.0f, 50.0f, 0.0f, dy);
+        event.phase = phase;
+        host.send(event);
+        host.place(ctx, bounds);
+    };
+
+    trackpad(0.0f, ScrollPhase::Began);
+    trackpad(3.0f, ScrollPhase::Changed);
+    const F32 stretched = probes[0]->laidFrame.y;
+    CHECK(stretched > rest);
+    CHECK(probes[2]->laidFrame.y - probes[0]->laidFrame.y > 0.0f);
+
+    trackpad(0.0f, ScrollPhase::Ended);
+    for (U64 frame = 0; frame < 120; ++frame) {
+        ctx.time += 1.0 / 60.0;
+        host.place(ctx, bounds);
+    }
+    CHECK(probes[0]->laidFrame.y == rest);
+}
+
+TEST_CASE("Combo dropdown rows follow the elastic overscroll for drawing and picking", "[core][sakura][controls]") {
+    const Scene scene;
+    std::vector<std::string> options;
+    for (U64 index = 0; index < 20; ++index) {
+        options.push_back("option " + std::to_string(index));
+    }
+    std::optional<U64> selected;
+    Sakura::Combo combo;
+    combo.update({
+        .id = "elastic",
+        .options = options,
+        .value = options[0],
+        .onSelect = [&](U64 index) { selected = index; },
+    });
+    LayerSlot mount;
+    mount.hold(combo, {100.0f, 100.0f, 200.0f, 25.0f});
+    LayerHost host({&mount});
+    auto ctx = scene.ctx;
+    ctx.time = 1.0;
+    host.place(ctx, kScreen);
+    host.click(150.0f, 112.0f);
+    host.place(ctx, kScreen);
+
+    const auto row = [&](const std::string& str) -> std::optional<Rect> {
+        for (auto* label : Find<Sakura::Label>(host.popups)) {
+            for (const auto& instance : label->config().instances) {
+                if (instance.str == str && instance.visible) {
+                    return instance.rect;
+                }
+            }
+        }
+        return std::nullopt;
+    };
+    const auto rest = row("option 2");
+    REQUIRE(rest.has_value());
+
+    const F32 x = rest->x + 20.0f;
+    const F32 y = rest->y + rest->height * 0.5f;
+    auto began = Wheel(x, y, 0.0f, 0.0f);
+    began.phase = ScrollPhase::Began;
+    host.send(began);
+    host.place(ctx, kScreen);
+    auto changed = Wheel(x, y, 0.0f, 3.0f);
+    changed.phase = ScrollPhase::Changed;
+    host.send(changed);
+    host.place(ctx, kScreen);
+
+    const auto stretched = row("option 2");
+    REQUIRE(stretched.has_value());
+    REQUIRE(stretched->y > rest->y);
+    host.click(x, stretched->y + stretched->height * 0.5f);
+    REQUIRE(selected.has_value());
+    CHECK(*selected == 2);
+}
+
+TEST_CASE("Reopening a combo dropdown drops the previous opening stretch", "[core][sakura][controls]") {
+    const Scene scene;
+    std::vector<std::string> options;
+    for (U64 index = 0; index < 30; ++index) {
+        options.push_back("option " + std::to_string(index));
+    }
+    Sakura::Combo combo;
+    combo.update({.id = "reopen", .options = options, .value = options[0]});
+    LayerSlot mount;
+    mount.hold(combo, {100.0f, 100.0f, 200.0f, 25.0f});
+    LayerHost host({&mount});
+    auto ctx = scene.ctx;
+    ctx.time = 1.0;
+    host.place(ctx, kScreen);
+    const auto row = [&]() -> std::optional<Rect> {
+        for (auto* label : Find<Sakura::Label>(host.popups)) {
+            for (const auto& instance : label->config().instances) {
+                if (instance.str == "option 0" && instance.visible) {
+                    return instance.rect;
+                }
+            }
+        }
+        return std::nullopt;
+    };
+    host.click(150.0f, 112.0f);
+    host.place(ctx, kScreen);
+    const auto rest = row();
+    REQUIRE(rest.has_value());
+
+    auto stretch = Wheel(rest->x + 20.0f, rest->y + rest->height * 0.5f, 0.0f, 4.0f);
+    stretch.phase = ScrollPhase::Changed;
+    host.send(stretch);
+    host.place(ctx, kScreen);
+    REQUIRE(row().has_value());
+    REQUIRE(row()->y > rest->y + 1.0f);
+
+    host.click(150.0f, 112.0f);
+    host.place(ctx, kScreen);
+    REQUIRE_FALSE(row().has_value());
+    host.click(150.0f, 112.0f);
+    host.place(ctx, kScreen);
+    REQUIRE(row().has_value());
+    CHECK(row()->y == Catch::Approx(rest->y));
 }

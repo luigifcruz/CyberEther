@@ -134,7 +134,7 @@ void Grid::layout(const Context& ctx) {
 
     const U64 n = impl->columns();
     const F32 cell = impl->cellWidth(ctx, width);
-    F32 y = bounds.y - impl->scrollY;
+    F32 y = bounds.y - impl->scrollY - impl->scroll.overscroll(ctx).y;
     for (U64 row = 0; row < impl->rowHeights.size(); ++row) {
         for (U64 column = 0; column < n; ++column) {
             const U64 index = row * n + column;

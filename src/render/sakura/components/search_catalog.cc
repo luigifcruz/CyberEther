@@ -342,7 +342,8 @@ struct ResultList : public Component {
                 if (!bounds.contains(point.x, point.y) || maxScroll <= 0.0f) {
                     return false;
                 }
-                const F32 next = std::clamp(scroll - event.scroll.y * kWheelStep * pixelRatio, 0.0f, maxScroll);
+                const F32 step = WheelStep(event, kWheelStep * pixelRatio, pixelRatio);
+                const F32 next = std::clamp(scroll - event.scroll.y * step, 0.0f, maxScroll);
                 if (next != scroll) {
                     scroll = next;
                     invalidate(Dirty::Layout);
@@ -720,7 +721,7 @@ void SearchCatalog::update(Config config) {
         }
         s.docsButtonRow.update({.axis = Stack::Axis::Horizontal, .spacing = 10.0f, .items = std::move(buttons)});
         s.docsMarkdown.update({.value = item.documentation});
-        s.docsScroll.update({.content = &s.docsMarkdown, .alwaysScrollbar = false, .border = false});
+        s.docsScroll.update({.id = item.id, .content = &s.docsMarkdown, .alwaysScrollbar = false, .border = false});
         s.docsFooterLabel.update({.str = kActionLabel, .tone = Text::Tone::Secondary});
     }
 

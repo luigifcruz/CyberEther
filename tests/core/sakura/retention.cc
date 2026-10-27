@@ -1968,3 +1968,50 @@ TEST_CASE("Search catalog query changes repaint and only a new docs button restr
     CHECK(frames.restructures == 1);
     CHECK(frames.rebuilds == 1);
 }
+
+TEST_CASE("Scroller springs keep animating after a same-frame relayout and settle without input",
+          "[core][sakura][retention]") {
+    Scene scene;
+    Sakura::Scroller scroll;
+    Place place(scroll, {10.0f, 10.0f, 200.0f, 100.0f});
+    Frames frames(place, kScreen, scene.context());
+    frames.verify = false;
+    frames.timeStep = 1.0 / 60.0;
+    F32 scrollY = 0.0f;
+    const auto update = [&] {
+        scroll.update({.id = "spring", .contentHeight = 600.0f, .scrollY = scrollY,
+                       .onScrollY = [&](F32 next) { scrollY = next; }});
+    };
+    REQUIRE(frames.settle(update));
+    const auto thumb = [&] {
+        return Direct<Sakura::Box>(scroll)[1]->config().instances.at(0).rect.height;
+    };
+    const F32 resting = thumb();
+    const auto send = [&](F32 dy, ScrollPhase phase) {
+        auto event = Wheel(100.0f, 50.0f, dy);
+        event.phase = phase;
+        place.send(event);
+    };
+
+    send(0.0f, ScrollPhase::Began);
+    send(4.0f, ScrollPhase::Changed);
+    frames.run(update);
+    REQUIRE(thumb() < resting);
+    send(0.0f, ScrollPhase::Ended);
+    frames.run(update);
+    frames.run(update);
+    frames.run(update);
+    REQUIRE(thumb() < resting);
+    Sakura::Access::invalidateLayout(place);
+    Sakura::Access::layout(place, frames.ctx, frames.bounds);
+
+    F32 previous = thumb();
+    U64 moving = 0;
+    for (U64 frame = 0; frame < 90 && thumb() != resting; ++frame) {
+        frames.run(update);
+        moving += thumb() != previous ? 1 : 0;
+        previous = thumb();
+    }
+    CHECK(moving > 0);
+    CHECK(thumb() == resting);
+}

@@ -52,6 +52,7 @@ struct DropdownBody : public Component {
     std::optional<U64> selected;
     Metrics metrics;
     F32 scrollY = 0.0f;
+    F32 overscrollY = 0.0f;
     bool revealSelected = false;
     std::optional<U64> hovered;
     std::optional<U64> pressed;
@@ -76,7 +77,7 @@ struct DropdownBody : public Component {
         if (stride <= 0.0f || !viewport.contains(point.x, point.y)) {
             return std::nullopt;
         }
-        const F32 offset = point.y - content.y + scrollY;
+        const F32 offset = point.y - content.y + scrollY + overscrollY;
         if (offset < 0.0f) {
             return std::nullopt;
         }
@@ -154,14 +155,19 @@ struct DropdownBody : public Component {
                 scrollY = next;
                 invalidate(Dirty::Layout);
             },
+            .onOverscroll = [this] {
+                requestFrame();
+            },
         });
         layoutChild(ctx, scroll, bounds);
+        overscrollY = scroll.overscroll(ctx).y;
 
         std::vector<Box::Instance> boxes;
         std::vector<Label::Instance> labels;
-        const U64 first = stride > 0.0f ? static_cast<U64>(std::max(0.0f, std::floor(scrollY / stride))) : 0;
+        const F32 visual = scrollY + overscrollY;
+        const U64 first = stride > 0.0f ? static_cast<U64>(std::max(0.0f, std::floor(visual / stride))) : 0;
         for (U64 row = first; row < count && labels.size() < kRowSlots; ++row) {
-            const F32 top = content.y + static_cast<F32>(row) * stride - scrollY;
+            const F32 top = content.y + static_cast<F32>(row) * stride - visual;
             if (top >= viewport.bottom()) {
                 break;
             }
@@ -287,6 +293,8 @@ Dropdown::~Dropdown() = default;
 void Dropdown::open() {
     impl->open = true;
     impl->body.scrollY = 0.0f;
+    impl->body.overscrollY = 0.0f;
+    impl->body.scroll.reset();
     impl->body.revealSelected = true;
     impl->body.hovered.reset();
     impl->body.pressed.reset();

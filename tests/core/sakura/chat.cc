@@ -557,6 +557,39 @@ TEST_CASE("Chat transcripts follow the tail until the user scrolls up", "[core][
     CHECK(Retains(frames, update));
 }
 
+TEST_CASE("Chat transcripts stretch past the tail under a trackpad drag and spring back once released",
+          "[core][sakura][chat][retention]") {
+    Scene scene;
+    Transcript transcript;
+    Place place(transcript, kRect);
+    Frames frames(place, kScreen, scene.context());
+    frames.timeStep = 1.0 / 60.0;
+    const Chat::Snapshot snapshot = Questions(30);
+    const auto update = [&] {
+        transcript.update({.id = "chat", .snapshot = snapshot});
+    };
+    const auto gesture = [&](F32 dy, ScrollPhase phase) {
+        auto event = Wheel(200.0f, 150.0f, dy);
+        event.phase = phase;
+        place.send(event);
+    };
+    REQUIRE(frames.settle(update));
+    REQUIRE(Bottom(transcript) == Approx(kRect.bottom()).margin(1.0f));
+
+    gesture(0.0f, ScrollPhase::Began);
+    gesture(-3.0f, ScrollPhase::Changed);
+    CHECK(Kept(frames.run(update)));
+    CHECK(Bottom(transcript) < kRect.bottom() - 1.0f);
+
+    gesture(0.0f, ScrollPhase::Ended);
+    for (U64 frame = 0; frame < 120; ++frame) {
+        CHECK(Kept(frames.run(update)));
+    }
+    CHECK(Bottom(transcript) == Approx(kRect.bottom()).margin(1.0f));
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+}
+
 TEST_CASE("Chat transcripts reset scroll and disclosures when the generation changes", "[core][sakura][chat]") {
     Scene scene;
     Twin twin;
@@ -987,4 +1020,34 @@ TEST_CASE("Chat transcripts keep fixed drawable capacities and pool sizes", "[co
     CHECK(Shimmer(transcript).config().instances.size() <= Transcript::DisclosureSlots * Transcript::ShimmerSteps);
     CHECK(Visible<Sakura::TextMarkdown>(transcript).size() <= Transcript::MarkdownSlots);
     CHECK(Visible<Sakura::TextView>(transcript).size() <= Transcript::UserSlots + Transcript::DisclosureSlots);
+}
+
+TEST_CASE("Replacing a chat conversation drops the previous conversation stretch", "[core][sakura][chat]") {
+    const bool changeId = GENERATE(false, true);
+    Scene scene;
+    Transcript transcript;
+    Place place(transcript, kRect);
+    Frames frames(place, kScreen, scene.context());
+    frames.timeStep = 1.0 / 60.0;
+    std::string id = "chat";
+    Chat::Snapshot snapshot = Questions(30);
+    const auto update = [&] {
+        transcript.update({.id = id, .snapshot = snapshot});
+    };
+    REQUIRE(frames.settle(update));
+    REQUIRE(Bottom(transcript) == Approx(kRect.bottom()).margin(1.0f));
+
+    auto event = Wheel(200.0f, 150.0f, -3.0f);
+    event.phase = ScrollPhase::Changed;
+    place.send(event);
+    frames.run(update);
+    REQUIRE(Bottom(transcript) < kRect.bottom() - 1.0f);
+
+    if (changeId) {
+        id = "other";
+    } else {
+        ++snapshot.generation;
+    }
+    frames.run(update);
+    CHECK(Bottom(transcript) == Approx(kRect.bottom()).margin(1.0f));
 }
