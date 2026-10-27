@@ -94,6 +94,14 @@ class DefaultActions {
         workbench->settlePendingFocus();
     }
 
+    void reconcileFlowgraphs() {
+        workbench->reconcileFlowgraphs();
+    }
+
+    void reconcileModal() {
+        workbench->reconcileModal();
+    }
+
     void restoreLayouts() {
         layouts->restoreFromMetadata();
     }

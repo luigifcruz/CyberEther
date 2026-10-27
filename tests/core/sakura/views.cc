@@ -6,6 +6,7 @@
 #include "jetstream/viewport/adapters/generic.hh"
 #include "component_harness.hh"
 
+#include "compositor/default/actions/workbench.hh"
 #include "compositor/default/presenters/file_picker.hh"
 #include "compositor/default/presenters/hud/welcome.hh"
 #include "compositor/default/presenters/titlebar.hh"
@@ -975,13 +976,13 @@ TEST_CASE("Titlebar presenter close action targets the start tab while it is the
     Mailbox mailbox;
     mailbox.state.interface.focusedFlowgraph = "a";
     mailbox.state.interface.startTab = true;
-    mailbox.state.interface.startTabFocused = true;
+    mailbox.state.interface.focusedTab = WorkspaceTab::Start;
     auto config = TitlebarPresenter(mailbox.context()).build();
     config.onAction(Action::CloseFlowgraph);
     CHECK(mailbox.count<MailCloseStartTab>() == 1);
     CHECK(mailbox.count<MailCloseFlowgraph>() == 0);
 
-    mailbox.state.interface.startTabFocused = false;
+    mailbox.state.interface.focusedTab.reset();
     config = TitlebarPresenter(mailbox.context()).build();
     config.onAction(Action::CloseFlowgraph);
     REQUIRE(mailbox.last<MailCloseFlowgraph>() != nullptr);
@@ -3295,6 +3296,61 @@ TEST_CASE("Workbench view accepts welcome, modal, and file pending configs witho
     config.filePending = true;
     CHECK_NOTHROW(view.update(config));
     CHECK(actions.empty());
+}
+
+TEST_CASE("Workbench activates only the tab the model navigated to last within a poll",
+          "[core][sakura][views]") {
+    Mailbox mailbox;
+    mailbox.state.system.render = std::make_shared<SakuraTest::FakeWindow>();
+    WorkbenchActions actions(mailbox.state, mailbox.callbacks);
+    WorkbenchView view;
+    const auto update = [&] {
+        mailbox.mails.clear();
+        const auto& state = mailbox.state;
+        const auto enqueue = mailbox.callbacks.enqueueMail;
+        WorkbenchView::Config config;
+        if (auto welcome = WelcomeHudPresenter(mailbox.context()).buildStartTab()) {
+            config.startTab = StartTabView::Config{
+                .welcome = std::move(*welcome),
+                .onFocus = [enqueue]() {
+                    enqueue(MailFocusStartTab{});
+                },
+            };
+        }
+        config.startTabRequests = state.interface.startTabRequests;
+        config.startTabFocused = state.startTabActive();
+        if (state.tabShown(WorkspaceTab::Settings)) {
+            config.settings = SettingsView::Config{
+                .onFocus = [enqueue]() {
+                    enqueue(MailFocusSettings{});
+                },
+            };
+        }
+        config.settingsTabRequests = state.interface.settingsTabRequests;
+        config.settingsTabFocused = state.settingsTabActive();
+        view.update(std::move(config));
+    };
+
+    actions.handle(MailOpenSettings{});
+    update();
+
+    actions.handle(MailOpenSettings{});
+    actions.handle(MailOpenStartTab{});
+    update();
+    CHECK(mailbox.count<MailFocusStartTab>() == 1);
+    CHECK(mailbox.count<MailFocusSettings>() == 0);
+
+    actions.handle(MailOpenStartTab{});
+    actions.handle(MailOpenSettings{});
+    update();
+    CHECK(mailbox.count<MailFocusSettings>() == 1);
+    CHECK(mailbox.count<MailFocusStartTab>() == 0);
+
+    actions.handle(MailOpenStartTab{});
+    actions.handle(MailCloseStartTab{});
+    actions.handle(MailFocusSettings{});
+    update();
+    CHECK(mailbox.mails.empty());
 }
 
 TEST_CASE("Example and info views settle under identical updates",

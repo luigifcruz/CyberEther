@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_FLOWGRAPH_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_FLOWGRAPH_HH
 
+#include "workbench.hh"
 #include "../model/callbacks.hh"
 #include "../model/messages.hh"
 #include "../model/state.hh"
@@ -154,8 +155,7 @@ struct FlowgraphActions {
     Result handle(const MailFocusFlowgraph& msg) {
         if (state.flowgraph.items.contains(msg.flowgraph)) {
             state.interface.focusedFlowgraph = msg.flowgraph;
-            state.interface.startTabFocused = false;
-            state.interface.settingsTabFocused = false;
+            WorkbenchActions::Focus(state, std::nullopt);
         }
 
         return Result::SUCCESS;

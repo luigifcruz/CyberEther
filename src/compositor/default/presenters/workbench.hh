@@ -68,10 +68,12 @@ struct WorkbenchPresenter {
             };
         }
         config.startTabRequests = context.state.interface.startTabRequests;
-        if (context.state.interface.settingsTab) {
+        config.startTabFocused = context.state.startTabActive();
+        if (context.state.tabShown(WorkspaceTab::Settings)) {
             config.settings = settings.build();
         }
         config.settingsTabRequests = context.state.interface.settingsTabRequests;
+        config.settingsTabFocused = context.state.settingsTabActive();
         config.flowgraphs.reserve(context.state.flowgraph.items.size());
         for (const auto& [flowgraphId, flowgraph] : context.state.flowgraph.items) {
             config.flowgraphs.push_back(flowgraphPane.build(flowgraphId, flowgraph));
@@ -81,7 +83,7 @@ struct WorkbenchPresenter {
         config.modal = modal.build();
         config.filePicker = filePicker.build();
         config.backgroundParticles = context.state.interface.backgroundParticles &&
-                                     (config.filePending || (config.flowgraphs.empty() && !config.startTab && !config.settings));
+                                     (config.filePending || context.state.tabsHidden());
         return config;
     }
 };

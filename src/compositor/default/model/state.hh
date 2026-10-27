@@ -156,12 +156,11 @@ struct DefaultCompositorState {
 
         std::optional<std::string> focusedFlowgraph;
         std::optional<std::string> pendingFocusedFlowgraph;
+        std::optional<WorkspaceTab> focusedTab;
         bool startTab = false;
-        bool startTabFocused = false;
         U64 startTabBaseline = 0;
         U64 startTabRequests = 0;
         bool settingsTab = false;
-        bool settingsTabFocused = false;
         U64 settingsTabRequests = 0;
     };
 
@@ -312,6 +311,46 @@ struct DefaultCompositorState {
     RemoteState remote;
     FilePickerState filePicker;
     FeedbackState feedback;
+
+    bool startTabShown() const {
+        return interface.startTab;
+    }
+
+    bool tabShown(WorkspaceTab tab) const {
+        switch (tab) {
+            case WorkspaceTab::Start:
+                return startTabShown();
+            case WorkspaceTab::Settings:
+                return interface.settingsTab;
+        }
+        return false;
+    }
+
+    bool tabActive(WorkspaceTab tab) const {
+        return interface.focusedTab == tab && tabShown(tab);
+    }
+
+    bool startTabActive() const {
+        return tabActive(WorkspaceTab::Start);
+    }
+
+    bool settingsTabActive() const {
+        return tabActive(WorkspaceTab::Settings);
+    }
+
+    std::optional<std::string> activeFlowgraph() const {
+        if (startTabActive() || settingsTabActive()) {
+            return std::nullopt;
+        }
+        if (!interface.focusedFlowgraph.has_value() || !flowgraph.items.contains(*interface.focusedFlowgraph)) {
+            return std::nullopt;
+        }
+        return interface.focusedFlowgraph;
+    }
+
+    bool tabsHidden() const {
+        return flowgraph.items.empty() && !interface.startTab && !interface.settingsTab;
+    }
 };
 
 }  // namespace Jetstream

@@ -90,6 +90,31 @@ TEST_CASE("Unavailable voice leaves the active text conversation alone",
     CHECK_FALSE(notice.empty());
 }
 
+TEST_CASE("Agent settings entry points focus the settings tab and retain the requested page",
+          "[agent][compositor][workspace]") {
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    state.agent.settings.enabled = false;
+    AgentRuntime runtime(state, callbacks);
+    AgentActions actions(state, callbacks, runtime);
+
+    WorkbenchActions::Open(state, WorkspaceTab::Start);
+    REQUIRE(actions.handle(MailOpenAgentModelPicker{}) == Result::SUCCESS);
+    CHECK(state.settingsTabActive());
+    CHECK_FALSE(state.startTabActive());
+    CHECK(state.interface.settingsTabRequests == 1);
+    CHECK(state.settings.section == SettingsSection::Intelligence);
+    CHECK(state.settings.intelligencePage == IntelligencePage::AddModel);
+
+    WorkbenchActions::Open(state, WorkspaceTab::Start);
+    REQUIRE(actions.handle(MailOpenAgentProviderEditor{}) == Result::SUCCESS);
+    CHECK(state.settingsTabActive());
+    CHECK_FALSE(state.startTabActive());
+    CHECK(state.interface.settingsTabRequests == 2);
+    CHECK(state.settings.section == SettingsSection::Intelligence);
+    CHECK(state.settings.intelligencePage == IntelligencePage::Provider);
+}
+
 TEST_CASE("Cancelled compositor commands cannot apply queued graph mutations",
           "[agent][compositor][cancellation]") {
     REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);

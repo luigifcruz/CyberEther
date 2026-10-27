@@ -91,8 +91,10 @@ struct WorkbenchView {
         std::optional<WelcomeHudView::Config> welcomeHud;
         std::optional<StartTabView::Config> startTab;
         U64 startTabRequests = 0;
+        bool startTabFocused = false;
         std::optional<SettingsView::Config> settings;
         U64 settingsTabRequests = 0;
+        bool settingsTabFocused = false;
         TitlebarView::Config titlebar;
         ModalView::Config modal;
         std::optional<FlowgraphKeyValueWindow::Config> flowgraphMetadata;
@@ -170,7 +172,7 @@ struct WorkbenchView {
         if (this->config.startTab.has_value()) {
             startTab.update(std::move(this->config.startTab.value()));
             panes.push_back(startTab.pane());
-            if (this->config.startTabRequests != startTabRequests) {
+            if (this->config.startTabRequests != startTabRequests && this->config.startTabFocused) {
                 activate = StartTabView::PaneId;
             }
         }
@@ -178,7 +180,7 @@ struct WorkbenchView {
         if (this->config.settings.has_value()) {
             settings.update(std::move(this->config.settings.value()));
             panes.push_back(settings.pane());
-            if (this->config.settingsTabRequests != settingsTabRequests) {
+            if (this->config.settingsTabRequests != settingsTabRequests && this->config.settingsTabFocused) {
                 activate = SettingsView::PaneId;
             }
         }

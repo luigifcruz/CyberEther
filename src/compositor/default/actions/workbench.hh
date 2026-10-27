@@ -10,6 +10,7 @@
 #include "jetstream/settings.hh"
 #include "jetstream/platform.hh"
 
+#include <optional>
 #include <string>
 #include <tuple>
 
@@ -43,26 +44,58 @@ struct WorkbenchActions {
         state(state),
         callbacks(callbacks) {}
 
-    Result handle(const MailOpenStartTab&) {
-        if (!state.interface.startTab) {
-            state.interface.startTab = true;
-            state.interface.startTabBaseline = state.flowgraph.items.size();
+    static void Focus(DefaultCompositorState& state, std::optional<WorkspaceTab> tab) {
+        state.interface.focusedTab = tab;
+    }
+
+    static void Open(DefaultCompositorState& state, WorkspaceTab tab) {
+        auto& ui = state.interface;
+        switch (tab) {
+            case WorkspaceTab::Start:
+                if (!ui.startTab) {
+                    ui.startTab = true;
+                    ui.startTabBaseline = state.flowgraph.items.size();
+                }
+                ++ui.startTabRequests;
+                break;
+            case WorkspaceTab::Settings:
+                ui.settingsTab = true;
+                ++ui.settingsTabRequests;
+                break;
         }
-        ++state.interface.startTabRequests;
-        state.interface.startTabFocused = true;
-        state.interface.settingsTabFocused = false;
+        Focus(state, tab);
+    }
+
+    static void Close(DefaultCompositorState& state, WorkspaceTab tab) {
+        auto& ui = state.interface;
+        switch (tab) {
+            case WorkspaceTab::Start:
+                ui.startTab = false;
+                break;
+            case WorkspaceTab::Settings:
+                ui.settingsTab = false;
+                state.settings.registryPage = RegistryPage::Overview;
+                state.settings.registryPlugin.clear();
+                state.settings.intelligencePage = IntelligencePage::Overview;
+                break;
+        }
+        if (ui.focusedTab == tab && !state.tabShown(tab)) {
+            Focus(state, std::nullopt);
+        }
+    }
+
+    Result handle(const MailOpenStartTab&) {
+        Open(state, WorkspaceTab::Start);
         return Result::SUCCESS;
     }
 
     Result handle(const MailCloseStartTab&) {
-        state.interface.startTab = false;
-        state.interface.startTabFocused = false;
+        Close(state, WorkspaceTab::Start);
         return Result::SUCCESS;
     }
 
     Result handle(const MailFocusStartTab&) {
-        state.interface.startTabFocused = state.interface.startTab;
-        state.interface.settingsTabFocused = false;
+        focusShown(WorkspaceTab::Start);
         return Result::SUCCESS;
     }
 
@@ -71,25 +104,17 @@ struct WorkbenchActions {
         state.settings.registryPage = RegistryPage::Overview;
         state.settings.registryPlugin.clear();
         state.settings.intelligencePage = IntelligencePage::Overview;
-        state.interface.settingsTab = true;
-        ++state.interface.settingsTabRequests;
-        state.interface.settingsTabFocused = true;
-        state.interface.startTabFocused = false;
+        Open(state, WorkspaceTab::Settings);
         return Result::SUCCESS;
     }
 
     Result handle(const MailCloseSettings&) {
-        state.interface.settingsTab = false;
-        state.interface.settingsTabFocused = false;
-        state.settings.registryPage = RegistryPage::Overview;
-        state.settings.registryPlugin.clear();
-        state.settings.intelligencePage = IntelligencePage::Overview;
+        Close(state, WorkspaceTab::Settings);
         return Result::SUCCESS;
     }
 
     Result handle(const MailFocusSettings&) {
-        state.interface.settingsTabFocused = state.interface.settingsTab;
-        state.interface.startTabFocused = false;
+        focusShown(WorkspaceTab::Settings);
         return Result::SUCCESS;
     }
 
@@ -100,8 +125,63 @@ struct WorkbenchActions {
         }
         ui.focusedFlowgraph = ui.pendingFocusedFlowgraph;
         ui.pendingFocusedFlowgraph.reset();
-        ui.startTabFocused = false;
-        ui.settingsTabFocused = false;
+        Focus(state, std::nullopt);
+    }
+
+    void reconcileFlowgraphs() {
+        if (state.flowgraph.items.empty()) {
+            state.interface.focusedFlowgraph.reset();
+            state.interface.flowgraphMetadataVisible = false;
+            state.interface.flowgraphMetadataSearch.clear();
+            state.interface.flowgraphEnvironmentVisible = false;
+            state.interface.flowgraphEnvironmentSearch.clear();
+        } else if (state.interface.focusedFlowgraph.has_value() &&
+                   !state.flowgraph.items.contains(state.interface.focusedFlowgraph.value())) {
+            state.interface.focusedFlowgraph.reset();
+            state.interface.flowgraphMetadataVisible = false;
+            state.interface.flowgraphMetadataSearch.clear();
+            state.interface.flowgraphEnvironmentVisible = false;
+            state.interface.flowgraphEnvironmentSearch.clear();
+        }
+
+        if (!state.interface.focusedFlowgraph.has_value() &&
+            !state.interface.pendingFocusedFlowgraph.has_value() &&
+            state.flowgraph.items.size() == 1) {
+            state.interface.focusedFlowgraph = state.flowgraph.items.begin()->first;
+        }
+    }
+
+    void reconcileModal() {
+        if (!state.modal.content.has_value()) {
+            state.modal.flowgraph.reset();
+            return;
+        }
+
+        if (state.modal.content == ModalContent::FlowgraphInfo ||
+            state.modal.content == ModalContent::FlowgraphClose) {
+            const std::optional<std::string> targetFlowgraph = state.modal.flowgraph.has_value()
+                ? state.modal.flowgraph
+                : state.interface.focusedFlowgraph;
+            if (!targetFlowgraph.has_value() || !state.flowgraph.items.contains(targetFlowgraph.value())) {
+                state.modal.content.reset();
+                state.modal.flowgraph.reset();
+            }
+            return;
+        }
+
+        if (state.modal.content == ModalContent::RenameBlock) {
+            const std::optional<std::string> targetFlowgraph = state.modal.flowgraph.has_value()
+                ? state.modal.flowgraph
+                : state.interface.focusedFlowgraph;
+            if (!targetFlowgraph.has_value() ||
+                !state.flowgraph.items.contains(targetFlowgraph.value()) ||
+                !state.modal.renameBlockOldName.has_value() ||
+                !state.flowgraph.items.at(targetFlowgraph.value())->view().has(state.modal.renameBlockOldName.value())) {
+                state.modal.content.reset();
+                state.modal.flowgraph.reset();
+                state.modal.renameBlockOldName.reset();
+            }
+        }
     }
 
     void settleStartTab() {
@@ -111,8 +191,7 @@ struct WorkbenchActions {
         }
         const U64 count = state.flowgraph.items.size();
         if (count > ui.startTabBaseline) {
-            ui.startTab = false;
-            ui.startTabFocused = false;
+            Close(state, WorkspaceTab::Start);
             return;
         }
         ui.startTabBaseline = count;
@@ -219,6 +298,13 @@ struct WorkbenchActions {
 
     Result handle(const MailQuit&) {
         return state.system.instance->requestStop();
+    }
+
+ private:
+    void focusShown(WorkspaceTab tab) {
+        if (state.tabShown(tab)) {
+            Focus(state, tab);
+        }
     }
 };
 

@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_AGENT_HH
 
 #include "persist.hh"
+#include "workbench.hh"
 #include "../model/callbacks.hh"
 #include "../model/messages.hh"
 #include "../model/state.hh"
@@ -506,7 +507,7 @@ struct AgentActions {
     void openIntelligencePage(IntelligencePage page) {
         state.settings.section = SettingsSection::Intelligence;
         state.settings.intelligencePage = page;
-        state.interface.settingsTab = true;
+        WorkbenchActions::Open(state, WorkspaceTab::Settings);
     }
 
     void renameProvider(const std::string& previous, const std::string& next) {

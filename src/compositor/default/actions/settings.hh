@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_SETTINGS_HH
 
 #include "persist.hh"
+#include "workbench.hh"
 #include "../model/callbacks.hh"
 #include "../model/messages.hh"
 #include "../model/state.hh"
@@ -232,7 +233,7 @@ struct SettingsActions {
         state.settings.section = SettingsSection::Registry;
         state.settings.registryPage = RegistryPage::Overview;
         state.settings.registryPlugin.clear();
-        state.interface.settingsTab = true;
+        WorkbenchActions::Open(state, WorkspaceTab::Settings);
         callbacks.notify(Sakura::ToastType::Success, 3000, "Plugin loaded.");
         return Result::SUCCESS;
     }

@@ -21,9 +21,8 @@ struct TitlebarPresenter {
     TitlebarView::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
         const auto focusedFlowgraph = context.state.interface.focusedFlowgraph;
-        const bool startTabFocused = context.state.interface.startTab && context.state.interface.startTabFocused;
-        const bool settingsTabFocused = context.state.interface.settingsTab &&
-                                        context.state.interface.settingsTabFocused;
+        const bool startTabFocused = context.state.startTabActive();
+        const bool settingsTabFocused = context.state.settingsTabActive();
         const bool flowgraphMetadataVisible = context.state.interface.flowgraphMetadataVisible;
         const bool flowgraphEnvironmentVisible = context.state.interface.flowgraphEnvironmentVisible;
         const bool canCheckForUpdates = context.state.update.supported &&

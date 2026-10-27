@@ -28,6 +28,11 @@ enum class IntelligencePage : I32 {
     AddModel,
 };
 
+enum class WorkspaceTab : I32 {
+    Start = 0,
+    Settings,
+};
+
 enum class SettingsSection : I32 {
     General = 0,
     Remote,

@@ -15,7 +15,7 @@ TEST_CASE("Settings tab opens on the requested section and closes", "[core][comp
 
     actions.handle(MailOpenSettings{.section = SettingsSection::Remote});
     CHECK(state.interface.settingsTab);
-    CHECK(state.interface.settingsTabFocused);
+    CHECK(state.settingsTabActive());
     CHECK(state.interface.settingsTabRequests == 1);
     CHECK(state.settings.section == SettingsSection::Remote);
 
@@ -25,7 +25,7 @@ TEST_CASE("Settings tab opens on the requested section and closes", "[core][comp
 
     actions.handle(MailCloseSettings{});
     CHECK_FALSE(state.interface.settingsTab);
-    CHECK_FALSE(state.interface.settingsTabFocused);
+    CHECK_FALSE(state.settingsTabActive());
     CHECK(state.settings.section == SettingsSection::About);
 }
 
@@ -36,20 +36,20 @@ TEST_CASE("Settings tab and start tab hand focus to each other", "[core][composi
 
     actions.handle(MailOpenStartTab{});
     actions.handle(MailOpenSettings{});
-    CHECK(state.interface.settingsTabFocused);
-    CHECK_FALSE(state.interface.startTabFocused);
+    CHECK(state.settingsTabActive());
+    CHECK_FALSE(state.startTabActive());
 
     actions.handle(MailFocusStartTab{});
-    CHECK(state.interface.startTabFocused);
-    CHECK_FALSE(state.interface.settingsTabFocused);
+    CHECK(state.startTabActive());
+    CHECK_FALSE(state.settingsTabActive());
 
     actions.handle(MailFocusSettings{});
-    CHECK(state.interface.settingsTabFocused);
-    CHECK_FALSE(state.interface.startTabFocused);
+    CHECK(state.settingsTabActive());
+    CHECK_FALSE(state.startTabActive());
 
     actions.handle(MailCloseSettings{});
     actions.handle(MailFocusSettings{});
-    CHECK_FALSE(state.interface.settingsTabFocused);
+    CHECK_FALSE(state.settingsTabActive());
 }
 
 TEST_CASE("Registry pages navigate and reset when settings change section", "[core][compositor][settings-tab]") {
@@ -101,17 +101,17 @@ TEST_CASE("A newly focused flowgraph takes focus away from the settings and star
     WorkbenchActions actions(state, callbacks);
 
     actions.handle(MailOpenSettings{});
-    CHECK(state.interface.settingsTabFocused);
+    CHECK(state.settingsTabActive());
     state.interface.pendingFocusedFlowgraph = "fresh";
     actions.settlePendingFocus();
-    CHECK(state.interface.settingsTabFocused);
+    CHECK(state.settingsTabActive());
 
     state.flowgraph.items["fresh"] = std::make_shared<Flowgraph>();
     actions.settlePendingFocus();
     CHECK(state.interface.focusedFlowgraph == std::optional<std::string>{"fresh"});
     CHECK_FALSE(state.interface.pendingFocusedFlowgraph.has_value());
-    CHECK_FALSE(state.interface.settingsTabFocused);
-    CHECK_FALSE(state.interface.startTabFocused);
+    CHECK_FALSE(state.settingsTabActive());
+    CHECK_FALSE(state.startTabActive());
 }
 
 TEST_CASE("Closing settings resets its sub-pages so late saves do not reopen it", "[core][compositor][settings-tab]") {
