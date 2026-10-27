@@ -1,8 +1,10 @@
 // Synchronous Scheduler Implementation
 //
 // Coordinates compute and present threads with the following guarantees:
-//   - Present never blocks waiting for compute (skips frame if busy).
-//   - Present has priority: compute yields at segment boundaries when present wants in.
+//   - Present waits at most kPresentWait for compute to reach a segment boundary, then
+//     skips the frame. It always withdraws its request before returning.
+//   - Present has priority: compute parks at segment boundaries while present wants in,
+//     and never waits for a later frame.
 //   - State modifications (add/remove/reload) safely halt both threads.
 //   - Compute polling (hasPendingCompute) doesn't hold locks, allowing fast state changes.
 //   - Branches run independently: a module runs only when every input is fresh, and a
@@ -36,6 +38,13 @@
 #include <thread>
 
 namespace Jetstream {
+
+namespace {
+
+constexpr auto kPresentWait = std::chrono::milliseconds(2);
+constexpr auto kPresentPoll = std::chrono::microseconds(250);
+
+}  // namespace
 
 struct SynchronousScheduler : public Scheduler::Impl {
  public:
@@ -74,6 +83,8 @@ struct SynchronousScheduler : public Scheduler::Impl {
     std::unique_lock<std::mutex> exclusiveSharedLock();
     std::unique_lock<std::mutex> tryExclusiveSharedLock();
     void waitForPresentToFinish(std::unique_lock<std::mutex>& lock);
+    bool waitForPresentTurn(std::chrono::steady_clock::time_point deadline);
+    void yieldToPresent();
     void notifyCompute();
     void notifyPresent();
     Result lockState(const std::function<Result()>& func);
@@ -87,6 +98,9 @@ struct SynchronousScheduler : public Scheduler::Impl {
     bool presentSync = false;
     bool computeSync = false;
     std::atomic<bool> presentWantsIn{false};
+    std::atomic<bool> presentable{false};
+    std::mutex handoffMutex;
+    std::condition_variable handoffCond;
     std::atomic<bool> stopping{false};
     std::atomic<U64> generation{0};
 
@@ -305,72 +319,50 @@ Result SynchronousScheduler::synchronize(const std::function<Result()>& fn) {
 Result SynchronousScheduler::present(std::unordered_set<std::string>& failedModules) {
     failedModules.clear();
 
-    if (isStopping() || isPresentHalted()) {
-        clearPresentRequest();
+    if (isStopping() || isPresentHalted() || !presentable.load(std::memory_order_acquire)) {
         return Result::SUCCESS;
     }
 
-    {
-        auto dataLock = trySharedDataLock();
-        if (!dataLock.owns_lock()) {
-            requestPresentEntry();
-            return Result::SUCCESS;
-        }
+    const auto deadline = Clock::now() + kPresentWait;
 
-        if (presentModules.empty()) {
-            clearPresentRequest();
-            return Result::SUCCESS;
-        }
+    while (true) {
+        {
+            auto dataLock = trySharedDataLock();
+            auto lock = dataLock.owns_lock() ? tryExclusiveSharedLock() : std::unique_lock<std::mutex>();
 
-        if (isStopping() || isPresentHalted()) {
-            clearPresentRequest();
-            return Result::SUCCESS;
-        }
+            if (lock.owns_lock() && !isComputeActive()) {
+                if (presentModules.empty() || isStopping() || isPresentHalted()) {
+                    clearPresentRequest();
+                    return Result::SUCCESS;
+                }
 
-        auto lock = tryExclusiveSharedLock();
-        if (!lock.owns_lock()) {
-            if (isStopping()) {
+                setPresentActive();
                 clearPresentRequest();
-                return Result::SUCCESS;
-            }
 
-            requestPresentEntry();
-            return Result::SUCCESS;
-        }
+                Result res = Result::SUCCESS;
 
-        if (isStopping()) {
-            clearPresentRequest();
-            return Result::SUCCESS;
-        }
+                for (const auto& name : presentModules) {
+                    const auto& mod = modules.at(name);
+                    res = mod->context()->scheduler()->presentSubmit();
+                    if (res != Result::SUCCESS && res != Result::RELOAD) {
+                        failedModules.insert(name);
+                        break;
+                    }
+                }
 
-        if (isComputeActive()) {
-            if (isStopping()) {
-                clearPresentRequest();
-                return Result::SUCCESS;
-            }
+                clearPresentActive();
 
-            requestPresentEntry();
-            return Result::SUCCESS;
-        }
+                if (res != Result::SUCCESS && res != Result::RELOAD) {
+                    return res;
+                }
 
-        setPresentActive();
-        clearPresentRequest();
-
-        Result res = Result::SUCCESS;
-
-        for (const auto& name : presentModules) {
-            const auto& mod = modules.at(name);
-            res = mod->context()->scheduler()->presentSubmit();
-            if (res != Result::SUCCESS && res != Result::RELOAD) {
-                failedModules.insert(name);
                 break;
             }
         }
 
-        clearPresentActive();
-
-        if (res != Result::SUCCESS && res != Result::RELOAD) {
-            return res;
+        if (!waitForPresentTurn(deadline)) {
+            clearPresentRequest();
+            return Result::SUCCESS;
         }
     }
 
@@ -484,16 +476,10 @@ Result SynchronousScheduler::compute(std::unordered_set<std::string>& failedModu
         // Priority Yield: Check if present wants in before each segment.
 
         if (isPresentRequested()) {
-            while (isPresentRequested()) {
-                if (isStopping()) {
-                    clearPresentRequest();
-                    return Result::SUCCESS;
-                }
+            yieldToPresent();
 
-                if (isComputeHalted()) {
-                    return Result::SUCCESS;
-                }
-                std::this_thread::yield();
+            if (isStopping()) {
+                return Result::SUCCESS;
             }
 
             if (isComputeHalted()) {
@@ -1261,11 +1247,16 @@ void SynchronousScheduler::incrementGeneration() {
 }
 
 void SynchronousScheduler::requestPresentEntry() {
+    std::lock_guard lock(handoffMutex);
     presentWantsIn.store(true, std::memory_order_release);
 }
 
 void SynchronousScheduler::clearPresentRequest() {
-    presentWantsIn.store(false, std::memory_order_release);
+    {
+        std::lock_guard lock(handoffMutex);
+        presentWantsIn.store(false, std::memory_order_release);
+    }
+    handoffCond.notify_all();
 }
 
 bool SynchronousScheduler::isPresentRequested() const {
@@ -1318,11 +1309,33 @@ void SynchronousScheduler::waitForPresentToFinish(std::unique_lock<std::mutex>& 
     });
 }
 
+bool SynchronousScheduler::waitForPresentTurn(const Clock::time_point deadline) {
+    if (isStopping() || isPresentHalted() || Clock::now() >= deadline) {
+        return false;
+    }
+
+    requestPresentEntry();
+
+    std::unique_lock lock(handoffMutex);
+    presentCond.wait_until(lock, std::min(deadline, Clock::now() + kPresentPoll));
+    return !isStopping() && !isPresentHalted();
+}
+
+void SynchronousScheduler::yieldToPresent() {
+    std::unique_lock lock(handoffMutex);
+    handoffCond.wait(lock, [&] {
+        return !isPresentRequested() || isStopping() || isComputeHalted();
+    });
+}
+
 void SynchronousScheduler::notifyCompute() {
     computeCond.notify_all();
 }
 
 void SynchronousScheduler::notifyPresent() {
+    {
+        std::lock_guard lock(handoffMutex);
+    }
     presentCond.notify_all();
 }
 
@@ -1357,6 +1370,7 @@ Result SynchronousScheduler::lockState(const std::function<Result()>& func) {
 
     Result res = func();
 
+    presentable.store(!presentModules.empty(), std::memory_order_release);
     incrementGeneration();
     clearPresentRequest();
     computeSync = false;

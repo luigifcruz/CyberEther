@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <functional>
+#include <future>
 #include <initializer_list>
 #include <memory>
 #include <stdexcept>
@@ -41,6 +42,7 @@ struct SyntheticSpec {
     bool surface = false;
     Module::Taint taint = Module::Taint::CLEAN;
     std::chrono::milliseconds computeDelay{0};
+    std::function<void()> computeAction;
     std::vector<Result> initializeResults;
     std::vector<Result> deinitializeResults;
     std::vector<Result> pendingComputeResults;
@@ -200,6 +202,10 @@ struct SyntheticModuleBase : Module::Impl,
         const auto& spec = syntheticState().spec(name());
         if (spec.computeDelay.count() > 0) {
             std::this_thread::sleep_for(spec.computeDelay);
+        }
+
+        if (spec.computeAction) {
+            spec.computeAction();
         }
 
         auto& values = syntheticState().reads[name()].emplace_back();
@@ -826,6 +832,54 @@ TEST_CASE("Scheduler presents only modules with surface taint",
     REQUIRE(failedModules.empty());
     REQUIRE(state.count("present", "present_surface") == 1);
     REQUIRE(state.count("present", "present_compute_only") == 0);
+}
+
+TEST_CASE("Scheduler compute does not wait for a later frame after a skipped present",
+          "[core][runtime][scheduler]") {
+    auto& state = syntheticState();
+    state.reset();
+    state.configure("handoff_source");
+    state.configure("handoff_surface").surface = true;
+
+    SchedulerFixture fixture;
+    auto source = fixture.module("handoff_source");
+    auto surface = fixture.module("handoff_surface");
+    REQUIRE(fixture.scheduler.add(source) == Result::SUCCESS);
+    REQUIRE(fixture.scheduler.add(surface) == Result::SUCCESS);
+
+    Result presentResult = Result::ERROR;
+    std::chrono::steady_clock::duration presentTime{};
+    state.configure("handoff_source").computeAction = [&] {
+        std::thread presenter([&] {
+            std::unordered_set<std::string> failedModules;
+            const auto start = std::chrono::steady_clock::now();
+            presentResult = fixture.scheduler.present(failedModules);
+            presentTime = std::chrono::steady_clock::now() - start;
+        });
+        presenter.join();
+    };
+
+    state.clearEvents();
+    std::unordered_set<std::string> failedModules;
+    REQUIRE(fixture.scheduler.compute(failedModules) == Result::SUCCESS);
+    state.configure("handoff_source").computeAction = {};
+
+    REQUIRE(presentResult == Result::SUCCESS);
+    REQUIRE(presentTime < std::chrono::milliseconds(50));
+    REQUIRE(state.count("present", "handoff_surface") == 0);
+
+    auto next = std::async(std::launch::async, [&fixture] {
+        std::unordered_set<std::string> nextFailedModules;
+        return fixture.scheduler.compute(nextFailedModules);
+    });
+    const bool finished = next.wait_for(std::chrono::seconds(1)) == std::future_status::ready;
+    if (!finished) {
+        REQUIRE(fixture.scheduler.stop() == Result::SUCCESS);
+    }
+
+    REQUIRE(finished);
+    REQUIRE(next.get() == Result::SUCCESS);
+    REQUIRE(state.count("compute", "handoff_source") == 2);
 }
 
 TEST_CASE("Scheduler reports presentation initialization and submission failures",
