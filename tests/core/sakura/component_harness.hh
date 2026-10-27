@@ -341,17 +341,23 @@ struct Place : Jetstream::Sakura::Component {
         invalidate(Dirty::Layout);
     }
 
+    void pan(Extent2D<F32> next) {
+        shift = next;
+        invalidate(Dirty::Layout);
+    }
+
     bool send(const MouseEvent& event) {
         return mouseEventChildren(event);
     }
 
  protected:
     void layout(const Jetstream::Sakura::Context& ctx) override {
-        layoutChild(ctx, child, target);
+        layoutChild(ctx.translated(shift), child, target);
     }
 
  private:
     Jetstream::Sakura::Component& child;
+    Extent2D<F32> shift = {0.0f, 0.0f};
 };
 
 struct LayerHost : Jetstream::Sakura::RootComponent {

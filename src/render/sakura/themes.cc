@@ -155,12 +155,6 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"chat_user_bubble", {0.20f, 0.47f, 0.96f, 1.00f}},
             {"chat_user_bubble_outline", {0.35f, 0.65f, 1.00f, 0.85f}},
 
-            // Voice Orb Colors
-            {"voice_orb_listening", {0.10f, 0.40f, 1.00f, 1.0f}},
-            {"voice_orb_busy", {0.96f, 0.36f, 0.30f, 1.0f}},
-            {"voice_orb_listening_accent", {0.10f, 1.00f, 1.00f, 1.0f}},
-            {"voice_orb_busy_accent", {1.00f, 0.80f, 0.38f, 1.0f}},
-
             // Voice Colors
             {"voice_bg", {0.035f, 0.035f, 0.04f, 1.0f}},
             {"voice_listening", {0.35f, 0.65f, 1.00f, 1.0f}},
@@ -400,12 +394,6 @@ const std::unordered_map<std::string, Palette> Themes = {
             // Chat Colors
             {"chat_user_bubble", {0.20f, 0.47f, 0.96f, 1.00f}},
             {"chat_user_bubble_outline", {0.15f, 0.35f, 0.85f, 0.85f}},
-
-            // Voice Orb Colors
-            {"voice_orb_listening", {0.10f, 0.40f, 1.00f, 1.0f}},
-            {"voice_orb_busy", {0.96f, 0.36f, 0.30f, 1.0f}},
-            {"voice_orb_listening_accent", {0.10f, 1.00f, 1.00f, 1.0f}},
-            {"voice_orb_busy_accent", {1.00f, 0.80f, 0.38f, 1.0f}},
 
             // Voice Colors
             {"voice_bg", {0.99f, 0.99f, 0.995f, 1.0f}},

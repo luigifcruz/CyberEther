@@ -1,11 +1,10 @@
-#include <algorithm>
 #include <array>
 
 #include <glm/vec2.hpp>
 #include <glm/vec4.hpp>
 
 #include "jetstream/render/base.hh"
-#include "jetstream/render/components/orb.hh"
+#include "jetstream/render/components/voice_wave.hh"
 
 #include "jetstream/types.hh"
 #include "resources/shaders/global_shaders.hh"
@@ -14,23 +13,21 @@ namespace Jetstream::Render::Components {
 
 namespace {
 
-constexpr F32 kOrbExtent = 0.6f;
-
 glm::vec4 Color(const ColorRGBA<F32>& color) {
     return glm::vec4(color.r, color.g, color.b, color.a);
 }
 
 }  // namespace
 
-struct Orb::Impl {
+struct VoiceWave::Impl {
     struct UniformBuffer {
         glm::vec4 rect;
-        glm::vec4 orb;
+        glm::vec4 grid;
         glm::vec4 params;
         glm::vec4 listeningColor;
         glm::vec4 busyColor;
-        glm::vec4 listeningAccent;
-        glm::vec4 busyAccent;
+        glm::vec4 dimColor;
+        glm::vec4 shape;
 
         bool operator==(const UniformBuffer&) const = default;
     };
@@ -64,16 +61,16 @@ struct Orb::Impl {
     }
 };
 
-Orb::Orb(const Config& config) {
+VoiceWave::VoiceWave(const Config& config) {
     this->config = config;
     this->pimpl = std::make_unique<Impl>();
 }
 
-Orb::~Orb() {
+VoiceWave::~VoiceWave() {
     pimpl.reset();
 }
 
-Result Orb::create(Window* window) {
+Result VoiceWave::create(Window* window) {
     {
         Render::Buffer::Config cfg;
         cfg.buffer = &pimpl->uniforms;
@@ -121,7 +118,7 @@ Result Orb::create(Window* window) {
 
     {
         Render::Program::Config cfg;
-        cfg.shaders = GlobalShadersPackage["orb"];
+        cfg.shaders = GlobalShadersPackage["voice_wave"];
         cfg.draws = {
             pimpl->draw,
         };
@@ -139,39 +136,32 @@ Result Orb::create(Window* window) {
     return Result::SUCCESS;
 }
 
-Result Orb::surface(Render::Surface::Config& config) {
+Result VoiceWave::surface(Render::Surface::Config& config) {
     config.programs.push_back(pimpl->program);
     return Result::SUCCESS;
 }
 
-Result Orb::update(const Extent2D<F32>& framebufferSize, const State& state) {
+Result VoiceWave::update(const Extent2D<F32>& framebufferSize, const State& state) {
     config.framebufferSize = framebufferSize;
     const Rect& rect = state.rect;
-    pimpl->drawable = !rect.empty() && state.radius > 0.0f && framebufferSize.x > 0.0f && framebufferSize.y > 0.0f;
+    pimpl->drawable = !rect.empty() && state.pitch > 0.0f && framebufferSize.x > 0.0f && framebufferSize.y > 0.0f;
     pimpl->applyEnabled();
     if (!pimpl->drawable) {
         return Result::SUCCESS;
     }
 
     const Extent2D<F32> middle = rect.center();
-    const F32 halfWidth = std::max(rect.width * 0.5f, 1e-3f);
-    const F32 halfHeight = std::max(rect.height * 0.5f, 1e-3f);
-    const F32 unit = state.radius / kOrbExtent;
-
     const Impl::UniformBuffer next = {
         .rect = glm::vec4(-1.0f + 2.0f * middle.x / framebufferSize.x,
                           1.0f - 2.0f * middle.y / framebufferSize.y,
                           rect.width / framebufferSize.x,
                           -rect.height / framebufferSize.y),
-        .orb = glm::vec4((state.center.x - middle.x) / halfWidth,
-                         (state.center.y - middle.y) / halfHeight,
-                         rect.width * 0.5f / unit,
-                         rect.height * 0.5f / unit),
+        .grid = glm::vec4(rect.width, rect.height, state.pitch, state.dot),
         .params = glm::vec4(state.time, state.busy, state.activity, state.level),
         .listeningColor = Color(state.listeningColor),
         .busyColor = Color(state.busyColor),
-        .listeningAccent = Color(state.listeningAccent),
-        .busyAccent = Color(state.busyAccent),
+        .dimColor = Color(state.dimColor),
+        .shape = glm::vec4(state.cornerRadius, state.margin, 0.0f, 0.0f),
     };
     if (next == pimpl->uniforms) {
         return Result::SUCCESS;
@@ -181,17 +171,17 @@ Result Orb::update(const Extent2D<F32>& framebufferSize, const State& state) {
     return Result::SUCCESS;
 }
 
-Result Orb::updateScissorRect(const std::optional<Render::ScissorRect>& rect) {
+Result VoiceWave::updateScissorRect(const std::optional<Render::ScissorRect>& rect) {
     pimpl->program->scissorRect(rect);
     return Result::SUCCESS;
 }
 
-void Orb::enabled(bool value) {
+void VoiceWave::enabled(bool value) {
     pimpl->enabled = value;
     pimpl->applyEnabled();
 }
 
-Result Orb::present() {
+Result VoiceWave::present() {
     if (pimpl->updateUniformBufferFlag) {
         JST_CHECK(pimpl->uniformBuffer->update());
         pimpl->updateUniformBufferFlag = false;

@@ -39,7 +39,9 @@ struct AgentVoicePresenter {
         auto& view = config.voice;
         view.phase = VoicePhase(voice.phase);
         view.level = std::clamp(std::max(voice.output * 3.0f, voice.input * 2.0f), 0.0f, 1.0f);
-        view.onDismiss = [enqueue]() {
+        view.startHint = "Click to reconnect";
+        view.stopHint = "Click to end";
+        view.onStop = [enqueue]() {
             enqueue(MailSetAgentVoiceVisible{.value = false});
         };
         if (view.phase == Sakura::Voice::Phase::Idle) {

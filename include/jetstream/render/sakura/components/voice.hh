@@ -16,9 +16,10 @@ struct Voice : public Component {
     struct Config {
         Phase phase = Phase::Idle;
         F32 level = 0.0f;
-        Extent2D<F32> size = {175.0f, 175.0f};
+        std::string startHint;
+        std::string stopHint;
         Callback<void()> onStart;
-        Callback<void()> onDismiss;
+        Callback<void()> onStop;
 
         bool operator==(const Config&) const = default;
     };

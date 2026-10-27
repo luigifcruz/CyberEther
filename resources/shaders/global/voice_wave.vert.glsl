@@ -3,12 +3,12 @@
 
 layout(set = 0, binding = 0) uniform ShaderUniforms {
     vec4 rect;
-    vec4 orb;
+    vec4 grid;
     vec4 params;
-    vec4 colorA;
-    vec4 colorB;
-    vec4 colorC;
-    vec4 colorD;
+    vec4 listeningColor;
+    vec4 busyColor;
+    vec4 dimColor;
+    vec4 shape;
 } uniforms;
 
 layout(location = 0) in vec2 inPosition;
@@ -18,5 +18,5 @@ layout(location = 0) out vec2 outUv;
 void main() {
     vec2 ndc = uniforms.rect.xy + inPosition * uniforms.rect.zw;
     gl_Position = vec4(ndc, 1.0, 1.0);
-    outUv = inPosition;
+    outUv = inPosition * 0.5 + 0.5;
 }

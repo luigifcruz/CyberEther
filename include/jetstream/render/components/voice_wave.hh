@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_RENDER_COMPONENTS_ORB_HH
-#define JETSTREAM_RENDER_COMPONENTS_ORB_HH
+#ifndef JETSTREAM_RENDER_COMPONENTS_VOICE_WAVE_HH
+#define JETSTREAM_RENDER_COMPONENTS_VOICE_WAVE_HH
 
 #include <memory>
 #include <optional>
@@ -13,7 +13,7 @@
 
 namespace Jetstream::Render::Components {
 
-class JETSTREAM_API Orb : public Generic {
+class JETSTREAM_API VoiceWave : public Generic {
  public:
     struct Config {
         Extent2D<F32> framebufferSize = {1.0f, 1.0f};
@@ -21,20 +21,21 @@ class JETSTREAM_API Orb : public Generic {
 
     struct State {
         Rect rect;
-        Extent2D<F32> center = {0.0f, 0.0f};
-        F32 radius = 0.0f;
+        F32 pitch = 0.0f;
+        F32 dot = 0.0f;
+        F32 cornerRadius = 0.0f;
+        F32 margin = 0.0f;
         F32 time = 0.0f;
         F32 busy = 0.0f;
         F32 activity = 0.0f;
         F32 level = 0.0f;
         ColorRGBA<F32> listeningColor = {0.0f, 0.0f, 0.0f, 0.0f};
         ColorRGBA<F32> busyColor = {0.0f, 0.0f, 0.0f, 0.0f};
-        ColorRGBA<F32> listeningAccent = {0.0f, 0.0f, 0.0f, 0.0f};
-        ColorRGBA<F32> busyAccent = {0.0f, 0.0f, 0.0f, 0.0f};
+        ColorRGBA<F32> dimColor = {0.0f, 0.0f, 0.0f, 0.0f};
     };
 
-    Orb(const Config& config);
-    ~Orb();
+    VoiceWave(const Config& config);
+    ~VoiceWave();
 
     Result create(Window* window);
 

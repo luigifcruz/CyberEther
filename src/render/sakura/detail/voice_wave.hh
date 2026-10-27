@@ -1,5 +1,5 @@
-#ifndef JETSTREAM_RENDER_SAKURA_DETAIL_ORB_HH
-#define JETSTREAM_RENDER_SAKURA_DETAIL_ORB_HH
+#ifndef JETSTREAM_RENDER_SAKURA_DETAIL_VOICE_WAVE_HH
+#define JETSTREAM_RENDER_SAKURA_DETAIL_VOICE_WAVE_HH
 
 #include <jetstream/render/sakura/component.hh>
 #include <jetstream/types.hh>
@@ -9,26 +9,27 @@
 
 namespace Jetstream::Sakura {
 
-struct Orb : public Component {
+struct VoiceWave : public Component {
     struct Config {
         Rect rect;
-        Extent2D<F32> center = {0.0f, 0.0f};
-        F32 radius = 0.0f;
+        F32 pitch = 0.0f;
+        F32 dot = 0.0f;
+        F32 cornerRadius = 0.0f;
+        F32 margin = 0.0f;
         F32 time = 0.0f;
         F32 busy = 0.0f;
         F32 activity = 0.0f;
         F32 level = 0.0f;
         ColorRGBA<F32> listeningColor = {0.0f, 0.0f, 0.0f, 0.0f};
         ColorRGBA<F32> busyColor = {0.0f, 0.0f, 0.0f, 0.0f};
-        ColorRGBA<F32> listeningAccent = {0.0f, 0.0f, 0.0f, 0.0f};
-        ColorRGBA<F32> busyAccent = {0.0f, 0.0f, 0.0f, 0.0f};
+        ColorRGBA<F32> dimColor = {0.0f, 0.0f, 0.0f, 0.0f};
         std::optional<Rect> clip;
 
         bool operator==(const Config&) const = default;
     };
 
-    Orb();
-    ~Orb();
+    VoiceWave();
+    ~VoiceWave();
 
     void update(Config config);
     const Config& config() const;
@@ -45,4 +46,4 @@ struct Orb : public Component {
 
 }  // namespace Jetstream::Sakura
 
-#endif  // JETSTREAM_RENDER_SAKURA_DETAIL_ORB_HH
+#endif  // JETSTREAM_RENDER_SAKURA_DETAIL_VOICE_WAVE_HH

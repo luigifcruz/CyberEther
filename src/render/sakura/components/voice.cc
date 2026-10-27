@@ -1,13 +1,13 @@
 #include <jetstream/render/sakura/components/voice.hh>
 
 #include <jetstream/render/sakura/components/box.hh>
+#include <jetstream/render/sakura/components/card.hh>
 #include <jetstream/render/sakura/components/text.hh>
 #include <jetstream/render/sakura/typography.hh>
-#include <jetstream/render/tools/icons_lucide.hh>
 
 #include "../context.hh"
 #include "../metrics.hh"
-#include "../detail/orb.hh"
+#include "../detail/voice_wave.hh"
 
 #include <algorithm>
 #include <cmath>
@@ -18,13 +18,15 @@ namespace Jetstream::Sakura {
 
 namespace {
 
-constexpr F32 kNaturalSize = 175.0f;
-constexpr F32 kOrbRadiusRatio = 0.34f;
-constexpr F32 kDiagonal = 0.7071f;
-constexpr F32 kDismissSize = 22.0f;
-constexpr F32 kDismissGlyph = 11.0f;
-constexpr F32 kDismissReady = 0.5f;
-constexpr F32 kDismissShown = 0.01f;
+constexpr F32 kWidth = 140.0f;
+constexpr F32 kHeight = 28.0f;
+constexpr F32 kWaveMargin = 1.5f;
+constexpr F32 kPitch = 2.5f;
+constexpr F32 kDot = 0.85f;
+constexpr F32 kHintText = 13.0f;
+constexpr F32 kHintWeight = 0.2f;
+constexpr F32 kCoverAlpha = 0.82f;
+constexpr F32 kOutline = 1.5f;
 constexpr F32 kMaxStep = 0.1f;
 constexpr F32 kSettled = 0.001f;
 constexpr F32 kBusyTime = 0.45f;
@@ -43,9 +45,10 @@ F32 Approach(F32 value, F32 goal, F32 elapsed) {
 
 struct Voice::Impl {
     Config config;
-    Orb orb;
-    Box badge;
-    Text glyph;
+    Card base;
+    VoiceWave wave;
+    Box cover;
+    Text hint;
 
     F32 busy = 0.0f;
     F32 activity = 0.0f;
@@ -54,35 +57,18 @@ struct Voice::Impl {
     F32 clock = 0.0f;
 
     bool hovered = false;
-    bool dismissHovered = false;
-    bool pressedOrb = false;
-    bool pressedDismiss = false;
+    bool pressed = false;
+    bool starting = false;
     bool stalled = false;
-    Extent2D<F32> center = {0.0f, 0.0f};
-    F32 radius = 0.0f;
-    Rect dismiss;
 
-    bool startable() const {
+    bool restarts() const {
         return config.phase == Phase::Idle && static_cast<bool>(config.onStart);
-    }
-
-    bool overDismiss(const Extent2D<F32>& point) const {
-        return hover > kDismissReady && dismiss.contains(point.x, point.y);
-    }
-
-    bool overOrb(const Extent2D<F32>& point) const {
-        const F32 dx = point.x - center.x;
-        const F32 dy = point.y - center.y;
-        return !overDismiss(point) && dx * dx + dy * dy <= radius * radius;
     }
 };
 
 Voice::Voice() {
     impl = std::make_unique<Impl>();
-    setClipsChildren(true);
-    addChild(impl->orb);
-    addChild(impl->badge);
-    addChild(impl->glyph);
+    mountChildren({&impl->base, &impl->wave, &impl->cover, &impl->hint});
 }
 
 Voice::~Voice() = default;
@@ -92,21 +78,16 @@ void Voice::update(Config config) {
         invalidate(Dirty::Layout);
     }
     impl->config = std::move(config);
-    if (!impl->startable()) {
-        impl->pressedOrb = false;
-    }
+    markConfigured();
 }
 
 Extent2D<F32> Voice::measure(const Context& ctx, Extent2D<F32> available) {
-    const auto& config = impl->config;
-    const F32 natural = Px(ctx, kNaturalSize);
-    return {ResolveLength(ctx, config.size.x, natural, available.x),
-            ResolveLength(ctx, config.size.y, natural, available.y)};
+    return FitExtent({Px(ctx, kWidth), Px(ctx, kHeight)}, available);
 }
 
 void Voice::layout(const Context& ctx) {
-    auto& state = *impl;
-    const auto& config = state.config;
+    auto& s = *impl;
+    const auto& config = s.config;
     const Rect bounds = frame();
     const bool shown = !bounds.empty();
 
@@ -115,76 +96,81 @@ void Voice::layout(const Context& ctx) {
     const bool busy = config.phase == Phase::Busy;
     const bool engaged = busy || config.phase == Phase::Listening;
     const F32 level = active ? std::clamp(config.level, 0.0f, 1.0f) : 0.0f;
-    state.busy = Approach(state.busy, busy ? 1.0f : 0.0f, dt / kBusyTime);
-    state.activity = Approach(state.activity, engaged ? 1.0f : (active ? kConnectingActivity : 0.0f),
-                              dt / kActivityTime);
-    state.level = Approach(state.level, level, dt / (level > state.level ? kLevelRiseTime : kLevelFallTime));
-    const F32 hoverGoal = state.hovered ? 1.0f : 0.0f;
-    state.hover = Approach(state.hover, hoverGoal, dt / kHoverTime);
-    const bool animating = active || state.busy != 0.0f || state.activity != 0.0f ||
-                           state.level != 0.0f || state.hover != hoverGoal;
+    const F32 hoverGoal = s.hovered ? 1.0f : 0.0f;
+    s.busy = Approach(s.busy, busy ? 1.0f : 0.0f, dt / kBusyTime);
+    s.activity = Approach(s.activity, engaged ? 1.0f : (active ? kConnectingActivity : 0.0f), dt / kActivityTime);
+    s.level = Approach(s.level, level, dt / (level > s.level ? kLevelRiseTime : kLevelFallTime));
+    s.hover = Approach(s.hover, hoverGoal, dt / kHoverTime);
+    const bool animating = active || s.busy != 0.0f || s.activity != 0.0f || s.level != 0.0f || s.hover != hoverGoal;
     if (animating) {
-        state.clock += dt;
+        s.clock += dt;
     }
     if (!visible()) {
-        state.stalled = true;
+        s.stalled = true;
     }
-    if (shown && !state.stalled && animating) {
+    if (shown && !s.stalled && animating) {
         requestFrame();
     }
 
-    state.radius = std::max(0.0f, std::min(bounds.width, bounds.height) * kOrbRadiusRatio);
-    state.center = {bounds.x + bounds.width * 0.5f, bounds.y + bounds.height * 0.5f};
-    state.orb.update({
+    const F32 radius = bounds.height * 0.5f;
+    s.base.update({
+        .rects = shown ? std::vector<Rect>{bounds} : std::vector<Rect>{},
+        .cornerRadius = radius,
+        .softness = Px(ctx, kPillShadowSoftness),
+        .drop = Px(ctx, kPillShadowDrop),
+        .borderWidth = Px(ctx, 1.0f),
+        .lineWidth = Px(ctx, 1.0f),
+        .fillKey = "voice_bg",
+        .capacity = 1,
+    });
+    layoutChild(ctx, s.base, bounds);
+
+    s.wave.update({
         .rect = bounds,
-        .center = state.center,
-        .radius = state.radius,
-        .time = state.clock,
-        .busy = state.busy,
-        .activity = state.activity,
-        .level = state.level,
-        .listeningColor = ctx.color("voice_orb_listening"),
-        .busyColor = ctx.color("voice_orb_busy"),
-        .listeningAccent = ctx.color("voice_orb_listening_accent"),
-        .busyAccent = ctx.color("voice_orb_busy_accent"),
+        .pitch = Px(ctx, kPitch),
+        .dot = Px(ctx, kDot),
+        .cornerRadius = radius,
+        .margin = Px(ctx, kDot + kWaveMargin),
+        .time = s.clock,
+        .busy = s.busy,
+        .activity = s.activity,
+        .level = s.level,
+        .listeningColor = ctx.color("voice_listening"),
+        .busyColor = ctx.color("voice_busy"),
+        .dimColor = ctx.color("voice_dim"),
         .clip = bounds,
     });
-    layoutChild(ctx, state.orb, bounds);
+    layoutChild(ctx, s.wave, bounds);
 
-    const F32 badge = Px(ctx, kDismissSize);
-    const F32 diagonal = state.radius * kDiagonal;
-    state.dismiss = {std::round(state.center.x + diagonal - badge * 0.5f),
-                     std::round(state.center.y - diagonal - badge * 0.5f), badge, badge};
-    const F32 alpha = std::clamp(state.hover, 0.0f, 1.0f);
-    const bool badgeShown = shown && alpha > kDismissShown;
-    const char* fill = state.pressedDismiss && state.dismissHovered ? "button_active"
-                       : state.dismissHovered                       ? "button_hovered"
-                                                                    : "card";
-    state.badge.update({
+    const F32 hover = std::clamp(s.hover, 0.0f, 1.0f);
+    const char* accent = s.restarts() ? "text_primary" : "voice_stop";
+    s.cover.update({
         .instances = {{
-            .rect = state.dismiss,
-            .visible = badgeShown,
-            .backgroundColor = WithAlpha(ctx.color(fill), alpha),
+            .rect = bounds,
+            .visible = shown && hover > 0.0f,
+            .backgroundColor = WithAlpha(ctx.color("voice_bg"), kCoverAlpha * hover),
         }},
         .clip = bounds,
-        .cornerRadius = badge * 0.5f,
-        .borderWidth = Px(ctx, 1.0f),
-        .borderColor = WithAlpha(ctx.color("border"), alpha),
+        .cornerRadius = radius,
+        .borderWidth = Px(ctx, kOutline),
+        .borderColor = WithAlpha(ctx.color(accent), hover),
+        .strokeFringe = true,
+        .capacity = 1,
     });
-    layoutChild(ctx, state.badge, bounds);
+    layoutChild(ctx, s.cover, bounds);
 
-    state.glyph.update({
-        .str = ICON_LC_X,
-        .colorKey = "text_secondary",
-        .scale = kDismissGlyph / Typography::FontSize,
-        .opacity = badgeShown ? alpha : 0.0f,
+    s.hint.update({
+        .str = s.restarts() ? config.startHint : config.stopHint,
+        .font = Text::Font::Sans,
+        .align = Text::Align::Center,
+        .colorKey = accent,
+        .scale = kHintText / Typography::FontSize,
+        .weight = kHintWeight,
+        .opacity = hover,
     });
-    const F32 infinite = std::numeric_limits<F32>::infinity();
-    const Extent2D<F32> glyph = measureChild(state.glyph, ctx, {infinite, infinite});
-    layoutChild(ctx, state.glyph,
-                {std::round(state.dismiss.x + (badge - glyph.x) * 0.5f),
-                 std::round(state.dismiss.y + (badge - glyph.y) * 0.5f), glyph.x, glyph.y},
-                state.dismiss);
+    const F32 height = measureChild(s.hint, ctx, {bounds.width, std::numeric_limits<F32>::infinity()}).y;
+    layoutChild(ctx, s.hint, {bounds.x, std::round(bounds.y + (bounds.height - height) * 0.5f), bounds.width, height},
+                bounds);
 }
 
 void Voice::wentOnscreen(U64) {
@@ -199,59 +185,47 @@ void Voice::wentOffscreen(U64) {
 }
 
 bool Voice::mouseEvent(const MouseEvent& event) {
-    auto& state = *impl;
+    auto& s = *impl;
     const Extent2D<F32> point = event.position;
     const bool inside = frame().contains(point.x, point.y);
-    const bool overDismiss = inside && state.overDismiss(point);
     switch (event.type) {
         case MouseEventType::Move:
-            if (state.hovered != inside || state.dismissHovered != overDismiss) {
-                state.hovered = inside;
-                state.dismissHovered = overDismiss;
+            if (s.hovered != inside) {
+                s.hovered = inside;
                 invalidate(Dirty::Layout);
             }
             return false;
         case MouseEventType::Leave:
         case MouseEventType::Cancel:
-            if (state.hovered || state.dismissHovered || state.pressedDismiss) {
+            if (s.hovered) {
                 invalidate(Dirty::Layout);
             }
-            state.hovered = false;
-            state.dismissHovered = false;
-            state.pressedDismiss = false;
-            state.pressedOrb = false;
+            s.hovered = false;
+            s.pressed = false;
             return false;
         case MouseEventType::Click:
             if (event.button != MouseButton::Left || !inside) {
                 return false;
             }
-            if (overDismiss) {
-                state.pressedDismiss = true;
-                state.dismissHovered = true;
-                invalidate(Dirty::Layout);
-                return true;
-            }
-            state.pressedOrb = state.startable() && state.overOrb(point);
-            return state.pressedOrb;
+            s.pressed = true;
+            s.starting = s.restarts();
+            return true;
         case MouseEventType::Release: {
-            if (event.button != MouseButton::Left) {
+            if (event.button != MouseButton::Left || !s.pressed) {
                 return false;
             }
-            if (state.pressedDismiss) {
-                state.pressedDismiss = false;
-                invalidate(Dirty::Layout);
-                if (overDismiss && state.config.onDismiss) {
-                    state.config.onDismiss();
+            s.pressed = false;
+            if (!inside) {
+                return true;
+            }
+            if (s.starting) {
+                if (s.config.onStart) {
+                    s.config.onStart();
                 }
-                return true;
+            } else if (s.config.onStop) {
+                s.config.onStop();
             }
-            const bool start = state.pressedOrb && inside && state.startable() && state.overOrb(point);
-            state.pressedOrb = false;
-            if (start) {
-                state.config.onStart();
-                return true;
-            }
-            return false;
+            return true;
         }
         default:
             return false;
@@ -262,10 +236,7 @@ std::optional<SurfaceCursor> Voice::cursorAt(const Extent2D<F32>& point) const {
     if (!frame().contains(point.x, point.y)) {
         return std::nullopt;
     }
-    if (impl->overDismiss(point) || (impl->startable() && impl->overOrb(point))) {
-        return SurfaceCursor::Hand;
-    }
-    return std::nullopt;
+    return SurfaceCursor::Hand;
 }
 
 }  // namespace Jetstream::Sakura

@@ -16,7 +16,6 @@ struct AgentVoiceView {
 
     void update(Config config) {
         visible = config.visible;
-        config.voice.size = {kSize, kSize};
         voice.update(std::move(config.voice));
     }
 
@@ -34,13 +33,10 @@ struct AgentVoiceView {
             .rounding = 0.0f,
             .backgroundColorKey = "transparent",
             .borderColorKey = "transparent",
-            .size = {kSize, kSize},
         };
     }
 
  private:
-    static constexpr F32 kSize = 175.0f;
-
     Sakura::Voice voice;
     bool visible = false;
 };
