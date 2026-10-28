@@ -82,7 +82,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     for (const auto& [name, format] : formats) {
         INFO(name);
         const auto metric = std::find_if(metrics.begin(), metrics.end(),
-                                         [&](const auto& entry) { return entry.name == name; });
+                                         [name = name](const auto& entry) { return entry.name == name; });
         REQUIRE(metric != metrics.end());
         REQUIRE(metric->format == format);
     }

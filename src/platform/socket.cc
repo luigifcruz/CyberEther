@@ -460,9 +460,8 @@ Result LocalNetworkAddress(std::string& address) {
 
 struct UdpSocket::Impl {
     SocketHandle handle = InvalidSocket;
-    sockaddr_storage destination{};
-    SocketLength destinationLength = 0;
     std::vector<sockaddr_storage> sources;
+    bool connected = false;
     bool filtered = false;
 
 #if defined(JST_OS_WINDOWS)
@@ -501,7 +500,7 @@ struct UdpSocket::Impl {
             CloseSocket(handle);
         }
         handle = InvalidSocket;
-        destinationLength = 0;
+        connected = false;
         filtered = false;
     }
 };
@@ -681,8 +680,10 @@ Result UdpSocket::connect(const Config& config, std::string& error) {
         return impl->fail(error);
     }
 
-    impl->destination = address;
-    impl->destinationLength = length;
+    if (::connect(impl->handle, reinterpret_cast<const sockaddr*>(&address), length) != 0) {
+        return impl->fail(error);
+    }
+    impl->connected = true;
 
     return Result::SUCCESS;
 }
@@ -717,18 +718,16 @@ Result UdpSocket::receive(void* data, const U64 size, U64& received) {
 }
 
 Result UdpSocket::send(const void* data, const U64 size) {
-    if (!open() || impl->destinationLength == 0) {
+    if (!open() || !impl->connected) {
         return Result::ERROR;
     }
 
-    const auto* destination = reinterpret_cast<const sockaddr*>(&impl->destination);
     while (true) {
 #if defined(JST_OS_WINDOWS)
-        const int count = ::sendto(impl->handle, static_cast<const char*>(data),
-                                   static_cast<int>(std::min<U64>(size, std::numeric_limits<int>::max())),
-                                   0, destination, impl->destinationLength);
+        const int count = ::send(impl->handle, static_cast<const char*>(data),
+                                static_cast<int>(std::min<U64>(size, std::numeric_limits<int>::max())), 0);
 #else
-        const ssize_t count = ::sendto(impl->handle, data, size, 0, destination, impl->destinationLength);
+        const ssize_t count = ::send(impl->handle, data, size, 0);
 #endif
         if (count >= 0) {
             return static_cast<U64>(count) == size ? Result::SUCCESS : Result::ERROR;
