@@ -45,8 +45,10 @@ struct FlowgraphActions {
                               MailOpenFlowgraphBlob,
                               MailOpenFlowgraphExample,
                               MailFocusFlowgraph,
+                              MailSetFlowgraphPaused,
                               MailSaveFlowgraph,
                               MailCloseFlowgraph,
+                              MailCancelCloseFlowgraph,
                               MailSaveFlowgraphPath,
                               MailSetFlowgraphInfo,
                               MailCreateBlock,
@@ -322,10 +324,10 @@ struct FlowgraphActions {
 
         const auto& flowgraph = state.flowgraph.items.at(msg.flowgraph);
         if (!msg.force && !flowgraph->view().empty()) {
-            state.modal.flowgraph = msg.flowgraph;
-            state.modal.content = ModalContent::FlowgraphClose;
+            state.interface.closingFlowgraph = msg.flowgraph;
             return Result::SUCCESS;
         }
+        state.interface.closingFlowgraph.reset();
 
         auto inst = state.system.instance;
         auto name = msg.flowgraph;
@@ -335,6 +337,11 @@ struct FlowgraphActions {
             return Result::SUCCESS;
         }, false);
 
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailCancelCloseFlowgraph&) {
+        state.interface.closingFlowgraph.reset();
         return Result::SUCCESS;
     }
 
@@ -357,6 +364,21 @@ struct FlowgraphActions {
             callbacks.enqueueMail(MailSaveFlowgraph{.flowgraph = msg.flowgraph, .path = msg.path});
             state.modal.content.reset();
             state.modal.flowgraph.reset();
+        }
+
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetFlowgraphPaused& msg) {
+        const auto entry = state.flowgraph.items.find(msg.flowgraph);
+        if (entry == state.flowgraph.items.end()) {
+            return Result::SUCCESS;
+        }
+
+        const auto& flowgraph = entry->second;
+        const Result result = msg.paused ? flowgraph->pause() : flowgraph->resume();
+        if (result != Result::SUCCESS) {
+            callbacks.notifyResult(result, msg.paused ? "Cannot pause the flowgraph." : "Cannot resume the flowgraph.");
         }
 
         return Result::SUCCESS;

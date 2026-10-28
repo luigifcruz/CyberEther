@@ -10,6 +10,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_set>
 
 namespace Jetstream {
 
@@ -24,8 +25,10 @@ struct TitlebarPresenter {
         const bool startTabFocused = context.state.startTabActive();
         const bool settingsTabFocused = context.state.settingsTabActive();
         const bool docsTabFocused = context.state.docsTabActive();
-        const bool flowgraphMetadataVisible = context.state.interface.flowgraphMetadataVisible;
-        const bool flowgraphEnvironmentVisible = context.state.interface.flowgraphEnvironmentVisible;
+        std::unordered_set<std::string> environmentFlowgraphs;
+        for (const auto& [flowgraph, _] : context.state.flowgraph.environment) {
+            environmentFlowgraphs.insert(flowgraph);
+        }
         const bool canCheckForUpdates = context.state.update.supported &&
                                         !context.state.update.checking &&
                                         !context.state.update.available &&
@@ -50,9 +53,7 @@ struct TitlebarPresenter {
             .intelligenceEnabled = context.state.agent.settings.enabled,
             .agentVisible = context.state.agent.ui.visible,
             .voiceVisible = context.state.agent.ui.voiceVisible,
-            .focusedFlowgraph = focusedFlowgraph,
-            .flowgraphMetadataVisible = flowgraphMetadataVisible,
-            .flowgraphEnvironmentVisible = flowgraphEnvironmentVisible,
+            .environmentFlowgraphs = environmentFlowgraphs,
             .debugTimingEnabled = context.state.debug.timingEnabled,
             .debugLogLevel = context.state.debug.logLevel,
             .onAction = [enqueue, focusedFlowgraph, startTabFocused, settingsTabFocused, docsTabFocused,
@@ -163,13 +164,9 @@ struct TitlebarPresenter {
             .onLogLevel = [enqueue](I32 level) {
                 enqueue(MailSetDebugLogLevel{.value = level});
             },
-            .onTabAction = [enqueue,
-                            focusedFlowgraph,
-                            flowgraphMetadataVisible,
-                            flowgraphEnvironmentVisible](TitlebarView::TabAction action,
-                                                         const std::string& flowgraph) {
+            .onTabAction = [enqueue, environmentFlowgraphs](TitlebarView::TabAction action,
+                                                            const std::string& flowgraph) {
                 using TabAction = TitlebarView::TabAction;
-                const bool focused = focusedFlowgraph == flowgraph;
                 switch (action) {
                     case TabAction::Save:
                         enqueue(MailSaveFlowgraph{.flowgraph = flowgraph});
@@ -178,17 +175,11 @@ struct TitlebarPresenter {
                     case TabAction::Info:
                         enqueue(MailOpenModal{.content = ModalContent::FlowgraphInfo, .flowgraph = flowgraph});
                         break;
-                    case TabAction::ToggleMetadata:
-                        if (!focused) {
-                            enqueue(MailFocusFlowgraph{.flowgraph = flowgraph});
-                        }
-                        enqueue(MailSetFlowgraphMetadataVisible{.value = !focused || !flowgraphMetadataVisible});
-                        break;
                     case TabAction::ToggleEnvironment:
-                        if (!focused) {
-                            enqueue(MailFocusFlowgraph{.flowgraph = flowgraph});
-                        }
-                        enqueue(MailSetFlowgraphEnvironmentVisible{.value = !focused || !flowgraphEnvironmentVisible});
+                        enqueue(MailSetFlowgraphEnvironmentVisible{
+                            .flowgraph = flowgraph,
+                            .value = !environmentFlowgraphs.contains(flowgraph),
+                        });
                         break;
                     case TabAction::Close:
                         enqueue(MailCloseFlowgraph{flowgraph});

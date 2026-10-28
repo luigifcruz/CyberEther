@@ -10,6 +10,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -49,7 +50,6 @@ struct TitlebarView {
         Save,
         Rename,
         Info,
-        ToggleMetadata,
         ToggleEnvironment,
         Close,
     };
@@ -67,9 +67,7 @@ struct TitlebarView {
         bool intelligenceEnabled = false;
         bool agentVisible = false;
         bool voiceVisible = false;
-        std::optional<std::string> focusedFlowgraph;
-        bool flowgraphMetadataVisible = false;
-        bool flowgraphEnvironmentVisible = false;
+        std::unordered_set<std::string> environmentFlowgraphs;
         bool debugTimingEnabled = false;
         I32 debugLogLevel = 0;
         std::function<void(Action)> onAction;
@@ -296,7 +294,6 @@ struct TitlebarView {
 
     void updateTabMenu() {
         using Entry = Sakura::MenuEntry;
-        const bool focused = config.focusedFlowgraph == tabFlowgraph;
         const auto tab = [this](TabAction value) {
             return [this, value]() {
                 if (config.onTabAction && !tabFlowgraph.empty()) {
@@ -310,13 +307,8 @@ struct TitlebarView {
                 {.label = "Rename", .onClick = tab(TabAction::Rename)},
                 {.label = "Info", .onClick = tab(TabAction::Info)},
                 {
-                    .label = "Metadata View",
-                    .selected = focused && config.flowgraphMetadataVisible,
-                    .onClick = tab(TabAction::ToggleMetadata),
-                },
-                {
                     .label = "Environment View",
-                    .selected = focused && config.flowgraphEnvironmentVisible,
+                    .selected = config.environmentFlowgraphs.contains(tabFlowgraph),
                     .onClick = tab(TabAction::ToggleEnvironment),
                 },
                 Entry{.separator = true},

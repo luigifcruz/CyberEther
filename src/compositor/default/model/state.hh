@@ -157,13 +157,10 @@ struct DefaultCompositorState {
         bool showTips = true;
         std::vector<Settings::Interface::FlowgraphEntry> recentFlowgraphs;
         std::vector<Settings::Interface::FlowgraphEntry> favoriteFlowgraphs;
-        bool flowgraphMetadataVisible = false;
-        std::string flowgraphMetadataSearch;
-        bool flowgraphEnvironmentVisible = false;
-        std::string flowgraphEnvironmentSearch;
 
         std::optional<std::string> focusedFlowgraph;
         std::optional<std::string> pendingFocusedFlowgraph;
+        std::optional<std::string> closingFlowgraph;
         std::optional<WorkspaceTab> focusedTab;
         bool tabNavigationPending = false;
         bool startTab = false;
@@ -255,6 +252,7 @@ struct DefaultCompositorState {
         std::unordered_map<std::string, std::vector<BlockSnapshot>> blocks;
         std::unordered_map<std::string, std::string> liveMarkdown;
         std::unordered_map<std::string, Documentation> documentation;
+        std::unordered_map<std::string, std::string> environment;
         std::unordered_map<std::string, std::string> gallery;
         SurfaceTracks surfaces;
     };

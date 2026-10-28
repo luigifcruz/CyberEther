@@ -1,12 +1,14 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include "fonts.hh"
 #include "component_harness.hh"
 #include "typist.hh"
 
-#include "compositor/default/presenters/flowgraph/editor/surface.hh"
+#include "compositor/default/presenters/flowgraph/editor/base.hh"
 #include "compositor/default/presenters/flowgraph/surface.hh"
 #include "compositor/default/views/components/modal_header.hh"
+#include "compositor/default/views/flowgraph/close_prompt.hh"
 #include "compositor/default/views/flowgraph/detached_config.hh"
 #include "compositor/default/views/flowgraph/editor/base.hh"
 #include "compositor/default/views/flowgraph/editor/inspect.hh"
@@ -21,6 +23,7 @@
 #include <jetstream/render/sakura/components/text_grid.hh>
 
 #include <any>
+#include <cmath>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -255,6 +258,35 @@ struct EditorRig {
     void doubleClick(F32 x, F32 y) {
         host.send(Mouse(MouseEventType::Click, x, y, MouseButton::Left, 2));
         host.send(Mouse(MouseEventType::Release, x, y));
+    }
+
+    Jetstream::Rect catalog() {
+        const auto found = Find<Sakura::SearchCatalog>(host.popups);
+        return found.empty() ? Jetstream::Rect{} : Peek::Frame(*found.front());
+    }
+
+    Extent2D<F32> row(const std::string& title) {
+        std::optional<Jetstream::Rect> best;
+        for (auto* label : Find<Sakura::Label>(host.popups)) {
+            for (const auto& instance : label->config().instances) {
+                if (instance.visible && instance.str == title && (!best || instance.rect.x < best->x)) {
+                    best = instance.rect;
+                }
+            }
+        }
+        REQUIRE(best.has_value());
+        return {best->x + best->width * 0.5f, best->y + best->height * 0.5f};
+    }
+
+    Jetstream::Rect button(const char* icon) {
+        for (auto* candidate : Find<Sakura::PillIconButton>(host)) {
+            for (auto* text : Find<Sakura::Text>(*candidate)) {
+                if (text->config().str == icon) {
+                    return Peek::Frame(*candidate);
+                }
+            }
+        }
+        return {};
     }
 };
 
@@ -726,29 +758,36 @@ TEST_CASE("Modal headers settle under identical updates", "[core][sakura][flowgr
     }));
 }
 
-TEST_CASE("Double clicking empty canvas opens the block search at that grid point and the pill at the view center",
+TEST_CASE("Double clicking empty canvas and the add button open the centered block search at their grid points",
           "[core][sakura][flowgraph][editor-views]") {
     EditorRig rig;
     rig.doubleClick(40.0f, 60.0f);
     CHECK(rig.catalogs == 1);
     rig.frame(Extent2D<F32>{40.0f, 60.0f});
-    REQUIRE(rig.host.popups.interactiveAt({50.0f, 70.0f}));
-    rig.doubleClick(240.0f, 188.0f);
+    const auto centered = rig.catalog();
+    REQUIRE_FALSE(centered.empty());
+    CHECK(std::abs(centered.x + centered.width * 0.5f - kScreen.width * 0.5f) <= 1.0f);
+    CHECK(std::abs(centered.y + centered.height * 0.5f - kScreen.height * 0.5f) <= 1.0f);
+    auto fft = rig.row("FFT");
+    rig.doubleClick(fft.x, fft.y);
     REQUIRE(rig.created.size() == 1);
     CHECK(rig.created[0].type == "fft");
     const auto cursor = rig.created[0].position;
     rig.frame();
-    CHECK_FALSE(rig.host.popups.interactiveAt({50.0f, 70.0f}));
+    CHECK(rig.catalog().empty());
 
-    rig.host.click(668.0f, 29.0f);
+    const auto add = rig.button(ICON_LC_PACKAGE_PLUS);
+    REQUIRE_FALSE(add.empty());
+    rig.host.click(add.x + add.width * 0.5f, add.y + add.height * 0.5f);
     CHECK(rig.catalogs == 2);
     rig.frame();
-    REQUIRE(rig.host.popups.interactiveAt({650.0f, 146.0f}));
-    rig.doubleClick(650.0f, 146.0f);
+    CHECK(rig.catalog() == centered);
+    fft = rig.row("FFT");
+    rig.doubleClick(fft.x, fft.y);
     REQUIRE(rig.created.size() == 2);
     CHECK(rig.created[1].type == "fft");
-    CHECK(rig.created[1].position.x - cursor.x == 360.0f);
-    CHECK(rig.created[1].position.y - cursor.y == 240.0f);
+    CHECK(rig.created[1].position.x - cursor.x == Catch::Approx(360.0f / FlowgraphEditor::ZoomScale));
+    CHECK(rig.created[1].position.y - cursor.y == Catch::Approx(240.0f / FlowgraphEditor::ZoomScale));
 }
 
 TEST_CASE("Blocks keep their node while they are destroyed for reconstruction and drop it once gone",
@@ -784,19 +823,21 @@ TEST_CASE("Double clicking the canvas while the block search is open only dismis
     EditorRig rig;
     rig.doubleClick(40.0f, 60.0f);
     rig.frame(Extent2D<F32>{40.0f, 60.0f});
-    REQUIRE(rig.host.popups.interactiveAt({50.0f, 70.0f}));
+    const auto open = rig.catalog();
+    REQUIRE_FALSE(open.empty());
+    const Extent2D<F32> outside = {open.x - 4.0f, open.y + 4.0f};
+    REQUIRE(outside.x > 0.0f);
 
-    rig.doubleClick(600.0f, 500.0f);
+    rig.doubleClick(outside.x, outside.y);
     CHECK(rig.catalogs == 1);
     CHECK(rig.created.empty());
-    rig.frame(Extent2D<F32>{600.0f, 500.0f});
-    CHECK_FALSE(rig.host.popups.interactiveAt({50.0f, 70.0f}));
-    CHECK_FALSE(rig.host.popups.interactiveAt({600.0f, 500.0f}));
+    rig.frame(outside);
+    CHECK(rig.catalog().empty());
 
     rig.doubleClick(40.0f, 60.0f);
     CHECK(rig.catalogs == 2);
     rig.frame(Extent2D<F32>{40.0f, 60.0f});
-    CHECK(rig.host.popups.interactiveAt({50.0f, 70.0f}));
+    CHECK(rig.catalog() == open);
 }
 
 TEST_CASE("Detached surface presenter reports config panel toggles as the collapsed surface state",
@@ -968,6 +1009,76 @@ TEST_CASE("Pin and wire tooltips refresh tensor attributes under a resting point
     CHECK_FALSE(labelRect("96 kHz").has_value());
 }
 
+TEST_CASE("Editor toolbar pause, save, and environment buttons run their callbacks and follow the run state",
+          "[core][sakura][flowgraph][editor-views]") {
+    Scene scene;
+    FlowgraphEditor editor;
+    LayerSlot slot;
+    LayerHost host;
+    slot.hold(editor.component(), kScreen);
+    host.setLayers({&slot});
+    std::vector<std::string> calls;
+    bool paused = false;
+    const auto frame = [&]() {
+        editor.update({
+            .id = "graph",
+            .paused = paused,
+            .onTogglePause = [&] { calls.push_back(paused ? "resume" : "pause"); },
+            .onSave = [&] { calls.push_back("save"); },
+            .onToggleEnvironment = [&] { calls.push_back("environment"); },
+        });
+        host.place(scene.ctx, kScreen);
+    };
+    const auto press = [&](const char* icon) {
+        for (auto* candidate : Find<Sakura::PillIconButton>(host)) {
+            for (auto* text : Find<Sakura::Text>(*candidate)) {
+                if (text->config().str == icon) {
+                    const auto rect = Peek::Frame(*candidate);
+                    return host.click(rect.x + rect.width * 0.5f, rect.y + rect.height * 0.5f);
+                }
+            }
+        }
+        return false;
+    };
+
+    frame();
+    CHECK(press(ICON_LC_PAUSE));
+    CHECK_FALSE(press(ICON_LC_PLAY));
+    CHECK(press(ICON_LC_SAVE));
+    CHECK(press(ICON_LC_TABLE_PROPERTIES));
+    CHECK(Find<Sakura::PillIconButton>(host).size() == 4);
+    paused = true;
+    frame();
+    CHECK(press(ICON_LC_PLAY));
+    CHECK(calls == std::vector<std::string>{"pause", "save", "environment", "resume"});
+}
+
+TEST_CASE("Editor presenter wires the toolbar to pause, save, and environment mail",
+          "[core][sakura][flowgraph][editor-views]") {
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    std::vector<Mail> mails;
+    callbacks.enqueueMail = [&](Mail&& mail) { mails.push_back(std::move(mail)); };
+    const PresenterContext context{state, callbacks};
+    auto graph = std::make_shared<Flowgraph>();
+
+    auto config = FlowgraphEditorPresenter(context).build("graph", graph);
+    CHECK_FALSE(config.paused);
+    config.onTogglePause();
+    config.onSave();
+    config.onToggleEnvironment();
+    REQUIRE(mails.size() == 3);
+    CHECK(std::get<MailSetFlowgraphPaused>(mails[0]).flowgraph == "graph");
+    CHECK(std::get<MailSetFlowgraphPaused>(mails[0]).paused);
+    CHECK(std::get<MailSaveFlowgraph>(mails[1]).flowgraph == "graph");
+    CHECK(std::get<MailSetFlowgraphEnvironmentVisible>(mails[2]).value);
+
+    state.flowgraph.environment["graph"] = "";
+    config = FlowgraphEditorPresenter(context).build("graph", graph);
+    config.onToggleEnvironment();
+    CHECK_FALSE(std::get<MailSetFlowgraphEnvironmentVisible>(mails.back()).value);
+}
+
 TEST_CASE("Node plot detach sends every attached surface out and the plot menu entry toggles them all",
           "[core][sakura][flowgraph][editor-views]") {
     NodeMenuRig rig;
@@ -1056,4 +1167,89 @@ TEST_CASE("Attached surface presenter forwards plot input and cursor and reports
     CHECK(detach.block == "source");
     CHECK(detach.surface == "default");
     CHECK(detach.detached);
+}
+
+TEST_CASE("Close prompt cancels on Escape and saves on Enter only while it is open",
+          "[core][sakura][flowgraph][editor-views]") {
+    Scene scene;
+    FlowgraphClosePromptView prompt;
+    Sakura::ModalLayer layer;
+    LayerHost host;
+    host.setLayers({&layer});
+    std::vector<std::string> calls;
+
+    prompt.update({
+        .flowgraph = "graph",
+        .onSave = [&] { calls.push_back("save"); },
+        .onDontSave = [&] { calls.push_back("discard"); },
+        .onCancel = [&] { calls.push_back("cancel"); },
+    });
+    layer.update(prompt.layer(std::nullopt));
+    host.place(scene.ctx, kScreen);
+    host.place(scene.ctx, kScreen);
+    REQUIRE(Find<CardButton>(layer).size() == 3);
+    CHECK(Tap(host, KeyCode::Escape));
+    CHECK(Tap(host, KeyCode::Enter));
+    CHECK(Tap(host, KeyCode::KeypadEnter));
+    CHECK(calls == std::vector<std::string>{"cancel", "save", "save"});
+
+    prompt.close();
+    layer.update(prompt.layer(std::nullopt));
+    host.place(scene.ctx, kScreen);
+    CHECK_FALSE(Tap(host, KeyCode::Escape));
+    CHECK_FALSE(Tap(host, KeyCode::Enter));
+    CHECK(calls.size() == 3);
+}
+
+TEST_CASE("Close prompt takes Enter and Escape from a focused editor and hands focus back when it closes",
+          "[core][sakura][flowgraph][editor-views]") {
+    Scene scene;
+    std::string edited;
+    Sakura::TextInput editor;
+    editor.update({.value = "draft", .submit = Sakura::TextInput::Submit::OnEdit, .focus = true, .multiline = true,
+                   .onChange = [&](const std::string& value) { edited = value; }});
+    FlowgraphClosePromptView prompt;
+    LayerSlot below;
+    Sakura::ModalLayer layer;
+    LayerHost host;
+    below.hold(editor, {100.0f, 300.0f, 300.0f, 80.0f});
+    host.setLayers({&below, &layer});
+    host.place(scene.ctx, kScreen);
+    host.place(scene.ctx, kScreen);
+    REQUIRE(editor.focused());
+
+    std::vector<std::string> calls;
+    const auto open = [&] {
+        prompt.update({
+            .flowgraph = "graph",
+            .onSave = [&] { calls.push_back("save"); },
+            .onDontSave = [&] { calls.push_back("discard"); },
+            .onCancel = [&] { calls.push_back("cancel"); },
+        });
+        layer.update(prompt.layer(Rect{100.0f, 100.0f, 200.0f, 40.0f}));
+        host.place(scene.ctx, kScreen);
+        host.place(scene.ctx, kScreen);
+    };
+    const auto close = [&] {
+        prompt.close();
+        layer.update(prompt.layer(std::nullopt));
+        host.place(scene.ctx, kScreen);
+        host.place(scene.ctx, kScreen);
+    };
+
+    open();
+    CHECK_FALSE(editor.focused());
+    CHECK(Tap(host, KeyCode::Enter));
+    CHECK(calls == std::vector<std::string>{"save"});
+    CHECK(edited.empty());
+    close();
+    CHECK(editor.focused());
+
+    open();
+    CHECK(Tap(host, KeyCode::Escape));
+    CHECK(calls == std::vector<std::string>{"save", "cancel"});
+    close();
+    CHECK(editor.focused());
+    Type(host, "z");
+    CHECK(edited.find('z') != std::string::npos);
 }

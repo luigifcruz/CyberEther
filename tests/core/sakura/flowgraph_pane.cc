@@ -159,6 +159,9 @@ struct PaneRig : FlowgraphFixture {
             if (const auto* close = std::get_if<MailCloseDocumentation>(&mail)) {
                 CHECK(actions.handle(*close) == Result::SUCCESS);
             }
+            if (const auto* environment = std::get_if<MailSetFlowgraphEnvironmentVisible>(&mail)) {
+                CHECK(actions.handle(*environment) == Result::SUCCESS);
+            }
         }
         mails.clear();
         state.flowgraph.blocks = std::move(snapshots);
@@ -315,7 +318,7 @@ TEST_CASE("Each flowgraph contributes one main tab whose content is its layout d
     CHECK(main.id == kGraph);
     CHECK(main.title == "graph");
     CHECK(main.group == "main");
-    CHECK(main.icon.empty());
+    CHECK(main.icon == ICON_LC_WORKFLOW);
     CHECK(main.closable);
     REQUIRE(main.content != nullptr);
     CHECK(dynamic_cast<Sakura::Dock*>(main.content) != nullptr);
@@ -360,29 +363,57 @@ TEST_CASE("A flowgraph without detached views fills its tab with the editor and 
     CHECK_FALSE(layout->tiles->children.has_value());
 }
 
-TEST_CASE("The getting started hint shows a tip only while tips are enabled", "[core][sakura][flowgraph][pane]") {
+TEST_CASE("Gallery flowgraphs show the stored description as a collapsed leftmost tile before the flowgraph loads",
+          "[core][sakura][flowgraph][pane]") {
     PaneRig rig;
-    const auto tips = [&rig] {
-        U64 count = 0;
-        for (auto* text : Find<Sakura::Text>(rig.layoutDock())) {
-            if (text->config().str.starts_with("Tip: ")) {
-                ++count;
+    rig.screen = kWideScreen;
+    CHECK_FALSE(rig.build().description.has_value());
+
+    rig.state.flowgraph.gallery[kGraph] = FlowgraphActions::GalleryDescription({
+        .description = "## Overview\n\nRead [Simple FM](/gallery/flowgraphs/simple-fm) next.",
+    });
+    REQUIRE(rig.state.flowgraph.items.at(kGraph)->description().empty());
+    const auto config = rig.build();
+    REQUIRE(config.description.has_value());
+    CHECK(config.description->id == kLayoutDescriptionPane);
+    CHECK(config.description->markdown == rig.state.flowgraph.gallery.at(kGraph));
+    rig.frame();
+
+    CHECK(rig.documentation().empty());
+    std::optional<Sakura::Label::Instance> spine;
+    for (auto* label : Find<Sakura::Label>(rig.layoutDock())) {
+        for (const auto& instance : label->config().instances) {
+            if (instance.visible && instance.rotation != 0.0f && instance.str == "Description") {
+                spine = instance;
             }
         }
-        return count;
-    };
-    REQUIRE(rig.build().empty);
+    }
+    REQUIRE(spine.has_value());
+    CHECK(spine->rect.x + spine->rect.width * 0.5f < 40.0f);
+    const auto tiles = rig.tiles();
+    REQUIRE_FALSE(tiles.empty());
+    CHECK(Peek::Frame(*tiles.front()).x > spine->rect.x + spine->rect.width);
 
+    const F32 x = spine->rect.x + spine->rect.width * 0.5f;
+    const F32 y = spine->rect.y + spine->rect.height * 0.5f;
+    rig.host.send(Mouse(MouseEventType::Click, x, y));
+    rig.host.send(Mouse(MouseEventType::Release, x, y));
     rig.frame();
-    CHECK(tips() == 1);
+    REQUIRE(rig.documentation().size() == 1);
+    CHECK(rig.documentationText().find("Overview") != std::string::npos);
 
-    rig.state.interface.showTips = false;
-    rig.frame();
-    CHECK(tips() == 0);
+    rig.state.flowgraph.gallery[kGraph] = "";
+    CHECK_FALSE(rig.build().description.has_value());
+}
 
-    rig.state.interface.showTips = true;
-    rig.frame();
-    CHECK(tips() == 1);
+TEST_CASE("Gallery descriptions drop the registry placeholder and point relative links at the gallery host",
+          "[core][sakura][flowgraph][pane]") {
+    CHECK(FlowgraphActions::GalleryDescription({}).empty());
+    CHECK(FlowgraphActions::GalleryDescription({.description = "Plain text."}) == "Plain text.");
+    CHECK(FlowgraphActions::GalleryDescription({
+              .description = "See [A](/gallery/a) and [B](/docs/b), or [C](https://example.com/c).",
+          }) == "See [A](" + std::string(Gallery::Host) + "/gallery/a) and [B](" + std::string(Gallery::Host) +
+                    "/docs/b), or [C](https://example.com/c).");
 }
 
 TEST_CASE("A detached view joins as a column beside the editor and the layout is reported once",
@@ -656,7 +687,7 @@ TEST_CASE("Clicks and drags inside a detached surface column reach the surface a
     CHECK(focusLost == 1);
 }
 
-TEST_CASE("The editor's top right holds the search pill, the zoom pill to its left, and a dependency pill when review is needed",
+TEST_CASE("The editor's bottom right holds the toolbar row and a dependency pill sits top right when review is needed",
           "[core][sakura][flowgraph][pane]") {
     PaneRig rig;
     rig.screen = kWideScreen;
@@ -671,19 +702,33 @@ TEST_CASE("The editor's top right holds the search pill, the zoom pill to its le
         };
     };
     rig.frame();
-    auto pills = Find<Sakura::PillField>(rig.layoutDock());
-    REQUIRE(pills.size() == 1);
-    const auto search = Peek::Frame(*pills[0]);
-    CHECK(search.width == FlowgraphBlockPicker::PillWidth);
-    CHECK(search.right() == 1188.0f - FlowgraphBlockPicker::PillMargin);
-    CHECK(search.y == 38.0f + Sakura::Dock::ContentPadding + FlowgraphBlockPicker::PillMargin);
+    CHECK(Find<Sakura::PillField>(rig.layoutDock()).empty());
+    std::vector<Jetstream::Rect> buttons;
+    for (auto* button : Find<Sakura::PillIconButton>(rig.layoutDock())) {
+        buttons.push_back(Peek::Frame(*button));
+    }
+    std::sort(buttons.begin(), buttons.end(), [](const auto& a, const auto& b) {
+        return a.x < b.x;
+    });
+    REQUIRE(buttons.size() == 4);
+    const F32 top = 38.0f + Sakura::Dock::ContentPadding + FlowgraphEditor::PillMargin;
+    const F32 row = 38.0f + 556.0f - Sakura::Dock::ContentPadding - FlowgraphEditor::PillMargin - FlowgraphEditor::PillHeight;
+    for (const auto& button : buttons) {
+        CHECK(button.width == FlowgraphEditor::PillHeight);
+        CHECK(button.height == FlowgraphEditor::PillHeight);
+        CHECK(button.y == row);
+    }
+    for (U64 index = 1; index < buttons.size(); ++index) {
+        CHECK(buttons[index].x == buttons[index - 1].right() + FlowgraphEditor::PillGap);
+    }
 
     const auto steppers = Find<Sakura::PillStepper>(rig.layoutDock());
     REQUIRE(steppers.size() == 1);
     const auto zoom = Peek::Frame(*steppers[0]);
     CHECK(zoom.width == FlowgraphEditor::ZoomPillWidth);
-    CHECK(zoom.right() == search.x - FlowgraphEditor::PillGap);
-    CHECK(zoom.y == search.y);
+    CHECK(zoom.right() == 1188.0f - FlowgraphEditor::PillMargin);
+    CHECK(zoom.x == buttons.back().right() + FlowgraphEditor::PillGap);
+    CHECK(zoom.y == row);
     const auto label = [&] {
         for (auto* text : Find<Sakura::Text>(*steppers[0])) {
             if (text->config().str.ends_with("%")) {
@@ -702,12 +747,11 @@ TEST_CASE("The editor's top right holds the search pill, the zoom pill to its le
 
     review = true;
     rig.frame();
-    pills = Find<Sakura::PillField>(rig.layoutDock());
-    REQUIRE(pills.size() == 2);
-    const auto dependency = Peek::Frame(*pills[0]).x < Peek::Frame(*pills[1]).x ? Peek::Frame(*pills[0])
-                                                                                : Peek::Frame(*pills[1]);
-    CHECK(dependency.right() == zoom.x - FlowgraphEditor::PillGap);
-    CHECK(dependency.y == search.y);
+    const auto pills = Find<Sakura::PillField>(rig.layoutDock());
+    REQUIRE(pills.size() == 1);
+    const auto dependency = Peek::Frame(*pills[0]);
+    CHECK(dependency.right() == 1188.0f - FlowgraphEditor::PillMargin);
+    CHECK(dependency.y == top);
     rig.host.click(dependency.x + 20.0f, dependency.y + 10.0f);
     CHECK(reviews == 1);
 }
@@ -919,4 +963,67 @@ TEST_CASE("Rename completion and late dock reports preserve detached pane order 
     CHECK(std::count(panes.begin(), panes.end(), "config:new") == (configDetached ? 1 : 0));
     CHECK(std::count(panes.begin(), panes.end(), "surface:new:default") == (surfaceDetached ? 1 : 0));
     CHECK(std::none_of(panes.begin(), panes.end(), [](const auto& pane) { return pane.find(":old") != std::string::npos; }));
+}
+
+TEST_CASE("The environment button opens a closable Environment tile that is never saved in the layout",
+          "[core][sakura][flowgraph][pane][environment]") {
+    PaneRig rig;
+    rig.screen = kWideScreen;
+    rig.frame();
+    rig.deliver();
+    CHECK_FALSE(rig.build().environment.has_value());
+
+    const auto config = rig.build();
+    REQUIRE(config.editor.onToggleEnvironment);
+    config.editor.onToggleEnvironment();
+    REQUIRE(rig.count<MailSetFlowgraphEnvironmentVisible>() == 1);
+    CHECK(rig.last<MailSetFlowgraphEnvironmentVisible>()->flowgraph == kGraph);
+    CHECK(rig.last<MailSetFlowgraphEnvironmentVisible>()->value);
+    rig.deliver();
+    rig.frame();
+
+    CHECK(rig.state.flowgraph.environment.contains(kGraph));
+    CHECK(LayoutPanes(rig.state.flowgraph.layouts.at(kGraph)) == std::vector<std::string>{"flowgraph", "environment"});
+    CHECK(rig.header("Environment"));
+    TileMeta saved;
+    REQUIRE(rig.graph().metadata().get("layout", saved) == Result::SUCCESS);
+    CHECK(LayoutPanes(saved) == std::vector<std::string>{"flowgraph"});
+
+    const auto open = rig.build();
+    REQUIRE(open.environment.has_value());
+    CHECK(open.environment->title == "Environment");
+    REQUIRE(open.environment->onClose);
+    open.environment->onClose();
+    rig.deliver();
+    rig.frame();
+    CHECK_FALSE(rig.state.flowgraph.environment.contains(kGraph));
+    CHECK(LayoutPanes(rig.state.flowgraph.layouts.at(kGraph)) == std::vector<std::string>{"flowgraph"});
+    CHECK_FALSE(rig.header("Environment"));
+
+    LayoutActions actions(rig.state.flowgraph);
+    CHECK(actions.handle(MailSetFlowgraphLayout{
+              .flowgraph = kGraph,
+              .tiles = TileMeta{.split = "row",
+                                .children = std::vector<TileMeta>{{.pane = "flowgraph"}, {.pane = "environment"}}},
+          }) == Result::SUCCESS);
+    CHECK(LayoutPanes(rig.state.flowgraph.layouts.at(kGraph)) == std::vector<std::string>{"flowgraph"});
+}
+
+TEST_CASE("The flowgraph pane shows a tip banner only while tips are enabled", "[core][sakura][flowgraph][pane]") {
+    PaneRig rig;
+    const auto tips = [&rig] {
+        return Find<Sakura::TipBanner>(rig.layoutDock()).size();
+    };
+    REQUIRE(rig.build().empty);
+
+    rig.frame();
+    CHECK(tips() == 1);
+
+    rig.state.interface.showTips = false;
+    rig.frame();
+    CHECK(tips() == 0);
+
+    rig.state.interface.showTips = true;
+    rig.frame();
+    CHECK(tips() == 1);
 }

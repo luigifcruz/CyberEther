@@ -459,6 +459,8 @@ TEST_CASE("Flowgraph layouts map between layout panes and dock panes", "[core][c
     REQUIRE(toDock("config:fft") == std::optional<std::string>("config:fft"));
     REQUIRE(toDock("surface:fft:default") == std::optional<std::string>("surface:fft:default"));
     REQUIRE(toDock(kLayoutDocumentationPane) == std::optional<std::string>("documentation"));
+    REQUIRE(toDock(kLayoutDescriptionPane) == std::optional<std::string>("description"));
+    REQUIRE(toDock(kLayoutEnvironmentPane) == std::optional<std::string>("environment"));
     REQUIRE_FALSE(toDock("stack_0").has_value());
     REQUIRE_FALSE(toDock("").has_value());
 
@@ -466,8 +468,16 @@ TEST_CASE("Flowgraph layouts map between layout panes and dock panes", "[core][c
     REQUIRE(toLayout(MakeEditorPaneId("graph")) == std::optional<std::string>("flowgraph"));
     REQUIRE(toLayout("config:fft") == std::optional<std::string>("config:fft"));
     REQUIRE(toLayout("documentation") == std::optional<std::string>(kLayoutDocumentationPane));
+    REQUIRE(toLayout("description") == std::optional<std::string>(kLayoutDescriptionPane));
+    REQUIRE(toLayout("environment") == std::optional<std::string>(kLayoutEnvironmentPane));
     REQUIRE_FALSE(toLayout(MakeEditorPaneId("other")).has_value());
     REQUIRE_FALSE(toLayout("stack:graph:stack_0").has_value());
+
+    CHECK(IsTransientPane(kLayoutDocumentationPane));
+    CHECK(IsTransientPane(kLayoutEnvironmentPane));
+    CHECK(IsTransientPane(kLayoutDescriptionPane));
+    CHECK_FALSE(IsTransientPane(kLayoutEditorPane));
+    CHECK_FALSE(IsTransientPane("config:fft"));
 }
 
 TEST_CASE("Flowgraph layouts drop unknown panes on their way to the dock and keep column widths",

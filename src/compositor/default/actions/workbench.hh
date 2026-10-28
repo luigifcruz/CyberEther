@@ -27,10 +27,6 @@ struct WorkbenchActions {
                               MailNotifyResult,
                               MailOpenUrl,
                               MailCopyText,
-                              MailSetFlowgraphMetadataVisible,
-                              MailSetFlowgraphMetadataSearch,
-                              MailSetFlowgraphEnvironmentVisible,
-                              MailSetFlowgraphEnvironmentSearch,
                               MailQuit,
                               MailOpenStartTab,
                               MailCloseStartTab,
@@ -190,6 +186,7 @@ struct WorkbenchActions {
     }
 
     void reconcileFlowgraphs() {
+        auto& ui = state.interface;
         const auto& items = state.flowgraph.items;
         for (const auto& name : knownFlowgraphs) {
             if (!items.contains(name)) {
@@ -201,30 +198,20 @@ struct WorkbenchActions {
             knownFlowgraphs.insert(name);
         }
 
-        if (state.flowgraph.items.empty()) {
-            state.interface.focusedFlowgraph.reset();
-            state.interface.flowgraphMetadataVisible = false;
-            state.interface.flowgraphMetadataSearch.clear();
-            state.interface.flowgraphEnvironmentVisible = false;
-            state.interface.flowgraphEnvironmentSearch.clear();
-        } else if (state.interface.focusedFlowgraph.has_value() &&
-                   !state.flowgraph.items.contains(state.interface.focusedFlowgraph.value())) {
-            state.interface.focusedFlowgraph.reset();
-            state.interface.flowgraphMetadataVisible = false;
-            state.interface.flowgraphMetadataSearch.clear();
-            state.interface.flowgraphEnvironmentVisible = false;
-            state.interface.flowgraphEnvironmentSearch.clear();
+        if (ui.focusedFlowgraph.has_value() && !items.contains(*ui.focusedFlowgraph)) {
+            ui.focusedFlowgraph.reset();
         }
-
-        if (!state.interface.focusedFlowgraph.has_value() &&
-            !state.interface.pendingFocusedFlowgraph.has_value() &&
-            state.flowgraph.items.size() == 1) {
-            state.interface.focusedFlowgraph = state.flowgraph.items.begin()->first;
+        if (ui.closingFlowgraph.has_value() && !items.contains(*ui.closingFlowgraph)) {
+            ui.closingFlowgraph.reset();
+        }
+        if (!ui.focusedFlowgraph.has_value() && !ui.pendingFocusedFlowgraph.has_value() && items.size() == 1) {
+            ui.focusedFlowgraph = items.begin()->first;
         }
     }
 
     static void Forget(DefaultCompositorState& state, const std::string& flowgraph) {
         state.flowgraph.gallery.erase(flowgraph);
+        state.flowgraph.environment.erase(flowgraph);
         if (state.interface.pendingFocusedFlowgraph == flowgraph) {
             state.interface.pendingFocusedFlowgraph.reset();
         }
@@ -241,8 +228,7 @@ struct WorkbenchActions {
             return;
         }
 
-        if (state.modal.content == ModalContent::FlowgraphInfo ||
-            state.modal.content == ModalContent::FlowgraphClose) {
+        if (state.modal.content == ModalContent::FlowgraphInfo) {
             const std::optional<std::string> targetFlowgraph = state.modal.flowgraph.has_value()
                 ? state.modal.flowgraph
                 : state.interface.focusedFlowgraph;
@@ -360,32 +346,6 @@ struct WorkbenchActions {
         callbacks.setClipboardText(msg.value);
         const std::string notification = msg.label + " copied to clipboard.";
         callbacks.notify(Sakura::ToastType::Info, 3000, notification);
-        return Result::SUCCESS;
-    }
-
-    Result handle(const MailSetFlowgraphMetadataVisible& msg) {
-        state.interface.flowgraphMetadataVisible = msg.value;
-        if (!msg.value) {
-            state.interface.flowgraphMetadataSearch.clear();
-        }
-        return Result::SUCCESS;
-    }
-
-    Result handle(const MailSetFlowgraphMetadataSearch& msg) {
-        state.interface.flowgraphMetadataSearch = msg.value;
-        return Result::SUCCESS;
-    }
-
-    Result handle(const MailSetFlowgraphEnvironmentVisible& msg) {
-        state.interface.flowgraphEnvironmentVisible = msg.value;
-        if (!msg.value) {
-            state.interface.flowgraphEnvironmentSearch.clear();
-        }
-        return Result::SUCCESS;
-    }
-
-    Result handle(const MailSetFlowgraphEnvironmentSearch& msg) {
-        state.interface.flowgraphEnvironmentSearch = msg.value;
         return Result::SUCCESS;
     }
 

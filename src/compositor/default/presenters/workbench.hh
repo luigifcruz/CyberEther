@@ -4,8 +4,7 @@
 #include "context.hh"
 #include "docs.hh"
 #include "file_picker.hh"
-#include "flowgraph/environment.hh"
-#include "flowgraph/metadata.hh"
+#include "flowgraph/close_prompt.hh"
 #include "flowgraph/pane.hh"
 #include "modal/container.hh"
 #include "settings/base.hh"
@@ -24,8 +23,7 @@ struct WorkbenchPresenter {
     TitlebarPresenter titlebar;
     StartTabPresenter startTab;
     FlowgraphPanePresenter flowgraphPane;
-    FlowgraphMetadataWindowPresenter flowgraphMetadata;
-    FlowgraphEnvironmentWindowPresenter flowgraphEnvironment;
+    FlowgraphClosePromptPresenter closePrompt;
     ModalPresenter modal;
     SettingsPresenter settings;
     DocsPresenter docs;
@@ -37,8 +35,7 @@ struct WorkbenchPresenter {
                                                                    titlebar(context),
                                                                    startTab(context),
                                                                    flowgraphPane(context),
-                                                                   flowgraphMetadata(context),
-                                                                   flowgraphEnvironment(context),
+                                                                   closePrompt(context),
                                                                    modal(context),
                                                                    settings(context),
                                                                    docs(context),
@@ -49,6 +46,7 @@ struct WorkbenchPresenter {
         WorkbenchView::Config config;
         config.filePending = context.state.interface.filePending;
         config.titlebar = titlebar.build();
+        config.closePrompt = closePrompt.build();
         config.agentChat = agentChat.build();
         config.agentVoice = agentVoice.build();
         config.hideTabs = context.state.tabsHidden();
@@ -69,8 +67,6 @@ struct WorkbenchPresenter {
         for (const auto& [flowgraphId, flowgraph] : context.state.flowgraph.items) {
             config.flowgraphs.push_back(flowgraphPane.build(flowgraphId, flowgraph));
         }
-        config.flowgraphMetadata = flowgraphMetadata.build();
-        config.flowgraphEnvironment = flowgraphEnvironment.build();
         config.modal = modal.build();
         config.filePicker = filePicker.build();
         config.backgroundParticles = context.state.interface.backgroundParticles &&

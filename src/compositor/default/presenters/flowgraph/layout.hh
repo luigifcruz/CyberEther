@@ -83,6 +83,12 @@ inline std::string DescribeTile(const std::string& key) {
     if (key == kLayoutDocumentationPane) {
         return "Documentation";
     }
+    if (key == kLayoutEnvironmentPane) {
+        return "Environment";
+    }
+    if (key == kLayoutDescriptionPane) {
+        return "Description";
+    }
     if (auto config = ParseConfigTileKey(key)) {
         return *config + " Config";
     }
@@ -97,7 +103,7 @@ inline TilePaneMap LayoutToDockPanes(const std::string& flowgraphId) {
         if (pane == kLayoutEditorPane) {
             return MakeEditorPaneId(flowgraphId);
         }
-        if (pane == kLayoutDocumentationPane || TileBlock(pane).has_value()) {
+        if (IsTransientPane(pane) || TileBlock(pane).has_value()) {
             return pane;
         }
         return std::nullopt;
@@ -109,7 +115,7 @@ inline TilePaneMap DockToLayoutPanes(const std::string& flowgraphId) {
         if (pane == MakeEditorPaneId(flowgraphId)) {
             return std::string(kLayoutEditorPane);
         }
-        if (pane == kLayoutDocumentationPane || TileBlock(pane).has_value()) {
+        if (IsTransientPane(pane) || TileBlock(pane).has_value()) {
             return pane;
         }
         return std::nullopt;

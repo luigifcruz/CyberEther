@@ -3,7 +3,7 @@
 
 #include "agent/chat.hh"
 #include "agent/voice.hh"
-#include "flowgraph/key_value.hh"
+#include "flowgraph/close_prompt.hh"
 #include "flowgraph/pane.hh"
 #include "file_picker.hh"
 #include "modal/container.hh"
@@ -22,19 +22,26 @@
 namespace Jetstream {
 
 struct WorkspaceShellView {
+    static constexpr F32 PromptGap = 6.0f;
+
+    struct Config {
+        std::vector<Sakura::Dock::Pane> panes;
+        std::optional<std::string> activate;
+        bool hideTabs = false;
+        std::optional<FlowgraphClosePromptView::Config> closePrompt;
+    };
+
     void updateTitlebar(TitlebarView::Config config) {
         titlebar.update(std::move(config));
     }
 
-    void updatePanes(std::vector<Sakura::Dock::Pane> panes,
-                     std::optional<std::string> activate = std::nullopt,
-                     bool hideTabs = false) {
+    void updatePanes(Config config) {
         workspace.update({
             .tabs = true,
-            .hideTabs = hideTabs,
+            .hideTabs = config.hideTabs,
             .accepts = "main",
-            .panes = std::move(panes),
-            .activate = std::move(activate),
+            .panes = std::move(config.panes),
+            .activate = std::move(config.activate),
             .leading = &titlebar.leading(),
             .trailing = &titlebar.trailing(),
             .end = &titlebar.end(),
@@ -49,12 +56,19 @@ struct WorkspaceShellView {
                 titlebar.barPress(clicks);
             },
         });
-        shell.update({
-            .items = {
-                {.child = &workspace},
-                {.child = &titlebar.tabMenuComponent(), .anchor = Sakura::Anchor::TopLeft},
-            },
-        });
+        promptAnchor.reset();
+        if (config.closePrompt.has_value()) {
+            if (const auto tab = workspace.tabRect(config.closePrompt->flowgraph)) {
+                promptAnchor = Rect{tab->x, tab->y, tab->width, tab->height + PromptGap};
+            }
+            closing.update(std::move(*config.closePrompt));
+        } else {
+            closing.close();
+        }
+        shell.update({.items = {
+            {.child = &workspace},
+            {.child = &titlebar.tabMenuComponent(), .anchor = Sakura::Anchor::TopLeft},
+        }});
         keys.update({
             .bindings = titlebar.shortcuts(),
             .content = &shell,
@@ -63,6 +77,10 @@ struct WorkspaceShellView {
 
     Sakura::Component& component() {
         return keys;
+    }
+
+    Sakura::ModalLayer::Config promptLayer() {
+        return closing.layer(promptAnchor);
     }
 
     TitlebarView& bar() {
@@ -80,6 +98,8 @@ struct WorkspaceShellView {
  private:
     TitlebarView titlebar;
     Sakura::Dock workspace;
+    FlowgraphClosePromptView closing;
+    std::optional<Rect> promptAnchor;
     Sakura::Overlay shell;
     Sakura::Shortcuts keys;
 };
@@ -101,9 +121,8 @@ struct WorkbenchView {
         U64 docsTabRequests = 0;
         bool docsTabFocused = false;
         TitlebarView::Config titlebar;
+        std::optional<FlowgraphClosePromptView::Config> closePrompt;
         ModalView::Config modal;
-        std::optional<FlowgraphKeyValueWindow::Config> flowgraphMetadata;
-        std::optional<FlowgraphKeyValueWindow::Config> flowgraphEnvironment;
         std::vector<FlowgraphPane::Config> flowgraphs;
         FilePickerView::Config filePicker;
     };
@@ -194,17 +213,15 @@ struct WorkbenchView {
             }
         }
         docsTabRequests = this->config.docsTabRequests;
-        workspaceShell.updatePanes(std::move(panes), std::move(activate), this->config.hideTabs);
+        workspaceShell.updatePanes({
+            .panes = std::move(panes),
+            .activate = std::move(activate),
+            .hideTabs = this->config.hideTabs,
+            .closePrompt = std::move(this->config.closePrompt),
+        });
         content.update({.content = &workspaceShell.component()});
+        promptLayer.update(workspaceShell.promptLayer());
 
-        if (this->config.flowgraphMetadata.has_value()) {
-            flowgraphMetadataWindow.update(std::move(this->config.flowgraphMetadata.value()));
-            windows.push_back(flowgraphMetadataWindow.window());
-        }
-        if (this->config.flowgraphEnvironment.has_value()) {
-            flowgraphEnvironmentWindow.update(std::move(this->config.flowgraphEnvironment.value()));
-            windows.push_back(flowgraphEnvironmentWindow.window());
-        }
         floating.update({.windows = std::move(windows)});
 
         toasts.update();
@@ -219,6 +236,7 @@ struct WorkbenchView {
             layers.push_back(&agentChat.layer());
         }
         layers.push_back(&toasts);
+        layers.push_back(&promptLayer);
         layers.push_back(&modalLayer);
         layers.push_back(&filePickerLayer);
         root.update({
@@ -239,6 +257,7 @@ struct WorkbenchView {
     Sakura::FloatingLayer floating;
     Sakura::HudLayer huds;
     Sakura::ToastLayer toasts;
+    Sakura::ModalLayer promptLayer;
     Sakura::ModalLayer modalLayer;
     Sakura::ModalLayer filePickerLayer;
     Sakura::Text filePendingText;
@@ -254,8 +273,6 @@ struct WorkbenchView {
     WorkspaceShellView workspaceShell;
     std::vector<std::string> flowgraphOrder;
     std::unordered_map<std::string, FlowgraphPane> flowgraphPanes;
-    FlowgraphKeyValueWindow flowgraphMetadataWindow;
-    FlowgraphKeyValueWindow flowgraphEnvironmentWindow;
     ModalView modal;
     FilePickerView filePicker;
 };

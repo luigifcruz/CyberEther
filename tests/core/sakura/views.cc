@@ -166,6 +166,7 @@ F32 EntryY(const Jetstream::Rect& popup, U64 entries, U64 separators) {
 struct TitleRig {
     Scene scene{{0.0f, 0.0f, 1200.0f, 800.0f}};
     WorkspaceShellView shell;
+    Sakura::ModalLayer prompt;
     Probe a;
     Probe b;
     LayerSlot slot;
@@ -179,7 +180,6 @@ struct TitleRig {
         config = {
             .id = "titlebar",
             .remoteSupported = true,
-            .focusedFlowgraph = std::string("a"),
             .onAction = [this](TitlebarView::Action action) {
                 actions.push_back(action);
             },
@@ -192,7 +192,7 @@ struct TitleRig {
         };
         update();
         slot.hold(shell.component(), bounds());
-        host.setLayers({&slot});
+        host.setLayers({&slot, &prompt});
         place();
     }
 
@@ -203,8 +203,10 @@ struct TitleRig {
     void update() {
         shell.updateTitlebar(config);
         shell.updatePanes({
-            {.id = "a", .title = "Alpha", .group = "main", .icon = ICON_LC_WORKFLOW, .content = &a},
-            {.id = "b", .title = "Beta", .group = "main", .icon = ICON_LC_WORKFLOW, .content = &b},
+            .panes = {
+                {.id = "a", .title = "Alpha", .group = "main", .icon = ICON_LC_WORKFLOW, .content = &a},
+                {.id = "b", .title = "Beta", .group = "main", .icon = ICON_LC_WORKFLOW, .content = &b},
+            },
         });
     }
 
@@ -292,7 +294,6 @@ struct PickerRig {
     LayerSlot slot;
     LayerHost host;
     std::vector<Created> created;
-    U64 opens = 0;
 
     PickerRig() {
         slot.hold(overlay, kBounds);
@@ -301,11 +302,6 @@ struct PickerRig {
 
     FlowgraphBlockPicker::Config config() {
         return {
-            .id = "picker",
-            .onOpenRequest = [this] {
-                ++opens;
-                picker.open(Catalog(), FlowgraphBlockPicker::Mode::Pill, {40.0f, 80.0f});
-            },
             .onCreateBlock = [this](const std::string& type, Extent2D<F32> position, DeviceType device,
                                     RuntimeType runtime, ProviderType provider) {
                 created.push_back({type, position, device, runtime, provider});
@@ -313,17 +309,30 @@ struct PickerRig {
         };
     }
 
-    void refresh(std::optional<Extent2D<F32>> mouse = std::nullopt) {
+    void refresh() {
         picker.update(config());
-        const Extent2D<F32> size = {FlowgraphBlockPicker::PillWidth, FlowgraphBlockPicker::PillHeight};
-        const Extent2D<F32> offset = {-FlowgraphBlockPicker::PillMargin, FlowgraphBlockPicker::PillMargin};
-        overlay.update({.items = {
-            {.child = &picker.pillComponent(), .anchor = Sakura::Anchor::TopRight, .offset = offset, .size = size},
-            {.child = &picker.popupComponent(), .anchor = Sakura::Anchor::TopRight, .offset = offset, .size = size},
-        }});
-        auto ctx = scene.ctx;
-        ctx.mouse = mouse;
-        host.place(ctx, kBounds);
+        overlay.update({.items = {{.child = &picker.component()}}});
+        host.place(scene.ctx, kBounds);
+    }
+
+    Jetstream::Rect catalog() {
+        const auto found = Find<Sakura::SearchCatalog>(host.popups);
+        return found.empty() ? Jetstream::Rect{} : Peek::Frame(*found.front());
+    }
+
+    std::optional<Extent2D<F32>> row(const std::string& title) {
+        std::optional<Jetstream::Rect> best;
+        for (auto* label : Find<Sakura::Label>(host.popups)) {
+            for (const auto& instance : label->config().instances) {
+                if (instance.visible && instance.str == title && (!best || instance.rect.x < best->x)) {
+                    best = instance.rect;
+                }
+            }
+        }
+        if (!best) {
+            return std::nullopt;
+        }
+        return Extent2D<F32>{best->x + best->width * 0.5f, best->y + best->height * 0.5f};
     }
 
     std::vector<Sakura::Button*> actions() {
@@ -335,10 +344,17 @@ struct PickerRig {
         host.send(Mouse(MouseEventType::Release, x, y));
     }
 
-    void openFromPill() {
+    void open(std::vector<FlowgraphBlockPicker::BlockOption> catalog = Catalog(),
+              Extent2D<F32> position = {40.0f, 80.0f}) {
         refresh();
-        click(1068.0f, 29.0f);
+        picker.open(std::move(catalog), position);
         refresh();
+    }
+
+    void pick(const std::string& title, U8 clicks = 1) {
+        const auto point = row(title);
+        REQUIRE(point.has_value());
+        click(point->x, point->y, clicks);
     }
 };
 
@@ -360,22 +376,16 @@ struct KeyedPickerRig {
 
     void update() {
         picker.update({
-            .id = "picker",
             .onCreateBlock = [this](const std::string& type, Extent2D<F32> position, DeviceType device,
                                     RuntimeType runtime, ProviderType provider) {
                 created.push_back({type, position, device, runtime, provider});
             },
         });
-        const Extent2D<F32> size = {FlowgraphBlockPicker::PillWidth, FlowgraphBlockPicker::PillHeight};
-        const Extent2D<F32> offset = {-FlowgraphBlockPicker::PillMargin, FlowgraphBlockPicker::PillMargin};
-        overlay.update({.items = {
-            {.child = &picker.pillComponent(), .anchor = Sakura::Anchor::TopRight, .offset = offset, .size = size},
-            {.child = &picker.popupComponent(), .anchor = Sakura::Anchor::TopRight, .offset = offset, .size = size},
-        }});
+        overlay.update({.items = {{.child = &picker.component()}}});
     }
 
-    void open(FlowgraphBlockPicker::Mode mode, Extent2D<F32> position = {7.0f, 9.0f}) {
-        picker.open(Catalog(), mode, position);
+    void open(Extent2D<F32> position = {7.0f, 9.0f}) {
+        picker.open(Catalog(), position);
         frame();
         frame();
     }
@@ -871,10 +881,13 @@ TEST_CASE("Start tab shows the welcome screen in a fixed tile and activates on r
             },
         });
         rig.shell.updatePanes({
-            {.id = "a", .title = "Alpha", .group = "main", .content = &rig.a},
-            {.id = "b", .title = "Beta", .group = "main", .content = &rig.b},
-            start.pane(),
-        }, std::move(activate));
+            .panes = {
+                {.id = "a", .title = "Alpha", .group = "main", .content = &rig.a},
+                {.id = "b", .title = "Beta", .group = "main", .content = &rig.b},
+                start.pane(),
+            },
+            .activate = std::move(activate),
+        });
         rig.place();
     };
 
@@ -935,13 +948,13 @@ TEST_CASE("Right clicking a pill opens the tab menu at the cursor acting on that
         rig.place();
         CHECK(PopupFrames(rig.host).empty());
     };
-    for (U64 entry = 0; entry < 5; ++entry) {
+    for (U64 entry = 0; entry < 4; ++entry) {
         pick(entry, 0);
     }
-    pick(5, 1);
+    pick(4, 1);
     CHECK(rig.tabActions == std::vector<std::pair<TabAction, std::string>>{
         {TabAction::Save, "b"}, {TabAction::Rename, "b"}, {TabAction::Info, "b"},
-        {TabAction::ToggleMetadata, "b"}, {TabAction::ToggleEnvironment, "b"}, {TabAction::Close, "b"}});
+        {TabAction::ToggleEnvironment, "b"}, {TabAction::Close, "b"}});
     CHECK(rig.presses.empty());
 
     rig.host.click(second.x, second.y, MouseButton::Right);
@@ -950,7 +963,7 @@ TEST_CASE("Right clicking a pill opens the tab menu at the cursor acting on that
     rig.host.click(600.0f, 600.0f);
     rig.place();
     CHECK(PopupFrames(rig.host).empty());
-    CHECK(rig.tabActions.size() == 6);
+    CHECK(rig.tabActions.size() == 5);
 }
 
 TEST_CASE("Titlebar presenter actions enqueue the matching mail", "[core][sakura][views]") {
@@ -1023,12 +1036,12 @@ TEST_CASE("Titlebar presenter close action targets the start tab while it is the
     CHECK(mailbox.last<MailCloseFlowgraph>()->flowgraph == "a");
 }
 
-TEST_CASE("Titlebar presenter tab actions target the chosen flowgraph and focus it for its views",
+TEST_CASE("Titlebar presenter tab actions target the chosen flowgraph",
           "[core][sakura][views]") {
     using TabAction = TitlebarView::TabAction;
     Mailbox mailbox;
     mailbox.state.interface.focusedFlowgraph = "a";
-    mailbox.state.interface.flowgraphMetadataVisible = true;
+    mailbox.state.flowgraph.environment["a"] = "";
     auto config = TitlebarPresenter(mailbox.context()).build();
 
     config.onTabAction(TabAction::Save, "b");
@@ -1042,22 +1055,17 @@ TEST_CASE("Titlebar presenter tab actions target the chosen flowgraph and focus 
     CHECK(mailbox.last<MailCloseFlowgraph>()->flowgraph == "b");
 
     mailbox.mails.clear();
-    config.onTabAction(TabAction::ToggleMetadata, "b");
-    REQUIRE(mailbox.mails.size() == 2);
-    REQUIRE(std::holds_alternative<MailFocusFlowgraph>(mailbox.mails[0]));
-    CHECK(std::get<MailFocusFlowgraph>(mailbox.mails[0]).flowgraph == "b");
-    REQUIRE(std::holds_alternative<MailSetFlowgraphMetadataVisible>(mailbox.mails[1]));
-    CHECK(std::get<MailSetFlowgraphMetadataVisible>(mailbox.mails[1]).value);
-
-    mailbox.mails.clear();
-    config.onTabAction(TabAction::ToggleMetadata, "a");
+    config.onTabAction(TabAction::ToggleEnvironment, "b");
     REQUIRE(mailbox.mails.size() == 1);
-    CHECK_FALSE(std::get<MailSetFlowgraphMetadataVisible>(mailbox.mails[0]).value);
+    REQUIRE(std::holds_alternative<MailSetFlowgraphEnvironmentVisible>(mailbox.mails[0]));
+    CHECK(std::get<MailSetFlowgraphEnvironmentVisible>(mailbox.mails[0]).flowgraph == "b");
+    CHECK(std::get<MailSetFlowgraphEnvironmentVisible>(mailbox.mails[0]).value);
 
     mailbox.mails.clear();
     config.onTabAction(TabAction::ToggleEnvironment, "a");
     REQUIRE(mailbox.mails.size() == 1);
-    CHECK(std::get<MailSetFlowgraphEnvironmentVisible>(mailbox.mails[0]).value);
+    CHECK(std::get<MailSetFlowgraphEnvironmentVisible>(mailbox.mails[0]).flowgraph == "a");
+    CHECK_FALSE(std::get<MailSetFlowgraphEnvironmentVisible>(mailbox.mails[0]).value);
 }
 
 TEST_CASE("Titlebar presenter window presses are safe without a native titlebar", "[core][sakura][views]") {
@@ -1204,12 +1212,11 @@ TEST_CASE("Titlebar presenter negates timing, forwards the log level, opens a ta
     CHECK(mailbox.count<MailNotify>() == 1);
 }
 
-TEST_CASE("Titlebar presenter tab info opens the flowgraph info and environment focuses an unfocused tab first",
+TEST_CASE("Titlebar presenter tab info opens the flowgraph info of the chosen tab",
           "[core][sakura][views]") {
     using TabAction = TitlebarView::TabAction;
     Mailbox mailbox;
     mailbox.state.interface.focusedFlowgraph = "a";
-    mailbox.state.interface.flowgraphEnvironmentVisible = true;
     auto config = TitlebarPresenter(mailbox.context()).build();
 
     config.onTabAction(TabAction::Info, "b");
@@ -1217,25 +1224,11 @@ TEST_CASE("Titlebar presenter tab info opens the flowgraph info and environment 
     REQUIRE(mailbox.last<MailOpenModal>() != nullptr);
     CHECK(mailbox.last<MailOpenModal>()->content == ModalContent::FlowgraphInfo);
     CHECK(mailbox.last<MailOpenModal>()->flowgraph == std::optional<std::string>("b"));
-
-    mailbox.mails.clear();
-    config.onTabAction(TabAction::ToggleEnvironment, "b");
-    REQUIRE(mailbox.mails.size() == 2);
-    REQUIRE(std::holds_alternative<MailFocusFlowgraph>(mailbox.mails[0]));
-    CHECK(std::get<MailFocusFlowgraph>(mailbox.mails[0]).flowgraph == "b");
-    REQUIRE(std::holds_alternative<MailSetFlowgraphEnvironmentVisible>(mailbox.mails[1]));
-    CHECK(std::get<MailSetFlowgraphEnvironmentVisible>(mailbox.mails[1]).value);
-
-    mailbox.mails.clear();
-    config.onTabAction(TabAction::ToggleEnvironment, "a");
-    REQUIRE(mailbox.mails.size() == 1);
-    CHECK_FALSE(std::get<MailSetFlowgraphEnvironmentVisible>(mailbox.mails[0]).value);
 }
 
-TEST_CASE("Menu checkmarks follow the focused tab views, the timing toggle, and the log level",
+TEST_CASE("Menu checkmarks follow the tab environment views, the timing toggle, and the log level",
           "[core][sakura][views]") {
     TitleRig rig;
-    rig.config.flowgraphMetadataVisible = true;
     rig.config.debugTimingEnabled = true;
     rig.config.debugLogLevel = 2;
     rig.update();
@@ -1264,10 +1257,10 @@ TEST_CASE("Menu checkmarks follow the focused tab views, the timing toggle, and 
         const auto menu = tabMenu(index);
         REQUIRE(menu.width > 0.0f);
         std::vector<bool> checked;
-        for (U64 entry = 0; entry < 5; ++entry) {
+        for (U64 entry = 0; entry < 4; ++entry) {
             checked.push_back(Checked(rig.host, menu, EntryY(menu, entry, 0)));
         }
-        checked.push_back(Checked(rig.host, menu, EntryY(menu, 5, 1)));
+        checked.push_back(Checked(rig.host, menu, EntryY(menu, 4, 1)));
         dismiss();
         return checked;
     };
@@ -1295,18 +1288,17 @@ TEST_CASE("Menu checkmarks follow the focused tab views, the timing toggle, and 
         return checked;
     };
 
-    CHECK(views(0) == std::vector<bool>{false, false, false, true, false, false});
-    CHECK(views(1) == std::vector<bool>(6, false));
+    CHECK(views(0) == std::vector<bool>(5, false));
+    CHECK(views(1) == std::vector<bool>(5, false));
     CHECK(developer() == std::vector<bool>{true, false, false, false, false, false, true, false, false});
 
-    rig.config.flowgraphMetadataVisible = false;
-    rig.config.flowgraphEnvironmentVisible = true;
+    rig.config.environmentFlowgraphs = {"a"};
     rig.config.debugTimingEnabled = false;
     rig.config.debugLogLevel = 4;
     rig.update();
     rig.place();
-    CHECK(views(0) == std::vector<bool>{false, false, false, false, true, false});
-    CHECK(views(1) == std::vector<bool>(6, false));
+    CHECK(views(0) == std::vector<bool>{false, false, false, true, false});
+    CHECK(views(1) == std::vector<bool>(5, false));
     CHECK(developer() == std::vector<bool>{false, false, false, false, false, false, false, false, true});
 }
 
@@ -1319,8 +1311,11 @@ TEST_CASE("Toggling checked menu state while the menus are closed settles withou
     };
     REQUIRE(Settles(frames, update));
     const std::vector<std::function<void()>> toggles = {
-        [&] { rig.config.flowgraphMetadataVisible = !rig.config.flowgraphMetadataVisible; },
-        [&] { rig.config.flowgraphEnvironmentVisible = !rig.config.flowgraphEnvironmentVisible; },
+        [&] {
+            rig.config.environmentFlowgraphs = rig.config.environmentFlowgraphs.empty()
+                                                   ? std::unordered_set<std::string>{"a"}
+                                                   : std::unordered_set<std::string>{};
+        },
         [&] { rig.config.debugTimingEnabled = !rig.config.debugTimingEnabled; },
         [&] { rig.config.debugLogLevel = (rig.config.debugLogLevel + 1) % 5; },
     };
@@ -1427,7 +1422,7 @@ TEST_CASE("Start tab pill close button calls its close callback and the shell se
             });
             panes.push_back(start.pane());
         }
-        rig.shell.updatePanes(std::move(panes), std::exchange(activate, std::nullopt));
+        rig.shell.updatePanes({.panes = std::move(panes), .activate = std::exchange(activate, std::nullopt)});
     };
     Frames frames(rig.host, TitleRig::bounds(), rig.scene.ctx);
     CHECK(Settles(frames, update));
@@ -2390,33 +2385,37 @@ TEST_CASE("Hint overlay action buttons call their actions", "[core][sakura][view
     std::vector<std::string> calls;
     HintOverlay hint;
     hint.update({
-        .id = "hint",
         .title = "Start",
         .subtitle = "Nothing here yet",
         .steps = {"One", "Two"},
-        .hints = {"First tip", "Second tip"},
         .actions = {
-            {.id = "new", .label = "New", .onClick = [&] { calls.push_back("new"); }},
-            {.id = "open", .label = "Open", .onClick = [&] { calls.push_back("open"); }},
+            {.label = "New", .tone = CardButton::Tone::Primary, .onClick = [&] { calls.push_back("new"); }},
+            {.label = "Open", .onClick = [&] { calls.push_back("open"); }},
         },
-        .size = {400.0f, 420.0f},
+        .width = 400.0f,
     });
-    Stage stage(hint.component(), {100.0f, 100.0f, 400.0f, 420.0f});
+    Stage stage(hint.component(), {100.0f, 100.0f, 400.0f, 520.0f});
     stage.place(scene.ctx);
 
-    CHECK(hint.size() == Extent2D<F32>{400.0f, 420.0f});
+    CHECK(hint.size() == Extent2D<F32>{400.0f, 0.0f});
     auto buttons = Buttons(hint.component());
     REQUIRE(buttons.size() == 2);
     CHECK(Press(stage.host, *buttons[1]));
     CHECK(Press(stage.host, *buttons[0]));
     CHECK(calls == std::vector<std::string>{"open", "new"});
     CHECK(Peek::Frame(*buttons[1]).y > Peek::Frame(*buttons[0]).bottom());
-    CHECK(Find<Sakura::Text>(hint.component()).size() == 3 + 2 + 1 + 2);
+    const auto shown = [&](const std::string& str) {
+        return ShownText(hint.component(), str) != nullptr;
+    };
+    CHECK(shown("One"));
+    CHECK(shown("Two"));
+    CHECK(shown("2"));
 
-    hint.update({.id = "hint", .title = "Start"});
+    hint.update({.title = "Start"});
     stage.place(scene.ctx);
-    CHECK(Buttons(hint.component()).empty());
-    CHECK(Find<Sakura::Text>(hint.component()).size() == 3);
+    CHECK(Find<Sakura::Button>(hint.component()).empty());
+    CHECK_FALSE(shown("One"));
+    CHECK(shown("Start"));
 }
 
 TEST_CASE("Callouts wrap long text to the available width for every tone", "[core][sakura][views]") {
@@ -2455,34 +2454,36 @@ TEST_CASE("Retained tooltips show their panel only on the frame after being requ
     CHECK(tooltip.requested());
 }
 
-TEST_CASE("Clicking the search pill opens a right-aligned grouped catalog under it with docs on its left",
+TEST_CASE("The block picker opens centered in its pane with its own search field and docs on its right",
           "[core][sakura][views]") {
     PickerRig rig;
     rig.refresh();
     CHECK_FALSE(rig.picker.isOpen());
-    CHECK(Peek::CursorAt(rig.picker.pillComponent(), {1068.0f, 29.0f}) == SurfaceCursor::Hand);
+    CHECK(rig.catalog().empty());
 
-    rig.click(1068.0f, 29.0f);
-    CHECK(rig.opens == 1);
-    rig.refresh();
-    CHECK(Find<Sakura::TextInput>(rig.picker.pillComponent()).size() == 1);
-    CHECK(rig.host.popups.interactiveAt({1000.0f, 100.0f}));
-    CHECK(rig.host.popups.interactiveAt({500.0f, 100.0f}));
-    CHECK_FALSE(rig.host.popups.interactiveAt({300.0f, 100.0f}));
+    rig.open();
+    REQUIRE(rig.picker.isOpen());
+    const auto frame = rig.catalog();
+    REQUIRE_FALSE(frame.empty());
+    CHECK(std::abs(frame.x + frame.width * 0.5f - 600.0f) <= 1.0f);
+    CHECK(std::abs(frame.y + frame.height * 0.5f - 450.0f) <= 1.0f);
+    CHECK(rig.host.popups.interactiveAt({frame.x + 10.0f, frame.y + 10.0f}));
+    CHECK_FALSE(rig.host.popups.interactiveAt({5.0f, 5.0f}));
+
+    const auto fields = Find<Sakura::PillField>(rig.host.popups);
+    REQUIRE(fields.size() == 1);
+    CHECK(Peek::Frame(*fields[0]).x == frame.x);
+    CHECK(Peek::Frame(*fields[0]).y == frame.y);
+    CHECK(Find<Sakura::TextInput>(*fields[0]).size() == 1);
     CHECK(rig.actions().size() == 2);
-
-    rig.click(1068.0f, 29.0f);
-    rig.refresh();
-    CHECK(rig.opens == 1);
-    CHECK(rig.picker.isOpen());
 }
 
 TEST_CASE("Choosing a backend creates the selected block at the requested position and closes the catalog",
           "[core][sakura][views]") {
     PickerRig rig;
-    rig.openFromPill();
+    rig.open();
 
-    rig.click(1000.0f, 178.0f);
+    rig.pick("Filter");
     rig.refresh();
     auto actions = rig.actions();
     REQUIRE(actions.size() == 1);
@@ -2493,9 +2494,9 @@ TEST_CASE("Choosing a backend creates the selected block at the requested positi
     CHECK(rig.created[0].position == Extent2D<F32>{40.0f, 80.0f});
     CHECK_FALSE(rig.picker.isOpen());
     rig.refresh();
-    CHECK_FALSE(rig.host.popups.interactiveAt({1000.0f, 100.0f}));
+    CHECK(rig.catalog().empty());
 
-    rig.openFromPill();
+    rig.open();
     actions = rig.actions();
     REQUIRE(actions.size() == 2);
     CHECK(Press(rig.host, *actions[1]));
@@ -2504,47 +2505,29 @@ TEST_CASE("Choosing a backend creates the selected block at the requested positi
     CHECK(rig.created[1].device == DeviceType::Metal);
 }
 
-TEST_CASE("Double clicking a catalog result creates it with its default backend", "[core][sakura][views]") {
+TEST_CASE("Double clicking a catalog result creates it with its default backend at the opening position",
+          "[core][sakura][views]") {
     PickerRig rig;
-    rig.openFromPill();
-    rig.click(1000.0f, 242.0f, 2);
+    rig.open(Catalog(), {5.0f, 5.0f});
+    rig.pick("File Reader", 2);
     REQUIRE(rig.created.size() == 1);
     CHECK(rig.created[0].type == "file-reader");
     CHECK(rig.created[0].device == DeviceType::CPU);
+    CHECK(rig.created[0].position == Extent2D<F32>{5.0f, 5.0f});
     CHECK_FALSE(rig.picker.isOpen());
 }
 
 TEST_CASE("Clicking outside the catalog dismisses it", "[core][sakura][views]") {
     PickerRig rig;
-    rig.openFromPill();
-    CHECK(rig.host.click(100.0f, 800.0f));
+    rig.open();
+    CHECK(rig.host.click(5.0f, 890.0f));
     CHECK_FALSE(rig.picker.isOpen());
     CHECK(rig.created.empty());
 }
 
-TEST_CASE("Opening at the cursor shows the catalog there with its own search field and docs on its right",
-          "[core][sakura][views]") {
-    PickerRig rig;
-    rig.refresh();
-    rig.picker.open(Catalog(), FlowgraphBlockPicker::Mode::Cursor, {5.0f, 5.0f});
-    rig.refresh(Extent2D<F32>{200.0f, 300.0f});
-    CHECK(rig.host.popups.interactiveAt({210.0f, 310.0f}));
-    CHECK(rig.host.popups.interactiveAt({620.0f, 400.0f}));
-    CHECK_FALSE(rig.host.popups.interactiveAt({190.0f, 310.0f}));
-    const auto fields = Find<Sakura::PillField>(rig.host.popups);
-    REQUIRE(fields.size() == 1);
-    CHECK(Peek::Frame(*fields[0]) == Jetstream::Rect{200.0f, 300.0f, 748.0f, 34.0f});
-    CHECK(Find<Sakura::TextInput>(*fields[0]).size() == 1);
-    CHECK(Find<Sakura::TextInput>(rig.picker.pillComponent()).empty());
-
-    rig.click(400.0f, 428.0f, 2);
-    REQUIRE(rig.created.size() == 1);
-    CHECK(rig.created[0].position == Extent2D<F32>{5.0f, 5.0f});
-}
-
 TEST_CASE("Picking a category chip narrows the catalog to that category", "[core][sakura][views]") {
     PickerRig rig;
-    rig.openFromPill();
+    rig.open();
     Sakura::Label* strip = nullptr;
     for (auto* label : Find<Sakura::Label>(rig.host.popups)) {
         if (!label->config().instances.empty() && label->config().instances.front().str == "All") {
@@ -2558,29 +2541,31 @@ TEST_CASE("Picking a category chip narrows the catalog to that category", "[core
     rig.click(io.x + io.width * 0.5f, io.y + io.height * 0.5f);
     rig.refresh();
     CHECK(rig.picker.isOpen());
-    rig.click(1000.0f, 118.0f, 2);
+    CHECK_FALSE(rig.row("Filter").has_value());
+    rig.pick("File Reader", 2);
     REQUIRE(rig.created.size() == 1);
     CHECK(rig.created[0].type == "file-reader");
 }
 
 TEST_CASE("Catalog with no blocks shows no actions", "[core][sakura][views]") {
     PickerRig rig;
-    rig.refresh();
-    rig.picker.open({}, FlowgraphBlockPicker::Mode::Pill, {0.0f, 0.0f});
-    rig.refresh();
+    rig.open({}, {0.0f, 0.0f});
     CHECK(rig.actions().empty());
-    CHECK(rig.host.popups.interactiveAt({1000.0f, 100.0f}));
+    const auto frame = rig.catalog();
+    CHECK(rig.host.popups.interactiveAt({frame.x + 10.0f, frame.y + 10.0f}));
 }
 
-TEST_CASE("Block picker settles under identical updates", "[core][sakura][views]") {
+TEST_CASE("Block picker settles under identical updates and idle hover", "[core][sakura][views]") {
     PickerRig rig;
-    rig.refresh();
-    rig.picker.open(Catalog(), FlowgraphBlockPicker::Mode::Pill, {0.0f, 0.0f});
+    rig.open(Catalog(), {0.0f, 0.0f});
     Frames frames(rig.host, PickerRig::kBounds, rig.scene.ctx);
     const auto update = [&] {
         rig.refresh();
     };
     CHECK(Settles(frames, update));
+    rig.host.send(Mouse(MouseEventType::Move, 5.0f, 890.0f));
+    CHECK(frames.run(update).clean());
+    CHECK(rig.picker.isOpen());
 }
 
 TEST_CASE("Typing in the block search lists ranked matches and Enter creates the first one",
@@ -2591,7 +2576,6 @@ TEST_CASE("Typing in the block search lists ranked matches and Enter creates the
     std::vector<std::string> created;
     FlowgraphBlockPicker picker;
     const FlowgraphBlockPicker::Config config{
-        .id = "picker",
         .onCreateBlock = [&](const std::string& type, Extent2D<F32>, DeviceType, RuntimeType, ProviderType) {
             created.push_back(type);
         },
@@ -2602,17 +2586,12 @@ TEST_CASE("Typing in the block search lists ranked matches and Enter creates the
     LayerHost host({&slot});
     const auto frame = [&] {
         picker.update(config);
-        overlay.update({.items = {
-            {.child = &picker.pillComponent(), .anchor = Sakura::Anchor::TopRight, .offset = {-12.0f, 12.0f},
-             .size = {240.0f, 34.0f}},
-            {.child = &picker.popupComponent(), .anchor = Sakura::Anchor::TopRight, .offset = {-12.0f, 12.0f},
-             .size = {240.0f, 34.0f}},
-        }});
+        overlay.update({.items = {{.child = &picker.component()}}});
         window.frame([&] {
             host.place(ctx, PickerRig::kBounds);
         });
     };
-    picker.open(Catalog(), FlowgraphBlockPicker::Mode::Pill, {0.0f, 0.0f});
+    picker.open(Catalog(), {0.0f, 0.0f});
     frame();
     frame();
 
@@ -2628,7 +2607,7 @@ TEST_CASE("Typing in the block search lists ranked matches and Enter creates the
 TEST_CASE("Arrow keys wrap through the block results and Enter creates the highlighted one",
           "[core][sakura][views]") {
     KeyedPickerRig rig;
-    rig.open(FlowgraphBlockPicker::Mode::Pill);
+    rig.open();
     CHECK(rig.settles());
 
     CHECK(RepaintOnly(rig.press(KeyCode::UpArrow)));
@@ -2640,7 +2619,7 @@ TEST_CASE("Arrow keys wrap through the block results and Enter creates the highl
     CHECK_FALSE(rig.picker.isOpen());
     CHECK(rig.settles());
 
-    rig.open(FlowgraphBlockPicker::Mode::Pill);
+    rig.open();
     for (U64 step = 0; step < 4; ++step) {
         CAPTURE(step);
         CHECK(RepaintOnly(rig.press(KeyCode::DownArrow)));
@@ -2654,27 +2633,34 @@ TEST_CASE("Arrow keys wrap through the block results and Enter creates the highl
     CHECK(rig.settles());
 }
 
-TEST_CASE("Escape closes the block search in both modes without creating a block",
+TEST_CASE("Escape closes the block search without creating a block and it reopens cleanly",
           "[core][sakura][views]") {
     KeyedPickerRig rig;
-    rig.open(FlowgraphBlockPicker::Mode::Pill);
+    rig.open();
     REQUIRE(rig.picker.isOpen());
-    rig.press(KeyCode::Escape);
-    CHECK_FALSE(rig.picker.isOpen());
-
-    rig.frames.ctx.mouse = Extent2D<F32>{200.0f, 300.0f};
-    rig.open(FlowgraphBlockPicker::Mode::Cursor);
-    REQUIRE(rig.picker.isOpen());
+    rig.type("reader");
+    rig.press(KeyCode::DownArrow);
     rig.press(KeyCode::Escape);
     CHECK_FALSE(rig.picker.isOpen());
     CHECK(rig.created.empty());
+    CHECK(rig.settles());
+
+    const U64 rebuilds = rig.frames.rebuilds;
+    rig.open();
+    REQUIRE(rig.picker.isOpen());
+    CHECK(rig.settles());
+    CHECK(rig.frames.rebuilds == rebuilds);
+    rig.press(KeyCode::Enter);
+    REQUIRE(rig.created.size() == 1);
+    CHECK(rig.created[0].type == "fft");
+    CHECK_FALSE(rig.picker.isOpen());
     CHECK(rig.settles());
 }
 
 TEST_CASE("Escape in the focused search field closes the search before any shortcut sees it",
           "[core][sakura][views]") {
     KeyedPickerRig rig;
-    rig.open(FlowgraphBlockPicker::Mode::Pill);
+    rig.open();
     REQUIRE(rig.picker.isOpen());
     REQUIRE(FocusOwner(rig.host) != nullptr);
     rig.press(KeyCode::Escape);
@@ -2686,7 +2672,7 @@ TEST_CASE("Escape in the focused search field closes the search before any short
 TEST_CASE("Enter with no matching blocks creates nothing and keeps the search open",
           "[core][sakura][views]") {
     KeyedPickerRig rig;
-    rig.open(FlowgraphBlockPicker::Mode::Pill);
+    rig.open();
     rig.type("zzz");
     CHECK(rig.settles());
     rig.press(KeyCode::DownArrow);
@@ -2696,10 +2682,9 @@ TEST_CASE("Enter with no matching blocks creates nothing and keeps the search op
     CHECK(rig.settles());
 }
 
-TEST_CASE("Typing in the cursor search field narrows the results and settles", "[core][sakura][views]") {
+TEST_CASE("Typing in the search field narrows the results and settles", "[core][sakura][views]") {
     KeyedPickerRig rig;
-    rig.frames.ctx.mouse = Extent2D<F32>{200.0f, 300.0f};
-    rig.open(FlowgraphBlockPicker::Mode::Cursor, {3.0f, 4.0f});
+    rig.open({3.0f, 4.0f});
     CHECK(rig.settles());
     rig.type("reader");
     CHECK(rig.settles());
@@ -2711,29 +2696,11 @@ TEST_CASE("Typing in the cursor search field narrows the results and settles", "
     CHECK(rig.settles());
 }
 
-TEST_CASE("Block picker opened at the cursor settles under identical updates and idle hover",
-          "[core][sakura][views]") {
-    PickerRig rig;
-    rig.refresh();
-    rig.picker.open(Catalog(), FlowgraphBlockPicker::Mode::Cursor, {0.0f, 0.0f});
-    auto ctx = rig.scene.ctx;
-    ctx.mouse = Extent2D<F32>{200.0f, 300.0f};
-    Frames frames(rig.host, PickerRig::kBounds, ctx);
-    const auto update = [&] {
-        rig.refresh(Extent2D<F32>{200.0f, 300.0f});
-    };
-    CHECK(Settles(frames, update));
-    CHECK(rig.host.popups.interactiveAt({210.0f, 310.0f}));
-    rig.host.send(Mouse(MouseEventType::Move, 1100.0f, 800.0f));
-    CHECK(frames.run(update).clean());
-    CHECK(rig.picker.isOpen());
-}
-
 TEST_CASE("Block backends forward the device, runtime, and provider of the chosen target",
           "[core][sakura][views]") {
     {
         KeyedPickerRig keyed;
-        keyed.picker.open(RoutedCatalog(), FlowgraphBlockPicker::Mode::Pill, {0.0f, 0.0f});
+        keyed.picker.open(RoutedCatalog(), {0.0f, 0.0f});
         keyed.frame();
         keyed.frame();
         keyed.press(KeyCode::Enter);
@@ -2745,13 +2712,11 @@ TEST_CASE("Block backends forward the device, runtime, and provider of the chose
 
     PickerRig rig;
     const auto open = [&] {
-        rig.refresh();
-        rig.picker.open(RoutedCatalog(), FlowgraphBlockPicker::Mode::Pill, {1.0f, 2.0f});
-        rig.refresh();
+        rig.open(RoutedCatalog(), {1.0f, 2.0f});
     };
 
     open();
-    rig.click(1000.0f, 146.0f, 2);
+    rig.pick("FFT", 2);
     REQUIRE(rig.created.size() == 1);
     CHECK(rig.created[0].device == DeviceType::Metal);
     CHECK(rig.created[0].runtime == RuntimeType::PYTHON);
@@ -2778,11 +2743,9 @@ TEST_CASE("Block backends forward the device, runtime, and provider of the chose
 
     auto bare = RoutedCatalog();
     bare[0].devices.clear();
-    rig.refresh();
-    rig.picker.open(bare, FlowgraphBlockPicker::Mode::Pill, {0.0f, 0.0f});
-    rig.refresh();
+    rig.open(bare, {0.0f, 0.0f});
     CHECK(rig.actions().empty());
-    rig.click(1000.0f, 146.0f, 2);
+    rig.pick("FFT", 2);
     REQUIRE(rig.created.size() == 4);
     CHECK(rig.created[3].device == DeviceType::Metal);
     CHECK(rig.created[3].runtime == RuntimeType::PYTHON);
@@ -3780,7 +3743,7 @@ TEST_CASE("Modal layer opens, closes, and reopens through its close button witho
     CHECK(rig.frames.rebuilds == rebuilds);
 }
 
-TEST_CASE("Close, rename, and feedback modal buttons and fields repaint without rebuilding and settle",
+TEST_CASE("Rename and feedback modal buttons and fields repaint without rebuilding and settle",
           "[core][sakura][views]") {
     KeyedModalRig rig;
     const auto step = [&] {
@@ -3790,37 +3753,13 @@ TEST_CASE("Close, rename, and feedback modal buttons and fields repaint without 
     std::vector<std::string> calls;
     U64 closes = 0;
 
-    FlowgraphCloseView closing;
-    rig.update = [&] {
-        closing.update({
-            .onSave = [&] { calls.push_back("save"); },
-            .onDontSave = [&] { calls.push_back("discard"); },
-        });
-        rig.modal.update({.content = &closing.component(), .onClose = [&] { ++closes; }});
-    };
-    REQUIRE(rig.settles());
-    const U64 rebuilds = rig.frames.rebuilds;
-    auto buttons = Buttons(closing.component());
-    REQUIRE(buttons.size() == 2);
-    buttons.push_back(Find<Sakura::Button>(rig.modal).back());
-    for (auto* button : buttons) {
-        CheckHover(rig.host, step, *button, away);
-        CHECK(Press(rig.host, *button));
-        CHECK(Kept(rig.frame()));
-        CHECK(rig.settles());
-    }
-    CHECK(calls == std::vector<std::string>{"save", "discard"});
-    CHECK(closes == 1);
-
     RenameBlockView rename;
     rig.update = [&] {
         rename.update({.oldName = "fft", .onRename = [&](const std::string& name) { calls.push_back(name); }});
         rig.modal.update({.content = &rename.component(), .onClose = [&] { ++closes; }});
     };
-    const auto mounted = rig.frame();
-    CHECK_FALSE(mounted.rebuilt);
-    CHECK(mounted.repainted);
-    CHECK(rig.settles());
+    REQUIRE(rig.settles());
+    const U64 rebuilds = rig.frames.rebuilds;
     auto inputs = Find<Sakura::TextInput>(rename.component());
     REQUIRE(inputs.size() == 1);
     CHECK(inputs[0]->focused());
@@ -4652,4 +4591,124 @@ TEST_CASE("Intelligence presenter selects voice models and voices by index", "[c
     config.onNavigate(IntelligencePage::Overview);
     REQUIRE(mailbox.last<MailSetIntelligencePage>() != nullptr);
     CHECK(mailbox.last<MailSetIntelligencePage>()->page == IntelligencePage::Overview);
+}
+
+TEST_CASE("Close prompt presenter only builds for an open closing flowgraph and wires each choice",
+          "[core][sakura][views]") {
+    Mailbox mailbox;
+    const auto context = mailbox.context();
+    CHECK_FALSE(FlowgraphClosePromptPresenter(context).build().has_value());
+
+    mailbox.state.interface.closingFlowgraph = "gone";
+    CHECK_FALSE(FlowgraphClosePromptPresenter(context).build().has_value());
+
+    mailbox.state.flowgraph.items["graph"] = std::make_shared<Flowgraph>();
+    mailbox.state.interface.closingFlowgraph = "graph";
+    const auto config = FlowgraphClosePromptPresenter(context).build();
+    REQUIRE(config.has_value());
+    CHECK(config->flowgraph == "graph");
+    CHECK(WorkbenchPresenter(context).build().closePrompt.has_value());
+
+    config->onSave();
+    REQUIRE(mailbox.mails.size() == 2);
+    CHECK(std::holds_alternative<MailCancelCloseFlowgraph>(mailbox.mails[0]));
+    const auto& info = std::get<MailOpenModal>(mailbox.mails[1]);
+    CHECK(info.content == ModalContent::FlowgraphInfo);
+    CHECK(info.flowgraph == std::optional<std::string>("graph"));
+
+    config->onDontSave();
+    REQUIRE(mailbox.last<MailCloseFlowgraph>() != nullptr);
+    CHECK(mailbox.last<MailCloseFlowgraph>()->flowgraph == "graph");
+    CHECK(mailbox.last<MailCloseFlowgraph>()->force);
+
+    config->onCancel();
+    CHECK(mailbox.count<MailCancelCloseFlowgraph>() == 2);
+}
+
+TEST_CASE("Close prompt opens under the closing tab, runs its buttons, and hides without a prompt",
+          "[core][sakura][views]") {
+    TitleRig rig;
+    std::vector<std::string> calls;
+    const auto show = [&](std::optional<FlowgraphClosePromptView::Config> prompt) {
+        rig.shell.updateTitlebar(rig.config);
+        rig.shell.updatePanes({
+            .panes = {
+                {.id = "a", .title = "Alpha", .group = "main", .icon = ICON_LC_WORKFLOW, .content = &rig.a},
+                {.id = "b", .title = "Beta", .group = "main", .icon = ICON_LC_WORKFLOW, .content = &rig.b},
+            },
+            .closePrompt = std::move(prompt),
+        });
+        rig.prompt.update(rig.shell.promptLayer());
+        rig.place();
+        rig.place();
+    };
+    show(FlowgraphClosePromptView::Config{
+        .flowgraph = "b",
+        .onSave = [&] { calls.push_back("save"); },
+        .onDontSave = [&] { calls.push_back("discard"); },
+        .onCancel = [&] { calls.push_back("cancel"); },
+    });
+
+    const auto buttons = Find<CardButton>(rig.prompt);
+    REQUIRE(buttons.size() == 3);
+    const auto tab = rig.shell.dock().tabRect("b");
+    REQUIRE(tab.has_value());
+    CHECK(Peek::Frame(*buttons[0]).y > tab->bottom());
+    CHECK(Press(rig.host, *buttons[0]));
+    CHECK(Press(rig.host, *buttons[1]));
+    CHECK(Press(rig.host, *buttons[2]));
+    CHECK(calls == std::vector<std::string>{"cancel", "discard", "save"});
+
+    show(std::nullopt);
+    CHECK(Find<CardButton>(rig.prompt).empty());
+}
+
+TEST_CASE("Close prompt settles, repaints once per button hover, and reopens without rebuilding",
+          "[core][sakura][views]") {
+    TitleRig rig;
+    bool prompt = true;
+    U64 cancels = 0;
+    const auto update = [&] {
+        std::optional<FlowgraphClosePromptView::Config> closePrompt;
+        if (prompt) {
+            closePrompt = FlowgraphClosePromptView::Config{
+                .flowgraph = "b",
+                .onSave = [] {},
+                .onDontSave = [] {},
+                .onCancel = [&] { ++cancels; },
+            };
+        }
+        rig.shell.updateTitlebar(rig.config);
+        rig.shell.updatePanes({
+            .panes = {
+                {.id = "a", .title = "Alpha", .group = "main", .icon = ICON_LC_WORKFLOW, .content = &rig.a},
+                {.id = "b", .title = "Beta", .group = "main", .icon = ICON_LC_WORKFLOW, .content = &rig.b},
+            },
+            .closePrompt = std::move(closePrompt),
+        });
+        rig.prompt.update(rig.shell.promptLayer());
+    };
+    Frames frames(rig.host, TitleRig::bounds(), rig.scene.context());
+    const auto step = [&] {
+        return frames.run(update);
+    };
+    REQUIRE(Settles(frames, update));
+    const U64 rebuilds = frames.rebuilds;
+    const auto buttons = Find<CardButton>(rig.prompt);
+    REQUIRE(buttons.size() == 3);
+    for (auto* button : buttons) {
+        CheckHover(rig.host, step, *button, {600.0f, 700.0f});
+    }
+
+    prompt = false;
+    CHECK(Kept(step()));
+    CHECK(Settles(frames, update));
+    CHECK(Find<CardButton>(rig.prompt).empty());
+    prompt = true;
+    CHECK(Kept(step()));
+    CHECK(Settles(frames, update));
+    REQUIRE(Find<CardButton>(rig.prompt).size() == 3);
+    CHECK(Press(rig.host, *Find<CardButton>(rig.prompt).front()));
+    CHECK(cancels == 1);
+    CHECK(frames.rebuilds == rebuilds);
 }

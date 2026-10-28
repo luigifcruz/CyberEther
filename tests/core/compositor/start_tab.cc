@@ -161,7 +161,7 @@ TEST_CASE("Hidden tab focus and background tab closure leave the active workspac
     CHECK(state.settingsTabActive());
 }
 
-TEST_CASE("Flowgraph reconciliation preserves pending focus and clears stale floating views",
+TEST_CASE("Flowgraph reconciliation preserves pending focus and clears stale close prompts",
           "[core][compositor][workspace]") {
     DefaultCompositorState state;
     DefaultCompositorCallbacks callbacks;
@@ -183,15 +183,9 @@ TEST_CASE("Flowgraph reconciliation preserves pending focus and clears stale flo
             state.flowgraph.items.clear();
         }
         state.interface.focusedFlowgraph = "removed";
-        state.interface.flowgraphMetadataVisible = true;
-        state.interface.flowgraphMetadataSearch = "metadata";
-        state.interface.flowgraphEnvironmentVisible = true;
-        state.interface.flowgraphEnvironmentSearch = "environment";
+        state.interface.closingFlowgraph = "removed";
         actions.reconcileFlowgraphs();
-        CHECK_FALSE(state.interface.flowgraphMetadataVisible);
-        CHECK(state.interface.flowgraphMetadataSearch.empty());
-        CHECK_FALSE(state.interface.flowgraphEnvironmentVisible);
-        CHECK(state.interface.flowgraphEnvironmentSearch.empty());
+        CHECK_FALSE(state.interface.closingFlowgraph.has_value());
         CHECK(state.interface.focusedFlowgraph == (empty ? std::nullopt : std::optional<std::string>{"graph"}));
         CHECK(state.settingsTabActive());
     }
@@ -207,7 +201,7 @@ TEST_CASE_METHOD(FlowgraphFixture,
     state.flowgraph.items["graph"] = std::shared_ptr<Flowgraph>(flowgraph.get(), [](Flowgraph*) {});
     state.interface.focusedFlowgraph = "graph";
 
-    for (const auto content : {ModalContent::FlowgraphInfo, ModalContent::FlowgraphClose, ModalContent::RenameBlock}) {
+    for (const auto content : {ModalContent::FlowgraphInfo, ModalContent::RenameBlock}) {
         state.modal.content = content;
         state.modal.flowgraph.reset();
         state.modal.renameBlockOldName = "source";
@@ -394,7 +388,7 @@ TEST_CASE("Gallery examples open from the cached registry by key", "[core][compo
     CHECK_FALSE(state.interface.pendingFocusedFlowgraph.has_value());
 }
 
-TEST_CASE("Gallery entries outlive a pending open and drop when their flowgraph closes",
+TEST_CASE("Gallery and environment entries outlive a pending open and drop when their flowgraph closes",
           "[core][compositor][start-tab]") {
     DefaultCompositorState state;
     DefaultCompositorCallbacks callbacks;
@@ -407,12 +401,15 @@ TEST_CASE("Gallery entries outlive a pending open and drop when their flowgraph 
     CHECK(state.flowgraph.gallery.size() == 2);
 
     state.flowgraph.items["first"] = std::make_shared<Flowgraph>();
+    state.flowgraph.environment["first"] = "";
     actions.reconcileFlowgraphs();
     CHECK(state.flowgraph.gallery.size() == 2);
+    CHECK(state.flowgraph.environment.contains("first"));
 
     state.flowgraph.items.erase("first");
     actions.reconcileFlowgraphs();
     CHECK_FALSE(state.flowgraph.gallery.contains("first"));
+    CHECK_FALSE(state.flowgraph.environment.contains("first"));
     CHECK(state.flowgraph.gallery.contains("second"));
 }
 
@@ -473,4 +470,52 @@ TEST_CASE("Recent flowgraph history records a path only after its open or save s
     Settings settings;
     REQUIRE(Settings::Get(settings) == Result::SUCCESS);
     CHECK(settings.interface.recentFlowgraphs.size() == 2);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Closing a flowgraph with blocks asks first and cancelling or forcing settles the prompt",
+                 "[core][compositor][flowgraph-actions]") {
+    REQUIRE(flowgraph->blockCreate("source", TestFlowgraph::kSyntheticSourceType, {}, {}) == Result::SUCCESS);
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    U64 commands = 0;
+    callbacks.enqueueCommand = [&](std::function<Result()>, bool) {
+        ++commands;
+    };
+    FlowgraphActions actions(state, callbacks);
+    state.flowgraph.items["graph"] = std::shared_ptr<Flowgraph>(flowgraph.get(), [](Flowgraph*) {});
+    state.flowgraph.items["empty"] = std::make_shared<Flowgraph>();
+
+    REQUIRE(actions.handle(MailCloseFlowgraph{.flowgraph = "graph"}) == Result::SUCCESS);
+    CHECK(state.interface.closingFlowgraph == std::optional<std::string>("graph"));
+    CHECK(commands == 0);
+
+    REQUIRE(actions.handle(MailCancelCloseFlowgraph{}) == Result::SUCCESS);
+    CHECK_FALSE(state.interface.closingFlowgraph.has_value());
+
+    REQUIRE(actions.handle(MailCloseFlowgraph{.flowgraph = "graph"}) == Result::SUCCESS);
+    REQUIRE(actions.handle(MailCloseFlowgraph{.flowgraph = "graph", .force = true}) == Result::SUCCESS);
+    CHECK_FALSE(state.interface.closingFlowgraph.has_value());
+    CHECK(commands == 1);
+
+    REQUIRE(actions.handle(MailCloseFlowgraph{.flowgraph = "empty"}) == Result::SUCCESS);
+    CHECK_FALSE(state.interface.closingFlowgraph.has_value());
+    CHECK(commands == 2);
+}
+
+TEST_CASE_METHOD(FlowgraphFixture,
+                 "Pausing a flowgraph from the editor toolbar pauses and resumes its scheduler",
+                 "[core][compositor][flowgraph-actions]") {
+    REQUIRE(flowgraph->blockCreate("source", TestFlowgraph::kSyntheticSourceType, {}, {}) == Result::SUCCESS);
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    FlowgraphActions actions(state, callbacks);
+    state.flowgraph.items["graph"] = std::shared_ptr<Flowgraph>(flowgraph.get(), [](Flowgraph*) {});
+
+    REQUIRE(actions.handle(MailSetFlowgraphPaused{.flowgraph = "missing", .paused = true}) == Result::SUCCESS);
+    CHECK_FALSE(flowgraph->paused());
+    REQUIRE(actions.handle(MailSetFlowgraphPaused{.flowgraph = "graph", .paused = true}) == Result::SUCCESS);
+    CHECK(flowgraph->paused());
+    REQUIRE(actions.handle(MailSetFlowgraphPaused{.flowgraph = "graph", .paused = false}) == Result::SUCCESS);
+    CHECK_FALSE(flowgraph->paused());
 }

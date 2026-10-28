@@ -4,7 +4,6 @@
 #include "about.hh"
 #include "benchmark.hh"
 #include "dependencies.hh"
-#include "../flowgraph/modals/close.hh"
 #include "../flowgraph/modals/info.hh"
 #include "../flowgraph/modals/rename.hh"
 #include "feedback.hh"
@@ -23,7 +22,6 @@ struct ModalView {
     struct Config {
         std::optional<ModalContent> content;
         std::optional<FlowgraphInfoView::Config> flowgraphInfo;
-        std::optional<FlowgraphCloseView::Config> flowgraphClose;
         std::optional<RenameBlockView::Config> renameBlock;
         BenchmarkView::Config benchmark;
         RemoteQrView::Config remoteQr;
@@ -53,12 +51,6 @@ struct ModalView {
                 if (this->config.flowgraphInfo.has_value()) {
                     auto viewConfig = this->config.flowgraphInfo.value();
                     flowgraphInfoView.update(std::move(viewConfig));
-                }
-                break;
-            case ModalContent::FlowgraphClose:
-                if (this->config.flowgraphClose.has_value()) {
-                    auto viewConfig = this->config.flowgraphClose.value();
-                    flowgraphCloseView.update(std::move(viewConfig));
                 }
                 break;
             case ModalContent::RenameBlock:
@@ -114,8 +106,6 @@ struct ModalView {
                 return &aboutView.component();
             case ModalContent::FlowgraphInfo:
                 return config.flowgraphInfo.has_value() ? &flowgraphInfoView.component() : nullptr;
-            case ModalContent::FlowgraphClose:
-                return config.flowgraphClose.has_value() ? &flowgraphCloseView.component() : nullptr;
             case ModalContent::RenameBlock:
                 return config.renameBlock.has_value() ? &renameBlockView.component() : nullptr;
             case ModalContent::Benchmark:
@@ -144,7 +134,6 @@ struct ModalView {
     std::optional<ModalContent> previousContent;
     AboutView aboutView;
     FlowgraphInfoView flowgraphInfoView;
-    FlowgraphCloseView flowgraphCloseView;
     RenameBlockView renameBlockView;
     BenchmarkView benchmarkView;
     RemoteQrView remoteQrView;

@@ -7,7 +7,6 @@ namespace Jetstream {
 enum class ModalContent : I32 {
     About = 0,
     FlowgraphInfo,
-    FlowgraphClose,
     RenameBlock,
     Benchmark,
     Dependencies,

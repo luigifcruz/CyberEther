@@ -205,6 +205,7 @@ struct Workbench : FlowgraphFixture {
         state.system.render = window;
         state.system.viewport = viewport;
         state.interface.focusedFlowgraph = kGraph;
+        state.interface.showTips = false;
         state.flowgraph.items[kGraph] = std::shared_ptr<Flowgraph>(flowgraph.get(), [](Flowgraph*) {});
         callbacks.enqueueMail = [this](Mail&& mail) {
             mails.push_back(std::move(mail));
@@ -248,14 +249,13 @@ struct Workbench : FlowgraphFixture {
         pane.appendPanes(panes);
         std::vector<Sakura::FloatingLayer::Window> windows;
         pane.appendWindows(windows);
-        workspace.updateTitlebar({.focusedFlowgraph = kGraph});
-        workspace.updatePanes(panes);
+        workspace.updateTitlebar({});
+        workspace.updatePanes({.panes = panes});
         floating.update({.windows = std::move(windows)});
         root->update({.id = "workbench", .layers = {&content, &floating}});
         if (full) {
             full->update({
                 .backgroundParticles = WorkbenchPresenter(context).build().backgroundParticles,
-                .titlebar = {.focusedFlowgraph = kGraph},
                 .flowgraphs = {panePresenter.build(kGraph, state.flowgraph.items.at(kGraph))},
             });
         }

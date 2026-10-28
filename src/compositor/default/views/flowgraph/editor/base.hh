@@ -21,8 +21,11 @@
 namespace Jetstream {
 
 struct FlowgraphEditor {
-    static constexpr F32 ZoomPillWidth = 100.0f;
+    static constexpr F32 PillHeight = 40.0f;
+    static constexpr F32 PillMargin = 12.0f;
     static constexpr F32 PillGap = 8.0f;
+    static constexpr F32 ZoomPillWidth = 116.0f;
+    static constexpr F32 ZoomScale = 0.95f;
 
     struct Measured {
         struct Node {
@@ -33,7 +36,6 @@ struct FlowgraphEditor {
 
         std::unordered_map<std::string, Node> nodes;
         Rect viewport;
-        Rect toolbar;
     };
 
     struct Config {
@@ -41,6 +43,7 @@ struct FlowgraphEditor {
         bool clipboardHasData = false;
         bool debugTimingEnabled = false;
         bool measure = false;
+        bool paused = false;
         std::function<std::vector<FlowgraphBlockPicker::BlockOption>()> onBuildBlockOptions;
 
         std::vector<FlowgraphNode::BlockData> graph;
@@ -62,6 +65,9 @@ struct FlowgraphEditor {
         std::function<void(Measured)> onLayout;
         std::function<void(const std::string&, bool)> onNodeConfigCollapse;
         std::function<void(const std::string&, bool)> onNodeConfigDetach;
+        std::function<void()> onTogglePause;
+        std::function<void()> onSave;
+        std::function<void()> onToggleEnvironment;
     };
 
     void update(Config config) {
@@ -72,15 +78,12 @@ struct FlowgraphEditor {
         liveBlocks.clear();
 
         blockPicker.update({
-            .id = this->config.id + ":block-picker",
-            .onOpenRequest = [this]() {
-                openBlockPicker(FlowgraphBlockPicker::Mode::Pill, viewportGridCenter);
-            },
             .onCreateBlock = [this](const std::string& moduleId,
                                     Extent2D<F32> gridPosition,
                                     DeviceType device,
                                     RuntimeType runtime,
                                     ProviderType provider) {
+                nodeEditor.stopFraming();
                 if (this->config.onCreateBlock) {
                     this->config.onCreateBlock(moduleId, gridPosition, device, runtime, provider);
                 }
@@ -257,6 +260,8 @@ struct FlowgraphEditor {
         nodeEditor.update({
             .id = this->config.id + "editor",
             .pasteEnabled = this->config.clipboardHasData,
+            .frameOnOpen = true,
+            .scale = ZoomScale,
             .nodes = std::move(nodes),
             .links = std::move(links),
             .onEditorContextMenu = [this](Extent2D<F32> gridPosition) {
@@ -265,7 +270,7 @@ struct FlowgraphEditor {
             },
             .onEditorDoubleClick = [this](Extent2D<F32> gridPosition) {
                 if (!blockPicker.isOpen()) {
-                    openBlockPicker(FlowgraphBlockPicker::Mode::Cursor, gridPosition);
+                    openBlockPicker(gridPosition);
                 }
             },
             .onLinkCreated = [this](Sakura::NodeEditor::PinRef startPin,
@@ -316,12 +321,42 @@ struct FlowgraphEditor {
             items.push_back({.child = &nodeViews.at(nodeViewId).menuComponent()});
         }
         items.push_back({.child = &flowgraphContextMenu});
+        items.push_back({.child = &blockPicker.component()});
         const F32 zoom = nodeEditor.zoom();
+        runButton.update({
+            .icon = this->config.paused ? ICON_LC_PLAY : ICON_LC_PAUSE,
+            .iconColorKey = this->config.paused ? "run_state_paused" : "run_state_running",
+            .tinted = true,
+            .tooltip = this->config.paused ? "Resume flowgraph" : "Pause flowgraph",
+            .size = {PillHeight, PillHeight},
+            .onClick = this->config.onTogglePause,
+        });
+        saveButton.update({
+            .icon = ICON_LC_SAVE,
+            .tooltip = "Save flowgraph",
+            .size = {PillHeight, PillHeight},
+            .onClick = this->config.onSave,
+        });
+        addButton.update({
+            .icon = ICON_LC_PACKAGE_PLUS,
+            .tooltip = "Add block",
+            .size = {PillHeight, PillHeight},
+            .onClick = [this]() {
+                nodeEditor.stopFraming();
+                openBlockPicker(viewportGridCenter);
+            },
+        });
+        environmentButton.update({
+            .icon = ICON_LC_TABLE_PROPERTIES,
+            .tooltip = "Environment variables",
+            .size = {PillHeight, PillHeight},
+            .onClick = this->config.onToggleEnvironment,
+        });
         zoomPill.update({
             .label = jst::fmt::format("{}%", std::lround(zoom * 100.0f)),
             .canDecrement = nodeEditor.canZoom(-1),
             .canIncrement = nodeEditor.canZoom(1),
-            .size = {ZoomPillWidth, FlowgraphBlockPicker::PillHeight},
+            .size = {ZoomPillWidth, PillHeight},
             .onDecrement = [this]() {
                 nodeEditor.zoomStep(-1);
             },
@@ -332,36 +367,34 @@ struct FlowgraphEditor {
                 nodeEditor.zoomReset();
             },
         });
-        items.push_back({
-            .child = &zoomPill,
-            .anchor = Sakura::Anchor::TopRight,
-            .offset = {-(FlowgraphBlockPicker::PillMargin + FlowgraphBlockPicker::PillWidth + PillGap),
-                       FlowgraphBlockPicker::PillMargin},
-            .size = {ZoomPillWidth, FlowgraphBlockPicker::PillHeight},
-        });
-        const Extent2D<F32> pillSize = {FlowgraphBlockPicker::PillWidth, FlowgraphBlockPicker::PillHeight};
-        const Extent2D<F32> pillOffset = {-FlowgraphBlockPicker::PillMargin, FlowgraphBlockPicker::PillMargin};
-        items.push_back({
-            .child = &blockPicker.pillComponent(),
-            .anchor = Sakura::Anchor::TopRight,
-            .offset = pillOffset,
-            .size = pillSize,
-        });
-        items.push_back({
-            .child = &blockPicker.popupComponent(),
-            .anchor = Sakura::Anchor::TopRight,
-            .offset = pillOffset,
-            .size = pillSize,
-        });
+        F32 edge = PillMargin;
+        const auto place = [&](Sakura::Component& child, F32 width) {
+            items.push_back({
+                .child = &child,
+                .anchor = Sakura::Anchor::BottomRight,
+                .offset = {-edge, -PillMargin},
+                .size = {width, PillHeight},
+            });
+            edge += width + PillGap;
+        };
+        place(zoomPill, ZoomPillWidth);
+        place(environmentButton, PillHeight);
+        place(addButton, PillHeight);
+        place(saveButton, PillHeight);
+        place(runButton, PillHeight);
         overlay.update({.items = std::move(items)});
 
         if (this->config.measure && this->config.onLayout && nodeEditor.shown()) {
-            this->config.onLayout(measurement(zoom));
+            this->config.onLayout(measured);
         }
     }
 
     Sakura::Component& component() {
         return overlay;
+    }
+
+    bool pickerOpen() const {
+        return blockPicker.isOpen();
     }
 
     void appendWindows(std::vector<Sakura::FloatingLayer::Window>& windows) {
@@ -371,22 +404,9 @@ struct FlowgraphEditor {
     }
 
  private:
-    Measured measurement(F32 zoom) const {
-        Measured result = measured;
-        const F32 scale = std::max(zoom, 1e-3f);
-        const F32 width = (ZoomPillWidth + PillGap + FlowgraphBlockPicker::PillWidth) / scale;
-        const F32 margin = FlowgraphBlockPicker::PillMargin / scale;
-        result.toolbar = {measured.viewport.right() - margin - width,
-                          measured.viewport.y + margin,
-                          width,
-                          FlowgraphBlockPicker::PillHeight / scale};
-        return result;
-    }
-
-    void openBlockPicker(FlowgraphBlockPicker::Mode mode, const Extent2D<F32>& gridPosition) {
+    void openBlockPicker(const Extent2D<F32>& gridPosition) {
         blockPicker.open(config.onBuildBlockOptions ? config.onBuildBlockOptions()
                                                     : std::vector<FlowgraphBlockPicker::BlockOption>{},
-                         mode,
                          gridPosition);
     }
 
@@ -419,6 +439,10 @@ struct FlowgraphEditor {
     Sakura::NodeEditor nodeEditor;
     FlowgraphBlockPicker blockPicker;
     Sakura::PillStepper zoomPill;
+    Sakura::PillIconButton runButton;
+    Sakura::PillIconButton saveButton;
+    Sakura::PillIconButton addButton;
+    Sakura::PillIconButton environmentButton;
     Sakura::Menu flowgraphContextMenu;
     bool flowgraphContextMenuOpen = false;
     Extent2D<F32> flowgraphContextMenuGridPos;

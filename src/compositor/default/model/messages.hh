@@ -155,6 +155,8 @@ struct MailCloseFlowgraph {
     bool force = false;
 };
 
+struct MailCancelCloseFlowgraph {};
+
 struct MailSaveFlowgraph {
     std::string flowgraph;
     std::string path;
@@ -187,6 +189,11 @@ struct MailOpenFlowgraphExample {
 
 struct MailFocusFlowgraph {
     std::string flowgraph;
+};
+
+struct MailSetFlowgraphPaused {
+    std::string flowgraph;
+    bool paused = false;
 };
 
 struct MailApplyTheme {
@@ -258,19 +265,13 @@ struct MailSetShowTips {
     bool value = false;
 };
 
-struct MailSetFlowgraphMetadataVisible {
-    bool value = false;
-};
-
-struct MailSetFlowgraphMetadataSearch {
-    std::string value;
-};
-
 struct MailSetFlowgraphEnvironmentVisible {
+    std::string flowgraph;
     bool value = false;
 };
 
 struct MailSetFlowgraphEnvironmentSearch {
+    std::string flowgraph;
     std::string value;
 };
 
@@ -585,6 +586,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailOpenFlowgraph,
                           MailCreateBlock,
                           MailCloseFlowgraph,
+                          MailCancelCloseFlowgraph,
                           MailSaveFlowgraph,
                           MailOpenFlowgraphPath,
                           MailToggleFavoriteFlowgraph,
@@ -593,6 +595,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailOpenFlowgraphBlob,
                           MailOpenFlowgraphExample,
                           MailFocusFlowgraph,
+                          MailSetFlowgraphPaused,
                           MailApplyTheme,
                           MailOpenModal,
                           MailSetSettingsSection,
@@ -610,8 +613,6 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailQuit,
                           MailSetBackgroundParticles,
                           MailSetShowTips,
-                          MailSetFlowgraphMetadataVisible,
-                          MailSetFlowgraphMetadataSearch,
                           MailSetFlowgraphEnvironmentVisible,
                           MailSetFlowgraphEnvironmentSearch,
                           MailSetGraphicsScale,

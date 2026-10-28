@@ -136,6 +136,17 @@ struct FlowgraphEditorPresenter {
 
         const auto& agent = context.state.agent;
         config.measure = agent.chat.conversation.streaming || agent.voice.phase != Agent::Session::Phase::Idle;
+        config.paused = flowgraph->paused();
+        config.onTogglePause = [enqueue, flowgraphId, paused = config.paused]() {
+            enqueue(MailSetFlowgraphPaused{.flowgraph = flowgraphId, .paused = !paused});
+        };
+        config.onSave = [enqueue, flowgraphId]() {
+            enqueue(MailSaveFlowgraph{.flowgraph = flowgraphId});
+        };
+        config.onToggleEnvironment = [enqueue, flowgraphId,
+                                      open = context.state.flowgraph.environment.contains(flowgraphId)]() {
+            enqueue(MailSetFlowgraphEnvironmentVisible{.flowgraph = flowgraphId, .value = !open});
+        };
 
         const auto blocks = context.state.flowgraph.blocks.find(flowgraphId);
         if (blocks == context.state.flowgraph.blocks.end()) {

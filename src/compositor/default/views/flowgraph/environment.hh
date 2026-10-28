@@ -1,21 +1,20 @@
-#ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_KEY_VALUE_HH
-#define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_KEY_VALUE_HH
+#ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_ENVIRONMENT_HH
+#define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_ENVIRONMENT_HH
 
 #include "jetstream/render/sakura/base.hh"
 
 #include <functional>
 #include <string>
 #include <utility>
-#include <vector>
 
 namespace Jetstream {
 
-struct FlowgraphKeyValueWindow {
+struct FlowgraphEnvironment {
     struct Config {
         std::string id;
         std::string title;
         std::string search;
-        std::string searchHint = "Search keys...";
+        std::string searchHint;
         std::string entryCount;
         Sakura::Table::Nodes nodes;
         std::function<void(const std::string&)> onSearchChange;
@@ -58,15 +57,20 @@ struct FlowgraphKeyValueWindow {
         });
     }
 
-    Sakura::FloatingLayer::Window window() {
-        return {
-            .id = config.id,
-            .title = config.title,
-            .content = &panel,
-            .size = {500.0f, 700.0f},
-            .padding = 8.0f,
-            .onClose = config.onClose,
-        };
+    Sakura::Component& component() {
+        return panel;
+    }
+
+    const std::string& id() const {
+        return config.id;
+    }
+
+    const std::string& title() const {
+        return config.title;
+    }
+
+    std::function<void()> closeCallback() const {
+        return config.onClose;
     }
 
  private:
@@ -80,4 +84,4 @@ struct FlowgraphKeyValueWindow {
 
 }  // namespace Jetstream
 
-#endif  // JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_KEY_VALUE_HH
+#endif  // JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_FLOWGRAPH_ENVIRONMENT_HH

@@ -7,7 +7,6 @@
 #include "remote_qr.hh"
 
 #include "../context.hh"
-#include "../flowgraph/modals/close.hh"
 #include "../flowgraph/modals/info.hh"
 #include "../flowgraph/modals/rename.hh"
 
@@ -19,7 +18,6 @@ namespace Jetstream {
 struct ModalPresenter {
     const PresenterContext& context;
     FlowgraphInfoModalPresenter flowgraphInfo;
-    FlowgraphCloseModalPresenter flowgraphClose;
     RenameBlockModalPresenter renameBlock;
     BenchmarkModalPresenter benchmark;
     RemoteQrModalPresenter remoteQr;
@@ -28,7 +26,6 @@ struct ModalPresenter {
 
     explicit ModalPresenter(const PresenterContext& context) : context(context),
                                                                flowgraphInfo(context),
-                                                               flowgraphClose(context),
                                                                renameBlock(context),
                                                                benchmark(context),
                                                                remoteQr(context),
@@ -53,9 +50,6 @@ struct ModalPresenter {
                 break;
             case ModalContent::FlowgraphInfo:
                 config.flowgraphInfo = flowgraphInfo.build();
-                break;
-            case ModalContent::FlowgraphClose:
-                config.flowgraphClose = flowgraphClose.build();
                 break;
             case ModalContent::RenameBlock:
                 config.renameBlock = renameBlock.build();
