@@ -95,6 +95,11 @@ if not jst_is_windows
 endif
 
 core_test_targets = []
+if not jst_is_browser
+    core_test_domains += {
+        'platform': core_test_domains['platform'] + ['platform/socket.cc'],
+    }
+endif
 if cfg_lst.get('JETSTREAM_RENDER_METAL_AVAILABLE', false)
     core_test_domains += {
         'render': core_test_domains['render'] + ['render/metal_capture.cc'],
