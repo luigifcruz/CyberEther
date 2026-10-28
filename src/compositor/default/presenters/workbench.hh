@@ -49,7 +49,7 @@ struct WorkbenchPresenter {
         config.startTab = startTab.build();
         config.startTabRequests = context.state.interface.startTabRequests;
         config.startTabFocused = context.state.startTabActive();
-        if (context.state.tabShown(WorkspaceTab::Settings)) {
+        if (context.state.interface.settingsTab) {
             config.settings = settings.build();
         }
         config.settingsTabRequests = context.state.interface.settingsTabRequests;
@@ -66,7 +66,7 @@ struct WorkbenchPresenter {
         config.modal = modal.build();
         config.filePicker = filePicker.build();
         config.backgroundParticles = context.state.interface.backgroundParticles &&
-                                     (config.filePending || context.state.tabsHidden());
+                                     (config.filePending || config.hideTabs);
         return config;
     }
 };

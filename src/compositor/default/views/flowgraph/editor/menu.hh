@@ -18,7 +18,6 @@ struct FlowgraphNodeMenu {
     };
 
     struct Config {
-        std::string id;
         bool open = false;
         bool pasteEnabled = false;
         bool configDetachEnabled = false;

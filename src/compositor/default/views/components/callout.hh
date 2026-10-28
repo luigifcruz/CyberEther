@@ -25,11 +25,11 @@ struct Callout : public Sakura::Div {
 
     void update(Config config) {
         this->config = std::move(config);
-        const std::string key = "banner_" + toneKey();
+        const std::string key = toneKey();
         text.update({
             .str = jst::fmt::format("{} {}", this->config.icon.empty() ? toneIcon() : this->config.icon,
                                     this->config.str),
-            .colorKey = key + "_text",
+            .colorKey = jst::fmt::format("banner_{}_text", key),
             .wrapped = true,
         });
         Div::update({
@@ -37,8 +37,8 @@ struct Callout : public Sakura::Div {
             .padding = 8.0f,
             .rounding = 8.0f,
             .border = true,
-            .colorKey = key + "_bg",
-            .borderColorKey = key + "_border",
+            .colorKey = jst::fmt::format("banner_{}_bg", key),
+            .borderColorKey = jst::fmt::format("banner_{}_border", key),
         });
     }
 

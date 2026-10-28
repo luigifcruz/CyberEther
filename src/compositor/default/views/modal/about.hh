@@ -12,10 +12,9 @@ namespace Jetstream {
 struct AboutView {
     struct Config {};
 
-    void update(Config config) {
+    void update(Config) {
         using Text = Sakura::Text;
 
-        this->config = std::move(config);
         topSpacing.update({.lines = 2});
         middleSpacing.update({.lines = 2});
         title.update({
@@ -57,7 +56,6 @@ struct AboutView {
     }
 
  private:
-    Config config;
     Sakura::Spacer topSpacing;
     Sakura::Spacer middleSpacing;
     Sakura::Text title;

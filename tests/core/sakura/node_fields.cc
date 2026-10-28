@@ -679,16 +679,6 @@ TEST_CASE("Node field panels measure their content naturally, by its minimum whe
 }
 
 TEST_CASE("Node field panels pass their parent's backdrop to their content", kTags) {
-    struct BackdropProbe : Probe {
-        std::string backdrop;
-
-     protected:
-        void layout(const Sakura::Context& ctx) override {
-            Probe::layout(ctx);
-            backdrop = ctx.backdropColorKey;
-        }
-    };
-
     BackdropProbe content;
     content.resize({0.0f, 30.0f});
     Sakura::NodeContentStack stack;

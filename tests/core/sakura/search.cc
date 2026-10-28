@@ -705,7 +705,7 @@ const Sakura::Palette& Tones() {
     static const Sakura::Palette palette = [] {
         const std::vector<std::string> keys = {
             "pill_bg", "pill_hover_bg", "pill_active_bg", "pill_field_bg", "text_primary", "text_secondary",
-            "text_disabled", "chrome_button_hover", "tile_border", "tile_shadow", "tile_highlight", "tile_rim",
+            "text_disabled", "chrome_button_hover", "tile_border", "tile_shadow",
         };
         Sakura::Palette result;
         for (U64 index = 0; index < keys.size(); ++index) {

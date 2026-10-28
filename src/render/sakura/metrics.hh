@@ -24,7 +24,6 @@ constexpr F32 kCellPaddingY = 4.0f;
 constexpr F32 kFramePaddingY = 5.0f;
 constexpr F32 kFrameRounding = 8.0f;
 constexpr F32 kPanelRounding = Dock::TileRounding;
-constexpr F32 kCardRounding = 12.0f;
 constexpr F32 kCardPadX = 18.0f;
 constexpr F32 kLabelWeight = 0.15f;
 constexpr F32 kPopupRounding = 18.0f;

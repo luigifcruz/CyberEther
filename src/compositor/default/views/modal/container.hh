@@ -7,8 +7,8 @@
 #include "../flowgraph/modals/info.hh"
 #include "../flowgraph/modals/rename.hh"
 #include "feedback.hh"
-#include "../../model/ui.hh"
 #include "remote_qr.hh"
+#include "../../model/ui.hh"
 
 #include "jetstream/render/sakura/base.hh"
 
@@ -24,9 +24,9 @@ struct ModalView {
         std::optional<FlowgraphInfoView::Config> flowgraphInfo;
         std::optional<RenameBlockView::Config> renameBlock;
         BenchmarkView::Config benchmark;
-        RemoteQrView::Config remoteQr;
         DependencyReviewView::Config dependencies;
         FeedbackView::Config feedback;
+        RemoteQrView::Config remoteQr;
         std::function<void()> onClose;
     };
 
@@ -64,11 +64,6 @@ struct ModalView {
                 benchmarkView.update(std::move(viewConfig));
                 break;
             }
-            case ModalContent::RemoteQr: {
-                auto viewConfig = this->config.remoteQr;
-                remoteQrView.update(std::move(viewConfig));
-                break;
-            }
             case ModalContent::Dependencies: {
                 auto viewConfig = this->config.dependencies;
                 dependencyReviewView.update(std::move(viewConfig));
@@ -77,6 +72,11 @@ struct ModalView {
             case ModalContent::Feedback: {
                 auto viewConfig = this->config.feedback;
                 feedbackView.update(std::move(viewConfig));
+                break;
+            }
+            case ModalContent::RemoteQr: {
+                auto viewConfig = this->config.remoteQr;
+                remoteQrView.update(std::move(viewConfig));
                 break;
             }
         }
@@ -111,12 +111,12 @@ struct ModalView {
                 return config.renameBlock.has_value() ? &renameBlockView.component() : nullptr;
             case ModalContent::Benchmark:
                 return &benchmarkView.component();
-            case ModalContent::RemoteQr:
-                return &remoteQrView.component();
             case ModalContent::Dependencies:
                 return &dependencyReviewView.component();
             case ModalContent::Feedback:
                 return &feedbackView.component();
+            case ModalContent::RemoteQr:
+                return &remoteQrView.component();
         }
         return nullptr;
     }
@@ -137,9 +137,9 @@ struct ModalView {
     FlowgraphInfoView flowgraphInfoView;
     RenameBlockView renameBlockView;
     BenchmarkView benchmarkView;
-    RemoteQrView remoteQrView;
     DependencyReviewView dependencyReviewView;
     FeedbackView feedbackView;
+    RemoteQrView remoteQrView;
 };
 
 }  // namespace Jetstream

@@ -1008,22 +1008,3 @@ TEST_CASE("The environment button opens a closable Environment tile that is neve
           }) == Result::SUCCESS);
     CHECK(LayoutPanes(rig.state.flowgraph.layouts.at(kGraph)) == std::vector<std::string>{"flowgraph"});
 }
-
-TEST_CASE("The flowgraph pane shows a tip banner only while tips are enabled", "[core][sakura][flowgraph][pane]") {
-    PaneRig rig;
-    const auto tips = [&rig] {
-        return Find<Sakura::TipBanner>(rig.layoutDock()).size();
-    };
-    REQUIRE(rig.build().empty);
-
-    rig.frame();
-    CHECK(tips() == 1);
-
-    rig.state.interface.showTips = false;
-    rig.frame();
-    CHECK(tips() == 0);
-
-    rig.state.interface.showTips = true;
-    rig.frame();
-    CHECK(tips() == 1);
-}

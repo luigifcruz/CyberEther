@@ -8,6 +8,7 @@
 #include "environment.hh"
 
 #include "compositor/default/actions/gallery.hh"
+#include "compositor/default/actions/settings.hh"
 #include "compositor/default/actions/workbench.hh"
 #include "compositor/default/presenters/agent/chat.hh"
 #include "compositor/default/presenters/file_picker.hh"
@@ -186,10 +187,10 @@ bool ClickMenu(LayerHost& host, const std::string& label) {
 struct TitleRig {
     Scene scene{{0.0f, 0.0f, 1200.0f, 800.0f}};
     WorkspaceShellView shell;
-    Sakura::ModalLayer prompt;
     Probe a;
     Probe b;
     LayerSlot slot;
+    Sakura::ModalLayer prompt;
     LayerHost host;
     TitlebarView::Config config;
     std::vector<TitlebarView::Action> actions;
@@ -634,39 +635,6 @@ FilePickerView::Config PickerState(Mailbox& mailbox, FilePickerMode mode, std::s
     return FilePickerPresenter(mailbox.context()).build();
 }
 
-const Sakura::Palette& Shades() {
-    static const Sakura::Palette palette = [] {
-        const std::vector<std::string> keys = {
-            "background", "border", "button", "button_active", "button_hovered", "button_outline", "button_text",
-            "action_btn", "action_btn_active", "action_btn_hovered", "action_btn_outline", "action_btn_text",
-            "destructive_btn", "destructive_btn_active", "destructive_btn_hovered", "destructive_btn_outline",
-            "destructive_btn_text", "card", "cyber_blue", "error_red", "frame_bg_active", "frame_bg_hovered",
-            "header", "header_active", "header_hovered", "modal_dim", "popup_bg", "scrollbar_bg", "scrollbar_grab",
-            "separator", "success_green", "text_disabled", "text_primary",
-            "text_secondary", "text_selected_bg", "warning_yellow", "accent_color", "editor_background",
-            "editor_text", "editor_cursor", "editor_selection", "editor_active_line", "editor_scrollbar_track",
-            "editor_scrollbar_thumb", "welcome_icon_new", "welcome_icon_open", "welcome_icon_examples",
-            "tile_bg", "tile_border", "tile_header_text", "chrome_button_hover", "pill_bg", "pill_hover_bg",
-            "pill_active_bg", "pill_text", "welcome_card_bg", "welcome_card_hovered", "setting_card_bg",
-            "setting_card_border", "toggle_on", "toggle_on_hovered", "toggle_off", "toggle_off_hovered", "toggle_knob",
-        };
-        Sakura::Palette result;
-        for (U64 index = 0; index < keys.size(); ++index) {
-            const F32 shade = static_cast<F32>(index + 1) / static_cast<F32>(keys.size() + 1);
-            result[keys[index]] = {shade, 1.0f - shade, 0.5f, 1.0f};
-        }
-        result["transparent"] = {0.0f, 0.0f, 0.0f, 0.0f};
-        return result;
-    }();
-    return palette;
-}
-
-Sakura::Context Shaded(Jetstream::Rect bounds) {
-    auto ctx = MakeContext({bounds.width, bounds.height});
-    ctx.palette = Shades();
-    return ctx;
-}
-
 struct KeyedModalRig {
     MonoFontWindow window;
     Sakura::ModalLayer modal;
@@ -674,7 +642,8 @@ struct KeyedModalRig {
     Frames frames;
     std::function<void()> update = [] {};
 
-    KeyedModalRig() : host({&modal}), frames(host, kWide, Shaded(kWide)) {
+    KeyedModalRig() : host({&modal}), frames(host, kWide, MakeContext({kWide.width, kWide.height})) {
+        frames.ctx.palette = DistinctPalette();
         frames.ctx.render = &window;
     }
 
@@ -896,7 +865,7 @@ TEST_CASE("Start tab shows the welcome screen in a fixed tile and activates on r
     U64 opened = 0;
     const auto show = [&](std::optional<std::string> activate) {
         start.update({
-            .welcome = {.version = "v1", .onNewFlowgraph = [&]() {
+            .welcome = {.onNewFlowgraph = [&]() {
                 ++opened;
             }},
             .onClose = [&]() {
@@ -1059,6 +1028,75 @@ TEST_CASE("Titlebar presenter close action targets the start tab while it is the
     CHECK(mailbox.last<MailCloseFlowgraph>()->flowgraph == "a");
 }
 
+TEST_CASE("Titlebar presenter save and info shortcuts skip the flowgraph hidden behind a focused tab",
+          "[core][sakura][views]") {
+    using Action = TitlebarView::Action;
+    Mailbox mailbox;
+    mailbox.state.flowgraph.items["a"] = std::make_shared<Flowgraph>();
+    mailbox.state.interface.focusedFlowgraph = "a";
+
+    const auto check = [&](bool startTab, bool settingsTab) {
+        mailbox.mails.clear();
+        mailbox.state.interface.startTab = startTab;
+        mailbox.state.interface.settingsTab = settingsTab;
+        mailbox.state.interface.focusedTab.reset();
+        if (startTab) {
+            mailbox.state.interface.focusedTab = WorkspaceTab::Start;
+        }
+        if (settingsTab) {
+            mailbox.state.interface.focusedTab = WorkspaceTab::Settings;
+        }
+        auto config = TitlebarPresenter(mailbox.context()).build();
+        config.onAction(Action::SaveFlowgraph);
+        config.onAction(Action::ShowFlowgraphInfo);
+        CHECK(mailbox.count<MailSaveFlowgraph>() == 0);
+        CHECK(mailbox.count<MailOpenModal>() == 0);
+        CHECK(mailbox.count<MailNotify>() == 2);
+        config.onAction(Action::CloseFlowgraph);
+        CHECK(mailbox.count<MailCloseFlowgraph>() == 0);
+        CHECK(mailbox.count<MailCloseStartTab>() == (startTab ? 1 : 0));
+        CHECK(mailbox.count<MailCloseSettings>() == (settingsTab ? 1 : 0));
+    };
+    check(true, false);
+    check(false, true);
+
+    mailbox.mails.clear();
+    mailbox.state.interface.focusedTab.reset();
+    auto config = TitlebarPresenter(mailbox.context()).build();
+    config.onAction(Action::SaveFlowgraph);
+    config.onAction(Action::ShowFlowgraphInfo);
+    REQUIRE(mailbox.last<MailSaveFlowgraph>() != nullptr);
+    CHECK(mailbox.last<MailSaveFlowgraph>()->flowgraph == "a");
+    REQUIRE(mailbox.last<MailOpenModal>() != nullptr);
+    CHECK(mailbox.last<MailOpenModal>()->flowgraph == std::optional<std::string>("a"));
+}
+
+TEST_CASE("Titlebar presenter tints the assistant button from the unread state", "[core][sakura][views]") {
+    Mailbox mailbox;
+    mailbox.state.agent.settings.enabled = true;
+    CHECK_FALSE(TitlebarPresenter(mailbox.context()).build().agentUnread);
+    mailbox.state.agent.ui.unread = true;
+    CHECK(TitlebarPresenter(mailbox.context()).build().agentUnread);
+
+    TitleRig rig;
+    const auto tint = [&]() {
+        rig.update();
+        rig.place();
+        auto* assistant = Indicator(rig.shell.bar(), ICON_LC_WAND_SPARKLES);
+        REQUIRE(assistant != nullptr);
+        for (auto* text : Find<Sakura::Text>(*assistant)) {
+            if (text->config().str == ICON_LC_WAND_SPARKLES) {
+                return text->config().colorKey;
+            }
+        }
+        return std::string();
+    };
+    rig.config.intelligenceEnabled = true;
+    CHECK(tint() == "text_secondary");
+    rig.config.agentUnread = true;
+    CHECK(tint() == "cyber_blue");
+}
+
 TEST_CASE("Titlebar presenter tab actions target the chosen flowgraph",
           "[core][sakura][views]") {
     using TabAction = TitlebarView::TabAction;
@@ -1168,6 +1206,21 @@ TEST_CASE("Command shortcuts emit their titlebar actions", "[core][sakura][views
 #else
     CHECK(std::string(AssistantComposer::VoiceHint) == "Start voice (Ctrl+J)");
 #endif
+}
+
+TEST_CASE("The voice shortcut starts voice when it is off and ends it when it is on", "[core][sakura][views]") {
+    Mailbox mailbox;
+    mailbox.state.agent.settings.enabled = true;
+    const auto toggle = [&] {
+        const auto config = TitlebarPresenter(mailbox.context()).build();
+        config.onAction(TitlebarView::Action::ToggleVoice);
+        const auto* mail = mailbox.last<MailSetAgentVoiceVisible>();
+        REQUIRE(mail != nullptr);
+        return mail->value;
+    };
+    CHECK(toggle());
+    mailbox.state.agent.ui.voiceVisible = true;
+    CHECK_FALSE(toggle());
 }
 
 TEST_CASE("Titlebar presenter uses integrated window chrome and routes bar presses to drag and zoom",
@@ -1454,7 +1507,7 @@ TEST_CASE("Start tab pill close button calls its close callback and the shell se
         };
         if (open) {
             start.update({
-                .welcome = {.version = "v1"},
+                .welcome = {},
                 .onClose = [&]() {
                     ++closes;
                 },
@@ -1837,6 +1890,58 @@ TEST_CASE("Welcome screen switches between all and flowgraphs with the section t
     mailbox.state.interface.welcomeSection = WelcomeSection::All;
     rig.show();
     CHECK(ShownText(rig.root(), "Featured") != nullptr);
+}
+
+TEST_CASE("Registry presenter reads plugins from the cached registry", "[core][sakura][views]") {
+    Mailbox mailbox;
+    auto& registry = mailbox.state.registry;
+    CHECK_FALSE(registry.stale);
+    CHECK_FALSE(registry.flowgraphs.empty());
+    const Plugin::Info radioTools = {.path = "/plugins/radio-tools.cep", .version = "1.2.0", .blocks = {"fft"}};
+    registry.registered = {
+        {.path = "/plugins/radio-tools.cep", .info = radioTools, .exists = true},
+        {.path = "/plugins/missing.cep"},
+        {.path = "/plugins/ghost.cep", .exists = true},
+    };
+    mailbox.state.settings.section = SettingsSection::Registry;
+
+    const auto settings = RegistrySettingsPresenter(mailbox.context()).build();
+    REQUIRE(settings.plugins.size() == 3);
+    CHECK(settings.plugins[0].name == "radio-tools");
+    CHECK(settings.plugins[0].version == "1.2.0");
+    CHECK(settings.plugins[0].status.tone == StatusBadge::Tone::Success);
+    CHECK(settings.plugins[1].name == "missing");
+    CHECK(settings.plugins[1].version.empty());
+    CHECK(settings.plugins[1].status.label == "Missing");
+    CHECK(settings.plugins[1].status.tone == StatusBadge::Tone::Warning);
+    CHECK(settings.plugins[2].status.label == "Not loaded");
+    CHECK(settings.plugins[2].status.tone == StatusBadge::Tone::Neutral);
+    CHECK(RegistryPluginView::VersionLabel(settings.plugins[1]) == "Unknown version");
+    CHECK(RegistryPluginView::VersionLabel(settings.plugins[0]) == "Version 1.2.0");
+    CHECK_FALSE(settings.domains.empty());
+}
+
+TEST_CASE("Registry presenter shows plugin examples even when a gallery entry shares their key",
+          "[core][sakura][views]") {
+    Mailbox mailbox;
+    auto& registry = mailbox.state.registry;
+    Registry::FlowgraphRegistration example;
+    example.key = "demo";
+    example.title = "Plugin Demo";
+    example.summary = "From the plugin.";
+    Registry::FlowgraphRegistration published = example;
+    published.title = "Gallery Demo";
+    published.summary = "From the gallery.";
+    const Plugin::Info plugin = {.path = "/plugins/demo.cep", .version = "1.0.0", .examples = {"demo"}};
+    registry.flowgraphs = GalleryActions::Catalog({published}, {example}, {plugin});
+    registry.registered = {{.path = "/plugins/demo.cep", .info = plugin, .exists = true}};
+    mailbox.state.settings.section = SettingsSection::Registry;
+
+    const auto settings = RegistrySettingsPresenter(mailbox.context()).build();
+    REQUIRE(settings.plugins.size() == 1);
+    REQUIRE(settings.plugins[0].examples.size() == 1);
+    CHECK(settings.plugins[0].examples[0].title == "Plugin Demo");
+    CHECK(settings.plugins[0].examples[0].summary == "From the plugin.");
 }
 
 TEST_CASE("Welcome screen pins settings and a theme toggle to the bottom of the sidebar",
@@ -2809,7 +2914,7 @@ TEST_CASE("Modal container shows nothing without content and sizes each modal", 
 
     const std::vector<std::pair<ModalContent, F32>> widths = {
         {ModalContent::About, 526.0f},
-        {ModalContent::Benchmark, 526.0f},      {ModalContent::RemoteQr, 526.0f},
+        {ModalContent::Benchmark, 526.0f},
         {ModalContent::Dependencies, 736.0f},
         {ModalContent::Feedback, 496.0f},
     };
@@ -3569,6 +3674,76 @@ TEST_CASE("Remote section shares the invite and approves or removes viewers", "[
     CHECK(ShownText(view.component(), "NDING9") != nullptr);
 }
 
+TEST_CASE("Remote viewers that share a display code stay distinct", "[core][sakura][views]") {
+    ModalRig rig;
+    Mailbox mailbox;
+    auto& remote = mailbox.state.remote;
+    remote.supported = true;
+    remote.started = true;
+    remote.waitlist = {"first-abcdef", "second-abcdef"};
+    RemoteSectionView view;
+    view.update(RemoteSectionPresenter(mailbox.context()).build().value());
+    rig.show({.content = &view.component()});
+
+    U64 codes = 0;
+    for (auto* text : Find<Sakura::Text>(view.component())) {
+        codes += text->config().str == "ABCDEF" ? 1 : 0;
+    }
+    CHECK(codes == 2);
+    const auto approves = IconButtons(view.component(), ICON_LC_CHECK);
+    const auto removes = IconButtons(view.component(), ICON_LC_X);
+    REQUIRE(approves.size() == 2);
+    REQUIRE(removes.size() == 2);
+    for (U64 row = 0; row < 2; ++row) {
+        CHECK(Press(rig.host, *approves[row]));
+        CHECK(Press(rig.host, *removes[row]));
+    }
+    REQUIRE(mailbox.mails.size() == 4);
+    CHECK(std::get<MailApproveRemoteClient>(mailbox.mails[0]).sessionId == "first-abcdef");
+    CHECK(std::get<MailRemoveRemoteClient>(mailbox.mails[1]).sessionId == "first-abcdef");
+    CHECK(std::get<MailApproveRemoteClient>(mailbox.mails[2]).sessionId == "second-abcdef");
+    CHECK(std::get<MailRemoveRemoteClient>(mailbox.mails[3]).sessionId == "second-abcdef");
+}
+
+TEST_CASE("Remote viewer refresh during a press does not retarget the click", "[core][sakura][views]") {
+    ModalRig rig;
+    Mailbox mailbox;
+    auto& remote = mailbox.state.remote;
+    remote.supported = true;
+    remote.started = true;
+    remote.clients = {{.sessionId = "viewer-aaaaaa"}, {.sessionId = "viewer-bbbbbb"}};
+    RemoteSectionView view;
+    view.update(RemoteSectionPresenter(mailbox.context()).build().value());
+    rig.show({.content = &view.component()});
+
+    auto removes = IconButtons(view.component(), ICON_LC_X);
+    REQUIRE(removes.size() == 2);
+    const auto point = Center(*removes.front());
+    CHECK(rig.host.send(Mouse(MouseEventType::Click, point.x, point.y)));
+
+    remote.clients = {{.sessionId = "viewer-bbbbbb"}, {.sessionId = "viewer-aaaaaa"}};
+    view.update(RemoteSectionPresenter(mailbox.context()).build().value());
+    rig.place();
+    rig.host.send(Mouse(MouseEventType::Release, point.x, point.y));
+    CHECK(mailbox.count<MailRemoveRemoteClient>() == 0);
+
+    CHECK(rig.host.send(Mouse(MouseEventType::Click, point.x, point.y)));
+    remote.clients = {{.sessionId = "viewer-aaaaaa"}};
+    view.update(RemoteSectionPresenter(mailbox.context()).build().value());
+    rig.place();
+    rig.host.send(Mouse(MouseEventType::Release, point.x, point.y));
+    CHECK(mailbox.count<MailRemoveRemoteClient>() == 0);
+
+    remote.clients = {{.sessionId = "viewer-bbbbbb"}};
+    view.update(RemoteSectionPresenter(mailbox.context()).build().value());
+    rig.place();
+    removes = IconButtons(view.component(), ICON_LC_X);
+    REQUIRE(removes.size() == 1);
+    CHECK(Press(rig.host, *removes.front()));
+    REQUIRE(mailbox.count<MailRemoveRemoteClient>() == 1);
+    CHECK(mailbox.last<MailRemoveRemoteClient>()->sessionId == "viewer-bbbbbb");
+}
+
 TEST_CASE("Dependency review installs approved requests through the presenter", "[core][sakura][views]") {
     ModalRig rig;
     Mailbox mailbox;
@@ -3743,8 +3918,8 @@ TEST_CASE("Modal views settle under identical updates", "[core][sakura][views]")
     Frames frames(rig.host, kWide, rig.scene.ctx);
     ModalView view;
 
-    for (const auto content : {ModalContent::About, ModalContent::RemoteQr, ModalContent::Benchmark,
-                               ModalContent::Dependencies}) {
+    for (const auto content :
+         {ModalContent::About, ModalContent::Benchmark, ModalContent::Dependencies, ModalContent::RemoteQr}) {
         mailbox.state.modal.content = content;
         const auto update = [&] {
             view.update(ModalPresenter(mailbox.context()).build());
@@ -3829,7 +4004,6 @@ TEST_CASE("Rename and feedback modal buttons and fields repaint without rebuildi
     CHECK(rig.settles());
     CHECK(calls.back() == "fft2");
 
-    rig.frames.ctx.palette = DistinctPalette();
     FeedbackView feedback;
     std::string text;
     U64 submitted = 0;
@@ -4107,19 +4281,16 @@ TEST_CASE("Workbench view accepts welcome, modal, and file pending configs witho
 TEST_CASE("Workbench activates only the tab the model navigated to last within a poll",
           "[core][sakura][views]") {
     Mailbox mailbox;
-    mailbox.state.graphics.device = DeviceType::CPU;
     mailbox.state.system.render = std::make_shared<SakuraTest::FakeWindow>();
     WorkbenchActions actions(mailbox.state, mailbox.callbacks);
     WorkbenchView view;
     const auto update = [&] {
         mailbox.mails.clear();
-        actions.settleStartTab();
         view.update(WorkbenchPresenter(mailbox.context()).build());
     };
 
     actions.handle(MailOpenSettings{});
     update();
-    CHECK(mailbox.state.settingsTabActive());
 
     actions.handle(MailOpenSettings{});
     actions.handle(MailOpenStartTab{});
@@ -4299,90 +4470,6 @@ struct AgentChatRig {
 
 }  // namespace
 
-TEST_CASE("Titlebar presenter save and info shortcuts skip the flowgraph hidden behind a focused tab",
-          "[core][sakura][views]") {
-    using Action = TitlebarView::Action;
-    Mailbox mailbox;
-    mailbox.state.flowgraph.items["a"] = std::make_shared<Flowgraph>();
-    mailbox.state.interface.focusedFlowgraph = "a";
-
-    const auto check = [&](bool startTab, bool settingsTab) {
-        mailbox.mails.clear();
-        mailbox.state.interface.startTab = startTab;
-        mailbox.state.interface.settingsTab = settingsTab;
-        mailbox.state.interface.focusedTab.reset();
-        if (startTab) {
-            mailbox.state.interface.focusedTab = WorkspaceTab::Start;
-        }
-        if (settingsTab) {
-            mailbox.state.interface.focusedTab = WorkspaceTab::Settings;
-        }
-        auto config = TitlebarPresenter(mailbox.context()).build();
-        config.onAction(Action::SaveFlowgraph);
-        config.onAction(Action::ShowFlowgraphInfo);
-        CHECK(mailbox.count<MailSaveFlowgraph>() == 0);
-        CHECK(mailbox.count<MailOpenModal>() == 0);
-        CHECK(mailbox.count<MailNotify>() == 2);
-        config.onAction(Action::CloseFlowgraph);
-        CHECK(mailbox.count<MailCloseFlowgraph>() == 0);
-        CHECK(mailbox.count<MailCloseStartTab>() == (startTab ? 1 : 0));
-        CHECK(mailbox.count<MailCloseSettings>() == (settingsTab ? 1 : 0));
-    };
-    check(true, false);
-    check(false, true);
-
-    mailbox.mails.clear();
-    mailbox.state.interface.focusedTab.reset();
-    auto config = TitlebarPresenter(mailbox.context()).build();
-    config.onAction(Action::SaveFlowgraph);
-    config.onAction(Action::ShowFlowgraphInfo);
-    REQUIRE(mailbox.last<MailSaveFlowgraph>() != nullptr);
-    CHECK(mailbox.last<MailSaveFlowgraph>()->flowgraph == "a");
-    REQUIRE(mailbox.last<MailOpenModal>() != nullptr);
-    CHECK(mailbox.last<MailOpenModal>()->flowgraph == std::optional<std::string>("a"));
-}
-
-TEST_CASE("Titlebar presenter tints the assistant button from the unread state", "[core][sakura][views]") {
-    Mailbox mailbox;
-    mailbox.state.agent.settings.enabled = true;
-    CHECK_FALSE(TitlebarPresenter(mailbox.context()).build().agentUnread);
-    mailbox.state.agent.ui.unread = true;
-    CHECK(TitlebarPresenter(mailbox.context()).build().agentUnread);
-
-    TitleRig rig;
-    const auto tint = [&]() {
-        rig.update();
-        rig.place();
-        auto* assistant = Indicator(rig.shell.bar(), ICON_LC_WAND_SPARKLES);
-        REQUIRE(assistant != nullptr);
-        for (auto* text : Find<Sakura::Text>(*assistant)) {
-            if (text->config().str == ICON_LC_WAND_SPARKLES) {
-                return text->config().colorKey;
-            }
-        }
-        return std::string();
-    };
-    rig.config.intelligenceEnabled = true;
-    CHECK(tint() == "text_secondary");
-    rig.config.agentUnread = true;
-    CHECK(tint() == "cyber_blue");
-}
-
-TEST_CASE("The voice shortcut starts voice when it is off and ends it when it is on", "[core][sakura][views]") {
-    Mailbox mailbox;
-    mailbox.state.agent.settings.enabled = true;
-    const auto toggle = [&] {
-        const auto config = TitlebarPresenter(mailbox.context()).build();
-        config.onAction(TitlebarView::Action::ToggleVoice);
-        const auto* mail = mailbox.last<MailSetAgentVoiceVisible>();
-        REQUIRE(mail != nullptr);
-        return mail->value;
-    };
-    CHECK(toggle());
-    mailbox.state.agent.ui.voiceVisible = true;
-    CHECK_FALSE(toggle());
-}
-
 TEST_CASE("The assistant placeholder asks for a model before offering suggestions", "[core][sakura][views][agent]") {
     AgentChatRig rig;
     rig.show();
@@ -4524,74 +4611,124 @@ TEST_CASE("Voice levels from the microphone and the assistant share one decibel 
     CHECK(TitlebarPresenter(mailbox.context()).build().voice.has_value());
 }
 
-TEST_CASE("Remote viewers that share a display code stay distinct", "[core][sakura][views]") {
-    ModalRig rig;
+TEST_CASE("Close prompt presenter only builds for an open closing flowgraph and wires each choice",
+          "[core][sakura][views]") {
     Mailbox mailbox;
-    auto& remote = mailbox.state.remote;
-    remote.supported = true;
-    remote.started = true;
-    remote.waitlist = {"first-abcdef", "second-abcdef"};
-    RemoteSectionView view;
-    view.update(RemoteSectionPresenter(mailbox.context()).build().value());
-    rig.show({.content = &view.component()});
+    const auto context = mailbox.context();
+    CHECK_FALSE(FlowgraphClosePromptPresenter(context).build().has_value());
 
-    U64 codes = 0;
-    for (auto* text : Find<Sakura::Text>(view.component())) {
-        codes += text->config().str == "ABCDEF" ? 1 : 0;
-    }
-    CHECK(codes == 2);
-    const auto approves = IconButtons(view.component(), ICON_LC_CHECK);
-    const auto removes = IconButtons(view.component(), ICON_LC_X);
-    REQUIRE(approves.size() == 2);
-    REQUIRE(removes.size() == 2);
-    for (U64 row = 0; row < 2; ++row) {
-        CHECK(Press(rig.host, *approves[row]));
-        CHECK(Press(rig.host, *removes[row]));
-    }
-    REQUIRE(mailbox.mails.size() == 4);
-    CHECK(std::get<MailApproveRemoteClient>(mailbox.mails[0]).sessionId == "first-abcdef");
-    CHECK(std::get<MailRemoveRemoteClient>(mailbox.mails[1]).sessionId == "first-abcdef");
-    CHECK(std::get<MailApproveRemoteClient>(mailbox.mails[2]).sessionId == "second-abcdef");
-    CHECK(std::get<MailRemoveRemoteClient>(mailbox.mails[3]).sessionId == "second-abcdef");
+    mailbox.state.interface.closingFlowgraph = "gone";
+    CHECK_FALSE(FlowgraphClosePromptPresenter(context).build().has_value());
+
+    mailbox.state.flowgraph.items["graph"] = std::make_shared<Flowgraph>();
+    mailbox.state.interface.closingFlowgraph = "graph";
+    const auto config = FlowgraphClosePromptPresenter(context).build();
+    REQUIRE(config.has_value());
+    CHECK(config->flowgraph == "graph");
+    CHECK(WorkbenchPresenter(context).build().closePrompt.has_value());
+
+    config->onSave();
+    REQUIRE(mailbox.mails.size() == 2);
+    CHECK(std::holds_alternative<MailCancelCloseFlowgraph>(mailbox.mails[0]));
+    const auto& info = std::get<MailOpenModal>(mailbox.mails[1]);
+    CHECK(info.content == ModalContent::FlowgraphInfo);
+    CHECK(info.flowgraph == std::optional<std::string>("graph"));
+
+    config->onDontSave();
+    REQUIRE(mailbox.last<MailCloseFlowgraph>() != nullptr);
+    CHECK(mailbox.last<MailCloseFlowgraph>()->flowgraph == "graph");
+    CHECK(mailbox.last<MailCloseFlowgraph>()->force);
+
+    config->onCancel();
+    CHECK(mailbox.count<MailCancelCloseFlowgraph>() == 2);
 }
 
-TEST_CASE("Remote viewer refresh during a press does not retarget the click", "[core][sakura][views]") {
-    ModalRig rig;
-    Mailbox mailbox;
-    auto& remote = mailbox.state.remote;
-    remote.supported = true;
-    remote.started = true;
-    remote.clients = {{.sessionId = "viewer-aaaaaa"}, {.sessionId = "viewer-bbbbbb"}};
-    RemoteSectionView view;
-    view.update(RemoteSectionPresenter(mailbox.context()).build().value());
-    rig.show({.content = &view.component()});
+TEST_CASE("Close prompt opens under the closing tab, runs its buttons, and hides without a prompt",
+          "[core][sakura][views]") {
+    TitleRig rig;
+    std::vector<std::string> calls;
+    const auto show = [&](std::optional<FlowgraphClosePromptView::Config> prompt) {
+        rig.shell.updateTitlebar(rig.config);
+        rig.shell.updatePanes({
+            .panes = {
+                {.id = "a", .title = "Alpha", .group = "main", .icon = ICON_LC_WORKFLOW, .content = &rig.a},
+                {.id = "b", .title = "Beta", .group = "main", .icon = ICON_LC_WORKFLOW, .content = &rig.b},
+            },
+            .closePrompt = std::move(prompt),
+        });
+        rig.prompt.update(rig.shell.promptLayer());
+        rig.place();
+        rig.place();
+    };
+    show(FlowgraphClosePromptView::Config{
+        .flowgraph = "b",
+        .onSave = [&] { calls.push_back("save"); },
+        .onDontSave = [&] { calls.push_back("discard"); },
+        .onCancel = [&] { calls.push_back("cancel"); },
+    });
 
-    auto removes = IconButtons(view.component(), ICON_LC_X);
-    REQUIRE(removes.size() == 2);
-    const auto point = Center(*removes.front());
-    CHECK(rig.host.send(Mouse(MouseEventType::Click, point.x, point.y)));
+    const auto buttons = Find<CardButton>(rig.prompt);
+    REQUIRE(buttons.size() == 3);
+    const auto tab = rig.shell.dock().tabRect("b");
+    REQUIRE(tab.has_value());
+    CHECK(Peek::Frame(*buttons[0]).y > tab->bottom());
+    CHECK(Press(rig.host, *buttons[0]));
+    CHECK(Press(rig.host, *buttons[1]));
+    CHECK(Press(rig.host, *buttons[2]));
+    CHECK(calls == std::vector<std::string>{"cancel", "discard", "save"});
 
-    remote.clients = {{.sessionId = "viewer-bbbbbb"}, {.sessionId = "viewer-aaaaaa"}};
-    view.update(RemoteSectionPresenter(mailbox.context()).build().value());
-    rig.place();
-    rig.host.send(Mouse(MouseEventType::Release, point.x, point.y));
-    CHECK(mailbox.count<MailRemoveRemoteClient>() == 0);
+    show(std::nullopt);
+    CHECK(Find<CardButton>(rig.prompt).empty());
+}
 
-    CHECK(rig.host.send(Mouse(MouseEventType::Click, point.x, point.y)));
-    remote.clients = {{.sessionId = "viewer-aaaaaa"}};
-    view.update(RemoteSectionPresenter(mailbox.context()).build().value());
-    rig.place();
-    rig.host.send(Mouse(MouseEventType::Release, point.x, point.y));
-    CHECK(mailbox.count<MailRemoveRemoteClient>() == 0);
+TEST_CASE("Close prompt settles, repaints once per button hover, and reopens without rebuilding",
+          "[core][sakura][views]") {
+    TitleRig rig;
+    bool prompt = true;
+    U64 cancels = 0;
+    const auto update = [&] {
+        std::optional<FlowgraphClosePromptView::Config> closePrompt;
+        if (prompt) {
+            closePrompt = FlowgraphClosePromptView::Config{
+                .flowgraph = "b",
+                .onSave = [] {},
+                .onDontSave = [] {},
+                .onCancel = [&] { ++cancels; },
+            };
+        }
+        rig.shell.updateTitlebar(rig.config);
+        rig.shell.updatePanes({
+            .panes = {
+                {.id = "a", .title = "Alpha", .group = "main", .icon = ICON_LC_WORKFLOW, .content = &rig.a},
+                {.id = "b", .title = "Beta", .group = "main", .icon = ICON_LC_WORKFLOW, .content = &rig.b},
+            },
+            .closePrompt = std::move(closePrompt),
+        });
+        rig.prompt.update(rig.shell.promptLayer());
+    };
+    Frames frames(rig.host, TitleRig::bounds(), rig.scene.context());
+    const auto step = [&] {
+        return frames.run(update);
+    };
+    REQUIRE(Settles(frames, update));
+    const U64 rebuilds = frames.rebuilds;
+    const auto buttons = Find<CardButton>(rig.prompt);
+    REQUIRE(buttons.size() == 3);
+    for (auto* button : buttons) {
+        CheckHover(rig.host, step, *button, {600.0f, 700.0f});
+    }
 
-    remote.clients = {{.sessionId = "viewer-bbbbbb"}};
-    view.update(RemoteSectionPresenter(mailbox.context()).build().value());
-    rig.place();
-    removes = IconButtons(view.component(), ICON_LC_X);
-    REQUIRE(removes.size() == 1);
-    CHECK(Press(rig.host, *removes.front()));
-    REQUIRE(mailbox.count<MailRemoveRemoteClient>() == 1);
-    CHECK(mailbox.last<MailRemoveRemoteClient>()->sessionId == "viewer-bbbbbb");
+    prompt = false;
+    CHECK(Kept(step()));
+    CHECK(Settles(frames, update));
+    CHECK(Find<CardButton>(rig.prompt).empty());
+    prompt = true;
+    CHECK(Kept(step()));
+    CHECK(Settles(frames, update));
+    REQUIRE(Find<CardButton>(rig.prompt).size() == 3);
+    CHECK(Press(rig.host, *Find<CardButton>(rig.prompt).front()));
+    CHECK(cancels == 1);
+    CHECK(frames.rebuilds == rebuilds);
 }
 
 TEST_CASE("Remote QR modal encodes the invite while streaming and closes once streaming stops",
@@ -4628,6 +4765,60 @@ TEST_CASE("Remote QR modal encodes the invite while streaming and closes once st
     mailbox.state.remote.started = false;
     actions.reconcileModal();
     CHECK_FALSE(mailbox.state.modal.content.has_value());
+}
+
+TEST_CASE("Settings presenter builds only the active section", "[core][sakura][views]") {
+    Mailbox mailbox;
+    mailbox.state.graphics.device = DeviceType::CPU;
+    const auto context = mailbox.context();
+    const SettingsPresenter presenter(context);
+
+    mailbox.state.settings.section = SettingsSection::Registry;
+    auto config = presenter.build();
+    CHECK_FALSE(config.registry.domains.empty());
+    CHECK(config.general.themes.empty());
+    CHECK_FALSE(config.legal.onViewFullLicenses);
+
+    mailbox.state.settings.section = SettingsSection::General;
+    config = presenter.build();
+    CHECK(config.registry.domains.empty());
+    CHECK_FALSE(config.general.themes.empty());
+    config.general.onShowTipsChange(false);
+    REQUIRE(mailbox.last<MailSetShowTips>() != nullptr);
+    CHECK_FALSE(mailbox.last<MailSetShowTips>()->value);
+}
+
+TEST_CASE("Intelligence presenter selects voice models and voices by index", "[core][sakura][views]") {
+    Mailbox mailbox;
+    const auto context = mailbox.context();
+    const auto models = Agent::Live::Models();
+    const auto voices = Agent::Live::Voices();
+    REQUIRE_FALSE(models.empty());
+    REQUIRE(voices.size() > 1);
+    mailbox.state.agent.settings.voice.model = models.front();
+    mailbox.state.agent.settings.voice.voice = voices[1];
+
+    const auto config = IntelligenceSettingsPresenter(context).build();
+    CHECK(config.voice.models.size() == models.size());
+    CHECK(config.voice.voices.size() == voices.size());
+    CHECK(config.voice.model == std::optional<U64>(0));
+    CHECK(config.voice.voice == std::optional<U64>(1));
+    CHECK(config.voice.voices[1] == AgentLabels::Title(voices[1]));
+
+    config.onVoiceModelSelect(0);
+    REQUIRE(mailbox.last<MailSetAgentVoiceModel>() != nullptr);
+    CHECK(mailbox.last<MailSetAgentVoiceModel>()->value == models.front());
+    config.onVoiceSelect(0);
+    REQUIRE(mailbox.last<MailSetAgentVoiceName>() != nullptr);
+    CHECK(mailbox.last<MailSetAgentVoiceName>()->value == voices[0]);
+    config.onVoiceSelect(voices.size());
+    config.onVoiceModelSelect(models.size());
+    CHECK(mailbox.count<MailSetAgentVoiceName>() == 1);
+    CHECK(mailbox.count<MailSetAgentVoiceModel>() == 1);
+
+    config.onNavigate(IntelligencePage::Overview);
+    REQUIRE(mailbox.last<MailSetIntelligencePage>() != nullptr);
+    CHECK(mailbox.last<MailSetIntelligencePage>()->page == IntelligencePage::Overview);
 }
 
 TEST_CASE("Docs tab scrolls to the navigated anchor and back to the top on the next navigation",
@@ -4802,230 +4993,4 @@ TEST_CASE("Docs tab settles under identical updates", "[core][sakura][views]") {
     config.anchor = "first-steps";
     config.navigation = 2;
     CHECK(Settles(frames, update));
-}
-
-TEST_CASE("Registry presenter reads plugins from the cached registry", "[core][sakura][views]") {
-    Mailbox mailbox;
-    auto& registry = mailbox.state.registry;
-    CHECK_FALSE(registry.stale);
-    CHECK_FALSE(registry.flowgraphs.empty());
-    const Plugin::Info radioTools = {.path = "/plugins/radio-tools.cep", .version = "1.2.0", .blocks = {"fft"}};
-    registry.registered = {
-        {.path = "/plugins/radio-tools.cep", .info = radioTools, .exists = true},
-        {.path = "/plugins/missing.cep"},
-        {.path = "/plugins/ghost.cep", .exists = true},
-    };
-    mailbox.state.settings.section = SettingsSection::Registry;
-
-    const auto settings = RegistrySettingsPresenter(mailbox.context()).build();
-    REQUIRE(settings.plugins.size() == 3);
-    CHECK(settings.plugins[0].name == "radio-tools");
-    CHECK(settings.plugins[0].version == "1.2.0");
-    CHECK(settings.plugins[0].status.tone == StatusBadge::Tone::Success);
-    CHECK(settings.plugins[1].name == "missing");
-    CHECK(settings.plugins[1].version.empty());
-    CHECK(settings.plugins[1].status.label == "Missing");
-    CHECK(settings.plugins[1].status.tone == StatusBadge::Tone::Warning);
-    CHECK(settings.plugins[2].status.label == "Not loaded");
-    CHECK(settings.plugins[2].status.tone == StatusBadge::Tone::Neutral);
-    CHECK(RegistryPluginView::VersionLabel(settings.plugins[1]) == "Unknown version");
-    CHECK(RegistryPluginView::VersionLabel(settings.plugins[0]) == "Version 1.2.0");
-    CHECK_FALSE(settings.domains.empty());
-}
-
-TEST_CASE("Registry presenter shows plugin examples even when a gallery entry shares their key",
-          "[core][sakura][views]") {
-    Mailbox mailbox;
-    auto& registry = mailbox.state.registry;
-    Registry::FlowgraphRegistration example;
-    example.key = "demo";
-    example.title = "Plugin Demo";
-    example.summary = "From the plugin.";
-    Registry::FlowgraphRegistration published = example;
-    published.title = "Gallery Demo";
-    published.summary = "From the gallery.";
-    const Plugin::Info plugin = {.path = "/plugins/demo.cep", .version = "1.0.0", .examples = {"demo"}};
-    registry.flowgraphs = GalleryActions::Catalog({published}, {example}, {plugin});
-    registry.registered = {{.path = "/plugins/demo.cep", .info = plugin, .exists = true}};
-    mailbox.state.settings.section = SettingsSection::Registry;
-
-    const auto settings = RegistrySettingsPresenter(mailbox.context()).build();
-    REQUIRE(settings.plugins.size() == 1);
-    REQUIRE(settings.plugins[0].examples.size() == 1);
-    CHECK(settings.plugins[0].examples[0].title == "Plugin Demo");
-    CHECK(settings.plugins[0].examples[0].summary == "From the plugin.");
-}
-
-TEST_CASE("Settings presenter builds only the active section", "[core][sakura][views]") {
-    Mailbox mailbox;
-    mailbox.state.graphics.device = DeviceType::CPU;
-    const auto context = mailbox.context();
-    const SettingsPresenter presenter(context);
-
-    mailbox.state.settings.section = SettingsSection::Registry;
-    auto config = presenter.build();
-    CHECK_FALSE(config.registry.domains.empty());
-    CHECK(config.general.themes.empty());
-    CHECK_FALSE(config.legal.onViewFullLicenses);
-
-    mailbox.state.settings.section = SettingsSection::General;
-    config = presenter.build();
-    CHECK(config.registry.domains.empty());
-    CHECK_FALSE(config.general.themes.empty());
-    config.general.onShowTipsChange(false);
-    REQUIRE(mailbox.last<MailSetShowTips>() != nullptr);
-    CHECK_FALSE(mailbox.last<MailSetShowTips>()->value);
-}
-
-TEST_CASE("Intelligence presenter selects voice models and voices by index", "[core][sakura][views]") {
-    Mailbox mailbox;
-    const auto context = mailbox.context();
-    const auto models = Agent::Live::Models();
-    const auto voices = Agent::Live::Voices();
-    REQUIRE_FALSE(models.empty());
-    REQUIRE(voices.size() > 1);
-    mailbox.state.agent.settings.voice.model = models.front();
-    mailbox.state.agent.settings.voice.voice = voices[1];
-
-    const auto config = IntelligenceSettingsPresenter(context).build();
-    CHECK(config.voice.models.size() == models.size());
-    CHECK(config.voice.voices.size() == voices.size());
-    CHECK(config.voice.model == std::optional<U64>(0));
-    CHECK(config.voice.voice == std::optional<U64>(1));
-    CHECK(config.voice.voices[1] == AgentLabels::Title(voices[1]));
-
-    config.onVoiceModelSelect(0);
-    REQUIRE(mailbox.last<MailSetAgentVoiceModel>() != nullptr);
-    CHECK(mailbox.last<MailSetAgentVoiceModel>()->value == models.front());
-    config.onVoiceSelect(0);
-    REQUIRE(mailbox.last<MailSetAgentVoiceName>() != nullptr);
-    CHECK(mailbox.last<MailSetAgentVoiceName>()->value == voices[0]);
-    config.onVoiceSelect(voices.size());
-    config.onVoiceModelSelect(models.size());
-    CHECK(mailbox.count<MailSetAgentVoiceName>() == 1);
-    CHECK(mailbox.count<MailSetAgentVoiceModel>() == 1);
-
-    config.onNavigate(IntelligencePage::Overview);
-    REQUIRE(mailbox.last<MailSetIntelligencePage>() != nullptr);
-    CHECK(mailbox.last<MailSetIntelligencePage>()->page == IntelligencePage::Overview);
-}
-
-TEST_CASE("Close prompt presenter only builds for an open closing flowgraph and wires each choice",
-          "[core][sakura][views]") {
-    Mailbox mailbox;
-    const auto context = mailbox.context();
-    CHECK_FALSE(FlowgraphClosePromptPresenter(context).build().has_value());
-
-    mailbox.state.interface.closingFlowgraph = "gone";
-    CHECK_FALSE(FlowgraphClosePromptPresenter(context).build().has_value());
-
-    mailbox.state.flowgraph.items["graph"] = std::make_shared<Flowgraph>();
-    mailbox.state.interface.closingFlowgraph = "graph";
-    const auto config = FlowgraphClosePromptPresenter(context).build();
-    REQUIRE(config.has_value());
-    CHECK(config->flowgraph == "graph");
-    CHECK(WorkbenchPresenter(context).build().closePrompt.has_value());
-
-    config->onSave();
-    REQUIRE(mailbox.mails.size() == 2);
-    CHECK(std::holds_alternative<MailCancelCloseFlowgraph>(mailbox.mails[0]));
-    const auto& info = std::get<MailOpenModal>(mailbox.mails[1]);
-    CHECK(info.content == ModalContent::FlowgraphInfo);
-    CHECK(info.flowgraph == std::optional<std::string>("graph"));
-
-    config->onDontSave();
-    REQUIRE(mailbox.last<MailCloseFlowgraph>() != nullptr);
-    CHECK(mailbox.last<MailCloseFlowgraph>()->flowgraph == "graph");
-    CHECK(mailbox.last<MailCloseFlowgraph>()->force);
-
-    config->onCancel();
-    CHECK(mailbox.count<MailCancelCloseFlowgraph>() == 2);
-}
-
-TEST_CASE("Close prompt opens under the closing tab, runs its buttons, and hides without a prompt",
-          "[core][sakura][views]") {
-    TitleRig rig;
-    std::vector<std::string> calls;
-    const auto show = [&](std::optional<FlowgraphClosePromptView::Config> prompt) {
-        rig.shell.updateTitlebar(rig.config);
-        rig.shell.updatePanes({
-            .panes = {
-                {.id = "a", .title = "Alpha", .group = "main", .icon = ICON_LC_WORKFLOW, .content = &rig.a},
-                {.id = "b", .title = "Beta", .group = "main", .icon = ICON_LC_WORKFLOW, .content = &rig.b},
-            },
-            .closePrompt = std::move(prompt),
-        });
-        rig.prompt.update(rig.shell.promptLayer());
-        rig.place();
-        rig.place();
-    };
-    show(FlowgraphClosePromptView::Config{
-        .flowgraph = "b",
-        .onSave = [&] { calls.push_back("save"); },
-        .onDontSave = [&] { calls.push_back("discard"); },
-        .onCancel = [&] { calls.push_back("cancel"); },
-    });
-
-    const auto buttons = Find<CardButton>(rig.prompt);
-    REQUIRE(buttons.size() == 3);
-    const auto tab = rig.shell.dock().tabRect("b");
-    REQUIRE(tab.has_value());
-    CHECK(Peek::Frame(*buttons[0]).y > tab->bottom());
-    CHECK(Press(rig.host, *buttons[0]));
-    CHECK(Press(rig.host, *buttons[1]));
-    CHECK(Press(rig.host, *buttons[2]));
-    CHECK(calls == std::vector<std::string>{"cancel", "discard", "save"});
-
-    show(std::nullopt);
-    CHECK(Find<CardButton>(rig.prompt).empty());
-}
-
-TEST_CASE("Close prompt settles, repaints once per button hover, and reopens without rebuilding",
-          "[core][sakura][views]") {
-    TitleRig rig;
-    bool prompt = true;
-    U64 cancels = 0;
-    const auto update = [&] {
-        std::optional<FlowgraphClosePromptView::Config> closePrompt;
-        if (prompt) {
-            closePrompt = FlowgraphClosePromptView::Config{
-                .flowgraph = "b",
-                .onSave = [] {},
-                .onDontSave = [] {},
-                .onCancel = [&] { ++cancels; },
-            };
-        }
-        rig.shell.updateTitlebar(rig.config);
-        rig.shell.updatePanes({
-            .panes = {
-                {.id = "a", .title = "Alpha", .group = "main", .icon = ICON_LC_WORKFLOW, .content = &rig.a},
-                {.id = "b", .title = "Beta", .group = "main", .icon = ICON_LC_WORKFLOW, .content = &rig.b},
-            },
-            .closePrompt = std::move(closePrompt),
-        });
-        rig.prompt.update(rig.shell.promptLayer());
-    };
-    Frames frames(rig.host, TitleRig::bounds(), rig.scene.context());
-    const auto step = [&] {
-        return frames.run(update);
-    };
-    REQUIRE(Settles(frames, update));
-    const U64 rebuilds = frames.rebuilds;
-    const auto buttons = Find<CardButton>(rig.prompt);
-    REQUIRE(buttons.size() == 3);
-    for (auto* button : buttons) {
-        CheckHover(rig.host, step, *button, {600.0f, 700.0f});
-    }
-
-    prompt = false;
-    CHECK(Kept(step()));
-    CHECK(Settles(frames, update));
-    CHECK(Find<CardButton>(rig.prompt).empty());
-    prompt = true;
-    CHECK(Kept(step()));
-    CHECK(Settles(frames, update));
-    REQUIRE(Find<CardButton>(rig.prompt).size() == 3);
-    CHECK(Press(rig.host, *Find<CardButton>(rig.prompt).front()));
-    CHECK(cancels == 1);
-    CHECK(frames.rebuilds == rebuilds);
 }

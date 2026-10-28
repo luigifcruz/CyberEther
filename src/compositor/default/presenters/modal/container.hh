@@ -20,17 +20,17 @@ struct ModalPresenter {
     FlowgraphInfoModalPresenter flowgraphInfo;
     RenameBlockModalPresenter renameBlock;
     BenchmarkModalPresenter benchmark;
-    RemoteQrModalPresenter remoteQr;
     DependencyReviewModalPresenter dependencies;
     FeedbackModalPresenter feedback;
+    RemoteQrModalPresenter remoteQr;
 
     explicit ModalPresenter(const PresenterContext& context) : context(context),
                                                                flowgraphInfo(context),
                                                                renameBlock(context),
                                                                benchmark(context),
-                                                               remoteQr(context),
                                                                dependencies(context),
-                                                               feedback(context) {}
+                                                               feedback(context),
+                                                               remoteQr(context) {}
 
     ModalView::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
@@ -57,14 +57,14 @@ struct ModalPresenter {
             case ModalContent::Benchmark:
                 config.benchmark = benchmark.build();
                 break;
-            case ModalContent::RemoteQr:
-                config.remoteQr = remoteQr.build();
-                break;
             case ModalContent::Dependencies:
                 config.dependencies = dependencies.build();
                 break;
             case ModalContent::Feedback:
                 config.feedback = feedback.build();
+                break;
+            case ModalContent::RemoteQr:
+                config.remoteQr = remoteQr.build();
                 break;
         }
 

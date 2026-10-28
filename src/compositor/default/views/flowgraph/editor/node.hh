@@ -265,9 +265,6 @@ struct FlowgraphNode {
         std::string name;
         std::string module;
         std::string title;
-        DeviceType device = DeviceType::CPU;
-        RuntimeType runtime = RuntimeType::NATIVE;
-        ProviderType provider = "generic";
         Block::State state = Block::State::None;
         Block::NodeSize nodeSize = Block::NodeSize::S;
         std::string diagnostic;
@@ -496,7 +493,6 @@ struct FlowgraphNode {
         }
 
         menu.update({
-            .id = this->config.id + ":context-menu",
             .open = menuOpen,
             .pasteEnabled = this->config.pasteEnabled,
             .configDetachEnabled = hasConfigFields,

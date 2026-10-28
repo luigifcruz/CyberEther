@@ -118,7 +118,6 @@ struct MenuRig {
 
     void show() {
         menu.update({
-            .id = "fft:context-menu",
             .open = true,
             .pasteEnabled = pasteEnabled,
             .configDetachEnabled = configDetachEnabled,

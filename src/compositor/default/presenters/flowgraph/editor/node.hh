@@ -162,17 +162,14 @@ struct FlowgraphNodePresenter {
             .name = blockName,
             .module = blockData.type,
             .title = blockData.title,
-            .device = blockData.device,
-            .runtime = blockData.runtime,
-            .provider = blockData.provider,
             .state = blockState,
             .nodeSize = blockData.nodeSize,
             .diagnostic = hasDiagnostic ? Sakura::CleanUserMessage(blockData.diagnostic) : "",
         };
         block.deviceOptions = catalog.buildDeviceOptions(block.module,
-                                                         block.device,
-                                                         block.runtime,
-                                                         block.provider);
+                                                         blockData.device,
+                                                         blockData.runtime,
+                                                         blockData.provider);
 
         NodeMeta nodeMeta;
         flowgraph->metadata().get("node", nodeMeta, blockName);

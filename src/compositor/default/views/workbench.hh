@@ -89,10 +89,6 @@ struct WorkspaceShellView {
         return titlebar;
     }
 
-    const TitlebarView& bar() const {
-        return titlebar;
-    }
-
     Sakura::Dock& dock() {
         return workspace;
     }

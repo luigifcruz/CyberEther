@@ -83,7 +83,7 @@ class AgentLabels {
         if (value.back() == '.') {
             value.pop_back();
         }
-        return value + "M";
+        return jst::fmt::format("{}M", value);
     }
 
     static std::string Price(F64 dollars) {
@@ -92,10 +92,6 @@ class AgentLabels {
         }
         const bool cents = std::abs(dollars * 100.0 - std::round(dollars * 100.0)) < 1e-6;
         return cents ? jst::fmt::format("${:.2f}", dollars) : jst::fmt::format("${:.3f}", dollars);
-    }
-
-    static std::string Context(U64 tokens) {
-        return tokens == 0 ? "" : Tokens(tokens);
     }
 
     static AgentProviderStatus Health(Agent::Provider::Error::Kind kind) {

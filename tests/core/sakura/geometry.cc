@@ -21,6 +21,7 @@
 #include "render/sakura/detail/helpers.hh"
 #include "render/sakura/detail/occlusion.hh"
 #include "render/sakura/detail/underlay.hh"
+#include "render/sakura/detail/voice_wave.hh"
 #include "render/sakura/surface_presenter.hh"
 #include "render/sakura/metrics.hh"
 
@@ -1107,6 +1108,71 @@ TEST_CASE("Attached flowgraph cards redraw new content without rebuilding and st
     CHECK_FALSE(Sakura::Access::hasUnbuilt(host));
     REQUIRE(Sakura::Access::buildPending(host, rig.ctx) == Result::SUCCESS);
     CHECK(rig.surface.programs.size() == programs);
+}
+
+TEST_CASE("Attached voice waves upload every field at the translated rect and scissor to the combined clip",
+          "[core][sakura][geometry][voice]") {
+    Rig rig;
+    if (!rig.supported()) {
+        SKIP("Unbound voice wave resources require Vulkan or WebGPU support.");
+    }
+    Sakura::VoiceWave wave;
+    Sakura::VoiceWave::Config config = {
+        .rect = {100.0f, 50.0f, 200.0f, 40.0f},
+        .pitch = 2.5f,
+        .dot = 0.85f,
+        .cornerRadius = 14.0f,
+        .margin = 2.35f,
+        .time = 1.5f,
+        .busy = 0.25f,
+        .activity = 0.5f,
+        .level = 0.75f,
+        .listeningColor = {0.1f, 0.2f, 0.3f, 1.0f},
+        .busyColor = {0.4f, 0.5f, 0.6f, 1.0f},
+        .dimColor = {0.7f, 0.8f, 0.9f, 1.0f},
+        .clip = Rect{100.0f, 50.0f, 100.0f, 40.0f},
+    };
+    wave.update(config);
+    REQUIRE(rig.build(wave) == Result::SUCCESS);
+    rig.drawable().translation = {10.0f, 20.0f};
+    rig.drawable().inherited = Rect{150.0f, 0.0f, 400.0f, 400.0f};
+    REQUIRE(rig.upload() == Result::SUCCESS);
+    CHECK(rig.program().enabled());
+
+    const auto uniforms = Uniforms(rig.program());
+    REQUIRE(uniforms.size() == 28);
+    CHECK(uniforms[0] == Approx(-1.0f + 2.0f * 210.0f / 800.0f));
+    CHECK(uniforms[1] == Approx(1.0f - 2.0f * 90.0f / 600.0f));
+    CHECK(uniforms[2] == Approx(200.0f / 800.0f));
+    CHECK(uniforms[3] == Approx(-40.0f / 600.0f));
+    CHECK(std::vector<F32>(uniforms.begin() + 4, uniforms.end()) ==
+          std::vector<F32>{200.0f, 40.0f, 2.5f, 0.85f, 1.5f, 0.25f, 0.5f, 0.75f, 0.1f, 0.2f, 0.3f, 1.0f,
+                           0.4f, 0.5f, 0.6f, 1.0f, 0.7f, 0.8f, 0.9f, 1.0f, 14.0f, 2.35f, 0.0f, 0.0f});
+    const auto scissor = rig.program().getConfig().scissorRect;
+    REQUIRE(scissor.has_value());
+    CHECK(scissor->x == 160);
+    CHECK(scissor->y == 70);
+    CHECK(scissor->width == 50);
+    CHECK(scissor->height == 40);
+
+    config.clip.reset();
+    wave.update(config);
+    rig.drawable().inherited.reset();
+    REQUIRE(rig.upload() == Result::SUCCESS);
+    CHECK_FALSE(rig.program().getConfig().scissorRect.has_value());
+
+    config.pitch = 0.0f;
+    wave.update(config);
+    REQUIRE(rig.upload() == Result::SUCCESS);
+    CHECK_FALSE(rig.program().enabled());
+
+    config.pitch = 2.5f;
+    wave.update(config);
+    REQUIRE(rig.upload() == Result::SUCCESS);
+    CHECK(rig.program().enabled());
+    rig.drawable().conceal();
+    CHECK_FALSE(rig.program().enabled());
+    CHECK_FALSE(Sakura::Access::resourceDirty(wave));
 }
 
 TEST_CASE("Attached images rebuild when the texture is swapped and repaint for visual changes",

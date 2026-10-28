@@ -90,56 +90,6 @@ TEST_CASE("Unavailable voice leaves the active text conversation alone",
     CHECK_FALSE(notice.empty());
 }
 
-TEST_CASE("Agent settings entry points focus the settings tab and retain the requested page",
-          "[agent][compositor][workspace]") {
-    DefaultCompositorState state;
-    DefaultCompositorCallbacks callbacks;
-    state.agent.settings.enabled = false;
-    AgentRuntime runtime(state, callbacks);
-    AgentActions actions(state, callbacks, runtime);
-
-    WorkbenchActions::Open(state, WorkspaceTab::Start);
-    REQUIRE(actions.handle(MailOpenAgentModelPicker{}) == Result::SUCCESS);
-    CHECK(state.settingsTabActive());
-    CHECK_FALSE(state.startTabActive());
-    CHECK(state.interface.settingsTabRequests == 1);
-    CHECK(state.settings.section == SettingsSection::Intelligence);
-    CHECK(state.settings.intelligencePage == IntelligencePage::AddModel);
-
-    WorkbenchActions::Open(state, WorkspaceTab::Start);
-    REQUIRE(actions.handle(MailOpenAgentProviderEditor{}) == Result::SUCCESS);
-    CHECK(state.settingsTabActive());
-    CHECK_FALSE(state.startTabActive());
-    CHECK(state.interface.settingsTabRequests == 2);
-    CHECK(state.settings.section == SettingsSection::Intelligence);
-    CHECK(state.settings.intelligencePage == IntelligencePage::Provider);
-}
-
-TEST_CASE("Intelligence sub-pages open and focus the settings tab through the shared settings path",
-          "[agent][compositor][settings]") {
-    DefaultCompositorState state;
-    state.agent.settings.enabled = false;
-    state.interface.startTab = true;
-    state.interface.focusedTab = WorkspaceTab::Start;
-    state.settings.registryPage = RegistryPage::AddPlugin;
-    DefaultCompositorCallbacks callbacks;
-    AgentRuntime runtime(state, callbacks);
-    AgentActions actions(state, callbacks, runtime);
-
-    REQUIRE(actions.handle(MailOpenAgentProviderEditor{}) == Result::SUCCESS);
-    CHECK(state.interface.settingsTab);
-    CHECK(state.settingsTabActive());
-    CHECK_FALSE(state.startTabActive());
-    CHECK(state.interface.settingsTabRequests == 1);
-    CHECK(state.settings.section == SettingsSection::Intelligence);
-    CHECK(state.settings.intelligencePage == IntelligencePage::Provider);
-    CHECK(state.settings.registryPage == RegistryPage::Overview);
-
-    REQUIRE(actions.handle(MailOpenAgentModelPicker{}) == Result::SUCCESS);
-    CHECK(state.interface.settingsTabRequests == 2);
-    CHECK(state.settings.intelligencePage == IntelligencePage::AddModel);
-}
-
 TEST_CASE("Cancelled compositor commands cannot apply queued graph mutations",
           "[agent][compositor][cancellation]") {
     REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);
@@ -522,6 +472,31 @@ TEST_CASE("Agent tools return fresh rendered bounds without changing automatic s
 
     REQUIRE(graph->blockDestroy("source", false) == Result::SUCCESS);
     REQUIRE(graph->destroy() == Result::SUCCESS);
+}
+
+TEST_CASE("Intelligence sub-pages open and focus the settings tab through the shared settings path",
+          "[agent][compositor][settings]") {
+    DefaultCompositorState state;
+    state.agent.settings.enabled = false;
+    state.interface.startTab = true;
+    state.interface.focusedTab = WorkspaceTab::Start;
+    state.settings.registryPage = RegistryPage::AddPlugin;
+    DefaultCompositorCallbacks callbacks;
+    AgentRuntime runtime(state, callbacks);
+    AgentActions actions(state, callbacks, runtime);
+
+    REQUIRE(actions.handle(MailOpenAgentProviderEditor{}) == Result::SUCCESS);
+    CHECK(state.interface.settingsTab);
+    CHECK(state.settingsTabActive());
+    CHECK_FALSE(state.startTabActive());
+    CHECK(state.interface.settingsTabRequests == 1);
+    CHECK(state.settings.section == SettingsSection::Intelligence);
+    CHECK(state.settings.intelligencePage == IntelligencePage::Provider);
+    CHECK(state.settings.registryPage == RegistryPage::Overview);
+
+    REQUIRE(actions.handle(MailOpenAgentModelPicker{}) == Result::SUCCESS);
+    CHECK(state.interface.settingsTabRequests == 2);
+    CHECK(state.settings.intelligencePage == IntelligencePage::AddModel);
 }
 
 TEST_CASE("A reply that finishes while the assistant is hidden stays unread until the chat is shown",

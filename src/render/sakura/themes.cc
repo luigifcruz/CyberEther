@@ -15,9 +15,6 @@ const std::unordered_map<std::string, Palette> Themes = {
             // Welcome Card Colors
             {"welcome_card_bg", {0.09f, 0.09f, 0.09f, 1.00f}},
             {"welcome_card_hovered", {0.13f, 0.13f, 0.13f, 1.00f}},
-            {"welcome_icon_new", {0.30f, 0.75f, 0.95f, 1.0f}},
-            {"welcome_icon_open", {0.30f, 0.75f, 0.95f, 1.0f}},
-            {"welcome_icon_examples", {0.30f, 0.75f, 0.95f, 1.0f}},
 
             // Gallery Accent Colors
             {"gallery_green", {0.329f, 0.800f, 0.522f, 1.0f}},
@@ -200,8 +197,6 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"tile_button_hover", {0.97f, 0.97f, 0.98f, 1.00f}},
             {"tile_button_active_bg", {0.30f, 0.75f, 0.95f, 0.18f}},
             {"tile_shadow", {0.00f, 0.00f, 0.00f, 0.55f}},
-            {"tile_highlight", {1.00f, 1.00f, 1.00f, 0.06f}},
-            {"tile_rim", {1.00f, 1.00f, 1.00f, 0.00f}},
             {"drop_fill", {0.24f, 0.52f, 0.98f, 0.18f}},
             {"drop_border", {0.30f, 0.58f, 1.00f, 0.95f}},
             {"pill_bg", {0.06f, 0.06f, 0.065f, 1.00f}},
@@ -212,7 +207,6 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"chrome_button_hover", {1.00f, 1.00f, 1.00f, 0.10f}},
 
             // Settings Colors
-            {"setting_card_bg", {0.09f, 0.09f, 0.09f, 1.00f}},
             {"setting_card_border", {1.00f, 1.00f, 1.00f, 0.08f}},
             {"setting_card_hovered", {1.00f, 1.00f, 1.00f, 0.04f}},
             {"primary_btn", {0.96f, 0.96f, 0.96f, 1.00f}},
@@ -239,8 +233,6 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"node_pin", {0.878f, 0.573f, 0.0f, 1.0f}},
             {"node_link", {0.878f, 0.573f, 0.0f, 1.0f}},
             {"node_toggle_on", {0.40f, 0.80f, 0.40f, 1.0f}},
-            {"node_overlay_button", {30.0f / 255.0f, 30.0f / 255.0f, 30.0f / 255.0f, 200.0f / 255.0f}},
-            {"node_overlay_button_hovered", {60.0f / 255.0f, 60.0f / 255.0f, 60.0f / 255.0f, 230.0f / 255.0f}},
             {"grid_line", {0.12f, 0.12f, 0.13f, 1.0f}},
 
         }
@@ -254,9 +246,6 @@ const std::unordered_map<std::string, Palette> Themes = {
             // Welcome Card Colors
             {"welcome_card_bg", {1.00f, 1.00f, 1.00f, 1.00f}},
             {"welcome_card_hovered", {0.965f, 0.965f, 0.97f, 1.00f}},
-            {"welcome_icon_new", {0.15f, 0.55f, 0.85f, 1.0f}},
-            {"welcome_icon_open", {0.15f, 0.55f, 0.85f, 1.0f}},
-            {"welcome_icon_examples", {0.15f, 0.55f, 0.85f, 1.0f}},
 
             // Gallery Accent Colors
             {"gallery_green", {0.10f, 0.52f, 0.28f, 1.0f}},
@@ -439,8 +428,6 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"tile_button_hover", {0.04f, 0.04f, 0.05f, 1.00f}},
             {"tile_button_active_bg", {0.15f, 0.55f, 0.85f, 0.14f}},
             {"tile_shadow", {0.00f, 0.00f, 0.00f, 0.14f}},
-            {"tile_highlight", {1.00f, 1.00f, 1.00f, 0.00f}},
-            {"tile_rim", {1.00f, 1.00f, 1.00f, 1.00f}},
             {"drop_fill", {0.15f, 0.45f, 0.95f, 0.14f}},
             {"drop_border", {0.15f, 0.45f, 0.95f, 0.90f}},
             {"pill_bg", {0.92f, 0.92f, 0.93f, 1.00f}},
@@ -451,7 +438,6 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"chrome_button_hover", {0.00f, 0.00f, 0.00f, 0.07f}},
 
             // Settings Colors
-            {"setting_card_bg", {1.00f, 1.00f, 1.00f, 1.00f}},
             {"setting_card_border", {0.00f, 0.00f, 0.00f, 0.09f}},
             {"setting_card_hovered", {0.00f, 0.00f, 0.00f, 0.03f}},
             {"primary_btn", {0.10f, 0.10f, 0.10f, 1.00f}},
@@ -478,8 +464,6 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"node_pin", {0.92f, 0.62f, 0.08f, 1.0f}},
             {"node_link", {0.92f, 0.62f, 0.08f, 1.0f}},
             {"node_toggle_on", {0.40f, 0.80f, 0.40f, 1.0f}},
-            {"node_overlay_button", {30.0f / 255.0f, 30.0f / 255.0f, 30.0f / 255.0f, 200.0f / 255.0f}},
-            {"node_overlay_button_hovered", {60.0f / 255.0f, 60.0f / 255.0f, 60.0f / 255.0f, 230.0f / 255.0f}},
             {"grid_line", {0.82f, 0.82f, 0.83f, 1.0f}},
 
         }

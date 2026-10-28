@@ -449,6 +449,30 @@ TEST_CASE("Text inputs size their line to the configured font size", "[core][sak
     CHECK(large.y - base.y == 21.0f - Sakura::Typography::FontSize);
 }
 
+TEST_CASE("Badges repaint without rebuilding when their color keys change", "[core][sakura][settings][retention]") {
+    Scene scene;
+    Sakura::Badge badge;
+    Place place(badge, {10.0f, 10.0f, 120.0f, 22.0f});
+    Frames frames(place, kScreen, scene.context());
+    Sakura::Badge::Config config{.label = "Ready"};
+    const auto update = [&] {
+        badge.update(config);
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+
+    config.backgroundColorKey = "banner_success_bg";
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    config.borderColorKey = "banner_success_border";
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    config.textColorKey = "banner_success_text";
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == 0);
+}
+
 TEST_CASE("Feature cards repaint on text changes, restructure once for new parts, and park removed ones",
           "[core][sakura][settings][retention]") {
     Scene scene;
@@ -647,6 +671,45 @@ TEST_CASE("Setting cards keep a viewport separator budget and cull rules outside
     rows(1, 0.0f);
     CHECK(separators().capacity == capacity);
     CHECK(separators().instances.empty());
+}
+
+TEST_CASE("Toggles repaint on value and disabled changes and fade every leaf while disabled",
+          "[core][sakura][settings][retention]") {
+    Scene scene;
+    Sakura::Toggle toggle;
+    bool value = false;
+    bool disabled = false;
+    Place place(toggle, {10.0f, 10.0f, 38.0f, 22.0f});
+    Frames frames(place, kScreen, scene.context());
+    const auto update = [&] {
+        toggle.update({.value = value, .disabled = disabled});
+    };
+    REQUIRE(frames.settle(update));
+    CHECK(Retains(frames, update));
+    value = true;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    disabled = true;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+
+    const auto boxes = Find<Sakura::Box>(toggle);
+    REQUIRE(boxes.size() == 2);
+    const auto track = frames.ctx.color("toggle_on");
+    const auto knob = frames.ctx.color("toggle_knob");
+    CHECK(boxes[0]->config().instances.front().backgroundColor.r == track.r);
+    CHECK(boxes[0]->config().instances.front().backgroundColor.a == track.a * Sakura::kDisabledAlpha);
+    CHECK(boxes[1]->config().instances.front().backgroundColor.r == knob.r);
+    CHECK(boxes[1]->config().instances.front().backgroundColor.a == knob.a * Sakura::kDisabledAlpha);
+    CHECK(QuietMoves(frames, update, {{20.0f, 20.0f}, {25.0f, 20.0f}}, [&](const MouseEvent& e) {
+        return place.send(e);
+    }));
+
+    disabled = false;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(boxes[0]->config().instances.front().backgroundColor.a == track.a);
+    CHECK(frames.restructures == 0);
 }
 
 TEST_CASE("Text inputs scale their font size with the pixel ratio and draw the hint in the configured font",

@@ -372,7 +372,7 @@ TEST_CASE("Text with icon glyphs settles", "[core][sakura][retention]") {
     Place place(text, {10.0f, 10.0f, 200.0f, 20.0f});
     Frames frames(place, kScreen, scene.context());
     const auto update = [&] {
-        text.update({.str = "\xef\x80\x93 Save", .font = Sakura::Text::Font::Bold});
+        text.update({.str = "\xee\x85\x94 Save", .font = Sakura::Text::Font::Bold});
     };
     REQUIRE(frames.settle(update));
     CHECK(Retains(frames, update));

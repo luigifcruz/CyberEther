@@ -218,39 +218,31 @@ struct WorkbenchActions {
     }
 
     void reconcileModal() {
-        if (!state.modal.content.has_value()) {
-            state.modal.flowgraph.reset();
+        auto& modal = state.modal;
+        if (!modal.content.has_value()) {
+            modal.flowgraph.reset();
             return;
         }
 
-        if (state.modal.content == ModalContent::RemoteQr && !state.remote.started) {
-            state.modal.content.reset();
+        if (modal.content == ModalContent::RemoteQr && !state.remote.started) {
+            modal.content.reset();
             return;
         }
 
-        if (state.modal.content == ModalContent::FlowgraphInfo) {
-            const std::optional<std::string> targetFlowgraph = state.modal.flowgraph.has_value()
-                ? state.modal.flowgraph
-                : state.interface.focusedFlowgraph;
-            if (!targetFlowgraph.has_value() || !state.flowgraph.items.contains(targetFlowgraph.value())) {
-                state.modal.content.reset();
-                state.modal.flowgraph.reset();
-            }
+        if (modal.content != ModalContent::FlowgraphInfo && modal.content != ModalContent::RenameBlock) {
             return;
         }
 
-        if (state.modal.content == ModalContent::RenameBlock) {
-            const std::optional<std::string> targetFlowgraph = state.modal.flowgraph.has_value()
-                ? state.modal.flowgraph
-                : state.interface.focusedFlowgraph;
-            if (!targetFlowgraph.has_value() ||
-                !state.flowgraph.items.contains(targetFlowgraph.value()) ||
-                !state.modal.renameBlockOldName.has_value() ||
-                !state.flowgraph.items.at(targetFlowgraph.value())->view().has(state.modal.renameBlockOldName.value())) {
-                state.modal.content.reset();
-                state.modal.flowgraph.reset();
-                state.modal.renameBlockOldName.reset();
-            }
+        const auto target = modal.flowgraph.has_value() ? modal.flowgraph : state.interface.focusedFlowgraph;
+        const bool missing = !target.has_value() || !state.flowgraph.items.contains(target.value());
+        const bool renameMissing = modal.content == ModalContent::RenameBlock &&
+                                   (missing || !modal.renameBlockOldName.has_value() ||
+                                    !state.flowgraph.items.at(target.value())->view().has(
+                                        modal.renameBlockOldName.value()));
+        if (missing || renameMissing) {
+            modal.content.reset();
+            modal.flowgraph.reset();
+            modal.renameBlockOldName.reset();
         }
     }
 
@@ -344,8 +336,7 @@ struct WorkbenchActions {
 
     Result handle(const MailCopyText& msg) {
         callbacks.setClipboardText(msg.value);
-        const std::string notification = msg.label + " copied to clipboard.";
-        callbacks.notify(Sakura::ToastType::Info, 3000, notification);
+        callbacks.notify(Sakura::ToastType::Info, 3000, jst::fmt::format("{} copied to clipboard.", msg.label));
         return Result::SUCCESS;
     }
 
