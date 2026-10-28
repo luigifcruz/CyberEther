@@ -1442,7 +1442,7 @@ struct DocumentBuilder {
             const U64 start = display.size();
             for (const char c : std::string_view(kFootnoteBackref)) {
                 display += c;
-                styles.push_back(Style::Link);
+                styles.push_back(Style::Backref);
             }
             if (k > 0) {
                 for (const char c : std::to_string(k + 1)) {
@@ -1720,6 +1720,7 @@ struct TextMarkdown::Impl {
         ColorRGBA<F32> rule;
         ColorRGBA<F32> marker;
         ColorRGBA<F32> label;
+        ColorRGBA<F32> labelHovered;
         std::array<ColorRGBA<F32>, kCalloutTones> callout;
         F32 scrollX = 0.0f;
         const TextGrid::Metrics* metrics = nullptr;
@@ -1773,6 +1774,8 @@ struct TextMarkdown::Impl {
     std::vector<DetailsState> details;
     std::vector<HitTarget> targets;
     std::optional<HitTarget> pressed;
+    std::optional<U64> hoveredCopy;
+    std::optional<Extent2D<F32>> pointer;
     TextMarkdown* owner = nullptr;
     bool tablesLayoutValid = false;
     F32 tablesLayoutWidth = -1.0f;
@@ -2047,8 +2050,11 @@ struct TextMarkdown::Impl {
         }
         keys.emplace_back(kStatLabelColorKey);
         keys.resize(Style::FootnoteRef - 1, kFootnoteColorKey);
-        keys.push_back(config.styleColorKeys.size() >= Style::Link ? config.styleColorKeys[Style::Link - 1] : "");
+        const std::string link =
+            config.styleColorKeys.size() >= Style::Link ? config.styleColorKeys[Style::Link - 1] : "";
+        keys.push_back(link);
         keys.emplace_back(kMutedColorKey);
+        keys.push_back(link);
         return keys;
     }
 
@@ -2059,6 +2065,7 @@ struct TextMarkdown::Impl {
         scales.push_back(0.0f);
         scales.resize(Style::FootnoteRef - 1, 0.0f);
         scales.push_back(kFootnoteRefScale);
+        scales.push_back(0.0f);
         scales.push_back(0.0f);
         return scales;
     }
@@ -2079,7 +2086,14 @@ struct TextMarkdown::Impl {
         }
         fonts.emplace_back("");
         fonts.emplace_back("");
+        fonts.emplace_back("");
         return fonts;
+    }
+
+    static std::vector<bool> gridStyleUnderlines() {
+        std::vector<bool> underlines(Style::Link, false);
+        underlines.back() = true;
+        return underlines;
     }
 
     static std::vector<F32> gridStyleRaises() {
@@ -2163,6 +2177,7 @@ struct TextMarkdown::Impl {
             .styleBackgroundColorKeys = config.styleBackgroundColorKeys,
             .styleScales = gridStyleScales(),
             .styleRaises = gridStyleRaises(),
+            .styleUnderlines = gridStyleUnderlines(),
             .maxLineSegments = kGridLineSegments,
             .styleRevision = styleRevision,
             .styler = [this](const std::vector<std::string>&, U64)
@@ -2214,6 +2229,7 @@ struct TextMarkdown::Impl {
             .rule = ctx.color(config.gutterSeparatorColorKey),
             .marker = ctx.color(config.lineNumberColorKey),
             .label = ctx.color(kCodeHeaderColorKey),
+            .labelHovered = ctx.color(config.textColorKey),
             .callout = calloutColors(ctx),
             .scrollX = metrics.scrollX + metrics.overscroll.x,
             .metrics = &metrics,
@@ -2314,12 +2330,17 @@ struct TextMarkdown::Impl {
             .fontSize = size,
             .alignment = {0, 1},
         });
-        pools.codeBoxes.push_back({.rect = copy, .visible = frame.on, .backgroundColor = frame.codeBlock});
+        const bool hovered = hoveredCopy == deco.first;
+        pools.codeBoxes.push_back({
+            .rect = copy,
+            .visible = frame.on,
+            .backgroundColor = hovered ? frame.codeBlockBorder : frame.codeBlock,
+        });
         pools.headers.push_back({
             .rect = copy,
             .str = kCodeCopyLabel,
             .visible = frame.on,
-            .color = frame.label,
+            .color = hovered ? frame.labelHovered : frame.label,
             .fontSize = size,
             .alignment = {1, 1},
         });
@@ -2564,6 +2585,14 @@ struct TextMarkdown::Impl {
         targets = std::move(pools.targets);
     }
 
+    std::optional<U64> copyAt(const std::optional<Extent2D<F32>>& point, const Rect& visible) const {
+        if (!point.has_value()) {
+            return std::nullopt;
+        }
+        const auto target = targetAt(*point, visible);
+        return target && target->copy ? std::optional<U64>(target->line) : std::nullopt;
+    }
+
     std::optional<HitTarget> targetAt(const Extent2D<F32>& point, const Rect& visible) const {
         if (!visible.contains(point.x, point.y)) {
             return std::nullopt;
@@ -2681,6 +2710,15 @@ void TextMarkdown::layout(const Context& ctx) {
 
     const auto decoFrame = impl->decorationFrame(ctx, bounds, clipPixel);
     impl->uploadDecorations(decoFrame, impl->buildDecorations(decoFrame));
+    std::optional<Extent2D<F32>> pointer;
+    if (impl->pointer.has_value()) {
+        const auto offset = translation();
+        pointer = Extent2D<F32>{impl->pointer->x - offset.x, impl->pointer->y - offset.y};
+    }
+    if (const auto hovered = impl->copyAt(pointer, clipPixel); hovered != impl->hoveredCopy) {
+        impl->hoveredCopy = hovered;
+        impl->uploadDecorations(decoFrame, impl->buildDecorations(decoFrame));
+    }
 
     for (auto& chrome : impl->calloutChrome) {
         layoutChild(ctx, chrome, bounds);
@@ -2711,9 +2749,23 @@ bool TextMarkdown::mouseEvent(const MouseEvent& event) {
                 return true;
             }
             break;
+        case MouseEventType::Move: {
+            const auto offset = translation();
+            impl->pointer = Extent2D<F32>{event.position.x + offset.x, event.position.y + offset.y};
+            const auto hovered = impl->copyAt(event.position, visible);
+            if (hovered != impl->hoveredCopy) {
+                impl->hoveredCopy = hovered;
+                invalidate(Dirty::Layout);
+            }
+            break;
+        }
         case MouseEventType::Cancel:
         case MouseEventType::Leave:
             impl->pressed.reset();
+            impl->pointer.reset();
+            if (std::exchange(impl->hoveredCopy, std::nullopt).has_value()) {
+                invalidate(Dirty::Layout);
+            }
             break;
         default:
             break;

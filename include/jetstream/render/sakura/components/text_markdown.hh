@@ -38,6 +38,7 @@ struct TextMarkdown : public Component {
         static constexpr StyleId FootnoteVariants = 4;
         static constexpr StyleId FootnoteRef = FootnoteBase + FootnoteVariants;
         static constexpr StyleId Muted = FootnoteRef + 1;
+        static constexpr StyleId Backref = Muted + 1;
 
         static constexpr StyleId Callout(StyleId tone, StyleId emphasis) {
             return static_cast<StyleId>(CalloutBase + tone * CalloutVariants + emphasis);
@@ -79,10 +80,10 @@ struct TextMarkdown : public Component {
         std::string scrollbarThumbColorKey = "editor_scrollbar_thumb";
         std::string codeBlockColorKey = "markdown_code_block";
         std::string codeBlockBorderColorKey = "markdown_code_block_border";
-        std::vector<std::string> styleColorKeys = {"", "", "", "", "cyber_blue", ""};
+        std::vector<std::string> styleColorKeys = {"", "", "", "", "", ""};
         std::vector<std::string> styleFonts = {Typography::BodyBoldFont, Typography::BodyItalicFont,
-                                               Typography::BodyBoldItalicFont, Typography::MonoFont, "",
-                                               Typography::MonoFont};
+                                               Typography::BodyBoldItalicFont, Typography::MonoFont,
+                                               Typography::BodyBoldFont, Typography::MonoFont};
         std::vector<std::string> styleBackgroundColorKeys = {"", "", "", "editor_scrollbar_track", "", ""};
         std::vector<F32> styleScales = {1.0f, 1.0f, 1.0f, 0.9f, 1.0f, 1.0f};
         std::vector<std::string> syntaxColorKeys = {"editor_comment", "editor_keyword", "editor_string",

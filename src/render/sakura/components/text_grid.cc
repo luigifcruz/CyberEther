@@ -37,6 +37,8 @@ using Unicode = Jetstream::Render::Components::Text::Unicode;
 
 constexpr F32 kStyleBackgroundHeightRatio = 1.3f;
 constexpr F32 kStyleBackgroundCornerRatio = 0.25f;
+constexpr F32 kUnderlineOffsetRatio = 0.45f;
+constexpr F32 kUnderlineThicknessRatio = 1.0f / 15.0f;
 constexpr F32 kScrollbarThicknessFontRatio = 6.0f / Typography::FontSize;
 constexpr F32 kScrollbarMarginFontRatio = 4.0f / Typography::FontSize;
 constexpr F32 kSeparatorWidthFontRatio = 1.0f / Typography::FontSize;
@@ -198,6 +200,7 @@ struct TextGrid::Impl {
         std::vector<std::vector<Label::Instance>> extraText;
         std::vector<std::vector<Label::Instance>> laneText;
         std::vector<Box::Instance> styleBackgrounds;
+        std::vector<Box::Instance> underlines;
         std::vector<Label::Instance> lineNumbers;
         std::vector<Box::Instance> selection;
         std::vector<Box::Instance> matches;
@@ -231,6 +234,7 @@ struct TextGrid::Impl {
     Box selectionMatchBox;
     Box selectionBox;
     Box styleBackgroundBox;
+    Box underlineBox;
     Box gutterBox;
     Box cursorBox;
     Label codeLabels;
@@ -1125,6 +1129,15 @@ struct TextGrid::Impl {
 
     F32 raiseForStyle(StyleId id) const {
         return id == 0 || id > config.styleRaises.size() ? 0.0f : config.styleRaises[id - 1];
+    }
+
+    bool underlinedStyle(StyleId id) const {
+        return id != 0 && id <= config.styleUnderlines.size() && config.styleUnderlines[id - 1];
+    }
+
+    bool underlinesActive() const {
+        return std::find(config.styleUnderlines.begin(), config.styleUnderlines.end(), true) !=
+               config.styleUnderlines.end();
     }
 
     ColorRGBA<F32> backgroundForStyle(StyleId id) const {
@@ -2616,6 +2629,22 @@ struct TextGrid::Impl {
                     });
                 }
             }
+            if (underlinedStyle(style) && !icon) {
+                const F32 thickness = std::max(1.0f, std::round(glyphSize * kUnderlineThicknessRatio));
+                const F32 y = std::round(ctx.top - raiseForStyle(style) * ctx.glyphSize + ctx.height * 0.5f +
+                                         glyphSize * kUnderlineOffsetRatio);
+                Rect lineRect = {segX + leftPad, y, std::max(0.0f, segW - leftPad - rightPad), thickness};
+                if (ctx.clip) {
+                    lineRect = Intersect(lineRect, {ctx.clip->x, lineRect.y, ctx.clip->width, lineRect.height});
+                }
+                if (lineRect.width > 0.0f && pools.underlines.size() < frame.segmentCapacity) {
+                    pools.underlines.push_back({
+                        .rect = lineRect,
+                        .visible = true,
+                        .backgroundColor = colorForStyle(style),
+                    });
+                }
+            }
             startColumn = endColumn;
         }
     }
@@ -2713,6 +2742,11 @@ struct TextGrid::Impl {
             .clip = frame.textClip,
             .cornerRadius = contentFontSize() * kStyleBackgroundCornerRatio,
             .capacity = hasStyleBackgrounds ? segmentCapacity : 0,
+        });
+        underlineBox.update({
+            .instances = std::move(pools.underlines),
+            .clip = frame.textClip,
+            .capacity = underlinesActive() ? segmentCapacity : 0,
         });
         codeLabels.update({
             .instances = std::move(pools.text),
@@ -2826,6 +2860,7 @@ TextGrid::TextGrid() {
     addChild(this->impl->numberLabels);
     addChild(this->impl->codeLabels);
     addChild(this->impl->cursorBox);
+    addChild(this->impl->underlineBox);
     addChild(this->impl->scroll);
     this->impl->ensureFontPools();
 }

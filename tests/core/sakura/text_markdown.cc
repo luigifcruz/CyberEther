@@ -852,14 +852,24 @@ TEST_CASE("Markdown autolinks keep balanced parentheses and drop trailing punctu
                      .value = "(see https://github.com/a/b/pull/7) and https://github.com/a/b/compare/v1_(x).",
                      .fontSize = 15.0f});
     host.place(ctx, {0.0f, 0.0f, 800.0f, 200.0f});
+    std::string plain;
+    std::string links;
     std::string text;
     for (const auto* label : Find<Sakura::Label>(markdown)) {
         for (const auto& instance : label->config().instances) {
+            if (!instance.visible) {
+                continue;
+            }
+            (label->config().fontName == Sakura::Typography::BodyBoldFont ? links : plain) += instance.str;
             text += instance.str;
         }
     }
-    CHECK(text.find("(see #7) and") != std::string::npos);
-    CHECK(text.find("v1_(x).") != std::string::npos);
+    CHECK(plain.find("(see ") != std::string::npos);
+    CHECK(plain.find(") and ") != std::string::npos);
+    CHECK(links.find("#7") != std::string::npos);
+    CHECK(links.find("v1_(x)") != std::string::npos);
+    CHECK(links.find("v1_(x).") == std::string::npos);
+    CHECK(plain.back() == '.');
     CHECK(text.find("github.com") == std::string::npos);
 }
 
@@ -1708,4 +1718,162 @@ TEST_CASE("Long markdown with a details chevron keeps its layout cache when the 
     const auto elapsed = std::chrono::steady_clock::now() - start;
     CHECK(markdown.metrics().sourceLines.size() > 400);
     CHECK(elapsed < std::chrono::seconds(1));
+}
+
+TEST_CASE("Code block copy buttons brighten while hovered", "[core][sakura][markdown]") {
+    MonoFontWindow window;
+    auto ctx = MakeContext();
+    ctx.render = &window;
+    ctx.palette = DistinctPalette();
+    TextMarkdown markdown;
+    Host host(markdown);
+    markdown.update({.id = "copy-hover", .value = kLongCode, .fontSize = 15.0f});
+    const Jetstream::Rect frame{0.0f, 0.0f, 200.0f, 400.0f};
+    host.place(ctx, frame);
+    const auto copy = [&] {
+        for (const auto* label : Direct<Sakura::Label>(markdown)) {
+            for (const auto& instance : label->config().instances) {
+                if (instance.str == "COPY" && instance.visible) {
+                    return std::optional<Sakura::Label::Instance>(instance);
+                }
+            }
+        }
+        return std::optional<Sakura::Label::Instance>();
+    };
+    const auto idle = copy();
+    REQUIRE(idle.has_value());
+    CHECK(idle->color == ctx.color("text_secondary"));
+
+    const F32 x = idle->rect.x + idle->rect.width * 0.5f;
+    const F32 y = idle->rect.y + idle->rect.height * 0.5f;
+    host.send(Mouse(MouseEventType::Move, x, y));
+    host.place(ctx, frame);
+    const auto hovered = copy();
+    REQUIRE(hovered.has_value());
+    CHECK(hovered->color == ctx.color("text_primary"));
+
+    host.send(Mouse(MouseEventType::Leave, x, y));
+    host.place(ctx, frame);
+    REQUIRE(copy().has_value());
+    CHECK(copy()->color == ctx.color("text_secondary"));
+}
+
+TEST_CASE("Markdown links render bold in the text color with an underline", "[core][sakura][markdown]") {
+    SakuraTest::FontWindow window;
+    window.load("default_mono", jbmm_compressed_data);
+    window.load("default_body", inter_regular_compressed_data);
+    window.load("default_body_bold", inter_bold_compressed_data);
+    auto ctx = MakeContext();
+    ctx.render = &window;
+    ctx.palette = DistinctPalette();
+    TextMarkdown markdown;
+    Host host(markdown);
+    markdown.update({.id = "links", .value = "Read [the docs](https://example.com) now.", .fontSize = 15.0f});
+    host.place(ctx, {0.0f, 0.0f, 800.0f, 200.0f});
+
+    std::optional<Sakura::Label::Instance> link;
+    for (const auto* label : Find<Sakura::Label>(markdown)) {
+        for (const auto& instance : label->config().instances) {
+            if (instance.visible && instance.str == "the docs") {
+                CHECK(label->config().fontName == Sakura::Typography::BodyBoldFont);
+                link = instance;
+            }
+        }
+    }
+    REQUIRE(link.has_value());
+    CHECK(link->color == ctx.color("text_primary"));
+
+    bool underlined = false;
+    for (const auto* box : Find<Sakura::Box>(markdown)) {
+        for (const auto& instance : box->config().instances) {
+            if (instance.visible && instance.rect.x == Catch::Approx(link->rect.x) &&
+                instance.rect.width == Catch::Approx(link->rect.width) && instance.rect.height <= 2.0f &&
+                instance.rect.y > link->rect.y + link->rect.height * 0.5f) {
+                underlined = underlined || instance.backgroundColor == link->color;
+            }
+        }
+    }
+    CHECK(underlined);
+}
+
+TEST_CASE("Code block copy buttons drop their hover when scrolled away from a still pointer",
+          "[core][sakura][markdown]") {
+    MonoFontWindow window;
+    auto ctx = MakeContext();
+    ctx.render = &window;
+    ctx.palette = DistinctPalette();
+    TextMarkdown markdown;
+    Host host(markdown);
+    std::string value = "Intro.\n\nMore.\n\nEven more.\n\nLast.\n\n" + kLongCode + "\n\n";
+    for (int line = 0; line < 60; ++line) {
+        value += "Line " + std::to_string(line) + ".\n\n";
+    }
+    markdown.update({.id = "copy-scroll", .value = value, .fontSize = 15.0f, .scrollbar = true});
+    const Jetstream::Rect frame{0.0f, 0.0f, 200.0f, 300.0f};
+    host.place(ctx, frame);
+    const auto copy = [&] {
+        for (const auto* label : Direct<Sakura::Label>(markdown)) {
+            for (const auto& instance : label->config().instances) {
+                if (instance.str == "COPY" && instance.visible) {
+                    return std::optional<Sakura::Label::Instance>(instance);
+                }
+            }
+        }
+        return std::optional<Sakura::Label::Instance>();
+    };
+    const auto idle = copy();
+    REQUIRE(idle.has_value());
+    const F32 x = idle->rect.x + idle->rect.width * 0.5f;
+    const F32 y = idle->rect.y + idle->rect.height * 0.5f;
+    host.send(Mouse(MouseEventType::Move, x, y));
+    host.place(ctx, frame);
+    REQUIRE(copy()->color == ctx.color("text_primary"));
+
+    host.send(Wheel(x, y, -1.0f));
+    host.place(ctx, frame);
+    REQUIRE(markdown.metrics().scrollY > 0.0f);
+    const auto scrolled = copy();
+    REQUIRE(scrolled.has_value());
+    CHECK_FALSE(scrolled->rect.contains(x, y));
+    CHECK(scrolled->color == ctx.color("text_secondary"));
+}
+
+TEST_CASE("Code block copy buttons drop their hover when a translated parent pans them away",
+          "[core][sakura][markdown]") {
+    MonoFontWindow window;
+    auto ctx = MakeContext();
+    ctx.render = &window;
+    ctx.palette = DistinctPalette();
+    TextMarkdown markdown;
+    markdown.update({.id = "copy-pan", .value = kLongCode, .fontSize = 15.0f});
+    Place place(markdown, {0.0f, 0.0f, 200.0f, 300.0f});
+    const Jetstream::Rect screen{0.0f, 0.0f, 400.0f, 400.0f};
+    place.place(ctx, screen);
+    const auto copy = [&] {
+        for (const auto* label : Direct<Sakura::Label>(markdown)) {
+            for (const auto& instance : label->config().instances) {
+                if (instance.str == "COPY" && instance.visible) {
+                    return std::optional<Sakura::Label::Instance>(instance);
+                }
+            }
+        }
+        return std::optional<Sakura::Label::Instance>();
+    };
+    const auto idle = copy();
+    REQUIRE(idle.has_value());
+    const F32 x = idle->rect.x + idle->rect.width * 0.5f;
+    const F32 y = idle->rect.y + idle->rect.height * 0.5f;
+    place.send(Mouse(MouseEventType::Move, x, y));
+    place.place(ctx, screen);
+    REQUIRE(copy()->color == ctx.color("text_primary"));
+
+    place.pan({0.0f, 80.0f});
+    place.place(ctx, screen);
+    REQUIRE(copy().has_value());
+    CHECK(copy()->color == ctx.color("text_secondary"));
+
+    place.pan({0.0f, 0.0f});
+    place.place(ctx, screen);
+    REQUIRE(copy().has_value());
+    CHECK(copy()->color == ctx.color("text_primary"));
 }
