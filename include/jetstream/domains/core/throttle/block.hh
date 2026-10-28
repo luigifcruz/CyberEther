@@ -75,7 +75,7 @@ struct Throttle : public Block::Config {
         "samples at 1 MS/s with Interval 8 ms. |\n"
         "| Sample Rate pacing passes buffers at full speed | The input has no "
         "`sampleRate`, and the log warns about it | Use Interval pacing, or set the "
-        "sample rate on the source. |\n"
+        "rate with a Signal Attributes block before it. |\n"
         "| The block reports that it expects a contiguous tensor | The input is "
         "strided, such as a Slice with Contiguous off | Turn on Contiguous in the "
         "Slice. |\n"

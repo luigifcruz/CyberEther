@@ -120,6 +120,7 @@ struct FileReader : public Block::Config {
         "- **File Writer** records files that this block plays.\n"
         "- **Throttle** paces playback to the recorded sample rate.\n"
         "- **Cast** scales integer samples to F32 or CF32.\n"
+        "- **Signal Attributes** sets the rate and frequency of Raw I/Q files.\n"
         "- **Spectrum Analyzer** shows the recorded band."
     );
 };
