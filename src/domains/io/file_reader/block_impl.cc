@@ -57,15 +57,19 @@ Result FileReaderImpl::define() {
                                     "SigMF takes the .sigmf-meta or .sigmf-data file.",
                                     {{"type", "filepicker"}, {"extensions", Parser::MakeSequence({"bin", "raw", "iq", "wav", "dat", "sigmf-meta", "sigmf-data"})}}));
 
+    Parser::Sequence formats;
+    for (const auto& option : Modules::FileReaderFormat::Options()) {
+        formats.emplace_back(Parser::Map{{"label", option.label}, {"value", option.value}});
+    }
     JST_CHECK(defineInterfaceConfig("fileFormat",
                                     "File Format",
                                     "The format of the input file.",
-                                    {{"type", "dropdown"}, {"options", Parser::Sequence{
-                                        Parser::Map{{"label", "Raw"}, {"value", "raw"}},
-                                        Parser::Map{{"label", "SigMF"}, {"value", "sigmf"}},
-                                    }}}));
+                                    {{"type", "dropdown"}, {"options", std::move(formats)}}));
 
-    if (config.fileFormat != "sigmf") {
+    const auto format = Modules::FileReaderFormat::Create(config.fileFormat);
+    const bool describesSamples = format && format->describesSamples();
+
+    if (!describesSamples) {
         Parser::Sequence dataTypes;
         for (const std::string type : {"CF64", "F64", "CF32", "F32", "CI8", "I8", "CU8", "U8", "CI16", "I16", "CU16", "U16"}) {
             dataTypes.emplace_back(Parser::Map{{"label", type}, {"value", type}});
@@ -91,7 +95,7 @@ Result FileReaderImpl::define() {
                                     "Start or stop reading from the file.",
                                     {{"type", "bool"}}));
 
-    if (config.fileFormat == "sigmf") {
+    if (describesSamples) {
         JST_CHECK(defineInterfaceConfig("realTime",
                                         "Real Time",
                                         "Read at the recorded sample rate instead of as fast as the chain runs.",

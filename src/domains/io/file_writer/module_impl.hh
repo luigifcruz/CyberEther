@@ -4,13 +4,13 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
-#include <optional>
-#include <string>
-#include <vector>
+#include <memory>
 
 #include <jetstream/domains/io/file_writer/module.hh>
 #include <jetstream/detail/module_impl.hh>
 #include <jetstream/tools/snapshot.hh>
+
+#include "formats/format.hh"
 
 namespace Jetstream::Modules {
 
@@ -25,26 +25,9 @@ struct FileWriterImpl : public Module::Impl, public DynamicConfig<FileWriter> {
     F32 getThroughput() const;
 
  protected:
-    struct Metadata {
-        struct Capture {
-            U64 sampleStart = 0;
-            std::optional<F64> frequency;
-            std::string datetime;
-        };
-
-        std::filesystem::path metaPath;
-        std::string datatype;
-        std::optional<F64> sampleRate;
-        std::vector<Capture> captures;
-    };
-
-    void resolveSigmfPaths();
-    Result startSigmf(const Tensor& input);
-    Result trackSigmfCapture(const Tensor& input, U64 sampleIndex);
-    Result writeSigmf() const;
     void updateThroughput(const U64 deltaBytes);
 
-    Metadata metadata;
+    std::unique_ptr<FileWriterFormat> format;
 
     std::ofstream dataFile;
     std::filesystem::path filePath;

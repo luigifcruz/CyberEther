@@ -1,5 +1,7 @@
 #include "module_impl.hh"
 
+#include <algorithm>
+
 #include "jetstream/platform.hh"
 
 namespace Jetstream::Modules {
@@ -7,7 +9,7 @@ namespace Jetstream::Modules {
 Result FileWriterImpl::validate() {
     const auto& config = *candidate();
 
-    if (config.fileFormat != "raw" && config.fileFormat != "sigmf") {
+    if (!FileWriterFormat::Create(config.fileFormat)) {
         JST_ERROR("[MODULE_FILE_WRITER] Invalid file format '{}'.",
                   config.fileFormat);
         return Result::ERROR;
@@ -26,15 +28,12 @@ Result FileWriterImpl::create() {
     bytesWritten.publish(0);
     throughputMBs.publish(0.0f);
     filePath.clear();
-    metadata = {};
+    format = FileWriterFormat::Create(fileFormat);
     bytesSinceLastMeasurement = 0;
     lastMeasurementTime = std::chrono::steady_clock::now();
 
     if (!filepath.empty()) {
-        filePath = Platform::PathFromUtf8(filepath);
-        if (fileFormat == "sigmf") {
-            resolveSigmfPaths();
-        }
+        filePath = format->resolve(Platform::PathFromUtf8(filepath));
 
         std::error_code ec;
         if (std::filesystem::exists(filePath, ec) && !ec) {
@@ -62,11 +61,16 @@ Result FileWriterImpl::create() {
         return Result::INCOMPLETE;
     }
 
-    const bool metaExists = fileFormat == "sigmf" && std::filesystem::exists(metadata.metaPath);
-    if ((std::filesystem::exists(filePath) || metaExists) && !overwrite) {
+    const auto companions = format->companions();
+    const bool companionExists = std::any_of(companions.begin(), companions.end(), [](const auto& path) {
+        return std::filesystem::exists(path);
+    });
+    if ((std::filesystem::exists(filePath) || companionExists) && !overwrite) {
         JST_ERROR("[MODULE_FILE_WRITER] File '{}' already exists.", dataPath);
         return Result::ERROR;
     }
+
+    JST_CHECK(format->check(inputs().at("buffer").tensor));
 
     dataFile.open(filePath, std::ios::out | std::ios::binary);
     if (!dataFile.is_open()) {
@@ -76,9 +80,7 @@ Result FileWriterImpl::create() {
 
     bytesWritten.publish(0);
 
-    if (fileFormat == "sigmf") {
-        JST_CHECK(startSigmf(inputs().at("buffer").tensor));
-    }
+    JST_CHECK(format->start(dataFile, inputs().at("buffer").tensor));
 
     JST_INFO("[MODULE_FILE_WRITER] Opened '{}' for writing.", dataPath);
 
@@ -87,10 +89,8 @@ Result FileWriterImpl::create() {
 
 Result FileWriterImpl::destroy() {
     if (dataFile.is_open()) {
+        format->finish(dataFile, bytesWritten.get());
         dataFile.close();
-        if (fileFormat == "sigmf" && !metadata.datatype.empty()) {
-            writeSigmf();
-        }
         JST_INFO("[MODULE_FILE_WRITER] Closed '{}' ({} bytes written).",
                  Platform::PathToUtf8(filePath), bytesWritten.get());
     }

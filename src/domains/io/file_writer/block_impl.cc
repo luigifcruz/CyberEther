@@ -56,13 +56,14 @@ Result FileWriterImpl::define() {
                                     ".sigmf-meta file next to each other.",
                                     {{"type", "filesave"}, {"extensions", Parser::MakeSequence({"bin", "raw", "iq", "wav", "dat", "sigmf-data", "sigmf-meta"})}}));
 
+    Parser::Sequence formats;
+    for (const auto& option : Modules::FileWriterFormat::Options()) {
+        formats.emplace_back(Parser::Map{{"label", option.label}, {"value", option.value}});
+    }
     JST_CHECK(defineInterfaceConfig("fileFormat",
                                     "File Format",
                                     "The format of the output file.",
-                                    {{"type", "dropdown"}, {"options", Parser::Sequence{
-                                        Parser::Map{{"label", "Raw"}, {"value", "raw"}},
-                                        Parser::Map{{"label", "SigMF"}, {"value", "sigmf"}},
-                                    }}}));
+                                    {{"type", "dropdown"}, {"options", std::move(formats)}}));
 
     JST_CHECK(defineInterfaceConfig("overwrite",
                                     "Overwrite",

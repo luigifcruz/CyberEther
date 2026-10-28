@@ -249,7 +249,7 @@ TEST_CASE("FileWriter Module - Invalid file format",
                             impl.runtime, impl.provider);
 
             Modules::FileWriter config;
-            config.fileFormat = "wav";
+            config.fileFormat = "unknown";
             config.recording = false;
             ctx.setConfig(config);
 

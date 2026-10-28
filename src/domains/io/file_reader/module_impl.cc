@@ -20,7 +20,8 @@ Result FileReaderImpl::validate() {
     validatedDataType = DataType::None;
     validatedOutputSizeBytes = 0;
 
-    if (config.fileFormat != "raw" && config.fileFormat != "sigmf") {
+    const auto format = FileReaderFormat::Create(config.fileFormat);
+    if (!format) {
         JST_ERROR("[MODULE_FILE_READER] Invalid file format '{}'.", config.fileFormat);
         return Result::ERROR;
     }
@@ -50,7 +51,7 @@ Result FileReaderImpl::validate() {
         return Result::ERROR;
     }
 
-    const DataType sizingType = config.fileFormat == "sigmf" ? DataType::CF64 : dataType;
+    const DataType sizingType = format->describesSamples() ? DataType::CF64 : dataType;
     U64 outputSizeBytes = 0;
     if (!detail::CheckedMultiply(config.batchSize,
                                  static_cast<U64>(DataTypeSize(sizingType)),
@@ -79,12 +80,13 @@ Result FileReaderImpl::create() {
     recording.dataType = validatedDataType;
     publishedFrequency.reset();
 
+    const auto format = FileReaderFormat::Create(fileFormat);
     Result loaded = Result::SUCCESS;
-    if (fileFormat == "sigmf" && !filepath.empty()) {
-        Recording sigmf;
-        loaded = loadSigmf(sigmf);
+    if (!filepath.empty()) {
+        auto header = recording;
+        loaded = format->load(filepath, header);
         if (loaded == Result::SUCCESS) {
-            recording = std::move(sigmf);
+            recording = std::move(header);
         }
     }
 
@@ -111,7 +113,7 @@ Result FileReaderImpl::create() {
 
     if (recording.sampleRate) {
         JST_CHECK(buffer.setAttribute("sampleRate", static_cast<F32>(*recording.sampleRate)));
-    } else if (fileFormat == "sigmf" && realTime) {
+    } else if (format->describesSamples() && realTime) {
         JST_WARN("[MODULE_FILE_READER] Recording has no sample rate, so Real Time is ignored.");
     }
     pacedSamples = 0;

@@ -1,12 +1,12 @@
-#include "module_impl.hh"
+#include "format.hh"
 
-#include <any>
 #include <chrono>
 #include <unordered_map>
 
 #include <nlohmann/json.hpp>
 
 #include "jetstream/fmt/chrono.h"
+#include "jetstream/logger.hh"
 #include "jetstream/platform.hh"
 
 namespace Jetstream::Modules {
@@ -26,20 +26,6 @@ const std::unordered_map<DataType, std::string> kSigmfDataTypes = {
     {DataType::U8, "ru8"},
 };
 
-std::optional<F64> NumericAttribute(const Tensor& tensor, const std::string& key) {
-    if (!tensor.hasAttribute(key)) {
-        return std::nullopt;
-    }
-    const auto value = tensor.attribute(key);
-    if (const auto* number = std::any_cast<F32>(&value)) {
-        return *number;
-    }
-    if (const auto* number = std::any_cast<F64>(&value)) {
-        return *number;
-    }
-    return std::nullopt;
-}
-
 std::string CurrentDatetime() {
     const auto now = std::chrono::floor<std::chrono::milliseconds>(std::chrono::system_clock::now());
     return jst::fmt::format("{:%Y-%m-%dT%H:%M:%S}Z", now);
@@ -47,55 +33,63 @@ std::string CurrentDatetime() {
 
 }  // namespace
 
-void FileWriterImpl::resolveSigmfPaths() {
-    const auto extension = filePath.extension();
-    auto base = filePath;
+std::filesystem::path FileWriterFormat::Sigmf::resolve(const std::filesystem::path& path) {
+    auto base = path;
+    const auto extension = path.extension();
     if (extension == ".sigmf-meta" || extension == ".sigmf-data") {
-        base = filePath.parent_path() / filePath.stem();
+        base = path.parent_path() / path.stem();
     }
 
-    filePath = base;
-    filePath += ".sigmf-data";
-    metadata.metaPath = base;
-    metadata.metaPath += ".sigmf-meta";
+    metaPath = base;
+    metaPath += ".sigmf-meta";
+
+    auto dataPath = base;
+    dataPath += ".sigmf-data";
+    return dataPath;
 }
 
-Result FileWriterImpl::startSigmf(const Tensor& input) {
-    const auto type = kSigmfDataTypes.find(input.dtype());
-    if (type == kSigmfDataTypes.end()) {
+std::vector<std::filesystem::path> FileWriterFormat::Sigmf::companions() const {
+    return {metaPath};
+}
+
+Result FileWriterFormat::Sigmf::check(const Tensor& input) const {
+    if (!kSigmfDataTypes.contains(input.dtype())) {
         JST_ERROR("[MODULE_FILE_WRITER] SigMF does not support the input data type.");
         return Result::ERROR;
     }
+    return Result::SUCCESS;
+}
 
-    metadata.datatype = type->second;
-    metadata.sampleRate = NumericAttribute(input, "sampleRate");
-    metadata.captures.push_back({
+Result FileWriterFormat::Sigmf::start(std::ofstream&, const Tensor& input) {
+    datatype = kSigmfDataTypes.at(input.dtype());
+    sampleRate = NumericAttribute(input, "sampleRate");
+    captures.push_back({
         .sampleStart = 0,
         .frequency = NumericAttribute(input, "frequency"),
         .datetime = CurrentDatetime(),
     });
 
-    return writeSigmf();
+    return write();
 }
 
-Result FileWriterImpl::trackSigmfCapture(const Tensor& input, const U64 sampleIndex) {
-    if (metadata.captures.empty()) {
+Result FileWriterFormat::Sigmf::track(const Tensor& input, const U64 sampleIndex) {
+    if (captures.empty()) {
         return Result::SUCCESS;
     }
 
     bool changed = false;
-    if (!metadata.sampleRate) {
-        metadata.sampleRate = NumericAttribute(input, "sampleRate");
-        changed = metadata.sampleRate.has_value();
+    if (!sampleRate) {
+        sampleRate = NumericAttribute(input, "sampleRate");
+        changed = sampleRate.has_value();
     }
 
     const auto frequency = NumericAttribute(input, "frequency");
-    if (frequency != metadata.captures.back().frequency) {
+    if (frequency != captures.back().frequency) {
         changed = true;
-        if (metadata.captures.back().sampleStart == sampleIndex) {
-            metadata.captures.back().frequency = frequency;
+        if (captures.back().sampleStart == sampleIndex) {
+            captures.back().frequency = frequency;
         } else {
-            metadata.captures.push_back({
+            captures.push_back({
                 .sampleStart = sampleIndex,
                 .frequency = frequency,
                 .datetime = CurrentDatetime(),
@@ -103,21 +97,25 @@ Result FileWriterImpl::trackSigmfCapture(const Tensor& input, const U64 sampleIn
         }
     }
 
-    return changed ? writeSigmf() : Result::SUCCESS;
+    return changed ? write() : Result::SUCCESS;
 }
 
-Result FileWriterImpl::writeSigmf() const {
+Result FileWriterFormat::Sigmf::finish(std::ofstream&, U64) {
+    return datatype.empty() ? Result::SUCCESS : write();
+}
+
+Result FileWriterFormat::Sigmf::write() const {
     nlohmann::json global = {
-        {"core:datatype", metadata.datatype},
+        {"core:datatype", datatype},
         {"core:version", "1.2.0"},
         {"core:recorder", "CyberEther"},
     };
-    if (metadata.sampleRate) {
-        global["core:sample_rate"] = *metadata.sampleRate;
+    if (sampleRate) {
+        global["core:sample_rate"] = *sampleRate;
     }
 
-    nlohmann::json captures = nlohmann::json::array();
-    for (const auto& capture : metadata.captures) {
+    nlohmann::json entries = nlohmann::json::array();
+    for (const auto& capture : captures) {
         nlohmann::json entry = {
             {"core:sample_start", capture.sampleStart},
             {"core:datetime", capture.datetime},
@@ -125,16 +123,16 @@ Result FileWriterImpl::writeSigmf() const {
         if (capture.frequency) {
             entry["core:frequency"] = *capture.frequency;
         }
-        captures.push_back(std::move(entry));
+        entries.push_back(std::move(entry));
     }
 
     const nlohmann::json json = {
         {"global", std::move(global)},
-        {"captures", std::move(captures)},
+        {"captures", std::move(entries)},
         {"annotations", nlohmann::json::array()},
     };
 
-    const std::string meta = Platform::PathToUtf8(metadata.metaPath);
+    const std::string meta = Platform::PathToUtf8(metaPath);
     if (Platform::WriteFileAtomic(meta, json.dump(2) + "\n") != Result::SUCCESS) {
         JST_ERROR("[MODULE_FILE_WRITER] Failed to write SigMF metadata '{}'.", meta);
         return Result::ERROR;

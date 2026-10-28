@@ -53,9 +53,7 @@ Result FileWriterImplNativeCpu::computeSubmit() {
     const auto& input = inputs().at("buffer").tensor;
     const U64 bytesToWrite = input.sizeBytes();
 
-    if (fileFormat == "sigmf") {
-        JST_CHECK(trackSigmfCapture(input, bytesWritten.get() / input.elementSize()));
-    }
+    JST_CHECK(format->track(input, bytesWritten.get() / input.elementSize()));
 
     const std::streampos previousPosition = dataFile.tellp();
     if (previousPosition == std::streampos(-1)) {
