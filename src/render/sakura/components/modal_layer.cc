@@ -30,7 +30,7 @@ struct ModalLayer::Impl {
     F32 fitted = 0.0f;
 
     bool scrolls() const {
-        return config.size.x != 0.0f && config.size.y == 0.0f;
+        return config.chrome && config.size.x != 0.0f && config.size.y == 0.0f;
     }
 
     void fit(F32 height) {

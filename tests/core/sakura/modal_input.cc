@@ -47,6 +47,9 @@ struct FrameProbe : Sakura::Component {
     static Rect of(const Sakura::Component& component) {
         return (component.*(&FrameProbe::frame))();
     }
+    static std::optional<Rect> inherited(const Sakura::Component& component) {
+        return (component.*(&FrameProbe::inheritedClip))();
+    }
     static U64 shownFrames(const Sakura::Component& component) {
         U64 count = 0;
         for (auto* child : (component.*(&FrameProbe::children))()) {
@@ -314,6 +317,26 @@ TEST_CASE("Modal activation blocks real background edits and shortcuts and resto
     CHECK(background.focused());
     fixture.text(U'z');
     CHECK(backgroundEdited.find('z') != std::string::npos);
+}
+
+TEST_CASE("A chromeless modal with a fixed width leaves room outside its content for a shadow",
+          "[core][sakura][modal-scope][modal-anchor]") {
+    ModalFixture fixture;
+    PointerProbe background;
+    PointerProbe content;
+    Sakura::Layer base;
+    base.update({.content = &background});
+    Sakura::ModalLayer layer;
+    fixture.root.setLayers({&base, &layer});
+    layer.update({.content = &content, .size = {200, 0}, .closeButton = false, .chrome = false,
+                  .anchor = Rect{100, 40, 80, 24}});
+    fixture.place();
+
+    const auto frame = FrameProbe::of(content);
+    const auto clip = FrameProbe::inherited(content);
+    CHECK(frame.x == 100);
+    CHECK(frame.width == 200);
+    CHECK((!clip.has_value() || (clip->x < frame.x && clip->right() > frame.right())));
 }
 
 TEST_CASE("An anchored modal sits below its anchor without dim or window chrome and stays on screen",
