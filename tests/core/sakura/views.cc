@@ -5,10 +5,12 @@
 #include "jetstream/render/tools/icons_lucide.hh"
 #include "jetstream/viewport/adapters/generic.hh"
 #include "component_harness.hh"
+#include "environment.hh"
 
+#include "compositor/default/actions/gallery.hh"
 #include "compositor/default/actions/workbench.hh"
 #include "compositor/default/presenters/file_picker.hh"
-#include "compositor/default/presenters/hud/welcome.hh"
+#include "compositor/default/presenters/start_tab/base.hh"
 #include "compositor/default/presenters/titlebar.hh"
 #include "compositor/default/presenters/workbench.hh"
 #include "compositor/default/presenters/modal/container.hh"
@@ -17,7 +19,7 @@
 #include "compositor/default/views/components/tooltip.hh"
 #include "compositor/default/views/file_picker.hh"
 #include "compositor/default/views/flowgraph/editor/picker.hh"
-#include "compositor/default/views/hud/welcome.hh"
+#include "compositor/default/views/start_tab/base.hh"
 #include "compositor/default/views/titlebar.hh"
 #include "compositor/default/views/workbench.hh"
 #include "scene.hh"
@@ -41,6 +43,16 @@ std::vector<Sakura::Button*> Buttons(Sakura::Component& root) {
     std::vector<Sakura::Button*> buttons;
     for (auto* button : Find<Sakura::Button>(root)) {
         if (!dynamic_cast<Sakura::NavigationItem*>(button)) {
+            buttons.push_back(button);
+        }
+    }
+    return buttons;
+}
+
+std::vector<Sakura::Button*> IconButtons(Sakura::Component& root, const char* icon) {
+    std::vector<Sakura::Button*> buttons;
+    for (auto* button : Buttons(root)) {
+        if (ShownText(*button, icon)) {
             buttons.push_back(button);
         }
     }
@@ -91,14 +103,22 @@ struct Stage {
 };
 
 struct Mailbox {
+    TestSupport::SettingsSandbox sandbox{"sakura-views"};
     DefaultCompositorState state;
     DefaultCompositorCallbacks callbacks;
     std::vector<Mail> mails;
 
     Mailbox() {
+        sandbox.require();
         callbacks.enqueueMail = [this](Mail&& mail) {
             mails.push_back(std::move(mail));
         };
+        refreshRegistry();
+    }
+
+    void refreshRegistry() {
+        state.registry.stale = true;
+        GalleryActions(state).refreshRegistry();
     }
 
     PresenterContext context() const {
@@ -851,6 +871,7 @@ TEST_CASE("Start tab shows the welcome screen in a fixed tile and activates on r
     CHECK(pane.id == StartTabView::PaneId);
     CHECK(pane.title == "New Tab");
     REQUIRE(pane.content);
+    CHECK(dynamic_cast<SidebarTiles*>(pane.content) != nullptr);
 
     show(std::nullopt);
     CHECK_FALSE(rig.a.visible());
@@ -939,7 +960,7 @@ TEST_CASE("Titlebar presenter actions enqueue the matching mail", "[core][sakura
     CHECK(mailbox.last<MailOpenSettings>()->section == SettingsSection::About);
     CHECK(mailbox.count<MailCheckForUpdates>() == 1);
     config.onAction(Action::RemoteStreaming);
-    CHECK(mailbox.last<MailOpenModal>()->content == ModalContent::RemoteStreaming);
+    CHECK(mailbox.count<MailOpenStartTab>() == 1);
     config.onAction(Action::SendFeedback);
     CHECK(mailbox.last<MailOpenModal>()->content == ModalContent::Feedback);
     config.onAction(Action::Documentation);
@@ -1304,34 +1325,55 @@ TEST_CASE("Toggling checked menu state while the menus are closed settles withou
     CHECK(frames.run(update).clean());
 }
 
-TEST_CASE("New tab opens the start tab, which takes over the welcome screen and closes through mail",
+TEST_CASE("Start tab holds the welcome screen whenever no flowgraph is open and closes through mail",
           "[core][sakura][views]") {
     Mailbox mailbox;
     const auto context = mailbox.context();
-    TitlebarPresenter(context).build().onAction(TitlebarView::Action::NewTab);
-    CHECK(mailbox.count<MailOpenStartTab>() == 1);
-    CHECK(WelcomeHudPresenter(context).build().has_value());
-    CHECK_FALSE(WelcomeHudPresenter(context).buildStartTab().has_value());
-    CHECK_FALSE(WorkbenchPresenter(context).build().startTab.has_value());
-
+    CHECK(mailbox.state.startTabShown());
+    CHECK(mailbox.state.tabsHidden());
+    REQUIRE(StartTabPresenter(context).build().has_value());
+    auto config = WorkbenchPresenter(context).build();
+    REQUIRE(config.startTab.has_value());
+    CHECK_FALSE(config.startTab->closable);
+    CHECK(config.hideTabs);
+    CHECK_FALSE(config.startTab->welcome.pageCard);
     mailbox.state.interface.startTab = true;
-    mailbox.state.interface.startTabRequests = 3;
-    CHECK_FALSE(WelcomeHudPresenter(context).build().has_value());
-    const auto welcome = WelcomeHudPresenter(context).buildStartTab();
-    REQUIRE(welcome.has_value());
+    CHECK_FALSE(mailbox.state.tabsHidden());
+    const auto tabbed = WorkbenchPresenter(context).build();
+    CHECK_FALSE(tabbed.hideTabs);
+    REQUIRE(tabbed.startTab.has_value());
+    CHECK(tabbed.startTab->welcome.pageCard);
+    mailbox.state.interface.startTab = false;
     mailbox.mails.clear();
-    welcome->onNewFlowgraph();
+    config.startTab->welcome.onNewFlowgraph();
     CHECK(mailbox.count<MailNewFlowgraph>() == 1);
 
-    auto config = WorkbenchPresenter(context).build();
-    CHECK_FALSE(config.welcomeHud.has_value());
-    REQUIRE(config.startTab.has_value());
-    CHECK(config.startTabRequests == 3);
+    mailbox.state.modal.content = ModalContent::About;
+    mailbox.state.interface.settingsTab = true;
+    CHECK(StartTabPresenter(context).build().has_value());
+    CHECK_FALSE(mailbox.state.tabsHidden());
+
+    mailbox.state.flowgraph.items["graph"] = std::make_shared<Flowgraph>();
+    CHECK_FALSE(mailbox.state.startTabShown());
+    CHECK_FALSE(StartTabPresenter(context).build().has_value());
+
+    TitlebarPresenter(context).build().onAction(TitlebarView::Action::NewTab);
+    CHECK(mailbox.count<MailOpenStartTab>() == 1);
+    mailbox.state.interface.startTab = true;
+    mailbox.state.interface.startTabRequests = 3;
+    const auto start = StartTabPresenter(context).build();
+    REQUIRE(start.has_value());
+    CHECK(start->closable);
+    mailbox.state.graphics.device = DeviceType::CPU;
+    CHECK(WorkbenchPresenter(context).build().startTabRequests == 3);
     mailbox.mails.clear();
-    config.startTab->welcome.onOpenFlowgraph();
+    start->welcome.onOpenFlowgraph();
     CHECK(mailbox.count<MailOpenFlowgraph>() == 1);
-    config.startTab->onClose();
+    start->onFocus();
+    CHECK(mailbox.count<MailFocusStartTab>() == 1);
+    start->onClose();
     CHECK(mailbox.count<MailCloseStartTab>() == 1);
+    CHECK(mailbox.mails.size() == 3);
 }
 
 TEST_CASE("Workbench enables particles only while the background is exposed", "[core][sakura][views]") {
@@ -1394,191 +1436,894 @@ TEST_CASE("Start tab pill close button calls its close callback and the shell se
     CHECK(closes == 1);
 }
 
-TEST_CASE("Welcome HUD cells and links enqueue their mail", "[core][sakura][views]") {
-    Scene scene{kWide};
-    Mailbox mailbox;
-    const auto context = mailbox.context();
-    const auto config = WelcomeHudPresenter(context).build();
-    REQUIRE(config.has_value());
-    WelcomeHudView view;
-    view.update(*config);
-    Sakura::HudLayer huds;
-    huds.update({.huds = {view.hud()}});
-    LayerHost host({&huds});
-    host.place(scene.ctx, kWide);
+namespace {
 
-    const Jetstream::Rect panel = Peek::Frame(*view.hud().content);
-    CHECK(panel.width == 560.0f - 4.0f);
-    CHECK(panel.x + panel.width * 0.5f == 800.0f);
-
-    auto cells = Find<WelcomeHudCell>(huds);
-    REQUIRE(cells.size() == 3);
-    for (auto* cell : cells) {
-        CHECK(Press(host, *cell));
-    }
-    CHECK(mailbox.count<MailNewFlowgraph>() == 1);
-    CHECK(mailbox.count<MailOpenFlowgraph>() == 1);
-    REQUIRE(mailbox.last<MailOpenModal>() != nullptr);
-    CHECK(mailbox.last<MailOpenModal>()->content == ModalContent::FlowgraphExamples);
-
-    auto links = Buttons(huds);
-    REQUIRE(links.size() == 4);
-    mailbox.mails.clear();
-    for (auto* link : links) {
-        CHECK(Press(host, *link));
-    }
-    REQUIRE(mailbox.mails.size() == 4);
-    CHECK(std::get<MailOpenUrl>(mailbox.mails[0]).url == "https://cyberether.org");
-    CHECK(std::get<MailOpenUrl>(mailbox.mails[1]).url == "https://cyberether.org/docs");
-    CHECK(std::get<MailOpenSettings>(mailbox.mails[2]).section == SettingsSection::General);
-    CHECK(std::get<MailOpenModal>(mailbox.mails[3]).content == ModalContent::About);
-}
-
-TEST_CASE("Welcome HUD presenter hides the HUD behind flowgraphs, modals, and the file picker",
-          "[core][sakura][views]") {
-    Mailbox mailbox;
-    const auto context = mailbox.context();
-    CHECK(WelcomeHudPresenter(context).build().has_value());
-
-    mailbox.state.modal.content = ModalContent::About;
-    CHECK_FALSE(WelcomeHudPresenter(context).build().has_value());
-
-    mailbox.state.modal.content.reset();
-    mailbox.state.filePicker.active = true;
-    CHECK_FALSE(WelcomeHudPresenter(context).build().has_value());
-}
-
-TEST_CASE("Welcome HUD settles under identical updates", "[core][sakura][views]") {
-    Scene scene{kWide};
-    Mailbox mailbox;
-    const auto context = mailbox.context();
-    WelcomeHudView view;
-    Sakura::HudLayer huds;
-    LayerHost host({&huds});
-    Frames frames(host, kWide, scene.ctx);
-    const auto update = [&] {
-        view.update(*WelcomeHudPresenter(context).build());
-        huds.update({.huds = {view.hud()}});
-    };
-    CHECK(Settles(frames, update));
-}
-
-TEST_CASE("Welcome HUD cards and links repaint once per hover transition and fire without rebuilding",
-          "[core][sakura][views]") {
-    Scene scene{kWide};
-    scene.ctx.palette = Shades();
-    Mailbox mailbox;
-    const auto context = mailbox.context();
-    WelcomeHudView view;
-    Sakura::HudLayer huds;
-    LayerHost host({&huds});
-    Frames frames(host, kWide, scene.ctx);
-    const auto update = [&] {
-        view.update(*WelcomeHudPresenter(context).build());
-        huds.update({.huds = {view.hud()}});
-    };
-    const auto step = [&] {
-        return frames.run(update);
-    };
-    const Extent2D<F32> away = {20.0f, 20.0f};
-    REQUIRE(Settles(frames, update));
-    const U64 rebuilds = frames.rebuilds;
-
-    auto cells = Find<WelcomeHudCell>(huds);
-    REQUIRE(cells.size() == 3);
-    auto links = Buttons(huds);
-    REQUIRE(links.size() == 4);
-    for (U64 index = 0; index < cells.size(); ++index) {
-        CAPTURE(index);
-        CheckHover(host, step, *cells[index], away);
-    }
-    for (U64 index = 0; index < links.size(); ++index) {
-        CAPTURE(index);
-        CheckHover(host, step, *links[index], away);
-    }
-
-    for (U64 index = 0; index < cells.size(); ++index) {
-        CAPTURE(index);
-        const auto point = Center(*cells[index]);
-        host.send(Mouse(MouseEventType::Move, point.x, point.y));
-        CHECK(RepaintOnly(step()));
-        CHECK(Press(host, *cells[index]));
-        CHECK(mailbox.mails.size() == index + 1);
-        CHECK(step().clean());
-        host.send(Mouse(MouseEventType::Move, away.x, away.y));
-        CHECK(RepaintOnly(step()));
-        CHECK(Settles(frames, update));
-    }
-    CHECK(mailbox.count<MailNewFlowgraph>() == 1);
-    CHECK(mailbox.count<MailOpenFlowgraph>() == 1);
-    CHECK(mailbox.count<MailOpenModal>() == 1);
-    CHECK(frames.rebuilds == rebuilds);
-}
-
-TEST_CASE("Start tab welcome cards and links repaint once per hover transition and fire without rebuilding",
-          "[core][sakura][views]") {
-    TitleRig rig;
-    rig.scene.ctx.palette = Shades();
-    StartTabView start;
-    std::vector<std::string> calls;
-    std::optional<std::string> activate = std::string(StartTabView::PaneId);
-    const auto update = [&] {
-        start.update({
-            .welcome = {
-                .version = "v1",
-                .onNewFlowgraph = [&] { calls.push_back("new"); },
-                .onOpenFlowgraph = [&] { calls.push_back("open"); },
-                .onOpenExamples = [&] { calls.push_back("examples"); },
-                .onOpenWebsite = [&] { calls.push_back("website"); },
-            },
-            .onClose = [] {},
+std::vector<Sakura::PillTabs*> SectionTabs(Sakura::Component& root) {
+    auto tabs = Find<Sakura::PillTabs>(root);
+    std::erase_if(tabs, [](auto* pills) {
+        const auto labels = Find<Sakura::Text>(*pills);
+        return std::none_of(labels.begin(), labels.end(), [](auto* text) {
+            return text->config().str == "Flowgraphs";
         });
-        rig.shell.updateTitlebar(rig.config);
-        rig.shell.updatePanes({
-            {.id = "a", .title = "Alpha", .group = "main", .content = &rig.a},
-            start.pane(),
-        }, std::exchange(activate, std::nullopt));
+    });
+    return tabs;
+}
+
+std::vector<Registry::FlowgraphRegistration> GalleryFixture() {
+    struct Entry {
+        const char* key;
+        const char* title;
+        const char* category;
+        const char* summary;
+        const char* accent;
+        const char* diagram;
+        bool featured;
     };
-    Frames frames(rig.host, TitleRig::bounds(), rig.scene.ctx);
+    const Entry entries[] = {
+        {"first-steps", "CyberEther First Steps", "Basics",
+         "Build a spectrum analyzer from a lone signal generator and learn the editor on the way.", "#54cc85",
+         "tone[Tone] --> add[Add] --> spectrum[Spectrum]\nnoise[Noise] --> add\nadd --> iq[IQ Plot]", true},
+        {"flight-tracker", "ADS-B Flight Tracker", "Receivers",
+         "Decode the position reports aircraft broadcast at 1090 MHz and plot each one on a globe.", "#ff8b81",
+         "sdr[SDR] --> adsb[ADS-B]", true},
+        {"python-qpsk", "Python QPSK Generator", "Basics",
+         "Write a QPSK signal in a few lines of NumPy and watch its spectrum and constellation.", "#7eb3fe",
+         "noise[Noise] --> py[Python] --> iq[IQ Plot]\npy --> spectrum[Spectrum]", true},
+        {"simple-fm", "Simple FM Receiver", "Receivers",
+         "Tune a radio to a broadcast FM station, demodulate it, and hear it on your speakers.", "#fb934f",
+         "sdr[SDR] --> fm[FM] --> audio[Audio]", true},
+        {"multi-fm", "Multi-FM Receiver", "Receivers",
+         "Cut two broadcast FM stations out of one wide capture and listen to either of them.", "#e6a324",
+         "sdr[SDR] --> filter[Filter] --> fm[FM]\nfilter --> spectrum[Spectrum]", true},
+        {"overlap-add-fold", "Overlap-Add-Fold", "DSP",
+         "Filter, tune, and decimate two FM stations with FFTs, laid out one block at a time.", "#cc95f9",
+         "sdr[SDR] --> mul[Multiply] --> fold[Fold]\ntaps[Taps] --> mul", true},
+        {"signal-generator", "Signal Generator", "Basics",
+         "Sum a noise floor, a fixed tone, and a sweeping chirp and read all three on one spectrum.", "#94c353",
+         "tone[Tone] --> add[Add] --> spectrum[Spectrum]\nchirp[Chirp] --> add", false},
+        {"spectrum-analyzer", "Spectrum Analyzer", "Basics",
+         "Connect a radio, tune to a band, and watch its signals as a live trace and waterfall.", "#12c8d8",
+         "sdr[SDR] --> spectrum[Spectrum]", false},
+        {"sdr-sweep", "Wideband Sweep", "Receivers",
+         "Hop a radio across the whole FM band and stitch the slices into one live spectrum.", "#5fd1b4",
+         "sweep[SDR Sweep] --> spectrum[Spectrum]", false},
+    };
+    std::vector<Registry::FlowgraphRegistration> flowgraphs;
+    for (const auto& entry : entries) {
+        Registry::FlowgraphRegistration registration;
+        registration.key = entry.key;
+        registration.title = entry.title;
+        registration.summary = entry.summary;
+        registration.category = entry.category;
+        registration.accent = entry.accent;
+        registration.diagram = entry.diagram;
+        registration.featured = entry.featured;
+        flowgraphs.push_back(std::move(registration));
+    }
+    return flowgraphs;
+}
+
+struct WelcomeRig {
+    Scene scene;
+    Jetstream::Rect bounds;
+    Mailbox mailbox;
+    WelcomeView view;
+    Sakura::Layer layer;
+    LayerHost host;
+
+    explicit WelcomeRig(Jetstream::Rect bounds = kWide) : scene{bounds}, bounds(bounds), host({&layer}) {
+        mailbox.state.registry.flowgraphs = GalleryFixture();
+    }
+
+    WelcomeView::Config build() const {
+        return WelcomePresenter(mailbox.context()).build();
+    }
+
+    void update(WelcomeView::Config config) {
+        view.update(std::move(config));
+        layer.update({.content = &view.component()});
+    }
+
+    void show(WelcomeView::Config config) {
+        update(std::move(config));
+        host.place(scene.ctx, bounds);
+    }
+
+    void show() {
+        show(build());
+    }
+
+    void wait(F64 seconds) {
+        const F64 end = scene.ctx.time + seconds;
+        while (scene.ctx.time < end) {
+            scene.ctx.time = std::min(end, scene.ctx.time + 1.0 / 60.0);
+            host.place(scene.ctx, bounds);
+        }
+    }
+
+    Sakura::Component& root() {
+        return view.component();
+    }
+};
+
+}  // namespace
+
+TEST_CASE("Welcome screen splits into a saved flowgraph sidebar and a wider explore page", "[core][sakura][views]") {
+    WelcomeRig rig;
+    rig.show();
+
+    const Jetstream::Rect panel = Peek::Frame(rig.root());
+    CHECK(panel.x == kWide.x);
+    CHECK(panel.width == kWide.width);
+    CHECK(panel.height == kWide.height);
+
+    const auto cells = Find<FlowgraphCell>(rig.root());
+    REQUIRE(cells.size() == 2);
+    CHECK(ShownText(rig.root(), "Favorites") != nullptr);
+    CHECK(ShownText(rig.root(), "Recents") != nullptr);
+    const auto inputs = Find<Sakura::TextInput>(rig.root());
+    REQUIRE(inputs.size() == 1);
+    const auto search = Peek::Frame(*inputs[0]);
+    for (auto* cell : cells) {
+        CHECK(Peek::Frame(*cell).right() < search.x);
+        CHECK(Peek::Frame(*cell).width > SidebarTiles::SidebarWidth * 0.8f);
+        CHECK(Peek::Frame(*cell).width < SidebarTiles::SidebarWidth);
+    }
+    CHECK(search.width > SidebarTiles::SidebarWidth * 1.5f);
+
+    auto* create = LabeledButton(rig.root(), "New Flowgraph");
+    auto* open = LabeledButton(rig.root(), "Open Flowgraph");
+    REQUIRE(create != nullptr);
+    REQUIRE(open != nullptr);
+    CHECK(LabeledButton(rig.root(), "New Terminal") == nullptr);
+    CHECK(Peek::Frame(*create).y == Peek::Frame(*open).y);
+    CHECK(Peek::Frame(*create).right() < Peek::Frame(*open).x);
+    CHECK(Peek::Frame(*open).bottom() < search.y);
+
+    CHECK(Press(rig.host, *create));
+    CHECK(Press(rig.host, *open));
+    CHECK(rig.mailbox.count<MailNewFlowgraph>() == 1);
+    CHECK(rig.mailbox.count<MailOpenFlowgraph>() == 1);
+    CHECK(rig.mailbox.mails.size() == 2);
+}
+
+TEST_CASE("Welcome screen shows the remote section only when the build supports streaming",
+          "[core][sakura][views]") {
+    WelcomeRig rig;
+    CHECK_FALSE(RemoteSectionPresenter(rig.mailbox.context()).build().has_value());
+    rig.show();
+    CHECK(ShownText(rig.root(), "Remote") == nullptr);
+    const F32 favorites = Peek::Frame(*ShownText(rig.root(), "Favorites")).y;
+
+    rig.mailbox.state.remote.supported = true;
+    rig.show();
+    REQUIRE(ShownText(rig.root(), "Remote") != nullptr);
+    CHECK(ShownText(rig.root(), "Stream to another device.") != nullptr);
+    CHECK(Peek::Frame(*ShownText(rig.root(), "Favorites")).y > favorites);
+
+    rig.mailbox.state.remote.supported = false;
+    rig.show();
+    CHECK(ShownText(rig.root(), "Remote") == nullptr);
+    CHECK(Peek::Frame(*ShownText(rig.root(), "Favorites")).y == favorites);
+}
+
+TEST_CASE("Welcome screen scrolls the explore page while the sidebar stays put", "[core][sakura][views]") {
+    WelcomeRig rig({0.0f, 0.0f, 1400.0f, 480.0f});
+    rig.show();
+
+    CHECK(Peek::Frame(rig.root()).bottom() <= rig.bounds.height);
+    const auto cells = Find<FlowgraphCell>(rig.root());
+    const auto cards = Find<Sakura::FlowgraphCard>(rig.root());
+    REQUIRE_FALSE(cells.empty());
+    REQUIRE(cards.size() > 3);
+    const F32 cell = Peek::Frame(*cells.front()).y;
+    const F32 card = Peek::Frame(*cards.back()).y;
+    rig.host.send(Wheel(rig.bounds.width * 0.7f, rig.bounds.height * 0.5f, -3.0f));
+    rig.host.place(rig.scene.ctx, rig.bounds);
+    CHECK(Peek::Frame(*cards.back()).y < card);
+    CHECK(Peek::Frame(*cells.front()).y == cell);
+}
+
+TEST_CASE("Welcome presenter reads the gallery from example metadata and lists recent flowgraphs",
+          "[core][sakura][views]") {
+    Mailbox mailbox;
+    mailbox.state.interface.recentFlowgraphs = {
+        {.path = "/flows/radio.yml", .title = "Radio", .accessed = 1},
+        {.path = "/flows/sweep.yml"},
+    };
+    mailbox.state.registry.flowgraphs = GalleryFixture();
+    auto config = WelcomePresenter(mailbox.context()).build();
+    REQUIRE(config.recent.size() == 2);
+    CHECK(config.recent[0].title == "Radio");
+    CHECK(config.recent[1].title == "sweep");
+    CHECK(config.recent[1].accessed == "Opened recently");
+
+    std::vector<std::string> featured;
+    for (const auto& example : config.featured) {
+        featured.push_back(example.title);
+    }
+    CHECK(featured == std::vector<std::string>{"CyberEther First Steps", "ADS-B Flight Tracker",
+                                               "Python QPSK Generator", "Simple FM Receiver", "Multi-FM Receiver",
+                                               "Overlap-Add-Fold"});
+    CHECK(config.featured.front().diagram.find("Tone") != std::string::npos);
+    CHECK(config.featured.front().accentColorKey == "gallery_green");
+    CHECK(config.featured.front().summary.find("spectrum analyzer") != std::string::npos);
+    CHECK(config.featured[1].category == "Receivers");
+    CHECK(config.featured[1].accentColorKey == "gallery_coral");
+    CHECK(config.categoryNames == std::vector<std::string>{"Basics", "Receivers", "DSP"});
+    REQUIRE(config.categories.size() == 3);
+    CHECK(config.categories.front().title == "Basics");
+    CHECK(config.categories.front().description == "Start here to learn the editor, sources, and plots.");
+    U64 examples = 0;
+    for (const auto& category : config.categories) {
+        for (const auto& example : category.examples) {
+            ++examples;
+            CHECK(example.accentColorKey.rfind("gallery_", 0) == 0);
+            CHECK_FALSE(example.diagram.empty());
+        }
+    }
+    CHECK(examples > 0);
+
+    CHECK(WelcomePresenter::Accessed(1000, 1030) == "Opened just now");
+    CHECK(WelcomePresenter::Accessed(1000, 1000 + 120) == "Opened 2 minutes ago");
+    CHECK(WelcomePresenter::Accessed(1000, 1000 + 3600) == "Opened 1 hour ago");
+    CHECK(WelcomePresenter::Accessed(1000, 1000 + 90000) == "Opened yesterday");
+    CHECK(WelcomePresenter::Accessed(1000, 1000 + 3 * 86400) == "Opened 3 days ago");
+
+    config.onOpenRecent(config.recent[1].path);
+    REQUIRE(mailbox.last<MailOpenFlowgraphPath>() != nullptr);
+    CHECK(mailbox.last<MailOpenFlowgraphPath>()->path == "/flows/sweep.yml");
+    config.onOpenExample(config.featured.front().key);
+    REQUIRE(mailbox.last<MailOpenFlowgraphExample>() != nullptr);
+    CHECK(mailbox.last<MailOpenFlowgraphExample>()->key == config.featured.front().key);
+    CHECK_FALSE(config.featured.front().key.empty());
+}
+
+TEST_CASE("Welcome presenter files examples without gallery metadata under plugins with the default accent",
+          "[core][sakura][views]") {
+    Registry::FlowgraphRegistration record;
+    record.key = "welcome-plain-example";
+    record.title = "Plain Example";
+    record.summary = "Plain summary.";
+    record.content = "---\nversion: 2\ngraph: []\n";
+
+    Mailbox mailbox;
+    mailbox.state.registry.flowgraphs = GalleryFixture();
+    mailbox.state.registry.flowgraphs.push_back(record);
+    const auto config = WelcomePresenter(mailbox.context()).build();
+    CHECK(config.featured.size() == 6);
+    REQUIRE(config.categoryNames.back() == "Plugins");
+    const auto& plugins = config.categories.back();
+    CHECK(plugins.title == "Plugins");
+    REQUIRE(plugins.examples.size() == 1);
+    CHECK(plugins.examples[0].title == "Plain Example");
+    CHECK(plugins.examples[0].summary == "Plain summary.");
+    CHECK(plugins.examples[0].diagram.empty());
+    CHECK(plugins.examples[0].accentColorKey == Sakura::FlowgraphCard::Config{}.accentColorKey);
+}
+
+TEST_CASE("Welcome screen lists favorites above recent and stars toggle without opening",
+          "[core][sakura][views]") {
+    WelcomeRig rig;
+    auto& mailbox = rig.mailbox;
+    mailbox.state.agent.settings.enabled = true;
+    mailbox.state.interface.recentFlowgraphs = {
+        {.path = "/flows/radio.yml", .title = "Radio", .accessed = 1},
+        {.path = "/flows/sweep.yml", .title = "Sweep", .accessed = 1},
+    };
+    mailbox.state.interface.favoriteFlowgraphs = {{.path = "/flows/sweep.yml", .title = "Sweep", .accessed = 1}};
+    const auto config = rig.build();
+    REQUIRE(config.favorites.size() == 1);
+    CHECK(config.favorites[0].favorite);
+    REQUIRE(config.recent.size() == 2);
+    CHECK_FALSE(config.recent[0].favorite);
+    CHECK(config.recent[1].favorite);
+    rig.show(config);
+
+    const auto cells = Find<FlowgraphCell>(rig.root());
+    REQUIRE(cells.size() == 3);
+    CHECK(Peek::Frame(*cells[0]).bottom() < Peek::Frame(*cells[1]).y);
+    CHECK(Peek::Frame(*cells[1]).bottom() < Peek::Frame(*cells[2]).y);
+    for (auto* cell : cells) {
+        CHECK_FALSE(Find<Sakura::Card>(*cell).empty());
+        CHECK(Peek::Frame(*cell).height < 90.0f);
+        CHECK(Peek::Frame(*cell).width > SidebarTiles::SidebarWidth * 0.8f);
+    }
+    const auto composers = Find<Sakura::ChatComposer>(rig.root());
+    REQUIRE(composers.size() == 1);
+    CHECK(Peek::Frame(*composers[0]).x > Peek::Frame(*cells[0]).right());
+    auto stars = Find<Sakura::Button>(rig.root());
+    std::erase_if(stars, [](auto* button) {
+        const auto label = Find<Sakura::Text>(*button);
+        return label.empty() || label.front()->config().str != ICON_LC_STAR;
+    });
+    REQUIRE(stars.size() == 3);
+    CHECK(Press(rig.host, *stars[1]));
+    REQUIRE(mailbox.last<MailToggleFavoriteFlowgraph>() != nullptr);
+    CHECK(mailbox.last<MailToggleFavoriteFlowgraph>()->path == "/flows/radio.yml");
+    CHECK(mailbox.count<MailOpenFlowgraphPath>() == 0);
+    const auto cell = Peek::Frame(*cells[1]);
+    rig.host.send(Mouse(MouseEventType::Click, cell.x + 20.0f, cell.y + cell.height * 0.5f));
+    rig.host.send(Mouse(MouseEventType::Release, cell.x + 20.0f, cell.y + cell.height * 0.5f));
+    REQUIRE(mailbox.last<MailOpenFlowgraphPath>() != nullptr);
+    CHECK(mailbox.last<MailOpenFlowgraphPath>()->path == "/flows/radio.yml");
+}
+
+TEST_CASE("Welcome screen switches between all and flowgraphs with the section tabs",
+          "[core][sakura][views]") {
+    WelcomeRig rig;
+    auto& mailbox = rig.mailbox;
+    auto config = rig.build();
+    CHECK(config.section == WelcomeSection::All);
+    rig.show(config);
+    CHECK(ShownText(rig.root(), "Featured") != nullptr);
+
+    auto tabs = SectionTabs(rig.root());
+    REQUIRE(tabs.size() == 1);
+    const auto cells = Find<FlowgraphCell>(rig.root());
+    REQUIRE_FALSE(cells.empty());
+    auto* wordmark = ShownText(rig.root(), "CyberEther");
+    REQUIRE(wordmark != nullptr);
+    CHECK(Peek::Frame(*tabs[0]).y > Peek::Frame(*wordmark).bottom());
+    CHECK(Peek::Frame(*tabs[0]).x > Peek::Frame(*cells.front()).right());
+    CHECK_FALSE(Find<Sakura::FlowgraphCard>(rig.root()).empty());
+    CHECK(ShownText(*tabs[0], "All") != nullptr);
+    auto* flowgraphsLabel = ShownText(*tabs[0], "Flowgraphs");
+    REQUIRE(flowgraphsLabel != nullptr);
+    const auto flowgraphs = Center(*flowgraphsLabel);
+    rig.host.send(Mouse(MouseEventType::Click, flowgraphs.x, flowgraphs.y));
+    rig.host.send(Mouse(MouseEventType::Release, flowgraphs.x, flowgraphs.y));
+    REQUIRE(mailbox.last<MailSetWelcomeSection>() != nullptr);
+    CHECK(mailbox.last<MailSetWelcomeSection>()->section == WelcomeSection::Flowgraphs);
+
+    mailbox.state.interface.welcomeSection = mailbox.last<MailSetWelcomeSection>()->section;
+    rig.show();
+    CHECK(ShownText(rig.root(), "Featured") == nullptr);
+    CHECK_FALSE(Find<Sakura::FlowgraphCard>(rig.root()).empty());
+
+    auto* allLabel = ShownText(*SectionTabs(rig.root()).front(), "All");
+    REQUIRE(allLabel != nullptr);
+    const auto all = Center(*allLabel);
+    rig.host.send(Mouse(MouseEventType::Click, all.x, all.y));
+    rig.host.send(Mouse(MouseEventType::Release, all.x, all.y));
+    CHECK(mailbox.last<MailSetWelcomeSection>()->section == WelcomeSection::All);
+    mailbox.state.interface.welcomeSection = WelcomeSection::All;
+    rig.show();
+    CHECK(ShownText(rig.root(), "Featured") != nullptr);
+}
+
+TEST_CASE("Welcome screen pins settings and a theme toggle to the bottom of the sidebar",
+          "[core][sakura][views]") {
+    const Jetstream::Rect shortWindow = {0.0f, 0.0f, 1400.0f, 420.0f};
+    WelcomeRig rig(shortWindow);
+    auto& mailbox = rig.mailbox;
+    mailbox.state.interface.recentFlowgraphs = {
+        {.path = "/a.yml", .title = "A"}, {.path = "/b.yml", .title = "B"}, {.path = "/c.yml", .title = "C"},
+        {.path = "/d.yml", .title = "D"}, {.path = "/e.yml", .title = "E"},
+    };
+    rig.show();
+
+    auto* settings = Owner(rig.root(), "Settings");
+    auto* theme = Owner(rig.root(), ICON_LC_SUN);
+    REQUIRE(settings != nullptr);
+    REQUIRE(theme != nullptr);
+    const auto user = Peek::Frame(*settings);
+    CHECK(user.bottom() <= shortWindow.bottom());
+    CHECK(user.y > shortWindow.height * 0.7f);
+    CHECK(user.right() < Peek::Frame(*SectionTabs(rig.root()).front()).x);
+    CHECK(Peek::Frame(*settings).y == Peek::Frame(*theme).y);
+    CHECK(Peek::Frame(*settings).right() < Peek::Frame(*theme).x);
+    CHECK(Press(rig.host, *settings));
+    REQUIRE(mailbox.last<MailOpenSettings>() != nullptr);
+    CHECK(mailbox.last<MailOpenSettings>()->section == SettingsSection::General);
+    CHECK(Press(rig.host, *theme));
+    REQUIRE(mailbox.last<MailApplyTheme>() != nullptr);
+    CHECK(mailbox.last<MailApplyTheme>()->themeKey == "Light");
+
+    mailbox.state.sakura.themeKey = "Light";
+    const auto light = rig.build();
+    CHECK_FALSE(light.darkMode);
+    light.onToggleTheme();
+    CHECK(mailbox.last<MailApplyTheme>()->themeKey == "Dark");
+
+    const F32 before = user.y;
+    const auto cells = Find<FlowgraphCell>(rig.root());
+    REQUIRE_FALSE(cells.empty());
+    const F32 first = Peek::Frame(*cells[0]).y;
+    rig.host.send(Wheel(Center(*cells[0]).x, Center(*cells[0]).y, -3.0f));
+    rig.host.place(rig.scene.ctx, shortWindow);
+    CHECK(Peek::Frame(*cells[0]).y < first);
+    CHECK(Peek::Frame(*settings).y == before);
+}
+
+TEST_CASE("Welcome leaves room below the last flowgraph cards for the footer art", "[core][sakura][views]") {
+    WelcomeRig rig({0.0f, 0.0f, 1400.0f, 480.0f});
+    rig.show();
+    const auto cards = Find<Sakura::FlowgraphCard>(rig.root());
+    REQUIRE_FALSE(cards.empty());
+    for (U64 step = 0; step < 200; ++step) {
+        rig.host.send(Wheel(rig.bounds.width * 0.7f, rig.bounds.height * 0.5f, -3.0f));
+        rig.host.place(rig.scene.ctx, rig.bounds);
+    }
+    F32 bottom = 0.0f;
+    for (auto* card : cards) {
+        bottom = std::max(bottom, Peek::Frame(*card).bottom());
+    }
+    CHECK(bottom <= rig.bounds.height - WelcomeView::FooterArtTop - WelcomeView::FooterArtBottom);
+}
+
+TEST_CASE("Welcome explore page keeps equal side margins inside its tile", "[core][sakura][views]") {
+    for (const bool card : {false, true}) {
+        CAPTURE(card);
+        WelcomeRig rig({0.0f, 0.0f, 1500.0f, 900.0f});
+        auto config = rig.build();
+        config.pageCard = card;
+        rig.show(config);
+        Sakura::ScrollArea* page = nullptr;
+        Sakura::ScrollArea* sidebar = nullptr;
+        for (auto* area : Find<Sakura::ScrollArea>(rig.root())) {
+            if (!page || Peek::Frame(*area).width > Peek::Frame(*page).width) {
+                sidebar = page;
+                page = area;
+            } else {
+                sidebar = area;
+            }
+        }
+        REQUIRE(page != nullptr);
+        REQUIRE(sidebar != nullptr);
+        const auto inputs = Find<Sakura::TextInput>(rig.root());
+        REQUIRE(inputs.size() == 1);
+        const auto cards = Find<Sakura::FlowgraphCard>(rig.root());
+        REQUIRE_FALSE(cards.empty());
+        F32 left = kInfinite;
+        F32 right = 0.0f;
+        for (auto* item : cards) {
+            left = std::min(left, Peek::Frame(*item).x);
+            right = std::max(right, Peek::Frame(*item).right());
+        }
+        const Jetstream::Rect area = Peek::Frame(*page);
+        CAPTURE(area.x, area.right(), left, right);
+        CHECK(std::abs((left - area.x) - (area.right() - right)) <= 1.0f);
+        if (!card) {
+            CHECK(area.x == Peek::Frame(*sidebar).right());
+            CHECK(area.right() == rig.bounds.right());
+        }
+    }
+}
+
+TEST_CASE("Welcome shows a gallery progress card until the first fetch of the session finishes",
+          "[core][sakura][views]") {
+    WelcomeRig rig;
+    auto& gallery = rig.mailbox.state.registry.gallery;
+    const auto shown = [&](const std::string& label) {
+        return ShownText(rig.root(), label) != nullptr;
+    };
+    const std::string loading = "Loading flowgraphs from the gallery...";
+    const std::string updating = "Updating gallery...";
+
+    CHECK(rig.build().progress.empty());
+    rig.show();
+    CHECK_FALSE(shown(loading));
+
+    gallery.loading = true;
+    CHECK(rig.build().progress == loading);
+    rig.show();
+    rig.wait(0.5);
+    CHECK(shown(loading));
+    CHECK(Find<Sakura::Spinner>(rig.root()).size() == 1);
+    CHECK_FALSE(Find<Sakura::FlowgraphCard>(rig.root()).empty());
+
+    rig.mailbox.state.interface.welcomeQuery = "zzzz-nothing";
+    rig.show();
+    CHECK(shown(loading));
+    CHECK(ShownText(rig.root(), "Nothing matches your search.") == nullptr);
+    rig.mailbox.state.interface.welcomeQuery.clear();
+
+    gallery.flowgraphs = GalleryFixture();
+    gallery.cached = true;
+    CHECK(rig.build().progress == updating);
+    rig.show();
+    CHECK(shown(updating));
+    CHECK_FALSE(shown(loading));
+
+    gallery.loading = false;
+    gallery.attempted = true;
+    CHECK(rig.build().progress.empty());
+    CHECK(rig.build().progressResult == "Gallery updated successfully!");
+    rig.show();
+    CHECK_FALSE(shown(updating));
+    CHECK(shown("Gallery updated successfully!"));
+    CHECK(Find<Sakura::Spinner>(rig.root()).empty());
+    const auto icons = Find<Sakura::Text>(rig.root());
+    CHECK(std::any_of(icons.begin(), icons.end(), [](auto* text) {
+        return text->config().str == ICON_LC_CIRCLE_CHECK && text->config().colorKey == "success_green";
+    }));
+    rig.wait(WelcomeView::ProgressLinger * 0.5);
+    CHECK(shown("Gallery updated successfully!"));
+    rig.wait(WelcomeView::ProgressLinger);
+    CHECK_FALSE(shown("Gallery updated successfully!"));
+
+    gallery.cached = false;
+    CHECK(rig.build().progressResult == "Gallery loaded.");
+    gallery.failed = true;
+    CHECK(rig.build().progressResult == "Could not reach the gallery. Showing bundled flowgraphs.");
+}
+
+TEST_CASE("Welcome gallery progress ends with a warning when the first fetch fails", "[core][sakura][views]") {
+    WelcomeRig rig;
+    auto& gallery = rig.mailbox.state.registry.gallery;
+    const std::string failure = "Could not reach the gallery. Showing bundled flowgraphs.";
+    gallery.loading = true;
+    rig.show();
+    rig.wait(0.5);
+    CHECK(ShownText(rig.root(), "Loading flowgraphs from the gallery...") != nullptr);
+
+    gallery.loading = false;
+    gallery.attempted = true;
+    gallery.failed = true;
+    rig.show();
+    CHECK(ShownText(rig.root(), failure) != nullptr);
+    const auto icons = Find<Sakura::Text>(rig.root());
+    CHECK(std::any_of(icons.begin(), icons.end(), [](auto* text) {
+        return text->config().str == ICON_LC_CIRCLE_ALERT && text->config().colorKey == "warning_yellow";
+    }));
+    rig.wait(WelcomeView::ProgressLinger * 0.5);
+    CHECK(ShownText(rig.root(), failure) != nullptr);
+    rig.wait(WelcomeView::ProgressLinger);
+    CHECK(ShownText(rig.root(), failure) == nullptr);
+}
+
+TEST_CASE("Welcome category sections lead with a workflow icon and a category flowgraphs title",
+          "[core][sakura][views]") {
+    WelcomeRig rig;
+    rig.show();
+    auto* title = ShownText(rig.root(), "Basics Flowgraphs");
+    REQUIRE(title != nullptr);
+    CHECK(ShownText(rig.root(), "Start here to learn the editor, sources, and plots.") != nullptr);
+    const auto texts = Find<Sakura::Text>(rig.root());
+    const auto icon = std::find_if(texts.begin(), texts.end(), [&](auto* text) {
+        const auto frame = Peek::Frame(*text);
+        return text->config().str == ICON_LC_WORKFLOW && frame.right() <= Peek::Frame(*title).x &&
+               frame.y < Peek::Frame(*title).bottom() && frame.bottom() > Peek::Frame(*title).y;
+    });
+    CHECK(icon != texts.end());
+}
+
+TEST_CASE("Welcome shows the featured card only on the All section", "[core][sakura][views]") {
+    WelcomeRig rig;
+    auto& ui = rig.mailbox.state.interface;
+    auto config = rig.build();
+    REQUIRE_FALSE(config.featured.empty());
+
+    ui.welcomeSection = WelcomeSection::Flowgraphs;
+    config = rig.build();
+    CHECK(config.featured.empty());
+    CHECK_FALSE(config.categories.empty());
+    rig.show(config);
+    CHECK(ShownText(rig.root(), "Featured") == nullptr);
+
+    ui.welcomeSection = WelcomeSection::All;
+    rig.show(rig.build());
+    CHECK(ShownText(rig.root(), "Featured") != nullptr);
+}
+
+TEST_CASE("Welcome flowgraph filters narrow the catalog by search text and category", "[core][sakura][views]") {
+    WelcomeRig rig;
+    auto& mailbox = rig.mailbox;
+    auto config = rig.build();
+    REQUIRE_FALSE(config.featured.empty());
+    REQUIRE(config.categoryNames.size() >= 2);
+    const auto allCategories = config.categoryNames;
+
+    config.onQueryChange("radio");
+    REQUIRE(mailbox.last<MailSetWelcomeQuery>() != nullptr);
+    CHECK(mailbox.last<MailSetWelcomeQuery>()->query == "radio");
+
+    mailbox.state.interface.welcomeQuery = "  FM ";
+    config = rig.build();
+    CHECK(config.featured.empty());
+    CHECK(config.categoryNames == allCategories);
+    REQUIRE_FALSE(config.categories.empty());
+    for (const auto& category : config.categories) {
+        for (const auto& example : category.examples) {
+            const auto text = example.title + example.summary + example.category;
+            CHECK((text.find("FM") != std::string::npos || text.find("fm") != std::string::npos));
+        }
+    }
+
+    mailbox.state.interface.welcomeQuery.clear();
+    mailbox.state.interface.welcomeCategory = allCategories[1];
+    config = rig.build();
+    CHECK(config.featured.empty());
+    REQUIRE(config.categories.size() == 1);
+    CHECK(config.categories[0].title == allCategories[1]);
+
+    rig.show(config);
+    const auto inputs = Find<Sakura::TextInput>(rig.root());
+    REQUIRE(inputs.size() == 1);
+    auto pillsList = Find<Sakura::PillTabs>(rig.root());
+    std::erase_if(pillsList, [&](auto* item) {
+        return SectionTabs(rig.root()).front() == item;
+    });
+    REQUIRE(pillsList.size() == 1);
+    auto* pills = pillsList.front();
+    CHECK(Peek::Frame(*pills).y > Peek::Frame(*inputs[0]).y - 1.0f);
+    const auto labels = Find<Sakura::Text>(*pills);
+    REQUIRE(labels.size() == allCategories.size() + 1);
+    for (auto* label : labels) {
+        CHECK(label->config().font == Sakura::Text::Font::Body);
+    }
+    const auto first = Center(*labels[0]);
+    mailbox.mails.clear();
+    rig.host.send(Mouse(MouseEventType::Click, first.x, first.y));
+    rig.host.send(Mouse(MouseEventType::Release, first.x, first.y));
+    REQUIRE(mailbox.last<MailSetWelcomeCategory>() != nullptr);
+    CHECK(mailbox.last<MailSetWelcomeCategory>()->category.empty());
+
+    mailbox.state.interface.welcomeCategory.clear();
+    mailbox.state.interface.welcomeQuery = "zzzz-nothing";
+    config = rig.build();
+    CHECK(config.categories.empty());
+    rig.show(config);
+    CHECK(ShownText(rig.root(), "Nothing matches your search.") != nullptr);
+}
+
+TEST_CASE("Welcome front page previews six examples per category and pages a selected category",
+          "[core][sakura][views]") {
+    WelcomeRig rig({0.0f, 0.0f, 1400.0f, 6000.0f});
+    auto& flowgraphs = rig.mailbox.state.registry.flowgraphs;
+    flowgraphs.clear();
+    const auto add = [&](const std::string& category, U64 count) {
+        for (U64 index = 0; index < count; ++index) {
+            Registry::FlowgraphRegistration entry;
+            entry.key = jst::fmt::format("{}-{}", category, index);
+            entry.title = jst::fmt::format("{} {}", category, index);
+            entry.category = category;
+            flowgraphs.push_back(entry);
+        }
+    };
+    add("Receivers", 26);
+    add("Basics", 3);
+    const auto pagerButton = [&](const std::string& label) -> Sakura::Button* {
+        for (auto* pager : Find<Pagination>(rig.root())) {
+            for (auto* button : Find<Sakura::Button>(*pager)) {
+                const auto texts = Find<Sakura::Text>(*button);
+                if (!texts.empty() && texts.front()->config().str == label) {
+                    return button;
+                }
+            }
+        }
+        return nullptr;
+    };
+
+    auto config = rig.build();
+    REQUIRE(config.categories.size() == 2);
+    CHECK(config.categories[0].examples.size() == WelcomePresenter::PreviewLimit);
+    CHECK(config.categories[0].total == 26);
+    CHECK(config.categories[1].examples.size() == 3);
+    CHECK(config.pages == 0);
+    rig.show(config);
+    CHECK(Find<Pagination>(rig.root()).empty());
+    CHECK(Find<Sakura::FlowgraphCard>(rig.root()).size() == WelcomePresenter::PreviewLimit + 3);
+    auto* viewAll = LabeledButton(rig.root(), "View All");
+    REQUIRE(viewAll != nullptr);
+    CHECK(Press(rig.host, *viewAll));
+    REQUIRE(rig.mailbox.last<MailSetWelcomeCategory>() != nullptr);
+    CHECK(rig.mailbox.last<MailSetWelcomeCategory>()->category == "Receivers");
+
+    rig.mailbox.state.interface.welcomeCategory = "Receivers";
+    config = rig.build();
+    REQUIRE(config.categories.size() == 1);
+    CHECK(config.pages == 3);
+    CHECK(config.page == 0);
+    CHECK(config.categories[0].examples.size() == WelcomePresenter::PageSize);
+    rig.show(config);
+    CHECK(LabeledButton(rig.root(), "View All") == nullptr);
+    REQUIRE(Find<Pagination>(rig.root()).size() == 1);
+    REQUIRE(pagerButton("1") != nullptr);
+    REQUIRE(pagerButton("3") != nullptr);
+    CHECK(Press(rig.host, *pagerButton("2")));
+    REQUIRE(rig.mailbox.last<MailSetWelcomePage>() != nullptr);
+    CHECK(rig.mailbox.last<MailSetWelcomePage>()->page == 1);
+
+    rig.mailbox.state.interface.welcomePage = 2;
+    config = rig.build();
+    CHECK(config.page == 2);
+    REQUIRE(config.categories[0].examples.size() == 2);
+    CHECK(config.categories[0].examples.front().title == "Receivers 24");
+
+    rig.mailbox.state.interface.welcomePage = 9;
+    CHECK(rig.build().page == 2);
+}
+
+TEST_CASE("Pagination windows long page lists around the current page", "[core][sakura][views]") {
+    using Slots = std::vector<std::optional<U64>>;
+    CHECK(Pagination::Slots(0, 0).empty());
+    CHECK(Pagination::Slots(1, 3) == Slots{0, 1, 2});
+    CHECK(Pagination::Slots(0, 7) == Slots{0, 1, 2, 3, 4, 5, 6});
+    CHECK(Pagination::Slots(0, 10) == Slots{0, 1, 2, 3, std::nullopt, 9});
+    CHECK(Pagination::Slots(5, 10) == Slots{0, std::nullopt, 4, 5, 6, std::nullopt, 9});
+    CHECK(Pagination::Slots(9, 10) == Slots{0, std::nullopt, 6, 7, 8, 9});
+}
+
+TEST_CASE("Welcome filter card insets the search icon and first category pill", "[core][sakura][views]") {
+    WelcomeRig rig;
+    rig.show();
+
+    auto* icon = ShownText(rig.root(), ICON_LC_SEARCH);
+    REQUIRE(icon != nullptr);
+    Sakura::Div* card = nullptr;
+    for (auto* div : Find<Sakura::Div>(rig.root())) {
+        if (!Find<Sakura::TextInput>(*div).empty() && Find<Sakura::PillTabs>(*div).size() == 2 &&
+            (!card || Peek::Frame(*div).height < Peek::Frame(*card).height)) {
+            card = div;
+        }
+    }
+    REQUIRE(card != nullptr);
+    CHECK(Peek::Frame(*icon).x - Peek::Frame(*card).x == WelcomeView::SearchInset);
+    auto pills = Find<Sakura::PillTabs>(rig.root());
+    std::erase_if(pills, [&](auto* item) {
+        return SectionTabs(rig.root()).front() == item;
+    });
+    REQUIRE(pills.size() == 1);
+    CHECK(Peek::Frame(*pills.front()).x - Peek::Frame(*card).x == WelcomeView::CategoryInset);
+}
+
+TEST_CASE("Welcome page opens with a centered wordmark and a wave above the filter card", "[core][sakura][views]") {
+    WelcomeRig rig;
+    rig.mailbox.state.agent.settings.enabled = true;
+    rig.show();
+
+    auto* wordmark = ShownText(rig.root(), "CyberEther");
+    REQUIRE(wordmark != nullptr);
+    CHECK(wordmark->config().colorKey == "cyber_blue");
+    const auto composers = Find<Sakura::ChatComposer>(rig.root());
+    REQUIRE(composers.size() == 1);
+    auto* create = LabeledButton(rig.root(), "New Flowgraph");
+    REQUIRE(create != nullptr);
+    const auto waves = Find<Sakura::WaveLine>(rig.root());
+    REQUIRE(waves.size() == 1);
+    const auto inputs = Find<Sakura::TextInput>(rig.root());
+    REQUIRE(inputs.size() == 1);
+    const auto mark = Peek::Frame(*wordmark);
+    const auto composer = Peek::Frame(*composers[0]);
+    const auto line = Peek::Frame(*waves[0]);
+    CHECK(mark.bottom() <= composer.y);
+    CHECK(composer.bottom() <= Peek::Frame(*create).y);
+    CHECK(Peek::Frame(*create).bottom() <= line.y);
+    CHECK(line.bottom() < Peek::Frame(*inputs[0]).y);
+    CHECK(std::abs(Center(*wordmark).x - (line.x + line.width * 0.5f)) <= 1.0f);
+    const auto& points = Find<Sakura::Polyline>(*waves[0]).front()->config().instances.front().points;
+    REQUIRE_FALSE(points.empty());
+    const F32 drawn = points.back().x - points.front().x;
+    CHECK(std::abs(drawn - line.width * WelcomeView::WaveSpan) <= 20.0f);
+    CHECK(std::abs((points.front().x + points.back().x) * 0.5f - (line.x + line.width * 0.5f)) <= 12.0f);
+    CHECK(ShownText(rig.root(), "Explore") == nullptr);
+}
+
+TEST_CASE("Welcome screen saved flowgraphs and hero buttons repaint once per hover, example cards ease their hover, "
+          "and nothing rebuilds",
+          "[core][sakura][views]") {
+    WelcomeRig rig;
+    rig.scene.ctx.palette = DistinctPalette();
+    rig.mailbox.state.interface.recentFlowgraphs = {{.path = "/flows/radio.yml", .title = "Radio", .accessed = 1}};
+    Frames frames(rig.host, kWide, rig.scene.ctx);
+    const auto update = [&] {
+        rig.update(rig.build());
+    };
     const auto step = [&] {
         return frames.run(update);
     };
-    const Extent2D<F32> away = {60.0f, 700.0f};
+    const Extent2D<F32> away = {5.0f, 5.0f};
     REQUIRE(Settles(frames, update));
-    REQUIRE(start.pane().content->visible());
     const U64 rebuilds = frames.rebuilds;
 
-    auto& content = *start.pane().content;
-    auto cells = Find<WelcomeHudCell>(content);
-    REQUIRE(cells.size() == 3);
-    auto links = Buttons(content);
-    REQUIRE(links.size() == 4);
-    for (U64 index = 0; index < cells.size(); ++index) {
-        CAPTURE(index);
-        CheckHover(rig.host, step, *cells[index], away);
+    auto cells = Find<FlowgraphCell>(rig.root());
+    REQUIRE(cells.size() == 2);
+    CheckHover(rig.host, step, *cells[1], away);
+    for (const char* label : {"New Flowgraph", "Open Flowgraph"}) {
+        CAPTURE(label);
+        auto* button = LabeledButton(rig.root(), label);
+        REQUIRE(button != nullptr);
+        CheckHover(rig.host, step, *button, away);
     }
-    for (U64 index = 0; index < links.size(); ++index) {
-        CAPTURE(index);
-        CheckHover(rig.host, step, *links[index], away);
-    }
-
-    for (auto* cell : cells) {
-        const auto point = Center(*cell);
+    auto cards = Find<Sakura::FlowgraphCard>(rig.root());
+    REQUIRE_FALSE(cards.empty());
+    const auto ease = [&](Extent2D<F32> point) {
+        frames.timeStep = 0.0;
         rig.host.send(Mouse(MouseEventType::Move, point.x, point.y));
-        CHECK(RepaintOnly(step()));
-        CHECK(Press(rig.host, *cell));
-        const auto pressed = step();
-        CHECK(pressed.clean());
-        CHECK(step().clean());
-        rig.host.send(Mouse(MouseEventType::Move, away.x, away.y));
-        CHECK(RepaintOnly(step()));
-        CHECK(Settles(frames, update));
-    }
-    CHECK(Press(rig.host, *links[0]));
-    CHECK(Kept(step()));
+        CHECK(Kept(frames.run(update)));
+        CHECK(frames.run(update).clean());
+        CHECK(frames.run(update).clean());
+        frames.timeStep = 1.0 / 60.0;
+        const U64 repaints = frames.repaints;
+        CHECK(frames.settle(update, 40));
+        CHECK(frames.rebuilds == rebuilds);
+        return frames.repaints - repaints;
+    };
+    const auto inside = Center(*cards.front());
+    CHECK(ease(inside) > 1);
+    CHECK(ease(away) > 1);
+    CHECK(ease(inside) > 1);
+    frames.timeStep = 0.0;
+    CHECK(Press(rig.host, *cards.front()));
+    CHECK(rig.mailbox.count<MailOpenFlowgraphExample>() == 1);
     CHECK(Settles(frames, update));
-    CHECK(calls == std::vector<std::string>{"new", "open", "examples", "website"});
     CHECK(frames.rebuilds == rebuilds);
+}
+
+TEST_CASE("Welcome category pills switch with a repaint and no rebuild", "[core][sakura][views]") {
+    WelcomeRig rig;
+    rig.scene.ctx.palette = DistinctPalette();
+    Frames frames(rig.host, kWide, rig.scene.ctx);
+    const auto update = [&] {
+        rig.update(rig.build());
+    };
+    REQUIRE(Settles(frames, update));
+    const U64 rebuilds = frames.rebuilds;
+    const auto names = rig.build().categoryNames;
+    REQUIRE_FALSE(names.empty());
+    rig.mailbox.state.interface.welcomeCategory = names.back();
+    auto stats = frames.run(update);
+    CHECK(Kept(stats));
+    CHECK(stats.repainted);
+    CHECK(Settles(frames, update));
+    rig.mailbox.state.interface.welcomeCategory.clear();
+    stats = frames.run(update);
+    CHECK(Kept(stats));
+    CHECK(stats.repainted);
+    CHECK(Settles(frames, update));
+    CHECK(frames.rebuilds == rebuilds);
+}
+
+TEST_CASE("Welcome screen settles under identical updates", "[core][sakura][views]") {
+    WelcomeRig rig;
+    rig.mailbox.state.agent.settings.enabled = true;
+    Frames frames(rig.host, kWide, rig.scene.ctx);
+    const auto update = [&] {
+        rig.update(rig.build());
+    };
+    CHECK(Settles(frames, update));
+}
+
+TEST_CASE("Welcome remote section, gallery progress, and category pager settle under identical updates",
+          "[core][sakura][views]") {
+    WelcomeRig rig;
+    auto& state = rig.mailbox.state;
+    for (U64 index = 0; index < 2 * WelcomePresenter::PageSize; ++index) {
+        Registry::FlowgraphRegistration entry;
+        entry.key = jst::fmt::format("receiver-{}", index);
+        entry.title = jst::fmt::format("Receiver {}", index);
+        entry.category = "Receivers";
+        state.registry.flowgraphs.push_back(entry);
+    }
+    state.remote.supported = true;
+    Frames frames(rig.host, kWide, rig.scene.context());
+    const auto update = [&] {
+        rig.update(rig.build());
+    };
+    CHECK(Settles(frames, update));
+    REQUIRE(ShownText(rig.root(), "Remote") != nullptr);
+
+    state.remote.started = true;
+    state.remote.inviteUrl = "https://cyberether.org/remote/abc";
+    state.remote.clients = {{.sessionId = "viewer-aaaaaa"}};
+    state.remote.waitlist = {"viewer-bbbbbb"};
+    CHECK(Settles(frames, update));
+    CHECK(IconButtons(rig.root(), ICON_LC_X).size() == 2);
+
+    state.registry.gallery.loading = true;
+    CHECK(Settles(frames, update));
+    state.registry.gallery.loading = false;
+    state.registry.gallery.attempted = true;
+    CHECK(Settles(frames, update));
+
+    state.interface.welcomeCategory = "Receivers";
+    CHECK(Settles(frames, update));
+    REQUIRE(Find<Pagination>(rig.root()).size() == 1);
+    state.interface.welcomePage = 1;
+    CHECK(Settles(frames, update));
+    CHECK(Find<Pagination>(rig.root()).size() == 1);
 }
 
 TEST_CASE("Remote sharing shows as a raised pill in the top right of the title row",
@@ -2048,8 +2793,8 @@ TEST_CASE("Modal container shows nothing without content and sizes each modal", 
     CHECK(view.layer().content == nullptr);
 
     const std::vector<std::pair<ModalContent, F32>> widths = {
-        {ModalContent::About, 526.0f},          {ModalContent::FlowgraphExamples, 526.0f},
-        {ModalContent::Benchmark, 526.0f},      {ModalContent::RemoteStreaming, 526.0f},
+        {ModalContent::About, 526.0f},
+        {ModalContent::Benchmark, 526.0f},      {ModalContent::RemoteQr, 526.0f},
         {ModalContent::Dependencies, 736.0f},
         {ModalContent::Feedback, 496.0f},
     };
@@ -2660,65 +3405,77 @@ TEST_CASE("Benchmark module combo reports the chosen module", "[core][sakura][vi
     CHECK(modules == std::vector<std::string>{"Filter"});
 }
 
-TEST_CASE("Remote modal starts streaming or opens the remote settings", "[core][sakura][views]") {
+TEST_CASE("Remote section starts streaming or opens the remote settings", "[core][sakura][views]") {
     ModalRig rig;
     Mailbox mailbox;
+    mailbox.state.remote.supported = true;
     mailbox.state.remote.config.broker.address = "127.0.0.1";
     mailbox.state.remote.config.broker.port = 9000;
     mailbox.state.remote.config.video.framerate = 60;
-    RemoteView view;
-    view.update(RemoteStreamingModalPresenter(mailbox.context()).build());
+    RemoteSectionView view;
+    view.update(RemoteSectionPresenter(mailbox.context()).build().value());
     rig.show({.content = &view.component()});
 
     auto buttons = Buttons(view.component());
     REQUIRE(buttons.size() == 2);
     CHECK(Press(rig.host, *buttons[0]));
     CHECK(Press(rig.host, *buttons[1]));
-    REQUIRE(mailbox.mails.size() == 3);
+    REQUIRE(mailbox.mails.size() == 2);
     const auto& start = std::get<MailStartRemote>(mailbox.mails[0]);
     CHECK(start.config.broker.address == "127.0.0.1");
     CHECK(start.config.broker.port == 9000);
     CHECK(start.config.video.framerate == 60);
-    CHECK(std::holds_alternative<MailCloseModal>(mailbox.mails[1]));
-    CHECK(std::get<MailOpenSettings>(mailbox.mails[2]).section == SettingsSection::Remote);
+    CHECK(std::get<MailOpenSettings>(mailbox.mails[1]).section == SettingsSection::Remote);
 }
 
-TEST_CASE("Remote modal shares the invite and approves only pending clients", "[core][sakura][views]") {
+TEST_CASE("Remote section shares the invite and approves or removes viewers", "[core][sakura][views]") {
     ModalRig rig;
-    std::vector<std::string> calls;
-    RemoteView view;
-    view.update({
-        .started = true,
-        .inviteUrl = "https://cyberether.org/remote/abc",
-        .accessToken = "token-123",
-        .clients = {{.sessionId = "approved-777777"}, {.sessionId = "session-abcdef12"}},
-        .waitlist = {"session-abcdef12", "zz-pending9"},
-        .onStop = [&] { calls.push_back("stop"); },
-        .onApprove = [&](const std::string& code) { calls.push_back("approve:" + code); },
-        .onOpenUrl = [&](const std::string& url) { calls.push_back("open:" + url); },
-        .onCopy = [&](const std::string& label, const std::string& value) {
-            calls.push_back("copy:" + label + ":" + value);
-        },
-    });
+    Mailbox mailbox;
+    auto& remote = mailbox.state.remote;
+    remote.supported = true;
+    remote.started = true;
+    remote.inviteUrl = "https://cyberether.org/remote/abc";
+    remote.clients = {{.sessionId = "approved-777777"}, {.sessionId = "session-abcdef12"}};
+    remote.waitlist = {"session-abcdef12", "zz-pending9"};
+    RemoteSectionView view;
+    view.update(RemoteSectionPresenter(mailbox.context()).build().value());
     rig.show({.content = &view.component()});
 
-    auto codes = Find<Sakura::QrCode>(view.component());
-    REQUIRE(codes.size() == 1);
-    CHECK(Press(rig.host, *codes[0]));
-
     auto buttons = Buttons(view.component());
-    REQUIRE(buttons.size() == 6);
+    REQUIRE(buttons.size() == 9);
     for (auto* button : buttons) {
         Press(rig.host, *button);
     }
+    std::vector<std::string> calls;
+    for (const auto& mail : mailbox.mails) {
+        if (std::holds_alternative<MailStopRemote>(mail)) {
+            calls.push_back("stop");
+        } else if (const auto* settings = std::get_if<MailOpenSettings>(&mail)) {
+            calls.push_back(settings->section == SettingsSection::Remote ? "settings" : "other");
+        } else if (const auto* modal = std::get_if<MailOpenModal>(&mail)) {
+            calls.push_back(modal->content == ModalContent::RemoteQr ? "qr" : "other");
+        } else if (const auto* copy = std::get_if<MailCopyText>(&mail)) {
+            calls.push_back("copy:" + copy->value);
+        } else if (const auto* approve = std::get_if<MailApproveRemoteClient>(&mail)) {
+            calls.push_back("approve:" + approve->sessionId);
+        } else if (const auto* remove = std::get_if<MailRemoveRemoteClient>(&mail)) {
+            calls.push_back("remove:" + remove->sessionId);
+        }
+    }
     CHECK(calls == std::vector<std::string>{
-                       "open:https://cyberether.org/remote/abc",
-                       "open:https://cyberether.org/remote/abc",
-                       "copy:Access token:token-123",
-                       "approve:session-abcdef12",
-                       "approve:zz-pending9",
                        "stop",
+                       "settings",
+                       "qr",
+                       "copy:https://cyberether.org/remote/abc",
+                       "remove:approved-777777",
+                       "approve:session-abcdef12",
+                       "remove:session-abcdef12",
+                       "approve:zz-pending9",
+                       "remove:zz-pending9",
                    });
+    CHECK(ShownText(view.component(), "777777") != nullptr);
+    CHECK(ShownText(view.component(), "CDEF12") != nullptr);
+    CHECK(ShownText(view.component(), "NDING9") != nullptr);
 }
 
 TEST_CASE("Dependency review installs approved requests through the presenter", "[core][sakura][views]") {
@@ -2845,40 +3602,6 @@ TEST_CASE("Flowgraph info modal saves to the browsed path and resets it for anot
     CHECK(saved == std::vector<std::string>{"/flows/a.yml", "/flows/b.yml", "/flows/b.yml", "/flows/c.yml"});
 }
 
-TEST_CASE("Flowgraph examples modal opens the clicked example", "[core][sakura][views]") {
-    ModalRig rig;
-    Mailbox mailbox;
-    std::vector<std::string> opened;
-    FlowgraphExamplesView view;
-    view.update({
-        .examples = {
-            {.key = "fm", .title = "FM Radio", .summary = "Listen to FM"},
-            {.key = "adsb", .title = "ADS-B", .summary = "Track aircraft"},
-            {.key = "scope", .title = "Scope", .summary = "Plot samples"},
-        },
-        .onOpen = [&](const FlowgraphExamplesView::Example& example) { opened.push_back(example.key); },
-    });
-    rig.show({.content = &view.component()});
-
-    auto cells = Find<FlowgraphExampleCell>(view.component());
-    REQUIRE(cells.size() == 3);
-    CHECK(Peek::Frame(*cells[1]).x > Peek::Frame(*cells[0]).right());
-    CHECK(Peek::Frame(*cells[2]).y > Peek::Frame(*cells[0]).bottom());
-    CHECK(Press(rig.host, *cells[2]));
-    CHECK(Press(rig.host, *cells[0]));
-    CHECK(opened == std::vector<std::string>{"scope", "fm"});
-
-    view.update({});
-    rig.place();
-    CHECK(Find<FlowgraphExampleCell>(view.component()).empty());
-
-    const auto config = FlowgraphExamplesModalPresenter(mailbox.context()).build();
-    config.onOpen({.key = "fm", .content = "graph: {}"});
-    REQUIRE(mailbox.mails.size() == 2);
-    CHECK(std::get<MailOpenFlowgraphBlob>(mailbox.mails[0]).blob.size() == 9);
-    CHECK(std::holds_alternative<MailCloseModal>(mailbox.mails[1]));
-}
-
 TEST_CASE("Feedback modal submits only within the length limits and while idle", "[core][sakura][views]") {
     ModalRig rig;
     U64 submitted = 0;
@@ -2915,7 +3638,7 @@ TEST_CASE("Modal views settle under identical updates", "[core][sakura][views]")
     Frames frames(rig.host, kWide, rig.scene.ctx);
     ModalView view;
 
-    for (const auto content : {ModalContent::About, ModalContent::RemoteStreaming, ModalContent::Benchmark,
+    for (const auto content : {ModalContent::About, ModalContent::RemoteQr, ModalContent::Benchmark,
                                ModalContent::Dependencies}) {
         mailbox.state.modal.content = content;
         const auto update = [&] {
@@ -3285,11 +4008,10 @@ TEST_CASE("Workbench view accepts welcome, modal, and file pending configs witho
     config.titlebar.onAction = [&actions](TitlebarView::Action action) {
         actions.push_back(action);
     };
-    config.welcomeHud = WelcomeHudPresenter(mailbox.context()).build();
+    config.startTab = WorkbenchPresenter(mailbox.context()).build().startTab;
     CHECK_NOTHROW(view.update(config));
 
     mailbox.state.modal.content = ModalContent::About;
-    config.welcomeHud.reset();
     config.modal = ModalPresenter(mailbox.context()).build();
     CHECK_NOTHROW(view.update(config));
 
@@ -3301,38 +4023,19 @@ TEST_CASE("Workbench view accepts welcome, modal, and file pending configs witho
 TEST_CASE("Workbench activates only the tab the model navigated to last within a poll",
           "[core][sakura][views]") {
     Mailbox mailbox;
+    mailbox.state.graphics.device = DeviceType::CPU;
     mailbox.state.system.render = std::make_shared<SakuraTest::FakeWindow>();
     WorkbenchActions actions(mailbox.state, mailbox.callbacks);
     WorkbenchView view;
     const auto update = [&] {
         mailbox.mails.clear();
-        const auto& state = mailbox.state;
-        const auto enqueue = mailbox.callbacks.enqueueMail;
-        WorkbenchView::Config config;
-        if (auto welcome = WelcomeHudPresenter(mailbox.context()).buildStartTab()) {
-            config.startTab = StartTabView::Config{
-                .welcome = std::move(*welcome),
-                .onFocus = [enqueue]() {
-                    enqueue(MailFocusStartTab{});
-                },
-            };
-        }
-        config.startTabRequests = state.interface.startTabRequests;
-        config.startTabFocused = state.startTabActive();
-        if (state.tabShown(WorkspaceTab::Settings)) {
-            config.settings = SettingsView::Config{
-                .onFocus = [enqueue]() {
-                    enqueue(MailFocusSettings{});
-                },
-            };
-        }
-        config.settingsTabRequests = state.interface.settingsTabRequests;
-        config.settingsTabFocused = state.settingsTabActive();
-        view.update(std::move(config));
+        actions.settleStartTab();
+        view.update(WorkbenchPresenter(mailbox.context()).build());
     };
 
     actions.handle(MailOpenSettings{});
     update();
+    CHECK(mailbox.state.settingsTabActive());
 
     actions.handle(MailOpenSettings{});
     actions.handle(MailOpenStartTab{});
@@ -3353,23 +4056,19 @@ TEST_CASE("Workbench activates only the tab the model navigated to last within a
     CHECK(mailbox.mails.empty());
 }
 
-TEST_CASE("Example and info views settle under identical updates",
+TEST_CASE("Flowgraph info view settles under identical updates",
           "[core][sakura][views]") {
     Scene scene{kWide};
-    FlowgraphExamplesView examples;
     FlowgraphInfoView info;
-    LayerSlot examplesSlot;
     LayerSlot infoSlot;
     LayerHost host;
     Frames frames(host, kWide, scene.ctx);
     const auto update = [&] {
-        examples.update({.examples = {{.key = "fm", .title = "FM", .summary = "Radio"}}});
         info.update({.flowgraphId = "a", .title = "Radio", .path = "/flows/a.yml"});
     };
     update();
-    examplesSlot.hold(examples.component(), {800.0f, 0.0f, 800.0f, 600.0f});
     infoSlot.hold(info.component(), {0.0f, 600.0f, 800.0f, 600.0f});
-    host.setLayers({&examplesSlot, &infoSlot});
+    host.setLayers({&infoSlot});
     CHECK(Settles(frames, update));
 }
 
@@ -3478,4 +4177,110 @@ TEST_CASE("Help button is always in the top right corner, faint, and opens feedb
     rig.place();
     CHECK(rig.actions == std::vector<Action>{Action::SendFeedback});
     CHECK(rig.presses.empty());
+}
+
+TEST_CASE("Remote viewers that share a display code stay distinct", "[core][sakura][views]") {
+    ModalRig rig;
+    Mailbox mailbox;
+    auto& remote = mailbox.state.remote;
+    remote.supported = true;
+    remote.started = true;
+    remote.waitlist = {"first-abcdef", "second-abcdef"};
+    RemoteSectionView view;
+    view.update(RemoteSectionPresenter(mailbox.context()).build().value());
+    rig.show({.content = &view.component()});
+
+    U64 codes = 0;
+    for (auto* text : Find<Sakura::Text>(view.component())) {
+        codes += text->config().str == "ABCDEF" ? 1 : 0;
+    }
+    CHECK(codes == 2);
+    const auto approves = IconButtons(view.component(), ICON_LC_CHECK);
+    const auto removes = IconButtons(view.component(), ICON_LC_X);
+    REQUIRE(approves.size() == 2);
+    REQUIRE(removes.size() == 2);
+    for (U64 row = 0; row < 2; ++row) {
+        CHECK(Press(rig.host, *approves[row]));
+        CHECK(Press(rig.host, *removes[row]));
+    }
+    REQUIRE(mailbox.mails.size() == 4);
+    CHECK(std::get<MailApproveRemoteClient>(mailbox.mails[0]).sessionId == "first-abcdef");
+    CHECK(std::get<MailRemoveRemoteClient>(mailbox.mails[1]).sessionId == "first-abcdef");
+    CHECK(std::get<MailApproveRemoteClient>(mailbox.mails[2]).sessionId == "second-abcdef");
+    CHECK(std::get<MailRemoveRemoteClient>(mailbox.mails[3]).sessionId == "second-abcdef");
+}
+
+TEST_CASE("Remote viewer refresh during a press does not retarget the click", "[core][sakura][views]") {
+    ModalRig rig;
+    Mailbox mailbox;
+    auto& remote = mailbox.state.remote;
+    remote.supported = true;
+    remote.started = true;
+    remote.clients = {{.sessionId = "viewer-aaaaaa"}, {.sessionId = "viewer-bbbbbb"}};
+    RemoteSectionView view;
+    view.update(RemoteSectionPresenter(mailbox.context()).build().value());
+    rig.show({.content = &view.component()});
+
+    auto removes = IconButtons(view.component(), ICON_LC_X);
+    REQUIRE(removes.size() == 2);
+    const auto point = Center(*removes.front());
+    CHECK(rig.host.send(Mouse(MouseEventType::Click, point.x, point.y)));
+
+    remote.clients = {{.sessionId = "viewer-bbbbbb"}, {.sessionId = "viewer-aaaaaa"}};
+    view.update(RemoteSectionPresenter(mailbox.context()).build().value());
+    rig.place();
+    rig.host.send(Mouse(MouseEventType::Release, point.x, point.y));
+    CHECK(mailbox.count<MailRemoveRemoteClient>() == 0);
+
+    CHECK(rig.host.send(Mouse(MouseEventType::Click, point.x, point.y)));
+    remote.clients = {{.sessionId = "viewer-aaaaaa"}};
+    view.update(RemoteSectionPresenter(mailbox.context()).build().value());
+    rig.place();
+    rig.host.send(Mouse(MouseEventType::Release, point.x, point.y));
+    CHECK(mailbox.count<MailRemoveRemoteClient>() == 0);
+
+    remote.clients = {{.sessionId = "viewer-bbbbbb"}};
+    view.update(RemoteSectionPresenter(mailbox.context()).build().value());
+    rig.place();
+    removes = IconButtons(view.component(), ICON_LC_X);
+    REQUIRE(removes.size() == 1);
+    CHECK(Press(rig.host, *removes.front()));
+    REQUIRE(mailbox.count<MailRemoveRemoteClient>() == 1);
+    CHECK(mailbox.last<MailRemoveRemoteClient>()->sessionId == "viewer-bbbbbb");
+}
+
+TEST_CASE("Remote QR modal encodes the invite while streaming and closes once streaming stops",
+          "[core][sakura][views]") {
+    ModalRig rig;
+    Mailbox mailbox;
+    const auto context = mailbox.context();
+    mailbox.state.modal.content = ModalContent::RemoteQr;
+    mailbox.state.remote.inviteUrl = "https://cyberether.org/remote/abc";
+    CHECK(ModalPresenter(context).build().remoteQr.inviteUrl.empty());
+
+    mailbox.state.remote.started = true;
+    const auto config = ModalPresenter(context).build();
+    CHECK(config.remoteQr.inviteUrl == "https://cyberether.org/remote/abc");
+
+    RemoteQrView view;
+    const auto modules = [&](const std::string& url) {
+        view.update({.inviteUrl = url});
+        rig.show({.content = &view.component()});
+        const auto codes = Find<Sakura::QrCode>(view.component());
+        REQUIRE(codes.size() == 1);
+        U64 count = 0;
+        for (auto* box : Find<Sakura::Box>(*codes.front())) {
+            count += box->config().instances.size();
+        }
+        return count;
+    };
+    CHECK(modules("https://cyberether.org/remote/abc") > 1);
+    CHECK(modules("") == 0);
+
+    WorkbenchActions actions(mailbox.state, mailbox.callbacks);
+    actions.reconcileModal();
+    CHECK(mailbox.state.modal.content == std::optional<ModalContent>(ModalContent::RemoteQr));
+    mailbox.state.remote.started = false;
+    actions.reconcileModal();
+    CHECK_FALSE(mailbox.state.modal.content.has_value());
 }

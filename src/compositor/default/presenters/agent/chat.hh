@@ -4,7 +4,6 @@
 #include "labels.hh"
 #include "transcript.hh"
 #include "../context.hh"
-#include "../hud/welcome.hh"
 #include "../../views/agent/chat.hh"
 
 #include <algorithm>
@@ -48,7 +47,7 @@ struct AgentChatPresenter {
         config.open = agent.ui.visible;
         config.focusRequest = agent.ui.chatFocusRequests;
         config.hidden = !settings.enabled ||
-                        (WelcomeShown(context.state) && !agent.ui.visible && conversation.messages.empty());
+                        (context.state.startTabActive() && !agent.ui.visible && conversation.messages.empty());
 
         const auto modelKey = [](const auto& model) {
             return jst::fmt::format("{}:{}{}", model.provider.size(), model.provider, model.id);

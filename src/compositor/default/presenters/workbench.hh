@@ -6,9 +6,9 @@
 #include "flowgraph/environment.hh"
 #include "flowgraph/metadata.hh"
 #include "flowgraph/pane.hh"
-#include "hud/welcome.hh"
 #include "modal/container.hh"
 #include "settings/base.hh"
+#include "start_tab/base.hh"
 #include "titlebar.hh"
 
 #include "agent/chat.hh"
@@ -21,7 +21,7 @@ struct WorkbenchPresenter {
     const PresenterContext& context;
     FilePickerPresenter filePicker;
     TitlebarPresenter titlebar;
-    WelcomeHudPresenter welcomeHud;
+    StartTabPresenter startTab;
     FlowgraphPanePresenter flowgraphPane;
     FlowgraphMetadataWindowPresenter flowgraphMetadata;
     FlowgraphEnvironmentWindowPresenter flowgraphEnvironment;
@@ -33,7 +33,7 @@ struct WorkbenchPresenter {
     explicit WorkbenchPresenter(const PresenterContext& context) : context(context),
                                                                    filePicker(context),
                                                                    titlebar(context),
-                                                                   welcomeHud(context),
+                                                                   startTab(context),
                                                                    flowgraphPane(context),
                                                                    flowgraphMetadata(context),
                                                                    flowgraphEnvironment(context),
@@ -48,25 +48,8 @@ struct WorkbenchPresenter {
         config.titlebar = titlebar.build();
         config.agentChat = agentChat.build();
         config.agentVoice = agentVoice.build();
-        config.welcomeHud = welcomeHud.build();
-        if (config.welcomeHud.has_value()) {
-            config.welcomeHud->chatOpen = !config.agentChat.hidden;
-            config.welcomeHud->assistantEnabled = context.state.agent.settings.enabled;
-        }
-        if (auto welcome = welcomeHud.buildStartTab()) {
-            welcome->chatOpen = !config.agentChat.hidden;
-            welcome->assistantEnabled = context.state.agent.settings.enabled;
-            const auto enqueue = context.callbacks.enqueueMail;
-            config.startTab = StartTabView::Config{
-                .welcome = std::move(*welcome),
-                .onClose = [enqueue]() {
-                    enqueue(MailCloseStartTab{});
-                },
-                .onFocus = [enqueue]() {
-                    enqueue(MailFocusStartTab{});
-                },
-            };
-        }
+        config.hideTabs = context.state.tabsHidden();
+        config.startTab = startTab.build();
         config.startTabRequests = context.state.interface.startTabRequests;
         config.startTabFocused = context.state.startTabActive();
         if (context.state.tabShown(WorkspaceTab::Settings)) {

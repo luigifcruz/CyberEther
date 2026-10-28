@@ -6,14 +6,13 @@ namespace Jetstream {
 
 enum class ModalContent : I32 {
     About = 0,
-    FlowgraphExamples,
     FlowgraphInfo,
     FlowgraphClose,
     RenameBlock,
     Benchmark,
-    RemoteStreaming,
     Dependencies,
     Feedback,
+    RemoteQr,
 };
 
 enum class RegistryPage : I32 {
@@ -26,6 +25,11 @@ enum class IntelligencePage : I32 {
     Overview = 0,
     Provider,
     AddModel,
+};
+
+enum class WelcomeSection : I32 {
+    All = 0,
+    Flowgraphs,
 };
 
 enum class WorkspaceTab : I32 {

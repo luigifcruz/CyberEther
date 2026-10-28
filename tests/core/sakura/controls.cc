@@ -398,26 +398,43 @@ TEST_CASE("Combo measure uses its configured width or the available width", "[co
     CHECK(host.measureOf(scene.ctx, {320.0f, 500.0f}) == Extent2D<F32>{150.0f, 25.0f});
 }
 
-TEST_CASE("QR codes click only inside the centered code", "[core][sakura][controls]") {
+TEST_CASE("QR codes size from the viewport height ratio and center the code", "[core][sakura][controls]") {
     const Scene scene;
-    U64 clicked = 0;
     Sakura::QrCode code;
-    code.update({.data = {1, 0, 0, 1}, .width = 2, .onClick = [&] { ++clicked; }});
+    code.update({.data = {1, 0, 0, 1}, .width = 2, .heightRatio = 0.1f});
     Host host(code);
 
-    CHECK(host.measureOf(scene.ctx, {100.0f, 500.0f}) == Extent2D<F32>{100.0f, 24.0f});
-    CHECK(host.measureOf(scene.ctx, {kInfinite, 500.0f}) == Extent2D<F32>{24.0f, 24.0f});
+    CHECK(host.measureOf(scene.ctx, {100.0f, 500.0f}) == Extent2D<F32>{100.0f, 60.0f});
+    CHECK(host.measureOf(scene.ctx, {kInfinite, 500.0f}) == Extent2D<F32>{60.0f, 60.0f});
+    CHECK(host.measureOf(scene.ctx, {40.0f, 30.0f}) == Extent2D<F32>{40.0f, 30.0f});
 
-    host.place(scene.ctx, {0.0f, 0.0f, 100.0f, 24.0f});
-    CHECK(host.send(Mouse(MouseEventType::Click, 38.0f, 10.0f)));
-    CHECK(clicked == 1);
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 37.0f, 10.0f)));
-    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 62.0f, 10.0f)));
-    CHECK(clicked == 1);
+    auto tall = scene.ctx;
+    tall.framebufferSize.y = 1200;
+    CHECK(host.measureOf(tall, {kInfinite, kInfinite}) == Extent2D<F32>{120.0f, 120.0f});
 
-    code.update({.data = {1, 0, 0, 1}, .width = 2, .onClick = [&] { clicked += 10; }});
-    CHECK(host.send(Mouse(MouseEventType::Click, 50.0f, 10.0f)));
-    CHECK(clicked == 11);
+    auto dense = scene.ctx;
+    dense.pixelRatio = 2.0f;
+    CHECK(host.measureOf(dense, {kInfinite, kInfinite}) == Extent2D<F32>{120.0f, 120.0f});
+
+    host.place(scene.ctx, {0.0f, 0.0f, 100.0f, 60.0f});
+    const auto boxes = Find<Sakura::Box>(code);
+    REQUIRE(boxes.size() == 1);
+    const auto& instances = boxes.front()->config().instances;
+    REQUIRE(instances.size() == 3);
+    CHECK(instances[0].rect == Rect{20.0f, 0.0f, 60.0f, 60.0f});
+    CHECK(instances[1].rect == Rect{40.0f, 20.0f, 10.0f, 10.0f});
+    CHECK(instances[2].rect == Rect{50.0f, 30.0f, 10.0f, 10.0f});
+    CHECK_FALSE(host.send(Mouse(MouseEventType::Click, 50.0f, 30.0f)));
+    CHECK_FALSE(Peek::CursorAt(code, {50.0f, 30.0f}).has_value());
+
+    host.place(scene.ctx, {0.0f, 0.0f, 32.0f, 60.0f});
+    const auto& fitted = Find<Sakura::Box>(code).front()->config().instances;
+    REQUIRE(fitted.size() == 3);
+    CHECK(fitted[0].rect == Rect{1.0f, 0.0f, 30.0f, 30.0f});
+    CHECK(fitted[2].rect.right() <= 31.0f);
+
+    code.update({.data = {1, 0, 0, 1}, .width = 2, .heightRatio = 0.0f});
+    CHECK(host.measureOf(scene.ctx, {kInfinite, 500.0f}) == Extent2D<F32>{0.0f, 0.0f});
 }
 
 TEST_CASE("Progress bars fill the available width by default", "[core][sakura][controls]") {

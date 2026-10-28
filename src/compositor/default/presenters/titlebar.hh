@@ -76,7 +76,7 @@ struct TitlebarPresenter {
                         enqueue(MailOpenSettings{.section = SettingsSection::About});
                         break;
                     case Action::RemoteStreaming:
-                        enqueue(MailOpenModal{.content = ModalContent::RemoteStreaming});
+                        enqueue(MailOpenStartTab{});
                         break;
                     case Action::ToggleAgent:
                         enqueue(MailSetAgentChatVisible{.value = !agentVisible});

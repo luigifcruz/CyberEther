@@ -13,6 +13,7 @@
 #include <optional>
 #include <string>
 #include <tuple>
+#include <unordered_set>
 
 namespace Jetstream {
 
@@ -32,6 +33,10 @@ struct WorkbenchActions {
                               MailOpenStartTab,
                               MailCloseStartTab,
                               MailFocusStartTab,
+                              MailSetWelcomeSection,
+                              MailSetWelcomeQuery,
+                              MailSetWelcomeCategory,
+                              MailSetWelcomePage,
                               MailOpenSettings,
                               MailCloseSettings,
                               MailFocusSettings>;
@@ -46,6 +51,7 @@ struct WorkbenchActions {
 
     static void Focus(DefaultCompositorState& state, std::optional<WorkspaceTab> tab) {
         state.interface.focusedTab = tab;
+        state.interface.tabNavigationPending = true;
     }
 
     static void Open(DefaultCompositorState& state, WorkspaceTab tab) {
@@ -94,6 +100,29 @@ struct WorkbenchActions {
         return Result::SUCCESS;
     }
 
+    Result handle(const MailSetWelcomeSection& msg) {
+        state.interface.welcomeSection = msg.section;
+        state.interface.welcomePage = 0;
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetWelcomeQuery& msg) {
+        state.interface.welcomeQuery = msg.query;
+        state.interface.welcomePage = 0;
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetWelcomeCategory& msg) {
+        state.interface.welcomeCategory = msg.category;
+        state.interface.welcomePage = 0;
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetWelcomePage& msg) {
+        state.interface.welcomePage = msg.page;
+        return Result::SUCCESS;
+    }
+
     Result handle(const MailFocusStartTab&) {
         focusShown(WorkspaceTab::Start);
         return Result::SUCCESS;
@@ -129,6 +158,17 @@ struct WorkbenchActions {
     }
 
     void reconcileFlowgraphs() {
+        const auto& items = state.flowgraph.items;
+        for (const auto& name : knownFlowgraphs) {
+            if (!items.contains(name)) {
+                Forget(state, name);
+            }
+        }
+        knownFlowgraphs.clear();
+        for (const auto& [name, _] : items) {
+            knownFlowgraphs.insert(name);
+        }
+
         if (state.flowgraph.items.empty()) {
             state.interface.focusedFlowgraph.reset();
             state.interface.flowgraphMetadataVisible = false;
@@ -151,9 +191,21 @@ struct WorkbenchActions {
         }
     }
 
+    static void Forget(DefaultCompositorState& state, const std::string& flowgraph) {
+        state.flowgraph.gallery.erase(flowgraph);
+        if (state.interface.pendingFocusedFlowgraph == flowgraph) {
+            state.interface.pendingFocusedFlowgraph.reset();
+        }
+    }
+
     void reconcileModal() {
         if (!state.modal.content.has_value()) {
             state.modal.flowgraph.reset();
+            return;
+        }
+
+        if (state.modal.content == ModalContent::RemoteQr && !state.remote.started) {
+            state.modal.content.reset();
             return;
         }
 
@@ -186,15 +238,24 @@ struct WorkbenchActions {
 
     void settleStartTab() {
         auto& ui = state.interface;
-        if (!ui.startTab) {
-            return;
-        }
+        const bool navigated = ui.tabNavigationPending;
         const U64 count = state.flowgraph.items.size();
-        if (count > ui.startTabBaseline) {
+        if (ui.startTab && (count == 0 || count > ui.startTabBaseline)) {
             Close(state, WorkspaceTab::Start);
-            return;
+        } else if (ui.startTab) {
+            ui.startTabBaseline = count;
         }
-        ui.startTabBaseline = count;
+
+        const bool shown = state.startTabShown();
+        if (shown && !startTabWasShown && !navigated) {
+            Focus(state, WorkspaceTab::Start);
+            ++ui.startTabRequests;
+        }
+        startTabWasShown = shown;
+        if (ui.focusedTab.has_value() && !state.tabShown(*ui.focusedTab)) {
+            Focus(state, std::nullopt);
+        }
+        ui.tabNavigationPending = false;
     }
 
     Result handle(const MailApplyTheme& msg) {
@@ -306,6 +367,9 @@ struct WorkbenchActions {
             Focus(state, tab);
         }
     }
+
+    std::unordered_set<std::string> knownFlowgraphs;
+    bool startTabWasShown = false;
 };
 
 }  // namespace Jetstream

@@ -1556,8 +1556,9 @@ TEST_CASE("QR codes settle and repaint when the data changes", "[core][sakura][r
     Place place(code, {10.0f, 10.0f, 200.0f, 200.0f});
     Frames frames(place, kScreen, scene.context());
     std::vector<U8> data = {1, 0, 1, 0, 1, 0, 1, 0, 1};
+    F32 heightRatio = 0.25f;
     const auto update = [&] {
-        code.update({.data = data, .width = 3, .onClick = [] {}});
+        code.update({.data = data, .width = 3, .heightRatio = heightRatio});
     };
     REQUIRE(frames.settle(update));
     CHECK(Retains(frames, update));
@@ -1568,6 +1569,11 @@ TEST_CASE("QR codes settle and repaint when the data changes", "[core][sakura][r
     data = {0, 1, 0, 1, 0, 1, 0, 1, 0};
     CHECK(RepaintOnly(frames.run(update)));
     CHECK(Retains(frames, update));
+
+    heightRatio = 0.15f;
+    CHECK(RepaintOnly(frames.run(update)));
+    CHECK(Retains(frames, update));
+    CHECK(frames.restructures == 0);
 }
 
 TEST_CASE("Closed combos settle and repaint once per hover transition", "[core][sakura][retention]") {

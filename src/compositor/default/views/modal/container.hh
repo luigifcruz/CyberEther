@@ -5,12 +5,11 @@
 #include "benchmark.hh"
 #include "dependencies.hh"
 #include "../flowgraph/modals/close.hh"
-#include "../flowgraph/modals/examples.hh"
 #include "../flowgraph/modals/info.hh"
 #include "../flowgraph/modals/rename.hh"
 #include "feedback.hh"
 #include "../../model/ui.hh"
-#include "remote.hh"
+#include "remote_qr.hh"
 
 #include "jetstream/render/sakura/base.hh"
 
@@ -23,12 +22,11 @@ namespace Jetstream {
 struct ModalView {
     struct Config {
         std::optional<ModalContent> content;
-        FlowgraphExamplesView::Config flowgraphExamples;
         std::optional<FlowgraphInfoView::Config> flowgraphInfo;
         std::optional<FlowgraphCloseView::Config> flowgraphClose;
         std::optional<RenameBlockView::Config> renameBlock;
         BenchmarkView::Config benchmark;
-        RemoteView::Config remoteStreaming;
+        RemoteQrView::Config remoteQr;
         DependencyReviewView::Config dependencies;
         FeedbackView::Config feedback;
         std::function<void()> onClose;
@@ -51,11 +49,6 @@ struct ModalView {
             case ModalContent::About:
                 aboutView.update({});
                 break;
-            case ModalContent::FlowgraphExamples: {
-                auto viewConfig = this->config.flowgraphExamples;
-                flowgraphExamplesView.update(std::move(viewConfig));
-                break;
-            }
             case ModalContent::FlowgraphInfo:
                 if (this->config.flowgraphInfo.has_value()) {
                     auto viewConfig = this->config.flowgraphInfo.value();
@@ -79,9 +72,9 @@ struct ModalView {
                 benchmarkView.update(std::move(viewConfig));
                 break;
             }
-            case ModalContent::RemoteStreaming: {
-                auto viewConfig = this->config.remoteStreaming;
-                remoteView.update(std::move(viewConfig));
+            case ModalContent::RemoteQr: {
+                auto viewConfig = this->config.remoteQr;
+                remoteQrView.update(std::move(viewConfig));
                 break;
             }
             case ModalContent::Dependencies: {
@@ -119,8 +112,6 @@ struct ModalView {
         switch (config.content.value()) {
             case ModalContent::About:
                 return &aboutView.component();
-            case ModalContent::FlowgraphExamples:
-                return &flowgraphExamplesView.component();
             case ModalContent::FlowgraphInfo:
                 return config.flowgraphInfo.has_value() ? &flowgraphInfoView.component() : nullptr;
             case ModalContent::FlowgraphClose:
@@ -129,8 +120,8 @@ struct ModalView {
                 return config.renameBlock.has_value() ? &renameBlockView.component() : nullptr;
             case ModalContent::Benchmark:
                 return &benchmarkView.component();
-            case ModalContent::RemoteStreaming:
-                return &remoteView.component();
+            case ModalContent::RemoteQr:
+                return &remoteQrView.component();
             case ModalContent::Dependencies:
                 return &dependencyReviewView.component();
             case ModalContent::Feedback:
@@ -152,12 +143,11 @@ struct ModalView {
     Config config;
     std::optional<ModalContent> previousContent;
     AboutView aboutView;
-    FlowgraphExamplesView flowgraphExamplesView;
     FlowgraphInfoView flowgraphInfoView;
     FlowgraphCloseView flowgraphCloseView;
     RenameBlockView renameBlockView;
     BenchmarkView benchmarkView;
-    RemoteView remoteView;
+    RemoteQrView remoteQrView;
     DependencyReviewView dependencyReviewView;
     FeedbackView feedbackView;
 };

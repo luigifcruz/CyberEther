@@ -76,7 +76,8 @@ struct FlowgraphPanePresenter {
                 });
             },
             .onOpenExamples = [enqueue]() {
-                enqueue(MailOpenModal{.content = ModalContent::FlowgraphExamples});
+                enqueue(MailOpenStartTab{});
+                enqueue(MailSetWelcomeSection{.section = WelcomeSection::Flowgraphs});
             },
             .onMeasure = [layout = context.callbacks.layout, flowgraphId](FlowgraphEditor::Measured measured) {
                 if (!layout) {

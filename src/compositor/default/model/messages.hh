@@ -115,6 +115,22 @@ struct MailCloseStartTab {};
 
 struct MailFocusStartTab {};
 
+struct MailSetWelcomeSection {
+    WelcomeSection section = WelcomeSection::All;
+};
+
+struct MailSetWelcomeQuery {
+    std::string query;
+};
+
+struct MailSetWelcomeCategory {
+    std::string category;
+};
+
+struct MailSetWelcomePage {
+    U64 page = 0;
+};
+
 struct MailOpenSettings {
     SettingsSection section = SettingsSection::General;
 };
@@ -139,12 +155,25 @@ struct MailOpenFlowgraphPath {
     std::string path;
 };
 
+struct MailToggleFavoriteFlowgraph {
+    std::string path;
+};
+
+struct MailRememberFlowgraph {
+    std::string path;
+    std::string title;
+};
+
 struct MailDropFlowgraphPath {
     std::string path;
 };
 
 struct MailOpenFlowgraphBlob {
     std::vector<char> blob;
+};
+
+struct MailOpenFlowgraphExample {
+    std::string key;
 };
 
 struct MailFocusFlowgraph {
@@ -530,6 +559,10 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailOpenStartTab,
                           MailCloseStartTab,
                           MailFocusStartTab,
+                          MailSetWelcomeSection,
+                          MailSetWelcomeQuery,
+                          MailSetWelcomeCategory,
+                          MailSetWelcomePage,
                           MailOpenSettings,
                           MailCloseSettings,
                           MailFocusSettings,
@@ -538,8 +571,11 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailCloseFlowgraph,
                           MailSaveFlowgraph,
                           MailOpenFlowgraphPath,
+                          MailToggleFavoriteFlowgraph,
+                          MailRememberFlowgraph,
                           MailDropFlowgraphPath,
                           MailOpenFlowgraphBlob,
+                          MailOpenFlowgraphExample,
                           MailFocusFlowgraph,
                           MailApplyTheme,
                           MailOpenModal,

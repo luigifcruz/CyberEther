@@ -42,14 +42,32 @@ struct SettingsPresenter {
         const auto enqueue = context.callbacks.enqueueMail;
         SettingsView::Config config;
         config.section = context.state.settings.section;
-        config.general = general.build();
-        config.remote = remote.build();
-        config.runtime = runtime.build();
-        config.registry = registry.build();
-        config.intelligence = intelligence.build();
-        config.developer = developer.build();
-        config.about = about.build();
-        config.legal = legal.build();
+        switch (config.section) {
+            case SettingsSection::General:
+                config.general = general.build();
+                break;
+            case SettingsSection::Remote:
+                config.remote = remote.build();
+                break;
+            case SettingsSection::Runtime:
+                config.runtime = runtime.build();
+                break;
+            case SettingsSection::Registry:
+                config.registry = registry.build();
+                break;
+            case SettingsSection::Intelligence:
+                config.intelligence = intelligence.build();
+                break;
+            case SettingsSection::Developer:
+                config.developer = developer.build();
+                break;
+            case SettingsSection::About:
+                config.about = about.build();
+                break;
+            case SettingsSection::Legal:
+                config.legal = legal.build();
+                break;
+        }
         config.onSectionChange = [enqueue](SettingsSection section) {
             enqueue(MailSetSettingsSection{.section = section});
         };

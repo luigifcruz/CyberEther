@@ -4,11 +4,10 @@
 #include "benchmark.hh"
 #include "dependencies.hh"
 #include "feedback.hh"
-#include "remote.hh"
+#include "remote_qr.hh"
 
 #include "../context.hh"
 #include "../flowgraph/modals/close.hh"
-#include "../flowgraph/modals/examples.hh"
 #include "../flowgraph/modals/info.hh"
 #include "../flowgraph/modals/rename.hh"
 
@@ -19,22 +18,20 @@ namespace Jetstream {
 
 struct ModalPresenter {
     const PresenterContext& context;
-    FlowgraphExamplesModalPresenter flowgraphExamples;
     FlowgraphInfoModalPresenter flowgraphInfo;
     FlowgraphCloseModalPresenter flowgraphClose;
     RenameBlockModalPresenter renameBlock;
     BenchmarkModalPresenter benchmark;
-    RemoteStreamingModalPresenter remoteStreaming;
+    RemoteQrModalPresenter remoteQr;
     DependencyReviewModalPresenter dependencies;
     FeedbackModalPresenter feedback;
 
     explicit ModalPresenter(const PresenterContext& context) : context(context),
-                                                               flowgraphExamples(context),
                                                                flowgraphInfo(context),
                                                                flowgraphClose(context),
                                                                renameBlock(context),
                                                                benchmark(context),
-                                                               remoteStreaming(context),
+                                                               remoteQr(context),
                                                                dependencies(context),
                                                                feedback(context) {}
 
@@ -54,9 +51,6 @@ struct ModalPresenter {
         switch (config.content.value()) {
             case ModalContent::About:
                 break;
-            case ModalContent::FlowgraphExamples:
-                config.flowgraphExamples = flowgraphExamples.build();
-                break;
             case ModalContent::FlowgraphInfo:
                 config.flowgraphInfo = flowgraphInfo.build();
                 break;
@@ -69,8 +63,8 @@ struct ModalPresenter {
             case ModalContent::Benchmark:
                 config.benchmark = benchmark.build();
                 break;
-            case ModalContent::RemoteStreaming:
-                config.remoteStreaming = remoteStreaming.build();
+            case ModalContent::RemoteQr:
+                config.remoteQr = remoteQr.build();
                 break;
             case ModalContent::Dependencies:
                 config.dependencies = dependencies.build();

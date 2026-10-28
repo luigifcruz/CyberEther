@@ -6,10 +6,9 @@
 #include "flowgraph/key_value.hh"
 #include "flowgraph/pane.hh"
 #include "file_picker.hh"
-#include "hud/welcome.hh"
 #include "modal/container.hh"
 #include "settings/base.hh"
-#include "start_tab.hh"
+#include "start_tab/base.hh"
 #include "titlebar.hh"
 
 #include <optional>
@@ -27,9 +26,11 @@ struct WorkspaceShellView {
     }
 
     void updatePanes(std::vector<Sakura::Dock::Pane> panes,
-                     std::optional<std::string> activate = std::nullopt) {
+                     std::optional<std::string> activate = std::nullopt,
+                     bool hideTabs = false) {
         workspace.update({
             .tabs = true,
+            .hideTabs = hideTabs,
             .accepts = "main",
             .panes = std::move(panes),
             .activate = std::move(activate),
@@ -88,8 +89,8 @@ struct WorkbenchView {
         bool backgroundParticles = true;
         AgentChatView::Config agentChat;
         AgentVoiceView::Config agentVoice;
-        std::optional<WelcomeHudView::Config> welcomeHud;
         std::optional<StartTabView::Config> startTab;
+        bool hideTabs = false;
         U64 startTabRequests = 0;
         bool startTabFocused = false;
         std::optional<SettingsView::Config> settings;
@@ -141,10 +142,6 @@ struct WorkbenchView {
         agentVoice.update(std::move(this->config.agentVoice));
 
         std::vector<Sakura::HudLayer::Hud> hudItems;
-        if (this->config.welcomeHud.has_value()) {
-            welcomeHud.update(std::move(this->config.welcomeHud.value()));
-            hudItems.push_back(welcomeHud.hud());
-        }
         if (agentVoice.shown()) {
             hudItems.push_back(agentVoice.hud());
         }
@@ -185,7 +182,7 @@ struct WorkbenchView {
             }
         }
         settingsTabRequests = this->config.settingsTabRequests;
-        workspaceShell.updatePanes(std::move(panes), std::move(activate));
+        workspaceShell.updatePanes(std::move(panes), std::move(activate), this->config.hideTabs);
         content.update({.content = &workspaceShell.component()});
 
         if (this->config.flowgraphMetadata.has_value()) {
@@ -234,7 +231,6 @@ struct WorkbenchView {
     Sakura::ModalLayer filePickerLayer;
     Sakura::Text filePendingText;
     Sakura::Panel filePendingPanel;
-    WelcomeHudView welcomeHud;
     AgentChatView agentChat;
     AgentVoiceView agentVoice;
     StartTabView startTab;

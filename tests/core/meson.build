@@ -87,6 +87,7 @@ core_test_domains = {
         'sakura/shell.cc',
         'sakura/table.cc',
         'sakura/views.cc',
+        'sakura/view_components.cc',
         'sakura/sizing.cc',
         'sakura/surface_view.cc',
         'sakura/input_bridge.cc',

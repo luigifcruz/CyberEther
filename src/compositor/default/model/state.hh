@@ -150,8 +150,12 @@ struct DefaultCompositorState {
     };
 
     struct InterfaceState {
+        static constexpr U64 MaxRecentFlowgraphs = 5;
+
         bool filePending = false;
         bool backgroundParticles = true;
+        std::vector<Settings::Interface::FlowgraphEntry> recentFlowgraphs;
+        std::vector<Settings::Interface::FlowgraphEntry> favoriteFlowgraphs;
         bool flowgraphMetadataVisible = false;
         std::string flowgraphMetadataSearch;
         bool flowgraphEnvironmentVisible = false;
@@ -160,9 +164,14 @@ struct DefaultCompositorState {
         std::optional<std::string> focusedFlowgraph;
         std::optional<std::string> pendingFocusedFlowgraph;
         std::optional<WorkspaceTab> focusedTab;
+        bool tabNavigationPending = false;
         bool startTab = false;
         U64 startTabBaseline = 0;
         U64 startTabRequests = 0;
+        WelcomeSection welcomeSection = WelcomeSection::All;
+        std::string welcomeQuery;
+        std::string welcomeCategory;
+        U64 welcomePage = 0;
         bool settingsTab = false;
         U64 settingsTabRequests = 0;
     };
@@ -240,6 +249,7 @@ struct DefaultCompositorState {
         std::unordered_map<std::string, std::vector<BlockSnapshot>> blocks;
         std::unordered_map<std::string, std::string> liveMarkdown;
         std::unordered_map<std::string, Documentation> documentation;
+        std::unordered_map<std::string, std::string> gallery;
         SurfaceTracks surfaces;
     };
 
@@ -268,8 +278,6 @@ struct DefaultCompositorState {
         bool started = false;
         U64 clientCount = 0;
         std::string inviteUrl;
-        std::string roomId;
-        std::string accessToken;
         std::vector<Instance::Remote::ClientInfo> clients;
         std::vector<std::string> waitlist;
     };
@@ -355,7 +363,7 @@ struct DefaultCompositorState {
     FeedbackState feedback;
 
     bool startTabShown() const {
-        return interface.startTab;
+        return interface.startTab || flowgraph.items.empty();
     }
 
     bool tabShown(WorkspaceTab tab) const {

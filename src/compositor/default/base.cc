@@ -113,6 +113,8 @@ Result DefaultCompositor::create() {
     // Restore interface preferences.
 
     state.interface.backgroundParticles = settings.interface.backgroundParticles;
+    state.interface.recentFlowgraphs = settings.interface.recentFlowgraphs;
+    state.interface.favoriteFlowgraphs = settings.interface.favoriteFlowgraphs;
 
     // Restore intelligence preferences.
 
@@ -388,8 +390,6 @@ void DefaultCompositor::updateRemoteState() {
     state.remote.started = remoteStarted;
     state.remote.clientCount = remoteStarted ? remote->clients().size() : 0;
     state.remote.inviteUrl = remoteStarted ? remote->inviteUrl() : "";
-    state.remote.roomId = remoteStarted ? remote->roomId() : "";
-    state.remote.accessToken = remoteStarted ? remote->accessToken() : "";
     state.remote.clients = remoteStarted ? remote->clients() : std::vector<Instance::Remote::ClientInfo>{};
     state.remote.waitlist = remoteStarted ? remote->waitlist() : std::vector<std::string>{};
 }
