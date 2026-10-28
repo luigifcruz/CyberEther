@@ -101,7 +101,7 @@ The latency overlay setting and graphics framerate control are no longer availab
 
 ## Ready-to-go example flowgraphs
 
-Open the built-in examples from the gallery on the Start tab. Each opens in a fresh tab and starts processing once its inputs and devices are ready.
+Open the examples from the gallery on the Start tab. The gallery downloads the published flowgraphs the first time it is online and keeps a copy for offline use. Each opens in a fresh tab and starts processing once its inputs and devices are ready.
 
 | Flowgraph | What it demonstrates |
 |-----------|----------------------|

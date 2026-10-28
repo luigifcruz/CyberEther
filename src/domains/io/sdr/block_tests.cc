@@ -87,11 +87,6 @@ TEST_CASE_METHOD(FlowgraphFixture,
                  "[modules][io][sdr][block][examples]") {
     const std::vector<std::pair<std::string, std::string>> examples{
         {"spectrum-analyzer", "sdr"},
-        {"simple-fm", "sdr"},
-        {"multi-fm", "sdr"},
-        {"overlap-add-fold", "sdr"},
-        {"flight-tracker", "sdr"},
-        {"sdr-sweep", "sdr_sweep"},
     };
     for (const auto& [key, source] : examples) {
         DYNAMIC_SECTION("Example: " << key) {
