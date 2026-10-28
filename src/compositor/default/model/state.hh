@@ -174,6 +174,11 @@ struct DefaultCompositorState {
         U64 welcomePage = 0;
         bool settingsTab = false;
         U64 settingsTabRequests = 0;
+        bool docsTab = false;
+        U64 docsTabRequests = 0;
+        std::string docsPage;
+        std::string docsAnchor;
+        U64 docsNavigations = 0;
     };
 
     struct GraphicsState {
@@ -372,6 +377,8 @@ struct DefaultCompositorState {
                 return startTabShown();
             case WorkspaceTab::Settings:
                 return interface.settingsTab;
+            case WorkspaceTab::Docs:
+                return interface.docsTab;
         }
         return false;
     }
@@ -388,8 +395,12 @@ struct DefaultCompositorState {
         return tabActive(WorkspaceTab::Settings);
     }
 
+    bool docsTabActive() const {
+        return tabActive(WorkspaceTab::Docs);
+    }
+
     std::optional<std::string> activeFlowgraph() const {
-        if (startTabActive() || settingsTabActive()) {
+        if (startTabActive() || settingsTabActive() || docsTabActive()) {
             return std::nullopt;
         }
         if (!interface.focusedFlowgraph.has_value() || !flowgraph.items.contains(*interface.focusedFlowgraph)) {
@@ -399,7 +410,7 @@ struct DefaultCompositorState {
     }
 
     bool tabsHidden() const {
-        return flowgraph.items.empty() && !interface.startTab && !interface.settingsTab;
+        return flowgraph.items.empty() && !interface.startTab && !interface.settingsTab && !interface.docsTab;
     }
 };
 

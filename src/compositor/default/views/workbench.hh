@@ -7,6 +7,7 @@
 #include "flowgraph/pane.hh"
 #include "file_picker.hh"
 #include "modal/container.hh"
+#include "docs.hh"
 #include "settings/base.hh"
 #include "start_tab/base.hh"
 #include "titlebar.hh"
@@ -40,7 +41,7 @@ struct WorkspaceShellView {
             .tabBarHeight = titlebar.height(),
             .leadingInset = titlebar.leadingInset(),
             .onTabMenu = [this](const std::string& pane, Extent2D<F32> point) {
-                if (pane != StartTabView::PaneId && pane != SettingsView::PaneId) {
+                if (pane != StartTabView::PaneId && pane != SettingsView::PaneId && pane != DocsView::PaneId) {
                     titlebar.openTabMenu(pane, point);
                 }
             },
@@ -96,6 +97,9 @@ struct WorkbenchView {
         std::optional<SettingsView::Config> settings;
         U64 settingsTabRequests = 0;
         bool settingsTabFocused = false;
+        std::optional<DocsView::Config> docs;
+        U64 docsTabRequests = 0;
+        bool docsTabFocused = false;
         TitlebarView::Config titlebar;
         ModalView::Config modal;
         std::optional<FlowgraphKeyValueWindow::Config> flowgraphMetadata;
@@ -182,6 +186,14 @@ struct WorkbenchView {
             }
         }
         settingsTabRequests = this->config.settingsTabRequests;
+        if (this->config.docs.has_value()) {
+            docs.update(std::move(this->config.docs.value()));
+            panes.push_back(docs.pane());
+            if (this->config.docsTabRequests != docsTabRequests && this->config.docsTabFocused) {
+                activate = DocsView::PaneId;
+            }
+        }
+        docsTabRequests = this->config.docsTabRequests;
         workspaceShell.updatePanes(std::move(panes), std::move(activate), this->config.hideTabs);
         content.update({.content = &workspaceShell.component()});
 
@@ -237,6 +249,8 @@ struct WorkbenchView {
     U64 startTabRequests = 0;
     SettingsView settings;
     U64 settingsTabRequests = 0;
+    DocsView docs;
+    U64 docsTabRequests = 0;
     WorkspaceShellView workspaceShell;
     std::vector<std::string> flowgraphOrder;
     std::unordered_map<std::string, FlowgraphPane> flowgraphPanes;

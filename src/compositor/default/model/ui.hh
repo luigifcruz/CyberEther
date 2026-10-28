@@ -35,6 +35,7 @@ enum class WelcomeSection : I32 {
 enum class WorkspaceTab : I32 {
     Start = 0,
     Settings,
+    Docs,
 };
 
 enum class SettingsSection : I32 {

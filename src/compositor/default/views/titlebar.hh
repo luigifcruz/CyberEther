@@ -175,7 +175,7 @@ struct TitlebarView {
             .colorKey = "text_secondary",
             .backgroundColorKey = "transparent",
             .hoverColorKey = "chrome_button_hover",
-            .onClick = action(Action::SendFeedback),
+            .onClick = action(Action::Documentation),
         });
         std::vector<Sakura::Stack::Item> indicators;
         if (this->config.remoteStarted) {

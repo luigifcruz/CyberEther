@@ -17,6 +17,7 @@
 #include "compositor/default/views/components/callout.hh"
 #include "compositor/default/views/components/hint_overlay.hh"
 #include "compositor/default/views/components/tooltip.hh"
+#include "compositor/default/views/docs.hh"
 #include "compositor/default/views/file_picker.hh"
 #include "compositor/default/views/flowgraph/editor/picker.hh"
 #include "compositor/default/views/start_tab/base.hh"
@@ -964,8 +965,10 @@ TEST_CASE("Titlebar presenter actions enqueue the matching mail", "[core][sakura
     config.onAction(Action::SendFeedback);
     CHECK(mailbox.last<MailOpenModal>()->content == ModalContent::Feedback);
     config.onAction(Action::Documentation);
-    REQUIRE(mailbox.last<MailOpenUrl>() != nullptr);
-    CHECK(mailbox.last<MailOpenUrl>()->url == "https://cyberether.org/docs");
+    REQUIRE(mailbox.last<MailOpenDocs>() != nullptr);
+    CHECK(mailbox.last<MailOpenDocs>()->page.empty());
+    config.onAction(Action::GettingStarted);
+    CHECK(mailbox.last<MailOpenDocs>()->page == "quick-start");
     config.onAction(Action::NewFlowgraph);
     config.onAction(Action::OpenFlowgraph);
     config.onAction(Action::Quit);
@@ -2836,6 +2839,77 @@ TEST_CASE("About modal shows the product text without buttons", "[core][sakura][
     CHECK(Buttons(view.component()).empty());
 }
 
+TEST_CASE("Docs tab lists pages by category in one tile and navigates between them", "[core][sakura][views]") {
+    const Docs docs = Docs::Parse({
+        {"overview", "---\ntitle: Overview\ndescription: The big picture.\norder: 1\ncategory: Getting Started\n"
+                     "---\n\nIntro paragraph.\n\n## First Steps\n\nText.\n\n### Details\n\nMore text."},
+        {"quick-start", "---\ntitle: Quick Start\norder: 2\ncategory: Getting Started\n---\n\nRun it."},
+        {"platforms", "---\ntitle: Platforms\norder: 3\ncategory: Usage\n---\n\nThree ways."},
+    });
+    ModalRig rig;
+    DocsView view;
+    std::vector<std::string> calls;
+    DocsView::Config config{
+        .docs = &docs,
+        .page = "overview",
+        .navigation = 1,
+        .onNavigate = [&](const std::string& page, const std::string& anchor) {
+            calls.push_back("open:" + page + "#" + anchor);
+        },
+        .onFeedback = [&] { calls.push_back("feedback"); },
+    };
+    const auto step = [&] {
+        view.update(config);
+        rig.place();
+    };
+    view.update(config);
+    rig.show({.content = &view.component(), .size = Extent2D<F32>{1200.0f, 900.0f}});
+    step();
+    REQUIRE(Find<Sakura::Dock>(view.component()).size() == 1);
+
+    const auto headings = [&] {
+        const auto markdown = Find<Sakura::TextMarkdown>(view.component());
+        REQUIRE(markdown.size() == 1);
+        std::vector<std::string> texts;
+        for (const auto& heading : markdown.front()->headings()) {
+            texts.push_back(heading.text);
+        }
+        return texts;
+    };
+    CHECK(headings() == std::vector<std::string>{"First Steps", "Details"});
+
+    auto* started = ShownText(view.component(), "GETTING STARTED");
+    auto* usage = ShownText(view.component(), "USAGE");
+    REQUIRE(started != nullptr);
+    REQUIRE(usage != nullptr);
+    const auto items = Find<Sakura::SidebarItem>(view.component());
+    REQUIRE(items.size() == 3);
+    CHECK(Peek::Frame(*started).bottom() <= Peek::Frame(*items[0]).y);
+    CHECK(Peek::Frame(*items[1]).bottom() <= Peek::Frame(*usage).y);
+    CHECK(Peek::Frame(*usage).bottom() <= Peek::Frame(*items[2]).y);
+
+    CHECK(Press(rig.host, *items[1]));
+    CHECK(Press(rig.host, *items[2]));
+    CHECK(calls == std::vector<std::string>{"open:quick-start#", "open:platforms#"});
+
+    config.page = "quick-start";
+    config.navigation = 2;
+    step();
+    CHECK(headings().empty());
+    config.page = "overview";
+    config.navigation = 3;
+    step();
+    CHECK(headings() == std::vector<std::string>{"First Steps", "Details"});
+
+    auto* feedback = Owner(view.component(), "Send Feedback");
+    REQUIRE(feedback != nullptr);
+    const Jetstream::Rect tile = Peek::Frame(view.component());
+    CHECK(Peek::Frame(*feedback).bottom() <= tile.bottom());
+    CHECK(Peek::Frame(*feedback).y > tile.y + tile.height * 0.5f);
+    CHECK(Press(rig.host, *feedback));
+    CHECK(calls.back() == "feedback");
+}
+
 TEST_CASE("Settings navigation reports every section in order", "[core][sakura][views]") {
     SettingsRig rig;
     rig.show(SettingsSection::General);
@@ -4135,7 +4209,7 @@ TEST_CASE("Update button sits in the top right corner of the title row only whil
     CHECK(Indicator(rig.shell.bar(), ICON_LC_CIRCLE_QUESTION_MARK) != nullptr);
 }
 
-TEST_CASE("Help button is always in the top right corner, faint, and opens feedback",
+TEST_CASE("Help button is always in the top right corner, faint, and opens the documentation",
           "[core][sakura][views]") {
     using Action = TitlebarView::Action;
     TitleRig rig;
@@ -4175,7 +4249,7 @@ TEST_CASE("Help button is always in the top right corner, faint, and opens feedb
 
     rig.host.click(cx, cy);
     rig.place();
-    CHECK(rig.actions == std::vector<Action>{Action::SendFeedback});
+    CHECK(rig.actions == std::vector<Action>{Action::Documentation});
     CHECK(rig.presses.empty());
 }
 
@@ -4283,4 +4357,178 @@ TEST_CASE("Remote QR modal encodes the invite while streaming and closes once st
     mailbox.state.remote.started = false;
     actions.reconcileModal();
     CHECK_FALSE(mailbox.state.modal.content.has_value());
+}
+
+TEST_CASE("Docs tab scrolls to the navigated anchor and back to the top on the next navigation",
+          "[core][sakura][views]") {
+    std::string body = "Intro paragraph.\n\n";
+    for (U64 index = 0; index < 80; ++index) {
+        body += "Filler paragraph " + std::to_string(index) + ".\n\n";
+    }
+    body += "## Target Heading\n\nTarget text.\n\n";
+    for (U64 index = 0; index < 80; ++index) {
+        body += "Trailing paragraph " + std::to_string(index) + ".\n\n";
+    }
+    const std::string overview = "---\ntitle: Overview\norder: 1\ncategory: Getting Started\n---\n\n" + body;
+    const Docs docs = Docs::Parse({{"overview", overview}});
+    ModalRig rig;
+    DocsView view;
+    DocsView::Config config{.docs = &docs, .page = "overview", .navigation = 1};
+    const auto scrollY = [&] {
+        const auto markdown = Find<Sakura::TextMarkdown>(view.component());
+        REQUIRE(markdown.size() == 1);
+        return markdown.front()->metrics().scrollY;
+    };
+    const auto step = [&] {
+        view.update(config);
+        rig.place();
+    };
+
+    view.update(config);
+    rig.show({.content = &view.component(), .size = Extent2D<F32>{1200.0f, 900.0f}});
+    step();
+    CHECK(scrollY() == 0.0f);
+
+    config.anchor = "target-heading";
+    config.navigation = 2;
+    step();
+    step();
+    CHECK(scrollY() > 0.0f);
+
+    config.anchor.clear();
+    config.navigation = 3;
+    step();
+    CHECK(scrollY() == 0.0f);
+}
+
+TEST_CASE("Docs tab keeps a pending anchor through hidden updates until its heading exists",
+          "[core][sakura][views]") {
+    std::string body = "Intro paragraph.\n\n";
+    for (U64 index = 0; index < 80; ++index) {
+        body += "Filler paragraph " + std::to_string(index) + ".\n\n";
+    }
+    body += "## Target Heading\n\nTarget text.\n\n";
+    for (U64 index = 0; index < 80; ++index) {
+        body += "Trailing paragraph " + std::to_string(index) + ".\n\n";
+    }
+    const std::string overview = "---\ntitle: Overview\norder: 1\ncategory: Getting Started\n---\n\n" + body;
+    const Docs docs = Docs::Parse({{"overview", overview}});
+    ModalRig rig;
+    DocsView view;
+    const DocsView::Config config{.docs = &docs, .page = "overview", .anchor = "target-heading", .navigation = 1};
+
+    view.update(config);
+    view.update(config);
+    view.update(config);
+    rig.show({.content = &view.component(), .size = Extent2D<F32>{1200.0f, 900.0f}});
+    view.update(config);
+    rig.place();
+    view.update(config);
+    rig.place();
+    const auto markdown = Find<Sakura::TextMarkdown>(view.component());
+    REQUIRE(markdown.size() == 1);
+    CHECK(markdown.front()->metrics().scrollY > 0.0f);
+}
+
+TEST_CASE("Docs tab keeps a pending anchor when the previous page shares its heading",
+          "[core][sakura][views]") {
+    std::string body = "Intro paragraph.\n\n";
+    for (U64 index = 0; index < 80; ++index) {
+        body += "Filler paragraph " + std::to_string(index) + ".\n\n";
+    }
+    body += "## Troubleshooting\n\nLate text.\n\n";
+    for (U64 index = 0; index < 80; ++index) {
+        body += "Trailing paragraph " + std::to_string(index) + ".\n\n";
+    }
+    const Docs docs = Docs::Parse({
+        {"first", "---\ntitle: First\norder: 1\ncategory: Getting Started\n---\n\n## Troubleshooting\n\nEarly text."},
+        {"second", "---\ntitle: Second\norder: 2\ncategory: Getting Started\n---\n\n" + body},
+    });
+    ModalRig rig;
+    DocsView view;
+    DocsView::Config config{.docs = &docs, .page = "first", .navigation = 1};
+    view.update(config);
+    rig.show({.content = &view.component(), .size = Extent2D<F32>{1200.0f, 900.0f}});
+    rig.place();
+
+    config = {.docs = &docs, .page = "second", .anchor = "troubleshooting", .navigation = 2};
+    view.update(config);
+    view.update(config);
+    view.update(config);
+    rig.place();
+    view.update(config);
+    rig.place();
+    const auto markdown = Find<Sakura::TextMarkdown>(view.component());
+    REQUIRE(markdown.size() == 1);
+    CHECK(markdown.front()->metrics().scrollY > 0.0f);
+}
+
+TEST_CASE("Docs tab follows bundled links in the app and opens other docs links on the website",
+          "[core][sakura][views]") {
+    const Docs docs = Docs::Parse({
+        {"overview", "---\ntitle: Overview\norder: 1\ncategory: Getting Started\n---\n\n"
+                     "[Guide](/docs/quick-start#next-steps)\n\n"
+                     "[Elsewhere](/docs/not-bundled#part)\n\n"
+                     "[Website](https://cyberether.org/docs/quick-start/)"},
+        {"quick-start", "---\ntitle: Quick Start\norder: 2\ncategory: Getting Started\n---\n\nRun it."},
+    });
+    ModalRig rig;
+    DocsView view;
+    std::vector<std::string> calls;
+    const DocsView::Config config{
+        .docs = &docs,
+        .page = "overview",
+        .navigation = 1,
+        .onNavigate = [&](const std::string& page, const std::string& anchor) {
+            calls.push_back("open:" + page + "#" + anchor);
+        },
+        .onOpenUrl = [&](const std::string& url) {
+            calls.push_back("url:" + url);
+        },
+    };
+    view.update(config);
+    rig.show({.content = &view.component(), .size = Extent2D<F32>{1200.0f, 900.0f}});
+    view.update(config);
+    rig.place();
+
+    const auto follow = [&](const std::string& text) {
+        for (auto* label : Find<Sakura::Label>(view.component())) {
+            for (const auto& instance : label->config().instances) {
+                if (instance.visible && instance.str.find(text) != std::string::npos) {
+                    return rig.host.click(instance.rect.x + instance.rect.width * 0.5f,
+                                          instance.rect.y + instance.rect.height * 0.5f);
+                }
+            }
+        }
+        return false;
+    };
+    CHECK(follow("Guide"));
+    CHECK(follow("Elsewhere"));
+    CHECK(follow("Website"));
+    CHECK(calls == std::vector<std::string>{"open:quick-start#next-steps",
+                                            "url:https://cyberether.org/docs/not-bundled#part",
+                                            "open:quick-start#"});
+}
+
+TEST_CASE("Docs tab settles under identical updates", "[core][sakura][views]") {
+    const Docs docs = Docs::Parse({
+        {"overview", "---\ntitle: Overview\norder: 1\ncategory: Getting Started\n---\n\n"
+                     "Intro.\n\n## First Steps\n\nText."},
+        {"platforms", "---\ntitle: Platforms\norder: 2\ncategory: Usage\n---\n\nThree ways."},
+        {"native", "---\ntitle: Native\norder: 3\ncategory: Usage\nparent: platforms\n---\n\nDesktop."},
+    });
+    ModalRig rig;
+    Frames frames(rig.host, kWide, rig.scene.ctx);
+    DocsView view;
+    DocsView::Config config{.docs = &docs, .page = "native", .anchor = "", .navigation = 1};
+    const auto update = [&] {
+        view.update(config);
+        rig.modal.update({.content = &view.component(), .size = Extent2D<F32>{1200.0f, 900.0f}});
+    };
+    CHECK(Settles(frames, update));
+
+    config.page = "overview";
+    config.anchor = "first-steps";
+    config.navigation = 2;
+    CHECK(Settles(frames, update));
 }

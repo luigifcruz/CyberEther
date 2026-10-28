@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_WORKBENCH_HH
 
 #include "context.hh"
+#include "docs.hh"
 #include "file_picker.hh"
 #include "flowgraph/environment.hh"
 #include "flowgraph/metadata.hh"
@@ -27,6 +28,7 @@ struct WorkbenchPresenter {
     FlowgraphEnvironmentWindowPresenter flowgraphEnvironment;
     ModalPresenter modal;
     SettingsPresenter settings;
+    DocsPresenter docs;
     AgentChatPresenter agentChat;
     AgentVoicePresenter agentVoice;
 
@@ -39,6 +41,7 @@ struct WorkbenchPresenter {
                                                                    flowgraphEnvironment(context),
                                                                    modal(context),
                                                                    settings(context),
+                                                                   docs(context),
                                                                    agentChat{context},
                                                                    agentVoice{context} {}
 
@@ -57,6 +60,11 @@ struct WorkbenchPresenter {
         }
         config.settingsTabRequests = context.state.interface.settingsTabRequests;
         config.settingsTabFocused = context.state.settingsTabActive();
+        if (context.state.interface.docsTab) {
+            config.docs = docs.build();
+        }
+        config.docsTabRequests = context.state.interface.docsTabRequests;
+        config.docsTabFocused = context.state.docsTabActive();
         config.flowgraphs.reserve(context.state.flowgraph.items.size());
         for (const auto& [flowgraphId, flowgraph] : context.state.flowgraph.items) {
             config.flowgraphs.push_back(flowgraphPane.build(flowgraphId, flowgraph));

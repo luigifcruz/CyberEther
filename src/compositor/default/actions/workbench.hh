@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_WORKBENCH_HH
 
 #include "persist.hh"
+#include "../support/docs.hh"
 #include "../model/callbacks.hh"
 #include "../model/messages.hh"
 #include "../model/state.hh"
@@ -39,7 +40,10 @@ struct WorkbenchActions {
                               MailSetWelcomePage,
                               MailOpenSettings,
                               MailCloseSettings,
-                              MailFocusSettings>;
+                              MailFocusSettings,
+                              MailOpenDocs,
+                              MailCloseDocs,
+                              MailFocusDocs>;
 
     DefaultCompositorState& state;
     DefaultCompositorCallbacks& callbacks;
@@ -68,6 +72,10 @@ struct WorkbenchActions {
                 ui.settingsTab = true;
                 ++ui.settingsTabRequests;
                 break;
+            case WorkspaceTab::Docs:
+                ui.docsTab = true;
+                ++ui.docsTabRequests;
+                break;
         }
         Focus(state, tab);
     }
@@ -83,6 +91,9 @@ struct WorkbenchActions {
                 state.settings.registryPage = RegistryPage::Overview;
                 state.settings.registryPlugin.clear();
                 state.settings.intelligencePage = IntelligencePage::Overview;
+                break;
+            case WorkspaceTab::Docs:
+                ui.docsTab = false;
                 break;
         }
         if (ui.focusedTab == tab && !state.tabShown(tab)) {
@@ -144,6 +155,27 @@ struct WorkbenchActions {
 
     Result handle(const MailFocusSettings&) {
         focusShown(WorkspaceTab::Settings);
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailOpenDocs& msg) {
+        auto& ui = state.interface;
+        if (!msg.page.empty() || !ui.docsTab) {
+            ui.docsPage = Docs::Bundled().find(msg.page).has_value() ? msg.page : std::string(Docs::Home);
+            ui.docsAnchor = msg.anchor;
+            ++ui.docsNavigations;
+        }
+        Open(state, WorkspaceTab::Docs);
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailCloseDocs&) {
+        Close(state, WorkspaceTab::Docs);
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailFocusDocs&) {
+        focusShown(WorkspaceTab::Docs);
         return Result::SUCCESS;
     }
 

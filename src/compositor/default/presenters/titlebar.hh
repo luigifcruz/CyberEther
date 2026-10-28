@@ -23,6 +23,7 @@ struct TitlebarPresenter {
         const auto focusedFlowgraph = context.state.interface.focusedFlowgraph;
         const bool startTabFocused = context.state.startTabActive();
         const bool settingsTabFocused = context.state.settingsTabActive();
+        const bool docsTabFocused = context.state.docsTabActive();
         const bool flowgraphMetadataVisible = context.state.interface.flowgraphMetadataVisible;
         const bool flowgraphEnvironmentVisible = context.state.interface.flowgraphEnvironmentVisible;
         const bool canCheckForUpdates = context.state.update.supported &&
@@ -54,7 +55,8 @@ struct TitlebarPresenter {
             .flowgraphEnvironmentVisible = flowgraphEnvironmentVisible,
             .debugTimingEnabled = context.state.debug.timingEnabled,
             .debugLogLevel = context.state.debug.logLevel,
-            .onAction = [enqueue, focusedFlowgraph, startTabFocused, settingsTabFocused, canCheckForUpdates, missing,
+            .onAction = [enqueue, focusedFlowgraph, startTabFocused, settingsTabFocused, docsTabFocused,
+                         canCheckForUpdates, missing,
                          timing = context.state.debug.timingEnabled,
                          agentVisible = context.state.agent.ui.visible,
                          voiceVisible = context.state.agent.ui.voiceVisible](TitlebarView::Action action) {
@@ -85,10 +87,10 @@ struct TitlebarPresenter {
                         enqueue(MailSetAgentVoiceVisible{.value = !voiceVisible});
                         break;
                     case Action::GettingStarted:
-                        enqueue(MailOpenUrl{.url = "https://cyberether.org/docs/quick-start", .notifyResult = true});
+                        enqueue(MailOpenDocs{.page = "quick-start"});
                         break;
                     case Action::Documentation:
-                        enqueue(MailOpenUrl{.url = "https://cyberether.org/docs", .notifyResult = true});
+                        enqueue(MailOpenDocs{});
                         break;
                     case Action::OpenRepository:
                         enqueue(MailOpenUrl{.url = "https://github.com/luigifcruz/CyberEther", .notifyResult = true});
@@ -148,6 +150,8 @@ struct TitlebarPresenter {
                             enqueue(MailCloseStartTab{});
                         } else if (settingsTabFocused) {
                             enqueue(MailCloseSettings{});
+                        } else if (docsTabFocused) {
+                            enqueue(MailCloseDocs{});
                         } else if (focusedFlowgraph.has_value()) {
                             enqueue(MailCloseFlowgraph{focusedFlowgraph.value()});
                         } else {

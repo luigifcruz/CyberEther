@@ -139,6 +139,15 @@ struct MailCloseSettings {};
 
 struct MailFocusSettings {};
 
+struct MailOpenDocs {
+    std::string page;
+    std::string anchor;
+};
+
+struct MailCloseDocs {};
+
+struct MailFocusDocs {};
+
 struct MailOpenFlowgraph {};
 
 struct MailCloseFlowgraph {
@@ -566,6 +575,9 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailOpenSettings,
                           MailCloseSettings,
                           MailFocusSettings,
+                          MailOpenDocs,
+                          MailCloseDocs,
+                          MailFocusDocs,
                           MailOpenFlowgraph,
                           MailCreateBlock,
                           MailCloseFlowgraph,
