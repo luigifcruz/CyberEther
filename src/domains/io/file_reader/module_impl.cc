@@ -20,7 +20,7 @@ Result FileReaderImpl::validate() {
     validatedDataType = DataType::None;
     validatedOutputSizeBytes = 0;
 
-    if (config.fileFormat != "raw") {
+    if (config.fileFormat != "raw" && config.fileFormat != "sigmf") {
         JST_ERROR("[MODULE_FILE_READER] Invalid file format '{}'.", config.fileFormat);
         return Result::ERROR;
     }
@@ -50,9 +50,10 @@ Result FileReaderImpl::validate() {
         return Result::ERROR;
     }
 
+    const DataType sizingType = config.fileFormat == "sigmf" ? DataType::CF64 : dataType;
     U64 outputSizeBytes = 0;
     if (!detail::CheckedMultiply(config.batchSize,
-                                 static_cast<U64>(DataTypeSize(dataType)),
+                                 static_cast<U64>(DataTypeSize(sizingType)),
                                  outputSizeBytes)) {
         JST_ERROR("[MODULE_FILE_READER] Output byte size exceeds the supported "
                   "range.");
@@ -71,7 +72,21 @@ Result FileReaderImpl::define() {
 }
 
 Result FileReaderImpl::create() {
-    JST_CHECK(buffer.create(device(), validatedDataType, {batchSize}));
+    recording = {};
+    recording.dataPath = Platform::PathFromUtf8(filepath);
+    recording.dataType = validatedDataType;
+    publishedFrequency.reset();
+
+    Result loaded = Result::SUCCESS;
+    if (fileFormat == "sigmf" && !filepath.empty()) {
+        Recording sigmf;
+        loaded = loadSigmf(sigmf);
+        if (loaded == Result::SUCCESS) {
+            recording = std::move(sigmf);
+        }
+    }
+
+    JST_CHECK(buffer.create(device(), recording.dataType, {batchSize}));
     JST_CHECK(SetSignalAxes(buffer, {
         .sample = Index{0},
     }));
@@ -88,46 +103,69 @@ Result FileReaderImpl::create() {
         return Result::INCOMPLETE;
     }
 
-    filePath = Platform::PathFromUtf8(filepath);
+    if (loaded != Result::SUCCESS) {
+        return Result::INCOMPLETE;
+    }
+
+    if (recording.sampleRate) {
+        JST_CHECK(buffer.setAttribute("sampleRate", static_cast<F32>(*recording.sampleRate)));
+    }
+    JST_CHECK(publishCapture(0));
+
+    filePath = recording.dataPath;
+    const std::string dataPath = Platform::PathToUtf8(filePath);
 
     std::error_code ec;
     const auto status = std::filesystem::status(filePath, ec);
     if (!std::filesystem::exists(status)) {
-        JST_ERROR("[MODULE_FILE_READER] File '{}' does not exist.", filepath);
+        JST_ERROR("[MODULE_FILE_READER] File '{}' does not exist.", dataPath);
         return Result::INCOMPLETE;
     }
 
     if (std::filesystem::is_directory(status)) {
-        JST_ERROR("[MODULE_FILE_READER] Path '{}' is a directory.", filepath);
+        JST_ERROR("[MODULE_FILE_READER] Path '{}' is a directory.", dataPath);
         return Result::INCOMPLETE;
     }
 
     if (!std::filesystem::is_regular_file(status)) {
+        if (recording.headerBytes > 0 || recording.trailingBytes > 0) {
+            JST_ERROR("[MODULE_FILE_READER] Header and trailing bytes are not supported when '{}' "
+                      "is a stream.", dataPath);
+            return Result::INCOMPLETE;
+        }
         return createStream();
     }
 
     const U64 inputFileSize = std::filesystem::file_size(filePath, ec);
     if (ec) {
-        JST_ERROR("[MODULE_FILE_READER] Failed to get file size for '{}'.", filepath);
+        JST_ERROR("[MODULE_FILE_READER] Failed to get file size for '{}'.", dataPath);
         return Result::INCOMPLETE;
     }
-    fileSize.publish(inputFileSize);
+    if (inputFileSize < recording.headerBytes ||
+        inputFileSize - recording.headerBytes < recording.trailingBytes) {
+        JST_ERROR("[MODULE_FILE_READER] File '{}' is shorter than its {} header and {} trailing "
+                  "bytes.", dataPath, recording.headerBytes, recording.trailingBytes);
+        return Result::INCOMPLETE;
+    }
+    fileSize.publish(inputFileSize - recording.headerBytes - recording.trailingBytes);
 
     dataFile.open(filePath, std::ios::in | std::ios::binary);
     if (!dataFile.is_open()) {
-        JST_ERROR("[MODULE_FILE_READER] Failed to open '{}' for reading.", filepath);
+        JST_ERROR("[MODULE_FILE_READER] Failed to open '{}' for reading.", dataPath);
         return Result::INCOMPLETE;
     }
+    dataFile.seekg(static_cast<std::streamoff>(recording.headerBytes), std::ios::beg);
 
-    JST_INFO("[MODULE_FILE_READER] Opened '{}' ({} bytes).", filepath, fileSize.get());
+    JST_INFO("[MODULE_FILE_READER] Opened '{}' ({} bytes).", dataPath, fileSize.get());
 
     return Result::SUCCESS;
 }
 
 Result FileReaderImpl::createStream() {
     std::string error;
-    if (stream.open(filepath, error) != Result::SUCCESS) {
-        JST_ERROR("[MODULE_FILE_READER] Failed to open '{}' for reading ({}).", filepath, error);
+    const std::string dataPath = Platform::PathToUtf8(filePath);
+    if (stream.open(dataPath, error) != Result::SUCCESS) {
+        JST_ERROR("[MODULE_FILE_READER] Failed to open '{}' for reading ({}).", dataPath, error);
         return Result::INCOMPLETE;
     }
 
@@ -140,7 +178,7 @@ Result FileReaderImpl::createStream() {
     receiving = true;
     streamThread.start([this]() { streamLoop(); });
 
-    JST_INFO("[MODULE_FILE_READER] Opened stream '{}'.", filepath);
+    JST_INFO("[MODULE_FILE_READER] Opened stream '{}'.", dataPath);
 
     return Result::SUCCESS;
 }
@@ -178,7 +216,7 @@ Result FileReaderImpl::readStream() {
 
         if (result == Result::INCOMPLETE) {
             ended = true;
-            JST_INFO("[MODULE_FILE_READER] Reached the end of stream '{}'.", filepath);
+            JST_INFO("[MODULE_FILE_READER] Reached the end of stream '{}'.", Platform::PathToUtf8(filePath));
             if (streamFilled == 0) {
                 return Result::YIELD;
             }
@@ -186,11 +224,12 @@ Result FileReaderImpl::readStream() {
             break;
         }
 
-        JST_ERROR("[MODULE_FILE_READER] Failed to read from stream '{}'.", filepath);
+        JST_ERROR("[MODULE_FILE_READER] Failed to read from stream '{}'.", Platform::PathToUtf8(filePath));
         errored = true;
         return Result::ERROR;
     }
 
+    JST_CHECK(publishCapture((streamTotal - streamFilled) / buffer.elementSize()));
     currentPosition.publish(streamTotal);
     updateThroughput(streamFilled);
     streamFilled = 0;
@@ -253,6 +292,29 @@ Result FileReaderImpl::reconfigure() {
     }
 
     return Result::RECREATE;
+}
+
+Result FileReaderImpl::publishCapture(const U64 sampleIndex) {
+    if (recording.captures.empty()) {
+        return Result::SUCCESS;
+    }
+
+    F64 frequency = 0.0;
+    for (const auto& capture : recording.captures) {
+        if (capture.sampleStart > sampleIndex) {
+            break;
+        }
+        frequency = capture.frequency.value_or(0.0);
+    }
+
+    if (publishedFrequency == frequency) {
+        return Result::SUCCESS;
+    }
+
+    JST_CHECK(buffer.setAttribute("frequency", static_cast<F32>(frequency)));
+    publishedFrequency = frequency;
+
+    return Result::SUCCESS;
 }
 
 bool FileReaderImpl::isStream() const {

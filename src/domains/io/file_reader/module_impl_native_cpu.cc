@@ -89,7 +89,7 @@ Result FileReaderImplNativeCpu::computeSubmit() {
 
     if (remainingBytes == 0) {
         if (loop) {
-            dataFile.seekg(0, std::ios::beg);
+            dataFile.seekg(static_cast<std::streamoff>(recording.headerBytes), std::ios::beg);
             currentOffset = 0;
             currentPosition.publish(currentOffset);
             remainingBytes = totalSize;
@@ -99,6 +99,7 @@ Result FileReaderImplNativeCpu::computeSubmit() {
     }
 
     const U64 actualBytesToRead = std::min(bytesToRead, remainingBytes);
+    JST_CHECK(publishCapture(currentOffset / buffer.elementSize()));
 
     dataFile.read(reinterpret_cast<char*>(buffer.data()), actualBytesToRead);
     const U64 actualBytesRead = static_cast<U64>(dataFile.gcount());

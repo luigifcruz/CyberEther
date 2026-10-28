@@ -45,28 +45,35 @@ Result FileReaderImpl::configure() {
 }
 
 Result FileReaderImpl::define() {
+    const auto& config = *candidate();
     JST_CHECK(defineInterfaceOutput("signal",
                                     "Output",
                                     "The output buffer containing samples read from the file."));
 
     JST_CHECK(defineInterfaceConfig("filepath",
                                     "File Path",
-                                    "Path to the raw binary file or stream to read, such as /dev/stdin.",
-                                    {{"type", "filepicker"}, {"extensions", Parser::MakeSequence({"bin", "raw", "iq", "wav", "dat"})}}));
+                                    "Path to the file or stream to read, such as /dev/stdin. "
+                                    "SigMF takes the .sigmf-meta or .sigmf-data file.",
+                                    {{"type", "filepicker"}, {"extensions", Parser::MakeSequence({"bin", "raw", "iq", "wav", "dat", "sigmf-meta", "sigmf-data"})}}));
 
     JST_CHECK(defineInterfaceConfig("fileFormat",
                                     "File Format",
                                     "The format of the input file.",
-                                    {{"type", "dropdown"}, {"options", Parser::Sequence{Parser::Map{{"label", "Raw"}, {"value", "raw"}}}}}));
+                                    {{"type", "dropdown"}, {"options", Parser::Sequence{
+                                        Parser::Map{{"label", "Raw"}, {"value", "raw"}},
+                                        Parser::Map{{"label", "SigMF"}, {"value", "sigmf"}},
+                                    }}}));
 
-    Parser::Sequence dataTypes;
-    for (const std::string type : {"CF64", "F64", "CF32", "F32", "CI8", "I8", "CU8", "U8", "CI16", "I16", "CU16", "U16"}) {
-        dataTypes.emplace_back(Parser::Map{{"label", type}, {"value", type}});
+    if (config.fileFormat != "sigmf") {
+        Parser::Sequence dataTypes;
+        for (const std::string type : {"CF64", "F64", "CF32", "F32", "CI8", "I8", "CU8", "U8", "CI16", "I16", "CU16", "U16"}) {
+            dataTypes.emplace_back(Parser::Map{{"label", type}, {"value", type}});
+        }
+        JST_CHECK(defineInterfaceConfig("dataType",
+                                        "Data Type",
+                                        "The data type of samples in the file.",
+                                        {{"type", "dropdown"}, {"options", std::move(dataTypes)}}));
     }
-    JST_CHECK(defineInterfaceConfig("dataType",
-                                    "Data Type",
-                                    "The data type of samples in the file.",
-                                    {{"type", "dropdown"}, {"options", std::move(dataTypes)}}));
 
     JST_CHECK(defineInterfaceConfig("batchSize",
                                     "Samples",

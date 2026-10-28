@@ -7,7 +7,7 @@ namespace Jetstream::Modules {
 Result FileWriterImpl::validate() {
     const auto& config = *candidate();
 
-    if (config.fileFormat != "raw") {
+    if (config.fileFormat != "raw" && config.fileFormat != "sigmf") {
         JST_ERROR("[MODULE_FILE_WRITER] Invalid file format '{}'.",
                   config.fileFormat);
         return Result::ERROR;
@@ -26,11 +26,15 @@ Result FileWriterImpl::create() {
     bytesWritten.publish(0);
     throughputMBs.publish(0.0f);
     filePath.clear();
+    metadata = {};
     bytesSinceLastMeasurement = 0;
     lastMeasurementTime = std::chrono::steady_clock::now();
 
     if (!filepath.empty()) {
         filePath = Platform::PathFromUtf8(filepath);
+        if (fileFormat == "sigmf") {
+            resolveSigmfPaths();
+        }
 
         std::error_code ec;
         if (std::filesystem::exists(filePath, ec) && !ec) {
@@ -50,26 +54,33 @@ Result FileWriterImpl::create() {
         return Result::INCOMPLETE;
     }
 
+    const std::string dataPath = Platform::PathToUtf8(filePath);
+
     auto parentPath = filePath.parent_path();
     if (!parentPath.empty() && !std::filesystem::exists(parentPath)) {
-        JST_WARN("[MODULE_FILE_WRITER] Parent directory for '{}' does not exist.", filepath);
+        JST_WARN("[MODULE_FILE_WRITER] Parent directory for '{}' does not exist.", dataPath);
         return Result::INCOMPLETE;
     }
 
-    if (std::filesystem::exists(filePath) && !overwrite) {
-        JST_ERROR("[MODULE_FILE_WRITER] File '{}' already exists.", filepath);
+    const bool metaExists = fileFormat == "sigmf" && std::filesystem::exists(metadata.metaPath);
+    if ((std::filesystem::exists(filePath) || metaExists) && !overwrite) {
+        JST_ERROR("[MODULE_FILE_WRITER] File '{}' already exists.", dataPath);
         return Result::ERROR;
     }
 
     dataFile.open(filePath, std::ios::out | std::ios::binary);
     if (!dataFile.is_open()) {
-        JST_ERROR("[MODULE_FILE_WRITER] Failed to open '{}' for writing.", filepath);
+        JST_ERROR("[MODULE_FILE_WRITER] Failed to open '{}' for writing.", dataPath);
         return Result::ERROR;
     }
 
     bytesWritten.publish(0);
 
-    JST_INFO("[MODULE_FILE_WRITER] Opened '{}' for writing.", filepath);
+    if (fileFormat == "sigmf") {
+        JST_CHECK(startSigmf(inputs().at("buffer").tensor));
+    }
+
+    JST_INFO("[MODULE_FILE_WRITER] Opened '{}' for writing.", dataPath);
 
     return Result::SUCCESS;
 }
@@ -77,7 +88,11 @@ Result FileWriterImpl::create() {
 Result FileWriterImpl::destroy() {
     if (dataFile.is_open()) {
         dataFile.close();
-        JST_INFO("[MODULE_FILE_WRITER] Closed '{}' ({} bytes written).", filepath, bytesWritten.get());
+        if (fileFormat == "sigmf" && !metadata.datatype.empty()) {
+            writeSigmf();
+        }
+        JST_INFO("[MODULE_FILE_WRITER] Closed '{}' ({} bytes written).",
+                 Platform::PathToUtf8(filePath), bytesWritten.get());
     }
 
     throughputMBs.publish(0.0f);

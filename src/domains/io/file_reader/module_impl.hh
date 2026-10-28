@@ -7,6 +7,8 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <optional>
+#include <vector>
 
 #include <jetstream/domains/io/file_reader/module.hh>
 #include <jetstream/detail/module_impl.hh>
@@ -29,6 +31,22 @@ struct FileReaderImpl : public Module::Impl, public DynamicConfig<FileReader> {
     F32 getThroughput() const;
 
  protected:
+    struct Recording {
+        struct Capture {
+            U64 sampleStart = 0;
+            std::optional<F64> frequency;
+        };
+
+        std::filesystem::path dataPath;
+        DataType dataType = DataType::None;
+        U64 headerBytes = 0;
+        U64 trailingBytes = 0;
+        std::optional<F64> sampleRate;
+        std::vector<Capture> captures;
+    };
+
+    Result loadSigmf(Recording& result) const;
+    Result publishCapture(U64 sampleIndex);
     Result createStream();
     Result readStream();
     void streamLoop();
@@ -37,6 +55,9 @@ struct FileReaderImpl : public Module::Impl, public DynamicConfig<FileReader> {
     Tensor buffer;
     DataType validatedDataType = DataType::None;
     U64 validatedOutputSizeBytes = 0;
+
+    Recording recording;
+    std::optional<F64> publishedFrequency;
 
     std::atomic<bool> streaming{false};
     std::atomic<bool> receiving{false};

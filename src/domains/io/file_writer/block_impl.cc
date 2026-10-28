@@ -52,13 +52,17 @@ Result FileWriterImpl::define() {
 
     JST_CHECK(defineInterfaceConfig("filepath",
                                     "File Path",
-                                    "Path to the output file.",
-                                    {{"type", "filesave"}, {"extensions", Parser::MakeSequence({"bin", "raw", "iq", "wav", "dat"})}}));
+                                    "Path to the output file. SigMF writes a .sigmf-data and a "
+                                    ".sigmf-meta file next to each other.",
+                                    {{"type", "filesave"}, {"extensions", Parser::MakeSequence({"bin", "raw", "iq", "wav", "dat", "sigmf-data", "sigmf-meta"})}}));
 
     JST_CHECK(defineInterfaceConfig("fileFormat",
                                     "File Format",
                                     "The format of the output file.",
-                                    {{"type", "dropdown"}, {"options", Parser::Sequence{Parser::Map{{"label", "Raw"}, {"value", "raw"}}}}}));
+                                    {{"type", "dropdown"}, {"options", Parser::Sequence{
+                                        Parser::Map{{"label", "Raw"}, {"value", "raw"}},
+                                        Parser::Map{{"label", "SigMF"}, {"value", "sigmf"}},
+                                    }}}));
 
     JST_CHECK(defineInterfaceConfig("overwrite",
                                     "Overwrite",
