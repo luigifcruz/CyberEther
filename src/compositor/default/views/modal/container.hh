@@ -12,7 +12,6 @@
 
 #include "jetstream/render/sakura/base.hh"
 
-#include <functional>
 #include <optional>
 #include <utility>
 
@@ -27,7 +26,7 @@ struct ModalView {
         DependencyReviewView::Config dependencies;
         FeedbackView::Config feedback;
         RemoteQrView::Config remoteQr;
-        std::function<void()> onClose;
+        Sakura::Callback<void()> onClose;
     };
 
     void update(Config config) {

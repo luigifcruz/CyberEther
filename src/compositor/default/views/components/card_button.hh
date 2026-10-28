@@ -3,7 +3,6 @@
 
 #include "jetstream/render/sakura/base.hh"
 
-#include <functional>
 #include <string>
 #include <utility>
 
@@ -25,7 +24,7 @@ struct CardButton : public Sakura::Button {
         F32 height = 40.0f;
         F32 textScale = 1.0f;
         std::string hoverTint;
-        std::function<void()> onClick;
+        Sakura::Callback<void()> onClick;
     };
 
     void update(Config config) {

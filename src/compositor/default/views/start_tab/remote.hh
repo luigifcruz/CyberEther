@@ -7,7 +7,6 @@
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/icons_lucide.hh"
 
-#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_set>
@@ -29,13 +28,13 @@ struct RemoteSectionView {
     struct Config {
         bool started = false;
         std::vector<Viewer> viewers;
-        std::function<void()> onStart;
-        std::function<void()> onStop;
-        std::function<void()> onSettings;
-        std::function<void()> onCopyLink;
-        std::function<void()> onShowQr;
-        std::function<void(const std::string&)> onApprove;
-        std::function<void(const std::string&)> onRemove;
+        Sakura::Callback<void()> onStart;
+        Sakura::Callback<void()> onStop;
+        Sakura::Callback<void()> onSettings;
+        Sakura::Callback<void()> onCopyLink;
+        Sakura::Callback<void()> onShowQr;
+        Sakura::Callback<void(const std::string&)> onApprove;
+        Sakura::Callback<void(const std::string&)> onRemove;
     };
 
     void update(Config config) {
@@ -123,7 +122,7 @@ struct RemoteSectionView {
     };
 
     static void tinted(Sakura::Button& button, const char* label, const std::string& tone,
-                       std::function<void()> onClick) {
+                       Sakura::Callback<void()> onClick) {
         button.update({
             .str = label,
             .size = {Sakura::Fill, ButtonHeight},
@@ -138,7 +137,7 @@ struct RemoteSectionView {
         });
     }
 
-    static void glyph(Sakura::Button& button, const char* icon, const char* hoverKey, std::function<void()> onClick) {
+    static void glyph(Sakura::Button& button, const char* icon, const char* hoverKey, Sakura::Callback<void()> onClick) {
         button.update({
             .str = icon,
             .size = {RowButtonSize, RowButtonSize},

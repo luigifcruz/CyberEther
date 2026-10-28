@@ -12,7 +12,6 @@
 
 #include "jetstream/render/sakura/base.hh"
 
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -53,16 +52,16 @@ struct IntelligenceSettingsView {
         std::vector<ProviderRow> providers;
         std::vector<ModelRow> models;
         VoiceRow voice;
-        std::function<void(IntelligencePage)> onNavigate;
-        std::function<void(bool)> onEnabledChange;
-        std::function<void(U64)> onVoiceBackendSelect;
-        std::function<void(U64)> onVoiceModelSelect;
-        std::function<void(U64)> onVoiceSelect;
-        std::function<void()> onOpenAddProvider;
-        std::function<void(const std::string&)> onEditProvider;
-        std::function<void(const std::string&)> onRemoveProvider;
-        std::function<void()> onOpenAddModel;
-        std::function<void(const ModelRow&)> onRemoveModel;
+        Sakura::Callback<void(IntelligencePage)> onNavigate;
+        Sakura::Callback<void(bool)> onEnabledChange;
+        Sakura::Callback<void(U64)> onVoiceBackendSelect;
+        Sakura::Callback<void(U64)> onVoiceModelSelect;
+        Sakura::Callback<void(U64)> onVoiceSelect;
+        Sakura::Callback<void()> onOpenAddProvider;
+        Sakura::Callback<void(const std::string&)> onEditProvider;
+        Sakura::Callback<void(const std::string&)> onRemoveProvider;
+        Sakura::Callback<void()> onOpenAddModel;
+        Sakura::Callback<void(const ModelRow&)> onRemoveModel;
     };
 
     void update(Config config) {
@@ -140,7 +139,7 @@ struct IntelligenceSettingsView {
         Sakura::Stack row;
     };
 
-    std::function<void()> back() {
+    Sakura::Callback<void()> back() {
         return [this]() {
             if (config.onNavigate) {
                 config.onNavigate(IntelligencePage::Overview);
@@ -302,7 +301,7 @@ struct IntelligenceSettingsView {
                                            const std::vector<std::string>& options,
                                            std::optional<U64> selected,
                                            bool disabled,
-                                           const std::function<void(U64)>& onSelect) {
+                                           const Sakura::Callback<void(U64)>& onSelect) {
         return {
             .id = std::move(id),
             .options = options,

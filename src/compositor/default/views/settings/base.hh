@@ -16,7 +16,6 @@
 #include "jetstream/render/tools/icons_lucide.hh"
 
 #include <array>
-#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -37,9 +36,9 @@ struct SettingsView {
         DeveloperSettingsView::Config developer;
         AboutSettingsView::Config about;
         LegalSettingsView::Config legal;
-        std::function<void(SettingsSection)> onSectionChange;
-        std::function<void()> onClose;
-        std::function<void()> onFocus;
+        Sakura::Callback<void(SettingsSection)> onSectionChange;
+        Sakura::Callback<void()> onClose;
+        Sakura::Callback<void()> onFocus;
     };
 
     void update(Config config) {

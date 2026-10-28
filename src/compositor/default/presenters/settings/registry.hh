@@ -11,7 +11,6 @@
 #include "jetstream/plugin.hh"
 
 #include <algorithm>
-#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -38,7 +37,7 @@ struct RegistrySettingsPresenter {
             .onNavigate = [enqueue](RegistryPage page, const std::string& plugin) {
                 enqueue(MailSetRegistryPage{.page = page, .plugin = plugin});
             },
-            .onBrowse = [enqueue](const std::string& currentPath, std::function<void(std::string)> onSelect) {
+            .onBrowse = [enqueue](const std::string& currentPath, Sakura::Callback<void(std::string)> onSelect) {
                 enqueue(MailBrowseConfigPath{
                     .path = currentPath,
                     .save = false,

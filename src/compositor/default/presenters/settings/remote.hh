@@ -35,7 +35,7 @@ struct RemoteSettingsPresenter {
             },
             .onBrowseFile = [enqueue](const std::string& currentPath,
                                       std::vector<std::string> extensions,
-                                      std::function<void(std::string)> onSelect) {
+                                      Sakura::Callback<void(std::string)> onSelect) {
                 enqueue(MailBrowseConfigPath{
                     .path = currentPath,
                     .save = false,

@@ -9,7 +9,6 @@
 
 #include <algorithm>
 #include <array>
-#include <functional>
 #include <optional>
 #include <string>
 #include <unordered_set>
@@ -63,8 +62,8 @@ struct TitlebarView {
 
         Phase phase = Phase::Idle;
         F32 level = 0.0f;
-        std::function<void()> onStart;
-        std::function<void()> onStop;
+        Sakura::Callback<void()> onStart;
+        Sakura::Callback<void()> onStop;
     };
 
     struct Config {
@@ -79,10 +78,10 @@ struct TitlebarView {
         std::unordered_set<std::string> environmentFlowgraphs;
         bool debugTimingEnabled = false;
         I32 debugLogLevel = 0;
-        std::function<void(Action)> onAction;
-        std::function<void(I32)> onLogLevel;
-        std::function<void(TabAction, const std::string&)> onTabAction;
-        std::function<void(U8)> onBarPress;
+        Sakura::Callback<void(Action)> onAction;
+        Sakura::Callback<void(I32)> onLogLevel;
+        Sakura::Callback<void(TabAction, const std::string&)> onTabAction;
+        Sakura::Callback<void(U8)> onBarPress;
     };
 
     void update(Config config) {
@@ -154,7 +153,7 @@ struct TitlebarView {
             .backgroundColorKey = "action_btn",
             .hoverColorKey = "action_btn_hovered",
             .raised = true,
-            .onClick = updatePending ? action(Action::OpenUpdateModal) : std::function<void()>(),
+            .onClick = updatePending ? action(Action::OpenUpdateModal) : Sakura::Callback<void()>(),
         });
         helpButton.update({
             .icon = ICON_LC_CIRCLE_QUESTION_MARK,

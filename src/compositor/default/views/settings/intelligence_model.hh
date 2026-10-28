@@ -10,7 +10,6 @@
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/settings.hh"
 
-#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -31,9 +30,9 @@ struct IntelligenceModelView {
         std::vector<Item> models;
         std::string status;
         bool warning = false;
-        std::function<void(const std::string&)> onSearch;
-        std::function<void(const Option&)> onCommit;
-        std::function<void()> onBack;
+        Sakura::Callback<void(const std::string&)> onSearch;
+        Sakura::Callback<void(const Option&)> onCommit;
+        Sakura::Callback<void()> onBack;
     };
 
     void update(Config config) {

@@ -9,7 +9,6 @@
 #include "jetstream/render/sakura/typography.hh"
 #include "jetstream/render/tools/icons_lucide.hh"
 
-#include <functional>
 #include <utility>
 
 namespace Jetstream {
@@ -21,7 +20,7 @@ struct AgentChatView {
         bool open = false;
         bool hidden = true;
         U64 focusRequest = 0;
-        std::function<void()> onClose;
+        Sakura::Callback<void()> onClose;
         AgentChatPlaceholder::Config placeholder;
         Sakura::Chat::Config chat;
     };

@@ -8,7 +8,6 @@
 #include "jetstream/render/tools/icons_lucide.hh"
 
 #include <algorithm>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <cmath>
@@ -44,30 +43,30 @@ struct FlowgraphEditor {
         bool debugTimingEnabled = false;
         bool measure = false;
         bool paused = false;
-        std::function<std::vector<FlowgraphBlockPicker::BlockOption>()> onBuildBlockOptions;
+        Sakura::Callback<std::vector<FlowgraphBlockPicker::BlockOption>()> onBuildBlockOptions;
 
         std::vector<FlowgraphNode::BlockData> graph;
 
-        std::function<void(const std::string&, std::optional<Extent2D<F32>>, DeviceType, RuntimeType, ProviderType)> onCreateBlock;
-        std::function<void(const std::string&)> onCopyBlock;
-        std::function<void(std::optional<Extent2D<F32>>)> onPasteBlock;
-        std::function<void(const std::string&)> onRenameBlock;
-        std::function<void(const std::string&)> onReloadBlock;
-        std::function<void(const std::string&)> onDeleteBlock;
-        std::function<void(const std::string&)> onOpenDocumentation;
-        std::function<void(const std::string&, DeviceType, RuntimeType, ProviderType)> onChangeBlockDevice;
-        std::function<void(const std::string&, const std::string&, const std::string&, const std::string&)> onConnectBlock;
-        std::function<void(const std::string&, const std::string&)> onDisconnectBlock;
-        std::function<void(const std::string&, Parser::Map, bool, std::function<void(Result)>)> onReconfigureBlock;
-        std::function<void(Result, std::string)> onConfigError;
-        std::function<void(bool, std::vector<std::string>, std::function<void(std::string)>)> onBrowseConfigPath;
-        std::function<void(const std::string&, F32, F32, F32, F32, std::optional<FlowgraphNode::Layout>)> onNodeLayout;
-        std::function<void(Measured)> onLayout;
-        std::function<void(const std::string&, bool)> onNodeConfigCollapse;
-        std::function<void(const std::string&, bool)> onNodeConfigDetach;
-        std::function<void()> onTogglePause;
-        std::function<void()> onSave;
-        std::function<void()> onToggleEnvironment;
+        Sakura::Callback<void(const std::string&, std::optional<Extent2D<F32>>, DeviceType, RuntimeType, ProviderType)> onCreateBlock;
+        Sakura::Callback<void(const std::string&)> onCopyBlock;
+        Sakura::Callback<void(std::optional<Extent2D<F32>>)> onPasteBlock;
+        Sakura::Callback<void(const std::string&)> onRenameBlock;
+        Sakura::Callback<void(const std::string&)> onReloadBlock;
+        Sakura::Callback<void(const std::string&)> onDeleteBlock;
+        Sakura::Callback<void(const std::string&)> onOpenDocumentation;
+        Sakura::Callback<void(const std::string&, DeviceType, RuntimeType, ProviderType)> onChangeBlockDevice;
+        Sakura::Callback<void(const std::string&, const std::string&, const std::string&, const std::string&)> onConnectBlock;
+        Sakura::Callback<void(const std::string&, const std::string&)> onDisconnectBlock;
+        Sakura::Callback<void(const std::string&, Parser::Map, bool, Sakura::Callback<void(Result)>)> onReconfigureBlock;
+        Sakura::Callback<void(Result, std::string)> onConfigError;
+        Sakura::Callback<void(bool, std::vector<std::string>, Sakura::Callback<void(std::string)>)> onBrowseConfigPath;
+        Sakura::Callback<void(const std::string&, F32, F32, F32, F32, std::optional<FlowgraphNode::Layout>)> onNodeLayout;
+        Sakura::Callback<void(Measured)> onLayout;
+        Sakura::Callback<void(const std::string&, bool)> onNodeConfigCollapse;
+        Sakura::Callback<void(const std::string&, bool)> onNodeConfigDetach;
+        Sakura::Callback<void()> onTogglePause;
+        Sakura::Callback<void()> onSave;
+        Sakura::Callback<void()> onToggleEnvironment;
     };
 
     void update(Config config) {
@@ -147,7 +146,7 @@ struct FlowgraphEditor {
             for (auto& field : block.configFields) {
                 field.onApply = [this, blockName](Parser::Map values,
                                                   const bool silent,
-                                                  std::function<void(Result)> onComplete) {
+                                                  Sakura::Callback<void(Result)> onComplete) {
                     if (this->config.onReconfigureBlock) {
                         this->config.onReconfigureBlock(blockName, std::move(values), silent, std::move(onComplete));
                     }
@@ -159,7 +158,7 @@ struct FlowgraphEditor {
                 };
                 field.onBrowsePath = [this](bool save,
                                             std::vector<std::string> extensions,
-                                            std::function<void(std::string)> onPicked) {
+                                            Sakura::Callback<void(std::string)> onPicked) {
                     if (this->config.onBrowseConfigPath) {
                         this->config.onBrowseConfigPath(save, std::move(extensions), std::move(onPicked));
                     }

@@ -12,7 +12,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -32,15 +31,15 @@ struct RemoteSettingsView {
         U16 minPort = 0;
         U16 maxPort = 0;
         std::string mediaAddress;
-        std::function<void(const Instance::Remote::Config::Broker&)> onBrokerChange;
-        std::function<void(const std::string&, std::vector<std::string>, std::function<void(std::string)>)> onBrowseFile;
-        std::function<void(Instance::Remote::CodecType)> onCodecChange;
-        std::function<void(U32)> onFramerateChange;
-        std::function<void(Instance::Remote::EncoderType)> onEncoderChange;
-        std::function<void(bool)> onAutoApproveChange;
-        std::function<void(Instance::Remote::TransportType)> onTransportChange;
-        std::function<void(U16, U16)> onPortRangeChange;
-        std::function<void(const std::string&)> onMediaAddressChange;
+        Sakura::Callback<void(const Instance::Remote::Config::Broker&)> onBrokerChange;
+        Sakura::Callback<void(const std::string&, std::vector<std::string>, Sakura::Callback<void(std::string)>)> onBrowseFile;
+        Sakura::Callback<void(Instance::Remote::CodecType)> onCodecChange;
+        Sakura::Callback<void(U32)> onFramerateChange;
+        Sakura::Callback<void(Instance::Remote::EncoderType)> onEncoderChange;
+        Sakura::Callback<void(bool)> onAutoApproveChange;
+        Sakura::Callback<void(Instance::Remote::TransportType)> onTransportChange;
+        Sakura::Callback<void(U16, U16)> onPortRangeChange;
+        Sakura::Callback<void(const std::string&)> onMediaAddressChange;
     };
 
     void update(Config config) {
@@ -375,7 +374,7 @@ struct RemoteSettingsView {
  private:
     void browseFile(const std::string& path,
                     std::vector<std::string> extensions,
-                    std::function<void(std::string)> onSelect) const {
+                    Sakura::Callback<void(std::string)> onSelect) const {
         if (config.onBrowseFile) {
             config.onBrowseFile(path, std::move(extensions), std::move(onSelect));
         }

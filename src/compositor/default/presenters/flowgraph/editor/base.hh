@@ -14,7 +14,6 @@
 #include "jetstream/flowgraph.hh"
 #include "jetstream/flowgraph_view.hh"
 
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -90,7 +89,7 @@ struct FlowgraphEditorPresenter {
             .onReconfigureBlock = [enqueue, flowgraphId](const std::string& blockName,
                                                          Parser::Map blockConfig,
                                                          const bool silent,
-                                                         std::function<void(Result)> onComplete) {
+                                                         Sakura::Callback<void(Result)> onComplete) {
                 enqueue(MailReconfigureBlock{flowgraphId, blockName,
                                              std::move(blockConfig), silent,
                                              std::move(onComplete)});
@@ -101,7 +100,7 @@ struct FlowgraphEditorPresenter {
             },
             .onBrowseConfigPath = [enqueue](bool save,
                                             std::vector<std::string> extensions,
-                                            std::function<void(std::string)> onSelect) {
+                                            Sakura::Callback<void(std::string)> onSelect) {
                 enqueue(MailBrowseConfigPath{
                     .path = "",
                     .save = save,

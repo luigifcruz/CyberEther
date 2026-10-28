@@ -11,7 +11,6 @@
 
 #include "jetstream/render/tools/icons_lucide.hh"
 
-#include <functional>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -38,7 +37,7 @@ struct FlowgraphPane {
         std::string layoutGroup;
         std::string editorPane;
         std::optional<Sakura::DockTiles> layout;
-        std::function<std::string(const std::string&)> describe;
+        Sakura::Callback<std::string(const std::string&)> describe;
         std::vector<FlowgraphDetachedSurface::Config> detachedSurfaces;
         std::vector<FlowgraphDetachedConfig::Config> detachedConfigs;
         std::optional<FlowgraphDocumentation::Config> documentation;
@@ -49,12 +48,12 @@ struct FlowgraphPane {
         bool dependencyReviewAvailable = false;
         Callout::Tone dependencyReviewTone = Callout::Tone::Info;
         std::string dependencyReviewMessage;
-        std::function<void()> onFocus;
-        std::function<void()> onClose;
-        std::function<void(std::optional<Sakura::DockTiles>)> onLayout;
-        std::function<void()> onReviewDependencies;
-        std::function<void()> onOpenGallery;
-        std::function<void(FlowgraphEditor::Measured)> onMeasure;
+        Sakura::Callback<void()> onFocus;
+        Sakura::Callback<void()> onClose;
+        Sakura::Callback<void(std::optional<Sakura::DockTiles>)> onLayout;
+        Sakura::Callback<void()> onReviewDependencies;
+        Sakura::Callback<void()> onOpenGallery;
+        Sakura::Callback<void(FlowgraphEditor::Measured)> onMeasure;
     };
 
     void update(Config config) {

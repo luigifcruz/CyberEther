@@ -15,7 +15,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -238,10 +237,10 @@ struct FlowgraphNode {
         std::shared_ptr<const Render::Texture> texture;
         F32 height = 512.0f;
         bool detached = false;
-        std::function<void(bool)> onDetach;
-        std::function<void(const Sakura::SurfaceResize&)> onAttachedSize;
-        std::function<void(InputEvent)> onInput;
-        std::function<SurfaceCursor()> resolveCursor;
+        Sakura::Callback<void(bool)> onDetach;
+        Sakura::Callback<void(const Sakura::SurfaceResize&)> onAttachedSize;
+        Sakura::Callback<void(InputEvent)> onInput;
+        Sakura::Callback<SurfaceCursor()> resolveCursor;
     };
 
     struct DeviceOption {
@@ -287,18 +286,18 @@ struct FlowgraphNode {
         BlockData block;
         bool pasteEnabled = false;
         bool timingEnabled = false;
-        std::function<void()> onCopy;
-        std::function<void(Extent2D<F32>)> onPaste;
-        std::function<void()> onRename;
-        std::function<void()> onReload;
-        std::function<void(Parser::Map)> onInspectApply;
-        std::function<void()> onDelete;
-        std::function<void()> onDocumentation;
-        std::function<void(DeviceType, RuntimeType, ProviderType)> onDeviceSelect;
-        std::function<void(F32, F32, F32, F32)> onLayout;
-        std::function<void(Rect, Extent2D<F32>, std::optional<Extent2D<F32>>)> onBounds;
-        std::function<void(bool)> onConfigCollapse;
-        std::function<void(bool)> onConfigDetach;
+        Sakura::Callback<void()> onCopy;
+        Sakura::Callback<void(Extent2D<F32>)> onPaste;
+        Sakura::Callback<void()> onRename;
+        Sakura::Callback<void()> onReload;
+        Sakura::Callback<void(Parser::Map)> onInspectApply;
+        Sakura::Callback<void()> onDelete;
+        Sakura::Callback<void()> onDocumentation;
+        Sakura::Callback<void(DeviceType, RuntimeType, ProviderType)> onDeviceSelect;
+        Sakura::Callback<void(F32, F32, F32, F32)> onLayout;
+        Sakura::Callback<void(Rect, Extent2D<F32>, std::optional<Extent2D<F32>>)> onBounds;
+        Sakura::Callback<void(bool)> onConfigCollapse;
+        Sakura::Callback<void(bool)> onConfigDetach;
     };
 
     static constexpr F32 MinimumNodeWidth = 120.0f;
@@ -313,7 +312,7 @@ struct FlowgraphNode {
 
     void update(Config config) {
         std::optional<Layout> previousLayout;
-        std::function<void(F32, F32, F32, F32)> previousOnLayout;
+        Sakura::Callback<void(F32, F32, F32, F32)> previousOnLayout;
         if (layoutChanged) {
             previousLayout = this->config.block.layout;
             previousOnLayout = this->config.onLayout;

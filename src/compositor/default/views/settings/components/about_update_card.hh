@@ -7,7 +7,6 @@
 
 #include "jetstream/render/sakura/base.hh"
 
-#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,9 +28,9 @@ struct AboutUpdateCard : public SectionGroup {
         std::string updateVersion;
         std::string releaseNotes;
         std::string message;
-        std::function<void()> onCheckForUpdates;
-        std::function<void()> onDownloadUpdate;
-        std::function<void()> onApplyUpdate;
+        Sakura::Callback<void()> onCheckForUpdates;
+        Sakura::Callback<void()> onDownloadUpdate;
+        Sakura::Callback<void()> onApplyUpdate;
     };
 
     void update(Config config) {

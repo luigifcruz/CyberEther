@@ -20,7 +20,6 @@
 #include "jetstream/runtime_context.hh"
 
 #include <any>
-#include <functional>
 #include <memory>
 #include <set>
 #include <string>

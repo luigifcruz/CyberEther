@@ -8,7 +8,6 @@
 #include "tools/value.hh"
 
 #include <algorithm>
-#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -36,7 +35,7 @@ struct FlowgraphBlockPicker {
     };
 
     struct Config {
-        std::function<void(const std::string&, Extent2D<F32>, DeviceType, RuntimeType, ProviderType)> onCreateBlock;
+        Sakura::Callback<void(const std::string&, Extent2D<F32>, DeviceType, RuntimeType, ProviderType)> onCreateBlock;
     };
 
     void open(std::vector<BlockOption> catalog, Extent2D<F32> gridPosition) {

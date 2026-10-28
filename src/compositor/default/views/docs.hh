@@ -10,7 +10,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -34,11 +33,11 @@ struct DocsView {
         std::string page;
         std::string anchor;
         U64 navigation = 0;
-        std::function<void(const std::string&, const std::string&)> onNavigate;
-        std::function<void(const std::string&)> onOpenUrl;
-        std::function<void()> onFeedback;
-        std::function<void()> onClose;
-        std::function<void()> onFocus;
+        Sakura::Callback<void(const std::string&, const std::string&)> onNavigate;
+        Sakura::Callback<void(const std::string&)> onOpenUrl;
+        Sakura::Callback<void()> onFeedback;
+        Sakura::Callback<void()> onClose;
+        Sakura::Callback<void()> onFocus;
     };
 
     void update(Config config) {

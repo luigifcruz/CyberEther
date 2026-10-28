@@ -8,7 +8,6 @@
 
 #include "editor/config/base.hh"
 
-#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -23,11 +22,11 @@ struct FlowgraphDetachedSurface {
         std::vector<FlowgraphConfigFieldConfig> configFields;
         bool configOpen = false;
         std::shared_ptr<const Render::Texture> texture;
-        std::function<void(const Sakura::SurfaceResize&)> onSize;
-        std::function<void(InputEvent)> onInput;
-        std::function<SurfaceCursor()> resolveCursor;
-        std::function<void()> onClose;
-        std::function<void(bool)> onToggleConfigOpen;
+        Sakura::Callback<void(const Sakura::SurfaceResize&)> onSize;
+        Sakura::Callback<void(InputEvent)> onInput;
+        Sakura::Callback<SurfaceCursor()> resolveCursor;
+        Sakura::Callback<void()> onClose;
+        Sakura::Callback<void(bool)> onToggleConfigOpen;
     };
 
     void update(Config config) {
@@ -102,7 +101,7 @@ struct FlowgraphDetachedSurface {
         return config.title;
     }
 
-    std::function<void()> closeCallback() const {
+    Sakura::Callback<void()> closeCallback() const {
         return config.onClose;
     }
 

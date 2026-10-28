@@ -7,6 +7,7 @@ core_test_domains = {
     'compositor': [
         'compositor/compositor.cc',
         'compositor/docs.cc',
+        'compositor/file_picker.cc',
         'compositor/gallery.cc',
         'compositor/layout.cc',
         'compositor/metrics.cc',

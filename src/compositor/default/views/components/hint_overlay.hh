@@ -6,7 +6,6 @@
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/icons_lucide.hh"
 
-#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -22,7 +21,7 @@ struct HintOverlay {
     struct Action {
         std::string label;
         CardButton::Tone tone = CardButton::Tone::Card;
-        std::function<void()> onClick;
+        Sakura::Callback<void()> onClick;
     };
 
     struct Config {

@@ -12,7 +12,6 @@
 #include "jetstream/types.hh"
 
 #include <deque>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -353,7 +352,7 @@ struct MailBrowseConfigPath {
     std::string path;
     bool save = false;
     std::vector<std::string> extensions;
-    std::function<void(std::string)> onSelect;
+    Sakura::Callback<void(std::string)> onSelect;
 };
 
 struct MailFilePickerNavigate {
@@ -459,7 +458,7 @@ struct MailReconfigureBlock {
     std::string blockId;
     Parser::Map config;
     bool silent = false;
-    std::function<void(Result)> onComplete;
+    Sakura::Callback<void(Result)> onComplete;
 };
 
 struct MailCopyBlock {

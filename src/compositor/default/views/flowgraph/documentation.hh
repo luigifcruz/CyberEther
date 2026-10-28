@@ -3,7 +3,6 @@
 
 #include "jetstream/render/sakura/base.hh"
 
-#include <functional>
 #include <string>
 #include <utility>
 
@@ -14,7 +13,7 @@ struct FlowgraphDocumentation {
         std::string id;
         std::string title;
         std::string markdown;
-        std::function<void()> onClose;
+        Sakura::Callback<void()> onClose;
     };
 
     void update(Config config) {
@@ -38,7 +37,7 @@ struct FlowgraphDocumentation {
         return config.title;
     }
 
-    std::function<void()> closeCallback() const {
+    Sakura::Callback<void()> closeCallback() const {
         return config.onClose;
     }
 

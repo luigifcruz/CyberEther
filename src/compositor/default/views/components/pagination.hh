@@ -5,7 +5,6 @@
 #include "jetstream/render/tools/icons_lucide.hh"
 
 #include <algorithm>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -24,7 +23,7 @@ struct Pagination : public Sakura::Stack {
     struct Config {
         U64 page = 0;
         U64 pages = 0;
-        std::function<void(U64)> onSelect;
+        Sakura::Callback<void(U64)> onSelect;
     };
 
     static std::vector<std::optional<U64>> Slots(U64 page, U64 pages) {

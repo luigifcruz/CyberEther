@@ -7,7 +7,6 @@
 
 #include "jetstream/benchmark.hh"
 
-#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -22,9 +21,9 @@ struct BenchmarkView {
         std::vector<std::string> moduleOptions;
         std::string selectedModule;
         Benchmark::ResultMapType results;
-        std::function<void()> onRun;
-        std::function<void()> onReset;
-        std::function<void(const std::string&)> onModuleChange;
+        Sakura::Callback<void()> onRun;
+        Sakura::Callback<void()> onReset;
+        Sakura::Callback<void(const std::string&)> onModuleChange;
     };
 
     void update(Config config) {

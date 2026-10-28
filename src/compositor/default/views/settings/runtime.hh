@@ -10,7 +10,6 @@
 #include "jetstream/runtime_context_python.hh"
 
 #include <algorithm>
-#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -24,10 +23,10 @@ struct RuntimeSettingsView {
         std::vector<PythonRuntimeContext::Candidate> pythonCandidates;
         PythonRuntimeContext::Validation pythonValidation;
         bool restartRequired = false;
-        std::function<void(const std::string&)> onPythonPathChange;
-        std::function<void(const std::string&)> onDependencyPolicyChange;
-        std::function<void()> onOpenPythonEnvironmentCache;
-        std::function<void(const std::string&, std::function<void(std::string)>)> onBrowsePythonPath;
+        Sakura::Callback<void(const std::string&)> onPythonPathChange;
+        Sakura::Callback<void(const std::string&)> onDependencyPolicyChange;
+        Sakura::Callback<void()> onOpenPythonEnvironmentCache;
+        Sakura::Callback<void(const std::string&, Sakura::Callback<void(std::string)>)> onBrowsePythonPath;
     };
 
     void update(Config config) {

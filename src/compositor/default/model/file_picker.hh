@@ -1,7 +1,8 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_MODEL_FILE_PICKER_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_MODEL_FILE_PICKER_HH
 
-#include <functional>
+#include "jetstream/render/sakura/callback.hh"
+
 #include <string>
 #include <vector>
 
@@ -16,7 +17,7 @@ struct FilePickerRequest {
     FilePickerMode mode = FilePickerMode::Open;
     std::string initialPath;
     std::vector<std::string> extensions;
-    std::function<void(std::string)> callback;
+    Sakura::Callback<void(std::string)> callback;
 };
 
 struct FilePickerEntry {

@@ -4,7 +4,6 @@
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/icons_lucide.hh"
 
-#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,17 +24,17 @@ struct FlowgraphNodeMenu {
         bool plotDetachEnabled = false;
         bool plotDetached = false;
         std::vector<DeviceOption> devices;
-        std::function<void()> onCopy;
-        std::function<void()> onPaste;
-        std::function<void()> onRename;
-        std::function<void()> onInspect;
-        std::function<void()> onToggleConfigDetach;
-        std::function<void()> onTogglePlotDetach;
-        std::function<void()> onReload;
-        std::function<void()> onDelete;
-        std::function<void()> onDocumentation;
-        std::function<void(U64)> onDeviceSelect;
-        std::function<void()> onClose;
+        Sakura::Callback<void()> onCopy;
+        Sakura::Callback<void()> onPaste;
+        Sakura::Callback<void()> onRename;
+        Sakura::Callback<void()> onInspect;
+        Sakura::Callback<void()> onToggleConfigDetach;
+        Sakura::Callback<void()> onTogglePlotDetach;
+        Sakura::Callback<void()> onReload;
+        Sakura::Callback<void()> onDelete;
+        Sakura::Callback<void()> onDocumentation;
+        Sakura::Callback<void(U64)> onDeviceSelect;
+        Sakura::Callback<void()> onClose;
     };
 
     void update(Config config) {

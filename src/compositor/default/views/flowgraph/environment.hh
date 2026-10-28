@@ -3,7 +3,6 @@
 
 #include "jetstream/render/sakura/base.hh"
 
-#include <functional>
 #include <string>
 #include <utility>
 
@@ -17,8 +16,8 @@ struct FlowgraphEnvironment {
         std::string searchHint;
         std::string entryCount;
         Sakura::Table::Nodes nodes;
-        std::function<void(const std::string&)> onSearchChange;
-        std::function<void()> onClose;
+        Sakura::Callback<void(const std::string&)> onSearchChange;
+        Sakura::Callback<void()> onClose;
     };
 
     void update(Config config) {
@@ -69,7 +68,7 @@ struct FlowgraphEnvironment {
         return config.title;
     }
 
-    std::function<void()> closeCallback() const {
+    Sakura::Callback<void()> closeCallback() const {
         return config.onClose;
     }
 

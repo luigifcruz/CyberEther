@@ -5,7 +5,6 @@
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/icons_lucide.hh"
 
-#include <functional>
 #include <optional>
 #include <string>
 
@@ -20,13 +19,13 @@ struct FlowgraphInfoView {
         std::string license;
         std::string description;
         std::string path;
-        std::function<void(const std::string&)> onTitleChange;
-        std::function<void(const std::string&)> onSummaryChange;
-        std::function<void(const std::string&)> onAuthorChange;
-        std::function<void(const std::string&)> onLicenseChange;
-        std::function<void(const std::string&)> onDescriptionChange;
-        std::function<void(const std::string&, std::function<void(std::string)>)> onBrowse;
-        std::function<void(const std::string&)> onSave;
+        Sakura::Callback<void(const std::string&)> onTitleChange;
+        Sakura::Callback<void(const std::string&)> onSummaryChange;
+        Sakura::Callback<void(const std::string&)> onAuthorChange;
+        Sakura::Callback<void(const std::string&)> onLicenseChange;
+        Sakura::Callback<void(const std::string&)> onDescriptionChange;
+        Sakura::Callback<void(const std::string&, Sakura::Callback<void(std::string)>)> onBrowse;
+        Sakura::Callback<void(const std::string&)> onSave;
     };
 
     void update(Config config) {

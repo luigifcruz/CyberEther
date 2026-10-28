@@ -12,7 +12,6 @@
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/icons_lucide.hh"
 
-#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -34,11 +33,11 @@ struct RegistrySettingsView {
         std::vector<PluginRow> plugins;
         RegistryPage page = RegistryPage::Overview;
         std::string plugin;
-        std::function<void(RegistryPage, const std::string&)> onNavigate;
-        std::function<void(const std::string&, std::function<void(std::string)>)> onBrowse;
-        std::function<void(const std::string&)> onRegister;
-        std::function<void(const std::string&)> onRemovePlugin;
-        std::function<void(const std::string&)> onReloadPlugin;
+        Sakura::Callback<void(RegistryPage, const std::string&)> onNavigate;
+        Sakura::Callback<void(const std::string&, Sakura::Callback<void(std::string)>)> onBrowse;
+        Sakura::Callback<void(const std::string&)> onRegister;
+        Sakura::Callback<void(const std::string&)> onRemovePlugin;
+        Sakura::Callback<void(const std::string&)> onReloadPlugin;
     };
 
     void update(Config config) {
@@ -154,7 +153,7 @@ struct RegistrySettingsView {
         });
     }
 
-    std::function<void()> back() {
+    Sakura::Callback<void()> back() {
         return [this]() {
             navigate(RegistryPage::Overview, "");
         };

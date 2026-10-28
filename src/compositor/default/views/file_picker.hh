@@ -9,7 +9,6 @@
 
 #include <algorithm>
 #include <filesystem>
-#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -30,11 +29,11 @@ struct FilePickerView {
         std::string error;
         std::vector<std::string> extensions;
         std::vector<FilePickerEntry> entries;
-        std::function<void(U64, std::string)> onNavigate;
-        std::function<void(U64, std::string)> onSelect;
-        std::function<void(U64, std::string)> onFilename;
-        std::function<void(U64)> onConfirm;
-        std::function<void(U64)> onCancel;
+        Sakura::Callback<void(U64, std::string)> onNavigate;
+        Sakura::Callback<void(U64, std::string)> onSelect;
+        Sakura::Callback<void(U64, std::string)> onFilename;
+        Sakura::Callback<void(U64)> onConfirm;
+        Sakura::Callback<void(U64)> onCancel;
     };
 
     void update(Config config) {

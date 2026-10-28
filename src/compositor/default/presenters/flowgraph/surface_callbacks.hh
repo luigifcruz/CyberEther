@@ -6,18 +6,17 @@
 #include "jetstream/render/sakura/surface.hh"
 #include "jetstream/surface.hh"
 
-#include <functional>
 #include <memory>
 #include <string>
 
 namespace Jetstream {
 
 struct FlowgraphSurfaceCallbacks {
-    std::function<void(const Sakura::SurfaceResize&)> onSize;
-    std::function<void(InputEvent)> onInput;
-    std::function<SurfaceCursor()> resolveCursor;
+    Sakura::Callback<void(const Sakura::SurfaceResize&)> onSize;
+    Sakura::Callback<void(InputEvent)> onInput;
+    Sakura::Callback<SurfaceCursor()> resolveCursor;
 
-    static FlowgraphSurfaceCallbacks Build(const std::function<void(Mail&&)>& enqueue,
+    static FlowgraphSurfaceCallbacks Build(const Sakura::Callback<void(Mail&&)>& enqueue,
                                            const std::shared_ptr<Module::Surface>& surface,
                                            const std::string& flowgraphId,
                                            const std::string& blockName,

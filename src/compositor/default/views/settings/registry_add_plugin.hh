@@ -7,7 +7,6 @@
 
 #include "jetstream/render/sakura/base.hh"
 
-#include <functional>
 #include <string>
 #include <utility>
 
@@ -15,9 +14,9 @@ namespace Jetstream {
 
 struct RegistryAddPluginView {
     struct Config {
-        std::function<void(const std::string&, std::function<void(std::string)>)> onBrowse;
-        std::function<void(const std::string&)> onRegister;
-        std::function<void()> onBack;
+        Sakura::Callback<void(const std::string&, Sakura::Callback<void(std::string)>)> onBrowse;
+        Sakura::Callback<void(const std::string&)> onRegister;
+        Sakura::Callback<void()> onBack;
     };
 
     void reset() {

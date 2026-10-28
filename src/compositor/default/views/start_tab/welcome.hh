@@ -15,7 +15,6 @@
 
 #include <algorithm>
 #include <array>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -90,13 +89,13 @@ struct WelcomeView {
         bool assistantEnabled = true;
         bool pageCard = false;
         U64 assistantClearRequest = 0;
-        std::function<void(const std::string&)> onAssistantSubmit;
-        std::function<void()> onAssistantVoice;
-        std::function<void()> onNewFlowgraph;
-        std::function<void()> onOpenFlowgraph;
-        std::function<void()> onOpenSettings;
+        Sakura::Callback<void(const std::string&)> onAssistantSubmit;
+        Sakura::Callback<void()> onAssistantVoice;
+        Sakura::Callback<void()> onNewFlowgraph;
+        Sakura::Callback<void()> onOpenFlowgraph;
+        Sakura::Callback<void()> onOpenSettings;
         bool darkMode = true;
-        std::function<void()> onToggleTheme;
+        Sakura::Callback<void()> onToggleTheme;
         std::vector<Recent> favorites;
         std::vector<Recent> recent;
         std::vector<Example> featured;
@@ -104,19 +103,19 @@ struct WelcomeView {
         std::vector<std::string> categoryNames;
         std::string query;
         std::string category;
-        std::function<void(const std::string&)> onQueryChange;
-        std::function<void(const std::string&)> onSelectCategory;
+        Sakura::Callback<void(const std::string&)> onQueryChange;
+        Sakura::Callback<void(const std::string&)> onSelectCategory;
         U64 page = 0;
         U64 pages = 0;
-        std::function<void(U64)> onSelectPage;
+        Sakura::Callback<void(U64)> onSelectPage;
         WelcomeSection section = WelcomeSection::All;
         std::string progress;
         std::string progressResult;
         bool progressFailed = false;
-        std::function<void(WelcomeSection)> onSelectSection;
-        std::function<void(const std::string&)> onOpenRecent;
-        std::function<void(const std::string&)> onToggleFavorite;
-        std::function<void(const std::string&)> onOpenExample;
+        Sakura::Callback<void(WelcomeSection)> onSelectSection;
+        Sakura::Callback<void(const std::string&)> onOpenRecent;
+        Sakura::Callback<void(const std::string&)> onToggleFavorite;
+        Sakura::Callback<void(const std::string&)> onOpenExample;
         std::optional<RemoteSectionView::Config> remote;
     };
 
@@ -209,7 +208,7 @@ struct WelcomeView {
         using Text = Sakura::Text;
 
         const auto card = [](Sakura::Div& div, Sakura::Component* content, Extent2D<F32> size,
-                             std::function<void()> onClick) {
+                             Sakura::Callback<void()> onClick) {
             div.update({
                 .content = content,
                 .size = size,

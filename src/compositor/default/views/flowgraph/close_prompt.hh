@@ -6,7 +6,6 @@
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/icons_lucide.hh"
 
-#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -19,9 +18,9 @@ struct FlowgraphClosePromptView {
 
     struct Config {
         std::string flowgraph;
-        std::function<void()> onSave;
-        std::function<void()> onDontSave;
-        std::function<void()> onCancel;
+        Sakura::Callback<void()> onSave;
+        Sakura::Callback<void()> onDontSave;
+        Sakura::Callback<void()> onCancel;
     };
 
     void update(Config config) {

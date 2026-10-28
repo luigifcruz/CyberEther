@@ -10,7 +10,6 @@
 
 #include "jetstream/config.hh"
 
-#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -32,10 +31,10 @@ struct AboutSettingsView {
         std::string updateReleaseNotes;
         std::string updateMessage;
         std::vector<AboutInfoTable::Config> infoTables;
-        std::function<void()> onCheckForUpdates;
-        std::function<void()> onDownloadUpdate;
-        std::function<void()> onApplyUpdate;
-        std::function<void()> onSendFeedback;
+        Sakura::Callback<void()> onCheckForUpdates;
+        Sakura::Callback<void()> onDownloadUpdate;
+        Sakura::Callback<void()> onApplyUpdate;
+        Sakura::Callback<void()> onSendFeedback;
     };
 
     void update(Config config) {

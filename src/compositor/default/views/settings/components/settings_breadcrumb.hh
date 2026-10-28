@@ -4,7 +4,6 @@
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/icons_lucide.hh"
 
-#include <functional>
 #include <string>
 #include <utility>
 
@@ -14,7 +13,7 @@ struct SettingsBreadcrumb : public Sakura::Stack {
     struct Config {
         std::string root;
         std::string current;
-        std::function<void()> onRoot;
+        Sakura::Callback<void()> onRoot;
     };
 
     void update(Config config) {

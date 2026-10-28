@@ -6,7 +6,6 @@
 
 #include "jetstream/render/sakura/base.hh"
 
-#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -16,7 +15,7 @@ namespace Jetstream {
 
 struct LegalSettingsView {
     struct Config {
-        std::function<void()> onViewFullLicenses;
+        Sakura::Callback<void()> onViewFullLicenses;
     };
 
     void update(Config config) {

@@ -6,7 +6,6 @@
 #include "../../model/messages.hh"
 #include "../../views/settings/runtime.hh"
 
-#include <functional>
 #include <string>
 #include <utility>
 
@@ -34,7 +33,7 @@ struct RuntimeSettingsPresenter {
             .onOpenPythonEnvironmentCache = [enqueue]() {
                 enqueue(MailOpenPythonEnvironmentCache{});
             },
-            .onBrowsePythonPath = [enqueue](const std::string& currentPath, std::function<void(std::string)> onSelect) {
+            .onBrowsePythonPath = [enqueue](const std::string& currentPath, Sakura::Callback<void(std::string)> onSelect) {
                 enqueue(MailBrowseConfigPath{
                     .path = currentPath,
                     .save = false,

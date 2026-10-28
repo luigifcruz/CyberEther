@@ -11,7 +11,6 @@
 #include "jetstream/settings.hh"
 
 #include <algorithm>
-#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -45,10 +44,10 @@ struct IntelligenceProviderView {
         U64 testRevision = 0;
         std::string testMessage;
         std::vector<std::string> existingNames;
-        std::function<bool(const Settings::Intelligence::Provider&)> isValid;
-        std::function<void(const Settings::Intelligence::Provider&, const std::string&, U64)> onTest;
-        std::function<void(const Settings::Intelligence::Provider&, const std::string&)> onAdd;
-        std::function<void()> onBack;
+        Sakura::Callback<bool(const Settings::Intelligence::Provider&)> isValid;
+        Sakura::Callback<void(const Settings::Intelligence::Provider&, const std::string&, U64)> onTest;
+        Sakura::Callback<void(const Settings::Intelligence::Provider&, const std::string&)> onAdd;
+        Sakura::Callback<void()> onBack;
     };
 
     void update(Config config) {

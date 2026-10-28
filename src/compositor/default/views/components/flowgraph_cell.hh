@@ -4,7 +4,6 @@
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/icons_lucide.hh"
 
-#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -21,8 +20,8 @@ struct FlowgraphCell : public Sakura::Div {
         bool favorite = false;
         bool compact = false;
         std::string empty;
-        std::function<void()> onOpen;
-        std::function<void()> onToggleFavorite;
+        Sakura::Callback<void()> onOpen;
+        Sakura::Callback<void()> onToggleFavorite;
     };
 
     void update(Config config) {
@@ -96,7 +95,7 @@ struct FlowgraphCell : public Sakura::Div {
             .chrome = true,
             .colorKey = "card_surface",
             .hoveredColorKey = empty ? "card_surface" : "card_surface_hovered",
-            .onClick = empty ? std::function<void()>() : [this]() {
+            .onClick = empty ? Sakura::Callback<void()>() : [this]() {
                 if (this->config.onOpen) {
                     this->config.onOpen();
                 }

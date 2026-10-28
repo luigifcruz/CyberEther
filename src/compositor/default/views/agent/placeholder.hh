@@ -5,7 +5,6 @@
 
 #include "jetstream/render/sakura/base.hh"
 
-#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -23,7 +22,7 @@ struct AgentChatPlaceholder {
     struct Suggestion {
         std::string icon;
         std::string label;
-        std::function<void()> onClick;
+        Sakura::Callback<void()> onClick;
     };
 
     struct Config {
@@ -31,7 +30,7 @@ struct AgentChatPlaceholder {
         std::string subtitle;
         std::vector<Suggestion> suggestions;
         std::string setupLabel;
-        std::function<void()> onSetup;
+        Sakura::Callback<void()> onSetup;
     };
 
     void update(Config config) {

@@ -9,7 +9,6 @@
 
 #include "jetstream/logger.hh"
 
-#include <functional>
 #include <string>
 
 namespace Jetstream {
@@ -18,10 +17,10 @@ struct DeveloperSettingsView {
     struct Config {
         bool timingEnabled = false;
         int logLevel = JST_LOG_DEBUG_DEFAULT_LEVEL;
-        std::function<void(bool)> onTimingEnabledChange;
-        std::function<void(int)> onLogLevelChange;
-        std::function<void()> onShowBenchmarks;
-        std::function<void()> onReloadPlugins;
+        Sakura::Callback<void(bool)> onTimingEnabledChange;
+        Sakura::Callback<void(int)> onLogLevelChange;
+        Sakura::Callback<void()> onShowBenchmarks;
+        Sakura::Callback<void()> onReloadPlugins;
     };
 
     void update(Config config) {

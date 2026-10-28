@@ -5,7 +5,6 @@
 
 #include "jetstream/render/tools/icons_lucide.hh"
 
-#include <functional>
 #include <string>
 #include <utility>
 #include <vector>

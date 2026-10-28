@@ -31,19 +31,20 @@ DefaultCompositor::DefaultCompositor() :
         .enqueueMail = [this](Mail&& mail) {
             enqueue(std::move(mail));
         },
-        .enqueueCommand = [this](std::function<Result()> fn, bool silent) {
-            Compositor::Impl::enqueue(std::move(fn), silent);
+        .enqueueCommand = [this](Sakura::Callback<Result()> fn, bool silent) {
+            Compositor::Impl::enqueue(std::move(fn).release(), silent);
         },
-        .enqueueCommandWithCompletion = [this](std::function<Result()> fn, bool silent,
-                                               std::function<void(Result)> onComplete) {
-            Compositor::Impl::enqueue(std::move(fn), silent, std::move(onComplete));
+        .enqueueCommandWithCompletion = [this](Sakura::Callback<Result()> fn, bool silent,
+                                               Sakura::Callback<void(Result)> onComplete) {
+            Compositor::Impl::enqueue(std::move(fn).release(), silent, std::move(onComplete).release());
         },
-        .enqueueCommandWithMail = [this](std::function<Result()> fn, bool silent, Mail mail) {
-            Compositor::Impl::enqueue(std::move(fn), silent, [this, mail = std::move(mail)](const Result result) {
-                if (result == Result::SUCCESS) {
-                    enqueue(Mail(mail));
-                }
-            });
+        .enqueueCommandWithMail = [this](Sakura::Callback<Result()> fn, bool silent, Mail mail) {
+            Compositor::Impl::enqueue(std::move(fn).release(), silent,
+                                      [this, mail = std::move(mail)](const Result result) {
+                                          if (result == Result::SUCCESS) {
+                                              enqueue(Mail(mail));
+                                          }
+                                      });
         },
         .notify = [](Sakura::ToastType type, I32 durationMs, const std::string& message) {
             Sakura::PushToast(type, durationMs, message);

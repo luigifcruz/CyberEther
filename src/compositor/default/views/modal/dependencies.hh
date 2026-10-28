@@ -6,7 +6,6 @@
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/icons_lucide.hh"
 
-#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -38,7 +37,7 @@ struct DependencyReviewView {
         bool installEnabled = false;
         std::string output;
         std::string message;
-        std::function<void()> onInstall;
+        Sakura::Callback<void()> onInstall;
     };
 
     void update(Config config) {

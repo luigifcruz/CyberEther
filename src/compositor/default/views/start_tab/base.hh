@@ -6,7 +6,6 @@
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/icons_lucide.hh"
 
-#include <functional>
 #include <utility>
 
 namespace Jetstream {
@@ -17,8 +16,8 @@ struct StartTabView {
     struct Config {
         WelcomeView::Config welcome;
         bool closable = true;
-        std::function<void()> onClose;
-        std::function<void()> onFocus;
+        Sakura::Callback<void()> onClose;
+        Sakura::Callback<void()> onFocus;
     };
 
     void update(Config config) {
@@ -43,8 +42,8 @@ struct StartTabView {
 
  private:
     bool closable = true;
-    std::function<void()> onClose;
-    std::function<void()> onFocus;
+    Sakura::Callback<void()> onClose;
+    Sakura::Callback<void()> onFocus;
     WelcomeView welcome;
 };
 

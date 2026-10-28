@@ -5,7 +5,6 @@
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/icons_lucide.hh"
 
-#include <functional>
 #include <string>
 
 namespace Jetstream {
@@ -13,7 +12,7 @@ namespace Jetstream {
 struct RenameBlockView {
     struct Config {
         std::string oldName;
-        std::function<void(const std::string&)> onRename;
+        Sakura::Callback<void(const std::string&)> onRename;
     };
 
     void update(Config config) {

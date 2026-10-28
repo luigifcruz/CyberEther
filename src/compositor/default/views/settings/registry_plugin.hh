@@ -9,7 +9,6 @@
 #include "jetstream/render/sakura/base.hh"
 
 #include <array>
-#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -34,9 +33,9 @@ struct RegistryPluginView {
 
     struct Config {
         Plugin plugin;
-        std::function<void(const std::string&)> onReload;
-        std::function<void(const std::string&)> onRemove;
-        std::function<void()> onBack;
+        Sakura::Callback<void(const std::string&)> onReload;
+        Sakura::Callback<void(const std::string&)> onRemove;
+        Sakura::Callback<void()> onBack;
     };
 
     static std::string VersionLabel(const Plugin& plugin) {

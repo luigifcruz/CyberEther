@@ -7,7 +7,6 @@
 #include "jetstream/memory/types.hh"
 #include "jetstream/render/sakura/base.hh"
 
-#include <functional>
 #include <iomanip>
 #include <sstream>
 #include <string>
@@ -23,11 +22,11 @@ struct GeneralSettingsView {
         std::string renderer;
         bool backgroundParticles = false;
         bool showTips = true;
-        std::function<void(const std::string&)> onThemeChange;
-        std::function<void(F32)> onInterfaceScaleChange;
-        std::function<void(DeviceType)> onRendererChange;
-        std::function<void(bool)> onBackgroundParticlesChange;
-        std::function<void(bool)> onShowTipsChange;
+        Sakura::Callback<void(const std::string&)> onThemeChange;
+        Sakura::Callback<void(F32)> onInterfaceScaleChange;
+        Sakura::Callback<void(DeviceType)> onRendererChange;
+        Sakura::Callback<void(bool)> onBackgroundParticlesChange;
+        Sakura::Callback<void(bool)> onShowTipsChange;
     };
 
     void update(Config config) {

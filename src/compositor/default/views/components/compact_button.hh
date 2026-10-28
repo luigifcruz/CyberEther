@@ -3,7 +3,6 @@
 
 #include "jetstream/render/sakura/base.hh"
 
-#include <functional>
 #include <string>
 #include <utility>
 
@@ -22,7 +21,7 @@ struct CompactButton : public Sakura::Button {
         std::string str;
         Tone tone = Tone::Default;
         bool disabled = false;
-        std::function<void()> onClick;
+        Sakura::Callback<void()> onClick;
     };
 
     void update(Config config) {

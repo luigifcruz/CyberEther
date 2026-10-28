@@ -5,7 +5,6 @@
 #include "jetstream/render/tools/icons_lucide.hh"
 #include "jetstream/types.hh"
 
-#include <functional>
 #include <string>
 
 namespace Jetstream {
@@ -21,9 +20,9 @@ struct FeedbackView {
         U64 maxLength = 4000;
         enum class Status { Idle, Submitting };
         Status status = Status::Idle;
-        std::function<void(const std::string&)> onTextChange;
-        std::function<void()> onSubmit;
-        std::function<void()> onClose;
+        Sakura::Callback<void(const std::string&)> onTextChange;
+        Sakura::Callback<void()> onSubmit;
+        Sakura::Callback<void()> onClose;
     };
 
     void update(Config config) {
