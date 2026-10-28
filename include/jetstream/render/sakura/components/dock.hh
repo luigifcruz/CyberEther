@@ -42,6 +42,7 @@ struct Dock : public Component {
         std::string icon;
         Component* content = nullptr;
         bool closable = true;
+        bool closeOnlyMinimized = false;
         bool maximizable = true;
         bool card = true;
         bool leftmost = false;

@@ -2562,6 +2562,7 @@ struct ColumnRig {
     std::optional<DockTiles> tiles;
     std::vector<std::optional<DockTiles>> emitted;
     std::vector<std::string> closed;
+    std::string closeOnlyMinimized;
     bool withA = true;
     bool withC = true;
     Dock dock;
@@ -2577,6 +2578,7 @@ struct ColumnRig {
         }
         for (auto& pane : panes) {
             pane.onClose = [this, id = pane.id] { closed.push_back(id); };
+            pane.closeOnlyMinimized = pane.id == closeOnlyMinimized;
         }
         dock.update({
             .accepts = "panel",
@@ -3929,6 +3931,33 @@ TEST_CASE("Minimizing a lone column collapses it to a strip with a vertical titl
     CHECK(rig.closed == std::vector<std::string>{"c"});
     CHECK_FALSE(Spine(rig.dock, "c").has_value());
     CHECK_FALSE(rig.c.visible());
+}
+
+TEST_CASE("A pane that closes only when minimized hides its header close until it collapses to a strip",
+          "[core][sakura][dock][columns]") {
+    const auto ctx = MakeContext({1600.0f, 600.0f});
+    ColumnRig rig;
+    rig.tiles = ColumnRow({Leaf("a"), Leaf("b"), Leaf("c")});
+    rig.closeOnlyMinimized = "c";
+    Host host(rig.dock);
+    rig.update();
+    host.place(ctx, kWideDock);
+    const Rect cardC = {1174.0f, 6.0f, 420.0f, 588.0f};
+    const auto* minus = GlyphIn(rig.dock, cardC, ICON_LC_MINUS);
+    REQUIRE(minus != nullptr);
+    CHECK_FALSE(GlyphIn(rig.dock, cardC, ICON_LC_X));
+    CHECK(GlyphIn(rig.dock, {1136.0f, 6.0f, 420.0f, 588.0f}, ICON_LC_X));
+
+    const Rect minimize = Peek::Frame(*minus);
+    host.click(minimize.x + minimize.width * 0.5f, minimize.y + minimize.height * 0.5f);
+    host.place(ctx, kWideDock);
+    REQUIRE(Spine(rig.dock, "c").has_value());
+    const auto* strip = GlyphIn(rig.dock, {1562.0f, 6.0f, 32.0f, 588.0f}, ICON_LC_X);
+    REQUIRE(strip != nullptr);
+    const Rect close = Peek::Frame(*strip);
+    host.click(close.x + close.width * 0.5f, close.y + close.height * 0.5f);
+    host.place(ctx, kWideDock);
+    CHECK(rig.closed == std::vector<std::string>{"c"});
 }
 
 TEST_CASE("The first minimize draws the vertical title in the same frame without a resource rebuild",

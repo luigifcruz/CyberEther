@@ -1882,7 +1882,7 @@ void Dock::layout(const Context& ctx) {
             const auto found = s.headerCaptions.find(leaf.pane);
             auto* caption = found == s.headerCaptions.end() ? nullptr : &found->second;
             F32 right = leaf.tile.right() - inset;
-            if (closable) {
+            if (closable && (!item || !item->closeOnlyMinimized || leaf.minimized)) {
                 const char* closeKey = s.hoveredHeaderClose == leaf.pane ? "tile_button_hover" : "tile_header_text";
                 const Extent2D<F32> size = caption ? prepareGlyph(*caption->close, ICON_LC_X, closeKey, kHeaderGlyph, 1.0f)
                                                    : Extent2D<F32>{Px(ctx, kHeaderGlyph), Px(ctx, kHeaderGlyph)};

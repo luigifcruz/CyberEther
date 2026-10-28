@@ -249,6 +249,7 @@ struct FlowgraphPane {
                 .group = this->config.layoutGroup,
                 .icon = ICON_LC_BOOK_OPEN,
                 .content = &description,
+                .closeOnlyMinimized = true,
                 .maximizable = false,
                 .leftmost = true,
                 .startMinimized = true,
