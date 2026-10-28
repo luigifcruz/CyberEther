@@ -1,3 +1,4 @@
+#include <chrono>
 #include <limits>
 #include <utility>
 
@@ -19,6 +20,12 @@ struct FileReaderImplNativeCpu : public FileReaderImpl,
     Result create() final;
 
     Result computeSubmit() override;
+    Result hasPendingCompute() override;
+
+ private:
+    bool paced() const;
+    std::chrono::steady_clock::time_point paceDue() const;
+    void advancePace();
 };
 
 Result FileReaderImplNativeCpu::validate() {
@@ -48,10 +55,74 @@ Result FileReaderImplNativeCpu::create() {
     return Result::SUCCESS;
 }
 
-// TODO: Make the file reading asynchronous.
+Result FileReaderImplNativeCpu::hasPendingCompute() {
+    if (!streaming) {
+        if (!livePlaying || !paced() || pacedSamples == 0) {
+            return Result::SUCCESS;
+        }
+
+        const auto due = paceDue();
+        if (std::chrono::steady_clock::now() < due) {
+            Scheduler::Context::NotifyPendingComputeAt(due);
+            return Result::TIMEOUT;
+        }
+
+        return Result::SUCCESS;
+    }
+
+    if (!livePlaying) {
+        return streamFilled == 0 ? Result::SUCCESS : Result::TIMEOUT;
+    }
+
+    if (errored) {
+        return Result::ERROR;
+    }
+
+    if (ended || starved) {
+        return Result::TIMEOUT;
+    }
+
+    return Result::SUCCESS;
+}
+
+bool FileReaderImplNativeCpu::paced() const {
+    return liveRealTime && recording.sampleRate.has_value();
+}
+
+std::chrono::steady_clock::time_point FileReaderImplNativeCpu::paceDue() const {
+    using Clock = std::chrono::steady_clock;
+    return paceStart + std::chrono::duration_cast<Clock::duration>(
+        std::chrono::duration<F64>(static_cast<F64>(pacedSamples) / *recording.sampleRate));
+}
+
+void FileReaderImplNativeCpu::advancePace() {
+    constexpr auto kResyncSlack = std::chrono::milliseconds(100);
+
+    if (!paced()) {
+        pacedSamples = 0;
+        return;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    if (pacedSamples == 0 || now - paceDue() > kResyncSlack) {
+        paceStart = now;
+        pacedSamples = 0;
+    }
+
+    pacedSamples += buffer.size();
+}
 
 Result FileReaderImplNativeCpu::computeSubmit() {
-    if (!dataFile.is_open() || !playing) {
+    if (!livePlaying) {
+        pacedSamples = 0;
+        return (streaming && streamFilled != 0) ? Result::YIELD : Result::SUCCESS;
+    }
+
+    if (streaming) {
+        return readStream();
+    }
+
+    if (!dataFile.is_open()) {
         return Result::SUCCESS;
     }
 
@@ -62,7 +133,7 @@ Result FileReaderImplNativeCpu::computeSubmit() {
 
     if (remainingBytes == 0) {
         if (loop) {
-            dataFile.seekg(0, std::ios::beg);
+            dataFile.seekg(static_cast<std::streamoff>(recording.headerBytes), std::ios::beg);
             currentOffset = 0;
             currentPosition.publish(currentOffset);
             remainingBytes = totalSize;
@@ -71,7 +142,10 @@ Result FileReaderImplNativeCpu::computeSubmit() {
         }
     }
 
+    advancePace();
+
     const U64 actualBytesToRead = std::min(bytesToRead, remainingBytes);
+    JST_CHECK(publishCapture(currentOffset / buffer.elementSize()));
 
     dataFile.read(reinterpret_cast<char*>(buffer.data()), actualBytesToRead);
     const U64 actualBytesRead = static_cast<U64>(dataFile.gcount());

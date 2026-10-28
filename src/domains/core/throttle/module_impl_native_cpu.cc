@@ -1,5 +1,3 @@
-#include <thread>
-
 #include <jetstream/backend/devices/cpu/helpers.hh>
 #include <jetstream/runtime_context_native_cpu.hh>
 #include <jetstream/scheduler_context.hh>
@@ -18,11 +16,13 @@ struct ThrottleImplNativeCpu : public ThrottleImpl,
 };
 
 Result ThrottleImplNativeCpu::computeSubmit() {
-    if (std::chrono::steady_clock::now() < schedule.deadline) {
-        std::this_thread::sleep_until(schedule.deadline);
+    const auto now = std::chrono::steady_clock::now();
+    if (now < schedule.deadline) {
+        Scheduler::Context::NotifyPendingComputeAt(schedule.deadline);
+        return Result::YIELD;
     }
 
-    schedule.advance(std::chrono::steady_clock::now());
+    schedule.advance(now);
 
     return Result::SUCCESS;
 }

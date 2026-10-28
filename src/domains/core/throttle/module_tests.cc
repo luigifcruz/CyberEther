@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <limits>
+#include <thread>
 
 #include "jetstream/domains/core/throttle/module.hh"
 #include "jetstream/registry.hh"
@@ -9,6 +10,20 @@
 #include "schedule.hh"
 
 using namespace Jetstream;
+
+namespace {
+
+void Pass(TestContext& ctx) {
+    while (true) {
+        REQUIRE(ctx.compute() == Result::SUCCESS);
+        if (!ctx.stalled()) {
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::microseconds(50));
+    }
+}
+
+}  // namespace
 
 TEST_CASE("Throttle Module - Rejects Invalid Intervals", "[modules][throttle][error]") {
     const auto implementations = Registry::ListAvailableModules("throttle");
@@ -66,8 +81,14 @@ TEST_CASE("Throttle Module - Pass Through Across Persistent Computes",
 
             REQUIRE(ctx.start() == Result::SUCCESS);
             const auto computeStart = std::chrono::steady_clock::now();
+            Pass(ctx);
+
+            const auto heldStart = std::chrono::steady_clock::now();
             REQUIRE(ctx.compute() == Result::SUCCESS);
-            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(ctx.stalled());
+            REQUIRE(std::chrono::steady_clock::now() - heldStart < std::chrono::milliseconds(10));
+
+            Pass(ctx);
             const auto computeElapsed = std::chrono::steady_clock::now() - computeStart;
             REQUIRE(computeElapsed >= std::chrono::milliseconds(25));
 
@@ -101,7 +122,7 @@ TEST_CASE("Throttle Module - Paces Sub-Millisecond Intervals On Average",
             REQUIRE(ctx.start() == Result::SUCCESS);
             const auto start = std::chrono::steady_clock::now();
             for (U64 i = 0; i < 41; ++i) {
-                REQUIRE(ctx.compute() == Result::SUCCESS);
+                Pass(ctx);
             }
             const auto elapsed = std::chrono::steady_clock::now() - start;
             REQUIRE(elapsed >= std::chrono::microseconds(9'750));
@@ -170,13 +191,13 @@ TEST_CASE("Throttle Module - Reconfigures Persistent Computes",
     auto input = ctx.createTensor<F32>({4});
     ctx.setInput("buffer", input);
     REQUIRE(ctx.start() == Result::SUCCESS);
-    REQUIRE(ctx.compute() == Result::SUCCESS);
+    Pass(ctx);
 
     const auto start = std::chrono::steady_clock::now();
     config.intervalMs = 100.0f;
     REQUIRE(ctx.reconfigure(config) == Result::SUCCESS);
-    REQUIRE(ctx.compute() == Result::SUCCESS);
-    REQUIRE(ctx.compute() == Result::SUCCESS);
+    Pass(ctx);
+    Pass(ctx);
     REQUIRE(std::chrono::steady_clock::now() - start >= std::chrono::milliseconds(100));
     REQUIRE(ctx.stop() == Result::SUCCESS);
 }

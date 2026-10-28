@@ -52,6 +52,10 @@ void Scheduler::Context::NotifyPendingCompute() {
     signal.cond.notify_all();
 }
 
+void Scheduler::Context::NotifyPendingComputeAt(const std::chrono::steady_clock::time_point deadline) {
+    Scheduler::Impl::ReportComputeDeadline(deadline);
+}
+
 U64 Scheduler::Impl::BeginComputeRound() {
     round = {};
     return PendingComputeSignal::Instance().epoch.load(std::memory_order_acquire);
