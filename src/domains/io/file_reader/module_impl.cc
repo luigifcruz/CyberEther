@@ -74,7 +74,6 @@ Result FileReaderImpl::define() {
 
 Result FileReaderImpl::create() {
     livePlaying = playing;
-    liveRealTime = realTime;
     recording = {};
     recording.dataPath = Platform::PathFromUtf8(filepath);
     recording.dataType = validatedDataType;
@@ -113,10 +112,7 @@ Result FileReaderImpl::create() {
 
     if (recording.sampleRate) {
         JST_CHECK(buffer.setAttribute("sampleRate", static_cast<F32>(*recording.sampleRate)));
-    } else if (format->describesSamples() && realTime) {
-        JST_WARN("[MODULE_FILE_READER] Recording has no sample rate, so Real Time is ignored.");
     }
-    pacedSamples = 0;
     JST_CHECK(publishCapture(0));
 
     filePath = recording.dataPath;
@@ -295,9 +291,7 @@ Result FileReaderImpl::reconfigure() {
         config.batchSize == batchSize) {
         loop = config.loop;
         playing = config.playing;
-        realTime = config.realTime;
         livePlaying = playing;
-        liveRealTime = realTime;
         return Result::SUCCESS;
     }
 

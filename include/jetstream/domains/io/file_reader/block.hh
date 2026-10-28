@@ -12,11 +12,10 @@ struct FileReader : public Block::Config {
     U64 batchSize = 8192;
     bool loop = true;
     bool playing = true;
-    bool realTime = false;
 
     JST_BLOCK_TYPE(file_reader);
     JST_BLOCK_DOMAIN("IO");
-    JST_BLOCK_PARAMS(filepath, fileFormat, dataType, batchSize, loop, playing, realTime);
+    JST_BLOCK_PARAMS(filepath, fileFormat, dataType, batchSize, loop, playing);
     JST_BLOCK_DESCRIPTION(
         "File Reader",
         "Reads signal samples from a file.",
@@ -26,8 +25,8 @@ struct FileReader : public Block::Config {
         "looping back at the end when asked. It usually starts a chain in place of a "
         "radio, feeding a Throttle and then a Spectrum Analyzer.\n"
         "\n"
-        "- **Playback is not paced by default.** Turn on Real Time for SigMF or WAV, or"
-        " add a Throttle.\n"
+        "- **Playback is not paced.** Add a Throttle with Pacing set to Sample Rate to "
+        "play in real time.\n"
         "- **Raw I/Q files carry no metadata.** They set neither `sampleRate` nor "
         "`frequency`, so views show no MHz axis.\n"
         "- **Samples come out as stored.** Integer types are not scaled, so convert "
@@ -63,9 +62,6 @@ struct FileReader : public Block::Config {
         "file. Off repeats the last buffer from then on. Streams ignore it. |\n"
         "| **Playing** | On | On, Off | Reads a new buffer every cycle. Off repeats the"
         " current buffer and stops reading a stream. |\n"
-        "| **Real Time** | Off | On, Off | Reads at the recorded sample rate instead of"
-        " as fast as the chain runs. Needs a recorded sample rate. Shown when the file "
-        "is read as SigMF or WAV. |\n"
         "\n"
         "## Readouts\n"
         "\n"
@@ -85,7 +81,7 @@ struct FileReader : public Block::Config {
         "| Play an 8-bit capture | Data Type CU8 | 8,192 complex samples per buffer "
         "from 0 to 255, 16 KiB of the file each |\n"
         "| Play a SigMF or WAV recording | Defaults | 8,192 samples per buffer of the "
-        "recorded type, at the recorded rate and frequency |\n"
+        "recorded type, with the recorded sample rate and frequency |\n"
         "| Play samples piped in | File Path `/dev/stdin` | 8,192 complex samples per "
         "buffer as the data arrives |\n"
         "| Play once | Loop off | 8,192 complex samples per buffer until the end, then "
@@ -122,7 +118,7 @@ struct FileReader : public Block::Config {
         "## See Also\n"
         "\n"
         "- **File Writer** records files that this block plays.\n"
-        "- **Throttle** paces playback to real time.\n"
+        "- **Throttle** paces playback to the recorded sample rate.\n"
         "- **Cast** scales integer samples to F32 or CF32.\n"
         "- **Spectrum Analyzer** shows the recorded band."
     );

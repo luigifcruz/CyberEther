@@ -21,11 +21,6 @@ struct FileReaderImplNativeCpu : public FileReaderImpl,
 
     Result computeSubmit() override;
     Result hasPendingCompute() override;
-
- private:
-    bool paced() const;
-    std::chrono::steady_clock::time_point paceDue() const;
-    void advancePace();
 };
 
 Result FileReaderImplNativeCpu::validate() {
@@ -57,16 +52,6 @@ Result FileReaderImplNativeCpu::create() {
 
 Result FileReaderImplNativeCpu::hasPendingCompute() {
     if (!streaming) {
-        if (!livePlaying || !paced() || pacedSamples == 0) {
-            return Result::SUCCESS;
-        }
-
-        const auto due = paceDue();
-        if (std::chrono::steady_clock::now() < due) {
-            Scheduler::Context::NotifyPendingComputeAt(due);
-            return Result::TIMEOUT;
-        }
-
         return Result::SUCCESS;
     }
 
@@ -85,36 +70,8 @@ Result FileReaderImplNativeCpu::hasPendingCompute() {
     return Result::SUCCESS;
 }
 
-bool FileReaderImplNativeCpu::paced() const {
-    return liveRealTime && recording.sampleRate.has_value();
-}
-
-std::chrono::steady_clock::time_point FileReaderImplNativeCpu::paceDue() const {
-    using Clock = std::chrono::steady_clock;
-    return paceStart + std::chrono::duration_cast<Clock::duration>(
-        std::chrono::duration<F64>(static_cast<F64>(pacedSamples) / *recording.sampleRate));
-}
-
-void FileReaderImplNativeCpu::advancePace() {
-    constexpr auto kResyncSlack = std::chrono::milliseconds(100);
-
-    if (!paced()) {
-        pacedSamples = 0;
-        return;
-    }
-
-    const auto now = std::chrono::steady_clock::now();
-    if (pacedSamples == 0 || now - paceDue() > kResyncSlack) {
-        paceStart = now;
-        pacedSamples = 0;
-    }
-
-    pacedSamples += buffer.size();
-}
-
 Result FileReaderImplNativeCpu::computeSubmit() {
     if (!livePlaying) {
-        pacedSamples = 0;
         return (streaming && streamFilled != 0) ? Result::YIELD : Result::SUCCESS;
     }
 
@@ -141,8 +98,6 @@ Result FileReaderImplNativeCpu::computeSubmit() {
             return Result::SUCCESS;
         }
     }
-
-    advancePace();
 
     const U64 actualBytesToRead = std::min(bytesToRead, remainingBytes);
     JST_CHECK(publishCapture(currentOffset / buffer.elementSize()));

@@ -22,6 +22,9 @@ Result ThrottleImplNativeCpu::computeSubmit() {
         return Result::YIELD;
     }
 
+    if (pacing == "sampleRate") {
+        schedule.interval = bufferDuration();
+    }
     schedule.advance(now);
 
     return Result::SUCCESS;

@@ -7,24 +7,25 @@
 namespace Jetstream::Blocks {
 
 struct Throttle : public Block::Config {
+    std::string pacing = "interval";
     F32 intervalMs = 100.0f;
 
     JST_BLOCK_TYPE(throttle);
     JST_BLOCK_DOMAIN("Core");
-    JST_BLOCK_PARAMS(intervalMs);
+    JST_BLOCK_PARAMS(pacing, intervalMs);
     JST_BLOCK_DESCRIPTION(
         "Throttle",
         "Limits data flow rate by introducing time delays.",
         "# Throttle\n"
         "\n"
-        "Passes each buffer through unchanged, holding it until it is due, one Interval"
-        " after the previous buffer was due. It usually follows a Signal Generator or "
-        "File Reader, which otherwise run as fast as the computer allows.\n"
+        "Passes each buffer through unchanged, holding it until a fixed Interval or the"
+        " time the previous buffer lasts at its `sampleRate` has passed. It usually follows a Signal Generator or File Reader, which "
+        "otherwise run as fast as the computer allows.\n"
         "\n"
-        "- **Passes average Interval apart.** A late pass shortens the next wait, and a"
+        "- **Passes average one wait apart.** A late pass shortens the next wait, and a"
         " slower chain sets its own pace.\n"
-        "- **Real time needs a matching buffer.** Size the source buffer to last "
-        "Interval at its sample rate.\n"
+        "- **Sample Rate pacing plays in real time.** Each buffer waits as long as it "
+        "lasts at the input `sampleRate`.\n"
         "\n"
         "## Ports\n"
         "\n"
@@ -39,8 +40,11 @@ struct Throttle : public Block::Config {
         "\n"
         "| Setting | Default | Range | Effect |\n"
         "|---|---|---|---|\n"
+        "| **Pacing** | Interval | Interval, Sample Rate | Interval waits a fixed time. "
+        "Sample Rate waits as long as each buffer lasts at the input `sampleRate`, "
+        "counting samples per channel. |\n"
         "| **Interval** | 100 ms | 0.001 ms to 86,400,000 ms | Average time between two"
-        " buffers, down to fractions of a millisecond. |\n"
+        " buffers, down to fractions of a millisecond. Hidden for Sample Rate. |\n"
         "\n"
         "## Recipes\n"
         "\n"
@@ -48,8 +52,8 @@ struct Throttle : public Block::Config {
         "|---|---|---|---|\n"
         "| Ten updates per second | Defaults | 8,192 samples from a Signal Generator | "
         "The same 8,192 samples, about every 100 ms |\n"
-        "| Test tone in real time | Interval 8 ms | 8,000 samples at 1 MS/s | The same "
-        "8,000 samples, about every 8 ms |\n"
+        "| Play a recording in real time | Pacing Sample Rate | 8,192 samples at 2 MS/s "
+        "from a File Reader | The same 8,192 samples, about every 4.1 ms |\n"
         "| Low latency test tone | Interval 0.5 ms | 500 samples at 1 MS/s | The same "
         "500 samples, every 0.5 ms on average |\n"
         "| Step through a recording | Interval 1,000 ms | 8,192 samples per batch from "
@@ -69,6 +73,9 @@ struct Throttle : public Block::Config {
         "| Audio from a test source gaps or skips | The buffer does not last Interval, "
         "or passes run slightly late | Size the buffer to last Interval, such as 8,000 "
         "samples at 1 MS/s with Interval 8 ms. |\n"
+        "| Sample Rate pacing passes buffers at full speed | The input has no "
+        "`sampleRate`, and the log warns about it | Use Interval pacing, or set the "
+        "sample rate on the source. |\n"
         "| The block reports that it expects a contiguous tensor | The input is "
         "strided, such as a Slice with Contiguous off | Turn on Contiguous in the "
         "Slice. |\n"
@@ -76,10 +83,10 @@ struct Throttle : public Block::Config {
         "## Under the Hood\n"
         "\n"
         "The block holds the buffer and tells the scheduler when the next pass is due, "
-        "then hands on the input buffer without a copy. Each pass is due one Interval "
-        "after the previous one was due, unless that one ran more than one Interval "
-        "late, which restarts the schedule. The first buffer, and the first one after "
-        "Interval changes, passes at once.\n"
+        "then hands on the input buffer without a copy. Each pass is due one wait after"
+        " the previous one was due, unless that one ran more than one wait late, which "
+        "restarts the schedule. The first buffer, and the first one after a setting "
+        "changes, passes at once.\n"
         "\n"
         "## See Also\n"
         "\n"

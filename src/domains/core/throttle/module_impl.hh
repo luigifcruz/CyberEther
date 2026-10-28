@@ -18,8 +18,11 @@ struct ThrottleImpl : public Module::Impl, public DynamicConfig<Throttle> {
  protected:
     Tensor input;
     ThrottleSchedule schedule;
+    U64 samplesPerBuffer = 0;
+    bool warnedSampleRate = false;
 
     void resetDeadline();
+    std::chrono::steady_clock::duration bufferDuration();
 };
 
 }  // namespace Jetstream::Modules

@@ -40,7 +40,6 @@ Result FileReaderImpl::configure() {
     moduleConfig->batchSize = batchSize;
     moduleConfig->loop = loop;
     moduleConfig->playing = playing;
-    moduleConfig->realTime = realTime;
 
     return Result::SUCCESS;
 }
@@ -67,9 +66,7 @@ Result FileReaderImpl::define() {
                                     {{"type", "dropdown"}, {"options", std::move(formats)}}));
 
     const auto format = Modules::FileReaderFormat::Create(config.fileFormat, config.filepath);
-    const bool describesSamples = format && format->describesSamples();
-
-    if (!describesSamples) {
+    if (!format || !format->describesSamples()) {
         Parser::Sequence dataTypes;
         for (const std::string type : {"CF64", "F64", "CF32", "F32", "CI8", "I8", "CU8", "U8", "CI16", "I16", "CU16", "U16"}) {
             dataTypes.emplace_back(Parser::Map{{"label", type}, {"value", type}});
@@ -94,13 +91,6 @@ Result FileReaderImpl::define() {
                                     "Playing",
                                     "Start or stop reading from the file.",
                                     {{"type", "bool"}}));
-
-    if (describesSamples) {
-        JST_CHECK(defineInterfaceConfig("realTime",
-                                        "Real Time",
-                                        "Read at the recorded sample rate instead of as fast as the chain runs.",
-                                        {{"type", "bool"}}));
-    }
 
     JST_CHECK(defineInterfaceMetric("progress",
                                     "Position",
