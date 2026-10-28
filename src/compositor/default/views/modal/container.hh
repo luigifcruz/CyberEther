@@ -88,6 +88,7 @@ struct ModalView {
         return {
             .content = content(),
             .size = modalSize(),
+            .closeButton = config.content != ModalContent::Feedback,
             .onClose = [this]() {
                 if (config.onClose) {
                     config.onClose();

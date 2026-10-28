@@ -61,6 +61,15 @@ std::vector<Sakura::Button*> IconButtons(Sakura::Component& root, const char* ic
     return buttons;
 }
 
+Sakura::PillButton* Pill(Sakura::Component& root, const std::string& label) {
+    for (auto* pill : Find<Sakura::PillButton>(root)) {
+        if (Labeled(*pill, label)) {
+            return pill;
+        }
+    }
+    return nullptr;
+}
+
 Extent2D<F32> Center(const Sakura::Component& component) {
     const Jetstream::Rect frame = Peek::Frame(component);
     return {frame.x + frame.width * 0.5f, frame.y + frame.height * 0.5f};
@@ -3687,14 +3696,21 @@ TEST_CASE("Flowgraph info modal saves to the browsed path and resets it for anot
 TEST_CASE("Feedback modal submits only within the length limits and while idle", "[core][sakura][views]") {
     ModalRig rig;
     U64 submitted = 0;
+    U64 closed = 0;
     FeedbackView view;
-    const auto submit = [&](std::string text, FeedbackView::Config::Status status) {
+    const auto show = [&](std::string text, FeedbackView::Config::Status status) {
         view.update({.text = std::move(text), .minLength = 10, .maxLength = 40, .status = status,
-                     .onSubmit = [&] { ++submitted; }});
-        rig.show({.content = &view.component(), .size = Extent2D<F32>{520.0f, 0.0f}});
-        auto buttons = Buttons(view.component());
-        REQUIRE(buttons.size() == 1);
-        Press(rig.host, *buttons[0]);
+                     .onSubmit = [&] { ++submitted; }, .onClose = [&] { ++closed; }});
+        rig.show({.content = &view.component(), .size = Extent2D<F32>{520.0f, 0.0f}, .closeButton = false});
+        CHECK(Buttons(view.component()).empty());
+        CHECK(Find<Sakura::PillButton>(view.component()).size() == 2);
+    };
+    const auto submit = [&](std::string text, FeedbackView::Config::Status status) {
+        show(std::move(text), status);
+        const bool sending = status == FeedbackView::Config::Status::Submitting;
+        auto* send = Pill(view.component(), sending ? "Sending..." : "Send Feedback");
+        REQUIRE(send != nullptr);
+        Press(rig.host, *send);
         return submitted;
     };
 
@@ -3702,6 +3718,13 @@ TEST_CASE("Feedback modal submits only within the length limits and while idle",
     CHECK(submit("long enough feedback", FeedbackView::Config::Status::Idle) == 1);
     CHECK(submit(std::string(41, 'x'), FeedbackView::Config::Status::Idle) == 1);
     CHECK(submit("long enough feedback", FeedbackView::Config::Status::Submitting) == 1);
+
+    show("long enough feedback", FeedbackView::Config::Status::Idle);
+    auto* cancel = Pill(view.component(), "Cancel");
+    REQUIRE(cancel != nullptr);
+    CHECK(Press(rig.host, *cancel));
+    CHECK(closed == 1);
+    CHECK(submitted == 1);
 }
 
 TEST_CASE("Modal views settle under identical updates", "[core][sakura][views]") {
@@ -3806,6 +3829,7 @@ TEST_CASE("Rename and feedback modal buttons and fields repaint without rebuildi
     CHECK(rig.settles());
     CHECK(calls.back() == "fft2");
 
+    rig.frames.ctx.palette = DistinctPalette();
     FeedbackView feedback;
     std::string text;
     U64 submitted = 0;
@@ -3817,15 +3841,17 @@ TEST_CASE("Rename and feedback modal buttons and fields repaint without rebuildi
             .onTextChange = [&](const std::string& value) { text = value; },
             .onSubmit = [&] { ++submitted; },
         });
-        rig.modal.update({.content = &feedback.component(), .size = Extent2D<F32>{520.0f, 0.0f}});
+        rig.modal.update({.content = &feedback.component(), .size = Extent2D<F32>{520.0f, 0.0f}, .closeButton = false});
     };
     CHECK_FALSE(rig.frame().rebuilt);
     CHECK(rig.settles());
     auto editors = Find<Sakura::TextGrid>(feedback.component());
     REQUIRE_FALSE(editors.empty());
-    auto& submit = *Buttons(feedback.component()).at(0);
-    CHECK(rig.move(Center(submit)).clean());
-    CHECK(rig.move(away).clean());
+    auto* sendPill = Pill(feedback.component(), "Send Feedback");
+    REQUIRE(sendPill != nullptr);
+    auto& submit = *sendPill;
+    CHECK(Kept(rig.move(Center(submit))));
+    CHECK(Kept(rig.move(away)));
     CHECK(RepaintOnly(rig.click(Center(*editors[0]))));
     CHECK(rig.settles());
     CHECK(RepaintOnly(rig.type("long enough feedback")));
