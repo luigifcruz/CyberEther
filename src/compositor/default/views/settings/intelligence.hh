@@ -117,7 +117,7 @@ struct IntelligenceSettingsView {
             items.push_back({.child = &voiceGroup});
         }
         stack.update({
-            .spacing = 4.0f,
+            .spacing = Sakura::Spacing::XSmall,
             .items = std::move(items),
         });
     }
@@ -176,7 +176,7 @@ struct IntelligenceSettingsView {
             });
             controls.row.update({
                 .axis = Sakura::Stack::Axis::Horizontal,
-                .spacing = 6.0f,
+                .spacing = Sakura::Spacing::Small,
                 .items = {
                     {.child = &controls.status},
                     {.child = &controls.edit},
@@ -231,7 +231,7 @@ struct IntelligenceSettingsView {
             items.push_back({.child = &controls.remove});
             controls.row.update({
                 .axis = Sakura::Stack::Axis::Horizontal,
-                .spacing = 6.0f,
+                .spacing = Sakura::Spacing::Small,
                 .items = std::move(items),
             });
             rows.push_back({

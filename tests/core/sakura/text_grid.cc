@@ -1404,6 +1404,36 @@ TEST_CASE("A text region clips its caret at the same edges as its glyphs",
     CHECK(Sakura::Intersect(caret.instances[0].rect, *caret.clip).empty());
 }
 
+TEST_CASE("The caret ends at its character boundary and stays inside the text clip",
+          "[core][sakura][text-grid]") {
+    auto ctx = MakeContext();
+    TextGrid grid;
+    Host host(grid);
+    const auto caretRect = [&](F32 padding, U64 column) {
+        auto config = RegionText(RegionLines(1));
+        config.editable = true;
+        config.padding = Sakura::Padding{padding, 0, 0, 0};
+        grid.update(config);
+        host.place(ctx, {0, 0, 200, 100});
+        grid.focus();
+        grid.setCursor({0, column});
+        host.place(ctx, {0, 0, 200, 100});
+        const auto boxes = Direct<Sakura::Box>(grid);
+        REQUIRE(boxes.size() >= 7);
+        const auto& caret = boxes[6]->config();
+        REQUIRE(caret.instances.size() == 1);
+        REQUIRE(caret.instances[0].visible);
+        return caret.instances[0].rect;
+    };
+
+    const auto padded = caretRect(8.0f, 0);
+    CHECK(padded.right() == Catch::Approx(8.0f));
+    CHECK(padded.x < 8.0f);
+
+    const auto flush = caretRect(0.0f, 0);
+    CHECK(flush.x == Catch::Approx(0.0f));
+}
+
 TEST_CASE("Text regions with width-dependent insets get their own glyph clips",
           "[core][sakura][text-grid][scroll-region]") {
     auto ctx = MakeContext();

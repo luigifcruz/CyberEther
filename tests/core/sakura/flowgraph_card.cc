@@ -260,7 +260,7 @@ TEST_CASE("Flowgraph cards ease a hover lift in and out, ignore cancelled presse
     CHECK(frames.restructures == 0);
 }
 
-TEST_CASE("Flowgraph cards keep a 16:9 preview, scale paddings with the pixel ratio and draw a fixed dot grid",
+TEST_CASE("Flowgraph cards keep a 16:9 preview, upper-case the category, scale paddings and draw a fixed dot grid",
           "[core][sakura][flowgraph-card]") {
     const Scene scene;
     Sakura::FlowgraphCard card;
@@ -270,13 +270,21 @@ TEST_CASE("Flowgraph cards keep a 16:9 preview, scale paddings with the pixel ra
     doubled.pixelRatio = 2.0f;
     const auto category = [&] {
         for (auto* text : Find<Sakura::Text>(card)) {
-            if (text->config().str == "Basics") {
+            if (text->config().str == "BASICS") {
                 return Peek::Frame(*text);
             }
         }
         return Rect{};
     };
     host.place(scene.ctx, {0.0f, 0.0f, 260.0f, 400.0f});
+    for (auto* text : Find<Sakura::Text>(card)) {
+        const auto& config = text->config();
+        if (config.str == "BASICS") {
+            CHECK(config.font == Sakura::Text::Font::SansBold);
+        } else if (config.str == "Card") {
+            CHECK(config.font == Sakura::Text::Font::DisplaySemiBold);
+        }
+    }
     CHECK(category().x == 18.0f);
     CHECK(category().y == std::round(260.0f * 9.0f / 16.0f) + 18.0f);
 

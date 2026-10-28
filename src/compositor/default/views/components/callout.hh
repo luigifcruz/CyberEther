@@ -34,8 +34,8 @@ struct Callout : public Sakura::Div {
         });
         Div::update({
             .content = &text,
-            .padding = 8.0f,
-            .rounding = 8.0f,
+            .padding = Sakura::Spacing::Small,
+            .rounding = Sakura::Rounding::Control,
             .border = true,
             .colorKey = jst::fmt::format("banner_{}_bg", key),
             .borderColorKey = jst::fmt::format("banner_{}_border", key),

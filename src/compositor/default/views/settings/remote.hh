@@ -363,7 +363,7 @@ struct RemoteSettingsView {
         items.push_back({.child = &brokerGroup});
         items.push_back({.child = &mediaGroup});
         stack.update({
-            .spacing = 4.0f,
+            .spacing = Sakura::Spacing::XSmall,
             .items = std::move(items),
         });
     }

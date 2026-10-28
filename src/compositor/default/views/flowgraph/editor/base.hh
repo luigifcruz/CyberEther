@@ -22,10 +22,10 @@ namespace Jetstream {
 
 struct FlowgraphEditor {
     static constexpr F32 PillHeight = 40.0f;
-    static constexpr F32 PillMargin = 12.0f;
-    static constexpr F32 PillGap = 8.0f;
+    static constexpr F32 PillMargin = Sakura::Spacing::Medium;
+    static constexpr F32 PillGap = Sakura::Spacing::Small;
     static constexpr F32 ZoomPillWidth = 116.0f;
-    static constexpr F32 ZoomScale = 0.95f;
+    static constexpr F32 ZoomScale = Sakura::Typography::Scale::Caption;
 
     struct Measured {
         struct Node {

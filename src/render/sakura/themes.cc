@@ -13,8 +13,8 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"accent_color", {0.90f, 0.65f, 0.50f, 1.00f}},
 
             // Welcome Card Colors
-            {"welcome_card_bg", {0.09f, 0.09f, 0.09f, 1.00f}},
-            {"welcome_card_hovered", {0.13f, 0.13f, 0.13f, 1.00f}},
+            {"card_surface", {0.09f, 0.09f, 0.09f, 1.00f}},
+            {"card_surface_hovered", {0.13f, 0.13f, 0.13f, 1.00f}},
 
             // Gallery Accent Colors
             {"gallery_green", {0.329f, 0.800f, 0.522f, 1.0f}},
@@ -244,8 +244,8 @@ const std::unordered_map<std::string, Palette> Themes = {
             {"accent_color", {0.80f, 0.45f, 0.25f, 1.00f}},
 
             // Welcome Card Colors
-            {"welcome_card_bg", {1.00f, 1.00f, 1.00f, 1.00f}},
-            {"welcome_card_hovered", {0.965f, 0.965f, 0.97f, 1.00f}},
+            {"card_surface", {1.00f, 1.00f, 1.00f, 1.00f}},
+            {"card_surface_hovered", {0.965f, 0.965f, 0.97f, 1.00f}},
 
             // Gallery Accent Colors
             {"gallery_green", {0.10f, 0.52f, 0.28f, 1.0f}},

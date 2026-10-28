@@ -27,11 +27,11 @@ struct PillMetrics {
 
 constexpr PillMetrics kRegular = {40.0f, 14.0f, 10.0f};
 constexpr PillMetrics kCompact = {32.0f, 12.0f, 8.0f};
-constexpr F32 kPillTabText = 16.0f;
+constexpr F32 kPillTabText = 18.0f;
 constexpr F32 kCompactIdleOpacity = 0.65f;
 constexpr F32 kPillTabIconGap = 10.0f;
 constexpr F32 kPillTabSpacing = 6.0f;
-constexpr F32 kPillTabIcon = 15.0f;
+constexpr F32 kPillTabIcon = 17.0f;
 
 }  // namespace
 
@@ -57,12 +57,8 @@ struct PillTabs::Impl {
         return config.compact ? kCompact : kRegular;
     }
 
-    const char* labelFont() const {
-        return config.compact ? Typography::MonoFont : Typography::BodyFont;
-    }
-
     F32 labelWidth(const Context& ctx, U64 index) {
-        return textMetrics.measure(labelFont(), config.items[index].label, Px(ctx, kPillTabText));
+        return textMetrics.measure(Typography::DisplayFont, config.items[index].label, Px(ctx, kPillTabText));
     }
 
     void fitLabel(const Context& ctx, U64 index, F32 room) {
@@ -70,7 +66,7 @@ struct PillTabs::Impl {
         const auto& label = config.items[index].label;
         const F32 size = Px(ctx, kPillTabText);
         const std::string fitted =
-            labelWidth(ctx, index) <= std::ceil(room) ? label : textMetrics.ellipsize(labelFont(), label, size, room);
+            labelWidth(ctx, index) <= std::ceil(room) ? label : textMetrics.ellipsize(Typography::DisplayFont, label, size, room);
         if (fitted == entry.fitted) {
             return;
         }
@@ -137,10 +133,9 @@ void PillTabs::update(Config config) {
         }
         entry.label.update({
             .str = entry.fitted,
-            .font = compact ? Text::Font::Body : Text::Font::Sans,
+            .font = Text::Font::Display,
             .colorKey = "text_primary",
             .scale = kPillTabText / Typography::FontSize,
-            .weight = kLabelWeight,
             .opacity = compact && !selected ? kCompactIdleOpacity : 1.0f,
         });
         if (!items[index].icon.empty()) {
@@ -207,7 +202,7 @@ void PillTabs::layout(const Context& ctx) {
                        .backgroundColor = ctx.color("pill_selected_bg")}},
         .clip = bounds,
         .cornerRadius = rounding,
-        .borderWidth = s.config.compact ? 0.0f : Px(ctx, 1.0f),
+        .borderWidth = Px(ctx, 1.0f),
         .borderColor = ctx.color("setting_card_border"),
         .strokeFringe = true,
         .capacity = 1,

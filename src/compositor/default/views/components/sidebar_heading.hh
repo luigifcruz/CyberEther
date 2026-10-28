@@ -24,7 +24,7 @@ struct SidebarHeading : public Sakura::Stack {
             .str = std::move(config.label),
             .font = config.title ? Text::Font::DisplaySemiBold : Text::Font::Display,
             .tone = config.title ? Text::Tone::Primary : Text::Tone::Secondary,
-            .scale = config.title ? 1.8f : 18.0f / 15.0f,
+            .scale = config.title ? 1.8f : Sakura::Typography::Scale::Title,
         });
         Stack::update({
             .axis = Axis::Horizontal,

@@ -153,7 +153,7 @@ struct GeneralSettingsView {
         });
 
         stack.update({
-            .spacing = 4.0f,
+            .spacing = Sakura::Spacing::XSmall,
             .items = {
                 {.child = &header},
                 {.child = &appearanceGroup},

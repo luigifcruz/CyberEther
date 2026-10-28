@@ -67,7 +67,7 @@ struct RemoteSectionView {
 
         primaryRow.update({
             .axis = Sakura::Stack::Axis::Horizontal,
-            .spacing = 6.0f,
+            .spacing = Sakura::Spacing::Small,
             .items = {
                 {.child = this->config.started ? &stopButton : &startButton, .grow = 1.0f, .shrink = 1.0f},
                 {.child = &settingsButton},
@@ -93,7 +93,7 @@ struct RemoteSectionView {
             }
         }
         body.update({
-            .spacing = 6.0f,
+            .spacing = Sakura::Spacing::Small,
             .items = std::move(items),
         });
         group.update({
@@ -184,21 +184,21 @@ struct RemoteSectionView {
             row.icon.update({
                 .str = ICON_LC_MONITOR,
                 .tone = Text::Tone::Secondary,
-                .scale = 1.2f,
+                .scale = Sakura::Typography::Scale::Title,
             });
             row.code.update({
                 .str = viewer.code,
                 .font = Text::Font::Body,
-                .scale = 15.0f / Sakura::Typography::FontSize,
+                .scale = Sakura::Typography::Scale::Body,
             });
             row.status.update({
                 .str = viewer.waiting ? "Waiting for approval" : "Connected",
                 .font = Text::Font::Sans,
                 .colorKey = viewer.waiting ? "warning_yellow" : "success_green",
-                .scale = 14.0f / Sakura::Typography::FontSize,
+                .scale = Sakura::Typography::Scale::Caption,
             });
             row.texts.update({
-                .spacing = 3.0f,
+                .spacing = Sakura::Spacing::XSmall,
                 .centerCross = false,
                 .items = {{.child = &row.code}, {.child = &row.status}},
             });
@@ -222,17 +222,17 @@ struct RemoteSectionView {
             items.push_back({.child = &row.remove});
             row.row.update({
                 .axis = Sakura::Stack::Axis::Horizontal,
-                .spacing = 10.0f,
+                .spacing = Sakura::Spacing::Small,
                 .items = std::move(items),
             });
             row.card.update({
                 .content = &row.row,
-                .padding = 12.0f,
-                .rounding = 12.0f,
+                .padding = Sakura::Spacing::Medium,
+                .rounding = Sakura::Rounding::Card,
                 .border = true,
                 .chrome = true,
-                .colorKey = "welcome_card_bg",
-                .hoveredColorKey = "welcome_card_bg",
+                .colorKey = "card_surface",
+                .hoveredColorKey = "card_surface",
             });
         }
         emptyText.update({
@@ -241,16 +241,16 @@ struct RemoteSectionView {
             .tone = Text::Tone::Secondary,
             .align = Text::Align::Center,
             .wrapped = true,
-            .scale = 14.5f / Sakura::Typography::FontSize,
+            .scale = Sakura::Typography::Scale::Caption,
         });
         emptyCard.update({
             .content = &emptyText,
-            .padding = 14.0f,
-            .rounding = 12.0f,
+            .padding = Sakura::Spacing::Medium,
+            .rounding = Sakura::Rounding::Card,
             .border = true,
             .chrome = true,
-            .colorKey = "welcome_card_bg",
-            .hoveredColorKey = "welcome_card_bg",
+            .colorKey = "card_surface",
+            .hoveredColorKey = "card_surface",
         });
         for (auto& row : viewerRows) {
             row->listed = config.started && active.contains(row->id);

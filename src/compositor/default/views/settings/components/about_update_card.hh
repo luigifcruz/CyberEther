@@ -102,7 +102,7 @@ struct AboutUpdateCard : public SectionGroup {
         versionItems.push_back({.child = &checkButton});
         versionControls.update({
             .axis = Sakura::Stack::Axis::Horizontal,
-            .spacing = 6.0f,
+            .spacing = Sakura::Spacing::Small,
             .items = std::move(versionItems),
         });
 

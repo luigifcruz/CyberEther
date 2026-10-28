@@ -38,7 +38,7 @@ struct AgentChatView {
         config.chat.surfaceColorKey = "tile_bg";
         config.chat.composer = AssistantComposer::Style({
             .backgroundColorKey = "agent_composer",
-            .rounding = Sakura::Dock::TileRounding,
+            .rounding = Sakura::Rounding::Card,
             .chrome = true,
             .clearButton = false,
         });

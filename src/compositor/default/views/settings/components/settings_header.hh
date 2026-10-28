@@ -29,13 +29,13 @@ struct SettingsHeader : public Sakura::Stack {
             .font = Text::Font::Sans,
             .tone = Text::Tone::Secondary,
             .wrapped = !config.action,
-            .scale = 16.0f / 15.0f,
+            .scale = Sakura::Typography::Scale::Lead,
         });
         trailing.update({.lines = 5});
         std::vector<Item> items;
         if (config.action) {
             textColumn.update({
-                .spacing = 4.0f,
+                .spacing = Sakura::Spacing::XSmall,
                 .items = {
                     {.child = &title},
                     {.child = &description},
@@ -55,7 +55,7 @@ struct SettingsHeader : public Sakura::Stack {
         }
         items.push_back({.child = &trailing});
         Stack::update({
-            .spacing = 4.0f,
+            .spacing = Sakura::Spacing::XSmall,
             .items = std::move(items),
         });
     }

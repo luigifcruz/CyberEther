@@ -16,9 +16,9 @@ namespace Jetstream {
 
 struct Pagination : public Sakura::Stack {
     static constexpr F32 ButtonSize = 36.0f;
-    static constexpr F32 Rounding = 10.0f;
-    static constexpr F32 Spacing = 8.0f;
-    static constexpr F32 NumberScale = 1.1f;
+    static constexpr F32 Rounding = Sakura::Rounding::Control;
+    static constexpr F32 Spacing = Sakura::Spacing::Small;
+    static constexpr F32 NumberScale = Sakura::Typography::Scale::Lead;
     static constexpr U64 Window = 7;
 
     struct Config {
@@ -89,9 +89,9 @@ struct Pagination : public Sakura::Stack {
             .size = {ButtonSize, ButtonSize},
             .disabled = disabled,
             .chrome = true,
-            .colorKey = selected ? "primary_btn" : "welcome_card_bg",
-            .hoveredColorKey = selected ? "primary_btn_hovered" : "welcome_card_hovered",
-            .activeColorKey = selected ? "primary_btn_hovered" : "welcome_card_hovered",
+            .colorKey = selected ? "primary_btn" : "card_surface",
+            .hoveredColorKey = selected ? "primary_btn_hovered" : "card_surface_hovered",
+            .activeColorKey = selected ? "primary_btn_hovered" : "card_surface_hovered",
             .borderColorKey = selected ? "" : "setting_card_border",
             .textColorKey = selected ? "primary_btn_text" : "text_secondary",
             .hoveredTextColorKey = selected ? "primary_btn_text" : "text_primary",

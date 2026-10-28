@@ -21,7 +21,7 @@
 namespace Jetstream {
 
 struct WorkspaceShellView {
-    static constexpr F32 PromptGap = 6.0f;
+    static constexpr F32 PromptGap = Sakura::Spacing::Small;
 
     struct Config {
         std::vector<Sakura::Dock::Pane> panes;

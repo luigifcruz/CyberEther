@@ -86,7 +86,7 @@ struct SettingsView {
         });
         pageFrame.update({
             .content = &page,
-            .padding = 32.0f,
+            .padding = Sakura::Spacing::XXLarge,
             .border = false,
             .colorKey = "transparent",
         });

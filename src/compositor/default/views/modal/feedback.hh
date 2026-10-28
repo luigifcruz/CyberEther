@@ -13,8 +13,7 @@ namespace Jetstream {
 struct FeedbackView {
     static constexpr F32 EditorHeight = 180.0f;
     static constexpr F32 ButtonHeight = 34.0f;
-    static constexpr F32 Rounding = 12.0f;
-    static constexpr F32 CountScale = 0.85f;
+    static constexpr F32 CountScale = Sakura::Typography::Scale::Small;
 
     struct Config {
         std::string text;
@@ -35,16 +34,16 @@ struct FeedbackView {
         icon.update({
             .str = ICON_LC_MESSAGE_CIRCLE_MORE,
             .colorKey = "text_primary",
-            .scale = 1.3f,
+            .scale = Sakura::Typography::Scale::Heading,
         });
         title.update({
             .str = "Send Feedback",
             .font = Text::Font::Display,
-            .scale = 1.5f,
+            .scale = Sakura::Typography::Scale::Headline,
         });
         titleRow.update({
             .axis = Sakura::Stack::Axis::Horizontal,
-            .spacing = 8.0f,
+            .spacing = Sakura::Spacing::Small,
             .items = {
                 {.child = &icon},
                 {.child = &title},
@@ -56,7 +55,7 @@ struct FeedbackView {
             .font = Text::Font::Sans,
             .tone = Text::Tone::Secondary,
             .wrapped = true,
-            .scale = 16.0f / 15.0f,
+            .scale = Sakura::Typography::Scale::Lead,
         });
 
         editor.update({
@@ -67,10 +66,11 @@ struct FeedbackView {
             .lineNumbers = false,
             .lineWrapping = true,
             .showActiveLine = false,
-            .padding = Sakura::Padding{10.0f, 10.0f, 10.0f, 10.0f},
+            .padding = Sakura::Padding{Sakura::Spacing::Medium, Sakura::Spacing::Medium, Sakura::Spacing::Medium,
+                                       Sakura::Spacing::Medium},
             .fontName = Sakura::Typography::BodyFont,
             .backgroundColorKey = "pill_field_bg",
-            .rounding = Rounding,
+            .rounding = Sakura::Rounding::Card,
             .onChange = [this](std::string value) {
                 if (this->config.onTextChange) {
                     this->config.onTextChange(value);
@@ -79,7 +79,7 @@ struct FeedbackView {
         });
         editorCard.update({
             .content = &editor,
-            .rounding = Rounding,
+            .rounding = Sakura::Rounding::Card,
             .border = true,
             .colorKey = "pill_field_bg",
         });
@@ -123,7 +123,7 @@ struct FeedbackView {
         footerSpacer.update({});
         footer.update({
             .axis = Sakura::Stack::Axis::Horizontal,
-            .spacing = 8.0f,
+            .spacing = Sakura::Spacing::Small,
             .items = {
                 {.child = &count},
                 {.child = &footerSpacer, .grow = 1.0f},
@@ -133,14 +133,14 @@ struct FeedbackView {
         });
 
         header.update({
-            .spacing = 4.0f,
+            .spacing = Sakura::Spacing::XSmall,
             .items = {
                 {.child = &titleRow},
                 {.child = &description},
             },
         });
         stack.update({
-            .spacing = 16.0f,
+            .spacing = Sakura::Spacing::Large,
             .items = {
                 {.child = &header},
                 {.child = &editorCard, .size = EditorHeight},

@@ -39,7 +39,7 @@ struct SettingsBreadcrumb : public Sakura::Stack {
         });
         trail.update({
             .axis = Axis::Horizontal,
-            .spacing = 10.0f,
+            .spacing = Sakura::Spacing::Small,
             .items = {
                 {.child = &rootButton},
                 {.child = &chevron},
@@ -48,7 +48,7 @@ struct SettingsBreadcrumb : public Sakura::Stack {
         });
         spacing.update({.lines = 3});
         Stack::update({
-            .spacing = 4.0f,
+            .spacing = Sakura::Spacing::XSmall,
             .items = {
                 {.child = &trail},
                 {.child = &spacing},

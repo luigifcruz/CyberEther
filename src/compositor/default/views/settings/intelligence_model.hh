@@ -60,7 +60,7 @@ struct IntelligenceModelView {
                 }
             },
             .borderColorKey = "border",
-            .rounding = 12.0f,
+            .rounding = Sakura::Rounding::Card,
         });
 
         while (entries.size() < models.size()) {
@@ -82,7 +82,7 @@ struct IntelligenceModelView {
             });
             entry.row.update({
                 .axis = Sakura::Stack::Axis::Horizontal,
-                .spacing = 6.0f,
+                .spacing = Sakura::Spacing::Small,
                 .items = {
                     {.child = &entry.id, .shrink = 1.0f},
                     {.child = &entry.add},
@@ -105,7 +105,7 @@ struct IntelligenceModelView {
         });
 
         stack.update({
-            .spacing = 4.0f,
+            .spacing = Sakura::Spacing::XSmall,
             .items = {
                 {.child = &breadcrumb},
                 {.child = &header},

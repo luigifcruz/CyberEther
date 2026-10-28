@@ -95,7 +95,7 @@ struct BenchmarkView {
             block.title.update({
                 .str = module,
                 .font = Text::Font::H2,
-                .scale = 1.05f,
+                .scale = Sakura::Typography::Scale::Lead,
             });
             std::vector<std::vector<std::string>> rows;
             rows.reserve(entries.size());

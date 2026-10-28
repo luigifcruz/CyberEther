@@ -2193,6 +2193,13 @@ TEST_CASE("Welcome flowgraph filters narrow the catalog by search text and categ
     rig.show(config);
     const auto inputs = Find<Sakura::TextInput>(rig.root());
     REQUIRE(inputs.size() == 1);
+    const auto hints = Find<Sakura::Label>(*inputs[0]);
+    const auto hint = std::find_if(hints.begin(), hints.end(), [](auto* label) {
+        const auto& instances = label->config().instances;
+        return !instances.empty() && instances.front().str == "Search flowgraphs...";
+    });
+    REQUIRE(hint != hints.end());
+    CHECK((*hint)->config().fontName == Sakura::Typography::DisplaySemiboldFont);
     auto pillsList = Find<Sakura::PillTabs>(rig.root());
     std::erase_if(pillsList, [&](auto* item) {
         return SectionTabs(rig.root()).front() == item;
@@ -2203,7 +2210,7 @@ TEST_CASE("Welcome flowgraph filters narrow the catalog by search text and categ
     const auto labels = Find<Sakura::Text>(*pills);
     REQUIRE(labels.size() == allCategories.size() + 1);
     for (auto* label : labels) {
-        CHECK(label->config().font == Sakura::Text::Font::Body);
+        CHECK(label->config().font == Sakura::Text::Font::Display);
     }
     const auto first = Center(*labels[0]);
     mailbox.mails.clear();
@@ -2298,7 +2305,7 @@ TEST_CASE("Pagination windows long page lists around the current page", "[core][
     CHECK(Pagination::Slots(9, 10) == Slots{0, std::nullopt, 6, 7, 8, 9});
 }
 
-TEST_CASE("Welcome filter card insets the search icon and first category pill", "[core][sakura][views]") {
+TEST_CASE("Welcome filter card insets the search icon and keeps the category pills evenly inset", "[core][sakura][views]") {
     WelcomeRig rig;
     rig.show();
 
@@ -2318,7 +2325,9 @@ TEST_CASE("Welcome filter card insets the search icon and first category pill", 
         return SectionTabs(rig.root()).front() == item;
     });
     REQUIRE(pills.size() == 1);
-    CHECK(Peek::Frame(*pills.front()).x - Peek::Frame(*card).x == WelcomeView::CategoryInset);
+    const auto pill = Peek::Frame(*pills.front());
+    CHECK(pill.x - Peek::Frame(*card).x == WelcomeView::CategoryPadding);
+    CHECK(Peek::Frame(*card).bottom() - pill.bottom() == WelcomeView::CategoryPadding);
 }
 
 TEST_CASE("Welcome page opens with a centered wordmark and a wave above the filter card", "[core][sakura][views]") {

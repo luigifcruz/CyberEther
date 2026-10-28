@@ -177,8 +177,8 @@ struct FilePickerView {
             });
             filenameContainer.update({
                 .content = &filenameInput,
-                .padding = 8.0f,
-                .rounding = 10.0f,
+                .padding = Sakura::Spacing::Small,
+                .rounding = Sakura::Rounding::Control,
                 .border = true,
                 .colorKey = "card",
                 .borderColorKey = "border",
@@ -332,7 +332,7 @@ struct FilePickerView {
         }
         crumbRow.update({
             .axis = Sakura::Stack::Axis::Horizontal,
-            .spacing = 4.0f,
+            .spacing = Sakura::Spacing::XSmall,
             .items = std::move(crumbItems),
         });
     }

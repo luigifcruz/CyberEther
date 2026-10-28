@@ -22,12 +22,11 @@ namespace Jetstream {
 struct DocsView {
     static constexpr const char* PaneId = "docs";
     static constexpr F32 ArticleWidth = 820.0f;
-    static constexpr F32 ArticleFont = 17.0f;
-    static constexpr F32 ArticlePadding = 32.0f;
-    static constexpr F32 ChildIndent = 14.0f;
-    static constexpr F32 FooterPadding = 18.0f;
-    static constexpr F32 FooterCardPadding = 14.0f;
-    static constexpr F32 FooterText = 16.0f;
+    static constexpr F32 ArticleFont = Sakura::Typography::FontSize * Sakura::Typography::Scale::Large;
+    static constexpr F32 ArticlePadding = Sakura::Spacing::XXLarge;
+    static constexpr F32 ChildIndent = Sakura::Spacing::Medium;
+    static constexpr F32 FooterPadding = Sakura::Spacing::Large;
+    static constexpr F32 FooterCardPadding = Sakura::Spacing::Medium;
     static constexpr const char* TileId = "docs-tile";
 
     struct Config {
@@ -140,17 +139,17 @@ struct DocsView {
         feedbackIcon.update({
             .str = ICON_LC_MESSAGE_SQUARE_TEXT,
             .colorKey = "text_primary",
-            .scale = FooterText / Sakura::Typography::FontSize,
+            .scale = Sakura::Typography::Scale::Lead,
         });
         feedbackLabel.update({
             .str = "Send Feedback",
             .font = Text::Font::Display,
             .colorKey = "text_primary",
-            .scale = FooterText / Sakura::Typography::FontSize,
+            .scale = Sakura::Typography::Scale::Lead,
         });
         feedbackRow.update({
             .axis = Sakura::Stack::Axis::Horizontal,
-            .spacing = 12.0f,
+            .spacing = Sakura::Spacing::Medium,
             .items = {
                 {.child = &feedbackIcon},
                 {.child = &feedbackLabel},
@@ -160,11 +159,11 @@ struct DocsView {
             .content = &feedbackRow,
             .size = {Sakura::Fill, 0.0f},
             .padding = FooterCardPadding,
-            .rounding = 12.0f,
+            .rounding = Sakura::Rounding::Card,
             .border = true,
             .chrome = true,
-            .colorKey = "welcome_card_bg",
-            .hoveredColorKey = "welcome_card_hovered",
+            .colorKey = "card_surface",
+            .hoveredColorKey = "card_surface_hovered",
             .onClick = [this]() {
                 if (config.onFeedback) {
                     config.onFeedback();

@@ -27,7 +27,7 @@ struct AboutView {
             .str = "The final frontier!",
             .tone = Text::Tone::Secondary,
             .align = Text::Align::Center,
-            .scale = 1.15f,
+            .scale = Sakura::Typography::Scale::Large,
         });
         details.update({
             .str = jst::fmt::format("MIT Licensed\nCopyright (c) 2021-2026 Luigi F. Cruz\nv{}-{}",

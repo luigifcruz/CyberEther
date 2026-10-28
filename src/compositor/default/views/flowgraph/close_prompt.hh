@@ -61,14 +61,14 @@ struct FlowgraphClosePromptView {
         title.update({
             .str = "Close Flowgraph?",
             .font = Text::Font::DisplaySemiBold,
-            .scale = 1.2f,
+            .scale = Sakura::Typography::Scale::Title,
         });
         message.update({
             .str = "Unsaved changes will be lost.",
             .font = Text::Font::Sans,
             .tone = Text::Tone::Secondary,
             .wrapped = true,
-            .scale = 14.5f / Sakura::Typography::FontSize,
+            .scale = Sakura::Typography::Scale::Caption,
         });
         cancel.update({
             .str = ICON_LC_X "  Cancel",
@@ -94,7 +94,7 @@ struct FlowgraphClosePromptView {
         });
         gap.update({.lines = 2});
         stack.update({
-            .spacing = 4.0f,
+            .spacing = Sakura::Spacing::XSmall,
             .centerCross = false,
             .items = {
                 {.child = &title},
@@ -105,8 +105,8 @@ struct FlowgraphClosePromptView {
         });
         frame.update({
             .content = &stack,
-            .padding = 16.0f,
-            .rounding = 16.0f,
+            .padding = Sakura::Spacing::Large,
+            .rounding = Sakura::Rounding::Popup,
             .border = true,
             .chrome = true,
             .shadow = true,

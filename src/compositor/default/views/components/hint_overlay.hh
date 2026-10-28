@@ -16,7 +16,7 @@ namespace Jetstream {
 
 struct HintOverlay {
     static constexpr F32 BadgeSize = 26.0f;
-    static constexpr F32 BadgeText = 13.0f;
+    static constexpr F32 BadgeText = Sakura::Typography::FontSize * Sakura::Typography::Scale::Small;
     static constexpr F32 ButtonHeight = 40.0f;
 
     struct Action {
@@ -41,16 +41,16 @@ struct HintOverlay {
         icon.update({
             .str = this->config.icon,
             .colorKey = "text_primary",
-            .scale = 1.5f,
+            .scale = Sakura::Typography::Scale::Headline,
         });
         title.update({
             .str = this->config.title,
             .font = Text::Font::DisplaySemiBold,
-            .scale = 1.6f,
+            .scale = Sakura::Typography::Scale::Headline,
         });
         heading.update({
             .axis = Sakura::Stack::Axis::Horizontal,
-            .spacing = 10.0f,
+            .spacing = Sakura::Spacing::Small,
             .items = {
                 {.child = &icon},
                 {.child = &title},
@@ -61,7 +61,7 @@ struct HintOverlay {
             .font = Text::Font::Sans,
             .tone = Text::Tone::Secondary,
             .wrapped = true,
-            .scale = 15.0f / Sakura::Typography::FontSize,
+            .scale = Sakura::Typography::Scale::Body,
             .lineHeight = 1.05f,
         });
         updateSteps();
@@ -82,19 +82,19 @@ struct HintOverlay {
         headerSpacing.update({.lines = 2});
         stepsSpacing.update({.lines = 2});
         stack.update({
-            .spacing = 4.0f,
+            .spacing = Sakura::Spacing::XSmall,
             .centerCross = false,
             .items = std::move(items),
         });
         card.update({
             .content = &stack,
-            .padding = 24.0f,
-            .rounding = 16.0f,
+            .padding = Sakura::Spacing::XLarge,
+            .rounding = Sakura::Rounding::Popup,
             .border = true,
             .chrome = true,
             .shadow = true,
-            .colorKey = "welcome_card_bg",
-            .hoveredColorKey = "welcome_card_bg",
+            .colorKey = "card_surface",
+            .hoveredColorKey = "card_surface",
         });
     }
 
@@ -128,7 +128,7 @@ struct HintOverlay {
                 .font = Text::Font::DisplaySemiBold,
                 .align = Text::Align::Center,
                 .colorKey = "text_primary",
-                .scale = BadgeText / Sakura::Typography::FontSize,
+                .scale = Sakura::Typography::Scale::Small,
             });
             step.badge.update({
                 .content = &step.number,
@@ -143,12 +143,12 @@ struct HintOverlay {
                 .str = config.steps[i],
                 .font = Text::Font::Sans,
                 .wrapped = true,
-                .scale = 15.5f / Sakura::Typography::FontSize,
+                .scale = Sakura::Typography::Scale::Lead,
                 .weight = 0.15f,
             });
             step.row.update({
                 .axis = Sakura::Stack::Axis::Horizontal,
-                .spacing = 12.0f,
+                .spacing = Sakura::Spacing::Medium,
                 .items = {
                     {.child = &step.badge},
                     {.child = &step.text, .grow = 1.0f, .shrink = 1.0f},
@@ -157,7 +157,7 @@ struct HintOverlay {
             rows.push_back({.child = &step.row});
         }
         steps.update({
-            .spacing = 10.0f,
+            .spacing = Sakura::Spacing::Medium,
             .centerCross = false,
             .items = std::move(rows),
         });

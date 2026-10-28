@@ -49,9 +49,10 @@ constexpr F64 kHoverDuration = 0.25;
 constexpr F64 kMaxHoverStep = 0.1;
 constexpr F32 kHoverBorderAlpha = 0.7f;
 constexpr F32 kCategoryText = 12.5f;
-constexpr F32 kTitleText = 18.0f;
-constexpr F32 kDescriptionText = 15.0f;
+constexpr F32 kTitleText = 24.0f;
+constexpr F32 kDescriptionText = 16.0f;
 constexpr F32 kSectionGap = 6.0f;
+constexpr F32 kCategoryGap = 2.0f;
 constexpr U64 kMaxNodes = 16;
 constexpr U64 kMaxEdges = 2 * kMaxNodes;
 constexpr U64 kWireSegments = 16;
@@ -429,10 +430,10 @@ struct FlowgraphCard::Impl {
     void pushTitle() {
         const Text::Config base = {
             .str = config.title,
-            .font = Text::Font::Sans,
+            .font = Text::Font::DisplaySemiBold,
             .wrapped = true,
             .scale = kTitleText / Typography::FontSize,
-            .weight = kLabelWeight * 2.0f,
+            .weight = kLabelWeight,
         };
         title.update(base);
         auto accent = base;
@@ -474,8 +475,8 @@ struct FlowgraphCard::Impl {
         result.description = config.description.empty() ? 0.0f
                                                        : self.measureChild(description, ctx, {inner, infinite}).y;
         const F32 gap = Px(ctx, kSectionGap);
-        result.height = previewHeight(width) + Px(ctx, kCardPadX) + result.category + gap + result.title + gap +
-                        result.description + Px(ctx, kCardPadX);
+        result.height = previewHeight(width) + Px(ctx, kCardPadX) + result.category + Px(ctx, kCategoryGap) +
+                        result.title + gap + result.description + Px(ctx, kCardPadX);
         return result;
     }
 };
@@ -500,7 +501,7 @@ void FlowgraphCard::update(Config config) {
     }
     impl->config = std::move(config);
     impl->category.update({
-        .str = impl->config.category,
+        .str = Jetstream::Text::ToUpper(impl->config.category),
         .font = Text::Font::SansBold,
         .tone = Text::Tone::Secondary,
         .scale = kCategoryText / Typography::FontSize,
@@ -668,7 +669,7 @@ void FlowgraphCard::layout(const Context& ctx) {
     const F32 gap = Px(ctx, kSectionGap);
     F32 y = preview.bottom() + pad;
     layoutChild(surface, s.category, {bounds.x + pad, y, inner, metrics.category}, bounds);
-    y += metrics.category + gap;
+    y += metrics.category + Px(ctx, kCategoryGap);
     layoutChild(surface, s.title, {bounds.x + pad, y, inner, metrics.title}, bounds);
     layoutChild(surface, s.accentTitle, {bounds.x + pad, y, inner, metrics.title}, bounds);
     y += metrics.title + gap;

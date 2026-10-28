@@ -12,7 +12,7 @@
 namespace Jetstream {
 
 struct SectionGroup : public Sakura::Stack {
-    static constexpr F32 CalloutGap = 4.0f;
+    static constexpr F32 CalloutGap = Sakura::Spacing::XSmall;
 
     struct Config {
         std::string title;
@@ -32,7 +32,7 @@ struct SectionGroup : public Sakura::Stack {
         titleText.update({
             .str = config.title,
             .font = Text::Font::DisplaySemiBold,
-            .scale = 1.35f,
+            .scale = Sakura::Typography::Scale::Heading,
         });
         descriptionText.update({
             .str = config.description,
@@ -60,7 +60,7 @@ struct SectionGroup : public Sakura::Stack {
         std::vector<Item> items;
         if (config.action) {
             textColumn.update({
-                .spacing = 3.0f,
+                .spacing = Sakura::Spacing::XSmall,
                 .items = std::move(textItems),
             });
             titleRow.update({
@@ -102,7 +102,7 @@ struct SectionGroup : public Sakura::Stack {
             items.push_back({.child = &trailing});
         }
         Stack::update({
-            .spacing = 3.0f,
+            .spacing = Sakura::Spacing::XSmall,
             .items = std::move(items),
         });
     }

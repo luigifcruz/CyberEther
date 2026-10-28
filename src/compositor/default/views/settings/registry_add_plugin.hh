@@ -38,7 +38,7 @@ struct RegistryAddPluginView {
             .size = {Sakura::Fill, 40.0f},
             .variant = Sakura::Button::Variant::Action,
             .disabled = !ready,
-            .rounding = 12.0f,
+            .rounding = Sakura::Rounding::Card,
             .onClick = [this]() {
                 if (trusted && !pendingPath.empty() && this->config.onRegister) {
                     this->config.onRegister(pendingPath);
@@ -106,7 +106,7 @@ struct RegistryAddPluginView {
             .footer = &registerButton,
         });
         stack.update({
-            .spacing = 4.0f,
+            .spacing = Sakura::Spacing::XSmall,
             .items = {
                 {.child = &breadcrumb},
                 {.child = &header},

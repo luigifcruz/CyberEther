@@ -25,32 +25,30 @@
 namespace Jetstream {
 
 struct WelcomeView {
-    static constexpr F32 FooterCardPadding = 14.0f;
-    static constexpr F32 FooterText = 16.0f;
+    static constexpr F32 FooterCardPadding = Sakura::Spacing::Medium;
     static constexpr F32 ThemeButtonWidth = 50.0f;
     static constexpr F32 PageWidth = 1240.0f;
-    static constexpr F32 FramePadding = 18.0f;
+    static constexpr F32 FramePadding = Sakura::Spacing::Large;
     static constexpr F32 FilterHeight = 40.0f;
     static constexpr F32 WaveSpan = 0.64f;
     static constexpr F32 WaveGap = 64.0f;
     static constexpr F32 HeroTop = 48.0f;
-    static constexpr F32 SectionGap = 20.0f;
+    static constexpr F32 SectionGap = Sakura::Spacing::XLarge;
     static constexpr F32 HeroButtonHeight = 40.0f;
-    static constexpr F32 HeroButtonText = 1.15f;
-    static constexpr F32 ExploreSpacing = 12.0f;
+    static constexpr F32 HeroButtonText = Sakura::Typography::Scale::Large;
+    static constexpr F32 ExploreSpacing = Sakura::Spacing::Medium;
     static constexpr F64 ProgressLinger = 1.5;
-    static constexpr F32 FilterPadding = 10.0f;
-    static constexpr F32 CategoryPadding = 8.0f;
-    static constexpr F32 SearchInset = 18.0f;
-    static constexpr F32 CategoryInset = 12.0f;
-    static constexpr F32 SearchFont = 17.0f;
+    static constexpr F32 FilterPadding = Sakura::Spacing::Small;
+    static constexpr F32 CategoryPadding = Sakura::Spacing::Small;
+    static constexpr F32 SearchInset = Sakura::Spacing::Large;
+    static constexpr F32 SearchFont = Sakura::Typography::FontSize * Sakura::Typography::Scale::Title;
     static constexpr U64 GridColumns = 3;
     static constexpr F32 MinCardWidth = 260.0f;
     static constexpr F32 ViewAllHeight = 32.0f;
-    static constexpr F32 SectionIconScale = 1.45f;
-    static constexpr F32 SectionTitleScale = 1.6f;
-    static constexpr F32 SectionCaptionScale = 1.15f;
-    static constexpr F32 SectionHeaderGap = 4.0f;
+    static constexpr F32 SectionIconScale = Sakura::Typography::Scale::Heading;
+    static constexpr F32 SectionTitleScale = Sakura::Typography::Scale::Headline;
+    static constexpr F32 SectionCaptionScale = Sakura::Typography::Scale::Large;
+    static constexpr F32 SectionHeaderGap = Sakura::Spacing::XSmall;
     static constexpr F32 FooterArtTop = 96.0f;
     static constexpr F32 FooterArtBottom = 72.0f;
     static constexpr F32 FooterArtScale = 1.5f;
@@ -216,11 +214,11 @@ struct WelcomeView {
                 .content = content,
                 .size = size,
                 .padding = FooterCardPadding,
-                .rounding = 12.0f,
+                .rounding = Sakura::Rounding::Card,
                 .border = true,
                 .chrome = true,
-                .colorKey = "welcome_card_bg",
-                .hoveredColorKey = onClick ? "welcome_card_hovered" : "welcome_card_bg",
+                .colorKey = "card_surface",
+                .hoveredColorKey = onClick ? "card_surface_hovered" : "card_surface",
                 .onClick = std::move(onClick),
             });
         };
@@ -228,17 +226,17 @@ struct WelcomeView {
         settingsIcon.update({
             .str = ICON_LC_SETTINGS,
             .colorKey = "text_primary",
-            .scale = FooterText / Sakura::Typography::FontSize,
+            .scale = Sakura::Typography::Scale::Lead,
         });
         settingsLabel.update({
             .str = "Settings",
             .font = Text::Font::Display,
             .colorKey = "text_primary",
-            .scale = FooterText / Sakura::Typography::FontSize,
+            .scale = Sakura::Typography::Scale::Lead,
         });
         settingsRow.update({
             .axis = Sakura::Stack::Axis::Horizontal,
-            .spacing = 12.0f,
+            .spacing = Sakura::Spacing::Medium,
             .items = {
                 {.child = &settingsIcon},
                 {.child = &settingsLabel},
@@ -253,7 +251,7 @@ struct WelcomeView {
             .str = config.darkMode ? ICON_LC_SUN : ICON_LC_MOON,
             .align = Text::Align::Center,
             .colorKey = "text_primary",
-            .scale = FooterText / Sakura::Typography::FontSize,
+            .scale = Sakura::Typography::Scale::Lead,
         });
         card(themeCard, &themeIcon, {ThemeButtonWidth, 0.0f}, [this]() {
             if (config.onToggleTheme) {
@@ -262,7 +260,7 @@ struct WelcomeView {
         });
         actionRow.update({
             .axis = Sakura::Stack::Axis::Horizontal,
-            .spacing = 8.0f,
+            .spacing = Sakura::Spacing::Small,
             .items = {
                 {.child = &settingsCard, .grow = 1.0f, .shrink = 1.0f},
                 {.child = &themeCard},
@@ -342,7 +340,7 @@ struct WelcomeView {
             items.push_back({.child = &list.empty});
         }
         list.stack.update({
-            .spacing = 6.0f,
+            .spacing = Sakura::Spacing::Small,
             .items = std::move(items),
         });
     }
@@ -404,7 +402,7 @@ struct WelcomeView {
         });
         featuredHeading.update({
             .axis = Sakura::Stack::Axis::Horizontal,
-            .spacing = 10.0f,
+            .spacing = Sakura::Spacing::Small,
             .items = {
                 {.child = &featuredIcon},
                 {.child = &featuredTitle},
@@ -425,7 +423,7 @@ struct WelcomeView {
             .items = std::move(cards),
         });
         featuredContent.update({
-            .spacing = 4.0f,
+            .spacing = Sakura::Spacing::XSmall,
             .centerCross = false,
             .items = {
                 {.child = &featuredHeading},
@@ -436,12 +434,12 @@ struct WelcomeView {
         });
         featuredCard.update({
             .content = &featuredContent,
-            .padding = 22.0f,
-            .rounding = 16.0f,
+            .padding = Sakura::Spacing::XLarge,
+            .rounding = Sakura::Rounding::Card,
             .border = true,
             .waves = true,
-            .colorKey = "welcome_card_bg",
-            .hoveredColorKey = "welcome_card_bg",
+            .colorKey = "card_surface",
+            .hoveredColorKey = "card_surface",
             .borderColorKey = "setting_card_border",
         });
     }
@@ -461,7 +459,7 @@ struct WelcomeView {
             .id = "WelcomeAssistant",
             .style = AssistantComposer::Style({
                 .icon = ICON_LC_WAND_SPARKLES,
-                .backgroundColorKey = "welcome_card_bg",
+                .backgroundColorKey = "card_surface",
                 .compact = true,
                 .chrome = true,
             }),
@@ -529,7 +527,7 @@ struct WelcomeView {
         searchIcon.update({
             .str = ICON_LC_SEARCH,
             .tone = Text::Tone::Secondary,
-            .scale = 1.2f,
+            .scale = Sakura::Typography::Scale::Title,
         });
         search.update({
             .value = config.query,
@@ -544,6 +542,7 @@ struct WelcomeView {
             .backgroundColorKey = "transparent",
             .padding = {4.0f, 5.0f},
             .fontSize = SearchFont,
+            .fontName = Sakura::Typography::DisplaySemiboldFont,
         });
         typeDivider.update({
             .size = {1.0f, 28.0f},
@@ -608,17 +607,8 @@ struct WelcomeView {
                 }
             },
         });
-        categoryLead.update({});
-        categoryRow.update({
-            .axis = Sakura::Stack::Axis::Horizontal,
-            .spacing = 0.0f,
-            .items = {
-                {.child = &categoryLead, .size = CategoryInset - CategoryPadding},
-                {.child = &categoryTabs},
-            },
-        });
         categoryFrame.update({
-            .content = &categoryRow,
+            .content = &categoryTabs,
             .padding = CategoryPadding,
             .border = false,
             .colorKey = "transparent",
@@ -636,11 +626,11 @@ struct WelcomeView {
         });
         filterCard.update({
             .content = &filterContent,
-            .rounding = 14.0f,
+            .rounding = Sakura::Rounding::Card,
             .border = true,
             .chrome = true,
-            .colorKey = "welcome_card_bg",
-            .hoveredColorKey = "welcome_card_bg",
+            .colorKey = "card_surface",
+            .hoveredColorKey = "card_surface",
         });
     }
 
@@ -734,7 +724,7 @@ struct WelcomeView {
             });
             section.headingRow.update({
                 .axis = Sakura::Stack::Axis::Horizontal,
-                .spacing = 10.0f,
+                .spacing = Sakura::Spacing::Small,
                 .items = {
                     {.child = &section.icon},
                     {.child = &section.heading},
@@ -754,7 +744,7 @@ struct WelcomeView {
                 .items = std::move(cards),
             });
             section.titles.update({
-                .spacing = 4.0f,
+                .spacing = Sakura::Spacing::XSmall,
                 .centerCross = false,
                 .items = {
                     {.child = &section.headingRow},
@@ -767,9 +757,9 @@ struct WelcomeView {
                     .str = jst::fmt::format("View All  {}", ICON_LC_ARROW_RIGHT),
                     .size = {0.0f, ViewAllHeight},
                     .chrome = true,
-                    .colorKey = "welcome_card_bg",
-                    .hoveredColorKey = "welcome_card_hovered",
-                    .activeColorKey = "welcome_card_hovered",
+                    .colorKey = "card_surface",
+                    .hoveredColorKey = "card_surface_hovered",
+                    .activeColorKey = "card_surface_hovered",
                     .borderColorKey = "setting_card_border",
                     .textColorKey = "text_secondary",
                     .hoveredTextColorKey = "text_primary",
@@ -786,13 +776,13 @@ struct WelcomeView {
             }
             section.header.update({
                 .axis = Sakura::Stack::Axis::Horizontal,
-                .spacing = 12.0f,
+                .spacing = Sakura::Spacing::Medium,
                 .items = std::move(header),
             });
             section.spacing.update({.lines = 2});
             section.headerGap.update({});
             section.stack.update({
-                .spacing = 4.0f,
+                .spacing = Sakura::Spacing::XSmall,
                 .items = {
                     {.child = &section.spacing},
                     {.child = &section.header},
@@ -881,8 +871,6 @@ struct WelcomeView {
     Sakura::Div searchFrame;
     Sakura::Divider filterDivider;
     Sakura::PillTabs categoryTabs;
-    Sakura::Spacer categoryLead;
-    Sakura::Stack categoryRow;
     Sakura::Div categoryFrame;
     Sakura::Stack filterContent;
     Sakura::Div filterCard;

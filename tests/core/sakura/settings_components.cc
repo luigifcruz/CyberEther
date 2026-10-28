@@ -269,7 +269,7 @@ TEST_CASE("Setting and feature cards lay their children out over the card surfac
     setting.update({.rows = {{.label = "Row", .control = &control}}});
     Host settingHost(setting);
     settingHost.place(scene.ctx, {0.0f, 0.0f, 600.0f, 100.0f});
-    CHECK(control.backdrop == "welcome_card_bg");
+    CHECK(control.backdrop == "card_surface");
 
     BackdropProbe action({80.0f, 24.0f});
     BackdropProbe content({200.0f, 40.0f});
@@ -277,8 +277,8 @@ TEST_CASE("Setting and feature cards lay their children out over the card surfac
     feature.update({.title = "Title", .action = &action, .content = &content});
     Host featureHost(feature);
     featureHost.place(scene.ctx, {0.0f, 0.0f, 600.0f, 300.0f});
-    CHECK(action.backdrop == "welcome_card_bg");
-    CHECK(content.backdrop == "welcome_card_bg");
+    CHECK(action.backdrop == "card_surface");
+    CHECK(content.backdrop == "card_surface");
 }
 
 TEST_CASE("Text shrinks a single line to fit the width only when asked", "[core][sakura][settings]") {

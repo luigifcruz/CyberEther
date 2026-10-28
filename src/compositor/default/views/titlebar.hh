@@ -55,7 +55,7 @@ struct TitlebarView {
         Close,
     };
 
-    static constexpr F32 IndicatorGap = 8.0f;
+    static constexpr F32 IndicatorGap = Sakura::Spacing::Small;
     static constexpr F32 NewTabRounding = 14.0f;
 
     struct VoiceIndicator {
@@ -132,7 +132,7 @@ struct TitlebarView {
         wordmark.update({
             .label = "CyberEther",
             .font = Sakura::Text::Font::Display,
-            .scale = 1.6f,
+            .scale = Sakura::Typography::Scale::Headline,
             .colorKey = "cyber_blue",
             .entries = std::move(appEntries),
         });

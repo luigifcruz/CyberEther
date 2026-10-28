@@ -22,9 +22,9 @@
 namespace Jetstream {
 
 struct FlowgraphPane {
-    static constexpr F32 DescriptionBottomPadding = 8.0f;
+    static constexpr F32 DescriptionBottomPadding = Sakura::Spacing::Small;
     static constexpr F32 DescriptionWidth = 520.0f;
-    static constexpr F32 DescriptionFontSize = 16.0f;
+    static constexpr F32 DescriptionFontSize = Sakura::Typography::FontSize * Sakura::Typography::Scale::Lead;
 
     struct Description {
         std::string id;

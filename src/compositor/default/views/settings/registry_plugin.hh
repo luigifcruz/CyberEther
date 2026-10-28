@@ -75,7 +75,7 @@ struct RegistryPluginView {
         });
         actions.update({
             .axis = Sakura::Stack::Axis::Horizontal,
-            .spacing = 6.0f,
+            .spacing = Sakura::Spacing::Small,
             .items = {
                 {.child = &reloadButton},
                 {.child = &removeButton},
@@ -120,7 +120,7 @@ struct RegistryPluginView {
             .empty = "This plugin does not include any examples.",
         });
         stack.update({
-            .spacing = 4.0f,
+            .spacing = Sakura::Spacing::XSmall,
             .items = {
                 {.child = &breadcrumb},
                 {.child = &header},

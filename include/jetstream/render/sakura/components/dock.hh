@@ -2,6 +2,7 @@
 #define JETSTREAM_RENDER_SAKURA_DOCK_HH
 
 #include <jetstream/render/sakura/component.hh>
+#include <jetstream/render/sakura/style.hh>
 #include <jetstream/types.hh>
 
 #include <functional>
@@ -24,7 +25,7 @@ struct DockTiles {
 struct Dock : public Component {
     static constexpr F32 ContentPadding = 6.0f;
     static constexpr F32 HeaderHeight = 20.0f;
-    static constexpr F32 TileRounding = 12.0f;
+    static constexpr F32 TileRounding = Rounding::Card;
 
     struct Action {
         std::string icon;

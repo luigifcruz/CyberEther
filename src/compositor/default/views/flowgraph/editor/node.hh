@@ -164,7 +164,7 @@ struct FlowgraphDiagnosticTooltip {
         headerLabel.update({.str = "Diagnostic"});
         header.update({
             .axis = Sakura::Stack::Axis::Horizontal,
-            .spacing = 12.0f,
+            .spacing = Sakura::Spacing::Medium,
             .items = {
                 {.child = &headerIcon},
                 {.child = &headerLabel},

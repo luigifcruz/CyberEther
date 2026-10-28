@@ -82,8 +82,8 @@ TEST_CASE("Pill tabs shrink in compact mode", "[core][sakura][pill-tabs]") {
     const auto label = [&](const std::string& str) {
         return *std::find_if(labels.begin(), labels.end(), [&](auto* text) { return text->config().str == str; });
     };
-    CHECK(label("All")->config().font == Sakura::Text::Font::Body);
-    CHECK(label("Plugins")->config().font == Sakura::Text::Font::Body);
+    CHECK(label("All")->config().font == Sakura::Text::Font::Display);
+    CHECK(label("Plugins")->config().font == Sakura::Text::Font::Display);
     CHECK(label("All")->config().weight == label("Plugins")->config().weight);
     CHECK(label("Plugins")->config().colorKey == "text_primary");
     CHECK(label("All")->config().colorKey == "text_primary");
@@ -91,8 +91,8 @@ TEST_CASE("Pill tabs shrink in compact mode", "[core][sakura][pill-tabs]") {
     CHECK(label("All")->config().opacity == 1.0f);
 
     tabs.update({.items = {{.label = "All"}, {.label = "Plugins"}}});
-    CHECK(label("All")->config().font == Sakura::Text::Font::Sans);
-    CHECK(label("Plugins")->config().font == Sakura::Text::Font::Sans);
+    CHECK(label("All")->config().font == Sakura::Text::Font::Display);
+    CHECK(label("Plugins")->config().font == Sakura::Text::Font::Display);
     CHECK(label("Plugins")->config().opacity == 1.0f);
 }
 
@@ -291,4 +291,23 @@ TEST_CASE("Settled pill icon buttons fire the newest click callback after a call
     place.send(Mouse(MouseEventType::Click, 27.0f, 27.0f));
     place.send(Mouse(MouseEventType::Release, 27.0f, 27.0f));
     CHECK(calls == std::vector<std::string>{"b"});
+}
+
+TEST_CASE("Pill tabs outline the selected pill in both sizes", "[core][sakura][pill-tabs]") {
+    const Scene scene;
+    for (const bool compact : {false, true}) {
+        Sakura::PillTabs tabs;
+        tabs.update({.items = {{.label = "All"}, {.label = "Plugins"}}, .compact = compact});
+        Host host(tabs);
+        const auto natural = host.measureOf(scene.ctx, {1000.0f, 500.0f});
+        host.place(scene.ctx, {0.0f, 0.0f, natural.x, natural.y});
+        bool outlined = false;
+        for (auto* box : Find<Sakura::Box>(tabs)) {
+            const auto& config = box->config();
+            if (config.instances.size() == 1 && config.instances.front().visible) {
+                outlined = outlined || config.borderWidth == 1.0f;
+            }
+        }
+        CHECK(outlined);
+    }
 }

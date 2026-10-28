@@ -6,6 +6,7 @@
 #include <jetstream/render/sakura/components/dock.hh>
 #include <jetstream/render/sakura/surface.hh>
 
+#include <jetstream/render/sakura/style.hh>
 #include <jetstream/render/sakura/typography.hh>
 
 #include <algorithm>
@@ -22,11 +23,11 @@ constexpr F32 kFramePaddingX = 12.0f;
 constexpr F32 kCellPaddingX = 6.0f;
 constexpr F32 kCellPaddingY = 4.0f;
 constexpr F32 kFramePaddingY = 5.0f;
-constexpr F32 kFrameRounding = 8.0f;
+constexpr F32 kFrameRounding = Rounding::Control;
 constexpr F32 kPanelRounding = Dock::TileRounding;
 constexpr F32 kCardPadX = 18.0f;
 constexpr F32 kLabelWeight = 0.15f;
-constexpr F32 kPopupRounding = 18.0f;
+constexpr F32 kPopupRounding = Rounding::Popup;
 constexpr F32 kWindowPadding = 12.0f;
 constexpr F32 kItemSpacing = 8.0f;
 constexpr F32 kTooltipPadding = 8.0f;
@@ -48,7 +49,7 @@ constexpr F32 kPillShadowDrop = 1.0f;
 constexpr F32 kPillBorder = 1.5f;
 constexpr const char* kPillFill = "pill_field_bg";
 constexpr const char* kPillHover = "chrome_button_hover";
-constexpr const char* kCardSurface = "welcome_card_bg";
+constexpr const char* kCardSurface = "card_surface";
 constexpr F32 kNodeFont = Typography::FontSize * Typography::ChromeScale;
 constexpr F32 kNodeFramePadX = 6.0f;
 constexpr F32 kNodeFramePadY = 3.0f;

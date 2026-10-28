@@ -325,7 +325,7 @@ TEST_CASE("Model pickers scale their field and panel with the pixel ratio", kPic
         }
         const Rect rect = config.instances.front().rect;
         if (rect.width == 440.0f && rect.height == 197.0f) {
-            panel = panel || (config.cornerRadius == 30.0f && config.borderWidth == 2.0f);
+            panel = panel || (config.cornerRadius == 2.0f * Sakura::Rounding::Popup && config.borderWidth == 2.0f);
         }
         if (rect == Rect{200.0f, 200.0f, 320.0f, 46.0f}) {
             field = field || config.cornerRadius == 29.0f;
@@ -839,7 +839,7 @@ TEST_CASE("Chat composers with chrome draw the elevated card instead of the flat
     Host host(composer);
     const auto ctx = scene.context();
     const auto place = [&](bool chrome) {
-        composer.update({.id = "composer", .style = {.backgroundColorKey = "welcome_card_bg", .chrome = chrome}});
+        composer.update({.id = "composer", .style = {.backgroundColorKey = "card_surface", .chrome = chrome}});
         const auto size = host.measureOf(ctx, {kComposerWidth, kInfinite});
         host.place(ctx, {0.0f, 0.0f, kComposerWidth, size.y});
         return Rect{0.0f, 0.0f, kComposerWidth, size.y};

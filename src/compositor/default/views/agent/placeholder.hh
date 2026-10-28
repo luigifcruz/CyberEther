@@ -16,10 +16,9 @@ namespace Jetstream {
 struct AgentChatPlaceholder {
     static constexpr F32 SuggestionHeight = 44.0f;
     static constexpr F32 SetupHeight = 40.0f;
-    static constexpr F32 TitleScale = 1.55f;
-    static constexpr F32 SubtitleFontSize = 14.5f;
-    static constexpr F32 RowSpacing = 8.0f;
-    static constexpr F32 SectionSpacing = 22.0f;
+    static constexpr F32 TitleScale = Sakura::Typography::Scale::Headline;
+    static constexpr F32 RowSpacing = Sakura::Spacing::Small;
+    static constexpr F32 SectionSpacing = Sakura::Spacing::XLarge;
 
     struct Suggestion {
         std::string icon;
@@ -50,7 +49,7 @@ struct AgentChatPlaceholder {
             .font = Text::Font::Sans,
             .tone = Text::Tone::Secondary,
             .wrapped = true,
-            .scale = SubtitleFontSize / Sakura::Typography::FontSize,
+            .scale = Sakura::Typography::Scale::Caption,
             .lineHeight = 1.15f,
         });
         header.update({
@@ -70,11 +69,11 @@ struct AgentChatPlaceholder {
                 .size = {Sakura::Fill, SuggestionHeight},
                 .chrome = true,
                 .colorKey = "agent_composer",
-                .hoveredColorKey = "welcome_card_hovered",
-                .activeColorKey = "welcome_card_hovered",
+                .hoveredColorKey = "card_surface_hovered",
+                .activeColorKey = "card_surface_hovered",
                 .textColorKey = "text_secondary",
                 .hoveredTextColorKey = "text_primary",
-                .rounding = Sakura::Dock::TileRounding,
+                .rounding = Sakura::Rounding::Card,
                 .padding = {14.0f, 0.0f},
                 .textAlign = 0.0f,
                 .onClick = std::move(suggestion.onClick),

@@ -2789,10 +2789,15 @@ struct TextGrid::Impl {
         const F32 cursorWidth = std::max(1.0f, std::round(fontSizePixels * kCursorWidthFontRatio));
         const F32 cursorTop = rowTopPixels(cursorRow);
         const F32 cursorHeight = rowHeightPixels(cursorRow);
-        const F32 cursorX = screenXFromContent(contentXAtColumn(visualRows[cursorRow], cursor.column)) -
-                            lineScrollX(cursor.line);
+        const F32 boundaryX = screenXFromContent(contentXAtColumn(visualRows[cursorRow], cursor.column)) -
+                              lineScrollX(cursor.line);
         const U64 cursorRegion = regionOf(cursor.line);
         const U64 cursorGroup = cursorRegion < regionGroup.size() ? regionGroup[cursorRegion] : kNoRegion;
+        const std::optional<Rect> clip = cursorGroup < frame.groupClips.size()
+                                             ? std::optional<Rect>(frame.groupClips[cursorGroup])
+                                             : frame.textClip;
+        const F32 clipLeft = clip.has_value() ? std::min(boundaryX, clip->x) : boundaryX - cursorWidth;
+        const F32 cursorX = std::max(boundaryX - cursorWidth, clipLeft);
         cursorBox.update({
             .instances = {{
                 .rect = {cursorX, cursorTop, cursorWidth, cursorHeight},
@@ -2800,8 +2805,7 @@ struct TextGrid::Impl {
                             cursorTop + cursorHeight > frame.rect.y && cursorTop < frame.rect.bottom(),
                 .backgroundColor = theme.cursor,
             }},
-            .clip = cursorGroup < frame.groupClips.size() ? std::optional<Rect>(frame.groupClips[cursorGroup])
-                                                          : frame.textClip,
+            .clip = clip,
         });
     }
 };

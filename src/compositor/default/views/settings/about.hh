@@ -95,7 +95,7 @@ struct AboutSettingsView {
             items.push_back({.child = infoTables[i].get()});
         }
         stack.update({
-            .spacing = 4.0f,
+            .spacing = Sakura::Spacing::XSmall,
             .items = std::move(items),
         });
     }

@@ -53,9 +53,9 @@ struct CardButton : public Sakura::Button {
                 button.textColorKey = "action_btn_text";
                 break;
             case Tone::Card:
-                button.colorKey = "welcome_card_bg";
-                button.hoveredColorKey = "welcome_card_hovered";
-                button.activeColorKey = "welcome_card_hovered";
+                button.colorKey = "card_surface";
+                button.hoveredColorKey = "card_surface_hovered";
+                button.activeColorKey = "card_surface_hovered";
                 button.textColorKey = "text_primary";
                 if (!config.hoverTint.empty()) {
                     button.hoveredColorKey = jst::fmt::format("tint_{}_hover", config.hoverTint);

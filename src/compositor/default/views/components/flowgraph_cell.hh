@@ -36,19 +36,19 @@ struct FlowgraphCell : public Sakura::Div {
             .tone = empty ? Text::Tone::Secondary : Text::Tone::Primary,
             .align = empty ? Text::Align::Center : Text::Align::Left,
             .wrapped = true,
-            .scale = 15.5f / Sakura::Typography::FontSize,
+            .scale = Sakura::Typography::Scale::Lead,
             .weight = empty ? 0.0f : 0.15f,
         });
         icon.update({
             .str = ICON_LC_WORKFLOW,
             .tone = Text::Tone::Secondary,
-            .scale = 1.2f,
+            .scale = Sakura::Typography::Scale::Title,
         });
         accessed.update({
             .str = this->config.accessed,
             .font = Text::Font::Sans,
             .tone = Text::Tone::Secondary,
-            .scale = 15.0f / Sakura::Typography::FontSize,
+            .scale = Sakura::Typography::Scale::Body,
         });
         star.update({
             .str = ICON_LC_STAR,
@@ -71,7 +71,7 @@ struct FlowgraphCell : public Sakura::Div {
             lines.push_back({.child = &accessed});
         }
         texts.update({
-            .spacing = 3.0f,
+            .spacing = Sakura::Spacing::XSmall,
             .centerCross = false,
             .items = std::move(lines),
         });
@@ -85,17 +85,17 @@ struct FlowgraphCell : public Sakura::Div {
         }
         row.update({
             .axis = Sakura::Stack::Axis::Horizontal,
-            .spacing = 12.0f,
+            .spacing = Sakura::Spacing::Medium,
             .items = std::move(items),
         });
         Div::update({
             .content = &row,
-            .padding = 12.0f,
-            .rounding = 12.0f,
+            .padding = Sakura::Spacing::Medium,
+            .rounding = Sakura::Rounding::Card,
             .border = true,
             .chrome = true,
-            .colorKey = "welcome_card_bg",
-            .hoveredColorKey = empty ? "welcome_card_bg" : "welcome_card_hovered",
+            .colorKey = "card_surface",
+            .hoveredColorKey = empty ? "card_surface" : "card_surface_hovered",
             .onClick = empty ? std::function<void()>() : [this]() {
                 if (this->config.onOpen) {
                     this->config.onOpen();

@@ -236,7 +236,7 @@ struct IntelligenceProviderView {
         testItems.push_back({.child = &testButton});
         testControls.update({
             .axis = Sakura::Stack::Axis::Horizontal,
-            .spacing = 6.0f,
+            .spacing = Sakura::Spacing::Small,
             .items = std::move(testItems),
         });
         saveButton.update({
@@ -244,7 +244,7 @@ struct IntelligenceProviderView {
             .size = {Sakura::Fill, 40.0f},
             .variant = Sakura::Button::Variant::Action,
             .disabled = !saveEnabled(),
-            .rounding = 12.0f,
+            .rounding = Sakura::Rounding::Card,
             .onClick = [this]() {
                 if (saveEnabled() && this->config.onAdd) {
                     this->config.onAdd(buildProvider(), apiKey);
@@ -264,7 +264,7 @@ struct IntelligenceProviderView {
         });
 
         stack.update({
-            .spacing = 4.0f,
+            .spacing = Sakura::Spacing::XSmall,
             .items = {
                 {.child = &breadcrumb},
                 {.child = &header},
