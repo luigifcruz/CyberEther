@@ -17,15 +17,12 @@ struct ThrottleImplNativeCpu : public ThrottleImpl,
 
 Result ThrottleImplNativeCpu::computeSubmit() {
     const auto now = std::chrono::steady_clock::now();
-    if (now < deadline) {
-        Scheduler::Context::NotifyPendingComputeAt(deadline);
+    if (now < schedule.deadline) {
+        Scheduler::Context::NotifyPendingComputeAt(schedule.deadline);
         return Result::YIELD;
     }
 
-    deadline += interval;
-    if (deadline <= now) {
-        deadline = now + interval;
-    }
+    schedule.advance(now);
 
     return Result::SUCCESS;
 }

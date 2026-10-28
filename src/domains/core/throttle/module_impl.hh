@@ -1,10 +1,10 @@
 #ifndef JETSTREAM_DOMAINS_CORE_THROTTLE_MODULE_IMPL_HH
 #define JETSTREAM_DOMAINS_CORE_THROTTLE_MODULE_IMPL_HH
 
-#include <chrono>
-
 #include <jetstream/domains/core/throttle/module.hh>
 #include <jetstream/detail/module_impl.hh>
+
+#include "schedule.hh"
 
 namespace Jetstream::Modules {
 
@@ -17,8 +17,7 @@ struct ThrottleImpl : public Module::Impl, public DynamicConfig<Throttle> {
 
  protected:
     Tensor input;
-    std::chrono::steady_clock::duration interval{};
-    std::chrono::steady_clock::time_point deadline;
+    ThrottleSchedule schedule;
 
     void resetDeadline();
 };

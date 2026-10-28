@@ -57,9 +57,9 @@ Result ThrottleImpl::reconfigure() {
 }
 
 void ThrottleImpl::resetDeadline() {
-    interval = std::chrono::ceil<std::chrono::steady_clock::duration>(
+    const auto interval = std::chrono::ceil<std::chrono::steady_clock::duration>(
         std::chrono::duration<F64, std::milli>(intervalMs));
-    deadline = std::chrono::steady_clock::now();
+    schedule.reset(interval, std::chrono::steady_clock::now());
 }
 
 }  // namespace Jetstream::Modules

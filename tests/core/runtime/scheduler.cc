@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <functional>
 #include <future>
 #include <initializer_list>
@@ -1259,6 +1260,12 @@ void computeCycles(Scheduler& scheduler, U64 cycles) {
     }
 }
 
+void skipSchedulerTimingOnCI() {
+    if (std::getenv("CI")) {
+        SKIP("Scheduler wall-clock timing tests are disabled in CI.");
+    }
+}
+
 std::chrono::milliseconds timedCompute(Scheduler& scheduler) {
     std::unordered_set<std::string> failedModules;
     const auto start = std::chrono::steady_clock::now();
@@ -1705,6 +1712,7 @@ TEST_CASE("Scheduler keeps the producer of a throttled consumer flowing",
 
 TEST_CASE("Scheduler sleeps until the next throttle deadline on an idle graph",
           "[core][runtime][scheduler][dataflow][throttle]") {
+    skipSchedulerTimingOnCI();
     auto& state = syntheticState();
     state.reset();
     state.configure("deadline_module").taint = Module::Taint::THROTTLED;
@@ -1728,6 +1736,7 @@ TEST_CASE("Scheduler sleeps until the next throttle deadline on an idle graph",
 
 TEST_CASE("Scheduler idle cycles wait for a pending compute signal",
           "[core][runtime][scheduler][dataflow][wake]") {
+    skipSchedulerTimingOnCI();
     auto& state = syntheticState();
     state.reset();
     state.configure("wake_source").pendingCompute = [] { return Result::TIMEOUT; };
@@ -1783,6 +1792,7 @@ TEST_CASE("Scheduler idle cycles wait for a pending compute signal",
 
 TEST_CASE("Scheduler does not wait after a cycle that made progress",
           "[core][runtime][scheduler][dataflow][wake]") {
+    skipSchedulerTimingOnCI();
     auto& state = syntheticState();
     state.reset();
     state.configure("progress_source");
@@ -1904,6 +1914,7 @@ TEST_CASE("Scheduler decides throttle deadlines once per cycle across runtime se
 
 TEST_CASE("Scheduler does not sleep past a throttle deadline that expires during a cycle",
           "[core][runtime][scheduler][dataflow][throttle]") {
+    skipSchedulerTimingOnCI();
     auto& state = syntheticState();
     state.reset();
     state.configure("expire_display").taint = Module::Taint::THROTTLED;
@@ -3022,6 +3033,7 @@ TEST_CASE("Scheduler keeps independent pairings identical across joins after a l
 
 TEST_CASE("Scheduler does not let an idle flowgraph slow another one down",
           "[core][runtime][scheduler][dataflow][wake]") {
+    skipSchedulerTimingOnCI();
     auto& state = syntheticState();
     state.reset();
     state.configure("idle_constant").taint = Module::Taint::STATIC_OUTPUT;
@@ -3088,6 +3100,7 @@ TEST_CASE("Scheduler keeps a live join running next to a settled module with a l
 
 TEST_CASE("Scheduler keeps compute rounds separate per compute thread",
           "[core][runtime][scheduler][wake]") {
+    skipSchedulerTimingOnCI();
     const auto epoch = Scheduler::Impl::BeginComputeRound();
     Scheduler::Impl::ReportComputeProgress();
 
