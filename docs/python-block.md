@@ -163,7 +163,7 @@ The declared axes are published as `sampleAxis`, `batchAxis`, and `channelAxis` 
 
 ## Flowgraph Environment
 
-The `ctx.env` mapping mirrors the flowgraph environment: a graph-wide, timestamped key-value store also visible in the Environment window and to other blocks. Values refresh at the start of each cycle and writes are published when `compute` returns.
+The `ctx.env` mapping mirrors the flowgraph environment: a graph-wide, timestamped key-value store also visible in the Environment tile and to other blocks. Values refresh at the start of each cycle and writes are published when `compute` returns.
 
 ```python
 def compute(ctx):
@@ -178,7 +178,7 @@ def compute(ctx):
 Semantics:
 
 - **Top-level values must be mappings.** `ctx.env["gain"] = 3.0` is rejected with a console warning, so wrap scalars in a dict.
-- **Null round-trips.** Fields holding `None` are stored as null, shown as `null` in the Environment window, and read back as `None`.
+- **Null round-trips.** Fields holding `None` are stored as null, shown as `null` in the Environment tile, and read back as `None`.
 - **Values are NumPy-typed when NumPy is available.** Numbers, including complex, read and write at their exact stored width, and typed vectors arrive as read-only NumPy arrays. Without NumPy, reads fall back to plain Python types. See [Type Conversion](#type-conversion) for the full rules.
 - **Nested edits publish.** Both `ctx.env["k"] = {...}` and `ctx.env["k"]["field"] = value` are tracked, including dicts nested inside sequences. Sequences read back as immutable containers. Replace them through their parent dict.
 - **Rejected writes are rolled back.** If a value cannot be converted or published, the local entry is restored to the flowgraph's canonical state instead of silently diverging.

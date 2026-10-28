@@ -16,12 +16,12 @@ Remote Streaming needs the Vulkan renderer on the host. Linux and Windows use it
 
 ### From the Desktop App
 
-1. Open the **Remote** menu and choose **Remote Streaming**.
-2. Click **Start Streaming**. The window shows an invite link and a QR code.
-3. Open the link on the viewing device, or scan the QR code with a phone camera.
-4. While it waits, the viewer shows a six character code. The same code appears in the **Remote Streaming** window. Check that they match, then click **Approve**.
+1. Open the Start tab. It appears whenever no flowgraph is open, and `CTRL+T` or the **+** button next to the tabs opens it at any time.
+2. In the **Remote** section of the sidebar, click **Start Streaming**.
+3. Click **Copy Link** and open the link on the viewing device, or click **QR Code** and scan it with a phone camera.
+4. While it waits, the viewer shows a six character code. The same code appears in the viewer list of the **Remote** section. Check that they match, then click the check mark next to it.
 
-Click **Stop Streaming** to end the session and disconnect every viewer.
+While streaming, the **Remote Sharing** button in the titlebar brings back the Start tab. Click **Stop Streaming** to end the session and disconnect every viewer, or click the X next to a viewer to disconnect only that one. Builds without remote streaming hide the **Remote** section.
 
 ### From the Command Line
 
@@ -60,7 +60,7 @@ The viewer must be able to reach the host directly. There is no relay, so both d
 
 ## Settings
 
-Open **Settings** and select **Remote**, or use **Remote** > **Open In Settings**. Changes apply the next time streaming starts. Every setting has a matching command line option, which overrides the saved value for that run only and leaves the saved settings untouched.
+Open **Settings** and select **Remote**, or click the settings button in the **Remote** section of the Start tab. Changes apply the next time streaming starts. Every setting has a matching command line option, which overrides the saved value for that run only and leaves the saved settings untouched.
 
 ### Access
 
@@ -174,7 +174,7 @@ With the tunnel open, open the invite link printed by the host, such as `http://
 
 **The invite link does not open on the other device.** Check that both devices are on the same network, that the host firewall allows the broker port, and that the address in the link belongs to the host. When the host has several network interfaces, set **Broker Public URL** to the address the viewer can reach.
 
-**The viewer waits forever.** The host has not approved it yet. Look for the matching code in the **Remote Streaming** window or in the terminal.
+**The viewer waits forever.** The host has not approved it yet. Look for the matching code in the **Remote** section of the Start tab or in the terminal.
 
 **The viewer connects but shows no video.** On phones this is usually the codec. Switch **Video Codec** to VP8. On restrictive networks, try **Media Transport** set to TCP, and check that the firewall allows the media ports.
 

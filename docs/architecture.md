@@ -27,7 +27,7 @@ The structure is a chain of ownership. One instance owns the flowgraphs, each fl
 
 **Parser and Registry** are the foundations everything serializes and dispatches through. The parser owns the value type system used by configurations, the environment, and YAML files. The registry collects the static block and module registrations from the binary and from loaded plugins, and answers the lookups described in [Registration And Dispatch](/docs/blocks-and-modules#registration-and-dispatch).
 
-**Compositor** is the application UI built on Sakura: the flowgraph editor, the pickers and menus, the Environment window, and the themes. It talks to the rest of the system exclusively through the flowgraph and view APIs, which keeps the door open for alternative frontends and for the headless mode where no compositor runs.
+**Compositor** is the application UI built on Sakura: the flowgraph editor, the pickers and menus, the Environment tile, and the themes. It talks to the rest of the system exclusively through the flowgraph and view APIs, which keeps the door open for alternative frontends and for the headless mode where no compositor runs.
 
 ## The Two Loops
 
