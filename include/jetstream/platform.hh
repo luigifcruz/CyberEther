@@ -380,6 +380,25 @@ JETSTREAM_API void* LoadDynamicLibrarySymbol(void* handle,
 
 JETSTREAM_API Result WriteFileAtomic(const std::string& path, std::string_view bytes, bool ownerOnly = false);
 
+class JETSTREAM_API InputStream {
+ public:
+    InputStream();
+    ~InputStream();
+
+    InputStream(const InputStream&) = delete;
+    InputStream& operator=(const InputStream&) = delete;
+
+    Result open(const std::string& path, std::string& error);
+    Result read(void* data, U64 size, U64& received);
+    Result wait(U64 timeoutMilliseconds);
+    void close();
+    bool isOpen() const;
+
+ private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+};
+
 //
 // File Lock
 //

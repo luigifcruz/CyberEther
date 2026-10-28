@@ -1,12 +1,16 @@
 #ifndef JETSTREAM_DOMAINS_IO_FILE_READER_MODULE_IMPL_HH
 #define JETSTREAM_DOMAINS_IO_FILE_READER_MODULE_IMPL_HH
 
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 
 #include <jetstream/domains/io/file_reader/module.hh>
 #include <jetstream/detail/module_impl.hh>
+#include <jetstream/platform.hh>
 #include <jetstream/tools/snapshot.hh>
 
 namespace Jetstream::Modules {
@@ -19,16 +23,32 @@ struct FileReaderImpl : public Module::Impl, public DynamicConfig<FileReader> {
     Result destroy() override;
     Result reconfigure() override;
 
+    bool isStream() const;
     U64 getCurrentPosition() const;
     U64 getFileSize() const;
     F32 getThroughput() const;
 
  protected:
+    Result createStream();
+    Result readStream();
+    void streamLoop();
     void updateThroughput(const U64 deltaBytes);
 
     Tensor buffer;
     DataType validatedDataType = DataType::None;
     U64 validatedOutputSizeBytes = 0;
+
+    std::atomic<bool> streaming{false};
+    std::atomic<bool> receiving{false};
+    std::atomic<bool> starved{false};
+    std::atomic<bool> ended{false};
+    std::atomic<bool> errored{false};
+    U64 streamFilled = 0;
+    U64 streamTotal = 0;
+    std::mutex streamMutex;
+    std::condition_variable streamCondition;
+    Platform::InputStream stream;
+    Platform::WorkerThread streamThread;
 
     std::ifstream dataFile;
     std::filesystem::path filePath;

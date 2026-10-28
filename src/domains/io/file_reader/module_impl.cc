@@ -1,10 +1,19 @@
 #include "module_impl.hh"
 
+#include <cstring>
+
 #include "jetstream/memory/axis.hh"
 #include "jetstream/platform.hh"
+#include "jetstream/scheduler_context.hh"
 #include "jetstream/tools/numeric.hh"
 
 namespace Jetstream::Modules {
+
+namespace {
+
+constexpr U64 kStreamPollMilliseconds = 200;
+
+}  // namespace
 
 Result FileReaderImpl::validate() {
     const auto& config = *candidate();
@@ -81,12 +90,22 @@ Result FileReaderImpl::create() {
 
     filePath = Platform::PathFromUtf8(filepath);
 
-    if (!std::filesystem::exists(filePath)) {
+    std::error_code ec;
+    const auto status = std::filesystem::status(filePath, ec);
+    if (!std::filesystem::exists(status)) {
         JST_ERROR("[MODULE_FILE_READER] File '{}' does not exist.", filepath);
         return Result::INCOMPLETE;
     }
 
-    std::error_code ec;
+    if (std::filesystem::is_directory(status)) {
+        JST_ERROR("[MODULE_FILE_READER] Path '{}' is a directory.", filepath);
+        return Result::INCOMPLETE;
+    }
+
+    if (!std::filesystem::is_regular_file(status)) {
+        return createStream();
+    }
+
     const U64 inputFileSize = std::filesystem::file_size(filePath, ec);
     if (ec) {
         JST_ERROR("[MODULE_FILE_READER] Failed to get file size for '{}'.", filepath);
@@ -105,7 +124,112 @@ Result FileReaderImpl::create() {
     return Result::SUCCESS;
 }
 
+Result FileReaderImpl::createStream() {
+    std::string error;
+    if (stream.open(filepath, error) != Result::SUCCESS) {
+        JST_ERROR("[MODULE_FILE_READER] Failed to open '{}' for reading ({}).", filepath, error);
+        return Result::INCOMPLETE;
+    }
+
+    streamFilled = 0;
+    streamTotal = 0;
+    streaming = true;
+    starved = false;
+    ended = false;
+    errored = false;
+    receiving = true;
+    streamThread.start([this]() { streamLoop(); });
+
+    JST_INFO("[MODULE_FILE_READER] Opened stream '{}'.", filepath);
+
+    return Result::SUCCESS;
+}
+
+Result FileReaderImpl::readStream() {
+    if (errored) {
+        return Result::ERROR;
+    }
+
+    if (ended) {
+        return Result::YIELD;
+    }
+
+    auto* data = static_cast<U8*>(buffer.data());
+    const U64 size = buffer.sizeBytes();
+
+    while (streamFilled < size) {
+        U64 received = 0;
+        const Result result = stream.read(data + streamFilled, size - streamFilled, received);
+
+        if (result == Result::SUCCESS) {
+            streamFilled += received;
+            streamTotal += received;
+            continue;
+        }
+
+        if (result == Result::TIMEOUT) {
+            {
+                std::lock_guard lock(streamMutex);
+                starved = true;
+            }
+            streamCondition.notify_one();
+            return Result::YIELD;
+        }
+
+        if (result == Result::INCOMPLETE) {
+            ended = true;
+            JST_INFO("[MODULE_FILE_READER] Reached the end of stream '{}'.", filepath);
+            if (streamFilled == 0) {
+                return Result::YIELD;
+            }
+            std::memset(data + streamFilled, 0, size - streamFilled);
+            break;
+        }
+
+        JST_ERROR("[MODULE_FILE_READER] Failed to read from stream '{}'.", filepath);
+        errored = true;
+        return Result::ERROR;
+    }
+
+    currentPosition.publish(streamTotal);
+    updateThroughput(streamFilled);
+    streamFilled = 0;
+
+    return Result::SUCCESS;
+}
+
+void FileReaderImpl::streamLoop() {
+    while (receiving) {
+        {
+            std::unique_lock lock(streamMutex);
+            streamCondition.wait(lock, [this]() { return starved || !receiving; });
+        }
+
+        if (!receiving) {
+            return;
+        }
+
+        if (stream.wait(kStreamPollMilliseconds) == Result::TIMEOUT) {
+            continue;
+        }
+
+        starved = false;
+        Scheduler::Context::NotifyPendingCompute();
+    }
+}
+
 Result FileReaderImpl::destroy() {
+    {
+        std::lock_guard lock(streamMutex);
+        receiving = false;
+    }
+    streamCondition.notify_all();
+    if (streamThread.joinable()) {
+        streamThread.join();
+    }
+    stream.close();
+    streaming = false;
+
     if (dataFile.is_open()) {
         dataFile.close();
     }
@@ -129,6 +253,10 @@ Result FileReaderImpl::reconfigure() {
     }
 
     return Result::RECREATE;
+}
+
+bool FileReaderImpl::isStream() const {
+    return streaming;
 }
 
 U64 FileReaderImpl::getCurrentPosition() const {

@@ -6,6 +6,23 @@
 
 namespace Jetstream::Blocks {
 
+namespace {
+
+std::string FormatBytes(const U64 bytes) {
+    if (bytes < 1024) {
+        return std::to_string(bytes) + " B";
+    }
+    if (bytes < 1024 * 1024) {
+        return std::to_string(bytes / 1024) + " KiB";
+    }
+    if (bytes < 1024 * 1024 * 1024) {
+        return std::to_string(bytes / (1024 * 1024)) + " MiB";
+    }
+    return std::to_string(bytes / (1024 * 1024 * 1024)) + " GiB";
+}
+
+}  // namespace
+
 struct FileReaderImpl : public Block::Impl, public DynamicConfig<Blocks::FileReader> {
     Result configure() override;
     Result define() override;
@@ -34,7 +51,7 @@ Result FileReaderImpl::define() {
 
     JST_CHECK(defineInterfaceConfig("filepath",
                                     "File Path",
-                                    "Path to the raw binary file to read.",
+                                    "Path to the raw binary file or stream to read, such as /dev/stdin.",
                                     {{"type", "filepicker"}, {"extensions", Parser::MakeSequence({"bin", "raw", "iq", "wav", "dat"})}}));
 
     JST_CHECK(defineInterfaceConfig("fileFormat",
@@ -68,11 +85,14 @@ Result FileReaderImpl::define() {
 
     JST_CHECK(defineInterfaceMetric("progress",
                                     "Position",
-                                    "Current file position.",
+                                    "Current file position, or the data read so far from a stream.",
                                     {{"type", "progressbar"}},
         [this]() -> std::any {
             if (!moduleImpl) {
                 return std::pair<std::string, F32>{"0.0%", 0.0f};
+            }
+            if (moduleImpl->isStream()) {
+                return std::pair<std::string, F32>{FormatBytes(moduleImpl->getCurrentPosition()), 0.0f};
             }
             const U64 size = moduleImpl->getFileSize();
             if (size == 0) {

@@ -19,6 +19,7 @@ struct FileReaderImplNativeCpu : public FileReaderImpl,
     Result create() final;
 
     Result computeSubmit() override;
+    Result hasPendingCompute() override;
 };
 
 Result FileReaderImplNativeCpu::validate() {
@@ -48,10 +49,36 @@ Result FileReaderImplNativeCpu::create() {
     return Result::SUCCESS;
 }
 
-// TODO: Make the file reading asynchronous.
+Result FileReaderImplNativeCpu::hasPendingCompute() {
+    if (!streaming) {
+        return Result::SUCCESS;
+    }
+
+    if (!playing) {
+        return streamFilled == 0 ? Result::SUCCESS : Result::TIMEOUT;
+    }
+
+    if (errored) {
+        return Result::ERROR;
+    }
+
+    if (ended || starved) {
+        return Result::TIMEOUT;
+    }
+
+    return Result::SUCCESS;
+}
 
 Result FileReaderImplNativeCpu::computeSubmit() {
-    if (!dataFile.is_open() || !playing) {
+    if (!playing) {
+        return (streaming && streamFilled != 0) ? Result::YIELD : Result::SUCCESS;
+    }
+
+    if (streaming) {
+        return readStream();
+    }
+
+    if (!dataFile.is_open()) {
         return Result::SUCCESS;
     }
 
