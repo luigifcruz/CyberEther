@@ -1194,6 +1194,21 @@ TEST_CASE("Clicking the collapse chevron toggles the node but dragging from it d
     CheckPoint(a.last().gridPosition, 50.0f, 50.0f);
 }
 
+TEST_CASE("Header buttons keep an inset from the right edge of the node", "[core][sakura][node-editor]") {
+    Graph graph;
+    Block& a = graph.add("a", {40.0f, 40.0f});
+    a.spec.header = true;
+    a.spec.collapsible = true;
+    a.content.consume = false;
+    graph.step();
+
+    graph.click(166.5f, 56.0f);
+    CHECK(a.toggles == 0);
+
+    graph.click(163.0f, 56.0f);
+    CHECK(a.toggles == 1);
+}
+
 TEST_CASE("The header detach button sits left of the chevron and fires only on a click",
           "[core][sakura][node-editor]") {
     Graph graph;

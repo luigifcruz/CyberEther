@@ -57,6 +57,7 @@ constexpr U64 kTimingCapacity = 8;
 constexpr F32 kSubtitleFont = Typography::FontSize * 0.75f;
 constexpr F32 kSubtitlePull = 14.0f;
 constexpr F32 kTitleGap = 8.0f;
+constexpr F32 kHeaderIconInset = 3.0f;
 constexpr F32 kTimingOffset = 4.0f;
 constexpr F32 kLoadingMinHeight = 96.0f;
 constexpr F32 kAutoPanSpeed = 1000.0f;
@@ -398,7 +399,7 @@ struct NodeFrame : public Component {
             const bool hasDetach = static_cast<bool>(spec.onDetach);
             const F32 iconWidth = kNodeFont;
             const U64 iconCount = (hasChevron ? 1 : 0) + (hasDetach ? 1 : 0) + (hasDiagnostic ? 1 : 0);
-            const F32 reserved = static_cast<F32>(iconCount) * (iconWidth + kTitleGap);
+            const F32 reserved = static_cast<F32>(iconCount) * (iconWidth + kTitleGap) + (iconCount > 0 ? kHeaderIconInset : 0.0f);
             const F32 titleAvail = std::max(0.0f, width - reserved);
             const F32 centerSafe = std::max(0.0f, width - 2.0f * reserved);
             const F32 titleWidth = metrics.measure(Typography::DisplaySemiboldFont, spec.title, kTitleFont * r) / r;
@@ -414,7 +415,7 @@ struct NodeFrame : public Component {
             titleX = std::max(0.0f, (zone - displayWidth) * 0.5f);
 
             const F32 iconY = (kTitleFont - iconWidth) * 0.5f;
-            F32 iconX = width - iconWidth;
+            F32 iconX = width - iconWidth - kHeaderIconInset;
             if (hasChevron) {
                 chevronRect = {iconX, iconY, iconWidth, iconWidth};
                 iconX -= iconWidth + kTitleGap;
