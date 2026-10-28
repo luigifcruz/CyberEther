@@ -1,3 +1,5 @@
+// TODO: Explore batching UDP transmissions to reduce overhead and improve throughput.
+
 #include <algorithm>
 
 #include <jetstream/runtime_context_native_cpu.hh>
