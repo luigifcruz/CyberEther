@@ -112,6 +112,28 @@ def compute(ctx):
 
 The block emits an empty frame instead, and every downstream block drops its frames for that step without running. All output tensors keep their fixed allocations, but their contents are not consumed downstream. The block runs again on the next frame. Returning `None` (including an implicit return) or any other value completes the cycle normally. The global `SKIP` name is reserved for this behavior.
 
+### Waiting for a Later Cycle
+
+Return `YIELD(seconds)` when the block is not ready to read its inputs yet, for example a playback script that is ahead of real time:
+
+```python
+import time
+
+INTERVAL = 0.01
+due = 0.0
+
+def compute(ctx):
+    global due
+    now = time.monotonic()
+    if now < due:
+        return YIELD(due - now)
+
+    due = max(due, now) + INTERVAL
+    ctx.outputs[0][...] = ctx.inputs[0]
+```
+
+The block keeps its inputs unread, the blocks that depend on it wait, and the scheduler runs it again after the delay. The wait happens outside the compute cycle, so every other block and the display keep running. The block can run again before the delay ends, so check the condition on every call. A bare `YIELD` without a delay retries the next time the scheduler wakes. Calling `time.sleep()` inside `compute` instead stalls every flowgraph and the display until it returns. The global `YIELD` name is reserved for this behavior.
+
 ### CUDA Notes
 
 Tensors on the GPU require [CuPy](https://cupy.dev) in the Python runtime's environment. NumPy covers CPU tensors. Neither is imported until a tensor of that kind actually exists, so CPU-only systems never need CuPy installed.
