@@ -2,11 +2,11 @@
 
 #include <chrono>
 #include <limits>
-#include <thread>
 
 #include "jetstream/domains/core/throttle/module.hh"
 #include "jetstream/registry.hh"
 #include "jetstream/testing.hh"
+#include "schedule.hh"
 
 using namespace Jetstream;
 
@@ -113,48 +113,70 @@ TEST_CASE("Throttle Module - Paces Sub-Millisecond Intervals On Average",
 
 TEST_CASE("Throttle Module - Schedules Passes By Deadline",
           "[modules][throttle][timing]") {
-    using Clock = std::chrono::steady_clock;
+    using Clock = Modules::ThrottleSchedule::Clock;
     using std::chrono::milliseconds;
 
+    // Explicit timestamps keep deadline behavior independent of host scheduling
+    // and sleep overshoot on shared CI runners.
+    const auto start = Clock::time_point{};
+    Modules::ThrottleSchedule schedule;
+    schedule.reset(milliseconds(100), start);
+    REQUIRE(schedule.deadline == start);
+    schedule.advance(start);
+    REQUIRE(schedule.deadline == start + milliseconds(100));
+
+    SECTION("a late pass shortens the next wait") {
+        schedule.advance(start + milliseconds(150));
+        REQUIRE(schedule.deadline == start + milliseconds(200));
+        schedule.advance(start + milliseconds(200));
+        REQUIRE(schedule.deadline == start + milliseconds(300));
+    }
+
+    SECTION("a pass exactly one interval late restarts the schedule") {
+        schedule.advance(start + milliseconds(200));
+        REQUIRE(schedule.deadline == start + milliseconds(300));
+    }
+
+    SECTION("a pass more than one interval late restarts the schedule") {
+        schedule.advance(start + milliseconds(250));
+        REQUIRE(schedule.deadline == start + milliseconds(350));
+        schedule.advance(start + milliseconds(350));
+        REQUIRE(schedule.deadline == start + milliseconds(450));
+    }
+
+    SECTION("sleep overshoot does not accumulate across passes") {
+        schedule.advance(start + milliseconds(125));
+        REQUIRE(schedule.deadline == start + milliseconds(200));
+        schedule.advance(start + milliseconds(225));
+        REQUIRE(schedule.deadline == start + milliseconds(300));
+    }
+
+    SECTION("a new interval lets the next pass through at once") {
+        schedule.reset(milliseconds(200), start + milliseconds(50));
+        REQUIRE(schedule.deadline == start + milliseconds(50));
+        schedule.advance(start + milliseconds(50));
+        REQUIRE(schedule.deadline == start + milliseconds(250));
+    }
+}
+
+TEST_CASE("Throttle Module - Reconfigures Persistent Computes",
+          "[modules][throttle][timing]") {
     TestContext ctx("throttle", DeviceType::CPU, RuntimeType::NATIVE, "generic");
 
     Modules::Throttle config;
-    config.intervalMs = 100.0f;
+    config.intervalMs = 10.0f;
     ctx.setConfig(config);
 
     auto input = ctx.createTensor<F32>({4});
     ctx.setInput("buffer", input);
     REQUIRE(ctx.start() == Result::SUCCESS);
+    REQUIRE(ctx.compute() == Result::SUCCESS);
 
-    const auto timed = [&] {
-        const auto start = Clock::now();
-        REQUIRE(ctx.compute() == Result::SUCCESS);
-        return Clock::now() - start;
-    };
-
-    SECTION("a late pass shortens the next wait") {
-        REQUIRE(timed() < milliseconds(50));
-        std::this_thread::sleep_for(milliseconds(150));
-        REQUIRE(timed() < milliseconds(50));
-        const auto wait = timed();
-        REQUIRE(wait >= milliseconds(30));
-        REQUIRE(wait < milliseconds(90));
-    }
-
-    SECTION("a pass more than one interval late restarts the schedule") {
-        REQUIRE(timed() < milliseconds(50));
-        std::this_thread::sleep_for(milliseconds(250));
-        REQUIRE(timed() < milliseconds(50));
-        REQUIRE(timed() >= milliseconds(90));
-    }
-
-    SECTION("a new interval lets the next pass through at once") {
-        REQUIRE(timed() < milliseconds(50));
-        config.intervalMs = 200.0f;
-        REQUIRE(ctx.reconfigure(config) == Result::SUCCESS);
-        REQUIRE(timed() < milliseconds(50));
-        REQUIRE(timed() >= milliseconds(190));
-    }
-
+    const auto start = std::chrono::steady_clock::now();
+    config.intervalMs = 100.0f;
+    REQUIRE(ctx.reconfigure(config) == Result::SUCCESS);
+    REQUIRE(ctx.compute() == Result::SUCCESS);
+    REQUIRE(ctx.compute() == Result::SUCCESS);
+    REQUIRE(std::chrono::steady_clock::now() - start >= std::chrono::milliseconds(100));
     REQUIRE(ctx.stop() == Result::SUCCESS);
 }

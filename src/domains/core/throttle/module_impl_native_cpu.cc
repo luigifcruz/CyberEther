@@ -18,15 +18,11 @@ struct ThrottleImplNativeCpu : public ThrottleImpl,
 };
 
 Result ThrottleImplNativeCpu::computeSubmit() {
-    if (std::chrono::steady_clock::now() < deadline) {
-        std::this_thread::sleep_until(deadline);
+    if (std::chrono::steady_clock::now() < schedule.deadline) {
+        std::this_thread::sleep_until(schedule.deadline);
     }
 
-    const auto now = std::chrono::steady_clock::now();
-    deadline += interval;
-    if (deadline <= now) {
-        deadline = now + interval;
-    }
+    schedule.advance(std::chrono::steady_clock::now());
 
     return Result::SUCCESS;
 }
