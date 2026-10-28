@@ -32,6 +32,7 @@ struct WelcomeView {
     static constexpr F32 WaveSpan = 0.64f;
     static constexpr F32 WaveGap = 64.0f;
     static constexpr F32 HeroTop = 48.0f;
+    static constexpr F32 WordmarkEmboss = 0.0125f;
     static constexpr F32 SectionGap = Sakura::Spacing::XLarge;
     static constexpr F32 HeroButtonHeight = 40.0f;
     static constexpr F32 HeroButtonText = Sakura::Typography::Scale::Large;
@@ -452,6 +453,7 @@ struct WelcomeView {
             .colorKey = "cyber_blue",
             .shrinkToFit = true,
             .scale = 8.5f,
+            .emboss = WordmarkEmboss,
         });
         wordmarkSpacing.update({.lines = 2});
         assistant.update({

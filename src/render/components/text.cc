@@ -57,6 +57,9 @@ struct Text::Impl {
         F32 sharpness;
         F32 atlasPixelRange;
         F32 weight;
+        F32 emboss;
+        F32 em;
+        F32 backdrop;
     };
 
     struct InstanceData {
@@ -521,6 +524,9 @@ Result Text::Impl::updateUniforms() {
     uniforms.sharpness = config.sharpness;
     uniforms.weight = config.weight;
     uniforms.atlasPixelRange = config.font->atlasPixelRange();
+    uniforms.emboss = config.emboss;
+    uniforms.em = config.font->getConfig().size * config.font->atlasScale();
+    uniforms.backdrop = config.embossBackdrop;
 
     // Set flag to update buffer.
     updateFontUniformBufferFlag = true;

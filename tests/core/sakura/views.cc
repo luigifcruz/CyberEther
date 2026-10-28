@@ -709,6 +709,9 @@ TEST_CASE("Title row places the wordmark after the inset, the pills after it, an
     CHECK(wordmark.y == 6.0f);
     CHECK(wordmark.height == 28.0f);
     CHECK(wordmark.width > 40.0f);
+    const auto markTexts = Find<Sakura::Text>(rig.shell.bar().leading());
+    REQUIRE(markTexts.size() == 1);
+    CHECK(markTexts.front()->config().emboss == TitlebarView::WordmarkEmboss);
     const F32 plusX = wordmark.right() + 6.0f + 2.0f * 240.0f + 4.0f + 4.0f + 6.0f;
     CHECK(Peek::Frame(rig.shell.bar().trailing()) == Jetstream::Rect{plusX, 6.0f, 28.0f, 28.0f});
     CHECK(rig.b.laidFrame == Jetstream::Rect{0.0f, 32.0f, 1200.0f, 768.0f});
@@ -2338,6 +2341,18 @@ TEST_CASE("Welcome page opens with a centered wordmark and a wave above the filt
     auto* wordmark = ShownText(rig.root(), "CyberEther");
     REQUIRE(wordmark != nullptr);
     CHECK(wordmark->config().colorKey == "cyber_blue");
+    CHECK(wordmark->config().emboss == WelcomeView::WordmarkEmboss);
+    const auto markLabels = Find<Sakura::Label>(*wordmark);
+    const auto background = rig.scene.ctx.color("background");
+    const F32 backdrop = 0.299f * background.r + 0.587f * background.g + 0.114f * background.b;
+    CHECK(std::any_of(markLabels.begin(), markLabels.end(), [&](auto* label) {
+        return label->config().emboss == WelcomeView::WordmarkEmboss &&
+               std::abs(label->config().embossBackdrop - backdrop) < 1e-5f;
+    }));
+    const auto texts = Find<Sakura::Text>(rig.root());
+    CHECK(std::all_of(texts.begin(), texts.end(), [&](auto* text) {
+        return text == wordmark || text->config().emboss == 0.0f;
+    }));
     const auto composers = Find<Sakura::ChatComposer>(rig.root());
     REQUIRE(composers.size() == 1);
     auto* create = LabeledButton(rig.root(), "New Flowgraph");

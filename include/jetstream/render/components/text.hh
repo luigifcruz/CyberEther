@@ -35,6 +35,8 @@ class JETSTREAM_API Text : public Generic {
         std::unordered_map<std::string, ElementConfig> elements;
         F32 sharpness = 0.5f;
         F32 weight = 0.0f;
+        F32 emboss = 0.0f;
+        F32 embossBackdrop = 0.0f;
     };
 
     struct Unicode {

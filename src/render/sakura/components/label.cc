@@ -49,6 +49,8 @@ struct Label::Impl : public Drawable {
                config.fontName == other.fontName &&
                config.sharpness == other.sharpness &&
                config.weight == other.weight &&
+               config.emboss == other.emboss &&
+               config.embossBackdrop == other.embossBackdrop &&
                config.maxCharacters == other.maxCharacters;
     }
 
@@ -96,6 +98,8 @@ struct Label::Impl : public Drawable {
         textConfig.pixelSize = context->pixelSize();
         textConfig.sharpness = config.sharpness;
         textConfig.weight = config.weight;
+        textConfig.emboss = config.emboss;
+        textConfig.embossBackdrop = config.embossBackdrop;
         for (U64 i = 0; i < capacity; ++i) {
             textConfig.elements[LabelElementId(i)] = {
                 .scale = 1.0f,

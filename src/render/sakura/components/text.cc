@@ -23,10 +23,16 @@ namespace {
 
 constexpr F32 kSharpness = 0.45f;
 constexpr F32 kDisplaySharpness = 0.3f;
+constexpr F32 kEmbossLightWeight = 0.25f;
 
 using Unicode = Jetstream::Render::Components::Text::Unicode;
 
 constexpr const char* kIconFont = Typography::IconFont;
+
+F32 BackdropLuma(const Context& ctx) {
+    const auto color = ctx.color(ctx.backdropColorKey.empty() ? "background" : ctx.backdropColorKey);
+    return 0.299f * color.r + 0.587f * color.g + 0.114f * color.b;
+}
 
 const char* FontName(Text::Font font) {
     switch (font) {
@@ -295,12 +301,16 @@ void Text::layout(const Context& ctx) {
             x += run.width;
         }
     }
+    const F32 backdrop = impl->config.emboss > 0.0f ? BackdropLuma(ctx) : 0.0f;
+    const F32 weight = impl->config.weight + (backdrop > 0.5f ? kEmbossLightWeight : 0.0f);
     impl->label.update({
         .instances = std::move(texts),
         .clip = bounds,
         .fontName = FontName(impl->config.font),
         .sharpness = impl->config.font == Font::Display ? kDisplaySharpness : kSharpness,
-        .weight = impl->config.weight * Fringe(ctx),
+        .weight = weight * Fringe(ctx),
+        .emboss = impl->config.emboss,
+        .embossBackdrop = backdrop,
         .maxCharacters = impl->config.maxCharacters,
     });
     impl->icons.update({

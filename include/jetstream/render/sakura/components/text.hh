@@ -47,6 +47,7 @@ struct Text : public Component {
         F32 scale = 1.0f;
         F32 lineHeight = 1.0f;
         F32 weight = 0.0f;
+        F32 emboss = 0.0f;
         F32 verticalOffset = 0.0f;
         U64 maxCharacters = 256;
         F32 opacity = 1.0f;

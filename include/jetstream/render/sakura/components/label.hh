@@ -31,6 +31,8 @@ struct Label : public Component {
         std::string fontName = Typography::MonoFont;
         F32 sharpness = 0.45f;
         F32 weight = 0.0f;
+        F32 emboss = 0.0f;
+        F32 embossBackdrop = 0.0f;
         U64 maxCharacters = 128;
         U64 capacity = 0;
 

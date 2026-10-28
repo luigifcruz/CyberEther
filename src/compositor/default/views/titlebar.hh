@@ -56,6 +56,7 @@ struct TitlebarView {
 
     static constexpr F32 IndicatorGap = Sakura::Spacing::Small;
     static constexpr F32 NewTabRounding = 14.0f;
+    static constexpr F32 WordmarkEmboss = 0.0125f;
 
     struct VoiceIndicator {
         using Phase = Sakura::Voice::Phase;
@@ -132,6 +133,7 @@ struct TitlebarView {
             .label = "CyberEther",
             .font = Sakura::Text::Font::Display,
             .scale = Sakura::Typography::Scale::Headline,
+            .emboss = WordmarkEmboss,
             .colorKey = "cyber_blue",
             .entries = std::move(appEntries),
         });
