@@ -29,6 +29,7 @@ struct LayoutActions {
                               MailRenameLayoutBlock,
                               MailOpenDocumentation,
                               MailCloseDocumentation,
+                              MailCloseFlowgraphDescription,
                               MailSetFlowgraphEnvironmentVisible,
                               MailSetFlowgraphEnvironmentSearch>;
     using FlowgraphState = DefaultCompositorState::FlowgraphState;
@@ -241,6 +242,16 @@ struct LayoutActions {
         state.environment.erase(msg.flowgraph);
         return editLayout(msg.flowgraph, [](const TileMeta& tiles) {
             return WithoutPane(tiles, kLayoutEnvironmentPane);
+        });
+    }
+
+    Result handle(const MailCloseFlowgraphDescription& msg) {
+        if (!state.items.contains(msg.flowgraph)) {
+            return Result::SUCCESS;
+        }
+        state.gallery.erase(msg.flowgraph);
+        return editLayout(msg.flowgraph, [](const TileMeta& tiles) {
+            return WithoutPane(tiles, kLayoutDescriptionPane);
         });
     }
 

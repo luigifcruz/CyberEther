@@ -3880,7 +3880,7 @@ std::optional<Sakura::Label::Instance> Spine(Sakura::Component& dock, const std:
 
 }  // namespace
 
-TEST_CASE("Minimizing a lone column collapses it to a strip with a vertical title and a click anywhere restores it",
+TEST_CASE("Minimizing a lone column collapses it to a strip with a vertical title and a click on the title restores it",
           "[core][sakura][dock][columns]") {
     const auto ctx = MakeContext({1600.0f, 600.0f});
     ColumnRig rig;
@@ -3904,7 +3904,10 @@ TEST_CASE("Minimizing a lone column collapses it to a strip with a vertical titl
     CHECK(spine->rect.height == 588.0f);
     CHECK(spine->rect.x + spine->rect.width * 0.5f == Catch::Approx(1578.0f).margin(1.5f));
     CHECK_FALSE(GlyphIn(rig.dock, {1562.0f, 6.0f, 32.0f, 588.0f}, ICON_LC_MINUS));
-    CHECK_FALSE(GlyphIn(rig.dock, {1562.0f, 6.0f, 32.0f, 588.0f}, ICON_LC_X));
+    const auto* cross = GlyphIn(rig.dock, {1562.0f, 6.0f, 32.0f, 588.0f}, ICON_LC_X);
+    REQUIRE(cross != nullptr);
+    const Rect crossFrame = Peek::Frame(*cross);
+    CHECK(crossFrame.y < spine->rect.y + 40.0f);
     CHECK(Peek::CursorAt(rig.dock, {1578.0f, 300.0f}) == SurfaceCursor::Hand);
     CHECK(rig.emitted.empty());
 
@@ -3914,6 +3917,18 @@ TEST_CASE("Minimizing a lone column collapses it to a strip with a vertical titl
     CHECK(rig.c.laidFrame == Body(cardC));
     CHECK_FALSE(Spine(rig.dock, "c").has_value());
     CHECK(rig.emitted.empty());
+
+    host.click(minimize.x, minimize.y);
+    host.place(ctx, kWideDock);
+    REQUIRE(Spine(rig.dock, "c").has_value());
+    const auto* strip = GlyphIn(rig.dock, {1562.0f, 6.0f, 32.0f, 588.0f}, ICON_LC_X);
+    REQUIRE(strip != nullptr);
+    const Rect close = Peek::Frame(*strip);
+    host.click(close.x + close.width * 0.5f, close.y + close.height * 0.5f);
+    host.place(ctx, kWideDock);
+    CHECK(rig.closed == std::vector<std::string>{"c"});
+    CHECK_FALSE(Spine(rig.dock, "c").has_value());
+    CHECK_FALSE(rig.c.visible());
 }
 
 TEST_CASE("The first minimize draws the vertical title in the same frame without a resource rebuild",

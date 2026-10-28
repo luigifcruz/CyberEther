@@ -515,6 +515,10 @@ struct MailCloseDocumentation {
     std::string flowgraph;
 };
 
+struct MailCloseFlowgraphDescription {
+    std::string flowgraph;
+};
+
 struct MailSetSurfaceDetached {
     std::string flowgraph;
     std::string block;
@@ -684,6 +688,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailRenameLayoutBlock,
                           MailOpenDocumentation,
                           MailCloseDocumentation,
+                          MailCloseFlowgraphDescription,
                           MailSetSurfaceDetached,
                           MailSetSurfaceConfigCollapsed,
                           MailStartRemote,

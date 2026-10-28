@@ -406,6 +406,42 @@ TEST_CASE("Gallery flowgraphs show the stored description as a collapsed leftmos
     CHECK_FALSE(rig.build().description.has_value());
 }
 
+TEST_CASE("The collapsed gallery description closes from its strip", "[core][sakura][flowgraph][pane]") {
+    PaneRig rig;
+    rig.screen = kWideScreen;
+    rig.state.flowgraph.gallery[kGraph] = "## Overview";
+    rig.frame();
+
+    std::optional<Rect> strip;
+    for (auto* label : Find<Sakura::Label>(rig.layoutDock())) {
+        for (const auto& instance : label->config().instances) {
+            if (instance.visible && instance.rotation != 0.0f && instance.str == "Description") {
+                strip = instance.rect;
+            }
+        }
+    }
+    REQUIRE(strip.has_value());
+    const Sakura::Text* close = nullptr;
+    for (auto* text : Find<Sakura::Text>(rig.layoutDock())) {
+        const auto frame = Peek::Frame(*text);
+        if (text->config().str == ICON_LC_X && text->visible() && frame.x >= strip->x &&
+            frame.right() <= strip->right()) {
+            close = text;
+        }
+    }
+    REQUIRE(close != nullptr);
+    const auto frame = Peek::Frame(*close);
+    rig.mails.clear();
+    rig.host.send(Mouse(MouseEventType::Click, frame.x + frame.width * 0.5f, frame.y + frame.height * 0.5f));
+    rig.host.send(Mouse(MouseEventType::Release, frame.x + frame.width * 0.5f, frame.y + frame.height * 0.5f));
+    rig.frame();
+    const auto closed = std::find_if(rig.mails.begin(), rig.mails.end(), [](const Mail& mail) {
+        const auto* close = std::get_if<MailCloseFlowgraphDescription>(&mail);
+        return close && close->flowgraph == kGraph;
+    });
+    CHECK(closed != rig.mails.end());
+}
+
 TEST_CASE("Gallery descriptions drop the registry placeholder and point relative links at the gallery host",
           "[core][sakura][flowgraph][pane]") {
     CHECK(FlowgraphActions::GalleryDescription({}).empty());

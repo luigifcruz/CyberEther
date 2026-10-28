@@ -28,6 +28,7 @@ struct FlowgraphPane {
     struct Description {
         std::string id;
         std::string markdown;
+        Sakura::Callback<void()> onClose;
     };
 
     struct Config {
@@ -248,12 +249,12 @@ struct FlowgraphPane {
                 .group = this->config.layoutGroup,
                 .icon = ICON_LC_BOOK_OPEN,
                 .content = &description,
-                .closable = false,
                 .maximizable = false,
                 .leftmost = true,
                 .startMinimized = true,
                 .width = DescriptionWidth,
                 .padding = Sakura::Dock::ContentPadding,
+                .onClose = this->config.description->onClose,
             });
         }
         if (this->config.environment.has_value()) {

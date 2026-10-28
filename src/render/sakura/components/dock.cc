@@ -1839,6 +1839,14 @@ void Dock::layout(const Context& ctx) {
             if (fullscreenable) {
                 fullscreenButton(caption, {left, leaf.tile.bottom() - margin - button, button, button});
             }
+            if (closable) {
+                leaf.close = {left, leaf.tile.y + margin, button, button};
+                if (caption) {
+                    glyphButton(*caption->close, leaf.close, ICON_LC_X,
+                                s.hoveredHeaderClose == leaf.pane ? "tile_button_hover" : "tile_header_text",
+                                kHeaderGlyph);
+                }
+            }
             if (caption) {
                 const F32 reserve = std::max(Px(ctx, kStripPad), margin + button + Px(ctx, kHeaderButtonGap));
                 const F32 room = std::max(0.0f, leaf.tile.height - 2.0f * reserve);
