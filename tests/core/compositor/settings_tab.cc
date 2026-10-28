@@ -6,6 +6,8 @@
 #include "compositor/default/actions/workbench.hh"
 #include "environment.hh"
 
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <string>
 
@@ -130,6 +132,41 @@ TEST_CASE("Closing settings resets its sub-pages so late saves do not reopen it"
     CHECK_FALSE(state.interface.settingsTab);
     CHECK(state.settings.intelligencePage == IntelligencePage::Overview);
     CHECK(state.settings.registryPage == RegistryPage::Overview);
+}
+
+TEST_CASE("Show tips updates the interface state and persists the setting", "[core][compositor][settings-tab]") {
+    TestSupport::SettingsSandbox sandbox("compositor-settings");
+    sandbox.require();
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    SettingsActions actions(state, callbacks);
+
+    const auto stored = [] {
+        REQUIRE(Settings::Flush() == Result::SUCCESS);
+        std::string configPath;
+        REQUIRE(Platform::ConfigPath(configPath) == Result::SUCCESS);
+        std::ifstream file(Platform::PathFromUtf8(configPath) / "settings.yaml", std::ios::binary);
+        REQUIRE(file);
+        const std::string yaml((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        Parser::Map document;
+        REQUIRE(Parser::YamlDecode(yaml, document) == Result::SUCCESS);
+        Settings settings;
+        REQUIRE(settings.deserialize(document) == Result::SUCCESS);
+        return settings.interface.showTips;
+    };
+
+    REQUIRE(actions.handle(MailSetShowTips{.value = false}) == Result::SUCCESS);
+    CHECK_FALSE(state.interface.showTips);
+    CHECK_FALSE(stored());
+    Settings settings;
+    REQUIRE(Settings::Get(settings) == Result::SUCCESS);
+    CHECK_FALSE(settings.interface.showTips);
+
+    REQUIRE(actions.handle(MailSetShowTips{.value = true}) == Result::SUCCESS);
+    CHECK(state.interface.showTips);
+    CHECK(stored());
+    REQUIRE(Settings::Get(settings) == Result::SUCCESS);
+    CHECK(settings.interface.showTips);
 }
 
 TEST_CASE("Adding a plugin path that fails validation leaves the settings tab and registry snapshot alone",

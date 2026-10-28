@@ -13,12 +13,12 @@ struct RemoteSettingsPresenter {
 
     explicit RemoteSettingsPresenter(const PresenterContext& context) : context(context) {}
 
-    RemoteSettingsPanel::Config build() const {
+    RemoteSettingsView::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
         const auto remote = context.state.system.instance->remote();
         const auto available = remote->available(context.state.remote.config.video.codec);
 
-        return RemoteSettingsPanel::Config{
+        return RemoteSettingsView::Config{
             .started = context.state.remote.started,
             .broker = context.state.remote.config.broker,
             .codec = context.state.remote.config.video.codec,

@@ -3,7 +3,8 @@
 
 #include "components/about_info_table.hh"
 #include "components/about_update_card.hh"
-#include "components/settings_group.hh"
+#include "../components/compact_button.hh"
+#include "../components/section_group.hh"
 #include "components/settings_header.hh"
 #include "jetstream/render/sakura/base.hh"
 
@@ -16,7 +17,7 @@
 
 namespace Jetstream {
 
-struct AboutSettingsPanel {
+struct AboutSettingsView {
     struct Config {
         bool updateSupported = false;
         bool updateUpToDate = false;
@@ -30,7 +31,6 @@ struct AboutSettingsPanel {
         std::string updateVersion;
         std::string updateReleaseNotes;
         std::string updateMessage;
-        std::string accentKey = "accent_color";
         std::vector<AboutInfoTable::Config> infoTables;
         std::function<void()> onCheckForUpdates;
         std::function<void()> onDownloadUpdate;
@@ -58,21 +58,17 @@ struct AboutSettingsPanel {
             .updateVersion = this->config.updateVersion,
             .releaseNotes = this->config.updateReleaseNotes,
             .message = this->config.updateMessage,
-            .accentKey = this->config.accentKey,
             .onCheckForUpdates = this->config.onCheckForUpdates,
             .onDownloadUpdate = this->config.onDownloadUpdate,
             .onApplyUpdate = this->config.onApplyUpdate,
         });
         feedbackButton.update({
             .str = "Send",
-            .textScale = 0.9f,
-            .padding = {9.0f, 5.0f},
             .onClick = [this]() {
                 if (this->config.onSendFeedback) {
                     this->config.onSendFeedback();
                 }
             },
-            .font = Sakura::Text::Font::Sans,
         });
         feedbackGroup.update({
             .title = "Feedback",
@@ -112,8 +108,8 @@ struct AboutSettingsPanel {
     Config config;
     SettingsHeader header;
     AboutUpdateCard updateCard;
-    Sakura::Button feedbackButton;
-    SettingsGroup feedbackGroup;
+    CompactButton feedbackButton;
+    SectionGroup feedbackGroup;
     std::vector<std::unique_ptr<AboutInfoTable>> infoTables;
     Sakura::Stack stack;
 };

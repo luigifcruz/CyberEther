@@ -33,6 +33,7 @@ struct FlowgraphPane {
         std::vector<FlowgraphDetachedConfig::Config> detachedConfigs;
         std::optional<FlowgraphDocumentation::Config> documentation;
         bool empty = false;
+        bool showTips = true;
         bool dependencyReviewAvailable = false;
         Callout::Tone dependencyReviewTone = Callout::Tone::Info;
         std::string dependencyReviewMessage;
@@ -127,7 +128,7 @@ struct FlowgraphPane {
                     "Connect block outputs to inputs.",
                     "Processing starts automatically.",
                 },
-                .hints = flowgraphHints,
+                .hints = this->config.showTips ? flowgraphHints : std::vector<std::string>{},
                 .actions = {
                     {
                         .id = "open-examples",

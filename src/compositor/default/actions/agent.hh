@@ -505,9 +505,8 @@ struct AgentActions {
     }
 
     void openIntelligencePage(IntelligencePage page) {
-        state.settings.section = SettingsSection::Intelligence;
+        WorkbenchActions::OpenSettings(state, SettingsSection::Intelligence);
         state.settings.intelligencePage = page;
-        WorkbenchActions::Open(state, WorkspaceTab::Settings);
     }
 
     void renameProvider(const std::string& previous, const std::string& next) {

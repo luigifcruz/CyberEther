@@ -360,6 +360,31 @@ TEST_CASE("A flowgraph without detached views fills its tab with the editor and 
     CHECK_FALSE(layout->tiles->children.has_value());
 }
 
+TEST_CASE("The getting started hint shows a tip only while tips are enabled", "[core][sakura][flowgraph][pane]") {
+    PaneRig rig;
+    const auto tips = [&rig] {
+        U64 count = 0;
+        for (auto* text : Find<Sakura::Text>(rig.layoutDock())) {
+            if (text->config().str.starts_with("Tip: ")) {
+                ++count;
+            }
+        }
+        return count;
+    };
+    REQUIRE(rig.build().empty);
+
+    rig.frame();
+    CHECK(tips() == 1);
+
+    rig.state.interface.showTips = false;
+    rig.frame();
+    CHECK(tips() == 0);
+
+    rig.state.interface.showTips = true;
+    rig.frame();
+    CHECK(tips() == 1);
+}
+
 TEST_CASE("A detached view joins as a column beside the editor and the layout is reported once",
           "[core][sakura][flowgraph][pane]") {
     PaneRig rig;

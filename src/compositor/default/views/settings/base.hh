@@ -2,6 +2,8 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_BASE_HH
 
 #include "../../model/ui.hh"
+#include "../components/sidebar_navigation.hh"
+#include "../components/sidebar_tiles.hh"
 #include "about.hh"
 #include "developer.hh"
 #include "general.hh"
@@ -21,50 +23,20 @@
 
 namespace Jetstream {
 
-struct SettingsSidebarHeading : public Sakura::Stack {
-    static constexpr F32 Inset = 9.0f;
-
-    void update(std::string label, bool title = false) {
-        using Text = Sakura::Text;
-
-        inset.update({});
-        text.update({
-            .str = std::move(label),
-            .font = title ? Text::Font::DisplaySemiBold : Text::Font::Display,
-            .tone = title ? Text::Tone::Primary : Text::Tone::Secondary,
-            .scale = title ? 1.8f : 18.0f / 15.0f,
-        });
-        Stack::update({
-            .axis = Axis::Horizontal,
-            .spacing = 0.0f,
-            .items = {
-                {.child = &inset, .size = Inset},
-                {.child = &text},
-            },
-        });
-    }
-
- private:
-    Sakura::Spacer inset;
-    Sakura::Text text;
-};
-
 struct SettingsView {
     static constexpr const char* PaneId = "settings";
-    static constexpr const char* TileId = "settings:page";
-    static constexpr F32 SidebarWidth = 240.0f;
     static constexpr F32 PageWidth = 720.0f;
 
     struct Config {
         SettingsSection section = SettingsSection::General;
-        GeneralSettingsPanel::Config general;
-        RemoteSettingsPanel::Config remote;
-        RuntimeSettingsPanel::Config runtime;
-        RegistrySettingsPanel::Config registry;
-        IntelligenceSettingsPanel::Config intelligence;
-        DeveloperSettingsPanel::Config developer;
-        AboutSettingsPanel::Config about;
-        LegalSettingsPanel::Config legal;
+        GeneralSettingsView::Config general;
+        RemoteSettingsView::Config remote;
+        RuntimeSettingsView::Config runtime;
+        RegistrySettingsView::Config registry;
+        IntelligenceSettingsView::Config intelligence;
+        DeveloperSettingsView::Config developer;
+        AboutSettingsView::Config about;
+        LegalSettingsView::Config legal;
         std::function<void(SettingsSection)> onSectionChange;
         std::function<void()> onClose;
         std::function<void()> onFocus;
@@ -72,14 +44,6 @@ struct SettingsView {
 
     void update(Config config) {
         this->config = std::move(config);
-        title.update("Settings", true);
-        titleSpacing.update({.lines = 3});
-        preferencesHeading.update("Preferences");
-        advancedSpacing.update({.lines = 3});
-        advancedHeading.update("Advanced");
-        applicationSpacing.update({.lines = 3});
-        applicationHeading.update("Application");
-        headingSpacing.update({});
         navItem(SettingsSection::General, ICON_LC_MONITOR, "General");
         navItem(SettingsSection::Remote, ICON_LC_RADIO_TOWER, "Remote");
         navItem(SettingsSection::Runtime, ICON_LC_CPU, "Runtime");
@@ -88,21 +52,12 @@ struct SettingsView {
         navItem(SettingsSection::Developer, ICON_LC_FLASK_CONICAL, "Developer");
         navItem(SettingsSection::About, ICON_LC_INFO, "About");
         navItem(SettingsSection::Legal, ICON_LC_SCALE, "Legal");
-        general.update(this->config.general);
-        remote.update(this->config.remote);
-        runtime.update(this->config.runtime);
-        registry.update(this->config.registry);
-        intelligence.update(this->config.intelligence);
-        developer.update(this->config.developer);
-        about.update(this->config.about);
-        legal.update(this->config.legal);
+        Sakura::Component& content = updateSection();
 
-        std::vector<Sakura::Stack::Item> navigationItems = {
-            {.child = &title},
-            {.child = &titleSpacing},
-            {.child = &preferencesHeading},
-            {.child = &headingSpacing},
+        const auto button = [this](SettingsSection section) -> Sakura::Component* {
+            return &navigationButtons[static_cast<U64>(section)];
         };
+        std::vector<Sakura::Component*> preferences;
         for (const auto section : {SettingsSection::General,
                                    SettingsSection::Remote,
                                    SettingsSection::Runtime,
@@ -113,37 +68,19 @@ struct SettingsView {
                 continue;
             }
 #endif
-            navigationItems.push_back({.child = &navigationButtons[static_cast<U64>(section)]});
+            preferences.push_back(button(section));
         }
-        navigationItems.push_back({.child = &advancedSpacing});
-        navigationItems.push_back({.child = &advancedHeading});
-        navigationItems.push_back({.child = &advancedHeadingSpacing});
-        navigationItems.push_back({.child = &navigationButtons[static_cast<U64>(SettingsSection::Developer)]});
-        navigationItems.push_back({.child = &applicationSpacing});
-        navigationItems.push_back({.child = &applicationHeading});
-        navigationItems.push_back({.child = &applicationHeadingSpacing});
-        navigationItems.push_back({.child = &navigationButtons[static_cast<U64>(SettingsSection::About)]});
-        navigationItems.push_back({.child = &navigationButtons[static_cast<U64>(SettingsSection::Legal)]});
-        advancedHeadingSpacing.update({});
-        applicationHeadingSpacing.update({});
         navigation.update({
-            .spacing = 1.0f,
-            .items = std::move(navigationItems),
-        });
-        navigationFrame.update({
-            .content = &navigation,
-            .padding = 9.0f,
-            .border = false,
-            .colorKey = "transparent",
-        });
-        navigationArea.update({
-            .content = &navigationFrame,
-            .alwaysScrollbar = false,
-            .border = false,
+            .title = "Settings",
+            .sections = {
+                {.heading = "Preferences", .items = std::move(preferences)},
+                {.heading = "Advanced", .items = {button(SettingsSection::Developer)}},
+                {.heading = "Application", .items = {button(SettingsSection::About), button(SettingsSection::Legal)}},
+            },
         });
         page.update({
             .id = "settings-page",
-            .content = &section(),
+            .content = &content,
             .maxWidth = PageWidth,
             .transparent = true,
         });
@@ -157,25 +94,12 @@ struct SettingsView {
             .content = &pageFrame,
             .alwaysScrollbar = false,
             .border = false,
-        });
-        layout.update({
-            .left = &navigationArea,
-            .right = &pageArea,
-            .leftWidth = SidebarWidth,
-            .height = Sakura::Fill,
-            .gutter = 0.0f,
+            .overlay = true,
+            .scrollbarInset = {0.0f, Sakura::Dock::TileRounding},
         });
         tile.update({
-            .panes = {{
-                .id = TileId,
-                .title = "Settings",
-                .group = TileId,
-                .content = &layout,
-                .closable = false,
-                .maximizable = false,
-            }},
-            .columns = true,
-            .flexPane = TileId,
+            .sidebar = &navigation,
+            .page = &pageArea,
         });
     }
 
@@ -188,6 +112,7 @@ struct SettingsView {
             .id = PaneId,
             .title = "Settings",
             .group = "main",
+            .icon = ICON_LC_SETTINGS,
             .content = &tile,
             .onClose = config.onClose,
             .onFocus = config.onFocus,
@@ -208,56 +133,49 @@ struct SettingsView {
         });
     }
 
-    Sakura::Component& section() {
+    template<typename View, typename SectionConfig>
+    static Sakura::Component& Show(View& view, const SectionConfig& sectionConfig) {
+        view.update(sectionConfig);
+        return view.content();
+    }
+
+    Sakura::Component& updateSection() {
         switch (config.section) {
             case SettingsSection::General:
-                return general.content();
+                return Show(general, config.general);
             case SettingsSection::Remote:
-                return remote.content();
+                return Show(remote, config.remote);
             case SettingsSection::Runtime:
-                return runtime.content();
+                return Show(runtime, config.runtime);
             case SettingsSection::Registry:
-                return registry.content();
+                return Show(registry, config.registry);
             case SettingsSection::Intelligence:
-                return intelligence.content();
+                return Show(intelligence, config.intelligence);
             case SettingsSection::Developer:
-                return developer.content();
+                return Show(developer, config.developer);
             case SettingsSection::About:
-                return about.content();
+                return Show(about, config.about);
             case SettingsSection::Legal:
-                return legal.content();
+                return Show(legal, config.legal);
         }
-        return general.content();
+        return Show(general, config.general);
     }
 
     Config config;
-    SettingsSidebarHeading title;
-    Sakura::Spacer titleSpacing;
-    SettingsSidebarHeading preferencesHeading;
-    Sakura::Spacer headingSpacing;
-    Sakura::Spacer advancedSpacing;
-    SettingsSidebarHeading advancedHeading;
-    Sakura::Spacer advancedHeadingSpacing;
-    Sakura::Spacer applicationSpacing;
-    SettingsSidebarHeading applicationHeading;
-    Sakura::Spacer applicationHeadingSpacing;
     std::array<Sakura::SidebarItem, 8> navigationButtons;
-    Sakura::Stack navigation;
-    Sakura::Div navigationFrame;
-    Sakura::ScrollArea navigationArea;
-    GeneralSettingsPanel general;
-    RemoteSettingsPanel remote;
-    RuntimeSettingsPanel runtime;
-    RegistrySettingsPanel registry;
-    IntelligenceSettingsPanel intelligence;
-    DeveloperSettingsPanel developer;
-    AboutSettingsPanel about;
-    LegalSettingsPanel legal;
+    SidebarNavigation navigation;
+    GeneralSettingsView general;
+    RemoteSettingsView remote;
+    RuntimeSettingsView runtime;
+    RegistrySettingsView registry;
+    IntelligenceSettingsView intelligence;
+    DeveloperSettingsView developer;
+    AboutSettingsView about;
+    LegalSettingsView legal;
     Sakura::Panel page;
     Sakura::Div pageFrame;
     Sakura::ScrollArea pageArea;
-    Sakura::SplitView layout;
-    Sakura::Dock tile;
+    SidebarTiles tile;
 };
 
 }  // namespace Jetstream

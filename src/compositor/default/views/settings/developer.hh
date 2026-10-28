@@ -1,7 +1,8 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_DEVELOPER_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_DEVELOPER_HH
 
-#include "components/settings_group.hh"
+#include "../components/compact_button.hh"
+#include "../components/section_group.hh"
 #include "components/settings_header.hh"
 
 #include "jetstream/render/sakura/base.hh"
@@ -13,7 +14,7 @@
 
 namespace Jetstream {
 
-struct DeveloperSettingsPanel {
+struct DeveloperSettingsView {
     struct Config {
         bool timingEnabled = false;
         int logLevel = JST_LOG_DEBUG_DEFAULT_LEVEL;
@@ -71,16 +72,22 @@ struct DeveloperSettingsPanel {
                 },
             },
         });
-        benchmarksButton.update(compactButton("Open", [this]() {
-            if (this->config.onShowBenchmarks) {
-                this->config.onShowBenchmarks();
-            }
-        }));
-        reloadButton.update(compactButton("Reload", [this]() {
-            if (this->config.onReloadPlugins) {
-                this->config.onReloadPlugins();
-            }
-        }));
+        benchmarksButton.update({
+            .str = "Open",
+            .onClick = [this]() {
+                if (this->config.onShowBenchmarks) {
+                    this->config.onShowBenchmarks();
+                }
+            },
+        });
+        reloadButton.update({
+            .str = "Reload",
+            .onClick = [this]() {
+                if (this->config.onReloadPlugins) {
+                    this->config.onReloadPlugins();
+                }
+            },
+        });
         toolsGroup.update({
             .title = "Tools",
             .description = "Utilities for working on blocks and plugins.",
@@ -112,16 +119,6 @@ struct DeveloperSettingsPanel {
     }
 
  private:
-    static Sakura::Button::Config compactButton(std::string label, std::function<void()> onClick) {
-        return {
-            .str = std::move(label),
-            .textScale = 0.9f,
-            .padding = {9.0f, 5.0f},
-            .onClick = std::move(onClick),
-            .font = Sakura::Text::Font::Sans,
-        };
-    }
-
     static std::string logLevelLabel(int logLevel) {
         switch (logLevel) {
             case 0: return "Fatal / Error";
@@ -146,10 +143,10 @@ struct DeveloperSettingsPanel {
     SettingsHeader header;
     Sakura::Toggle timingToggle;
     Sakura::Combo logLevelCombo;
-    SettingsGroup diagnosticsGroup;
-    Sakura::Button benchmarksButton;
-    Sakura::Button reloadButton;
-    SettingsGroup toolsGroup;
+    SectionGroup diagnosticsGroup;
+    CompactButton benchmarksButton;
+    CompactButton reloadButton;
+    SectionGroup toolsGroup;
     Sakura::Stack stack;
 };
 

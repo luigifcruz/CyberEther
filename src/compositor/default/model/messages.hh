@@ -254,6 +254,10 @@ struct MailSetBackgroundParticles {
     bool value = false;
 };
 
+struct MailSetShowTips {
+    bool value = false;
+};
+
 struct MailSetFlowgraphMetadataVisible {
     bool value = false;
 };
@@ -605,6 +609,7 @@ using Mail = std::variant<MailNewFlowgraph,
                           MailCopyText,
                           MailQuit,
                           MailSetBackgroundParticles,
+                          MailSetShowTips,
                           MailSetFlowgraphMetadataVisible,
                           MailSetFlowgraphMetadataSearch,
                           MailSetFlowgraphEnvironmentVisible,

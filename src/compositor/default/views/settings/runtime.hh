@@ -1,8 +1,9 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_RUNTIME_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_RUNTIME_HH
 
-#include "components/settings_group.hh"
+#include "../components/section_group.hh"
 #include "components/settings_header.hh"
+#include "../components/status_badge.hh"
 
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/render/tools/icons_lucide.hh"
@@ -16,7 +17,7 @@
 
 namespace Jetstream {
 
-struct RuntimeSettingsPanel {
+struct RuntimeSettingsView {
     struct Config {
         std::string pythonPath;
         std::string dependencyPolicy = "prompt";
@@ -82,12 +83,9 @@ struct RuntimeSettingsPanel {
             .colorKey = "transparent",
             .hoveredColorKey = "transparent",
         });
-        const std::string tone = this->config.pythonValidation.valid ? "banner_success" : "banner_error";
         statusBadge.update({
             .label = validationBadge(),
-            .backgroundColorKey = tone + "_bg",
-            .borderColorKey = tone + "_border",
-            .textColorKey = tone + "_text",
+            .tone = this->config.pythonValidation.valid ? StatusBadge::Tone::Success : StatusBadge::Tone::Error,
         });
 
         std::vector<Sakura::SettingCard::Row> pythonRows = {{
@@ -283,12 +281,12 @@ struct RuntimeSettingsPanel {
     Sakura::Button browseButton;
     Sakura::Stack pythonPathControls;
     Sakura::Div pythonPathField;
-    Sakura::Badge statusBadge;
-    SettingsGroup pythonGroup;
+    StatusBadge statusBadge;
+    SectionGroup pythonGroup;
     Sakura::Combo dependencyPolicyCombo;
-    SettingsGroup dependencyGroup;
+    SectionGroup dependencyGroup;
     Sakura::Button cacheButton;
-    SettingsGroup cacheGroup;
+    SectionGroup cacheGroup;
     Sakura::Stack stack;
     bool customPathSelected = false;
 };

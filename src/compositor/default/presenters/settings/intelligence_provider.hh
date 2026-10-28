@@ -18,13 +18,13 @@ struct IntelligenceProviderPresenter {
 
     explicit IntelligenceProviderPresenter(const PresenterContext& context) : context(context) {}
 
-    IntelligenceProviderPage::Config build() const {
+    IntelligenceProviderView::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
         const auto& agent = context.state.agent;
         const auto& test = agent.providerTest;
         const auto& custom = Agent::Provider::Profile::Find(Agent::Provider::Kind::Custom);
 
-        IntelligenceProviderPage::Config config;
+        IntelligenceProviderView::Config config;
         for (const auto& profile : Agent::Provider::Profile::All()) {
             config.presets.push_back({
                 profile.name,
@@ -77,10 +77,6 @@ struct IntelligenceProviderPresenter {
                 .replaceName = replaceName,
                 .apiKey = apiKey,
             });
-        };
-
-        config.onBack = [enqueue]() {
-            enqueue(MailSetIntelligencePage{.page = IntelligencePage::Overview});
         };
 
         return config;

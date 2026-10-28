@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_LEGAL_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_LEGAL_HH
 
-#include "components/settings_group.hh"
+#include "../components/section_group.hh"
 #include "components/settings_header.hh"
 
 #include "jetstream/render/sakura/base.hh"
@@ -14,7 +14,7 @@
 
 namespace Jetstream {
 
-struct LegalSettingsPanel {
+struct LegalSettingsView {
     struct Config {
         std::function<void()> onViewFullLicenses;
     };
@@ -181,10 +181,10 @@ struct LegalSettingsPanel {
 
     Config config;
     SettingsHeader header;
-    SettingsGroup licenseGroup;
+    SectionGroup licenseGroup;
     std::vector<std::unique_ptr<Sakura::Badge>> licenses;
     Sakura::Button fullLicensesButton;
-    SettingsGroup thirdPartyGroup;
+    SectionGroup thirdPartyGroup;
     Sakura::Stack stack;
 };
 

@@ -17,9 +17,9 @@ struct GeneralSettingsPresenter {
 
     explicit GeneralSettingsPresenter(const PresenterContext& context) : context(context) {}
 
-    GeneralSettingsPanel::Config build() const {
+    GeneralSettingsView::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
-        return GeneralSettingsPanel::Config{
+        return GeneralSettingsView::Config{
             .themes = Sakura::BuildThemeKeys(),
             .currentThemeKey = context.state.sakura.themeKey,
             .interfaceScale = context.state.graphics.scale,
@@ -27,6 +27,7 @@ struct GeneralSettingsPresenter {
                 ? GetDevicePrettyName(context.state.graphics.device.value())
                 : GetDevicePrettyName(context.state.system.render->device()),
             .backgroundParticles = context.state.interface.backgroundParticles,
+            .showTips = context.state.interface.showTips,
             .onThemeChange = [enqueue](const std::string& themeKey) {
                 enqueue(MailApplyTheme{themeKey});
             },
@@ -38,6 +39,9 @@ struct GeneralSettingsPresenter {
             },
             .onBackgroundParticlesChange = [enqueue](bool value) {
                 enqueue(MailSetBackgroundParticles{.value = value});
+            },
+            .onShowTipsChange = [enqueue](bool value) {
+                enqueue(MailSetShowTips{.value = value});
             },
         };
     }

@@ -8,7 +8,6 @@
 #include <jetstream/render/sakura/components/panel.hh>
 #include <jetstream/render/sakura/components/setting_card.hh>
 #include <jetstream/render/sakura/components/sidebar_item.hh>
-#include <jetstream/render/sakura/components/split_view.hh>
 #include <jetstream/render/sakura/components/stack.hh>
 #include <jetstream/render/sakura/components/table.hh>
 #include <jetstream/render/sakura/components/text.hh>
@@ -339,18 +338,6 @@ TEST_CASE("Panels center their content inside the maximum width", "[core][sakura
     host.place(scene.ctx, {0.0f, 0.0f, 600.0f, 100.0f});
     CHECK(Peek::Frame(content).x == 200.0f);
     CHECK(Peek::Frame(content).width == 200.0f);
-}
-
-TEST_CASE("Split view gutters set the gap on both sides of the divider", "[core][sakura][settings]") {
-    const Scene scene;
-    Probe left({50.0f, 20.0f});
-    Probe right({50.0f, 20.0f});
-    Sakura::SplitView split;
-    split.update({.left = &left, .right = &right, .leftWidth = 100.0f, .height = Sakura::Fill, .gutter = 0.0f});
-    Host host(split);
-    host.place(scene.ctx, {0.0f, 0.0f, 400.0f, 100.0f});
-    CHECK(Peek::Frame(left).width == 100.0f);
-    CHECK(Peek::Frame(right).x == 101.0f);
 }
 
 TEST_CASE("Text inputs and combos draw an outline only when a border color is set", "[core][sakura][settings]") {

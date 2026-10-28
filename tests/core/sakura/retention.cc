@@ -28,7 +28,6 @@
 #include <jetstream/render/sakura/components/search_catalog.hh>
 #include <jetstream/render/sakura/components/setting_field.hh>
 #include <jetstream/render/sakura/components/spacer.hh>
-#include <jetstream/render/sakura/components/split_view.hh>
 #include <jetstream/render/sakura/components/stack.hh>
 #include <jetstream/render/sakura/components/status_bar.hh>
 #include <jetstream/render/sakura/components/table.hh>
@@ -1238,27 +1237,6 @@ TEST_CASE("Scrollers clamp a configured offset against the viewport they are lai
     CHECK(shrunk == Drawn(freshPlace));
     CHECK(offset.x == 800.0f);
     CHECK(offset.y == 550.0f);
-}
-
-TEST_CASE("Split views settle and repaint when the divider moves", "[core][sakura][retention]") {
-    Scene scene;
-    Sakura::Text left;
-    Sakura::Text right;
-    Sakura::SplitView split;
-    Place place(split, {10.0f, 10.0f, 500.0f, 200.0f});
-    Frames frames(place, kScreen, scene.context());
-    F32 leftWidth = 150.0f;
-    const auto update = [&] {
-        left.update({.str = "Left"});
-        right.update({.str = "Right"});
-        split.update({.left = &left, .right = &right, .leftWidth = leftWidth, .height = 200.0f});
-    };
-    REQUIRE(frames.settle(update));
-    CHECK(Retains(frames, update));
-
-    leftWidth = 200.0f;
-    CHECK(RepaintOnly(frames.run(update)));
-    CHECK(Retains(frames, update));
 }
 
 TEST_CASE("Grids settle and repaint when an item changes", "[core][sakura][retention]") {

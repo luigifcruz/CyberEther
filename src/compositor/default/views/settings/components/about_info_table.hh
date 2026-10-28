@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_COMPONENTS_ABOUT_INFO_TABLE_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_COMPONENTS_ABOUT_INFO_TABLE_HH
 
-#include "settings_group.hh"
+#include "../../components/section_group.hh"
 
 #include "jetstream/render/sakura/base.hh"
 
@@ -12,9 +12,8 @@
 
 namespace Jetstream {
 
-struct AboutInfoTable : public SettingsGroup {
+struct AboutInfoTable : public SectionGroup {
     struct Config {
-        std::string id;
         std::string title;
         std::vector<std::vector<std::string>> rows;
     };
@@ -37,7 +36,7 @@ struct AboutInfoTable : public SettingsGroup {
             });
             rows.push_back({.label = label, .control = values[index].get(), .wide = true});
         }
-        SettingsGroup::update({
+        SectionGroup::update({
             .title = std::move(config.title),
             .rows = std::move(rows),
         });

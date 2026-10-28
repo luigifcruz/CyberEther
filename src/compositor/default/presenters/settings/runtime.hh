@@ -17,9 +17,9 @@ struct RuntimeSettingsPresenter {
 
     explicit RuntimeSettingsPresenter(const PresenterContext& context) : context(context) {}
 
-    RuntimeSettingsPanel::Config build() const {
+    RuntimeSettingsView::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
-        return RuntimeSettingsPanel::Config{
+        return RuntimeSettingsView::Config{
             .pythonPath = context.state.runtime.pythonPath,
             .dependencyPolicy = context.state.runtime.dependencyPolicy,
             .pythonCandidates = context.state.runtime.pythonCandidates,

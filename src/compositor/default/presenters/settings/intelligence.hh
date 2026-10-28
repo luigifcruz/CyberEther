@@ -9,40 +9,59 @@
 #include "../../views/settings/intelligence.hh"
 
 #include <map>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Jetstream {
 
 struct IntelligenceSettingsPresenter {
     const PresenterContext& context;
+    IntelligenceProviderPresenter provider;
+    IntelligenceModelPresenter model;
 
-    explicit IntelligenceSettingsPresenter(const PresenterContext& context) : context(context) {}
+    explicit IntelligenceSettingsPresenter(const PresenterContext& context) : context(context),
+                                                                              provider(context),
+                                                                              model(context) {}
 
-    static std::vector<std::string> modelTags(const Settings::Intelligence::Model& model) {
+    static std::vector<std::string> ModelTags(const Settings::Intelligence::Model& model) {
         std::vector<std::string> tags;
         if (model.contextLength > 0) {
-            tags.push_back(AgentLabels::Tokens(model.contextLength) + " context");
+            tags.push_back(jst::fmt::format("{} context", AgentLabels::Tokens(model.contextLength)));
         }
         if (model.priced) {
-            tags.push_back(AgentLabels::Price(model.inputCost) + " in");
-            tags.push_back(AgentLabels::Price(model.outputCost) + " out");
+            tags.push_back(jst::fmt::format("{} in", AgentLabels::Price(model.inputCost)));
+            tags.push_back(jst::fmt::format("{} out", AgentLabels::Price(model.outputCost)));
         }
         return tags;
     }
 
-    IntelligenceSettingsPanel::Config build() const {
+    static StatusBadge::Config Badge(const AgentProviderStatus& status) {
+        if (status.ready) {
+            return {.label = status.label, .tone = StatusBadge::Tone::Success};
+        }
+        return {
+            .label = status.label,
+            .tone = status.pending ? StatusBadge::Tone::Neutral : StatusBadge::Tone::Warning,
+        };
+    }
+
+    IntelligenceSettingsView::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
         const auto& agent = context.state.agent;
 
-        IntelligenceSettingsPanel::Config config;
+        IntelligenceSettingsView::Config config;
         config.page = context.state.settings.intelligencePage;
         if (config.page == IntelligencePage::Provider) {
-            config.provider = IntelligenceProviderPresenter(context).build();
+            config.provider = provider.build();
         } else if (config.page == IntelligencePage::AddModel) {
-            config.model = IntelligenceModelPresenter(context).build();
+            config.model = model.build();
         }
         config.enabled = agent.settings.enabled;
+        config.onNavigate = [enqueue](IntelligencePage page) {
+            enqueue(MailSetIntelligencePage{.page = page});
+        };
         config.onEnabledChange = [enqueue](bool value) {
             enqueue(MailSetAgentEnabled{.value = value});
         };
@@ -50,23 +69,18 @@ struct IntelligenceSettingsPresenter {
         const AgentProviders providers(agent);
 
         std::map<std::string, AgentProviderStatus> statuses;
-        for (const auto& provider : providers.all()) {
-            const auto status = AgentLabels::Status(agent, provider);
-            statuses.try_emplace(provider.name, status);
-            config.providers.push_back({
-                .name = provider.name,
-                .status = status.label,
-                .ready = status.ready,
-                .pending = status.pending,
-            });
+        for (const auto& entry : providers.all()) {
+            const auto status = AgentLabels::Status(agent, entry);
+            statuses.try_emplace(entry.name, status);
+            config.providers.push_back({.name = entry.name, .status = Badge(status)});
         }
 
-        for (const auto& model : agent.settings.models) {
+        for (const auto& entry : agent.settings.models) {
             config.models.push_back({
-                .provider = model.provider,
-                .id = model.id,
-                .label = AgentLabels::Model(model),
-                .tags = modelTags(model),
+                .provider = entry.provider,
+                .id = entry.id,
+                .label = AgentLabels::Model(entry),
+                .tags = ModelTags(entry),
             });
         }
 
@@ -78,39 +92,31 @@ struct IntelligenceSettingsPresenter {
         voiceRow.available = availability.state != AgentProviders::VoiceAvailability::State::Unsupported;
         for (U64 i = 0; i < backends.size(); ++i) {
             const auto& backend = backends[i];
-            const auto label = AgentLabels::Model(backend);
-            voiceRow.backends.push_back(jst::fmt::format("{} ({})", label, backend.provider));
+            voiceRow.backends.push_back(jst::fmt::format("{} ({})", AgentLabels::Model(backend), backend.provider));
             if (AgentProviders::Same(backend, voice.backend)) {
                 voiceRow.backend = i;
             }
         }
 
         const auto models = Agent::Live::Models();
-        for (const auto& model : models) {
-            voiceRow.models.push_back(AgentLabels::Title(model));
-        }
-        voiceRow.model = AgentLabels::Title(voice.model);
-
+        auto modelOptions = TitledOptions(models, voice.model);
+        voiceRow.models = std::move(modelOptions.labels);
+        voiceRow.model = modelOptions.selected;
         const auto voices = Agent::Live::Voices();
-        for (const auto& name : voices) {
-            voiceRow.voices.push_back(AgentLabels::Title(name));
-        }
-        voiceRow.voice = AgentLabels::Title(voice.voice);
+        auto voiceOptions = TitledOptions(voices, voice.voice);
+        voiceRow.voices = std::move(voiceOptions.labels);
+        voiceRow.voice = voiceOptions.selected;
 
         if (availability.state == AgentProviders::VoiceAvailability::State::Ready) {
             const auto cached = statuses.find(voice.backend.provider);
-            AgentProviderStatus status;
-            if (cached != statuses.end()) {
-                status = cached->second;
-            } else {
-                const auto provider = providers.find(voice.backend.provider);
-                status = AgentLabels::Status(agent, provider);
-            }
-            voiceRow.ready = status.ready;
-            voiceRow.pending = status.pending;
-            voiceRow.status = std::move(status.label);
+            voiceRow.status = Badge(cached != statuses.end()
+                                        ? cached->second
+                                        : AgentLabels::Status(agent, providers.find(voice.backend.provider)));
         } else {
-            voiceRow.status = AgentLabels::Voice(availability.state);
+            voiceRow.status = {
+                .label = AgentLabels::Voice(availability.state),
+                .tone = voiceRow.available ? StatusBadge::Tone::Warning : StatusBadge::Tone::Neutral,
+            };
         }
 
         config.onVoiceBackendSelect = [enqueue, backends](U64 index) {
@@ -118,20 +124,14 @@ struct IntelligenceSettingsPresenter {
                 enqueue(MailSetAgentVoiceBackend{.value = backends[index]});
             }
         };
-        config.onVoiceModelChange = [enqueue, models](const std::string& label) {
-            for (const auto& model : models) {
-                if (AgentLabels::Title(model) == label) {
-                    enqueue(MailSetAgentVoiceModel{.value = model});
-                    return;
-                }
+        config.onVoiceModelSelect = [enqueue, models](U64 index) {
+            if (index < models.size()) {
+                enqueue(MailSetAgentVoiceModel{.value = models[index]});
             }
         };
-        config.onVoiceChange = [enqueue, voices](const std::string& label) {
-            for (const auto& name : voices) {
-                if (AgentLabels::Title(name) == label) {
-                    enqueue(MailSetAgentVoiceName{.value = name});
-                    return;
-                }
+        config.onVoiceSelect = [enqueue, voices](U64 index) {
+            if (index < voices.size()) {
+                enqueue(MailSetAgentVoiceName{.value = voices[index]});
             }
         };
 
@@ -147,11 +147,28 @@ struct IntelligenceSettingsPresenter {
         config.onOpenAddModel = [enqueue]() {
             enqueue(MailOpenAgentModelPicker{});
         };
-        config.onRemoveModel = [enqueue](const IntelligenceSettingsPanel::ModelRow& model) {
+        config.onRemoveModel = [enqueue](const IntelligenceSettingsView::ModelRow& model) {
             enqueue(MailRemoveAgentModel{.value = {model.provider, model.id}});
         };
 
         return config;
+    }
+
+    struct Options {
+        std::vector<std::string> labels;
+        std::optional<U64> selected;
+    };
+
+    template<typename Ids>
+    static Options TitledOptions(const Ids& ids, const std::string& current) {
+        Options options;
+        for (const auto& id : ids) {
+            if (id == current) {
+                options.selected = options.labels.size();
+            }
+            options.labels.push_back(AgentLabels::Title(id));
+        }
+        return options;
     }
 };
 

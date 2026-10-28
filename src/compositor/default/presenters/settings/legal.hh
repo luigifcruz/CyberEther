@@ -13,9 +13,9 @@ struct LegalSettingsPresenter {
 
     explicit LegalSettingsPresenter(const PresenterContext& context) : context(context) {}
 
-    LegalSettingsPanel::Config build() const {
+    LegalSettingsView::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
-        return LegalSettingsPanel::Config{
+        return LegalSettingsView::Config{
             .onViewFullLicenses = [enqueue]() {
                 enqueue(MailOpenUrl{.url = "https://cyberether.org/docs/acknowledgments"});
             },

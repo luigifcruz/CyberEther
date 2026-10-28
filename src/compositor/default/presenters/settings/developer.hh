@@ -13,9 +13,9 @@ struct DeveloperSettingsPresenter {
 
     explicit DeveloperSettingsPresenter(const PresenterContext& context) : context(context) {}
 
-    DeveloperSettingsPanel::Config build() const {
+    DeveloperSettingsView::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
-        return DeveloperSettingsPanel::Config{
+        return DeveloperSettingsView::Config{
             .timingEnabled = context.state.debug.timingEnabled,
             .logLevel = context.state.debug.logLevel,
             .onTimingEnabledChange = [enqueue](bool value) {

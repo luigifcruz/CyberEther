@@ -1,7 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_GENERAL_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_GENERAL_HH
 
-#include "components/settings_group.hh"
+#include "../components/section_group.hh"
 #include "components/settings_header.hh"
 
 #include "jetstream/memory/types.hh"
@@ -15,17 +15,19 @@
 
 namespace Jetstream {
 
-struct GeneralSettingsPanel {
+struct GeneralSettingsView {
     struct Config {
         std::vector<std::string> themes;
         std::string currentThemeKey;
         F32 interfaceScale = 1.0f;
         std::string renderer;
         bool backgroundParticles = false;
+        bool showTips = true;
         std::function<void(const std::string&)> onThemeChange;
         std::function<void(F32)> onInterfaceScaleChange;
         std::function<void(DeviceType)> onRendererChange;
         std::function<void(bool)> onBackgroundParticlesChange;
+        std::function<void(bool)> onShowTipsChange;
     };
 
     void update(Config config) {
@@ -81,6 +83,15 @@ struct GeneralSettingsPanel {
             },
         });
 
+        tipsToggle.update({
+            .value = this->config.showTips,
+            .onChange = [this](bool value) {
+                if (this->config.onShowTipsChange) {
+                    this->config.onShowTipsChange(value);
+                }
+            },
+        });
+
         rendererCombo.update({
             .id = "settings:renderer",
             .options = {
@@ -122,6 +133,11 @@ struct GeneralSettingsPanel {
                     .label = "Background Particles",
                     .description = "Animate floating particles in the workspace background.",
                     .control = &particlesToggle,
+                },
+                {
+                    .label = "Show Tips",
+                    .description = "Show a short tip when a flowgraph opens.",
+                    .control = &tipsToggle,
                 },
             },
         });
@@ -191,8 +207,9 @@ struct GeneralSettingsPanel {
     Sakura::Combo scaleCombo;
     Sakura::Combo rendererCombo;
     Sakura::Toggle particlesToggle;
-    SettingsGroup appearanceGroup;
-    SettingsGroup renderingGroup;
+    Sakura::Toggle tipsToggle;
+    SectionGroup appearanceGroup;
+    SectionGroup renderingGroup;
     Sakura::Stack stack;
     std::string renderer;
     std::string interfaceScale = "1.00x";

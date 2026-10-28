@@ -113,6 +113,7 @@ Result DefaultCompositor::create() {
     // Restore interface preferences.
 
     state.interface.backgroundParticles = settings.interface.backgroundParticles;
+    state.interface.showTips = settings.interface.showTips;
     state.interface.recentFlowgraphs = settings.interface.recentFlowgraphs;
     state.interface.favoriteFlowgraphs = settings.interface.favoriteFlowgraphs;
 

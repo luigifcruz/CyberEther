@@ -1,7 +1,9 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_COMPONENTS_ABOUT_UPDATE_CARD_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_COMPONENTS_ABOUT_UPDATE_CARD_HH
 
-#include "settings_group.hh"
+#include "../../components/compact_button.hh"
+#include "../../components/section_group.hh"
+#include "../../components/status_badge.hh"
 
 #include "jetstream/render/sakura/base.hh"
 
@@ -12,7 +14,7 @@
 
 namespace Jetstream {
 
-struct AboutUpdateCard : public SettingsGroup {
+struct AboutUpdateCard : public SectionGroup {
     struct Config {
         std::string version;
         bool supported = false;
@@ -27,14 +29,12 @@ struct AboutUpdateCard : public SettingsGroup {
         std::string updateVersion;
         std::string releaseNotes;
         std::string message;
-        std::string accentKey = "accent_color";
         std::function<void()> onCheckForUpdates;
         std::function<void()> onDownloadUpdate;
         std::function<void()> onApplyUpdate;
     };
 
     void update(Config config) {
-
         this->config = std::move(config);
         const bool hasUpdate = this->config.updateAvailable || this->config.downloading ||
                                this->config.ready || this->config.applying;
@@ -43,7 +43,7 @@ struct AboutUpdateCard : public SettingsGroup {
                                 (this->config.failed ||
                                  (!this->config.checking && !hasUpdate && !this->config.upToDate));
 
-        versionBadge.update(tone("Up to Date", "banner_success"));
+        versionBadge.update({.label = "Up to Date", .tone = StatusBadge::Tone::Success});
         channelCombo.update({
             .id = "settings:update-channel",
             .options = {"Stable"},
@@ -51,12 +51,7 @@ struct AboutUpdateCard : public SettingsGroup {
             .disabled = true,
             .borderColorKey = "border",
         });
-        unsupportedBadge.update({
-            .label = "Unsupported",
-            .backgroundColorKey = "header_hovered",
-            .borderColorKey = "border",
-            .textColorKey = "text_secondary",
-        });
+        unsupportedBadge.update({.label = "Unsupported"});
 
         changelog.update({.value = this->config.releaseNotes});
         progressBar.update({
@@ -66,34 +61,38 @@ struct AboutUpdateCard : public SettingsGroup {
             .backgroundColorKey = "border",
         });
 
-        checkButton.update(compact(this->config.checking ? "Checking..." : "Check for Updates",
-                                   !this->config.supported || this->config.checking,
-                                   Sakura::Button::Variant::Default,
-                                   [this]() {
-                                       if (this->config.onCheckForUpdates) {
-                                           this->config.onCheckForUpdates();
-                                       }
-                                   }));
+        checkButton.update({
+            .str = this->config.checking ? "Checking..." : "Check for Updates",
+            .tone = CompactButton::Tone::Strong,
+            .disabled = !this->config.supported || this->config.checking,
+            .onClick = [this]() {
+                if (this->config.onCheckForUpdates) {
+                    this->config.onCheckForUpdates();
+                }
+            },
+        });
         if (this->config.ready || this->config.applying) {
-            auto restart = compact("Restart to Update", this->config.applying, Sakura::Button::Variant::Action,
-                                   [this]() {
-                                       if (this->config.onApplyUpdate) {
-                                           this->config.onApplyUpdate();
-                                       }
-                                   });
-            restart.colorKey = "warning_btn";
-            restart.hoveredColorKey = "warning_btn_hovered";
-            restart.activeColorKey = "warning_btn_active";
-            restart.borderColorKey = "warning_btn_outline";
-            restart.textColorKey = "warning_btn_text";
-            actionButton.update(std::move(restart));
+            actionButton.update({
+                .str = "Restart to Update",
+                .tone = CompactButton::Tone::Warning,
+                .disabled = this->config.applying,
+                .onClick = [this]() {
+                    if (this->config.onApplyUpdate) {
+                        this->config.onApplyUpdate();
+                    }
+                },
+            });
         } else {
-            actionButton.update(compact("Download", this->config.downloading, Sakura::Button::Variant::Action,
-                                        [this]() {
-                                            if (this->config.onDownloadUpdate) {
-                                                this->config.onDownloadUpdate();
-                                            }
-                                        }));
+            actionButton.update({
+                .str = "Download",
+                .tone = CompactButton::Tone::Action,
+                .disabled = this->config.downloading,
+                .onClick = [this]() {
+                    if (this->config.onDownloadUpdate) {
+                        this->config.onDownloadUpdate();
+                    }
+                },
+            });
         }
 
         std::vector<Sakura::Stack::Item> versionItems;
@@ -149,7 +148,7 @@ struct AboutUpdateCard : public SettingsGroup {
             .content = this->config.releaseNotes.empty() ? nullptr : &changelog,
         });
 
-        SettingsGroup::update({
+        SectionGroup::update({
             .title = "Updates",
             .description = "Keep CyberEther up to date with the latest release.",
             .warning = this->config.supported ? "" : this->config.message,
@@ -159,38 +158,15 @@ struct AboutUpdateCard : public SettingsGroup {
     }
 
  private:
-    static Sakura::Badge::Config tone(std::string label, const std::string& key) {
-        return {
-            .label = std::move(label),
-            .backgroundColorKey = key + "_bg",
-            .borderColorKey = key + "_border",
-            .textColorKey = key + "_text",
-        };
-    }
-
-    static Sakura::Button::Config compact(std::string label,
-                                          bool disabled,
-                                          Sakura::Button::Variant variant,
-                                          std::function<void()> onClick) {
-        return {
-            .str = std::move(label),
-            .variant = variant,
-            .disabled = disabled,
-            .padding = {14.0f, 5.0f},
-            .onClick = std::move(onClick),
-            .font = Sakura::Text::Font::SansBold,
-        };
-    }
-
     Config config;
-    Sakura::Badge versionBadge;
-    Sakura::Badge unsupportedBadge;
+    StatusBadge versionBadge;
+    StatusBadge unsupportedBadge;
     Sakura::Combo channelCombo;
     Sakura::Markdown changelog;
     Sakura::FeatureCard hero;
     Sakura::ProgressBar progressBar;
-    Sakura::Button checkButton;
-    Sakura::Button actionButton;
+    CompactButton checkButton;
+    CompactButton actionButton;
     Sakura::Stack versionControls;
 };
 

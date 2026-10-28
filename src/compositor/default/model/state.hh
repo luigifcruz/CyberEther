@@ -154,6 +154,7 @@ struct DefaultCompositorState {
 
         bool filePending = false;
         bool backgroundParticles = true;
+        bool showTips = true;
         std::vector<Settings::Interface::FlowgraphEntry> recentFlowgraphs;
         std::vector<Settings::Interface::FlowgraphEntry> favoriteFlowgraphs;
         bool flowgraphMetadataVisible = false;

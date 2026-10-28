@@ -11,7 +11,6 @@
 #include <jetstream/render/sakura/components/scroll_area.hh>
 #include <jetstream/render/sakura/components/scroller.hh>
 #include <jetstream/render/sakura/components/spacer.hh>
-#include <jetstream/render/sakura/components/split_view.hh>
 #include <jetstream/render/sakura/components/stack.hh>
 #include <jetstream/render/sakura/components/wave_line.hh>
 
@@ -35,7 +34,6 @@ using Sakura::Layer;
 using Sakura::Overlay;
 using Sakura::Panel;
 using Sakura::Spacer;
-using Sakura::SplitView;
 using Sakura::Stack;
 
 }  // namespace
@@ -497,39 +495,6 @@ TEST_CASE("Grids honour an explicit size", "[core][sakura][layout]") {
     const auto measured = host.measureOf(ctx, {300.0f, kInfinite});
     CHECK(measured.x == 150.0f);
     CHECK(measured.y == 60.0f);
-}
-
-TEST_CASE("Split views give the left pane its configured width", "[core][sakura][layout]") {
-    const auto ctx = MakeContext();
-    Probe left({10.0f, 10.0f});
-    Probe right({10.0f, 10.0f});
-    SplitView split;
-    split.update({.left = &left, .right = &right, .height = 120.0f});
-    Host host(split);
-
-    host.place(ctx, {0.0f, 0.0f, 500.0f, 300.0f});
-
-    CHECK(left.laidFrame == Rect{0.0f, 4.0f, 220.0f, 292.0f});
-    CHECK(right.laidFrame == Rect{233.0f, 4.0f, 267.0f, 292.0f});
-
-    const auto measured = host.measureOf(ctx, {500.0f, kInfinite});
-    CHECK(measured.x == 500.0f);
-    CHECK(measured.y == 120.0f);
-}
-
-TEST_CASE("Split views clamp the left pane to narrow frames", "[core][sakura][layout]") {
-    const auto ctx = MakeContext();
-    Probe left({10.0f, 10.0f});
-    Probe right({10.0f, 10.0f});
-    SplitView split;
-    split.update({.left = &left, .right = &right, .leftWidth = 100.0f});
-    Host host(split);
-
-    host.place(ctx, {0.0f, 0.0f, 80.0f, 50.0f});
-
-    CHECK(left.laidFrame == Rect{0.0f, 4.0f, 80.0f, 42.0f});
-    CHECK(right.laidFrame == Rect{93.0f, 4.0f, 0.0f, 42.0f});
-    CHECK(left.laidClip == Rect{0.0f, 0.0f, 80.0f, 50.0f});
 }
 
 TEST_CASE("Divs measure content plus padding", "[core][sakura][layout]") {
@@ -1023,7 +988,7 @@ TEST_CASE("Scroll areas drop the stretch and gesture of the previous id", "[core
     CHECK_FALSE(host.send(event));
 }
 
-TEST_CASE("Panels and split views remount a child that came back from another owner", "[core][sakura][layout]") {
+TEST_CASE("Panels remount a child that came back from another owner", "[core][sakura][layout]") {
     const auto shown = [](Sakura::Component& root, Probe& probe) {
         const auto probes = Find<Probe>(root);
         return std::find(probes.begin(), probes.end(), &probe) != probes.end();
@@ -1049,28 +1014,6 @@ TEST_CASE("Panels and split views remount a child that came back from another ow
     first.update({.content = &child});
     firstFrames.run();
     CHECK(shown(firstRoot, child));
-
-    Probe left({50.0f, 20.0f});
-    Probe right({50.0f, 20.0f});
-    Sakura::SplitView split;
-    Sakura::Panel holder;
-    Place splitRoot(split, {0.0f, 0.0f, 400.0f, 100.0f});
-    Place holderRoot(holder, {0.0f, 0.0f, 200.0f, 100.0f});
-    Frames splitFrames(splitRoot);
-    Frames holderFrames(holderRoot);
-    splitFrames.verify = false;
-    holderFrames.verify = false;
-    split.update({.left = &left, .right = &right});
-    splitFrames.run();
-    REQUIRE(shown(splitRoot, left));
-    holder.update({.content = &left});
-    holderFrames.run();
-    holder.update({});
-    holderFrames.run();
-    split.update({.left = &left, .right = &right});
-    splitFrames.run();
-    CHECK(shown(splitRoot, left));
-    CHECK(shown(splitRoot, right));
 }
 
 TEST_CASE("Dragging an inset scroller thumb in place keeps the scroll offset", "[core][sakura][layout]") {

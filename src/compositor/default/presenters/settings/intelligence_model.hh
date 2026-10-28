@@ -20,11 +20,11 @@ struct IntelligenceModelPresenter {
 
     explicit IntelligenceModelPresenter(const PresenterContext& context) : context(context) {}
 
-    IntelligenceModelPage::Config build() const {
+    IntelligenceModelView::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
         const auto& catalog = context.state.agent.catalog;
 
-        IntelligenceModelPage::Config config;
+        IntelligenceModelView::Config config;
         config.search = catalog.search;
 
         const std::string needle = Text::ToLower(catalog.search);
@@ -49,9 +49,6 @@ struct IntelligenceModelPresenter {
         };
         config.onCommit = [enqueue](const Settings::Intelligence::Model& model) {
             enqueue(MailAddAgentModel{.value = model});
-        };
-        config.onBack = [enqueue]() {
-            enqueue(MailSetIntelligencePage{.page = IntelligencePage::Overview});
         };
 
         return config;

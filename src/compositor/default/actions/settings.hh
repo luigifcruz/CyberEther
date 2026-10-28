@@ -2,7 +2,6 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_SETTINGS_HH
 
 #include "persist.hh"
-#include "workbench.hh"
 #include "../model/callbacks.hh"
 #include "../model/messages.hh"
 #include "../model/state.hh"
@@ -16,6 +15,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <optional>
+#include <string>
 #include <tuple>
 #include <utility>
 
@@ -23,6 +23,7 @@ namespace Jetstream {
 
 struct SettingsActions {
     using Filter = std::tuple<MailSetBackgroundParticles,
+                              MailSetShowTips,
                               MailSetGraphicsScale,
                               MailSetGraphicsDevice,
                               MailSetSettingsSection,
@@ -49,11 +50,32 @@ struct SettingsActions {
         state(state),
         callbacks(callbacks) {}
 
+    static void Select(DefaultCompositorState& state, SettingsSection section) {
+        state.settings.section = section;
+        ResetPages(state);
+    }
+
+    static void ResetPages(DefaultCompositorState& state) {
+        state.settings.registryPage = RegistryPage::Overview;
+        state.settings.registryPlugin.clear();
+        state.settings.intelligencePage = IntelligencePage::Overview;
+    }
+
     Result handle(const MailSetBackgroundParticles& msg) {
         state.interface.backgroundParticles = msg.value;
 
         JST_CHECK(PersistSettings([&](Settings& settings) {
             settings.interface.backgroundParticles = msg.value;
+        }));
+
+        return Result::SUCCESS;
+    }
+
+    Result handle(const MailSetShowTips& msg) {
+        state.interface.showTips = msg.value;
+
+        JST_CHECK(PersistSettings([&](Settings& settings) {
+            settings.interface.showTips = msg.value;
         }));
 
         return Result::SUCCESS;
@@ -84,9 +106,7 @@ struct SettingsActions {
 
     Result handle(const MailSetSettingsSection& msg) {
         state.settings.section = msg.section;
-        state.settings.registryPage = RegistryPage::Overview;
-        state.settings.registryPlugin.clear();
-        state.settings.intelligencePage = IntelligencePage::Overview;
+        ResetPages(state);
         return Result::SUCCESS;
     }
 
@@ -231,10 +251,7 @@ struct SettingsActions {
         JST_CHECK(Settings::SetAsync(settings));
         state.registry.stale = true;
 
-        state.settings.section = SettingsSection::Registry;
-        state.settings.registryPage = RegistryPage::Overview;
-        state.settings.registryPlugin.clear();
-        WorkbenchActions::Open(state, WorkspaceTab::Settings);
+        Select(state, SettingsSection::Registry);
         callbacks.notify(Sakura::ToastType::Success, 3000, "Plugin loaded.");
         return Result::SUCCESS;
     }

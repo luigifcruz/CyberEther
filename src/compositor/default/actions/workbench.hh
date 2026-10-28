@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_WORKBENCH_HH
 
 #include "persist.hh"
+#include "settings.hh"
 #include "../support/docs.hh"
 #include "../model/callbacks.hh"
 #include "../model/messages.hh"
@@ -88,9 +89,7 @@ struct WorkbenchActions {
                 break;
             case WorkspaceTab::Settings:
                 ui.settingsTab = false;
-                state.settings.registryPage = RegistryPage::Overview;
-                state.settings.registryPlugin.clear();
-                state.settings.intelligencePage = IntelligencePage::Overview;
+                SettingsActions::ResetPages(state);
                 break;
             case WorkspaceTab::Docs:
                 ui.docsTab = false;
@@ -99,6 +98,11 @@ struct WorkbenchActions {
         if (ui.focusedTab == tab && !state.tabShown(tab)) {
             Focus(state, std::nullopt);
         }
+    }
+
+    static void OpenSettings(DefaultCompositorState& state, SettingsSection section) {
+        SettingsActions::Select(state, section);
+        Open(state, WorkspaceTab::Settings);
     }
 
     Result handle(const MailOpenStartTab&) {
@@ -140,11 +144,7 @@ struct WorkbenchActions {
     }
 
     Result handle(const MailOpenSettings& msg) {
-        state.settings.section = msg.section;
-        state.settings.registryPage = RegistryPage::Overview;
-        state.settings.registryPlugin.clear();
-        state.settings.intelligencePage = IntelligencePage::Overview;
-        Open(state, WorkspaceTab::Settings);
+        OpenSettings(state, msg.section);
         return Result::SUCCESS;
     }
 

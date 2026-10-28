@@ -115,6 +115,31 @@ TEST_CASE("Agent settings entry points focus the settings tab and retain the req
     CHECK(state.settings.intelligencePage == IntelligencePage::Provider);
 }
 
+TEST_CASE("Intelligence sub-pages open and focus the settings tab through the shared settings path",
+          "[agent][compositor][settings]") {
+    DefaultCompositorState state;
+    state.agent.settings.enabled = false;
+    state.interface.startTab = true;
+    state.interface.focusedTab = WorkspaceTab::Start;
+    state.settings.registryPage = RegistryPage::AddPlugin;
+    DefaultCompositorCallbacks callbacks;
+    AgentRuntime runtime(state, callbacks);
+    AgentActions actions(state, callbacks, runtime);
+
+    REQUIRE(actions.handle(MailOpenAgentProviderEditor{}) == Result::SUCCESS);
+    CHECK(state.interface.settingsTab);
+    CHECK(state.settingsTabActive());
+    CHECK_FALSE(state.startTabActive());
+    CHECK(state.interface.settingsTabRequests == 1);
+    CHECK(state.settings.section == SettingsSection::Intelligence);
+    CHECK(state.settings.intelligencePage == IntelligencePage::Provider);
+    CHECK(state.settings.registryPage == RegistryPage::Overview);
+
+    REQUIRE(actions.handle(MailOpenAgentModelPicker{}) == Result::SUCCESS);
+    CHECK(state.interface.settingsTabRequests == 2);
+    CHECK(state.settings.intelligencePage == IntelligencePage::AddModel);
+}
+
 TEST_CASE("Cancelled compositor commands cannot apply queued graph mutations",
           "[agent][compositor][cancellation]") {
     REQUIRE(Registry::DrainStaticRegistrations() == Result::SUCCESS);

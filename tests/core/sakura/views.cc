@@ -501,6 +501,7 @@ struct SettingsRig : ModalRig {
             .onThemeChange = [log](const std::string& value) { log("theme:" + value); },
             .onInterfaceScaleChange = [log](F32 value) { log("scale:" + std::to_string(value)); },
             .onBackgroundParticlesChange = [log](bool value) { log("particles:" + Flag(value)); },
+            .onShowTipsChange = [log](bool value) { log("tips:" + Flag(value)); },
         };
         config.remote = {
             .broker = {.address = "127.0.0.1", .port = 8686},
@@ -524,8 +525,17 @@ struct SettingsRig : ModalRig {
         config.registry = {
             .domains = {{.domain = "core", .blocks = {"FFT", "Filter"}}, {.domain = "dsp", .blocks = {"Window"}}},
             .plugins = {
-                {.name = "Alpha", .version = "1.0", .status = "Loaded", .path = "/plugins/alpha.cep"},
-                {.name = "Beta", .version = "-", .status = "Missing", .path = "/plugins/beta.cep"},
+                {
+                    .name = "Alpha",
+                    .version = "1.0",
+                    .status = {.label = "Loaded", .tone = StatusBadge::Tone::Success},
+                    .path = "/plugins/alpha.cep",
+                },
+                {
+                    .name = "Beta",
+                    .status = {.label = "Missing", .tone = StatusBadge::Tone::Warning},
+                    .path = "/plugins/beta.cep",
+                },
             },
             .onNavigate = [log](RegistryPage page, const std::string& plugin) {
                 log("nav:" + std::to_string(static_cast<int>(page)) + ":" + plugin);
@@ -547,7 +557,7 @@ struct SettingsRig : ModalRig {
         config.about = {
             .updateSupported = true,
             .updateUpToDate = true,
-            .infoTables = {{.id = "display", .title = "Display", .rows = {{"Viewport", "GLFW"}, {"Scale", "2.0"}}}},
+            .infoTables = {{.title = "Display", .rows = {{"Viewport", "GLFW"}, {"Scale", "2.0"}}}},
             .onCheckForUpdates = [log] { log("check"); },
             .onDownloadUpdate = [log] { log("download"); },
             .onApplyUpdate = [log] { log("apply"); },
@@ -2928,7 +2938,7 @@ TEST_CASE("Settings sections replace the editor content", "[core][sakura][views]
     SettingsRig rig;
     rig.show(SettingsSection::General);
     CHECK(rig.combos().size() == 3);
-    CHECK(Find<Sakura::Toggle>(rig.view.component()).size() == 1);
+    CHECK(Find<Sakura::Toggle>(rig.view.component()).size() == 2);
 
     rig.show(SettingsSection::Remote);
     CHECK(rig.combos().size() == 4);
@@ -2943,17 +2953,18 @@ TEST_CASE("Settings sections replace the editor content", "[core][sakura][views]
     CHECK(Find<Sakura::SettingCard>(rig.view.component()).size() == 2);
 }
 
-TEST_CASE("General settings report theme, scale, and background particles", "[core][sakura][views]") {
+TEST_CASE("General settings report theme, scale, background particles, and tips", "[core][sakura][views]") {
     SettingsRig rig;
     rig.show(SettingsSection::General);
 
     rig.choose(0, 1);
     rig.choose(1, 0);
     auto toggles = Find<Sakura::Toggle>(rig.view.component());
-    REQUIRE(toggles.size() == 1);
+    REQUIRE(toggles.size() == 2);
     CHECK(Press(rig.host, *toggles[0]));
+    CHECK(Press(rig.host, *toggles[1]));
     CHECK(rig.calls == std::vector<std::string>{"theme:Light", "scale:" + std::to_string(0.5f),
-                                                 "particles:false"});
+                                                 "particles:false", "tips:false"});
 }
 
 TEST_CASE("Developer settings report toggles and the log level", "[core][sakura][views]") {
@@ -3113,15 +3124,15 @@ TEST_CASE("Intelligence settings toggle features and manage providers and models
     };
     rig.config.intelligence = {
         .enabled = true,
-        .providers = {{.name = "openai", .status = "Ready", .ready = true}},
+        .providers = {{.name = "openai", .status = {.label = "Ready", .tone = StatusBadge::Tone::Success}}},
         .models = {{.provider = "openai", .id = "gpt", .label = "GPT", .tags = {"128k context"}}},
-        .voice = {.status = "Unsupported"},
+        .voice = {.status = {.label = "Unsupported"}},
         .onEnabledChange = [log](bool value) { log("enabled:" + Flag(value)); },
         .onOpenAddProvider = [log] { log("add-provider"); },
         .onEditProvider = [log](const std::string& name) { log("edit:" + name); },
         .onRemoveProvider = [log](const std::string& name) { log("remove:" + name); },
         .onOpenAddModel = [log] { log("add-model"); },
-        .onRemoveModel = [log](const IntelligenceSettingsPanel::ModelRow& model) { log("remove-model:" + model.id); },
+        .onRemoveModel = [log](const IntelligenceSettingsView::ModelRow& model) { log("remove-model:" + model.id); },
     };
     rig.show(SettingsSection::Intelligence);
 
@@ -3152,7 +3163,7 @@ TEST_CASE("Intelligence model rows keep Remove reachable when their tags overflo
         .enabled = true,
         .models = {{.provider = "openrouter", .id = "anthropic/claude", .label = "Claude",
                     .tags = {"1M context", "$15.00 in", "$75.00 out", "Reasoning", "Vision"}}},
-        .onRemoveModel = [&](const IntelligenceSettingsPanel::ModelRow& model) { removed.push_back(model.id); },
+        .onRemoveModel = [&](const IntelligenceSettingsView::ModelRow& model) { removed.push_back(model.id); },
     };
     rig.config.section = SettingsSection::Intelligence;
     rig.view.update(rig.config);
@@ -3193,7 +3204,9 @@ TEST_CASE("Intelligence provider page tests the draft and returns to the overvie
         .onAdd = [log](const Settings::Intelligence::Provider& provider, const std::string&) {
             log("add:" + provider.name);
         },
-        .onBack = [log] { log("back"); },
+    };
+    rig.config.intelligence.onNavigate = [log](IntelligencePage page) {
+        log(page == IntelligencePage::Overview ? "back" : "navigate");
     };
     rig.config.section = SettingsSection::Intelligence;
     rig.view.update(rig.config);
@@ -3221,7 +3234,9 @@ TEST_CASE("Intelligence model page lists models and adds the chosen one", "[core
         },
         .status = "2 of 2 models shown.",
         .onCommit = [log](const Settings::Intelligence::Model& model) { log("commit:" + model.id); },
-        .onBack = [log] { log("back"); },
+    };
+    rig.config.intelligence.onNavigate = [log](IntelligencePage page) {
+        log(page == IntelligencePage::Overview ? "back" : "navigate");
     };
     rig.show(SettingsSection::Intelligence);
 
@@ -3917,7 +3932,7 @@ TEST_CASE("Settings navigation, toggles, combos, and text fields repaint without
     CHECK(rig.move(away).clean());
 
     auto toggles = Find<Sakura::Toggle>(view.component());
-    REQUIRE(toggles.size() == 1);
+    REQUIRE(toggles.size() == 2);
     CheckHover(rig.host, step, *toggles[0], away);
     CHECK(Press(rig.host, *toggles[0]));
     CHECK(config.general.backgroundParticles);
@@ -4531,4 +4546,110 @@ TEST_CASE("Docs tab settles under identical updates", "[core][sakura][views]") {
     config.anchor = "first-steps";
     config.navigation = 2;
     CHECK(Settles(frames, update));
+}
+
+TEST_CASE("Registry presenter reads plugins from the cached registry", "[core][sakura][views]") {
+    Mailbox mailbox;
+    auto& registry = mailbox.state.registry;
+    CHECK_FALSE(registry.stale);
+    CHECK_FALSE(registry.flowgraphs.empty());
+    const Plugin::Info radioTools = {.path = "/plugins/radio-tools.cep", .version = "1.2.0", .blocks = {"fft"}};
+    registry.registered = {
+        {.path = "/plugins/radio-tools.cep", .info = radioTools, .exists = true},
+        {.path = "/plugins/missing.cep"},
+        {.path = "/plugins/ghost.cep", .exists = true},
+    };
+    mailbox.state.settings.section = SettingsSection::Registry;
+
+    const auto settings = RegistrySettingsPresenter(mailbox.context()).build();
+    REQUIRE(settings.plugins.size() == 3);
+    CHECK(settings.plugins[0].name == "radio-tools");
+    CHECK(settings.plugins[0].version == "1.2.0");
+    CHECK(settings.plugins[0].status.tone == StatusBadge::Tone::Success);
+    CHECK(settings.plugins[1].name == "missing");
+    CHECK(settings.plugins[1].version.empty());
+    CHECK(settings.plugins[1].status.label == "Missing");
+    CHECK(settings.plugins[1].status.tone == StatusBadge::Tone::Warning);
+    CHECK(settings.plugins[2].status.label == "Not loaded");
+    CHECK(settings.plugins[2].status.tone == StatusBadge::Tone::Neutral);
+    CHECK(RegistryPluginView::VersionLabel(settings.plugins[1]) == "Unknown version");
+    CHECK(RegistryPluginView::VersionLabel(settings.plugins[0]) == "Version 1.2.0");
+    CHECK_FALSE(settings.domains.empty());
+}
+
+TEST_CASE("Registry presenter shows plugin examples even when a gallery entry shares their key",
+          "[core][sakura][views]") {
+    Mailbox mailbox;
+    auto& registry = mailbox.state.registry;
+    Registry::FlowgraphRegistration example;
+    example.key = "demo";
+    example.title = "Plugin Demo";
+    example.summary = "From the plugin.";
+    Registry::FlowgraphRegistration published = example;
+    published.title = "Gallery Demo";
+    published.summary = "From the gallery.";
+    const Plugin::Info plugin = {.path = "/plugins/demo.cep", .version = "1.0.0", .examples = {"demo"}};
+    registry.flowgraphs = GalleryActions::Catalog({published}, {example}, {plugin});
+    registry.registered = {{.path = "/plugins/demo.cep", .info = plugin, .exists = true}};
+    mailbox.state.settings.section = SettingsSection::Registry;
+
+    const auto settings = RegistrySettingsPresenter(mailbox.context()).build();
+    REQUIRE(settings.plugins.size() == 1);
+    REQUIRE(settings.plugins[0].examples.size() == 1);
+    CHECK(settings.plugins[0].examples[0].title == "Plugin Demo");
+    CHECK(settings.plugins[0].examples[0].summary == "From the plugin.");
+}
+
+TEST_CASE("Settings presenter builds only the active section", "[core][sakura][views]") {
+    Mailbox mailbox;
+    mailbox.state.graphics.device = DeviceType::CPU;
+    const auto context = mailbox.context();
+    const SettingsPresenter presenter(context);
+
+    mailbox.state.settings.section = SettingsSection::Registry;
+    auto config = presenter.build();
+    CHECK_FALSE(config.registry.domains.empty());
+    CHECK(config.general.themes.empty());
+    CHECK_FALSE(config.legal.onViewFullLicenses);
+
+    mailbox.state.settings.section = SettingsSection::General;
+    config = presenter.build();
+    CHECK(config.registry.domains.empty());
+    CHECK_FALSE(config.general.themes.empty());
+    config.general.onShowTipsChange(false);
+    REQUIRE(mailbox.last<MailSetShowTips>() != nullptr);
+    CHECK_FALSE(mailbox.last<MailSetShowTips>()->value);
+}
+
+TEST_CASE("Intelligence presenter selects voice models and voices by index", "[core][sakura][views]") {
+    Mailbox mailbox;
+    const auto context = mailbox.context();
+    const auto models = Agent::Live::Models();
+    const auto voices = Agent::Live::Voices();
+    REQUIRE_FALSE(models.empty());
+    REQUIRE(voices.size() > 1);
+    mailbox.state.agent.settings.voice.model = models.front();
+    mailbox.state.agent.settings.voice.voice = voices[1];
+
+    const auto config = IntelligenceSettingsPresenter(context).build();
+    CHECK(config.voice.models.size() == models.size());
+    CHECK(config.voice.voices.size() == voices.size());
+    CHECK(config.voice.model == std::optional<U64>(0));
+    CHECK(config.voice.voice == std::optional<U64>(1));
+    CHECK(config.voice.voices[1] == AgentLabels::Title(voices[1]));
+
+    config.onVoiceModelSelect(0);
+    REQUIRE(mailbox.last<MailSetAgentVoiceModel>() != nullptr);
+    CHECK(mailbox.last<MailSetAgentVoiceModel>()->value == models.front());
+    config.onVoiceSelect(0);
+    REQUIRE(mailbox.last<MailSetAgentVoiceName>() != nullptr);
+    CHECK(mailbox.last<MailSetAgentVoiceName>()->value == voices[0]);
+    config.onVoiceSelect(voices.size());
+    config.onVoiceModelSelect(models.size());
+    CHECK(mailbox.count<MailSetAgentVoiceName>() == 1);
+    CHECK(mailbox.count<MailSetAgentVoiceModel>() == 1);
+
+    config.onNavigate(IntelligencePage::Overview);
+    REQUIRE(mailbox.last<MailSetIntelligencePage>() != nullptr);
+    CHECK(mailbox.last<MailSetIntelligencePage>()->page == IntelligencePage::Overview);
 }

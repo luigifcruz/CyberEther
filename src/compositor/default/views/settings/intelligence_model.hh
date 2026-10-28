@@ -1,9 +1,11 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_INTELLIGENCE_MODEL_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_INTELLIGENCE_MODEL_HH
 
+#include "../components/compact_button.hh"
 #include "components/settings_breadcrumb.hh"
-#include "components/settings_group.hh"
+#include "../components/section_group.hh"
 #include "components/settings_header.hh"
+#include "../components/status_badge.hh"
 
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/settings.hh"
@@ -16,7 +18,7 @@
 
 namespace Jetstream {
 
-struct IntelligenceModelPage {
+struct IntelligenceModelView {
     using Option = Settings::Intelligence::Model;
 
     struct Item {
@@ -69,22 +71,14 @@ struct IntelligenceModelPage {
         for (U64 index = 0; index < models.size(); ++index) {
             const auto& item = models[index];
             auto& entry = *entries[index];
-            entry.id.update({
-                .label = item.model.id,
-                .backgroundColorKey = "header_hovered",
-                .borderColorKey = "border",
-                .textColorKey = "text_secondary",
-            });
+            entry.id.update({.label = item.model.id});
             entry.add.update({
                 .str = "Add",
-                .textScale = 0.9f,
-                .padding = {9.0f, 5.0f},
                 .onClick = [this, model = item.model]() {
                     if (this->config.onCommit) {
                         this->config.onCommit(model);
                     }
                 },
-                .font = Sakura::Text::Font::Sans,
             });
             entry.row.update({
                 .axis = Sakura::Stack::Axis::Horizontal,
@@ -126,8 +120,8 @@ struct IntelligenceModelPage {
 
  private:
     struct Entry {
-        Sakura::Badge id;
-        Sakura::Button add;
+        StatusBadge id;
+        CompactButton add;
         Sakura::Stack row;
     };
 
@@ -136,7 +130,7 @@ struct IntelligenceModelPage {
     SettingsHeader header;
     Sakura::TextInput filterInput;
     std::vector<std::unique_ptr<Entry>> entries;
-    SettingsGroup modelsGroup;
+    SectionGroup modelsGroup;
     Sakura::Stack stack;
 };
 

@@ -10,11 +10,13 @@
 #include "scene.hh"
 
 #include "compositor/default/views/components/card_button.hh"
+#include "compositor/default/views/components/compact_button.hh"
 #include "compositor/default/views/components/flowgraph_cell.hh"
 #include "compositor/default/views/components/pagination.hh"
 #include "compositor/default/views/components/sidebar_heading.hh"
 #include "compositor/default/views/components/sidebar_navigation.hh"
 #include "compositor/default/views/components/sidebar_tiles.hh"
+#include "compositor/default/views/components/status_badge.hh"
 
 #include <algorithm>
 #include <cmath>
@@ -61,6 +63,66 @@ Extent2D<F32> Middle(const Sakura::Component& component) {
 }
 
 }  // namespace
+
+TEST_CASE("Compact buttons measure before placement, scale, repaint on tone changes and fire the newest callback",
+          "[core][sakura][view-components]") {
+    Scene scene;
+    {
+        CompactButton button;
+        button.update({.str = "Check", .tone = CompactButton::Tone::Primary});
+        CheckFirstMeasure(button, scene.ctx, {kInfinite, kInfinite}, {0.0f, 0.0f, 120.0f, 40.0f});
+    }
+
+    CompactButton button;
+    Place place(button, kSlot);
+    Frames frames(place, kScreen, scene.context());
+    frames.verify = false;
+    CompactButton::Tone tone = CompactButton::Tone::Default;
+    std::vector<std::string> calls;
+    std::string tag = "a";
+    const auto update = [&] {
+        button.update({.str = "Check", .tone = tone, .onClick = [&calls, tag] { calls.push_back(tag); }});
+    };
+    REQUIRE(frames.settle(update));
+    for (const auto next : {CompactButton::Tone::Primary, CompactButton::Tone::Strong, CompactButton::Tone::Action,
+                            CompactButton::Tone::Warning, CompactButton::Tone::Default}) {
+        CAPTURE(static_cast<int>(next));
+        tone = next;
+        CHECK(RepaintOnly(frames.run(update)));
+        CHECK(Retains(frames, update));
+    }
+
+    tag = "b";
+    CHECK(frames.run(update).clean());
+    CHECK(ClickAt(place, Middle(button)));
+    CHECK(calls == std::vector<std::string>{"b"});
+}
+
+TEST_CASE("Status badges measure before placement, scale and repaint on tone changes",
+          "[core][sakura][view-components]") {
+    Scene scene;
+    {
+        StatusBadge badge;
+        badge.update({.label = "Loaded", .tone = StatusBadge::Tone::Success});
+        CheckFirstMeasure(badge, scene.ctx, {kInfinite, kInfinite}, {0.0f, 0.0f, 120.0f, 30.0f});
+    }
+
+    StatusBadge badge;
+    Place place(badge, kSlot);
+    Frames frames(place, kScreen, scene.context());
+    StatusBadge::Tone tone = StatusBadge::Tone::Neutral;
+    const auto update = [&] {
+        badge.update({.label = "Loaded", .tone = tone});
+    };
+    REQUIRE(frames.settle(update));
+    for (const auto next : {StatusBadge::Tone::Success, StatusBadge::Tone::Warning, StatusBadge::Tone::Error,
+                            StatusBadge::Tone::Neutral}) {
+        CAPTURE(static_cast<int>(next));
+        tone = next;
+        CHECK(RepaintOnly(frames.run(update)));
+        CHECK(Retains(frames, update));
+    }
+}
 
 TEST_CASE("Card buttons round into a pill and keep their padding at natural and filling sizes",
           "[core][sakura][view-components]") {

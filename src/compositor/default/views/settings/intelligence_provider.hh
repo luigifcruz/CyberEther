@@ -1,9 +1,11 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_INTELLIGENCE_PROVIDER_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_INTELLIGENCE_PROVIDER_HH
 
+#include "../components/compact_button.hh"
 #include "components/settings_breadcrumb.hh"
-#include "components/settings_group.hh"
+#include "../components/section_group.hh"
 #include "components/settings_header.hh"
+#include "../components/status_badge.hh"
 
 #include "jetstream/render/sakura/base.hh"
 #include "jetstream/settings.hh"
@@ -17,7 +19,7 @@
 
 namespace Jetstream {
 
-struct IntelligenceProviderPage {
+struct IntelligenceProviderView {
     static constexpr const char* ChatCompletionsLabel = "Chat Completions";
     static constexpr const char* ResponsesLabel = "Responses";
 
@@ -221,14 +223,11 @@ struct IntelligenceProviderPage {
         testButton.update({
             .str = this->config.testRunning ? "Testing..." : "Test",
             .disabled = !testEnabled(),
-            .textScale = 0.9f,
-            .padding = {9.0f, 5.0f},
             .onClick = [this]() {
                 if (testEnabled() && this->config.onTest) {
                     this->config.onTest(buildProvider(), apiKey, draftRevision);
                 }
             },
-            .font = Sakura::Text::Font::Sans,
         });
         std::vector<Sakura::Stack::Item> testItems;
         if (!statusBadgeLabel().empty()) {
@@ -390,22 +389,13 @@ struct IntelligenceProviderPage {
         return "";
     }
 
-    Sakura::Badge::Config statusBadge() const {
-        const std::string label = statusBadgeLabel();
+    StatusBadge::Config statusBadge() const {
         if (!testCurrent()) {
-            return {
-                .label = label,
-                .backgroundColorKey = "header_hovered",
-                .borderColorKey = "border",
-                .textColorKey = "text_secondary",
-            };
+            return {.label = statusBadgeLabel()};
         }
-        const std::string tone = config.testSuccess ? "banner_success" : "banner_warning";
         return {
-            .label = label,
-            .backgroundColorKey = tone + "_bg",
-            .borderColorKey = tone + "_border",
-            .textColorKey = tone + "_text",
+            .label = statusBadgeLabel(),
+            .tone = config.testSuccess ? StatusBadge::Tone::Success : StatusBadge::Tone::Warning,
         };
     }
 
@@ -425,17 +415,17 @@ struct IntelligenceProviderPage {
     Sakura::Combo typeCombo;
     Sakura::TextInput nameInput;
     Sakura::TextInput hostInput;
-    SettingsGroup endpointGroup;
+    SectionGroup endpointGroup;
     Sakura::Combo apiCombo;
     Sakura::TextInput chatPathInput;
     Sakura::TextInput modelsPathInput;
     Sakura::TextInput keyInput;
-    SettingsGroup apiGroup;
-    Sakura::Badge testStatus;
-    Sakura::Button testButton;
+    SectionGroup apiGroup;
+    StatusBadge testStatus;
+    CompactButton testButton;
     Sakura::Stack testControls;
     Sakura::Button saveButton;
-    SettingsGroup connectionGroup;
+    SectionGroup connectionGroup;
     Sakura::Stack stack;
 };
 

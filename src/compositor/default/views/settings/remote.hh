@@ -1,7 +1,8 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_REMOTE_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_SETTINGS_REMOTE_HH
 
-#include "components/settings_group.hh"
+#include "../components/callout.hh"
+#include "../components/section_group.hh"
 #include "components/settings_header.hh"
 
 #include "jetstream/render/sakura/base.hh"
@@ -18,7 +19,7 @@
 
 namespace Jetstream {
 
-struct RemoteSettingsPanel {
+struct RemoteSettingsView {
     struct Config {
         bool started = false;
         Instance::Remote::Config::Broker broker;
@@ -43,7 +44,6 @@ struct RemoteSettingsPanel {
     };
 
     void update(Config config) {
-        using Text = Sakura::Text;
         using TextInput = Sakura::TextInput;
 
         this->config = std::move(config);
@@ -53,21 +53,10 @@ struct RemoteSettingsPanel {
             .description = "Configure default remote streaming parameters.",
         });
 
-        activeWarning.update({
-            .str = ICON_LC_RADIO_TOWER " Remote streaming is currently active.",
-            .font = Text::Font::Sans,
-            .tone = Text::Tone::Warning,
-            .scale = 1.05f,
+        activeCallout.update({
+            .str = "Changes apply when the current stream ends.",
+            .tone = Callout::Tone::Warning,
         });
-
-        activeDescription.update({
-            .str = "Updates here take effect after the current session ends.",
-            .font = Text::Font::Sans,
-            .tone = Text::Tone::Secondary,
-            .wrapped = true,
-        });
-
-        activeSpacing.update({});
         activeTrailing.update({.lines = 4});
 
         approvalToggle.update({
@@ -362,24 +351,11 @@ struct RemoteSettingsPanel {
             },
         });
 
-        activeContent.update({
-            .items = {
-                {.child = &activeWarning},
-                {.child = &activeSpacing},
-                {.child = &activeDescription},
-            },
-        });
-        activeCard.update({
-            .content = &activeContent,
-            .padding = 16.0f,
-            .rounding = 8.0f,
-            .border = true,
-        });
         std::vector<Sakura::Stack::Item> items = {
             {.child = &header},
         };
         if (this->config.started) {
-            items.push_back({.child = &activeCard});
+            items.push_back({.child = &activeCallout});
             items.push_back({.child = &activeTrailing});
         }
         items.push_back({.child = &accessGroup});
@@ -506,12 +482,8 @@ struct RemoteSettingsPanel {
 
     Config config;
     SettingsHeader header;
-    Sakura::Text activeWarning;
-    Sakura::Text activeDescription;
-    Sakura::Spacer activeSpacing;
+    Callout activeCallout;
     Sakura::Spacer activeTrailing;
-    Sakura::Stack activeContent;
-    Sakura::Div activeCard;
     Sakura::Toggle approvalToggle;
     Sakura::Combo framerateCombo;
     Sakura::Combo codecCombo;
@@ -530,10 +502,10 @@ struct RemoteSettingsPanel {
     Sakura::Combo transportCombo;
     Sakura::TextInput portRangeInput;
     Sakura::TextInput mediaAddressInput;
-    SettingsGroup accessGroup;
-    SettingsGroup videoGroup;
-    SettingsGroup brokerGroup;
-    SettingsGroup mediaGroup;
+    SectionGroup accessGroup;
+    SectionGroup videoGroup;
+    SectionGroup brokerGroup;
+    SectionGroup mediaGroup;
     Sakura::Stack stack;
 };
 

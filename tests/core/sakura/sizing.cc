@@ -78,7 +78,6 @@ TEST_CASE("Components measure to finite sizes within the available space", "[cor
                                                                 .items = {{.child = probe()}, {.child = probe()}}}));
     subjects.push_back(Make<Sakura::Div>("div", {.content = probe(), .padding = 4.0f}));
     subjects.push_back(Make<Sakura::ScrollArea>("scroll area", {.content = probe(), .height = 0.0f}));
-    subjects.push_back(Make<Sakura::SplitView>("split view", {.left = probe(), .right = probe()}));
     subjects.push_back(Make<Sakura::Grid>("grid", {.items = {probe(), probe(), probe()}}));
     subjects.push_back(Make<Sakura::Reveal>("reveal", {.child = probe(), .shown = true, .gap = 8.0f}));
     subjects.push_back(Make<Sakura::Spacer>("spacer", {.lines = 3}));
@@ -426,26 +425,6 @@ TEST_CASE("Filling scroll areas take the available height and claim none when un
     CHECK(host.measureOf(scene.ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 0.0f});
 }
 
-TEST_CASE("Split views size their height naturally, fixed, or filling", "[core][sakura][sizing]") {
-    Scene scene;
-    Probe left({120.0f, 45.0f});
-    Probe right({80.0f, 60.0f});
-    Sakura::SplitView split;
-    Host host(split);
-
-    split.update({.left = &left, .right = &right, .height = 0.0f});
-    CHECK(host.measureOf(scene.ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 68.0f});
-    CHECK(host.measureOf(scene.ctx, {300.0f, 50.0f}) == Extent2D<F32>{300.0f, 50.0f});
-
-    split.update({.left = &left, .right = &right, .height = 100.0f});
-    CHECK(host.measureOf(scene.ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 100.0f});
-    CHECK(host.measureOf(scene.ctx, {300.0f, 80.0f}) == Extent2D<F32>{300.0f, 80.0f});
-
-    split.update({.left = &left, .right = &right, .height = Sakura::Fill});
-    CHECK(host.measureOf(scene.ctx, {300.0f, 200.0f}) == Extent2D<F32>{300.0f, 200.0f});
-    CHECK(host.measureOf(scene.ctx, {300.0f, kInfinite}) == Extent2D<F32>{300.0f, 0.0f});
-}
-
 TEST_CASE("Natural width grids fit their widest item per column and fill the height on request",
           "[core][sakura][sizing]") {
     Scene scene;
@@ -683,24 +662,6 @@ TEST_CASE("Container paddings and widths scale with the pixel ratio", "[core][sa
     panel.update({.content = &panelContent, .maxWidth = 100.0f});
     CHECK(panelHost.measureOf(scene.ctx, {300.0f, kInfinite}) == Extent2D<F32>{100.0f, 45.0f});
     CHECK(panelHost.measureOf(doubled, {300.0f, kInfinite}) == Extent2D<F32>{200.0f, 45.0f});
-}
-
-TEST_CASE("Split views scale their left width and gutters with the pixel ratio", "[core][sakura][sizing]") {
-    Scene scene;
-    Probe left({120.0f, 45.0f});
-    Probe right({80.0f, 45.0f});
-    Sakura::SplitView split;
-    split.update({.left = &left, .right = &right});
-    Host host(split);
-    const Rect bounds = {0.0f, 0.0f, 600.0f, 100.0f};
-
-    host.place(scene.ctx, bounds);
-    CHECK(left.laidFrame == Rect{0.0f, 4.0f, 220.0f, 92.0f});
-    CHECK(right.laidFrame == Rect{233.0f, 4.0f, 367.0f, 92.0f});
-
-    host.place(Doubled(scene.ctx), bounds);
-    CHECK(left.laidFrame == Rect{0.0f, 8.0f, 440.0f, 84.0f});
-    CHECK(right.laidFrame == Rect{466.0f, 8.0f, 134.0f, 84.0f});
 }
 
 TEST_CASE("Controls scale their frames and paddings with the pixel ratio", "[core][sakura][sizing]") {

@@ -53,6 +53,7 @@ struct FlowgraphPanePresenter {
             .detachedConfigs = configs.build(flowgraphId, flowgraph),
             .documentation = documentation(flowgraphId),
             .empty = flowgraph->view().empty(),
+            .showTips = context.state.interface.showTips,
             .dependencyReviewAvailable = hasDependencyReview(flowgraph),
             .dependencyReviewTone = dependencyReviewTone(),
             .dependencyReviewMessage = dependencyReviewMessage(),
