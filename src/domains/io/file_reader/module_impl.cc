@@ -20,7 +20,7 @@ Result FileReaderImpl::validate() {
     validatedDataType = DataType::None;
     validatedOutputSizeBytes = 0;
 
-    const auto format = FileReaderFormat::Create(config.fileFormat);
+    const auto format = FileReaderFormat::Create(config.fileFormat, config.filepath);
     if (!format) {
         JST_ERROR("[MODULE_FILE_READER] Invalid file format '{}'.", config.fileFormat);
         return Result::ERROR;
@@ -80,7 +80,7 @@ Result FileReaderImpl::create() {
     recording.dataType = validatedDataType;
     publishedFrequency.reset();
 
-    const auto format = FileReaderFormat::Create(fileFormat);
+    const auto format = FileReaderFormat::Create(fileFormat, filepath);
     Result loaded = Result::SUCCESS;
     if (!filepath.empty()) {
         auto header = recording;

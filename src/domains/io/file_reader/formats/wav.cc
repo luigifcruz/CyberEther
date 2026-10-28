@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstring>
 #include <fstream>
 
@@ -44,6 +45,13 @@ std::optional<DataType> WaveDataType(const U16 format, const U16 channels, const
 }
 
 }  // namespace
+
+bool FileReaderFormat::Wav::matches(const std::filesystem::path& path) const {
+    auto extension = Platform::PathToUtf8(path.extension());
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+                   [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return extension == ".wav";
+}
 
 Result FileReaderFormat::Wav::load(const std::string& filepath, Recording& result) const {
     const auto path = Platform::PathFromUtf8(filepath);

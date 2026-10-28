@@ -7,7 +7,7 @@ namespace Jetstream::Blocks {
 
 struct FileReader : public Block::Config {
     std::string filepath = "";
-    std::string fileFormat = "raw";
+    std::string fileFormat = "auto";
     std::string dataType = "CF32";
     U64 batchSize = 8192;
     bool loop = true;
@@ -50,13 +50,13 @@ struct FileReader : public Block::Config {
         "| **File Path** | Empty | An existing file or stream | File to read, or a "
         "stream such as `/dev/stdin` or `/dev/zero`. For SigMF, pick the .sigmf-meta or"
         " .sigmf-data file. A WAV file cannot be a stream. |\n"
-        "| **File Format** | Raw I/Q | Raw I/Q, SigMF, WAV | Raw I/Q reads headerless "
-        "samples. A SigMF recording gives the type, sample rate, and capture "
-        "frequencies from its .sigmf-meta file. A WAV file gives the type and sample "
-        "rate from its header, and the center frequency from an auxi chunk. |\n"
+        "| **File Format** | Auto | Auto, Raw I/Q, SigMF, WAV | Auto picks SigMF or WAV"
+        " by the file extension, and Raw I/Q otherwise. Raw I/Q reads headerless "
+        "samples. A SigMF or WAV recording gives its type, sample rate, and frequency. "
+        "|\n"
         "| **Data Type** | CF32 | CF64, F64, CF32, F32, CI8, I8, CU8, U8, CI16, I16, "
         "CU16, U16 | Type of each stored sample, and of the output. It must match how "
-        "the file was written. Hidden for SigMF and WAV. |\n"
+        "the file was written. Shown only when the file is read as Raw I/Q. |\n"
         "| **Samples** | 8,192 samples | 1 or more | Samples per output buffer, and the"
         " FFT size downstream. |\n"
         "| **Loop** | On | On, Off | Restarts from the beginning at the end of the "
@@ -64,8 +64,8 @@ struct FileReader : public Block::Config {
         "| **Playing** | On | On, Off | Reads a new buffer every cycle. Off repeats the"
         " current buffer and stops reading a stream. |\n"
         "| **Real Time** | Off | On, Off | Reads at the recorded sample rate instead of"
-        " as fast as the chain runs. Needs a recorded sample rate. Shown for SigMF and "
-        "WAV. |\n"
+        " as fast as the chain runs. Needs a recorded sample rate. Shown when the file "
+        "is read as SigMF or WAV. |\n"
         "\n"
         "## Readouts\n"
         "\n"
@@ -84,8 +84,8 @@ struct FileReader : public Block::Config {
         "of the file each |\n"
         "| Play an 8-bit capture | Data Type CU8 | 8,192 complex samples per buffer "
         "from 0 to 255, 16 KiB of the file each |\n"
-        "| Play a SigMF or WAV recording | File Format SigMF or WAV | 8,192 samples per"
-        " buffer of the recorded type, at the recorded rate and frequency |\n"
+        "| Play a SigMF or WAV recording | Defaults | 8,192 samples per buffer of the "
+        "recorded type, at the recorded rate and frequency |\n"
         "| Play samples piped in | File Path `/dev/stdin` | 8,192 complex samples per "
         "buffer as the data arrives |\n"
         "| Play once | Loop off | 8,192 complex samples per buffer until the end, then "

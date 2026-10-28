@@ -66,7 +66,7 @@ Result FileReaderImpl::define() {
                                     "The format of the input file.",
                                     {{"type", "dropdown"}, {"options", std::move(formats)}}));
 
-    const auto format = Modules::FileReaderFormat::Create(config.fileFormat);
+    const auto format = Modules::FileReaderFormat::Create(config.fileFormat, config.filepath);
     const bool describesSamples = format && format->describesSamples();
 
     if (!describesSamples) {

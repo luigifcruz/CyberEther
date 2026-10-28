@@ -50,6 +50,11 @@ std::optional<U64> UnsignedValue(const nlohmann::json& value) {
 
 }  // namespace
 
+bool FileReaderFormat::Sigmf::matches(const std::filesystem::path& path) const {
+    const auto extension = path.extension();
+    return extension == ".sigmf-meta" || extension == ".sigmf-data" || extension == ".sigmf";
+}
+
 Result FileReaderFormat::Sigmf::load(const std::string& filepath, Recording& result) const {
     const auto path = Platform::PathFromUtf8(filepath);
     const auto extension = path.extension();

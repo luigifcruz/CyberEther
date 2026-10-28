@@ -8,7 +8,7 @@ namespace Jetstream::Modules {
 
 struct FileReader : public Module::Config {
     std::string filepath = "";
-    std::string fileFormat = "raw";
+    std::string fileFormat = "auto";
     std::string dataType = "CF32";
     U64 batchSize = 8192;
     bool loop = true;

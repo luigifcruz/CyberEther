@@ -40,8 +40,9 @@ class FileReaderFormat {
     virtual ~FileReaderFormat() = default;
 
     static const std::vector<Option>& Options();
-    static std::unique_ptr<FileReaderFormat> Create(const std::string& name);
+    static std::unique_ptr<FileReaderFormat> Create(const std::string& name, const std::string& filepath);
 
+    virtual bool matches(const std::filesystem::path& path) const;
     virtual bool describesSamples() const;
     virtual Result load(const std::string& filepath, Recording& recording) const = 0;
 };
@@ -54,11 +55,13 @@ class FileReaderFormat::Raw : public FileReaderFormat {
 
 class FileReaderFormat::Sigmf : public FileReaderFormat {
  public:
+    bool matches(const std::filesystem::path& path) const override;
     Result load(const std::string& filepath, Recording& recording) const override;
 };
 
 class FileReaderFormat::Wav : public FileReaderFormat {
  public:
+    bool matches(const std::filesystem::path& path) const override;
     Result load(const std::string& filepath, Recording& recording) const override;
 };
 
