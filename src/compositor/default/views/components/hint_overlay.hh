@@ -172,7 +172,7 @@ struct HintOverlay {
                 .str = action.label,
                 .tone = action.tone,
                 .height = ButtonHeight,
-                .textScale = 1.1f,
+                .textScale = Sakura::Typography::Scale::Title,
                 .onClick = action.onClick,
             });
         }

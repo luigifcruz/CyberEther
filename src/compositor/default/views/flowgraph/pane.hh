@@ -160,7 +160,7 @@ struct FlowgraphPane {
                         .onClick = this->config.onOpenGallery,
                     },
                 },
-                .width = 420.0f,
+                .width = 380.0f,
             });
         }
 
