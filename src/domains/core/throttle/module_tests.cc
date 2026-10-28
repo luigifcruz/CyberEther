@@ -10,6 +10,20 @@
 
 using namespace Jetstream;
 
+namespace {
+
+void Pass(TestContext& ctx) {
+    while (true) {
+        REQUIRE(ctx.compute() == Result::SUCCESS);
+        if (!ctx.stalled()) {
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::microseconds(50));
+    }
+}
+
+}  // namespace
+
 TEST_CASE("Throttle Module - Rejects Invalid Intervals", "[modules][throttle][error]") {
     const auto implementations = Registry::ListAvailableModules("throttle");
     REQUIRE(!implementations.empty());
@@ -66,8 +80,14 @@ TEST_CASE("Throttle Module - Pass Through Across Persistent Computes",
 
             REQUIRE(ctx.start() == Result::SUCCESS);
             const auto computeStart = std::chrono::steady_clock::now();
+            Pass(ctx);
+
+            const auto heldStart = std::chrono::steady_clock::now();
             REQUIRE(ctx.compute() == Result::SUCCESS);
-            REQUIRE(ctx.compute() == Result::SUCCESS);
+            REQUIRE(ctx.stalled());
+            REQUIRE(std::chrono::steady_clock::now() - heldStart < std::chrono::milliseconds(10));
+
+            Pass(ctx);
             const auto computeElapsed = std::chrono::steady_clock::now() - computeStart;
             REQUIRE(computeElapsed >= std::chrono::milliseconds(25));
 
@@ -101,7 +121,7 @@ TEST_CASE("Throttle Module - Paces Sub-Millisecond Intervals On Average",
             REQUIRE(ctx.start() == Result::SUCCESS);
             const auto start = std::chrono::steady_clock::now();
             for (U64 i = 0; i < 41; ++i) {
-                REQUIRE(ctx.compute() == Result::SUCCESS);
+                Pass(ctx);
             }
             const auto elapsed = std::chrono::steady_clock::now() - start;
             REQUIRE(elapsed >= std::chrono::microseconds(9'750));
@@ -128,7 +148,7 @@ TEST_CASE("Throttle Module - Schedules Passes By Deadline",
 
     const auto timed = [&] {
         const auto start = Clock::now();
-        REQUIRE(ctx.compute() == Result::SUCCESS);
+        Pass(ctx);
         return Clock::now() - start;
     };
 
