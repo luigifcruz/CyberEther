@@ -2,7 +2,6 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_WORKBENCH_HH
 
 #include "agent/chat.hh"
-#include "agent/voice.hh"
 #include "flowgraph/close_prompt.hh"
 #include "flowgraph/pane.hh"
 #include "file_picker.hh"
@@ -28,6 +27,7 @@ struct WorkspaceShellView {
         std::vector<Sakura::Dock::Pane> panes;
         std::optional<std::string> activate;
         bool hideTabs = false;
+        Sakura::Component* aside = nullptr;
         std::optional<FlowgraphClosePromptView::Config> closePrompt;
     };
 
@@ -45,6 +45,8 @@ struct WorkspaceShellView {
             .leading = &titlebar.leading(),
             .trailing = &titlebar.trailing(),
             .end = &titlebar.end(),
+            .aside = config.aside,
+            .asideWidth = AgentChatView::Width,
             .tabBarHeight = titlebar.height(),
             .leadingInset = titlebar.leadingInset(),
             .onTabMenu = [this](const std::string& pane, Extent2D<F32> point) {
@@ -109,7 +111,6 @@ struct WorkbenchView {
         bool filePending = false;
         bool backgroundParticles = true;
         AgentChatView::Config agentChat;
-        AgentVoiceView::Config agentVoice;
         std::optional<StartTabView::Config> startTab;
         bool hideTabs = false;
         U64 startTabRequests = 0;
@@ -129,6 +130,7 @@ struct WorkbenchView {
 
     void update(Config config) {
         this->config = std::move(config);
+        agentChat.update(std::move(this->config.agentChat));
         workspaceShell.updateTitlebar(std::move(this->config.titlebar));
 
         background.update({
@@ -160,15 +162,7 @@ struct WorkbenchView {
             return;
         }
 
-        this->config.agentChat.topOffset = workspaceShell.bar().height();
-        agentChat.update(std::move(this->config.agentChat));
-        agentVoice.update(std::move(this->config.agentVoice));
-
-        std::vector<Sakura::HudLayer::Hud> hudItems;
-        if (agentVoice.shown()) {
-            hudItems.push_back(agentVoice.hud());
-        }
-        huds.update({.huds = std::move(hudItems)});
+        huds.update({});
 
         flowgraphOrder.clear();
         std::unordered_set<std::string> activeFlowgraphs;
@@ -217,6 +211,7 @@ struct WorkbenchView {
             .panes = std::move(panes),
             .activate = std::move(activate),
             .hideTabs = this->config.hideTabs,
+            .aside = agentChat.shown() ? &agentChat.component() : nullptr,
             .closePrompt = std::move(this->config.closePrompt),
         });
         content.update({.content = &workspaceShell.component()});
@@ -232,9 +227,6 @@ struct WorkbenchView {
         filePickerLayer.update(filePicker.layer());
 
         std::vector<Sakura::Layer*> layers = {&background, &content, &floating, &huds};
-        if (agentChat.shown() && !agentVoice.shown()) {
-            layers.push_back(&agentChat.layer());
-        }
         layers.push_back(&toasts);
         layers.push_back(&promptLayer);
         layers.push_back(&modalLayer);
@@ -263,7 +255,6 @@ struct WorkbenchView {
     Sakura::Text filePendingText;
     Sakura::Panel filePendingPanel;
     AgentChatView agentChat;
-    AgentVoiceView agentVoice;
     StartTabView startTab;
     U64 startTabRequests = 0;
     SettingsView settings;

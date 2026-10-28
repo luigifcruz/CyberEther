@@ -46,8 +46,7 @@ struct AgentChatPresenter {
         chat.clearRequest = agent.chat.dockAccepted;
         config.open = agent.ui.visible;
         config.focusRequest = agent.ui.chatFocusRequests;
-        config.hidden = !settings.enabled ||
-                        (context.state.startTabActive() && !agent.ui.visible && conversation.messages.empty());
+        config.hidden = !settings.enabled;
 
         const auto modelKey = [](const auto& model) {
             return jst::fmt::format("{}:{}{}", model.provider.size(), model.provider, model.id);
@@ -80,10 +79,7 @@ struct AgentChatPresenter {
         };
         chat.selector = std::move(selector);
         chat.usage = AgentChatUsage(conversation.contextTokens, contextWindow);
-        config.onOpen = [enqueue]() {
-            enqueue(MailSetAgentChatVisible{.value = true, .focus = true});
-        };
-        config.onMinimize = [enqueue]() {
+        config.onClose = [enqueue]() {
             enqueue(MailSetAgentChatVisible{.value = false});
         };
         chat.onSubmit = [enqueue, reveal = !agent.ui.visible](const std::string& text) {
@@ -98,7 +94,68 @@ struct AgentChatPresenter {
         chat.onVoice = [enqueue]() {
             enqueue(MailSetAgentVoiceVisible{.value = true});
         };
+        config.placeholder = placeholder();
         return config;
+    }
+
+ private:
+    AgentChatPlaceholder::Config placeholder() const {
+        const auto enqueue = context.callbacks.enqueueMail;
+        if (context.state.agent.settings.models.empty()) {
+            return {
+                .title = "Connect a model",
+                .subtitle = "Add a model provider in Settings to start chatting.",
+                .setupLabel = "Open Settings",
+                .onSetup = [enqueue]() {
+                    enqueue(MailOpenSettings{.section = SettingsSection::Intelligence});
+                },
+            };
+        }
+        const auto suggest = [enqueue](const char* icon, std::string label) {
+            return AgentChatPlaceholder::Suggestion{
+                .icon = icon,
+                .label = label,
+                .onClick = [enqueue, label]() {
+                    enqueue(MailSubmitAgentChat{.composer = AgentComposer::Dock, .text = label, .reveal = false});
+                },
+            };
+        };
+        const auto active = context.state.activeFlowgraph();
+        if (!active.has_value()) {
+            return {
+                .title = "What should we build?",
+                .subtitle = "Describe a signal chain or ask anything about CyberEther.",
+                .suggestions = {
+                    suggest(ICON_LC_RADIO, "Build an FM radio receiver."),
+                    suggest(ICON_LC_AUDIO_WAVEFORM, "Make a spectrum analyzer for my radio."),
+                    suggest(ICON_LC_PLANE, "Track nearby aircraft with ADS-B."),
+                    suggest(ICON_LC_CIRCLE_QUESTION_MARK, "What can CyberEther do?"),
+                },
+            };
+        }
+        const auto blocks = context.state.flowgraph.blocks.find(*active);
+        if (blocks == context.state.flowgraph.blocks.end() || blocks->second.empty()) {
+            return {
+                .title = "What goes in here?",
+                .subtitle = "Describe the signal chain and the assistant will build it in this flowgraph.",
+                .suggestions = {
+                    suggest(ICON_LC_ACTIVITY, "Generate a test tone and plot its spectrum."),
+                    suggest(ICON_LC_RADIO, "Build an FM radio receiver."),
+                    suggest(ICON_LC_AUDIO_WAVEFORM, "Make a spectrum analyzer for my radio."),
+                    suggest(ICON_LC_FILE_AUDIO, "Open a recording and plot its waterfall."),
+                },
+            };
+        }
+        return {
+            .title = "What should we change?",
+            .subtitle = "Ask how it works, look for problems, or describe an edit.",
+            .suggestions = {
+                suggest(ICON_LC_BOOK_OPEN, "Explain how this flowgraph works."),
+                suggest(ICON_LC_SEARCH_CHECK, "Look for problems in this flowgraph."),
+                suggest(ICON_LC_LIGHTBULB, "Suggest what to add next."),
+                suggest(ICON_LC_GAUGE, "Make this flowgraph run faster."),
+            },
+        };
     }
 };
 

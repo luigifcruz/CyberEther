@@ -1,6 +1,8 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_TITLEBAR_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_VIEWS_TITLEBAR_HH
 
+#include "components/assistant_composer.hh"
+
 #include "jetstream/render/sakura/base.hh"
 
 #include "render/sakura/titlebar.hh"
@@ -34,7 +36,6 @@ struct TitlebarView {
         OpenTwitter,
         SendFeedback,
         Quit,
-        NewFlowgraph,
         OpenFlowgraph,
         SaveFlowgraph,
         ShowFlowgraphInfo,
@@ -55,18 +56,26 @@ struct TitlebarView {
     };
 
     static constexpr F32 IndicatorGap = 8.0f;
+    static constexpr F32 NewTabRounding = 14.0f;
+
+    struct VoiceIndicator {
+        using Phase = Sakura::Voice::Phase;
+
+        Phase phase = Phase::Idle;
+        F32 level = 0.0f;
+        std::function<void()> onStart;
+        std::function<void()> onStop;
+    };
 
     struct Config {
-        std::string id;
         F32 leadingInset = 0.0f;
         F32 height = 0.0f;
-        bool remoteSupported = false;
         bool remoteStarted = false;
         bool updateAvailable = false;
         bool updateReady = false;
         bool intelligenceEnabled = false;
-        bool agentVisible = false;
-        bool voiceVisible = false;
+        bool agentUnread = false;
+        std::optional<VoiceIndicator> voice;
         std::unordered_set<std::string> environmentFlowgraphs;
         bool debugTimingEnabled = false;
         I32 debugLogLevel = 0;
@@ -95,37 +104,11 @@ struct TitlebarView {
         }
         std::vector<Entry> appEntries = {
             {.label = "About CyberEther", .onClick = action(Action::About)},
-            {.label = "Settings", .shortcut = "CTRL+,", .onClick = action(Action::Settings)},
             std::move(updateEntry),
+            separator,
+            {.label = "Settings", .shortcut = "CTRL+,", .onClick = action(Action::Settings)},
+            separator,
         };
-#ifndef JST_OS_BROWSER
-        if (this->config.intelligenceEnabled) {
-            appEntries.push_back({
-                .label = "Intelligence",
-                .children = {
-                    {
-                        .label = "Show Agent Window",
-                        .selected = this->config.agentVisible,
-                        .onClick = action(Action::ToggleAgent),
-                    },
-                    {
-                        .label = "Show Voice Window",
-                        .selected = this->config.voiceVisible,
-                        .onClick = action(Action::ToggleVoice),
-                    },
-                },
-            });
-        }
-#endif
-        appEntries.push_back({
-            .label = "Remote Streaming",
-            .enabled = this->config.remoteSupported,
-            .onClick = action(Action::RemoteStreaming),
-        });
-        appEntries.push_back({
-            .label = "Developer",
-            .children = developerEntries(action, separator),
-        });
         appEntries.push_back({
             .label = "Help",
             .children = {
@@ -137,6 +120,11 @@ struct TitlebarView {
             },
         });
         appEntries.push_back({.label = "Send Feedback", .shortcut = "CTRL+G", .onClick = action(Action::SendFeedback)});
+        appEntries.push_back(separator);
+        appEntries.push_back({
+            .label = "Developer",
+            .children = developerEntries(action, separator),
+        });
 #ifndef JST_OS_BROWSER
         appEntries.push_back(separator);
         appEntries.push_back({.label = "Quit CyberEther", .onClick = action(Action::Quit)});
@@ -175,6 +163,13 @@ struct TitlebarView {
             .hoverColorKey = "chrome_button_hover",
             .onClick = action(Action::Documentation),
         });
+        assistantButton.update({
+            .icon = ICON_LC_WAND_SPARKLES,
+            .colorKey = this->config.agentUnread ? "cyber_blue" : "text_secondary",
+            .backgroundColorKey = "transparent",
+            .hoverColorKey = "chrome_button_hover",
+            .onClick = action(Action::ToggleAgent),
+        });
         std::vector<Sakura::Stack::Item> indicators;
         if (this->config.remoteStarted) {
             indicators.push_back({.child = &remoteButton});
@@ -182,6 +177,22 @@ struct TitlebarView {
         if (updatePending) {
             indicators.push_back({.child = &updateButton});
         }
+#ifndef JST_OS_BROWSER
+        if (this->config.voice.has_value()) {
+            const auto& voice = *this->config.voice;
+            voicePill.update({
+                .phase = voice.phase,
+                .level = voice.level,
+                .startHint = "Click to reconnect",
+                .stopHint = "Click to end",
+                .onStart = voice.onStart,
+                .onStop = voice.onStop,
+            });
+            indicators.push_back({.child = &voicePill});
+        } else if (this->config.intelligenceEnabled) {
+            indicators.push_back({.child = &assistantButton});
+        }
+#endif
         indicators.push_back({.child = &helpButton});
         indicatorRow.update({
             .axis = Sakura::Stack::Axis::Horizontal,
@@ -192,6 +203,7 @@ struct TitlebarView {
         plus.update({
             .colorKey = "pill_text",
             .glyph = Sakura::ChromeButton::Glyph::Plus,
+            .rounding = NewTabRounding,
             .onClick = action(Action::NewTab),
         });
 
@@ -199,8 +211,8 @@ struct TitlebarView {
     }
 
     std::vector<Sakura::Shortcuts::Binding> shortcuts() {
-        return {
-            bind(KeyCode::N, Action::NewFlowgraph),
+        std::vector<Sakura::Shortcuts::Binding> bindings = {
+            bind(KeyCode::T, Action::NewTab),
             bind(KeyCode::O, Action::OpenFlowgraph),
             bind(KeyCode::S, Action::SaveFlowgraph),
             bind(KeyCode::W, Action::CloseFlowgraph),
@@ -208,6 +220,12 @@ struct TitlebarView {
             bind(KeyCode::G, Action::SendFeedback),
             bind(KeyCode::Comma, Action::Settings),
         };
+#ifndef JST_OS_BROWSER
+        if (config.intelligenceEnabled) {
+            bindings.push_back(bind(AssistantComposer::VoiceKey, Action::ToggleVoice));
+        }
+#endif
+        return bindings;
     }
 
     void openTabMenu(const std::string& flowgraph, Extent2D<F32> point) {
@@ -334,6 +352,8 @@ struct TitlebarView {
     Sakura::ChromeButton plus;
     Sakura::PillButton remoteButton;
     Sakura::PillButton updateButton;
+    Sakura::PillButton assistantButton;
+    Sakura::Voice voicePill;
     Sakura::PillButton helpButton;
     Sakura::Stack indicatorRow;
     Sakura::Menu tabMenu;

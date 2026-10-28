@@ -459,7 +459,7 @@ struct WelcomeView {
         wordmarkSpacing.update({.lines = 2});
         assistant.update({
             .id = "WelcomeAssistant",
-            .style = AssistantComposerStyle({
+            .style = AssistantComposer::Style({
                 .icon = ICON_LC_WAND_SPARKLES,
                 .backgroundColorKey = "welcome_card_bg",
                 .compact = true,
@@ -467,6 +467,7 @@ struct WelcomeView {
             }),
             .onSubmit = config.onAssistantSubmit,
             .onVoice = config.onAssistantVoice,
+            .voiceHint = AssistantComposer::VoiceHint,
             .clearRequest = config.assistantClearRequest,
         });
         assistantSpacing.update({.lines = 3});

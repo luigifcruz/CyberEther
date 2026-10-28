@@ -12,7 +12,6 @@
 #include "titlebar.hh"
 
 #include "agent/chat.hh"
-#include "agent/voice.hh"
 #include "../views/workbench.hh"
 
 namespace Jetstream {
@@ -28,7 +27,6 @@ struct WorkbenchPresenter {
     SettingsPresenter settings;
     DocsPresenter docs;
     AgentChatPresenter agentChat;
-    AgentVoicePresenter agentVoice;
 
     explicit WorkbenchPresenter(const PresenterContext& context) : context(context),
                                                                    filePicker(context),
@@ -39,8 +37,7 @@ struct WorkbenchPresenter {
                                                                    modal(context),
                                                                    settings(context),
                                                                    docs(context),
-                                                                   agentChat{context},
-                                                                   agentVoice{context} {}
+                                                                   agentChat{context} {}
 
     WorkbenchView::Config build() const {
         WorkbenchView::Config config;
@@ -48,7 +45,6 @@ struct WorkbenchPresenter {
         config.titlebar = titlebar.build();
         config.closePrompt = closePrompt.build();
         config.agentChat = agentChat.build();
-        config.agentVoice = agentVoice.build();
         config.hideTabs = context.state.tabsHidden();
         config.startTab = startTab.build();
         config.startTabRequests = context.state.interface.startTabRequests;

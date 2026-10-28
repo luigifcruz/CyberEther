@@ -55,7 +55,6 @@ core_test_domains = {
     'sakura': [
         'sakura/chat.cc',
         'sakura/chat_composer.cc',
-        'sakura/chat_dock.cc',
         'sakura/interface_controls.cc',
         'sakura/scissor.cc',
         'sakura/key_value.cc',

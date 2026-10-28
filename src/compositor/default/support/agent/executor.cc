@@ -293,11 +293,8 @@ void AgentExecutor::shutdown() {
 
 Agent::Session::ToolExecutor AgentExecutor::bind() {
     auto binding = std::make_shared<Binding>();
-    if (state.interface.focusedFlowgraph) {
-        const auto found = state.flowgraph.items.find(*state.interface.focusedFlowgraph);
-        if (found != state.flowgraph.items.end()) {
-            binding->graph = found->second;
-        }
+    if (const auto active = state.activeFlowgraph()) {
+        binding->graph = state.flowgraph.items.at(*active);
     }
 
     return [this, binding](const auto& name, const auto& args, const auto& cancelled) {
@@ -470,11 +467,8 @@ void AgentExecutor::dispatch() {
     }
 
     shared->graphs = state.flowgraph.items;
-    if (state.interface.focusedFlowgraph.has_value()) {
-        const auto it = state.flowgraph.items.find(*state.interface.focusedFlowgraph);
-        if (it != state.flowgraph.items.end()) {
-            shared->focused = it->second;
-        }
+    if (const auto active = state.activeFlowgraph()) {
+        shared->focused = state.flowgraph.items.at(*active);
     }
 
     for (const auto& request : pending) {

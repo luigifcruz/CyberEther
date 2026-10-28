@@ -4,7 +4,6 @@ src_lst += files([
     'card.cc',
     'chat.cc',
     'chat_composer.cc',
-    'chat_dock.cc',
     'polyline.cc',
     'spinner.cc',
     'image.cc',

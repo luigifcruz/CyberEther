@@ -82,6 +82,7 @@ struct AgentActions {
 
         if (msg.value) {
             hideVoice();
+            ui.unread = false;
         }
         ui.visible = msg.value;
 
@@ -393,6 +394,7 @@ struct AgentActions {
     }
 
     void reconcile() {
+        checkUnread();
         checkContextLengths();
         checkSettingsSection();
         collectProviderTest();
@@ -465,7 +467,6 @@ struct AgentActions {
         }
 
         agent.ui.voiceVisible = true;
-        agent.ui.visible = false;
         runtime.listen(availability.voice);
 
         return true;
@@ -624,6 +625,19 @@ struct AgentActions {
         }
     }
 
+    void checkUnread() {
+        auto& agent = state.agent;
+        const auto& conversation = agent.chat.conversation;
+        const bool shown = agent.settings.enabled && agent.ui.visible;
+        if (streaming && !conversation.streaming && !shown) {
+            agent.ui.unread = true;
+        }
+        if (shown || conversation.messages.empty()) {
+            agent.ui.unread = false;
+        }
+        streaming = conversation.streaming;
+    }
+
     void checkContextLengths() {
         auto& agent = state.agent;
         const auto& models = agent.settings.models;
@@ -773,6 +787,7 @@ struct AgentActions {
     }
 
     bool stopping = false;
+    bool streaming = false;
 };
 
 }  // namespace Jetstream

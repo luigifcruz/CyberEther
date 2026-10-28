@@ -118,6 +118,7 @@ struct DefaultCompositorState {
 
         struct UiState {
             bool visible = false;
+            bool unread = false;
             bool voiceVisible = false;
             bool settingsShown = false;
             U64 chatFocusRequests = 0;

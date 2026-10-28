@@ -2,6 +2,7 @@
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_PRESENTERS_TITLEBAR_HH
 
 #include "context.hh"
+#include "agent/voice.hh"
 
 #include "../model/messages.hh"
 #include "../views/titlebar.hh"
@@ -16,15 +17,16 @@ namespace Jetstream {
 
 struct TitlebarPresenter {
     const PresenterContext& context;
+    AgentVoicePresenter voice;
 
-    explicit TitlebarPresenter(const PresenterContext& context) : context(context) {}
+    explicit TitlebarPresenter(const PresenterContext& context) : context(context), voice(context) {}
 
     TitlebarView::Config build() const {
         const auto enqueue = context.callbacks.enqueueMail;
-        const auto focusedFlowgraph = context.state.interface.focusedFlowgraph;
-        const bool startTabFocused = context.state.startTabActive();
-        const bool settingsTabFocused = context.state.settingsTabActive();
-        const bool docsTabFocused = context.state.docsTabActive();
+        const auto activeFlowgraph = context.state.activeFlowgraph();
+        const bool startTabActive = context.state.startTabActive();
+        const bool settingsTabActive = context.state.settingsTabActive();
+        const bool docsTabActive = context.state.docsTabActive();
         std::unordered_set<std::string> environmentFlowgraphs;
         for (const auto& [flowgraph, _] : context.state.flowgraph.environment) {
             environmentFlowgraphs.insert(flowgraph);
@@ -43,21 +45,19 @@ struct TitlebarPresenter {
         };
 
         return TitlebarView::Config{
-            .id = "main-titlebar",
             .leadingInset = chrome.leadingInset,
             .height = chrome.height,
-            .remoteSupported = context.state.remote.supported,
             .remoteStarted = context.state.remote.started,
             .updateAvailable = context.state.update.available,
             .updateReady = context.state.update.ready,
             .intelligenceEnabled = context.state.agent.settings.enabled,
-            .agentVisible = context.state.agent.ui.visible,
-            .voiceVisible = context.state.agent.ui.voiceVisible,
+            .agentUnread = context.state.agent.ui.unread,
+            .voice = voice.build(),
             .environmentFlowgraphs = environmentFlowgraphs,
             .debugTimingEnabled = context.state.debug.timingEnabled,
             .debugLogLevel = context.state.debug.logLevel,
-            .onAction = [enqueue, focusedFlowgraph, startTabFocused, settingsTabFocused, docsTabFocused,
-                         canCheckForUpdates, missing,
+            .onAction = [enqueue, activeFlowgraph, startTabActive, settingsTabActive, docsTabActive, canCheckForUpdates,
+                         missing,
                          timing = context.state.debug.timingEnabled,
                          agentVisible = context.state.agent.ui.visible,
                          voiceVisible = context.state.agent.ui.voiceVisible](TitlebarView::Action action) {
@@ -82,7 +82,7 @@ struct TitlebarPresenter {
                         enqueue(MailOpenStartTab{});
                         break;
                     case Action::ToggleAgent:
-                        enqueue(MailSetAgentChatVisible{.value = !agentVisible});
+                        enqueue(MailSetAgentChatVisible{.value = !agentVisible, .focus = !agentVisible});
                         break;
                     case Action::ToggleVoice:
                         enqueue(MailSetAgentVoiceVisible{.value = !voiceVisible});
@@ -123,38 +123,35 @@ struct TitlebarPresenter {
                     case Action::Quit:
                         enqueue(MailQuit{});
                         break;
-                    case Action::NewFlowgraph:
-                        enqueue(MailNewFlowgraph{});
-                        break;
                     case Action::OpenFlowgraph:
                         enqueue(MailOpenFlowgraph{});
                         break;
                     case Action::SaveFlowgraph:
-                        if (focusedFlowgraph.has_value()) {
-                            enqueue(MailSaveFlowgraph{.flowgraph = focusedFlowgraph.value()});
+                        if (activeFlowgraph.has_value()) {
+                            enqueue(MailSaveFlowgraph{.flowgraph = activeFlowgraph.value()});
                         } else {
                             missing("No focused flowgraph to save.");
                         }
                         break;
                     case Action::ShowFlowgraphInfo:
-                        if (focusedFlowgraph.has_value()) {
+                        if (activeFlowgraph.has_value()) {
                             enqueue(MailOpenModal{
                                 .content = ModalContent::FlowgraphInfo,
-                                .flowgraph = focusedFlowgraph.value(),
+                                .flowgraph = activeFlowgraph.value(),
                             });
                         } else {
                             missing("No focused flowgraph to display information.");
                         }
                         break;
                     case Action::CloseFlowgraph:
-                        if (startTabFocused) {
+                        if (startTabActive) {
                             enqueue(MailCloseStartTab{});
-                        } else if (settingsTabFocused) {
+                        } else if (settingsTabActive) {
                             enqueue(MailCloseSettings{});
-                        } else if (docsTabFocused) {
+                        } else if (docsTabActive) {
                             enqueue(MailCloseDocs{});
-                        } else if (focusedFlowgraph.has_value()) {
-                            enqueue(MailCloseFlowgraph{focusedFlowgraph.value()});
+                        } else if (activeFlowgraph.has_value()) {
+                            enqueue(MailCloseFlowgraph{activeFlowgraph.value()});
                         } else {
                             missing("No focused flowgraph to close.");
                         }

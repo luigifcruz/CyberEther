@@ -9,6 +9,7 @@
 
 #include "compositor/default/actions/gallery.hh"
 #include "compositor/default/actions/workbench.hh"
+#include "compositor/default/presenters/agent/chat.hh"
 #include "compositor/default/presenters/file_picker.hh"
 #include "compositor/default/presenters/start_tab/base.hh"
 #include "compositor/default/presenters/titlebar.hh"
@@ -159,8 +160,18 @@ bool Settles(Frames& frames, Update update) {
     return true;
 }
 
-F32 EntryY(const Jetstream::Rect& popup, U64 entries, U64 separators) {
-    return popup.y + 8.0f + 23.0f * static_cast<F32>(entries) + 8.0f * static_cast<F32>(separators) + 11.5f;
+Sakura::Text* MenuLabel(LayerHost& host, const std::string& label) {
+    return ShownText(host.popups, label);
+}
+
+bool ClickMenu(LayerHost& host, const std::string& label) {
+    auto* entry = MenuLabel(host, label);
+    if (!entry) {
+        return false;
+    }
+    const auto point = Center(*entry);
+    host.click(point.x, point.y);
+    return true;
 }
 
 struct TitleRig {
@@ -178,8 +189,6 @@ struct TitleRig {
 
     TitleRig() {
         config = {
-            .id = "titlebar",
-            .remoteSupported = true,
             .onAction = [this](TitlebarView::Action action) {
                 actions.push_back(action);
             },
@@ -229,11 +238,9 @@ struct TitleRig {
         place();
     }
 
-    void choose(Sakura::Component& button, U64 entries, U64 separators) {
+    void choose(Sakura::Component& button, const std::string& label) {
         open(button);
-        const auto menu = popup();
-        REQUIRE(menu.width > 0.0f);
-        host.click(menu.x + 20.0f, EntryY(menu, entries, separators));
+        REQUIRE(ClickMenu(host, label));
         place();
         if (!PopupFrames(host).empty()) {
             host.click(600.0f, 700.0f);
@@ -445,15 +452,24 @@ class ChromeWindow final : public SakuraTest::FakeWindow {
     }
 };
 
-bool Checked(LayerHost& host, const Jetstream::Rect& menu, F32 y) {
-    for (auto* line : Find<Sakura::Polyline>(host.popups)) {
-        for (const auto& instance : line->config().instances) {
-            if (instance.filled || instance.points.size() != 3) {
-                continue;
-            }
-            const auto& tip = instance.points[1];
-            if (menu.contains(tip.x, tip.y) && std::abs(tip.y - y) <= 11.5f) {
-                return true;
+bool Checked(LayerHost& host, const std::string& label) {
+    auto* entry = MenuLabel(host, label);
+    REQUIRE(entry != nullptr);
+    const Jetstream::Rect row = Peek::Frame(*entry);
+    const auto point = Center(*entry);
+    for (const auto& menu : PopupFrames(host)) {
+        if (!menu.contains(point.x, point.y)) {
+            continue;
+        }
+        for (auto* line : Find<Sakura::Polyline>(host.popups)) {
+            for (const auto& instance : line->config().instances) {
+                if (instance.filled || instance.points.size() != 3) {
+                    continue;
+                }
+                const auto& tip = instance.points[1];
+                if (menu.contains(tip.x, tip.y) && tip.x > row.x && std::abs(tip.y - point.y) <= row.height * 0.5f) {
+                    return true;
+                }
             }
         }
     }
@@ -764,25 +780,21 @@ TEST_CASE("Wordmark menu entries emit their actions and the update entry follows
     TitleRig rig;
     auto& wordmark = rig.shell.bar().leading();
 
-    rig.choose(wordmark, 0, 0);
-    rig.choose(wordmark, 1, 0);
-    rig.choose(wordmark, 2, 0);
-    rig.choose(wordmark, 3, 0);
-    rig.choose(wordmark, 6, 0);
-    rig.choose(wordmark, 7, 1);
-    CHECK(rig.actions == std::vector<Action>{Action::About, Action::Settings, Action::CheckForUpdates,
-                                             Action::RemoteStreaming, Action::SendFeedback, Action::Quit});
+    for (const char* label : {"About CyberEther", "Check for Updates", "Settings", "Send Feedback", "Quit CyberEther"}) {
+        CAPTURE(label);
+        rig.choose(wordmark, label);
+    }
+    CHECK(rig.actions == std::vector<Action>{Action::About, Action::CheckForUpdates, Action::Settings,
+                                             Action::SendFeedback, Action::Quit});
 
     rig.actions.clear();
-    rig.config.remoteSupported = false;
     rig.config.updateAvailable = true;
     rig.update();
-    rig.choose(wordmark, 3, 0);
-    rig.choose(wordmark, 2, 0);
+    rig.choose(wordmark, "Update Available");
     rig.config.updateAvailable = false;
     rig.config.updateReady = true;
     rig.update();
-    rig.choose(wordmark, 2, 0);
+    rig.choose(wordmark, "Update Ready");
     CHECK(rig.actions == std::vector<Action>{Action::OpenUpdateModal, Action::OpenUpdateModal});
 }
 
@@ -790,10 +802,11 @@ TEST_CASE("Wordmark help submenu opens each link", "[core][sakura][views]") {
     using Action = TitlebarView::Action;
     TitleRig rig;
     auto& wordmark = rig.shell.bar().leading();
-    for (U64 entry = 0; entry < 5; ++entry) {
+    for (const char* label : {"Getting Started", "Documentation", "Repository", "Report Issue", "Luigi's Twitter"}) {
+        CAPTURE(label);
         rig.open(wordmark);
         const auto menu = rig.popup();
-        rig.host.click(menu.x + 20.0f, EntryY(menu, 5, 0));
+        REQUIRE(ClickMenu(rig.host, "Help"));
         rig.place();
         Jetstream::Rect submenu = {};
         for (const auto& frame : PopupFrames(rig.host)) {
@@ -802,7 +815,7 @@ TEST_CASE("Wordmark help submenu opens each link", "[core][sakura][views]") {
             }
         }
         REQUIRE(submenu.x > menu.x);
-        rig.host.click(submenu.x + 20.0f, EntryY(submenu, entry, 0));
+        REQUIRE(ClickMenu(rig.host, label));
         rig.place();
         CHECK(PopupFrames(rig.host).empty());
     }
@@ -832,15 +845,16 @@ TEST_CASE("Wordmark developer submenu toggles timing, opens tools, and picks a l
     const auto developer = [&] {
         rig.open(wordmark);
         const auto menu = rig.popup();
-        rig.host.click(menu.x + 20.0f, EntryY(menu, 4, 0));
+        REQUIRE(ClickMenu(rig.host, "Developer"));
         rig.place();
         const auto submenu = rightmost();
         REQUIRE(submenu.x > menu.x);
         return submenu;
     };
-    for (const auto& [entry, separators] : std::vector<std::pair<U64, U64>>{{0, 0}, {1, 0}, {2, 1}, {4, 3}}) {
-        const auto submenu = developer();
-        rig.host.click(submenu.x + 20.0f, EntryY(submenu, entry, separators));
+    for (const char* label : {"Show Timing", "Show Benchmarks", "Reload Plugins", "Open In Settings"}) {
+        CAPTURE(label);
+        developer();
+        REQUIRE(ClickMenu(rig.host, label));
         rig.place();
         CHECK(PopupFrames(rig.host).empty());
     }
@@ -848,11 +862,11 @@ TEST_CASE("Wordmark developer submenu toggles timing, opens tools, and picks a l
                                              Action::OpenDeveloperSettings});
 
     const auto submenu = developer();
-    rig.host.click(submenu.x + 20.0f, EntryY(submenu, 3, 2));
+    REQUIRE(ClickMenu(rig.host, "Log Level"));
     rig.place();
     const auto logLevels = rightmost();
     REQUIRE(logLevels.x > submenu.x);
-    rig.host.click(logLevels.x + 20.0f, EntryY(logLevels, 3, 0));
+    REQUIRE(ClickMenu(rig.host, "Debug"));
     rig.place();
     CHECK(levels == std::vector<I32>{3});
 }
@@ -937,21 +951,21 @@ TEST_CASE("Right clicking a pill opens the tab menu at the cursor acting on that
     using TabAction = TitlebarView::TabAction;
     TitleRig rig;
     const auto second = rig.pill(1);
-    const auto pick = [&](U64 entries, U64 separators) {
+    const auto pick = [&](const char* label) {
+        CAPTURE(label);
         rig.host.click(second.x, second.y, MouseButton::Right);
         rig.place();
         REQUIRE_FALSE(PopupFrames(rig.host).empty());
         const auto menu = rig.popup();
         CHECK(menu.x == second.x);
         CHECK(menu.y == second.y);
-        rig.host.click(menu.x + 20.0f, EntryY(menu, entries, separators));
+        REQUIRE(ClickMenu(rig.host, label));
         rig.place();
         CHECK(PopupFrames(rig.host).empty());
     };
-    for (U64 entry = 0; entry < 4; ++entry) {
-        pick(entry, 0);
+    for (const char* label : {"Save", "Rename", "Info", "Environment View", "Close"}) {
+        pick(label);
     }
-    pick(4, 1);
     CHECK(rig.tabActions == std::vector<std::pair<TabAction, std::string>>{
         {TabAction::Save, "b"}, {TabAction::Rename, "b"}, {TabAction::Info, "b"},
         {TabAction::ToggleEnvironment, "b"}, {TabAction::Close, "b"}});
@@ -992,10 +1006,8 @@ TEST_CASE("Titlebar presenter actions enqueue the matching mail", "[core][sakura
     CHECK(mailbox.last<MailOpenDocs>()->page.empty());
     config.onAction(Action::GettingStarted);
     CHECK(mailbox.last<MailOpenDocs>()->page == "quick-start");
-    config.onAction(Action::NewFlowgraph);
     config.onAction(Action::OpenFlowgraph);
     config.onAction(Action::Quit);
-    CHECK(mailbox.count<MailNewFlowgraph>() == 1);
     CHECK(mailbox.count<MailOpenFlowgraph>() == 1);
     CHECK(mailbox.count<MailQuit>() == 1);
 
@@ -1004,6 +1016,7 @@ TEST_CASE("Titlebar presenter actions enqueue the matching mail", "[core][sakura
     CHECK(mailbox.count<MailNotify>() == 2);
     CHECK(mailbox.count<MailSaveFlowgraph>() == 0);
 
+    mailbox.state.flowgraph.items["a"] = std::make_shared<Flowgraph>();
     mailbox.state.interface.focusedFlowgraph = "a";
     config = TitlebarPresenter(mailbox.context()).build();
     config.onAction(Action::SaveFlowgraph);
@@ -1021,6 +1034,7 @@ TEST_CASE("Titlebar presenter close action targets the start tab while it is the
           "[core][sakura][views]") {
     using Action = TitlebarView::Action;
     Mailbox mailbox;
+    mailbox.state.flowgraph.items["a"] = std::make_shared<Flowgraph>();
     mailbox.state.interface.focusedFlowgraph = "a";
     mailbox.state.interface.startTab = true;
     mailbox.state.interface.focusedTab = WorkspaceTab::Start;
@@ -1102,7 +1116,6 @@ TEST_CASE("Command shortcuts emit their titlebar actions", "[core][sakura][views
     std::vector<Action> actions;
     TitlebarView bar;
     bar.update({
-        .id = "titlebar",
         .onAction = [&](Action action) {
             actions.push_back(action);
         },
@@ -1111,22 +1124,41 @@ TEST_CASE("Command shortcuts emit their titlebar actions", "[core][sakura][views
     keys.update({.bindings = bar.shortcuts()});
     Host host(keys);
 
-    for (const auto key : {KeyCode::N, KeyCode::O, KeyCode::S, KeyCode::W, KeyCode::I, KeyCode::G, KeyCode::Comma}) {
+    for (const auto key : {KeyCode::T, KeyCode::O, KeyCode::S, KeyCode::W, KeyCode::I, KeyCode::G, KeyCode::Comma}) {
         CHECK(Tap(host, key, {.control = true}));
     }
-    CHECK(actions == std::vector<Action>{Action::NewFlowgraph, Action::OpenFlowgraph, Action::SaveFlowgraph,
+    CHECK(actions == std::vector<Action>{Action::NewTab, Action::OpenFlowgraph, Action::SaveFlowgraph,
                                          Action::CloseFlowgraph, Action::ShowFlowgraphInfo, Action::SendFeedback,
                                          Action::Settings});
 
     actions.clear();
-    CHECK(Tap(host, KeyCode::N, {.super = true}));
+    CHECK(Tap(host, KeyCode::T, {.super = true}));
     CHECK(Tap(host, KeyCode::Comma, {.super = true}));
-    CHECK(actions == std::vector<Action>{Action::NewFlowgraph, Action::Settings});
+    CHECK(actions == std::vector<Action>{Action::NewTab, Action::Settings});
 
     actions.clear();
-    CHECK_FALSE(Tap(host, KeyCode::N));
+    CHECK_FALSE(Tap(host, KeyCode::N, {.control = true}));
+    CHECK_FALSE(Tap(host, KeyCode::T));
     CHECK_FALSE(Tap(host, KeyCode::S, {.alt = true}));
+    CHECK_FALSE(Tap(host, KeyCode::J, {.control = true}));
     CHECK(actions.empty());
+
+    bar.update({
+        .intelligenceEnabled = true,
+        .onAction = [&](Action action) {
+            actions.push_back(action);
+        },
+    });
+    keys.update({.bindings = bar.shortcuts()});
+    CHECK(Tap(host, KeyCode::J, {.control = true}));
+    CHECK(Tap(host, KeyCode::J, {.super = true}));
+    CHECK(actions == std::vector<Action>{Action::ToggleVoice, Action::ToggleVoice});
+    CHECK(AssistantComposer::VoiceKey == KeyCode::J);
+#if defined(JST_OS_MAC)
+    CHECK(std::string(AssistantComposer::VoiceHint) == "Start voice (Cmd+J)");
+#else
+    CHECK(std::string(AssistantComposer::VoiceHint) == "Start voice (Ctrl+J)");
+#endif
 }
 
 TEST_CASE("Titlebar presenter uses integrated window chrome and routes bar presses to drag and zoom",
@@ -1204,6 +1236,7 @@ TEST_CASE("Titlebar presenter negates timing, forwards the log level, opens a ta
     CHECK(mailbox.count<MailNotify>() == 1);
     CHECK(mailbox.count<MailCloseFlowgraph>() == 0);
 
+    mailbox.state.flowgraph.items["a"] = std::make_shared<Flowgraph>();
     mailbox.state.interface.focusedFlowgraph = "a";
     config = TitlebarPresenter(mailbox.context()).build();
     config.onAction(Action::CloseFlowgraph);
@@ -1257,32 +1290,29 @@ TEST_CASE("Menu checkmarks follow the tab environment views, the timing toggle, 
         const auto menu = tabMenu(index);
         REQUIRE(menu.width > 0.0f);
         std::vector<bool> checked;
-        for (U64 entry = 0; entry < 4; ++entry) {
-            checked.push_back(Checked(rig.host, menu, EntryY(menu, entry, 0)));
+        for (const char* label : {"Save", "Rename", "Info", "Environment View", "Close"}) {
+            checked.push_back(Checked(rig.host, label));
         }
-        checked.push_back(Checked(rig.host, menu, EntryY(menu, 4, 1)));
         dismiss();
         return checked;
     };
     const auto developer = [&] {
         rig.open(rig.shell.bar().leading());
         const auto menu = rig.popup();
-        rig.host.click(menu.x + 20.0f, EntryY(menu, 4, 0));
+        REQUIRE(ClickMenu(rig.host, "Developer"));
         rig.place();
         const auto submenu = rightmost();
         REQUIRE(submenu.x > menu.x);
-        std::vector<bool> checked = {
-            Checked(rig.host, submenu, EntryY(submenu, 0, 0)),
-            Checked(rig.host, submenu, EntryY(submenu, 1, 0)),
-            Checked(rig.host, submenu, EntryY(submenu, 2, 1)),
-            Checked(rig.host, submenu, EntryY(submenu, 4, 3)),
-        };
-        rig.host.click(submenu.x + 20.0f, EntryY(submenu, 3, 2));
+        std::vector<bool> checked;
+        for (const char* label : {"Show Timing", "Show Benchmarks", "Reload Plugins", "Open In Settings"}) {
+            checked.push_back(Checked(rig.host, label));
+        }
+        REQUIRE(ClickMenu(rig.host, "Log Level"));
         rig.place();
         const auto levels = rightmost();
         REQUIRE(levels.x > submenu.x);
-        for (U64 entry = 0; entry < 5; ++entry) {
-            checked.push_back(Checked(rig.host, levels, EntryY(levels, entry, 0)));
+        for (const char* label : {"Fatal / Error", "Warnings", "Info", "Debug", "Trace"}) {
+            checked.push_back(Checked(rig.host, label));
         }
         dismiss();
         return checked;
@@ -4205,6 +4235,267 @@ TEST_CASE("Help button is always in the top right corner, faint, and opens the d
     rig.place();
     CHECK(rig.actions == std::vector<Action>{Action::Documentation});
     CHECK(rig.presses.empty());
+}
+
+namespace {
+
+struct AgentChatRig {
+    Jetstream::Rect bounds = {0.0f, 0.0f, AgentChatView::Width, 720.0f};
+    Scene scene{bounds};
+    Mailbox mailbox;
+    AgentChatView view;
+    Sakura::Layer layer;
+    LayerHost host{{&layer}};
+
+    void update() {
+        auto config = AgentChatPresenter(mailbox.context()).build();
+        config.open = true;
+        config.hidden = false;
+        view.update(std::move(config));
+        layer.update({.content = &view.component()});
+    }
+
+    void show() {
+        update();
+        host.place(scene.ctx, bounds);
+    }
+
+    void configureModel() {
+        mailbox.state.agent.settings.models.push_back({.provider = "local", .id = "model"});
+    }
+
+    void focusFlowgraph(U64 blocks) {
+        mailbox.state.flowgraph.items["graph"] = nullptr;
+        mailbox.state.interface.focusedFlowgraph = "graph";
+        mailbox.state.flowgraph.blocks["graph"].resize(blocks);
+    }
+};
+
+}  // namespace
+
+TEST_CASE("Titlebar presenter save and info shortcuts skip the flowgraph hidden behind a focused tab",
+          "[core][sakura][views]") {
+    using Action = TitlebarView::Action;
+    Mailbox mailbox;
+    mailbox.state.flowgraph.items["a"] = std::make_shared<Flowgraph>();
+    mailbox.state.interface.focusedFlowgraph = "a";
+
+    const auto check = [&](bool startTab, bool settingsTab) {
+        mailbox.mails.clear();
+        mailbox.state.interface.startTab = startTab;
+        mailbox.state.interface.settingsTab = settingsTab;
+        mailbox.state.interface.focusedTab.reset();
+        if (startTab) {
+            mailbox.state.interface.focusedTab = WorkspaceTab::Start;
+        }
+        if (settingsTab) {
+            mailbox.state.interface.focusedTab = WorkspaceTab::Settings;
+        }
+        auto config = TitlebarPresenter(mailbox.context()).build();
+        config.onAction(Action::SaveFlowgraph);
+        config.onAction(Action::ShowFlowgraphInfo);
+        CHECK(mailbox.count<MailSaveFlowgraph>() == 0);
+        CHECK(mailbox.count<MailOpenModal>() == 0);
+        CHECK(mailbox.count<MailNotify>() == 2);
+        config.onAction(Action::CloseFlowgraph);
+        CHECK(mailbox.count<MailCloseFlowgraph>() == 0);
+        CHECK(mailbox.count<MailCloseStartTab>() == (startTab ? 1 : 0));
+        CHECK(mailbox.count<MailCloseSettings>() == (settingsTab ? 1 : 0));
+    };
+    check(true, false);
+    check(false, true);
+
+    mailbox.mails.clear();
+    mailbox.state.interface.focusedTab.reset();
+    auto config = TitlebarPresenter(mailbox.context()).build();
+    config.onAction(Action::SaveFlowgraph);
+    config.onAction(Action::ShowFlowgraphInfo);
+    REQUIRE(mailbox.last<MailSaveFlowgraph>() != nullptr);
+    CHECK(mailbox.last<MailSaveFlowgraph>()->flowgraph == "a");
+    REQUIRE(mailbox.last<MailOpenModal>() != nullptr);
+    CHECK(mailbox.last<MailOpenModal>()->flowgraph == std::optional<std::string>("a"));
+}
+
+TEST_CASE("Titlebar presenter tints the assistant button from the unread state", "[core][sakura][views]") {
+    Mailbox mailbox;
+    mailbox.state.agent.settings.enabled = true;
+    CHECK_FALSE(TitlebarPresenter(mailbox.context()).build().agentUnread);
+    mailbox.state.agent.ui.unread = true;
+    CHECK(TitlebarPresenter(mailbox.context()).build().agentUnread);
+
+    TitleRig rig;
+    const auto tint = [&]() {
+        rig.update();
+        rig.place();
+        auto* assistant = Indicator(rig.shell.bar(), ICON_LC_WAND_SPARKLES);
+        REQUIRE(assistant != nullptr);
+        for (auto* text : Find<Sakura::Text>(*assistant)) {
+            if (text->config().str == ICON_LC_WAND_SPARKLES) {
+                return text->config().colorKey;
+            }
+        }
+        return std::string();
+    };
+    rig.config.intelligenceEnabled = true;
+    CHECK(tint() == "text_secondary");
+    rig.config.agentUnread = true;
+    CHECK(tint() == "cyber_blue");
+}
+
+TEST_CASE("The voice shortcut starts voice when it is off and ends it when it is on", "[core][sakura][views]") {
+    Mailbox mailbox;
+    mailbox.state.agent.settings.enabled = true;
+    const auto toggle = [&] {
+        const auto config = TitlebarPresenter(mailbox.context()).build();
+        config.onAction(TitlebarView::Action::ToggleVoice);
+        const auto* mail = mailbox.last<MailSetAgentVoiceVisible>();
+        REQUIRE(mail != nullptr);
+        return mail->value;
+    };
+    CHECK(toggle());
+    mailbox.state.agent.ui.voiceVisible = true;
+    CHECK_FALSE(toggle());
+}
+
+TEST_CASE("The assistant placeholder asks for a model before offering suggestions", "[core][sakura][views][agent]") {
+    AgentChatRig rig;
+    rig.show();
+    CHECK(ShownText(rig.view.component(), "Connect a model") != nullptr);
+    CHECK(ShownText(rig.view.component(), "What should we build?") == nullptr);
+    auto* setup = LabeledButton(rig.view.component(), "Open Settings");
+    REQUIRE(setup != nullptr);
+    CHECK(Press(rig.host, *setup));
+    const auto* mail = rig.mailbox.last<MailOpenSettings>();
+    REQUIRE(mail != nullptr);
+    CHECK(mail->section == SettingsSection::Intelligence);
+}
+
+TEST_CASE("The assistant placeholder suggests prompts for the focused flowgraph and submits them on click",
+          "[core][sakura][views][agent]") {
+    AgentChatRig rig;
+    rig.configureModel();
+    rig.show();
+    const auto title = Peek::Frame(*ShownText(rig.view.component(), "What should we build?"));
+    CHECK(title.y > 120.0f);
+    CHECK(LabeledButton(rig.view.component(), "Open Settings") == nullptr);
+    auto* build = LabeledButton(rig.view.component(), "Build an FM radio receiver.");
+    REQUIRE(build != nullptr);
+    CHECK(LabeledButton(rig.view.component(), "What can CyberEther do?") != nullptr);
+    CHECK(LabeledButton(rig.view.component(), "Track nearby aircraft with ADS-B.") != nullptr);
+    CHECK(Press(rig.host, *build));
+    const auto* submit = rig.mailbox.last<MailSubmitAgentChat>();
+    REQUIRE(submit != nullptr);
+    CHECK(submit->text == "Build an FM radio receiver.");
+    CHECK(submit->composer == AgentComposer::Dock);
+
+    rig.focusFlowgraph(0);
+    rig.show();
+    CHECK(ShownText(rig.view.component(), "What goes in here?") != nullptr);
+    CHECK(LabeledButton(rig.view.component(), "Generate a test tone and plot its spectrum.") != nullptr);
+    CHECK(LabeledButton(rig.view.component(), "Open a recording and plot its waterfall.") != nullptr);
+
+    rig.focusFlowgraph(3);
+    rig.show();
+    CHECK(ShownText(rig.view.component(), "What should we change?") != nullptr);
+    auto* explain = LabeledButton(rig.view.component(), "Explain how this flowgraph works.");
+    REQUIRE(explain != nullptr);
+    CHECK(LabeledButton(rig.view.component(), "Build an FM radio receiver.") == nullptr);
+    CHECK(LabeledButton(rig.view.component(), "Make this flowgraph run faster.") != nullptr);
+    CHECK(Press(rig.host, *explain));
+    CHECK(rig.mailbox.last<MailSubmitAgentChat>()->text == "Explain how this flowgraph works.");
+}
+
+TEST_CASE("The assistant placeholder settles and repaints once per suggestion hover", "[core][sakura][views][agent]") {
+    AgentChatRig rig;
+    Frames frames(rig.host, rig.bounds, rig.scene.context());
+    const auto update = [&] {
+        rig.update();
+    };
+    const auto step = [&] {
+        return frames.run(update);
+    };
+    CHECK(Settles(frames, update));
+    rig.configureModel();
+    CHECK(Settles(frames, update));
+    rig.focusFlowgraph(3);
+    CHECK(Settles(frames, update));
+    auto* suggestion = LabeledButton(rig.view.component(), "Explain how this flowgraph works.");
+    REQUIRE(suggestion != nullptr);
+    CheckHover(rig.host, step, *suggestion, {rig.bounds.width * 0.5f, 5.0f});
+    CHECK(Settles(frames, update));
+}
+
+TEST_CASE("A live voice session swaps the assistant button for a voice pill beside help", "[core][sakura][views]") {
+    TitleRig rig;
+    rig.config.intelligenceEnabled = true;
+    rig.update();
+    rig.place();
+    REQUIRE(Indicator(rig.shell.bar(), ICON_LC_WAND_SPARKLES) != nullptr);
+    CHECK(Find<Sakura::Voice>(rig.shell.bar().end()).empty());
+
+    U64 stops = 0;
+    rig.config.voice = TitlebarView::VoiceIndicator{
+        .phase = TitlebarView::VoiceIndicator::Phase::Listening,
+        .onStop = [&] { ++stops; },
+    };
+    rig.update();
+    rig.place();
+    CHECK(Indicator(rig.shell.bar(), ICON_LC_WAND_SPARKLES) == nullptr);
+    const auto pills = Find<Sakura::Voice>(rig.shell.bar().end());
+    REQUIRE(pills.size() == 1);
+    const auto pill = Peek::Frame(*pills.front());
+    const auto help = Peek::Frame(Help(rig.shell.bar()));
+    CHECK(pill.height == 28.0f);
+    CHECK(pill.right() + TitlebarView::IndicatorGap == help.x);
+    rig.host.click(pill.x + pill.width * 0.5f, pill.y + 14.0f);
+    CHECK(stops == 1);
+
+    rig.config.voice.reset();
+    rig.update();
+    rig.place();
+    CHECK(Indicator(rig.shell.bar(), ICON_LC_WAND_SPARKLES) != nullptr);
+    CHECK(Find<Sakura::Voice>(rig.shell.bar().end()).empty());
+}
+
+TEST_CASE("Voice levels from the microphone and the assistant share one decibel scale", "[core][sakura][views][agent]") {
+    Mailbox mailbox;
+    const auto context = mailbox.context();
+    const AgentVoicePresenter presenter{context};
+    CHECK_FALSE(presenter.build().has_value());
+
+    mailbox.state.agent.ui.voiceVisible = true;
+    mailbox.state.agent.voice.phase = Agent::Session::Phase::Listening;
+    const auto level = [&](F32 input, F32 output) {
+        mailbox.state.agent.voice.input = input;
+        mailbox.state.agent.voice.output = output;
+        const auto config = presenter.build();
+        REQUIRE(config.has_value());
+        return config->level;
+    };
+    CHECK(level(0.0f, 0.0f) == 0.0f);
+    CHECK(level(0.001f, 0.0f) == 0.0f);
+    CHECK(level(0.03f, 0.0f) == level(0.0f, 0.03f));
+    CHECK(level(0.03f, 0.0f) > 0.4f);
+    CHECK(level(0.03f, 0.0f) < level(0.1f, 0.0f));
+    CHECK(level(0.5f, 0.0f) == 1.0f);
+    CHECK(level(0.03f, 0.2f) == level(0.0f, 0.2f));
+
+    const auto phase = [&](Agent::Session::Phase value) {
+        mailbox.state.agent.voice.phase = value;
+        const auto config = presenter.build();
+        REQUIRE(config.has_value());
+        return config->phase;
+    };
+    using Phase = TitlebarView::VoiceIndicator::Phase;
+    CHECK(phase(Agent::Session::Phase::Connecting) == Phase::Connecting);
+    CHECK(phase(Agent::Session::Phase::Delegating) == Phase::Busy);
+    CHECK(phase(Agent::Session::Phase::Idle) == Phase::Idle);
+    const auto idle = presenter.build();
+    REQUIRE(idle.has_value());
+    REQUIRE(idle->onStart);
+    idle->onStart();
+    CHECK(mailbox.count<MailStartAgentVoice>() == 1);
+    CHECK(TitlebarPresenter(mailbox.context()).build().voice.has_value());
 }
 
 TEST_CASE("Remote viewers that share a display code stay distinct", "[core][sakura][views]") {

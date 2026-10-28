@@ -15,7 +15,6 @@
 #include <jetstream/render/sakura/components/card.hh>
 #include <jetstream/render/sakura/components/chat.hh>
 #include <jetstream/render/sakura/components/chat_composer.hh>
-#include <jetstream/render/sakura/components/chat_dock.hh>
 #include <jetstream/render/sakura/components/chrome_button.hh>
 #include <jetstream/render/sakura/components/code_editor.hh>
 #include <jetstream/render/sakura/components/combo.hh>

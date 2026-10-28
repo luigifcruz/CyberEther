@@ -466,7 +466,7 @@ TEST_CASE("Chats settle under a persistent snapshot and fade the transcript with
     const Chat::Snapshot snapshot = Conversation(4);
     F32 opacity = 1.0f;
     const auto update = [&] {
-        chat.update({.id = "chat", .snapshot = snapshot, .transcriptOpacity = opacity, .surfaceColorKey = "agent_panel"});
+        chat.update({.id = "chat", .snapshot = snapshot, .transcriptOpacity = opacity, .surfaceColorKey = "tile_bg"});
     };
     const auto cover = [&] {
         return Direct<Sakura::Box>(chat).at(1)->config().instances.at(0);
@@ -483,7 +483,7 @@ TEST_CASE("Chats settle under a persistent snapshot and fade the transcript with
     opacity = 0.25f;
     CHECK(RepaintOnly(frames.run(update)));
     CHECK(Retains(frames, update));
-    const auto panel = frames.ctx.palette.get().at("agent_panel");
+    const auto panel = frames.ctx.palette.get().at("tile_bg");
     CHECK(cover().visible);
     CHECK(cover().rect == Peek::Frame(*Find<Transcript>(chat).at(0)));
     CHECK(cover().backgroundColor.r == panel.r);
@@ -1043,14 +1043,14 @@ TEST_CASE("Busy chat disclosures shimmer only while visible and settle when busy
     };
     Chat::Snapshot snapshot = busySnapshot(true);
     const auto update = [&] {
-        transcript.update({.id = "chat", .snapshot = snapshot, .surfaceColorKey = "agent_panel"});
+        transcript.update({.id = "chat", .snapshot = snapshot, .surfaceColorKey = "tile_bg"});
     };
     REQUIRE(frames.settle(update));
     CHECK(Retains(frames, update));
 
     const auto strips = Shimmer(transcript).config().instances;
     const auto label = Toggles(transcript).config().instances.at(0).rect;
-    const auto panel = frames.ctx.palette.get().at("agent_panel");
+    const auto panel = frames.ctx.palette.get().at("tile_bg");
     REQUIRE(strips.size() == Transcript::ShimmerSteps);
     CHECK(strips.front().rect.x == Approx(kRect.x + 15.0f));
     CHECK(strips.back().rect.right() == Approx(label.right()));
