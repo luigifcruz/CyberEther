@@ -58,7 +58,11 @@ struct FileReaderImpl : public Module::Impl, public DynamicConfig<FileReader> {
 
     Recording recording;
     std::optional<F64> publishedFrequency;
+    std::chrono::steady_clock::time_point paceStart{};
+    U64 pacedSamples = 0;
 
+    std::atomic<bool> livePlaying{true};
+    std::atomic<bool> liveRealTime{false};
     std::atomic<bool> streaming{false};
     std::atomic<bool> receiving{false};
     std::atomic<bool> starved{false};

@@ -40,6 +40,7 @@ Result FileReaderImpl::configure() {
     moduleConfig->batchSize = batchSize;
     moduleConfig->loop = loop;
     moduleConfig->playing = playing;
+    moduleConfig->realTime = realTime;
 
     return Result::SUCCESS;
 }
@@ -89,6 +90,13 @@ Result FileReaderImpl::define() {
                                     "Playing",
                                     "Start or stop reading from the file.",
                                     {{"type", "bool"}}));
+
+    if (config.fileFormat == "sigmf") {
+        JST_CHECK(defineInterfaceConfig("realTime",
+                                        "Real Time",
+                                        "Read at the recorded sample rate instead of as fast as the chain runs.",
+                                        {{"type", "bool"}}));
+    }
 
     JST_CHECK(defineInterfaceMetric("progress",
                                     "Position",

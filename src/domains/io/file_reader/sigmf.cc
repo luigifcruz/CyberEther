@@ -28,6 +28,24 @@ const std::unordered_map<std::string_view, DataType> kSigmfDataTypes = {
     {"ru8", DataType::U8},
 };
 
+std::optional<U64> UnsignedValue(const nlohmann::json& value) {
+    if (value.is_number_unsigned()) {
+        return value.get<U64>();
+    }
+    if (value.is_number_integer()) {
+        const auto number = value.get<I64>();
+        return number >= 0 ? std::optional<U64>(static_cast<U64>(number)) : std::nullopt;
+    }
+    if (value.is_number_float()) {
+        const auto number = value.get<F64>();
+        if (std::isfinite(number) && number >= 0.0 && std::floor(number) == number &&
+            number < 18446744073709551616.0) {
+            return static_cast<U64>(number);
+        }
+    }
+    return std::nullopt;
+}
+
 }  // namespace
 
 Result FileReaderImpl::loadSigmf(Recording& result) const {
@@ -85,7 +103,7 @@ Result FileReaderImpl::loadSigmf(Recording& result) const {
 
     const auto channels = global->find("core:num_channels");
     if (channels != global->end() &&
-        (!channels->is_number_unsigned() || channels->get<U64>() != 1)) {
+        UnsignedValue(*channels) != std::optional<U64>(1)) {
         JST_ERROR("[MODULE_FILE_READER] SigMF recordings with more than one channel are "
                   "not supported.");
         return Result::ERROR;
@@ -109,9 +127,12 @@ Result FileReaderImpl::loadSigmf(Recording& result) const {
     }
 
     const auto trailing = global->find("core:trailing_bytes");
-    if (trailing != global->end() && trailing->is_number_unsigned()) {
-        recording.trailingBytes = trailing->get<U64>();
+    if (trailing != global->end()) {
+        recording.trailingBytes = UnsignedValue(*trailing).value_or(0);
     }
+
+    const auto offset = global->find("core:offset");
+    const U64 firstSample = offset != global->end() ? UnsignedValue(*offset).value_or(0) : 0;
 
     const auto dataset = global->find("core:dataset");
     if (dataset != global->end() && dataset->is_string()) {
@@ -131,8 +152,9 @@ Result FileReaderImpl::loadSigmf(Recording& result) const {
 
             Recording::Capture capture;
             const auto start = entry.find("core:sample_start");
-            if (start != entry.end() && start->is_number_unsigned()) {
-                capture.sampleStart = start->get<U64>();
+            if (start != entry.end()) {
+                const U64 index = UnsignedValue(*start).value_or(0);
+                capture.sampleStart = index > firstSample ? index - firstSample : 0;
             }
 
             const auto frequency = entry.find("core:frequency");
@@ -142,13 +164,14 @@ Result FileReaderImpl::loadSigmf(Recording& result) const {
             }
 
             const auto header = entry.find("core:header_bytes");
-            if (header != entry.end() && header->is_number_unsigned() && header->get<U64>() > 0) {
+            const U64 headerBytes = header != entry.end() ? UnsignedValue(*header).value_or(0) : 0;
+            if (headerBytes > 0) {
                 if (!recording.captures.empty()) {
                     JST_ERROR("[MODULE_FILE_READER] SigMF header bytes are only supported on "
                               "the first capture.");
                     return Result::ERROR;
                 }
-                recording.headerBytes = header->get<U64>();
+                recording.headerBytes = headerBytes;
             }
 
             recording.captures.push_back(capture);
