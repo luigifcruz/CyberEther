@@ -650,7 +650,8 @@ void ParseInline(const std::string& line, StyleId baseStyle, std::string& displa
             if (isSpace(line[j - 1]) || (underscore && j + len < n && isWord(line[j + len]))) {
                 continue;
             }
-            emitRange(i + len, j, s);
+            const StyleId nested = baseStyle <= Style::BoldItalic ? static_cast<StyleId>(baseStyle | s) : s;
+            ParseInline(line.substr(i + len, j - i - len), nested, display, styles, links, footnotes);
             return j + len;
         }
         return 0;

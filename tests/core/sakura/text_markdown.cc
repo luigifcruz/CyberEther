@@ -1356,6 +1356,48 @@ TEST_CASE("Markdown links go to the link handler before the system browser", "[c
     CHECK(followed == std::vector<std::string>{"/docs/quick-start"});
 }
 
+TEST_CASE("Markdown parses links and code inside emphasis", "[core][sakura][markdown]") {
+    MonoFontWindow window;
+    window.load(Sakura::Typography::BodyFont, jbmm_compressed_data);
+    auto ctx = MakeContext();
+    ctx.render = &window;
+    TextMarkdown markdown;
+    Host host(markdown);
+    std::vector<std::string> followed;
+    markdown.update({
+        .id = "emphasis-links",
+        .value = "*[Physical channels](https://www.etsi.org/ts_136211.pdf)*, ETSI, **see `fft`**.",
+        .fontSize = 15.0f,
+        .onLink = [&](const std::string& url) {
+            followed.push_back(url);
+            return true;
+        },
+    });
+    host.place(ctx, {0.0f, 0.0f, 900.0f, 200.0f});
+    CHECK_FALSE(DrawnRect(markdown, "](").has_value());
+    CHECK_FALSE(DrawnRect(markdown, "`").has_value());
+    const auto link = DrawnRect(markdown, "Physical");
+    REQUIRE(link.has_value());
+    const F32 x = link->x + link->width * 0.5f;
+    const F32 y = RowCenter(markdown, 0);
+    CHECK(host.send(Mouse(MouseEventType::Click, x, y)));
+    host.send(Mouse(MouseEventType::Release, x, y));
+    CHECK(followed == std::vector<std::string>{"https://www.etsi.org/ts_136211.pdf"});
+
+    markdown.update({.id = "emphasis-links", .value = "**bold _both_ bold** and *slant __both__*", .fontSize = 15.0f});
+    host.place(ctx, {0.0f, 0.0f, 900.0f, 200.0f});
+    U64 combined = 0;
+    for (const auto* label : Find<Sakura::Label>(markdown)) {
+        for (const auto& instance : label->config().instances) {
+            if (instance.visible && instance.str.find("both") != std::string::npos) {
+                CHECK(label->config().fontName == Sakura::Typography::BodyBoldItalicFont);
+                ++combined;
+            }
+        }
+    }
+    CHECK(combined == 2);
+}
+
 TEST_CASE("Styled markdown hands links to the newest handler after a callback only change",
           "[core][sakura][markdown]") {
     MonoFontWindow window;
