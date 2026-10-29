@@ -12,6 +12,8 @@
 #include "jetstream/render/components/curves.hh"
 #include "jetstream/render/components/image.hh"
 #include "jetstream/render/components/mesh.hh"
+#include "jetstream/render/components/text.hh"
+#include "../../../resources/fonts/compressed_jbmm.hh"
 #include "component_test_support.hh"
 
 using namespace Jetstream;
@@ -648,6 +650,56 @@ void CheckImages(ComponentDriver<D>& driver) {
 }
 
 template<DeviceType D>
+void CheckTextStyles(ComponentDriver<D>& driver) {
+    ComponentWindow<D> window;
+    REQUIRE(window.create() == Result::SUCCESS);
+    auto font = std::make_shared<Font>(Font::Config{.size = 32.0f, .data = jbmm_compressed_data});
+    REQUIRE(font->create(&window) == Result::SUCCESS);
+    Text text({.maxCharacters = 4, .font = font, .pixelSize = {2.0f / 64, 2.0f / 64},
+               .elements = {{"label", {.position = {0, 0}, .alignment = {1, 1}, .fill = "A"}}}});
+    REQUIRE(text.create(&window) == Result::SUCCESS);
+    auto texture = Frame<D>();
+    auto surface = Attach(window, text, texture);
+    REQUIRE(text.present() == Result::SUCCESS);
+    driver.render(window);
+    const auto before = driver.pixels(texture);
+    Render::Surface::Config programsBefore;
+    REQUIRE(text.surface(programsBefore) == Result::SUCCESS);
+
+    REQUIRE(text.updateStyle(0.3f, 0.75f, 0.6f, 0.9f) == Result::SUCCESS);
+    REQUIRE(text.present() == Result::SUCCESS);
+    {
+        Render::Transfer::Batch batch;
+        REQUIRE(window.collect(batch) == Result::SUCCESS);
+        REQUIRE(batch.buffers().size() == 1);
+        CHECK(batch.buffers().front().upload.data.size() == 32);
+        CHECK(batch.textures().empty());
+    }
+    driver.render(window);
+    const auto after = driver.pixels(texture);
+    bool changed = false;
+    for (U64 i = 0; i < before.size(); ++i) changed |= std::abs(before[i] - after[i]) > 0.001f;
+    CHECK(changed);
+    Render::Surface::Config programsAfter;
+    REQUIRE(text.surface(programsAfter) == Result::SUCCESS);
+    CHECK(programsBefore.programs == programsAfter.programs);
+    REQUIRE(text.updateStyle(0.3f, 0.75f, 0.6f, 0.9f) == Result::SUCCESS);
+    REQUIRE(text.present() == Result::SUCCESS);
+    NoUploads(window);
+    REQUIRE(window.destroy() == Result::SUCCESS);
+}
+
+template<DeviceType D>
+void CheckNativeTextStyle() {
+    if (!std::getenv("JETSTREAM_TEST_NATIVE_COMPONENTS")) {
+        SKIP("Set JETSTREAM_TEST_NATIVE_COMPONENTS=1 to run headless GPU regressions.");
+    }
+    REQUIRE(Backend::Initialize<D>(Backend::Config{.validationEnabled = false, .headless = true}) == Result::SUCCESS);
+    ComponentDriver<D> driver;
+    CheckTextStyles(driver);
+}
+
+template<DeviceType D>
 void CheckNativeComponents() {
     if (!std::getenv("JETSTREAM_TEST_NATIVE_COMPONENTS")) {
         SKIP("Set JETSTREAM_TEST_NATIVE_COMPONENTS=1 to run headless GPU regressions.");
@@ -726,6 +778,11 @@ TEST_CASE("Program state changes invalidate retained surfaces without transfers"
 }
 
 #ifdef JETSTREAM_RENDER_METAL_AVAILABLE
+TEST_CASE("Metal text style changes update uniforms without rebuilding programs", "[core][render][native][metal][text-style]") {
+    auto pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+    CheckNativeTextStyle<DeviceType::Metal>();
+}
+
 TEST_CASE("Metal components retain state and retry failed uploads", "[core][render][components][native][metal]") {
     auto pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
     CheckNativeComponents<DeviceType::Metal>();
@@ -743,6 +800,10 @@ TEST_CASE("Metal mesh binds only validated index snapshots", "[core][render][com
 #endif
 
 #ifdef JETSTREAM_RENDER_VULKAN_AVAILABLE
+TEST_CASE("Vulkan text style changes update uniforms without rebuilding programs", "[core][render][native][vulkan][text-style]") {
+    CheckNativeTextStyle<DeviceType::Vulkan>();
+}
+
 TEST_CASE("Vulkan components retain state and retry failed uploads", "[core][render][components][native][vulkan]") {
     CheckNativeComponents<DeviceType::Vulkan>();
 }

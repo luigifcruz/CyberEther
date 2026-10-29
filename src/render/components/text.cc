@@ -515,6 +515,18 @@ Result Text::updateColor(const ColorRGBA<F32>& color) {
     return Result::SUCCESS;
 }
 
+Result Text::updateStyle(F32 sharpness, F32 weight, F32 emboss, F32 embossBackdrop) {
+    if (config.sharpness == sharpness && config.weight == weight &&
+        config.emboss == emboss && config.embossBackdrop == embossBackdrop) {
+        return Result::SUCCESS;
+    }
+    config.sharpness = sharpness;
+    config.weight = weight;
+    config.emboss = emboss;
+    config.embossBackdrop = embossBackdrop;
+    return pimpl->updateUniforms();
+}
+
 void Text::enabled(bool value) {
     pimpl->fontProgram->setEnabled(value);
 }

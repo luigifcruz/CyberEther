@@ -47,10 +47,6 @@ struct Label::Impl : public Drawable {
     bool sameResources(const Config& other) const {
         return requiredCapacity(other) == capacity &&
                config.fontName == other.fontName &&
-               config.sharpness == other.sharpness &&
-               config.weight == other.weight &&
-               config.emboss == other.emboss &&
-               config.embossBackdrop == other.embossBackdrop &&
                config.maxCharacters == other.maxCharacters;
     }
 
@@ -138,6 +134,7 @@ struct Label::Impl : public Drawable {
         const U64 characterCapacity = std::max<U64>(1, text->getConfig().maxCharacters);
 
         JST_CHECK(text->updatePixelSize(context->pixelSize()));
+        JST_CHECK(text->updateStyle(config.sharpness, config.weight, config.emboss, config.embossBackdrop));
         JST_CHECK(text->updateTranslation(translationNdc()));
         JST_CHECK(text->updateScissorRect(scissor(config.clip)));
 
@@ -196,7 +193,11 @@ const Label::Config& Label::config() const {
 void Label::update(Config config) {
     markConfigured();
     const bool instancesChanged = this->impl->config.instances != config.instances;
-    const bool visualsChanged = instancesChanged || this->impl->config.clip != config.clip;
+    const bool visualsChanged = instancesChanged || this->impl->config.clip != config.clip ||
+                                this->impl->config.sharpness != config.sharpness ||
+                                this->impl->config.weight != config.weight ||
+                                this->impl->config.emboss != config.emboss ||
+                                this->impl->config.embossBackdrop != config.embossBackdrop;
     this->impl->instancesDirty |= instancesChanged;
     const bool resourcesChanged = !this->impl->sameResources(config) || this->impl->resolvedFontChanged(config);
     this->impl->config = std::move(config);
