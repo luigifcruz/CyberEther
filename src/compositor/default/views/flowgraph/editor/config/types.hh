@@ -41,6 +41,7 @@ struct FlowgraphConfigFieldConfig {
     Sakura::Callback<void(bool, std::vector<std::string>, Sakura::Callback<void(std::string)>)> onBrowsePath;
     std::optional<std::string> preview;
     Sakura::Callback<void(Extent2D<F32>)> onContentOverflow;
+    Sakura::Callback<void(const std::string&)> onOpenUrl;
 };
 
 }  // namespace Jetstream

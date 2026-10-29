@@ -12,10 +12,12 @@
 #endif
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <optional>
+#include <string_view>
 #include <system_error>
 #include <unordered_map>
 #include <unordered_set>
@@ -342,6 +344,38 @@ std::string Gallery::Path(const Query& query) {
     add("platform", query.platform);
     add("arch", query.arch);
     return path;
+}
+
+std::optional<std::string> Gallery::Slug(const std::string& url) {
+    std::string_view rest = url;
+    for (const std::string_view scheme : {"https://", "http://"}) {
+        if (rest.starts_with(scheme)) {
+            rest.remove_prefix(scheme.size());
+            break;
+        }
+    }
+    if (rest.starts_with("www.")) {
+        rest.remove_prefix(4);
+    }
+    const std::string_view host = std::string_view(Host).substr(std::string_view(Host).find("://") + 3);
+    if (!rest.starts_with(host)) {
+        return std::nullopt;
+    }
+    rest.remove_prefix(host.size());
+    if (!rest.starts_with(PagePath)) {
+        return std::nullopt;
+    }
+    rest.remove_prefix(std::string_view(PagePath).size());
+    rest = rest.substr(0, rest.find_first_of("?#"));
+    if (rest.ends_with('/')) {
+        rest.remove_suffix(1);
+    }
+    if (rest.empty() || !std::all_of(rest.begin(), rest.end(), [](const char c) {
+            return std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_';
+        })) {
+        return std::nullopt;
+    }
+    return std::string(rest);
 }
 
 Result Gallery::Load(std::vector<Registry::FlowgraphRegistration>& flowgraphs) {

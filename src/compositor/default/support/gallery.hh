@@ -32,9 +32,11 @@ class JETSTREAM_API Gallery {
     static constexpr const char* Host = "https://cyberether.org";
     static constexpr const char* Endpoint = "/api/v1/flowgraphs";
     static constexpr const char* Owner = "cyberether";
+    static constexpr const char* PagePath = "/gallery/flowgraphs/";
 
     static Query Current();
     static std::string Path(const Query& query);
+    static std::optional<std::string> Slug(const std::string& url);
     static Result Load(std::vector<Registry::FlowgraphRegistration>& flowgraphs);
     static Result Fetch(const Query& query,
                         const std::function<bool()>& cancelled,

@@ -103,6 +103,9 @@ inline std::vector<FlowgraphConfigFieldConfig> BuildFlowgraphDetachedConfigField
                 .onSelect = std::move(onSelect),
             });
         };
+        field.onOpenUrl = [enqueue](const std::string& url) {
+            enqueue(MailOpenUrl{.url = url, .notifyResult = true});
+        };
     }
     return fields;
 }

@@ -1,6 +1,7 @@
 #ifndef JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_WORKBENCH_HH
 #define JETSTREAM_COMPOSITOR_IMPL_DEFAULT_ACTIONS_WORKBENCH_HH
 
+#include "gallery.hh"
 #include "persist.hh"
 #include "settings.hh"
 #include "../support/docs.hh"
@@ -12,6 +13,7 @@
 #include "jetstream/settings.hh"
 #include "jetstream/platform.hh"
 
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -327,6 +329,17 @@ struct WorkbenchActions {
     }
 
     Result handle(const MailOpenUrl& msg) {
+        if (const auto slug = Gallery::Slug(msg.url)) {
+            const auto& flowgraphs = state.registry.flowgraphs;
+            for (const auto& key : {GalleryActions::PublishedPrefix + *slug, *slug}) {
+                if (std::any_of(flowgraphs.begin(), flowgraphs.end(), [&](const auto& entry) {
+                        return entry.key == key;
+                    })) {
+                    callbacks.enqueueMail(MailOpenFlowgraphExample{.key = key});
+                    return Result::SUCCESS;
+                }
+            }
+        }
         const Result result = Platform::OpenUrl(msg.url);
         if (msg.notifyResult) {
             callbacks.notifyResult(result, "");

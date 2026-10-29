@@ -279,6 +279,37 @@ TEST_CASE_METHOD(FlowgraphFixture,
     CHECK_FALSE(flowgraph->paused());
 }
 
+TEST_CASE("Gallery page links open the matching example inside the app", "[core][compositor][start-tab]") {
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    std::vector<Mail> mails;
+    callbacks.enqueueMail = [&](Mail&& mail) {
+        mails.push_back(std::move(mail));
+    };
+    GalleryActions(state).refreshRegistry();
+    REQUIRE_FALSE(state.registry.flowgraphs.empty());
+    const std::string key = state.registry.flowgraphs.front().key;
+    WorkbenchActions actions(state, callbacks);
+
+    REQUIRE(actions.handle(MailOpenUrl{.url = "https://cyberether.org/gallery/flowgraphs/" + key}) == Result::SUCCESS);
+    REQUIRE(mails.size() == 1);
+    const auto* open = std::get_if<MailOpenFlowgraphExample>(&mails.front());
+    REQUIRE(open != nullptr);
+    CHECK(open->key == key);
+
+    auto renamed = state.registry.flowgraphs.front();
+    renamed.key = std::string(GalleryActions::PublishedPrefix) + "demo";
+    auto plugin = state.registry.flowgraphs.front();
+    plugin.key = "demo";
+    state.registry.flowgraphs = {plugin, renamed};
+    mails.clear();
+    REQUIRE(actions.handle(MailOpenUrl{.url = "https://cyberether.org/gallery/flowgraphs/demo"}) == Result::SUCCESS);
+    REQUIRE(mails.size() == 1);
+    open = std::get_if<MailOpenFlowgraphExample>(&mails.front());
+    REQUIRE(open != nullptr);
+    CHECK(open->key == "gallery/demo");
+}
+
 TEST_CASE("Gallery examples open from the cached registry by key", "[core][compositor][start-tab]") {
     DefaultCompositorState state;
     DefaultCompositorCallbacks callbacks;

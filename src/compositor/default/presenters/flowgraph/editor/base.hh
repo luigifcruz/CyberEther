@@ -108,6 +108,9 @@ struct FlowgraphEditorPresenter {
                     .onSelect = std::move(onSelect),
                 });
             },
+            .onOpenUrl = [enqueue](const std::string& url) {
+                enqueue(MailOpenUrl{.url = url, .notifyResult = true});
+            },
             .onNodeLayout = [enqueue, flowgraphId](const std::string& blockName,
                                                    F32 x,
                                                    F32 y,

@@ -4,6 +4,7 @@
 #include <jetstream/render/sakura/components/box.hh>
 #include <jetstream/render/sakura/components/label.hh>
 #include <jetstream/render/sakura/components/markdown.hh>
+#include <jetstream/render/sakura/components/markdown_editor.hh>
 #include <jetstream/render/sakura/components/text_markdown.hh>
 #include <jetstream/render/tools/icons_lucide.hh>
 
@@ -1387,6 +1388,38 @@ TEST_CASE("Styled markdown hands links to the newest handler after a callback on
     CHECK(host.send(Mouse(MouseEventType::Click, x, y)));
     host.send(Mouse(MouseEventType::Release, x, y));
     CHECK(followed == std::vector<std::string>{"b:/docs/quick-start"});
+}
+
+TEST_CASE("Markdown editor previews hand links to the newest handler", "[core][sakura][markdown]") {
+    MonoFontWindow window;
+    window.load(Sakura::Typography::BodyFont, jbmm_compressed_data);
+    auto ctx = MakeContext();
+    ctx.render = &window;
+    Sakura::MarkdownEditor editor;
+    Host host(editor);
+    std::vector<std::string> followed;
+    const auto update = [&](const std::string& tag) {
+        editor.update({
+            .id = "notes",
+            .value = "Open [QPSK](https://cyberether.org/gallery/flowgraphs/python-qpsk) next.",
+            .onLink = [&followed, tag](const std::string& url) {
+                followed.push_back(tag + url);
+                return true;
+            },
+        });
+        host.place(ctx, {0.0f, 0.0f, 600.0f, 200.0f});
+    };
+    update("a:");
+    update("b:");
+    const auto inner = Find<TextMarkdown>(editor);
+    REQUIRE(inner.size() == 1);
+    const auto link = DrawnRect(editor, "QPSK");
+    REQUIRE(link.has_value());
+    const F32 x = link->x + link->width * 0.5f;
+    const F32 y = RowCenter(*inner.front(), 0);
+    CHECK(host.send(Mouse(MouseEventType::Click, x, y)));
+    host.send(Mouse(MouseEventType::Release, x, y));
+    CHECK(followed == std::vector<std::string>{"b:https://cyberether.org/gallery/flowgraphs/python-qpsk"});
 }
 
 TEST_CASE("Markdown lists its headings and scrolls a heading line into view", "[core][sakura][markdown]") {

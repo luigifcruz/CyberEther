@@ -29,6 +29,7 @@ struct FlowgraphPane {
         std::string id;
         std::string markdown;
         Sakura::Callback<void()> onClose;
+        Sakura::Callback<void(const std::string&)> onOpenUrl;
     };
 
     struct Config {
@@ -139,6 +140,13 @@ struct FlowgraphPane {
                 .fontSize = DescriptionFontSize,
                 .padding = Sakura::Padding{side, 0.0f, side, DescriptionBottomPadding},
                 .scrollbar = true,
+                .onLink = [this](const std::string& url) {
+                    if (!this->config.description.has_value() || !this->config.description->onOpenUrl) {
+                        return false;
+                    }
+                    this->config.description->onOpenUrl(url);
+                    return true;
+                },
             });
         }
 

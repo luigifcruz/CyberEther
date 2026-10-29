@@ -124,6 +124,18 @@ TEST_CASE("Gallery queries name the owner, version, platform and architecture an
 #endif
 }
 
+TEST_CASE("Gallery page links resolve to their flowgraph slug and other links do not", "[core][compositor][gallery]") {
+    CHECK(Gallery::Slug("https://cyberether.org/gallery/flowgraphs/biq-python-roundtrip") == "biq-python-roundtrip");
+    CHECK(Gallery::Slug("http://www.cyberether.org/gallery/flowgraphs/python-qpsk/") == "python-qpsk");
+    CHECK(Gallery::Slug("https://cyberether.org/gallery/flowgraphs/first_steps?ref=note#top") == "first_steps");
+    CHECK_FALSE(Gallery::Slug("https://cyberether.org/gallery/flowgraphs/").has_value());
+    CHECK_FALSE(Gallery::Slug("https://cyberether.org/gallery/flowgraphs/a/b").has_value());
+    CHECK_FALSE(Gallery::Slug("https://cyberether.org/docs/quick-start").has_value());
+    CHECK_FALSE(Gallery::Slug("https://example.com/gallery/flowgraphs/python-qpsk").has_value());
+    CHECK_FALSE(Gallery::Slug("https://cyberether.org.evil.com/gallery/flowgraphs/python-qpsk").has_value());
+    CHECK_FALSE(Gallery::Slug("/gallery/flowgraphs/python-qpsk").has_value());
+}
+
 TEST_CASE("Published gallery flowgraphs lead the catalog and replace bundled ones with the same key",
           "[core][compositor][gallery]") {
     DefaultCompositorState state;

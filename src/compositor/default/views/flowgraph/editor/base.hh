@@ -60,6 +60,7 @@ struct FlowgraphEditor {
         Sakura::Callback<void(const std::string&, Parser::Map, bool, Sakura::Callback<void(Result)>)> onReconfigureBlock;
         Sakura::Callback<void(Result, std::string)> onConfigError;
         Sakura::Callback<void(bool, std::vector<std::string>, Sakura::Callback<void(std::string)>)> onBrowseConfigPath;
+        Sakura::Callback<void(const std::string&)> onOpenUrl;
         Sakura::Callback<void(const std::string&, F32, F32, F32, F32, std::optional<FlowgraphNode::Layout>)> onNodeLayout;
         Sakura::Callback<void(Measured)> onLayout;
         Sakura::Callback<void(const std::string&, bool)> onNodeConfigCollapse;
@@ -161,6 +162,11 @@ struct FlowgraphEditor {
                                             Sakura::Callback<void(std::string)> onPicked) {
                     if (this->config.onBrowseConfigPath) {
                         this->config.onBrowseConfigPath(save, std::move(extensions), std::move(onPicked));
+                    }
+                };
+                field.onOpenUrl = [this](const std::string& url) {
+                    if (this->config.onOpenUrl) {
+                        this->config.onOpenUrl(url);
                     }
                 };
             }
