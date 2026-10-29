@@ -1007,17 +1007,17 @@ TEST_CASE("Search catalog chip and row hovers repaint once and clear on leave",
     CHECK(fill(2) == rig.scene.ctx.color("pill_bg"));
     CHECK(DirtyFrames(frames, update) == 0);
 
-    CHECK(RowTiles(rig, "pill_hover_bg").empty());
+    CHECK(RowTiles(rig, "chrome_button_hover").empty());
     rig.host.send(Mouse(MouseEventType::Move, 100.0f, 130.0f));
     CHECK(RepaintOnly(frames.run(update)));
-    CHECK(RowTiles(rig, "pill_hover_bg") == std::vector<Jetstream::Rect>{{10.0f, 115.0f, 280.0f, 46.0f}});
+    CHECK(RowTiles(rig, "chrome_button_hover") == std::vector<Jetstream::Rect>{{10.0f, 115.0f, 280.0f, 46.0f}});
     CHECK(DirtyFrames(frames, update) == 0);
     rig.host.send(Mouse(MouseEventType::Move, 120.0f, 140.0f));
     CHECK(frames.run(update).clean());
 
     rig.host.send(Mouse(MouseEventType::Leave, -10.0f, -10.0f));
     CHECK(RepaintOnly(frames.run(update)));
-    CHECK(RowTiles(rig, "pill_hover_bg").empty());
+    CHECK(RowTiles(rig, "chrome_button_hover").empty());
     CHECK(DirtyFrames(frames, update) == 0);
 
     rig.host.send(Mouse(MouseEventType::Move, 500.0f, 100.0f));

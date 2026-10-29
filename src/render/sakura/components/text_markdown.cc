@@ -2546,6 +2546,7 @@ struct TextMarkdown::Impl {
                 .cornerRadius = std::max(1.0f, frame.body * kCalloutRadiusRatio),
                 .borderWidth = std::max(1.0f, std::round(frame.body * kCalloutBorderRatio * 2.0f) * 0.5f),
                 .borderColor = border,
+                .strokeFringe = true,
                 .capacity = kMaxCallouts,
             });
         }
@@ -2555,6 +2556,7 @@ struct TextMarkdown::Impl {
             .cornerRadius = std::max(1.0f, frame.body * kCalloutRadiusRatio),
             .borderWidth = frame.codeBorder,
             .borderColor = frame.codeBlockBorder,
+            .strokeFringe = true,
             .capacity = kMaxDecorations,
         });
         tableChrome.update({

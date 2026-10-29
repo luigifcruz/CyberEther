@@ -223,7 +223,7 @@ struct ResultList : public Component {
             if (selected || hovered == row.result) {
                 rowInstances.push_back({
                     .rect = tile,
-                    .backgroundColor = ctx.color(selected ? "pill_active_bg" : "pill_hover_bg"),
+                    .backgroundColor = ctx.color(selected ? "pill_active_bg" : "chrome_button_hover"),
                 });
             }
 

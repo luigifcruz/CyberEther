@@ -68,7 +68,7 @@ struct FeedbackView {
             .padding = Sakura::Padding{Sakura::Spacing::Medium, Sakura::Spacing::Medium, Sakura::Spacing::Medium,
                                        Sakura::Spacing::Medium},
             .fontName = Sakura::Typography::BodyFont,
-            .backgroundColorKey = "pill_field_bg",
+            .backgroundColorKey = "card_surface",
             .rounding = Sakura::Rounding::Card,
             .onChange = [this](std::string value) {
                 if (this->config.onTextChange) {
@@ -80,7 +80,7 @@ struct FeedbackView {
             .content = &editor,
             .rounding = Sakura::Rounding::Card,
             .border = true,
-            .colorKey = "pill_field_bg",
+            .colorKey = "card_surface",
         });
 
         const bool overLimit = this->config.text.size() > this->config.maxLength;
@@ -97,6 +97,7 @@ struct FeedbackView {
         });
         cancel.update({
             .label = "Cancel",
+            .hoverColorKey = "chrome_button_hover",
             .height = ButtonHeight,
             .onClick = [this]() {
                 if (this->config.onClose) {

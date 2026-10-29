@@ -247,7 +247,7 @@ const std::unordered_map<std::string, Palette> Themes = {
 
             // Welcome Card Colors
             {"card_surface", {1.00f, 1.00f, 1.00f, 1.00f}},
-            {"card_surface_hovered", {0.965f, 0.965f, 0.97f, 1.00f}},
+            {"card_surface_hovered", {0.94f, 0.94f, 0.95f, 1.00f}},
 
             // Gallery Accent Colors
             {"gallery_green", {0.10f, 0.52f, 0.28f, 1.0f}},
