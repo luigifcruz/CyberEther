@@ -310,6 +310,25 @@ TEST_CASE("Gallery page links open the matching example inside the app", "[core]
     CHECK(open->key == "gallery/demo");
 }
 
+TEST_CASE("Docs page links open the bundled page inside the app", "[core][compositor][start-tab]") {
+    DefaultCompositorState state;
+    DefaultCompositorCallbacks callbacks;
+    std::vector<Mail> mails;
+    callbacks.enqueueMail = [&](Mail&& mail) {
+        mails.push_back(std::move(mail));
+    };
+    WorkbenchActions actions(state, callbacks);
+    REQUIRE(Docs::Bundled().find("quick-start").has_value());
+
+    REQUIRE(actions.handle(MailOpenUrl{.url = "https://cyberether.org/docs/quick-start#first-steps"}) ==
+            Result::SUCCESS);
+    REQUIRE(mails.size() == 1);
+    const auto* open = std::get_if<MailOpenDocs>(&mails.front());
+    REQUIRE(open != nullptr);
+    CHECK(open->page == "quick-start");
+    CHECK(open->anchor == "first-steps");
+}
+
 TEST_CASE("Gallery examples open from the cached registry by key", "[core][compositor][start-tab]") {
     DefaultCompositorState state;
     DefaultCompositorCallbacks callbacks;

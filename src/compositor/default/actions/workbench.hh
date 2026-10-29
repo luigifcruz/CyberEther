@@ -340,6 +340,10 @@ struct WorkbenchActions {
                 }
             }
         }
+        if (const auto link = Docs::Resolve(msg.url); link && Docs::Bundled().find(link->slug).has_value()) {
+            callbacks.enqueueMail(MailOpenDocs{.page = link->slug, .anchor = link->anchor});
+            return Result::SUCCESS;
+        }
         const Result result = Platform::OpenUrl(msg.url);
         if (msg.notifyResult) {
             callbacks.notifyResult(result, "");
