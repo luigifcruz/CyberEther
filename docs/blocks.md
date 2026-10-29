@@ -33,6 +33,7 @@ Tensor manipulation and general plumbing: shaping, casting, arithmetic, and the 
 | Range | `range` | Normalizes input using an affine range mapping. |
 | Remove Indices | `remove_indices` | Removes entries by index. |
 | Reshape | `reshape` | Changes the shape of a tensor. |
+| Signal Attributes | `signal_attributes` | Sets signal attributes. |
 | Signal Axes | `signal_axes` | Assigns signal roles to tensor dimensions. |
 | Slice | `slice` | Extracts a subset of a tensor. |
 | Squeeze Dims | `squeeze_dims` | Removes a dimension of size 1 at a specified axis. |

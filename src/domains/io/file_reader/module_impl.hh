@@ -15,6 +15,8 @@
 #include <jetstream/platform.hh>
 #include <jetstream/tools/snapshot.hh>
 
+#include "formats/format.hh"
+
 namespace Jetstream::Modules {
 
 struct FileReaderImpl : public Module::Impl, public DynamicConfig<FileReader> {
@@ -31,21 +33,6 @@ struct FileReaderImpl : public Module::Impl, public DynamicConfig<FileReader> {
     F32 getThroughput() const;
 
  protected:
-    struct Recording {
-        struct Capture {
-            U64 sampleStart = 0;
-            std::optional<F64> frequency;
-        };
-
-        std::filesystem::path dataPath;
-        DataType dataType = DataType::None;
-        U64 headerBytes = 0;
-        U64 trailingBytes = 0;
-        std::optional<F64> sampleRate;
-        std::vector<Capture> captures;
-    };
-
-    Result loadSigmf(Recording& result) const;
     Result publishCapture(U64 sampleIndex);
     Result createStream();
     Result readStream();
@@ -56,13 +43,10 @@ struct FileReaderImpl : public Module::Impl, public DynamicConfig<FileReader> {
     DataType validatedDataType = DataType::None;
     U64 validatedOutputSizeBytes = 0;
 
-    Recording recording;
+    FileReaderFormat::Recording recording;
     std::optional<F64> publishedFrequency;
-    std::chrono::steady_clock::time_point paceStart{};
-    U64 pacedSamples = 0;
 
     std::atomic<bool> livePlaying{true};
-    std::atomic<bool> liveRealTime{false};
     std::atomic<bool> streaming{false};
     std::atomic<bool> receiving{false};
     std::atomic<bool> starved{false};

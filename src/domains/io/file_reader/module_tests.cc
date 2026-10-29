@@ -199,7 +199,7 @@ TEST_CASE("FileReader module validation rejects invalid config",
     for (const auto& impl : implementations) {
         SECTION("invalid file format") {
             Modules::FileReader config;
-            config.fileFormat = "wav";
+            config.fileFormat = "unknown";
             RequireFileReaderValidationError(impl, config);
         }
 

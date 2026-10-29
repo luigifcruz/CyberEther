@@ -1,12 +1,14 @@
-#include "module_impl.hh"
+#include "format.hh"
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <string_view>
 #include <unordered_map>
 
 #include <nlohmann/json.hpp>
 
+#include "jetstream/logger.hh"
 #include "jetstream/platform.hh"
 
 namespace Jetstream::Modules {
@@ -48,7 +50,12 @@ std::optional<U64> UnsignedValue(const nlohmann::json& value) {
 
 }  // namespace
 
-Result FileReaderImpl::loadSigmf(Recording& result) const {
+bool FileReaderFormat::Sigmf::matches(const std::filesystem::path& path) const {
+    const auto extension = path.extension();
+    return extension == ".sigmf-meta" || extension == ".sigmf-data" || extension == ".sigmf";
+}
+
+Result FileReaderFormat::Sigmf::load(const std::string& filepath, Recording& result) const {
     const auto path = Platform::PathFromUtf8(filepath);
     const auto extension = path.extension();
 

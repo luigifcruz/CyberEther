@@ -7,10 +7,11 @@
 namespace Jetstream::Modules {
 
 struct Throttle : public Module::Config {
+    std::string pacing = "interval";
     F32 intervalMs = 100.0f;
 
     JST_MODULE_TYPE(throttle);
-    JST_MODULE_PARAMS(intervalMs);
+    JST_MODULE_PARAMS(pacing, intervalMs);
 };
 
 }  // namespace Jetstream::Modules

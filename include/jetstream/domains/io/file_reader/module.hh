@@ -8,15 +8,14 @@ namespace Jetstream::Modules {
 
 struct FileReader : public Module::Config {
     std::string filepath = "";
-    std::string fileFormat = "raw";
+    std::string fileFormat = "auto";
     std::string dataType = "CF32";
     U64 batchSize = 8192;
     bool loop = true;
     bool playing = true;
-    bool realTime = false;
 
     JST_MODULE_TYPE(file_reader);
-    JST_MODULE_PARAMS(filepath, fileFormat, dataType, batchSize, loop, playing, realTime);
+    JST_MODULE_PARAMS(filepath, fileFormat, dataType, batchSize, loop, playing);
 };
 
 }  // namespace Jetstream::Modules
