@@ -72,6 +72,7 @@ struct Dock : public Component {
         F32 asideWidth = 0.0f;
         F32 tabBarHeight = 0.0f;
         F32 leadingInset = 0.0f;
+        F32 trailingInset = 0.0f;
         Callback<void(const std::string&, Extent2D<F32>)> onTabMenu;
         Callback<void(U8)> onBarPress;
         bool columns = false;

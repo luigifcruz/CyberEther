@@ -73,7 +73,11 @@ class GLFW<DeviceType::Vulkan> : public Adapter<DeviceType::Vulkan> {
     };
 
     GLFWwindow* window = nullptr;
+#ifdef JST_OS_WINDOWS
+    std::shared_ptr<WindowsTitlebar> titlebar;
+#else
     std::shared_ptr<CocoaTitlebar> titlebar;
+#endif
     U32 _currentDrawableIndex;
     VkSurfaceKHR surface;
     VkSwapchainKHR swapchain;

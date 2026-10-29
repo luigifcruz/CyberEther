@@ -14,3 +14,8 @@ if jst_is_macos
         'cocoa_titlebar.mm',
     ])
 endif
+
+if jst_is_windows
+    src_lst += files('windows_titlebar.cc')
+    dep_lst += [cpp.find_library('dwmapi'), cpp.find_library('comctl32'), cpp.find_library('uxtheme')]
+endif

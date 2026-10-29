@@ -132,6 +132,17 @@ if not jst_is_windows
 endif
 
 core_test_targets = []
+if jst_is_windows and cfg_lst.get('JETSTREAM_LOADER_GLFW_AVAILABLE', false)
+    windows_titlebar_tests = executable(
+        'jetstream-core-windows-titlebar-tests',
+        ['render/windows_titlebar.cc', '../../src/viewport/glfw/tools/windows_titlebar.cc'],
+        dependencies: dep_lst + [catch2_dep],
+        include_directories: inc_lst,
+    )
+    core_test_targets += [windows_titlebar_tests]
+    test('core-windows-titlebar', windows_titlebar_tests,
+         suite: 'core', is_parallel: false, timeout: 60)
+endif
 if jst_is_macos and cfg_lst.get('JETSTREAM_LOADER_GLFW_AVAILABLE', false)
     cocoa_titlebar_tests = executable(
         'jetstream-core-cocoa-titlebar-tests',

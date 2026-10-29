@@ -1639,7 +1639,7 @@ void Dock::layout(const Context& ctx) {
         const F32 drop = std::round(Px(ctx, kTrackDrop));
         const F32 spacing = Px(ctx, kPillGap);
         F32 x = s.bounds.x + margin + Px(ctx, s.config.leadingInset);
-        F32 limit = s.bounds.right() - margin;
+        F32 limit = s.bounds.right() - margin - Px(ctx, s.config.trailingInset);
         if (leading) {
             s.leadingRect = {x, s.tabBar.y + std::floor((height - leadSize.y) * 0.5f) + drop, leadSize.x, leadSize.y};
             layoutChild(ctx, *leading, s.leadingRect, s.leadingRect);

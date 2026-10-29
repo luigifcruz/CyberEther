@@ -22,6 +22,8 @@ env:
     COMDLG32.dll
     COMCTL32.dll
     COMBASE.dll
+    DWMAPI.dll
+    UXTHEME.dll
     ADVAPI32.dll
     RPCRT4.dll
     SHLWAPI.dll
